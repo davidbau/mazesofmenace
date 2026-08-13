@@ -10,9 +10,10 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
-import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, makemaz_valley, shuffle,
+import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown5, makemaz_minend2, shuffle,
          mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
          splev_map_origin, flip_level, set_door_orientation,
+         okdoor, bydoor, create_door, lspo_door_relative,
          SET_LIT_NOCHANGE } from './sp_lev.js';
 import { create_maze, walkfrom, mz, reset_maze_bounds, mkportal } from './mkmaze.js';
 import {
@@ -386,11 +387,18 @@ async function makelevel() {
         await makemaz_castle();
         return;
     }
-    // C ref: mklev.c:1269 makemaz(slev->proto) — the Sokoban entrance level.
-    // Only soko1 (and only its "-2" variant) is ported; the other Sokoban
-    // levels and soko1's "-1" variant fall through to the regular generator.
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the Sokoban levels.  soko1
+    // carries the reward zoo and the achievement prize; soko2/3/4 share a
+    // simpler des.* program.  Both variant files of soko1 and soko2 are ported.
     if (slev && slev.proto === 'soko1') {
         await makemaz_soko1();
+        return;
+    }
+    if (slev && (slev.proto === 'soko2' || slev.proto === 'soko3'
+                 || slev.proto === 'soko4')) {
+        // soko4 registers a 1-cell "branch" levregion; place_lregions() runs it
+        // at level finalize (place_lregion draws rn2(1) for x and y).
+        if (await makemaz_soko_upper(slev.proto)) await quest_place_branch();
         return;
     }
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Barbarian quest "home"
@@ -462,6 +470,42 @@ async function makelevel() {
         // the branch lregion and after level_finalize_topology's mineralize().
         set_wall_state();
         return;
+    }
+
+    // C ref: mklev.c:1269 makemaz(slev->proto) — Moloch's Sanctum, the bottom
+    // level of Gehennom.  sanctum.lua registers no branch levregion, so unlike
+    // the Valley there is no quest_place_branch() here; its des.teleport_region
+    // is stored in svd.dndest and consumed by goto_level's own place_lregion.
+    if (slev && slev.proto === 'sanctum') {
+        await makemaz_sanctum();
+        set_wall_state();
+        return;
+    }
+
+    // C ref: mklev.c:1269 makemaz(slev->proto) — Mine Town.  mkmaze.c:1136:
+    // an s_level carrying rndlevs picks its script with rnd(sp->rndlevs), so
+    // the draw is made for EVERY variant even though only "-5" is ported; a
+    // different roll falls through to the ordinary generator as before.
+    // Mine Town registers no branch levregion (the Mines branch sits on the
+    // main-dungeon side), so fixup_special() places nothing here.
+    if (slev && slev.proto === 'minetn') {
+        const variant = rnd(slev.rndlevs || 1);   // mkmaze.c:1136
+        if (variant === 5) {
+            await makemaz_minetown5();
+            set_wall_state();
+            return;
+        }
+    }
+
+    // C ref: mklev.c:1269 makemaz(slev->proto) — Mine's End, the bottom of the
+    // Gnomish Mines.  rndlevs is 3; only the "-2" variant is ported.
+    if (slev && slev.proto === 'minend') {
+        const variant = rnd(slev.rndlevs || 1);   // mkmaze.c:1136
+        if (variant === 2) {
+            await makemaz_minend2();
+            set_wall_state();
+            return;
+        }
     }
 
     // C ref: mklev.c:1271 — svd.dungeons[dnum].fill_lvl[0] dispatch (the mines
@@ -559,7 +603,7 @@ async function makelevel() {
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
             if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
             fill_special_room(vaultRoom);       // C ref: mklev.c:1330
-            if (!is_branchlev()) rn2(3);        // mk_knox_portal rn2(3)
+            await mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
             if (!rn2(3)) await makeniche(TELEP_TRAP);
         } else if (rnd_rect() && create_vault()) {
             // C ref: mklev.c:1334 — fallback vault attempt with fresh rnd_rect
@@ -573,7 +617,7 @@ async function makelevel() {
                 const vaultRoom2 = g.level.rooms[g.level.nroom - 1];
                 if (vaultRoom2) vaultRoom2.needfill = FILL_NORMAL;
                 fill_special_room(vaultRoom2);
-                if (!is_branchlev()) rn2(3);
+                await mk_knox_portal(vx2.v + vw.v, vy2.v + vh.v);
                 if (!rn2(3)) await makeniche(TELEP_TRAP);
             } else {
                 if (g.level.rooms[g.level.nroom]) g.level.rooms[g.level.nroom].hx = -1;
@@ -1154,93 +1198,10 @@ function splev_add_doors_to_room(croom) {
     for (const sub of croom.sbrooms || []) splev_add_doors_to_room(sub);
 }
 
-// C ref: sp_lev.c rnddoor() — state[rn2(5)]. Only reachable from lspo_door's
-// `typ = (msk == -1) ? rnddoor() : msk;`, and for the wall-relative des.door
-// path (our only caller) `typ` itself is never used afterwards — but the
-// rn2(5) draw still happens and must be replicated to stay call-aligned.
-function splev_rnddoor_roll() {
-    const state = [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED];
-    return state[rn2(state.length)];
-}
-
-// C ref: sp_lev.c create_door() — place a new door on a wall of room broom.
-// dd: { secret: 0|1, mask: -1|doormask, pos: -1|offset, wall: bitmask }.
-function splev_create_door(dd, broom) {
-    if (dd.mask === -1) {
-        if (!dd.secret) {
-            if (!rn2(3)) {
-                if (!rn2(5)) dd.mask = D_ISOPEN;
-                else if (!rn2(6)) dd.mask = D_LOCKED;
-                else dd.mask = D_CLOSED;
-                if (dd.mask !== D_ISOPEN && !rn2(25)) dd.mask |= D_TRAPPED;
-            } else {
-                dd.mask = D_NODOOR;
-            }
-        } else {
-            if (!rn2(5)) dd.mask = D_LOCKED;
-            else dd.mask = D_CLOSED;
-            if (!rn2(20)) dd.mask |= D_TRAPPED;
-        }
-    }
-    let x = 0, y = 0, trycnt;
-    for (trycnt = 0; trycnt < 100; trycnt++) {
-        const dwall = dd.wall, dpos = dd.pos;
-        switch (rn2(4)) {
-        case 0: // W_NORTH
-            if (!(dwall & 1)) continue;
-            y = broom.ly - 1;
-            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
-            if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level.at(x, y - 1)?.typ)) continue;
-            break;
-        case 1: // W_SOUTH
-            if (!(dwall & 2)) continue;
-            y = broom.hy + 1;
-            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
-            if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level.at(x, y + 1)?.typ)) continue;
-            break;
-        case 2: // W_WEST
-            if (!(dwall & 8)) continue;
-            x = broom.lx - 1;
-            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
-            if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level.at(x - 1, y)?.typ)) continue;
-            break;
-        case 3: // W_EAST
-            if (!(dwall & 4)) continue;
-            x = broom.hx + 1;
-            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
-            if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level.at(x + 1, y)?.typ)) continue;
-            break;
-        }
-        if (okdoor(x, y)) break;
-    }
-    if (trycnt >= 100) return; // C: impossible(), state unchanged
-    const loc = game.level.at(x, y);
-    if (!loc) return;
-    loc.typ = dd.secret ? SDOOR : DOOR;
-    loc.doormask = dd.mask;
-    add_door(x, y, broom);
-}
-
-const DOORSTATES = {
-    random: -1, open: D_ISOPEN, closed: D_CLOSED, locked: D_LOCKED,
-    nodoor: D_NODOOR, broken: D_BROKEN, secret: D_SECRET,
-};
-const WALLDIRS = { all: 15, random: 15, north: 1, west: 8, east: 4, south: 2 };
-
-// C ref: themerms.lua des.door({state=..., wall=..., pos=...}) -> lspo_door's
-// x==-1&&y==-1 path (no explicit coord — the only form our themerooms use).
+// C ref: sp_lev.c lspo_door() x==-1&&y==-1 path (themerooms' only form) —
+// now a thin wrapper on the shared sp_lev.js implementation.
 function des_door(spec) {
-    const msk = DOORSTATES[spec.state != null ? spec.state : 'random'];
-    const typ = (msk === -1) ? splev_rnddoor_roll() : msk;
-    const broom = splev_current_room();
-    if (!broom) return;
-    const dd = {
-        secret: (typ === D_SECRET) ? 1 : 0,
-        mask: msk,
-        pos: spec.pos != null ? spec.pos : -1,
-        wall: WALLDIRS[spec.wall != null ? spec.wall : 'all'],
-    };
-    splev_create_door(dd, broom);
+    lspo_door_relative(spec, splev_current_room());
 }
 
 // C ref: themerms.lua "Fake Delphi".
@@ -1575,14 +1536,16 @@ function isbig(sroom) {
 // shop-type roll (rnd(100)).  Stocking happens later in fill_special_room().
 function mkshop() {
     const g = game;
+    if (process.env.SHOPDBG) console.error(`[mkshop] dlvl=${JSON.stringify(g.u?.uz)} nroom=${g.level.nroom} rooms=` + JSON.stringify((g.level.rooms||[]).slice(0,12).map(r=>r&&({lx:r.lx,hx:r.hx,ly:r.ly,hy:r.hy,rtype:r.rtype,doorct:r.doorct,irr:r.irregular,sub:r.nsubrooms}))));
     let i = -1; // shoptype not yet determined
     // Find an eligible room: OROOM, no stairs, exactly one door.
     let sroom = null;
     for (let r = 0; ; r++) {
         const cur = g.level.rooms[r];
-        if (!cur || cur.hx < 0) return;       // no eligible room
-        if (r >= g.level.nroom) return;
+        if (!cur || cur.hx < 0) { if (process.env.SHOPDBG) console.error(`[mkshop] no room (r=${r})`); return; }
+        if (r >= g.level.nroom) { if (process.env.SHOPDBG) console.error('[mkshop] nroom end'); return; }
         if (cur.rtype !== OROOM) continue;
+        if (process.env.SHOPDBG) console.error(`[mkshop] r=${r} dn=${has_dnstairs(cur)} up=${has_upstairs(cur)} doorct=${cur.doorct}`);
         if (has_dnstairs(cur) || has_upstairs(cur)) continue;
         if (cur.doorct === 1) {
             if (invalid_shop_shape(cur)) continue;
@@ -1598,6 +1561,7 @@ function mkshop() {
             }
         sroom.rlit = 1;
     }
+    if (process.env.SHOPDBG) console.error(`[mkshop] chose lx=${sroom.lx} ly=${sroom.ly} rlit=${sroom.rlit}`);
     if (i < 0) {
         // C ref: mkroom.c mkshop() — weighted random shop-type pick over
         // shtypes[].prob, then force wand/book shops in big rooms to a
@@ -2087,30 +2051,6 @@ function add_door(x, y, aroom) {
     g.level.doorindex++;
 }
 
-function bydoor(x, y) {
-    const map = game.level;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        if (!isok(x + dx, y + dy)) continue;
-        const loc = map.at(x + dx, y + dy);
-        if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR)) return true;
-    }
-    return false;
-}
-
-function okdoor(x, y) {
-    const map = game.level;
-    const loc = map.at(x, y);
-    if (!loc) return false;
-    if (!(loc.typ === HWALL || loc.typ === VWALL)) return false;
-    if (bydoor(x, y)) return false;
-    return (
-        (isok(x - 1, y) && !IS_OBSTRUCTED(map.at(x - 1, y).typ))
-        || (isok(x + 1, y) && !IS_OBSTRUCTED(map.at(x + 1, y).typ))
-        || (isok(x, y - 1) && !IS_OBSTRUCTED(map.at(x, y - 1).typ))
-        || (isok(x, y + 1) && !IS_OBSTRUCTED(map.at(x, y + 1).typ))
-    );
-}
-
 // C ref: mklev.c join()
 function join(a, b, nxcor) {
     const g = game;
@@ -2318,57 +2258,6 @@ function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
     if (!proom.sbrooms) proom.sbrooms = [];
     proom.sbrooms[proom.nsubrooms++] = croom;
     return croom;
-}
-
-// C ref: sp_lev.c create_door() for a room-relative door (x=y=-1).
-function oracle_create_door(broom, wallmask, mask) {
-    for (let trycnt = 0; trycnt < 100; trycnt++) {
-        let x = 0, y = 0;
-        const dpos = -1;
-        switch (rn2(4)) {
-        case 0:
-            if (!(wallmask & 1 /*W_NORTH*/)) continue;
-            y = broom.ly - 1;
-            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
-            if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level.at(x, y - 1)?.typ)) continue;
-            break;
-        case 1:
-            if (!(wallmask & 2 /*W_SOUTH*/)) continue;
-            y = broom.hy + 1;
-            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
-            if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level.at(x, y + 1)?.typ)) continue;
-            break;
-        case 2:
-            if (!(wallmask & 8 /*W_WEST*/)) continue;
-            x = broom.lx - 1;
-            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
-            if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level.at(x - 1, y)?.typ)) continue;
-            break;
-        case 3:
-            if (!(wallmask & 4 /*W_EAST*/)) continue;
-            x = broom.hx + 1;
-            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
-            if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level.at(x + 1, y)?.typ)) continue;
-            break;
-        default: break;
-        }
-        if (oracle_okdoor(x, y)) {
-            const loc = game.level.at(x, y);
-            if (loc && IS_WALL(loc.typ)) {
-                loc.typ = DOOR;
-                loc.doormask = mask;
-                add_door(x, y, broom);
-            }
-            return;
-        }
-    }
-}
-
-function oracle_okdoor(x, y) {
-    const loc = game.level.at(x, y);
-    if (!loc) return false;
-    const near_door = bydoor(x, y);
-    return (loc.typ === HWALL || loc.typ === VWALL) && !near_door;
 }
 
 // C ref: get_free_room_loc -> get_location_coord(random) -> somexy(croom).
@@ -4653,7 +4542,10 @@ async function makemaz_oracle() {
                 const ox = delphi.lx + 1, oy = delphi.ly + 1;
                 make_monster(monster_by_pmidx(name_to_pmidx('Oracle')), ox, oy, 0);
                 // des.door({ state="nodoor", wall="all" })
-                oracle_create_door(delphi, 15 /*W_ANY*/, D_NODOOR);
+                // C ref: oracle.lua des.door({ state="nodoor", wall="random" })
+                // -> lspo_door -> create_door() with mask != -1.
+                create_door({ secret: 0, mask: D_NODOOR, pos: -1, wall: W_ANY },
+                            delphi);
             }
             // des.monster(); des.monster() — two random monsters in room 1.
             // Uses the same create_monster() collision->enexto relocation as the
@@ -4951,6 +4843,50 @@ function mktrap_random_kind() {
 // A BR_PORTAL branch (the Quest) puts a MAGIC_PORTAL trap on the square and
 // leaves the terrain alone, everything else gets a staircase — and a
 // BR_NO_END1/BR_NO_END2 branch gets neither on the end declared stairless.
+// C ref: mklev.c mk_knox_portal(x, y) — offer this level as the Fort Ludios
+// entrance.  The rn2(3) "defer to a later level" roll is only reached while the
+// branch is still floating (end1.dnum == n_dgns, the init_dungeons kludge); once
+// Knox has been placed every later vault level skips the roll entirely, which is
+// what keeps the makevtele() gate that follows it aligned.
+async function mk_knox_portal(x, y) {
+    const g = game;
+    const knox = g.knox_level;
+    if (!knox) return;
+    const br = (g.branches || []).find(
+        (b) => b?.end2?.dnum === knox.dnum && b?.end2?.dlevel === knox.dlevel);
+    if (!br) return;
+
+    let source;
+    if (br.end1.dnum === knox.dnum && br.end1.dlevel === knox.dlevel) {
+        source = br.end2;
+    } else {
+        // disallow Knox branch on a level with one branch already
+        if (is_branchlev()) return;
+        source = br.end1;
+    }
+    // Already set, or 2/3 chance of deferring until a later level (the roll is
+    // left of the `&& !wizard`, so debug mode still consumes it).
+    if (source.dnum < g.n_dgns || (rn2(3) && !g.flags?.debug)) return;
+
+    const uz = g.u?.uz || { dnum: 0, dlevel: 1 };
+    const u_depth = depth_of_level(uz);
+    const oracle_dnum = g.oracle_level?.dnum ?? 0;
+    const medusaDepth = g.medusa_level ? depth_of_level(g.medusa_level) : 999;
+    // at_dgn_entrance("The Quest"): this level is the quest branch's parent end.
+    const questBr = (g.branches || []).find((b) => b?.end2?.dnum === g.quest_dnum);
+    const at_quest_entrance = !!questBr && questBr.end1.dnum === uz.dnum
+        && questBr.end1.dlevel === uz.dlevel;
+    if (!(uz.dnum === oracle_dnum && !at_quest_entrance
+          && u_depth > 10 && u_depth < medusaDepth))
+        return;
+
+    source.dnum = uz.dnum;
+    source.dlevel = uz.dlevel;
+    // insert_branch(br, TRUE) only re-sorts svb.branches; no RNG, no state the
+    // rest of this port reads by list position.
+    await place_branch(br, x, y);
+}
+
 async function place_branch(br, x, y) {
     const g = game;
     // C ref: mklev.c:1230 — "Return immediately if there is no branch to make
@@ -5507,13 +5443,20 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_che
     mineralize_kelp(kelp_pool, kelp_moat);
     // C ref: mklev.c mineralize() — gold/gem seeding is skipped (after kelp) for
     // almost all special levels: In_hell || In_V_tower || Is_rogue_level ||
-    // arboreal || (Is_special && !Is_oracle && (!In_mines || town)).  The Big
-    // Room is a special level, so its gold/gem loop is suppressed (kelp only).
+    // arboreal || (Is_special && !Is_oracle && (!In_mines || sp->flags.town)).
+    // The `town` half is what decides Mine Town: it IS a mines special level,
+    // so the !In_mines half is false, but flags.town makes the clause true and
+    // the gold/gem loop is suppressed.  A non-town mines special (minend) keeps
+    // its minerals.  This used to read `proto !== 'minetn'`, i.e. exactly
+    // backwards on both counts.
     if (!skip_lvl_checks) {
-        const sp = Is_special(game.u?.uz);
-        if (In_hell(game.u?.uz) || game.level?.flags?.arboreal
+        const uz = game.u?.uz;
+        const sp = Is_special(uz);
+        const inMines = game.mines_dnum != null && uz?.dnum === game.mines_dnum;
+        const isTown = !!(sp && sp.flags && sp.flags.town);
+        if (In_hell(uz) || game.level?.flags?.arboreal
             || (sp && sp.proto && sp.proto.toLowerCase() !== 'oracle'
-                && sp.proto.toLowerCase() !== 'minetn')) {
+                && (!inMines || isTown))) {
             return;
         }
     }

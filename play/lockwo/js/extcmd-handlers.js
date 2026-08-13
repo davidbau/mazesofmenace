@@ -762,7 +762,11 @@ export async function wiz_wish() {
     return 0;
 }
 
-async function makewish() {
+// Exported for zap.js's WAN_WISHING zap, which reaches the same C function.
+// The "You may wish for an object." line stays OUT of here: C's wiz_wish()
+// clears flags.verbose across the call to suppress it, so emitting it here
+// would add a line to every #wizwish.  zapnodir() prints it itself.
+export async function makewish() {
     let tries = 0;
     let result = null;
     for (;;) {

@@ -9,20 +9,22 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit, MAX_CARR_CAP, WT_HUMAN,
-    W_ARMG } from './const.js';
+    W_ARMG, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
 import { dochug, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen,
     m_everyturn_effect } from './monmove.js';
 import { cansee } from './vision.js';
 import { t_at } from './trap.js';
 import { night, FULL_MOON } from './calendar.js';
 import { is_were_flag, is_human_flag, mflags1_of, mflags2_of, mflags3_of,
-    M1_NOTAKE, M1_NOHANDS, M2_DEMON, M3_COVETOUS,
+    M1_NOTAKE, M1_NOHANDS, M1_AMORPHOUS, M2_DEMON, M3_COVETOUS,
     strongmonst_flag, throws_rocks_flag } from './monflags_data.js';
 import { attacktype, AT_ENGL } from './monattk_data.js';
 import { objects as OBJECTS, CORPSE, BOULDER, BELL_OF_OPENING,
     COIN_CLASS, GEM_CLASS, ROCK_CLASS } from './mkobj.js';
-import { monster_by_pmidx } from './makemon.js';
-import { newsym, pline, see_with_infrared } from './display.js';
+import { monster_by_pmidx, newcham, enexto_spawn,
+    pickvampshape_pub } from './makemon.js';
+import { newsym, pline, see_with_infrared, canseemon_shared } from './display.js';
+import { dist2 } from './hacklib.js';
 import { Monnam } from './uhitm.js';
 
 // Speed-modifier flags (permonst.mspeed); C ref: monst.h.
@@ -365,6 +367,77 @@ export function healmon(mtmp, amt, overheal) {
 // C ref: mon.c m_calcdistress(mtmp) — per-turn timeouts/regen/shapeshift.
 // mon_regen and decide_to_shapeshift consume no RNG for the species our
 // sessions exercise; were_change DOES (see above).
+// C ref: mon.c:4869-4938 decide_to_shapeshift(mon) — the per-turn shapeshift
+// check run from m_calcdistress for every monster with a cham form.
+//
+// Draw order: a plain shapeshifter costs one rn2(6) per turn (plus rn2(10) when
+// it fires); a vampshifter in a shifted form costs the fog-cloud rn2(4)
+// (mon.c:4899), and a vampire in its own form the rn2(6) at mon.c:4921 — the
+// canseemon/mdistu guards sit AFTER those draws, so they never suppress them.
+const STRAT_WAITFORU = 0x20000000;
+const PM_FOG_CLOUD_IDX = 106;
+const BOLT_LIM_SQ = 8 * 8;
+function decide_to_shapeshift(mon) {
+    let ptr = null;
+    const was_female = mon.female;
+    let dochng = false;
+
+    if (!is_vampshifter(mon)) {
+        if (!mon.mspec_used && !rn2(6)) {          // mon.c:4879
+            dochng = true;
+            mon.mspec_used = 3 + rn2(10);          // mon.c:4881
+        }
+    } else if (!((mon.mstrategy || 0) & STRAT_WAITFORU)) {
+        const far_or_unseen = () => (!canseemon_shared(mon)
+                                     || mdistu(mon) > BOLT_LIM_SQ);
+        if (mon.data?.mcls !== S_VAMPIRE) {
+            if ((mon.mhp <= Math.floor((mon.mhpmax + 5) / 6)) && rn2(4)  // mon.c:4894
+                && (mon.cham ?? -1) >= 0) {
+                ptr = monster_by_pmidx(mon.cham);
+                dochng = true;
+            } else if (mon.data?.pmidx === PM_FOG_CLOUD_IDX
+                       && mon.mhp === mon.mhpmax && !rn2(4)              // mon.c:4899
+                       && far_or_unseen()) {
+                const mndx = pickvampshape_pub(mon);
+                if (mndx >= 0) {
+                    ptr = monster_by_pmidx(mndx);
+                    dochng = (ptr !== mon.data);
+                }
+            }
+            // C: an amorphous form standing in a closed doorway steps aside
+            // first, because its new shape would not fit.  enexto() draws.
+            if (dochng && (mflags1_of(mon.data) & M1_AMORPHOUS)
+                && closed_door_at(mon.mx, mon.my)) {
+                const cc = enexto_spawn(mon.mx, mon.my, ptr);
+                if (cc) { mon.mx = cc.x; mon.my = cc.y; newsym(cc.x, cc.y); }
+            }
+        } else if (mon.mhp >= Math.floor(9 * mon.mhpmax / 10) && !rn2(6)  // mon.c:4921
+                   && far_or_unseen()) {
+            dochng = true;                         /* 'ptr' stays Null */
+        }
+    }
+    if (dochng && newcham(mon, ptr)) {
+        // vampshift overrides newcham's 10% sex change by restoring the
+        // original gender when the new form allows either.  No RNG.
+        if (is_vampshifter(mon)) {
+            const np = mon.data;
+            if (np && np.gcode === 0) mon.female = was_female;
+        }
+    }
+}
+
+// C ref: rm.h closed_door(x, y).
+function closed_door_at(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return IS_DOOR(loc.typ) && ((loc.doormask & (D_CLOSED | D_LOCKED)) !== 0);
+}
+
+// C ref: mondata.h mdistu(mon) — squared distance from the hero.
+function mdistu(mon) {
+    return dist2(mon.mx, mon.my, game.u?.ux ?? 0, game.u?.uy ?? 0);
+}
+
 async function m_calcdistress(mtmp) {
     // C ref: mon.c:1193 — regenerate hit points, BEFORE the shapeshift and
     // timeout blocks.  RNG-free but state-critical: see monmove.js mon_regen.
@@ -373,6 +446,9 @@ async function m_calcdistress(mtmp) {
     // monster standing in water or lava, and minliquid is not ported, so that
     // branch is deliberately omitted rather than guessed at.)
     mon_regen(mtmp, false);
+    // C ref: mon.c:1196 `if (ismnum(mtmp->cham)) decide_to_shapeshift(mtmp);`
+    // — BEFORE were_change().
+    if ((mtmp.cham ?? -1) >= 0) decide_to_shapeshift(mtmp);
     await were_change(mtmp);
     if (mtmp.mblinded && !--mtmp.mblinded) mtmp.mcansee = 1;
     if (mtmp.mfrozen && !--mtmp.mfrozen) mtmp.mcanmove = 1;

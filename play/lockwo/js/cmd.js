@@ -7,12 +7,12 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object } from './display.js';
+import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object, canseemon_shared } from './display.js';
 import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
-import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam } from './uhitm.js';
+import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam, Monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
-         attr_window_advance, disco_window_advance, dowieldquiver, dowield, dothrow, dofire, dotravel, dodrop,
+         attr_window_advance, disco_window_advance, dowieldquiver, dowield, doswapweapon, dothrow, dofire, dotravel, dodrop,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
          doprgold, doprwep, doprarm, doprring, dopramulet,
          renderWindowScreen, ECMD_NOTHANDLED, describe_decor, dfeature_at } from './invent.js';
@@ -37,11 +37,22 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
          IS_STWALL, IS_FURNITURE, ACCESSIBLE,
          TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, IS_POOL, IS_LAVA,
+         DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
          A_STR, A_DEX, A_CON, A_WIS, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
-         PIT, SPIKED_PIT, TIP_SWIM, TRAPNUM } from './const.js';
+         PIT, SPIKED_PIT, STATUE_TRAP, TIP_SWIM, TRAPNUM, In_sokoban, ICE,
+         SLT_ENCUMBER, OVERLOADED } from './const.js';
 import { exercise, acurr_eff } from './attrib.js';
+import { is_hider_flag, hides_under_flag } from './monflags_data.js';
+import { noattacks, attacktype, AT_ENGL } from './monattk_data.js';
+// onscary() is an `export function` declaration in monmove.js, so this cycle
+// (cmd -> monmove -> uhitm -> allmain -> cmd) resolves through hoisting the
+// same way muse.js's import of it does.
+import { onscary } from './monmove.js';
 import { engr_at, wipe_engr_at, doengrave } from './engrave.js';
+import { depth as depth_of_level } from './hacklib.js';
+import { builds_up } from './dungeon.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { HEADSTONE } from './const.js';
 
 // C ref: hack.c maybe_smudge_engr() — when the hero walks/rushes from (x1,y1)
@@ -127,12 +138,16 @@ export function blocksMove(x, y) {
     return false;
 }
 
-// C ref: dbridge.c is_pool(x,y) — POOL/MOAT/WATER (the Juiblex-moat nuance is
-// omitted; not reached by the corpus).
+// C ref: dbridge.c is_pool(x,y) — POOL/MOAT/WATER, plus a raised drawbridge
+// whose DB_UNDER terrain is DB_MOAT (the water the span crosses is still there
+// under the closed bridge, so the square counts as a pool for swim/danger
+// tests).
 function isPoolTerrain(x, y) {
     if (!isok(x, y)) return false;
-    const t = game.level?.at(x, y)?.typ;
-    return t === POOL || t === MOAT || t === WATER;
+    const loc = game.level?.at(x, y);
+    const t = loc?.typ;
+    if (t === POOL || t === MOAT || t === WATER) return true;
+    return t === DRAWBRIDGE_UP && ((loc.drawbridgemask ?? 0) & DB_UNDER) === DB_MOAT;
 }
 
 // C ref: hack.c u_simple_floortyp(x,y) — simplified floor liquid/solid state
@@ -213,6 +228,19 @@ async function swim_move_danger(x, y) {
     return false;
 }
 
+// C ref: hack.h Hallucination — ((HHallucination || EHallucination)
+// && !Halluc_resistance).  The timer is stored under three different names in
+// this port depending on which file set it (potion.js writes u.uhallu AND
+// u.HHallucination; timeout.js writes u.uprops.Hallucination), so a predicate
+// that read only one of them answered FALSE for a hallucinating hero — which
+// skipped the rnd(TRAPNUM - 1) trap-name roll in avoid_trap_andor_region().
+function Hallucination() {
+    const u = game.u;
+    if (!u) return false;
+    if ((u.HHalluc_resistance || 0) > 0) return false;
+    return !!(u.uhallu || u.HHallucination || u.uprops?.Hallucination);
+}
+
 // C ref: hack.c doorless_door() — a doorway that lacks its door (NODOOR or
 // BROKEN).  All rogue-level doors are treated as if their door were present so
 // that diagonal access is disallowed there too.
@@ -226,11 +254,13 @@ function doorless_door(x, y) {
 // C ref: hack.c test_move() lines 1140-1150 and 1208-1214 — for a diagonal
 // step (dx && dy), the hero cannot move diagonally INTO a doorway that still
 // has its door (open/closed/locked/broken-only does not count as doorless),
-// nor diagonally OUT of such a doorway.  block_door()/block_entry() add a
-// shopkeeper-blocking case that is not reachable for the starter sessions
-// (no shop), so a non-doorless door is sufficient to block here.  Passes_walls
-// heroes (phasing/xorn form) bypass this, but those don't occur in the corpus
-// and the existing blocksMove() likewise ignores phasing.
+// nor diagonally OUT of such a doorway.  NOT PORTED: shk.c block_door() /
+// block_entry() also block a DOORLESS shop doorway when the shopkeeper is on
+// their post and the hero owes money (or is entering with a digging tool) —
+// they print "<Shk> blocks your way!" and refuse the step.  Both need ESHK
+// (shk post/door coordinates, debit/billct/robbed), which this port does not
+// keep, so only the has-a-door case blocks here.  Passes_walls heroes bypass
+// this test in C; blocksMove() likewise ignores phasing.
 function blocksDiagonalDoor(ux, uy, x, y, dx, dy) {
     if (!(dx && dy)) return false;
     // Diagonal move INTO a door with a door present.  Closed/locked doors are
@@ -252,11 +282,13 @@ function blocksDiagonalDoor(ux, uy, x, y, dx, dy) {
 // domove() below rejects: an obstruction or iron bars (hack.c:1011), a closed
 // door (hack.c:1075-1136), and a diagonal into or out of an intact doorway
 // (hack.c:1140-1150, 1208-1214) — it just prints nothing and pushes nothing.
-// Not modelled: the boulder arm (hack.c:1216) only rejects when
-// svc.context.run >= 2, which can never reach this gate because a rush over a
-// seen trap already stopped in avoid_running_into_trap(); and the diagonal
-// bad_rock squeeze (hack.c:1153) which this port's DO_MOVE does not model
-// either, so both tests agree.
+// NOT PORTED: the boulder arm (hack.c:1216), which rejects when
+// svc.context.run >= 2 and could_move_onto_boulder() is false.  The trap caller
+// below can't reach it (a rush over a seen trap already stopped in
+// avoid_running_into_trap), but the visible-gas-cloud caller can, so a running
+// hero facing a boulder inside a cloud gets asked where C stays silent.  The
+// diagonal bad_rock squeeze (hack.c:1153) is likewise unported, but this port's
+// DO_MOVE doesn't model it either, so those two agree.
 function test_move_quiet(x, y) {
     const u = game.u;
     if (!isok(x, y)) return false;
@@ -271,23 +303,54 @@ function test_move_quiet(x, y) {
 // hero instead of prompting: run >= 2 (rush 'g', run 'G', travel run==8) sets
 // context.move = 0 and returns, so C never asks; run == 1 (shift-direction)
 // only nomul(0)s and walks on, and then the prompt below does fire.
-// The `Blind && avoid_moving_on_liquid()` half of C's test needs
-// Known_wwalking/Known_lwalking, which this port has no predicate for, and is
-// left unported.
 async function avoid_running_into_trap(x, y) {
     const c = game.context;
     const would_stop = ((c?.run || 0) >= 2);
     if (!c?.run) return false;
-    if (!avoid_moving_on_trap(x, y)) return false;
-    // C emits this from inside avoid_moving_on_trap(x, y, msg) (hack.c:2452).
+    const ontrap = avoid_moving_on_trap(x, y);
+    // C ref: hack.c:2500 — `avoid_moving_on_trap(...) || (Blind &&
+    // avoid_moving_on_liquid(...))`.  The liquid half was dropped as needing
+    // Known_wwalking/Known_lwalking; those are simply FALSE for a hero not
+    // wearing the boots, which is the only thing the test needs from them.
+    const onliquid = !ontrap && Blind() && avoid_moving_on_liquid(x, y);
+    if (!ontrap && !onliquid) return false;
+    // C emits these from inside avoid_moving_on_{trap,liquid}(x, y, msg).
     if (would_stop && game.flags?.mention_walls) {
-        const t = t_at(x, y);
-        if (t) await pline(`You stop in front of ${an(trap_explanation(t.ttyp))}.`);
+        if (ontrap) {
+            const t = t_at(x, y);
+            if (t) await pline(`You stop in front of ${an(trap_explanation(t.ttyp))}.`);
+        } else {
+            await pline(`You stop at the edge of the ${
+                isPoolTerrain(x, y) ? 'water' : 'lava'}.`);
+        }
     }
     game.multi = 0; // C nomul(0)
     if (!would_stop) return false;
     c.move = 0;
     return true;
+}
+
+// C ref: hack.c avoid_moving_on_liquid(x, y, msg) — TRUE when a *blind* runner
+// should stop at the edge of water/lava rather than wade in.  Known_lwalking /
+// Known_wwalking mean "the hero knows they have lava-/water-walking"; nothing in
+// this port grants either, so the "liquid is safe to traverse" escape reduces to
+// the airborne case.
+function avoid_moving_on_liquid(x, y) {
+    const u = game.u;
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    const hereTyp = game.level?.at(u.ux, u.uy)?.typ ?? STONE;
+    const in_air = !!(u.uprops?.Levitation || u.uprops?.Flying);
+    const run = game.context?.run || 0;
+    if ((typ === hereTyp
+         || (run < 2 && (!IS_LAVA(typ) || in_air))
+         || game.context?.travel)
+        && in_air /* || Known_lwalking || (is_pool && Known_wwalking) */
+        && !(typ === WATER || typ === LAVAWALL))
+        return false; // liquid is safe to traverse
+    if ((isPoolTerrain(x, y) || IS_LAVA(typ)) && (loc?.seenv || 0))
+        return true;
+    return false;
 }
 
 // C ref: hack.c:2514-2582 avoid_trap_andor_region(x,y) — the
@@ -303,9 +366,8 @@ async function avoid_running_into_trap(x, y) {
 // levitating hero reads "float", a flying one "fly", a mounted one "ride".
 // Levitation and Flying make every ground trap CLEARLY_IMMUNE, so only a rider
 // could see a different verb on the trap question.
-// The Hallucination arm below is dead in this port: hallucination is fragmented
-// across u.uhallu / u.HHallucination / u.uprops.Hallucination and nothing ever
-// sets any of them, so the rnd(TRAPNUM - 1) name roll never fires.
+// The Hallucination arm draws rnd(TRAPNUM - 1) for the trap's fake name, so it
+// must read the same timer every other file writes — see Hallucination() above.
 async function avoid_trap_andor_region(x, y) {
     const u = game.u;
     const c = game.context;
@@ -319,7 +381,7 @@ async function avoid_trap_andor_region(x, y) {
     // another only asks when the new one damages (poison gas) and the old one
     // does not (vapor).  Poison resistance deliberately does NOT suppress this:
     // the cloud blocks vision either way.
-    if (!stunned && !confused && !Blind() && !u.uhallu && !nopick_opt_out) {
+    if (!stunned && !confused && !Blind() && !Hallucination() && !nopick_opt_out) {
         const { visible_region_at, reg_damg } = await import('./region.js');
         const newreg = visible_region_at(x, y);
         const oldreg = newreg ? visible_region_at(u.ux, u.uy) : null;
@@ -340,7 +402,7 @@ async function avoid_trap_andor_region(x, y) {
     const trap = t_at(x, y);
     if (!trap || !trap.tseen) return false;
     if (!test_move_quiet(x, y)) return false;
-    const hallu = !!u.uhallu;
+    const hallu = Hallucination();
     // Harmless-to-this-hero traps are stepped on without comment; Hallucination
     // overrides that because every trap still shows as a bare '^'.
     if (!hallu && immune_to_trap(u, trap.ttyp) === TRAP_CLEARLY_IMMUNE)
@@ -364,13 +426,20 @@ async function avoid_trap_andor_region(x, y) {
 // letter.  The echo timing mirrors C exactly — "Count: N" is not shown until
 // the count exceeds a single digit (cnt > 9), so a one-digit count leaves the
 // top line blank (matching the recorder, e.g. seed0900 "20s": the '2' frame is
-// blank, the '0' frame shows "Count: 20").  backspace/erase support is omitted
-// (no recorded session backspaces inside a count).
+// blank, the '0' frame shows "Count: 20").
+//
+// C's STANDBY_erase_char is '\177' (<del>) and '\b' also erases: both drop the
+// last digit rather than terminating the count, and from then on the echo is
+// unconditional ("Count: " with nothing after it once the count is back to
+// empty).  Leaving that out meant a <del> typed inside a count fell through as
+// a command key and ran #terrain (cmd.c binds '\177' to it), rendering a whole
+// unasked-for terrain screen.
 const LARGEST_INT = 32767;
 
 async function get_count(inkey) {
     let cnt = 0;
     let key = inkey;
+    let backspaced = false, showzero = true;
     for (;;) {
         const ch = String.fromCharCode(key);
         if (ch >= '0' && ch <= '9') {
@@ -378,16 +447,29 @@ async function get_count(inkey) {
             cnt = cnt * 10 + dgt; // C AppendLongDigit (no overflow for our range)
             if (cnt < 0) cnt = 0;
             else if (cnt > LARGEST_INT) cnt = LARGEST_INT;
+            // "if we've backed up to nothing, then typed 0, show that 0"
+            showzero = (ch === '0');
+        } else if (key === 8 || key === 127) { // '\b' / STANDBY_erase_char
+            if (!cnt) break; // nothing typed yet: hand the key back to rhack
+            showzero = false;
+            cnt = Math.trunc(cnt / 10);
+            backspaced = true;
         } else {
             // First non-digit terminates the count; return it to rhack.
             break;
         }
         // C get_count(): echo "Count: N" only once the count is multi-digit
-        // (cnt > 9).  custompline() replaces the top line; the cursor parks at
-        // the end of the prompt (row 0).  The frame is captured by the next
-        // nhgetch() below, so set the message + cursor before reading.
-        if (cnt > 9) {
-            game._pending_message = `Count: ${cnt}`;
+        // (cnt > 9) or a backspace has been seen.  custompline() replaces the
+        // top line; the cursor parks at the end of the prompt (row 0).  The
+        // frame is captured by the next nhgetch() below, so set the message +
+        // cursor before reading.
+        if (cnt > 9 || backspaced) {
+            if (backspaced && !cnt && !showzero) {
+                game._pending_message = 'Count: ';
+            } else {
+                game._pending_message = `Count: ${cnt}`;
+                backspaced = false;
+            }
             await flush_screen(1);
             const disp = game?.nhDisplay;
             if (disp?.setCursor)
@@ -631,35 +713,54 @@ export async function rhack(key) {
             await wiz_genesis();
             game.context.move = 0;
         } else {
+            // C ref: cmd.c:479 can_do_extcmd() — a WIZMODECMD refused outside
+            // wizard mode prints unavailcmd ("Unavailable command '%s'.") with
+            // the command's ef_txt, not the "Unknown command '<key>'." that an
+            // unbound key produces.  Different string, same zero game time.
             game.context.move = 0;
-            await pline(`Unknown command '${ch}'.`);
+            await pline(`Unavailable command 'wizgenesis'.`);
         }
     } else if (key === 20) { // ^T — teleport (cmd.c dotelecmd -> teleport.c)
         // C ref: cmd.c keymap C('t') = dotelecmd.  In wizard mode (playmode:
         // debug) with no 'm' prefix, dotelecmd sets ignore_restrictions and
         // calls dotele(TRUE) -> tele(): "Where do you want to be teleported?"
         // then getpos(force=TRUE).  dotele() returns ECMD_TIME, so a game turn
-        // elapses whether or not the targeting was cancelled.  (Non-wizard ^T
-        // without the teleport intrinsic is not modelled — no such session.)
+        // elapses whether or not the targeting was cancelled.
         if (game.flags?.debug) {
             const res = await dotele_wizard();
             game.context.move = res === 1 ? 1 : 0;
         } else {
-            game.context.move = 0;
-            await pline(`Unknown command '${ch}'.`);
+            // C ref: teleport.c dotelecmd() — ^T is NOT a WIZMODECMD, so outside
+            // wizard mode it runs dotele(FALSE).  A hero with neither the
+            // Teleportation intrinsic nor the teleport-away spell is turned away
+            // with a message and no game time; it is not an unknown command.
+            // (The seen-teleport-trap arm of dotele(), which offers to jump in,
+            // needs trap-triggered teleports this port does not model.)
+            game.context.move = (await dotele_nonwizard()) ? 1 : 0;
         }
     } else if (key === 22) { // ^V — wizard-mode level teleport (do.c/teleport.c)
-        // C ref: cmd.c keymap C('v') -> wiz_level_tele() -> level_tele().
-        // The "To what level..." prompt is read with the standard top-line
-        // getlin; goto_level() (do.js) makes the destination level on first
-        // visit (getbones + makelevel) and relocates the hero + pet.
-        const res = await wiz_level_tele((q) => hooked_tty_getlin(q, null));
-        game.context.move = res === 1 ? 1 : 0;
+        // C ref: cmd.c:1970 { C('v'), "wizlevelport", ..., WIZMODECMD }.  The
+        // WIZMODECMD gate was missing entirely here, so a non-debug session that
+        // pressed ^V got the "To what level..." getlin prompt — which then ate
+        // the following keystrokes as level-number input and level-teleported
+        // the hero.  C just refuses.
+        if (game.flags?.debug) {
+            const res = await wiz_level_tele((q) => hooked_tty_getlin(q, null));
+            game.context.move = res === 1 ? 1 : 0;
+        } else {
+            game.context.move = 0;
+            await pline(`Unavailable command 'wizlevelport'.`);
+        }
     } else if (key === 23) { // ^W — wizard-mode wish (cmd.c C('w') -> wiz_wish)
-        // C ref: cmd.c keymap C('w') = wizwish, IFBURIED|CMD_M_PREFIX|WIZMODECMD.
-        // Prompts "For what do you wish?", parses via readobjnam(), creates the
-        // wished object, then rolls u.ublesscnt += rn1(100,50).
-        await wiz_wish();
+        // C ref: cmd.c:2000 { C('w'), "wizwish", ..., WIZMODECMD }.  Same missing
+        // gate as ^V above: outside wizard mode the "For what do you wish?"
+        // prompt must not appear (and its rn1(100,50) ublesscnt roll must not
+        // fire) — C prints unavailcmd instead.
+        if (game.flags?.debug) {
+            await wiz_wish();
+        } else {
+            await pline(`Unavailable command 'wizwish'.`);
+        }
         game.context.move = 0;
     } else if (key === 127) { // <del> / '\177' — #terrain (cmd.c doterrain)
         // C ref: cmd.c command list — '\177' (<del>/<rubout>) is bound to the
@@ -753,6 +854,10 @@ export async function rhack(key) {
         // nothing).  ECMD_TIME (3) when the wield consumes a turn; ECMD_OK/FAIL/
         // CANCEL take no time.
         game.context.move = (await dowield()) === 3 ? 1 : 0;
+    } else if (ch === 'x') {
+        // C ref: cmd.c keymap 'x' = doswapweapon (wield.c) — swap the primary
+        // and secondary weapons.
+        game.context.move = (await doswapweapon()) === 3 ? 1 : 0;
     } else if (ch === 't') {
         // C ref: cmd.c — 't' (#throw) throw/shoot an item.  throw_obj returns
         // ECMD_TIME (3) when the throw takes a turn; getdir (the direction
@@ -888,28 +993,132 @@ export async function rhack(key) {
         game.kickedloc = { x: 0, y: 0 };
 }
 
+const S_EEL_CMD = 57;    // monsym.h S_EEL
+const LENSES_CMD = 232;  // objects[] LENSES (mkobj.js)
+
+// C ref: display.c unmap_invisible(x, y) — a square remembered as holding a
+// sensed-but-unseen monster ('I') loses that notation once the hero looks and
+// finds nothing there.
+function unmap_invisible(x, y) {
+    if (!isok(x, y)) return false;
+    if (!game.level?.at(x, y)?.invisMon) return false;
+    unmap_object(x, y);
+    newsym(x, y);
+    return true;
+}
+
+// C ref: detect.c mfind0(mtmp, via_warning) — the search/warning probe of one
+// adjacent monster.  Returns 1 when something was found (the caller stops
+// searching and the turn is used up), -1 when the find must be ignored, 0 when
+// there was nothing to find.
+//
+// This was left unported ("gated by !aflag"), but the !aflag gate is on the
+// CALL, not on the body: an explicit `s` next to a mimic or a hiding monster
+// runs it, and the exercise(A_WIS, TRUE) inside draws rn2(19) *and* aborts the
+// rest of the 8-square scan — so every later rnl(7)/rnl(8) in that same search
+// disappears from the stream too.
+async function mfind0(mtmp, via_warning) {
+    const x = mtmp.mx, y = mtmp.my;
+    let found_something = false;
+
+    // warning_of() needs the Warning intrinsic's monster-level test; dosearch0
+    // is the only caller here and always passes via_warning == FALSE.
+    if (via_warning) return -1;
+
+    if (mtmp.m_ap_type) {
+        // seemimic(): drop the object/furniture disguise and redraw.
+        mtmp.m_ap_type = 0;
+        mtmp.mappearance = 0;
+        newsym(x, y);
+        found_something = true;
+    } else {
+        found_something = !canspotmon(mtmp);
+        if (mtmp.mundetected
+            && (is_hider_flag(mtmp.data) || hides_under_flag(mtmp.data)
+                || mtmp.data?.mcls === S_EEL_CMD)) {
+            mtmp.mundetected = 0;
+            found_something = true;
+        }
+        newsym(x, y);
+    }
+
+    if (found_something) {
+        // Already an 'I' here: C deliberately returns -1 so the hero doesn't
+        // re-find the same unseen monster every single turn.
+        if (!canspotmon(mtmp) && game.level?.at(x, y)?.invisMon) return -1;
+        exercise(A_WIS, true); // -> rn2(19)
+        if (!canspotmon(mtmp)) {
+            map_invisible(x, y);
+            await pline('You feel an unseen monster!');
+        } else {
+            // sensemon() is FALSE throughout this port (no telepathy modelled).
+            const nm = mtmp.mtame ? x_monnam(mtmp, /*ARTICLE_YOUR*/ 3, null, 0, false)
+                                  : x_monnam(mtmp, /*ARTICLE_A*/ 2, null, 0, false);
+            await pline(`You find ${nm}.`);
+        }
+        return 1;
+    }
+    return 0;
+}
+
+// C ref: detect.c find_trap(trap) — reveal a trap the hero just located.
+// exercise(A_WIS, TRUE) is an rn2(19) draw that the old inline "trap.tseen =
+// true" was missing entirely, and the announcement pauses with --More--: C
+// clears the map, draws just the trap and the hero, prints "You find a <trap>."
+// and then blocks on display_nhwindow(WIN_MAP, TRUE), which routes through
+// tty_display_nhwindow(WIN_MESSAGE, TRUE) -> more() before docrt() repaints.
+// The cls()/map_trap()/display_self() repaint itself is not reproduced (this
+// port has no cls primitive), but the keystroke it consumes is — leaving that
+// out would push every later command one key out of step.
+async function find_trap(trap) {
+    trap.tseen = 1;
+    exercise(A_WIS, true); // -> rn2(19)
+    newsym(trap.tx, trap.ty);
+    await pline(`You find ${an(trap_explanation(trap.ttyp))}.`);
+    await topl_more();
+    game._pending_message = '';
+}
+
 // C ref: detect.c dosearch0(aflag) — search the 8 adjacent squares for hidden
 // doors, passages, and unseen traps.  aflag distinguishes intrinsic autosearch
 // (aflag=1, called every turn from the moveloop when Searching) from the
-// explicit `s` command (aflag=0).  The feel_location / invisible-monster /
-// mfind0 paths are gated by !aflag in C and are not modelled here, so the only
-// RNG either mode consumes is rnl(7-fund) per adjacent SDOOR/SCORR and rnl(8)
-// per adjacent unseen trap.  In the common open-room case this consumes no RNG.
+// explicit `s` command (aflag=0); the !aflag paths (feel_location, the stale-'I'
+// cleanup, and mfind0) are part of the explicit command and are ported here.
+// RNG: rnl(7 - fund) per adjacent SDOOR/SCORR, rnl(8) per adjacent unseen trap,
+// plus the rn2(19) that exercise(A_WIS, TRUE) draws inside mfind0()/find_trap().
 export async function dosearch0(aflag) {
     const u = game.u;
-    if (!u || u.uswallow) return; // swallowed: no searching (RNG-inert here)
-    const fund = 0; // no search-boosting artifact/lenses in starter state
+    if (!u) return 1;
+    if (u.uswallow) {
+        if (!aflag) await Norep_topl('What are you looking for?  The exit?');
+        return 1;
+    }
+    // C: fund = artifact SPFX_SEARCH spe (no such weapon in this port), +2 for
+    // worn lenses while not blind, capped at 5.  fund picks the rnl() MODULUS,
+    // so the lenses bonus is a live RNG-steering input for any hero wearing a
+    // pair, not cosmetic.
+    let fund = 0;
+    if (game.ublindf && game.ublindf.otyp === LENSES_CMD && !Blind()) fund += 2;
+    if (fund > 5) fund = 5;
     for (let x = u.ux - 1; x < u.ux + 2; x++) {
         for (let y = u.uy - 1; y < u.uy + 2; y++) {
             if (!isok(x, y)) continue;
             if (x === u.ux && y === u.uy) continue;
             const loc = game.level?.at(x, y);
             if (!loc) continue;
+            // C: `if (!aflag && (Blind || visible_region_at(x,y))) feel_location()`
+            // — remembered-glyph bookkeeping for a hero who cannot see the
+            // square.  Not ported: this port has no feel_location().
             if (loc.typ === SDOOR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = DOOR;
-                // C ref: detect.c dosearch0() — exercise(A_WIS, TRUE) fires on
-                // every successful find, before nomul(0).
+                // C ref: detect.c dosearch0() — cvt_sdoor_to_door() is followed
+                // by recalc_block_point(): the wall the secret door was hiding
+                // no longer blocks light, so vision must be recomputed or a
+                // later clear_path()/linedup() misses its rn2 roll.
+                recalc_block_point(x, y);
+                // exercise(A_WIS, TRUE) fires on every successful find, before
+                // nomul(0).
                 exercise(A_WIS, true);
                 newsym(x, y);
                 // C ref: detect.c dosearch0() — nomul(0) on a successful find:
@@ -920,43 +1129,70 @@ export async function dosearch0(aflag) {
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = CORR;
+                recalc_block_point(x, y); // C: unblock_point(x, y)
                 exercise(A_WIS, true);
                 newsym(x, y);
                 if ((game.multi ?? 0) > 0) game.multi = 0;
                 await pline('You find a hidden passage.');
             } else {
-                const trap = (game.level?.traps || []).find(t => t.tx === x && t.ty === y && !t.tseen);
-                if (trap && !rnl(8)) {
-                    trap.tseen = true;
-                    newsym(x, y);
+                const mtmp = m_at(x, y);
+                if (mtmp && !aflag) {
+                    const mfres = await mfind0(mtmp, false);
+                    if (mfres === -1) continue;
+                    else if (mfres > 0) return mfres;
+                }
+                // See if an invisible monster has moved off this square.
+                if (!aflag && !mtmp && !Blind()) unmap_invisible(x, y);
+
+                const trap = (game.level?.traps || []).find(t => t.tx === x && t.ty === y);
+                if (trap && !trap.tseen && !rnl(8)) {
+                    if ((game.multi ?? 0) > 0) game.multi = 0; // C nomul(0)
+                    if (trap.ttyp === STATUE_TRAP) {
+                        // C: activate_statue_trap() animates the statue (makemon
+                        // + an exercise(A_WIS, TRUE) on success).  Not ported —
+                        // statue traps aren't created by this port's mklev.
+                        trap.tseen = 1;
+                        newsym(x, y);
+                        return 1;
+                    }
+                    await find_trap(trap);
                 }
             }
         }
     }
+    return 1;
 }
 
 // C ref: hack.c monster_nearby() — a hostile, awake, spottable monster on one
 // of the 8 squares adjacent to the hero.  Drives the safe_wait safety check.
 // A monster is excluded when: disguised as furniture/an object (mimic);
-// peaceful (unless the hero is hallucinating); an undetected hider (mimic/
-// piercer/trapper); or helpless (asleep or otherwise unable to move) — C's
-// helpless(mon) = msleeping || !mcanmove.  (onscary and the invisible-but-
-// sensed canspotmon path aren't modeled: no covered session exercises them.)
-const M1_HIDE_PMIDX = new Set([64, 65, 66, 78, 79, 80, 98, 99]);
+// peaceful, or attackless, unless the hero is hallucinating; an undetected
+// hides_under monster; helpless (asleep / unable to move); standing on a square
+// that scares it; or not spottable.
+//
+// Three tests used to be wrong here and each one answers "there is a monster"
+// where C answers "there isn't" (or vice versa), which flips whether `s`/`.`
+// spend a game turn at all:
+//   - cansee(x,y) is the TERRAIN test; C uses canspotmon(mtmp), so an invisible
+//     monster on a lit adjacent square used to block the wait and C's did not;
+//   - the hider set was keyed on eight hard-coded pmidx values and tested M1_HIDE
+//     where C tests hides_under() (M1_CONCEAL);
+//   - noattacks() (a hostile shrieker//violet fungus spore) was missing entirely.
 export function monster_nearby() {
     const u = game.u;
     if (!u) return false;
-    const hallu = !!u?.uhallu;
+    const hallu = Hallucination();
     for (let x = u.ux - 1; x <= u.ux + 1; x++)
         for (let y = u.uy - 1; y <= u.uy + 1; y++) {
             if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
             const mtmp = m_at(x, y);
             if (!mtmp) continue;
             if (mtmp.m_ap_type === 'furniture' || mtmp.m_ap_type === 'obj') continue;
-            if (!(hallu || !mtmp.mpeaceful)) continue;
-            if (M1_HIDE_PMIDX.has(mtmp.data?.pmidx) && mtmp.mundetected) continue;
+            if (!(hallu || (!mtmp.mpeaceful && !noattacks(mtmp.data)))) continue;
+            if (mtmp.mundetected && hides_under_flag(mtmp.data)) continue;
             if (mtmp.msleeping || !mtmp.mcanmove) continue;
-            if (cansee(x, y)) return true;
+            if (onscary(u.ux, u.uy, mtmp)) continue;
+            if (canspotmon(mtmp)) return true;
         }
     return false;
 }
@@ -991,6 +1227,88 @@ async function dosearch() {
     return true;
 }
 
+// C ref: mon.c wake_nearto_core(x, y, distance, FALSE) — every non-dead monster
+// within `distance` (a SQUARED distance) of <x,y> loses msleeping and its
+// STRAT_WAITMASK "meditation".  Consumes no RNG itself, but a monster that C
+// woke and this port left asleep skips its whole dochug() turn — every m_move
+// rn2 in it, every attack roll — so the streams diverge from the next monster
+// phase onward.  wake_msg() also prints "<Monster> wakes up." for a sleeping
+// monster the hero can see, which lands on the top line before the kick text.
+export async function wake_nearto(x, y, distance) {
+    for (const mtmp of (game.level?.monsters || [])) {
+        if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
+        const d2 = (mtmp.mx - x) * (mtmp.mx - x) + (mtmp.my - y) * (mtmp.my - y);
+        if (distance !== 0 && d2 >= distance) continue;
+        if (mtmp.msleeping && canseemon_shared(mtmp))
+            await pline(`${Monnam(mtmp)} wakes up.`);
+        mtmp.msleeping = 0;
+        // C: `if (!(mtmp->data->geno & G_UNIQ)) mtmp->mstrategy &= ~STRAT_WAITMASK;`
+        if (mtmp.mstrategy != null) mtmp.mstrategy &= ~0x00ff0000;
+    }
+    // disturb_buried_zombies(): no buried objects are modelled by this port.
+}
+
+// C ref: mondata.h digests(ptr) == attacktype(ptr, AT_ENGL).
+function digests_cmd(ptr) { return attacktype(ptr, AT_ENGL); }
+
+// C ref: engrave.c u_wipe_engr(cnt) — scuff the engraving under the hero.
+// wipe_engr_at() draws rn2(1 + 50 / (cnt + 1)) for every engraving type except
+// DUST and blood, so this is an RNG call site whenever the hero stands on an
+// engraved square.  can_reach_floor(TRUE) is approximated the same way
+// maybe_smudge_engr() above approximates it.
+function u_wipe_engr_cmd(cnt) {
+    const u = game.u;
+    if (u?.uprops?.Levitation || u?.uprops?.Flying) return;
+    wipe_engr_at(u.ux, u.uy, cnt, false);
+}
+
+// C ref: mon.c wake_nearby(petcall) -> wake_nearto_core(u.ux, u.uy, ulevel*20).
+export async function wake_nearby(_petcall) {
+    const u = game.u;
+    if (!u) return;
+    await wake_nearto(u.ux, u.uy, (u.ulevel || 1) * 20);
+}
+
+// C ref: dungeon.c level_difficulty() — depth, bumped in the "builds up"
+// branches (Sokoban / Vlad's).  Local copy: do.js/fountain.js/mkobj.js each
+// keep their own for the same reason (no shared owner for this helper).
+function level_difficulty_cmd() {
+    const uz = game.u?.uz;
+    if (!uz) return 1;
+    let res = depth_of_level(uz);
+    if (builds_up(uz))
+        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
+    return res;
+}
+
+// C ref: trap.c b_trapped(item, bodypart) — a booby-trapped door/box explodes in
+// the hero's face.  RNG order matters: rnd(...) for the damage FIRST (its
+// modulus depends on level_difficulty()), then the two exercise() rn2(2) draws.
+// make_stunned() draws nothing but sets HStun, which makes the hero impaired —
+// so every following move runs confdir()'s rn2(8) redirect.  Leaving all of
+// that out (the old "not modelled here" comment) desynchronises from the very
+// first trapped door a session opens or kicks.
+async function b_trapped(item, hasBodypart) {
+    const lvl = level_difficulty_cmd();
+    const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
+    await pline(`KABOOM!!  The ${item} was booby-trapped!`);
+    await wake_nearby(false);
+    const u = game.u;
+    // losehp(Maybe_Half_Phys(dmg), ...) — no RNG; Half_physical_damage is not
+    // carried by any hero this reaches, so the damage passes through unhalved.
+    if (u) u.uhp = Math.max(0, (u.uhp || 0) - dmg);
+    exercise(A_STR, false); // -> rn2(2)
+    if (hasBodypart) exercise(A_CON, false); // -> rn2(2)
+    // make_stunned((HStun & TIMEOUT) + dmg, TRUE)
+    if (u) {
+        u.uprops = u.uprops || {};
+        const old = u.uprops.Stun || 0;
+        u.uprops.Stun = old + dmg;
+        if (!old) await pline('You stagger...');
+        game.botl = true; // C: disp.botl = TRUE on the 0<->nonzero transition
+    }
+}
+
 // C ref: dokick.c martial() == (martial_bonus() || is_bigfoot(youmonst)
 //   || (uarmf && uarmf->otyp == KICKING_BOOTS)), where
 //   martial_bonus() == (Role_if(PM_SAMURAI) || Role_if(PM_MONK)).
@@ -1022,39 +1340,58 @@ async function kick_dumb(_x, _y) {
         // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) — wounded-legs bookkeeping.
         rnd(5);
     }
-    // (Is_airlevel || Levitation) && rn2(2) -> hurtle: not reachable on dlvl 1.
+    // C ref: dokick.c — `if ((Is_airlevel || Levitation) && rn2(2)) hurtle(...)`.
+    // The rn2(2) is drawn for every kick a LEVITATING hero makes; hurtle()'s own
+    // flight (walk_path + hurtle_step) is not ported, so only the roll is.
+    if (game.u?.uprops?.Levitation) rn2(2);
 }
 
 // C ref: dokick.c kick_ouch(x,y,kickobjnam) — kicking a solid obstacle hurts.
 // RNG order: exercise(A_DEX) [rn2(2)], exercise(A_STR) [rn2(2)], !rn2(3) ->
 // set_wounded_legs(5+rnd(5)), then dmg = rnd(ACURR(A_CON)>15?3:5), losehp(dmg).
-async function kick_ouch(_x, _y) {
+async function kick_ouch(x, y) {
     await pline('Ouch!  That hurts!');
     exercise(A_DEX, false);
     exercise(A_STR, false);
-    // wake_nearto(x,y,25): no RNG.
+    // C ref: dokick.c:898 — the noise wakes anything within 5*5; no RNG here,
+    // but the monsters it wakes go on to take (RNG-drawing) turns.
+    if (isok(x, y)) await wake_nearto(x, y, 5 * 5);
     if (rn2(3) === 0) rnd(5); // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5))
     const dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
     const u = game.u;
     if (u) u.uhp = Math.max(0, (u.uhp || 0) - dmg);
-    // (Is_airlevel || Levitation) hurtle: not reachable on dlvl 1.
+    // C ref: dokick.c — `if (Is_airlevel || Levitation) hurtle(-u.dx, -u.dy,
+    // rn1(2, 4), TRUE)`: a levitating kicker is always thrown back, and the
+    // range roll rn1(2,4) == 4 + rn2(2) is drawn before hurtle() runs.  The
+    // flight itself is not ported; the roll is.
+    if (u?.uprops?.Levitation) rn2(2); // rn1(2, 4)
 }
 
 // C ref: dokick.c kick_door(x, y, avrg_attrib) — kick a closed/locked door.
 // Open/broken/no-door squares fall through to kick_dumb.  Otherwise:
 //   exercise(A_DEX, TRUE)            -> rn2(19)
-//   rnl(35) < avrg_attrib            -> break the door (martial bonus omitted)
+//   rnl(35) < avrg_attrib + (martial() ? ACURR(A_DEX) : 0)  -> break the door
 // On a break (non-trapped), STR>18 && !rn2(5) shatters, else it crashes open;
 // either way exercise(A_STR, TRUE) -> rn2(19).  A failed kick yields "Whammm!!"
-// or "Thwack!!" (Deaf || !rn2(3)) and exercise(A_STR, TRUE).  The starter
-// priest (STR 11) never shatters, so the STR>18 short-circuit skips that rn2(5).
+// or "Thwack!!" (Deaf || !rn2(3)) and exercise(A_STR, TRUE).  A STR<=18 hero
+// short-circuits before that rn2(5), so the draw is strength-dependent.
+// Not ported: C also suppresses the shatter for a SHOP door (`&& !shopdoor`,
+// same RNG either way, different doormask/message) and runs add_damage() +
+// pay_for_damage("break") / watchman_thief_arrest() afterwards.
 async function kick_door(loc, x, y, avrg_attrib) {
     const dm = loc.doormask;
     if (dm === D_ISOPEN || dm === D_BROKEN || dm === D_NODOOR) {
         await kick_dumb(x, y);
         return;
     }
-    // (Levitation kick_ouch branch not reachable for the starter hero.)
+    // C ref: dokick.c — "not enough leverage to kick open doors while
+    // levitating": the kick hits the door and hurts, which is a different RNG
+    // shape entirely (kick_ouch's exercise/rn2(3)/rnd()) from the exercise +
+    // rnl(35) below.
+    if (game.u?.uprops?.Levitation) {
+        await kick_ouch(x, y);
+        return;
+    }
     exercise(A_DEX, true); // -> rn2(19)
     // C ref: dokick.c — `rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX))`.
     // doorbuster (Upolyd giant) is false; a martial hero (monk/samurai) gets a
@@ -1065,7 +1402,7 @@ async function kick_door(loc, x, y, avrg_attrib) {
             await pline('You kick the door.');
             exercise(A_STR, false);
             loc.doormask = D_NODOOR;
-            // b_trapped("door", FOOT): door-trap damage not modelled here.
+            await b_trapped('door', true); // FOOT != NO_PART
         } else if (ACURR(A_STR) > 18 && rn2(5) === 0) {
             await pline('As you kick the door, it shatters to pieces!');
             exercise(A_STR, true);
@@ -1115,8 +1452,43 @@ async function dokick() {
     // (m_avoid_kicked_loc).  Cleared by the next hero action (rhack/domove).
     game.kickedloc = { x, y };
 
-    // wake_nearby(FALSE) / u_wipe_engr(2): no RNG unless standing on an
-    // engraving (not the case here).
+    // C ref: dokick.c:1327 — "KMH -- Kicking boots always succeed": the boots
+    // REPLACE the attribute average with 99 rather than adding to it, so a
+    // booted hero's kick_door() rnl(35) comparison is effectively always true.
+    // Computing the average anyway (as this did) makes a booted kick fail on
+    // rolls C never fails, and every draw after that is offset.
+    const avrg_attrib = (game.uarmf && game.uarmf.otyp === KICKING_BOOTS)
+        ? 99
+        : Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3);
+
+    // C ref: dokick.c:1332 — a swallowed hero kicks the inside of the engulfer:
+    // one rn2(3) and the turn is spent.  Skipping it dropped that draw.
+    if (u.uswallow) {
+        const r = rn2(3);
+        if (r === 0) await pline(`You can't move your leg!`);
+        else if (r === 1 && u.ustuck && digests_cmd(u.ustuck.data))
+            await pline(`${Monnam(u.ustuck)} burps loudly.`);
+        else await pline('Your feeble kick has no effect.');
+        return 1;
+    }
+    // C ref: dokick.c:1348 — Levitation without anything to brace against
+    // aborts the kick with no turn (ECMD_OK) and, crucially, no RNG at all.
+    if (u.uprops?.Levitation) {
+        const xx = u.ux - dir.dx, yy = u.uy - dir.dy;
+        const bt = isok(xx, yy) ? game.level?.at(xx, yy) : null;
+        if (bt && !IS_OBSTRUCTED(bt.typ) && !IS_DOOR(bt.typ)) {
+            await pline('You have nothing to brace yourself against.');
+            return 0;
+        }
+    }
+
+    // C ref: dokick.c:1383-1384 — the noise of the kick wakes everything within
+    // ulevel*20 (squared) and scuffs any engraving under the hero.  Both were
+    // dismissed as "no RNG": wake_nearby() is state that later dochug() turns
+    // read, and u_wipe_engr(2) -> wipe_engr_at() draws rn2(1 + 50/(cnt+1)) for
+    // every engraving type except DUST/blood.
+    await wake_nearby(false);
+    u_wipe_engr_cmd(2);
 
     if (!isok(x, y)) {
         await kick_ouch(x, y); // gm.maploc = nowhere
@@ -1125,17 +1497,19 @@ async function dokick() {
     const loc = game.level?.at(x, y);
     const typ = loc ? loc.typ : STONE;
 
-    // Monster on the kicked square: not exercised by the recorded sessions;
-    // leave to the normal attack handling would change RNG, so treat as a
-    // failed/!time kick (matches the recorded streams which never kick a mon).
+    // NOT PORTED: kicking a monster.  C runs maybe_kick_monster() (which is
+    // attack_checks() + overexertion(), i.e. the hidden-monster reveal and the
+    // peaceful-attack confirmation) BEFORE wake_nearby()/u_wipe_engr() above,
+    // then kick_monster() — a full martial-arts/kick attack with its own to-hit
+    // and damage rolls, hurtle recoil and shopkeeper anger.  Reproducing it
+    // needs dokick.c kick_monster() ported alongside uhitm's attack machinery;
+    // until then the kick is dropped, which costs a turn AND every draw C's
+    // attack would have made.
     if (m_at(x, y)) return 0;
 
     // Pools/lava and floor objects (kick_object) aren't on the kicked squares
-    // in the recorded sessions.  A door kicks via kick_door().  C ref: dokick()
-    //   avrg_attrib = (ACURRSTR + ACURR(A_DEX) + ACURR(A_CON)) / 3   (no martial)
+    // in the recorded sessions.  A door kicks via kick_door().
     if (typ === DOOR) {
-        const avrg_attrib =
-            Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3);
         await kick_door(loc, x, y, avrg_attrib);
         return 1;
     }
@@ -1145,6 +1519,41 @@ async function dokick() {
         return 1;
     }
     await kick_dumb(x, y);
+    return 1;
+}
+
+// C ref: teleport.c dotele(break_the_rules=FALSE) — the plain (non-wizard) ^T.
+// Returns 1 when a game turn elapses, 0 otherwise.  A hero with neither the
+// Teleportation intrinsic (at the role's minimum XL) nor a live teleport-away
+// spell is simply told so; the key is a perfectly valid command, so answering
+// "Unknown command" (as this used to) printed the wrong line.
+//
+// Two arms are deliberately not ported: the seen-teleport-trap / level-teleport
+// -trap offers at the top of dotele(), and the actual tele() relocation for a
+// hero who CAN teleport (its rn2 placement rolls belong to teleport.c).  Both
+// are noted rather than faked; the turn accounting for the second is C's.
+const SPE_TELEPORT_AWAY_CMD = 400; // mkobj.js objects[] row
+const PM_WIZARD_CMD = 12;          // roles[].mnum
+async function dotele_nonwizard() {
+    const u = game.u;
+    const Teleportation = ((u.uprops?.Teleportation || 0) > 0)
+        || ((u.HTeleportation || 0) > 0);
+    const lvlreq = (game.urole?.mnum === PM_WIZARD_CMD) ? 8 : 12;
+    if (!Teleportation || (u.ulevel || 1) < lvlreq) {
+        // known_spell(SPE_TELEPORT_AWAY): spe_Unknown when it isn't in the book
+        // at all, otherwise a freshness level; only a fresh one can be cast.
+        const slot = (game.spl_book || []).find(
+            (sp) => sp && sp.sp_id === SPE_TELEPORT_AWAY_CMD);
+        const inbook = !!slot;
+        const fresh = inbook && (slot.sp_know || 0) > 0;
+        const confused = (u.uprops?.Confusion || 0) > 0;
+        if (!(fresh && !confused)) {
+            await pline(`You ${!Teleportation
+                ? (inbook ? "can't cast that spell" : "don't know that spell")
+                : 'are not able to teleport at will'}.`);
+            return 0;
+        }
+    }
     return 1;
 }
 
@@ -1261,12 +1670,28 @@ export async function doopen_indir(x, y) {
         cx = u.ux + dir.dx; cy = u.uy + dir.dy;
     }
 
-    // open at yourself with no closed door here -> loot (not modelled); the
-    // sessions only open an adjacent door, so this branch isn't exercised.
+    // C ref: lock.c doopen_indir() — the pit guard runs AFTER the direction is
+    // read (it used to be before, and C's comment says moving it was the fix),
+    // so the direction key is consumed either way.
+    if (u.utrap && u.utraptype === TT_PIT) {
+        await pline("You can't reach over the edge of the pit.");
+        return 0; // ECMD_OK
+    }
+    // C ref: lock.c doopen_indir() — "when choosing a direction is impaired,
+    // use a turn regardless of whether a door is successfully targeted".
+    let res = 0; // ECMD_OK
+    {
+        const stunned = (u.uprops?.Stun || 0) > 0 || !!u.Stunned;
+        const confused = (u.uprops?.Confusion || 0) > 0;
+        if (confused || stunned) res = 1; // ECMD_TIME
+    }
+
+    // open at yourself with no closed door here -> doloot() (containers under
+    // the hero are not opened from here in this port).
     const door = game.level?.at(cx, cy);
     if (!door || !IS_DOOR(door.typ)) {
-        await pline('You see no door there.');
-        return 0;
+        await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+        return res;
     }
 
     if (!(door.doormask & D_CLOSED)) {
@@ -1291,7 +1716,7 @@ export async function doopen_indir(x, y) {
                 return await pick_lock_door(tool, cx, cy, door);
             }
         }
-        return 0;
+        return res;
     }
 
     // verysmall(youmonst): false for the starter roles.
@@ -1304,7 +1729,10 @@ export async function doopen_indir(x, y) {
         // happen AFTER this turn's monster moves, matching C.
         await pline('The door opens.');
         if (door.doormask & D_TRAPPED) {
-            // b_trapped path not exercised by these sessions.
+            // C ref: lock.c:908 — b_trapped("door", FINGER) BEFORE the doormask
+            // is cleared: rnd(level-scaled damage) + two exercise() rn2(2)s +
+            // a stun timer, none of which used to be drawn here.
+            await b_trapped('door', true); // FINGER != NO_PART
             door.doormask = D_NODOOR;
         } else {
             door.doormask = D_ISOPEN;
@@ -1325,7 +1753,14 @@ export async function doopen_indir(x, y) {
 // is exactly what seed5002 exercises after the #search safety-block).
 async function doclose() {
     const u = game.u;
-    // nohands(youmonst) / u.utrap pit guards: not applicable to these heroes.
+    // nohands(youmonst): the starter roles all have hands.
+    // C ref: lock.c doclose() — a hero stuck in a pit can't reach the door and
+    // is refused BEFORE getdir(), so no direction key is consumed at all.
+    if (u.utrap && u.utraptype === TT_PIT) {
+        await pline("You can't reach over the edge of the pit.");
+        return 0; // ECMD_OK
+    }
+    let res = 0; // ECMD_OK
     const dir = await getdir();
     if (!dir) return 1; // ECMD_CANCEL — invalid/ESC direction, no turn
 
@@ -1337,31 +1772,46 @@ async function doclose() {
         return 2; // ECMD_TIME
     }
     if (!isok(x, y)) {
-        await pline('You see no door there.');
-        return 0; // ECMD_OK (res; hero not blind/confused -> no turn)
+        await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+        return res;
     }
-    // stumble_on_door_mimic / Confusion / Stunned / Blind branches: none apply
-    // to the starter hero with a plain adjacent square.
+    // stumble_on_door_mimic(x, y): a mimic disguised as a door reveals itself
+    // and the turn is spent; mimic disguises aren't targeted here.
+
+    // C ref: lock.c doclose() — "when choosing a direction is impaired, use a
+    // turn regardless of whether a door is successfully targeted".  Without
+    // this a confused/stunned #close at empty air cost no turn, so the whole
+    // monster-move phase after it went missing.
+    const stunned = (u.uprops?.Stun || 0) > 0 || !!u.Stunned;
+    const confused = (u.uprops?.Confusion || 0) > 0;
+    if (confused || stunned) res = 2; // ECMD_TIME
 
     const door = game.level?.at(x, y);
     const portcullis = false; // is_drawbridge_wall: no drawbridges in these slices
+    // C's Blind arm runs feel_location() here and upgrades res to ECMD_TIME when
+    // the probe learned something; this port keeps no per-tile glyph memory to
+    // decide that, so it is left out rather than guessed.
     if (portcullis || !door || !IS_DOOR(door.typ)) {
-        await pline('You see no door there.');
-        return 0;
+        await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+        return res;
     }
     if (door.doormask === D_NODOOR) {
-        await pline('This doorway has no door.'); return 0;
+        await pline('This doorway has no door.'); return res;
     }
     // obstructed(x,y): no monster/boulder occupies a closeable doorway here.
     if (door.doormask === D_BROKEN) {
-        await pline('This door is broken.'); return 0;
+        await pline('This door is broken.'); return res;
     }
     if (door.doormask & (D_CLOSED | D_LOCKED)) {
-        await pline('This door is already closed.'); return 0;
+        await pline('This door is already closed.'); return res;
     }
     if (door.doormask === D_ISOPEN) {
         // verysmall(youmonst): false for the starter roles.
-        if (rn2(25) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
+        // C ref: `if (u.usteed || rn2(25) < (ACURRSTR+DEX+CON)/3)` — a MOUNTED
+        // hero shuts the door without rolling at all (|| short-circuits), so
+        // drawing rn2(25) while riding put every later draw one out of step.
+        if (u.usteed
+            || rn2(25) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
             await pline('The door closes.');
             door.doormask = D_CLOSED;
             newsym(x, y);
@@ -1453,13 +1903,18 @@ async function pick_lock_door(pick, cx, cy, door) {
     // would carry the occupation across turns; the recorded run succeeds first
     // try, which is the only path the starter exercises.)
     if (rn2(100) >= chance) {
-        // Still busy — the occupation would continue next turn.  Not exercised
-        // by the recordings; treat as a single elapsed turn with no resolution.
+        // NOT PORTED: C's picklock occupation re-rolls rn2(100) on every
+        // following turn (up to xlock.usedtime 50) until the lock gives, so a
+        // first-turn failure here loses every one of those later draws and
+        // leaves the door locked where C opens it.  Wiring it up needs a
+        // door-flavoured occupation alongside allmain.js's _picklock_box hook.
         return 2;
     }
     await pline('You succeed in picking the lock.');
     if (door.doormask & D_TRAPPED) {
+        await b_trapped('door', true); // C ref: lock.c:141 b_trapped("door", FINGER)
         door.doormask = D_NODOOR;
+        recalc_block_point(cx, cy); // C: unblock_point()
     } else if (door.doormask & D_LOCKED) {
         door.doormask = D_CLOSED;
     } else {
@@ -1581,13 +2036,18 @@ export async function pick_lock(pick) {
     }
 
     // set_occupation(picklock, ...): first turn (usedtime 0) rolls rn2(100);
-    // >= chance -> still busy (would carry over), else succeed this turn.
+    // >= chance -> still busy.  NOT PORTED (same gap as pick_lock_door above):
+    // C keeps re-rolling rn2(100) each turn until the lock opens or usedtime
+    // hits 50; this stops after the first roll.
     if (rn2(100) >= ch) return PICKLOCK_DID_SOMETHING; // busy: a turn elapsed
     await pline(`You succeed in ${lock_action_str(picktyp, target)}.`);
     if (target.door) {
         const door = target.door;
-        if (door.doormask & D_TRAPPED) door.doormask = D_NODOOR; // b_trapped unreached
-        else if (door.doormask & D_LOCKED) door.doormask = D_CLOSED;
+        if (door.doormask & D_TRAPPED) {
+            await b_trapped('door', true); // C ref: lock.c:141
+            door.doormask = D_NODOOR;
+            recalc_block_point(target.cx, target.cy); // C: unblock_point()
+        } else if (door.doormask & D_LOCKED) door.doormask = D_CLOSED;
         else door.doormask = D_LOCKED;
         newsym(target.cx, target.cy);
     } else {
@@ -1595,6 +2055,82 @@ export async function pick_lock(pick) {
     }
     exercise(A_DEX, true); // -> rn2(19)
     return PICKLOCK_DID_SOMETHING;
+}
+
+// C ref: hack.c carrying_too_much() — refuse the move when the hero is
+// OVERLOADED, or is worse than Burdened while badly hurt.  nomul(0) and no turn.
+async function carrying_too_much() {
+    const u = game.u;
+    const { near_capacity } = await import('./invent.js');
+    const wtcap = near_capacity();
+    const hurt = (u.uhp || 0) < 10 && u.uhp !== u.uhpmax;
+    if ((wtcap >= OVERLOADED || (wtcap > SLT_ENCUMBER && hurt))
+        && !Is_airlevel_cmd(u.uz)) {
+        if (wtcap < OVERLOADED) {
+            await pline("You don't have enough stamina to move.");
+            exercise(A_CON, false); // -> rn2(2)
+        } else {
+            await pline('You collapse under your load.');
+        }
+        game.multi = 0; // C nomul(0)
+        return true;
+    }
+    return false;
+}
+
+// C ref: dungeon.h Is_airlevel(lev) — the Plane of Air.  No level this port
+// generates is the air level, so this is FALSE; kept so the two call sites
+// above read like C rather than silently dropping the test.
+function Is_airlevel_cmd(_uz) { return false; }
+
+// C ref: hack.c air_turbulence() — on the Plane of Air a walking hero is
+// buffeted: rn2(4) decides whether the step is lost at all, then rn2(3) picks
+// the message (two of the three arms also exercise A_DEX).
+async function air_turbulence() {
+    const u = game.u;
+    if (!Is_airlevel_cmd(u.uz) || u.uprops?.Levitation || u.uprops?.Flying)
+        return false;
+    if (!rn2(4)) return false;
+    switch (rn2(3)) {
+    case 0: await pline('You tumble in place.'); exercise(A_DEX, false); break;
+    case 1: await pline("You can't control your movements very well."); break;
+    default: await pline("It's hard to walk in thin air."); exercise(A_DEX, true); break;
+    }
+    return true;
+}
+
+// C ref: hack.c slippery_ice_fumbling() — every step taken on ice risks
+// starting a one-turn Fumbling, and the rn2(Cold_resistance ? 3 : 2) that
+// decides it is drawn on EVERY such step.  Snow boots, cold resistance, flying
+// and the floater/clinger/whirly poly forms take the hero off the ice for this
+// purpose (and then clear an externally-imposed Fumbling).
+const FROMOUTSIDE_CMD = 0x04000000; // prop.h FROMOUTSIDE
+const TIMEOUT_CMD = 0x00ffffff;     // prop.h TIMEOUT
+function slippery_ice_fumbling() {
+    const u = game.u;
+    const cold_res = ((u.HCold_resistance || 0) > 0)
+        || ((u.uprops?.ColdResistance || 0) > 0);
+    let on_ice = !u.uprops?.Levitation
+        && (game.level?.at(u.ux, u.uy)?.typ === ICE);
+    if (on_ice) {
+        const uarmf = game.uarmf;
+        const snowboots = !!uarmf && OBJ_DESCR_CMD(uarmf) === 'snow boots';
+        if (snowboots || cold_res || u.uprops?.Flying) {
+            on_ice = false;
+        } else if (!rn2(cold_res ? 3 : 2)) {
+            u.HFumbling = ((u.HFumbling || 0) | FROMOUTSIDE_CMD) & ~TIMEOUT_CMD;
+            u.HFumbling += 1; /* slip on next move */
+        }
+    }
+    if (!on_ice && ((u.HFumbling || 0) & FROMOUTSIDE_CMD))
+        u.HFumbling &= ~FROMOUTSIDE_CMD;
+}
+
+// C ref: objclass.h OBJ_DESCR(obj) — the (possibly shuffled) appearance word.
+function OBJ_DESCR_CMD(obj) {
+    if (!obj) return null;
+    const idx = obj.oc_descr_idx != null ? obj.oc_descr_idx : obj.otyp;
+    return DESCR_BY_OTYP[idx] ?? null;
 }
 
 // C ref: hack.c u_maybe_impaired() — a Stunned hero is always impaired; a
@@ -1674,7 +2210,9 @@ async function escape_from_sticky_mon(x, y) {
         held.msleeping = 0;
     }
     if (roll > 2) {  /* case 3 falls through to default */
-        // Conflict is not modeled; a hostile holder never releases.
+        // C: `if (!mtmp->mconf && !Conflict) { release } else { can't escape }`
+        // — Conflict (the ring/artifact property) is not modelled anywhere in
+        // this port, so it reads as FALSE; a hostile holder never releases.
         if (held.mconf || !held.mtame) {
             await pline(`You cannot escape from ${y_monnam_local(held)}!`);
             game.multi = 0;                                     // nomul(0)
@@ -1703,9 +2241,26 @@ export async function domove(dx, dy) {
     const _umoved_ux0 = u.ux, _umoved_uy0 = u.uy;
     u.umoved = false;
 
+    // C ref: hack.c domove_core():19 carrying_too_much() — an overloaded hero,
+    // or a badly hurt one carrying more than Burdened, cannot move at all.  The
+    // "not enough stamina" arm draws exercise(A_CON, FALSE)'s rn2(2) and neither
+    // arm elapses a turn.  This runs BEFORE everything below, including the
+    // uswallow split.
+    if (await carrying_too_much()) return;
+
+    // C ref: hack.c air_turbulence() / slippery_ice_fumbling(), the two calls
+    // at the top of domove_core's non-swallowed arm.  Both draw RNG that this
+    // port used to skip: air_turbulence() rolls rn2(4) then rn2(3) on the air
+    // level, and slippery_ice_fumbling() rolls rn2(Cold_resistance ? 3 : 2)
+    // for EVERY step taken while standing on ice.
+    if (await air_turbulence()) return;
+    slippery_ice_fumbling();
+
     // C ref: hack.c domove_core() — `x = u.ux + u.dx; y = u.uy + u.dy; if
-    // (impaired_movement(&x, &y)) return;`.  The u.uswallow branch (u.dx=dy=0,
-    // move onto u.ustuck) isn't reached by these sessions (no engulfers).
+    // (impaired_movement(&x, &y)) return;`.  Not ported: the u.uswallow arm
+    // (u.dx=u.dy=0, target = u.ustuck's square, then straight into the
+    // bump/attack block) — attacking an engulfer from inside needs uhitm's
+    // swallowed path, which this port does not model.
     const redirected = impaired_movement(u.ux + dx, u.uy + dy);
     if (!redirected) return; // 50 tries found no valid square; turn wasted
     const newx = redirected.x, newy = redirected.y;
@@ -2118,10 +2673,8 @@ async function trapmove(x, y) {
         const t = trap_at(x, y);
         if (t && t.tseen && is_pit_ttyp(t.ttyp))
             return true;
-        // Otherwise try to climb out (position unchanged).  climb_pit() rolls
-        // are not exercised by the contest hero at the diverging points; struggle
-        // in place without consuming RNG keeps the stream aligned if reached.
-        await climb_pit_min();
+        // Otherwise try to climb out (position unchanged).
+        await climb_pit();
         return false;
     }
     case TT_WEB:
@@ -2132,10 +2685,19 @@ async function trapmove(x, y) {
             await pline('You disentangle yourself.');
         return false;
     case TT_LAVA:
-        // C ref: hack.c:1609 — stuck in lava; struggle in place.
+        // C ref: hack.c:1609 — stuck in lava; struggle in place.  The decrement
+        // is gated on the DESTINATION not being lava (a hero wading further in
+        // makes no progress toward the edge), and C sets u.umoved here even
+        // though the hero stays put — u_calc_moveamt() reads it.
         await Norep_topl('You are stuck in the lava.');
-        u.utrap--;
-        if ((u.utrap & 0xff) === 0) u.utrap = 0;
+        if (!IS_LAVA(game.level?.at(x, y)?.typ ?? STONE)) {
+            u.utrap--;
+            if ((u.utrap & 0xff) === 0) {
+                u.utrap = 0;
+                await pline(`You pull yourself to the edge of the lava.`);
+            }
+        }
+        u.umoved = true;
         return false;
     case TT_INFLOOR:
         // C ref: hack.c:1631 — stuck in the floor (buried-ball not modeled).
@@ -2171,9 +2733,84 @@ function trap_at(x, y) {
 }
 // C ref: trap.h is_pit(ttyp) — PIT or SPIKED_PIT.
 function is_pit_ttyp(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
-// Minimal climb_pit placeholder — the contest hero never reaches the
-// RNG-bearing climb path at a diverging point; struggle in place.
-async function climb_pit_min() { /* no RNG; position unchanged */ }
+// C ref: trap.c climb_pit() — one turn's attempt to get out of a pit.
+//
+// The old placeholder here consumed NO RNG on the grounds that the climb path
+// wasn't reached at a diverging point.  It is reached on EVERY struggle: C's
+// second arm is `!rn2(2) && sobj_at(BOULDER, u.ux, u.uy)`, and && evaluates
+// rn2(2) FIRST, so a hero in a pit burns one rn2(2) per struggle turn whether
+// or not a boulder is there.  A hero who walks into a pit and then tries to
+// move out several times was therefore several draws ahead of C.
+async function climb_pit() {
+    const u = game.u;
+    if (!u.utrap || u.utraptype !== TT_PIT) return;
+    // Passes_walls (phasing / xorn form) is FALSE for every hero this port runs.
+    if (!rn2(2) && boulder_at(u.ux, u.uy)) {
+        await pline('Your leg gets stuck in a crevice.');
+        // display_nhwindow(WIN_MESSAGE, FALSE) pages the pending line with
+        // --More-- before the follow-up prints (tty_display_nhwindow's
+        // NHW_MESSAGE arm calls more() whenever toplin == TOPLINE_NEED_MORE,
+        // blocking or not).
+        await topl_more();
+        game._pending_message = '';
+        await pline('You free your leg.');
+        return;
+    }
+    if ((u.uprops?.Flying || 0) && !In_sokoban(u.uz)) {
+        // is_clinger() needs a poly form no hero here takes.
+        await pline('You climb from the pit.');
+        reset_utrap_cmd();
+        fill_pit_cmd(u.ux, u.uy);
+        game.vision_full_recalc = 1;
+        return;
+    }
+    // m_easy_escape_pit(youmonst): PM_PIT_FIEND / MZ_HUGE — no hero form here.
+    if (!(--u.utrap)) {
+        reset_utrap_cmd();
+        await pline(`${(In_sokoban(u.uz) && u.uprops?.Levitation)
+            ? 'You struggle against the air currents and float'
+            : u.usteed ? 'You ride' : 'You crawl'} to the edge of the pit.`);
+        fill_pit_cmd(u.ux, u.uy);
+        game.vision_full_recalc = 1;
+        return;
+    }
+    // flags.verbose defaults On.  The Hallucination arm draws rn2(5); note the
+    // && short-circuit means it is NOT drawn for a sane hero.
+    if (u.usteed)
+        await Norep_topl(`${Monnam(u.usteed)} is still in a pit.`);
+    else
+        await Norep_topl((Hallucination() && !rn2(5))
+            ? "You've fallen, and you can't get up."
+            : 'You are still in a pit.');
+}
+
+// C ref: trap.c reset_utrap(msg) — clear the trapped state.  The Levitation /
+// Flying re-evaluation (float_vs_flight) has no effect for a hero who is
+// neither, which is every hero that reaches this.
+function reset_utrap_cmd() {
+    const u = game.u;
+    u.utrap = 0;
+    u.utraptype = 0;
+    game.botl = true;
+}
+
+// C ref: trap.c fill_pit(x, y) — a boulder sitting in a pit falls in and fills
+// it, removing the boulder from the floor.
+function fill_pit_cmd(x, y) {
+    const t = trap_at(x, y);
+    if (!t || !is_pit_ttyp(t.ttyp)) return;
+    const otmp = boulder_at(x, y);
+    if (!otmp) return;
+    const objs = game.level?.objects;
+    if (objs) {
+        const i = objs.indexOf(otmp);
+        if (i >= 0) objs.splice(i, 1);
+    }
+    otmp.where = 'free';
+    // flooreffects(otmp, x, y, "settle") fills the pit: the trap is removed.
+    game.level.traps = (game.level.traps || []).filter((tr) => tr !== t);
+    newsym(x, y);
+}
 
 // C ref: mkobj.c sobj_at(BOULDER, x, y) — the topmost boulder lying on the floor
 // at (x,y), or null.  BOULDER otyp is 475 (mkobj.js).  vobj_at-style scan of the
@@ -2409,14 +3046,11 @@ export async function pickup_after_move(x, y) {
     }
 }
 
-// C reads an engraving aloud (and stops a run) on EVERY move's pickup, but on
-// regular dungeon levels the JS level generator can place dust/trap engravings
-// at coordinates that diverge from C (deep levels reached via teleport are not
-// yet PRNG-faithful), so reading them would surface that pre-existing level-gen
-// difference and shift downstream screens.  The verified-faithful use of the
-// engraving auto-read is the tut-1 tutorial (all-permanent ENGRAVE/BURN
-// engravings whose placement we reproduce exactly), so scope the auto-read to
-// the tutorial branch where every engraving is known to match C.
+// The engraving auto-read used to be scoped to the tutorial while regular-level
+// engraving placement was still diverging; that scoping was removed and the
+// predicate now matches C unconditionally (read_engr_at() runs on every move's
+// pickup, as in pickup.c check_here()).  Kept as a named hook so the call site
+// still reads like C's structure.
 function engr_read_enabled() {
     return true;
 }
@@ -2633,11 +3267,46 @@ async function objDoname(obj) {
 async function domove_swap_with_pet(mtmp, x, y) {
     const u = game.u;
 
-    // can't swap diagonally if the pet can't move diagonally — not relevant
-    // for dogs/cats/ponies (none are NODIAG), so the common case proceeds.
+    // C ref: hack.c — the reveal happens with the hero back on their ORIGINAL
+    // square so the display doesn't draw them at the destination before a
+    // refusal below cancels the swap.
+    mtmp.mundetected = 0;
+    if (mtmp.m_ap_type) { mtmp.m_ap_type = 0; mtmp.mappearance = 0; newsym(mtmp.mx, mtmp.my); }
 
-    // peaceful pet won't swap into a trapped / unsafe square or if it is a
-    // quest leader / shk / priest etc. — none apply for a starting pet.
+    const trap = mtmp.mtrapped ? trap_at(mtmp.mx, mtmp.my) : null;
+    if (!trap) mtmp.mtrapped = 0;
+
+    // C ref: hack.c domove_swap_with_pet() — five `didnt_move = TRUE` guards.
+    // All five used to be waved through ("none apply for a starting pet"), so
+    // the hero swapped where C stops, ending the turn on the wrong square.
+    // NOT PORTED here: the two boulder/opening-fit guards (they need
+    // verysmall()/bigmonst()/curr_mon_load() on the pet) and goodpos().
+    if (mtmp.mtrapped && trap && is_pit_ttyp(trap.ttyp) && boulder_at(trap.tx, trap.ty)) {
+        // pet pinned in a pit by a boulder
+        return false;
+    }
+    // NODIAG(mnum) is (mnum == PM_GRID_BUG).  (js/dog.js pets carry a non-makemon
+    // pmidx, so this test is only meaningful for makemon-created monsters.)
+    if (u.ux0 !== x && u.uy0 !== y && mtmp.data?.pmidx === PM_GRID_BUG) {
+        await pline(`You stop.  ${Monnam(mtmp)} can't move diagonally.`);
+        return false;
+    }
+    if (mtmp.mpeaceful && mtmp.mtrapped && trap) {
+        // C: feeltrap() reveals the trap on the map first when it wasn't seen.
+        if (!trap.tseen) { trap.tseen = 1; newsym(trap.tx, trap.ty); }
+        await pline(`You stop.  ${Monnam(mtmp)} can't move out of `
+                  + `${trap.tseen ? 'that' : an(trap_explanation(trap.ttyp))} `
+                  + `${trap_explanation(trap.ttyp)}.`);
+        return false;
+    }
+    if (mtmp.mpeaceful
+        && (trap_at(u.ux0, u.uy0) || mtmp.ispriest || mtmp.isshk || mtmp.isgd
+            || mtmp.data?.name === 'Oracle')) {
+        // displacing a peaceful onto a trapped square, or a shk/priest/guard/
+        // Oracle/quest leader, is refused.  (goodpos() is not ported.)
+        await pline(`You stop.  ${Monnam(mtmp)} doesn't want to swap places.`);
+        return false;
+    }
 
     // Perform the swap: pet -> hero's old square.
     mtmp.mtrapped = 0;
@@ -2658,7 +3327,11 @@ async function domove_swap_with_pet(mtmp, x, y) {
     const who = x_monnam(mtmp, /*ARTICLE_YOUR*/ 3, null, /*SUPPRESS_SADDLE*/ 0, false);
     await update_topl(`You ${verb} ${who}.`);
 
-    // (minliquid/mintrap on the pet's new square: the hero's old square is dry
-    //  floor in the starter sessions, so no trap/liquid effect.)
+    // NOT PORTED: C follows the swap with `minliquid(mtmp) ? Trap_Killed_Mon :
+    // mintrap(mtmp, NO_TRAP_FLAGS)` on the pet's new square — the pet can be
+    // caught, sent to another level, or drowned, and the drowned arm draws
+    // rn2(4) for the "guilty about losing your pet" penalty.  The refusal
+    // guards above already stop the common case (a trap on the hero's old
+    // square), so what remains is liquid terrain the hero just walked off.
     return true;
 }

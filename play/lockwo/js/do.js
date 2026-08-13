@@ -22,18 +22,21 @@
 // dog.c mon_arrive are not otherwise available in the JS engine).
 
 import { game } from './gstate.js';
-import { rn2, rn1, rnd, rnl } from './rng.js';
-import { print_dungeon, builds_up, In_hell, Is_valley,
+import { rn2, rn1, rnd, rnl, d } from './rng.js';
+import { print_dungeon, builds_up, In_hell, Is_valley, surface,
          find_hell, dunlevs_in_dungeon, single_level_branch } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
          ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, In_quest, In_mines, In_endgame,
-         MAGIC_PORTAL, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL } from './const.js';
+         MAGIC_PORTAL, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+         STAIRS, LADDER, VIBRATING_SQUARE, TT_PIT, TOOKPLUNGE, is_pit, is_hole,
+         UNENCUMBERED, SLT_ENCUMBER, In_sokoban, Is_knox_level } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
-import { seetrap } from './trap.js';
+import { seetrap, dotrap } from './trap.js';
+import { check_special_room } from './shkroom.js';
 import { near_capacity, sobj_at } from './invent.js';
 import { BOULDER } from './mkobj.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
@@ -424,10 +427,118 @@ function losehp_do(n) {
     if (u.uhp < 0) u.uhp = 0;
 }
 // C ref: youprop.h Fumbling / Flying — the two transit modifiers do.c:1776-1781
-// tests.  Levitation/Flying is never granted in the covered sessions; Fumbling
-// comes from HFumbling/EFumbling (allmain.js reads the same pair).
+// tests.  Fumbling comes from HFumbling/EFumbling (allmain.js reads the same
+// pair); Flying/Levitation are carried in u.uprops by polyself.js/potion.js.
 function Fumbling_do() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
-function Flying_do() { return !!(game.u?.HFlying || game.u?.EFlying); }
+function Flying_do() {
+    return !!(game.u?.HFlying || game.u?.EFlying || game.u?.uprops?.Flying);
+}
+function Levitation_do() { return !!game.u?.uprops?.Levitation; }
+// C ref: youprop.h Punished — u.uball is set only while punished.
+function Punished_do() { return !!game.u?.uball; }
+
+// C ref: hack.c u_locomotion(def) — the verb for the hero's mode of travel.
+// locomotion(youmonst.data, def) below it only differs for a polymorphed hero
+// (nolimbs -> "slither", etc.), which no covered role reaches.
+function u_locomotion(def) {
+    return Levitation_do() ? 'float' : Flying_do() ? 'fly' : def;
+}
+
+// C ref: trap.c uteetering_at_seen_pit()/uescaped_shaft() — the hero is standing
+// on a seen pit (without being caught in it) or on a seen hole/trap door.  Both
+// make '>' a deliberate plunge rather than a "you can't go down here".
+function uteetering_at_seen_pit(trap) {
+    const u = game.u;
+    return !!trap && is_pit(trap.ttyp) && !!trap.tseen
+        && trap.tx === u.ux && trap.ty === u.uy
+        && !(u.utrap && u.utraptype === TT_PIT);
+}
+function uescaped_shaft(trap) {
+    const u = game.u;
+    return !!trap && is_hole(trap.ttyp) && !!trap.tseen
+        && trap.tx === u.ux && trap.ty === u.uy;
+}
+
+// C ref: hack.c u_rooted() — a hero whose current form has mmove == 0 (a
+// polymorphed-into-a-tree/lichen case) cannot move at all, and BOTH callers
+// return ECMD_TIME, so the failed '>'/'<' still costs the turn (the monsters
+// move, drawing RNG).  nomul(0) must leave go.occupation armed (see rngstep
+// notes), which hack.js nomul(0) preserves.
+async function u_rooted() {
+    const mdat = game.u?.data;
+    if (!mdat || mdat.mmove !== 0) return false;
+    await pline(`You are rooted ${
+        (Levitation_do() || Flying_do()) ? 'in place' : 'to the ground'}.`);
+    const { nomul } = await import('./hack.js');
+    nomul(0);
+    return true;
+}
+
+// C ref: steed.c stucksteed(checkfeeding) — a helpless or still-eating steed
+// refuses to move; the command is aborted with no time passing.
+async function stucksteed(checkfeeding) {
+    const steed = game.u?.usteed;
+    if (!steed) return false;
+    if (steed.msleeping || !steed.mcanmove) {
+        await pline(`Your ${steed.data?.name ?? 'steed'} won't move!`);
+        return true;
+    }
+    if (checkfeeding && steed.meating) {
+        await pline(`Your ${steed.data?.name ?? 'steed'} is still eating.`);
+        return true;
+    }
+    return false;
+}
+
+// C ref: pline.c Norep() — suppress the message when it is identical to the
+// persistent top line (gt.toplines), which survives the command prompt.
+async function Norep_do(msg) {
+    if (game._toplines === msg) return;
+    await update_topl(msg);
+}
+
+// C ref: trap.c climb_pit() — what '<' does when the hero is caught in a pit.
+// The rn2(2) is ALWAYS drawn (C evaluates `!rn2(2) && sobj_at(...)` left to
+// right), so this is not an RNG-free branch even when there is no boulder.
+// Passes_walls needs a polymorph/amulet and is not modelled.
+async function climb_pit() {
+    const u = game.u;
+    if (!u.utrap || u.utraptype !== TT_PIT) return;
+    if (!rn2(2) && sobj_at(BOULDER, u.ux, u.uy)) {
+        await pline('Your leg gets stuck in a crevice.');
+        // C: display_nhwindow(WIN_MESSAGE, FALSE) + clear_nhwindow() — force the
+        // --More-- so the second line starts a fresh top line.
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+        await pline('You free your leg.');
+    } else if (Flying_do() && !In_sokoban(u.uz)) {
+        // C also admits is_clinger(youmonst.data) here (polymorph only).
+        u.utrap = 0; u.utraptype = 0;
+        await pline(`You ${u_locomotion('climb')} from the pit.`);
+        game.vision_full_recalc = 1;
+    } else if (!(--u.utrap) || m_easy_escape_pit()) {
+        u.utrap = 0; u.utraptype = 0;
+        await pline(`You ${
+            (In_sokoban(u.uz) && Levitation_do())
+                ? 'struggle against the air currents and float'
+                : u.usteed ? 'ride' : 'crawl'} to the edge of the pit.`);
+        game.vision_full_recalc = 1;
+    } else if (u.dz || game.flags?.verbose !== false) {
+        if (u.usteed)
+            await Norep_do(`Your ${u.usteed.data?.name ?? 'steed'} is still in a pit.`);
+        else
+            await Norep_do((game.u?.uhallu && !rn2(5))
+                ? "You've fallen, and you can't get up."
+                : 'You are still in a pit.');
+    }
+}
+// C ref: trap.c m_easy_escape_pit() — a pit fiend or any MZ_HUGE-or-bigger
+// monster steps straight out.  MZ_HUGE == 4 (include/monflag.h).
+function m_easy_escape_pit() {
+    const mdat = game.u?.data;
+    return !!mdat && (mdat.msize ?? 0) >= 4;
+}
 
 // ── goto_level (C ref: do.c goto_level) ──
 //
@@ -441,11 +552,63 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     g._goto_familiar = false;
     g._goto_familiar_msg = null;
 
+    // C ref: do.c goto_level():1503 — a destination past the bottom of its own
+    // dungeon is clamped BEFORE anything reads it, so `up`, `newdungeon`, the
+    // ledger and mklev() all see the clamped level.  Reachable from a branch
+    // stairway into a shorter dungeon and from a hole/trap-door destination.
+    // (guarded on >0: dunlevs_in_dungeon() answers 0 for a dnum the JS ledger
+    // hasn't built, where C always has a real dungeon record.)
+    const ndunlevs = dunlevs_in_dungeon(newlevel);
+    if (ndunlevs > 0 && newlevel.dlevel > ndunlevs)
+        newlevel.dlevel = ndunlevs;
+
     const up = depth_of_level(newlevel) < depth_of_level(u.uz);
     const newdungeon = u.uz.dnum !== newlevel.dnum;
+    // C ref: do.c:1499 `int dist = depth(newlevel) - depth(&u.uz)` — the fall
+    // damage roll at the very end of the arrival is d(max(dist,1), 6).
+    const dist = depth_of_level(newlevel) - depth_of_level(u.uz);
+    // C ref: do.c:1506 — the first endgame level demands the Amulet; without it
+    // goto_level() returns and the hero stays put.
+    if (newdungeon && In_endgame(newlevel) && !u.uhave?.amulet) return;
+    // C ref: do.c goto_level() — ga.at_ladder, set by dodown()/doup() from the
+    // terrain under the hero, selects the stairway to arrive on and the wording
+    // of the transit message ("ladder" vs "stairs").
+    const at_ladder = !!g.at_ladder;
+    let do_fall_dmg = false;
+
+    // NOT ported (measured -3 public screens on seed0367): do.c:1578
+    //   `if (on_level(&u.uz, &qstart_level) && !newdungeon && !ok_to_quest()) {
+    //        pline("A mysterious force prevents you from descending."); return; }`
+    // The predicate is faithful C but its INPUTS are not modelled here:
+    // quest.c ok_to_quest() reads Qstat(got_quest)/Qstat(got_thanks) and
+    // is_pure()'s u.ualign.record, and this port leaves record at 0 and never
+    // sets got_quest outside chat_with_leader().  So it answers FALSE for a hero
+    // C considers ready (seed0367's XL-20 Priest teleports freely off the quest
+    // home level) and would block 5 level changes C performs.  Wire it up once
+    // alignment record + quest_status are tracked; the same gate also guards
+    // dokick.c:1950, zap.c:3278 and pager.c:1605.
 
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
         return; // on_level(newlevel, &u.uz): nothing to do
+
+    // C ref: do.c:1615 check_special_room(TRUE) — clears u.urooms/u.ushops for
+    // the level being left so the arrival scan below sees a clean slate.
+    await check_special_room(true);
+
+    // C ref: do.c:1618-1623 — reset_utrap(FALSE); fill_pit(u.ux, u.uy);
+    // set_ustuck(0) (clears u.ustuck AND u.uswallow); set_uinwater(0);
+    // u.uundetected = 0.  This is hero state that belongs to the level being
+    // left.  Leaving u.utrap/u.ustuck set made the first move on the destination
+    // take domove()'s trapped/held arm — a DIFFERENT rn2 modulus — so this is
+    // the "RNG-free state steers a later draw" pattern, not cosmetics.
+    // fill_pit()'s boulder settle is not ported (it needs flooreffects()); it
+    // only affects the square being vacated.
+    u.utrap = 0;
+    u.utraptype = 0;
+    u.ustuck = null;
+    u.uswallow = 0;
+    u.uinwater = 0;
+    u.uundetected = 0;
 
     // Capture accompanying pet(s) before the old level is freed by mklev().
     const kept = at_stairs || !at_stairs ? keepdogs_capture() : [];
@@ -471,15 +634,45 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // costs rnd(3) hp.  do.c:1777 takes the Flying arm FIRST, so a flying hero
     // never falls.  Only the message can be hoisted to this old-level frame; the
     // losehp roll stays at C's position, in the at_stairs arrival arm below.
+    // NOT ported from the fall arm: `if (Punished) { drag_down(); ballrelease(); }`
+    // (drag_down draws rn2(3)/rn2(6)/rnd(6)/rnd(20)/rnd(3) plus litter()'s
+    // per-item rnd(weight_cap)) and the u.usteed dismount_steed(DISMOUNT_FELL)
+    // alternative to the losehp() below.  Punished is therefore deliberately
+    // left OUT of the predicate: taking the fall arm without drag_down() would
+    // desync harder than missing the arm.
     const fell_downstairs = at_stairs && !up
-        && !Flying_do() && (near_capacity() > 0 /*UNENCUMBERED*/ || Fumbling_do());
-    if (at_stairs && (fell_downstairs || game.flags?.verbose !== false)) {
-        if (fell_downstairs) await update_topl('You fall down the stairs.');
-        else if (up) await update_topl('You climb up the stairs.');
-        else await update_topl('You descend the stairs.');
-        await topl_more();          // capture the old-level transit frame
-        game._pending_message = '';
-        game._toplin = 0;
+        && !Flying_do() && (near_capacity() > UNENCUMBERED || Fumbling_do());
+    if (at_stairs && !In_endgame(newlevel)) {
+        // C ref: do.c:1758-1795.  Up: "%s %s up%s the %s." with "With great
+        // effort, you" when Punished && !Levitation (which also overrides
+        // flags.verbose), u_locomotion("climb"), " along" for Flying+ladder.
+        // Down: Flying first ("You fly down the stairs" / "...along the ladder"),
+        // then the fall, then the ordinary descent.
+        const great_effort = up && Punished_do() && !Levitation_do();
+        const verbose = game.flags?.verbose !== false;
+        let msg = null;
+        if (up) {
+            if (verbose || great_effort)
+                msg = `${great_effort ? 'With great effort, you' : 'You'}`
+                    + ` ${u_locomotion('climb')} up`
+                    + `${(Flying_do() && at_ladder) ? ' along' : ''}`
+                    + ` the ${at_ladder ? 'ladder' : 'stairs'}.`;
+        } else if (Flying_do()) {
+            if (verbose)
+                msg = `You fly down ${at_ladder ? 'along the ladder'
+                                                : 'the stairs'}.`;
+        } else if (fell_downstairs) {
+            msg = `You fall down the ${at_ladder ? 'ladder' : 'stairs'}.`;
+        } else if (verbose) {
+            msg = at_ladder ? 'You climb down the ladder.'
+                            : 'You descend the stairs.';
+        }
+        if (msg) {
+            await update_topl(msg);
+            await topl_more();      // capture the old-level transit frame
+            game._pending_message = '';
+            game._toplin = 0;
+        }
     }
 
     // C ref: keepdogs()/mon leaving the level — the accompanying pet is no
@@ -624,17 +817,27 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             seetrap(ttrap);
             u_on_newpos(ttrap.tx, ttrap.ty);
         }
-    } else if (at_stairs) {
+    } else if (at_stairs && !In_endgame(u.uz)) {
         // Prefer the stairway on the new level that leads back to the level we
         // just left (uz0) — for a branch crossing this is the branch staircase.
-        const back = stairway_find_to(u.uz0);
+        // C ref: do.c:1750/1774 stairway_find_from(&u.uz0, ga.at_ladder): the
+        // ladder flag is PART of the match, so a level reachable by both a
+        // staircase and a ladder lands the hero on the kind actually used.
+        const back = stairway_find_from(u.uz0, at_ladder);
         if (back) {
-            u.ux = back.sx; u.uy = back.sy;
+            u_on_newpos(back.sx, back.sy);
             back.u_traversed = true;
         } else if (up) {
-            u_on_upstairs();
+            // C ref: do.c:1753 — climbing up with no matching stairway lands on
+            // the branch stairs (new dungeon) or the destination's DOWN
+            // staircase.  This used to call u_on_upstairs() for both directions,
+            // which put an ascending hero on the wrong staircase (and, when the
+            // level has no up stair at all, on a random place_lregion() square
+            // that draws rn1 pairs C never draws).
+            if (newdungeon) u_on_sstairs(1); else u_on_dnstairs();
         } else {
-            u_on_upstairs(); /* descent lands on the new level's UP stair */
+            if (newdungeon) u_on_sstairs(0);
+            else u_on_upstairs(); /* descent lands on the new level's UP stair */
         }
         // C ref: do.c:1792 — the fall's damage roll, at its real position in the
         // stream (after mklev()/placement, before losedogs()).  Maybe_Half_Phys
@@ -642,9 +845,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // wielding a petrifying corpse, so neither adds a draw.
         if (fell_downstairs) losehp_do(rnd(3));
     } else {
-        // trap door / level teleport.  (The was_in_W_tower `| 2` flag of C's
-        // u_on_rndspot() call is Vlad's-Tower-only and never set here.)
+        // trap door / level teleport / endgame.  (The was_in_W_tower `| 2` flag
+        // of C's u_on_rndspot() call is Vlad's-Tower-only and never set here.)
         u_on_rndspot((up ? 1 : 0));
+        // C ref: do.c:1805 — a fall (trap door / hole) also does ballfall(),
+        // selftouch("Falling, you") and defers d(max(dist,1),6) damage to the
+        // very end of the arrival.  ballfall/selftouch need a punished hero or a
+        // wielded petrifying corpse; the damage roll is real RNG and is applied
+        // below at C's position.
+        if (falling) do_fall_dmg = true;
     }
 
     // Bring the pet(s) along.  C ref: do.c goto_level() -> losedogs().
@@ -665,6 +874,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // recorder captured is unaffected; this only paints the destination map
     // that the hero now stands on (otherwise the screen stays blank after a
     // level change).
+    // C ref: do.c:1976 check_special_room(FALSE) — "give room entrance message,
+    // if any" for the square the hero arrived on.
+    await check_special_room(false);
+
     game.vision_full_recalc = 0;
     vision_reset();
     vision_recalc(0);
@@ -684,6 +897,32 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // plines above, which always print).
         if (!game.u?.Deaf && game.flags?.acoustics !== false)
             g._goto_valley_msg.push('You hear groans and moans everywhere.');
+    }
+    // C ref: do.c:1876 — "in case we've managed to bypass the Valley's stairway
+    // down": ANY Gehennom level other than the Valley marks the gate as already
+    // entered.  That flag is what suppresses dodown()'s "Are you sure you want
+    // to enter?" y_n prompt on a later visit to the Valley, so leaving it unset
+    // makes a prompt appear that C does not ask — and its keystroke would then
+    // be eaten by the prompt instead of running as a command.
+    if (In_hell(u.uz) && !Is_valley(u.uz)) {
+        u.uevent = u.uevent || {};
+        u.uevent.gehennom_entered = 1;
+    }
+
+    // C ref: do.c:1897 — arriving in Fort Ludios trips the alarm: two plines
+    // AND every monster on the level is woken (msleeping = 0).  A sleeping
+    // monster is skipped by dochug() before it can draw, so waking the level
+    // changes the very next monster-movement pass's RNG.  The messages are
+    // stashed like the Valley pair because C emits them after
+    // familiar_level_msg() and before temperature_change_msg().
+    // C re-arms it on every visit unless Croesus has died
+    // (`new || !svm.mvitals[PM_CROESUS].died`); mvitals is not modelled here and
+    // Croesus can only die on this level, so the alarm always sounds.
+    g._goto_knox_msg = null;
+    if (Is_knox_level(u.uz)) {
+        g._goto_knox_msg = ['You have penetrated a high security area!',
+                            'An alarm sounds!'];
+        for (const mtmp of g.level?.monsters ?? []) mtmp.msleeping = 0;
     }
 
     // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature),
@@ -740,6 +979,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // The on-foot transit message + its --More-- frame were already delivered
     // above (before the level switch) so that the captured frame shows the OLD
     // level, exactly as the deferred-docrt() tty does.
+
+    // C ref: do.c:1990 — a trap-door/hole fall costs d(max(dist,1), 6) hp, rolled
+    // at the very END of the arrival (after every message above and after
+    // check_special_room(FALSE)).  Maybe_Half_Phys is the identity here.
+    if (do_fall_dmg) losehp_do(d(Math.max(dist, 1), 6));
+    // NOT ported: the trailing `(void) pickup(1)` (cmd.js pickup_after_move()),
+    // which announces / autopicks objects on the arrival square.  See the
+    // deferred list — it needs the arrival square's object list to be
+    // C-faithful first, which it is not on levels reached by teleport.
 }
 
 // ── familiar_level_msg (C ref: do.c familiar_level_msg) ──
@@ -846,15 +1094,27 @@ export async function prev_level(at_stairs) {
     }
 }
 
-// ── doup (C ref: do.c doup) — climb an up staircase (the '<' command).
-// Models the on-foot ascent: the hero must be standing on a (non-ladder or
-// ladder) up staircase.  Pit-climb, being rooted, stuck-steed / held-in-place,
-// and over-encumbrance branches are not exercised by the recorded sessions.
+// ── doup (C ref: do.c doup) — climb an up staircase/ladder (the '<' command).
+// Covers the on-foot ascent plus the pit-climb, rooted, stuck-steed,
+// held-in-place and over-encumbrance branches (each with C's turn cost).
 export async function doup() {
     const u = game.u;
     const stway = stairway_at(u.ux, u.uy);
     // C ref: do.c doup -> set_move_cmd(DIR_UP, 0): u.dz = -1 (up), u.dx=u.dy=0.
     u.dz = -1; u.dx = 0; u.dy = 0;
+
+    // C ref: do.c:1303 u_rooted() — costs the turn (ECMD_TIME).
+    if (await u_rooted()) return 1;
+
+    // C ref: do.c:1306 — "'up' to get out of a pit": a hero caught in a pit
+    // climbs instead of ascending, and climb_pit() ALWAYS draws its rn2(2)
+    // boulder check.  This was missing entirely, so a trapped hero pressing '<'
+    // on a staircase changed level (drawing a whole mklev()) where C only
+    // struggles.
+    if (u.utrap && u.utraptype === TT_PIT) {
+        await climb_pit();
+        return 1; // ECMD_TIME
+    }
 
     // C ref: do.c doup — must be standing on an up staircase.
     if (!stway || !stway.up) {
@@ -862,10 +1122,19 @@ export async function doup() {
         return 0; // ECMD_OK
     }
 
+    // C ref: do.c:1318 stucksteed(TRUE) — no time passes.
+    if (await stucksteed(true)) return 0; // ECMD_OK
+
     if (await u_stuck_cannot_go('up')) return 1;     // do.c:1321, ECMD_TIME
 
-    // C ref: do.c doup — near_capacity() > SLT_ENCUMBER "load too heavy to climb"
-    // check; the light contest heroes never trigger it (not modelled).
+    // C ref: do.c:1325 — a Stressed-or-worse hero cannot climb, and the refusal
+    // COSTS THE TURN (ECMD_TIME): the monsters get a move and draw RNG.  This
+    // was skipped as "the light contest heroes never trigger it".
+    if (near_capacity() > SLT_ENCUMBER) {
+        await pline(`Your load is too heavy to climb the ${
+            game.level?.at(u.ux, u.uy)?.typ === STAIRS ? 'stairs' : 'ladder'}.`);
+        return 1; // ECMD_TIME
+    }
 
     // C ref: do.c doup — climbing up from ledger 1 (dnum 0, dlevel 1: the top of
     // the Dungeons of Doom) leaves the dungeon, so confirm first.
@@ -882,7 +1151,9 @@ export async function doup() {
     }
 
     // C: ga.at_ladder = (levl[u.ux][u.uy].typ == LADDER); prev_level(TRUE).
+    game.at_ladder = (game.level?.at(u.ux, u.uy)?.typ === LADDER);
     await prev_level(true);
+    game.at_ladder = false;
     return 1; // ECMD_TIME
 }
 
@@ -946,6 +1217,10 @@ export async function wiz_level_tele(readLevel) {
         // arrival checks.  The rn2(4) was already drawn inside goto_level();
         // this only displays the resolved text.
         if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
+        // C ref: do.c:1897 — the Fort Ludios alarm, in C's "special location
+        // arrival messages/events" chain (after familiar_level_msg(), before
+        // temperature_change_msg()).
+        if (game._goto_knox_msg) for (const m of game._goto_knox_msg) await update_topl(m);
         // C ref: do.c goto_level() arrival block — In_quest(&u.uz) -> onquest():
         // the quest home level's first-time arrival message.  Delivered after
         // the "You materialize..." topline so its window flushes that topline
@@ -1015,6 +1290,8 @@ export async function wiz_level_tele(readLevel) {
     // arrival checks.  The rn2(4) was already drawn inside goto_level(); this
     // only displays the resolved text.
     if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
+    // C ref: do.c:1897 — the Fort Ludios alarm (see the "?"-menu branch above).
+    if (game._goto_knox_msg) for (const m of game._goto_knox_msg) await update_topl(m);
     await onquest();
     // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature).
     if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
@@ -1175,6 +1452,8 @@ export async function run_deferred_lvltport() {
     // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();`.  The
     // rn2(4) was already drawn inside goto_level(); this only shows the text.
     if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
+    // C ref: do.c:1897 — the Fort Ludios alarm (see the "?"-menu branch above).
+    if (game._goto_knox_msg) for (const m of game._goto_knox_msg) await update_topl(m);
     // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature).
     if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
 }
@@ -1332,15 +1611,44 @@ function stairway_at(x, y) {
     return null;
 }
 
-// C ref: stairs.c stairway_find_from — find the stairway on the current level
-// whose destination is the given level (used to land the hero on the staircase
+// C ref: stairs.c stairway_find_from(fromdlev, isladder) — find the stairway on
+// the current level whose destination is the given level AND whose isladder flag
+// matches the way the hero travelled (used to land the hero on the staircase
 // that leads back to the level just left, e.g. the mines branch stair).
-function stairway_find_to(dlev) {
+function stairway_find_from(dlev, isladder) {
     if (!dlev) return null;
     for (let s = game.stairs; s; s = s.next)
-        if (s.tolev && s.tolev.dnum === dlev.dnum && s.tolev.dlevel === dlev.dlevel)
+        if (s.tolev && s.tolev.dnum === dlev.dnum && s.tolev.dlevel === dlev.dlevel
+            && !!s.isladder === !!isladder)
             return s;
     return null;
+}
+
+// C ref: stairs.c stairway_find_dir(up) — first stairway going the given way.
+function stairway_find_dir(up) {
+    for (let s = game.stairs; s; s = s.next)
+        if (!!s.up === !!up) return s;
+    return null;
+}
+// C ref: stairs.c stairway_find_special_dir(up) — the branch ("special")
+// stairway, i.e. one whose destination leaves this dungeon, going the other way.
+function stairway_find_special_dir(up) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.tolev?.dnum !== game.u?.uz?.dnum && !!s.up !== !!up) return s;
+    return null;
+}
+// C ref: stairs.c u_on_dnstairs()/u_on_sstairs() — the two placement fallbacks
+// goto_level()'s at_stairs arm uses when the destination has no stairway back
+// to the level just left.  (mklev.js exports only u_on_upstairs.)
+function u_on_sstairs(upflag) {
+    const stway = stairway_find_special_dir(upflag);
+    if (stway) u_on_newpos(stway.sx, stway.sy);
+    else u_on_rndspot(upflag);
+}
+function u_on_dnstairs() {
+    const stway = stairway_find_dir(false);
+    if (stway) u_on_newpos(stway.sx, stway.sy);
+    else u_on_sstairs(1); /* destination dnstairs implies moving up */
 }
 
 // C ref: apply.c next_to_u — FALSE only when a leashed pet (or amulet-bearing
@@ -1350,11 +1658,12 @@ function next_to_u() {
     return true;
 }
 
-// ── dodown (C ref: do.c dodown) — descend stairs.
-// Models the on-foot "descend the down stairs" case: the hero must be standing
-// on a (non-ladder) down staircase, not levitating, and able to bring the pet.
-// Trap-door / hole falls, ladders, Gehennom gate, levitation, polymorph-hiders
-// and stuck states are not exercised by the recorded sessions.
+// ── dodown (C ref: do.c dodown) — descend stairs or a ladder.
+// Covers the on-foot descent, the deliberate plunge into a seen pit/hole
+// (dotrap TOOKPLUNGE), the Gehennom gate confirmation, levitation, the rooted /
+// stuck-steed / held refusals and their ECMD_TIME-vs-ECMD_OK turn cost.  Still
+// missing: flags.autodig (default off), the Upolyd ceiling-hider drop-out, and
+// controlled-levitation float_down().
 // C ref: do.c:1110 u_stuck_cannot_go(updn) — a held hero can't take the stairs,
 // and the failed attempt COSTS THE TURN (both callers return ECMD_TIME), so the
 // monsters get a move.  The sticks()/uswallow arms need a polymorphed or
@@ -1368,20 +1677,74 @@ async function u_stuck_cannot_go(updn) {
 export async function dodown() {
     const u = game.u;
 
-    // C ref: do.c dodown — stairs_down = stairway present, going down, not a
-    // ladder.
-    let stairs_down = false;
+    // C ref: do.c:1135 set_move_cmd(DIR_DOWN, 0): u.dz = 1, u.dx = u.dy = 0.
+    u.dz = 1; u.dx = 0; u.dy = 0;
+
+    // C ref: do.c:1137 u_rooted() — costs the turn (ECMD_TIME).
+    if (await u_rooted()) return 1;
+    // C ref: do.c:1140 stucksteed(TRUE) — no time passes.
+    if (await stucksteed(true)) return 0; // ECMD_OK
+
+    // C ref: do.c:1145 — stairs_down / ladder_down.  A DOWN LADDER is a legal
+    // descent in C; treating it as "not stairs" made '>' on one print "You can't
+    // go down here." and skip the whole level change.
+    let stairs_down = false, ladder_down = false;
     const stway = stairway_at(u.ux, u.uy);
-    if (stway && !stway.up)
+    if (stway && !stway.up) {
         stairs_down = !stway.isladder;
+        ladder_down = !stairs_down;
+    }
+
+    // C ref: do.c:1153 — a levitating hero floats above the stairs and does not
+    // descend; ECMD_OK, so no turn passes.  The controlled-levitation early-out
+    // above it (HLevitation & I_SPECIAL / ELevitation & W_ARTI -> float_down(),
+    // with its rnz(100) artifact-age bump) needs an artifact or #sit-granted
+    // levitation and is not modelled; nor is the Blind "don't reveal an unknown
+    // staircase" glyph check (it needs the remembered-glyph map).
+    if (Levitation_do()) {
+        // C ref: hack.c floating_above(what) — "You are floating high above %s."
+        await pline(`You are floating high above the ${
+            stairs_down ? 'stairs' : ladder_down ? 'ladder'
+                        : surface(u.ux, u.uy)}.`);
+        return 0; // ECMD_OK
+    }
+
+    // (do.c:1201's Upolyd && ceiling_hider drop-out-of-hiding arm needs a
+    // piercer/lurker-above polymorph.)
 
     if (await u_stuck_cannot_go('down')) return 1;   // do.c:1221, ECMD_TIME
 
-    if (!stairs_down) {
-        // C ref: do.c dodown "You can't go down here." (no trap/hole/autodig
-        // modelled).  ECMD_OK: no turn elapses.
-        await pline("You can't go down here.");
+    if (!stairs_down && !ladder_down) {
+        const trap = t_at(u.ux, u.uy);
+        // C ref: do.c:1224 — '>' while teetering at the edge of a SEEN pit, or
+        // standing on a SEEN hole/trap door, deliberately enters it:
+        // dotrap(trap, TOOKPLUNGE) draws the trap's own RNG and costs the turn.
+        // This used to fall through to "You can't go down here." and consume
+        // nothing at all.
+        if (uteetering_at_seen_pit(trap) || uescaped_shaft(trap)) {
+            await dotrap(trap, TOOKPLUNGE);
+            return 1; // ECMD_TIME
+        }
+        // C ref: do.c:1231 — with flags.autodig (default off) and a wielded
+        // pick-axe C digs down here instead; not modelled.
+        // C ref: do.c:1236 — a VIBRATING_SQUARE reads "You can't go down here yet."
+        await pline(`You can't go down here${
+            (trap && trap.ttyp === VIBRATING_SQUARE) ? ' yet' : ''}.`);
         return 0; // ECMD_OK
+    }
+
+    // C ref: do.c:1241 — the Valley's down staircase is the gate to Gehennom and
+    // asks for confirmation the first time.  This is a y_n PROMPT: omitting it
+    // does not merely drop two messages, it leaves the answering keystroke in the
+    // input stream for the command parser to run as a command.
+    if (Is_valley(u.uz) && !game.u.uevent?.gehennom_entered) {
+        await pline('You are standing at the gate to Gehennom.');
+        await pline('Unspeakable cruelty and harm lurk down there.');
+        const ans = await y_n('Are you sure you want to enter?', 'yn\x1b', 'n');
+        if (ans !== 'y') return 0; // ECMD_OK
+        await pline('So be it.');
+        u.uevent = u.uevent || {};
+        u.uevent.gehennom_entered = 1; /* don't ask again */
     }
 
     // C ref: do.c dodown — pet leash check before transit.
@@ -1390,6 +1753,13 @@ export async function dodown() {
         return 0; // ECMD_OK
     }
 
+    // (do.c:1274's `if (trap)` jump-down-the-hole block and the goto_hell() /
+    // clamp_hole_destination() arms below it are dead in 3.7: any seen hole under
+    // the hero already returned above via uescaped_shaft() -> dotrap().)
+
+    // C: ga.at_ladder = (levl[u.ux][u.uy].typ == LADDER); next_level(!trap).
+    game.at_ladder = (game.level?.at(u.ux, u.uy)?.typ === LADDER);
     await next_level(true);
+    game.at_ladder = false;
     return 1; // ECMD_TIME
 }

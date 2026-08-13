@@ -11,7 +11,8 @@
 import { game } from './gstate.js';
 import { pline } from './display.js';
 import { rnd } from './rng.js';
-import { update_inventory } from './invent.js';
+import { update_inventory, xname, is_plural, bimanual } from './invent.js';
+import { objects, WEAPON_CLASS, TOOL_CLASS } from './mkobj.js';
 import { A_DEX } from './const.js';
 
 // C ref: attrib.h ACURR(x) — current attribute value (acurr.a in
@@ -27,26 +28,71 @@ function could_twoweap() {
     return true;
 }
 
-// C ref: wield.c can_twoweapon().  Decide whether the hero may dual-wield.
-// We model the subset that determines the recorded outcome: both the
-// primary (uwep) and secondary (uswapwep) hands must hold a one-handed,
-// non-cursed weapon and no shield may be worn.  Failure messages mirror
-// the C branches, but the gameplay sessions only reach the success path.
-function can_twoweapon() {
+// C ref: obj.h is_weptool(o) / wield.c:74 TWOWEAPOK(obj).
+function is_weptool(obj) {
+    return obj?.oclass === TOOL_CLASS && (objects[obj.otyp]?.oc_skill ?? 0) !== 0;
+}
+function oc_skill(obj) { return objects[obj?.otyp]?.oc_skill ?? 0; }
+// is_launcher: WEAPON/TOOL with oc_skill in P_BOW..P_CROSSBOW (20..22).
+// is_ammo / is_missile: the negated-skill ammo (-P_CROSSBOW..-P_BOW) and
+// missiles (-P_BOOMERANG..-P_DART).
+function twoweapok(obj) {
+    if (obj.oclass === WEAPON_CLASS) {
+        const sk = oc_skill(obj);
+        const launcher = sk >= 20 && sk <= 22;
+        const ammo = sk >= -22 && sk <= -20;
+        const missile = sk >= -25 && sk <= -23;
+        return !(launcher || ammo || missile);
+    }
+    return is_weptool(obj);
+}
+
+// C ref: objnam.c Yname2(obj) — "Your <xname>" for a carried object, sentence
+// capitalized.  uwep/uswapwep are always carried here.
+function Yname2(obj) {
+    return `Your ${xname(obj)}`;
+}
+
+// C ref: wield.c can_twoweapon().  Decide whether the hero may dual-wield;
+// every rejection prints its own reason (the recorded Samurai reaches the
+// success path, the recorded Knight the worn-shield one).
+export async function can_twoweapon() {
     const uwep = game.uwep;
     const uswapwep = game.uswapwep;
 
     if (!could_twoweap()) {
+        // Upolyd is the only way here; the non-poly arm needs makeplural() of
+        // the role name, which no reachable hero form triggers.
+        await pline("You can't use two weapons in your current form.");
         return false;
     }
     if (!uwep || !uswapwep) {
+        // "your hands are empty" / "your {left|right} hand is empty"
+        const side = uwep ? 'left ' : uswapwep ? 'right ' : '';
+        const both = !uwep && !uswapwep;
+        await pline(`Your ${side}${both ? 'hands are' : 'hand is'} empty.`);
         return false;
     }
-    // !TWOWEAPOK / bimanual / artifact / cursed / Glib checks — none apply
-    // to the starting katana + short sword pairing; a worn shield does.
-    if (game.uarms) {
-        return false; // can't use two weapons while wearing a shield
+    if (!twoweapok(uwep) || !twoweapok(uswapwep)) {
+        const otmp = !twoweapok(uwep) ? uwep : uswapwep;
+        await pline(`${Yname2(otmp)} ${is_plural(otmp) ? "aren't" : "isn't a"} suitable `
+            + `${otmp === uwep ? 'primary' : 'secondary'} weapon${(otmp.quan || 1) > 1 ? 's' : ''}.`);
+        return false;
     }
+    if (bimanual(uwep) || bimanual(uswapwep)) {
+        await pline(`${Yname2(bimanual(uwep) ? uwep : uswapwep)} isn't one-handed.`);
+        return false;
+    }
+    if (game.uarms) {
+        await pline("You can't use two weapons while wearing a shield.");
+        return false;
+    }
+    if (uswapwep.oartifact) {
+        await pline(`${Yname2(uswapwep)} resists being held second to another weapon!`);
+        return false;
+    }
+    // The Glib / cursed-uswapwep arm calls drop_uswapwep(), which drops the
+    // weapon; not modelled (no session reaches it with a cursed offhand).
     return true;
 }
 
@@ -70,7 +116,7 @@ export async function dotwoweapon() {
     }
 
     // May we use two weapons?
-    if (can_twoweapon()) {
+    if (await can_twoweapon()) {
         await pline('You begin two-weapon combat.');
         set_twoweap(true);
         update_inventory();

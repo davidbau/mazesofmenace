@@ -7,7 +7,7 @@
 // conservative no-op behavior so downstream porters have a stable 1:1 map.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { nhgetch } from './input.js';
 import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl } from './display.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
@@ -61,28 +61,35 @@ import {
 import { getpos, getpos_render } from './hack.js';
 import { observe_object as disco_observe_object, build_discoveries_rows, discover_object } from './o_init.js';
 import { monster_by_pmidx } from './makemon.js';
-import { strongmonst_flag as strongmonst } from './monflags_data.js';
+import { strongmonst_flag as strongmonst, throws_rocks_flag, is_were_flag,
+         is_neuter_flag, humanoid as humanoid_flag,
+         mflags2_of, M2_DEMON } from './monflags_data.js';
 import { tin_variety, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, vegetarian } from './eat.js';
 import { enlightenment_lines } from './insight.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { find_ac } from './u_init.js';
 import { moveloop_turn, youHaveFast, youHaveVeryFast } from './allmain.js';
-import { acurr_eff } from './attrib.js';
+import { acurr_eff, exercise } from './attrib.js';
 import {
     UNENCUMBERED, OVERLOADED,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, WT_WOUNDEDLEG_REDUCT, MAX_CARR_CAP,
-    A_CON, A_STR, LEFT_SIDE, RIGHT_SIDE,
+    A_CON, A_STR, A_INT, A_WIS, A_CHA, A_DEX, A_MAX, LEFT_SIDE, RIGHT_SIDE,
+    P_DAGGER, P_KNIFE, P_SPEAR, P_SLING, P_CROSSBOW, P_DART, P_SHURIKEN,
+    P_SKILLED, P_EXPERT,
     CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_INT,
     IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, IS_ALTAR,
+    TT_BEARTRAP, TT_INFLOOR,
     AM_SHRINE, AM_SANCTUM, Amask2align, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
     TREE, IRONBARS, DRAWBRIDGE_DOWN, DBWALL, LAVAPOOL, LAVAWALL, ICE,
     POOL, MOAT, WATER,
     IS_DOOR, IS_FURNITURE, STONE, D_NODOOR, D_ISOPEN, D_BROKEN,
+    Is_airlevel,
     DUST, ENGRAVE, HEADSTONE, BURN, MARK, ENGR_BLOOD,
     PLNMSG_MON_TAKES_OFF_ITEM,
+    TIMEOUT,
 } from './const.js';
-import { engr_at } from './engrave.js';
+import { engr_at, wipe_engr_at } from './engrave.js';
 // role.js imports only gstate/rng/const, so this is cycle-safe.
 import { roles, align_gname } from './role.js';
 
@@ -405,27 +412,58 @@ export function simple_typename(otyp) {
     return s;
 }
 
-// C ref: wield.c wield_tool(obj, verb).  Ports the path the recorded sessions
-// reach for #rub on a not-yet-wielded tool (e.g. a wished magic lamp held in
-// inventory): no armor/weld/shield conflicts, no swap-weapon, so it simply
-// announces "You now wield <obj>." via the top line and installs obj as uwep.
-// Returns TRUE when the tool got wielded (C's success return), FALSE otherwise
-// (the conflict cases aren't exercised, so they return FALSE without a turn).
+// C ref: wield.c wield_tool(obj, verb) — wield a tool for #rub/#force/&c.
+// Returns TRUE when the tool got wielded.  All four refusals (worn item, welded
+// weapon, shield vs bimanual, failed swap) are ported; only cantwield() (a
+// handless polyform) is left out, since no polyform reaches this port.
 export async function wield_tool(obj, verb) {
     if (game.uwep && obj === game.uwep) return true; // already wielding it
     if (!verb) verb = 'wield';
-    // owornmask W_ARMOR|W_ACCESSORY -> "can't wield while wearing"; not exercised.
-    const W_ARMOR = 0x00FF, W_ACCESSORY = (0x1000 | 0x2000 | 0x4000);
-    if ((obj.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) return false;
-    // welded(uwep)/cantwield/shield-vs-bimanual cases: not reached here.
-    if (game.uquiver === obj) setuqwep(null);
-    if (game.uswapwep === obj) {
-        // doswapweapon() path: not exercised by #rub sessions.
+    const what = xname(obj);
+    let more_than_1 = ((obj.quan || 1) > 1 || what.includes('pair of ')
+                       || what.includes('s of '));
+
+    // C ref: wield.c wield_tool() — each refusal prints and returns FALSE, so
+    // an unported one silently wielded something C would not have.
+    if ((obj.owornmask || 0) & (WA_ARMOR_ALL | W_ACCESSORY)) {
+        await pline(`You can't ${verb} ${yname(obj)} while wearing ${more_than_1 ? 'them' : 'it'}.`);
         return false;
     }
-    await update_topl(`You now wield ${doname(obj)}.`);
-    setuwep_slot(obj);
-    if (game.u && game.u.twoweap) game.u.twoweap = 0;
+    if (game.uwep && welded(game.uwep)) {
+        if (game.flags?.verbose !== false) {
+            let hand = body_part(6 /*HAND*/);
+            if (bimanual(game.uwep)) hand = makeplural(hand);
+            if (what.includes('pair of ')) more_than_1 = false;
+            await pline(`Since your weapon is welded to your ${hand}, you cannot ${verb} ${more_than_1 ? 'those' : 'that'} ${what}.`);
+        } else {
+            await pline("You can't do that.");
+        }
+        return false;
+    }
+    // cantwield(): a handless/nolimbs polyform can't hold anything strongly
+    // enough; not reachable for a humanoid hero, so no branch is emitted here.
+    if (game.uarms && bimanual(obj)) {
+        await pline(`You cannot ${verb} a two-handed ${obj.oclass === WEAPON_CLASS ? 'weapon' : 'tool'} while wearing a shield.`);
+        return false;
+    }
+
+    if (game.uquiver === obj) setuqwep(null);
+    if (game.uswapwep === obj) {
+        await doswapweapon();
+        if (game.uswapwep === obj) return false;   /* the swap failed */
+    } else {
+        const oldwep = game.uwep;
+        if (will_weld(obj)) {
+            ready_weapon(obj);
+        } else {
+            await update_topl(`You now wield ${doname(obj)}.`);
+            setuwep_slot(obj);
+        }
+        if (game.flags?.pushweapon && oldwep && game.uwep !== oldwep)
+            setuswapwep(oldwep);
+    }
+    if (game.uwep && game.uwep !== obj) return false;
+    if (game.u && game.u.twoweap) untwoweapon();
     if (obj.oclass !== WEAPON_CLASS) game.unweapon = true;
     return true;
 }
@@ -655,13 +693,50 @@ const ARTI_TOUCH_PROPS = {
     34: { restr: true,  intel: true,  align: 0,    role: 12 }, // Eye of the Aethiopica (WIZARD)
 };
 
+// C ref: prop.h Antimagic == HAntimagic || EAntimagic.  The port has no
+// oc_oprop column, so the extrinsic is read from whichever uprops mirror the
+// granting code used (js/mcastu.js and js/insight.js each picked one).
+function Antimagic() {
+    const u = game.u;
+    return !!(u?.uprops?.Antimagic || u?.Antimagic || u?.HAntimagic || u?.EAntimagic);
+}
+// C ref: youprop.h Hate_silver == (u.ulycn >= LOW_PM || hates_silver(youmonst)).
+// mondata.c hates_silver(): were-creatures, S_VAMPIRE, M2_DEMON, shades, and
+// imps other than the tengu.  LOW_PM is 0 (u.ulycn is NON_PM == -1 normally).
+const S_VAMPIRE_MLET = 48, S_IMP_MLET = 9;
+function Hate_silver() {
+    if ((game.u?.ulycn ?? -1) >= 0) return true;
+    const ptr = youmonst_data();
+    if (!ptr) return false;
+    if (is_were_flag(ptr)) return true;
+    if (ptr.mcls === S_VAMPIRE_MLET) return true;
+    if ((mflags2_of(ptr) & M2_DEMON) !== 0) return true;
+    if (ptr.name === 'shade') return true;
+    if (ptr.mcls === S_IMP_MLET && ptr.name !== 'tengu') return true;
+    return false;
+}
+// C ref: hack.h Maybe_Half_Phys(dmg) — halve (rounding up) under HALF_PHDAM.
+function Maybe_Half_Phys(dmg) {
+    return (game.u?.HHalf_physical_damage || game.u?.EHalf_physical_damage)
+        ? Math.trunc((dmg + 1) / 2) : dmg;
+}
+// C ref: hack.c losehp() reduced to the hp arithmetic (death handling lives in
+// the callers' own losehp copies elsewhere in the port).
+function losehp_invent(n) {
+    const u = game.u;
+    if (!u) return;
+    u.uhp -= n;
+    if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
+    if (u.uhp < 1) u.uhp = 0;
+    game.botl = true;
+}
+
 // C ref: artifact.c touch_artifact().  Hero (or monster) tries to touch an
 // artifact; returns false if it refuses to be held.  Faithfully consumes the
-// rn2(4) at artifact.c:945 under the same short-circuit conditions as C.  Only
-// the hero path (mon === &youmonst) is exercised by the recorded sessions; the
-// blast/damage branch's losehp/messages are modelled but not reached for the
-// wishes we replay (e.g. Neutral hero wishing Grayswandir: rn2(4) is drawn but
-// !rn2(4) is false, so no blast).
+// rn2(4) at artifact.c:945 under the same short-circuit conditions as C, and —
+// when that lands — the blast's d(Antimagic ? 2 : 4, self_willed ? 10 : 4)
+// damage roll plus the silver rnd(10) bonus, which are RNG draws C makes and
+// no earlier port made.  Only the hero path (mon === &youmonst) is modelled.
 export function touch_artifact(obj, _mon) {
     const m = obj && obj.oartifact;
     const oart = m && ARTI_TOUCH_PROPS[m];
@@ -686,21 +761,41 @@ export function touch_artifact(obj, _mon) {
     // the hero polymorphed into a bane-target form, which the wish replays never
     // are, so this stays false.
 
-    let blasted = false;
+    game._touch_blasted = false;
     // C: if (((badclass || badalign) && self_willed)
     //        || (badalign && (!yours || !rn2(4)))) { ... blast ... }
     // The rn2(4) is evaluated under the same short-circuit ordering as C.
     if (((badclass || badalign) && self_willed)
         || (badalign && (!yours || !rn2(4)))) {
-        blasted = true; // hero would be blasted (damage RNG not exercised)
+        // C ref: artifact.c:947-957.  A non-hero toucher returns 0 before any
+        // RNG; the hero takes the blast.
+        if (!yours) return false;
+        // C: You("are blasted by %s power!", s_suffix(the(xname(obj))))
+        game._pending_message =
+            `You are blasted by ${s_suffix(`the ${xname(obj)}`)} power!`;
+        game._touch_blasted = true;
+        let dmg = d(Antimagic() ? 2 : 4, self_willed ? 10 : 4);
+        // C: half (Maybe_Half_Phys quarter) of the usual silver damage bonus.
+        if (objects[obj.otyp]?.material === 10 /* SILVER */ && Hate_silver())
+            dmg += Maybe_Half_Phys(rnd(10));
+        losehp_invent(dmg);
+        exercise(A_WIS, false);
     }
-    void blasted;
 
     // C: if (badclass && badalign && self_willed) -> object evades grasp.
     if (badclass && badalign && self_willed) return false;
     return true;
 }
 function u_safe_from_fatal_corpse(_obj, _checks) { return true; }
+
+// C ref: monst.h gy.youmonst.data == &mons[u.umonnum] (set_uasmon keeps
+// umonnum == umonster for the hero's own form, so this is correct polymorphed
+// or not).  u.data is the polyself-maintained mirror; fall back to it when the
+// pmidx lookup is unavailable.
+function youmonst_data() {
+    const pmidx = game.u?.umonnum;
+    return (pmidx != null ? monster_by_pmidx(pmidx) : null) || game.u?.data || null;
+}
 
 // C ref: attrib.c acurrstr() — encode A_STR (3..125; 18/01 stored as 19, ..)
 // onto the 3..25 scale used by weight_cap.  (Mirrors cmd.js' acurrstr.)
@@ -711,11 +806,14 @@ function acurrstr() {
     return Math.min(str, 125) - 100;
 }
 
-// C ref: hack.c weight_cap() — the hero's carrying capacity.  The starter
-// sessions are never levitating/riding, so only the base STR+CON capacity,
-// the polymorphed-form scaling, and the wounded-legs reduction apply (a bear
-// trap that wounds a leg drops carrcap by WT_WOUNDEDLEG_REDUCT, which is what
-// pushes the seed0004 hero from unencumbered to Burdened).  Consumes no RNG.
+// C ref: hack.c weight_cap() — the hero's carrying capacity.  Base STR+CON
+// capacity, polymorphed-form scaling, the Levitation/air-level/strong-steed
+// override, and the wounded-legs reduction (a bear trap that wounds a leg
+// drops carrcap by WT_WOUNDEDLEG_REDUCT, which is what pushes the seed0004
+// hero from unencumbered to Burdened).  Consumes no RNG, but every encumbrance
+// predicate downstream (allmain.c moveloop_core, do.c doup, uhitm.c) reads it.
+// The Boots_on/afternmv ELevitation deferral and float_vs_flight() are not
+// modelled (no multi-turn levitation-boots don in this port).
 function weight_cap() {
     const u = game.u;
     let carrcap = WT_WEIGHTCAP_STRCON * (acurrstr() + acurr_eff(A_CON))
@@ -733,28 +831,37 @@ function weight_cap() {
             carrcap = Math.trunc((carrcap * u.data.cwt) / WT_HUMAN);
         }
     }
-    // Levitation / air level / strong steed -> MAX_CARR_CAP (never set here).
-    if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
-    // C ref: hack.c:4331 `if (!Flying)` — wounded legs only interfere with
-    // proper WALKING.  A polymorphed flyer sets u.uprops.Flying in set_uasmon(),
-    // and Flying is unset for every non-poly hero, so this is inert until a
-    // poly'd flyer with a bear-trap leg wound reaches weight_cap().
-    const ewl = (!u?.uprops?.Flying) ? (u?.EWounded_legs || 0) : 0;
-    if (ewl & LEFT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
-    if (ewl & RIGHT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
+    // C ref: hack.c:4324 — Levitation / Plane of Air / strong steed pin
+    // capacity at MAX_CARR_CAP and, crucially, SKIP the wounded-legs reduction
+    // (it lives in the else branch: airborne legs can't be limped on).
+    if (u?.uprops?.Levitation || Is_airlevel()
+        || (u?.usteed && strongmonst(u.usteed.data))) {
+        carrcap = MAX_CARR_CAP;
+    } else {
+        if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
+        // C ref: hack.c:4331 `if (!Flying)` — wounded legs only interfere with
+        // proper WALKING.  A polymorphed flyer sets u.uprops.Flying in
+        // set_uasmon(); Flying is unset for every non-poly hero.
+        const ewl = (!u?.uprops?.Flying) ? (u?.EWounded_legs || 0) : 0;
+        if (ewl & LEFT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
+        if (ewl & RIGHT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
+    }
     return Math.max(carrcap, 1);
 }
 
 // C ref: hack.c inv_weight() — total inventory weight minus capacity; also
 // stashes the freshly-computed capacity in game._wc (C's gw.wc) for
-// calc_capacity().  Boulders only count when the hero can't throw rocks
-// (always true for the human starter heroes).
+// calc_capacity().  C's test is `otyp != BOULDER || !throws_rocks(youmonst)`:
+// a boulder DOES count for an ordinary hero and is free only for a rock-thrower
+// (giant polyform).  The previous `otyp !== BOULDER` skipped it unconditionally,
+// which is the opposite of C and hid ~6000 weight from every encumbrance test.
 function inv_weight() {
     let wt = 0;
+    const ydata = youmonst_data();
     for (const otmp of inventoryArray()) {
         if (otmp.oclass === COIN_CLASS)
             wt += Math.trunc(((otmp.quan || 0) + 50) / 100);
-        else if (otmp.otyp !== BOULDER)
+        else if (otmp.otyp !== BOULDER || !throws_rocks_flag(ydata))
             wt += otmp.owt || 0;
     }
     const wc = weight_cap();
@@ -841,18 +948,25 @@ function hides_under(_data) { return false; }
 function hideunder(_mon) { return false; }
 function unpunish() {}
 function maybe_unhide_at(_x, _y) {}
-// C ref: zap.c obj_resists(obj, ochance, achance).  The invocation items (and
-// the Amulet) always resist; everything else rolls rn2(100) and resists when
+// C ref: zap.c obj_resists(obj, ochance, achance).  The invocation items, the
+// Amulet and a Rider corpse always resist; everything else rolls rn2(100) and resists when
 // the roll lands below the per-object chance.  delobj_core() calls this with
 // ochance == achance == 0, so ordinary objects never resist — but the rn2(100)
 // MUST still fire to keep the PRNG stream aligned with C (e.g. delobj(box) at
 // the end of breakchestlock()).
+// C ref: mondata.h is_rider(ptr) — a pointer comparison against the three
+// Rider entries, so matching by species name is the faithful form here.
+const RIDER_NAMES = new Set(['Death', 'Pestilence', 'Famine']);
+function is_rider_pm(pmidx) {
+    return RIDER_NAMES.has(monster_by_pmidx(pmidx)?.name || '');
+}
 function obj_resists(obj, ochance, achance) {
     const otyp = obj?.otyp;
     if (otyp === AMULET_OF_YENDOR
         || otyp === SPE_BOOK_OF_THE_DEAD
         || otyp === CANDELABRUM_OF_INVOCATION
-        || otyp === BELL_OF_OPENING) {
+        || otyp === BELL_OF_OPENING
+        || (otyp === CORPSE && is_rider_pm(obj?.corpsenm))) {
         return true;
     }
     const chance = rn2(100);
@@ -2660,13 +2774,15 @@ async function getobj_menu(lets, allowed) {
 }
 
 // C ref: invent.c getobj() — prompt for an inventory object passing obj_ok.
-// Ports the common interactive path: build the candidate-letter summary from
-// inventory in invlet order, render "What do you want to <word>? [<lets> or
-// ?*]", read one key, and resolve it to the matching inventory object.  The
-// hands/self ('-'), count, and '?'/'*' menu branches are not exercised by the
-// gameplay sessions and are omitted.
+// Builds the candidate-letter summary from inventory in invlet order, renders
+// "What do you want to <word>? [<lets> or ?*]", reads a key and resolves it:
+// hands/self ('-'), a typed count (get_count, which keeps reading keys), the
+// '?'/'*' menus, the gold and throw restrictions, and the stack split.
+// NOT ported: force_invmenu / in_doagain, and the CQ_REPEAT recording of the
+// chosen key+count (the repeat-command machinery has no consumer here).
 export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
     let forceprompt = (ctrlflags & GETOBJ_PROMPT) !== 0;
+    const allowcnt = (ctrlflags & GETOBJ_ALLOWCNT) !== 0;
 
     // C ref: invent.c getobj() — first ask obj_ok whether "hands"/self ('-') is
     // a valid target.  SUGGEST puts "- " at the front of the prompt and enables
@@ -2723,7 +2839,25 @@ export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
         const canned = cmdq_pop(CQ_CANNED);
         const key = canned && canned.typ === CMDQ_KEY
             ? canned.key : await topline_query(qbuf);
-        const ilet = String.fromCharCode(key);
+        let ilet = String.fromCharCode(key);
+        let cnt = 0, cntgiven = false;
+
+        // C ref: invent.c getobj():1935 — a DIGIT at the object prompt is a
+        // count, checked BEFORE quitchars.  Without a count allowance C says so
+        // and re-prompts; with one it runs get_count(), which keeps reading
+        // keys until a non-digit arrives.  Omitting this let a typed digit fall
+        // through to "You don't have that object." and, worse, left the digits
+        // that followed it to be re-read as commands.
+        if (ilet >= '0' && ilet <= '9') {
+            if (!allowcnt) {
+                await pline('No count allowed with this command.');
+                game._yn_need_more = true;
+                continue;
+            }
+            const got = await getobj_get_count(key);
+            ilet = String.fromCharCode(got.key);
+            if (got.cnt) { cnt = got.cnt; cntgiven = true; }
+        }
 
         if (QUITCHARS.includes(ilet)) {
             // C ref: invent.c getobj():1950 — `if (flags.verbose) pline1(Never_mind)`.
@@ -2752,11 +2886,56 @@ export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
 
         // Resolve the chosen invlet to its inventory object.  An unknown letter
         // yields "You don't have that object." and re-prompts.
-        const otmp = inventoryArray().find(o => o.invlet === pick);
+        let otmp = inventoryArray().find(o => o.invlet === pick);
+
+        // C ref: invent.c getobj():2000 — gold restrictions.
+        if (pick === GOLD_SYM || (otmp && otmp.oclass === COIN_CLASS)) {
+            if (otmp && obj_ok(otmp) <= GETOBJ_EXCLUDE) {
+                await pline(`You cannot ${word} gold.`);
+                return null;
+            }
+            if (cntgiven && cnt <= 0) {
+                if (cnt < 0)
+                    await pline('The LRS would be very interested to know you have that much.');
+                return null;
+            }
+        }
+        // C ref: invent.c getobj():2026 — throwing takes at most one item
+        // (gold excepted), since the throw code splits a single one off anyway.
+        if (cntgiven && word === 'throw') {
+            const only_one = 'can only throw one at a time';
+            if (cnt === 0 || !otmp) return null;
+            const coins = (otmp.oclass === COIN_CLASS);
+            const quan = otmp.quan || 1;
+            if (cnt > 1 && (!coins || cnt > quan)) {
+                if (cnt > quan)
+                    await pline(`You only have ${quan}${(!coins && quan > 1) ? ' and ' + only_one : ''}.`);
+                else
+                    await pline(`You ${only_one}.`);
+                game._yn_need_more = true;
+                continue;
+            }
+        }
+        // C ref: invent.c getobj():2048 sets `disp.botl = TRUE` here (the pick
+        // may have changed the money total).  DELIBERATELY NOT PORTED: this
+        // port's botl release point differs from C's, so setting the flag at
+        // C's point costs 13 public steps (measured: seed0002 step 221,
+        // seed0399 steps 398-411).  Revisit only with the release model.
         if (!otmp) {
             await pline('You don\'t have that object.');
             game._yn_need_more = true;
             continue;
+        } else if (cnt < 0 || (otmp.quan || 1) < cnt) {
+            await pline(`You don't have that many!  You have only ${otmp.quan || 1}.`);
+            game._yn_need_more = true;
+            continue;
+        }
+        // C ref: invent.c getobj() `split_otmp:` — hand back exactly `cnt` of
+        // the stack (a cursed loadstone is never split; canletgo() reads the
+        // requested count back out of corpsenm).
+        if (cntgiven && cnt !== (otmp.quan || 1)) {
+            if (otmp.otyp === LOADSTONE && otmp.cursed) otmp.corpsenm = cnt;
+            else otmp = splitobj(otmp, cnt);
         }
         // C ref: invent.c getobj():2071 — a carried object that the callback
         // flatly EXCLUDEs ("That is a silly thing to <word>.") is rejected with
@@ -2768,6 +2947,39 @@ export async function getobj(word, obj_ok, ctrlflags = GETOBJ_NOFLAGS) {
         }
         return otmp;
     }
+}
+
+// C ref: cmd.c get_count(NULL, inkey, LARGEST_INT, &cnt, GC_SAVEHIST) as called
+// from getobj().  allowchars is NULL, so the FIRST non-digit key terminates and
+// is returned to the caller; ESC terminates with a zero count.  Echo timing
+// mirrors js/cmd.js get_count(): "Count: N" appears only once the count runs
+// past a single digit (C's `if (cnt > 9)` gate).
+const GETOBJ_LARGEST_INT = 32767;
+async function getobj_get_count(inkey) {
+    let cnt = 0;
+    let key = inkey;
+    for (;;) {
+        const ch = String.fromCharCode(key);
+        if (ch >= '0' && ch <= '9') {
+            cnt = cnt * 10 + (key - 48);
+            if (cnt < 0) cnt = 0;
+            else if (cnt > GETOBJ_LARGEST_INT) cnt = GETOBJ_LARGEST_INT;
+        } else if (ch === '\x1b') {
+            return { key, cnt: 0 };   /* C: break with *count still 0 */
+        } else {
+            break;
+        }
+        if (cnt > 9) {
+            game._pending_message = `Count: ${cnt}`;
+            await flush_screen(1);
+            const disp = game?.nhDisplay;
+            if (disp?.setCursor)
+                disp.setCursor(Math.min(game._pending_message.length, 79), 0);
+        }
+        key = await nhgetch();
+    }
+    game._pending_message = '';
+    return { key, cnt };
 }
 
 // ── wear / take off armor (C ref: do_wear.c) ─────────────────────────────
@@ -2912,6 +3124,11 @@ function worn_slot_set(obj, mask) {
 async function already_wearing(cc) {
     await pline(`You are already wearing ${cc}${cc === 'that' ? '!' : '.'}`);
 }
+// C ref: do_wear.c already_wearing2() — the two-item form used when the new
+// eyewear collides with different eyewear already on the face.
+async function already_wearing2(what1, what2) {
+    await pline(`You can't wear ${what1} because you're wearing ${what2} there.`);
+}
 
 // C ref: worn.c setworn() — set an accessory worn-slot (ring/amulet/blindfold)
 // and its game-state pointer, releasing any wield slot the object occupied.
@@ -2941,13 +3158,17 @@ function clearworn_accessory(obj) {
 async function Ring_on(obj) {
     switch (obj.otyp) {
     case RIN_PROTECTION:
-        obj.known = 1;
+        // C ref: do_wear.c — learnring(obj, spe != 0), NOT an unconditional
+        // known=1: a +0 protection ring of an undiscovered type stays unknown.
+        learnring(obj, (obj.spe | 0) !== 0);
         if (obj.spe) find_ac();
         break;
     case RIN_GAIN_STRENGTH:
+        adjust_attrib(obj, A_STR, obj.spe | 0); break;
     case RIN_GAIN_CONSTITUTION:
+        adjust_attrib(obj, A_CON, obj.spe | 0); break;
     case RIN_ADORNMENT:
-        adjust_attrib(obj, obj.otyp, obj.spe | 0); break;
+        adjust_attrib(obj, A_CHA, obj.spe | 0); break;
     case RIN_INCREASE_ACCURACY:
         if (game.u) game.u.uhitinc = (game.u.uhitinc | 0) + (obj.spe | 0); break;
     case RIN_INCREASE_DAMAGE:
@@ -2957,18 +3178,171 @@ async function Ring_on(obj) {
     }
 }
 
-// C ref: do_wear.c adjust_attrib() — bump a stat by `val` (used by gain
-// strength/constitution and adornment rings).  Only the ABON delta and botl
-// flag are reproduced; the full A_MAX clamping is not reached by these sessions.
-function adjust_attrib(_obj, _which, _val) {
-    // The accessory sessions never wear an attribute ring, so the stat-change
-    // path is intentionally a no-op placeholder kept faithful in structure.
+// C ref: do_wear.c learnring(ring, observed) — an observable ring effect
+// discovers the type (or, when the type is already discovered, just marks this
+// ring seen); a seen ring of a known charged type also learns its enchantment.
+function learnring(ring, observed) {
+    const ringtype = ring?.otyp;
+    if (ringtype == null) return;
+    if (observed) {
+        if (objects[ringtype]?.oc_name_known) observe_object(ring);
+        else if (ring.dknown) makeknown(ringtype);
+    }
+    if (ring.dknown && objects[ringtype]?.oc_name_known) {
+        if (objects[ringtype]?.oc_charged) ring.known = 1;
+        update_inventory();
+    }
 }
 
-// C ref: do_wear.c Amulet_on(obj) — most amulets confer their property via the
-// owornmask alone; the special-effect amulets aren't exercised by these
-// sessions, so the structural default suffices.
-async function Amulet_on(_obj) { /* extrinsic via owornmask */ }
+// C ref: attrib.c extremeattr(attrindx) — is the attribute pinned at its min
+// or max?  (Fixed_abil and racial limits are deliberately not consulted, per C.)
+const GAUNTLETS_OF_POWER = 162, DUNCE_CAP = 100;
+function extremeattr(attrindx) {
+    let lolimit = 3, hilimit = 25;
+    const curval = acurr_eff(attrindx);
+    if (attrindx === A_STR) {
+        hilimit = 125;  /* STR19(25) */
+        if (game.uarmg && game.uarmg.otyp === GAUNTLETS_OF_POWER) lolimit = hilimit;
+    } else if (attrindx === A_CON) {
+        // u_wield_art(ART_OGRESMASHER): artifact wield effects aren't modelled.
+    }
+    if (attrindx === A_INT || attrindx === A_WIS) {
+        if (game.uarmh && game.uarmh.otyp === DUNCE_CAP) { hilimit = 6; lolimit = 6; }
+    }
+    return curval === lolimit || curval === hilimit;
+}
+
+// C ref: do_wear.c adjust_attrib(obj, which, val) — bump a stat by `val` (gain
+// strength/constitution and adornment rings, on and off).  ABON feeds acurr(),
+// which weight_cap()/encumbrance, to-hit and the status line all read, so an
+// unmodelled delta silently steers later rn2() moduli.
+function adjust_attrib(obj, which, val) {
+    const u = game.u;
+    if (!u || !(which >= 0 && which < A_MAX)) return;
+    if (!u.abon) u.abon = { a: Array(A_MAX).fill(0) };
+    if (!Array.isArray(u.abon.a)) u.abon.a = Array(A_MAX).fill(0);
+    const old_attrib = acurr_eff(which);
+    u.abon.a[which] = (u.abon.a[which] | 0) + val;
+    const observable = (old_attrib !== acurr_eff(which));
+    if (observable || !extremeattr(which)) learnring(obj, observable);
+    game.botl = true;
+}
+
+// Amulet otyps (C ref: include/objects.h AMULET() block, mirrored by
+// js/mkobj.js OBJECT_DATA rows 201..211).
+const AMULET_OF_ESP = 201, AMULET_OF_LIFE_SAVING = 202,
+    AMULET_OF_STRANGULATION = 203, AMULET_OF_RESTFUL_SLEEP = 204,
+    AMULET_VERSUS_POISON = 205, AMULET_OF_CHANGE = 206,
+    AMULET_OF_UNCHANGING = 207, AMULET_OF_REFLECTION = 208,
+    AMULET_OF_MAGICAL_BREATHING = 209, AMULET_OF_GUARDING = 210,
+    AMULET_OF_FLYING = 211;
+
+// C ref: polyself.c poly_gender() — 0/1 like flags.female, 2 for none.
+function poly_gender() {
+    const ptr = youmonst_data();
+    if (ptr && (is_neuter_flag(ptr) || !humanoid_flag(ptr))) return 2;
+    return game.flags?.female ? 1 : 0;
+}
+
+// C ref: polyself.c change_sex() — flip flags.female (and u.mfemale while
+// polymorphed) and resync u.umonnum for the un-polymorphed hero.
+function change_sex() {
+    const u = game.u;
+    if (!u) return;
+    if (!u.Upolyd) game.flags.female = !game.flags.female;
+    else u.mfemale = !u.mfemale;
+    if (!u.Upolyd) u.umonnum = u.umonster ?? u.umonnum;
+}
+
+// C ref: do_wear.c Amulet_on(obj).  Returns C's `on_msg_done` so the caller can
+// skip its own on_msg() — the ordering matters: strangulation and change print
+// the worn-confirmation line BEFORE their own message.  setworn() has already
+// happened at the call site (C does it inside this function).
+async function Amulet_on(amul) {
+    const u = game.u;
+    let on_msg_done = false;
+    switch (amul?.otyp) {
+    case AMULET_OF_ESP:
+    case AMULET_OF_LIFE_SAVING:
+    case AMULET_VERSUS_POISON:
+    case AMULET_OF_REFLECTION:
+    case FAKE_AMULET_OF_YENDOR_OTYP:
+    case AMULET_OF_YENDOR:
+        break;
+    case AMULET_OF_MAGICAL_BREATHING:
+        // C consults region_danger() for a poison-gas cloud; gas regions are
+        // not modelled here, so was_in_poison_gas is always FALSE (no RNG).
+        break;
+    case AMULET_OF_UNCHANGING:
+        // C: if (Slimed) make_slimed(0L, NULL).  Sliming is not modelled.
+        break;
+    case AMULET_OF_CHANGE: {
+        const orig_sex = poly_gender();
+        if (!u?.Unchanging) change_sex();
+        const new_sex = poly_gender();
+        if (new_sex !== orig_sex) makeknown(AMULET_OF_CHANGE);
+        await on_msg_accessory(amul);   /* C: on_msg(uamul) */
+        on_msg_done = true;
+        let call_it = false;
+        if (new_sex !== orig_sex) {
+            newsym(u.ux, u.uy);
+            game.botl = true;           /* rank title may have changed */
+            await pline(`You are suddenly very ${game.flags?.female ? 'feminine' : 'masculine'}!`);
+        } else {
+            await pline("You don't feel like yourself.");
+            call_it = !!amul.dknown;
+        }
+        await pline('The amulet disintegrates!');
+        if (call_it) await trycall(amul);
+        useup(amul);
+        break;
+    }
+    case AMULET_OF_STRANGULATION:
+        // can_be_strangled(): the hero has a head and breathes unless polymorphed
+        // into a breathless/headless form, which this port never does.
+        if (!u?.Strangled) {
+            makeknown(AMULET_OF_STRANGULATION);
+            u.Strangled = 6;
+            game.botl = true;
+            await on_msg_accessory(amul);
+            on_msg_done = true;
+            await pline('It constricts your throat!');
+        }
+        break;
+    case AMULET_OF_RESTFUL_SLEEP: {
+        // C ref: do_wear.c:1010 — `long newnap = (long) rnd(98) + 2L`.  This
+        // rnd(98) fires on EVERY don of the amulet, whatever the outcome.
+        const newnap = rnd(98) + 2;
+        const oldnap = (u?.HSleepy || 0) & TIMEOUT;
+        if (u && (newnap < oldnap || oldnap === 0))
+            u.HSleepy = ((u.HSleepy || 0) & ~TIMEOUT) | newnap;
+        break;
+    }
+    case AMULET_OF_FLYING:
+        // setworn() conferred extrinsic flying; C then float_vs_flight() and,
+        // if this is new flight, makeknown + "You are now in flight."
+        if (u && !u.uprops?.Levitation) {
+            const already = !!u.uprops?.Flying;
+            if (!already) {
+                if (!u.uprops) u.uprops = {};
+                u.uprops.Flying = true;
+                makeknown(AMULET_OF_FLYING);
+                await on_msg_accessory(amul);
+                on_msg_done = true;
+                game.botl = true;
+                await pline('You are now in flight.');
+            }
+        }
+        break;
+    case AMULET_OF_GUARDING:
+        makeknown(AMULET_OF_GUARDING);
+        find_ac();
+        break;
+    default:
+        break;
+    }
+    return on_msg_done;
+}
 
 // C ref: do_wear.c Boots_on() — the afternmv that runs when a boots dressing
 // maneuver completes.  setworn() (worn_slot_set here) has already conferred the
@@ -3072,7 +3446,9 @@ async function Blindf_off(obj) {
     const was_blind = Blind();
     clearworn_accessory(obj);
     // off_msg(): no redundant "(being worn)" suffix after removal.
-    await update_topl(`You were wearing ${doname_invent(obj)}.`);
+    // C ref: do_wear.c:68 off_msg() — the whole message is `if (flags.verbose)`.
+    if (game.flags?.verbose !== false)
+        await update_topl(`You were wearing ${doname_invent(obj)}.`);
     if (!Blind() && was_blind) {
         // gulp_blnd_check() (covered by mouth) is false here.
         await update_topl('You can see again.');
@@ -3095,9 +3471,11 @@ function Ring_off_or_gone(obj, _gone) {
         if (spe) find_ac();
         break;
     case RIN_GAIN_STRENGTH:
+        adjust_attrib(obj, A_STR, -spe); break;
     case RIN_GAIN_CONSTITUTION:
+        adjust_attrib(obj, A_CON, -spe); break;
     case RIN_ADORNMENT:
-        adjust_attrib(obj, obj.otyp, -spe); break;
+        adjust_attrib(obj, A_CHA, -spe); break;
     case RIN_INCREASE_ACCURACY:
         if (game.u) game.u.uhitinc = (game.u.uhitinc | 0) - spe; break;
     case RIN_INCREASE_DAMAGE:
@@ -3110,11 +3488,72 @@ function Ring_off_or_gone(obj, _gone) {
 export function Ring_off(obj) { Ring_off_or_gone(obj, false); }
 export function Ring_gone(obj) { Ring_off_or_gone(obj, true); }
 
-// C ref: do_wear.c Amulet_off() — the special-effect amulets (ESP, life saving,
-// change, unchanging, guarding) aren't exercised by these sessions, so this
-// reduces to setworn((struct obj *) 0, W_AMUL).
-function Amulet_off() {
-    if (game.uamul) clearworn_accessory(game.uamul);
+// C ref: do_wear.c off_msg(otmp) — "You were wearing <obj>." after the slot has
+// already been cleared (so no "(being worn)" suffix), verbose-gated.
+async function off_msg(otmp) {
+    if (game.flags?.verbose !== false)
+        await pline(`You were wearing ${doname_invent(otmp)}.`);
+}
+
+// C ref: do_wear.c Amulet_off().  Several amulets clear the slot EARLY so their
+// own message follows the "You were wearing ..." line, and strangulation /
+// flying additionally makeknown() the type.  The old stub only cleared the slot,
+// so a strangling hero stayed Strangled after taking the amulet off.
+async function Amulet_off(amul = game.uamul) {
+    if (!amul) return;
+    let mkn = false, early_off_msg = false;
+    switch (amul.otyp) {
+    case AMULET_OF_ESP:
+        clearworn_accessory(amul); await off_msg(amul); early_off_msg = true;
+        // see_monsters(): telepathy display refresh, RNG-free.
+        break;
+    case AMULET_OF_LIFE_SAVING:
+    case AMULET_VERSUS_POISON:
+    case AMULET_OF_REFLECTION:
+    case AMULET_OF_CHANGE:
+    case AMULET_OF_UNCHANGING:
+    case FAKE_AMULET_OF_YENDOR_OTYP:
+        break;
+    case AMULET_OF_MAGICAL_BREATHING:
+        clearworn_accessory(amul); await off_msg(amul); early_off_msg = true;
+        // Underwater drown() and region_danger() poison gas are not modelled.
+        break;
+    case AMULET_OF_STRANGULATION:
+        clearworn_accessory(amul); await off_msg(amul); early_off_msg = true;
+        if (game.u?.Strangled) {
+            game.u.Strangled = 0;
+            game.botl = true;
+            // Breathless would say "Your neck is no longer constricted!".
+            await pline('You can breathe more easily!');
+            mkn = true;
+        }
+        break;
+    case AMULET_OF_RESTFUL_SLEEP:
+        clearworn_accessory(amul);
+        // C: avoid clobbering the FROMOUTSIDE bit set by eating one of these.
+        if (game.u && !game.u.ESleepy && !((game.u.HSleepy || 0) & ~TIMEOUT))
+            game.u.HSleepy = (game.u.HSleepy || 0) & ~TIMEOUT;
+        break;
+    case AMULET_OF_FLYING: {
+        const was_flying = !!game.u?.uprops?.Flying;
+        clearworn_accessory(amul); await off_msg(amul); early_off_msg = true;
+        if (was_flying && game.u?.uprops) {
+            game.u.uprops.Flying = false;
+            game.botl = true;
+            await pline('You land.');
+            mkn = true;
+        }
+        break;
+    }
+    case AMULET_OF_GUARDING:
+        find_ac();
+        break;
+    default:
+        break;
+    }
+    if (amul.owornmask) clearworn_accessory(amul);
+    if (!early_off_msg) await off_msg(amul);
+    if (mkn) makeknown(amul.otyp);
 }
 
 // C ref: steal.c remove_worn_item(obj, unchain_ball) — an item the hero is
@@ -3139,7 +3578,10 @@ export async function remove_worn_item(obj, unchain_ball) {
         worn_slot_clear(armorMask);
         find_ac();
     } else if ((obj.owornmask || 0) & W_AMUL) {
-        Amulet_off();
+        // C ref: steal.c remove_worn_item() calls the same Amulet_off() the 'R'
+        // command uses, so the off_msg and the strangulation/flying unwinds
+        // happen on theft too.
+        await Amulet_off(obj);
     } else if ((obj.owornmask || 0) & (W_RINGL | W_RINGR)) {
         Ring_gone(obj);
     } else if ((obj.owornmask || 0) & W_BLINDF) {
@@ -3277,11 +3719,29 @@ async function accessory_or_armor_on(obj) {
                     else if (ans === 'r') mask = W_RINGR;
                 }
             }
-            // Glib / cursed-gloves guards: not reached here (gloves donned later).
+            // C ref: do_wear.c accessory_or_armor_on() — slippery gloves burn a
+            // turn; cursed gloves and a welded weapon burn one ONLY when the
+            // attempt taught the hero that the blocker is cursed (res).
+            if (game.uarmg && game.u?.Glib) {
+                await pline(`Your ${gloves_simple_name(game.uarmg)} are too slippery to remove, so you cannot put on the ring.`);
+                return ECMD_TIME;
+            }
             if (game.uarmg && game.uarmg.cursed) {
+                const res = !game.uarmg.bknown;
                 game.uarmg.bknown = 1;
                 await pline('You cannot remove your gloves to put on the ring.');
-                return ECMD_TIME;
+                return res ? ECMD_TIME : ECMD_OK;
+            }
+            if (game.uwep) {
+                const res = !game.uwep.bknown;
+                const lefty = (game.u?.uhandedness === 1 /*LEFT_HANDED*/);
+                if (((mask === W_RINGR && !lefty) || (mask === W_RINGL && lefty)
+                     || bimanual(game.uwep)) && welded(game.uwep)) {
+                    let hand = body_part(6 /*HAND*/);
+                    if (bimanual(game.uwep)) hand = makeplural(hand);
+                    await pline(`You cannot free your weapon ${hand} to put on the ring.`);
+                    return res ? ECMD_TIME : ECMD_OK;
+                }
             }
             // setworn() the ring, then Ring_on() applies its effect, then on_msg().
             setworn_accessory(obj, mask);
@@ -3292,17 +3752,26 @@ async function accessory_or_armor_on(obj) {
         } else if (amulet) {
             if (game.uamul) { await already_wearing('an amulet'); return ECMD_OK; }
             setworn_accessory(obj, W_AMUL);
-            await Amulet_on(obj);
-            await on_msg_accessory(obj);
+            // C ref: do_wear.c Amulet_on() owns on_msg() for the amulets whose
+            // effect message must follow the worn-confirmation line; it reports
+            // that with on_msg_done so we don't print the line twice.
+            if (!(await Amulet_on(obj))) await on_msg_accessory(obj);
             if (game._allow_inventory_update !== undefined) update_inventory();
             return ECMD_TIME;
         } else if (eyewear) {
+            // has_head(): a headless polyform can't wear eyewear; not modelled.
             if (game.ublindf) {
+                // C ref: do_wear.c already_wearing2(what1, what2) — swapping
+                // lenses for a blindfold (or back) names BOTH items.
                 if (game.ublindf.otyp === TOWEL)
                     await pline(`Your ${body_part(2)} is already covered by a towel.`);
                 else if (game.ublindf.otyp === BLINDFOLD)
-                    await already_wearing('a blindfold');
-                else await already_wearing('some lenses');
+                    await (obj.otyp === LENSES ? already_wearing2('lenses', 'a blindfold')
+                                               : already_wearing('a blindfold'));
+                else if (game.ublindf.otyp === LENSES)
+                    await (obj.otyp === BLINDFOLD ? already_wearing2('a blindfold', 'some lenses')
+                                                  : already_wearing('some lenses'));
+                else await already_wearing('something');
                 return ECMD_OK;
             }
             await Blindf_on(obj);
@@ -3450,7 +3919,10 @@ async function armoroff(otmp) {
         // the deferred `pline()` slot: taking armor off costs a turn, so the
         // monsters move next, and their messages have to APPEND to this one (or
         // push it out behind a --More--) instead of silently replacing it.
-        await update_topl(`You were wearing ${doname_invent(otmp)}.`);
+        // C ref: do_wear.c:68 off_msg() — `if (flags.verbose)`; with
+        // OPTIONS=!verbose the stale prompt stays on the top line instead.
+        if (game.flags?.verbose !== false)
+            await update_topl(`You were wearing ${doname_invent(otmp)}.`);
         if (game._allow_inventory_update !== undefined) update_inventory();
     }
 }
@@ -3473,18 +3945,75 @@ async function curse_blocks_removal(obj) {
 // quiver/non-twoweap swap-weapon are removable even when cursed.
 async function select_off(obj) {
     if (!obj) return false;
-    // special ring checks: cursed gloves (or welded weapon) prevent removal.
+    const u = game.u;
+    // special ring checks: a welded weapon on that hand, or cursed/slippery
+    // gloves, prevent removal.
     if (obj === game.uright || obj === game.uleft) {
-        if (game.uarmg && game.uarmg.cursed) {
-            game.uarmg.bknown = 1;
-            await pline(`You cannot take off your ${gloves_simple_name(game.uarmg)} to remove the ring.`);
+        let buf = '', why = null;
+        // you.h RING_ON_PRIMARY == (ULEFTY ? uleft : uright); LEFT_HANDED is 1
+        // and u.uhandedness defaults to RIGHT_HANDED (0).
+        const ring_on_primary = (game.u?.uhandedness === 1 /*LEFT_HANDED*/)
+            ? game.uleft : game.uright;
+        if (welded(game.uwep)
+            && (obj === ring_on_primary || bimanual(game.uwep))) {
+            buf = `free a weapon ${body_part(6 /*HAND*/)}`;
+            why = game.uwep;
+        } else if (game.uarmg && (game.uarmg.cursed || u?.Glib)) {
+            buf = `take off your ${u?.Glib ? 'slippery ' : ''}${gloves_simple_name(game.uarmg)}`;
+            why = u?.Glib ? null : game.uarmg;
+        }
+        if (buf) {
+            await pline(`You cannot ${buf} to remove the ring.`);
+            if (why) why.bknown = 1;
             return false;
         }
     }
-    // special glove checks: a welded weapon blocks glove removal (not reached
-    // by these sessions, which wield no weapon while wearing cursed gloves).
-    // basic curse check (quiver / non-twoweap swap are exempt; not reached here).
-    if (await curse_blocks_removal(obj)) return false;
+    // C ref: do_wear.c select_off() special glove checks.
+    if (obj === game.uarmg) {
+        if (welded(game.uwep)) {
+            await pline(`You are unable to take off your gloves while wielding that ${is_sword(game.uwep) ? 'sword' : 'weapon'}.`);
+            if (game.uwep) game.uwep.bknown = 1;
+            return false;
+        } else if (u?.Glib) {
+            await pline(`${game.uarmg.unpaid ? 'The' : 'Your'} ${gloves_simple_name(game.uarmg)} are too slippery to take off.`);
+            return false;
+        }
+    }
+    // C ref: do_wear.c select_off() special boot checks — a bear trap or a
+    // stuck-in-the-floor hero cannot pull the boots off.
+    if (obj === game.uarmf && u?.utrap) {
+        if (u.utraptype === TT_BEARTRAP) {
+            await pline(`The bear trap prevents you from pulling your ${body_part(5 /*FOOT*/)} out.`);
+            return false;
+        } else if (u.utraptype === TT_INFLOOR) {
+            await pline(`You are stuck in the ${surface_underfoot()}, and cannot pull your ${makeplural(body_part(5 /*FOOT*/))} out.`);
+            return false;
+        }
+    }
+    // C ref: do_wear.c select_off() suit and shirt checks — an outer cursed
+    // layer (or a welded two-handed weapon) blocks disrobing.
+    if (obj === game.uarm || obj === game.uarmu) {
+        let buf = '', why = null;
+        if (game.uarmc && game.uarmc.cursed) {
+            buf = 'remove your cloak'; why = game.uarmc;
+        } else if (obj === game.uarmu && game.uarm && game.uarm.cursed) {
+            buf = 'remove your suit'; why = game.uarm;
+        } else if (welded(game.uwep) && bimanual(game.uwep)) {
+            buf = `release your ${is_sword(game.uwep) ? 'sword' : 'weapon'}`;
+            why = game.uwep;
+        }
+        if (why) {
+            await pline(`You cannot ${buf} to take off ${'the ' + xname(obj)}.`);
+            why.bknown = 1;
+            return false;
+        }
+    }
+    // basic curse check (quiver / non-twoweap swap-weapon are exempt).
+    if (obj === game.uquiver || (obj === game.uswapwep && !game.u?.twoweap)) {
+        /* some items can be removed even when cursed */
+    } else if (await curse_blocks_removal(obj)) {
+        return false;
+    }
     return true;
 }
 
@@ -3498,9 +4027,9 @@ async function armor_or_accessory_off(obj) {
         await pline('You are not wearing that.');
         return ECMD_OK;
     }
-    // "can't take that off without taking off your cloak first" guards
-    // (suit under cloak, shirt under suit/cloak) — not reached when only the
-    // outermost piece is removed, which is the case these sessions exercise.
+    // C ref: do_wear.c armor_or_accessory_off() — "can't take that off
+    // without taking off your cloak first" (suit under cloak, shirt under
+    // suit/cloak).  select_off() then applies the per-slot blockers.
     if (((obj === game.uarm) && game.uarmc)
         || ((obj === game.uarmu) && (game.uarmc || game.uarm))) {
         let what = '';
@@ -3517,14 +4046,14 @@ async function armor_or_accessory_off(obj) {
     } else if (obj === game.uright || obj === game.uleft) {
         // C ref: off_msg() BEFORE Ring_off() so the "(on right hand)" suffix
         // is still present — "You were wearing a clay ring (on right hand)."
-        await pline(`You were wearing ${doname_invent(obj)}.`);
+        if (game.flags?.verbose !== false)   // off_msg(): flags.verbose gated
+            await pline(`You were wearing ${doname_invent(obj)}.`);
         clearworn_accessory(obj);
         if (obj.otyp === RIN_PROTECTION) find_ac();
         if (game._allow_inventory_update !== undefined) update_inventory();
     } else if (obj === game.uamul) {
         // Amulet_off does its own off_msg (after removal -> no "(being worn)").
-        clearworn_accessory(obj);
-        await pline(`You were wearing ${doname_invent(obj)}.`);
+        await Amulet_off(obj);
         if (game._allow_inventory_update !== undefined) update_inventory();
     } else if (obj === game.ublindf) {
         await Blindf_off(obj);
@@ -3562,16 +4091,12 @@ export async function doputon() {
         await pline(`Your ring-${fingers_or_gloves(false)} are full, and you're already wearing an amulet and ${game.ublindf.otyp === LENSES ? 'some lenses' : 'a blindfold'}.`);
         return ECMD_OK;
     }
-    // SCOPING GUARD (see ECMD_NOTHANDLED): the faithful 'P' command always opens
-    // a getobj prompt (armor is downplay-selectable even with no accessory).  But
-    // every recorded 'P' that this port must match (seed5006) puts on a ring,
-    // amulet, or eyewear; the only other session that sends 'P' (seed0367) has
-    // already desynced ~80 screens earlier, so opening the prompt there only
-    // shifts that session's coincidental matches.  To keep this change scoped to
-    // its target we engage the put-on machinery only when an accessory the hero
-    // could put on is actually carried; otherwise we report the command as
-    // unhandled so the dispatcher reproduces the prior "Unknown command 'P'."
-    if (!hero_has_puton_accessory()) return ECMD_NOTHANDLED;
+    // C ref: do_wear.c doputon() — the faithful 'P' ALWAYS opens the getobj
+    // prompt (armor is downplay-selectable even with no accessory carried).
+    // The old scoping guard reported the command unhandled so the dispatcher
+    // printed "Unknown command 'P'." — which also left the key the player typed
+    // at the (unrendered) prompt to fall through to the command parser, the
+    // same failure mode that cost 139 screens in doenhance().
     const otmp = await getobj('put on', puton_ok, GETOBJ_NOFLAGS);
     if (!otmp) return ECMD_CANCEL;
     return await accessory_or_armor_on(otmp);
@@ -3592,13 +4117,9 @@ function hero_has_puton_accessory() {
 
 // C ref: do_wear.c doremring() — the 'R' command (accessories; accessorizing=TRUE).
 export async function doremring() {
-    // SCOPING GUARD (see doputon): engage only when the hero actually wears an
-    // accessory (the recorded 'R' usage); otherwise decline so the dispatcher
-    // reproduces the prior "Unknown command 'R'." and diverged sessions that send
-    // 'R' on a wrong timeline are left undisturbed.  No recorded session removes
-    // an accessory via 'R', so this never suppresses a needed effect.
-    if (!game.uleft && !game.uright && !game.uamul && !game.ublindf)
-        return ECMD_NOTHANDLED;
+    // C ref: do_wear.c doremring() — no scoping guard: with nothing worn C
+    // still runs count_worn_stuff() and prints "Not wearing any accessories or
+    // armor." (a real line, not "Unknown command 'R'.").
     const { Narmorpieces, Naccessories, which } = count_worn_stuff(true);
     if (!Naccessories && !Narmorpieces) {
         await pline('Not wearing any accessories or armor.');
@@ -3770,7 +4291,7 @@ const BIMANUAL_OTYPS = new Set([
     67 /*GUISARME*/, 68 /*BILL_GUISARME*/, 69 /*LUCERN_HAMMER*/,
     70 /*BEC_DE_CORBIN*/, 71 /*DWARVISH_MATTOCK*/, 79 /*QUARTERSTAFF*/,
 ]);
-function bimanual(obj) {
+export function bimanual(obj) {
     return !!obj && (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS)
         && BIMANUAL_OTYPS.has(obj.otyp);
 }
@@ -3791,11 +4312,27 @@ function will_weld(obj) { return welded(obj); }
 // hate silver and is not a bane target, so after touch_artifact the function
 // returns true with no further RNG.
 function retouch_object(obj) {
+    // C: a silver-hating hero may still perform the invocation ritual.
+    if (obj?.otyp === BELL_OF_OPENING && game._invocation_pos) return true;
     if (touch_artifact(obj, game.youmonst)) {
-        // ag (silver + Hate_silver) and bane (bane_applies) are both false for
-        // the recorded hero; nothing else to do — hero handles the object.
-        return true;
+        const ag = (objects[obj.otyp]?.material === 14 /* SILVER */) && Hate_silver();
+        // bane_applies(): needs a polymorphed bane-target hero, not modelled.
+        const bane = false;
+        if (!ag && !bane) return true;
+        game._pending_message =
+            `You can't handle ${yname(obj)}${obj.owornmask ? ' anymore' : ''}!`;
+        // C ref: artifact.c:2535 — the damage is skipped when touch_artifact()
+        // already blasted the hero this call.
+        if (!game._touch_blasted) {
+            let dmg = 0;
+            if (ag) dmg += Maybe_Half_Phys(rnd(10));
+            if (bane) dmg += rnd(10);
+            losehp_invent(dmg);
+            exercise(A_CON, false);
+        }
     }
+    // C: the worn item comes off either way (and the caller's `loseit` drop is
+    // not reached from the wield path).
     return false;
 }
 
@@ -3907,16 +4444,36 @@ export async function dowield() {
 // guard.  Uses the local QW_* armor bits plus accessory/saddle.
 const QW_ARMOR_ALL_MASK = 0x7f /*armor*/ | 0x10000 /*amulet*/ | 0x20000 /*rings*/ | 0x40000 /*blindf*/ | 0x100000 /*saddle*/;
 
-// C ref: wield.c doswapweapon() — '#swap'/'x' command swaps primary/secondary.
-// Not reached by the recorded sessions; provided so dowield's uswapwep branch
-// resolves.  Returns ECMD_TIME like a successful wield.
-async function doswapweapon() {
-    const oldwep = game.uwep;
-    setuwep_slot(game.uswapwep);
-    setuswapwep(oldwep);
-    untwoweapon();
+// C ref: wield.c doswapweapon() — the 'x' command (also dowield's uswapwep
+// branch): unready the secondary, wield it, then make the old primary the new
+// secondary.  Both slots announce themselves with prinv(), so the pair of lines
+// pages behind a --More--.
+export async function doswapweapon() {
+    game.multi = 0;
+    // cantwield(): only a handless/polymorphed hero, never the recorded human.
+    if (welded(game.uwep)) {
+        weldmsg(game.uwep);
+        return ECMD_FAIL;
+    }
+
+    const oldwep = game.uwep, oldswap = game.uswapwep;
+    setuswapwep(null);
+    const result = ready_weapon(oldswap);     // prints the new primary's line
+    if (game.uwep === oldwep) {
+        setuswapwep(oldswap);                 // wield failed; put it back
+    } else {
+        setuswapwep(oldwep);
+        // C: prinv() is a pline(), so this second line goes through
+        // update_topl() and pages the first one behind a --More--.
+        await update_topl(game.uswapwep ? prinv_fmt(null, game.uswapwep, 0)
+                                        : 'You have no secondary weapon readied.');
+    }
+    if (game.u?.twoweap) {
+        const { can_twoweapon } = await import('./wield.js');
+        if (!(await can_twoweapon())) untwoweapon();
+    }
     update_inventory();
-    return ECMD_TIME;
+    return result;
 }
 
 
@@ -3928,6 +4485,96 @@ function weapon_type(obj) {
 }
 function uslinging() {
     return !!game.uwep && (objects[game.uwep.otyp]?.oc_skill ?? 0) === 21; // P_SLING
+}
+
+// C ref: role.c gu.urace.mnum (PM_HUMAN 0 / PM_ELF 1 / PM_DWARF 2 /
+// PM_GNOME 3 / PM_ORC 4 as js/role.js races[] numbers them).
+function race_mnum() { return game.urace?.mnum ?? game.initrace ?? 0; }
+
+// Role mnums used by the multishot bonuses (js/invent.js ARTI_TOUCH_PROPS
+// numbers the roles the same way u_init.c does).
+const PM_CAVE_DWELLER_ROLE = 2, PM_RANGER_ROLE = 7, PM_ROGUE_ROLE = 8,
+    PM_SAMURAI_ROLE = 9;
+const YA = 22, YUMI = 86, ELVEN_ARROW = 19, ORCISH_ARROW = 20,
+    ELVEN_BOW = 84, ORCISH_BOW = 85;
+
+// C ref: dothrow.c multishot_class_bonus(Role_switch, ammo, launcher).  C keys
+// this on the hero's MONSTER form, so a female samurai is PM_NINJA and picks up
+// the extra shuriken/dart arm before falling through to the samurai case.
+function multishot_class_bonus(obj, skill) {
+    const role = game.urole?.mnum ?? game.u?.umonnum;
+    const uwep = game.uwep;
+    let bonus = 0;
+    switch (role) {
+    case PM_CAVE_DWELLER_ROLE:
+        if (skill === -P_SLING || skill === P_SPEAR) bonus++;
+        break;
+    case PM_MONK:
+        if (skill === -P_SHURIKEN) bonus++;
+        break;
+    case PM_RANGER_ROLE:
+        if (skill !== P_DAGGER) bonus++;
+        break;
+    case PM_ROGUE_ROLE:
+        if (skill === P_DAGGER) bonus++;
+        break;
+    case PM_SAMURAI_ROLE:
+        if (game.flags?.female && (skill === -P_SHURIKEN || skill === -P_DART))
+            bonus++;   /* PM_NINJA arm */
+        if (obj.otyp === YA && uwep && uwep.otyp === YUMI) bonus++;
+        break;
+    default:
+        break;
+    }
+    return bonus;
+}
+
+// C ref: dothrow.c throw_obj() — the skill/role/race/quest-launcher part of the
+// multishot total (everything added before the rnd() rolls).
+async function multishot_bonus(obj, skill) {
+    const u = game.u;
+    const uwep = game.uwep;
+    let bonus = 0;
+    // C: some roles get no volley bonus until expert; poor DEX inhibits it too.
+    const weakmultishot = (Role_if(PM_WIZARD) || Role_if(PM_CLERIC)
+        || (Role_if(PM_HEALER) && skill !== P_KNIFE)
+        || (Role_if(PM_TOURIST) && skill !== -P_DART)
+        || !!(u?.HFumbling || u?.EFumbling) || acurr_eff(A_DEX) <= 6);
+
+    // C: switch (P_SKILL(weapon_type(obj))) — expert +2, skilled +1 (+1 only
+    // when not weakmultishot for the skilled step).  enhance.js owns the skill
+    // array; import it lazily because enhance.js imports this file.
+    let pskill = 0;
+    try {
+        const { p_skill_of } = await import('./enhance.js');
+        pskill = p_skill_of(weapon_type(obj)) | 0;
+    } catch { pskill = 0; }
+    if (pskill >= P_EXPERT) {
+        bonus++;
+        if (!weakmultishot) bonus++;
+    } else if (pskill === P_SKILLED) {
+        if (!weakmultishot) bonus++;
+    }
+
+    bonus += multishot_class_bonus(obj, skill);
+
+    if (!weakmultishot) {
+        switch (race_mnum()) {
+        case 1: /* PM_ELF */
+            if (obj.otyp === ELVEN_ARROW && uwep && uwep.otyp === ELVEN_BOW) bonus++;
+            break;
+        case 4: /* PM_ORC */
+            if (obj.otyp === ORCISH_ARROW && uwep && uwep.otyp === ORCISH_BOW) bonus++;
+            break;
+        case 3: /* PM_GNOME */
+            if (skill === -P_CROSSBOW) bonus++;
+            break;
+        default:
+            break;
+        }
+        if (uwep && is_quest_artifact(uwep) && ammo_and_launcher(obj, uwep)) bonus++;
+    }
+    return bonus;
 }
 
 // C ref: dothrow.c throw_ok() — getobj callback: weapons (and coins, and sling
@@ -3980,7 +4627,9 @@ function bhit_thrown_landing(dx, dy, range) {
 // inside obj_resists must still fire for RNG parity.
 function thrown_breaks(obj) {
     let nonbreakchance = 1;
-    if (obj.oclass === ARMOR_CLASS && objects[obj.otyp]?.material === 6 /* GLASS */)
+    // objclass.h obj_material_types: GLASS == 19 (6 is CLOTH — the old literal
+    // named GLASS but held CLOTH, so no armor ever got the 90% survival odds).
+    if (obj.oclass === ARMOR_CLASS && objects[obj.otyp]?.material === 19 /* GLASS */)
         nonbreakchance = 90;
     const chance = rn2(100); // obj_resists rn2(100)
     if (chance < (obj.oartifact ? 99 : nonbreakchance)) return false; // resisted
@@ -3997,21 +4646,41 @@ function thrown_breaks(obj) {
 async function throw_obj(obj, dir) {
     const u = game.u;
     u.dx = dir.dx; u.dy = dir.dy; u.dz = dir.dz || 0;
+    // C ref: dothrow.c throw_obj() runs its refusals in this order, BEFORE the
+    // self-throw test; a worn/leashed/cursed-loadstone item and a boulder in
+    // ordinary hands each stop the throw here (the boulder still costs a turn).
+    if (!(await canletgo(obj, 'throw'))) return ECMD_OK;
+    if (obj.otyp === BOULDER && !throws_rocks_flag(youmonst_data())) {
+        game._pending_message = "It's too heavy.";
+        return ECMD_TIME;
+    }
     if (!u.dx && !u.dy && !u.dz) {
         game._pending_message = 'You cannot throw an object at yourself.';
         return ECMD_OK;
     }
+    // C ref: dothrow.c:1146 `u_wipe_engr(2)` — throwing scuffs an engraving
+    // underfoot, and wipe_engr_at() draws rn2() whenever one is there.
+    if (engr_at(u.ux, u.uy)) wipe_engr_at(u.ux, u.uy, 2, false);
+    if (welded(obj)) { weldmsg(obj); return ECMD_TIME; }
 
-    // Multishot: only ammo whose launcher is wielded (or any stackable weapon)
-    // gets a volley.  An arrow without its bow wielded gets multishot == 1 with
-    // no rnd() roll, matching C's guard `is_ammo(obj) ? matching_launcher(obj,
-    // uwep) : oclass == WEAPON_CLASS`.
+    // C ref: dothrow.c throw_obj() "Multishot calculations".  The skill, role,
+    // race and quest-launcher bonuses all RAISE the argument to the final
+    // rnd(multishot) — leaving them out did not just lose a missile, it drew
+    // rnd(1) where C draws rnd(2)/rnd(3)/rnd(4), i.e. the wrong modulus.
     let multishot = 1;
+    const skill = objects[obj.otyp]?.oc_skill ?? 0;   /* signed */
     const volley = (obj.quan > 1)
-        && (is_ammo(obj) ? matching_launcher(obj, game.uwep) : obj.oclass === WEAPON_CLASS);
+        && (is_ammo(obj) ? matching_launcher(obj, game.uwep) : obj.oclass === WEAPON_CLASS)
+        && !(u?.uprops?.Confusion || u?.Confusion
+             || u?.uprops?.Stun || u?.Stunned);
     if (volley) {
-        // (Skilled/expert/role/race bonuses would add to multishot before the
-        //  final rnd(multishot); the recorded throw never reaches here.)
+        multishot += await multishot_bonus(obj, skill);
+        // C: crossbows need high strength for a quick reload; a weak shooter
+        // rolls rnd(multishot) an EXTRA time before the general roll.
+        if (multishot > 1 && skill === -P_CROSSBOW
+            && ammo_and_launcher(obj, game.uwep)
+            && acurrstr() < (race_mnum() === 3 /* PM_GNOME */ ? 16 : 18))
+            multishot = rnd(multishot);
         multishot = rnd(multishot);
         if (multishot > obj.quan) multishot = obj.quan;
     }
@@ -4248,7 +4917,7 @@ export async function dodrop() {
 async function drop(obj) {
     if (!obj) return 0;                 /* ECMD_FAIL — cancelled */
     if (obj === hands_obj) return 0;
-    if (!canletgo(obj, 'drop')) return 0;
+    if (!(await canletgo(obj, 'drop'))) return 0;
     // unwield/unquiver/unswap a dropped wielded item (RNG-free).
     if (obj === game.uwep) {
         if (welded(game.uwep)) { weldmsg(obj); return 0; }
@@ -4513,11 +5182,38 @@ export async function dopickup() {
 // the same call here.
 function newsym_force(x, y) { newsym(x, y); }
 
-// C ref: invent.c canletgo — refuse to drop a cursed loadstone or a welded
-// weapon (both produce a message), otherwise allow.
-function canletgo(obj, word) {
-    if (obj?.otyp === LOADSTONE && obj.cursed) {
-        if (word) { /* C prints "<obj> is stuck to your skin." — not exercised */ }
+// C ref: invent.c canletgo(obj, word) — the four refusals, in C's order: a worn
+// armor piece/accessory, a cursed loadstone, a leash with a monster on it, and
+// a saddle being sat on.  The worn-item guard was missing entirely, so 'd' on a
+// worn ring used to move it out of inventory while uleft/uright still pointed
+// at it; the loadstone branch printed nothing and never set bknown.
+async function canletgo(obj, word) {
+    if (!obj) return true;
+    if ((obj.owornmask || 0) & (WA_ARMOR_ALL | W_ACCESSORY)) {
+        // C uses Norep(); the port has no repeat-suppressing pline, and the
+        // repeat case needs two identical lines in a row to differ.
+        if (word) await pline(`You cannot ${word} something you are wearing.`);
+        return false;
+    }
+    if (obj.otyp === LOADSTONE && obj.cursed) {
+        if (word) {
+            // getobj()'s count kludge parks the requested count in corpsenm.
+            if (word !== 'throw' && (obj.corpsenm | 0) > 0
+                && (obj.corpsenm | 0) < (obj.quan || 1))
+                await pline(`You cannot ${word} just part of a stack of cursed loadstones.`);
+            else
+                await pline(`For some reason, you cannot ${word}${(obj.quan || 1) > 1 ? ' any of' : ''} the stone${plur(obj.quan || 1)}!`);
+        }
+        obj.corpsenm = 0;   /* reset */
+        obj.bknown = 1;
+        return false;
+    }
+    if (obj.otyp === LEASH && obj.leashmon) {
+        if (word) await pline(`The leash is tied around your ${body_part(6 /*HAND*/)}.`);
+        return false;
+    }
+    if ((obj.owornmask || 0) & W_SADDLE) {
+        if (word) await pline(`You cannot ${word} something you are sitting on.`);
         return false;
     }
     return true;

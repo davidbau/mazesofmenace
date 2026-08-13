@@ -400,7 +400,7 @@ export async function safe_teleds_hero() {
 // room become visible immediately.  No RNG either way.  The rogue-level
 // whole-room relight, Sunsword-invoke, and cursed-darkening paths are not
 // exercised by the covered starts.
-async function litroom(on, obj) {
+export async function litroom(on, obj) {
     if (!on) return; // cursed-scroll darkening not exercised
     const u = game.u;
     const no_op = !!(u?.uswallow || u?.uprops?.Underwater || Is_waterlevel(u?.uz));

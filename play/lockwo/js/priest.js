@@ -8,9 +8,10 @@
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import { isok, ROOMOFFSET, Amask2align, A_NONE, MM_EPRI } from './const.js';
-import { mkobj, SPBOOK_no_NOVEL, curse, uncurse } from './mkobj.js';
+import { mkobj, SPBOOK_no_NOVEL, curse, uncurse,
+         AMULET_OF_YENDOR } from './mkobj.js';
 import { makemon, monster_by_pmidx, name_to_pmidx,
-         mpickobj } from './makemon.js';
+         mongets_pub, mpickobj } from './makemon.js';
 import { is_ok_location, pm_to_humidity } from './sp_lev.js';
 
 // C ref: decl.c xdir[]/ydir[] and hack.h N_DIRS / DIR_CLAMP.  N_DIRS is 8 (the
@@ -96,8 +97,14 @@ export function priestini(lvl, sroom, sx, sy, sanctum) {
     priest.msleeping = 0;
     // set_malign(priest) writes only mtmp->malign; no RNG.
 
-    // C: the sanctum Amulet branch needs shralign == A_NONE *and* the sanctum
-    // level; a valley/temple shrine is never that, and it draws no RNG anyway.
+    // C ref: priest.c:260-263 — the high priest of Moloch holds the real
+    // Amulet.  mongets() -> mksobj(AMULET_OF_YENDOR, TRUE, FALSE) is three
+    // draws: next_ident (mkobj.c:521), the AMULET_CLASS rn2(10) (mkobj.c:1063)
+    // and blessorcurse's rn2(10) (mkobj.c:1846).
+    const sl = game.sanctum_level, uz = game.u?.uz;
+    if (sanctum && priest.epri.shralign === A_NONE
+        && sl && uz && sl.dnum === uz.dnum && sl.dlevel === uz.dlevel)
+        mongets_pub(priest, AMULET_OF_YENDOR);
 
     // 2 to 4 spellbooks.
     for (let cnt = rn1(3, 2); cnt > 0; --cnt)   // priest.c:265

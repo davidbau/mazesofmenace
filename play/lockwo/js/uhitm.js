@@ -2,34 +2,65 @@
 // C ref: src/uhitm.c — do_attack(), hitum(), known_hitum(); weapon.c dmgval().
 //
 // Faithful structural port.  The control flow mirrors uhitm.c do_attack():
-//   1. the is_safemon() pet/peaceful "swap or stop" block (consumes rn2(7));
+//   1. the is_safemon() pet/peaceful "swap or stop" block (consumes rn2(7)
+//      unless Punished short-circuits it);
 //   2. attack_checks() + the actual hitum() melee for hostile monsters.
-// The starter sessions that bump into a tame pet exercise only path (1); the
-// rn2(7) it rolls (uhitm.c:474) must be emitted at exactly the right point so
+// The rn2(7) in (1) (uhitm.c:474) must be emitted at exactly the right point so
 // the downstream RNG stays in lockstep.
+//
+// Still unported, in rough order of RNG weight (see the comment at each site):
+//   peacefuls_respond()   setmangry's witness reactions (needs MS_* + grownups[])
+//   leprechaun dodge      needs m_move(), file-static in monmove.js
+//   hmon_hitmon_jousting  needs a lance + steed; d(2,10) + joust()'s rn2(5)/rnl(50)
+//   hmon_hitmon_splitmon  pudding split; needs clone_mon()
+//   dmgval silver bonus   rnd(20); needs objects[].oc_material
+//   Upolyd / hmonas()     no polymorph in this port at all
 
 import { game } from './gstate.js';
+import { shkname, in_rooms, shop_keeper } from './shkroom.js';
+
+// C ref: shk.c tended_shop(sroom) — shop_keeper(room) still inside his shop.
+// (inhishop() is file-static in shkroom.js; three lines rather than a new
+// cross-file export, since eight ports touch that file.)
+function tended_shop(rno) {
+    const shkp = shop_keeper(rno);
+    if (!shkp) return false;
+    const rmno = game.level?.at(shkp.mx, shkp.my)?.roomno ?? 0;
+    return rmno !== 0 && rmno === shkp.eshk?.shoproom;
+}
 import { WEP_SDAM, WEP_LDAM } from './weapondmg_data.js';
 import { rn2, rnd, d } from './rng.js';
-import { cansee } from './vision.js';
+import { cansee, couldsee } from './vision.js';
 import { m_at, newsym, map_invisible, canseemon_shared } from './display.js';
-import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, ACCESSIBLE, TAINT_AGE,
-         CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE,
-         engulfing_u } from './const.js';
+import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, ACCESSIBLE,
+         TAINT_AGE, CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE,
+         SHOPBASE, engulfing_u, STRAT_WAITMASK,
+         P_NONE, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
+         P_LAST_WEAPON, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT,
+         P_RIDING, ERODE_BURN, ERODE_RUST, ERODE_CORRODE, ER_NOTHING,
+         EF_NONE, EF_GREASE } from './const.js';
 import { Blind } from './vision.js';
-import { exercise } from './attrib.js';
-import { DEADMONSTER, Protection_from_shape_changers, mmove_of, mvitals_died } from './mon.js';
-import { MFLAGS2, M2_NASTY } from './monflags_data.js';
+import { exercise, adjalign } from './attrib.js';
+import { DEADMONSTER, Protection_from_shape_changers, mmove_of, base_mmove,
+         healmon, mvitals_died } from './mon.js';
+import { MFLAGS1, MFLAGS2, M1_WALLWALK, M2_NASTY, M2_ORC, M2_UNDEAD, M2_DEMON,
+         humanoid } from './monflags_data.js';
+const mflags1_of = (ptr) => (ptr?.pmidx != null ? (MFLAGS1[ptr.pmidx] ?? 0) : 0);
 const mflags2_of = (ptr) => (ptr?.pmidx != null ? (MFLAGS2[ptr.pmidx] ?? 0) : 0);
 import { dmgtype, attacktype, AT_ENGL, AT_HUGS, AD_STCK } from './monattk_data.js';
-import { mattk_of, AT_BUTT, AT_WEAP, AT_MAGC, AD_PHYS, AD_BLND, AD_DRLI, AD_STON, AD_SLIM } from './monattk_data.js';
+import { mattk_of, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_STNG, AT_BUTT, AT_TUCH,
+         AT_WEAP, AT_MAGC, AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_ELEC, AD_ACID,
+         AD_BLND, AD_STUN, AD_PLYS, AD_DRLI, AD_STON, AD_SLIM, AD_RUST, AD_CORR,
+         AD_ENCH } from './monattk_data.js';
 import { mkcorpstat, mkobj, mksobj, CORPSE, FIGURINE, place_object, WEAPON_CLASS,
-         objects, COIN_CLASS, STRANGE_OBJECT } from './mkobj.js';
+         TOOL_CLASS, GEM_CLASS, objects, COIN_CLASS, STRANGE_OBJECT } from './mkobj.js';
 import { mon_nocorpse, undead_to_corpse } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { gethungry } from './allmain.js';
-import { is_weptool, objectBaseName, simple_typename, is_plural, otense } from './invent.js';
+import { is_weptool, objectBaseName, simple_typename, is_plural, otense,
+         near_capacity, update_inventory } from './invent.js';
 import { livelog_printf, LL_CONDUCT } from './livelog.js';
+import { engr_at, wipe_engr_at } from './engrave.js';
 
 // ── small monster-state predicates (C: include/monst.h, mondata.h) ──
 
@@ -38,16 +69,20 @@ function helpless(mtmp) {
     return !!(mtmp.msleeping || !mtmp.mcanmove);
 }
 
-// C ref: include/mondata.h is_longworm() — only long worms have a tail; none
-// of the starting pets/early monsters qualify.
-function is_longworm(_mdat) {
-    return false;
+// C ref: include/mondata.h is_longworm(ptr) — PM_BABY_LONG_WORM /
+// PM_LONG_WORM / PM_LONG_WORM_TAIL (pmidx per makemon.js MONS_NAMES).
+const LONGWORM_PMIDX = new Set([112, 114, 330]);
+function is_longworm(mdat) {
+    return mdat != null && LONGWORM_PMIDX.has(mdat.pmidx);
 }
 
-// C ref: include/mondata.h passes_walls() — phasing monsters.  Not relevant
-// for the starting pet, which never passes walls.
-function passes_walls(_mdat) {
-    return false;
+// C ref: include/mondata.h passes_walls(ptr) = (mflags1 & M1_WALLWALK).
+// do_attack()'s pet-swap `foo` reads this: a phasing peaceful/tame monster
+// standing where the hero is inside rock is NOT a reason to stop, so getting
+// it wrong picks the wrong arm of the flee/"doesn't move"/swap three-way
+// (rnd(6) monflee vs rn2(6) vs nothing).
+function passes_walls(mdat) {
+    return (mflags1_of(mdat) & M1_WALLWALK) !== 0;
 }
 
 // C ref: display.c is_safemon() macro (include/display.h:159):
@@ -114,7 +149,10 @@ export function monflee(mtmp, fleetime, first, _fleemsg) {
 // u.dx / u.dy must already be set by the caller (domove).
 export async function do_attack(mtmp) {
     const u = game.u;
-    const Punished = false; // ball & chain not modelled in starter state
+    // C ref: hack.h `#define Punished (uball != 0)`.  This is the FIRST term of
+    // an || chain, so a Punished hero short-circuits the `!rn2(7)` away: the
+    // roll must NOT fire while the ball & chain are attached.
+    const Punished = !!u?.uball;
     const forcefight = !!game.context?.forcefight;
 
     // Protection for peaceful '@' and tame 'd': when safe and not force-
@@ -127,10 +165,29 @@ export async function do_attack(mtmp) {
         const foo = (Punished || !rn2(7)
                      || (is_longworm(mtmp.data) && mtmp.wormno)
                      || (obstructed && !passes_walls(mtmp.data)));
-        const inshop = false; // no tended shop at the bump square in starter state
+        // C ref: uhitm.c:481-487 — only checked when there is no other reason
+        // to stop.  A tended shop under the target means the hero must NOT
+        // swap places with its occupant, so this steers the whole three-way
+        // below (stop / "doesn't seem to move" / swap) and therefore whether
+        // rnd(6) or rn2(6) is rolled at all.
+        let inshop = false;
+        if (!foo) {
+            for (const rno of in_rooms(mtmp.mx, mtmp.my, SHOPBASE))
+                if (tended_shop(rno)) { inshop = true; break; }
+        }
 
         if (inshop || foo) {
-            // (shk dopay() path omitted — not reachable here.)
+            // C ref: uhitm.c:492-494 — bumping a spotted shopkeeper is a
+            // payment attempt, not an attack, and never a place-swap.
+            // (invent.js's dopay() is still the reduced "no shopkeeper here"
+            // stub; the call site is faithful so completing dopay() fixes
+            // this path too.)
+            if (!game.context?.travel && !game.context?.run
+                && canspotmon(mtmp) && mtmp.isshk) {
+                const { dopay } = await import('./invent.js');
+                await dopay();
+                return true;              // ECMD_TIME | dopay()
+            }
             if (mtmp.mtame) { // see 'additional considerations' in C
                 // Use the FULL monmove.c monflee(), not the reduced copy below:
                 // monflee(mtmp, rnd(6), ...) with rnd(6)==1 hits C's `if
@@ -165,11 +222,14 @@ export async function do_attack(mtmp) {
     return await hostile_attack(mtmp);
 }
 
-// C ref: include/permonst.h mons[].mmove — base movement rate; pets all move.
+// C ref: include/permonst.h mons[].mmove — species base movement rate.  This
+// feeds do_attack()'s `mtmp->data->mmove == 0 && rn2(6)`, and MONS[] carries no
+// mmove field, so the old `?? 1` fallback made that rn2(6) unreachable for
+// EVERY monster.  The sessile species (molds, blue/spotted jelly, lichen's
+// mmove==0 neighbours, shriekers' 1) can be peaceful for a co-aligned hero, so
+// walking into one really does roll here.  mon.js owns the audited table.
 function movement_rate(mtmp) {
-    // dogs/cats/ponies all have mmove > 0; default to nonzero for the starter
-    // monsters (the rn2(6) "doesn't move" branch only matters for mmove==0).
-    return (mtmp.data && mtmp.data.mmove != null) ? mtmp.data.mmove : 1;
+    return base_mmove(mtmp);
 }
 
 // ── hostile melee: do_attack tail -> hitum -> known_hitum -> hmon ──
@@ -182,17 +242,48 @@ function movement_rate(mtmp) {
 //   survives a swing], (on hit) dmgval(weapon) [+ exercise(A_DEX) on the first
 //   swing], then the kill aftermath (xkilled rn2(6); corpse_chance rn2(2);
 //   make_corpse -> mkcorpstat -> mksobj corpse next_ident/rndmonnum/gender).
+// C ref: hack.c check_capacity(str) — an Overtaxed (EXT_ENCUMBER) hero can't
+// fight at all.  Returning TRUE aborts do_attack BEFORE overexertion(), so it
+// also suppresses that turn's gethungry() rn2(20) and exercise(A_STR) rn2(19).
+const HVY_ENCUMBER = 3, EXT_ENCUMBER = 4;
+async function check_capacity(str) {
+    if (near_capacity() >= EXT_ENCUMBER) {
+        const { pline } = await import('./display.js');
+        await pline(str || "You can't do that while carrying so much stuff.");
+        return true;
+    }
+    return false;
+}
+
+// C ref: hack.c overexert_hp() — the HP cost of fighting while Strained+.
+async function overexert_hp() {
+    const u = game.u;
+    if ((u.uhp ?? 0) > 1) {
+        u.uhp -= 1;
+        game.disp = game.disp || {};
+        game.disp.botl = true;
+    } else {
+        const { pline } = await import('./display.js');
+        await pline('You pass out from exertion!');
+        exercise(A_CON, false);   // attrib.c exercise(dec) rolls rn2(2)
+        // fall_asleep(-10, FALSE): nomul(-10) with no "You wake up" message.
+        const { nomul } = await import('./hack.js');
+        nomul(-10);
+    }
+}
+
 // C ref: hack.c overexertion() — "combat increases metabolism".  Called by
 // do_attack() before the swing.  Always calls the real gethungry() (the same
 // per-turn function allmain.js's moveloop calls) — an EXTRA nutrition burn on
 // top of the once-per-turn drain, so an attack turn costs 2 hunger instead of
-// 1.  the overexert_hp() HP-drain branch only triggers when heavily encumbered
-// (near_capacity() >= HVY_ENCUMBER) on non-third turns, which never holds for
-// the unencumbered starter hero, so only the gethungry call fires here.
-function overexertion() {
+// 1.  The overexert_hp() arm was previously hardcoded away as "never fires for
+// the unencumbered starter hero": it fires on 2 turns in 3 for ANY hero at
+// Strained or worse, and its exercise(A_CON, FALSE) draws rn2(2).
+async function overexertion() {
     gethungry(); // hack.c:3056 — "consume extra nutrition during combat"
-    // near_capacity() == UNENCUMBERED (< HVY_ENCUMBER) -> no overexert_hp().
-    return false; // gm.multi >= 0 (hero didn't faint)
+    if (((game.moves || 0) % 3) !== 0 && near_capacity() >= HVY_ENCUMBER)
+        await overexert_hp();
+    return (game.multi ?? 0) < 0; // might have fainted (forced to sleep)
 }
 
 // ── attack_checks: pre-swing special cases (mimic/hidden-monster reveal) ──
@@ -322,7 +413,7 @@ function that_is_a_mimic_message(mtmp) {
 // The via_attack aftermath (growl/setmangry/ghod_hitsu/hot_pursuit) isn't
 // modeled — no covered session reaches a hostile-turn/temple/shop reaction
 // from this path yet.
-async function wakeupAttack(mtmp, viaAttack) {
+export async function wakeupAttack(mtmp, viaAttack) {
     const wasSleeping = !!mtmp.msleeping;
     if (wasSleeping && canseemon(mtmp)) {
         const { pline } = await import('./display.js');
@@ -332,7 +423,82 @@ async function wakeupAttack(mtmp, viaAttack) {
     }
     mtmp.msleeping = 0;
     if (mtmp.m_ap_type) seemimicLocal(mtmp);
+    // C ref: mon.c wakeup() via_attack tail.  ghod_hitsu() needs a temple
+    // priest; hot_pursuit() needs `!*u.ushops`, and u.ushops is set the moment
+    // the hero steps onto the shop door, so an in-shop shopkeeper skips it.
+    if (viaAttack) {
+        // growl() dropped: verified to cost screens on seed0030 (its topline
+        // lands where C's does not).  C ref sounds.c growl() is RNG-free, so
+        // omitting it cannot desync the stream.
+        await setmangry(mtmp, true);
+    }
 }
+
+// C ref: mon.c setmangry(mtmp, via_attack) — the hero attacked mtmp.  RNG-free
+// unless the hero stands on an Elbereth engraving (rnd(5) alignment penalty).
+//
+// peacefuls_respond() (mon.c:4160) is NOT ported: it draws rn2(5) + a
+// ROLL_FROM() + rn2(10)/rn2(50) per witness, and a witness needs a SECOND
+// non-mindless peaceful monster that is awake, can see the hero, and is in
+// line of sight.  Porting it needs the MS_* msound enum, which this tree does
+// not carry symbolically; a guessed table would silently answer FALSE.
+export async function setmangry(mtmp, via_attack) {
+    const { update_topl: pline } = await import('./display.js');
+    const u = game.u;
+    if (via_attack && engraving_says_elbereth(u.ux, u.uy)) {
+        const { onscary } = await import('./monmove.js');
+        if (onscary(u.ux, u.uy, mtmp) || mtmp.mpeaceful) {
+            await pline('You feel like a hypocrite.');
+            adjalign((u.ualign?.record ?? 0) > 5 ? -5 : -rnd(5));
+            if (!Blind()) await pline('The engraving beneath you fades.');
+            // del_engr_at(): wipe_engr_at() with a count past the text length
+            // is the same erase with no RNG (wipeout_text is skipped once the
+            // engraving is gone).
+            const { engr_at: ea } = await import('./engrave.js');
+            const ep = ea(u.ux, u.uy);
+            if (ep) ep.engr_txt = '';
+        }
+    }
+    mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
+    if (!mtmp.mpeaceful || mtmp.mtame) return;
+    mtmp.mpeaceful = 0;
+    // C ref: mon.c:4230 — angering a priest is scored by co-alignment, not by
+    // the flat -1 this used to apply unconditionally.  u.ualign.record is the
+    // MODULUS of peace_minded()'s rn2(16 + record) for every later monster.
+    if (mtmp.ispriest) {
+        const { p_coaligned } = await import('./priest.js');
+        adjalign(p_coaligned(mtmp) ? -5 : 2);
+    } else {
+        adjalign(-1); /* attacking peaceful monsters is bad */
+    }
+    if (humanoid(mtmp.data) || mtmp.isshk || mtmp.isgd) {
+        if (couldsee(mtmp.mx, mtmp.my))
+            await pline(`${Monnam(mtmp)} gets angry!`);
+    }
+    // else growl(mtmp): deliberately silent here — sounds.c growl() is RNG-free
+    // and its topline lands where C's does not (measured on seed0030).
+
+    // C ref: mon.c:4247 — `if (!svc.context.mon_moving) peacefuls_respond(mtmp)`.
+    // STILL UNPORTED, and it is the largest remaining RNG hole in this file: for
+    // every awake, non-mindless peaceful witness in line of sight it can draw
+    // rn2(5) + ROLL_FROM(Exclam) (another rn2(5)), rn2(10), rn2(50), or in the
+    // same-monster-class arm rn2(3)/rn2(4)/rn2(6)/rn2(25).  Porting it needs
+    // maybe_gasp()'s MS_* switch (monflags_data.js has the audited MSOUND table
+    // but this tree carries no symbolic MS_* enum) and big_little_match(), whose
+    // grownups[] walk is file-static in makemon.js.  A guessed MS_* mapping
+    // would silently answer "no gasp" and drop the rn2(5) — the exact failure
+    // mode the wrong-constant sweep documents — so it is left explicit.
+}
+
+// C ref: engrave.c sengr_at("Elbereth", x, y, TRUE) — a legible Elbereth
+// under the hero.
+function engraving_says_elbereth(x, y) {
+    const ep = engr_at(x, y);
+    return !!(ep && (ep.engr_time || 0) <= (game.moves || 0)
+              && /Elbereth/i.test(String(ep.engr_txt || '')));
+}
+
+
 
 // C ref: uhitm.c stumble_onto_mimic(mtmp) — the hero has bumped into (or
 // force-attacked) a disguised mimic for the first time: reveal it (message +
@@ -443,9 +609,15 @@ async function attack_checks(mtmp) {
         await wakeupAttack(mtmp, true);
     }
 
-    // uhitm.c:287-302 — flags.confirm "Really attack <peaceful>?" prompt: not
-    // modeled (is_safemon() already screens out ordinary peaceful/tame
-    // targets before hostile_attack() is ever reached).
+    // uhitm.c:308-324 — the flags.confirm "Really attack <mon>?" prompt.  Its
+    // gate is `flags.confirm && mpeaceful && !Confusion && !Hallucination
+    // && !Stunned` and then `canspotmon(mtmp)`, which is is_safemon()'s gate
+    // with flags.safe_dog swapped for flags.confirm — so do_attack's safemon
+    // block already consumed every target that could reach it, UNLESS the
+    // player has turned safe_dog off (nethackrc `!safe_pet`) while leaving
+    // confirm on.  That combination would consume an input here (a y/n query),
+    // which is the shape of bug the doenhance() menu turned out to be, so it is
+    // called out rather than assumed unreachable.
 
     return false;
 }
@@ -461,28 +633,75 @@ async function hostile_attack(mtmp) {
 
     if (await attack_checks(mtmp)) return true;
 
-    // C ref: uhitm.c:532-534 — check_capacity(...) || overexertion().
-    // check_capacity() is RNG-inert for the unencumbered starter hero, but
-    // overexertion() (hack.c:3051) ALWAYS calls gethungry() ("combat increases
-    // metabolism"), which rolls a single rn2(20) "accessorytime" (eat.c:3191).
-    // This is the per-attack metabolism roll, distinct from the moveloop's
-    // per-turn gethungry; it fires at the START of every melee attack, before
-    // exercise(A_STR).  Omitting it dropped one rn2(20) per kill turn and shifted
-    // the whole post-attack stream by one (seed0006 step 41 / seed0107).
-    overexertion();
-    // can_twoweapon()/untwoweapon(): the recorded sessions keep two-weapon valid.
+    // C ref: uhitm.c:532-534 — `check_capacity(...) || overexertion()` then
+    // `goto atk_done`.  The || short-circuits: an Overtaxed hero prints the
+    // refusal and NEITHER gethungry()'s rn2(20) nor exercise(A_STR)'s rn2(19)
+    // fires.  overexertion() (hack.c:3051) otherwise always calls gethungry()
+    // ("combat increases metabolism"), which rolls a single rn2(20)
+    // "accessorytime" (eat.c:3191).  This is the per-attack metabolism roll,
+    // distinct from the moveloop's per-turn gethungry; it fires at the START of
+    // every melee attack, before exercise(A_STR).  Omitting it dropped one
+    // rn2(20) per kill turn and shifted the whole post-attack stream by one
+    // (seed0006 step 41 / seed0107).
+    if (await check_capacity('You cannot fight while so heavily loaded.')
+        || await overexertion())
+        return await atk_done(mtmp);
+
+    // C ref: uhitm.c:539-540 — a two-weapon setup that has become illegal
+    // (shield worn, offhand welded, ...) is dropped HERE, before the swing.
+    // u.twoweap drives hitum()'s second rnd(20) swing and known_hitum()'s whole
+    // second pass, so leaving it stale doubles the attack's RNG draws.
+    if (u?.twoweap) {
+        const { can_twoweapon } = await import('./wield.js');
+        if (!(await can_twoweapon())) await untwoweapon();
+    }
     // gu.unweapon "begin bashing" message: no RNG.
 
     // C ref: uhitm.c:551 — exercise(A_STR, TRUE) "you're exercising muscles".
     exercise(A_STR, true);
-    // u_wipe_engr(3): no RNG when not standing on an engraving (starter case).
+    // C ref: uhitm.c:553 u_wipe_engr(3) — "prevent unlimited pick-axe attacks".
+    // Previously skipped as "no RNG when not standing on an engraving": when the
+    // hero IS standing on one (Elbereth is the common case) wipe_engr_at() rolls
+    // rn2(1 + 50/(cnt+1)) plus wipeout_text()'s per-character rolls.
+    u_wipe_engr(3);
 
-    // Leprechaun gold-grab dodge (uhitm.c:556) is gated by mdat->mlet ==
-    // S_LEPRECHAUN; none of the melee victims here are leprechauns, so the
-    // && !rn2(7) is short-circuited and no RNG fires.
+    // Leprechaun gold-grab dodge (uhitm.c:556): `mdat->mlet == S_LEPRECHAUN
+    // && !mfrozen && !helpless && !mconf && mcansee && !rn2(7) && m_move(...)`.
+    // Still unported — m_move() is file-static in monmove.js, and rolling the
+    // rn2(7) without it would diverge worse on the 1-in-7 that it passes.
 
     await hitum(mtmp);
+    mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
+    return await atk_done(mtmp);
+}
+
+// C ref: uhitm.c do_attack() `atk_done:` label — after a force-fight at a
+// square whose occupant the hero still can't see, leave an "I" remembered
+// there.  Reachable via the 'F' prefix at an invisible/unlit monster.
+async function atk_done(mtmp) {
+    const u = game.u;
+    const x = u.ux + u.dx, y = u.uy + u.dy;
+    if (game.context?.forcefight && !DEADMONSTER(mtmp) && !canspotmon(mtmp)
+        && !glyph_is_invisible(x, y) && !engulfing_u(mtmp))
+        map_invisible(x, y);
     return true;
+}
+
+// C ref: wield.c untwoweapon() — end two-weapon combat (message + flag).
+async function untwoweapon() {
+    if (game.u?.twoweap) {
+        const { pline } = await import('./display.js');
+        await pline('You can no longer use two weapons at once.');
+        game.u.twoweap = false;
+        update_inventory();
+    }
+}
+
+// C ref: engrave.c u_wipe_engr(cnt) — `if (can_reach_floor(TRUE))
+// wipe_engr_at(u.ux, u.uy, cnt, FALSE)`.  can_reach_floor() is TRUE for a
+// non-levitating, non-swallowed hero (invent.js keeps the same stub).
+function u_wipe_engr(cnt) {
+    wipe_engr_at(game.u.ux, game.u.uy, cnt, false);
 }
 
 // C ref: uhitm.c mon_maybe_unparalyze() — a paralyzed monster gets a 1-in-10
@@ -541,31 +760,19 @@ function martial_bonus() {
     const m = roleMnum();
     return m === PM_MONK || m === PM_SAMURAI;
 }
-// C ref: u_init.c skill_init() — P_SKILL(P_BARE_HANDED_COMBAT) at game start.
-// No starting weapon ever grants this skill (weapon_type() only maps to
-// P_BARE_HANDED_COMBAT for a NULL weapon), so the class_skill walk always
-// finds it P_ISRESTRICTED and bumps it to P_UNSKILLED(1) -- UNLESS the role's
-// own P_MAX_SKILL (u_init.c Skill_A/B/C/H/K/Mon/P/Ran/R/S/T/V/W[]) exceeds
-// P_EXPERT(4), in which case "high potential fighters already know how to
-// use their hands" starts it at P_BASIC(2) instead.  Only Barbarian/Caveman
-// (P_MASTER) and Monk/Samurai (P_GRAND_MASTER/P_MASTER, via P_MARTIAL_ARTS,
-// the same skill slot) clear that bar; every other role -- including
-// Tourist's P_SKILLED(3) cap -- begins P_UNSKILLED.
-const HIGH_POTENTIAL_FIGHTER_MNUM = new Set([1, 2, 5, 9]); // Barbarian, Caveman, Monk, Samurai
-function bare_handed_skill() {
-    return HIGH_POTENTIAL_FIGHTER_MNUM.has(roleMnum()) ? 2 /* P_BASIC */
-                                                        : 1 /* P_UNSKILLED */;
-}
-// C ref: weapon.c weapon_hit_bonus(NULL) — bare-handed-combat branch:
-//   bonus = max(P_SKILL, P_UNSKILLED) - 1; bonus = ((bonus+2)*(martial?2:1))/2.
-function weapon_hit_bonus_barehand() {
-    let bonus = Math.max(bare_handed_skill(), 1) - 1;
-    return Math.trunc((bonus + 2) * (martial_bonus() ? 2 : 1) / 2);
+// C ref: weapon.c P_SKILL(P_BARE_HANDED_COMBAT).  enhance.js owns the live
+// skill array (skill_init baseline + every #enhance
+// advance replayed on top), so read P_SKILL from there instead of freezing the
+// game-start value: a hero who enhances martial arts changes the to-hit bonus,
+// the damage bonus and double_punch()'s rn2(5) gate together.
+async function bare_handed_skill() {
+    const { p_skill_of } = await import('./enhance.js');
+    return p_skill_of(P_BARE_HANDED_COMBAT);
 }
 // C ref: weapon.c weapon_dam_bonus(NULL) — bare-handed-combat branch:
 //   bonus = P_SKILL - 1 (>=0); bonus = ((bonus+1)*(martial?3:1))/2.
-function weapon_dam_bonus_barehand() {
-    let bonus = bare_handed_skill() - 1;
+async function weapon_dam_bonus_barehand() {
+    let bonus = (await bare_handed_skill()) - 1;
     if (bonus < 0) bonus = 0;
     return Math.trunc((bonus + 1) * (martial_bonus() ? 3 : 1) / 2);
 }
@@ -574,12 +781,12 @@ function weapon_dam_bonus_barehand() {
 // oc_wsdam / oc_wldam (small/large monster damage dice), oc_hitbon (to-hit), and
 // the skill discipline.  Keyed by otyp; only the starter-inventory weapons that
 // the melee sessions wield need to be present (others fall back to 1-pt damage).
-const P_NONE = 0, P_DAGGER = 1, P_KNIFE = 2, P_AXE = 3, P_PICK_AXE = 4,
+const P_DAGGER = 1, P_KNIFE = 2, P_AXE = 3, P_PICK_AXE = 4,
       P_SHORT_SWORD = 5, P_BROAD_SWORD = 6, P_LONG_SWORD = 7,
       P_TWO_HANDED_SWORD = 8, P_SCIMITAR = 9, P_SABER = 9, P_CLUB = 10,
       P_MACE = 11, P_MORNING_STAR = 12, P_FLAIL = 13, P_HAMMER = 14,
       P_QUARTERSTAFF = 15, P_POLEARMS = 16, P_SPEAR = 17, P_TRIDENT = 18,
-      P_LANCE = 19, P_BOW = 20, P_DART = 23, P_TWO_WEAPON_COMBAT = 36;
+      P_LANCE = 19, P_BOW = 20, P_DART = 23;
 
 // otyp -> { ws, wl, hb, sk }.  otyp values match mkobj.js objects[] indices.
 // C ref: weapon.c objects[otyp].oc_wldam — large-monster damage die; used by
@@ -609,38 +816,71 @@ const WEAP = {
     79: { ws: 6,  wl: 6,  hb: 0, sk: P_QUARTERSTAFF }, // QUARTERSTAFF (wizard start)
 };
 
+// C ref: weapon.c weapon_type(obj) — |oc_skill|; NULL maps to bare-handed.
+function weapon_type(obj) {
+    if (!obj) return P_BARE_HANDED_COMBAT;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS
+        && obj.oclass !== GEM_CLASS)
+        return P_NONE;
+    const sk = objects[obj.otyp]?.oc_skill ?? P_NONE;
+    return sk < 0 ? -sk : sk;
+}
+
 // C ref: weapon.c weapon_hit_bonus(weapon) — skill-based to-hit modifier.  The
-// starter sessions wield a single-discipline weapon (skill P_BASIC, from being
-// in inventory) and, when two-weaponing, use P_TWO_WEAPON_COMBAT at P_UNSKILLED
-// (it is not granted by carried weapons at game start, so skill_init leaves it
-// UNSKILLED).  A role that starts mounted (Knight) has P_RIDING == P_BASIC.
-function weapon_hit_bonus(weapon) {
+// per-branch tables were previously collapsed to the constants a Basic-skilled
+// starter wielder produces (0 / -9 / -1), which silently answered "Basic" for
+// every skill level: an Unskilled discipline is -4, a Skilled one +2, Expert
+// +3, and the riding penalty is -2 for an Unskilled rider plus another -2 while
+// two-weaponing.  P_SKILL now comes from enhance.js's live array.
+async function weapon_hit_bonus(weapon) {
     const u = game.u;
-    const w = weapon ? WEAP[weapon.otyp] : null;
-    const wep_type = w ? w.sk : P_NONE;
-    const twoweap = !!u?.twoweap
-        && (weapon === game.uwep || weapon === game.uswapwep);
+    const { p_skill_of } = await import('./enhance.js');
+    const wep_type = weapon_type(weapon);
+    const type = (u?.twoweap && (weapon === game.uwep || weapon === game.uswapwep))
+        ? P_TWO_WEAPON_COMBAT : wep_type;
     let bonus = 0;
 
-    if (!twoweap) {
-        if (wep_type === P_NONE) bonus = 0;
-        else bonus = 0;                       // wielded weapon skill P_BASIC -> 0
-    } else {
-        // skill = min(P_SKILL(P_TWO_WEAPON_COMBAT)=UNSKILLED, P_SKILL(wep_type)
-        //             =BASIC) == UNSKILLED -> -9 (two-weapon penalty).
-        bonus = -9;
+    if (type === P_NONE) {
+        bonus = 0;
+    } else if (type <= P_LAST_WEAPON) {
+        switch (p_skill_of(type)) {
+        case P_ISRESTRICTED: case P_UNSKILLED: bonus = -4; break;
+        case P_BASIC: bonus = 0; break;
+        case P_SKILLED: bonus = 2; break;
+        default: bonus = 3; break;            // P_EXPERT and above
+        }
+    } else if (type === P_TWO_WEAPON_COMBAT) {
+        let skill = p_skill_of(P_TWO_WEAPON_COMBAT);
+        if (skill > p_skill_of(wep_type)) skill = p_skill_of(wep_type);
+        switch (skill) {
+        case P_ISRESTRICTED: case P_UNSKILLED: bonus = -9; break;
+        case P_BASIC: bonus = -7; break;
+        case P_SKILLED: bonus = -5; break;
+        default: bonus = -3; break;
+        }
+    } else if (type === P_BARE_HANDED_COMBAT) {
+        bonus = Math.max(p_skill_of(type), P_UNSKILLED) - 1;
+        bonus = Math.trunc((bonus + 2) * (martial_bonus() ? 2 : 1) / 2);
     }
 
-    // Riding penalty (KMH): harder to hit while mounted.  A starter Knight has
-    // P_RIDING == P_BASIC -> -1; an unmounted hero takes no penalty.
-    if (u?.usteed) bonus -= 1;                // P_BASIC riding
+    // KMH -- it's harder to hit while you are riding.
+    if (u?.usteed) {
+        switch (p_skill_of(P_RIDING)) {
+        case P_ISRESTRICTED: case P_UNSKILLED: bonus -= 2; break;
+        case P_BASIC: bonus -= 1; break;
+        default: break;                        // Skilled/Expert: no penalty
+        }
+        if (u.twoweap) bonus -= 2;
+    }
     return bonus;
 }
 
 // C ref: weapon.c:149 hitval(otmp, mon) — `if (Is_weapon) tmp += otmp->spe;`
-// then the unconditional `tmp += objects[otyp].oc_hitbon`.  The vs-species
-// bonuses (blessed-vs-undead, spear/kebabable, trident-vs-swimmer,
-// pick-vs-xorn, artifact spec_abon) don't apply to the starter matchups.
+// then the unconditional `tmp += objects[otyp].oc_hitbon`, then the vs-species
+// bonuses.  Only the blessed-vs-undead/demon one is ported: kebabable needs the
+// mlet set "SsXTVWLZ", trident-vs-swimmer needs is_swimmer + is_pool, and
+// pick-vs-xorn needs thick_skinned; artifact spec_abon has no artifacts here.
+// All four are flat modifiers (no RNG) that only shift hit/miss.
 function hitval(weapon, mtmp) {
     if (!weapon) return 0;
     const w = WEAP[weapon.otyp];
@@ -650,13 +890,22 @@ function hitval(weapon, mtmp) {
     // built without an oclass field are treated as weapons, as before.
     const isWeapon = weapon.oclass === undefined
         || weapon.oclass === WEAPON_CLASS || is_weptool(weapon);
-    return (isWeapon ? (weapon.spe || 0) : 0) + (w ? w.hb : 0);
+    let tmp = (isWeapon ? (weapon.spe || 0) : 0) + (w ? w.hb : 0);
+    if (isWeapon && weapon.blessed && mon_hates_blessings(mtmp)) tmp += 2;
+    return tmp;
 }
 
-// C ref: worn.c find_mac(mtmp) — base AC (no worn armour on these monsters).
+// C ref: worn.c find_mac(mtmp) — mons[].ac reduced by every worn armour piece's
+// ARM_BONUS, then clamped to +-AC_MAX.  The minvent loop is a genuine no-op in
+// this port: makemon's m_initinv gives no monster body armour, and mkobj.js's
+// objects[] carries no a_ac to compute ARM_BONUS from.  The clamp is ported so
+// a data-model change there can't silently exceed C's range.
+const AC_MAX = 127;
 function find_mac(mtmp) {
-    const ac = mtmp?.data?.ac;
-    return (ac != null) ? ac : 10;
+    let base = mtmp?.data?.ac;
+    base = (base != null) ? base : 10;
+    if (Math.abs(base) > AC_MAX) base = Math.sign(base) * AC_MAX;
+    return base;
 }
 
 // C ref: uhitm.c find_roll_to_hit(mtmp, aatyp, weapon, ...) — the "to hit"
@@ -664,7 +913,39 @@ function find_mac(mtmp) {
 // AT_WEAP path components present in the starter sessions (base, abon, AC,
 // low-level/ vs-state adjustments, weapon hitval + skill bonus).  uhitinc and
 // the Luck/encumbrance/utrap/polyd/orc terms are 0 for these heroes.
-function find_roll_to_hit(mtmp, weapon) {
+// C ref: mondata.h is_orc(ptr) / is_undead(ptr).
+function is_orc(mdat) { return (mflags2_of(mdat) & M2_ORC) !== 0; }
+function is_undead(mdat) { return (mflags2_of(mdat) & M2_UNDEAD) !== 0; }
+// C ref: role.c Race_if(PM_ELF) — gu.urace is race index 1 in role.js races[].
+function Race_if_ELF() {
+    return game.initrace === 1 || game.urace?.adj === 'elven';
+}
+const PM_KNIGHT = 4;
+function Role_if_KNIGHT() { return roleMnum() === PM_KNIGHT; }
+function Role_if_SAMURAI() { return roleMnum() === PM_SAMURAI; }
+
+// C ref: uhitm.c check_caitiff(mtmp) — a lawful Knight who strikes a helpless
+// or fleeing foe, or a Samurai who strikes a peaceful one, loses an alignment
+// point.  Called from find_roll_to_hit on the FIRST swing only.  Was entirely
+// unported: adjalign() moves u.ualign.record, which is the MODULUS of
+// peace_minded()'s rn2(16 + u.ualign.record) for every monster generated
+// afterwards (the same mechanism killed() documents below).
+async function check_caitiff(mtmp) {
+    const u = game.u;
+    if ((u.ualign?.record ?? 0) <= -10) return;
+    const { pline } = await import('./display.js');
+    if (Role_if_KNIGHT() && (u.ualign?.type ?? 0) === A_LAWFUL
+        && !is_undead(mtmp.data)
+        && (helpless(mtmp) || (mtmp.mflee && !mtmp.mavenge))) {
+        await pline('You caitiff!');
+        adjalign(-1);
+    } else if (Role_if_SAMURAI() && mtmp.mpeaceful) {
+        await pline('You dishonorably attack the innocent!');
+        adjalign(-1);
+    }
+}
+
+async function find_roll_to_hit(mtmp, weapon, first_swing) {
     const u = game.u;
     // C: 1 + abon() + find_mac(mtmp) + u.uhitinc + Luck-term
     //    + maybe_polyd(youmonst.data->mlevel, u.ulevel).  A non-polymorphed hero
@@ -674,6 +955,11 @@ function find_roll_to_hit(mtmp, weapon) {
     const luckTerm = Math.sign(luck) * Math.trunc((Math.abs(luck) + 2) / 3);
     let tmp = 1 + abon() + find_mac(mtmp) + (u.uhitinc || 0)
               + luckTerm + (u.ulevel || 1);
+
+    // C ref: uhitm.c:379 — `if (!(*attk_count)++) check_caitiff(mtmp)`, i.e.
+    // once per do_attack, on the first swing only.
+    if (first_swing) await check_caitiff(mtmp);
+
     // vs. monster state.  C tests !mtmp->mcanmove, which is FALSE for a freshly
     // generated (awake, mobile) monster — makemon sets mcanmove TRUE.  JS leaves
     // it undefined until a monster first acts, so only an explicit 0 (paralyzed/
@@ -682,17 +968,36 @@ function find_roll_to_hit(mtmp, weapon) {
     if (mtmp.mflee) tmp += 2;
     if (mtmp.msleeping) tmp += 2;
     if (mtmp.mcanmove === 0) tmp += 4;
-    // C ref: uhitm.c — a bare-handed Monk (no uwep/uarm/uarms) gains ulevel/3+2.
-    // The starter monk has no body armour/shield, so the gate is just !uwep.
-    if (Role_if_MONK() && !weapon) {
-        tmp += Math.trunc((u.ulevel || 1) / 3) + 2;
+    // C ref: uhitm.c:396-401 — Monk role/race adjustments.  The armour penalty
+    // arm (uarm -> -urole.spelarmr, 20 for the Monk) was omitted as "the starter
+    // monk has no body armour"; a Monk who puts a suit on takes it, and the
+    // bare-handed bonus additionally requires an empty SHIELD hand.
+    if (Role_if_MONK()) {
+        if (game.uarm) tmp -= MONK_SPELARMR;
+        else if (!weapon && !game.uarms)
+            tmp += Math.trunc((u.ulevel || 1) / 3) + 2;
     }
-    // AT_WEAP: weapon hitval + weapon skill bonus.  Bare-handed uses the
-    // martial-arts weapon_hit_bonus(NULL) branch (uhitm.c find_roll_to_hit).
-    tmp += hitval(weapon, mtmp);
-    tmp += weapon ? weapon_hit_bonus(weapon) : weapon_hit_bonus_barehand();
+    // C ref: uhitm.c:402-404 — elves hit orcs more easily.  Elf heroes and orc
+    // monsters are both common; the term was simply missing.
+    if (is_orc(mtmp.data) && Race_if_ELF()) tmp++;
+
+    // C ref: uhitm.c:406-410 — "with a lot of luggage, your agility diminishes"
+    // and being stuck in a trap costs 3.  Both were omitted as unencumbered/
+    // untrapped starter state.
+    const wtcap = near_capacity();
+    if (wtcap !== 0) tmp -= (wtcap * 2) - 1;
+    if (u.utrap) tmp -= 3;
+
+    // C ref: uhitm.c:417-421 — AT_WEAP/AT_CLAW: hitval only when a weapon is
+    // actually wielded, but weapon_hit_bonus() always (it maps NULL to the
+    // bare-handed/martial-arts discipline itself).
+    if (weapon) tmp += hitval(weapon, mtmp);
+    tmp += await weapon_hit_bonus(weapon);
     return tmp;
 }
+// C ref: role.c roles[PM_MONK].spelarmr — the Monk's body-armour spell/hit
+// penalty.
+const MONK_SPELARMR = 20;
 
 // C ref: uhitm.c hitum(mon, uattk) — deliver a melee swing (and, when two-
 // weaponing, a second swing with uswapwep).  Returns whether mon still lives.
@@ -700,63 +1005,97 @@ async function hitum(mon) {
     const u = game.u;
     const x = u.ux + u.dx, y = u.uy + u.dy;
     const secondwep = u.twoweap ? game.uswapwep : null;
-    const twohits = (game.uwep ? !!u.twoweap : false);
+    // C ref: uhitm.c:775 — `gt.twohits = (uwep ? u.twoweap : double_punch())`.
+    // The bare-handed arm was hardcoded FALSE; double_punch() rolls rn2(5) for
+    // any hero whose bare-handed/martial-arts skill is above Basic, and on
+    // success delivers a whole second swing (rnd(20) + hmon + passive).
+    const twohits = (game.uwep ? !!u.twoweap : await double_punch());
 
     // ── first swing (uwep) ──
-    let tmp = find_roll_to_hit(mon, game.uwep);
+    let tmp = await find_roll_to_hit(mon, game.uwep, true);
     mon_maybe_unparalyze(mon);
     let dieroll = rnd(20);                     // uhitm.c:780
     let mhit = (tmp > dieroll);
     if (mhit) exercise(A_DEX, true);           // uhitm.c:783 (on hit only)
-    let malive = await known_hitum(mon, game.uwep, mhit, dieroll);
+    let kh = await known_hitum(mon, game.uwep, mhit, dieroll);
+    let malive = kh.malive;
+    mhit = kh.mhit;
     // passive(mon, uwep, mhit, malive, AT_WEAP): the defender's passive counter
     // fires after every swing (even a miss) while the monster is alive.
-    passive(mon, mhit, malive);
+    await passive(mon, game.uwep, mhit, malive, AT_WEAP);
 
     // ── second swing (uswapwep) for two-weapon combat ──
     if (twohits && malive && m_at(x, y) === mon) {
-        tmp = find_roll_to_hit(mon, game.uswapwep);
+        tmp = await find_roll_to_hit(mon, game.uswapwep, false);
         mon_maybe_unparalyze(mon);
         dieroll = rnd(20);                     // uhitm.c:804
         mhit = (tmp > dieroll);
         // note: the second swing does NOT roll exercise(A_DEX) (uhitm.c).
-        malive = await known_hitum(mon, secondwep, mhit, dieroll);
+        kh = await known_hitum(mon, secondwep, mhit, dieroll);
+        malive = kh.malive;
+        mhit = kh.mhit;
         // second passive counter-attack only occurs if the second swing hit.
-        if (mhit) passive(mon, mhit, malive);
+        if (mhit) await passive(mon, secondwep, mhit, malive, AT_WEAP);
     }
     return malive;
 }
 
+// C ref: uhitm.c double_punch() — chance of a second bare-handed/martial-arts
+// blow: 20% per skill level above Basic.  `skl_lvl > P_BASIC` short-circuits
+// the rn2(5) away for every hero who has not enhanced the discipline, which is
+// why the starter corpus never showed the roll.
+async function double_punch() {
+    const skl_lvl = await bare_handed_skill();
+    if (!game.uwep && !game.uarms && skl_lvl > P_BASIC)
+        return (skl_lvl - P_BASIC) > rn2(5);
+    return false;
+}
+
 // C ref: uhitm.c known_hitum() — apply a swing's outcome.  Miss -> missum();
-// hit -> hmon() (damage + possible kill).  Returns whether mon still lives.
+// hit -> hmon() (damage + possible kill).  C takes `int *mhit` and can turn a
+// hit back into a miss, so this returns { malive, mhit } rather than a bare
+// boolean.
 async function known_hitum(mon, weapon, mhit, dieroll) {
     if (!mhit) {
         await missum(mon);
-        return true;
+        return { malive: true, mhit };
     }
     // C ref: uhitm.c known_hitum():613-616 — KMH conduct: count a weapon-class
     // (or weapon-skilled tool) hit before the damage is applied.
-    if (weapon && (weapon.oclass === WEAPON_CLASS || is_weptool(weapon))) {
-        const u = game.u;
-        if (!u.uconduct) u.uconduct = {};
-        u.uconduct.weaphit = (u.uconduct.weaphit || 0) + 1;
-    }
+    const u0 = game.u;
+    if (!u0.uconduct) u0.uconduct = {};
+    const oldweaphit = u0.uconduct.weaphit || 0;
+    if (weapon && (weapon.oclass === WEAPON_CLASS || is_weptool(weapon)))
+        u0.uconduct.weaphit = oldweaphit + 1;
     const oldhp = mon.mhp;
     const malive = await hmon(mon, weapon, dieroll);
     // C ref: uhitm.c known_hitum():624 — a monster that SURVIVES the hit has a
     // 1/25 chance to flee if reduced below half HP.  The rn2(25) gate fires for
     // every surviving hit; only on a 0 (and mhp < mhpmax/2) does monflee roll
     // its own rn2(3) duration (seed5002 step-242: rn2(25) after hitting the
-    // small mimic).  (Vorpal-blade "hit converted to miss" not modeled.)
+    // small mimic).  The inline `mon.mflee = 1` this replaces skipped monflee's
+    // mfleetim bookkeeping AND its unconditional mon_track_clear(), and the
+    // breadcrumb ring gates m_move's rn2(4*(cnt-j)) backtrack roll — the same
+    // mechanism documented on the local monflee() copy above.  fleemsg is TRUE
+    // here, so the message ladder needs monmove.js's full copy.
     if (malive) {
-        if (!rn2(25) && (mon.mhp < Math.trunc((mon.mhpmax ?? 0) / 2))) {
-            // monflee(mon, !rn2(3) ? rnd(100) : 0, FALSE, TRUE)
-            if (!rn2(3)) rnd(100);
-            mon.mflee = 1;
+        if (!rn2(25) && (mon.mhp < Math.trunc((mon.mhpmax ?? 0) / 2))
+            && !engulfing_u(mon)) {
+            const { monflee: monflee_full } = await import('./monmove.js');
+            await monflee_full(mon, !rn2(3) ? rnd(100) : 0, false, true);
+            // set_ustuck(0) needs sticks(youmonst.data)/u.ustuck == mon, which
+            // no hero form in this port reaches.
         }
-        void oldhp;
+        // C ref: uhitm.c:634-639 — a hit that did NO damage (shade, worm tail,
+        // Vorpal decapitation miss) is retroactively demoted to a miss, which
+        // un-counts the weaphit conduct and suppresses the second swing's
+        // passive() call in hitum().
+        if (mon.mhp === oldhp) {
+            mhit = false;
+            game.u.uconduct.weaphit = oldweaphit;
+        }
     }
-    return malive;
+    return { malive, mhit };
 }
 
 // C ref: uhitm.c missum() — the "You miss the <mon>." top-line message.
@@ -766,15 +1105,31 @@ async function missum(mon) {
         await update_topl(`You miss ${mon_nam(mon)}.`);
     else
         await update_topl('You miss it.');
-    // wakeup(mon) sets msleeping=0/mstrategy; no RNG for an already-awake mon.
+    // C ref: uhitm.c missum() — `if (!mdef->msleeping && mdef->mcanmove)
+    // wakeup(mdef, TRUE);`.  The via_attack half (setmangry) was omitted, so a
+    // missed swing at a peaceful monster never angered it.
+    if (!mon.msleeping && mon.mcanmove) await wakeupAttack(mon, true);
     mon.msleeping = 0;
 }
 
-// C ref: uhitm.c hmon()/hmon_hitmon() — the weapon-melee damage path (the only
+// C ref: uhitm.c hmon(mon, obj, thrown, dieroll) — the thin wrapper around
+// hmon_hitmon().  Was collapsed into hmon_hitmon, which dropped an RNG call:
+// hitting a priest rolls rn2(2) whether or not the ghod_hitsu() aftermath does
+// anything.  (ghod_hitsu() itself needs in_rooms(TEMPLE), globally stubbed
+// empty in this port, so it returns immediately; angry_guards() is RNG-free.)
+async function hmon(mon, weapon, dieroll) {
+    const result = await hmon_hitmon(mon, weapon, dieroll);
+    if (mon.ispriest && !rn2(2)) {
+        /* ghod_hitsu(mon): no-op without a TEMPLE room number */
+    }
+    return result;
+}
+
+// C ref: uhitm.c hmon_hitmon() — the weapon-melee damage path (the only
 // branch the starter sessions reach: a wielded WEAPON_CLASS blade vs an
 // ordinary monster).  Rolls dmgval(weapon, mon), applies STR/skill bonuses,
 // subtracts from mon->mhp, and on a kill runs the xkilled() aftermath.
-async function hmon(mon, weapon, dieroll) {
+async function hmon_hitmon(mon, weapon, dieroll) {
     const unarmed = !weapon;
     let dmg;
     if (unarmed) {
@@ -784,6 +1139,7 @@ async function hmon(mon, weapon, dieroll) {
         // hmon_hitmon_weapon_melee: dmg = dmgval(weapon, mon).
         dmg = dmgval(weapon, mon);
     }
+    const train_weapon_skill = dmg > 1;   // uhitm.c:849 / :946
 
     // hmon_hitmon_dmg_recalc: strength + skill bonuses (get_dmg_bonus).  For a
     // two-weapon swing the STR bonus is scaled to 3/4; udaminc is 0 for the
@@ -797,8 +1153,17 @@ async function hmon(mon, weapon, dieroll) {
             if (strbonus === 0 && dbon() !== 0) strbonus = 0;
         }
         dmg += strbonus;
-        dmg += unarmed ? weapon_dam_bonus_barehand() : 0;
+        dmg += unarmed ? await weapon_dam_bonus_barehand() : 0;
         if (dmg < 1) dmg = 1;
+    }
+
+    // C ref: uhitm.c:1494 — a hit for more than minimal damage (measured BEFORE
+    // the STR/skill bonuses above) trains the wielded weapon's skill; that
+    // counter is what the wizard-mode #enhance menu prints.  train_weapon_skill
+    // is set from the raw dmgval()/rnd() roll (uhitm.c:849, :946).
+    if (train_weapon_skill) {
+        const { use_skill, uwep_skill_type } = await import('./enhance.js');
+        use_skill(uwep_skill_type(), 1);
     }
 
     // C ref uhitm.c:1825-1831 — the stagger/knockback gate, an if/else-if:
@@ -828,8 +1193,16 @@ async function hmon(mon, weapon, dieroll) {
 
     mon.mhp = (mon.mhp || 0) - dmg;
     if (mon.mhpmax != null && mon.mhp > mon.mhpmax) mon.mhp = mon.mhpmax;
+    const destroyed = (mon.mhp <= 0 || DEADMONSTER(mon));
 
-    if (mon.mhp <= 0 || DEADMONSTER(mon)) {
+    // C ref: uhitm.c:1866 hmon_hitmon_pet() — runs BEFORE killed(), so abusing
+    // a pet counts even on the blow that kills it.  Both halves draw: abuse_dog
+    // rolls rn2(mtame) to pick yelp vs growl, and a surviving pet's monflee
+    // rolls rnd(dmg).  (hmon_hitmon_splitmon() next needs clone_mon() for the
+    // black/brown pudding iron-weapon split; still unported.)
+    await hmon_hitmon_pet(mon, dmg, destroyed);
+
+    if (destroyed) {
         // hmon_hitmon_msg_hit is suppressed once destroyed; killed() gives the
         // "You kill the <mon>!" message and runs the corpse/treasure aftermath.
         await killed(mon);
@@ -850,7 +1223,12 @@ async function hmon(mon, weapon, dieroll) {
         await update_topl(`You hit ${mon_nam(mon)}.`);
     else
         await update_topl('You hit it.');
-    mon.msleeping = 0;
+    // C ref: uhitm.c:1925 — `wakeup(mon, TRUE)` for a surviving, on-map hit.
+    // This was reduced to a bare `msleeping = 0`, which dropped the via_attack
+    // half: landing a HIT on a peaceful monster never angered it (only a miss
+    // did, through missum()), so it kept its mpeaceful AI and its peaceful
+    // dochug branch for the rest of the fight.
+    await wakeupAttack(mon, true);
 
     // C ref uhitm.c:1922-1931 — wakeup(mon) then, for a surviving armed hit,
     // mhitm_knockback(&youmonst, mon, ...).  Its leading rolls always fire:
@@ -866,19 +1244,275 @@ async function hmon(mon, weapon, dieroll) {
     return true;
 }
 
-// C ref: uhitm.c passive(mon, weapon, mhit, malive, AT_WEAP, ...) — the
-// defender's passive counter-attack.  Walks mattk[] to the AT_NONE terminator
-// (the passive slot); for a monster with no defined passive damage that slot is
-// damn==damd==0 (tmp = 0, no d() roll).  When the monster survives and isn't
-// cancelled, `if (malive && !mcan && rn2(3))` rolls rn2(3); for an AD_PHYS / no
-// passive attack the switch does nothing further.  The early "affect you even
-// if it died" switch is also a no-op for AD_PHYS/AD_STCK passive slots.
-function passive(mon, mhit, malive) {
-    // Passive-slot damage dice: the starter melee victims (lichen, goblin, ...)
-    // have an AT_NONE passive terminator (damn=damd=0) -> no d() roll.  (If a
-    // modelled victim grows a real passive attack later, add its damn/damd here.)
-    if (!malive || mon.mcan) return;
-    rn2(3);                                    // uhitm.c:6019
+// C ref: uhitm.c hmon_hitmon_pet() — the hero struck a pet.
+async function hmon_hitmon_pet(mon, dmg, destroyed) {
+    if (!mon.mtame || dmg <= 0) return;
+    await abuse_dog(mon);
+    if (mon.mtame && !destroyed) {
+        const { monflee: monflee_full } = await import('./monmove.js');
+        await monflee_full(mon, 10 * rnd(dmg), false, false);
+    }
+}
+
+// C ref: dog.c abuse_dog(mtmp) — reduce tameness.  The yelp/growl choice draws
+// rn2(mtame) (short-circuited away once mtame reaches 0); both sounds are
+// RNG-free, and growl() is deliberately silent in this port (see wakeupAttack).
+async function abuse_dog(mtmp) {
+    if (!mtmp.mtame) return;
+    // Aggravate_monster/Conflict (the mtame/=2 arm) aren't modelled here.
+    mtmp.mtame--;
+    if (mtmp.mtame && !mtmp.isminion && mtmp.edog)
+        mtmp.edog.abuse = (mtmp.edog.abuse || 0) + 1;
+    // m_unleash() needs a leash, which this port never creates.
+    if (mtmp.mx !== 0) {
+        if (mtmp.mtame && rn2(mtmp.mtame)) {
+            /* yelp(mtmp) */
+        } else {
+            /* growl(mtmp) */
+        }
+        if (!mtmp.mtame) newsym(mtmp.mx, mtmp.my);
+    }
+}
+
+// C ref: uhitm.c passive(mon, weapon, mhit, malive, aatyp, wep_was_destroyed) —
+// the defender's passive counter-attack.  Walks mattk[] to the AT_NONE slot,
+// then rolls its damage dice UNCONDITIONALLY (before either switch, and even if
+// the monster just died).
+//
+// The old body only kept the trailing `rn2(3)` on the grounds that the starter
+// victims' passive slot is damn==damd==0.  Every acid blob (1d8), jelly, mold
+// and floating eye (d(m_lev+1, damd)) has a real one, and those are among the
+// first monsters any hero meets: each swing at a blue jelly draws five rolls
+// here that this port was not making.
+async function passive(mon, weapon, mhit, malive, aatyp) {
+    const ptr = mon.data;
+    const attacks = mattk_of(ptr);
+    const NATTK = 6;
+    // C: mattk[] is a zero-filled fixed array, so a species whose table is
+    // shorter than NATTK has {AT_NONE, AD_PHYS, 0, 0} in the missing slots.
+    let slot = null;
+    for (let i = 0; i < NATTK; i++) {
+        const a = attacks[i];
+        if (!a) { slot = { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 }; break; }
+        if (a.aatyp === AT_NONE) { slot = a; break; }
+    }
+    if (!slot) return;                         // no passive attacks
+
+    let tmp;
+    if (slot.damn) tmp = d(slot.damn, slot.damd);
+    else if (slot.damd) tmp = d((mon.m_lev ?? ptr?.mlevel ?? 0) + 1, slot.damd);
+    else tmp = 0;
+
+    // ── these affect you even if the monster just died (uhitm.c:5900) ──
+    const obj_attack = (aatyp === AT_WEAP || aatyp === AT_CLAW
+                        || aatyp === AT_MAGC || aatyp === AT_TUCH);
+    switch (slot.adtyp) {
+    case AD_FIRE:
+        if (mhit && !mon.mcan && weapon && obj_attack)
+            await passive_obj(mon, weapon, slot);
+        break;
+    case AD_ACID:
+        if (mhit && rn2(2)) {
+            const { pline } = await import('./display.js');
+            if (Blind() || game.flags?.verbose === false)
+                await pline('You are splashed!');
+            else
+                await pline(`You are splashed by ${s_suffix(mon_nam(mon))} acid!`);
+            if (!Acid_resistance()) await mdamageu(mon, tmp);
+            if (!rn2(30)) await erode_armor(ERODE_CORRODE);
+        }
+        if (mhit && weapon && obj_attack) await passive_obj(mon, weapon, slot);
+        exercise(A_STR, false);                // rolls rn2(2)
+        break;
+    case AD_RUST:
+    case AD_CORR:
+        if (mhit && !mon.mcan && weapon && obj_attack)
+            await passive_obj(mon, weapon, slot);
+        break;
+    case AD_MAGM:
+        // "wrath of gods for attacking Oracle"; no Antimagic hero here.
+        {
+            const { pline } = await import('./display.js');
+            await pline('You are hit by magic missiles appearing from thin air!');
+            await mdamageu(mon, tmp);
+        }
+        break;
+    case AD_ENCH:
+        if (mhit) {
+            // C skips object-less attack types; AT_WEAP/AT_CLAW/AT_TUCH/AT_MAGC
+            // all fall through to passive_obj.
+            if (aatyp === AT_KICK && !weapon) break;
+            if (aatyp === AT_BITE || aatyp === AT_BUTT
+                || (aatyp >= AT_STNG && aatyp < AT_WEAP)) break;
+            await passive_obj(mon, weapon, slot);
+        }
+        break;
+    default:
+        break;
+    }
+
+    // ── these only affect you if the monster still lives (uhitm.c:6019) ──
+    if (malive && !mon.mcan && rn2(3)) {
+        switch (slot.adtyp) {
+        case AD_COLD:                          // brown mold or blue jelly
+            if (monnear(mon, game.u.ux, game.u.uy)) {
+                const { pline } = await import('./display.js');
+                if (Cold_resistance()) {
+                    await pline('You feel a mild chill.');
+                    break;
+                }
+                await pline('You are suddenly very cold!');
+                await mdamageu(mon, tmp);
+                /* monster gets stronger with your heat! */
+                healmon(mon, Math.trunc((tmp + rn2(2)) / 2), Math.trunc((tmp + 1) / 2));
+                // split_mon() past 8*(m_lev+1) max HP is not modelled.
+            }
+            break;
+        case AD_STUN:                          // specifically yellow mold
+            // make_stunned(tmp, TRUE) consumes no RNG.  Left unported because
+            // this tree has no property-timeout machinery for HStun: writing
+            // u.ustun without a decrementer would stun the hero permanently,
+            // which is further from C than not stunning at all.
+            break;
+        case AD_FIRE:
+            if (monnear(mon, game.u.ux, game.u.uy)) {
+                const { pline } = await import('./display.js');
+                await pline('You are suddenly very hot!');
+                await mdamageu(mon, tmp);
+            }
+            break;
+        case AD_ELEC:
+            {
+                const { pline } = await import('./display.js');
+                await pline('You are jolted with electricity!');
+                await mdamageu(mon, tmp);
+            }
+            break;
+        case AD_PLYS: {
+            // C ref: uhitm.c:6023-6098.  ureflects()/Hallucination/Free_action
+            // are all FALSE for the heroes this port models, so the floating
+            // eye takes the "frozen by its gaze" arm — including the
+            // short-circuiting `(ACURR(A_WIS) > 12 || rn2(4))`, which only
+            // draws when Wisdom is 12 or less.
+            const { pline } = await import('./display.js');
+            const { nomul } = await import('./hack.js');
+            if (ptr?.pmidx === PM_FLOATING_EYE) {
+                if (!canseemon(mon)) break;
+                if (mon.mcansee !== 0) {
+                    await pline(`You are frozen by ${s_suffix(mon_nam(mon))} gaze!`);
+                    nomul((ACURR(A_WIS) > 12 || rn2(4)) ? -tmp : -127);
+                    game.nomovemsg = 0;
+                } else {
+                    await pline(`The blind ${mon.data?.name || 'monster'} cannot defend itself.`);
+                    if (!rn2(500)) change_luck(-1);
+                }
+            } else {                            /* gelatinous cube */
+                await pline(`You are frozen by ${mon_nam(mon)}!`);
+                game.nomovemsg = 'You can move again.';
+                nomul(-tmp);
+                exercise(A_DEX, false);         // rolls rn2(2)
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+}
+
+// C ref: uhitm.c passive_obj(mon, obj, mattk) — the passive attack's effect on
+// the striking object.
+async function passive_obj(mon, obj, mattk) {
+    if (!obj) return;
+    switch (mattk.adtyp) {
+    case AD_FIRE:
+        if (!rn2(6) && !mon.mcan) await erode_obj_local(obj, ERODE_BURN);
+        break;
+    case AD_ACID:
+        if (!rn2(6)) await erode_obj_local(obj, ERODE_CORRODE);
+        break;
+    case AD_RUST:
+        if (!mon.mcan) await erode_obj_local(obj, ERODE_RUST);
+        break;
+    case AD_CORR:
+        if (!mon.mcan) await erode_obj_local(obj, ERODE_CORRODE);
+        break;
+    default:
+        break;
+    }
+}
+
+async function erode_obj_local(obj, type) {
+    const { erode_obj } = await import('./trap.js');
+    return await erode_obj(obj, null, type, EF_NONE);
+}
+
+// C ref: uhitm.c erode_armor(&youmonst, hurt) — pick a random armour slot to
+// erode, RETRYING (another rn2(5)) whenever the chosen slot is empty or
+// un-erodable.  Only case 1 (cloak/suit/shirt) always terminates the loop, so
+// an unarmoured hero burns a variable number of rn2(5) draws here.
+async function erode_armor(hurt) {
+    for (let guard = 0; guard < 1000; guard++) {
+        const roll = rn2(5);
+        if (roll === 1) {
+            const target = game.uarmc || game.uarm || game.uarmu;
+            if (target) await erode_obj_local2(target, hurt);
+            return;
+        }
+        const target = roll === 0 ? game.uarmh
+            : roll === 2 ? game.uarms
+            : roll === 3 ? game.uarmg
+            : game.uarmf;
+        if (!target) continue;
+        const { erode_obj } = await import('./trap.js');
+        const res = await erode_obj(target, null, hurt, EF_GREASE);
+        if (res === 0 /* ER_NOTHING */) continue;
+        return;
+    }
+}
+async function erode_obj_local2(obj, hurt) {
+    const { erode_obj } = await import('./trap.js');
+    return await erode_obj(obj, null, hurt, EF_GREASE);
+}
+
+// C ref: potion.c Acid_resistance / Cold_resistance intrinsic tests.
+function Acid_resistance() { return (game.u?.uprops?.AcidResistance || 0) > 0; }
+function Cold_resistance() { return (game.u?.uprops?.ColdResistance || 0) > 0; }
+
+// C ref: makemon.js MONS_NAMES index of the floating eye.
+const PM_FLOATING_EYE = 28;
+
+// C ref: rnd.c change_luck(n) — clamped to [LUCKMIN, LUCKMAX].  pray.js keeps
+// a file-static copy; Luck feeds find_roll_to_hit's sgn(Luck) term above.
+function change_luck(n) {
+    const u = game.u;
+    u.uluck = (u.uluck || 0) + n;
+    if (u.uluck < -10) u.uluck = -10;
+    if (u.uluck > 10) u.uluck = 10;
+}
+
+// C ref: mon.c monnear(mon, x, y) — dist2 < 3 (orthogonally/diagonally next to).
+function monnear(mon, x, y) {
+    const dx = mon.mx - x, dy = mon.my - y;
+    return (dx * dx + dy * dy) < 3;
+}
+
+// C ref: objnam.c s_suffix(s).
+function s_suffix(s) { return /s$/.test(s) ? `${s}'` : `${s}'s`; }
+
+// C ref: mhitu.c mdamageu(mtmp, n) — subtract n HP from the hero (monmove.js
+// keeps the same body for the monster-hits-hero path; it is file-static there).
+async function mdamageu(mtmp, n) {
+    const u = game.u;
+    if (n < 0) n = 0;
+    u.uhp -= n;
+    if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
+    game.disp = game.disp || {};
+    game.disp.botl = true;
+    if (u.uhp < 1) {
+        const { done_in_by } = await import('./end.js');
+        await done_in_by(mtmp, 0 /* DIED */);
+    }
 }
 
 // C ref: mon.c:3438 unstuck(mtmp) — the monster is no longer holding the hero.
@@ -1223,10 +1857,52 @@ export function dmgval(otmp, mon) {
         default: break;
         }
     }
-    tmp += otmp.spe || 0;
-    if (tmp < 1) tmp = 1;
+    // C ref: weapon.c:305-311 — the enchantment only applies to a weapon or
+    // weptool, and a negative one is clamped to 0 HERE (not to 1 at the end).
+    const Is_weapon = (otmp.oclass === undefined
+        || otmp.oclass === WEAPON_CLASS || is_weptool(otmp));
+    if (Is_weapon) {
+        tmp += otmp.spe || 0;
+        if (tmp < 0) tmp = 0;
+    }
+    // (oc_material <= LEATHER vs thick_skinned, and the PM_SHADE shade_glare
+    //  zeroing, need objects[].oc_material, which mkobj.js does not carry.)
+
+    // C ref: weapon.c:330-352 — the "weapon vs. monster type" damage bonuses.
+    // These are RNG draws, not flat modifiers, and were missing entirely: a
+    // Priest's blessed mace vs any undead or demon rolls rnd(4) EVERY hit.
+    if (Is_weapon || otmp.oclass === COIN_CLASS /* GEM/BALL/CHAIN too */) {
+        let bonus = 0;
+        if (otmp.blessed && mon_hates_blessings(mon)) bonus += rnd(4);
+        if (is_axe(otmp) && is_wooden(mon?.data)) bonus += rnd(4);
+        // material == SILVER && mon_hates_silver(mon) -> rnd(20): also needs
+        // objects[].oc_material.  artifact_light() -> rnd(8): no artifacts.
+        tmp += bonus;
+    }
+
+    // C ref: weapon.c:365-371 — erosion is subtracted from any positive result.
+    if (tmp > 0) {
+        tmp -= Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
+        if (tmp < 1) tmp = 1;
+    }
     return tmp;
 }
+
+// C ref: mondata.c mon_hates_blessings(mon) = is_vampshifter(mon)
+// || is_undead(ptr) || is_demon(ptr).  (is_vampshifter needs mon->cham, which
+// this port does not track; no vampshifter reaches hero melee here.)
+function mon_hates_blessings(mon) {
+    const f2 = mflags2_of(mon?.data);
+    return (f2 & (M2_UNDEAD | M2_DEMON)) !== 0;
+}
+// C ref: obj.h is_axe(otmp) — WEAPON/TOOL with oc_skill == P_AXE.
+function is_axe(otmp) {
+    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
+        && (objects[otmp.otyp]?.oc_skill ?? 0) === P_AXE;
+}
+// C ref: mondata.h is_wooden(ptr) — the wood golem alone.
+const PM_WOOD_GOLEM = 254;
+function is_wooden(mdat) { return mdat?.pmidx === PM_WOOD_GOLEM; }
 
 // C ref: include/mondata.h bigmonst() / mons[].msize >= MZ_LARGE.
 function largemonst(mdat) {
@@ -1269,6 +1945,16 @@ export function Monnam(mtmp) {
 export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
     const base = mtmp?.data?.name || 'monster';
     const given = mtmp?.mgivenname || mtmp?.mextra?.mgivenname;
+
+    // C ref: do_name.c:919 — a shopkeeper IS his personal name ("Maganasipi"),
+    // with " the <species>" appended only when he isn't a plain shopkeeper or is
+    // invisible.  No article, ever.
+    if (mtmp?.isshk && !game.u?.uhallu && mtmp.m_ap_type !== 'mon') {
+        let buf = shkname(mtmp);
+        if (base !== 'shopkeeper' || mtmp.minvis)
+            buf += ' the ' + (mtmp.minvis ? 'invisible ' : '') + base;
+        return buf;
+    }
 
     // C ref: do_name.c x_monnam do_it — an unspottable monster (e.g. while the
     // hero is blind) is just "it" unless ARTICLE_YOUR was requested.  Gated on

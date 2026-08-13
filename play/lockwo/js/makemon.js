@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { builds_up, In_hell } from './dungeon.js';
+import { builds_up, In_hell, Is_special } from './dungeon.js';
 import { roles } from './role.js';
 import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless,
          rnd_class,
@@ -49,7 +49,7 @@ import { inside_room, t_at as t_at_local } from './mkroom.js';
 import { does_block, block_point } from './vision.js';
 import {
     mflags2_of, mflags3_of, msound_of,
-    M2_LORD, M2_PRINCE, M2_NASTY, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
+    M2_LORD, M2_PRINCE, M2_NASTY, M2_DEMON, M2_STRONG, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
     M2_GNOME, M2_ORC, M2_ELF, M2_DWARF, M2_HUMAN,
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK,
     MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST,
@@ -127,6 +127,7 @@ const CANDELABRUM_OF_INVOCATION = 262;
 // mkclass()'s mk_gen_ok.  These are abstract class placeholders.
 const PM_ORC = 72;
 const PM_GIANT = 169;
+const PM_ETTIN = 174;
 const PM_HUMAN = 260;
 const PM_ELF = 264;
 
@@ -1259,7 +1260,7 @@ export function mpickobj(mtmp, otmp) {
 // pmidx 249..259 = straw,paper,rope,leather,gold,wood,flesh,clay,stone,glass,
 // iron golem (verified by name); same order as the C PM_*_GOLEM constants.
 const GOLEM_HP = { 249: 20, 250: 20, 251: 30, 252: 60, 253: 40, 254: 50, 255: 40, 256: 70, 257: 100, 258: 80, 259: 120 };
-function golemhp_js(pmidx) { return GOLEM_HP[pmidx] || 0; }
+export function golemhp_js(pmidx) { return GOLEM_HP[pmidx] || 0; }
 
 // C ref: adj_lev() (makemon.c:2016). Adjusts a monster's level for the
 // current depth and player level. The slice has no Wizard of Yendor / special
@@ -1309,7 +1310,7 @@ const PM_AIR_ELEMENTAL = name_to_pmidx('air elemental'),
     PM_FIRE_ELEMENTAL = name_to_pmidx('fire elemental'),
     PM_EARTH_ELEMENTAL = name_to_pmidx('earth elemental'),
     PM_WATER_ELEMENTAL = name_to_pmidx('water elemental');
-function is_home_elemental(ptr) {
+export function is_home_elemental(ptr) {
     if (ptr.mcls !== S_ELEMENTAL) return false;
     const uz = game.u?.uz;
     switch (ptr.pmidx) {
@@ -1499,11 +1500,13 @@ const W_BOULDER = 475, W_CLUB = 77, W_TWO_HANDED_SWORD = 55, W_BATTLE_AXE = 45,
     W_ORCISH_CHAIN_MAIL = 129, W_ORCISH_CLOAK = 140, W_ORCISH_SHORT_SWORD = 48,
     W_ORCISH_BOW = 85, W_ORCISH_ARROW = 20, W_URUK_HAI_SHIELD = 154,
     W_ORCISH_DAGGER = 36, W_CROSSBOW = 88, W_CROSSBOW_BOLT = 23, W_BOW = 83,
-    W_ARROW = 18, W_LUCERN_HAMMER = 64, W_AKLYS = 76, W_RANSEUR = 60,
+    W_ARROW = 18, W_LUCERN_HAMMER = 69, W_AKLYS = 80, W_RANSEUR = 60,
     W_GLAIVE = 62, W_SPETUM = 61, W_DART = 24,
     W_CHAIN_MAIL = 128, W_LEATHER_ARMOR = 134, W_LEATHER_JACKET = 135,
     W_LEATHER_CLOAK = 145, W_LEATHER_GLOVES = 159, W_LOW_BOOTS = 163,
-    W_HIGH_BOOTS = 165, W_POT_HEALING = 307, W_SHURIKEN = 25;
+    W_HIGH_BOOTS = 165, W_POT_HEALING = 307, W_SHURIKEN = 25,
+    W_TRIDENT = 33, W_BULLWHIP = 82, W_WAN_DEATH = 433,
+    W_WAN_STRIKING = 417;
 
 // C ref: mon.c msound MS_GUARDIAN quest-guardian humans (G_NOGEN, so never
 // randomly generated — only placed explicitly by a quest home level).
@@ -1531,9 +1534,11 @@ function is_armed_pm(pmidx, mcls, name) {
     return ARMED_NAMES.has(name);
 }
 
+// C ref: mondata.h:121 strongmonst(ptr) == ((ptr->mflags2 & M2_STRONG) != 0).
+// Was a giant/ogre/troll monster-class list, which answers FALSE for every
+// other strong species (erinys, marilith, ettin-class demons, dragons...).
 function strongmonst_js(ptr) {
-    const c = ptr.mcls;
-    return c === 34 || c === 41 || c === 46; // giant/ogre/troll
+    return (mflags2_of(ptr) & M2_STRONG) !== 0;
 }
 
 // Full C-faithful m_initweap for Big Room monsters.
@@ -1557,9 +1562,15 @@ function m_initweap_full(mtmp) {
     case 27: // S_ANGEL (makemon.c:330)
         m_initweap_angel(mtmp, ptr);
         break;
-    case 34: // S_GIANT (no PM_ETTIN in slice)
-        if (rn2(2)) mongets(mtmp, W_BOULDER);
-        if (!rn2(5)) mongets(mtmp, rn2(2) ? W_TWO_HANDED_SWORD : W_BATTLE_AXE);
+    case 34: // S_GIANT
+        // C ref: makemon.c:181 — an ettin gets a CLUB, not a boulder, and is
+        // excluded from the second draw entirely.  Both halves used to assume
+        // "no PM_ETTIN in slice"; mons[] carries it (174), and giving it a
+        // BOULDER swaps mksobj_init's ROCK_CLASS arm in for the WEAPON_CLASS
+        // one (seed0360 step 211: rn2(11)/rn2(10) vs our rn2(5)/rn2(75)).
+        if (rn2(2)) mongets(mtmp, (mm !== PM_ETTIN) ? W_BOULDER : W_CLUB);
+        if ((mm !== PM_ETTIN) && !rn2(5))
+            mongets(mtmp, rn2(2) ? W_TWO_HANDED_SWORD : W_BATTLE_AXE);
         break;
     case 53: // S_HUMAN
         if (MERC_PM.has(mm)) {
@@ -1720,6 +1731,31 @@ function m_initweap_full(mtmp) {
     case 49: // S_WRAITH
         mongets(mtmp, W_KNIFE); mongets(mtmp, W_LONG_SWORD);
         break;
+    case 56: // S_DEMON (makemon.c:500)
+        // C switches on the pm index; keyed by name here because the JS mons[]
+        // numbering is its own scheme.
+        switch (ptr.name) {
+        case 'balrog':
+            mongets(mtmp, W_BULLWHIP); mongets(mtmp, W_BROADSWORD);
+            break;
+        case 'Orcus':
+            mongets(mtmp, W_WAN_DEATH);              // the Wand of Orcus
+            break;
+        case 'horned devil':
+            mongets(mtmp, rn2(4) ? W_TRIDENT : W_BULLWHIP);   // makemon.c:510
+            break;
+        case 'Dispater':
+            mongets(mtmp, W_WAN_STRIKING);
+            break;
+        case 'Yeenoghu':
+            mongets(mtmp, W_FLAIL);
+            break;
+        default: break;
+        }
+        // C: `if (!is_demon(ptr)) break;` then FALLTHRU into the general case —
+        // this keeps djinn and mail daemons from leaving objects behind.
+        if (!(mflags2_of(ptr) & M2_DEMON)) break;
+        // FALLTHROUGH
     default: {
         // C ref: makemon.c m_initweap default — bias = is_lord(ptr)
         // + is_prince(ptr)*2 + extra_nasty(ptr).
@@ -2063,7 +2099,16 @@ function IS_WALL_TYP(typ) { return typ > 0 && typ <= DBWALL; }
 // generated inside Mine Town must NOT take the maze-statue branch.
 function in_town_js(x, y) {
     const lvl = game.level;
-    if (!lvl?.flags?.has_town) return false;
+    // C ref: hack.c:3569 is `if (!svl.level.flags.has_town) return FALSE;` — a
+    // PER-LEVEL flag, set at mkmaze.c:698-699 inside fixup_special(), i.e. AFTER
+    // the level script has run.  We stand in the S_LEVEL `town` flag because
+    // nothing in this port writes has_town yet; that answers the same for shop
+    // mimics (created later, in fill_special_room) but is TRUE during the script
+    // where C is still FALSE.  Porting fixup_special's has_town is the real fix
+    // and needs measuring on its own — it flips this predicate on all seven
+    // minetn variants, six of which still run the unported generator.
+    const slev = Is_special(game.u?.uz);
+    if (!slev || !slev.flags?.town) return false;
     let has_subrooms = false;
     for (let i = 0; i < (lvl.nroom ?? 0); i++) {
         const sroom = lvl.rooms[i];
@@ -2581,8 +2626,36 @@ function select_newcham_form(mon) {
         // this arm leaves mndx as NON_PM and draws nothing.
         break;
     }
+
+    // C ref: mon.c:5213 — "if no form was specified above, pick one at random
+    // now".  Omitting this made every arm that declines (a chameleon's rn2(3),
+    // an ordinary monster) return NON_PM, and newcham's retry loop re-ran the
+    // whole switch instead of drawing C's single rn1(SPECIAL_PM-LOW_PM,LOW_PM).
+    // The while condition is C's, ANDed: outside the Rogue level it always
+    // fails, so exactly one draw happens.
+    if (mndx === NON_PM) {
+        tryct = 50;
+        do {
+            mndx = rn1(SPECIAL_PM - 0 /*LOW_PM*/, 0 /*LOW_PM*/);
+        } while (--tryct > 0 && !validspecmon(mon, mndx)
+                 && (tryct > 40 && Is_rogue_level(game.u?.uz)
+                     && !is_upper_monsym(mndx)));
+    }
     return mndx;
 }
+
+// C ref: mon.c:4993 validspecmon(mon, mndx).
+function validspecmon(mon, mndx) {
+    if (mndx === NON_PM) return true;
+    if (!accept_newcham_form(mon, mndx)) return false;
+    // C ref: monst.h isspecmon(mon) — shopkeeper/priest/guard/Wizard; their new
+    // form must still be able to take objects and talk (notake/!has_head).
+    // No such monster is ever a shapechanger in this port, so the extra
+    // rejection never fires; kept so the predicate reads like C's.
+    return true;
+}
+
+export function pickvampshape_pub(mtmp) { return pickvampshape(mtmp); }
 
 // C ref: mon.c accept_newcham_form().  Pure predicate, no RNG.
 function accept_newcham_form(mon, mndx) {
@@ -2843,11 +2916,12 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     }
 
     // C ref: makemon.c:1304 — S_MIMIC monsters get an appearance via
-    // set_mimic_sym(), which consumes RNG (e.g. rn2(10) + get_shop_item in a
-    // shop).  Reached from stock_room (a mimic placed on a shop square) under
-    // the full-monster-gen flag; gated so ordinary-level paths are untouched.
-    if (ptr.mcls === 13 /* S_MIMIC */ && (game._full_mon_gen || game._bigrm_gen)
-        && x && y) {
+    // set_mimic_sym(), which consumes RNG (rn2(17) ROLL_FROM(syms) + the mkobj
+    // that follows, rn2(10) + get_shop_item in a shop, ...).  C runs it for
+    // EVERY mimic; it used to be gated on the full-monster-gen flags here, which
+    // silently dropped the draws for des.monster()-placed mimics (seed0360
+    // step 211: soko1's two "giant mimic" boulders).
+    if (ptr.mcls === 13 /* S_MIMIC */ && x && y) {
         set_mimic_sym(mtmp);
     }
 

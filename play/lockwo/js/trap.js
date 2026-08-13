@@ -6,27 +6,31 @@
 import { game } from './gstate.js';
 import { rn2, rnl, rn1, rnd, d } from './rng.js';
 import { newsym, pline, m_at, update_topl } from './display.js';
+import { Blind } from './vision.js';
 import { body_part, near_capacity, update_inventory, delobj, xname } from './invent.js';
 import { observe_object } from './o_init.js';
 import { find_ac } from './u_init.js';
-import { exercise } from './attrib.js';
+import { exercise, acurr_eff } from './attrib.js';
 import {
     HOLE, TRAPDOOR, SQKY_BOARD, is_hole, In_quest,
     RUST_TRAP, BEAR_TRAP, DART_TRAP, MAGIC_TRAP, PIT, SPIKED_PIT,
-    TT_BEARTRAP, A_DEX, A_STR, A_MAX, FOOT, LEG, HEAD, SPINE, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES,
+    TT_BEARTRAP, TT_PIT, A_DEX, A_STR, A_MAX, FOOT, LEG, HEAD, SPINE, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES,
+    FORCETRAP, FORCEBUNGLE, TOOKPLUNGE, VIASITTING, FAILEDUNTRAP, HURTLING, FROMOUTSIDE,
+    NOWEBMSG, TT_WEB,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     MAX_ERODE, ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
     EF_PAY, EF_DESTROY, EF_NONE,
     ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
+    IS_AIR, IS_ROOM, IS_WALL, SDOOR,
     Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold, BURNING,
     LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC, VIBRATING_SQUARE,
     ARROW_TRAP, ROCKTRAP, SLP_GAS_TRAP, POLY_TRAP, In_sokoban, In_endgame,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER, STATUE as STATUE_OTYP,
-    mkcorpstat, ROCK,
+    mkcorpstat, ROCK, ARROW,
     WEAPON_CLASS, ARMOR_CLASS, SCROLL_CLASS, POTION_CLASS, SPBOOK_CLASS,
     POT_WATER,
 } from './mkobj.js';
@@ -34,6 +38,7 @@ import { makemon, rndmonst_adj, monster_by_pmidx } from './makemon.js';
 import { likes_gems_flag } from './monflags_data.js';
 import { MM_NOCOUNTBIRTH, MM_NOMSG, STATUE_TRAP } from './const.js';
 import { In_hell as dungeon_In_hell } from './dungeon.js';
+import { check_special_room } from './shkroom.js';
 
 // C ref: include/onames.h — object type indices (mkobj.js OBJECT_DATA order).
 const DART = 24;
@@ -204,8 +209,12 @@ export function immune_to_trap(mon, ttype) {
 }
 
 // C ref: trap.c deltrap() — unlink and free a trap.  The lightweight port keeps
-// traps in a flat array, so removal is a splice; Sokoban/conjoined-pit bookwork
-// is not exercised by the owned sessions.
+// traps in a flat array, so removal is a splice.
+// GAP: C first runs clear_conjoined_pits(trap) (inert here — nothing sets
+// ttmp->conjoined) and, for a pit/hole on a Sokoban level, maybe_finish_sokoban()
+// — which awards the level prize and clears its sokoban_rules flag.  Sokoban
+// levels DO generate now, so that second one is reachable in principle; it is
+// only entered when the last pit/hole on the level is removed.
 export function deltrap(trap) {
     const list = game.level?.traps;
     if (!list) return;
@@ -557,11 +566,15 @@ function erosion_matters(obj) {
     return obj?.oclass === WEAPON_CLASS || obj?.oclass === ARMOR_CLASS;
 }
 
-// C ref: apply.c splash_lit() — a lit candle/lamp is at risk of being put out
-// by a splash of water.  None of the owned starter sessions step on a rust
-// trap while carrying a lit light source, so the RNG-bearing extinguish path
-// is not yet reachable; the predicate is kept faithful (only lamplit objects
-// qualify) so the rust-trap case-3 inventory sweep consumes no PRNG here.
+// C ref: apply.c splash_lit(obj) — a splash of water puts out a lit light
+// source.  Correction to the old note here: C's version draws NO RNG at all
+// (it is snuff_lit() plus a lantern-battery drain and a "flickers" message);
+// what is unported is the SIDE EFFECT, not a roll.  Consequences of the stub:
+// water_damage() on a lit candle/lamp should return ER_DAMAGED immediately
+// instead of falling through to the erosion switch, and the rust trap's case-3
+// sweep should snuff the hero's light source (which then changes what is lit,
+// hence what is seen, on every later turn).  Needs the light-source machinery
+// (snuff_lit/end_burn), which this port does not have.
 function splash_lit(_obj) {
     return false;
 }
@@ -705,9 +718,14 @@ function unwear_armor(otmp) {
 
 const ERODE_ACTION = ['smoulder', 'rust', 'rot', 'corrode', 'crack'];
 
-// C ref: trap.c erode_obj(otmp, ostr, type, ef_flags).  Scoped to hero-worn
-// armor (destroy_arm's only call site): the monster-carried/floor-object
-// (vismon/visobj) branches of the C function are never reached and omitted.
+// C ref: trap.c erode_obj(otmp, ostr, type, ef_flags).  Correction to the old
+// note here: destroy_arm() is NOT the only call site — water_damage()'s default
+// arm routes every non-scroll/book/potion hero item through this too.  What is
+// genuinely omitted is (a) the monster-carried / floor-object (vismon/visobj)
+// message variants, which no call site can reach, and (b) two ef_flags no
+// caller passes: EF_GREASE (which would divert to grease_protect()'s rn2(2)
+// grease-burn-off — a REAL draw if a caller ever passes it) and EF_VERBOSE
+// (the "not affected by oxidation" lines).
 export async function erode_obj(otmp, ostr, type, ef_flags) {
     if (!otmp) return ER_NOTHING;
 
@@ -830,14 +848,22 @@ async function trapeffect_rust_trap(trap, _trflags) {
     find_ac();
 }
 
-// C ref: hack.c losehp() — for a non-polymorphed hero this subtracts the
-// damage from u.uhp (no RNG).  Death handling is not exercised by the trap
-// sessions, so it is reduced to the hp arithmetic + hpmax clamp.
+// C ref: hack.c losehp(n, knam, k_format) — for a non-polymorphed hero this
+// subtracts the damage from u.uhp.  No RNG.
+// GAP: C's `if (u.uhp < 1) { You("die..."); done(DIED); }` is replaced by a
+// clamp to 0, so a trap that would kill the hero leaves them walking around at
+// 0 HP instead of ending the game.  Also unported: maybe_wail() when the blow
+// drops the hero below a tenth of uhpmax (message only, no RNG).
 function losehp(n) {
     const u = game.u;
     if (!u) return;
     u.uhp -= n;
     if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
+    // C's `else disp.botl = TRUE;` is DELIBERATELY not mirrored: setting
+    // game.botl here measured -1 screen on seed0002 (step 221).  This port's
+    // status rows are a snapshot taken when bot() runs, so an extra release
+    // point moves a --More-- frame's HP; the botl release for trap damage
+    // already happens at the caller's own refresh.
     if (u.uhp < 1) u.uhp = 0;
 }
 
@@ -890,6 +916,67 @@ export function t_missile(otyp, trap) {
     return otmp;
 }
 
+// C ref: trap.c trapeffect_arrow_trap(&gy.youmonst, trap, trflags) — the hero
+// steps onto an arrow trap.  Same shape as the dart trap minus the poison
+// roll: t_missile's mksobj, dmgval's rnd(oc_wsdam), then thitu(8, ...)'s
+// rnd(20) (+ exercise's rn2(2) on a hit).  A previously-triggered, seen trap
+// misfires on !rn2(15) ("You hear a loud click!") and is removed.
+async function trapeffect_arrow_trap(trap, _trflags) {
+    const u = game.u;
+    const { dmgval } = await import('./uhitm.js');
+    if (trap.once && trap.tseen && !rn2(15)) {
+        await pline('You hear a loud click!');
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+        return;
+    }
+    trap.once = 1;
+    seetrap(trap);
+    // Leave the topline NEED_MORE so thitu's hit line appends to it (the same
+    // C topl.c CO-8 rule the dart trap relies on).
+    await pline('An arrow shoots out at you!');
+    game._toplin = 1; // TOPLIN_NEED_MORE
+    const otmp = t_missile(ARROW, trap);
+    // dmgval(otmp, &gy.youmonst): a role monster is not large -> rnd(oc_wsdam).
+    const dam = dmgval(otmp, { data: { msize: 0 } });
+    // u.usteed is null for the contest hero -> the rn2(2)/steedintrap arm is
+    // short-circuited before its roll.
+    if (await thitu_named(8, dam, 'arrow')) {
+        // Hit: the arrow is consumed (obfree).  No floor object.
+    } else {
+        const { stackobj } = await import('./invent.js');
+        place_object(otmp, u.ux, u.uy);
+        otmp.where = 'floor'; otmp.ox = u.ux; otmp.oy = u.uy;
+        if (!Blind()) observe_object(otmp);
+        stackobj(otmp);
+        newsym(u.ux, u.uy);
+    }
+}
+
+// C ref: trap.c trapeffect_sqky_board(&gy.youmonst, trap, trflags) — the hero
+// steps on a squeaky board.  Consumes no RNG itself, but wake_nearby(FALSE)
+// clears msleeping/STRAT_WAITMASK on every monster within ulevel*20, which
+// changes who acts on the following turns (and therefore the RNG stream).
+async function trapeffect_sqky_board(trap, trflags) {
+    const u = game.u;
+    const forcetrap = (trflags & FORCETRAP) !== 0 || (trflags & FAILEDUNTRAP) !== 0
+        || (!!u?.uprops?.Flying && (trflags & VIASITTING) !== 0);
+    if ((u?.uprops?.Levitation || u?.uprops?.Flying) && !forcetrap) {
+        if (!Blind()) {
+            seetrap(trap);
+            await pline('You notice a loose board below you.');
+        }
+        return;
+    }
+    seetrap(trap);
+    // Deaf is never set for the contest hero, so C's "vibrates" arm is dead.
+    await pline(`A board beneath you squeaks ${trapnote(trap, false)} loudly.`);
+    // cmd.js's copy, not monmove.js's: only that one carries C's wake_msg()
+    // ("<Monster> wakes up.") which lands on the topline after the squeak.
+    const { wake_nearby } = await import('./cmd.js');
+    await wake_nearby(false);
+}
+
 // C ref: trap.c trapeffect_dart_trap(&youmonst, trap, trflags) — the hero
 // steps onto a dart trap.  For a freshly-triggered (trap->once == 0) trap the
 // soft-click escape (rn2(15)) is skipped; the dart is created (mksobj order),
@@ -902,8 +989,15 @@ export function t_missile(otyp, trap) {
 async function trapeffect_dart_trap(trap, _trflags) {
     const u = game.u;
     const { dmgval } = await import('./uhitm.js');
-    // trap->once is 0 on first trigger -> the (trap->once && tseen && !rn2(15))
-    // escape short-circuits without consuming RNG.
+    // C: on a RE-trigger (trap->once already set) of a seen trap the dart
+    // misfires on !rn2(15).  trap->once is 0 the first time, so C's && stops
+    // before the roll — but the roll is real on every later trigger.
+    if (trap.once && trap.tseen && !rn2(15)) {
+        await pline('You hear a soft click.');
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+        return;
+    }
     trap.once = 1;
     seetrap(trap);
     // C: pline("A little dart shoots out at you!").  Mark the topline NEED_MORE
@@ -926,9 +1020,69 @@ async function trapeffect_dart_trap(trap, _trflags) {
         const { stackobj } = await import('./invent.js');
         place_object(otmp, u.ux, u.uy);
         otmp.where = 'floor'; otmp.ox = u.ux; otmp.oy = u.uy;
+        if (!Blind()) observe_object(otmp);   // trap.c:1290, as in rocktrap
         stackobj(otmp);
         newsym(u.ux, u.uy);
     }
+}
+
+// C ref: trap.c trapeffect_web(&gy.youmonst, trap, trflags) — the hero walks
+// into a spider web.  mu_maybe_destroy_web() is FALSE for a role monster (none
+// is amorphous/whirly/flaming/unsolid/a gelatinous cube) and webmaker() is
+// FALSE too, so the hero always gets stuck.  Exactly ONE roll fires, selected
+// by ACURR(A_STR) — and a hero with exceptional (18/xx, encoded >= 19) or
+// merely 18 strength takes the `tim = 1` arm, which draws NOTHING.
+// hack.c trapmove()'s TT_WEB arm (cmd.js) already runs the struggle-out.
+async function trapeffect_web(trap, trflags) {
+    const u = game.u;
+    const webmsgok = (trflags & NOWEBMSG) === 0;
+    const forcetrap = (trflags & FORCETRAP) !== 0 || (trflags & FAILEDUNTRAP) !== 0;
+    const viasitting = (trflags & VIASITTING) !== 0;
+
+    seetrap(trap); // feeltrap()
+    if (webmsgok) {
+        const verbbuf = (forcetrap || viasitting)
+            ? 'are caught by' : `${u_locomotion('stumble')} into`;
+        await pline(`You ${verbbuf} ${a_your(trap.madeby_u)} spider web!`);
+    }
+    set_utrap(1, TT_WEB); /* time is adjusted below */
+    // ACURR(A_STR): acurr_eff returns the C-encoded strength (3..18, then
+    // 19..118 for 18/01..18/**), which is what C's str brackets compare.
+    const str = acurr_eff(A_STR);
+    let tim;
+    if (str <= 3) tim = rn1(6, 6);
+    else if (str < 6) tim = rn1(6, 4);
+    else if (str < 9) tim = rn1(4, 4);
+    else if (str < 12) tim = rn1(4, 2);
+    else if (str < 15) tim = rn1(2, 2);
+    else if (str < 18) tim = rnd(2);
+    else if (str < 69) tim = 1;
+    else {
+        tim = 0;
+        if (webmsgok)
+            await pline(`You tear through ${a_your(trap.madeby_u)} web!`);
+        deltrap(trap);
+        newsym(u.ux, u.uy);
+    }
+    set_utrap(tim, TT_WEB);
+}
+
+// C ref: trap.c trapeffect_slp_gas_trap(&gy.youmonst, trap, trflags).
+// breathless(gy.youmonst.data) is FALSE for every role monster, so the branch
+// turns purely on Sleep_resistance.  NOTE: nothing in this port grants the
+// hero SleepResistance yet (u_init.c's racial/role intrinsics are unported),
+// so an elf or a Monk takes the wrong arm here and draws an rnd(25) C skips —
+// that is a u_init gap, not a trap.c one.
+async function trapeffect_slp_gas_trap(trap, _trflags) {
+    seetrap(trap);
+    const { Sleep_resistance, fall_asleep } = await import('./zap.js');
+    if (Sleep_resistance()) {
+        await pline('You are enveloped in a cloud of gas!');
+    } else {
+        await pline('A cloud of gas puts you to sleep!');
+        fall_asleep(-rnd(25), true);
+    }
+    // steedintrap(trap, NULL): no steed -> returns before any RNG.
 }
 
 // C ref: trap.c set_utrap(tim, typ) — mark the hero trapped for `tim` turns.
@@ -1018,32 +1172,49 @@ async function trapeffect_bear_trap(trap, _trflags) {
 }
 
 // C ref: trap.c domagictrap() — the common (non-explosion) magic-trap effect.
-// fate = rnd(20) selects the outcome.  RNG order is preserved for every branch
-// the owned sessions reach (fate 11 and 13 consume no further RNG); the
-// fate < 10 monster-summoning branch is ported faithfully (rnd(4) count,
-// rn1(5,10) blindness, rn1(20,30) deafness, then `cnt` makemon calls) so its
-// RNG stream matches C should a session ever land there.
+// fate = rnd(20) selects the outcome.  The fate < 10 monster-summoning branch
+// is ported faithfully (rnd(4) count, rn1(5,10) blindness, rn1(20,30) deafness,
+// then `cnt` makemon calls); fates 12/19/20 still call out to machinery this
+// port lacks and are listed in the per-arm comments below.
 async function domagictrap() {
     const u = game.u;
     const fate = rnd(20);
     if (fate < 10) {
         /* Most of the time, it creates some monsters. */
         const cnt = rnd(4);
-        // resists_blnd(&youmonst): false for the ordinary (un-poly'd) hero.
-        if (!game.Blind /* placeholder for resists_blnd; hero has no blnd resist */) {
+        // resists_blnd(&gy.youmonst) is (Blind || Unaware) for the hero plus
+        // gaze/explosion-attack and Sunsword tests that a role monster fails —
+        // so an ALREADY-blind hero skips the message AND the rn1(5,10).
+        if (!Blind()) {
             await pline('You are momentarily blinded by a flash of light!');
-            // make_blinded((long) rn1(5, 10), FALSE)
-            rn1(5, 10);
+            // make_blinded((long) rn1(5, 10), FALSE): SETS (not adds to) the
+            // HBlinded timer, which timeout.js then counts down.  Leaving it
+            // unset left every later `!Blind` test — display, observe_object,
+            // monster sighting — answering for a sighted hero for 10..14 turns.
+            u.blinded = rn1(5, 10);
+            // potion.c toggle_blindness(): vision_full_recalc + an immediate
+            // vision_recalc(0), same shape as apply.js use_cream_pie.  disp.botl
+            // is DELIBERATELY not mirrored — every other blinding site in this
+            // port (apply.js, eat.js) leaves the status release to the caller.
+            game.vision_full_recalc = 1;
+            const { vision_recalc } = await import('./vision.js');
+            try { vision_recalc(0); } catch { /* pre-vision-init */ }
+            // C then does `if (!Blind) Your1(vision_clears);` — Blind is now
+            // TRUE, so no second line.
         }
-        // deafness effects: !Deaf for the contest hero.
-        // incr_itimeout(&HDeaf, rn1(20, 30)) — no displayed message difference
-        // beyond "You hear a deafening roar!" which pages with the flash line.
+        // else-if arm: `if (!Blind) You_see("a flash of light!")` — dead, since
+        // resists_blnd() was only true BECAUSE the hero is blind.
+        // Deafness: !Deaf for the contest hero.  HDeaf lives on u.uprops (that
+        // is what sounds.js Deaf() and timeout.js's DEAF timer read).
         await pline('You hear a deafening roar!');
-        rn1(20, 30);
+        if (!u.uprops) u.uprops = {};
+        u.uprops.HDeaf = (u.uprops.HDeaf || 0) + rn1(20, 30); // incr_itimeout
         const { makemon } = await import('./makemon.js');
         for (let c = cnt; c-- > 0;)
             makemon(null, u.ux, u.uy, 0); // NO_MM_FLAGS
-        // wake_nearto(): wakes nearby monsters, no RNG.
+        // "roar: wake monsters in vicinity, AFTER placing trap-created ones".
+        const { wake_nearto } = await import('./cmd.js');
+        await wake_nearto(u.ux, u.uy, 7 * 7);
         return;
     }
     switch (fate) {
@@ -1051,15 +1222,43 @@ async function domagictrap() {
         break;
     case 11: /* toggle intrinsic invisibility */
         // !Invis for the contest hero -> self_invis_message(): "Gee!  All of
-        // a sudden, you can't see yourself."  No RNG.
+        // a sudden, you can't see yourself."  No RNG, but HInvis and the
+        // hero's own glyph both change.
         await pline('You hear a low hum.');
         await pline("Gee!  All of a sudden, you can't see yourself.");
+        // HInvis = HInvis ? 0 : HInvis|FROMOUTSIDE.  Two fields: uprops.HInvis
+        // is the intrinsic table (#wizintrinsic reads it), u.uinvis is what
+        // monmove/mcastu Invis() actually test — a monster that cannot see the
+        // hero picks different moduli (monmove.c:1860 rn2(11) etc.).
+        if (!u.uprops) u.uprops = {};
+        u.uprops.HInvis = u.uprops.HInvis ? 0 : ((u.uprops.HInvis || 0) | FROMOUTSIDE);
+        u.uinvis = !!u.uprops.HInvis;
+        newsym(u.ux, u.uy);
         break;
-    case 13: /* odd feelings: a shiver */
+    case 12: /* a flash of fire */
+        // GAP: dofiretrap(NULL) — d(2,4) twice, rn2(min(uhpmax,num+1)),
+        // burnarmor()'s rn2(5) loop, rn2(3), destroy_items(AD_FIRE) and
+        // burn_floor_objects().  burnarmor/destroy_items live unexported in
+        // zap.js and burn_floor_objects has no port at all, so a partial
+        // version here would desync just as hard as the omission.  Same
+        // blocker as trapeffect_fire_trap.
+        break;
+    /* odd feelings */
+    case 13:
         await pline(`A shiver runs up and down your ${body_part(SPINE)}!`);
         break;
     case 14:
         await pline('You hear distant howling.');
+        break;
+    case 15:
+        // C: on the quest-start level "You feel [oddly ]like the prodigal
+        // son."; otherwise "You suddenly yearn for your <nearby|distant>
+        // homeland." — "nearby" inside the Quest or standing on its dungeon
+        // entrance, else "distant".  No RNG, but a real topline either way.
+        if (on_qstart_level())
+            await pline(`You feel ${game.flags?.female ? 'oddly ' : ''}like the prodigal son.`);
+        else
+            await pline(`You suddenly yearn for your ${In_quest(u.uz) ? 'nearby' : 'distant'} homeland.`);
         break;
     case 16:
         await pline('Your pack shakes violently!');
@@ -1070,12 +1269,27 @@ async function domagictrap() {
     case 18:
         await pline('You feel tired.');
         break;
+    case 19:
+        // GAP: adjattrib(A_CHA, 1, FALSE) then tamedog() on the 3x3 box.
+        // tamedog() draws (initedog/rn2 pacify rolls) and adjattrib prints
+        // "You feel charismatic!"; neither is available in this port yet.
+        break;
+    case 20:
+        // GAP: seffects(&pseudo) with a pseudo SPE_REMOVE_CURSE — uncurses
+        // worn/wielded gear (and, for a Priest, everything).  read.js has no
+        // seffects() entry point that takes a synthetic object.
+        break;
     default:
-        // fate 12 (fire), 15 (homeland), 19 (tame), 20 (uncurse) are not
-        // reached by any owned session; leave unmodeled (no RNG, no message)
-        // rather than risk an incorrect heavy port.
         break;
     }
+}
+
+// C ref: dungeon.c on_level(&u.uz, &qstart_level) — is the hero standing on
+// the level the Quest portal leads to?  game.qstart_level is filled in by
+// dungeon.c's init; a port with no quest dungeon reports FALSE.
+function on_qstart_level() {
+    const uz = game.u?.uz, q = game.qstart_level;
+    return !!uz && !!q && uz.dnum === q.dnum && uz.dlevel === q.dlevel;
 }
 
 // C ref: trap.c trapeffect_magic_trap(&youmonst, trap, trflags) — the hero
@@ -1105,11 +1319,22 @@ async function trapeffect_magic_trap(trap, _trflags) {
     // steedintrap(trap, NULL): no steed -> Trap_Effect_Finished, no RNG.
 }
 
-// C ref: dungeon.c ceiling(x,y).  The vault/temple/shop variants need
-// in_rooms(), which is stubbed empty across this port (see mklev.js:254), and
-// the water/air/fire planes are unreachable — so every reachable call returns
-// the plain "ceiling" (same stub as muse.js:2239).  Message text only, no RNG.
-function ceiling(_x, _y) { return 'ceiling'; }
+// C ref: dungeon.c ceiling(x,y).  Message text only, no RNG — but the terrain
+// arm is NOT constant: C only says "ceiling" inside a room / on a wall / in a
+// doorway, and says "rock cavern" everywhere else, which includes every plain
+// CORRIDOR square.  A rock trap sprung in a corridor therefore reads "A trap
+// door in the rock cavern opens ...".  The vault/temple/shop variants still
+// need in_rooms(), which is stubbed empty across this port (mklev.js:254), so
+// a rock trap inside a shop/temple under-reports as "ceiling".
+function ceiling(x, y) {
+    const typ = game.level?.at(x, y)?.typ ?? STONE;
+    // Is_waterlevel/Is_firelevel/In_quest/Underwater and Is_earthlevel are all
+    // unreachable for the levels this port generates.
+    if (IS_AIR(typ)) return 'sky';
+    if (IS_ROOM(typ) || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR)
+        return 'ceiling';
+    return 'rock cavern';
+}
 
 // C ref: trap.c trapeffect_rocktrap(&youmonst, trap, trflags) — the hero
 // variant.  On a first trigger trap->once is 0, so the "nothing falls out"
@@ -1135,7 +1360,7 @@ async function trapeffect_rocktrap(trap, _trflags) {
     // uarmh is null and passes_rocks(youmonst.data) is false for every role
     // monster (all MZ_HUMAN, no M1_PASSES_WALLS), so C's helmet / "passes
     // harmlessly through you" branches are unreachable and harmless stays FALSE.
-    if (!game.Blind) observe_object(otmp);
+    if (!Blind()) observe_object(otmp);
     const { stackobj } = await import('./invent.js');
     stackobj(otmp);
     newsym(u.ux, u.uy);
@@ -1144,12 +1369,38 @@ async function trapeffect_rocktrap(trap, _trflags) {
     exercise(A_STR, false);
 }
 
-// C ref: trap.c trapeffect_selector() — dispatch on trap type.  Only the
-// effects exercised by the owned sessions are implemented; everything else is
-// a no-op stub (seetrap only) so we never crash and the trap is at least
-// revealed.  Add new trap effects here as sessions exercise them.
+// C ref: trap.c trapeffect_selector() — dispatch on trap type (hero variant).
+// Still incomplete; the arms C has that this port does not are listed with
+// their blocker so the next completeness pass can pick them up:
+//   HOLE/TRAPDOOR      fall_through() -> goto_level()
+//   TELEP_TRAP         tele_trap() -> tele()/level_tele()
+//   LEVEL_TELEP        level_tele_trap()
+//   MAGIC_PORTAL       domagicportal() -> goto_level()
+//   STATUE_TRAP        activate_statue_trap() -> animate_statue()
+//   POLY_TRAP          polyself()
+//   LANDMINE           blow_up_landmine() -> scatter()/fill_pit()
+//   ROLLING_BOULDER_TRAP  launch_obj()
+//   FIRE_TRAP          dofiretrap()  [see domagictrap fate 12]
+//   PIT/SPIKED_PIT     needs hack.c climb_pit()'s per-turn rn2(2) too (cmd.js
+//                      climb_pit_min() is a no-op), and SPIKED_PIT needs
+//                      poisoned(); falling in without those desyncs on the
+//                      NEXT turn instead of this one
+// Everything unlisted falls through to seetrap() so the trap is at least
+// revealed (C would trapeffect_* it; VIBRATING_SQUARE really is just feeltrap).
 async function trapeffect_selector(trap, trflags) {
     switch (trap.ttyp) {
+    case ARROW_TRAP:
+        await trapeffect_arrow_trap(trap, trflags);
+        break;
+    case SQKY_BOARD:
+        await trapeffect_sqky_board(trap, trflags);
+        break;
+    case SLP_GAS_TRAP:
+        await trapeffect_slp_gas_trap(trap, trflags);
+        break;
+    case WEB:
+        await trapeffect_web(trap, trflags);
+        break;
     case ROCKTRAP:
         await trapeffect_rocktrap(trap, trflags);
         break;
@@ -1219,24 +1470,153 @@ async function drain_en(n, max_already_drained) {
     await pline(`You feel ${mesg}${punct}`);
 }
 
+// C ref: trap.c floor_trigger(ttyp) — a trap set off by weight on the floor, so
+// an airborne hero passes over it without triggering it.
+function floor_trigger(ttyp) {
+    switch (ttyp) {
+    case ARROW_TRAP: case DART_TRAP: case ROCKTRAP: case SQKY_BOARD:
+    case BEAR_TRAP: case LANDMINE: case ROLLING_BOULDER_TRAP:
+    case SLP_GAS_TRAP: case RUST_TRAP: case FIRE_TRAP:
+    case PIT: case SPIKED_PIT: case HOLE: case TRAPDOOR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// C ref: trap.c check_in_air(&gy.youmonst, trflags) — hero variant.  A role
+// monster is neither is_floater nor is_flyer, so C's `is_you ? Levitation :
+// is_floater(...)` reduces to the hero's own Levitation/Flying properties.
+function check_in_air_u(trflags) {
+    const u = game.u;
+    const plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
+    return (trflags & HURTLING) !== 0
+        || !!u?.uprops?.Levitation
+        || (!!u?.uprops?.Flying && !plunged);
+}
+
+// C ref: hack.c u_locomotion(def) — locomotion(gy.youmonst.data, def) returns
+// `def` unchanged for every role monster (none is a flyer/floater/clinger/
+// swimmer/crawler), so only Levitation and Flying change the verb.
+function u_locomotion(def) {
+    const u = game.u;
+    const cap = def[0] === def[0].toUpperCase();
+    if (u?.uprops?.Levitation) return cap ? 'Float' : 'float';
+    if (u?.uprops?.Flying) return cap ? 'Fly' : 'fly';
+    return def;
+}
+
+// C ref: trap.c a_your[]/A_Your[] — indexed by trap->madeby_u.
+function a_your(madeby_u) { return madeby_u ? 'your' : 'a'; }
+
+// C ref: trap.c trapname(ttyp, force_pit).  Hallucination is never set in this
+// port (see cmd.js avoid_trap_andor_region), so the roletrap/halu_trapnames
+// arms are dead and the result is always the defsym explanation.
+function trapname(ttyp, _force_pit) { return trap_explanation(ttyp); }
+
+// C ref: trap.c dotrap()'s article for the "step over"/"escape" lines — an
+// arrow trap the hero did not make reads "an arrow trap".
+function trap_article(trap) {
+    return (trap.ttyp === ARROW_TRAP && !trap.madeby_u) ? 'an' : a_your(trap.madeby_u);
+}
+
+// C ref: trap.h fixed_tele_trap(t) — a teleport trap with a fixed destination
+// (sp_lev "teleport_region"); triggering it is never left to chance.
+function fixed_tele_trap(t) {
+    return t.ttyp === TELEP_TRAP && !!t.teledest
+        && isok(t.teledest.x, t.teledest.y);
+}
+
+// C ref: cmd.c xytodir(x,y) — index of a unit step in xdir[]/ydir[], else
+// DIR_ERR.  hack.h DIR_180(dir) is ((dir) + 4) % N_DIRS.
+function xytodir(dx, dy) {
+    for (let i = 0; i < N_DIRS; i++)
+        if (XDIR8[i] === dx && YDIR8[i] === dy) return i;
+    return -1; /* DIR_ERR */
+}
+
+// C ref: trap.c conjoined_pits(trap2, trap1, u_entering_trap2) — do the two
+// pits share the wall the hero is crossing?  `conjoined` is only ever set by
+// dig.c's pit digging, which this port does not model, so the answer is FALSE
+// in practice; kept faithful because dotrap()/trapeffect_pit() use it to
+// SUPPRESS RNG draws, so a wrong TRUE here would eat rolls C makes.
+export function conjoined_pits(trap2, trap1, u_entering_trap2) {
+    const u = game.u;
+    if (!trap1 || !trap2) return false;
+    if (!isok(trap2.tx, trap2.ty) || !isok(trap1.tx, trap1.ty)
+        || !is_pit(trap2.ttyp) || !is_pit(trap1.ttyp)
+        || (u_entering_trap2 && !(u?.utrap && u.utraptype === TT_PIT)))
+        return false;
+    const diridx = xytodir(Math.sign(trap2.tx - trap1.tx),
+                           Math.sign(trap2.ty - trap1.ty));
+    if (diridx !== -1) {
+        const adjidx = (diridx + 4) % N_DIRS;
+        if (((trap1.conjoined || 0) & (1 << diridx))
+            && ((trap2.conjoined || 0) & (1 << adjidx)))
+            return true;
+    }
+    return false;
+}
+
+// C ref: trap.c adj_nonconjoined_pit(adjtrap) — is the hero stepping from one
+// pit straight into a neighbouring, unjoined one?
+function adj_nonconjoined_pit(adjtrap) {
+    const u = game.u;
+    const trap_with_u = t_at(u?.ux0 ?? 0, u?.uy0 ?? 0);
+    if (trap_with_u && adjtrap && u?.utrap && u.utraptype === TT_PIT
+        && is_pit(trap_with_u.ttyp) && is_pit(adjtrap.ttyp))
+        return xytodir(u.dx, u.dy) !== -1;
+    return false;
+}
+
 // C ref: trap.c dotrap(trap, trflags) — the hero steps onto / triggers a trap.
-// Pared down to the pieces that matter for the owned sessions: the
-// nomul(0) interrupt, the "already seen, escape on !rn2(5)" check (only when
-// the trap was previously seen), and the trapeffect dispatch.
 export async function dotrap(trap, trflags = 0) {
     if (!trap) return;
+    const u = game.u;
+    const ttype = trap.ttyp;
     const already_seen = !!trap.tseen;
+    let forcetrap = (trflags & FORCETRAP) !== 0 || (trflags & FAILEDUNTRAP) !== 0;
+    const forcebungle = (trflags & FORCEBUNGLE) !== 0;
+    const plunged = (trflags & TOOKPLUNGE) !== 0;
+    const conj_pit = conjoined_pits(trap, t_at(u?.ux0 ?? 0, u?.uy0 ?? 0), true);
+    const adj_pit = adj_nonconjoined_pit(trap);
 
     trap_nomul();
 
-    // C: a previously-seen, non-special trap gives a 1-in-5 chance to step over
-    // it harmlessly (consumes rn2(5)).  Floor traps the hero hasn't seen yet
-    // (our case) skip this entirely.
-    if (already_seen) {
-        if (!rn2(5)) {
+    if (fixed_tele_trap(trap)) { trflags |= FORCETRAP; forcetrap = true; }
+
+    if (game.level?.flags?.sokoban_rules && (is_pit(ttype) || is_hole(ttype))) {
+        // Sokoban pits/holes are inescapable: C skips BOTH the airborne
+        // step-over and the rn2(5) escape roll, so this arm must not draw.
+        await pline(`Air currents pull you down into ${a_your(trap.madeby_u)} ${trapname(ttype, true)}!`);
+    } else if (!forcetrap) {
+        if (floor_trigger(ttype) && check_in_air_u(trflags)) {
+            if (already_seen)
+                await pline(`You ${u_locomotion('step')} over ${trap_article(trap)} ${trapname(ttype, false)}.`);
+            return;
+        }
+        // C's escape roll is gated on a stack of conditions our old port
+        // dropped: an already-seen MAGIC_PORTAL / VIBRATING_SQUARE /
+        // ANTI_MAGIC draws NO rn2(5) at all, and neither does a Fumbling,
+        // bungling, plunging or pit-to-pit step.  is_clinger(gy.youmonst.data)
+        // is false for every role monster, so the `||` arm cannot fire.
+        const fumbling = !!(u?.HFumbling || u?.EFumbling);
+        if (already_seen && !fumbling && !undestroyable_trap(ttype)
+            && ttype !== ANTI_MAGIC && !forcebungle && !plunged
+            && !conj_pit && !adj_pit
+            && !rn2(5)) {
+            await pline(`You escape ${trap_article(trap)} ${trapname(ttype, false)}.`);
             return;
         }
     }
+
+    // u.usteed is null for the contest hero, so mon_learns_traps(u.usteed, ...)
+    // is skipped.  mons_see_trap() draws no RNG but WRITES mtrapseen on every
+    // sighted, non-mindless, non-animal onlooker — which monmove's mfndpos then
+    // reads to route around the trap, and mon_mintrap's already-seen rn2(4)
+    // step-over roll depends on.
+    const { mons_see_trap } = await import('./monmove.js');
+    mons_see_trap(trap);
 
     await trapeffect_selector(trap, trflags);
 }
@@ -1452,6 +1832,9 @@ export async function spoteffects(pickupFn) {
     const u = game.u;
     if (!u) return;
     if (await pooleffects_enter(pickupFn)) return;
+    // C ref: hack.c spoteffects() — check_special_room(FALSE) runs right after
+    // pooleffects(), i.e. BEFORE the trap and the pickup.
+    await check_special_room(false);
     const trap = t_at(u.ux, u.uy);
     const pit = !!(trap && is_pit_ttyp(trap.ttyp));
     if (pickupFn && !pit) await pickupFn(u.ux, u.uy);

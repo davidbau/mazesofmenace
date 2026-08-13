@@ -698,16 +698,17 @@ export function rank_of(lev, rolenum, female = false) {
 }
 
 // C ref: role.c Hello() — role-specific greeting word for welcome().
-export function Hello(rolenum) {
+export function Hello(rolenum, mtmp) {
     switch (rolenum) {
     case PM_KNIGHT:
         return 'Salutations';
     case PM_SAMURAI:
-        return 'Konnichi wa';
+        return (mtmp && mtmp.data?.name === 'shopkeeper')
+            ? 'Irasshaimase' : 'Konnichi wa';
     case PM_TOURIST:
         return 'Aloha';
     case PM_VALKYRIE:
-        return 'Velkommen';
+        return (mtmp && mtmp.data?.name === 'mail daemon') ? 'Hail' : 'Velkommen';
     default:
         return 'Hello';
     }

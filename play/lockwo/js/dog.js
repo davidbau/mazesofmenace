@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, getRngLog } from './rng.js';
 import { roles } from './role.js';
 import { COLNO, ROWNO, NON_PM, DOOR, W_SADDLE } from './const.js';
-import { mksobj } from './mkobj.js';
+import { mksobj, next_ident } from './mkobj.js';
 
 // C ref: include/onames.h — SADDLE object type index (mkobj.js OBJECTS table
 // row [235, "SADDLE", ...]).  A saddle is a TOOL_CLASS object whose
@@ -255,7 +255,13 @@ function makedog_mon(pettype, x, y) {
             mhpmax_penalty: 0,
         },
     };
-    mtmp.m_id = rnd(2);
+    // C ref: makemon.c:1251 `mtmp->m_id = next_ident()` — the shared
+    // object/monster ident counter, NOT a bare rnd(2).  Assigning the increment
+    // itself left svc.context.ident two behind C for the rest of the game, so
+    // every later m_id/o_id was wrong with the PRNG stream still in lockstep
+    // (seed0030 seg3: the Dlvl-2 shopkeeper drew shkgeneral[25] "Kopasker"
+    // instead of [23] "Maganasipi", since nameshk() keys on m_id).
+    mtmp.m_id = next_ident();
     newmonhp_for_pet(pettype, mtmp);
     // C ref: makemon.c:1279 `mtmp->female = femaleok ? rn2(2) : 0;` — the draw
     // was already emitted here but its RESULT was dropped, leaving every pet

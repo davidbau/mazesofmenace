@@ -13,14 +13,16 @@
 // non-selectable PICK_NONE "Current skills:" form dismissed with ESC.
 
 import { game } from './gstate.js';
-import { objects, WEAPON_CLASS, GEM_CLASS } from './mkobj.js';
+import { nhgetch } from './input.js';
+import { objects, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS } from './mkobj.js';
 import { renderWindowScreen, dismiss_invent_screen } from './invent.js';
+import { y_n, update_topl, topl_more, docrt } from './display.js';
 import {
     P_NONE, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
     P_MASTER, P_GRAND_MASTER, P_NUM_SKILLS,
     P_FIRST_WEAPON, P_LAST_WEAPON, P_FIRST_SPELL, P_LAST_SPELL,
     P_FIRST_H_TO_H, P_LAST_H_TO_H,
-    P_BARE_HANDED_COMBAT, P_RIDING,
+    P_BARE_HANDED_COMBAT, P_RIDING, P_TWO_WEAPON_COMBAT,
 } from './const.js';
 
 const ECMD_OK = 0;
@@ -129,7 +131,7 @@ function martial_bonus(rolemnum) {
     return rolemnum === PM_SAMURAI || rolemnum === PM_MONK;
 }
 
-function P_NAME(skill, rolemnum) {
+export function P_NAME(skill, rolemnum) {
     if (skill === P_BARE_HANDED_COMBAT)
         return martial_bonus(rolemnum) ? 'martial arts' : 'bare handed combat';
     return P_NAMES[skill] || 'no skill';
@@ -137,9 +139,32 @@ function P_NAME(skill, rolemnum) {
 
 // C ref: weapon.c weapon_type — |oc_skill| (ammo's skill is the negated
 // launcher skill).  P_NONE (0) for non-weapons.
-function weapon_type(obj) {
+export function weapon_type(obj) {
+    if (!obj) return P_BARE_HANDED_COMBAT;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS
+        && obj.oclass !== GEM_CLASS)
+        return P_NONE;
     const sk = objects[obj.otyp]?.oc_skill ?? P_NONE;
     return sk < 0 ? -sk : sk;
+}
+
+// C ref: weapon.c uwep_skill_type().
+export function uwep_skill_type() {
+    if (game.u?.twoweap) return P_TWO_WEAPON_COMBAT;
+    return weapon_type(game.uwep);
+}
+
+// C ref: weapon.c use_skill(skill, degree) — practice toward the next
+// enhancement.  give_may_advance_msg()'s "You feel more confident..." arm needs
+// u.weapon_slots, which this port does not track (it reads 0, so can_advance()
+// is false on both sides of the increment and the message can never fire).
+export function use_skill(skill, degree) {
+    if (skill === P_NONE) return;
+    const S = build_skill_state();
+    if (S.P_SKILL[skill] === P_ISRESTRICTED) return;
+    const u = game.u = game.u || {};
+    u.skill_training = u.skill_training || {};
+    u.skill_training[skill] = (u.skill_training[skill] || 0) + degree;
 }
 function is_ammo(obj) {
     const sk = objects[obj.otyp]?.oc_skill ?? 0;
@@ -186,7 +211,70 @@ function build_skill_state() {
     // Roles starting with a horse (Knight's pony) know how to ride it.
     if (rolemnum === PM_KNIGHT) P_SKILL[P_RIDING] = P_BASIC;
 
-    return { P_SKILL, P_MAX, rolemnum };
+    // C ref: u_init.c skill_init():1795-1801 — the tail loop seeds every
+    // unrestricted skill's training counter to the amount already "spent"
+    // reaching its starting level, so a Basic skill starts at 20 rather than 0.
+    // (The #enhance wizard menu prints this number, so it is load-bearing.)
+    const P_ADV = new Array(P_NUM_SKILLS).fill(0);
+    const trained = game.u?.skill_training || {};
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        if (P_SKILL[i] === P_ISRESTRICTED) continue;
+        P_ADV[i] = practice_needed_to_advance(P_SKILL[i] - 1) + (trained[i] || 0);
+    }
+
+    // C ref: weapon.c skill_advance() — #enhance raises P_SKILL permanently.
+    // u.weapon_skills[] is real saved state; this port rebuilds the skill_init
+    // baseline on every call, so the advances are replayed on top of it.
+    const advanced = game.u?.skill_record || [];
+    for (const sk of advanced) if (P_SKILL[sk] !== P_ISRESTRICTED) P_SKILL[sk]++;
+
+    return { P_SKILL, P_MAX, P_ADV, rolemnum };
+}
+
+// C ref: include/skills.h practice_needed_to_advance(level).
+function practice_needed_to_advance(level) {
+    return level * level * 20;
+}
+
+// C ref: weapon.c slots_required() — harder training costs more slots; the
+// unarmed/martial disciplines (everything past P_LAST_WEAPON except
+// two-weapon combat) cost half, rounded up.
+function slots_required(skill, S) {
+    const tmp = S.P_SKILL[skill];
+    if (skill <= P_LAST_WEAPON || skill === P_TWO_WEAPON_COMBAT)
+        return tmp;
+    return Math.trunc((tmp + 1) / 2);
+}
+
+// C ref: hack.h wizard == flags.debug.
+function is_wizard() {
+    return !!(game.flags && game.flags.debug);
+}
+
+const P_SKILL_LIMIT = 60; // C ref: include/skills.h
+
+// C ref: weapon.c can_advance()/could_advance()/peaked_skill().
+function can_advance(skill, speedy, S) {
+    if (S.P_SKILL[skill] === P_ISRESTRICTED
+        || S.P_SKILL[skill] >= S.P_MAX[skill]
+        || (game.u?.skills_advanced || 0) >= P_SKILL_LIMIT)
+        return false;
+    if (is_wizard() && speedy)
+        return true;
+    return S.P_ADV[skill] >= practice_needed_to_advance(S.P_SKILL[skill])
+        && (game.u?.weapon_slots || 0) >= slots_required(skill, S);
+}
+function could_advance(skill, S) {
+    if (S.P_SKILL[skill] === P_ISRESTRICTED
+        || S.P_SKILL[skill] >= S.P_MAX[skill]
+        || (game.u?.skills_advanced || 0) >= P_SKILL_LIMIT)
+        return false;
+    return S.P_ADV[skill] >= practice_needed_to_advance(S.P_SKILL[skill]);
+}
+function peaked_skill(skill, S) {
+    if (S.P_SKILL[skill] === P_ISRESTRICTED) return false;
+    return S.P_SKILL[skill] >= S.P_MAX[skill]
+        && S.P_ADV[skill] >= practice_needed_to_advance(S.P_SKILL[skill]);
 }
 
 // C ref: weapon.c P_SKILL(skill) — the hero's current proficiency in a given
@@ -263,9 +351,200 @@ function renderSkillPage() {
     });
 }
 
-// C ref: cmd.c doextcmd -> weapon.c enhance_weapon_skill().
-export function doenhance() {
+// C ref: weapon.c add_skills_to_menu() — the selectable form, used whenever
+// any skill is annotated or advanceable.  Returns the flat item list in
+// end_menu() order: [prompt, blank, legend..., heading, items...].  A
+// selectable item carries `skill`; the accelerator letter is assigned later
+// (tty_end_menu resets it per page).
+function build_skill_menu_items(S, speedy) {
+    const { P_SKILL, P_MAX, P_ADV, rolemnum } = S;
+    const restricted = (i) => P_SKILL[i] === P_ISRESTRICTED;
+    const wiz = is_wizard();
+
+    let to_advance = 0, eventually_advance = 0, maxxed_cnt = 0;
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        if (restricted(i)) continue;
+        if (can_advance(i, speedy, S)) to_advance++;
+        else if (could_advance(i, S)) eventually_advance++;
+        else if (peaked_skill(i, S)) maxxed_cnt++;
+    }
+    const selectable = (to_advance + eventually_advance + maxxed_cnt) > 0;
+
+    let longest = 0;
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        if (restricted(i)) continue;
+        const len = P_NAME(i, rolemnum).length;
+        if (len > longest) longest = len;
+    }
+
+    const items = [];
+    if (eventually_advance > 0 || maxxed_cnt > 0) {
+        if (eventually_advance > 0)
+            items.push({ text: `(Skill${eventually_advance === 1 ? '' : 's'} flagged by "*" may be enhanced `
+                + `${(game.u?.ulevel ?? 1) < 30 ? "when you're more experienced"
+                                                : 'if skill slots become available'}.)` });
+        if (maxxed_cnt > 0)
+            items.push({ text: `(Skill${maxxed_cnt === 1 ? '' : 's'} flagged by "#" cannot be enhanced any further.)` });
+        items.push({ text: '' });
+    }
+
+    for (const [first, last, name] of SKILL_RANGES) {
+        items.push({ text: name, attr: 1 /* ATR_INVERSE (iflags.menu_headings) */ });
+        for (let i = first; i <= last; i++) {
+            if (restricted(i)) continue;
+            const lvl = SKILL_LEVEL_NAME[P_SKILL[i]] || 'Unknown';
+            const advanceable = selectable && can_advance(i, speedy, S);
+            // C: prefix is "" for a lettered entry, "  * "/"  # "/"    " otherwise.
+            const prefix = !selectable ? ''
+                : advanceable ? ''
+                : could_advance(i, S) ? '  * '
+                : peaked_skill(i, S) ? '  # ' : '    ';
+            // C: wizard  " %s%-*s %-12s %5d(%4d)"; else  " %s %-*s [%s]".
+            const text = wiz
+                ? ' ' + prefix + P_NAME(i, rolemnum).padEnd(longest) + ' '
+                    + lvl.padEnd(12) + ' ' + String(P_ADV[i]).padStart(5)
+                    + '(' + String(practice_needed_to_advance(P_SKILL[i])).padStart(4) + ')'
+                : ' ' + prefix + ' ' + P_NAME(i, rolemnum).padEnd(longest) + ' [' + lvl + ']';
+            items.push({ text, skill: advanceable ? i : undefined });
+        }
+    }
+
+    let title = (to_advance > 0) ? 'Pick a skill to advance:' : 'Current skills:';
+    if (wiz && !speedy) {
+        const slots = game.u?.weapon_slots || 0;
+        title += `  (${slots} slot${slots === 1 ? '' : 's'} available)`;
+    }
+    // end_menu() prepends the prompt + a blank separator line.
+    items.unshift({ text: title, attr: 1 }, { text: '' });
+    return { items, to_advance };
+}
+
+// C ref: win/tty/wintty.c tty_end_menu() — pages of min(52, rows-1) entries;
+// menu_ch restarts at 'a' on every page and only advances for selectable items.
+function paginate_skill_menu(items) {
+    const lmax = Math.min(52, (game.nhDisplay?.rows ?? 24) - 1);
+    const pages = [];
+    let menu_ch = 'a';
+    for (let n = 0; n < items.length; n++) {
+        if (n % lmax === 0) { menu_ch = 'a'; pages.push([]); }
+        const it = items[n];
+        if (it.skill != null) {
+            it.sel = menu_ch;
+            menu_ch = menu_ch === 'z' ? 'A'
+                : String.fromCharCode(menu_ch.charCodeAt(0) + 1);
+        }
+        pages[pages.length - 1].push(it);
+    }
+    return pages;
+}
+
+// C ref: win/tty/wintty.c tty_add_menu() — a selectable entry's string is
+// "<letter> - <text>"; process_menu_window() then writes a space at column 0
+// and the string from column 1.
+function render_skill_menu_page(pages, idx) {
+    const page = pages[idx];
+    renderWindowScreen(page.map((it) => ({
+        text: it.sel ? `${it.sel} - ${it.text}` : it.text,
+        attr: it.attr || 0,
+    })), {
+        menu: true,
+        footer: pages.length > 1 ? `(${idx + 1} of ${pages.length})` : '(end) ',
+        footerRow: page.length,
+        footerCol: 1,
+        modal: 'skillwin',
+    });
+}
+
+// C ref: win/tty/wintty.c process_menu_window() — one select_menu() round.
+// Returns the picked skill, or null for a commit-with-nothing / cancel.
+async function select_skill_menu(pages, pickOne) {
+    let idx = 0;
+    for (;;) {
+        render_skill_menu_page(pages, idx);
+        const c = await nhgetch();
+        const ch = String.fromCharCode(c);
+        if (c === 27) { delete game._modal_screen; return null; }     // cancel
+        if (c === 13 || c === 10) { delete game._modal_screen; return null; } // commit
+        if (ch === ' ') {
+            if (idx < pages.length - 1) { idx++; continue; }
+            delete game._modal_screen;
+            return null;                                  // ' ' past last page ends
+        }
+        if (ch === '>') { if (idx < pages.length - 1) idx++; continue; }
+        if (ch === '<') { if (idx > 0) idx--; continue; }
+        if (pickOne) {
+            const hit = pages[idx].find((it) => it.skill != null && it.sel === ch);
+            if (hit) { delete game._modal_screen; return hit.skill; }
+        }
+        // unacceptable input: tty_nhbell(), menu stays up.
+    }
+}
+
+// C ref: weapon.c skill_advance().
+async function skill_advance(skill, S) {
+    const u = game.u = game.u || {};
+    u.weapon_slots = (u.weapon_slots || 0) - slots_required(skill, S);
+    u.skill_record = u.skill_record || [];
+    u.skill_record.push(skill);
+    u.skills_advanced = (u.skills_advanced || 0) + 1;
+    // The new level decides "most" vs "more"; S is the pre-advance state.
+    const newlvl = S.P_SKILL[skill] + 1;
+    await update_topl(`You are now ${newlvl >= S.P_MAX[skill] ? 'most' : 'more'} `
+        + `skilled in ${P_NAME(skill, S.rolemnum)}.`);
+    // C also calls skill_based_spellbook_id() for a spell skill; that only
+    // marks spellbooks known (no RNG, no topline) so it is left out.
+}
+
+// C ref: cmd.c doextcmd -> weapon.c enhance_weapon_skill().  In wizard mode
+// the command opens with a y_n() and then runs its own select_menu() loop, so
+// it is driven inline here; outside wizard mode the menu is always the
+// single-shot PICK_NONE listing that the move loop pages (skill_window_advance).
+export async function doenhance() {
     // svc.context.tips |= (1 << TIP_ENHANCE) — player now knows about #enhance.
+    if (is_wizard()) {
+        let speedy = false;
+        if (await y_n('Advance skills without practice?') === 'y')
+            speedy = true;
+        let more_to_do = 0;
+        do {
+            const S = build_skill_state();
+            const { items, to_advance } = build_skill_menu_items(S, speedy);
+            const pages = paginate_skill_menu(items);
+            const pick = await select_skill_menu(pages, to_advance > 0);
+            more_to_do = 0;
+            if (pick != null) {
+                // destroy_nhwindow() on a full-screen menu redraws the map
+                // before skill_advance()'s message lands on a fresh top line.
+                delete game._skill_pages;
+                delete game._skill_page;
+                game._pending_message = '';
+                await docrt();
+                await skill_advance(pick, S);
+                const S2 = build_skill_state();
+                for (let i = 0; i < P_NUM_SKILLS; i++) {
+                    if (can_advance(i, speedy, S2)) {
+                        if (!speedy) await update_topl('You feel you could be more dangerous!');
+                        more_to_do = 1;
+                        break;
+                    }
+                }
+                // tty_display_nhwindow() more()s a pending topline before it
+                // paints the next menu over the map.  C's more() ends with
+                // home()+cl_end(), so the next round's message starts a fresh
+                // line instead of being appended after two spaces.
+                if (game._toplin === 1) {
+                    await topl_more();
+                    game._toplin = 0;
+                    game._pending_message = '';
+                }
+            }
+        } while (speedy && more_to_do > 0);
+        delete game._skill_pages;
+        delete game._skill_page;
+        game._modal_screen = 'skillwin';
+        await dismiss_invent_screen();
+        return ECMD_OK;
+    }
     const state = build_skill_state();
     const { lines, title } = build_skill_menu_lines(state);
 

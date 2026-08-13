@@ -77,6 +77,7 @@ export const SCR_CONFUSE_MONSTER = 325;
 export const SCR_SCARE_MONSTER = 326;
 export const SCR_REMOVE_CURSE = 327;
 export const SCR_TELEPORTATION = 333;
+export const SCR_EARTH = 340;
 export const SCR_BLANK_PAPER = 365;
 export const SPE_HEALING = 374;
 export const SPE_NOVEL = 408;

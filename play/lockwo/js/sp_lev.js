@@ -17,12 +17,15 @@ import {
     DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
     TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, IS_ROOM, IS_WALL,
-    TELEP_TRAP, D_SECRET, D_CLOSED, IS_OBSTRUCTED, A_NONE, In_endgame,
+    TELEP_TRAP, D_SECRET, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_NODOOR,
+    W_ANY, W_RANDOM, IS_OBSTRUCTED, A_NONE, In_endgame,
     AM_NONE, AM_SHRINE, AM_SANCTUM,
-    IS_STWALL, IS_TREE, IS_LAVA, W_NONDIGGABLE, W_NONPASSWALL,
+    IS_STWALL, IS_TREE, IS_LAVA, IS_FURNITURE, W_NONDIGGABLE, W_NONPASSWALL,
     HOLE, ROLLING_BOULDER_TRAP, SQKY_BOARD, RUST_TRAP, LANDMINE, MAGIC_TRAP,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP, SLP_GAS_TRAP, ANTI_MAGIC,
-    PIT, NO_TRAP, is_pit, BURN, LR_BRANCH,
+    PIT, SPIKED_PIT, FIRE_TRAP, NO_TRAP, is_pit, BURN, LR_BRANCH,
+    TRAPNUM, TRAPPED_DOOR, TRAPPED_CHEST, MAGIC_PORTAL, VIBRATING_SQUARE,
+    LEVEL_TELEP, WEB, STATUE_TRAP, POLY_TRAP, TRAPDOOR, ENGRAVE,
 } from './const.js';
 // readobjnam() is how C's obj.new(<name>) resolves an item name (via the same
 // rnd_otyp_by_namedesc path a wish uses).  readobjnam.js does not import sp_lev,
@@ -30,9 +33,10 @@ import {
 import { readobjnam } from './readobjnam.js';
 import { objects as OBJDATA } from './mkobj.js';
 import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
-         CORPSE, CHEST, LARGE_BOX, mk_tt_object,
+         CORPSE, CHEST, LARGE_BOX, STATUE, mk_tt_object,
          WAX_CANDLE, TALLOW_CANDLE, mkobj_at, BOULDER,
          FOOD_CLASS, RING_CLASS, WAND_CLASS, BAG_OF_HOLDING, SCR_SCARE_MONSTER,
+         SCR_EARTH,
          WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
          SPBOOK_CLASS, GEM_CLASS,
          GOLD_PIECE, add_to_container, weight,
@@ -43,13 +47,14 @@ import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
          MM_ASLEEP, MM_NOGRP } from './makemon.js';
 import { somexy, inside_room, occupied } from './mkroom.js';
 import { is_flyer_flag, is_swimmer_flag, passes_walls_flag,
-         mflags1_of, M1_AMPHIBIOUS } from './monflags_data.js';
-import { maketrap } from './trap.js';
+         mflags1_of, mflags2_of, M1_AMPHIBIOUS } from './monflags_data.js';
+import { maketrap, Can_fall_thru } from './trap.js';
 import { stock_room } from './shknam.js';
 import { Is_special, In_hell } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import { make_engr_at, make_grave } from './engrave.js';
 import { priestini } from './priest.js';
+import { roles, races } from './roles.js';
 import { match_maptyps,
          selection_new as selection_new_var,
          selection_setpoint as selection_setpoint_var,
@@ -838,7 +843,8 @@ function create_storeroom(croom) {
 
 // C ref: include/defsym.h MONSYM() — monster-class (S_*) indices, as used by
 // mkclass().  js/makemon.js keys its per-class switches off the same numbers.
-const S_KOBOLD = 11, S_ORC = 15, S_CENTAUR = 29, S_DRAGON = 30, S_GNOME = 33,
+const S_HUMANOID = 8,
+    S_KOBOLD = 11, S_ORC = 15, S_CENTAUR = 29, S_DRAGON = 30, S_GNOME = 33,
     S_GIANT = 34, S_TROLL = 46, S_VAMPIRE_CLASS = 48, S_ZOMBIE = 52,
     S_DEMON = 56;
 // C ref: monflags.h G_UNIQ — a one-of-a-kind species, never a random pick.
@@ -2974,9 +2980,14 @@ function bigrm_is_ok_location_dry(x, y) {
     if (!isok(x, y)) return false;
     const typ = game.level?.at(x, y)?.typ;
     if (typ == null) return false;
-    // boulders are not generated in the empty big room before fill, so the
-    // boulder check is inert here.
-    return SPACE_POS(typ);
+    if (!SPACE_POS(typ)) return false;
+    // C ref: sp_lev.c:1298 — DRY (without SOLID) rejects a square that already
+    // has a BOULDER on it.  Inert in the empty big room, decisive in Sokoban:
+    // without it every des.object({class=...}) accepts a boulder square C would
+    // have re-rolled (seed0360 step 249, soko4-1).
+    for (const o of (game.level?.objects || []))
+        if (o && o.otyp === BOULDER && o.ox === x && o.oy === y) return false;
+    return true;
 }
 
 // C ref: sp_lev.c get_location() random-location branch (sp_lev.c:1226-1238)
@@ -3030,6 +3041,19 @@ function bigrm_load_map(mapstr, lit) {
             loc.edge = false;
             loc.typ = mptyp;
             loc.lit = !!lit;
+            // C ref: sp_lev.c:4608-4630 sel_set_ter() — every des.map cell goes
+            // through it, and its tail is what gives map-drawn walls and doors
+            // their .horizontal flag.  back_to_glyph() renders an SDOOR as
+            // S_hwall/S_vwall straight off that bit, so skipping this draws a
+            // horizontal secret door as a vertical one.
+            if (loc.typ === SDOOR || IS_DOOR(loc.typ)) {
+                if (loc.typ === SDOOR) loc.doormask = D_CLOSED;
+                const left = x ? game.level?.at(x - 1, y) : null;
+                if (left && (IS_WALL(left.typ) || left.horizontal))
+                    loc.horizontal = true;
+            } else if (loc.typ === HWALL || loc.typ === IRONBARS) {
+                loc.horizontal = true;
+            }
         }
     return mf;
 }
@@ -3162,14 +3186,57 @@ function bigrm_wallification(x1, y1, x2, y2) {
                 if (allSolidStrict) loc.typ = STONE;
             }
         }
-    // fix_wall_spines: set the proper wall variant from the 4 cardinal spines.
-    const extend = (xx, yy) => isWall(xx, yy) ? 1 : 0;
+    fix_wall_spines(x1, y1, x2, y2);
+}
+
+// C ref: mklev.c fix_wall_spines() — set each wall's corner/T/cross variant
+// from its four cardinal neighbours.  Split out because flip_level() calls it
+// on its own (sp_lev.c:915) WITHOUT wall_cleanup: mirroring the grid moves the
+// glyphs but leaves every corner facing the old way.  No RNG.
+function fix_wall_spines(x1, y1, x2, y2) {
+    const map = game.level;
+    // C ref: mkmaze.c:45 iswall() — doors, iron bars, lava wall and water all
+    // join a wall spine, not just IS_WALL.
+    const iswall = (xx, yy) => {
+        if (!isok(xx, yy)) return 0;
+        const l = map.at(xx, yy);
+        const t = l ? l.typ : STONE;
+        return (IS_WALL(t) || IS_DOOR(t) || t === LAVAWALL || t === WATER
+                || t === SDOOR || t === IRONBARS) ? 1 : 0;
+    };
+    // C ref: mkmaze.c:59 iswall_or_stone() — out of bounds counts as stone.
+    const iswall_or_stone = (xx, yy) => {
+        if (!isok(xx, yy)) return 1;
+        const l = map.at(xx, yy);
+        return ((l ? l.typ : STONE) === STONE || iswall(xx, yy)) ? 1 : 0;
+    };
+    // C ref: mkmaze.c:166 extend_spine() — a spine is SUPPRESSED when the wall
+    // in that direction is boxed in on both sides by wall/stone, which is what
+    // keeps a straight run of wall drawn as '-' instead of a row of tees.
+    const extend_spine = (locale, wall_there, dx, dy) => {
+        if (!wall_there) return 0;
+        const nx = 1 + dx, ny = 1 + dy;
+        if (dx) {
+            return (locale[1][0] && locale[1][2]
+                    && locale[nx][0] && locale[nx][2]) ? 0 : 1;
+        }
+        return (locale[0][1] && locale[2][1]
+                && locale[0][ny] && locale[2][ny]) ? 0 : 1;
+    };
     for (let x = x1; x <= x2; x++)
         for (let y = y1; y <= y2; y++) {
             const loc = map.at(x, y);
             if (!loc || !(IS_WALL(loc.typ) && loc.typ !== DBWALL)) continue;
-            const bits = (extend(x, y - 1) << 3) | (extend(x, y + 1) << 2)
-                       | (extend(x + 1, y) << 1) | extend(x - 1, y);
+            const locale = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+            for (let ddx = -1; ddx <= 1; ddx++)
+                for (let ddy = -1; ddy <= 1; ddy++) {
+                    if (!ddx && !ddy) continue;
+                    locale[1 + ddx][1 + ddy] = iswall_or_stone(x + ddx, y + ddy);
+                }
+            const bits = (extend_spine(locale, iswall(x, y - 1), 0, -1) << 3)
+                       | (extend_spine(locale, iswall(x, y + 1), 0, 1) << 2)
+                       | (extend_spine(locale, iswall(x + 1, y), 1, 0) << 1)
+                       | extend_spine(locale, iswall(x - 1, y), -1, 0);
             if (bits) loc.typ = _SPINE[bits];
         }
 }
@@ -3430,6 +3497,20 @@ export function flip_level(flp) {
         if (!inArea(m.mx, m.my)) continue;
         if (flp & 1) m.my = FlipY(m.my);
         if (flp & 2) m.mx = FlipX(m.mx);
+        // C ref: sp_lev.c:645-661 — the extended-monster coords flip AFTER the
+        // in-area `continue` and after the monster's own mx/my, and each goes
+        // through Flip_coord(), which is `if ((cc).x && inFlipArea(cc))`
+        // (sp_lev.c:520-528): a stored coord of 0, or one off the flip area, is
+        // left alone.  Without this a flipped Mine Town leaves every shopkeeper
+        // walking toward the pre-flip door and pri_move() at the wrong altar.
+        const flipCoord = (cc) => { if (cc && cc.x && inArea(cc.x, cc.y)) flipPt(cc, 'x', 'y'); };
+        if (m.ispriest) flipCoord(m.epri?.shrpos);
+        else if (m.isshk && m.eshk) { flipCoord(m.eshk.shk); flipCoord(m.eshk.shd); }
+    }
+    // engravings — C ref: sp_lev.c:689-694, flipped unconditionally.
+    for (const e of (map.engravings || [])) {
+        if (flp & 1) e.engr_y = FlipY(e.engr_y);
+        if (flp & 2) e.engr_x = FlipX(e.engr_x);
     }
     // rooms
     for (let i = 0; i < (map.nroom || 0); i++) {
@@ -3470,6 +3551,12 @@ export function flip_level(flp) {
                 map.locations[nx][y] = tmp;
             }
     }
+
+    // C ref: sp_lev.c:915 — flip_level() ends with fix_wall_spines() over the
+    // whole grid.  Mirroring moves the cells but leaves every corner/T glyph
+    // pointing the pre-flip way (seed0360 step 211: 43 differing cells, all of
+    // them wall corners).  RNG-free.
+    fix_wall_spines(1, 0, COLNO - 1, ROWNO - 1);
 }
 
 // allow_flips per bigrm variant (3 = H+V default; noflip variants override).
@@ -3931,14 +4018,35 @@ const BIGRM_MAP_STRINGS = {
 };
 
 // ════════════════════════════════════════════════════════════════════════
-// Sokoban entrance level loader (dat/soko1-2.lua).
+// Sokoban entrance level loader (dat/soko1-1.lua, dat/soko1-2.lua).
 //
 // C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("soko1") ->
 // rnd(sp->rndlevs) picks the variant file, then load_special("soko1-N.lua").
-// Only variant 2 is hand-ported (the one the recorded session's RNG stream
-// resolves to); variant 1 falls through undone — no covered session reaches
-// it, so there is no recorded stream to verify against.
+// BOTH variants are ported: the two files differ only in map, coordinates and
+// the percent() threshold on the prize, so one des.* program driven by a data
+// table covers them.  (soko1-1 was the "never reached, so not ported" half
+// until seed0360 stepped onto it — rnd(2) is a coin flip per game.)
 // ════════════════════════════════════════════════════════════════════════
+
+const SOKO1_1_MAP =
+    '--------------------------\n' +
+    '|........................|\n' +
+    '|.......|---------------.|\n' +
+    '-------.------         |.|\n' +
+    ' |...........|         |.|\n' +
+    ' |...........|         |.|\n' +
+    '--------.-----         |.|\n' +
+    '|............|         |.|\n' +
+    '|............|         |.|\n' +
+    '-----.--------   ------|.|\n' +
+    ' |..........|  --|.....|.|\n' +
+    ' |..........|  |.+.....|.|\n' +
+    ' |.........|-  |-|.....|.|\n' +
+    '-------.----   |.+.....+.|\n' +
+    '|........|     |-|.....|--\n' +
+    '|........|     |.+.....|  \n' +
+    '|...|-----     --|.....|  \n' +
+    '-----            -------  ';
 
 const SOKO1_2_MAP =
     '  ------------------------\n' +
@@ -4044,24 +4152,37 @@ function soko_region_zoo(x1, y1) {
                         true, ZOO, true, FILL_NORMAL, true);
 }
 
-// C ref: sp_lev.c link_doors_rooms() restricted to one room — this level has
-// exactly one room (the reward zoo; the rest of the map is unregistered
-// terrain), so a full scan for DOOR/SDOOR cells sharing its roomno (set by
-// flood_fill_room's edge-marking pass) reproduces link_doors_rooms' effect
-// for our purposes: doorct + the first door in raster (y outer, x inner)
-// order, matching mkroom.c fill_zoo()'s sroom->fdoor.
+// C ref: sp_lev.c:5544 add_doors_to_room(croom) — run at region-creation time —
+// followed by sp_lev.c:6022 link_doors_rooms() at level finalize.  Both funnel
+// into mklev.c:574 add_door(), and THAT is the load-bearing part: add_door
+// INSERTS each new door at svd.doors[aroom->fdoor], shifting the rest up, so
+// `fdoor` names the door added LAST, not first.
+//
+// The two scans also disagree on order — add_doors_to_room walks the room's
+// bounding box x-outer/y-inner, link_doors_rooms walks the whole map
+// y-outer/x-inner — and the last door the pair adds is the one fill_zoo()
+// measures dist2 from.  Getting this wrong scales every gold pile in the zoo
+// (seed0360 step 211: rn1(676,10) / rn1(2500,10) instead of C's rn1(100,10)).
 function soko_link_doors_to_room(croom) {
     const rmno = croom.roomnoidx + ROOMOFFSET;
-    let doorct = 0, fdoor = null;
+    const seen = new Set();
+    let fdoor = null;
+    const maybe_add_door = (x, y) => {
+        const loc = game.level?.at(x, y);
+        if (!loc || !(loc.typ === DOOR || loc.typ === SDOOR)) return;
+        if (loc.roomno !== rmno) return;   /* == maybe_add_door's roomno test */
+        const key = x + ',' + y;
+        if (seen.has(key)) return;         /* add_door dedups per room */
+        seen.add(key);
+        fdoor = { x, y };                  /* inserted AT fdoor: last wins */
+    };
+    // add_doors_to_room: x outer, y inner, over the bounding box grown by 1.
+    for (let x = croom.lx - 1; x <= croom.hx + 1; x++)
+        for (let y = croom.ly - 1; y <= croom.hy + 1; y++) maybe_add_door(x, y);
+    // link_doors_rooms: whole map, y outer, x inner.
     for (let y = 0; y < ROWNO; y++)
-        for (let x = 0; x < COLNO; x++) {
-            const loc = game.level?.at(x, y);
-            if (!loc || !(loc.typ === DOOR || loc.typ === SDOOR)) continue;
-            if (loc.roomno !== rmno) continue;
-            if (!fdoor) fdoor = { x, y };
-            doorct++;
-        }
-    croom.doorct = doorct;
+        for (let x = 0; x < COLNO; x++) maybe_add_door(x, y);
+    croom.doorct = seen.size;
     croom.fdoor = fdoor;
 }
 
@@ -4069,7 +4190,7 @@ function soko_link_doors_to_room(croom) {
 // per eligible cell (x outer, y inner), each carrying gold scaled by
 // (dist2 to the first door)^2, capped by a per-room gold budget.
 function soko_fill_zoo(croom) {
-    soko_link_doors_to_room(croom);
+    if (!croom.fdoor && croom.doorct == null) soko_link_doors_to_room(croom);
     if (process.env.NH_DEBUG_ZOO) console.error('DEBUG zoo', JSON.stringify({ lx: croom.lx, ly: croom.ly, hx: croom.hx, hy: croom.hy, doorct: croom.doorct, fdoor: croom.fdoor }));
     const rmno = croom.roomnoidx + ROOMOFFSET;
     const lvl = level_difficulty_ext();
@@ -4117,6 +4238,46 @@ function soko_solidify_and_nondig() {
     }
 }
 
+// dat/soko1-N.lua as data.  Everything here is in FILE ORDER — the des.*
+// program is executed top to bottom and several of the steps draw, so a
+// reordered list is a silent PRNG desync.
+const SOKO1_VARIANTS = {
+    1: {
+        map: SOKO1_1_MAP,
+        place: [{ x: 16, y: 11 }, { x: 16, y: 13 }, { x: 16, y: 15 }],
+        stair: [1, 1],
+        area: [0, 0, 25, 17],
+        boulders: [
+            [3, 5], [5, 5], [7, 5], [9, 5], [11, 5],
+            [4, 7], [4, 8], [6, 7], [9, 7], [11, 7],
+            [3, 12], [4, 10], [5, 12], [6, 10], [7, 11], [8, 10], [9, 12],
+            [3, 14],
+        ],
+        // soko1-1 leads with a hole, then the rolling boulder, then holes.
+        traps: [[7, 1, 'hole'], [8, 1, 'rolling boulder']]
+            .concat(Array.from({ length: 15 }, (_, i) => [9 + i, 1, 'hole'])),
+        doors: [[23, 13, 'locked'], [17, 11, 'closed'], [17, 13, 'closed'], [17, 15, 'closed']],
+        zoo: [18, 10],
+        prize_pct: 75,
+    },
+    2: {
+        map: SOKO1_2_MAP,
+        place: [{ x: 16, y: 10 }, { x: 16, y: 12 }, { x: 16, y: 14 }],
+        stair: [6, 15],
+        area: [0, 0, 25, 16],
+        boulders: [
+            [4, 4], [2, 6], [3, 6], [4, 7], [5, 7], [2, 8], [5, 8], [3, 9],
+            [4, 9], [3, 10], [5, 10], [6, 12], [7, 14],
+            [11, 5], [12, 6], [10, 7], [11, 7], [10, 8], [12, 9], [11, 10],
+        ],
+        traps: [[5, 1, 'rolling boulder']]
+            .concat(Array.from({ length: 18 }, (_, i) => [6 + i, 1, 'hole'])),
+        doors: [[23, 12, 'locked'], [17, 10, 'closed'], [17, 12, 'closed'], [17, 14, 'closed']],
+        zoo: [18, 9],
+        prize_pct: 25,
+    },
+};
+
 // Entry point.  C ref: makemaz("soko1") -> rnd(2) + load_special("soko1-N").
 export async function makemaz_soko1() {
     const g = game;
@@ -4125,7 +4286,8 @@ export async function makemaz_soko1() {
     const variant = rnd(rndlevs);            // mkmaze.c:1136 rnd(sp->rndlevs)
     // load_special -> load_lua -> nhlib.lua top-level: shuffle(align)
     shuffle(['law', 'neutral', 'chaos']);    // rn2(3), rn2(2)
-    if (variant !== 2) return;               // only soko1-2.lua is ported
+    const V = SOKO1_VARIANTS[variant];
+    if (!V) return;
     if (g.level?.flags) {
         g.level.flags.is_maze_lev = true;
         g.level.flags.noteleport = true;
@@ -4136,34 +4298,28 @@ export async function makemaz_soko1() {
         // BOOL_RANDOM lit -> rn2(2), then fill the whole level STONE.
         bigrm_level_init_solidfill();
         // des.map([[...]]) — single-string arg -> SPLEV_CENTER, no RNG.
-        bigrm_load_map(SOKO1_2_MAP, false);
+        bigrm_load_map(V.map, false);
 
-        // local place = selection.new(); place:set(16,10/12/14) — no RNG.
-        const PLACE_PTS = [{ x: 16, y: 10 }, { x: 16, y: 12 }, { x: 16, y: 14 }];
+        // place = selection.new(); place:set(...) x3 — no RNG.
+        const PLACE_PTS = V.place;
 
-        // des.stair("down", 06, 15) — no RNG.
-        quest_place_stair(6, 15, false);
-        // des.region(selection.area(00,00,25,16),"lit") — grow+set lit, no RNG.
-        soko_region_lit_grow(0, 0, 25, 16);
-        // des.non_diggable/non_passwall(area(0,0,25,16)) folded into the
+        // des.stair("down", x, y) — no RNG.
+        quest_place_stair(V.stair[0], V.stair[1], false);
+        // des.region(selection.area(...),"lit") — grow+set lit, no RNG.
+        soko_region_lit_grow(V.area[0], V.area[1], V.area[2], V.area[3]);
+        // des.non_diggable/non_passwall(area(...)) folded into the
         // combined finalize pass below (RNG-free either way).
 
-        // Boulders — 20x des.object("boulder", x, y); each draws next_ident's
+        // Boulders — des.object("boulder", x, y); each draws next_ident's
         // rnd(2) inside mksobj.
-        const BOULDER_SPOTS = [
-            [4, 4], [2, 6], [3, 6], [4, 7], [5, 7], [2, 8], [5, 8], [3, 9],
-            [4, 9], [3, 10], [5, 10], [6, 12], [7, 14],
-            [11, 5], [12, 6], [10, 7], [11, 7], [10, 8], [12, 9], [11, 10],
-        ];
-        for (const [bx, by] of BOULDER_SPOTS)
+        for (const [bx, by] of V.boulders)
             mksobj_at(BOULDER, q_absx(bx), q_absy(by), true, false);
 
         // des.exclusion(monster-generation) — a runtime spawn-suppression
         // region with no gameplay effect on this arrival screen; no RNG.
 
-        // Traps — rolling boulder first, then 18 holes in ascending x.
-        await soko_mktrap(5, 1, 'rolling boulder');
-        for (let hx = 6; hx <= 23; hx++) await soko_mktrap(hx, 1, 'hole');
+        // Traps, in the file's own order.
+        for (const [tx, ty, kind] of V.traps) await soko_mktrap(tx, ty, kind);
 
         // 2x des.monster({id="giant mimic", appear_as="obj:boulder"}).
         soko_create_mimic_boulder();
@@ -4178,15 +4334,18 @@ export async function makemaz_soko1() {
         soko_create_object_class_random(WAND_CLASS);
 
         // Reward room doors, then the zoo region (fill deferred to finalize).
-        quest_set_door(23, 12, 'locked');
-        quest_set_door(17, 10, 'closed');
-        quest_set_door(17, 12, 'closed');
-        quest_set_door(17, 14, 'closed');
-        const zoo = soko_region_zoo(18, 9);
+        for (const [dx, dy, dstate] of V.doors) quest_set_door(dx, dy, dstate);
+        const zoo = soko_region_zoo(V.zoo[0], V.zoo[1]);
+        // C ref: sp_lev.c:6022 link_doors_rooms() runs BEFORE wallification and
+        // flip_level_rnd, so sroom->fdoor names the first door in PRE-flip
+        // raster order; flip_level then flips svd.doors[] under it.  Linking
+        // after the flip picks the opposite door of a mirrored room and feeds
+        // fill_zoo the wrong dist2 (seed0360 step 211: i=676 vs C's 100).
+        if (zoo) soko_link_doors_to_room(zoo);
 
-        // Achievement prize: rn2(3) picks the spot, percent(25) picks the item.
+        // Achievement prize: rn2(3) picks the spot, percent(N) picks the item.
         const pt = PLACE_PTS[rn2(PLACE_PTS.length)];
-        if (percent(25)) soko_create_object_coord(BAG_OF_HOLDING, pt.x, pt.y, 'not-cursed');
+        if (percent(V.prize_pct)) soko_create_object_coord(BAG_OF_HOLDING, pt.x, pt.y, 'not-cursed');
         else soko_create_object_coord(208 /* AMULET_OF_REFLECTION */, pt.x, pt.y, 'not-cursed');
         make_engr_at(q_absx(pt.x), q_absy(pt.y), 'Elbereth', null, 0, BURN);
         soko_create_object_coord(SCR_SCARE_MONSTER, pt.x, pt.y, 'cursed');
@@ -4196,7 +4355,16 @@ export async function makemaz_soko1() {
         let flp = 0;
         if (rn2(2)) flp |= 1;
         if (rn2(2)) flp |= 2;
-        if (flp) flip_level(flp);
+        if (flp) {
+            flip_level(flp);
+            // flip_level flips svd.doors[] too; sroom->fdoor is an INDEX, so
+            // the already-chosen door travels with the map.
+            if (zoo?.fdoor) {
+                const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
+                if (flp & 1) zoo.fdoor.y = miny + maxy - zoo.fdoor.y;
+                if (flp & 2) zoo.fdoor.x = minx + maxx - zoo.fdoor.x;
+            }
+        }
 
         // solidify_map + non_diggable/non_passwall (RNG-free; order vs. the
         // flip above doesn't matter for RNG, only for the final wall_info
@@ -4224,6 +4392,251 @@ export async function makemaz_soko1() {
     } finally {
         g._full_mon_gen = false;
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Sokoban levels 2-4 (dat/soko{2,3,4}-{1,2}.lua).
+//
+// Same des.* program as soko1 minus the reward room: level_init, map, one down
+// and one up stair, the locked door(s), the lit/non-diggable/non-passwall
+// region, the boulders, the exclusion, the hole row and six random objects.
+// Only the boulders (mksobj's next_ident rnd(2)), the traps (maketrap +
+// mktrap's victim gate) and the six des.object({class=...}) draws consume RNG.
+// ════════════════════════════════════════════════════════════════════════
+
+const SOKO_UPPER_MAPS = {
+    '2-1':
+        '--------------------\n' +
+        '|........|...|.....|\n' +
+        '|.....-..|.-.|.....|\n' +
+        '|..|.....|...|.....|\n' +
+        '|-.|..-..|.-.|.....|\n' +
+        '|...--.......|.....|\n' +
+        '|...|...-...-|.....|\n' +
+        '|...|..|...--|.....|\n' +
+        '|-..|..|----------+|\n' +
+        '|..................|\n' +
+        '|...|..|------------\n' +
+        '--------            ',
+    '2-2':
+        '  --------            \n' +
+        '--|.|....|            \n' +
+        '|........|----------  \n' +
+        '|.-...-..|.|.......|  \n' +
+        '|...-......|.......|  \n' +
+        '|.-....|...|.......|  \n' +
+        '|....-.--.-|.......|  \n' +
+        '|..........|.......|  \n' +
+        '|.--...|...|.......---\n' +
+        '|....-.|---|.......+.|\n' +
+        '--|....|------------.|\n' +
+        '  |................+.|\n' +
+        '  --------------------',
+    '3-1':
+        '-----------       -----------\n' +
+        '|....|....|--     |.........|\n' +
+        '|....|......|     |.........|\n' +
+        '|.........|--     |.........|\n' +
+        '|....|....|       |.........|\n' +
+        '|-.---------      |.........|\n' +
+        '|....|.....|      |.........|\n' +
+        '|....|.....|      |.........|\n' +
+        '|..........|      |.........|\n' +
+        '|....|.....|---------------+|\n' +
+        '|....|......................|\n' +
+        '-----------------------------',
+    '3-2':
+        ' ----          -----------\n' +
+        '-|..|-------   |.........|\n' +
+        '|..........|   |.........|\n' +
+        '|..-----.-.|   |.........|\n' +
+        '|..|...|...|   |.........|\n' +
+        '|.........-|   |.........|\n' +
+        '|.......|..|   |.........|\n' +
+        '|.----..--.|   |.........|\n' +
+        '|........|.--  |.........|\n' +
+        '|.---.-.....------------+|\n' +
+        '|...|...-................|\n' +
+        '|.........----------------\n' +
+        '----|..|..|               \n' +
+        '    -------               ',
+    '4-1':
+        '------  ----- \n' +
+        '|....|  |...| \n' +
+        '|....----...| \n' +
+        '|...........| \n' +
+        '|..|-|.|-|..| \n' +
+        '---------|.---\n' +
+        '|......|.....|\n' +
+        '|..----|.....|\n' +
+        '--.|   |.....|\n' +
+        ' |.|---|.....|\n' +
+        ' |...........|\n' +
+        ' |..|---------\n' +
+        ' ----         ',
+    '4-2':
+        '-------- ------\n' +
+        '|.|....|-|....|\n' +
+        '|.|-..........|\n' +
+        '|.||....|.....|\n' +
+        '|.||....|.....|\n' +
+        '|.|-----|.-----\n' +
+        '|.|    |......|\n' +
+        '|.-----|......|\n' +
+        '|.............|\n' +
+        '|..|---|......|\n' +
+        '----   --------',
+};
+
+const SOKO_UPPER_VARIANTS = {
+    '2-1': {
+        map: SOKO_UPPER_MAPS['2-1'],
+        dnstair: [6, 10], upstair: [16, 4],
+        doors: [[18, 8, 'locked']],
+        area: [0, 0, 19, 11],
+        boulders: [
+            [2, 2], [3, 2],
+            [5, 3], [7, 3], [7, 2], [8, 2],
+            [10, 3], [11, 3],
+            [2, 7], [2, 8], [3, 9],
+            [5, 7], [6, 6],
+        ],
+        traps: [[7, 9, 'rolling boulder']]
+            .concat(Array.from({ length: 10 }, (_, i) => [8 + i, 9, 'hole'])),
+    },
+    '2-2': {
+        map: SOKO_UPPER_MAPS['2-2'],
+        dnstair: [6, 11], upstair: [15, 6],
+        doors: [[19, 9, 'locked'], [19, 11, 'locked']],
+        area: [0, 0, 21, 12],
+        boulders: [
+            [4, 2], [4, 3], [5, 3], [7, 3], [8, 3], [2, 4], [3, 4], [5, 5],
+            [6, 6], [9, 6], [3, 7], [4, 7], [7, 7], [6, 9], [5, 10], [5, 11],
+        ],
+        traps: [[7, 11, 'rolling boulder']]
+            .concat(Array.from({ length: 11 }, (_, i) => [8 + i, 11, 'hole'])),
+    },
+    '3-1': {
+        map: SOKO_UPPER_MAPS['3-1'],
+        dnstair: [11, 2], upstair: [23, 4],
+        doors: [[27, 9, 'locked']],
+        area: [0, 0, 28, 11],
+        boulders: [
+            [3, 2], [4, 2], [6, 2], [6, 3], [7, 2],
+            [3, 6], [2, 7], [3, 7], [3, 8], [2, 9], [3, 9], [4, 9],
+            [6, 7], [6, 9], [8, 7], [8, 10], [9, 8], [9, 9], [10, 7], [10, 10],
+        ],
+        traps: [[11, 10, 'rolling boulder']]
+            .concat(Array.from({ length: 15 }, (_, i) => [12 + i, 10, 'hole'])),
+    },
+    '3-2': {
+        map: SOKO_UPPER_MAPS['3-2'],
+        dnstair: [3, 1], upstair: [20, 4],
+        doors: [[24, 9, 'locked']],
+        area: [0, 0, 25, 13],
+        boulders: [
+            [2, 3], [8, 3], [9, 4], [2, 5], [4, 5], [9, 5], [2, 6], [5, 6],
+            [6, 7], [3, 8], [7, 8], [5, 9], [10, 9], [7, 10], [10, 10], [3, 11],
+        ],
+        traps: [[11, 10, 'rolling boulder']]
+            .concat(Array.from({ length: 12 }, (_, i) => [12 + i, 10, 'hole'])),
+    },
+    // soko4 is the BOTTOM level: no down stair, a "branch" levregion instead,
+    // pit traps rather than holes, and two scrolls of earth as "a little help".
+    '4-1': {
+        map: SOKO_UPPER_MAPS['4-1'],
+        branch: [6, 4], upstair: [6, 6],
+        doors: [],
+        area: [0, 0, 13, 12],
+        boulders: [
+            [2, 2], [2, 3],
+            [10, 2], [9, 3], [10, 4],
+            [8, 7], [9, 8], [9, 9], [8, 10], [10, 10],
+        ],
+        traps: [
+            [4, 6, 'pit'],
+            [2, 6, 'pit'], [2, 7, 'pit'], [2, 8, 'pit'], [2, 9, 'rolling boulder'],
+            [2, 10, 'pit'], [3, 10, 'pit'], [4, 10, 'pit'], [5, 10, 'pit'],
+            [6, 10, 'pit'], [7, 10, 'rolling boulder'],
+        ],
+        help: [[2, 11], [3, 11]],
+    },
+    '4-2': {
+        map: SOKO_UPPER_MAPS['4-2'],
+        branch: [3, 1], upstair: [1, 1],
+        doors: [],
+        area: [0, 0, 14, 10],
+        boulders: [
+            [5, 2], [6, 2], [6, 3], [7, 3],
+            [9, 5], [10, 3], [11, 2], [12, 3],
+            [7, 8], [8, 8], [9, 8], [10, 8],
+        ],
+        traps: [
+            [1, 2, 'pit'], [1, 3, 'pit'], [1, 4, 'pit'], [1, 5, 'pit'],
+            [1, 6, 'pit'], [1, 7, 'rolling boulder'],
+            [1, 8, 'pit'], [2, 8, 'pit'], [3, 8, 'pit'], [4, 8, 'pit'],
+            [5, 8, 'pit'], [6, 8, 'rolling boulder'],
+        ],
+        help: [[1, 9], [2, 9]],
+    },
+};
+
+// C ref: makemaz("soko2"/"soko3"/"soko4") -> rnd(2) + load_special(proto-N).
+export async function makemaz_soko_upper(proto) {
+    const g = game;
+    const slev = Is_special(g.u?.uz);
+    const rndlevs = slev?.rndlevs || 2;
+    const variant = rnd(rndlevs);            // mkmaze.c:1136 rnd(sp->rndlevs)
+    shuffle(['law', 'neutral', 'chaos']);    // nhlib.lua top level: rn2(3), rn2(2)
+    const V = SOKO_UPPER_VARIANTS[proto.slice(4) + '-' + variant];
+    if (!V) return;
+    if (g.level?.flags) {
+        g.level.flags.is_maze_lev = true;
+        g.level.flags.noteleport = true;
+        g.level.flags.sokoban_rules = true;
+    }
+    bigrm_level_init_solidfill();            // level_init solidfill -> rn2(2)
+    bigrm_load_map(V.map, false);
+
+    if (V.dnstair) quest_place_stair(V.dnstair[0], V.dnstair[1], false);
+    if (V.branch) quest_register_branch(V.branch[0], V.branch[1]);
+    quest_place_stair(V.upstair[0], V.upstair[1], true);
+    for (const [dx, dy, dstate] of V.doors) quest_set_door(dx, dy, dstate);
+    soko_region_lit_grow(V.area[0], V.area[1], V.area[2], V.area[3]);
+
+    for (const [bx, by] of V.boulders)
+        mksobj_at(BOULDER, q_absx(bx), q_absy(by), true, false);
+
+    for (const [tx, ty, kind] of V.traps) await soko_mktrap(tx, ty, kind);
+
+    // "A little help": des.object("scroll of earth", x, y) — explicit id and
+    // coord, so only mksobj's own draws (next_ident + blessorcurse).
+    for (const [hx, hy] of (V.help || []))
+        mksobj_at(SCR_EARTH, q_absx(hx), q_absy(hy), true, true);
+
+    soko_create_object_class_random(FOOD_CLASS);
+    soko_create_object_class_random(FOOD_CLASS);
+    soko_create_object_class_random(FOOD_CLASS);
+    soko_create_object_class_random(FOOD_CLASS);
+    soko_create_object_class_random(RING_CLASS);
+    soko_create_object_class_random(WAND_CLASS);
+
+    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;
+    if (rn2(2)) flp |= 2;
+    if (flp) {
+        flip_level(flp);
+        // C's flip_level flips the registered lregions with the map; without
+        // this soko4's branch cell stays at its pre-flip coordinate, fails
+        // bad_location() and burns place_lregion's whole 200-try loop.
+        quest_flip_branch(flp);
+    }
+    soko_solidify_and_nondig();
+    premap_detect();
+    // soko4 also needs place_lregions() for its 1-cell "branch" levregion; the
+    // caller (mklev.js makelevel) runs it, as it does for the quest levels.
+    return !!V.branch;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -4327,6 +4740,144 @@ function splev_add_doors_to_room(croom) {
         }
 }
 
+// C ref: mklev.c bydoor(x, y) — is any orthogonal neighbour already a door?
+// No RNG.
+export function bydoor(x, y) {
+    const map = game.level;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (!isok(x + dx, y + dy)) continue;
+        const loc = map.at(x + dx, y + dy);
+        if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR)) return true;
+    }
+    return false;
+}
+
+// C ref: mklev.c:1779-1790 okdoor(x, y).  Load-bearing for RNG: create_door's
+// retry loop breaks on it, so a missing clause costs (or invents) whole
+// rn2(4)+rn2(span) iterations.  No RNG.
+export function okdoor(x, y) {
+    const map = game.level;
+    const loc = map.at(x, y);
+    if (!loc) return false;
+    if (!(loc.typ === HWALL || loc.typ === VWALL)) return false;
+    if (bydoor(x, y)) return false;
+    return (
+        (isok(x - 1, y) && !IS_OBSTRUCTED(map.at(x - 1, y).typ))
+        || (isok(x + 1, y) && !IS_OBSTRUCTED(map.at(x + 1, y).typ))
+        || (isok(x, y - 1) && !IS_OBSTRUCTED(map.at(x, y - 1).typ))
+        || (isok(x, y + 1) && !IS_OBSTRUCTED(map.at(x, y + 1).typ))
+    );
+}
+
+// C ref: sp_lev.c:1713-1806 create_door(room_door *dd, struct mkroom *broom).
+// dd: { secret: -1|0|1, mask: -1|doormask, pos: -1|offset, wall: bitmask }.
+// The three prologue mutations of *dd (secret, wall, mask) survive the call in
+// C, so they are written back here too.
+//
+// Draw order per retry iteration is rn2(4) [wall side] and then, only when that
+// side is in `wall` and pos == -1, rn2(span) [offset along it]; both the
+// obstruction test and okdoor() run AFTER the offset draw, so a rejected
+// placement still costs two draws.
+export function create_door(dd, broom) {
+    if (dd.secret === -1) dd.secret = rn2(2);            // sp_lev.c:1720
+    if (dd.wall === W_RANDOM) dd.wall = W_ANY;           // sp_lev.c:1723
+    if (dd.mask === -1) {
+        if (!dd.secret) {
+            if (!rn2(3)) {                               // sp_lev.c:1728
+                if (!rn2(5)) dd.mask = D_ISOPEN;         // sp_lev.c:1729
+                else if (!rn2(6)) dd.mask = D_LOCKED;    // sp_lev.c:1731
+                else dd.mask = D_CLOSED;
+                if (dd.mask !== D_ISOPEN && !rn2(25))    // sp_lev.c:1735
+                    dd.mask |= D_TRAPPED;
+            } else {
+                dd.mask = D_NODOOR;
+            }
+        } else {
+            if (!rn2(5)) dd.mask = D_LOCKED;             // sp_lev.c:1740
+            else dd.mask = D_CLOSED;
+            if (!rn2(20)) dd.mask |= D_TRAPPED;          // sp_lev.c:1745
+        }
+    }
+    let x = 0, y = 0, trycnt;
+    for (trycnt = 0; trycnt < 100; trycnt++) {
+        const dwall = dd.wall, dpos = dd.pos;
+        switch (rn2(4)) {                                // sp_lev.c:1754
+        case 0: // W_NORTH
+            if (!(dwall & 1)) continue;
+            y = broom.ly - 1;
+            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
+            if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level.at(x, y - 1)?.typ)) continue;
+            break;
+        case 1: // W_SOUTH
+            if (!(dwall & 2)) continue;
+            y = broom.hy + 1;
+            x = broom.lx + ((dpos === -1) ? rn2(1 + broom.hx - broom.lx) : dpos);
+            if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level.at(x, y + 1)?.typ)) continue;
+            break;
+        case 2: // W_WEST
+            if (!(dwall & 8)) continue;
+            x = broom.lx - 1;
+            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
+            if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level.at(x - 1, y)?.typ)) continue;
+            break;
+        case 3: // W_EAST
+            if (!(dwall & 4)) continue;
+            x = broom.hx + 1;
+            y = broom.ly + ((dpos === -1) ? rn2(1 + broom.hy - broom.ly) : dpos);
+            if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level.at(x + 1, y)?.typ)) continue;
+            break;
+        }
+        if (okdoor(x, y)) break;
+    }
+    if (trycnt >= 100) return;  // C: impossible(), *dd mutations already made
+    const loc = game.level.at(x, y);
+    if (!loc) return;
+    // C: set_levltyp(x, y, dd->secret ? SDOOR : DOOR) — assigns typ only.  It
+    // deliberately does NOT touch .horizontal: the door inherits the
+    // orientation flag the underlying HWALL/VWALL already carried.
+    loc.typ = dd.secret ? SDOOR : DOOR;
+    loc.doormask = dd.mask;
+    // C's create_door does NOT call add_door(); the square is picked up by
+    // add_doors_to_room() when the enclosing region/room closes.  Our
+    // themeroom caller relied on the eager registration, so keep it: the
+    // duplicate check in splev_add_door makes a later add_doors_to_room a
+    // no-op.  No RNG either way.
+    splev_add_door(x, y, broom);
+}
+
+// C ref: sp_lev.c rnddoor() — state[rn2(5)].  Reachable from lspo_door's
+// `typ = (msk == -1) ? rnddoor() : msk;`.
+export function splev_rnddoor_roll() {
+    const state = [D_NODOOR, 0x01 /*D_BROKEN*/, D_ISOPEN, D_CLOSED, D_LOCKED];
+    return state[rn2(state.length)];
+}
+
+// C ref: sp_lev.c lspo_door() doorstates[]/doorstates2i[] and
+// walldirs[]/walldirs2i[].  Note "all" and "random" both map to W_ANY, so the
+// W_RANDOM normalisation inside create_door is never reached from des.door.
+export const DOORSTATES = {
+    random: -1, open: D_ISOPEN, closed: D_CLOSED, locked: D_LOCKED,
+    nodoor: D_NODOOR, broken: 0x01 /*D_BROKEN*/, secret: D_SECRET,
+};
+export const WALLDIRS = {
+    all: W_ANY, random: W_ANY, north: 1, west: 8, east: 4, south: 2,
+};
+
+// C ref: sp_lev.c lspo_door() x == -1 && y == -1 arm — a wall-relative door in
+// the current room.  `typ` is discarded except for its D_SECRET test, but the
+// rnddoor() rn2(5) it costs is real.
+export function lspo_door_relative(spec, broom) {
+    const msk = DOORSTATES[spec.state != null ? spec.state : 'random'];
+    const typ = (msk === -1) ? splev_rnddoor_roll() : msk;
+    if (!broom) return;
+    create_door({
+        secret: (typ === D_SECRET) ? 1 : 0,
+        mask: msk,
+        pos: spec.pos != null ? spec.pos : -1,
+        wall: WALLDIRS[spec.wall != null ? spec.wall : 'all'],
+    }, broom);
+}
+
 // C ref: mkmap.c flood_fill_rm(sx, sy, rmno, lit, anyroom=TRUE) — the
 // scanline flood behind an irregular des.region.  Faithful to the C recursion
 // (including its diagonal spill-over through the `else` arms), because the
@@ -4403,7 +4954,11 @@ function flood_fill_rm(sx, sy, rmno, lit, anyroom, ext) {
 // Generic despite the vly_ prefix: the named Gehennom levels in mklev.js
 // (sanctum/orcus/wizard1-3/...) create their morgues, zoos, beehives, temples
 // and shops through this same entry point.
-export function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular) {
+// `contents` is the Lua region's contents function: C runs update_croom() ->
+// contents() -> spo_endroom() -> add_doors_to_room(), so it must fire AFTER
+// the room exists and BEFORE the door sweep.
+export function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular,
+                           contents) {
     const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
     let croom;
     if (irregular) {
@@ -4422,6 +4977,7 @@ export function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular) 
                 if (loc) { loc.roomno = roomno; loc.lit = !!lit; }
             }
     }
+    if (contents) contents(croom);
     splev_add_doors_to_room(croom);
     return croom;
 }
@@ -4429,8 +4985,12 @@ export function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular) 
 // C ref: sp_lev.c lspo_teleport_region() -> fixup_special() LR_DOWNTELE arm,
 // which copies the region into svd.dndest for goto_level()'s own
 // place_lregion() call (the hero's arrival spot).  No RNG here.
-function vly_teleport_region(mx1, my1, mx2, my2) {
-    const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
+// `islev` is the Lua `region_islev` flag: the coordinates are then whole-level
+// absolute rather than relative to the last des.map() origin (sp_lev.c
+// lspo_teleport_region reads region_islev before get_location_coord).
+function vly_teleport_region(mx1, my1, mx2, my2, islev) {
+    const a = islev ? { x: mx1, y: my1 } : vly_abs(mx1, my1);
+    const b = islev ? { x: mx2, y: my2 } : vly_abs(mx2, my2);
     game.dndest = { lx: a.x, ly: a.y, hx: b.x, hy: b.y,
                     nlx: 0, nly: 0, nhx: 0, nhy: 0 };
 }
@@ -4591,7 +5151,11 @@ export async function makemaz_valley() {
         g.level.flags.temperature = 0;
     }
     // des.map([[...]]) — full-level 76x20 map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(VALLEY_MAP, lit);
+    // valley.lua:12 is `des.map([[...]])` — the bare-string form. C's lspo_map
+    // declares `boolean lit = FALSE` and that arm never assigns it (sp_lev.c:6102),
+    // so every mapped cell is unlit and NO rn2(2) is drawn. Passing the caller's
+    // `lit` renders the whole level lit on any seed where it is true.
+    bigrm_load_map(VALLEY_MAP, false);
 
     // "Make the path somewhat unpredictable" — three independent percent(50)
     // blocks, each one rn2(100).  The terrain edits themselves draw nothing.
@@ -4707,6 +5271,214 @@ function vly_flip_dndest(flp) {
     if (d.ly > d.hy) { const t = d.ly; d.ly = d.hy; d.hy = t; }
 }
 
+
+// ============================================================
+// Moloch's Sanctum (C ref: makemaz("sanctum") -> dat/sanctum.lua)
+// ============================================================
+
+const SANCTUM_MAP = [
+    '----------------------------------------------------------------------------',
+    '|             --------------                                               |',
+    '|             |............|             -------                           |',
+    '|       -------............-----         |.....|                           |',
+    '|       |......................|        --.....|            ---------      |',
+    '|    ----......................---------|......----         |.......|      |',
+    '|    |........---------..........|......+.........|     ------+---..|      |',
+    '|  ---........|.......|..........--S----|.........|     |........|..|      |',
+    '|  |..........|.......|.............|   |.........-------..----------      |',
+    '|  |..........|.......|..........----   |..........|....|..|......|        |',
+    '|  |..........|.......|..........|      --.......----+---S---S--..|        |',
+    '|  |..........---------..........|       |.......|.............|..|        |',
+    '|  ---...........................|       -----+-------S---------S---       |',
+    '|    |...........................|          |...| |......|    |....|--     |',
+    '|    ----.....................----          |...---....---  ---......|     |',
+    '|       |.....................|             |..........|    |.....----     |',
+    '|       -------...........-----             --...-------    |.....|        |',
+    '|             |...........|                  |...|          |.....|        |',
+    '|             -------------                  -----          -------        |',
+    '----------------------------------------------------------------------------',
+].join('\n');
+
+// C ref: sp_lev.c lspo_non_passwall() -> set_wall_property(W_NONPASSWALL) over
+// the selection: an invisible barrier that blocks phasing through those walls.
+// No RNG.
+function vly_non_passwall(mx1, my1, mx2, my2) {
+    const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
+    for (let x = Math.max(a.x, 1); x <= Math.min(b.x, COLNO - 1); x++)
+        for (let y = Math.max(a.y, 0); y <= Math.min(b.y, ROWNO - 1); y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)
+                loc.wall_info = (loc.wall_info || 0) | W_NONPASSWALL;
+        }
+}
+
+// C ref: sp_lev.c create_monster() for des.monster({id=..., x=, y=, ...}).
+// Two guards decide the prologue draws:
+//   * find_montype (sp_lev.c:3156) rolls rn2(2) for the gender unless the
+//     species has a fixed gender or the NAME itself is a gendered form;
+//   * sp_amask_to_amask (sp_lev.c:1908) only reaches induced_align's rn2(3)
+//     for AM_SPLEV_RANDOM, i.e. when the table carries NO `align` key.  An
+//     explicit align="noalign" is a plain mask and draws nothing — and it also
+//     routes creation through mk_roamer() (priest.c:724) instead of makemon().
+function sanc_monster(name, mx, my, opts = {}) {
+    const { sp_align = null, peaceful = null } = opts;
+    const pmidx = name_to_pmidx(name);
+    const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
+    if (!ptr) return null;
+    if (ptr.gcode !== 1 && ptr.gcode !== 2
+        && name_gender_hint(name) === MGEND_NEUTRAL)
+        rn2(2);                                   // find_montype (sp_lev.c:3156)
+    if (sp_align === null) rn2(3);                // induced_align (dungeon.c:2012)
+    let x = mx, y = my;
+    if (mm_mon_at(x, y)) {
+        const cc = enexto_spawn(x, y, ptr);
+        if (cc) { x = cc.x; y = cc.y; }
+    }
+    // mk_roamer() -> makemon(ptr, x, y, MM_ADJACENTOK|MM_EMIN|MM_NOMSG); the
+    // AM_SPLEV_RANDOM arm is a plain makemon(pm, x, y, mm_flags).
+    const mtmp = makemon(ptr, x, y, 0);
+    if (!mtmp) return null;
+    if (sp_align !== null) {
+        mtmp.emin = mtmp.emin || {};
+        mtmp.emin.min_align = sp_align;
+        mtmp.emin.renegade = ((game.u?.ualign?.type ?? A_NONE) === sp_align)
+                             && !peaceful;
+        mtmp.ispriest = 0;
+        mtmp.isminion = 1;
+        mtmp.mtrapseen = ~0;                      // mon_learns_traps(ALL_TRAPS)
+        mtmp.msleeping = 0;
+    }
+    if (peaceful != null) mtmp.mpeaceful = peaceful ? 1 : 0;
+    return mtmp;
+}
+
+// C ref: sanctum.lua's fixed fire-trap ring around the temple, in file order.
+function sanctum_fire_trap_coords() {
+    const out = [];
+    for (let x = 13; x <= 23; x++) out.push([x, 5]);
+    for (let x = 13; x <= 23; x++) out.push([x, 12]);
+    for (let y = 6; y <= 11; y++) out.push([13, y]);
+    for (let y = 6; y <= 11; y++) out.push([23, y]);
+    return out;
+}
+
+// C ref: objclass.h def_char_to_objclass() for the class chars sanctum.lua uses.
+const SANCTUM_LOOT_CLASSES = [
+    ARMOR_CLASS, ARMOR_CLASS, ARMOR_CLASS, ARMOR_CLASS,
+    WEAPON_CLASS, WEAPON_CLASS,
+    GEM_CLASS,
+    POTION_CLASS, POTION_CLASS, POTION_CLASS, POTION_CLASS,
+    SCROLL_CLASS, SCROLL_CLASS, SCROLL_CLASS, SCROLL_CLASS, SCROLL_CLASS,
+];
+
+// C ref: sanctum.lua's "Moloch's horde" — nine aligned clerics with explicit
+// coords and align="noalign".
+const SANCTUM_HORDE = [
+    [20, 3], [15, 4], [11, 5], [11, 7], [11, 9], [11, 12],
+    [15, 13], [17, 13], [21, 13],
+];
+
+// Entry point.  C ref: makemaz("sanctum") -> load_special("sanctum.lua").
+export async function makemaz_sanctum() {
+    const g = game;
+    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
+    shuffle(['law', 'neutral', 'chaos']);
+    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
+    const lit = quest_level_init_solidfill();
+    // des.level_flags("mazelevel","noteleport","hardfloor","nommap") — no RNG.
+    if (g.level?.flags) {
+        g.level.flags.is_maze_lev = true;
+        g.level.flags.noteleport = true;
+        g.level.flags.hardfloor = true;
+        g.level.flags.nommap = true;
+    }
+    // des.non_passwall(selection.area(39,00,41,00)) — deliberately BEFORE
+    // des.map (sanctum.lua:11-13), so it uses the coder's initial origin and
+    // reaches the top row that falls outside the drawn map.  No RNG.
+    vly_non_passwall(39, 0, 41, 0);
+    // des.map([[...]]) — full-level 76x20 map, SPLEV_CENTER offset.  No RNG.
+    bigrm_load_map(SANCTUM_MAP, false);   // sanctum.lua:13 bare des.map — see VALLEY_MAP
+
+    // The temple of Moloch.  filled=2 is FILL_LVLFLAGS_ONLY.  Its contents
+    // function creates the one coordinate-less door on the level, which is the
+    // only create_door() call any Gehennom script makes.
+    vly_region(15, 7, 21, 10, 1, TEMPLE_RTYPE, 2, false, (croom) => {
+        lspo_door_relative({ wall: 'random', state: 'secret' }, croom);
+    });
+    // des.altar({x=18,y=08,align="noalign",type="sanctum"}) — shrine == 2, so
+    // priestini() makes the high priest of Moloch.
+    g._full_mon_gen = true;
+    try {
+        vly_altar(18, 8, AM_NONE, 2);
+    } finally {
+        g._full_mon_gen = false;
+    }
+    // The morgue — irregular, unlit, stocked at level finalize.
+    vly_region(41, 6, 48, 11, 0, MORGUE, FILL_NORMAL, true);
+    // Non diggable walls, then the invisible barrier splitting the level.
+    vly_non_diggable(0, 0, 75, 19);
+    vly_non_passwall(37, 0, 39, 19);
+    // Doors — explicit coords, so sel_set_door: no RNG.
+    quest_set_door(40, 6, 'closed');
+    quest_set_door(62, 6, 'locked');
+    quest_set_door(46, 12, 'closed');
+    quest_set_door(53, 10, 'closed');
+
+    g._full_mon_gen = true;
+    try {
+        // Surround the temple with fire — 34 fixed traps, one rnd(4) each.
+        for (const [tx, ty] of sanctum_fire_trap_coords())
+            await vly_trap(FIRE_TRAP, tx, ty);
+        // Some traps — random locations.
+        await vly_trap(SPIKED_PIT);
+        await vly_trap(FIRE_TRAP);
+        await vly_trap(SLP_GAS_TRAP);
+        await vly_trap(ANTI_MAGIC);
+        await vly_trap(FIRE_TRAP);
+        await vly_trap(MAGIC_TRAP);
+        // Some random objects.
+        for (const oc of SANCTUM_LOOT_CLASSES) vly_object({ oclass: oc });
+        // Some monsters.
+        sanc_monster('horned devil', ...sanc_abs(14, 12), { peaceful: 0 });
+        sanc_monster('barbed devil', ...sanc_abs(18, 8), { peaceful: 0 });
+        sanc_monster('erinys', ...sanc_abs(10, 4), { peaceful: 0 });
+        sanc_monster('marilith', ...sanc_abs(7, 9), { peaceful: 0 });
+        sanc_monster('nalfeshnee', ...sanc_abs(27, 8), { peaceful: 0 });
+        // Moloch's horde.
+        for (const [hx, hy] of SANCTUM_HORDE)
+            sanc_monster('aligned cleric', ...sanc_abs(hx, hy),
+                         { sp_align: A_NONE, peaceful: 0 });
+        // A few nasties.
+        vly_monster_class(VLY_S_LICH);
+        vly_monster_class(VLY_S_LICH);
+        for (let i = 0; i < 3; i++) vly_monster_class(VLY_S_VAMPIRE);
+    } finally {
+        g._full_mon_gen = false;
+    }
+
+    // des.stair("up", 63,15) — no RNG.
+    quest_place_stair(63, 15, true);
+    // des.teleport_region({region={54,1,79,18}, region_islev=1, dir="down"}).
+    vly_teleport_region(54, 1, 79, 18, true);
+
+    // C ref: lspo_finalize_level() — wallification (no RNG) then
+    // flip_level_rnd(allow_flips=3): one rn2(2) per axis.
+    remove_boundary_syms();
+    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
+    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
+    if (flp) {
+        flip_level(flp);
+        vly_flip_dndest(flp);
+    }
+}
+
+// sanctum.lua gives its monsters map-relative coordinates; create_monster
+// resolves them through get_location_coord() (no RNG for an explicit coord).
+function sanc_abs(mx, my) { const c = vly_abs(mx, my); return [c.x, c.y]; }
+
 // C ref: lspo_finalize_level()'s trailing `for (i = 0; i < svn.nroom; ++i)
 // fill_special_room(&svr.rooms[i]);` — run AFTER fixup_special() has placed the
 // branch lregion.  Stocking runs the fully C-faithful monster path, the same
@@ -4721,4 +5493,604 @@ export function fill_level_special_rooms() {
     } finally {
         g._full_mon_gen = was_full;
     }
+}
+
+// ============================================================
+// Mine Town (C ref: makemaz("minetn") -> dat/minetn-<N>.lua)
+//
+// mkmaze.c:1136 — an s_level carrying rndlevs picks its script with
+// rnd(sp->rndlevs); "minetn" has rndlevs 7.  Only the "-5" variant
+// ("Grotto Town" by Kelly Bailey) is ported so far.
+// ============================================================
+
+const MINETN5_MAP = [
+    '-----         ---------                                                    ',
+    '|...---  ------.......--    -------                       ---------------  ',
+    '|.....----.........--..|    |.....|          -------      |.............|  ',
+    '--..-....-.----------..|    |.....|          |.....|     --+---+--.----+-  ',
+    ' --.--.....----     ----    |.....|  ------  --....----  |..-...--.-.+..|  ',
+    '  ---.........----  -----   ---+---  |..+.|   ---..-..----..---+-..---..|  ',
+    '    ----.-....|..----...--    |.|    |..|.|    ---+-.....-+--........--+-  ',
+    '       -----..|....-.....---- |.|    |..|.------......--................|  ',
+    '    ------ |..|.............---.--   ----.+..|-.......--..--------+--..--  ',
+    '    |....| --......---...........-----  |.|..|-...{....---|.........|..--  ',
+    '    |....|  |........-...-...........----.|..|--.......|  |.........|...|  ',
+    '    ---+--------....-------...---......--.-------....---- -----------...|  ',
+    ' ------.---...--...--..-..--...-..---...|.--..-...-....------- |.......--  ',
+    ' |..|-.........-..---..-..---.....--....|........---...-|....| |.-------   ',
+    ' |..+...............-+---+-----..--..........--....--...+....| |.|...S.    ',
+    '-----.....{....----...............-...........--...-...-|....| |.|...|     ',
+    '|..............-- --+--.---------.........--..-........------- |.--+-------',
+    '-+-----.........| |...|.|....|  --.......------...|....---------.....|....|',
+    '|...| --..------- |...|.+....|   ---...---    --..|...--......-...{..+..-+|',
+    '|...|  ----       ------|....|     -----       -----.....----........|..|.|',
+    '-----                   ------                     -------  ---------------',
+].join('\n');
+
+// C ref: mkroom.h shop room types.  room_types[] (sp_lev.c:3960) names them in
+// this order, and stock_room() indexes shtypes[] with rtype - SHOPBASE.
+const SHOP_RTYPE_BY_NAME = {
+    'shop': SHOPBASE, 'armor shop': SHOPBASE + 1, 'scroll shop': SHOPBASE + 2,
+    'potion shop': SHOPBASE + 3, 'weapon shop': SHOPBASE + 4,
+    'food shop': SHOPBASE + 5, 'ring shop': SHOPBASE + 6,
+    'wand shop': SHOPBASE + 7, 'tool shop': SHOPBASE + 8,
+    'book shop': SHOPBASE + 9, 'health food shop': SHOPBASE + 10,
+    'candle shop': SHOPBASE + 11,
+};
+
+// C ref: sp_lev.c lspo_region() two-argument form `des.region(sel, "lit")`
+// (sp_lev.c:5613-5629).  This form NEVER builds a room: the selection is
+// cloned, grown one cell in every direction when lighting
+// (selection_do_grow(sel, W_ANY)), and sel_set_lit writes levl[][].lit on each
+// point — lava counts as lit whatever was asked for.  No RNG.
+function splev_region_lit(mx1, my1, mx2, my2, lit) {
+    const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
+    let lox = a.x, loy = a.y, hix = b.x, hiy = b.y;
+    if (lit) { lox--; loy--; hix++; hiy++; }
+    // selection_iterate skips !isok cells, and isok() starts at x == 1.
+    for (let x = Math.max(1, lox); x <= Math.min(COLNO - 1, hix); x++)
+        for (let y = Math.max(0, loy); y <= Math.min(ROWNO - 1, hiy); y++) {
+            const loc = game.level?.at(x, y);
+            if (loc) loc.lit = !!(IS_LAVA(loc.typ) || lit);
+        }
+}
+
+// C ref: sp_lev.c lspo_terrain() over a selection.area() rectangle.  No RNG.
+function splev_terrain_area(mx1, my1, mx2, my2, typ) {
+    const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
+    for (let x = a.x; x <= b.x; x++)
+        for (let y = a.y; y <= b.y; y++)
+            set_levltyp_lit(x, y, typ, SET_LIT_NOCHANGE);
+}
+
+// C ref: sp_lev.c sel_set_feature() — a furniture square is left alone;
+// anything else takes the feature's typ directly (no set_levltyp).  No RNG.
+function splev_feature(mx, my, typ) {
+    const c = vly_abs(mx, my);
+    const loc = game.level?.at(c.x, c.y);
+    if (!loc || IS_FURNITURE(loc.typ)) return;
+    loc.typ = typ;
+}
+
+// C ref: sp_lev.c lspo_door() 3-argument form des.door(state, x, y).  A
+// "random" state is msk == -1, which costs one rnddoor() rn2(5) before
+// sel_set_door; every other state is a plain mask and draws nothing.
+function splev_door_at(state, mx, my) {
+    const msk = DOORSTATES[state];
+    const typ = (msk === -1) ? splev_rnddoor_roll() : msk;
+    const c = vly_abs(mx, my);
+    const loc = game.level?.at(c.x, c.y);
+    if (!loc) return;
+    let mask = typ;
+    if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR)
+        loc.typ = (mask & D_SECRET) ? SDOOR : DOOR;
+    if (mask & D_SECRET) {
+        mask &= ~D_SECRET;
+        if (mask < D_CLOSED) mask = D_CLOSED;
+    }
+    set_door_orientation(c.x, c.y);
+    loc.doormask = mask;
+}
+
+// C ref: sp_lev.c link_doors_rooms() (sp_lev.c:1122) — the first thing
+// lspo_finalize_level() does.  Every DOOR/SDOOR square on the map is
+// re-oriented and offered to every room in index order; maybe_add_door()
+// accepts it when it borders that room.  Load-bearing for shops: stock_room()
+// reads svd.doors[sroom->fdoor], and minetn-*.lua places its shop doors AFTER
+// the des.region that creates the shop, so without this pass the shop has no
+// door at all.  No RNG.
+function splev_link_doors_rooms() {
+    const g = game;
+    for (let y = 0; y < ROWNO; y++)
+        for (let x = 0; x < COLNO; x++) {
+            const loc = g.level?.at(x, y);
+            if (!loc || !(IS_DOOR(loc.typ) || loc.typ === SDOOR)) continue;
+            set_door_orientation(x, y);
+            for (let i = 0; i < (g.level?.nroom ?? 0); i++) {
+                const croom = g.level.rooms[i];
+                if (!croom || croom.hx < 0) continue;
+                const rmno = croom.roomnoidx + ROOMOFFSET;
+                const mine = croom.irregular
+                    ? (loc.roomno === rmno)
+                    : (x >= croom.lx - 1 && x <= croom.hx + 1
+                       && y >= croom.ly - 1 && y <= croom.hy + 1);
+                if (mine) splev_add_door(x, y, croom);
+            }
+        }
+}
+
+function splev_In_mines() {
+    return game.mines_dnum != null && game.u?.uz?.dnum === game.mines_dnum;
+}
+function splev_race_is(nm) {
+    return (races[game.initrace]?.name || 'human') === nm;
+}
+// C ref: mondata.h:102 `((ptr)->mflags2 & gu.urace.selfmask) != 0L` — a FLAG
+// test, not an identity test: for a gnome hero every M2_GNOME species (gnome
+// lord/king, gnomish wizard, gnome mummy/zombie) is your_race, not just PM_GNOME.
+// MH_* are the M2_* bits (monflag.h:187-191), so selfmask masks mflags2 directly.
+function splev_your_race(ptr) {
+    const selfmask = races[game.initrace]?.selfmask;
+    return selfmask != null && (mflags2_of(ptr) & selfmask) !== 0;
+}
+
+// C ref: sp_lev.c create_monster() (sp_lev.c:1925) reached from lspo_monster().
+// Draw order, all before makemon:
+//   * find_montype (sp_lev.c:3156) rn2(2) for the gender, during lspo_monster's
+//     PARSE — so it precedes induced_align.  Skipped when the species has a
+//     fixed gender or the NAME itself is a gendered form of a NAMS() triple
+//     ("gnome lord" is the male name, so it never rolls).
+//   * sp_amask_to_amask -> induced_align (dungeon.c:2012) rn2(3), for any
+//     monster whose table carries no `align` key.
+//   * mkclass(class, G_NOGEN) for a bare class char.
+//   * the In_mines your_race rn2(3) (sp_lev.c:1957).
+//   * the location (explicit: none; random: the get_location loop).
+function splev_create_monster({ name = null, cls = 0, mx = null, my = null,
+                                peaceful = null }) {
+    let ptr = null;
+    if (name != null) {
+        const pmidx = name_to_pmidx(name);
+        ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
+        if (ptr && ptr.gcode !== 1 && ptr.gcode !== 2
+            && name_gender_hint(name) === MGEND_NEUTRAL)
+            rn2(2);                                   // find_montype sp_lev.c:3156
+    }
+    rn2(3);                                           // induced_align dungeon.c:2012
+    if (name == null && cls) ptr = mkclass(cls, 0x0200 /* G_NOGEN */);
+    if (splev_In_mines() && ptr && splev_your_race(ptr)
+        && (splev_race_is('dwarf') || splev_race_is('gnome')) && rn2(3))
+        ptr = null;
+    let x, y;
+    if (mx != null) { const c = vly_abs(mx, my); x = c.x; y = c.y; }
+    else if (ptr) {
+        const hum = pm_to_humidity(ptr);
+        const r = splev_get_location_rnd(hum, true);
+        x = r.x; y = r.y;
+        if (x === -1 && y === -1) {
+            const r2 = splev_get_location_rnd(hum | LOC_DRY);
+            x = r2.x; y = r2.y;
+        }
+    } else {
+        const r = splev_get_location_rnd(LOC_DRY);
+        x = r.x; y = r.y;
+    }
+    if (mm_mon_at(x, y)) {
+        const cc = enexto_spawn(x, y, ptr);
+        if (cc) { x = cc.x; y = cc.y; }
+    }
+    const mtmp = makemon(ptr, x, y, 0 /* NO_MM_FLAGS */);
+    if (mtmp && peaceful != null) mtmp.mpeaceful = peaceful ? 1 : 0;
+    return mtmp;
+}
+
+// C ref: sp_lev.c create_object() at an EXPLICIT coordinate — get_location_coord
+// draws nothing, then the object is built exactly as the random-location form.
+// `historic` is obj.h's CORPSTAT_HISTORIC (4) in a statue's spe bitfield.
+function splev_object_at({ otyp = null, oclass = null, montype = null,
+                           historic = 0 }, mx, my) {
+    const c = vly_abs(mx, my);
+    let otmp;
+    if (otyp != null) otmp = mksobj_at(otyp, c.x, c.y, true, true);
+    else if (oclass != null) otmp = mkobj_at(oclass, c.x, c.y, true);
+    else otmp = mkobj_at(0 /* RANDOM_CLASS */, c.x, c.y, true);
+    if (otmp && historic) otmp.spe = 4;
+    if (otmp && montype != null) {
+        const pmidx = name_to_pmidx(montype);
+        if (pmidx >= 0) set_corpsenm(otmp, pmidx);
+    }
+    return otmp;
+}
+
+// C ref: dat/nhlib.lua monkfoodshop() — a Monk hero gets the health food store.
+function minetn_monkfoodshop() {
+    const rl = roles[game.initrole];
+    return (rl && rl.name && rl.name.m === 'Monk') ? 'health food shop'
+                                                   : 'food shop';
+}
+
+// C ref: nhlib.lua's shuffled `align` table, indexed 1-based from Lua, mapped
+// through sp_lev.c's aligns[] to an align.h AM_* mask.
+const MINETN_ALIGN_AMASK = {
+    law: 0x04 /* AM_LAWFUL */, neutral: 0x02 /* AM_NEUTRAL */,
+    chaos: 0x01 /* AM_CHAOTIC */,
+};
+
+// C ref: mklev.c traptype_rnd(mktrapflags) (mklev.c:1938) — the FULL function,
+// parameterised on the caller's mktrapflags exactly as C is.  NO_TRAP means
+// "too hard for this level"; mktrap() re-rolls until it gets something.
+// Note the WEB arm: with MKTRAP_NOSPIDERONWEB (which sp_lev.c's create_trap
+// always passes for a `des.trap()` with spider_on_web unset) a web is legal at
+// ANY level difficulty — the depth gate only exists to keep the free giant
+// spider off shallow levels.
+export function splev_traptype_rnd(mktrapflags) {
+    const lvl = level_difficulty_ext();
+    const noteleport = !!game.level?.flags?.noteleport;
+    let kind = rnd(TRAPNUM - 1);                      // mklev.c:1941
+    switch (kind) {
+    case TRAPPED_DOOR: case TRAPPED_CHEST:
+    case MAGIC_PORTAL: case VIBRATING_SQUARE:
+        kind = NO_TRAP; break;
+    case ROLLING_BOULDER_TRAP: case SLP_GAS_TRAP:
+        if (lvl < 2) kind = NO_TRAP; break;
+    case LEVEL_TELEP:
+        if (lvl < 5 || noteleport || single_level_branch()) kind = NO_TRAP;
+        break;
+    case SPIKED_PIT:
+        if (lvl < 5) kind = NO_TRAP; break;
+    case LANDMINE:
+        if (lvl < 6) kind = NO_TRAP; break;
+    case WEB:
+        if (lvl < 7 && !(mktrapflags & 0x04 /* MKTRAP_NOSPIDERONWEB */))
+            kind = NO_TRAP;
+        break;
+    case STATUE_TRAP: case POLY_TRAP:
+        if (lvl < 8) kind = NO_TRAP; break;
+    case FIRE_TRAP:
+        if (!In_hell(game.u?.uz)) kind = NO_TRAP; break;
+    case TELEP_TRAP:
+        if (noteleport) kind = NO_TRAP; break;
+    case HOLE:
+        if (rn2(7)) kind = NO_TRAP; break;            // mklev.c:1993
+    default: break;
+    }
+    return kind;
+}
+
+// C ref: dungeon.c single_level_branch(&u.uz) — a one-level branch dungeon
+// (Sokoban's entry, the quest home...) where a level teleporter would strand
+// the hero.  The Mines and the main dungeon are multi-level, so this is only
+// ever true off the ported levels; kept faithful for the general helper.
+function single_level_branch() {
+    const uz = game.u?.uz;
+    const dgn = uz ? game.dungeons?.[uz.dnum] : null;
+    return !!(dgn && (dgn.num_dunlevs ?? 0) === 1);
+}
+
+// C ref: sp_lev.c create_trap() with no type and no coordinate — the DRY
+// get_location loop (rejecting STAIRS/LADDER), then
+// mktrap(0, MKTRAP_MAZEFLAG, croom, &tm).  NOTE the flags: lspo_trap defaults
+// spider_on_web to TRUE (sp_lev.c:4405), so a bare `des.trap()` does NOT set
+// MKTRAP_NOSPIDERONWEB — which both keeps traptype_rnd's `lvl < 7` gate on WEB
+// alive and means a rolled web comes with a free giant spider.
+// With an explicit `tm` mktrap skips its own placement loop, so the draws are
+// traptype_rnd's retry loop, whatever maketrap() rolls, the web's spider, and
+// the victim rnd(4) — the last skipped entirely when maketrap() could not build
+// the trap (mklev.c:2137 re-derives `kind` from the returned pointer).
+async function splev_trap_random() {
+    let x = -1, y = -1, trycnt = 0;
+    do {
+        const c = splev_get_location_rnd(LOC_DRY);
+        x = c.x; y = c.y;
+        const t = game.level?.at(x, y)?.typ;
+        if (t !== STAIRS && t !== LADDER) break;
+    } while (++trycnt <= 100);
+    let kind;
+    do { kind = splev_traptype_rnd(0); } while (kind === NO_TRAP);
+    if ((kind === HOLE || kind === TRAPDOOR) && !Can_fall_thru(game.u?.uz))
+        kind = ROCKTRAP;
+    const t = await maketrap(x, y, kind);
+    const k = t ? t.ttyp : NO_TRAP;
+    if (k === WEB) {
+        const spider = monster_by_pmidx(name_to_pmidx('giant spider'));
+        if (spider) makemon(spider, x, y, 0 /* NO_MM_FLAGS */);
+    }
+    const lvl = level_difficulty_ext();
+    if (k !== NO_TRAP && lvl <= rnd(4)                // mklev.c:2137
+        && k !== SQKY_BOARD && k !== RUST_TRAP
+        && !is_pit(k) && (k < HOLE || k === MAGIC_TRAP)
+        && _mktrap_victim)
+        _mktrap_victim(t);
+}
+
+// C ref: sp_lev.c lspo_engraving() -> make_engr_at(x, y, txt, 0L, etype).
+// No RNG.
+function splev_engraving(mx, my, text, etype) {
+    const c = vly_abs(mx, my);
+    make_engr_at(c.x, c.y, text, text, 0, etype);
+}
+
+// Entry point.  C ref: makemaz("minetn") -> load_special("minetn-5.lua").
+export async function makemaz_minetown5() {
+    const g = game;
+    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
+    const align = shuffle(['law', 'neutral', 'chaos']);
+    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
+    const lit = quest_level_init_solidfill();
+    // des.level_flags("mazelevel") — no RNG.
+    if (g.level?.flags) g.level.flags.is_maze_lev = true;
+    // The trailing fill_special_room() pass (which stocks the four shops) must
+    // use the same faithful makemon path this generator does.
+    if (g.level) g.level._splev_fullmon = true;
+    // des.map([[...]]) — 75x21, SPLEV_CENTER offset.  No RNG.
+    bigrm_load_map(MINETN5_MAP, lit);
+
+    // Five percent() gates; a nested one is only reached when the outer one
+    // passes (Lua short-circuits, so its rn2(100) is then not drawn).
+    if (percent(75)) {
+        if (percent(50)) vly_terrain_line(25, 8, 25, 9, VWALL);
+        else vly_terrain_line(16, 13, 17, 13, HWALL);
+    }
+    if (percent(75)) {
+        if (percent(50)) vly_terrain_line(36, 10, 36, 11, VWALL);
+        else vly_terrain_line(32, 15, 33, 15, HWALL);
+    }
+    if (percent(50)) {
+        splev_terrain_area(21, 4, 22, 5, ROOM);
+        vly_terrain_line(14, 9, 14, 10, VWALL);
+    }
+    if (percent(50)) {
+        vly_terrain_at(46, 13, VWALL);
+        vly_terrain_line(43, 5, 47, 5, HWALL);
+        vly_terrain_line(42, 6, 46, 6, ROOM);
+        vly_terrain_line(46, 7, 47, 7, ROOM);
+    }
+    if (percent(50)) splev_terrain_area(69, 11, 71, 11, HWALL);
+
+    // Stairs / fountains / lighting — no RNG.
+    quest_place_stair(1, 1, true);
+    quest_place_stair(46, 3, false);
+    splev_feature(50, 9, FOUNTAIN);
+    splev_feature(10, 15, FOUNTAIN);
+    splev_feature(66, 18, FOUNTAIN);
+
+    splev_region_lit(0, 0, 74, 20, 0);
+    splev_region_lit(9, 13, 11, 17, 1);
+    splev_region_lit(8, 14, 12, 16, 1);
+    splev_region_lit(49, 7, 51, 11, 1);
+    splev_region_lit(48, 8, 52, 10, 1);
+    splev_region_lit(64, 17, 68, 19, 1);
+    splev_region_lit(37, 13, 39, 17, 1);
+    splev_region_lit(36, 14, 40, 17, 1);
+    splev_region_lit(59, 2, 72, 10, 1);
+
+    g._full_mon_gen = true;
+    try {
+        // The watch, then the townsfolk.
+        for (let i = 0; i < 4; i++)
+            splev_create_monster({ name: 'watchman', peaceful: 1 });
+        splev_create_monster({ name: 'watch captain', peaceful: 1 });
+        for (let i = 0; i < 6; i++) splev_create_monster({ name: 'gnome' });
+        for (let i = 0; i < 2; i++) splev_create_monster({ name: 'gnome lord' });
+        for (let i = 0; i < 3; i++) splev_create_monster({ name: 'dwarf' });
+
+        // The shops.  filled=1 is FILL_NORMAL: the stocking itself happens in
+        // lspo_finalize_level's trailing fill_special_room() loop, long after
+        // the doors below have joined the rooms via link_doors_rooms().
+        vly_region(25, 17, 28, 19, 1, SHOP_RTYPE_BY_NAME['candle shop'],
+                   FILL_NORMAL, false);
+        splev_door_at('closed', 24, 18);
+        vly_region(59, 9, 67, 10, 1, SHOP_RTYPE_BY_NAME['shop'],
+                   FILL_NORMAL, false);
+        splev_door_at('closed', 66, 8);
+        vly_region(57, 13, 60, 15, 1, SHOP_RTYPE_BY_NAME['tool shop'],
+                   FILL_NORMAL, false);
+        splev_door_at('closed', 56, 14);
+        vly_region(5, 9, 8, 10, 1, SHOP_RTYPE_BY_NAME[minetn_monkfoodshop()],
+                   FILL_NORMAL, false);
+        splev_door_at('closed', 7, 11);
+
+        // Gnome homes.
+        splev_door_at('closed', 4, 14);
+        splev_door_at('locked', 1, 17);
+        splev_create_monster({ name: 'gnomish wizard', mx: 2, my: 19 });
+        splev_door_at('locked', 20, 16);
+        splev_create_monster({ cls: S_GNOME, mx: 20, my: 18 });
+        splev_door_at('random', 21, 14);
+        splev_door_at('random', 25, 14);
+        splev_door_at('random', 42, 8);
+        splev_door_at('locked', 40, 5);
+        splev_create_monster({ cls: S_GNOME, mx: 38, my: 7 });
+        splev_door_at('random', 59, 3);
+        splev_door_at('random', 58, 6);
+        splev_door_at('random', 63, 3);
+        splev_door_at('random', 63, 5);
+        splev_door_at('locked', 71, 3);
+        splev_door_at('locked', 71, 6);
+        splev_door_at('closed', 69, 4);
+        splev_door_at('closed', 67, 16);
+        splev_create_monster({ name: 'gnomish wizard', mx: 67, my: 14 });
+        splev_object_at({ oclass: RING_CLASS }, 70, 14);
+        splev_door_at('locked', 69, 18);
+        splev_create_monster({ name: 'gnome lord', mx: 71, my: 19 });
+        splev_door_at('locked', 73, 18);
+        splev_object_at({ otyp: CHEST }, 73, 19);
+        splev_door_at('locked', 50, 6);
+        splev_object_at({ oclass: TOOL_CLASS }, 50, 3);
+        splev_object_at({ otyp: STATUE, montype: 'gnome king', historic: 1 },
+                        38, 15);
+
+        // The temple.
+        vly_region(29, 2, 33, 4, 1, TEMPLE_RTYPE, FILL_NORMAL, false);
+        splev_door_at('closed', 31, 5);
+        vly_altar(31, 3, MINETN_ALIGN_AMASK[align[0]], 1);
+    } finally {
+        g._full_mon_gen = false;
+    }
+
+    // C ref: lspo_finalize_level() — link_doors_rooms, remove_boundary_syms,
+    // map_cleanup (no RNG), wallification (no RNG, !corrmaze), then
+    // flip_level_rnd(allow_flips=3): one rn2(2) per axis.
+    splev_link_doors_rooms();
+    remove_boundary_syms();
+    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
+    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
+    if (flp) flip_level(flp);
+}
+
+// ============================================================
+// Mine's End (C ref: makemaz("minend") -> dat/minend-<N>.lua)
+// "minend" has rndlevs 3; only the "-2" variant ("Gnome King's Wine Cellar")
+// is ported so far.
+// ============================================================
+
+const MINEND2_MAP = [
+    '---------------------------------------------------------------------------',
+    '|...................................................|                     |',
+    '|.|---------S--.--|...|--------------------------|..|                     |',
+    '|.||---|   |.||-| |...|..........................|..|                     |',
+    '|.||...| |-|.|.|---...|.............................|                ..   |',
+    '|.||...|-|.....|....|-|..........................|..|.               ..   |',
+    '|.||.....|-S|..|....|............................|..|..                   |',
+    '|.||--|..|..|..|-|..|----------------------------|..|-.                   |',
+    '|.|   |..|..|....|..................................|...                  |',
+    '|.|   |..|..|----|..-----------------------------|..|....                 |',
+    '|.|---|..|--|.......|----------------------------|..|.....                |',
+    '|...........|----.--|......................|     |..|.......              |',
+    '|-----------|...|.| |------------------|.|.|-----|..|.....|..             |',
+    '|-----------|.{.|.|--------------------|.|..........|.....|....           |',
+    '|...............|.S......................|-------------..-----...         |',
+    '|.--------------|.|--------------------|.|.........................       |',
+    '|.................|                    |.....................|........    |',
+    '---------------------------------------------------------------------------',
+].join('\n');
+
+// C ref: mkobj.c objects[] otyps minend-2.lua names by string.
+const POT_BOOZE_OTYP = 317, POT_OBJECT_DETECTION_OTYP = 312,
+      DIAMOND_OTYP = 440, MINEND_RUBY_OTYP = 441, EMERALD_OTYP = 445,
+      AMETHYST_OTYP = 455, LUCKSTONE_OTYP = 470;
+
+// Entry point.  C ref: makemaz("minend") -> load_special("minend-2.lua").
+export async function makemaz_minend2() {
+    const g = game;
+    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
+    shuffle(['law', 'neutral', 'chaos']);
+    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
+    const lit = quest_level_init_solidfill();
+    // des.level_flags("mazelevel") — no RNG.
+    if (g.level?.flags) g.level.flags.is_maze_lev = true;
+    if (g.level) g.level._splev_fullmon = true;
+    // des.map([[...]]) — 75x18, SPLEV_CENTER offset.  No RNG.
+    bigrm_load_map(MINEND2_MAP, false);   // minend-2.lua:13 bare des.map — see VALLEY_MAP
+
+    if (percent(50)) {
+        vly_terrain_at(55, 14, HWALL);
+        vly_terrain_at(56, 14, HWALL);
+        vly_terrain_at(61, 15, VWALL);
+        vly_terrain_at(52, 5, SDOOR);
+        splev_door_at('locked', 52, 5);
+    }
+    if (percent(50)) {
+        vly_terrain_at(18, 1, VWALL);
+        splev_terrain_area(7, 12, 8, 13, ROOM);
+    }
+    if (percent(50)) {
+        vly_terrain_at(49, 4, VWALL);
+        vly_terrain_at(21, 5, ROOM);
+    }
+    if (percent(50)) {
+        if (percent(50)) {
+            vly_terrain_at(22, 1, VWALL);
+        } else {
+            vly_terrain_at(50, 7, HWALL);
+            vly_terrain_at(51, 7, HWALL);
+        }
+    }
+
+    // Uncontrolled arrival region — region_islev, so whole-level absolute
+    // coordinates.  No RNG.
+    vly_teleport_region(23, 3, 48, 16, true);
+    // Dungeon description — no RNG.
+    splev_feature(14, 13, FOUNTAIN);
+    splev_region_lit(23, 3, 48, 6, 1);
+    splev_region_lit(21, 6, 22, 6, 1);
+    splev_region_lit(14, 4, 14, 4, 0);
+    splev_region_lit(10, 5, 14, 8, 0);
+    splev_region_lit(10, 9, 11, 9, 0);
+    splev_region_lit(15, 8, 16, 8, 0);
+    splev_door_at('locked', 12, 2);
+    splev_door_at('locked', 11, 6);
+    quest_place_stair(36, 4, true);
+    vly_non_diggable(0, 0, 52, 17);
+    vly_non_diggable(53, 0, 74, 0);
+    vly_non_diggable(53, 17, 74, 17);
+    vly_non_diggable(74, 1, 74, 16);
+    vly_non_diggable(53, 7, 55, 7);
+    vly_non_diggable(53, 14, 61, 14);
+    splev_engraving(12, 3, "You are now entering the Gnome King's wine cellar.",
+                    ENGRAVE);
+    splev_engraving(12, 4, 'Trespassers will be persecuted!', ENGRAVE);
+
+    g._full_mon_gen = true;
+    try {
+        // The Gnome King's wine cellar.
+        for (const [ox, oy] of [[10, 7], [10, 8]]) {
+            splev_object_at({ otyp: POT_BOOZE_OTYP }, ox, oy);
+            splev_object_at({ otyp: POT_BOOZE_OTYP }, ox, oy);
+            splev_object_at({ oclass: POTION_CLASS }, ox, oy);
+        }
+        splev_object_at({ otyp: POT_BOOZE_OTYP }, 10, 9);
+        splev_object_at({ otyp: POT_BOOZE_OTYP }, 10, 9);
+        splev_object_at({ otyp: POT_OBJECT_DETECTION_OTYP }, 10, 9);
+
+        // The Treasure chamber.
+        splev_object_at({ otyp: DIAMOND_OTYP }, 69, 4);
+        splev_object_at({ oclass: GEM_CLASS }, 69, 4);
+        splev_object_at({ otyp: DIAMOND_OTYP }, 69, 4);
+        splev_object_at({ oclass: GEM_CLASS }, 69, 4);
+        splev_object_at({ otyp: EMERALD_OTYP }, 70, 4);
+        splev_object_at({ oclass: GEM_CLASS }, 70, 4);
+        splev_object_at({ otyp: EMERALD_OTYP }, 70, 4);
+        splev_object_at({ oclass: GEM_CLASS }, 70, 4);
+        splev_object_at({ otyp: EMERALD_OTYP }, 69, 5);
+        splev_object_at({ oclass: GEM_CLASS }, 69, 5);
+        splev_object_at({ otyp: MINEND_RUBY_OTYP }, 69, 5);
+        splev_object_at({ oclass: GEM_CLASS }, 69, 5);
+        splev_object_at({ otyp: MINEND_RUBY_OTYP }, 70, 5);
+        splev_object_at({ otyp: AMETHYST_OTYP }, 70, 5);
+        splev_object_at({ oclass: GEM_CLASS }, 70, 5);
+        splev_object_at({ otyp: AMETHYST_OTYP }, 70, 5);
+        // buc="not-cursed" is create_object's curse_state 4 -> uncurse(); no RNG.
+        const luck = splev_object_at({ otyp: LUCKSTONE_OTYP }, 70, 5);
+        if (luck) uncurse(luck);
+
+        // Scattered gems, tools, and three fully random objects.
+        for (let i = 0; i < 7; i++) vly_object({ oclass: GEM_CLASS });
+        for (let i = 0; i < 2; i++) vly_object({ oclass: TOOL_CLASS });
+        for (let i = 0; i < 3; i++) vly_object({});
+
+        // Random traps.
+        for (let i = 0; i < 6; i++) await splev_trap_random();
+
+        // Random monsters.
+        splev_create_monster({ name: 'gnome king' });
+        for (let i = 0; i < 3; i++) splev_create_monster({ name: 'gnome lord' });
+        for (let i = 0; i < 2; i++) splev_create_monster({ name: 'gnomish wizard' });
+        for (let i = 0; i < 9; i++) splev_create_monster({ name: 'gnome' });
+        for (let i = 0; i < 2; i++) splev_create_monster({ name: 'hobbit' });
+        for (let i = 0; i < 3; i++) splev_create_monster({ name: 'dwarf' });
+        splev_create_monster({ cls: S_HUMANOID });
+    } finally {
+        g._full_mon_gen = false;
+    }
+
+    // C ref: lspo_finalize_level() tail.
+    splev_link_doors_rooms();
+    remove_boundary_syms();
+    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
+    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
+    if (flp) { flip_level(flp); vly_flip_dndest(flp); }
 }

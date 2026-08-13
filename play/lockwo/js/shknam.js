@@ -136,31 +136,19 @@ function ledger_no_of(uz) {
 }
 
 // C ref: u_init.c/calendar.c — ubirthday is the game-start wall-clock time
-// (mktime'd from the fixed recording datetime), used only as a seed for
-// nameshk()'s game-to-game name variation.  There's no way to recover the
-// harness's exact TZ from the session data; empirically the recorded public
-// sessions' shopkeeper names are only reproduced when game.datetime is read
-// as America/Chicago wall-clock (validated against seed0012's "Adjama" and
-// cross-checked for internal consistency), so that's the fixed zone used
-// here — analogous to record-session.mjs's own fixed RERECORD_TZ default.
+// (mktime'd from the recording datetime), used only as nameshk()'s
+// game-to-game name seed.  The recording process ran at a FIXED UTC-4 offset
+// (no DST): that is the only whole-hour offset that reproduces all four
+// recorded shopkeeper names across both DST seasons — seed0012 "Adjama" (May),
+// seed0002 "Ermenak" (Apr), seed0030 seg3 "Maganasipi" and seg7 "Swidnica"
+// (Jan/Feb).  A DST-observing US zone fits only the April/May pair.
+const UBIRTHDAY_UTC_OFFSET = -4 * 3600;
 function ubirthdaySeconds() {
     const dt = String(game.datetime || '');
     if (!/^\d{14}$/.test(dt)) return 0;
     const y = +dt.slice(0, 4), mo = +dt.slice(4, 6), d = +dt.slice(6, 8);
     const h = +dt.slice(8, 10), mi = +dt.slice(10, 12), s = +dt.slice(12, 14);
-    const TZ = 'America/Chicago';
-    const guess = Date.UTC(y, mo - 1, d, h, mi, s);
-    const dtf = new Intl.DateTimeFormat('en-US', {
-        timeZone: TZ, hourCycle: 'h23',
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
-    const parts = {};
-    for (const p of dtf.formatToParts(new Date(guess))) parts[p.type] = p.value;
-    const zonedAsUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day,
-        +parts.hour, +parts.minute, +parts.second);
-    const offsetMs = zonedAsUTC - guess;
-    return Math.trunc((guess - offsetMs) / 1000);
+    return Math.trunc(Date.UTC(y, mo - 1, d, h, mi, s) / 1000) - UBIRTHDAY_UTC_OFFSET;
 }
 
 // C ref: shknam.c nameshk() — extract a personal shopkeeper name for the
@@ -343,7 +331,10 @@ function shkinit(shp, sroom) {
     shk.eshk.shoproom = (sroom.roomnoidx ?? 0) + ROOMOFFSET;
     sroom.resident = shk;
     shk.eshk.shoptype = sroom.rtype;
-    shk.eshk.shd = game.level.doors[sh];
+    // C ref: shknam.c:674 `eshkp->shd = svd.doors[sh]` — a struct copy BY VALUE.
+    // Storing the reference makes flip_level() flip this coord twice (once via
+    // level.doors[], once via eshk.shd) and leaves the other alias unflipped.
+    shk.eshk.shd = { ...game.level.doors[sh] };
     shk.eshk.shk = { x: sx, y: sy };
 
     // C ref: mkmonmoney(shk, 1000 + 30 * rnd(100)) — initial capital.  The gold

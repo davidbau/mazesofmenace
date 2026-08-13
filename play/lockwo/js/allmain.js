@@ -34,6 +34,7 @@ import { nh_timeout } from './timeout.js';
 import { genTutorialLevel } from './tutorial.js';
 import { find_level } from './dungeon.js';
 import { livelog_printf, LL_ACHIEVE } from './livelog.js';
+import { check_special_room } from './shkroom.js';
 
 const PM_KNIGHT = 4;
 const PM_WIZARD = 12;
@@ -186,6 +187,9 @@ export async function newgame() {
 
     // C ref: dog.c makedog() - create the starting pet after level fill.
     u_on_upstairs();
+    // C ref: allmain.c:810 check_special_room(FALSE) — seeds u.urooms/u.ushops
+    // for the starting square before the first move computes an entry delta.
+    await check_special_room(false);
     makedog();
 
     // Fast-forward through post-mklev startup RNG calls.
@@ -1133,9 +1137,23 @@ function exerper() {
             exercise(A_CON, false);
         }
 
-        // Encumbrance Checks: near_capacity() == UNENCUMBERED (0) for the
-        // starter sessions -> no exercise calls.  (MOD/HVY/EXT branches omitted
-        // because they never fire here; add them if encumbrance is modeled.)
+        // Encumbrance Checks — C ref: attrib.c:552-566.  Omitting these because
+        // "the starter sessions are never encumbered" cost seed4500 1202 screens:
+        // a burdened hero draws one exercise(A_STR,TRUE) rn2(19) here that we
+        // never drew, desyncing from step 643 on.
+        switch (near_capacity()) {
+        case 2:                                    // MOD_ENCUMBER
+            exercise(A_STR, true);
+            break;
+        case 3:                                    // HVY_ENCUMBER
+            exercise(A_STR, true);
+            exercise(A_DEX, false);
+            break;
+        case 4:                                    // EXT_ENCUMBER
+            exercise(A_DEX, false);
+            exercise(A_CON, false);
+            break;
+        }
     }
 
     if (moves % 5 === 0) {
