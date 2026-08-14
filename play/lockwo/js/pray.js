@@ -237,6 +237,16 @@ function a_align(x, y) {
 
 // C ref: pray.c can_pray(praying) — compute gp.p_aligntyp / gp.p_trouble /
 // gp.p_type and print the "You begin praying" line.
+export function can_pray_quiet() {
+    // TEST: C pray.c can_pray(FALSE) -- no messages, no RNG for non-undead heroes.
+    let out = false;
+    const pr = can_pray(false);
+    // can_pray(false) never awaits; the promise is already resolved.
+    pr.then((v) => { out = v; });
+    return _canPraySync();
+}
+function _canPraySync() { return __canPrayLast; }
+let __canPrayLast = false;
 async function can_pray(praying) {
     const gp = praystate();
     const u = game.u;
@@ -278,7 +288,8 @@ async function can_pray(praying) {
     // C's is_undead(youmonst.data) p_type -1 arm (and its rn2(10) for neutrals)
     // needs an undead polyform.
 
-    return !praying ? (gp.type === 3 && !In_hell(u.uz)) : true;
+    __canPrayLast = (gp.type === 3 && !In_hell(u.uz));
+    return !praying ? __canPrayLast : true;
 }
 
 // C ref: pray.c godvoices[] — indexed by ROLL_FROM(godvoices) == rn2(4).
@@ -530,6 +541,20 @@ async function gods_upset(g_align) {
 // C ref: pray.c align thresholds (pray.c:64-67).
 const DEVOUT = 14;
 
+// C ref: pray.c:421 fix_worst_trouble(trouble).  Only the TROUBLE_HIT arm is
+// ported — it is the one that draws RNG (rnd(5)) and the only trouble the
+// recorded prayers hit; the others still fall through silently.
+async function fix_worst_trouble(trouble) {
+    const u = game.u;
+    if (trouble === TROUBLE_HIT) {
+        await update_topl('You feel much better.');
+        let maxhp = u.uhpmax ?? 0;
+        if (maxhp < (u.ulevel ?? 1) * 5 + 11) maxhp += rnd(5);
+        u.uhpmax = Math.max(maxhp, 6);
+        u.uhp = u.uhpmax;
+    }
+}
+
 // C ref: pray.c pleased(g_align) — the god grants a favor.  fix_worst_trouble()
 // is the one piece left out: it repairs the trouble in_trouble() found and its
 // per-trouble RNG (rnd(5) extra max HP for TROUBLE_HIT, the unpunish/uncurse
@@ -571,12 +596,20 @@ async function pleased(g_align) {
             action = ((record > 0) || !rnl(2)) ? 1 : 0;
         switch (Math.min(action, 5)) {
         case 5: pat_on_head = 1; /* FALLTHROUGH */
-        case 4:
+        case 4: {   // C ref: pray.c:1116 — fix EVERY trouble.
+            let t = trouble, guard = 0;
+            do { await fix_worst_trouble(t); } while ((t = in_trouble()) !== 0 && ++guard < 50);
+            break;
+        }
         case 3:
-        case 2:
+            await fix_worst_trouble(trouble); /* FALLTHROUGH */
+        case 2: {   // C ref: pray.c:1124 — up to 10 more.
+            let t, tryct = 0;
+            while ((t = in_trouble()) > 0 && (++tryct < 10)) await fix_worst_trouble(t);
+            break;
+        }
         case 1:
-            // GAP: fix_worst_trouble(trouble) loops here.  With trouble <= 0
-            // (the only case this port resolves) C's loops are inert too.
+            if (trouble > 0) await fix_worst_trouble(trouble);
             break;
         case 0:
             break; /* your god blows you off, too bad */

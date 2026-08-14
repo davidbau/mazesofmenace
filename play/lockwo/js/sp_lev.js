@@ -1966,7 +1966,7 @@ function quest_create_object(otyp, mx, my, spe, carryingMon) {
         otmp = mksobj(otyp, true, true);           // not placed on floor
         if (spe != null) otmp.spe = spe;
         if (!carryingMon.minvent) carryingMon.minvent = [];
-        carryingMon.minvent.push(otmp);
+        carryingMon.minvent.unshift(otmp);
     } else {
         otmp = mksobj_at(otyp, x, y, true, true);
         if (spe != null) otmp.spe = spe;
@@ -2903,10 +2903,12 @@ function tower_create_vampire_lady(name, mx, my) {
     if (name) mtmp.mname = name;                     // christen (no RNG)
     // KNOWN WRONG, DELIBERATELY LEFT: monst.h:177 STRAT_WAITFORU is 0x20000000
     // (0x40000000 is STRAT_ARRIVE), and correcting it DOES fix the stream — it
-    // moves seed0360's first RNG divergence from step 263 all the way to step
-    // 290 (medusa), making tower2 (268-273) byte-exact.  It is inert until
-    // js/mklev.js dispatches 'tower2'/'tower3' to makemaz_tower2/makemaz_tower3
-    // below, and lands ONLY with that dispatch: see the deferred note.
+    // moves seed0360's first RNG divergence from step 263 to step 290 (medusa),
+    // making tower2 (268-273) byte-exact.
+    // MEASURED 2026-08-14, WITH the mklev.js tower2/tower3 dispatch also landed:
+    // seed0360 gains 4 steps and loses 6 (294, 300, 736, 778, 779, 796), so the
+    // per-step superset gate still rejects it.  The remaining blocker is the
+    // Tier-1 chain past step 290 (Medusa), not the tower dispatch.
     mtmp.mstrategy = (mtmp.mstrategy || 0) | 0x40000000; /* STRAT_ARRIVE — see above */
     // vampshifted (cham is a vampire and current form differs) -> revert.
     if (mtmp.cham === PM_VAMPIRE_LEADER_IDX
@@ -3855,12 +3857,26 @@ function bigrm_monster() {
 
 // Common tail shared by most bigrm variants: stairs, non_diggable, 15 random
 // objects, 6 random traps, 28 random monsters.
+// C ref: sp_lev.c set_wallprop_in_selection() with argc == 0 — the des.non_diggable()
+// with no argument runs selection_clear(sel, 1), i.e. EVERY cell of the level, then
+// sets W_NONDIGGABLE on each wall/tree/bars.  Drawing no RNG does not make it a no-op:
+// wall_info gates later dig/teleport decisions that DO choose an rn2() modulus.
+function bigrm_non_diggable_all() {
+    for (let x = 0; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)
+                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+}
+
 async function bigrm_common_tail(opts = {}) {
     if (!opts.skipStairs) {
         bigrm_stair(true);
         bigrm_stair(false);
     }
-    // non_diggable: no RNG
+    bigrm_non_diggable_all();
     for (let i = 0; i < 15; i++) bigrm_object();
     for (let i = 0; i < 6; i++) await bigrm_trap(opts.boulderTraps);
     for (let i = 0; i < 28; i++) bigrm_monster();

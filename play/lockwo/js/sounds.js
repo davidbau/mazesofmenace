@@ -295,6 +295,13 @@ export async function domonnoise(mtmp) {
     let pline_msg = null, verbl_msg = null, verbl_msg_mcan = null;
 
     switch (msound) {
+    case MS_LEADER:
+    case MS_NEMESIS:
+    case MS_GUARDIAN: {
+        const { quest_talk } = await import('./questpgr.js');
+        await quest_talk(mtmp);
+        return ECMD_TIME;
+    }
     case MS_WERE:
         // C: `night() ^ !rn2(13)` — the roll happens either way on a full moon.
         // XOR, so at night the howl needs rn2(13) NON-zero and by day zero.

@@ -1034,13 +1034,21 @@ export async function teleds_hero(nux, nuy) {
     u.uswallow = 0;
     u.ustuck = null;
     newsym(oldx, oldy);
+    // SCRATCH: C ref: teleport.c:537 see_monsters()
+    for (const m of (game.level?.monsters || [])) {
+        if (m.mhp != null && m.mhp <= 0) continue;
+        newsym(m.mx, m.my);
+    }
     newsym(nux, nuy);
     vision_recalc(0);
     if (game.flags?.verbose !== false) {
         const where = (nux === oldx && nuy === oldy) ? 'the same' : 'a different';
         await update_topl(`You materialize in ${where} location!`);
     }
-    await spoteffects(null);
+    // C ref: teleport.c teleds() -> spoteffects(TRUE) — the arrival square's
+    // pile is looked at / picked up.  Passing null skipped the whole pickup.
+    const { pickup_after_move } = await import('./cmd.js');
+    await spoteffects(pickup_after_move);
 }
 
 // C ref: trap.c reset_utrap(msg) — clear the hero's trapped state.  The msg
@@ -1116,7 +1124,7 @@ async function scrolltele(scroll) {
     // the per-step superset gate rejects it.  Deferred to a change that also
     // fixes that carrot divergence.  Until then gk.known defers the makeknown
     // to doread(), which puts the rn2(19) after the teleport instead.
-    if (scroll) game.known = true;
+    if (scroll) learnscroll(scroll);
     await safe_teleds_hero();
 }
 
@@ -1699,7 +1707,7 @@ export async function doread() {
     // whole monster-movement/PRNG stream shifted from there on.
     if (otyp === FORTUNE_COOKIE) {
         if (game.flags?.verbose !== false)
-            await pline('You break up the cookie and throw away the pieces.');
+            await update_topl('You break up the cookie and throw away the pieces.');
         // C ref: rumors.c outrumor(bcsign(scroll), BY_COOKIE) — draws.
         const _engrave = await import('./engrave.js');
         const bcsign = (scroll.blessed ? 1 : 0) - (scroll.cursed ? 1 : 0);

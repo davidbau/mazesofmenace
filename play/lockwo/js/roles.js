@@ -34,12 +34,13 @@ export const roles = [
 // mflags3 to grant the hero racial Infravision; elf/dwarf/gnome/orc have it,
 // human does not.  Kept separate from `mnum` (a 0-4 race index) so existing
 // callers are unaffected.
+// selfmask: role.c races[].selfmask — the M2_ bit your_race(pm) tests.
 export const races = [
-    { name: 'human', adj: 'human', mnum: 0, basepm: 260 },
-    { name: 'elf', adj: 'elven', mnum: 1, basepm: 264 },
-    { name: 'dwarf', adj: 'dwarven', mnum: 2, basepm: 44 },
-    { name: 'gnome', adj: 'gnomish', mnum: 3, basepm: 165 },
-    { name: 'orc', adj: 'orcish', mnum: 4, basepm: 72 },
+    { name: 'human', adj: 'human', mnum: 0, basepm: 260, selfmask: 0x00000008 /*M2_HUMAN*/ },
+    { name: 'elf', adj: 'elven', mnum: 1, basepm: 264, selfmask: 0x00000010 /*M2_ELF*/ },
+    { name: 'dwarf', adj: 'dwarven', mnum: 2, basepm: 44, selfmask: 0x00000020 /*M2_DWARF*/ },
+    { name: 'gnome', adj: 'gnomish', mnum: 3, basepm: 165, selfmask: 0x00000040 /*M2_GNOME*/ },
+    { name: 'orc', adj: 'orcish', mnum: 4, basepm: 72, selfmask: 0x00000080 /*M2_ORC*/ },
 ];
 
 export const aligns = [

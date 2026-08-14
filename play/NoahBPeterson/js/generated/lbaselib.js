@@ -145,7 +145,7 @@ function b_str2int(s, base, pn) {
         s = cptr.add(s, 1);
     } while (isalnum(uchar(cptr.ld1s(s))));
     s = cptr.add(s, strspn(s, __s_sp_ff_nl_cr_tab_vt));  /* skip trailing spaces */
-    cptr.stI64(pn, BigInt.asIntN(64, ((neg) ? (BigInt.asUintN(64, 0n - n)) : n)));
+    cptr.stI64(pn, BigInt.asIntN(64, ((neg) ? 0n - n : n)));
     return s;
 }
 
@@ -301,77 +301,77 @@ function luaB_collectgarbage(L) {
     );
     switch (o) {
         case 3:
-        {
-            let k = lua_gc(L, o);
-            let b = lua_gc(L, 4);
             {
-                if (k == -1)
-                    break;
+                let k = lua_gc(L, o);
+                let b = lua_gc(L, 4);
+                {
+                    if (k == -1)
+                        break;
+                }
+                ;
+                lua_pushnumber(L, k + (b / 1024));
+                return 1;
             }
-            ;
-            lua_pushnumber(L, k + (b / 1024));
-            return 1;
-        }
         case 5:
-        {
-            let step = Number(BigInt.asIntN(32, luaL_optinteger(L, 2, 0n)));
-            let res = lua_gc(L, o, step);
             {
-                if (res == -1)
-                    break;
+                let step = Number(BigInt.asIntN(32, luaL_optinteger(L, 2, 0n)));
+                let res = lua_gc(L, o, step);
+                {
+                    if (res == -1)
+                        break;
+                }
+                ;
+                lua_pushboolean(L, res);
+                return 1;
             }
-            ;
-            lua_pushboolean(L, res);
-            return 1;
-        }
         case 6:
         case 7:
-        {
-            let p = Number(BigInt.asIntN(32, luaL_optinteger(L, 2, 0n)));
-            let previous = lua_gc(L, o, p);
             {
-                if (previous == -1)
-                    break;
+                let p = Number(BigInt.asIntN(32, luaL_optinteger(L, 2, 0n)));
+                let previous = lua_gc(L, o, p);
+                {
+                    if (previous == -1)
+                        break;
+                }
+                ;
+                lua_pushinteger(L, BigInt(previous));
+                return 1;
             }
-            ;
-            lua_pushinteger(L, BigInt(previous));
-            return 1;
-        }
         case 9:
-        {
-            let res = lua_gc(L, o);
             {
-                if (res == -1)
-                    break;
+                let res = lua_gc(L, o);
+                {
+                    if (res == -1)
+                        break;
+                }
+                ;
+                lua_pushboolean(L, res);
+                return 1;
             }
-            ;
-            lua_pushboolean(L, res);
-            return 1;
-        }
         case 10:
-        {
-            let minormul = Number(BigInt.asIntN(32, luaL_optinteger(L, 2, 0n)));
-            let majormul = Number(BigInt.asIntN(32, luaL_optinteger(L, 3, 0n)));
-            return pushmode(L, lua_gc(L, o, minormul, majormul));
-        }
-        case 11:
-        {
-            let pause = Number(BigInt.asIntN(32, luaL_optinteger(L, 2, 0n)));
-            let stepmul = Number(BigInt.asIntN(32, luaL_optinteger(L, 3, 0n)));
-            let stepsize = Number(BigInt.asIntN(32, luaL_optinteger(L, 4, 0n)));
-            return pushmode(L, lua_gc(L, o, pause, stepmul, stepsize));
-        }
-        default:
-        {
-            let res = lua_gc(L, o);
             {
-                if (res == -1)
-                    break;
+                let minormul = Number(BigInt.asIntN(32, luaL_optinteger(L, 2, 0n)));
+                let majormul = Number(BigInt.asIntN(32, luaL_optinteger(L, 3, 0n)));
+                return pushmode(L, lua_gc(L, o, minormul, majormul));
             }
-            ;
-            lua_pushinteger(L, BigInt(res));
-            return 1;
-        }
+        case 11:
+            {
+                let pause = Number(BigInt.asIntN(32, luaL_optinteger(L, 2, 0n)));
+                let stepmul = Number(BigInt.asIntN(32, luaL_optinteger(L, 3, 0n)));
+                let stepsize = Number(BigInt.asIntN(32, luaL_optinteger(L, 4, 0n)));
+                return pushmode(L, lua_gc(L, o, pause, stepmul, stepsize));
+            }
+        default:
+            {
+                let res = lua_gc(L, o);
+                {
+                    if (res == -1)
+                        break;
+                }
+                ;
+                lua_pushinteger(L, BigInt(res));
+                return 1;
+            }
     }
     lua_pushnil(L);  /* invalid call (inside a finalizer) */
     return 1;
@@ -434,7 +434,7 @@ function luaB_pairs(L) {
 /** C ref: lbaselib.c:302 — @param {CPtr<lua_State>} L @returns {CInt} */
 function ipairsaux(L) {
     let i = luaL_checkinteger(L, 2);
-    i = (BigInt.asIntN(64, (BigInt.asUintN(64, BigInt.asUintN(64, (i)) + 1n))));
+    i = (BigInt.asIntN(64, (BigInt.asUintN(64, (i)) + 1n)));
     lua_pushinteger(L, i);
     return (lua_geti(L, 1, i) == 0) ? 1 : 2;
 }

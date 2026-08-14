@@ -124,6 +124,24 @@ function _blocks(level, x, y) {
                 && o.ox === x && o.oy === y) return true;
         }
     }
+    // C ref: vision.c:186 — "Mimics mimicking a door or boulder or ... block
+    // light": `(mon = m_at(x,y)) && (!mon->minvis || See_invisible)
+    // && is_lightblocker_mappear(mon)` (monst.h:233).  Sokoban's giant mimic
+    // (des.monster appear_as="obj:boulder") is the case that bites.
+    const mons = level.monsters;
+    if (mons) {
+        const S_ndoor = 12, S_vcdoor = 15, S_hcdoor = 16, S_tree = 18; // defsym.h
+        for (const m of mons) {
+            if (!m || m.mx !== x || m.my !== y) continue;
+            if (m.minvis && !game.u?.uprops?.See_invisible) continue;
+            if (m.m_ap_type === 'obj' && m.mappearance === 475 /*BOULDER*/) return true;
+            if (m.m_ap_type === 'furniture') {
+                const ap = m.mappearance;
+                if (ap === S_hcdoor || ap === S_vcdoor || ap < S_ndoor || ap === S_tree)
+                    return true;
+            }
+        }
+    }
     return false;
 }
 

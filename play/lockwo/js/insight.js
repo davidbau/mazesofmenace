@@ -53,6 +53,10 @@ import { LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
          LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER, LL_MINORAC,
          livelog_printf } from './livelog.js';
 import { nhgetch } from './input.js';
+import { can_pray_quiet } from './pray.js';
+import { inv_weight } from './invent.js';
+const _wizard = () => !!(game.flags && game.flags.debug);
+const _discover = () => { const f = game.flags || {}; return !!(f.explore || f.discover || f.playmode === 'explore'); };
 
 // C ref: botl.c get_strength_str — STR encoding (insight.c attrval()).
 function attrval(attrindx, v) {
@@ -67,6 +71,16 @@ function attrval(attrindx, v) {
 function an(s) {
     if (!s) return s;
     return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`;
+}
+
+// C ref: attrib.c from_what(ANTIMAGIC) — wizard mode only; the worn item that
+// grants it (what_gives -> ysimple_name).
+function _fromWhatAntimagic() {
+    if (!(game.flags && game.flags.debug)) return '';
+    for (const o of (game.invent || []))
+        if ((o.owornmask || 0) & W_ARMOR_MASK)
+            if (OBJECTS[o.otyp]?.oc_oprop === 12) return ` because of your ${OBJECTS[o.otyp].name}`;
+    return '';
 }
 
 function alignStr(t) {
@@ -301,10 +315,30 @@ export function enlightenment_lines(final = 0) {
     // ── Status ──
     out('');
     out(final ? 'Final Status:' : 'Status:');
+    // C ref: insight.c:1073 — `if (Deaf) you_are("deaf", from_what(DEAF));`,
+    // emitted BEFORE the hunger line.
+    if (((u.uprops?.HDeaf || 0) > 0) || u.Deaf) youAre('deaf');
     // hunger: hu_stat[u.uhs]; NOT_HUNGRY (1) -> "not hungry" at game start.
-    youAre(hungerWord(u.uhs ?? 1));
-    // encumbrance (near_capacity() == UNENCUMBERED for the starter pack)
-    youAre('unencumbered');
+    // C ref: insight.c:1146 — wizard mode appends the raw u.uhunger.
+    {
+        let hb = hungerWord(u.uhs ?? 1);
+        if (_wizard()) hb += ` <${u.uhunger ?? 900}>`;
+        youAre(hb);
+    }
+    // C ref: insight.c:1212 — only the UNENCUMBERED else-arm says
+    // "unencumbered"; anything heavier is "<enc>; movement is <adj> slowed".
+    {
+        const cap = game._curcap | 0;
+        if (cap > 0) {
+            const encWords = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
+            const adjs = ['', 'slightly', 'moderately', 'very', 'extremely', 'not possible'];
+            const w = encWords[cap].charAt(0).toLowerCase() + encWords[cap].slice(1);
+            youAre(`${w}; movement ${final ? 'was' : 'is'} ${adjs[cap]}${cap < 5 ? ' slowed' : ''}`);
+        } else {
+            // wizard mode appends the carried weight (insight.c:1218).
+            youAre(_wizard() ? `unencumbered <${inv_weight()}>` : 'unencumbered');
+        }
+    }
     // current weapon + skill
     weaponInsight(youAre, youHave, enlLine);
     // C ref: status_enlightenment() tail — "report 'nudity'": no armor worn at
@@ -317,24 +351,47 @@ export function enlightenment_lines(final = 0) {
     // Only reached at end-of-game disclosure (final) for the covered sessions;
     // limited to what the covered heroes can actually have: alignment piety,
     // role-granted Searching, racial Infravision, and the mortality line.
-    if (final) {
+    // C ref: insight.c doattributes() — wizard AND explore mode also pass
+    // MAGICENLIGHTENMENT for the LIVE ^X, so the section is not final-only; its
+    // header is then "Attributes:" and it omits the mortality line.
+    const _magic = final ? true : (_wizard() || _discover());
+    if (_magic) {
         out('');
-        out('Final Attributes:');
+        out(final ? 'Final Attributes:' : 'Attributes:');
         const pio = piousness(u.ualign?.record ?? 0);
         if ((u.ualign?.record ?? 0) >= 0) youAre(pio);
         else youHave(pio);
+        if (_wizard()) enlLine('Your alignment ', final ? 'was' : 'is', ` ${u.ualign?.record ?? 0}`, '');
         if (youHaveSearching()) youHave('automatic searching');
         // insight.c:1523 — Antimagic is worn gear whose oc_oprop is ANTIMAGIC
         // (gray DSM/scales, cloak of magic resistance) plus the intrinsic.
-        // from_what() adds no suffix without wizard mode.
-        if (Antimagic()) youAre('magic-protected');
+        // from_what() adds a suffix only in wizard mode.
+        if (Antimagic()) youAre('magic-protected', _fromWhatAntimagic());
         if (Infravision()) youHave('infravision');
         // insight.c:1800 — the worn-armour magic-cancellation level.
         const armpro = magic_negation_hero();
         if (armpro > 0) youAre(MC_TYPES[Math.min(armpro, MC_TYPES.length - 1)]);
+        // C ref: insight.c:1908 /*** Miscellany ***/ — the Luck block, which
+        // was omitted entirely.  Luck = u.uluck + u.moreluck, and it is non-zero
+        // for any full-moon / Friday-13th game (allmain.c:59 change_luck(1)).
+        const luckTot = (u.uluck || 0) + (u.moreluck || 0);
+        if (luckTot) {
+            const lt = Math.abs(luckTot);
+            youAre(`${lt >= 10 ? 'extremely ' : lt >= 5 ? 'very ' : ''}${luckTot < 0 ? 'un' : ''}lucky`);
+        }
+        if ((u.moreluck || 0) > 0) youHave('extra luck');
+        else if ((u.moreluck || 0) < 0) youHave('reduced luck');
+        // insight.c:1917 — wizard mode states a zero Luck explicitly.
+        if (_wizard() && !(u.uluck || 0)) enlLine('Your luck ', final ? 'was' : 'is', ' zero', '');
+        // insight.c:1934 — the live ^X reports whether prayer is safe.
+        if (!final) {
+            let pb = `${can_pray_quiet() ? '' : 'not '}safely pray`;
+            if (_wizard()) pb += ` (${u.ublesscnt ?? 0})`;
+            enlLine('You ', 'can ', pb, '');
+        }
         // C ref: enlightenment() tail — "have been killed .../are dead" via
         // u.umortality; the covered death path always has umortality === 1.
-        out(' You are dead.');
+        if (final) out(' You are dead.');
     }
 
     // ── Miscellaneous ──
@@ -343,7 +400,9 @@ export function enlightenment_lines(final = 0) {
     // C ref: enlightenment() — bones-level reminder, shown for BASIC mode in
     // wizard/explore/final; flags.bones defaults on and no session has visited
     // a bones level yet, so this is always the "didn't encounter any" form.
-    if (final) {
+    if (_wizard() || _discover() || final) {
+        if (_wizard() || _discover())
+            youAre(`running in ${_wizard() ? 'debug' : 'explore'} mode`);
         if (game.flags?.bones === false)
             youHave('disabled loading and storing of bones levels');
         else if (!u.numbones)
@@ -633,7 +692,10 @@ export async function list_vanquished_screen() {
         lines.push('');
         lines.push(`${total} creatures vanquished.`);
     }
-    await render_menu_window(lines, '(end)');
+    // C ref: insight.c:2862 list_vanquished() builds an NHW_MENU with putstr()
+    // ONLY (no menu items), and tty_display_nhwindow() routes such a window
+    // through process_text_window() — i.e. --More--, not "(end)".
+    await render_menu_window(lines);
     for (;;) {
         const key = await nhgetch();
         if (key === 27 || key === 13 || key === 10 || key === 32) break;
@@ -644,6 +706,16 @@ export async function list_vanquished_screen() {
 function an_word(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
 // C ref: mondata.h type_is_pname(ptr) == (mflags2 & M2_PNAME).
 function is_pname(m) { return ((MFLAGS2[m?.pmidx] ?? 0) & M2_PNAME) !== 0; }
+
+// C ref: insight.c:2769 dovanquished() — the #vanquished command.
+export async function dovanquished() {
+    if (!vanquished_ntypes()) {
+        game._pending_message = 'No creatures have been vanquished.';
+        return 0;
+    }
+    await list_vanquished_screen();
+    return 0;
+}
 
 // C ref: insight.c dogenocided() — the M-g / #genocided command.
 export async function dogenocided() {

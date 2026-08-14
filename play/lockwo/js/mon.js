@@ -12,6 +12,9 @@ import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit, MAX_CARR_CAP, WT_HUMAN,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, I_SPECIAL,
     IS_DOOR, IS_POOL, IS_LAVA, WATER, Is_waterlevel,
     D_CLOSED, D_LOCKED } from './const.js';
+import { Conflict, resist_conflict, m_canseeu } from './monmove.js';
+import { mattackm } from './mhitm.js';
+import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import { dochugw, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen,
     m_everyturn_effect, monflee, onscary } from './monmove.js';
 import { cansee, Blind } from './vision.js';
@@ -1283,8 +1286,38 @@ async function movemon_singlemon(mtmp) {
             return false;
     }
 
+    // C ref: mon.c:1305-1319 — Conflict: the monster may fight another monster.
+    if (Conflict() && !mtmp.iswiz && m_canseeu(mtmp)) {
+        if (cansee(mtmp.mx, mtmp.my)
+            && dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) <= 8 * 8
+            && await fightm(mtmp))
+            return false;
+    }
+
     await dochugw(mtmp, true);
     return false;
+}
+
+// C ref: mhitm.c:106 fightm(mtmp) — conflicted monsters fight each other.
+async function fightm(mtmp) {
+    if (resist_conflict(mtmp)) return 0;
+    // (u.ustuck / engulfing_u cases not modelled)
+    for (const mon of fmonOrder()) {
+        if (mon !== mtmp && !DEADMONSTER(mon)) {
+            if (monnear(mtmp, mon.mx, mon.my)) {
+                const result = await mattackm(mtmp, mon);
+                if (result & M_ATTK_AGR_DIED) return 1;
+                if ((result & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+                    && rn2(4) && (mon.movement | 0) > rn2(NORMAL_SPEED)) {
+                    if ((mon.movement | 0) > NORMAL_SPEED) mon.movement -= NORMAL_SPEED;
+                    else mon.movement = 0;
+                    await mattackm(mon, mtmp);
+                }
+                return (result & M_ATTK_HIT) ? 1 : 0;
+            }
+        }
+    }
+    return 0;
 }
 
 // C ref: mon.c movemon(void) — one pass over every monster.  Returns true if

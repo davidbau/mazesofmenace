@@ -29,7 +29,11 @@ import { A_WIS, A_STR, A_INT, A_CON, A_DEX, ROWNO, COLNO, ZAP_POS, IS_DOOR, IS_R
          D_CLOSED, D_LOCKED, CORPSTAT_INIT, EXT_ENCUMBER, HEADSTONE, ENGRAVE,
          DUST, MM_NOMSG, In_mines, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG,
          W_ARMF, W_ARMU } from './const.js';
-import { CLR_ORANGE } from './terminal.js';
+import { CLR_ORANGE, CLR_BLACK, CLR_GREEN, CLR_YELLOW, CLR_WHITE, CLR_BRIGHT_BLUE } from './terminal.js';
+// C ref: display.c:2661 zapcolors[NUM_ZAP], display.h:280 (HI_ZAP == CLR_BRIGHT_BLUE).
+// Indexed by the HALLUCINATED damage type, so every beam used to draw orange.
+const ZAPCOLORS = [CLR_BRIGHT_BLUE, CLR_ORANGE, CLR_WHITE, CLR_BRIGHT_BLUE,
+                   CLR_BLACK, CLR_WHITE, CLR_GREEN, CLR_YELLOW];
 import { can_make_bones } from './bones.js';
 import { DEADMONSTER } from './mon.js';
 import { MON_WEP } from './monmove.js';
@@ -1253,7 +1257,6 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
     // anything else in dobuzz, so a hallucinating hero's zap draws one extra
     // rn2(6) that this port used to skip.  hdmgtype only picks the beam colour.
     const hdmgtype = Hallucination() ? rn2(6) : damgtype;
-    void hdmgtype;
     let range = rn1(7, 7);              // C: range = rn1(7, 7)
     if (dx === 0 && dy === 0) range = 1;
     let lsx, lsy;
@@ -1265,7 +1268,7 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
     // restored to its real glyph (corpse, monster, floor, ...).  Track visited
     // cells here and newsym() them back at the bottom of the function.
     const visited = new Map();
-    const drawBeam = (x, y) => { show_glyph_cell(x, y, beamGlyph, CLR_ORANGE, true); visited.set(`${x},${y}`, [x, y]); };
+    const drawBeam = (x, y) => { show_glyph_cell(x, y, beamGlyph, ZAPCOLORS[hdmgtype] ?? CLR_ORANGE, true); visited.set(`${x},${y}`, [x, y]); };
 
     while (range-- > 0) {
         lsx = sx; sx += dx;
@@ -1327,8 +1330,16 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
                 range -= 2;
                 drawBeam(sx, sy); // beam shown over the hero's cell
                 await update_topl(`${flash_The(type)} hits you!`);
-                await zhitu(type, nd, flash_killer(type), sx, sy);
-                if (game.program_state?.gameover) return;
+                // C ref: zap.c dobuzz() — `if (ureflects("But %s reflects from
+                // your %s!", "it")) { dx = -dx; dy = -dy; } else zhitu(...)`.
+                // Skipping it let a reflected bolt damage the hero AND lose the
+                // reversed second leg of the beam.
+                if (await ureflects('But %s reflects from your %s!', 'it')) {
+                    dx = -dx; dy = -dy;
+                } else {
+                    await zhitu(type, nd, flash_killer(type), sx, sy);
+                    if (game.program_state?.gameover) return;
+                }
             } else {
                 await update_topl(`${flash_The(type)} whizzes by you!`);
             }
@@ -1427,6 +1438,28 @@ function burn_floor_objects(x, y, _give_feedback, u_caused) {
 }
 
 // C ref: youprop.h Hallucination.
+// C ref: muse.c ureflects(fmt, str) — outermost reflection source first.
+// Draws no RNG; the reflection message and the makeknown are the observable.
+const SHIELD_OF_REFLECTION_OTYP = 158, AMULET_OF_REFLECTION_OTYP = 162;
+async function ureflects(fmt, str) {
+    const { makeknown } = await import('./invent.js');
+    if (game.uarms && game.uarms.otyp === SHIELD_OF_REFLECTION_OTYP) {
+        if (fmt && str) {
+            await update_topl(fmt.replace('%s', str).replace('%s', 'shield'));
+            makeknown(SHIELD_OF_REFLECTION_OTYP);
+        }
+        return true;
+    }
+    if (game.uamul && game.uamul.otyp === AMULET_OF_REFLECTION_OTYP) {
+        if (fmt && str) {
+            await update_topl(fmt.replace('%s', str).replace('%s', 'medallion'));
+            makeknown(AMULET_OF_REFLECTION_OTYP);
+        }
+        return true;
+    }
+    return false;
+}
+
 function Hallucination() {
     const u = game.u;
     return !!(u?.uprops?.Hallucination || u?.Hallu || u?.uhallu);
@@ -1670,7 +1703,7 @@ async function slept_monst(_mon) {}
 // sleep zap.  seemimic() mimic-reveal is not modelled (no covered zap target
 // is a hiding mimic).
 export async function sleep_monst(mon, amt, how) {
-    if (resists_sleep(mon) || defended(mon, 4 /*AD_SLEE*/) || resist(mon, how, 0, false)) {
+    if (resists_sleep(mon) || defended(mon, 4 /*AD_SLEE*/) || (how >= 0 && resist(mon, how, 0, false))) {
         // shieldeff(mon.mx, mon.my): display-only, no RNG.
         return false;
     }

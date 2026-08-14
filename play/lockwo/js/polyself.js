@@ -23,6 +23,7 @@ const pline = update_topl;
 import { exercise } from './attrib.js';
 import { find_ac, race_attrmax, race_attrmin, race_attrmax_of } from './u_init.js';
 import { encumber_msg, freeinv, xname, makeplural } from './invent.js';
+import { base_mmove } from './mon.js';
 import { P_NAME, weapon_type } from './enhance.js';
 import { objects as OBJECTS } from './mkobj.js';
 import { place_object, WEAPON_CLASS, TOOL_CLASS, ARMOR_CLASS, FOOD_CLASS,
@@ -349,6 +350,17 @@ async function drop_weapon(alone) {
 export function set_uasmon() {
     const u = game.u;
     const mdat = monster_by_pmidx(u.umonnum);
+    // C ref: mondata.c:13 set_mon_data() — leftover movement points are prorated
+    // when the new form is SLOWER.  Human->gnome takes u.umovement 12 -> 6, which
+    // changes how many turns every later hero command costs.
+    // (u.data is unset before the first polymorph in this port; every
+    // player-monster form has mmove == NORMAL_SPEED, hence the 12 default.)
+    if (u.umovement) {
+        const old_speed = u.data ? base_mmove({ data: u.data }) : 12;
+        const new_speed = base_mmove({ data: mdat });
+        if (new_speed < old_speed && old_speed > 0)
+            u.umovement = Math.trunc((u.umovement * new_speed) / old_speed);
+    }
     u.data = mdat;
     u.Upolyd = u.umonnum !== u.umonster;
 

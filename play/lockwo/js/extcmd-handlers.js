@@ -13,7 +13,7 @@ import { nhgetch } from './input.js';
 import { pline, topl_more, update_topl, y_n, flush_screen, m_at, vobj_at, render_map_to_grid, statusLine1Text, statusLine2Text } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import {
-    obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable,
+    obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_INVLET, SORTLOOT_PACK, mergable,
     name_inventory_object, call_inventory_object, doorganize,
     addinv, prinv, prinv_fmt, let_to_name, report_merge_discovery,
     wiz_identify, renderWindowScreen, useup, xname,
@@ -45,7 +45,7 @@ import { rn1 } from './rng.js';
 import { dopray as pray_dopray, dosacrifice } from './pray.js';
 import { dosit } from './sit.js';
 import { dodip } from './potion.js';
-import { dogenocided, do_gamelog, doconduct } from './insight.js';
+import { dogenocided, do_gamelog, doconduct, dovanquished } from './insight.js';
 import { isok } from './hacklib.js';
 import { Monnam, canspotmon, x_monnam, mon_nam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
@@ -401,6 +401,11 @@ async function tty_get_ext_cmd() {
 // the top line and read a single allowed key.  `def` is returned for
 // space/return; ESC maps to 'q' (if allowed) else 'n' (if allowed) else def.
 export async function yn_function(query, resp, def) {
+    // C ref: win/tty/topl.c tty_yn_function() clean_up:418 — the answered prompt
+    // is LEFT on the top line (the addtopl(rtmp) echo is commented out upstream);
+    // only gt.toplines' history copy is rewritten.  Routing through display.js
+    // y_n() keeps it in game._pending_message so the next frame still shows it.
+    if (resp != null) return await y_n(query, resp, def);
     let prompt = query;
     if (resp != null) {
         prompt += ` [${resp}]`;
@@ -418,18 +423,24 @@ export async function yn_function(query, resp, def) {
         }
         disp.setCursor(Math.min(prompt.length, disp.cols - 1), 0);
     };
+    // C ref: win/tty/topl.c — an answered y/n prompt is LEFT on the top line
+    // (tty_yn_function only updates gt.toplines bookkeeping; the message window
+    // is not cleared).  This wrote the prompt straight onto the grid, so the
+    // next flush_screen() repainted row 0 from the (empty) pending message and
+    // the answered prompt vanished a frame early.
+    const done = (r) => { game._pending_message = prompt.trimEnd(); game._toplin = 0; return r; };
     for (;;) {
         drawPrompt();
         let q = await nhgetch();
-        if (resp == null) return String.fromCharCode(q);
+        if (resp == null) return done(String.fromCharCode(q));
         let c = String.fromCharCode(q).toLowerCase();
         if (q === 27) { // ESC
-            if (resp.includes('q')) return 'q';
-            if (resp.includes('n')) return 'n';
-            return def || '\0';
+            if (resp.includes('q')) return done('q');
+            if (resp.includes('n')) return done('n');
+            return done(def || '\0');
         }
-        if (q === 32 || q === 13 || q === 10) return def || '\0';
-        if (resp.includes(c)) return c;
+        if (q === 32 || q === 13 || q === 10) return done(def || '\0');
+        if (resp.includes(c)) return done(c);
         // otherwise: bell, reloop.
     }
 }
@@ -799,7 +810,7 @@ async function dochat() {
     // un-freezes the quest leader, and our freed-leader m_move then diverges
     // from C's).  Restore this line once a freed STRAT_CLOSE leader moves the
     // way C's does; it is a real omission, not a no-op.
-    void STRAT_WAITMASK;
+    mtmp.mstrategy = (mtmp.mstrategy ?? 0) & ~STRAT_WAITMASK;
 
     // a tame pet that is busy eating just makes eating noises (no turn).
     if (!Deaf_hero_chat() && mtmp.mtame && mtmp.meating) {
@@ -1651,7 +1662,7 @@ async function query_category_takeoff() {
 // the accelerators are the objects' own inventory letters.
 async function query_objlist_takeoff(allow) {
     const items = [], linePlan = [];
-    const sorted = sortloot(inventoryArray(), SORTLOOT_LOOT | SORTLOOT_PACK, false, allow);
+    const sorted = sortloot(inventoryArray(), SORTLOOT_INVLET | SORTLOOT_PACK, false, allow);
     let curClass = null;
     for (const sli of sorted) {
         if (!sli.obj) break;
@@ -1871,8 +1882,27 @@ async function doloot() {
     }
     const box = floor_box_here();
     if (!box) {
-        // C: "You don't find anything here to loot." (ECMD_TIME elsewhere, but
-        // the simple no-container case the sessions might hit prints this).
+        // C ref: pickup.c:2295-2341 doloot_core(), label `lootmon:` — when
+        // mon_beside() finds a monster in the 3x3 box (pickup.c:2071) C prompts
+        // "Loot in what direction?" via get_adjacent_loc() and that getdir()
+        // EATS the following keystrokes.  Skipping the branch let them fall
+        // through to rhack() and run a phantom command (a whole game turn).
+        const u = game.u;
+        let beside = false;
+        for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+            const nx = u.ux + i, ny = u.uy + j;
+            if (isok(nx, ny) && m_at(nx, ny)) beside = true;
+        }
+        if (beside) {
+            const { getdir } = await import('./cmd.js');
+            const dir = await getdir('Loot in what direction?');
+            if (!dir) { await pline('Never mind.'); return 0; }
+            const cx = u.ux + dir.dx, cy = u.uy + dir.dy;
+            if (!isok(cx, cy)) { await pline('Invalid loot location'); return 0; }
+            const underfoot = (cx === u.ux && cy === u.uy);
+            await pline(`You don't find anything ${!underfoot ? 't' : ''}here to loot.`);
+            return 0;
+        }
         await pline("You don't find anything here to loot.");
         return 0;
     }
@@ -2052,8 +2082,10 @@ async function doforce() {
 // yname for the wielded weapon in the force message: "your <weapon>".  The
 // base type name comes from the objects table (objclass.h oc_name).
 function force_yname(uwep) {
-    const nm = (uwep != null && objects[uwep.otyp]?.name) || 'weapon';
-    return `your ${nm}`;
+    // objects[].name is the bare oc_name; C's yname() -> xname() carries the
+    // artifact/called name ("your Sting", "your +1 war hammer").
+    if (uwep == null) return 'your weapon';
+    return `your ${xname(uwep)}`;
 }
 
 // C ref: mon.c wake_nearby(FALSE) -> wake_nearto_core(u.ux, u.uy, ulevel*20,
@@ -2115,6 +2147,12 @@ async function chest_shatter_msg(otmp) {
 // being destroyed (chest_shatter_msg), the rest land on the floor.  No shop on
 // the starting level, so no costly_alteration.  C ref: lock.c:172-211.
 async function breakchestlock(box, destroyit) {
+    if (!destroyit) {
+        // C ref: lock.c:162 breakchestlock() — the lock breaks, the box stays,
+        // and NOTHING is printed.  The caller passes !picktyp && !rn2(3).
+        box.olocked = 0; box.obroken = 1; box.lknown = 1;
+        return;
+    }
     await update_topl(`In fact, you've totally destroyed the ${box_basename(box.otyp)}.`);
     const contents = box.cobj || [];
     box.cobj = [];
@@ -2243,6 +2281,9 @@ export async function show_overview_disclosure(final, how) {
 // Map extcmdlist index -> handler.  Unimplemented commands fall through to
 // a no-op (no message), which keeps RNG/state untouched.
 const HANDLERS = {
+    invoke: doinvoke,
+    untrap: dountrap,
+    tip: dotip,
     adjust: doorganize_extcmd,
     annotate: donamelevel,
     jump: dojump,
@@ -2263,6 +2304,7 @@ const HANDLERS = {
     dip: dodip,
     offer: dosacrifice,
     genocided: dogenocided,
+    vanquished: dovanquished,
     chronicle: do_gamelog,
     conduct: doconduct,
     wizgenesis: wiz_genesis,
@@ -2564,4 +2606,68 @@ export async function doextcmd() {
     // makes the move loop advance a turn.  Commands we don't model return 0.
     game.context.move = res === 1 ? 1 : 0;
     return res;
+}
+
+// ── #invoke / #tip / #untrap ────────────────────────────────────────────────
+// All three were absent from HANDLERS while their names WERE in EXTCMDLIST, so
+// the command echoed and then silently did nothing.  The real cost is not the
+// missing message: the answer keystroke falls through to rhack() as a fresh
+// command, which desynchronises every later step in the session.
+
+const GETOBJ_EXCLUDE_X = -3, GETOBJ_SUGGEST_X = 2;           // js/invent.js:147,152
+const FAKE_AMULET_OF_YENDOR_X = 212, CRYSTAL_BALL_X = 231;   // js/mkobj.js:414,433
+
+// C ref: artifact.c:1727 invoke_ok().
+// NOTE objects[].oc_unique is populated for only two otyps in this port
+// (js/o_init.js:192,195), so the Bell/Candelabrum are still mis-classified.
+function invoke_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE_X;
+    if (obj.oartifact || objects[obj.otyp]?.oc_unique
+        || (obj.otyp === FAKE_AMULET_OF_YENDOR_X && !obj.known)) return GETOBJ_SUGGEST_X;
+    if (obj.otyp === CRYSTAL_BALL_X) return GETOBJ_SUGGEST_X;
+    return GETOBJ_EXCLUDE_X;
+}
+
+// C ref: artifact.c:1749 doinvoke() -> retouch_object() -> :2131 arti_invoke().
+// An artifact whose inv_prop is 0 (Mjollnir) reaches pline1(nothing_happens).
+async function doinvoke() {
+    const inv = await import('./invent.js');
+    const obj = await inv.getobj('invoke', invoke_ok, inv.GETOBJ_PROMPT);
+    if (!obj) return 0;                                  // ECMD_CANCEL
+    if (!inv.touch_artifact(obj, null)) return 1;        // ECMD_TIME
+    await pline('Nothing happens.');
+    return 1;                                            // ECMD_TIME
+}
+
+// C ref: pickup.c:3562 dotip() — the floor-container branch.  tipcontainer() is
+// not ported; no recorded session answers anything but 'q'/'n' here.
+async function dotip() {
+    for (const cobj of floor_lockboxes_here()) {
+        const nm = `${cobj.obroken ? 'broken ' : (cobj.olocked ? 'locked ' : '')}${box_basename(cobj.otyp)}`;
+        const c = await yn_function(`There is a ${nm} here, tip it?`, 'ynq', 'q');
+        if (c === 'q') return 0;                         // ECMD_OK
+        if (c === 'n') continue;
+        return 1;                                        // ECMD_TIME (tipcontainer TODO)
+    }
+    // C then falls through to getobj("tip", tip_ok, GETOBJ_PROMPT).
+    return 0;
+}
+
+// C ref: trap.c:5248 dountrap() -> :5258 could_untrap(TRUE, FALSE).
+// webmaker() is include/mondata.h:147, a SPECIES test against PM_CAVE_SPIDER /
+// PM_GIANT_SPIDER — there is no M1_WEBMAKER bit (0x400000 is M1_OVIPAROUS here,
+// and a red dragon has it, which would silence the message).
+async function dountrap() {
+    const { nohands } = await import('./monflags_data.js');
+    const { near_capacity } = await import('./invent.js');
+    const { base_mmove } = await import('./mon.js');
+    const data = game.u?.data;
+    const webmaker = data?.name === 'cave spider' || data?.name === 'giant spider';
+    let buf = '';
+    if (near_capacity() >= 3 /* HVY_ENCUMBER */)
+        buf = "You're too strained to do that.";
+    else if ((data && nohands(data) && !webmaker) || !base_mmove({ data }))
+        buf = 'And just how do you expect to do that?';
+    if (buf) { await pline(buf); return 0; }
+    return 0;   // untrap() itself is unported; no session reaches it.
 }

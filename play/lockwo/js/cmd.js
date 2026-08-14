@@ -605,7 +605,7 @@ export async function rhack(key) {
         && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '>')) {
         // A paged #enhance "Current skills:" window advances/dismisses on
         // space/return/'>' (PICK_NONE menu).  ESC falls through below.
-        await skill_window_advance();
+        await skill_window_advance(ch);
         game.context.move = 0;
     } else if (game._modal_screen === 'textwin' && game._disco_pages
         && (ch === ' ' || ch === '\r' || ch === '\n')) {
@@ -1221,7 +1221,7 @@ export async function dosearch0(aflag) {
                 // a counted search ("9s") stops immediately instead of running
                 // out its full repeat count.
                 if ((game.multi ?? 0) > 0) game.multi = 0;
-                await pline('You find a hidden door.');
+                await update_topl('You find a hidden door.');
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = CORR;
@@ -1229,7 +1229,7 @@ export async function dosearch0(aflag) {
                 exercise(A_WIS, true);
                 newsym(x, y);
                 if ((game.multi ?? 0) > 0) game.multi = 0;
-                await pline('You find a hidden passage.');
+                await update_topl('You find a hidden passage.');
             } else {
                 const mtmp = m_at(x, y);
                 if (mtmp && !aflag) {
@@ -1685,6 +1685,7 @@ export async function getdir(s) {
     const key = await nhgetch();
     delete game._modal_screen;
     game._pending_message = '';
+    game._toplin = 0; // TEST: topl.c:544 clean_up -> TOPLINE_NON_EMPTY
     const ch = String.fromCharCode(key);
     if (ch === '.' || ch === 's')
         return { dx: 0, dy: 0, dz: 0 };
@@ -2457,9 +2458,17 @@ export async function domove(dx, dy) {
         const typ = loc ? loc.typ : STONE;
         // C: solid = off_edge || !accessible(x,y) || IS_FURNITURE(typ)
         const solid = off_edge || !ACCESSIBLE(typ) || IS_FURNITURE(typ);
+        // C ref: hack.c:2260 — `boulder = sobj_at(BOULDER, x, y)`; a boulder on
+        // ACCESSIBLE floor is not `solid`, but it still names the object and
+        // still takes the "harmlessly " prefix (the prefix test is
+        // `!(boulder || solid)`), so without this a force-fight at a boulder
+        // read "You attack thin air."
+        const boulder = off_edge ? null : boulder_at(newx, newy);
         let buf;
         if (off_edge) {
             buf = 'an unknown obstacle';
+        } else if (boulder) {
+            buf = 'a boulder';                     /* ansimpleoname(boulder) */
         } else if (solid) {
             // C: a seen square (or any stone-wall / secret door/corridor) is
             // named via the cmap explanation ("the wall"); otherwise it reads
@@ -2475,7 +2484,7 @@ export async function domove(dx, dy) {
         // update_topl(), not pline(): C's You() leaves toplin == TOPLINE_NEED_MORE,
         // so the monster turn that follows this wasted move APPENDS after two
         // spaces ("You attack thin air.  The goblin hits!") instead of replacing.
-        await update_topl(`You ${solid ? 'harmlessly ' : ''}attack ${buf}.`);
+        await update_topl(`You ${(boulder || solid) ? 'harmlessly ' : ''}attack ${buf}.`);
         // C nomul(0): no run/multi is active during a plain 'F'+walk, so this is
         // a no-op here; the wasted attack still elapses a game turn.
         game.multi = 0;
@@ -2523,7 +2532,16 @@ export async function domove(dx, dy) {
         const closedDoor = tgt && IS_DOOR(tgt.typ)
             && (tgt.doormask & (D_CLOSED | D_LOCKED));
         if (closedDoor) {
-            if (!game.context?.run && !game.context?.mv) {
+            // C ref: hack.c:1097 — `flags.autoopen && !svc.context.run
+            // && !Confusion && !Stunned && !Fumbling`.  An impaired hero walks
+            // INTO the door ("Ouch!  That was a door.") instead of opening it,
+            // which is a different message and a different RNG path.
+            const u = game.u;
+            const _stunned = (u?.uprops?.Stun || 0) > 0 || !!u?.Stunned;
+            const _confused = !!(u?.uconf || u?.HConfusion);
+            const _fumbling = !!(u?.HFumbling || u?.EFumbling);
+            if (!game.context?.run && !game.context?.mv
+                && !_confused && !_stunned && !_fumbling) {
                 const odr = await doopen_indir(newx, newy);
                 // The hero never relocates via autoopen (the door square is not
                 // entered this command), so move follows position change (false)

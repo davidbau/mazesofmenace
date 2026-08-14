@@ -52,6 +52,22 @@ function plur(n) { return (n === 1) ? '' : 's'; }
 
 // Sum the coins carried directly in `inv` (C ref: engrave.c money_cnt — does NOT
 // descend into containers; that is hidden_gold()'s job).
+// C ref: dungeon.c:1338 deepest_lev_reached(noquest) — the deepest DEPTH the
+// hero reached in any dungeon, not the depth they happened to die on.
+function deepest_lev_reached_js(noquest = false) {
+    const dgns = game.dungeons || [];
+    let ret = 0;
+    for (let i = 0; i < dgns.length; i++) {
+        const d = dgns[i];
+        if (!d || (noquest && i === game.quest_dnum)) continue;
+        const dl = d.dunlev_ureached || 0;
+        if (!dl) continue;
+        const dep = (d.depth_start ?? 1) + dl - 1;
+        if (dep > ret) ret = dep;
+    }
+    return ret;
+}
+
 function money_toplevel(inv) {
     let s = 0;
     for (const o of inv) if (o && o.oclass === COIN_CLASS) s += o.quan || 0;
@@ -111,15 +127,15 @@ export async function outrip_and_score(how) {
     const dungeonName = game.dungeons?.[uz.dnum]?.dname || 'The Dungeons of Doom';
     const depth = (game.dungeons?.[uz.dnum]?.depth_start ?? 1) + (uz.dlevel | 0) - 1;
 
-    // C ref: end.c really_done() score calc.  deepest_lev_reached(FALSE) is the
-    // deepest depth reached; approximate with the current depth (the only level
-    // reached in the covered path).  tmp = net gold gain, minus 10%, plus a
-    // per-level bonus; u.urexp already holds the reward-experience earned in play.
-    const deepest = depth;
+    // C ref: end.c really_done() score calc + dungeon.c:1338 deepest_lev_reached().
+    // Using the CURRENT depth loses 50 points per level for any hero who
+    // descends and then climbs back before dying.
+    const deepest = deepest_lev_reached_js(false) || depth;
     let tmp = umoney - (u?.umoney0 || 0);
     if (tmp < 0) tmp = 0;
     if (how < PANICKED) tmp -= Math.trunc(tmp / 10);
     tmp += 50 * (deepest - 1);
+    if (deepest > 20) tmp += 1000 * ((deepest > 30) ? 10 : deepest - 20);
     const urexp = (u?.urexp || 0) + tmp;
 
     // Death description for the tombstone (formatkiller with NO_KILLER_PREFIX
@@ -144,7 +160,7 @@ export async function outrip_and_score(how) {
     }
     lines.push(`${goodbye_for_role(roleName)} ${plname} the ${roleName}...`); // 18
     lines.push('');                                    // 19
-    lines.push(stone
+    lines.push((how !== ESCAPED && how !== ASCENDED)
         ? `You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
           + ` with ${urexp} point${plur(urexp)},`
         : `You ${how === ASCENDED ? 'went to your reward' : 'escaped from the dungeon'}`
@@ -272,7 +288,28 @@ async function done(how) {
         if (u.mh != null) u.mh = 0;
     }
 
-    // Lifesaved (amulet) path not reachable for the starter heroes.
+    // C ref: end.c:1081 — `if (Lifesaved && (how <= GENOCIDED))`.  Lifesaved is
+    // the LIFESAVED extrinsic, conferred only by a worn amulet of life saving.
+    let survive = false;
+    const uamul = game.uamul || game.u?.uamul;
+    if (uamul && uamul.otyp === 202 /*AMULET_OF_LIFE_SAVING*/ && how <= GENOCIDED) {
+        const I = await import('./invent.js');
+        // C ref: end.c:1077 sets disp.botl = TRUE after zeroing uhp, so the
+        // plines below reach bot() with a LIVE status line again.
+        game._botlFrozen = null;
+        game.botl = true;
+        await d.update_topl('But wait...');
+        I.makeknown(202);
+        await d.update_topl(`Your medallion ${!game.u?.Blinded ? 'begins to glow' : 'feels warm'}!`);
+        await d.update_topl('You feel much better!');
+        await d.update_topl('The medallion crumbles to dust!');
+        I.useup(uamul);
+        // C ref: end.c:1092 adjattrib(A_CON, -1, TRUE) — no RNG.
+        if (game.u?.acurr?.a) game.u.acurr.a[4] = (game.u.acurr.a[4] | 0) - 1;
+        if (game.u?.abase?.a) game.u.abase.a[4] = (game.u.abase.a[4] | 0) - 1;
+        savelife(how);
+        survive = true;
+    }
 
     // explore/wizard mode: offer the "Die?" paranoid query — but only for
     // how <= GENOCIDED (end.c done()); QUIT/ESCAPED/ASCENDED skip it outright.
@@ -281,8 +318,7 @@ async function done(how) {
     // the contest player declines.
     const wizard = !!game.flags?.debug;
     const discover = !!game.flags?.discover;
-    let survive = false;
-    if ((wizard || discover) && how <= GENOCIDED) {
+    if (!survive && (wizard || discover) && how <= GENOCIDED) {
         game._yn_need_more = true; // page the pending "You die..." line first
         const ans = await d.y_n('Die?', 'yn\x1b', 'n');
         if (ans !== 'y') {
@@ -309,18 +345,10 @@ async function done(how) {
         // segment's o_init shuffle, so emitting it keeps the RNG stream aligned
         // across the death boundary (seed0030 step-73).  savebones()/the actual
         // bones-file write is never reached here (bones_ok is FALSE).
+        let bones_ok = false;
         if (how < GENOCIDED) {
-            // C ref: end.c really_done() — bones_ok = (how < GENOCIDED) &&
-            // can_make_bones(); if (bones_ok) savebones(how, corpse).
-            // can_make_bones() draws rn2(1 + (depth>>2)); in wizard mode it then
-            // returns TRUE, so savebones() rewrites the death level into a legacy
-            // (bones) level and stashes it in the shared storage handle for a
-            // later segment's getbones() to reload.  This is where seed5006's
-            // seg0 death on Dlvl:3 leaves the bones that seg1's ^V-to-3 loads.
-            const { can_make_bones, savebones } = await import('./bones.js');
-            if (can_make_bones()) {
-                await savebones(how, game._death_corpse || null);
-            }
+            const { can_make_bones } = await import('./bones.js');
+            bones_ok = can_make_bones();
         }
         // C ref: end.c:1238 really_done() — `taken = paybill((how == ESCAPED)
         // ? -1 : (how != QUIT), silently)`, immediately after the bones_ok
@@ -329,7 +357,13 @@ async function done(how) {
         // everything, and that message shares the death topline.
         if (how !== PANICKED && !stopprint) {
             const { paybill } = await import('./shkroom.js');
+            const before = game._pending_message;
             await paybill(how === ESCAPED ? -1 : (how !== QUIT ? 1 : 0));
+            // C ref: pline.c vpline() `if (u.ux) flush_screen(1)` ->
+            // display.c:2236 `if (disp.botl || disp.botlx) bot()`.  done() has
+            // just forced u.uhp to 0 and set disp.botl, so the shopkeeper's
+            // "takes all your possessions" pline redraws the status with HP:0.
+            if (game._pending_message !== before) { delete game._botlFrozen; d.freeze_botl(); }
         }
 
         game.program_state = game.program_state || {};
@@ -372,6 +406,13 @@ async function done(how) {
                 for (const obj of inv) invmod.fully_identify_obj(obj);
             }
             const clean = await disclose(how);
+            // C ref: end.c:1363 — savebones() runs AFTER disclose(), i.e. after
+            // the "You die..." --More-- has been paged; doing it earlier wiped
+            // the map out from under those frames.
+            if (bones_ok) {
+                const { savebones } = await import('./bones.js');
+                await savebones(how, game._death_corpse || null);
+            }
             if (clean) await real_death_epilogue(how);
         }
     }
@@ -591,10 +632,12 @@ async function real_death_epilogue(how) {
     // outrip_and_score's own simplification for these single-descent deaths).
     const depth = (game.dungeons?.[uz.dnum]?.depth_start ?? 1) + (uz.dlevel | 0) - 1;
 
+    const deepest2 = deepest_lev_reached_js(false) || depth;
     let tmp = umoney - (u?.umoney0 || 0);
     if (tmp < 0) tmp = 0;
     if (how < PANICKED) tmp -= Math.trunc(tmp / 10);
-    tmp += 50 * (depth - 1);
+    tmp += 50 * (deepest2 - 1);
+    if (deepest2 > 20) tmp += 1000 * ((deepest2 > 30) ? 10 : deepest2 - 20);
     const urexp = (u?.urexp || 0) + tmp;
     u.urexp = urexp; // really_done() persists this before topten() reads it
 
@@ -613,7 +656,7 @@ async function real_death_epilogue(how) {
     }
     lines.push(`${goodbye_for_role(roleName)} ${plname} the ${roleName}...`);
     lines.push('');
-    lines.push(stone
+    lines.push((how !== ESCAPED && how !== ASCENDED)
         ? `You ${ENDS[how]} in ${dungeonName} on dungeon level ${depth}`
           + ` with ${urexp} point${plur(urexp)},`
         : `You ${how === ASCENDED ? 'went to your reward' : 'escaped from the dungeon'}`
@@ -639,16 +682,23 @@ async function real_death_epilogue(how) {
         }
     };
 
-    // Page 1 — the tombstone.
-    disp.clearScreen();
-    for (let i = 0; i < ROWS - 1 && i < lines.length; i++) {
-        if (lines[i]) disp.putstr(0, i, lines[i], NO_COLOR, 0);
+    // C ref: wintty.c process_text_window() — the endgame TEXT window is paged
+    // 23 lines at a time with --More-- on row 23 of EVERY page (including the
+    // last).  A death's text is exactly 24 lines (blank + 15 rip rows + 2 blank
+    // + goodbye + blank + 3 summary + trailing blank), so it pages as a full
+    // page then a blank one; a QUIT's is 6 lines -> a single page.
+    const PAGE = ROWS - 1;
+    const npages = Math.max(1, Math.ceil(lines.length / PAGE));
+    let ripCancelled = false;
+    for (let p = 0; p < npages && !ripCancelled; p++) {
+        disp.clearScreen();
+        for (let i = 0; i < PAGE; i++) {
+            const t = lines[p * PAGE + i];
+            if (t) disp.putstr(0, i, t, NO_COLOR, 0);
+        }
+        drawMore(ROWS - 1);
+        ripCancelled = (await waitforspace()) === 27;
     }
-    drawMore(ROWS - 1);
-    // wintty.c:1821 process_text_window() — `if (morc == '\033') { flags |=
-    // WIN_CANCELLED; break; }`, so ESC at any page abandons EVERY remaining
-    // page of the endgame text window and drops straight into topten().
-    const ripCancelled = (await waitforspace()) === 27;
 
     // C ref: topten() — "assure minimum number of points": t0->points is
     // floored to 0 when under sysopt.pointsmin (always 1: POINTSMIN's
@@ -673,12 +723,7 @@ async function real_death_epilogue(how) {
     // makes the list (each of seed0030's diverse deaths scores real points and
     // gets the "You made the top ten list!" banner), one when it doesn't
     // (seed0009's Tutorial death, floored to 0 points; seed0030's Samurai quit).
-    for (let b = 0; !ripCancelled && b < (tt.banner ? 2 : 1); b++) {
-        disp.clearScreen();
-        drawMore(ROWS - 1);
-        // NOT waitforspace(): see outrip_and_score().
-        await nhgetch();
-    }
+    // (blank trailing page handled by the pager above)
 
     disp.clearScreen();
     let row = 0;

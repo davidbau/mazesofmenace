@@ -330,6 +330,49 @@ const BAR_LEADER_NEXT = [
     '"%p, you are back.  Are you ready now for the challenge?"',
 ];
 
+// SCRATCH: dat/quest.lua Pri.leader_first / leader_next / assignquest / badalign / badlevel
+const PRI_LEADER_FIRST = [
+    '"Ah, %p, my %S.  You have returned to us at last.',
+    'A great blow has befallen our order; perhaps you can help us.',
+    'First, however, I must determine if you are prepared for this',
+    'great challenge."',
+];
+const PRI_LEADER_NEXT = [
+    '"Again, my %S, you stand before me.  Are you ready now to help us?"',
+];
+const PRI_ASSIGNQUEST = [
+    '"Yes, %p.  You are truly ready now.  Attend to me and I shall',
+    'tell you of what has transpired:',
+    '',
+    '"At one of the Great Festivals a short time ago, %n and a legion',
+    'of undead invaded %H.  Many %gP were killed, including',
+    'the one carrying %o.',
+    '',
+    '"As a final act of vengefulness, %n desecrated the altar here.',
+    'Without it, we could not mount a counter-attack.  Now, there are',
+    'barely enough %gP left to keep the undead at bay.',
+    '',
+    '"We need you to find %i, then, from there, travel',
+    "to %ns lair.  If you can manage to defeat %n and return",
+    '%o here, we can then drive off the legions of',
+    'undead that befoul the land.',
+    '',
+    '"Go with %d as your guide, %p."',
+];
+const PRI_BADALIGN = [
+    '"This is terrible, %p.  You have deviated from the true path!',
+    'You know that %d requires the most strident devotion of this',
+    'order.  The %shood must stand for utmost piety.',
+    '',
+    '"Go from here, atone for your sins against %d.  Return only when',
+    'you have purified yourself."',
+];
+const PRI_BADLEVEL = [
+    '"Alas, %p, it is not yet to be.  A mere %r could never',
+    'withstand the might of %n.  Go forth, again into the world, and return',
+    'when you have attained the post of %R."',
+];
+
 // dat/quest.lua Arc/Bar .badalign.text / .badlevel.text / .assignquest.text —
 // the readiness-gate outcomes, transcribed verbatim (output = "text", so each
 // is a full-screen window, not a pline).  Bar.assignquest is not carried: it
@@ -434,6 +477,10 @@ async function yn_unrestricted(query) {
     g._toplin = 0;
     g._pending_message = query;
     await flush_screen(1);
+    // C ref: topl.c yn_function() — the cursor parks one column past the prompt
+    // (the trailing space position), clamped to the last screen column.
+    const disp = g.nhDisplay;
+    if (disp?.setCursor) disp.setCursor(Math.min(query.length + 1, 79), 0);
     const c = await nhgetch();
     g._toplin = 0;
     return String.fromCharCode(c);
@@ -478,6 +525,11 @@ const An_ = (s) => { const t = an_(s); return t.charAt(0).toUpperCase() + t.slic
 // backing data we do not carry (%n nemesis, %o quest artifact, %i intermediate
 // level, %l leader, %H homebase, %g guardian) return null so the escape is left
 // verbatim instead of silently rendering as an empty string.
+const QUEST_ROLE_DATA = {
+    Pri: { ldr: 'the Arch Priest', intermed: 'the Temple of Nalzok',
+           homebase: 'the Great Temple', nemesis: 'Nalzok', guard: 'acolyte',
+           qarti: 'the Mitre of Holiness' },
+};
 function convert_arg(code) {
     const g = game;
     const rolenum = roles.findIndex((r) => r.mnum === (g.urole?.mnum));
@@ -494,6 +546,12 @@ function convert_arg(code) {
     case 'A': return ALIGN_STR[g.u?.ualign?.type] ?? 'neutral';
     case 'd': return align_gname(rolenum, orig);
     case 'G': return align_gtitle(rolenum, orig);
+    case 'l': return QUEST_ROLE_DATA[roles[rolenum]?.filecode]?.ldr ?? null;
+    case 'i': return QUEST_ROLE_DATA[roles[rolenum]?.filecode]?.intermed ?? null;
+    case 'H': return QUEST_ROLE_DATA[roles[rolenum]?.filecode]?.homebase ?? null;
+    case 'n': return QUEST_ROLE_DATA[roles[rolenum]?.filecode]?.nemesis ?? null;
+    case 'g': return QUEST_ROLE_DATA[roles[rolenum]?.filecode]?.guard ?? null;
+    case 'o': return QUEST_ROLE_DATA[roles[rolenum]?.filecode]?.qarti ?? null;
     case 'C': return 'chaotic';
     case 'N': return 'neutral';
     case 'L': return 'lawful';
@@ -505,6 +563,8 @@ function convert_arg(code) {
 // from convert_line() above: that one is the 3-code partial the legacy intro
 // screen already matches with, and widening its coverage would change text it
 // currently renders correctly.
+function makeplural(s) { return /s$/.test(s) ? s + 'es' : s + 's'; }
+function s_suffix_q(s) { return /s$/.test(s) ? s + "'" : s + "'s"; }
 function qt_convert_line(line) {
     let out = '';
     for (let i = 0; i < line.length; i++) {
@@ -517,6 +577,11 @@ function qt_convert_line(line) {
         case 'a': out += an_(cc); i++; break;
         // C: cvt_buf[0] = highc(cvt_buf[0]) — FIRST character only, not ucase.
         case 'C': out += cc.charAt(0).toUpperCase() + cc.slice(1); i++; break;
+        case 'P': out += makeplural(cc.charAt(0).toUpperCase() + cc.slice(1)); i++; break;
+        case 'p': out += makeplural(cc); i++; break;
+        case 'S': out += s_suffix_q(cc.charAt(0).toUpperCase() + cc.slice(1)); i++; break;
+        case 's': out += s_suffix_q(cc); i++; break;
+        case 't': out += (/^the /i.test(cc) ? cc.slice(4) : cc); i++; break;
         default: out += cc; break; // modifier slot holds ordinary text
         }
     }
@@ -599,14 +664,17 @@ async function chat_with_leader(mtmp) {
     } else if (fc === 'Bar') {
         first = BAR_LEADER_FIRST; next = BAR_LEADER_NEXT;
         badalign = BAR_BADALIGN; badlevel = BAR_BADLEVEL; assignquest = null;
+    } else if (fc === 'Pri') {
+        first = PRI_LEADER_FIRST; next = PRI_LEADER_NEXT;
+        badalign = PRI_BADALIGN; badlevel = PRI_BADLEVEL; assignquest = PRI_ASSIGNQUEST;
     } else return; // this role's home-level generation isn't ported (see above)
     quest_lua_reload_shuffle();
     if (!g._quest_met_leader) {
         g._quest_met_leader = true;
         g._quest_not_ready = 0;
-        await qt_pager_text(first, g.plname);
+        await qt_pager_text(first.map(qt_convert_line), g.plname);
     } else {
-        await qt_pager_text(next, g.plname);
+        await qt_pager_text(next.map(qt_convert_line), g.plname);
     }
 
     // C ref: quest.c — "the quest leader might have passed through the portal

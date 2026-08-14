@@ -176,7 +176,8 @@ export async function newgame() {
         if (at !== undefined) {
             g.u.ualign = g.u.ualign || {};
             g.u.ualign.type = at;
-            if (g.u.ualign.record === undefined) g.u.ualign.record = 0;
+            if (g.u.ualign.record === undefined)
+                g.u.ualign.record = roles[game.initrole]?.initrecord ?? 0;
         }
         if (!g.urace) g.urace = { adj: races[game.initrace]?.adj || 'human' };
     }
@@ -1308,12 +1309,12 @@ function Wounded_legs() {
 function HClairvoyant() { return false; }
 function BClairvoyant() { return false; }
 function HRegeneration() { return false; }
-function Sick() { return !!(game.u?.sick); }
-function Vomiting() { return !!(game.u?.vomiting); }
+function Sick() { return ((game.u?.uprops?.Sick || 0) > 0) || !!(game.u?.sick); }
+function Vomiting() { return (game.u?.uprops?.Vomiting || 0) > 0; }
 function Confusion() { return !!(game.u?.uconf || game.u?.HConfusion); }
-function Hallucination() { return !!(game.u?.HHallucination); }
+function Hallucination() { return ((game.u?.uprops?.Hallucination || 0) > 0) || !!(game.u?.HHallucination) || !!game.u?.uhallu; }
 function Fumbling() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
-function HStun() { return !!(game.u?.HStun || game.u?.ustun); }
+function HStun() { return ((game.u?.uprops?.Stun || 0) > 0) || !!game.u?.Stunned || !!(game.u?.HStun || game.u?.ustun); }
 
 // C ref: attrib.c plusattr[]/minusattr[] (the adjattrib "You feel <x>!" word)
 // and exertext[A_MAX][2] (exerchk's own explanation, in attribute order).

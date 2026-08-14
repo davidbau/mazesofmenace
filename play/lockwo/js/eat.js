@@ -30,6 +30,7 @@ const FOOD_CLASS = 7;       // mkobj.js FOOD_CLASS
 const FORTUNE_COOKIE = 289; // objects.h FORTUNE_COOKIE
 const CLOVE_OF_GARLIC = 284; // mkobj.js CLOVE_OF_GARLIC
 const APPLE = 277;          // mkobj.js APPLE
+const PEAR = 279;           // mkobj.js PEAR
 const CRAM_RATION = 292, K_RATION = 294, C_RATION = 295; // mkobj.js rations
 const LEMBAS_WAFER = 291;   // objects.h LEMBAS_WAFER
 // objects.h stone-to-flesh meats (fprefx's give_feedback cases).
@@ -934,8 +935,11 @@ export async function doeat() {
     // LL_CONDUCT, "ate for the first time - %s", food_xname(otmp, FALSE));`
     // The chronicle entry was missing, so #chronicle ('v') listed one line short.
     u.uconduct = u.uconduct || {};
-    if (!(u.uconduct.food || 0))
+    let ll_conduct = 0;
+    if (!(u.uconduct.food || 0)) {
+        ll_conduct++;
         livelog_printf(LL_CONDUCT, `ate for the first time - ${food_xname(otmp, false)}`);
+    }
     u.uconduct.food = (u.uconduct.food || 0) + 1;
 
     const already_partly_eaten = !!otmp.oeaten;
@@ -960,6 +964,11 @@ export async function doeat() {
     } else {
         // C ref: eat.c:2985 — the conduct switch on the food's material.
         if (oc_material(otmp.otyp) === FLESH) {
+            if (!(u.uconduct.unvegan || 0) && !ll_conduct) {
+                livelog_printf(LL_CONDUCT,
+                    `consumed animal products for the first time, by eating ${an(food_xname(otmp, false))}`);
+                ll_conduct++;
+            }
             u.uconduct.unvegan = (u.uconduct.unvegan || 0) + 1;
             if (otmp.otyp !== EGG) {
                 if (violated_vegetarian()) await update_topl('You feel guilty.');
@@ -967,6 +976,9 @@ export async function doeat() {
         } else if (otmp.otyp === PANCAKE || otmp.otyp === FORTUNE_COOKIE
                    || otmp.otyp === CREAM_PIE || otmp.otyp === CANDY_BAR
                    || otmp.otyp === LUMP_OF_ROYAL_JELLY) {
+            if (!(u.uconduct.unvegan || 0) && !ll_conduct)
+                livelog_printf(LL_CONDUCT,
+                    `consumed animal products (${food_xname(otmp, false)}) for the first time`);
             u.uconduct.unvegan = (u.uconduct.unvegan || 0) + 1;
         }
 
@@ -1141,6 +1153,16 @@ async function fprefx_default(otmp, Halluc) {
         return false;   /* skip core joke; feedback deferred to fpostfx() */
     if (otmp.otyp === APPLE) {
         await pline('Delicious!  Must be a Macintosh!');
+        return false;
+    }
+    if (otmp.otyp === PEAR) {
+        if (!Halluc) {
+            await pline('Core dumped.');
+        } else {
+            const x = rnd(100);
+            await pline(`${x <= 75 ? 'Segmentation fault'
+                          : x <= 99 ? 'Bus error' : "Yo' mama"} -- core dumped.`);
+        }
         return false;
     }
     return true;

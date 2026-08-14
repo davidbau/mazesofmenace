@@ -604,6 +604,11 @@ function wall_cmap_glyph(idx) {
 function wall_cmap_color() {
     const uz = game.u?.uz;
     if (!uz) return NO_COLOR;
+    // C ref: display.c:2677 — wallcolors[] defaults to CLR_GRAY for all five
+    // regions; the per-region colours exist ONLY as G_<wall>_<region> lines
+    // inside the IBMgraphics/curses/DECgraphics/Enhanced blocks of dat/symbols.
+    // A session with no `symset:` option keeps the gray defaults (NO_COLOR).
+    if (!/^(dec|ibm|curses|enhanced)/i.test(String(game.symset || ''))) return NO_COLOR;
     if (game.mines_dnum != null && uz.dnum === game.mines_dnum) return CLR_BROWN;
     if (In_hell(uz)) return CLR_RED;
     if (Is_knox_level(uz)) return CLR_YELLOW;
@@ -1530,9 +1535,12 @@ function _statusLine2() {
     // C ref: botl.c bot1()/enc_stat[] — the encumbrance field (BL_CAP) precedes
     // the status conditions.  enc_stat[near_capacity()] is "" when unencumbered,
     // else Burdened/Stressed/Strained/Overtaxed/Overloaded.  near_capacity() is
-    // recomputed by encumber_msg() (allmain.c:208/403) just before each bot(),
-    // so the cached level (game._oldcap) is current at render time.  A bear trap
-    // that wounds a leg drops weight_cap below the carried weight -> "Burdened".
+    // C ref: botl.c:187 — `if ((cap = near_capacity()) > UNENCUMBERED)`, i.e.
+    // computed LIVE at every bot(); this cache is one pline() late (seed0108
+    // step 78 wants "Burdened" on the --More-- itself).  MEASURED: swapping in
+    // a live near_capacity() is +1 on seed0108 but -1 seed0002 / -14 seed0399,
+    // i.e. our near_capacity() and C's disagree elsewhere and the cache hides
+    // it.  Land the live call only together with that weight_cap fix.
     const encWord = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'][game._curcap || 0];
     if (encWord) s += ` ${encWord}`;
     // Status conditions follow the numeric fields.  NOTE the order is NOT
@@ -1578,7 +1586,10 @@ function _statusLine2() {
     if ((u.uprops?.Confusion || 0) > 0)
         s += ` Conf`;
     // C ref: youprop.h Deaf — HDeaf || EDeaf (mon.js Deaf()).
-    if ((u.uprops?.HDeaf || 0) > 0 || u.Deaf)
+    // _deafPending: incr_itimeout(&HDeaf) happens INSIDE the drum's pline, so
+    // the --More-- frame that carries "You beat a deafening row!" still shows
+    // the pre-drum status; bot() clears the flag at the next real refresh.
+    if (((u.uprops?.HDeaf || 0) > 0 || u.Deaf) && !game._deafPending)
         s += ` Deaf`;
     if (u.uprops?.Flying)
         s += ` Fly`;
@@ -1698,8 +1709,11 @@ function _buildScreenOutput() {
         // A multi-line topline obscures the map rows it overlaps (grid rows
         // 0..mlines.length-1); skip those map rows so the message stays visible,
         // matching the tty topline window overlay.
+        // _screenBlank: ball.c drag_down()'s cls() has cleared the PHYSICAL
+        // screen and goto_level's docrt() has not flushed yet, so the frames in
+        // between show only the topline (no map, no status).
         const msgRows = mlines.length;
-        for (let y = 0; y < ROWNO; y++) {
+        for (let y = 0; game._screenBlank !== true && y < ROWNO; y++) {
             if (y + 1 < msgRows) continue;
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
@@ -1709,7 +1723,7 @@ function _buildScreenOutput() {
             }
         }
         // Status lines
-        const [gs1, gs2] = botl_lines();
+        const [gs1, gs2] = game._screenBlank === true ? ['', ''] : botl_lines();
         for (let c = 0; c < Math.min(gs1.length, display.cols); c++)
             display.setCell(c, 22, gs1[c], NO_COLOR, 0);
         for (let c = 0; c < Math.min(gs2.length, display.cols); c++)
@@ -1776,6 +1790,7 @@ export async function cls() {
 // ── bot ──
 export async function bot() {
     // Status line updates happen in _buildScreenOutput
+    delete game._deafPending;
 }
 
 // ── pline ──

@@ -27,7 +27,9 @@ import {
 } from './selvar.js';
 import { Is_special, builds_up, In_hell, Is_valley } from './dungeon.js';
 import { In_quest, BR_PORTAL, BR_NO_END1, BR_NO_END2 } from './const.js';
-import { roles } from './role.js';
+import { roles, races } from './role.js';
+import { mflags2_of } from './monflags_data.js';
+import { priestini } from './priest.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room, nexttodoor } from './mkroom.js';
 import { maketrap, Can_fall_thru, Can_dig_down, t_at, Invocation_lev } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
@@ -355,6 +357,7 @@ function clear_level_structures() {
     g.fmon = null;
     g.level = new GameMap();
     g.level.nroom = 0;
+    g.level.nsubroom = 0;
     g.level.rooms = [];
     g.made_branch = false;
     g.smeq = new Array(MAXNROFROOMS + 1).fill(0);
@@ -505,6 +508,13 @@ async function makelevel() {
         set_wall_state();
         return;
     }
+    // DEFERRED — C ref: mklev.c:1269 makemaz(slev->proto) for 'tower2'/'tower3'.
+    // makemaz_tower2/makemaz_tower3 (js/sp_lev.js:3206/3266) are fully written
+    // but never dispatched, so Dlvl 35/36 fall through to the ordinary
+    // rooms-and-corridors generator.  MEASURED 2026-08-14 together with the
+    // STRAT_WAITFORU correction (js/sp_lev.js:2904): seed0360 +4 steps / -6
+    // steps (294, 300, 736, 778, 779, 796) -> stepgate REJECT.  Land the pair
+    // once the Tier-1 chain past step 290 (Medusa) exists.
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Valley of the Dead, the
     // gateway level of Gehennom.  lspo_finalize_level's tail order is
     // load-bearing here: the flip (inside makemaz_valley) comes first, then
@@ -1703,8 +1713,13 @@ function mktemple() {
     const loc = g.level.at(spot.x, spot.y);
     if (loc) {
         loc.typ = ALTAR;
-        loc.flags = induced_align(80) | AM_SHRINE;
+        loc.flags = loc.altarmask = induced_align(80);
     }
+    // C ref: mklev.c mktemple() — `priestini(&u.uz, sroom, sx, sy, FALSE);`
+    // runs BEFORE the AM_SHRINE bit is or'd in, and it makes the temple priest
+    // (a makemon + its inventory), which is a whole block of missing draws.
+    priestini(g.u?.uz, sroom, spot.x, spot.y, false);
+    if (loc) loc.flags = loc.altarmask = (loc.altarmask | AM_SHRINE);
     if (g.level.flags) g.level.flags.has_temple = true;
 }
 
@@ -2242,13 +2257,13 @@ function generate_stairs_find_room() {
 
 function mkstairs(x, y, up, croom) {
     const g = game;
-    // NOT PORTED (measured: swaps one seed0360 step, gate REJECT).  C ref:
-    // mklev.c:2188 `if (dunlev(&u.uz) == (up ? 1 : dunlevs_in_dungeon(&u.uz)))
-    // return;` — "we can't make a regular stair off an end of the dungeon", so
-    // neither stairway_add() nor the STAIRS terrain is written.  Same blocker as
-    // the Is_botlevel() guard dropped from generate_stairs() below: the only
-    // levels it fires on today (Vlad's Tower dlevel 3, non-Barbarian Quest
-    // dlevel 6) are ones C dispatches away from makelevel() entirely.
+    // NOT PORTED — C ref: mklev.c:2188 `if (dunlev(&u.uz) == (up ? 1 :
+    // dunlevs_in_dungeon(&u.uz))) return;`, before BOTH stairway_add() and
+    // set_levltyp(STAIRS).  Without it Mines 1 gets a phantom `<`.
+    // MEASURED: +16 on seed4500 but -3 on seed0360 (steps 796/801/802), because
+    // our makelevel() still builds Quest-bottom {3,6} and Vlad's-Tower-bottom
+    // {6,3} with the rooms-and-corridors generator where C dispatches them to
+    // makemaz("tower3") / the quest filler.  Land this WITH the tower dispatch.
     const loc = g.level.at(x, y);
     if (loc) {
         loc.typ = STAIRS;
@@ -2359,9 +2374,13 @@ function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
         doorct: 0, fdoor: g.level.doorindex,
         irregular: false, needjoining: !special,
         nsubrooms: 0, sbrooms: [],
-        roomnoidx: g.level.nroom - 1, // subrooms share parent's roomno region
+        // C ref: mklev.c add_subroom() — `gs.subrooms = &svr.rooms[MAXNROFROOMS + 1]`,
+        // so a subroom's roomno is MAXNROFROOMS+1+n, NOT its parent's.  Sharing
+        // the parent's index made every subroom roomno comparison answer wrong.
+        roomnoidx: MAXNROFROOMS + 1 + (g.level.nsubroom || 0),
         needfill: 0,
     };
+    g.level.nsubroom = (g.level.nsubroom || 0) + 1;
     do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, false);
     if (!proom.sbrooms) proom.sbrooms = [];
     proom.sbrooms[proom.nsubrooms++] = croom;
@@ -2812,15 +2831,29 @@ function mk_find_montype(name) {
 
 // des.monster(name) — a multi-char monster name (id given, no mkclass).
 // C ref: lspo_monster (find_montype) + create_monster (induced_align + makemon).
+// C ref: sp_lev.c create_monster():1959 — `if (In_mines(&u.uz) && your_race(pm)
+// && (Race_if(PM_DWARF) || Race_if(PM_GNOME)) && rn2(3)) pm = NULL;`.  The gate
+// was commented out as "hero is not gnome/dwarf race", which is only true of the
+// seed it was written against; it draws rn2(3) whenever it applies.
+// your_race() is a FLAG test (mondata.h:102), so every M2_GNOME species counts.
+function mk_mines_race_suppress(data) {
+    const inMines = game.mines_dnum != null && game.u?.uz?.dnum === game.mines_dnum;
+    if (!inMines || !data) return data;
+    const r = races[game.initrace];
+    if (!r || r.selfmask == null) return data;
+    if (!(mflags2_of(data) & r.selfmask)) return data;
+    if (!(r.name === 'dwarf' || r.name === 'gnome')) return data;
+    return rn2(3) ? null : data;
+}
+
 function mk_monster_named(name, peacefulOverride) {
     const data = mk_find_montype(name);
     // sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align(80).
     oracle_induced_align();
-    // In_mines && your_race(pm) && (Race_if(DWARF)||Race_if(GNOME)) && rn2(3):
-    // hero (seed0030) is not gnome/dwarf race, so this gate does not fire.
+    const data2 = mk_mines_race_suppress(data);
     // pm_to_humidity(pm) — DRY for these mines monsters (no swimmers/flyers).
     const c = mk_get_location_random(mk_ok_dry);
-    const mtmp = make_monster(data, c.x, c.y, 0);
+    const mtmp = make_monster(data2, c.x, c.y, 0);
     if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
     return mtmp;
 }
@@ -2836,7 +2869,7 @@ function mk_monster_class(classChar, peacefulOverride) {
     // induced_align(80) is computed FIRST, then pm = mkclass(class, G_NOGEN),
     // then get_location + makemon.
     oracle_induced_align();
-    const data = mkclass(klass, 0x0200 /* G_NOGEN (monflag.h); was 1 */);
+    const data = mk_mines_race_suppress(mkclass(klass, 0x0200 /* G_NOGEN (monflag.h); was 1 */));
     const c = mk_get_location_random(mk_ok_dry);
     const mtmp = make_monster(data, c.x, c.y, 0);
     if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;

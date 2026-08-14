@@ -11,7 +11,7 @@ import { rn2, rnd, rnl, d } from './rng.js';
 import { nhgetch } from './input.js';
 import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot, m_at } from './display.js';
 import { cansee } from './vision.js';
-import { distmin } from './hacklib.js';
+import { distmin, depth as depth_of_level } from './hacklib.js';
 import { mmove_of } from './mon.js';
 import { WEP_HITBON } from './weapondmg_data.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
@@ -426,7 +426,14 @@ export function cxname_singular(obj) { return simple_obj_name(obj, { article: fa
 // BUC word (unlike doname()), but still quantity-aware for stackable types.
 export function xname(obj) { observe_object(obj); return simple_obj_name(obj, { article: false, buc: false }); }
 function yname(obj) { return simple_obj_name(obj); }
-function ansimpleoname(obj) { return with_article(simple_obj_name(obj, { quantity: false, buc: false })); }
+// C ref: objnam.c minimal_xname() — xname() of a BARE copy (cg.zeroobj with
+// only otyp/oclass/quan/dknown/known copied), so weight-derived prefixes such
+// as HEAVY_IRON_BALL's "very " (objnam.c:829 reads obj->owt) cannot leak in.
+function minimal_obj(obj) {
+    if (!obj) return obj;
+    return { ...obj, owt: 0, oeroded: 0, oeroded2: 0, greased: 0, bknown: 0, rknown: 0, quan: 1 };
+}
+export function ansimpleoname(obj) { return with_article(simple_obj_name(minimal_obj(obj), { quantity: false, buc: false })); }
 // C ref: objnam.c simpleonames() — minimal_xname(), then makeplural() whenever
 // quan != 1.  Without the pluralisation a readied stack read "36 dart".
 function simpleonames(obj) {
@@ -883,8 +890,11 @@ function u_safe_from_fatal_corpse(_obj, _checks) { return true; }
 // or not).  u.data is the polyself-maintained mirror; fall back to it when the
 // pmidx lookup is unavailable.
 function youmonst_data() {
-    const pmidx = game.u?.umonnum;
-    return (pmidx != null ? monster_by_pmidx(pmidx) : null) || game.u?.data || null;
+    // u.umonnum holds the 0-based ROLE index in this port, not a mons[] index —
+    // see the same fix at js/hack.js:579.  PM_ARCHEOLOGIST == 331.
+    const u = game.u;
+    if (u?.Upolyd) return monster_by_pmidx(u.umonnum) || u?.data || null;
+    return monster_by_pmidx(331 + (u?.umonnum ?? 0)) || u?.data || null;
 }
 
 // C ref: attrib.c acurrstr() — encode A_STR (3..125; 18/01 stored as 19, ..)
@@ -945,7 +955,7 @@ function weight_cap() {
 // a boulder DOES count for an ordinary hero and is free only for a rock-thrower
 // (giant polyform).  The previous `otyp !== BOULDER` skipped it unconditionally,
 // which is the opposite of C and hid ~6000 weight from every encumbrance test.
-function inv_weight() {
+export function inv_weight() {
     let wt = 0;
     const ydata = youmonst_data();
     for (const otmp of inventoryArray()) {
@@ -1821,8 +1831,16 @@ export function doname_invent(obj) {
 // that reveal, so the distant form is simply "doname without observing".
 // (mon.c mpickstuff() uses it: a monster grabbing an unidentified item must not
 // add its appearance to the hero's '\' discoveries list.)
-export function distant_doname(obj) {
-    return obj ? doname_invent_core(obj) : 'nothing';
+// C ref: objnam.c distant_name(obj, func) — it temporarily clears obj->dknown
+// when the object is FAR, so a distant pickup reads "a scroll" not "a scroll of
+// magic mapping".  Without the distance test every remote mpickstuff named the
+// item in full.
+export function distant_doname(obj, far) {
+    if (!obj) return 'nothing';
+    if (!far) return doname_invent_core(obj);
+    const sav = obj.dknown;
+    obj.dknown = 0;
+    try { return doname_invent_core(obj); } finally { obj.dknown = sav; }
 }
 
 // C ref: objnam.c doname_base():1657 — an unpaid inventory item shows what the
@@ -2983,7 +3001,7 @@ async function getobj_menu(lets, allowed) {
             if (ch === '\0' || ch === '\n' || ch === '\r' || ch === ' ') {
                 delete game._modal_screen; return '\0';
             }
-            if (ch === '?' || ch === '*') { allowed = (ch === '?'); break; } // redo_menu
+            // C: the tty menu ignores non-accelerator keys (tty_nhbell)
             if (shownLets.has(ch)) { delete game._modal_screen; return ch; }
             // unacceptable input: tty_nhbell() (no visible change), keep reading
         }
@@ -3790,7 +3808,7 @@ export async function remove_worn_item(obj, unchain_ball) {
         // side effects are handled by their own on/off helpers elsewhere).
         obj.owornmask = (obj.owornmask || 0) & ~armorMask;
         worn_slot_clear(armorMask);
-        find_ac();
+        // no find_ac() — see accessory_or_armor_on (do_wear.c:2377).
     } else if ((obj.owornmask || 0) & W_AMUL) {
         // C ref: steal.c remove_worn_item() calls the same Amulet_off() the 'R'
         // command uses, so the off_msg and the strangulation/flying unwinds
@@ -4005,7 +4023,11 @@ async function accessory_or_armor_on(obj) {
     }
     worn_slot_set(obj, mask);
     obj.known = 1; // +/- becomes evident via the AC status line
-    find_ac();
+    // C ref: do_wear.c:2377 — `setworn(obj, mask);` and NO find_ac().  u.uac is a
+    // SNAPSHOT refreshed only by allmain.c:453's once-per-input find_ac(), i.e.
+    // AFTER this turn's monsters move.  Refreshing it inline flips mhitu.c:709's
+    // AC_VALUE() rnd() draw one turn early (a negative AC draws, a
+    // non-negative one does not).
     const delay = ARMOR_OC_DELAY.get(obj.otyp) || 0;
     if (delay) {
         // C ref: do_wear.c accessory_or_armor_on — nomul(-delay) makes the hero
@@ -4061,6 +4083,11 @@ async function run_dress_occupation(delay, msg, afternmv) {
     // occupation turn, including the last, exactly as in C.
     while (g.multi < 0 && guard++ < 60) {
         await moveloop_turn();
+        // C ref: allmain.c:453 — find_ac() is in the once-per-player-input block
+        // of moveloop_core(), which an occupation re-enters on every elapsed
+        // turn.  Running these turns inline here skipped it, so u.uac never went
+        // stale-then-fresh and C's turn-2 AC_VALUE draw went missing.
+        find_ac();
         // moveloop_turn() already performs the C ref allmain.c:380 `++gm.multi`
         // (and unmul when it reaches 0) inside the once-per-turn block, so the
         // occupation count is driven entirely by moveloop_turn — do NOT also
@@ -4163,13 +4190,16 @@ async function armoroff(otmp) {
         start_occupation(delay, `You finish taking off your ${armor_slot_noun(otmp, mask)}.`, () => {
             otmp.owornmask = (otmp.owornmask || 0) & ~mask;
             worn_slot_clear(mask);
-            find_ac();
+            // no find_ac() — see accessory_or_armor_on (do_wear.c:2377).
             if (game._allow_inventory_update !== undefined) update_inventory();
         });
     } else {
         otmp.owornmask = (otmp.owornmask || 0) & ~mask;
         worn_slot_clear(mask);
-        find_ac();
+        // C ref: allmain.c:452 — find_ac() runs once per player input in
+        // moveloop_core(), NOT inline here.  Calling it inline republishes AC
+        // one frame early ("botl is a snapshot").  The other inline find_ac()
+        // sites are suspect for the same reason but are not exercised.
         // off_msg after removal -> no redundant "(being worn)" suffix.
         //
         // C ref: do_wear.c:71 `You("were wearing %s.", doname(otmp))` — a real
@@ -5295,6 +5325,28 @@ async function thitmonst(mon, obj, skillsnap) {
         return false;
     }
 
+    // C ref: dothrow.c:2256 — `(otyp == EGG || CREAM_PIE || BLINDING_VENOM ||
+    // ACID_VENOM) && (guaranteed_hit || ACURR(A_DEX) > rnd(25))` -> hmon(), then
+    // uhitm.c:1265 hmon_hitmon_misc_obj()'s CREAM_PIE case (dmg = rn1(25,21),
+    // mon->mcansee = 0, setmangry).  Falling through to tmiss() drew rn2(3) +
+    // rn2(100) instead and left mcansee SET, changing that monster's every
+    // later distfleeck/m_move.
+    if ((otyp === 266 /*EGG*/ || otyp === 287 /*CREAM_PIE*/)
+        && (acurr_eff(A_DEX) > rnd(25))) {
+        const { mon_nam } = await import('./uhitm.js');
+        const { mbodypart } = await import('./monmove.js');
+        mon.msleeping = 0;
+        const what = `The ${xname(obj)}`;
+        const whom = `${s_suffix(mon_nam(mon))} ${mbodypart(mon, 2 /*FACE*/)}`;
+        await update_topl(`${what} splashes over ${whom}!`);
+        mon.mpeaceful = 0;
+        mon.mcansee = 0;
+        const dmg = rn2(25) + 21;              // rn1(25, 21)
+        mon.mblinded = Math.min(127, (mon.mblinded || 0) + dmg);
+        useup(obj);
+        return true;
+    }
+
     // Non-weapon thrown objects: C's remaining arms end in the same tmiss().
     await tmiss(obj, mon, true);
     return false;
@@ -5931,7 +5983,6 @@ async function dotravel_target() {
     u.tx = cc.x; u.ty = cc.y;
     // hack.c:1276 — the fast path zeroes travelcc before taking the step.
     if (await travel_adjacent_step(cc.x, cc.y)) {
-        game.iflags.travelcc = { x: 0, y: 0 };
         return ECMD_TIME;
     }
     return ECMD_OK;
@@ -6797,7 +6848,9 @@ export async function spell_menu(prompt, nspells, book, meta) {
     for (;;) {
         const c = await nhgetch();
         const ch = String.fromCharCode(c);
-        if (c === 27 || c === 32) { delete game._modal_screen; return -1; }
+        // C ref: wintty.c tty_select_menu() — '\n' and '\r' end the menu exactly
+        // like ' '/ESC (MENU_SELECT_PAGE is not bound to them for PICK_ONE).
+        if (c === 27 || c === 32 || c === 10 || c === 13) { delete game._modal_screen; return -1; }
         const idx = (ch >= 'a' && ch <= 'z') ? ch.charCodeAt(0) - 97
             : (ch >= 'A' && ch <= 'Z') ? ch.charCodeAt(0) - 65 + 26 : -1;
         if (idx >= 0 && idx < nspells) {
@@ -7705,7 +7758,7 @@ export function display_pickinv(lets = null, xtra_choice = null, query = null, a
     // itself a hardcoded [36, 8], and only an explicit null reaches the derived
     // tty position (offx + len("(end)") + 1, on the (end) row).  This used to
     // pass a hardcoded [38, 20] for the seed8000 Tourist fingerprint.
-    renderMenuScreen(rows, null);
+    renderInventoryMenu(rows, 0);
     if (out_cnt) out_cnt.value = -1;
     return '\0';
 }
@@ -7778,11 +7831,21 @@ function stairs_description(sway, stcase = true) {
     const stairs = sway.isladder ? 'ladder' : (stcase ? 'staircase' : 'stairs');
     const updown = sway.up ? 'up' : 'down';
     const uz = game.u?.uz || {};
+    // C ref: stairs.c stairs_description() — a stairway the hero has already
+    // used names its destination; one that crosses into another dungeon branch
+    // names the branch.  Ours only ever said "staircase down".
+    const known_branch = !!(sway.tolev && sway.tolev.dnum !== uz.dnum && sway.u_traversed);
+    if (!known_branch) {
+        let out = `${stairs} ${updown}`;
+        if (sway.u_traversed) out += ` to level ${depth_of_level(sway.tolev)}`;
+        return out;
+    }
     if (uz.dnum === 0 && uz.dlevel === 1 && sway.up && !game.u?.uhave?.amulet) {
         // Up-stairs from dungeon level one: out of the dungeon.
         return `${stairs} ${updown} out of the dungeon`;
     }
-    return `${stairs} ${updown}`;
+    const dname = String(game.dungeons?.[sway.tolev.dnum]?.dname || '').replace(/^The /, 'the ');
+    return `branch ${stairs} ${updown} to ${dname}`;
 }
 
 // C ref: insight.c align_str().
@@ -7985,7 +8048,10 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const picked_some = (lookhere_flags & LOOKHERE_PICKED_SOME) !== 0;
     const header = `${picked_some ? 'Other things' : 'Things'} that ${game.Blind ? 'you feel' : 'are'} here:`;
     const itemLines = here.map((o) => doname_with_price(o));
-    await renderThingsHereMenu(header, itemLines);
+    // C ref: invent.c look_here() else-branch — the dfeature line goes INSIDE
+    // the menu window (putstr(fbuf); putstr("")), not on the topline.
+    const pre = dfeature ? [`There is ${an(dfeature)} here.`, ''] : [];
+    await renderThingsHereMenu(header, itemLines, pre);
     return game.Blind ? ECMD_TIME : ECMD_OK;
 }
 
@@ -7999,7 +8065,7 @@ const LOOKHERE_PICKED_SOME = 1; // C: invent.h LOOKHERE_PICKED_SOME
 // lay the map down first and blank only the menu rows from offx rightward.
 // Blocks on a quitchar (space/return/ESC); the blocking nhgetch is captured as
 // this step's frame.
-async function renderThingsHereMenu(header, itemLines) {
+async function renderThingsHereMenu(header, itemLines, pre = []) {
     // C ref: win/tty/wintty.c tty_display_nhwindow() NHW_MENU branch — before
     // drawing the menu overlay, an unacknowledged top-line message is paged:
     //   if (ttyDisplay->toplin == TOPLINE_NEED_MORE)
@@ -8014,7 +8080,7 @@ async function renderThingsHereMenu(header, itemLines) {
         game._toplin = 0;
     }
     const display = game.nhDisplay;
-    const lines = [header, ...itemLines];
+    const lines = [...pre, header, ...itemLines];
     // The old flat `41` is only right while every line fits: harvesting all 60
     // "Things that are here:" windows in the public corpus gives offx 41 for
     // widths 21/27/30 and offx 40 for width 39 ("a very heavy iron ball
@@ -8028,12 +8094,21 @@ async function renderThingsHereMenu(header, itemLines) {
         if (!display?.clearScreen) return;
         display.clearScreen();
         render_map_to_grid();
+        // C: the tty message window is NOT cleared by the menu overlay, so a
+        // surviving topline (getpos()'s last autodescribe) shows through.
+        {
+            const tl = game._pending_message || '';
+            for (let c = 0; c < Math.min(tl.length, display.cols ?? 80); c++)
+                display.setCell(c, 0, tl[c], NO_COLOR, 0);
+        }
         const cols = display.cols ?? 80;
-        // Blank the menu's column band for every row it occupies (the menu
-        // window is cleared; the map only shows OUTSIDE it).
+        // C ref: win/tty/wintty.c process_text_window() — tty_curs(win,1,n) puts
+        // the cursor at the window's offx, cl_end() blanks from there to the
+        // right margin, and a leading space precedes the text, so the text
+        // starts at offx+1 and column offx itself is blank.
         for (let r = 0; r <= moreRow && r < 22; r++)
-            for (let c = MENU_OFFX; c < cols; c++)
-                display.setCell(c, r, ' ', NO_COLOR, 0);
+            for (let c = MENU_OFFX - 1; c < cols; c++)
+                if (c >= 0) display.setCell(c, r, ' ', NO_COLOR, 0);
         let row = 0;
         for (const ln of lines)
             display.putstr(MENU_OFFX, row++, ln, NO_COLOR, ATR_NONE);

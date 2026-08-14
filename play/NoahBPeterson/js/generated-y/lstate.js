@@ -138,10 +138,7 @@ export function luaE_setdebt(g, debt) {
         64,
         (BigInt.asUintN(
             64,
-            (BigInt.asIntN(
-                64,
-                cptr.ldI64o((g), $global_State_totalbytes) + cptr.ldI64o((g), $global_State_GCdebt)
-            ))
+            (cptr.ldI64o((g), $global_State_totalbytes) + cptr.ldI64o((g), $global_State_GCdebt))
         ))
     );
     (void 0);
@@ -284,7 +281,8 @@ function* freestack(L) {
                         cptr.ldPtro((L), $lua_State_stack_last),
                         cptr.ldPtro((L), $lua_State_stack)
                     ) / 16n))
-                ))) + 5) | 0))
+                ))) +
+                    5) | 0))
             ) * 16n
         )
     ));  /* free stack */

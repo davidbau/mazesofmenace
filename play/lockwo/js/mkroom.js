@@ -86,7 +86,10 @@ export function somexy(croom, c) {
     let i;
 
     if (croom.irregular) {
-        i = (game.level?.rooms?.indexOf(croom) ?? -1) + ROOMOFFSET;
+        // C: `i = (int) ((croom - svr.rooms) + ROOMOFFSET)` — a SUBROOM lives in
+        // svr.rooms[MAXNROFROOMS+1..], so indexOf() over level.rooms answers -1
+        // for it and every irregular-subroom placement compared the wrong roomno.
+        i = (croom.roomnoidx ?? -1) + ROOMOFFSET;
         while (try_cnt++ < 100) {
             c.x = somex(croom);
             c.y = somey(croom);

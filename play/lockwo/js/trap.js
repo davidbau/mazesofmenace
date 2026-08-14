@@ -21,6 +21,7 @@ import {
     MAX_ERODE, ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
     EF_PAY, EF_DESTROY, EF_NONE,
     ROLLING_BOULDER_TRAP, ZAP_POS, N_DIRS, isok, DOOR, D_CLOSED, D_LOCKED,
+    IS_STWALL, IS_TREE,
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
     IS_AIR, IS_ROOM, IS_WALL, SDOOR,
@@ -1421,6 +1422,9 @@ async function trapeffect_selector(trap, trflags) {
     case LEVEL_TELEP:
         await trapeffect_level_telep(trap, trflags);
         break;
+    case ROLLING_BOULDER_TRAP:
+        await trapeffect_rolling_boulder_trap(trap, trflags);
+        break;
     default:
         // Not yet modeled: reveal the trap but don't simulate its effect.
         seetrap(trap);
@@ -1891,4 +1895,78 @@ export async function spoteffects(pickupFn) {
     if (pickupFn && !pit) await pickupFn(u.ux, u.uy);
     if (trap) await dotrap(trap, 0);
     if (pickupFn && pit) await pickupFn(u.ux, u.uy);
+}
+
+// ── rolling boulder trap (hero) ──────────────────────────────────────────────
+// C ref: trap.c:2560 trapeffect_rolling_boulder_trap() + trap.c:3260 launch_obj().
+// The trap used to fall into dotrap()'s `default:` (seetrap only), so the
+// boulder never moved and thitu()'s rnd(20) was never drawn.
+const ROLL = 0x0100, LAUNCH_UNSEEN = 0x0200, LAUNCH_KNOWN = 0x0400;
+
+function feeltrap(trap) { if (!trap) return; trap.tseen = true; newsym(trap.tx, trap.ty); }
+function sgn_(n) { return n > 0 ? 1 : (n < 0 ? -1 : 0); }
+function distmin_(x0, y0, x1, y1) {
+    const dx = Math.abs(x0 - x1), dy = Math.abs(y0 - y1);
+    return dx > dy ? dx : dy;
+}
+// (sobj_at_floor is js/trap.js:1692 — note it returns the LAST match on the
+// square, where C's sobj_at() returns the head of the nexthere chain.)
+
+async function trapeffect_rolling_boulder_trap(trap, _trflags) {
+    const style = ROLL | (trap.tseen ? LAUNCH_KNOWN : 0);
+    feeltrap(trap);
+    await pline('Click!  You trigger a rolling boulder trap!');
+    game._toplin = 1;
+    const r = await launch_obj(BOULDER, trap.launch.x, trap.launch.y,
+                               trap.launch2.x, trap.launch2.y, style);
+    if (!r) {
+        if (style & LAUNCH_KNOWN) await pline('No boulder was released.');
+        else await pline('Fortunately for you, no boulder was released.');
+    }
+}
+
+// NOT modelled (each is a clean divergence, not a silent desync): the
+// ohitmon() monster-in-path arm and the boulder-hits-boulder arm of
+// trap.c:3319.  Everything that draws RNG on the hero's own path is here.
+async function launch_obj(otyp, x1, y1, x2, y2, style) {
+    const u = game.u;
+    const { thitu } = await import('./monmove.js');
+    const { dmgval } = await import('./uhitm.js');
+    let otmp = sobj_at_floor(otyp, x1, y1);
+    let otherside = false;
+    if (!otmp && otyp === BOULDER) { otherside = true; otmp = sobj_at_floor(otyp, x2, y2); }
+    if (!otmp) return 0;
+    if (otherside) { const tx = x1, ty = y1; x1 = x2; y1 = y2; x2 = tx; y2 = ty; }
+    let singleobj;
+    if ((otmp.quan || 1) === 1) {
+        const arr = game.level.objects; const ix = arr.indexOf(otmp);
+        if (ix >= 0) arr.splice(ix, 1);
+        otmp.where = 'free';
+        singleobj = otmp;
+    } else {
+        singleobj = { ...otmp, quan: 1 }; otmp.quan -= 1;
+    }
+    newsym(x1, y1);
+    let dist = distmin_(x1, y1, x2, y2);
+    let x = x1, y = y1;
+    const dx = sgn_(x2 - x1), dy = sgn_(y2 - y1);
+    if (style & LAUNCH_KNOWN) { singleobj.otrapped = 1; style &= ~LAUNCH_KNOWN; }
+    style &= ~LAUNCH_UNSEEN;
+    while (dist-- > 0) {
+        if (!isok(x + dx, y + dy)) { x2 = x; y2 = y; break; }
+        x += dx; y += dy;
+        if (m_at(x, y)) break;                       // ohitmon(): unported
+        if (u && u.ux === x && u.uy === y) {
+            const dam = dmgval(singleobj, { data: { msize: 0 } });
+            await thitu(9 + (singleobj.spe || 0), dam, singleobj);
+        }
+        if (dist > 0 && isok(x + dx, y + dy)) {
+            const typ = game.level?.at(x + dx, y + dy)?.typ;
+            if (IS_STWALL(typ) || IS_TREE(typ)) { x2 = x; y2 = y; await pline('Thump!'); break; }
+        }
+    }
+    singleobj.otrapped = 0;
+    place_object(singleobj, x2, y2);
+    newsym(x2, y2);
+    return 1;
 }

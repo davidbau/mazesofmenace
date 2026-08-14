@@ -954,7 +954,7 @@ export async function money2mon(mon, amount) {
         freeinv(ygold);
     }
     if (!mon.minvent) mon.minvent = [];
-    mon.minvent.push(give);
+    mon.minvent.unshift(give);
     give.where = OBJ_MINVENT;
     give.ocarry = mon;
     return amount;

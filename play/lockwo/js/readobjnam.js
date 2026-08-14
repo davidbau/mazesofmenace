@@ -496,6 +496,20 @@ function postparse2(d) {
     for (const [sp, ob] of spellings)
         if (wishymatch(d.bp, sp, true)) { d.typ = ob; return 2; }
 
+    // C ref: objnam.c:4528 postparse1() — the gold-piece early-out returns the
+    // object directly (no mksobj otyp path, so no blessorcurse/spe draws).
+    if (bstrcmpi_tail(d.bp, 10, 'gold piece') || bstrcmpi_tail(d.bp, 7, 'zorkmid')
+        || strcmpi(d.bp, 'gold') || strcmpi(d.bp, 'money') || strcmpi(d.bp, 'coin')
+        || d.bp[0] === '$') {
+        if (d.cnt < 1) d.cnt = 1;
+        const g = mksobj(438 /*GOLD_PIECE*/, false, false);
+        g.quan = d.cnt;
+        g.owt = weight(g);
+        if (game.disp) game.disp.botl = true;
+        d.otmp = g;
+        return 3;
+    }
+
     // "grey stone" before general; o_ranges exact match -> rnd_class.
     for (const r of o_ranges)
         if (strcmpi(d.bp, r[0])) { d.typ = rnd_class_local(r[2], r[3]); return 2; }

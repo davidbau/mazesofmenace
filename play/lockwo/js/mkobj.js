@@ -1760,7 +1760,9 @@ function mksobj_init(otmp, artif) {
         break;
     case POTION_CLASS:
     case SCROLL_CLASS:
-        blessorcurse(otmp, 4);
+        // C ref: mkobj.c:1075 — `if (otmp->otyp != SCR_MAIL) blessorcurse(otmp, 4)`,
+        // present only in a MAIL_STRUCTURES build (which the recorder is).
+        if (otmp.otyp !== 364 /*SCR_MAIL*/) blessorcurse(otmp, 4);
         break;
     case SPBOOK_CLASS:
         otmp.spestudied = 0;

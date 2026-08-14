@@ -446,14 +446,14 @@ async function u_entered_shop(enterstring) {
     const rt = rtypeOf(enterstring[0]);
     const shopname = shtypes[rt - SHOPBASE]?.name || 'store';
     if (!shkp.mpeaceful) {
-        await pline(`"So, ${game.plname}, you dare return to ${
+        await update_topl(`"So, ${game.plname}, you dare return to ${
             s_suffix(shkname(shkp))} ${shopname}?!"`);
     } else if (eshk.surcharge) {
-        await pline(`"Back again, ${game.plname}?  I've got my eye on you."`);
+        await update_topl(`"Back again, ${game.plname}?  I've got my eye on you."`);
     } else if (eshk.robbed) {
-        await pline(`${shkname(shkp)} mutters imprecations against shoplifters.`);
+        await update_topl(`${shkname(shkp)} mutters imprecations against shoplifters.`);
     } else {
-        await pline(`"${Hello(game.urole?.mnum, shkp)}, ${game.plname}!  Welcome${
+        await update_topl(`"${Hello(game.urole?.mnum, shkp)}, ${game.plname}!  Welcome${
             eshk.visitct++ ? ' again' : ''} to ${s_suffix(shkname(shkp))} ${shopname}!"`);
     }
 

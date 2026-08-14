@@ -177,6 +177,21 @@ function current_role_mnum() {
 }
 
 // Build {skill, max, level, restricted} state for all P_NUM_SKILLS skills.
+// C ref: weapon.c skill_init():1750 — snapshot the carried-weapon skills ONCE,
+// at u_init time (C stores the result in u.weapon_skills[]).
+export function skill_init_snapshot() {
+    const invent = Array.isArray(game.invent) ? game.invent
+        : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
+    const out = [];
+    for (const obj of invent) {
+        if (!obj || is_ammo(obj)) continue;
+        const sk = weapon_type(obj);
+        if (sk !== P_NONE && !out.includes(sk)) out.push(sk);
+    }
+    game.u = game.u || {};
+    game.u.skill_init_basics = out;
+}
+
 // C ref: weapon.c skill_init() (restricted by default; basic for carried
 // non-ammo weapons; role table sets max + unrestricts; martial arts basic
 // when its max > EXPERT; pony-riders get P_RIDING basic).
@@ -185,14 +200,11 @@ function build_skill_state() {
     const P_SKILL = new Array(P_NUM_SKILLS).fill(P_ISRESTRICTED);
     const P_MAX = new Array(P_NUM_SKILLS).fill(P_ISRESTRICTED);
 
-    // Carried non-ammo weapons -> P_BASIC.
-    const invent = Array.isArray(game.invent) ? game.invent
-        : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
-    for (const obj of invent) {
-        if (!obj || is_ammo(obj)) continue;
-        const sk = weapon_type(obj);
-        if (sk !== P_NONE) P_SKILL[sk] = P_BASIC;
-    }
+    // C ref: weapon.c skill_init():1750 — the "basic for every carried weapon"
+    // pass runs ONCE, at u_init time, and its result lives in u.weapon_skills[]
+    // forever.  Recomputing it from the LIVE inventory silently demotes a skill
+    // when the hero drops the starting weapon.
+    for (const sk of (game.u?.skill_init_basics || [])) P_SKILL[sk] = P_BASIC;
 
     // Role spell-skill basics (skill_init magic block).
     if (rolemnum === PM_HEALER || rolemnum === PM_MONK) P_SKILL[29] = P_BASIC;
@@ -579,10 +591,14 @@ export async function doenhance() {
 // Advance the paged skill window (space / '>' next page; dismiss after last).
 // C ref: process_menu_window() page navigation.  Returns true if a window was
 // active and consumed the key.
-export async function skill_window_advance() {
+export async function skill_window_advance(key) {
     if (game._modal_screen !== 'skillwin') return false;
     const pages = game._skill_pages || [];
     const idx = (game._skill_page || 0) + 1;
+    // C ref: wintty.c process_menu_window() `case ' ': case MENU_NEXT_PAGE:` —
+    // "' ' finishes menus here, but stop '>' doing the same": '>' on the LAST
+    // page is a no-op that redisplays, only space/return dismiss.
+    if (key === '>' && idx >= pages.length) { renderSkillPage(); return true; }
     if (idx < pages.length) {
         game._skill_page = idx;
         renderSkillPage();

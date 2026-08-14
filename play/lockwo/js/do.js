@@ -22,6 +22,8 @@
 // dog.c mon_arrive are not otherwise available in the JS engine).
 
 import { game } from './gstate.js';
+import { exercise } from './attrib.js';
+import { A_STR } from './const.js';
 import { rn2, rn1, rnd, rnl, d } from './rng.js';
 import { print_dungeon, builds_up, In_hell, Is_valley, surface,
          find_hell, dunlevs_in_dungeon, single_level_branch } from './dungeon.js';
@@ -420,12 +422,34 @@ function u_collide_m(mtmp) {
 
 // C ref: hack.c losehp() — HP subtraction only; death handling isn't reached by
 // the covered sessions (matching every other file-local losehp() in this port).
-function losehp_do(n) {
+async function losehp_do(n) {
     const u = game.u;
     if (!u || n <= 0) return;
     u.uhp = (u.uhp ?? 0) - n;
     if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
     if (u.uhp < 0) u.uhp = 0;
+    // C ref: hack.c losehp() tail — `else if (n > 0 && u.uhp * 10 < u.uhpmax) maybe_wail();`
+    if (n > 0 && u.uhp * 10 < (u.uhpmax ?? 0)) await maybe_wail();
+}
+
+// C ref: hack.c maybe_wail() — the low-HP warning, throttled to once per 50
+// moves through gw.wailmsg.
+async function maybe_wail() {
+    const u = game.u;
+    if ((game.moves ?? 0) <= (game._wailmsg ?? 0) + 50) return;
+    game._wailmsg = game.moves ?? 0;
+    const isWiz = game.urole?.name?.m === 'Wizard';
+    const isValk = game.urole?.name?.m === 'Valkyrie';
+    const isElf = String(game.urace?.noun || '').toLowerCase() === 'elf';
+    if (isWiz || isElf || isValk) {
+        const who = (isWiz || isValk) ? game.urole?.name?.m : 'Elf';
+        if (u.uhp === 1) await update_topl(`${who} is about to die.`);
+        else await update_topl(`${who}, your life force is running out.`);
+    } else {
+        await update_topl(u.uhp === 1 ? 'You hear the wailing of the Banshee...'
+                                      : 'You hear the howling of the CwnAnnwn...');
+    }
+    game._toplin = 1;
 }
 // C ref: youprop.h Fumbling / Flying — the two transit modifiers do.c:1776-1781
 // tests.  Fumbling comes from HFumbling/EFumbling (allmain.js reads the same
@@ -437,6 +461,43 @@ function Flying_do() {
 function Levitation_do() { return !!game.u?.uprops?.Levitation; }
 // C ref: youprop.h Punished — u.uball is set only while punished.
 function Punished_do() { return !!game.u?.uball; }
+
+// C ref: ball.c drag_down() — the punishment ball follows the hero down the
+// stairs.  Its cls() first flushes WIN_MESSAGE (the --More-- the hoisted
+// transit message already emitted) and then clears the map + status windows,
+// which is why the next captured frame is blank except for the topline.
+async function drag_down_hero() {
+    const u = game.u;
+    const uball = u?.uball;
+    let dragchance = 3;
+    const carried_ball = !!uball && uball.where === 'invent';
+    const welded_ball = false;   // welded(uball) needs a cursed WIELDED ball
+    const forward = carried_ball && (u.uwep === uball || !u.uwep || !rn2(3));
+    if (carried_ball && !welded_ball) await pline('You lose your grip on the iron ball.');
+    // cls(): clear_nhwindow(WIN_MAP) clears the PHYSICAL screen.  goto_level's
+    // following docrt() only rebuilds gg.gbuf; its flush_screen(-1) toggles
+    // delay_flushing, so nothing reaches the terminal until more()'s docorner().
+    game._screenBlank = true;
+    if (forward) {
+        if (rn2(6)) {
+            await pline('The iron ball drags you downstairs!');
+            await losehp_do(rnd(6));
+        }
+    } else {
+        if (rn2(2)) {
+            await pline('The iron ball smacks into you!');
+            game._toplin = 1;   // C pline() leaves toplin == TOPLINE_NEED_MORE
+            await losehp_do(rnd(20));
+            exercise(A_STR, false);
+            dragchance -= 2;
+        }
+        if (dragchance >= rnd(6)) {
+            await pline('The iron ball drags you downstairs!');
+            await losehp_do(rnd(3));
+            exercise(A_STR, false);
+        }
+    }
+}
 
 // C ref: hack.c u_locomotion(def) — the verb for the hero's mode of travel.
 // locomotion(youmonst.data, def) below it only differs for a polymorphed hero
@@ -656,14 +717,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // costs rnd(3) hp.  do.c:1777 takes the Flying arm FIRST, so a flying hero
     // never falls.  Only the message can be hoisted to this old-level frame; the
     // losehp roll stays at C's position, in the at_stairs arrival arm below.
-    // NOT ported from the fall arm: `if (Punished) { drag_down(); ballrelease(); }`
-    // (drag_down draws rn2(3)/rn2(6)/rnd(6)/rnd(20)/rnd(3) plus litter()'s
-    // per-item rnd(weight_cap)) and the u.usteed dismount_steed(DISMOUNT_FELL)
-    // alternative to the losehp() below.  Punished is therefore deliberately
-    // left OUT of the predicate: taking the fall arm without drag_down() would
-    // desync harder than missing the arm.
+    // C ref: do.c:1789 — `if (Punished) { drag_down(); ballrelease(); }`.
+    // drag_down() is now ported (drag_down_hero below); litter()'s per-item
+    // rnd(weight_cap) is still missing, as is the u.usteed
+    // dismount_steed(DISMOUNT_FELL) alternative to the losehp() below.
     const fell_downstairs = at_stairs && !up
-        && !Flying_do() && (near_capacity() > UNENCUMBERED || Fumbling_do());
+        && !Flying_do() && (near_capacity() > UNENCUMBERED || Punished_do() || Fumbling_do());
     if (at_stairs && !In_endgame(newlevel)) {
         // C ref: do.c:1758-1795.  Up: "%s %s up%s the %s." with "With great
         // effort, you" when Punished && !Levitation (which also overrides
@@ -746,6 +805,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // reloaded destination gets its own ring back via getlev_restore().
     initrack();
 
+    // C ref: display.c cls():2196 display_nhwindow(WIN_MESSAGE,FALSE)
+    { const { topl_more } = await import('./display.js');
+      if (game._toplin === 1) { await topl_more(); game._toplin = 0; } }
     u.uz0 = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
     u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
 
@@ -865,7 +927,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // stream (after mklev()/placement, before losedogs()).  Maybe_Half_Phys
         // is the identity here and selftouch("Falling, you") only bites a hero
         // wielding a petrifying corpse, so neither adds a draw.
-        if (fell_downstairs) losehp_do(rnd(3));
+        if (fell_downstairs && Punished_do()) await drag_down_hero();
+        if (fell_downstairs) await losehp_do(rnd(3));
     } else {
         // trap door / level teleport / endgame.  (The was_in_W_tower `| 2` flag
         // of C's u_on_rndspot() call is Vlad's-Tower-only and never set here.)
@@ -913,6 +976,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     game.vision_full_recalc = 0;
     vision_reset();
     vision_recalc(0);
+    // C ref: display.c docrt_flags() -> cls() -> display_nhwindow(WIN_MESSAGE,
+    // FALSE): an unacknowledged topline (drag_down's "The iron ball smacks into
+    // you!") is paged HERE, while the physical screen is still the blank one
+    // drag_down's own cls() left behind (do.c:1720's flush_screen(-1) has map
+    // flushes postponed).  Only afterwards does cls() clear WIN_MAP and docrt()
+    // repaint it, which do.c:1841's flush_screen(-1) then finally flushes.
+    if (game._toplin === 1) {
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
+    delete game._screenBlank;
     await docrt();
     await flush_screen(-1);
 
@@ -1044,7 +1119,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C ref: do.c:1990 — a trap-door/hole fall costs d(max(dist,1), 6) hp, rolled
     // at the very END of the arrival (after every message above and after
     // check_special_room(FALSE)).  Maybe_Half_Phys is the identity here.
-    if (do_fall_dmg) losehp_do(d(Math.max(dist, 1), 6));
+    if (do_fall_dmg) await losehp_do(d(Math.max(dist, 1), 6));
     // MEASURED NEGATIVE, do not re-add here: C's do.c:1814 `if (Punished)
     // placebc();` belongs EARLIER in goto_level (before obj_delivery()/
     // losedogs()/run_timers()), so the arrival square's nexthere order is C's.

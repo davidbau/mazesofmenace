@@ -14,6 +14,7 @@
 // capture sees the final post-run state with the exact cumulative RNG.
 
 import { game } from './gstate.js';
+import { t_at as t_at_hk, trap_explanation as trap_explanation_hk } from './trap.js';
 import { domove, blocksMove, test_move_quiet } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
 import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature } from './display.js';
@@ -498,11 +499,16 @@ async function run_movement(run) {
         await domove(u.dx, u.dy);
     }
 
+    // C ref: allmain.c:380 — a NEGATIVE gm.multi (nh_timeout()'s FUMBLING
+    // `slip_or_trip(); nomul(-2)` fired mid-run) is the helpless countdown, and
+    // moveloop_core still owes those turns.  Zeroing it here skipped the
+    // paralysis turn and returned to the prompt a monster-turn early.
+    // travel_walk() (js/hack.js:983) already had this guard.
+    const helpless = (game.multi ?? 0) < 0;
     end_running(true);
     // Every elapsed turn was processed inline above; tell the moveloop no
     // further per-turn work is owed for this command.
-    c.move = 0;
-    game.multi = 0;
+    if (!helpless) { c.move = 0; game.multi = 0; } else { c.move = 1; }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -570,9 +576,16 @@ function doorless_door(x, y) {
 // agree; kept as a named predicate so the guards below read like C.
 function Passes_walls() { return !!game.u?.uprops?.Passes_walls; }
 
-// C ref: monst.h gy.youmonst.data == &mons[u.umonnum].
+// C ref: monst.h gy.youmonst.data == &mons[u.umonnum], where u_init.c:991 sets
+// umonnum = urole.mnum — a real mons[] index.  THIS port stores the 0-based ROLE
+// index there (js/u_init.js:1324), so a raw monster_by_pmidx() answered
+// "gelatinous cube" (MZ_LARGE) for a Rogue, which made
+// cant_squeeze_thru_hero() return 1 for EVERY hero and killed every diagonal
+// corridor jog in findtravelpath().  PM_ARCHEOLOGIST is 331 (js/monmove.js:6018).
 function youmonst_data() {
-    return monster_by_pmidx(game.u?.umonnum) || game.u?.data || null;
+    const u = game.u;
+    if (u?.Upolyd) return monster_by_pmidx(u.umonnum) || u?.data || null;
+    return monster_by_pmidx(331 + (u?.umonnum ?? 0)) || u?.data || null;
 }
 
 // C ref: hack.c:937 bad_rock(mdat,x,y).  tunnels(mdat) && may_dig() only
@@ -1345,6 +1358,7 @@ function terrain_description(x, y) {
         return (loc.seenv || loc.disp_ch && loc.disp_ch !== ' ')
             ? 'dark part of a room' : 'solid stone';
     }
+    { const _t = t_at_hk(x, y); if (_t && _t.tseen) return trap_explanation_hk(_t.ttyp); }
     if (IS_WALL(typ)) return 'wall';
     if (typ === DOOR) {
         if (loc.doormask & (D_CLOSED | D_LOCKED)) return 'closed door';
@@ -1771,8 +1785,12 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
             // class letter) and no spotted monster is drawn on top, lookat names
             // the object via look_at_object() instead of the terrain underneath.
             const mtmp = m_at(x, y);
+            // C ref: pager.c lookat() — a SPOTTED monster on the square is
+            // named first; falling through to the object/terrain name described
+            // the floor under a visible monster.
             const objname = (mtmp && canspotmon(mtmp)) ? null : look_at_object_here(x, y);
-            desc = objname || terrain_description(x, y);
+            desc = (mtmp && canspotmon(mtmp)) ? look_at_monster_desc(mtmp)
+                 : (objname || terrain_description(x, y));
             // C ref: detect.c reveal_terrain_getglyph() — while browsing a
             // revealed map, S_darkroom is rewritten to S_room and S_litcorr to
             // S_corr, and do_screen_description() dispatches on that DISPLAYED
@@ -1789,6 +1807,7 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
     };
 
     let firstPass = true;
+    let unknownMsg = null;
     for (;;) {
         if (showGoal) {
             // C getpos.c:863 pline("Move cursor to %s:", goal).  In verbose mode
@@ -1996,17 +2015,19 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
             const note = force
                 ? "use 'h', 'j', 'k', 'l' or '.'"
                 : 'aborted';
-            await getpos_render(`Unknown direction: '${visctrl_key(k)}' (${note}).`, cx, cy);
+            unknownMsg = `Unknown direction: '${visctrl_key(k)}' (${note}).`;
+            await getpos_render(unknownMsg, cx, cy);
             msgGiven = true;
         }
-        if (force) continue; // C: stay in the loop
+        if (force) { unknownMsg = null; continue; } // C: stay in the loop
         if (isQuit) {
             // space / return at top level in !force getpos => "Done.", finish.
             await getpos_render('Done.', cx, cy);
             return null;
         }
-        // !force after "Unknown direction": C prints "Done." and returns.
-        await getpos_render('Done.', cx, cy);
+        // !force after "Unknown direction": C's pline("Done.") APPENDS to the
+        // still-unflushed topline after two spaces rather than replacing it.
+        await getpos_render(unknownMsg ? `${unknownMsg}  Done.` : 'Done.', cx, cy);
         return null;
     }
 }
@@ -2040,7 +2061,7 @@ export async function do_farlook() {
     if (mtmp && canspotmon(mtmp)) {
         desc = mtmp.data?.mname || mtmp.data?.pmname || 'a monster';
     } else {
-        desc = terrain_description(cc.x, cc.y);
+        desc = look_pick_description(cc.x, cc.y).text;
     }
     game._pending_message = desc;
     await flush_screen(1);
@@ -2412,6 +2433,19 @@ function look_pick_description(x, y) {
             text: `${prefix}can be many things (${look})`,
             firstmatch: look,
             found: 1,
+        };
+    }
+
+    // C ref: pager.c do_screen_description() is_swallow_sym() branch — the
+    // swallow-stomach middle-left/right symbol is the SAME char as S_vwall
+    // ('|' in ASCII, meta-x in DECgraphics), so every vertical wall enumerates
+    // "the interior of a monster" first (no article: C uses x_str verbatim).
+    if (IS_WALL(typ)) {
+        const look = terrain_description(x, y);
+        return {
+            text: `${prefix}the interior of a monster or ${an(look)} (${look})`,
+            firstmatch: look,
+            found: 2,
         };
     }
 

@@ -29,9 +29,10 @@ import { couldsee as visCouldsee, clear_path, cansee, view_from } from './vision
 import { Monnam, x_monnam, canspotmon } from './uhitm.js';
 import { floor_object_name, doname_invent, sobj_at } from './invent.js';
 import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, m_avoid_kicked_loc,
-    mon_allowflags, set_apparxy, onscary, mon_wield_item } from './monmove.js';
+    mon_allowflags, set_apparxy, onscary, mon_wield_item,
+    Conflict, resist_conflict, mattacku } from './monmove.js';
 import { goodpos } from './teleport.js';
-import { ALLOW_TRAPS as ALLOW_TRAPS_F } from './const.js';
+import { ALLOW_TRAPS as ALLOW_TRAPS_F, ALLOW_U } from './const.js';
 import { t_at } from './trap.js';
 import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_MISS } from './const.js';
@@ -1533,6 +1534,11 @@ export async function dog_move(mtmp, after) {
     const appr = dog_goal(mtmp, edog, after, udist, whappr, g);
     if (appr === -2) return MMOVE_NOTHING;
 
+    // C ref: dogmove.c:1046
+    if (Conflict() && !resist_conflict(mtmp)) {
+        // (guardian-angel arm needs !edog; every pet here has an edog)
+    }
+
     // C ref: dogmove.c:1062-1063 — `allowflags = mon_allowflags(mtmp); cnt =
     // mfndpos(mtmp, &mfp, allowflags);`.  A tame monster's bitmask (monmove.js
     // mon_allowflags()) is ALLOW_M|ALLOW_TRAPS|ALLOW_SANCT|ALLOW_SSM plus any
@@ -1696,6 +1702,12 @@ export async function dog_move(mtmp, after) {
         // MMOVE_MOVED, and m_digweapon_check() can make the pet stop to wield a
         // digging tool (MMOVE_NOTHING).  Both are hostile-monster machinery this
         // port does not run for pets; see the deferred list.
+
+        // C ref: dogmove.c:1280-1288 — pet attacks the HERO (Conflict ALLOW_U).
+        if (chi >= 0 && (poss[chi].info & ALLOW_U)) {
+            await mattacku(mtmp, mtmp.data);
+            return MMOVE_DONE;
+        }
 
         // C ref: dogmove.c:1295 — wasseen captured before the move (old square),
         // then re-checked at the new square, for the reluctant-step topline.

@@ -120,3 +120,94 @@ export function priestini(lvl, sroom, sx, sy, sanctum) {
     }
     return priest;
 }
+
+// ── SCRATCH EXPERIMENT: intemple() ─────────────────────────────────────────
+// C ref: priest.c:410 intemple(roomno) — called from check_special_room().
+import { pline, update_topl } from './display.js';
+import { d } from './rng.js';
+import { TEMPLE } from './const.js';
+
+// C ref: priest.c:142 temple_occupied(array).
+export function temple_occupied(array) {
+    for (const c of (array || [])) {
+        const r = game.level?.rooms?.[c - ROOMOFFSET];
+        if (r && r.rtype === TEMPLE) return c;
+    }
+    return 0;
+}
+
+// C ref: priest.c:392 findpriest(roomno) + priest.c:154 histemple_at().
+export function findpriest(roomno) {
+    for (const m of game.level?.monsters || []) {
+        if (m.mhp != null && m.mhp <= 0) continue;
+        if (!m.ispriest) continue;
+        if ((m.epri?.shroom ?? -1) !== roomno) continue;
+        const loc = game.level?.at(m.mx, m.my);
+        const here = (loc?.roomno ?? 0);
+        const hr = game.level?.rooms?.[here - ROOMOFFSET];
+        if (!hr || hr.rtype !== TEMPLE || here !== roomno) continue;
+        const sl = m.epri?.shrlevel, uz = game.u?.uz;
+        if (!sl || !uz || sl.dnum !== uz.dnum || sl.dlevel !== uz.dlevel) continue;
+        return m;
+    }
+    return null;
+}
+
+// C ref: priest.c:376 has_shrine(pri).
+function has_shrine(pri) {
+    if (!pri || !pri.ispriest) return false;
+    const p = pri.epri;
+    const lev = game.level?.at(p?.shrpos?.x, p?.shrpos?.y);
+    if (!lev || lev.typ !== 22 /* ALTAR */) return false;
+    if (!(lev.altarmask & 8 /* AM_SHRINE */)) return false;
+    return (p.shralign === Amask2align(lev.altarmask & ~8));
+}
+
+export async function intemple(roomno) {
+    const u = game.u;
+    if (temple_occupied(u.urooms0)) return;
+    const priest = findpriest(roomno);
+    const moves = game.moves || 0;
+    if (priest) {
+        const epri_p = priest.epri;
+        const shrined = has_shrine(priest);
+        const sanctum = false; // high cleric + Is_sanctum: not on quest levels
+        const can_speak = true;
+        if (can_speak && moves >= (epri_p.intone_time || 0)) {
+            await update_topl('A nearby voice intones:');
+            epri_p.intone_time = moves + d(10, 500);
+            epri_p.enter_time = 0;
+        }
+        let msg1 = null, msg2 = null;
+        if (moves >= (epri_p.enter_time || 0)) {
+            msg1 = `"Pilgrim, you enter a ${!shrined ? 'desecrated' : 'sacred'} place!"`;
+        }
+        if (msg1 && can_speak) {
+            await update_topl(msg1);
+            epri_p.enter_time = moves + d(10, 100);
+        }
+        let m1, m2, thisKey, otherKey;
+        if (!shrined || !p_coaligned(priest) || (u.ualign?.record ?? 0) <= 0 /* ALGN_SINNED */) {
+            m1 = 'have a%s forbidding feeling...'; m2 = (!shrined || !p_coaligned(priest)) ? '' : ' strange';
+            thisKey = 'hostile_time'; otherKey = 'peaceful_time';
+        } else {
+            m1 = 'experience %s sense of peace.'; m2 = ((u.ualign?.record ?? 0) >= 14) ? 'a' : 'an unusual';
+            thisKey = 'peaceful_time'; otherKey = 'hostile_time';
+        }
+        if (moves >= (epri_p[thisKey] || 0) || (epri_p[otherKey] || 0) >= (epri_p[thisKey] || 0)) {
+            await update_topl('You ' + m1.replace('%s', m2));
+            epri_p[thisKey] = moves + d(10, 20);
+            if (epri_p[thisKey] <= (epri_p[otherKey] || 0)) epri_p[otherKey] = epri_p[thisKey] - 1;
+        }
+    } else {
+        switch (rn2(4)) {
+        case 0: await update_topl('You have an eerie feeling...'); break;
+        case 1: await update_topl('You feel like you are being watched.'); break;
+        case 2: await update_topl('A shiver runs down your spine.'); break;
+        default: break;
+        }
+        if (!rn2(5)) {
+            // makemon(PM_GHOST, u.ux, u.uy, MM_NOMSG) — not modelled here
+        }
+    }
+}

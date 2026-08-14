@@ -60,7 +60,7 @@ function math_abs(L) {
     if (lua_isinteger(L, 1)) {
         let n = lua_tointegerx(L, 1, null);
         if (n < 0n)
-            n = BigInt.asIntN(64, (BigInt.asUintN(64, 0n - BigInt.asUintN(64, n))));
+            n = BigInt.asIntN(64, (0n - BigInt.asUintN(64, n)));
         lua_pushinteger(L, n);
     } else
         lua_pushnumber(L, fabs(luaL_checknumber(L, 1)));
@@ -368,28 +368,28 @@ function math_random(L) {
     let rv = nextrand(state);  /* next pseudo-random value */
     switch (lua_gettop(L)) {
         case 0:
-        {
-            lua_pushnumber(L, I2d(rv));  /* float between 0 and 1 */
-            return 1;
-        }
-        case 1:
-        {
-            low = 1n;
-            up = luaL_checkinteger(L, 1);
-            if (up == 0n) {
-                lua_pushinteger(L, BigInt.asIntN(64, (((rv) & 18446744073709551615n))));  /* full random integer */
+            {
+                lua_pushnumber(L, I2d(rv));  /* float between 0 and 1 */
                 return 1;
             }
-            break;
-        }
+        case 1:
+            {
+                low = 1n;
+                up = luaL_checkinteger(L, 1);
+                if (up == 0n) {
+                    lua_pushinteger(L, BigInt.asIntN(64, (((rv) & 18446744073709551615n))));  /* full random integer */
+                    return 1;
+                }
+                break;
+            }
         case 2:
-        {
-            low = luaL_checkinteger(L, 1);
-            up = luaL_checkinteger(L, 2);
-            break;
-        }
+            {
+                low = luaL_checkinteger(L, 1);
+                up = luaL_checkinteger(L, 2);
+                break;
+            }
         default:
-        return luaL_error(L, __s_wrong_number_of_arguments);
+            return luaL_error(L, __s_wrong_number_of_arguments);
     }
     /* random integer in the interval [low, up] */
     (void ((__builtin_expect(BigInt(((low <= up) != 0)), 1n)) ||
@@ -402,7 +402,7 @@ function math_random(L) {
         BigInt.asUintN(64, BigInt.asUintN(64, up) - BigInt.asUintN(64, low)),
         state
     );
-    lua_pushinteger(L, BigInt.asIntN(64, BigInt.asUintN(64, p + BigInt.asUintN(64, low))));
+    lua_pushinteger(L, BigInt.asIntN(64, (p + BigInt.asUintN(64, low))));
     return 1;
 }
 

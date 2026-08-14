@@ -21,8 +21,11 @@
 // they are deliberately absent rather than guessed at.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { heal_legs } from './trap.js';
+import { exercise } from './attrib.js';
+import { A_CON } from './const.js';
+import { nomul, stop_occupation } from './hack.js';
 import { run_object_timers } from './mkobj.js';
 import { update_topl } from './display.js';
 import { Unaware } from './const.js';
@@ -127,6 +130,66 @@ async function expire_fumbling() {
     if (u.HFumbling || u.EFumbling) u.HFumbling = (u.HFumbling || 0) + rnd(20);
 }
 
+// C ref: timeout.c vomiting_dialogue() — the Vomiting countdown's staged
+// messages.  Runs BEFORE the uprops[] decrement loop, so it reads (Vomiting-1).
+const VOMITING_TEXTS = [
+    'are feeling mildly nauseated.',
+    'feel slightly confused.',
+    "can't seem to think straight.",
+    'feel incredibly sick.',
+    'are about to vomit.',
+];
+function _conf() { return (game.u?.uprops?.Confusion || 0); }
+function _stun() { return (game.u?.uprops?.Stun || 0); }
+function _make_confused(x) { const u = game.u; u.uprops.Confusion = x; u.uconf = x > 0; }
+function _make_stunned(x) { const u = game.u; u.uprops.Stun = x; u.Stunned = x > 0; }
+
+async function vomiting_dialogue() {
+    const u = game.u;
+    const v = (u.uprops.Vomiting || 0);
+    let txt = null;
+    switch (v - 1) {
+    case 14:
+        txt = VOMITING_TEXTS[0];
+        break;
+    case 11:
+        txt = VOMITING_TEXTS[1];
+        if (_conf() > 0) txt = 'feel slightly more confused.';
+        break;
+    case 6:
+        _make_stunned(_stun() + d(2, 4));
+        await stop_occupation();
+        /* FALLTHROUGH */
+    case 9:
+        _make_confused(_conf() + d(2, 4));
+        if ((game.multi || 0) > 0) nomul(0);
+        break;
+    case 8:
+        txt = VOMITING_TEXTS[2];
+        if (_stun() > 0) txt = "can't think straight.";
+        break;
+    case 5:
+        txt = VOMITING_TEXTS[3];
+        break;
+    case 2:
+        txt = VOMITING_TEXTS[4];
+        break;
+    case 0:
+        await stop_occupation();
+        u.uhunger = (u.uhunger || 0) - 20;
+        await update_topl('You vomit!');
+        u.uprops.Vomiting = 0;
+        nomul(-2);
+        game.multi_reason = 'vomiting';
+        game.nomovemsg = 'You can move again.';
+        break;
+    default:
+        break;
+    }
+    if (txt) await update_topl('You ' + txt);
+    exercise(A_CON, false);
+}
+
 // The u.uprops[] timers this port materialises.  `get`/`set` read and write
 // whichever field the rest of the port already uses for that property.
 // NOTE: this list is NOT in prop.h numeric order (CONFUSION 14 before STUNNED
@@ -160,6 +223,10 @@ const TIMED_PROPS = [
       set: (u, v) => { u.HWounded_legs = v; },
       // C: heal_legs(0) then stop_occupation().
       expire: async () => { await heal_legs(0); } },
+    { name: 'VOMITING',
+      get: (u) => u.uprops?.Vomiting || 0,
+      set: (u, v) => { u.uprops.Vomiting = v; },
+      expire: async () => {} },
     { name: 'HALLUC',
       get: (u) => u.uprops?.Hallucination || 0,
       set: (u, v) => { u.uprops.Hallucination = v; },
@@ -209,6 +276,8 @@ export async function nh_timeout() {
     // C ref: timeout.c — `if (u.ucreamed) u.ucreamed--;`, just above the
     // uprops[] loop.  Cream on the face wears off a point a turn independently
     // of the blindness it caused.
+    if ((u.uprops.Vomiting || 0) > 0) await vomiting_dialogue();
+
     if ((u.ucreamed || 0) > 0) u.ucreamed -= 1;
 
     for (const p of TIMED_PROPS) {

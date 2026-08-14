@@ -2,6 +2,7 @@
 // C ref: u_init.c
 
 import { game } from './gstate.js';
+import { skill_init_snapshot } from './enhance.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
 import { addinv as invent_addinv, bimanual, near_capacity } from './invent.js';
 import { initialspell, num_spells, skill_based_spellbook_id } from './spell.js';
@@ -708,6 +709,11 @@ export function newhp() {
     let hp = adv.hpadv.infix + radv.hpadv.infix;
     if (adv.hpadv.inrnd > 0) hp += rnd(adv.hpadv.inrnd);
     if (radv.hpadv.inrnd > 0) hp += rnd(radv.hpadv.inrnd);
+    // C ref: attrib.c newhp():1116 — `u.uhpinc[u.ulevel] = (xint16) hp`.
+    // newman() subtracts these per-level increments back out of uhpmax.
+    game.u = game.u || {};
+    if (!game.u.uhpinc) game.u.uhpinc = [];
+    game.u.uhpinc[game.u.ulevel || 0] = hp;
     return hp;
 }
 
@@ -719,6 +725,10 @@ export function newpw() {
     if (adv.enadv.inrnd > 0) en += rnd(adv.enadv.inrnd);
     if (radv.enadv.inrnd > 0) en += rnd(radv.enadv.inrnd);
     if (en <= 0) en = 1;
+    // C ref: exper.c newpw() — `u.ueninc[u.ulevel] = (xint16) en`.
+    game.u = game.u || {};
+    if (!game.u.ueninc) game.u.ueninc = [];
+    game.u.ueninc[game.u.ulevel || 0] = en;
     return en;
 }
 
@@ -1557,6 +1567,7 @@ export function u_init_skills_discoveries() {
     if (Array.isArray(game.invent))
         for (const obj of game.invent)
             ini_inv_use_obj_discover(obj);
+    skill_init_snapshot();
     skill_based_spellbook_id();
     if (num_spells() && (game.u.uenmax ?? 0) < SPELL_LEV_PW_1) {
         game.u.uen = game.u.uenmax = game.u.uenpeak = SPELL_LEV_PW_1;

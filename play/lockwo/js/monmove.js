@@ -9,6 +9,20 @@
 // to richer monster behavior without per-seed special cases.
 
 import { game } from './gstate.js';
+import { acurr_eff as _acurr_cf } from './attrib.js';
+import { in_rooms as in_rooms_shk } from './shkroom.js';
+import { mindless as mindless_flag, mflags1_of as _mf1_web, mflags2_of as _mf2_web,
+    M1_ACID as M1_ACID_WEB, M2_NASTY as M2_NASTY_WEB } from './monflags_data.js';
+const TEMPLE_RT = 10, SHOPBASE_RT = 14;   // mkroom.h TEMPLE / SHOPBASE
+import { name_to_pmidx as _name_to_pmidx_cf, monster_by_pmidx as _monster_by_pmidx_cf } from './makemon.js';
+const A_CHA_CF = 5, RIN_CONFLICT_CF = 186;
+export function Conflict() {
+    return game.uleft?.otyp === RIN_CONFLICT_CF || game.uright?.otyp === RIN_CONFLICT_CF;
+}
+export function resist_conflict(mtmp) {
+    const rc = Math.min(19, _acurr_cf(A_CHA_CF) - (mtmp.m_lev | 0) + (game.u?.ulevel | 0));
+    return rnd(20) > rc;
+}
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 // find_offensive/use_offensive: the FULL muse.c ports.  monmove.js used to
 // shadow them with a potion-only stub whose "the wand branches are not reached
@@ -1045,6 +1059,16 @@ export function mfndpos(mon, flag) {
                 && !((flag & ALLOW_WALL) && may_passwall(nx, ny))
                 && !((IS_TREE(ntyp) ? treeok : rockok) && may_dig(nx, ny)))
                 continue;
+            // C ref: mon.c:2216-2221 — intelligent peacefuls avoid digging
+            // shop/temple walls.  Dropping a candidate here changes cnt, and
+            // cnt is the modulus of m_move's rn2(4*cnt) tie-break.
+            if (IS_OBSTRUCTED(ntyp) && rockok
+                && !mindless_flag(mdat) && (mon.mpeaceful || mon.mtame)
+                && (in_rooms_shk(nx, ny, TEMPLE_RT).length
+                    || in_rooms_shk(nx, ny, SHOPBASE_RT).length)
+                && !(in_rooms_shk(x, y, TEMPLE_RT).length
+                     || in_rooms_shk(x, y, SHOPBASE_RT).length))
+                continue;
             // C ref: mon.c:2222-2223 — the Plane-of-Water wall of water stops
             // anything that cannot swim.
             if (IS_WATERWALL(ntyp) && !is_swimmer(mdat)) continue;
@@ -1933,6 +1957,48 @@ export function mon_learns_traps(mtmp, ttyp) {
 // 3 = Trap_Moved_Mon (we never produce the latter two for the modeled types).
 export const Trap_Effect_Finished = 0, Trap_Caught_Mon = 1, Trap_Killed_Mon = 2,
              Trap_Moved_Mon = 3;
+// C ref: trap.c:3260 launch_obj(BOULDER, x1,y1, x2,y2, ROLL).  quan is always 1
+// for a trap boulder, so C's splitobj rnd(2) never fires.
+async function launch_boulder(trap) {
+    const objs = game.level?.objects;
+    if (!objs) return 0;
+    let x1 = trap.launch?.x, y1 = trap.launch?.y;
+    let x2 = trap.launch2?.x, y2 = trap.launch2?.y;
+    if (x1 == null || x2 == null) return 0;
+    const findB = (x, y) => objs.find((o) => o.where === 'floor' && o.ox === x && o.oy === y
+                                          && o.otyp === 475 /*BOULDER*/);
+    let otmp = findB(x1, y1);
+    if (!otmp) {
+        otmp = findB(x2, y2);
+        if (!otmp) return 0;
+        const tx = x1, ty = y1; x1 = x2; y1 = y2; x2 = tx; y2 = ty;
+    }
+    const ix = objs.indexOf(otmp);
+    if (ix >= 0) objs.splice(ix, 1);
+    otmp.where = 'free';
+    newsym(x1, y1);
+    let dist = distmin(x1, y1, x2, y2);
+    let x = x1, y = y1;
+    const dx = Math.sign(x2 - x1), dy = Math.sign(y2 - y1);
+    let used_up = false;
+    while (dist-- > 0 && !used_up) {
+        if (!isok(x + dx, y + dy)) { x2 = x; y2 = y; break; }
+        x += dx; y += dy;
+        const victim = m_at(x, y);
+        if (victim) {
+            if (await ohitmon(victim, otmp, -1, false, x, y, null)) { used_up = true; break; }
+        }
+        // thitu(9 + spe, dmgval, ...) for the hero's square is not reached here.
+        if (IS_OBSTRUCTED(terrainTyp(x, y))) { x2 = x; y2 = y; break; }
+    }
+    if (!used_up) {
+        otmp.owornmask = 0;
+        place_object(otmp, x2, y2);
+        newsym(x2, y2);
+    }
+    return 1;
+}
+
 export async function mon_mintrap(mtmp) {
     const trap = t_at(mtmp.mx, mtmp.my);
     if (!trap) { mtmp.mtrapped = 0; return Trap_Effect_Finished; }
@@ -2330,6 +2396,20 @@ function attacktype_claw(mdat) {
     return mon_attacks(mdat).some((a) => a.aatyp === AT_CLAW);
 }
 
+// C ref: trap.c:2243-2255 trapeffect_web() — a `switch (monsndx(mptr))` case
+// list, i.e. a genuine species enumeration, not a flag test.
+const WEB_TEARER_NAMES = new Set([
+    'titanothere', 'baluchitherium', 'purple worm', 'jabberwock', 'iron golem',
+    'balrog', 'kraken', 'mastodon', 'Orion', 'Norn', 'Cyclops', 'Lord Surtur',
+]);
+function web_tears(ptr) { return WEB_TEARER_NAMES.has(permonst_of(ptr)?.name); }
+// C ref: mondata.h:59 flaming(ptr) — also a four-species pointer test.
+const FLAMING_NAMES = new Set(['fire vortex', 'flaming sphere', 'fire elemental', 'salamander']);
+function flaming_mm(ptr) { return FLAMING_NAMES.has(permonst_of(ptr)?.name); }
+function acidic_mm(ptr) { return (_mf1_web(ptr) & M1_ACID_WEB) !== 0; }      // mondata.h:88
+function extra_nasty_mm(ptr) { return (_mf2_web(ptr) & M2_NASTY_WEB) !== 0; } // mondata.h:120
+function count_wsegs_mm() { return 0; }   // long worms carry no segment chain here
+
 async function mon_trapeffect(mtmp, trap) {
     switch (trap.ttyp) {
     case ROCKTRAP: {
@@ -2459,6 +2539,21 @@ async function mon_trapeffect(mtmp, trap) {
             // split_mon(mtmp, 0) — a second gremlin via clone_mon(); not
             // modeled, so leave the divergence honest rather than guess.
         }
+        return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+    }
+    case ROLLING_BOULDER_TRAP: {
+        // C ref: trap.c:2660 trapeffect_rolling_boulder_trap(), monster branch.
+        // Falling into `default:` left the boulder in place AND skipped the
+        // launch, so the map and every later vobj_at() disagreed with C.
+        const in_sight = (mtmp === game.u?.usteed)
+            || (cansee(mtmp.mx, mtmp.my) && canseemon_mm(mtmp));
+        newsym(mtmp.mx, mtmp.my);
+        if (in_sight)
+            await pline_mon(mtmp, `Click!  ${Monnam(mtmp)} triggers `
+                + `${trap.tseen ? 'a rolling boulder trap' : 'something'}.`);
+        const r = await launch_boulder(trap);
+        if (r && in_sight) trap.tseen = true;
+        if (DEADMONSTER(mtmp)) return Trap_Killed_Mon;
         return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     case MAGIC_TRAP:
@@ -2630,6 +2725,52 @@ async function mon_trapeffect(mtmp, trap) {
             }
         }
         return Trap_Moved_Mon;   /* C returns this even when mtele_trap did nothing */
+    }
+    case WEB: {
+        // C ref: trap.c:2204-2274 trapeffect_web(), monster arm.  Draws NO RNG
+        // itself — but mtmp->mtrapped = 1 makes mintrap's !rn2(40) escape roll
+        // fire on every subsequent turn, so falling into `default:` here loses
+        // one draw per turn for the rest of the level.
+        const mptr = mtmp.data;
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        const a_your = trap.madeby_u ? 'your' : 'a';
+        const { seetrap } = await import('./trap.js');
+        if (webmaker(mptr)) return Trap_Effect_Finished;
+        // C ref: trap.c:975 mu_maybe_destroy_web().
+        if (amorphous(mptr) || is_whirly(mptr) || flaming_mm(mptr)
+            || unsolid(mptr) || permonst_of(mptr)?.name === 'gelatinous cube') {
+            if (flaming_mm(mptr) || acidic_mm(mptr)) {
+                if (in_sight)
+                    await pline_mon(mtmp, `${Monnam(mtmp)} `
+                        + `${flaming_mm(mptr) ? 'burns' : 'dissolves'} ${a_your} spider web!`);
+                deltrap_local(trap);
+                newsym(trap.tx, trap.ty);
+            } else if (in_sight) {
+                await pline_mon(mtmp, `${Monnam(mtmp)} flows through ${a_your} spider web.`);
+                seetrap(trap);
+            }
+            return Trap_Effect_Finished;
+        }
+        let tear_web = false;
+        const mcls = mptr?.mcls;
+        if (web_tears(mptr)) {
+            tear_web = true;
+        } else if (mcls === S_GIANT
+                   || (mcls === S_DRAGON && extra_nasty_mm(mptr))
+                   || (mtmp.wormno && count_wsegs_mm(mtmp) > 5)) {
+            tear_web = true;
+        } else if (in_sight) {
+            await pline_mon(mtmp, `${Monnam(mtmp)} is caught in ${a_your} spider web.`);
+            seetrap(trap);
+        }
+        mtmp.mtrapped = tear_web ? 0 : 1;
+        if (tear_web) {
+            if (in_sight)
+                await pline_mon(mtmp, `${Monnam(mtmp)} tears through ${a_your} spider web!`);
+            deltrap_local(trap);
+            newsym(mtmp.mx, mtmp.my);
+        }
+        return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     default:
         // Trap type not yet modeled for monsters.  Consume no RNG and let the
@@ -2824,15 +2965,16 @@ export function mon_allowflags(mtmp) {
     const can_unlock = (can_open && monhaskey(mtmp, true)) || !!mtmp.iswiz || is_rider(ptr);
     const doorbuster = is_giant(ptr);
     let can_tunnel = tunnels(ptr) && !Is_rogue_level();
-    const Conflict = false; // not modeled
+    const cf = Conflict();
     if (can_tunnel && needspick(ptr)
-        && ((!mtmp.mpeaceful || Conflict)
+        && ((!mtmp.mpeaceful || cf)
             && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8))
         can_tunnel = false;
 
     if (mtmp.mtame) allowflags |= ALLOW_M | ALLOW_TRAPS | ALLOW_SANCT | ALLOW_SSM;
     else if (mtmp.mpeaceful) allowflags |= ALLOW_SANCT | ALLOW_SSM;
-    else allowflags |= ALLOW_U; // (Conflict-driven ALLOW_U for a hostile-to-all mon: not modeled)
+    else allowflags |= ALLOW_U;
+    if (cf && !resist_conflict(mtmp)) allowflags |= ALLOW_U;
     if (mtmp.isshk) allowflags |= ALLOW_SSM;
     if (mtmp.ispriest) allowflags |= ALLOW_SSM | ALLOW_SANCT;
     if (passes_walls(ptr)) allowflags |= ALLOW_WALL;
@@ -3285,8 +3427,14 @@ async function m_move(mtmp) {
                 await meatobj(mtmp);
             }
         }
+        // C ref: monmove.c:1680 — `if (mpickstuff(mtmp)) mmoved = MMOVE_DONE;`.
+        // Picking an object up SPENDS the monster's turn, so dochug's PHASE FOUR
+        // gate (monmove.c:966) skips mattacku().  Discarding the result let the
+        // same monster loot AND attack in one turn (a phantom "wields" line over
+        // C's "picks up" line).  Draws no RNG, so rngstep cannot see it.
+        let pickedUp = false;
         if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove)
-            await mpickstuff(mtmp);
+            pickedUp = await mpickstuff(mtmp);
         // C ref: monmove.c postmov():1690 — maybe_spin_web sits between the
         // pickup block and the re-hide block, for MMOVE_MOVED and MMOVE_DONE
         // alike.  Its rn2(1000) fires on every completed spider move.
@@ -3306,7 +3454,7 @@ async function m_move(mtmp) {
             if (doHide) await hideunder(mtmp);
             newsym(nix, niy); // C ref: monmove.c:1698
         }
-        return MMOVE_MOVED;
+        return pickedUp ? MMOVE_DONE : MMOVE_MOVED;   // C: monmove.c:1680
     }
     return MMOVE_NOTHING;
 }
@@ -3683,8 +3831,7 @@ async function phase_four(mtmp, mdat, status, inrange, nearby, scared, panicattk
     const u = game.u;
     // C ref monmove.c:967 — Standard Attacks.  status != MMOVE_DONE (we never
     // reach that for the modeled monsters) and the monster is hostile.
-    const conflictAttack = false; /* Conflict not modeled for our sessions */
-    if (status !== MMOVE_DONE && (!mtmp.mpeaceful || conflictAttack)) {
+    if (status !== MMOVE_DONE && (!mtmp.mpeaceful || (Conflict() && !resist_conflict(mtmp)))) {
         const uhp = u?.uhp ?? 1;
         if (((inrange && !scared) || panicattk) && !noattacks(mdat) && uhp > 0) {
             if (await mattacku(mtmp, mdat)) return 1; /* monster died (rare) */
@@ -3993,7 +4140,7 @@ function leppie_avoidance(_mtmp) { return false; }
 // The hero is never invisible or underwater in these slices, so this reduces
 // to couldsee(m->mx, m->my); the full expression is written for faithfulness.
 // No RNG.
-function m_canseeu(m) {
+export function m_canseeu(m) {
     const notInvis = !Invis() || perceives(m.data);
     return notInvis && !Underwater() && couldsee(m.mx, m.my);
 }
@@ -4475,7 +4622,14 @@ async function mpickstuff(mtmp) {
             // ("You feel less confused now.") shares the line.
             if (cansee(mtmp.mx, mtmp.my) && game.flags?.verbose) {
                 const { distant_doname } = await import('./invent.js');
-                await update_topl(`${Monnam(mtmp)} picks up ${distant_doname(otmp)}.`);
+                // C ref: objnam.c distant_name() — `far` is
+                // !(obj->oartifact || distu(x,y) <= (BOLT_LIM^2)*2 - BOLT_LIM)
+                // with the xray_range widening; ours always named it in full.
+                const _r = (game.u?.xray_range > 2) ? game.u.xray_range : 2;
+                const _neardist = (_r * _r) * 2 - _r;
+                const _dx = mtmp.mx - (game.u?.ux ?? 0), _dy = mtmp.my - (game.u?.uy ?? 0);
+                const _far = !(otmp.oartifact || (_dx * _dx + _dy * _dy) <= _neardist);
+                await update_topl(`${Monnam(mtmp)} picks up ${distant_doname(otmp, _far)}.`);
             }
             // C ref: mon.c:1901 obj_extract_self(otmp3) — the split fragment was
             // never inserted into our floor array, so only the whole-stack case
@@ -4640,7 +4794,11 @@ function can_track(ptr) { return haseyes(ptr); }
 // invisible (a generic bite instead of AD_SITM/AT_MAGC/AT_SPIT).
 function mon_attacks(mdat) {
     if (!mdat) return [];
-    return mattk_of(mdat);
+    // resolve by NAME (mhitm.js permonst() convention) — dog.js pet records
+    // carry a non-makemon pmidx (pony=102 == gray unicorn).
+    const p = _name_to_pmidx_cf(mdat.name);
+    const rec = (p >= 0) ? _monster_by_pmidx_cf(p) : null;
+    return mattk_of(rec || mdat);
 }
 
 // C ref: mhitu.c:489 mattacku(mtmp) — a monster attacks the hero.  Returns 1
@@ -4656,7 +4814,7 @@ function mon_attacks(mdat) {
 // monster IS adjacent and found the hero, the to-hit rnd(20+i) is rolled and
 // hitmu/missmu resolve it — hitmu damage isn't modeled yet, so a *successful*
 // adjacent hit declines further RNG (clean divergence, never a silent desync).
-async function mattacku(mtmp, mdat) {
+export async function mattacku(mtmp, mdat) {
     const u = game.u;
 
     // calc_mattacku_vars: range2/foundyou from the APPARENT position (mux/muy).
@@ -4689,7 +4847,10 @@ async function mattacku(mtmp, mdat) {
     const acval = (uac >= 0) ? uac : -rnd(-uac);
     let tmp = acval + 10;
     tmp += (mtmp.m_lev ?? mdat?.mlevel ?? 0);
-    if ((u.multi ?? 0) < 0) tmp += 4;
+    // C ref: mhitu.c:711 `if (gm.multi < 0) tmp += 4;` — the port keeps the
+    // occupation counter in game.multi; u.multi is written NOWHERE in js/, so
+    // the +4 against a helpless hero never applied.
+    if ((game.multi ?? 0) < 0) tmp += 4;
     if (!mtmp.mcansee) tmp -= 2;
     if (mtmp.mtrapped) tmp -= 2;
     if (tmp <= 0) tmp = 1;
@@ -5272,7 +5433,7 @@ function u_catch_thrown_obj(otmp) {
 // landing on the hero.  Rolls dieroll = rnd(20); hits when u.uac + tlev >
 // dieroll.  On a hit: "You are hit by <a crude dagger>!"; then losehp(dam) +
 // exercise(A_STR, FALSE).  Returns 1 on a hit (the missile stops), 0 on a miss.
-async function thitu(tlev, dam, otmp) {
+export async function thitu(tlev, dam, otmp) {
     const { update_topl } = await import('./display.js');
     const { exercise } = await import('./attrib.js');
     const u = game.u;
@@ -5304,7 +5465,8 @@ async function thitu(tlev, dam, otmp) {
     // You("are hit%s", exclam(dam)) (terse).
     if (terse) await update_topl(`You are hit${exclam(dam)}`);
     else await update_topl(`You are hit by ${an_name(onm)}${exclam(dam)}`);
-    // losehp(dam) [no RNG] then exercise(A_STR, FALSE) [rn2(2)].
+    // C ref: mthrowu.c thitu() — losehp(dam, killer_xname(obj), KILLED_BY).
+    game._killer_name = `killed by ${an_name(mshot_xname(otmp))}`;
     await mdamageu(null, dam);
     exercise(0 /*A_STR*/, false);
     return 1;
@@ -5736,7 +5898,7 @@ function m_throw_single(mon, otmp) {
 // m_throw_potion path, which still settles its missile through m_useup_thrown.
 function drop_thrown_missile(mon, otmp, x, y, ohit) {
     let broken = false;
-    if (ohit && is_missile_otyp(otmp.otyp)) {
+    if (ohit) {
         broken = should_mulch_missile(otmp); // rn2(3) for a fresh dart
     }
     if (mon?.minvent) {
@@ -5756,7 +5918,11 @@ function drop_thrown_missile(mon, otmp, x, y, ohit) {
 // 3 + 0 - 0 = 3 -> broken = rn2(3) (truthy ~2/3 of the time).  The blessed /
 // gem-tough refinements don't apply to a plain dart.
 function should_mulch_missile(obj) {
-    if (!obj || !is_missile_otyp(obj.otyp)) return false;
+    if (!obj) return false;
+    const sk = OBJECTS[obj.otyp]?.oc_skill ?? 0;
+    const isammo = (obj.oclass === 2 || obj.oclass === GEM_CLASS) && sk >= -22 && sk <= -20;
+    const ismis = (obj.oclass === 2 || obj.oclass === 6) && sk >= -25 && sk <= -23;
+    if (!(isammo || ismis) || obj.otyp === BOOMERANG_OTYP || OBJECTS[obj.otyp]?.oc_magic) return false;
     const erosion = Math.max(obj.oeroded | 0, obj.oeroded2 | 0);
     const chance = 3 + erosion - (obj.spe | 0);
     let broken = chance > 1 ? (rn2(chance) !== 0) : (rn2(4) === 0);

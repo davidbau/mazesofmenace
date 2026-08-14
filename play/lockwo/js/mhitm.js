@@ -551,7 +551,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         else
             be_sad = !!mdef.mtame;
         // monster killed (monkilled -> mondied -> corpse_chance, then grow_up).
-        killMonster(mdef);
+        await killMonster(mdef);
         if (be_sad) await emitMMmsg('You have a sad feeling for a moment.');
         if (hitflags === M_ATTK_AGR_DIED)
             return (M_ATTK_DEF_DIED | M_ATTK_AGR_DIED);
@@ -612,7 +612,7 @@ function is_pool(x, y) {
 // mondied() -> mondead() [detach] then, if corpse_chance() succeeds and the
 // square is accessible (or a pool), make_corpse() which rolls next_ident,
 // rndmonnum and the corpse-timeout sequence.
-function killMonster(mdef) {
+async function killMonster(mdef) {
     mdef.mhp = 0;
     // C ref: mon.c mondead() — "if (glyph_is_invisible(...)) unmap_object(...)"
     // runs before m_detach.  A defender killed this same attack may have just
@@ -635,6 +635,9 @@ function killMonster(mdef) {
         const idx = list.indexOf(mdef);
         if (idx >= 0) list.splice(idx, 1);
     }
+    // C ref: mon.c m_detach(due_to_death) -> relobj(mtmp, 1, FALSE) — the dead
+    // monster's inventory hits the floor BEFORE the corpse, so it sits under it.
+    { const { relobj } = await import('./uhitm.js'); relobj(mdef, mx, my); }
     // C ref: mon.c mondied — make_corpse only when corpse_chance passed AND the
     // square can hold a corpse (accessible terrain or a pool).
     if (dropCorpse && mx > 0 && my >= 0 && (accessible(mx, my) || is_pool(mx, my)))
@@ -808,7 +811,7 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
             await emitMMmsg(`${Monnam(magr)} is ${nonliving(magr) ? 'destroyed' : 'killed'}!`);
         else
             be_sad = !!magr.mtame;
-        killMonster(magr);
+        await killMonster(magr);
         if (be_sad) await emitMMmsg('You have a sad feeling for a moment.');
         return (mdead | mhit | M_ATTK_AGR_DIED);
     }
@@ -1080,16 +1083,6 @@ export async function mattackm(magr, mdef) {
                 // possibly_unwield(magr, FALSE) — only fires for a monster
                 // wielding something that isn't a weapon; not modelled.
                 mwep = MON_WEP_MM(magr);
-                if (!mwep && !(magr.minvent || []).length)
-                    // PORT GAP, not C: makemon.js m_initweap() only covers
-                    // S_KOBOLD/S_ORC/S_ANGEL, so every other is_armed() species
-                    // reaches melee with an empty minvent and swings bare-handed
-                    // here — drawing an rnd(20) that C spends WIELDING the weapon
-                    // m_initweap gave it (mon_wield_item != 0 -> M_ATTK_MISS).
-                    // Declining reproduces C's wield turn; leaving it out
-                    // measured -1 public (seed0383 step 211, a gnome).  Remove
-                    // once m_initweap covers the class.
-                    return M_ATTK_MISS;
                 if (mwep) {
                     if (mm_visible(magr, mdef)) await mswingsm(magr, mdef, mwep);
                     tmp += hitval_mm(mwep, mdef);      // mhitm.c:412

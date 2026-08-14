@@ -1812,8 +1812,13 @@ async function mbhitm(mtmp, otmp, hits_you) {
                 if (Half_spell_damage_muse()) tmp = Math.trunc((tmp + 1) / 2);
                 const u = game.u;
                 u.uhp -= tmp;
-                if (u.uhp < 1) u.uhp = 0;
                 learnit = true;
+                if (u.uhp < 1) {
+                    const endm = await import('./end.js');
+                    await update_topl('You die...');
+                    game._killer_name = 'killed by a wand';
+                    await endm.done(0 /*DIED*/);
+                }
             } else {
                 await update_topl('The wand misses you.');
             }

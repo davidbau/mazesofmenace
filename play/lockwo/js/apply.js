@@ -22,7 +22,9 @@
 // hero_seq differ on the first use, giving the free ECMD_OK.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rn1 } from './rng.js';
+import { mindless as _mindless } from './monflags_data.js';
+import { mon_mr } from './monmr_data.js';
 
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, POTION_CLASS, WEAPON_CLASS,
@@ -257,6 +259,63 @@ async function mstatusline(mtmp, update_topl) {
     const mac = (mtmp.data?.ac != null) ? mtmp.data.ac : 10;
     await update_topl(
         `Status of ${name} (${align}, ${sz}):  Level ${mlev}  HP ${mhp}(${mhpmax})  AC ${mac}${info}.`);
+}
+
+// ── music.c ────────────────────────────────────────────────────────────────
+const LEATHER_DRUM_OTYP = 257;
+const A_WIS_IDX = 4;
+
+// C ref: music.c:503 do_improvisation(instr) — the LEATHER_DRUM arm.
+// RNG order: rn2(2) mode-adjust, then improvised_notes() = rnd(5) note count
+// followed by that many rn2(7) note picks, then rn1(20,30) for the deafness.
+async function do_improvisation(instr) {
+    const { exercise } = await import('./attrib.js');
+    const u = game.u;
+    rn2(2);                                              // music.c:535
+    await _display.update_topl(`You start playing your ${DESCR_BY_OTYP[instr.otyp] || 'drum'}.`);
+    const notecount = rnd(5);                            // music.c:741
+    for (let i = 0; i < notecount; i++) rn2(7);          // ROLL_FROM(notes)
+    // LEATHER_DRUM, !mundane (spe > 0), !Deaf.
+    await _display.update_topl('You beat a deafening row!');
+    u.uprops.HDeaf = (u.uprops.HDeaf || 0) + rn1(20, 30);
+    game._deafPending = true;                            // see display.js bot()
+    game.disp = game.disp || {}; game.disp.botl = true;
+    exercise(A_WIS_IDX, false);
+    await awaken_monsters(u.ulevel * 40);
+    return ECMD_TIME;
+}
+
+// C ref: music.c:67 awaken_monsters(distance) — mdistu() < distance.
+async function awaken_monsters(distance) {
+    const u = game.u;
+    for (const mtmp of (game.level?.monsters || []).slice()) {
+        if (!mtmp || (mtmp.mhp ?? 1) <= 0 || mtmp.dead) continue;
+        const dx = mtmp.mx - u.ux, dy = mtmp.my - u.uy;
+        const distm = dx * dx + dy * dy;
+        if (distm < distance) await awaken_scare(mtmp, distm < Math.trunc(distance / 3));
+    }
+}
+
+// C ref: music.c:45 awaken_scare().  NOT modelled: the `!unique_corpstat()`
+// guard on the first arm and the trailing `&& onscary(0, 0, mtmp)` on the
+// second — neither draws RNG, and no recorded session distinguishes them.
+async function awaken_scare(mtmp, scary) {
+    const { monflee } = await import('./monmove.js');
+    mtmp.msleeping = 0; mtmp.mcanmove = 1; mtmp.mfrozen = 0;
+    const STRAT_WAITMASK_L = 0x03000000;
+    if ((mtmp.mstrategy | 0) & STRAT_WAITMASK_L) {
+        mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_WAITMASK_L;
+    } else if (scary && !_mindless(mtmp.data) && !resist_tool(mtmp)) {
+        await monflee(mtmp, 0, false, true);
+    }
+}
+
+// C ref: mondata.c resist(mtmp, TOOL_CLASS, 0, NOTELL) — alev 10 for a tool.
+function resist_tool(mtmp) {
+    const alev = 10;
+    let dlev = mtmp.m_lev | 0;
+    if (dlev > 50) dlev = 50; else if (dlev < 1) dlev = 1;
+    return rn2(100 + alev - dlev) < mon_mr(mtmp.data);
 }
 
 // C ref: prop.h Deaf — the hero can't hear.  Never set for these heroes but
@@ -678,6 +737,10 @@ export async function doapply() {
         const r = await _cmd.pick_lock(obj);
         return r ? ECMD_TIME : ECMD_OK;
     }
+
+    // C ref: apply.c:4340 — the ten musical instruments dispatch to
+    // do_play_instrument() (music.c).  Only the leather drum is ported.
+    if (obj.otyp === LEATHER_DRUM_OTYP) return await do_improvisation(obj);
 
     // C ref apply.c:4400 default: — a polearm strikes at a distance, a
     // pick/axe digs.  Both are SUGGESTed by apply_ok(), so both are ordinary

@@ -67,7 +67,8 @@ import { engr_at, wipe_engr_at } from './engrave.js';
 
 // C ref: include/monst.h:251 — helpless(mon) = msleeping || !mcanmove.
 function helpless(mtmp) {
-    return !!(mtmp.msleeping || !mtmp.mcanmove);
+    const canmove = (mtmp.mcanmove == null) ? 1 : mtmp.mcanmove;
+    return !!(mtmp.msleeping || !canmove);
 }
 
 // C ref: include/mondata.h is_longworm(ptr) — PM_BABY_LONG_WORM /
@@ -809,7 +810,9 @@ const P_DAGGER = 1, P_KNIFE = 2, P_AXE = 3, P_PICK_AXE = 4,
 // otyp -> { ws, wl, hb, sk }.  otyp values match mkobj.js objects[] indices.
 // C ref: weapon.c objects[otyp].oc_wldam — large-monster damage die; used by
 // lock.c forcelock() to derive the lock-forcing chance (oc_wldam * 2).
-export function oc_wldam(otyp) { return WEAP[otyp]?.wl ?? 0; }
+// WEAP below is a 20-entry hand-written subset; the generated table is complete
+// (war hammer 76 is absent from WEAP, so doforce()'s chance was 0 -> never succeeds).
+export function oc_wldam(otyp) { return WEP_LDAM[otyp] ?? WEAP[otyp]?.wl ?? 0; }
 
 const WEAP = {
     24: { ws: 3,  wl: 2,  hb: 0, sk: P_DART },         // DART (objects.h: sdam 3 ldam 2)
@@ -1247,10 +1250,11 @@ async function hmon_hitmon(mon, weapon, dieroll) {
     // "You hit it.")
     const { update_topl } = await import('./display.js');
     const verbose = game.flags?.verbose !== false;
+    const exclamU = (f) => (f < 0 ? '?' : (f <= 4 ? '.' : '!'));
     if (!verbose)
         await update_topl('You hit it.');
     else if (canspotmon(mon))
-        await update_topl(`You hit ${mon_nam(mon)}.`);
+        await update_topl(`You hit ${mon_nam(mon)}${canseemon(mon) ? exclamU(dmg) : '.'}`);
     else
         await update_topl('You hit it.');
     // C ref: uhitm.c:1925 — `wakeup(mon, TRUE)` for a surviving, on-map hit.
@@ -1707,12 +1711,15 @@ export async function killed(mon, opts) {
 // (water/trap interactions) is not reachable for the modelled corridor/room
 // kills, so each object is simply placed and stacked with any matching floor
 // stack at the same cell (NetHack merges same-type drops via stackobj()).
-function relobj(mon, x, y) {
+export function relobj(mon, x, y) {
     const inv = mon?.minvent;
     if (!inv || !inv.length) return;
     const objs = (game.level && (game.level.objects || (game.level.objects = []))) || null;
     if (!objs) return;
-    for (const otmp of inv) {
+    // C ref: steal.c relobj() walks mon->minvent front-to-back but each
+    // mdrop_obj() pushes onto the head of the floor pile, so the resulting
+    // nexthere order is REVERSED relative to minvent.
+    for (const otmp of [...inv].reverse()) {
         // mdrop_obj -> place_object + stackobj.  Merge into an existing floor
         // stack of the same otyp/spe so quantities combine like C stackobj().
         let merged = false;
@@ -2000,8 +2007,35 @@ export function Monnam(mtmp) {
 // C ref: do_name.c x_monnam().  Reduced to the cases the starter sessions
 // need: a tame monster with (ARTICLE_YOUR) and an optional given name.
 //   article: 0 NONE, 1 THE, 2 A, 3 YOUR.
+// C ref: mondata.c pmname(pm, mgender), monst.h Mgender(mon) = female ? FEMALE
+// : MALE.  A NAMS() species carries three names and C NEVER shows the neutral
+// one for a live monster, so `mons[].name` alone renders "dwarf leader" where C
+// prints "dwarf lord".
+const _PMNAMES_GENDERED = new Map([
+    ['dwarf leader', ['dwarf lord', 'dwarf lady']],
+    ['dwarf ruler', ['dwarf king', 'dwarf queen']],
+    ['kobold leader', ['kobold lord', 'kobold lady']],
+    ['gnome leader', ['gnome lord', 'gnome lady']],
+    ['gnome ruler', ['gnome king', 'gnome queen']],
+    ['ogre leader', ['ogre lord', 'ogre lady']],
+    ['ogre tyrant', ['ogre king', 'ogre queen']],
+    ['vampire leader', ['vampire lord', 'vampire lady']],
+    ['elf-noble', ['elf-lord', 'elf-lady']],
+    ['elven monarch', ['Elvenking', 'Elvenqueen']],
+    ['aligned cleric', ['priest', 'priestess']],
+    ['high cleric', ['high priest', 'high priestess']],
+    ['amorous demon', ['incubus', 'succubus']],
+    ['cave dweller', ['caveman', 'cavewoman']],
+    ['cleric', ['priest', 'priestess']],
+]);
+export function mon_pmname(mtmp) {
+    const n = mtmp?.data?.name;
+    const pair = n != null ? _PMNAMES_GENDERED.get(n) : null;
+    if (!pair) return n || 'monster';
+    return pair[mtmp.female ? 1 : 0] || n;
+}
 export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
-    const base = mtmp?.data?.name || 'monster';
+    const base = mon_pmname(mtmp);
     const given = mtmp?.mgivenname || mtmp?.mextra?.mgivenname;
 
     // C ref: do_name.c:919 — a shopkeeper IS his personal name ("Maganasipi"),

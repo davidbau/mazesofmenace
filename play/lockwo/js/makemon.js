@@ -2580,7 +2580,8 @@ function urace_masks() {
     switch (adj) {
     case 'elven': case 'elf':
         return { lovemask: M2_ELF, hatemask: M2_ORC };
-    case 'dwarvish': case 'dwarf':
+    // roles.js races[].adj for dwarf is 'dwarven', so 'dwarvish' alone never matched.
+    case 'dwarvish': case 'dwarven': case 'dwarf':
         return { lovemask: M2_DWARF | M2_GNOME, hatemask: M2_ORC };
     case 'gnomish': case 'gnome':
         return { lovemask: M2_DWARF | M2_GNOME, hatemask: M2_HUMAN };
