@@ -1280,7 +1280,7 @@ function truncate_to_map(cx, cy, dx, dy) {
 // the DISPLAYED cell identity (char + colour + DEC-graphics flag) stands in.
 function gp_glyph_at(x, y) {
     const loc = game.level?.at(x, y);
-    if (!loc) return ' ';
+    if (!loc) return ' ';
     return `${loc.disp_ch ?? ' '}|${loc.disp_color ?? -1}|${loc.disp_decgfx ? 1 : 0}`;
 }
 

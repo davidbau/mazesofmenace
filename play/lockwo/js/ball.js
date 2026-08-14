@@ -20,7 +20,7 @@ import { newsym } from './display.js';
 import { place_object } from './mkobj.js';
 import { t_at } from './trap.js';
 import { IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, is_pit, is_hole, POOL,
-         SLT_ENCUMBER } from './const.js';
+         DRAWBRIDGE_UP, SLT_ENCUMBER } from './const.js';
 
 // C ref: you.h — bit masks for u.bc_felt and the bc_control argument.
 export const BC_BALL = 0x01;
@@ -43,6 +43,12 @@ function remove_object(obj) {
 }
 
 const at = (x, y) => game.level?.at(x, y) || null;
+// C ref: rm.h IS_POOL(typ) — POOL <= typ <= DRAWBRIDGE_UP (pool, moat, water,
+// raised drawbridge), which is what ball.c's is_pool() tests.
+function IS_POOL_AT(x, y) {
+    const typ = at(x, y)?.typ;
+    return typ != null && typ >= POOL && typ <= DRAWBRIDGE_UP;
+}
 // C ref: ball.c IS_CHAIN_ROCK(x,y) — the chain may never be moved into solid
 // rock or a closed/locked door.
 function IS_CHAIN_ROCK(x, y) {
@@ -81,12 +87,39 @@ function bc_order() {
 
 // C ref: ball.c placebc() — put the pair down on the hero's square.  Ball
 // first so the chain lands on top (u.bc_order = BCPOS_CHAIN).
+// NOT ported: the two flooreffects() calls (chain/ball "might rust").  They can
+// only bite over water/lava/a pit, and every recorded placebc() lands on room
+// floor; flooreffects() itself is not modelled.
 export function placebc() {
     const u = game.u;
     if (!u?.uball || !u?.uchain) return;
-    if (!carried(u.uball)) place_object(u.uball, u.ux, u.uy);
+    if (carried(u.uball)) {
+        u.bc_order = BCPOS_DIFFER;
+    } else {
+        place_object(u.uball, u.ux, u.uy);
+        u.bc_order = BCPOS_CHAIN;
+    }
     place_object(u.uchain, u.ux, u.uy);
     newsym(u.ux, u.uy);
+}
+
+// C ref: ball.c unplacebc_core() — lift the pair OFF the map (they stay owned by
+// the hero; where becomes OBJ_FREE).  Used by goto_level(): the ball and chain
+// must leave the departing level's object list before it is saved, or they stay
+// behind at the old coordinates and placebc() on arrival has nothing to undo.
+// The u.uswallow arm is waterlevel-only in C and is not reachable here.
+// (Blind's bc_felt glyph bookkeeping is not ported — see move_bc.)
+export function unplacebc() {
+    const u = game.u;
+    if (!u?.uball || !u?.uchain) return;
+    if (u.uswallow) return; /* ball&chain not unplaced while swallowed */
+    if (!carried(u.uball)) {
+        remove_object(u.uball);
+        newsym(u.uball.ox, u.uball.oy);
+    }
+    remove_object(u.uchain);
+    newsym(u.uchain.ox, u.uchain.oy);
+    u.bc_felt = 0; /* feel nothing */
 }
 
 // C ref: ball.c move_bc(before, control, ballx, bally, chainx, chainy) — the
@@ -259,10 +292,15 @@ export async function drag_ball(x, y, allow_drag = true) {
     }
 
     // ── drag: ────────────────────────────────────────────────────────────────
-    const { near_capacity } = await import('./invent.js');
+    const { near_capacity, inventoryArray } = await import('./invent.js');
     if (near_capacity() > SLT_ENCUMBER && dist2(x, y, u.ux, u.uy) <= 2) {
         const { update_topl } = await import('./display.js');
-        const has_invent = (game.u?.invent || []).length > 0;
+        // C: `gi.invent ? "carry all that and also " : ""`.  The hero's pack is
+        // game.invent / game.gi.invent (invent.js inventoryArray()), never
+        // game.u.invent — reading the latter made this read "You cannot drag
+        // the heavy iron ball." for a hero who is by definition carrying enough
+        // to be over SLT_ENCUMBER.
+        const has_invent = inventoryArray().length > 0;
         await update_topl(`You cannot ${has_invent ? 'carry all that and also ' : ''}drag the heavy iron ball.`);
         nomul0();
         return null;
@@ -273,20 +311,33 @@ export async function drag_ball(x, y, allow_drag = true) {
     // never fired; it is ported for the geometry, minus the hmon() attack on a
     // monster standing where the hero gets yanked (which needs the full
     // hero-melee damage path).
-    const chainLoc = at(uchain.ox, uchain.oy);
-    const chainPool = !!chainLoc && (chainLoc.typ === POOL);
+    // C ref: ball.c — is_pool() is IS_POOL(typ), i.e. POOL..DRAWBRIDGE_UP, not
+    // just POOL; the extra `typ == POOL || !is_pool(ball) || ball typ == POOL`
+    // clause exempts a chain that merely continues the water the ball is in.
+    const chain_is_pool = IS_POOL_AT(uchain.ox, uchain.oy);
     const chainTrap = t_at(uchain.ox, uchain.oy);
-    if (chainPool || (chainTrap && (is_pit(chainTrap.ttyp) || is_hole(chainTrap.ttyp)))) {
+    if ((chain_is_pool
+         && (at(uchain.ox, uchain.oy)?.typ === POOL
+             || !IS_POOL_AT(uball.ox, uball.oy)
+             || at(uball.ox, uball.oy)?.typ === POOL))
+        || (chainTrap && (is_pit(chainTrap.ttyp) || is_hole(chainTrap.ttyp)))) {
         const { update_topl } = await import('./display.js');
-        await update_topl('You are jerked back by the iron ball!');
-        u.ux = uchain.ox; u.uy = uchain.oy;
-        newsym(u.ux0 ?? u.ux, u.uy0 ?? u.uy);
-        nomul0();
-        bc_control = BC_BALL;
-        move_bc(1, bc_control, ballx, bally, chainx, chainy);
-        ballx = uchain.ox; bally = uchain.oy;
-        move_bc(0, bc_control, ballx, bally, chainx, chainy);
-        return null;
+        // C ref: ball.c — a levitating hero is not yanked: it only feels a tug
+        // (and the pit becomes seen), then FALLS THROUGH to the drag code below.
+        if (game.u?.uprops?.Levitation) {
+            await update_topl('You feel a tug from the iron ball.');
+            if (chainTrap) chainTrap.tseen = 1;
+        } else {
+            await update_topl('You are jerked back by the iron ball!');
+            u.ux = uchain.ox; u.uy = uchain.oy;
+            newsym(u.ux0 ?? u.ux, u.uy0 ?? u.uy);
+            nomul0();
+            bc_control = BC_BALL;
+            move_bc(1, bc_control, ballx, bally, chainx, chainy);
+            ballx = uchain.ox; bally = uchain.oy;
+            move_bc(0, bc_control, ballx, bally, chainx, chainy);
+            return null;
+        }
     }
 
     bc_control = BC_BALL | BC_CHAIN;

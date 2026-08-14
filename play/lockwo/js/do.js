@@ -37,12 +37,13 @@ import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
 import { seetrap, dotrap } from './trap.js';
 import { check_special_room } from './shkroom.js';
-import { near_capacity, sobj_at } from './invent.js';
-import { BOULDER } from './mkobj.js';
+import { near_capacity } from './invent.js';
+import { BOULDER, run_object_timers } from './mkobj.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { olfaction } from './eat.js';
+import { placebc, unplacebc } from './ball.js';
 
 // C ref: dungeon.c level_difficulty() — factor of difficulty from depth,
 // bumped in a "builds up" branch (Sokoban / Vlad's Tower) to compensate for
@@ -497,6 +498,19 @@ async function Norep_do(msg) {
     await update_topl(msg);
 }
 
+// C ref: mkobj.c sobj_at(otyp, x, y).  NOT js/invent.js's sobj_at: that one
+// indexes game.level.objects as a 2-D `[x][y]` grid while place_object() keeps
+// it as a FLAT push-ordered array, so it answered null for every square and
+// silently disabled the boulder test in climb_pit() below (js/muse.js keeps the
+// same private copy for the same reason).  Boolean use only, so pile order
+// doesn't matter.
+function sobj_at(otyp, x, y) {
+    for (const o of game.level?.objects ?? [])
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === otyp)
+            return o;
+    return null;
+}
+
 // C ref: trap.c climb_pit() — what '<' does when the hero is caught in a pit.
 // The rn2(2) is ALWAYS drawn (C evaluates `!rn2(2) && sobj_at(...)` left to
 // right), so this is not an RNG-free branch even when there is no boulder.
@@ -550,7 +564,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const g = game;
     const u = g.u;
     g._goto_familiar = false;
-    g._goto_familiar_msg = null;
 
     // C ref: do.c goto_level():1503 — a destination past the bottom of its own
     // dungeon is clamped BEFORE anything reads it, so `up`, `newdungeon`, the
@@ -594,6 +607,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C ref: do.c:1615 check_special_room(TRUE) — clears u.urooms/u.ushops for
     // the level being left so the arrival scan below sees a clean slate.
     await check_special_room(true);
+
+    // C ref: do.c:1616-1617 `if (Punished) unplacebc();` — lift the ball and
+    // chain off the DEPARTING level, before it is stashed below, so placebc()
+    // can put them back down on the arrival square.  Without this pair they stay
+    // linked into the old level's object list at the old coordinates: the
+    // arrival square holds nothing, so goto_level's closing pickup(1) draws no
+    // "Things that are here:" menu (seed4500 step 772) and the first move on the
+    // new level takes drag_ball()'s teleport arm instead of "nothing moved".
+    if (Punished_do()) unplacebc();
 
     // C ref: do.c:1618-1623 — reset_utrap(FALSE); fill_pit(u.ux, u.uy);
     // set_ustuck(0) (clears u.ustuck AND u.uswallow); set_uinwater(0);
@@ -856,8 +878,22 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         if (falling) do_fall_dmg = true;
     }
 
+    // C ref: do.c:1813-1814 `if (Punished) placebc();` — immediately after the
+    // three arrival arms and BEFORE obj_delivery()/losedogs()/run_timers(), so
+    // the ball and chain are the FIRST things on the arrival square's pile.
+    // Position matters: at goto_level's tail instead (after losedogs) the pile
+    // order is wrong and seed4500 loses 4 steps to gain 2.
+    if (Punished_do()) placebc();
+
     // Bring the pet(s) along.  C ref: do.c goto_level() -> losedogs().
     losedogs_place(kept);
+
+    // C ref: do.c:1821 run_timers() — "expire all timers that have gone off
+    // while away; must be after migrating monsters and objects are delivered".
+    // A revisited level's corpses have kept rotting in the JS per-ledger store
+    // exactly as C's saved timers do, so without this they linger on the map
+    // until the arrival turn's own nh_timeout.  ROT_CORPSE draws no RNG.
+    run_object_timers();
 
     // C ref: do.c goto_level() ~1827 — the hero might be arriving at a spot that
     // now holds a monster (commonly the pet that accompanied the hero and landed
@@ -874,36 +910,35 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // recorder captured is unaffected; this only paints the destination map
     // that the hero now stands on (otherwise the screen stays blank after a
     // level change).
-    // C ref: do.c:1976 check_special_room(FALSE) — "give room entrance message,
-    // if any" for the square the hero arrived on.  In C this is one of the LAST
-    // things goto_level() does, i.e. after maybe_lvltport_feedback()'s "You
-    // materialize on a different level!" and the familiar/Knox/temperature
-    // lines.  This port emits those from goto_level's CALLER, so a level-
-    // teleport caller sets _goto_defer_arrival and runs the room-entry check
-    // itself once its messages are on the top line; otherwise the shop greeting
-    // prints first and the arrival message immediately clobbers it.
-    if (g._goto_defer_arrival) g._goto_pending_room_entry = true;
-    else await check_special_room(false);
-
     game.vision_full_recalc = 0;
     vision_reset();
     vision_recalc(0);
     await docrt();
     await flush_screen(-1);
 
+    // C ref: do.c:1843-1845 — `if (gd.dfr_post_msg) maybe_lvltport_feedback();`
+    // is the FIRST message after the screen reset, i.e. before the Gehennom /
+    // familiar / arrival lines, before check_special_room(FALSE)'s shop greeting
+    // and before the closing pickup(1).  The caller stashes the text (there is
+    // no gd.dfr_post_msg here) and this delivers it at C's position; emitting it
+    // from the caller instead put it AFTER pickup(1)'s "You see here ..." line
+    // (w3-human-knight-debug step 131 shows the two in the opposite order).
+    if (g._goto_post_msg) {
+        const pmsg = g._goto_post_msg;
+        g._goto_post_msg = null;
+        await update_topl(pmsg);
+    }
+
     // C ref: do.c goto_level() ~1861 — "Check whether we just entered
     // Gehennom."  No RNG.  Fires once, the first time In_hell flips from
     // false to true (the Valley of the Dead is Gehennom's own entry level).
-    g._goto_valley_msg = null;
     if (!In_hell(u.uz0) && In_hell(u.uz) && Is_valley(u.uz)) {
-        g._goto_valley_msg = [
-            'You arrive at the Valley of the Dead...',
-            'The odor of burnt flesh and decay pervades the air.',
-        ];
+        await update_topl('You arrive at the Valley of the Dead...');
+        await update_topl('The odor of burnt flesh and decay pervades the air.');
         // C ref: pline.c You_hear() — gated on Deaf/acoustics (unlike the two
         // plines above, which always print).
         if (!game.u?.Deaf && game.flags?.acoustics !== false)
-            g._goto_valley_msg.push('You hear groans and moans everywhere.');
+            await update_topl('You hear groans and moans everywhere.');
     }
     // C ref: do.c:1876 — "in case we've managed to bypass the Valley's stairway
     // down": ANY Gehennom level other than the Valley marks the gate as already
@@ -916,58 +951,53 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         u.uevent.gehennom_entered = 1;
     }
 
-    // C ref: do.c:1897 — arriving in Fort Ludios trips the alarm: two plines
-    // AND every monster on the level is woken (msleeping = 0).  A sleeping
-    // monster is skipped by dochug() before it can draw, so waking the level
-    // changes the very next monster-movement pass's RNG.  The messages are
-    // stashed like the Valley pair because C emits them after
-    // familiar_level_msg() and before temperature_change_msg().
-    // C re-arms it on every visit unless Croesus has died
-    // (`new || !svm.mvitals[PM_CROESUS].died`); mvitals is not modelled here and
-    // Croesus can only die on this level, so the alarm always sounds.
-    g._goto_knox_msg = null;
-    if (Is_knox_level(u.uz)) {
-        g._goto_knox_msg = ['You have penetrated a high security area!',
-                            'An alarm sounds!'];
+    // C ref: do.c:1884 `if (familiar) familiar_level_msg();` — its rn2(4) is
+    // drawn here, after the Gehennom check and BEFORE the quest/Knox arrival
+    // block and the Tourist reward-XP block (which can itself draw via
+    // newexplevel() -> pluslvl()).  Nothing between the docrt() above and this
+    // point draws, so the stream position is fixed by this ordering alone.
+    if (g._goto_familiar) {
+        const fmsg = resolve_familiar_msg();
+        if (fmsg) await update_topl(fmsg);
+    }
+
+    // C ref: do.c:1887-1934 — the "special location arrival messages/events"
+    // if/else chain: In_endgame / In_quest -> onquest() / Is_knox -> alarm /
+    // In_mines / In_sokoban / else.  Only the quest and Knox arms have output
+    // here; onquest() draws no RNG (it opens com_pager text windows).
+    if (In_quest(u.uz)) {
+        await onquest(); /* might be reaching locate|goal level */
+    } else if (Is_knox_level(u.uz)) {
+        // C ref: do.c:1897 — arriving in Fort Ludios trips the alarm: two plines
+        // AND every monster on the level is woken (msleeping = 0).  A sleeping
+        // monster is skipped by dochug() before it can draw, so waking the level
+        // changes the very next monster-movement pass's RNG.
+        // C re-arms it on every visit unless Croesus has died
+        // (`new || !svm.mvitals[PM_CROESUS].died`); mvitals is not modelled here
+        // and Croesus can only die on this level, so the alarm always sounds.
+        await update_topl('You have penetrated a high security area!');
+        await update_topl('An alarm sounds!');
         for (const mtmp of g.level?.monsters ?? []) mtmp.msleeping = 0;
     }
 
-    // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature),
-    // called after the familiar-level message and the quest/endgame arrival
-    // block (do.js models both with no visible output for a Gehennom filler
-    // level, so the ordering collapses to: familiar msg, then this).  Every
-    // Gehennom level starts "hot" (mklev.js clear_level_structures) unless its
-    // own generator marks it cold/temperate, so this fires on nearly every
-    // first-time Gehennom arrival.
-    g._goto_temperature_msg = null;
+    // C ref: do.c:1937 temperature_change_msg(prev_temperature), right after the
+    // quest/endgame arrival block.  Every Gehennom level starts "hot" (mklev.js
+    // clear_level_structures) unless its own generator marks it cold/temperate,
+    // so this fires on nearly every first-time Gehennom arrival.
     {
         const newTemperature = g.level?.flags?.temperature ?? 0;
         if (prevTemperature !== newTemperature) {
             if (newTemperature) {
-                const msgs = [`It is ${newTemperature > 0 ? 'hot' : 'cold'} here.`];
-                if (In_hell(u.uz) && newTemperature > 0) {
-                    msgs.push(`You ${olfaction(game.u?.data) ? 'smell' : 'sense'} smoke...`);
-                }
-                g._goto_temperature_msg = msgs;
+                await update_topl(`It is ${newTemperature > 0 ? 'hot' : 'cold'} here.`);
+                if (In_hell(u.uz) && newTemperature > 0)
+                    await update_topl(`You ${olfaction(game.u?.data) ? 'smell' : 'sense'} smoke...`);
             } else if (prevTemperature > 0) {
-                g._goto_temperature_msg = [`The heat ${In_hell(u.uz0) ? 'and smoke are' : 'is'} gone.`];
+                await update_topl(`The heat ${In_hell(u.uz0) ? 'and smoke are' : 'is'} gone.`);
             } else if (prevTemperature < 0) {
-                g._goto_temperature_msg = ['You are out of the cold.'];
+                await update_topl('You are out of the cold.');
             }
         }
     }
-
-    // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` draws
-    // its rn2(4) right here, BEFORE the Tourist reward-XP block below (which
-    // can itself draw RNG via newexplevel()/pluslvl() on a level-up).  The
-    // resolved text is stashed rather than shown immediately: the deferred
-    // "materialize on a different level!" arrival message (emitted by
-    // goto_level()'s caller, after this function returns — see the wiz_level_tele
-    // / run_deferred_lvltport callers) must appear FIRST on screen, exactly as
-    // C's maybe_lvltport_feedback() (called earlier, before this point) does.
-    // Drawing the rn2(4) here and displaying the text later keeps both the RNG
-    // stream position AND the on-screen message order faithful to C.
-    g._goto_familiar_msg = g._goto_familiar ? resolve_familiar_msg() : null;
 
     // C ref: do.c goto_level() — on first entry to a level ("if (new)"), a
     // Tourist gains reward-experience scaled by the level's difficulty:
@@ -995,11 +1025,21 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await newexplevel();
     }
 
+    // C ref: do.c:1974 print_level_annotation().
     const annotation = game._level_annotations?.[ledger];
     if (annotation) await update_topl(`You remember this level as ${annotation}.`);
     // The on-foot transit message + its --More-- frame were already delivered
     // above (before the level switch) so that the captured frame shows the OLD
     // level, exactly as the deferred-docrt() tty does.
+
+    // C ref: do.c:1976 check_special_room(FALSE) — "give room entrance message,
+    // if any" for the square the hero arrived on.  This is one of the LAST
+    // things goto_level() does: after maybe_lvltport_feedback()'s "You
+    // materialize on a different level!" and the familiar / Knox / temperature
+    // lines above, and before the closing pickup(1).  It used to run BEFORE the
+    // docrt() (with a caller-side deferral hook for the level-teleport path),
+    // which put the shop greeting ahead of the arrival message.
+    await check_special_room(false);
 
     // C ref: do.c:1990 — a trap-door/hole fall costs d(max(dist,1), 6) hp, rolled
     // at the very END of the arrival (after every message above and after
@@ -1230,38 +1270,15 @@ export async function wiz_level_tele(readLevel) {
         // force_dest: no further validation; teleport straight to the target.
         if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
             return 0;
-        game._goto_defer_arrival = true;
+        // C ref: teleport.c:1426 schedule_goto(..., post_msg) -> gd.dfr_post_msg,
+        // which goto_level() delivers via maybe_lvltport_feedback() right after
+        // its docrt() — ahead of the Gehennom/familiar/Knox/temperature lines,
+        // the shop greeting and the closing pickup(1).  All of those now come
+        // out of goto_level() itself, at C's positions.
+        game._goto_post_msg = (game.flags?.verbose !== false)
+            ? 'You materialize on a different level!' : null;
         await goto_level(newlevel, false, false, false);
-        game._goto_defer_arrival = false;
-        // C ref: win/tty/topl.c update_topl() — the arrival message goes through
-        // the real append-or-flush topline logic (not the simple pline()), since
-        // a familiar-level message right below it may need to share the line
-        // (or force its own --More--), exactly like C's pline() calls both do.
-        if (game.flags?.verbose !== false)
-            await update_topl('You materialize on a different level!');
-        // C ref: do.c goto_level() ~1861 — the Valley-of-the-Dead Gehennom-entry
-        // message, delivered right after the arrival message and before the
-        // familiar-level message (do.c order: maybe_lvltport_feedback ->
-        // deliver_splev_message -> Gehennom-entry check -> familiar_level_msg).
-        if (game._goto_valley_msg) for (const m of game._goto_valley_msg) await update_topl(m);
-        // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` comes
-        // right after the deferred arrival message and before the quest/endgame
-        // arrival checks.  The rn2(4) was already drawn inside goto_level();
-        // this only displays the resolved text.
-        if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
-        // C ref: do.c:1897 — the Fort Ludios alarm, in C's "special location
-        // arrival messages/events" chain (after familiar_level_msg(), before
-        // temperature_change_msg()).
-        if (game._goto_knox_msg) for (const m of game._goto_knox_msg) await update_topl(m);
-        // C ref: do.c goto_level() arrival block — In_quest(&u.uz) -> onquest():
-        // the quest home level's first-time arrival message.  Delivered after
-        // the "You materialize..." topline so its window flushes that topline
-        // with --More-- first.
-        await onquest();
-        // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature),
-        // delivered after the quest/endgame arrival block.
-        if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
-        await goto_room_entry();
+        game._goto_post_msg = null;
         // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — the wizard-mode
         // level teleport does NOT cost a game turn (no movemon / gethungry /
         // monster-spawn pass).  Returning ECMD_TIME here advanced moves by one
@@ -1305,44 +1322,16 @@ export async function wiz_level_tele(readLevel) {
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
         return 0;
 
-    game._goto_defer_arrival = true;
-    await goto_level(newlevel, false, false, false);
-    game._goto_defer_arrival = false;
-
     // C ref: teleport.c level_tele() -> schedule_goto(..., "You materialize on
-    // a different level!"); the deferred top-line message is delivered after
-    // goto_level()'s docrt() (via maybe_lvltport_feedback).  Only shown when
-    // flags.verbose (the default).  update_topl() (not the simple pline()) so a
-    // familiar-level message right after it can share the line or force its own
-    // --More--, matching C's pline()/update_topl() for both messages.
-    if (game.flags?.verbose !== false)
-        await update_topl('You materialize on a different level!');
-    // C ref: do.c goto_level() ~1861 — Valley-of-the-Dead Gehennom-entry
-    // message; see the "?"-menu branch above for the full ordering note.
-    if (game._goto_valley_msg) for (const m of game._goto_valley_msg) await update_topl(m);
-    // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();` comes
-    // right after the deferred arrival message and before the quest/endgame
-    // arrival checks.  The rn2(4) was already drawn inside goto_level(); this
-    // only displays the resolved text.
-    if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
-    // C ref: do.c:1897 — the Fort Ludios alarm (see the "?"-menu branch above).
-    if (game._goto_knox_msg) for (const m of game._goto_knox_msg) await update_topl(m);
-    await onquest();
-    // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature).
-    if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
-    await goto_room_entry();
+    // a different level!"); the deferred top line is delivered by goto_level()
+    // itself (maybe_lvltport_feedback, right after its docrt()).  Only shown
+    // when flags.verbose (the default).
+    game._goto_post_msg = (game.flags?.verbose !== false)
+        ? 'You materialize on a different level!' : null;
+    await goto_level(newlevel, false, false, false);
+    game._goto_post_msg = null;
     // C ref: wizcmds.c wiz_level_tele() returns ECMD_OK — no game turn elapses.
     return 0; // ECMD_OK
-}
-
-// C ref: do.c:1976 goto_level()'s trailing check_special_room(FALSE).  Run by
-// the level-teleport callers after their deferred arrival messages, so the shop
-// greeting lands on top of (and pages) the "You materialize..." line the way
-// C's ordering does.
-export async function goto_room_entry() {
-    if (!game._goto_pending_room_entry) return;
-    game._goto_pending_room_entry = false;
-    await check_special_room(false);
 }
 
 
@@ -1516,24 +1505,11 @@ export async function run_deferred_lvltport() {
         game._pending_message = '';
         game._toplin = 0;
     }
-    game._goto_defer_arrival = true;
+    // C ref: do.c deferred_goto() -> goto_level(), which delivers gd.dfr_post_msg
+    // itself via maybe_lvltport_feedback() right after its docrt().
+    game._goto_post_msg = pend.post_msg;
     await goto_level(pend.newlevel, false, false, false);
-    game._goto_defer_arrival = false;
-    // update_topl() (not the simple pline()) so a familiar-level message right
-    // after this one can share the line or force its own --More--, matching
-    // C's pline()/update_topl() for both messages.
-    if (pend.post_msg) await update_topl(pend.post_msg);
-    // C ref: do.c goto_level() ~1861 — Valley-of-the-Dead Gehennom-entry
-    // message (see wiz_level_tele's "?"-menu branch for the full ordering note).
-    if (game._goto_valley_msg) for (const m of game._goto_valley_msg) await update_topl(m);
-    // C ref: do.c goto_level() — `if (familiar) familiar_level_msg();`.  The
-    // rn2(4) was already drawn inside goto_level(); this only shows the text.
-    if (game._goto_familiar_msg) await update_topl(game._goto_familiar_msg);
-    // C ref: do.c:1897 — the Fort Ludios alarm (see the "?"-menu branch above).
-    if (game._goto_knox_msg) for (const m of game._goto_knox_msg) await update_topl(m);
-    // C ref: do.c goto_level() ~1935 — temperature_change_msg(prev_temperature).
-    if (game._goto_temperature_msg) for (const m of game._goto_temperature_msg) await update_topl(m);
-    await goto_room_entry();
+    game._goto_post_msg = null;
 }
 
 // C ref: dungeon.c Is_botlevel — is <lev> the bottom level of its dungeon?

@@ -7,9 +7,13 @@
 // conservative no-op behavior so downstream porters have a stable 1:1 map.
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, rnl, d } from './rng.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot } from './display.js';
+import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot, m_at } from './display.js';
+import { cansee } from './vision.js';
+import { distmin } from './hacklib.js';
+import { mmove_of } from './mon.js';
+import { WEP_HITBON } from './weapondmg_data.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
 import {
     AMULET_CLASS,
@@ -64,7 +68,7 @@ import { observe_object as disco_observe_object, build_discoveries_rows, discove
 import { monster_by_pmidx } from './makemon.js';
 import { strongmonst_flag as strongmonst, throws_rocks_flag, is_were_flag,
          is_neuter_flag, humanoid as humanoid_flag,
-         mflags2_of, M2_DEMON } from './monflags_data.js';
+         mflags2_of, M2_DEMON, M2_UNDEAD, M2_ORC } from './monflags_data.js';
 import { tin_variety, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, vegetarian } from './eat.js';
 import { enlightenment_lines } from './insight.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
@@ -76,7 +80,8 @@ import {
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, WT_WOUNDEDLEG_REDUCT, MAX_CARR_CAP,
     A_CON, A_STR, A_INT, A_WIS, A_CHA, A_DEX, A_MAX, LEFT_SIDE, RIGHT_SIDE,
-    P_DAGGER, P_KNIFE, P_SPEAR, P_SLING, P_CROSSBOW, P_DART, P_SHURIKEN,
+    P_DAGGER, P_KNIFE, P_SHORT_SWORD, P_SABER, P_SPEAR, P_BOW, P_SLING,
+    P_CROSSBOW, P_DART, P_SHURIKEN,
     P_SKILLED, P_EXPERT,
     CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_INT,
     IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, IS_ALTAR,
@@ -220,9 +225,14 @@ const OBJ_FREE = 'free';
 const OBJ_FLOOR = 'floor';
 const OBJ_INVENT = 'invent';
 const OBJ_CONTAINED = 'contained';
+// C ref: obj.h:481-486 — LOST_NONE 0, LOST_THROWN 1, LOST_DROPPED 2,
+// LOST_STOLEN 3, LOST_EXPLODING 4.  LOST_EXPLODING was 2 (i.e. LOST_DROPPED),
+// so every dropped object read as "exploding" to the merge/addinv guards below,
+// and LOST_DROPPED was 3 (LOST_STOLEN), which js/steal.js already checks for as
+// 2 — the two files disagreed about what a dropped object looks like.
 const LOST_NONE = 0;
 const LOST_THROWN = 1;
-const LOST_EXPLODING = 2;
+const LOST_EXPLODING = 4;
 
 const inuse_headers = [
     '', 'Miscellaneous', 'Worn Armor',
@@ -301,7 +311,15 @@ function set_artifact_intrinsic(_obj, _on, _mask) {}
 function is_mines_prize(_obj) { return false; }
 function is_soko_prize(_obj) { return false; }
 function Has_contents(obj) { return !!(obj?.cobj && obj.cobj.length); }
-function Is_container(obj) { return !!obj?.cobj || [214, 215, 216, 217, 218, 219].includes(obj?.otyp); }
+// C ref: obj.h:337 `Is_container(o) ((o)->otyp >= LARGE_BOX
+// && (o)->otyp <= BAG_OF_TRICKS)` — the enumerated list stopped at
+// BAG_OF_HOLDING, so a bag of tricks was never a container (and the `cobj`
+// disjunct made every object with contents one, which C does not).
+const LARGE_BOX_OTYP = 214, BAG_OF_TRICKS_OTYP = 220;
+function Is_container(obj) {
+    const t = obj?.otyp;
+    return t >= LARGE_BOX_OTYP && t <= BAG_OF_TRICKS_OTYP;
+}
 function Is_pudding(obj) { return !!obj?.globby; }
 function Is_candle(obj) { return obj?.otyp === 224 || obj?.otyp === 225; }
 // C ref: obj.h is_pole() — polearms and lances (Snickersnee too, but no covered
@@ -362,7 +380,6 @@ function setuwep_slot(obj) {
         game.unweapon = true; /* for "bare hands" message */
     }
 }
-function throwing_weapon(obj) { return obj?.oclass === WEAPON_CLASS; }
 // C ref: include/obj.h is_ammo/is_launcher/matching_launcher/ammo_and_launcher.
 // Ammunition's oc_skill is the negative of its launcher's (arrow == -P_BOW), so
 // is_ammo tests the [-P_CROSSBOW, -P_BOW] range and a launcher tests [P_BOW,
@@ -663,9 +680,14 @@ function stop_timer(_kind, _id) { return 0; }
 function obj_to_any(obj) { return obj; }
 function oname(obj, name) { setONAME(obj, name); return obj; }
 function obfree(obj, _mergeInto) { removeObjectFromAllInventories(obj); }
+// C ref: mkobj.c splitobj():457 — the copy is NOT worn/timed/lit: `otmp->timed
+// = 0; otmp->lamplit = 0; otmp->owornmask = 0L;`.  Carrying owornmask over made
+// a single arrow split off the quiver keep "(in quiver)", so hitfloor() printed
+// "A +2 elven arrow (in quiver) hits the floor."
 function splitobj(obj, cnt) {
     if (!obj || cnt <= 0 || cnt >= (obj.quan || 1)) return obj;
-    const split = { ...obj, quan: cnt, o_id: `${obj.o_id || 'obj'}s${Date.now()}` };
+    const split = { ...obj, quan: cnt, o_id: `${obj.o_id || 'obj'}s${Date.now()}`,
+                    owornmask: 0, pickup_prev: 0 };
     obj.quan -= cnt;
     obj.owt = weight(obj);
     split.owt = weight(split);
@@ -700,7 +722,6 @@ function setworn(obj, mask) { if (obj) obj.owornmask = mask; }
 function setnotworn(obj) { if (obj) obj.owornmask = 0; }
 function welded(_obj) { return false; }
 function can_reach_floor(_pit) { return true; }
-function hitfloor(_obj, _verb) {}
 function dropx(obj) { if (obj) obj.where = OBJ_FLOOR; }
 function dropy(obj) { if (obj) obj.where = OBJ_FLOOR; }
 function freeinv_no_update(obj) { removeObjectFromAllInventories(obj); }
@@ -843,7 +864,9 @@ export function touch_artifact(obj, _mon) {
         game._touch_blasted = true;
         let dmg = d(Antimagic() ? 2 : 4, self_willed ? 10 : 4);
         // C: half (Maybe_Half_Phys quarter) of the usual silver damage bonus.
-        if (objects[obj.otyp]?.material === 10 /* SILVER */ && Hate_silver())
+        // objclass.h obj_material_types: SILVER is 14; 10 is DRAGON_HIDE, so
+        // the silver damage bonus never fired for a real silver artifact.
+        if (objects[obj.otyp]?.material === 14 /* SILVER */ && Hate_silver())
             dmg += Maybe_Half_Phys(rnd(10));
         losehp_invent(dmg);
         exercise(A_WIS, false);
@@ -1387,7 +1410,10 @@ export function objectBaseName(obj) {
         const sp = monster_by_pmidx(obj.corpsenm);
         const pmname = sp?.name;
         if (pmname) {
-            const G_UNIQ = 0x1000, M2_PNAME = 0x00200000;
+            // monflag.h M2_PNAME is 0x00080000; 0x00200000 is M2_PEACEFUL, so
+            // "a statue of Croesus" read "a statue of a Croesus" while every
+            // always-peaceful species lost its article.
+            const G_UNIQ = 0x1000, M2_PNAME = 0x00080000;
             const mflags2 = sp.mflags2 ?? 0;
             const isPname = (mflags2 & M2_PNAME) !== 0;
             const isUnique = !isPname && ((sp.geno ?? 0) & G_UNIQ) !== 0;
@@ -1553,6 +1579,13 @@ function bucPrefix(obj) {
 // " (recharged:charges)" suffix when the charge count is known.
 function charge_suffix(obj) {
     if (!obj || !obj.known) return '';
+    // C ref: objnam.c doname_base():1379 `switch (is_weptool(obj) ?
+    // WEAPON_CLASS : obj->oclass)` — a weapon-tool is described as a WEAPON, so
+    // it never reaches the charged-TOOL arm even though every WEPTOOL() carries
+    // oc_charged.  Without this an Archeologist's identified pick-axe read
+    // "a +0 pick-axe (0:0)", which also shifted the whole inventory menu six
+    // columns (the tty centres on the widest line).
+    if (is_weptool(obj)) return '';
     const oc = obj.oclass;
     if (oc === WAND_CLASS || (oc === TOOL_CLASS && is_oc_charged(obj)))
         return ` (${obj.recharged | 0}:${obj.spe | 0})`;
@@ -1730,15 +1763,30 @@ function worn_status_suffix(obj) {
         return ` (alternate weapon${plur(obj.quan)}; not wielded)`;
     }
     if (m & QW_QUIVER) {
-        // C ref: doname_base() quiver phrasing.  Bow ammo (the arrow family,
-        // skill -P_BOW) reads "in quiver"; other small ammo "in quiver pouch";
-        // non-ammo weapons "at the ready".
-        if (obj.oclass === WEAPON_CLASS) {
-            const isBowAmmo = obj.otyp >= 18 && obj.otyp <= 22; // ARROW..YA (bow ammo)
-            const Qtyp = !is_ammo(obj) ? 3 : (isBowAmmo ? 1 : 2);
-            return Qtyp === 1 ? ' (in quiver)' : Qtyp === 2 ? ' (in quiver pouch)' : ' (at the ready)';
+        // C ref: objnam.c doname_base():1622 — the quiver phrasing switches on
+        // oclass, and its `default:` arm ("at the ready") covered only the odd
+        // things: RING/AMULET/WAND/COIN/GEM_CLASS all read "in quiver pouch".
+        // A slinger's quivered flint stones (GEM_CLASS) therefore read "(at the
+        // ready)", which is also 3 columns narrower than C's line and shifted
+        // the whole inventory menu one column right.
+        // The bow-ammo test is `oc_skill == -P_BOW`, not an otyp range (the old
+        // ARROW..YA window missed every non-arrow -P_BOW ammo).
+        let Qtyp;
+        switch (obj.oclass) {
+        case WEAPON_CLASS:
+            Qtyp = !is_ammo(obj) ? 3
+                : ((objects[obj.otyp]?.oc_skill ?? 0) !== -P_BOW) ? 2 : 1;
+            break;
+        case RING_CLASS: case AMULET_CLASS: case WAND_CLASS:
+        case COIN_CLASS: case GEM_CLASS:
+            Qtyp = 2;
+            break;
+        default:
+            Qtyp = 3;
+            break;
         }
-        return ' (at the ready)';
+        return Qtyp === 1 ? ' (in quiver)'
+            : Qtyp === 2 ? ' (in quiver pouch)' : ' (at the ready)';
     }
     if (m & QW_ARMOR_ALL) return ' (being worn)';
     // C ref: objnam.c doname_base() — accessory worn suffixes.  Rings report the
@@ -3358,7 +3406,11 @@ function learnring(ring, observed) {
 
 // C ref: attrib.c extremeattr(attrindx) — is the attribute pinned at its min
 // or max?  (Fixed_abil and racial limits are deliberately not consulted, per C.)
-const GAUNTLETS_OF_POWER = 162, DUNCE_CAP = 100;
+// onames.h otyps (mkobj.js OBJECT_DATA): 162 is GAUNTLETS_OF_DEXTERITY and 100
+// is HELM_OF_TELEPATHY, so both of these were naming the wrong object — a hero
+// wearing real gauntlets of power was never pinned to STR 18/**, and a dunce cap
+// never pinned INT/WIS to 6.
+const GAUNTLETS_OF_POWER = 161, DUNCE_CAP = 94;
 function extremeattr(attrindx) {
     let lolimit = 3, hilimit = 25;
     const curval = acurr_eff(attrindx);
@@ -4538,9 +4590,22 @@ export function bimanual(obj) {
     return !!obj && (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS)
         && BIMANUAL_OTYPS.has(obj.otyp);
 }
+// C ref: obj.h is_sword(otmp) — WEAPON_CLASS with oc_skill in
+// P_SHORT_SWORD..P_SABER.  The range here was P_BROAD_SWORD..P_TWO_HANDED_SWORD
+// (6..8), so short swords, scimitars and sabers were not swords, and a wielded
+// TOOL with a sword-range skill wrongly was.
 function is_sword(obj) {
     const sk = objects[obj?.otyp]?.oc_skill ?? 0;
-    return sk >= 6 && sk <= 8; // P_BROAD_SWORD..P_LONG_SWORD region
+    return obj?.oclass === WEAPON_CLASS && sk >= P_SHORT_SWORD && sk <= P_SABER;
+}
+// C ref: obj.h is_blade(otmp) / is_spear(otmp).
+function is_blade(obj) {
+    const sk = objects[obj?.otyp]?.oc_skill ?? 0;
+    return obj?.oclass === WEAPON_CLASS && sk >= P_DAGGER && sk <= P_SABER;
+}
+function is_spear(obj) {
+    return obj?.oclass === WEAPON_CLASS
+        && (objects[obj.otyp]?.oc_skill ?? 0) === P_SPEAR;
 }
 
 // C ref: artifact.c will_weld() — a cursed artifact (or other weld-prone item)
@@ -4879,21 +4944,391 @@ function throw_zap_pos(typ) { return typ >= 16; }
 function throw_closed_door(loc) {
     return loc?.typ === 23 /* DOOR */ && ((loc.doormask || 0) & (0x04 | 0x08)) !== 0;
 }
+// C ref: zap.c bhit(THROWN_WEAPON) — the loop stops at the FIRST monster on the
+// path and reports it (gb.bhitpos stays on that monster's square).  This used to
+// walk straight through every monster, so a thrown weapon never rolled
+// thitmonst()'s rnd(20) and simply landed behind its target.
 function bhit_thrown_landing(dx, dy, range) {
     let bx = game.u.ux, by = game.u.uy;
+    let hitmon = null;
     for (let r = range; r > 0; r--) {
         const nx = bx + dx, ny = by + dy;
         if (!throw_isok(nx, ny)) break;
         bx = nx; by = ny;
         const loc = game.level.at(bx, by);
         const typ = loc?.typ ?? 0;
+        // C: `mtmp = m_at(x, y); ... if (mtmp) { result = mtmp; goto bhit_done; }`
+        // comes BEFORE the ZAP_POS/closed-door test, so a monster standing in a
+        // doorway is still hit.
+        const mtmp = m_at(bx, by);
+        if (mtmp) { hitmon = mtmp; break; }
         if (!throw_zap_pos(typ) || throw_closed_door(loc)) { bx -= dx; by -= dy; break; }
-        // (monster hit / tmp_at display omitted: no monster lies in the path
-        //  for the recorded throw, and the wall-on-first-step case below skips
-        //  the per-cell display delay entirely.)
     }
-    return { x: bx, y: by };
+    if (hitmon) return { x: bx, y: by, mon: hitmon };
+    return { x: bx, y: by, mon: null };
 }
+
+// ── thrown-object combat (C ref: dothrow.c thitmonst / uhitm.c hmon) ─────────
+//
+// The whole "a thrown weapon can hit a monster" path was missing: bhit() walked
+// past every monster and throwit() just dropped the object.  That skipped
+// thitmonst()'s rnd(20) to-hit roll, hmon()'s damage roll and exercise()'s
+// rn2(19) — three calls that put the rest of the session's PRNG stream out of
+// phase (the whole seed-elf-ranger wall).
+//
+// The hmon() slice below is HMON_THROWN only.  It delegates every shared piece
+// (dmgval, killed, monflee, wakeup, mon_nam) to js/uhitm.js's exports; the parts
+// that stay local are the ones uhitm.js keeps module-private.  See the deferred
+// note: exporting uhitm.c's hmon() would let this call it directly.
+
+// C ref: monst.h MZ_MEDIUM (the msize omon_adj() measures against).
+const MZ_MEDIUM = 2;
+// onames.h otyps (mkobj.js OBJECT_DATA).
+const SCALPEL = 39, BOOMERANG = 26, WAR_HAMMER = 76, AKLYS = 80, FLINT = 473,
+    GAUNTLETS_OF_FUMBLING = 160;
+// C ref: youprop.h Luck — u.uluck plus the moon/Friday-13th moreluck term.
+function Luck_thrown() { return (game.u?.uluck | 0) + (game.u?.moreluck | 0); }
+// C ref: role.c Race_if(PM_ELF) / Role_if(PM_SAMURAI) (js/uhitm.js uses the
+// same two probes).
+function Race_if_ELF_thrown() {
+    return game.initrace === 1 || game.urace?.adj === 'elven';
+}
+function Role_if_SAMURAI_thrown() {
+    return (game.urole?.mnum ?? game.u?.umonnum) === PM_SAMURAI_ROLE;
+}
+
+// C ref: dothrow.c throwing_weapon(obj) — a weapon MEANT to be thrown (ammo
+// excluded).  The port had this as `oclass === WEAPON_CLASS`, i.e. TRUE for
+// every weapon, which would give a thrown long sword thitmonst()'s +2.
+// The `oc_dir & PIERCE` half of C's blade clause can't be read from this port's
+// objects[] (it carries no weapon oc_dir), so it is spelled out from
+// objects.h: inside is_blade && !is_sword (P_DAGGER..P_PICK_AXE) every dagger
+// and every knife but the SCALPEL (SLASH) is PIERCE, and the axes are not.
+function throwing_weapon(obj) {
+    if (!obj) return false;
+    const sk = objects[obj.otyp]?.oc_skill ?? 0;
+    const pierce_blade = is_blade(obj) && !is_sword(obj)
+        && (sk === P_DAGGER || (sk === P_KNIFE && obj.otyp !== SCALPEL));
+    return is_missile(obj) || is_spear(obj) || pierce_blade
+        || obj.otyp === WAR_HAMMER || obj.otyp === AKLYS;
+}
+
+// C ref: worn.c find_mac(mtmp) — mons[].ac; this port's monsters wear no body
+// armour (see the same routine in js/uhitm.js).
+function find_mac_thrown(mtmp) {
+    const base = mtmp?.data?.ac;
+    return (base != null) ? base : 10;
+}
+
+// C ref: weapon.c hitval(otmp, mon) — spe + oc_hitbon, plus the blessed bonus
+// against undead/demons.  (kebabable/trident/pick-axe are the other three arms;
+// they are flat modifiers with no RNG, like the ones js/uhitm.js also omits.)
+function hitval_thrown(weapon, mtmp) {
+    if (!weapon) return 0;
+    const isWeapon = weapon.oclass === WEAPON_CLASS || is_weptool(weapon);
+    let tmp = (isWeapon ? (weapon.spe || 0) : 0) + (WEP_HITBON[weapon.otyp] || 0);
+    const mf2 = mflags2_of(mtmp?.data) || 0;
+    if (isWeapon && weapon.blessed && (mf2 & (M2_UNDEAD | M2_DEMON))) tmp += 2;
+    return tmp;
+}
+
+// C ref: dothrow.c omon_adj(mon, obj, mon_notices) — target size/immobility and
+// the weapon's own to-hit value.
+function omon_adj(mon, obj, mon_notices) {
+    let tmp = (mon?.data?.msize ?? MZ_MEDIUM) - MZ_MEDIUM;
+    if (mon.msleeping) tmp += 2;
+    if (!mon.mcanmove || !mmove_of(mon.data)) {
+        tmp += 4;
+        if (mon_notices && mmove_of(mon.data) && !rn2(10)) {
+            mon.mcanmove = 1; mon.mfrozen = 0;
+        }
+    }
+    if (obj.otyp === BOULDER) tmp += 6;
+    else if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
+             || obj.oclass === GEM_CLASS)
+        tmp += hitval_thrown(obj, mon);
+    return tmp;
+}
+
+// C ref: zap.c exclam(force) / hit(str, mtmp, force) / miss(str, mtmp).
+function exclam_thrown(force) { return force < 0 ? '?' : (force <= 4 ? '.' : '!'); }
+async function hit_thrown(str, mon, force) {
+    const { canspotmon, mon_nam } = await import('./uhitm.js');
+    const verbose = game.flags?.verbose !== false;
+    const named = verbose && (cansee(mon?.mx, mon?.my) || canspotmon(mon));
+    await update_topl(`The ${str} ${is_plural_str(str) ? 'hit' : 'hits'} ${
+        named ? mon_nam(mon) : 'it'}${force}`);
+}
+// C ref: hacklib.c ordin(n) — "1st", "2nd", "3rd", "4th", ... (11/12/13 take
+// "th").
+function ordin(n) {
+    const dd = n % 10;
+    return (dd === 0 || dd > 3 || (n % 100) / 10 === 1) ? 'th'
+        : (dd === 1) ? 'st' : (dd === 2) ? 'nd' : 'rd';
+}
+// C ref: objnam.c mshot_xname(obj) — xname() with a "the Nth " prefix while a
+// multishot volley is in flight ("The 2nd flint stone hits the newt.").
+function mshot_xname(obj) {
+    const ms = game.m_shot;
+    const onm = xname(obj);
+    if (ms && ms.n > 1 && ms.o === obj.otyp)
+        return `the ${ms.i}${ordin(ms.i)} ${onm}`;
+    return onm;
+}
+// C ref: objnam.c xname(obj) / singular(obj, xname) — C's xname() carries no
+// quantity prefix, but this port's does, so the "You shoot N <missiles>." noun
+// is built from the temporarily-singularized name (exactly what C's singular()
+// does) and pluralized by hand.
+function volley_noun(obj, n) {
+    const save = obj.quan;
+    obj.quan = 1;
+    const base = xname(obj);
+    obj.quan = save;
+    return n === 1 ? base : makeplural(base);
+}
+// C ref: hacklib.c vtense() as used by hit()/tmiss(): a plural subject takes the
+// bare verb ("The daggers hit"), a singular one takes the -s form.
+function is_plural_str(s) { return /s$/.test(s) && !/ss$/.test(s); }
+
+// C ref: dothrow.c tmiss(obj, mon, maybe_wakeup) — the thrown-object miss
+// message, then a 1-in-3 wakeup.  The rn2(3) is part of the recorded stream even
+// when the monster is already awake.
+async function tmiss(obj, mon, maybe_wakeup) {
+    const { canspotmon, mon_nam, wakeupAttack } = await import('./uhitm.js');
+    const missile = mshot_xname(obj);
+    const verbose = game.flags?.verbose !== false;
+    if (!canspotmon(mon)) {
+        await update_topl(`The ${missile} ${is_plural_str(missile) ? 'miss' : 'misses'}.`);
+    } else {
+        const named = verbose && (cansee(mon?.mx, mon?.my) || canspotmon(mon));
+        await update_topl(`The ${missile} ${is_plural_str(missile) ? 'miss' : 'misses'} ${
+            named ? mon_nam(mon) : 'it'}.`);
+    }
+    if (maybe_wakeup && !rn2(3)) await wakeupAttack(mon, true);
+}
+
+// C ref: dog.c abuse_dog(mtmp), reached from uhitm.c hmon_hitmon_pet().  Only
+// the RNG-bearing yelp/growl choice matters here; both sounds are silent in this
+// port (js/uhitm.js keeps the same shape).
+function abuse_dog_thrown(mtmp) {
+    if (!mtmp.mtame) return;
+    mtmp.mtame--;
+    if (mtmp.mtame && !mtmp.isminion && mtmp.edog)
+        mtmp.edog.abuse = (mtmp.edog.abuse || 0) + 1;
+    if (mtmp.mx !== 0) {
+        if (mtmp.mtame && rn2(mtmp.mtame)) { /* yelp */ } else { /* growl */ }
+        if (!mtmp.mtame) newsym(mtmp.mx, mtmp.my);
+    }
+}
+
+// C ref: uhitm.c hmon()/hmon_hitmon(mon, obj, HMON_THROWN, dieroll) — the
+// thrown-object slice.  Returns TRUE when `mon` survives.
+async function hmon_thrown(mon, obj, dieroll, skillsnap) {
+    const U = await import('./uhitm.js');
+    const { weapon_type, use_skill } = await import('./enhance.js');
+    let dmg = 0, use_weapon_skill = false, train_weapon_skill = false;
+
+    // C ref: uhitm.c hmon_hitmon_weapon() — a launcher, or ammo without its
+    // matching launcher wielded, only does hmon_hitmon_weapon_ranged()'s rnd(2);
+    // everything else thrown takes the melee arm and rolls dmgval().
+    const ranged = is_launcher(obj)
+        || (is_ammo(obj) && !ammo_and_launcher(obj, game.uwep));
+    if (obj.oclass === WEAPON_CLASS || is_weptool(obj)) {
+        if (ranged) {
+            dmg = rnd(2);
+        } else {
+            use_weapon_skill = true;
+            dmg = U.dmgval(obj, mon);
+            train_weapon_skill = dmg > 1;
+        }
+        // C ref: uhitm.c:1048 — an elf/samurai firing their own arrow from
+        // their own bow does one extra point.
+        if ((is_ammo(obj) || is_missile(obj)) && ammo_and_launcher(obj, game.uwep))
+            train_weapon_skill = dmg > 0;
+    } else {
+        // C ref: uhitm.c hmon_hitmon_misc_obj() default arm — weight-based.
+        dmg = hmon_misc_obj_dmg_thrown(obj);
+    }
+
+    // C ref: uhitm.c hmon_hitmon_dmg_recalc() — u.udaminc (0 here) plus the
+    // strength bonus, which a launcher-fired missile does NOT get, plus the
+    // weapon-skill damage bonus.
+    if (dmg > 0) {
+        if (!(obj && game.uwep && ammo_and_launcher(obj, game.uwep)))
+            dmg += dbon_thrown();
+        if (use_weapon_skill) {
+            const fired = is_ammo(obj) && ammo_and_launcher(obj, game.uwep);
+            const skillwep = fired ? game.uwep : obj;
+            dmg += weapon_dam_bonus_thrown(fired ? skillsnap.wep : skillsnap.obj);
+            if (train_weapon_skill) use_skill(weapon_type(skillwep), 1);
+        }
+    }
+    if (dmg < 1) dmg = 1;      /* get_dmg_bonus is TRUE; target is no shade */
+
+    mon.mhp = (mon.mhp || 0) - dmg;
+    if (mon.mhpmax != null && mon.mhp > mon.mhpmax) mon.mhp = mon.mhpmax;
+    const destroyed = mon.mhp <= 0;
+
+    // C ref: uhitm.c hmon_hitmon_pet() — runs BEFORE killed().
+    if (mon.mtame && dmg > 0) {
+        abuse_dog_thrown(mon);
+        if (mon.mtame && !destroyed)
+            await U.monflee(mon, 10 * rnd(dmg), false, false);
+    }
+
+    if (!destroyed)
+        await hit_thrown(mshot_xname(obj), mon, exclam_thrown(dmg));
+
+    if (destroyed) {
+        await U.killed(mon);
+        return false;
+    }
+    // C ref: uhitm.c:1918 `wakeup(mon, TRUE)` — the knockback arm below it is
+    // gated on `!thrown`, so a thrown hit never rolls it.
+    await U.wakeupAttack(mon, true);
+    return true;
+}
+
+// C ref: attrib.c dbon() — strength damage bonus (same table as js/uhitm.js).
+function dbon_thrown() {
+    const str = acurr_eff(A_STR);
+    if (str < 6) return -1;
+    if (str < 16) return 0;
+    if (str < 18) return 1;
+    if (str === 18) return 2;
+    if (str < 118) return 3;
+    if (str < 122) return 4;
+    if (str < 125) return 5;
+    return 6;
+}
+// C ref: weapon.c weapon_dam_bonus(weapon) — the skill-level damage modifier.
+function weapon_dam_bonus_thrown(skill) {
+    switch (skill) {
+    case 0: /* P_ISRESTRICTED */
+    case 1: /* P_UNSKILLED */ return -2;
+    case 2: /* P_BASIC */     return 0;
+    case 3: /* P_SKILLED */   return 1;
+    default:                  return 2;   /* P_EXPERT and above */
+    }
+}
+// C ref: uhitm.c hmon_hitmon_misc_obj() default arm — `dmg = (obj->owt + 99)
+// / 100` capped, i.e. an ordinary object hurts by its weight.
+function hmon_misc_obj_dmg_thrown(obj) {
+    const wt = obj?.owt || 0;
+    let dmg = Math.trunc((wt + 99) / 100);
+    if (dmg > 6) dmg = 6;
+    return dmg;
+}
+
+// C ref: dothrow.c thitmonst(mon, obj) — a thrown object arrives at a monster.
+// Returns TRUE when the object has been disposed of (the caller must not place
+// it on the floor).  Ports the WEAPON/weptool/GEM arm plus the shared miss tail;
+// the gem-to-unicorn, quest-leader, iron-ball/boulder, egg/cream-pie/venom,
+// potion and pet-food arms are left for the caller-visible cases they need.
+async function thitmonst(mon, obj, skillsnap) {
+    const u = game.u;
+    const otyp = obj.otyp;
+
+    let tmp = -1 + Luck_thrown() + find_mac_thrown(mon) + (u.uhitinc || 0)
+        + (u.ulevel || 1);
+    const dex = acurr_eff(A_DEX);
+    if (dex < 4) tmp -= 3;
+    else if (dex < 6) tmp -= 2;
+    else if (dex < 8) tmp -= 1;
+    else if (dex >= 14) tmp += dex - 14;
+
+    let disttmp = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
+    if (disttmp < -4) disttmp = -4;
+    tmp += disttmp;
+
+    // C ref: dothrow.c:2054 — gloves hinder a bow.  GAUNTLETS_OF_POWER -2,
+    // GAUNTLETS_OF_FUMBLING -3, leather/dexterity 0.
+    if (game.uarmg && game.uwep
+        && (objects[game.uwep.otyp]?.oc_skill ?? 0) === P_BOW) {
+        if (game.uarmg.otyp === GAUNTLETS_OF_POWER) tmp -= 2;
+        else if (game.uarmg.otyp === GAUNTLETS_OF_FUMBLING) tmp -= 3;
+    }
+
+    tmp += omon_adj(mon, obj, true);
+    // C: `is_orc(mon->data) && Race_if(PM_ELF)` — an elf aims better at orcs.
+    if ((mflags2_of(mon.data) & M2_ORC) && Race_if_ELF_thrown()) tmp++;
+
+    const dieroll = rnd(20);
+
+    if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
+        || obj.oclass === GEM_CLASS) {
+        if (is_ammo(obj)) {
+            if (!ammo_and_launcher(obj, game.uwep)) {
+                tmp -= 4;
+            } else {
+                tmp += (game.uwep.spe || 0);
+                tmp += weapon_hit_bonus_thrown(skillsnap.wep);
+                // Elves and Samurai are highly trained with their own bows.
+                const elf = Race_if_ELF_thrown();
+                const samurai = Role_if_SAMURAI_thrown();
+                if ((elf || samurai)
+                    && (objects[game.uwep.otyp]?.oc_skill ?? 0) === P_BOW) {
+                    ++tmp;
+                    if ((elf && game.uwep.otyp === ELVEN_BOW)
+                        || (samurai && game.uwep.otyp === YUMI)) ++tmp;
+                }
+            }
+        } else {
+            if (otyp === BOOMERANG) tmp += 4;
+            else if (throwing_weapon(obj)) tmp += 2;
+            else tmp -= 2;      /* not meant to be thrown (obj == thrownobj) */
+            tmp += weapon_hit_bonus_thrown(skillsnap.obj);
+        }
+
+        if (tmp >= dieroll) {
+            await hmon_thrown(mon, obj, dieroll, skillsnap);
+            exercise(A_DEX, true);
+            // C ref: dothrow.c should_mulch_missile(obj) — only ammo/missiles
+            // (excluding boomerangs and magical ones) can shatter on impact.
+            if (should_mulch_missile(obj)) { delobj_thrown(obj); return true; }
+            // passive_obj(mon, obj, NULL) follows in C: only an acid/rusting/
+            // corroding/enchantment-draining defender draws there, and none of
+            // the erosion helpers it needs live in this file.
+        } else {
+            await tmiss(obj, mon, true);
+        }
+        return false;
+    }
+
+    // Non-weapon thrown objects: C's remaining arms end in the same tmiss().
+    await tmiss(obj, mon, true);
+    return false;
+}
+
+// C ref: weapon.c weapon_hit_bonus(weapon) — skill-based to-hit modifier (the
+// riding and two-weapon arms don't apply to a throw).
+function weapon_hit_bonus_thrown(skill) {
+    switch (skill) {
+    case 0: case 1: return -4;      /* P_ISRESTRICTED / P_UNSKILLED */
+    case 2: return 0;               /* P_BASIC */
+    case 3: return 2;               /* P_SKILLED */
+    default: return 3;              /* P_EXPERT and above */
+    }
+}
+
+// C ref: dothrow.c should_mulch_missile(obj).
+function should_mulch_missile(obj) {
+    if (!obj || !(is_ammo(obj) || is_missile(obj))
+        || obj.otyp === BOOMERANG || objects[obj.otyp]?.oc_magic)
+        return false;
+    const chance = 3 + greatest_erosion(obj) - (obj.spe || 0);
+    let broken = chance > 1 ? (rn2(chance) !== 0) : (rn2(4) === 0);
+    if (obj.blessed && (game.context?.mon_moving ? (rn2(3) !== 0) : (rnl(4) !== 0)))
+        broken = false;
+    if (((obj.oclass === GEM_CLASS && objects[obj.otyp]?.oc_tough)
+         || obj.otyp === FLINT) && rn2(2) === 0)
+        broken = false;
+    return broken;
+}
+
+// C ref: dothrow.c thitmonst() `obfree(obj, 0)` for a mulched missile — the
+// object is simply gone (no obj_resists roll, unlike delobj()).
+function delobj_thrown(obj) { obj_extract_self(obj); obfree(obj, null); }
 
 // C ref: dothrow.c breaktest() -> obj_resists(obj, 1, 99): a non-glass, non-
 // potion thrown item (e.g. an iron arrow) always survives, but the rn2(100)
@@ -4975,48 +5410,76 @@ async function throw_obj(obj, dir) {
         if (multishot > obj.quan) multishot = obj.quan;
     }
 
+    // C ref: dothrow.c:236 `gm.m_shot.s = ammo_and_launcher(obj, uwep)` plus
+    // the "You shoot/throw N <missiles>." announcement, which fires whenever the
+    // volley is longer than one OR the player typed a count prefix.  Both this
+    // line and the loop below were missing, so a 2-shot sling volley launched
+    // one stone and skipped the second splitobj()/breaktest() pair.
     const m_shot_s = ammo_and_launcher(obj, game.uwep);
-    // "You shoot/throw N ..." only when N>1 or a count was given (neither here).
-
-    // Throw one missile (the loop body for our single-shot case).
-    let otmp = obj;
-    if (obj.quan > 1) {
-        next_ident();            // splitobj -> nextoid -> next_ident: rnd(2)
-        otmp = splitobj(obj, 1);
-    } else if (otmp.owornmask) {
-        // single item worn in a slot would be unequipped first; not our case.
+    const shotlimit = game.command_count | 0;
+    game.m_shot = { o: obj.otyp, n: multishot, i: 0, s: m_shot_s };
+    if (multishot > 1 || shotlimit > 0) {
+        await update_topl(`You ${m_shot_s ? 'shoot' : 'throw'} ${multishot} ${
+            volley_noun(obj, multishot)}.`);
     }
-    freeinv(otmp);
 
-    // C ref: dothrow.c throwit():1259 `} else if (u.dz) {` — a throw straight
-    // down never enters the trajectory block at all: it goes to hitfloor(),
-    // which announces the object and drops it at the hero's feet.  Omitting
-    // this ran the horizontal trajectory with dx==dy==0 and printed nothing.
-    if (u.dz > 0) {
-        // hitfloor(obj, TRUE): announce, then hero_breaks() -> breaktest(),
-        // whose obj_resists() rn2(100) is part of the recorded stream.  (The
-        // altar and soft-terrain branches don't apply to the plain floor the
-        // recorded heroes throw from.)
-        const hereTyp = game.level.at(u.ux, u.uy)?.typ ?? 0;
-        const soft = IS_SOFT(hereTyp);
-        if (!soft) {
-            const dn = doname_invent(otmp);
-            const verb = (otmp.quan || 1) === 1 ? 'hits' : 'hit';
-            await pline(`${dn.charAt(0).toUpperCase()}${dn.slice(1)} ${verb} the ${surface_underfoot()}.`);
-        }
-        const brokeDown = !soft && thrown_breaks(otmp);
-        otmp.owornmask = 0;
-        if (brokeDown) {
-            const dn = doname_invent(otmp);
-            await pline(`${dn.charAt(0).toUpperCase()}${dn.slice(1)} shatter${(otmp.quan || 1) > 1 ? '' : 's'}!`);
-            delobj(otmp);
+    const wep_mask = obj.owornmask || 0;
+    let res = ECMD_TIME;
+    for (game.m_shot.i = 1; game.m_shot.i <= game.m_shot.n; game.m_shot.i++) {
+        let otmp = obj;
+        if (obj && obj.quan > 1) {
+            next_ident();        // splitobj -> nextoid -> next_ident: rnd(2)
+            otmp = splitobj(obj, 1);
         } else {
-            mkobj_place_object(otmp, u.ux, u.uy);
-            otmp.where = OBJ_FLOOR;
-            otmp.how_lost = LOST_THROWN;
-            stackobj(otmp);
+            otmp = obj;
+            if (!otmp) break;
+            if (otmp.owornmask) {
+                // C ref: dothrow.c throw_obj():262 `if (otmp->owornmask)
+                // remove_worn_item(otmp, FALSE);` - throwing the LAST of a
+                // quivered (or wielded) stack empties that slot.  Skipping it
+                // left u.uquiver pointing at an object no longer in inventory,
+                // so a later 'f' fired the ghost instead of printing "You have
+                // no ammunition readied." and opening the "What do you want to
+                // fire?" prompt (whose keys then fell through to rhack()).
+                await remove_worn_item(otmp, false);
+            }
+            obj = null;
         }
-        newsym(u.ux, u.uy);
+        // C ref: weapon.c P_SKILL(skill) reads u.weapon_skills[], persistent
+        // state that u_init.c skill_init() fills once.  js/enhance.js instead
+        // REBUILDS it from the weapons the hero is currently CARRYING, so it has
+        // to be sampled before freeinv() takes the missile out of inventory -
+        // otherwise a thrown dagger reads P_UNSKILLED and thitmonst()'s to-hit
+        // lands 4 too low.
+        const _enh = await import('./enhance.js');
+        const skillsnap = {
+            obj: _enh.p_skill_of(_enh.weapon_type(otmp)),
+            wep: game.uwep ? _enh.p_skill_of(_enh.weapon_type(game.uwep)) : 0,
+        };
+        freeinv(otmp);
+        res = await throwit(otmp, skillsnap, wep_mask);
+    }
+    game.m_shot = { o: 0, n: 0, i: 0, s: false };
+    return res;
+}
+
+// C ref: dothrow.c throwit(obj, wep_mask, twoweap, oldslot) - one missile's
+// flight.  Split out of throw_obj() so the multishot volley can run it per shot.
+async function throwit(otmp, skillsnap, _wep_mask) {
+    const u = game.u;
+
+    // C ref: dothrow.c throwit():1580 `} else if (u.dz) {` — a throw straight
+    // up or down never enters the trajectory block at all.
+    if (u.dz < 0) {
+        // C ref: dothrow.c:1589 `(void) toss_up(obj, rn2(5) && !Underwater)`.
+        // The whole up-throw was missing: the rn2(5) roof roll, toss_up()'s two
+        // breaktest() rn2(100)s and dmgval()'s die all went unrolled, so a
+        // session that threw anything at the ceiling desynced from there on.
+        await toss_up(otmp, rn2(5) !== 0);
+        return ECMD_TIME;
+    }
+    if (u.dz > 0) {
+        await hitfloor(otmp, true);
         return ECMD_TIME;
     }
 
@@ -5043,6 +5506,13 @@ async function throw_obj(obj, dir) {
     // Trajectory + landing.
     const land = bhit_thrown_landing(u.dx, u.dy, range);
 
+    // C ref: dothrow.c throwit():1691 `if (throwit_mon_hit(obj, mon)) return;`
+    // — a monster in the path takes the hit (thitmonst); only if the object
+    // survives does it go on to break/land.
+    if (land.mon) {
+        if (await thitmonst(land.mon, otmp, skillsnap)) return ECMD_TIME;
+    }
+
     // breaktest (obj_resists rn2(100)); the arrow survives and lands on the floor.
     const typ = game.level.at(land.x, land.y)?.typ ?? 0;
     const broke = (!IS_SOFT(typ) && thrown_breaks(otmp));
@@ -5067,6 +5537,120 @@ async function throw_obj(obj, dir) {
         newsym(land.x, land.y);
     }
     return ECMD_TIME;
+}
+
+// C ref: dothrow.c hitfloor(obj, verbosely) — an object lands at the hero's
+// feet: announce it, run hero_breaks() (breaktest's obj_resists rn2(100)) and
+// drop it.  Split out of throw_obj() so toss_up() can reuse it.
+async function hitfloor(otmp, verbosely) {
+    const u = game.u;
+    const hereTyp = game.level.at(u.ux, u.uy)?.typ ?? 0;
+    const soft = IS_SOFT(hereTyp);
+    if (!soft && verbosely) {
+        const dn = doname_invent(otmp);
+        const verb = (otmp.quan || 1) === 1 ? 'hits' : 'hit';
+        await update_topl(`${dn.charAt(0).toUpperCase()}${dn.slice(1)} ${verb} the ${surface_underfoot()}.`);
+    }
+    const brokeDown = !soft && thrown_breaks(otmp);
+    otmp.owornmask = 0;
+    if (brokeDown) {
+        const dn = doname_invent(otmp);
+        await update_topl(`${dn.charAt(0).toUpperCase()}${dn.slice(1)} shatter${(otmp.quan || 1) > 1 ? '' : 's'}!`);
+        delobj(otmp);
+    } else {
+        mkobj_place_object(otmp, u.ux, u.uy);
+        otmp.where = OBJ_FLOOR;
+        otmp.how_lost = LOST_THROWN;
+        stackobj(otmp);
+    }
+    newsym(u.ux, u.uy);
+}
+
+// C ref: dungeon.c ceiling(x,y) — the noun for what is overhead.  (The
+// vault/temple/shop room qualifiers need in_rooms(), which this port stubs.)
+function ceiling_of(x, y) {
+    const typ = game.level?.at?.(x, y)?.typ ?? 0;
+    if (typ === 35 /* AIR */) return 'sky';
+    if (typ >= ROOM_TYP || (typ && typ <= DBWALL) || IS_DOOR(typ)
+        || typ === SDOOR_TYP)
+        return 'ceiling';
+    return 'rock cavern';
+}
+
+// C ref: dothrow.c harmless_missile(obj) — the arbitrary list of things that
+// don't hurt when they land on your head.
+function harmless_missile(obj) {
+    const otyp = obj.otyp;
+    if (otyp === 83 /* SLING */ || otyp === EUCALYPTUS_LEAF) return true;
+    if (obj.oclass === SCROLL_CLASS) return true;
+    if ((objects[otyp]?.material | 0) === 6 /* CLOTH */) return true;
+    return false;
+}
+
+// C ref: obj.h hard_helmet(o) — a metallic or crackable (glass) helm.
+function hard_helmet(o) {
+    if (!o) return false;
+    const mat = objects[o.otyp]?.material | 0;
+    return (mat >= 11 /*IRON*/ && mat <= 17 /*MITHRIL*/) || mat === 19 /*GLASS*/;
+}
+
+// C ref: dothrow.c toss_up(obj, hitsroof) — the hero threw something straight
+// up.  Runs until the object has landed (and possibly hit the hero).
+async function toss_up(otmp, hitsroof) {
+    const u = game.u;
+    const roof = ceiling_of(u.ux, u.uy);
+    const Doname2 = (o) => { const d = doname_invent(o); return d.charAt(0).toUpperCase() + d.slice(1); };
+    let action;
+    if (hitsroof) {
+        if (thrown_breaks(otmp)) {
+            await update_topl(`${Doname2(otmp)} hits the ${roof}.`);
+            await update_topl(`${Doname2(otmp)} shatter${(otmp.quan || 1) > 1 ? '' : 's'}!`);
+            delobj(otmp);
+            newsym(u.ux, u.uy);
+            return;
+        }
+        action = 'hits';
+    } else {
+        action = 'almost hits';
+    }
+    await update_topl(`${Doname2(otmp)} ${action} the ${roof}, then falls back on top of your ${
+        body_part(8 /*HEAD*/)}.`);
+
+    // The object now hits the hero.  (C's potion / egg+cream-pie blinding /
+    // petrification arms come first; breaktest still runs before all of them.)
+    if (thrown_breaks(otmp)) {
+        await update_topl(`${Doname2(otmp)} shatter${(otmp.quan || 1) > 1 ? '' : 's'}!`);
+        delobj(otmp);
+        newsym(u.ux, u.uy);
+        return;
+    }
+    if (harmless_missile(otmp)) {
+        await update_topl("It doesn't hurt.");
+        await hitfloor(otmp, false);
+        return;
+    }
+    // C ref: dothrow.c:1358 `int dmg = dmgval(obj, &gy.youmonst);` then the
+    // weight-based fallback for non-weapons, the hard-helmet reduction and
+    // losehp().  The hero's own form is never bigmonst, so dmgval() rolls the
+    // small-damage die.
+    const U = await import('./uhitm.js');
+    let dmg = U.dmgval(otmp, { data: youmonst_data() });
+    if (!dmg) {
+        dmg = Math.trunc(((otmp.owt | 0) + 99) / 100);
+        dmg = (dmg <= 1) ? 1 : rnd(dmg);
+        if (dmg > 6) dmg = 6;
+    }
+    const less_damage = hard_helmet(game.uarmh);
+    if (dmg > 1 && less_damage) dmg = 1;
+    if (dmg < 0) dmg = 0;
+    if (game.uarmh) {
+        if (less_damage && dmg < (game.u.uhp | 0))
+            await update_topl('Fortunately, you are wearing a hard helmet.');
+        else if (game.flags?.verbose !== false)
+            await update_topl(`Your ${armor_slot_noun(game.uarmh, WA_ARMH)} does not protect you.`);
+    }
+    await hitfloor(otmp, true);
+    losehp_invent(dmg);
 }
 
 // Local name helpers for the throw "by hand" message (C skill_name/weapon_descr
@@ -5382,8 +5966,10 @@ async function drop(obj) {
     const u = ustate();
     // C: `if (!IS_ALTAR(...) && flags.verbose) You("drop %s.", doname(obj));`
     // The wandpoly session runs with !verbose so the drop is silent.
+    // C's You() is pline(): it must accumulate onto a pending topline (and page
+    // it) so the same-turn monster message merges behind a --More--.
     if (!IS_ALTAR_typ(u) && game.flags?.verbose) {
-        await pline(`You drop ${doname_invent(obj)}.`);
+        await update_topl(`You drop ${doname(obj)}.`);
     }
     obj.how_lost = LOST_DROPPED;
     dropz(obj, u.ux, u.uy);
@@ -5823,7 +6409,7 @@ function dropz(obj, x, y) {
 }
 
 function weldmsg(_obj) {}
-const LOST_DROPPED = 3;
+const LOST_DROPPED = 2;      /* obj.h:483 (3 is LOST_STOLEN) */
 
 // C ref: mkobj.c obj_extract_self() — unlink a floor object from the level's
 // object list (svl.level.objects[ox][oy] nexthere chain + the global fobj
@@ -6413,13 +6999,31 @@ export function xprname(obj, txt = null, letChar = '\0', dot = true, cost = 0, q
 // the itemactions "Write on the <surface> with this item" label.  Ordinary
 // dungeon floor (and the cases the recorded sessions reach) is "floor".
 function surface_underfoot() {
-    const loc = game.level?.at?.(game.u?.ux, game.u?.uy);
-    const typ = loc?.typ;
-    // C distinguishes water/lava/ice/air/cloud; none occur under the hero in the
-    // itemactions-exercising sessions, so the common dungeon case is "floor".
-    if (typ === 33 /* ICE (rm.h); 21 is LAVAWALL */) return 'ice';
-    return 'floor';
+    const u = game.u || {};
+    const loc = game.level?.at?.(u.ux, u.uy);
+    const typ = loc?.typ ?? 0;
+    // C ref: dungeon.c surface(x,y) — the arms in C's order.  This used to
+    // answer "floor" for everything but ice, so a corridor/doorway/stairs square
+    // read "hits the floor" where C says "hits the ground"/"the stairs".
+    // rm.h typs: POOL 16 .. DRAWBRIDGE_UP 19, LAVAPOOL 20, LAVAWALL 21,
+    // CORR 24, ROOM 25, STAIRS 26, LADDER 27, FOUNTAIN 28, GRAVE 31, ALTAR 32,
+    // ICE 33, DRAWBRIDGE_DOWN 34, AIR 35, CLOUD 36.
+    if (typ === 35 /* AIR */) return 'air';
+    if (typ === 36 /* CLOUD */) return 'cloud';
+    if (typ >= POOL && typ <= 19 /* DRAWBRIDGE_UP */) return 'water';
+    if (typ === ICE) return 'ice';
+    if (typ === LAVAPOOL || typ === LAVAWALL) return 'lava';
+    if (typ === DRAWBRIDGE_DOWN) return 'bridge';
+    if (IS_ALTAR(typ)) return 'altar';
+    if (IS_GRAVE(typ)) return 'headstone';
+    if (IS_FOUNTAIN(typ)) return 'fountain';
+    if (typ === STAIRS || typ === 27 /* LADDER */) return 'stairs';
+    if (typ <= DBWALL || typ === SDOOR_TYP) return 'wall';
+    if (IS_DOOR(typ)) return 'doorway';
+    if (typ >= ROOM_TYP) return 'floor';
+    return 'ground';
 }
+const SDOOR_TYP = 14, ROOM_TYP = 25;
 
 // C ref: objects.h HARDGEM(n) == (n >= 8) — a gem/ring is "tough" (engrave, not
 // write) only for the hardest gemstones (mohs >= 8: diamond and a handful of
@@ -6437,12 +7041,49 @@ const IA_NONE = 0, IA_UNWIELD = 1, IA_APPLY_OBJ = 2, IA_NAME_OBJ = 3,
     IA_BUY_OBJ = 12, IA_WEAR_OBJ = 13, IA_QUAFF_OBJ = 14, IA_QUIVER_OBJ = 15,
     IA_READ_OBJ = 16, IA_TAKEOFF_OBJ = 17, IA_RUB_OBJ = 18, IA_THROW_OBJ = 19,
     IA_TIP_CONTAINER = 20, IA_INVOKE_OBJ = 21, IA_WIELD_OBJ = 22,
-    IA_ZAP_OBJ = 23, IA_WHATIS_OBJ = 24;
+    IA_ZAP_OBJ = 23, IA_WHATIS_OBJ = 24,
+    IA_DIP_OBJ = 25, IA_SWAPWEAPON = 26, IA_TWOWEAPON = 27;
 
 // C ref: iactions.c itemactions(otmp) — build the per-object "Do what with %s?"
 // action list, in the C cascade order.  Mirrors the conditions for each action
 // block; only the cases the recorded object classes reach are populated.  Each
 // returned entry is { act, accel, label }.
+// onames.h otyps referenced by the itemactions cascade (mkobj.js OBJECT_DATA).
+const CREAM_PIE = 287, BULLWHIP = 82, GRAPPLING_HOOK = 260, CAN_OF_GREASE = 240,
+    LOCK_PICK = 222, CREDIT_CARD = 223, SKELETON_KEY = 221, TINNING_KIT = 238,
+    SADDLE = 235, MAGIC_WHISTLE = 246, TIN_WHISTLE = 245, EUCALYPTUS_LEAF = 276,
+    STETHOSCOPE = 237, MIRROR = 230, BELL = 255, WAX_CANDLE = 225,
+    TALLOW_CANDLE = 224, OIL_LAMP = 227, MAGIC_LAMP = 228, BRASS_LANTERN = 226,
+    POT_OIL = 321, EXPENSIVE_CAMERA = 229, CRYSTAL_BALL = 231,
+    MAGIC_MARKER = 242, UNICORN_HORN = 261, WOODEN_FLUTE = 247,
+    DRUM_OF_EARTHQUAKE = 258, LAND_MINE = 243, BEARTRAP = 244, PICK_AXE = 259,
+    DWARVISH_MATTOCK = 71, TIN_OPENER = 239;
+
+// C ref: objnam.c the_unique_obj(obj) — should this object be named with "the"?
+function the_unique_obj(obj) {
+    if (!obj?.dknown) return false;
+    const known = !!obj.known;
+    if (obj.otyp === FAKE_AMULET_OF_YENDOR_OTYP && !known) return true; /* lie */
+    return !!objects[obj.otyp]?.oc_unique
+        && (known || obj.otyp === AMULET_OF_YENDOR);
+}
+// C ref: eat.c is_edible(obj) — for a non-polymorphed hero this reduces to a
+// non-unique FOOD_CLASS object (the metallivore/gelatinous-cube arms need a
+// polymorphed youmonst, which the itemactions menu never has here).
+function is_edible_ia(obj) {
+    if (!obj || objects[obj.otyp]?.oc_unique) return false;
+    return obj.oclass === FOOD_CLASS;
+}
+// C ref: do_wear.c armcat_to_wornmask() + wearmask_to_obj() — the piece already
+// occupying the slot this armor would go into, or null when it is free.
+function worn_in_slot_of(obj) { return worn_slot_get(armor_slot_mask(obj)); }
+// C ref: objnam.c armor_simple_name(armor).
+function armor_simple_name_ia(obj) { return armor_slot_noun(obj, armor_slot_mask(obj)); }
+// C ref: iactions.c ia_checkfile(otmp) — gates the '/' line on the object
+// having a data.base entry.  This port ships no data.base, and every object the
+// menu can be opened on has one in C, so the line is always offered.
+function ia_checkfile(_obj) { return true; }
+
 function itemactions_list(otmp) {
     const out = [];
     const add = (act, accel, label) => out.push({ act, accel, label });
@@ -6451,18 +7092,105 @@ function itemactions_list(otmp) {
     const quan = otmp.quan || 1;
     const is_blade = (o) => o.oclass === WEAPON_CLASS && objects[o.otyp]?.oc_skill != null;
 
-    // 'a' (apply): tools / specific applicables.  Rings et al. are not applied.
-    if (oclass === TOOL_CLASS && is_weptool(otmp) === false) {
-        // The recorded tool sessions don't reach the itemactions 'a' branch for
-        // the carried tools, so leave apply out unless a session needs it.
+    // '-' (un-wield / un-ready): C ref iactions.c:291 — picking the wielded,
+    // alternate or quivered item offers the "wield bare hands" shortcut.  This
+    // arm was missing entirely, so every menu opened on a wielded weapon was one
+    // line short.
+    if (otmp === game.uwep || otmp === game.uswapwep || otmp === game.uquiver) {
+        const quiv = otmp === game.uquiver;
+        const what = (oclass === WEAPON_CLASS || is_weptool(otmp)) ? 'weapon' : 'item';
+        add(IA_UNWIELD, '-', `${quiv ? 'Quiver' : 'Wield'} '-' to ${
+            quiv ? 'un-ready' : 'un-wield'} ${is_plural(otmp) ? 'these' : 'this'} ${
+            is_plural(otmp) ? makeplural(what) : what}`);
     }
-    // 'c' / 'C' (name this specific object / name the type).  For a type-known,
-    // un-individually-named object NetHack offers "Name this specific <obj>".
-    if (oclass !== COIN_CLASS) {
-        add(IA_NAME_OBJ, 'c', `Name this specific ${cxname_singular(otmp)}`);
+    // 'a' (apply): C ref iactions.c:309 — one long if/else-if cascade, so the
+    // FIRST matching arm wins.  Was left empty ("no session reaches it"), which
+    // dropped the line for every tool, container, wand and potion.
+    {
+        const light = otmp.lamplit ? 'Extinguish' : 'Light';
+        let alabel = null;
+        if (oclass === COIN_CLASS) alabel = 'Flip a coin';
+        else if (otmp.otyp === CREAM_PIE) alabel = 'Hit yourself with this cream pie';
+        else if (otmp.otyp === BULLWHIP) alabel = 'Lash out with this whip';
+        else if (otmp.otyp === GRAPPLING_HOOK) alabel = 'Grapple something with this hook';
+        else if (otmp.otyp === BAG_OF_TRICKS && objects[otmp.otyp]?.oc_name_known)
+            alabel = 'Reach into this bag';
+        else if (Is_container(otmp)) alabel = 'Open this container';
+        else if (otmp.otyp === CAN_OF_GREASE) alabel = 'Use the can to grease an item';
+        else if (otmp.otyp === LOCK_PICK || otmp.otyp === CREDIT_CARD
+                 || otmp.otyp === SKELETON_KEY) alabel = 'Use this tool to pick a lock';
+        else if (otmp.otyp === TINNING_KIT) alabel = 'Use this kit to tin a corpse';
+        else if (otmp.otyp === LEASH) alabel = 'Tie a pet to this leash';
+        else if (otmp.otyp === SADDLE) alabel = 'Place this saddle on a pet';
+        else if (otmp.otyp === MAGIC_WHISTLE || otmp.otyp === TIN_WHISTLE)
+            alabel = 'Blow this whistle';
+        else if (otmp.otyp === EUCALYPTUS_LEAF) alabel = 'Use this leaf as a whistle';
+        else if (otmp.otyp === STETHOSCOPE) alabel = 'Listen through the stethoscope';
+        else if (otmp.otyp === MIRROR) alabel = 'Show something its reflection';
+        else if (otmp.otyp === BELL || otmp.otyp === BELL_OF_OPENING)
+            alabel = 'Ring the bell';
+        else if (otmp.otyp === CANDELABRUM_OF_INVOCATION)
+            alabel = `${light} the candelabrum`;
+        else if (otmp.otyp === WAX_CANDLE || otmp.otyp === TALLOW_CANDLE) {
+            const multiple = quan !== 1;
+            const sWord = multiple ? 'these' : 'this';
+            const cand = carrying(CANDELABRUM_OF_INVOCATION);
+            alabel = (cand && (cand.spe | 0) < 7)
+                ? `Attach ${sWord} to your candelabrum, or ${
+                    !otmp.lamplit ? 'light' : 'extinguish'} ${multiple ? 'them' : 'it'}`
+                : `${light} ${sWord} ${simpleonames(otmp)}`;
+        } else if (otmp.otyp === OIL_LAMP || otmp.otyp === MAGIC_LAMP
+                   || otmp.otyp === BRASS_LANTERN) alabel = `${light} this light source`;
+        else if (otmp.otyp === POT_OIL && objects[otmp.otyp]?.oc_name_known)
+            alabel = `${light} this oil`;
+        else if (oclass === POTION_CLASS)
+            alabel = `Dip something into ${is_plural(otmp) ? 'one of these' : 'this'} potion${plur(quan)}`;
+        else if (otmp.otyp === EXPENSIVE_CAMERA) alabel = 'Take a photograph';
+        else if (otmp.otyp === TOWEL) alabel = 'Clean yourself off with this towel';
+        else if (otmp.otyp === CRYSTAL_BALL) alabel = 'Peer into this crystal ball';
+        else if (otmp.otyp === MAGIC_MARKER) alabel = 'Write on something with this marker';
+        else if (otmp.otyp === FIGURINE) alabel = 'Make this figurine transform';
+        else if (otmp.otyp === UNICORN_HORN) alabel = 'Use this unicorn horn';
+        else if (otmp.otyp === HORN_OF_PLENTY && objects[otmp.otyp]?.oc_name_known)
+            alabel = 'Blow into the horn of plenty';
+        else if (otmp.otyp >= WOODEN_FLUTE && otmp.otyp <= DRUM_OF_EARTHQUAKE)
+            alabel = 'Play this musical instrument';
+        else if (otmp.otyp === LAND_MINE || otmp.otyp === BEARTRAP)
+            alabel = 'Arm this trap';
+        else if (otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK)
+            alabel = 'Dig with this digging tool';
+        else if (oclass === WAND_CLASS) alabel = 'Break this wand';
+        if (alabel) add(IA_APPLY_OBJ, 'a', alabel);
     }
-    // 'd' (drop): any unworn carried object.
-    if (!already_worn) add(IA_DROP_OBJ, 'd', 'Drop this item');
+    // 'c' / 'C' — C ref iactions.c item_naming_classification(): 'c' names the
+    // individual object, 'C' the whole type; each is offered only when the
+    // matching getobj filter would SUGGEST the object.  The old code always
+    // emitted 'c' with a hand-written label and never emitted 'C'.
+    if (name_ok(otmp) === GETOBJ_SUGGEST) {
+        const which = the_unique_obj(otmp) ? 'the'
+            : !is_plural(otmp) ? 'this specific' : 'this stack of';
+        add(IA_NAME_OBJ, 'c', `${(!otmp.oname) ? 'Name' : 'Rename or un-name'} ${
+            which} ${simpleonames(otmp)}`);
+    }
+    if (call_ok(otmp) === GETOBJ_SUGGEST) {
+        let callname = simpleonames(otmp);
+        if (the_unique_obj(otmp)) callname = `the ${callname}`;
+        else if (!is_plural(otmp)) callname = makeplural(callname);
+        add(IA_NAME_OTYP, 'C', `${!objects[otmp.otyp]?.oc_uname ? 'Call' : 'Re-call or un-call'
+            } the type for ${callname}`);
+    }
+    // 'd' (drop): any unworn carried object.  C ref: iactions.c:411 —
+    // `Sprintf(buf, "Drop this %s", (otmp->quan > 1L) ? "stack" : "item")`.
+    if (!already_worn) add(IA_DROP_OBJ, 'd', `Drop this ${quan > 1 ? 'stack' : 'item'}`);
+    // 'e' (eat): C ref iactions.c:418 — a TIN gets its own wording, anything
+    // else edible gets "Eat this"/"Eat one of these".
+    if (otmp.otyp === TIN) {
+        add(IA_EAT_OBJ, 'e', `Open ${quan > 1 ? 'one of these tins' : 'this tin'}${
+            (game.uwep && game.uwep.otyp === TIN_OPENER) ? ' with your tin opener' : ''
+            } and eat the contents`);
+    } else if (is_edible_ia(otmp)) {
+        add(IA_EAT_OBJ, 'e', `Eat ${quan > 1 ? 'one of these' : 'this'}`);
+    }
     // 'E' (engrave/write): wand / ring / gem / blade-tipped writer.  C verb is
     // "Engrave" iff is_blade || WAND || ((GEM||RING) && oc_tough), where oc_tough
     // = HARDGEM(mohs) (mohs >= 8 — only the hardest gemstones).  None of the
@@ -6474,33 +7202,151 @@ function itemactions_list(otmp) {
             && obj_is_hardgem(otmp);
         const verb = (is_blade(otmp) || oclass === WAND_CLASS || tough)
             ? 'Engrave' : 'Write';
-        add(IA_ENGRAVE_OBJ, 'E', `${verb} on the ${surface_underfoot()} with this item`);
+        // C ref: iactions.c:440 — "... with one of these items" for a stack.
+        add(IA_ENGRAVE_OBJ, 'E', `${verb} on the ${surface_underfoot()} with ${
+            quan > 1 ? 'one of these items' : 'this item'}`);
+    }
+    // 'f' (fire the quivered item): C ref iactions.c:448.
+    if (otmp === game.uquiver) {
+        const shoot = ammo_and_launcher(otmp, game.uwep);
+        add(IA_FIRE_OBJ, 'f', `${shoot ? 'Shoot' : 'Throw'} ${
+            quan > 1 ? 'one of these' : 'this'}${
+            shoot ? ` with your wielded ${simpleonames(game.uwep)}` : ''}`);
     }
     // 'i' (adjust inventory letter): any non-coin object.
     if (oclass !== COIN_CLASS) {
         add(IA_ADJUST_OBJ, 'i', 'Adjust inventory by assigning new letter');
     }
-    // 'I' (split a stack): quantity > 1.
-    if (quan > 1) add(IA_SPLIT_OBJ, 'I', 'Split this stack of items');
-    // 'P' (put on): ring/amulet/eyewear, not already worn.
-    if (!already_worn && (oclass === RING_CLASS)) {
-        const free_finger = !game.uleft || !game.uright;
-        if (free_finger) add(IA_WEAR_OBJ, 'P', 'Put this ring on');
-        else add(IA_NONE, 'P', '[both ring fingers in use]');
-    } else if (!already_worn && oclass === AMULET_CLASS) {
-        add(IA_WEAR_OBJ, 'P', 'Put this amulet on');
+    // 'I' (split a stack): C ref iactions.c:468 — `otmp->quan > 1L &&
+    // otmp->oclass != COIN_CLASS`, labelled "Adjust inventory by splitting this
+    // stack" (the old text was invented).
+    if (quan > 1 && oclass !== COIN_CLASS)
+        add(IA_SPLIT_OBJ, 'I', 'Adjust inventory by splitting this stack');
+    // 'P' (put on accessory): C ref iactions.c:497 — an unworn accessory always
+    // gets a line; when the slot is taken the line is a "[...]" note that does
+    // nothing (C keeps it so the command stays discoverable).
+    if (!already_worn) {
+        let plabel = '';
+        if (oclass === AMULET_CLASS)
+            plabel = !game.uamul ? 'Put this amulet on' : '[already wearing an amulet]';
+        else if (oclass === RING_CLASS || otmp.otyp === MEAT_RING)
+            plabel = (!game.uleft || !game.uright) ? 'Put this ring on'
+                : `[both ring ${makeplural(body_part(3 /*FINGER*/))} in use]`;
+        else if (otmp.otyp === BLINDFOLD || otmp.otyp === TOWEL
+                 || otmp.otyp === LENSES)
+            plabel = game.ublindf ? '[already wearing eyewear]'
+                : otmp.otyp === LENSES ? 'Put these lenses on'
+                    : `Put this on${otmp.otyp === TOWEL ? ' to blindfold yourself' : ''}`;
+        if (plabel) add(IA_WEAR_OBJ, 'P', plabel);
     }
-    // 't' (throw): any unworn object.
-    if (!already_worn) add(IA_THROW_OBJ, 't', 'Throw this item');
-    // 'w' (wield in hands): unworn, not the currently wielded weapon.
-    if (!already_worn && otmp !== game.uwep) {
-        // body_part index 6 == HAND (humanoid hero); makeplural -> "hands".
-        add(IA_WIELD_OBJ, 'w', `Wield this item in your ${makeplural(body_part(6))}`);
+    // 'q' (quaff): C ref iactions.c:527.
+    if (oclass === POTION_CLASS)
+        add(IA_QUAFF_OBJ, 'q', `Quaff (drink) ${
+            quan > 1 ? 'one of these potions' : 'this potion'}`);
+    // 'Q' (quiver): C ref iactions.c:534.
+    if ((oclass === GEM_CLASS || oclass === WEAPON_CLASS) && otmp !== game.uquiver)
+        add(IA_QUIVER_OBJ, 'Q', `Quiver this ${quan > 1 ? 'stack' : 'item'
+            } for easy ${ammo_and_launcher(otmp, game.uwep) ? 'shooting' : 'throwing'
+            } with 'f'ire`);
+    // 'r' (read): C ref iactions.c:543 — `if (item_reading_classification(otmp,
+    // buf) == IA_READ_OBJ) ia_addmenu(..., 'r', buf)`.  The whole arm was
+    // missing, so a spellbook's action menu lost its "Study this spellbook"
+    // line (and every line below it moved up a row).
+    {
+        const rlabel = item_reading_classification(otmp);
+        if (rlabel) add(IA_READ_OBJ, 'r', rlabel);
     }
-    // '/' (look up): data.base entry exists.  The recorded ring/weapon sessions
-    // all reach the '/' line, so offer it for the exercised object classes.
-    add(IA_WHATIS_OBJ, '/', 'Look up information about this');
+    // 'R' (remove accessory / rub): C ref iactions.c:547.
+    if ((otmp.owornmask || 0) & W_ACCESSORY) {
+        const m = otmp.owornmask || 0;
+        add(IA_TAKEOFF_OBJ, 'R', `Remove this ${
+            (m & W_AMUL) ? 'amulet'
+            : (m & (W_RINGL | W_RINGR)) ? 'ring'
+              : (m & W_BLINDF) ? 'eyewear' : 'accessory'}`);
+    }
+    if (otmp.otyp === OIL_LAMP || otmp.otyp === MAGIC_LAMP
+        || otmp.otyp === BRASS_LANTERN)
+        add(IA_RUB_OBJ, 'R', `Rub this ${simpleonames(otmp)}`);
+    // 't' (throw): any unworn object.  C ref: iactions.c:562 — the verb is
+    // "Shoot" when the wielded launcher matches, the object phrase varies with
+    // quantity, and a quivered item notes that 't' duplicates 'f'.
+    if (!already_worn) {
+        const shoot = ammo_and_launcher(otmp, game.uwep);
+        const what = (quan === 1) ? 'this item'
+            : (otmp.otyp === GOLD_PIECE) ? 'them' : 'one of these';
+        const dup = (otmp === game.uquiver
+                     && (otmp.otyp !== GOLD_PIECE || quan === 1))
+            ? " (same as 'f')" : '';
+        add(IA_THROW_OBJ, 't', `${shoot ? 'Shoot' : 'Throw'} ${what}${dup}`);
+    }
+    // 'w' (wield): C ref iactions.c:606 — a weapon/weptool is wielded "as your
+    // weapon"; anything else unworn is wielded "in your <hands>"; the stack
+    // wording follows quan.  Skipped entirely for the already-wielded item.
+    if (otmp !== game.uwep) {
+        const stack = quan > 1 ? 'stack' : 'item';
+        if (oclass === WEAPON_CLASS || is_weptool(otmp))
+            add(IA_WIELD_OBJ, 'w', `Wield this ${stack} as your weapon`);
+        else if (!already_worn)
+            // body_part index 6 == HAND (humanoid hero); makeplural -> "hands".
+            add(IA_WIELD_OBJ, 'w', `Wield this ${stack} in your ${makeplural(body_part(6))}`);
+    }
+    // 'T' (take off armor / tip a container): C ref iactions.c:585.
+    if ((otmp.owornmask || 0) & W_ARMOR)
+        add(IA_TAKEOFF_OBJ, 'T', 'Take off this armor');
+    if ((Is_container(otmp) && (Has_contents(otmp) || !otmp.cknown))
+        || (otmp.otyp === HORN_OF_PLENTY && ((otmp.spe | 0) > 0 || !otmp.known)))
+        add(IA_TIP_CONTAINER, 'T', 'Tip all the contents out of this container');
+    // 'W' (wear armor): C ref iactions.c:631 — always offered for unworn armor;
+    // when that slot is occupied the line is an inert "[already wearing ...]".
+    if (!already_worn && oclass === ARMOR_CLASS) {
+        const occupied = worn_in_slot_of(otmp);
+        add(IA_WEAR_OBJ, 'W', occupied
+            ? `[already wearing ${an(armor_simple_name_ia(occupied))}]`
+            : 'Wear this armor');
+    }
+    // 'x' (swap primary/secondary weapon): C ref iactions.c:652.
+    if (otmp === game.uwep && game.uswapwep)
+        add(IA_SWAPWEAPON, 'x', 'Swap this with your alternate weapon');
+    else if (otmp === game.uwep)
+        add(IA_SWAPWEAPON, 'x', 'Ready this as an alternate weapon');
+    else if (otmp === game.uswapwep)
+        add(IA_SWAPWEAPON, 'x', 'Swap this with your main weapon');
+    // 'z' (zap a wand): C ref iactions.c:686.
+    if (oclass === WAND_CLASS)
+        add(IA_ZAP_OBJ, 'z', 'Zap this wand to release its magic');
+    // '/' (look up in the database): C ref iactions.c:691 — "about these" for a
+    // stack.  ia_checkfile() gates it on the object having a data.base entry.
+    if (ia_checkfile(otmp))
+        add(IA_WHATIS_OBJ, '/', `Look up information about ${quan > 1 ? 'these' : 'this'}`);
     return out;
+}
+
+// C ref: iactions.c item_reading_classification(obj, outbuf) — the label for
+// the 'r' item-action, or null when the object can't be read.
+const FORTUNE_COOKIE = 289, T_SHIRT = 137, ALCHEMY_SMOCK = 144,
+    SPE_BLANK_PAPER = 407;
+function item_reading_classification(obj) {
+    const otyp = obj.otyp;
+    if (otyp === FORTUNE_COOKIE) return 'Read the message inside this cookie';
+    if (otyp === T_SHIRT) return 'Read the slogan on the shirt';
+    if (otyp === ALCHEMY_SMOCK) return 'Read the slogan on the apron';
+    if (otyp === HAWAIIAN_SHIRT) return 'Look at the pattern on the shirt';
+    if (obj.oclass === SCROLL_CLASS) {
+        const magic = (obj.dknown
+                       && (otyp !== SCR_BLANK_PAPER
+                           || !objects[otyp]?.oc_name_known))
+            ? ' to activate its magic' : '';
+        return `Read this scroll${magic}`;
+    }
+    if (obj.oclass === SPBOOK_CLASS) {
+        const novel = otyp === SPE_NOVEL;
+        const blank = otyp === SPE_BLANK_PAPER && !!objects[otyp]?.oc_name_known;
+        const tome = otyp === SPE_BOOK_OF_THE_DEAD && !!objects[otyp]?.oc_name_known;
+        const verb = (novel || blank) ? 'Read' : tome ? 'Examine' : 'Study';
+        const what = novel ? simpleonames(obj) : tome ? 'tome' : 'spellbook';
+        return `${verb} this ${what}`;
+    }
+    return null;
 }
 
 // Render the itemactions "Do what with %s?" submenu as a tty overlay menu (the
@@ -6625,6 +7471,12 @@ async function itemactions_dispatch(otmp, act, getDir) {
     case IA_WEAR_OBJ: // 'P' put-on routes through dowear (unified wear/put-on)
         seedInvlet();
         return await dowear();
+    case IA_READ_OBJ: {
+        // C ref: itemactions_pushkeys IA_READ_OBJ -> cmdq_add_ec(doread).
+        seedInvlet();
+        const rd = await import('./read.js');
+        return await rd.doread();
+    }
     case IA_ENGRAVE_OBJ: {
         // doengrave lives in engrave.js; load it on demand.  It reads the
         // stylus via getobj, which consumes the pre-seeded invlet.

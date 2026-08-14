@@ -26,6 +26,7 @@ import {
     PIT, SPIKED_PIT, FIRE_TRAP, NO_TRAP, is_pit, BURN, LR_BRANCH,
     TRAPNUM, TRAPPED_DOOR, TRAPPED_CHEST, MAGIC_PORTAL, VIBRATING_SQUARE,
     LEVEL_TELEP, WEB, STATUE_TRAP, POLY_TRAP, TRAPDOOR, ENGRAVE,
+    LA_UP, LA_DOWN, STRAT_WAITFORU,
 } from './const.js';
 // readobjnam() is how C's obj.new(<name>) resolves an item name (via the same
 // rnd_otyp_by_namedesc path a wish uses).  readobjnam.js does not import sp_lev,
@@ -2041,7 +2042,9 @@ export async function makemaz_bar_strt() {
     // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
     const lit = quest_level_init_solidfill();
     // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(BAR_STRT_MAP, lit);
+    // sp_lev.c:6122: lit is des.map's OWN option (default FALSE); the bare
+    // string form never sets it, so it is NOT the level_init rn2(2).
+    bigrm_load_map(BAR_STRT_MAP, false);
     // replace_terrain x3 (floor -> tree with per-region chance).
     quest_replace_terrain(37, 0, 59, 19, ROOM, TREE, 5);
     quest_replace_terrain(60, 0, 64, 19, ROOM, TREE, 10);
@@ -2328,7 +2331,7 @@ export async function makemaz_bar_loca() {
     // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
     const lit = quest_level_init_solidfill();
     // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(BAR_LOCA_MAP, lit);
+    bigrm_load_map(BAR_LOCA_MAP, false);  // des.map bare string -> lit=FALSE
     // des.region(...) x7 — light/unlit rectangles.  No RNG.
     quest_region_light(0, 0, 75, 19, true);
     quest_region_light(24, 3, 26, 4, false);
@@ -2546,7 +2549,7 @@ export async function makemaz_arc_strt() {
     // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
     const lit = quest_level_init_solidfill();
     // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(ARC_STRT_MAP, lit);
+    bigrm_load_map(ARC_STRT_MAP, false);  // des.map bare string -> lit=FALSE
     // des.region(...) x16 — whole level lit, then lit/unlit sub-rooms.  No RNG.
     quest_region_light(0, 0, 75, 19, true);
     quest_region_light(22, 6, 23, 6, false);
@@ -2693,7 +2696,7 @@ export async function makemaz_pri_strt() {
     // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
     const lit = quest_level_init_solidfill();
     // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(PRI_STRT_MAP, lit);
+    bigrm_load_map(PRI_STRT_MAP, false);  // des.map bare string -> lit=FALSE
     // des.region(selection.area(00,00,75,19), "lit") — no RNG.
     quest_region_light(0, 0, 75, 19, true);
     // des.region({ region={24,06,33,13}, lit=1, type="temple", filled=2 }) —
@@ -2800,6 +2803,9 @@ const TOWER1_MAP = [
 // C ref: sp_lev.c lspo_map halign=SPLEV_H_LEFT / valign=SPLEV_CENTER offset.
 // gx.xstart = 2 + ((x_maze_max-2-xsize)/4); gy.ystart = 2 + ((y_maze_max-2-ysize)/2);
 // each bumped odd.  Then stamp the fixed terrain (no RNG).
+// `lit` is des.map's OWN "lit" option (sp_lev.c:6122 get_table_boolean_opt
+// "lit", default FALSE) — NOT the level_init lit.  Passing the level_init
+// rn2(2) here renders the whole of tower2 lit (its roll is 1, tower1/3 roll 0).
 function tower1_load_map(mapstr, lit) {
     const mf = mapfrag_fromstr(mapstr);
     gx.xsize = mf.wid;
@@ -2842,15 +2848,22 @@ function tower1_load_map(mapstr, lit) {
     return mf;
 }
 
-// des.ladder("down", mx, my) — no RNG.
-function tower_place_ladder(mx, my) {
+// des.ladder("up"/"down", mx, my) — no RNG.  C ref: sp_lev.c lspo_ladder ->
+// levl[x][y].typ = LADDER; levl[x][y].ladder = up ? LA_UP : LA_DOWN;
+// stairway_add(x, y, up, TRUE, ...).
+function tower_place_ladder(mx, my, up = false) {
     const x = q_absx(mx), y = q_absy(my);
     const loc = game.level?.at(x, y);
     if (loc) loc.typ = LADDER;
     if (!game.stairs) game.stairs = [];
-    game.stairs.push({ sx: x, sy: y, up: false });
-    game.dnstair = { x, y };
-    if (game.level) { game.level.dnstair = { x, y }; if (loc) loc.ladder = 2; }
+    game.stairs.push({ sx: x, sy: y, up: !!up, isladder: true });
+    if (up) {
+        game.upstair = { x, y };
+        if (game.level) { game.level.upstair = { x, y }; if (loc) loc.ladder = LA_UP; }
+    } else {
+        game.dnstair = { x, y };
+        if (game.level) { game.level.dnstair = { x, y }; if (loc) loc.ladder = LA_DOWN; }
+    }
 }
 
 // C ref: sp_lev.c create_monster for a class ("V"): amask induced_align rn2(3),
@@ -2890,13 +2903,11 @@ function tower_create_vampire_lady(name, mx, my) {
     if (name) mtmp.mname = name;                     // christen (no RNG)
     // KNOWN WRONG, DELIBERATELY LEFT: monst.h:177 STRAT_WAITFORU is 0x20000000
     // (0x40000000 is STRAT_ARRIVE), and correcting it DOES fix the stream — it
-    // moves seed0360's first RNG divergence from step 263 (three vampire ladies
-    // rolling decide_to_shapeshift's rn2(6) every turn, which C skips) all the
-    // way to step 268.  But step 268 is tower2, which is not ported, so the
-    // corrected prefix feeds a different random level and the session measures
-    // 288 -> 271 screens.  Flip this to STRAT_WAITFORU (imported above) in the
-    // same commit as makemaz_tower2 + makemaz_tower3, never before.
-    mtmp.mstrategy = (mtmp.mstrategy || 0) | 0x40000000;
+    // moves seed0360's first RNG divergence from step 263 all the way to step
+    // 290 (medusa), making tower2 (268-273) byte-exact.  It is inert until
+    // js/mklev.js dispatches 'tower2'/'tower3' to makemaz_tower2/makemaz_tower3
+    // below, and lands ONLY with that dispatch: see the deferred note.
+    mtmp.mstrategy = (mtmp.mstrategy || 0) | 0x40000000; /* STRAT_ARRIVE — see above */
     // vampshifted (cham is a vampire and current form differs) -> revert.
     if (mtmp.cham === PM_VAMPIRE_LEADER_IDX
         && mtmp.data && mtmp.data.pmidx !== PM_VAMPIRE_LEADER_IDX) {
@@ -2996,7 +3007,7 @@ export async function makemaz_tower1() {
     // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
     shuffle(['law', 'neutral', 'chaos']);
     // des.level_init({ style="solidfill", fg=" " }) -> rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
+    quest_level_init_solidfill();          // splev_initlev rn2(2)
     // des.level_flags("mazelevel","noteleport","hardfloor","solidify") — no RNG.
     if (g.level?.flags) {
         g.level.flags.is_maze_lev = true;
@@ -3004,7 +3015,7 @@ export async function makemaz_tower1() {
         g.level.flags.hardfloor = true;
     }
     // des.map({ halign="half-left", valign="center", map=[[...]] }) — no RNG.
-    tower1_load_map(TOWER1_MAP, lit);
+    tower1_load_map(TOWER1_MAP, false);   // des.map has no "lit" option
 
     // local niches = {...}; shuffle(niches) — rn2(6),rn2(5),rn2(4),rn2(3),rn2(2).
     const niches = [[3, 1], [3, 9], [7, 1], [7, 9], [11, 1], [11, 9]];
@@ -3060,6 +3071,248 @@ export async function makemaz_tower1() {
     if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
     if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
     if (flp) flip_level(flp);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Vlad's Tower middle stage (dat/tower2.lua) and entry stage (dat/tower3.lua).
+//
+// Tour order matters: tower3 is the branch level reached from Gehennom, tower2
+// sits above it and tower1 (already ported) on top.  Both share tower1's
+// skeleton — nhlib shuffle(align), solidfill level_init, a fixed map with
+// halign="half-left"/valign="center", then monsters/objects/traps in file
+// order, wallification and flip_level_rnd.
+// ════════════════════════════════════════════════════════════════════════
+
+const TOWER2_MAP = [
+    '  --- --- ---  ',
+    '  |.| |.| |.|  ',
+    '---S---S---S---',
+    '|.S.........S.|',
+    '---.------+----',
+    '  |......|..|  ',
+    '--------.------',
+    '|.S......+..S.|',
+    '---S---S---S---',
+    '  |.| |.| |.|  ',
+    '  --- --- ---  ',
+].join('\n');
+
+const TOWER3_MAP = [
+    '    --- --- ---    ',
+    '    |.| |.| |.|    ',
+    '  ---S---S---S---  ',
+    '  |.S.........S.|  ',
+    '-----.........-----',
+    '|...|.........+...|',
+    '|.---.........---.|',
+    '|.|.S.........S.|.|',
+    '|.---S---S---S---.|',
+    '|...|.|.|.|.|.|...|',
+    '---.---.---.---.---',
+    '  |.............|  ',
+    '  ---------------  ',
+].join('\n');
+
+// obj.h otyps used by tower2/tower3 (verified against js/mkobj.js objects[]).
+const AMULET_OF_LIFE_SAVING = 202, AMULET_OF_STRANGULATION = 203,
+    WATER_WALKING_BOOTS = 167, CRYSTAL_PLATE_MAIL = 122,
+    LONG_SWORD = 54, LOCK_PICK = 222, ELVEN_CLOAK = 139, BLINDFOLD = 233,
+    SPE_CONE_OF_COLD = 369, SPE_CLAIRVOYANCE = 385, SPE_CHARM_MONSTER = 387,
+    SPE_INVISIBILITY = 393, SPE_POLYMORPH = 399, SPE_CREATE_FAMILIAR = 401,
+    SPE_STONE_TO_FLESH = 405;
+
+// C ref: sp_lev.c create_object with SP_OBJ_CONTAINER + a contents callback.
+// mksobj_at(CHEST) (rnd(2) ident, olocked rn2(5), otrapped rn2(10), mkbox_cnts
+// rn2(8) [+ each auto content]), then delete_contents (no RNG), then the
+// callback's create_object: get_location(DRY) — a RANDOM location, so the
+// retry loop runs — followed by mksobj for the item, which is then moved into
+// the container.
+function tower_chest_containing(mx, my, otyp) {
+    const x = q_absx(mx), y = q_absy(my);
+    const chest = mksobj_at(CHEST, x, y, true, true);
+    if (chest) chest.cobj = null;                     // delete_contents
+    bigrm_get_location_dry();                         // get_location(DRY) loop
+    const item = mksobj(otyp, true, true);
+    if (chest && item) {
+        if (!Array.isArray(chest.cobj)) chest.cobj = [];
+        chest.cobj.push(item);
+        chest.owt = weight(chest);
+    }
+    return chest;
+}
+
+// C ref: sp_lev.c create_monster with no class and no id (`des.monster()` /
+// `des.monster({x=,y=})`): sp_amask_to_amask draws induced_align rn2(3), pm
+// stays NULL so get_location_coord uses DRY (explicit coord -> no RNG; no
+// coord -> the random retry loop), then makemon(NULL, ...) rolls the species.
+function tower_create_monster_random(mx, my) {
+    rn2(3);                                          // induced_align (dungeon.c:2012)
+    let x, y;
+    if (mx != null) { x = q_absx(mx); y = q_absy(my); }
+    else { const c = bigrm_get_location_dry(); x = c.x; y = c.y; }
+    if (mm_mon_at(x, y)) {
+        const cc = enexto_spawn(x, y, null);
+        if (cc) { x = cc.x; y = cc.y; }
+    }
+    return makemon(null, x, y, 0);
+}
+
+// C ref: mklev.c traptype_rnd() as reached from sp_lev.c create_trap with no
+// type.  lvl is level_difficulty() (not dlevel — Vlad's Tower builds up, so
+// the two differ), and FIRE_TRAP is only allowed In_hell.
+function tower_traptype_rnd() {
+    const lvl = level_difficulty_ext();
+    const noteleport = !!game.level?.flags?.noteleport;
+    let kind = rnd(TRAPNUM - 1);                     // mklev.c:1941
+    switch (kind) {
+    case TRAPPED_DOOR: case TRAPPED_CHEST: case MAGIC_PORTAL: case VIBRATING_SQUARE:
+        kind = NO_TRAP; break;
+    case ROLLING_BOULDER_TRAP: case SLP_GAS_TRAP:
+        if (lvl < 2) kind = NO_TRAP; break;
+    case LEVEL_TELEP:
+        if (lvl < 5 || noteleport) kind = NO_TRAP; break;
+    case SPIKED_PIT:
+        if (lvl < 5) kind = NO_TRAP; break;
+    case LANDMINE:
+        if (lvl < 6) kind = NO_TRAP; break;
+    case WEB:
+        if (lvl < 7) kind = NO_TRAP; break;
+    case STATUE_TRAP: case POLY_TRAP:
+        if (lvl < 8) kind = NO_TRAP; break;
+    case FIRE_TRAP:
+        if (!In_hell(game.u?.uz)) kind = NO_TRAP; break;
+    case TELEP_TRAP:
+        if (noteleport) kind = NO_TRAP; break;
+    case HOLE:
+        if (rn2(7)) kind = NO_TRAP; break;           // mklev.c:1993
+    }
+    return kind;
+}
+
+// C ref: sp_lev.c create_trap with an explicit coord and no type ->
+// mktrap(NO_TRAP, MKTRAP_MAZEFLAG|MKTRAP_NOSPIDERONWEB): retry traptype_rnd()
+// until it yields a type, demote a hole/trapdoor when the floor is hard, then
+// the always-drawn victim check rnd(4) (mklev.c:2137).
+async function tower_create_trap_random_at(mx, my) {
+    const x = q_absx(mx), y = q_absy(my);
+    let kind;
+    do { kind = tower_traptype_rnd(); } while (kind === NO_TRAP);
+    if ((kind === HOLE || kind === TRAPDOOR) && !Can_fall_thru(game.u?.uz))
+        kind = ROCKTRAP;
+    await maketrap(x, y, kind);
+    rnd(4);                                          // mktrap victim check
+}
+
+// Main executor.  C ref: makemaz("tower2") -> load_special.
+export async function makemaz_tower2() {
+    const g = game;
+    shuffle(['law', 'neutral', 'chaos']);            // nhlib.lua top level
+    quest_level_init_solidfill();                    // splev_initlev rn2(2)
+    if (g.level?.flags) {
+        g.level.flags.is_maze_lev = true;
+        g.level.flags.noteleport = true;
+        g.level.flags.hardfloor = true;
+    }
+    tower1_load_map(TOWER2_MAP, false);              // 15x11, half-left/center
+
+    // local place = { 10 niches }; shuffle(place) — rn2(10)..rn2(2).
+    const place = [[3, 1], [7, 1], [11, 1], [1, 3], [13, 3],
+                   [1, 7], [13, 7], [3, 9], [7, 9], [11, 9]];
+    shuffle(place);
+
+    tower_place_ladder(11, 5, true);                 // des.ladder("up", 11,05)
+    tower_place_ladder(3, 7, false);                 // des.ladder("down", 03,07)
+    quest_set_door(10, 4, 'locked');
+    quest_set_door(9, 7, 'locked');
+
+    g._full_mon_gen = true;
+    try {
+        // des.monster("&", place[10]) / place[1] — mkclass(S_DEMON, G_NOGEN).
+        quest_create_monster_class(S_DEMON, place[9][0], place[9][1]);
+        quest_create_monster_class(S_DEMON, place[0][0], place[0][1]);
+        quest_create_monster('hell hound pup', place[1][0], place[1][1], null);
+        quest_create_monster('hell hound pup', place[2][0], place[2][1], null);
+        quest_create_monster('winter wolf', place[3][0], place[3][1], null);
+    } finally {
+        g._full_mon_gen = false;
+    }
+
+    g._full_mon_gen = true;
+    try {
+        tower_chest_containing(place[4][0], place[4][1], AMULET_OF_LIFE_SAVING);
+        tower_chest_containing(place[5][0], place[5][1], AMULET_OF_STRANGULATION);
+        quest_create_object(WATER_WALKING_BOOTS, place[6][0], place[6][1], null, null);
+        quest_create_object(CRYSTAL_PLATE_MAIL, place[7][0], place[7][1], null, null);
+        // local spbooks = { 7 titles }; shuffle(spbooks) — rn2(7)..rn2(2).
+        const spbooks = [SPE_INVISIBILITY, SPE_CONE_OF_COLD, SPE_CREATE_FAMILIAR,
+                         SPE_CLAIRVOYANCE, SPE_CHARM_MONSTER, SPE_STONE_TO_FLESH,
+                         SPE_POLYMORPH];
+        shuffle(spbooks);
+        quest_create_object(spbooks[0], place[8][0], place[8][1], null, null);
+    } finally {
+        g._full_mon_gen = false;
+    }
+
+    // des.non_diggable(selection.area(0,0,14,10)) — no RNG.
+    tower_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
+    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
+    if (flp) flip_level(flp);
+}
+
+// Main executor.  C ref: makemaz("tower3") -> load_special.  Unlike tower1/2
+// this one registers a "branch" levregion, so fixup_special places THAT (one
+// rn2(1)/rn2(1) pair) instead of falling back to the whole-level LR_BRANCH loop.
+export async function makemaz_tower3() {
+    const g = game;
+    shuffle(['law', 'neutral', 'chaos']);            // nhlib.lua top level
+    quest_level_init_solidfill();                    // splev_initlev rn2(2)
+    if (g.level?.flags) {
+        g.level.flags.is_maze_lev = true;
+        g.level.flags.noteleport = true;
+        g.level.flags.hardfloor = true;
+    }
+    tower1_load_map(TOWER3_MAP, false);              // 19x13, half-left/center
+
+    // `place` is used directly here — tower3.lua does NOT shuffle it.
+    const place = [[5, 1], [9, 1], [13, 1], [3, 3], [15, 3],
+                   [3, 7], [15, 7], [5, 9], [9, 9], [13, 9]];
+
+    quest_register_branch(2, 5);                     // des.levregion type="branch"
+    tower_place_ladder(5, 7, true);                  // des.ladder("up", 05,07)
+    quest_set_door(14, 5, 'locked');
+
+    g._full_mon_gen = true;
+    try {
+        quest_create_monster_class(S_DRAGON, 13, 5); // des.monster("D",13,05)
+        tower_create_monster_random(12, 4);
+        tower_create_monster_random(12, 6);
+        for (let i = 0; i < 6; i++) tower_create_monster_random(null, null);
+    } finally {
+        g._full_mon_gen = false;
+    }
+
+    g._full_mon_gen = true;
+    try {
+        quest_create_object(LONG_SWORD, place[3][0], place[3][1], null, null);
+        await tower_create_trap_random_at(place[3][0], place[3][1]);
+        quest_create_object(LOCK_PICK, place[0][0], place[0][1], null, null);
+        await tower_create_trap_random_at(place[0][0], place[0][1]);
+        quest_create_object(ELVEN_CLOAK, place[1][0], place[1][1], null, null);
+        await tower_create_trap_random_at(place[1][0], place[1][1]);
+        quest_create_object(BLINDFOLD, place[2][0], place[2][1], null, null);
+        await tower_create_trap_random_at(place[2][0], place[2][1]);
+    } finally {
+        g._full_mon_gen = false;
+    }
+
+    // des.non_diggable(selection.area(0,0,18,12)) — no RNG.
+    tower_wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
+    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
+    if (flp) { flip_level(flp); quest_flip_branch(flp); }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -6115,7 +6368,7 @@ export async function makemaz_minetown5() {
     // use the same faithful makemon path this generator does.
     if (g.level) g.level._splev_fullmon = true;
     // des.map([[...]]) — 75x21, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(MINETN5_MAP, lit);
+    bigrm_load_map(MINETN5_MAP, false);   // des.map bare string -> lit=FALSE
 
     // Five percent() gates; a nested one is only reached when the outer one
     // passes (Lua short-circuits, so its rn2(100) is then not drawn).

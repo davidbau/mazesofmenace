@@ -34,7 +34,7 @@ import {
     COLNO, ROWNO, DOOR, IN_SIGHT, POOL, MOAT, WATER, LAVAPOOL,
     HWALL, TLCORNER, BLCORNER, CROSSWALL, TUWALL, TDWALL, TRWALL, DBWALL,
     SDOOR, SCORR,
-    STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG,
+    STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, W_SADDLE,
 } from './const.js';
 // set_mimic_sym() needs the room/trap/vision helpers.  These modules sit below
 // makemon.js in the import graph except vision.js, which imports two function
@@ -42,10 +42,11 @@ import {
 // hoisted `function` declarations used only at call time, never at module init.
 import { inside_room, t_at as t_at_local } from './mkroom.js';
 import { does_block, block_point } from './vision.js';
+import { ARM_BONUS } from './worn.js';
 import {
     mflags2_of, mflags3_of, msound_of,
     M2_LORD, M2_PRINCE, M2_NASTY, M2_DEMON, M2_STRONG, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
-    M2_GNOME, M2_ORC, M2_ELF, M2_DWARF, M2_HUMAN, M2_MERC,
+    M2_GNOME, M2_ORC, M2_ELF, M2_DWARF, M2_HUMAN, M2_MERC, M2_DOMESTIC,
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK,
     unsolid_flag,
     MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST,
@@ -2023,25 +2024,10 @@ function rnd_misc_item(mtmp) {
 // C ref: mondata.h is_mercenary(ptr) == (mflags2 & M2_MERC).
 function m_is_mercenary(ptr) { return (mflags2_of(ptr) & M2_MERC) !== 0; }
 
-// C ref: hack.h ARM_BONUS(obj) = objects[otyp].a_ac + spe
-//                                 - min(greatest_erosion(obj), a_ac).
-// a_ac = 10 - (ARMOR macro ac arg) for the mercenary-granted armours.
-const MERC_A_AC = new Map([
-    [121, 7], [122, 7],          // PLATE_MAIL, CRYSTAL_PLATE_MAIL
-    [124, 6], [125, 6],          // SPLINT_MAIL, BANDED_MAIL
-    [131, 3], [132, 3],          // STUDDED_LEATHER_ARMOR, RING_MAIL
-    [134, 2],                    // LEATHER_ARMOR
-    [97, 1], [95, 1],            // HELMET, DENTED_POT
-    [150, 1], [156, 2],          // SMALL_SHIELD, LARGE_SHIELD
-    [163, 1], [165, 2],          // LOW_BOOTS, HIGH_BOOTS
-    [159, 1], [145, 1],          // LEATHER_GLOVES, LEATHER_CLOAK
-]);
-function merc_arm_bonus(o) {
-    if (!o) return 0;
-    const aac = MERC_A_AC.get(o.otyp) || 0;
-    const ero = Math.max(o.oeroded || 0, o.oeroded2 || 0);
-    return aac + (o.spe || 0) - Math.min(ero, aac);
-}
+// C ref: hack.h ARM_BONUS(obj).  This used to carry its own 15-entry a_ac map
+// covering only the otyps the mercenary branch below can hand out, so any other
+// armour scored 0; worn.js tabulates a_ac for the whole 89..172 range.
+function merc_arm_bonus(o) { return o ? ARM_BONUS(o) : 0; }
 
 // C ref: makemon.c m_initinv() is_mercenary() branch.  mtmp is the mercenary;
 // mm its PM index.  RNG must match C exactly (five armour rounds gated on the
@@ -2095,6 +2081,41 @@ function m_initinv_mercenary(mtmp, mm) {
         if (!rn2(2)) mongets(mtmp, 295 /*C_RATION*/);
         if (mm !== 277 /*PM_SOLDIER*/ && !rn2(3)) mongets(mtmp, 256 /*BUGLE*/);
     }
+}
+
+// C ref: steed.c:8 `static const char steeds[] = { S_QUADRUPED, S_UNICORN,
+// S_ANGEL, S_CENTAUR, S_DRAGON, S_JABBERWOCK }` — defsym.h MONSYM indices.
+const STEED_CLASSES = new Set([17, 21, 27, 29, 30, 36]);
+const MZ_MEDIUM = 2;
+// C ref: steed.c can_saddle(mtmp).
+function can_saddle(mtmp) {
+    const ptr = mtmp?.data;
+    if (!ptr || !STEED_CLASSES.has(ptr.mcls)) return false;
+    if ((ptr.msize ?? MZ_MEDIUM) < MZ_MEDIUM) return false;
+    if (humanoid_flag(ptr) && ptr.mcls !== 29 /*S_CENTAUR*/) return false;
+    // is_whirly = S_VORTEX or the air elemental; noncorporeal = S_GHOST.
+    const whirly = ptr.mcls === S_VORTEX_CLS || ptr.name === 'air elemental';
+    return !amorphous_flag(ptr) && ptr.mcls !== S_GHOST_CLS && !whirly
+        && !unsolid_flag(ptr);
+}
+// C ref: worn.c which_armor(mon, W_SADDLE).
+function which_armor_saddle(mtmp) {
+    for (const o of (mtmp?.minvent || [])) if ((o.owornmask | 0) & W_SADDLE) return o;
+    return null;
+}
+// C ref: steed.c put_saddle_on_mon(NULL, mtmp).  The only RNG is the
+// next_ident() inside mksobj(); fully_identify_obj() and mpickobj() draw none.
+const SADDLE_OTYP = 235;
+function put_saddle_on_mon(mtmp) {
+    const saddle = mksobj(SADDLE_OTYP, true, false);
+    if (!saddle) return;
+    saddle.known = saddle.bknown = saddle.rknown = 1;  // fully_identify_obj
+    saddle.dknown = 1;
+    mtmp._hasinv = true;
+    mpickobj(mtmp, saddle);
+    mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) | W_SADDLE;
+    saddle.owornmask = W_SADDLE;
+    saddle.leashmon = mtmp.m_id;
 }
 
 function m_initinv_full(mtmp) {
@@ -3339,7 +3360,25 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         // monster (per-class branches plus the rnd_defensive_item /
         // rnd_misc_item / likes_gold tail).
         m_initinv_full(mtmp);
-        rn2(100); // saddle chance, checked before domestic/can_saddle predicates.
+        // C ref: makemon.c:1445 `m_dowear(mtmp, TRUE)` — the monster puts its
+        // starting armour on at once, with no wear delay.  DELIBERATELY NOT
+        // CALLED YET.  worn.js is complete and its find_mac() is verified, but
+        // the call is only safe once uhitm.js relobj() clears owornmask +
+        // misc_worn_check the way worn.c extract_from_minvent() does: a killed
+        // monster otherwise drops armour that is still flagged worn, and the
+        // pet's dog_goal/dog_move object scan then scores the square
+        // differently (measured seed0014 494 -> 116).  Full wiring recipe and
+        // the +83 wave3 measurement are in the port log.
+        // C ref: makemon.c:1447 — `if (!rn2(100) && is_domestic(ptr)
+        // && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE))
+        //     put_saddle_on_mon((struct obj *) 0, mtmp);`
+        // The rn2(100) is the LEFT operand so it always draws; the roll was
+        // being discarded, so the 1-in-100 domestic quadruped that C saddles
+        // never consumed put_saddle_on_mon()'s mksobj(SADDLE) — one missing
+        // next_ident draw that desyncs the rest of the level's generation.
+        if (!rn2(100) && (mflags2_of(ptr) & M2_DOMESTIC) && can_saddle(mtmp)
+            && !which_armor_saddle(mtmp))
+            put_saddle_on_mon(mtmp);
     }
     // C ref: makemon.c:1460-1467 — mflags3 STRAT_WAITFORU/STRAT_CLOSE/
     // STRAT_APPEARMSG (no RNG).

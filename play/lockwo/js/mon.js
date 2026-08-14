@@ -9,7 +9,8 @@
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit, MAX_CARR_CAP, WT_HUMAN,
-    W_ARMG, IS_DOOR, IS_POOL, IS_LAVA, WATER, Is_waterlevel,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, I_SPECIAL,
+    IS_DOOR, IS_POOL, IS_LAVA, WATER, Is_waterlevel,
     D_CLOSED, D_LOCKED } from './const.js';
 import { dochugw, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen,
     m_everyturn_effect, monflee, onscary } from './monmove.js';
@@ -18,14 +19,15 @@ import { t_at } from './trap.js';
 import { night, FULL_MOON } from './calendar.js';
 import { is_were_flag, is_human_flag, mflags1_of, mflags2_of, mflags3_of,
     M1_NOTAKE, M1_NOHANDS, M1_AMORPHOUS, M1_HIDE, M1_CLING, M1_FLY,
-    M1_BREATHLESS, M2_DEMON, M3_COVETOUS, mindless,
+    M1_BREATHLESS, M1_SLITHY, M2_DEMON, M3_COVETOUS, mindless,
+    humanoid, is_animal, nohands,
     strongmonst_flag, throws_rocks_flag } from './monflags_data.js';
 import { attacktype, AT_ENGL } from './monattk_data.js';
 import { objects as OBJECTS, CORPSE, BOULDER, BELL_OF_OPENING,
-    COIN_CLASS, GEM_CLASS, ROCK_CLASS } from './mkobj.js';
+    COIN_CLASS, GEM_CLASS, ROCK_CLASS, place_object } from './mkobj.js';
 import { monster_by_pmidx, newcham, enexto_spawn,
     pickvampshape_pub, set_mimic_sym } from './makemon.js';
-import { newsym, pline, see_with_infrared, canseemon_shared } from './display.js';
+import { newsym, pline, update_topl, see_with_infrared, canseemon_shared } from './display.js';
 import { dist2 } from './hacklib.js';
 import { Monnam } from './uhitm.js';
 
@@ -331,7 +333,10 @@ async function new_were(mon) {
     // C: healmon(mon, (mhpmax - mhp) / 4, 0) — regain a quarter of lost HP.
     healmon(mon, Math.floor(((mon.mhpmax || 0) - (mon.mhp || 0)) / 4), 0);
     newsym(mon.mx, mon.my);
-    // C ref: were.c:132 — mon_break_armor(mon, FALSE); possibly_unwield(mon, FALSE);
+    // C ref: were.c:132 — mon_break_armor(mon, FALSE).  possibly_unwield() is
+    // still unported: it only re-checks the WIELDED weapon, which this port
+    // does not give were-forms.
+    await mon_break_armor(mon, false);
     if (game.context?.mon_moving && !mon.mpeaceful
         && onscary(mon.mux, mon.muy, mon) && monnear(mon, mon.mux, mon.muy))
         await monflee(mon, rn1(9, 2), true, true); /* 2..10 turns */
@@ -378,7 +383,11 @@ async function were_change(mon) {
                 const howler = mndx === PM_WEREWOLF ? 'wolf'
                              : mndx === PM_WEREJACKAL ? 'jackal' : null;
                 if (howler) {
-                    await pline(`You hear a ${howler} howling at the moon.`);
+                    // C ref: were.c:37 You_hear() -> pline -> vpline ->
+                    // update_topl, which APPENDS to an unacknowledged top line.
+                    // mon_break_armor's "You hear a thud." fires first (were.c
+                    // :129 runs before this), and C renders both on one line.
+                    await update_topl(`You hear a ${howler} howling at the moon.`);
                     const { wake_nearto } = await import('./cmd.js');
                     await wake_nearto(mon.mx, mon.my, 4 * 4);
                 }
@@ -750,11 +759,454 @@ export async function hide_monst(mon) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// C ref: worn.c:756 m_dowear() / worn.c:799 m_dowear_type() — monster armour.
+// Was entirely unported, which is not cosmetic: worn.c:956 charges a monster
+// `mfrozen = m_delay` turns for putting a piece on, and movemon_singlemon()
+// returns before dochug() while that runs, so C spends whole monster turns
+// with ZERO RNG draws that this port used to spend moving and attacking.
+//
+// Deliberately NOT ported here, with the reason each is safe to omit:
+//   worn.c:964 update_mon_extrinsics() — needs objects[].oc_oprop, a column
+//     js/mkobj.js's OBJECT_DATA does not carry.  It draws no RNG; what it
+//     would change is mon->minvis (cloak of invisibility), mon_adjust_speed
+//     (speed boots) and mon->mextrinsics (resistances).
+//   worn.c:975 artifact_light()/begin_burn() — no monster in these corpora
+//     wears a light-emitting artifact suit (gold dragon scale mail).
+// find_mac() is likewise still base-AC-only in this port (js/uhitm.js:922 and
+// its four siblings ignore misc_worn_check); making it worn-aware is a
+// SEPARATE change and was measured at seed0014 -378 / proxy -47 on its own,
+// i.e. it exposes a second bug rather than fixing one.  See the deferred note.
+
+// C ref: include/objects.h ARMOR()/HELM()/CLOAK()/SHIELD()/GLOVES()/BOOTS() —
+// [otyp, a_ac, oc_delay] for the whole armour otyp range 89..172 in
+// js/mkobj.js order.  a_ac is the macro's `10 - ac` field (so plate mail's
+// `ac 3` is a_ac 7); ARM_BONUS (hack.h:1526) and worn.c's m_delay read exactly
+// these two columns and OBJECT_DATA carries neither.  js/invent.js's
+// ARMOR_OC_DELAY is the hero-side delay subset (it has no entry for the
+// dragon-scale suits 101..120), so it is not reused.
+const ARMOR_AC_DELAY = new Map([
+    [89,1,1], [90,1,1], [91,2,1], [92,0,0], [93,0,1], [94,0,1], [95,1,0], [96,1,1],
+    [97,1,1], [98,1,1], [99,1,1], [100,1,1], [101,9,5], [102,9,5], [103,9,5], [104,9,5],
+    [105,9,5], [106,9,5], [107,9,5], [108,9,5], [109,9,5], [110,9,5], [111,3,5], [112,3,5],
+    [113,3,5], [114,3,5], [115,3,5], [116,3,5], [117,3,5], [118,3,5], [119,3,5], [120,3,5],
+    [121,7,5], [122,7,5], [123,6,5], [124,6,5], [125,6,5], [126,6,1], [127,5,1], [128,5,5],
+    [129,4,5], [130,4,5], [131,3,3], [132,3,5], [133,2,5], [134,2,3], [135,1,0], [136,0,0],
+    [137,0,0], [138,0,0], [139,1,0], [140,0,0], [141,0,0], [142,1,0], [143,2,0], [144,1,0],
+    [145,1,0], [146,3,0], [147,1,0], [148,1,0], [149,1,0], [150,1,0], [151,1,0], [152,1,0],
+    [153,2,0], [154,1,0], [155,1,0], [156,2,0], [157,2,0], [158,2,0], [159,1,1], [160,1,1],
+    [161,1,1], [162,1,1], [163,1,2], [164,2,2], [165,2,2], [166,1,2], [167,1,2], [168,1,2],
+    [169,1,2], [170,1,2], [171,1,2], [172,1,2],
+].map((r) => [r[0], r]));
+
+// C ref: objects.h oc_armcat — the ARM_* slot of an armour otyp.  Each slot is
+// one contiguous otyp run in objects.h, so the ranges ARE the column.  (Do NOT
+// route this through js/invent.js:3206 armor_slot_mask(): that one is a subset
+// table whose `default:` sends every cloak but three, and every shield but
+// one, to the body-suit slot.)
+//
+// prop.h W_AMUL and the js/mkobj.js otyps / js/makemon.js pmidx values the
+// worn.c predicates name.  (js/invent.js remaps its own W_* block, so the
+// monster masks all come from js/const.js — see the imports above.)
+const W_AMUL_MON = 0x00010000;
+// C stores a monster's worn mask on the OBJECT (obj->owornmask) and clears it
+// in extract_from_minvent() (worn.c:1374) whenever the object leaves minvent.
+// This port has no such choke point — js/uhitm.js:1710 relobj() (monster death
+// drop) and js/dogmove.js:914 relobj() (pet drop) place the object straight on
+// the floor — so an object-side mask LEAKS: a dropped helm keeps its mask, and
+// dogmove.js:626 droppables() (`!obj->owornmask`) then refuses to let a pet
+// that later picks it up drop it again.  Measured: seed0014 -378 screens.
+// Until those two relobj sites clear owornmask, the monster-side mask lives in
+// its own field; every reader below goes through WORNF, so restoring C's
+// spelling is a one-line change.  (js/muse.js:371 which_armor reads owornmask
+// and therefore still answers NULL for monsters — exactly as it did before
+// this port, so nothing regresses through it.)
+const WORNF = 'mwornmask';
+const AMULET_CLASS_M = 5;
+const SPEED_BOOTS_OTYP = 166, MUMMY_WRAPPING_OTYP = 138, DUNCE_CAP_OTYP = 94,
+    HELM_OF_OPPOSITE_ALIGNMENT_OTYP = 99, RUBBER_HOSE_OTYP = 78,
+    AMULET_OF_LIFE_SAVING_OTYP = 202, AMULET_OF_REFLECTION_OTYP = 208,
+    AMULET_OF_GUARDING_OTYP = 210,
+    ELVEN_LEATHER_HELM = 89, ELVEN_MITHRIL_COAT = 127, ELVEN_CLOAK = 139,
+    ELVEN_SHIELD = 153, ELVEN_BOOTS = 169;
+// C ref: permonst.h MZ_* / monsym.h S_* / objclass.h material enum.
+const MZ_SMALL_M = 1, MZ_HUMAN_M = 2, MZ_LARGE_M = 3, MZ_HUGE_M = 4;
+const S_VORTEX_M = 22, S_CENTAUR_M = 29, S_MUMMY_M = 39, S_GHOST_M = 54;
+const LEATHER_MATERIAL = 7;
+const PM_WINGED_GARGOYLE = 42, PM_HOBBIT = 43, PM_WHITE_UNICORN = 101,
+    PM_GRAY_UNICORN = 102, PM_BLACK_UNICORN = 103, PM_KI_RIN = 124,
+    PM_AIR_ELEMENTAL = 154, PM_MINOTAUR = 177, PM_SKELETON = 248,
+    PM_HORNED_DEVIL = 291, PM_MARILITH = 294, PM_BALROG = 302, PM_ASMODEUS = 309;
+function armor_slot_of(otyp) {
+    if (otyp >= 89 && otyp <= 100) return W_ARMH;
+    if (otyp >= 101 && otyp <= 135) return W_ARM;
+    if (otyp >= 136 && otyp <= 137) return W_ARMU;
+    if (otyp >= 138 && otyp <= 149) return W_ARMC;
+    if (otyp >= 150 && otyp <= 158) return W_ARMS;
+    if (otyp >= 159 && otyp <= 162) return W_ARMG;
+    if (otyp >= 163 && otyp <= 172) return W_ARMF;
+    return 0;
+}
+function oc_delay_arm(otyp) { return ARMOR_AC_DELAY.get(otyp)?.[2] ?? 0; }
+// C ref: obj.h:126 greatest_erosion(otmp).
+function greatest_erosion(obj) {
+    return Math.max(obj?.oeroded | 0, obj?.oeroded2 | 0);
+}
+// C ref: hack.h:1526 ARM_BONUS(obj).
+function ARM_BONUS(obj) {
+    const a_ac = ARMOR_AC_DELAY.get(obj?.otyp)?.[1] ?? 0;
+    return a_ac + (obj?.spe | 0) - Math.min(greatest_erosion(obj), a_ac);
+}
+// C ref: worn.c:1339 extra_pref(mon, obj) — the only special-benefit bias.
+// mtmp->permspeed is not persisted by this port's makemon; every monster that
+// could pick speed boots up off the floor here is a non-MFAST species, which
+// is the branch C takes for them too.
+function extra_pref(mon, obj) {
+    return (obj && obj.otyp === SPEED_BOOTS_OTYP && (mon?.permspeed | 0) !== MFAST) ? 20 : 0;
+}
+// C ref: worn.c:1360 racial_exception(mon, obj) — hobbits may wear elven armour.
+function racial_exception(mon, obj) {
+    return (monsndx_mon(mon) === PM_HOBBIT && is_elven_armor(obj)) ? 1 : 0;
+}
+function is_elven_armor(obj) {
+    const o = obj?.otyp;
+    return o === ELVEN_LEATHER_HELM || o === ELVEN_MITHRIL_COAT || o === ELVEN_CLOAK
+        || o === ELVEN_SHIELD || o === ELVEN_BOOTS;
+}
+// C ref: worn.c which_armor(mon, slot).
+function which_armor_mon(mon, slot) {
+    for (const o of (mon?.minvent || []))
+        if (((o[WORNF] || 0) & slot) !== 0) return o;
+    return null;
+}
+// C ref: mondata.c:632 sliparm / :640 breakarm / mondata.h:133 cantweararm.
+function sliparm_mon(ptr) {
+    return is_whirly_mon(ptr) || (ptr?.msize ?? 0) <= MZ_SMALL_M || noncorporeal_mon(ptr);
+}
+function cantweararm_mon(ptr) {
+    if (sliparm_mon(ptr)) return true;                       // breakarm's guard
+    return (ptr?.msize ?? 0) >= MZ_LARGE_M
+        || ((ptr?.msize ?? 0) > MZ_SMALL_M && !humanoid(ptr))
+        || ptr?.pmidx === PM_MARILITH || ptr?.pmidx === PM_WINGED_GARGOYLE;
+}
+function is_whirly_mon(ptr) {
+    return ptr?.mcls === S_VORTEX_M || ptr?.pmidx === PM_AIR_ELEMENTAL;
+}
+function noncorporeal_mon(ptr) { return ptr?.mcls === S_GHOST_M; }
+// C ref: obj.h:444 WrappingAllowed(mptr).
+function WrappingAllowed(ptr) {
+    const sz = ptr?.msize ?? 0;
+    return humanoid(ptr) && sz >= MZ_SMALL_M && sz <= MZ_HUGE_M
+        && !noncorporeal_mon(ptr) && ptr?.mcls !== S_CENTAUR_M
+        && ptr?.pmidx !== PM_WINGED_GARGOYLE && ptr?.pmidx !== PM_MARILITH;
+}
+// C ref: mondata.c:678 num_horns(ptr) / mondata.h:56 has_horns(ptr).
+const HORNED_PMIDX = new Set([PM_HORNED_DEVIL, PM_MINOTAUR, PM_ASMODEUS, PM_BALROG,
+    PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN, PM_KI_RIN]);
+function has_horns(ptr) { return HORNED_PMIDX.has(ptr?.pmidx); }
+// C ref: obj.h:418 is_flimsy(otmp) — oc_material <= LEATHER (objclass.h:20)
+// or a rubber hose.
+function is_flimsy(obj) {
+    return (OBJECTS[obj?.otyp]?.material ?? 99) <= LEATHER_MATERIAL
+        || obj?.otyp === RUBBER_HOSE_OTYP;
+}
+function monsndx_mon(mon) { return mon?.data?.pmidx ?? -1; }
+function slithy_mon(ptr) { return (mflags1_of(ptr) & M1_SLITHY) !== 0; }
+// C ref: youprop.h See_invisible.  js/display.js:335 has the shared reader but
+// does not export it; this port spells the hero's copy several ways.
+function See_invisible_mon() {
+    const u = game.u || {}, p = u.uprops || {};
+    return !!(u.see_invis || p.HSee_invisible || u.HSee_invisible
+        || p.ESee_invisible || u.ESee_invisible || p.See_invisible || u.See_invisible);
+}
+
+// C ref: worn.c:799 m_dowear_type(mon, flag, creation, racialexception).
+// Draws no RNG anywhere along this path (nor does curse()).
+async function m_dowear_type(mon, flag, creation, racialexception) {
+    if (mon.mfrozen)
+        return;                            /* probably putting previous item on */
+    const sawmon = canseemon_shared(mon);
+    let old = which_armor_mon(mon, flag);
+    if (old && old.cursed) return;
+    if (old && flag === W_AMUL_MON && old.otyp !== AMULET_OF_GUARDING_OTYP) return;
+    let best = old;
+
+    for (const obj of (mon.minvent || [])) {
+        if (flag === W_AMUL_MON) {
+            if (obj.oclass !== AMULET_CLASS_M
+                || (obj.otyp !== AMULET_OF_LIFE_SAVING_OTYP
+                    && obj.otyp !== AMULET_OF_REFLECTION_OTYP
+                    && obj.otyp !== AMULET_OF_GUARDING_OTYP))
+                continue;
+            if (!best || obj.otyp !== AMULET_OF_GUARDING_OTYP) {
+                best = obj;
+                if (best.otyp !== AMULET_OF_GUARDING_OTYP) break;  // C goto outer_break
+            }
+            continue;                      /* skip post-switch armor handling */
+        }
+        if (armor_slot_of(obj.otyp) !== flag) continue;
+        if (flag === W_ARMC) {
+            // mummy wrapping is the only cloak allowed above human size, and a
+            // monster that is already invisible won't put one on (it blocks
+            // invisibility and would reveal it).
+            if ((mon.data?.msize ?? 0) > MZ_HUMAN_M && obj.otyp !== MUMMY_WRAPPING_OTYP)
+                continue;
+            if (mon.minvis && obj.otyp === MUMMY_WRAPPING_OTYP
+                && !See_invisible_mon() && !creation)
+                continue;
+        } else if (flag === W_ARMH) {
+            if (obj.otyp === HELM_OF_OPPOSITE_ALIGNMENT_OTYP
+                && (mon.ispriest || mon.isminion)) continue;
+            if (has_horns(mon.data) && !is_flimsy(obj)) continue;
+        } else if (flag === W_ARM) {
+            if (racialexception && racial_exception(mon, obj) < 1) continue;
+        }
+        if (obj[WORNF]) continue;
+        if (best && (ARM_BONUS(best) + extra_pref(mon, best)
+                     >= ARM_BONUS(obj) + extra_pref(mon, obj)))
+            continue;
+        best = obj;
+    }
+    if (!best || best === old) return;
+
+    // C ref: worn.c:906 — same auto-cursing behaviour as for the hero.
+    const autocurse = ((best.otyp === HELM_OF_OPPOSITE_ALIGNMENT_OTYP
+                        || best.otyp === DUNCE_CAP_OTYP) && !best.cursed);
+    let m_delay = 0;
+    // wearing a cloak costs 2 extra turns to get a suit or shirt on under it
+    if ((flag === W_ARM || flag === W_ARMU) && ((mon.misc_worn_check | 0) & W_ARMC))
+        m_delay += 2;
+    if (old) {
+        m_delay += oc_delay_arm(old.otyp);
+        old[WORNF] = 0;                 /* avoid doname() "(being worn)" */
+    }
+    if (!creation) {
+        if (sawmon) {
+            // C ref: worn.c:924-947 — "<Mon> [removes <old> and ]puts on <new>."
+            const { distant_doname } = await import('./invent.js');
+            let newarm = distant_doname(best), buf = '';
+            if (old) {
+                const oldarm = distant_doname(old);
+                buf = ` removes ${oldarm} and`;
+                // identical descriptions read "another <armour>", not "a <armour>"
+                if (newarm.toLowerCase() === oldarm.toLowerCase())
+                    newarm = newarm.replace(/^an? /i, 'another ');
+            }
+            await update_topl(`${Monnam(mon)}${buf} puts on ${newarm}.`);
+            if (autocurse)
+                await pline(`${Monnam(mon)}'s ${OBJECTS[best.otyp]?.name
+                             || 'armor'} glows black for a moment.`);
+        }
+        m_delay += oc_delay_arm(best.otyp);
+        mon.mfrozen = m_delay;
+        if (mon.mfrozen) mon.mcanmove = 0;
+    }
+    if (old) old[WORNF] = 0;
+    mon.misc_worn_check = (mon.misc_worn_check | 0) | flag;
+    best[WORNF] = (best[WORNF] | 0) | flag;
+    if (autocurse) { best.cursed = 1; best.blessed = 0; }  // C ref: mkobj.c curse()
+    // C ref: worn.c:964/977 update_mon_extrinsics(mon, old|best, ..) `case FAST`.
+    await mon_adjust_speed_worn(mon, creation);
+}
+
+// C ref: worn.c:488 mon_adjust_speed(mon, 0, obj) — adjust==0 does nothing but
+// recompute mspeed from the monster's WORN items, and speed boots are the only
+// armour whose oc_oprop is FAST.  This is the one arm of update_mon_extrinsics
+// that changes the RNG stream rather than just the monster's resistances:
+// mspeed == MFAST turns mcalcmove_base()'s allotment from mmove into
+// (4*mmove+2)/3, so a booted monster reaches NORMAL_SPEED — and draws its
+// distfleeck/m_move rolls — on turns a barefoot one does not.
+// mon->permspeed is not persisted by this port's makemon (no monster here is
+// intrinsically fast or slow), so the else arm reproduces `mspeed = permspeed`.
+async function mon_adjust_speed_worn(mon, creation) {
+    const oldspeed = mon.mspeed | 0;
+    let boots = null;
+    for (const o of (mon.minvent || []))
+        if ((o[WORNF] | 0) !== 0 && o.otyp === SPEED_BOOTS_OTYP) { boots = o; break; }
+    mon.mspeed = boots ? MFAST : (mon.permspeed | 0);
+    // give_msg = !gi.in_mklev: the creation-time pass is C's in_mklev one.
+    if (creation || (mon.mspeed | 0) === oldspeed) return;
+    if (!mmove_of(mon.data) || mon.mfrozen || mon.msleeping) return;
+    if (!canseemon_shared(mon)) return;
+    const howmuch = ((mon.mspeed | 0) + oldspeed === MFAST + MSLOW) ? 'much ' : '';
+    await pline((mon.mspeed | 0) === MFAST
+        ? `${Monnam(mon)} is suddenly moving ${howmuch}faster.`
+        : `${Monnam(mon)} seems to be moving ${howmuch}slower.`);
+}
+
+// C ref: worn.c:756 m_dowear(mon, creation) — wear the best object of each
+// slot.  Slot order is load-bearing: m_dowear_type() returns immediately once
+// mon->mfrozen is set, so only the FIRST slot that upgrades charges a delay.
+export async function m_dowear(mon, creation) {
+    const ptr = mon?.data;
+    if (!ptr) return;
+    if ((ptr.msize ?? 0) < MZ_SMALL_M || nohands(ptr) || is_animal(ptr)) return;
+    // mummies get a chance to wear their wrappings; skeletons their armour
+    if (mindless(ptr)
+        && (!creation || (ptr.mcls !== S_MUMMY_M && ptr.pmidx !== PM_SKELETON)))
+        return;
+
+    await m_dowear_type(mon, W_AMUL_MON, creation, false);
+    const can_wear_armor = !cantweararm_mon(ptr);       /* suit, cloak, shirt */
+    if (can_wear_armor && !((mon.misc_worn_check | 0) & W_ARM))
+        await m_dowear_type(mon, W_ARMU, creation, false);
+    if (can_wear_armor || WrappingAllowed(ptr))
+        await m_dowear_type(mon, W_ARMC, creation, false);
+    await m_dowear_type(mon, W_ARMH, creation, false);
+    const wep = mon.mw || null;
+    if (!wep || !OBJECTS[wep.otyp]?.bimanual)
+        await m_dowear_type(mon, W_ARMS, creation, false);
+    await m_dowear_type(mon, W_ARMG, creation, false);
+    if (!slithy_mon(ptr) && ptr.mcls !== S_CENTAUR_M)
+        await m_dowear_type(mon, W_ARMF, creation, false);
+    // C ref: worn.c:793 — RACE_EXCEPTION for monsters that can't wear suits
+    await m_dowear_type(mon, W_ARM, creation, !can_wear_armor);
+}
+
+// C ref: worn.c:1163 m_lose_armor(mon, obj, polyspot) —
+// extract_from_minvent + place_object + newsym.  No RNG.
+function m_lose_armor(mon, obj) {
+    const inv = mon.minvent || [];
+    const ix = inv.indexOf(obj);
+    if (ix >= 0) inv.splice(ix, 1);
+    mon.misc_worn_check = (mon.misc_worn_check | 0) & ~(obj[WORNF] | 0);
+    obj[WORNF] = 0;
+    obj.owornmask = 0;
+    place_object(obj, mon.mx, mon.my);
+    newsym(mon.mx, mon.my);
+}
+// C ref: mon.c m_useup(mon, obj) — the armour is destroyed outright.
+function m_useup_armor(mon, obj) {
+    const inv = mon.minvent || [];
+    const ix = inv.indexOf(obj);
+    if (ix >= 0) inv.splice(ix, 1);
+    mon.misc_worn_check = (mon.misc_worn_check | 0) & ~(obj[WORNF] | 0);
+    obj[WORNF] = 0;
+}
+// C ref: objnam.c cloak_simple_name(cloak).
+function cloak_simple_name_mon(obj) {
+    if (obj?.otyp === MUMMY_WRAPPING_OTYP) return 'wrapping';
+    if (obj?.otyp === 143 /* ROBE */) return 'robe';
+    if (obj?.otyp === 144 /* ALCHEMY_SMOCK */) return 'apron';
+    return 'cloak';
+}
+function s_suffix_mon(s) { return /s$/.test(s) ? `${s}'` : `${s}'s`; }
+function mhis_mon(mon) { return mon?.female ? 'her' : 'his'; }
+function mhim_mon(mon) { return mon?.female ? 'her' : 'him'; }
+
+// C ref: worn.c:1177 mon_break_armor(mon, polyspot) — a monster whose FORM just
+// changed (new_were, newcham, polymorph) sheds or bursts the armour that no
+// longer fits.  Draws no RNG, but the "You hear a thud." / "a cracking sound."
+// lines are top-line output and the dropped object lands on the floor.
+// NOT ported: the W_SADDLE / u.usteed arm at worn.c:1312 (this port keeps the
+// saddle's mask in obj.owornmask via js/dog.js:304, not in the monster-worn
+// field, and the dismount path lives in js/steed.js).
+export async function mon_break_armor(mon, polyspot) {
+    const mdat = mon?.data;
+    if (!mdat) return;
+    const vis = cansee(mon.mx, mon.my);
+    const handless_or_tiny = nohands(mdat) || (mdat.msize ?? 0) < MZ_SMALL_M;
+    const ppronoun = mhis_mon(mon), pronoun = mhim_mon(mon);
+    const hear = async (what) => { if (!Deaf()) await update_topl(`You hear ${what}`); };
+    let otmp;
+    if (!sliparm_mon(mdat) && cantweararm_mon(mdat)) {   /* C: breakarm(mdat) */
+        if ((otmp = which_armor_mon(mon, W_ARM)) != null) {
+            // (the dragon-scales-merging special case has no message either way)
+            if (vis) await update_topl(`${Monnam(mon)} breaks out of ${ppronoun} armor!`);
+            else await hear('a cracking sound.');
+            m_useup_armor(mon, otmp);
+        }
+        if ((otmp = which_armor_mon(mon, W_ARMC)) != null
+            && (otmp.otyp !== MUMMY_WRAPPING_OTYP || !WrappingAllowed(mdat))) {
+            if (vis) await update_topl(`${s_suffix_mon(Monnam(mon))} ${cloak_simple_name_mon(otmp)} tears apart!`);
+            else await hear('a ripping sound.');
+            m_useup_armor(mon, otmp);
+        }
+        if ((otmp = which_armor_mon(mon, W_ARMU)) != null) {
+            if (vis) await update_topl(`${s_suffix_mon(Monnam(mon))} shirt rips to shreds!`);
+            else await hear('a ripping sound.');
+            m_useup_armor(mon, otmp);
+        }
+    } else if (sliparm_mon(mdat)) {
+        const passes_thru_clothes = !((mdat.msize ?? 0) <= MZ_SMALL_M);
+        if ((otmp = which_armor_mon(mon, W_ARM)) != null) {
+            if (vis) await update_topl(`${s_suffix_mon(Monnam(mon))} armor falls around ${pronoun}!`);
+            else await hear('a thud.');
+            m_lose_armor(mon, otmp, polyspot);
+        }
+        if ((otmp = which_armor_mon(mon, W_ARMC)) != null
+            && (otmp.otyp !== MUMMY_WRAPPING_OTYP || !WrappingAllowed(mdat))) {
+            if (vis)
+                await update_topl(is_whirly_mon(mdat)
+                    ? `${s_suffix_mon(Monnam(mon))} ${cloak_simple_name_mon(otmp)} falls, unsupported!`
+                    : `${Monnam(mon)} shrinks out of ${ppronoun} ${cloak_simple_name_mon(otmp)}!`);
+            m_lose_armor(mon, otmp, polyspot);
+        }
+        if ((otmp = which_armor_mon(mon, W_ARMU)) != null) {
+            if (vis)
+                await update_topl(passes_thru_clothes
+                    ? `${Monnam(mon)} seeps right through ${ppronoun} shirt!`
+                    : `${Monnam(mon)} becomes much too small for ${ppronoun} shirt!`);
+            m_lose_armor(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny) {
+        if ((otmp = which_armor_mon(mon, W_ARMG)) != null) {
+            if (vis) await update_topl(`${Monnam(mon)} drops ${ppronoun} gloves${mon.mw ? ' and weapon' : ''}!`);
+            m_lose_armor(mon, otmp, polyspot);
+        }
+        if ((otmp = which_armor_mon(mon, W_ARMS)) != null) {
+            if (vis) await update_topl(`${Monnam(mon)} can no longer hold ${ppronoun} shield!`);
+            else await hear('a clank.');
+            m_lose_armor(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny || has_horns(mdat)) {
+        if ((otmp = which_armor_mon(mon, W_ARMH)) != null
+            && (handless_or_tiny || !is_flimsy(otmp))) {
+            if (vis) await update_topl(`${s_suffix_mon(Monnam(mon))} helmet falls to the ${surface_mon(mon)}!`);
+            else await hear('a clank.');
+            m_lose_armor(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny || slithy_mon(mdat) || mdat.mcls === S_CENTAUR_M) {
+        if ((otmp = which_armor_mon(mon, W_ARMF)) != null) {
+            if (vis)
+                await update_topl(is_whirly_mon(mdat)
+                    ? `${s_suffix_mon(Monnam(mon))} boots fall away!`
+                    : `${s_suffix_mon(Monnam(mon))} boots ${(mdat.msize ?? 0) < MZ_SMALL_M
+                        ? 'slide' : 'are pushed'} off ${ppronoun} feet!`);
+            m_lose_armor(mon, otmp, polyspot);
+        }
+    }
+}
+// C ref: hack.c surface(x, y) — only the message-bearing cases a monster can
+// stand on while shedding a helmet are reachable here.
+function surface_mon(mon) {
+    const typ = game.level?.at?.(mon.mx, mon.my)?.typ;
+    if (typ === WATER || IS_POOL(typ)) return 'water';
+    if (IS_LAVA(typ)) return 'lava';
+    return 'floor';
+}
+
 // C ref: mon.c movemon_singlemon(mtmp) — drive one monster's move, returning
 // true if it still has movement points left after this action.
 async function movemon_singlemon(mtmp) {
     if (DEADMONSTER(mtmp)) return false;
     if (mtmp.mx == null || mtmp.mx <= 0) return false; // off-map
+
+    // C ref: makemon.c:1445 `m_dowear(mtmp, TRUE)` — C equips a monster's
+    // STARTING armour at creation, with creation=TRUE so it costs no time.
+    // js/makemon.js is a different file's territory, so the equivalent runs
+    // here, on the monster's first pass through the move loop and BEFORE the
+    // movement-point gate (i.e. on the first movemon() after it appears).
+    // Without it the first m_dowear() a monster ever runs would also put its
+    // starting suit on and charge oc_delay turns C never charges.
+    // m_dowear draws no RNG, so this cannot shift the stream by itself.
+    if (!mtmp._geared) {
+        mtmp._geared = true;
+        await m_dowear(mtmp, true);
+    }
 
     // C ref: mon.c:1248 — m_everyturn_effect() runs BEFORE the movement-point
     // gate, so a fog cloud trails vapor every turn even on turns it is too slow
@@ -782,11 +1234,21 @@ async function movemon_singlemon(mtmp) {
     // deduction and this call are obj-flag/display bookkeeping and draw nothing.
     if (await minliquid(mtmp)) return false;
 
-    // C ref: mon.c:1259-1275 — `if (mtmp->misc_worn_check & I_SPECIAL)` sends a
-    // monster that just lost equipment through m_dowear() to put on a
-    // replacement, and it spends the whole turn doing so (returns FALSE before
-    // dochugw).  DEFERRED: m_dowear() is not ported (monmove.js:4492 notes the
-    // same gap), and I_SPECIAL is never set on a monster here.
+    // C ref: mon.c:1269-1284 — after gaining or losing equipment a monster
+    // re-runs m_dowear() and SPENDS THE WHOLE TURN doing so (returns FALSE
+    // before dochugw, so it draws nothing at all that turn).  Hostiles that
+    // believe the hero is within dist2 <= 9 keep the bit set for later instead.
+    if (((mtmp.misc_worn_check | 0) & I_SPECIAL) !== 0) {
+        if (mtmp.mpeaceful || mtmp.mtame
+            || dist2(mtmp.mx, mtmp.my, mtmp.mux | 0, mtmp.muy | 0) > (3 * 3)) {
+            mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) & ~I_SPECIAL;
+            const oldworn = mtmp.misc_worn_check | 0;
+            await m_dowear(mtmp, false);
+            if ((mtmp.misc_worn_check | 0) !== oldworn || !mtmp.mcanmove)
+                return false;              /* is spending this turn equipping */
+        }
+    }
+
     //
     // C ref: mon.c:1300-1313 — the Conflict branch (fightm()).  Nothing in this
     // port grants Conflict, so m_canseeu/fightm is unreachable; fightm() would

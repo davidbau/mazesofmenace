@@ -23,6 +23,7 @@ import {
     LADDER, LA_DOWN, DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, AIR, CLOUD,
     DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
     AM_MASK, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, AM_SANCTUM,
+    TT_LAVA, SICK_VOMITABLE, SICK_NONVOMITABLE,
 } from './const.js';
 import {
     NO_COLOR, CLR_BLACK, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
@@ -41,6 +42,7 @@ import { In_hell } from './dungeon.js';
 import { observe_object } from './o_init.js';
 
 const COIN_CLASS = 12;
+const S_EEL_CLS = 57;            // monsym.h S_EEL
 const ROCK_CLASS = 14;
 const STATUE_OTYP = 476;
 const BOULDER_OTYP = 475;
@@ -1018,8 +1020,10 @@ export function background_glyph(loc, x, y) {
     if (trap?.tseen && !covers_objects(loc))
         return trap_glyph(trap);
     // C ref: _map_location — a revealed engraving on engraving-showing terrain
-    // is drawn above the bare terrain.
-    if (spot_shows_engravings(loc)) {
+    // is drawn above the bare terrain.  display.c:463 gates this arm on
+    // `!covers_traps(x, y)` too (display.h:222 covers_traps == covers_objects),
+    // so a liquid square hides its engraving the same way it hides objects.
+    if (spot_shows_engravings(loc) && !covers_objects(loc)) {
         const ep = engr_at(x, y);
         if (ep && ep.erevealed) return engraving_glyph(loc);
     }
@@ -1462,9 +1466,13 @@ function _statusLine1() {
     };
     const stats = `St:${_strengthStr(a[0] ?? 0)} Dx:${_eff(3)} Co:${_eff(4)} In:${_eff(1)} Wi:${_eff(2)} Ch:${_eff(5)}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
-    // C pads title+"  " out so the stats column starts at a fixed offset
-    // (mrank_sz + 15 == 31 for our roles).
-    const gap = Math.max(2, 31 - title.length);
+    // C ref: botl.c:1007 `Sprintf(blstats[idx][BL_TITLE].val, "%-30s", buf);` —
+    // the tty takes the FIELDED status path, where BL_TITLE is padded to a flat
+    // 30 columns (not do_statusline1()'s role-dependent mrank_sz + 15) and the
+    // next field follows one space later.  "%-30s" never truncates, so a title
+    // of 30+ chars keeps exactly one separating space; the old max(2, ...)
+    // inserted two and shifted every stat right for long names.
+    const gap = Math.max(1, 31 - title.length);
     if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}`;
     return `${title}${' '.repeat(gap)}${stats} ${align}`;
 }
@@ -1532,10 +1540,39 @@ function _statusLine2() {
     // the *fielded* status API (botl.c bot() -> bot_via_windowport(), since
     // VIA_WINDOWPORT()), and wintty.c render_status walks cond_idx[], which
     // botl.c condopt() qsorts by conditions[].ranking then case-insensitively
-    // by condtests[].useroption.  Every condition below is ranking 10, so the
-    // emitted order is alphabetical on the *option* name:
-    //   blind, conf, deaf, fly, hallucinat, levitate, ride, stun
-    // — confirmed by the recordings ("Satiated Conf Stun", "Burdened Deaf").
+    // by condtests[].useroption.  botl.c:781 conditions[] rankings for the
+    // default-enabled (opt_out) set are
+    //   2 grab | 4 strngl | 6 foodPois,slime,stone,termIll | 8 lava
+    //   | 10 blind,conf,deaf,fly,hallucinat,levitate,ride,stun | 15 iron
+    // so everything below ranking 10 prints BEFORE Blind.  ("Satiated Conf
+    // Stun" / "Burdened Deaf" in the recordings pin the ranking-10 run.)
+    // bl_elf_iron's test is hardcoded FALSE (botl.c:1204), so Iron never shows.
+    //
+    // C ref: botl.c:1164 — grab == held by a sea monster (S_EEL) and about to
+    // be drowned; the plain "held" arm is opt_in, hence off by default.
+    const stuck = u.ustuck;
+    if (stuck && !u.uswallow && stuck.data?.mcls === S_EEL_CLS)
+        s += ` Grab`;
+    // C ref: youprop.h Strangled — u.uprops[STRANGLED].
+    if ((u.uprops?.Strangled || 0) > 0)
+        s += ` Strngl`;
+    // C ref: botl.c:1149 — Sick splits by u.usick_type: SICK_VOMITABLE is food
+    // poisoning ("FoodPois"), SICK_NONVOMITABLE is illness ("TermIll"); both
+    // bits can be set at once, and then both conditions show.
+    const sickTime = (u.uprops?.Sick || 0) || (u.sick ? 1 : 0);
+    const sickType = u.usick_type | 0;
+    if (sickTime > 0 && (sickType & SICK_VOMITABLE))
+        s += ` FoodPois`;
+    if ((u.uprops?.Slimed || 0) > 0)
+        s += ` Slime`;
+    if ((u.uprops?.Stoned || 0) > 0)
+        s += ` Stone`;
+    if (sickTime > 0 && (sickType & SICK_NONVOMITABLE))
+        s += ` TermIll`;
+    // C ref: botl.c:1154 — u.utrap with utraptype == TT_LAVA; the generic
+    // "trap" condition is opt_in, so a pit/bear trap shows nothing.
+    if (u.utrap && u.utraptype === TT_LAVA)
+        s += ` InLava`;
     if ((u.blinded || 0) > 0 || game.ublindf)
         s += ` Blind`;
     if ((u.uprops?.Confusion || 0) > 0)
@@ -1747,6 +1784,15 @@ export async function pline(msg) {
     // C ref: pline -> vpline -> update_topl sets gt.toplines; mirror it so the
     // Norep dedup reference tracks the actual last topline text.
     game._toplines = msg;
+    // C ref: topl.c update_topl() — pline() leaves toplin == TOPLINE_NEED_MORE,
+    // so a message printed later in the SAME command (before the next nhgetch
+    // demotes it) is appended after two spaces instead of replacing the line:
+    // "You drop a +1 club.  The jackal bites!".  Recorded as the exact text
+    // rather than in game._toplin because every OTHER _toplin===1 reader treats
+    // the flag as "owe a --More--" and firing those cost -191 public; keying on
+    // the text self-clears the moment any writer (rhack's per-command reset,
+    // a prompt, a menu) replaces the pending line.
+    game._toplinSoft = msg;
 }
 
 // C ref: win/tty/topl.c update_topl():284-297 — word-wrap a topline that is
@@ -1758,7 +1804,7 @@ export async function pline(msg) {
 export function wrap_topl(msg) {
     const CO_W = 80;
     const s = String(msg || '');
-    if (s.length <= CO_W) return [s]; // an 80-col line fills cols 0..79 without wrapping (C topl.c)
+    if (s.length < CO_W) return [s]; // C topl.c: `for (tl = gt.toplines; n0 >= CO; )` — n0 == CO wraps
     const arr = s.split('');
     const lines = [];
     let segStart = 0;
@@ -1847,8 +1893,12 @@ export async function topl_more_ext(extraChars) {
     };
 
     // xwaitforspace: read keys until space / return / escape / an extra char.
+    // C ref: topl.c more():246 — `ttyDisplay->toplin = TOPLINE_EMPTY;` on every
+    // exit path, so a paged line is acknowledged: the next message starts a
+    // fresh line instead of being appended to it.
     for (;;) {
         const c = await nhgetch();
+        game._toplinSoft = null;
         if (c === 32 || c === 13 || c === 10 || c === 27) {
             // C ref: win/tty/topl.c more() — `if (morc == '\033') cw->flags |=
             // WIN_STOP;`.  Dismissing a --More-- with ESC (as opposed to space/
@@ -1897,10 +1947,14 @@ export async function update_topl(bp) {
         game._toplines = (cur && n0 + cur.length + 3 < CO - 8) ? `${cur}  ${bp}` : bp;
         return;
     }
-    if (game._toplin === TOPLIN_NEED_MORE
+    // A line put there by pline() is equally unacknowledged (toplin ==
+    // TOPLINE_NEED_MORE in C); see pline() for why that is tracked by text.
+    const softPending = !!cur && game._toplinSoft === cur;
+    if ((game._toplin === TOPLIN_NEED_MORE || softPending)
         && n0 + cur.length + 3 < CO - 8
         && !bp.startsWith('You die')) {
         game._pending_message = cur + '  ' + bp;
+        if (softPending) game._toplinSoft = game._pending_message;
         game._toplin = TOPLIN_NEED_MORE;
         // C ref: topl.c gt.toplines — the persistent last-topline text (used by
         // Norep dedup), which is NOT blanked when the command prompt clears the

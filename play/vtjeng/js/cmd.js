@@ -105,7 +105,7 @@ import { doset_simple, UnsupportedOptionMenuError } from './options.js';
 import { dopray, UnsupportedPrayerError } from './pray.js';
 import { UnsupportedHideError } from './mon.js';
 import { UnsupportedShopError } from './shk.js';
-import { dofire, UnsupportedThrowError } from './dothrow.js';
+import { dofire, dothrow, UnsupportedThrowError } from './dothrow.js';
 import { dosit, UnsupportedSitError } from './sit.js';
 import {
     clear_kickedloc,
@@ -866,8 +866,8 @@ export async function parseCommand(state = game) {
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
     'eat', 'apply', 'down', 'drop', 'pickup', 'takeoff', 'wear', 'zap',
-    'reqmenu', 'fight', 'options', 'wizwish', 'wizlevelport', 'fire', 'swap',
-    'kick', '#',
+    'reqmenu', 'fight', 'options', 'wizwish', 'wizlevelport', 'fire', 'throw',
+    'swap', 'kick', '#',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
     + `${ADMITTED_COMMANDS.join(', ')}, an uncounted one-square walk, an `
@@ -1218,10 +1218,14 @@ export function failClosedCommandRefusals() {
         // objects[].oc_delay is non-zero and for the slots whose <X>_off()
         // is unported, in both cases before anything is drawn or removed.
         UnsupportedTakeOffError,
-        // do_wear.c dowear() raises this for the helmet, glove and boot slots,
-        // for the cloak and suit types whose <X>_on() reaches outside
-        // do_wear.c, and for accessory_or_armor_on()'s accessory half, all of
-        // them before setworn() writes.
+        // do_wear.c accessory_or_armor_on() raises this above setworn() for
+        // the accessory half, the quest helm, an artifact, armor held in a
+        // weapon slot, and the suit, cloak, helmet, glove and boot otyps whose
+        // <X>_on() reaches outside do_wear.c. No slot refuses wholesale: all
+        // seven reach a callback. on_msg() raises it for prinv().
+        // set_wear() raises it too, from moveloop_preamble() rather than from
+        // a command, so that one raiser is outside everything this list
+        // converts; js/do_wear.js set_wear() records why that is tolerable.
         UnsupportedWearError,
         // eat.c newuhs() is shared: gethungry() calls it from the turn loop,
         // and done_eating() and lesshungry() call it from doeat().
@@ -2220,6 +2224,29 @@ export async function rhack(key, state = game) {
             // domove_attempting tests at 3773-3800 can divert it.
             const res = await failClosedCommand(
                 key, state, () => dofire(state),
+            );
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        if (command === 'throw') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3818, the same
+            // three tests the `fire` arm above applies. dothrow() reaches all
+            // three: ECMD_CANCEL when the object prompt is escaped, ECMD_OK
+            // for each of ok_to_throw()'s three refusals and for the throws
+            // throw_obj() answers with a message, and ECMD_TIME for the throw
+            // itself. Nothing here queues a continuation, so the ECMD_OK arm
+            // has no queue to preserve -- but it is spelled the same way as
+            // `fire`'s, because both read rhack()'s one test.
+            //
+            // extcmdlist[]'s "throw" row (cmd.c:1901) carries no flags at
+            // all, so neither the prefix test at 3693-3695 nor the
+            // MOVEMENTCMD and domove_attempting tests at 3773-3800 can divert
+            // it.
+            const res = await failClosedCommand(
+                key, state, () => dothrow(state),
             );
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)

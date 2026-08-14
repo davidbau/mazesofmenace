@@ -34,7 +34,7 @@ import {
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_APPEARMSG,
     TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, ANTI_MAGIC, POLY_TRAP, ACCESSIBLE,
     ALLOW_MDISP, ALLOW_TM, NORMAL_SPEED, TEMPLE, ROOMOFFSET,
-    AM_MASK, AM_SHRINE, Amask2align,
+    AM_MASK, AM_SHRINE, Amask2align, I_SPECIAL,
 } from './const.js';
 import { quest_talk } from './questpgr.js';
 import { In_hell } from './dungeon.js';
@@ -4487,16 +4487,15 @@ async function mpickstuff(mtmp) {
             otmp3.where = 3; // OBJ_MINVENT
             mtmp.minvent = mtmp.minvent || [];
             mtmp.minvent.push(otmp3);
-            // C ref: mon.c:1904 check_gear_next_turn(mtmp) sets
-            // misc_worn_check|I_SPECIAL so movemon_singlemon runs m_dowear()
-            // next turn.  MEASURED NEGATIVE as a package: porting worn.c's
-            // m_dowear takes w3-elf-wiz 123 -> 203 and w3-orc-rogue 517 -> 520,
-            // but it must be paired with makemon.c:1445's creation-time
-            // m_dowear(mtmp, TRUE) (else a monster pays a wear delay C never
-            // pays for its STARTING armor: seed0030 -100), and that creation
-            // call changes find_mac() for every armored monster, which flips
-            // to-hit outcomes: seed0014 -378, held-out proxy -47.  Land it only
-            // once monster AC is verified against the C ground-truth dump.
+            // C ref: mon.c:1904 check_gear_next_turn(mtmp) — mon.c:5915 sets
+            // misc_worn_check|I_SPECIAL so movemon_singlemon (js/mon.js) runs
+            // m_dowear() next turn and spends that turn equipping.  The
+            // creation-time half of the pair (makemon.c:1445 m_dowear(TRUE), so
+            // a monster never pays a wear delay for its STARTING armour) lives
+            // in js/mon.js movemon_singlemon; find_mac() is still base-AC-only
+            // in this port, and making it worn-aware is a separate change that
+            // measured seed0014 -378 / proxy -47 on its own.
+            mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) | I_SPECIAL;
             newsym(mtmp.mx, mtmp.my);   // C ref: mon.c:1905
             return true; // pick only one object
         }
