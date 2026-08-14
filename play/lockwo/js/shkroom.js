@@ -173,6 +173,66 @@ function setpaid(shkp) {
     }
 }
 
+// C ref: shk.c:2485 paybill(croaked, silently) -> shk.c:2577 inherits().  Ported
+// only as far as the message the death screen needs: the hero dies inside a shop
+// with exactly one shopkeeper on the level, so numsk == 1 (no rn2(2) head-shake)
+// and money2mon() is skipped when the hero carries no gold.  Zero RNG.
+// C's shopkeeper-priority scan, the multi-shk branch, the partial-payment arm
+// and set_repo_loc()/paygd() are not modelled; they need state this port does
+// not track and none of them can fire for a single-shk in-shop death.
+export async function paybill(croaked) {
+    if (croaked < 0) return false;   /* escaped the dungeon: shks can't reach */
+    const shks = (game.level?.monsters || []).filter((m) => m?.isshk && m.eshk);
+    if (shks.length !== 1) return false;
+    const shkp = shks[0];
+    const eshk = shkp.eshk;
+    const uinshop = (game.u?.ushops || []).includes(eshk.shoproom);
+    const invent = game.invent || [];
+
+    // The peaceful "gratefully inherits" case.
+    if (uinshop && inhishop(shkp) && !eshk.billct && !eshk.robbed && !eshk.debit
+        && shkp.mpeaceful && !eshk.following) {
+        const taken = invent.length > 0;
+        if (taken) await update_topl(`${Shknam(shkp)} gratefully inherits all your possessions.`);
+        setpaid(shkp);
+        return taken;
+    }
+
+    let loss = 0, take = false;
+    if (eshk.billct || eshk.debit || eshk.robbed) {
+        if (uinshop && inhishop(shkp)) loss = addupbill(shkp) + (eshk.debit || 0);
+        if (loss < (eshk.robbed || 0)) loss = eshk.robbed || 0;
+        take = true;
+    }
+    let taken = false;
+    if (eshk.following || !shkp.mpeaceful || take) {
+        if (!invent.length) { setpaid(shkp); return false; }
+        const umoney = money_cnt_inv(invent);
+        let takes = '';
+        if (shkp.msleeping || shkp.mfrozen || !shkp.mcanmove) takes += 'wakes up and ';
+        if (!m_next2u_shk(shkp)) takes += 'comes and ';
+        takes += 'takes';
+        if (loss > umoney || !loss || uinshop) {
+            eshk.robbed = Math.max(0, (eshk.robbed || 0) - umoney);
+            await update_topl(`${Shknam(shkp)} ${takes} all your possessions.`);
+            taken = true;
+        }
+        rouse_shk(shkp, false);
+    }
+    setpaid(shkp);
+    return taken;
+}
+function money_cnt_inv(invent) {
+    let n = 0;
+    for (const o of invent) if (o?.oclass === 12 /* COIN_CLASS */) n += (o.quan || 0);
+    return n;
+}
+// C ref: mon.c m_next2u(mtmp) — distmin(mx,my,ux,uy) <= 1.
+function m_next2u_shk(mtmp) {
+    const u = game.u;
+    return Math.max(Math.abs(mtmp.mx - u.ux), Math.abs(mtmp.my - u.uy)) <= 1;
+}
+
 // C ref: shk.c rouse_shk(shkp, verbosely) — greed-induced recovery.  No RNG.
 function rouse_shk(shkp, _verbosely) {
     if (shkp.msleeping || shkp.mfrozen || !shkp.mcanmove) {

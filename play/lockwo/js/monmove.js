@@ -10,7 +10,12 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
-import { find_misc, use_misc, searches_for_item } from './muse.js';
+// find_offensive/use_offensive: the FULL muse.c ports.  monmove.js used to
+// shadow them with a potion-only stub whose "the wand branches are not reached
+// by the contest's low-level monsters" comment was false — seed0030's angered
+// shopkeeper zaps a wand of striking (muse.c:1884).
+import { find_misc, use_misc, searches_for_item, find_offensive,
+    use_offensive as muse_use_offensive } from './muse.js';
 import {
     COLNO, ROWNO, MTSZ, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
     D_ISOPEN, D_NODOOR, D_TRAPPED,
@@ -2599,11 +2604,73 @@ async function mon_trapeffect(mtmp, trap) {
         }
         return Trap_Effect_Finished;
     }
+    case TELEP_TRAP: {
+        // C ref: trap.c trapeffect_telep_trap():2078 -> teleport.c mtele_trap():1961.
+        // rloc() burns rnd(COLNO-1)+rn2(ROWNO) per try; skipping it (the old
+        // `default:` arm) shifted the whole remaining stream by 2 draws.
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        const T = await import('./teleport.js');
+        if (!T.noteleport_level(mtmp) && teleport_pet_mm(mtmp)) {
+            const monname = Monnam(mtmp);   /* pre-movement visibility (teleport.c:1973) */
+            if (trap.once) {
+                await mvault_tele_mm(mtmp, T);
+            } else if (trap.teledest && isok(trap.teledest.x, trap.teledest.y)) {
+                // A monster teleporting onto an occupied square just doesn't move.
+                if (!(m_at(trap.teledest.x, trap.teledest.y)
+                      || u_at(trap.teledest.x, trap.teledest.y)))
+                    await T.rloc_to_core(mtmp, trap.teledest.x, trap.teledest.y, T.RLOC_MSG);
+            } else {
+                await T.rloc(mtmp, T.RLOC_NONE);
+            }
+            if (in_sight) {
+                if (canseemon_mm(mtmp)) await pline_mon(mtmp, `${monname} seems disoriented.`);
+                else await pline(`${monname} suddenly disappears!`);
+                const { seetrap } = await import('./trap.js');
+                seetrap(trap);
+            }
+        }
+        return Trap_Moved_Mon;   /* C returns this even when mtele_trap did nothing */
+    }
     default:
         // Trap type not yet modeled for monsters.  Consume no RNG and let the
         // monster pass; add the faithful effect here when a session needs it.
         return Trap_Effect_Finished;
     }
+}
+
+// C ref: teleport.c teleport_pet(mtmp, force_it):766.  FALSE only for the
+// hero's steed or a monster held by a CURSED leash (that arm also yelps).
+function teleport_pet_mm(mtmp) {
+    if (mtmp === game.u?.usteed) return false;
+    if (mtmp.mleashed) {
+        const otmp = get_mleash_mm(mtmp);
+        if (otmp && otmp.cursed) return false;  /* yelp(): no RNG of its own */
+        mtmp.mleashed = 0;                      /* m_unleash(mtmp, TRUE) */
+        if (otmp) otmp.leashmon = 0;
+    }
+    return true;
+}
+function get_mleash_mm(mtmp) {
+    const inv = game.u?.uinvent || [];
+    const LEASH = 227;
+    for (const o of inv) if (o.otyp === LEASH && o.leashmon === mtmp.m_id) return o;
+    return null;
+}
+
+// C ref: teleport.c mvault_tele():1943 — the vault teleporter drops the
+// monster inside the vault when one exists, else falls back to rloc().
+async function mvault_tele_mm(mtmp, T) {
+    const VAULT = 4;
+    const croom = (game.level?.rooms || []).find(r => r.rtype === VAULT);
+    if (croom) {
+        const c = { x: 0, y: 0 };
+        const { somexy } = await import('./mkroom.js');
+        if (somexy(croom, c) && T.goodpos(c.x, c.y, mtmp, 0)) {
+            await T.rloc_to(mtmp, c.x, c.y);
+            return;
+        }
+    }
+    await T.rloc(mtmp, T.RLOC_NONE);
 }
 
 // C ref: trap.c m_easy_escape_pit(mtmp) — a pit fiend or anything MZ_HUGE or
@@ -2703,11 +2770,19 @@ async function m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel) {
         vision_recalc(0);
         canseeit = didseeit || cansee(mtmp.mx, mtmp.my);
     };
-    // amorphous monsters (fog cloud / oozes) flow under a shut door without
-    // opening it; none appear at these depths.
-    const amorphous = false;
-    if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0 && amorphous) {
-        /* flows/oozes under the door — message only; unreached here */
+    // C ref: monmove.c:1548 — an amorphous monster flows/oozes UNDER a shut
+    // door: message only, the door is untouched.  This was hardcoded false, so
+    // an acid blob (M1_AMORPHOUS) — which mfndpos() already lets step onto a
+    // D_CLOSED door via the real amorphous() — fell into the doorbuster arm,
+    // rewriting doormask to D_BROKEN and permanently changing every later
+    // mfndpos() cnt near that door (and so the rn2(4*(cnt-j)) moduli).
+    const amorphousMon = amorphous(ptr);
+    if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0 && amorphousMon) {
+        if (verbose && canseemon_mm(mtmp)) {
+            const PM_FOG_CLOUD = 106, S_LIGHT = 25;  // this port's mons[] indices
+            const flows = monsndx_of(ptr) === PM_FOG_CLOUD || ptr?.mcls === S_LIGHT;
+            await emitU(`${Monnam(mtmp)} ${flows ? 'flows' : 'oozes'} under the door.`);
+        }
     } else if ((here.doormask & D_LOCKED) !== 0 && can_unlock) {
         UnblockDoor(!btrapped ? D_ISOPEN : D_NODOOR);
         if (!btrapped && verbose) {
@@ -3164,7 +3239,9 @@ async function m_move(mtmp) {
         // (rn2(5)) tail must NOT run for it.  Only checking Trap_Killed_Mon left
         // a migrated monster drawing one extra hideunder rn2(5) per departure.
         if (trapret === Trap_Killed_Mon || trapret === Trap_Moved_Mon) {
-            newsym(nix, niy);
+            // C ref: monmove.c:1511 — `if (mtmp->mx) newsym(mtmp->mx, mtmp->my)`;
+            // after an rloc the monster is no longer at (nix,niy).
+            if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
             return MMOVE_DIED;
         }
         // C ref: monmove.c postmov() — "open a door, or crash through it, if
@@ -3742,107 +3819,11 @@ function ranged_attk_available(mtmp) {
         (a) => a.aatyp === AT_SPIT || a.aatyp === AT_BREA || a.aatyp === AT_GAZE);
 }
 
-// C ref: muse.c find_offensive(mtmp) — scans a hostile monster's minvent for an
-// offensive item to fling at the hero.  Ported for the throwable-POTION path a
-// lined-up gnome/dwarf/orc exercises (seed0030 step 50: a gnome hurls a potion
-// of sleeping).  The wand / horn / scroll-of-earth branches are not reached by
-// the contest's low-level dungeon monsters, so this detects only the offensive
-// potions (leaving those other classes undetected, exactly as the prior stub
-// did — no regression).  RNG-neutral: none of the potion cases roll.
-//
-// muse.c #defines: MUSE_POT_PARALYSIS 9, MUSE_POT_BLINDNESS 10,
-// MUSE_POT_CONFUSION 11, MUSE_POT_ACID 14, MUSE_POT_SLEEPING 16.
-const MUSE_POT_PARALYSIS = 9, MUSE_POT_BLINDNESS = 10, MUSE_POT_CONFUSION = 11,
-      MUSE_POT_ACID = 14, MUSE_POT_SLEEPING = 16;
-const POT_CONFUSION_OTYP = 299, POT_BLINDNESS_OTYP = 300, POT_PARALYSIS_OTYP = 301,
-      POT_SLEEPING_OTYP = 314, POT_ACID_OTYP = 320;
-let m_offensive = null;   // gm.m.offensive — the chosen item
-let m_has_offense = 0;    // gm.m.has_offense — the MUSE_* code
-
-function find_offensive(mtmp) {
-    m_offensive = null;
-    m_has_offense = 0;
-    const data = mtmp?.data;
-    if (!data) return 0;
-    // C ref: muse.c:1128 `if (mtmp->mpeaceful || is_animal(ptr) || mindless(ptr)
-    // || nohands(ptr)) return 0;`.  This used to stand in "attacks with a weapon
-    // OR can open a door" as a hands+mind proxy, on the grounds that the monster
-    // record carried no mflags — it does now (monflags_data.js), and the proxy
-    // answers differently for every species whose AT_WEAP/hand-size split doesn't
-    // line up with animal/mindless (e.g. a soldier ant is an animal WITH hands
-    // by the proxy, and every mindless golem passes it).
-    if (mtmp.mpeaceful || is_animal(data) || mindless(data) || nohands(data))
-        return 0;
-    if (game.u?.uswallow) return 0;
-    // in_your_sanctuary(): the exercised levels have no co-aligned temple the
-    // hero stands on, so FALSE (no protection).  AD_HEAL nurse guard: none of
-    // these throwers heal-attack, so it doesn't apply.
-    if (!m_lined_up(mtmp)) return 0;
-    // "picks the last viable item rather than prioritizing" (muse.c) — iterate
-    // minvent in order and let the last matching offensive potion win.
-    for (const obj of (mtmp.minvent || [])) {
-        const t = obj.otyp;
-        if (t === POT_PARALYSIS_OTYP && (game.multi ?? 0) >= 0) {
-            m_offensive = obj; m_has_offense = MUSE_POT_PARALYSIS;
-        } else if (t === POT_BLINDNESS_OTYP && !attacktype(data, AT_GAZE)) {
-            m_offensive = obj; m_has_offense = MUSE_POT_BLINDNESS;
-        } else if (t === POT_CONFUSION_OTYP) {
-            m_offensive = obj; m_has_offense = MUSE_POT_CONFUSION;
-        } else if (t === POT_SLEEPING_OTYP) {
-            // C also guards on !m_seenres(SLEEP); the hero hasn't been seen to
-            // resist sleep in these sessions, so the guard is TRUE.
-            m_offensive = obj; m_has_offense = MUSE_POT_SLEEPING;
-        } else if (t === POT_ACID_OTYP) {
-            m_offensive = obj; m_has_offense = MUSE_POT_ACID;
-        }
-    }
-    return m_has_offense;
-}
-
 // C ref: mondata.c attacktype(ptr, atyp) — does the monster have that attack?
 function attacktype(data, atyp) {
     return mon_attacks(data).some((a) => a.aatyp === atyp);
 }
 
-// C ref: muse.c use_offensive(mtmp) — carry out the offensive action chosen by
-// find_offensive().  Only the thrown-POTION cases are reached here; C throws the
-// potion via m_throw (it is NOT drunk).  Returns 2 (monster acted, survived) so
-// mattacku consumes its turn on the throw rather than also swinging.
-async function use_offensive(mtmp) {
-    const otmp = m_offensive;
-    if (!otmp) return 0;
-    const u = game.u;
-    switch (m_has_offense) {
-    case MUSE_POT_PARALYSIS:
-    case MUSE_POT_BLINDNESS:
-    case MUSE_POT_CONFUSION:
-    case MUSE_POT_SLEEPING:
-    case MUSE_POT_ACID: {
-        const mux = mtmp.mux ?? u.ux, muy = mtmp.muy ?? u.uy;
-        // C ref: muse.c use_offensive() — if cansee(mtmp) then observe_object(otmp)
-        // (sets obj->dknown, marks the type encountered; no RNG) and prints
-        // "<Mon> hurls <potion>!".  The exact appearance string is owned by the
-        // object-shuffle lane, so emit a generic hurl line here (screen fidelity
-        // for this event is gated on that lane anyway).  We record the seen-ness
-        // on a private marker so potionbreathe()'s tail can discover the type
-        // (makeknown -> exercise(A_WIS)) exactly as C does — without reaching
-        // into the object-shuffle lane's obj->dknown.
-        if (cansee(mtmp.mx, mtmp.my)) {
-            otmp._seen_thrown = true; // C: observe_object(otmp) sets obj->dknown
-            if (canspotmon(mtmp)) {
-                const { update_topl } = await import('./display.js');
-                await update_topl(`${Monnam(mtmp)} hurls a potion!`);
-            }
-        }
-        const range = distmin(mtmp.mx, mtmp.my, mux, muy);
-        await m_throw_potion(mtmp, mtmp.mx, mtmp.my,
-                             sgn(mux - mtmp.mx), sgn(muy - mtmp.my), range, otmp);
-        return 2;
-    }
-    default:
-        return 0;
-    }
-}
 
 // C ref: mthrowu.c m_throw() for a POTION_CLASS missile aimed at the hero.  The
 // flight loop mirrors m_throw_at_hero (one rn2(5) forcehit per non-hero square),
@@ -4478,12 +4459,6 @@ async function mpickstuff(mtmp) {
             // dagger").  Routed through pline_mon/update_topl so it appends to a
             // pending top line as C's topl buffer does (seed0002 step 263 pairs
             // it with "You feel less confused now.").
-            // GAP: C prints "<Mon> picks up <distant_name(otmp, doname)>." here.
-            // Left unported deliberately: distant_doname() implemented only the
-            // NEAR branch of objnam.c:347, so it named objects the hero cannot
-            // actually make out.  Landing it took seed0399's differing cells from
-            // 11539 to 50666 for +1 screen.  Port both branches of distant_name()
-            // first, then re-measure this as its own change.
             let otmp3;
             if (carryamt !== (otmp.quan || 1)) {
                 // partial stack: split off carryamt into a fresh object.  C's
@@ -4492,17 +4467,36 @@ async function mpickstuff(mtmp) {
                 otmp3 = { ...otmp, quan: carryamt, o_id: next_ident() };
                 otmp.quan = (otmp.quan || 1) - carryamt;
             } else {
-                // whole stack leaves the floor
                 otmp3 = otmp;
+            }
+            // C ref: mon.c:1891-1900 — announced BEFORE obj_extract_self, and it
+            // names `otmp` (the post-split remainder), not otmp3.  update_topl,
+            // not pline: C leaves toplin == NEED_MORE so a following message
+            // ("You feel less confused now.") shares the line.
+            if (cansee(mtmp.mx, mtmp.my) && game.flags?.verbose) {
+                const { distant_doname } = await import('./invent.js');
+                await update_topl(`${Monnam(mtmp)} picks up ${distant_doname(otmp)}.`);
+            }
+            // C ref: mon.c:1901 obj_extract_self(otmp3) — the split fragment was
+            // never inserted into our floor array, so only the whole-stack case
+            // has anything to remove.
+            if (otmp3 === otmp) {
                 const ix = arr.indexOf(otmp);
                 if (ix >= 0) arr.splice(ix, 1);
             }
             otmp3.where = 3; // OBJ_MINVENT
             mtmp.minvent = mtmp.minvent || [];
             mtmp.minvent.push(otmp3);
-            // check_gear_next_turn(mtmp) sets misc_worn_check|I_SPECIAL so the
-            // monster re-evaluates armour next turn; m_dowear is not ported, so
-            // nothing reads the bit and setting it would be inert.
+            // C ref: mon.c:1904 check_gear_next_turn(mtmp) sets
+            // misc_worn_check|I_SPECIAL so movemon_singlemon runs m_dowear()
+            // next turn.  MEASURED NEGATIVE as a package: porting worn.c's
+            // m_dowear takes w3-elf-wiz 123 -> 203 and w3-orc-rogue 517 -> 520,
+            // but it must be paired with makemon.c:1445's creation-time
+            // m_dowear(mtmp, TRUE) (else a monster pays a wear delay C never
+            // pays for its STARTING armor: seed0030 -100), and that creation
+            // call changes find_mac() for every armored monster, which flips
+            // to-hit outcomes: seed0014 -378, held-out proxy -47.  Land it only
+            // once monster AC is verified against the C ground-truth dump.
             newsym(mtmp.mx, mtmp.my);   // C ref: mon.c:1905
             return true; // pick only one object
         }
@@ -4725,7 +4719,9 @@ async function mattacku(mtmp, mdat) {
     // C ref mhitu.c:758 — unlike defensive items, a monster won't both use an
     // offensive item AND melee: if it finds one, it uses it and its turn ends.
     if (find_offensive(mtmp)) {
-        const offended = await use_offensive(mtmp);
+        // muse.js's use_offensive takes m_throw as a callback so it need not
+        // import this module back.
+        const offended = await muse_use_offensive(mtmp, m_throw_potion);
         if (offended !== 0) return (offended === 1) ? 1 : 0;
     }
 
@@ -6561,8 +6557,37 @@ function Is_rogue_level() {
     return !!uz && !!rl && uz.dnum === rl.dnum && uz.dlevel === rl.dlevel;
 }
 
-// C ref: monmove.c dochugw(mtmp, inrange) — wrapper around dochug used by
-// movemon_singlemon.  The extra warning bookkeeping consumes no RNG.
-export async function dochugw(mtmp) {
-    return await dochug(mtmp);
+// C ref: monmove.c:201-236 dochugw(mtmp, chug).  NOT a bare dochug() wrapper:
+// the post-move test below is what ends a multi-turn occupation when a threat
+// walks into view, which changes how many TURNS elapse (each turn is a full
+// movemon plus the once-per-turn RNG block) even though the test itself draws
+// nothing.  This is NOT hack.c monster_nearby(), which only looks at the 8
+// adjacent cells; the threat here can be up to BOLT_LIM+1 away.
+// chug=false is C's "monster was just created or teleported next to a busy
+// hero" call (makemon.c:1504, teleport.c:1763), neither of which is wired up.
+export async function dochugw(mtmp, chug = true) {
+    const x = mtmp.mx, y = mtmp.my;             /* pre-move position */
+    const H = await import('./hack.js');
+    const already_saw_mon = (chug && H.occupation_active()) ? canspotmon(mtmp) : false;
+    const rd = chug ? await dochug(mtmp) : 0;
+    const LIM = (BOLT_LIM + 1) * (BOLT_LIM + 1);   /* hack.h BOLT_LIM 8 -> 81 */
+    const u = game.u || {};
+    if (H.occupation_active() && !rd
+        && (Hallucination_dcw() || (!mtmp.mpeaceful && !noattacks(mtmp.data)))
+        && mdistu(mtmp) <= LIM
+        && (!already_saw_mon || !couldsee(x, y)
+            || dist2(x, y, u.ux ?? 0, u.uy ?? 0) > LIM)
+        && canspotmon(mtmp) && couldsee(mtmp.mx, mtmp.my)
+        && mtmp.mcanmove && !onscary(u.ux, u.uy, mtmp))
+        await stop_occupation();
+    return rd;
+}
+
+// C ref: youprop.h Hallucination — this port writes the flag under three names
+// (cf. cmd.js:252); read all of them.
+function Hallucination_dcw() {
+    const u = game.u;
+    if (!u) return false;
+    if (u.HHalluc_resistance) return false;
+    return !!(u.uhallu || u.HHallucination || u.uprops?.Hallucination);
 }

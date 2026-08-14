@@ -8,30 +8,58 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
-import { canspotmon, is_dlord, is_dprince, is_hole, is_pit, is_rider, is_xport, likes_lava, m_next2u, max, min } from './nhmacrofn.js';
-import { rn2_at, rnd_at, rnl_at } from './nhrng.js';
-import { Amphibious, Antimagic, Blind, Blinded, ETeleportation, Fire_resistance, Flying, HConfusion, HStun, HTeleportation, Hallucination, Levitation, Passes_walls, Punished, Swimming, Teleport_control, Teleportation, Upolyd, create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, sokoban_dnum, start_menu, tutorial_dnum, wizard } from './nhprop.js';
-import { In_W_tower, In_hell, In_mines, In_quest, Is_botlevel, On_W_tower_level, assign_level, depth, dunlevs_in_dungeon, find_hell, get_level, ledger_no, lev_by_name, on_level, print_dungeon, single_level_branch, surface, u_on_newpos } from './dungeon.js';
-import { WIN_MESSAGE, a11y, c_common_strings, cg, disp, flags, gc, gi, go, gs, gu, gv, gy, iflags, svd, svk, svl, svm, svn, svu, u, uarmf, uball, uchain, ynchars, ynqchars } from './decl.js';
-import { get_iter_mons, hideunder, m_in_air, m_into_limbo, maybe_unhide_at, set_ustuck, unstuck } from './mon.js';
+import {
+    canspotmon, is_dlord, is_dprince, is_hole, is_pit, is_rider, is_xport, likes_lava, m_next2u,
+    max, min
+} from './nhmacrofn.js';
+import {
+    Amphibious, Antimagic, Blind, Blinded, ETeleportation, Fire_resistance, Flying, HConfusion,
+    HStun, HTeleportation, Hallucination, Levitation, Passes_walls, Punished, Swimming,
+    Teleport_control, Teleportation, Upolyd, create_nhwindow, destroy_nhwindow, display_nhwindow,
+    end_menu, sokoban_dnum, start_menu, tutorial_dnum, wizard
+} from './nhprop.js';
+import {
+    In_W_tower, In_hell, In_mines, In_quest, Is_botlevel, On_W_tower_level, assign_level, depth,
+    dunlevs_in_dungeon, find_hell, get_level, ledger_no, lev_by_name, on_level, print_dungeon,
+    single_level_branch, surface, u_on_newpos
+} from './dungeon.js';
+import {
+    WIN_MESSAGE, a11y, c_common_strings, cg, disp, flags, gc, gi, go, gs, gu, gv, gy, iflags, svd,
+    svk, svl, svm, svn, svu, u, uarmf, uball, uchain, ynchars, ynqchars
+} from './decl.js';
+import {
+    get_iter_mons, hideunder, m_in_air, m_into_limbo, maybe_unhide_at, set_ustuck, unstuck
+} from './mon.js';
 import { mons } from './monst.js';
 import { addinv, prinv, sobj_at } from './invent.js';
 import { sengr_at } from './engrave.js';
 import { isok, yn_function } from './cmd.js';
 import { is_lava, is_pool, is_waterwall } from './dbridge.js';
-import { check_capacity, check_special_room, in_rooms, invocation_message, may_passwall, near_capacity, nomul, notice_all_mons, spoteffects, switch_terrain, u_locomotion } from './hack.js';
-import { accessible, closed_door, dochugw, mon_track_clear, onscary, set_apparxy } from './monmove.js';
+import { rn2, rnd, rnl } from './rnd.js';
+import {
+    check_capacity, check_special_room, in_rooms, invocation_message, may_passwall, near_capacity,
+    nomul, notice_all_mons, spoteffects, switch_terrain, u_locomotion
+} from './hack.js';
+import {
+    accessible, closed_door, dochugw, mon_track_clear, onscary, set_apparxy
+} from './monmove.js';
 import { is_exclusion_zone } from './mkmaze.js';
 import { debugcore } from './files.js';
-import { You, You_cant, You_feel, Your, impossible, pline, pline_mon, set_msg_xy, verbalize } from './pline.js';
+import {
+    You, You_cant, You_feel, Your, impossible, pline, pline_mon, set_msg_xy, verbalize
+} from './pline.js';
 import { set_mon_data } from './mondata.js';
-import { clamp_hole_destination, deltrap, fill_pit, mintrap, reset_utrap, seetrap, t_at, unconscious } from './trap.js';
+import {
+    clamp_hole_destination, deltrap, fill_pit, mintrap, reset_utrap, seetrap, t_at, unconscious
+} from './trap.js';
 import { in_out_region, update_monster_region, update_player_regions } from './region.js';
 import { findgd, uleftvault, vault_occupied } from './vault.js';
 import { buried_ball_to_punishment } from './dig.js';
 import { digit, dist2, distmin, eos } from './hacklib.js';
 import { drag_ball, move_bc, placebc, unplacebc } from './ball.js';
-import { canseemon, docrt, newsym, nul_glyphinfo, see_monsters, sensemon, shieldeff } from './display.js';
+import {
+    canseemon, docrt, newsym, nul_glyphinfo, see_monsters, sensemon, shieldeff
+} from './display.js';
 import { vision_recalc } from './vision.js';
 import { search_special, somexyspace } from './mkroom.js';
 import { get_mleash, m_unleash, next_to_u } from './apply.js';
@@ -48,7 +76,10 @@ import { morehungry } from './eat.js';
 import { flooreffects, revive_corpse, schedule_goto } from './do.js';
 import { mksobj, obj_extract_self, place_object } from './mkobj.js';
 import { done } from './end.js';
-import { addtobill, costly_adjacent, costly_spot, find_objowner, inhishop, make_angry_shk, onshopbill, stolen_value, subfrombill, u_left_shop } from './shk.js';
+import {
+    addtobill, costly_adjacent, costly_spot, find_objowner, inhishop, make_angry_shk, onshopbill,
+    stolen_value, subfrombill, u_left_shop
+} from './shk.js';
 import { genders } from './role.js';
 import { settrack } from './track.js';
 import { inhistemple } from './priest.js';
@@ -62,108 +93,112 @@ import { migrate_to_level } from './dog.js';
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $Gender_his = FLD.Gender_his, $Role_mnum = FLD.Role_mnum,
-    $accessibility_data_mon_notices_blocked = FLD.accessibility_data_mon_notices_blocked,
-    $c_common_strings_c_shudder_for_moment = FLD.c_common_strings_c_shudder_for_moment,
-    $const_globals_zeroany = FLD.const_globals_zeroany,
-    $const_globals_zeromonst = FLD.const_globals_zeromonst, $coord_y = FLD.coord_y,
-    $d_flags_unconnected = FLD.d_flags_unconnected, $d_level_dlevel = FLD.d_level_dlevel,
-    $dest_area_hx = FLD.dest_area_hx, $dest_area_hy = FLD.dest_area_hy, $dest_area_ly = FLD.dest_area_ly,
-    $dest_area_nhx = FLD.dest_area_nhx, $dest_area_nhy = FLD.dest_area_nhy,
-    $dest_area_nlx = FLD.dest_area_nlx, $dest_area_nly = FLD.dest_area_nly,
-    $dgn_topology_d_astral_level = FLD.dgn_topology_d_astral_level,
-    $dgn_topology_d_medusa_level = FLD.dgn_topology_d_medusa_level,
-    $dgn_topology_d_mineend_level = FLD.dgn_topology_d_mineend_level,
-    $dgn_topology_d_qlocate_level = FLD.dgn_topology_d_qlocate_level,
-    $dgn_topology_d_qstart_level = FLD.dgn_topology_d_qstart_level,
-    $dgn_topology_d_sanctum_level = FLD.dgn_topology_d_sanctum_level,
-    $dgn_topology_d_sokoban_dnum = FLD.dgn_topology_d_sokoban_dnum,
-    $dgn_topology_d_stronghold_level = FLD.dgn_topology_d_stronghold_level,
-    $dgn_topology_d_tutorial_dnum = FLD.dgn_topology_d_tutorial_dnum,
-    $dgn_topology_d_valley_level = FLD.dgn_topology_d_valley_level,
-    $dgn_topology_d_water_level = FLD.dgn_topology_d_water_level, $dlevel_t_flags = FLD.dlevel_t_flags,
-    $dlevel_t_monlist = FLD.dlevel_t_monlist, $dlevel_t_monsters = FLD.dlevel_t_monsters,
-    $dungeon_depth_start = FLD.dungeon_depth_start, $dungeon_dunlev_ureached = FLD.dungeon_dunlev_ureached,
-    $dungeon_flags = FLD.dungeon_flags, $dungeon_num_dunlevs = FLD.dungeon_num_dunlevs,
-    $epri_shroom = FLD.epri_shroom, $eshk_shoproom = FLD.eshk_shoproom, $flag_debug = FLD.flag_debug,
-    $flag_female = FLD.flag_female, $flag_verbose = FLD.flag_verbose,
-    $instance_flags_debug_fuzzer = FLD.instance_flags_debug_fuzzer,
-    $instance_flags_last_msg = FLD.instance_flags_last_msg,
-    $instance_flags_menu_requested = FLD.instance_flags_menu_requested,
-    $instance_flags_mon_telecontrol = FLD.instance_flags_mon_telecontrol,
-    $instance_flags_travelcc = FLD.instance_flags_travelcc,
-    $instance_globals_c_current_wand = FLD.instance_globals_c_current_wand,
-    $instance_globals_i_in_mklev = FLD.instance_globals_i_in_mklev,
-    $instance_globals_i_invent = FLD.instance_globals_i_invent,
-    $instance_globals_o_occupation = FLD.instance_globals_o_occupation,
-    $instance_globals_s_stairs = FLD.instance_globals_s_stairs,
-    $instance_globals_saved_d_dndest = FLD.instance_globals_saved_d_dndest,
-    $instance_globals_saved_d_dungeon_topology = FLD.instance_globals_saved_d_dungeon_topology,
-    $instance_globals_saved_l_level = FLD.instance_globals_saved_l_level,
-    $instance_globals_saved_m_moves = FLD.instance_globals_saved_m_moves,
-    $instance_globals_u_urole = FLD.instance_globals_u_urole,
-    $instance_globals_v_vision_full_recalc = FLD.instance_globals_v_vision_full_recalc,
-    $instance_globals_v_viz_array = FLD.instance_globals_v_viz_array,
-    $instance_globals_y_youmonst = FLD.instance_globals_y_youmonst, $kinfo_format = FLD.kinfo_format,
-    $kinfo_name = FLD.kinfo_name, $levelflags_noteleport = FLD.levelflags_noteleport,
-    $levelflags_stasis_until = FLD.levelflags_stasis_until, $mextra_epri = FLD.mextra_epri,
-    $mextra_eshk = FLD.mextra_eshk, $monst_data = FLD.monst_data, $monst_ispriest = FLD.monst_ispriest,
-    $monst_isshk = FLD.monst_isshk, $monst_iswiz = FLD.monst_iswiz, $monst_m_ap_type = FLD.monst_m_ap_type,
-    $monst_m_id = FLD.monst_m_id, $monst_mconf = FLD.monst_mconf, $monst_mextra = FLD.monst_mextra,
-    $monst_mhp = FLD.monst_mhp, $monst_minvent = FLD.monst_minvent, $monst_mleashed = FLD.monst_mleashed,
-    $monst_mpeaceful = FLD.monst_mpeaceful, $monst_mstate = FLD.monst_mstate,
-    $monst_mstrategy = FLD.monst_mstrategy, $monst_mtame = FLD.monst_mtame,
-    $monst_mtrapped = FLD.monst_mtrapped, $monst_mx = FLD.monst_mx, $monst_my = FLD.monst_my,
-    $monst_wormno = FLD.monst_wormno, $nhcoord_y = FLD.nhcoord_y, $obj_blessed = FLD.obj_blessed,
-    $obj_corpsenm = FLD.obj_corpsenm, $obj_cursed = FLD.obj_cursed, $obj_no_charge = FLD.obj_no_charge,
-    $obj_oerodeproof = FLD.obj_oerodeproof, $obj_otyp = FLD.obj_otyp, $obj_ox = FLD.obj_ox,
-    $obj_oy = FLD.obj_oy, $obj_unpaid = FLD.obj_unpaid, $obj_where = FLD.obj_where,
-    $objclass_oc_oc2 = FLD.objclass_oc_oc2, $permonst_geno = FLD.permonst_geno,
-    $permonst_mflags1 = FLD.permonst_mflags1, $permonst_mflags2 = FLD.permonst_mflags2,
-    $permonst_mflags3 = FLD.permonst_mflags3, $permonst_mlet = FLD.permonst_mlet,
-    $permonst_msound = FLD.permonst_msound, $prop_blocked = FLD.prop_blocked,
-    $prop_intrinsic = FLD.prop_intrinsic, $rm_roomno = FLD.rm_roomno, $rm_typ = FLD.rm_typ,
-    $sizeof_Gender = FLD.sizeof_Gender, $sizeof_coord = FLD.sizeof_coord,
-    $sizeof_dungeon = FLD.sizeof_dungeon, $sizeof_menu_item = FLD.sizeof_menu_item,
-    $sizeof_objclass = FLD.sizeof_objclass, $sizeof_permonst = FLD.sizeof_permonst,
-    $sizeof_prop = FLD.sizeof_prop, $sizeof_rm = FLD.sizeof_rm, $sizeof_rm_x21 = FLD.sizeof_rm_x21,
-    $sizeof_tporttypes = FLD.sizeof_tporttypes, $stairway_isladder = FLD.stairway_isladder,
-    $stairway_next = FLD.stairway_next, $stairway_sy = FLD.stairway_sy, $stairway_tolev = FLD.stairway_tolev,
-    $stairway_up = FLD.stairway_up, $tporttypes_menudesc = FLD.tporttypes_menudesc, $trap_dst = FLD.trap_dst,
-    $trap_launch = FLD.trap_launch, $trap_once = FLD.trap_once, $trap_tseen = FLD.trap_tseen,
-    $trap_ttyp = FLD.trap_ttyp, $u_event_invoked = FLD.u_event_invoked,
-    $window_procs_win_create_nhwindow = FLD.window_procs_win_create_nhwindow,
-    $window_procs_win_destroy_nhwindow = FLD.window_procs_win_destroy_nhwindow,
-    $window_procs_win_display_nhwindow = FLD.window_procs_win_display_nhwindow,
-    $window_procs_win_end_menu = FLD.window_procs_win_end_menu,
-    $window_procs_win_start_menu = FLD.window_procs_win_start_menu, $you_ucamefrom = FLD.you_ucamefrom,
-    $you_uen = FLD.you_uen, $you_uevent = FLD.you_uevent, $you_uhave = FLD.you_uhave,
-    $you_uhunger = FLD.you_uhunger, $you_ulevel = FLD.you_ulevel, $you_umonnum = FLD.you_umonnum,
-    $you_umonster = FLD.you_umonster, $you_uprops = FLD.you_uprops, $you_urooms = FLD.you_urooms,
-    $you_ushops = FLD.you_ushops, $you_ushops0 = FLD.you_ushops0, $you_usteed = FLD.you_usteed,
-    $you_ustuck = FLD.you_ustuck, $you_uswallow = FLD.you_uswallow, $you_utrap = FLD.you_utrap,
-    $you_utraptype = FLD.you_utraptype, $you_ux0 = FLD.you_ux0, $you_uy = FLD.you_uy, $you_uy0 = FLD.you_uy0,
-    $you_uz = FLD.you_uz, $you_uz0 = FLD.you_uz0;
+      $accessibility_data_mon_notices_blocked = FLD.accessibility_data_mon_notices_blocked,
+      $c_common_strings_c_shudder_for_moment = FLD.c_common_strings_c_shudder_for_moment,
+      $const_globals_zeroany = FLD.const_globals_zeroany,
+      $const_globals_zeromonst = FLD.const_globals_zeromonst, $coord_y = FLD.coord_y,
+      $d_flags_unconnected = FLD.d_flags_unconnected, $d_level_dlevel = FLD.d_level_dlevel,
+      $dest_area_hx = FLD.dest_area_hx, $dest_area_hy = FLD.dest_area_hy,
+      $dest_area_ly = FLD.dest_area_ly, $dest_area_nhx = FLD.dest_area_nhx,
+      $dest_area_nhy = FLD.dest_area_nhy, $dest_area_nlx = FLD.dest_area_nlx,
+      $dest_area_nly = FLD.dest_area_nly,
+      $dgn_topology_d_astral_level = FLD.dgn_topology_d_astral_level,
+      $dgn_topology_d_medusa_level = FLD.dgn_topology_d_medusa_level,
+      $dgn_topology_d_mineend_level = FLD.dgn_topology_d_mineend_level,
+      $dgn_topology_d_qlocate_level = FLD.dgn_topology_d_qlocate_level,
+      $dgn_topology_d_qstart_level = FLD.dgn_topology_d_qstart_level,
+      $dgn_topology_d_sanctum_level = FLD.dgn_topology_d_sanctum_level,
+      $dgn_topology_d_sokoban_dnum = FLD.dgn_topology_d_sokoban_dnum,
+      $dgn_topology_d_stronghold_level = FLD.dgn_topology_d_stronghold_level,
+      $dgn_topology_d_tutorial_dnum = FLD.dgn_topology_d_tutorial_dnum,
+      $dgn_topology_d_valley_level = FLD.dgn_topology_d_valley_level,
+      $dgn_topology_d_water_level = FLD.dgn_topology_d_water_level,
+      $dlevel_t_flags = FLD.dlevel_t_flags, $dlevel_t_monlist = FLD.dlevel_t_monlist,
+      $dlevel_t_monsters = FLD.dlevel_t_monsters, $dungeon_depth_start = FLD.dungeon_depth_start,
+      $dungeon_dunlev_ureached = FLD.dungeon_dunlev_ureached, $dungeon_flags = FLD.dungeon_flags,
+      $dungeon_num_dunlevs = FLD.dungeon_num_dunlevs, $epri_shroom = FLD.epri_shroom,
+      $eshk_shoproom = FLD.eshk_shoproom, $flag_debug = FLD.flag_debug,
+      $flag_female = FLD.flag_female, $flag_verbose = FLD.flag_verbose,
+      $instance_flags_debug_fuzzer = FLD.instance_flags_debug_fuzzer,
+      $instance_flags_last_msg = FLD.instance_flags_last_msg,
+      $instance_flags_menu_requested = FLD.instance_flags_menu_requested,
+      $instance_flags_mon_telecontrol = FLD.instance_flags_mon_telecontrol,
+      $instance_flags_travelcc = FLD.instance_flags_travelcc,
+      $instance_globals_c_current_wand = FLD.instance_globals_c_current_wand,
+      $instance_globals_i_in_mklev = FLD.instance_globals_i_in_mklev,
+      $instance_globals_i_invent = FLD.instance_globals_i_invent,
+      $instance_globals_o_occupation = FLD.instance_globals_o_occupation,
+      $instance_globals_s_stairs = FLD.instance_globals_s_stairs,
+      $instance_globals_saved_d_dndest = FLD.instance_globals_saved_d_dndest,
+      $instance_globals_saved_d_dungeon_topology = FLD.instance_globals_saved_d_dungeon_topology,
+      $instance_globals_saved_l_level = FLD.instance_globals_saved_l_level,
+      $instance_globals_saved_m_moves = FLD.instance_globals_saved_m_moves,
+      $instance_globals_u_urole = FLD.instance_globals_u_urole,
+      $instance_globals_v_vision_full_recalc = FLD.instance_globals_v_vision_full_recalc,
+      $instance_globals_v_viz_array = FLD.instance_globals_v_viz_array,
+      $instance_globals_y_youmonst = FLD.instance_globals_y_youmonst,
+      $kinfo_format = FLD.kinfo_format, $kinfo_name = FLD.kinfo_name,
+      $levelflags_noteleport = FLD.levelflags_noteleport,
+      $levelflags_stasis_until = FLD.levelflags_stasis_until, $mextra_epri = FLD.mextra_epri,
+      $mextra_eshk = FLD.mextra_eshk, $monst_data = FLD.monst_data,
+      $monst_ispriest = FLD.monst_ispriest, $monst_isshk = FLD.monst_isshk,
+      $monst_iswiz = FLD.monst_iswiz, $monst_m_ap_type = FLD.monst_m_ap_type,
+      $monst_m_id = FLD.monst_m_id, $monst_mconf = FLD.monst_mconf,
+      $monst_mextra = FLD.monst_mextra, $monst_mhp = FLD.monst_mhp,
+      $monst_minvent = FLD.monst_minvent, $monst_mleashed = FLD.monst_mleashed,
+      $monst_mpeaceful = FLD.monst_mpeaceful, $monst_mstate = FLD.monst_mstate,
+      $monst_mstrategy = FLD.monst_mstrategy, $monst_mtame = FLD.monst_mtame,
+      $monst_mtrapped = FLD.monst_mtrapped, $monst_mx = FLD.monst_mx, $monst_my = FLD.monst_my,
+      $monst_wormno = FLD.monst_wormno, $nhcoord_y = FLD.nhcoord_y, $obj_blessed = FLD.obj_blessed,
+      $obj_corpsenm = FLD.obj_corpsenm, $obj_cursed = FLD.obj_cursed,
+      $obj_no_charge = FLD.obj_no_charge, $obj_oerodeproof = FLD.obj_oerodeproof,
+      $obj_otyp = FLD.obj_otyp, $obj_ox = FLD.obj_ox, $obj_oy = FLD.obj_oy,
+      $obj_unpaid = FLD.obj_unpaid, $obj_where = FLD.obj_where,
+      $objclass_oc_oc2 = FLD.objclass_oc_oc2, $permonst_geno = FLD.permonst_geno,
+      $permonst_mflags1 = FLD.permonst_mflags1, $permonst_mflags2 = FLD.permonst_mflags2,
+      $permonst_mflags3 = FLD.permonst_mflags3, $permonst_mlet = FLD.permonst_mlet,
+      $permonst_msound = FLD.permonst_msound, $prop_blocked = FLD.prop_blocked,
+      $prop_intrinsic = FLD.prop_intrinsic, $rm_roomno = FLD.rm_roomno, $rm_typ = FLD.rm_typ,
+      $sizeof_Gender = FLD.sizeof_Gender, $sizeof_coord = FLD.sizeof_coord,
+      $sizeof_dungeon = FLD.sizeof_dungeon, $sizeof_menu_item = FLD.sizeof_menu_item,
+      $sizeof_objclass = FLD.sizeof_objclass, $sizeof_permonst = FLD.sizeof_permonst,
+      $sizeof_prop = FLD.sizeof_prop, $sizeof_rm = FLD.sizeof_rm,
+      $sizeof_rm_x21 = FLD.sizeof_rm_x21, $sizeof_tporttypes = FLD.sizeof_tporttypes,
+      $stairway_isladder = FLD.stairway_isladder, $stairway_next = FLD.stairway_next,
+      $stairway_sy = FLD.stairway_sy, $stairway_tolev = FLD.stairway_tolev,
+      $stairway_up = FLD.stairway_up, $tporttypes_menudesc = FLD.tporttypes_menudesc,
+      $trap_dst = FLD.trap_dst, $trap_launch = FLD.trap_launch, $trap_once = FLD.trap_once,
+      $trap_tseen = FLD.trap_tseen, $trap_ttyp = FLD.trap_ttyp,
+      $u_event_invoked = FLD.u_event_invoked,
+      $window_procs_win_create_nhwindow = FLD.window_procs_win_create_nhwindow,
+      $window_procs_win_destroy_nhwindow = FLD.window_procs_win_destroy_nhwindow,
+      $window_procs_win_display_nhwindow = FLD.window_procs_win_display_nhwindow,
+      $window_procs_win_end_menu = FLD.window_procs_win_end_menu,
+      $window_procs_win_start_menu = FLD.window_procs_win_start_menu,
+      $you_ucamefrom = FLD.you_ucamefrom, $you_uen = FLD.you_uen, $you_uevent = FLD.you_uevent,
+      $you_uhave = FLD.you_uhave, $you_uhunger = FLD.you_uhunger, $you_ulevel = FLD.you_ulevel,
+      $you_umonnum = FLD.you_umonnum, $you_umonster = FLD.you_umonster,
+      $you_uprops = FLD.you_uprops, $you_urooms = FLD.you_urooms, $you_ushops = FLD.you_ushops,
+      $you_ushops0 = FLD.you_ushops0, $you_usteed = FLD.you_usteed, $you_ustuck = FLD.you_ustuck,
+      $you_uswallow = FLD.you_uswallow, $you_utrap = FLD.you_utrap,
+      $you_utraptype = FLD.you_utraptype, $you_ux0 = FLD.you_ux0, $you_uy = FLD.you_uy,
+      $you_uy0 = FLD.you_uy0, $you_uz = FLD.you_uz, $you_uz0 = FLD.you_uz0;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
 const __s_elbereth = cptr.lit("Elbereth");
 const __s_teleport_c = cptr.lit("teleport.c");
-const __s_goodpos = cptr.lit("goodpos");
 const __s_enexto_called_with_null_mdat = cptr.lit("enexto() called with null mdat");
 const __s_enexto_s_d_d_0x_08lx_failed = cptr.lit("enexto(\"%s\",%d,%d,0x%08lx) failed");
 const __s_materialize_in_s_location = cptr.lit("materialize in %s location!");
 const __s_the_same = cptr.lit("the same");
 const __s_a_different = cptr.lit("a different");
 const __s_mon_notices_blocked_0 = cptr.lit("mon_notices_blocked<0");
-const __s_collect_coords = cptr.lit("collect_coords");
 const __s_collect_coords_d_d_d_d = cptr.lit("collect_coords(,%d,%d,%d,,)=%d");
-const __s_safe_teleds = cptr.lit("safe_teleds");
 const __s_s_is_leashed_without_a_leash = cptr.lit("%s is leashed, without a leash.");
 const __s_leash_goes_slack = cptr.lit("leash goes slack.");
 const __s_pct_s = cptr.lit("%s");
 const __s_attempt_to_teleport_hero_to_be_near_a = cptr.lit("attempt to teleport hero to be near a pet on no-teleport level");
-const __s_tele_to_rnd_pet = cptr.lit("tele_to_rnd_pet");
 const __s_a_mysterious_force_prevents_you_from = cptr.lit("A mysterious force prevents you from teleporting!");
-const __s_scrolltele = cptr.lit("scrolltele");
 const __s_disoriented_for_a_moment = cptr.lit("disoriented for a moment.");
 const __s_override = cptr.lit("Override?");
 const __s_being_unconscious_you_cannot_control = cptr.lit("Being unconscious, you cannot control your teleport.");
@@ -193,7 +228,6 @@ const __s_s_s = cptr.lit("%s %s.");
 const __s_for_a_teleport_spell = cptr.lit("for a teleport spell");
 const __s_to_teleport = cptr.lit("to teleport");
 const __s_your_concentration_falters_from = cptr.lit("Your concentration falters from carrying so much.");
-const __s_level_tele = cptr.lit("level_tele");
 const __s_very_disoriented_for_a_moment = cptr.lit("very disoriented for a moment.");
 const __s_to_what_level_do_you_want_to_teleport = cptr.lit("To what level do you want to teleport?");
 const __s_type_a_number_name_or_for_a_menu = cptr.lit(" [type a number, name, or ? for a menu]");
@@ -255,7 +289,6 @@ const __s_s_s_s_s = cptr.lit("%s %s%s%s!");
 const __s_suddenly = cptr.lit("suddenly ");
 const __s_appears = cptr.lit("appears");
 const __s_arrives = cptr.lit("arrives");
-const __s_rloc = cptr.lit("rloc");
 const __s_rloc_couldn_t_relocate_monster = cptr.lit("rloc(): couldn't relocate monster");
 const __s_teleport_s_d_d_where = cptr.lit("Teleport %s @ <%d,%d> where?");
 const __s_where_to_teleport_s = cptr.lit("where to teleport %s");
@@ -269,7 +302,6 @@ const __s_s_suddenly_disappears = cptr.lit("%s suddenly disappears!");
 const __s_s_avoids_the_s = cptr.lit("%s avoids the %s.");
 const __s_hole = cptr.lit("hole");
 const __s_trap = cptr.lit("trap");
-const __s_mlevel_tele_trap = cptr.lit("mlevel_tele_trap");
 const __s_s_seems_to_shimmer_for_a_moment = cptr.lit("%s seems to shimmer for a moment.");
 const __s_s_seems_very_disoriented_for_a_moment = cptr.lit("%s seems very disoriented for a moment.");
 const __s_s_shudders_for_a_moment = cptr.lit("%s shudders for a moment.");
@@ -278,13 +310,10 @@ const __s_suddenly_s_s = cptr.lit("Suddenly, %s %s.");
 const __s_falls_into_a_hole = cptr.lit("falls into a hole");
 const __s_falls_through_a_trap_door = cptr.lit("falls through a trap door");
 const __s_disappears_out_of_sight = cptr.lit("disappears out of sight");
-const __s_rloco = cptr.lit("rloco");
 const __s_fall = cptr.lit("fall");
-const __s_random_teleport_level = cptr.lit("random_teleport_level");
 const __s_a_mysterious_force_prevents_you = cptr.lit("A mysterious force prevents you teleporting %s!");
 const __s_s_resists_your_magic = cptr.lit("%s resists your magic!");
 const __s_are_no_longer_inside_s = cptr.lit("are no longer inside %s!");
-const __s_u_teleport_mon = cptr.lit("u_teleport_mon");
 
 /* does monster block others from teleporting? */
 /** C ref: teleport.c:21 — @param {CPtr<struct monst>} mtmp @returns {CInt} */
@@ -298,17 +327,26 @@ function m_blocks_teleporting(mtmp) {
 /** C ref: teleport.c:30 — @param {CPtr<struct monst>} mon @returns {CInt} */
 export function noteleport_level(mon) {
     /* demon court in Gehennom prevent others from teleporting */
-    if (In_hell(cptr.add(u, $you_uz)) && !(is_dlord(cptr.ldPtro(mon, $monst_data)) || is_dprince(cptr.ldPtro(mon, $monst_data))))
+    if (In_hell(cptr.add(u, $you_uz)) &&
+            !(is_dlord(cptr.ldPtro(mon, $monst_data)) || is_dprince(cptr.ldPtro(mon, $monst_data))))
         if (get_iter_mons(m_blocks_teleporting))
             return 1;
 
     /* natural no-teleport level; covetous monsters can bypass these */
-    if ((cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_noteleport) & 1) | 0 && !((cptr.ldU16o((cptr.ldPtro(mon, $monst_data)), $permonst_mflags3) & NHM.M3_COVETOUS)))
+    if ((cptr.ldI32o(
+        svl,
+        $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_noteleport
+    ) & 1) | 0 &&
+            !((cptr.ldU16o((cptr.ldPtro(mon, $monst_data)), $permonst_mflags3) & NHM.M3_COVETOUS)))
         return 1;
 
     /* wand of stasis prevents teleportation while the effect is active
        (even for covetous monsters) */
-    if (cptr.ldI64o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until) >= cptr.ldI64o(svm, $instance_globals_saved_m_moves))
+    if (cptr.ldI64o(
+        svl,
+        $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until
+    ) >=
+            cptr.ldI64o(svm, $instance_globals_saved_m_moves))
         return 1;
 
     return 0;
@@ -317,24 +355,48 @@ export function noteleport_level(mon) {
 /* this is an approximation of onscary() that doesn't use any 'struct monst'
    fields aside from 'monst->data'; used primarily for new monster creation
    and monster teleport destination, not for ordinary monster movement */
-/** C ref: teleport.c:53 — @param {CInt} x @param {CInt} y @param {CPtr<struct permonst>} mptr @returns {CInt} */
+/**
+ * C ref: teleport.c:53
+ * @param {CInt} x
+ * @param {CInt} y
+ * @param {CPtr<struct permonst>} mptr
+ * @returns {CInt}
+ */
 function goodpos_onscary(x, y, mptr) {
     /* onscary() checks Angels and lawful minions; this oversimplifies */
-    if (cptr.ld1so(mptr, $permonst_mlet) == NHC.S_HUMAN || cptr.ld1so(mptr, $permonst_mlet) == NHC.S_ANGEL || is_rider(mptr) || ((cptr.ldU16o((mptr), $permonst_geno) & NHM.G_UNIQ) != 0))
+    if (cptr.ld1so(mptr, $permonst_mlet) == NHC.S_HUMAN ||
+            cptr.ld1so(mptr, $permonst_mlet) == NHC.S_ANGEL ||
+            is_rider(mptr) ||
+            ((cptr.ldU16o((mptr), $permonst_geno) & NHM.G_UNIQ) != 0))
         return 0;
     /* onscary() checks for vampshifted vampire bats/fog clouds/wolves too */
-    if (((cptr.ld1so3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) == NHC.ALTAR) && cptr.ld1so(mptr, $permonst_mlet) == NHC.S_VAMPIRE)
+    if (((cptr.ld1so3(
+        svl,
+        x,
+        $sizeof_rm_x21,
+        y,
+        $sizeof_rm,
+        $instance_globals_saved_l_level + $rm_typ
+    )) ==
+        NHC.ALTAR) &&
+            cptr.ld1so(mptr, $permonst_mlet) == NHC.S_VAMPIRE)
         return 1;
     /* scare monster scroll doesn't have any of the below restrictions,
        being its own source of power */
     if (sobj_at(NHC.SCR_SCARE_MONSTER, x, y))
         return 1;
     /* engraved Elbereth doesn't work in Gehennom or the end-game */
-    if (In_hell(cptr.add(u, $you_uz)) || (cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))))
+    if (In_hell(cptr.add(u, $you_uz)) ||
+            (cptr.ldI16((cptr.add(u, $you_uz))) ==
+                cptr.ldI16((cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+                )))))
         return 0;
     /* creatures who don't (or can't) fear a written Elbereth and weren't
        caught by the minions check */
-    if (cptr.eq(mptr, cptr.add(mons, NHC.PM_MINOTAUR, $sizeof_permonst)) || !((cptr.ldU64o((mptr), $permonst_mflags1) & 4096n) == 0n))
+    if (cptr.eq(mptr, cptr.add(mons, NHC.PM_MINOTAUR, $sizeof_permonst)) ||
+            !((cptr.ldU64o((mptr), $permonst_mflags1) & 4096n) == 0n))
         return 0;
     return schar((sengr_at(__s_elbereth, x, y, 1) ? 1 : 0));
 }
@@ -346,7 +408,14 @@ function goodpos_onscary(x, y, mptr) {
  * This function will only look at mtmp->mdat, so makemon, mplayer, etc can
  * call it to generate new monster positions with fake monster structures.
  */
-/** C ref: teleport.c:86 — @param {CInt} x @param {CInt} y @param {CPtr<struct monst>} mtmp @param {CUInt} gpflags @returns {CInt} */
+/**
+ * C ref: teleport.c:86
+ * @param {CInt} x
+ * @param {CInt} y
+ * @param {CPtr<struct monst>} mtmp
+ * @param {CUInt} gpflags
+ * @returns {CInt}
+ */
 export function goodpos(x, y, mtmp, gpflags) {
     let mdat = null;
     let ignorewater = schar(((BigInt(gpflags >>> 0) & 8n) != 0n));
@@ -365,15 +434,34 @@ export function goodpos(x, y, mtmp, gpflags) {
      * oh well.
      */
     if (!allow_u) {
-        if (((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy)) && !cptr.eq(mtmp, cptr.add(gy, $instance_globals_y_youmonst)) && (!cptr.eq(mtmp, cptr.ldPtro(u, $you_ustuck)) || !(cptr.ldI32o(u, $you_uswallow) & 1)) && (!cptr.ldPtro(u, $you_usteed) || !cptr.eq(mtmp, cptr.ldPtro(u, $you_usteed))))
+        if (((x) == cptr.ldI16(u) && (y) == cptr.ldI16o(u, $you_uy)) &&
+                !cptr.eq(mtmp, cptr.add(gy, $instance_globals_y_youmonst)) &&
+                (!cptr.eq(mtmp, cptr.ldPtro(u, $you_ustuck)) ||
+                    !(cptr.ldI32o(u, $you_uswallow) & 1)) &&
+                (!cptr.ldPtro(u, $you_usteed) || !cptr.eq(mtmp, cptr.ldPtro(u, $you_usteed))))
             return 0;
     }
 
-    if ((cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters) !== null) && avoid_monpos)
+    if ((cptr.ldPtro3(
+        svl,
+        x,
+        168,
+        y,
+        8,
+        $instance_globals_saved_l_level + $dlevel_t_monsters
+    ) !== null) &&
+            avoid_monpos)
         return 0;
 
     if (mtmp) {
-        let mtmp2 = (cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters));
+        let mtmp2 = (cptr.ldPtro3(
+            svl,
+            x,
+            168,
+            y,
+            8,
+            $instance_globals_saved_l_level + $dlevel_t_monsters
+        ));
 
         /* Be careful with long worms.  A monster may be placed back in
          * its own location.  Normally, if m_at() returns the same monster
@@ -392,10 +480,86 @@ export function goodpos(x, y, mtmp, gpflags) {
         if (is_pool(x, y) && !ignorewater) {
             /* [what about Breathless?] */
             if (cptr.eq(mtmp, cptr.add(gy, $instance_globals_y_youmonst)))
-                return schar((Swimming() || Amphibious() || (!(((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && !is_waterwall(x, y) && (Levitation() || Flying() || ((cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops + $prop_intrinsic) || cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops)) && !(((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level))))))) ? 1 : 0));
+                return schar((Swimming() ||
+                    Amphibious() ||
+                    (!(((cptr.ldI16o(
+                        (cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level
+                        )),
+                        $d_level_dlevel
+                    ) ||
+                        cptr.ldI16((cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level
+                        )))) &&
+                        on_level(
+                            cptr.add(u, $you_uz),
+                            cptr.add(
+                                svd,
+                                $instance_globals_saved_d_dungeon_topology +
+                                    $dgn_topology_d_water_level
+                            )
+                        ))) &&
+                        !is_waterwall(x, y) &&
+                        (Levitation() ||
+                            Flying() ||
+                            ((cptr.ldI64o2(
+                                u,
+                                NHC.WWALKING,
+                                $sizeof_prop,
+                                $you_uprops + $prop_intrinsic
+                            ) ||
+                                cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops)) &&
+                                !(((cptr.ldI16o(
+                                    (cptr.add(
+                                        svd,
+                                        $instance_globals_saved_d_dungeon_topology +
+                                            $dgn_topology_d_water_level
+                                    )),
+                                    $d_level_dlevel
+                                ) ||
+                                    cptr.ldI16((cptr.add(
+                                        svd,
+                                        $instance_globals_saved_d_dungeon_topology +
+                                            $dgn_topology_d_water_level
+                                    )))) &&
+                                    on_level(
+                                        cptr.add(u, $you_uz),
+                                        cptr.add(
+                                            svd,
+                                            $instance_globals_saved_d_dungeon_topology +
+                                                $dgn_topology_d_water_level
+                                        )
+                                    ))))))
+                        ? 1
+                        : 0));
             else
-                return schar((((cptr.ldU64o((mdat), $permonst_mflags1) & 2n) != 0n) || (!(((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && !is_waterwall(x, y) && m_in_air(mtmp)) ? 1 : 0));
-        } else if (cptr.ld1so(mdat, $permonst_mlet) == NHC.S_EEL && rn2_at(__s_teleport_c, 148, __s_goodpos, 13) && !ignorewater) {
+                return schar((((cptr.ldU64o((mdat), $permonst_mflags1) & 2n) != 0n) ||
+                    (!(((cptr.ldI16o(
+                        (cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level
+                        )),
+                        $d_level_dlevel
+                    ) ||
+                        cptr.ldI16((cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level
+                        )))) &&
+                        on_level(
+                            cptr.add(u, $you_uz),
+                            cptr.add(
+                                svd,
+                                $instance_globals_saved_d_dungeon_topology +
+                                    $dgn_topology_d_water_level
+                            )
+                        ))) &&
+                        !is_waterwall(x, y) &&
+                        m_in_air(mtmp))
+                        ? 1
+                        : 0));
+        } else if (cptr.ld1so(mdat, $permonst_mlet) == NHC.S_EEL && rn2(13) && !ignorewater) {
             return 0;
         } else if (is_lava(x, y) && !ignorelava) {
             /* 3.6.3: floating eye can levitate over lava but it avoids
@@ -403,7 +567,43 @@ export function goodpos(x, y, mtmp, gpflags) {
             if (cptr.eq(mdat, cptr.add(mons, NHC.PM_FLOATING_EYE, $sizeof_permonst)))
                 return 0;
             else if (cptr.eq(mtmp, cptr.add(gy, $instance_globals_y_youmonst)))
-                return schar((Levitation() || Flying() || (Fire_resistance() && ((cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops + $prop_intrinsic) || cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops)) && !(((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level))))) && uarmf.v && (cptr.ldI32o(uarmf.v, $obj_oerodeproof) & 1) | 0) || (Upolyd() && likes_lava(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data))) ? 1 : 0));
+                return schar((Levitation() ||
+                    Flying() ||
+                    (Fire_resistance() &&
+                        ((cptr.ldI64o2(
+                            u,
+                            NHC.WWALKING,
+                            $sizeof_prop,
+                            $you_uprops + $prop_intrinsic
+                        ) ||
+                            cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops)) &&
+                            !(((cptr.ldI16o(
+                                (cptr.add(
+                                    svd,
+                                    $instance_globals_saved_d_dungeon_topology +
+                                        $dgn_topology_d_water_level
+                                )),
+                                $d_level_dlevel
+                            ) ||
+                                cptr.ldI16((cptr.add(
+                                    svd,
+                                    $instance_globals_saved_d_dungeon_topology +
+                                        $dgn_topology_d_water_level
+                                )))) &&
+                                on_level(
+                                    cptr.add(u, $you_uz),
+                                    cptr.add(
+                                        svd,
+                                        $instance_globals_saved_d_dungeon_topology +
+                                            $dgn_topology_d_water_level
+                                    )
+                                )))) &&
+                        uarmf.v &&
+                        (cptr.ldI32o(uarmf.v, $obj_oerodeproof) & 1) | 0) ||
+                    (Upolyd() &&
+                        likes_lava(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)))
+                        ? 1
+                        : 0));
             else
                 return schar((m_in_air(mtmp) || likes_lava(mdat) ? 1 : 0));
         }
@@ -412,7 +612,10 @@ export function goodpos(x, y, mtmp, gpflags) {
         if (((cptr.ldU64o((mdat), $permonst_mflags1) & 4n) != 0n) && closed_door(x, y))
             return 1;
         /* avoid onscary() if caller has specified that restriction */
-        if (checkscary && (cptr.ldI32o(mtmp, $monst_m_id) ? onscary(x, y, mtmp) : goodpos_onscary(x, y, mdat)))
+        if (checkscary &&
+                (cptr.ldI32o(mtmp, $monst_m_id)
+                    ? onscary(x, y, mtmp)
+                    : goodpos_onscary(x, y, mdat)))
             return 0;
     }
     if (!accessible(x, y)) {
@@ -420,7 +623,8 @@ export function goodpos(x, y, mtmp, gpflags) {
             return 0;
     }
     /* skip boulder locations for most creatures */
-    if (sobj_at(NHC.BOULDER, x, y) && (!mdat || !((cptr.ldU64o((mdat), $permonst_mflags2) & 134217728n) != 0n)))
+    if (sobj_at(NHC.BOULDER, x, y) &&
+            (!mdat || !((cptr.ldU64o((mdat), $permonst_mflags2) & 134217728n) != 0n)))
         return 0;
     /* pretend GP_AVOID_MONPOS == monster creation */
     if (avoid_monpos && is_exclusion_zone(NHC.LR_MONGEN, x, y))
@@ -437,17 +641,52 @@ export function goodpos(x, y, mtmp, gpflags) {
  * If there is more than one valid position in the ring, choose one randomly.
  * Return TRUE and the position chosen when successful, FALSE otherwise.
  */
-/** C ref: teleport.c:196 — @param {CPtr<coord>} cc @param {CInt} xx @param {CInt} yy @param {CPtr<struct permonst>} mdat @returns {CInt} */
+/**
+ * C ref: teleport.c:196
+ * @param {CPtr<coord>} cc
+ * @param {CInt} xx
+ * @param {CInt} yy
+ * @param {CPtr<struct permonst>} mdat
+ * @returns {CInt}
+ */
 export function enexto(cc, xx, yy, mdat) {
-    return schar((enexto_core(cc, xx, yy, mdat, NHM.GP_CHECKSCARY) || enexto_core(cc, xx, yy, mdat, NHM.NO_MM_FLAGS) ? 1 : 0));
+    return schar((enexto_core(cc, xx, yy, mdat, NHM.GP_CHECKSCARY) ||
+        enexto_core(cc, xx, yy, mdat, NHM.NO_MM_FLAGS)
+            ? 1
+            : 0));
 }
 
-/** C ref: teleport.c:206 — @param {CPtr<coord>} cc @param {CInt} xx @param {CInt} yy @param {CPtr<struct permonst>} mdat @param {CUInt} entflags @returns {CInt} */
+/**
+ * C ref: teleport.c:206
+ * @param {CPtr<coord>} cc
+ * @param {CInt} xx
+ * @param {CInt} yy
+ * @param {CPtr<struct permonst>} mdat
+ * @param {CUInt} entflags
+ * @returns {CInt}
+ */
 export function enexto_gpflags(cc, xx, yy, mdat, entflags) {
-    return schar((enexto_core(cc, xx, yy, mdat, Number(BigInt.asUintN(32, (8388608n | BigInt(entflags >>> 0))))) || enexto_core(cc, xx, yy, mdat, entflags) ? 1 : 0));
+    return schar((enexto_core(
+        cc,
+        xx,
+        yy,
+        mdat,
+        Number(BigInt.asUintN(32, (8388608n | BigInt(entflags >>> 0))))
+    ) ||
+        enexto_core(cc, xx, yy, mdat, entflags)
+            ? 1
+            : 0));
 }
 
-/** C ref: teleport.c:219 — @param {CPtr<coord>} cc @param {CInt} xx @param {CInt} yy @param {CPtr<struct permonst>} mdat @param {CUInt} entflags @returns {CInt} */
+/**
+ * C ref: teleport.c:219
+ * @param {CPtr<coord>} cc
+ * @param {CInt} xx
+ * @param {CInt} yy
+ * @param {CPtr<struct permonst>} mdat
+ * @param {CUInt} entflags
+ * @returns {CInt}
+ */
 export function enexto_core(cc, xx, yy, mdat, entflags) {
     let candy = cptr.alloc(1659 * $sizeof_coord);  /* enough room for every location */
     let i;
@@ -504,7 +743,13 @@ export function enexto_core(cc, xx, yy, mdat, entflags) {
 
             /* failed to find any acceptable spot */
             let save_plnmsg = cptr.ldI32o(iflags, $instance_flags_last_msg);
-            pline(__s_enexto_s_d_d_0x_08lx_failed, cptr.ldPtro(mdat, NHC.NEUTRAL, 8), xx, yy, BigInt(entflags >>> 0));
+            pline(
+                __s_enexto_s_d_d_0x_08lx_failed,
+                cptr.ldPtro(mdat, NHC.NEUTRAL, 8),
+                xx,
+                yy,
+                BigInt(entflags >>> 0)
+            );
             cptr.stI32o(iflags, $instance_flags_last_msg, save_plnmsg);
         }
     }
@@ -516,22 +761,57 @@ export function enexto_core(cc, xx, yy, mdat, entflags) {
  * need to be augmented to allow deliberate passage in wizard mode, but
  * only for explicitly chosen destinations.)
  */
-/** C ref: teleport.c:386 — @param {CInt} x1 @param {CInt} y1 @param {CInt} x2 @param {CInt} y2 @returns {CInt} */
+/**
+ * C ref: teleport.c:386
+ * @param {CInt} x1
+ * @param {CInt} y1
+ * @param {CInt} x2
+ * @param {CInt} y2
+ * @returns {CInt}
+ */
 function tele_jump_ok(x1, y1, x2, y2) {
     if (!isok(x2, y2))
         return 0;
     if (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) > 0) {
         /* if inside a restricted region, can't teleport outside */
-        if (((x1) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (x1) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (y1) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (y1) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))) && !((x2) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (x2) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (y2) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (y2) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))))
+        if (((x1) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+            (x1) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) &&
+            (y1) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) &&
+            (y1) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))) &&
+                !((x2) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+                    (x2) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) &&
+                    (y2) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) &&
+                    (y2) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))))
             return 0;
         /* and if outside, can't teleport inside */
-        if (!((x1) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (x1) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (y1) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (y1) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))) && ((x2) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (x2) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (y2) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (y2) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))))
+        if (!((x1) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+            (x1) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) &&
+            (y1) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) &&
+            (y1) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))) &&
+                ((x2) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+                    (x2) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) &&
+                    (y2) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) &&
+                    (y2) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))))
             return 0;
     }
     if (cptr.ldI16o(svu, $dest_area_nlx) > 0) {
-        if (((x1) >= (cptr.ldI16o(svu, $dest_area_nlx)) && (x1) <= (cptr.ldI16o(svu, $dest_area_nhx)) && (y1) >= (cptr.ldI16o(svu, $dest_area_nly)) && (y1) <= (cptr.ldI16o(svu, $dest_area_nhy))) && !((x2) >= (cptr.ldI16o(svu, $dest_area_nlx)) && (x2) <= (cptr.ldI16o(svu, $dest_area_nhx)) && (y2) >= (cptr.ldI16o(svu, $dest_area_nly)) && (y2) <= (cptr.ldI16o(svu, $dest_area_nhy))))
+        if (((x1) >= (cptr.ldI16o(svu, $dest_area_nlx)) &&
+            (x1) <= (cptr.ldI16o(svu, $dest_area_nhx)) &&
+            (y1) >= (cptr.ldI16o(svu, $dest_area_nly)) &&
+            (y1) <= (cptr.ldI16o(svu, $dest_area_nhy))) &&
+                !((x2) >= (cptr.ldI16o(svu, $dest_area_nlx)) &&
+                    (x2) <= (cptr.ldI16o(svu, $dest_area_nhx)) &&
+                    (y2) >= (cptr.ldI16o(svu, $dest_area_nly)) &&
+                    (y2) <= (cptr.ldI16o(svu, $dest_area_nhy))))
             return 0;
-        if (!((x1) >= (cptr.ldI16o(svu, $dest_area_nlx)) && (x1) <= (cptr.ldI16o(svu, $dest_area_nhx)) && (y1) >= (cptr.ldI16o(svu, $dest_area_nly)) && (y1) <= (cptr.ldI16o(svu, $dest_area_nhy))) && ((x2) >= (cptr.ldI16o(svu, $dest_area_nlx)) && (x2) <= (cptr.ldI16o(svu, $dest_area_nhx)) && (y2) >= (cptr.ldI16o(svu, $dest_area_nly)) && (y2) <= (cptr.ldI16o(svu, $dest_area_nhy))))
+        if (!((x1) >= (cptr.ldI16o(svu, $dest_area_nlx)) &&
+            (x1) <= (cptr.ldI16o(svu, $dest_area_nhx)) &&
+            (y1) >= (cptr.ldI16o(svu, $dest_area_nly)) &&
+            (y1) <= (cptr.ldI16o(svu, $dest_area_nhy))) &&
+                ((x2) >= (cptr.ldI16o(svu, $dest_area_nlx)) &&
+                    (x2) <= (cptr.ldI16o(svu, $dest_area_nhx)) &&
+                    (y2) >= (cptr.ldI16o(svu, $dest_area_nly)) &&
+                    (y2) <= (cptr.ldI16o(svu, $dest_area_nhy))))
             return 0;
     }
     return 1;
@@ -548,7 +828,9 @@ function teleok(x, y, trapok) {
             trapok = 1;
         else if (((cptr.ldI32o(trap, $trap_ttyp) & 31) | 0) == NHC.VIBRATING_SQUARE)
             trapok = 1;
-        else if ((is_pit((cptr.ldI32o(trap, $trap_ttyp) & 31)) || is_hole((cptr.ldI32o(trap, $trap_ttyp) & 31))) && (Levitation() || Flying()))
+        else if ((is_pit((cptr.ldI32o(trap, $trap_ttyp) & 31)) ||
+            is_hole((cptr.ldI32o(trap, $trap_ttyp) & 31))) &&
+                (Levitation() || Flying()))
             trapok = 1;
 
         if (!trapok)
@@ -577,7 +859,9 @@ export function teleds(nux, nuy, teleds_flags) {
         buried_ball_to_punishment();
     }
     ball_active = schar((Punished() && cptr.ld1so(uball.v, $obj_where) != NHM.OBJ_FREE ? 1 : 0));
-    if (!ball_active || near_capacity() > NHC.SLT_ENCUMBER || distmin(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), nux, nuy) > 1)
+    if (!ball_active ||
+            near_capacity() > NHC.SLT_ENCUMBER ||
+            distmin(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), nux, nuy) > 1)
         allow_drag = 0;
 
     /* If they have to move the ball, then drag if allow_drag is true;
@@ -596,7 +880,13 @@ export function teleds(nux, nuy, teleds_flags) {
      * rock in the way), in which case it teleports the ball on its own.
      */
     if (ball_active) {
-        if (!(cptr.ld1so((uball.v), $obj_where) == NHM.OBJ_INVENT) && distmin(nux, nuy, cptr.ldI16o(uball.v, $obj_ox), cptr.ldI16o(uball.v, $obj_oy)) <= 2)
+        if (!(cptr.ld1so((uball.v), $obj_where) == NHM.OBJ_INVENT) &&
+                distmin(
+                    nux,
+                    nuy,
+                    cptr.ldI16o(uball.v, $obj_ox),
+                    cptr.ldI16o(uball.v, $obj_oy)
+                ) <= 2)
             ball_still_in_range = 1;  /* don't have to move the ball */
         else if (!allow_drag)
             unplacebc();  /* have to move the ball */
@@ -607,7 +897,12 @@ export function teleds(nux, nuy, teleds_flags) {
     cptr.stI16o(u, $you_ux0, cptr.ldI16(u));
     cptr.stI16o(u, $you_uy0, cptr.ldI16o(u, $you_uy));
 
-    if (!hideunder(cptr.add(gy, $instance_globals_y_youmonst)) && cptr.ld1so(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data), $permonst_mlet) == NHC.S_MIMIC) {
+    if (!hideunder(cptr.add(gy, $instance_globals_y_youmonst)) &&
+            cptr.ld1so(
+                cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data),
+                $permonst_mlet
+            ) ==
+                NHC.S_MIMIC) {
         /* mimics stop being unnoticed */
         cptr.st1o(gy, $instance_globals_y_youmonst + $monst_m_ap_type, NHC.M_AP_NOTHING);
     }
@@ -633,7 +928,9 @@ export function teleds(nux, nuy, teleds_flags) {
             /* dragging fails if hero is encumbered beyond 'burdened' */
             /* uball might've been cleared via drag_ball -> spoteffects ->
                dotrap -> magic trap unpunishment */
-            ball_active = schar((Punished() && cptr.ld1so(uball.v, $obj_where) != NHM.OBJ_FREE ? 1 : 0));
+            ball_active = schar((Punished() && cptr.ld1so(uball.v, $obj_where) != NHM.OBJ_FREE
+                    ? 1
+                    : 0));
             if (ball_active)
                 unplacebc();  /* to match placebc() below */
         }
@@ -657,18 +954,43 @@ export function teleds(nux, nuy, teleds_flags) {
     cptr.st1o(gv, $instance_globals_v_vision_full_recalc, 1);
     nomul(0);
     {
-        (cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, cptr.ldI32o(a11y, $accessibility_data_mon_notices_blocked) + 1)) - (1);
+        (cptr.stI32o(
+            a11y,
+            $accessibility_data_mon_notices_blocked,
+            cptr.ldI32o(a11y, $accessibility_data_mon_notices_blocked) + 1
+        )) -
+                (1);
     }
     vision_recalc(0);  /* vision before effects */
 
     /* this used to take place sooner, but if a --More-- prompt was issued
        then the old map display was shown instead of the new one */
     if (is_teleport && cptr.ld1so(flags, $flag_verbose))
-        You(__s_materialize_in_s_location, (nux == cptr.ldI16o(u, $you_ux0) && nuy == cptr.ldI16o(u, $you_uy0)) ? __s_the_same : __s_a_different);
+        You(
+            __s_materialize_in_s_location,
+            (nux == cptr.ldI16o(u, $you_ux0) && nuy == cptr.ldI16o(u, $you_uy0))
+                ? __s_the_same
+                : __s_a_different
+        );
     /* if terrain type changes, levitation or flying might become blocked
        or unblocked; might issue message, so do this after map+vision has
        been updated for new location instead of right after u_on_newpos() */
-    if (cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) != cptr.ld1so3(svl, cptr.ldI16o(u, $you_ux0), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy0), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ))
+    if (cptr.ld1so3(
+        svl,
+        cptr.ldI16(u),
+        $sizeof_rm_x21,
+        cptr.ldI16o(u, $you_uy),
+        $sizeof_rm,
+        $instance_globals_saved_l_level + $rm_typ
+    ) !=
+            cptr.ld1so3(
+                svl,
+                cptr.ldI16o(u, $you_ux0),
+                $sizeof_rm_x21,
+                cptr.ldI16o(u, $you_uy0),
+                $sizeof_rm,
+                $instance_globals_saved_l_level + $rm_typ
+            ))
         switch_terrain();
     /* sequencing issue:  we want guard's alarm, if any, to occur before
        room entry message, if any, so need to check for vault exit prior
@@ -678,7 +1000,10 @@ export function teleds(nux, nuy, teleds_flags) {
         let save_urooms = new Uint8Array(5);  /* [sizeof u.urooms] */
 
         void cptr.strcpy(cptr.decay(save_urooms), cptr.add(u, $you_urooms));
-        void cptr.strcpy(cptr.add(u, $you_urooms), in_rooms(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), NHC.VAULT));
+        void cptr.strcpy(
+            cptr.add(u, $you_urooms),
+            in_rooms(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), NHC.VAULT)
+        );
         /* if hero has left vault, make guard notice */
         if (!vault_occupied(cptr.add(u, $you_urooms)))
             uleftvault(vault_guard);
@@ -688,7 +1013,11 @@ export function teleds(nux, nuy, teleds_flags) {
     spoteffects(1);
     invocation_message();
     {
-        if (cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, cptr.ldI32o(a11y, $accessibility_data_mon_notices_blocked) + -1) < 0) {
+        if (cptr.stI32o(
+            a11y,
+            $accessibility_data_mon_notices_blocked,
+            cptr.ldI32o(a11y, $accessibility_data_mon_notices_blocked) + -1
+        ) < 0) {
             impossible(__s_mon_notices_blocked_0);
             cptr.stI32o(a11y, $accessibility_data_mon_notices_blocked, 0);
         }
@@ -699,7 +1028,16 @@ export function teleds(nux, nuy, teleds_flags) {
 
 /* make a list of coordinates in expanding distance from <cx,cy>;
    return value is number of coordinates inserted into ccc[]  */
-/** C ref: teleport.c:578 — @param {CPtr<coord>} ccc @param {CInt} cx @param {CInt} cy @param {CInt} maxradius @param {CUInt} cc_flags @param {CPtr} filter @returns {CInt} */
+/**
+ * C ref: teleport.c:578
+ * @param {CPtr<coord>} ccc
+ * @param {CInt} cx
+ * @param {CInt} cy
+ * @param {CInt} maxradius
+ * @param {CUInt} cc_flags
+ * @param {CPtr} filter
+ * @returns {CInt}
+ */
 export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter) {
     let x;
     let y;
@@ -796,7 +1134,25 @@ export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter) {
                     break;  /* advance to next 'y' */
                 if (x != lox && x != hix && y != loy && y != hiy)
                     continue;  /* not any edge of ring/square */
-                if ((skip_mons && (cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters))) || (skip_inaccessible && !((cptr.ld1so3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) >= NHC.POOL)))
+                if ((skip_mons &&
+                    (cptr.ldPtro3(
+                        svl,
+                        x,
+                        168,
+                        y,
+                        8,
+                        $instance_globals_saved_l_level + $dlevel_t_monsters
+                    ))) ||
+                        (skip_inaccessible &&
+                            !((cptr.ld1so3(
+                                svl,
+                                x,
+                                $sizeof_rm_x21,
+                                y,
+                                $sizeof_rm,
+                                $instance_globals_saved_l_level + $rm_typ
+                            )) >=
+                                NHC.POOL)))
                     continue;  /* quick filters */
                 if (filter && !(filter)(x, y))
                     continue;
@@ -809,10 +1165,14 @@ export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter) {
         if (scramble && passend) {
             /* shuffle entries gathered for current radius (or pair) */
             while (n > 1) {
-                k = rn2_at(__s_teleport_c, 700, __s_collect_coords, n);  /* 0..n-1 */
+                k = rn2(n);  /* 0..n-1 */
                 if (k) {
                     cptr.memcpy(cc, cptr.add(passcc, 0, $sizeof_coord), 4);
-                    cptr.memcpy(cptr.add(passcc, 0, $sizeof_coord), cptr.add(passcc, k, $sizeof_coord), 4);
+                    cptr.memcpy(
+                        cptr.add(passcc, 0, $sizeof_coord),
+                        cptr.add(passcc, k, $sizeof_coord),
+                        4
+                    );
                     cptr.memcpy(cptr.add(passcc, k, $sizeof_coord), cc, 4);
                 }
                 passcc = cptr.add(passcc, 1, 4);  /* passcc[0] has reached its final place    */
@@ -854,8 +1214,8 @@ export function safe_teleds(teleds_flags) {
      * first trap spot is used.
      */
     for (tcnt = 0; tcnt < 40; ++tcnt) {
-        nux = i16(rnd_at(__s_teleport_c, 737, __s_safe_teleds, 79));
-        nuy = i16(rn2_at(__s_teleport_c, 738, __s_safe_teleds, NHM.ROWNO));
+        nux = i16(rnd(79));
+        nuy = i16(rn2(NHM.ROWNO));
         if (teleok(nux, nuy, 0)) {
             teleds(nux, nuy, teleds_flags);
             return 1;
@@ -872,7 +1232,8 @@ export function safe_teleds(teleds_flags) {
     /* skip trap locations via teleok(,,FALSE) but remember first
        encountered trap spot that is acceptable to teleok(,,TRUE) */
     for (tcnt = 0; tcnt < candycount; ++tcnt) {
-        nux = cptr.ldI16o(candy, tcnt, $sizeof_coord), nuy = cptr.ldI16o2(candy, tcnt, $sizeof_coord, $nhcoord_y);
+        nux = cptr.ldI16o(candy, tcnt, $sizeof_coord),
+                nuy = cptr.ldI16o2(candy, tcnt, $sizeof_coord, $nhcoord_y);
         if (teleok(nux, nuy, 0)) {
             teleds(nux, nuy, teleds_flags);
             return 1;
@@ -900,7 +1261,12 @@ function vault_tele() {
     tele();
 }
 
-/** C ref: teleport.c:786 — @param {CPtr<struct monst>} mtmp @param {CInt} force_it @returns {CInt} */
+/**
+ * C ref: teleport.c:786
+ * @param {CPtr<struct monst>} mtmp
+ * @param {CInt} force_it
+ * @returns {CInt}
+ */
 export function teleport_pet(mtmp, force_it) {
     let otmp;
 
@@ -940,15 +1306,21 @@ export function tele_to_rnd_pet() {
         return;
     }
 
-    for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp))
-        if (!(cptr.ldI32o((mtmp), $monst_mhp) < 1) && cptr.ld1so(mtmp, $monst_mtame) && !(cptr.ldI64o((mtmp), $monst_mstate) != 0n)) {
+    for (
+        mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist);
+        mtmp;
+        mtmp = cptr.ldPtr(mtmp)
+    )
+        if (!(cptr.ldI32o((mtmp), $monst_mhp) < 1) &&
+                cptr.ld1so(mtmp, $monst_mtame) &&
+                !(cptr.ldI64o((mtmp), $monst_mstate) != 0n)) {
             cnt++;
-            if (!rn2_at(__s_teleport_c, 828, __s_tele_to_rnd_pet, cnt))
+            if (!rn2(cnt))
                 pet = mtmp;
         }
     if (pet && !m_next2u(pet)) {
-        let tx = i16(((((cptr.ldI16o(pet, $monst_mx) + rn2_at(__s_teleport_c, 832, __s_tele_to_rnd_pet, 3)) | 0) - 1) | 0));
-        let ty = i16(((((cptr.ldI16o(pet, $monst_my) + rn2_at(__s_teleport_c, 833, __s_tele_to_rnd_pet, 3)) | 0) - 1) | 0));
+        let tx = i16(((cptr.ldI16o(pet, $monst_mx) + rn2(3) - 1) | 0));
+        let ty = i16(((cptr.ldI16o(pet, $monst_my) + rn2(3) - 1) | 0));
 
         if (isok(tx, ty) && teleok(tx, ty, 0))
             teleds(tx, ty, NHM.TELEDS_TELEPORT);
@@ -978,14 +1350,17 @@ export function scrolltele(scroll) {
     if (!Blinded())
         make_blinded(0n, 0);
 
-    if (((cptr.ldI32o(u, $you_uhave) & 1) | 0 || On_W_tower_level(cptr.add(u, $you_uz))) && !rn2_at(__s_teleport_c, 865, __s_scrolltele, 3)) {
+    if (((cptr.ldI32o(u, $you_uhave) & 1) | 0 || On_W_tower_level(cptr.add(u, $you_uz))) &&
+            !rn2(3)) {
         You_feel(__s_disoriented_for_a_moment);
         /* don't discover the scroll [at least not yet for wizard override];
            disorientation doesn't reveal that this is a teleport attempt */
         if (!wizard() || yn_function(__s_override, cptr.decay(ynchars), 110, 1) != 121)
             return;
     }
-    if (((Teleport_control() || (scroll && (cptr.ldI32o(scroll, $obj_blessed) & 1) | 0)) && !HStun()) || wizard()) {
+    if (((Teleport_control() || (scroll && (cptr.ldI32o(scroll, $obj_blessed) & 1) | 0)) &&
+        !HStun()) ||
+            wizard()) {
         if (unconscious()) {
             pline(__s_being_unconscious_you_cannot_control);
         } else {
@@ -993,13 +1368,20 @@ export function scrolltele(scroll) {
 
             void cptr.strcpy(cptr.decay(whobuf), __s_you);
             if (cptr.ldPtro(u, $you_usteed))
-                void cptr.sprintf(eos(cptr.decay(whobuf)), __s_and_s, mon_nam(cptr.ldPtro(u, $you_usteed)));
+                void cptr.sprintf(
+                    eos(cptr.decay(whobuf)),
+                    __s_and_s,
+                    mon_nam(cptr.ldPtro(u, $you_usteed))
+                );
             pline(__s_where_do_s_want_to_be_teleported, cptr.decay(whobuf));
             if (scroll)
                 learnscroll(scroll);
             cptr.stI16(cc, cptr.ldI16(u));
             cptr.stI16o(cc, $nhcoord_y, cptr.ldI16o(u, $you_uy));
-            if (isok(cptr.ldI16o(iflags, $instance_flags_travelcc), cptr.ldI16o(iflags, $instance_flags_travelcc + $nhcoord_y))) {
+            if (isok(
+                cptr.ldI16o(iflags, $instance_flags_travelcc),
+                cptr.ldI16o(iflags, $instance_flags_travelcc + $nhcoord_y)
+            )) {
                 /* The player showed some interest in traveling here;
                  * pre-suggest this coordinate. */
                 cptr.memcpy(cc, cptr.add(iflags, $instance_flags_travelcc), 4);
@@ -1011,8 +1393,14 @@ export function scrolltele(scroll) {
             if (teleok(cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y), 0)) {
                 /* for scroll, discover it regardless of destination */
                 teleds(cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y), NHM.TELEDS_TELEPORT);
-                if (((cptr.ldI16o(iflags, $instance_flags_travelcc)) == cptr.ldI16(u) && (cptr.ldI16o(iflags, $instance_flags_travelcc + $nhcoord_y)) == cptr.ldI16o(u, $you_uy)))
-                    cptr.stI16o(iflags, $instance_flags_travelcc, cptr.stI16o(iflags, $instance_flags_travelcc + $nhcoord_y, 0));
+                if (((cptr.ldI16o(iflags, $instance_flags_travelcc)) == cptr.ldI16(u) &&
+                        (cptr.ldI16o(iflags, $instance_flags_travelcc + $nhcoord_y)) ==
+                            cptr.ldI16o(u, $you_uy)))
+                    cptr.stI16o(
+                        iflags,
+                        $instance_flags_travelcc,
+                        cptr.stI16o(iflags, $instance_flags_travelcc + $nhcoord_y, 0)
+                    );
                 return;
             }
             pline(__s_sorry);
@@ -1032,13 +1420,29 @@ export function scrolltele(scroll) {
 /* the #teleport command; 'm ^T' == choose among several teleport modes */
 const __static_dotelecmd_tports = cptr.alloc(4 * $sizeof_tporttypes);
 cptr.st1o(__static_dotelecmd_tports, 0, 110);
-cptr.stPtro(__static_dotelecmd_tports, 0 + $tporttypes_menudesc, __s_normal_t_on_demand_no_spell_obey);
+cptr.stPtro(
+    __static_dotelecmd_tports,
+    0 + $tporttypes_menudesc,
+    __s_normal_t_on_demand_no_spell_obey
+);
 cptr.st1o(__static_dotelecmd_tports, 16, 115);
-cptr.stPtro(__static_dotelecmd_tports, 16 + $tporttypes_menudesc, __s_via_spellcast_no_intrinsic_teleport);
+cptr.stPtro(
+    __static_dotelecmd_tports,
+    16 + $tporttypes_menudesc,
+    __s_via_spellcast_no_intrinsic_teleport
+);
 cptr.st1o(__static_dotelecmd_tports, 32, 116);
-cptr.stPtro(__static_dotelecmd_tports, 32 + $tporttypes_menudesc, __s_try_t_without_having_it_no_spell);
+cptr.stPtro(
+    __static_dotelecmd_tports,
+    32 + $tporttypes_menudesc,
+    __s_try_t_without_having_it_no_spell
+);
 cptr.st1o(__static_dotelecmd_tports, 48, 119);
-cptr.stPtro(__static_dotelecmd_tports, 48 + $tporttypes_menudesc, __s_debug_mode_ignore_restrictions); /** C ref: teleport.c:943 — struct tporttypes[4] (function-static) */
+cptr.stPtro(
+    __static_dotelecmd_tports,
+    48 + $tporttypes_menudesc,
+    __s_debug_mode_ignore_restrictions
+); /** C ref: teleport.c:943 — struct tporttypes[4] (function-static) */
 
 /** C ref: teleport.c:919 @returns {CInt} */
 export function dotelecmd() {
@@ -1070,7 +1474,24 @@ export function dotelecmd() {
         cptr.memcpy(any, cptr.add(cg, $const_globals_zeroany), 8);
         for (i = 0; i < 4; ++i) {
             cptr.stI32(any, cptr.ld1so(__static_dotelecmd_tports, i, $sizeof_tporttypes));
-            add_menu(win, nul_glyphinfo.v, any, schar(cptr.ldI32(any)), 0, NHM.ATR_NONE, clr, cptr.ldPtro2(__static_dotelecmd_tports, i, $sizeof_tporttypes, $tporttypes_menudesc), (cptr.ld1so(__static_dotelecmd_tports, i, $sizeof_tporttypes) == 119) ? NHM.MENU_ITEMFLAGS_SELECTED : NHM.MENU_ITEMFLAGS_NONE);
+            add_menu(
+                win,
+                nul_glyphinfo.v,
+                any,
+                schar(cptr.ldI32(any)),
+                0,
+                NHM.ATR_NONE,
+                clr,
+                cptr.ldPtro2(
+                    __static_dotelecmd_tports,
+                    i,
+                    $sizeof_tporttypes,
+                    $tporttypes_menudesc
+                ),
+                (cptr.ld1so(__static_dotelecmd_tports, i, $sizeof_tporttypes) == 119)
+                    ? NHM.MENU_ITEMFLAGS_SELECTED
+                    : NHM.MENU_ITEMFLAGS_NONE
+            );
         }
         end_menu()(win, __s_which_way_do_you_want_to_teleport);
         i = select_menu(win, NHM.PICK_ONE, picks);
@@ -1089,15 +1510,34 @@ export function dotelecmd() {
         }
         switch (tmode) {
             case 110:
-            cptr.stI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops + $prop_intrinsic, cptr.ldI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops + $prop_intrinsic) | 536870912n);  /* confer intrinsic teleportation */
+            cptr.stI64o2(
+                u,
+                NHC.TELEPORT,
+                $sizeof_prop,
+                $you_uprops + $prop_intrinsic,
+                cptr.ldI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops + $prop_intrinsic) |
+                    536870912n
+            );  /* confer intrinsic teleportation */
             hidden = tport_spell(1);  /* hide teleport-away */
             break;
             case 115:
-            cptr.stI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops + $prop_intrinsic, cptr.stI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops, 0n));  /* suppress intrinsic */
+            cptr.stI64o2(
+                u,
+                NHC.TELEPORT,
+                $sizeof_prop,
+                $you_uprops + $prop_intrinsic,
+                cptr.stI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops, 0n)
+            );  /* suppress intrinsic */
             added = tport_spell(2);  /* add teleport-away */
             break;
             case 116:
-            cptr.stI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops + $prop_intrinsic, cptr.stI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops, 0n));  /* suppress intrinsic */
+            cptr.stI64o2(
+                u,
+                NHC.TELEPORT,
+                $sizeof_prop,
+                $you_uprops + $prop_intrinsic,
+                cptr.stI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops, 0n)
+            );  /* suppress intrinsic */
             hidden = tport_spell(1);  /* hide teleport-away */
             break;
             case 119:
@@ -1115,7 +1555,7 @@ export function dotelecmd() {
     cptr.stI64o2(u, NHC.TELEPORT, $sizeof_prop, $you_uprops, save_ETele);
     if (added != 0 || hidden != 0)
         /* can't both be non-NOOP so addition will yield the non-NOOP one */
-        void tport_spell((((added + hidden) | 0) - 0) | 0);
+        void tport_spell((added + hidden - 0) | 0);
 
     return res ? NHM.ECMD_TIME : NHM.ECMD_OK;
 }
@@ -1131,8 +1571,14 @@ export function dotele(break_the_rules) {
         trap = null;
 
     if (trap) {
-        if (((cptr.ldI32o(trap, $trap_ttyp) & 31) | 0) == NHC.LEVEL_TELEP && (cptr.ldI32o(trap, $trap_tseen) & 1) | 0) {
-            if (yn_function(__s_there_is_a_level_teleporter_here, cptr.decay(ynchars), 110, 1) == 121) {
+        if (((cptr.ldI32o(trap, $trap_ttyp) & 31) | 0) == NHC.LEVEL_TELEP &&
+                (cptr.ldI32o(trap, $trap_tseen) & 1) | 0) {
+            if (yn_function(
+                __s_there_is_a_level_teleporter_here,
+                cptr.decay(ynchars),
+                110,
+                1
+            ) == 121) {
                 level_tele_trap(trap, NHM.FORCETRAP);
                 /* deliberate jumping will always take time even if it doesn't
                  * work */
@@ -1159,20 +1605,39 @@ export function dotele(break_the_rules) {
         let castit = 0;
         let energy = 0;
 
-        if (!Teleportation() || (cptr.ldI32o(u, $you_ulevel) < ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_WIZARD) ? 8 : 12) && !((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 33554432n) != 0n))) {
+        if (!Teleportation() ||
+                (cptr.ldI32o(u, $you_ulevel) <
+                    ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_WIZARD)
+                        ? 8
+                        : 12) &&
+                    !((cptr.ldU64o(
+                        (cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)),
+                        $permonst_mflags1
+                    ) &
+                        33554432n) != 0n))) {
             /* Try to use teleport away spell. */
             let knownsp = known_spell(NHC.SPE_TELEPORT_AWAY);
 
             /* casting isn't inhibited by being Stunned (...it ought to be) */
             castit = schar((knownsp >= NHC.spe_Fresh && !HConfusion() ? 1 : 0));
             if (!castit && !break_the_rules) {
-                You(__s_pct_s_dot, (!Teleportation() ? ((knownsp != NHC.spe_Unknown) ? __s_can_t_cast_that_spell : __s_don_t_know_that_spell) : __s_are_not_able_to_teleport_at_will));
+                You(
+                    __s_pct_s_dot,
+                    (!Teleportation()
+                        ? ((knownsp != NHC.spe_Unknown)
+                            ? __s_can_t_cast_that_spell
+                            : __s_don_t_know_that_spell)
+                        : __s_are_not_able_to_teleport_at_will)
+                );
                 return 0;
             }
         }
 
         cantdoit = null;
-        energy = Math.imul(5, (cptr.ld1so2(objects, NHC.SPE_TELEPORT_AWAY, $sizeof_objclass, $objclass_oc_oc2)));
+        energy = Math.imul(
+            5,
+            (cptr.ld1so2(objects, NHC.SPE_TELEPORT_AWAY, $sizeof_objclass, $objclass_oc_oc2))
+        );
         if (cptr.ldI32o(u, $you_uhunger) <= 10) {
             cantdoit = __s_are_too_weak_from_hunger;
         } else if ((acurr(NHC.A_STR)) < 4) {
@@ -1204,10 +1669,22 @@ export function dotele(break_the_rules) {
     if (next_to_u()) {
         if (trap && trap_once) {
             vault_tele();
-        } else if (trap && isok(cptr.ldI16o(trap, $trap_launch), cptr.ldI16o(trap, $trap_launch + $nhcoord_y))) {
-            teleds(cptr.ldI16o(trap, $trap_launch), cptr.ldI16o(trap, $trap_launch + $nhcoord_y), NHM.TELEDS_TELEPORT);
+        } else if (trap &&
+                isok(
+                    cptr.ldI16o(trap, $trap_launch),
+                    cptr.ldI16o(trap, $trap_launch + $nhcoord_y)
+                )) {
+            teleds(
+                cptr.ldI16o(trap, $trap_launch),
+                cptr.ldI16o(trap, $trap_launch + $nhcoord_y),
+                NHM.TELEDS_TELEPORT
+            );
         } else {
-            cptr.stI16o(iflags, $instance_flags_travelcc, cptr.stI16o(iflags, $instance_flags_travelcc + $nhcoord_y, 0));
+            cptr.stI16o(
+                iflags,
+                $instance_flags_travelcc,
+                cptr.stI16o(iflags, $instance_flags_travelcc + $nhcoord_y, 0)
+            );
             tele();
         }
         void next_to_u();
@@ -1224,7 +1701,20 @@ const __static_level_tele_get_there_from = cptr.bytes("get there from %s."); /**
 
 /** C ref: teleport.c:1165 */
 export function level_tele() {
-    let newlev, newlevel, escape_by_flying, buf, force_dest, qbuf, trycnt, destlev = cptr.box(0), destdnum = cptr.box(0), amu, llimit, lsav, qbranch, deepest;
+    let newlev,
+            newlevel,
+            escape_by_flying,
+            buf,
+            force_dest,
+            qbuf,
+            trycnt,
+            destlev = cptr.box(0),
+            destdnum = cptr.box(0),
+            amu,
+            llimit,
+            lsav,
+            qbranch,
+            deepest;
     let __pc = 0;
     __dispatch: while (true) {
         switch (__pc) {
@@ -1236,14 +1726,41 @@ export function level_tele() {
 
         if (cptr.ld1so(iflags, $instance_flags_debug_fuzzer)) {
             do {
-                cptr.stI16(newlevel, i16(rn2_at(__s_teleport_c, 1176, __s_level_tele, cptr.ldI32(svn))));
-            } while (cptr.ldI16(newlevel) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level))) || (cptr.ldI32o2(svd, cptr.ldI16(newlevel), $sizeof_dungeon, $dungeon_flags + $d_flags_unconnected) & 1) | 0 || !cptr.ldI16o2(svd, cptr.ldI16(newlevel), $sizeof_dungeon, $dungeon_num_dunlevs));
-            cptr.stI16o(newlevel, $d_level_dlevel, i16(((1 + rn2_at(__s_teleport_c, 1180, __s_level_tele, dunlevs_in_dungeon(newlevel))) | 0)));
+                cptr.stI16(newlevel, i16(rn2(cptr.ldI32(svn))));
+            } while (cptr.ldI16(newlevel) ==
+                cptr.ldI16((cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+                ))) ||
+                    (cptr.ldI32o2(
+                        svd,
+                        cptr.ldI16(newlevel),
+                        $sizeof_dungeon,
+                        $dungeon_flags + $d_flags_unconnected
+                    ) & 1) | 0 ||
+                    !cptr.ldI16o2(
+                        svd,
+                        cptr.ldI16(newlevel),
+                        $sizeof_dungeon,
+                        $dungeon_num_dunlevs
+                    ));
+            cptr.stI16o(
+                newlevel,
+                $d_level_dlevel,
+                i16(((1 + rn2(dunlevs_in_dungeon(newlevel))) | 0))
+            );
             assign_level(cptr.add(u, $you_ucamefrom), cptr.add(u, $you_uz));
             schedule_goto(newlevel, NHC.UTOTYPE_NONE, null, null);
             return;
         }
-        if (((cptr.ldI32o(u, $you_uhave) & 1) | 0 || (cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || (cptr.ldI16((cptr.add(u, $you_uz))) == sokoban_dnum())) && !wizard()) {
+        if (((cptr.ldI32o(u, $you_uhave) & 1) | 0 ||
+            (cptr.ldI16((cptr.add(u, $you_uz))) ==
+                cptr.ldI16((cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+                )))) ||
+            (cptr.ldI16((cptr.add(u, $you_uz))) == sokoban_dnum())) &&
+                !wizard()) {
             You_feel(__s_very_disoriented_for_a_moment);
             return;
         }
@@ -1294,7 +1811,7 @@ export function level_tele() {
         { __pc = 2; continue; }
         }
         case 15: {
-        if (HConfusion() && rnl_at(__s_teleport_c, 1215, __s_level_tele, 5)) { __pc = 17; continue; }
+        if (HConfusion() && rnl(5)) { __pc = 17; continue; }
         __pc = 18; continue;
         }
         case 17: {
@@ -1329,9 +1846,19 @@ export function level_tele() {
 
         cptr.stI16(newlevel, destdnum.v);
         cptr.stI16o(newlevel, $d_level_dlevel, i16(destlev.v));
-        if ((cptr.ldI16((newlevel)) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && !(cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level))))) {
+        if ((cptr.ldI16((newlevel)) ==
+            cptr.ldI16((cptr.add(
+                svd,
+                $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+            )))) &&
+                !(cptr.ldI16((cptr.add(u, $you_uz))) ==
+                    cptr.ldI16((cptr.add(
+                        svd,
+                        $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+                    ))))) {
 
-            if (!(cptr.ldI32o(u, $you_uhave) & 1) && (amu = mksobj(NHC.AMULET_OF_YENDOR, 1, 0)) !== null) {
+            if (!(cptr.ldI32o(u, $you_uhave) & 1) &&
+                    (amu = mksobj(NHC.AMULET_OF_YENDOR, 1, 0)) !== null) {
                 /* ordinarily we'd use hold_another_object()
                    for something like this, but we don't want
                    fumbling or already full pack to interfere */
@@ -1350,7 +1877,11 @@ export function level_tele() {
         continue;
         }
         case 19: {
-        if (!newlev && !digit(cptr.ld1so(cptr.decay(buf), 0, 1)) && (cptr.ld1so(cptr.decay(buf), 0, 1) != 45 || !digit(cptr.ld1so(cptr.decay(buf), 1, 1))) && trycnt < 10) { __pc = 8; continue; }
+        if (!newlev &&
+                !digit(cptr.ld1so(cptr.decay(buf), 0, 1)) &&
+                (cptr.ld1so(cptr.decay(buf), 0, 1) != 45 ||
+                    !digit(cptr.ld1so(cptr.decay(buf), 1, 1))) &&
+                trycnt < 10) { __pc = 8; continue; }
         __pc = 6;
         continue;
         }
@@ -1368,16 +1899,33 @@ export function level_tele() {
         case 24: {
         if (yn_function(__s_go_to_nowhere_are_you_sure, cptr.decay(ynqchars), 113, 1) != 121)
             return;
-        You(__s_s_in_agony_as_your_body_begins_to_warp, (cptr.ld1uo((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_msound) == NHC.MS_SILENT) ? __s_writhe : __s_scream);
+        You(
+            __s_s_in_agony_as_your_body_begins_to_warp,
+            (cptr.ld1uo(
+                (cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)),
+                $permonst_msound
+            ) ==
+                NHC.MS_SILENT)
+                ? __s_writhe
+                : __s_scream
+        );
         display_nhwindow()(WIN_MESSAGE.v, 0);
         You(__s_cease_to_exist);
         if (cptr.ldPtro(gi, $instance_globals_i_invent))
-            Your(__s_possessions_land_on_the_s_with_a_thud, surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)));
+            Your(
+                __s_possessions_land_on_the_s_with_a_thud,
+                surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy))
+            );
         cptr.stI32o(svk, $kinfo_format, NHM.NO_KILLER_PREFIX);
         void cptr.strcpy(cptr.add(svk, $kinfo_name), __s_committed_suicide);
         done(NHC.DIED);
         pline(__s_an_energized_cloud_of_dust_begins_to);
-        Your(__s_body_rematerializes_s, cptr.ldPtro(gi, $instance_globals_i_invent) ? __s_and_you_gather_up_all_your_possessions : __s_empty);
+        Your(
+            __s_body_rematerializes_s,
+            cptr.ldPtro(gi, $instance_globals_i_invent)
+                ? __s_and_you_gather_up_all_your_possessions
+                : __s_empty
+        );
         return;
         }
         case 22: {
@@ -1398,7 +1946,14 @@ export function level_tele() {
          * we let negative values requests fall into the "heaven" handling.
          */
         if (In_quest(cptr.add(u, $you_uz)) && newlev > 0)
-            newlev = (((newlev + cptr.ldI32o2(svd, cptr.ldI16o(u, $you_uz), $sizeof_dungeon, $dungeon_depth_start)) | 0) - 1) | 0;
+            newlev = (newlev +
+                cptr.ldI32o2(
+                    svd,
+                    cptr.ldI16o(u, $you_uz),
+                    $sizeof_dungeon,
+                    $dungeon_depth_start
+                ) - 1) |
+                    0;
         __pc = 3;
         continue;
         }
@@ -1424,7 +1979,11 @@ export function level_tele() {
             You(__s_pct_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_shudder_for_moment));
             return;
         }
-        if ((cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level))))) {
+        if ((cptr.ldI16((cptr.add(u, $you_uz))) ==
+                cptr.ldI16((cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+                ))))) {
             llimit = dunlevs_in_dungeon(cptr.add(u, $you_uz));
 
             if (newlev >= 0 || newlev <= -llimit) {
@@ -1476,7 +2035,16 @@ export function level_tele() {
             } else {
                 pline(__s_unfortunately_you_don_t_know_how_to_fly);
                 You(__s_plummet_a_few_thousand_feet_to_your);
-                void cptr.sprintf(cptr.add(svk, $kinfo_name), __s_teleported_out_of_the_dungeon_and_fell, (cptr.ldPtro2(genders, cptr.ld1so(flags, $flag_female) ? 1 : 0, $sizeof_Gender, $Gender_his)));
+                void cptr.sprintf(
+                    cptr.add(svk, $kinfo_name),
+                    __s_teleported_out_of_the_dungeon_and_fell,
+                    (cptr.ldPtro2(
+                        genders,
+                        cptr.ld1so(flags, $flag_female) ? 1 : 0,
+                        $sizeof_Gender,
+                        $Gender_his
+                    ))
+                );
                 cptr.stI32o(svk, $kinfo_format, NHM.NO_KILLER_PREFIX);
             }
         }
@@ -1506,26 +2074,72 @@ export function level_tele() {
         } else if (force_dest) {
             /* wizard mode menu; no further validation needed */
             ;
-        } else if (cptr.ldI16o(u, $you_uz) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_medusa_level))) && newlev >= ((cptr.ldI32o2(svd, cptr.ldI16o(u, $you_uz), $sizeof_dungeon, $dungeon_depth_start) + dunlevs_in_dungeon(cptr.add(u, $you_uz))) | 0)) {
+        } else if (cptr.ldI16o(u, $you_uz) ==
+            cptr.ldI16((cptr.add(
+                svd,
+                $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_medusa_level
+            ))) &&
+                newlev >=
+                    ((cptr.ldI32o2(
+                        svd,
+                        cptr.ldI16o(u, $you_uz),
+                        $sizeof_dungeon,
+                        $dungeon_depth_start
+                    ) +
+                        dunlevs_in_dungeon(cptr.add(u, $you_uz))) | 0)) {
             find_hell(newlevel);
         } else {
             /* FIXME: we should avoid using hard-coded knowledge of
                which branches don't connect to anything deeper;
                mainly used to distinguish "can't get there from here"
                vs "from anywhere" rather than to control destination */
-            qbranch = In_quest(cptr.add(u, $you_uz)) ? cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_qstart_level) : (In_mines(cptr.add(u, $you_uz)) ? cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_mineend_level) : cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_sanctum_level));
-            deepest = (((cptr.ldI32o2(svd, cptr.ldI16(qbranch), $sizeof_dungeon, $dungeon_depth_start) + dunlevs_in_dungeon(qbranch)) | 0) - 1) | 0;
+            qbranch = In_quest(cptr.add(u, $you_uz))
+                    ? cptr.add(
+                        svd,
+                        $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_qstart_level
+                    )
+                    : (In_mines(cptr.add(u, $you_uz))
+                        ? cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology +
+                                $dgn_topology_d_mineend_level
+                        )
+                        : cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology +
+                                $dgn_topology_d_sanctum_level
+                        ));
+            deepest = (cptr.ldI32o2(
+                svd,
+                cptr.ldI16(qbranch),
+                $sizeof_dungeon,
+                $dungeon_depth_start
+            ) +
+                dunlevs_in_dungeon(qbranch) - 1) |
+                    0;
 
             /* if invocation did not yet occur, teleporting into
              * the last level of Gehennom is forbidden.
              */
-            if (!wizard() && In_hell(cptr.add(u, $you_uz)) && !(cptr.ldI32o(u, $you_uevent + $u_event_invoked) & 1) && newlev >= deepest) {
+            if (!wizard() &&
+                    In_hell(cptr.add(u, $you_uz)) &&
+                    !(cptr.ldI32o(u, $you_uevent + $u_event_invoked) & 1) &&
+                    newlev >= deepest) {
                 newlev = (deepest - 1) | 0;
                 pline(__s_sorry);
             }
             /* no teleporting out of quest dungeon */
-            if (In_quest(cptr.add(u, $you_uz)) && newlev < depth(cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_qstart_level)))
-                newlev = depth(cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_qstart_level));
+            if (In_quest(cptr.add(u, $you_uz)) &&
+                    newlev <
+                        depth(cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology +
+                                $dgn_topology_d_qstart_level
+                        )))
+                newlev = depth(cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_qstart_level
+                ));
             /* the player thinks of levels purely in logical terms, so
              * we must translate newlev to a number relative to the
              * current dungeon.
@@ -1533,12 +2147,20 @@ export function level_tele() {
             get_level(newlevel, newlev);
 
             if (on_level(newlevel, cptr.add(u, $you_uz)) && newlev != depth(cptr.add(u, $you_uz))) {
-                You_cant(cptr.decay(__static_level_tele_get_there_from), (newlev > deepest) ? __s_anywhere : __s_here);
+                You_cant(
+                    cptr.decay(__static_level_tele_get_there_from),
+                    (newlev > deepest) ? __s_anywhere : __s_here
+                );
                 return;
             }
         }
 
-        schedule_goto(newlevel, NHC.UTOTYPE_NONE, null, cptr.ld1so(flags, $flag_verbose) ? __s_you_materialize_on_a_different_level : null);
+        schedule_goto(
+            newlevel,
+            NHC.UTOTYPE_NONE,
+            null,
+            cptr.ld1so(flags, $flag_verbose) ? __s_you_materialize_on_a_different_level : null
+        );
         __pc = -1;
         continue;
         }
@@ -1572,7 +2194,12 @@ export function domagicportal(ttmp) {
      * the endgame, from accidently triggering the portal to the
      * next level, and thus losing the game
      */
-    if ((cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && !(cptr.ldI32o(u, $you_uhave) & 1)) {
+    if ((cptr.ldI16((cptr.add(u, $you_uz))) ==
+        cptr.ldI16((cptr.add(
+            svd,
+            $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+        )))) &&
+            !(cptr.ldI32o(u, $you_uhave) & 1)) {
         You_feel(__s_dizzy_for_a_moment_but_nothing_happens);
         return;
     }
@@ -1580,7 +2207,8 @@ export function domagicportal(ttmp) {
     cptr.memcpy(target_level, cptr.add(ttmp, $trap_dst), 4);
 
     /* coming back from tutorial doesn't trigger stunning */
-    if ((cptr.ldI16((cptr.add(u, $you_uz))) == tutorial_dnum()) && !(cptr.ldI16((target_level)) == tutorial_dnum())) {
+    if ((cptr.ldI16((cptr.add(u, $you_uz))) == tutorial_dnum()) &&
+            !(cptr.ldI16((target_level)) == tutorial_dnum())) {
         /* returning to normal play => arrive on level 1 stairs */
         totype = NHC.UTOTYPE_ATSTAIRS;
         stunmsg = __s_resuming_regular_play;
@@ -1601,7 +2229,13 @@ export function tele_trap(trap) {
         return;
 
     __static_tele_trap_in_tele_trap = 1;
-    if ((cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || Antimagic() || noteleport_level(cptr.add(gy, $instance_globals_y_youmonst))) {
+    if ((cptr.ldI16((cptr.add(u, $you_uz))) ==
+        cptr.ldI16((cptr.add(
+            svd,
+            $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+        )))) ||
+            Antimagic() ||
+            noteleport_level(cptr.add(gy, $instance_globals_y_youmonst))) {
         if (Antimagic())
             shieldeff(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
         You_feel(__s_a_wrenching_sensation);
@@ -1611,23 +2245,45 @@ export function tele_trap(trap) {
         deltrap(trap);
         newsym(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));  /* get rid of trap symbol */
         vault_tele();
-    } else if (isok(cptr.ldI16o(trap, $trap_launch), cptr.ldI16o(trap, $trap_launch + $nhcoord_y))) {
+    } else if (isok(
+        cptr.ldI16o(trap, $trap_launch),
+        cptr.ldI16o(trap, $trap_launch + $nhcoord_y)
+    )) {
         let cc = cptr.alloc(4);
-        let mtmp = (cptr.ldPtro3(svl, cptr.ldI16o(trap, $trap_launch), 168, cptr.ldI16o(trap, $trap_launch + $nhcoord_y), 8, $instance_globals_saved_l_level + $dlevel_t_monsters));
+        let mtmp = (cptr.ldPtro3(
+            svl,
+            cptr.ldI16o(trap, $trap_launch),
+            168,
+            cptr.ldI16o(trap, $trap_launch + $nhcoord_y),
+            8,
+            $instance_globals_saved_l_level + $dlevel_t_monsters
+        ));
 
         settrack();
         if (mtmp) {
-            if (!enexto(cc, cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my), cptr.ldPtro(mtmp, $monst_data))) {
+            if (!enexto(
+                cc,
+                cptr.ldI16o(mtmp, $monst_mx),
+                cptr.ldI16o(mtmp, $monst_my),
+                cptr.ldPtro(mtmp, $monst_data)
+            )) {
                 /* could not find some other place to put mtmp; the level must
                  * be nearly or completely full */
-                You(__s_pct_s, cptr.ldPtro(c_common_strings, $c_common_strings_c_shudder_for_moment));
+                You(
+                    __s_pct_s,
+                    cptr.ldPtro(c_common_strings, $c_common_strings_c_shudder_for_moment)
+                );
             } else {
                 rloc_to(mtmp, cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y));
                 mtmp = null;  /* no longer a monster at dest */
             }
         }
         if (!mtmp) {
-            teleds(cptr.ldI16o(trap, $trap_launch), cptr.ldI16o(trap, $trap_launch + $nhcoord_y), NHM.TELEDS_TELEPORT);
+            teleds(
+                cptr.ldI16o(trap, $trap_launch),
+                cptr.ldI16o(trap, $trap_launch + $nhcoord_y),
+                NHM.TELEDS_TELEPORT
+            );
         }
     } else
         tele();
@@ -1650,7 +2306,12 @@ export function level_tele_trap(trap, trflags) {
     if (Antimagic() && !intentional) {
         shieldeff(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
     }
-    if ((Antimagic() && !intentional) || (cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level))))) {
+    if ((Antimagic() && !intentional) ||
+            (cptr.ldI16((cptr.add(u, $you_uz))) ==
+                cptr.ldI16((cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+                ))))) {
         You_feel(__s_a_wrenching_sensation);
         return;
     }
@@ -1671,7 +2332,13 @@ export function level_tele_trap(trap, trflags) {
 }
 
 /* check whether monster can arrive at location <x,y> via Tport (or fall) */
-/** C ref: teleport.c:1575 — @param {CInt} x @param {CInt} y @param {CPtr<struct monst>} mtmp @returns {CInt} */
+/**
+ * C ref: teleport.c:1575
+ * @param {CInt} x
+ * @param {CInt} y
+ * @param {CPtr<struct monst>} mtmp
+ * @returns {CInt}
+ */
 function rloc_pos_ok(x, y, mtmp) {
     let xx;
     let yy;
@@ -1689,21 +2356,79 @@ function rloc_pos_ok(x, y, mtmp) {
     yy = cptr.ldI16o(mtmp, $monst_my);
     if (!xx) {
         /* no current location (migrating monster arrival) */
-        if (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) && On_W_tower_level(cptr.add(u, $you_uz)))
-            return schar((((yy & 2) != 0) ^ !((x) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (x) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (y) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (y) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy)))));
+        if (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) &&
+                On_W_tower_level(cptr.add(u, $you_uz)))
+            return schar((((yy & 2) != 0) ^
+                    !((x) >=
+                        (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+                        (x) <=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) &&
+                        (y) >=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) &&
+                        (y) <=
+                            (cptr.ldI16o(
+                                svd,
+                                $instance_globals_saved_d_dndest + $dest_area_nhy
+                            )))));
         if (cptr.ldI16(svu) && (yy & 1) != 0)
-            return schar((((x) >= (cptr.ldI16(svu)) && (x) <= (cptr.ldI16o(svu, $dest_area_hx)) && (y) >= (cptr.ldI16o(svu, $dest_area_ly)) && (y) <= (cptr.ldI16o(svu, $dest_area_hy))) && (!cptr.ldI16o(svu, $dest_area_nlx) || !((x) >= (cptr.ldI16o(svu, $dest_area_nlx)) && (x) <= (cptr.ldI16o(svu, $dest_area_nhx)) && (y) >= (cptr.ldI16o(svu, $dest_area_nly)) && (y) <= (cptr.ldI16o(svu, $dest_area_nhy)))) ? 1 : 0));
+            return schar((((x) >= (cptr.ldI16(svu)) &&
+                (x) <= (cptr.ldI16o(svu, $dest_area_hx)) &&
+                (y) >= (cptr.ldI16o(svu, $dest_area_ly)) &&
+                (y) <= (cptr.ldI16o(svu, $dest_area_hy))) &&
+                (!cptr.ldI16o(svu, $dest_area_nlx) ||
+                    !((x) >= (cptr.ldI16o(svu, $dest_area_nlx)) &&
+                        (x) <= (cptr.ldI16o(svu, $dest_area_nhx)) &&
+                        (y) >= (cptr.ldI16o(svu, $dest_area_nly)) &&
+                        (y) <= (cptr.ldI16o(svu, $dest_area_nhy))))
+                    ? 1
+                    : 0));
         if (cptr.ldI16o(svd, $instance_globals_saved_d_dndest) && (yy & 1) == 0)
-            return schar((((x) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest)) && (x) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_hx)) && (y) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_ly)) && (y) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_hy))) && (!cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) || !((x) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (x) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (y) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (y) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy)))) ? 1 : 0));
+            return schar((((x) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest)) &&
+                (x) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_hx)) &&
+                (y) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_ly)) &&
+                (y) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_hy))) &&
+                (!cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) ||
+                    !((x) >=
+                        (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+                        (x) <=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) &&
+                        (y) >=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) &&
+                        (y) <=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))))
+                    ? 1
+                    : 0));
     } else {
         /* [try to] prevent a shopkeeper or temple priest from being
            sent out of his room (caller might resort to goodpos() if
            we report failure here, so this isn't full prevention) */
         if ((cptr.ldI32o(mtmp, $monst_isshk) & 1) | 0 && inhishop(mtmp)) {
-            if (((cptr.ldI32o3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_roomno) & 63) | 0) != uchar(cptr.ld1so((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_eshk)), $eshk_shoproom)))
+            if (((cptr.ldI32o3(
+                svl,
+                x,
+                $sizeof_rm_x21,
+                y,
+                $sizeof_rm,
+                $instance_globals_saved_l_level + $rm_roomno
+            ) & 63) | 0) !=
+                    uchar(cptr.ld1so(
+                        (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_eshk)),
+                        $eshk_shoproom
+                    )))
                 return 0;
         } else if ((cptr.ldI32o(mtmp, $monst_ispriest) & 1) | 0 && inhistemple(mtmp)) {
-            if (((cptr.ldI32o3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_roomno) & 63) | 0) != uchar(cptr.ld1so((cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_epri)), $epri_shroom)))
+            if (((cptr.ldI32o3(
+                svl,
+                x,
+                $sizeof_rm_x21,
+                y,
+                $sizeof_rm,
+                $instance_globals_saved_l_level + $rm_roomno
+            ) & 63) | 0) !=
+                    uchar(cptr.ld1so(
+                        (cptr.ldPtro(cptr.ldPtro((mtmp), $monst_mextra), $mextra_epri)),
+                        $epri_shroom
+                    )))
                 return 0;
         }
         /* current location is <xx,yy> */
@@ -1723,7 +2448,13 @@ function rloc_pos_ok(x, y, mtmp) {
  * a value because mtmp is a migrating_mon.  Worm tails are always
  * placed randomly around the head of the worm.
  */
-/** C ref: teleport.c:1645 — @param {CPtr<struct monst>} mtmp @param {CInt} x @param {CInt} y @param {CUInt} rlocflags */
+/**
+ * C ref: teleport.c:1645
+ * @param {CPtr<struct monst>} mtmp
+ * @param {CInt} x
+ * @param {CInt} y
+ * @param {CUInt} rlocflags
+ */
 function rloc_to_core(mtmp, x, y, rlocflags) {
     let oldx = cptr.ldI16o(mtmp, $monst_mx);
     let oldy = cptr.ldI16o(mtmp, $monst_my);
@@ -1731,15 +2462,33 @@ function rloc_to_core(mtmp, x, y, rlocflags) {
     let preventmsg = schar((((rlocflags & NHM.RLOC_NOMSG) >>> 0) != 0));
     let vanishmsg = schar((((rlocflags & NHM.RLOC_MSG) >>> 0) != 0));
     let appearmsg = schar(((cptr.ldU64o(mtmp, $monst_mstrategy) & 2147483648n) != 0n));
-    let domsg = schar((!cptr.ld1so(gi, $instance_globals_i_in_mklev) && (vanishmsg || appearmsg) && !preventmsg ? 1 : 0));
+    let domsg = schar((!cptr.ld1so(gi, $instance_globals_i_in_mklev) &&
+        (vanishmsg || appearmsg) &&
+        !preventmsg
+            ? 1
+            : 0));
     let telemsg = 0;
 
-    if (x == cptr.ldI16o(mtmp, $monst_mx) && y == cptr.ldI16o(mtmp, $monst_my) && cptr.eq((cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters)), mtmp))
+    if (x == cptr.ldI16o(mtmp, $monst_mx) &&
+            y == cptr.ldI16o(mtmp, $monst_my) &&
+            cptr.eq(
+                (cptr.ldPtro3(
+                    svl,
+                    x,
+                    168,
+                    y,
+                    8,
+                    $instance_globals_saved_l_level + $dlevel_t_monsters
+                )),
+                mtmp
+            ))
         return;  /* that was easy */
 
     if (oldx) {
         if (domsg && canspotmon(mtmp)) {
-            if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.COULD_SEE) != 0) || sensemon(mtmp)) {
+            if (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) &
+                NHM.COULD_SEE) != 0) ||
+                    sensemon(mtmp)) {
                 telemsg = 1;
             } else {
                 pline(__s_s_vanishes, Monnam(mtmp));
@@ -1754,7 +2503,15 @@ function rloc_to_core(mtmp, x, y, rlocflags) {
         if ((cptr.ldI32o(mtmp, $monst_wormno) & 31)) {
             remove_worm(mtmp);
         } else {
-            cptr.stPtro3(svl, oldx, 168, oldy, 8, $instance_globals_saved_l_level + $dlevel_t_monsters, null);
+            cptr.stPtro3(
+                svl,
+                oldx,
+                168,
+                oldy,
+                8,
+                $instance_globals_saved_l_level + $dlevel_t_monsters,
+                null
+            );
             newsym(oldx, oldy);  /* update old location */
         }
     }
@@ -1786,18 +2543,53 @@ function rloc_to_core(mtmp, x, y, rlocflags) {
         let nearu = (du <= 64) ? __s_close_by : null;
 
         set_msg_xy(x, y);
-        cptr.stU64o(mtmp, $monst_mstrategy, cptr.ldU64o(mtmp, $monst_mstrategy) & 18446744071562067967n);  /* one chance only */
-        if (cptr.eq(mtmp, cptr.ldPtro(u, $you_ustuck)) && !((cptr.ldI16o(u, $you_ux0)) == cptr.ldI16(u) && (cptr.ldI16o(u, $you_uy0)) == cptr.ldI16o(u, $you_uy))) {
+        cptr.stU64o(
+            mtmp,
+            $monst_mstrategy,
+            cptr.ldU64o(mtmp, $monst_mstrategy) & 18446744071562067967n
+        );  /* one chance only */
+        if (cptr.eq(mtmp, cptr.ldPtro(u, $you_ustuck)) &&
+                !((cptr.ldI16o(u, $you_ux0)) == cptr.ldI16(u) &&
+                    (cptr.ldI16o(u, $you_uy0)) == cptr.ldI16o(u, $you_uy))) {
             You(__s_and_s_teleport_together, mon_nam(mtmp));
-        } else if (telemsg && (((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8), x) & NHM.COULD_SEE) != 0) || sensemon(mtmp))) {
-            pline(__s_s_vanishes_and_reappears_s, Monnam(mtmp), next ? next : (nearu ? nearu : (((olddu = dist2((oldx), (oldy), cptr.ldI16(u), cptr.ldI16o(u, $you_uy))) == du) ? __s_empty : ((du < olddu) ? __s_closer_to_you : __s_farther_away))));
+        } else if (telemsg &&
+                (((cptr.ld1uo(
+                    cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y, 8),
+                    x
+                ) &
+                    NHM.COULD_SEE) != 0) ||
+                    sensemon(mtmp))) {
+            pline(
+                __s_s_vanishes_and_reappears_s,
+                Monnam(mtmp),
+                next
+                    ? next
+                    : (nearu
+                        ? nearu
+                        : (((olddu = dist2(
+                            (oldx),
+                            (oldy),
+                            cptr.ldI16(u),
+                            cptr.ldI16o(u, $you_uy)
+                        )) == du)
+                            ? __s_empty
+                            : ((du < olddu) ? __s_closer_to_you : __s_farther_away)))
+            );
         } else {
-            pline(__s_s_s_s_s, appearmsg ? Amonnam(mtmp) : Monnam(mtmp), appearmsg ? __s_suddenly : __s_empty, !Blind() ? __s_appears : __s_arrives, next ? next : (nearu ? nearu : __s_empty));
+            pline(
+                __s_s_s_s_s,
+                appearmsg ? Amonnam(mtmp) : Monnam(mtmp),
+                appearmsg ? __s_suddenly : __s_empty,
+                !Blind() ? __s_appears : __s_arrives,
+                next ? next : (nearu ? nearu : __s_empty)
+            );
         }
         /* wand discovery only happens if a messaage is delivered (bug?);
            if spell or q.mechanic attack or artifact #invoke for banish
            then current_wand will be Null */
-        if (cptr.ldPtro(gc, $instance_globals_c_current_wand) && cptr.ldI16o(cptr.ldPtro(gc, $instance_globals_c_current_wand), $obj_otyp) == NHC.WAN_TELEPORTATION)
+        if (cptr.ldPtro(gc, $instance_globals_c_current_wand) &&
+                cptr.ldI16o(cptr.ldPtro(gc, $instance_globals_c_current_wand), $obj_otyp) ==
+                    NHC.WAN_TELEPORTATION)
             discover_object(NHC.WAN_TELEPORTATION, 1, 1, 1);
     }
 
@@ -1842,7 +2634,13 @@ export function rloc_to(mtmp, x, y) {
     rloc_to_core(mtmp, x, y, NHM.RLOC_NOMSG);
 }
 
-/** C ref: teleport.c:1777 — @param {CPtr<struct monst>} mtmp @param {CInt} x @param {CInt} y @param {CUInt} rlocflags */
+/**
+ * C ref: teleport.c:1777
+ * @param {CPtr<struct monst>} mtmp
+ * @param {CInt} x
+ * @param {CInt} y
+ * @param {CUInt} rlocflags
+ */
 export function rloc_to_flag(mtmp, x, y, rlocflags) {
     rloc_to_core(mtmp, x, y, rlocflags);
 }
@@ -1851,14 +2649,22 @@ export function rloc_to_flag(mtmp, x, y, rlocflags) {
 function stairway_find_forwiz(isladder, up) {
     let stway = cptr.ldPtro(gs, $instance_globals_s_stairs);
 
-    while (stway && !(cptr.ld1so(stway, $stairway_isladder) == isladder && cptr.ld1so(stway, $stairway_up) == up && cptr.ldI16o(stway, $stairway_tolev) == cptr.ldI16o(u, $you_uz)))
+    while (stway &&
+            !(cptr.ld1so(stway, $stairway_isladder) == isladder &&
+                cptr.ld1so(stway, $stairway_up) == up &&
+                cptr.ldI16o(stway, $stairway_tolev) == cptr.ldI16o(u, $you_uz)))
         stway = cptr.ldPtro(stway, $stairway_next);
     return stway;
 }
 
 /* place a monster at a random location, typically due to teleport;
    return TRUE if successful, FALSE if not; rlocflags is RLOC_foo flags */
-/** C ref: teleport.c:1799 — @param {CPtr<struct monst>} mtmp @param {CUInt} rlocflags @returns {CInt} */
+/**
+ * C ref: teleport.c:1799
+ * @param {CPtr<struct monst>} mtmp
+ * @param {CUInt} rlocflags
+ * @returns {CInt}
+ */
 export function rloc(mtmp, rlocflags) {
     let cc = cptr.alloc(4);
     let backupcc = cptr.alloc(4);
@@ -1901,7 +2707,8 @@ export function rloc(mtmp, rlocflags) {
         /* wizard-mode player can choose destination by setting 'montelecontrol'
            option; ignored if/when this is arrival of a migrating monster */
         if (cptr.ld1so(iflags, $instance_flags_mon_telecontrol) && cptr.ldI16o(mtmp, $monst_mx)) {
-            cptr.stI16(cc, cptr.ldI16o(mtmp, $monst_mx)), cptr.stI16o(cc, $nhcoord_y, cptr.ldI16o(mtmp, $monst_my));
+            cptr.stI16(cc, cptr.ldI16o(mtmp, $monst_mx)),
+                    cptr.stI16o(cc, $nhcoord_y, cptr.ldI16o(mtmp, $monst_my));
             if (control_mon_tele(mtmp, cc, rlocflags, 1)) {
                 x = cptr.ldI16(cc), y = cptr.ldI16o(cc, $nhcoord_y);
                 break __lbl_found_xy;
@@ -1914,8 +2721,8 @@ export function rloc(mtmp, rlocflags) {
            on levels with lots of available space, random can find a spot more
            quickly but might fail to find one no matter how many tries it makes */
         for (trycount = 0; trycount < 50; ++trycount) {
-            x = i16(rnd_at(__s_teleport_c, 1850, __s_rloc, 79));  /* 1..COLNO-1 */
-            y = i16(rn2_at(__s_teleport_c, 1851, __s_rloc, NHM.ROWNO));  /* 0..ROWNO-1 */
+            x = i16(rnd(79));  /* 1..COLNO-1 */
+            y = i16(rn2(NHM.ROWNO));  /* 0..ROWNO-1 */
             if (rloc_pos_ok(x, y, mtmp))
                 break __lbl_found_xy;
         }
@@ -1931,12 +2738,17 @@ export function rloc(mtmp, rlocflags) {
         candycount = collect_coords(candy, 40, 10, 0, cc_flags, null);
         cptr.stI16(backupcc, cptr.stI16o(backupcc, $nhcoord_y, 0));
         for (i = 0; i < candycount; ++i) {
-            if ((j = rn2_at(__s_teleport_c, 1868, __s_rloc, (candycount - i) | 0)) > 0) {
+            if ((j = rn2((candycount - i) | 0)) > 0) {
                 cptr.memcpy(cc, cptr.add(candy, i, $sizeof_coord), 4);
-                cptr.memcpy(cptr.add(candy, i, $sizeof_coord), cptr.add(candy, (i + j) | 0, $sizeof_coord), 4);
+                cptr.memcpy(
+                    cptr.add(candy, i, $sizeof_coord),
+                    cptr.add(candy, (i + j) | 0, $sizeof_coord),
+                    4
+                );
                 cptr.memcpy(cptr.add(candy, (i + j) | 0, $sizeof_coord), cc, 4);
             }
-            x = cptr.ldI16o(candy, i, $sizeof_coord), y = cptr.ldI16o2(candy, i, $sizeof_coord, $nhcoord_y);
+            x = cptr.ldI16o(candy, i, $sizeof_coord),
+                    y = cptr.ldI16o2(candy, i, $sizeof_coord, $nhcoord_y);
             if (rloc_pos_ok(x, y, mtmp))
                 break __lbl_found_xy;
             if (!cptr.ldI16(backupcc) && goodpos(x, y, mtmp, NHM.NO_MM_FLAGS))
@@ -1960,12 +2772,20 @@ export function rloc(mtmp, rlocflags) {
 }
 
 /* let wizard-mode player choose a teleporting monster's destination */
-/** C ref: teleport.c:1899 — @param {CPtr<struct monst>} mon @param {CPtr<coord>} cc_p @param {CUInt} rlocflags @param {CInt} via_rloc @returns {CInt} */
+/**
+ * C ref: teleport.c:1899
+ * @param {CPtr<struct monst>} mon
+ * @param {CPtr<coord>} cc_p
+ * @param {CUInt} rlocflags
+ * @param {CInt} via_rloc
+ * @returns {CInt}
+ */
 export function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
     let tcbuf = new Uint8Array(256);
 
     if (!isok(cptr.ldI16(cc_p), cptr.ldI16o(cc_p, $coord_y))) {
-        cptr.stI16(cc_p, cptr.ldI16o(mon, $monst_mx)), cptr.stI16o(cc_p, $coord_y, cptr.ldI16o(mon, $monst_my));
+        cptr.stI16(cc_p, cptr.ldI16o(mon, $monst_mx)),
+                cptr.stI16o(cc_p, $coord_y, cptr.ldI16o(mon, $monst_my));
         if (!isok(cptr.ldI16(cc_p), cptr.ldI16o(cc_p, $coord_y)))
             cptr.stI16(cc_p, cptr.ldI16(u)), cptr.stI16o(cc_p, $coord_y, cptr.ldI16o(u, $you_uy));
     }
@@ -1973,14 +2793,28 @@ export function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
     if (!wizard() || !cptr.ld1so(iflags, $instance_flags_mon_telecontrol))
         return 0;
 
-    pline(__s_teleport_s_d_d_where, noit_mon_nam(mon), cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my));
+    pline(
+        __s_teleport_s_d_d_where,
+        noit_mon_nam(mon),
+        cptr.ldI16o(mon, $monst_mx),
+        cptr.ldI16o(mon, $monst_my)
+    );
     /* getpos '?' will show "Move the cursor to <where to teleport Foo>:" */
     void cptr.sprintf(cptr.decay(tcbuf), __s_where_to_teleport_s, noit_mon_nam(mon));
-    if (getpos(cc_p, 0, cptr.decay(tcbuf)) >= 0 && !((cptr.ldI16(cc_p)) == cptr.ldI16(u) && (cptr.ldI16o(cc_p, $coord_y)) == cptr.ldI16o(u, $you_uy))) {
-        if (via_rloc ? rloc_pos_ok(cptr.ldI16(cc_p), cptr.ldI16o(cc_p, $coord_y), mon) : goodpos(cptr.ldI16(cc_p), cptr.ldI16o(cc_p, $coord_y), mon, rlocflags))
+    if (getpos(cc_p, 0, cptr.decay(tcbuf)) >= 0 &&
+            !((cptr.ldI16(cc_p)) == cptr.ldI16(u) &&
+                (cptr.ldI16o(cc_p, $coord_y)) == cptr.ldI16o(u, $you_uy))) {
+        if (via_rloc
+                ? rloc_pos_ok(cptr.ldI16(cc_p), cptr.ldI16o(cc_p, $coord_y), mon)
+                : goodpos(cptr.ldI16(cc_p), cptr.ldI16o(cc_p, $coord_y), mon, rlocflags))
             return 1;
         if (!cptr.ld1so(iflags, $instance_flags_debug_fuzzer)) {
-            void cptr.sprintf(cptr.decay(tcbuf), __s_d_d_is_not_considered_viable_force, cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my));
+            void cptr.sprintf(
+                cptr.decay(tcbuf),
+                __s_d_d_is_not_considered_viable_force,
+                cptr.ldI16o(mon, $monst_mx),
+                cptr.ldI16o(mon, $monst_my)
+            );
             if (yn_function(cptr.decay(tcbuf), cptr.decay(ynchars), 110, 1) == 121)
                 return 1;
         }
@@ -1994,7 +2828,9 @@ function mvault_tele(mtmp) {
     let croom = search_special(NHC.VAULT);
     let c = cptr.alloc(4);
 
-    if (croom && somexyspace(croom, c) && goodpos(cptr.ldI16(c), cptr.ldI16o(c, $nhcoord_y), mtmp, 0)) {
+    if (croom &&
+            somexyspace(croom, c) &&
+            goodpos(cptr.ldI16(c), cptr.ldI16o(c, $nhcoord_y), mtmp, 0)) {
         rloc_to(mtmp, cptr.ldI16(c), cptr.ldI16o(c, $nhcoord_y));
         return;
     }
@@ -2011,7 +2847,12 @@ export function tele_restrict(mon) {
     return 0;
 }
 
-/** C ref: teleport.c:1962 — @param {CPtr<struct monst>} mtmp @param {CPtr<struct trap>} trap @param {CInt} in_sight */
+/**
+ * C ref: teleport.c:1962
+ * @param {CPtr<struct monst>} mtmp
+ * @param {CPtr<struct trap>} trap
+ * @param {CInt} in_sight
+ */
 export function mtele_trap(mtmp, trap, in_sight) {
     let monname;
 
@@ -2030,13 +2871,31 @@ export function mtele_trap(mtmp, trap, in_sight) {
          */
         if ((cptr.ldI32o(trap, $trap_once) & 1))
             mvault_tele(mtmp);
-        else if (isok(cptr.ldI16o(trap, $trap_launch), cptr.ldI16o(trap, $trap_launch + $nhcoord_y))) {
+        else if (isok(
+            cptr.ldI16o(trap, $trap_launch),
+            cptr.ldI16o(trap, $trap_launch + $nhcoord_y)
+        )) {
             /* monster teleporting onto hero's or another monster's spot does
              * not work the same as hero teleporting onto monster's spot where
              * the incoming monster displaces the resident to the nearest
              * possible space - instead it just doesn't work. */
-            if (!((cptr.ldPtro3(svl, cptr.ldI16o(trap, $trap_launch), 168, cptr.ldI16o(trap, $trap_launch + $nhcoord_y), 8, $instance_globals_saved_l_level + $dlevel_t_monsters)) || ((cptr.ldI16o(trap, $trap_launch)) == cptr.ldI16(u) && (cptr.ldI16o(trap, $trap_launch + $nhcoord_y)) == cptr.ldI16o(u, $you_uy)))) {
-                rloc_to_core(mtmp, cptr.ldI16o(trap, $trap_launch), cptr.ldI16o(trap, $trap_launch + $nhcoord_y), NHM.RLOC_MSG);
+            if (!((cptr.ldPtro3(
+                svl,
+                cptr.ldI16o(trap, $trap_launch),
+                168,
+                cptr.ldI16o(trap, $trap_launch + $nhcoord_y),
+                8,
+                $instance_globals_saved_l_level + $dlevel_t_monsters
+            )) ||
+                    ((cptr.ldI16o(trap, $trap_launch)) == cptr.ldI16(u) &&
+                        (cptr.ldI16o(trap, $trap_launch + $nhcoord_y)) ==
+                            cptr.ldI16o(u, $you_uy)))) {
+                rloc_to_core(
+                    mtmp,
+                    cptr.ldI16o(trap, $trap_launch),
+                    cptr.ldI16o(trap, $trap_launch + $nhcoord_y),
+                    NHM.RLOC_MSG
+                );
             }
         } else
             void rloc(mtmp, NHM.RLOC_NONE);
@@ -2052,7 +2911,14 @@ export function mtele_trap(mtmp, trap, in_sight) {
 }
 
 /* return Trap_Effect_Finished if still on level, Trap_Moved_Mon if not */
-/** C ref: teleport.c:2006 — @param {CPtr<struct monst>} mtmp @param {CPtr<struct trap>} trap @param {CInt} force_it @param {CInt} in_sight @returns {CInt} */
+/**
+ * C ref: teleport.c:2006
+ * @param {CPtr<struct monst>} mtmp
+ * @param {CPtr<struct trap>} trap
+ * @param {CInt} force_it
+ * @param {CInt} in_sight
+ * @returns {CInt}
+ */
 export function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
     let tt = (trap ? (cptr.ldI32o(trap, $trap_ttyp) & 31) | 0 : NHC.NO_TRAP);
 
@@ -2063,19 +2929,57 @@ export function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         let migrate_typ = NHM.MIGR_RANDOM;
 
         if (((tt) == NHC.HOLE || (tt) == NHC.TRAPDOOR)) {
-            if ((((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level))))) {
-                assign_level(tolevel, cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_valley_level));
+            if ((((cptr.ldI16o(
+                (cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level
+                )),
+                $d_level_dlevel
+            ) ||
+                cptr.ldI16((cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_stronghold_level
+                )))) &&
+                    on_level(
+                        cptr.add(u, $you_uz),
+                        cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology +
+                                $dgn_topology_d_stronghold_level
+                        )
+                    )))) {
+                assign_level(
+                    tolevel,
+                    cptr.add(
+                        svd,
+                        $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_valley_level
+                    )
+                );
             } else if (Is_botlevel(cptr.add(u, $you_uz))) {
                 if (in_sight && (cptr.ldI32o(trap, $trap_tseen) & 1) | 0)
-                    pline_mon(mtmp, __s_s_avoids_the_s, Monnam(mtmp), (tt == NHC.HOLE) ? __s_hole : __s_trap);
+                    pline_mon(
+                        mtmp,
+                        __s_s_avoids_the_s,
+                        Monnam(mtmp),
+                        (tt == NHC.HOLE) ? __s_hole : __s_trap
+                    );
                 return NHC.Trap_Effect_Finished;
             } else {
                 assign_level(tolevel, cptr.add(trap, $trap_dst));
                 void clamp_hole_destination(tolevel);
             }
         } else if (tt == NHC.MAGIC_PORTAL) {
-            if ((cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) && (mon_has_amulet(mtmp) || is_home_elemental(cptr.ldPtro(mtmp, $monst_data)) || rn2_at(__s_teleport_c, 2036, __s_mlevel_tele_trap, 7))) {
-                if (in_sight && cptr.ld1so(cptr.ldPtro(mtmp, $monst_data), $permonst_mlet) != NHC.S_ELEMENTAL) {
+            if ((cptr.ldI16((cptr.add(u, $you_uz))) ==
+                cptr.ldI16((cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+                )))) &&
+                    (mon_has_amulet(mtmp) ||
+                        is_home_elemental(cptr.ldPtro(mtmp, $monst_data)) ||
+                        rn2(7))) {
+                if (in_sight &&
+                        cptr.ld1so(cptr.ldPtro(mtmp, $monst_data), $permonst_mlet) !=
+                            NHC.S_ELEMENTAL) {
                     pline_mon(mtmp, __s_s_seems_to_shimmer_for_a_moment, Monnam(mtmp));
                     seetrap(trap);
                 }
@@ -2087,7 +2991,14 @@ export function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         } else if (tt == NHC.LEVEL_TELEP || tt == NHC.NO_TRAP) {
             let nlev;
 
-            if (mon_has_amulet(mtmp) || (cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))) || (tt == NHC.NO_TRAP && onscary(0, 0, mtmp))) {
+            if (mon_has_amulet(mtmp) ||
+                    (cptr.ldI16((cptr.add(u, $you_uz))) ==
+                        cptr.ldI16((cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology +
+                                $dgn_topology_d_astral_level
+                        )))) ||
+                    (tt == NHC.NO_TRAP && onscary(0, 0, mtmp))) {
                 if (in_sight)
                     pline_mon(mtmp, __s_s_seems_very_disoriented_for_a_moment, Monnam(mtmp));
                 return NHC.Trap_Effect_Finished;
@@ -2113,11 +3024,22 @@ export function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
         }
 
         if (in_sight) {
-            pline_mon(mtmp, __s_suddenly_s_s, mon_nam(mtmp), (tt == NHC.HOLE) ? __s_falls_into_a_hole : ((tt == NHC.TRAPDOOR) ? __s_falls_through_a_trap_door : __s_disappears_out_of_sight));
+            pline_mon(
+                mtmp,
+                __s_suddenly_s_s,
+                mon_nam(mtmp),
+                (tt == NHC.HOLE)
+                    ? __s_falls_into_a_hole
+                    : ((tt == NHC.TRAPDOOR)
+                        ? __s_falls_through_a_trap_door
+                        : __s_disappears_out_of_sight)
+            );
             if (trap)
                 seetrap(trap);
         }
-        if (is_xport(tt) && !((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 67108864n) != 0n))
+        if (is_xport(tt) &&
+                !((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) &
+                    67108864n) != 0n))
             cptr.stI32o(mtmp, $monst_mconf, 1);
         migrate_to_level(mtmp, ledger_no(tolevel), i16(migrate_typ), null);
         return NHC.Trap_Moved_Mon;  /* no longer on this level */
@@ -2135,7 +3057,8 @@ export function rloco(obj) {
     let restricted_fall;
     let try_limit = 4000;
 
-    if (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE && is_rider(cptr.add(mons, cptr.ldI32o(obj, $obj_corpsenm), $sizeof_permonst))) {
+    if (cptr.ldI16o(obj, $obj_otyp) == NHC.CORPSE &&
+            is_rider(cptr.add(mons, cptr.ldI32o(obj, $obj_corpsenm), $sizeof_permonst))) {
         if (revive_corpse(obj))
             return 0;
     }
@@ -2143,13 +3066,56 @@ export function rloco(obj) {
     obj_extract_self(obj);
     otx = cptr.ldI16o(obj, $obj_ox);
     oty = cptr.ldI16o(obj, $obj_oy);
-    restricted_fall = schar((otx == 0 && cptr.ldI16o(svd, $instance_globals_saved_d_dndest) ? 1 : 0));
+    restricted_fall = schar((otx == 0 && cptr.ldI16o(svd, $instance_globals_saved_d_dndest)
+            ? 1
+            : 0));
     do {
-        tx = i16(((rn2_at(__s_teleport_c, 2118, __s_rloco, 77) + 2) | 0));
-        ty = i16(rn2_at(__s_teleport_c, 2119, __s_rloco, NHM.ROWNO));
+        tx = i16(((rn2(77) + 2) | 0));
+        ty = i16(rn2(NHM.ROWNO));
         if (!--try_limit)
             break;
-    } while (!goodpos(tx, ty, null, 0) || (restricted_fall && (!((tx) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest)) && (tx) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_hx)) && (ty) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_ly)) && (ty) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_hy))) || (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) && ((tx) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (tx) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (ty) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (ty) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy)))))) || (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) && On_W_tower_level(cptr.add(u, $you_uz)) && ((tx) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (tx) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (ty) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (ty) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy)) ? 1 : 0) != ((otx) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) && (otx) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) && (oty) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) && (oty) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy)) ? 1 : 0)));
+    } while (!goodpos(tx, ty, null, 0) ||
+            (restricted_fall &&
+                (!((tx) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest)) &&
+                    (tx) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_hx)) &&
+                    (ty) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_ly)) &&
+                    (ty) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_hy))) ||
+                    (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) &&
+                        ((tx) >=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+                            (tx) <=
+                                (cptr.ldI16o(
+                                    svd,
+                                    $instance_globals_saved_d_dndest + $dest_area_nhx
+                                )) &&
+                            (ty) >=
+                                (cptr.ldI16o(
+                                    svd,
+                                    $instance_globals_saved_d_dndest + $dest_area_nly
+                                )) &&
+                            (ty) <=
+                                (cptr.ldI16o(
+                                    svd,
+                                    $instance_globals_saved_d_dndest + $dest_area_nhy
+                                )))))) ||
+            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx) &&
+                On_W_tower_level(cptr.add(u, $you_uz)) &&
+                ((tx) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+                    (tx) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) &&
+                    (ty) >= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) &&
+                    (ty) <= (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))
+                    ? 1
+                    : 0) !=
+                    ((otx) >=
+                        (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nlx)) &&
+                        (otx) <=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhx)) &&
+                        (oty) >=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nly)) &&
+                        (oty) <=
+                            (cptr.ldI16o(svd, $instance_globals_saved_d_dndest + $dest_area_nhy))
+                        ? 1
+                        : 0)));
 
     if (flooreffects(obj, tx, ty, __s_fall)) {
         /* update old location (if any) since flooreffects() couldn't;
@@ -2175,12 +3141,20 @@ export function rloco(obj) {
         if (objinshop || ((cptr.ldI32o(obj, $obj_unpaid) & 1) | 0 && onboundary)) {
             let h = cptr.ld1s(in_rooms(cptr.ldI16(u), cptr.ldI16o(u, $you_uy), NHC.SHOPBASE));
             let oo = cptr.ld1s(in_rooms(otx, oty, 0));
-            let hinshop = schar((h && cptr.strchr(in_rooms(cptr.ldI16o(shkp, $monst_mx), cptr.ldI16o(shkp, $monst_my), 0), h) ? 1 : 0));
+            let hinshop = schar((h &&
+                cptr.strchr(
+                    in_rooms(cptr.ldI16o(shkp, $monst_mx), cptr.ldI16o(shkp, $monst_my), 0),
+                    h
+                )
+                    ? 1
+                    : 0));
 
             if (hinshop && costly_spot(tx, ty) && oo && cptr.strchr(in_rooms(tx, ty, 0), oo)) {
                 if ((cptr.ldI32o(obj, $obj_unpaid) & 1))
                     subfrombill(obj, shkp);
-            } else if (hinshop && costly_adjacent(shkp, tx, ty) && oo && cptr.strchr(in_rooms(tx, ty, 0), oo)) {
+            } else if (hinshop &&
+                    costly_adjacent(shkp, tx, ty) && oo &&
+                    cptr.strchr(in_rooms(tx, ty, 0), oo)) {
                 if (!(cptr.ldI32o(obj, $obj_unpaid) & 1))
                     addtobill(obj, 0, 0, 0);
             } else {
@@ -2205,7 +3179,13 @@ export function random_teleport_level() {
     let cur_depth = depth(cptr.add(u, $you_uz));
 
     /* [the endgame case can only occur in wizard mode] */
-    if (!rn2_at(__s_teleport_c, 2196, __s_random_teleport_level, 5) || single_level_branch(cptr.add(u, $you_uz)) || (cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))))
+    if (!rn2(5) ||
+            single_level_branch(cptr.add(u, $you_uz)) ||
+            (cptr.ldI16((cptr.add(u, $you_uz))) ==
+                cptr.ldI16((cptr.add(
+                    svd,
+                    $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+                )))))
         return cur_depth;
 
     /* What I really want to do is as follows:
@@ -2229,17 +3209,48 @@ export function random_teleport_level() {
      */
     if (In_quest(cptr.add(u, $you_uz))) {
         let bottom = dunlevs_in_dungeon(cptr.add(u, $you_uz));
-        let qlocate_depth = cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_qlocate_level)), $d_level_dlevel);
+        let qlocate_depth = cptr.ldI16o(
+            (cptr.add(
+                svd,
+                $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_qlocate_level
+            )),
+            $d_level_dlevel
+        );
 
         /* if hero hasn't reached the middle locate level yet,
            no one can randomly teleport past it */
-        if ((cptr.ldI16o2(svd, cptr.ldI16((cptr.add(u, $you_uz))), $sizeof_dungeon, $dungeon_dunlev_ureached)) < qlocate_depth)
+        if ((cptr.ldI16o2(
+            svd,
+            cptr.ldI16((cptr.add(u, $you_uz))),
+            $sizeof_dungeon,
+            $dungeon_dunlev_ureached
+        )) <
+                qlocate_depth)
             bottom = qlocate_depth;
-        min_depth = cptr.ldI32o2(svd, cptr.ldI16o(u, $you_uz), $sizeof_dungeon, $dungeon_depth_start);
-        max_depth = (bottom + ((cptr.ldI32o2(svd, cptr.ldI16o(u, $you_uz), $sizeof_dungeon, $dungeon_depth_start) - 1) | 0)) | 0;
+        min_depth = cptr.ldI32o2(
+            svd,
+            cptr.ldI16o(u, $you_uz),
+            $sizeof_dungeon,
+            $dungeon_depth_start
+        );
+        max_depth = (bottom +
+            (cptr.ldI32o2(
+                svd,
+                cptr.ldI16o(u, $you_uz),
+                $sizeof_dungeon,
+                $dungeon_depth_start
+            ) - 1)) |
+                0;
     } else {
         min_depth = 1;
-        max_depth = (dunlevs_in_dungeon(cptr.add(u, $you_uz)) + ((cptr.ldI32o2(svd, cptr.ldI16o(u, $you_uz), $sizeof_dungeon, $dungeon_depth_start) - 1) | 0)) | 0;
+        max_depth = (dunlevs_in_dungeon(cptr.add(u, $you_uz)) +
+            (cptr.ldI32o2(
+                svd,
+                cptr.ldI16o(u, $you_uz),
+                $sizeof_dungeon,
+                $dungeon_depth_start
+            ) - 1)) |
+                0;
         /* can't reach Sanctum if the invocation hasn't been performed */
         if (In_hell(cptr.add(u, $you_uz)) && !(cptr.ldI32o(u, $you_uevent + $u_event_invoked) & 1))
             max_depth = (max_depth - 1) | 0;
@@ -2247,7 +3258,7 @@ export function random_teleport_level() {
 
     /* Get a random value relative to the current dungeon */
     /* Range is 1 to current+3, current not counting */
-    nlev = (rn2_at(__s_teleport_c, 2239, __s_random_teleport_level, (((cur_depth + 3) | 0) - min_depth) | 0) + min_depth) | 0;
+    nlev = (rn2((cur_depth + 3 - min_depth) | 0) + min_depth) | 0;
     if (nlev >= cur_depth)
         nlev++;
 
@@ -2255,12 +3266,12 @@ export function random_teleport_level() {
         nlev = max_depth;
         /* teleport up if already on bottom */
         if (Is_botlevel(cptr.add(u, $you_uz)))
-            nlev = (nlev - rnd_at(__s_teleport_c, 2247, __s_random_teleport_level, 3)) | 0;
+            nlev = (nlev - rnd(3)) | 0;
     }
     if (nlev < min_depth) {
         nlev = min_depth;
         if (nlev == cur_depth) {
-            nlev = (nlev + rnd_at(__s_teleport_c, 2252, __s_random_teleport_level, 3)) | 0;
+            nlev = (nlev + rnd(3)) | 0;
             if (nlev > max_depth)
                 nlev = max_depth;
         }
@@ -2270,25 +3281,44 @@ export function random_teleport_level() {
 
 /* you teleport a monster (via wand, spell, or poly'd q.mechanic attack);
    return false iff the attempt fails */
-/** C ref: teleport.c:2263 — @param {CPtr<struct monst>} mtmp @param {CInt} give_feedback @returns {CInt} */
+/**
+ * C ref: teleport.c:2263
+ * @param {CPtr<struct monst>} mtmp
+ * @param {CInt} give_feedback
+ * @returns {CInt}
+ */
 export function u_teleport_mon(mtmp, give_feedback) {
     let cc = cptr.alloc(4);
 
-    if (cptr.ldI64o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until) >= cptr.ldI64o(svm, $instance_globals_saved_m_moves)) {
+    if (cptr.ldI64o(
+        svl,
+        $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until
+    ) >=
+            cptr.ldI64o(svm, $instance_globals_saved_m_moves)) {
         if (give_feedback)
             pline(__s_a_mysterious_force_prevents_you, mon_nam(mtmp));
         return 0;
-    } else if ((cptr.ldI32o(mtmp, $monst_ispriest) & 1) | 0 && cptr.ld1s(in_rooms(cptr.ldI16o(mtmp, $monst_mx), cptr.ldI16o(mtmp, $monst_my), NHC.TEMPLE))) {
+    } else if ((cptr.ldI32o(mtmp, $monst_ispriest) & 1) | 0 &&
+            cptr.ld1s(in_rooms(
+                cptr.ldI16o(mtmp, $monst_mx),
+                cptr.ldI16o(mtmp, $monst_my),
+                NHC.TEMPLE
+            ))) {
         if (give_feedback)
             pline(__s_s_resists_your_magic, Monnam(mtmp));
         return 0;
-    } else if (((cptr.ldI32o(u, $you_uswallow) & 1) | 0 && (cptr.eq(cptr.ldPtro(u, $you_ustuck), (mtmp)))) && noteleport_level(mtmp)) {
+    } else if (((cptr.ldI32o(u, $you_uswallow) & 1) | 0 &&
+        (cptr.eq(cptr.ldPtro(u, $you_ustuck), (mtmp)))) &&
+            noteleport_level(mtmp)) {
         if (give_feedback)
             You(__s_are_no_longer_inside_s, mon_nam(mtmp));
         unstuck(mtmp);
         if (!rloc(mtmp, NHM.RLOC_MSG))
             m_into_limbo(mtmp);
-    } else if ((is_rider(cptr.ldPtro(mtmp, $monst_data)) || ((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 67108864n) != 0n)) && rn2_at(__s_teleport_c, 2285, __s_u_teleport_mon, 13) && enexto(cc, cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.ldPtro(mtmp, $monst_data))) {
+    } else if ((is_rider(cptr.ldPtro(mtmp, $monst_data)) ||
+        ((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags1) & 67108864n) != 0n)) &&
+            rn2(13) &&
+            enexto(cc, cptr.ldI16(u), cptr.ldI16o(u, $you_uy), cptr.ldPtro(mtmp, $monst_data))) {
         rloc_to(mtmp, cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y));
     } else {
         if (!rloc(mtmp, NHM.RLOC_MSG))
@@ -2301,7 +3331,12 @@ export function u_teleport_mon(mtmp, give_feedback) {
 // 3 bindings: 0 rebound+refilled, 1 rebound, 2 refilled.
 // S/P are supplied by js/generated/__reset.js so this module needs no new import.
 let __c2js_rs = null;
-export function __captureState(S) { __c2js_rs = [S(__static_dotelecmd_tports), S(__static_level_tele_get_there_from), S(__static_tele_trap_in_tele_trap)]; }
+export function __captureState(S) {
+    __c2js_rs = [
+        S(__static_dotelecmd_tports), S(__static_level_tele_get_there_from),
+        S(__static_tele_trap_in_tele_trap)
+    ];
+}
 export function __resetState(P) {
     const r = __c2js_rs;
     if (r === null) throw new Error("teleport.js: __resetState before __captureState");

@@ -8,29 +8,24 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { nhgetch } from './input.js';
 import { pline, update_topl, flush_screen } from './display.js';
 import { exercise } from './attrib.js';
-import { objects, mksobj, SPE_BLANK_PAPER, SPE_NOVEL } from './mkobj.js';
+import { objects, mksobj, weight, SPE_BLANK_PAPER, SPE_NOVEL } from './mkobj.js';
 import { SPELL_META } from './u_init.js';
-import { A_WIS, A_INT, P_UNSKILLED, P_EXPERT, P_SKILLED, P_BASIC,
-         STRAT_WAITFORU, STRAT_APPEARMSG } from './const.js';
-import { p_skill_of } from './enhance.js';
+import { A_WIS, A_INT, A_STR, P_UNSKILLED, P_EXPERT, P_SKILLED, P_BASIC,
+         STRAT_WAITFORU, STRAT_APPEARMSG, EXT_ENCUMBER } from './const.js';
+import { p_skill_of, use_skill } from './enhance.js';
+import { monster_by_pmidx } from './makemon.js';
+import { msound_of, mflags1_of, M1_NOHEAD } from './monflags_data.js';
 import { discover_object } from './o_init.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 
 // C ref: objclass.h obj_material_types — is_metallic() = material in [IRON,MITHRIL].
 const MAT_IRON = 11, MAT_MITHRIL = 17;
 // C ref: include/objects.h — otyp constants used by percent_success / weight.
-const OTYP_ROBE = 143, OTYP_QUARTERSTAFF = 79, OTYP_SMALL_SHIELD = 150;
+const OTYP_ROBE = 143, OTYP_QUARTERSTAFF = 79;
+// C ref: include/objects.h — objects[SMALL_SHIELD].oc_weight.
+const SMALL_SHIELD_OC_WEIGHT = 30;
 // C ref: spell.c — metal armor casting penalties.
 const UARMHBON = 4, UARMGBON = 6, UARMFBON = 2;
-// C ref: include/objects.h — base oc_weight of the shield types (for the
-// "shield heavier than a small shield" casting penalty).  Light shields (small
-// shield, *-resistance, elven) are <= 40; only metal/large shields are heavier.
-const SHIELD_OC_WEIGHT = {
-    150: 30, 151: 30, 152: 30, // small / drain-res / shock-res shields
-    153: 40,                   // elven shield
-    154: 50, 155: 50,          // Uruk-hai / orcish shields
-    156: 100,                  // large shield
-    157: 100, 158: 50,         // dwarvish roundshield / shield of reflection
-};
 
 function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
 function is_metallic_obj(o) {
@@ -52,6 +47,8 @@ export function spelltypemnemonic(otyp) {
 export const MAXSPELL = 25; // C ref: spell.h.
 export const NO_SPELL = 0;
 export const KEEN = 20000; // C ref: spell.c — full spell retention.
+// C ref: include/monsters.h MS_* — the msound values can_chant() rejects.
+const MS_SILENT = 0, MS_BUZZ = 10, MS_BURBLE = 16;
 
 const ECMD_OK = 0;
 const ECMD_FAIL = 0;
@@ -62,6 +59,7 @@ const ECMD_TIME = 1;
 // the applySpell() switch and drops/misapplies the "healing spell" caster bonus
 // in percent_success().
 const SPE_HEALING = 374;
+const SPE_DETECT_FOOD = 383;
 const SPE_CURE_BLINDNESS = 378;
 const SPE_CURE_SICKNESS = 386;
 const SPE_EXTRA_HEALING = 391;
@@ -143,6 +141,47 @@ export async function docast() {
     return ECMD_FAIL;
 }
 
+// C ref: mon.c can_chant(&youmonst) — a Strangled hero, or one polymorphed into
+// a voiceless/headless form, can't chant an incantation.
+function can_chant_hero() {
+    const u = game.u;
+    if (u?.uprops?.Strangled) return false;
+    // u.umonnum holds the ROLE number, not a permonst index, unless the hero is
+    // polymorphed (polyself.js sets Upolyd when umonnum != umonster) — reading
+    // the mons[] tables with a role number names an unrelated monster.  Every
+    // role's player monster is voiced and has a head, so an unpolymorphed hero
+    // can always chant.
+    if (!u?.Upolyd) return true;
+    const ptr = monster_by_pmidx(u.umonnum);
+    if (!ptr) return true;
+    const ms = msound_of(ptr);
+    if (ms === MS_SILENT || ms === MS_BUZZ || ms === MS_BURBLE) return false;
+    if ((mflags1_of(ptr) & M1_NOHEAD) !== 0) return false;   /* !has_head */
+    return true;
+}
+
+// C ref: spell.c rejectcasting() — the pre-selection rejections, checked BEFORE
+// the spell menu opens.  Was missing entirely: a stunned hero pressing 'Z' got
+// our spell menu (C prints one line and takes no turn), so every keystroke the
+// player spent picking a spell fell through to rhack() as a phantom command.
+async function rejectcasting() {
+    const u = game.u;
+    // C ref: youprop.h Stunned = HStun || EStun.
+    if ((u?.uprops?.Stun || 0) > 0 || !!u?.Stunned) {
+        await pline('You are too impaired to cast a spell.');
+        return true;
+    }
+    if (!can_chant_hero()) {
+        await pline('You are unable to chant the incantation.');
+        return true;
+    }
+    // C's third arm is `!freehand() && !(uwep && uwep->otyp == QUARTERSTAFF)`
+    // -> "Your arms are not free to cast!".  freehand() is
+    // (!uwep || !welded(uwep) || ...) and invent.js welded() is a constant
+    // FALSE in this port, so the arm cannot fire; restore it with welded().
+    return false;
+}
+
 // C ref: spell.c getspell — choose a spell to cast via the popup menu.
 async function getspell() {
     const nspells = num_spells();
@@ -150,6 +189,7 @@ async function getspell() {
         await pline("You don't know any spells right now.");
         return -1;
     }
+    if (await rejectcasting()) return -1;
     const { spell_menu } = await import('./invent.js');
     const meta = {
         name: (otyp) => objects[otyp]?.name || '',
@@ -195,10 +235,6 @@ function isqrt(val) {
     return r;
 }
 
-// C ref: include/objclass.h weight macros — base oc_weight of one shield.
-function shield_oc_weight(o) {
-    return SHIELD_OC_WEIGHT[o?.otyp] ?? OTYP_SMALL_SHIELD; // default light
-}
 
 // C ref: spell.c percent_success(spell) — combine intrinsic ability
 // (splcaster, from role spell stats + worn armor) with learned ability
@@ -260,7 +296,11 @@ function percent_success(spell) {
     if (chance < 0) chance = 0;
     if (chance > 120) chance = 120;
 
-    if (uarms && shield_oc_weight(uarms) > 30 /*small shield oc_weight*/) {
+    // C: weight(uarms) > objects[SMALL_SHIELD].oc_weight (30).  This used to
+    // consult a 9-entry otyp->weight table whose `?? OTYP_SMALL_SHIELD` default
+    // returned the OTYP 150 as a weight, so any shield outside the table was
+    // silently treated as heavy; mkobj.js carries the real per-otyp oc_weight.
+    if (uarms && weight(uarms) > SMALL_SHIELD_OC_WEIGHT) {
         if (otyp === sp.spec) chance = Math.trunc(chance / 2);
         else chance = Math.trunc(chance / 4);
     }
@@ -271,34 +311,165 @@ function percent_success(spell) {
     return chance;
 }
 
-// C ref: spell.c spelleffects_check — pre-cast validation; consumes the cast
-// roll rnd(100).  Returns { fail:true, code } if the cast should not proceed.
-function spelleffects_check(spell) {
+// C ref: spell.c spell_backfire(spell) — what casting a forgotten spell does.
+// One rn2(10) and no other draw; the confusion/stun timers it sets steer later
+// moves (confdir()'s rn2(8) redirect), so this is not cosmetic.
+function spell_backfire(spell) {
+    const u = game.u;
+    if (!u.uprops) u.uprops = {};
+    const duration = (spellev(spell) + 1) * 3;           /* 6..24 */
+    const old_stun = u.uprops.Stun || 0, old_conf = u.uprops.Confusion || 0;
+    const set_conf = (t) => { u.uprops.Confusion = t; u.uconf = t > 0; };
+    const set_stun = (t) => { u.uprops.Stun = t; };
+    switch (rn2(10)) {
+    case 0: case 1: case 2: case 3:
+        set_conf(old_conf + duration);                                   /* 40% */
+        break;
+    case 4: case 5: case 6:
+        set_conf(old_conf + Math.trunc(2 * duration / 3));               /* 30% */
+        set_stun(old_stun + Math.trunc(duration / 3));
+        break;
+    case 7: case 8:
+        set_stun(old_stun + Math.trunc(2 * duration / 3));               /* 20% */
+        set_conf(old_conf + Math.trunc(duration / 3));
+        break;
+    default:
+        set_stun(old_stun + duration);                                   /* 10% */
+        break;
+    }
+    game.botl = true;
+}
+
+// C ref: hack.c check_capacity(str) — near_capacity() >= EXT_ENCUMBER.
+async function check_capacity_spell(str) {
+    const { near_capacity } = await import('./invent.js');
+    if (near_capacity() >= EXT_ENCUMBER) {
+        await pline(str);
+        return true;
+    }
+    return false;
+}
+
+// C ref: eat.c morehungry(num) — u.uhunger -= num; newuhs(TRUE).  newuhs can
+// draw (the FAINTING rn2(20 - uhunger/10)), so skipping the hunger cost of
+// casting shifts the whole later stream, not just the botl hunger word.
+async function morehungry_spell(num) {
+    const u = game.u;
+    u.uhunger = (u.uhunger ?? 900) - num;
+    const { newuhs } = await import('./eat.js');
+    await newuhs(true);
+}
+
+// C ref: spell.c spelleffects_check — pre-cast validation.  Returns
+// { fail:true, code } if the cast should not proceed.  Every branch below used
+// to be summarised away as "doesn't trip on the covered starts"; the
+// insufficient-energy one in particular fires for any level-1 caster whose
+// spell costs more Pw than they have, where C draws NO rnd(100) at all.
+async function spelleffects_check(spell) {
+    const u = game.u;
+    const confused = !!(u?.uconf || (u?.uprops?.Confusion || 0) > 0);
+    if (spell < 0 || await rejectcasting())
+        return { fail: true, code: ECMD_OK, energy: 0 };
+
     const energy = SPELL_LEV_PW(spellev(spell));
-    // Hunger/strength/capacity/amulet gates don't trip on the covered starts.
-    const chance = percent_success(spell);
-    const confused = !!game.u?.Confusion;
-    if (confused || (rnd(100) > chance)) {
+
+    if (spellknow(spell) <= 0) {
+        await pline('Your knowledge of this spell is twisted.');
+        await pline('It invokes nightmarish images in your mind...');
+        spell_backfire(spell);
+        u.uen -= rnd(energy);
+        if (u.uen < 0) u.uen = 0;
+        game.botl = true;
         return { fail: true, code: ECMD_TIME, energy };
+    } else if (spellknow(spell) <= KEEN / 200) {
+        await pline('You strain to recall the spell.');
+    } else if (spellknow(spell) <= KEEN / 40) {
+        await pline('You have difficulty remembering the spell.');
+    } else if (spellknow(spell) <= KEEN / 20) {
+        await pline('Your knowledge of this spell is growing faint.');
+    } else if (spellknow(spell) <= KEEN / 10) {
+        await pline('Your recall of this spell is gradually fading.');
+    }
+
+    if ((u.uhunger ?? 900) <= 10 && spellid(spell) !== SPE_DETECT_FOOD) {
+        await pline('You are too hungry to cast that spell.');
+        return { fail: true, code: ECMD_OK, energy };
+    } else if (ACURR(A_STR) < 4 && spellid(spell) !== SPE_RESTORE_ABILITY) {
+        await pline('You lack the strength to cast spells.');
+        return { fail: true, code: ECMD_OK, energy };
+    } else if (await check_capacity_spell(
+                   'Your concentration falters while carrying so much stuff.')) {
+        return { fail: true, code: ECMD_TIME, energy };
+    }
+
+    let res = ECMD_OK;
+    // Carrying the Amulet drains energy on every cast attempt (rnd(2*energy)),
+    // and the attempt costs a turn even when the drain leaves too little Pw.
+    if (u.uhave?.amulet && u.uen >= energy) {
+        await pline('You feel the amulet draining your energy away.');
+        u.uen -= rnd(2 * energy);
+        if (u.uen < 0) u.uen = 0;
+        game.botl = true;
+        res = ECMD_TIME;
+    }
+
+    if (energy > u.uen) {
+        // C leaves *res alone here: ECMD_OK unless the amulet already charged
+        // a turn.  Crucially it returns BEFORE the rnd(100) cast roll.
+        const suffix = (u.uen < u.uenmax) ? ''
+            : (energy > (u.uenpeak ?? u.uenmax)) ? ' yet' : ' anymore';
+        await pline(`You don't have enough energy to cast that spell${suffix}.`);
+        return { fail: true, code: res, energy };
+    }
+    if (spellid(spell) !== SPE_DETECT_FOOD) {
+        let hungr = energy * 2;
+        // Wizards with high Int think their way through a spell more cheaply.
+        const intell = (game.urole?.mnum === PM_WIZARD) ? ACURR(A_INT) : 10;
+        if (intell >= 17) hungr = 0;
+        else if (intell === 16) hungr = Math.trunc(hungr / 4);
+        else if (intell === 15) hungr = Math.trunc(hungr / 2);
+        // don't put the player (quite) into fainting from casting
+        if (hungr > (u.uhunger ?? 900) - 3) hungr = (u.uhunger ?? 900) - 3;
+        await morehungry_spell(hungr);
+    }
+
+    const chance = percent_success(spell);
+    if (confused || (rnd(100) > chance)) {
+        return { fail: true, code: ECMD_TIME, energy, failedcast: true };
     }
     return { fail: false, code: ECMD_OK, energy };
 }
 
-// C ref: spell.c spelleffects — apply a cast spell.
+// C ref: spell.c spelleffects — apply a cast spell.  Exported so cmd.js's
+// #turn fallback (a non-Priest/Knight who has the turn-undead spell in the
+// spellbook casts it) can reach it; extcmd-handlers.js already probed for
+// `spelleffects_ext` but nothing ever exported it, so that arm was dead.
+export async function spelleffects_ext(spell_otyp) {
+    return await spelleffects(spell_otyp, false, false);
+}
 async function spelleffects(spell_otyp, atme, force) {
-    const spell = spell_idx(spell_otyp);
-    const chk = spelleffects_check(spell);
-    if (chk.fail) {
-        // update_topl(), not pline(): the monsters that move during this same
-        // turn write their own messages onto the SAME topline, and C's You()
-        // appends ("You fail to cast the spell correctly.  The newt misses!").
-        // pline() replaces the line, so only the monster's half survived.
-        await update_topl('You fail to cast the spell correctly.');
-        game.u.uen -= (chk.energy / 2) | 0;
-        return chk.code;
+    const spell = force ? spell_otyp : spell_idx(spell_otyp);
+    let energy = 0;
+    if (!force) {
+        const chk = await spelleffects_check(spell);
+        if (chk.fail) {
+            if (chk.failedcast) {
+                // update_topl(), not pline(): the monsters that move during this
+                // same turn write their own messages onto the SAME topline, and
+                // C's You() appends ("You fail to cast the spell correctly.  The
+                // newt misses!").  pline() replaces the line, so only the
+                // monster's half survived.
+                await update_topl('You fail to cast the spell correctly.');
+                game.u.uen -= Math.trunc(chk.energy / 2);
+                game.botl = true;
+            }
+            return chk.code;
+        }
+        energy = chk.energy;
     }
 
-    game.u.uen -= chk.energy;
+    game.u.uen -= energy;
+    game.botl = true;
     exercise(A_WIS, true);
 
     // C: pseudo = mksobj(spellid, FALSE, FALSE) — init=FALSE skips the class
@@ -307,7 +478,20 @@ async function spelleffects(spell_otyp, atme, force) {
     pseudo.blessed = 0;
     pseudo.cursed = 0;
     pseudo.quan = 20;
-    return await applySpell(spell_otyp, atme, pseudo);
+    // C ref: spell.c spelleffects:1600 — the healing family is treated as a
+    // blessed potion at Skilled+, which is what makes a healing spell also cure
+    // blindness and raise max HP.
+    const role_skill = p_skill_of(spell_skilltype(pseudo.otyp));
+    if ((pseudo.otyp === SPE_HEALING || pseudo.otyp === SPE_EXTRA_HEALING)
+        && role_skill >= P_SKILLED)
+        pseudo.blessed = 1;
+    const rc = await applySpell(spell_otyp, atme, pseudo);
+    // C ref: spell.c spelleffects tail — "gain skill for successful cast".
+    // use_skill() bumps P_ADVANCE and can print "You feel more confident in
+    // your <school> skills." (and changes what #enhance offers); omitting it
+    // left every caster's spell skills frozen at their chargen value.
+    if (!force) use_skill(spell_skilltype(pseudo.otyp), spellev(spell));
+    return rc;
 }
 
 function spell_idx(otyp) {
@@ -322,17 +506,22 @@ async function applySpell(otyp, atme, pseudo) {
     switch (otyp) {
     case SPE_HEALING:
     case SPE_EXTRA_HEALING: {
-        let self = atme;
-        if (!atme) {
+        const u = game.u;
+        if (atme) {
+            u.dx = u.dy = u.dz = 0;
+        } else {
             const dir = await getdir();
             if (dir === null) {
-                // getdir cancelled: C re-uses previous direction.
-                self = false;
+                // C ref: spell.c spelleffects:1487 — a cancelled getdir does NOT
+                // abort; C announces the release and falls through with the
+                // PREVIOUS u.dx/u.dy/u.dz still in place (commonly the last
+                // movement direction, which zaps the beam that way).
+                await pline('The magical energy is released!');
             } else {
-                self = (dir.dx === 0 && dir.dy === 0 && dir.dz === 0);
+                u.dx = dir.dx; u.dy = dir.dy; u.dz = dir.dz;
             }
         }
-        if (self) {
+        if (!u.dx && !u.dy && !u.dz) {
             // C: zapyourself -> healup(d(6, EXTRA?8:4), 0, FALSE, blessed||EXTRA)
             const extra = (otyp === SPE_EXTRA_HEALING);
             healup(d(6, extra ? 8 : 4), 0, false, (pseudo?.blessed || extra));
@@ -487,6 +676,35 @@ async function cursed_book(bp) {
     return false;
 }
 
+// C ref: spell.c confused_book(spellbook) — a confused reader tears the book up
+// (1 in 3) or just rereads a line.  Was CALLED by learn_step() but never
+// defined in this file, so becoming confused mid-study threw a ReferenceError.
+async function confused_book(spellbook) {
+    const { useup, trycall } = await import('./invent.js');
+    if (!rn2(3) && spellbook.otyp !== SPE_BOOK_OF_THE_DEAD) {
+        spellbook.in_use = true;             /* in case called from learn() */
+        await pline('Being confused you have difficulties in controlling your actions.');
+        await pline('You accidentally tear the spellbook to pieces.');
+        trycall(spellbook);
+        useup(spellbook);
+        return true;
+    }
+    await pline(`You find yourself reading the ${spellbook === game.context?.spbook?.book ? 'next' : 'first'} line over and over again.`);
+    return false;
+}
+
+// C ref: youprop.h Sleep_resistance (HSleep_resistance || ESleep_resistance).
+function Sleep_resistance_hero() {
+    const u = game.u;
+    return ((u?.uprops?.HSleep_resistance ?? u?.uprops?.Sleep_resistance ?? 0) > 0);
+}
+// C ref: objnam.c objdescr_is(obj, descr) — compare the SHUFFLED appearance.
+function objdescr_is_spell(obj, descr) {
+    const idx = objects[obj?.otyp]?.oc_descr_idx;
+    if (idx == null) return false;
+    return DESCR_BY_OTYP[idx] === descr;
+}
+
 // C ref: spell.c study_book — read a spellbook to memorize its spell.  Ports the
 // "already know it quite well" refresh branch and the uncursed/cursed "too hard
 // to comprehend" branch (rnd(20) difficulty roll -> cursed_book -> crumble
@@ -499,8 +717,45 @@ export async function study_book(spellbook) {
     const { y_n } = await import('./display.js');
     const u = game.u;
     const booktype = spellbook.otyp;
-    const confused = !!(u?.uconf || u?.HConfusion);
+    const confused = !!(u?.uconf || u?.HConfusion || (u?.uprops?.Confusion || 0) > 0);
     let too_hard = false;
+
+    // C ref: spell.c study_book():474 — "attempting to read a dull book may make
+    // the hero fall asleep".  This runs BEFORE everything else and always draws
+    // rnd(25) for a book whose (shuffled) appearance is "dull", so omitting it
+    // desynchronises the stream for every read of that appearance, asleep or not.
+    if (!confused && !Sleep_resistance_hero() && objdescr_is_spell(spellbook, 'dull')) {
+        const oc_level = spell_level_of(booktype);
+        let dullbook = rnd(25) - ACURR(A_WIS);
+        const sb0 = game.context?.spbook;
+        if (sb0?.delay && spellbook === sb0.book)
+            dullbook -= rnd(oc_level);
+        if (dullbook > 0) {
+            // eyecount(youmonst) is 2 for every playable form -> plural.
+            await pline("This book is so dull that you can't keep your eyes open.");
+            dullbook += rnd(2 * oc_level);
+            // fall_asleep(-dullbook, TRUE): stop_occupation + nomul.
+            game._study_occupation = false;
+            nomul(-dullbook);
+            game.multi_reason = 'sleeping';
+            game.nomovemsg = 'You wake up.';
+            return 1;
+        }
+    }
+
+    // C ref: spell.c study_book():495 — resuming an interrupted study skips the
+    // whole difficulty/too-hard block (and its rnd(20)); it just re-arms the
+    // occupation with the delay already accumulated.
+    const sb_prev = game.context?.spbook;
+    if (sb_prev?.delay && !confused && spellbook === sb_prev.book
+        && booktype !== SPE_BLANK_PAPER) {
+        await pline(`You continue your efforts to ${booktype === SPE_NOVEL ? 'read the novel' : 'memorize the spell'}.`);
+        sb_prev.book = spellbook;
+        sb_prev.o_id = spellbook.o_id;
+        game._study_occupation = true;
+        game.occupation_txt = 'studying';
+        return 1;
+    }
 
     if (booktype === SPE_BLANK_PAPER) {
         await pline('This spellbook is all blank.');
@@ -576,6 +831,19 @@ export async function study_book(spellbook) {
         } else {
             spellbook.in_use = false;
         }
+        return 1;
+    }
+    // C ref: spell.c study_book():619 — a CONFUSED reader never memorizes: the
+    // book either gets torn to pieces (rn2(3)) or the hero rereads one line, and
+    // the study delay elapses either way.  This arm was missing entirely, so a
+    // confused hero learned the spell for free.
+    if (confused) {
+        if (!(await confused_book(spellbook)))
+            spellbook.in_use = false;
+        nomul(delay);
+        game.multi_reason = 'reading a book';
+        game.nomovemsg = 'You can move again.';
+        if (game.context?.spbook) game.context.spbook.delay = 0;
         return 1;
     }
     // C ref: spell.c study_book tail — the SUCCESS path.  Used to be a stub that

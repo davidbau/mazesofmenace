@@ -27,9 +27,14 @@ import { rn2, rnd } from './rng.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, POTION_CLASS, WEAPON_CLASS,
     COIN_CLASS, SCROLL_CLASS, MAGIC_MARKER, SCR_BLANK_PAPER, SPE_BLANK_PAPER,
-    POT_OIL, objects,
+    SPE_BOOK_OF_THE_DEAD, POT_OIL, objects,
 } from './mkobj.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
+import {
+    SDOOR, SCORR, DOOR, CORR, D_LOCKED, D_CLOSED,
+    IS_AIR, IS_ROOM, IS_WALL, IS_DOOR,
+} from './const.js';
+import { surface as surface_word } from './dungeon.js';
 
 // C ref: include/onames.h — STETHOSCOPE object type index (mkobj.js OBJECTS
 // row [237, "STETHOSCOPE", ...]).  Defined locally to avoid threading a new
@@ -43,6 +48,7 @@ const BRASS_LANTERN = 226, OIL_LAMP = 227, MAGIC_LAMP = 228;
 const GEM_CLASS = 9, FOOD_CLASS = 7;
 // Applicable foods (mkobj.js OBJECT_DATA indices).
 const EUCALYPTUS_LEAF = 276, LUMP_OF_ROYAL_JELLY_OTYP = 286, CREAM_PIE = 287;
+const BANANA = 281;       // apply_ok DOWNPLAYs a banana while hallucinating
 const BULLWHIP_OTYP = 82; // mkobj.js OBJECT_DATA otyp column
 const STATUE_OTYP = 476;  // mkobj.js STATUE
 // skills.h P_SKILL levels used by calc_pole_range().
@@ -131,8 +137,21 @@ function apply_ok(obj) {
         || obj.otyp === LUMP_OF_ROYAL_JELLY_OTYP)
         return SUGGEST;
 
-    // is_graystone(obj) -> SUGGEST (touchstone rubbing); the wished sessions
-    // here carry none, so it falls through to EXCLUDE_SELECTABLE.
+    // C ref: apply.c:4190 — a hallucinating hero can "phone" a banana.
+    if (obj.otyp === BANANA && !!game.u?.uhallu) return DOWNPLAY;
+
+    // C ref: apply.c:4193 — a gray stone is SUGGESTed unless the hero KNOWS it
+    // isn't a touchstone.  Omitting the whole branch dropped every carried
+    // luckstone/loadstone/flint/touchstone out of the apply prompt's
+    // suggested-letter list, which is printed verbatim on the topline.
+    if (is_graystone_otyp(obj.otyp)) {
+        if (!obj.dknown) return SUGGEST;
+        if (obj.otyp !== TOUCHSTONE
+            && (objects[TOUCHSTONE]?.oc_name_known
+                || objects[obj.otyp]?.oc_name_known))
+            return EXCLUDE_SELECTABLE;
+        return SUGGEST;
+    }
 
     return EXCLUDE_SELECTABLE;
 }
@@ -240,10 +259,48 @@ async function mstatusline(mtmp, update_topl) {
         `Status of ${name} (${align}, ${sz}):  Level ${mlev}  HP ${mhp}(${mhpmax})  AC ${mac}${info}.`);
 }
 
+// C ref: prop.h Deaf — the hero can't hear.  Never set for these heroes but
+// the stethoscope's first guard reads it.
+function Deaf() {
+    const u = game.u;
+    return ((u?.uprops?.Deaf || 0) > 0) || ((u?.uprops?.HDeaf || 0) > 0);
+}
+
+// C ref: wield.c will_weld(optr) — `optr->cursed && (erodeable_wep(optr) ||
+// otyp == TIN_OPENER)`, where erodeable_wep is WEAPON_CLASS || is_weptool ||
+// HEAVY_IRON_BALL || IRON_CHAIN.  js/invent.js keeps a private welded() that is
+// stubbed to `return false`, so the real predicate lives here.
+// mkobj.js OBJECT_DATA indices (verified against the loaded table, not guessed).
+const HEAVY_IRON_BALL = 477, IRON_CHAIN = 478, TIN_OPENER = 239;
+function welded_uwep() {
+    const o = game.uwep;
+    if (!o || !o.cursed) return false;
+    return o.oclass === WEAPON_CLASS
+        || !!(_invent && _invent.is_weptool && _invent.is_weptool(o))
+        || o.otyp === HEAVY_IRON_BALL || o.otyp === IRON_CHAIN
+        || o.otyp === TIN_OPENER;
+}
+function freehand() {
+    if (!welded_uwep()) return true;
+    return !_invent.bimanual(game.uwep) && !(game.uarms && game.uarms.cursed);
+}
+
 // C ref: apply.c use_stethoscope() — read a direction, then report on the
 // hero (self), an adjacent monster (mstatusline, with the mimic/hidden reveal),
 // or the empty square ("You hear nothing special.").
-async function use_stethoscope(_obj) {
+async function use_stethoscope(obj) {
+    // C ref: apply.c:326 — three guards BEFORE getdir(), each returning ECMD_OK
+    // WITHOUT reading a direction key.  Getting that wrong is a keystroke-count
+    // bug, not a message bug: the direction key would be handed to the command
+    // parser instead.  (nohands() needs polymorph, which is unported.)
+    if (Deaf()) {
+        await _display.pline("You can't hear anything!");
+        return ECMD_OK;
+    }
+    if (!freehand()) {
+        await _display.pline('You have no free hand.');
+        return ECMD_OK;
+    }
     // getdir(): read a direction.  '.'/'s' => self (dx=dy=dz=0).
     const dir = await _cmd.getdir();
     if (!dir) return ECMD_CANCEL; // ESC
@@ -251,20 +308,46 @@ async function use_stethoscope(_obj) {
     // res: first use of this turn is free (ECMD_OK), a repeat costs the turn.
     game.context = game.context || {};
     const seq = hero_seq();
-    const res = (seq === game.context.stethoscope_seq) ? ECMD_TIME : ECMD_OK;
+    const res = { v: (seq === game.context.stethoscope_seq) ? ECMD_TIME : ECMD_OK };
     game.context.stethoscope_seq = seq;
 
-    // dz != 0 (up/down): "the floor seems healthy enough" etc. — not exercised.
-    // Self (dx==dy==0): ustatusline().
-    if (!dir.dx && !dir.dy && !dir.dz) {
-        await ustatusline();
-        return res;
+    const { update_topl } = await import('./display.js');
+    const { m_at, newsym, map_invisible } = await import('./display.js');
+    const u = game.u;
+
+    // C ref: apply.c:361 — the up/down arm.  Aiming '>' at the floor probes
+    // whatever corpse or statue lies there; '<' only reports that the hero
+    // can't reach the ceiling.  The old port ignored dz entirely, so `a<tool><`
+    // fell through to the adjacent-square scan (rx,ry == the hero's own square)
+    // and printed "You hear nothing special.".
+    if (dir.dz) {
+        if (dir.dz < 0) {
+            await update_topl(`You can't reach the ${ceiling_word(u.ux, u.uy)}.`);
+        } else if (!await its_dead(u.ux, u.uy, res)) {
+            await update_topl(`The ${surface_word(u.ux, u.uy)} seems healthy enough.`);
+        }
+        return res.v;
     }
 
-    const { update_topl } = await import('./display.js');
-    const { m_at, newsym } = await import('./display.js');
-    const u = game.u;
-    const rx = u.ux + dir.dx, ry = u.uy + dir.dy;
+    // C ref: apply.c:381 — a CURSED stethoscope has a 1-in-2 chance of
+    // reporting the hero's own heartbeat instead, and that rn2(2) is drawn on
+    // every use of a cursed one.  It was missing entirely.
+    if (obj?.cursed && !rn2(2)) {
+        await update_topl('You hear your heart beat.');
+        return res.v;
+    }
+
+    // C ref: apply.c:386 confdir(FALSE) — a confused or stunned hero probes a
+    // RANDOM direction, and that rn2 is drawn before the square is chosen.
+    const d = confdir_apply(dir);
+
+    // Self (dx==dy==0): ustatusline().
+    if (!d.dx && !d.dy) {
+        await ustatusline();
+        return res.v;
+    }
+
+    const rx = u.ux + d.dx, ry = u.uy + d.dy;
 
     // C ref: apply.c:407 — isok() bounds check.  Off-map -> "faint typing noise".
     if (rx < 0 || rx > 79 || ry < 0 || ry > 21) {
@@ -275,9 +358,11 @@ async function use_stethoscope(_obj) {
     const mtmp = m_at(rx, ry);
     if (mtmp) {
         const mnm = x_monnam(mtmp, /*ARTICLE_A*/ 2, null, 0, false);
+        const spotted = _uhitm.canspotmon(mtmp);
         if (mtmp.mundetected) {
-            // A buried/hiding monster the hero can't otherwise spot.
-            await update_topl(`There is ${mnm} hidden there.`);
+            // C ref: apply.c:418 — the "hidden there" line is gated on
+            // !canspotmon; the mundetected clear + newsym are not.
+            if (!spotted) await update_topl(`There is ${mnm} hidden there.`);
             mtmp.mundetected = 0;
             newsym(mtmp.mx, mtmp.my);
         } else if (mtmp.m_ap_type && mtmp.mappearance != null) {
@@ -288,15 +373,139 @@ async function use_stethoscope(_obj) {
             await seemimic(mtmp);
             await update_topl(
                 `${use_plural ? 'Those' : 'That'} ${what} ${use_plural ? 'are' : 'is'} really ${mnm}.`);
+        } else if (!spotted) {
+            // C ref: apply.c:461 — `flags.verbose && !canspotmon(mtmp)`.
+            // verbose is on by default.
+            await update_topl(`There is ${mnm} there.`);
         }
         await mstatusline(mtmp, update_topl);
-        return res;
+        // C ref: apply.c:466 — an unspottable monster leaves an 'I' mark.
+        if (!spotted) { try { map_invisible(rx, ry); } catch (_e) { /* ignore */ } }
+        return res.v;
     }
 
-    // No monster, no secret door/corridor reached in the owned sessions:
-    // C ref: apply.c:468 — You("hear nothing special.").
-    await update_topl('You hear nothing special.');
-    return res;
+    // C ref: apply.c:470 — an 'I' mark with nothing under it is cleared.
+    if (unmap_invisible_at(rx, ry))
+        await update_topl('The invisible monster must have moved.');
+
+    // C ref: apply.c:474 — the stethoscope FINDS secret doors and passages.
+    // "a hollow sound.  This must be a secret door!", and the square really
+    // becomes a DOOR/CORR: skipping this left a permanently hidden door on a
+    // map C had already revealed.
+    const lev = game.level?.at(rx, ry);
+    if (lev && lev.typ === SDOOR) {
+        await update_topl('You hear a hollow sound.  This must be a secret door!');
+        cvt_sdoor_to_door(lev);
+        _vision.recalc_block_point(rx, ry);
+        newsym(rx, ry);
+        return res.v;
+    }
+    if (lev && lev.typ === SCORR) {
+        await update_topl('You hear a hollow sound.  This must be a secret passage!');
+        lev.typ = CORR; lev.flags = 0;
+        _vision.unblock_point(rx, ry);
+        newsym(rx, ry);
+        return res.v;
+    }
+
+    // C ref: apply.c:483 — a corpse/statue on the target square gets its own
+    // report; only an otherwise empty square says "nothing special".
+    if (!await its_dead(rx, ry, res))
+        await update_topl('You hear nothing special.');
+    return res.v;
+}
+
+// C ref: detect.c cvt_sdoor_to_door(lev) — an exposed secret door becomes an
+// ordinary closed (or still-locked) door.  WM_MASK is the low wall-mode bits an
+// SDOOR keeps in doormask.  js/dig.js and js/read.js each keep their own copy
+// of this same six-line C function.
+const WM_MASK = 0x07;
+function cvt_sdoor_to_door(lev) {
+    let newmask = (lev.doormask || 0) & ~WM_MASK;
+    if (!(newmask & D_LOCKED)) newmask |= D_CLOSED;
+    lev.typ = DOOR;
+    lev.doormask = newmask;
+}
+
+// C ref: display.c unmap_invisible(x, y) — clear a remembered "sensed but
+// unseen monster" mark.  Returns TRUE if there was one.
+function unmap_invisible_at(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!game.level?.flags?.hero_memory || !loc?.invisMon) return false;
+    _display.unmap_object(x, y);
+    _display.newsym(x, y);
+    return true;
+}
+
+// C ref: cmd.c confdir(FALSE) — while confused (1-in-5) or stunned, the probed
+// direction is replaced by a random one.  dirs_ord/xdir/ydir mirror cmd.js's
+// private copies of the same C tables.
+const DIRS_ORD_A = [0, 2, 4, 6, 1, 3, 5, 7];
+const XDIR_A = [-1, -1, 0, 1, 1, 1, 0, -1];
+const YDIR_A = [0, -1, -1, -1, 0, 1, 1, 1];
+const PM_GRID_BUG_A = 116;
+function confdir_apply(dir) {
+    const u = game.u;
+    const stunned = (u?.uprops?.Stun || 0) > 0 || !!u?.Stunned;
+    const confused = (u?.uprops?.Confusion || 0) > 0;
+    const impaired = stunned || (confused && !rn2(5));
+    if (!impaired) return dir;
+    const kmax = (u?.umonnum === PM_GRID_BUG_A) ? 4 : 8;
+    const k = DIRS_ORD_A[rn2(kmax)];
+    return { dx: XDIR_A[k], dy: YDIR_A[k], dz: 0 };
+}
+
+// C ref: trap.c ceiling(x, y) — "ceiling" over a room/wall/door, "rock cavern"
+// elsewhere, "sky" on an air level (js/trap.js keeps the same private copy).
+function ceiling_word(x, y) {
+    const typ = game.level?.at(x, y)?.typ ?? 0;
+    if (IS_AIR(typ)) return 'sky';
+    if (IS_ROOM(typ) || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR)
+        return 'ceiling';
+    return 'rock cavern';
+}
+
+// C ref: apply.c its_dead(rx, ry, resp) — report on a corpse or statue at
+// (rx, ry).  Returns TRUE when it said something.  The Hallucination arm's
+// obj_to_glyph(corpse, rn2) roll and the Blind map_object() are not modelled;
+// the two ordinary arms (which is what a non-hallucinating hero always gets)
+// are exact.  This whole function was missing, so `a<stethoscope>>` on a
+// corpse pile printed "You hear nothing special." and never set ECMD_TIME.
+async function its_dead(rx, ry, resp) {
+    await loadDeps();
+    const CORPSE_OTYP = 265; // mkobj.js OBJECT_DATA — corpse
+    const objs = [];
+    for (const o of (game.level?.objects || []))
+        if (o && o.where === 'floor' && o.ox === rx && o.oy === ry) objs.push(o);
+    let corpse = objs.find((o) => o.otyp === CORPSE_OTYP) || null;
+    let statue = objs.find((o) => o.otyp === STATUE_OTYP) || null;
+    if (corpse && statue) {
+        // "when both are present, pick the uppermost one" — objs is already in
+        // nexthere order, so whichever comes first wins.
+        if (objs.indexOf(statue) < objs.indexOf(corpse)) corpse = null;
+        else statue = null;
+    }
+    const more_corpses = corpse
+        && objs.some((o) => o !== corpse && o.otyp === CORPSE_OTYP);
+    if (!corpse && !statue) return false;
+
+    const here = (game.u?.ux === rx && game.u?.uy === ry);
+    if (corpse) {
+        const one = ((corpse.quan || 1) === 1) && !more_corpses;
+        // Role_if(PM_HEALER)'s REVIVE_MON timer check needs the timer subsystem.
+        await _display.update_topl(
+            `You determine that ${one ? (here ? 'this' : 'that')
+                                     : (here ? 'these' : 'those')}`
+            + ` unfortunate being${one ? '' : 's'} ${one ? 'is' : 'are'} dead.`);
+        return true;
+    }
+    // C ref: apply.c:281 — the statue is named by its petrified MONSTER
+    // (obj_pmname), not by the object type.  Blind / type_is_pname (a unique
+    // monster, which takes no article) are not modelled.
+    const { monster_by_pmidx } = await import('./makemon.js');
+    const what = monster_by_pmidx(statue.corpsenm)?.name || 'statue';
+    await _display.update_topl(`The ${what} is in fine health for a statue.`);
+    return true;
 }
 
 // C ref: mon.c seemimic(mtmp) — a discovered mimic drops its object/furniture
@@ -364,10 +573,70 @@ async function dowrite(_pen) {
         exercise(A_WIS, false); // -> rn2(2)
         return ECMD_TIME;
     }
-    // Blank-paper write (cost computation, "What type of scroll..." getlin,
-    // success roll) is not exercised by the owned sessions.  Treat as a no-op
-    // turn so the PRNG isn't advanced incorrectly.
+    _invent.makeknown(SCR_BLANK_PAPER);
+
+    // C ref: write.c:69 — getlin("What type of <typeword> do you want to
+    // write?").  This is a BLOCKING line prompt: it eats every keystroke up to
+    // the newline.  Skipping it (as this used to) handed all of them to the
+    // command parser, which then ran that many phantom commands.
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    let namebuf = await hooked_tty_getlin(
+        `What type of ${typeword} do you want to write?`, null);
+    game._pending_message = '';
+    if (namebuf == null || namebuf === '\x1b' || namebuf === '') return ECMD_TIME;
+    let nm = namebuf.replace(/\s+/g, ' ').replace(/^ | $/g, '');
+    if (!nm) return ECMD_TIME;
+    if (/^scroll /i.test(nm)) nm = nm.slice(7);
+    else if (/^spellbook /i.test(nm)) nm = nm.slice(10);
+    if (/^of /i.test(nm)) nm = nm.slice(3);
+    nm = nm.replace(/ armour/i, ' armor ').replace(/\s+/g, ' ').replace(/ $/, '');
+
+    // C ref: write.c:98 — scan this object class's contiguous otyp range for a
+    // name or appearance match, then a second pass over user-assigned names
+    // (whose rn2(++deferralchance) tie-break is a real draw, but only once the
+    // hero has #named a type).
+    const eq = (a, b) => a != null && b != null && a.toLowerCase() === b.toLowerCase();
+    let found = -1, real = 0, deferred = 0, deferralchance = 0;
+    const inClass = [];
+    for (let i = 0; i < objects.length; i++)
+        if (objects[i] && objects[i].oclass === paper.oclass) inClass.push(i);
+    for (const i of inClass) {
+        const ocl = objects[i];
+        if (!ocl.name) continue;
+        if (eq(ocl.name, nm)) {
+            if (ocl.oc_name_known || paper.oclass === SPBOOK_CLASS) { found = i; break; }
+            real = deferred = i;
+            break;
+        }
+        if (eq(apply_obj_descr(i), nm)) { found = i; break; }
+    }
+    if (found < 0) {
+        for (const i of inClass) {
+            const ocl = objects[i];
+            if (ocl.oc_uname && eq(ocl.oc_uname, nm)
+                && !(real && ocl.oc_name_known)
+                && !rn2(++deferralchance))
+                deferred = i;
+        }
+        if (deferred) found = deferred;
+    }
+    if (found < 0) {
+        await _display.pline(`There is no such ${typeword}!`);
+        return ECMD_TIME;
+    }
+    // A real match runs mksobj + cost() + rn1(basecost/2, basecost/2) + an rnl()
+    // success roll; none of that is ported, so stop here rather than invent a
+    // stream C does not draw.
     return ECMD_TIME;
+}
+
+// C ref: objclass.h OBJ_DESCR(objects[i]) — the (shuffled) appearance word.
+// objnam.js keeps the same accessor but does not export it.
+function apply_obj_descr(otyp) {
+    const ocl = objects[otyp];
+    if (!ocl) return null;
+    const idx = ocl.oc_descr_idx != null ? ocl.oc_descr_idx : otyp;
+    return DESCR_BY_OTYP[idx] ?? null;
 }
 
 // C ref: apply.c doapply() — the #apply ('a') command.  Returns an ECMD_* code.
@@ -378,14 +647,14 @@ export async function doapply() {
     const obj = await _invent.getobj('use or apply', apply_ok);
     if (!obj) return ECMD_CANCEL;
 
-    // Wands (break), spellbooks (flip through) and coins (flip) take dedicated
-    // paths; none are applied in the owned sessions that reach here.  Decline
-    // without consuming RNG (no turn) rather than mis-handle their streams.
-    if (obj.oclass === WAND_CLASS || obj.oclass === SPBOOK_CLASS
-        || obj.oclass === COIN_CLASS) {
-        await _display.pline('You cannot apply that here.');
-        return ECMD_OK;
-    }
+    // C ref apply.c:4232-4240 — three class-level dispatches BEFORE the otyp
+    // switch.  "You cannot apply that here." is not a NetHack string: printing
+    // it put a fabricated topline on screen and, worse, swallowed the
+    // confirmation / --More-- keystrokes that C's own handlers consume, so the
+    // rest of the session read one keystroke ahead of C.
+    if (obj.oclass === WAND_CLASS) return await do_break_wand(obj);
+    if (obj.oclass === SPBOOK_CLASS) return await flip_through_book(obj);
+    if (obj.oclass === COIN_CLASS) return await flip_coin(obj);
 
     if (obj.otyp === STETHOSCOPE) {
         return await use_stethoscope(obj);
@@ -410,10 +679,126 @@ export async function doapply() {
         return r ? ECMD_TIME : ECMD_OK;
     }
 
+    // C ref apply.c:4400 default: — a polearm strikes at a distance, a
+    // pick/axe digs.  Both are SUGGESTed by apply_ok(), so both are ordinary
+    // picks at the "use or apply" prompt (a Knight's lance is invlet 'b', an
+    // Archeologist's/dwarf's pick-axe is a starting item).
+    if (_invent.is_pole(obj)) return await use_pole(obj, false);
+    // use_pick_axe() lives in dig.c and this port has no dig occupation, so a
+    // pick/axe still falls through to the yafm below — but C would instead
+    // prompt "In what direction do you want to dig?" and consume that key.
+    if (_invent.is_pick(obj) || _invent.is_axe(obj)) {
+        await _display.pline("Sorry, I don't know how to use that.");
+        return ECMD_OK;
+    }
+
     // Any other tool isn't exercised; mirror C's "I don't know how to use that"
-    // without a turn cost.
+    // (C returns ECMD_FAIL here, which like ECMD_OK costs no turn).
     await _display.pline("Sorry, I don't know how to use that.");
     return ECMD_OK;
+}
+
+// C ref: apply.c flip_through_book(obj) — applying a spellbook.  Always costs
+// the turn.  makeknown(SPE_BLANK_PAPER) on the blank arm is a real discovery
+// (it changes later inventory/discoveries text), not just a message.
+async function flip_through_book(obj) {
+    await loadDeps();
+    const hallu = !!game.u?.uhallu;
+    const blind = (game.u?.blinded || 0) > 0 || !!game.ublindf;
+    // C ref: objnam.c thesimpleoname(obj) — "the " + minimal_xname(), which
+    // respects identification (an unknown book stays "the spellbook").
+    // invent.js's xname() calls observe_object() as a side effect, which C's
+    // does not, so use the observation-free accessor.
+    await _display.pline(
+        `You flip through the pages of the ${_invent.cxname_singular(obj)}.`);
+    if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+        // Deaf is never set for these heroes.
+        await _display.pline(`You hear the pages make an unpleasant ${
+            hallu ? 'chuckling' : 'rustling'} sound.`);
+    } else if (blind) {
+        await _display.pline(`The pages feel ${
+            hallu ? 'freshly picked' : 'rough and dry'}.`);
+    } else if (obj.otyp === SPE_BLANK_PAPER) {
+        await _display.pline(`This spellbook ${
+            hallu ? "doesn't have much of a plot"
+                  : 'has nothing written in it'}.`);
+        _invent.makeknown(obj.otyp);
+    } else if (hallu) {
+        await _display.pline('You enjoy the animated initials.');
+    } else if (obj.otyp === SPE_NOVEL) {
+        await _display.pline('This looks like it might be interesting to read.');
+    } else {
+        // C ref: apply.c:4510 fadeness[] indexed by min(spestudied,
+        // MAX_SPELL_STUDY); MAX_SPELL_STUDY is 4 (spell.h).
+        const fadeness = ['fresh', 'slightly faded', 'very faded',
+                          'extremely faded', 'barely visible'];
+        const findx = Math.min(obj.spestudied || 0, 4);
+        await _display.pline(`The${objects[obj.otyp]?.oc_magic ? ' magical' : ''
+            } ink in this spellbook is ${fadeness[findx]}.`);
+    }
+    return ECMD_TIME;
+}
+
+// C ref: apply.c flip_coin(obj) — the coin-flipping easter egg.  Draws
+// rn2(ACURR(A_DEX)) when Dex is below 10, then rn2(2) for heads/tails (or
+// rn2(100) while hallucinating).  Always ECMD_TIME.
+async function flip_coin(obj) {
+    await loadDeps();
+    const { acurr_eff } = await import('./attrib.js');
+    const A_DEX = 3; // attrib.h — [Str,Int,Wis,Dex,Con,Cha]
+    const dex = acurr_eff(A_DEX);
+    await _display.pline(`You flip a ${_invent.cxname_singular(obj)}.`);
+    let lose_coin = false;
+    // Underwater is never true here.  Glib/Fumbling are the other slip causes.
+    const slippery = ((game.u?.Glib || 0) > 0) || ((game.u?.uprops?.Glib || 0) > 0)
+        || ((game.u?.uprops?.Fumbling || 0) > 0);
+    if (slippery || (dex < 10 && !rn2(dex))) {
+        await _display.pline(`It slips between your ${
+            game.uarmg ? 'gloves' : 'fingers'}.`);
+        lose_coin = true;
+    }
+    if (lose_coin) {
+        // splitobj(otmp, 1) + dropx(otmp): dropping is not modelled here, so
+        // the coin stays in the pack.  The message and the turn are right.
+        return ECMD_TIME;
+    }
+    if (game.u?.uhallu) {
+        await _display.pline(rn2(100) ? 'Wow, a double header!'
+                             : 'The coin miraculously lands on its edge!');
+    } else {
+        await _display.pline(`It comes up ${rn2(2) ? 'heads' : 'tails'}.`);
+    }
+    return ECMD_TIME;
+}
+
+// C ref: apply.c do_break_wand(obj) — applying a wand breaks it.  The zap
+// effects (bhitm/bhito over the 3x3 area, explosion, shop damage) are a whole
+// unported subsystem, but the guards and the y/n confirmation in front of them
+// are NOT: C blocks on "Are you really sure you want to break <wand>?" and
+// consumes that keystroke.  Answering 'n' is fully faithful (ECMD_OK, no RNG);
+// answering 'y' prints the break line and stops before the effects.
+async function do_break_wand(obj) {
+    await loadDeps();
+    const { acurr_eff } = await import('./attrib.js');
+    const A_STR = 0; // attrib.h — [Str,Int,Wis,Dex,Con,Cha]
+    // C: objdescr_is(obj, "balsa") || objdescr_is(obj, "glass") — compares the
+    // SHUFFLED appearance, so it must go through oc_descr_idx.
+    const descr = apply_obj_descr(obj.otyp) || '';
+    const is_fragile = /balsa|glass/.test(descr);
+    if (acurr_eff(A_STR) < (is_fragile ? 5 : 10)) {
+        await _display.pline(`You don't have the strength to break your ${
+            _invent.cxname_singular(obj)}!`);
+        return ECMD_OK;
+    }
+    const ans = await _display.y_n(
+        `Are you really sure you want to break your ${_invent.cxname_singular(obj)}?`);
+    if (ans !== 'y') return ECMD_OK;
+    await _display.pline(
+        `Raising your ${_invent.cxname_singular(obj)} high above your head,`
+                         + ` you ${is_fragile ? 'snap' : 'break'} it in two!`);
+    // zappable()/the per-otyp effect switch is unported; stop here rather than
+    // invent an RNG stream C does not draw.
+    return ECMD_TIME;
 }
 
 // C ref: apply.c:3567 use_cream_pie(obj) — the hero immerses their face in a
@@ -693,7 +1078,16 @@ export async function use_pole(obj, autohit) {
     const u = game.u;
 
     if (obj !== game.uwep) {
-        // C: wield_tool() then re-queue doapply; dofire only calls this with uwep.
+        // C ref: apply.c:3443 — an unwielded polearm is wielded first
+        // ("You now wield a lance."), then doapply is re-queued on the canned
+        // command stack so the second pass takes the obj == uwep branch.
+        // dofire() only ever calls this with uwep, so before doapply()
+        // dispatched here this arm was dead code that returned silently.
+        if (await _invent.wield_tool(obj, 'swing')) {
+            // The cmdq re-run is not modelled (dorub() makes the same
+            // simplification); the wield itself costs the turn.
+            return ECMD_TIME;
+        }
         return ECMD_OK;
     }
     const { min_range, max_range } = calc_pole_range();
@@ -707,7 +1101,22 @@ export async function use_pole(obj, autohit) {
         && distu_sq(hitm.mx, hitm.my) >= min_range) {
         cc.x = hitm.mx; cc.y = hitm.my;
     }
-    // The !autohit getpos() prompt is not reachable from dofire().
+    if (!autohit) {
+        // C ref: apply.c:3463 — getpos_sethilite(display_polearm_positions,
+        // get_valid_polearm_position) then getpos(&cc, TRUE, "the spot to
+        // hit").  Without this the targeting keystrokes fell through to the
+        // command parser and ran phantom turns.  The getpos_sethilite() part
+        // (which moves the FIRST frame's cursor onto the last hilited cell,
+        // the way hack.js jump_hilite_first_cursor() does for #jump) is still
+        // missing, so frame 1's cursor sits on the hero.
+        const { getpos } = await import('./hack.js');
+        const picked = await getpos('the spot to hit', cc.x, cc.y,
+                                    (x, y) => valid_polearm_position(
+                                        x, y, min_range, max_range),
+                                    /*force=*/true);
+        if (!picked) return ECMD_CANCEL; // ESC
+        cc.x = picked.x; cc.y = picked.y;
+    }
 
     const d = distu_sq(cc.x, cc.y);
     if (d > max_range) {

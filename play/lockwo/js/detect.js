@@ -5,10 +5,11 @@
 
 import { game } from './gstate.js';
 import { pline, newsym, terrain_background_glyph, show_glyph_cell,
-         object_glyph, vobj_at, trap_glyph } from './display.js';
+         object_glyph, vobj_at, trap_glyph, engraving_glyph } from './display.js';
+import { engr_at } from './engrave.js';
 import { couldsee } from './vision.js';
 import { exercise } from './attrib.js';
-import { COLNO, ROWNO, BOLT_LIM, SDOOR, SCORR, DOOR, CORR, A_WIS,
+import { COLNO, ROWNO, BOLT_LIM, SDOOR, SCORR, DOOR, CORR, A_WIS, IS_FURNITURE,
          STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
 import { BOULDER, COIN_CLASS, GOLD_PIECE, objects } from './mkobj.js';
 import { NO_COLOR, CLR_WHITE } from './terminal.js';
@@ -111,7 +112,26 @@ function show_map_spot(x, y) {
     if (lev.typ === SCORR)
         lev.typ = CORR;
 
-    const bg = terrain_background_glyph(lev, x, y);
+    // C ref: detect.c show_map_spot — "force the real background, then if it's
+    // not furniture and there's a known trap there, display the trap, else if
+    // there was an object shown there, redisplay the object.  So during mapping,
+    // furniture takes precedence over traps, which take precedence over objects,
+    // opposite to how normal vision behaves."
+    let bg = terrain_background_glyph(lev, x, y);
+    if (!IS_FURNITURE(lev.typ)) {
+        const t = (game.level?.traps || []).find((tr) => tr.tx === x && tr.ty === y);
+        const ep = engr_at(x, y);
+        if (t && t.tseen) {
+            bg = trap_glyph(t);
+        } else if (ep) {
+            ep.erevealed = 1;                     /* map_engraving(ep, 1) */
+            bg = engraving_glyph(lev);
+        }
+        // C's third arm restores a previously-shown trap/object glyph via
+        // glyph_is_trap(oldglyph)/glyph_is_object(oldglyph); this port's
+        // remembered_glyph carries no glyph-kind tag, so it is left out rather
+        // than guessed at.
+    }
     // Remember the background so the cell shows even out of sight (matches the
     // dim "magic-mapped" rendering once the hero looks away).
     lev.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, mapped: true };

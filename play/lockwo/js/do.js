@@ -1005,10 +1005,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // at the very END of the arrival (after every message above and after
     // check_special_room(FALSE)).  Maybe_Half_Phys is the identity here.
     if (do_fall_dmg) losehp_do(d(Math.max(dist, 1), 6));
-    // NOT ported: the trailing `(void) pickup(1)` (cmd.js pickup_after_move()),
-    // which announces / autopicks objects on the arrival square.  See the
-    // deferred list — it needs the arrival square's object list to be
-    // C-faithful first, which it is not on levels reached by teleport.
+    // MEASURED NEGATIVE, do not re-add here: C's do.c:1814 `if (Punished)
+    // placebc();` belongs EARLIER in goto_level (before obj_delivery()/
+    // losedogs()/run_timers()), so the arrival square's nexthere order is C's.
+    // Adding it at this tail costs seed4500 4 steps (1585/1586/1797/1798) for 2
+    // gained.  Port it at the right position instead.
+    // C ref: do.c:1996 goto_level()'s last statement, `(void) pickup(1)`.  It
+    // was left unported; the resulting missing "Things that are here:" window
+    // dumps the acknowledging ' ' into rhack() ("Unknown command ' '.") on
+    // every arrival that lands on objects.
+    {
+        const { pickup_after_move } = await import('./cmd.js');
+        await pickup_after_move(u.ux, u.uy);
+    }
 }
 
 // ── familiar_level_msg (C ref: do.c familiar_level_msg) ──
@@ -1378,8 +1387,10 @@ export async function level_tele(readLevel) {
         // Controlled level teleport: prompt for a destination.
         let trycnt = 0;
         let cancelled = false;
+        // C ref: teleport.c:1194 — qbuf is declared OUTSIDE the do-while and the
+        // hint is Strcat'd once, so passes 3..10 keep the long prompt.
+        let qbuf = 'To what level do you want to teleport?';
         for (;;) {
-            let qbuf = 'To what level do you want to teleport?';
             // C: on the second and later passes the prompt gains a usage hint.
             if (++trycnt === 2)
                 qbuf += wizard ? ' [type a number, name, or ? for a menu]'
@@ -1414,6 +1425,22 @@ export async function level_tele(readLevel) {
                 break;
         }
         if (cancelled) return;
+        // C ref: teleport.c:1251 — `if (newlev == 0) { if (trycnt >= 10) goto
+        // random_levtport; if (ynq("Go to Nowhere. ...") != 'y') return; ... }`.
+        // Falling out of the loop with newlev 0 used to hit the `newlev <= 0`
+        // no-op guard below, silently swallowing the involuntary teleport.
+        if (!gotoRandom && newlev === 0) {
+            if (trycnt >= 10) {
+                gotoRandom = true;
+            } else {
+                const { yn_function } = await import('./extcmd-handlers.js');
+                const c = await yn_function('Go to Nowhere.  Are you sure?', 'ynq', 'q');
+                if (c !== 'y') return;
+                // C then kills the hero (done(DIED) "committed suicide"); not
+                // ported — a declined prompt is the only reachable outcome here.
+                return;
+            }
+        }
         // C ref: teleport.c level_tele() — these two adjustments sit at the end
         // of the controlled branch, so the "*"/confused `goto random_levtport`
         // (which jumps into the involuntary branch) skips them.
@@ -1479,6 +1506,16 @@ export async function run_deferred_lvltport() {
     const pend = game._lvltport_dest;
     if (!pend) return;
     game._lvltport_dest = null;
+    // C ref: do.c:1839 goto_level() -> docrt() -> display.c cls() ->
+    // display_nhwindow(WIN_MESSAGE, FALSE), which pages a still-unacknowledged
+    // top line ("You feel disoriented.") over the DEPARTING level's map.  Our
+    // cls() just drops the pending message; page it here (scoped to this
+    // function — a global cls() change is the pline-vs-update_topl -341 trap).
+    if (game._toplin === 1) {
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
     game._goto_defer_arrival = true;
     await goto_level(pend.newlevel, false, false, false);
     game._goto_defer_arrival = false;

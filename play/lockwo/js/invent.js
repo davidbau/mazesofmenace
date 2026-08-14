@@ -9,7 +9,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl } from './display.js';
+import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot } from './display.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
 import {
     AMULET_CLASS,
@@ -52,6 +52,7 @@ import {
     WAND_CLASS,
     WEAPON_CLASS,
     objects,
+    GemStone,
     weight,
     next_ident,
     place_object as mkobj_place_object,
@@ -90,7 +91,10 @@ import {
     TIMEOUT, isok,
 } from './const.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
-import { costly_spot, addtobill, unpaid_cost, get_cost_of_shop_item } from './shkroom.js';
+import { costly_spot, addtobill, shkname } from './shkroom.js';
+// C ref: objnam.c doname_base():1648 — the shop-price suffix is formatted in
+// objnam.c, on top of shk.c's get_cost_of_shop_item()/unpaid_cost().
+import { price_suffix } from './objnam.js';
 // role.js imports only gstate/rng/const, so this is cycle-safe.
 import { roles, align_gname } from './role.js';
 
@@ -331,6 +335,12 @@ function reset_justpicked(list) { for (const obj of iterateObjects(list)) obj.pi
 // u_init rely on.
 function setworn_slot(obj, mask, getCur, setCur) {
     const old = getCur();
+    // C ref: worn.c:90 setworn() — displacing the occupant of the primary or
+    // secondary weapon slot SILENTLY ends two-weapon combat, before
+    // doswapweapon()'s prinv() lines are built.  (QW_WEP/QW_SWAPWEP are this
+    // file's remapped bits; do not substitute the prop.h values.)
+    if (old && game.u?.twoweap && ((old.owornmask || 0) & (QW_WEP | QW_SWAPWEP)))
+        game.u.twoweap = false;
     if (old) old.owornmask = (old.owornmask || 0) & ~mask;
     setCur(obj);
     if (obj) obj.owornmask = (obj.owornmask || 0) | mask;
@@ -417,13 +427,9 @@ function doname(obj) { observe_object(obj); return simple_obj_name(obj, { empty:
 // " (no charge)" for the shk's own free spot / a no_charge item.  Without this
 // every "You see here ..." line inside a shop dropped the price.
 function doname_with_price(obj) {
-    const base = doname(obj);
-    if (obj.unpaid) return base; // the unpaid suffix already covers it
-    const { cost, nochrg } = get_cost_of_shop_item(obj);
-    if (cost > 0)
-        return `${base} (${nochrg ? 'contents' : 'for sale'}, ${cost} ${currency(cost)})`;
-    if (nochrg > 0) return `${base} (no charge)`;
-    return base;
+    observe_object(obj);
+    return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj)
+        + price_suffix(obj, true);
 }
 // C ref: invent.c look_here():4282 `You("%s here %s.", verb,
 // doname_with_price(otmp))` — the "You see here ..." announcement quotes the
@@ -929,6 +935,10 @@ function inv_weight() {
     game._wc = wc;
     return wt - wc;
 }
+
+// C ref: hack.c cant_squeeze_thru() — `inv_weight() + weight_cap()`, i.e. the
+// raw carried weight (inv_weight() already subtracted the capacity).
+export function carried_weight() { return inv_weight() + weight_cap(); }
 
 // C ref: hack.c calc_capacity(xtra_wt) — encumbrance level for a given extra
 // weight.  Returns UNENCUMBERED when within capacity, else (wt*2/wc)+1 capped
@@ -1449,13 +1459,15 @@ export function objectBaseName(obj) {
         if (un) return `spellbook called ${un}`;
         return `${dn} spellbook`;
     case GEM_CLASS: {
-        const rock = (ocl?.oc_material === 21 /* MINERAL */) ? 'stone' : 'gem';
+        // objects[] rows carry `material`, not `oc_material` (mkobj.js OBJECT_DATA).
+        const rock = (ocl?.material === 21 /* MINERAL */) ? 'stone' : 'gem';
         if (!dknown) return rock;
         if (!nn) {
             if (un) return `${rock} called ${un}`;
             return `${dn} ${rock}`;
         }
-        return actualn; /* GemStone " stone" suffix handled by callers as needed */
+        /* C ref: objnam.c:913-928 — xname_flags appends " stone" for GemStone(). */
+        return GemStone(obj.otyp) ? `${actualn} stone` : actualn;
     }
     case WEAPON_CLASS:
     case TOOL_CLASS:
@@ -1602,6 +1614,10 @@ function simple_obj_name(obj, opts = {}) {
         if (obj.lknown)
             prefix += obj.obroken ? 'broken ' : obj.olocked ? 'locked ' : 'unlocked ';
     }
+    // C ref: objnam.c:1504 doname_base FOOD_CLASS — "partly eaten " is
+    // doname-only (xname_flags adds it only under iflags.partly_eaten_hack), so
+    // it is gated on `buc`, this function's "this is doname" flag.
+    if (buc && obj.oclass === FOOD_CLASS && obj.oeaten) prefix += 'partly eaten ';
     // C ref: objnam.c doname_base RING_CLASS — a known charged ring appends its
     // enchantment as a signed prefix ("%+d "), so "+1 ", "+0 ", "-2 " all show
     // (there is no spe != 0 guard).  Non-charged rings (e.g. see invisible) and
@@ -1764,11 +1780,7 @@ export function distant_doname(obj) {
 // C ref: objnam.c doname_base():1657 — an unpaid inventory item shows what the
 // shopkeeper quoted: " (unpaid, <N> <currency>)".  Always appended (it is not
 // gated on with_price, unlike the "(for sale, ...)" floor form below).
-function unpaid_price_suffix(obj) {
-    if (!obj.unpaid) return '';
-    const quoted = unpaid_cost(obj, false);
-    return ` (unpaid, ${quoted} ${currency(quoted)})`;
-}
+function unpaid_price_suffix(obj) { return price_suffix(obj, false); }
 
 function doname_invent_core(obj) {
     const oc = obj.oclass;
@@ -3205,26 +3217,19 @@ ARMOR_OC_DELAY.set(95, 0);       // dented pot (no named otyp constant here): de
 // by the slot it occupies, returning its WA_* mask (0 if not wearable armor).
 function armor_slot_mask(obj) {
     if (!obj || obj.oclass !== ARMOR_CLASS) return 0;
-    switch (obj.otyp) {
-    case CLOAK_OF_MAGIC_RESISTANCE:
-    case CLOAK_OF_DISPLACEMENT:
-    case ROBE:            return WA_ARMC;
-    case HELMET:
-    case FEDORA:          return WA_ARMH;
-    case SMALL_SHIELD:    return WA_ARMS;
-    case LEATHER_GLOVES:  return WA_ARMG;
-    case HAWAIIAN_SHIRT:  return WA_ARMU;
-    case RING_MAIL:
-    case LEATHER_ARMOR:
-    case LEATHER_JACKET:
-    case SPLINT_MAIL:     return WA_ARM;
-    default:
-        // C ref: objclass.h is_boots() — every boots otyp (163..172) occupies
-        // the footwear slot; everything else here is a body-armor suit.
-        if (obj.otyp >= LOW_BOOTS && obj.otyp <= LEVITATION_BOOTS)
-            return WA_ARMF;
-        return WA_ARM; // generic suit
-    }
+    // C ref: obj.h:280-298 is_shield/is_helmet/is_cloak/is_gloves/is_boots/
+    // is_shirt test objects[].oc_armcat, which this port's table lacks.  These
+    // are objects.h's contiguous blocks (identical to js/objnam.js o_ranges).
+    // The old per-otyp switch enumerated only the armor the public 44 wear, so
+    // every other shield/helm/cloak/glove landed in the body-armor slot.
+    const t = obj.otyp;
+    if (t >= 136 && t <= 137) return WA_ARMU; // HAWAIIAN_SHIRT..T_SHIRT
+    if (t >= 138 && t <= 149) return WA_ARMC; // MUMMY_WRAPPING..CLOAK_OF_DISPLACEMENT
+    if (t >= 89 && t <= 100)  return WA_ARMH; // ELVEN_LEATHER_HELM..HELM_OF_TELEPATHY
+    if (t >= 150 && t <= 158) return WA_ARMS; // SMALL_SHIELD..SHIELD_OF_REFLECTION
+    if (t >= 159 && t <= 162) return WA_ARMG; // LEATHER_GLOVES..GAUNTLETS_OF_DEXTERITY
+    if (t >= 163 && t <= 172) return WA_ARMF; // LOW_BOOTS..LEVITATION_BOOTS
+    return WA_ARM;                            // suits, incl. dragon scales/mail
 }
 
 function worn_slot_get(mask) {
@@ -3811,7 +3816,9 @@ async function on_msg_accessory(obj) {
     // suffix (xname omits it), so use simple_obj_name not doname_invent.  Route
     // through update_topl (C pline) so a same-turn follow-up (blindness or a
     // monster's "It bites!") accumulates on the topline instead of replacing it.
-    await update_topl(`You are now wearing ${simple_obj_name(obj)}.`);
+    // C: `how` is " around your <head>" for a towel and empty otherwise.
+    const how = (obj.otyp === TOWEL) ? ` around your ${body_part(8 /*HEAD*/)}` : '';
+    await update_topl(`You are now wearing ${simple_obj_name(obj, { buc: false })}${how}.`);
 }
 
 // C ref: do_wear.c equip_ok(obj, removing, accessory).  getobj() callback shared
@@ -3974,7 +3981,9 @@ async function accessory_or_armor_on(obj) {
         if (game._allow_inventory_update !== undefined) update_inventory();
         return ECMD_OK;
     }
-    await pline(`You are now wearing ${doname_invent(obj)}.`);
+    // C ref: do_wear.c on_msg() — `an(xname(otmp))`, NOT doname(): xname omits
+    // both the enchantment and the "(being worn)" suffix setworn() just added.
+    await pline(`You are now wearing ${simple_obj_name(obj, { buc: false })}.`);
     if (game._allow_inventory_update !== undefined) update_inventory();
     return ECMD_TIME;
 }
@@ -5305,11 +5314,13 @@ export async function dotravel() {
         // replacing it (both fit inside CO-8).
         game._toplin = 1; // TOPLIN_NEED_MORE
     }
-    // C ref: options.c NHOPTB(verbose, ...) defaults On — getpos() prints the
-    // "(For instructions type a '?')" line unless a session explicitly turns
-    // verbose off (none of these do).
+    // C ref: getpos.c:843 `if (flags.verbose) pline("(For instructions type a
+    // '%s')", ...)`.  This was hardcoded true; seed4500's rc sets !verbose, and
+    // every other getpos() caller already reads the option.
     const cc = await getpos('the desired destination', startx, starty, null,
-                            /*force=*/true, /*verbose=*/true, /*travelMode=*/true);
+                            /*force=*/true,
+                            /*verbose=*/game.flags?.verbose !== false,
+                            /*travelMode=*/true);
     if (!cc) return ECMD_CANCEL; // ESC -> cancelled, no time
     game.iflags = game.iflags || {};
     game.iflags.travelcc = { x: cc.x, y: cc.y };
@@ -5382,12 +5393,424 @@ async function drop(obj) {
 // IS_ALTAR check stub — none of the recorded drop tiles are altars.
 function IS_ALTAR_typ(_u) { return false; }
 
-// C ref: shk.c dopay() — the 'p' command.  Ports the "no shopkeeper here"
-// branch (the hero isn't standing in/next to a shop in these recordings).
-// Returns ECMD_OK (no payment made; no turn elapses).
+// C ref: shk.c menu_pick_pay_items(ibillct, ibill):1668 — the "Pay for which
+// items?" PICK_ANY menu.  The rendered text is what the recorded screens show:
+// one line per augmented-bill entry, "<amt> Zm, <paydoname>" with the amount
+// right-aligned to the widest amount on the bill, under an optional "Used up
+// item(s):"/"Unpaid item(s):" heading.  Marks ibill[i].queuedpay for each pick
+// and returns how many were picked (0 for ESC, matching C's max(n, 0)).
+//
+// This menu is NOT cosmetic: while it is up, its keystrokes belong to it.  A
+// missing menu let 'y'/'W'/<return> fall through to rhack() and run phantom
+// wear/apply commands (the 242-screen seed0002 wall).
+async function menu_pick_pay_items(ibill) {
+    const { paydoname, PartlyUsedUp, PartlyIntact } = await import('./shk.js');
+    const ibillct = ibill.length;
+
+    let largest_amt = 0;
+    for (const b of ibill) if (b.cost > largest_amt) largest_amt = b.cost;
+    const amt_width = String(largest_amt).length;
+
+    // C ref: windows.c add_menu_heading() — ATR_INVERSE unless the game is over.
+    const headAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    // end_menu(win, "Pay for which items?") prepends the prompt + a blank line.
+    const flat = [{ text: 'Pay for which items?', attr: ATR_INVERSE },
+                  { text: '', attr: 0 }];
+    const entries = new Map();          // accelerator -> ibill index
+    let li = 0;
+    const nextLetter = () => (li < 26 ? String.fromCharCode(97 + li++)
+        : String.fromCharCode(65 + (li++ - 26)));
+
+    // The "Used up items" heading shows whenever the (already sorted) bill
+    // leads with a used-up entry, no matter what follows it.
+    if (ibill[0].usedup <= PartlyUsedUp)
+        flat.push({ text: `Used up item${
+            (ibillct > 1 && ibill[1].usedup <= PartlyUsedUp) ? 's' : ''}:`, attr: headAttr });
+    for (let i = 0; i < ibillct; ++i) {
+        if (i > 0 && ibill[i - 1].usedup <= PartlyUsedUp
+            && ibill[i].usedup >= PartlyIntact)
+            flat.push({ text: `Unpaid item${(i < ibillct - 1) ? 's' : ''}:`, attr: headAttr });
+        const otmp = ibill[i].obj;
+        const save_quan = otmp.quan;
+        otmp.quan = ibill[i].quan;      /* in case it's partly used */
+        const p = await paydoname(otmp);
+        otmp.quan = save_quan;
+        const letter = nextLetter();
+        entries.set(letter, i);
+        // C: Snprintf(buf, "%*ld Zm, %s", amt_width, amt, p) — "Zm" is literal
+        // (the shk isn't hallucinating, so currency() would spoil the column
+        // alignment).
+        flat.push({ text: `${String(ibill[i].cost).padStart(amt_width, ' ')} Zm, ${p}`,
+                    attr: 0, letter });
+    }
+
+    const selected = new Set();
+    const draw = () => {
+        const lines = flat.map((ln) => (ln.letter
+            ? { text: `${ln.letter} ${selected.has(ln.letter) ? '+' : '-'} ${ln.text}`, attr: ln.attr }
+            : ln));
+        renderMenuLines(lines, null);
+        game._modal_screen = 'paymenu';
+    };
+
+    let confirmed = false;
+    for (;;) {
+        draw();
+        const c = await nhgetch();
+        const ch = String.fromCharCode(c);
+        if (c === 27) { selected.clear(); confirmed = false; break; }  // ESC
+        if (c === 13 || c === 10 || c === 32) { confirmed = true; break; }
+        if (entries.has(ch)) {
+            if (selected.has(ch)) selected.delete(ch); else selected.add(ch);
+            continue;
+        }
+        // C ref: wintty.c MENU_SELECT_ALL '.' / MENU_UNSELECT_ALL '-' /
+        // MENU_INVERT_ALL '@' on the (single) page.
+        if (ch === '.') { for (const k of entries.keys()) selected.add(k); continue; }
+        if (ch === '-') { selected.clear(); continue; }
+        if (ch === '@') {
+            for (const k of entries.keys())
+                if (selected.has(k)) selected.delete(k); else selected.add(k);
+            continue;
+        }
+        /* any other key: ignored, menu stays up */
+    }
+    delete game._modal_screen;
+    if (!confirmed) return 0;
+    for (const k of selected) ibill[entries.get(k)].queuedpay = true;
+    return selected.size;
+}
+
+// C ref: shk.c buy_container(shkp, indx, ibillct, ibill):2306 — pay for the
+// unpaid contents of a container (and the container itself if unpaid) without
+// itemizing.  Returns 0 == bought, 1 == rejected with a message already given,
+// 2 == rejected, caller gives a generic message.
+async function buy_container(shkp, indx, ibillct, ibill) {
+    const shk = await import('./shk.js');
+    const eshkp = shkp.eshk;
+    const ebillct = eshkp.billct || 0;
+    const container = ibill[indx].obj;
+    const unpaidcontainer = container.unpaid;
+    const totalcost = ibill[indx].cost;
+    const sightunseen = ibill[indx].usedup === shk.UndisclosedContainer
+                        || ibill[indx].usedup === shk.KnownContainer;
+    const boids = [];
+    let buycount = 0;
+
+    if (await shk.insufficient_funds(shkp, container, 0)
+        || await shk.insufficient_funds(shkp, container, totalcost))
+        return 1;
+
+    for (let i = 0; i < ebillct; ++i) {
+        const bp = eshkp.bill[i];
+        const otmp = shk.bp_to_obj(bp);
+        if (!otmp) return 2;
+        if (otmp.where !== OBJ_CONTAINED && !Has_contents(otmp)) continue;
+        let otop = otmp;
+        for (let guard = 0; otop.where === OBJ_CONTAINED && guard < 32; guard++) {
+            const next = otop.ocontainer || container_of(otop);
+            if (!next) break;
+            otop = next;
+        }
+        if (otop !== container) continue;
+        if (otmp.quan < bp.bquan) {
+            // reject_purchase(): the intact portion can't be sold yet.
+            await shk.dopayobj(shkp, bp, otmp, 1, false, true);
+            return 1;
+        }
+        if (bp.bo_id !== container.o_id) boids.push(bp.bo_id);
+    }
+    if (unpaidcontainer) boids.push(container.o_id);
+
+    for (const boid of boids) {
+        let i = 0, bp = null;
+        for (; i < ebillct; ++i) { bp = eshkp.bill[i]; if (bp.bo_id === boid) break; }
+        if (i === ebillct) return 2;
+        const otmp = shk.bp_to_obj(bp);
+        const buy = await shk.dopayobj(shkp, bp, otmp, 1, false, sightunseen);
+        if (buy !== shk.PAY_BUY) continue;
+        ibill[indx].cost -= bp.price * bp.bquan;
+        shk.update_bill((boid === container.o_id) ? indx : -1,
+                        ibillct, ibill, eshkp, bp, otmp);
+        ++buycount;
+    }
+    if (buycount && sightunseen) {
+        // paydoname() would say "your <container>" now that the hero owns it;
+        // C fakes the pre-purchase state to get "a <container> and its
+        // contents" instead.
+        if (unpaidcontainer) { container.unpaid = 1; container.no_charge = 1; }
+        await shk.shk_names_obj(shkp, container, 'bought %s for %ld gold piece%s.%s',
+                                totalcost, '');
+        container.unpaid = 0; container.no_charge = 0;
+    }
+    return buycount ? 0 : 2;
+}
+
+// Find the container holding obj (this port's add_to_container() does not set
+// obj.ocontainer, so the link has to be searched for).
+function container_of(obj) {
+    const scan = (list, depth) => {
+        if (depth > 8) return null;
+        for (const o of (list || [])) {
+            if (!o?.cobj) continue;
+            if (o.cobj.includes(obj)) return o;
+            const r = scan(o.cobj, depth + 1);
+            if (r) return r;
+        }
+        return null;
+    };
+    return scan(inventoryArray(), 0) || scan(game.level?.objects, 0) || null;
+}
+
+// C ref: shk.c pay_billed_items(shkp, ibillct, ibill, stashed_gold, paid_p):2043
+// — choose the payment method (menu for every menustyle but Traditional) and
+// then buy the picked items one at a time for as long as the money lasts.
+// Returns false when the caller must skip the thank-you message.
+async function pay_billed_items(shkp, ibill, stashed_gold, paidRef) {
+    const shk = await import('./shk.js');
+    const eshkp = shkp.eshk;
+    const ibillct = ibill.length;
+
+    const umoney = shk.money_cnt_invent();
+    if (!umoney && !eshkp.credit) {
+        await update_topl(`You ${stashed_gold ? 'seem to ' : ''}have no gold or credit${
+            paidRef.paid ? ' left' : ''}.`);
+        return true;
+    }
+    let bp = eshkp.bill[0];
+    let otmp = shk.bp_to_obj(bp);
+    const ebillct = eshkp.billct;
+    const more_than_one = (ebillct > 1 || (otmp && otmp.quan < bp.bquan)
+                           || ibill[0].usedup === shk.UndisclosedContainer);
+    if ((umoney + (eshkp.credit || 0)) < shk.cheapest_item(ibillct, ibill)) {
+        await update_topl(`You don't have enough gold to buy${
+            more_than_one ? ' any of' : ''} the item${more_than_one ? 's' : ''} ${
+            (ebillct > 1) ? "you've picked" : 'on your bill'}.`);
+        if (stashed_gold) await update_topl('Maybe you have some gold stashed away?');
+        return true;
+    }
+
+    // flags.menu_style defaults to MENU_FULL, so via_menu starts TRUE; the 'm'
+    // prefix (iflags.menu_requested) inverts it, which for a non-Traditional
+    // style is the only way to reach the item-by-item ynq prompts.
+    let via_menu = !game.flags?.menu_traditional;
+    if (game.iflags?.menu_requested) via_menu = !via_menu;
+    let itemize = false, queuedpay = false;
+    do {
+        if (via_menu) {
+            if (!await menu_pick_pay_items(ibill)) return true;
+            queuedpay = true;
+            itemize = false;
+            via_menu = false;               /* reset so that we don't loop */
+        } else {
+            const iprompt = !more_than_one ? 'y'
+                : await y_n('Itemized billing?', 'ynq m\x1b', 'q');
+            if (iprompt === 'q') return true;
+            itemize = (iprompt === 'y');
+            via_menu = (iprompt === 'm');
+        }
+    } while (via_menu);
+
+    // ibill[] holds every used-up entry before every unpaid one, so this single
+    // pass replaces C 5.0's two passes over eshkp->bill_p[].
+    for (let indx = 0; indx < ibillct; ++indx) {
+        if (queuedpay && !ibill[indx].queuedpay) continue;
+
+        otmp = ibill[indx].obj;
+        let buy;
+        if (ibill[indx].usedup >= shk.KnownContainer) {
+            const boxbag_result = await buy_container(shkp, indx, ibillct, ibill);
+            if (boxbag_result === 0) {
+                buy = shk.PAY_BUY;
+            } else {
+                if (boxbag_result === 2)
+                    await shk.verbalize(`You need to remove any unpaid items from that ${
+                        xname(otmp)} and buy them separately.`);
+                buy = shk.PAY_CANT;
+            }
+        } else {
+            const bidx = ibill[indx].bidx;
+            bp = eshkp.bill[bidx];
+            const pass = (ibill[indx].usedup <= shk.PartlyUsedUp) ? 0 : 1;
+            buy = await shk.dopayobj(shkp, bp, otmp, pass, itemize, false);
+            if (buy === shk.PAY_BUY)
+                shk.update_bill(indx, ibillct, ibill, eshkp, bp, otmp);
+        }
+        if (buy === shk.PAY_CANT) return false;
+        if (buy === shk.PAY_BROKE) { paidRef.paid = true; return true; }
+        if (buy === shk.PAY_SKIP) continue;
+        if (buy === shk.PAY_BUY) {
+            paidRef.paid = true;
+            if (itemize || queuedpay) { update_inventory(); await bot(); }
+        }
+    }
+    return true;
+}
+
+// C ref: shk.c dopay():1743 — the 'p' command.  Finds the shopkeeper to pay,
+// settles any robbery debt / use-of-merchandise debit, then runs the itemized
+// bill through pay_billed_items().  ECMD_TIME only when something was paid.
 export async function dopay() {
-    await pline('There appears to be no shopkeeper here to receive your payment.');
-    return ECMD_OK;
+    const shk = await import('./shk.js');
+    const { m_next2u } = await import('./monmove.js');
+    const { canspotmon } = await import('./uhitm.js');
+    const { Blind } = await import('./vision.js');
+    const u = ustate();
+    game.multi = 0;
+
+    // How many shk's there are, how many are in sight, and whether the hero is
+    // in a shop room with one.
+    let sk = 0, seensk = 0, nexttosk = 0;
+    let nxtm = null, resident = null;
+    for (const s of shk.shk_scan(false)) {
+        sk++;
+        if (m_next2u(s)) {
+            /* next to an irate shopkeeper? prioritize that */
+            if (nxtm && shk.ANGRY(nxtm)) continue;
+            nexttosk++;
+            nxtm = s;
+        }
+        if (canspotmon(s)) seensk++;
+        if (shk.inhishop(s) && u.ushops?.[0] === s.eshk.shoproom) resident = s;
+    }
+
+    const blind = Blind();
+    const blind_telepat = !!(u.uprops?.Telepat?.intrinsic || u.uprops?.Telepat?.extrinsic);
+    let shkp = null;
+    if (nxtm && nexttosk === 1) {
+        shkp = nxtm;
+    } else if ((!sk && (!blind || blind_telepat)) || (!blind && !seensk)) {
+        await pline('There appears to be no shopkeeper here to receive your payment.');
+        return ECMD_OK;
+    } else if (!seensk) {
+        await update_topl("You can't see...");
+        return ECMD_OK;
+    } else if (sk === 1 && resident) {
+        /* allow paying at a distance when inside a tended shop */
+        shkp = resident;
+    } else if (seensk === 1) {
+        for (const s of shk.shk_scan(false)) if (canspotmon(s)) { shkp = s; break; }
+        if (shkp !== resident && !m_next2u(shkp)) {
+            await update_topl(`${shk.Shknam(shkp)} is not near enough to receive your payment.`);
+            return ECMD_OK;
+        }
+    } else {
+        // C ref: shk.c:1810 — "Pay whom?" + getpos().  Not ported: no covered
+        // session has two spotted shopkeepers with neither adjacent, and a
+        // wrong getpos() here would eat the following keystrokes.
+        return ECMD_OK;
+    }
+    if (!shkp) return ECMD_OK;
+
+    const eshkp = shkp.eshk;
+    const ltmp = eshkp.robbed || 0;
+    const stashed_gold = shk.hidden_gold(true) > 0;
+    const paidRef = { paid: false };
+
+    /* wake sleeping shk when someone who owes money offers payment */
+    if (ltmp || eshkp.billct || eshkp.debit) await shk.rouse_shk(shkp, true);
+    if (shk.helpless(shkp)) {
+        await shk.shk_napping_msg(shkp);
+        return ECMD_OK;
+    }
+
+    if (shkp !== resident && !shk.ANGRY(shkp)) {
+        await shk.pay_robbed_debt(shkp, ltmp, stashed_gold);
+        return ECMD_TIME;
+    }
+
+    /* ltmp is still eshkp->robbed here */
+    if (!eshkp.billct && !eshkp.debit) {
+        const umoney = shk.money_cnt_invent();
+        if (!ltmp && !shk.ANGRY(shkp)) {
+            await update_topl(`You do not owe ${shkname(shkp)} anything.`);
+            if (!umoney) await update_topl(shk.no_money(stashed_gold));
+        } else if (ltmp) {
+            await update_topl(`${shkname(shkp)} is after blood, not gold!`);
+            if (umoney < ltmp / 2 || (umoney < ltmp && stashed_gold)) {
+                await update_topl(!umoney ? shk.no_money(stashed_gold)
+                                          : shk.not_enough_money(shkp));
+                return ECMD_TIME;
+            }
+            await update_topl(`But since ${shk.noit_mhis(shkp)} shop has been robbed recently,`);
+            await update_topl(`you ${umoney < ltmp ? 'partially ' : ''}compensate ${
+                shkname(shkp)} for ${shk.noit_mhis(shkp)} losses.`);
+            await shk.pay(umoney < ltmp ? umoney : ltmp, shkp);
+            await shk.make_happy_shk(shkp, false);
+        } else {
+            /* angry but not robbed — door broken, attacked, etc. */
+            await update_topl(`${shk.Shknam(shkp)} is after your hide, not your gold!`);
+            if (umoney < 1000) {
+                await update_topl(!umoney ? shk.no_money(stashed_gold)
+                                          : shk.not_enough_money(shkp));
+                return ECMD_TIME;
+            }
+            await update_topl(`You try to appease ${
+                canspotmon(shkp) ? `the angry ${shkname(shkp)}` : shkname(shkp)
+            } by giving ${shk.noit_mhim(shkp)} 1000 gold pieces.`);
+            await shk.pay(1000, shkp);
+            if (eshkp.customer !== game.plname || rn2(3))
+                await shk.make_happy_shk(shkp, false);
+            else
+                await update_topl(`But ${shkname(shkp)} is as angry as ever.`);
+        }
+        return ECMD_TIME;
+    }
+    if (shkp !== resident) return ECMD_OK; /* C: impossible("not to shopkeeper?") */
+
+    /* pay debt, if any, first */
+    if (eshkp.debit) {
+        let dtmp = eshkp.debit;
+        const loan = eshkp.loan || 0;
+        const umoney = shk.money_cnt_invent();
+        let sbuf = `You owe ${shkname(shkp)} ${dtmp} ${currency(dtmp)} `;
+        if (loan)
+            sbuf += (loan === dtmp) ? 'you picked up in the store.'
+                : 'for gold picked up and the use of merchandise.';
+        else
+            sbuf += 'for the use of merchandise.';
+        await update_topl(sbuf);
+        if (umoney + (eshkp.credit || 0) < dtmp) {
+            await update_topl(`But you don't${stashed_gold ? ' seem to' : ''
+                } have enough gold${eshkp.credit ? ' or credit' : ''}.`);
+            return ECMD_TIME;
+        }
+        if ((eshkp.credit || 0) >= dtmp) {
+            eshkp.credit -= dtmp;
+            eshkp.debit = 0;
+            eshkp.loan = 0;
+            await update_topl('Your debt is covered by your credit.');
+        } else if (!eshkp.credit) {
+            await shk.money2mon(shkp, dtmp);
+            eshkp.debit = 0;
+            eshkp.loan = 0;
+            await update_topl('You pay that debt.');
+        } else {
+            dtmp -= eshkp.credit;
+            eshkp.credit = 0;
+            await shk.money2mon(shkp, dtmp);
+            eshkp.debit = 0;
+            eshkp.loan = 0;
+            await update_topl('That debt is partially offset by your credit.');
+            await update_topl('You pay the remainder.');
+        }
+        paidRef.paid = true;
+    }
+
+    /* now check items on bill */
+    let pay_done = true;
+    if (eshkp.billct) {
+        const ibill = shk.make_itemized_bill(shkp);
+        if (ibill.length
+            && !await pay_billed_items(shkp, ibill, stashed_gold, paidRef))
+            pay_done = false;               /* skip thank you message */
+    }
+
+    if (pay_done && !shk.ANGRY(shkp) && paidRef.paid) await shk.shk_thank_you(shkp);
+
+    if (paidRef.paid) update_inventory();
+    if (game.iflags) game.iflags.menu_requested = false;
+    return paidRef.paid ? ECMD_TIME : ECMD_OK;
 }
 
 // C ref: do.c dropx/dropy/dropz — place the freed object on the floor and
@@ -6738,9 +7161,16 @@ async function renderThingsHereMenu(header, itemLines) {
         game._pending_message = '';
         game._toplin = 0;
     }
-    const MENU_OFFX = 41;
     const display = game.nhDisplay;
     const lines = [header, ...itemLines];
+    // The old flat `41` is only right while every line fits: harvesting all 60
+    // "Things that are here:" windows in the public corpus gives offx 41 for
+    // widths 21/27/30 and offx 40 for width 39 ("a very heavy iron ball
+    // (chained to you)").  Note this is NOT stock wintty.c:1914
+    // (max(10, cols-(maxlen+1)-1)), which measured -3 on seed0004 and -2 on
+    // seed0012 — the recorder is a custom "MacOS NetHack 5.0.0" build.
+    const MENU_OFFX = Math.min(41, (display?.cols ?? 80)
+                               - Math.max(...lines.map((l) => l.length)) - 1);
     const moreRow = lines.length;          // row after header + items
     const draw = () => {
         if (!display?.clearScreen) return;

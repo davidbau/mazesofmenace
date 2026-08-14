@@ -444,9 +444,14 @@ function fill_trap_room(croom) {
         const k = t ? t.ttyp : NO_TRAP;
         if (k !== NO_TRAP && lvl <= rnd(4)
             && k !== SQKY_BOARD && k !== RUST_TRAP
-            && !is_pit(k) && (k < HOLE || k === MAGIC_TRAP)
-            && _mktrap_victim)
-            _mktrap_victim(t);
+            && !is_pit(k) && (k < HOLE || k === MAGIC_TRAP)) {
+            // C ref: mklev.c:2146 — a land mine that already killed someone is
+            // treated as detonated: it becomes an ALREADY-SEEN pit, so the cell
+            // renders as `^` from the moment the level is built.  This runs
+            // before mktrap_victim() and is not conditional on it succeeding.
+            if (k === LANDMINE) { t.ttyp = PIT; t.tseen = true; }
+            if (_mktrap_victim) _mktrap_victim(t);
+        }
     }
 }
 
@@ -1028,12 +1033,32 @@ function morguemon() {
 function Inhell_lev() { return In_hell(game.u?.uz); }
 function In_endgame_lev() { return In_endgame(game.u?.uz); }
 
+// C ref: mkroom.c antholemon() — the ant species an ANTHOLE is stocked with.
+// Fixed for the whole level: ((ubirthday % 3) + level_difficulty() + trycnt) % 3
+// with up to 3 tries past an extinct species.  Draws no RNG, but the species it
+// returns feeds makemon(), whose newmonhp/mongets draws depend on it.
+const ANTHOLEMON = ['soldier ant', 'fire ant', 'giant ant'];
+// C ref: u_init.c ubirthday (game-start wall clock, seconds).  shknam.js
+// nameshk() derives the same value and documents why the recording offset is a
+// fixed UTC-4; it is not exported, so the arithmetic is repeated here.
+function ubirthday_seconds() {
+    const dt = String(game.datetime || '');
+    if (!/^\d{14}$/.test(dt)) return 0;
+    const y = +dt.slice(0, 4), mo = +dt.slice(4, 6), d = +dt.slice(6, 8);
+    const h = +dt.slice(8, 10), mi = +dt.slice(10, 12), s = +dt.slice(12, 14);
+    return Math.trunc(Date.UTC(y, mo - 1, d, h, mi, s) / 1000) + 4 * 3600;
+}
+function antholemon() {
+    const indx = (ubirthday_seconds() % 3) + level_difficulty_ext();
+    return monster_by_pmidx(name_to_pmidx(ANTHOLEMON[((indx % 3) + 3) % 3]));
+}
+
 // C ref: mkroom.c fill_zoo(sroom) head — the per-type preamble that runs before
 // the stocking loop.  Returns the {tx,ty} the loop needs (the throne square for
-// COURT, the queen's square for BEEHIVE), or null when this room type is not
-// ported.  COURT's `goto throne_placed` is expressed as an early return from
-// the maze scan.
-function fill_zoo_head(sroom, type) {
+// COURT, the queen's square for BEEHIVE) plus ZOO/LEPREHALL's gold budget.
+// COURT's `goto throne_placed` is expressed as an early return from the maze
+// scan.
+function fill_zoo_head(sroom, type, rmno) {
     const g = game;
     if (type === COURT) {
         // A maze-style level may have an explicitly placed throne; use it and
@@ -1042,7 +1067,7 @@ function fill_zoo_head(sroom, type) {
             for (let tx = sroom.lx; tx <= sroom.hx; tx++)
                 for (let ty = sroom.ly; ty <= sroom.hy; ty++)
                     if (g.level.at(tx, ty)?.typ === THRONE)
-                        return { x: tx, y: ty };
+                        return { x: tx, y: ty, goldlim: 0 };
         }
         // "don't place throne on top of stairs"
         const mm = { x: 0, y: 0 };
@@ -1050,36 +1075,37 @@ function fill_zoo_head(sroom, type) {
         do {
             somexyspace(sroom, mm);
         } while (occupied(mm.x, mm.y) && --i > 0);
-        return { x: mm.x, y: mm.y };
+        return { x: mm.x, y: mm.y, goldlim: 0 };
     }
     if (type === BEEHIVE) {
-        const tx = sroom.lx + Math.trunc((sroom.hx - sroom.lx + 1) / 2);
-        const ty = sroom.ly + Math.trunc((sroom.hy - sroom.ly + 1) / 2);
+        let tx = sroom.lx + Math.trunc((sroom.hx - sroom.lx + 1) / 2);
+        let ty = sroom.ly + Math.trunc((sroom.hy - sroom.ly + 1) / 2);
+        // mkroom.c:305 — an irregular room's arithmetic centre may not belong
+        // to it, so the queen moves to a random space instead (one somexyspace).
         if (sroom.irregular) {
-            // C relocates the queen only when the arithmetic centre falls
-            // outside an irregular room; we have no verified stream through
-            // that path, so leave an irregular beehive alone rather than spend
-            // a somexyspace() draw on a guess.
-            return null;
+            const loc = g.level?.at(tx, ty);
+            if (!loc || loc.roomno !== rmno || loc.edge) {
+                const mm = { x: 0, y: 0 };
+                somexyspace(sroom, mm);
+                tx = mm.x; ty = mm.y;
+            }
         }
-        return { x: tx, y: ty };
+        return { x: tx, y: ty, goldlim: 0 };
     }
-    // MORGUE has no preamble at all — C's switch simply has no case for it, so
-    // the stocking loop starts straight away (tx/ty stay 0 and are only read by
-    // the COURT/BEEHIVE arms).
-    if (type === MORGUE) return { x: 0, y: 0 };
-    // ZOO / LEPREHALL would set goldlim here; BARRACKS / COCKNEST / ANTHOLE
-    // have no preamble either, but each still needs its species picker
-    // (squadmon/antholemon) ported before its stocking loop can be run — see
-    // fill_special_room's default arm.
-    return null;
+    if (type === ZOO || type === LEPREHALL)
+        return { x: 0, y: 0, goldlim: 500 * level_difficulty_ext() };
+    // MORGUE / BARRACKS / COCKNEST / ANTHOLE have no case in C's preamble
+    // switch at all, so the stocking loop starts straight away and tx/ty stay 0
+    // (only the COURT/BEEHIVE arms ever read them).
+    return { x: 0, y: 0, goldlim: 0 };
 }
 
-// C ref: mkroom.c fill_zoo(sroom) — stock a special room.  COURT and BEEHIVE
-// are ported; the remaining types bail out of fill_zoo_head() above rather than
-// emit draws we cannot verify.
+// C ref: mkroom.c fill_zoo(sroom) — stock a special room.  Every type C's
+// fill_special_room() routes here is handled except BARRACKS, which this port
+// keeps in its own fill_zoo_barracks().
 //
-// BEEHIVE consumes NO RNG in the head: tx/ty is the room's arithmetic centre.
+// BEEHIVE consumes NO RNG in the head unless the room is irregular and its
+// arithmetic centre is not its own; otherwise tx/ty is that centre.
 // COURT spends somexyspace() per throne-placement attempt plus
 // mk_zoo_thronemon()'s rnd(level_difficulty()).
 //
@@ -1110,15 +1136,20 @@ function fill_zoo_core(sroom) {
     const type = sroom.rtype;
     const rmno = (g.level?.rooms?.indexOf(sroom) ?? -1) + ROOMOFFSET;
 
-    const centre = fill_zoo_head(sroom, type);
+    const centre = fill_zoo_head(sroom, type, rmno);
     if (!centre) return;
     const tx = centre.x, ty = centre.y;
+    let goldlim = centre.goldlim;
     if (type === COURT)
         mk_zoo_thronemon(tx, ty);
 
     const queen = (type === BEEHIVE) ? monster_by_pmidx(name_to_pmidx('queen bee')) : null;
     const killer = (type === BEEHIVE) ? monster_by_pmidx(name_to_pmidx('killer bee')) : null;
     if (type === BEEHIVE && (!queen || !killer)) return;
+    const leprechaun = (type === LEPREHALL)
+        ? monster_by_pmidx(name_to_pmidx('leprechaun')) : null;
+    const cockatrice = (type === COCKNEST)
+        ? monster_by_pmidx(name_to_pmidx('cockatrice')) : null;
 
     const sh = sroom.fdoor;
     const door = g.level?.doors?.[sh];
@@ -1145,9 +1176,17 @@ function fill_zoo_core(sroom) {
             /* don't place a monster on an explicitly placed throne */
             if (type === COURT && g.level?.at(sx, sy)?.typ === THRONE) continue;
 
+            // C ref: mkroom.c:342-360 — the species ternary chain.  ZOO's arm
+            // is the trailing `(struct permonst *) 0`, i.e. makemon picks a
+            // random monster (rndmonst + its goodpos retry loop).
             const ptr = (type === COURT) ? courtmon()
                 : (type === MORGUE) ? morguemon()
-                    : ((sx === tx && sy === ty) ? queen : killer);
+                    : (type === BEEHIVE)
+                        ? ((sx === tx && sy === ty) ? queen : killer)
+                        : (type === LEPREHALL) ? leprechaun
+                            : (type === COCKNEST) ? cockatrice
+                                : (type === ANTHOLE) ? antholemon()
+                                    : null;
             const mon = makemon(ptr, sx, sy, MM_ASLEEP | MM_NOGRP);
             if (mon) {
                 mon.msleeping = 1;
@@ -1155,6 +1194,23 @@ function fill_zoo_core(sroom) {
                     mon.mpeaceful = false;
                     /* set_malign(mon) — see mk_zoo_thronemon */
                 }
+            }
+            if (type === ZOO || type === LEPREHALL) {
+                // C ref: mkroom.c:365-375 — the gold budget walks down as each
+                // square is paid out.  `i = sq(distval)` squares an ALREADY
+                // squared distance (dist2), so any square more than ~2 away
+                // from the room's first door immediately trips the `i >=
+                // goldlim` clamp down to 5 * level_difficulty().
+                let i;
+                if (sroom.doorct && door) {
+                    const distval = dist2(sx, sy, door.x, door.y);
+                    i = distval * distval;
+                } else {
+                    i = goldlim;
+                }
+                if (i >= goldlim) i = 5 * level_difficulty_ext();
+                goldlim -= i;
+                mkgold(rn1(i, 10), sx, sy);
             }
             if (type === BEEHIVE && !rn2(3))
                 mksobj_at(LUMP_OF_ROYAL_JELLY, sx, sy, true, false);
@@ -1166,6 +1222,18 @@ function fill_zoo_core(sroom) {
                     mksobj_at(rn2(3) ? LARGE_BOX : CHEST, sx, sy, true, false);
                 if (!rn2(5)) make_grave(sx, sy, null);          // mkroom.c:389
             }
+            if (type === COCKNEST && !rn2(3)) {
+                // C ref: mkroom.c:400-408 — a statue of a random monster with
+                // rn2(5) random items stuffed inside it.
+                const sobj = mk_tt_object(STATUE, sx, sy);
+                if (sobj) {
+                    for (let i = rn2(5); i; i--)
+                        add_to_container(sobj, mkobj(RANDOM_CLASS, false));
+                    sobj.owt = weight(sobj);
+                }
+            }
+            if (type === ANTHOLE && !rn2(3))                     // mkroom.c:412
+                mkobj_at(FOOD_CLASS, sx, sy, false);
         }
     }
 
@@ -1316,12 +1384,7 @@ export function fill_special_room(croom) {
         case COCKNEST:
         case LEPREHALL:
         case MORGUE:
-            // C ref: sp_lev.c fill_special_room() -> fill_zoo(croom).  fill_zoo
-            // itself implements COURT and BEEHIVE and returns early for the
-            // rest: ZOO/LEPREHALL/MORGUE/BARRACKS/COCKNEST/ANTHOLE each need
-            // their own species picker (squadmon/morguemon/antholemon) whose
-            // draw counts we cannot verify without a recorded stream that
-            // reaches them, and guessing would consume RNG C does not.
+            // C ref: sp_lev.c fill_special_room() -> fill_zoo(croom).
             fill_zoo(croom);
             break;
         case BARRACKS:
@@ -1330,12 +1393,9 @@ export function fill_special_room(croom) {
             fill_zoo_barracks(croom);
             break;
         default:
-            // The remaining fill_zoo per-square cases (ZOO, LEPREHALL, COCKNEST,
-            // ANTHOLE) are NOT ported: each needs its own species picker
-            // (courtmon/morguemon/antholemon) whose draw counts we cannot verify
-            // without a recorded stream that reaches them, and guessing would
-            // consume RNG C does not.  Leave them no-ops rather than emit wrong
-            // draws.
+            // C ref: sp_lev.c:2758-2773 — the switch has no other cases.
+            // SWAMP/TEMPLE/DELPHI are stocked by their own makers in mklev.c,
+            // not here; they only reach the level-flag tail below.
             break;
         }
     }
@@ -2637,7 +2697,11 @@ export async function makemaz_pri_strt() {
     // des.region(selection.area(00,00,75,19), "lit") — no RNG.
     quest_region_light(0, 0, 75, 19, true);
     // des.region({ region={24,06,33,13}, lit=1, type="temple", filled=2 }) —
-    // room-list bookkeeping only (see header comment); no terrain/RNG effect.
+    // add_room(special=TRUE) draws nothing, but filled=2 (FILL_LVLFLAGS_ONLY)
+    // makes lspo_finalize_level's fill_special_room() loop set
+    // svl.level.flags.has_temple, and THAT steers dosounds(): sounds.c:330 is
+    // `has_temple && !rn2(200)`, one extra draw on EVERY turn spent here.
+    vly_region(24, 6, 33, 13, 1, TEMPLE_RTYPE, 2 /* FILL_LVLFLAGS_ONLY */, false);
     // des.replace_terrain x2 (floor -> tree, both edge columns, chance=10).
     quest_replace_terrain(0, 0, 10, 19, ROOM, TREE, 10);
     quest_replace_terrain(65, 0, 75, 19, ROOM, TREE, 10);
@@ -2824,7 +2888,15 @@ function tower_create_vampire_lady(name, mx, my) {
     if (!mtmp) return null;
     mtmp.female = 1;                                 // "lady" -> female (no RNG)
     if (name) mtmp.mname = name;                     // christen (no RNG)
-    mtmp.mstrategy = (mtmp.mstrategy || 0) | 0x40000000; // STRAT_WAITFORU
+    // KNOWN WRONG, DELIBERATELY LEFT: monst.h:177 STRAT_WAITFORU is 0x20000000
+    // (0x40000000 is STRAT_ARRIVE), and correcting it DOES fix the stream — it
+    // moves seed0360's first RNG divergence from step 263 (three vampire ladies
+    // rolling decide_to_shapeshift's rn2(6) every turn, which C skips) all the
+    // way to step 268.  But step 268 is tower2, which is not ported, so the
+    // corrected prefix feeds a different random level and the session measures
+    // 288 -> 271 screens.  Flip this to STRAT_WAITFORU (imported above) in the
+    // same commit as makemaz_tower2 + makemaz_tower3, never before.
+    mtmp.mstrategy = (mtmp.mstrategy || 0) | 0x40000000;
     // vampshifted (cham is a vampire and current form differs) -> revert.
     if (mtmp.cham === PM_VAMPIRE_LEADER_IDX
         && mtmp.data && mtmp.data.pmidx !== PM_VAMPIRE_LEADER_IDX) {
@@ -3217,6 +3289,50 @@ function bigrm_replace_terrain(fromtyp, totyp, chance = 100) {
 // is the nhlib shim: 1-arg math.random(n) = 1 + rn2(n); 2-arg
 // math.random(a,b) = nh.random(a, b+1-a) = a + rn2(b+1-a).
 function lua_random1(n) { return 1 + rn2(n); }     // math.random(n)
+
+// C ref: bigrm-13.lua `filters[]` — which cells of the 7x3 pillar grid get a
+// pillar.  Lua 5.4 semantics matter in two of them: filter 7's `x/3` is FLOAT
+// division (so only x 0/3/6 can ever equal an integer parity) and filter 8's
+// `//` is floor division.  Only filter 6 draws (one rn2(2) per cell).
+function bigrm13_pillar_filter(idx, x, y) {
+    switch (idx) {
+    case 1: return true;                                   // all pillars
+    case 2: return (x % 2) === 1;                          // 3 vertical lines
+    case 3: return ((x + y) % 2) === 0;                     // checkerboard
+    case 4: return (y % 2) === 1;                          // center row
+    case 5: return (y % 2) === 0;                          // top and bottom
+    case 6: return rn2(2) === 0;                           // random 50%
+    case 7: return ((x / 3) % 2) === (y % 2);              // corners + center
+    default: return Math.floor((x + 1) / 3) === y;         // slanted
+    }
+}
+
+// C ref: bigrm-13.lua `pillar` stamped by des.map({coord={x,y}, map=pillar,
+// contents=function() end}).  lspo_map's explicit-coord/no-croom arm makes
+// (x,y) the map origin outright, and the table form's `lit` defaults to FALSE,
+// so sel_set_ter unlights every stamped cell (des.region relights them after).
+function bigrm13_stamp_pillar(ox, oy) {
+    const rows = [
+        [HWALL, HWALL, HWALL],
+        [VWALL, STONE, VWALL],
+        [HWALL, HWALL, HWALL],
+    ];
+    for (let dy = 0; dy < 3; dy++)
+        for (let dx = 0; dx < 3; dx++) {
+            const x = ox + dx, y = oy + dy;
+            if (!isok(x, y)) continue;
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.flags = 0;
+            loc.horizontal = false;
+            loc.roomno = 0;
+            loc.edge = false;
+            splev_map_mark(x, y);
+            loc.typ = rows[dy][dx];
+            loc.lit = false;
+            if (loc.typ === HWALL) loc.horizontal = true;
+        }
+}
 
 // C ref: a region({...},"lit"/"unlit") with selection.area uses get_location
 // with ANY_LOC for its two corners -> NO RNG.  We just mark the rectangle's
@@ -3885,9 +4001,27 @@ const BIGRM_VARIANTS = {
     13: async () => {
         bigrm_level_init_solidfill();
         bigrm_load_map(BIGRM_MAP_STRINGS[13], false);
-        lua_random1(8);                         // idx = math.random(1,#filters=8)
-        // pillars placed via des.map calls — no extra rng (filter 6 uses
-        // math.random per cell only if idx==6; approximate: idx selection only)
+        // C ref: bigrm-13.lua "Pillars".  idx = math.random(1,#filters) picks
+        // one of eight cell filters; then a 3x3 pillar map is stamped at every
+        // (x,y) of a 7x3 grid the filter accepts, at ABSOLUTE coord
+        // {12+x*9, 4+y*5} (lspo_map's explicit-coord arm sets xstart/ystart to
+        // the coord itself).  Filter 6 is `math.random(0,1)` — one rn2(2) PER
+        // grid cell, 21 draws, and the ONLY filter that costs RNG.
+        const idx = lua_random1(8);             // idx = math.random(1,#filters=8)
+        let stamped = 0;
+        for (let py = 0; py <= 2; py++)
+            for (let px = 0; px <= 6; px++) {
+                if (!bigrm13_pillar_filter(idx, px, py)) continue;
+                bigrm13_stamp_pillar(12 + px * 9, 4 + py * 5);
+                stamped++;
+            }
+        // Each pillar des.map carries a `contents=function() end`, so lspo_map's
+        // tail runs reset_xystart_size().  That is load-bearing: everything
+        // after it (the lit region, both stairs, 15 objects, 6 traps, 28
+        // monsters) is then placed against the FULL level (xsize COLNO-1,
+        // ysize ROWNO) instead of the 75x19 map's own origin, which changes
+        // both the rendered region and the get_location rn2 moduli.
+        if (stamped) reset_xystart_size();
         bigrm_region(0, 0, 75, 18, true);
         await bigrm_common_tail();
     },
@@ -4194,8 +4328,20 @@ const SOKO1_2_MAP =
     '     |..|..|   --|.....|  \n' +
     '     -------     -------  ';
 
-// des.trap() name -> ttyp.  Only the two trap kinds this file uses.
-const SOKO_TRAP_NAME = { 'rolling boulder': ROLLING_BOULDER_TRAP, hole: HOLE };
+// C ref: sp_lev.c:4323 trap_types[] — des.trap() name -> ttyp.  This used to
+// list only the two kinds soko2/soko3 ask for, so soko4's ten `pit` traps became
+// maketrap(x, y, undefined): no RNG either way (which is why the stream stayed
+// aligned) but ttyp undefined, rendering '^' in cyan instead of PIT's black.
+const SOKO_TRAP_NAME = {
+    arrow: ARROW_TRAP, dart: DART_TRAP, 'falling rock': ROCKTRAP,
+    board: SQKY_BOARD, bear: BEAR_TRAP, 'land mine': LANDMINE,
+    'rolling boulder': ROLLING_BOULDER_TRAP, 'sleep gas': SLP_GAS_TRAP,
+    rust: RUST_TRAP, fire: FIRE_TRAP, pit: PIT, 'spiked pit': SPIKED_PIT,
+    hole: HOLE, 'trap door': TRAPDOOR, teleport: TELEP_TRAP,
+    'level teleport': LEVEL_TELEP, 'magic portal': MAGIC_PORTAL, web: WEB,
+    statue: STATUE_TRAP, magic: MAGIC_TRAP, 'anti magic': ANTI_MAGIC,
+    polymorph: POLY_TRAP, 'vibrating square': VIBRATING_SQUARE, random: -1,
+};
 
 // C ref: mklev.c mktrap(num, ..., tm) with an explicit type+coord (skips the
 // type/location RNG that the no-args des.trap() form draws) — maketrap()
@@ -4342,6 +4488,12 @@ function soko_fill_zoo(croom) {
             mkgold(rn1(i, 10), sx, sy);
         }
     }
+    // This function IS the ZOO arm of C's fill_special_room() loop, run inline
+    // at the point lspo_finalize_level() would run it (it needs soko's own
+    // fdoor-as-coord bookkeeping, which the generic path does not have).
+    // Downgrade needfill to FILL_LVLFLAGS_ONLY so the generic fill_special_room
+    // pass that follows only applies has_zoo instead of stocking it twice.
+    croom.needfill = 2; /* FILL_LVLFLAGS_ONLY */
 }
 
 // C ref: sp_lev.c set_wall_property(W_NONDIGGABLE|W_NONPASSWALL) applied over
@@ -4760,10 +4912,17 @@ export async function makemaz_soko_upper(proto) {
         quest_flip_branch(flp);
     }
     soko_solidify_and_nondig();
+    // C ref: sp_lev.c:6048 — "This must be done before premap_detect(),
+    // otherwise branch stairs won't be premapped."  Running place_lregions()
+    // from the caller (after premap_detect) froze soko4's map memory before the
+    // branch '>' existed, so it rendered as the remembered floor.
+    // Dynamic import: mklev.js statically imports this module.
+    if (V.branch) {
+        const { quest_place_branch } = await import('./mklev.js');
+        await quest_place_branch();
+    }
     premap_detect();
-    // soko4 also needs place_lregions() for its 1-cell "branch" levregion; the
-    // caller (mklev.js makelevel) runs it, as it does for the quest levels.
-    return !!V.branch;
+    return false;   /* the branch is already placed */
 }
 
 // ════════════════════════════════════════════════════════════════════════

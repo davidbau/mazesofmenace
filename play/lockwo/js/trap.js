@@ -1374,7 +1374,6 @@ async function trapeffect_rocktrap(trap, _trflags) {
 // their blocker so the next completeness pass can pick them up:
 //   HOLE/TRAPDOOR      fall_through() -> goto_level()
 //   TELEP_TRAP         tele_trap() -> tele()/level_tele()
-//   LEVEL_TELEP        level_tele_trap()
 //   MAGIC_PORTAL       domagicportal() -> goto_level()
 //   STATUE_TRAP        activate_statue_trap() -> animate_statue()
 //   POLY_TRAP          polyself()
@@ -1419,10 +1418,62 @@ async function trapeffect_selector(trap, trflags) {
     case ANTI_MAGIC:
         await trapeffect_anti_magic(trap, trflags);
         break;
+    case LEVEL_TELEP:
+        await trapeffect_level_telep(trap, trflags);
+        break;
     default:
         // Not yet modeled: reveal the trap but don't simulate its effect.
         seetrap(trap);
         break;
+    }
+}
+
+// C ref: trap.c:2087 trapeffect_level_telep(&youmonst, ...) — the hero branch:
+// seetrap() then level_tele_trap().
+async function trapeffect_level_telep(trap, trflags) {
+    seetrap(trap);
+    await level_tele_trap(trap, trflags);
+}
+
+// C ref: teleport.c:1537 level_tele_trap(trap, trflags).
+async function level_tele_trap(trap, trflags) {
+    const u = game.u;
+    let intentional = false;
+    let verbbuf;
+    if ((trflags & (VIASITTING | FORCETRAP)) !== 0) {
+        verbbuf = 'trigger';
+        intentional = true;
+    } else {
+        verbbuf = `${u_locomotion('step')} onto`;
+    }
+    await update_topl(`You ${verbbuf} a level teleport trap!`);
+
+    // Antimagic (shieldeff has no RNG) and In_endgame both abort before the
+    // deltrap, leaving the trap in place.
+    const antimagic = !!(u?.uprops?.Antimagic);
+    if ((antimagic && !intentional) || In_endgame(u?.uz)) {
+        await update_topl('You feel a wrenching sensation.');
+        return;
+    }
+    deltrap(trap);
+    newsym(u.ux, u.uy);
+    const { level_tele } = await import('./do.js');
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    await level_tele((q) => hooked_tty_getlin(q, null));
+
+    const teleport_control = (u?.uprops?.Teleport_control || 0) > 0 || !!u?.Teleport_control;
+    const hallu = (u?.uprops?.Hallucination || 0) > 0;
+    if (hallu || teleport_control)
+        await update_topl(`You briefly feel ${hallu ? 'oriented' : 'centered'}.`);
+    else
+        await update_topl(`You feel ${(u?.uprops?.Confusion || 0) > 0 ? 'even more ' : ''}disoriented.`);
+    // C ref: teleport.c:1568 — confusion is applied AFTER the teleport attempt,
+    // because being confused changes level_tele's "Oops..." outcome.
+    if (!teleport_control) {
+        const cur = (u?.uprops?.Confusion || 0);
+        if (!u.uprops) u.uprops = {};
+        u.uprops.Confusion = cur + 3;
+        u.uconf = true;
     }
 }
 

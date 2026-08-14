@@ -9,11 +9,12 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { helpless } from './nhmacrofn.js';
-import { rn2_at, rnd_at } from './nhrng.js';
-import { Deaf, HStun, Hallucination, Polymorph_control, Protection_from_shape_changers, Unchanging } from './nhprop.js';
+import {
+    Deaf, HStun, Hallucination, Polymorph_control, Protection_from_shape_changers, Unchanging
+} from './nhprop.js';
 import { flags, gm, gw, gy, svc, u } from './decl.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { night } from './calendar.js';
+import { rn2, rnd } from './rnd.js';
 import { canseemon, newsym } from './display.js';
 import { You_feel, You_hear, impossible, pline } from './pline.js';
 import { healmon, monnear, wake_nearto } from './mon.js';
@@ -35,35 +36,32 @@ import { polymon, rehumanize, set_uasmon } from './polyself.js';
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $context_info_mon_moving = FLD.context_info_mon_moving, $flag_moonphase = FLD.flag_moonphase,
-    $flag_paranoia_bits = FLD.flag_paranoia_bits, $instance_globals_m_multi = FLD.instance_globals_m_multi,
-    $instance_globals_w_were_changes = FLD.instance_globals_w_were_changes,
-    $instance_globals_y_youmonst = FLD.instance_globals_y_youmonst, $monst_data = FLD.monst_data,
-    $monst_mcanmove = FLD.monst_mcanmove, $monst_mfrozen = FLD.monst_mfrozen, $monst_mhp = FLD.monst_mhp,
-    $monst_mhpmax = FLD.monst_mhpmax, $monst_mpeaceful = FLD.monst_mpeaceful,
-    $monst_msleeping = FLD.monst_msleeping, $monst_mux = FLD.monst_mux, $monst_muy = FLD.monst_muy,
-    $monst_mx = FLD.monst_mx, $monst_my = FLD.monst_my, $permonst_mflags2 = FLD.permonst_mflags2,
-    $permonst_pmidx = FLD.permonst_pmidx, $prop_intrinsic = FLD.prop_intrinsic,
-    $sizeof_permonst = FLD.sizeof_permonst, $sizeof_prop = FLD.sizeof_prop,
-    $u_roleplay_deaf = FLD.u_roleplay_deaf, $you_mtimedone = FLD.you_mtimedone, $you_ulycn = FLD.you_ulycn,
-    $you_umonnum = FLD.you_umonnum, $you_uprops = FLD.you_uprops, $you_uroleplay = FLD.you_uroleplay,
-    $you_uy = FLD.you_uy;
+      $flag_paranoia_bits = FLD.flag_paranoia_bits,
+      $instance_globals_m_multi = FLD.instance_globals_m_multi,
+      $instance_globals_w_were_changes = FLD.instance_globals_w_were_changes,
+      $instance_globals_y_youmonst = FLD.instance_globals_y_youmonst, $monst_data = FLD.monst_data,
+      $monst_mcanmove = FLD.monst_mcanmove, $monst_mfrozen = FLD.monst_mfrozen,
+      $monst_mhp = FLD.monst_mhp, $monst_mhpmax = FLD.monst_mhpmax,
+      $monst_mpeaceful = FLD.monst_mpeaceful, $monst_msleeping = FLD.monst_msleeping,
+      $monst_mux = FLD.monst_mux, $monst_muy = FLD.monst_muy, $monst_mx = FLD.monst_mx,
+      $monst_my = FLD.monst_my, $permonst_mflags2 = FLD.permonst_mflags2,
+      $permonst_pmidx = FLD.permonst_pmidx, $prop_intrinsic = FLD.prop_intrinsic,
+      $sizeof_permonst = FLD.sizeof_permonst, $sizeof_prop = FLD.sizeof_prop,
+      $u_roleplay_deaf = FLD.u_roleplay_deaf, $you_mtimedone = FLD.you_mtimedone,
+      $you_ulycn = FLD.you_ulycn, $you_umonnum = FLD.you_umonnum, $you_uprops = FLD.you_uprops,
+      $you_uroleplay = FLD.you_uroleplay, $you_uy = FLD.you_uy;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
-const __s_were_c = cptr.lit("were.c");
-const __s_were_change = cptr.lit("were_change");
 const __s_wolf = cptr.lit("wolf");
 const __s_jackal = cptr.lit("jackal");
 const __s_a_s_howling_at_the_moon = cptr.lit("a %s howling at the moon.");
 const __s_unknown_lycanthrope_s = cptr.lit("unknown lycanthrope %s.");
 const __s_s_changes_into_a_s = cptr.lit("%s changes into a %s.");
 const __s_human = cptr.lit("human");
-const __s_new_were = cptr.lit("new_were");
-const __s_were_summon = cptr.lit("were_summon");
 const __s_rat = cptr.lit("rat");
 const __s_do_you_want_to_change_into_s = cptr.lit("Do you want to change into %s?");
 const __s_purified = cptr.lit("purified.");
 const __s_remain_in_beast_form = cptr.lit("Remain in beast form?");
-const __s_you_unwere = cptr.lit("you_unwere");
 
 /** C ref: were.c:9 — @param {CPtr<struct monst>} mon */
 export function were_change(mon) {
@@ -71,9 +69,17 @@ export function were_change(mon) {
         return;
 
     if (((cptr.ldU64o((cptr.ldPtro(mon, $monst_data)), $permonst_mflags2) & 8n) != 0n)) {
-        if (!Protection_from_shape_changers() && !(rng_log_enabled() ? (rng_log_set_caller(__s_were_c, 17, __s_were_change), rn2(night() ? (cptr.ldI32o(flags, $flag_moonphase) == NHM.FULL_MOON ? 3 : 30) : (cptr.ldI32o(flags, $flag_moonphase) == NHM.FULL_MOON ? 10 : 50))) : rn2(night() ? (cptr.ldI32o(flags, $flag_moonphase) == NHM.FULL_MOON ? 3 : 30) : (cptr.ldI32o(flags, $flag_moonphase) == NHM.FULL_MOON ? 10 : 50)))) {
+        if (!Protection_from_shape_changers() &&
+                !rn2(night()
+                    ? (cptr.ldI32o(flags, $flag_moonphase) == NHM.FULL_MOON ? 3 : 30)
+                    : (cptr.ldI32o(flags, $flag_moonphase) == NHM.FULL_MOON ? 10 : 50))) {
             new_were(mon);  /* change into animal form */
-            (cptr.stI64o(gw, $instance_globals_w_were_changes, cptr.ldI64o(gw, $instance_globals_w_were_changes) + 1n)) - (1n);
+            (cptr.stI64o(
+                gw,
+                $instance_globals_w_were_changes,
+                cptr.ldI64o(gw, $instance_globals_w_were_changes) + 1n
+            )) -
+                    (1n);
             if (!Deaf() && !canseemon(mon)) {
                 let howler;
 
@@ -95,9 +101,14 @@ export function were_change(mon) {
                 }
             }
         }
-    } else if (!rn2_at(__s_were_c, 41, __s_were_change, 30) || Protection_from_shape_changers()) {
+    } else if (!rn2(30) || Protection_from_shape_changers()) {
         new_were(mon);  /* change back into human form */
-        (cptr.stI64o(gw, $instance_globals_w_were_changes, cptr.ldI64o(gw, $instance_globals_w_were_changes) + 1n)) - (1n);
+        (cptr.stI64o(
+            gw,
+            $instance_globals_w_were_changes,
+            cptr.ldI64o(gw, $instance_globals_w_were_changes) + 1n
+        )) -
+                (1n);
     }
 }
 
@@ -154,17 +165,27 @@ export function new_were(mon) {
     /* neither hero nor werecreature can change from human form to
        critter form if hero has Protection_from_shape_changers extrinsic;
        if already in critter form, always change to human form for that */
-    if (Protection_from_shape_changers() && ((cptr.ldU64o((cptr.ldPtro(mon, $monst_data)), $permonst_mflags2) & 8n) != 0n))
+    if (Protection_from_shape_changers() &&
+            ((cptr.ldU64o((cptr.ldPtro(mon, $monst_data)), $permonst_mflags2) & 8n) != 0n))
         return;
 
     pm = counter_were((cptr.ldI32o((cptr.ldPtro(mon, $monst_data)), $permonst_pmidx)));
     if (pm < NHC.LOW_PM) {
-        impossible(__s_unknown_lycanthrope_s, cptr.ldPtro(cptr.ldPtro(mon, $monst_data), NHC.NEUTRAL, 8));
+        impossible(
+            __s_unknown_lycanthrope_s,
+            cptr.ldPtro(cptr.ldPtro(mon, $monst_data), NHC.NEUTRAL, 8)
+        );
         return;
     }
 
     if (canseemon(mon) && !Hallucination())
-        pline(__s_s_changes_into_a_s, Monnam(mon), ((cptr.ldU64o((cptr.add(mons, pm, $sizeof_permonst)), $permonst_mflags2) & 8n) != 0n) ? __s_human : cptr.add(pmname(cptr.add(mons, pm, $sizeof_permonst), Mgender(mon)), 4));
+        pline(
+            __s_s_changes_into_a_s,
+            Monnam(mon),
+            ((cptr.ldU64o((cptr.add(mons, pm, $sizeof_permonst)), $permonst_mflags2) & 8n) != 0n)
+                ? __s_human
+                : cptr.add(pmname(cptr.add(mons, pm, $sizeof_permonst), Mgender(mon)), 4)
+        );
 
     set_mon_data(mon, cptr.add(mons, pm, $sizeof_permonst));
     if (helpless(mon)) {
@@ -174,19 +195,33 @@ export function new_were(mon) {
         cptr.stI32o(mon, $monst_mcanmove, 1);
     }
     /* regenerate by 1/4 of the lost hit points */
-    healmon(mon, (((cptr.ldI32o(mon, $monst_mhpmax) - cptr.ldI32o(mon, $monst_mhp)) | 0) / 4) | 0, 0);
+    healmon(
+        mon,
+        (((cptr.ldI32o(mon, $monst_mhpmax) - cptr.ldI32o(mon, $monst_mhp)) | 0) / 4) | 0,
+        0
+    );
     newsym(cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my));
     mon_break_armor(mon, 0);
     possibly_unwield(mon, 0);
 
     /* vision capability isn't changing so we don't call set_apparxy() to
        update mon's idea of where hero is; peaceful check is redundant */
-    if (cptr.ld1so(svc, $context_info_mon_moving) && !(cptr.ldI32o(mon, $monst_mpeaceful) & 1) && onscary(cptr.ldI16o(mon, $monst_mux), cptr.ldI16o(mon, $monst_muy), mon) && monnear(mon, cptr.ldI16o(mon, $monst_mux), cptr.ldI16o(mon, $monst_muy)))
-        monflee(mon, ((rn2_at(__s_were_c, 137, __s_new_were, 9) + 2) | 0), 1, 1);  /* 2..10 turns */
+    if (cptr.ld1so(svc, $context_info_mon_moving) &&
+            !(cptr.ldI32o(mon, $monst_mpeaceful) & 1) &&
+            onscary(cptr.ldI16o(mon, $monst_mux), cptr.ldI16o(mon, $monst_muy), mon) &&
+            monnear(mon, cptr.ldI16o(mon, $monst_mux), cptr.ldI16o(mon, $monst_muy)))
+        monflee(mon, ((rn2(9) + 2) | 0), 1, 1);  /* 2..10 turns */
 }
 
 /* were-creature (even you) summons a horde */
-/** C ref: were.c:142 — @param {CPtr<struct permonst>} ptr @param {CInt} yours @param {CPtr<int>} visible @param {CPtr<char>} genbuf @returns {CInt} */
+/**
+ * C ref: were.c:142
+ * @param {CPtr<struct permonst>} ptr
+ * @param {CInt} yours
+ * @param {CPtr<int>} visible
+ * @param {CPtr<char>} genbuf
+ * @returns {CInt}
+ */
 export function were_summon(ptr, yours, visible, genbuf) {
     let i;
     let typ;
@@ -197,30 +232,35 @@ export function were_summon(ptr, yours, visible, genbuf) {
     cptr.stI32(visible, 0);
     if (Protection_from_shape_changers() && !yours)
         return 0;
-    for (i = rnd_at(__s_were_c, 155, __s_were_summon, 5); i > 0; i--) {
+    for (i = rnd(5); i > 0; i--) {
         switch (pm) {
             case NHC.PM_WERERAT:
             case NHC.PM_HUMAN_WERERAT:
-            typ = rn2_at(__s_were_c, 159, __s_were_summon, 3) ? NHC.PM_SEWER_RAT : (rn2_at(__s_were_c, 160, __s_were_summon, 3) ? NHC.PM_GIANT_RAT : NHC.PM_RABID_RAT);
+            typ = rn2(3) ? NHC.PM_SEWER_RAT : (rn2(3) ? NHC.PM_GIANT_RAT : NHC.PM_RABID_RAT);
             if (genbuf)
                 void cptr.strcpy(genbuf, __s_rat);
             break;
             case NHC.PM_WEREJACKAL:
             case NHC.PM_HUMAN_WEREJACKAL:
-            typ = rn2_at(__s_were_c, 166, __s_were_summon, 7) ? NHC.PM_JACKAL : (rn2_at(__s_were_c, 166, __s_were_summon, 3) ? NHC.PM_COYOTE : NHC.PM_FOX);
+            typ = rn2(7) ? NHC.PM_JACKAL : (rn2(3) ? NHC.PM_COYOTE : NHC.PM_FOX);
             if (genbuf)
                 void cptr.strcpy(genbuf, __s_jackal);
             break;
             case NHC.PM_WEREWOLF:
             case NHC.PM_HUMAN_WEREWOLF:
-            typ = rn2_at(__s_were_c, 172, __s_were_summon, 5) ? NHC.PM_WOLF : (rn2_at(__s_were_c, 172, __s_were_summon, 2) ? NHC.PM_WARG : NHC.PM_WINTER_WOLF);
+            typ = rn2(5) ? NHC.PM_WOLF : (rn2(2) ? NHC.PM_WARG : NHC.PM_WINTER_WOLF);
             if (genbuf)
                 void cptr.strcpy(genbuf, __s_wolf);
             break;
             default:
             continue;
         }
-        mtmp = makemon(cptr.add(mons, typ, $sizeof_permonst), cptr.ldI16(u), cptr.ldI16o(u, $you_uy), NHM.NO_MM_FLAGS);
+        mtmp = makemon(
+            cptr.add(mons, typ, $sizeof_permonst),
+            cptr.ldI16(u),
+            cptr.ldI16o(u, $you_uy),
+            NHM.NO_MM_FLAGS
+        );
         if (mtmp) {
             total++;
             if (canseemon(mtmp))
@@ -235,34 +275,73 @@ export function were_summon(ptr, yours, visible, genbuf) {
 /** C ref: were.c:192 */
 export function you_were() {
     let qbuf = new Uint8Array(128);
-    let controllable_poly = schar((Polymorph_control() && !(HStun() || (cptr.ldI64o(gm, $instance_globals_m_multi) < 0n && (unconscious() || is_fainted()))) ? 1 : 0));
+    let controllable_poly = schar((Polymorph_control() &&
+        !(HStun() ||
+            (cptr.ldI64o(gm, $instance_globals_m_multi) < 0n && (unconscious() || is_fainted())))
+            ? 1
+            : 0));
 
     if (Unchanging() || cptr.ldI32o(u, $you_umonnum) == cptr.ldI32o(u, $you_ulycn))
         return;
     if (controllable_poly) {
         /* `+4' => skip "were" prefix to get name of beast */
-        void cptr.sprintf(cptr.decay(qbuf), __s_do_you_want_to_change_into_s, an(cptr.add(cptr.ldPtro3(mons, cptr.ldI32o(u, $you_ulycn), $sizeof_permonst, NHC.NEUTRAL, 8, 0), 4)));
-        if (!paranoid_query(schar((((cptr.ldI32o(flags, $flag_paranoia_bits) & NHM.PARANOID_WERECHANGE) >>> 0) != 0)), cptr.decay(qbuf)))
+        void cptr.sprintf(
+            cptr.decay(qbuf),
+            __s_do_you_want_to_change_into_s,
+            an(cptr.add(
+                cptr.ldPtro3(mons, cptr.ldI32o(u, $you_ulycn), $sizeof_permonst, NHC.NEUTRAL, 8, 0),
+                4
+            ))
+        );
+        if (!paranoid_query(
+            schar((((cptr.ldI32o(flags, $flag_paranoia_bits) &
+                NHM.PARANOID_WERECHANGE) >>> 0) != 0)),
+            cptr.decay(qbuf)
+        ))
             return;
     } else if (monster_nearby()) {
         return;
     }
-    (cptr.stI64o(gw, $instance_globals_w_were_changes, cptr.ldI64o(gw, $instance_globals_w_were_changes) + 1n)) - (1n);
+    (cptr.stI64o(
+        gw,
+        $instance_globals_w_were_changes,
+        cptr.ldI64o(gw, $instance_globals_w_were_changes) + 1n
+    )) -
+            (1n);
     void polymon(cptr.ldI32o(u, $you_ulycn));
 }
 
 /** C ref: were.c:213 — @param {CInt} purify */
 export function you_unwere(purify) {
-    let controllable_poly = schar((Polymorph_control() && !(HStun() || (cptr.ldI64o(gm, $instance_globals_m_multi) < 0n && (unconscious() || is_fainted()))) ? 1 : 0));
+    let controllable_poly = schar((Polymorph_control() &&
+        !(HStun() ||
+            (cptr.ldI64o(gm, $instance_globals_m_multi) < 0n && (unconscious() || is_fainted())))
+            ? 1
+            : 0));
 
     if (purify) {
         You_feel(__s_purified);
         set_ulycn(NHC.NON_PM);  /* cure lycanthropy */
     }
-    if (!Unchanging() && ((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags2) & 4n) != 0n) && !monster_nearby() && (!controllable_poly || !paranoid_query(schar((((cptr.ldI32o(flags, $flag_paranoia_bits) & NHM.PARANOID_WERECHANGE) >>> 0) != 0)), __s_remain_in_beast_form)))
+    if (!Unchanging() &&
+            ((cptr.ldU64o(
+                (cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)),
+                $permonst_mflags2
+            ) & 4n) != 0n) &&
+            !monster_nearby() &&
+            (!controllable_poly ||
+                !paranoid_query(
+                    schar((((cptr.ldI32o(flags, $flag_paranoia_bits) &
+                        NHM.PARANOID_WERECHANGE) >>> 0) != 0)),
+                    __s_remain_in_beast_form
+                )))
         rehumanize();
-    else if (((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags2) & 4n) != 0n) && !cptr.ldI32o(u, $you_mtimedone))
-        cptr.stI32o(u, $you_mtimedone, ((rn2_at(__s_were_c, 227, __s_you_unwere, 200) + 200) | 0));  /* 40% of initial were change */
+    else if (((cptr.ldU64o(
+        (cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)),
+        $permonst_mflags2
+    ) & 4n) != 0n) &&
+            !cptr.ldI32o(u, $you_mtimedone))
+        cptr.stI32o(u, $you_mtimedone, ((rn2(200) + 200) | 0));  /* 40% of initial were change */
 }
 
 /* lycanthropy is being caught or cured, but no shape change is involved */

@@ -4546,7 +4546,7 @@ function mk_bad_branch_location(x, y) {
 // probabilistic loop draws rn1((hx-lx)+1,lx) for x and rn1((hy-ly)+1,ly) for y
 // (so exactly rn2(1)+x / rn2(1)+y for the 1-cell regions the quest home levels
 // use), then hands the accepted spot to put_lregion_here().
-async function quest_place_branch() {
+export async function quest_place_branch() {
     const reg = game._quest_lregion;
     if (!reg) return;
     const lx = reg.x1, ly = reg.y1, hx = reg.x2, hy = reg.y2;

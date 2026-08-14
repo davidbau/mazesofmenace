@@ -727,11 +727,14 @@ export function assertPricedObjectNameable(obj, state = game) {
 //
 // objnam.c:1391-1395 prefers " (being doffed)" or " (being donned)" over
 // " (being worn)" while a Wear or Take-off is under way, and its own comment
-// names a perm_invent redraw as the case that reaches it. do_wear.c
-// armoroff()'s delayed branch does leave ga.afternmv set for as long as the
-// removal takes, so doffing() can hold in C. Neither can hold here: nothing
-// in this port redraws inventory on its own, and moveloop_core() reads no key
-// while gm.multi is negative, so no name is formatted in that window.
+// names a perm_invent redraw as the case that reaches it. Both windows are
+// open in this port and each lasts the suit's oc_delay in turns: do_wear.c
+// armoroff() leaves ga.afternmv at Armor_off while a suit comes off, so
+// doffing() holds, and accessory_or_armor_on() leaves it at Armor_on while
+// one goes on, so donning() holds. Neither ever reaches a name, because
+// nothing in this port redraws inventory on its own and moveloop_core() reads
+// no key while gm.multi is negative, so nothing is formatted inside either
+// window.
 function wornSuffix(obj, type, state) {
     const mask = obj.owornmask ?? 0;
     if (!mask) return '';
@@ -1023,21 +1026,34 @@ export function Tobjnam(otmp, verb, state = game) {
     return bp;
 }
 
+// C ref: objnam.c obj_is_pname() (331-341). Whether an object's name stands
+// on its own as a proper name, so that callers write "the Excalibur" rather
+// than "an Excalibur".
+//
+// C's first test settles every object this port can produce: an object with no
+// oartifact answers FALSE outright. The artifact arm reads has_oname() and
+// not_fully_identified(), neither of which is ported, so it stops here.
+export function obj_is_pname(obj) {
+    if (!obj.oartifact) return false;
+    return unsupported('obj_is_pname() for an artifact', obj);
+}
+
 // C ref: objnam.c yname() (2357-2374). "your <cxname>" for what the hero
 // carries, "the <cxname>" for what she does not, and a shopkeeper's or a
 // monster's possessive where shk_your() finds an owner.
 //
-// C skips the prefix for an artifact whose proper name stands alone. That
-// test is obj_is_pname(), which answers FALSE for every object with no
-// oartifact, so a non-artifact always takes the prefix and the artifact arm
-// stops: naming one needs artiname() and not_fully_identified(), neither of
-// which is ported.
+// C skips the prefix for an artifact whose proper name stands alone; see
+// obj_is_pname() above for why that arm stops. C's two other conjuncts,
+// carried(obj) and `obj->oartifact >= ART_ORB_OF_DETECTION`, only matter once
+// obj_is_pname() can answer TRUE, so neither is ported. C tests carried()
+// first and so leaves an artifact on the floor unnamed rather than stopping;
+// this reaches obj_is_pname() for that object too, which is the stop the
+// previous port made for every artifact alike.
 export function yname(obj, state = game) {
     const s = cxname(obj, state);
 
-    if (obj.oartifact)
-        unsupported('obj_is_pname() for yname()', obj);
-    return `${shk_your(obj, state)}${s}`;
+    if (!obj_is_pname(obj)) return `${shk_your(obj, state)}${s}`;
+    return s;
 }
 
 // C ref: objnam.c Yname2() (2376-2383). yname() with its first character

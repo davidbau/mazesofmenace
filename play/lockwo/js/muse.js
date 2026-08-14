@@ -36,10 +36,11 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { isok } from './hacklib.js';
 import { is_animal, mindless, nohands, mflags1_of, mflags2_of, msound_of,
     M1_NEEDPICK, M1_BREATHLESS, M1_NOHEAD, M1_ACID, M1_WALLWALK, M1_AMORPHOUS,
-    M1_UNSOLID, M1_NOEYES, M1_NOLIMBS, M1_NOHANDS,
+    M1_UNSOLID, M1_NOEYES, M1_NOLIMBS, M1_NOHANDS, M1_NOTAKE,
+    strongmonst_flag as strongmonst,
     M2_JEWELS, M2_UNDEAD, M2_MERC, M2_WERE } from './monflags_data.js';
-import { attacktype, dmgtype, AT_GAZE, AT_EXPL, AT_BREA, AD_FIRE, AD_HEAL }
-    from './monattk_data.js';
+import { attacktype, dmgtype, AT_GAZE, AT_EXPL, AT_BREA, AT_ENGL, AD_FIRE,
+    AD_HEAL, AD_MAGM, AD_RBRE } from './monattk_data.js';
 import { POT_SPEED, LARGE_BOX, BAG_OF_TRICKS, BOULDER, STRANGE_OBJECT,
     objects as OBJECTS, place_object } from './mkobj.js';
 import { monster_by_pmidx, makemon } from './makemon.js';
@@ -50,7 +51,8 @@ import { onscary, m_next2u, m_lined_up, m_carrying, mon_would_take_item,
     objectsAt, mon_knows_traps, mon_learns_traps, mon_mintrap,
     Trap_Killed_Mon } from './monmove.js';
 // base_mmove() is likewise a hoisted `export function`, so the cycle is safe.
-import { base_mmove, healmon, DEADMONSTER, monsterList } from './mon.js';
+import { base_mmove, healmon, DEADMONSTER, monsterList, mon_hates_silver }
+    from './mon.js';
 // C ref: pline() -> vpline() -> update_topl(): a new topline message shows
 // --More-- for the UNACKNOWLEDGED previous one first (or appends to it when both
 // fit).  js/display.js pline() only overwrites the pending text, so monster
@@ -58,12 +60,13 @@ import { base_mmove, healmon, DEADMONSTER, monsterList } from './mon.js';
 import { update_topl, newsym, map_invisible, see_with_infrared } from './display.js';
 import { Monnam, mon_nam, monflee } from './uhitm.js';
 import { cansee, couldsee } from './vision.js';
-import { obj_doname, xname, makeknown, trycall, sobj_at, hands_obj }
+import { obj_doname, xname, makeknown, trycall, hands_obj }
     from './invent.js';
 import { observe_object } from './o_init.js';
 import { t_at, maketrap, seetrap, Can_fall_thru } from './trap.js';
 import { rloc, RLOC_MSG, tele_restrict } from './teleport.js';
-import { STAIRS, LADDER, SCORR, CORR, PIT, HOLE, TRAPDOOR, TELEP_TRAP, WEB,
+import { ICE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+    STAIRS, LADDER, SCORR, CORR, PIT, HOLE, TRAPDOOR, TELEP_TRAP, WEB,
     BEAR_TRAP, FIRE_TRAP, POLY_TRAP, W_NONDIGGABLE, D_LOCKED, D_CLOSED,
     IS_FURNITURE, IS_DRAWBRIDGE, IS_DOOR, IS_OBSTRUCTED, IS_AIR, ACCESSIBLE,
     ZAP_POS, is_hole, is_pit, In_endgame, Is_botlevel, Is_knox_level,
@@ -124,13 +127,16 @@ function OT() {
 const RAY = 3;
 // C ref: objclass.h oc_class values / weapon.h skill ids.
 const WEAPON_CLASS = 2, AMULET_CLASS = 5, TOOL_CLASS = 6, FOOD_CLASS = 7,
-    POTION_CLASS = 8, SCROLL_CLASS = 9, WAND_CLASS = 11;
+    POTION_CLASS = 8, SCROLL_CLASS = 9, WAND_CLASS = 11, COIN_CLASS = 12,
+    GEM_CLASS = 13, ROCK_CLASS = 14;
+// C ref: weight.h MAX_CARR_CAP / WT_HUMAN, monflag.h MZ_HUMAN (== MZ_MEDIUM).
+const MAX_CARR_CAP = 1000, WT_HUMAN = 1450, MZ_HUMAN = 2;
 const P_DAGGER = 1, P_KNIFE = 2;
 // C ref: objclass.h material values.
 const MAT_SILVER = 10;
 // C ref: defsym.h MONSYM() indices (permonst.mcls).
 const S_EYE = 5, S_GHOST = 54, S_KOP = 37, S_NYMPH_MCLS = 14, S_UNICORN = 21,
-    S_LIGHT = 25, S_VORTEX = 22, S_EEL = 57, S_GOLEM = 55;
+    S_LIGHT = 25, S_VORTEX = 22, S_EEL = 57, S_GOLEM = 55, S_DRAGON = 30;
 // C ref: monflag.h MS_SILENT / MS_BUZZ.
 const MS_SILENT = 0, MS_BUZZ = 10;
 // C ref: monflag.h MZ_SMALL, monst.h W_ARMG / W_ARM / W_ARMS / W_ARMH / W_AMUL.
@@ -163,6 +169,10 @@ const gt = { trapx: 0, trapy: 0 };
 // C ref: gm.m_using / gz.zap_oseen — set around mbhit() so the zap machinery
 // knows the beam came from a monster and whether the hero watched it fire.
 let m_using = false, zap_oseen = false;
+// C ref: gb.buzzer (muse.c:1883/1885) — the monster currently firing a beam.
+// mbhitm's WAN_STRIKING miss test reads it: a monster whose wand the hero has
+// never seen work (`!mwandexp`) cannot land its first shot.
+let buzzer = null;
 
 /* ------------------------------------------------------------------------ *
  * muse.c's #defines.  Note the deliberate collision: MUSE_WAN_TELEPORTATION
@@ -212,6 +222,16 @@ const mdistu = (mon) => dist2(mon.mx, mon.my, game.u?.ux ?? 0, game.u?.uy ?? 0);
 const u_at = (x, y) => game.u?.ux === x && game.u?.uy === y;
 const levl_at = (x, y) => game.level?.at(x, y) ?? null;
 const levl_typ = (x, y) => levl_at(x, y)?.typ;
+
+// C ref: mkobj.c sobj_at(otyp, x, y).  NOT js/invent.js's sobj_at: that one
+// indexes game.level.objects as a 2-D `[x][y]` grid, but place_object() keeps
+// it as a FLAT push-ordered array, so it returned null for every square and
+// silently disabled all four boulder guards plus the undead-turning corpse
+// test below.  All uses here are boolean, so pile order doesn't matter.
+function sobj_at(otyp, x, y) {
+    for (const o of objectsAt(x, y)) if (o.otyp === otyp) return o;
+    return null;
+}
 
 // C ref: mon.c m_at(x, y).
 function m_at(x, y) {
@@ -484,13 +504,15 @@ function canletgo(obj) {
     if ((worn & (W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU
                  | W_AMUL)) !== 0)
         return false;
-    if (obj === game.u?.uwep && welded_hero(obj)) return false;
+    if (obj === game.uwep && welded_hero(obj)) return false;
     if (obj === game.u?.uball || obj === game.u?.uchain) return false;
     return true;
 }
-// C ref: wield.c welded(obj) — hero's cursed wielded weapon.
+// C ref: wield.c welded(obj) — hero's cursed wielded weapon.  uwep is on
+// `game`, not `game.u`; the old read made every weapon un-welded, so a bullwhip
+// yanked a cursed weapon C leaves stuck ("The whip slips free.").
 function welded_hero(obj) {
-    return !!obj && obj === game.u?.uwep && !!obj.cursed
+    return !!obj && obj === game.uwep && !!obj.cursed
         && OBJECTS[obj.otyp]?.oclass === WEAPON_CLASS;
 }
 // C ref: obj.h bimanual(obj).
@@ -851,7 +873,7 @@ export function find_defensive(mtmp, tryescape) {
 
     /* monsters aren't given wands of undead turning but if they happen to
        have picked one up, use it against a corpse-wielding hero */
-    const uwep = game.u?.uwep;
+    const uwep = game.uwep; /* worn/wielded slots live on `game` */
     if (!mtmp.mpeaceful && !nohands(mtmp.data)
         && uwep && uwep.otyp === OT().CORPSE
         && touch_petrifies_pm(uwep.corpsenm)
@@ -1026,13 +1048,21 @@ export function find_defensive(mtmp, tryescape) {
 
 // C ref: monsters.h NODIAG(mndx) — grid bugs only.
 function NODIAG(ptr) { return ptr?.name === 'grid bug'; }
-// C ref: rm.h is_ice / is_pool / is_lava.
-function is_ice(x, y) { return levl_at(x, y)?.typ === 21 /* ICE */; }
+// C ref: dbridge.c is_ice / is_pool / is_lava.  Every literal here was one off
+// the port's own rm.h numbering (const.js): ICE is 33 not 21 (21 is LAVAWALL),
+// and POOL/MOAT/WATER are 16/17/18 not 17/18/19 — so is_ice never fired, is_pool
+// answered "water" for a drawbridge, and a monster judged whether it could dig
+// down through the wrong terrain.  The DB_UNDER (drawbridge-up) arms are the
+// same omission dungeon.js documents.
+function is_ice(x, y) { return levl_typ(x, y) === ICE; }
 function is_pool(x, y) {
     const typ = levl_typ(x, y);
-    return typ === 17 /* POOL */ || typ === 18 /* MOAT */ || typ === 19 /* WATER */;
+    return typ === POOL || typ === MOAT || typ === WATER;
 }
-function is_lava(x, y) { return levl_typ(x, y) === 20 /* LAVAPOOL */; }
+function is_lava(x, y) {
+    const typ = levl_typ(x, y);
+    return typ === LAVAPOOL || typ === LAVAWALL;
+}
 // C ref: dungeon.c stairway_at(x, y) — js/display.js has a private copy; this
 // one returns the fields find_defensive needs (up flag + destination dnum).
 function stairway_here(x, y) {
@@ -1684,10 +1714,12 @@ function monnear(mon, x, y) {
 // while a hostile is lined up, and the port has no temple-alignment state.
 function in_your_sanctuary(_mtmp) { return false; }
 // C ref: muse.c:1436 — a nurse only refrains when the hero wears nothing at all.
+// The worn/wielded slots live on `game`, not on `game.u` (js/invent.js
+// setworn_slot / js/u_init.js setworn); reading u.uwep answered "naked" for
+// every hero, so a nurse gave up its whole offensive scan while fully clothed.
 function hero_is_naked() {
-    const u = game.u;
-    return !u?.uwep && !u?.uarmu && !u?.uarm && !u?.uarmh && !u?.uarms
-        && !u?.uarmg && !u?.uarmc && !u?.uarmf;
+    return !game.uwep && !game.uarmu && !game.uarm && !game.uarmh
+        && !game.uarms && !game.uarmg && !game.uarmc && !game.uarmf;
 }
 // C ref: hack.h Teleport_control — the hero has no control source in the
 // recorded sessions (no ring/intrinsic teleport control).
@@ -1700,16 +1732,114 @@ function hero_hates_light() { return false; }
  * muse.c:1596 mbhitm / :1706 fhito_loc / :1733 mbhit
  * ------------------------------------------------------------------------ */
 
+// C ref: prop.h Antimagic == HAntimagic || EAntimagic.  The port has no
+// oc_oprop column, so read every uprops mirror the granting code uses (the
+// Wizard's starting cloak of magic resistance sets one of them).
+function Antimagic_muse() {
+    const W_ARMOR_MASK = 0x7f;  // monst.h W_ARMOR: the seven armour slots
+    for (const o of (game.invent || []))
+        if (((o.owornmask || 0) & W_ARMOR_MASK)
+            && OBJECTS[o.otyp]?.oc_oprop === 12 /* prop.h ANTIMAGIC */)
+            return true;
+    const u = game.u;
+    return !!(u?.uprops?.Antimagic || u?.Antimagic || u?.HAntimagic || u?.EAntimagic);
+}
+function Half_spell_damage_muse() {
+    return (game.u?.uprops?.HHalf_spell_damage || 0) > 0;
+}
+// C ref: mondata.c resists_magm(mon).  The artifact-weapon and worn-item arms
+// need an oc_oprop column the JS objects[] table lacks; no monster in the
+// covered corpora wears magic-resistant gear.
+function resists_magm_muse(mon) {
+    const ptr = mon?.data;
+    if (!ptr) return false;
+    return !!(dmgtype(ptr, AD_MAGM) || dmgtype(ptr, AD_RBRE)
+              || ptr.name === 'baby gray dragon');
+}
+// C ref: mondata.c:1557/1572 monstseesu()/monstunseesu() — every monster with
+// line of sight to the hero remembers (or forgets) that the hero resisted.
+// RNG-free itself, but find_offensive()'s m_seenres() gates read the bit, so it
+// changes which wand a monster picks on a later turn.
+function monstseesu_muse(seenres, clear) {
+    if (!seenres || game.u?.uswallow) return;
+    for (const mon of monsterList()) {
+        if (DEADMONSTER(mon)) continue;
+        if (!couldsee(mon.mx, mon.my)) continue;   /* m_canseeu(): hero visible, on land */
+        mon.seen_resistance = clear ? ((mon.seen_resistance | 0) & ~seenres)
+                                    : ((mon.seen_resistance | 0) | seenres);
+    }
+}
+
+// C ref: worn.c find_mac(mon) — base AC plus worn/carried adjustments.
+function find_mac_muse(mon) {
+    let base = mon?.data?.ac;
+    if (base == null) base = 10;
+    const AMULET_OF_GUARDING = 205, AC_MAX = 127;
+    const mwflags = mon?.misc_worn_check | 0;
+    for (const obj of (Array.isArray(mon?.minvent) ? mon.minvent : [])) {
+        if (!((obj.owornmask | 0) & mwflags)) continue;
+        if (obj.otyp === AMULET_OF_GUARDING) base -= 2;
+    }
+    if (Math.abs(base) > AC_MAX) base = Math.sign(base) * AC_MAX;
+    return base;
+}
+
 // C ref: muse.c mbhitm(mtmp, otmp) — what the monster's beam does to whatever
-// it strikes.  Only the WAN_TELEPORTATION monster branch bottoms out in a
-// ported subsystem (rloc); WAN_STRIKING's to-hit and WAN_UNDEAD_TURNING's
-// unturn_dead() need zap.c machinery this port doesn't have, so those draw
-// nothing and hit nothing rather than half-resolving.
+// it strikes.  WAN_UNDEAD_TURNING's unturn_dead() still needs zap.c machinery
+// this port does not have, so it draws nothing rather than half-resolving.
 async function mbhitm(mtmp, otmp, hits_you) {
     if (!hits_you && otmp.otyp !== OT().WAN_UNDEAD_TURNING) {
         mtmp.msleeping = 0;
     }
+    let learnit = false;
     switch (otmp.otyp) {
+    case OT().WAN_STRIKING:
+        // C ref: muse.c:1609-1651.  An angered shopkeeper zaps this before it
+        // melees; skipping it lost the whole rest of the boundary's stream.
+        if (hits_you) {
+            if (Antimagic_muse()) {
+                monstseesu_muse(M_SEEN_MAGR, false);
+                await update_topl('Boing!');
+                learnit = true;
+            } else if (rnd(20) < 10 + (game.u?.uac | 0)
+                       && !(buzzer && !buzzer.mwandexp)) {
+                // rnd(20) is drawn FIRST (short-circuit order), so it fires even
+                // on a monster's very first wand shot when the buzzer test then
+                // fails.
+                monstseesu_muse(M_SEEN_MAGR, true);
+                await update_topl('The wand hits you!');
+                let tmp = d(2, 12);
+                if (Half_spell_damage_muse()) tmp = Math.trunc((tmp + 1) / 2);
+                const u = game.u;
+                u.uhp -= tmp;
+                if (u.uhp < 1) u.uhp = 0;
+                learnit = true;
+            } else {
+                await update_topl('The wand misses you.');
+            }
+            const { stop_occupation } = await import('./hack.js');
+            await stop_occupation();
+        } else if (resists_magm_muse(mtmp)) {
+            await update_topl('Boing!');
+            learnit = true;
+        } else if (rnd(20) < 10 + find_mac_muse(mtmp)) {
+            const tmp = d(2, 12);
+            if (canseemon(mtmp))
+                await update_topl(`The wand hits ${mon_nam(mtmp)}${tmp > 5 ? '!' : '.'}`);
+            // C ref: muse.c:1640 resist() — it rolls rn2(100+alev-dlev) AND
+            // applies the (possibly halved) damage.  Dynamic import: zap.js ->
+            // monmove.js -> muse.js is a static cycle.
+            const { resist } = await import('./zap.js');
+            resist(mtmp, otmp.oclass, tmp, true);
+            learnit = true;
+        } else if (canseemon(mtmp)) {
+            await update_topl(`The wand misses ${mon_nam(mtmp)}.`);
+        }
+        // C: need to have seen the wand zapped AND the spot where it lands.
+        if (learnit && zap_oseen
+            && (hits_you || cansee(mtmp.mx, mtmp.my)))
+            makeknown(OT().WAN_STRIKING);
+        break;
     case OT().WAN_TELEPORTATION:
         if (hits_you) {
             /* C: tele() — the hero-teleport path lives in js/teleport.js and
@@ -1794,7 +1924,9 @@ export async function use_offensive(mtmp, throw_potion) {
         zap_oseen = oseen;
         await mzapwand(mtmp, otmp, false);
         m_using = true;
+        buzzer = mtmp;                      // C ref: muse.c:1883 gb.buzzer
         await mbhit(mtmp, rn1(8, 6), otmp);
+        buzzer = null;                      // C ref: muse.c:1885
         m_using = false;
         if (m.has_offense === MUSE_WAN_STRIKING) mtmp.mwandexp = true;
         return 2;
@@ -1923,7 +2055,11 @@ export function find_misc(mtmp) {
 
     if (nohands(mdat)) return false;
 
-    const uwep = game.u?.uwep;
+    // uwep is on `game` (js/invent.js setuwep), not on `game.u`.  Reading the
+    // wrong one left this undefined for every hero, which short-circuited the
+    // MUSE_BULLWHIP clause BEFORE its rn2(5) — C draws that roll for any armed
+    // hero next to a whip-wielding monster, so the draw went missing entirely.
+    const uwep = game.uwep;
     for (const obj of (mtmp.minvent || [])) {
         /* Monsters shouldn't recognize cursed items; this kludge is
            necessary to prevent serious problems though... */
@@ -1941,7 +2077,7 @@ export function find_misc(mtmp) {
             && m_next2u(mtmp)
             && !game.u?.uswallow
             && (canletgo(uwep)
-                || (game.u?.twoweap && canletgo(game.u?.uswapwep)))) {
+                || (game.u?.twoweap && canletgo(game.uswapwep)))) {
             m.misc = obj; m.has_misc = MUSE_BULLWHIP;
         }
         /* Note: peaceful/tame monsters won't make themselves invisible unless
@@ -2063,16 +2199,51 @@ async function mloot_container(mon, container, vismon) {
 // C ref: mon.c can_carry(mon, obj) — js/mon.js owns the real one; import it
 // lazily through the shared export so the cycle stays safe.
 function mon_can_carry(mon, obj) {
-    const cap = max_load(mon);
+    const mdat = mon?.data;
+    if (!mdat) return false;
+    if ((mflags1_of(mdat) & M1_NOTAKE) !== 0) return false;
+    // C's can_touch_safely() (gloves vs a petrifying corpse) is not modelled.
+    const iquan = obj.quan || 1;
+    // A handless monster can still take ONE item; C returns early with 1 here,
+    // bypassing the weight check entirely.
+    if (iquan > 1 && (mflags1_of(mdat) & M1_NOHANDS) !== 0
+        && !attacktype(mdat, AT_ENGL)
+        && !(mdat.mcls === S_DRAGON
+             && (obj.oclass === COIN_CLASS || obj.oclass === GEM_CLASS)))
+        return true;
+    if (mon === game.u?.usteed) return false;
+    if (mon.isshk) return true;                 /* no limit */
+    if (mon.mpeaceful && !mon.mtame) return false;
+    if (throws_rocks(mdat) && obj.otyp === BOULDER) return true;
+    if (mdat.mcls === S_NYMPH_MCLS) return obj.oclass !== ROCK_CLASS;
+    return curr_mon_load(mon) + obj_weight(obj) <= max_load(mon);
+}
+function obj_weight(o) {
+    return (o?.owt != null) ? (o.owt | 0)
+        : (OBJECTS[o?.otyp]?.oc_weight ?? 0) * (o?.quan || 1);
+}
+// C ref: mon.c curr_mon_load(mtmp).
+function curr_mon_load(mon) {
     let load = 0;
     for (const o of (mon.minvent || []))
-        load += (OBJECTS[o.otyp]?.oc_weight ?? 0) * (o.quan || 1);
-    return load + (OBJECTS[obj.otyp]?.oc_weight ?? 0) * (obj.quan || 1) <= cap;
+        if (o.otyp !== BOULDER || !throws_rocks(mon.data)) load += obj_weight(o);
+    return load;
 }
+// C ref: mon.c max_mon_load(mtmp).  The old `(msize + 1) * 200` was a guess
+// with no C counterpart: C scales MAX_CARR_CAP by the monster's corpse weight
+// (or by msize when it has none) and halves the result for a non-strong
+// monster, so e.g. a human's cap is 500, not 600.
 function max_load(mon) {
-    /* C ref: mon.c max_mon_load() — (weight cap by size) */
-    const msize = mon?.data?.msize | 0;
-    return (msize + 1) * 200;
+    const mdat = mon?.data;
+    const strong = strongmonst(mdat);
+    const cwt = mdat?.cwt | 0;
+    let maxload;
+    if (!cwt) maxload = Math.trunc((MAX_CARR_CAP * (mdat?.msize | 0)) / MZ_HUMAN);
+    else if (!strong || cwt > WT_HUMAN)
+        maxload = Math.trunc((MAX_CARR_CAP * cwt) / WT_HUMAN);
+    else maxload = MAX_CARR_CAP;
+    if (!strong) maxload = Math.trunc(maxload / 2);
+    return maxload < 1 ? 1 : maxload;
 }
 
 export async function use_misc(mtmp) {
@@ -2198,7 +2369,7 @@ export async function use_misc(mtmp) {
         if (!where_to) {
             await update_topl('The whip slips free.'); /* not `The_whip` */
             return 1;
-        } else if (where_to === 3 && mon_hates_silver_local(mtmp)
+        } else if (where_to === 3 && mon_hates_silver(mtmp)
                    && OBJECTS[obj.otyp]?.material === MAT_SILVER) {
             /* this monster won't want to catch a silver weapon; drop it at the
                hero's feet instead */
@@ -2237,19 +2408,18 @@ export async function use_misc(mtmp) {
 
 // C ref: dungeon.c ceiling(x, y).
 function ceiling(_x, _y) { return 'ceiling'; }
-// C ref: mon.c mon_hates_silver(mon) — js/mon.js owns the real predicate;
-// re-derive it locally to keep muse out of another import cycle.
-function mon_hates_silver_local(mon) {
-    const ptr = mon?.data;
-    if (!ptr) return false;
-    return is_undead(ptr) || (mflags2_of(ptr) & M2_WERE) !== 0
-        || ptr.name === 'imp' || ptr.mcls === 24 /* S_DEMON */;
-}
+// mon.js owns mon_hates_silver(); muse already imports from mon.js, so the old
+// local re-derivation bought nothing and got four things wrong against
+// mondata.c hates_silver(): is_undead in place of `mlet == S_VAMPIRE || PM_SHADE`
+// (every zombie/mummy/lich answered yes), the literal 24 commented "S_DEMON"
+// (24 is S_XAN; S_DEMON is 56, and C tests the M2_DEMON flag anyway), the name
+// "imp" in place of `mlet == S_IMP && != PM_TENGU`, and no is_vampshifter arm.
 // C ref: invent.c remove_worn_item() + freeinv() for the hero's wielded weapon.
 function hero_unwield(obj) {
-    const u = game.u;
-    if (u.uwep === obj) u.uwep = null;
-    if (u.uswapwep === obj) u.uswapwep = null;
+    // same slot-location fix as welded_hero(): clearing u.uwep left game.uwep
+    // still pointing at an object that had just been removed from invent.
+    if (game.uwep === obj) game.uwep = null;
+    if (game.uswapwep === obj) game.uswapwep = null;
     obj.owornmask = 0;
     const inv = game.invent || [];
     const i = inv.indexOf(obj);
@@ -2534,9 +2704,10 @@ async function mon_consume_unstone(mon, obj, by_you, stoning) {
 function corpse_nutrition(obj) {
     return (monster_by_pmidx(obj.corpsenm)?.cnutrit) | 0;
 }
-// C ref: mondata.h resists_acid(mon).
+// C ref: mondata.h resists_acid(mon).  monflag.h MR_ACID is 0x40; 0x20 (the old
+// value) is MR_POISON, so this answered with the wrong resistance bit.
 function resists_acid_mon(mon) {
-    const MR_ACID = 0x20;
+    const MR_ACID = 0x40;
     return ((mon?.data?.mresists ?? 0) & MR_ACID) !== 0;
 }
 

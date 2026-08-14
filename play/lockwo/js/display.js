@@ -20,6 +20,9 @@ import {
     HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP,
     MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR,
     TRAPPED_CHEST,
+    LADDER, LA_DOWN, DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, AIR, CLOUD,
+    DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
+    AM_MASK, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, AM_SANCTUM,
 } from './const.js';
 import {
     NO_COLOR, CLR_BLACK, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
@@ -315,8 +318,24 @@ export function canseemon_shared(mtmp) {
     // No long worms in the covered sessions, so canseemon's worm_known() arm
     // never applies.
     if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
-    if (mtmp.minvis && !game.u?.see_invis) return false;
+    return mon_visible(mtmp);
+}
+
+// C ref: display.h _mon_visible(mon) — (!minvis || See_invisible) && !mundetected.
+// Assumes the caller has established that the hero can see the SQUARE; newsym()
+// relies on this to decide whether to draw the monster glyph at all.
+function mon_visible(mtmp) {
+    if (!mtmp) return false;
+    if (mtmp.minvis && !see_invisible()) return false;
     return !mtmp.mundetected;
+}
+
+// C ref: youprop.h See_invisible — HSee_invisible || ESee_invisible.  Different
+// files in this port spell the hero's copy differently; read all of them.
+function see_invisible() {
+    const u = game.u || {}, p = u.uprops || {};
+    return !!(u.see_invis || p.HSee_invisible || u.HSee_invisible
+        || p.ESee_invisible || u.ESee_invisible || p.See_invisible || u.See_invisible);
 }
 
 // ── ANSI color codes ──
@@ -598,11 +617,34 @@ function wall_glyph_for(loc) {
     return wall_cmap_glyph(idx);
 }
 
-// C ref: stairs.c stairway_at — find the stairway node at (x,y).
+// C ref: stairs.c stairway_at — find the stairway node at (x,y).  mklev builds
+// gs.stairs as a `next`-linked list; sp_lev's own stair/ladder makers push onto
+// a plain array instead, so walk whichever shape is present (walking an array
+// as a list silently found nothing, which made known_branch_stairs() answer
+// FALSE on every special level).
 function stairway_at(x, y) {
-    for (let s = game.stairs; s; s = s.next)
+    const head = game.stairs;
+    if (Array.isArray(head)) {
+        for (const s of head) if (s && s.sx === x && s.sy === y) return s;
+        return null;
+    }
+    for (let s = head; s; s = s.next)
         if (s.sx === x && s.sy === y) return s;
     return null;
+}
+
+// C ref: back_to_glyph STAIRS/LADDER — `ptr->ladder & LA_DOWN` picks the
+// down-variant.  rm.h aliases `ladder` onto struct rm's shared `flags`, and only
+// mklev's stair makers stamp it in this port (sp_lev's create_stairs path never
+// does), so fall back to the stairway record and finally to level.upstair.
+// Using level.upstair alone is wrong on a level that carries a branch
+// up-staircase as well as the main one — mklev's branch maker overwrites
+// level.upstair with the branch, leaving the real upstair drawn as '>'.
+function stairs_go_down(loc, x, y) {
+    if (loc.ladder) return !!(loc.ladder & LA_DOWN);
+    const sway = stairway_at(x, y);
+    if (sway) return !sway.up;
+    return !(game.level?.upstair?.x === x && game.level?.upstair?.y === y);
 }
 
 // C ref: stairs.c known_branch_stairs — True if 'sway' is a branch staircase
@@ -622,12 +664,22 @@ function symOverrideChar(name) {
     return ov && ov[name] ? ov[name] : null;
 }
 
+// S_tree, shared by TREE terrain and an arboreal level's STONE/SCORR.
+function tree_glyph(dec) {
+    return dec ? { ch: 'g', color: CLR_GREEN, dec: false }
+               : { ch: '#', color: CLR_GREEN, dec: false };
+}
+
 export function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
     const dec = useDECgraphics();
     switch (typ) {
-    case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
-    case SCORR:     return { ch: ' ', color: NO_COLOR, dec: false };  // secret corridor = stone
+    // C ref: back_to_glyph SCORR/STONE — `idx = svl.level.flags.arboreal
+    // ? S_tree : S_stone` (an arboreal level's undug rock is forest).
+    case STONE:
+    case SCORR:
+        if (game.level?.flags?.arboreal) return tree_glyph(dec);
+        return { ch: ' ', color: NO_COLOR, dec: false };
     case ROOM:      return dec ? { ch: '~', color: NO_COLOR, dec: true } : { ch: '.', color: NO_COLOR, dec: false };
     case CORR: {
         // C ref: display.c back_to_glyph CORR — idx = (ptr->waslit ||
@@ -674,10 +726,19 @@ export function terrain_glyph(loc, x, y) {
         // hilite is nilstring (termcap.c init_hilite) so it emits no color
         // escape and records as the default (NO_COLOR) cell, matching how
         // walls/floors are handled here.
-        const up = (game.level?.upstair?.x === x && game.level?.upstair?.y === y);
-        const ch = up ? '<' : '>';
+        const ch = stairs_go_down(loc, x, y) ? '>' : '<';
         const sway = known_branch_stairs(stairway_at(x, y)) ? CLR_YELLOW : NO_COLOR;
         return { ch, color: sway, dec: false };
+    }
+    case LADDER: {
+        // C ref: back_to_glyph LADDER — S_upladder/S_dnladder (CLR_BROWN) or
+        // the branch pair (CLR_YELLOW).  dat/symbols DECgraphics maps both to
+        // meta-y / meta-z, which the frozen decoder's DEC_MAP has no entry for,
+        // so (like S_tree) emit the bare letter with dec=false.
+        const down = stairs_go_down(loc, x, y);
+        const color = known_branch_stairs(stairway_at(x, y)) ? CLR_YELLOW : CLR_BROWN;
+        if (dec) return { ch: down ? 'z' : 'y', color, dec: false };
+        return { ch: down ? '>' : '<', color, dec: false };
     }
     // C ref: back_to_glyph POOL/MOAT -> S_pool, WATER -> S_water, LAVAPOOL ->
     // S_lava, LAVAWALL -> S_lavawall, ICE -> S_ice.  defsym.h ASCII glyphs:
@@ -706,20 +767,64 @@ export function terrain_glyph(loc, x, y) {
                                : { ch: '}', color: CLR_ORANGE, dec: false };
     case ICE:       return dec ? { ch: '~', color: CLR_CYAN, dec: true }
                                : { ch: '.', color: CLR_CYAN, dec: false };
-    case IRONBARS:  return { ch: '#', color: CLR_GRAY, dec: false };
+    // C ref: defsym.h PCHAR(17, '#', S_bars, HI_METAL) — HI_METAL is CLR_CYAN,
+    // not the gray this used to claim.  dat/symbols DECgraphics remaps S_bars to
+    // \xfc (meta-'|', "not-equals"); DEC_MAP has no '|' entry so, like S_tree,
+    // emit the bare character with dec=false.
+    case IRONBARS:  return dec ? { ch: '|', color: CLR_CYAN, dec: false }
+                               : { ch: '#', color: CLR_CYAN, dec: false };
     // C ref: dat/symbols DECgraphics S_tree = \xe7 (meta-g).  The recorder emits
     // it as 'g' inside the DEC (Shift-Out) font; the frozen decoder's DEC_MAP has
     // no 'g' entry, so the recorded C cell renders as the literal 'g'.  Emit 'g'
     // with dec=FALSE (same trick as S_pool's '`') so the JS cell matches.  The
     // default (non-DEC) symset draws a tree as '#'.
-    case TREE:      return dec ? { ch: 'g', color: CLR_GREEN, dec: false }
-                               : { ch: '#', color: CLR_GREEN, dec: false };
+    case TREE:      return tree_glyph(dec);
     case FOUNTAIN:  return { ch: symOverrideChar('S_fountain') || '{', color: CLR_BRIGHT_BLUE, dec: false };
     // C ref: defsym.h PCHAR(36, '{', S_sink, CLR_WHITE).
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
     case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
-    case ALTAR:     return { ch: '{', color: CLR_GRAY, dec: true };
+    // C ref: back_to_glyph ALTAR — the glyph is altar_to_glyph(altarmask), and
+    // display.c altarcolors[] gives it a per-alignment colour.  Without
+    // USE_GENERAL_ALTAR_COLORS (undefined in this build) lawful/neutral/chaotic
+    // are all CLR_GRAY, but an *unaligned* altar (amask & AM_MASK not one of
+    // the three, e.g. the "noalign" altars .lua files stamp) is CLR_RED and
+    // Moloch's Sanctum (AM_SANCTUM) is CLR_BRIGHT_MAGENTA.
+    // dat/symbols DECgraphics remaps S_altar to \xfb (meta-'{'); the default
+    // symset draws it as '_'.
+    case ALTAR: {
+        const amask = loc.altarmask ?? loc.flags ?? 0;
+        const acolor = (amask & AM_SANCTUM) ? CLR_BRIGHT_MAGENTA
+            : ((amask & AM_MASK) === AM_LAWFUL || (amask & AM_MASK) === AM_NEUTRAL
+               || (amask & AM_MASK) === AM_CHAOTIC) ? CLR_GRAY
+            : CLR_RED;
+        return dec ? { ch: '{', color: acolor, dec: true }
+                   : { ch: '_', color: acolor, dec: false };
+    }
+    // C ref: back_to_glyph DBWALL — the raised-drawbridge portcullis, S_hcdbridge
+    // / S_vcdbridge ('#', CLR_BROWN; not remapped by DECgraphics).
+    case DBWALL:    return { ch: '#', color: CLR_BROWN, dec: false };
+    // C ref: back_to_glyph DRAWBRIDGE_DOWN — S_hodbridge / S_vodbridge, which
+    // DECgraphics remaps to \xfe (meta-'~', the centered dot).
+    case DRAWBRIDGE_DOWN:
+        return dec ? { ch: '~', color: CLR_BROWN, dec: true }
+                   : { ch: '.', color: CLR_BROWN, dec: false };
+    // C ref: back_to_glyph DRAWBRIDGE_UP — the square the raised bridge covers
+    // shows whatever is underneath (drawbridgemask & DB_UNDER).
+    case DRAWBRIDGE_UP:
+        switch (loc.drawbridgemask & DB_UNDER) {
+        case DB_MOAT:  return dec ? { ch: '`', color: CLR_BLUE, dec: false }
+                                  : { ch: '}', color: CLR_BLUE, dec: false };
+        case DB_LAVA:  return dec ? { ch: '`', color: CLR_RED, dec: false }
+                                  : { ch: '}', color: CLR_RED, dec: false };
+        case DB_ICE:   return dec ? { ch: '~', color: CLR_CYAN, dec: true }
+                                  : { ch: '.', color: CLR_CYAN, dec: false };
+        default:       return dec ? { ch: '~', color: NO_COLOR, dec: true }
+                                  : { ch: '.', color: NO_COLOR, dec: false };
+        }
+    // C ref: defsym.h S_air (' ', CLR_CYAN) / S_cloud ('#', CLR_GRAY).
+    case AIR:       return { ch: ' ', color: CLR_CYAN, dec: false };
+    case CLOUD:     return { ch: '#', color: CLR_GRAY, dec: false };
     case HWALL:
     case VWALL:
     case TLCORNER:
@@ -732,7 +837,11 @@ export function terrain_glyph(loc, x, y) {
     case TLWALL:
     case TRWALL:
         return wall_glyph_for(loc);
-    default:        return { ch: '?', color: NO_COLOR, dec: false };
+    // C ref: back_to_glyph default — impossible() then `idx = S_room`
+    // ("something is better than nothing"), NOT a literal '?'.
+    default:
+        return dec ? { ch: '~', color: NO_COLOR, dec: true }
+                   : { ch: '.', color: NO_COLOR, dec: false };
     }
 }
 
@@ -771,7 +880,7 @@ function spot_shows_engravings(loc) {
 // Glyph for an engraving.  C ref: include/engrave.h engraving_to_defsym +
 // defsym.h — a corridor engraving shows as '#' (S_engrcorr), any other (room
 // or ice) as '`' (S_engroom); both are CLR_BRIGHT_BLUE.
-function engraving_glyph(loc) {
+export function engraving_glyph(loc) {
     const ch = (loc?.typ === CORR) ? '#' : '`';
     return { ch, color: CLR_BRIGHT_BLUE, dec: false };
 }
@@ -780,6 +889,12 @@ function engraving_glyph(loc) {
 // (is_pool && !Underwater) || LAVAPOOL || LAVAWALL.  is_pool = POOL|MOAT|WATER.
 export function covers_objects(loc) {
     const typ = loc?.typ;
+    // dbridge.c is_pool()/is_lava() also count the square under a raised
+    // drawbridge whose DB_UNDER is moat or lava.
+    if (typ === DRAWBRIDGE_UP) {
+        const u = loc.drawbridgemask & DB_UNDER;
+        return u === DB_MOAT || u === DB_LAVA;
+    }
     return typ === POOL || typ === MOAT || typ === WATER
         || typ === LAVAPOOL || typ === LAVAWALL;
 }
@@ -972,6 +1087,23 @@ function display_warning(mon, x, y) {
     show_glyph_cell(x, y, sym.ch, sym.color, false);
 }
 
+// C ref: display.h canspotself() — canseeself() || senseself(), where
+//   canseeself() = Blind || u.uswallow || (!Invisible && !u.uundetected)
+//   senseself()  = Unblind_telepat || Detect_monsters
+// and youprop.h Invisible = ((HInvis || EInvis) && !BInvis) && !See_invisible.
+// A blind hero still "sees" itself (touch); an invisible one does not, and its
+// square shows the terrain/object underneath instead of '@'.
+function canspotself() {
+    const u = game.u || {};
+    if (Blind() || u.uswallow) return true;
+    const p = u.uprops || {};
+    const invis = (p.HInvis || u.HInvis || p.EInvis || u.EInvis || 0) && !(p.BInvis || u.BInvis);
+    if (!(invis && !see_invisible()) && !u.uundetected) return true;
+    // senseself(): ETelepat is the only Unblind_telepat source, and neither it
+    // nor Detect_monsters is reachable while the hero is merely invisible here.
+    return !!(p.HDetect_monsters || p.EDetect_monsters || u.HDetect_monsters);
+}
+
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
@@ -981,16 +1113,29 @@ export function newsym(x, y) {
         // condition is remembered: lev->waslit = (lev->lit != 0).
         loc.waslit = loc.lit ? 1 : 0;
         // Hero — drawn live; remember the background underneath.  Standing on
-        // an engraved spot reveals it (C ref: display.c _map_location).
-        if (spot_shows_engravings(loc)) {
+        // an engraved spot reveals it.  C ref: display.c newsym:970
+        // `if ((ep = engr_at(x, y)) != 0) ep->erevealed = 1;` — NOT gated on
+        // spot_shows_engravings ("even when covered by objects or a monster");
+        // only the _map_location draw is.
+        {
             const ep = engr_at(x, y);
             if (ep) ep.erevealed = 1;
         }
-        // C ref: display.c display_self() — a mounted hero is drawn as the
-        // steed's glyph (the hero is "on" the steed), not '@'.
-        const hg = hero_glyph();
-        show_glyph_cell(x, y, hg.ch, hg.color, false);
+        // C ref: display.c newsym u_at branch —
+        //   int see_self = canspotself();
+        //   _map_location(x, y, !see_self);
+        //   if (see_self) display_self();
+        // An INVISIBLE hero without see-invisible is not drawn at all: the
+        // square shows (and is remembered as) the background under it.
         const bg = background_glyph(loc, x, y);
+        if (canspotself()) {
+            // C ref: display.c display_self() — a mounted hero is drawn as the
+            // steed's glyph (the hero is "on" the steed), not '@'.
+            const hg = hero_glyph();
+            show_glyph_cell(x, y, hg.ch, hg.color, false);
+        } else {
+            show_glyph_cell(x, y, bg.ch, bg.color, bg.dec, pile_attr(bg.pile));
+        }
         loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
         return;
     }
@@ -1005,18 +1150,29 @@ export function newsym(x, y) {
         // to see it up close.  observe_object() sets dknown so obj_color() then
         // returns the real appearance color instead of the generic gray.
         maybe_observe_near_object(x, y);
-        // C ref: display.c unmap_object/_map_location — seeing an engraved
-        // spot reveals the engraving so it can be mapped.
-        if (spot_shows_engravings(loc)) {
+        // C ref: display.c newsym:970 — seeing the square reveals any engraving
+        // on it, whatever the terrain and whatever is drawn on top.
+        {
             const ep = engr_at(x, y);
             if (ep) ep.erevealed = 1;
         }
-        const bg = background_glyph(loc, x, y);
         // A visible monster takes precedence over the background.  C ref:
         // display.c newsym -> mon_visible(mon): an mundetected hider (e.g. a
         // giant eel submerged in water) is NOT shown; the background shows
         // through instead.
         const mon = m_at(x, y);
+        // C ref: display.c newsym:1015 — "if monster is in a physical trap, you
+        // see trap too".  Runs BEFORE _map_location, so the trap this reveals is
+        // what the square is remembered as once the monster steps off.  Purely
+        // RNG-free state, but a remembered trap changes what unmap_object() and
+        // every later redraw draw here.
+        if (mon && mon_visible(mon) && mon.mtrapped) {
+            const mtrap = game.level?.traps?.find((t) => t.tx === x && t.ty === y);
+            const tt = mtrap ? mtrap.ttyp : 0;
+            if (tt === BEAR_TRAP || tt === PIT || tt === SPIKED_PIT || tt === WEB)
+                mtrap.tseen = 1;
+        }
+        const bg = background_glyph(loc, x, y);
         // C ref: display.c newsym — a visible gas-cloud region drawn on top of
         // the background, UNLESS a directly-occupying monster overrides it
         // (mon_overrides_region()).  SCOPE: mon_overrides_region's adjacent-
@@ -1028,12 +1184,12 @@ export function newsym(x, y) {
         // replicated (see region.js's file header for the broader scope note).
         const reg = visible_region_at(x, y);
         if (reg && (ACCESSIBLE(loc.typ) || (reg.visible && (IS_POOL(loc.typ) || IS_LAVA(loc.typ))))
-            && !(mon && !mon.mundetected)) {
+            && !(mon && mon_visible(mon))) {
             const rg = show_region(reg);
             show_glyph_cell(x, y, rg.ch, rg.color, false);
             return;
         }
-        if (mon && !mon.mundetected) {
+        if (mon && mon_visible(mon)) {
             // Remember the background (not the monster — monsters move).
             if (game.level?.flags?.hero_memory) {
                 loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
@@ -1069,7 +1225,7 @@ export function newsym(x, y) {
         // Can't physically see <x,y>.  C ref: display.c newsym "Can't see the
         // location" branch.
         const mon = m_at(x, y);
-        if (mon && !mon.mundetected && see_with_infrared(mon)) {
+        if (mon && mon_visible(mon) && see_with_infrared(mon)) {
             // A warm monster within the hero's line of sight but on a square too
             // dark to see is revealed by infravision (see_with_infrared &&
             // mon_visible).  display_monster draws the normal monster glyph; it
@@ -1149,13 +1305,10 @@ export function unmap_object(x, y) {
     if (trap && trap.tseen && !covers_objects(loc)) {
         g = trap_glyph(trap);
     } else if (loc.seenv) {
-        const ep = spot_shows_engravings(loc) ? engr_at(x, y) : null;
-        if (ep && !covers_objects(loc)) {
-            if (cansee(x, y)) ep.erevealed = 1;
-            g = engraving_glyph(loc);
-        } else {
-            g = terrain_glyph(loc, x, y);
-        }
+        // C ref: display.c unmap_object — the second arm is map_background(),
+        // i.e. back_to_glyph terrain ONLY; there is no engraving arm here (that
+        // lives in _map_location, which unmap_object deliberately does not use).
+        g = terrain_glyph(loc, x, y);
         // C: "turn remembered dark room squares dark" — a room floor glyph
         // picked above for a square that isn't currently lit re-darkens to
         // blank, same as an unlit room square that was never specially seen.
@@ -1175,7 +1328,10 @@ export async function docrt() {
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++)
             newsym(x, y);
-    if (game.u?.ux > 0) {
+    // C ref: display.c docrt -> vision_recalc/see_monsters — the hero glyph is
+    // only redrawn when canspotself(); an invisible hero's own square keeps the
+    // background newsym() just drew there.
+    if (game.u?.ux > 0 && canspotself()) {
         const hg = hero_glyph();
         show_glyph_cell(game.u.ux, game.u.uy, hg.ch, hg.color, false);
     }
@@ -1371,22 +1527,38 @@ function _statusLine2() {
     // that wounds a leg drops weight_cap below the carried weight -> "Burdened".
     const encWord = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'][game._curcap || 0];
     if (encWord) s += ` ${encWord}`;
-    // C ref: botl.c bot2 — status conditions follow the numeric fields, in
-    // order: ... Blind, Deaf, Stun, Conf, Hallu, Lev, Fly, Ride.  Only the
-    // conditions the contest sessions reach are modelled (Blind from a cream
-    // pie / blindfold; Ride while mounted).
+    // Status conditions follow the numeric fields.  NOTE the order is NOT
+    // bot2()'s (Blind, Deaf, Stun, Conf, Hallu, Lev, Fly, Ride): the tty uses
+    // the *fielded* status API (botl.c bot() -> bot_via_windowport(), since
+    // VIA_WINDOWPORT()), and wintty.c render_status walks cond_idx[], which
+    // botl.c condopt() qsorts by conditions[].ranking then case-insensitively
+    // by condtests[].useroption.  Every condition below is ranking 10, so the
+    // emitted order is alphabetical on the *option* name:
+    //   blind, conf, deaf, fly, hallucinat, levitate, ride, stun
+    // — confirmed by the recordings ("Satiated Conf Stun", "Burdened Deaf").
     if ((u.blinded || 0) > 0 || game.ublindf)
         s += ` Blind`;
-    // C ref: botl.c bot2 condition order — Stun, then Conf, then Hallu.
     if ((u.uprops?.Confusion || 0) > 0)
         s += ` Conf`;
-    // C ref: botl.c bot2 condition order — Lev, then Fly, then Ride.
-    if (u.uprops?.Levitation)
-        s += ` Lev`;
+    // C ref: youprop.h Deaf — HDeaf || EDeaf (mon.js Deaf()).
+    if ((u.uprops?.HDeaf || 0) > 0 || u.Deaf)
+        s += ` Deaf`;
     if (u.uprops?.Flying)
         s += ` Fly`;
+    // C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance.
+    // potion.js set_hallucination() writes the timer to four aliases at once.
+    const halluTime = (u.uprops?.Hallucination || 0) || (u.uprops?.HHallucination || 0)
+        || (u.HHallucination || 0) || (u.uhallu ? 1 : 0);
+    const halluRes = (u.uprops?.HHalluc_resistance || 0) || (u.uprops?.EHalluc_resistance || 0);
+    if (halluTime > 0 && !halluRes)
+        s += ` Hallu`;
+    if (u.uprops?.Levitation)
+        s += ` Lev`;
     if (u.usteed)
         s += ` Ride`;
+    // C ref: youprop.h Stunned — HStun (timeout.js STUNNED entry).
+    if ((u.uprops?.Stun || 0) > 0 || u.Stunned)
+        s += ` Stun`;
     return s;
 }
 
@@ -1742,6 +1914,17 @@ export async function update_topl(bp) {
     game._pending_message = bp;
     game._toplin = TOPLIN_NEED_MORE;
     game._toplines = bp;
+    // C ref: win/tty/topl.c redotoplin():139 — `if (ttyDisplay->cury && otoplin
+    // != TOPLINE_SPECIAL_PROMPT) more()`.  A message that word-wrapped onto a
+    // second row blocks on --More-- IMMEDIATELY; more() then blanks rows 0..cury
+    // and leaves toplin == TOPLINE_EMPTY (topl.c:237-245).  Clearing
+    // _pending_message is load-bearing: otherwise the next step redraws the
+    // already-acknowledged line.
+    if (wrap_topl(bp).length > 1) {
+        await topl_more();
+        game._toplin = 0;
+        game._pending_message = '';
+    }
 }
 
 // C ref: win/tty/topl.c topl_putsym() — a normal character is never placed at

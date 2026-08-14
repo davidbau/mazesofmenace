@@ -1441,6 +1441,18 @@ export function base_oc_cost(otyp) {
     return OC_COST[otyp] || 0;
 }
 
+// C ref: objnam.c:98 GemStone(typ) — the gem types whose *name* carries a
+// " stone" suffix ("flint stone", "jade stone").  The seven flashy gems are
+// excluded, as is every non-GEMSTONE material except FLINT itself.
+// NOTE: the OBJECT_DATA column is `material`, not `oc_material` — reading
+// `oc_material` off these records silently yields undefined.
+export function GemStone(typ) {
+    const GEMSTONE = 20, FLINT = 473;
+    /* DILITHIUM_CRYSTAL, DIAMOND, RUBY, SAPPHIRE, BLACK_OPAL, EMERALD, OPAL */
+    const EXC = GemStone._exc || (GemStone._exc = new Set([439, 440, 441, 443, 444, 445, 452]));
+    return typ === FLINT || (objects[typ]?.material === GEMSTONE && !EXC.has(typ));
+}
+
 // C ref: mkobj.c — base weight of one unit of `otmp`'s otyp (objects[].oc_weight).
 export function base_oc_weight(otmp) {
     const b = BASE_OC_WEIGHT[otmp.otyp];

@@ -9,18 +9,36 @@ import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
 import { Is_candle, emits_light, touch_petrifies } from './nhmacrofn.js';
-import { d_at, rn2_at, rnd_at } from './nhrng.js';
-import { Acid_resistance, BInvis, Blind, Breathless, Deaf, Displaced, EFumbling, ELevitation, EPasses_walls, Fast, Fire_resistance, Flying, Fumbling, HConfusion, HDeaf, HFlying, HFumbling, HLevitation, HMagical_breathing, HPasses_walls, HSleepy, HStun, Hallucination, Invis, Levitation, Passes_walls, Poison_resistance, Protection_from_shape_changers, See_invisible, Sick, Sleep_resistance, Sleepy, Slimed, Stone_resistance, Stoned, Strangled, Unchanging, Upolyd, Very_fast, Vomiting, Warn_of_mon, Wounded_legs, create_nhwindow, destroy_nhwindow, display_nhwindow, putstr } from './nhprop.js';
-import { c_color_names, c_common_strings, cg, disp, flags, gb, gm, gn, gt, gu, gv, gy, iflags, svc, svd, svk, svl, svm, svq, svt, u, uamul, uarmf, uarmh, uswapwep, uwep } from './decl.js';
+import {
+    Acid_resistance, BInvis, Blind, Breathless, Deaf, Displaced, EFumbling, ELevitation,
+    EPasses_walls, Fast, Fire_resistance, Flying, Fumbling, HConfusion, HDeaf, HFlying, HFumbling,
+    HLevitation, HMagical_breathing, HPasses_walls, HSleepy, HStun, Hallucination, Invis,
+    Levitation, Passes_walls, Poison_resistance, Protection_from_shape_changers, See_invisible,
+    Sick, Sleep_resistance, Sleepy, Slimed, Stone_resistance, Stoned, Strangled, Unchanging, Upolyd,
+    Very_fast, Vomiting, Warn_of_mon, Wounded_legs, create_nhwindow, destroy_nhwindow,
+    display_nhwindow, putstr
+} from './nhprop.js';
+import {
+    c_color_names, c_common_strings, cg, disp, flags, gb, gm, gn, gt, gu, gv, gy, iflags, svc, svd,
+    svk, svl, svm, svq, svt, u, uamul, uarmf, uarmh, uswapwep, uwep
+} from './decl.js';
 import { eos, highc, ing_suffix, s_suffix, strstri, strsubst, upstart } from './hacklib.js';
-import { Norep, You, You_feel, You_hear, You_see, Your, impossible, pline, urgent_pline, verbalize } from './pline.js';
+import {
+    Norep, You, You_feel, You_hear, You_see, Your, impossible, pline, urgent_pline, verbalize
+} from './pline.js';
 import { inv_weight, monst_to_any, nomul, obj_to_any, spoteffects } from './hack.js';
 import { Popeye, eating_dangerous_corpse, is_fainted, morehungry, vomit } from './eat.js';
 import { stop_occupation } from './allmain.js';
 import { heal_legs, revive_mon, zombify_mon } from './do.js';
-import { incr_itimeout, make_blinded, make_confused, make_deaf, make_glib, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout } from './potion.js';
+import {
+    incr_itimeout, make_blinded, make_confused, make_deaf, make_glib, make_hallucinated, make_sick,
+    make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout
+} from './potion.js';
 import { acurr, adjattrib, exercise, stone_luck } from './attrib.js';
-import { big_to_little, cantvomit, little_to_big, locomotion, name_to_mon, pronoun_gender } from './mondata.js';
+import { d, rn2, rnd } from './rnd.js';
+import {
+    big_to_little, cantvomit, little_to_big, locomotion, name_to_mon, pronoun_gender
+} from './mondata.js';
 import { body_part, polymon, rehumanize } from './polyself.js';
 import { Monnam, a_monnam, hcolor, m_monnam, rndmonnam, x_monnam } from './do_name.js';
 import { genders } from './role.js';
@@ -30,7 +48,9 @@ import { on_level, surface } from './dungeon.js';
 import { canseemon, newsym, see_monsters, set_mimic_blocking } from './display.js';
 import { mons } from './monst.js';
 import { dealloc_killer, done, find_delayed_killer, panic } from './end.js';
-import { arti_light_radius, candle_light_range, del_light_source, new_light_source } from './light.js';
+import {
+    arti_light_radius, candle_light_range, del_light_source, new_light_source
+} from './light.js';
 import { any_visible_region, region_danger, visible_region_summary } from './region.js';
 import { carrying, sobj_at, update_inventory, useup, useupall } from './invent.js';
 import { you_unwere } from './were.js';
@@ -48,7 +68,6 @@ import { container_weight, obj_extract_self, shrink_glob, weight } from './mkobj
 import { Shk_Your, find_oid, obfree } from './shk.js';
 import { which_armor } from './worn.js';
 import { dismount_steed } from './steed.js';
-import { rn2, rng_log_enabled, rng_log_set_caller } from './rnd.js';
 import { confdir, isok } from './cmd.js';
 import { hurtle } from './dothrow.js';
 import { artifact_light } from './artifact.js';
@@ -62,70 +81,81 @@ import { lookup_id_mapping } from './restore.js';
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $Gender_he = FLD.Gender_he, $NHFILE_ftype = FLD.NHFILE_ftype, $NHFILE_mode = FLD.NHFILE_mode,
-    $Role_mnum = FLD.Role_mnum, $c_color_names_c_blue = FLD.c_color_names_c_blue,
-    $c_color_names_c_golden = FLD.c_color_names_c_golden, $c_color_names_c_green = FLD.c_color_names_c_green,
-    $c_common_strings_c_You_can_move_again = FLD.c_common_strings_c_You_can_move_again,
-    $c_common_strings_c_something = FLD.c_common_strings_c_something,
-    $const_globals_zeroany = FLD.const_globals_zeroany, $context_info_warntype = FLD.context_info_warntype,
-    $d_level_dlevel = FLD.d_level_dlevel, $dgn_topology_d_water_level = FLD.dgn_topology_d_water_level,
-    $dlevel_t_flags = FLD.dlevel_t_flags, $dlevel_t_monsters = FLD.dlevel_t_monsters,
-    $dlevel_t_objects = FLD.dlevel_t_objects, $fe_timeout = FLD.fe_timeout, $flag_female = FLD.flag_female,
-    $flag_friday13 = FLD.flag_friday13, $flag_moonphase = FLD.flag_moonphase,
-    $instance_flags_defer_decor = FLD.instance_flags_defer_decor,
-    $instance_flags_last_msg = FLD.instance_flags_last_msg,
-    $instance_globals_b_buzzer = FLD.instance_globals_b_buzzer,
-    $instance_globals_m_migrating_mons = FLD.instance_globals_m_migrating_mons,
-    $instance_globals_m_multi = FLD.instance_globals_m_multi,
-    $instance_globals_m_multi_reason = FLD.instance_globals_m_multi_reason,
-    $instance_globals_m_mydogs = FLD.instance_globals_m_mydogs,
-    $instance_globals_n_nomovemsg = FLD.instance_globals_n_nomovemsg,
-    $instance_globals_saved_d_dungeon_topology = FLD.instance_globals_saved_d_dungeon_topology,
-    $instance_globals_saved_l_level = FLD.instance_globals_saved_l_level,
-    $instance_globals_saved_m_moves = FLD.instance_globals_saved_m_moves,
-    $instance_globals_saved_m_mvitals = FLD.instance_globals_saved_m_mvitals,
-    $instance_globals_saved_t_timer_id = FLD.instance_globals_saved_t_timer_id,
-    $instance_globals_t_timer_base = FLD.instance_globals_t_timer_base,
-    $instance_globals_u_urole = FLD.instance_globals_u_urole,
-    $instance_globals_v_viz_array = FLD.instance_globals_v_viz_array,
-    $instance_globals_y_youmonst = FLD.instance_globals_y_youmonst, $kinfo_format = FLD.kinfo_format,
-    $kinfo_name = FLD.kinfo_name, $levelflags_stasis_until = FLD.levelflags_stasis_until,
-    $levelflags_stormy = FLD.levelflags_stormy, $monst_data = FLD.monst_data,
-    $monst_m_ap_type = FLD.monst_m_ap_type, $monst_m_id = FLD.monst_m_id,
-    $monst_mappearance = FLD.monst_mappearance, $monst_mtame = FLD.monst_mtame, $monst_mx = FLD.monst_mx,
-    $monst_my = FLD.monst_my, $monst_wormno = FLD.monst_wormno, $mvitals_mvflags = FLD.mvitals_mvflags,
-    $nhcoord_y = FLD.nhcoord_y, $obj_age = FLD.obj_age, $obj_corpsenm = FLD.obj_corpsenm,
-    $obj_cursed = FLD.obj_cursed, $obj_dknown = FLD.obj_dknown, $obj_lamplit = FLD.obj_lamplit,
-    $obj_o_id = FLD.obj_o_id, $obj_oeroded = FLD.obj_oeroded, $obj_otyp = FLD.obj_otyp,
-    $obj_owornmask = FLD.obj_owornmask, $obj_owt = FLD.obj_owt, $obj_ox = FLD.obj_ox, $obj_oy = FLD.obj_oy,
-    $obj_quan = FLD.obj_quan, $obj_spe = FLD.obj_spe, $obj_timed = FLD.obj_timed, $obj_v = FLD.obj_v,
-    $obj_where = FLD.obj_where, $permonst_geno = FLD.permonst_geno, $permonst_mflags1 = FLD.permonst_mflags1,
-    $permonst_mflags2 = FLD.permonst_mflags2, $permonst_mlet = FLD.permonst_mlet,
-    $permonst_mlevel = FLD.permonst_mlevel, $permonst_msound = FLD.permonst_msound,
-    $prop_blocked = FLD.prop_blocked, $prop_intrinsic = FLD.prop_intrinsic,
-    $propname_prop_name = FLD.propname_prop_name, $q_score_killed_leader = FLD.q_score_killed_leader,
-    $rm_flags = FLD.rm_flags, $rm_typ = FLD.rm_typ, $sizeof_Gender = FLD.sizeof_Gender,
-    $sizeof_mvitals = FLD.sizeof_mvitals, $sizeof_permonst = FLD.sizeof_permonst,
-    $sizeof_prop = FLD.sizeof_prop, $sizeof_propname = FLD.sizeof_propname, $sizeof_rm = FLD.sizeof_rm,
-    $sizeof_rm_x21 = FLD.sizeof_rm_x21, $sizeof_ttable = FLD.sizeof_ttable,
-    $timer_element_arg = FLD.timer_element_arg, $timer_element_func_index = FLD.timer_element_func_index,
-    $timer_element_kind = FLD.timer_element_kind, $timer_element_needs_fixup = FLD.timer_element_needs_fixup,
-    $timer_element_tid = FLD.timer_element_tid, $timer_element_timeout = FLD.timer_element_timeout,
-    $ttable_cleanup = FLD.ttable_cleanup, $ttable_name = FLD.ttable_name,
-    $u_roleplay_deaf = FLD.u_roleplay_deaf, $warntype_info_species = FLD.warntype_info_species,
-    $warntype_info_speciesidx = FLD.warntype_info_speciesidx,
-    $window_procs_win_create_nhwindow = FLD.window_procs_win_create_nhwindow,
-    $window_procs_win_destroy_nhwindow = FLD.window_procs_win_destroy_nhwindow,
-    $window_procs_win_display_nhwindow = FLD.window_procs_win_display_nhwindow,
-    $window_procs_win_putstr = FLD.window_procs_win_putstr, $you_dx = FLD.you_dx, $you_dy = FLD.you_dy,
-    $you_mtimedone = FLD.you_mtimedone, $you_uburied = FLD.you_uburied, $you_ucreamed = FLD.you_ucreamed,
-    $you_ugallop = FLD.you_ugallop, $you_ugangr = FLD.you_ugangr, $you_uhave = FLD.you_uhave,
-    $you_uhs = FLD.you_uhs, $you_uinvault = FLD.you_uinvault, $you_uinvulnerable = FLD.you_uinvulnerable,
-    $you_uinwater = FLD.you_uinwater, $you_uluck = FLD.you_uluck, $you_umonnum = FLD.you_umonnum,
-    $you_umonster = FLD.you_umonster, $you_umoved = FLD.you_umoved, $you_uprops = FLD.you_uprops,
-    $you_uroleplay = FLD.you_uroleplay, $you_usick_type = FLD.you_usick_type, $you_usleep = FLD.you_usleep,
-    $you_uspellprot = FLD.you_uspellprot, $you_uspmtime = FLD.you_uspmtime, $you_usptime = FLD.you_usptime,
-    $you_usteed = FLD.you_usteed, $you_uswldtim = FLD.you_uswldtim, $you_ux0 = FLD.you_ux0,
-    $you_uy = FLD.you_uy, $you_uy0 = FLD.you_uy0, $you_uz = FLD.you_uz;
+      $Role_mnum = FLD.Role_mnum, $c_color_names_c_blue = FLD.c_color_names_c_blue,
+      $c_color_names_c_golden = FLD.c_color_names_c_golden,
+      $c_color_names_c_green = FLD.c_color_names_c_green,
+      $c_common_strings_c_You_can_move_again = FLD.c_common_strings_c_You_can_move_again,
+      $c_common_strings_c_something = FLD.c_common_strings_c_something,
+      $const_globals_zeroany = FLD.const_globals_zeroany,
+      $context_info_warntype = FLD.context_info_warntype, $d_level_dlevel = FLD.d_level_dlevel,
+      $dgn_topology_d_water_level = FLD.dgn_topology_d_water_level,
+      $dlevel_t_flags = FLD.dlevel_t_flags, $dlevel_t_monsters = FLD.dlevel_t_monsters,
+      $dlevel_t_objects = FLD.dlevel_t_objects, $fe_timeout = FLD.fe_timeout,
+      $flag_female = FLD.flag_female, $flag_friday13 = FLD.flag_friday13,
+      $flag_moonphase = FLD.flag_moonphase,
+      $instance_flags_defer_decor = FLD.instance_flags_defer_decor,
+      $instance_flags_last_msg = FLD.instance_flags_last_msg,
+      $instance_globals_b_buzzer = FLD.instance_globals_b_buzzer,
+      $instance_globals_m_migrating_mons = FLD.instance_globals_m_migrating_mons,
+      $instance_globals_m_multi = FLD.instance_globals_m_multi,
+      $instance_globals_m_multi_reason = FLD.instance_globals_m_multi_reason,
+      $instance_globals_m_mydogs = FLD.instance_globals_m_mydogs,
+      $instance_globals_n_nomovemsg = FLD.instance_globals_n_nomovemsg,
+      $instance_globals_saved_d_dungeon_topology = FLD.instance_globals_saved_d_dungeon_topology,
+      $instance_globals_saved_l_level = FLD.instance_globals_saved_l_level,
+      $instance_globals_saved_m_moves = FLD.instance_globals_saved_m_moves,
+      $instance_globals_saved_m_mvitals = FLD.instance_globals_saved_m_mvitals,
+      $instance_globals_saved_t_timer_id = FLD.instance_globals_saved_t_timer_id,
+      $instance_globals_t_timer_base = FLD.instance_globals_t_timer_base,
+      $instance_globals_u_urole = FLD.instance_globals_u_urole,
+      $instance_globals_v_viz_array = FLD.instance_globals_v_viz_array,
+      $instance_globals_y_youmonst = FLD.instance_globals_y_youmonst,
+      $kinfo_format = FLD.kinfo_format, $kinfo_name = FLD.kinfo_name,
+      $levelflags_stasis_until = FLD.levelflags_stasis_until,
+      $levelflags_stormy = FLD.levelflags_stormy, $monst_data = FLD.monst_data,
+      $monst_m_ap_type = FLD.monst_m_ap_type, $monst_m_id = FLD.monst_m_id,
+      $monst_mappearance = FLD.monst_mappearance, $monst_mtame = FLD.monst_mtame,
+      $monst_mx = FLD.monst_mx, $monst_my = FLD.monst_my, $monst_wormno = FLD.monst_wormno,
+      $mvitals_mvflags = FLD.mvitals_mvflags, $nhcoord_y = FLD.nhcoord_y, $obj_age = FLD.obj_age,
+      $obj_corpsenm = FLD.obj_corpsenm, $obj_cursed = FLD.obj_cursed, $obj_dknown = FLD.obj_dknown,
+      $obj_lamplit = FLD.obj_lamplit, $obj_o_id = FLD.obj_o_id, $obj_oeroded = FLD.obj_oeroded,
+      $obj_otyp = FLD.obj_otyp, $obj_owornmask = FLD.obj_owornmask, $obj_owt = FLD.obj_owt,
+      $obj_ox = FLD.obj_ox, $obj_oy = FLD.obj_oy, $obj_quan = FLD.obj_quan, $obj_spe = FLD.obj_spe,
+      $obj_timed = FLD.obj_timed, $obj_v = FLD.obj_v, $obj_where = FLD.obj_where,
+      $permonst_geno = FLD.permonst_geno, $permonst_mflags1 = FLD.permonst_mflags1,
+      $permonst_mflags2 = FLD.permonst_mflags2, $permonst_mlet = FLD.permonst_mlet,
+      $permonst_mlevel = FLD.permonst_mlevel, $permonst_msound = FLD.permonst_msound,
+      $prop_blocked = FLD.prop_blocked, $prop_intrinsic = FLD.prop_intrinsic,
+      $propname_prop_name = FLD.propname_prop_name,
+      $q_score_killed_leader = FLD.q_score_killed_leader, $rm_flags = FLD.rm_flags,
+      $rm_typ = FLD.rm_typ, $sizeof_Gender = FLD.sizeof_Gender,
+      $sizeof_mvitals = FLD.sizeof_mvitals, $sizeof_permonst = FLD.sizeof_permonst,
+      $sizeof_prop = FLD.sizeof_prop, $sizeof_propname = FLD.sizeof_propname,
+      $sizeof_rm = FLD.sizeof_rm, $sizeof_rm_x21 = FLD.sizeof_rm_x21,
+      $sizeof_ttable = FLD.sizeof_ttable, $timer_element_arg = FLD.timer_element_arg,
+      $timer_element_func_index = FLD.timer_element_func_index,
+      $timer_element_kind = FLD.timer_element_kind,
+      $timer_element_needs_fixup = FLD.timer_element_needs_fixup,
+      $timer_element_tid = FLD.timer_element_tid,
+      $timer_element_timeout = FLD.timer_element_timeout, $ttable_cleanup = FLD.ttable_cleanup,
+      $ttable_name = FLD.ttable_name, $u_roleplay_deaf = FLD.u_roleplay_deaf,
+      $warntype_info_species = FLD.warntype_info_species,
+      $warntype_info_speciesidx = FLD.warntype_info_speciesidx,
+      $window_procs_win_create_nhwindow = FLD.window_procs_win_create_nhwindow,
+      $window_procs_win_destroy_nhwindow = FLD.window_procs_win_destroy_nhwindow,
+      $window_procs_win_display_nhwindow = FLD.window_procs_win_display_nhwindow,
+      $window_procs_win_putstr = FLD.window_procs_win_putstr, $you_dx = FLD.you_dx,
+      $you_dy = FLD.you_dy, $you_mtimedone = FLD.you_mtimedone, $you_uburied = FLD.you_uburied,
+      $you_ucreamed = FLD.you_ucreamed, $you_ugallop = FLD.you_ugallop,
+      $you_ugangr = FLD.you_ugangr, $you_uhave = FLD.you_uhave, $you_uhs = FLD.you_uhs,
+      $you_uinvault = FLD.you_uinvault, $you_uinvulnerable = FLD.you_uinvulnerable,
+      $you_uinwater = FLD.you_uinwater, $you_uluck = FLD.you_uluck, $you_umonnum = FLD.you_umonnum,
+      $you_umonster = FLD.you_umonster, $you_umoved = FLD.you_umoved, $you_uprops = FLD.you_uprops,
+      $you_uroleplay = FLD.you_uroleplay, $you_usick_type = FLD.you_usick_type,
+      $you_usleep = FLD.you_usleep, $you_uspellprot = FLD.you_uspellprot,
+      $you_uspmtime = FLD.you_uspmtime, $you_usptime = FLD.you_usptime,
+      $you_usteed = FLD.you_usteed, $you_uswldtim = FLD.you_uswldtim, $you_ux0 = FLD.you_ux0,
+      $you_uy = FLD.you_uy, $you_uy0 = FLD.you_uy0, $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
 const __s_invulnerable = cptr.lit("invulnerable");
@@ -212,8 +242,6 @@ const __s_feel_incredibly_sick = cptr.lit("feel incredibly sick.");
 const __s_are_about_to_vomit = cptr.lit("are about to vomit.");
 const __s_confused__2 = cptr.lit(" confused");
 const __s_more_confused = cptr.lit(" more confused");
-const __s_timeout_c = cptr.lit("timeout.c");
-const __s_vomiting_dialogue = cptr.lit("vomiting_dialogue");
 const __s_think = cptr.lit(" think");
 const __s_can_t_seem_to = cptr.lit("can't seem to ");
 const __s_can_t = cptr.lit("can't ");
@@ -232,7 +260,6 @@ const __s_your_s_is_becoming_constricted = cptr.lit("Your %s is becoming constri
 const __s_your_blood_is_having_trouble_reaching = cptr.lit("Your blood is having trouble reaching your brain.");
 const __s_the_pressure_on_your_s_increases = cptr.lit("The pressure on your %s increases.");
 const __s_your_consciousness_is_fading = cptr.lit("Your consciousness is fading.");
-const __s_choke_dialogue = cptr.lit("choke_dialogue");
 const __s_your_illness_feels_worse = cptr.lit("Your illness feels worse.");
 const __s_your_illness_is_severe = cptr.lit("Your illness is severe.");
 const __s_you_are_at_death_s_door = cptr.lit("You are at Death's door.");
@@ -262,7 +289,6 @@ const __s_you_start_to_feel_bloated = cptr.lit("You start to feel bloated.");
 const __s_you_are_feeling_rather_flabby = cptr.lit("You are feeling rather flabby.");
 const __s_you_seem_to_have_some_trouble_breathing = cptr.lit("You seem to have some trouble breathing.");
 const __s_the_air_here_seems_foul = cptr.lit("The air here seems foul.");
-const __s_nh_timeout = cptr.lit("nh_timeout");
 const __s_the_s_haze_around_you_s = cptr.lit("The %s haze around you %s.");
 const __s_becomes_less_dense = cptr.lit("becomes less dense");
 const __s_disappears = cptr.lit("disappears");
@@ -295,8 +321,6 @@ const __s_amulet_vanishes = cptr.lit("amulet vanishes!");
 const __s_make_a_lot_of_noise = cptr.lit("make a lot of noise!");
 const __s_sleeping = cptr.lit("sleeping");
 const __s_you_wake_up = cptr.lit("You wake up.");
-const __s_attach_egg_hatch_timeout = cptr.lit("attach_egg_hatch_timeout");
-const __s_hatch_egg = cptr.lit("hatch_egg");
 const __s_s_s = cptr.lit("%s%s");
 const __s_some = cptr.lit("some ");
 const __s_s_s_from_your_pack = cptr.lit("%s %s from your pack!");
@@ -317,7 +341,6 @@ const __s_empty_water = cptr.lit("empty water");
 const __s_thin_air = cptr.lit("thin air");
 const __s_s_s_out_of_s = cptr.lit("%s %s out of %s!");
 const __s_egg_hatched_where_d = cptr.lit("egg hatched where? (%d)");
-const __s_attach_fig_transform_timeout = cptr.lit("attach_fig_transform_timeout");
 const __s_it = cptr.lit("it");
 const __s_they = cptr.lit("they");
 const __s_them = cptr.lit("them");
@@ -327,7 +350,6 @@ const __s_egads_s_bite_s_your_s = cptr.lit("Egads!  %s bite%s your %s!");
 const __s_s = cptr.lit("s");
 const __s_trip_over_s = cptr.lit("trip over %s.");
 const __s_tripping_over_s_corpse = cptr.lit("tripping over %s corpse");
-const __s_slip_or_trip = cptr.lit("slip_or_trip");
 const __s_s_s_s_the_ice = cptr.lit("%s %s %s the ice.");
 const __s_you = cptr.lit("You");
 const __s_steed = cptr.lit("steed");
@@ -391,7 +413,6 @@ const __s_begin_burn_can_t_get_obj_position = cptr.lit("begin_burn: can't get ob
 const __s_end_burn_obj_s_not_lit = cptr.lit("end_burn: obj %s not lit");
 const __s_end_burn_obj_s_not_timed = cptr.lit("end_burn: obj %s not timed!");
 const __s_cleanup_burn_obj_s_not_lit = cptr.lit("cleanup_burn: obj %s not lit");
-const __s_do_storms = cptr.lit("do_storms");
 const __s_kaboom_boom_boom = cptr.lit("Kaboom!!!  Boom!!  Boom!!");
 const __s_hiding_from_thunderstorm = cptr.lit("hiding from thunderstorm");
 const __s_a_rumbling_noise = cptr.lit("a rumbling noise.");
@@ -400,6 +421,7 @@ const __s_rot_corpse = cptr.lit("rot_corpse");
 const __s_revive_mon = cptr.lit("revive_mon");
 const __s_zombify_mon = cptr.lit("zombify_mon");
 const __s_burn_object = cptr.lit("burn_object");
+const __s_hatch_egg = cptr.lit("hatch_egg");
 const __s_fig_transform = cptr.lit("fig_transform");
 const __s_shrink_glob = cptr.lit("shrink_glob");
 const __s_melt_ice_away = cptr.lit("melt_ice_away");
@@ -426,6 +448,7 @@ const __s_turns = cptr.lit("turns");
 const __s_more_turn = cptr.lit("more turn");
 const __s_timer_sanity_untimed_obj_s_timer_lu = cptr.lit("timer sanity: untimed obj %s, timer %lu");
 const __s_timer_sanity_check = cptr.lit("timer_sanity_check");
+const __s_timeout_c = cptr.lit("timeout.c");
 const __s_top_null = cptr.lit("top != NULL");
 const __s_timer_sanity_can_t_locate_obj_s_where_d = cptr.lit("timer sanity: can't locate obj %s [where=%d], timer %lu");
 const __s_timer_sanity_obj_s_where_d_located_at_d = cptr.lit("timer sanity: obj %s [where=%d] located at <%d,%d>, timer %lu");
@@ -621,8 +644,17 @@ function stoned_dialogue() {
     if (i > 0n && i <= BigInt(5)) {
         let buf = new Uint8Array(256);
 
-        void cptr.strcpy(cptr.decay(buf), cptr.ldPtro(stoned_texts, BigInt.asIntN(64, BigInt(5) - i), 8));
-        if (((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 24576n) == 24576n) && strstri(cptr.decay(buf), __s_limbs))
+        void cptr.strcpy(
+            cptr.decay(buf),
+            cptr.ldPtro(stoned_texts, BigInt.asIntN(64, BigInt(5) - i), 8)
+        );
+        if (((cptr.ldU64o(
+            (cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)),
+            $permonst_mflags1
+        ) &
+            24576n) ==
+            24576n) &&
+                strstri(cptr.decay(buf), __s_limbs))
             void strsubst(cptr.decay(buf), __s_limbs, __s_extremities);
         urgent_pline(__s_pct_s, cptr.decay(buf));
     }
@@ -644,14 +676,24 @@ function stoned_dialogue() {
         stop_occupation();
         nomul(-3);  /* can't move anymore */
         cptr.stPtro(gm, $instance_globals_m_multi_reason, __s_getting_stoned);
-        cptr.stPtro(gn, $instance_globals_n_nomovemsg, cptr.ldPtro(c_common_strings, $c_common_strings_c_You_can_move_again));  /* not unconscious */
+        cptr.stPtro(
+            gn,
+            $instance_globals_n_nomovemsg,
+            cptr.ldPtro(c_common_strings, $c_common_strings_c_You_can_move_again)
+        );  /* not unconscious */
         /* "your limbs have turned to stone" so terminate wounded legs */
         if (Wounded_legs() && !cptr.ldPtro(u, $you_usteed))
             heal_legs(2);
         break;
         case 2:
         if ((HDeaf() & 16777215n) > 0n && (HDeaf() & 16777215n) < 5n)
-            set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop), $prop_intrinsic), 5n);  /* avoid Hear_again at tail end */
+            set_itimeout(
+                cptr.add(
+                    cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop),
+                    $prop_intrinsic
+                ),
+                5n
+            );  /* avoid Hear_again at tail end */
         /* if also vomiting or turning into slime, stop those (no messages) */
         if (Vomiting())
             make_vomiting(0n, 0);
@@ -691,13 +733,13 @@ function vomiting_dialogue() {
             txt = strsubst(cptr.strcpy(cptr.decay(buf), txt), __s_confused__2, __s_more_confused);
         break;
         case 6:
-        make_stunned(BigInt.asIntN(64, (HStun() & 16777215n) + BigInt(d_at(__s_timeout_c, 215, __s_vomiting_dialogue, 2, 4))), 0);
+        make_stunned(BigInt.asIntN(64, (HStun() & 16777215n) + BigInt(d(2, 4))), 0);
         if (!Popeye(NHC.VOMITING))
             stop_occupation();
         // @FallThrough
         ;
         case 9:
-        make_confused(BigInt.asIntN(64, (HConfusion() & 16777215n) + BigInt(d_at(__s_timeout_c, 221, __s_vomiting_dialogue, 2, 4))), 0);
+        make_confused(BigInt.asIntN(64, (HConfusion() & 16777215n) + BigInt(d(2, 4))), 0);
         if (cptr.ldI64o(gm, $instance_globals_m_multi) > 0n)
             nomul(0);
         break;
@@ -772,8 +814,11 @@ function choke_dialogue() {
     let i = (Strangled() & 16777215n);
 
     if (i > 0n && i <= BigInt(5)) {
-        if (Breathless() || !rn2_at(__s_timeout_c, 300, __s_choke_dialogue, 50)) {
-            urgent_pline(cptr.ldPtro(choke_texts2, BigInt.asIntN(64, BigInt(5) - i), 8), body_part(NHC.NECK));
+        if (Breathless() || !rn2(50)) {
+            urgent_pline(
+                cptr.ldPtro(choke_texts2, BigInt.asIntN(64, BigInt(5) - i), 8),
+                body_part(NHC.NECK)
+            );
         } else {
             let str = cptr.ldPtro(choke_texts, BigInt.asIntN(64, BigInt(5) - i), 8);
 
@@ -802,14 +847,30 @@ function sickness_dialogue() {
         let buf = new Uint8Array(256);
         let pronounbuf = new Uint8Array(40);
 
-        void cptr.strcpy(cptr.decay(buf), cptr.ldPtro(sickness_texts, BigInt.asIntN(64, BigInt(3) - i), 8));
+        void cptr.strcpy(
+            cptr.decay(buf),
+            cptr.ldPtro(sickness_texts, BigInt.asIntN(64, BigInt(3) - i), 8)
+        );
         /* change the message slightly for food poisoning */
         if ((((cptr.ldI32o(u, $you_usick_type) & 3) | 0) & NHM.SICK_NONVOMITABLE) == 0)
             void strsubst(cptr.decay(buf), __s_illness, __s_sickness);
         if (Hallucination() && strstri(cptr.decay(buf), __s_death_s_door)) {
             /* youmonst: for Hallucination, mhe()'s mon argument isn't used */
-            void cptr.strcpy(cptr.decay(pronounbuf), (cptr.ldPtro2(genders, pronoun_gender(cptr.add(gy, $instance_globals_y_youmonst), NHM.PRONOUN_HALLU), $sizeof_Gender, $Gender_he)));
-            void cptr.sprintf(eos(cptr.decay(buf)), __s_s_s_inviting_you_in, upstart(cptr.decay(pronounbuf)), vtense(cptr.decay(pronounbuf), __s_are));
+            void cptr.strcpy(
+                cptr.decay(pronounbuf),
+                (cptr.ldPtro2(
+                    genders,
+                    pronoun_gender(cptr.add(gy, $instance_globals_y_youmonst), NHM.PRONOUN_HALLU),
+                    $sizeof_Gender,
+                    $Gender_he
+                ))
+            );
+            void cptr.sprintf(
+                eos(cptr.decay(buf)),
+                __s_s_s_inviting_you_in,
+                upstart(cptr.decay(pronounbuf)),
+                vtense(cptr.decay(pronounbuf), __s_are)
+            );
         }
         urgent_pline(__s_pct_s, cptr.decay(buf));
     }
@@ -829,16 +890,49 @@ function levitation_dialogue() {
     if (ELevitation())
         return;
 
-    if (!((cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ)) >= NHC.DOOR) && !is_pool_or_lava(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)))
+    if (!((cptr.ld1so3(
+        svl,
+        cptr.ldI16(u),
+        $sizeof_rm_x21,
+        cptr.ldI16o(u, $you_uy),
+        $sizeof_rm,
+        $instance_globals_saved_l_level + $rm_typ
+    )) >=
+        NHC.DOOR) &&
+            !is_pool_or_lava(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)))
         return;
 
     if (((HLevitation() & 16777215n) % 2n) && i > 0n && i <= BigInt(2)) {
         let s = cptr.ldPtro(levi_texts, BigInt.asIntN(64, BigInt(2) - i), 8);
 
         if (cptr.strchr(s, 37)) {
-            let danger = schar((is_pool_or_lava(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) && !(((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) ? 1 : 0));
+            let danger = schar((is_pool_or_lava(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) &&
+                !(((cptr.ldI16o(
+                    (cptr.add(
+                        svd,
+                        $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level
+                    )),
+                    $d_level_dlevel
+                ) ||
+                    cptr.ldI16((cptr.add(
+                        svd,
+                        $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level
+                    )))) &&
+                    on_level(
+                        cptr.add(u, $you_uz),
+                        cptr.add(
+                            svd,
+                            $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level
+                        )
+                    )))
+                    ? 1
+                    : 0));
 
-            urgent_pline(s, danger ? __s_over : __s_in, danger ? surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) : __s_air);
+            urgent_pline(
+                s,
+                danger ? __s_over : __s_in,
+                danger ? surface(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) : __s_air
+            );
         } else
             pline(__s_pct_s, s);
         stop_occupation();
@@ -872,16 +966,31 @@ function slime_dialogue() {
     if ((t % 2n) != 0n && i >= 0n && i < BigInt(5)) {
         let buf = new Uint8Array(256);
 
-        void cptr.strcpy(cptr.decay(buf), cptr.ldPtro(slime_texts, BigInt.asIntN(64, BigInt.asIntN(64, BigInt(5) - i) - 1n), 8));
-        if (((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 24576n) == 24576n) && strstri(cptr.decay(buf), __s_limbs))
+        void cptr.strcpy(
+            cptr.decay(buf),
+            cptr.ldPtro(slime_texts, BigInt.asIntN(64, BigInt(5) - i - 1n), 8)
+        );
+        if (((cptr.ldU64o(
+            (cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)),
+            $permonst_mflags1
+        ) &
+            24576n) ==
+            24576n) &&
+                strstri(cptr.decay(buf), __s_limbs))
             void strsubst(cptr.decay(buf), __s_limbs, __s_extremities);
 
         if (cptr.strchr(cptr.decay(buf), 37)) {
             if (i == 4n) {
                 if (!Blind())
-                    urgent_pline(cptr.decay(buf), hcolor(cptr.ldPtro(c_color_names, $c_color_names_c_green)));
+                    urgent_pline(
+                        cptr.decay(buf),
+                        hcolor(cptr.ldPtro(c_color_names, $c_color_names_c_green))
+                    );
             } else {
-                urgent_pline(cptr.decay(buf), an(Hallucination() ? rndmonnam(null) : __s_green_slime));
+                urgent_pline(
+                    cptr.decay(buf),
+                    an(Hallucination() ? rndmonnam(null) : __s_green_slime)
+                );
             }
         } else {
             urgent_pline(__s_pct_s, cptr.decay(buf));
@@ -898,7 +1007,13 @@ function slime_dialogue() {
         break;
         case 2n:
         if ((HDeaf() & 16777215n) > 0n && (HDeaf() & 16777215n) < 5n)
-            set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop), $prop_intrinsic), 5n);  /* avoid Hear_again at tail end */
+            set_itimeout(
+                cptr.add(
+                    cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop),
+                    $prop_intrinsic
+                ),
+                5n
+            );  /* avoid Hear_again at tail end */
         break;
         case 1n:
         /* if also turning to stone, stop doing that (no message) */
@@ -922,7 +1037,11 @@ function slimed_to_death(kptr) {
     let save_mvflags;
 
     /* redundant: polymon() cures sliming when polying into green slime */
-    if (Upolyd() && cptr.eq(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data), cptr.add(mons, NHC.PM_GREEN_SLIME, $sizeof_permonst))) {
+    if (Upolyd() &&
+            cptr.eq(
+                cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data),
+                cptr.add(mons, NHC.PM_GREEN_SLIME, $sizeof_permonst)
+            )) {
         dealloc_killer(kptr);
         return;
     }
@@ -950,16 +1069,39 @@ function slimed_to_death(kptr) {
      */
     if (emits_light(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)))
         del_light_source(NHC.LS_MONSTER, monst_to_any(cptr.add(gy, $instance_globals_y_youmonst)));
-    save_mvflags = cptr.ld1uo2(svm, NHC.PM_GREEN_SLIME, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags);
-    cptr.st1o2(svm, NHC.PM_GREEN_SLIME, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags, uchar((save_mvflags & -3)));
+    save_mvflags = cptr.ld1uo2(
+        svm,
+        NHC.PM_GREEN_SLIME,
+        $sizeof_mvitals,
+        $instance_globals_saved_m_mvitals + $mvitals_mvflags
+    );
+    cptr.st1o2(
+        svm,
+        NHC.PM_GREEN_SLIME,
+        $sizeof_mvitals,
+        $instance_globals_saved_m_mvitals + $mvitals_mvflags,
+        uchar((save_mvflags & -3))
+    );
     /* become a green slime; also resets youmonst.m_ap_type+.mappearance */
     void polymon(NHC.PM_GREEN_SLIME);
-    cptr.st1o2(svm, NHC.PM_GREEN_SLIME, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags, save_mvflags);
+    cptr.st1o2(
+        svm,
+        NHC.PM_GREEN_SLIME,
+        $sizeof_mvitals,
+        $instance_globals_saved_m_mvitals + $mvitals_mvflags,
+        save_mvflags
+    );
     done_timeout(NHC.TURNED_SLIME, NHC.SLIMED);
 
     /* life-saved; even so, hero still has turned into green slime;
        player may have genocided green slimes after being infected */
-    if ((cptr.ld1uo2(svm, NHC.PM_GREEN_SLIME, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_GENOD) != 0) {
+    if ((cptr.ld1uo2(
+        svm,
+        NHC.PM_GREEN_SLIME,
+        $sizeof_mvitals,
+        $instance_globals_saved_m_mvitals + $mvitals_mvflags
+    ) &
+            NHM.G_GENOD) != 0) {
         let slimebuf = new Uint8Array(256);
 
         cptr.stI32o(svk, $kinfo_format, NHM.KILLED_BY);
@@ -1020,10 +1162,36 @@ function region_dialogue() {
     let i = r / 2n;
 
     /* might have poly'd into non-breather or moved out of gas cloud */
-    cptr.stI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops + $prop_intrinsic, cptr.ldI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops + $prop_intrinsic) & (-16777216n));
-    no_need_to_breathe = schar((cptr.ldI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops + $prop_intrinsic) || cptr.ldI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops) || ((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags1) & 1024n) != 0n) ? 1 : 0));
+    cptr.stI64o2(
+        u,
+        NHC.MAGICAL_BREATHING,
+        $sizeof_prop,
+        $you_uprops + $prop_intrinsic,
+        cptr.ldI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops + $prop_intrinsic) &
+            (-16777216n)
+    );
+    no_need_to_breathe = schar((cptr.ldI64o2(
+        u,
+        NHC.MAGICAL_BREATHING,
+        $sizeof_prop,
+        $you_uprops + $prop_intrinsic
+    ) ||
+        cptr.ldI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops) ||
+        ((cptr.ldU64o(
+            (cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)),
+            $permonst_mflags1
+        ) &
+            1024n) != 0n)
+            ? 1
+            : 0));
     in_poison_gas_cloud = region_danger();
-    cptr.stI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops + $prop_intrinsic, cptr.ldI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops + $prop_intrinsic) | r);
+    cptr.stI64o2(
+        u,
+        NHC.MAGICAL_BREATHING,
+        $sizeof_prop,
+        $you_uprops + $prop_intrinsic,
+        cptr.ldI64o2(u, NHC.MAGICAL_BREATHING, $sizeof_prop, $you_uprops + $prop_intrinsic) | r
+    );
     if (no_need_to_breathe || !in_poison_gas_cloud)
         return;
 
@@ -1036,7 +1204,10 @@ function region_dialogue() {
    timeout has already counted down to 0 by the time we get here */
 /** C ref: timeout.c:575 — @param {CInt} how @param {CInt} which */
 function done_timeout(how, which) {
-    let intrinsic_p = cptr.add(cptr.add(cptr.add(u, $you_uprops), which, $sizeof_prop), $prop_intrinsic);
+    let intrinsic_p = cptr.add(
+        cptr.add(cptr.add(u, $you_uprops), which, $sizeof_prop),
+        $prop_intrinsic
+    );
 
     cptr.stI64(intrinsic_p, cptr.ldI64(intrinsic_p) | 536870912n);  /* affects final disclosure */
     done(how);
@@ -1061,10 +1232,16 @@ export function nh_timeout() {
     if ((cptr.ldI32o(svq, $q_score_killed_leader) & 1))
         baseluck = (baseluck - 4) | 0;
 
-    if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_ARCHEOLOGIST) && uarmh.v && cptr.ldI16o(uarmh.v, $obj_otyp) == NHC.FEDORA)
+    if ((cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum) == NHC.PM_ARCHEOLOGIST) &&
+            uarmh.v &&
+            cptr.ldI16o(uarmh.v, $obj_otyp) == NHC.FEDORA)
         baseluck = (baseluck + 1) | 0;
 
-    if (cptr.ld1so(u, $you_uluck) != baseluck && cptr.ldI64o(svm, $instance_globals_saved_m_moves) % BigInt((((cptr.ldI32o(u, $you_uhave) & 1) | 0 || cptr.ldI32o(u, $you_ugangr)) ? 300 : 600)) == 0n) {
+    if (cptr.ld1so(u, $you_uluck) != baseluck &&
+            cptr.ldI64o(svm, $instance_globals_saved_m_moves) %
+                BigInt((((cptr.ldI32o(u, $you_uhave) & 1) | 0 || cptr.ldI32o(u, $you_ugangr))
+                    ? 300
+                    : 600)) == 0n) {
         /* Cursed luckstones stop bad luck from timing out; blessed luckstones
          * stop good luck from timing out; normal luckstones stop both;
          * neither is stopped if you don't have a luckstone.
@@ -1098,10 +1275,24 @@ export function nh_timeout() {
         region_dialogue();
     if (HSleepy() & 16777215n)
         sleep_dialogue();
-    if (cptr.ldI32o(u, $you_mtimedone) && !cptr.stI32o(u, $you_mtimedone, cptr.ldI32o(u, $you_mtimedone) + -1)) {
+    if (cptr.ldI32o(u, $you_mtimedone) &&
+            !cptr.stI32o(u, $you_mtimedone, cptr.ldI32o(u, $you_mtimedone) + -1)) {
         if (Unchanging())
-            cptr.stI32o(u, $you_mtimedone, rnd_at(__s_timeout_c, 643, __s_nh_timeout, (Math.imul(100, cptr.ld1so(cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data), $permonst_mlevel)) + 1) | 0));
-        else if (((cptr.ldU64o((cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)), $permonst_mflags2) & 4n) != 0n))
+            cptr.stI32o(
+                u,
+                $you_mtimedone,
+                rnd((Math.imul(
+                    100,
+                    cptr.ld1so(
+                        cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data),
+                        $permonst_mlevel
+                    )
+                ) + 1) | 0)
+            );
+        else if (((cptr.ldU64o(
+            (cptr.ldPtro(gy, $instance_globals_y_youmonst + $monst_data)),
+            $permonst_mflags2
+        ) & 4n) != 0n))
             you_unwere(0);  /* if polycontrl, asks whether to rehumanize */
         else
             rehumanize();
@@ -1111,24 +1302,51 @@ export function nh_timeout() {
 
     /* Dissipate spell-based protection. */
     if (cptr.ld1uo(u, $you_usptime)) {
-        if (cptr.st1o(u, $you_usptime, cptr.ld1uo(u, $you_usptime) + -1) == 0 && cptr.ld1uo(u, $you_uspellprot)) {
+        if (cptr.st1o(u, $you_usptime, cptr.ld1uo(u, $you_usptime) + -1) == 0 &&
+                cptr.ld1uo(u, $you_uspellprot)) {
             cptr.st1o(u, $you_usptime, cptr.ld1uo(u, $you_uspmtime));
             (cptr.st1o(u, $you_uspellprot, cptr.ld1uo(u, $you_uspellprot) + -1)) - (-1);
             find_ac();
             if (!Blind())
-                Norep(__s_the_s_haze_around_you_s, hcolor(cptr.ldPtro(c_color_names, $c_color_names_c_golden)), cptr.ld1uo(u, $you_uspellprot) ? __s_becomes_less_dense : __s_disappears);
+                Norep(
+                    __s_the_s_haze_around_you_s,
+                    hcolor(cptr.ldPtro(c_color_names, $c_color_names_c_golden)),
+                    cptr.ld1uo(u, $you_uspellprot) ? __s_becomes_less_dense : __s_disappears
+                );
         }
     }
 
     if (cptr.ldI64o(u, $you_ugallop)) {
-        if (cptr.stI64o(u, $you_ugallop, cptr.ldI64o(u, $you_ugallop) + -1n) == 0n && cptr.ldPtro(u, $you_usteed))
+        if (cptr.stI64o(u, $you_ugallop, cptr.ldI64o(u, $you_ugallop) + -1n) == 0n &&
+                cptr.ldPtro(u, $you_usteed))
             pline(__s_s_stops_galloping, Monnam(cptr.ldPtro(u, $you_usteed)));
     }
 
-    was_flying = schar(((cptr.ldI64o2(u, NHC.FLYING, $sizeof_prop, $you_uprops + $prop_intrinsic) || cptr.ldI64o2(u, NHC.FLYING, $sizeof_prop, $you_uprops) || (cptr.ldPtro(u, $you_usteed) && ((cptr.ldU64o((cptr.ldPtro(cptr.ldPtro(u, $you_usteed), $monst_data)), $permonst_mflags1) & 1n) != 0n))) && !cptr.ldI64o2(u, NHC.FLYING, $sizeof_prop, $you_uprops + $prop_blocked) ? 1 : 0));
-    for (upp = cptr.add(u, $you_uprops); cptr.cmp(upp, cptr.add(cptr.add(u, $you_uprops), Number(BigInt.asIntN(32, (1656n / 24n))), 24)) < 0; upp = cptr.add(upp, 1, 24))
-        if ((cptr.ldI64o(upp, $prop_intrinsic) & 16777215n) && !(cptr.stI64o(upp, $prop_intrinsic, cptr.ldI64o(upp, $prop_intrinsic) + -1n) & 16777215n)) {
-            kptr = find_delayed_killer(Number(BigInt.asIntN(32, (cptr.diff(upp, cptr.add(u, $you_uprops)) / 24n))));
+    was_flying = schar(((cptr.ldI64o2(u, NHC.FLYING, $sizeof_prop, $you_uprops + $prop_intrinsic) ||
+        cptr.ldI64o2(u, NHC.FLYING, $sizeof_prop, $you_uprops) ||
+        (cptr.ldPtro(u, $you_usteed) &&
+            ((cptr.ldU64o(
+                (cptr.ldPtro(cptr.ldPtro(u, $you_usteed), $monst_data)),
+                $permonst_mflags1
+            ) & 1n) != 0n))) &&
+        !cptr.ldI64o2(u, NHC.FLYING, $sizeof_prop, $you_uprops + $prop_blocked)
+            ? 1
+            : 0));
+    for (
+        upp = cptr.add(u, $you_uprops);
+        cptr.cmp(
+            upp,
+            cptr.add(cptr.add(u, $you_uprops), Number(BigInt.asIntN(32, (1656n / 24n))), 24)
+        ) < 0;
+        upp = cptr.add(upp, 1, 24)
+    )
+        if ((cptr.ldI64o(upp, $prop_intrinsic) & 16777215n) &&
+                !(cptr.stI64o(upp, $prop_intrinsic, cptr.ldI64o(upp, $prop_intrinsic) + -1n) &
+                    16777215n)) {
+            kptr = find_delayed_killer(Number(BigInt.asIntN(
+                32,
+                (cptr.diff(upp, cptr.add(u, $you_uprops)) / 24n)
+            )));
             switch (cptr.diff(upp, cptr.add(u, $you_uprops)) / 24n) {
                 case 18n:
                 if (kptr && cptr.ld1so2(kptr, 0, 1, $kinfo_name)) {
@@ -1151,7 +1369,8 @@ export function nh_timeout() {
                 case 17n:
                 /* hero might be able to bounce back from food poisoning,
                    but not other forms of illness */
-                if ((((cptr.ldI32o(u, $you_usick_type) & 3) | 0) & NHM.SICK_NONVOMITABLE) == 0 && rn2_at(__s_timeout_c, 696, __s_nh_timeout, 100) < (acurr(NHC.A_CON))) {
+                if ((((cptr.ldI32o(u, $you_usick_type) & 3) | 0) & NHM.SICK_NONVOMITABLE) == 0 &&
+                        rn2(100) < (acurr(NHC.A_CON))) {
                     You(__s_have_recovered_from_your_illness);
                     make_sick(0n, null, 0, NHM.SICK_ALL);
                     exercise(NHC.A_CON, 0);
@@ -1169,10 +1388,18 @@ export function nh_timeout() {
                 dealloc_killer(kptr);
 
                 if ((m_idx = name_to_mon(cptr.add(svk, $kinfo_name), null)) >= NHC.LOW_PM) {
-                    if (((cptr.ldU64o((cptr.add(mons, m_idx, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n)) {
+                    if (((cptr.ldU64o(
+                        (cptr.add(mons, m_idx, $sizeof_permonst)),
+                        $permonst_mflags2
+                    ) &
+                            524288n) != 0n)) {
                         cptr.stI32o(svk, $kinfo_format, NHM.KILLED_BY);
-                    } else if (cptr.ldU16o2(mons, m_idx, $sizeof_permonst, $permonst_geno) & NHM.G_UNIQ) {
-                        void cptr.strcpy(cptr.add(svk, $kinfo_name), the(cptr.add(svk, $kinfo_name)));
+                    } else if (cptr.ldU16o2(mons, m_idx, $sizeof_permonst, $permonst_geno) &
+                            NHM.G_UNIQ) {
+                        void cptr.strcpy(
+                            cptr.add(svk, $kinfo_name),
+                            the(cptr.add(svk, $kinfo_name))
+                        );
                         cptr.stI32o(svk, $kinfo_format, NHM.KILLED_BY);
                     }
                 }
@@ -1185,13 +1412,25 @@ export function nh_timeout() {
                 break;
                 case 14n:
                 /* So make_confused works properly */
-                set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.CONFUSION, $sizeof_prop), $prop_intrinsic), 1n);
+                set_itimeout(
+                    cptr.add(
+                        cptr.add(cptr.add(u, $you_uprops), NHC.CONFUSION, $sizeof_prop),
+                        $prop_intrinsic
+                    ),
+                    1n
+                );
                 make_confused(0n, 1);
                 if (!HConfusion())
                     stop_occupation();
                 break;
                 case 13n:
-                set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STUNNED, $sizeof_prop), $prop_intrinsic), 1n);
+                set_itimeout(
+                    cptr.add(
+                        cptr.add(cptr.add(u, $you_uprops), NHC.STUNNED, $sizeof_prop),
+                        $prop_intrinsic
+                    ),
+                    1n
+                );
                 make_stunned(0n, 1);
                 if (!HStun())
                     stop_occupation();
@@ -1200,14 +1439,26 @@ export function nh_timeout() {
                 {
                     let was_blind = schar((!!Blind()));
 
-                    set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.BLINDED, $sizeof_prop), $prop_intrinsic), 1n);
+                    set_itimeout(
+                        cptr.add(
+                            cptr.add(cptr.add(u, $you_uprops), NHC.BLINDED, $sizeof_prop),
+                            $prop_intrinsic
+                        ),
+                        1n
+                    );
                     make_blinded(0n, 1);
                     if (was_blind && !Blind())
                         stop_occupation();
                     break;
                 }
                 case 16n:
-                set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop), $prop_intrinsic), 1n);
+                set_itimeout(
+                    cptr.add(
+                        cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop),
+                        $prop_intrinsic
+                    ),
+                    1n
+                );
                 make_deaf(0n, 1);
                 cptr.st1(disp, 1);
                 if (!Deaf())
@@ -1216,7 +1467,9 @@ export function nh_timeout() {
                 case 40n:
                 newsym(cptr.ldI16(u), cptr.ldI16o(u, $you_uy));
                 if (!Invis() && !BInvis() && !Blind()) {
-                    You(!See_invisible() ? __s_are_no_longer_invisible : __s_can_no_longer_see_through_yourself);
+                    You(!See_invisible()
+                            ? __s_are_no_longer_invisible
+                            : __s_can_no_longer_see_through_yourself);
                     stop_occupation();
                 }
                 break;
@@ -1231,19 +1484,37 @@ export function nh_timeout() {
                 stop_occupation();
                 break;
                 case 23n:
-                set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.HALLUC, $sizeof_prop), $prop_intrinsic), 1n);
+                set_itimeout(
+                    cptr.add(
+                        cptr.add(cptr.add(u, $you_uprops), NHC.HALLUC, $sizeof_prop),
+                        $prop_intrinsic
+                    ),
+                    1n
+                );
                 void make_hallucinated(0n, 1, 0n);
                 if (!Hallucination())
                     stop_occupation();
                 break;
                 case 27n:
                 if (unconscious() || Sleep_resistance()) {
-                    incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SLEEPY, $sizeof_prop), $prop_intrinsic), rnd_at(__s_timeout_c, 786, __s_nh_timeout, 100));
+                    incr_itimeout(
+                        cptr.add(
+                            cptr.add(cptr.add(u, $you_uprops), NHC.SLEEPY, $sizeof_prop),
+                            $prop_intrinsic
+                        ),
+                        rnd(100)
+                    );
                 } else if (Sleepy()) {
                     You(__s_fall_asleep);
-                    sleeptime = rnd_at(__s_timeout_c, 789, __s_nh_timeout, 20);
+                    sleeptime = rnd(20);
                     fall_asleep(-sleeptime, 1);
-                    incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.SLEEPY, $sizeof_prop), $prop_intrinsic), (sleeptime + rnd_at(__s_timeout_c, 791, __s_nh_timeout, 100)) | 0);
+                    incr_itimeout(
+                        cptr.add(
+                            cptr.add(cptr.add(u, $you_uprops), NHC.SLEEPY, $sizeof_prop),
+                            $prop_intrinsic
+                        ),
+                        (sleeptime + rnd(100)) | 0
+                    );
                 }
                 break;
                 case 48n:
@@ -1254,7 +1525,13 @@ export function nh_timeout() {
                    happen, end Flying early to skip feedback about it;
                    assumes Levitation is handled before Flying */
                 if ((HFlying() & 16777215n) == 1n)
-                    set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FLYING, $sizeof_prop), $prop_intrinsic), 0n);  /* bypass 'case FLYING' */
+                    set_itimeout(
+                        cptr.add(
+                            cptr.add(cptr.add(u, $you_uprops), NHC.FLYING, $sizeof_prop),
+                            $prop_intrinsic
+                        ),
+                        0n
+                    );  /* bypass 'case FLYING' */
                 void float_down(553648127n, 0n);
                 break;
                 case 49n:
@@ -1271,10 +1548,17 @@ export function nh_timeout() {
                         /* extend temporary acid resistance if in midst
                            of eating an acidic corpse; this will repeat
                            until eating is finished or interrupted */
-                        set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.ACID_RES, $sizeof_prop), $prop_intrinsic), 1n);
+                        set_itimeout(
+                            cptr.add(
+                                cptr.add(cptr.add(u, $you_uprops), NHC.ACID_RES, $sizeof_prop),
+                                $prop_intrinsic
+                            ),
+                            1n
+                        );
                         break;
                     }
-                    if (!(cptr.ldI64o(gm, $instance_globals_m_multi) < 0n && (unconscious() || is_fainted())))
+                    if (!(cptr.ldI64o(gm, $instance_globals_m_multi) < 0n &&
+                            (unconscious() || is_fainted())))
                         You(__s_no_longer_feel_safe_from_acid);
                 }
                 break;
@@ -1284,10 +1568,17 @@ export function nh_timeout() {
                         /* extend temporary stoning resistance if in midst
                            of eating a stoning corpse; this will repeat
                            until eating is finished or interrupted */
-                        set_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.STONE_RES, $sizeof_prop), $prop_intrinsic), 1n);
+                        set_itimeout(
+                            cptr.add(
+                                cptr.add(cptr.add(u, $you_uprops), NHC.STONE_RES, $sizeof_prop),
+                                $prop_intrinsic
+                            ),
+                            1n
+                        );
                         break;
                     }
-                    if (!(cptr.ldI64o(gm, $instance_globals_m_multi) < 0n && (unconscious() || is_fainted())))
+                    if (!(cptr.ldI64o(gm, $instance_globals_m_multi) < 0n &&
+                            (unconscious() || is_fainted())))
                         You(__s_no_longer_feel_secure_from_petrification);
                     /* no-op if not wielding a cockatrice corpse;
                        uswapwep case is always a no-op because two-weapon
@@ -1307,7 +1598,29 @@ export function nh_timeout() {
                 break;
                 case 50n:
                 /* [see fire resistance] */
-                if (!((cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops + $prop_intrinsic) || cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops)) && !(((cptr.ldI16o((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)), $d_level_dlevel) || cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level)))) && on_level(cptr.add(u, $you_uz), cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_water_level))))))
+                if (!((cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops + $prop_intrinsic) ||
+                    cptr.ldI64o2(u, NHC.WWALKING, $sizeof_prop, $you_uprops)) &&
+                        !(((cptr.ldI16o(
+                            (cptr.add(
+                                svd,
+                                $instance_globals_saved_d_dungeon_topology +
+                                    $dgn_topology_d_water_level
+                            )),
+                            $d_level_dlevel
+                        ) ||
+                            cptr.ldI16((cptr.add(
+                                svd,
+                                $instance_globals_saved_d_dungeon_topology +
+                                    $dgn_topology_d_water_level
+                            )))) &&
+                            on_level(
+                                cptr.add(u, $you_uz),
+                                cptr.add(
+                                    svd,
+                                    $instance_globals_saved_d_dungeon_topology +
+                                        $dgn_topology_d_water_level
+                                )
+                            )))))
                     Your(__s_temporary_ability_to_walk_on_liquid_has);
                 break;
                 case 41n:
@@ -1320,9 +1633,16 @@ export function nh_timeout() {
                     let wptr = cptr.ldPtro(svc, $context_info_warntype + $warntype_info_species);
 
                     cptr.stPtro(svc, $context_info_warntype + $warntype_info_species, null);
-                    cptr.stI16o(svc, $context_info_warntype + $warntype_info_speciesidx, NHC.NON_PM);
+                    cptr.stI16o(
+                        svc,
+                        $context_info_warntype + $warntype_info_speciesidx,
+                        NHC.NON_PM
+                    );
                     if (wptr)
-                        You(__s_are_no_longer_warned_about_s, makeplural(cptr.ldPtro(wptr, NHC.NEUTRAL, 8)));
+                        You(
+                            __s_are_no_longer_warned_about_s,
+                            makeplural(cptr.ldPtro(wptr, NHC.NEUTRAL, 8))
+                        );
                 }
                 break;
                 case 53n:
@@ -1330,7 +1650,10 @@ export function nh_timeout() {
                     if (stuck_in_wall())
                         You_feel(__s_hemmed_in_again);
                     else
-                        pline(__s_you_re_back_to_your_s_self_again, !Upolyd() ? __s_normal : __s_unusual);
+                        pline(
+                            __s_you_re_back_to_your_s_self_again,
+                            !Upolyd() ? __s_normal : __s_unusual
+                        );
                 }
                 break;
                 case 52n:
@@ -1341,7 +1664,10 @@ export function nh_timeout() {
                 break;
                 case 19n:
                 cptr.stI32o(svk, $kinfo_format, NHM.KILLED_BY);
-                void cptr.strcpy(cptr.add(svk, $kinfo_name), ((cptr.ldI32o(u, $you_uburied) & 1)) | 0 ? __s_suffocation : __s_strangulation);
+                void cptr.strcpy(
+                    cptr.add(svk, $kinfo_name),
+                    ((cptr.ldI32o(u, $you_uburied) & 1)) | 0 ? __s_suffocation : __s_strangulation
+                );
                 done_timeout(NHC.DIED, NHC.STRANGLED);
                 /* must be declining to die in explore|wizard mode;
                    treat like being cured of strangulation by prayer */
@@ -1370,9 +1696,22 @@ export function nh_timeout() {
                 }
                 /* from outside means slippery ice; don't reset
                    counter if that's the only fumble reason */
-                cptr.stI64o2(u, NHC.FUMBLING, $sizeof_prop, $you_uprops + $prop_intrinsic, cptr.ldI64o2(u, NHC.FUMBLING, $sizeof_prop, $you_uprops + $prop_intrinsic) & (-67108865n));
+                cptr.stI64o2(
+                    u,
+                    NHC.FUMBLING,
+                    $sizeof_prop,
+                    $you_uprops + $prop_intrinsic,
+                    cptr.ldI64o2(u, NHC.FUMBLING, $sizeof_prop, $you_uprops + $prop_intrinsic) &
+                        (-67108865n)
+                );
                 if (Fumbling())
-                    incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.FUMBLING, $sizeof_prop), $prop_intrinsic), rnd_at(__s_timeout_c, 924, __s_nh_timeout, 20));
+                    incr_itimeout(
+                        cptr.add(
+                            cptr.add(cptr.add(u, $you_uprops), NHC.FUMBLING, $sizeof_prop),
+                            $prop_intrinsic
+                        ),
+                        rnd(20)
+                    );
 
                 if (cptr.ld1so(iflags, $instance_flags_defer_decor)) {
                     /* 'mention_decor' was deferred for message sequencing
@@ -1405,7 +1744,13 @@ export function fall_asleep(how_long, wakeup_msg) {
     cptr.stPtro(gm, $instance_globals_m_multi_reason, __s_sleeping);
     /* early wakeup from combat won't be possible until next monster turn */
     cptr.stI64o(u, $you_usleep, cptr.ldI64o(svm, $instance_globals_saved_m_moves));
-    cptr.stPtro(gn, $instance_globals_n_nomovemsg, wakeup_msg ? __s_you_wake_up : cptr.ldPtro(c_common_strings, $c_common_strings_c_You_can_move_again));
+    cptr.stPtro(
+        gn,
+        $instance_globals_n_nomovemsg,
+        wakeup_msg
+            ? __s_you_wake_up
+            : cptr.ldPtro(c_common_strings, $c_common_strings_c_You_can_move_again)
+    );
 }
 
 /* Attach an egg hatch timeout to the given egg.
@@ -1427,7 +1772,7 @@ export function attach_egg_hatch_timeout(egg, when) {
      */
     if (!when) {
         for (i = 151; i <= NHM.MAX_EGG_HATCH_TIME; i++)
-            if (rnd_at(__s_timeout_c, 996, __s_attach_egg_hatch_timeout, i) > 150) {
+            if (rnd(i) > 150) {
                 /* egg will hatch */
                 when = BigInt(i);
                 break;
@@ -1470,29 +1815,64 @@ export function hatch_egg(arg, timeout) {
     mon = (mon2 = null);
     mnum = big_to_little(cptr.ldI32o(egg, $obj_corpsenm));
     /* The identity of one's father is learned, not innate */
-    yours = schar((cptr.ld1so(egg, $obj_spe) || (!cptr.ld1so(flags, $flag_female) && (cptr.ld1so((egg), $obj_where) == NHM.OBJ_INVENT) && !rn2_at(__s_timeout_c, 1035, __s_hatch_egg, 2)) ? 1 : 0));
+    yours = schar((cptr.ld1so(egg, $obj_spe) ||
+        (!cptr.ld1so(flags, $flag_female) &&
+            (cptr.ld1so((egg), $obj_where) == NHM.OBJ_INVENT) &&
+            !rn2(2))
+            ? 1
+            : 0));
     silent = schar((timeout != cptr.ldI64o(svm, $instance_globals_saved_m_moves)));  /* hatched while away */
 
     /* only can hatch when in INVENT, FLOOR, MINVENT;
        get_obj_location() will fail for MIGRATING, also for CONTAINED
        and BURIED when the flags for those aren't included in the call */
     if (get_obj_location(egg, x, y, 0)) {
-        hatchcount = rnd_at(__s_timeout_c, 1042, __s_hatch_egg, Number(BigInt.asIntN(32, cptr.ldI64o(egg, $obj_quan))));
-        cansee_hatchspot = schar((((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y.v, 8), x.v) & NHM.IN_SIGHT) != 0) && !silent ? 1 : 0));
-        if (!(cptr.ldU16o2(mons, mnum, $sizeof_permonst, $permonst_geno) & NHM.G_UNIQ) && !(cptr.ld1uo2(svm, mnum, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & 3)) {
+        hatchcount = rnd(Number(BigInt.asIntN(32, cptr.ldI64o(egg, $obj_quan))));
+        cansee_hatchspot = schar((((cptr.ld1uo(
+            cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y.v, 8),
+            x.v
+        ) &
+            NHM.IN_SIGHT) != 0) &&
+            !silent
+                ? 1
+                : 0));
+        if (!(cptr.ldU16o2(mons, mnum, $sizeof_permonst, $permonst_geno) & NHM.G_UNIQ) &&
+                !(cptr.ld1uo2(
+                    svm,
+                    mnum,
+                    $sizeof_mvitals,
+                    $instance_globals_saved_m_mvitals + $mvitals_mvflags
+                ) & 3)) {
             for (i = hatchcount; i > 0; i--) {
-                if (!enexto(cc, x.v, y.v, cptr.add(mons, mnum, $sizeof_permonst)) || !(mon = makemon(cptr.add(mons, mnum, $sizeof_permonst), cptr.ldI16(cc), cptr.ldI16o(cc, $nhcoord_y), 131073)))
+                if (!enexto(cc, x.v, y.v, cptr.add(mons, mnum, $sizeof_permonst)) ||
+                        !(mon = makemon(
+                            cptr.add(mons, mnum, $sizeof_permonst),
+                            cptr.ldI16(cc),
+                            cptr.ldI16o(cc, $nhcoord_y),
+                            131073
+                        )))
                     break;
                 /* tame if your own egg hatches while you're on the
                    same dungeon level, or any dragon egg which hatches
                    while it's in your inventory */
-                if ((yours && !silent) || ((cptr.ld1so((egg), $obj_where) == NHM.OBJ_INVENT) && cptr.ld1so(cptr.ldPtro(mon, $monst_data), $permonst_mlet) == NHC.S_DRAGON)) {
+                if ((yours && !silent) ||
+                        ((cptr.ld1so((egg), $obj_where) == NHM.OBJ_INVENT) &&
+                            cptr.ld1so(cptr.ldPtro(mon, $monst_data), $permonst_mlet) ==
+                                NHC.S_DRAGON)) {
                     if (tamedog(mon, null, 0)) {
-                        if ((cptr.ld1so((egg), $obj_where) == NHM.OBJ_INVENT) && cptr.ld1so(cptr.ldPtro(mon, $monst_data), $permonst_mlet) != NHC.S_DRAGON)
+                        if ((cptr.ld1so((egg), $obj_where) == NHM.OBJ_INVENT) &&
+                                cptr.ld1so(cptr.ldPtro(mon, $monst_data), $permonst_mlet) !=
+                                    NHC.S_DRAGON)
                             cptr.st1o(mon, $monst_mtame, 20);
                     }
                 }
-                if (cptr.ld1uo2(svm, mnum, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_EXTINCT)
+                if (cptr.ld1uo2(
+                    svm,
+                    mnum,
+                    $sizeof_mvitals,
+                    $instance_globals_saved_m_mvitals + $mvitals_mvflags
+                ) &
+                        NHM.G_EXTINCT)
                     break;  /* just made last one */
                 mon2 = mon;  /* in case makemon() fails on 2nd egg */
             }
@@ -1512,7 +1892,12 @@ export function hatch_egg(arg, timeout) {
         if (cansee_hatchspot) {
             /* [bug?  m_monnam() yields accurate monster type
                regardless of hallucination] */
-            void cptr.sprintf(cptr.decay(monnambuf), __s_s_s, siblings ? __s_some : __s_empty, siblings ? makeplural(m_monnam(mon)) : an(m_monnam(mon)));
+            void cptr.sprintf(
+                cptr.decay(monnambuf),
+                __s_s_s,
+                siblings ? __s_some : __s_empty,
+                siblings ? makeplural(m_monnam(mon)) : an(m_monnam(mon))
+            );
             /* we don't learn the egg type here because learning
                an egg type requires either seeing the egg hatch
                or being familiar with the egg already,
@@ -1524,12 +1909,32 @@ export function hatch_egg(arg, timeout) {
             case NHM.OBJ_INVENT:
             knows_egg = 1;  /* true even if you are blind */
             if (!cansee_hatchspot)
-                You_feel(__s_s_s_from_your_pack, cptr.ldPtro(c_common_strings, $c_common_strings_c_something), locomotion(cptr.ldPtro(mon, $monst_data), __s_drop));
+                You_feel(
+                    __s_s_s_from_your_pack,
+                    cptr.ldPtro(c_common_strings, $c_common_strings_c_something),
+                    locomotion(cptr.ldPtro(mon, $monst_data), __s_drop)
+                );
             else
-                You_see(__s_s_s_out_of_your_pack, cptr.decay(monnambuf), locomotion(cptr.ldPtro(mon, $monst_data), __s_drop));
+                You_see(
+                    __s_s_s_out_of_your_pack,
+                    cptr.decay(monnambuf),
+                    locomotion(cptr.ldPtro(mon, $monst_data), __s_drop)
+                );
             if (yours) {
-                pline(__s_s_s_s_like_s_s, siblings ? __s_their : __s_its, ing_suffix(cry_sound(mon)), ((cptr.ld1uo((cptr.ldPtro(mon, $monst_data)), $permonst_msound) == NHC.MS_SILENT) || Deaf()) ? __s_seems : __s_sounds, cptr.ld1so(flags, $flag_female) ? __s_mommy : __s_daddy, cptr.ld1so(egg, $obj_spe) ? __s_dot : __s_query);
-            } else if (cptr.ld1so(cptr.ldPtro(mon, $monst_data), $permonst_mlet) == NHC.S_DRAGON && !Deaf()) {
+                pline(
+                    __s_s_s_s_like_s_s,
+                    siblings ? __s_their : __s_its,
+                    ing_suffix(cry_sound(mon)),
+                    ((cptr.ld1uo((cptr.ldPtro(mon, $monst_data)), $permonst_msound) ==
+                        NHC.MS_SILENT) ||
+                        Deaf())
+                        ? __s_seems
+                        : __s_sounds,
+                    cptr.ld1so(flags, $flag_female) ? __s_mommy : __s_daddy,
+                    cptr.ld1so(egg, $obj_spe) ? __s_dot : __s_query
+                );
+            } else if (cptr.ld1so(cptr.ldPtro(mon, $monst_data), $permonst_mlet) == NHC.S_DRAGON &&
+                    !Deaf()) {
                 ;
                 verbalize(__s_gleep);  /* Mything eggs :-) */
             }
@@ -1545,7 +1950,17 @@ export function hatch_egg(arg, timeout) {
             if (cansee_hatchspot) {
                 /* egg carrying monster might be invisible */
                 mon2 = cptr.ldPtro(egg, $obj_v);
-                if (canseemon(mon2) && (!(cptr.ldI32o(mon2, $monst_wormno) & 31) || ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), cptr.ldI16o(mon2, $monst_my), 8), cptr.ldI16o(mon2, $monst_mx)) & NHM.IN_SIGHT) != 0))) {
+                if (canseemon(mon2) &&
+                        (!(cptr.ldI32o(mon2, $monst_wormno) & 31) ||
+                            ((cptr.ld1uo(
+                                cptr.ldPtro(
+                                    cptr.ldPtro(gv, $instance_globals_v_viz_array),
+                                    cptr.ldI16o(mon2, $monst_my),
+                                    8
+                                ),
+                                cptr.ldI16o(mon2, $monst_mx)
+                            ) &
+                                NHM.IN_SIGHT) != 0))) {
                     void cptr.sprintf(cptr.decay(carriedby), __s_s_pack, s_suffix(a_monnam(mon2)));
                     knows_egg = 1;
                 } else if (is_pool(cptr.ldI16o(mon, $monst_mx), cptr.ldI16o(mon, $monst_my))) {
@@ -1553,7 +1968,12 @@ export function hatch_egg(arg, timeout) {
                 } else {
                     void cptr.strcpy(cptr.decay(carriedby), __s_thin_air);
                 }
-                You_see(__s_s_s_out_of_s, cptr.decay(monnambuf), locomotion(cptr.ldPtro(mon, $monst_data), __s_drop), cptr.decay(carriedby));
+                You_see(
+                    __s_s_s_out_of_s,
+                    cptr.decay(monnambuf),
+                    locomotion(cptr.ldPtro(mon, $monst_data), __s_drop),
+                    cptr.decay(carriedby)
+                );
             }
             break;
             default:
@@ -1568,7 +1988,7 @@ export function hatch_egg(arg, timeout) {
             /* still some eggs left; we didn't split the stack, just
                subtracted from quantity so weight needs to be updated;
                for remainder of stack, add a new, short hatch timer */
-            attach_egg_hatch_timeout(egg, BigInt(rnd_at(__s_timeout_c, 1172, __s_hatch_egg, 12)));
+            attach_egg_hatch_timeout(egg, BigInt(rnd(12)));
             /* container_weight(arg) updates arg->owt, and if contained,
                its enclosing container arg->ocontainer (recursively)
                [egg won't be contained due to conditions imposed above] */
@@ -1579,7 +1999,20 @@ export function hatch_egg(arg, timeout) {
             /* free egg here because we use it above */
             obj_extract_self(egg);
             obfree(egg, null);
-            if ((mon = (cptr.ldPtro3(svl, x.v, 168, y.v, 8, $instance_globals_saved_l_level + $dlevel_t_monsters))) && !hideunder(mon) && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y.v, 8), x.v) & NHM.IN_SIGHT) != 0))
+            if ((mon = (cptr.ldPtro3(
+                svl,
+                x.v,
+                168,
+                y.v,
+                8,
+                $instance_globals_saved_l_level + $dlevel_t_monsters
+            ))) &&
+                    !hideunder(mon) &&
+                    ((cptr.ld1uo(
+                        cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y.v, 8),
+                        x.v
+                    ) &
+                        NHM.IN_SIGHT) != 0))
                 redraw = 1;
         }
         if (redraw)
@@ -1592,7 +2025,19 @@ export function hatch_egg(arg, timeout) {
 export function learn_egg_type(mnum) {
     /* baby monsters hatch from grown-up eggs */
     mnum = little_to_big(mnum);
-    cptr.st1o2(svm, mnum, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags, cptr.ld1uo2(svm, mnum, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) | NHM.MV_KNOWS_EGG);
+    cptr.st1o2(
+        svm,
+        mnum,
+        $sizeof_mvitals,
+        $instance_globals_saved_m_mvitals + $mvitals_mvflags,
+        cptr.ld1uo2(
+            svm,
+            mnum,
+            $sizeof_mvitals,
+            $instance_globals_saved_m_mvitals + $mvitals_mvflags
+        ) |
+            NHM.MV_KNOWS_EGG
+    );
     /* we might have just learned about other eggs being carried */
     update_inventory();
 }
@@ -1608,7 +2053,7 @@ export function attach_fig_transform_timeout(figurine) {
     /*
      * Decide when to transform the figurine.
      */
-    i = (rnd_at(__s_timeout_c, 1214, __s_attach_fig_transform_timeout, 9000) + 200) | 0;
+    i = (rnd(9000) + 200) | 0;
     /* figurine will transform */
     void start_timer(BigInt(i), NHC.TIMER_OBJECT, NHC.FIG_TRANSFORM, obj_to_any(figurine));
 }
@@ -1616,14 +2061,24 @@ export function attach_fig_transform_timeout(figurine) {
 /* give a fumble message */
 /** C ref: timeout.c:1222 */
 function slip_or_trip() {
-    let otmp = (cptr.ldPtro3(svl, cptr.ldI16(u), 168, cptr.ldI16o(u, $you_uy), 8, $instance_globals_saved_l_level + $dlevel_t_objects));
+    let otmp = (cptr.ldPtro3(
+        svl,
+        cptr.ldI16(u),
+        168,
+        cptr.ldI16o(u, $you_uy),
+        8,
+        $instance_globals_saved_l_level + $dlevel_t_objects
+    ));
     let otmp2;
     let saddle;
     let what;
     let buf = new Uint8Array(256);
     let on_foot = schar((!cptr.ldPtro(u, $you_usteed)));
 
-    if (otmp && on_foot && !(cptr.ldI32o(u, $you_uinwater) & 1) && is_pool(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)))
+    if (otmp &&
+            on_foot &&
+            !(cptr.ldI32o(u, $you_uinwater) & 1) &&
+            is_pool(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)))
         otmp = null;
 
     if (otmp && on_foot) {
@@ -1634,31 +2089,82 @@ function slip_or_trip() {
           name; if not, look for rocks to trip over; trip over
           anonymous "something" if there aren't any rocks.
         */
-        what = (cptr.ldI32o(iflags, $instance_flags_last_msg) == NHC.PLNMSG_ONE_ITEM_HERE) ? ((cptr.ldI64o(otmp, $obj_quan) == 1n) ? __s_it : (Hallucination() ? __s_they : __s_them)) : (((cptr.ldI32o(otmp, $obj_dknown) & 1) | 0 || !Blind()) ? doname(otmp) : ((otmp2 = sobj_at(NHC.ROCK, cptr.ldI16(u), cptr.ldI16o(u, $you_uy))) === null ? cptr.ldPtro(c_common_strings, $c_common_strings_c_something) : (cptr.ldI64o(otmp2, $obj_quan) == 1n ? __s_a_rock : __s_some_rocks)));
+        what = (cptr.ldI32o(iflags, $instance_flags_last_msg) == NHC.PLNMSG_ONE_ITEM_HERE)
+                ? ((cptr.ldI64o(otmp, $obj_quan) == 1n)
+                    ? __s_it
+                    : (Hallucination() ? __s_they : __s_them))
+                : (((cptr.ldI32o(otmp, $obj_dknown) & 1) | 0 || !Blind())
+                    ? doname(otmp)
+                    : ((otmp2 = sobj_at(NHC.ROCK, cptr.ldI16(u), cptr.ldI16o(u, $you_uy))) === null
+                        ? cptr.ldPtro(c_common_strings, $c_common_strings_c_something)
+                        : (cptr.ldI64o(otmp2, $obj_quan) == 1n ? __s_a_rock : __s_some_rocks)));
         if (Hallucination()) {
             what = cptr.strcpy(cptr.decay(buf), what);
             cptr.st1o(cptr.decay(buf), 0, highc(cptr.ld1so(cptr.decay(buf), 0, 1)), 1);
-            pline(__s_egads_s_bite_s_your_s, what, (!otmp || cptr.ldI64o(otmp, $obj_quan) == 1n) ? __s_s : __s_empty, body_part(NHC.FOOT));
+            pline(
+                __s_egads_s_bite_s_your_s,
+                what,
+                (!otmp || cptr.ldI64o(otmp, $obj_quan) == 1n) ? __s_s : __s_empty,
+                body_part(NHC.FOOT)
+            );
         } else {
             You(__s_trip_over_s, what);
         }
-        if (!uarmf.v && cptr.ldI16o(otmp, $obj_otyp) == NHC.CORPSE && touch_petrifies(cptr.add(mons, cptr.ldI32o(otmp, $obj_corpsenm), $sizeof_permonst)) && !Stone_resistance()) {
-            void cptr.sprintf(cptr.add(svk, $kinfo_name), __s_tripping_over_s_corpse, an(cptr.ldPtro3(mons, cptr.ldI32o(otmp, $obj_corpsenm), $sizeof_permonst, NHC.NEUTRAL, 8, 0)));
+        if (!uarmf.v &&
+                cptr.ldI16o(otmp, $obj_otyp) == NHC.CORPSE &&
+                touch_petrifies(cptr.add(
+                    mons,
+                    cptr.ldI32o(otmp, $obj_corpsenm),
+                    $sizeof_permonst
+                )) &&
+                !Stone_resistance()) {
+            void cptr.sprintf(
+                cptr.add(svk, $kinfo_name),
+                __s_tripping_over_s_corpse,
+                an(cptr.ldPtro3(
+                    mons,
+                    cptr.ldI32o(otmp, $obj_corpsenm),
+                    $sizeof_permonst,
+                    NHC.NEUTRAL,
+                    8,
+                    0
+                ))
+            );
             instapetrify(cptr.add(svk, $kinfo_name));
         }
-    } else if ((HFumbling() & 67108864n) || (is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) && !rn2_at(__s_timeout_c, 1262, __s_slip_or_trip, 3))) {
+    } else if ((HFumbling() & 67108864n) ||
+            (is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) && !rn2(3))) {
         /* is fumbling from ice alone? */
         let ice_only = schar((!(EFumbling() || (HFumbling() & -67108865n))));
 
-        pline(__s_s_s_s_the_ice, cptr.ldPtro(u, $you_usteed) ? upstart(x_monnam(cptr.ldPtro(u, $you_usteed), NHM.ARTICLE_THE, null, NHM.SUPPRESS_SADDLE, 0)) : __s_you, vtense(cptr.ldPtro(u, $you_usteed) ? __s_steed : __s_you__2, rn2_at(__s_timeout_c, 1273, __s_slip_or_trip, 2) ? __s_slip : __s_slide), is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) ? __s_on : __s_off);
+        pline(
+            __s_s_s_s_the_ice,
+            cptr.ldPtro(u, $you_usteed)
+                ? upstart(x_monnam(
+                    cptr.ldPtro(u, $you_usteed),
+                    NHM.ARTICLE_THE,
+                    null,
+                    NHM.SUPPRESS_SADDLE,
+                    0
+                ))
+                : __s_you,
+            vtense(
+                cptr.ldPtro(u, $you_usteed) ? __s_steed : __s_you__2,
+                rn2(2) ? __s_slip : __s_slide
+            ),
+            is_ice(cptr.ldI16(u), cptr.ldI16o(u, $you_uy)) ? __s_on : __s_off
+        );
         /* fumbling outside of ice while mounted always causes the hero to
            fall from the saddle (unless it is cursed), so to avoid a
            counterintuitive effect where ice makes riding _less_ hazardous,
            unconditionally dismount if fumbling is from a non-ice source */
-        if (!on_foot && ((saddle = which_armor(cptr.ldPtro(u, $you_usteed), 1048576n)) === null || !(cptr.ldI32o(saddle, $obj_cursed) & 1)) && (!ice_only || !rn2_at(__s_timeout_c, 1284, __s_slip_or_trip, 3))) {
+        if (!on_foot &&
+                ((saddle = which_armor(cptr.ldPtro(u, $you_usteed), 1048576n)) === null ||
+                    !(cptr.ldI32o(saddle, $obj_cursed) & 1)) &&
+                (!ice_only || !rn2(3))) {
             You(__s_lose_your_balance);
             dismount_steed(NHC.DISMOUNT_FELL);
-        } else if (!(rng_log_enabled() ? (rng_log_set_caller(__s_timeout_c, 1287, __s_slip_or_trip), rn2((10 + (acurr(NHC.A_DEX))) | 0)) : rn2((10 + (acurr(NHC.A_DEX))) | 0))) {
+        } else if (!rn2((10 + (acurr(NHC.A_DEX))) | 0)) {
             /* Maybe slip in a random direction.  This takes place after
                the hero has already changed location.  If the hero is
                in grid bug form, only allow forward hurtle, otherwise a
@@ -1668,14 +2174,19 @@ function slip_or_trip() {
                 confdir(1);  /* sets u.dx and u.dy */
             /* Only hurtle if the random direction won't move hero back
                to same spot where this move started. */
-            if (((cptr.ldI16(u) + cptr.ldI32o(u, $you_dx)) | 0) != cptr.ldI16o(u, $you_ux0) || ((cptr.ldI16o(u, $you_uy) + cptr.ldI32o(u, $you_dy)) | 0) != cptr.ldI16o(u, $you_uy0))
+            if (((cptr.ldI16(u) + cptr.ldI32o(u, $you_dx)) | 0) != cptr.ldI16o(u, $you_ux0) ||
+                    ((cptr.ldI16o(u, $you_uy) + cptr.ldI32o(u, $you_dy)) | 0) !=
+                        cptr.ldI16o(u, $you_uy0))
                 hurtle(cptr.ldI32o(u, $you_dx), cptr.ldI32o(u, $you_dy), 1, 0);
         }
     } else {
         if (on_foot) {
-            switch (rn2_at(__s_timeout_c, 1302, __s_slip_or_trip, 4)) {
+            switch (rn2(4)) {
                 case 1:
-                You(__s_trip_over_your_own_s, Hallucination() ? __s_elbow : makeplural(body_part(NHC.FOOT)));
+                You(
+                    __s_trip_over_your_own_s,
+                    Hallucination() ? __s_elbow : makeplural(body_part(NHC.FOOT))
+                );
                 break;
                 case 2:
                 You(__s_slip_s, Hallucination() ? __s_on_a_banana_peel : __s_and_nearly_fall);
@@ -1690,8 +2201,9 @@ function slip_or_trip() {
 
             /* mounted; saddle should never end up being Null here;
                don't fall off when it happens to be cursed */
-        } else if ((saddle = which_armor(cptr.ldPtro(u, $you_usteed), 1048576n)) === null || !(cptr.ldI32o(saddle, $obj_cursed) & 1)) {
-            switch (rn2_at(__s_timeout_c, 1323, __s_slip_or_trip, 4)) {
+        } else if ((saddle = which_armor(cptr.ldPtro(u, $you_usteed), 1048576n)) === null ||
+                !(cptr.ldI32o(saddle, $obj_cursed) & 1)) {
+            switch (rn2(4)) {
                 case 1:
                 Your(__s_s_slip_out_of_the_stirrups, makeplural(body_part(NHC.FOOT)));
                 break;
@@ -1765,7 +2277,10 @@ export function burn_object(arg, timeout) {
 
     /* timeout while away */
     if (timeout != cptr.ldI64o(svm, $instance_globals_saved_m_moves)) {
-        let how_long = BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) - timeout);
+        let how_long = BigInt.asIntN(
+            64,
+            cptr.ldI64o(svm, $instance_globals_saved_m_moves) - timeout
+        );
 
         if (how_long >= cptr.ldI64o(obj, $obj_age)) {
             cptr.stI64o(obj, $obj_age, 0n);
@@ -1778,7 +2293,14 @@ export function burn_object(arg, timeout) {
                 let mtmp = null;
 
                 if (cptr.ld1so(obj, $obj_where) == NHM.OBJ_FLOOR)
-                    mtmp = (cptr.ldPtro3(svl, cptr.ldI16o(obj, $obj_ox), 168, cptr.ldI16o(obj, $obj_oy), 8, $instance_globals_saved_l_level + $dlevel_t_monsters));
+                    mtmp = (cptr.ldPtro3(
+                        svl,
+                        cptr.ldI16o(obj, $obj_ox),
+                        168,
+                        cptr.ldI16o(obj, $obj_oy),
+                        8,
+                        $instance_globals_saved_l_level + $dlevel_t_monsters
+                    ));
                 /* get rid of candles and burning oil potions;
                    we know this object isn't carried by hero,
                    nor is it migrating */
@@ -1798,7 +2320,11 @@ export function burn_object(arg, timeout) {
 
     /* only interested in INVENT, FLOOR, and MINVENT */
     if (get_obj_location(obj, x, y, 0)) {
-        canseeit = schar((!Blind() && ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y.v, 8), x.v) & NHM.IN_SIGHT) != 0) ? 1 : 0));
+        canseeit = schar((!Blind() &&
+            ((cptr.ld1uo(cptr.ldPtro(cptr.ldPtro(gv, $instance_globals_v_viz_array), y.v, 8), x.v) &
+                NHM.IN_SIGHT) != 0)
+                ? 1
+                : 0));
         /* set `whose[]' to be "Your " or "Fred's " or "The goblin's " */
         void Shk_Your(cptr.decay(whose), obj);
     } else {
@@ -1808,7 +2334,10 @@ export function burn_object(arg, timeout) {
        or candle so you'll be notified when it burns out even if blind at
        the time; brass lantern doesn't radiate sufficient heat for that
        (however, inventory formatting drops "(lit)" so player can tell) */
-    bytouch = schar((cptr.ld1so(obj, $obj_where) == NHM.OBJ_INVENT && cptr.ldI16o(obj, $obj_otyp) != NHC.BRASS_LANTERN ? 1 : 0));
+    bytouch = schar((cptr.ld1so(obj, $obj_where) == NHM.OBJ_INVENT &&
+        cptr.ldI16o(obj, $obj_otyp) != NHC.BRASS_LANTERN
+            ? 1
+            : 0));
     need_newsym = (need_invupdate = 0);
 
     /* obj->age is the age remaining at this point.  */
@@ -1853,7 +2382,10 @@ export function burn_object(arg, timeout) {
                 if (cptr.ldI16o(obj, $obj_otyp) == NHC.BRASS_LANTERN)
                     lantern_message(obj);
                 else
-                    see_lamp_flicker(obj, cptr.ldI64o(obj, $obj_age) == 50n ? __s_considerably : __s_empty);
+                    see_lamp_flicker(
+                        obj,
+                        cptr.ldI64o(obj, $obj_age) == 50n ? __s_considerably : __s_empty
+                    );
             }
             break;
             case 25:
@@ -1919,10 +2451,19 @@ export function burn_object(arg, timeout) {
                 switch (cptr.ld1so(obj, $obj_where)) {
                     case NHM.OBJ_INVENT:
                     case NHM.OBJ_MINVENT:
-                    pline(__s_s_scandle_s_getting_short, cptr.decay(whose), menorah ? __s_candelabrum_s : __s_empty, many ? __s_s_are : __s_is);
+                    pline(
+                        __s_s_scandle_s_getting_short,
+                        cptr.decay(whose),
+                        menorah ? __s_candelabrum_s : __s_empty,
+                        many ? __s_s_are : __s_is
+                    );
                     break;
                     case NHM.OBJ_FLOOR:
-                    You_see(__s_scandle_s_getting_short, menorah ? __s_a_candelabrum_s : (many ? __s_some : __s_a_sp), many ? __s_s : __s_empty);
+                    You_see(
+                        __s_scandle_s_getting_short,
+                        menorah ? __s_a_candelabrum_s : (many ? __s_some : __s_a_sp),
+                        many ? __s_s : __s_empty
+                    );
                     break;
                 }
             break;
@@ -1931,10 +2472,22 @@ export function burn_object(arg, timeout) {
                 switch (cptr.ld1so(obj, $obj_where)) {
                     case NHM.OBJ_INVENT:
                     case NHM.OBJ_MINVENT:
-                    pline(__s_s_scandle_s_flame_s_flicker_s_low, cptr.decay(whose), menorah ? __s_candelabrum_s : __s_empty, many ? __s_s_apos : __s_apos_s, many ? __s_s : __s_empty, many ? __s_empty : __s_s);
+                    pline(
+                        __s_s_scandle_s_flame_s_flicker_s_low,
+                        cptr.decay(whose),
+                        menorah ? __s_candelabrum_s : __s_empty,
+                        many ? __s_s_apos : __s_apos_s,
+                        many ? __s_s : __s_empty,
+                        many ? __s_empty : __s_s
+                    );
                     break;
                     case NHM.OBJ_FLOOR:
-                    You_see(__s_scandle_s_flame_s_flicker_low, menorah ? __s_a_candelabrum_s : (many ? __s_some : __s_a_sp), many ? __s_s_apos : __s_apos_s, many ? __s_s : __s_empty);
+                    You_see(
+                        __s_scandle_s_flame_s_flicker_low,
+                        menorah ? __s_a_candelabrum_s : (many ? __s_some : __s_a_sp),
+                        many ? __s_s_apos : __s_apos_s,
+                        many ? __s_s : __s_empty
+                    );
                     break;
                 }
             break;
@@ -1948,7 +2501,11 @@ export function burn_object(arg, timeout) {
                         // @FallThrough
                         ;
                         case NHM.OBJ_MINVENT:
-                        pline(__s_scandelabrum_s_flame_s, cptr.decay(whose), many ? __s_s_die : __s_dies);
+                        pline(
+                            __s_scandelabrum_s_flame_s,
+                            cptr.decay(whose),
+                            many ? __s_s_die : __s_dies
+                        );
                         break;
                         case NHM.OBJ_FLOOR:
                         You_see(__s_a_candelabrum_s_flame_s_die, many ? __s_s : __s_empty);
@@ -1969,13 +2526,21 @@ export function burn_object(arg, timeout) {
                           You see some wax candles consumed!
                           You see a wax candle consumed!
                          */
-                        You_see(__s_s_s_consumed__2, many ? __s_some : __s_empty, many ? xname(obj) : an(xname(obj)));
+                        You_see(
+                            __s_s_s_consumed__2,
+                            many ? __s_some : __s_empty,
+                            many ? xname(obj) : an(xname(obj))
+                        );
                         need_newsym = 1;
                         break;
                     }
 
                     /* post message */
-                    pline(Hallucination() ? (many ? __s_they_shriek : __s_it_shrieks) : (Blind() ? __s_empty : (many ? __s_their_flames_die : __s_its_flame_dies)));
+                    pline(Hallucination()
+                            ? (many ? __s_they_shriek : __s_it_shrieks)
+                            : (Blind()
+                                ? __s_empty
+                                : (many ? __s_their_flames_die : __s_its_flame_dies)));
                 }
             }
             end_burn(obj, 0);
@@ -2060,7 +2625,9 @@ export function begin_burn(obj, already_lit) {
     let turns = 0n;
     let do_timer = 1;
 
-    if (cptr.ldI64o(obj, $obj_age) == 0n && cptr.ldI16o(obj, $obj_otyp) != NHC.MAGIC_LAMP && !artifact_light(obj))
+    if (cptr.ldI64o(obj, $obj_age) == 0n &&
+            cptr.ldI16o(obj, $obj_otyp) != NHC.MAGIC_LAMP &&
+            !artifact_light(obj))
         return;
 
     switch (cptr.ldI16o(obj, $obj_otyp)) {
@@ -2071,7 +2638,7 @@ export function begin_burn(obj, already_lit) {
         case NHC.POT_OIL:
         turns = cptr.ldI64o(obj, $obj_age);
         if ((cptr.ldI32o(obj, $obj_oeroded) & 3))
-            turns = (BigInt.asIntN(64, BigInt.asIntN(64, 3n * turns) + 2n)) / 4n;
+            turns = (BigInt.asIntN(64, 3n * turns + 2n)) / 4n;
         radius = 1;  /* very dim light */
         break;
         case NHC.BRASS_LANTERN:
@@ -2176,7 +2743,12 @@ function cleanup_burn(arg, expire_time) {
 
     del_light_source(NHC.LS_OBJECT, obj_to_any(obj));
     /* restore unused time */
-    cptr.stI64o(obj, $obj_age, cptr.ldI64o(obj, $obj_age) + BigInt.asIntN(64, expire_time - cptr.ldI64o(svm, $instance_globals_saved_m_moves)));
+    cptr.stI64o(
+        obj,
+        $obj_age,
+        cptr.ldI64o(obj, $obj_age) +
+            BigInt.asIntN(64, expire_time - cptr.ldI64o(svm, $instance_globals_saved_m_moves))
+    );
     cptr.stI32o(obj, $obj_lamplit, 0);
 
     if (cptr.ld1so(obj, $obj_where) == NHM.OBJ_INVENT)
@@ -2193,20 +2765,33 @@ export function do_storms() {
     let count;
 
     /* no lightning if not stormy level or too often, even then */
-    if (!(cptr.ldI32o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stormy) & 1) || rn2_at(__s_timeout_c, 1855, __s_do_storms, 8))
+    if (!(cptr.ldI32o(
+        svl,
+        $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stormy
+    ) & 1) ||
+            rn2(8))
         return;
 
     /* the number of strikes is 8-log2(nstrike) */
-    for (nstrike = rnd_at(__s_timeout_c, 1859, __s_do_storms, 64); nstrike <= 64; nstrike = Math.imul(nstrike, 2)) {
+    for (nstrike = rnd(64); nstrike <= 64; nstrike = Math.imul(nstrike, 2)) {
         count = 0;
         do {
-            x = rnd_at(__s_timeout_c, 1862, __s_do_storms, 79);
-            y = rn2_at(__s_timeout_c, 1863, __s_do_storms, NHM.ROWNO);
-        } while (++count < 100 && cptr.ld1so3(svl, x, $sizeof_rm_x21, y, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) != NHC.CLOUD);
+            x = rnd(79);
+            y = rn2(NHM.ROWNO);
+        } while (++count < 100 &&
+                cptr.ld1so3(
+                    svl,
+                    x,
+                    $sizeof_rm_x21,
+                    y,
+                    $sizeof_rm,
+                    $instance_globals_saved_l_level + $rm_typ
+                ) !=
+                    NHC.CLOUD);
 
         if (count < 100) {
-            dirx = (rn2_at(__s_timeout_c, 1867, __s_do_storms, 3) - 1) | 0;
-            diry = (rn2_at(__s_timeout_c, 1868, __s_do_storms, 3) - 1) | 0;
+            dirx = (rn2(3) - 1) | 0;
+            diry = (rn2(3) - 1) | 0;
             if (dirx != 0 || diry != 0) {
                 /* BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)): monster LIGHTNING spell */
                 cptr.stPtro(gb, $instance_globals_b_buzzer, null);  /* unspecified attacker */
@@ -2215,12 +2800,23 @@ export function do_storms() {
         }
     }
 
-    if (cptr.ld1so3(svl, cptr.ldI16(u), $sizeof_rm_x21, cptr.ldI16o(u, $you_uy), $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) == NHC.CLOUD) {
+    if (cptr.ld1so3(
+        svl,
+        cptr.ldI16(u),
+        $sizeof_rm_x21,
+        cptr.ldI16o(u, $you_uy),
+        $sizeof_rm,
+        $instance_globals_saved_l_level + $rm_typ
+    ) ==
+            NHC.CLOUD) {
         /* Inside a cloud during a thunderstorm is deafening. */
         /* Even if already deaf, we sense the thunder's vibrations. */
         ;
         pline(__s_kaboom_boom_boom);
-        incr_itimeout(cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop), $prop_intrinsic), ((rn2_at(__s_timeout_c, 1882, __s_do_storms, 20) + 30) | 0));
+        incr_itimeout(
+            cptr.add(cptr.add(cptr.add(u, $you_uprops), NHC.DEAF, $sizeof_prop), $prop_intrinsic),
+            ((rn2(20) + 30) | 0)
+        );
         cptr.st1(disp, 1);
         if (!(cptr.ldI32o(u, $you_uinvulnerable) & 1)) {
             stop_occupation();
@@ -2297,7 +2893,20 @@ function print_queue(win, base) {
     } else {
         putstr()(win, 0, __s_timeout_id_kind_call);
         for (curr = base; curr; curr = cptr.ldPtr(curr)) {
-            void cptr.sprintf(cptr.decay(buf), __s_4ld_4ld_6s_s_s, cptr.ldI64o(curr, $timer_element_timeout), BigInt.asIntN(64, cptr.ldU64o(curr, $timer_element_tid)), kind_name(cptr.ldI16o(curr, $timer_element_kind)), cptr.ldPtro2(timeout_funcs, cptr.ldI16o(curr, $timer_element_func_index), $sizeof_ttable, $ttable_name), fmt_ptr(cptr.ldPtro(curr, $timer_element_arg)));
+            void cptr.sprintf(
+                cptr.decay(buf),
+                __s_4ld_4ld_6s_s_s,
+                cptr.ldI64o(curr, $timer_element_timeout),
+                BigInt.asIntN(64, cptr.ldU64o(curr, $timer_element_tid)),
+                kind_name(cptr.ldI16o(curr, $timer_element_kind)),
+                cptr.ldPtro2(
+                    timeout_funcs,
+                    cptr.ldI16o(curr, $timer_element_func_index),
+                    $sizeof_ttable,
+                    $ttable_name
+                ),
+                fmt_ptr(cptr.ldPtro(curr, $timer_element_arg))
+            );
             putstr()(win, 0, cptr.decay(buf));
         }
     }
@@ -2321,7 +2930,11 @@ export function wiz_timeout_queue() {
     if (win == -1)
         return NHM.ECMD_OK;
 
-    void cptr.sprintf(cptr.decay(buf), __s_current_time_ld, cptr.ldI64o(svm, $instance_globals_saved_m_moves));
+    void cptr.sprintf(
+        cptr.decay(buf),
+        __s_current_time_ld,
+        cptr.ldI64o(svm, $instance_globals_saved_m_moves)
+    );
     putstr()(win, 0, cptr.decay(buf));
     putstr()(win, 0, __s_empty);
     putstr()(win, 0, __s_active_timeout_queue);
@@ -2333,7 +2946,11 @@ export function wiz_timeout_queue() {
      * normal play but those can be forced via the #wizintrinsic command.
      */
     count = (longestlen = 0);
-    for (i = 0; (propname = cptr.ldPtro2(propertynames, i, $sizeof_propname, $propname_prop_name)) !== null; ++i) {
+    for (
+        i = 0;
+        (propname = cptr.ldPtro2(propertynames, i, $sizeof_propname, $propname_prop_name)) !== null;
+        ++i
+    ) {
         p = cptr.ldI32o(propertynames, i, $sizeof_propname);
         intrinsic = cptr.ldI64o2(u, p, $sizeof_prop, $you_uprops + $prop_intrinsic);
         if (intrinsic & 16777215n) {
@@ -2350,7 +2967,16 @@ export function wiz_timeout_queue() {
     } else {
         putstr()(win, 0, __s_timed_properties);
         putstr()(win, 0, __s_empty);
-        for (i = 0; (propname = cptr.ldPtro2(propertynames, i, $sizeof_propname, $propname_prop_name)) !== null; ++i) {
+        for (
+            i = 0;
+            (propname = cptr.ldPtro2(
+                propertynames,
+                i,
+                $sizeof_propname,
+                $propname_prop_name
+            )) !== null;
+            ++i
+        ) {
             p = cptr.ldI32o(propertynames, i, $sizeof_propname);
             intrinsic = cptr.ldI64o2(u, p, $sizeof_prop, $you_uprops + $prop_intrinsic);
             if (intrinsic & 16777215n) {
@@ -2362,7 +2988,13 @@ export function wiz_timeout_queue() {
                    width of 4 digits should result in values lining up
                    almost all the time (if/when they don't, it won't
                    look nice but the information will still be accurate) */
-                void cptr.sprintf(cptr.decay(buf), __s_s_4ld, -longestlen, propname, (intrinsic & 16777215n));
+                void cptr.sprintf(
+                    cptr.decay(buf),
+                    __s_s_4ld,
+                    -longestlen,
+                    propname,
+                    (intrinsic & 16777215n)
+                );
                 putstr()(win, 0, cptr.decay(buf));
             }
         }
@@ -2371,7 +3003,11 @@ export function wiz_timeout_queue() {
         putstr()(win, 0, __s_empty);
         /* decremented when engulfer makes a move, so can last longer than
            the number of turns reported if engulfer is slow */
-        void cptr.sprintf(cptr.decay(buf), __s_swallow_countdown_is_u, cptr.ldI32o(u, $you_uswldtim));
+        void cptr.sprintf(
+            cptr.decay(buf),
+            __s_swallow_countdown_is_u,
+            cptr.ldI32o(u, $you_uswldtim)
+        );
         putstr()(win, 0, cptr.decay(buf));
     }
     if (cptr.ldI32o(u, $you_uinvault)) {
@@ -2382,9 +3018,34 @@ export function wiz_timeout_queue() {
     if (any_visible_region()) {
         visible_region_summary(win);
     }
-    if (cptr.ldI64o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until) >= cptr.ldI64o(svm, $instance_globals_saved_m_moves)) {
+    if (cptr.ldI64o(
+        svl,
+        $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until
+    ) >=
+            cptr.ldI64o(svm, $instance_globals_saved_m_moves)) {
         putstr()(win, 0, __s_empty);
-        void cptr.sprintf(cptr.decay(buf), __s_level_is_no_teleport_for_ld_s, BigInt.asIntN(64, BigInt.asIntN(64, cptr.ldI64o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until) - cptr.ldI64o(svm, $instance_globals_saved_m_moves)) + 1n), (BigInt.asIntN(64, cptr.ldI64o(svl, $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until) - cptr.ldI64o(svm, $instance_globals_saved_m_moves)) > 0n) ? __s_turns : __s_more_turn);
+        void cptr.sprintf(
+            cptr.decay(buf),
+            __s_level_is_no_teleport_for_ld_s,
+            BigInt.asIntN(
+                64,
+                cptr.ldI64o(
+                    svl,
+                    $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until
+                ) -
+                    cptr.ldI64o(svm, $instance_globals_saved_m_moves) + 1n
+            ),
+            (BigInt.asIntN(
+                64,
+                cptr.ldI64o(
+                    svl,
+                    $instance_globals_saved_l_level + $dlevel_t_flags + $levelflags_stasis_until
+                ) -
+                    cptr.ldI64o(svm, $instance_globals_saved_m_moves)
+            ) > 0n)
+                ? __s_turns
+                : __s_more_turn
+        );
         putstr()(win, 0, cptr.decay(buf));
     }
     display_nhwindow()(win, 0);
@@ -2421,15 +3082,30 @@ export function timer_sanity_check() {
                 for (top = obj; top; top = cptr.ldPtro(top, $obj_v))
                     if ((owhere = cptr.ld1so(top, $obj_where)) != NHM.OBJ_CONTAINED)
                         break;
-                (__builtin_expect(BigInt((!(!cptr.eq(top, (null))))), 0n) ? __assert_rtn(__s_timer_sanity_check, __s_timeout_c, 2156, __s_top_null) : void 0);
-                if (owhere == NHM.OBJ_MIGRATING || (owhere == NHM.OBJ_MINVENT && !mon_is_local(cptr.ldPtro(top, $obj_v)))) {
+                (__builtin_expect(BigInt((!(!cptr.eq(top, (null))))), 0n)
+                        ? __assert_rtn(__s_timer_sanity_check, __s_timeout_c, 2156, __s_top_null)
+                        : void 0);
+                if (owhere == NHM.OBJ_MIGRATING ||
+                        (owhere == NHM.OBJ_MINVENT && !mon_is_local(cptr.ldPtro(top, $obj_v)))) {
                     /* migrating directly or carried by migrating monster */
                     ;  /* not able to validate location so skip checks */
                 } else if (!get_obj_location(obj, x, y, 3)) {
                     /* free? or on a shop's used-up bill? */
-                    impossible(__s_timer_sanity_can_t_locate_obj_s_where_d, obj_adr, cptr.ld1so(obj, $obj_where), t_id);
+                    impossible(
+                        __s_timer_sanity_can_t_locate_obj_s_where_d,
+                        obj_adr,
+                        cptr.ld1so(obj, $obj_where),
+                        t_id
+                    );
                 } else if (!isok(x.v, y.v)) {
-                    impossible(__s_timer_sanity_obj_s_where_d_located_at_d, obj_adr, cptr.ld1so(obj, $obj_where), x.v, y.v, t_id);
+                    impossible(
+                        __s_timer_sanity_obj_s_where_d_located_at_d,
+                        obj_adr,
+                        cptr.ld1so(obj, $obj_where),
+                        x.v,
+                        y.v,
+                        t_id
+                    );
                 }
                 break;
             }
@@ -2448,10 +3124,53 @@ export function timer_sanity_check() {
                        too big for levl[][] and that the cast to a narrower type
                        hasn't intruded on the sign bit to yield a negative value;
                        the analyzer isn't aware that isok() filters such things */
-                    (__builtin_expect(BigInt((!(x.v > 0 && x.v < NHM.COLNO && y.v >= 0 && y.v < NHM.ROWNO))), 0n) ? __assert_rtn(__s_timer_sanity_check, __s_timeout_c, 2188, __s_x_0_x_colno_y_0_y_rowno) : void 0);
+                    (__builtin_expect(
+                        BigInt((!(x.v > 0 && x.v < NHM.COLNO && y.v >= 0 && y.v < NHM.ROWNO))),
+                        0n
+                    )
+                            ? __assert_rtn(
+                                __s_timer_sanity_check,
+                                __s_timeout_c,
+                                2188,
+                                __s_x_0_x_colno_y_0_y_rowno
+                            )
+                            : void 0);
 
-                    if (cptr.ldI16o(curr, $timer_element_func_index) == NHC.MELT_ICE_AWAY && !is_ice(x.v, y.v) && !(cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ) == NHC.DRAWBRIDGE_DOWN && (((cptr.ldI32o3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_flags) & 31) | 0) & NHM.DB_UNDER) == NHM.DB_ICE))
-                        impossible(__s_timer_sanity_melt_timer_lu_on_non_ice_d, t_id, cptr.ld1so3(svl, x.v, $sizeof_rm_x21, y.v, $sizeof_rm, $instance_globals_saved_l_level + $rm_typ), x.v, y.v);
+                    if (cptr.ldI16o(curr, $timer_element_func_index) == NHC.MELT_ICE_AWAY &&
+                            !is_ice(x.v, y.v) &&
+                            !(cptr.ld1so3(
+                                svl,
+                                x.v,
+                                $sizeof_rm_x21,
+                                y.v,
+                                $sizeof_rm,
+                                $instance_globals_saved_l_level + $rm_typ
+                            ) ==
+                                NHC.DRAWBRIDGE_DOWN &&
+                                (((cptr.ldI32o3(
+                                    svl,
+                                    x.v,
+                                    $sizeof_rm_x21,
+                                    y.v,
+                                    $sizeof_rm,
+                                    $instance_globals_saved_l_level + $rm_flags
+                                ) & 31) | 0) &
+                                    NHM.DB_UNDER) ==
+                                    NHM.DB_ICE))
+                        impossible(
+                            __s_timer_sanity_melt_timer_lu_on_non_ice_d,
+                            t_id,
+                            cptr.ld1so3(
+                                svl,
+                                x.v,
+                                $sizeof_rm_x21,
+                                y.v,
+                                $sizeof_rm,
+                                $instance_globals_saved_l_level + $rm_typ
+                            ),
+                            x.v,
+                            y.v
+                        );
                 } else {
                     impossible(__s_timer_sanity_spot_timer_lu_at_d_d, t_id, x.v, y.v);
                 }
@@ -2461,7 +3180,11 @@ export function timer_sanity_check() {
             impossible(__s_timer_sanity_unexpected_global_timer_lu, t_id);
             break;
             default:
-            impossible(__s_timer_sanity_unknown_timer_lu_type_d, t_id, cptr.ldI16o(curr, $timer_element_kind));
+            impossible(
+                __s_timer_sanity_unknown_timer_lu_type_d,
+                t_id,
+                cptr.ldI16o(curr, $timer_element_kind)
+            );
             break;
         }
     }
@@ -2480,13 +3203,24 @@ export function run_timers() {
      * any time.  The list is ordered; we are done when the first element
      * is in the future.
      */
-    while (cptr.ldPtro(gt, $instance_globals_t_timer_base) && cptr.ldI64o(cptr.ldPtro(gt, $instance_globals_t_timer_base), $fe_timeout) <= cptr.ldI64o(svm, $instance_globals_saved_m_moves)) {
+    while (cptr.ldPtro(gt, $instance_globals_t_timer_base) &&
+            cptr.ldI64o(cptr.ldPtro(gt, $instance_globals_t_timer_base), $fe_timeout) <=
+                cptr.ldI64o(svm, $instance_globals_saved_m_moves)) {
         curr = cptr.ldPtro(gt, $instance_globals_t_timer_base);
         cptr.stPtro(gt, $instance_globals_t_timer_base, cptr.ldPtr(curr));
 
         if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_OBJECT)
-            (cptr.stI16o((cptr.ldPtro(curr, $timer_element_arg)), $obj_timed, cptr.ldI16o((cptr.ldPtro(curr, $timer_element_arg)), $obj_timed) + -1)) - (-1);
-        (cptr.ldPtro(timeout_funcs, cptr.ldI16o(curr, $timer_element_func_index), $sizeof_ttable))(cptr.add(curr, $timer_element_arg), cptr.ldI64o(curr, $timer_element_timeout));
+            (cptr.stI16o(
+                (cptr.ldPtro(curr, $timer_element_arg)),
+                $obj_timed,
+                cptr.ldI16o((cptr.ldPtro(curr, $timer_element_arg)), $obj_timed) + -1
+            )) -
+                    (-1);
+        (cptr.ldPtro(
+            timeout_funcs,
+            cptr.ldI16o(curr, $timer_element_func_index),
+            $sizeof_ttable
+        ))(cptr.add(curr, $timer_element_arg), cptr.ldI64o(curr, $timer_element_timeout));
         void __builtin___memset_chk(curr, 0, 48n, __builtin_object_size(curr, 0));
         cptr.free(curr);
     }
@@ -2495,21 +3229,37 @@ export function run_timers() {
 /*
  * Start a timer.  Return TRUE if successful.
  */
-/** C ref: timeout.c:2247 — @param {CLongLong} when @param {CInt} kind @param {CInt} func_index @param {CPtr<anything>} arg @returns {CInt} */
+/**
+ * C ref: timeout.c:2247
+ * @param {CLongLong} when
+ * @param {CInt} kind
+ * @param {CInt} func_index
+ * @param {CPtr<anything>} arg
+ * @returns {CInt}
+ */
 export function start_timer(when, kind, func_index, arg) {
     let gnu;
     let dup;
 
-    if (kind <= NHC.TIMER_NONE || kind >= NHC.NUM_TIMER_KINDS || func_index < 0 || func_index >= NHC.NUM_TIME_FUNCS)
+    if (kind <= NHC.TIMER_NONE ||
+            kind >= NHC.NUM_TIMER_KINDS ||
+            func_index < 0 ||
+            func_index >= NHC.NUM_TIME_FUNCS)
         panic(__s_start_timer_s_d, kind_name(kind), func_index);
 
     /* fail if <arg> already has a <func_index> timer running */
     for (dup = cptr.ldPtro(gt, $instance_globals_t_timer_base); dup; dup = cptr.ldPtr(dup))
-        if (cptr.ldI16o(dup, $timer_element_kind) == kind && cptr.ldI16o(dup, $timer_element_func_index) == func_index && cptr.eq(cptr.ldPtro(dup, $timer_element_arg), cptr.ldPtr(arg)))
+        if (cptr.ldI16o(dup, $timer_element_kind) == kind &&
+                cptr.ldI16o(dup, $timer_element_func_index) == func_index &&
+                cptr.eq(cptr.ldPtro(dup, $timer_element_arg), cptr.ldPtr(arg)))
             break;
     if (dup) {
         let idbuf = new Uint8Array(128);
-        void cptr.sprintf(cptr.decay(idbuf), __s_s_timer, cptr.ldPtro2(timeout_funcs, func_index, $sizeof_ttable, $ttable_name));
+        void cptr.sprintf(
+            cptr.decay(idbuf),
+            __s_s_timer,
+            cptr.ldPtro2(timeout_funcs, func_index, $sizeof_ttable, $ttable_name)
+        );
         impossible(__s_attempted_to_start_duplicate_s_aborted, cptr.decay(idbuf));
         return 0;
     }
@@ -2517,8 +3267,21 @@ export function start_timer(when, kind, func_index, arg) {
     gnu = alloc(48);
     void __builtin___memset_chk(gnu, 0, 48n, __builtin_object_size(gnu, 0));
     cptr.stPtr(gnu, null);
-    cptr.stU64o(gnu, $timer_element_tid, (cptr.stU64o(svt, $instance_globals_saved_t_timer_id, cptr.ldU64o(svt, $instance_globals_saved_t_timer_id) + 1n)) - (1n));
-    cptr.stI64o(gnu, $timer_element_timeout, BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) + when));
+    cptr.stU64o(
+        gnu,
+        $timer_element_tid,
+        (cptr.stU64o(
+            svt,
+            $instance_globals_saved_t_timer_id,
+            cptr.ldU64o(svt, $instance_globals_saved_t_timer_id) + 1n
+        )) -
+            (1n)
+    );
+    cptr.stI64o(
+        gnu,
+        $timer_element_timeout,
+        BigInt.asIntN(64, cptr.ldI64o(svm, $instance_globals_saved_m_moves) + when)
+    );
     cptr.stI16o(gnu, $timer_element_kind, kind);
     cptr.stI32o(gnu, $timer_element_needs_fixup, 0);
     cptr.stI16o(gnu, $timer_element_func_index, func_index);
@@ -2526,7 +3289,12 @@ export function start_timer(when, kind, func_index, arg) {
     insert_timer(gnu);
 
     if (kind == NHC.TIMER_OBJECT)
-        (cptr.stI16o((cptr.ldPtr(arg)), $obj_timed, cptr.ldI16o((cptr.ldPtr(arg)), $obj_timed) + 1)) - (1);
+        (cptr.stI16o(
+            (cptr.ldPtr(arg)),
+            $obj_timed,
+            cptr.ldI16o((cptr.ldPtr(arg)), $obj_timed) + 1
+        )) -
+                (1);
 
     return 1;
 }
@@ -2535,7 +3303,12 @@ export function start_timer(when, kind, func_index, arg) {
  * Remove the timer from the current list and free it up.  Return the time
  * remaining until it would have gone off, 0 if not found.
  */
-/** C ref: timeout.c:2299 — @param {CInt} func_index @param {CPtr<anything>} arg @returns {CLongLong} */
+/**
+ * C ref: timeout.c:2299
+ * @param {CInt} func_index
+ * @param {CPtr<anything>} arg
+ * @returns {CLongLong}
+ */
 export function stop_timer(func_index, arg) {
     let cleanup_func;
     let doomed;
@@ -2546,8 +3319,18 @@ export function stop_timer(func_index, arg) {
     if (doomed) {
         timeout = cptr.ldI64o(doomed, $timer_element_timeout);
         if (cptr.ldI16o(doomed, $timer_element_kind) == NHC.TIMER_OBJECT)
-            (cptr.stI16o((cptr.ldPtr(arg)), $obj_timed, cptr.ldI16o((cptr.ldPtr(arg)), $obj_timed) + -1)) - (-1);
-        if ((cleanup_func = cptr.ldPtro2(timeout_funcs, cptr.ldI16o(doomed, $timer_element_func_index), $sizeof_ttable, $ttable_cleanup)) !== null)
+            (cptr.stI16o(
+                (cptr.ldPtr(arg)),
+                $obj_timed,
+                cptr.ldI16o((cptr.ldPtr(arg)), $obj_timed) + -1
+            )) -
+                    (-1);
+        if ((cleanup_func = cptr.ldPtro2(
+            timeout_funcs,
+            cptr.ldI16o(doomed, $timer_element_func_index),
+            $sizeof_ttable,
+            $ttable_cleanup
+        )) !== null)
             (cleanup_func)(arg, timeout);
         void __builtin___memset_chk(doomed, 0, 48n, __builtin_object_size(doomed, 0));
         cptr.free(doomed);
@@ -2564,7 +3347,8 @@ export function peek_timer(type, arg) {
     let curr;
 
     for (curr = cptr.ldPtro(gt, $instance_globals_t_timer_base); curr; curr = cptr.ldPtr(curr)) {
-        if (cptr.ldI16o(curr, $timer_element_func_index) == type && cptr.eq(cptr.ldPtro(curr, $timer_element_arg), cptr.ldPtr(arg)))
+        if (cptr.ldI16o(curr, $timer_element_func_index) == type &&
+                cptr.eq(cptr.ldPtro(curr, $timer_element_arg), cptr.ldPtr(arg)))
             return cptr.ldI64o(curr, $timer_element_timeout);
     }
     return 0n;
@@ -2578,8 +3362,14 @@ export function obj_move_timers(src, dest) {
     let count;
     let curr;
 
-    for (count = 0, curr = cptr.ldPtro(gt, $instance_globals_t_timer_base); curr; curr = cptr.ldPtr(curr))
-        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_OBJECT && cptr.eq(cptr.ldPtro(curr, $timer_element_arg), src)) {
+    for (
+        count = 0,
+        curr = cptr.ldPtro(gt, $instance_globals_t_timer_base);
+        curr;
+        curr = cptr.ldPtr(curr)
+    )
+        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_OBJECT &&
+                cptr.eq(cptr.ldPtro(curr, $timer_element_arg), src)) {
             cptr.stPtro(curr, $timer_element_arg, dest);
             (cptr.stI16o(dest, $obj_timed, cptr.ldI16o(dest, $obj_timed) + 1)) - (1);
             count++;
@@ -2599,8 +3389,18 @@ export function obj_split_timers(src, dest) {
 
     for (curr = cptr.ldPtro(gt, $instance_globals_t_timer_base); curr; curr = next_timer) {
         next_timer = cptr.ldPtr(curr);  /* things may be inserted */
-        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_OBJECT && cptr.eq(cptr.ldPtro(curr, $timer_element_arg), src)) {
-            void start_timer(BigInt.asIntN(64, cptr.ldI64o(curr, $timer_element_timeout) - cptr.ldI64o(svm, $instance_globals_saved_m_moves)), NHC.TIMER_OBJECT, cptr.ldI16o(curr, $timer_element_func_index), obj_to_any(dest));
+        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_OBJECT &&
+                cptr.eq(cptr.ldPtro(curr, $timer_element_arg), src)) {
+            void start_timer(
+                BigInt.asIntN(
+                    64,
+                    cptr.ldI64o(curr, $timer_element_timeout) -
+                        cptr.ldI64o(svm, $instance_globals_saved_m_moves)
+                ),
+                NHC.TIMER_OBJECT,
+                cptr.ldI16o(curr, $timer_element_func_index),
+                obj_to_any(dest)
+            );
         }
     }
 }
@@ -2616,15 +3416,29 @@ export function obj_stop_timers(obj) {
     let prev;
     let next_timer = null;
 
-    for (prev = null, curr = cptr.ldPtro(gt, $instance_globals_t_timer_base); curr; curr = next_timer) {
+    for (
+        prev = null,
+        curr = cptr.ldPtro(gt, $instance_globals_t_timer_base);
+        curr;
+        curr = next_timer
+    ) {
         next_timer = cptr.ldPtr(curr);
-        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_OBJECT && cptr.eq(cptr.ldPtro(curr, $timer_element_arg), obj)) {
+        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_OBJECT &&
+                cptr.eq(cptr.ldPtro(curr, $timer_element_arg), obj)) {
             if (prev)
                 cptr.stPtr(prev, cptr.ldPtr(curr));
             else
                 cptr.stPtro(gt, $instance_globals_t_timer_base, cptr.ldPtr(curr));
-            if ((cleanup_func = cptr.ldPtro2(timeout_funcs, cptr.ldI16o(curr, $timer_element_func_index), $sizeof_ttable, $ttable_cleanup)) !== null)
-                (cleanup_func)(cptr.add(curr, $timer_element_arg), cptr.ldI64o(curr, $timer_element_timeout));
+            if ((cleanup_func = cptr.ldPtro2(
+                timeout_funcs,
+                cptr.ldI16o(curr, $timer_element_func_index),
+                $sizeof_ttable,
+                $ttable_cleanup
+            )) !== null)
+                (cleanup_func)(
+                    cptr.add(curr, $timer_element_arg),
+                    cptr.ldI64o(curr, $timer_element_timeout)
+                );
             void __builtin___memset_chk(curr, 0, 48n, __builtin_object_size(curr, 0));
             cptr.free(curr);
         } else {
@@ -2637,7 +3451,12 @@ export function obj_stop_timers(obj) {
 /*
  * Check whether object has a timer of type timer_type.
  */
-/** C ref: timeout.c:2404 — @param {CPtr<struct obj>} object @param {CInt} timer_type @returns {CInt} */
+/**
+ * C ref: timeout.c:2404
+ * @param {CPtr<struct obj>} object
+ * @param {CInt} timer_type
+ * @returns {CInt}
+ */
 export function obj_has_timer(object, timer_type) {
     let timeout = peek_timer(timer_type, obj_to_any(object));
 
@@ -2656,15 +3475,30 @@ export function spot_stop_timers(x, y, func_index) {
     let next_timer = null;
     let where = ((BigInt(x) << 16n) | (BigInt(y)));
 
-    for (prev = null, curr = cptr.ldPtro(gt, $instance_globals_t_timer_base); curr; curr = next_timer) {
+    for (
+        prev = null,
+        curr = cptr.ldPtro(gt, $instance_globals_t_timer_base);
+        curr;
+        curr = next_timer
+    ) {
         next_timer = cptr.ldPtr(curr);
-        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_LEVEL && cptr.ldI16o(curr, $timer_element_func_index) == func_index && cptr.ldI64o(curr, $timer_element_arg) == where) {
+        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_LEVEL &&
+                cptr.ldI16o(curr, $timer_element_func_index) == func_index &&
+                cptr.ldI64o(curr, $timer_element_arg) == where) {
             if (prev)
                 cptr.stPtr(prev, cptr.ldPtr(curr));
             else
                 cptr.stPtro(gt, $instance_globals_t_timer_base, cptr.ldPtr(curr));
-            if ((cleanup_func = cptr.ldPtro2(timeout_funcs, cptr.ldI16o(curr, $timer_element_func_index), $sizeof_ttable, $ttable_cleanup)) !== null)
-                (cleanup_func)(cptr.add(curr, $timer_element_arg), cptr.ldI64o(curr, $timer_element_timeout));
+            if ((cleanup_func = cptr.ldPtro2(
+                timeout_funcs,
+                cptr.ldI16o(curr, $timer_element_func_index),
+                $sizeof_ttable,
+                $ttable_cleanup
+            )) !== null)
+                (cleanup_func)(
+                    cptr.add(curr, $timer_element_arg),
+                    cptr.ldI64o(curr, $timer_element_timeout)
+                );
             void __builtin___memset_chk(curr, 0, 48n, __builtin_object_size(curr, 0));
             cptr.free(curr);
         } else {
@@ -2677,22 +3511,38 @@ export function spot_stop_timers(x, y, func_index) {
  * When is the spot timer of type func_index going to expire?
  * Returns 0L if no such timer.
  */
-/** C ref: timeout.c:2445 — @param {CInt} x @param {CInt} y @param {CInt} func_index @returns {CLongLong} */
+/**
+ * C ref: timeout.c:2445
+ * @param {CInt} x
+ * @param {CInt} y
+ * @param {CInt} func_index
+ * @returns {CLongLong}
+ */
 export function spot_time_expires(x, y, func_index) {
     let curr;
     let where = ((BigInt(x) << 16n) | (BigInt(y)));
 
     for (curr = cptr.ldPtro(gt, $instance_globals_t_timer_base); curr; curr = cptr.ldPtr(curr)) {
-        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_LEVEL && cptr.ldI16o(curr, $timer_element_func_index) == func_index && cptr.ldI64o(curr, $timer_element_arg) == where)
+        if (cptr.ldI16o(curr, $timer_element_kind) == NHC.TIMER_LEVEL &&
+                cptr.ldI16o(curr, $timer_element_func_index) == func_index &&
+                cptr.ldI64o(curr, $timer_element_arg) == where)
             return cptr.ldI64o(curr, $timer_element_timeout);
     }
     return 0n;
 }
 
-/** C ref: timeout.c:2459 — @param {CInt} x @param {CInt} y @param {CInt} func_index @returns {CLongLong} */
+/**
+ * C ref: timeout.c:2459
+ * @param {CInt} x
+ * @param {CInt} y
+ * @param {CInt} func_index
+ * @returns {CLongLong}
+ */
 export function spot_time_left(x, y, func_index) {
     let expires = spot_time_expires(x, y, func_index);
-    return (expires > 0n) ? BigInt.asIntN(64, expires - cptr.ldI64o(svm, $instance_globals_saved_m_moves)) : 0n;
+    return (expires > 0n)
+            ? BigInt.asIntN(64, expires - cptr.ldI64o(svm, $instance_globals_saved_m_moves))
+            : 0n;
 }
 
 /* Insert timer into the global queue */
@@ -2701,7 +3551,13 @@ function insert_timer(gnu) {
     let curr;
     let prev;
 
-    for (prev = null, curr = cptr.ldPtro(gt, $instance_globals_t_timer_base); curr; prev = curr, curr = cptr.ldPtr(curr))
+    for (
+        prev = null,
+        curr = cptr.ldPtro(gt, $instance_globals_t_timer_base);
+        curr;
+        prev = curr,
+        curr = cptr.ldPtr(curr)
+    )
         if (cptr.ldI64o(curr, $timer_element_timeout) >= cptr.ldI64o(gnu, $timer_element_timeout))
             break;
 
@@ -2712,13 +3568,20 @@ function insert_timer(gnu) {
         cptr.stPtro(gt, $instance_globals_t_timer_base, gnu);
 }
 
-/** C ref: timeout.c:2483 — @param {CPtr<timer_element *>} base @param {CInt} func_index @param {CPtr<anything>} arg @returns {CPtr<timer_element>} */
+/**
+ * C ref: timeout.c:2483
+ * @param {CPtr<timer_element *>} base
+ * @param {CInt} func_index
+ * @param {CPtr<anything>} arg
+ * @returns {CPtr<timer_element>}
+ */
 function remove_timer(base, func_index, arg) {
     let prev;
     let curr;
 
     for (prev = null, curr = cptr.ldPtr(base); curr; prev = curr, curr = cptr.ldPtr(curr))
-        if (cptr.ldI16o(curr, $timer_element_func_index) == func_index && cptr.eq(cptr.ldPtro(curr, $timer_element_arg), cptr.ldPtr(arg)))
+        if (cptr.ldI16o(curr, $timer_element_func_index) == func_index &&
+                cptr.eq(cptr.ldPtro(curr, $timer_element_arg), cptr.ldPtr(arg)))
             break;
 
     if (curr) {
@@ -2748,7 +3611,11 @@ function write_timer(nhfp, timer) {
         } else {
             /* replace object pointer with id */
             cptr.stPtr(arg_save, cptr.ldPtro(timer, $timer_element_arg));
-            cptr.memcpy(cptr.add(timer, $timer_element_arg), cptr.add(cg, $const_globals_zeroany), 8);
+            cptr.memcpy(
+                cptr.add(timer, $timer_element_arg),
+                cptr.add(cg, $const_globals_zeroany),
+                8
+            );
             cptr.stI32o(timer, $timer_element_arg, cptr.ldI32o((cptr.ldPtr(arg_save)), $obj_o_id));
             cptr.stI32o(timer, $timer_element_needs_fixup, 1);
             sfo_fe(nhfp, timer, __s_timer);
@@ -2762,8 +3629,16 @@ function write_timer(nhfp, timer) {
         } else {
             /* replace monster pointer with id */
             cptr.stPtr(arg_save, cptr.ldPtro(timer, $timer_element_arg));
-            cptr.memcpy(cptr.add(timer, $timer_element_arg), cptr.add(cg, $const_globals_zeroany), 8);
-            cptr.stI32o(timer, $timer_element_arg, cptr.ldI32o((cptr.ldPtr(arg_save)), $monst_m_id));
+            cptr.memcpy(
+                cptr.add(timer, $timer_element_arg),
+                cptr.add(cg, $const_globals_zeroany),
+                8
+            );
+            cptr.stI32o(
+                timer,
+                $timer_element_arg,
+                cptr.ldI32o((cptr.ldPtr(arg_save)), $monst_m_id)
+            );
             cptr.stI32o(timer, $timer_element_needs_fixup, 1);
             sfo_fe(nhfp, timer, __s_timer);
             cptr.stPtro(timer, $timer_element_arg, cptr.ldPtr(arg_save));
@@ -2842,7 +3717,13 @@ function timer_is_local(timer) {
  * Part of the save routine.  Count up the number of timers that would
  * be written.  If write_it is true, actually write the timer.
  */
-/** C ref: timeout.c:2627 — @param {CPtr<NHFILE>} nhfp @param {CInt} range @param {CInt} write_it @returns {CInt} */
+/**
+ * C ref: timeout.c:2627
+ * @param {CPtr<NHFILE>} nhfp
+ * @param {CInt} range
+ * @param {CInt} write_it
+ * @returns {CInt}
+ */
 function maybe_write_timer(nhfp, range, write_it) {
     let count = 0;
     let curr;
@@ -2901,7 +3782,12 @@ export function save_timers(nhfp, range) {
     }
 
     if ((cptr.ldI32o((nhfp), $NHFILE_mode) & NHM.FREEING)) {
-        for (prev = null, curr = cptr.ldPtro(gt, $instance_globals_t_timer_base); curr; curr = next_timer) {
+        for (
+            prev = null,
+            curr = cptr.ldPtro(gt, $instance_globals_t_timer_base);
+            curr;
+            curr = next_timer
+        ) {
             next_timer = cptr.ldPtr(curr);  /* in case curr is removed */
 
             if (!(!!(range == NHM.RANGE_LEVEL) ^ !!timer_is_local(curr))) {
@@ -2923,7 +3809,12 @@ export function save_timers(nhfp, range) {
  * Pull in the structures from disk, but don't recalculate the object and
  * monster pointers.
  */
-/** C ref: timeout.c:2707 — @param {CPtr<NHFILE>} nhfp @param {CInt} range @param {CLongLong} adjust */
+/**
+ * C ref: timeout.c:2707
+ * @param {CPtr<NHFILE>} nhfp
+ * @param {CInt} range
+ * @param {CLongLong} adjust
+ */
 export function restore_timers(nhfp, range, adjust) {
     let count = cptr.box(0);
     let curr;
@@ -2941,13 +3832,23 @@ export function restore_timers(nhfp, range, adjust) {
         curr = alloc(48);
         sfi_fe(nhfp, curr, __s_timer);
         if (ghostly)
-            cptr.stI64o(curr, $timer_element_timeout, cptr.ldI64o(curr, $timer_element_timeout) + adjust);
+            cptr.stI64o(
+                curr,
+                $timer_element_timeout,
+                cptr.ldI64o(curr, $timer_element_timeout) + adjust
+            );
         insert_timer(curr);
     }
 }
 
 /* to support '#stats' wizard-mode command */
-/** C ref: timeout.c:2735 — @param {CPtr<char>} hdrfmt @param {CPtr<char>} hdrbuf @param {CPtr<long>} count @param {CPtr<long>} size */
+/**
+ * C ref: timeout.c:2735
+ * @param {CPtr<char>} hdrfmt
+ * @param {CPtr<char>} hdrbuf
+ * @param {CPtr<long>} count
+ * @param {CPtr<long>} size
+ */
 export function timer_stats(hdrfmt, hdrbuf, count, size) {
     let te;
 
@@ -2989,7 +3890,13 @@ export function relink_timers(ghostly) {
 // 11 bindings: 0 rebound+refilled, 0 rebound, 11 refilled.
 // S/P are supplied by js/generated/__reset.js so this module needs no new import.
 let __c2js_rs = null;
-export function __captureState(S) { __c2js_rs = [S(propertynames), S(stoned_texts), S(vomiting_texts), S(choke_texts), S(choke_texts2), S(sickness_texts), S(levi_texts), S(slime_texts), S(phaze_texts), S(region_texts), S(timeout_funcs)]; }
+export function __captureState(S) {
+    __c2js_rs = [
+        S(propertynames), S(stoned_texts), S(vomiting_texts), S(choke_texts), S(choke_texts2),
+        S(sickness_texts), S(levi_texts), S(slime_texts), S(phaze_texts), S(region_texts),
+        S(timeout_funcs)
+    ];
+}
 export function __resetState(P) {
     const r = __c2js_rs;
     if (r === null) throw new Error("timeout.js: __resetState before __captureState");

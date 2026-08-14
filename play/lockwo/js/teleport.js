@@ -154,7 +154,7 @@ function rloc_pos_ok(x, y, mtmp) {
 // C ref: teleport.c rloc_to_core(mtmp, x, y, rlocflags) — pull the monster off
 // its current square and put it down at <x,y>, with the vanish / appear
 // messages when the caller asked for them.  No RNG.
-async function rloc_to_core(mtmp, x, y, rlocflags) {
+export async function rloc_to_core(mtmp, x, y, rlocflags) {
     const oldx = mtmp.mx, oldy = mtmp.my;
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
     const vanishmsg = (rlocflags & RLOC_MSG) !== 0;

@@ -1569,7 +1569,7 @@ function find_mac(mon) {
 // C ref: zap.c resist(mtmp, oclass, damage, tell) — the generic saving throw
 // against a wand/tool/weapon/scroll/potion/ring/spell effect.  `tell`'s
 // shieldeff() flash is display-only (no RNG); not modelled.
-function resist(mtmp, oclass, damage, _tell) {
+export function resist(mtmp, oclass, damage, _tell) {
     let alev;
     switch (oclass) {
     case WAND_CLASS: alev = 12; break;

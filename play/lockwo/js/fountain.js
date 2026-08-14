@@ -8,26 +8,28 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { update_topl, newsym, m_at } from './display.js';
-import { hliquid, builds_up } from './dungeon.js';
+import { hliquid, builds_up, dunlevs_in_dungeon, Is_special } from './dungeon.js';
 import { water_damage, t_at, delfloortrap } from './trap.js';
 import { find_ac } from './u_init.js';
 import { curse, objects, COIN_CLASS, POTION_CLASS, POT_WATER, RING_CLASS, mkobj, mkobj_at, mksobj_at,
-    rnd_class, DILITHIUM_CRYSTAL, LUCKSTONE, BOULDER } from './mkobj.js';
-import { exercise, acurr_eff } from './attrib.js';
+    mkgold, rnd_class, DILITHIUM_CRYSTAL, LUCKSTONE, BOULDER } from './mkobj.js';
+import { exercise, acurr_eff, poison_strdmg } from './attrib.js';
+import { fruitname } from './objnam.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { newuhs } from './eat.js';
-import { Blind } from './vision.js';
+import { Blind, cansee, couldsee } from './vision.js';
 import { depth, distmin } from './hacklib.js';
 import { clear_area_cells } from './vision.js';
-import { nexttodoor } from './mkroom.js';
+import { nexttodoor, inside_room } from './mkroom.js';
 import { makemon, name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
-import { x_monnam, canspotmon } from './uhitm.js';
+import { x_monnam, canspotmon, monflee } from './uhitm.js';
+import { somegold } from './steal.js';
 import { create_gas_cloud } from './region.js';
 import { monster_detect } from './hack.js';
 import { observe_object } from './o_init.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import {
-    ER_NOTHING, ER_DESTROYED, F_LOOTED, F_WARNED,
+    ER_NOTHING, ER_GREASED, ER_DESTROYED, F_LOOTED, F_WARNED, FROMOUTSIDE,
     FOUNTAIN, ROOM, POOL, A_WIS, A_CON, IS_FOUNTAIN, S_LRING, G_GONE,
 } from './const.js';
 
@@ -38,6 +40,137 @@ const nothing_seems_to_happen = 'Nothing seems to happen.';
 
 // C ref: rm.h FOUNTAIN_IS_LOOTED / _WARNED — bits in levl[x][y].looted.
 function fountain_is_looted(loc) { return ((loc?.looted || 0) & F_LOOTED) !== 0; }
+
+// C ref: eat.c morehungry(num) — `u.uhunger -= num; newuhs(TRUE);`.  eat.js
+// keeps the arithmetic inline at each of its own call sites and exports no
+// morehungry(), so the two fountain callers (foul water, "no good" water) and
+// the sink's sewage sip get it here.  RNG-free itself, but u.uhunger steers
+// the botl hunger word AND newuhs()'s fainting rn2, so discarding the roll's
+// value (as this file used to) leaves the hero permanently un-hungered.
+function morehungry(num) {
+    const u = game.u;
+    if (!u) return;
+    u.uhunger = (u.uhunger ?? 900) - num;
+    newuhs(true);
+}
+
+// C ref: prop.h Poison_resistance.  Mirrors js/potion.js's reader: the port
+// spreads the intrinsic over three different uprops spellings depending on
+// which subsystem granted it (role intrinsic, race intrinsic, item).
+function Poison_resistance() {
+    const u = game.u;
+    if (!u) return false;
+    const p = u.uprops || {};
+    return !!(u.Poison_resistance || p.Poison_resistance
+              || p.HPoison_resistance || p.PoisonResistance);
+}
+
+// C ref: mondata.h is_watch(ptr) — a literal `ptr == &mons[PM_WATCHMAN] ||
+// ptr == &mons[PM_WATCH_CAPTAIN]` species-pointer test, so comparing pmidx is
+// the faithful form (a name regex would be too, but pmidx can't drift).
+let _watch_pmidx = null;
+function is_watch(ptr) {
+    if (_watch_pmidx === null)
+        _watch_pmidx = [name_to_pmidx('watchman'), name_to_pmidx('watch captain')];
+    const i = ptr?.pmidx;
+    return i != null && (i === _watch_pmidx[0] || i === _watch_pmidx[1]);
+}
+
+// C ref: hack.c in_town(x, y) — a room WITH subrooms is the town; with no
+// subroomed rooms at all the whole level counts.  Mirrors js/makemon.js's
+// in_town_js(), including its `svl.level.flags.has_town` stand-in (nothing in
+// this port writes has_town, so the S_LEVEL `town` flag answers for it).
+function in_town(x, y) {
+    const lvl = game.level;
+    const slev = Is_special(game.u?.uz);
+    if (!slev || !slev.flags?.town) return false;
+    let has_subrooms = false;
+    for (let i = 0; i < (lvl?.nroom ?? 0); i++) {
+        const sroom = lvl.rooms[i];
+        if (!sroom || (sroom.hx ?? 0) <= 0) break;
+        if ((sroom.nsubrooms ?? 0) > 0) {
+            has_subrooms = true;
+            if (inside_room(sroom, x, y)) return true;
+        }
+    }
+    return !has_subrooms;
+}
+
+// C ref: mon.c angry_guards(silent) — wake and anger every peaceful watchman;
+// returns TRUE if there was one.  No RNG, but clearing mpeaceful redirects
+// every later watchman move.  (js/shkroom.js keeps a private copy of the same
+// C function; it is not exported, and this file may not edit that one.)
+function angry_guards(_silent) {
+    let ct = 0;
+    for (const mtmp of (game.level?.monsters || [])) {
+        if (!mtmp || mtmp.mhp <= 0) continue;
+        if (!is_watch(mtmp.data) || !mtmp.mpeaceful) continue;
+        ct++;
+        if (mtmp.msleeping || mtmp.mfrozen) { mtmp.msleeping = 0; mtmp.mfrozen = 0; }
+        mtmp.mpeaceful = 0;
+    }
+    return ct > 0;
+}
+
+// C ref: hack.c money_cnt(otmp) — the quan of the FIRST coin stack in the
+// chain (it returns, it does not sum, and it does not look inside containers).
+function money_cnt(list) {
+    for (const obj of (list || [])) if (obj.oclass === COIN_CLASS) return obj.quan || 0;
+    return 0;
+}
+
+// C ref: invent.c delobj(obj) — rolls obj_resists(obj, 0, 0) (a plain rn2(100)
+// for coins) before freeing.  Imported lazily: invent.js pulls potion.js, which
+// pulls this file.
+async function delobj_invent(obj) {
+    const I = await import('./invent.js');
+    I.delobj(obj);
+}
+
+// C ref: youprop.h Glib — the "slippery fingers" timer.
+function Glib() {
+    const u = game.u;
+    return ((u?.Glib || 0) > 0) || ((u?.uprops?.Glib || 0) > 0)
+        || ((u?.uprops?.HGlib || 0) > 0);
+}
+
+// C ref: hack.h Role_if(PM_KNIGHT) — urole.mnum comparison.
+function Role_if_knight() {
+    return /knight/i.test(game.urole?.name?.m || game.urole?.name || '');
+}
+
+// C ref: artifact.c exist_artifact(LONG_SWORD, artiname(ART_EXCALIBUR)) — has
+// Excalibur already been made?  The port has no artifact registry, so scan the
+// hero's pack and the current level's floor for oartifact == 1 (Excalibur's
+// artilist index, per invent.js ARTI_TOUCH_PROPS).
+function exist_excalibur() {
+    for (const o of (game.invent || [])) if (o?.oartifact === 1) return true;
+    for (const o of (game.level?.objects || [])) if (o?.oartifact === 1) return true;
+    return false;
+}
+
+// C ref: fountain.c wash_hands() — dipping '-' (or worn gloves) into water.
+// Always prints; water-damages the gloves (RNG) when they are worn; and
+// upgrades ER_NOTHING to ER_GREASED when it removed Glib, which is what makes
+// dipfountain's `er != ER_NOTHING && !rn2(2)` early-out fire.
+async function wash_hands() {
+    let res = ER_NOTHING;
+    const was_glib = Glib();
+    await update_topl(`You wash your ${game.uarmg ? 'gloved ' : ''}hands in the `
+                      + `${hliquid('water')}.`);
+    if (was_glib) {
+        // make_glib(0): clears the timer (no RNG).
+        if (game.u) {
+            game.u.Glib = 0;
+            if (game.u.uprops) { game.u.uprops.Glib = 0; game.u.uprops.HGlib = 0; }
+        }
+        await update_topl(
+            `Your ${game.uarmg ? 'gloves' : 'fingers'} are no longer slippery.`);
+    }
+    if (game.uarmg) res = await water_damage(game.uarmg, null, true);
+    if (was_glib && res === ER_NOTHING) res = ER_GREASED;
+    return res;
+}
 
 // C ref: fountain.c dipfountain(obj) — dipping an object into a fountain.
 export async function dipfountain(obj) {
@@ -51,15 +184,46 @@ export async function dipfountain(obj) {
         return;
     }
 
-    // Excalibur creation (LONG_SWORD, ulevel >= 5) — not reachable for the
-    // priest hero on dlvl 1; kept as a guard so real long swords fall through.
-    if (obj.otyp === LONG_SWORD && u.ulevel >= 5) {
-        // rn2(Role_if(KNIGHT)?6:30) etc. — omitted; unreachable here.
+    // C ref: fountain.c:190 — the Lady-of-the-Lake / Excalibur test.  The
+    // `!rn2(Role_if(PM_KNIGHT) ? 6 : 30)` is the THIRD term of the &&-chain, so
+    // it draws for every long-sword dip by an XL5+ hero even when the later
+    // quan/artifact terms then fail.  The old stub drew nothing at all.
+    if (obj.otyp === LONG_SWORD && u.ulevel >= 5
+        && !rn2(Role_if_knight() ? 6 : 30)
+        && (obj.quan || 1) === 1 && !obj.oartifact
+        && !exist_excalibur()) {
+        if ((u.ualign?.type ?? 0) !== 1 /* A_LAWFUL */) {
+            await update_topl(`A freezing mist rises from the ${hliquid('water')}`
+                              + ' and envelopes the sword.');
+            await update_topl('The fountain disappears!');
+            curse(obj);
+            if ((obj.spe ?? 0) > -6 && !rn2(3)) obj.spe = (obj.spe ?? 0) - 1;
+            obj.oerodeproof = false;
+            exercise(A_WIS, false);
+        } else {
+            await update_topl(
+                'From the murky depths, a hand reaches up to bless the sword.');
+            await update_topl('As the hand retreats, the fountain disappears!');
+            // oname(obj, artiname(ART_EXCALIBUR)) + discover_artifact():
+            // invent.js keys artifact properties off obj.oartifact (1 ==
+            // Excalibur in its ARTI_TOUCH_PROPS table).
+            obj.oartifact = 1;
+            obj.oname = 'Excalibur';
+            obj.blessed = true; obj.cursed = false;
+            obj.oeroded = 0; obj.oeroded2 = 0; obj.oerodeproof = true;
+            exercise(A_WIS, true);
+        }
+        const loc0 = game.level?.at(u.ux, u.uy);
+        if (loc0) { loc0.typ = ROOM; loc0.flags = 0; }
+        if (game.level?.flags && typeof game.level.flags.nfountains === 'number')
+            game.level.flags.nfountains = Math.max(0, game.level.flags.nfountains - 1);
+        newsym(u.ux, u.uy);
+        if (in_town(u.ux, u.uy)) angry_guards(false);
+        return;
     }
 
     if (is_hands || obj === game.uarmg) {
-        // wash_hands(): no RNG on the reached levels.
-        er = ER_NOTHING;
+        er = await wash_hands();
     } else {
         er = await water_damage(obj, null, true);
         // C ref: allmain.c moveloop_core() — find_ac() runs once per player
@@ -83,7 +247,7 @@ export async function dipfountain(obj) {
     case 19:
     case 20: // Uncurse the item
         if (!is_hands && obj.cursed) {
-            if (!game.u?.Blind)
+            if (!Blind())
                 await update_topl(`The ${hliquid('water')} glows for a moment.`);
             obj.cursed = false;
         } else {
@@ -114,16 +278,43 @@ export async function dipfountain(obj) {
     case 27: // Strange feeling
         await update_topl('You feel a sudden chill.');
         break;
-    case 28: // Strange feeling
+    case 28: { // Strange feeling
         await update_topl('An urge to take a bath overwhelms you.');
-        // money-loss effect (money_cnt > 10) — no gold carried here, so no-op.
+        // C ref: fountain.c:508 — the fountain eats a tenth of a purse holding
+        // more than 10 zorkmids.  somegold() is RNG-free below 50 zorkmids but
+        // draws rn1() above it, and exercise(A_WIS, FALSE) always draws rn2(2)
+        // — seed0014 step 712 records exactly that rn2(2) before dryup's rn2(3),
+        // which the old "no gold carried here" stub never emitted.
+        let money = money_cnt(game.invent);
+        if (money > 10) {
+            money = Math.trunc(somegold(money) / 10);
+            for (const otmp of [...(game.invent || [])]) {
+                if (money <= 0) break;
+                if (otmp.oclass !== COIN_CLASS) continue;
+                const denomination = objects[otmp.otyp]?.oc_cost || 1;
+                let coin_loss = Math.trunc((money + denomination - 1) / denomination);
+                coin_loss = Math.min(coin_loss, otmp.quan || 0);
+                otmp.quan = (otmp.quan || 0) - coin_loss;
+                money -= coin_loss * denomination;
+                if (!otmp.quan) await delobj_invent(otmp);
+            }
+            await update_topl('You lost some of your gold in the fountain!');
+            const lc = game.level?.at(u.ux, u.uy);
+            if (lc) lc.looted = (lc.looted || 0) & ~F_LOOTED; // CLEAR_FOUNTAIN_LOOTED
+            exercise(A_WIS, false);
+        }
         break;
+    }
     case 29: { // You see coins
         const loc = game.level?.at(u.ux, u.uy);
         if (fountain_is_looted(loc)) break;
         if (loc) loc.looted = (loc.looted || 0) | F_LOOTED;
-        // mkgold + "Far below you..." — treasure spawn not modeled here.
-        if (!game.u?.Blind)
+        // C ref: fountain.c:536 — mkgold(rnd((dunlevs_in_dungeon - dunlev + 1)
+        // * 2) + 5, ...).  The rnd() is a real draw that the old "not modeled
+        // here" comment skipped, shifting every later call in the turn.
+        mkgold(rnd((dunlevs_in_dungeon(u.uz) - (u.uz?.dlevel ?? 1) + 1) * 2) + 5,
+               u.ux, u.uy);
+        if (!Blind())
             await update_topl(`Far below you, you see coins glistening in the ${hliquid('water')}.`);
         exercise(A_WIS, true);
         newsym(u.ux, u.uy);
@@ -158,8 +349,26 @@ export async function drinkfountain() {
     }
 
     if (mgkftn && (u.uluck || 0) >= 0 && fate >= 10) {
-        // Blessed restore-ability + gain-attribute (adjattrib) + enlightenment:
-        // not reached (no blessedftn fountains in the covered sessions).
+        // C ref: fountain.c:256 — the magic-fountain jackpot.  The old stub
+        // returned with NO output and, worse, no RNG: C's gain-ability loop
+        // opens with `i = rn2(A_MAX)` (a plain rn2(6)) to pick the starting
+        // attribute, and that draw fires whether or not any attribute can rise.
+        const A_MAX = 6;
+        await update_topl('Wow!  This makes you feel great!');
+        // blessed restore ability: ABASE = AMAX for every deficient attribute.
+        if (u.acurr?.a && u.amax?.a) {
+            for (let ii = 0; ii < A_MAX; ii++)
+                if ((u.acurr.a[ii] ?? 0) < (u.amax.a[ii] ?? 0))
+                    u.acurr.a[ii] = u.amax.a[ii];
+        }
+        rn2(A_MAX); /* i = rn2(A_MAX): the gain-ability loop's start index */
+        // The loop body is adjattrib(i, 1, littleluck ? -1 : 0), which draws no
+        // RNG on the gain path (attrib.c:114-142) but raises ABASE/AMAX and
+        // prints "You feel <adjective>!".  attrib.js exports no adjattrib(), so
+        // the raise and that message are still missing.
+        await update_topl('A wisp of vapor escapes the fountain...');
+        exercise(A_WIS, true);
+        if (loc) loc.blessedftn = 0;
         return;
     }
 
@@ -171,20 +380,33 @@ export async function drinkfountain() {
     } else {
         switch (fate) {
         case 19: /* Self-knowledge */
-            // enlightenment(MAGICENLIGHTENMENT) not modeled; framing only.
             await update_topl('You feel self-knowledgeable...');
+            // enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS) opens an
+            // NHW_MENU window here; insight.js only exposes the disclosure
+            // (final) form, so the window is still missing.  Its trailing
+            // "The feeling subsides." was missing too and is free.
             exercise(A_WIS, true);
+            await update_topl('The feeling subsides.');
             break;
         case 20: /* Foul water */
             await update_topl(`The ${hliquid('water')} is foul!  You gag and vomit.`);
-            rn1(20, 11); /* morehungry(rn1(20,11)) */
+            morehungry(rn1(20, 11));
             vomit();
             break;
         case 21: /* Poisonous */
             await update_topl(`The ${hliquid('water')} is contaminated!`);
-            // poison_strdmg(rn1(4,3), rnd(10), ...) — spend its leading rolls.
-            rn1(4, 3);
-            rnd(10);
+            // C ref: fountain.c:302 — a poison-resistant hero (every orc, every
+            // Healer) takes the SHORT arm: one rnd(4) and a different message,
+            // not poison_strdmg's rn1(4,3) + rnd(10).  Argument order is
+            // left-to-right, confirmed by seed4500 step 1326 recording
+            // rn2(4) then rnd(10) both at fountain.c:307.
+            if (Poison_resistance()) {
+                await update_topl(
+                    `Perhaps it is runoff from the nearby ${fruitname(false)} farm.`);
+                losehp(rnd(4));
+                break;
+            }
+            poison_strdmg(rn1(4, 3), rnd(10));
             exercise(A_CON, false);
             break;
         case 22: /* Fountain of snakes! */
@@ -195,7 +417,7 @@ export async function drinkfountain() {
             break;
         case 24: { /* Maybe curse some items */
             await update_topl("This water's no good!");
-            rn1(20, 11); /* morehungry(rn1(20,11)) */
+            morehungry(rn1(20, 11));
             exercise(A_CON, false);
             let buc_changed = 0;
             for (const obj of game.invent || []) {
@@ -208,8 +430,27 @@ export async function drinkfountain() {
             break;
         }
         case 25: /* See invisible */
-            if (!Blind())
+            // C ref: fountain.c:337 — each arm is TWO plines, and the branch
+            // always sets HSee_invisible |= FROMOUTSIDE.  That intrinsic is
+            // RNG-free but it decides whether later invisible monsters are
+            // drawn at all, so dropping it silently changes the map.
+            if (Blind()) {
+                if (game.u?.uprops?.Invisible) {
+                    await update_topl('You feel transparent.');
+                } else {
+                    await update_topl('You feel very self-conscious.');
+                    await update_topl('Then it passes.');
+                }
+            } else {
                 await update_topl('You see an image of someone stalking you.');
+                await update_topl('But it disappears.');
+            }
+            if (u) {
+                u.uprops = u.uprops || {};
+                u.uprops.See_invisible = (u.uprops.See_invisible || 0) | FROMOUTSIDE;
+                u.uprops.HSee_invisible = (u.uprops.HSee_invisible || 0) | FROMOUTSIDE;
+                u.See_invisible = true;
+            }
             newsym(u.ux, u.uy);
             exercise(A_WIS, true);
             break;
@@ -227,8 +468,16 @@ export async function drinkfountain() {
         case 28: /* Water Nymph */
             await dowaternymph();
             break;
-        case 29: /* Scare monsters (monflee loop, no RNG) */
+        case 29: /* Scare */
             await update_topl(`This ${hliquid('water')} gives you bad breath!`);
+            // C ref: fountain.c:365 — monflee(mtmp, 0, FALSE, FALSE) on EVERY
+            // live monster on the level.  RNG-free, but an mflee monster takes
+            // a completely different m_move branch, so skipping the loop
+            // rewrites the rest of the level's monster stream.
+            for (const mtmp of (game.level?.monsters || [])) {
+                if (!mtmp || mtmp.mhp <= 0 || mtmp.mdead) continue;
+                monflee(mtmp, 0, false, false);
+            }
             break;
         case 30: /* Gushing forth in this room */
             await dogushforth(true);
@@ -240,6 +489,12 @@ export async function drinkfountain() {
     }
     await dryup(u.ux, u.uy, true);
 }
+
+// C ref: you.h mhe/mhis — genders[pronoun_gender(mtmp, PRONOUN_HALLU)].  The
+// neuter/"it" case (pronoun_gender's !canspotmon and is_neuter arms) is not
+// modelled; js/muse.js's local mhe() makes the same simplification.
+function mhe(mtmp) { return mtmp?.female ? 'she' : 'he'; }
+function mhis(mtmp) { return mtmp?.female ? 'her' : 'his'; }
 
 // C ref: dungeon.c level_difficulty() — depth-based difficulty, plus a
 // compensating bump in a "builds up" branch (Vlad's Tower, Sokoban); see
@@ -267,6 +522,14 @@ function level_difficulty() {
 async function dowaterdemon() {
     const u = game.u;
     const pmidx = name_to_pmidx('water demon');
+    // C ref: fountain.c:66 — the G_GONE (genocided/extinct) test, with its own
+    // else-arm message.  This was missing entirely: a genocided water demon
+    // silently produced nothing instead of the bubbling line.
+    if ((game.mvitals?.[pmidx]?.mvflags ?? 0) & G_GONE) {
+        await update_topl(
+            'The fountain bubbles furiously for a moment, then calms.');
+        return;
+    }
     const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
     if (!ptr) return;
     const spot = enexto_spawn(u.ux, u.uy, ptr);
@@ -290,7 +553,10 @@ async function dowaterdemon() {
         // wish (mongrantswish), otherwise a trap at the demon's square may snare
         // it (mintrap).  Neither follow-up is reached by the recorded roll.
         if (rnd(100) > (80 + level_difficulty())) {
-            // mongrantswish(&mtmp) — a wish; unreached at this depth's roll.
+            // C ref: fountain.c:79 — "Grateful for his release, he grants you
+            // a wish!" then mongrantswish() (a getlin wish prompt, unported).
+            await update_topl(
+                `Grateful for ${mhis(mtmp)} release, ${mhe(mtmp)} grants you a wish!`);
         } else {
             // mintrap(mtmp) if t_at(demon square) — no trap on the fountain.
         }
@@ -337,8 +603,43 @@ async function dowaternymph() {
     else
         await update_topl('You hear a loud pop.');
 }
+// C ref: fountain.c dowatersnakes() — `int num = rn1(5, 2);` is the FIRST
+// statement, so the roll fires before (and independently of) the G_GONE test,
+// then 2..6 water moccasins are makemon'd at the hero's square.  This whole
+// function used to be a single pline: seed0007 step 289 records the missing
+// rn2(5) at fountain.c:40 followed by six enexto+makemon chains (346 calls at
+// that one boundary), every one of which the port skipped.
+//
+// Placement mirrors dowaterdemon()/dowaternymph(): the hero occupies (ux,uy),
+// so makemon.c's `byyou && !in_mklev` arm runs enexto_core (collect_coords)
+// BEFORE any of the new monster's own RNG.
 async function dowatersnakes() {
-    await update_topl('An endless stream of snakes pours forth!');
+    const u = game.u;
+    let num = rn1(5, 2);
+    const pmidx = name_to_pmidx('water moccasin');
+    if ((game.mvitals?.[pmidx]?.mvflags ?? 0) & G_GONE) {
+        await update_topl(
+            'The fountain bubbles furiously for a moment, then calms.');
+        return;
+    }
+    if (!Blind()) {
+        // Hallucination substitutes makeplural(rndmonnam(NULL)), which draws;
+        // rndmonnam() is not ported anywhere in js/ yet.
+        await update_topl('An endless stream of snakes pours forth!');
+    } else {
+        await update_topl('You hear something hissing!');
+    }
+    const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
+    if (!ptr) return;
+    while (num-- > 0) {
+        const spot = enexto_spawn(u.ux, u.uy, ptr);
+        if (!spot) continue;
+        const mtmp = makemon(ptr, spot.x, spot.y, 0 /* MM_NOMSG */);
+        if (!mtmp) continue;
+        placeOnLevel(mtmp, spot.x, spot.y);
+        newsym(spot.x, spot.y);
+        // mintrap(mtmp) when t_at(mtmp->mx, mtmp->my): mintrap is unported.
+    }
 }
 // C ref: fountain.c dofindgem() — quaffing/dipping turns up a random gem.
 // RNG (in this exact order, before exercise's rn2):
@@ -417,18 +718,47 @@ async function dogushforth(drinking) {
     }
 }
 
+// C ref: fountain.c watchman_warn_fountain(mtmp) — get_iter_mons() predicate:
+// the first peaceful, could-see watchman yells at you.  No RNG.
+async function watchman_warn_fountain(mtmp) {
+    if (!is_watch(mtmp?.data) || !mtmp.mpeaceful) return false;
+    if (!couldsee(mtmp.mx, mtmp.my)) return false;
+    // Deaf hero gets the "waves his arms" variant instead; Deaf is never true
+    // for these heroes and mbodypart()/nolimbs() aren't ported.
+    const nm = x_monnam(mtmp, 2 /*ARTICLE_A*/, null, 0, false);
+    await update_topl(`${nm.charAt(0).toUpperCase()}${nm.slice(1)} yells:`);
+    await update_topl('"Hey, stop using that fountain!"');
+    return true;
+}
+
 // C ref: fountain.c dryup(x, y, isyou) — a fountain has a 1-in-3 chance of
 // drying up after use.  The rn2(3) roll fires unconditionally (short-circuit
-// left operand of `!rn2(3) || FOUNTAIN_IS_WARNED`).  The town-watch warning and
-// wizard-mode confirmation are not reached by the contest hero.
-export async function dryup(x, y, _isyou) {
+// left operand of `!rn2(3) || FOUNTAIN_IS_WARNED`).
+//
+// The in-town arm is NOT unreachable: seed0014 steps 712-713 record it on Mine
+// Town's Dlvl 7 ("A watchman yells:" / verbalize).  It matters twice over —
+// it prints two lines AND it returns early, so the first in-town use never
+// dries the fountain, and every use after it dries it unconditionally
+// (FOUNTAIN_IS_WARNED short-circuits the rn2 test's OR).
+export async function dryup(x, y, isyou) {
     const loc = game.level?.at(x, y);
-    if (!loc || loc.typ !== FOUNTAIN) return;
+    if (!loc || !IS_FOUNTAIN(loc.typ)) return;
     const warned = ((loc.looted || 0) & F_WARNED) !== 0;
     if (!(!rn2(3) || warned)) return;
-    // (in_town watchman-warning / wizard "Dry up fountain?" not reached)
-    // "The fountain dries up!" (cansee); the reached fountains are in view.
-    await update_topl('The fountain dries up!');
+    if (isyou && in_town(x, y) && !warned) {
+        loc.looted = (loc.looted || 0) | F_WARNED; // SET_FOUNTAIN_WARNED
+        let found = false;
+        for (const mtmp of (game.level?.monsters || [])) {
+            if (!mtmp || mtmp.mhp <= 0) continue;
+            if (await watchman_warn_fountain(mtmp)) { found = true; break; }
+        }
+        if (!found) await update_topl('The flow reduces to a trickle.');
+        return;
+    }
+    // (wizard-mode "Dry up fountain?" confirmation is never reached.)
+    // C ref: fountain.c:225 — the message is gated on cansee(x, y) (and on the
+    // square not being hidden under a cloud glyph).
+    if (cansee(x, y)) await update_topl('The fountain dries up!');
     // replace the fountain with ordinary floor
     loc.typ = ROOM;
     loc.flags = 0;
@@ -436,11 +766,23 @@ export async function dryup(x, y, _isyou) {
     if (game.level?.flags && typeof game.level.flags.nfountains === 'number')
         game.level.flags.nfountains = Math.max(0, game.level.flags.nfountains - 1);
     newsym(x, y);
+    if (isyou && in_town(x, y)) angry_guards(false);
 }
 
 // ── sink interactions (fountain.c drinksink/breaksink) ──
 
 function Hallucination() { return !!game.u?.uhallu; }
+
+// C ref: prop.h Fire_resistance — intrinsic (Monk XL13, red dragon scales,
+// role/race grants) or extrinsic.  Same multi-spelling read as
+// Poison_resistance() above.
+function Fire_resistance() {
+    const u = game.u;
+    if (!u) return false;
+    const p = u.uprops || {};
+    return !!(u.Fire_resistance || p.Fire_resistance || p.HFire_resistance
+              || p.FireResistance);
+}
 
 // C ref: hack.c losehp() — for a non-polymorphed hero this subtracts the
 // damage from u.uhp (no RNG).  Death handling is not exercised by the covered
@@ -549,9 +891,15 @@ export async function drinksink() {
         break;
     case 2:
         await update_topl(`You take a sip of scalding hot ${water}.`);
-        // Fire_resistance is never true for the covered heroes; monstunseesu
-        // (M_SEEN_FIRE) only toggles monster-memory bookkeeping (no RNG).
-        losehp(rnd(6));
+        // C ref: fountain.c:614 — a fire-resistant hero gets "It seems quite
+        // tasty." and takes NO damage, so the rnd(6) must not be drawn either.
+        // monstseesu/monstunseesu (M_SEEN_FIRE) is monster-memory bookkeeping
+        // with no RNG.
+        if (Fire_resistance()) {
+            await update_topl('It seems quite tasty.');
+        } else {
+            losehp(rnd(6));
+        }
         break;
     case 3: {
         const pmidx = name_to_pmidx('sewer rat');
@@ -613,7 +961,7 @@ export async function drinksink() {
         break;
     case 9:
         await update_topl('Gaggg... this tastes like sewage!  You vomit.');
-        rn1(30 - acurr_eff(A_CON), 11);   /* morehungry(rn1(30-ACURR(A_CON),11)) */
+        morehungry(rn1(30 - acurr_eff(A_CON), 11));
         vomit();
         break;
     case 10:

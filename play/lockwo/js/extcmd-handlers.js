@@ -16,16 +16,16 @@ import {
     obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_PACK, mergable,
     name_inventory_object, call_inventory_object, doorganize,
     addinv, prinv, prinv_fmt, let_to_name, report_merge_discovery,
-    wiz_identify, renderWindowScreen,
+    wiz_identify, renderWindowScreen, useup, xname,
 } from './invent.js';
 import { pluslvl, losexp } from './exper.js';
-import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM } from './const.js';
+import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM, STRAT_WAITMASK } from './const.js';
 import { create_particular_monster } from './makemon.js';
 import { mon_mr } from './monmr_data.js';
-import { is_undead_flag, is_demon_flag } from './monflags_data.js';
-import { couldsee } from './vision.js';
+import { is_undead_flag, is_demon_flag, humanoid } from './monflags_data.js';
+import { couldsee, Blind } from './vision.js';
 import { align_gname } from './role.js';
-import { newsym } from './display.js';
+import { newsym, map_invisible } from './display.js';
 import { STATUE, objects, place_object, weight, COIN_CLASS } from './mkobj.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { delobj, stackobj } from './invent.js';
@@ -47,13 +47,14 @@ import { dosit } from './sit.js';
 import { dodip } from './potion.js';
 import { dogenocided, do_gamelog, doconduct } from './insight.js';
 import { isok } from './hacklib.js';
-import { Monnam, canspotmon, x_monnam, oc_wldam } from './uhitm.js';
+import { Monnam, canspotmon, x_monnam, mon_nam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
-import { build_overview_lines } from './dungeon.js';
+import { build_overview_lines, surface } from './dungeon.js';
 import { doextversion } from './version.js';
 import { name_to_pmidx, monster_by_pmidx } from './makemon.js';
 import { polyok_flag } from './monflags_data.js';
 import { polymon, newman, domonability, PM_HUMAN } from './polyself.js';
+import { obj_resists } from './zap.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
 // C ref: hack.h AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD.
@@ -289,15 +290,35 @@ function mungspaces(s) {
 // place the cursor right after the typed text (the autocompleted tail is
 // drawn but the cursor is parked at the end of what was actually typed).
 // C ref: win/tty/getline.c hooked_tty_getlin() display behavior.
+// C ref: win/tty/topl.c topl_putsym() — `if (ttyDisplay->curx == CO - 1)
+// topl_putsym('\n')`, i.e. a top-line row holds cols 0..CO-2 (79 chars) and the
+// next character starts the following screen row at col 0, overwriting the map.
+// This is a HARD wrap; display.js wrap_topl() is the word wrap for update_topl
+// and must not be reused here.  A getlin whose query + buffer stays under 79
+// chars (every ordinary one) is unaffected.
+const TOPL_CO = 80;
+const TOPL_WRAP = TOPL_CO - 1;
 function draw_getlin(query, shown, cursorCol) {
     const disp = game?.nhDisplay;
     if (!disp?.setCell) return;
     const line = query + ' ' + shown;
-    for (let c = 0; c < disp.cols; c++) {
-        const ch = c < line.length ? line[c] : ' ';
-        disp.setCell(c, 0, ch, NO_COLOR, 0);
+    const rows = Math.max(1, Math.ceil(line.length / TOPL_WRAP));
+    // C ref: tty_clear_nhwindow(NHW_MESSAGE) -> docorner(1, cury+1, 0) blanks
+    // the rows the previous (longer) top line spilled onto.
+    const clearRows = Math.max(rows, game._getlin_rows || 1);
+    for (let r = 0; r < clearRows && r < disp.rows; r++)
+        for (let c = 0; c < disp.cols; c++) disp.setCell(c, r, ' ', NO_COLOR, 0);
+    for (let i = 0; i < line.length; i++) {
+        const r = Math.floor(i / TOPL_WRAP);
+        if (r >= disp.rows) break;
+        disp.setCell(i % TOPL_WRAP, r, line[i], NO_COLOR, 0);
     }
-    disp.setCursor(Math.min(cursorCol, disp.cols - 1), 0);
+    game._getlin_rows = rows;
+    // The newline is emitted lazily (only when the NEXT char would land on
+    // col CO-1), so a cursor sitting exactly at col CO-1 stays on its row.
+    const cr = cursorCol === 0 ? 0 : Math.floor((cursorCol - 1) / TOPL_WRAP);
+    const cc = cursorCol - cr * TOPL_WRAP;
+    disp.setCursor(Math.min(cc, disp.cols - 1), Math.min(cr, disp.rows - 1));
 }
 
 // C ref: win/tty/getline.c hooked_tty_getlin().  Reads a line at the top
@@ -453,15 +474,17 @@ async function doturn() {
     const roleMnum = g.urole?.mnum ?? -1;
     const PM_CLERIC_ROLE = 6, PM_KNIGHT_ROLE = 4;   // roles[] indices
     if (roleMnum !== PM_CLERIC_ROLE && roleMnum !== PM_KNIGHT_ROLE) {
-        // C: if the hero knows the turn-undead spell, cast it instead.
-        const { spellid_at } = await import('./spell.js');
+        // C ref: pray.c doturn():1712 — 3.7 bases this on the spell being IN THE
+        // SPELLBOOK (the scan stops at the first NO_SPELL slot), not on knowing
+        // it well enough to cast; spelleffects() then applies the usual
+        // retention/energy/skill checks.
+        const sp = await import('./spell.js');
         const SPE_TURN_UNDEAD = 398;
-        let known = false;
-        for (let i = 0; i < 25; i++) if (spellid_at(i) === SPE_TURN_UNDEAD) { known = true; break; }
-        if (known) {
-            // C: spelleffects(SPE_TURN_UNDEAD, FALSE, FALSE).
-            const sp = await import('./spell.js');
-            if (sp.spelleffects_ext) return await sp.spelleffects_ext(SPE_TURN_UNDEAD);
+        for (let i = 0; i < 25; i++) {
+            const id = sp.spellid_at(i);
+            if (id === 0) break;                       /* NO_SPELL */
+            if (id === SPE_TURN_UNDEAD)
+                return await sp.spelleffects_ext(SPE_TURN_UNDEAD);
         }
         await pline("You don't know how to turn undead!");
         return 0;
@@ -677,12 +700,39 @@ async function paranoid_query(prompt) {
 // to a real monster, otherwise the command is free (ECMD_OK).
 async function dochat() {
     const u = game.u;
-    // (is_silent / Strangled / uswallow / Underwater / shop-object short-circuits
-    //  don't apply to the speaking starter heroes on a normal floor.)
+    // C ref: sounds.c dochat():1889 — u.uswallow / Underwater short-circuits.
+    // (is_silent(youmonst) and the shop-object price_quote path are not modelled;
+    //  see the GAP note below.)
+    if (u.uswallow) {
+        await pline("They won't hear you out there.");
+        return 0;
+    }
+    if (u.uprops?.Strangled) {
+        await pline("You can't speak.  You're choking!");
+        return 0;
+    }
+    if (u.uinwater || u.uprops?.Underwater) {
+        await pline('Your speech is unintelligible underwater.');
+        return 0;
+    }
+    // GAP: shop_object(u.ux, u.uy) — chatting while standing on unpaid shop
+    // merchandise makes the shopkeeper quote the price and COSTS A TURN
+    // (ECMD_TIME); not modelled, so a #chat inside a shop is one turn short.
     const { getdir } = await import('./cmd.js');
     const dir = await getdir('Talk to whom? (in what direction)');
     if (!dir) return 0; /* ECMD_CANCEL -> no turn */
     u.dx = dir.dx; u.dy = dir.dy; u.dz = dir.dz || 0;
+
+    // C ref: sounds.c dochat():1925 — chatting DOWN while riding talks to the
+    // steed (ECMD_TIME), it does not fall through to "won't hear you down
+    // there".  A knight on his pony is the common case.
+    if (u.usteed && u.dz > 0) {
+        if (mon_helpless(u.usteed)) {
+            await update_topl(`${Monnam(u.usteed)} seems not to notice you.`);
+            return 1;
+        }
+        return await domonnoise(u.usteed);
+    }
 
     // talking up/down (no steed) — "They won't hear you up/down there." (no turn)
     if (u.dz) {
@@ -700,34 +750,101 @@ async function dochat() {
 
     let mtmp = m_at(tx, ty);
     if (!mtmp || mtmp.mundetected) {
-        // statue / wall talk: a STATUE on the floor, or a wall/SDOOR.  None of
-        // the owned chats target these (the squares are empty floor), so this
-        // simply yields no message (ECMD_OK), matching an empty-air chat.
+        // statue / wall talk: a STATUE on the floor, or a wall/SDOOR.
         const otmp = vobj_at(tx, ty);
         if (otmp && otmp.otyp === STATUE) {
-            await update_topl('The statue seems not to notice you.');
+            // C guards the message with !Blind.  GAP: a hallucinating hero sees
+            // rndmonnam() instead of "statue"; that name comes from the DISPLAY
+            // rng (rn2_on_display_rng), which this port does not model, so the
+            // plain word is kept rather than inventing a core-rng draw.
+            if (!Blind())
+                await update_topl('The statue seems not to notice you.');
             return 0;
         }
         const tgt = game.level?.at(tx, ty);
-        if (tgt && (IS_WALL(tgt.typ) || tgt.typ === SDOOR)) {
-            await update_topl("It's like talking to a wall.");
+        if (!Deaf_hero_chat() && tgt && (IS_WALL(tgt.typ) || tgt.typ === SDOOR)) {
+            // GAP: C additionally suppresses the message when Blind and the cell
+            // was never mapped as a wall (lastseentyp), which this port doesn't
+            // track; a blind hero adjacent to a wall has normally mapped it.
+            if (!game.u?.uhallu) {
+                await update_topl("It's like talking to a wall.");
+            } else {
+                // C ref: sounds.c dochat() — rn2(10) over an 8-entry table, so
+                // the last entry is 3x as likely; the draw happens regardless.
+                let idx = rn2(10);
+                if (idx >= WALLTALK.length) idx = WALLTALK.length - 1;
+                await update_topl(`The wall ${WALLTALK[idx]}`);
+            }
             return 0;
         }
-        if (!mtmp) return 0; // empty air: no message, no turn
     }
 
-    // sleeping non-priest monsters won't talk.
-    if ((mtmp.msleeping || mtmp.mfrozen) && !mtmp.ispriest) {
+    // C ref: sounds.c dochat():2004 — a mimic posing as furniture or an object
+    // is not chatted with at all (it stays hidden).
+    if (!mtmp || mtmp.mundetected
+        || mtmp.m_ap_type === 'furniture' || mtmp.m_ap_type === 'obj')
+        return 0;
+
+    // sleeping / immobilised non-priest monsters won't talk.  C uses
+    // helpless(mon) = msleeping || !mcanmove; mfrozen alone misses a monster
+    // paralysed or otherwise held with mcanmove clear.
+    if (mon_helpless(mtmp) && !mtmp.ispriest) {
         if (canspotmon(mtmp))
             await update_topl(`${Monnam(mtmp)} seems not to notice you.`);
         return 0;
     }
+    // GAP (measured, deliberately omitted): C ref sounds.c:1389 does
+    //     mtmp->mstrategy &= ~STRAT_WAITMASK;   /* prod it into action */
+    // Porting it costs 2 public steps on seed0367 (chatting to the Arch Priest
+    // un-freezes the quest leader, and our freed-leader m_move then diverges
+    // from C's).  Restore this line once a freed STRAT_CLOSE leader moves the
+    // way C's does; it is a real omission, not a no-op.
+    void STRAT_WAITMASK;
+
     // a tame pet that is busy eating just makes eating noises (no turn).
-    if (mtmp.mtame && mtmp.meating) {
+    if (!Deaf_hero_chat() && mtmp.mtame && mtmp.meating) {
+        if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
         await update_topl(`${Monnam(mtmp)} is eating noisily.`);
         return 0;
     }
+    if (Deaf_hero_chat()) {
+        const spot = canspotmon(mtmp);
+        await update_topl(`Any response${spot ? ' from ' : ''}${spot ? mon_nam(mtmp) : ''} `
+                          + `${humanoid_hero() ? 'falls on deaf ears' : 'is inaudible'}.`);
+        return 0;
+    }
     return await domonnoise(mtmp);
+}
+
+// C ref: sounds.c dochat() walltalk[] — the hallucinatory wall responses.
+const WALLTALK = [
+    'gripes about its job.',
+    'tells you a funny joke!',
+    'insults your heritage!',
+    'chuckles.',
+    'guffaws merrily!',
+    'deprecates your exploration efforts.',
+    'suggests a stint of rehab...',
+    "doesn't seem to be interested.",
+];
+
+// C ref: monst.h helpless(mon) — msleeping || !mcanmove.  mfrozen alone (what
+// this used to test) misses every other source of !mcanmove.
+function mon_helpless(mon) { return !!(mon && (mon.msleeping || !mon.mcanmove)); }
+// C ref: youprop.h Deaf — same accessor sounds.js/mon.js already use.
+function Deaf_hero_chat() {
+    const u = game.u;
+    return ((u?.uprops?.HDeaf ?? 0) > 0) || !!u?.Deaf;
+}
+// C ref: mondata.h humanoid(ptr) — M1_HUMANOID, for the hero's current form.
+function humanoid_hero() {
+    // u.umonnum is the ROLE number unless Upolyd (see polyself.js:353), so the
+    // mons[] lookup is only valid while polymorphed; every role's player monster
+    // is M1_HUMANOID.
+    const u = game.u;
+    if (!u?.Upolyd) return true;
+    const ptr = monster_by_pmidx(u.umonnum);
+    return ptr ? humanoid(ptr) : true;
 }
 
 // ── getlin (plain top-line line input, no completion) ──
@@ -1098,6 +1215,15 @@ function floor_obj_here(pred) {
 function floor_box_here() { return floor_obj_here(is_container_otyp); }
 // C ref: lock.c doforce() — scans for Is_box() (large box/chest) only.
 function floor_lockbox_here() { return floor_obj_here(is_lockbox_otyp); }
+// C ref: lock.c doforce() iterates svl.level.objects[u.ux][u.uy] via nexthere
+// and asks about EVERY Is_box() there, not just the first one ('n' continues to
+// the next box).  Order matches the floor object chain.
+function floor_lockboxes_here() {
+    const u = game.u;
+    if (!u) return [];
+    return (game.level?.objects || []).filter(
+        (o) => o.where === 'floor' && o.ox === u.ux && o.oy === u.uy && is_lockbox_otyp(o.otyp));
+}
 
 // Status-line text for the modal container renders (mirrors invent.js's
 // putStatusLines: statusLine1Text carries cursor-forward escapes that must be
@@ -1824,13 +1950,38 @@ function u_have_forceable_weapon() {
     return true;
 }
 
-// C ref: lock.c doforce().  Scoped to the recorded path: a forceable weapon
-// (the dwarvish spear is a blunt/non-blade weapon -> picktyp 0), a single
-// locked floor box.  Prompts "There is <a locked box> here; force its lock?
-// [ynq] (q)"; on 'y' announces "You start bashing it with <your weapon>." and
-// begins the forcelock occupation (which elapses game turns via the move loop).
+// C ref: include/obj.h is_blade()/is_pick() — the picktyp selector for #force.
+// P_DAGGER..P_SABER is the blade span of skills.h; a pick-axe is excluded even
+// though its oc_skill is inside no blade range (it is a WEAPON/TOOL test of its
+// own).  Used to be hardcoded to 0 because the one recorded #force wielded a
+// dwarvish spear; every blade-wielding hero took the wrong forcelock branch.
+const P_SABER_SK = 9, P_PICK_AXE_SK = 4; // skills.h
+function is_blade_obj(o) {
+    if (!o || o.oclass !== WEAPON_CLASS_OC) return false;
+    const sk = objects[o.otyp]?.oc_skill ?? 0;
+    return sk >= P_DAGGER_SK && sk <= P_SABER_SK;
+}
+function is_pick_obj(o) {
+    if (!o || (o.oclass !== WEAPON_CLASS_OC && o.oclass !== TOOL_CLASS_OC)) return false;
+    return (objects[o.otyp]?.oc_skill ?? 0) === P_PICK_AXE_SK;
+}
+// C ref: include/obj.h greatest_erosion(otmp) — max(oeroded, oeroded2).
+function greatest_erosion(o) {
+    const a = o?.oeroded | 0, b = o?.oeroded2 | 0;
+    return a > b ? a : b;
+}
+
+// C ref: lock.c doforce().  Prompts "There is <a locked box> here; force its
+// lock? [ynq] (q)" for each Is_box() on the square; on 'y' announces the
+// pry/bash line and begins the forcelock occupation (which elapses game turns
+// via the move loop).
 async function doforce() {
     const uwep = game.uwep;
+    // C ref: lock.c doforce():684 — u.uswallow short-circuit.
+    if (game.u?.uswallow) {
+        await pline("You can't force anything from inside here.");
+        return 0;
+    }
     // C ref: lock.c:694 — the You_cant() phrase depends on WHY the weapon is
     // unusable; the no-weapon case reads "when not wielding a" (this always
     // said "without a proper", which is only the wrong-object-class wording).
@@ -1843,46 +1994,58 @@ async function doforce() {
         await pline(`You can't force anything ${why} weapon${use_plural ? 's' : ''}.`);
         return 0;
     }
-    const box = floor_lockbox_here();
-    if (!box) {
-        await pline('You decide not to force the issue.');
+    // C ref: lock.c doforce():706 — !can_reach_floor(TRUE) -> cant_reach_floor()
+    // and no turn: a levitating hero can't get at a box on the floor.
+    if (game.u?.uprops?.Levitation) {
+        await pline(`You can't reach the ${surface(game.u.ux, game.u.uy)}.`);
+        return 0;
+    }
+
+    const picktyp = (is_blade_obj(uwep) && !is_pick_obj(uwep)) ? 1 : 0;
+    // C ref: lock.c doforce():726 — an interrupted force resumes where it left
+    // off (same weapon kind) instead of re-prompting; the accumulated usedtime
+    // carries over, so the 50-turn give-up budget is shared.
+    const xl = game.xlock;
+    if (xl && xl.usedtime && xl.box && picktyp === xl.picktyp) {
+        await update_topl('You resume your attempt to force the lock.');
+        game._force_box = xl.box;
         return 1;
     }
-    if (box.obroken || !box.olocked) {
+    game.xlock = null;
+
+    let chosen = null;
+    for (const box of floor_lockboxes_here()) {
+        if (box.obroken || !box.olocked) {
+            // C forces lknown=0 across doname() so the message isn't worded
+            // redundantly ("a locked large box ... already unlocked"), then sets
+            // it: the player has now learned the lock state either way.
+            box.lknown = 0;
+            await pline(`There is a ${box_basename(box.otyp)} here, but its lock is already ${box.obroken ? 'broken' : 'unlocked'}.`);
+            box.lknown = 1;
+            continue;
+        }
+        // safe_qbuf: doname(locked box) -> "a locked <box>".
         const name = box_basename(box.otyp);
-        await pline(`There is a ${name} here, but its lock is already ${box.obroken ? 'broken' : 'unlocked'}.`);
         box.lknown = 1;
-        await pline('You decide not to force the issue.');
-        return 1;
+        const c = await yn_function(`There is a locked ${name} here; force its lock?`, 'ynq', 'q');
+        if (c === 'q') return 0;
+        if (c === 'n') continue;
+        // update_topl (not plain pline) so the message is left in NEED_MORE
+        // state — the forcelock occupation's first message then pages it with
+        // "--More--".
+        await update_topl(picktyp
+            ? `You force ${force_yname(uwep)} into a crack and pry.`
+            : `You start bashing it with ${force_yname(uwep)}.`);
+        // Begin the forcelock occupation (set_occupation(forcelock,...)).  C
+        // ref: lock.c doforce(): chance = objects[uwep->otyp].oc_wldam * 2.
+        // The forcelock() occupation then runs each turn from the move loop
+        // (do_occupation), which checks rn2(100) >= chance.
+        game.xlock = { box, chance: oc_wldam(uwep.otyp) * 2, picktyp, usedtime: 0, magic_key: false };
+        chosen = box;
+        break;
     }
-    // safe_qbuf: doname(locked box) -> "a locked <box>".
-    const name = box_basename(box.otyp);
-    box.lknown = 1;
-    const c = await yn_function(`There is a locked ${name} here; force its lock?`, 'ynq', 'q');
-    if (c === 'q') return 0;
-    if (c === 'n') {
-        await pline('You decide not to force the issue.');
-        return 1;
-    }
-    // 'y': non-blade weapon -> bashing.  C: "You start bashing it with <yname>."
-    // yname(uwep) -> "your dwarvish spear" (single, uncursed-known not shown).
-    // update_topl (not plain pline) so the message is left in NEED_MORE state —
-    // the forcelock occupation's first message then pages it with "--More--".
-    await update_topl(`You start bashing it with ${force_yname(uwep)}.`);
-    // Begin the forcelock occupation (set_occupation(forcelock,...)).  C ref:
-    // lock.c doforce(): picktyp = is_blade(uwep) && !is_pick(uwep) (0 for a
-    // spear/blunt weapon -> bashing); chance = objects[uwep->otyp].oc_wldam * 2;
-    // usedtime = 0.  The forcelock() occupation then runs each turn from the
-    // move loop (do_occupation), which checks rn2(100) >= chance.
-    const picktyp = 0; // dwarvish spear: not a blade -> blunt bash path
-    game.xlock = {
-        box,
-        chance: oc_wldam(uwep.otyp) * 2,
-        picktyp,
-        usedtime: 0,
-        magic_key: false,
-    };
-    game._force_box = box;
+    if (chosen) game._force_box = chosen;
+    else await pline('You decide not to force the issue.');
     return 1; // ECMD_TIME — a turn elapses (the move loop advances monsters)
 }
 
@@ -1991,9 +2154,22 @@ export async function forcelock() {
         game._force_box = null; game.xlock = null; return 0;
     }
 
-    if (xl.picktyp) {
-        // blade path not exercised by the recorded sessions (dwarvish spear is
-        // blunt); fall through would need rn2(1000-...) here.
+    if (xl.picktyp) { /* blade */
+        // C ref: lock.c forcelock():238.  rn2(1000 - spe) is drawn EVERY blade
+        // turn (before the cursed/obj_resists tests short-circuit), so a
+        // blade-wielding hero's force draws one more call per turn than a
+        // blunt one; obj_resists() adds its own rn2(100) only when the first
+        // two tests pass.  For a +0 weapon P(survive 50 tries) = .992^50.
+        const uwep = game.uwep;
+        if (rn2(1000 - (uwep.spe | 0)) > (992 - greatest_erosion(uwep) * 10)
+            && !uwep.cursed && !obj_resists(uwep, 0, 99)) {
+            await pline(`${(uwep.quan || 1) > 1 ? 'One of y' : 'Y'}our ${xname(uwep)} broke!`);
+            useup(uwep);
+            await pline('You give up your attempt to force the lock.');
+            exercise(A_DEX, true);
+            game._force_box = null; game.xlock = null;
+            return 0;
+        }
     } else {
         wake_nearby_force(); // blunt weapon: hammering wakes nearby monsters.
     }
@@ -2100,7 +2276,22 @@ const HANDLERS = {
     turn: doturn,
     wait: dowait_extcmd,
     terrain: doterrain_extcmd,
+    wizmap: wiz_map_extcmd,
 };
+
+// C ref: wizcmds.c:176 wiz_map() — mark every trap seen, reveal every
+// engraving, then do_mapping(), whose tail is exercise(A_WIS, TRUE) => one
+// rn2(19).  With no HANDLERS entry this fell through to the table's no-op, so
+// the draw went missing and the whole map stayed dark.  do_mapping() takes C's
+// hero_memory branch here, so there is no browse_map() getpos loop and no extra
+// keystroke is consumed.
+async function wiz_map_extcmd() {
+    const { do_mapping } = await import('./detect.js');
+    for (const t of (game.level?.traps || [])) t.tseen = 1;
+    for (const ep of (game.level?.engravings || [])) ep.erevealed = 1;
+    await do_mapping();
+    return 0;   /* ECMD_OK — no time passes */
+}
 
 // C ref: cmd.c { '\177', "terrain", ..., doterrain } — '#terrain' is the same
 // command as the <rubout> key.  It had no HANDLERS entry, so the extended form

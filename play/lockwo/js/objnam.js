@@ -24,6 +24,7 @@ import {
     WEAPON_CLASS,
 } from './mkobj.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
+import { shop_price_suffix } from './shk.js';
 
 const NUM_OBJECTS = objects.length;
 
@@ -421,3 +422,26 @@ export function shiny_obj(oclass) {
 // readobjnam.js consumes these to parse a wish string without duplicating the
 // hacklib string helpers.
 export { wishymatch, fuzzymatch, strstri };
+
+// ─────────────────────────────────────────────────────────────────────────
+// doname_base() shop-price suffix.
+//
+// C ref: objnam.c doname_base():1648-1682 — the last thing doname_base()
+// appends before the article fixup:
+//
+//     is_unpaid(obj)            -> " (unpaid, N zorkmids)"   (or "contents")
+//     with_price && price > 0   -> " (for sale, N zorkmids)" (or "contents")
+//     with_price && nochrg > 0  -> " (no charge)"
+//
+// This is what the recorded screens SHOW for a shop floor item ("You see here
+// a cream pie (for sale, 8 zorkmids).") and for an unpaid inventory item
+// ("i - a cream pie (unpaid, 8 zorkmids).").  All of the arithmetic lives in
+// js/shk.js (get_cost / get_cost_of_shop_item / unpaid_cost); this is only the
+// formatting seam, kept here because that is where C formats it.
+//
+// doname()            -> price_suffix(obj, false)
+// doname_with_price() -> price_suffix(obj, true)   [DONAME_WITH_PRICE]
+export function price_suffix(obj, with_price) {
+    return shop_price_suffix(obj, !!with_price);
+}
+export function doname_with_price_suffix(obj) { return shop_price_suffix(obj, true); }

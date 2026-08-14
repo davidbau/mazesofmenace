@@ -12,7 +12,7 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as FLD from './nhfield.js';
 import { has_mgivenname, is_mplayer, is_spear } from './nhmacrofn.js';
-import { d_at, rn2_at, rnd_at } from './nhrng.js';
+import { d, rn2, rnd } from './rnd.js';
 import { cg, gu, svd, svl, u } from './decl.js';
 import { mons } from './monst.js';
 import { rank_of } from './botl.js';
@@ -33,19 +33,22 @@ import { set_mon_data } from './mondata.js';
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $Role_mnum = FLD.Role_mnum, $const_globals_zeromonst = FLD.const_globals_zeromonst,
-    $dgn_topology_d_astral_level = FLD.dgn_topology_d_astral_level, $dlevel_t_monlist = FLD.dlevel_t_monlist,
-    $dlevel_t_monsters = FLD.dlevel_t_monsters,
-    $instance_globals_saved_d_dungeon_topology = FLD.instance_globals_saved_d_dungeon_topology,
-    $instance_globals_saved_l_level = FLD.instance_globals_saved_l_level,
-    $instance_globals_u_urole = FLD.instance_globals_u_urole, $monst_data = FLD.monst_data,
-    $monst_female = FLD.monst_female, $monst_m_lev = FLD.monst_m_lev, $monst_mextra = FLD.monst_mextra,
-    $monst_mhp = FLD.monst_mhp, $monst_mhpmax = FLD.monst_mhpmax, $monst_mpeaceful = FLD.monst_mpeaceful,
-    $obj_greased = FLD.obj_greased, $obj_oartifact = FLD.obj_oartifact, $obj_oclass = FLD.obj_oclass,
-    $obj_oeroded = FLD.obj_oeroded, $obj_oeroded2 = FLD.obj_oeroded2, $obj_oerodeproof = FLD.obj_oerodeproof,
-    $obj_otyp = FLD.obj_otyp, $obj_owt = FLD.obj_owt, $obj_quan = FLD.obj_quan, $obj_spe = FLD.obj_spe,
-    $objclass_oc_merge = FLD.objclass_oc_merge, $objclass_oc_subtyp = FLD.objclass_oc_subtyp,
-    $permonst_mflags2 = FLD.permonst_mflags2, $permonst_pmidx = FLD.permonst_pmidx,
-    $sizeof_objclass = FLD.sizeof_objclass, $sizeof_permonst = FLD.sizeof_permonst, $you_uz = FLD.you_uz;
+      $dgn_topology_d_astral_level = FLD.dgn_topology_d_astral_level,
+      $dlevel_t_monlist = FLD.dlevel_t_monlist, $dlevel_t_monsters = FLD.dlevel_t_monsters,
+      $instance_globals_saved_d_dungeon_topology = FLD.instance_globals_saved_d_dungeon_topology,
+      $instance_globals_saved_l_level = FLD.instance_globals_saved_l_level,
+      $instance_globals_u_urole = FLD.instance_globals_u_urole, $monst_data = FLD.monst_data,
+      $monst_female = FLD.monst_female, $monst_m_lev = FLD.monst_m_lev,
+      $monst_mextra = FLD.monst_mextra, $monst_mhp = FLD.monst_mhp,
+      $monst_mhpmax = FLD.monst_mhpmax, $monst_mpeaceful = FLD.monst_mpeaceful,
+      $obj_greased = FLD.obj_greased, $obj_oartifact = FLD.obj_oartifact,
+      $obj_oclass = FLD.obj_oclass, $obj_oeroded = FLD.obj_oeroded,
+      $obj_oeroded2 = FLD.obj_oeroded2, $obj_oerodeproof = FLD.obj_oerodeproof,
+      $obj_otyp = FLD.obj_otyp, $obj_owt = FLD.obj_owt, $obj_quan = FLD.obj_quan,
+      $obj_spe = FLD.obj_spe, $objclass_oc_merge = FLD.objclass_oc_merge,
+      $objclass_oc_subtyp = FLD.objclass_oc_subtyp, $permonst_mflags2 = FLD.permonst_mflags2,
+      $permonst_pmidx = FLD.permonst_pmidx, $sizeof_objclass = FLD.sizeof_objclass,
+      $sizeof_permonst = FLD.sizeof_permonst, $you_uz = FLD.you_uz;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
 const __s_alex = cptr.lit("Alex");
@@ -88,19 +91,12 @@ const __s_helge = cptr.lit("Helge");
 const __s_ron = cptr.lit("Ron");
 const __s_joshua = cptr.lit("Joshua");
 const __s_empty = cptr.lit("");
-const __s_mplayer_c = cptr.lit("mplayer.c");
-const __s_dev_name = cptr.lit("dev_name");
 const __s_eve = cptr.lit("Eve");
 const __s_adam = cptr.lit("Adam");
-const __s_get_mplname = cptr.lit("get_mplname");
 const __s_maud = cptr.lit("Maud");
 const __s_the = cptr.lit(" the ");
-const __s_mk_mplayer_armor = cptr.lit("mk_mplayer_armor");
-const __s_mk_mplayer = cptr.lit("mk_mplayer");
 const __s_bad_mplayer_monster = cptr.lit("bad mplayer monster");
-const __s_create_mplayers = cptr.lit("create_mplayers");
 const __s_talk_s = cptr.lit("Talk? -- %s");
-const __s_mplayer_talk = cptr.lit("mplayer_talk");
 const __s_i_can_t_win_and_neither_will_you = cptr.lit("I can't win, and neither will you!");
 const __s_you_don_t_deserve_to_win = cptr.lit("You don't deserve to win!");
 const __s_mine_should_be_the_honor_not_yours = cptr.lit("Mine should be the honor, not yours!");
@@ -186,11 +182,21 @@ function dev_name() {
 
     do {
         match = 0;
-        i = rn2_at(__s_mplayer_c, 52, __s_dev_name, n);
-        for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
+        i = rn2(n);
+        for (
+            mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist);
+            mtmp;
+            mtmp = cptr.ldPtr(mtmp)
+        ) {
             if (!is_mplayer(cptr.ldPtro(mtmp, $monst_data)))
                 continue;
-            if (!cptr.strncmp(cptr.ldPtro(developers, i, 8), (has_mgivenname(mtmp)) ? (cptr.ldPtr(cptr.ldPtro((mtmp), $monst_mextra))) : __s_empty, cptr.strlen(cptr.ldPtro(developers, i, 8)))) {
+            if (!cptr.strncmp(
+                cptr.ldPtro(developers, i, 8),
+                (has_mgivenname(mtmp))
+                    ? (cptr.ldPtr(cptr.ldPtro((mtmp), $monst_mextra)))
+                    : __s_empty,
+                cptr.strlen(cptr.ldPtro(developers, i, 8))
+            )) {
                 match = 1;
                 break;
             }
@@ -205,14 +211,15 @@ function dev_name() {
 
 /** C ref: mplayer.c:72 — @param {CPtr<struct monst>} mtmp @param {CPtr<char>} nam */
 function get_mplname(mtmp, nam) {
-    let fmlkind = schar(((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) & 131072n) != 0n));
+    let fmlkind = schar(((cptr.ldU64o((cptr.ldPtro(mtmp, $monst_data)), $permonst_mflags2) &
+            131072n) != 0n));
     let devnam;
 
     devnam = dev_name();
     if (!devnam)
         void cptr.strcpy(nam, fmlkind ? __s_eve : __s_adam);
     else if (fmlkind && !!strcmp(devnam, __s_janet))
-        void cptr.strcpy(nam, rn2_at(__s_mplayer_c, 81, __s_get_mplname, 2) ? __s_maud : __s_eve);
+        void cptr.strcpy(nam, rn2(2) ? __s_maud : __s_eve);
     else
         void cptr.strcpy(nam, devnam);
 
@@ -221,7 +228,14 @@ function get_mplname(mtmp, nam) {
     else
         cptr.stI32o(mtmp, $monst_female, 0);
     void cptr.strcat(nam, __s_the);
-    void cptr.strcat(nam, rank_of(cptr.ld1uo(mtmp, $monst_m_lev), (cptr.ldI32o((cptr.ldPtro(mtmp, $monst_data)), $permonst_pmidx)), schar((cptr.ldI32o(mtmp, $monst_female) & 1))));
+    void cptr.strcat(
+        nam,
+        rank_of(
+            cptr.ld1uo(mtmp, $monst_m_lev),
+            (cptr.ldI32o((cptr.ldPtro(mtmp, $monst_data)), $permonst_pmidx)),
+            schar((cptr.ldI32o(mtmp, $monst_female) & 1))
+        )
+    );
 }
 
 /** C ref: mplayer.c:95 — @param {CPtr<struct monst>} mon @param {CInt} typ */
@@ -232,21 +246,28 @@ function* mk_mplayer_armor(mon, typ) {
         return;
     obj = (yield* mksobj(typ, 0, 0));
     cptr.stI32o(obj, $obj_oeroded, cptr.stI32o(obj, $obj_oeroded2, 0));
-    if (!rn2_at(__s_mplayer_c, 103, __s_mk_mplayer_armor, 3))
+    if (!rn2(3))
         cptr.stI32o(obj, $obj_oerodeproof, 1);
-    if (!rn2_at(__s_mplayer_c, 105, __s_mk_mplayer_armor, 3))
+    if (!rn2(3))
         (yield* curse(obj));
-    if (!rn2_at(__s_mplayer_c, 107, __s_mk_mplayer_armor, 3))
+    if (!rn2(3))
         (yield* bless(obj));
     /* Most players who get to the endgame who have cursed equipment
      * have it because the wizard or other monsters cursed it, so its
      * chances of having plusses is the same as usual....
      */
-    cptr.st1o(obj, $obj_spe, schar((rn2_at(__s_mplayer_c, 113, __s_mk_mplayer_armor, 10) ? (rn2_at(__s_mplayer_c, 113, __s_mk_mplayer_armor, 3) ? rn2_at(__s_mplayer_c, 113, __s_mk_mplayer_armor, 5) : ((rn2_at(__s_mplayer_c, 113, __s_mk_mplayer_armor, 4) + 4) | 0)) : -rnd_at(__s_mplayer_c, 113, __s_mk_mplayer_armor, 3))));
+    cptr.st1o(obj, $obj_spe, schar((rn2(10) ? (rn2(3) ? rn2(5) : ((rn2(4) + 4) | 0)) : -rnd(3))));
     void (yield* mpickobj(mon, obj));
 }
 
-/** C ref: mplayer.c:118 — @param {CPtr<struct permonst>} ptr @param {CInt} x @param {CInt} y @param {CInt} special @returns {CPtr<struct monst>} */
+/**
+ * C ref: mplayer.c:118
+ * @param {CPtr<struct permonst>} ptr
+ * @param {CInt} x
+ * @param {CInt} y
+ * @param {CInt} special
+ * @returns {CPtr<struct monst>}
+ */
 export function* mk_mplayer(ptr, x, y, special) {
     let mtmp;
     let nam = new Uint8Array(32);
@@ -254,13 +275,32 @@ export function* mk_mplayer(ptr, x, y, special) {
     if (!is_mplayer(ptr))
         return (null);
 
-    if ((cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters) !== null))
-        void (yield* rloc((cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters)), 5));  /* insurance */
+    if ((cptr.ldPtro3(
+        svl,
+        x,
+        168,
+        y,
+        8,
+        $instance_globals_saved_l_level + $dlevel_t_monsters
+    ) !== null))
+        void (yield* rloc(
+            (cptr.ldPtro3(svl, x, 168, y, 8, $instance_globals_saved_l_level + $dlevel_t_monsters)),
+            5
+        ));  /* insurance */
 
-    if (!(cptr.ldI16((cptr.add(u, $you_uz))) == cptr.ldI16((cptr.add(svd, $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level)))))
+    if (!(cptr.ldI16((cptr.add(u, $you_uz))) ==
+            cptr.ldI16((cptr.add(
+                svd,
+                $instance_globals_saved_d_dungeon_topology + $dgn_topology_d_astral_level
+            )))))
         special = 0;
 
-    if ((mtmp = (yield* makemon(ptr, x, y, Number(BigInt.asUintN(32, (special ? 131072n : 0n)))))) !== null) {
+    if ((mtmp = (yield* makemon(
+        ptr,
+        x,
+        y,
+        Number(BigInt.asUintN(32, (special ? 131072n : 0n)))
+    ))) !== null) {
         let weapon;
         let armor;
         let cloak;
@@ -269,8 +309,17 @@ export function* mk_mplayer(ptr, x, y, special) {
         let quan;
         let otmp;
 
-        cptr.st1o(mtmp, $monst_m_lev, uchar((special ? ((rn2_at(__s_mplayer_c, 137, __s_mk_mplayer, 16) + 15) | 0) : rnd_at(__s_mplayer_c, 137, __s_mk_mplayer, 16))));
-        cptr.stI32o(mtmp, $monst_mhp, cptr.stI32o(mtmp, $monst_mhpmax, (d_at(__s_mplayer_c, 138, __s_mk_mplayer, (cptr.ld1uo(mtmp, $monst_m_lev)), 10) + (special ? ((30 + rnd_at(__s_mplayer_c, 139, __s_mk_mplayer, 30)) | 0) : 30)) | 0));
+        cptr.st1o(mtmp, $monst_m_lev, uchar((special ? ((rn2(16) + 15) | 0) : rnd(16))));
+        cptr.stI32o(
+            mtmp,
+            $monst_mhp,
+            cptr.stI32o(
+                mtmp,
+                $monst_mhpmax,
+                (d((cptr.ld1uo(mtmp, $monst_m_lev)), 10) +
+                    (special ? ((30 + rnd(30)) | 0) : 30)) | 0
+            )
+        );
         if (special) {
             get_mplname(mtmp, cptr.decay(nam));
             mtmp = (yield* christen_monst(mtmp, cptr.decay(nam)));
@@ -281,99 +330,105 @@ export function* mk_mplayer(ptr, x, y, special) {
         set_malign(mtmp);  /* peaceful may have changed again */
 
         /* default equipment; much of it will be overridden below */
-        weapon = i16((!rn2_at(__s_mplayer_c, 150, __s_mk_mplayer, 2) ? NHC.LONG_SWORD : rnd_class(NHC.SPEAR, NHC.BULLWHIP)));
+        weapon = i16((!rn2(2) ? NHC.LONG_SWORD : rnd_class(NHC.SPEAR, NHC.BULLWHIP)));
         armor = i16(rnd_class(NHC.GRAY_DRAGON_SCALE_MAIL, NHC.YELLOW_DRAGON_SCALE_MAIL));
-        cloak = i16((!rn2_at(__s_mplayer_c, 152, __s_mk_mplayer, 8) ? NHC.STRANGE_OBJECT : rnd_class(NHC.OILSKIN_CLOAK, NHC.CLOAK_OF_DISPLACEMENT)));
-        helm = i16((!rn2_at(__s_mplayer_c, 154, __s_mk_mplayer, 8) ? NHC.STRANGE_OBJECT : rnd_class(NHC.ELVEN_LEATHER_HELM, NHC.HELM_OF_TELEPATHY)));
-        shield = i16((!rn2_at(__s_mplayer_c, 156, __s_mk_mplayer, 8) ? NHC.STRANGE_OBJECT : rnd_class(NHC.ELVEN_SHIELD, NHC.SHIELD_OF_REFLECTION)));
+        cloak = i16((!rn2(8)
+                ? NHC.STRANGE_OBJECT
+                : rnd_class(NHC.OILSKIN_CLOAK, NHC.CLOAK_OF_DISPLACEMENT)));
+        helm = i16((!rn2(8)
+                ? NHC.STRANGE_OBJECT
+                : rnd_class(NHC.ELVEN_LEATHER_HELM, NHC.HELM_OF_TELEPATHY)));
+        shield = i16((!rn2(8)
+                ? NHC.STRANGE_OBJECT
+                : rnd_class(NHC.ELVEN_SHIELD, NHC.SHIELD_OF_REFLECTION)));
 
         switch ((cptr.ldI32o((ptr), $permonst_pmidx))) {
             case NHC.PM_ARCHEOLOGIST:
-            if (rn2_at(__s_mplayer_c, 161, __s_mk_mplayer, 2))
+            if (rn2(2))
                 weapon = NHC.BULLWHIP;
             break;
             case NHC.PM_BARBARIAN:
-            if (rn2_at(__s_mplayer_c, 165, __s_mk_mplayer, 2)) {
-                weapon = i16((rn2_at(__s_mplayer_c, 166, __s_mk_mplayer, 2) ? NHC.TWO_HANDED_SWORD : NHC.BATTLE_AXE));
+            if (rn2(2)) {
+                weapon = i16((rn2(2) ? NHC.TWO_HANDED_SWORD : NHC.BATTLE_AXE));
                 shield = NHC.STRANGE_OBJECT;
             }
-            if (rn2_at(__s_mplayer_c, 169, __s_mk_mplayer, 2))
+            if (rn2(2))
                 armor = i16(rnd_class(NHC.PLATE_MAIL, NHC.CHAIN_MAIL));
             if (helm == NHC.HELM_OF_BRILLIANCE)
                 helm = NHC.STRANGE_OBJECT;
             break;
             case NHC.PM_CAVE_DWELLER:
-            if (rn2_at(__s_mplayer_c, 175, __s_mk_mplayer, 4))
+            if (rn2(4))
                 weapon = NHC.MACE;
-            else if (rn2_at(__s_mplayer_c, 177, __s_mk_mplayer, 2))
+            else if (rn2(2))
                 weapon = NHC.CLUB;
             if (helm == NHC.HELM_OF_BRILLIANCE)
                 helm = NHC.STRANGE_OBJECT;
             break;
             case NHC.PM_HEALER:
-            if (rn2_at(__s_mplayer_c, 183, __s_mk_mplayer, 4))
+            if (rn2(4))
                 weapon = NHC.QUARTERSTAFF;
-            else if (rn2_at(__s_mplayer_c, 185, __s_mk_mplayer, 2))
-                weapon = i16((rn2_at(__s_mplayer_c, 186, __s_mk_mplayer, 2) ? NHC.UNICORN_HORN : NHC.SCALPEL));
-            if (rn2_at(__s_mplayer_c, 187, __s_mk_mplayer, 4))
-                helm = i16((rn2_at(__s_mplayer_c, 188, __s_mk_mplayer, 2) ? NHC.HELM_OF_BRILLIANCE : NHC.HELM_OF_TELEPATHY));
-            if (rn2_at(__s_mplayer_c, 189, __s_mk_mplayer, 2))
+            else if (rn2(2))
+                weapon = i16((rn2(2) ? NHC.UNICORN_HORN : NHC.SCALPEL));
+            if (rn2(4))
+                helm = i16((rn2(2) ? NHC.HELM_OF_BRILLIANCE : NHC.HELM_OF_TELEPATHY));
+            if (rn2(2))
                 shield = NHC.STRANGE_OBJECT;
             break;
             case NHC.PM_KNIGHT:
-            if (rn2_at(__s_mplayer_c, 193, __s_mk_mplayer, 4))
+            if (rn2(4))
                 weapon = NHC.LONG_SWORD;
-            if (rn2_at(__s_mplayer_c, 195, __s_mk_mplayer, 2))
+            if (rn2(2))
                 armor = i16(rnd_class(NHC.PLATE_MAIL, NHC.CHAIN_MAIL));
             break;
             case NHC.PM_MONK:
-            weapon = i16((!rn2_at(__s_mplayer_c, 199, __s_mk_mplayer, 3) ? NHC.SHURIKEN : NHC.STRANGE_OBJECT));
+            weapon = i16((!rn2(3) ? NHC.SHURIKEN : NHC.STRANGE_OBJECT));
             armor = NHC.STRANGE_OBJECT;
             cloak = NHC.ROBE;
-            if (rn2_at(__s_mplayer_c, 202, __s_mk_mplayer, 2))
+            if (rn2(2))
                 shield = NHC.STRANGE_OBJECT;
             break;
             case NHC.PM_CLERIC:
-            if (rn2_at(__s_mplayer_c, 206, __s_mk_mplayer, 2))
+            if (rn2(2))
                 weapon = NHC.MACE;
-            if (rn2_at(__s_mplayer_c, 208, __s_mk_mplayer, 2))
+            if (rn2(2))
                 armor = i16(rnd_class(NHC.PLATE_MAIL, NHC.CHAIN_MAIL));
-            if (rn2_at(__s_mplayer_c, 210, __s_mk_mplayer, 4))
+            if (rn2(4))
                 cloak = NHC.ROBE;
-            if (rn2_at(__s_mplayer_c, 212, __s_mk_mplayer, 4))
-                helm = i16((rn2_at(__s_mplayer_c, 213, __s_mk_mplayer, 2) ? NHC.HELM_OF_BRILLIANCE : NHC.HELM_OF_TELEPATHY));
-            if (rn2_at(__s_mplayer_c, 214, __s_mk_mplayer, 2))
+            if (rn2(4))
+                helm = i16((rn2(2) ? NHC.HELM_OF_BRILLIANCE : NHC.HELM_OF_TELEPATHY));
+            if (rn2(2))
                 shield = NHC.STRANGE_OBJECT;
             break;
             case NHC.PM_RANGER:
-            if (rn2_at(__s_mplayer_c, 218, __s_mk_mplayer, 2))
+            if (rn2(2))
                 weapon = NHC.ELVEN_DAGGER;
             break;
             case NHC.PM_ROGUE:
-            if (rn2_at(__s_mplayer_c, 222, __s_mk_mplayer, 2))
-                weapon = i16((rn2_at(__s_mplayer_c, 223, __s_mk_mplayer, 2) ? NHC.SHORT_SWORD : NHC.ORCISH_DAGGER));
+            if (rn2(2))
+                weapon = i16((rn2(2) ? NHC.SHORT_SWORD : NHC.ORCISH_DAGGER));
             break;
             case NHC.PM_SAMURAI:
-            if (rn2_at(__s_mplayer_c, 226, __s_mk_mplayer, 2))
+            if (rn2(2))
                 weapon = NHC.KATANA;
             break;
             case NHC.PM_TOURIST:
             /* Defaults are just fine */
             break;
             case NHC.PM_VALKYRIE:
-            if (rn2_at(__s_mplayer_c, 233, __s_mk_mplayer, 2))
+            if (rn2(2))
                 weapon = NHC.WAR_HAMMER;
-            if (rn2_at(__s_mplayer_c, 235, __s_mk_mplayer, 2))
+            if (rn2(2))
                 armor = i16(rnd_class(NHC.PLATE_MAIL, NHC.CHAIN_MAIL));
             break;
             case NHC.PM_WIZARD:
-            if (rn2_at(__s_mplayer_c, 239, __s_mk_mplayer, 4))
-                weapon = i16((rn2_at(__s_mplayer_c, 240, __s_mk_mplayer, 2) ? NHC.QUARTERSTAFF : NHC.ATHAME));
-            if (rn2_at(__s_mplayer_c, 241, __s_mk_mplayer, 2)) {
-                armor = i16((rn2_at(__s_mplayer_c, 242, __s_mk_mplayer, 2) ? NHC.BLACK_DRAGON_SCALE_MAIL : NHC.SILVER_DRAGON_SCALE_MAIL));
+            if (rn2(4))
+                weapon = i16((rn2(2) ? NHC.QUARTERSTAFF : NHC.ATHAME));
+            if (rn2(2)) {
+                armor = i16((rn2(2) ? NHC.BLACK_DRAGON_SCALE_MAIL : NHC.SILVER_DRAGON_SCALE_MAIL));
                 cloak = NHC.CLOAK_OF_MAGIC_RESISTANCE;
             }
-            if (rn2_at(__s_mplayer_c, 246, __s_mk_mplayer, 4))
+            if (rn2(4))
                 helm = NHC.HELM_OF_BRILLIANCE;
             shield = NHC.STRANGE_OBJECT;
             break;
@@ -386,56 +441,70 @@ export function* mk_mplayer(ptr, x, y, special) {
         if (weapon != NHC.STRANGE_OBJECT) {
             otmp = (yield* mksobj(weapon, 1, 0));
             cptr.stI32o(otmp, $obj_oeroded, cptr.stI32o(otmp, $obj_oeroded2, 0));
-            cptr.st1o(otmp, $obj_spe, schar((special ? ((rn2_at(__s_mplayer_c, 259, __s_mk_mplayer, 5) + 4) | 0) : rn2_at(__s_mplayer_c, 259, __s_mk_mplayer, 4))));
-            if (!rn2_at(__s_mplayer_c, 260, __s_mk_mplayer, 3))
+            cptr.st1o(otmp, $obj_spe, schar((special ? ((rn2(5) + 4) | 0) : rn2(4))));
+            if (!rn2(3))
                 cptr.stI32o(otmp, $obj_oerodeproof, 1);
-            else if (!rn2_at(__s_mplayer_c, 262, __s_mk_mplayer, 2))
+            else if (!rn2(2))
                 cptr.stI32o(otmp, $obj_greased, 1);
             /* mk_artifact() with otmp and A_NONE will never return NULL */
-            if (special && rn2_at(__s_mplayer_c, 265, __s_mk_mplayer, 2))
+            if (special && rn2(2))
                 otmp = (yield* mk_artifact(otmp, -128, 99, 0));
             /* usually increase stack size if stackable weapon */
-            if ((cptr.ldI32o2(objects, cptr.ldI16o(otmp, $obj_otyp), $sizeof_objclass, $objclass_oc_merge) & 1) | 0 && !cptr.ld1so(otmp, $obj_oartifact) && monmightthrowwep(otmp))
-                cptr.stI64o(otmp, $obj_quan, cptr.ldI64o(otmp, $obj_quan) + BigInt(rn2_at(__s_mplayer_c, 270, __s_mk_mplayer, is_spear(otmp) ? 4 : 8)));
+            if ((cptr.ldI32o2(
+                objects,
+                cptr.ldI16o(otmp, $obj_otyp),
+                $sizeof_objclass,
+                $objclass_oc_merge
+            ) & 1) | 0 &&
+                    !cptr.ld1so(otmp, $obj_oartifact) &&
+                    monmightthrowwep(otmp))
+                cptr.stI64o(
+                    otmp,
+                    $obj_quan,
+                    cptr.ldI64o(otmp, $obj_quan) + BigInt(rn2(is_spear(otmp) ? 4 : 8))
+                );
             cptr.stI32o(otmp, $obj_owt, (yield* weight(otmp)) >>> 0);
             /* mplayers knew better than to overenchant Magicbane */
             if (is_art(otmp, NHC.ART_MAGICBANE))
-                cptr.st1o(otmp, $obj_spe, schar(rnd_at(__s_mplayer_c, 274, __s_mk_mplayer, 4)));
+                cptr.st1o(otmp, $obj_spe, schar(rnd(4)));
             void (yield* mpickobj(mtmp, otmp));
         }
 
         if (special) {
-            if (!rn2_at(__s_mplayer_c, 279, __s_mk_mplayer, 10))
-                void (yield* mongets(mtmp, rn2_at(__s_mplayer_c, 280, __s_mk_mplayer, 3) ? NHC.LUCKSTONE : NHC.LOADSTONE));
+            if (!rn2(10))
+                void (yield* mongets(mtmp, rn2(3) ? NHC.LUCKSTONE : NHC.LOADSTONE));
             (yield* mk_mplayer_armor(mtmp, armor));
             (yield* mk_mplayer_armor(mtmp, cloak));
             (yield* mk_mplayer_armor(mtmp, helm));
             (yield* mk_mplayer_armor(mtmp, shield));
             if (weapon == NHC.WAR_HAMMER)
                 (yield* mk_mplayer_armor(mtmp, NHC.GAUNTLETS_OF_POWER));
-            else if (rn2_at(__s_mplayer_c, 287, __s_mk_mplayer, 8))
-                (yield* mk_mplayer_armor(mtmp, i16(rnd_class(NHC.LEATHER_GLOVES, NHC.GAUNTLETS_OF_DEXTERITY))));
-            if (rn2_at(__s_mplayer_c, 290, __s_mk_mplayer, 8))
+            else if (rn2(8))
+                (yield* mk_mplayer_armor(
+                    mtmp,
+                    i16(rnd_class(NHC.LEATHER_GLOVES, NHC.GAUNTLETS_OF_DEXTERITY))
+                ));
+            if (rn2(8))
                 (yield* mk_mplayer_armor(mtmp, i16(rnd_class(NHC.LOW_BOOTS, NHC.LEVITATION_BOOTS))));
             (yield* m_dowear(mtmp, 1));
 
-            quan = rn2_at(__s_mplayer_c, 295, __s_mk_mplayer, 3) ? rn2_at(__s_mplayer_c, 295, __s_mk_mplayer, 3) : rn2_at(__s_mplayer_c, 295, __s_mk_mplayer, 16);
+            quan = rn2(3) ? rn2(3) : rn2(16);
             while (quan--)
                 void (yield* mongets(mtmp, rnd_class(NHC.DILITHIUM_CRYSTAL, NHC.JADE)));
             /* To get the gold "right" would mean a player can double his
                gold supply by killing one mplayer.  Not good. */
-            (yield* mkmonmoney(mtmp, BigInt(rn2_at(__s_mplayer_c, 300, __s_mk_mplayer, 1000))));
-            quan = rn2_at(__s_mplayer_c, 301, __s_mk_mplayer, 10);
+            (yield* mkmonmoney(mtmp, BigInt(rn2(1000))));
+            quan = rn2(10);
             while (quan--)
                 void (yield* mpickobj(mtmp, (yield* mkobj(NHC.RANDOM_CLASS, 0))));
         }
-        quan = rnd_at(__s_mplayer_c, 305, __s_mk_mplayer, 3);
+        quan = rnd(3);
         while (quan--)
             void (yield* mongets(mtmp, (yield* rnd_offensive_item(mtmp))));
-        quan = rnd_at(__s_mplayer_c, 308, __s_mk_mplayer, 3);
+        quan = rnd(3);
         while (quan--)
             void (yield* mongets(mtmp, (yield* rnd_defensive_item(mtmp))));
-        quan = rnd_at(__s_mplayer_c, 311, __s_mk_mplayer, 3);
+        quan = rnd(3);
         while (quan--)
             void (yield* mongets(mtmp, rnd_misc_item(mtmp)));
     }
@@ -462,13 +531,13 @@ export function* create_mplayers(num, special) {
         let tryct = 0;
 
         /* roll for character class */
-        pm = ((rn2_at(__s_mplayer_c, 337, __s_create_mplayers, ((((NHC.PM_WIZARD - NHC.PM_ARCHEOLOGIST) | 0) + 1) | 0)) + NHC.PM_ARCHEOLOGIST) | 0);
+        pm = ((rn2(((NHC.PM_WIZARD - NHC.PM_ARCHEOLOGIST + 1) | 0)) + NHC.PM_ARCHEOLOGIST) | 0);
         set_mon_data(fakemon, cptr.add(mons, pm, $sizeof_permonst));
 
         /* roll for an available location */
         do {
-            x = ((rn2_at(__s_mplayer_c, 342, __s_create_mplayers, 76) + 2) | 0);
-            y = rnd_at(__s_mplayer_c, 343, __s_create_mplayers, 19);
+            x = ((rn2(76) + 2) | 0);
+            y = rnd(19);
         } while (!(yield* goodpos(i16(x), i16(y), fakemon, 0)) && tryct++ <= 50);
 
         /* if pos not found in 50 tries, don't bother to continue */
@@ -496,14 +565,31 @@ export function* mplayer_talk(mtmp) {
         return;  /* will drop to humanoid talk */
 
     ;
-    (yield* verbalize(__s_talk_s, cptr.eq(cptr.ldPtro(mtmp, $monst_data), cptr.add(mons, cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum), $sizeof_permonst)) ? cptr.ldPtro(__static_mplayer_talk_same_class_msg, rn2_at(__s_mplayer_c, 375, __s_mplayer_talk, 3), 8) : cptr.ldPtro(__static_mplayer_talk_other_class_msg, rn2_at(__s_mplayer_c, 376, __s_mplayer_talk, 3), 8)));
+    (yield* verbalize(
+        __s_talk_s,
+        cptr.eq(
+            cptr.ldPtro(mtmp, $monst_data),
+            cptr.add(
+                mons,
+                cptr.ldI16o(gu, $instance_globals_u_urole + $Role_mnum),
+                $sizeof_permonst
+            )
+        )
+            ? cptr.ldPtro(__static_mplayer_talk_same_class_msg, rn2(3), 8)
+            : cptr.ldPtro(__static_mplayer_talk_other_class_msg, rn2(3), 8)
+    ));
 }
 
 // --- BEGIN c2js reset block (tools/c2js/resetify.mjs) — do not edit ---
 // 3 bindings: 0 rebound+refilled, 0 rebound, 3 refilled.
 // S/P are supplied by js/generated-y/__reset.js so this module needs no new import.
 let __c2js_rs = null;
-export function __captureState(S) { __c2js_rs = [S(developers), S(__static_mplayer_talk_same_class_msg), S(__static_mplayer_talk_other_class_msg)]; }
+export function __captureState(S) {
+    __c2js_rs = [
+        S(developers), S(__static_mplayer_talk_same_class_msg),
+        S(__static_mplayer_talk_other_class_msg)
+    ];
+}
 export function __resetState(P) {
     const r = __c2js_rs;
     if (r === null) throw new Error("mplayer.js: __resetState before __captureState");

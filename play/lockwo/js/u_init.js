@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
-import { addinv as invent_addinv } from './invent.js';
+import { addinv as invent_addinv, bimanual, near_capacity } from './invent.js';
 import { initialspell, num_spells, skill_based_spellbook_id } from './spell.js';
 import {
     ARMOR_CLASS,
@@ -126,9 +126,16 @@ const SPE_EXTRA_HEALING = 391;
 const SPE_PROTECTION = 403;
 const SPE_STONE_TO_FLESH = 405;
 const WAN_SLEEP = 432;
+const LUCKSTONE = 470;
+const LOADSTONE = 471;
 const TOUCHSTONE = 472;
 const FLINT = 473;
 const ROCK = 474;
+// C ref: obj.h is_graystone(o) — LUCKSTONE/LOADSTONE/FLINT/TOUCHSTONE.
+function is_graystone(obj) {
+    const t = obj?.otyp;
+    return t === LUCKSTONE || t === LOADSTONE || t === FLINT || t === TOUCHSTONE;
+}
 const POT_HALLUCINATION = 304;
 const POT_POLYMORPH = 316;
 const POT_ACID = 320;
@@ -388,6 +395,26 @@ const Xtra_food = [
     { trotyp: 0, trspe: 0, trclass: 0, trquan_min: 0, trquan_max: 0, trbless: 0 },
 ];
 
+// C ref: objnam.c Japanese_items[] — the otyps that get a Japanese name for a
+// Samurai, in ascending otyp order (the order u_init.c's NUM_OBJECTS scan
+// visits them).  MAGIC_HARP (254) is present in C's table but is filtered out
+// there by the oc_magic test, so it is filtered at the call site here too.
+const JAPANESE_ITEM_OTYPS = [
+    40,  // KNIFE          "shito"
+    46,  // SHORT_SWORD    "wakizashi"
+    52,  // BROADSWORD     "ninja-to"
+    62,  // GLAIVE         "naginata"
+    81,  // FLAIL          "nunchaku"
+    97,  // HELMET         "kabuto"
+    121, // PLATE_MAIL     "tanko"
+    159, // LEATHER_GLOVES "yugake"
+    222, // LOCK_PICK      "osaku"
+    253, // WOODEN_HARP    "koto"
+    254, // MAGIC_HARP     "magic koto"  (oc_magic -> skipped)
+    293, // FOOD_RATION    "gunyoki"
+    317, // POT_BOOZE      "sake"
+];
+
 // C ref: u_init.c u_init_race PM_ELF — a single random non-magic instrument
 // chosen via ROLL_FROM(trotyp) = trotyp[rn2(6)] (cleric/wizard elves only).
 const ELF_INSTRUMENTS = [WOODEN_FLUTE, TOOLED_HORN, WOODEN_HARP, BELL, BUGLE, LEATHER_DRUM];
@@ -503,6 +530,36 @@ for (let otyp = 111; otyp <= 120; otyp++) ARMOR_A_AC.set(otyp, 3);
 for (let otyp = 163; otyp <= 172; otyp++) ARMOR_A_AC.set(otyp, 1);
 ARMOR_A_AC.set(164, 2); // iron shoes (ac 8)
 ARMOR_A_AC.set(165, 2); // high boots (ac 8)
+// The rest of include/objects.h's HELM/CLOAK/SHIELD/GLOVES entries (a_ac =
+// 10 - macro ac arg).  Until these landed the map covered only the armor the
+// covered heroes START with, so buying and wearing a shield of reflection left
+// the status line's AC untouched (seed0002 step 363: AC:3 for C's AC:1).
+// Every ARMOR_CLASS otyp now has an entry; ARM_BONUS()'s `|| 0` fallback no
+// longer silently prices a whole armor family at zero.
+ARMOR_A_AC.set(93, 0);   // cornuthaum                (ac 10)
+ARMOR_A_AC.set(94, 0);   // dunce cap                 (ac 10)
+ARMOR_A_AC.set(95, 1);   // dented pot                (ac 9)
+ARMOR_A_AC.set(96, 1);   // helm of brilliance        (ac 9)
+ARMOR_A_AC.set(98, 1);   // helm of caution           (ac 9)
+ARMOR_A_AC.set(99, 1);   // helm of opposite alignment(ac 9)
+ARMOR_A_AC.set(100, 1);  // helm of telepathy         (ac 9)
+ARMOR_A_AC.set(137, 0);  // T-shirt                   (ac 10)
+ARMOR_A_AC.set(138, 0);  // mummy wrapping            (ac 10)
+ARMOR_A_AC.set(142, 1);  // oilskin cloak             (ac 9)
+ARMOR_A_AC.set(144, 1);  // alchemy smock             (ac 9)
+ARMOR_A_AC.set(145, 1);  // leather cloak             (ac 9)
+ARMOR_A_AC.set(146, 3);  // cloak of protection       (ac 7)
+ARMOR_A_AC.set(147, 1);  // cloak of invisibility     (ac 9)
+ARMOR_A_AC.set(151, 1);  // shield of drain resistance(ac 9)
+ARMOR_A_AC.set(152, 1);  // shield of shock resistance(ac 9)
+ARMOR_A_AC.set(153, 2);  // elven shield              (ac 8)
+ARMOR_A_AC.set(154, 1);  // Uruk-hai shield           (ac 9)
+ARMOR_A_AC.set(156, 2);  // large shield              (ac 8)
+ARMOR_A_AC.set(157, 2);  // dwarvish roundshield      (ac 8)
+ARMOR_A_AC.set(158, 2);  // shield of reflection      (ac 8)
+ARMOR_A_AC.set(160, 1);  // gauntlets of fumbling     (ac 9)
+ARMOR_A_AC.set(161, 1);  // gauntlets of power        (ac 9)
+ARMOR_A_AC.set(162, 1);  // gauntlets of dexterity    (ac 9)
 
 // Worn-armor slot masks (subset of do_wear.c W_ARM*).
 const W_ARM = 0x01;
@@ -526,18 +583,19 @@ const W_SWAPWEP = 0x400;
 //   racial helms    89=ELVEN_LEATHER 90=ORCISH 91=DWARVISH_IRON
 //   racial shield  155=ORCISH
 //   racial mail    129=ORCISH_CHAIN 133=ORCISH_RING
-const CLOAK_OTYPS = new Set([CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_DISPLACEMENT, ROBE, 139, 140, 141]);
-const HELM_OTYPS = new Set([HELMET, FEDORA, 89, 90, 91]);
-const GLOVES_OTYPS = new Set([LEATHER_GLOVES]);
-const SHIELD_OTYPS = new Set([SMALL_SHIELD, 155]);
-const SHIRT_OTYPS = new Set([HAWAIIAN_SHIRT]);
-const SUIT_OTYPS = new Set([RING_MAIL, LEATHER_ARMOR, LEATHER_JACKET, SPLINT_MAIL, 129, 133]);
-function is_cloak(obj) { return CLOAK_OTYPS.has(obj?.otyp); }
-function is_helmet(obj) { return HELM_OTYPS.has(obj?.otyp); }
-function is_gloves(obj) { return GLOVES_OTYPS.has(obj?.otyp); }
-function is_shield(obj) { return SHIELD_OTYPS.has(obj?.otyp); }
-function is_shirt(obj) { return SHIRT_OTYPS.has(obj?.otyp); }
-function is_suit(obj) { return SUIT_OTYPS.has(obj?.otyp); }
+// The hand-listed otyp sets these replaced covered only the armor the public
+// starts actually wear, so any other cloak/helm/shield fell through to nothing.
+// Ranges are objects.h's contiguous blocks (== js/objnam.js o_ranges).
+function is_armor_range(obj, lo, hi) {
+    const t = obj?.otyp;
+    return obj?.oclass === ARMOR_CLASS && t >= lo && t <= hi;
+}
+function is_cloak(obj) { return is_armor_range(obj, 138, 149); }
+function is_helmet(obj) { return is_armor_range(obj, 89, 100); }
+function is_gloves(obj) { return is_armor_range(obj, 159, 162); }
+function is_shield(obj) { return is_armor_range(obj, 150, 158); }
+function is_shirt(obj) { return is_armor_range(obj, 136, 137); }
+function is_suit(obj) { return is_armor_range(obj, 101, 135); }
 
 // C ref: do.c setworn — record a worn armor object on the hero.
 function setworn(obj, mask) {
@@ -559,7 +617,11 @@ function setworn(obj, mask) {
 // to two-weapon and the inventory display marks them correctly.
 function ini_inv_wear_armor(obj) {
     if (obj.oclass === ARMOR_CLASS) {
-        if (is_shield(obj) && !game.uarms) setworn(obj, W_ARMS);
+        // C ref: u_init.c ini_inv_use_obj — a shield is not donned while a
+        // two-handed weapon is already wielded (no stock role hits this, but
+        // the guard is what C tests).
+        if (is_shield(obj) && !game.uarms
+            && !(game.uwep && bimanual(game.uwep))) setworn(obj, W_ARMS);
         else if (is_helmet(obj) && !game.uarmh) setworn(obj, W_ARMH);
         else if (is_gloves(obj) && !game.uarmg) setworn(obj, W_ARMG);
         else if (is_shirt(obj) && !game.uarmu) setworn(obj, W_ARMU);
@@ -569,16 +631,30 @@ function ini_inv_wear_armor(obj) {
 
     // C ref: u_init.c ini_inv_use_obj — wield the starting weapon(s).  The
     // outer class check also special-cases FLINT/ROCK (GEM_CLASS sling ammo)
-    // so a Caveman's starting stones get quivered like any other ammo.
-    if (obj.oclass === WEAPON_CLASS || obj.otyp === FLINT || obj.otyp === ROCK) {
+    // so a Caveman's starting stones get quivered like any other ammo, plus
+    // is_weptool() and TIN_OPENER: an Archeologist's pick-axe (TOOL_CLASS with
+    // oc_skill P_PICK_AXE) becomes the alternate weapon behind the bullwhip,
+    // and a Tourist who rolls the 1-in-25 tin opener wields it (no other
+    // starting weapon survives the dart stack going to the quiver).
+    if (obj.oclass === WEAPON_CLASS || ini_is_weptool(obj)
+        || obj.otyp === TIN_OPENER
+        || obj.otyp === FLINT || obj.otyp === ROCK) {
         if (ini_is_ammo(obj)) {
             if (!game.uquiver) { obj.owornmask = (obj.owornmask || 0) | W_QUIVER; game.uquiver = obj; }
-        } else if (!game.uwep) {
+        } else if (!game.uwep && (!game.uarms || !bimanual(obj))) {
             obj.owornmask = (obj.owornmask || 0) | W_WEP; game.uwep = obj;
         } else if (!game.uswapwep) {
             obj.owornmask = (obj.owornmask || 0) | W_SWAPWEP; game.uswapwep = obj;
         }
     }
+}
+
+// C ref: objclass.h is_weptool(o) — a TOOL_CLASS object whose oc_skill is not
+// P_NONE (pick-axe, unicorn horn, grappling hook, ...).  The C flag, not a
+// hardcoded otyp list.
+function ini_is_weptool(obj) {
+    return obj?.oclass === TOOL_CLASS
+        && (objects?.[obj.otyp]?.oc_skill ?? P_NONE) !== P_NONE;
 }
 
 // C ref: obj.h is_ammo(obj) || is_missile(obj) — the starting quiver takes only
@@ -960,8 +1036,16 @@ function ini_inv_adjust_obj(trop, obj) {
         if (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) {
             obj.quan = trquan(trop);
             stop = true;
-        } else if (obj.oclass === GEM_CLASS) {
-            obj.quan = obj.quan || 1;
+        } else if (obj.oclass === GEM_CLASS && is_graystone(obj)
+            && obj.otyp !== FLINT) {
+            // C ref: u_init.c ini_inv_adjust_obj — graystones (other than
+            // flint) are forced to a single stone.  mksobj's GEM_CLASS branch
+            // rolls `otyp != LUCKSTONE && !rn2(6)` -> quan 2, so 1 in 6
+            // Archeologists were starting with "2 touchstones".  The previous
+            // `obj.quan = obj.quan || 1` was a no-op (quan is always >= 1) and
+            // wrongly also covered non-graystone gems, where C leaves the
+            // mksobj quantity alone (a Caveman's rn1(6,6) rocks per iteration).
+            obj.quan = 1;
         }
 
         if (trop.trspe !== UNDEF_SPE) {
@@ -1021,9 +1105,12 @@ export function ini_inv(tropList) {
         ini_inv_obj_substitution(trop, obj);
 
         if (game.u?.uroleplay?.nudist && obj.oclass === ARMOR_CLASS) {
+            // C ref: u_init.c ini_inv — the nudist skip is `trop++; continue;`
+            // with NO trquan() re-roll (the stale `quan` carries into the next
+            // trobj; that is what C does).  Rolling one here drew an rn2() the
+            // C stream never has.
             idx++;
             trop = tropList[idx];
-            quan = trquan(trop);
             continue;
         }
 
@@ -1175,13 +1262,17 @@ export function init_attr(np = 75) {
     init_attr_role_redist(np, false, roleAttrs);
 }
 
+// C ref: attrib.c adjattrib(ndx, incr, msgflg) — returns TRUE only when ACURR
+// actually moved (FALSE once the race cap ATTRMAX(ndx) is reached).  That
+// return value is what terminates u_init_carry_attr_boost's loop.
 function adjattrib(ndx, incr) {
-    const next = (game.u.acurr.a[ndx] ?? 0) + incr;
+    const prev = game.u.acurr.a[ndx] ?? 0;
+    const next = prev + incr;
     const clamped = Math.max(race_attrmin()[ndx], Math.min(race_attrmax()[ndx], next));
     game.u.acurr.a[ndx] = clamped;
     if (game.u.amax.a[ndx] < clamped)
         game.u.amax.a[ndx] = clamped;
-    return true;
+    return clamped !== prev;
 }
 
 export function vary_init_attr() {
@@ -1196,8 +1287,27 @@ export function vary_init_attr() {
     }
 }
 
+// C ref: u_init.c u_init_carry_attr_boost() —
+//     while (inv_weight() > 0) {
+//         if (adjattrib(A_STR, 1, TRUE)) continue;
+//         if (adjattrib(A_CON, 1, TRUE)) continue;
+//         break;
+//     }
+// "make sure you can carry all you have - especially for Tourists".  Consumes
+// no RNG, but the boosted Str/Con show on the status line from screen 1 and
+// feed weight_cap()/near_capacity() for every later encumbrance test, which in
+// turn gates exerper()'s encumbrance exercise() rolls and regen_pw().
+// hack.c calc_capacity() returns UNENCUMBERED exactly when inv_weight() <= 0,
+// so near_capacity() > UNENCUMBERED is the same predicate without needing
+// inv_weight() exported.  The loop terminates because adjattrib() returns
+// FALSE once the attribute is pinned at its racial ATTRMAX.
+const A_STR_IDX = 0, A_CON_IDX = 4;
 function u_init_carry_attr_boost() {
-    // Inventory weight boosting has no RNG for the covered startup path.
+    while (near_capacity() > 0) {
+        if (adjattrib(A_STR_IDX, 1)) continue;
+        if (adjattrib(A_CON_IDX, 1)) continue;
+        break;
+    }
 }
 
 // C ref: u_init.c u_init_role — role switch. The RNG-bearing tails
@@ -1298,6 +1408,22 @@ export function u_init_role() {
         // C ref: u_init.c — samurai know all weapons and all armor (no RNG).
         knows_class(WEAPON_CLASS);
         knows_class(ARMOR_CLASS);
+        // C ref: u_init.c:745-753 —
+        //   for (i = MAXOCLASSES; i < NUM_OBJECTS; ++i) {
+        //       if (objects[i].oc_magic) continue;
+        //       if (Japanese_item_name(i, NULL)) knows_object(i, FALSE);
+        //   }
+        // "in order to assist non-Japanese speakers, pre-discover items that
+        // switch to Japanese names when playing as a Samurai".  knows_class
+        // above already covers the weapons/armor in that table; what this adds
+        // is the lock pick, the wooden harp, the food ration and the potion of
+        // booze — so a samurai who later meets a "smoky potion" sees "potion of
+        // booze", and the discoveries window lists them.  Iterated in otyp
+        // order, as C does, because discovery order drives the disco[] slots.
+        for (const otyp of JAPANESE_ITEM_OTYPS) {
+            if (objects[otyp]?.oc_magic) continue; // skips the "magic koto"
+            knows_object(otyp);
+        }
         break;
     case PM_TOURIST:
         if (game.u) game.u.umoney0 = rnd(1000);

@@ -13,9 +13,12 @@ import * as cptr from '../cptr.js';
 import * as NHC from './nhconst.js';
 import * as NHM from './nhmacro.js';
 import * as FLD from './nhfield.js';
-import { rn2_at } from './nhrng.js';
-import { Blind, Role_switch, create_nhwindow, destroy_nhwindow, display_nhwindow, putmsghistory, putstr } from './nhprop.js';
-import { flags, gc, gi, gl, gm, gn, gu, program_state, svd, svl, svm, svp, svq, u } from './decl.js';
+import {
+    Blind, Role_switch, create_nhwindow, destroy_nhwindow, display_nhwindow, putmsghistory, putstr
+} from './nhprop.js';
+import {
+    flags, gc, gi, gl, gm, gn, gu, program_state, svd, svl, svm, svp, svq, u
+} from './decl.js';
 import { impossible, pline } from './pline.js';
 import { mons } from './monst.js';
 import { copynchars, eos, highc, lowc, s_suffix, strNsubst, strncmpi, strstri } from './hacklib.js';
@@ -28,46 +31,53 @@ import { align_str } from './insight.js';
 import { panic } from './end.js';
 import { windowprocs } from './windows.js';
 import { get_table_option, get_table_str_opt, nhl_done, nhl_init, nhl_loadlua } from './nhlua.js';
-import { lua_getfield, lua_getglobal, lua_gettable, lua_len, lua_pushinteger, lua_settop, lua_tointegerx, lua_type } from './lapi.js';
+import {
+    lua_getfield, lua_getglobal, lua_gettable, lua_len, lua_pushinteger, lua_settop, lua_tointegerx,
+    lua_type
+} from './lapi.js';
 import { dupstr } from './alloc.js';
+import { rn2 } from './rnd.js';
 import { luaL_checklstring } from './lauxlib.js';
 import { mkclass } from './makemon.js';
 
 // struct field offsets used below, bound at module scope so V8 folds them
 // (values from ./nhfield.js, which is the whole table)
 const $Gender_he = FLD.Gender_he, $Gender_him = FLD.Gender_him, $Gender_his = FLD.Gender_his,
-    $RoleName_f = FLD.RoleName_f, $Role_enemy1num = FLD.Role_enemy1num, $Role_enemy1sym = FLD.Role_enemy1sym,
-    $Role_enemy2num = FLD.Role_enemy2num, $Role_enemy2sym = FLD.Role_enemy2sym,
-    $Role_filecode = FLD.Role_filecode, $Role_guardnum = FLD.Role_guardnum,
-    $Role_homebase = FLD.Role_homebase, $Role_intermed = FLD.Role_intermed, $Role_ldrnum = FLD.Role_ldrnum,
-    $Role_mnum = FLD.Role_mnum, $Role_neminum = FLD.Role_neminum, $Role_questarti = FLD.Role_questarti,
-    $dlevel_t_buriedobjlist = FLD.dlevel_t_buriedobjlist, $dlevel_t_monlist = FLD.dlevel_t_monlist,
-    $dlevel_t_objlist = FLD.dlevel_t_objlist, $flag_female = FLD.flag_female,
-    $instance_globals_c_cvt_buf = FLD.instance_globals_c_cvt_buf,
-    $instance_globals_i_invent = FLD.instance_globals_i_invent,
-    $instance_globals_l_lev_message = FLD.instance_globals_l_lev_message,
-    $instance_globals_m_migrating_mons = FLD.instance_globals_m_migrating_mons,
-    $instance_globals_m_migrating_objs = FLD.instance_globals_m_migrating_objs,
-    $instance_globals_n_nambuf = FLD.instance_globals_n_nambuf,
-    $instance_globals_saved_l_level = FLD.instance_globals_saved_l_level,
-    $instance_globals_saved_m_mvitals = FLD.instance_globals_saved_m_mvitals,
-    $instance_globals_u_urole = FLD.instance_globals_u_urole, $monst_mhp = FLD.monst_mhp,
-    $monst_minvent = FLD.monst_minvent, $mvitals_mvflags = FLD.mvitals_mvflags,
-    $nhl_sandbox_info_memlimit = FLD.nhl_sandbox_info_memlimit,
-    $nhl_sandbox_info_perpcall = FLD.nhl_sandbox_info_perpcall,
-    $nhl_sandbox_info_steps = FLD.nhl_sandbox_info_steps, $obj_cobj = FLD.obj_cobj,
-    $obj_oartifact = FLD.obj_oartifact, $permonst_mflags2 = FLD.permonst_mflags2,
-    $prop_blocked = FLD.prop_blocked, $prop_intrinsic = FLD.prop_intrinsic,
-    $q_score_godgend = FLD.q_score_godgend, $q_score_ldrgend = FLD.q_score_ldrgend,
-    $q_score_nemgend = FLD.q_score_nemgend, $sinfo_wizkit_wishing = FLD.sinfo_wizkit_wishing,
-    $sizeof_Gender = FLD.sizeof_Gender, $sizeof_dungeon = FLD.sizeof_dungeon,
-    $sizeof_mvitals = FLD.sizeof_mvitals, $sizeof_permonst = FLD.sizeof_permonst,
-    $sizeof_prop = FLD.sizeof_prop, $window_procs_win_create_nhwindow = FLD.window_procs_win_create_nhwindow,
-    $window_procs_win_destroy_nhwindow = FLD.window_procs_win_destroy_nhwindow,
-    $window_procs_win_display_nhwindow = FLD.window_procs_win_display_nhwindow,
-    $window_procs_win_putmsghistory = FLD.window_procs_win_putmsghistory,
-    $window_procs_win_putstr = FLD.window_procs_win_putstr, $you_ualign = FLD.you_ualign,
-    $you_ualignbase = FLD.you_ualignbase, $you_ulevel = FLD.you_ulevel, $you_uprops = FLD.you_uprops;
+      $RoleName_f = FLD.RoleName_f, $Role_enemy1num = FLD.Role_enemy1num,
+      $Role_enemy1sym = FLD.Role_enemy1sym, $Role_enemy2num = FLD.Role_enemy2num,
+      $Role_enemy2sym = FLD.Role_enemy2sym, $Role_filecode = FLD.Role_filecode,
+      $Role_guardnum = FLD.Role_guardnum, $Role_homebase = FLD.Role_homebase,
+      $Role_intermed = FLD.Role_intermed, $Role_ldrnum = FLD.Role_ldrnum,
+      $Role_mnum = FLD.Role_mnum, $Role_neminum = FLD.Role_neminum,
+      $Role_questarti = FLD.Role_questarti, $dlevel_t_buriedobjlist = FLD.dlevel_t_buriedobjlist,
+      $dlevel_t_monlist = FLD.dlevel_t_monlist, $dlevel_t_objlist = FLD.dlevel_t_objlist,
+      $flag_female = FLD.flag_female, $instance_globals_c_cvt_buf = FLD.instance_globals_c_cvt_buf,
+      $instance_globals_i_invent = FLD.instance_globals_i_invent,
+      $instance_globals_l_lev_message = FLD.instance_globals_l_lev_message,
+      $instance_globals_m_migrating_mons = FLD.instance_globals_m_migrating_mons,
+      $instance_globals_m_migrating_objs = FLD.instance_globals_m_migrating_objs,
+      $instance_globals_n_nambuf = FLD.instance_globals_n_nambuf,
+      $instance_globals_saved_l_level = FLD.instance_globals_saved_l_level,
+      $instance_globals_saved_m_mvitals = FLD.instance_globals_saved_m_mvitals,
+      $instance_globals_u_urole = FLD.instance_globals_u_urole, $monst_mhp = FLD.monst_mhp,
+      $monst_minvent = FLD.monst_minvent, $mvitals_mvflags = FLD.mvitals_mvflags,
+      $nhl_sandbox_info_memlimit = FLD.nhl_sandbox_info_memlimit,
+      $nhl_sandbox_info_perpcall = FLD.nhl_sandbox_info_perpcall,
+      $nhl_sandbox_info_steps = FLD.nhl_sandbox_info_steps, $obj_cobj = FLD.obj_cobj,
+      $obj_oartifact = FLD.obj_oartifact, $permonst_mflags2 = FLD.permonst_mflags2,
+      $prop_blocked = FLD.prop_blocked, $prop_intrinsic = FLD.prop_intrinsic,
+      $q_score_godgend = FLD.q_score_godgend, $q_score_ldrgend = FLD.q_score_ldrgend,
+      $q_score_nemgend = FLD.q_score_nemgend, $sinfo_wizkit_wishing = FLD.sinfo_wizkit_wishing,
+      $sizeof_Gender = FLD.sizeof_Gender, $sizeof_dungeon = FLD.sizeof_dungeon,
+      $sizeof_mvitals = FLD.sizeof_mvitals, $sizeof_permonst = FLD.sizeof_permonst,
+      $sizeof_prop = FLD.sizeof_prop,
+      $window_procs_win_create_nhwindow = FLD.window_procs_win_create_nhwindow,
+      $window_procs_win_destroy_nhwindow = FLD.window_procs_win_destroy_nhwindow,
+      $window_procs_win_display_nhwindow = FLD.window_procs_win_display_nhwindow,
+      $window_procs_win_putmsghistory = FLD.window_procs_win_putmsghistory,
+      $window_procs_win_putstr = FLD.window_procs_win_putstr, $you_ualign = FLD.you_ualign,
+      $you_ualignbase = FLD.you_ualignbase, $you_ulevel = FLD.you_ulevel,
+      $you_uprops = FLD.you_uprops;
 
 // string literals (C char* uses decay to CPtr into these static buffers)
 const __s_quest_info_d = cptr.lit("quest_info(%d)");
@@ -115,14 +125,11 @@ const __s_synopsis = cptr.lit("synopsis");
 const __s_output = cptr.lit("output");
 const __s_default = cptr.lit("default");
 const __s_com_pager_questtext_s_s_in_s_is_not_an = cptr.lit("com_pager: questtext[%s][%s] in %s is not an array of strings");
-const __s_questpgr_c = cptr.lit("questpgr.c");
-const __s_com_pager_core = cptr.lit("com_pager_core");
 const __s_lbrack_pct_dot_star_s_rbrack = cptr.lit("[%.*s]");
 const __s_pline = cptr.lit("pline");
 const __s_window = cptr.lit("window");
 const __s_menu = cptr.lit("menu");
 const __s_common = cptr.lit("common");
-const __s_qt_montype = cptr.lit("qt_montype");
 
 /** C ref: questpgr.c:31 — @param {CInt} typ @returns {CInt} */
 export function* quest_info(typ) {
@@ -146,7 +153,14 @@ export function* quest_info(typ) {
 export function ldrname() {
     let i = cptr.ldI16o(gu, $instance_globals_u_urole + $Role_ldrnum);
 
-    void cptr.sprintf(cptr.add(gn, $instance_globals_n_nambuf), __s_s_s, ((cptr.ldU64o((cptr.add(mons, i, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n) ? __s_empty : __s_the, cptr.ldPtro3(mons, i, $sizeof_permonst, NHC.NEUTRAL, 8, 0));
+    void cptr.sprintf(
+        cptr.add(gn, $instance_globals_n_nambuf),
+        __s_s_s,
+        ((cptr.ldU64o((cptr.add(mons, i, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n)
+            ? __s_empty
+            : __s_the,
+        cptr.ldPtro3(mons, i, $sizeof_permonst, NHC.NEUTRAL, 8, 0)
+    );
     return cptr.add(gn, $instance_globals_n_nambuf);
 }
 
@@ -158,7 +172,8 @@ function intermed() {
 
 /** C ref: questpgr.c:67 — @param {CPtr<struct obj>} otmp @returns {CInt} */
 export function is_quest_artifact(otmp) {
-    return schar((cptr.ld1so(otmp, $obj_oartifact) == cptr.ldI16o(gu, $instance_globals_u_urole + $Role_questarti)));
+    return schar((cptr.ld1so(otmp, $obj_oartifact) ==
+            cptr.ldI16o(gu, $instance_globals_u_urole + $Role_questarti)));
 }
 
 /** C ref: questpgr.c:73 — @param {CPtr<struct obj>} ochain @returns {CPtr<struct obj>} */
@@ -169,7 +184,8 @@ function find_qarti(ochain) {
     for (otmp = ochain; otmp; otmp = cptr.ldPtr(otmp)) {
         if (is_quest_artifact(otmp))
             return otmp;
-        if ((cptr.ldPtro((otmp), $obj_cobj) !== null) && (qarti = find_qarti(cptr.ldPtro(otmp, $obj_cobj))) !== null)
+        if ((cptr.ldPtro((otmp), $obj_cobj) !== null) &&
+                (qarti = find_qarti(cptr.ldPtro(otmp, $obj_cobj))) !== null)
             return qarti;
     }
     return null;
@@ -187,7 +203,11 @@ export function find_quest_artifact(whichchains) {
     if (!qarti && ((whichchains & 2) >>> 0) != 0)
         qarti = find_qarti(cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_objlist));
     if (!qarti && ((whichchains & 16) >>> 0) != 0)
-        for (mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist); mtmp; mtmp = cptr.ldPtr(mtmp)) {
+        for (
+            mtmp = cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_monlist);
+            mtmp;
+            mtmp = cptr.ldPtr(mtmp)
+        ) {
             if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
                 continue;
             if ((qarti = find_qarti(cptr.ldPtro(mtmp, $monst_minvent))) !== null)
@@ -195,7 +215,11 @@ export function find_quest_artifact(whichchains) {
         }
     if (!qarti && ((whichchains & 32) >>> 0) != 0) {
         /* check migrating objects and minvent of migrating monsters */
-        for (mtmp = cptr.ldPtro(gm, $instance_globals_m_migrating_mons); mtmp; mtmp = cptr.ldPtr(mtmp)) {
+        for (
+            mtmp = cptr.ldPtro(gm, $instance_globals_m_migrating_mons);
+            mtmp;
+            mtmp = cptr.ldPtr(mtmp)
+        ) {
             if ((cptr.ldI32o((mtmp), $monst_mhp) < 1))
                 continue;
             if ((qarti = find_qarti(cptr.ldPtro(mtmp, $monst_minvent))) !== null)
@@ -205,7 +229,10 @@ export function find_quest_artifact(whichchains) {
             qarti = find_qarti(cptr.ldPtro(gm, $instance_globals_m_migrating_objs));
     }
     if (!qarti && ((whichchains & 64) >>> 0) != 0)
-        qarti = find_qarti(cptr.ldPtro(svl, $instance_globals_saved_l_level + $dlevel_t_buriedobjlist));
+        qarti = find_qarti(cptr.ldPtro(
+            svl,
+            $instance_globals_saved_l_level + $dlevel_t_buriedobjlist
+        ));
 
     return qarti;
 }
@@ -215,7 +242,14 @@ export function find_quest_artifact(whichchains) {
 function neminame() {
     let i = cptr.ldI16o(gu, $instance_globals_u_urole + $Role_neminum);
 
-    void cptr.sprintf(cptr.add(gn, $instance_globals_n_nambuf), __s_s_s, ((cptr.ldU64o((cptr.add(mons, i, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n) ? __s_empty : __s_the, cptr.ldPtro3(mons, i, $sizeof_permonst, NHC.NEUTRAL, 8, 0));
+    void cptr.sprintf(
+        cptr.add(gn, $instance_globals_n_nambuf),
+        __s_s_s,
+        ((cptr.ldU64o((cptr.add(mons, i, $sizeof_permonst)), $permonst_mflags2) & 524288n) != 0n)
+            ? __s_empty
+            : __s_the,
+        cptr.ldPtro3(mons, i, $sizeof_permonst, NHC.NEUTRAL, 8, 0)
+    );
     return cptr.add(gn, $instance_globals_n_nambuf);
 }
 
@@ -241,7 +275,12 @@ export function* stinky_nemesis(mon) {
     /* since nemdead() just gave the message for hero's nemesis even if 'mon'
        is some other role's nemesis (feasible in wizard mode), base any gas
        cloud on the text that was shown even if not appropriate for 'mon' */
-    void (yield* com_pager_core(cptr.ldPtro(gu, $instance_globals_u_urole + $Role_filecode), __s_killed_nemesis, 0, mesg));
+    void (yield* com_pager_core(
+        cptr.ldPtro(gu, $instance_globals_u_urole + $Role_filecode),
+        __s_killed_nemesis,
+        0,
+        mesg
+    ));
 
     /* this is somewhat fragile; it assumes that when both {noxious or
        poisonous or toxic} and {gas or fumes} are present, the latter
@@ -253,7 +292,10 @@ export function* stinky_nemesis(mon) {
         /* change newlines into spaces to cope with "...noxious\nfumes..." */
         void (yield* strNsubst(mesg.v, __s_nl, __s_sp, 0));
 
-        if (((p = (yield* strstri(mesg.v, __s_noxious))) !== null || (p = (yield* strstri(mesg.v, __s_poisonous))) !== null || (p = (yield* strstri(mesg.v, __s_toxic))) !== null) && ((yield* strstri(p, __s_gas)) || (yield* strstri(p, __s_fumes))))
+        if (((p = (yield* strstri(mesg.v, __s_noxious))) !== null ||
+            (p = (yield* strstri(mesg.v, __s_poisonous))) !== null ||
+            (p = (yield* strstri(mesg.v, __s_toxic))) !== null) &&
+                ((yield* strstri(p, __s_gas)) || (yield* strstri(p, __s_fumes))))
             res = 1;
 
         cptr.free(mesg.v);
@@ -275,16 +317,40 @@ function* qtext_pronoun(who, which) {
      * For %o, treat all artifacts as neuter; some have plural names,
      * which genders[] doesn't handle; cvt_buf[] already contains name.
      */
-    if (who == 111 && ((yield* strstri(cptr.add(gc, $instance_globals_c_cvt_buf), __s_eyes)) || (yield* strncmpi((cptr.add(gc, $instance_globals_c_cvt_buf)), ((yield* makesingular(cptr.add(gc, $instance_globals_c_cvt_buf)))), -1)))) {
-        pnoun = (lwhich == 104) ? __s_they : ((lwhich == 105) ? __s_them : ((lwhich == 106) ? __s_their : __s_query));
+    if (who == 111 &&
+            ((yield* strstri(cptr.add(gc, $instance_globals_c_cvt_buf), __s_eyes)) ||
+                (yield* strncmpi(
+                    (cptr.add(gc, $instance_globals_c_cvt_buf)),
+                    ((yield* makesingular(cptr.add(gc, $instance_globals_c_cvt_buf)))),
+                    -1
+                )))) {
+        pnoun = (lwhich == 104)
+                ? __s_they
+                : ((lwhich == 105) ? __s_them : ((lwhich == 106) ? __s_their : __s_query));
     } else {
-        godgend = (who == 100) ? (cptr.ldI32o(svq, $q_score_godgend) & 3) | 0 : ((who == 108) ? (cptr.ldI32o(svq, $q_score_ldrgend) & 3) | 0 : ((who == 110) ? (cptr.ldI32o(svq, $q_score_nemgend) & 3) | 0 : 2));  /* default to neuter */
-        pnoun = (lwhich == 104) ? cptr.ldPtro2(genders, godgend, $sizeof_Gender, $Gender_he) : ((lwhich == 105) ? cptr.ldPtro2(genders, godgend, $sizeof_Gender, $Gender_him) : ((lwhich == 106) ? cptr.ldPtro2(genders, godgend, $sizeof_Gender, $Gender_his) : __s_query));
+        godgend = (who == 100)
+                ? (cptr.ldI32o(svq, $q_score_godgend) & 3) | 0
+                : ((who == 108)
+                    ? (cptr.ldI32o(svq, $q_score_ldrgend) & 3) | 0
+                    : ((who == 110) ? (cptr.ldI32o(svq, $q_score_nemgend) & 3) | 0 : 2));  /* default to neuter */
+        pnoun = (lwhich == 104)
+                ? cptr.ldPtro2(genders, godgend, $sizeof_Gender, $Gender_he)
+                : ((lwhich == 105)
+                    ? cptr.ldPtro2(genders, godgend, $sizeof_Gender, $Gender_him)
+                    : ((lwhich == 106)
+                        ? cptr.ldPtro2(genders, godgend, $sizeof_Gender, $Gender_his)
+                        : __s_query));
     }
     void cptr.strcpy(cptr.add(gc, $instance_globals_c_cvt_buf), pnoun);
     /* capitalize for H,I,J */
     if (lwhich != which)
-        cptr.st1o2(gc, 0, 1, $instance_globals_c_cvt_buf, highc(cptr.ld1so2(gc, 0, 1, $instance_globals_c_cvt_buf)));
+        cptr.st1o2(
+            gc,
+            0,
+            1,
+            $instance_globals_c_cvt_buf,
+            highc(cptr.ld1so2(gc, 0, 1, $instance_globals_c_cvt_buf))
+        );
     return;
 }
 
@@ -297,7 +363,10 @@ function* convert_arg(c) {
         str = svp;
         break;
         case 99:
-        str = (cptr.ld1so(flags, $flag_female) && cptr.ldPtro(gu, $instance_globals_u_urole + $RoleName_f)) ? cptr.ldPtro(gu, $instance_globals_u_urole + $RoleName_f) : cptr.ldPtro(gu, $instance_globals_u_urole);
+        str = (cptr.ld1so(flags, $flag_female) &&
+            cptr.ldPtro(gu, $instance_globals_u_urole + $RoleName_f))
+                ? cptr.ldPtro(gu, $instance_globals_u_urole + $RoleName_f)
+                : cptr.ldPtro(gu, $instance_globals_u_urole);
         break;
         case 114:
         str = rank_of(cptr.ldI32o(u, $you_ulevel), Role_switch(), cptr.ld1so(flags, $flag_female));
@@ -404,7 +473,13 @@ function* convert_line(in_line, out_line) {
                     cc = cptr.add(cc, cptr.strlen(cc));
                     continue;  /* for */
                     case 67:
-                    cptr.st1o2(gc, 0, 1, $instance_globals_c_cvt_buf, highc(cptr.ld1so2(gc, 0, 1, $instance_globals_c_cvt_buf)));
+                    cptr.st1o2(
+                        gc,
+                        0,
+                        1,
+                        $instance_globals_c_cvt_buf,
+                        highc(cptr.ld1so2(gc, 0, 1, $instance_globals_c_cvt_buf))
+                    );
                     break;
                     case 104:
                     case 72:
@@ -418,22 +493,43 @@ function* convert_line(in_line, out_line) {
                         c = cptr.add(c, -1);  /* default action */
                     break;
                     case 80:
-                    cptr.st1o2(gc, 0, 1, $instance_globals_c_cvt_buf, highc(cptr.ld1so2(gc, 0, 1, $instance_globals_c_cvt_buf)));
+                    cptr.st1o2(
+                        gc,
+                        0,
+                        1,
+                        $instance_globals_c_cvt_buf,
+                        highc(cptr.ld1so2(gc, 0, 1, $instance_globals_c_cvt_buf))
+                    );
                     // @FallThrough
                     ;
                     case 112:
-                    void cptr.strcpy(cptr.add(gc, $instance_globals_c_cvt_buf), (yield* makeplural(cptr.add(gc, $instance_globals_c_cvt_buf))));
+                    void cptr.strcpy(
+                        cptr.add(gc, $instance_globals_c_cvt_buf),
+                        (yield* makeplural(cptr.add(gc, $instance_globals_c_cvt_buf)))
+                    );
                     break;
                     case 83:
-                    cptr.st1o2(gc, 0, 1, $instance_globals_c_cvt_buf, highc(cptr.ld1so2(gc, 0, 1, $instance_globals_c_cvt_buf)));
+                    cptr.st1o2(
+                        gc,
+                        0,
+                        1,
+                        $instance_globals_c_cvt_buf,
+                        highc(cptr.ld1so2(gc, 0, 1, $instance_globals_c_cvt_buf))
+                    );
                     // @FallThrough
                     ;
                     case 115:
-                    void cptr.strcpy(cptr.add(gc, $instance_globals_c_cvt_buf), (yield* s_suffix(cptr.add(gc, $instance_globals_c_cvt_buf))));
+                    void cptr.strcpy(
+                        cptr.add(gc, $instance_globals_c_cvt_buf),
+                        (yield* s_suffix(cptr.add(gc, $instance_globals_c_cvt_buf)))
+                    );
                     break;
                     case 116:
                     if (!(yield* strncmpi(cptr.add(gc, $instance_globals_c_cvt_buf), __s_the, 4))) {
-                        void cptr.strcat(cc, cptr.add(cptr.add(gc, $instance_globals_c_cvt_buf), 4, 1));
+                        void cptr.strcat(
+                            cc,
+                            cptr.add(cptr.add(gc, $instance_globals_c_cvt_buf), 4, 1)
+                        );
                         cc = cptr.add(cc, cptr.strlen(cc));
                         continue;  /* for */
                     }
@@ -520,7 +616,14 @@ cptr.stI32o(__static_com_pager_core_howtoput2i, 12, 3);
 cptr.stI32o(__static_com_pager_core_howtoput2i, 16, 0);
 cptr.stI32o(__static_com_pager_core_howtoput2i, 20, 0); /** C ref: questpgr.c:477 — int[6] (function-static) */
 
-/** C ref: questpgr.c:468 — @param {CPtr<char>} section @param {CPtr<char>} msgid @param {CInt} showerror @param {CPtr<char *>} rawtext @returns {CInt} */
+/**
+ * C ref: questpgr.c:468
+ * @param {CPtr<char>} section
+ * @param {CPtr<char>} msgid
+ * @param {CInt} showerror
+ * @param {CPtr<char *>} rawtext
+ * @returns {CInt}
+ */
 function* com_pager_core(section, msgid, showerror, rawtext) {
     let output;
     let L;
@@ -528,7 +631,11 @@ function* com_pager_core(section, msgid, showerror, rawtext) {
     let synopsis = null;
     let fallback_msgid = null;
     let res = 0;
-    let sbi = cptr.alloc(16); cptr.stI32(sbi, NHM.NHL_SB_SAFE); cptr.stI32o(sbi, $nhl_sandbox_info_memlimit, 1048576); cptr.stI32o(sbi, $nhl_sandbox_info_steps, 0); cptr.stI32o(sbi, $nhl_sandbox_info_perpcall, 1048576);
+    let sbi = cptr.alloc(16);
+    cptr.stI32(sbi, NHM.NHL_SB_SAFE);
+    cptr.stI32o(sbi, $nhl_sandbox_info_memlimit, 1048576);
+    cptr.stI32o(sbi, $nhl_sandbox_info_steps, 0);
+    cptr.stI32o(sbi, $nhl_sandbox_info_perpcall, 1048576);
 
     if (skip_pager(1))
         return 0;
@@ -611,9 +718,20 @@ function* com_pager_core(section, msgid, showerror, rawtext) {
             }
             if (showerror) {
                 if (!fallback_msgid)
-                    (yield* impossible(__s_com_pager_questtext_s_s_in_s_is_not_a, section, msgid, __s_quest_lua));
+                    (yield* impossible(
+                        __s_com_pager_questtext_s_s_in_s_is_not_a,
+                        section,
+                        msgid,
+                        __s_quest_lua
+                    ));
                 else
-                    (yield* impossible(__s_com_pager_questtext_s_s_and_s_in_s_are, section, msgid, fallback_msgid, __s_quest_lua));
+                    (yield* impossible(
+                        __s_com_pager_questtext_s_s_and_s_in_s_are,
+                        section,
+                        msgid,
+                        fallback_msgid,
+                        __s_quest_lua
+                    ));
             }
             {
                 if (text)
@@ -643,7 +761,11 @@ function* com_pager_core(section, msgid, showerror, rawtext) {
             }
         }
         synopsis = (yield* get_table_str_opt(L, __s_synopsis, null));
-        output = cptr.ldI32o(__static_com_pager_core_howtoput2i, (yield* get_table_option(L, __s_output, __s_default, __static_com_pager_core_howtoput)), 4);
+        output = cptr.ldI32o(
+            __static_com_pager_core_howtoput2i,
+            (yield* get_table_option(L, __s_output, __s_default, __static_com_pager_core_howtoput)),
+            4
+        );
 
         if (!text) {
             let nelems;
@@ -653,7 +775,12 @@ function* com_pager_core(section, msgid, showerror, rawtext) {
             (yield* lua_settop(L, -2));
             if (nelems < 2) {
                 if (showerror)
-                    (yield* impossible(__s_com_pager_questtext_s_s_in_s_is_not_an, section, fallback_msgid ? fallback_msgid : msgid, __s_quest_lua));
+                    (yield* impossible(
+                        __s_com_pager_questtext_s_s_in_s_is_not_an,
+                        section,
+                        fallback_msgid ? fallback_msgid : msgid,
+                        __s_quest_lua
+                    ));
                 {
                     if (text)
                         cptr.free(text);
@@ -665,7 +792,7 @@ function* com_pager_core(section, msgid, showerror, rawtext) {
                     return res;
                 }
             }
-            nelems = (rn2_at(__s_questpgr_c, 566, __s_com_pager_core, nelems) + 1) | 0;
+            nelems = (rn2(nelems) + 1) | 0;
             (yield* lua_pushinteger(L, BigInt(nelems)));
             (yield* lua_gettable(L, -2));
             text = (yield* dupstr(((yield* luaL_checklstring(L, -1, null)))));
@@ -723,7 +850,12 @@ export function* com_pager(msgid) {
 
 /** C ref: questpgr.c:630 — @param {CPtr<char>} msgid */
 export function* qt_pager(msgid) {
-    if (!(yield* com_pager_core(cptr.ldPtro(gu, $instance_globals_u_urole + $Role_filecode), msgid, 0, null)))
+    if (!(yield* com_pager_core(
+        cptr.ldPtro(gu, $instance_globals_u_urole + $Role_filecode),
+        msgid,
+        0,
+        null
+    )))
         void (yield* com_pager_core(__s_common, msgid, 1, null));
 }
 
@@ -731,14 +863,30 @@ export function* qt_pager(msgid) {
 export function* qt_montype() {
     let qpm;
 
-    if (rn2_at(__s_questpgr_c, 641, __s_qt_montype, 5)) {
+    if (rn2(5)) {
         qpm = cptr.ldI16o(gu, $instance_globals_u_urole + $Role_enemy1num);
-        if (qpm != NHC.NON_PM && rn2_at(__s_questpgr_c, 643, __s_qt_montype, 5) && !(cptr.ld1uo2(svm, qpm, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_GENOD))
+        if (qpm != NHC.NON_PM &&
+                rn2(5) &&
+                !(cptr.ld1uo2(
+                    svm,
+                    qpm,
+                    $sizeof_mvitals,
+                    $instance_globals_saved_m_mvitals + $mvitals_mvflags
+                ) &
+                    NHM.G_GENOD))
             return cptr.add(mons, qpm, $sizeof_permonst);
         return (yield* mkclass(cptr.ld1so(gu, $instance_globals_u_urole + $Role_enemy1sym), 0));
     }
     qpm = cptr.ldI16o(gu, $instance_globals_u_urole + $Role_enemy2num);
-    if (qpm != NHC.NON_PM && rn2_at(__s_questpgr_c, 648, __s_qt_montype, 5) && !(cptr.ld1uo2(svm, qpm, $sizeof_mvitals, $instance_globals_saved_m_mvitals + $mvitals_mvflags) & NHM.G_GENOD))
+    if (qpm != NHC.NON_PM &&
+            rn2(5) &&
+            !(cptr.ld1uo2(
+                svm,
+                qpm,
+                $sizeof_mvitals,
+                $instance_globals_saved_m_mvitals + $mvitals_mvflags
+            ) &
+                NHM.G_GENOD))
         return cptr.add(mons, qpm, $sizeof_permonst);
     return (yield* mkclass(cptr.ld1so(gu, $instance_globals_u_urole + $Role_enemy2sym), 0));
 }
@@ -759,7 +907,11 @@ export function* deliver_splev_message() {
 // 2 bindings: 0 rebound+refilled, 0 rebound, 2 refilled.
 // S/P are supplied by js/generated-y/__reset.js so this module needs no new import.
 let __c2js_rs = null;
-export function __captureState(S) { __c2js_rs = [S(__static_com_pager_core_howtoput), S(__static_com_pager_core_howtoput2i)]; }
+export function __captureState(S) {
+    __c2js_rs = [
+        S(__static_com_pager_core_howtoput), S(__static_com_pager_core_howtoput2i)
+    ];
+}
 export function __resetState(P) {
     const r = __c2js_rs;
     if (r === null) throw new Error("questpgr.js: __resetState before __captureState");

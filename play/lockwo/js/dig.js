@@ -10,6 +10,7 @@
 import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { newsym } from './display.js';
+import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, HEAD } from './const.js';
 import { unblock_point, recalc_block_point, cansee } from './vision.js';
 import {
     IS_WALL, IS_TREE, IS_OBSTRUCTED, IS_STWALL, IS_DOOR,
@@ -17,7 +18,7 @@ import {
     D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     W_NONDIGGABLE, isok, Is_earthlevel,
 } from './const.js';
-import { mksobj_at, ROCK, BOULDER } from './mkobj.js';
+import { mksobj_at, ROCK, BOULDER, objects as OBJECTS_TBL } from './mkobj.js';
 
 // C ref: hack.c may_dig(x, y) — "intended to be called only on ROCKs or TREEs".
 // A stone wall or tree is diggable unless the cell is flagged W_NONDIGGABLE
@@ -66,6 +67,98 @@ async function You_hear(msg) {
     await update_topl(msg);
 }
 
+// C ref: hack.h Hallucination — the timer lives under three different names in
+// this port depending on which file wrote it (see cmd.js Hallucination()).
+function Hallucination() {
+    const u = game.u;
+    if (!u) return false;
+    if ((u.HHalluc_resistance || 0) > 0) return false;
+    return !!(u.uhallu || u.HHallucination || u.uprops?.Hallucination);
+}
+
+const sgn = (n) => (n > 0 ? 1 : n < 0 ? -1 : 0);
+
+// C ref: dig.c draft_message(unexpected).  NOT display-only: the hallucinating
+// draft_message(FALSE) arm draws rn1(2, ...) and (below STRIDENT alignment
+// record) a second rn1(3, ...), and BOTH arms emit a topline the port used to
+// swallow entirely on the secret-corridor path.
+const STRIDENT = 4;   /* dig.c:1497, from pray.c */
+const DRAFT_REACTION = ['enlisting', 'marching', 'protesting', 'fleeing'];
+async function draft_message(unexpected) {
+    const u = game.u || {};
+    if (unexpected) {
+        if (!Hallucination()) {
+            await You_hear('You feel an unexpected draft.');
+        } else {
+            const { acurr_eff } = await import('./attrib.js');
+            const weak = (acurr_eff(A_STR) < 6 || acurr_eff(A_DEX) < 6
+                          || acurr_eff(A_CON) < 6 || acurr_eff(A_CHA) < 6
+                          || acurr_eff(A_INT) < 6 || acurr_eff(A_WIS) < 6);
+            await You_hear(`You feel like you are ${weak ? '4-F' : '1-A'}.`);
+        }
+    } else {
+        if (!Hallucination()) {
+            await You_hear('You feel a draft.');
+        } else {
+            const atyp = u.ualign?.type ?? 0;
+            let dridx = rn1(2, 1 - sgn(atyp));
+            if ((u.ualign?.record ?? 0) < STRIDENT)
+                dridx += rn1(3, sgn(atyp) - 1);
+            await You_hear(`You feel like ${DRAFT_REACTION[dridx]}.`);
+        }
+    }
+}
+
+// C ref: mkobj.c treefruits[] + rnd_treefruit_at() = mksobj_at(ROLL_FROM(...)),
+// i.e. an rn2(5) that mdig_tunnel/zap-dig draw whenever a felled tree drops
+// fruit.  Skipping it left the stream one rn2(5) short on every arboreal level.
+const TREEFRUITS = [277 /*APPLE*/, 278 /*ORANGE*/, 279 /*PEAR*/,
+                    281 /*BANANA*/, 276 /*EUCALYPTUS_LEAF*/];
+function rnd_treefruit_at(x, y) {
+    return mksobj_at(TREEFRUITS[rn2(TREEFRUITS.length)], x, y, true, false);
+}
+
+// C ref: stairs.c stairway_at(x, y) — the stairway record on this square, or
+// null.  On_stairs(x,y) is `stairway_at(x,y) != 0`.  The stair list is a
+// singly-linked chain hanging off `game.stairs` (cf. hack.js).
+function stairway_at(x, y) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.sx === x && s.sy === y) return s;
+    return null;
+}
+
+// C ref: trap.c ceiling(x, y).  Same reduction as trap.js ceiling(): no
+// air/water/quest/earth level is generated here.
+function ceiling(x, y) {
+    const typ = game.level?.at(x, y)?.typ ?? STONE;
+    if (typ === ROOM || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR)
+        return 'ceiling';
+    return 'rock cavern';
+}
+
+// C ref: do_wear.c hard_helmet(obj) = is_helmet(obj)
+//        && (is_metallic(obj) || is_crackable(obj)).
+// Driven by oc_material (IRON..MITHRIL, or GLASS for a crackable helm), NOT by
+// a name regex — a helm whose name doesn't contain "helm" (dented pot) is hard
+// and an "elven leather helm" is not.  Only ever called on the worn head slot,
+// so C's is_helmet() guard is implied by the caller.
+const MAT_IRON = 11, MAT_MITHRIL = 17, MAT_GLASS = 19;
+function hard_helmet(otmp) {
+    const mat = OBJECTS_TBL[otmp?.otyp]?.material;
+    if (mat === undefined) return false;
+    return (mat >= MAT_IRON && mat <= MAT_MITHRIL) || mat === MAT_GLASS;
+}
+
+// C ref: hack.c losehp(dmg, ...) — HP subtraction only; the death path
+// (done(DIED)) lives in the callers this port does model.
+function losehp(dmg) {
+    const u = game.u;
+    if (!u || dmg <= 0) return;
+    u.uhp = (u.uhp ?? 0) - dmg;
+    if (u.uhp < 0) u.uhp = 0;
+    if (game.disp) game.disp.botl = true;
+}
+
 // C ref: dig.c mdig_tunnel(mtmp) — a tunnelling monster carves the cell it now
 // occupies.  Returns TRUE if the monster died (a trapped door it broke through),
 // FALSE otherwise.  Called from m_move()/postmov() only when can_tunnel &&
@@ -102,10 +195,8 @@ export async function mdig_tunnel(mtmp) {
             const verbose = game.flags?.verbose !== false;
             const Unaware = !!game.u?.Unaware;
             if (verbose) {
-                if (!Unaware && !rn2(3)) {
-                    // draft_message(TRUE): "You feel an unexpected draft."
-                    await You_hear('You feel an unexpected draft.');
-                }
+                if (!Unaware && !rn2(3))
+                    await draft_message(true);
             }
         }
         return false;
@@ -114,7 +205,7 @@ export async function mdig_tunnel(mtmp) {
         here.typ = CORR; here.flags = 0;
         unblock_point(mtmp.mx, mtmp.my);
         newsym(mtmp.mx, mtmp.my);
-        // draft_message(FALSE): "You feel a draft." — display only, no RNG.
+        await draft_message(false);
         return false;
     } else if (!IS_OBSTRUCTED(here.typ) && !IS_TREE(here.typ)) {
         // C ref: dig.c:1450 — nothing here to dig.
@@ -145,10 +236,11 @@ export async function mdig_tunnel(mtmp) {
             here.typ = DOOR; here.doormask = D_NODOOR;
         }
     } else if (IS_TREE(here.typ)) {
-        // C ref: dig.c:1482 — a felled tree becomes room floor; pile 1..4 may
-        // drop fruit (rnd_treefruit_at).  No trees in the mines cave; the
-        // fruit path is left unported (unreached).
+        // C ref: dig.c:1482 — a felled tree becomes room floor; pile 1..4 drops
+        // fruit (rnd_treefruit_at -> rn2(5) + mksobj_at).
         here.typ = ROOM; here.flags = 0;
+        if (pile && pile < 5)
+            rnd_treefruit_at(mtmp.mx, mtmp.my);
     } else {
         // C ref: dig.c:1486 — plain rock becomes a corridor; pile 1..4 drops a
         // boulder (pile==1) or a rock (pile 2..4) as debris.
@@ -184,9 +276,35 @@ export async function zap_dig() {
     }
 
     if (u.dz) {
-        // C ref: dig.c:1584 — zapping up loosens a ceiling rock; zapping down
-        // runs dighole().  Neither is exercised (the covered zaps are lateral);
-        // the dighole subsystem is not ported.
+        // C ref: dig.c:1584.  Is_airlevel/Is_waterlevel/Underwater are all
+        // false for every level this port generates.
+        const sway = stairway_at(u.ux, u.uy);
+        if (u.dz < 0 || sway) {
+            const { update_topl } = await import('./display.js');
+            const _invent = await import('./invent.js');
+            if (sway) {
+                await update_topl(`The beam bounces off the ${
+                    sway.isladder ? 'ladder' : 'stairs'} and hits the ${
+                    ceiling(u.ux, u.uy)}.`);
+            }
+            await update_topl(`You loosen a rock from the ${ceiling(u.ux, u.uy)}.`);
+            await update_topl(`It falls on your ${_invent.body_part(HEAD)}!`);
+            // C: dmg = rnd(hard_helmet(uarmh) ? 2 : 6) — a REAL draw whether or
+            // not the rock lands on a helmet.  Maybe_Half_Phys() is the identity
+            // for a hero without Half_physical_damage (none of these have it).
+            const dmg = rnd(hard_helmet(game.uarmh) ? 2 : 6);
+            losehp(dmg);
+            const otmp = mksobj_at(ROCK, u.ux, u.uy, false, false);
+            if (otmp) {
+                _invent.xname(otmp);       /* sets dknown / maybe bknown */
+                _invent.stackobj(otmp);
+            }
+            newsym(u.ux, u.uy);
+        }
+        // NOT PORTED: the else arm, watch_dig() + dighole(FALSE, TRUE, 0) —
+        // digging a pit/hole straight down.  dighole/digactualhole (and the
+        // level change that follows a hole) are a separate unported subsystem,
+        // so a downward zap off the stairs still consumes no RNG here.
         return;
     }
 

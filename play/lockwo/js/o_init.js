@@ -17,7 +17,7 @@
 
 import { rn2 } from './rng.js';
 import {
-    objects, MAXOCLASSES, WEAPON_CLASS, ARMOR_CLASS, COIN_CLASS, GEM_CLASS,
+    objects, GemStone, MAXOCLASSES, WEAPON_CLASS, ARMOR_CLASS, COIN_CLASS, GEM_CLASS,
     AMULET_CLASS, POTION_CLASS, RING_CLASS, SCROLL_CLASS,
     SPBOOK_CLASS, WAND_CLASS, VENOM_CLASS,
 } from './mkobj.js';
@@ -555,10 +555,12 @@ function disco_obj_typename(otyp) {
     }
 
     buf += nn ? actualn : (dn || actualn);
+    /* C ref: objnam.c:262-266 — the nn half appends " stone" for GemStone(). */
+    if (nn && GemStone(otyp)) buf += ' stone';
     if (nn && un) buf += ` called ${un}`;
     if (nn && dn) buf += ` (${dn})`;
     if (!nn && o.oclass === GEM_CLASS)
-        buf += o.oc_material === 21 ? ' stone' : ' gem';
+        buf += o.material === 21 ? ' stone' : ' gem';   /* OBJECT_DATA col is `material` */
     if (!nn && un) buf += ` called ${un}`;
     return buf;
 }

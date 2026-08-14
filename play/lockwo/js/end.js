@@ -261,6 +261,13 @@ async function done(how) {
         await d.flush_screen(1);
     }
     if (how < PANICKED) {
+        // MEASURED NEGATIVE, do not re-add: C's end.c:1071 also sets
+        // disp.botl = TRUE after zeroing HP, so a later refresh redraws the
+        // status with HP:0 even when the bot() above drew nothing (u.uhp was
+        // exactly -1, botl.c's dosave() sentinel).  Re-freezing the botl here
+        // wins seed0030's step 582 but costs seed5002 -12, the held-out proxy
+        // -14 and seed0030's own step 779.  The extra release point is the
+        // botl-is-a-snapshot trap; some other frame must be re-releasing it.
         u.uhp = 0;
         if (u.mh != null) u.mh = 0;
     }
@@ -315,6 +322,16 @@ async function done(how) {
                 await savebones(how, game._death_corpse || null);
             }
         }
+        // C ref: end.c:1238 really_done() — `taken = paybill((how == ESCAPED)
+        // ? -1 : (how != QUIT), silently)`, immediately after the bones_ok
+        // computation and before display_nhwindow(WIN_MESSAGE) pages the
+        // "You die..." line.  An angry shopkeeper the hero died next to takes
+        // everything, and that message shares the death topline.
+        if (how !== PANICKED && !stopprint) {
+            const { paybill } = await import('./shkroom.js');
+            await paybill(how === ESCAPED ? -1 : (how !== QUIT ? 1 : 0));
+        }
+
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
 
@@ -901,8 +918,28 @@ function an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
 // is ever prepended.  killer.format is KILLED_BY_AN, giving "killed by a
 // <species>" — used for both the tombstone engraving and the topten entry.
 function killer_text_for_monster(mtmp) {
+    // C ref: end.c:264-271 — a shopkeeper killer gets an honorific and NO
+    // article (killer.format = KILLED_BY).  formatkiller() (topten.c:137) then
+    // rewrites every ',' in the stored name to ';'; outentry() reverses it for
+    // the on-screen topten table only (js/end.js:856), so the stored form must
+    // carry the semicolon or the tombstone's word wrap comes out wrong.
+    if (mtmp?.isshk) {
+        const shknm = shk_name_for_killer(mtmp);
+        // shkname_is_pname(): ESHK(mtmp)->shknam[0] == '_' (a proper name, no
+        // honorific) — shknms[] marks those with a leading underscore.
+        const raw = mtmp.eshk?.shknam || '';
+        const honorific = raw[0] === '_' ? '' : (mtmp.female ? 'Ms. ' : 'Mr. ');
+        return `killed by ${honorific}${shknm}; the shopkeeper`;
+    }
     const name = mtmp?.data?.name || 'monster';
     return `killed by ${an(name)}`;
+}
+// shkroom.js imports end.js, so resolve shkname() lazily through the game state
+// the caller already has rather than adding a static cycle.
+function shk_name_for_killer(mtmp) {
+    const nm = mtmp.eshk?.shknam;
+    if (!nm) return mtmp.data?.name || 'shopkeeper';
+    return /[A-Za-z]/.test(nm[0]) ? nm : nm.slice(1);
 }
 
 // C ref: end.c done_in_by(mtmp, how) — a monster killed the hero.  Announces

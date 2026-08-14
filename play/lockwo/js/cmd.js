@@ -2577,6 +2577,27 @@ export async function domove(dx, dy) {
         return;
     }
 
+    // ── tight diagonal ──  C ref: hack.c:1153-1172, which runs BEFORE the
+    // boulder/moverock block below.  In Sokoban a boulder counts as rock, so
+    // squeezing diagonally between two of them is refused outright instead of
+    // being attempted as a push ("You try to move the boulder, but in vain.").
+    // `!blocksMove(newx, newy)`: C's IS_OBSTRUCTED/IRONBARS/closed-door tests on
+    // the DESTINATION run first (hack.c:1030) and return FALSE silently when
+    // flags.mention_walls is off, so a diagonal aimed straight at a wall never
+    // reaches the squeeze test.  Our port does that test after the boulder push,
+    // hence the explicit guard here.
+    if (u.dx && u.dy && !blocksMove(newx, newy)
+        && bad_rock_hero(u.ux, newy) && bad_rock_hero(newx, u.uy)) {
+        const why = await cant_squeeze_thru_hero();
+        if (why) {
+            await pline(why === 3 ? 'You cannot pass that way.'
+                : why === 2 ? 'You are carrying too much to get through.'
+                : 'Your body is too large to fit through.');
+            game.context.move = 0;
+            return;
+        }
+    }
+
     // ── push a boulder ──  C ref: hack.c test_move() DO_MOVE branch -> moverock().
     // A boulder sits on an otherwise-passable square, so blocksMove() below would
     // wrongly let the hero step onto it.  Instead, C tries to roll the boulder one
@@ -2917,6 +2938,34 @@ function fill_pit_cmd(x, y) {
     // flooreffects(otmp, x, y, "settle") fills the pit: the trap is removed.
     game.level.traps = (game.level.traps || []).filter((tr) => tr !== t);
     newsym(x, y);
+}
+
+// C ref: hack.c:939 bad_rock(mdat, x, y) for the hero.  `!tunnels(mdat) ||
+// needspick(mdat) || !may_dig(x,y)` is always TRUE for a non-tunnelling hero,
+// and `!(passes_walls && may_passwall)` is TRUE whenever Passes_walls is off, so
+// for the corpus heroes the wall arm reduces to IS_OBSTRUCTED.  The Sokoban arm
+// is the one that matters: there a boulder counts as rock.
+function bad_rock_hero(x, y) {
+    if (In_sokoban(game.u?.uz) && boulder_at(x, y)) return true;
+    if (game.u?.uprops?.Passes_walls) return false;
+    const loc = game.level?.at(x, y);
+    return IS_OBSTRUCTED(loc ? loc.typ : 0);
+}
+
+// C ref: hack.c:952 cant_squeeze_thru(&youmonst) — 0 fits, 1 too big,
+// 2 carrying too much, 3 Sokoban.
+async function cant_squeeze_thru_hero() {
+    const u = game.u;
+    if (u?.uprops?.Passes_walls) return 0;
+    const MZ_LARGE = 3, WT_TOOMUCH_DIAGONAL = 600;  // weight.h:22
+    // Upolyd only: an unpolymorphed hero is MZ_HUMAN.  amorphous/whirly/
+    // noncorporeal/slithy/can_fog all need a polyform none of these heroes take.
+    const ptr = u?.mcham_data || null;
+    if (ptr && (ptr.msize ?? 0) >= MZ_LARGE) return 1;
+    const { carried_weight } = await import('./invent.js');
+    if (carried_weight() > WT_TOOMUCH_DIAGONAL) return 2;
+    if (In_sokoban(u?.uz)) return 3;
+    return 0;
 }
 
 // C ref: mkobj.c sobj_at(BOULDER, x, y) — the topmost boulder lying on the floor

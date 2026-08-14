@@ -18,10 +18,14 @@ import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastfo
 import { movemon, mcalcdistress, mcalcmove, base_mmove } from './mon.js';
 import { run_regions } from './region.js';
 import { makemon_rnd_spawn } from './makemon.js';
-import { SPEED_BOOTS } from './mkobj.js';
+import { SPEED_BOOTS, objects } from './mkobj.js';
+import { mflags1_of, M1_CARNIVORE, M1_HERBIVORE, M1_METALLIVORE }
+    from './monflags_data.js';
 import { dosounds } from './sounds.js';
 import { age_spells } from './spell.js';
-import { find_ac, u_init_skills_discoveries, moveloop_preamble_startup } from './u_init.js';
+import { newuhs } from './eat.js';
+import { find_ac, u_init_skills_discoveries, moveloop_preamble_startup,
+         race_attrmin, race_attrmax } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
 import { Unaware,
@@ -902,9 +906,23 @@ export async function moveloop_turn() {
             // entirely, so this is RNG-inert for every full-health turn.
             // C ref: allmain.c:287 — while u.uinvulnerable (prayer invulnerability
             // during a coaligned #pray occupation) the heal check is skipped
-            // entirely (wtcap forced to UNENCUMBERED), so NO rn2(100) is rolled
-            // for the injured hero on those turns.
-            if (!g.u.uinvulnerable) regen_hp();
+            // entirely AND wtcap is forced to UNENCUMBERED for the rest of the
+            // turn block, so NO rn2(100) is rolled for the injured hero on those
+            // turns and the overexert/regen_pw encumbrance gates see 0.
+            let turn_wtcap = mvl_wtcap;
+            if (g.u.uinvulnerable) turn_wtcap = 0 /* UNENCUMBERED */;
+            else regen_hp(turn_wtcap);
+
+            // C ref: allmain.c:299-304 — "moving around while encumbered is hard
+            // work": a hero above MOD_ENCUMBER who moved loses 1 HP every 30
+            // turns (every 10 once Overtaxed).  Draws no RNG itself, but the HP
+            // loss puts the hero below uhpmax, which is exactly what arms
+            // regen_hp's rn2(100) on later turns — the same shape as the
+            // exerper() encumbrance branch that was worth 1202 screens.
+            if (turn_wtcap > MOD_ENCUMBER && g.u.umoved) {
+                const period = (turn_wtcap < EXT_ENCUMBER) ? 30 : 10;
+                if (!((g.moves || 0) % period)) overexert_hp();
+            }
 
             // C ref: allmain.c:305 regen_pw(wtcap) — power regeneration, called
             // right after the regen_hp/overexert block and BEFORE dosounds.  Was
@@ -912,7 +930,7 @@ export async function moveloop_turn() {
             // ulevel 15 => period 15, upper 2 from Wi:14 + In:7) between
             // regen_hp's rn2(100) and dosounds' rn2(200), and skipping it shifted
             // the rest of that turn and every turn after it.
-            regen_pw();
+            regen_pw(turn_wtcap);
 
             // C ref: allmain.c moveloop_core() — intrinsic autosearch.  Runs
             // every turn before dosounds when the hero has Searching (and the
@@ -930,7 +948,7 @@ export async function moveloop_turn() {
             await dosounds();
             gethungry();
             age_spells(); // C ref: spell.c age_spells — decrnknow each turn (no RNG)
-            exerchk();
+            await exerchk();
 
             // u_wipe_engr check: rn2(40 + ACURR(A_DEX) * 3).  acurr order is
             // [Str, Int, Wis, Dex, Con, Cha] -> Dex is index 3.  C ACURR()
@@ -939,12 +957,6 @@ export async function moveloop_turn() {
             const dex = acurr_eff(3);
             if (!rn2(40 + dex * 3)) {
                 rnd(3); // u_wipe_engr(rnd(3))
-            }
-
-            // clairvoyance bookkeeping: seer_turn (rn1(31,15)) when moves
-            // catches up.
-            if (g.context.seer_turn != null && g.moves >= g.context.seer_turn) {
-                g.context.seer_turn = g.moves + rn1(31, 15);
             }
 
             // C ref: allmain.c moveloop_core():380 — the multi<0 countdown sits
@@ -988,18 +1000,73 @@ export async function moveloop_turn() {
             }
         }
     } while (g.u.umovement < NORMAL_SPEED);
+
+    // C ref: allmain.c:409 — clairvoyance bookkeeping (rn1(31,15)) sits in the
+    // "once-per-hero-took-time" block AFTER the do-while, so it fires once per
+    // hero move, not once per turn.  A Burdened hero gets 9 movement points per
+    // turn, so ~every 4th command loops twice and the two placements differ.
+    if (g.context.seer_turn != null && g.moves >= g.context.seer_turn) {
+        g.context.seer_turn = g.moves + rn1(31, 15);
+    }
+}
+
+// C ref: objects.h ring/amulet otyps read by gethungry()'s accessory cases.
+const RIN_PROTECTION = 178, RIN_HUNGER = 184, RIN_CONFLICT = 186,
+      RIN_SLOW_DIGESTION = 193, FAKE_AMULET_OF_YENDOR = 212, MEAT_RING = 270,
+      WHITE_DRAGON_SCALE_MAIL = 105, WHITE_DRAGON_SCALES = 115;
+const OC_CHARGED = 1; // objects[].oc_charged, packed into the JS `flags` field
+
+function wornRing(otyp) {
+    return game.uleft?.otyp === otyp || game.uright?.otyp === otyp;
+}
+// C ref: youprop.h Slow_digestion — a worn ring of slow digestion, or white
+// dragon scales/mail worn as the suit.
+function Slow_digestion() {
+    return wornRing(RIN_SLOW_DIGESTION)
+        || game.uarm?.otyp === WHITE_DRAGON_SCALE_MAIL
+        || game.uarm?.otyp === WHITE_DRAGON_SCALES;
+}
+// C ref: eat.c gethungry() — `(HRegeneration & ~FROMFORM) || (ERegeneration &
+// ~(W_ARTI | W_WEP))`, i.e. regeneration that isn't from the current polyform
+// or from a wielded artifact.  Only the worn-ring source exists in this port.
+function eats_from_regeneration() { return wornRing(179 /*RIN_REGENERATION*/); }
+// C ref: hack.h Hunger / Conflict extrinsics from worn rings.
+function ringHunger() { return wornRing(RIN_HUNGER); }
+function ringConflict() { return wornRing(RIN_CONFLICT); }
+// C ref: mondata.h carnivorous/herbivorous/metallivorous — a polyform that eats
+// none of those burns no ordinary nutrition (it only pays the accessory cost).
+function youmonst_eats() {
+    const u = game.u;
+    if (!u?.Upolyd) return true; // every player-monster form is M1_OMNIVORE
+    const f1 = u.data ? (mflags1_of(u.data) ?? 0) : 0;
+    return !!(f1 & (M1_CARNIVORE | M1_HERBIVORE | M1_METALLIVORE));
+}
+// C ref: eat.c:3245-3252 — a worn ring only costs nutrition if it actually does
+// something: nonzero enchantment, or an uncharged type, or a +0 ring of
+// protection that is the hero's ONLY source of protection.  C tests the latter
+// via the EProtection source mask; the only source this port tracks here is the
+// other ring, so a cloak of protection / amulet of guarding is not consulted
+// (worst case: one extra nutrition point per ~40 turns in that configuration).
+function ring_costs_nutrition(ring, otherRing) {
+    if (!ring || ring.otyp === MEAT_RING) return false;
+    if (ring.spe) return true;
+    if (!(objects[ring.otyp]?.flags & OC_CHARGED)) return true;
+    if (ring.otyp !== RIN_PROTECTION) return false;
+    if (otherRing && otherRing.otyp === RIN_PROTECTION && otherRing.spe)
+        return false;
+    return true;
 }
 
 // C ref: eat.c gethungry() — per-turn hunger.  While u.uinvulnerable (prayer
 // invulnerability) C returns immediately ("you don't feel hungrier"), so NO
-// rn2(20) is rolled on those turns.  Otherwise: an awake eater (all starter
-// role-monsters are carnivorous/herbivorous) that isn't slow-digesting loses 1
-// nutrition/turn; an Unaware (asleep/unconscious) hero burns at 1/10 (the
-// rn2(10) is evaluated only when Unaware, per C's `!Unaware || !rn2(10)`
-// short-circuit).  The rn2(20) "accessorytime" roll always fires; its odd/even
-// cases only bite the starter hero via near_capacity()>SLT_ENCUMBER (Stressed+)
-// — rings/regeneration/conflict are all absent.  newuhs() recomputes u.uhs (no
-// HUNGRY/WEAK threshold is crossed by the covered sessions, so no message).
+// rn2(20) is rolled on those turns.  Otherwise: an eater (all player forms are
+// omnivores) that isn't slow-digesting loses 1 nutrition/turn; an Unaware
+// (asleep/unconscious) hero burns at 1/10 (the rn2(10) is evaluated only when
+// Unaware, per C's `!Unaware || !rn2(10)` short-circuit).  The rn2(20)
+// "accessorytime" roll always fires and its odd/even cases pay the extra
+// regeneration / encumbrance / hunger-ring / conflict / worn-accessory costs.
+// None of that draws RNG, but u.uhunger picks which exercise() exerper() runs
+// (a different rn2 modulus) and drives the HUNGRY/WEAK status + messages.
 // Exported: hack.c overexertion() ("combat increases metabolism") calls this
 // SAME function once per melee attack, in addition to the once-per-turn call
 // below — uhitm.js's overexertion() imports it to stay faithful.
@@ -1007,15 +1074,47 @@ export function gethungry() {
     const u = game.u;
     if (!u || u.uinvulnerable) return;
     const consume = Unaware() ? (rn2(10) === 0) : true;
-    if (consume) u.uhunger = (u.uhunger ?? 900) - 1;
-    const accessorytime = rn2(20);
-    if ((accessorytime & 1) && near_capacity() > 1 /* SLT_ENCUMBER */)
+    if (consume && youmonst_eats() && !Slow_digestion())
         u.uhunger = (u.uhunger ?? 900) - 1;
-    // C ref: eat.c newuhs(TRUE) — SATIATED(0)/NOT_HUNGRY(1)/HUNGRY(2)/WEAK(3)/
-    // FAINTING(4) from u.uhunger thresholds (see eat.js newuhs for the full port
-    // incl. the transition messages, which the covered sessions never reach).
-    const h = u.uhunger ?? 900;
-    u.uhs = (h > 1000) ? 0 : (h > 150) ? 1 : (h > 50) ? 2 : (h > 0) ? 3 : 4;
+    const accessorytime = rn2(20);
+    if (accessorytime & 1) { /* odd */
+        if (eats_from_regeneration()) u.uhunger = (u.uhunger ?? 900) - 1;
+        if (near_capacity() > 1 /* SLT_ENCUMBER */)
+            u.uhunger = (u.uhunger ?? 900) - 1;
+    } else { /* even */
+        if (ringHunger()) u.uhunger = (u.uhunger ?? 900) - 1;
+        if (ringConflict()) u.uhunger = (u.uhunger ?? 900) - 1;
+        switch (accessorytime) { // even cases among 0..19 only
+        case 0:
+            if (Slow_digestion() && !wornRing(RIN_SLOW_DIGESTION))
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            break;
+        case 4:
+            if (ring_costs_nutrition(game.uleft, game.uright))
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            break;
+        case 8:
+            if (game.uamul && game.uamul.otyp !== FAKE_AMULET_OF_YENDOR)
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            break;
+        case 12:
+            if (ring_costs_nutrition(game.uright, game.uleft))
+                u.uhunger = (u.uhunger ?? 900) - 1;
+            break;
+        case 16:
+            if (u.uhave?.amulet) u.uhunger = (u.uhunger ?? 900) - 1;
+            break;
+        default:
+            break;
+        }
+    }
+    // C ref: eat.c gethungry() tail — `newuhs(TRUE)`.  This used to re-derive
+    // u.uhs inline from the thresholds "because the covered sessions never
+    // cross HUNGRY"; a 900-nutrition hero crosses 150 around turn 750, which
+    // several sessions reach.  The real newuhs() also emits the transition
+    // messages, sets ATEMP(A_STR) = -1 on WEAK (status line), and draws
+    // rn2(20 - uhunger/10) once FAINTING — none of which the inline copy did.
+    newuhs(true);
 }
 
 // C ref: allmain.c regen_hp(wtcap) — natural HP regeneration.  Only the
@@ -1025,9 +1124,14 @@ export function gethungry() {
 // The single rn2(100) is the RNG-relevant effect; the heal keeps uhp tracking
 // so the roll stops firing once the hero is back to full.  The caller invokes
 // this only when uhp < uhpmax, mirroring the C guard at allmain.c:290.
-function regen_hp() {
+function regen_hp(wtcap = 0) {
     const u = game.u;
     if (!u) return;
+    // C ref: allmain.c:622 — encumbrance_ok = (wtcap < MOD_ENCUMBER ||
+    // !u.umoved).  A Stressed-or-worse hero who MOVED this turn regenerates
+    // nothing and (critically) rolls NO rn2(100); previously this was hardcoded
+    // true, so such a hero drew an extra rn2(100) every turn.
+    const encumbrance_ok = (wtcap < MOD_ENCUMBER) || !u.umoved;
     // C ref: allmain.c:631 — the Upolyd half heals u.mh and NEVER rolls
     // rn2(100); only the !Upolyd else-branch does.  Without this split a
     // polymorphed hero (whose u.uhp is still the pre-poly injured value)
@@ -1037,13 +1141,13 @@ function regen_hp() {
         // eel, which no covered session reaches; u.mh < 1 -> rehumanize() is
         // handled at the damage site.  Both are RNG-inert here.
         if (u.mh < u.mhmax) {
-            // encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved); UNENCUMBERED.
-            if (u_can_regen() || !((game.moves || 0) % 20)) u.mh += 1;
+            if (u_can_regen() || (encumbrance_ok && !((game.moves || 0) % 20)))
+                u.mh += 1;
         }
         return;
     }
     if (!(u.uhp < u.uhpmax)) return;            // C: guarded call (allmain.c:290)
-    // encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved); UNENCUMBERED here.
+    if (!encumbrance_ok && !u_can_regen()) return; // C ref: allmain.c:652
     const con = u.acurr?.a?.[A_CON] ?? 12;
     let heal = ((u.ulevel || 1) + con) > rn2(100) ? 1 : 0;
     // C ref: U_CAN_REGEN() == Regeneration — a worn ring of regeneration grants
@@ -1070,7 +1174,7 @@ function regen_hp() {
 // nothing.
 const MAXULEV = 30;             // C ref: include/you.h MAXULEV
 const PM_WIZARD_ROLE = 12;      // roles[] index, not a mons[] index
-function regen_pw() {
+function regen_pw(wtcap = 0) {
     const g = game, u = g.u;
     if (!u) return;
     if (!(u.uen < u.uenmax)) return;
@@ -1079,9 +1183,11 @@ function regen_pw() {
                               * (wizard_role ? 3 : 4) / 6);
     const energy_regen = !!u.uprops?.Energy_regeneration;
     // C: `(wtcap < MOD_ENCUMBER && !(moves % period)) || Energy_regeneration`.
-    // wtcap is UNENCUMBERED for the covered heroes; a period of 0 would be a
-    // division by zero in C, which cannot happen for ulevel <= MAXULEV.
-    const due = period > 0 && ((g.moves ?? 0) % period) === 0;
+    // The wtcap half used to be dropped as "always UNENCUMBERED", so a Stressed
+    // hero below max Pw drew an rn1(upper,1) that C never draws.  A period of 0
+    // would be a division by zero in C, which cannot happen for ulevel<=MAXULEV.
+    const due = wtcap < MOD_ENCUMBER
+        && period > 0 && ((g.moves ?? 0) % period) === 0;
     if (!due && !energy_regen) return;
     let upper = Math.trunc(((u.acurr?.a?.[A_WIS] ?? 0)
                             + (u.acurr?.a?.[A_INT] ?? 0)) / 15) + 1;
@@ -1092,6 +1198,24 @@ function regen_pw() {
     // C also sets disp.botl and, at full power, interrupt_multi("You feel full
     // of energy.").  The status line is recomputed each frame here, and the
     // interrupt only matters mid-occupation.
+}
+
+// C ref: hack.c overexert_hp() — "HP loss or passing out from overexerting
+// yourself".  Costs 1 HP; at 1 HP the hero passes out instead (exercise(A_CON,
+// FALSE) rolls rn2(2), then fall_asleep(-10)).  fall_asleep is left to the
+// generic sleep machinery (nomul/usleep), which no covered session reaches from
+// here; the HP decrement is the part that steers regen_hp on later turns.
+function overexert_hp() {
+    const u = game.u;
+    if (!u) return;
+    const polyd = !!u.Upolyd;
+    const hp = polyd ? (u.mh ?? 0) : (u.uhp ?? 0);
+    if (hp > 1) {
+        if (polyd) u.mh = hp - 1;
+        else u.uhp = hp - 1;
+    } else {
+        exercise(A_CON, false);
+    }
 }
 
 // C ref: youprop.h Regeneration — the hero has the REGENERATION extrinsic.  For
@@ -1191,12 +1315,49 @@ function Hallucination() { return !!(game.u?.HHallucination); }
 function Fumbling() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
 function HStun() { return !!(game.u?.HStun || game.u?.ustun); }
 
+// C ref: attrib.c plusattr[]/minusattr[] (the adjattrib "You feel <x>!" word)
+// and exertext[A_MAX][2] (exerchk's own explanation, in attribute order).
+const PLUS_ATTR = ['strong', 'smart', 'wise', 'agile', 'tough', 'charismatic'];
+const MINUS_ATTR = ['weak', 'stupid', 'foolish', 'clumsy', 'fragile', 'repulsive'];
+const EXERTEXT = [
+    ['exercising diligently', 'exercising properly'],           // Str
+    [null, null],                                               // Int
+    ['very observant', 'paying attention'],                     // Wis
+    ['working on your reflexes', 'working on reflexes lately'], // Dex
+    ['leading a healthy life-style', 'watching your health'],   // Con
+    [null, null],                                               // Cha
+];
+
+// C ref: attrib.c adjattrib(ndx, incr, msgflg) restricted to exerchk's call —
+// incr is +-1 and the caller has already proved ABASE is strictly inside
+// [ATTRMIN, ATTRMAX], so neither the rn2() underflow arm nor the DUNCE_CAP /
+// Fixed_abil early returns apply.  Returns whether the value actually moved.
+async function exerchk_adjattrib(ndx, incr) {
+    const u = game.u;
+    const abase = u.acurr.a, amaxarr = u.amax.a;
+    const old = abase[ndx] ?? 0;
+    const attrmax = (race_attrmax()[ndx] ?? 18);
+    abase[ndx] = old + incr;
+    if (incr > 0 && abase[ndx] > (amaxarr[ndx] ?? 0)) {
+        amaxarr[ndx] = abase[ndx];
+        if (amaxarr[ndx] > attrmax) abase[ndx] = amaxarr[ndx] = attrmax;
+    }
+    if (abase[ndx] === old) return false;
+    if (u.aexe?.a) u.aexe.a[ndx] = 0; // "any successful change resets exercise"
+    // C: msgflg is -1 here (conditional), so You_feel() fires on a real change.
+    await pline(`You feel ${incr > 0 ? PLUS_ATTR[ndx] : MINUS_ATTR[ndx]}!`);
+    if (ndx === A_STR || ndx === A_CON) {
+        const { encumber_msg } = await import('./invent.js');
+        await encumber_msg();
+    }
+    return true;
+}
+
 // C ref: attrib.c exerchk() — periodic accumulation (exerper) then, once
-// svm.moves crosses context.next_attrib_check (starts at 600), a per-attribute
-// test that rolls rn2(AVAL) per exercised attr and rn1(200,800) to reschedule.
-// The starter sessions never reach move 600, so only exerper() emits RNG; the
-// attrib-test branch is modeled faithfully for longer runs.
-function exerchk() {
+// svm.moves crosses context.next_attrib_check (starts at 600) AND the hero is
+// not mid-multi, a per-attribute test that rolls rn2(AVAL) per exercised attr,
+// applies the resulting attribute change, and rolls rn1(200,800) to reschedule.
+async function exerchk() {
     const g = game;
     exerper();
 
@@ -1204,31 +1365,61 @@ function exerchk() {
         g.context = Object.assign(g.context || {}, { next_attrib_check: 600 });
 
     const moves = g.moves || 1;
-    // gm.multi: the starter sessions are never mid-occupation at this point.
-    if (moves >= g.context.next_attrib_check) {
+    // C ref: attrib.c:607 `if (svm.moves >= next_attrib_check && !gm.multi)`.
+    // The gm.multi gate was dropped as "never mid-occupation"; a hero who is
+    // helpless or running a counted occupation on the check turn makes C skip
+    // the WHOLE block — including the rn1(200,800) reschedule — so the check
+    // re-fires on the next turn.  Running it anyway drew rn2(AVAL)+rn1(200,800)
+    // that C does not, on the first sessions long enough to reach move 600.
+    if (moves >= g.context.next_attrib_check && !(g.multi || 0)) {
         const AVAL = 50;
         const aexe = g.u?.aexe?.a || [];
         const acurr = g.u?.acurr?.a || [];
-        const ATTRMIN = 3, ATTRMAX = 18;
+        // C ref: attrib.h ATTRMIN(i)/ATTRMAX(i) read gu.urace.attr{min,max}[i],
+        // NOT a flat 3/18: an elf caps Con at 16 and an orc caps Int/Wis/Cha at
+        // 16, so those attrs stop being testable one or two points sooner.  The
+        // exercise ceiling is additionally capped at 18 ("can't exceed 18 via
+        // exercise even if actual max is higher" — Str's 118 becomes 18).
+        const amin = race_attrmin(), amax = race_attrmax();
         for (let i = 0; i < 6; i++) {
-            let ax = aexe[i] || 0;
+            const ax = aexe[i] || 0;
             if (!ax) continue;          // Int/Cha and untouched attrs
             const mod_val = ax > 0 ? 1 : -1;
-            const base = acurr[i] ?? 0; // ABASE approximated by current value
-            if ((ax < 0) ? (base <= ATTRMIN) : (base >= ATTRMAX)) {
-                aexe[i] = (Math.abs(ax) >> 1) * mod_val;
+            const halve = () => { aexe[i] = (Math.abs(ax) >> 1) * mod_val; };
+            const base = acurr[i] ?? 0; // ABASE (abon/atemp live elsewhere)
+            const lolim = amin[i] ?? 3;
+            const hilim = Math.min(amax[i] ?? 18, 18);
+            if ((ax < 0) ? (base <= lolim) : (base >= hilim)) {
+                halve();
+                continue;
+            }
+            // C ref: attrib.c:637 — a polymorphed hero can only be tested on
+            // Wisdom; the other accumulators just decay, drawing no rn2(AVAL).
+            if (g.u?.Upolyd && i !== A_WIS) {
+                halve();
                 continue;
             }
             // rn2(AVAL) > (|ax|*2/3 for non-Wis else |ax|) -> skip (no change)
             const thresh = (i !== A_WIS) ? Math.trunc(Math.abs(ax) * 2 / 3) : Math.abs(ax);
             if (rn2(AVAL) > thresh) {
-                aexe[i] = (Math.abs(ax) >> 1) * mod_val;
+                halve();
                 continue;
             }
-            // adjattrib would change the attr; the starter sessions never reach
-            // here (moves < 600), so the rare attrib-change path is left to the
-            // accumulator halving (no further RNG beyond rn2(AVAL) above).
-            aexe[i] = (Math.abs(ax) >> 1) * mod_val;
+            // C ref: attrib.c:657 — `if (adjattrib(i, mod_val, -1)) { AEXE(i) =
+            // ax = 0; You("%s %s.", ...); }`.  The attribute change itself was
+            // omitted (only the accumulator was halved), so a hero who had been
+            // exercising never actually gained the point C gives them — a
+            // permanent status-line divergence for any session past move 600,
+            // and it feeds every later ACURR-keyed roll.  Draws no RNG: the
+            // guards above keep ABASE strictly inside [ATTRMIN, ATTRMAX], so
+            // adjattrib's rn2() underflow arm cannot fire.
+            let changed_ax = ax;
+            if (await exerchk_adjattrib(i, mod_val)) {
+                changed_ax = 0;
+                await pline(`You ${mod_val > 0 ? 'must have been' : "haven't been"}`
+                    + ` ${EXERTEXT[i][mod_val > 0 ? 0 : 1]}.`);
+            }
+            aexe[i] = (Math.abs(changed_ax) >> 1) * mod_val;
         }
         g.context.next_attrib_check += rn1(200, 800);
     }
@@ -1261,6 +1452,16 @@ export async function moveloop_core() {
             await moveloop_turn();
         }
     }
+
+    // C ref: allmain.c moveloop_core():452 — find_ac() runs once per player
+    // input, right after the amulet-wish block and BEFORE bot(), so any AC
+    // change a command or a monster's turn produced (erosion, a corroded suit,
+    // a spe change) is on the status line of the very next captured screen.
+    // It was missing here; individual sites (fountain.js) had to call it by
+    // hand.  RNG-free and idempotent — find_ac() is this port's only writer of
+    // u.uac apart from the seed8000 fastforward stub (which has no worn gear,
+    // so this recomputes the same base 10).
+    find_ac();
 
     // Vision + display
     if (g.vision_full_recalc) {
@@ -1435,6 +1636,16 @@ export async function moveloop_core() {
     // (i.e. after its own nhgetch returns), so a free-action message such as
     // dolook's "You see no objects here." survives onto the captured screen.
     await rhack(0);
+
+    // C ref: allmain.c moveloop_core():538 — `if (u.utotype) deferred_goto();`
+    // fires immediately after rhack() returns.  doread() runs its own copy for
+    // the scroll path (the goto must follow makeknown's exercise draw); this
+    // catches every other scheduler, e.g. a level-teleport trap stepped on
+    // during domove().
+    if (g._lvltport_dest) {
+        const { run_deferred_lvltport } = await import('./do.js');
+        await run_deferred_lvltport();
+    }
 
     // A command that took game time schedules the per-turn work for the
     // next iteration (so the status line / map reflect the elapsed turn

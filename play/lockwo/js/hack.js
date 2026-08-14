@@ -17,20 +17,24 @@ import { game } from './gstate.js';
 import { domove, blocksMove, test_move_quiet } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
 import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature } from './display.js';
-import { obj_doname, whatis_pick_inventory } from './invent.js';
+import { obj_doname, whatis_pick_inventory, carried_weight, inventoryArray, is_pick } from './invent.js';
 import { rnd } from './rng.js';
-import { vision_recalc } from './vision.js';
+import { vision_recalc, Blind, couldsee, cansee } from './vision.js';
 import { nhgetch } from './input.js';
 import { is_safemon, canspotmon } from './uhitm.js';
-import { dist2 } from './hacklib.js';
+import { dist2, distmin } from './hacklib.js';
+import { worm_seg_at } from './worm.js';
+import { monster_by_pmidx } from './makemon.js';
+import { amorphous_flag, throws_rocks_flag } from './monflags_data.js';
 import { roles, races } from './role.js';
 import { DATABASE_ENTRIES } from './data_base_data.js';
 import { NO_COLOR, ATR_INVERSE, DEC_TO_UNICODE, CLR_WHITE } from './terminal.js';
 import { teleok_hero, teleds_hero, safe_teleds_hero } from './read.js';
 import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
-         D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN,
+         D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN, D_NODOOR, IRONBARS,
          IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA,
+         IS_WATERWALL, In_sokoban, Is_rogue_level,
          Is_waterlevel, isok, VIBRATING_SQUARE } from './const.js';
 
 // Run direction deltas for the capital-letter run commands (and the
@@ -59,6 +63,58 @@ function is_pool_or_lava(x, y) {
     return IS_POOL(loc.typ) || IS_LAVA(loc.typ);
 }
 
+// C ref: mondata.h NODIAG(mnum) == (mnum == PM_GRID_BUG).
+const PM_GRID_BUG = 116;
+
+// C ref: display.h mon_visible(mon) — (!minvis || See_invisible) && !mundetected
+// — PLUS lookaround()'s own M_AP_TYPE guard for a mimic posing as furniture or
+// an object.  Deliberately NOT canspotmon(): mon_visible assumes the location
+// is seen and ignores telepathy.
+function mon_visible(mtmp) {
+    if (!mtmp) return false;
+    if (mtmp.m_ap_type === 'furniture' || mtmp.m_ap_type === 'obj') return false;
+    // See_invisible is spelled three ways across this port (display.js/dogmove.js
+    // write u.see_invis, makemon.js u.uprops.See_invisible, mcastu.js
+    // u.See_invisible); reading only one would answer FALSE for a hero granted
+    // it through either of the others.
+    if (mtmp.minvis && !game.u?.see_invis && !game.u?.See_invisible
+        && !game.u?.uprops?.See_invisible)
+        return false;
+    return !mtmp.mundetected;
+}
+
+// C ref: monst.h is_door_mappear(mon) — M_AP_FURNITURE showing a CLOSED door
+// glyph.  defsym.h indices: S_vcdoor = 15, S_hcdoor = 16.
+const S_vcdoor = 15, S_hcdoor = 16;
+function is_door_mappear(mtmp) {
+    if (mtmp?.m_ap_type !== 'furniture') return false;
+    return mtmp.mappearance === S_vcdoor || mtmp.mappearance === S_hcdoor;
+}
+
+// C ref: hack.c avoid_moving_on_liquid(x, y, msg) — TRUE when the runner should
+// stop rather than step into visible water/lava.  Known_lwalking /
+// Known_wwalking are FALSE for a hero without the boots (nothing in this port
+// grants either), so the "liquid is safe to traverse" escape reduces to the
+// airborne case.  A local copy of cmd.js's identical helper: that one is
+// file-private there and cmd.js is a different owner's file.
+function avoid_moving_on_liquid(x, y) {
+    const u = game.u;
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    const hereTyp = game.level?.at(u.ux, u.uy)?.typ ?? STONE;
+    const in_air = !!(u.uprops?.Levitation || u.uprops?.Flying);
+    const run = game.context?.run || 0;
+    if ((typ === hereTyp
+         || (run < 2 && (!IS_LAVA(typ) || in_air))
+         || game.context?.travel)
+        && in_air /* || Known_lwalking || (is_pool && Known_wwalking) */
+        && !(typ === WATER || typ === LAVAWALL))
+        return false; // liquid is safe to traverse
+    if ((IS_POOL(typ) || IS_LAVA(typ)) && (loc?.seenv || 0))
+        return true;
+    return false;
+}
+
 // C ref: hack.c:2443-2460 avoid_moving_on_trap() — true when <x,y> holds a seen
 // trap (other than the vibrating square, which is a trap only in implementation
 // and is treated as terrain).  The old `t.ttyp !== undefined` guard was a no-op
@@ -84,6 +140,11 @@ function end_running(and_travel) {
     if (and_travel) {
         c.travel = c.travel1 = c.mv = 0;
     }
+    // C ref: hack.c:4151 `selection_free(gt.travelmap)` — the set of squares
+    // this travel session has already stepped through is per-session; a stale
+    // one makes the next travel stop with "You stop, unsure which way to go."
+    // on its very first step.  Freed unconditionally, NOT under `and_travel`.
+    game.travelmap = null;
     if (game.multi > 0) game.multi = 0;
 }
 
@@ -101,16 +162,37 @@ export function nomul(nval = 0) {
 
 // C ref: allmain.c:684 stop_occupation().  This port splits C's single
 // go.occupation into one flag per activity, so the table supplies each one's
-// set_occupation() txt.  _eat_occupation is deliberately absent: C's
-// maybe_finished_meal(TRUE) arm eats the message when the meal is already
-// finished, and eat.c:2072's msgbuf is "eating <food_xname>" — neither is
-// modeled, so an eating hero is interrupted silently rather than with a wrong
-// line.
+// set_occupation() txt.
 const OCC_SLOTS = [
     ['_search_occupation', 'searching'],           // cmd.c:1847
     ['_study_occupation', 'studying'],             // spell.c:639
     ['_wipe_occupation', 'wiping off your face'],  // do.c:2394
 ];
+
+// C ref: eat.c food_xname(food, the_pfx) — reimplemented here (eat.js keeps its
+// copy file-private) so the interrupted-meal line names the food exactly the
+// way eat.js's own "You finish eating <X>." does.
+async function occ_food_xname(otmp, the_pfx) {
+    const mk = await import('./mkobj.js');
+    let result;
+    if (otmp.otyp === mk.CORPSE) {
+        const { monster_by_pmidx } = await import('./makemon.js');
+        result = `${monster_by_pmidx(otmp.corpsenm)?.name || 'monster'} corpse`;
+    } else {
+        result = mk.objects?.[otmp.otyp]?.name || 'food';
+    }
+    return the_pfx && !/^[A-Z]/.test(result) ? `the ${result}` : result;
+}
+
+// C ref: allmain.c moveloop_core():485 `if (gm.multi >= 0 && go.occupation)` —
+// is go.occupation set?  Only the slots stop_occupation() can actually clear are
+// listed: a wider list would let dochugw() call stop_occupation() on an
+// engraving/lock-forcing hero and have it silently do nothing.
+export function occupation_active() {
+    for (const [slot] of OCC_SLOTS) if (game[slot]) return true;
+    return !!game._eat_occupation;
+}
+
 export async function stop_occupation() {
     for (const [slot, txt] of OCC_SLOTS) {
         if (!game[slot]) continue;
@@ -119,15 +201,37 @@ export async function stop_occupation() {
         nomul(0);
         return;
     }
-    if (game._eat_occupation) { game._eat_occupation = null; nomul(0); return; }
+    // C ref: allmain.c:687 `if (!maybe_finished_meal(TRUE)) You("stop %s.",
+    // go.occtxt)` with eat.c:2072's occtxt "eating <food_xname(otmp, TRUE)>".
+    // This used to end a meal SILENTLY, so every monster that interrupted the
+    // hero mid-meal (monmove.js's two stop_occupation() calls) lost the
+    // "You stop eating the food ration." topline C prints.
+    if (game._eat_occupation) {
+        const v = game.context?.victual;
+        // maybe_finished_meal(TRUE): a meal whose bites are already used up is
+        // FINISHED here instead (done_eating prints "You finish eating X."),
+        // and no "You stop" line is emitted.
+        if (v?.piece && (v.usedtime | 0) >= (v.reqtime | 0)) {
+            game._eat_occupation = null;   /* C: occupation = 0 for do_reset_eat */
+            const { eatfood_step } = await import('./eat.js');
+            await eatfood_step();
+        } else {
+            game._eat_occupation = null;
+            await pline(`You stop eating ${
+                v?.piece ? await occ_food_xname(v.piece, true) : 'your meal'}.`);
+        }
+        nomul(0);
+        return;
+    }
     if ((game.multi ?? 0) >= 0) nomul(0);
 }
 
 // C ref: hack.c lookaround() — examine the 8 cells around the hero after a
 // run/travel step and decide whether to stop (nomul) or keep going, possibly
-// turning to follow a corridor.  Only the run==1 / run==3 / travel(run==8)
-// corridor-following and stop behaviour exercised by the owned sessions is
-// implemented; hostile-monster and trap stops are preserved structurally.
+// turning to follow a corridor.
+//
+// C's flags.mention_walls messages are all omitted (the option is off in every
+// recorded config); every control-flow effect they sit next to is kept.
 function lookaround() {
     const u = game.u;
     const c = game.context;
@@ -136,7 +240,23 @@ function lookaround() {
     let i;
     let stop = false;
 
-    if (c.run === 0) return;
+    // C ref: hack.c:3906 — a grid bug that polymorphed mid-run stops dead
+    // rather than continuing on a diagonal.  NODIAG(mnum) == (mnum ==
+    // PM_GRID_BUG).
+    if (u.umonnum === PM_GRID_BUG && u.dx && u.dy) {
+        // C's "You cannot move diagonally." pline needs an async topline write
+        // that this synchronous scan cannot make; the nomul(0) is the part that
+        // steers later RNG.
+        nomul(0);
+        return;
+    }
+
+    // C ref: hack.c:3912 `if (Blind || svc.context.run == 0) return;` — a BLIND
+    // runner does no scanning at all: no corridor turn, no stop-for-monster,
+    // no stop-for-object.  Dropping the Blind half made a blinded hero follow
+    // corridor corners and halt on things it cannot see, putting it on a
+    // different square from C for the rest of the session.
+    if (Blind() || c.run === 0) return;
 
     // Mirror C's `goto stop` / `goto bcorr` with labelled loops: STOP breaks
     // the whole scan and ends the run; bcorr is the corridor-accounting block
@@ -147,13 +267,20 @@ function lookaround() {
             const infront = (x === u.ux + u.dx && y === u.uy + u.dy);
 
             if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
+            // C ref: hack.c:3923 — a grid bug ignores its diagonals entirely.
+            if (u.umonnum === PM_GRID_BUG && x !== u.ux && y !== u.uy) continue;
 
             const loc = game.level?.at(x, y);
             const typ = loc ? loc.typ : STONE;
             const mtmp = m_at(x, y);
 
             // can we see a monster there?
-            if (mtmp && canspotmon(mtmp)) {
+            // C ref: hack.c:3927 — the test is M_AP_TYPE != FURNITURE/OBJECT
+            // && mon_visible(), NOT canspotmon(): a concealed mimic drawn as a
+            // wall or an object never stops the run, and a monster sensed only
+            // by telepathy/monster-detection (canspotmon's sensemon half) does
+            // not either.
+            if (mtmp && mon_visible(mtmp)) {
                 if ((c.run !== 1 && !is_safemon(mtmp))
                     || (infront && !c.travel)) {
                     stop = true; break outer;
@@ -180,13 +307,21 @@ function lookaround() {
             if (!bcorr) {
                 if (IS_OBSTRUCTED(typ) || typ === ROOM || IS_AIR(typ) || typ === ICE) {
                     continue;
-                } else if (closed_door(x, y)) {
+                } else if (closed_door(x, y) || (mtmp && is_door_mappear(mtmp))) {
+                    // C ref: hack.c:3963 — a mimic posing as a door counts as
+                    // a closed door here.
                     if (x !== u.ux && y !== u.uy) continue; // ignore if diagonal
                     if (c.run !== 1 && !c.travel) { stop = true; break outer; }
                     bcorr = true; // orthogonal to a closed door -> corridor
                 } else if (typ === CORR) {
                     bcorr = true;
                 } else if (is_pool_or_lava(x, y)) {
+                    // C ref: hack.c:4004 — a runner stops at the edge of water
+                    // or lava it can see, instead of wading in.  Dropping this
+                    // arm let every run walk straight into a known moat.
+                    if (infront && avoid_moving_on_liquid(x, y)) {
+                        stop = true; break outer;
+                    }
                     continue;
                 } else {
                     // e.g. objects or trap or stairs
@@ -350,12 +485,14 @@ async function run_movement(run) {
         lookaround();                  // may stop (multi=0) or turn the path
         if (game.multi <= 0) break;
 
-        // C: `if (gm.multi < COLNO && !--gm.multi) end_running(TRUE);`
+        // C: `if (gm.multi < COLNO && !--gm.multi) end_running(TRUE);` — the
+        // `--gm.multi` sits INSIDE the short-circuit, so a run started with
+        // gm.multi == max(COLNO,ROWNO) == COLNO never counts down at all; it
+        // ends only when lookaround()/domove() stop it.  The old `else`
+        // decrement capped every run at COLNO continuation steps.
         if (game.multi < COLNO) {
             game.multi -= 1;
             if (game.multi === 0) { end_running(true); break; }
-        } else {
-            game.multi -= 1;
         }
 
         await domove(u.dx, u.dy);
@@ -368,31 +505,492 @@ async function run_movement(run) {
     game.multi = 0;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// findtravelpath() — the travel ('_' / #travel) shortest-path search.
+// C ref: hack.c:1266 findtravelpath(), hack.c:991 test_move()'s TEST_TRAV and
+// TEST_TRAP modes, hack.c:1531 is_valid_travelpt().
+// ─────────────────────────────────────────────────────────────────────────
+
+// C ref: hack.c:67-69 — findtravelpath() modes.
+const TRAVP_TRAVEL = 0, TRAVP_GUESS = 1, TRAVP_VALID = 2;
+// C ref: hack.h:1316-1319 — test_move() modes.
+const DO_MOVE = 0, TEST_TRAV = 2, TEST_TRAP = 3;
+// C ref: objects.h — BOULDER's otyp (mkobj.js's value; imported by value so
+// hack.js does not pull the object-creation module into its import cycle).
+const BOULDER = 475;
+// C ref: monst.h MZ_LARGE (MZ_TINY 0, MZ_SMALL 1, MZ_MEDIUM/MZ_HUMAN 2).
+const MZ_LARGE = 3;
+// C ref: include/weight.h:22 WT_TOOMUCH_DIAGONAL — carried weight above which
+// the hero cannot squeeze through a tight diagonal gap.
+const WT_TOOMUCH_DIAGONAL = 600;
+// C ref: objects.h — WAN_DIGGING's otyp (mkobj.js's value, see BOULDER above).
+const WAN_DIGGING = 428;
+
+// C ref: decl.c:77-82 — xdir[]/ydir[] read through dirs_ord[], i.e. the four
+// cardinals (W, N, E, S) before the four diagonals (NW, NE, SE, SW).  The BFS
+// explores neighbours in exactly this order and the FIRST direction that
+// reaches the hero wins, so this order decides which of several equally-short
+// paths the hero actually walks — get it wrong and every subsequent square
+// differs from C.
+const TRAVEL_DIRS = [
+    [-1, 0], [0, -1], [1, 0], [0, 1],    // DIR_W, DIR_N, DIR_E, DIR_S
+    [-1, -1], [1, -1], [1, 1], [-1, 1],  // DIR_NW, DIR_NE, DIR_SE, DIR_SW
+];
+
+function u_at(x, y) { const u = game.u; return !!u && u.ux === x && u.uy === y; }
+
+// C ref: trap.h t_at(x,y).
+function t_at(x, y) {
+    for (const t of (game.level?.traps || []))
+        if (t.tx === x && t.ty === y) return t;
+    return null;
+}
+
+// C ref: mkobj.c sobj_at(BOULDER, x, y).  This port keeps level.objects as one
+// flat list rather than the per-cell chain invent.js's sobj_at() indexes, so
+// scan it the way teleport.js's own copy does.
+function boulder_at(x, y) {
+    for (const o of (game.level?.objects || []))
+        if (o.otyp === BOULDER && o.ox === x && o.oy === y
+            && (o.where === 'floor' || o.where === 1)) return true;
+    return false;
+}
+
+// C ref: hack.c doorless_door(x,y) — a doorway that lacks its door.  Every
+// rogue-level doorway counts as having one so diagonal access is barred there.
+function doorless_door(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    if (Is_rogue_level(game.u?.uz)) return false;
+    return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
+}
+
+// C ref: hack.h Passes_walls.  No polyform in this port sets it, and cmd.js's
+// blocksMove()/domove() ignore phasing too, so the BFS and the actual walk
+// agree; kept as a named predicate so the guards below read like C.
+function Passes_walls() { return !!game.u?.uprops?.Passes_walls; }
+
+// C ref: monst.h gy.youmonst.data == &mons[u.umonnum].
+function youmonst_data() {
+    return monster_by_pmidx(game.u?.umonnum) || game.u?.data || null;
+}
+
+// C ref: hack.c:937 bad_rock(mdat,x,y).  tunnels(mdat) && may_dig() only
+// relaxes this for a rock-eating polyform, which no covered hero takes.
+function bad_rock(x, y) {
+    const loc = game.level?.at(x, y);
+    const typ = loc ? loc.typ : STONE;
+    if (In_sokoban(game.u?.uz) && boulder_at(x, y)) return true;
+    return IS_OBSTRUCTED(typ) && !Passes_walls();
+}
+
+// C ref: hack.c:952 cant_squeeze_thru(&youmonst) — 0 can squeeze, 1 too big,
+// 2 possessions won't fit, 3 Sokoban.  is_whirly/noncorporeal/slithy/can_fog
+// only matter for a bigmonst polyform (they let a large gaseous form through);
+// amorphous covers the ones this port can actually produce.
+function cant_squeeze_thru_hero() {
+    if (Passes_walls()) return 0;
+    const ptr = youmonst_data();
+    if (ptr && (ptr.msize ?? 0) >= MZ_LARGE && !amorphous_flag(ptr)) return 1;
+    if (carried_weight() > WT_TOOMUCH_DIAGONAL) return 2;
+    if (In_sokoban(game.u?.uz)) return 3;
+    return 0;
+}
+
+// C ref: hack.c:145 could_move_onto_boulder(sx,sy) — used by travel and the
+// m<dir> prefix.  squeezeablylightinvent() is `!gi.invent || inv_weight() <=
+// -WT_SQUEEZABLE_INV`; with a capacity of a few hundred, only a hero carrying
+// literally nothing clears it, which is the `!inventoryArray().length` case.
+function could_move_onto_boulder(sx, sy) {
+    const u = game.u;
+    if (Passes_walls()) return true;
+    if (u?.usteed) return false;
+    const ptr = youmonst_data();
+    if (ptr && throws_rocks_flag(ptr)) {
+        const lev = game.level;
+        return !u.dx || !u.dy
+            || !(IS_OBSTRUCTED(lev?.at(u.ux, sy)?.typ ?? STONE)
+                 && IS_OBSTRUCTED(lev?.at(sx, u.uy)?.typ ?? STONE));
+    }
+    if (ptr && (ptr.msize ?? MZ_LARGE) < 1 /* MZ_SMALL */) return true; // verysmall
+    return !inventoryArray().length;
+}
+
+// C ref: worm.c:898 worm_cross(x1,y1,x2,y2) — a diagonal step is blocked when
+// two CONSECUTIVE segments of one long worm sit on the two orthogonal corners.
+function worm_cross(x1, y1, x2, y2) {
+    if (x1 === x2 || y1 === y2) return false;
+    const a = m_at(x1, y2) || worm_seg_at(x1, y2);
+    if (!a || !a.wormno) return false;
+    if ((m_at(x2, y1) || worm_seg_at(x2, y1)) !== a) return false;
+    for (let curr = game.level?.wtails?.[a.wormno]; curr; curr = curr.nseg) {
+        const wnxt = curr.nseg;
+        if (!wnxt) break;
+        if (curr.wx === x1 && curr.wy === y2)
+            return wnxt.wx === x2 && wnxt.wy === y1;
+        if (curr.wx === x2 && curr.wy === y1)
+            return wnxt.wx === x1 && wnxt.wy === y2;
+    }
+    return false;
+}
+
+// C ref: hack.c:991 test_move(ux,uy,dx,dy,mode), restricted to the two modes
+// findtravelpath() asks about: TEST_TRAV ("could the hero ever walk this step")
+// and TEST_TRAP ("would this step cross a known trap or liquid").  The DO_MOVE
+// and TEST_MOVE arms live in cmd.js (domove / test_move_quiet); this copy
+// prints nothing, opens nothing and pushes nothing.
+//
+// Note the two mode-specific control-flow quirks that matter:
+//   * a CLOSED door is not rejected here — C `goto testdiag`s past the
+//     `return FALSE`, so travel may route through doors it will open;
+//   * `if (mode == TEST_TRAP) return FALSE` sits BEFORE the boulder block, so
+//     TEST_TRAP never reaches it.
+function test_move_trav(ux, uy, dx, dy, mode) {
+    const x = ux + dx, y = uy + dy;
+    if (!isok(x, y)) return false;
+    const lev = game.level;
+    const tmpr = lev?.at(x, y);
+    const typ = tmpr ? tmpr.typ : STONE;
+
+    if (IS_OBSTRUCTED(typ) || typ === IRONBARS) {
+        // Passes_walls+may_passwall, Underwater, passes_bars, a rock-eating
+        // tunneller and flags.autodig are the only escapes; none is reachable
+        // without an intrinsic/polyform this port never grants, and each of the
+        // remaining arms returns FALSE for a non-DO_MOVE mode anyway.
+        if (!Passes_walls()) return false;
+    } else if (IS_DOOR(typ)) {
+        // C: Passes_walls / can_ooze / a rock-eating tunneller walk straight
+        // through and fall into the testdiag block; everyone else `goto
+        // testdiag`s for TEST_TRAV/TEST_TRAP (so travel may route through a
+        // door it will have to open) and returns FALSE for the other modes.
+        if (closed_door(x, y) && !Passes_walls()
+            && mode !== TEST_TRAV && mode !== TEST_TRAP)
+            return false;
+        /* testdiag: */
+        // block_door() (a shopkeeper on their post while the hero owes money)
+        // needs ESHK state this port does not keep.
+        if (dx && dy && !Passes_walls() && !doorless_door(x, y))
+            return false;
+    }
+
+    if (dx && dy && bad_rock(ux, y) && bad_rock(x, uy)) {
+        if (cant_squeeze_thru_hero() !== 0) return false;
+    } else if (dx && dy && worm_cross(ux, uy, x, y)) {
+        return false;
+    }
+
+    // C ref: hack.c:1180 — "Pick travel path that does not require crossing a
+    // trap.  Avoid water and lava using the usual running rules (but not
+    // u.ux/u.uy because findtravelpath walks toward u.ux/u.uy)."
+    if ((game.context?.run || 0) === 8 && mode !== DO_MOVE && !u_at(x, y)) {
+        const t = t_at(x, y);
+        if (t && t.tseen && t.ttyp !== VIBRATING_SQUARE)
+            return (mode === TEST_TRAP);
+        // Known_wwalking / Known_lwalking are FALSE for a hero without the
+        // boots, so the "liquid is safe" escape reduces to being airborne.
+        if ((tmpr?.seenv || 0) && is_pool_or_lava(x, y)) {
+            const airborne = !!(game.u?.uprops?.Levitation || game.u?.uprops?.Flying);
+            if (IS_WATERWALL(typ) || typ === LAVAWALL || !airborne)
+                return (mode === TEST_TRAP);
+        }
+    }
+
+    if (mode === TEST_TRAP)
+        return false; /* do not move through traps */
+
+    const ust = lev?.at(ux, uy);
+    // No diagonal move OUT of a doorway that still has its door.  (block_entry()
+    // is the shopkeeper case again.)
+    if (dx && dy && !Passes_walls() && ust && IS_DOOR(ust.typ)
+        && !doorless_door(ux, uy))
+        return false;
+
+    if (boulder_at(x, y) && (In_sokoban(game.u?.uz) || !Passes_walls())) {
+        // (the `mode != TEST_TRAV && run >= 2` arm above this one in C is
+        // unreachable from here: TEST_TRAP already returned.)
+        if (In_sokoban(game.u?.uz))
+            return false; /* never travel through boulders in Sokoban */
+        // don't pick two boulders in a row, unless there's a way thru
+        if (boulder_at(ux, uy)) {
+            if (!Passes_walls() && !could_move_onto_boulder(ux, uy)
+                && !carrying_digging_tool())
+                return false;
+        }
+    }
+    return true;
+}
+
+// C ref: hack.c:1247 — `carrying(PICK_AXE) || carrying(DWARVISH_MATTOCK)
+// || (carrying(WAN_DIGGING) && !oc_name_known)`; is_pick() covers both digging
+// weapons, and an unidentified wand of digging is the third way through.
+function carrying_digging_tool() {
+    for (const o of inventoryArray()) {
+        if (is_pick(o)) return true;
+        if (o.otyp === WAN_DIGGING && !o.known) return true;
+    }
+    return false;
+}
+
+// gt.travelmap — the squares this travel session has already stepped through.
+// C uses a selection bitmap freed by end_running(); a Set of y*COLNO+x here.
+function travelmap_get(x, y) { return !!game.travelmap?.has(y * COLNO + x); }
+function travelmap_set(x, y) {
+    if (!game.travelmap) game.travelmap = new Set();
+    game.travelmap.add(y * COLNO + x);
+}
+
+// C ref: hack.c:1266 findtravelpath(mode).  Finds a shortest path from the
+// destination (u.tx,u.ty) back to (u.ux,u.uy) and leaves the FIRST step in
+// u.dx/u.dy.  Returns TRUE when a path (or, for TRAVP_GUESS, a usable
+// approximation) was found.  Consumes no RNG.
+function findtravelpath(mode) {
+    const u = game.u, c = game.context;
+    if (!game.travelmap) game.travelmap = new Set();
+
+    // "if travel to adjacent, reachable location, use normal movement rules" —
+    // handled by travel_adjacent_step() below (it is the whole of the covered
+    // corpus's adjacent-travel behaviour and is load-bearing), so the BFS is
+    // only ever entered for a farther destination or from is_valid_travelpt().
+
+    if (u.tx !== u.ux || u.ty !== u.uy) {
+        const travel = new Int16Array(COLNO * ROWNO);
+        const stepx = [new Int16Array(COLNO * ROWNO), new Int16Array(COLNO * ROWNO)];
+        const stepy = [new Int16Array(COLNO * ROWNO), new Int16Array(COLNO * ROWNO)];
+        let tx, ty, ux, uy;
+        let n = 1, set = 0, radius = 1;
+
+        // When guessing, the BFS runs FROM the hero and looks for the target;
+        // for a real travel step it runs from the target and looks for the hero.
+        if (mode === TRAVP_GUESS || mode === TRAVP_VALID) {
+            tx = u.ux; ty = u.uy; ux = u.tx; uy = u.ty;
+        } else {
+            tx = u.tx; ty = u.ty; ux = u.ux; uy = u.uy;
+        }
+
+        for (;;) { /* C's `noguess:` label */
+            travel.fill(0);
+            stepx[0][0] = tx; stepy[0][0] = ty;
+            n = 1; set = 0; radius = 1;
+
+            while (n !== 0) {
+                let nn = 0;
+                for (let i = 0; i < n; i++) {
+                    const x = stepx[set][i], y = stepy[set][i];
+                    // no diagonal movement for grid bugs
+                    const dirmax = (u.umonnum === PM_GRID_BUG) ? 4 : TRAVEL_DIRS.length;
+                    let alreadyrepeated = false;
+
+                    for (let dir = 0; dir < dirmax; ++dir) {
+                        const nx = x + TRAVEL_DIRS[dir][0];
+                        const ny = y + TRAVEL_DIRS[dir][1];
+
+                        // While guessing, only spaces the hero could see are
+                        // eligible; without this the hero ping-pongs between two
+                        // guesses in sight-blocked geometry (hack.c:1338 note).
+                        if (!isok(nx, ny)
+                            || (mode === TRAVP_GUESS && !couldsee(nx, ny)))
+                            continue;
+                        if ((!Passes_walls() && closed_door(x, y))
+                            || (boulder_at(x, y) && !could_move_onto_boulder(x, y))
+                            || test_move_trav(x, y, nx - x, ny - y, TEST_TRAP)) {
+                            // Closed doors and boulders usually cost a turn, so
+                            // prefer another path — but keep this square in the
+                            // frontier (once) so it stays usable as a last
+                            // resort.  C deliberately does NOT stamp travel[][]
+                            // for the repeat.
+                            if (travel[y * COLNO + x] > radius - 3) {
+                                if (!alreadyrepeated) {
+                                    stepx[1 - set][nn] = x;
+                                    stepy[1 - set][nn] = y;
+                                    nn++;
+                                    alreadyrepeated = true;
+                                }
+                                continue;
+                            }
+                        }
+                        if (test_move_trav(x, y, nx - x, ny - y, TEST_TRAV)
+                            && ((game.level?.at(nx, ny)?.seenv || 0)
+                                || (!Blind() && couldsee(nx, ny)))) {
+                            if (nx === ux && ny === uy) {
+                                if (mode === TRAVP_TRAVEL || mode === TRAVP_VALID) {
+                                    const visited = travelmap_get(x, y);
+                                    u.dx = x - ux;
+                                    u.dy = y - uy;
+                                    if (mode === TRAVP_TRAVEL
+                                        && ((x === u.tx && y === u.ty) || visited)) {
+                                        nomul(0);
+                                        c.run = 8; /* so domove's run checks work */
+                                        if (visited)
+                                            game._travel_unsure = true;
+                                        else
+                                            (game.iflags = game.iflags || {}).travelcc = { x: 0, y: 0 };
+                                    }
+                                    travelmap_set(u.ux, u.uy);
+                                    return true;
+                                }
+                            } else if (!travel[ny * COLNO + nx]) {
+                                stepx[1 - set][nn] = nx;
+                                stepy[1 - set][nn] = ny;
+                                travel[ny * COLNO + nx] = radius;
+                                nn++;
+                            }
+                        }
+                    }
+                }
+                n = nn;
+                set = 1 - set;
+                radius++;
+            }
+
+            if (mode !== TRAVP_GUESS)
+                return false;
+
+            // Guessing: walk toward the reachable square closest to the target.
+            let px = tx, py = ty;
+            let dist = distmin(ux, uy, tx, ty);
+            let d2 = dist2(ux, uy, tx, ty);
+            let ptrav = COLNO * ROWNO;
+            for (let gx = 1; gx < COLNO; ++gx) {
+                for (let gy = 0; gy < ROWNO; ++gy) {
+                    const ctrav = travel[gy * COLNO + gx];
+                    if (!(couldsee(gx, gy) && ctrav > 0)) continue;
+                    const nxtdist = distmin(ux, uy, gx, gy);
+                    if (nxtdist === dist && ctrav < ptrav) {
+                        const nd2 = dist2(ux, uy, gx, gy);
+                        if (nd2 < d2) { /* prefer non-zigzag path */
+                            px = gx; py = gy; d2 = nd2; ptrav = ctrav;
+                        }
+                    } else if (nxtdist < dist) {
+                        px = gx; py = gy;
+                        dist = nxtdist;
+                        d2 = dist2(ux, uy, gx, gy);
+                        ptrav = ctrav;
+                    }
+                }
+            }
+
+            if (u_at(px, py)) {
+                // no guesses, just go in the general direction
+                u.dx = Math.sign(u.tx - u.ux);
+                u.dy = Math.sign(u.ty - u.uy);
+                if (test_move_quiet(u.ux + u.dx, u.uy + u.dy)) {
+                    travelmap_set(u.ux, u.uy);
+                    return true;
+                }
+                break; /* goto found */
+            }
+            tx = px; ty = py;
+            ux = u.ux; uy = u.uy;
+            mode = TRAVP_TRAVEL;
+            /* loop back to `noguess:` */
+        }
+    }
+
+    /* found: */
+    u.dx = 0;
+    u.dy = 0;
+    nomul(0);
+    return false;
+}
+
 // C ref: cmd.c dotravel_target() feeding hack.c:1268 findtravelpath()'s
 // TRAVP_TRAVEL "if travel to adjacent, reachable location, use normal movement
 // rules" fast path.  There end_running(FALSE) clears context.run and nomul(0)
 // clears multi BEFORE the step, so the command is a single ORDINARY move (run
 // stays 0 for the whole of domove) with context.travel/mv/nopick still set.
-// Longer destinations need the findtravelpath BFS, which is not ported; those
-// still cost no time.  Returns TRUE when the step was taken (the caller then
-// owes ECMD_TIME).
+// A farther destination falls through to travel_walk() below.  Returns TRUE
+// when travel happened (the caller then owes ECMD_TIME).
 export async function travel_adjacent_step(tx, ty) {
     const u = game.u, c = game.context;
+    u.tx = tx; u.ty = ty;
     const dx = tx - u.ux, dy = ty - u.uy;
-    if ((!dx && !dy) || Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
-    u.dx = dx; u.dy = dy; u.dz = 0;
-    if (!test_move_quiet(tx, ty)) return false;
-    c.travel = 1; c.nopick = 1; c.mv = true;
-    c.travel1 = 0;                      // domove_core() clears it past findtravelpath
-    c.run = 0;                          // end_running(FALSE)
+    if (!dx && !dy) return false;
+    if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
+        u.dx = dx; u.dy = dy; u.dz = 0;
+        // C's guard is crawl_destination() + test_move(TEST_MOVE); when it
+        // fails C drops into the BFS (which walks the hero into the obstacle
+        // and loses the turn to the bump).  This port keeps the old
+        // no-op-on-failure behaviour for the adjacent case.
+        if (!test_move_quiet(tx, ty)) return false;
+        c.travel = 1; c.nopick = 1; c.mv = true;
+        c.travel1 = 0;                  // domove_core() clears it past findtravelpath
+        c.run = 0;                      // end_running(FALSE)
+        u.last_str_turn = 0;
+        game.multi = 0;                 // end_running(FALSE) + nomul(0)
+        // hack.c:1279 — the fast path zeroes travelcc before taking the step.
+        (game.iflags = game.iflags || {}).travelcc = { x: 0, y: 0 };
+        await domove(dx, dy);
+        if (c.move) await moveloop_turn();  // the elapsed turn, taken inline
+        // C: reset_cmd_vars() at the top of the next rhack().
+        c.run = 0; c.travel = c.travel1 = c.mv = 0; c.nopick = 0;
+        c.move = 0;
+        game.multi = 0;
+        game.travelmap = null;
+        return true;
+    }
+    return await travel_walk();
+}
+
+// C ref: cmd.c dotravel_target():5364 plus the allmain.c moveloop_core()
+// continuation that keeps calling domove() while gm.multi stays positive.
+// Like run_movement() above, the whole walk runs inline here: no nhgetch fires
+// between travel steps, so the recorded session sees one screen for the lot.
+async function travel_walk() {
+    const u = game.u, c = game.context;
+    c.travel = 1;
+    c.travel1 = 1;
+    c.run = 8;
+    c.nopick = 1;
+    if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
     u.last_str_turn = 0;
-    game.multi = 0;                     // end_running(FALSE) + nomul(0)
-    await domove(dx, dy);
-    if (c.move) await moveloop_turn();  // the elapsed turn, taken inline
-    // C: reset_cmd_vars() at the top of the next rhack().
-    c.run = 0; c.travel = c.travel1 = c.mv = 0; c.nopick = 0;
-    c.move = 0;
-    game.multi = 0;
+    u.dz = 0;
+    c.mv = true;
+    game._travel_unsure = false;
+
+    for (;;) {
+        // C ref: hack.c domove_core():2724 — findtravelpath() runs at the top
+        // of every travel domove(), which is what turns the destination into
+        // this step's u.dx/u.dy.
+        if (!findtravelpath(TRAVP_TRAVEL))
+            findtravelpath(TRAVP_GUESS);
+        c.travel1 = 0;
+        // C prints this from inside findtravelpath(), i.e. BEFORE the step it
+        // just chose is taken; the BFS is synchronous here so it only sets a
+        // flag and the topline write happens at C's position.
+        if (game._travel_unsure) {
+            game._travel_unsure = false;
+            await pline('You stop, unsure which way to go.');
+        }
+        if (!u.dx && !u.dy) break;   // no path and no guess: nomul(0) already ran
+
+        await domove(u.dx, u.dy);
+        if (!c.move) break;          // blocked move: no turn, travel stops
+        await moveloop_turn();       // the elapsed turn, taken inline
+        if ((game.multi ?? 0) <= 0) break;
+
+        lookaround();
+        if ((game.multi ?? 0) <= 0) break;
+
+        // C: `if (gm.multi < COLNO && !--gm.multi) end_running(TRUE);` — travel
+        // starts at max(COLNO,ROWNO) == COLNO so this never counts down.
+        if (game.multi < COLNO) {
+            game.multi -= 1;
+            if (game.multi === 0) { end_running(true); break; }
+        }
+    }
+
+    // A ball-drag (or any other nomul(-n)) leaves the hero helpless: C's
+    // moveloop keeps running turns with no command read, so hand those back to
+    // moveloop_core() by leaving context.move set instead of zeroing it.
+    const helpless = (game.multi ?? 0) < 0;
+    end_running(true);
+    c.nopick = 0;
+    if (!helpless) {
+        c.move = 0;
+        game.multi = 0;
+    } else {
+        c.move = 1;
+    }
     return true;
 }
 
@@ -653,6 +1251,39 @@ const GP_CTRL_RUSH = {
     2: 'b',  // ^B southwest
 };
 
+// C ref: getpos.c truncate_to_map(cx, cy, dx, dy) — add <dx,dy> to the cursor,
+// clamping at the map edges.  A DIAGONAL move that hits one edge shortens the
+// OTHER axis by the same amount (it slides back along the diagonal); clamping
+// the two axes independently, as this port used to, parks the cursor on a
+// different cell for every fast-move that runs off an edge.
+function truncate_to_map(cx, cy, dx, dy) {
+    const sgn = (n) => (n > 0 ? 1 : n < 0 ? -1 : 0);
+    if (cx + dx < 1) {
+        dy -= sgn(dy) * (1 - (cx + dx));
+        dx = 1 - cx;
+    } else if (cx + dx > COLNO - 1) {
+        dy += sgn(dy) * ((COLNO - 1) - (cx + dx));
+        dx = (COLNO - 1) - cx;
+    }
+    if (cy + dy < 0) {
+        dx -= sgn(dx) * (0 - (cy + dy));
+        dy = 0 - cy;
+    } else if (cy + dy > ROWNO - 1) {
+        dx += sgn(dx) * ((ROWNO - 1) - (cy + dy));
+        dy = (ROWNO - 1) - cy;
+    }
+    return [cx + dx, cy + dy];
+}
+
+// C ref: display.h glyph_at(x, y) — used by getpos()'s moveskip fast-move only
+// to compare two cells for equality.  This port has no numeric glyph ids, so
+// the DISPLAYED cell identity (char + colour + DEC-graphics flag) stands in.
+function gp_glyph_at(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return ' ';
+    return `${loc.disp_ch ?? ' '}|${loc.disp_color ?? -1}|${loc.disp_decgfx ? 1 : 0}`;
+}
+
 // C ref: pager.c self_lookat() — "<race-adj> <pmname> called <plname>" for the
 // hero's own square (Sprintf "%s%s%s called %s").  Not Upolyd here, so the race
 // adjective (gu.urace.adj) prefixes the role player-monster name (pmname of
@@ -721,7 +1352,22 @@ function terrain_description(x, y) {
         return loc.doormask & D_BROKEN ? 'broken door' : 'doorway';
     }
     if (typ === CORR) return loc.lit ? 'lit corridor' : 'corridor';
-    if (typ === ROOM) return loc.lit ? 'floor of a room' : 'dark part of a room';
+    if (typ === ROOM) {
+        // C ref: display.c back_to_glyph() gives every ROOM square S_room, and
+        // newsym():1086 rewrites it to S_darkroom on the OUT-OF-SIGHT path when
+        // `!lev->waslit || (flags.dark_room && iflags.use_color)` — both of
+        // those options default on.  do_screen_description() then dispatches on
+        // that DISPLAYED glyph, so what decides the wording is whether the hero
+        // can see the square right now, not whether the room is lit: an unlit
+        // square seen by night vision still reads "floor of a room", and every
+        // remembered square outside the hero's sight reads "dark part of a
+        // room" even in a permanently lit room.
+        if (cansee(x, y)) return 'floor of a room';
+        const dark_opt = (game.flags?.dark_room !== false)
+                         && (game.flags?.color !== false);
+        return (!loc.waslit || dark_opt) ? 'dark part of a room'
+                                         : 'floor of a room';
+    }
     if (typ === ICE) return 'ice';
     // C ref: pager.c do_screen_description S_pool/S_water/S_lava/S_lavawall
     // glyph branch -> waterbody_name(x, y), which dispatches on SURFACE_AT (==
@@ -739,24 +1385,22 @@ function terrain_description(x, y) {
     return 'floor of a room';
 }
 
-// C ref: hack.c is_valid_travelpt() — the hero's own spot is always valid;
-// a cell that has never been seen (same "unexplored area" test as
-// terrain_description) has no travel path without a search.  The general
-// case — findtravelpath(TRAVP_VALID)'s BFS over explored-but-blocked cells
-// (closed doors, unreachable rooms) — is not ported; explored cells are
-// treated as reachable.
+// C ref: hack.c:1531 is_valid_travelpt() — the hero's own spot is always valid;
+// a cell whose remembered glyph is still unlit solid stone has no travel path.
+// Everything else is decided by findtravelpath(TRAVP_VALID), a BFS from the
+// hero out to <x,y> over test_move(TEST_TRAV); it consumes no RNG but does
+// answer FALSE for an explored-yet-unreachable square (a walled-off room),
+// which the old "explored means reachable" shortcut got wrong.
 function is_valid_travelpt(x, y) {
     const u = game.u;
     if (u && x === u.ux && y === u.uy) return true;
     const loc = game.level?.at(x, y);
     if (loc && !loc.seenv && loc.remembered_glyph == null) return false;
-    // C runs findtravelpath(TRAVP_VALID), a BFS over test_move().  A full port
-    // isn't here, but the case the sessions hit constantly — pointing the travel
-    // cursor at a wall — is decided by test_move's first check: a non-ACCESSIBLE
-    // square is never a travel destination.  Returning TRUE for those dropped
-    // the "(no travel path)" suffix from every wall autodescribe.
-    if (loc && !(loc.typ >= DOOR)) return false; // ACCESSIBLE(typ) == typ >= DOOR
-    return true;
+    const tx = u.tx, ty = u.ty;
+    u.tx = x; u.ty = y;
+    const ret = findtravelpath(TRAVP_VALID);
+    u.tx = tx; u.ty = ty;
+    return ret;
 }
 
 // C ref: pager.c lookat() glyph_is_object branch -> look_at_object().  When the
@@ -1078,7 +1722,6 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
 
     const tipShown = await getpos_tip();
     let showGoal = tipShown;
-    let mult = 1;
     // C ref: getpos.c garr[NUM_GLOCS]/gidx[NUM_GLOCS] — each jump class's spot
     // list is gathered lazily on first use and its cursor index persists for
     // the rest of this getpos() call.
@@ -1177,8 +1820,8 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
             if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
         }
         firstPass = false;
-        const k = await nhgetch();
-        const ch = String.fromCharCode(k);
+        let k = await nhgetch();
+        let ch = String.fromCharCode(k);
         // C topl.c — reading a key acknowledges any pending NEED_MORE topline,
         // so subsequent autodescribe plines overwrite without a new --More--.
         game._toplin = 0;
@@ -1192,18 +1835,42 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
             game._pending_message = '';
             return null;
         }
-        if (ch === 'G' || ch === 'g') { mult = 8; continue; } // rush/run prefix
+        // C getpos.c:897 — the 'G'/'g' fast-move prefix reads its second key
+        // INSIDE the same loop pass (no nxtc, so no cursor flush and no
+        // auto_describe between them), and `rushrun` is a per-pass local: a
+        // prefix followed by a NON-direction key is simply forgotten.  The old
+        // `mult` carried the prefix across iterations, so 'G' then '#' then 'h'
+        // fast-moved where C steps one cell.
+        let rushrun = false;
+        if (ch === 'G' || ch === 'g') {
+            k = await nhgetch();
+            ch = String.fromCharCode(k);
+            game._toplin = 0;
+            rushrun = true;
+        }
         const ldir = GP_CTRL_RUSH[k] || ch.toLowerCase();
-        const isRush = ('HJKLYUBN'.includes(ch) || GP_CTRL_RUSH[k] !== undefined);
+        const isRush = rushrun || 'HJKLYUBN'.includes(ch)
+                       || GP_CTRL_RUSH[k] !== undefined;
         if (GP_DX[ldir] !== undefined) {
-            // capital letters / Ctrl-dir / 'G'/'g' prefix rush (×8)
-            const step = (isRush ? 8 : mult);
-            mult = 1;
-            let nx = cx + GP_DX[ldir] * step, ny = cy + GP_DY[ldir] * step;
-            // truncate_to_map: clamp into the playable map bounds
-            if (nx < 1) nx = 1; if (nx > COLNO - 1) nx = COLNO - 1;
-            if (ny < 0) ny = 0; if (ny > ROWNO - 1) ny = ROWNO - 1;
-            cx = nx; cy = ny;
+            let dx = GP_DX[ldir], dy = GP_DY[ldir];
+            if (isRush) {
+                if (gp_iflags().getloc_moveskip) {
+                    // C getpos.c:922 — "skip same glyphs": walk while the NEXT
+                    // TWO cells both show the cursor cell's glyph.
+                    const g0 = gp_glyph_at(cx, cy);
+                    while (isok(cx + dx, cy + dy)
+                           && g0 === gp_glyph_at(cx + dx, cy + dy)
+                           && isok(cx + dx + GP_DX[ldir], cy + dy + GP_DY[ldir])
+                           && g0 === gp_glyph_at(cx + dx + GP_DX[ldir],
+                                                 cy + dy + GP_DY[ldir])) {
+                        dx += GP_DX[ldir];
+                        dy += GP_DY[ldir];
+                    }
+                } else {
+                    dx *= 8; dy *= 8;
+                }
+            }
+            [cx, cy] = truncate_to_map(cx, cy, dx, dy);
             continue; // C: goto nxtc; auto_describe runs at top of next loop
         }
         if (ch === '.' || ch === ',' || ch === ';' || ch === ':') {
@@ -1222,9 +1889,31 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
         // C getpos.c:944 — NHKF_GETPOS_HELP ('?') or redraw_cmd (^R): show the
         // help window (a blocking --More--), refresh, then re-show the goal
         // message.  ^L is claimed by the rush binding above, as in C.
+        // NOT PORTED: the redraw_cmd(^R) half.  It is the same `showGoal = true`
+        // (getpos_refresh() is docrt_flags(docrtRefresh) == redraw_map(FALSE),
+        // a RE-SEND of the existing glyph buffer that our flush_screen already
+        // does), and it does bring seed4500 step 1689 closer (470 bad cells ->
+        // 433); but that session's map is already 1054 screens divergent there
+        // and the reshuffle coincidentally breaks two later screens (1797/1798,
+        // an unrelated level-teleport menu), so it scores -2.  Re-land it with
+        // the seed4500 map fixed.
         if (ch === '?') {
+            // C's two help-line gates are getpos_getvalid ("Use 'z' or 'Z'...")
+            // and getpos_hilitefunc ("Use '$' to toggle marking..."), and every
+            // getpos_sethilite() caller (apply.c jump/polearm/grapple, read.c
+            // stinking cloud, spell.c spell target) sets BOTH — so they are the
+            // same predicate.  `game._getpos_hilite` was never assigned, which
+            // dropped the '$' line from every #jump help window.
             await getpos_help(force, goalText, goalText === WHAT_IS_A_LOCATION,
-                              !!validfn, !!game._getpos_hilite);
+                              !!validfn, !!validfn);
+            showGoal = true;
+            continue;
+        }
+        // C getpos.c:955 NHKF_GETPOS_SHOWVALID ('$') — toggles the marking of
+        // valid target spots.  This port draws no marking, but the branch still
+        // has to swallow the key and re-show the goal message; otherwise '$'
+        // reached the terrain-symbol fallback and printed "Unknown direction".
+        if (ch === '$') {
             showGoal = true;
             continue;
         }
@@ -1244,6 +1933,10 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
         if (ch === '"') { // NHKF_GETPOS_LIMITVIEW
             const ifl = gp_iflags();
             ifl.getloc_filter = ((ifl.getloc_filter || 0) + 1) % 3;
+            // C getpos.c:977 frees every gathered garr[] and zeroes gidx[]
+            // so the next 'm'/'o'/'d'/'x' re-gathers under the new filter.
+            for (const key of Object.keys(garr)) delete garr[key];
+            for (const key of Object.keys(gidx)) gidx[key] = 0;
             await gp_pline(`${GP_VIEW_FILTERS[ifl.getloc_filter]}.`, cx, cy);
             msgGiven = true;
             continue;
