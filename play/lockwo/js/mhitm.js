@@ -46,6 +46,15 @@ import { xname } from './invent.js';
 import { MATTK } from './monattk_data.js';
 import { name_to_pmidx, monster_by_pmidx, is_home_elemental } from './makemon.js';
 import { t_at } from './mkroom.js';
+import { mhitm_adtyping } from './mhitm_ad.js';
+
+// C ref: mhitm.c:358 gv.vis — latched ONCE per mattackm() call, before the
+// attack loop.  Several mhitm_ad_* handlers rloc() a combatant and then still
+// read it, so recomputing live would test the post-teleport position.
+let gv_vis = false;
+// C ref: mhitm.c:372 gs.skipdrin — a mind flayer that finds a headless target
+// skips its remaining AT_TENT/AD_DRIN attacks this move.
+let gs_skipdrin = false;
 
 // ── monster-combat message rendering ─────────────────────────────────────────
 // C ref: mhitm.c hitmm()/missmm() + mon.c monkilled().  These emit the "The X
@@ -211,7 +220,8 @@ const AT_NONE = 0, AT_CLAW = 1, AT_BITE = 2, AT_KICK = 3, AT_BUTT = 4,
 const AD_PHYS = 0, AD_FIRE = 2, AD_COLD = 3, AD_ELEC = 6, AD_ACID = 8,
       AD_PLYS = 14, AD_STUN = 12, AD_DGST = 26, AD_STCK = 19, AD_WRAP = 28,
       AD_SITM = 21, AD_SEDU = 22, AD_ENCH = 41, AD_SSEX = 35,
-      AD_DISE = 33, AD_PEST = 38, AD_FAMN = 39, AD_POLY = 43;
+      AD_DISE = 33, AD_PEST = 38, AD_FAMN = 39, AD_POLY = 43,
+      AD_DRIN = 32;                     // monattk.h:74 (NOT 27 = AD_HEAL)
 
 // C ref: monst.h resists_*(mon) — the species mresists bits.  mondata.js's
 // copies read mon.data.mresists directly, which is undefined on the pet's
@@ -459,106 +469,164 @@ function mhitm_knockback(magr, mdef, mattk, weaponUsed) {
     return false;
 }
 
+// ── the ops bundle js/mhitm_ad.js runs its handlers against ─────────────────
+// C's mhitm_ad_* family is ONE function per damage type serving all three
+// combat directions; this port keeps the name rendering, visibility rules and
+// kill tail on the caller so mhitm_ad.js has no import cycle back here.
+// `vis` is C's gv.vis, LATCHED in mattackm (mhitm.c:358) — several handlers
+// rloc() their combatant and then still consult the pre-teleport value.
+function mm_ops() {
+    return {
+        vis: gv_vis,
+        permonst,
+        Monnam,
+        mon_nam: the_monnam,          /* x_monnam(ARTICLE_THE) */
+        Monnam_vis: Monnam_mm,        /* Some_Monnam(): "it" when unspottable */
+        mon_nam_vis: mon_nam_mm,      /* some_mon_nam() */
+        canseemon: mm_can_see_mon,
+        canspotmon: mm_can_see_mon,
+        emit: emitMMmsg,
+        MON_WEP: MON_WEP_MM,
+        monLev,
+        mattk_list,
+        grow_up,
+        monkilled: monkilled_mm,
+        mondied: killMonster,
+        monstone: monstone_mm,
+        set_skipdrin: () => { gs_skipdrin = true; },
+        // hero-defender only; mhitm.js never dispatches with mdef == youmonst.
+        hitmsg: async () => {},
+    };
+}
+
 // ── mhitm.c mdamagem ─────────────────────────────────────────────────────────
 // Applies one successful melee hit's damage.  Returns the M_ATTK_* result.
 async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
-    let damage = d(mattk.damn | 0, mattk.damd | 0);   // mhitm.c:1025
-    let hitflags = M_ATTK_MISS;
+    // C ref: mhitm.c:1025 — the mhm struct every mhitm_ad_* handler mutates.
+    const mhm = {
+        damage: d(mattk.damn | 0, mattk.damd | 0),
+        hitflags: M_ATTK_MISS,
+        permdmg: 0,
+        specialdmg: 0,
+        dieroll,
+        done: false,
+    };
 
-    // mhitm_adtyping(): dispatch on adtyp.  Ported: AD_PHYS (uhitm.c:3981
-    // mhitm_ad_phys, mhitm arm) and the nymph's theft pair.  Every other adtyp
-    // falls through with the base damage — see the header for the list.
-    if (mattk.adtyp === AD_PHYS) {
-        let mwep2 = MON_WEP_MM(magr);
-        // non-Null mwep implies AT_WEAP || AT_CLAW
-        if (mattk.aatyp !== AT_WEAP && mattk.aatyp !== AT_CLAW) mwep2 = null;
-        // shade_miss(): a shade shrugs off a non-silver/non-blessed hit; not
-        // modelled (no shade reaches mon-vs-mon melee here).
-        if (mattk.aatyp === AT_KICK && thick_skinned(permonst(mdef))) {
-            damage = 0;
-        } else if (mwep2) {
-            // The wielded weapon's own damage dice.  This was skipped
-            // entirely, so an armed monster (orc with a crude dagger, gnome
-            // with an aklys) dealt only its bare 1dN and never rolled
-            // dmgval()'s rnd(oc_wsdam)/bonus dice.
-            damage += dmgval(mwep2, { data: permonst(mdef) });
-            // gauntlets of power rn1(4,3), artifact_hit(), rustm() and the
-            // poisoned-weapon rn2(4) are not modelled.
-            if (damage < 1) damage = 1;
+    // C ref: mhitm.c:1032 — an aggressor that bites a cockatrice (or digests
+    // Medusa) without the right protector turns to stone before its own
+    // damage lands.  attk_protection() names the slot that would save it.
+    if ((touch_petrifies_mm(permonst(mdef))
+         || (mattk.adtyp === AD_DGST && permonst(mdef)?.name === 'Medusa'))
+        && !resists_ston_mm(magr)) {
+        const protector = attk_protection_mm(mattk.aatyp);
+        let wornitems = magr.misc_worn_check | 0;
+        if (mwep) wornitems |= W_ARMG;          /* wielded weapon == gloves */
+        if (protector === 0
+            || (protector !== -1 && (wornitems & protector) !== protector)) {
+            if (poly_when_stoned_mm(permonst(magr)))
+                return M_ATTK_HIT;              /* mon_to_stone(): no damage */
+            if (gv_vis && mm_can_see_mon(magr))
+                await emitMMmsg(`${Monnam(magr)} turns to stone!`);
+            await monstone_mm(magr);
+            return M_ATTK_AGR_DIED;
         }
-        // (the purple-worm-vs-shrieker damage cap is the remaining arm)
-    } else if (mattk.adtyp === AD_SITM || mattk.adtyp === AD_SEDU
-        || mattk.adtyp === AD_SSEX) {
-        // C ref: uhitm.c mhitm_ad_sedu() mhitm arm — steal the first minvent
-        // item (non-cursed if the thief is tame), then a nymph teleports away.
-        // Consumes no RNG itself; rloc() draws its own destination pairs.
-        // SCOPE: possibly_unwield()/mselftouch()/grow_up() after the theft are
-        // not replicated (no covered defender wields or is harmed by its own
-        // stolen gear).
-        if (!magr.mcan) {
-            const obj = (mdef.minvent || []).find(
-                (o) => !magr.mtame || !o.cursed);
-            if (obj) {
-                const { doname_invent } = await import('./invent.js');
-                // C's gv.vis is latched once in mattackm (mhitm.c:358) and is
-                // NOT recomputed after the nymph's rloc() — reading it live
-                // would test the post-teleport position.
-                const vis = mm_visible(magr, mdef);
-                const couldspot = mm_can_see_mon(magr);
-                const buf = Monnam(magr);
-                const mdefnam = the_monnam(mdef); /* x_monnam(ARTICLE_THE) */
-                const onam = doname_invent(obj);
-                mdef.minvent.splice(mdef.minvent.indexOf(obj), 1);
-                (magr.minvent = magr.minvent || []).push(obj);
-                if (vis && mm_can_see_mon(mdef))
-                    await emitMMmsg(`${buf} steals ${onam} from ${mdefnam}!`);
-                mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
-                if (permonst(magr)?.mcls === S_NYMPH_MCLS) {
-                    const { rloc, RLOC_NOMSG } = await import('./teleport.js');
-                    await rloc(magr, RLOC_NOMSG);
-                    if (vis && couldspot && !mm_can_see_mon(magr))
-                        await emitMMmsg(`${buf} suddenly disappears!`);
-                    hitflags = M_ATTK_AGR_DONE;
-                }
-            }
-        }
-        damage = 0;
     }
+
+    await mhitm_adtyping(magr, mattk, mdef, mhm, mm_ops());
 
     // mhitm_knockback() — rolls rn2(3) then rn2(6); the gate chain always
     // declines here (the hurtle itself isn't modelled), so it never
     // short-circuits mdamagem.
     mhitm_knockback(magr, mdef, mattk, !!mwep);
 
+    if (mhm.done) return mhm.hitflags;          // mhitm.c:1069
+
+    const damage = mhm.damage;
+    let hitflags = mhm.hitflags;
     if (!damage) return hitflags;
 
     mdef.mhp -= damage;
     if (mdef.mhp < 1) {
-        // C ref: mhitm.c mdamagem() -> monkilled(mdef, "", AD_PHYS).  monkilled
-        // emits "<Monnam(mdef)> is destroyed/killed!" when the defender's square
-        // is visible (cansee), BEFORE the corpse/detach bookkeeping.  Paging it
-        // here (while the defender is still on the map) reproduces C's frame
-        // where the previous combat line's --More-- shows the doomed defender
-        // still drawn; killMonster() then removes it for the final frame.
-        // C ref: mon.c monkilled(mdef, "", adtyp) — the death line prints when
-        // the square is visible; when it ISN'T and the victim was tame, C
-        // prints "You have a sad feeling for a moment." AFTER mondied()
-        // instead.  That arm was missing entirely, so a pet killed out of
-        // sight died silently.
-        let be_sad = false;
-        if (cansee(mdef.mx, mdef.my))
-            await emitMMmsg(`${Monnam(mdef)} is ${nonliving(mdef) ? 'destroyed' : 'killed'}!`);
-        else
-            be_sad = !!mdef.mtame;
-        // monster killed (monkilled -> mondied -> corpse_chance, then grow_up).
-        await killMonster(mdef);
-        if (be_sad) await emitMMmsg('You have a sad feeling for a moment.');
+        await monkilled_mm(mdef, mattk.adtyp);
         if (hitflags === M_ATTK_AGR_DIED)
             return (M_ATTK_DEF_DIED | M_ATTK_AGR_DIED);
+        // AD_DGST's post-kill arm (newcham / wraith grow_up / nurse healmon /
+        // mon_givit) is skipped: mon_givit draws RNG this port can't yet place.
         const grew = grow_up(magr, mdef);
         return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
     }
     return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+}
+
+// C ref: mon.c monkilled(mdef, "", adtyp) — the death line prints when the
+// square is visible, BEFORE the corpse/detach bookkeeping.  Paging it here
+// (while the defender is still on the map) reproduces C's frame where the
+// previous combat line's --More-- shows the doomed defender still drawn;
+// killMonster() then removes it for the final frame.  When the square ISN'T
+// visible and the victim was tame, C prints "You have a sad feeling for a
+// moment." AFTER mondied() instead.
+async function monkilled_mm(mdef, _adtyp) {
+    let be_sad = false;
+    if (cansee(mdef.mx, mdef.my))
+        await emitMMmsg(`${Monnam(mdef)} is ${nonliving(mdef) ? 'destroyed' : 'killed'}!`);
+    else
+        be_sad = !!mdef.mtame;
+    await killMonster(mdef);
+    if (be_sad) await emitMMmsg('You have a sad feeling for a moment.');
+}
+
+// C ref: mon.c monstone(mdef) — the victim becomes a STATUE.  Unlike
+// mondied() this does NOT run corpse_chance(), so it must not draw its rn2.
+async function monstone_mm(mdef) {
+    const mx = mdef.mx, my = mdef.my;
+    const loc0 = game.level?.at(mx, my);
+    if (loc0?.invisMon) unmap_object(mx, my);
+    const list = game.level?.monsters;
+    if (list) {
+        mvitals_died(mdef);
+        const idx = list.indexOf(mdef);
+        if (idx >= 0) list.splice(idx, 1);
+    }
+    mdef.mhp = 0;
+    // mkcorpstat(STATUE, ...) draws no RNG; the statue object itself is not
+    // modelled, so the square just reverts to its remembered contents.
+    { const { relobj } = await import('./uhitm.js'); relobj(mdef, mx, my); }
+    if (mx > 0 && my > 0) newsym(mx, my);
+}
+
+// C ref: mondata.h:200 touch_petrifies(ptr) — PM_COCKATRICE || PM_CHICKATRICE.
+// There is NO M1_* flag for this in 3.7; Medusa is flesh_petrifies() only and
+// reaches mdamagem's guard through the separate AD_DGST arm.
+function touch_petrifies_mm(ptr) {
+    return ptr?.name === 'cockatrice' || ptr?.name === 'chickatrice';
+}
+// C ref: mondata.c resists_ston(mon) — MR_STONE in mresists.
+const MR_STONE = 0x80;
+function resists_ston_mm(mon) {
+    return ((permonst(mon)?.mresists ?? 0) & MR_STONE) !== 0;
+}
+// C ref: mondata.h poly_when_stoned(ptr) — flesh/clay/... golems become stone.
+function poly_when_stoned_mm(ptr) {
+    return ptr?.mcls === S_GOLEM && ptr?.name !== 'stone golem';
+}
+// C ref: mhitm.c:1475 attk_protection(aatyp) — the worn slot that blocks
+// contact petrification for that attack form; ~0L ("always safe") is -1 here.
+function attk_protection_mm(aatyp) {
+    switch (aatyp) {
+    case AT_NONE: case AT_SPIT: case AT_EXPL: case AT_BOOM:
+    case AT_GAZE: case AT_BREA: case AT_MAGC:
+        return -1;                       /* ~0L: no contact at all */
+    case AT_CLAW: case AT_TUCH: case AT_WEAP:
+        return W_ARMG;                   /* caller ORs in W_ARMG for a weapon */
+    case AT_KICK:
+        return W_ARMF;
+    case AT_BUTT:
+        return W_ARMH;
+    case AT_HUGS:
+        return W_ARMC | W_ARMG;          /* attacker needs BOTH */
+    default:                             /* AT_BITE/STNG/ENGL/TENT */
+        return 0;                        /* no defense available */
+    }
 }
 
 // C ref: mon.c:3181 corpse_chance(mon, magr, was_swallowed).  The rn2(tmp) tail
@@ -1033,6 +1101,9 @@ export async function mattackm(magr, mdef) {
 
     if (is_elf_flag(pa) && is_orc_flag(pd)) tmpBase++;  // mhitm.c:353
 
+    gv_vis = mm_visible(magr, mdef);                   // mhitm.c:358
+    gs_skipdrin = false;                               // mhitm.c:372
+
     // magr->mlstmv = svm.moves — flags that the aggressor has acted this round
     // (the dog_move return-attack gate at dogmove.c:1159 reads the *defender's*
     // mlstmv, so keeping this current matters for the bounce-back attack).
@@ -1050,6 +1121,11 @@ export async function mattackm(magr, mdef) {
             continue;
 
         const mattk = getmattk(magr, mdef, i, res);
+
+        // mhitm.c:387 — a mind flayer that already found a headless target
+        // stops repeating its tentacle attacks (skips the to-hit rnd too).
+        if (gs_skipdrin && mattk.aatyp === AT_TENT && mattk.adtyp === AD_DRIN)
+            continue;
 
         let strike = 0, attk = 1;
         let mwep = null;

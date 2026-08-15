@@ -57,7 +57,9 @@ import {
     is_demon_flag,
     is_swimmer_flag, is_flyer_flag, amorphous_flag, passes_walls_flag,
     throws_rocks_flag,
+    MFLAGS1, M1_OVIPAROUS,
 } from './monflags_data.js';
+import { AT_EXPL, attacktype } from './monattk_data.js';
 const MM_NOWAIT = 0x00000002; // C ref: makemon.h MM_NOWAIT — suppress STRAT_WAITFORU/STRAT_CLOSE
 
 const G_UNIQ = 0x1000;
@@ -768,12 +770,10 @@ const PM_WINGED_GARGOYLE = 42;
 const PM_SCORPION = 97;
 const PM_SCORPIUS = 364;
 
-// M1_OVIPAROUS monsters (lays_eggs()), as a Set of pmidx.
-const LAYS_EGGS = new Set([
-    0, 2, 3, 5, 10, 11, 42, 94, 95, 96, 97, 114, 115, 128, 143, 144, 145, 146,
-    147, 148, 149, 150, 151, 152, 199, 200, 201, 202, 214, 215, 216, 217, 218,
-    219, 316, 317, 318, 319, 327, 363,
-]);
+// lays_eggs() reads M1_OVIPAROUS off the generated mflags1 table.  The old
+// hand-transcribed pmidx Set was never put through the mail-daemon (+1 from
+// pmidx 315) shift, so it named jellyfish/chameleon/Nalzok as egg-layers and
+// missed electric eel/crocodile/Scorpius.
 
 // Monsters with cnutrit == 0 (no nutrition); the complement is "has cnutrit".
 // Used by the TIN generation loop's mons[mndx].cnutrit test.
@@ -819,7 +819,7 @@ function big_to_little(mndx) {
 }
 
 function lays_eggs(mndx) {
-    return LAYS_EGGS.has(mndx);
+    return ((MFLAGS1[mndx] || 0) & M1_OVIPAROUS) !== 0;
 }
 
 // C ref: mon.c undead_to_corpse() — convert undead pmidx to its living form.
@@ -921,9 +921,17 @@ function dungeon_alignment() {
     // dungeon's own align.  Is_special is backed by sp_levchn.
     const slev = (game.sp_levchn || []).find(
         (l) => l?.dlevel?.dnum === dnum && l?.dlevel?.dlevel === dlevel);
-    const raw = (slev && slev.flags && slev.flags.align)
-        ? slev.flags.align
-        : (game.special_levels?.find?.(l => l?.dlevel?.dnum === dnum
+    // An s_level's flags.align is ALREADY an AM_* mask (dungeon.c stores
+    // `(tlevel.flags & D_ALIGN_MASK) >> 4`), so it must NOT be run through the
+    // A_* aliases below: AM_CHAOTIC (1) == A_LAWFUL (1), which made every
+    // chaotic special level (medusa, Vlad's Tower, tutorial) weight its random
+    // monster table as if the level were lawful.
+    if (slev && slev.flags && slev.flags.align) {
+        const am = slev.flags.align;
+        return (am === AM_LAWFUL || am === AM_NEUTRAL || am === AM_CHAOTIC)
+            ? am : AM_NONE;
+    }
+    const raw = (game.special_levels?.find?.(l => l?.dlevel?.dnum === dnum
               && l?.dlevel?.dlevel === dlevel)?.flags?.align
            ?? game.dungeons?.[dnum]?.flags?.align
            ?? DUNGEON_ALIGN_BY_DNUM[dnum]
@@ -1928,14 +1936,18 @@ function m_initweap_full(mtmp) {
 
 // Full C-faithful m_initinv for Big Room monsters (generic tail + per-class
 // prefixes reachable on dlvl<=~14).
-const ANIMAL_PM = new Set([0,1,2,3,4,5,9,10,11,12,13,14,16,17,18,19,20,22,23,24,25,26,32,33,34,35,36,37,38,39,64,65,66,78,79,80,81,82,83,84,85,86,87,88,89,90,92,93,94,95,96,97,98,99,100,104,105,112,113,114,115,116,117,120,126,127,128,129,153,174,177,178,212,213,214,215,216,217,218,219,233,234,235,236,237,238,316,317,318,319,320,321,322,323,324,325,326,327,363]);
-const MINDLESS_PM = new Set([6,7,8,27,29,30,31,56,57,58,106,107,108,109,110,111,118,119,154,155,156,157,158,159,160,161,162,163,164,187,188,189,190,191,192,193,194,206,207,208,209,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259]);
 const LIKES_GOLD_PM = new Set([44,45,48,49,63,72,73,74,75,76,77,92,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,189,190,203,286,338,351,358,360,376]);
 // C ref: likes_gold(ptr) == (mflags2 & M2_GREEDY).  Name-keyed (complete; all
 // NAMS variants) from include/monsters.h — used by the Big Room m_initinv gold.
 const LIKES_GOLD_NAMES = new Set(["dwarf","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","mind flayer","master mind flayer","leprechaun","orc","hill orc","Mordor orc","Uruk-hai","orc shaman","orc-captain","rock mole","plains centaur","forest centaur","mountain centaur","baby gray dragon","baby gold dragon","baby silver dragon","baby shimmering dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","shimmering dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","orc mummy","dwarf mummy","ogre","ogre lord","ogre lady","ogre leader","ogre king","ogre queen","ogre tyrant","Croesus","Charon","rogue","Master of Thieves","Chromatic Dragon","Goblin King","Ixoth","thug"]);
+// C ref: muse.c rnd_defensive_item()/rnd_misc_item() head — `is_animal(pm) ||
+// attacktype(pm, AT_EXPL) || mindless(pm) || mlet == S_GHOST || mlet == S_KOP`.
+// These were two hand-written pmidx Sets whose windows had drifted off the real
+// M1_ANIMAL membership (jellyfish and Nalzok were in, crocodile and Scorpius
+// were out), and AT_EXPL was missing entirely; every disagreement silently
+// skipped or added a whole rnd_defensive_item() draw chain.
 function rnd_item_excluded(ptr) {
-    return ANIMAL_PM.has(ptr.pmidx) || MINDLESS_PM.has(ptr.pmidx)
+    return is_animal(ptr) || attacktype(ptr, AT_EXPL) || mindless(ptr)
         || ptr.mcls === 54 /*S_GHOST (defsym.h; 51 was wrong)*/ || ptr.mcls === 37 /*S_KOP*/;
 }
 function rnd_defensive_item(mtmp) {
@@ -2410,7 +2422,24 @@ export function set_mimic_sym(mtmp) {
     // the mimic's square it mimics that object's type, consuming NO RNG.  Fires
     // for a storeroom mimic (themerms.lua "Storeroom") whose random in-room spot
     // lands on a chest dropped earlier in the same iterate loop.
-    const topobj = loc.objects || null;
+    // `loc.objects` is only maintained by sp_lev.js place_floor_obj() and
+    // tutorial.js; every object from mkobj.c place_object() lives solely in the
+    // flat game.level.objects array, where the LAST match is C's pile head
+    // (ball.js:36).  Without that fallback a mimic dropped onto an existing pile
+    // — minend-1.lua's four gem niches — skipped C's no-RNG arm and fell through
+    // to the is_maze_lev rn2(2).
+    let topobj = loc.objects || null;
+    if (!topobj) {
+        const fobj = game.level?.objects;
+        if (fobj) {
+            for (let i = fobj.length - 1; i >= 0; i--) {
+                const o = fobj[i];
+                if (o.where === 'floor' && o.ox === mx && o.oy === my) {
+                    topobj = o; break;
+                }
+            }
+        }
+    }
     if (topobj) {
         ap_type = 'obj';
         appear = topobj.otyp;

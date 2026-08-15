@@ -2985,7 +2985,7 @@ export function mon_allowflags(mtmp) {
     if (can_unlock) allowflags |= UNLOCKDOOR;
     if (passes_bars(ptr)) allowflags |= ALLOW_BARS;
     if (is_minion(ptr) || is_rider(ptr)) allowflags |= ALLOW_SANCT;
-    if (is_unicorn(ptr) && !noteleport_level()) allowflags |= NOTONL;
+    if (is_unicorn(ptr) && !noteleport_level(mtmp)) allowflags |= NOTONL;
     if (is_human(ptr) || ptr?.name === 'minotaur') allowflags |= ALLOW_SSM;
     if ((is_undead(ptr) && ptr?.mcls !== S_GHOST) || is_vampshifter(mtmp))
         allowflags |= NOGARLIC;
@@ -3064,6 +3064,31 @@ async function m_move(mtmp) {
         return MMOVE_DONE; /* still eating */
     }
 
+    // C ref: monmove.c:1751 — hides-under early return.  A concealing monster
+    // (M1_CONCEAL: spiders/snakes/scorpion/centipede) sitting on a hideable
+    // floor object rolls rn2(10) and usually stays put (MMOVE_NOTHING) rather
+    // than leave its hiding place.  This roll fires BEFORE set_apparxy and the
+    // getitems probe.  (meating early return omitted: these mons aren't eating.)
+    if (hides_under_pm(ptr) && OBJ_AT(omx, omy)
+        && can_hide_under_obj_at(omx, omy) && rn2(10)) {
+        return MMOVE_NOTHING; /* do not leave hiding place */
+    }
+
+    // C ref: monmove.c:1761 — m_move re-runs set_apparxy at its top ("not
+    // necessary if m_move() called from this file, but needed for other calls").
+    // dochug already called it, so a displaced hero gets TWO guess rolls per
+    // monster turn, and the second one usually has displ==2 (couldsee(mux,muy)
+    // is now true of the first guess) => rn2(5) rather than rn2(3).
+    //
+    // ORDER IS LOAD-BEARING: C runs this BEFORE the wormno/mtame/covetous/
+    // shk-gd-pri dispatches (monmove.c:1768-1806), so a shopkeeper or priest
+    // that hands off to shk_move()/pri_move() still pays set_apparxy's rolls.
+    // With the call sited after those returns, every non-adjacent shopkeeper
+    // silently skipped 1-3 rn2(3) draws per turn (seed0030 seg9 step 122).
+    // Tame monsters cost nothing here — set_apparxy returns at its first line
+    // for mtame — so moving it up is free for the pet path.
+    set_apparxy(mtmp);
+
     // C ref: monmove.c:1773 — tame monsters delegate to dog_move() (dogmove.c).
     if (mtmp.mtame)
         return await dog_move(mtmp, 0);
@@ -3093,23 +3118,6 @@ async function m_move(mtmp) {
             return MMOVE_MOVED;
         }
     }
-
-    // C ref: monmove.c:1751 — hides-under early return.  A concealing monster
-    // (M1_CONCEAL: spiders/snakes/scorpion/centipede) sitting on a hideable
-    // floor object rolls rn2(10) and usually stays put (MMOVE_NOTHING) rather
-    // than leave its hiding place.  This roll fires BEFORE set_apparxy and the
-    // getitems probe.  (meating early return omitted: these mons aren't eating.)
-    if (hides_under_pm(ptr) && OBJ_AT(omx, omy)
-        && can_hide_under_obj_at(omx, omy) && rn2(10)) {
-        return MMOVE_NOTHING; /* do not leave hiding place */
-    }
-
-    // C ref: monmove.c:1779 — m_move re-runs set_apparxy at its top ("not
-    // necessary if m_move() called from this file, but needed for other calls").
-    // dochug already called it, so a displaced hero gets TWO guess rolls per
-    // monster turn, and the second one usually has displ==2 (couldsee(mux,muy)
-    // is now true of the first guess) => rn2(5) rather than rn2(3).
-    set_apparxy(mtmp);
 
     // goal = the hero's apparent position
     let ggx = mtmp.mux ?? game.u.ux;
@@ -3269,9 +3277,19 @@ async function m_move(mtmp) {
     const jcnt = Math.min(MTSZ, cnt - 1);
     const mtrack = mtmp.mtrack || [];
 
+    // C ref: monmove.c:1935-1938 — "allow monsters be shortsighted on some
+    // levels for balance".  svl.level.flags.shortsighted is set by exactly one
+    // des-file in the game (medusa-3.lua), so this block is inert everywhere
+    // else; on that level every hostile more than 12 squares away (6 if the
+    // hero could not see the square) wanders instead of approaching, which is
+    // what turns the selection disjunction below into the `!rn2(++chcnt)` arm.
+    if (!mtmp.mpeaceful && game.level?.flags?.shortsighted
+        && nidist > (couldsee(nix, niy) ? 144 : 36) && appr === 1)
+        appr = 0;
+
     // C ref: monmove.c:1938-1944 — on a noteleport level a unicorn that cannot
     // avoid every NOTONL square must still consider the ones it has.
-    // noteleport_level() is always false in this port, so avoid stays false.
+    // noteleport_level() now reads svl.level.flags.noteleport (see below).
     let avoid = false;
     if (is_unicorn(ptr) && noteleport_level(mtmp)) {
         for (let i = 0; i < cnt; i++)
@@ -3554,10 +3572,27 @@ export function mon_regen(mon, digest_meal) {
 // teleports) while silently changing the RNG stream from that turn on.
 function can_teleport(mdat) { return !!mdat && (mflags1_of(mdat) & M1_TPORT) !== 0; }
 
-// C ref: teleport.c noteleport_level() — TRUE on levels that forbid teleport
-// (e.g. some special levels).  The contest fleeing monsters are on ordinary
-// early dungeon levels, so this is FALSE.
-function noteleport_level() { return false; }
+// C ref: teleport.c:30 noteleport_level(mon) — this was a `return false` stub,
+// so a fleeing teleporter on a des-file "noteleport" level (medusa-*, sokoban,
+// the quest homes, Vlad's tower) still ran rloc() and burned its rnd(79)/rn2(21)
+// placement loop where C prints "A mysterious force prevents ...".
+// stasis_until is not modelled (no wand of stasis in these sessions).
+function noteleport_level(mon) {
+    const ptr = mon?.data;
+    // demon court in Gehennom prevents everyone but demon lords/princes
+    if (Inhell() && !(is_demon(ptr)
+                      && (mflags2_of(ptr) & (M2_LORD | M2_PRINCE)) !== 0)) {
+        for (const mtmp of (game.level?.monsters || [])) {
+            if (DEADish(mtmp)) continue;
+            const p = mtmp.data;
+            if (is_demon(p) && (mflags2_of(p) & (M2_LORD | M2_PRINCE)) !== 0)
+                return true;
+        }
+    }
+    // natural no-teleport level; covetous monsters can bypass these
+    if (game.level?.flags?.noteleport && !is_covetous(ptr)) return true;
+    return false;
+}
 
 // C ref: include/monflag.h MS_SHRIEK.
 const MS_SHRIEK = 18;
@@ -3668,7 +3703,7 @@ export async function dochug(mtmp) {
     // roll yields 0).  Reproduce that roll so the PRNG advances exactly as C
     // does whenever a monster is fleeing (the seed0367 step-61 divergence).
     if (mtmp.mflee && !rn2(40) && can_teleport(mdat)
-        && !mtmp.iswiz && !noteleport_level()) {
+        && !mtmp.iswiz && !noteleport_level(mtmp)) {
         // C ref monmove.c:747 — `if (rloc(mtmp, RLOC_MSG)) leppie_stash(mtmp);`
         // then `return 0`: teleporting costs the monster its whole turn.
         // leppie_stash() (a leprechaun burying its gold in a wall) needs a

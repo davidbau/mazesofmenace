@@ -10,9 +10,9 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
-import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown5, makemaz_minend2, shuffle,
+import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown5, makemaz_minend1, makemaz_minend2, makemaz_medusa1, makemaz_medusa2, makemaz_medusa3, makemaz_medusa4, shuffle,
          mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
-         splev_map_origin, flip_level, set_door_orientation,
+         splev_map_origin, flip_level, bigrm_get_level_extends, set_door_orientation,
          okdoor, bydoor, create_door, lspo_door_relative,
          SET_LIT_NOCHANGE } from './sp_lev.js';
 import { create_maze, walkfrom, mz, reset_maze_bounds, mkportal } from './mkmaze.js';
@@ -25,7 +25,7 @@ import {
     l_selection_or, l_selection_grow, l_selection_fillrect, l_selection_rect,
     l_selection_randline, W_ANY, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST,
 } from './selvar.js';
-import { Is_special, builds_up, In_hell, Is_valley } from './dungeon.js';
+import { Is_special, builds_up, In_hell, Is_valley, dunlevs_in_dungeon } from './dungeon.js';
 import { In_quest, BR_PORTAL, BR_NO_END1, BR_NO_END2 } from './const.js';
 import { roles, races } from './role.js';
 import { mflags2_of } from './monflags_data.js';
@@ -358,6 +358,7 @@ function clear_level_structures() {
     g.level = new GameMap();
     g.level.nroom = 0;
     g.level.nsubroom = 0;
+    g.level.subrooms = [];
     g.level.rooms = [];
     g.made_branch = false;
     g.smeq = new Array(MAXNROFROOMS + 1).fill(0);
@@ -509,12 +510,18 @@ async function makelevel() {
         return;
     }
     // DEFERRED — C ref: mklev.c:1269 makemaz(slev->proto) for 'tower2'/'tower3'.
-    // makemaz_tower2/makemaz_tower3 (js/sp_lev.js:3206/3266) are fully written
-    // but never dispatched, so Dlvl 35/36 fall through to the ordinary
-    // rooms-and-corridors generator.  MEASURED 2026-08-14 together with the
-    // STRAT_WAITFORU correction (js/sp_lev.js:2904): seed0360 +4 steps / -6
-    // steps (294, 300, 736, 778, 779, 796) -> stepgate REJECT.  Land the pair
-    // once the Tier-1 chain past step 290 (Medusa) exists.
+    // makemaz_tower2/makemaz_tower3 (js/levels/tower2.js:63, tower3.js:111) are
+    // fully written but never dispatched, so Dlvl 35/36 fall through to the
+    // ordinary rooms-and-corridors generator.
+    // MEASURED 2026-08-14, twice, both REJECT:
+    //   (a) with the STRAT_WAITFORU correction (js/levels/tower1.js:82):
+    //       seed0360 +4 steps / -6 steps (294, 300, 736, 778, 779, 796);
+    //   (b) alone, on top of mkstairs()'s end-of-dungeon guard, dispatched via
+    //       mk_fixup_branch()/quest_place_branch(): seed0360 286 -> 272 (-14).
+    // The tower scripts' OWN RNG still desyncs, so dispatching them only moves
+    // the damage earlier.  Do not re-measure the dispatch; verify
+    // makemaz_tower2/3 against a session whose stream is aligned at Dlvl 35
+    // first.
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Valley of the Dead, the
     // gateway level of Gehennom.  lspo_finalize_level's tail order is
     // load-bearing here: the flip (inside makemaz_valley) comes first, then
@@ -556,14 +563,31 @@ async function makelevel() {
             set_wall_state();
             return;
         }
+        if (variant === 4) {
+            await makemaz_minetown4();   // sets its own wall state after flip
+            return;
+        }
+    }
+
+    // C ref: mklev.c:1269 makemaz(slev->proto) — Medusa's level.  rndlevs is 4
+    // and all four variants are ported, so the rnd(4) always dispatches.
+    if (slev && slev.proto === 'medusa') {
+        const variant = rnd(slev.rndlevs || 1);   // mkmaze.c:1136
+        if (variant === 1) await makemaz_medusa1();
+        else if (variant === 2) await makemaz_medusa2();
+        else if (variant === 3) await makemaz_medusa3();
+        else await makemaz_medusa4();
+        set_wall_state();
+        return;
     }
 
     // C ref: mklev.c:1269 makemaz(slev->proto) — Mine's End, the bottom of the
-    // Gnomish Mines.  rndlevs is 3; only the "-2" variant is ported.
+    // Gnomish Mines.  rndlevs is 3; the "-3" variant is not ported yet.
     if (slev && slev.proto === 'minend') {
         const variant = rnd(slev.rndlevs || 1);   // mkmaze.c:1136
-        if (variant === 2) {
-            await makemaz_minend2();
+        if (variant === 1 || variant === 2) {
+            if (variant === 1) await makemaz_minend1();
+            else await makemaz_minend2();
             set_wall_state();
             return;
         }
@@ -2142,6 +2166,13 @@ function add_door(x, y, aroom) {
         if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0)) continue;
         if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
     }
+    // C ref: mklev.c:602 — the SAME bump runs a second time over gs.subrooms[].
+    // Without it a nested shop/temple keeps a door index that the parent's
+    // insertion already shifted, so good_shopdoor() rejects it.
+    for (const broom of g.level.subrooms || []) {
+        if (!broom || broom === aroom || !(broom.doorct > 0)) continue;
+        if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
+    }
     g.level.doors[aroom.fdoor] = { x, y };
     g.level.doorindex++;
 }
@@ -2257,13 +2288,17 @@ function generate_stairs_find_room() {
 
 function mkstairs(x, y, up, croom) {
     const g = game;
-    // NOT PORTED — C ref: mklev.c:2188 `if (dunlev(&u.uz) == (up ? 1 :
+    // C ref: mklev.c:2188 `if (dunlev(&u.uz) == (up ? 1 :
     // dunlevs_in_dungeon(&u.uz))) return;`, before BOTH stairway_add() and
     // set_levltyp(STAIRS).  Without it Mines 1 gets a phantom `<`.
-    // MEASURED: +16 on seed4500 but -3 on seed0360 (steps 796/801/802), because
-    // our makelevel() still builds Quest-bottom {3,6} and Vlad's-Tower-bottom
-    // {6,3} with the rooms-and-corridors generator where C dispatches them to
-    // makemaz("tower3") / the quest filler.  Land this WITH the tower dispatch.
+    // u.uz.dlevel is already dungeon-relative, so dunlev(&u.uz) == it.
+    // Fires on des-file stairs at a dungeon end (minefill's des.stair("up") on
+    // Mines 1, minend's des.stair("down") on Mines 8) as well as on
+    // generate_stairs().  MEASURED 2026-08-14: +18 seed4500, seed0360 flat.
+    // Deliberately WITHOUT mklev.c:2258's Is_botlevel guard in
+    // generate_stairs() — see the note there; adding that costs 4 more.
+    if ((g.u?.uz?.dlevel ?? 1) === (up ? 1 : dunlevs_in_dungeon(g.u?.uz)))
+        return;
     const loc = g.level.at(x, y);
     if (loc) {
         loc.typ = STAIRS;
@@ -2283,16 +2318,19 @@ async function generate_stairs() {
     const pos = { x: 0, y: 0 };
     // Down stairs.
     //
-    // NOT PORTED (measured -3 on seed0360, gate REJECT): C ref: mklev.c:2258
-    // wraps this whole block in `if (!Is_botlevel(&u.uz))`, so on a dungeon's
-    // last level neither generate_stairs_find_room()'s rn2 nor somexyspace()'s
-    // draws happen.  Adding the guard is correct for the regular generator but
-    // regresses today because two dungeons reach makelevel() that C never sends
-    // here: Vlad's Tower (dnum 6, dlevel 3 == num_dunlevs) — C dispatches on
-    // svd.dungeons[dnum].proto[0] == "tower" at mklev.c:1268, an arm makelevel()
-    // above does not implement — and the non-Barbarian Quest (dnum 3,
-    // dlevel 6 == num_dunlevs), whose "{filecode}-fila/filb" filler is only
-    // ported for Bar.  Land the guard together with either of those dispatches.
+    // NOT PORTED — C ref: mklev.c:2258 wraps this whole block in
+    // `if (!Is_botlevel(&u.uz))`, so on a dungeon's last level neither
+    // generate_stairs_find_room()'s rn2 nor somexyspace()'s draws happen.
+    // The guard is genuinely C-faithful, but it only fires on the two levels
+    // that reach this generator and shouldn't: Wiz-goal {3,6} (the non-Bar
+    // quest "{filecode}-filb" filler is unported) and Vlad's-Tower-bottom
+    // {6,3} (makemaz("tower3") is written but not dispatched — see makelevel).
+    // On those two, EVERY draw we make is already off C's stream, so removing
+    // three of them is a coin flip.
+    // MEASURED 2026-08-14 on top of the mkstairs() guard below, i.e. exactly
+    // the "land the pair together" this comment used to prescribe: seed0360
+    // 290 -> 287, seed4500 845 -> 844.  Both worse.  Land it only with a real
+    // tower3 / quest-filb dispatch, and re-measure — do not re-test the pair.
     {
         const croom = generate_stairs_find_room();
         if (croom) {
@@ -2381,6 +2419,9 @@ function add_subroom(proom, lowx, lowy, hix, hiy, lit, rtype, special) {
         needfill: 0,
     };
     g.level.nsubroom = (g.level.nsubroom || 0) + 1;
+    // C ref: decl.c gs.subrooms[] — the flat, level-wide subroom array that
+    // add_door()'s second fdoor loop walks (proom.sbrooms is per-parent).
+    (g.level.subrooms || (g.level.subrooms = [])).push(croom);
     do_room_or_subroom(croom, lowx, lowy, hix, hiy, lit, rtype, special, false);
     if (!proom.sbrooms) proom.sbrooms = [];
     proom.sbrooms[proom.nsubrooms++] = croom;
@@ -2737,13 +2778,17 @@ function mk_get_location_random(okfn) {
     return { x, y };
 }
 
-// is_ok_location DRY: SPACE_POS(typ) && no boulder.
+// is_ok_location DRY: SPACE_POS(typ) && no boulder (sp_lev.c:1296).
+// The boulder test is load-bearing, not defensive: minefill's
+// `des.object("boulder")` runs BEFORE the monsters/traps, and a
+// ROLLING_BOULDER_TRAP drops another boulder at its launch coord
+// (trap.c:3680 mkroll_launch), so later get_location(DRY) rolls must reject
+// those squares and re-roll.
 function mk_ok_dry(x, y) {
     const loc = game.level.at(x, y);
     if (!loc) return false;
     if (!SPACE_POS(loc.typ)) return false;
-    // no boulder at this spot (objects placed later, so floor is clear)
-    return true;
+    return !mk_sobj_at_boulder(x, y);
 }
 
 // good_stair_loc: ROOM || CORR || ICE.
@@ -3001,6 +3046,289 @@ async function makemaz_minefill() {
     // loop there is a no-op (join_map_cleanup left nroom == 0) and only
     // mineralize() runs, matching C's level_finalize_topology ordering.
 }
+
+// ============================================================
+// dat/minetn-4.lua — Mine Town variant 4, "College Town" (Kelly Bailey).
+//
+// Unlike minetn-5 (a des.map bitmap) this variant is a rooms-and-corridors
+// script: one big centred `des.room` holding 12 nested subrooms (shops,
+// a temple, gnome homes), four fully random rooms and des.random_corridors().
+// The engine pieces it needs — create_room/create_subroom/topologize/
+// create_door/makecorridors — are the same ones makemaz_oracle() drives, so
+// this reuses them rather than re-entering the sp_lev.js coder.
+//
+// C ref: mkmaze.c:1136 makemaz("minetn") -> load_special("minetn-4.lua"),
+// sp_lev.c lspo_room()/build_room()/create_door()/create_monster().
+// ============================================================
+
+// C ref: sp_lev.c room_types[] — the des `type=` strings this script uses.
+// Offsets are from mkroom.h: SHOPBASE 14, FOODSHOP 19, TOOLSHOP 22,
+// BOOKSHOP 23, FODDERSHOP 24, CANDLESHOP 25.
+const MT4_SHOP_RTYPE = {
+    'shop': SHOPBASE, 'tool shop': SHOPBASE + 8, 'book shop': SHOPBASE + 9,
+    'food shop': SHOPBASE + 5, 'health food shop': SHOPBASE + 10,
+    'candle shop': SHOPBASE + 11, 'temple': TEMPLE, 'ordinary': OROOM,
+};
+
+// C ref: dat/nhlib.lua:47 monkfoodshop() — role-dependent, no RNG.
+function mt4_monkfoodshop() {
+    return (roles[game.initrole]?.name === 'Monk')
+        ? 'health food shop' : 'food shop';
+}
+
+// C ref: sp_lev.c lspo_room() -> build_room() for a nested subroom with
+// explicit geometry.  `chance` defaults to 100 in lspo_room, so the rn2(100)
+// is drawn for EVERY room even when it can never fail.
+function mt4_subroom(parent, x, y, w, h, typeName, lit, chance = 100) {
+    const wanted = MT4_SHOP_RTYPE[typeName] ?? OROOM;
+    const rtype = (!chance || rn2(100) < chance) ? wanted : OROOM;
+    const ok = create_subroom(parent, x, y, w, h, rtype, lit);
+    parent.irregular = true;                 // lspo_room: parent goes irregular
+    if (!ok) return null;
+    const sub = parent.sbrooms[parent.nsubrooms - 1];
+    topologize(sub);
+    // lspo_room's `filled` defaults to 1 outside themerooms; fill_special_room
+    // ignores OROOM anyway, and FILL_NONE keeps our fill_ordinary_room loop
+    // (which C's des finalize does not run) off the plain rooms.
+    sub.needfill = (rtype === OROOM) ? FILL_NONE : FILL_NORMAL;
+    sub.needjoining = true;
+    return sub;
+}
+
+const MT4_WALL = { north: W_NORTH, south: W_SOUTH, east: W_EAST, west: W_WEST };
+const MT4_DOORSTATE = { closed: D_CLOSED, locked: D_LOCKED, nodoor: D_NODOOR };
+
+// C ref: sp_lev.c lspo_door() table form -> create_door().  An explicit
+// `state` fixes the mask and an explicit `wall` fixes the wall, so the only
+// draws are the trycnt loop's rn2(4) plus one rn2(span) per accepted wall.
+function mt4_door(croom, state, wall) {
+    create_door({ secret: 0, mask: MT4_DOORSTATE[state], pos: -1,
+                  wall: MT4_WALL[wall] }, croom);
+}
+
+// C ref: sp_lev.c lspo_feature() with croom coords — get_location_coord()
+// offsets by croom->lx/ly and sel_set_feature() leaves furniture alone.
+function mt4_feature(croom, rx, ry, typ) {
+    const loc = game.level?.at(croom.lx + rx, croom.ly + ry);
+    if (!loc || IS_FURNITURE(loc.typ)) return;
+    loc.typ = typ;
+    if (typ === FOUNTAIN && game.level?.flags) game.level.flags.nfountains =
+        (game.level.flags.nfountains || 0) + 1;
+}
+
+// C ref: sp_lev.c create_altar() with an explicit coord and shrine=1 — no RNG
+// of its own; priestini() supplies the whole draw sequence.
+async function mt4_altar(croom, rx, ry, alignName) {
+    const x = croom.lx + rx, y = croom.ly + ry;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    loc.typ = ALTAR;
+    const a = alignName === 'law' ? 1 : alignName === 'chaos' ? -1 : 0;
+    loc.altarmask = Align2amask(a);
+    if (croom.rtype !== TEMPLE) return;
+    await priestini(game.u?.uz, croom, x, y, false);
+    loc.altarmask |= AM_SHRINE;
+    if (game.level?.flags) game.level.flags.has_temple = true;
+}
+
+// C ref: sp_lev.c create_monster() with croom != NULL — get_free_room_loc()
+// (somexy), then the enexto() relocation and the inside_room() reject.
+function mt4_place_monster(data, croom, peaceful) {
+    const c = oracle_get_free_room_loc(croom);
+    if (m_at(c.x, c.y)) {
+        const cc = enexto_spawn(c.x, c.y, data);
+        if (cc) { c.x = cc.x; c.y = cc.y; }
+    }
+    if (!inside_room(croom, c.x, c.y)) return null;
+    const mtmp = make_monster(data, c.x, c.y, 0);
+    if (mtmp && peaceful != null) mtmp.mpeaceful = !!peaceful;
+    return mtmp;
+}
+
+// des.monster("name") / des.monster({id="name", peaceful=1}) inside a room.
+function mt4_monster(name, croom, peaceful) {
+    const data = mk_find_montype(name);              // find_montype gender roll
+    oracle_induced_align();                          // sp_amask_to_amask
+    return mt4_place_monster(mk_mines_race_suppress(data), croom, peaceful);
+}
+
+// des.monster("G"/"f") — a monster CLASS inside a room.
+function mt4_monster_class(classChar, croom, peaceful) {
+    const klass = MT4_CLASS_CHAR[classChar] ?? 0;
+    oracle_induced_align();                          // amask computed first
+    const data = mk_mines_race_suppress(mkclass(klass, 0x0200 /* G_NOGEN */));
+    return mt4_place_monster(data, croom, peaceful);
+}
+// monsym.h monsterclass enum: lowercase a..z are 1..26, so 'f' == S_FELINE 6;
+// uppercase restarts at S_ANGEL 27, so 'G' == S_GNOME 33.
+const MT4_CLASS_CHAR = { G: 33, f: 6 };
+
+// C ref: sp_lev.c lspo_room() for a fully random top-level room.
+async function mt4_room(contents) {
+    const g = game;
+    rn2(100);                                        // build_room chance
+    const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
+    if (!ok) return;
+    const croom = g.level.rooms[g.level.nroom - 1];
+    if (!croom) return;
+    topologize(croom);
+    croom.needfill = FILL_NONE;
+    if (contents) await contents(croom);
+    splev_add_doors_to_room(croom);
+}
+
+// Entry point.  C ref: makemaz("minetn") -> load_special("minetn-4.lua").
+async function makemaz_minetown4() {
+    const g = game;
+    // load_special -> load_lua -> nhlib.lua prelude shuffle(align).
+    const align = ['law', 'neutral', 'chaos'];
+    for (let i = align.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const a = i - 1, b = j - 1;
+        const t = align[a]; align[a] = align[b]; align[b] = t;
+    }
+
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    const was_mklev = g.in_mklev;
+    g.in_mklev = true;
+    if (g.level) g.level._splev_fullmon = true;
+    try {
+        // des.room({ type="ordinary", lit=1, x=3,y=3, xalign="center",
+        //            yalign="center", w=30, h=15, contents=... })
+        rn2(100);                                    // build_room chance
+        const okmain = create_room(3, 3, 30, 15, 3 /*CENTER*/, 3 /*CENTER*/,
+                                   OROOM, 1);
+        const town = okmain ? g.level.rooms[g.level.nroom - 1] : null;
+        if (town) {
+            topologize(town);
+            town.needfill = FILL_NONE;
+            mt4_feature(town, 8, 7, FOUNTAIN);
+            mt4_feature(town, 18, 7, FOUNTAIN);
+
+            let sub;
+            sub = mt4_subroom(town, 4, 2, 3, 3, 'book shop', 1);
+            if (sub) { mt4_door(sub, 'closed', 'south'); splev_add_doors_to_room(sub); }
+
+            sub = mt4_subroom(town, 8, 2, 2, 2, 'ordinary', -1);
+            if (sub) { mt4_door(sub, 'closed', 'south'); splev_add_doors_to_room(sub); }
+
+            sub = mt4_subroom(town, 11, 3, 5, 4, 'temple', 1);
+            if (sub) {
+                mt4_door(sub, 'closed', 'south');
+                await mt4_altar(sub, 2, 1, align[0]);
+                mt4_monster('gnomish wizard', sub);
+                mt4_monster('gnomish wizard', sub);
+                splev_add_doors_to_room(sub);
+            }
+
+            sub = mt4_subroom(town, 19, 2, 2, 2, 'ordinary', -1);
+            if (sub) {
+                mt4_door(sub, 'closed', 'south');
+                mt4_monster_class('G', sub);
+                splev_add_doors_to_room(sub);
+            }
+
+            sub = mt4_subroom(town, 22, 2, 3, 3, 'candle shop', 1);
+            if (sub) { mt4_door(sub, 'closed', 'south'); splev_add_doors_to_room(sub); }
+
+            sub = mt4_subroom(town, 26, 2, 2, 2, 'ordinary', -1);
+            if (sub) {
+                mt4_door(sub, 'locked', 'east');
+                mt4_monster_class('G', sub);
+                splev_add_doors_to_room(sub);
+            }
+
+            sub = mt4_subroom(town, 4, 10, 3, 3, 'tool shop', 1, 90);
+            if (sub) { mt4_door(sub, 'closed', 'north'); splev_add_doors_to_room(sub); }
+
+            sub = mt4_subroom(town, 8, 11, 2, 2, 'ordinary', -1);
+            if (sub) {
+                mt4_door(sub, 'locked', 'south');
+                mt4_monster('kobold shaman', sub);
+                mt4_monster('kobold shaman', sub);
+                mt4_monster('kitten', sub);
+                mt4_monster_class('f', sub);
+                splev_add_doors_to_room(sub);
+            }
+
+            sub = mt4_subroom(town, 11, 11, 3, 2, mt4_monkfoodshop(), 1, 90);
+            if (sub) { mt4_door(sub, 'closed', 'east'); splev_add_doors_to_room(sub); }
+
+            sub = mt4_subroom(town, 17, 11, 2, 2, 'ordinary', -1);
+            if (sub) { mt4_door(sub, 'closed', 'west'); splev_add_doors_to_room(sub); }
+
+            sub = mt4_subroom(town, 20, 10, 2, 2, 'ordinary', -1);
+            if (sub) {
+                mt4_door(sub, 'locked', 'north');
+                mt4_monster_class('G', sub);
+                splev_add_doors_to_room(sub);
+            }
+
+            sub = mt4_subroom(town, 23, 10, 3, 3, 'shop', 1, 90);
+            if (sub) { mt4_door(sub, 'closed', 'north'); splev_add_doors_to_room(sub); }
+
+            for (let i = 0; i < 4; i++) mt4_monster('watchman', town, 1);
+            mt4_monster('watch captain', town, 1);
+            splev_add_doors_to_room(town);
+        }
+
+        // des.room({ type="ordinary", contents={ stair("up") } })
+        await mt4_room(async (croom) => { await oracle_stair(croom, true); });
+        // { stair("down"), trap(), monster("gnome") x2 }
+        await mt4_room(async (croom) => {
+            await oracle_stair(croom, false);
+            await oracle_trap(croom);
+            mt4_monster('gnome', croom);
+            mt4_monster('gnome', croom);
+        });
+        // { monster("dwarf") }
+        await mt4_room(async (croom) => { mt4_monster('dwarf', croom); });
+        // { trap(), monster("gnome") }
+        await mt4_room(async (croom) => {
+            await oracle_trap(croom);
+            mt4_monster('gnome', croom);
+        });
+
+        // des.random_corridors() -> create_corridor(src=-1) -> makecorridors
+        makecorridors();
+    } finally {
+        g._full_mon_gen = was_full;
+        g.in_mklev = was_mklev;
+    }
+
+    // lspo_finalize_level: wallification, then flip_level_rnd(allow_flips).
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                            // sp_lev.c:975
+    if (rn2(2)) flp |= 2;                            // sp_lev.c:977
+    if (flp) { flip_level(flp); mt4_flip_subrooms(flp); }
+    set_wall_state();
+}
+
+// C ref: sp_lev.c flip_level():788-809 — the per-room loop also flips each
+// croom->sbrooms[i].  js/sp_lev.js flip_level()'s `// rooms` loop walks only
+// map.rooms[], so a nested shop kept its UNflipped rectangle while its door
+// moved: good_shopdoor() then rejected every one and stock_room() never ran.
+// BELONGS in flip_level(); kept here because minetn-4 is the only caller today
+// and sp_lev.js was outside this change's write-lease.  Fold it in when a lane
+// owns that file — the two loops are equivalent (every subroom on the level
+// belongs to some room inside the extents).
+function mt4_flip_subrooms(flp) {
+    const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
+    for (const r of game.level?.subrooms || []) {
+        if (!r) continue;
+        if (flp & 1) {
+            r.ly = miny + maxy - r.ly; r.hy = miny + maxy - r.hy;
+            if (r.ly > r.hy) { const t = r.ly; r.ly = r.hy; r.hy = t; }
+        }
+        if (flp & 2) {
+            r.lx = minx + maxx - r.lx; r.hx = minx + maxx - r.hx;
+            if (r.lx > r.hx) { const t = r.lx; r.lx = r.hx; r.hx = t; }
+        }
+    }
+}
+
 
 // ============================================================
 // dat/hellfill.lua — the "fill" level for Gehennom: every Gehennom dlvl that

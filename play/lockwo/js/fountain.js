@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { update_topl, newsym, m_at } from './display.js';
+import { update_topl, newsym, m_at, y_n } from './display.js';
 import { hliquid, builds_up, dunlevs_in_dungeon, Is_special } from './dungeon.js';
 import { water_damage, t_at, delfloortrap } from './trap.js';
 import { find_ac } from './u_init.js';
@@ -698,8 +698,13 @@ async function gush(x, y, poolcnt) {
     const loc = game.level?.at(x, y);
     if (loc) { loc.typ = POOL; loc.flags = 0; }
     del_engr_at(x, y);
+    // C ref: trap.c water_damage_chain(svl.level.objects[x][y], TRUE) — walks
+    // the nexthere chain TOPMOST-FIRST with force=FALSE.  place_object() pushes,
+    // so the topmost object is the LAST match in this port's flat array (cf.
+    // invent.js objects_at()); the unreversed filter ran water_damage() bottom-up
+    // and every erosion roll landed on the wrong object.
     const here = (game.level?.objects || []).filter(
-        (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+        (o) => o.where === 'floor' && o.ox === x && o.oy === y).reverse();
     for (const obj of here) await water_damage(obj, null, false);
 
     // minliquid(mtmp) (monster drowning in the new pool) isn't modeled: no
@@ -755,7 +760,13 @@ export async function dryup(x, y, isyou) {
         if (!found) await update_topl('The flow reduces to a trickle.');
         return;
     }
-    // (wizard-mode "Dry up fountain?" confirmation is never reached.)
+    // C ref: fountain.c:218 — `if (isyou && wizard) { if (y_n("Dry up
+    // fountain?") == 'n') return; }`.  The old comment claimed this was never
+    // reached; it fires in seed4500 (playmode:debug).  It is not cosmetic: the
+    // prompt READS A KEY, so leaving it out feeds that keystroke to rhack().
+    if (isyou && game.flags?.debug) {
+        if (await y_n('Dry up fountain?') === 'n') return;
+    }
     // C ref: fountain.c:225 — the message is gated on cansee(x, y) (and on the
     // square not being hidden under a cloud glyph).
     if (cansee(x, y)) await update_topl('The fountain dries up!');

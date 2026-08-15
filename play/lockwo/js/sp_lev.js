@@ -1,6 +1,14 @@
-// sp_lev.js - Special-level helpers.
+// sp_lev.js - Special-level machinery shared by every level builder.
 // C ref: sp_lev.c - lspo_map, lspo_region, themed-room map fragments.
-
+//
+// The per-level `makemaz_*` builders are NOT here; each lives in its own
+// js/levels/<name>.js and is re-exported below, so one agent can own one level
+// without contending for this file.  What stays here is what more than one
+// builder (or something outside sp_lev.js) uses: the mapfrag/selection layer,
+// lspo_map/lspo_region, door + wallification primitives, fill_zoo/
+// fill_special_room, flip_level, and the `quest_*`/`bigrm_*`/`vly_*`/`soko_*`/
+// `tower_*`/`splev_*` families that several levels call.  A helper that only one
+// level uses belongs in that level's file.
 import { game } from './gstate.js';
 import { depth as depth_of_level, dist2, distmin } from './hacklib.js';
 import { isaac64_next_uint64 } from './isaac64.js';
@@ -14,19 +22,19 @@ import {
     VAULT, SHOPBASE, BEEHIVE, FILL_NONE, FILL_NORMAL,
     COURT, SWAMP, MORGUE, BARRACKS, TEMPLE, ANTHOLE, COCKNEST, LEPREHALL, DELPHI,
     Align2amask, CLOUD, LAVAWALL, AIR, SCORR, SINK, STAIRS, LADDER,
-    DRAWBRIDGE_UP, SPACE_POS, MATCH_WALL,
+    SPACE_POS, MATCH_WALL,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL,
     TUWALL, TDWALL, TLWALL, TRWALL, DBWALL, IS_ROOM, IS_WALL,
     TELEP_TRAP, D_SECRET, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_NODOOR,
     W_ANY, W_RANDOM, IS_OBSTRUCTED, A_NONE, In_endgame,
-    AM_NONE, AM_SHRINE, AM_SANCTUM,
+    AM_SHRINE, AM_SANCTUM,
     IS_STWALL, IS_TREE, IS_LAVA, IS_FURNITURE, W_NONDIGGABLE, W_NONPASSWALL,
     HOLE, ROLLING_BOULDER_TRAP, SQKY_BOARD, RUST_TRAP, LANDMINE, MAGIC_TRAP,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP, SLP_GAS_TRAP, ANTI_MAGIC,
     PIT, SPIKED_PIT, FIRE_TRAP, NO_TRAP, is_pit, BURN, LR_BRANCH,
     TRAPNUM, TRAPPED_DOOR, TRAPPED_CHEST, MAGIC_PORTAL, VIBRATING_SQUARE,
-    LEVEL_TELEP, WEB, STATUE_TRAP, POLY_TRAP, TRAPDOOR, ENGRAVE,
-    LA_UP, LA_DOWN, STRAT_WAITFORU,
+    LEVEL_TELEP, WEB, STATUE_TRAP, POLY_TRAP, TRAPDOOR,
+    LA_UP, LA_DOWN,
 } from './const.js';
 // readobjnam() is how C's obj.new(<name>) resolves an item name (via the same
 // rnd_otyp_by_namedesc path a wish uses).  readobjnam.js does not import sp_lev,
@@ -34,38 +42,63 @@ import {
 import { readobjnam } from './readobjnam.js';
 import { objects as OBJDATA } from './mkobj.js';
 import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
-         CORPSE, CHEST, LARGE_BOX, STATUE, mk_tt_object,
-         WAX_CANDLE, TALLOW_CANDLE, mkobj_at, BOULDER,
-         FOOD_CLASS, RING_CLASS, WAND_CLASS, BAG_OF_HOLDING, SCR_SCARE_MONSTER,
-         SCR_EARTH,
-         WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
-         SPBOOK_CLASS, GEM_CLASS,
-         GOLD_PIECE, add_to_container, weight, mkobj, RANDOM_CLASS,
-         uncurse, curse } from './mkobj.js';
+         CORPSE, CHEST, LARGE_BOX, STATUE, mk_tt_object, mkobj_at, BOULDER,
+         FOOD_CLASS, GOLD_PIECE, add_to_container, weight, mkobj, RANDOM_CLASS } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
-         mkclass, mkclass_aligned, mm_mon_at, enexto_spawn, newmonhp,
-         newcham_vamp, mongets_pub, name_gender_hint, MGEND_NEUTRAL,
-         MM_ASLEEP, MM_NOGRP, MM_EMIN } from './makemon.js';
+         mkclass, mkclass_aligned, mm_mon_at, enexto_spawn, mongets_pub,
+         name_gender_hint, MGEND_NEUTRAL, MM_ASLEEP, MM_NOGRP } from './makemon.js';
 import { somexy, inside_room, occupied } from './mkroom.js';
 import { create_gas_cloud_selection } from './region.js';
 import { is_flyer_flag, is_swimmer_flag, passes_walls_flag,
          mflags1_of, mflags2_of, M1_AMPHIBIOUS } from './monflags_data.js';
-import { maketrap, Can_fall_thru } from './trap.js';
+import { maketrap } from './trap.js';
 import { stock_room } from './shknam.js';
-import { Is_special, In_hell } from './dungeon.js';
+import { In_hell } from './dungeon.js';
+// Unreferenced here since the soko builders moved to js/levels/ (which import
+// premap_detect themselves).  Deliberately kept: dropping it would move where
+// detect.js sits in the module evaluation order, which this refactor does not
+// touch.  Delete it in a change that is separately gated.
 import { premap_detect } from './detect.js';
 import { make_engr_at, make_grave } from './engrave.js';
 import { priestini } from './priest.js';
-import { roles, races } from './roles.js';
+import { races } from './roles.js';
 import { match_maptyps,
          selection_new as selection_new_var,
          selection_setpoint as selection_setpoint_var,
          selection_recalc_bounds } from './selvar.js';
 
-const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
-const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
+// Special-level builders live one-per-file under js/levels/; re-exported here so
+// every existing `import { makemaz_* } from './sp_lev.js'` keeps working. The
+// level modules import the shared machinery below from this file (ESM handles the
+// cycle: their bodies evaluate first and only reference these bindings lazily).
+export { makemaz_arc_goal } from './levels/arc_goal.js';
+export { makemaz_arc_loca } from './levels/arc_loca.js';
+export { makemaz_arc_strt } from './levels/arc_strt.js';
+export { makemaz_bar_goal } from './levels/bar_goal.js';
+export { makemaz_bar_loca } from './levels/bar_loca.js';
+export { makemaz_bar_strt } from './levels/bar_strt.js';
+export { makemaz_bigroom } from './levels/bigroom.js';
+export {
+    makemaz_medusa1, makemaz_medusa2, makemaz_medusa3, makemaz_medusa4,
+} from './levels/medusa.js';
+export { makemaz_minend1 } from './levels/minend1.js';
+export { makemaz_minend2 } from './levels/minend2.js';
+export { makemaz_minetown5 } from './levels/minetown5.js';
+export { makemaz_pri_goal } from './levels/pri_goal.js';
+export { makemaz_pri_loca } from './levels/pri_loca.js';
+export { makemaz_pri_strt } from './levels/pri_strt.js';
+export { makemaz_sanctum } from './levels/sanctum.js';
+export { makemaz_soko1 } from './levels/soko1.js';
+export { makemaz_soko_upper } from './levels/soko_upper.js';
+export { makemaz_tower1 } from './levels/tower1.js';
+export { makemaz_tower2 } from './levels/tower2.js';
+export { makemaz_tower3 } from './levels/tower3.js';
+export { makemaz_valley } from './levels/valley.js';
 
-function reset_xystart_size() {
+export const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
+export const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
+
+export function reset_xystart_size() {
     gx.xstart = 1;
     gy.ystart = 0;
     gx.xsize = COLNO - 1;
@@ -211,7 +244,7 @@ function litstate_rnd(litstate) {
     return !!litstate;
 }
 
-function add_sp_room(lowx, lowy, hix, hiy, lit, rtype, irregular, needfill, joined) {
+export function add_sp_room(lowx, lowy, hix, hiy, lit, rtype, irregular, needfill, joined) {
     const g = game;
     const roomnoidx = g.level.nroom;
     const croom = {
@@ -231,7 +264,7 @@ function add_sp_room(lowx, lowy, hix, hiy, lit, rtype, irregular, needfill, join
     return croom;
 }
 
-function flood_fill_room(sx, sy, roomno, lit) {
+export function flood_fill_room(sx, sy, roomno, lit) {
     const stack = [{ x: sx, y: sy }];
     const seen = new Set();
     const cells = [];
@@ -291,7 +324,7 @@ function selection_room(croom) {
 // C ref: nhlib.lua:44 percent(threshold) → math.random(0,99) < threshold.
 // math.random(0,99) is the 2-arg form: nh.random(0, 100) == 0 + rn2(100).
 // Emits exactly one rn2(100).
-function percent(n) {
+export function percent(n) {
     return rn2(100) < n;
 }
 
@@ -302,7 +335,7 @@ function percent(n) {
 // using a 0-based JS array; the swap index j maps Lua j∈[1,i] → JS j-1.
 // mklev.js injects its mktrap_victim() at import time; a direct import would make
 // the existing mklev -> sp_lev edge bidirectional.
-let _mktrap_victim = null;
+export let _mktrap_victim = null;
 export function set_mktrap_victim(fn) { _mktrap_victim = fn; }
 
 export function shuffle(list) {
@@ -955,7 +988,7 @@ function create_storeroom(croom) {
 
 // C ref: include/defsym.h MONSYM() — monster-class (S_*) indices, as used by
 // mkclass().  js/makemon.js keys its per-class switches off the same numbers.
-const S_HUMANOID = 8,
+export const S_HUMANOID = 8,
     S_KOBOLD = 11, S_ORC = 15, S_CENTAUR = 29, S_DRAGON = 30, S_GNOME = 33,
     S_GIANT = 34, S_TROLL = 46, S_VAMPIRE_CLASS = 48, S_ZOMBIE = 52,
     S_DEMON = 56;
@@ -1765,52 +1798,15 @@ export function lspo_map({ map, x = -1, y = -1, halign = 'none',
     return sel;
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// Barbarian quest "home" level loader (dat/Bar-strt.lua).
-//
-// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("Bar-strt")
-// -> load_special("Bar-strt.lua") executes the splev engine.  Loading
-// nhlib.lua first runs `shuffle(align)` at module top level (rn2(3), rn2(2)),
-// exactly as the Big Room path does.  We hand-port Bar-strt.lua to JS calling
-// the same RNG-consuming primitives in the same order so the PRNG stream
-// matches C exactly (verified against the recorded rng trace).
-//
-// Only the Barbarian start level is ported here (the other roles' quest homes
-// and the locate/goal/filler levels fall through to the regular generator).
-// ════════════════════════════════════════════════════════════════════════
-
-const BAR_STRT_MAP = [
-    '..................................PP........................................',
-    '...................................PP.......................................',
-    '...................................PP.......................................',
-    '....................................PP......................................',
-    '........--------------......-----....PPP....................................',
-    '........|...S........|......+...|...PPP.....................................',
-    '........|----........|......|...|....PP.....................................',
-    '........|.\\..........+......-----...........................................',
-    '........|----........|...............PP.....................................',
-    '........|...S........|...-----.......PPP....................................',
-    '........--------------...+...|......PPPPP...................................',
-    '.........................|...|.......PPP....................................',
-    '...-----......-----......-----........PP....................................',
-    '...|...+......|...+..--+--.............PP...................................',
-    '...|...|......|...|..|...|..............PP..................................',
-    '...-----......-----..|...|.............PPPP.................................',
-    '.....................-----............PP..PP................................',
-    '.....................................PP...PP................................',
-    '....................................PP...PP.................................',
-    '....................................PP....PP................................',
-].join('\n');
-
 // map-relative (mx,my) -> absolute level coord using the map offset that
 // bigrm_load_map computed into gx.xstart / gy.ystart.
-function q_absx(mx) { return mx + gx.xstart; }
-function q_absy(my) { return my + gy.ystart; }
+export function q_absx(mx) { return mx + gx.xstart; }
+export function q_absy(my) { return my + gy.ystart; }
 
 // C ref: sp_lev.c splev_initlev() LVLINIT_SOLIDFILL with fg=" " and no explicit
 // lit -> BOOL_RANDOM -> one rn2(2); then lvlfill_solid(STONE, lit).  Returns the
 // lit bit so the map load can preserve it.
-function quest_level_init_solidfill() {
+export function quest_level_init_solidfill() {
     const lit = rn2(2);                  // sp_lev.c:2992
     for (let y = 0; y < ROWNO; y++)
         for (let x = 0; x < COLNO; x++) {
@@ -1825,7 +1821,7 @@ function quest_level_init_solidfill() {
 // the whole rect, and the iterate is x-outer (max(1,lx)..hx) / y-inner
 // (ly..hy).  For each cell whose typ==fromtyp an rn2(100) is drawn and, when
 // < chance, the cell becomes totyp.  No lit change (tolit==NOCHANGE).
-function quest_replace_terrain(x1, y1, x2, y2, fromtyp, totyp, chance) {
+export function quest_replace_terrain(x1, y1, x2, y2, fromtyp, totyp, chance) {
     const rx1 = q_absx(x1), ry1 = q_absy(y1);
     const rx2 = q_absx(x2), ry2 = q_absy(y2);
     const lox = Math.max(1, rx1), hix = Math.min(rx2, COLNO - 1);
@@ -1838,54 +1834,10 @@ function quest_replace_terrain(x1, y1, x2, y2, fromtyp, totyp, chance) {
         }
 }
 
-// C ref: selvar.c selection_do_randline (rec=12 from nhlsel.c l_selection_randline).
-// Recursive midpoint displacement: each level with rough>=2 draws rn2(rough)
-// twice; rough shrinks by *2/3 each recursion until <2.  We build a set of the
-// carved points; the RNG draw count is independent of the exact midpoints (they
-// never leave the map for these coords), so this matches the recorded stream.
-function quest_do_randline(x1, y1, x2, y2, rough, rec, pts) {
-    if (rec < 1 || (x2 === x1 && y2 === y1)) return;
-    let r = rough;
-    const span = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
-    if (r > span) r = span;
-    let mx, my;
-    if (r < 2) {
-        mx = Math.trunc((x1 + x2) / 2);
-        my = Math.trunc((y1 + y2) / 2);
-    } else {
-        do {
-            const dx = rn2(r) - Math.trunc(r / 2);
-            const dy = rn2(r) - Math.trunc(r / 2);
-            mx = Math.trunc((x1 + x2) / 2) + dx;
-            my = Math.trunc((y1 + y2) / 2) + dy;
-        } while (mx > COLNO - 1 || mx < 0 || my < 0 || my > ROWNO - 1);
-    }
-    pts.add(mx + ',' + my);
-    r = Math.trunc((r * 2) / 3);
-    rec--;
-    quest_do_randline(x1, y1, mx, my, r, rec, pts);
-    quest_do_randline(mx, my, x2, y2, r, rec, pts);
-    pts.add(x2 + ',' + y2);
-}
-
-// C ref: des.terrain(selection.randline(new(), x1,y1, x2,y2, rough), ".") —
-// carve a rough line of ROOM cells.  Corners are offset via get_location_coord.
-function quest_terrain_randline(x1, y1, x2, y2, rough, totyp) {
-    const ax1 = q_absx(x1), ay1 = q_absy(y1);
-    const ax2 = q_absx(x2), ay2 = q_absy(y2);
-    const pts = new Set();
-    quest_do_randline(ax1, ay1, ax2, ay2, rough, 12, pts);
-    for (const k of pts) {
-        const [x, y] = k.split(',').map(Number);
-        const loc = game.level?.at(x, y);
-        if (loc && totyp !== INVALID_TYPE && totyp < MAX_TYPE) loc.typ = totyp;
-    }
-}
-
 // C ref: sp_lev.c lspo_region 2-arg form (selection, "lit"/"unlit").  No RNG,
 // no room: clone the rect selection, grow it by one cell in all directions when
 // lighting, and set each cell's lit flag.  Coords are map-relative.
-function quest_region_light(x1, y1, x2, y2, lit) {
+export function quest_region_light(x1, y1, x2, y2, lit) {
     const ax1 = q_absx(x1), ay1 = q_absy(y1);
     const ax2 = q_absx(x2), ay2 = q_absy(y2);
     const cells = new Set();
@@ -1920,7 +1872,7 @@ function quest_region_light(x1, y1, x2, y2, lit) {
 // the species has a fixed gender) -> amask AM_SPLEV_RANDOM -> induced_align
 // rn2(3) -> get_location_coord (explicit coord: no RNG) -> MON_AT/enexto ->
 // makemon(pm, x, y, 0).  peacefulOverride (if not null) is applied afterwards.
-function quest_create_monster(name, mx, my, peacefulOverride) {
+export function quest_create_monster(name, mx, my, peacefulOverride) {
     const pmidx = name_to_pmidx(name);
     const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
     if (!ptr) return null;
@@ -1957,7 +1909,7 @@ function quest_create_monster(name, mx, my, peacefulOverride) {
 // no coord: random DRY loop] -> mksobj/mksobj_at -> apply spe.  For an inventory
 // item (carryingMon set) the object is created at a random DRY floor spot
 // (consuming that get_location) and then moved into the monster's inventory.
-function quest_create_object(otyp, mx, my, spe, carryingMon) {
+export function quest_create_object(otyp, mx, my, spe, carryingMon) {
     let x, y;
     if (mx != null) { x = q_absx(mx); y = q_absy(my); }
     else { const c = bigrm_get_location_dry(); x = c.x; y = c.y; }
@@ -1979,7 +1931,7 @@ function quest_create_object(otyp, mx, my, spe, carryingMon) {
 // only RNG mktrap consumes here is the victim check rnd(4) (mklev.c:2137), which
 // is always drawn (in_mklev, kind != NO_TRAP) and, at this level difficulty,
 // never places a victim.
-async function quest_create_trap(ttyp, mx, my) {
+export async function quest_create_trap(ttyp, mx, my) {
     const x = q_absx(mx), y = q_absy(my);
     await maketrap(x, y, ttyp);
     rnd(4);                                          // mktrap victim check
@@ -1988,7 +1940,7 @@ async function quest_create_trap(ttyp, mx, my) {
 // C ref: selvar.c selection_floodfill via l_selection_flood: floods from the
 // start cell over all 4-connected cells whose typ matches the start cell's typ
 // (set_floodfillchk_match_under).  No RNG.  Coords are map-relative.
-function quest_floodfill_match(mx, my) {
+export function quest_floodfill_match(mx, my) {
     const sx = q_absx(mx), sy = q_absy(my);
     const start = game.level?.at(sx, sy);
     if (!start) return new Set();
@@ -2010,7 +1962,7 @@ function quest_floodfill_match(mx, my) {
 // selection's bounding box, rn2(count), then walk the bounding box in x-outer /
 // y-inner order to the chosen point (removing it when removeit).  `sel` is a Set
 // of "x,y" keys.
-function quest_rndcoord(sel) {
+export function quest_rndcoord(sel) {
     const pts = [];
     let lx = COLNO, hx = -1, ly = ROWNO, hy = -1;
     for (const k of sel) {
@@ -2028,101 +1980,8 @@ function quest_rndcoord(sel) {
     return { x: px, y: py };
 }
 
-// Main executor.  C ref: makemaz("Bar-strt") -> load_special.
-export async function makemaz_bar_strt() {
-    const g = game;
-    // load_special -> load nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    shuffle(['law', 'neutral', 'chaos']);
-    // des.level_flags("mazelevel", "noteleport", "hardfloor") — no RNG.
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.hardfloor = true;
-    }
-    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
-    // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
-    // sp_lev.c:6122: lit is des.map's OWN option (default FALSE); the bare
-    // string form never sets it, so it is NOT the level_init rn2(2).
-    bigrm_load_map(BAR_STRT_MAP, false);
-    // replace_terrain x3 (floor -> tree with per-region chance).
-    quest_replace_terrain(37, 0, 59, 19, ROOM, TREE, 5);
-    quest_replace_terrain(60, 0, 64, 19, ROOM, TREE, 10);
-    quest_replace_terrain(65, 0, 75, 19, ROOM, TREE, 20);
-    // guarantee a path + free spot for the portal.
-    quest_terrain_randline(37, 7, 62, 2, 7, ROOM);
-    { const loc = g.level?.at(q_absx(62), q_absy(2)); if (loc) loc.typ = ROOM; }
-    // region lighting (whole level lit, a few unlit sub-rooms) — no RNG.
-    quest_region_light(0, 0, 75, 19, true);
-    quest_region_light(9, 5, 11, 5, false);
-    quest_region_light(9, 7, 11, 7, true);
-    quest_region_light(9, 9, 11, 9, false);
-    quest_region_light(13, 5, 20, 9, true);
-    quest_region_light(29, 5, 31, 6, true);
-    quest_region_light(26, 10, 28, 11, true);
-    quest_region_light(4, 13, 6, 14, true);
-    quest_region_light(15, 13, 17, 14, true);
-    quest_region_light(22, 14, 24, 15, true);
-    // des.stair("down", 9, 9) — no RNG.
-    quest_place_stair(9, 9, false);
-    // des.levregion({ region={62,2,62,2}, type="branch" }) — register, no RNG.
-    quest_register_branch(62, 2);
-    // des.door(...) x8 — explicit states, no RNG.
-    quest_set_door(12, 5, 'locked'); quest_set_door(12, 9, 'locked');
-    quest_set_door(21, 7, 'closed');
-    quest_set_door(7, 13, 'open'); quest_set_door(18, 13, 'open');
-    quest_set_door(23, 13, 'open'); quest_set_door(25, 10, 'open');
-    quest_set_door(28, 5, 'open');
-
-    g._quest_gen = true;
-    g._full_mon_gen = true;
-    try {
-        // Elder Pelias + custom inventory (runesword+5, chain mail+5).
-        const pelias = quest_create_monster('Pelias', 10, 7, null);
-        quest_create_object(58 /*RUNESWORD*/, null, null, 5, pelias);
-        quest_create_object(128 /*CHAIN_MAIL*/, null, null, 5, pelias);
-        // The treasure of Pelias.
-        quest_create_object(CHEST, 9, 5, null, null);
-        // chieftain guards for the audience chamber.
-        const chieftains = [[10, 5], [10, 9], [11, 5], [11, 9],
-                            [14, 5], [14, 9], [16, 5], [16, 9]];
-        for (const [cx, cy] of chieftains) quest_create_monster('chieftain', cx, cy, null);
-        // des.non_diggable — no RNG.
-        // One trap to keep the ogres at bay.
-        await quest_create_trap(12 /*SPIKED_PIT*/, 37, 7);
-        // Eels in the river.
-        quest_create_monster('giant eel', 36, 1, null);
-        quest_create_monster('giant eel', 37, 9, null);
-        quest_create_monster('giant eel', 39, 15, null);
-        // Monsters on siege duty: floodfill(37,7) & area(40,3, 45,20), 12 ogres.
-        const flood = quest_floodfill_match(37, 7);
-        const ax1 = q_absx(40), ay1 = q_absy(3), ax2 = q_absx(45), ay2 = q_absy(20);
-        const ogrelocs = new Set();
-        for (const k of flood) {
-            const [x, y] = k.split(',').map(Number);
-            if (x >= ax1 && x <= ax2 && y >= ay1 && y <= ay2) ogrelocs.add(k);
-        }
-        for (let i = 0; i < 12; i++) {
-            const c = quest_rndcoord(ogrelocs);
-            if (!c) { rn2(1); continue; }
-            quest_create_monster_at('ogre', c.x, c.y, false);
-        }
-    } finally {
-        g._quest_gen = false;
-        g._full_mon_gen = false;
-    }
-
-    // C ref: lspo_finalize_level -> wallification(1,0,COLNO-1,ROWNO-1) (!corrmaze)
-    // then flip_level_rnd(allow_flips=3, FALSE): one rn2(2) per enabled axis.
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) { flip_level(flp); quest_flip_branch(flp); }
-}
-
 // A specific-coord ogre (create_monster with an explicit coord from rndcoord).
-function quest_create_monster_at(name, x, y, peaceful) {
+export function quest_create_monster_at(name, x, y, peaceful) {
     const pmidx = name_to_pmidx(name);
     const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
     if (!ptr) return null;
@@ -2139,7 +1998,7 @@ function quest_create_monster_at(name, x, y, peaceful) {
 }
 
 // des.stair("down", mx, my) — place a down stairway.  No RNG.
-function quest_place_stair(mx, my, up) {
+export function quest_place_stair(mx, my, up) {
     const x = q_absx(mx), y = q_absy(my);
     const loc = game.level?.at(x, y);
     if (loc) loc.typ = STAIRS;
@@ -2161,7 +2020,7 @@ function quest_register_lregion(mx, my, rtype, lev) {
 }
 
 // des.levregion({region={mx,my,mx,my}, type="branch"})
-function quest_register_branch(mx, my) {
+export function quest_register_branch(mx, my) {
     quest_register_lregion(mx, my, LR_BRANCH, null);
 }
 
@@ -2198,7 +2057,7 @@ export function set_door_orientation(x, y) {
 // a plain wall until the player finds it later); only a fresh (non-door,
 // non-SDOOR) cell gets promoted, to SDOOR when the requested state is
 // "secret" or DOOR otherwise.  The doormask is always (re)written.
-function quest_set_door(mx, my, state) {
+export function quest_set_door(mx, my, state) {
     const x = q_absx(mx), y = q_absy(my);
     const loc = game.level?.at(x, y);
     if (!loc) return;
@@ -2216,7 +2075,7 @@ function quest_set_door(mx, my, state) {
 
 // flip the stored levregion alongside the map (flip_level flips lregions in
 // C).  Mirrors flip_level's FlipX/FlipY within the level extents.
-function quest_flip_branch(flp) {
+export function quest_flip_branch(flp) {
     const br = game._quest_lregion;
     if (!br) return;
     const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
@@ -2231,21 +2090,13 @@ function quest_flip_branch(flp) {
     if (br.y1 > br.y2) { const t = br.y1; br.y1 = br.y2; br.y2 = t; }
 }
 
-// C ref: sp_lev.c create_object() with c==0 (no class given) at an EXPLICIT
-// map-relative coord — mkobj_at(RANDOM_CLASS, x, y, !named); named is always
-// false for these des.object({x=,y=}) calls (no "name" field).
-function quest_create_object_random(mx, my) {
-    const x = q_absx(mx), y = q_absy(my);
-    mkobj_at(0 /* RANDOM_CLASS */, x, y, true);
-}
-
 // C ref: sp_lev.c create_monster — named species (id known via find_montype),
 // NO explicit coord.  Order: find_montype gender roll (species-dependent) +
 // induced_align (sp_amask_to_amask); then get_location_coord(DRY) — these
 // land-dwelling species take the "first try" DRY branch, one rn2(xsize)/
 // rn2(ysize) draw; then the MON_AT/enexto relocate-if-occupied check; then
 // makemon().
-function quest_create_monster_randpos(name, peacefulOverride) {
+export function quest_create_monster_randpos(name, peacefulOverride) {
     const pmidx = name_to_pmidx(name);
     const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
     if (!ptr) return null;
@@ -2262,191 +2113,10 @@ function quest_create_monster_randpos(name, peacefulOverride) {
     return mtmp;
 }
 
-// C ref: sp_lev.c create_monster — bare class char ("O"/"T"), NO explicit
-// coord.  Order: induced_align (no gender roll — find_montype is only reached
-// via an "id" field); mkclass(class, G_NOGEN) [mkclass_aligned RNG]; then
-// get_location_coord(DRY); enexto if occupied; then makemon().
-function quest_create_monster_class_randpos(classNum, peacefulOverride) {
-    rn2(3);                                             // induced_align (dungeon.c:2012)
-    const ptr = mkclass(classNum, 0x0200 /* G_NOGEN */);
-    if (!ptr) return null;
-    const c = bigrm_get_location_dry();
-    let x = c.x, y = c.y;
-    if (mm_mon_at(x, y)) {
-        const cc = enexto_spawn(x, y, ptr);
-        if (cc) { x = cc.x; y = cc.y; }
-    }
-    const mtmp = makemon(ptr, x, y, 0);
-    if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
-    return mtmp;
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Barbarian quest "locate" level loader (dat/Bar-loca.lua) — a desert oasis.
-//
-// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("Bar-loca")
-// -> load_special("Bar-loca.lua").  Same splev engine as Bar-strt: loading
-// nhlib.lua first runs shuffle(align) (rn2(3),rn2(2)); level_init solidfill
-// draws one rn2(2); then the des.* program runs in file order consuming the
-// PRNG exactly.  Unlike Bar-strt this level registers no branch levregion, so
-// finalize is just wallification + a flip_level_rnd (no quest_flip_branch).
-// The mineralize()/kelp pass (hundreds of rn2(10) draws over the huge pool
-// field) is NOT invoked here — it runs generically after mklev() returns via
-// fastforward_fill_mineralize(), exactly as for Bar-strt.
-// ════════════════════════════════════════════════════════════════════════
-
-const BAR_LOCA_MAP = [
-    "..........PPP.........................................                      ",
-    "...........PP..........................................        .......      ",
-    "..........PP...........-----..........------------------     ..........     ",
-    "...........PP..........+...|..........|....S...........|..  ............    ",
-    "..........PPP..........|...|..........|-----...........|...  .............  ",
-    "...........PPP.........-----..........+....+...........|...  .............  ",
-    "..........PPPPPPPPP...................+....+...........S.................   ",
-    "........PPPPPPPPPPPPP.........-----...|-----...........|................    ",
-    "......PPPPPPPPPPPPPP..P.......+...|...|....S...........|          ...       ",
-    ".....PPPPPPP......P..PPPP.....|...|...------------------..         ...      ",
-    "....PPPPPPP.........PPPPPP....-----........................      ........   ",
-    "...PPPPPPP..........PPPPPPP..................................   ..........  ",
-    "....PPPPPPP........PPPPPPP....................................  ..........  ",
-    ".....PPPPP........PPPPPPP.........-----........................   ........  ",
-    "......PPP..PPPPPPPPPPPP...........+...|.........................    .....   ",
-    "..........PPPPPPPPPPP.............|...|.........................     ....   ",
-    "..........PPPPPPPPP...............-----.........................       .    ",
-    "..............PPP.................................................          ",
-    "...............PP....................................................       ",
-    "................PPP...................................................      ",
-].join('\n');
-
-export async function makemaz_bar_loca() {
-    const g = game;
-    // load_special -> load nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    shuffle(['law', 'neutral', 'chaos']);
-    // des.level_flags("mazelevel", "hardfloor") — no RNG.  (No "noteleport"
-    // this time, unlike Bar-strt.)
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.hardfloor = true;
-    }
-    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
-    // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(BAR_LOCA_MAP, false);  // des.map bare string -> lit=FALSE
-    // des.region(...) x7 — light/unlit rectangles.  No RNG.
-    quest_region_light(0, 0, 75, 19, true);
-    quest_region_light(24, 3, 26, 4, false);
-    quest_region_light(31, 8, 33, 9, false);
-    quest_region_light(35, 14, 37, 15, false);
-    quest_region_light(39, 3, 54, 8, true);
-    quest_region_light(56, 0, 75, 8, false);
-    quest_region_light(64, 9, 75, 16, false);
-    // des.door(...) x10 — explicit states, no RNG.
-    quest_set_door(23, 3, 'open');
-    quest_set_door(30, 8, 'open');
-    quest_set_door(34, 14, 'open');
-    quest_set_door(38, 5, 'locked');
-    quest_set_door(38, 6, 'locked');
-    quest_set_door(43, 3, 'closed');
-    quest_set_door(43, 5, 'closed');
-    quest_set_door(43, 6, 'closed');
-    quest_set_door(43, 8, 'closed');
-    quest_set_door(55, 6, 'locked');
-    // des.stair("up",5,2) / des.stair("down",70,13) — no RNG.
-    quest_place_stair(5, 2, true);
-    quest_place_stair(70, 13, false);
-    // des.object({x=,y=}) x15 — random object at an explicit coord.
-    // des.monster(...)'s full (non-abbreviated) m_initweap/m_initinv path is
-    // gated on game._quest_gen / game._full_mon_gen (makemon.js) — set for the
-    // whole objects+traps+monsters block, exactly as makemaz_bar_strt() does.
-    g._quest_gen = true;
-    g._full_mon_gen = true;
-    try {
-        for (let i = 0; i < 3; i++) quest_create_object_random(42, 3);
-        for (let i = 0; i < 4; i++) quest_create_object_random(41, 3);
-        for (let i = 0; i < 2; i++) quest_create_object_random(41, 8);
-        for (let i = 0; i < 3; i++) quest_create_object_random(42, 8);
-        for (let i = 0; i < 3; i++) quest_create_object_random(71, 13);
-        // des.trap("spiked pit", x, y) x4 — fixed type + coord.
-        await quest_create_trap(12 /*SPIKED_PIT*/, 10, 13);
-        await quest_create_trap(12 /*SPIKED_PIT*/, 21, 7);
-        await quest_create_trap(12 /*SPIKED_PIT*/, 67, 8);
-        await quest_create_trap(12 /*SPIKED_PIT*/, 68, 9);
-        // des.trap() x4 — random type + random location.
-        for (let i = 0; i < 4; i++) await quest_create_trap_random();
-        // des.monster(...) — 14 explicit-coord ogres, guarding the oasis rooms.
-        const ogreSpots = [
-            [12, 9], [18, 11], [45, 5], [45, 6], [47, 5], [46, 5],
-            [56, 3], [56, 4], [56, 5], [56, 6], [57, 3], [57, 4], [57, 5], [57, 6],
-        ];
-        for (const [mx, my] of ogreSpots) quest_create_monster('ogre', mx, my, false);
-        // 3 more ogres + a random ogre-class + a random troll-class, all at a
-        // random DRY spot.
-        for (let i = 0; i < 3; i++) quest_create_monster_randpos('ogre', false);
-        quest_create_monster_class_randpos(41 /* S_OGRE */, false);
-        quest_create_monster_class_randpos(46 /* S_TROLL */, false);
-        // 5 explicit-coord rock trolls.
-        const trollSpots = [[46, 6], [47, 6], [56, 7], [57, 7], [70, 13]];
-        for (const [mx, my] of trollSpots) quest_create_monster('rock troll', mx, my, false);
-        // 2 more rock trolls + a random troll-class, all at a random DRY spot.
-        for (let i = 0; i < 2; i++) quest_create_monster_randpos('rock troll', false);
-        quest_create_monster_class_randpos(46 /* S_TROLL */, false);
-    } finally {
-        g._quest_gen = false;
-        g._full_mon_gen = false;
-    }
-
-    // C ref: lspo_finalize_level -> wallification(1,0,COLNO-1,ROWNO-1) then
-    // flip_level_rnd(allow_flips=3, FALSE): one rn2(2) per enabled axis.  No
-    // branch levregion is registered on this level, so (unlike Bar-strt)
-    // there is nothing to flip alongside the map.
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) flip_level(flp);
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Archeologist quest "home" level loader (dat/Arc-strt.lua).
-//
-// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("Arc-strt")
-// -> load_special("Arc-strt.lua").  Same splev engine as Bar-strt: loading
-// nhlib.lua first runs shuffle(align) (rn2(3),rn2(2)); level_init solidfill
-// draws one rn2(2); then the des.* program runs in file order consuming the
-// PRNG exactly.  Hand-ported so the stream matches C's recorded trace.
-//
-// The fort is a moated keep; Lord Carnarvon + guards inside, siege monsters
-// (random snakes/mummies via des.monster("S"/"M")) outside, six random traps,
-// and a moat that gets kelp during mineralize() at level finalize.
-// ════════════════════════════════════════════════════════════════════════
-
-const ARC_STRT_MAP = [
-    '............................................................................',
-    '............................................................................',
-    '............................................................................',
-    '............................................................................',
-    '....................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.................',
-    '....................}-------------------------------------}.................',
-    '....................}|..S......+.................+.......|}.................',
-    '....................}-S---------------+----------|.......|}.................',
-    '....................}|.|...............|.......+.|.......|}.................',
-    '....................}|.|...............---------.---------}.................',
-    '....................}|.S.\\.............+.................+..................',
-    '....................}|.|...............---------.---------}.................',
-    '....................}|.|...............|.......+.|.......|}.................',
-    '....................}-S---------------+----------|.......|}.................',
-    '....................}|..S......+.................+.......|}.................',
-    '....................}-------------------------------------}.................',
-    '....................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.................',
-    '............................................................................',
-    '............................................................................',
-    '............................................................................',
-].join('\n');
-
 // C ref: trap.h trap-type constants (only the ones traptype_rnd() switches on).
 const ARC_NO_TRAP = 0, ARC_ROCKTRAP = 3, ARC_HOLE = 13, ARC_TRAPDOOR = 14;
 // C ref: monsym.h — def_char_to_monclass('S') = S_SNAKE, ('M') = S_MUMMY.
-const ARC_S_SNAKE = 45, ARC_S_MUMMY = 39, ARC_G_NOGEN = 0x0200;
+export const ARC_S_SNAKE = 45, ARC_S_MUMMY = 39, ARC_G_NOGEN = 0x0200;
 
 // C ref: mklev.c traptype_rnd() — pick a random trap type, NO_TRAP if "too
 // hard"/disallowed on this level.  We reimplement it locally (rather than share
@@ -2486,7 +2156,7 @@ function arc_traptype_rnd() {
 // get_location_coord(DRY) loop rejecting stairs/ladder, then mktrap(0,...):
 // retry traptype_rnd() until valid, is_hole&&!Can_fall_thru -> ROCKTRAP, place,
 // then the always-drawn victim check rnd(4) (lvl(14) <= rnd(4) is never true).
-async function quest_create_trap_random() {
+export async function quest_create_trap_random() {
     let x = -1, y = -1, trycnt = 0;
     do {
         const c = bigrm_get_location_dry();          // internal DRY retry loop
@@ -2505,7 +2175,7 @@ async function quest_create_trap_random() {
 // C ref: sp_lev.c create_monster for a class char ("S"/"M") with no specific id:
 // sp_amask_to_amask(AM_SPLEV_RANDOM) draws induced_align rn2(3); pm =
 // mkclass(class, G_NOGEN); explicit coord -> no get_location RNG; makemon().
-function quest_create_monster_class(classNum, mx, my) {
+export function quest_create_monster_class(classNum, mx, my) {
     rn2(3);                                            // induced_align (dungeon.c:2012)
     const ptr = mkclass(classNum, ARC_G_NOGEN);
     if (!ptr) return null;
@@ -2526,7 +2196,7 @@ function quest_create_monster_class(classNum, mx, my) {
 // obj_resists(obj, 0, 0) == rn2(100) for EACH minvent item (invocation tools /
 // quest artifacts would be kept; a quest leader carries none), so a leader who
 // got one defensive item from m_initinv contributes exactly one rn2(100) here.
-function quest_drop_default_invent(mtmp) {
+export function quest_drop_default_invent(mtmp) {
     if (!mtmp || !Array.isArray(mtmp.minvent)) return;
     for (let i = 0; i < mtmp.minvent.length; i++) {
         rn2(100);                                      // obj_resists(obj, 0, 0)
@@ -2535,278 +2205,13 @@ function quest_drop_default_invent(mtmp) {
     mtmp.minvent = [];
 }
 
-// Main executor.  C ref: makemaz("Arc-strt") -> load_special.
-export async function makemaz_arc_strt() {
-    const g = game;
-    // load_special -> load nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    shuffle(['law', 'neutral', 'chaos']);
-    // des.level_flags("mazelevel", "noteleport", "hardfloor") — no RNG.
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.hardfloor = true;
-    }
-    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
-    // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(ARC_STRT_MAP, false);  // des.map bare string -> lit=FALSE
-    // des.region(...) x16 — whole level lit, then lit/unlit sub-rooms.  No RNG.
-    quest_region_light(0, 0, 75, 19, true);
-    quest_region_light(22, 6, 23, 6, false);
-    quest_region_light(25, 6, 30, 6, false);
-    quest_region_light(32, 6, 48, 6, false);
-    quest_region_light(50, 6, 56, 8, true);
-    quest_region_light(40, 8, 46, 8, false);
-    quest_region_light(22, 8, 22, 12, false);
-    quest_region_light(24, 8, 38, 12, false);
-    quest_region_light(48, 8, 48, 8, true);
-    quest_region_light(40, 10, 56, 10, true);
-    quest_region_light(48, 12, 48, 12, true);
-    quest_region_light(40, 12, 46, 12, false);
-    quest_region_light(50, 12, 56, 14, true);
-    quest_region_light(22, 14, 23, 14, false);
-    quest_region_light(25, 14, 30, 14, false);
-    quest_region_light(32, 14, 48, 14, false);
-    // des.stair("down", 55, 7) — no RNG.
-    quest_place_stair(55, 7, false);
-    // des.levregion({ region={63,6,63,6}, type="branch" }) — register, no RNG.
-    quest_register_branch(63, 6);
-    // des.door(...) x12 — explicit states, no RNG.
-    quest_set_door(22, 7, 'closed'); quest_set_door(38, 7, 'closed');
-    quest_set_door(47, 8, 'locked'); quest_set_door(23, 10, 'locked');
-    quest_set_door(39, 10, 'locked'); quest_set_door(57, 10, 'locked');
-    quest_set_door(47, 12, 'locked'); quest_set_door(22, 13, 'closed');
-    quest_set_door(38, 13, 'closed'); quest_set_door(24, 14, 'locked');
-    quest_set_door(31, 14, 'closed'); quest_set_door(49, 14, 'locked');
-
-    g._quest_gen = true;
-    g._full_mon_gen = true;
-    try {
-        // Lord Carnarvon + custom inventory (fedora+5, bullwhip+4).
-        const carnarvon = quest_create_monster('Lord Carnarvon', 25, 10, null);
-        // custom inventory replaces makemon's default: mdrop_special_objs +
-        // discard_minvent (one obj_resists rn2(100) for his defensive item).
-        quest_drop_default_invent(carnarvon);
-        quest_create_object(92 /*FEDORA*/, null, null, 5, carnarvon);
-        quest_create_object(82 /*BULLWHIP*/, null, null, 4, carnarvon);
-        // The treasure of Lord Carnarvon.
-        quest_create_object(CHEST, 25, 10, null, null);
-        // student guards for the audience chamber.
-        const students = [[26, 9], [27, 9], [28, 9], [26, 10],
-                          [28, 10], [26, 11], [27, 11], [28, 11]];
-        for (const [sx, sy] of students) quest_create_monster('student', sx, sy, null);
-        // city watch guards in the antechambers.
-        quest_create_monster('watchman', 50, 6, null);
-        quest_create_monster('watchman', 50, 14, null);
-        // Eels in the moat.
-        quest_create_monster('giant eel', 20, 10, null);
-        quest_create_monster('giant eel', 45, 4, null);
-        quest_create_monster('giant eel', 33, 16, null);
-        // des.non_diggable — no RNG.
-        // Six random traps.
-        for (let i = 0; i < 6; i++) await quest_create_trap_random();
-        // Monsters on siege duty (random snakes "S" / mummies "M").
-        const siege = [
-            [ARC_S_SNAKE, 60, 9], [ARC_S_MUMMY, 60, 10], [ARC_S_SNAKE, 60, 11],
-            [ARC_S_SNAKE, 60, 12], [ARC_S_MUMMY, 60, 13], [ARC_S_SNAKE, 61, 10],
-            [ARC_S_SNAKE, 61, 11], [ARC_S_SNAKE, 61, 12], [ARC_S_SNAKE, 30, 3],
-            [ARC_S_MUMMY, 20, 17], [ARC_S_SNAKE, 67, 2], [ARC_S_SNAKE, 10, 19],
-        ];
-        for (const [cls, cx, cy] of siege) quest_create_monster_class(cls, cx, cy);
-    } finally {
-        g._quest_gen = false;
-        g._full_mon_gen = false;
-    }
-
-    // C ref: lspo_finalize_level -> wallification(1,0,COLNO-1,ROWNO-1) (!corrmaze)
-    // then flip_level_rnd(allow_flips=3, FALSE): one rn2(2) per enabled axis.
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) { flip_level(flp); quest_flip_branch(flp); }
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Priest quest "home" level loader (dat/Pri-strt.lua) — the Great Temple.
-//
-// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("Pri-strt")
-// -> load_special("Pri-strt.lua").  Same splev engine as Bar-strt/Arc-strt:
-// loading nhlib.lua first runs shuffle(align) (rn2(3),rn2(2)); level_init
-// solidfill draws one rn2(2); then the des.* program runs in file order
-// consuming the PRNG exactly.
-//
-// The temple room (des.region{type="temple"}) draws no RNG: lspo_region's
-// add_room() is called with special=TRUE (the walls are already stamped by
-// the ASCII map) so it only mutates the room list (in_rooms/engrave/priest-AI
-// bookkeeping), never levl[][].typ.  This port skips that bookkeeping — it
-// has no bearing on the RNG stream or the rendered screen.  The altar is
-// explicit-coord, type="altar" (shrine=0), so create_altar() returns before
-// reaching priestini()/has_temple — matching the .lua's own "Unattended Altar
-// - unaligned due to conflict" comment.
-// ════════════════════════════════════════════════════════════════════════
-
-const PRI_STRT_MAP = [
-    '............................................................................',
-    '............................................................................',
-    '............................................................................',
-    '....................------------------------------------....................',
-    '....................|................|.....|.....|.....|....................',
-    '....................|..------------..|--+-----+-----+--|....................',
-    '....................|..|..........|..|.................|....................',
-    '....................|..|..........|..|+---+---+-----+--|....................',
-    '..................---..|..........|......|...|...|.....|....................',
-    '..................+....|..........+......|...|...|.....|....................',
-    '..................+....|..........+......|...|...|.....|....................',
-    '..................---..|..........|......|...|...|.....|....................',
-    '....................|..|..........|..|+-----+---+---+--|....................',
-    '....................|..|..........|..|.................|....................',
-    '....................|..------------..|--+-----+-----+--|....................',
-    '....................|................|.....|.....|.....|....................',
-    '....................------------------------------------....................',
-    '............................................................................',
-    '............................................................................',
-    '............................................................................',
-].join('\n');
-
-// C ref: sp_lev.c lspo_altar/create_altar for an explicit coord, type="altar"
-// (shrine=0, so the `if (a->shrine<0) a->shrine=rn2(2)` random case never
-// triggers — no RNG).  With no enclosing room context, get_location_coord on
-// an explicit coord is a direct passthrough (no RNG); set_levltyp(ALTAR) then
-// stamps the terrain and altarmask.  shrine==0 short-circuits before
-// priestini()/has_temple.
-function quest_create_altar(mx, my, amask) {
-    const loc = game.level?.at(q_absx(mx), q_absy(my));
-    if (!loc) return;
-    loc.typ = ALTAR;
-    loc.altarmask = amask;
-}
-
-// Main executor.  C ref: makemaz("Pri-strt") -> load_special.
-export async function makemaz_pri_strt() {
-    const g = game;
-    // load_special -> load nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    shuffle(['law', 'neutral', 'chaos']);
-    // des.level_flags("mazelevel", "noteleport", "hardfloor") — no RNG.
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.hardfloor = true;
-    }
-    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
-    // des.map([[...]]) — full-level map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(PRI_STRT_MAP, false);  // des.map bare string -> lit=FALSE
-    // des.region(selection.area(00,00,75,19), "lit") — no RNG.
-    quest_region_light(0, 0, 75, 19, true);
-    // des.region({ region={24,06,33,13}, lit=1, type="temple", filled=2 }) —
-    // add_room(special=TRUE) draws nothing, but filled=2 (FILL_LVLFLAGS_ONLY)
-    // makes lspo_finalize_level's fill_special_room() loop set
-    // svl.level.flags.has_temple, and THAT steers dosounds(): sounds.c:330 is
-    // `has_temple && !rn2(200)`, one extra draw on EVERY turn spent here.
-    vly_region(24, 6, 33, 13, 1, TEMPLE_RTYPE, 2 /* FILL_LVLFLAGS_ONLY */, false);
-    // des.replace_terrain x2 (floor -> tree, both edge columns, chance=10).
-    quest_replace_terrain(0, 0, 10, 19, ROOM, TREE, 10);
-    quest_replace_terrain(65, 0, 75, 19, ROOM, TREE, 10);
-    // des.terrain({05,04}, ".") — force the portal arrival cell to floor.
-    { const loc = g.level?.at(q_absx(5), q_absy(4)); if (loc) loc.typ = ROOM; }
-    // local spacelocs = selection.floodfill(05,04) — no RNG.
-    const spacelocs = quest_floodfill_match(5, 4);
-    // des.levregion({ region={05,04,05,04}, type="branch" }) — register, no RNG.
-    quest_register_branch(5, 4);
-    // des.stair("down", 52,09) — no RNG.
-    quest_place_stair(52, 9, false);
-    // des.door(...) x18 — explicit states, no RNG.
-    quest_set_door(18, 9, 'locked'); quest_set_door(18, 10, 'locked');
-    quest_set_door(34, 9, 'closed'); quest_set_door(34, 10, 'closed');
-    quest_set_door(40, 5, 'closed'); quest_set_door(46, 5, 'closed'); quest_set_door(52, 5, 'closed');
-    quest_set_door(38, 7, 'locked'); quest_set_door(42, 7, 'closed');
-    quest_set_door(46, 7, 'closed'); quest_set_door(52, 7, 'closed');
-    quest_set_door(38, 12, 'locked'); quest_set_door(44, 12, 'closed');
-    quest_set_door(48, 12, 'closed'); quest_set_door(52, 12, 'closed');
-    quest_set_door(40, 14, 'closed'); quest_set_door(46, 14, 'closed'); quest_set_door(52, 14, 'closed');
-    // des.altar({ x=28, y=09, align="noalign", type="altar" }) — unaligned,
-    // shrine=0 (create_altar returns before priestini/has_temple).  No RNG.
-    quest_create_altar(28, 9, 0 /* AM_NONE */);
-
-    g._quest_gen = true;
-    g._full_mon_gen = true;
-    try {
-        // High Priest (Arch Priest) + custom inventory (robe+4, mace+4).
-        const archpriest = quest_create_monster('Arch Priest', 28, 10, null);
-        quest_drop_default_invent(archpriest);
-        quest_create_object(143 /*ROBE*/, null, null, 4, archpriest);
-        quest_create_object(73 /*MACE*/, null, null, 4, archpriest);
-        // The treasure of the Arch Priest.
-        quest_create_object(CHEST, 27, 10, null, null);
-        // acolyte guards for the audience chamber.
-        const acolytes = [[32, 7], [32, 8], [32, 11], [32, 12],
-                          [33, 7], [33, 8], [33, 11], [33, 12]];
-        for (const [ax, ay] of acolytes) quest_create_monster('acolyte', ax, ay, null);
-        // des.non_diggable — no RNG.
-        // Two dart traps at a random spot in the open siege field (already an
-        // absolute coord from spacelocs:rndcoord(1), so no further RNG in
-        // get_location — see quest_create_trap's header comment).
-        for (let i = 0; i < 2; i++) {
-            const c = quest_rndcoord(spacelocs);
-            if (c) { await maketrap(c.x, c.y, 2 /*DART_TRAP*/); rnd(4); }
-        }
-        // Four random traps.
-        for (let i = 0; i < 4; i++) await quest_create_trap_random();
-        // Monsters on siege duty: 12 human zombies in the open field.
-        for (let i = 0; i < 12; i++) {
-            const c = quest_rndcoord(spacelocs);
-            if (!c) continue;
-            quest_create_monster_at('human zombie', c.x, c.y, null);
-        }
-    } finally {
-        g._quest_gen = false;
-        g._full_mon_gen = false;
-    }
-
-    // C ref: lspo_finalize_level -> wallification(1,0,COLNO-1,ROWNO-1) then
-    // flip_level_rnd(allow_flips=3, FALSE): one rn2(2) per enabled axis.
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) { flip_level(flp); quest_flip_branch(flp); }
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Vlad's Tower upper stage (dat/tower1.lua).
-//
-// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("tower1") ->
-// load_special("tower1.lua").  Loading nhlib.lua first runs shuffle(align)
-// (rn2(3), rn2(2)); then the tower1 body: level_init solidfill (rn2(2)),
-// a fixed map (halign="half-left", valign="center"), shuffle(niches) over the
-// six niche cells, a down-ladder, Vlad + three random vampires + three named
-// vampire "ladies" (waiting -> shift back to vampire form), doors, seven chests
-// (two carrying candles), non_diggable, then wallification + flip_level_rnd.
-// We hand-port it calling the same RNG primitives in the same order.
-// ════════════════════════════════════════════════════════════════════════
-
-const TOWER1_MAP = [
-    '  --- --- ---  ',
-    '  |.| |.| |.|  ',
-    '---S---S---S---',
-    '|.......+.+...|',
-    '---+-----.-----',
-    '  |...\\.|.+.|  ',
-    '---+-----.-----',
-    '|.......+.+...|',
-    '---S---S---S---',
-    '  |.| |.| |.|  ',
-    '  --- --- ---  ',
-].join('\n');
-
 // C ref: sp_lev.c lspo_map halign=SPLEV_H_LEFT / valign=SPLEV_CENTER offset.
 // gx.xstart = 2 + ((x_maze_max-2-xsize)/4); gy.ystart = 2 + ((y_maze_max-2-ysize)/2);
 // each bumped odd.  Then stamp the fixed terrain (no RNG).
 // `lit` is des.map's OWN "lit" option (sp_lev.c:6122 get_table_boolean_opt
 // "lit", default FALSE) — NOT the level_init lit.  Passing the level_init
 // rn2(2) here renders the whole of tower2 lit (its roll is 1, tower1/3 roll 0).
-function tower1_load_map(mapstr, lit) {
+export function tower1_load_map(mapstr, lit) {
     const mf = mapfrag_fromstr(mapstr);
     gx.xsize = mf.wid;
     gy.ysize = mf.hei;
@@ -2851,7 +2256,7 @@ function tower1_load_map(mapstr, lit) {
 // des.ladder("up"/"down", mx, my) — no RNG.  C ref: sp_lev.c lspo_ladder ->
 // levl[x][y].typ = LADDER; levl[x][y].ladder = up ? LA_UP : LA_DOWN;
 // stairway_add(x, y, up, TRUE, ...).
-function tower_place_ladder(mx, my, up = false) {
+export function tower_place_ladder(mx, my, up = false) {
     const x = q_absx(mx), y = q_absy(my);
     const loc = game.level?.at(x, y);
     if (loc) loc.typ = LADDER;
@@ -2864,77 +2269,6 @@ function tower_place_ladder(mx, my, up = false) {
         game.dnstair = { x, y };
         if (game.level) { game.level.dnstair = { x, y }; if (loc) loc.ladder = LA_DOWN; }
     }
-}
-
-// C ref: sp_lev.c create_monster for a class ("V"): amask induced_align rn2(3),
-// pm = mkclass(S_VAMPIRE, G_NOGEN), get_location (explicit coord, no RNG),
-// makemon.  makemon (with _tower_gen set) shifts the vampire via newcham.
-const G_NOGEN_TOWER = 0x0200;
-function tower_create_V(mx, my) {
-    rn2(3);                                          // induced_align
-    const ptr = mkclass(S_VAMPIRE_CLASS, G_NOGEN_TOWER);
-    if (!ptr) return null;
-    let x = q_absx(mx), y = q_absy(my);
-    if (mm_mon_at(x, y)) {
-        const cc = enexto_spawn(x, y, ptr);
-        if (cc) { x = cc.x; y = cc.y; }
-    }
-    return makemon(ptr, x, y, 0);
-}
-
-// C ref: sp_lev.c create_monster for { id="vampire lady", name, waiting=1 }.
-// find_montype("vampire lady") -> PM_VAMPIRE_LEADER, female (no gender rn2).
-// amask induced_align rn2(3); makemon (shifts via newcham); create_monster then
-// sets female, christens with `name`, sets STRAT_WAITFORU and (since it shifted)
-// reverts to vampire form via newcham(&mons[cham]) — mgender rn2(10)+newmonhp.
-const PM_VAMPIRE_LEADER_IDX = 227;
-function tower_create_vampire_lady(name, mx, my) {
-    rn2(3);                                          // induced_align
-    const ptr = monster_by_pmidx(PM_VAMPIRE_LEADER_IDX);
-    if (!ptr) return null;
-    let x = q_absx(mx), y = q_absy(my);
-    if (mm_mon_at(x, y)) {
-        const cc = enexto_spawn(x, y, ptr);
-        if (cc) { x = cc.x; y = cc.y; }
-    }
-    const mtmp = makemon(ptr, x, y, 0);
-    if (!mtmp) return null;
-    mtmp.female = 1;                                 // "lady" -> female (no RNG)
-    if (name) mtmp.mname = name;                     // christen (no RNG)
-    // KNOWN WRONG, DELIBERATELY LEFT: monst.h:177 STRAT_WAITFORU is 0x20000000
-    // (0x40000000 is STRAT_ARRIVE), and correcting it DOES fix the stream — it
-    // moves seed0360's first RNG divergence from step 263 to step 290 (medusa),
-    // making tower2 (268-273) byte-exact.
-    // MEASURED 2026-08-14, WITH the mklev.js tower2/tower3 dispatch also landed:
-    // seed0360 gains 4 steps and loses 6 (294, 300, 736, 778, 779, 796), so the
-    // per-step superset gate still rejects it.  The remaining blocker is the
-    // Tier-1 chain past step 290 (Medusa), not the tower dispatch.
-    mtmp.mstrategy = (mtmp.mstrategy || 0) | 0x40000000; /* STRAT_ARRIVE — see above */
-    // vampshifted (cham is a vampire and current form differs) -> revert.
-    if (mtmp.cham === PM_VAMPIRE_LEADER_IDX
-        && mtmp.data && mtmp.data.pmidx !== PM_VAMPIRE_LEADER_IDX) {
-        newcham_vamp(mtmp, monster_by_pmidx(PM_VAMPIRE_LEADER_IDX));
-    }
-    return mtmp;
-}
-
-// C ref: des.object({ id="chest", coord, contents=function() ... end }).
-// The chest is created with auto-filled contents (mkbox_cnts RNG), which are
-// then discarded (SP_OBJ_CONTAINER -> delete_contents, no RNG); the contents
-// callback creates one candle: math.random(4,8) [rn2(5)] for quantity, then
-// create_object -> get_location DRY (rn2(xsize)/rn2(ysize)) + mksobj(candle).
-function tower_content_chest(mx, my, candleType) {
-    const x = q_absx(mx), y = q_absy(my);
-    const chest = mksobj_at(CHEST, x, y, true, true);   // init + mkbox_cnts
-    // delete_contents: drop the auto-generated contents (no RNG).
-    if (chest) chest.cobj = null;
-    const qty = 4 + rn2(5);                              // math.random(4,8)
-    bigrm_get_location_dry();                            // get_location DRY
-    const candle = mksobj(candleType, true, false);      // next_ident + init
-    if (candle) candle.quan = qty;
-    // add to container (no RNG); keep off the floor.
-    if (chest) { if (!chest.cobj) chest.cobj = []; if (Array.isArray(chest.cobj)) chest.cobj.push(candle); }
-    return chest;
 }
 
 // C ref: mkmaze.c wallification() — the FAITHFUL wall_cleanup + fix_wall_spines
@@ -2966,7 +2300,7 @@ function tw_extend_spine(locale, wall_there, dx, dy) {
     if (locale[0][1] && locale[2][1] && locale[0][ny] && locale[2][ny]) return 0;
     return 1;
 }
-function tower_wallification(x1, y1, x2, y2) {
+export function tower_wallification(x1, y1, x2, y2) {
     const map = game.level;
     if (!map) return;
     // wall_cleanup: walls totally surrounded by solid -> STONE.
@@ -3003,319 +2337,13 @@ function tower_wallification(x1, y1, x2, y2) {
         }
 }
 
-// Main executor.  C ref: makemaz("tower1") -> load_special.
-export async function makemaz_tower1() {
-    const g = game;
-    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    shuffle(['law', 'neutral', 'chaos']);
-    // des.level_init({ style="solidfill", fg=" " }) -> rn2(2) + fill STONE.
-    quest_level_init_solidfill();          // splev_initlev rn2(2)
-    // des.level_flags("mazelevel","noteleport","hardfloor","solidify") — no RNG.
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.hardfloor = true;
-    }
-    // des.map({ halign="half-left", valign="center", map=[[...]] }) — no RNG.
-    tower1_load_map(TOWER1_MAP, false);   // des.map has no "lit" option
-
-    // local niches = {...}; shuffle(niches) — rn2(6),rn2(5),rn2(4),rn2(3),rn2(2).
-    const niches = [[3, 1], [3, 9], [7, 1], [7, 9], [11, 1], [11, 9]];
-    shuffle(niches);
-
-    // des.ladder("down", 11,05) — no RNG.
-    tower_place_ladder(11, 5);
-
-    g._tower_gen = true;
-    g._full_mon_gen = true;
-    try {
-        // The lord and his court.
-        quest_create_monster('Vlad the Impaler', 6, 5, null);
-        tower_create_V(niches[0][0], niches[0][1]);
-        tower_create_V(niches[1][0], niches[1][1]);
-        tower_create_V(niches[2][0], niches[2][1]);
-        // The brides (waiting vampires); names only when vampire isn't genocided.
-        const Vgenod = false;
-        const Vnames = Vgenod ? [null, null, null] : ['Madame', 'Marquise', 'Countess'];
-        tower_create_vampire_lady(Vnames[0], niches[3][0], niches[3][1]);
-        tower_create_vampire_lady(Vnames[1], niches[4][0], niches[4][1]);
-        tower_create_vampire_lady(Vnames[2], niches[5][0], niches[5][1]);
-    } finally {
-        g._tower_gen = false;
-        g._full_mon_gen = false;
-    }
-
-    // des.door(...) x7 — explicit states on existing DOOR cells, no RNG.
-    quest_set_door(8, 3, 'closed'); quest_set_door(10, 3, 'closed');
-    quest_set_door(3, 4, 'closed');
-    quest_set_door(10, 5, 'locked'); quest_set_door(8, 7, 'locked');
-    quest_set_door(10, 7, 'locked'); quest_set_door(3, 6, 'closed');
-
-    g._full_mon_gen = true;
-    try {
-        // treasures — five plain chests then two candle-bearing chests.
-        quest_create_object(CHEST, 7, 5, null, null);
-        quest_create_object(CHEST, niches[5][0], niches[5][1], null, null);
-        quest_create_object(CHEST, niches[0][0], niches[0][1], null, null);
-        quest_create_object(CHEST, niches[1][0], niches[1][1], null, null);
-        quest_create_object(CHEST, niches[2][0], niches[2][1], null, null);
-        tower_content_chest(niches[3][0], niches[3][1], WAX_CANDLE);
-        tower_content_chest(niches[4][0], niches[4][1], TALLOW_CANDLE);
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    // des.non_diggable(selection.area(0,0,14,10)) — no RNG.
-
-    // C ref: lspo_finalize_level -> wallification then flip_level_rnd(3, FALSE).
-    tower_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) flip_level(flp);
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Vlad's Tower middle stage (dat/tower2.lua) and entry stage (dat/tower3.lua).
-//
-// Tour order matters: tower3 is the branch level reached from Gehennom, tower2
-// sits above it and tower1 (already ported) on top.  Both share tower1's
-// skeleton — nhlib shuffle(align), solidfill level_init, a fixed map with
-// halign="half-left"/valign="center", then monsters/objects/traps in file
-// order, wallification and flip_level_rnd.
-// ════════════════════════════════════════════════════════════════════════
-
-const TOWER2_MAP = [
-    '  --- --- ---  ',
-    '  |.| |.| |.|  ',
-    '---S---S---S---',
-    '|.S.........S.|',
-    '---.------+----',
-    '  |......|..|  ',
-    '--------.------',
-    '|.S......+..S.|',
-    '---S---S---S---',
-    '  |.| |.| |.|  ',
-    '  --- --- ---  ',
-].join('\n');
-
-const TOWER3_MAP = [
-    '    --- --- ---    ',
-    '    |.| |.| |.|    ',
-    '  ---S---S---S---  ',
-    '  |.S.........S.|  ',
-    '-----.........-----',
-    '|...|.........+...|',
-    '|.---.........---.|',
-    '|.|.S.........S.|.|',
-    '|.---S---S---S---.|',
-    '|...|.|.|.|.|.|...|',
-    '---.---.---.---.---',
-    '  |.............|  ',
-    '  ---------------  ',
-].join('\n');
-
 // obj.h otyps used by tower2/tower3 (verified against js/mkobj.js objects[]).
-const AMULET_OF_LIFE_SAVING = 202, AMULET_OF_STRANGULATION = 203,
+export const AMULET_OF_LIFE_SAVING = 202, AMULET_OF_STRANGULATION = 203,
     WATER_WALKING_BOOTS = 167, CRYSTAL_PLATE_MAIL = 122,
     LONG_SWORD = 54, LOCK_PICK = 222, ELVEN_CLOAK = 139, BLINDFOLD = 233,
     SPE_CONE_OF_COLD = 369, SPE_CLAIRVOYANCE = 385, SPE_CHARM_MONSTER = 387,
     SPE_INVISIBILITY = 393, SPE_POLYMORPH = 399, SPE_CREATE_FAMILIAR = 401,
     SPE_STONE_TO_FLESH = 405;
-
-// C ref: sp_lev.c create_object with SP_OBJ_CONTAINER + a contents callback.
-// mksobj_at(CHEST) (rnd(2) ident, olocked rn2(5), otrapped rn2(10), mkbox_cnts
-// rn2(8) [+ each auto content]), then delete_contents (no RNG), then the
-// callback's create_object: get_location(DRY) — a RANDOM location, so the
-// retry loop runs — followed by mksobj for the item, which is then moved into
-// the container.
-function tower_chest_containing(mx, my, otyp) {
-    const x = q_absx(mx), y = q_absy(my);
-    const chest = mksobj_at(CHEST, x, y, true, true);
-    if (chest) chest.cobj = null;                     // delete_contents
-    bigrm_get_location_dry();                         // get_location(DRY) loop
-    const item = mksobj(otyp, true, true);
-    if (chest && item) {
-        if (!Array.isArray(chest.cobj)) chest.cobj = [];
-        chest.cobj.push(item);
-        chest.owt = weight(chest);
-    }
-    return chest;
-}
-
-// C ref: sp_lev.c create_monster with no class and no id (`des.monster()` /
-// `des.monster({x=,y=})`): sp_amask_to_amask draws induced_align rn2(3), pm
-// stays NULL so get_location_coord uses DRY (explicit coord -> no RNG; no
-// coord -> the random retry loop), then makemon(NULL, ...) rolls the species.
-function tower_create_monster_random(mx, my) {
-    rn2(3);                                          // induced_align (dungeon.c:2012)
-    let x, y;
-    if (mx != null) { x = q_absx(mx); y = q_absy(my); }
-    else { const c = bigrm_get_location_dry(); x = c.x; y = c.y; }
-    if (mm_mon_at(x, y)) {
-        const cc = enexto_spawn(x, y, null);
-        if (cc) { x = cc.x; y = cc.y; }
-    }
-    return makemon(null, x, y, 0);
-}
-
-// C ref: mklev.c traptype_rnd() as reached from sp_lev.c create_trap with no
-// type.  lvl is level_difficulty() (not dlevel — Vlad's Tower builds up, so
-// the two differ), and FIRE_TRAP is only allowed In_hell.
-function tower_traptype_rnd() {
-    const lvl = level_difficulty_ext();
-    const noteleport = !!game.level?.flags?.noteleport;
-    let kind = rnd(TRAPNUM - 1);                     // mklev.c:1941
-    switch (kind) {
-    case TRAPPED_DOOR: case TRAPPED_CHEST: case MAGIC_PORTAL: case VIBRATING_SQUARE:
-        kind = NO_TRAP; break;
-    case ROLLING_BOULDER_TRAP: case SLP_GAS_TRAP:
-        if (lvl < 2) kind = NO_TRAP; break;
-    case LEVEL_TELEP:
-        if (lvl < 5 || noteleport) kind = NO_TRAP; break;
-    case SPIKED_PIT:
-        if (lvl < 5) kind = NO_TRAP; break;
-    case LANDMINE:
-        if (lvl < 6) kind = NO_TRAP; break;
-    case WEB:
-        if (lvl < 7) kind = NO_TRAP; break;
-    case STATUE_TRAP: case POLY_TRAP:
-        if (lvl < 8) kind = NO_TRAP; break;
-    case FIRE_TRAP:
-        if (!In_hell(game.u?.uz)) kind = NO_TRAP; break;
-    case TELEP_TRAP:
-        if (noteleport) kind = NO_TRAP; break;
-    case HOLE:
-        if (rn2(7)) kind = NO_TRAP; break;           // mklev.c:1993
-    }
-    return kind;
-}
-
-// C ref: sp_lev.c create_trap with an explicit coord and no type ->
-// mktrap(NO_TRAP, MKTRAP_MAZEFLAG|MKTRAP_NOSPIDERONWEB): retry traptype_rnd()
-// until it yields a type, demote a hole/trapdoor when the floor is hard, then
-// the always-drawn victim check rnd(4) (mklev.c:2137).
-async function tower_create_trap_random_at(mx, my) {
-    const x = q_absx(mx), y = q_absy(my);
-    let kind;
-    do { kind = tower_traptype_rnd(); } while (kind === NO_TRAP);
-    if ((kind === HOLE || kind === TRAPDOOR) && !Can_fall_thru(game.u?.uz))
-        kind = ROCKTRAP;
-    await maketrap(x, y, kind);
-    rnd(4);                                          // mktrap victim check
-}
-
-// Main executor.  C ref: makemaz("tower2") -> load_special.
-export async function makemaz_tower2() {
-    const g = game;
-    shuffle(['law', 'neutral', 'chaos']);            // nhlib.lua top level
-    quest_level_init_solidfill();                    // splev_initlev rn2(2)
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.hardfloor = true;
-    }
-    tower1_load_map(TOWER2_MAP, false);              // 15x11, half-left/center
-
-    // local place = { 10 niches }; shuffle(place) — rn2(10)..rn2(2).
-    const place = [[3, 1], [7, 1], [11, 1], [1, 3], [13, 3],
-                   [1, 7], [13, 7], [3, 9], [7, 9], [11, 9]];
-    shuffle(place);
-
-    tower_place_ladder(11, 5, true);                 // des.ladder("up", 11,05)
-    tower_place_ladder(3, 7, false);                 // des.ladder("down", 03,07)
-    quest_set_door(10, 4, 'locked');
-    quest_set_door(9, 7, 'locked');
-
-    g._full_mon_gen = true;
-    try {
-        // des.monster("&", place[10]) / place[1] — mkclass(S_DEMON, G_NOGEN).
-        quest_create_monster_class(S_DEMON, place[9][0], place[9][1]);
-        quest_create_monster_class(S_DEMON, place[0][0], place[0][1]);
-        quest_create_monster('hell hound pup', place[1][0], place[1][1], null);
-        quest_create_monster('hell hound pup', place[2][0], place[2][1], null);
-        quest_create_monster('winter wolf', place[3][0], place[3][1], null);
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    g._full_mon_gen = true;
-    try {
-        tower_chest_containing(place[4][0], place[4][1], AMULET_OF_LIFE_SAVING);
-        tower_chest_containing(place[5][0], place[5][1], AMULET_OF_STRANGULATION);
-        quest_create_object(WATER_WALKING_BOOTS, place[6][0], place[6][1], null, null);
-        quest_create_object(CRYSTAL_PLATE_MAIL, place[7][0], place[7][1], null, null);
-        // local spbooks = { 7 titles }; shuffle(spbooks) — rn2(7)..rn2(2).
-        const spbooks = [SPE_INVISIBILITY, SPE_CONE_OF_COLD, SPE_CREATE_FAMILIAR,
-                         SPE_CLAIRVOYANCE, SPE_CHARM_MONSTER, SPE_STONE_TO_FLESH,
-                         SPE_POLYMORPH];
-        shuffle(spbooks);
-        quest_create_object(spbooks[0], place[8][0], place[8][1], null, null);
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    // des.non_diggable(selection.area(0,0,14,10)) — no RNG.
-    tower_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) flip_level(flp);
-}
-
-// Main executor.  C ref: makemaz("tower3") -> load_special.  Unlike tower1/2
-// this one registers a "branch" levregion, so fixup_special places THAT (one
-// rn2(1)/rn2(1) pair) instead of falling back to the whole-level LR_BRANCH loop.
-export async function makemaz_tower3() {
-    const g = game;
-    shuffle(['law', 'neutral', 'chaos']);            // nhlib.lua top level
-    quest_level_init_solidfill();                    // splev_initlev rn2(2)
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.hardfloor = true;
-    }
-    tower1_load_map(TOWER3_MAP, false);              // 19x13, half-left/center
-
-    // `place` is used directly here — tower3.lua does NOT shuffle it.
-    const place = [[5, 1], [9, 1], [13, 1], [3, 3], [15, 3],
-                   [3, 7], [15, 7], [5, 9], [9, 9], [13, 9]];
-
-    quest_register_branch(2, 5);                     // des.levregion type="branch"
-    tower_place_ladder(5, 7, true);                  // des.ladder("up", 05,07)
-    quest_set_door(14, 5, 'locked');
-
-    g._full_mon_gen = true;
-    try {
-        quest_create_monster_class(S_DRAGON, 13, 5); // des.monster("D",13,05)
-        tower_create_monster_random(12, 4);
-        tower_create_monster_random(12, 6);
-        for (let i = 0; i < 6; i++) tower_create_monster_random(null, null);
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    g._full_mon_gen = true;
-    try {
-        quest_create_object(LONG_SWORD, place[3][0], place[3][1], null, null);
-        await tower_create_trap_random_at(place[3][0], place[3][1]);
-        quest_create_object(LOCK_PICK, place[0][0], place[0][1], null, null);
-        await tower_create_trap_random_at(place[0][0], place[0][1]);
-        quest_create_object(ELVEN_CLOAK, place[1][0], place[1][1], null, null);
-        await tower_create_trap_random_at(place[1][0], place[1][1]);
-        quest_create_object(BLINDFOLD, place[2][0], place[2][1], null, null);
-        await tower_create_trap_random_at(place[2][0], place[2][1]);
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    // des.non_diggable(selection.area(0,0,18,12)) — no RNG.
-    tower_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) { flip_level(flp); quest_flip_branch(flp); }
-}
 
 // ════════════════════════════════════════════════════════════════════════
 // Big Room special level loader (bigrm-1.lua .. bigrm-13.lua).
@@ -3447,7 +2475,7 @@ function bigrm_is_ok_location_dry(x, y) {
 // C ref: sp_lev.c get_location() random-location branch (sp_lev.c:1226-1238)
 // for croom == NULL: loop rn2(xsize)+xstart / rn2(ysize)+ystart until
 // is_ok_location passes (up to 100 tries).  Returns {x,y}.
-function bigrm_get_location_dry() {
+export function bigrm_get_location_dry() {
     let x = -1, y = -1, cpt = 0;
     do {
         x = gx.xstart + rn2(gx.xsize);   // sp_lev.c:1233
@@ -3469,7 +2497,7 @@ function bigrm_get_location_dry() {
 // lr=tb=SPLEV_CENTER).  No RNG.  Sets gx.xstart/xsize, gy.ystart/ysize and
 // stamps the terrain.  Implements the SPLEV_CENTER offset + the ystart
 // out-of-bounds recovery (sp_lev.c:6190-6237).
-function bigrm_load_map(mapstr, lit) {
+export function bigrm_load_map(mapstr, lit) {
     const mf = mapfrag_fromstr(mapstr);
     gx.xsize = mf.wid;
     gy.ysize = mf.hei;
@@ -3515,7 +2543,7 @@ function bigrm_load_map(mapstr, lit) {
 // C ref: sp_lev.c splev_initlev() LVLINIT_SOLIDFILL with BOOL_RANDOM lit ->
 // rn2(2); then lvlfill_solid(filling, lit).  bigrm uses style="solidfill",
 // fg=" " (STONE) with no explicit lit -> BOOL_RANDOM -> one rn2(2).
-function bigrm_level_init_solidfill() {
+export function bigrm_level_init_solidfill() {
     const lit = rn2(2);                  // sp_lev.c:2992
     const fill = STONE;                  // fg = " "
     for (let y = 0; y < ROWNO; y++)
@@ -3525,138 +2553,11 @@ function bigrm_level_init_solidfill() {
         }
 }
 
-// C ref: sp_lev.c lspo_replace_terrain over the whole map.  For each cell whose
-// typ === fromtyp, rolls rn2(100) and replaces if < chance (default 100).
-// With default chance the rn2(100) is STILL consumed per matching cell.
-function bigrm_replace_terrain(fromtyp, totyp, chance = 100) {
-    for (let x = Math.max(1, gx.xstart); x < gx.xstart + gx.xsize; x++)
-        for (let y = gy.ystart; y < gy.ystart + gy.ysize; y++) {
-            const loc = game.level?.at(x, y);
-            if (!loc) continue;
-            const matches = (fromtyp === MATCH_WALL)
-                ? (loc.typ === VWALL || loc.typ === HWALL)
-                : (loc.typ === fromtyp);
-            if (matches && rn2(100) < chance) loc.typ = totyp;
-        }
-}
-
-// C ref: nhlib.lua percent()/shuffle() helpers are above; math.random in Lua
-// is the nhlib shim: 1-arg math.random(n) = 1 + rn2(n); 2-arg
-// math.random(a,b) = nh.random(a, b+1-a) = a + rn2(b+1-a).
-function lua_random1(n) { return 1 + rn2(n); }     // math.random(n)
-
-// C ref: bigrm-13.lua `filters[]` — which cells of the 7x3 pillar grid get a
-// pillar.  Lua 5.4 semantics matter in two of them: filter 7's `x/3` is FLOAT
-// division (so only x 0/3/6 can ever equal an integer parity) and filter 8's
-// `//` is floor division.  Only filter 6 draws (one rn2(2) per cell).
-function bigrm13_pillar_filter(idx, x, y) {
-    switch (idx) {
-    case 1: return true;                                   // all pillars
-    case 2: return (x % 2) === 1;                          // 3 vertical lines
-    case 3: return ((x + y) % 2) === 0;                     // checkerboard
-    case 4: return (y % 2) === 1;                          // center row
-    case 5: return (y % 2) === 0;                          // top and bottom
-    case 6: return rn2(2) === 0;                           // random 50%
-    case 7: return ((x / 3) % 2) === (y % 2);              // corners + center
-    default: return Math.floor((x + 1) / 3) === y;         // slanted
-    }
-}
-
-// C ref: bigrm-13.lua `pillar` stamped by des.map({coord={x,y}, map=pillar,
-// contents=function() end}).  lspo_map's explicit-coord/no-croom arm makes
-// (x,y) the map origin outright, and the table form's `lit` defaults to FALSE,
-// so sel_set_ter unlights every stamped cell (des.region relights them after).
-function bigrm13_stamp_pillar(ox, oy) {
-    const rows = [
-        [HWALL, HWALL, HWALL],
-        [VWALL, STONE, VWALL],
-        [HWALL, HWALL, HWALL],
-    ];
-    for (let dy = 0; dy < 3; dy++)
-        for (let dx = 0; dx < 3; dx++) {
-            const x = ox + dx, y = oy + dy;
-            if (!isok(x, y)) continue;
-            const loc = game.level?.at(x, y);
-            if (!loc) continue;
-            loc.flags = 0;
-            loc.horizontal = false;
-            loc.roomno = 0;
-            loc.edge = false;
-            splev_map_mark(x, y);
-            loc.typ = rows[dy][dx];
-            loc.lit = false;
-            if (loc.typ === HWALL) loc.horizontal = true;
-        }
-}
-
-// C ref: a region({...},"lit"/"unlit") with selection.area uses get_location
-// with ANY_LOC for its two corners -> NO RNG.  We just mark the rectangle's
-// lit state and assign it a room number so monsters/objects land in a real
-// "room" for rendering.  (The terrain itself was already stamped by the map.)
-function bigrm_region(x1, y1, x2, y2, lit) {
-    const g = game;
-    const roomno = g.level.nroom + ROOMOFFSET;
-    const lo_x = x1 + gx.xstart, lo_y = y1 + gy.ystart;
-    const hi_x = x2 + gx.xstart, hi_y = y2 + gy.ystart;
-    add_sp_room(lo_x, lo_y, Math.min(hi_x, COLNO - 1), Math.min(hi_y, ROWNO - 1),
-                lit ? 1 : 0, OROOM, false, FILL_NONE, true);
-    // C ref: mklev.c do_room_or_subroom() — when the room is lit, light the
-    // room PLUS a one-cell border (lowx-1..hix+1, lowy-1..hiy+1) so the room's
-    // bounding walls are lit too.  Without this the diamond Big Room's outermost
-    // wall ring stays dark and never gets revealed by vision_recalc (which only
-    // shows a wall when it AND the floor toward the hero are lit).
-    if (lit) {
-        const lx = Math.max(lo_x - 1, 1), hx = Math.min(hi_x + 1, COLNO - 1);
-        const ly = Math.max(lo_y - 1, 0), hy = Math.min(hi_y + 1, ROWNO - 1);
-        for (let x = lx; x <= hx; x++)
-            for (let y = ly; y <= hy; y++) {
-                const loc = g.level?.at(x, y);
-                if (loc) loc.lit = true;
-            }
-    }
-    // roomno is assigned only to the region interior (topologize covers the
-    // room's own cells; the bordering walls keep their existing roomno).
-    for (let x = lo_x; x <= hi_x && x < COLNO; x++)
-        for (let y = lo_y; y <= hi_y && y < ROWNO; y++) {
-            const loc = g.level?.at(x, y);
-            if (loc && (loc.roomno === NO_ROOM || loc.roomno === 0)) {
-                loc.roomno = roomno;
-            }
-        }
-}
-
-// C ref: sp_lev.c wallify_map() — convert STONE cells adjacent to a ROOM (or
-// crosswall) into HWALL (vertically adjacent) or VWALL (horizontally adjacent).
-// des.wallify() in the bigrm script.  No RNG.
-function bigrm_wallify_map(x1, y1, x2, y2) {
-    const map = game.level;
-    y1 = Math.max(y1, 0); x1 = Math.max(x1, 1);
-    y2 = Math.min(y2, ROWNO - 1); x2 = Math.min(x2, COLNO - 1);
-    for (let y = y1; y <= y2; y++) {
-        const loYY = (y > 0) ? y - 1 : 0;
-        const hiYY = (y < y2) ? y + 1 : y2;
-        for (let x = x1; x <= x2; x++) {
-            if (map.at(x, y)?.typ !== STONE) continue;
-            const loXX = (x > 1) ? x - 1 : 1;
-            const hiXX = (x < x2) ? x + 1 : x2;
-            let done = false;
-            for (let yy = loYY; yy <= hiYY && !done; yy++)
-                for (let xx = loXX; xx <= hiXX; xx++) {
-                    const t = map.at(xx, yy)?.typ;
-                    if (IS_ROOM(t) || t === CROSSWALL) {
-                        map.at(x, y).typ = (yy !== y) ? HWALL : VWALL;
-                        done = true; break;
-                    }
-                }
-        }
-    }
-}
-
 // C ref: mklev.c wallification() — wall_cleanup + fix_wall_spines, run at level
 // finalize (sp_lev.c:6038).  Sets corner/T/cross wall types from neighbours.
 const _SPINE = [VWALL, HWALL, HWALL, HWALL, VWALL, TRCORNER, TLCORNER, TDWALL,
                 VWALL, BRCORNER, BLCORNER, TUWALL, VWALL, TLWALL, TRWALL, CROSSWALL];
-function bigrm_wallification(x1, y1, x2, y2) {
+export function bigrm_wallification(x1, y1, x2, y2) {
     const map = game.level;
     const isWall = (xx, yy) => { const l = map.at(xx, yy); return l && IS_WALL(l.typ) && l.typ !== DBWALL; };
     const isWallOrStone = (xx, yy) => { const l = map.at(xx, yy); return !l || l.typ === STONE || (IS_WALL(l.typ) && l.typ !== DBWALL); };
@@ -3737,190 +2638,6 @@ function fix_wall_spines(x1, y1, x2, y2) {
                        | extend_spine(locale, iswall(x - 1, y), -1, 0);
             if (bits) loc.typ = _SPINE[bits];
         }
-}
-
-// C ref: sp_lev.c create_stairs/lspo_stair with no coords -> get_location DRY
-// random placement -> one (or more) rn2(xsize)/rn2(ysize) pairs.
-function bigrm_stair(up) {
-    const c = bigrm_get_location_dry();
-    const loc = game.level?.at(c.x, c.y);
-    if (loc) loc.typ = STAIRS;
-    if (!game.stairs) game.stairs = [];
-    game.stairs.push({ sx: c.x, sy: c.y, up: !!up });
-    if (up) { game.upstair = { x: c.x, y: c.y }; if (game.level) game.level.upstair = { x: c.x, y: c.y }; }
-    else { game.dnstair = { x: c.x, y: c.y }; if (game.level) game.level.dnstair = { x: c.x, y: c.y }; }
-}
-
-// C ref: mklev.c traptype_rnd() — pick a random valid trap type for this level.
-// Duplicated here (not imported from mklev.js) to avoid a circular import.
-// dlvl 12 == level_difficulty 12.
-function bigrm_traptype_rnd(lvl) {
-    // trap type constants (include/trap.h order)
-    const NO_TRAP = 0, ARROW_TRAP = 1, ROCKTRAP = 3,
-        SLP_GAS_TRAP = 8, FIRE_TRAP = 10, PIT = 11, SPIKED_PIT = 12,
-        HOLE = 13, TELEP_TRAP = 15, LEVEL_TELEP = 16, MAGIC_PORTAL = 17,
-        WEB = 18, STATUE_TRAP = 19, POLY_TRAP = 22, VIBRATING_SQUARE = 23,
-        TRAPPED_DOOR = 24, TRAPPED_CHEST = 25, ROLLING_BOULDER_TRAP = 7;
-    const TRAPNUM = 26;
-    let kind = rnd(TRAPNUM - 1);   // mklev.c:1941
-    switch (kind) {
-    case TRAPPED_DOOR: case TRAPPED_CHEST: case MAGIC_PORTAL: case VIBRATING_SQUARE:
-        kind = NO_TRAP; break;
-    case ROLLING_BOULDER_TRAP: case SLP_GAS_TRAP:
-        if (lvl < 2) kind = NO_TRAP; break;
-    case LEVEL_TELEP:
-        if (lvl < 5 || game.level?.flags?.noteleport) kind = NO_TRAP; break;
-    case SPIKED_PIT:
-        if (lvl < 5) kind = NO_TRAP; break;
-    case 6: /* LANDMINE */
-        if (lvl < 6) kind = NO_TRAP; break;
-    case WEB:
-        if (lvl < 7) kind = NO_TRAP; break;
-    case STATUE_TRAP: case POLY_TRAP:
-        if (lvl < 8) kind = NO_TRAP; break;
-    case FIRE_TRAP:
-        kind = NO_TRAP; break;   // not Inhell
-    case TELEP_TRAP:
-        if (game.level?.flags?.noteleport) kind = NO_TRAP; break;
-    case HOLE:
-        if (rn2(7)) kind = NO_TRAP; break;   // mklev.c:1993
-    }
-    return kind;
-}
-
-// C ref: sp_lev.c create_trap() (random type, random location) + mktrap().
-//   get_location(DRY); loop traptype_rnd() until !=NO_TRAP; maketrap();
-//   then the victim check: gi.in_mklev && lvl <= rnd(4) && ... (rnd(4) is
-//   ALWAYS consumed when kind!=NO_TRAP and the trap type is "lethal").  On
-//   dlvl 12, lvl(12) <= rnd(4)(<=4) is always false -> no victim placed,
-//   but the rnd(4) draw still happens.
-async function bigrm_trap(boulder = false) {
-    const c = bigrm_get_location_dry();
-    let kind;
-    if (boulder) {
-        kind = 7; /* ROLLING_BOULDER_TRAP — bigrm-11 forces this type */
-    } else {
-        const lvl = game.u?.uz?.dlevel ?? 12;
-        do { kind = bigrm_traptype_rnd(lvl); } while (kind === 0);
-    }
-    const t = await maketrap(c.x, c.y, kind);
-    // C ref: mklev.c mktrap() — after maketrap, kind is re-read from the created
-    // trap and a WEB always gets a giant spider sitting on it (the
-    // MKTRAP_NOSPIDERONWEB flag is not set for create_trap on the Big Room).
-    // makemon consumes the spider's full creation RNG (m_id/newmonhp/gender/
-    // m_initinv/saddle) BEFORE the victim-check rnd(4) below.
-    const WEB = 18;
-    const realKind = t ? (t.ttyp ?? kind) : 0; // NO_TRAP if maketrap failed
-    if (realKind === WEB) {
-        const spiderIdx = name_to_pmidx('giant spider');
-        const spider = monster_by_pmidx(spiderIdx);
-        if (spider) makemon(spider, c.x, c.y, 0 /* NO_MM_FLAGS */);
-    }
-    // C ref: mklev.c mktrap victim check (mklev.c:2137).  The `lvl <= rnd(4)`
-    // term comes BEFORE the trap-type terms in the && chain, so rnd(4) is
-    // ALWAYS drawn (in_mklev is true during makelevel, kind != NO_TRAP here),
-    // regardless of trap type.  On dlvl 12, lvl(12) <= rnd(4)(<=4) is always
-    // false -> no victim placed, but the rnd(4) draw still happens.
-    rnd(4);
-}
-
-// C ref: sp_lev.c create_object() (random object, random location).
-//   get_location(DRY); mkobj_at(RANDOM_CLASS, x, y, ...).
-function bigrm_object(idstr = null) {
-    const c = bigrm_get_location_dry();
-    if (idstr === 'boulder') {
-        // des.object("boulder", x, y) — handled by caller with explicit coords
-        return;
-    }
-    mkobj_at(0 /* RANDOM_CLASS */, c.x, c.y, true);
-}
-
-// C ref: sp_lev.c create_monster() (random monster, random location).
-//   amask = sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align() rn2(3);
-//   pm == NULL (random) -> get_location(DRY); makemon(NULL, x, y, mmflags).
-function bigrm_monster() {
-    rn2(3);                              // induced_align (dungeon.c:2012)
-    const c = bigrm_get_location_dry();
-    // C ref: sp_lev.c create_monster() (sp_lev.c:1977) — "try to find a close
-    // place if someone else is already there": when a monster already occupies
-    // the chosen spot, relocate via enexto() (collect_coords ring shuffle) BEFORE
-    // makemon().  pm is NULL here (random monster); C's enexto() defaults the
-    // null mdat to the hero's monster type, which only affects water/lava spots
-    // (none on the Big Room), so the goodpos filter is equivalent with null.
-    let mx = c.x, my = c.y;
-    if (mm_mon_at(mx, my)) {
-        const cc = enexto_spawn(mx, my, null);
-        if (cc) { mx = cc.x; my = cc.y; }
-    }
-    makemon(null, mx, my, 0);
-}
-
-// Common tail shared by most bigrm variants: stairs, non_diggable, 15 random
-// objects, 6 random traps, 28 random monsters.
-// C ref: sp_lev.c set_wallprop_in_selection() with argc == 0 — the des.non_diggable()
-// with no argument runs selection_clear(sel, 1), i.e. EVERY cell of the level, then
-// sets W_NONDIGGABLE on each wall/tree/bars.  Drawing no RNG does not make it a no-op:
-// wall_info gates later dig/teleport decisions that DO choose an rn2() modulus.
-function bigrm_non_diggable_all() {
-    for (let x = 0; x < COLNO; x++)
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = game.level?.at(x, y);
-            if (!loc) continue;
-            if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)
-                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
-        }
-}
-
-async function bigrm_common_tail(opts = {}) {
-    if (!opts.skipStairs) {
-        bigrm_stair(true);
-        bigrm_stair(false);
-    }
-    bigrm_non_diggable_all();
-    for (let i = 0; i < 15; i++) bigrm_object();
-    for (let i = 0; i < 6; i++) await bigrm_trap(opts.boulderTraps);
-    for (let i = 0; i < 28; i++) bigrm_monster();
-}
-
-
-// Per-variant executors.  Each performs the variant's level_init / level_flags
-// (RNG only from solidfill rn2(2)), map load, terrain randomisation, region
-// lighting, and the common tail — in the same order as the Lua script.
-async function bigrm_run(variant) {
-    const g = game;
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;   // "mazelevel"
-        g.level.flags.noteleport = false;
-    }
-    const fn = BIGRM_VARIANTS[variant] || BIGRM_VARIANTS[1];
-    await fn();
-
-    // C ref: lspo_finalize_level -> wallification(1, 0, COLNO-1, ROWNO-1) at
-    // sp_lev.c:6038 (the !corrmaze branch).  des.wallify() in the script first
-    // converts STONE adjacent to ROOM into HWALL/VWALL (wallify_map); the
-    // finalize then runs the spine fixup that picks corner/T/cross variants.
-    // Neither consumes RNG, so doing both here keeps the stream intact.
-    bigrm_wallify_map(0, 0, COLNO - 1, ROWNO - 1);
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-
-    // C ref: sp_lev.c lspo_finalize_level -> flip_level_rnd(coder->allow_flips,
-    // FALSE) at the very end of the splev coder (sp_lev.c:6041).  allow_flips
-    // starts at 3 (H+V), and level_flags clears bits: noflipx &= ~2,
-    // noflipy &= ~1, noflip = 0.  flip_level_rnd: (flp & 1) ? rn2(2) ; (flp & 2)
-    // ? rn2(2).  (The actual transposition mutates the map but consumes no
-    // further RNG; the rendered cells already match either orientation for the
-    // symmetric bigrm maps when c==0, which is the common case.)
-    // C ref: sp_lev.c flip_level_rnd(allow_flips, FALSE) — independently draw an
-    // rn2(2) for each enabled axis; a 1 sets that axis's bit in `c`.  When c != 0
-    // flip_level(c) transposes the map (and every entity on it) within the level
-    // extents.  Earlier the JS only consumed the RNG and skipped the transpose,
-    // assuming bigrm maps are flip-invariant — but the asymmetric variants (and
-    // the random monster/object/stair positions) DO move, so render the flip.
-    const flp = BIGRM_ALLOW_FLIPS[variant] ?? 3;
-    let c = 0;
-    if ((flp & 1) && rn2(2)) c |= 1;
-    if ((flp & 2) && rn2(2)) c |= 2;
-    if (c) flip_level(c);
 }
 
 // C ref: mkmaze.c get_level_extends() — bounding box of the non-STONE area,
@@ -4071,532 +2788,6 @@ export function flip_level(flp) {
     fix_wall_spines(1, 0, COLNO - 1, ROWNO - 1);
 }
 
-// allow_flips per bigrm variant (3 = H+V default; noflip variants override).
-// C ref: each bigrm-N.lua's des.level_flags(...) call.  "noflip" clears both
-// bits (0); "noflipy" clears bit 1 only (2); bigrm-7/8 declare no flip
-// restriction at all, so they keep the default 3.
-const BIGRM_ALLOW_FLIPS = {
-    1: 0 /*noflip*/, 2: 0 /*noflip*/, 3: 0 /*noflip*/, 4: 0 /*noflip*/,
-    5: 0 /*noflip*/, 6: 0 /*noflip*/, 9: 0 /*noflip*/, 10: 0 /*noflip*/,
-    11: 0 /*noflip*/, 12: 2 /*noflipy -> &= ~1*/, 13: 0 /*noflip*/,
-};
-
-const BIGRM_VARIANTS = {
-    1: async () => {
-        bigrm_level_init_solidfill();           // level_init solidfill -> rn2(2)
-        bigrm_load_map(BIGRM_MAP_STRINGS[1], false);
-        if (percent(80)) {
-            lua_random1(5);                     // tidx = math.random(1,#terrains=5)
-            const choice = rn2(6);              // math.random(0,5) = 0+rn2(6)
-            // terrain edits change cell types but consume no extra RNG
-            void choice;
-        }
-        bigrm_region(1, 1, 73, 16, true);
-        await bigrm_common_tail();
-    },
-    2: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[2], false);
-        bigrm_region(1, 1, 73, 16, true);
-        const choice = rn2(4);                  // math.random(0,3)
-        if (choice >= 0 && choice <= 2) {
-            // a darkness region exists -> des.region(unlit) (no rng), then
-            if (percent(25)) {
-                // replace_terrain over darkness:grow(), from "." to "I".
-                // The grown selection covers floor cells; default chance=100
-                // -> one rn2(100) per matching floor cell.  Approximate by the
-                // count of floor cells in the grown darkness area.
-                bigrm_replace_terrain(ROOM, ICE, 100);
-            }
-        }
-        await bigrm_common_tail();
-    },
-    3: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[3], false);
-        bigrm_region(1, 1, 73, 16, true);
-        if (percent(66)) {
-            lua_random1(4);                     // choice = terrains[math.random(1,4)]
-            // selection.match("[.w.]") then des.terrain — no per-cell rng
-        }
-        // 15 obj, 6 traps, then EXPLICIT monsters (no random monster rng)
-        bigrm_stair(true); bigrm_stair(false);
-        for (let i = 0; i < 15; i++) bigrm_object();
-        for (let i = 0; i < 6; i++) await bigrm_trap();
-        // 28 des.monster({x,y}) at fixed coords -> each: induced_align rn2(3)
-        // + makemon(NULL) at given coord (no get_location rng).
-        for (let i = 0; i < 28; i++) {
-            rn2(3);
-            makemon(null, gx.xstart, gy.ystart, 0);
-        }
-    },
-    4: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[4], false);
-        // terrains = {".",".",".",".","P","L","-","T","W","Z"}; tidx=random(1,10);
-        // if (terrains[tidx] ~= "L") des.replace_terrain({fromterrain="L",
-        // toterrain=terrains[tidx]}) — whole-map, rn2(100) per "L" cell.
-        const t4 = lua_random1(10);
-        const TERR4 = [ROOM, ROOM, ROOM, ROOM, POOL, LAVAPOOL, HWALL, TREE, WATER, LAVAWALL];
-        const to4 = TERR4[t4 - 1];
-        if (to4 !== LAVAPOOL) bigrm_replace_terrain(LAVAPOOL, to4, 100);
-        // des.feature fountains (no rng), region lit (no rng)
-        bigrm_region(1, 1, 73, 16, true);
-        await bigrm_common_tail();
-    },
-    5: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[5], false);
-        if (percent(25)) {
-            // selection.match("."):percentage(2) -> rn2(100) per "." cell;
-            // then percent(50) for the I-or-C choice; then replace over grown.
-            // The percentage(2) selection draws one rn2(100) per floor cell.
-            bigrm_replace_terrain(ROOM, ROOM, 2);   // consume rn2(100)/floor cell
-            percent(50);
-        }
-        bigrm_region(0, 0, 72, 18, true);
-        await bigrm_common_tail();
-    },
-    6: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[6], false);
-        bigrm_region(1, 1, 72, 17, true);
-        await bigrm_common_tail();
-    },
-    7: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[7], false);
-        const t7 = lua_random1(4);              // tidx = math.random(1,#terrain=4)
-        // des.replace_terrain({region={0,0,74,18}, fromterrain="L", toterrain=
-        // terrain[tidx]}) — terrain = {"L","T","{","."}.  rn2(100) per "L" cell
-        // (chance default 100).  tidx==1 -> "L" (no visible change) but the
-        // rn2(100) per cell is still consumed.
-        const to7 = [LAVAPOOL, TREE, FOUNTAIN, ROOM][t7 - 1];
-        bigrm_replace_terrain(LAVAPOOL, to7, 100);
-        bigrm_region(1, 1, 73, 17, true);
-        await bigrm_common_tail();
-    },
-    8: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[8], false);
-        if (percent(40)) {
-            // terrain = {"L","}","T",".","-","C"}; tidx=random(1,6);
-            // des.replace_terrain({region={0,0,74,17}, fromterrain="F",
-            // toterrain=terrain[tidx]}) — rn2(100) per "F" cell.
-            const t8 = lua_random1(6);
-            const TERR8 = [LAVAPOOL, MOAT, TREE, ROOM, HWALL, CLOUD];
-            bigrm_replace_terrain(IRONBARS /*F*/, TERR8[t8 - 1], 100);
-        }
-        bigrm_region(1, 1, 73, 16, true);
-        await bigrm_common_tail();
-    },
-    9: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[9], false);
-        bigrm_region(0, 0, 73, 18, false);      // unlit
-        bigrm_region(26, 4, 47, 14, true);
-        bigrm_region(21, 5, 51, 13, true);
-        bigrm_region(19, 6, 54, 12, true);
-        await bigrm_common_tail();
-    },
-    10: async () => {
-        // bigrm-10 has NO level_init solidfill before map? It does:
-        // level_init solidfill, then map.
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[10], false);
-        if (percent(40)) {
-            lua_random1(5);                     // tidx = math.random(1,#terrain=5)
-            bigrm_replace_terrain(CLOUD, ROOM, 5);   // chance=5 per "C" cell
-            // second replace default chance -> rn2(100) per remaining "C" cell
-            bigrm_replace_terrain(CLOUD, LAVAPOOL, 100);
-        }
-        bigrm_region(0, 0, 70, 18, true);
-        // teleport_region: no rng. objects/traps/monsters, then mazewalk,
-        // levregion stair-up, stair down.
-        for (let i = 0; i < 15; i++) bigrm_object();
-        for (let i = 0; i < 6; i++) await bigrm_trap();
-        for (let i = 0; i < 28; i++) bigrm_monster();
-        // des.mazewalk / des.levregion(stair-up) / des.stair("down")
-        bigrm_stair(false);
-    },
-    11: async () => {
-        // Boulder maze.  level_init style="maze", corrwid = 3 + nh.rn2(3),
-        // wallthick=1, deadends = t_or_f() (percent(50)).
-        const corrwid = 3 + rn2(3);             // nh.rn2(3)
-        void corrwid;
-        percent(50);                            // deadends = t_or_f()
-        // create_maze would run here (LVLINIT_MAZE).  We do not fully port the
-        // maze generator; fall back to a solid floor so the level is walkable.
-        for (let y = 0; y < ROWNO; y++)
-            for (let x = 0; x < COLNO; x++) {
-                const loc = game.level?.at(x, y);
-                if (loc) loc.typ = ROOM;
-            }
-        bigrm_region(0, 0, 75, 18, true);
-        bigrm_stair(true); bigrm_stair(false);
-        for (let i = 0; i < 15; i++) bigrm_object();
-        for (let i = 0; i < 6; i++) await bigrm_trap(true);   // rolling boulder
-        for (let i = 0; i < 28; i++) bigrm_monster();
-    },
-    12: async () => {
-        // level_flags first (no rng), then level_init solidfill (rn2(2)).
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[12], false);
-        if (percent(20)) {
-            if (percent(50)) bigrm_replace_terrain(LAVAWALL, HWALL, 100);
-            if (percent(50)) bigrm_replace_terrain(LAVAWALL /*Z*/, HWALL, 100);
-        }
-        if (percent(25)) {
-            bigrm_replace_terrain(POOL, ROOM, 100);
-            if (percent(75)) bigrm_replace_terrain(WATER, POOL, 100);
-        }
-        if (percent(25)) {
-            bigrm_replace_terrain(LAVAPOOL, ROOM, 100);
-            if (percent(75)) bigrm_replace_terrain(LAVAWALL, LAVAPOOL, 100);
-        }
-        if (percent(20)) {
-            if (percent(50)) {
-                bigrm_replace_terrain(POOL, LAVAPOOL, 100);
-                bigrm_replace_terrain(WATER, LAVAWALL, 100);
-            } else {
-                bigrm_replace_terrain(LAVAPOOL, POOL, 100);
-                bigrm_replace_terrain(LAVAWALL, WATER, 100);
-            }
-        }
-        bigrm_region(0, 0, 75, 19, true);
-        // non_diggable, wallify: no rng
-        await bigrm_common_tail();
-    },
-    13: async () => {
-        bigrm_level_init_solidfill();
-        bigrm_load_map(BIGRM_MAP_STRINGS[13], false);
-        // C ref: bigrm-13.lua "Pillars".  idx = math.random(1,#filters) picks
-        // one of eight cell filters; then a 3x3 pillar map is stamped at every
-        // (x,y) of a 7x3 grid the filter accepts, at ABSOLUTE coord
-        // {12+x*9, 4+y*5} (lspo_map's explicit-coord arm sets xstart/ystart to
-        // the coord itself).  Filter 6 is `math.random(0,1)` — one rn2(2) PER
-        // grid cell, 21 draws, and the ONLY filter that costs RNG.
-        const idx = lua_random1(8);             // idx = math.random(1,#filters=8)
-        let stamped = 0;
-        for (let py = 0; py <= 2; py++)
-            for (let px = 0; px <= 6; px++) {
-                if (!bigrm13_pillar_filter(idx, px, py)) continue;
-                bigrm13_stamp_pillar(12 + px * 9, 4 + py * 5);
-                stamped++;
-            }
-        // Each pillar des.map carries a `contents=function() end`, so lspo_map's
-        // tail runs reset_xystart_size().  That is load-bearing: everything
-        // after it (the lit region, both stairs, 15 objects, 6 traps, 28
-        // monsters) is then placed against the FULL level (xsize COLNO-1,
-        // ysize ROWNO) instead of the 75x19 map's own origin, which changes
-        // both the rendered region and the get_location rn2 moduli.
-        if (stamped) reset_xystart_size();
-        bigrm_region(0, 0, 75, 18, true);
-        await bigrm_common_tail();
-    },
-};
-
-// Entry point.  C ref: makemaz("bigrm") -> rnd(13) + load_special("bigrm-N").
-export async function makemaz_bigroom() {
-    const g = game;
-    const slev = (g.sp_levchn || []).find(
-        (l) => g.bigroom_level && l.dlevel.dnum === g.bigroom_level.dnum
-               && l.dlevel.dlevel === g.bigroom_level.dlevel);
-    const rndlevs = slev?.rndlevs || 13;
-    const variant = rnd(rndlevs);            // mkmaze.c:1136 rnd(sp->rndlevs)
-    // load_special -> load_lua -> nhlib.lua top-level: shuffle(align)
-    const align = ['law', 'neutral', 'chaos'];
-    shuffle(align);                          // rn2(3), rn2(2)
-    if (g.level?.flags) g.level.flags.is_maze_lev = true;
-    // Enable the full (C-faithful) monster inventory/group/peace_minded path in
-    // makemon for the duration of Big Room generation.  Outside this window
-    // makemon keeps its conservative behavior, so other sessions' ordinary
-    // level generation is unaffected.
-    g._bigrm_gen = true;
-    try {
-        await bigrm_run(variant);
-    } finally {
-        g._bigrm_gen = false;
-    }
-}
-
-const BIGRM_MAP_STRINGS = {
-    1: `---------------------------------------------------------------------------
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
----------------------------------------------------------------------------`,
-    2: `---------------------------------------------------------------------------
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
----------------------------------------------------------------------------`,
-    3: `---------------------------------------------------------------------------
-|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|..............---.......................................---..............|
-|...............|.........................................|...............|
-|.....|.|.|.|.|---|.|.|.|.|...................|.|.|.|.|.|---|.|.|.|.|.....|
-|.....|--------   --------|...................|----------   --------|.....|
-|.....|.|.|.|.|---|.|.|.|.|...................|.|.|.|.|.|---|.|.|.|.|.....|
-|...............|.........................................|...............|
-|..............---.......................................---..............|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|
----------------------------------------------------------------------------`,
-    4: `-----------                                                     -----------
-|.........|                                                     |.........|
-|.........-------------                             -------------.........|
----...................------------       ------------...................---
-  --.............................---------.............................--  
-   --.................................................................--   
-    --...............................................................--    
-     --......LLLLL.......................................LLLLL......--     
-      --.....LLLLL.......................................LLLLL.....--      
-      --.....LLLLL.......................................LLLLL.....--      
-     --......LLLLL.......................................LLLLL......--     
-    --...............................................................--    
-   --.................................................................--   
-  --.............................---------.............................--  
----...................------------       ------------...................---
-|.........-------------                             -------------.........|
-|.........|                                                     |.........|
------------                                                     -----------`,
-    5: `                            ------------------                            
-                    ---------................---------                    
-              -------................................-------              
-         ------............................................------         
-      ----......................................................----      
-    ---............................................................---    
-  ---................................................................---  
----....................................................................---
-|........................................................................|
-|........................................................................|
-|........................................................................|
----....................................................................---
-  ---................................................................---  
-    ---............................................................---    
-      ----......................................................----      
-         ------............................................------         
-              -------................................-------              
-                    ---------................---------                    
-                            ------------------                            `,
-    6: `     ---------         ---------         ---------         ---------     
-   ---.......---     ---.......---     ---.......---     ---.......---   
-  --...........--   --...........--   --...........--   --...........--  
- --.............-- --.............-- --.............-- --.............-- 
- -...............- -...............- -...............- -...............- 
---...............---...............---...............---...............--
-|.................-.................-.................-.................|
-|........T.................T.................T.................T........|
-|.......................................................................|
-|......T.{.....................................................{.T......|
-|.......................................................................|
-|........T.................T.................T.................T........|
-|.................-.................-.................-.................|
---...............---...............---...............---...............--
- -...............- -...............- -...............- -...............- 
- --.............-- --.............-- --.............-- --.............-- 
-  --...........--   --...........--   --...........--   --...........--  
-   ---.......---     ---.......---     ---.......---     ---.......---   
-     ---------         ---------         ---------         ---------     `,
-    7: `                                                        -----              
-                                                ---------...---            
-                                        ---------.........L...---          
-                                ---------.......................---        
-                        ---------.................................---      
-                ---------...........................................---    
-        ---------.....................................................---  
----------...............................................................---
-|.........................................................................|
-|.L.....................................................................L.|
-|.........................................................................|
----...............................................................---------
-  ---.....................................................---------        
-    ---...........................................---------                
-      ---.................................---------                        
-        ---.......................---------                                
-          ---...L.........---------                                        
-            ---...---------                                                
-              -----                                                        `,
-    8: `----------------------------------------------                             
-|............................................---                           
---.............................................---                         
- ---......................................FF.....---                       
-   ---...................................FF........---                     
-     ---................................FF...........---                   
-       ---.............................FF..............---                 
-         ---..........................FF.................---               
-           ---.......................FF....................---             
-             ---....................FF.......................---           
-               ---.................FF..........................---         
-                 ---..............FF.............................---       
-                   ---...........FF................................----    
-                     ---........FF...................................---   
-                       ---.....FF......................................--- 
-                         ---.............................................--
-                           ---............................................|
-                             ----------------------------------------------`,
-    9: `}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-}}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-}}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}
-}}}}}}}}}}}}}}}............................................}}}}}}}}}}}}}}}
-}}}}}}}}}}......................................................}}}}}}}}}}
-}}}}}}}............................................................}}}}}}}
-}}}}}.......................LLLLLLLLLLLLLLLLLL.......................}}}}}
-}}}....................LLLLLLLLLLLLLLLLLLLLLLLLLLL.....................}}}
-}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}
-}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}
-}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}
-}}}....................LLLLLLLLLLLLLLLLLLLLLLLLLLL.....................}}}
-}}}}}.......................LLLLLLLLLLLLLLLLLL.......................}}}}}
-}}}}}}}............................................................}}}}}}}
-}}}}}}}}}}......................................................}}}}}}}}}}
-}}}}}}}}}}}}}}}............................................}}}}}}}}}}}}}}}
-}}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}
-}}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
-}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}`,
-    10: `.......................................................................
-.......................................................................
-.......................................................................
-.......................................................................
-...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
-...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
-...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
-...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
-...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
-...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
-...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
-...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
-...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
-...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...
-...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...
-.......................................................................
-.......................................................................
-.......................................................................
-.......................................................................`,
-    11: null,
-    12: `                                                                           
-         .......................           .......................         
-        .........................         .........................        
-       ...........................       ...........................       
-      .............................     .............................      
-     ........PPPPPPPPPPPPPPP........   ........LLLLLLLLLLLLLLL........     
-    ........PPPPPPPPPPPPPPPPP........ ........LLLLLLLLLLLLLLLLL........    
-   ........PPPWWWWWWWWWWWWWPPP...............LLLZZZZZZZZZZZZZLLL........   
-  ........PPPWWWWWWWWWWWWWWWPPP.............LLLZZZZZZZZZZZZZZZLLL........  
- ........PPPWWWWWWWWWWWWWWWWWPPP...........LLLZZZZZZZZZZZZZZZZZLLL........ 
-  ........PPPWWWWWWWWWWWWWWWPPP.............LLLZZZZZZZZZZZZZZZLLL........  
-   ........PPPWWWWWWWWWWWWWPPP...............LLLZZZZZZZZZZZZZLLL........   
-    ........PPPPPPPPPPPPPPPPP........ ........LLLLLLLLLLLLLLLLL........    
-     ........PPPPPPPPPPPPPPP........   ........LLLLLLLLLLLLLLL........     
-      .............................     .............................      
-       ...........................       ...........................       
-        .........................         .........................        
-         .......................           .......................         
-                                                                           `,
-    13: `---------------------------------------------------------------------------
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
-|.........................................................................|
----------------------------------------------------------------------------`,
-};
-
-// ════════════════════════════════════════════════════════════════════════
-// Sokoban entrance level loader (dat/soko1-1.lua, dat/soko1-2.lua).
-//
-// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("soko1") ->
-// rnd(sp->rndlevs) picks the variant file, then load_special("soko1-N.lua").
-// BOTH variants are ported: the two files differ only in map, coordinates and
-// the percent() threshold on the prize, so one des.* program driven by a data
-// table covers them.  (soko1-1 was the "never reached, so not ported" half
-// until seed0360 stepped onto it — rnd(2) is a coin flip per game.)
-// ════════════════════════════════════════════════════════════════════════
-
-const SOKO1_1_MAP =
-    '--------------------------\n' +
-    '|........................|\n' +
-    '|.......|---------------.|\n' +
-    '-------.------         |.|\n' +
-    ' |...........|         |.|\n' +
-    ' |...........|         |.|\n' +
-    '--------.-----         |.|\n' +
-    '|............|         |.|\n' +
-    '|............|         |.|\n' +
-    '-----.--------   ------|.|\n' +
-    ' |..........|  --|.....|.|\n' +
-    ' |..........|  |.+.....|.|\n' +
-    ' |.........|-  |-|.....|.|\n' +
-    '-------.----   |.+.....+.|\n' +
-    '|........|     |-|.....|--\n' +
-    '|........|     |.+.....|  \n' +
-    '|...|-----     --|.....|  \n' +
-    '-----            -------  ';
-
-const SOKO1_2_MAP =
-    '  ------------------------\n' +
-    '  |......................|\n' +
-    '  |..-------------------.|\n' +
-    '----.|    -----        |.|\n' +
-    '|..|.--  --...|        |.|\n' +
-    '|.....|--|....|        |.|\n' +
-    '|.....|..|....|        |.|\n' +
-    '--....|......--        |.|\n' +
-    ' |.......|...|   ------|.|\n' +
-    ' |....|..|...| --|.....|.|\n' +
-    ' |....|--|...| |.+.....|.|\n' +
-    ' |.......|..-- |-|.....|.|\n' +
-    ' ----....|.--  |.+.....+.|\n' +
-    '    ---.--.|   |-|.....|--\n' +
-    '     |.....|   |.+.....|  \n' +
-    '     |..|..|   --|.....|  \n' +
-    '     -------     -------  ';
-
 // C ref: sp_lev.c:4323 trap_types[] — des.trap() name -> ttyp.  This used to
 // list only the two kinds soko2/soko3 ask for, so soko4's ten `pit` traps became
 // maketrap(x, y, undefined): no RNG either way (which is why the stream stayed
@@ -4621,7 +2812,7 @@ const SOKO_TRAP_NAME = {
 // can never pass (rnd(4)'s max is 4), so mktrap_victim() is never reachable
 // here and is intentionally not ported — porting it on a guess with no
 // recorded stream that exercises it would risk an unverified RNG count.
-async function soko_mktrap(mx, my, name) {
+export async function soko_mktrap(mx, my, name) {
     const x = q_absx(mx), y = q_absy(my);
     const trap = await maketrap(x, y, SOKO_TRAP_NAME[name]);
     const kind = trap ? trap.ttyp : NO_TRAP;
@@ -4637,40 +2828,17 @@ async function soko_mktrap(mx, my, name) {
     return trap;
 }
 
-// C ref: sp_lev.c create_monster — named species ("giant mimic"), no coord
-// (get_location_coord DRY), align=random/peaceful=random (default table
-// fields) -> straight makemon(); appear_as="obj:boulder" is a no-RNG name
-// lookup, applied to the mimic after placement.
-function soko_create_mimic_boulder() {
-    const mtmp = quest_create_monster_randpos('giant mimic', null);
-    if (mtmp) {
-        mtmp.m_ap_type = 'obj';
-        mtmp.mappearance = BOULDER;
-    }
-    return mtmp;
-}
-
 // C ref: sp_lev.c create_object — bare class char, no coord -> get_location
 // (DRY, random) then mkobj_at(oclass, x, y, !named).
-function soko_create_object_class_random(oclass) {
+export function soko_create_object_class_random(oclass) {
     const c = bigrm_get_location_dry();
     return mkobj_at(oclass, c.x, c.y, true);
-}
-
-// C ref: sp_lev.c create_object — explicit id + coord (no location RNG) +
-// buc override ("not-cursed" -> uncurse(); "cursed" -> curse()).
-function soko_create_object_coord(otyp, mx, my, buc) {
-    const x = q_absx(mx), y = q_absy(my);
-    const otmp = mksobj_at(otyp, x, y, true, true);
-    if (buc === 'not-cursed') uncurse(otmp);
-    else if (buc === 'cursed') curse(otmp);
-    return otmp;
 }
 
 // C ref: sp_lev.c lspo_region — the region(selection,"lit") 2-arg form: grow
 // the selection by 1 (W_ANY) then set .lit on every included cell.  No RNG,
 // no room created.  Local (map-relative) rectangle.
-function soko_region_lit_grow(x1, y1, x2, y2) {
+export function soko_region_lit_grow(x1, y1, x2, y2) {
     const dx1 = Math.max(x1 + gx.xstart - 1, 1);
     const dy1 = Math.max(y1 + gy.ystart - 1, 0);
     const dx2 = Math.min(x2 + gx.xstart + 1, COLNO - 1);
@@ -4682,89 +2850,6 @@ function soko_region_lit_grow(x1, y1, x2, y2) {
         }
 }
 
-// C ref: sp_lev.c lspo_region table form, irregular=true, type="zoo" ->
-// flood_fill_rm from the given seed point + add_room; needfill is stored and
-// actually populated later, at level finalize (fill_special_room()).
-function soko_region_zoo(x1, y1) {
-    const dx1 = x1 + gx.xstart, dy1 = y1 + gy.ystart;
-    const roomno = game.level.nroom + ROOMOFFSET;
-    const flood = flood_fill_room(dx1, dy1, roomno, true);
-    if (!flood.cells.length) return null;
-    return add_sp_room(flood.minx, flood.miny, flood.maxx, flood.maxy,
-                        true, ZOO, true, FILL_NORMAL, true);
-}
-
-// C ref: sp_lev.c:5544 add_doors_to_room(croom) — run at region-creation time —
-// followed by sp_lev.c:6022 link_doors_rooms() at level finalize.  Both funnel
-// into mklev.c:574 add_door(), and THAT is the load-bearing part: add_door
-// INSERTS each new door at svd.doors[aroom->fdoor], shifting the rest up, so
-// `fdoor` names the door added LAST, not first.
-//
-// The two scans also disagree on order — add_doors_to_room walks the room's
-// bounding box x-outer/y-inner, link_doors_rooms walks the whole map
-// y-outer/x-inner — and the last door the pair adds is the one fill_zoo()
-// measures dist2 from.  Getting this wrong scales every gold pile in the zoo
-// (seed0360 step 211: rn1(676,10) / rn1(2500,10) instead of C's rn1(100,10)).
-function soko_link_doors_to_room(croom) {
-    const rmno = croom.roomnoidx + ROOMOFFSET;
-    const seen = new Set();
-    let fdoor = null;
-    const maybe_add_door = (x, y) => {
-        const loc = game.level?.at(x, y);
-        if (!loc || !(loc.typ === DOOR || loc.typ === SDOOR)) return;
-        if (loc.roomno !== rmno) return;   /* == maybe_add_door's roomno test */
-        const key = x + ',' + y;
-        if (seen.has(key)) return;         /* add_door dedups per room */
-        seen.add(key);
-        fdoor = { x, y };                  /* inserted AT fdoor: last wins */
-    };
-    // add_doors_to_room: x outer, y inner, over the bounding box grown by 1.
-    for (let x = croom.lx - 1; x <= croom.hx + 1; x++)
-        for (let y = croom.ly - 1; y <= croom.hy + 1; y++) maybe_add_door(x, y);
-    // link_doors_rooms: whole map, y outer, x inner.
-    for (let y = 0; y < ROWNO; y++)
-        for (let x = 0; x < COLNO; x++) maybe_add_door(x, y);
-    croom.doorct = seen.size;
-    croom.fdoor = fdoor;
-}
-
-// C ref: mkroom.c fill_zoo() ZOO case — makemon(NULL,...) (random monster)
-// per eligible cell (x outer, y inner), each carrying gold scaled by
-// (dist2 to the first door)^2, capped by a per-room gold budget.
-function soko_fill_zoo(croom) {
-    if (!croom.fdoor && croom.doorct == null) soko_link_doors_to_room(croom);
-    if (process.env.NH_DEBUG_ZOO) console.error('DEBUG zoo', JSON.stringify({ lx: croom.lx, ly: croom.ly, hx: croom.hx, hy: croom.hy, doorct: croom.doorct, fdoor: croom.fdoor }));
-    const rmno = croom.roomnoidx + ROOMOFFSET;
-    const lvl = level_difficulty_ext();
-    let goldlim = 500 * lvl;
-    for (let sx = croom.lx; sx <= croom.hx; sx++) {
-        for (let sy = croom.ly; sy <= croom.hy; sy++) {
-            const loc = game.level?.at(sx, sy);
-            if (!loc || loc.roomno !== rmno || loc.edge) continue;
-            if (croom.doorct && distmin(sx, sy, croom.fdoor.x, croom.fdoor.y) <= 1)
-                continue;
-            const mon = makemon(null, sx, sy, MM_ASLEEP | MM_NOGRP);
-            if (mon) mon.msleeping = 1;
-            let i;
-            if (croom.doorct) {
-                const distval = dist2(sx, sy, croom.fdoor.x, croom.fdoor.y);
-                i = distval * distval;
-            } else {
-                i = goldlim;
-            }
-            if (i >= goldlim) i = 5 * lvl;
-            goldlim -= i;
-            mkgold(rn1(i, 10), sx, sy);
-        }
-    }
-    // This function IS the ZOO arm of C's fill_special_room() loop, run inline
-    // at the point lspo_finalize_level() would run it (it needs soko's own
-    // fdoor-as-coord bookkeeping, which the generic path does not have).
-    // Downgrade needfill to FILL_LVLFLAGS_ONLY so the generic fill_special_room
-    // pass that follows only applies has_zoo instead of stocking it twice.
-    croom.needfill = 2; /* FILL_LVLFLAGS_ONLY */
-}
-
 // C ref: sp_lev.c set_wall_property(W_NONDIGGABLE|W_NONPASSWALL) applied over
 // this file's own des.non_diggable/non_passwall(area(0,0,25,16)) call (which
 // covers every wall inside the map's own footprint, interior and boundary)
@@ -4774,7 +2859,7 @@ function soko_fill_zoo(croom) {
 // gate is equivalent here to "outside our map").  Both operations are RNG
 // free, so folding them into one full-grid pass produces the same final
 // state as running them separately.
-function soko_solidify_and_nondig() {
+export function soko_solidify_and_nondig() {
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
             const loc = game.level?.at(x, y);
@@ -4786,463 +2871,17 @@ function soko_solidify_and_nondig() {
     }
 }
 
-// dat/soko1-N.lua as data.  Everything here is in FILE ORDER — the des.*
-// program is executed top to bottom and several of the steps draw, so a
-// reordered list is a silent PRNG desync.
-const SOKO1_VARIANTS = {
-    1: {
-        map: SOKO1_1_MAP,
-        place: [{ x: 16, y: 11 }, { x: 16, y: 13 }, { x: 16, y: 15 }],
-        stair: [1, 1],
-        area: [0, 0, 25, 17],
-        boulders: [
-            [3, 5], [5, 5], [7, 5], [9, 5], [11, 5],
-            [4, 7], [4, 8], [6, 7], [9, 7], [11, 7],
-            [3, 12], [4, 10], [5, 12], [6, 10], [7, 11], [8, 10], [9, 12],
-            [3, 14],
-        ],
-        // soko1-1 leads with a hole, then the rolling boulder, then holes.
-        traps: [[7, 1, 'hole'], [8, 1, 'rolling boulder']]
-            .concat(Array.from({ length: 15 }, (_, i) => [9 + i, 1, 'hole'])),
-        doors: [[23, 13, 'locked'], [17, 11, 'closed'], [17, 13, 'closed'], [17, 15, 'closed']],
-        zoo: [18, 10],
-        prize_pct: 75,
-    },
-    2: {
-        map: SOKO1_2_MAP,
-        place: [{ x: 16, y: 10 }, { x: 16, y: 12 }, { x: 16, y: 14 }],
-        stair: [6, 15],
-        area: [0, 0, 25, 16],
-        boulders: [
-            [4, 4], [2, 6], [3, 6], [4, 7], [5, 7], [2, 8], [5, 8], [3, 9],
-            [4, 9], [3, 10], [5, 10], [6, 12], [7, 14],
-            [11, 5], [12, 6], [10, 7], [11, 7], [10, 8], [12, 9], [11, 10],
-        ],
-        traps: [[5, 1, 'rolling boulder']]
-            .concat(Array.from({ length: 18 }, (_, i) => [6 + i, 1, 'hole'])),
-        doors: [[23, 12, 'locked'], [17, 10, 'closed'], [17, 12, 'closed'], [17, 14, 'closed']],
-        zoo: [18, 9],
-        prize_pct: 25,
-    },
-};
-
-// Entry point.  C ref: makemaz("soko1") -> rnd(2) + load_special("soko1-N").
-export async function makemaz_soko1() {
-    const g = game;
-    const slev = Is_special(g.u?.uz);
-    const rndlevs = slev?.rndlevs || 2;
-    const variant = rnd(rndlevs);            // mkmaze.c:1136 rnd(sp->rndlevs)
-    // load_special -> load_lua -> nhlib.lua top-level: shuffle(align)
-    shuffle(['law', 'neutral', 'chaos']);    // rn2(3), rn2(2)
-    const V = SOKO1_VARIANTS[variant];
-    if (!V) return;
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.sokoban_rules = true;
-    }
-    try {
-        // des.level_init({ style="solidfill", fg=" " }) -> splev_initlev
-        // BOOL_RANDOM lit -> rn2(2), then fill the whole level STONE.
-        bigrm_level_init_solidfill();
-        // des.map([[...]]) — single-string arg -> SPLEV_CENTER, no RNG.
-        bigrm_load_map(V.map, false);
-
-        // place = selection.new(); place:set(...) x3 — no RNG.
-        const PLACE_PTS = V.place;
-
-        // des.stair("down", x, y) — no RNG.
-        quest_place_stair(V.stair[0], V.stair[1], false);
-        // des.region(selection.area(...),"lit") — grow+set lit, no RNG.
-        soko_region_lit_grow(V.area[0], V.area[1], V.area[2], V.area[3]);
-        // des.non_diggable/non_passwall(area(...)) folded into the
-        // combined finalize pass below (RNG-free either way).
-
-        // Boulders — des.object("boulder", x, y); each draws next_ident's
-        // rnd(2) inside mksobj.
-        for (const [bx, by] of V.boulders)
-            mksobj_at(BOULDER, q_absx(bx), q_absy(by), true, false);
-
-        // des.exclusion(monster-generation) — a runtime spawn-suppression
-        // region with no gameplay effect on this arrival screen; no RNG.
-
-        // Traps, in the file's own order.
-        for (const [tx, ty, kind] of V.traps) await soko_mktrap(tx, ty, kind);
-
-        // 2x des.monster({id="giant mimic", appear_as="obj:boulder"}).
-        soko_create_mimic_boulder();
-        soko_create_mimic_boulder();
-
-        // Random-class objects: 4x food, 1x ring, 1x wand.
-        soko_create_object_class_random(FOOD_CLASS);
-        soko_create_object_class_random(FOOD_CLASS);
-        soko_create_object_class_random(FOOD_CLASS);
-        soko_create_object_class_random(FOOD_CLASS);
-        soko_create_object_class_random(RING_CLASS);
-        soko_create_object_class_random(WAND_CLASS);
-
-        // Reward room doors, then the zoo region (fill deferred to finalize).
-        for (const [dx, dy, dstate] of V.doors) quest_set_door(dx, dy, dstate);
-        const zoo = soko_region_zoo(V.zoo[0], V.zoo[1]);
-        // C ref: sp_lev.c:6022 link_doors_rooms() runs BEFORE wallification and
-        // flip_level_rnd, so sroom->fdoor names the first door in PRE-flip
-        // raster order; flip_level then flips svd.doors[] under it.  Linking
-        // after the flip picks the opposite door of a mirrored room and feeds
-        // fill_zoo the wrong dist2 (seed0360 step 211: i=676 vs C's 100).
-        if (zoo) soko_link_doors_to_room(zoo);
-
-        // Achievement prize: rn2(3) picks the spot, percent(N) picks the item.
-        const pt = PLACE_PTS[rn2(PLACE_PTS.length)];
-        if (percent(V.prize_pct)) soko_create_object_coord(BAG_OF_HOLDING, pt.x, pt.y, 'not-cursed');
-        else soko_create_object_coord(208 /* AMULET_OF_REFLECTION */, pt.x, pt.y, 'not-cursed');
-        make_engr_at(q_absx(pt.x), q_absy(pt.y), 'Elbereth', null, 0, BURN);
-        soko_create_object_coord(SCR_SCARE_MONSTER, pt.x, pt.y, 'cursed');
-
-        // Finalize: wallification, then flip_level_rnd (2x rn2(2)).
-        bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-        let flp = 0;
-        if (rn2(2)) flp |= 1;
-        if (rn2(2)) flp |= 2;
-        if (flp) {
-            flip_level(flp);
-            // flip_level flips svd.doors[] too; sroom->fdoor is an INDEX, so
-            // the already-chosen door travels with the map.
-            if (zoo?.fdoor) {
-                const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
-                if (flp & 1) zoo.fdoor.y = miny + maxy - zoo.fdoor.y;
-                if (flp & 2) zoo.fdoor.x = minx + maxx - zoo.fdoor.x;
-            }
-        }
-
-        // solidify_map + non_diggable/non_passwall (RNG-free; order vs. the
-        // flip above doesn't matter for RNG, only for the final wall_info
-        // state, which is order-independent here).
-        soko_solidify_and_nondig();
-
-        // premapped: reveal the whole level's background+boulders+traps into
-        // hero memory (RNG-free).
-        premap_detect();
-
-        // fill_special_room() loop — this level's one special room (the zoo).
-        // C-faithful peace_minded/inventory generation for the zoo's random
-        // monsters (game._full_mon_gen); NOT enabled around the mimics above
-        // — m_initinv_full() doesn't have a correct S_MIMIC case, and a
-        // hostile mimic never reaches the peace_minded call anyway, so the
-        // plain path is both correct and simpler there.
-        if (zoo) {
-            g._full_mon_gen = true;
-            try {
-                soko_fill_zoo(zoo);
-            } finally {
-                g._full_mon_gen = false;
-            }
-        }
-    } finally {
-        g._full_mon_gen = false;
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Sokoban levels 2-4 (dat/soko{2,3,4}-{1,2}.lua).
-//
-// Same des.* program as soko1 minus the reward room: level_init, map, one down
-// and one up stair, the locked door(s), the lit/non-diggable/non-passwall
-// region, the boulders, the exclusion, the hole row and six random objects.
-// Only the boulders (mksobj's next_ident rnd(2)), the traps (maketrap +
-// mktrap's victim gate) and the six des.object({class=...}) draws consume RNG.
-// ════════════════════════════════════════════════════════════════════════
-
-const SOKO_UPPER_MAPS = {
-    '2-1':
-        '--------------------\n' +
-        '|........|...|.....|\n' +
-        '|.....-..|.-.|.....|\n' +
-        '|..|.....|...|.....|\n' +
-        '|-.|..-..|.-.|.....|\n' +
-        '|...--.......|.....|\n' +
-        '|...|...-...-|.....|\n' +
-        '|...|..|...--|.....|\n' +
-        '|-..|..|----------+|\n' +
-        '|..................|\n' +
-        '|...|..|------------\n' +
-        '--------            ',
-    '2-2':
-        '  --------            \n' +
-        '--|.|....|            \n' +
-        '|........|----------  \n' +
-        '|.-...-..|.|.......|  \n' +
-        '|...-......|.......|  \n' +
-        '|.-....|...|.......|  \n' +
-        '|....-.--.-|.......|  \n' +
-        '|..........|.......|  \n' +
-        '|.--...|...|.......---\n' +
-        '|....-.|---|.......+.|\n' +
-        '--|....|------------.|\n' +
-        '  |................+.|\n' +
-        '  --------------------',
-    '3-1':
-        '-----------       -----------\n' +
-        '|....|....|--     |.........|\n' +
-        '|....|......|     |.........|\n' +
-        '|.........|--     |.........|\n' +
-        '|....|....|       |.........|\n' +
-        '|-.---------      |.........|\n' +
-        '|....|.....|      |.........|\n' +
-        '|....|.....|      |.........|\n' +
-        '|..........|      |.........|\n' +
-        '|....|.....|---------------+|\n' +
-        '|....|......................|\n' +
-        '-----------------------------',
-    '3-2':
-        ' ----          -----------\n' +
-        '-|..|-------   |.........|\n' +
-        '|..........|   |.........|\n' +
-        '|..-----.-.|   |.........|\n' +
-        '|..|...|...|   |.........|\n' +
-        '|.........-|   |.........|\n' +
-        '|.......|..|   |.........|\n' +
-        '|.----..--.|   |.........|\n' +
-        '|........|.--  |.........|\n' +
-        '|.---.-.....------------+|\n' +
-        '|...|...-................|\n' +
-        '|.........----------------\n' +
-        '----|..|..|               \n' +
-        '    -------               ',
-    '4-1':
-        '------  ----- \n' +
-        '|....|  |...| \n' +
-        '|....----...| \n' +
-        '|...........| \n' +
-        '|..|-|.|-|..| \n' +
-        '---------|.---\n' +
-        '|......|.....|\n' +
-        '|..----|.....|\n' +
-        '--.|   |.....|\n' +
-        ' |.|---|.....|\n' +
-        ' |...........|\n' +
-        ' |..|---------\n' +
-        ' ----         ',
-    '4-2':
-        '-------- ------\n' +
-        '|.|....|-|....|\n' +
-        '|.|-..........|\n' +
-        '|.||....|.....|\n' +
-        '|.||....|.....|\n' +
-        '|.|-----|.-----\n' +
-        '|.|    |......|\n' +
-        '|.-----|......|\n' +
-        '|.............|\n' +
-        '|..|---|......|\n' +
-        '----   --------',
-};
-
-const SOKO_UPPER_VARIANTS = {
-    '2-1': {
-        map: SOKO_UPPER_MAPS['2-1'],
-        dnstair: [6, 10], upstair: [16, 4],
-        doors: [[18, 8, 'locked']],
-        area: [0, 0, 19, 11],
-        boulders: [
-            [2, 2], [3, 2],
-            [5, 3], [7, 3], [7, 2], [8, 2],
-            [10, 3], [11, 3],
-            [2, 7], [2, 8], [3, 9],
-            [5, 7], [6, 6],
-        ],
-        traps: [[7, 9, 'rolling boulder']]
-            .concat(Array.from({ length: 10 }, (_, i) => [8 + i, 9, 'hole'])),
-    },
-    '2-2': {
-        map: SOKO_UPPER_MAPS['2-2'],
-        dnstair: [6, 11], upstair: [15, 6],
-        doors: [[19, 9, 'locked'], [19, 11, 'locked']],
-        area: [0, 0, 21, 12],
-        boulders: [
-            [4, 2], [4, 3], [5, 3], [7, 3], [8, 3], [2, 4], [3, 4], [5, 5],
-            [6, 6], [9, 6], [3, 7], [4, 7], [7, 7], [6, 9], [5, 10], [5, 11],
-        ],
-        traps: [[7, 11, 'rolling boulder']]
-            .concat(Array.from({ length: 11 }, (_, i) => [8 + i, 11, 'hole'])),
-    },
-    '3-1': {
-        map: SOKO_UPPER_MAPS['3-1'],
-        dnstair: [11, 2], upstair: [23, 4],
-        doors: [[27, 9, 'locked']],
-        area: [0, 0, 28, 11],
-        boulders: [
-            [3, 2], [4, 2], [6, 2], [6, 3], [7, 2],
-            [3, 6], [2, 7], [3, 7], [3, 8], [2, 9], [3, 9], [4, 9],
-            [6, 7], [6, 9], [8, 7], [8, 10], [9, 8], [9, 9], [10, 7], [10, 10],
-        ],
-        traps: [[11, 10, 'rolling boulder']]
-            .concat(Array.from({ length: 15 }, (_, i) => [12 + i, 10, 'hole'])),
-    },
-    '3-2': {
-        map: SOKO_UPPER_MAPS['3-2'],
-        dnstair: [3, 1], upstair: [20, 4],
-        doors: [[24, 9, 'locked']],
-        area: [0, 0, 25, 13],
-        boulders: [
-            [2, 3], [8, 3], [9, 4], [2, 5], [4, 5], [9, 5], [2, 6], [5, 6],
-            [6, 7], [3, 8], [7, 8], [5, 9], [10, 9], [7, 10], [10, 10], [3, 11],
-        ],
-        traps: [[11, 10, 'rolling boulder']]
-            .concat(Array.from({ length: 12 }, (_, i) => [12 + i, 10, 'hole'])),
-    },
-    // soko4 is the BOTTOM level: no down stair, a "branch" levregion instead,
-    // pit traps rather than holes, and two scrolls of earth as "a little help".
-    '4-1': {
-        map: SOKO_UPPER_MAPS['4-1'],
-        branch: [6, 4], upstair: [6, 6],
-        doors: [],
-        area: [0, 0, 13, 12],
-        boulders: [
-            [2, 2], [2, 3],
-            [10, 2], [9, 3], [10, 4],
-            [8, 7], [9, 8], [9, 9], [8, 10], [10, 10],
-        ],
-        traps: [
-            [4, 6, 'pit'],
-            [2, 6, 'pit'], [2, 7, 'pit'], [2, 8, 'pit'], [2, 9, 'rolling boulder'],
-            [2, 10, 'pit'], [3, 10, 'pit'], [4, 10, 'pit'], [5, 10, 'pit'],
-            [6, 10, 'pit'], [7, 10, 'rolling boulder'],
-        ],
-        help: [[2, 11], [3, 11]],
-    },
-    '4-2': {
-        map: SOKO_UPPER_MAPS['4-2'],
-        branch: [3, 1], upstair: [1, 1],
-        doors: [],
-        area: [0, 0, 14, 10],
-        boulders: [
-            [5, 2], [6, 2], [6, 3], [7, 3],
-            [9, 5], [10, 3], [11, 2], [12, 3],
-            [7, 8], [8, 8], [9, 8], [10, 8],
-        ],
-        traps: [
-            [1, 2, 'pit'], [1, 3, 'pit'], [1, 4, 'pit'], [1, 5, 'pit'],
-            [1, 6, 'pit'], [1, 7, 'rolling boulder'],
-            [1, 8, 'pit'], [2, 8, 'pit'], [3, 8, 'pit'], [4, 8, 'pit'],
-            [5, 8, 'pit'], [6, 8, 'rolling boulder'],
-        ],
-        help: [[1, 9], [2, 9]],
-    },
-};
-
-// C ref: makemaz("soko2"/"soko3"/"soko4") -> rnd(2) + load_special(proto-N).
-export async function makemaz_soko_upper(proto) {
-    const g = game;
-    const slev = Is_special(g.u?.uz);
-    const rndlevs = slev?.rndlevs || 2;
-    const variant = rnd(rndlevs);            // mkmaze.c:1136 rnd(sp->rndlevs)
-    shuffle(['law', 'neutral', 'chaos']);    // nhlib.lua top level: rn2(3), rn2(2)
-    const V = SOKO_UPPER_VARIANTS[proto.slice(4) + '-' + variant];
-    if (!V) return;
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.sokoban_rules = true;
-    }
-    bigrm_level_init_solidfill();            // level_init solidfill -> rn2(2)
-    bigrm_load_map(V.map, false);
-
-    if (V.dnstair) quest_place_stair(V.dnstair[0], V.dnstair[1], false);
-    if (V.branch) quest_register_branch(V.branch[0], V.branch[1]);
-    quest_place_stair(V.upstair[0], V.upstair[1], true);
-    for (const [dx, dy, dstate] of V.doors) quest_set_door(dx, dy, dstate);
-    soko_region_lit_grow(V.area[0], V.area[1], V.area[2], V.area[3]);
-
-    for (const [bx, by] of V.boulders)
-        mksobj_at(BOULDER, q_absx(bx), q_absy(by), true, false);
-
-    for (const [tx, ty, kind] of V.traps) await soko_mktrap(tx, ty, kind);
-
-    // "A little help": des.object("scroll of earth", x, y) — explicit id and
-    // coord, so only mksobj's own draws (next_ident + blessorcurse).
-    for (const [hx, hy] of (V.help || []))
-        mksobj_at(SCR_EARTH, q_absx(hx), q_absy(hy), true, true);
-
-    soko_create_object_class_random(FOOD_CLASS);
-    soko_create_object_class_random(FOOD_CLASS);
-    soko_create_object_class_random(FOOD_CLASS);
-    soko_create_object_class_random(FOOD_CLASS);
-    soko_create_object_class_random(RING_CLASS);
-    soko_create_object_class_random(WAND_CLASS);
-
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;
-    if (rn2(2)) flp |= 2;
-    if (flp) {
-        flip_level(flp);
-        // C's flip_level flips the registered lregions with the map; without
-        // this soko4's branch cell stays at its pre-flip coordinate, fails
-        // bad_location() and burns place_lregion's whole 200-try loop.
-        quest_flip_branch(flp);
-    }
-    soko_solidify_and_nondig();
-    // C ref: sp_lev.c:6048 — "This must be done before premap_detect(),
-    // otherwise branch stairs won't be premapped."  Running place_lregions()
-    // from the caller (after premap_detect) froze soko4's map memory before the
-    // branch '>' existed, so it rendered as the remembered floor.
-    // Dynamic import: mklev.js statically imports this module.
-    if (V.branch) {
-        const { quest_place_branch } = await import('./mklev.js');
-        await quest_place_branch();
-    }
-    premap_detect();
-    return false;   /* the branch is already placed */
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Valley of the Dead loader (dat/valley.lua) — the first Gehennom level.
-//
-// C ref: mklev.c makelevel() -> Is_special(&u.uz) -> makemaz("valley")
-// -> load_special("valley.lua"), executed by the des.* engine in sp_lev.c.
-// Loading nhlib.lua first runs `align = {...}; shuffle(align)` at module top
-// level (rn2(3), rn2(2)); then the des.* program runs in file order consuming
-// the PRNG exactly.  Hand-ported so the stream matches C's recorded trace.
-//
-// The level is a fixed 76x20 map: Moloch's shrine (a temple region whose
-// des.altar spawns the priest), three irregular morgue regions filled at level
-// finalize, 22 named player corpses, a pile of random loot, eleven traps and a
-// crowd of undead.
-// ════════════════════════════════════════════════════════════════════════
-
-const VALLEY_MAP = [
-    '----------------------------------------------------------------------------',
-    '|...S.|..|.....|  |.....-|      |................|   |...............| |...|',
-    '|---|.|.--.---.|  |......--- ----..........-----.-----....---........---.-.|',
-    '|   |.|.|..| |.| --........| |.............|   |.......---| |-...........--|',
-    '|   |...S..| |.| |.......-----.......------|   |--------..---......------- |',
-    '|----------- |.| |-......| |....|...-- |...-----................----       |',
-    '|.....S....---.| |.......| |....|...|  |..............-----------          |',
-    '|.....|.|......| |.....--- |......---  |....---.......|                    |',
-    '|.....|.|------| |....--   --....-- |-------- ----....---------------      |',
-    '|.....|--......---BBB-|     |...--  |.......|    |..................|      |',
-    '|..........||........-|    --...|   |.......|    |...||.............|      |',
-    '|.....|...-||-........------....|   |.......---- |...||.............--     |',
-    '|.....|--......---...........--------..........| |.......---------...--    |',
-    '|.....| |------| |--.......--|   |..B......----- -----....| |.|  |....---  |',
-    '|.....| |......--| ------..| |----..B......|       |.--------.-- |-.....---|',
-    '|------ |........|  |.|....| |.....----BBBB---------...........---.........|',
-    '|       |........|  |...|..| |.....|  |-.............--------...........---|',
-    '|       --.....-----------.| |....-----.....----------     |.........----  |',
-    '|        |..|..B...........| |.|..........|.|              |.|........|    |',
-    '----------------------------------------------------------------------------',
-].join('\n');
-
 // C ref: mkroom.h TEMPLE room type (const.js exports MORGUE already).
-const TEMPLE_RTYPE = 10;
+export const TEMPLE_RTYPE = 10;
 
 // C ref: sp_lev.c get_location() with croom == NULL for an EXPLICIT coordinate:
 // the map-relative x/y simply gain the last des.map() origin.  No RNG.
-function vly_abs(mx, my) { return { x: mx + gx.xstart, y: my + gy.ystart }; }
+export function vly_abs(mx, my) { return { x: mx + gx.xstart, y: my + gy.ystart }; }
 
 // C ref: nhlsel.c l_selection_line -> selection_do_line(): both endpoints go
 // through get_location_coord() first, then Bresenham between them.  valley.lua
 // only ever draws axis-aligned lines.  No RNG.
-function vly_terrain_line(x1, y1, x2, y2, typ) {
+export function vly_terrain_line(x1, y1, x2, y2, typ) {
     const a = vly_abs(x1, y1), b = vly_abs(x2, y2);
     const dx = Math.sign(b.x - a.x), dy = Math.sign(b.y - a.y);
     const n = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
@@ -5251,7 +2890,7 @@ function vly_terrain_line(x1, y1, x2, y2, typ) {
 }
 
 // C ref: sp_lev.c lspo_terrain() table form des.terrain({x=,y=,typ=}).  No RNG.
-function vly_terrain_at(mx, my, typ) {
+export function vly_terrain_at(mx, my, typ) {
     const c = vly_abs(mx, my);
     set_levltyp_lit(c.x, c.y, typ, SET_LIT_NOCHANGE);
 }
@@ -5543,7 +3182,7 @@ export function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular,
 // `islev` is the Lua `region_islev` flag: the coordinates are then whole-level
 // absolute rather than relative to the last des.map() origin (sp_lev.c
 // lspo_teleport_region reads region_islev before get_location_coord).
-function vly_teleport_region(mx1, my1, mx2, my2, islev) {
+export function vly_teleport_region(mx1, my1, mx2, my2, islev) {
     const a = islev ? { x: mx1, y: my1 } : vly_abs(mx1, my1);
     const b = islev ? { x: mx2, y: my2 } : vly_abs(mx2, my2);
     game.dndest = { lx: a.x, ly: a.y, hx: b.x, hy: b.y,
@@ -5576,7 +3215,7 @@ export function vly_altar(mx, my, amask, shrine) {
 // C ref: sp_lev.c lspo_non_diggable() -> set_wall_property(W_NONDIGGABLE) over
 // the selection: every wall/tree/ironbars square inside it becomes undiggable.
 // No RNG.
-function vly_non_diggable(mx1, my1, mx2, my2) {
+export function vly_non_diggable(mx1, my1, mx2, my2) {
     const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
     for (let x = Math.max(a.x, 1); x <= Math.min(b.x, COLNO - 1); x++)
         for (let y = Math.max(a.y, 0); y <= Math.min(b.y, ROWNO - 1); y++) {
@@ -5590,7 +3229,7 @@ function vly_non_diggable(mx1, my1, mx2, my2) {
 // C ref: sp_lev.c create_object() at a RANDOM DRY location.  `montype` names a
 // species for a corpse/statue (a plain table scan in lspo_object -> no RNG);
 // `oclass` is a des.object("X") class char; `otyp` a des.object("name") id.
-function vly_object({ otyp = null, oclass = null, montype = null }) {
+export function vly_object({ otyp = null, oclass = null, montype = null }) {
     const { x, y } = splev_get_location_rnd(LOC_DRY);
     let otmp;
     if (otyp != null) otmp = mksobj_at(otyp, x, y, true, true);
@@ -5607,7 +3246,7 @@ function vly_object({ otyp = null, oclass = null, montype = null }) {
 // random coord: the rn2 loop) then mktrap(type, MKTRAP_MAZEFLAG|NOSPIDERONWEB).
 // mktrap's own only draw at this depth is the victim check rnd(4)
 // (mklev.c:2137), which is always evaluated and never succeeds here.
-async function vly_trap(ttyp, mx = null, my = null) {
+export async function vly_trap(ttyp, mx = null, my = null) {
     let x, y;
     if (mx != null) { const c = vly_abs(mx, my); x = c.x; y = c.y; }
     else { const c = splev_get_location_rnd(LOC_DRY); x = c.x; y = c.y; }
@@ -5615,32 +3254,17 @@ async function vly_trap(ttyp, mx = null, my = null) {
     rnd(4);                                       // mktrap victim check
 }
 
-// C ref: sp_lev.c create_monster() at a RANDOM location, for a monster given by
-// SPECIES NAME.  lspo_monster's single-string form resolves the name through
-// find_montype() (one rn2(2) unless the species has a fixed gender) while
-// parsing; create_monster then does sp_amask_to_amask -> induced_align rn2(3),
-// the pm_to_humidity get_location (retried with DRY added if the first,
-// NO_LOC_WARN pass finds nothing), the MON_AT/enexto relocate, and makemon.
-function vly_monster_named(name) {
-    const pmidx = name_to_pmidx(name);
-    const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
-    if (!ptr) return null;
-    if (ptr.gcode !== 1 && ptr.gcode !== 2) rn2(2);   // find_montype gender
-    rn2(3);                                           // induced_align
-    return vly_place_monster(ptr);
-}
-
 // C ref: sp_lev.c create_monster() for a bare CLASS char ("L"/"V"/"Z"/"M").
 // find_montype is never reached (no "id" field), so there is no gender roll;
 // the class is resolved by mkclass(class, G_NOGEN) AFTER induced_align.
-function vly_monster_class(classNum) {
+export function vly_monster_class(classNum) {
     rn2(3);                                           // induced_align
     const ptr = mkclass(classNum, 0x0200 /* G_NOGEN */);
     if (!ptr) return null;
     return vly_place_monster(ptr);
 }
 
-function vly_place_monster(ptr) {
+export function vly_place_monster(ptr) {
     const hum = pm_to_humidity(ptr);
     let { x, y } = splev_get_location_rnd(hum, true);
     if (x === -1 && y === -1) {
@@ -5653,166 +3277,11 @@ function vly_place_monster(ptr) {
     }
     return makemon(ptr, x, y, 0 /* NO_MM_FLAGS */);
 }
-
-// C ref: mkroom.h TEMPLE room type + include/align.h AM_SHRINE, plus the
-// trap-type and monster-class numbers valley.lua names by string.
-const VLY_SPIKED_PIT = 12, VLY_SLP_GAS = 8, VLY_SQKY_BOARD = 4,
-      VLY_DART = 2, VLY_MAGIC_TRAP = 20, VLY_ANTI_MAGIC = 21;
-const VLY_S_LICH = 38, VLY_S_MUMMY = 39, VLY_S_VAMPIRE = 48, VLY_S_ZOMBIE = 52;
-
-// C ref: valley.lua's `des.object({id="corpse",montype=...})` roster — "**LOTS**
-// of dead bodies (all human)", in file order.
-const VALLEY_CORPSE_MONTYPES = [
-    'archeologist', 'archeologist', 'barbarian', 'barbarian',
-    'caveman', 'cavewoman', 'healer', 'healer', 'knight', 'knight',
-    'ranger', 'ranger', 'rogue', 'rogue', 'samurai', 'samurai',
-    'tourist', 'tourist', 'valkyrie', 'valkyrie', 'wizard', 'wizard',
-];
-
-// C ref: objclass.h def_char_to_objclass() for the class chars valley.lua uses.
-const VALLEY_LOOT_CLASSES = [
-    ARMOR_CLASS, ARMOR_CLASS, ARMOR_CLASS, ARMOR_CLASS,
-    WEAPON_CLASS, WEAPON_CLASS, WEAPON_CLASS, WEAPON_CLASS,
-];
-const VALLEY_LOOT_TAIL = [
-    GEM_CLASS, GEM_CLASS,
-    POTION_CLASS, POTION_CLASS, POTION_CLASS,
-    SCROLL_CLASS, SCROLL_CLASS, SCROLL_CLASS,
-    WAND_CLASS, WAND_CLASS,
-    RING_CLASS, RING_CLASS,
-    SPBOOK_CLASS, SPBOOK_CLASS,
-    TOOL_CLASS, TOOL_CLASS, TOOL_CLASS,
-];
-// C ref: objects.c GEM order — DILITHIUM_CRYSTAL 439, DIAMOND 440, RUBY 441.
-// Was 440 (=DIAMOND): a stale value from the pre-mail-daemon numbering where
-// DILITHIUM_CRYSTAL was 438.  valley.lua:117 des.object("ruby").
-const RUBY_OTYP = 441;
-
-// Entry point.  C ref: makemaz("valley") -> load_special("valley.lua").
-export async function makemaz_valley() {
-    const g = game;
-    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    shuffle(['law', 'neutral', 'chaos']);
-    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
-    // des.level_flags("mazelevel","noteleport","hardfloor","nommap","temperate")
-    // — no RNG.  "temperate" is temperature 0, which zeroes rndmonst_adj's
-    // temperature_shift() for every species on this level.
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.hardfloor = true;
-        g.level.flags.nommap = true;
-        g.level.flags.temperature = 0;
-    }
-    // des.map([[...]]) — full-level 76x20 map, SPLEV_CENTER offset.  No RNG.
-    // valley.lua:12 is `des.map([[...]])` — the bare-string form. C's lspo_map
-    // declares `boolean lit = FALSE` and that arm never assigns it (sp_lev.c:6102),
-    // so every mapped cell is unlit and NO rn2(2) is drawn. Passing the caller's
-    // `lit` renders the whole level lit on any seed where it is true.
-    bigrm_load_map(VALLEY_MAP, false);
-
-    // "Make the path somewhat unpredictable" — three independent percent(50)
-    // blocks, each one rn2(100).  The terrain edits themselves draw nothing.
-    // valley.lua's 'B' is nhlua.c char2typ's "hack: boundary location" =
-    // CROSSWALL, not iron bars; remove_boundary_syms() at finalize turns every
-    // one of them back into ROOM.
-    if (percent(50)) {
-        vly_terrain_line(50, 8, 53, 8, HWALL);
-        vly_terrain_line(40, 8, 43, 8, CROSSWALL);
-    }
-    if (percent(50)) {
-        vly_terrain_at(27, 12, VWALL);
-        vly_terrain_line(27, 3, 29, 3, CROSSWALL);
-        vly_terrain_at(28, 2, HWALL);
-    }
-    if (percent(50)) {
-        vly_terrain_line(16, 10, 16, 11, VWALL);
-        vly_terrain_line(9, 13, 14, 13, CROSSWALL);
-    }
-
-    // The shrine to Moloch: filled=2 is FILL_LVLFLAGS_ONLY, so the temple gets
-    // no fill_special_room() body — only the has_temple level flag.  The priest
-    // arrives with des.altar below.
-    vly_region(1, 6, 5, 14, 1, TEMPLE_RTYPE, 2, false);
-    // The Morgues — irregular, unlit, filled at level finalize.
-    const morgues = [
-        vly_region(19, 1, 24, 8, 0, MORGUE, FILL_NORMAL, true),
-        vly_region(9, 14, 16, 18, 0, MORGUE, FILL_NORMAL, true),
-        vly_region(37, 9, 43, 14, 0, MORGUE, FILL_NORMAL, true),
-    ];
-    // Stairs / branch / arrival region — no RNG.
-    quest_place_stair(1, 1, false);
-    quest_register_branch(66, 17);
-    vly_teleport_region(58, 9, 72, 18);
-    // Secret Doors — no RNG (explicit state).
-    quest_set_door(4, 1, 'locked');
-    quest_set_door(8, 4, 'locked');
-    quest_set_door(6, 6, 'locked');
-    // The altar of Moloch — align="noalign", type="shrine" -> priestini().
-    g._full_mon_gen = true;
-    try {
-        vly_altar(3, 10, AM_NONE, 1);
-    } finally {
-        g._full_mon_gen = false;
-    }
-    // Non diggable walls - everywhere!  No RNG.
-    vly_non_diggable(0, 0, 75, 19);
-
-    g._full_mon_gen = true;
-    try {
-        // Objects: the corpses, then random armor/weapons, then random loot.
-        for (const mt of VALLEY_CORPSE_MONTYPES)
-            vly_object({ otyp: CORPSE, montype: mt });
-        for (const oc of VALLEY_LOOT_CLASSES) vly_object({ oclass: oc });
-        vly_object({ otyp: RUBY_OTYP });
-        for (const oc of VALLEY_LOOT_TAIL) vly_object({ oclass: oc });
-
-        // (Not so) Random traps.
-        await vly_trap(VLY_SPIKED_PIT, 5, 2);
-        await vly_trap(VLY_SPIKED_PIT, 14, 5);
-        await vly_trap(VLY_SLP_GAS, 3, 1);
-        await vly_trap(VLY_SQKY_BOARD, 21, 12);
-        await vly_trap(VLY_SQKY_BOARD);
-        await vly_trap(VLY_DART, 60, 1);
-        await vly_trap(VLY_DART, 26, 17);
-        await vly_trap(VLY_ANTI_MAGIC);
-        await vly_trap(VLY_ANTI_MAGIC);
-        await vly_trap(VLY_MAGIC_TRAP);
-        await vly_trap(VLY_MAGIC_TRAP);
-
-        // Random monsters: the ghosts, a few bats, a lich, and undead nasties.
-        for (let i = 0; i < 6; i++) vly_monster_named('ghost');
-        for (let i = 0; i < 3; i++) vly_monster_named('vampire bat');
-        vly_monster_class(VLY_S_LICH);
-        for (let i = 0; i < 3; i++) vly_monster_class(VLY_S_VAMPIRE);
-        for (let i = 0; i < 4; i++) vly_monster_class(VLY_S_ZOMBIE);
-        for (let i = 0; i < 4; i++) vly_monster_class(VLY_S_MUMMY);
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    // C ref: lspo_finalize_level() — link_doors_rooms/remove_boundary_syms/
-    // map_cleanup (no RNG), wallification (no RNG), then
-    // flip_level_rnd(allow_flips=3): one rn2(2) per axis.  remove_boundary_syms
-    // runs BEFORE wallification, so the 'B' cells are already ROOM by the time
-    // the wall modes are computed.
-    remove_boundary_syms();
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) {
-        flip_level(flp);
-        quest_flip_branch(flp);
-        vly_flip_dndest(flp);
-    }
-    return morgues;
-}
+export const VLY_S_LICH = 38, VLY_S_MUMMY = 39, VLY_S_VAMPIRE = 48, VLY_S_ZOMBIE = 52;
 
 // C ref: sp_lev.c flip_level() also flips gl.lregions[] — including the
 // teleport region that fixup_special() copies into svd.dndest.  No RNG.
-function vly_flip_dndest(flp) {
+export function vly_flip_dndest(flp) {
     const d = game.dndest;
     if (!d) return;
     const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
@@ -5825,217 +3294,6 @@ function vly_flip_dndest(flp) {
     if (d.lx > d.hx) { const t = d.lx; d.lx = d.hx; d.hx = t; }
     if (d.ly > d.hy) { const t = d.ly; d.ly = d.hy; d.hy = t; }
 }
-
-
-// ============================================================
-// Moloch's Sanctum (C ref: makemaz("sanctum") -> dat/sanctum.lua)
-// ============================================================
-
-const SANCTUM_MAP = [
-    '----------------------------------------------------------------------------',
-    '|             --------------                                               |',
-    '|             |............|             -------                           |',
-    '|       -------............-----         |.....|                           |',
-    '|       |......................|        --.....|            ---------      |',
-    '|    ----......................---------|......----         |.......|      |',
-    '|    |........---------..........|......+.........|     ------+---..|      |',
-    '|  ---........|.......|..........--S----|.........|     |........|..|      |',
-    '|  |..........|.......|.............|   |.........-------..----------      |',
-    '|  |..........|.......|..........----   |..........|....|..|......|        |',
-    '|  |..........|.......|..........|      --.......----+---S---S--..|        |',
-    '|  |..........---------..........|       |.......|.............|..|        |',
-    '|  ---...........................|       -----+-------S---------S---       |',
-    '|    |...........................|          |...| |......|    |....|--     |',
-    '|    ----.....................----          |...---....---  ---......|     |',
-    '|       |.....................|             |..........|    |.....----     |',
-    '|       -------...........-----             --...-------    |.....|        |',
-    '|             |...........|                  |...|          |.....|        |',
-    '|             -------------                  -----          -------        |',
-    '----------------------------------------------------------------------------',
-].join('\n');
-
-// C ref: sp_lev.c lspo_non_passwall() -> set_wall_property(W_NONPASSWALL) over
-// the selection: an invisible barrier that blocks phasing through those walls.
-// No RNG.
-function vly_non_passwall(mx1, my1, mx2, my2) {
-    const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
-    for (let x = Math.max(a.x, 1); x <= Math.min(b.x, COLNO - 1); x++)
-        for (let y = Math.max(a.y, 0); y <= Math.min(b.y, ROWNO - 1); y++) {
-            const loc = game.level?.at(x, y);
-            if (!loc) continue;
-            if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)
-                loc.wall_info = (loc.wall_info || 0) | W_NONPASSWALL;
-        }
-}
-
-// C ref: sp_lev.c create_monster() for des.monster({id=..., x=, y=, ...}).
-// Two guards decide the prologue draws:
-//   * find_montype (sp_lev.c:3156) rolls rn2(2) for the gender unless the
-//     species has a fixed gender or the NAME itself is a gendered form;
-//   * sp_amask_to_amask (sp_lev.c:1908) only reaches induced_align's rn2(3)
-//     for AM_SPLEV_RANDOM, i.e. when the table carries NO `align` key.  An
-//     explicit align="noalign" is a plain mask and draws nothing — and it also
-//     routes creation through mk_roamer() (priest.c:724) instead of makemon().
-function sanc_monster(name, mx, my, opts = {}) {
-    const { sp_align = null, peaceful = null } = opts;
-    const pmidx = name_to_pmidx(name);
-    const ptr = pmidx >= 0 ? monster_by_pmidx(pmidx) : null;
-    if (!ptr) return null;
-    if (ptr.gcode !== 1 && ptr.gcode !== 2
-        && name_gender_hint(name) === MGEND_NEUTRAL)
-        rn2(2);                                   // find_montype (sp_lev.c:3156)
-    if (sp_align === null) rn2(3);                // induced_align (dungeon.c:2012)
-    let x = mx, y = my;
-    if (mm_mon_at(x, y)) {
-        const cc = enexto_spawn(x, y, ptr);
-        if (cc) { x = cc.x; y = cc.y; }
-    }
-    // mk_roamer() -> makemon(ptr, x, y, MM_ADJACENTOK|MM_EMIN|MM_NOMSG); the
-    // AM_SPLEV_RANDOM arm is a plain makemon(pm, x, y, mm_flags).  MM_EMIN is
-    // load-bearing: makemon()'s aligned-cleric/high-cleric minion block
-    // (makemon.c:1411) is skipped when the caller supplies the emin itself, and
-    // passing 0 here made every sanctum cleric draw its two rn2(3)s.
-    const mtmp = makemon(ptr, x, y, sp_align !== null ? MM_EMIN : 0);
-    if (!mtmp) return null;
-    if (sp_align !== null) {
-        mtmp.emin = mtmp.emin || {};
-        mtmp.emin.min_align = sp_align;
-        mtmp.emin.renegade = ((game.u?.ualign?.type ?? A_NONE) === sp_align)
-                             && !peaceful;
-        mtmp.ispriest = 0;
-        mtmp.isminion = 1;
-        mtmp.mtrapseen = ~0;                      // mon_learns_traps(ALL_TRAPS)
-        mtmp.msleeping = 0;
-    }
-    if (peaceful != null) mtmp.mpeaceful = peaceful ? 1 : 0;
-    return mtmp;
-}
-
-// C ref: sanctum.lua's fixed fire-trap ring around the temple, in file order.
-function sanctum_fire_trap_coords() {
-    const out = [];
-    for (let x = 13; x <= 23; x++) out.push([x, 5]);
-    for (let x = 13; x <= 23; x++) out.push([x, 12]);
-    for (let y = 6; y <= 11; y++) out.push([13, y]);
-    for (let y = 6; y <= 11; y++) out.push([23, y]);
-    return out;
-}
-
-// C ref: objclass.h def_char_to_objclass() for the class chars sanctum.lua uses.
-const SANCTUM_LOOT_CLASSES = [
-    ARMOR_CLASS, ARMOR_CLASS, ARMOR_CLASS, ARMOR_CLASS,
-    WEAPON_CLASS, WEAPON_CLASS,
-    GEM_CLASS,
-    POTION_CLASS, POTION_CLASS, POTION_CLASS, POTION_CLASS,
-    SCROLL_CLASS, SCROLL_CLASS, SCROLL_CLASS, SCROLL_CLASS, SCROLL_CLASS,
-];
-
-// C ref: sanctum.lua's "Moloch's horde" — nine aligned clerics with explicit
-// coords and align="noalign".
-const SANCTUM_HORDE = [
-    [20, 3], [15, 4], [11, 5], [11, 7], [11, 9], [11, 12],
-    [15, 13], [17, 13], [21, 13],
-];
-
-// Entry point.  C ref: makemaz("sanctum") -> load_special("sanctum.lua").
-export async function makemaz_sanctum() {
-    const g = game;
-    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    shuffle(['law', 'neutral', 'chaos']);
-    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
-    // des.level_flags("mazelevel","noteleport","hardfloor","nommap") — no RNG.
-    if (g.level?.flags) {
-        g.level.flags.is_maze_lev = true;
-        g.level.flags.noteleport = true;
-        g.level.flags.hardfloor = true;
-        g.level.flags.nommap = true;
-    }
-    // des.non_passwall(selection.area(39,00,41,00)) — deliberately BEFORE
-    // des.map (sanctum.lua:11-13), so it uses the coder's initial origin and
-    // reaches the top row that falls outside the drawn map.  No RNG.
-    vly_non_passwall(39, 0, 41, 0);
-    // des.map([[...]]) — full-level 76x20 map, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(SANCTUM_MAP, false);   // sanctum.lua:13 bare des.map — see VALLEY_MAP
-
-    // The temple of Moloch.  filled=2 is FILL_LVLFLAGS_ONLY.  Its contents
-    // function creates the one coordinate-less door on the level, which is the
-    // only create_door() call any Gehennom script makes.
-    vly_region(15, 7, 21, 10, 1, TEMPLE_RTYPE, 2, false, (croom) => {
-        lspo_door_relative({ wall: 'random', state: 'secret' }, croom);
-    });
-    // des.altar({x=18,y=08,align="noalign",type="sanctum"}) — shrine == 2, so
-    // priestini() makes the high priest of Moloch.
-    g._full_mon_gen = true;
-    try {
-        vly_altar(18, 8, AM_NONE, 2);
-    } finally {
-        g._full_mon_gen = false;
-    }
-    // The morgue — irregular, unlit, stocked at level finalize.
-    vly_region(41, 6, 48, 11, 0, MORGUE, FILL_NORMAL, true);
-    // Non diggable walls, then the invisible barrier splitting the level.
-    vly_non_diggable(0, 0, 75, 19);
-    vly_non_passwall(37, 0, 39, 19);
-    // Doors — explicit coords, so sel_set_door: no RNG.
-    quest_set_door(40, 6, 'closed');
-    quest_set_door(62, 6, 'locked');
-    quest_set_door(46, 12, 'closed');
-    quest_set_door(53, 10, 'closed');
-
-    g._full_mon_gen = true;
-    try {
-        // Surround the temple with fire — 34 fixed traps, one rnd(4) each.
-        for (const [tx, ty] of sanctum_fire_trap_coords())
-            await vly_trap(FIRE_TRAP, tx, ty);
-        // Some traps — random locations.
-        await vly_trap(SPIKED_PIT);
-        await vly_trap(FIRE_TRAP);
-        await vly_trap(SLP_GAS_TRAP);
-        await vly_trap(ANTI_MAGIC);
-        await vly_trap(FIRE_TRAP);
-        await vly_trap(MAGIC_TRAP);
-        // Some random objects.
-        for (const oc of SANCTUM_LOOT_CLASSES) vly_object({ oclass: oc });
-        // Some monsters.
-        sanc_monster('horned devil', ...sanc_abs(14, 12), { peaceful: 0 });
-        sanc_monster('barbed devil', ...sanc_abs(18, 8), { peaceful: 0 });
-        sanc_monster('erinys', ...sanc_abs(10, 4), { peaceful: 0 });
-        sanc_monster('marilith', ...sanc_abs(7, 9), { peaceful: 0 });
-        sanc_monster('nalfeshnee', ...sanc_abs(27, 8), { peaceful: 0 });
-        // Moloch's horde.
-        for (const [hx, hy] of SANCTUM_HORDE)
-            sanc_monster('aligned cleric', ...sanc_abs(hx, hy),
-                         { sp_align: A_NONE, peaceful: 0 });
-        // A few nasties.
-        vly_monster_class(VLY_S_LICH);
-        vly_monster_class(VLY_S_LICH);
-        for (let i = 0; i < 3; i++) vly_monster_class(VLY_S_VAMPIRE);
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    // des.stair("up", 63,15) — no RNG.
-    quest_place_stair(63, 15, true);
-    // des.teleport_region({region={54,1,79,18}, region_islev=1, dir="down"}).
-    vly_teleport_region(54, 1, 79, 18, true);
-
-    // C ref: lspo_finalize_level() — wallification (no RNG) then
-    // flip_level_rnd(allow_flips=3): one rn2(2) per axis.
-    remove_boundary_syms();
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) {
-        flip_level(flp);
-        vly_flip_dndest(flp);
-    }
-}
-
-// sanctum.lua gives its monsters map-relative coordinates; create_monster
-// resolves them through get_location_coord() (no RNG for an explicit coord).
-function sanc_abs(mx, my) { const c = vly_abs(mx, my); return [c.x, c.y]; }
 
 // C ref: lspo_finalize_level()'s trailing `for (i = 0; i < svn.nroom; ++i)
 // fill_special_room(&svr.rooms[i]);` — run AFTER fixup_special() has placed the
@@ -6053,55 +3311,12 @@ export function fill_level_special_rooms() {
     }
 }
 
-// ============================================================
-// Mine Town (C ref: makemaz("minetn") -> dat/minetn-<N>.lua)
-//
-// mkmaze.c:1136 — an s_level carrying rndlevs picks its script with
-// rnd(sp->rndlevs); "minetn" has rndlevs 7.  Only the "-5" variant
-// ("Grotto Town" by Kelly Bailey) is ported so far.
-// ============================================================
-
-const MINETN5_MAP = [
-    '-----         ---------                                                    ',
-    '|...---  ------.......--    -------                       ---------------  ',
-    '|.....----.........--..|    |.....|          -------      |.............|  ',
-    '--..-....-.----------..|    |.....|          |.....|     --+---+--.----+-  ',
-    ' --.--.....----     ----    |.....|  ------  --....----  |..-...--.-.+..|  ',
-    '  ---.........----  -----   ---+---  |..+.|   ---..-..----..---+-..---..|  ',
-    '    ----.-....|..----...--    |.|    |..|.|    ---+-.....-+--........--+-  ',
-    '       -----..|....-.....---- |.|    |..|.------......--................|  ',
-    '    ------ |..|.............---.--   ----.+..|-.......--..--------+--..--  ',
-    '    |....| --......---...........-----  |.|..|-...{....---|.........|..--  ',
-    '    |....|  |........-...-...........----.|..|--.......|  |.........|...|  ',
-    '    ---+--------....-------...---......--.-------....---- -----------...|  ',
-    ' ------.---...--...--..-..--...-..---...|.--..-...-....------- |.......--  ',
-    ' |..|-.........-..---..-..---.....--....|........---...-|....| |.-------   ',
-    ' |..+...............-+---+-----..--..........--....--...+....| |.|...S.    ',
-    '-----.....{....----...............-...........--...-...-|....| |.|...|     ',
-    '|..............-- --+--.---------.........--..-........------- |.--+-------',
-    '-+-----.........| |...|.|....|  --.......------...|....---------.....|....|',
-    '|...| --..------- |...|.+....|   ---...---    --..|...--......-...{..+..-+|',
-    '|...|  ----       ------|....|     -----       -----.....----........|..|.|',
-    '-----                   ------                     -------  ---------------',
-].join('\n');
-
-// C ref: mkroom.h shop room types.  room_types[] (sp_lev.c:3960) names them in
-// this order, and stock_room() indexes shtypes[] with rtype - SHOPBASE.
-const SHOP_RTYPE_BY_NAME = {
-    'shop': SHOPBASE, 'armor shop': SHOPBASE + 1, 'scroll shop': SHOPBASE + 2,
-    'potion shop': SHOPBASE + 3, 'weapon shop': SHOPBASE + 4,
-    'food shop': SHOPBASE + 5, 'ring shop': SHOPBASE + 6,
-    'wand shop': SHOPBASE + 7, 'tool shop': SHOPBASE + 8,
-    'book shop': SHOPBASE + 9, 'health food shop': SHOPBASE + 10,
-    'candle shop': SHOPBASE + 11,
-};
-
 // C ref: sp_lev.c lspo_region() two-argument form `des.region(sel, "lit")`
 // (sp_lev.c:5613-5629).  This form NEVER builds a room: the selection is
 // cloned, grown one cell in every direction when lighting
 // (selection_do_grow(sel, W_ANY)), and sel_set_lit writes levl[][].lit on each
 // point — lava counts as lit whatever was asked for.  No RNG.
-function splev_region_lit(mx1, my1, mx2, my2, lit) {
+export function splev_region_lit(mx1, my1, mx2, my2, lit) {
     const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
     let lox = a.x, loy = a.y, hix = b.x, hiy = b.y;
     if (lit) { lox--; loy--; hix++; hiy++; }
@@ -6114,7 +3329,7 @@ function splev_region_lit(mx1, my1, mx2, my2, lit) {
 }
 
 // C ref: sp_lev.c lspo_terrain() over a selection.area() rectangle.  No RNG.
-function splev_terrain_area(mx1, my1, mx2, my2, typ) {
+export function splev_terrain_area(mx1, my1, mx2, my2, typ) {
     const a = vly_abs(mx1, my1), b = vly_abs(mx2, my2);
     for (let x = a.x; x <= b.x; x++)
         for (let y = a.y; y <= b.y; y++)
@@ -6123,7 +3338,7 @@ function splev_terrain_area(mx1, my1, mx2, my2, typ) {
 
 // C ref: sp_lev.c sel_set_feature() — a furniture square is left alone;
 // anything else takes the feature's typ directly (no set_levltyp).  No RNG.
-function splev_feature(mx, my, typ) {
+export function splev_feature(mx, my, typ) {
     const c = vly_abs(mx, my);
     const loc = game.level?.at(c.x, c.y);
     if (!loc || IS_FURNITURE(loc.typ)) return;
@@ -6133,7 +3348,7 @@ function splev_feature(mx, my, typ) {
 // C ref: sp_lev.c lspo_door() 3-argument form des.door(state, x, y).  A
 // "random" state is msk == -1, which costs one rnddoor() rn2(5) before
 // sel_set_door; every other state is a plain mask and draws nothing.
-function splev_door_at(state, mx, my) {
+export function splev_door_at(state, mx, my) {
     const msk = DOORSTATES[state];
     const typ = (msk === -1) ? splev_rnddoor_roll() : msk;
     const c = vly_abs(mx, my);
@@ -6157,7 +3372,7 @@ function splev_door_at(state, mx, my) {
 // reads svd.doors[sroom->fdoor], and minetn-*.lua places its shop doors AFTER
 // the des.region that creates the shop, so without this pass the shop has no
 // door at all.  No RNG.
-function splev_link_doors_rooms() {
+export function splev_link_doors_rooms() {
     const g = game;
     for (let y = 0; y < ROWNO; y++)
         for (let x = 0; x < COLNO; x++) {
@@ -6203,7 +3418,7 @@ function splev_your_race(ptr) {
 //   * mkclass(class, G_NOGEN) for a bare class char.
 //   * the In_mines your_race rn2(3) (sp_lev.c:1957).
 //   * the location (explicit: none; random: the get_location loop).
-function splev_create_monster({ name = null, cls = 0, mx = null, my = null,
+export function splev_create_monster({ name = null, cls = 0, mx = null, my = null,
                                 peaceful = null, croom = null, asleep = null }) {
     let ptr = null;
     if (name != null) {
@@ -6248,7 +3463,7 @@ function splev_create_monster({ name = null, cls = 0, mx = null, my = null,
 // C ref: sp_lev.c create_object() at an EXPLICIT coordinate — get_location_coord
 // draws nothing, then the object is built exactly as the random-location form.
 // `historic` is obj.h's CORPSTAT_HISTORIC (4) in a statue's spe bitfield.
-function splev_object_at({ otyp = null, oclass = null, montype = null,
+export function splev_object_at({ otyp = null, oclass = null, montype = null,
                            historic = 0 }, mx, my) {
     const c = vly_abs(mx, my);
     let otmp;
@@ -6262,20 +3477,6 @@ function splev_object_at({ otyp = null, oclass = null, montype = null,
     }
     return otmp;
 }
-
-// C ref: dat/nhlib.lua monkfoodshop() — a Monk hero gets the health food store.
-function minetn_monkfoodshop() {
-    const rl = roles[game.initrole];
-    return (rl && rl.name && rl.name.m === 'Monk') ? 'health food shop'
-                                                   : 'food shop';
-}
-
-// C ref: nhlib.lua's shuffled `align` table, indexed 1-based from Lua, mapped
-// through sp_lev.c's aligns[] to an align.h AM_* mask.
-const MINETN_ALIGN_AMASK = {
-    law: 0x04 /* AM_LAWFUL */, neutral: 0x02 /* AM_NEUTRAL */,
-    chaos: 0x01 /* AM_CHAOTIC */,
-};
 
 // C ref: mklev.c traptype_rnd(mktrapflags) (mklev.c:1938) — the FULL function,
 // parameterised on the caller's mktrapflags exactly as C is.  NO_TRAP means
@@ -6326,333 +3527,4 @@ function single_level_branch() {
     const uz = game.u?.uz;
     const dgn = uz ? game.dungeons?.[uz.dnum] : null;
     return !!(dgn && (dgn.num_dunlevs ?? 0) === 1);
-}
-
-// C ref: sp_lev.c create_trap() with no type and no coordinate — the DRY
-// get_location loop (rejecting STAIRS/LADDER), then
-// mktrap(0, MKTRAP_MAZEFLAG, croom, &tm).  NOTE the flags: lspo_trap defaults
-// spider_on_web to TRUE (sp_lev.c:4405), so a bare `des.trap()` does NOT set
-// MKTRAP_NOSPIDERONWEB — which both keeps traptype_rnd's `lvl < 7` gate on WEB
-// alive and means a rolled web comes with a free giant spider.
-// With an explicit `tm` mktrap skips its own placement loop, so the draws are
-// traptype_rnd's retry loop, whatever maketrap() rolls, the web's spider, and
-// the victim rnd(4) — the last skipped entirely when maketrap() could not build
-// the trap (mklev.c:2137 re-derives `kind` from the returned pointer).
-async function splev_trap_random() {
-    let x = -1, y = -1, trycnt = 0;
-    do {
-        const c = splev_get_location_rnd(LOC_DRY);
-        x = c.x; y = c.y;
-        const t = game.level?.at(x, y)?.typ;
-        if (t !== STAIRS && t !== LADDER) break;
-    } while (++trycnt <= 100);
-    let kind;
-    do { kind = splev_traptype_rnd(0); } while (kind === NO_TRAP);
-    if ((kind === HOLE || kind === TRAPDOOR) && !Can_fall_thru(game.u?.uz))
-        kind = ROCKTRAP;
-    const t = await maketrap(x, y, kind);
-    const k = t ? t.ttyp : NO_TRAP;
-    if (k === WEB) {
-        const spider = monster_by_pmidx(name_to_pmidx('giant spider'));
-        if (spider) makemon(spider, x, y, 0 /* NO_MM_FLAGS */);
-    }
-    const lvl = level_difficulty_ext();
-    if (k !== NO_TRAP && lvl <= rnd(4)                // mklev.c:2137
-        && k !== SQKY_BOARD && k !== RUST_TRAP
-        && !is_pit(k) && (k < HOLE || k === MAGIC_TRAP)
-        && _mktrap_victim)
-        _mktrap_victim(t);
-}
-
-// C ref: sp_lev.c lspo_engraving() -> make_engr_at(x, y, txt, 0L, etype).
-// No RNG.
-function splev_engraving(mx, my, text, etype) {
-    const c = vly_abs(mx, my);
-    make_engr_at(c.x, c.y, text, text, 0, etype);
-}
-
-// Entry point.  C ref: makemaz("minetn") -> load_special("minetn-5.lua").
-export async function makemaz_minetown5() {
-    const g = game;
-    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    const align = shuffle(['law', 'neutral', 'chaos']);
-    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
-    // des.level_flags("mazelevel") — no RNG.
-    if (g.level?.flags) g.level.flags.is_maze_lev = true;
-    // The trailing fill_special_room() pass (which stocks the four shops) must
-    // use the same faithful makemon path this generator does.
-    if (g.level) g.level._splev_fullmon = true;
-    // des.map([[...]]) — 75x21, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(MINETN5_MAP, false);   // des.map bare string -> lit=FALSE
-
-    // Five percent() gates; a nested one is only reached when the outer one
-    // passes (Lua short-circuits, so its rn2(100) is then not drawn).
-    if (percent(75)) {
-        if (percent(50)) vly_terrain_line(25, 8, 25, 9, VWALL);
-        else vly_terrain_line(16, 13, 17, 13, HWALL);
-    }
-    if (percent(75)) {
-        if (percent(50)) vly_terrain_line(36, 10, 36, 11, VWALL);
-        else vly_terrain_line(32, 15, 33, 15, HWALL);
-    }
-    if (percent(50)) {
-        splev_terrain_area(21, 4, 22, 5, ROOM);
-        vly_terrain_line(14, 9, 14, 10, VWALL);
-    }
-    if (percent(50)) {
-        vly_terrain_at(46, 13, VWALL);
-        vly_terrain_line(43, 5, 47, 5, HWALL);
-        vly_terrain_line(42, 6, 46, 6, ROOM);
-        vly_terrain_line(46, 7, 47, 7, ROOM);
-    }
-    if (percent(50)) splev_terrain_area(69, 11, 71, 11, HWALL);
-
-    // Stairs / fountains / lighting — no RNG.
-    quest_place_stair(1, 1, true);
-    quest_place_stair(46, 3, false);
-    splev_feature(50, 9, FOUNTAIN);
-    splev_feature(10, 15, FOUNTAIN);
-    splev_feature(66, 18, FOUNTAIN);
-
-    splev_region_lit(0, 0, 74, 20, 0);
-    splev_region_lit(9, 13, 11, 17, 1);
-    splev_region_lit(8, 14, 12, 16, 1);
-    splev_region_lit(49, 7, 51, 11, 1);
-    splev_region_lit(48, 8, 52, 10, 1);
-    splev_region_lit(64, 17, 68, 19, 1);
-    splev_region_lit(37, 13, 39, 17, 1);
-    splev_region_lit(36, 14, 40, 17, 1);
-    splev_region_lit(59, 2, 72, 10, 1);
-
-    g._full_mon_gen = true;
-    try {
-        // The watch, then the townsfolk.
-        for (let i = 0; i < 4; i++)
-            splev_create_monster({ name: 'watchman', peaceful: 1 });
-        splev_create_monster({ name: 'watch captain', peaceful: 1 });
-        for (let i = 0; i < 6; i++) splev_create_monster({ name: 'gnome' });
-        for (let i = 0; i < 2; i++) splev_create_monster({ name: 'gnome lord' });
-        for (let i = 0; i < 3; i++) splev_create_monster({ name: 'dwarf' });
-
-        // The shops.  filled=1 is FILL_NORMAL: the stocking itself happens in
-        // lspo_finalize_level's trailing fill_special_room() loop, long after
-        // the doors below have joined the rooms via link_doors_rooms().
-        vly_region(25, 17, 28, 19, 1, SHOP_RTYPE_BY_NAME['candle shop'],
-                   FILL_NORMAL, false);
-        splev_door_at('closed', 24, 18);
-        vly_region(59, 9, 67, 10, 1, SHOP_RTYPE_BY_NAME['shop'],
-                   FILL_NORMAL, false);
-        splev_door_at('closed', 66, 8);
-        vly_region(57, 13, 60, 15, 1, SHOP_RTYPE_BY_NAME['tool shop'],
-                   FILL_NORMAL, false);
-        splev_door_at('closed', 56, 14);
-        vly_region(5, 9, 8, 10, 1, SHOP_RTYPE_BY_NAME[minetn_monkfoodshop()],
-                   FILL_NORMAL, false);
-        splev_door_at('closed', 7, 11);
-
-        // Gnome homes.
-        splev_door_at('closed', 4, 14);
-        splev_door_at('locked', 1, 17);
-        splev_create_monster({ name: 'gnomish wizard', mx: 2, my: 19 });
-        splev_door_at('locked', 20, 16);
-        splev_create_monster({ cls: S_GNOME, mx: 20, my: 18 });
-        splev_door_at('random', 21, 14);
-        splev_door_at('random', 25, 14);
-        splev_door_at('random', 42, 8);
-        splev_door_at('locked', 40, 5);
-        splev_create_monster({ cls: S_GNOME, mx: 38, my: 7 });
-        splev_door_at('random', 59, 3);
-        splev_door_at('random', 58, 6);
-        splev_door_at('random', 63, 3);
-        splev_door_at('random', 63, 5);
-        splev_door_at('locked', 71, 3);
-        splev_door_at('locked', 71, 6);
-        splev_door_at('closed', 69, 4);
-        splev_door_at('closed', 67, 16);
-        splev_create_monster({ name: 'gnomish wizard', mx: 67, my: 14 });
-        splev_object_at({ oclass: RING_CLASS }, 70, 14);
-        splev_door_at('locked', 69, 18);
-        splev_create_monster({ name: 'gnome lord', mx: 71, my: 19 });
-        splev_door_at('locked', 73, 18);
-        splev_object_at({ otyp: CHEST }, 73, 19);
-        splev_door_at('locked', 50, 6);
-        splev_object_at({ oclass: TOOL_CLASS }, 50, 3);
-        splev_object_at({ otyp: STATUE, montype: 'gnome king', historic: 1 },
-                        38, 15);
-
-        // The temple.
-        vly_region(29, 2, 33, 4, 1, TEMPLE_RTYPE, FILL_NORMAL, false);
-        splev_door_at('closed', 31, 5);
-        vly_altar(31, 3, MINETN_ALIGN_AMASK[align[0]], 1);
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    // C ref: lspo_finalize_level() — link_doors_rooms, remove_boundary_syms,
-    // map_cleanup (no RNG), wallification (no RNG, !corrmaze), then
-    // flip_level_rnd(allow_flips=3): one rn2(2) per axis.
-    splev_link_doors_rooms();
-    remove_boundary_syms();
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) flip_level(flp);
-}
-
-// ============================================================
-// Mine's End (C ref: makemaz("minend") -> dat/minend-<N>.lua)
-// "minend" has rndlevs 3; only the "-2" variant ("Gnome King's Wine Cellar")
-// is ported so far.
-// ============================================================
-
-const MINEND2_MAP = [
-    '---------------------------------------------------------------------------',
-    '|...................................................|                     |',
-    '|.|---------S--.--|...|--------------------------|..|                     |',
-    '|.||---|   |.||-| |...|..........................|..|                     |',
-    '|.||...| |-|.|.|---...|.............................|                ..   |',
-    '|.||...|-|.....|....|-|..........................|..|.               ..   |',
-    '|.||.....|-S|..|....|............................|..|..                   |',
-    '|.||--|..|..|..|-|..|----------------------------|..|-.                   |',
-    '|.|   |..|..|....|..................................|...                  |',
-    '|.|   |..|..|----|..-----------------------------|..|....                 |',
-    '|.|---|..|--|.......|----------------------------|..|.....                |',
-    '|...........|----.--|......................|     |..|.......              |',
-    '|-----------|...|.| |------------------|.|.|-----|..|.....|..             |',
-    '|-----------|.{.|.|--------------------|.|..........|.....|....           |',
-    '|...............|.S......................|-------------..-----...         |',
-    '|.--------------|.|--------------------|.|.........................       |',
-    '|.................|                    |.....................|........    |',
-    '---------------------------------------------------------------------------',
-].join('\n');
-
-// C ref: mkobj.c objects[] otyps minend-2.lua names by string.
-const POT_BOOZE_OTYP = 317, POT_OBJECT_DETECTION_OTYP = 312,
-      DIAMOND_OTYP = 440, MINEND_RUBY_OTYP = 441, EMERALD_OTYP = 445,
-      AMETHYST_OTYP = 455, LUCKSTONE_OTYP = 470;
-
-// Entry point.  C ref: makemaz("minend") -> load_special("minend-2.lua").
-export async function makemaz_minend2() {
-    const g = game;
-    // load_special -> nhlib.lua top-level shuffle(align): rn2(3), rn2(2).
-    shuffle(['law', 'neutral', 'chaos']);
-    // des.level_init({ style="solidfill", fg=" " }) — rn2(2) + fill STONE.
-    const lit = quest_level_init_solidfill();
-    // des.level_flags("mazelevel") — no RNG.
-    if (g.level?.flags) g.level.flags.is_maze_lev = true;
-    if (g.level) g.level._splev_fullmon = true;
-    // des.map([[...]]) — 75x18, SPLEV_CENTER offset.  No RNG.
-    bigrm_load_map(MINEND2_MAP, false);   // minend-2.lua:13 bare des.map — see VALLEY_MAP
-
-    if (percent(50)) {
-        vly_terrain_at(55, 14, HWALL);
-        vly_terrain_at(56, 14, HWALL);
-        vly_terrain_at(61, 15, VWALL);
-        vly_terrain_at(52, 5, SDOOR);
-        splev_door_at('locked', 52, 5);
-    }
-    if (percent(50)) {
-        vly_terrain_at(18, 1, VWALL);
-        splev_terrain_area(7, 12, 8, 13, ROOM);
-    }
-    if (percent(50)) {
-        vly_terrain_at(49, 4, VWALL);
-        vly_terrain_at(21, 5, ROOM);
-    }
-    if (percent(50)) {
-        if (percent(50)) {
-            vly_terrain_at(22, 1, VWALL);
-        } else {
-            vly_terrain_at(50, 7, HWALL);
-            vly_terrain_at(51, 7, HWALL);
-        }
-    }
-
-    // Uncontrolled arrival region — region_islev, so whole-level absolute
-    // coordinates.  No RNG.
-    vly_teleport_region(23, 3, 48, 16, true);
-    // Dungeon description — no RNG.
-    splev_feature(14, 13, FOUNTAIN);
-    splev_region_lit(23, 3, 48, 6, 1);
-    splev_region_lit(21, 6, 22, 6, 1);
-    splev_region_lit(14, 4, 14, 4, 0);
-    splev_region_lit(10, 5, 14, 8, 0);
-    splev_region_lit(10, 9, 11, 9, 0);
-    splev_region_lit(15, 8, 16, 8, 0);
-    splev_door_at('locked', 12, 2);
-    splev_door_at('locked', 11, 6);
-    quest_place_stair(36, 4, true);
-    vly_non_diggable(0, 0, 52, 17);
-    vly_non_diggable(53, 0, 74, 0);
-    vly_non_diggable(53, 17, 74, 17);
-    vly_non_diggable(74, 1, 74, 16);
-    vly_non_diggable(53, 7, 55, 7);
-    vly_non_diggable(53, 14, 61, 14);
-    splev_engraving(12, 3, "You are now entering the Gnome King's wine cellar.",
-                    ENGRAVE);
-    splev_engraving(12, 4, 'Trespassers will be persecuted!', ENGRAVE);
-
-    g._full_mon_gen = true;
-    try {
-        // The Gnome King's wine cellar.
-        for (const [ox, oy] of [[10, 7], [10, 8]]) {
-            splev_object_at({ otyp: POT_BOOZE_OTYP }, ox, oy);
-            splev_object_at({ otyp: POT_BOOZE_OTYP }, ox, oy);
-            splev_object_at({ oclass: POTION_CLASS }, ox, oy);
-        }
-        splev_object_at({ otyp: POT_BOOZE_OTYP }, 10, 9);
-        splev_object_at({ otyp: POT_BOOZE_OTYP }, 10, 9);
-        splev_object_at({ otyp: POT_OBJECT_DETECTION_OTYP }, 10, 9);
-
-        // The Treasure chamber.
-        splev_object_at({ otyp: DIAMOND_OTYP }, 69, 4);
-        splev_object_at({ oclass: GEM_CLASS }, 69, 4);
-        splev_object_at({ otyp: DIAMOND_OTYP }, 69, 4);
-        splev_object_at({ oclass: GEM_CLASS }, 69, 4);
-        splev_object_at({ otyp: EMERALD_OTYP }, 70, 4);
-        splev_object_at({ oclass: GEM_CLASS }, 70, 4);
-        splev_object_at({ otyp: EMERALD_OTYP }, 70, 4);
-        splev_object_at({ oclass: GEM_CLASS }, 70, 4);
-        splev_object_at({ otyp: EMERALD_OTYP }, 69, 5);
-        splev_object_at({ oclass: GEM_CLASS }, 69, 5);
-        splev_object_at({ otyp: MINEND_RUBY_OTYP }, 69, 5);
-        splev_object_at({ oclass: GEM_CLASS }, 69, 5);
-        splev_object_at({ otyp: MINEND_RUBY_OTYP }, 70, 5);
-        splev_object_at({ otyp: AMETHYST_OTYP }, 70, 5);
-        splev_object_at({ oclass: GEM_CLASS }, 70, 5);
-        splev_object_at({ otyp: AMETHYST_OTYP }, 70, 5);
-        // buc="not-cursed" is create_object's curse_state 4 -> uncurse(); no RNG.
-        const luck = splev_object_at({ otyp: LUCKSTONE_OTYP }, 70, 5);
-        if (luck) uncurse(luck);
-
-        // Scattered gems, tools, and three fully random objects.
-        for (let i = 0; i < 7; i++) vly_object({ oclass: GEM_CLASS });
-        for (let i = 0; i < 2; i++) vly_object({ oclass: TOOL_CLASS });
-        for (let i = 0; i < 3; i++) vly_object({});
-
-        // Random traps.
-        for (let i = 0; i < 6; i++) await splev_trap_random();
-
-        // Random monsters.
-        splev_create_monster({ name: 'gnome king' });
-        for (let i = 0; i < 3; i++) splev_create_monster({ name: 'gnome lord' });
-        for (let i = 0; i < 2; i++) splev_create_monster({ name: 'gnomish wizard' });
-        for (let i = 0; i < 9; i++) splev_create_monster({ name: 'gnome' });
-        for (let i = 0; i < 2; i++) splev_create_monster({ name: 'hobbit' });
-        for (let i = 0; i < 3; i++) splev_create_monster({ name: 'dwarf' });
-        splev_create_monster({ cls: S_HUMANOID });
-    } finally {
-        g._full_mon_gen = false;
-    }
-
-    // C ref: lspo_finalize_level() tail.
-    splev_link_doors_rooms();
-    remove_boundary_syms();
-    bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
-    let flp = 0;
-    if (rn2(2)) flp |= 1;                 // flip_level_rnd sp_lev.c:975
-    if (rn2(2)) flp |= 2;                 // flip_level_rnd sp_lev.c:977
-    if (flp) { flip_level(flp); vly_flip_dndest(flp); }
 }

@@ -170,6 +170,27 @@ export class UnsupportedHeroCommandBoundaryError extends Error {
     }
 }
 
+// A branch the port has not reached, inside a command it did dispatch.
+// failClosedCommand() below raises this by converting the owner's refusal;
+// every other raiser of the parent class refused a command before dispatching
+// it at all.
+//
+// The distinction has one consumer, scripts/scan-sessions.mjs, and it is not
+// cosmetic there. That scan models what a session still owes the port by
+// resolving the recorded bytes against ADMITTED_COMMANDS, which admits a
+// command by its command byte alone. So the recorded input can name a command
+// the port refuses to dispatch, and can never name a branch below one it
+// dispatches: a stop here has to carry the port's own message as the
+// behavior, the way a boundary raised outside any command does.
+//
+// The class body is empty because the identity is the whole addition. It
+// keeps the parent's `name`, which labels the contract every other consumer
+// reads -- js/jsmain.js ends the segment on it and leaves the keystroke
+// retryable -- and that contract is identical here. The cause is what
+// differs, and the message states it.
+export class UnsupportedHeroCommandBranchBoundaryError
+    extends UnsupportedHeroCommandBoundaryError {}
+
 // A cmd.c getdir() or yn_function() path this port has not reached yet. Most
 // of these are raised after the prompt has painted and the answering key has
 // been read, so the segment keeps its matching prefix rather than the
@@ -217,6 +238,26 @@ function commandBindings(state) {
     return state.commandBindings;
 }
 
+// C ref: cmd.c timed_occupation() (171-178). The occupation a count installs:
+// it runs the command once more, spends one of the repeats parse() left in
+// gm.multi, and answers 0 on the turn that empties it, which is how
+// moveloop_core() learns to stop.
+//
+// C's `(*timed_occ_fn)()` passes no argument and discards the result, so
+// neither the ECMD_* code the command answers -- ECMD_TIME for a search that
+// ran -- nor the env moveloop_core() hands the occupation goes any further
+// than this.
+//
+// The decrement is guarded because C's is. detect.c dosearch0():2048 calls
+// nomul(0) when a search finds a secret door, so the callback can return with
+// the count already spent; an unguarded decrement would take gm.multi below 0,
+// which is the value moveloop_core():485 reads as a helpless hero.
+async function timed_occupation(state) {
+    await state.timedOccFn(state);
+    if (state.multi > 0) state.multi--;
+    return state.multi > 0 ? 1 : 0;
+}
+
 // C ref: cmd.c set_occupation() (205-217). Installs the callback that
 // allmain.c moveloop_core() runs once a turn until it answers 0, together with
 // the text stop_occupation() puts into "You stop <occtxt>."
@@ -229,17 +270,19 @@ function commandBindings(state) {
 // callback therefore arrives as an argument and is never read from a module
 // scope that could still be initializing.
 export function set_occupation(fn, txt, xtime, state = game) {
-    if (xtime) {
-        // cmd.c timed_occupation() counts gm.multi down instead of letting the
-        // callback decide when it is finished. Its one caller is doextcmd()'s
-        // `if (tlist->f_text && !go.occupation && gm.multi)` at cmd.c:3728,
-        // which needs a count typed before an extended command. This port's
-        // command boundary parses no such count, so runSearchCommand() below
-        // already records that multi is 0 whenever an occupation text exists.
-        throw new Error('set_occupation() with a timeout is unreachable');
-    }
     state.go ??= {};
-    state.go.occupation = fn;
+    if (xtime) {
+        // cmd.c:208-210. A count makes timed_occupation() the occupation and
+        // puts the command's own function in cmd.c's file-scope timed_occ_fn.
+        // The port keeps that pointer on the state rather than in a module
+        // variable, so that two game states in one process cannot share it;
+        // like C's static it is left standing when an untimed occupation
+        // replaces this one, because only timed_occupation() reads it.
+        state.go.occupation = timed_occupation;
+        state.timedOccFn = fn;
+    } else {
+        state.go.occupation = fn;
+    }
     state.go.occtxt = txt;
     state.go.occtime = 0;
 }
@@ -843,7 +886,7 @@ export async function parseCommand(state = game) {
 }
 
 // Every command this seam dispatches from the key bound to it, named once so
-// the comment above readSimpleCommand(), both boundary messages, and the
+// the comment above admitParsedCommand(), both boundary messages, and the
 // admission test cannot drift apart as more commands land. '#' opens the
 // extended-command prompt, through which every other name in the list is also
 // reachable; every other extended command stops inside doextcmd() instead,
@@ -870,9 +913,14 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'swap', 'kick', '#',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
-    + `${ADMITTED_COMMANDS.join(', ')}, an uncounted one-square walk, an `
-    + 'uncounted shift-direction run, an uncounted ctrl-direction rush, or a '
-    + 'byte bound to no command';
+    + `${ADMITTED_COMMANDS.join(', ')}, a one-square walk, a shift-direction `
+    + 'run, a ctrl-direction rush, or a byte bound to no command';
+// The count a command carries is refused separately, below, because parse()
+// admits the count before the command it modifies is even known.
+const COUNTED_BOUNDARY = 'cmd.c parse() committed a count leaving gm.multi '
+    + 'above 0 before a row carrying no occupation text, which allmain.c '
+    + 'moveloop_core():515-531 turns into a repeat of the command; that arm '
+    + 'is not ported';
 // context.run values this boundary dispatches. cmd.c set_move_cmd() takes the
 // value from the command the key is bound to: 0 for do_move_<dir>, 1 for
 // do_run_<dir>, which the shift-direction keys use, and 3 for do_rush_<dir>
@@ -898,38 +946,28 @@ const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
 export const ADMITTED_RUN_MODES = Object.freeze([0, 1, 3]);
 
 // A byte that cmd.c cmdbind_get() finds no command for reaches rhack()'s
-// bad-command path, which this file owns. parse() returns such a byte
-// unchanged except for the ones get_count() consumes first: every digit when
-// num_pad is off, and the count key itself when it is on. Those start a count
-// rather than a command, so they stay outside this boundary. ESC and the two
-// empty-key values leave rhack() through its earlier return instead.
-function unboundCommandKey(key, command, model) {
+// bad-command path, which this file owns: it prints "Unknown command", clears
+// the canned queue, and zeroes gm.multi at cmd.c:3838-3839. A count parsed
+// ahead of such a byte therefore needs nothing beyond what is already ported,
+// which is why the count refusal below spares it.
+function unboundCommandKey(key, command) {
     if (command !== null) return false;
-    // Escape is admitted separately: it never reaches the bad-command path,
-    // because rhack() returns at its empty-key test before looking a command
-    // up. The two empty-key values stay refused; C rings the bell for them
-    // and nhbell() is not ported.
-    if (!key || key === 0xFF || key === ESC) return false;
-    return model.numPad
-        ? key !== model.specialKeys.count
-        : !isDigit(key);
+    // Escape is admitted by its own test below: it never reaches the
+    // bad-command path, because rhack() returns at its empty-key test before
+    // looking a command up. The two empty-key values stay refused; C rings the
+    // bell for them and nhbell() is not ported. Only 0377 can arrive at this
+    // test, because js/input.js nhgetch() substitutes ESC for NUL below
+    // readchar(), as win/tty/wintty.c tty_nhgetch():4093-4098 does; the other
+    // half is written out because rhack():3661 tests it.
+    return Boolean(key) && key !== 0xFF;
 }
 
-// ADMITTED_COMMANDS above lists what the port dispatches; a one-square
-// walk and a byte bound to no command join them here. Classify that first
-// logical byte before get_count() can consume a prefix byte or expose
-// transient count output.
-async function readSimpleCommand(state) {
-    await beginCommandParse(state);
-    let key;
-    try {
-        key = await readchar(state);
-    } catch (error) {
-        abortCommandParse(state);
-        throw error;
-    }
-    const model = commandBindings(state);
-    const command = commandForKey(model, key);
+// ADMITTED_COMMANDS above lists what the port dispatches; a one-square walk
+// and a byte bound to no command join them here. parse() has already run when
+// this is called, so the byte classified here is the command byte parse()
+// returned, never a count digit get_count() consumed ahead of it.
+function admitParsedCommand(key, state) {
+    const command = commandForKey(commandBindings(state), key);
     const movement = MOVEMENT_INTENTS[command];
     // parse() answers Escape by clearing the message window and zeroing both
     // count fields, which finishCommandParse() already does, and rhack() then
@@ -937,12 +975,11 @@ async function readSimpleCommand(state) {
     const admitted = key === ESC
         || ADMITTED_COMMANDS.includes(command)
         || (movement && ADMITTED_RUN_MODES.includes(movement[2]))
-        || unboundCommandKey(key, command, model);
+        || unboundCommandKey(key, command);
     if (!admitted) {
-        abortCommandParse(state);
+        resetCommandVars(state);
         throw new UnsupportedHeroCommandBoundaryError(ADMITTED_BOUNDARY, key);
     }
-    return finishCommandParse({ key, count: 0 }, state);
 }
 
 // C ref: cmd.c reset_occupations() (194-200). Its own comment lists the three
@@ -1153,18 +1190,19 @@ async function executeMovement(command, key, firstTime, state) {
     state.iflags.menu_requested = false;
 }
 
-// pendingCommand owns either one rejected physical byte which has not entered
-// cmd.c parsing, or the complete parsed state needed to retry a destination
-// admission failure. Parser UI state is deliberately absent because neither
-// kind of retry resumes inside get_count(). A parsed retry retains the effect
-// of every prefix this port owns, because rhack() has already consumed the
-// prefix byte and no later input can reconstruct it: the reqmenu effect before
+// pendingCommand owns the complete parsed state needed to retry a command
+// rhack() could not finish, whether it was refused before dispatch or by a
+// destination admission failure under domove(). Replaying the keystroke is
+// never the alternative, because parse() has already consumed the command's
+// count digits and no retry resumes inside get_count(); parser UI state is
+// deliberately absent for the same reason. A retry retains the effect of every
+// prefix this port owns, because rhack() has already consumed the prefix byte
+// and no later input can reconstruct it: the reqmenu effect before
 // set_move_cmd() copies it to context.nopick, and the fight effect, which is
 // context.forcefight itself. Dropping either would replay the direction key as
 // a plain walk, which is a different command from the one the player typed.
 function captureParsedCommand(key, state) {
     return {
-        phase: 'parsed',
         key,
         commandCount: state.commandCount,
         lastCommandCount: state.lastCommandCount,
@@ -1182,13 +1220,6 @@ function restoreParsedCommand(pending, state) {
     state.iflags.menu_requested = Boolean(pending.menuRequested);
     state.context.forcefight = pending.forcefight ? 1 : 0;
     return pending.key;
-}
-
-function rejectedPhysicalCommand(pending) {
-    return new UnsupportedHeroCommandBoundaryError(
-        ADMITTED_BOUNDARY,
-        pending.key,
-    );
 }
 
 // The classes failClosedCommand() converts. js/jsmain.js breaks the segment
@@ -1359,7 +1390,9 @@ function commandTookTime(state) {
 // A command whose port is complete except for branches that are not, such as
 // an object name doname() cannot format yet. Those throw their owner's error;
 // converting it here keeps the segment's supported prefix and leaves the
-// keystroke retryable, the same contract the admission seam provides.
+// keystroke retryable, the same contract the admission seam provides. The
+// branch subclass records which of the two seams stopped the command, for the
+// reason its declaration gives.
 async function failClosedCommand(key, state, run) {
     try {
         return await run();
@@ -1368,7 +1401,7 @@ async function failClosedCommand(key, state, run) {
             (type) => error instanceof type,
         )) {
             resetCommandVars(state);
-            throw new UnsupportedHeroCommandBoundaryError(
+            throw new UnsupportedHeroCommandBranchBoundaryError(
                 `an unported branch of this command: ${error.message}`,
                 key,
             );
@@ -1486,10 +1519,11 @@ async function runAttributesCommand(key, state) {
 // the ECMD_* result its handler produced, because cmd_safety_prevention() and
 // the search itself already distinguish ECMD_OK from ECMD_TIME.
 //
-// extcmdlist[]'s "searching" occupation text would make rhack() call
-// set_occupation() under a count. This boundary parses no count, so multi is 0
-// and that call cannot happen; `wait`, the only other command carrying an
-// occupation text, is admitted on the same terms.
+// extcmdlist[]'s "searching" occupation text makes rhack() install a timed
+// occupation ahead of this wrapper whenever a count left gm.multi above 0. The
+// occupation calls dosearch() bare, without the wrapper: it is not running a
+// command, so a refusal from below belongs to the turn loop, which
+// moveloop_core() converts there.
 async function runSearchCommand(key, state) {
     return failClosedCommand(key, state, () => dosearch(state));
 }
@@ -1889,6 +1923,30 @@ async function doextcmd(key, state) {
     }
 }
 
+// C ref: rhack():3727's `func = tlist->ef_funct`, resolved for the rows that
+// can reach set_occupation(). C hands set_occupation() the same pointer the
+// dispatch below calls; this port names its handlers instead, so the row's
+// ef_funct is what maps one to the other, as doextcmd()'s switch above does.
+//
+// Only a row carrying occupation text arrives here, and extcmdlist[] gives
+// exactly two rows one: 's'/dosearch at cmd.c:1846-1847 and '.'/donull at
+// :1930-1931. Both handlers are ported, so the refusal below is unreachable
+// until upstream adds a third row and scripts/generate-extcmds.mjs copies it in.
+function timedOccupationFunction(row, key, state) {
+    switch (row.ef_funct) {
+    case 'dosearch':
+        return dosearch;
+    case 'donull':
+        return donull;
+    default:
+        resetCommandVars(state);
+        throw new UnsupportedHeroCommandBoundaryError(
+            `the counted command '${row.ef_txt}' has no ported occupation`,
+            key,
+        );
+    }
+}
+
 // C ref: cmd.c rhack(). Only the source handlers the port owns are
 // dispatched here. A fresh excluded physical byte stops retryably before
 // parsing or an unknown-command diagnostic. A supplied nonzero key (normally
@@ -1930,29 +1988,18 @@ export async function rhack(key, state = game) {
             }
         } else if (firstTime) {
             const pending = state.context.pendingCommand;
-            if (pending?.phase === 'physical') {
-                resetCommandVars(state);
-                throw rejectedPhysicalCommand(pending);
-            }
             if (pending) {
                 key = restoreParsedCommand(pending, state);
             } else {
-                try {
-                    key = await readSimpleCommand(state);
-                } catch (error) {
-                    if (error instanceof UnsupportedHeroCommandBoundaryError) {
-                        resetCommandVars(state);
-                        state.context.pendingCommand = {
-                            phase: 'physical',
-                            key: error.key,
-                        };
-                    }
-                    throw error;
-                }
+                key = await parseCommand(state);
                 state.context.pendingCommand =
                     captureParsedCommand(key, state);
                 newLogicalCommand = true;
             }
+            // Admission runs on the parsed command rather than on the byte
+            // that opened it, and outside the capture above, so a restored
+            // command is re-examined instead of dispatched unchecked.
+            admitParsedCommand(key, state);
             // parse() cannot push a canned command here: click_to_cmd() is
             // its only pusher and no mouse input is ported, so C's
             // `!key && cmdq_peek(CQ_CANNED)` retry at 3655 never fires.
@@ -2035,6 +2082,37 @@ export async function rhack(key, state = game) {
                 resetCommandVars(state);
                 return;
             }
+        }
+        // C ref: rhack():3726-3729, where a committed count is spent. A row
+        // carrying occupation text becomes a timed occupation, which
+        // moveloop_core():485-509 then runs once a turn without reading
+        // another key; the command still runs once through the dispatch below
+        // first, because parse():5142-5144 already spent one repeat on it.
+        //
+        // This sits below the prefix loop because each pass through that loop
+        // calls parse() again, which zeroes gc.command_count at cmd.c:5104, so
+        // only the last parse's count survives to be spent.
+        const row = command !== null ? EXTCMD_BY_NAME.get(command) : null;
+        if (row?.f_text && !state.go?.occupation && state.multi) {
+            set_occupation(
+                timedOccupationFunction(row, key, state),
+                row.f_text,
+                state.multi,
+                state,
+            );
+        } else if (state.multi > 0 && command !== null) {
+            // Every other row leaves the count for moveloop_core():515-531 to
+            // repeat the command with, and that arm reaches lookaround() and
+            // svc.context.mv, neither of which this port drives from a count.
+            // A key bound to no command is exempt: the bad-command path below
+            // zeroes gm.multi itself, as cmd.c:3839 does. So is a row that
+            // carries occupation text while one is already running, which C
+            // leaves to the same repeat arm.
+            resetCommandVars(state);
+            throw new UnsupportedHeroCommandBoundaryError(
+                COUNTED_BOUNDARY,
+                key,
+            );
         }
         if (command === 'wait') {
             // donull() writes context.move itself, so this arm carries only

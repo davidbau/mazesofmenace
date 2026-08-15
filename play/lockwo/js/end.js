@@ -260,6 +260,63 @@ function savelife(_how) {
 // wizard/explore mode) offer the paranoid "Die?" query.  Declining runs
 // savelife() and lets play continue; accepting ends the game.  Only the
 // wizard-mode decline path is exercised by the contest sessions.
+// C ref: end.c:1303-1319 — the hero's corpse and grave, created between
+// disclose() and savebones() ("grave creation should be after disclosure so it
+// doesn't have this grave in the current level's features for #overview").
+//
+//   corpse = mk_named_object(CORPSE, &mons[mnum], u.ux, u.uy, svp.plname);
+//   make_grave(u.ux, u.uy, pbuf);
+//
+// mk_named_object() is mkcorpstat(CORPSE, NULL, ptr, x, y, CORPSTAT_INIT) plus
+// oname().  Skipping it cost 29 RNG calls on every bones-eligible death:
+// next_ident's rnd(2), the 23 rn2 @ rndmonst_adj that mksobj's rndmonnum()
+// rolls for the CORPSE's placeholder corpsenm, and start_corpse_timeout's 5
+// (seed0030 seg6 step 247 idx 0-28, verified against the C recorder).  The
+// draws happen even though the corpsenm is immediately overwritten with the
+// hero's race.  make_grave() itself draws nothing when given a text.
+//
+// C's guard is `u.ugrave_arise == NON_PM && !(mvitals[u.umonnum].mvflags &
+// G_NOCORPSE)`; ugrave_arise is set from `how` at end.c:1206-1218, so the
+// death codes that leave no ordinary corpse are the ones excluded here.
+async function make_hero_corpse_and_grave(how) {
+    const BURNING = 5, DISSOLVED = 6, STONING = 8, TURNED_SLIME = 9;
+    if (how === PANICKED || how === BURNING || how === DISSOLVED
+        || how === STONING || how === TURNED_SLIME)
+        return null;
+    try {
+        const u = game.u;
+        const x = u?.ux, y = u?.uy;
+        if (!x && !y) return null;
+        const { mkcorpstat, CORPSE } = await import('./mkobj.js');
+        const { name_to_pmidx } = await import('./makemon.js');
+        const { make_grave } = await import('./engrave.js');
+        const { CORPSTAT_INIT } = await import('./const.js');
+        // C: `int mnum = !Upolyd ? gu.urace.mnum : u.umonnum;`  This port's
+        // u.umonnum holds the ROLE index, not a mons[] pmidx, so resolve the
+        // race's monster by name (mons[] carries "human"/"elf"/"dwarf"/
+        // "gnome"/"orc" as the player-race entries).
+        const raceName = String(game.urace?.noun || game.urace?.name
+                                || game.initrace || 'human').toLowerCase();
+        const mnum = name_to_pmidx(raceName);
+        const corpse = mkcorpstat(CORPSE, null, mnum ?? null, x, y,
+                                  CORPSTAT_INIT);
+        const plname = game.plname || game.u?.uname || 'Hero';
+        if (corpse) corpse.oname = plname;
+        // C: Sprintf(pbuf, "%s, ", plname); formatkiller(...); make_grave().
+        make_grave(x, y, `${plname}, ${killer_epitaph(how)}`);
+        return corpse;
+    } catch {
+        return null;   // never break the death sequence over a bones artifact
+    }
+}
+
+// C ref: topten.c formatkiller(..., how, TRUE) as used for the headstone text.
+function killer_epitaph(how) {
+    const kn = game._killer_name || '';
+    if (kn) return kn;
+    return DEATHS[how] || 'died';
+}
+
 async function done(how) {
     const d = await deps();
     const u = game.u;
@@ -410,8 +467,9 @@ async function done(how) {
             // the "You die..." --More-- has been paged; doing it earlier wiped
             // the map out from under those frames.
             if (bones_ok) {
+                const corpse = await make_hero_corpse_and_grave(how);
                 const { savebones } = await import('./bones.js');
-                await savebones(how, game._death_corpse || null);
+                await savebones(how, corpse || game._death_corpse || null);
             }
             if (clean) await real_death_epilogue(how);
         }

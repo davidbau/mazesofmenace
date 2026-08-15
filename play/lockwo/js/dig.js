@@ -19,6 +19,8 @@ import {
     W_NONDIGGABLE, isok, Is_earthlevel,
 } from './const.js';
 import { mksobj_at, ROCK, BOULDER, objects as OBJECTS_TBL } from './mkobj.js';
+import { Is_special } from './dungeon.js';
+import { inside_room } from './mkroom.js';
 
 // C ref: hack.c may_dig(x, y) — "intended to be called only on ROCKs or TREEs".
 // A stone wall or tree is diggable unless the cell is flagged W_NONDIGGABLE
@@ -396,9 +398,25 @@ export async function zap_dig() {
     return;
 }
 
-// C ref: mkobj.c in_town(x, y) — town of the Gnomish Mines.  Not modeled here
-// (the tunnelling in the contest slice happens in a regular mines cavern, never
-// the mines town), so a dug cavern wall always becomes CORR.
-function in_town(_x, _y) {
-    return false;
+// C ref: hack.c:3564 in_town(x, y) — a room WITH subrooms is Mine Town; with no
+// subroomed rooms at all the whole level counts.  Was a `return false` stub, so
+// a tunnelling dwarf inside Mine Town carved CORR where C leaves a doorless
+// DOOR (mdig_tunnel's is_cavernous_lev arm, and the same arm of zap_dig).
+// Duplicated from makemon.js in_town_js()/fountain.js in_town() rather than
+// imported: those two are file-private, and the S_LEVEL `town` flag stands in
+// for svl.level.flags.has_town, which nothing in this port writes.
+function in_town(x, y) {
+    const lvl = game.level;
+    const slev = Is_special(game.u?.uz);
+    if (!slev || !slev.flags?.town) return false;
+    let has_subrooms = false;
+    for (let i = 0; i < (lvl?.nroom ?? 0); i++) {
+        const sroom = lvl.rooms[i];
+        if (!sroom || (sroom.hx ?? 0) <= 0) break;
+        if ((sroom.nsubrooms ?? 0) > 0) {
+            has_subrooms = true;
+            if (inside_room(sroom, x, y)) return true;
+        }
+    }
+    return !has_subrooms;
 }

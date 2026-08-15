@@ -25,6 +25,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
+import { Is_special } from './dungeon.js';
 
 // ── small accessors that mirror the C globals/macros bones.c relies on ──
 
@@ -50,13 +51,15 @@ function bones_enabled() {
     return FLAGS().bones !== false;
 }
 
-// ── no_bones_level (C ref: bones.c:17) — pure predicate, consumes no RNG ──
+// ── no_bones_level (C ref: bones.c:18) — pure predicate, consumes no RNG ──
 //
-// Determines whether the given level is eligible to hold/produce bones.  In
-// the replay harness the eligibility result is irrelevant to the call stream
-// because it is only consulted *after* getbones() has already drawn its
-// rn2(3) (and open_bonesfile() will fail regardless).  It is ported here for
-// completeness and guarded so a partial dungeon model can never throw.
+// Unlike getbones(), where the result lands *after* the rn2(3), this predicate
+// runs BEFORE can_make_bones()'s rn2(1 + depth>>2) (bones.c:376-378), so a
+// wrong answer both fabricates/eats a draw and decides whether savebones()
+// writes a bones file that a later segment's getbones() will read back.
+// seed0030 proves both arms: C makes NO can_make_bones draw at all in seg4/seg7
+// (Dlvl 2 of the Dungeons of Doom, the Mines branch level in those games) but
+// does make one in seg1/seg2/seg3 (same dnum/dlevel, branch elsewhere).
 export function no_bones_level(lev) {
     try {
         const d = lev || game.u?.uz || {};
@@ -64,18 +67,37 @@ export function no_bones_level(lev) {
         const dlevel = d.dlevel ?? 1;
         const dng = game.dungeons?.[dnum];
 
-        // !svd.dungeons[lev->dnum].boneid — a dungeon flagged no-bones.
-        if (dng && dng.boneid === 0) return true;
+        // (sptr = Is_special(lev)) != 0 && !sptr->boneid
+        const sptr = Is_special({ dnum, dlevel });
+        if (sptr && !sptr.boneid) return true;
 
-        // Is_botlevel(lev): bottom level of its dungeon — no bones.
-        if (dng && dng.num_dunlevs != null && dlevel >= dng.num_dunlevs)
+        // !svd.dungeons[lev->dnum].boneid — a dungeon flagged no-bones.
+        if (dng && !dng.boneid) return true;
+
+        // Is_botlevel(lev): dungeon.c:1645 uses ==, not >=.
+        if (dng && dng.num_dunlevs != null && dlevel === dng.num_dunlevs)
             return true;
 
-        // Is_branchlev(lev) && lev->dlevel > 1 — multiway branch level.
-        if (dng && Array.isArray(dng.branches)) {
-            for (const b of dng.branches)
-                if (b === dlevel && dlevel > 1) return true;
+        // Is_branchlev(lev) && lev->dlevel > 1 — dungeon.c:1464 walks the GLOBAL
+        // branch chain and matches either END of a branch, so a level is a
+        // branch level whether it holds the up- or the down-side stair.  The
+        // old code read `game.dungeons[dnum].branches`, a field the dungeon
+        // model never sets (init_dungeon_branches only counts them into
+        // pd.tmpdungeon), so this arm answered FALSE on every level.
+        if (dlevel > 1) {
+            for (const br of (game.branches || [])) {
+                if ((br?.end1?.dnum === dnum && br.end1.dlevel === dlevel)
+                    || (br?.end2?.dnum === dnum && br.end2.dlevel === dlevel))
+                    return true;
+            }
         }
+
+        // In_hell(lev) && lev->dlevel == dunlevs_in_dungeon(lev) - 1 — the
+        // invocation level.
+        if (dng?.flags?.hellish && dng.num_dunlevs != null
+            && dlevel === dng.num_dunlevs - 1)
+            return true;
+
         return false;
     } catch {
         return false;
@@ -355,41 +377,37 @@ export async function savebones(how = 0, corpse = null) {
         };
         drop_upon_death(null, null, x, y, hooks);
 
-        // C ref: bones.c:481-500 — makemon(&mons[PM_GHOST], u.ux, u.uy, MM_NONAME)
-        // + christen_monst(mtmp, svp.plname): a ghost bearing the dead hero's own
-        // name is left at the death spot and joins the level's monster chain (so
-        // the next segment's getbones()/restmonchn() re-stamps it too).  Its own
-        // makemon() RNG (m_id/gender/inventory rolls) is not reproduced: bones.js's
-        // header note established these draws never reach a scored screen (each
-        // segment reseeds independently, and nothing later in THIS segment's death
-        // sequence is RNG-sensitive) — only the ghost's *presence* in the saved
-        // monster list is observable, via the next segment's restore-time stamp
-        // count.  Stats are assigned directly, matching C's bones.c:506-511
-        // post-creation overrides (m_lev/mhp/mhpmax/female/msleeping) rather than
-        // makemon()'s own rolls.
+        // C ref: bones.c:494-500 —
+        //   gi.in_mklev = TRUE;                       /* allow the hero's square */
+        //   mtmp = makemon(&mons[PM_GHOST], u.ux, u.uy, MM_NONAME);
+        //   gi.in_mklev = FALSE;
+        //   mtmp = christen_monst(mtmp, svp.plname);
+        //   if (corpse) obj_attach_mid(corpse, mtmp->m_id);
+        // then bones.c:506-511 overrides m_lev/mhp/mhpmax/female/msleeping.
+        // The old code hand-rolled the ghost and drew only next_ident, losing
+        // the other 5 calls C makes here (newmonhp d(9,8), makemon.c:1279
+        // rn2(2), m_initinv rn2(50)+rn2(100), makemon.c:1447 rn2(100)) —
+        // seed0030 seg6 step 247 idx 47-52.  MM_NONAME is what suppresses
+        // rndghostname()'s extra rn2(7)/rn2(34).
         {
-            const { monster_by_pmidx } = await import('./makemon.js');
-            const { next_ident } = await import('./mkobj.js');
+            const { makemon, monster_by_pmidx } = await import('./makemon.js');
+            const { MM_NONAME } = await import('./const.js');
             const PM_GHOST = 287;
             const gdata = monster_by_pmidx(PM_GHOST);
-            if (gdata && g.level) {
+            const saved_in_mklev = g.in_mklev;
+            g.in_mklev = true;
+            let mtmp = null;
+            try { mtmp = makemon(gdata, x, y, MM_NONAME); }
+            finally { g.in_mklev = saved_in_mklev; }
+            if (mtmp) {
                 const plname = g.flags?.debug ? 'wizard' : (g.plname || 'Hero');
-                (g.level.monsters = g.level.monsters || []).push({
-                    data: gdata,
-                    mx: x, my: y,
-                    m_id: next_ident(),
-                    mgivenname: plname,
-                    m_lev: g.u?.ulevel || 1,
-                    mhp: g.u?.uhpmax ?? 1,
-                    mhpmax: g.u?.uhpmax ?? 1,
-                    female: !!g.flags?.female,
-                    msleeping: 1,
-                    mtame: 0,
-                    mpeaceful: 0,
-                    minvis: 1,
-                    mcanmove: 1,
-                    mcansee: 1,
-                });
+                mtmp.mgivenname = plname;
+                mtmp.mname = plname;
+                mtmp.m_lev = g.u?.ulevel || 1;
+                mtmp.mhp = mtmp.mhpmax = g.u?.uhpmax ?? 1;
+                mtmp.female = !!g.flags?.female;
+                mtmp.msleeping = 1;
+                if (corpse) corpse.corpsenm_mid = mtmp.m_id; // obj_attach_mid
             }
         }
 

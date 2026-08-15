@@ -273,6 +273,19 @@ export async function nh_timeout() {
     if (!u) return;
     if (!u.uprops) u.uprops = {};
 
+    // C ref: allmain.c moveloop_core():513 `u.umoved = FALSE;` — it runs once
+    // per moveloop_core() iteration, i.e. once per elapsed turn, and only a
+    // domove() sets it back TRUE.  While gm.multi < 0 no command is dispatched
+    // at all, so a HELPLESS turn's nh_timeout() always reads umoved FALSE; that
+    // is what makes C skip slip_or_trip() (and its rn2(4)) on the paralysis
+    // turns FUMBLING's own nomul(-2) creates.  This port takes a run's turns
+    // inline inside ONE moveloop_core iteration (hack.js run_movement ->
+    // moveloop_turn), so that reset is skipped and umoved stays stale-TRUE.
+    // Re-derive it, but only when the PREVIOUS turn already ended helpless: a
+    // nomul(-N) that the hero's own move set up (paralysis trap) must keep
+    // umoved TRUE for the next turn, exactly as C does.
+    if ((game.multi ?? 0) < 0 && game._helpless_at_timeout) u.umoved = false;
+
     // C ref: timeout.c — `if (u.ucreamed) u.ucreamed--;`, just above the
     // uprops[] loop.  Cream on the face wears off a point a turn independently
     // of the blindness it caused.
@@ -287,6 +300,11 @@ export async function nh_timeout() {
         p.set(u, next);
         if (next === 0) await p.expire();
     }
+
+    // Sampled AFTER the expiry cases, so a nomul(-N) fired by one of them (the
+    // FUMBLING slip) counts: allmain.c:377 `if (gm.multi < 0) ++gm.multi` sits
+    // later in the same once-per-turn block, and no domove() can follow it.
+    game._helpless_at_timeout = ((game.multi ?? 0) < 0);
 
     // C ref: timeout.c nh_timeout() ends with run_timers() — expire any object
     // timer (here: ROT_CORPSE) whose scheduled turn has arrived.

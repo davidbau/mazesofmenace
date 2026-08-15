@@ -440,7 +440,10 @@ export function stock_room(shp_indx, sroom) {
     }
 
     if (game.level?.flags) game.level.flags.has_shop = true;
-    game._tribute_bookstock = false;
+    // C ref: shknam.c has exactly two references to context.tribute.bookstock —
+    // it is set TRUE once at :466 and read at :768; it is NEVER reset.  Clearing
+    // it per shop made every shop after the first bookstore draw a spurious
+    // rnd(stockcount) at shknam.c:777.
 }
 
 // C ref: shk.c inside_shop() — is <x,y> inside any shop room (returns the
