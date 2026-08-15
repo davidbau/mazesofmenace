@@ -26,8 +26,9 @@ import { exercise } from './attrib.js';
 import { A_STR } from './const.js';
 import { rn2, rn1, rnd, rnl, d } from './rng.js';
 import { print_dungeon, builds_up, In_hell, Is_valley, surface,
-         find_hell, dunlevs_in_dungeon, single_level_branch } from './dungeon.js';
+         find_hell, dunlevs_in_dungeon, single_level_branch, level_difficulty_c } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
+import { fumaroles } from './mkmaze.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
@@ -39,8 +40,8 @@ import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
 import { seetrap, dotrap } from './trap.js';
 import { check_special_room } from './shkroom.js';
-import { near_capacity } from './invent.js';
-import { BOULDER, run_object_timers } from './mkobj.js';
+import { near_capacity, addinv, prinv } from './invent.js';
+import { BOULDER, run_object_timers, mksobj, AMULET_OF_YENDOR } from './mkobj.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -52,13 +53,7 @@ import { placebc, unplacebc } from './ball.js';
 // depth() alone making their harder-to-reach levels look easier.  The amulet
 // / endgame variants are not exercised.
 const PM_TOURIST = 10; // makemon/exper PM index
-function level_difficulty() {
-    const uz = game.u.uz;
-    let res = depth_of_level(uz);
-    if (builds_up(uz))
-        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
-    return res;
-}
+function level_difficulty() { return level_difficulty_c(); }
 import { mon_catchup_elapsed_time, monnear } from './dogmove.js';
 import { onquest } from './questpgr.js';
 import { initrack } from './track.js';
@@ -966,6 +961,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         if (mtmp && mtmp !== game.u.usteed) u_collide_m(mtmp);
     }
 
+    // C ref: do.c:1831-1834 — `if (Is_waterlevel || Is_airlevel) movebubbles();
+    // else if (svl.level.flags.fumaroles) fumaroles();`.  The Plane of Fire
+    // draws its fumarole rolls on ARRIVAL, before the screen reset.
+    if (g.level?.flags?.fumaroles) fumaroles();
+
     // Reset the screen and draw the new level.  C ref: do.c goto_level()
     // lines ~1837-1841: vision_reset() (clear old level's line-of-sight),
     // reset_glyphmap(gm_levelchange), docrt() (full vision recalc + redraw),
@@ -1342,6 +1342,17 @@ export async function wiz_level_tele(readLevel) {
         const choice = await print_dungeon(true);
         if (!choice) return 0; // print_dungeon returned 0 (cancel)
         newlevel = { dnum: choice.destdnum, dlevel: choice.destlev };
+        // C ref: teleport.c:1233-1245 — picking an endgame level from the wizard
+        // menu while not already there hands the hero the Amulet of Yendor
+        // (goto_level() refuses the endgame without it, do.js:647).  mksobj()
+        // draws next_ident + the AMULET_CLASS rn2(10)/blessorcurse pair.
+        if (In_endgame(newlevel) && !In_endgame(u.uz) && !u.uhave?.amulet) {
+            const amu0 = mksobj(AMULET_OF_YENDOR, true, false);
+            if (amu0) {
+                const amu = addinv(amu0);
+                prinv('Endgame prerequisite:', amu, 0);
+            }
+        }
         // force_dest: no further validation; teleport straight to the target.
         if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
             return 0;

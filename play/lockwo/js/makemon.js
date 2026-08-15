@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { builds_up, In_hell, Is_special } from './dungeon.js';
+import { builds_up, In_hell, Is_special, level_difficulty_c } from './dungeon.js';
 import { roles } from './role.js';
 import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless,
          rnd_class, objects,
@@ -16,7 +16,7 @@ import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless,
          DILITHIUM_CRYSTAL, DILITHIUM_CRYSTAL as DILITHIUM_CRYSTAL_OTYP,
          LUCKSTONE, LUCKSTONE as LUCKSTONE_OTYP } from './mkobj.js';
 import { get_shop_item, FODDERSHOP, VEGETARIAN_CLASS } from './shtypes.js';
-import { get_wormno, initworm, count_wsegs,
+import { get_wormno, initworm, count_wsegs, worm_seg_at,
          place_worm_tail_randomly } from './worm.js';
 // Object-class constants inlined (not imported) to avoid a circular-import TDZ:
 // mkobj.js's dependency chain reaches makemon.js, so importing these names here
@@ -33,7 +33,7 @@ import {
     PIT, HOLE, TRAPDOOR, ALL_TRAPS,
     COLNO, ROWNO, DOOR, IN_SIGHT, POOL, MOAT, WATER, LAVAPOOL,
     HWALL, TLCORNER, BLCORNER, CROSSWALL, TUWALL, TDWALL, TRWALL, DBWALL,
-    SDOOR, SCORR,
+    SDOOR, SCORR, D_CLOSED, D_LOCKED,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, W_SADDLE,
 } from './const.js';
 // set_mimic_sym() needs the room/trap/vision helpers.  These modules sit below
@@ -870,13 +870,7 @@ export function mon_nocorpse(mndx) {
 // bump in a "builds up" branch (Vlad's Tower, Sokoban): depth() alone would
 // make the harder-to-reach levels there look easier since their dlevel counts
 // down as you climb, so add 2 per level of extra effort spent reaching them.
-function level_difficulty() {
-    const uz = game.u?.uz;
-    let res = depth_of_level(uz);
-    if (uz && builds_up(uz))
-        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
-    return res;
-}
+function level_difficulty() { return level_difficulty_c(); }
 
 function monmin_difficulty(levdif) {
     return Math.trunc(levdif / 6);
@@ -919,8 +913,23 @@ function dungeon_alignment() {
     // C ref: makemon.c align_shift() — uses Is_special(&u.uz)->flags.align if
     // the position is a named special level (e.g. Oracle = neutral), else the
     // dungeon's own align.  Is_special is backed by sp_levchn.
-    const slev = (game.sp_levchn || []).find(
-        (l) => l?.dlevel?.dnum === dnum && l?.dlevel?.dlevel === dlevel);
+    //
+    // The Is_special() lookup is CACHED BEHIND A STATIC in C:
+    //     static long oldmoves = 0L;  static s_level *lev;
+    //     if (oldmoves != svm.moves) { lev = Is_special(&u.uz); oldmoves = svm.moves; }
+    // so a level entered WITHIN a move (level teleport, trapdoor) keeps the
+    // PREVIOUS level's s_level until the turn counter next ticks, and the
+    // switch then falls through to the dungeon's own align.  Computing it fresh
+    // gave chaotic Medusa's weights to a scan C ran unaligned: every
+    // rn2(totalweight) modulus in rndmonst_adj came out too large (seed0360
+    // step 290).  dnum below is read live, exactly as C reads u.uz.dnum.
+    const moves = game.moves ?? 1;
+    if (game._align_shift_moves !== moves) {
+        game._align_shift_moves = moves;
+        game._align_shift_lev = (game.sp_levchn || []).find(
+            (l) => l?.dlevel?.dnum === dnum && l?.dlevel?.dlevel === dlevel) || null;
+    }
+    const slev = game._align_shift_lev;
     // An s_level's flags.align is ALREADY an AM_* mask (dungeon.c stores
     // `(tlevel.flags & D_ALIGN_MASK) >> 4`), so it must NOT be run through the
     // A_* aliases below: AM_CHAOTIC (1) == A_LAWFUL (1), which made every
@@ -931,11 +940,21 @@ function dungeon_alignment() {
         return (am === AM_LAWFUL || am === AM_NEUTRAL || am === AM_CHAOTIC)
             ? am : AM_NONE;
     }
-    const raw = (game.special_levels?.find?.(l => l?.dlevel?.dnum === dnum
-              && l?.dlevel?.dlevel === dlevel)?.flags?.align
-           ?? game.dungeons?.[dnum]?.flags?.align
-           ?? DUNGEON_ALIGN_BY_DNUM[dnum]
-           ?? A_NONE);
+    // C's fallback is `svd.dungeons[u.uz.dnum].flags.align` alone — no second,
+    // uncached special-level lookup (game.special_levels does not exist anyway).
+    //
+    // dungeon.h d_flags packs `align` as a 3-bit field starting at bit 4, and
+    // UNCONNECTED is 0x10 — the SAME bit as AM_CHAOTIC's.  C therefore reads
+    // any "unconnected" dungeon (the tutorial) back as chaotic; our parser
+    // splits the two fields, so re-apply the overlap here or the tutorial's
+    // rndmonst weights lose their alignment shift entirely.
+    const dgnflags = game.dungeons?.[dnum]?.flags;
+    if (dgnflags) {
+        const am = (((dgnflags.align | 0) | (dgnflags.unconnected ? AM_CHAOTIC : 0)) & 7);
+        return (am === AM_LAWFUL || am === AM_NEUTRAL || am === AM_CHAOTIC)
+            ? am : AM_NONE;
+    }
+    const raw = DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE;
 
     if (raw === AM_NONE || raw === A_NONE) return AM_NONE;
     if (raw === AM_LAWFUL || raw === A_LAWFUL) return AM_LAWFUL;
@@ -1950,6 +1969,25 @@ function rnd_item_excluded(ptr) {
     return is_animal(ptr) || attacktype(ptr, AT_EXPL) || mindless(ptr)
         || ptr.mcls === 54 /*S_GHOST (defsym.h; 51 was wrong)*/ || ptr.mcls === 37 /*S_KOP*/;
 }
+// C ref: teleport.c:29 noteleport_level(mon).  The level-flag clause alone
+// answered FALSE inside Gehennom's demon court, where C blocks teleport for
+// everyone who is not a demon lord/prince — and rnd_defensive_item() restarts
+// its whole switch on that answer (seed0360 step 307, muse.c:1235).
+// GAP: C's third clause `svl.level.flags.stasis_until >= svm.moves` is not
+// modelled (no wand of stasis in any covered session).
+function mm_noteleport_level(ptr) {
+    const dlord = (p) => !!p && is_demon_flag(p)
+        && (mflags2_of(p) & (M2_LORD | M2_PRINCE)) !== 0;
+    if (In_hell(game.u?.uz) && !dlord(ptr)) {
+        for (const m of (game.level?.monsters || [])) {
+            if (m.mhp != null && m.mhp <= 0) continue;
+            if (dlord(m.data)) return true;
+        }
+    }
+    if (game.level?.flags?.noteleport && !is_covetous(ptr)) return true;
+    return false;
+}
+
 function rnd_defensive_item(mtmp) {
     const pm = mtmp?.data;
     if (!pm || rnd_item_excluded(pm)) return 0;
@@ -1958,7 +1996,7 @@ function rnd_defensive_item(mtmp) {
     // noteleport level (unless the monster is covetous, e.g. Vlad wanting the
     // Candelabrum bypasses his own tower's noteleport flag); digging picks
     // retry in Sokoban.
-    const noteleport = !!game.level?.flags?.noteleport && !is_covetous(pm);
+    const noteleport = mm_noteleport_level(pm);
     const inSokoban = (game.sokoban_dnum != null
                        && game.u?.uz?.dnum === game.sokoban_dnum);
     let trycnt = 0;
@@ -3435,6 +3473,16 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // "square is empty" — the fill_zoo hazard mklev.js:5194 already records
     // having hit once at a single site.
     if (x > 0) placeOnLevel(mtmp, x, y);
+    // C ref: makemon.c S_EEL case -> hideunder(mtmp) during mklev; mon.c
+    // hideunder() sets `undetected = is_pool(x,y) && !Is_waterlevel(&u.uz)`.
+    // js/sp_lev.js already did this for des.monster()-placed eels; mkswamp's
+    // eels (mklev.c) went through here instead and stayed VISIBLE, so a
+    // sleeping giant eel — which never moves and so never reaches m_move's
+    // hideunder tail — kept failing mon.c:1297's `!mundetected` gate and drew
+    // an rn2(4) every turn that C never draws (seed4500 Dlvl 24 swamp).
+    if (x > 0 && game.in_mklev && ptr.mcls === S_EEL_CLS
+        && mm_is_pool(x, y) && !Is_waterlevel(game.u?.uz))
+        mtmp.mundetected = 1;
     return mtmp;
 }
 
@@ -3476,7 +3524,12 @@ export function mm_mon_at(x, y) {
     for (const m of game.level?.monsters || []) {
         if (m.mx === x && m.my === y && (m.mhp == null || m.mhp > 0)) return m;
     }
-    return null;
+    // C ref: worm.c place_worm_seg() writes the worm into svl.level.monsters[][]
+    // for every tail square, so MON_AT()/m_at() find it there.  This port keeps
+    // segments in a side list; without consulting it, makemon()'s RNG-free
+    // "already occupied" early return never fired on a tail square and fill_zoo
+    // created a monster C skipped (seed0373 step 78).
+    return worm_seg_at(x, y);
 }
 
 // C ref: teleport.c goodpos(x, y, mtmp, gpflags) for a to-be-created monster
@@ -3512,7 +3565,12 @@ function goodpos_spawn(x, y, ptr) {
     }
     const typ = game.level?.at(x, y)?.typ;
     if (typ == null) return false;
-    if (typ < DOOR) return false;                                 // !accessible
+    // C ref: monmove.c:2193 accessible() = ACCESSIBLE(SURFACE_AT(x,y))
+    // && !closed_door(x, y).  The closed-door term was missing, so a spawn could
+    // land inside a shut door (seed4500 medusa-3 raven on the (28,14) door) and
+    // mfndpos then offered it a different square set than C's.
+    if (typ < DOOR) return false;                                 // !ACCESSIBLE
+    if (mm_closed_door(x, y)) return false;
     // C ref: `if (sobj_at(BOULDER, x, y) && !throws_rocks(mdat)) return FALSE;`
     if (!(ptr && throws_rocks_flag(ptr)) && mm_boulder_at(x, y)) return false;
     return true;
@@ -3534,7 +3592,9 @@ function mm_may_passwall(x, y) {
 // C ref: rm.h closed_door(x,y) — a DOOR whose doormask has D_CLOSED|D_LOCKED.
 function mm_closed_door(x, y) {
     const loc = game.level?.at(x, y);
-    return !!loc && loc.typ === DOOR && ((loc.doormask ?? 0) & (2 /*D_CLOSED*/ | 4 /*D_LOCKED*/)) !== 0;
+    // const.js: D_ISOPEN 0x02, D_CLOSED 0x04, D_LOCKED 0x08.  This used to test
+    // 2|4, i.e. answered TRUE for an OPEN door and never saw D_LOCKED.
+    return !!loc && loc.typ === DOOR && ((loc.doormask ?? 0) & (D_CLOSED | D_LOCKED)) !== 0;
 }
 // C ref: sobj_at(BOULDER, x, y).
 function mm_boulder_at(x, y) {

@@ -11,12 +11,13 @@ import { depth } from './hacklib.js';
 import { distmin } from './hacklib.js';
 import { IS_ROOM, ROOMOFFSET, D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED,
          SDOOR, DOOR, CORR, ROOM, MM_ESHK } from './const.js';
-import { mksobj, mksobj_at, mkobj_at, objects, CORPSE } from './mkobj.js';
+import { mksobj, mksobj_at, mkobj_at, objects, weight, CORPSE } from './mkobj.js';
 import { set_tin_variety, HEALTHY_TIN } from './eat.js';
-import { makemon, mkclass, name_to_pmidx, monster_by_pmidx } from './makemon.js';
+import { makemon, mkclass, mpickobj, name_to_pmidx, monster_by_pmidx } from './makemon.js';
 import { make_engr_at } from './engrave.js';
 import { shtypes, get_shop_item, VEGETARIAN_CLASS } from './shtypes.js';
 import { Is_special } from './dungeon.js';
+import { obj_resists } from './zap.js';
 
 // C ref: shknam.c shkliquors[]..shkgeneral[] — per-shop-type personal name
 // pools for nameshk().  Platform-conditional entries (#ifdef OVERLAY/WIN32/
@@ -212,7 +213,10 @@ function nameshk(shk, poolKey) {
 
 const FOOD_CLASS = 7;
 const S_MIMIC = 13;
-const SKELETON_KEY = 221, TOUCHSTONE = 263, SCR_CHARGING = 343;
+// 263 is BELL_OF_OPENING and 343 is SCR_STINKING_CLOUD; both indices were wrong,
+// and mongets_shk() feeds the otyp straight to mksobj() (RNG-consuming).
+const SKELETON_KEY = 221, TOUCHSTONE = 472, SCR_CHARGING = 342;
+const GOLD_PIECE = 438;
 const DUST = 2;      // engrave.h DUST
 
 // C ref: shknam.c veggy_item(NULL, otyp) — the type-only mode used by
@@ -338,9 +342,18 @@ function shkinit(shp, sroom) {
     shk.eshk.shk = { x: sx, y: sy };
 
     // C ref: mkmonmoney(shk, 1000 + 30 * rnd(100)) — initial capital.  The gold
-    // is a real mksobj(GOLD_PIECE, FALSE) -> next_ident rnd(2).
+    // is a real mksobj(GOLD_PIECE, FALSE) -> next_ident rnd(2), and it goes
+    // into minvent: mdrop_special_objs() counts it.
     const amount = 1000 + 30 * rnd(100);
-    if (amount > 0) mksobj(/*GOLD_PIECE*/ 438, false, false);
+    if (amount > 0) {
+        const gold = mksobj(GOLD_PIECE, false, false);
+        if (gold) {
+            gold.quan = amount;
+            gold.owt = weight(gold);
+            shk._hasinv = true;
+            mpickobj(shk, gold);
+        }
+    }
 
     if (shp.shknms === 'rings') mongets_shk(shk, TOUCHSTONE);
     if (shp.shknms === 'tools' || shp.shknms === 'wands'
@@ -356,7 +369,9 @@ function shkinit(shp, sroom) {
 // shopkeeper (not demon/minion/mplayer/prince), the only RNG is mksobj().
 function mongets_shk(mtmp, otyp) {
     if (!otyp) return null;
-    return mksobj(otyp, true, false);
+    const otmp = mksobj(otyp, true, false);
+    if (mtmp && otmp) { mtmp._hasinv = true; mpickobj(mtmp, otmp); }
+    return otmp;
 }
 
 // C ref: shknam.c stock_room_goodpos() — a square eligible for stocking.
@@ -439,11 +454,40 @@ export function stock_room(shp_indx, sroom) {
         game._full_mon_gen = was_full2;
     }
 
+    // C ref: shknam.c:794 — "Hack for Orcus's level: it's a ghost town, get rid
+    // of shopkeepers".  mongone() -> mdrop_special_objs() (steal.c:862) rolls
+    // obj_resists(obj, 0, 0) for EVERY minvent item, so the shopkeeper's
+    // inventory size is worth that many rn2(100) draws before the next shop's
+    // shkinit().
+    const orc = game.orcus_level;
+    if (orc && game.u?.uz?.dnum === orc.dnum && game.u?.uz?.dlevel === orc.dlevel)
+        shk_mongone(sroom.resident, sroom);
+
     if (game.level?.flags) game.level.flags.has_shop = true;
     // C ref: shknam.c has exactly two references to context.tribute.bookstock —
     // it is set TRUE once at :466 and read at :768; it is NEVER reset.  Clearing
     // it per shop made every shop after the first bookstore draw a spurious
     // rnd(stockcount) at shknam.c:777.
+}
+
+// C ref: mon.c:3267 mongone(mdef) — the shopkeeper leaves the game without
+// dying.  mdrop_special_objs() walks minvent and calls obj_resists(obj, 0, 0)
+// on each; with ochance 0 only the invocation tools / the Amulet / a Rider
+// corpse pass, and those are the ones that skip the rn2(100) entirely.
+// m_detach() then takes the monster off the map and shkgone() (shk.c:247)
+// clears sroom->resident.
+function shk_mongone(shk, sroom) {
+    if (!shk) return;
+    shk.mhp = 0;
+    for (const obj of [...(shk.minvent || [])]) obj_resists(obj, 0, 0);
+    shk.minvent = [];                    // discard_minvent(shk, FALSE)
+    const list = game.level?.monsters;
+    if (list) {
+        const i = list.indexOf(shk);
+        if (i >= 0) list.splice(i, 1);
+    }
+    if (sroom) sroom.resident = null;
+    shk.isshk = 0;
 }
 
 // C ref: shk.c inside_shop() — is <x,y> inside any shop room (returns the

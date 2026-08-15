@@ -18,7 +18,7 @@ import { t_at as t_at_hk, trap_explanation as trap_explanation_hk } from './trap
 import { domove, blocksMove, test_move_quiet } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
 import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature } from './display.js';
-import { obj_doname, whatis_pick_inventory, carried_weight, inventoryArray, is_pick } from './invent.js';
+import { obj_doname, whatis_pick_inventory, carried_weight, inventoryArray, is_pick, ansimpleoname } from './invent.js';
 import { rnd } from './rng.js';
 import { vision_recalc, Blind, couldsee, cansee } from './vision.js';
 import { nhgetch } from './input.js';
@@ -34,6 +34,9 @@ import { teleok_hero, teleds_hero, safe_teleds_hero } from './read.js';
 import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          D_CLOSED, D_LOCKED, D_ISOPEN, D_BROKEN, D_NODOOR, IRONBARS,
+         TREE, SDOOR, SCORR, THRONE, SINK, GRAVE, ALTAR,
+         DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
+         AM_MASK, AM_SANCTUM, Amask2align, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
          IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA,
          IS_WATERWALL, In_sokoban, Is_rogue_level,
          Is_waterlevel, isok, VIBRATING_SQUARE } from './const.js';
@@ -1323,7 +1326,12 @@ function self_lookat() {
     const raceAdj = raceDef.adj || raceDef.noun || 'human';
 
     const plname = game.flags?.debug ? 'wizard' : (game.plname || 'Player');
-    return `${raceAdj} ${pm} called ${plname}`;
+    let buf = `${raceAdj} ${pm} called ${plname}`;
+    // C ref: pager.c:127 — `if (Punished) ", chained to <ansimpleoname(uball)>"`.
+    // ansimpleoname() names a BARE ball, so a ball made heavier by a second
+    // scroll of punishment still reads "a heavy iron ball", not "a very heavy".
+    if (game.u?.uball) buf += `, chained to ${ansimpleoname(game.u.uball)}`;
+    return buf;
 }
 
 // C ref: getpos.c getpos() else-branch — terrain symbol matching (see
@@ -1396,6 +1404,31 @@ function terrain_description(x, y) {
         return Is_waterlevel(game.u?.uz) ? 'limitless water' : 'wall of water';
     if (typ === STAIRS) return stair_descr(x, y);
     if (typ === FOUNTAIN) return 'fountain';
+    // C ref: defsym.h PCHAR desc field (defsyms[].explanation), the string
+    // do_screen_description() hands back as *firstmatch for a single cmap
+    // match.  Without these the catch-all below described a tree as "floor of
+    // a room" (seed0367 step 155, autodescribe over the Priest quest home).
+    if (typ === TREE) return 'tree';
+    if (typ === IRONBARS) return 'iron bars';
+    if (typ === THRONE) return 'opulent throne';
+    if (typ === SINK) return 'sink';
+    if (typ === GRAVE) return 'grave';
+    if (typ === ALTAR) {
+        // C ref: pager.c lookat():744 — S_altar sets need_to_look, so firstmatch
+        // becomes lookat()'s "%s %saltar" rather than the bare defsyms text.
+        const amsk = (loc.altarmask ?? loc.flags ?? 0);
+        const algn = Amask2align(amsk & AM_MASK);
+        const an_ = algn === A_CHAOTIC ? 'chaotic' : algn === A_NEUTRAL ? 'neutral'
+                  : algn === A_LAWFUL ? 'lawful' : algn === A_NONE ? 'unaligned' : 'unknown';
+        return `${an_} ${(amsk & AM_SANCTUM) ? 'high ' : ''}altar`;
+    }
+    // Secret doors/corridors are DISPLAYED as their concealing terrain, and C
+    // dispatches on the displayed glyph.
+    if (typ === SDOOR) return 'wall';
+    if (typ === SCORR) return (loc.seenv || (loc.disp_ch && loc.disp_ch !== ' '))
+                              ? 'dark part of a room' : 'solid stone';
+    if (typ === DRAWBRIDGE_UP) return 'raised drawbridge';
+    if (typ === DRAWBRIDGE_DOWN) return 'lowered drawbridge';
     return 'floor of a room';
 }
 

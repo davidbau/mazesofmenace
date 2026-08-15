@@ -333,6 +333,51 @@ export function builds_up(lev) {
     return br ? !!br.end1_up : false;
 }
 
+// C ref: dungeon.c:2027 level_difficulty() — the SINGLE authority for the
+// "how hard is it here" depth used by monster/object generation.  Every caller
+// used to keep a private copy that implemented only the third arm; the endgame
+// planes sit at negative dlevels, so those copies handed d(level_difficulty(),N)
+// a negative dice count and it silently rolled nothing (seed0373 step 99).
+export function level_difficulty_c() {
+    const uz = game.u?.uz;
+    if (!uz) return 1;
+    if (In_endgame_dg(uz))
+        return depth_dg(game.sanctum_level) + Math.trunc((game.u?.ulevel || 0) / 2);
+    if (game.u?.uhave?.amulet) return deepest_lev_reached_dg(false);
+    let res = depth_dg(uz);
+    if (builds_up(uz))
+        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
+    return res;
+}
+
+// C ref: dungeon.c:1339 deepest_lev_reached(noquest).
+function deepest_lev_reached_dg(noquest) {
+    let ret = 0;
+    const dgns = game.dungeons || [];
+    for (let i = 0; i < dgns.length; i++) {
+        if (noquest && i === game.quest_dnum) continue;
+        const dlevel = dgns[i]?.dunlev_ureached | 0;
+        if (!dlevel) continue;
+        const d = depth_dg({ dnum: i, dlevel });
+        if (d > ret) ret = d;
+    }
+    return ret;
+}
+
+// C ref: dungeon.c depth() / In_endgame().  Local copies: dungeon.js sits below
+// hacklib.js/const.js in the import graph for these two callers only.
+function depth_dg(uz) {
+    const dnum = uz?.dnum ?? 0;
+    const dlevel = uz?.dlevel ?? 1;
+    const d = game?.dungeons?.[dnum];
+    if (!d) return dlevel;
+    return (d.depth_start || 1) + dlevel - 1;
+}
+function In_endgame_dg(uz) {
+    const al = game.astral_level;
+    return !!uz && !!al && uz.dnum === al.dnum;
+}
+
 function parent_dlevel(s, pd) {
     const branch_index = find_branch(s, pd);
     const dnum = parent_dnum(s, pd);

@@ -8,7 +8,7 @@ import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, HWALL, isok, IS_DOOR, ACCESSIBLE,
-    MAGIC_PORTAL,
+    MAGIC_PORTAL, LAVAPOOL, Is_firelevel,
 } from './const.js';
 import { maketrap } from './trap.js';
 
@@ -227,6 +227,30 @@ export function create_maze(corrwid, wallthick, rmdeadends) {
             }
             rx += mx;
             x++;
+        }
+    }
+}
+
+// C ref: mkmaze.c:1484 fumaroles() — "augment the Plane of Fire"; called from
+// goto_level() on arrival and from moveloop_core() every turn a level carries
+// des.level_flags("fumaroles").  The rn2(3) count and the per-fumarole
+// rn1(COLNO-4,3)/rn1(ROWNO-4,3) coordinate pair ALWAYS draw; the gas cloud (and
+// its two extra rolls) only when the square happens to be lava.
+export function fumaroles() {
+    const g = game;
+    let nmax = rn2(3);                                   // mkmaze.c:1486
+    let sizemin = 5;
+    if (Is_firelevel(g.u?.uz)) { nmax++; sizemin += 5; }
+    if ((g.level?.flags?.temperature ?? 0) > 0) { nmax++; sizemin += 5; }
+    for (let n = nmax; n; n--) {
+        const x = rn2(COLNO - 4) + 3;                    // mkmaze.c:1500
+        const y = rn2(ROWNO - 4) + 3;                    // mkmaze.c:1501
+        if (g.level?.at(x, y)?.typ === LAVAPOOL) {
+            // C ref: region.c create_gas_cloud(x, y, rn1(10, sizemin),
+            // rn1(10, 5)) — the region itself is not modelled, but both rolls
+            // are part of the stream.
+            rn2(10); rn2(10);
+            void sizemin;
         }
     }
 }

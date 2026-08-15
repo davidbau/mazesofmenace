@@ -23,7 +23,7 @@ import { update_topl } from './display.js';
 import { MFLAGS1, M1_TPORT, M1_TPORT_CNTRL, msound_of } from './monflags_data.js';
 import { in_rooms, shop_keeper, shkname } from './shkroom.js';
 import { shtypes, VEGETARIAN_CLASS } from './shtypes.js';
-import { observe_object, discover_object } from './o_init.js';
+import { observe_object, discover_object, record_price_quote } from './o_init.js';
 // currency() is NOT re-implemented here: C's currency() rolls
 // ROLL_FROM(currencies) while hallucinating, so a local copy would silently
 // drop an rn2() draw from every "(unpaid, N ...)" render.
@@ -743,13 +743,20 @@ export function shop_price_suffix(obj, with_price) {
     // C also skips while program_state.restoring; this port has no equivalent
     // flag and does not format objects during restore.
     if (!obj || game.iflags?.suppress_price) return '';
+    // C ref: objnam.c:1663/:1681 — every price the hero is shown is also
+    // recorded on the object TYPE, which is what the discoveries list's
+    // " {buy N}" suffix reads back.
     if (is_unpaid(obj)) {
         const quoted = unpaid_cost(obj, COST_CONTENTS);
+        record_price_quote(obj.otyp, Math.trunc(quoted / (obj.quan || 1)), true);
         return ` (${obj.unpaid ? 'unpaid' : 'contents'}, ${quoted} ${currency(quoted)})`;
     }
     if (with_price) {
         const { cost, nochrg } = get_cost_of_shop_item(obj);
-        if (cost > 0) return ` (${nochrg ? 'contents' : 'for sale'}, ${cost} ${currency(cost)})`;
+        if (cost > 0) {
+            record_price_quote(obj.otyp, Math.trunc(cost / (obj.quan || 1)), true);
+            return ` (${nochrg ? 'contents' : 'for sale'}, ${cost} ${currency(cost)})`;
+        }
         if (nochrg > 0) return ' (no charge)';
     }
     return '';

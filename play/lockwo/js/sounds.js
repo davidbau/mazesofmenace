@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { phase_of_the_moon, night, FULL_MOON } from './calendar.js';
-import { VAULT } from './const.js';
+import { VAULT, ROOMOFFSET } from './const.js';
 import { GOLD_PIECE, objects, WEAPON_CLASS } from './mkobj.js';
 import { DEADMONSTER } from './mon.js';
 import { update_topl } from './display.js';
@@ -94,10 +94,9 @@ export async function dosounds() {
     // C ref: sounds.c:230-237 — swamp ambient, via You1() not You_hear1().
     if (lf.has_swamp && !rn2(200)) { await You1(SWAMP_MSG[rn2(2) + hallu]); return; }
     // C ref: sounds.c:238-273 — vault ambient.  gd_sound() gates the rn2(2)
-    // message roll; g_at/vault_occupied here always report false because the
-    // hero-room-membership list (u.urooms) and the vault-guard subsystem
-    // (isgd) aren't tracked by this port, matching an empty urooms / no
-    // guard on the level.
+    // message roll: a hero standing IN the vault (or a guard already on the
+    // level) silences the ambient entirely, so the rn2(2) is NOT drawn —
+    // seed0012 step 266 call 96.
     if (lf.has_vault && !rn2(200)) {
         const sroom = game.level?.rooms?.find((r) => r.rtype === VAULT);
         if (!sroom) { lf.has_vault = 0; return; }
@@ -108,13 +107,12 @@ export async function dosounds() {
                 for (let vx = sroom.lx; vx <= sroom.hx && !gold_in_vault; vx++)
                     for (let vy = sroom.ly; vy <= sroom.hy; vy++)
                         if (gold_at(vx, vy)) { gold_in_vault = true; break; }
-                if (!vault_occupied()) {
+                if (vault_occupied() !== (game.level.rooms.indexOf(sroom) + ROOMOFFSET)) {
                     await You_hear1(gold_in_vault ? 'someone counting gold coins.'
                                             : 'someone searching.');
                     break;
                 }
-                // FALLTHROUGH — hero occupies the vault room; structurally
-                // unreachable since vault_occupied() always reports false.
+                // FALLTHROUGH — the hero is standing in the vault.
             }
             /* falls through */
             case 0:
@@ -147,14 +145,15 @@ export async function dosounds() {
 
 // C ref: vault.c gd_sound() = !(vault_occupied(u.urooms) || findgd()).
 function gd_sound() { return !(vault_occupied() || findgd()); }
-// C ref: vault.c vault_occupied(u.urooms) — is the hero currently standing in
-// a vault room?  u.urooms (the hero's per-room membership list) isn't
-// tracked by this port, so this always evaluates false (matching an empty
-// array — the same simplification dosounds() uses for u.ushops elsewhere).
-function vault_occupied() { return false; }
+// C ref: vault.c vault_occupied(u.urooms) — the room number of the vault the
+// hero is standing in, else 0.  js/shkroom.js move_update() keeps u.urooms.
+function vault_occupied() {
+    for (const rno of (game.u?.urooms || []))
+        if (game.level?.rooms?.[rno - ROOMOFFSET]?.rtype === VAULT) return rno;
+    return 0;
+}
 // C ref: vault.c findgd() — is a vault guard monster on this level (placed or
-// migrating in)?  No monster ever carries isgd (the vault-guard subsystem
-// isn't ported), so this always evaluates false.
+// migrating in)?
 function findgd() {
     for (const m of game.level?.monsters || [])
         if (!DEADMONSTER(m) && m.isgd) return true;
@@ -257,6 +256,69 @@ const is_pm_named = (ptr, nm) => ptr?.name === nm;
 // hero #chats with it (also the pet's `beg()` and #tip).  Ported off msound so
 // every species answers, not just the starter pet.
 //
+// C ref: sounds.c h_sounds[] — the hallucinatory verb table growl()/yelp()/
+// whimper() index with rn2(SIZE(h_sounds)).
+const H_SOUNDS = [
+    'beep', 'boing', 'sing', 'belche', 'creak', 'cough',
+    'rattle', 'ululate', 'pop', 'jingle', 'sniffle', 'tinkle',
+    'eep', 'clatter', 'hum', 'sizzle', 'twitter', 'wheeze',
+    'rustle', 'honk', 'lisp', 'yodel', 'coo', 'burp',
+    'moo', 'boohoo', 'bark', 'hiss', 'buzz', 'hoot',
+];
+
+// C ref: objnam.c vtense((char *) 0, verb) — 3rd-person singular.
+function vtense_sing_snd(verb) {
+    const last = verb[verb.length - 1];
+    const prev = verb.length >= 2 ? verb[verb.length - 2] : '';
+    if (last === 'z' || last === 'x' || last === 's'
+        || (last === 'h' && (prev === 'c' || prev === 's'))
+        || (verb.length === 2 && last === 'o'))
+        return verb + 'es';
+    if (last === 'y' && !'aeiou'.includes(prev)) return verb.slice(0, -1) + 'ies';
+    return verb + 's';
+}
+
+// C ref: sounds.c:401 growl(mtmp) — the noise a monster makes when the hero
+// wakes it by hitting it (mon.c:4353 `if (was_sleeping) growl(mtmp)`).
+// RNG-free unless hallucinating, but the wake_nearto(mlevel * 18) tail clears
+// msleeping on every monster in that radius, and a sleeper C woke here SKIPS
+// disturb()'s rn2(50)/rn2(7) on its next turn — so dropping it desyncs.
+export async function growl(mtmp) {
+    const { update_topl } = await import('./display.js');
+    const { Monnam } = await import('./uhitm.js');
+    const ptr = mtmp?.data;
+    // C: `if (helpless(mtmp) || is_silent(mtmp->data)) return;` — msleeping is
+    // already cleared by wakeup() before growl() runs, so only mcanmove/mfrozen
+    // can be helpless here.
+    const canmove = (mtmp.mcanmove == null) ? 1 : mtmp.mcanmove;
+    if (mtmp.msleeping || !canmove) return;
+    const ms = msound_of(ptr) ?? MS_SILENT;
+    if (ms === MS_SILENT) return;
+    let verb;
+    if (game.u?.uhallu) {
+        verb = H_SOUNDS[rn2(H_SOUNDS.length)];
+    } else {
+        switch (ms) {
+        case MS_MEW: case MS_HISS: verb = 'hiss'; break;
+        case MS_BARK: case MS_GROWL: verb = 'growl'; break;
+        case MS_ROAR: verb = 'roar'; break;
+        case MS_BUZZ: verb = 'buzz'; break;
+        case MS_SQEEK: verb = 'squeal'; break;
+        case MS_SQAWK: verb = 'screech'; break;
+        case MS_NEIGH: verb = 'neigh'; break;
+        case MS_WAIL: verb = 'wail'; break;
+        case MS_GROAN: verb = 'groan'; break;
+        case MS_MOO: verb = 'low'; break;
+        case MS_SILENT: break;
+        default: verb = 'scream'; break;
+        }
+    }
+    if (!verb) return;
+    await update_topl(`${Monnam(mtmp)} ${vtense_sing_snd(verb)}!`);
+    const { wake_nearto } = await import('./cmd.js');
+    await wake_nearto(mtmp.mx, mtmp.my, (ptr?.mlevel ?? 0) * 18);
+}
+
 // SCOPE: the arms that hand off to an unported subsystem — MS_ORACLE
 // (doconsult), MS_PRIEST (priest_talk), MS_LEADER/MS_NEMESIS/MS_GUARDIAN
 // (quest_chat), MS_SELL (shk_chat), MS_VAMPIRE and MS_RIDER (both need the

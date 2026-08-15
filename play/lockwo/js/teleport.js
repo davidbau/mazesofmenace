@@ -16,8 +16,9 @@ import { isok, dist2 } from './hacklib.js';
 import { newsym, m_at, update_topl } from './display.js';
 import { couldsee } from './vision.js';
 import { update_monster_region } from './region.js';
-import { onscary, set_apparxy } from './monmove.js';
-import { Monnam, canspotmon } from './uhitm.js';
+import { onscary, set_apparxy, noteleport_level } from './monmove.js';
+import { Monnam, canspotmon, mon_nam } from './uhitm.js';
+import { canseemon_shared as canseemon_tele } from './display.js';
 import {
     COLNO, ROWNO, DOOR, POOL, DRAWBRIDGE_UP, LAVAPOOL, LAVAWALL,
     D_CLOSED, D_LOCKED, STRAT_APPEARMSG, BOLT_LIM,
@@ -246,14 +247,22 @@ export async function rloc(mtmp, rlocflags) {
     return true;
 }
 
-// C ref: teleport.c noteleport_level(mon) — TRUE on levels that forbid
-// teleporting (Sokoban, the Wizard's tower, a quest home level).  The contest
-// sessions relocate monsters only on ordinary dungeon levels.
-export function noteleport_level(_mon) { return false; }
+// C ref: teleport.c noteleport_level(mon).  This was a `return false` stub, so
+// on a des-file "noteleport" level (medusa-*, sokoban, the quest homes, Vlad's
+// tower) a stealing nymph still ran rloc() and burned its rnd(79)/rn2(21)
+// placement loop where C prints "A mysterious force prevents ..." and draws
+// nothing (seed4500 step 988, Dlvl 24).  monmove.js already carries the real
+// predicate (Gehennom demon court + level flag); share it rather than fork it.
+export { noteleport_level };
 
 // C ref: teleport.c tele_restrict(mon) — "A mysterious force prevents %s from
-// teleporting!" on a no-teleport level.  No RNG.
-export function tele_restrict(mon) {
-    if (noteleport_level(mon)) return true;
+// teleporting!" on a no-teleport level.  No RNG, but the pline lands on the top
+// line and the suppressed rloc() is worth two draws per try.
+export async function tele_restrict(mon) {
+    if (noteleport_level(mon)) {
+        if (canseemon_tele(mon))
+            await update_topl(`A mysterious force prevents ${mon_nam(mon)} from teleporting!`);
+        return true;
+    }
     return false;
 }

@@ -142,6 +142,11 @@ function seedAppearance() {
         o.oc_name_known = DESCR_BY_OTYP[i] == null ? 1 : 0;
         o.oc_encountered = 0;
         o.oc_uname = null;
+        // C ref: objects.h OBJECT() initialiser — the price-quote memory starts
+        // at { minseen: (0UL-1UL), maxseen: 0 }, i.e. min > max meaning "never
+        // quoted"; append_price_quote() returns early on exactly that test.
+        o.oc_buy_minseen = Infinity; o.oc_buy_maxseen = 0;
+        o.oc_sell_minseen = Infinity; o.oc_sell_maxseen = 0;
     }
     // Apply the per-appearance color/tough overrides for shuffle ranges.
     const apply = (base, table) => {
@@ -581,6 +586,37 @@ function disco_typename(otyp) {
     return result;
 }
 
+// C ref: shk.c record_price_quote(otyp, price, buyprice) — remember the extreme
+// prices a shopkeeper has quoted for a type.  buyprice = what the hero would
+// PAY, !buyprice = what a shk offers to pay the hero.
+export function record_price_quote(otyp, price, buyprice) {
+    const oc = objects[otyp];
+    if (!oc || !(price >= 0)) return;
+    if (buyprice) {
+        if (price > (oc.oc_buy_maxseen ?? 0)) oc.oc_buy_maxseen = price;
+        if (price < (oc.oc_buy_minseen ?? Infinity)) oc.oc_buy_minseen = price;
+    } else {
+        if (price > (oc.oc_sell_maxseen ?? 0)) oc.oc_sell_maxseen = price;
+        if (price < (oc.oc_sell_minseen ?? Infinity)) oc.oc_sell_minseen = price;
+    }
+}
+
+// C ref: shk.c append_price_quote() — " {buy N[-M]}", " {sell N[-M]}" or both.
+// Returns '' when neither range has ever been recorded.
+export function append_price_quote(otyp) {
+    const oc = objects[otyp];
+    if (!oc) return '';
+    const bmin = oc.oc_buy_minseen ?? Infinity, bmax = oc.oc_buy_maxseen ?? 0;
+    const smin = oc.oc_sell_minseen ?? Infinity, smax = oc.oc_sell_maxseen ?? 0;
+    if (smin > smax && bmin > bmax) return '';
+    let out = ' {', sep = '';
+    if (bmin < bmax) { out += `buy ${bmin}-${bmax}`; sep = ' '; }
+    else if (bmin === bmax) { out += `buy ${bmin}`; sep = ' '; }
+    if (smin < smax) out += `${sep}sell ${smin}-${smax}`;
+    else if (smin === smax) out += `${sep}sell ${smin}`;
+    return `${out}}`;
+}
+
 // Default inv_order (options.c def_inv_order); VENOM_CLASS is appended so any
 // pre-discovered venom shows.  C ref: o_init.c dodiscovered() class loop.
 // A function, not a const array: mkobj.js's bindings are in TDZ while this
@@ -609,7 +645,11 @@ export function build_discoveries_rows() {
                 printedHeader = true;
             }
             const prefix = objects[i].oc_encountered ? '  ' : '* ';
-            rows.push({ text: prefix + disco_typename(i) });
+            // C ref: o_init.c disco_append_typename() — append_price_quote() is
+            // NOT gated on iflags.pricequotes here (only objnam.c's doname is),
+            // so the discoveries list always shows any shop price the hero has
+            // been quoted for this type.
+            rows.push({ text: prefix + disco_typename(i) + append_price_quote(i) });
         }
     }
     return ct ? rows : null;

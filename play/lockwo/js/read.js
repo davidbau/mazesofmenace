@@ -1072,7 +1072,7 @@ function reset_utrap() {
 // learnscroll() also fires BEFORE safe_teleds() in C, so its discovery
 // exercise(A_WIS) rn2(19) precedes the destination rolls; setting gk.known and
 // letting doread() learn afterwards had those two swapped.
-async function scrolltele(scroll) {
+export async function scrolltele(scroll) {
     const u = game.u;
     const wizard = !!game.flags?.debug;
     // C ref: dungeon.c noteleport_level() — the level flag (plus the

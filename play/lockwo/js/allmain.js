@@ -950,6 +950,14 @@ export async function moveloop_turn() {
             gethungry();
             age_spells(); // C ref: spell.c age_spells — decrnknow each turn (no RNG)
             await exerchk();
+            // C ref: allmain.c:357 invault() — the vault-guard timer.  Runs
+            // every turn (it clears u.uinvault when the hero isn't in a vault)
+            // and after VAULT_GUARD_TIME turns inside one it makemon()s the
+            // guard, which is a 70-call burst (seed0012 step 266 call 187).
+            {
+                const { invault } = await import('./vault.js');
+                await invault();
+            }
 
             // u_wipe_engr check: rn2(40 + ACURR(A_DEX) * 3).  acurr order is
             // [Str, Int, Wis, Dex, Con, Cha] -> Dex is index 3.  C ACURR()
@@ -1463,6 +1471,22 @@ export async function moveloop_core() {
     // u.uac apart from the seed8000 fastforward stub (which has no worn gear,
     // so this recomputes the same base 10).
     find_ac();
+
+    // C ref: allmain.c moveloop_core():453 — `if (!svc.context.mv || Blind)` then
+    // `if (Hallucination) { see_monsters(); see_objects(); see_traps();
+    //  if (u.uswallow) swallowed(0); }`.  This is ONCE PER PLAYER INPUT, not per
+    // turn, so a hallucinating hero's map is re-randomised on every keystroke —
+    // and each redraw costs display-RNG draws, which is what makes the recorded
+    // colours advance frame by frame.  While swallowed, see_monsters()/objects/
+    // traps() all go through newsym(), which returns immediately (display.c
+    // "only permit updating the hero when swallowed"), so swallowed(0)'s eight
+    // swallow_to_glyph() picks are the whole cost.
+    if (!g.context?.mv || (g.u?.blinded || 0) > 0 || g.ublindf) {
+        if (Hallucination() && g.u?.uswallow) {
+            const { swallowed } = await import('./display.js');
+            swallowed(0);
+        }
+    }
 
     // Vision + display
     if (g.vision_full_recalc) {

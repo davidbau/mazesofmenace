@@ -211,7 +211,7 @@ export async function makemaz_sanctum() {
     // des.stair("up", 63,15) — no RNG.
     quest_place_stair(63, 15, true);
     // des.teleport_region({region={54,1,79,18}, region_islev=1, dir="down"}).
-    vly_teleport_region(54, 1, 79, 18, true);
+    vly_teleport_region(54, 1, 79, 18, true, 'down');
 
     // C ref: lspo_finalize_level() — wallification (no RNG) then
     // flip_level_rnd(allow_flips=3): one rn2(2) per axis.

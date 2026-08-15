@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
-import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown5, makemaz_minend1, makemaz_minend2, makemaz_medusa1, makemaz_medusa2, makemaz_medusa3, makemaz_medusa4, shuffle,
+import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_tower2, makemaz_tower3, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown2, makemaz_minetown3, makemaz_minetown5, makemaz_minetown7, makemaz_minend1, makemaz_minend2, makemaz_minend3, makemaz_medusa1, makemaz_medusa2, makemaz_medusa3, makemaz_medusa4, makemaz_asmodeus, makemaz_baalz, makemaz_juiblex, makemaz_orcus, makemaz_wizard1, makemaz_wizard2, makemaz_wizard3, makemaz_fakewiz1, makemaz_fakewiz2, makemaz_air, makemaz_earth, makemaz_fire, makemaz_water, makemaz_astral, makemaz_cav_strt, makemaz_hea_strt, makemaz_kni_strt, makemaz_mon_strt, makemaz_ran_strt, makemaz_rog_strt, makemaz_sam_strt, makemaz_tou_strt, makemaz_val_strt, makemaz_wiz_strt, shuffle,
          mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
          splev_map_origin, flip_level, bigrm_get_level_extends, set_door_orientation,
          okdoor, bydoor, create_door, lspo_door_relative,
@@ -25,7 +25,7 @@ import {
     l_selection_or, l_selection_grow, l_selection_fillrect, l_selection_rect,
     l_selection_randline, W_ANY, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST,
 } from './selvar.js';
-import { Is_special, builds_up, In_hell, Is_valley, dunlevs_in_dungeon } from './dungeon.js';
+import { Is_special, builds_up, In_hell, Is_valley, dunlevs_in_dungeon, level_difficulty_c } from './dungeon.js';
 import { In_quest, BR_PORTAL, BR_NO_END1, BR_NO_END2 } from './const.js';
 import { roles, races } from './role.js';
 import { mflags2_of } from './monflags_data.js';
@@ -33,7 +33,8 @@ import { priestini } from './priest.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room, nexttodoor } from './mkroom.js';
 import { maketrap, Can_fall_thru, Can_dig_down, t_at, Invocation_lev } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
-         name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel } from './makemon.js';
+         name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel,
+         name_gender_hint, MGEND_MALE, MGEND_FEMALE, MGEND_NEUTRAL } from './makemon.js';
 import { m_at } from './display.js';
 import { getbones } from './bones.js';
 import { set_corpsenm } from './mkobj.js';
@@ -264,13 +265,7 @@ function oinit() { /* no-op for contest */ }
 // C ref: dungeon.c level_difficulty() — depth(&u.uz), plus a compensating
 // bump in a "builds up" branch (Vlad's Tower, Sokoban); see makemon.js's copy
 // of this same C function for the full rationale.
-function level_difficulty() {
-    const uz = game.u?.uz;
-    let res = depth_of_level(uz);
-    if (uz && builds_up(uz))
-        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
-    return res;
-}
+function level_difficulty() { return level_difficulty_c(); }
 
 // ============================================================
 // Stub functions for monster/trap/engraving creation.
@@ -509,19 +504,21 @@ async function makelevel() {
         set_wall_state();
         return;
     }
-    // DEFERRED — C ref: mklev.c:1269 makemaz(slev->proto) for 'tower2'/'tower3'.
-    // makemaz_tower2/makemaz_tower3 (js/levels/tower2.js:63, tower3.js:111) are
-    // fully written but never dispatched, so Dlvl 35/36 fall through to the
-    // ordinary rooms-and-corridors generator.
-    // MEASURED 2026-08-14, twice, both REJECT:
-    //   (a) with the STRAT_WAITFORU correction (js/levels/tower1.js:82):
-    //       seed0360 +4 steps / -6 steps (294, 300, 736, 778, 779, 796);
-    //   (b) alone, on top of mkstairs()'s end-of-dungeon guard, dispatched via
-    //       mk_fixup_branch()/quest_place_branch(): seed0360 286 -> 272 (-14).
-    // The tower scripts' OWN RNG still desyncs, so dispatching them only moves
-    // the damage earlier.  Do not re-measure the dispatch; verify
-    // makemaz_tower2/3 against a session whose stream is aligned at Dlvl 35
-    // first.
+    // C ref: mklev.c:1269 makemaz(slev->proto) for 'tower2'/'tower3'.
+    // tower3 finalizes with quest_place_branch(), NOT mk_fixup_branch(): C emits
+    // tower3.lua:27's 1-cell LR_BRANCH rn2(1)/rn2(1) pair first.
+    if (slev && slev.proto === 'tower2') {
+        await makemaz_tower2();
+        await mk_fixup_branch();
+        set_wall_state();
+        return;
+    }
+    if (slev && slev.proto === 'tower3') {
+        await makemaz_tower3();
+        await quest_place_branch();
+        set_wall_state();
+        return;
+    }
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Valley of the Dead, the
     // gateway level of Gehennom.  lspo_finalize_level's tail order is
     // load-bearing here: the flip (inside makemaz_valley) comes first, then
@@ -538,6 +535,63 @@ async function makelevel() {
         // the branch lregion and after level_finalize_topology's mineralize().
         set_wall_state();
         return;
+    }
+
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the four named Gehennom demon
+    // lairs.  Each script registers and places its OWN levregion list
+    // (geh_place_lregions), so there is no quest_place_branch() here.
+    if (slev && (slev.proto === 'asmodeus' || slev.proto === 'baalz'
+                 || slev.proto === 'juiblex' || slev.proto === 'orcus')) {
+        if (slev.proto === 'asmodeus') await makemaz_asmodeus();
+        else if (slev.proto === 'baalz') await makemaz_baalz();
+        else if (slev.proto === 'juiblex') await makemaz_juiblex();
+        else await makemaz_orcus();
+        set_wall_state();
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the Wizard's tower and the two
+    // fake towers.  wiz_place_lregions() runs inside each builder.
+    if (slev && (slev.proto === 'wizard1' || slev.proto === 'wizard2'
+                 || slev.proto === 'wizard3' || slev.proto === 'fakewiz1'
+                 || slev.proto === 'fakewiz2')) {
+        if (slev.proto === 'wizard1') await makemaz_wizard1();
+        else if (slev.proto === 'wizard2') await makemaz_wizard2();
+        else if (slev.proto === 'wizard3') await makemaz_wizard3();
+        else if (slev.proto === 'fakewiz1') await makemaz_fakewiz1();
+        else await makemaz_fakewiz2();
+        set_wall_state();
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the four Elemental Planes and
+    // the Astral Plane.  plane_place_lregions() runs inside each builder.
+    if (slev && (slev.proto === 'air' || slev.proto === 'earth'
+                 || slev.proto === 'fire' || slev.proto === 'water'
+                 || slev.proto === 'astral')) {
+        if (slev.proto === 'air') await makemaz_air();
+        else if (slev.proto === 'earth') await makemaz_earth();
+        else if (slev.proto === 'fire') await makemaz_fire();
+        else if (slev.proto === 'water') await makemaz_water();
+        else await makemaz_astral();
+        set_wall_state();
+        return;
+    }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the ten remaining quest "home"
+    // (start) levels.  Same finalize as Bar-strt/Arc-strt/Pri-strt: the script
+    // registers a 1-cell "branch" levregion, so place_lregion draws rn2(1) for
+    // x and rn2(1) for y (mkmaze.c:396/397).
+    {
+        const QUEST_STRT = {
+            'Cav-strt': makemaz_cav_strt, 'Hea-strt': makemaz_hea_strt,
+            'Kni-strt': makemaz_kni_strt, 'Mon-strt': makemaz_mon_strt,
+            'Ran-strt': makemaz_ran_strt, 'Rog-strt': makemaz_rog_strt,
+            'Sam-strt': makemaz_sam_strt, 'Tou-strt': makemaz_tou_strt,
+            'Val-strt': makemaz_val_strt, 'Wiz-strt': makemaz_wiz_strt,
+        };
+        if (slev && QUEST_STRT[slev.proto]) {
+            await QUEST_STRT[slev.proto]();
+            await quest_place_branch();
+            return;
+        }
     }
 
     // C ref: mklev.c:1269 makemaz(slev->proto) — Moloch's Sanctum, the bottom
@@ -567,6 +621,12 @@ async function makelevel() {
             await makemaz_minetown4();   // sets its own wall state after flip
             return;
         }
+        // minetn-2/3/7 set their own wall state after the flip; they return
+        // false only if the _minetn_room_api export below is missing, in which
+        // case makelevel() falls through instead of throwing.
+        if (variant === 2 && await makemaz_minetown2()) return;
+        if (variant === 3 && await makemaz_minetown3()) return;
+        if (variant === 7 && await makemaz_minetown7()) return;
     }
 
     // C ref: mklev.c:1269 makemaz(slev->proto) — Medusa's level.  rndlevs is 4
@@ -582,15 +642,14 @@ async function makelevel() {
     }
 
     // C ref: mklev.c:1269 makemaz(slev->proto) — Mine's End, the bottom of the
-    // Gnomish Mines.  rndlevs is 3; the "-3" variant is not ported yet.
+    // Gnomish Mines.  rndlevs is 3 and all three variants are ported.
     if (slev && slev.proto === 'minend') {
         const variant = rnd(slev.rndlevs || 1);   // mkmaze.c:1136
-        if (variant === 1 || variant === 2) {
-            if (variant === 1) await makemaz_minend1();
-            else await makemaz_minend2();
-            set_wall_state();
-            return;
-        }
+        if (variant === 1) await makemaz_minend1();
+        else if (variant === 2) await makemaz_minend2();
+        else await makemaz_minend3();
+        set_wall_state();
+        return;
     }
 
     // C ref: mklev.c:1271 — svd.dungeons[dnum].fill_lvl[0] dispatch (the mines
@@ -648,6 +707,14 @@ async function makelevel() {
     }
 
     // Regular level generation
+    // C ref: mklev.c:1294 — the Rogue-emulation level replaces makerooms()
+    // wholesale and then jumps to skip0 (no themerms.lua load, no corridors,
+    // no niches, no vault, no special room).
+    const isRogue = Is_rogue_level_mk();
+    if (isRogue) {
+        makeroguerooms();
+        makerogueghost();
+    } else {
     // C ref: mklev.c:382-388 — load themerms.lua for themed rooms
     // nhlib.lua shuffle when loading themerms.lua (first level of branch)
     const dnum = g.u?.uz?.dnum ?? 0;
@@ -662,6 +729,7 @@ async function makelevel() {
     }
 
     await makerooms();
+    }
 
     if (g.level.nroom <= 0) return;
     sort_rooms();
@@ -674,6 +742,8 @@ async function makelevel() {
     // secret vault is added (mklev.c:1328).
     let room_threshold = branchp ? 4 : 3;
 
+    // C ref: mklev.c:1308 `if (Is_rogue_level(&u.uz)) goto skip0;`
+    if (!isRogue) {
     makecorridors();
     await make_niches();
 
@@ -749,6 +819,7 @@ async function makelevel() {
             await do_mkroom(COCKNEST);
         }
     }
+    }   /* skip0: */
 
     // Place dungeon branch
     if (branchp) {
@@ -781,6 +852,267 @@ async function makelevel() {
 
     // Fill rooms + mineralize: handled by fastforward_fill_mineralize (seed8000)
     // or real fill loop (all other seeds), called from allmain.js.
+}
+
+// ── Rogue-emulation level (C ref: src/extralev.c) ───────────────────────────
+// Rogue levels are a 3x3 grid of cells, each holding either a real room or a
+// bare intersection ("dummy"), joined by a mini maze walk.  makelevel() takes
+// this instead of makerooms() and then jumps straight to place_branch(),
+// skipping makecorridors/make_niches/the vault/do_mkroom entirely (C's
+// `goto skip0`).
+const XL_UP = 1, XL_DOWN = 2, XL_LEFT = 4, XL_RIGHT = 8;
+
+// gr.r[3][3]
+let rogue_r = null;
+function rogue_cell(x, y) { return rogue_r[x][y]; }
+
+// C ref: extralev.c:277 corr(x, y) — 1 corridor square in 50 is secret.
+function rogue_corr_sq(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) { rn2(50); return; }
+    if (rn2(50)) loc.typ = CORR;
+    else loc.typ = SCORR;
+}
+
+// C ref: extralev.c:21 roguejoin() — an L/Z-shaped corridor between two door
+// stubs, with the bend picked by one rn2 over the span.
+function roguejoin(x1, y1, x2, y2, horiz) {
+    let x, y, middle;
+    if (horiz) {
+        middle = x1 + rn2(x2 - x1 + 1);
+        for (x = Math.min(x1, middle); x <= Math.max(x1, middle); x++) rogue_corr_sq(x, y1);
+        for (y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) rogue_corr_sq(middle, y);
+        for (x = Math.min(middle, x2); x <= Math.max(middle, x2); x++) rogue_corr_sq(x, y2);
+    } else {
+        middle = y1 + rn2(y2 - y1 + 1);
+        for (y = Math.min(y1, middle); y <= Math.max(y1, middle); y++) rogue_corr_sq(x1, y);
+        for (x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) rogue_corr_sq(x, middle);
+        for (y = Math.min(middle, y2); y <= Math.max(middle, y2); y++) rogue_corr_sq(x2, y);
+    }
+}
+
+// C ref: extralev.c:45 roguecorr() — punch the two doors and join them.
+function roguecorr(x, y, dir) {
+    let fromx, fromy, tox, toy;
+    if (dir === XL_DOWN) {
+        const cell = rogue_cell(x, y);
+        cell.doortable &= ~XL_DOWN;
+        if (!cell.real) {
+            fromx = cell.rlx; fromy = cell.rly;
+            fromx += 1 + 26 * x; fromy += 7 * y;
+        } else {
+            fromx = cell.rlx + rn2(cell.dx);
+            fromy = cell.rly + cell.dy;
+            fromx += 1 + 26 * x; fromy += 7 * y;
+            dodoor(fromx, fromy, game.level.rooms[cell.nroom]);
+            const l = game.level.at(fromx, fromy);
+            if (l) l.doormask = D_NODOOR;
+            fromy++;
+        }
+        if (y >= 2) return;
+        y++;
+        const cell2 = rogue_cell(x, y);
+        cell2.doortable &= ~XL_UP;
+        if (!cell2.real) {
+            tox = cell2.rlx; toy = cell2.rly;
+            tox += 1 + 26 * x; toy += 7 * y;
+        } else {
+            tox = cell2.rlx + rn2(cell2.dx);
+            toy = cell2.rly - 1;
+            tox += 1 + 26 * x; toy += 7 * y;
+            dodoor(tox, toy, game.level.rooms[cell2.nroom]);
+            const l = game.level.at(tox, toy);
+            if (l) l.doormask = D_NODOOR;
+            toy--;
+        }
+        roguejoin(fromx, fromy, tox, toy, false);
+        return;
+    } else if (dir === XL_RIGHT) {
+        const cell = rogue_cell(x, y);
+        cell.doortable &= ~XL_RIGHT;
+        if (!cell.real) {
+            fromx = cell.rlx; fromy = cell.rly;
+            fromx += 1 + 26 * x; fromy += 7 * y;
+        } else {
+            fromx = cell.rlx + cell.dx;
+            fromy = cell.rly + rn2(cell.dy);
+            fromx += 1 + 26 * x; fromy += 7 * y;
+            dodoor(fromx, fromy, game.level.rooms[cell.nroom]);
+            const l = game.level.at(fromx, fromy);
+            if (l) l.doormask = D_NODOOR;
+            fromx++;
+        }
+        if (x >= 2) return;
+        x++;
+        const cell2 = rogue_cell(x, y);
+        cell2.doortable &= ~XL_LEFT;
+        if (!cell2.real) {
+            tox = cell2.rlx; toy = cell2.rly;
+            tox += 1 + 26 * x; toy += 7 * y;
+        } else {
+            tox = cell2.rlx - 1;
+            toy = cell2.rly + rn2(cell2.dy);
+            tox += 1 + 26 * x; toy += 7 * y;
+            dodoor(tox, toy, game.level.rooms[cell2.nroom]);
+            const l = game.level.at(tox, toy);
+            if (l) l.doormask = D_NODOOR;
+            tox--;
+        }
+        roguejoin(fromx, fromy, tox, toy, true);
+        return;
+    }
+}
+
+// C ref: extralev.c:138 miniwalk() — walkfrom() over the 3x3 grid.  The
+// `|| !rn2(10)` arms are what give a Rogue level its extra connections, and
+// each one draws whether or not it is taken.
+function miniwalk(x, y) {
+    const dirs = [0, 0, 0, 0];
+    for (;;) {
+        let q = 0;
+        const here = () => rogue_cell(x, y);
+        if (x > 0 && !(here().doortable & XL_LEFT)
+            && (!rogue_cell(x - 1, y).doortable || !rn2(10)))
+            dirs[q++] = 0;
+        if (x < 2 && !(here().doortable & XL_RIGHT)
+            && (!rogue_cell(x + 1, y).doortable || !rn2(10)))
+            dirs[q++] = 1;
+        if (y > 0 && !(here().doortable & XL_UP)
+            && (!rogue_cell(x, y - 1).doortable || !rn2(10)))
+            dirs[q++] = 2;
+        if (y < 2 && !(here().doortable & XL_DOWN)
+            && (!rogue_cell(x, y + 1).doortable || !rn2(10)))
+            dirs[q++] = 3;
+        if (!q) return;
+        const dir = dirs[rn2(q)];
+        switch (dir) {
+        case 0: rogue_cell(x, y).doortable |= XL_LEFT;  x--; rogue_cell(x, y).doortable |= XL_RIGHT; break;
+        case 1: rogue_cell(x, y).doortable |= XL_RIGHT; x++; rogue_cell(x, y).doortable |= XL_LEFT;  break;
+        case 2: rogue_cell(x, y).doortable |= XL_UP;    y--; rogue_cell(x, y).doortable |= XL_DOWN;  break;
+        case 3: rogue_cell(x, y).doortable |= XL_DOWN;  y++; rogue_cell(x, y).doortable |= XL_UP;    break;
+        }
+        miniwalk(x, y);
+    }
+}
+
+// C ref: extralev.c:190 makeroguerooms().
+function makeroguerooms() {
+    const g = game;
+    rogue_r = [];
+    for (let i = 0; i < 3; i++) {
+        rogue_r.push([]);
+        for (let j = 0; j < 3; j++)
+            rogue_r[i].push({ rlx: 0, rly: 0, dx: 0, dy: 0, real: false, doortable: 0, nroom: 0 });
+    }
+    g.level.nroom = 0;
+    for (let y = 0; y < 3; y++)
+        for (let x = 0; x < 3; x++) {
+            const here = rogue_r[x][y];
+            // C: at least one real room — if the first 8 are dummies the last
+            // is forced real.
+            if (!rn2(5) && (g.level.nroom || (x < 2 && y < 2))) {
+                here.real = false;
+                here.rlx = rn1(22, 2);
+                here.rly = rn1((y === 2) ? 4 : 3, 2);
+            } else {
+                here.real = true;
+                here.dx = rn1(22, 2);                       /* 2-23 long */
+                here.dy = rn1((y === 2) ? 4 : 3, 2);        /* 2-5 high  */
+                here.rlx = rnd(23 - here.dx + 1);
+                here.rly = rnd(((y === 2) ? 5 : 4) - here.dy + 1);
+                g.level.nroom++;
+            }
+            here.doortable = 0;
+        }
+    miniwalk(rn2(3), rn2(3));
+    g.level.nroom = 0;
+    for (let y = 0; y < 3; y++)
+        for (let x = 0; x < 3; x++) {
+            const here = rogue_r[x][y];
+            if (here.real) {
+                here.nroom = g.level.nroom;
+                g.smeq[g.level.nroom] = g.level.nroom;
+                const lowx = 1 + 26 * x + here.rlx;
+                const lowy = 7 * y + here.rly;
+                const hix = 1 + 26 * x + here.rlx + here.dx - 1;
+                const hiy = 7 * y + here.rly + here.dy - 1;
+                // C: "should be lit only above level 10, but Rogue rooms are
+                // only encountered below level 10, so use !rn2(7)".
+                add_room(lowx, lowy, hix, hiy, !rn2(7), OROOM, false);
+            }
+        }
+    for (let y = 0; y < 3; y++)
+        for (let x = 0; x < 3; x++) {
+            const here = rogue_r[x][y];
+            if (here.doortable & XL_DOWN) roguecorr(x, y, XL_DOWN);
+            if (here.doortable & XL_RIGHT) roguecorr(x, y, XL_RIGHT);
+        }
+}
+
+// C ref: do_name.c:1437 roguename().
+function roguename() {
+    return rn2(3) ? (rn2(2) ? 'Michael Toy' : 'Kenneth Arnold') : 'Glenn Wichman';
+}
+
+// C ref: extralev.c:288 makerogueghost() — a sleeping ghost with Rogue's own
+// starting kit.  Every rn2 here fires unconditionally in this order.
+const PM_GHOST_IDX = name_to_pmidx('ghost');
+const MACE_OTYP = 73, TWO_HANDED_SWORD_OTYP = 55, BOW_OTYP = 83;
+const RING_MAIL_OTYP = 132, PLATE_MAIL_OTYP = 121, FAKE_AMULET_OTYP = 212;
+function makerogueghost() {
+    const g = game;
+    if (!g.level.nroom) return;
+    const croom = g.level.rooms[rn2(g.level.nroom)];
+    const x = somex(croom), y = somey(croom);
+    const ghost = make_monster(monster_by_pmidx(PM_GHOST_IDX), x, y, 0);
+    if (!ghost) return;
+    ghost.msleeping = 1;
+    ghost.mname = roguename();
+    ghost.mnamelth = 1;
+
+    let o;
+    if (rn2(4)) {
+        o = mksobj_at(FOOD_RATION, x, y, false, false);
+        if (o) { o.quan = rnd(7); o.owt = weight(o); }
+    }
+    if (rn2(2)) {
+        o = mksobj_at(MACE_OTYP, x, y, false, false);
+        if (o) o.spe = rnd(3);
+        if (rn2(4) && o) curse(o);
+    } else {
+        o = mksobj_at(TWO_HANDED_SWORD_OTYP, x, y, false, false);
+        if (o) o.spe = rnd(5) - 2;
+        if (rn2(4) && o) curse(o);
+    }
+    o = mksobj_at(BOW_OTYP, x, y, false, false);
+    if (o) o.spe = 1;
+    if (rn2(4) && o) curse(o);
+
+    o = mksobj_at(ARROW, x, y, false, false);
+    if (o) { o.spe = 0; o.quan = rn1(10, 25); o.owt = weight(o); }
+    if (rn2(4) && o) curse(o);
+
+    if (rn2(2)) {
+        o = mksobj_at(RING_MAIL_OTYP, x, y, false, false);
+        if (o) o.spe = rn2(3);
+        if (!rn2(3) && o) o.oerodeproof = true;
+        if (rn2(4) && o) curse(o);
+    } else {
+        o = mksobj_at(PLATE_MAIL_OTYP, x, y, false, false);
+        if (o) o.spe = rnd(5) - 2;
+        if (!rn2(3) && o) o.oerodeproof = true;
+        if (rn2(4) && o) curse(o);
+    }
+    if (rn2(2)) {
+        o = mksobj_at(FAKE_AMULET_OTYP, x, y, true, false);
+        if (o) o.known = true;
+    }
+}
+
+// C ref: dungeon.h Is_rogue_level(uz).
+function Is_rogue_level_mk() {
+    const uz = game.u?.uz, rl = game.rogue_level;
+    return !!uz && !!rl && uz.dnum === rl.dnum && uz.dlevel === rl.dlevel;
 }
 
 // C ref: mklev.c makerooms()
@@ -2820,21 +3152,11 @@ function mk_object(oclass, specificId) {
     }
 }
 
-// Name-implied gender for find_montype: returns 'male'/'female'/'neutral'.
-// A name that is the gendered variant (e.g. "gnome lord" is male, "gnome lady"
-// is female) supplies the gender directly; a base/neutral name yields 'neutral'.
-const MK_MALE_NAMES = new Set([
-    'gnome lord', 'gnome leader', 'gnome king', 'gnome ruler',
-    'dwarf lord', 'dwarf leader', 'dwarf king', 'dwarf ruler', 'caveman',
-]);
-const MK_FEMALE_NAMES = new Set([
-    'gnome lady', 'gnome queen', 'dwarf lady', 'dwarf queen', 'cavewoman',
-]);
-function mk_name_gender(name) {
-    if (MK_MALE_NAMES.has(name)) return 'male';
-    if (MK_FEMALE_NAMES.has(name)) return 'female';
-    return 'neutral';
-}
+// Name-implied gender for find_montype comes from makemon.js's table-derived
+// name_gender_hint(): the NEUTRAL name ("gnome leader") answers NEUTRAL and
+// still rolls, only the male/female forms ("gnome lord"/"gnome lady") skip it.
+// (The hand-written Set this replaced listed the neutral names as male, and
+// knew only 5 of the 15 NAMS() species.)
 
 // The JS monster table stores gender-neutral canonical names ("gnome leader",
 // "gnome ruler"); the lua uses gendered aliases ("gnome lord", "gnome king").
@@ -2860,18 +3182,22 @@ function mk_is_fixed_gender(data) {
 
 // C ref: sp_lev.c find_montype() — name lookup + conditional gender roll.
 // Rolls rn2(2) only when the species is not fixed-gender AND the name does not
-// imply a gender.  Returns the permonst data for the named monster.
+// imply a gender.  Returns { data, mgend }: the resolved mgend is what
+// lspo_monster stores in tmpmons.female and create_monster then ASSIGNS to the
+// monster (sp_lev.c `mtmp->female = m->female;`), overwriting whatever
+// makemon()'s own rn2(2) picked — so a des.monster() gender is NOT the makemon
+// draw, and the two disagree half the time.
 function mk_find_montype(name) {
     const pm = name_to_pmidx(mk_resolve_name(name));
     const data = monster_by_pmidx(pm);
+    let mgend;
     if (mk_is_fixed_gender(data)) {
-        // gender fixed by species — no roll.
+        mgend = (data.gcode === 2) ? MGEND_FEMALE : MGEND_MALE;
     } else {
-        const ng = mk_name_gender(name);
-        if (ng === 'neutral') rn2(2);   // mgend = rn2(2)
-        // else mgend taken from the name; no roll.
+        mgend = name_gender_hint(name);
+        if (mgend === MGEND_NEUTRAL) mgend = rn2(2);   // mgend = rn2(2)
     }
-    return data;
+    return { data, mgend };
 }
 
 // des.monster(name) — a multi-char monster name (id given, no mkclass).
@@ -2892,15 +3218,28 @@ function mk_mines_race_suppress(data) {
 }
 
 function mk_monster_named(name, peacefulOverride) {
-    const data = mk_find_montype(name);
+    const { data, mgend } = mk_find_montype(name);
     // sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align(80).
     oracle_induced_align();
     const data2 = mk_mines_race_suppress(data);
     // pm_to_humidity(pm) — DRY for these mines monsters (no swimmers/flyers).
     const c = mk_get_location_random(mk_ok_dry);
+    mk_enexto_if_occupied(c, data2);
     const mtmp = make_monster(data2, c.x, c.y, 0);
+    // C ref: sp_lev.c create_monster() `mtmp->female = m->female;` (no RNG).
+    if (mtmp) mtmp.female = mgend;
     if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
     return mtmp;
+}
+
+// C ref: sp_lev.c create_monster():1977 — "try to find a close place if someone
+// else is already there": `if (MON_AT(x,y) && enexto(&cc,x,y,pm)) x=cc.x,y=cc.y`.
+// The enexto ring shuffles are 8+16+24 rn2() draws, so omitting this desynced
+// every later draw on a filler level whose random spot happened to be taken.
+function mk_enexto_if_occupied(c, data) {
+    if (!m_at(c.x, c.y)) return;
+    const cc = enexto_spawn(c.x, c.y, data);
+    if (cc) { c.x = cc.x; c.y = cc.y; }
 }
 
 // des.monster("G"/"h") — a single-char monster CLASS (no find_montype gender
@@ -2916,7 +3255,12 @@ function mk_monster_class(classChar, peacefulOverride) {
     oracle_induced_align();
     const data = mk_mines_race_suppress(mkclass(klass, 0x0200 /* G_NOGEN (monflag.h); was 1 */));
     const c = mk_get_location_random(mk_ok_dry);
+    mk_enexto_if_occupied(c, data);
     const mtmp = make_monster(data, c.x, c.y, 0);
+    // C ref: sp_lev.c lspo_monster() — the single-char CLASS form never touches
+    // tmpmons.female, so it keeps its `= 0` initialiser and create_monster's
+    // `mtmp->female = m->female;` makes every des.monster("G") male.
+    if (mtmp) mtmp.female = 0;
     if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
     return mtmp;
 }
@@ -3147,9 +3491,11 @@ function mt4_place_monster(data, croom, peaceful) {
 
 // des.monster("name") / des.monster({id="name", peaceful=1}) inside a room.
 function mt4_monster(name, croom, peaceful) {
-    const data = mk_find_montype(name);              // find_montype gender roll
+    const { data, mgend } = mk_find_montype(name);   // find_montype gender roll
     oracle_induced_align();                          // sp_amask_to_amask
-    return mt4_place_monster(mk_mines_race_suppress(data), croom, peaceful);
+    const mtmp = mt4_place_monster(mk_mines_race_suppress(data), croom, peaceful);
+    if (mtmp) mtmp.female = mgend;                   // create_monster: mtmp->female = m->female
+    return mtmp;
 }
 
 // des.monster("G"/"f") — a monster CLASS inside a room.
@@ -3330,6 +3676,18 @@ function mt4_flip_subrooms(flp) {
 }
 
 
+// The rooms-and-corridors engine pieces the other three room-script Mine Town
+// variants (minetn-2/3/7, js/levels/minetown_rooms.js) need.  They are module-
+// private here and that module may not edit this file, so they travel as one
+// bundle; it reads them through a namespace import, so a missing bundle makes
+// those builders return false and makelevel() fall through, never throw.
+export const _minetn_room_api = {
+    create_room, create_subroom, topologize, makecorridors, oracle_stair,
+    oracle_trap, oracle_induced_align, mk_find_montype, mk_mines_race_suppress,
+    mt4_place_monster, mt4_altar, mt4_flip_subrooms,
+};
+
+
 // ============================================================
 // dat/hellfill.lua — the "fill" level for Gehennom: every Gehennom dlvl that
 // is not one of the ~9 named specials (valley/sanctum/juiblex/baalz/asmodeus/
@@ -3499,10 +3857,11 @@ function hf_monster_class_at(classChar, x, y, peacefulOverride) {
 
 // des.monster("name", x, y) — a named species at a fixed (map-relative) spot.
 function hf_monster_named_at(name, x, y, peacefulOverride) {
-    const data = mk_find_montype(name);
+    const { data, mgend } = mk_find_montype(name);
     oracle_induced_align();
     const c = hf_loc(x, y);
     const mtmp = make_monster(data, c.x, c.y, 0);
+    if (mtmp) mtmp.female = mgend;                   // create_monster: mtmp->female = m->female
     if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
     return mtmp;
 }
@@ -4257,10 +4616,12 @@ function castle_door(state, x, y) {
 // resolved (find_montype, one rn2(2) gender roll for a non-fixed-gender
 // species), then induced_align, then makemon at the explicit coordinate.
 function castle_monster_named_at(name, x, y) {
-    const data = mk_find_montype(name);
+    const { data, mgend } = mk_find_montype(name);
     oracle_induced_align();
     const c = hf_loc(x, y);
-    return make_monster(data, c.x, c.y, 0);
+    const mtmp = make_monster(data, c.x, c.y, 0);
+    if (mtmp) mtmp.female = mgend;                   // create_monster: mtmp->female = m->female
+    return mtmp;
 }
 
 // C ref: sp_lev.c create_monster() for des.monster("D", x, y) — a class char

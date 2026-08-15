@@ -1989,6 +1989,8 @@ function canseemon(mtmp) {
     if (!mtmp) return false;
     if (game.u?.uswallow) return true;
     if (mtmp.minvis && !game.u?.see_invis) return false;
+    // C ref: display.h _mon_visible() — `(!minvis || See_invisible) && !mundetected`.
+    if (mtmp.mundetected) return false;
     // C ref: display.h _canseemon() — `cansee(mx, my) || see_with_infrared(mon)`.
     // The infravision half is what lets a non-human hero (dwarf/gnome/orc/elf)
     // see a warm-blooded monster on an unlit square that is still in line of

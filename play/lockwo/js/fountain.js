@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { update_topl, newsym, m_at, y_n } from './display.js';
-import { hliquid, builds_up, dunlevs_in_dungeon, Is_special } from './dungeon.js';
+import { hliquid, builds_up, dunlevs_in_dungeon, Is_special, level_difficulty_c } from './dungeon.js';
 import { water_damage, t_at, delfloortrap } from './trap.js';
 import { find_ac } from './u_init.js';
 import { curse, objects, COIN_CLASS, POTION_CLASS, POT_WATER, RING_CLASS, mkobj, mkobj_at, mksobj_at,
@@ -499,13 +499,7 @@ function mhis(mtmp) { return mtmp?.female ? 'her' : 'his'; }
 // C ref: dungeon.c level_difficulty() — depth-based difficulty, plus a
 // compensating bump in a "builds up" branch (Vlad's Tower, Sokoban); see
 // makemon.js's copy of this same C function for the full rationale.
-function level_difficulty() {
-    const uz = game.u.uz;
-    let res = depth(uz);
-    if (builds_up(uz))
-        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
-    return res;
-}
+function level_difficulty() { return level_difficulty_c(); }
 
 // C ref: fountain.c dowaterdemon() — unless the species is extinct/genocided,
 // makemon a water demon at the hero's square (MM_NOMSG).  Since the hero

@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnz, rne } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { builds_up, In_hell } from './dungeon.js';
+import { builds_up, In_hell, level_difficulty_c } from './dungeon.js';
 import {
     Is_rogue_level,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER,
@@ -755,6 +755,37 @@ for (const o of objects)
               || o.name === 'cloak of magic resistance'))
         o.oc_oprop = ANTIMAGIC_PROP;
 
+// C ref: include/objects.h RING()/AMULET() `power` argument — the oc_oprop of
+// every ring and amulet, i.e. the prop.h property the item confers while worn.
+// Keyed by NAME for the same reason as above.  Enlightenment reads this to
+// report extrinsics ("You have teleport control because of your ivory ring").
+// Rings whose power is 0 (gain strength/constitution, increase accuracy/damage,
+// amulet of change) are absent by design.
+const OC_OPROP_BY_NAME = {
+    // rings — objects.h:741-826
+    'adornment': 39 /*ADORNED*/, 'protection': 59 /*PROTECTION*/,
+    'regeneration': 57, 'searching': 34, 'stealth': 42,
+    'sustain ability': 67 /*FIXED_ABIL*/, 'levitation': 48, 'hunger': 28,
+    'aggravate monster': 43, 'conflict': 44, 'warning': 31,
+    'poison resistance': 6, 'fire resistance': 1, 'cold resistance': 3,
+    'shock resistance': 5, 'free action': 66, 'slow digestion': 54,
+    'teleportation': 46, 'teleport control': 47, 'polymorph': 61,
+    'polymorph control': 62, 'invisibility': 40, 'see invisible': 29,
+    'protection from shape changers': 60,
+    // amulets — objects.h:835-859
+    'amulet of ESP': 30 /*TELEPAT*/, 'amulet of life saving': 68 /*LIFESAVED*/,
+    'amulet of strangulation': 19, 'amulet of restful sleep': 27 /*SLEEPY*/,
+    'amulet versus poison': 6, 'amulet of unchanging': 63,
+    'amulet of reflection': 65, 'amulet of magical breathing': 52,
+    'amulet of guarding': 59 /*PROTECTION*/, 'amulet of flying': 49,
+};
+const RING_CLASS_OC = 4, AMULET_CLASS_OC = 5;
+for (const o of objects)
+    if (o && (o.oc_class === RING_CLASS_OC || o.oc_class === AMULET_CLASS_OC)) {
+        const p = OC_OPROP_BY_NAME[o.name];
+        if (p) o.oc_oprop = p;
+    }
+
 // C ref: include/objects.h BITS() mgc field — oc_magic, the "magic" flag used
 // by poly_obj() (zap.c) to keep a polymorphed object's magic-or-not status the
 // same as the source, and by obj_shuffle_range().  Extracted from the per-class
@@ -813,13 +844,7 @@ function Inhell() {
 // C ref: dungeon.c level_difficulty() — depth(&u.uz), plus a compensating
 // bump in a "builds up" branch (Vlad's Tower, Sokoban); see makemon.js's copy
 // of this same C function for the full rationale.
-function level_difficulty() {
-    const uz = game.u?.uz;
-    let res = depth_of_level(uz);
-    if (uz && builds_up(uz))
-        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
-    return res;
-}
+function level_difficulty() { return level_difficulty_c(); }
 
 function gem_probability(obj) {
     if (obj.otyp < DILITHIUM_CRYSTAL || obj.otyp > LAST_REAL_GEM)

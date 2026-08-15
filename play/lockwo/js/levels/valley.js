@@ -163,7 +163,7 @@ export async function makemaz_valley() {
     // Stairs / branch / arrival region — no RNG.
     quest_place_stair(1, 1, false);
     quest_register_branch(66, 17);
-    vly_teleport_region(58, 9, 72, 18);
+    vly_teleport_region(58, 9, 72, 18, false, 'down');
     // Secret Doors — no RNG (explicit state).
     quest_set_door(4, 1, 'locked');
     quest_set_door(8, 4, 'locked');

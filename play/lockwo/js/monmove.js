@@ -80,13 +80,14 @@ import { is_armed, mattk_of,
     AT_ENGL,
     AD_PHYS, AD_ELEC, AD_DRST, AD_STUN, AD_DISE, AD_PEST, AD_FAMN, AD_STCK,
     AD_POLY, AD_ACID, AD_COLD, AD_FIRE, AD_SITM, AD_SEDU, AD_SSEX,
-    AD_RUST, AD_CORR, AD_MAGM, AD_RBRE, AD_SPEL, AD_CLRC } from './monattk_data.js';
+    AD_RUST, AD_CORR, AD_MAGM, AD_RBRE, AD_SPEL, AD_CLRC,
+    AD_BLND } from './monattk_data.js';
 import { castmu } from './mcastu.js';
 import { dog_move, m_cansee, could_reach_item } from './dogmove.js';
 import { mon_msize, monster_by_pmidx, makemon, level_difficulty_ext } from './makemon.js';
 // polyself.c mbodypart needs the mlet of a pet, whose .data lacks .mcls.
 const mon_mlet = (pmidx) => monster_by_pmidx(pmidx)?.mcls;
-import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl, see_with_infrared } from './display.js';
+import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl, see_with_infrared, bot_snapshot } from './display.js';
 import { mdig_tunnel, may_dig } from './dig.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
     weight, base_oc_weight, BOULDER, WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS,
@@ -98,7 +99,7 @@ import { resists_fire, resists_acid } from './mondata.js';
 import { clear_path, couldsee, cansee, vision_recalc, recalc_block_point, Blind } from './vision.js';
 import { mattackm, mdisplacem } from './mhitm.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval,
-    setmangry } from './uhitm.js';
+    setmangry, relobj } from './uhitm.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_AP_TYPE } from './const.js';
 import { wipe_engr_at, engr_at } from './engrave.js';
 import { discover_object, observe_object } from './o_init.js';
@@ -1976,12 +1977,36 @@ async function launch_boulder(trap) {
     const ix = objs.indexOf(otmp);
     if (ix >= 0) objs.splice(ix, 1);
     otmp.where = 'free';
+    // C ref: mkobj.c remove_object() — `if (otmp->otyp == BOULDER)
+    // recalc_block_point(x, y)`.  The launch square stops blocking light the
+    // moment the boulder leaves it; the next pline() flushes that recalc, so
+    // everything the boulder was shadowing is already visible on the frame that
+    // the roll's --More-- freezes.
+    recalc_block_point(x1, y1);
     newsym(x1, y1);
     let dist = distmin(x1, y1, x2, y2);
     let x = x1, y = y1;
     const dx = Math.sign(x2 - x1), dy = Math.sign(y2 - y1);
     let used_up = false;
+    // C ref: trap.c:3345 tmp_at(DISP_FLASH, obj_to_glyph(singleobj)) + tmp_at(x,y),
+    // then tmp_at(x, y) at the TOP of each while iteration (i.e. with the
+    // PRE-move position) and tmp_at(DISP_END, 0) after the loop.  The flash
+    // trails one square behind the boulder, so when ohitmon()'s hit message
+    // raises a --More-- the recorded screen shows the boulder glyph on that
+    // trailing square — it is the animation frame, not the resting place.
+    const fglyph = object_glyph(otmp);
+    let fx = -1, fy = -1;
+    const flash_at = (ax, ay) => {
+        if (!fglyph) return;
+        if (fx >= 0) { newsym(fx, fy); fx = fy = -1; }
+        if (!cansee(ax, ay)) return;
+        show_glyph_cell(ax, ay, fglyph.ch, fglyph.color, fglyph.dec);
+        fx = ax; fy = ay;
+    };
+    const flash_end = () => { if (fx >= 0) { newsym(fx, fy); fx = fy = -1; } };
+    flash_at(x, y);
     while (dist-- > 0 && !used_up) {
+        flash_at(x, y);
         if (!isok(x + dx, y + dy)) { x2 = x; y2 = y; break; }
         x += dx; y += dy;
         const victim = m_at(x, y);
@@ -1991,9 +2016,13 @@ async function launch_boulder(trap) {
         // thitu(9 + spe, dmgval, ...) for the hero's square is not reached here.
         if (IS_OBSTRUCTED(terrainTyp(x, y))) { x2 = x; y2 = y; break; }
     }
+    flash_end();
     if (!used_up) {
         otmp.owornmask = 0;
         place_object(otmp, x2, y2);
+        // C ref: mkobj.c place_object() — a BOULDER landing where none already
+        // sits calls block_point(x, y).
+        recalc_block_point(x2, y2);
         newsym(x2, y2);
     }
     return 1;
@@ -2271,7 +2300,7 @@ async function mon_missile_name(obj) {
 // draws no RNG for the mines-shallow species (no S_KOP/steam-vortex/vampshifter);
 // corpse_chance()'s rn2 and make_corpse()'s next_ident + rndmonnum + corpse
 // timeout are the only draws, matching C's trace.
-function mon_kill_leaving(mon, nocorpse) {
+export function mon_kill_leaving(mon, nocorpse) {
     mon.mhp = 0;
     // mondead(): detach the monster so the renderer stops drawing it.  Coords
     // are left intact for make_corpse() to place the cadaver.
@@ -2282,6 +2311,12 @@ function mon_kill_leaving(mon, nocorpse) {
         const idx = list.indexOf(mon);
         if (idx >= 0) list.splice(idx, 1);
     }
+    // C ref: mon.c m_detach(due_to_death) -> relobj(mtmp, 1, FALSE) — the dead
+    // monster's inventory hits the floor (RNG-free) before the corpse, so its
+    // weapon shows on the square even when no corpse is left.  Missing here,
+    // so a monster killed by a trap took its gear out of the game.
+    relobj(mon, mx, my);
+    if (mx > 0 && my >= 0) newsym(mx, my);
     // mondied(): corpse_chance() rolls its rn2; on success (and accessible
     // terrain) make_corpse() builds the cadaver.  nocorpse (disintegration)
     // suppresses the cadaver entirely with no corpse_chance roll.
@@ -3100,14 +3135,21 @@ async function m_move(mtmp) {
     // lined up with him — the common case in the recorded sessions.  Other
     // returns (-1 "leave to m_move", or a moving result) fall through to the
     // generic path so the existing behaviour is preserved.
-    if (mtmp.isshk || mtmp.ispriest) {
-        const xm = mtmp.isshk ? await shk_move(mtmp) : await pri_move(mtmp);
+    if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
+        const xm = mtmp.isshk ? await shk_move(mtmp)
+            : mtmp.isgd ? await (await import('./vault.js')).gd_move(mtmp)
+                : await pri_move(mtmp);
         // C ref: monmove.c:1806-1823 — case -2: died; case 0/1: postmov with
         // MMOVE_NOTHING/MMOVE_MOVED respectively; case -1: `break` out to the
         // generic path below (mirrored by simply not returning here).
         if (xm === -2) return MMOVE_DIED;
         if (xm === 0) return MMOVE_NOTHING;
         if (xm === 1) {
+            // C ref: monmove.c postmov():1508 — `newsym(omx, omy)` redraws the
+            // VACATED square.  gd_move() has no newsym of its own for the spot
+            // it leaves, so without this the guard's old glyph stayed painted
+            // (seed0012 steps 284+ showed two '@'s).
+            newsym(omx, omy);
             // C ref: monmove.c postmov() — mintrap() fires on the shk's new
             // square once move_special has actually moved it.
             const trapret = await mon_mintrap(mtmp);
@@ -3118,6 +3160,15 @@ async function m_move(mtmp) {
             return MMOVE_MOVED;
         }
     }
+
+    // C ref: monmove.c:1851 (label not_special) — while the hero is swallowed
+    // every OTHER non-fleeing monster stops here with MMOVE_MOVED: it neither
+    // walks nor rolls the getitems/lined_up probes below.  Skipping this leaves
+    // a whole level's worth of monsters running m_lined_up() against the
+    // swallowed hero, and couldsee() is all-false in there so each one pays an
+    // extra linedup() rn2(2 + boulderspots) (seed0383 step 142).
+    if (game.u.uswallow && !mtmp.mflee && game.u.ustuck !== mtmp)
+        return MMOVE_MOVED;
 
     // goal = the hero's apparent position
     let ggx = mtmp.mux ?? game.u.ux;
@@ -3577,7 +3628,7 @@ function can_teleport(mdat) { return !!mdat && (mflags1_of(mdat) & M1_TPORT) !==
 // the quest homes, Vlad's tower) still ran rloc() and burned its rnd(79)/rn2(21)
 // placement loop where C prints "A mysterious force prevents ...".
 // stasis_until is not modelled (no wand of stasis in these sessions).
-function noteleport_level(mon) {
+export function noteleport_level(mon) {
     const ptr = mon?.data;
     // demon court in Gehennom prevents everyone but demon lords/princes
     if (Inhell() && !(is_demon(ptr)
@@ -4854,13 +4905,20 @@ export async function mattacku(mtmp, mdat) {
 
     // calc_mattacku_vars: range2/foundyou from the APPARENT position (mux/muy).
     const mux = mtmp.mux ?? mtmp.mx, muy = mtmp.muy ?? mtmp.my;
-    const range2 = !((Math.abs(mtmp.mx - mux) <= 1) && (Math.abs(mtmp.my - muy) <= 1));
-    const foundyou = (mux === u.ux && muy === u.uy);
+    let range2 = !((Math.abs(mtmp.mx - mux) <= 1) && (Math.abs(mtmp.my - muy) <= 1));
+    let foundyou = (mux === u.ux && muy === u.uy);
 
-    // u.uswallow path not modeled (never swallowed in these sessions).
-
-    // ── steed redirect (mhitu.c:524) ────────────────────────────────────────
-    if (u.usteed) {
+    // ── swallowed (mhitu.c:522) ─────────────────────────────────────────────
+    // C ref: "If swallowed, can only be affected by u.ustuck" — every other
+    // monster returns 0 WITHOUT rolling, and the engulfer is forced adjacent so
+    // its AT_ENGL arm re-enters gulpmu for this turn's digestion damage.
+    if (u.uswallow) {
+        if (mtmp !== u.ustuck) return 0;
+        u.ustuck.mux = u.ux; u.ustuck.muy = u.uy;
+        if (u.uinvulnerable) return 0; /* stomachs can't hurt you! */
+        range2 = false;
+        foundyou = true;
+    } else if (u.usteed) {
         if (mtmp === u.usteed) return 0; /* your steed won't attack you */
         // Orcs like to steal and eat horses and the like.  The rn2() is
         // evaluated first (C &&, left-to-right) so it ALWAYS rolls here.
@@ -5039,6 +5097,28 @@ export async function mattacku(mtmp, mdat) {
                 sum[i] = await spitmu(mtmp, mattk);
             }
             break;
+        // C ref: mhitu.c:848 AT_ENGL — the engulf/swallow attack.  C's `||`
+        // SHORT-CIRCUITS on u.uswallow, so an already-swallowed hero takes the
+        // per-turn digestion damage with NO rnd(20+i) to-hit roll.
+        case AT_ENGL:
+            if (!range2) {
+                if (foundyou) {
+                    let j2 = 0;
+                    if (u.uswallow
+                        || (!mtmp.mspec_used && tmp > (j2 = rnd(20 + i)))) {
+                        const { gulpmu } = await import('./mhitu.js');
+                        sum[i] = await gulpmu(mtmp, mattk);
+                    } else {
+                        await missmu(mtmp, tmp === j2);
+                    }
+                } else if (mon_digests(mdat)) {
+                    await update_topl(`${Monnam(mtmp)} gulps some air!`);
+                } else if (canspotmon(mtmp)) {
+                    await update_topl(`${Monnam(mtmp)} lunges forward and recoils!`);
+                }
+                // the unseen You_hear() arm needs is_whirly/rushing-noise text
+            }
+            break;
         case AT_MAGC:
             // C ref: mhitu.c:930 `if (range2) sum[i] = buzzmu(...); else sum[i] =
             // castmu(mtmp, mattk, TRUE, foundyou);`.  The ADJACENT half is now
@@ -5059,9 +5139,13 @@ export async function mattacku(mtmp, mdat) {
             // longer lies about what the species can do.
             break;
         }
-        // C ref mhitu.c:936 — `if (disp.botl) bot();` after each attack.  Our
-        // status line is rebuilt from u.* on every frame, so there is nothing to
-        // flush here.
+        // C ref mhitu.c:936 — `if (disp.botl) bot();` after each attack.
+        // mdamageu() always dirties disp.botl, so this fires for every attack
+        // that lands.  Rows 22/23 are rebuilt live per frame here, but the
+        // PUBLISHED text still matters: bot() no-ops while u.uhp == -1, so a
+        // second bite landing on exactly -1 must leave the first bite's numbers
+        // standing for the whole endgame (seed0007 step 290, HP:4 not HP:10).
+        bot_snapshot();
         // C ref mhitu.c:939 — the u.usleep "combat awakens you" rn2(10) needs a
         // sleeping hero (u.usleep is never set in these sessions).
         if (sum[i] & M_ATTK_AGR_DIED) return 1;   // mhitu.c:945 attacker dead
@@ -5117,6 +5201,13 @@ function getmattk(magr, indx, prev_result) {
         attk.adtyp = AD_PHYS;
     }
     return attk;
+}
+
+// C ref: mondata.h digests(ptr) — attacktype_fordmg(ptr, AT_ENGL, AD_DGST).
+// Derived from the generated attack table, never a species-name list.
+const AD_DGST_MM = 26;   // monattk.h
+function mon_digests(mdat) {
+    return mon_attacks(mdat).some((a) => a.aatyp === AT_ENGL && a.adtyp === AD_DGST_MM);
 }
 
 // C ref: trap.h mtrapped_in_pit(mon) — a monster held by a pit/spiked pit can't
@@ -5713,7 +5804,21 @@ async function ohitmon(mtmp, otmp, range, verbose, bx, by, thrower) {
         mtmp.mblinded = Math.min((mtmp.mblinded || 0) + rnd(25) + 20, 127);
     }
     // setmangry() is skipped while svc.context.mon_moving, so it does not run here.
-    drop_thrown_missile(thrower, otmp, bx, by, 1);            // drop_throw(otmp,1,..)
+    const objgone = drop_thrown_missile(thrower, otmp, bx, by, 1); // drop_throw(otmp,1,..)
+    // C ref: mthrowu.c:494-497 — `if (!objgone && range == -1) { obj_extract_self(otmp);
+    // return FALSE; }`.  range -1 is the rolling-boulder-trap caller: the boulder
+    // does NOT stop on the monster it just hit, it is freed for motion again and
+    // keeps rolling to its target square.
+    if (!objgone && range === -1) {
+        const objs = game.level?.objects;
+        if (objs) {
+            const oi = objs.indexOf(otmp);
+            if (oi >= 0) objs.splice(oi, 1);
+        }
+        otmp.where = 'free';
+        recalc_block_point(bx, by);
+        return false;
+    }
     return true;
 }
 
@@ -5942,10 +6047,11 @@ function drop_thrown_missile(mon, otmp, x, y, ohit) {
     }
     if (broken) {
         rn2(100); // delobj_core -> obj_resists(obj, 0, 0): rn2(100), then free
-        return;   // shattered missile: no object settles on the floor
+        return true;   // shattered missile: no object settles on the floor
     }
     otmp.owornmask = 0;
     try { place_object(otmp, x, y); newsym(x, y); } catch (e) { /* ignore */ }
+    return false; // C drop_throw() returns `broken`
 }
 
 // C ref: dothrow.c:1976 should_mulch_missile(obj) — a thrown missile (dart) may
@@ -6350,6 +6456,8 @@ function canseemon_mm(mtmp) {
     if (!mtmp) return false;
     if (game.u?.uswallow) return true;
     if (mtmp.minvis && !game.u?.see_invis) return false;
+    // C ref: display.h _mon_visible() — `(!minvis || See_invisible) && !mundetected`.
+    if (mtmp.mundetected) return false;
     // C ref: display.h _canseemon() — `cansee(mx, my) || see_with_infrared(mon)`.
     // The infravision half is what lets a non-human hero (dwarf/gnome/orc/elf)
     // see a warm-blooded monster on an unlit square that is still in line of
@@ -6434,11 +6542,29 @@ async function mhitm_adtyping(mtmp, mattk, mhm) {
     case AD_SEDU: // seduce & steal (foocubi, nymphs' second attack)
         await mhitm_ad_sedu(mtmp, mattk, mhm); break;
     case AD_STCK: await mhitm_ad_stck(mtmp, mattk, mhm); break;
+    case AD_BLND: await mhitm_ad_blnd_u(mtmp, mattk, mhm); break;
     default:
         // Unmodelled adtyp: leave damage as the base roll, emit the hit verb.
         await hitmsg(mtmp, mattk);
         break;
     }
+}
+
+// C ref: uhitm.c:2976 mhitm_ad_blnd() — the `mdef == &gy.youmonst` arm.  There
+// is NO hitmsg() here: C prints only "<Mon> blinds you!", and zeroes the damage
+// (a raven's claw costs sight, not HP).  Falling through to the dispatcher's
+// `default:` printed the generic hit verb, charged the d(damn,damd) roll as HP
+// and left the hero sighted — and a sighted hero still draws every monster on
+// the map, so the whole screen diverges from the first raven claw onward.
+async function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
+    const { can_blnd, YOUMONST } = await import('./mhitm_ad.js');
+    const { mhitu_ops } = await import('./mhitu.js');
+    if (can_blnd(mtmp, YOUMONST, mattk.aatyp, null, mhitu_ops())) {
+        if (!Blind()) await emitU(`${Monnam(mtmp)} blinds you!`);
+        const { make_blinded_hero, BlindedTimeout } = await import('./potion.js');
+        await make_blinded_hero(BlindedTimeout() + (mhm.damage | 0), false);
+    }
+    mhm.damage = 0;
 }
 
 // C ref: uhitm.c:3306 mhitm_ad_stck() — the `mdef == &gy.youmonst` branch (a
@@ -6486,7 +6612,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
         await emitU(`${Monnam(mtmp)} ${mtmp.minvent?.length
             ? 'brags about the goods some dungeon explorer provided'
             : 'makes some remarks about how difficult theft is lately'}.`);
-        if (!tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
+        if (!await tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
         mhm.hitflags = M_ATTK_AGR_DONE;
         mhm.done = true;
         return;
@@ -6498,7 +6624,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
                 + `${game.flags?.female ? 'unaffected' : 'uninterested'}.`);
         }
         if (rn2(3)) {
-            if (!tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
+            if (!await tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
             mhm.hitflags = M_ATTK_AGR_DONE;
             mhm.done = true;
         }
@@ -6515,7 +6641,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
     if (res === 0) return;                  // nothing taken; ordinary damage
     // Something was stolen: a non-animal thief teleports away, an animal tries
     // to run off with the loot, and either way it flees (uhitm.c:4680).
-    if (!is_animal(mtmp.data) && !tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
+    if (!is_animal(mtmp.data) && !await tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
     // canseemon_mm, not canseemon: this file has no canseemon import, so the
     // bare name was a latent ReferenceError that killed the whole session run.
     if (is_animal(mtmp.data) && objnambuf.value && canseemon_mm(mtmp)) {

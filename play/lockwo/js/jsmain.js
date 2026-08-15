@@ -21,6 +21,7 @@ import {
     ROLE_MALE, ROLE_FEMALE, ROLE_LAWFUL, ROLE_NEUTRAL, ROLE_CHAOTIC,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
+import './light.js';   // registers game.lightsources_hook for vision_recalc
 import {
     aligns, apply_selection, count_ok_race, count_ok_gend, count_ok_align,
     genders, gotrolefilter, ok_align, ok_gend, ok_race, ok_role, races,

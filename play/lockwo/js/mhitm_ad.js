@@ -58,6 +58,12 @@ import {
     objects as OBJECTS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
     RING_CLASS, WAND_CLASS, COIN_CLASS, FOOD_CLASS,
 } from './mkobj.js';
+// mhitu.c owns these; uhitm.c's shared AD_* handlers call them across the file
+// boundary (uhitm.c:86 / 3109 / 3232 / 3675 / 3824).  Every one of them is read
+// inside a function body only, so the mhitu.js <-> mhitm_ad.js import cycle can
+// be entered from either side without a TDZ.
+import { magic_negation, mpoisons_subj, diseasemu, u_slip_free,
+    u_slow_down } from './mhitu.js';
 
 // ── include/monattk.h ────────────────────────────────────────────────────────
 export const AD_PHYS = 0, AD_MAGM = 1, AD_FIRE = 2, AD_COLD = 3, AD_SLEE = 4,
@@ -84,7 +90,16 @@ const MR_FIRE = 0x01, MR_COLD = 0x02, MR_SLEEP = 0x04, MR_DISINT = 0x08,
     MR_ELEC = 0x10, MR_POISON = 0x20, MR_ACID = 0x40, MR_STONE = 0x80;
 
 // C ref: monsym.h — mlet values the arms key on.
-const S_NYMPH = 14, S_FUNGUS = 15, S_SNAKE = 34, S_NAGA = 31, S_HUMAN = 41,
+// Values are the S_* enum from include/sym.h, which is generated from
+// defsym.h's `MONSYM(idx, ...) sym = idx` — i.e. the mons[].mlet numbering that
+// this port stores as permonst.mcls (verified: lich 38, wood nymph 14,
+// cockatrice 3, Medusa 53).  FOUR of these were the 'a' - 'z' ordinal instead
+// of the enum value and so named a different class entirely:
+//   S_FUNGUS was 15 (that is S_ORC)       -> defsym.h:332 = 32
+//   S_SNAKE  was 34 (that is S_GIANT)     -> defsym.h:346 = 45
+//   S_NAGA   was 31 (that is S_ELEMENTAL) -> defsym.h:341 = 40
+//   S_HUMAN  was 41 (that is S_OGRE)      -> defsym.h:356 = 53
+const S_NYMPH = 14, S_FUNGUS = 32, S_SNAKE = 45, S_NAGA = 40, S_HUMAN = 53,
     S_LICH = 38, S_GOLEM = 55;
 
 // The hero, as a defender.  C compares pointers against &gy.youmonst; the
@@ -145,7 +160,9 @@ const poly_when_stoned = (ptr) => ptr?.mcls === S_GOLEM
 // noncorporeal().  It is NOT "acidic or a golem": a straw golem IS slimeable.
 const FLAMING_NAMES = new Set(['fire vortex', 'flaming sphere',
     'fire elemental', 'salamander']);            // mondata.h:59 flaming()
-const S_GHOST = 24;                              // monsym.h
+// defsym.h:358 MONSYM(54, ' ', GHOST, S_GHOST) — 24 is S_XAN, so slimeproof()
+// used to answer TRUE for a xan and FALSE for a ghost.
+const S_GHOST = 54;
 const slimeproof = (ptr) => ptr?.name === 'green slime'
     || FLAMING_NAMES.has(ptr?.name) || ptr?.mcls === S_GHOST;
 
@@ -163,7 +180,7 @@ const touch_petrifies = (ptr) => ptr?.name === 'cockatrice'
 export async function mhitm_mgc_atk_negated(magr, mdef, verbosely, ops) {
     // mcan doesn't apply to youmonst; the hero can't be cancelled.
     if (!is_hero(magr) && magr.mcan) return true;   // no message, no roll
-    const armpro = magic_negation(mdef, ops);       // uhitm.c:86
+    const armpro = magic_negation(mdef);            // uhitm.c:86
     const negated = !(rn2(10) >= 3 * armpro);       // uhitm.c:87
     if (negated && verbosely) {
         if (is_hero(mdef)) await ops.emit('You avoid harm.');
@@ -173,42 +190,16 @@ export async function mhitm_mgc_atk_negated(magr, mdef, verbosely, ops) {
     return negated;
 }
 
-// C ref: mhitu.c:1089 magic_negation(mon) — the max objects[].oc_can over worn
-// armor, bumped by extrinsic Protection.  For the hero the caller supplies its
-// own (js/monmove.js magic_negation_hero); this is the monster arm: high
-// priests have innate protection, aligned priests/minions floor mc at 1.
-function magic_negation(mon, ops) {
-    if (is_hero(mon)) return ops.magic_negation_hero ? ops.magic_negation_hero() : 0;
-    const ptr = ops.permonst(mon);
-    let mc = 0, via_amul = false;
-    // PM_HIGH_CLERIC's mons[] entry is named "high cleric" ("high priest" is
-    // only its male pmnames[] variant), so a name test on the display name
-    // answered FALSE for every high priest.
-    let gotprot = (ptr?.name === 'high cleric');
-    for (const o of (mon.minvent || [])) {
-        const worn = o.owornmask || 0;
-        if (worn & W_ARMOR) {
-            const armpro = OBJECTS[o.otyp]?.oc_can || 0;
-            if (armpro > mc) mc = armpro;
-        } else if (worn & W_AMUL) {
-            via_amul = (o.otyp === AMULET_OF_GUARDING);
-        }
-        // protects(o, ...) needs the artifact table; no monster here carries one.
-    }
-    if (gotprot) {
-        mc += via_amul ? 2 : 1;
-        if (mc > 3) mc = 3;
-    } else if (mc < 1 && (ptr?.name === 'aligned cleric'
-                          || (mflags2_of(ptr) & M2_MINION) !== 0)) {
-        mc = 1;   // mhitu.c:1128 PM_ALIGNED_CLERIC || is_minion()
-    }
-    return mc;
-}
+// magic_negation() now lives in js/mhitu.js (its C home, mhitu.c:1089).  The
+// copy that used to be here returned 0 for the HERO unless the caller injected
+// a magic_negation_hero hook, so every hero-defender arm read armpro == 0 and
+// mhitm_mgc_atk_negated()'s `rn2(10) >= 3 * armpro` could never come out
+// un-negated for an armoured hero.
+//
 // NOTE: js/invent.js deliberately remaps some W_* bits for HERO inventory
 // (its W_AMUL is 0x00080000, const.js's is 0x00010000) — see the worn-mask
-// remap note.  The monster arm below reads misc_worn_check / minvent
-// owornmask, which use the const.js layout.
-const AMULET_OF_GUARDING = 210;   // js/mkobj.js objects[] index
+// remap note.  The monster arm reads misc_worn_check / minvent owornmask,
+// which use the const.js layout.
 
 // ── uhitm.c:126 erode_armor ─────────────────────────────────────────────────
 // Loops rn2(5) until it lands on a slot that erodes (case 1, the torso, always
@@ -360,14 +351,10 @@ export function can_blnd(magr, mdef, aatyp, obj, ops) {
 }
 const CREAM_PIE = 287, BLINDING_VENOM = 479, POT_BLINDNESS = 300;
 
-// C ref: mhitu.c mpoisons_subj() — the noun in "<Mon>'s <X> was poisoned!".
-function mpoisons_subj(magr, mattk, ops) {
-    if (mattk.aatyp === AT_WEAP) {
-        const mwep = ops.MON_WEP(magr);
-        return (mwep && mwep.opoisoned) ? 'weapon' : 'attack';
-    }
-    return (mattk.aatyp === AT_BITE) ? 'bite' : 'sting';
-}
+// mpoisons_subj() now lives in js/mhitu.js (its C home, mhitu.c:145).  The copy
+// that used to be here had three of the five arms: an AT_TUCH poisoner (C says
+// "contact") and an AT_GAZE one ("gaze") both came out as "sting", so the top
+// line read wrong for every touch/gaze poisoner.
 
 // C ref: mondata.c stagger(ptr, verb) — "stagger"/"stumble"/"slither"/"falter".
 function stagger(ptr, verb) {
@@ -657,7 +644,7 @@ export async function mhitm_ad_sgld(magr, mattk, mdef, mhm, ops) {
     if (ops.vis && ops.canseemon(mdef))
         await ops.emit(`${buf} steals some gold from ${ops.mon_nam(mdef)}.`);
     const { rloc, tele_restrict, RLOC_NOMSG } = await import('./teleport.js');
-    if (!tele_restrict(magr)) {
+    if (!await tele_restrict(magr)) {
         const couldspot = ops.canspotmon(magr);
         mhm.hitflags = M_ATTK_AGR_DONE;
         await rloc(magr, RLOC_NOMSG);
@@ -685,7 +672,7 @@ export async function mhitm_ad_tlpt(magr, mattk, mdef, mhm, ops) {
         return;
     }
     const { rloc, tele_restrict, RLOC_NOMSG } = await import('./teleport.js');
-    if (magr.mcan || mhm.damage >= (mdef.mhp | 0) || tele_restrict(mdef)) {
+    if (magr.mcan || mhm.damage >= (mdef.mhp | 0) || await tele_restrict(mdef)) {
         /* no negation message, and — importantly — no rn2(10) either */
     } else if (await mhitm_mgc_atk_negated(magr, mdef, true, ops)) {
         if (ops.vis) await ops.emit(`${ops.Monnam(mdef)} is not affected.`);
@@ -772,7 +759,7 @@ function night() {
 // AD_PHYS's poisoned-weapon arm; not subject to cancellation or the 1/8 roll.
 async function mhitm_really_poison(magr, mattk, mdef, mhm, ops) {
     if (ops.vis && ops.canspotmon(magr))
-        await ops.emit(`${ops.Monnam(magr)}'s ${mpoisons_subj(magr, mattk, ops)} was poisoned!`);
+        await ops.emit(`${ops.Monnam(magr)}'s ${mpoisons_subj(magr, mattk)} was poisoned!`);
     if (resists_poison(ops, mdef)) {
         if (ops.vis && ops.canspotmon(mdef) && ops.canspotmon(magr))
             await ops.emit(`The poison doesn't seem to affect ${ops.mon_nam(mdef)}.`);
@@ -808,7 +795,15 @@ export async function mhitm_ad_drin(magr, mattk, mdef, mhm, ops) {
     const pd = ops.permonst(mdef);
     if (is_hero(mdef)) {
         await ops.hitmsg(magr, mattk);
-        if (!has_head(pd)) { await ops.emit("You don't seem harmed."); return; }
+        if (!has_head(pd)) {
+            await ops.emit("You don't seem harmed.");
+            if (ops.set_skipdrin) ops.set_skipdrin();
+            return;
+        }
+        // uhitm.c:3232 — a greased/oilskin HELMET (AD_DRIN redirects
+        // u_slip_free to uarmh) makes the tentacles slide off; the call was
+        // missing, so a greased cap lost its rn2(3)/rn2(2) draws.
+        if (await u_slip_free(magr, mattk)) return;
         if (game.uarmh && rn2(8)) return;       // helmet blocks
         // eat_brains() + adjattrib(A_INT) + the two rn2(5) spell/skill losses
         // need the hero attribute machinery.
@@ -851,11 +846,20 @@ export async function mhitm_ad_wrap(magr, mattk, mdef, mhm, ops) {
     const coil = slithy(pa) && (pa?.mcls === S_SNAKE || pa?.mcls === S_NAGA);
     if (is_hero(mdef)) {
         const u = game.u;
+        // C ref uhitm.c:3377 — `(!magr->mcan || u.ustuck == magr) && !sticks(pd)`.
+        // sticks() is FALSE for every playable role's base form.
         if (!magr.mcan || u.ustuck === magr) {
             if (!u.ustuck && !rn2(10)) {
-                u.ustuck = magr;                // set_ustuck before the message
-                game.disp_botl = true;
-                await ops.emit(`${ops.Monnam(magr)} ${coil ? 'coils' : 'swings'} itself around you!`);
+                // uhitm.c:3380 — greased/oilskin body armour lets the coil slip
+                // off; u_slip_free() DRAWS for a cursed or greased piece, and
+                // this call was missing entirely.
+                if (await u_slip_free(magr, mattk)) {
+                    mhm.damage = 0;
+                } else {
+                    u.ustuck = magr;            // set_ustuck before the message
+                    game.disp_botl = true;
+                    await ops.emit(`${ops.Monnam(magr)} ${coil ? 'coils' : 'swings'} itself around you!`);
+                }
             } else if (u.ustuck === magr) {
                 // The drowning arm needs a pool under the attacker.
                 if (mattk.aatyp === AT_HUGS) await ops.emit('You are being crushed.');
@@ -967,9 +971,7 @@ export async function mhitm_ad_slow(magr, mattk, mdef, mhm, ops) {
     if (defended(mdef, AD_SLOW)) return;
     if (is_hero(mdef)) {
         await ops.hitmsg(magr, mattk);
-        if (!negated && game.u?.HFast && !rn2(4)) {
-            if (ops.u_slow_down) await ops.u_slow_down();
-        }
+        if (!negated && game.u?.HFast && !rn2(4)) await u_slow_down();
         return;
     }
     if (!negated && mdef.mspeed !== MSLOW) {
@@ -1036,7 +1038,10 @@ export async function mhitm_ad_famn(magr, mattk, mdef, mhm, ops) {
 export async function mhitm_ad_pest(magr, mattk, mdef, mhm, ops) {
     if (is_hero(mdef)) {
         await ops.emit(`${ops.Monnam(magr)} reaches out, and you feel fever and chills.`);
-        return;                                 // diseasemu(): the Sick timer
+        // uhitm.c:3824 — the return value is discarded here (Pestilence's
+        // normal damage lands either way), but diseasemu() still draws.
+        await diseasemu(ops.permonst(magr));
+        return;
     }
     const alt = { ...mattk, adtyp: AD_DISE };
     await mhitm_ad_dise(magr, alt, mdef, mhm, ops);
@@ -1227,7 +1232,7 @@ export async function mhitm_ad_heal(magr, mattk, mdef, mhm, ops) {
             game.disp_botl = true;
             if (!rn2(33)) {
                 const { rloc, tele_restrict, RLOC_MSG } = await import('./teleport.js');
-                if (!tele_restrict(magr)) await rloc(magr, RLOC_MSG);
+                if (!await tele_restrict(magr)) await rloc(magr, RLOC_MSG);
                 if (ops.monflee) await ops.monflee(magr, d(3, 6));
                 mhm.done = true;
                 mhm.hitflags = M_ATTK_HIT | M_ATTK_DEF_DIED;
@@ -1331,8 +1336,9 @@ export async function mhitm_ad_dise(magr, mattk, mdef, mhm, ops) {
     const pd = ops.permonst(mdef);
     if (is_hero(mdef)) {
         await ops.hitmsg(magr, mattk);
-        // diseasemu(): Sick_resistance is on for no covered role, but the
-        // Sick timer belongs to the caller; C zeroes damage when it declines.
+        // uhitm.c:4607 — diseasemu() DRAWS rn1(ACURR(A_CON), 20) whenever the
+        // hero isn't already Sick, and zeroes the damage when it declines.
+        if (!await diseasemu(ops.permonst(magr))) mhm.damage = 0;
         return;
     }
     if (pd?.mcls === S_FUNGUS || pd?.name === 'ghoul' || defended(mdef, AD_DISE))
@@ -1365,7 +1371,7 @@ export async function mhitm_ad_sedu(magr, mattk, mdef, mhm, ops) {
         // its own stolen gear.
         if (ops.permonst(magr)?.mcls === S_NYMPH) {
             const { rloc, tele_restrict, RLOC_NOMSG } = await import('./teleport.js');
-            if (!tele_restrict(magr)) {
+            if (!await tele_restrict(magr)) {
                 mhm.hitflags = M_ATTK_AGR_DONE;
                 await rloc(magr, RLOC_NOMSG);
                 if (vis && couldspot && !ops.canspotmon(magr))

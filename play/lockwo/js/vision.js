@@ -3,12 +3,12 @@
 // mimics, underwater, blindness, or pit handling.
 // Contestants should port the full vision.c for complete parity.
 
-import { game } from './gstate.js';
+import { game, hooks } from './gstate.js';
 import {
     COLNO, ROWNO, DOOR, SDOOR, POOL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL, CROSSWALL, TRWALL, TREE, CLOUD, WATER, LAVAWALL,
+    IS_WALL, CROSSWALL, TRWALL, TREE, CLOUD, WATER, LAVAWALL, TEMP_LIT,
 } from './const.js';
 import { newsym } from './display.js';
 import { infravision, monster_by_pmidx } from './makemon.js';
@@ -651,6 +651,18 @@ export function vision_recalc(control = 0) {
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
     }
 
+    // C ref: vision.c:703 do_light_sources(next_array) — mobile light sources
+    // (a gold dragon, a fire vortex, a lit lamp) mark TEMP_LIT on the cells
+    // they light, which the IN_SIGHT passes below treat exactly like lev->lit.
+    // new_light_source() sets vision_full_recalc; that must not re-arm a recalc
+    // we are already inside.
+    // The hook is registered by js/light.js (imported for effect from
+    // jsmain.js): a direct `import` here reorders ESM evaluation and TDZ-traps
+    // mkobj.js through u_init.js.
+    const _vfr = game.vision_full_recalc;
+    hooks.lightsources?.(next);
+    game.vision_full_recalc = _vfr;
+
     // Compute IN_SIGHT from COULD_SEE + lighting
     const level = game.level;
     const ux = u.ux, uy = u.uy;
@@ -674,14 +686,15 @@ export function vision_recalc(control = 0) {
                 continue;
             }
 
-            // Lit cells
-            if (loc.lit) {
+            // Lit cells (lev->lit || TEMP_LIT — vision.c:756)
+            if (loc.lit || (next[row][col] & TEMP_LIT)) {
                 if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
                     && !viz_clear[row]?.[col]) {
                     // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
                     const dx = Math.sign(ux - col);
                     const flev = level?.at(col + dx, row + dy);
-                    if (flev?.lit) {
+                    // vision.c:771 `flev->lit || next_array[row+dy][col+dx] & TEMP_LIT`
+                    if (flev?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                         next[row][col] |= IN_SIGHT;
                     }
                 } else {
@@ -729,12 +742,12 @@ export function vision_recalc(control = 0) {
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
-                } else if ((nv & COULD_SEE) && loc.lit) {
+                } else if ((nv & COULD_SEE) && (loc.lit || (nv & TEMP_LIT))) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
                         && !viz_clear[row][col]) {
                         const dx = Math.sign(ux - col);
                         const adjLoc = game.level.at(col + dx, row + dy);
-                        if (adjLoc?.lit) {
+                        if (adjLoc?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];

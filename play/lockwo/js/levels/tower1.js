@@ -79,15 +79,10 @@ function tower_create_vampire_lady(name, mx, my) {
     if (!mtmp) return null;
     mtmp.female = 1;                                 // "lady" -> female (no RNG)
     if (name) mtmp.mname = name;                     // christen (no RNG)
-    // KNOWN WRONG, DELIBERATELY LEFT: monst.h:177 STRAT_WAITFORU is 0x20000000
-    // (0x40000000 is STRAT_ARRIVE), and correcting it DOES fix the stream — it
-    // moves seed0360's first RNG divergence from step 263 to step 290 (medusa),
-    // making tower2 (268-273) byte-exact.
-    // MEASURED 2026-08-14, WITH the mklev.js tower2/tower3 dispatch also landed:
-    // seed0360 gains 4 steps and loses 6 (294, 300, 736, 778, 779, 796), so the
-    // per-step superset gate still rejects it.  The remaining blocker is the
-    // Tier-1 chain past step 290 (Medusa), not the tower dispatch.
-    mtmp.mstrategy = (mtmp.mstrategy || 0) | 0x40000000; /* STRAT_ARRIVE — see above */
+    // C ref: monst.h:177 STRAT_WAITFORU — tower1.lua's waiting=1.  decide_to_
+    // shapeshift() tests !(mstrategy & STRAT_WAITFORU); with STRAT_ARRIVE here
+    // instead, all three vampire ladies drew an rn2(6) C never draws.
+    mtmp.mstrategy = (mtmp.mstrategy || 0) | 0x20000000; /* STRAT_WAITFORU */
     // vampshifted (cham is a vampire and current form differs) -> revert.
     if (mtmp.cham === PM_VAMPIRE_LEADER_IDX
         && mtmp.data && mtmp.data.pmidx !== PM_VAMPIRE_LEADER_IDX) {

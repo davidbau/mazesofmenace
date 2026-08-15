@@ -14,7 +14,7 @@ import { NORMAL_SPEED, A_NEUTRAL, ROOM, is_pit, MAX_CARR_CAP, WT_HUMAN,
     D_CLOSED, D_LOCKED } from './const.js';
 import { Conflict, resist_conflict, m_canseeu } from './monmove.js';
 import { mattackm } from './mhitm.js';
-import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
+import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, MON_MIGRATING } from './const.js';
 import { dochugw, initMonMoveState, m_next2u, hideunder, hides_under_pm, mon_regen,
     m_everyturn_effect, monflee, onscary } from './monmove.js';
 import { cansee, Blind } from './vision.js';
@@ -64,6 +64,14 @@ const MFAST = 2;
 // (pmidx 165) was 1 instead of 6, the elementals (153-157) were rotated, and
 // the giants / golems / demons were all off by one or more.  Looking each
 // MONS_NAMES entry up by NAME in the recorder fixes the alignment.
+//
+// The mail-daemon splice (mons[] gained PM_MAIL_DAEMON at pmidx 314 under
+// MAIL_STRUCTURES) never reached this table, so every species from 314 on read
+// its SUCCESSOR's speed — jellyfish got the djinni's 18 against C's 3, piranha
+// 12 instead of 18, kraken 6 instead of 3.  A wrong speed does not shift the
+// RNG *stream*, but it hands the rn2(NORMAL_SPEED) allotment to the wrong
+// monsters, so a different SET of monsters acts and their m_move draws land in
+// a different order.  Verified index-for-index with swarm/bin/speedaudit.mjs.
 const MMOVE_BY_PMIDX = Object.freeze([
     /*   0 */ 18, 18, 18, 18, 6, 24, 3, 1, 6, 4, 6, 6, 12, 15, 12, 12,
     /*  16 */ 18, 16, 16, 15, 12, 12, 12, 12, 12, 12, 14, 3, 1, 13, 13, 13,
@@ -84,11 +92,11 @@ const MMOVE_BY_PMIDX = Object.freeze([
     /* 256 */ 7, 6, 6, 6, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 16,
     /* 272 */ 12, 12, 0, 12, 15, 10, 10, 6, 10, 10, 10, 10, 12, 12, 15, 3,
     /* 288 */ 10, 12, 12, 9, 12, 12, 12, 12, 6, 15, 6, 9, 6, 12, 5, 3,
-    /* 304 */ 18, 9, 3, 15, 9, 12, 15, 12, 12, 12, 12, 3, 18, 12, 9, 10,
-    /* 320 */ 3, 6, 6, 6, 6, 6, 5, 9, 12, 0, 12, 12, 12, 12, 12, 12,
-    /* 336 */ 12, 12, 12, 12, 12, 12, 12, 15, 15, 15, 15, 15, 15, 15, 15, 15,
-    /* 352 */ 15, 15, 15, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
-    /* 368 */ 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+    /* 304 */ 18, 9, 3, 15, 9, 12, 15, 12, 12, 12, 24, 12, 3, 18, 12, 9,
+    /* 320 */ 10, 3, 6, 6, 6, 6, 6, 5, 9, 12, 0, 12, 12, 12, 12, 12,
+    /* 336 */ 12, 12, 12, 12, 12, 12, 12, 12, 15, 15, 15, 15, 15, 15, 15, 15,
+    /* 352 */ 15, 15, 15, 15, 15, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+    /* 368 */ 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
 ]);
 
 // Starting pets are created by dog.c/dog.js, which tag the pet's permonst
@@ -1195,6 +1203,17 @@ function surface_mon(mon) {
 // C ref: mon.c movemon_singlemon(mtmp) — drive one monster's move, returning
 // true if it still has movement points left after this action.
 async function movemon_singlemon(mtmp) {
+    // C ref: mon.c:1233 — one DEAD monster still gets a move: a vault guard
+    // parked at <0,0> whose temporary corridor is still on the map.  gd_move()
+    // is what tears that corridor down and finally clears isgd.  This test
+    // precedes both the DEADMONSTER() and the off-map returns below.
+    if (mtmp.isgd && !mtmp.mx && !(mtmp.mstate & MON_MIGRATING)) {
+        if ((game.moves || 0) > (mtmp.mlstmv || 0)) {
+            await (await import('./vault.js')).gd_move(mtmp);
+            mtmp.mlstmv = game.moves || 0;
+        }
+        return false;
+    }
     if (DEADMONSTER(mtmp)) return false;
     if (mtmp.mx == null || mtmp.mx <= 0) return false; // off-map
 

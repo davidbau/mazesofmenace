@@ -2108,7 +2108,7 @@ function yname_for(obj) {
     return 'Your ' + xname(obj);
 }
 
-async function destroy_items(mon, dmgtyp, dmg_in) {
+export async function destroy_items(mon, dmgtyp, dmg_in) {
     const objchn = obj_chain(mon);
     let limit = Math.floor(dmg_in / DMG_DESTROY_SCALE);
     if (dmg_in % DMG_DESTROY_SCALE > rn2(DMG_DESTROY_SCALE)) limit++;

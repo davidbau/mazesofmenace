@@ -29,9 +29,9 @@ import { phase_of_the_moon, friday_13th, night, NEW_MOON, FULL_MOON } from './ca
 import { race_attrmax } from './u_init.js';
 import { acurr_eff } from './attrib.js';
 import { depth } from './hacklib.js';
-import { newuexp } from './exper.js';
+import { newuexp, has_innate } from './exper.js';
 import { youHaveSearching } from './allmain.js';
-import { Infravision } from './vision.js';
+import { Infravision, Blind } from './vision.js';
 import { objects as OBJECTS } from './mkobj.js';
 import { MFLAGS2, M2_PNAME } from './monflags_data.js';
 const G_UNIQ = 0x1000; // monflag.h
@@ -49,12 +49,55 @@ function Antimagic() {
         }
     return !!(game.u?.HAntimagic);
 }
+
+// The four owornmask groups from_what()/cause_known() scan.  These are
+// js/invent.js's REMAPPED W_* bits, not prop.h's — see that file's header.
+const W_GIVES_PROP = W_ARMOR_MASK | 0x00020000 /*W_RINGL*/ | 0x00040000 /*W_RINGR*/
+                     | 0x00080000 /*W_AMUL*/ | 0x00100000 /*W_TOOL*/;
+// C ref: attrib.c what_gives(&u.uprops[propidx].extrinsic) — the worn item
+// whose oc_oprop is `propidx`, or null.
+function what_gives(propidx) {
+    for (const o of (game.invent || []))
+        if (((o.owornmask || 0) & W_GIVES_PROP) && OBJECTS[o.otyp]?.oc_oprop === propidx)
+            return o;
+    return null;
+}
+// C ref: prop.h <Prop> == E<Prop> || H<Prop>.  hkey names the u.uprops mirror
+// this port stores the intrinsic under (several modules write game.u[hkey]
+// directly, so both spellings are read).
+function haveProp(propidx, hkey) {
+    if (what_gives(propidx)) return true;
+    if (hkey && ((game.u?.uprops?.[hkey] || 0) || (game.u?.[hkey] || 0))) return true;
+    return !!(hkey && has_innate(hkey));
+}
+const TIMEOUT_MASK = 0x00ffffff; // prop.h TIMEOUT
+// C ref: insight.c cause_known(propindx) — a WORN armour/amulet/ring/tool
+// whose oc_oprop is propindx and whose type the hero has identified.
+function cause_known(propidx) {
+    for (const o of (game.invent || []))
+        if (((o.owornmask || 0) & W_GIVES_PROP) && OBJECTS[o.otyp]?.oc_oprop === propidx
+            && OBJECTS[o.otyp]?.oc_name_known && o.dknown)
+            return true;
+    return false;
+}
+// C ref: attrib.c from_what(propidx) — wizard mode only; picks the most
+// significant source.  is_innate() outranks what_gives(); adjabil() tags a
+// level-1 row FROMOUTSIDE (-> "intrinsically") and a later row FROMEXPER
+// (-> "because of your experience").
+function from_what(propidx, hkey) {
+    if (!_wizard()) return '';
+    if (hkey && has_innate(hkey))
+        return has_innate(hkey, 1) ? ' intrinsically' : ' because of your experience';
+    if (hkey && (game.u?.uprops?.[hkey] || game.u?.[hkey])) return ' intrinsically';
+    const o = what_gives(propidx);
+    return o ? ` because of ${ysimple_name(o)}` : '';
+}
 import { LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
          LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER, LL_MINORAC,
          livelog_printf } from './livelog.js';
 import { nhgetch } from './input.js';
 import { can_pray_quiet } from './pray.js';
-import { inv_weight } from './invent.js';
+import { inv_weight, ysimple_name } from './invent.js';
 const _wizard = () => !!(game.flags && game.flags.debug);
 const _discover = () => { const f = game.flags || {}; return !!(f.explore || f.discover || f.playmode === 'explore'); };
 
@@ -318,6 +361,15 @@ export function enlightenment_lines(final = 0) {
     // C ref: insight.c:1073 — `if (Deaf) you_are("deaf", from_what(DEAF));`,
     // emitted BEFORE the hunger line.
     if (((u.uprops?.HDeaf || 0) > 0) || u.Deaf) youAre('deaf');
+    // C ref: insight.c:1181 — Sleepy (worn/eaten amulet of restful sleep),
+    // emitted immediately before the hunger line.  cause_known() is bypassed
+    // whenever MAGICENLIGHTENMENT is on, which end-of-game disclosure always is.
+    if (haveProp(27 /*SLEEPY*/, 'HSleepy')
+        && (final || _wizard() || _discover() || cause_known(27))) {
+        let sb = from_what(27, 'HSleepy');
+        if (_wizard()) sb += ` (${(u.HSleepy || 0) & TIMEOUT_MASK})`;
+        enlLine('You ', final ? 'fell' : 'fall', ' asleep uncontrollably', sb);
+    }
     // hunger: hu_stat[u.uhs]; NOT_HUNGRY (1) -> "not hungry" at game start.
     // C ref: insight.c:1146 — wizard mode appends the raw u.uhunger.
     {
@@ -362,12 +414,42 @@ export function enlightenment_lines(final = 0) {
         if ((u.ualign?.record ?? 0) >= 0) youAre(pio);
         else youHave(pio);
         if (_wizard()) enlLine('Your alignment ', final ? 'was' : 'is', ` ${u.ualign?.record ?? 0}`, '');
-        if (youHaveSearching()) youHave('automatic searching');
+        // /*** Resistances to troubles ***/  insight.c:1520.  The ORDER of this
+        // block through /*** Transportation ***/ is load-bearing: a line in the
+        // wrong place shifts every later line and the text window's page break.
         // insight.c:1523 — Antimagic is worn gear whose oc_oprop is ANTIMAGIC
         // (gray DSM/scales, cloak of magic resistance) plus the intrinsic.
         // from_what() adds a suffix only in wizard mode.
         if (Antimagic()) youAre('magic-protected', _fromWhatAntimagic());
-        if (Infravision()) youHave('infravision');
+        for (const [propidx, hkey, phrase] of [
+            [1, 'HFire_resistance', 'fire resistant'],
+            [2, 'HCold_resistance', 'cold resistant'],
+            [3, 'HSleep_resistance', 'sleep resistant'],
+            [4, 'HDisint_resistance', 'disintegration resistant'],
+            [5, 'HShock_resistance', 'shock resistant'],
+            [6, 'HPoison_resistance', 'poison resistant'],
+            [7, 'HAcid_resistance', 'acid resistant'],
+            [9, 'HDrain_resistance', 'level-drain resistant'],
+            [10, 'HSick_resistance', 'immune to sickness'],
+            [8, 'HStone_resistance', 'petrification resistant'],
+        ]) if (haveProp(propidx, hkey)) youAre(phrase, from_what(propidx, hkey));
+        // /*** Vision and senses ***/  insight.c:1565
+        if (haveProp(29, 'HSee_invisible')) {
+            // C's third arm (PermaBlind) has no source in this port.
+            if (!Blind()) enlLine('You ', final ? 'saw' : 'see', ' invisible', from_what(29, 'HSee_invisible'));
+            else enlLine('You ', final ? 'would have seen' : 'will see', ' invisible when not blind', '');
+        }
+        if (haveProp(31, 'HWarning')) youAre('warned', from_what(31, 'HWarning'));
+        if (youHaveSearching() || haveProp(34, 'HSearching'))
+            youHave('automatic searching', from_what(34, 'HSearching'));
+        if (Infravision() || haveProp(36, 'HInfravision')) youHave('infravision');
+        // /*** Appearance and behavior ***/  insight.c:1643
+        if (haveProp(42, 'HStealth')) youAre('stealthy', from_what(42, 'HStealth'));
+        if (haveProp(43, 'HAggravate_monster'))
+            enlLine('You aggravate', final ? 'd' : '', ' monsters', from_what(43, 'HAggravate_monster'));
+        // /*** Transportation ***/  insight.c:1677
+        if (haveProp(47, 'HTeleport_control'))
+            youHave('teleport control', from_what(47, 'HTeleport_control'));
         // insight.c:1800 — the worn-armour magic-cancellation level.
         const armpro = magic_negation_hero();
         if (armpro > 0) youAre(MC_TYPES[Math.min(armpro, MC_TYPES.length - 1)]);
@@ -488,15 +570,17 @@ function weaponInsight(youAre, youHave, enlLine) {
         youAre(`wielding ${uwep.quan === 1 || uwep.quan == null ? an(descr) : makeplural(descr)}`);
     }
 
-    // Skill line: weapons carried at start have P_BASIC skill (skill_init).
     const skName = weaponSkillName(uwep);
     if (!skName) return;
 
     if (!game.u?.twoweap) {
-        const lvl = weaponSkillLevel(uwep);
-        // hav=true for basic/expert/etc.; "skill with"; "in" for un/skilled.
-        const hav = lvl !== 'unskilled' && lvl !== 'skilled';
-        youHave(`${lvl} ${hav ? 'skill with' : 'in'} ${skName}`);
+        // C ref: insight.c:1315 — sklvl = P_SKILL(wtype); P_ISRESTRICTED prints
+        // "no" (and still counts as hav, so it reads "have no skill with").
+        const sklvl = p_skill_of(weapon_type(uwep));
+        const hav = (sklvl !== P_UNSKILLED && sklvl !== P_SKILLED);
+        const lvl = (sklvl === P_ISRESTRICTED) ? 'no' : skillLevelNameLc(sklvl);
+        const buf = `${lvl} ${hav ? 'skill with' : 'in'} ${skName}`;
+        if (hav) youHave(buf); else youAre(buf);
         return;
     }
 
@@ -588,10 +672,6 @@ function weaponDescr(obj) {
 }
 function weaponSkillName(obj) {
     return SKILL_NAME_BY_NUM[weapon_type(obj)] || null;
-}
-function weaponSkillLevel(_obj) {
-    // skill_init sets P_BASIC for every weapon-type carried at game start.
-    return 'basic';
 }
 
 function makeplural(s) {

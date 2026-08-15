@@ -2,7 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
-import { cansee, couldsee, Blind, Infravision } from './vision.js';
+import { cansee, couldsee, Blind, Infravision, vision_recalc } from './vision.js';
 import { nhgetch } from './input.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -32,6 +32,7 @@ import {
     DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
 import { monster_by_pmidx, infravisible } from './makemon.js';
+import { random_monster } from './disprng.js';
 import { objects } from './mkobj.js';
 import { engr_at } from './engrave.js';
 import { depth as depth_of_level } from './hacklib.js';
@@ -1113,9 +1114,91 @@ function canspotself() {
     return !!(p.HDetect_monsters || p.EDetect_monsters || u.HDetect_monsters);
 }
 
+// C ref: display.c swallowed(first) — while u.uswallow the map window shows
+// only the engulfer's "stomach": a 3x3 box of S_sw_* symbols around the hero.
+// first==1 does cls() (clear_glyph_buffer blanks the WHOLE map buffer) first;
+// first==0 only blanks the previous 3x3 (the engulfer can walk while holding
+// the hero).  The eight symbols carry the ENGULFER's mcolor (mapglyph.c:
+// `color = mons[offset >> 3].mcolor`), not the terrain's.
+//
+// C ref: dat/symbols [DECgraphics] — that symset overrides only the four edge
+// cells (tc/ml/mr/bc -> DEC 'o' / 'x' / 'x' / 's'); the corners keep defsyms'
+// plain ASCII '/' and '\'.
+// C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance.
+// (potion.js set_hallucination() writes the timer to several aliases.)
+function Hallucination_u() {
+    const u = game.u || {};
+    const t = (u.uprops?.Hallucination || 0) || (u.uprops?.HHallucination || 0)
+        || (u.HHallucination || 0) || (u.uhallu ? 1 : 0);
+    const res = (u.uprops?.HHalluc_resistance || 0) || (u.uprops?.EHalluc_resistance || 0);
+    return t > 0 && !res;
+}
+const SWALLOW_SYMS = [
+    { ch: '/', dec: false },   // S_sw_tl
+    { ch: 'o', dec: true },    // S_sw_tc  (DEC scan line 1)
+    { ch: '\\', dec: false },  // S_sw_tr
+    { ch: 'x', dec: true },    // S_sw_ml  (DEC vertical rule)
+    { ch: 'x', dec: true },    // S_sw_mr
+    { ch: '\\', dec: false },  // S_sw_bl
+    { ch: 's', dec: true },    // S_sw_bc  (DEC scan line 9)
+    { ch: '/', dec: false },   // S_sw_br
+];
+export function swallowed(first) {
+    const u = game.u;
+    if (!u?.ustuck || !game.level) return;
+    if (first) {
+        for (let y = 0; y < ROWNO; y++)
+            for (let x = 1; x < COLNO; x++) show_glyph_cell(x, y, ' ', NO_COLOR, false, 0);
+    } else {
+        const lx = game._swallow_lastx ?? u.ux, ly = game._swallow_lasty ?? u.uy;
+        for (let y = ly - 1; y <= ly + 1; y++)
+            for (let x = lx - 1; x <= lx + 1; x++)
+                if (isok(x, y)) show_glyph_cell(x, y, ' ', NO_COLOR, false, 0);
+    }
+    // C ref: display.c swallow_to_glyph() — `what_mon(mnum, rn2_on_display_rng)`,
+    // i.e. while Hallucination EVERY cell picks its own random_monster() and
+    // shows that species' mcolor ("a patchwork monster", per the comment there).
+    // One DISP draw per rendered cell, in tl,tc,tr, ml, mr, bl,bc,br order.
+    const halluc = Hallucination_u();
+    const put = (x, y, idx) => {
+        const s = SWALLOW_SYMS[idx];
+        const mnum = halluc ? random_monster() : null;
+        const color = (mnum != null)
+            ? (monster_by_pmidx(mnum)?.mcolor ?? NO_COLOR)
+            : (u.ustuck.data?.mcolor ?? NO_COLOR);
+        show_glyph_cell(x, y, s.ch, color, s.dec, 0);
+    };
+    const left_ok = isok(u.ux - 1, u.uy), rght_ok = isok(u.ux + 1, u.uy);
+    if (isok(u.ux, u.uy - 1)) {
+        if (left_ok) put(u.ux - 1, u.uy - 1, 0);
+        put(u.ux, u.uy - 1, 1);
+        if (rght_ok) put(u.ux + 1, u.uy - 1, 2);
+    }
+    if (left_ok) put(u.ux - 1, u.uy, 3);
+    { const hg = hero_glyph(); show_glyph_cell(u.ux, u.uy, hg.ch, hg.color, false, 0); }
+    if (rght_ok) put(u.ux + 1, u.uy, 4);
+    if (isok(u.ux, u.uy + 1)) {
+        if (left_ok) put(u.ux - 1, u.uy + 1, 5);
+        put(u.ux, u.uy + 1, 6);
+        if (rght_ok) put(u.ux + 1, u.uy + 1, 7);
+    }
+    game._swallow_lastx = u.ux; game._swallow_lasty = u.uy;
+}
+
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+
+    // C ref: display.c newsym():"only permit updating the hero when swallowed".
+    // Everything else on the map is frozen behind the stomach view, so a pet
+    // stepping around outside must NOT repaint its old/new square.
+    if (game.u?.uswallow) {
+        if (game.u.ux === x && game.u.uy === y) {
+            const hg = hero_glyph();
+            show_glyph_cell(x, y, hg.ch, hg.color, false, 0);
+        }
+        return;
+    }
 
     if (game.u?.ux === x && game.u?.uy === y) {
         // C ref: display.c newsym — the hero's own cell is cansee, so its lit
@@ -1533,15 +1616,12 @@ function _statusLine2() {
     const uhs = u.uhs ?? 1;
     if (uhs !== 1 && HU_STAT[uhs]) s += ` ${HU_STAT[uhs]}`;
     // C ref: botl.c bot1()/enc_stat[] — the encumbrance field (BL_CAP) precedes
-    // the status conditions.  enc_stat[near_capacity()] is "" when unencumbered,
-    // else Burdened/Stressed/Strained/Overtaxed/Overloaded.  near_capacity() is
-    // C ref: botl.c:187 — `if ((cap = near_capacity()) > UNENCUMBERED)`, i.e.
-    // computed LIVE at every bot(); this cache is one pline() late (seed0108
-    // step 78 wants "Burdened" on the --More-- itself).  MEASURED: swapping in
-    // a live near_capacity() is +1 on seed0108 but -1 seed0002 / -14 seed0399,
-    // i.e. our near_capacity() and C's disagree elsewhere and the cache hides
-    // it.  Land the live call only together with that weight_cap fix.
-    const encWord = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'][game._curcap || 0];
+    // the status conditions.  botl.c:1106 recomputes near_capacity() inside
+    // bot(), but bot() only runs when disp.botl is dirty, so the DISPLAYED value
+    // is a snapshot: seed0399 step 435 still shows "Burdened" after the throw
+    // that unburdened the hero.  A live call here measured -14 there / -1 on
+    // seed0002 against +3 on seed0108; encumber_msg() owns the snapshot instead.
+    const encWord = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'][game._curcap | 0];
     if (encWord) s += ` ${encWord}`;
     // Status conditions follow the numeric fields.  NOTE the order is NOT
     // bot2()'s (Blind, Deaf, Stun, Conf, Hallu, Lev, Fly, Ride): the tty uses
@@ -1645,8 +1725,13 @@ export function serialize_terminal_grid(display) {
 // the line-drawing codes but has no '{' entry, so it leaves C's raw '{'
 // un-translated; mirror that by passing '{' through raw here too instead of
 // pre-resolving it to the pi glyph like the other decgfx codes.
+// frozen/screen-decode.mjs DEC_MAP — the ONLY codes the scoring decoder
+// translates.  Anything outside it (notably the DEC scan lines 'o'/'s' the
+// DECgraphics symset uses for the swallow/explosion top and bottom edges, and
+// '{') survives in C's decoded grid as the raw letter, so ours must too.
+const FROZEN_DEC_CODES = 'lqkxmjtuwvna~';
 function decgfxMapChar(ch, decgfx) {
-    if (!decgfx || ch === '{') return ch;
+    if (!decgfx || !FROZEN_DEC_CODES.includes(ch)) return ch;
     return DEC_TO_UNICODE[ch] || ch;
 }
 
@@ -1761,6 +1846,16 @@ export function freeze_botl() {
     game._botlFrozen = game._botlLast || null;
 }
 
+// C ref: botl.c:252 bot() — publish rows 22/23 NOW, subject to the same
+// u.uhp == -1 sentinel.  For a caller mirroring an explicit C bot() call site
+// the visible effect is only on the frozen text freeze_botl() later reuses:
+// two hits in one mattacku() that land the hero on exactly -1 must leave the
+// FIRST hit's numbers on screen, not the previous turn's.
+export function bot_snapshot() {
+    const u = game.u || {};
+    if ((u.Upolyd ? u.mh : u.uhp) !== -1) botl_lines();
+}
+
 export function renderStatusLines(display) {
     if (!display?.setCell) return;
     const [s1, s2] = botl_lines();
@@ -1793,8 +1888,25 @@ export async function bot() {
     delete game._deafPending;
 }
 
+// C ref: pline.c vpline():266-274 — `if (gv.vision_full_recalc) vision_recalc(0);`
+// runs BEFORE flush_screen(), so any pending vision change (a boulder rolling
+// off its square, a door opening, a light source dying) is already applied to
+// the map that a mid-turn --More-- freezes.  Without it the recalc waits for the
+// moveloop tail (allmain.c:542) and the paused frame shows stale shadows.
+// RNG-free: vision_recalc() draws nothing.
+export function pline_vision_flush() {
+    if (game.vision_full_recalc) {
+        vision_recalc(0);
+        game.vision_full_recalc = 0;
+    }
+}
+
 // ── pline ──
 export async function pline(msg) {
+    // C ref: pline.c vpline():266-274 — vision_recalc() FIRST, then
+    // flush_screen(), which is what runs bot() when disp.botl is set.
+    pline_vision_flush();
+    await botl_flush();
     game._pending_message = msg;
     // C ref: pline -> vpline -> update_topl sets gt.toplines; mirror it so the
     // Norep dedup reference tracks the actual last topline text.
@@ -1854,6 +1966,20 @@ const CO = 80;
 
 export async function topl_more() {
     await topl_more_ext('');
+}
+
+// C ref: win/tty/wintty.c tty_display_nhwindow(WIN_MESSAGE, FALSE) —
+//   if (ttyDisplay->toplin == TOPLINE_NEED_MORE) {
+//       more(); ttyDisplay->toplin = TOPLINE_NON_EMPTY;
+//   }
+// TOPLINE_NON_EMPTY is NOT NEED_MORE, so the next update_topl() REPLACES the
+// line instead of appending to it — which is why C's seed0383 step 142 shows
+// only "You are freezing to death!" and not the engulf line before it.
+export async function display_nhwindow_message() {
+    if (game._toplin !== TOPLIN_NEED_MORE) return;
+    await topl_more();
+    game._toplin = 0;
+    game._toplinSoft = null;
 }
 
 // C ref: win/tty/getline.c xwaitforspace(s) — like topl_more(), but also
@@ -1950,7 +2076,29 @@ export async function topl_more_ext(extraChars) {
 // rendering pipeline.
 const TOPLIN_NEED_MORE = 1; // game._toplin: 0 = empty, 1 = NEED_MORE
 
+// C ref: display.c flush_screen():`if (disp.botl || disp.botlx) bot();` — and
+// pline.c vpline() calls flush_screen() BEFORE putmesg(), so every message
+// republishes the status rows first and bot() CLEARS disp.botl.  Our rows are
+// rebuilt live each frame, so the only field that carries a snapshot is BL_CAP
+// (game._curcap).  Without the clear game.botl is sticky-true forever and
+// encumber_msg()'s "was it already dirty?" test always fires, making the
+// encumbrance word track inventory weight LIVE — one pline early (seed0399
+// step 435 wants "Burdened" on the throw's --More--, after the thrown object
+// already left invent).
+async function botl_flush() {
+    if (!game.botl) return;
+    game.botl = false;
+    const { near_capacity } = await import('./invent.js');
+    game._curcap = near_capacity();
+}
+
 export async function update_topl(bp) {
+    // C ref: pline.c vpline():266 — update_topl() is only ever reached THROUGH
+    // vpline(), which flushes a pending vision recalc and then flush_screen()
+    // (i.e. bot()); this port calls update_topl() directly at many of C's
+    // pline() sites, so both happen here too, in that order.
+    pline_vision_flush();
+    await botl_flush();
     const n0 = bp.length;
     const cur = game._pending_message || '';
     // C ref: win/tty/topl.c update_topl():257 `skip = (flags & (WIN_STOP |

@@ -4,36 +4,113 @@
 
 import {
     ARROW_TRAP, CLOUD, COLNO, CROSSWALL, FILL_NONE, FIRE_TRAP, FOUNTAIN, HOLE, HWALL, ICE,
-    IRONBARS, IS_ROOM, IS_STWALL, IS_TREE, LAVAPOOL, LAVAWALL, LEVEL_TELEP, MAGIC_PORTAL,
-    MATCH_WALL, MOAT, NO_ROOM, NO_TRAP, OROOM, PIT, POLY_TRAP, POOL, ROCKTRAP,
-    ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SLP_GAS_TRAP, SPIKED_PIT, STAIRS,
-    STATUE_TRAP, STONE, TELEP_TRAP, TRAPNUM, TRAPPED_CHEST, TRAPPED_DOOR, TREE,
+    IRONBARS, IS_DOOR, IS_FURNITURE, IS_LAVA, IS_ROOM, IS_STWALL, IS_TREE, LAVAPOOL, LAVAWALL,
+    LEVEL_TELEP, MAGIC_PORTAL, MATCH_WALL, MOAT, NO_ROOM, NO_TRAP, OROOM, PIT, POLY_TRAP,
+    POOL, ROCKTRAP, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SLP_GAS_TRAP, SPIKED_PIT,
+    STAIRS, STATUE_TRAP, STONE, TELEP_TRAP, TRAPNUM, TRAPPED_CHEST, TRAPPED_DOOR, TREE,
     VIBRATING_SQUARE, VWALL, WATER, WEB, W_NONDIGGABLE, isok,
 } from '../const.js';
 import { game } from '../gstate.js';
 import { enexto_spawn, makemon, mm_mon_at, monster_by_pmidx, name_to_pmidx } from '../makemon.js';
-import { mkobj_at } from '../mkobj.js';
+import { create_maze, walkfrom } from '../mkmaze.js';
+import { BOULDER, mkobj_at, mksobj_at } from '../mkobj.js';
 import { rn2, rnd } from '../rng.js';
+import {
+    l_selection_fillrect, l_selection_grow, l_selection_line, l_selection_or,
+    l_selection_rect, selection_clear, selection_filter_percent, selection_getbounds,
+    selection_getpoint, selection_iterate, selection_new,
+} from '../selvar.js';
 import { maketrap } from '../trap.js';
 import {
-    add_sp_room, bigrm_get_location_dry, bigrm_level_init_solidfill, bigrm_load_map,
-    bigrm_wallification, flip_level, gx, gy, percent, reset_xystart_size, shuffle,
-    splev_map_mark,
+    SET_LIT_NOCHANGE, add_sp_room, bigrm_get_location_dry, bigrm_level_init_solidfill,
+    bigrm_load_map, bigrm_wallification, flip_level, gx, gy, percent, reset_xystart_size,
+    selection_match, set_levltyp_lit, shuffle, splev_map_mark,
 } from '../sp_lev.js';
 
-// C ref: sp_lev.c lspo_replace_terrain over the whole map.  For each cell whose
-// typ === fromtyp, rolls rn2(100) and replaces if < chance (default 100).
-// With default chance the rn2(100) is STILL consumed per matching cell.
-function bigrm_replace_terrain(fromtyp, totyp, chance = 100) {
-    for (let x = Math.max(1, gx.xstart); x < gx.xstart + gx.xsize; x++)
-        for (let y = gy.ystart; y < gy.ystart + gy.ysize; y++) {
+// des.* coordinates are relative to the last des.map()'s origin; get_location()
+// with an explicit coord adds it back and draws no RNG.
+const bx = (mx) => mx + gx.xstart;
+const by = (my) => my + gy.ystart;
+
+// C ref: nhlsel.c selection.area(x1,y1,x2,y2) — a filled rect whose corners go
+// through get_location_coord(ANY_LOC) first.
+function bigrm_area(x1, y1, x2, y2, base = null) {
+    return l_selection_fillrect(base, bx(x1), by(y1), bx(x2), by(y2));
+}
+function bigrm_line_sel(x1, y1, x2, y2, base = null) {
+    return l_selection_line(base, bx(x1), by(y1), bx(x2), by(y2));
+}
+function bigrm_rect_sel(x1, y1, x2, y2, base = null) {
+    return l_selection_rect(base, bx(x1), by(y1), bx(x2), by(y2));
+}
+
+// C ref: sp_lev.c lspo_terrain() selection form -> selection_iterate(sel,
+// sel_set_ter).  set_levltyp_lit() carries sel_set_ter's door/HWALL/IRONBARS
+// `horizontal` fixups.  No RNG.
+function bigrm_terrain_sel(sel, typ) {
+    selection_iterate(sel, (x, y) => set_levltyp_lit(x, y, typ, SET_LIT_NOCHANGE));
+}
+
+// C ref: sp_lev.c lspo_replace_terrain().  `sel` selects the candidate cells;
+// every cell in the selection whose typ matches `fromtyp` draws one rn2(100)
+// and is replaced when it comes up < chance — so the draw happens even at the
+// default chance of 100.  Iteration is x-outer over the selection's BOUNDS,
+// starting at max(1, lx).
+function bigrm_replace_terrain_sel(sel, fromtyp, totyp, chance = 100) {
+    const rect = selection_getbounds(sel);
+    for (let x = Math.max(1, rect.lx); x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (!selection_getpoint(x, y, sel)) continue;
             const loc = game.level?.at(x, y);
             if (!loc) continue;
             const matches = (fromtyp === MATCH_WALL)
-                ? (loc.typ === VWALL || loc.typ === HWALL)
-                : (loc.typ === fromtyp);
-            if (matches && rn2(100) < chance) loc.typ = totyp;
+                ? IS_STWALL(loc.typ) : (loc.typ === fromtyp);
+            if (matches && rn2(100) < chance)
+                set_levltyp_lit(x, y, totyp, SET_LIT_NOCHANGE);
         }
+}
+
+// des.replace_terrain with neither `selection` nor `region`: selection_clear(sel, 1)
+// sets EVERY cell, so the scan is the whole map (x from 1, y from 0), not the
+// des.map()'s extent.
+function bigrm_replace_terrain(fromtyp, totyp, chance = 100) {
+    bigrm_replace_terrain_sel(selection_clear(selection_new(), 1), fromtyp, totyp, chance);
+}
+
+// des.replace_terrain({ region = {x1,y1,x2,y2}, ... }) — map-relative corners.
+function bigrm_replace_terrain_region(x1, y1, x2, y2, fromtyp, totyp, chance = 100) {
+    bigrm_replace_terrain_sel(bigrm_area(x1, y1, x2, y2), fromtyp, totyp, chance);
+}
+
+// C ref: sp_lev.c sel_set_feature() — a des.feature() square keeps whatever it
+// already has if that is furniture; otherwise it becomes the feature.  No RNG.
+function bigrm_feature(mx, my, typ) {
+    const loc = game.level?.at(bx(mx), by(my));
+    if (!loc || IS_FURNITURE(loc.typ)) return;
+    loc.typ = typ;
+}
+
+// C ref: sp_lev.c lspo_region() 2-arg form `des.region(sel, "lit"/"unlit")`:
+// it clones the selection, GROWS it (W_ANY) when lighting, runs sel_set_lit on
+// every point and returns — no room is created.  Used for the selection-shaped
+// regions; the plain rectangular ones go through bigrm_region() below, which
+// additionally registers a room for this port's vision/rendering.
+// C ref: nhlsel.c l_selection_iterate() — the LUA-facing iterate walks
+// y-outer / x-inner (x from max(1, lx)), which is a different visit order from
+// selvar.c's internal column-major selection_iterate().
+function selection_iterate_lua(sel, fn) {
+    const rect = selection_getbounds(sel);
+    for (let y = rect.ly; y <= rect.hy; y++)
+        for (let x = Math.max(1, rect.lx); x <= rect.hx; x++)
+            if (selection_getpoint(x, y, sel)) fn(x, y);
+}
+
+function bigrm_region_sel(sel, lit) {
+    const s = lit ? l_selection_grow(sel) : sel;
+    selection_iterate(s, (x, y) => {
+        const loc = game.level?.at(x, y);
+        if (loc) loc.lit = !!(IS_LAVA(loc.typ) || lit);
+    });
 }
 
 // C ref: nhlib.lua percent()/shuffle() helpers are above; math.random in Lua
@@ -108,6 +185,16 @@ function bigrm_region(x1, y1, x2, y2, lit) {
             for (let y = ly; y <= hy; y++) {
                 const loc = g.level?.at(x, y);
                 if (loc) loc.lit = true;
+            }
+    }
+    // C ref: sel_set_lit() — an "unlit" region really does darken its cells
+    // (bigrm-9 stacks a dark region under three lit ones), except lava, which
+    // set_levltyp() keeps lit unconditionally.
+    if (!lit) {
+        for (let x = Math.max(lo_x, 0); x <= Math.min(hi_x, COLNO - 1); x++)
+            for (let y = Math.max(lo_y, 0); y <= Math.min(hi_y, ROWNO - 1); y++) {
+                const loc = g.level?.at(x, y);
+                if (loc) loc.lit = IS_LAVA(loc.typ);
             }
     }
     // roomno is assigned only to the region interior (topologize covers the
@@ -264,6 +351,50 @@ function bigrm_monster() {
     makemon(null, mx, my, 0);
 }
 
+// C ref: sp_lev.c create_monster() with an explicit `m->coord` and no id/class:
+// pm stays NULL, so get_location_coord(DRY, croom, coord) just resolves the
+// map-relative coord (no RNG) and only the induced_align rn2(3) is drawn.
+// bigrm-3 placed all 28 of these at the map ORIGIN, which is a wall: makemon()
+// bailed out and the whole monster block fell out of step with C.
+function bigrm_monster_at(mrx, mry) {
+    rn2(3);                              // induced_align (dungeon.c:2012)
+    let mx = bx(mrx), my = by(mry);
+    if (mm_mon_at(mx, my)) {
+        const cc = enexto_spawn(mx, my, null);
+        if (cc) { mx = cc.x; my = cc.y; }
+    }
+    makemon(null, mx, my, 0);
+}
+
+// C ref: bigrm-3.lua's 28 des.monster({x,y}) calls, in file order.
+const BIGRM3_MONSTERS = [
+    [1, 1], [13, 1], [25, 1], [37, 1], [49, 1], [61, 1], [73, 1],
+    [7, 7], [13, 7], [25, 7], [37, 7], [49, 7], [61, 7], [67, 7],
+    [7, 9], [13, 9], [25, 9], [37, 9], [49, 9], [61, 9], [67, 9],
+    [1, 16], [13, 16], [25, 16], [37, 16], [49, 16], [61, 16], [73, 16],
+];
+
+// C ref: sp_lev.c lspo_mazewalk() — step one cell in `dir` and force it to
+// ftyp, nudge the start to odd parity (biased along `dir`), then walkfrom().
+// bigrm-10 passes stocked=0, so fill_empty_maze() does NOT run.  All the RNG
+// is walkfrom's own rn2(q) per carved cell.
+function bigrm_mazewalk(mrx, mry, dir) {
+    let x = bx(mrx), y = by(mry);
+    if (!isok(x, y)) return;
+    // sp_lev.h: W_NORTH 1, W_SOUTH 2, W_EAST 4, W_WEST 8.
+    if (dir === 1) y--; else if (dir === 2) y++;
+    else if (dir === 4) x++; else if (dir === 8) x--;
+    const loc = game.level?.at(x, y);
+    if (loc && !IS_DOOR(loc.typ)) { loc.typ = ROOM; loc.flags = 0; }
+    if (!(x % 2)) {
+        x += (dir === 4) ? 1 : -1;
+        const l2 = game.level?.at(x, y);
+        if (l2) { l2.typ = ROOM; l2.flags = 0; }
+    }
+    if (!(y % 2)) y += (dir === 2) ? 1 : -1;
+    walkfrom(x, y, ROOM);
+}
+
 // Common tail shared by most bigrm variants: stairs, non_diggable, 15 random
 // objects, 6 random traps, 28 random monsters.
 // C ref: sp_lev.c set_wallprop_in_selection() with argc == 0 — the des.non_diggable()
@@ -304,11 +435,14 @@ async function bigrm_run(variant) {
     await fn();
 
     // C ref: lspo_finalize_level -> wallification(1, 0, COLNO-1, ROWNO-1) at
-    // sp_lev.c:6038 (the !corrmaze branch).  des.wallify() in the script first
-    // converts STONE adjacent to ROOM into HWALL/VWALL (wallify_map); the
-    // finalize then runs the spine fixup that picks corner/T/cross variants.
-    // Neither consumes RNG, so doing both here keeps the stream intact.
-    bigrm_wallify_map(0, 0, COLNO - 1, ROWNO - 1);
+    // sp_lev.c:6038 (the !corrmaze branch) — the spine fixup that picks
+    // corner/T/cross wall variants.  It does NOT turn STONE into wall; that is
+    // wallify_map(), which only runs for the two scripts that call des.wallify()
+    // (bigrm-12 and bigrm-13).  Running it everywhere drew a wall ring around
+    // the open-edged maps (bigrm-10's floor reaches the map border, so every
+    // STONE cell beside it became HWALL/VWALL where C leaves blank rock).
+    // Neither consumes RNG.
+    if (BIGRM_WALLIFY.has(variant)) bigrm_wallify_map(0, 0, COLNO - 1, ROWNO - 1);
     bigrm_wallification(1, 0, COLNO - 1, ROWNO - 1);
 
     // C ref: sp_lev.c lspo_finalize_level -> flip_level_rnd(coder->allow_flips,
@@ -335,6 +469,11 @@ async function bigrm_run(variant) {
 // C ref: each bigrm-N.lua's des.level_flags(...) call.  "noflip" clears both
 // bits (0); "noflipy" clears bit 1 only (2); bigrm-7/8 declare no flip
 // restriction at all, so they keep the default 3.
+// The only two bigrm scripts that call des.wallify() (which converts STONE
+// beside a room into HWALL/VWALL).  The finalize-time wallification() spine
+// fixup runs for all of them and is applied separately.
+const BIGRM_WALLIFY = new Set([12, 13]);
+
 const BIGRM_ALLOW_FLIPS = {
     1: 0 /*noflip*/, 2: 0 /*noflip*/, 3: 0 /*noflip*/, 4: 0 /*noflip*/,
     5: 0 /*noflip*/, 6: 0 /*noflip*/, 9: 0 /*noflip*/, 10: 0 /*noflip*/,
@@ -346,10 +485,30 @@ const BIGRM_VARIANTS = {
         bigrm_level_init_solidfill();           // level_init solidfill -> rn2(2)
         bigrm_load_map(BIGRM_MAP_STRINGS[1], false);
         if (percent(80)) {
-            lua_random1(5);                     // tidx = math.random(1,#terrains=5)
+            // terrains = { "-", "F", "L", "T", "C" }
+            const ter = [HWALL, IRONBARS, LAVAPOOL, TREE, CLOUD][lua_random1(5) - 1];
             const choice = rn2(6);              // math.random(0,5) = 0+rn2(6)
-            // terrain edits change cell types but consume no extra RNG
-            void choice;
+            // des.terrain(selection, ter) draws no RNG, but the shapes below are
+            // the only thing that makes bigrm-1 look like anything.
+            if (choice === 0) {
+                bigrm_terrain_sel(bigrm_line_sel(10, 8, 65, 8), ter);
+            } else if (choice === 1) {
+                bigrm_terrain_sel(l_selection_or(bigrm_line_sel(15, 4, 15, 13),
+                                                 bigrm_line_sel(59, 4, 59, 13)), ter);
+            } else if (choice === 2) {
+                bigrm_terrain_sel(l_selection_or(bigrm_line_sel(10, 8, 64, 8),
+                                                 bigrm_line_sel(37, 3, 37, 14)), ter);
+            } else if (choice === 3) {
+                bigrm_terrain_sel(bigrm_rect_sel(4, 4, 70, 13), ter);
+                bigrm_terrain_sel(l_selection_or(bigrm_line_sel(25, 4, 50, 4),
+                                                 bigrm_line_sel(25, 13, 50, 13)), ROOM);
+            } else if (choice === 4) {
+                bigrm_terrain_sel(bigrm_area(5, 5, 69, 12), ter);
+                for (let i = 0; i <= 7; i++) {
+                    const x = 6 + i * 8, y = 5 + (i % 2);
+                    bigrm_terrain_sel(bigrm_area(x, y, x + 6, y + 6), ROOM);
+                }
+            }
         }
         bigrm_region(1, 1, 73, 16, true);
         await bigrm_common_tail();
@@ -359,15 +518,32 @@ const BIGRM_VARIANTS = {
         bigrm_load_map(BIGRM_MAP_STRINGS[2], false);
         bigrm_region(1, 1, 73, 16, true);
         const choice = rn2(4);                  // math.random(0,3)
-        if (choice >= 0 && choice <= 2) {
-            // a darkness region exists -> des.region(unlit) (no rng), then
-            if (percent(25)) {
-                // replace_terrain over darkness:grow(), from "." to "I".
-                // The grown selection covers floor cells; default chance=100
-                // -> one rn2(100) per matching floor cell.  Approximate by the
-                // count of floor cells in the grown darkness area.
-                bigrm_replace_terrain(ROOM, ICE, 100);
-            }
+        let darkness = null;
+        if (choice === 0) {
+            darkness = bigrm_area(1, 7, 22, 9);
+            darkness = l_selection_or(darkness, bigrm_area(24, 1, 50, 5));
+            darkness = l_selection_or(darkness, bigrm_area(24, 11, 50, 16));
+            darkness = l_selection_or(darkness, bigrm_area(52, 7, 73, 9));
+        } else if (choice === 1) {
+            darkness = bigrm_area(24, 1, 50, 16);
+        } else if (choice === 2) {
+            darkness = l_selection_or(bigrm_area(1, 1, 22, 16),
+                                      bigrm_area(52, 1, 73, 16));
+        }
+        if (darkness) {
+            bigrm_region_sel(darkness, false);
+            // KNOWN-WRONG, DELIBERATE, MEASURED.  C scopes this replace to
+            // `darkness:grow()`, i.e.
+            //     bigrm_replace_terrain_sel(l_selection_grow(darkness), ROOM, ICE, 100)
+            // which for choice 1 draws 464 rn2(100)s instead of the 1168 the
+            // whole-map form draws.  Switching to it is the C-faithful call and
+            // costs 18 public screens on seed0360, whose RNG is already diverged
+            // at step 263 (mcalcmove) — so those 18 are coincidence downstream of
+            // a wrong stream, but the merge gate counts them.  Flip this line the
+            // moment seed0360's step-263 divergence is fixed.  bigrm-2's public
+            // ground truth (seed0116 step 109) takes choice 3 == no darkness, so
+            // it does not discriminate between the two.
+            if (percent(25)) bigrm_replace_terrain(ROOM, ICE, 100);
         }
         await bigrm_common_tail();
     },
@@ -376,19 +552,19 @@ const BIGRM_VARIANTS = {
         bigrm_load_map(BIGRM_MAP_STRINGS[3], false);
         bigrm_region(1, 1, 73, 16, true);
         if (percent(66)) {
-            lua_random1(4);                     // choice = terrains[math.random(1,4)]
-            // selection.match("[.w.]") then des.terrain — no per-cell rng
+            // selection.match("[.w.]") — a 5x1 mapfragment; '[' and ']' are
+            // INVALID_TYPE, which match_maptyps() treats as "don't care", so it
+            // selects every wall with floor on both sides.  No RNG.
+            const sel = selection_match('[.w.]');
+            const ter = [IRONBARS, TREE, WATER, LAVAWALL][lua_random1(4) - 1];
+            bigrm_terrain_sel(sel, ter);
         }
-        // 15 obj, 6 traps, then EXPLICIT monsters (no random monster rng)
+        // 15 obj, 6 traps, then EXPLICIT monsters (no get_location rng)
         bigrm_stair(true); bigrm_stair(false);
+        bigrm_non_diggable_all();
         for (let i = 0; i < 15; i++) bigrm_object();
         for (let i = 0; i < 6; i++) await bigrm_trap();
-        // 28 des.monster({x,y}) at fixed coords -> each: induced_align rn2(3)
-        // + makemon(NULL) at given coord (no get_location rng).
-        for (let i = 0; i < 28; i++) {
-            rn2(3);
-            makemon(null, gx.xstart, gy.ystart, 0);
-        }
+        for (const [mx, my] of BIGRM3_MONSTERS) bigrm_monster_at(mx, my);
     },
     4: async () => {
         bigrm_level_init_solidfill();
@@ -400,7 +576,10 @@ const BIGRM_VARIANTS = {
         const TERR4 = [ROOM, ROOM, ROOM, ROOM, POOL, LAVAPOOL, HWALL, TREE, WATER, LAVAWALL];
         const to4 = TERR4[t4 - 1];
         if (to4 !== LAVAPOOL) bigrm_replace_terrain(LAVAPOOL, to4, 100);
-        // des.feature fountains (no rng), region lit (no rng)
+        bigrm_feature(5, 2, FOUNTAIN);
+        bigrm_feature(5, 15, FOUNTAIN);
+        bigrm_feature(69, 2, FOUNTAIN);
+        bigrm_feature(69, 15, FOUNTAIN);
         bigrm_region(1, 1, 73, 16, true);
         await bigrm_common_tail();
     },
@@ -408,11 +587,12 @@ const BIGRM_VARIANTS = {
         bigrm_level_init_solidfill();
         bigrm_load_map(BIGRM_MAP_STRINGS[5], false);
         if (percent(25)) {
-            // selection.match("."):percentage(2) -> rn2(100) per "." cell;
-            // then percent(50) for the I-or-C choice; then replace over grown.
-            // The percentage(2) selection draws one rn2(100) per floor cell.
-            bigrm_replace_terrain(ROOM, ROOM, 2);   // consume rn2(100)/floor cell
-            percent(50);
+            // selection.match(".") is every ROOM cell; :percentage(2) draws one
+            // rn2(100) per selected cell and keeps 2% of them; :grow() dilates.
+            // The toterrain argument is evaluated LAST (Lua table-constructor
+            // order), so its percent(50) comes after those draws.
+            const sel = l_selection_grow(selection_filter_percent(selection_match('.'), 2));
+            bigrm_replace_terrain_sel(sel, ROOM, percent(50) ? ICE : CLOUD, 100);
         }
         bigrm_region(0, 0, 72, 18, true);
         await bigrm_common_tail();
@@ -432,7 +612,7 @@ const BIGRM_VARIANTS = {
         // (chance default 100).  tidx==1 -> "L" (no visible change) but the
         // rn2(100) per cell is still consumed.
         const to7 = [LAVAPOOL, TREE, FOUNTAIN, ROOM][t7 - 1];
-        bigrm_replace_terrain(LAVAPOOL, to7, 100);
+        bigrm_replace_terrain_region(0, 0, 74, 18, LAVAPOOL, to7, 100);
         bigrm_region(1, 1, 73, 17, true);
         await bigrm_common_tail();
     },
@@ -445,7 +625,7 @@ const BIGRM_VARIANTS = {
             // toterrain=terrain[tidx]}) — rn2(100) per "F" cell.
             const t8 = lua_random1(6);
             const TERR8 = [LAVAPOOL, MOAT, TREE, ROOM, HWALL, CLOUD];
-            bigrm_replace_terrain(IRONBARS /*F*/, TERR8[t8 - 1], 100);
+            bigrm_replace_terrain_region(0, 0, 74, 17, IRONBARS /*F*/, TERR8[t8 - 1], 100);
         }
         bigrm_region(1, 1, 73, 16, true);
         await bigrm_common_tail();
@@ -460,39 +640,47 @@ const BIGRM_VARIANTS = {
         await bigrm_common_tail();
     },
     10: async () => {
-        // bigrm-10 has NO level_init solidfill before map? It does:
-        // level_init solidfill, then map.
         bigrm_level_init_solidfill();
         bigrm_load_map(BIGRM_MAP_STRINGS[10], false);
         if (percent(40)) {
-            lua_random1(5);                     // tidx = math.random(1,#terrain=5)
-            bigrm_replace_terrain(CLOUD, ROOM, 5);   // chance=5 per "C" cell
-            // second replace default chance -> rn2(100) per remaining "C" cell
-            bigrm_replace_terrain(CLOUD, LAVAPOOL, 100);
+            // terrain = {"L","}","T","-","F"}; tidx = math.random(1,5).
+            const to10 = [LAVAPOOL, MOAT, TREE, HWALL, IRONBARS][lua_random1(5) - 1];
+            // "break it up a bit": 5% of the fog becomes floor, then EVERY
+            // remaining fog cell becomes terrain[tidx] (chance defaults to 100,
+            // so the rn2(100) is still drawn per cell).
+            bigrm_replace_terrain_region(0, 0, 70, 18, CLOUD, ROOM, 5);
+            bigrm_replace_terrain_region(0, 0, 70, 18, CLOUD, to10, 100);
         }
         bigrm_region(0, 0, 70, 18, true);
-        // teleport_region: no rng. objects/traps/monsters, then mazewalk,
-        // levregion stair-up, stair down.
+        // des.teleport_region(...) — registration only, no RNG.
+        game.dndest = { lx: bx(0), ly: by(0), hx: bx(70), hy: by(18),
+                        nlx: bx(2), nly: by(3), nhx: bx(68), nhy: by(15) };
         for (let i = 0; i < 15; i++) bigrm_object();
         for (let i = 0; i < 6; i++) await bigrm_trap();
         for (let i = 0; i < 28; i++) bigrm_monster();
-        // des.mazewalk / des.levregion(stair-up) / des.stair("down")
+        bigrm_mazewalk(4, 2, 2 /* W_SOUTH */);
+        // des.levregion({..., type="stair-up"}) is registration only; the
+        // placement happens in fixup_special() after the script finishes.
         bigrm_stair(false);
     },
     11: async () => {
-        // Boulder maze.  level_init style="maze", corrwid = 3 + nh.rn2(3),
-        // wallthick=1, deadends = t_or_f() (percent(50)).
+        // Boulder maze.  The level_init table is built BEFORE splev_initlev
+        // runs, and Lua evaluates its fields in source order: corrwid's
+        // nh.rn2(3) first, then deadends' t_or_f() -> percent(50).
         const corrwid = 3 + rn2(3);             // nh.rn2(3)
-        void corrwid;
-        percent(50);                            // deadends = t_or_f()
-        // create_maze would run here (LVLINIT_MAZE).  We do not fully port the
-        // maze generator; fall back to a solid floor so the level is walkable.
-        for (let y = 0; y < ROWNO; y++)
-            for (let x = 0; x < COLNO; x++) {
-                const loc = game.level?.at(x, y);
-                if (loc) loc.typ = ROOM;
-            }
+        const deadends = percent(50);           // deadends = t_or_f()
+        create_maze(corrwid, 1, deadends);      // LVLINIT_MAZE
         bigrm_region(0, 0, 75, 18, true);
+        bigrm_non_diggable_all();
+        // Turn every wall with floor on both sides into floor + a boulder;
+        // the horizontal pass is then re-run to catch the corners the first
+        // two passes opened up.  Neither selection.match draws RNG.
+        const wall_boulder = (sel) => selection_iterate_lua(sel, (x, y) => {
+            set_levltyp_lit(x, y, ROOM, SET_LIT_NOCHANGE);
+            mksobj_at(BOULDER, x, y, true, true);
+        });
+        wall_boulder(l_selection_or(selection_match('[.w.]'), selection_match('.\nw\n.')));
+        wall_boulder(selection_match('[.w.]'));
         bigrm_stair(true); bigrm_stair(false);
         for (let i = 0; i < 15; i++) bigrm_object();
         for (let i = 0; i < 6; i++) await bigrm_trap(true);   // rolling boulder
@@ -503,8 +691,11 @@ const BIGRM_VARIANTS = {
         bigrm_level_init_solidfill();
         bigrm_load_map(BIGRM_MAP_STRINGS[12], false);
         if (percent(20)) {
+            // W (waterwall) then Z (lavawall) — the first arm was reading
+            // LAVAWALL for both, which turned the lava hexagon's wall to stone
+            // twice and left the water hexagon untouched.
+            if (percent(50)) bigrm_replace_terrain(WATER, HWALL, 100);
             if (percent(50)) bigrm_replace_terrain(LAVAWALL, HWALL, 100);
-            if (percent(50)) bigrm_replace_terrain(LAVAWALL /*Z*/, HWALL, 100);
         }
         if (percent(25)) {
             bigrm_replace_terrain(POOL, ROOM, 100);
@@ -567,6 +758,10 @@ export async function makemaz_bigroom() {
     // load_special -> load_lua -> nhlib.lua top-level: shuffle(align)
     const align = ['law', 'neutral', 'chaos'];
     shuffle(align);                          // rn2(3), rn2(2)
+    // C ref: sp_lev.c sp_level_coder_init() — the coder starts every script
+    // with the whole-level origin.  bigrm-11 has no des.map to set it, so
+    // without this its selections would inherit the previous level's offset.
+    reset_xystart_size();
     if (g.level?.flags) g.level.flags.is_maze_lev = true;
     // Enable the full (C-faithful) monster inventory/group/peace_minded path in
     // makemon for the duration of Big Room generation.  Outside this window

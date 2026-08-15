@@ -52,9 +52,14 @@ import { noattacks, attacktype, AT_ENGL } from './monattk_data.js';
 import { onscary } from './monmove.js';
 import { engr_at, wipe_engr_at, doengrave } from './engrave.js';
 import { depth as depth_of_level } from './hacklib.js';
-import { builds_up } from './dungeon.js';
+import { builds_up, level_difficulty_c } from './dungeon.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { HEADSTONE } from './const.js';
+// C ref: dokick.c — the whole ^D command (kick_dumb/kick_ouch/kick_door/
+// kick_nondoor/dokick).  cmd.js <-> dokick.js is a cycle, but every name
+// crossing it is a hoisted `function` declaration, the same way onscary() above
+// resolves cmd -> monmove -> uhitm -> allmain -> cmd.
+import { dokick } from './dokick.js';
 
 // C ref: hack.c maybe_smudge_engr() — when the hero walks/rushes from (x1,y1)
 // to (x2,y2) and can reach the floor, any non-headstone engraving at the old
@@ -1344,8 +1349,11 @@ export async function wake_nearto(x, y, distance) {
         if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
         const d2 = (mtmp.mx - x) * (mtmp.mx - x) + (mtmp.my - y) * (mtmp.my - y);
         if (distance !== 0 && d2 >= distance) continue;
+        // C's wake_msg() pline() is update_topl(), and monmove.js's copy of
+        // wake_msg already uses it: this line APPENDS to whatever the noise
+        // that woke the monster printed, rather than replacing it.
         if (mtmp.msleeping && canseemon_shared(mtmp))
-            await pline(`${Monnam(mtmp)} wakes up.`);
+            await update_topl(`${Monnam(mtmp)} wakes up.`);
         mtmp.msleeping = 0;
         // C: `if (!(mtmp->data->geno & G_UNIQ)) mtmp->mstrategy &= ~STRAT_WAITMASK;`
         if (mtmp.mstrategy != null) mtmp.mstrategy &= ~0x00ff0000;
@@ -1377,14 +1385,7 @@ export async function wake_nearby(_petcall) {
 // C ref: dungeon.c level_difficulty() — depth, bumped in the "builds up"
 // branches (Sokoban / Vlad's).  Local copy: do.js/fountain.js/mkobj.js each
 // keep their own for the same reason (no shared owner for this helper).
-function level_difficulty_cmd() {
-    const uz = game.u?.uz;
-    if (!uz) return 1;
-    let res = depth_of_level(uz);
-    if (builds_up(uz))
-        res += 2 * (game.dungeons[uz.dnum].entry_lev - uz.dlevel + 1);
-    return res;
-}
+function level_difficulty_cmd() { return level_difficulty_c(); }
 
 // C ref: trap.c b_trapped(item, bodypart) — a booby-trapped door/box explodes in
 // the hero's face.  RNG order matters: rnd(...) for the damage FIRST (its
@@ -1393,7 +1394,7 @@ function level_difficulty_cmd() {
 // so every following move runs confdir()'s rn2(8) redirect.  Leaving all of
 // that out (the old "not modelled here" comment) desynchronises from the very
 // first trapped door a session opens or kicks.
-async function b_trapped(item, hasBodypart) {
+export async function b_trapped(item, hasBodypart) {
     const lvl = level_difficulty_cmd();
     const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
     await pline(`KABOOM!!  The ${item} was booby-trapped!`);
@@ -1414,218 +1415,9 @@ async function b_trapped(item, hasBodypart) {
     }
 }
 
-// C ref: dokick.c martial() == (martial_bonus() || is_bigfoot(youmonst)
-//   || (uarmf && uarmf->otyp == KICKING_BOOTS)), where
-//   martial_bonus() == (Role_if(PM_SAMURAI) || Role_if(PM_MONK)).
-// A martial hero kicks "expertly" — the kick_dumb / kick_door martial checks
-// short-circuit before rolling, so the RNG stream must reflect this for the
-// monk and samurai sessions (the seed0200-monk step-27 divergence: kick_dumb's
-// rn2(3) fired in JS but C skipped it via martial()).  We never poly into a
-// sasquatch, so is_bigfoot() stays false (no RNG either way).
-// mnum is roles[].mnum, the PM_ number Role_if() compares against (role.js).
-const PM_MONK_CMD = 5, PM_SAMURAI_CMD = 9;
-function martial() {
-    const mnum = game.urole?.mnum;
-    if (mnum === PM_MONK_CMD || mnum === PM_SAMURAI_CMD) return true;
-    const uarmf = game.uarmf;
-    if (uarmf && uarmf.otyp === KICKING_BOOTS) return true;
-    return false;
-}
-
-// C ref: dokick.c kick_dumb(x,y) — kicking empty space (or an indestructible
-// feature).  exercise(A_DEX, FALSE) always fires (rn2(2) inside exercise); the
-// "strain a muscle" branch needs not martial, ACURR(A_DEX) < 16, and rn2(3)==0.
-async function kick_dumb(_x, _y) {
-    exercise(A_DEX, false);
-    if (martial() || ACURR(A_DEX) >= 16 || rn2(3)) {
-        await pline('You kick at empty space.');
-    } else {
-        await pline('Dumb move!  You strain a muscle.');
-        exercise(A_STR, false);
-        // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) — wounded-legs bookkeeping.
-        rnd(5);
-    }
-    // C ref: dokick.c — `if ((Is_airlevel || Levitation) && rn2(2)) hurtle(...)`.
-    // The rn2(2) is drawn for every kick a LEVITATING hero makes; hurtle()'s own
-    // flight (walk_path + hurtle_step) is not ported, so only the roll is.
-    if (game.u?.uprops?.Levitation) rn2(2);
-}
-
-// C ref: dokick.c kick_ouch(x,y,kickobjnam) — kicking a solid obstacle hurts.
-// RNG order: exercise(A_DEX) [rn2(2)], exercise(A_STR) [rn2(2)], !rn2(3) ->
-// set_wounded_legs(5+rnd(5)), then dmg = rnd(ACURR(A_CON)>15?3:5), losehp(dmg).
-async function kick_ouch(x, y) {
-    await pline('Ouch!  That hurts!');
-    exercise(A_DEX, false);
-    exercise(A_STR, false);
-    // C ref: dokick.c:898 — the noise wakes anything within 5*5; no RNG here,
-    // but the monsters it wakes go on to take (RNG-drawing) turns.
-    if (isok(x, y)) await wake_nearto(x, y, 5 * 5);
-    if (rn2(3) === 0) rnd(5); // set_wounded_legs(RIGHT_SIDE, 5 + rnd(5))
-    const dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
-    const u = game.u;
-    if (u) u.uhp = Math.max(0, (u.uhp || 0) - dmg);
-    // C ref: dokick.c — `if (Is_airlevel || Levitation) hurtle(-u.dx, -u.dy,
-    // rn1(2, 4), TRUE)`: a levitating kicker is always thrown back, and the
-    // range roll rn1(2,4) == 4 + rn2(2) is drawn before hurtle() runs.  The
-    // flight itself is not ported; the roll is.
-    if (u?.uprops?.Levitation) rn2(2); // rn1(2, 4)
-}
-
-// C ref: dokick.c kick_door(x, y, avrg_attrib) — kick a closed/locked door.
-// Open/broken/no-door squares fall through to kick_dumb.  Otherwise:
-//   exercise(A_DEX, TRUE)            -> rn2(19)
-//   rnl(35) < avrg_attrib + (martial() ? ACURR(A_DEX) : 0)  -> break the door
-// On a break (non-trapped), STR>18 && !rn2(5) shatters, else it crashes open;
-// either way exercise(A_STR, TRUE) -> rn2(19).  A failed kick yields "Whammm!!"
-// or "Thwack!!" (Deaf || !rn2(3)) and exercise(A_STR, TRUE).  A STR<=18 hero
-// short-circuits before that rn2(5), so the draw is strength-dependent.
-// Not ported: C also suppresses the shatter for a SHOP door (`&& !shopdoor`,
-// same RNG either way, different doormask/message) and runs add_damage() +
-// pay_for_damage("break") / watchman_thief_arrest() afterwards.
-async function kick_door(loc, x, y, avrg_attrib) {
-    const dm = loc.doormask;
-    if (dm === D_ISOPEN || dm === D_BROKEN || dm === D_NODOOR) {
-        await kick_dumb(x, y);
-        return;
-    }
-    // C ref: dokick.c — "not enough leverage to kick open doors while
-    // levitating": the kick hits the door and hurts, which is a different RNG
-    // shape entirely (kick_ouch's exercise/rn2(3)/rnd()) from the exercise +
-    // rnl(35) below.
-    if (game.u?.uprops?.Levitation) {
-        await kick_ouch(x, y);
-        return;
-    }
-    exercise(A_DEX, true); // -> rn2(19)
-    // C ref: dokick.c — `rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX))`.
-    // doorbuster (Upolyd giant) is false; a martial hero (monk/samurai) gets a
-    // +ACURR(A_DEX) bonus to the break threshold, so include it faithfully.
-    if (rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX))) {
-        // break the door (not in a shop; no D_TRAPPED on this door).
-        if (dm & D_TRAPPED) {
-            await pline('You kick the door.');
-            exercise(A_STR, false);
-            loc.doormask = D_NODOOR;
-            await b_trapped('door', true); // FOOT != NO_PART
-        } else if (ACURR(A_STR) > 18 && rn2(5) === 0) {
-            await pline('As you kick the door, it shatters to pieces!');
-            exercise(A_STR, true);
-            loc.doormask = D_NODOOR;
-        } else {
-            await pline('As you kick the door, it crashes open!');
-            exercise(A_STR, true); // -> rn2(19)
-            loc.doormask = D_BROKEN;
-        }
-        // C ref: dokick.c:951-952 feel_newsym(x,y); recalc_block_point(x,y) —
-        // the broken/gone door is now transparent, so re-run vision (reveals
-        // whatever lies beyond the doorway).
-        newsym(x, y);
-        recalc_block_point(x, y);
-    } else {
-        exercise(A_STR, true);
-        // C ref: dokick.c:966 pline("%s!!", (Deaf || !rn2(3)) ? "Thwack" :
-        // "Whammm") — Thwack when rn2(3)==0 (or Deaf), else Whammm.
-        await pline(`${(game.u?.Deaf || rn2(3) === 0) ? 'Thwack' : 'Whammm'}!!`);
-    }
-    // C ref: topl.c — pline() leaves the message unacknowledged
-    // (toplin = TOPLINE_NEED_MORE).  A turn-consuming kick is followed by the
-    // monster-move pass, whose first pline must page the kick message with
-    // --More-- when the two won't fit on one top line.
-    game._toplin = 1;
-}
-
-// C ref: dokick.c dokick() — the #kick command.  We faithfully model the
-// no-special-target paths the contest sessions exercise: empty room floor /
-// corridor (-> kick_dumb), solid rock or walls (-> kick_ouch), and a
-// closed/locked door (-> kick_door).  Kicking a monster or an object on the
-// floor is delegated/avoided (those squares aren't kicked in the recorded
-// sessions).  Returns 1 if a game turn elapsed (ECMD_TIME), 0 otherwise.
-async function dokick() {
-    const u = game.u;
-    // no_kick guards (nolimbs/verysmall/steed/wounded/encumbered/...) don't
-    // apply to the starter heroes exercised here.
-    const dir = await getdir();
-    if (!dir) return 0;            // ECMD_CANCEL (ESC)
-    if (!dir.dx && !dir.dy) return 0; // self / '.' -> ECMD_CANCEL
-
-    const x = u.ux + dir.dx, y = u.uy + dir.dy;
-    u.dx = dir.dx; u.dy = dir.dy;
-
-    // C ref: dokick.c:1325 — record the kicked square so a peaceful/tame
-    // monster avoids stepping onto it for this turn's monster-move phase
-    // (m_avoid_kicked_loc).  Cleared by the next hero action (rhack/domove).
-    game.kickedloc = { x, y };
-
-    // C ref: dokick.c:1327 — "KMH -- Kicking boots always succeed": the boots
-    // REPLACE the attribute average with 99 rather than adding to it, so a
-    // booted hero's kick_door() rnl(35) comparison is effectively always true.
-    // Computing the average anyway (as this did) makes a booted kick fail on
-    // rolls C never fails, and every draw after that is offset.
-    const avrg_attrib = (game.uarmf && game.uarmf.otyp === KICKING_BOOTS)
-        ? 99
-        : Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3);
-
-    // C ref: dokick.c:1332 — a swallowed hero kicks the inside of the engulfer:
-    // one rn2(3) and the turn is spent.  Skipping it dropped that draw.
-    if (u.uswallow) {
-        const r = rn2(3);
-        if (r === 0) await pline(`You can't move your leg!`);
-        else if (r === 1 && u.ustuck && digests_cmd(u.ustuck.data))
-            await pline(`${Monnam(u.ustuck)} burps loudly.`);
-        else await pline('Your feeble kick has no effect.');
-        return 1;
-    }
-    // C ref: dokick.c:1348 — Levitation without anything to brace against
-    // aborts the kick with no turn (ECMD_OK) and, crucially, no RNG at all.
-    if (u.uprops?.Levitation) {
-        const xx = u.ux - dir.dx, yy = u.uy - dir.dy;
-        const bt = isok(xx, yy) ? game.level?.at(xx, yy) : null;
-        if (bt && !IS_OBSTRUCTED(bt.typ) && !IS_DOOR(bt.typ)) {
-            await pline('You have nothing to brace yourself against.');
-            return 0;
-        }
-    }
-
-    // C ref: dokick.c:1383-1384 — the noise of the kick wakes everything within
-    // ulevel*20 (squared) and scuffs any engraving under the hero.  Both were
-    // dismissed as "no RNG": wake_nearby() is state that later dochug() turns
-    // read, and u_wipe_engr(2) -> wipe_engr_at() draws rn2(1 + 50/(cnt+1)) for
-    // every engraving type except DUST/blood.
-    await wake_nearby(false);
-    u_wipe_engr_cmd(2);
-
-    if (!isok(x, y)) {
-        await kick_ouch(x, y); // gm.maploc = nowhere
-        return 1;
-    }
-    const loc = game.level?.at(x, y);
-    const typ = loc ? loc.typ : STONE;
-
-    // NOT PORTED: kicking a monster.  C runs maybe_kick_monster() (which is
-    // attack_checks() + overexertion(), i.e. the hidden-monster reveal and the
-    // peaceful-attack confirmation) BEFORE wake_nearby()/u_wipe_engr() above,
-    // then kick_monster() — a full martial-arts/kick attack with its own to-hit
-    // and damage rolls, hurtle recoil and shopkeeper anger.  Reproducing it
-    // needs dokick.c kick_monster() ported alongside uhitm's attack machinery;
-    // until then the kick is dropped, which costs a turn AND every draw C's
-    // attack would have made.
-    if (m_at(x, y)) return 0;
-
-    // Pools/lava and floor objects (kick_object) aren't on the kicked squares
-    // in the recorded sessions.  A door kicks via kick_door().
-    if (typ === DOOR) {
-        await kick_door(loc, x, y, avrg_attrib);
-        return 1;
-    }
-    // Solid rock / walls -> kick_ouch; open floor / corridor -> kick_dumb.
-    if (typ === STONE || IS_WALL(typ) || IS_OBSTRUCTED(typ)) {
-        await kick_ouch(x, y);
-        return 1;
-    }
-    await kick_dumb(x, y);
-    return 1;
-}
+// The ^D kick command now lives in js/dokick.js (a full port of dokick.c:
+// kick_dumb/kick_ouch/kick_door plus kick_nondoor and dokick's pre-direction
+// refusals, which this file only covered in part).
 
 // C ref: teleport.c dotele(break_the_rules=FALSE) — the plain (non-wizard) ^T.
 // Returns 1 when a game turn elapses, 0 otherwise.  A hero with neither the
@@ -2354,6 +2146,26 @@ export async function domove(dx, dy) {
     // uswallow split.
     if (await carrying_too_much()) return;
 
+    // C ref: hack.c:2733 domove_core() — the swallowed arm.  A direction key
+    // inside an engulfer is ALWAYS an attack on the engulfer: the step itself is
+    // cancelled (u.dx = u.dy = 0), the target square is the swallower's own (the
+    // hero's square), and control jumps straight to the bump/attack block —
+    // skipping air_turbulence / slippery ice / impaired_movement /
+    // escape_from_sticky_mon.  Without this a swallowed hero fell into
+    // escape_from_sticky_mon()'s rn2(40) and never hit anything (seed0383 step
+    // 169 wants hitum's rnd(20)).
+    if (u.uswallow && u.ustuck) {
+        u.dx = 0; u.dy = 0;
+        u.ux0 = u.ux; u.uy0 = u.uy;
+        const held = u.ustuck;
+        // C: `if (!is_safemon(mtmp) || context.forcefight) nomul(0);` then
+        // domove_bump_mon() (no-op for a hostile) then domove_attackmon_at().
+        if (!is_safemon(held)) game.multi = 0;
+        await do_attack(held);
+        game.context.move = 1;
+        return;
+    }
+
     // C ref: hack.c air_turbulence() / slippery_ice_fumbling(), the two calls
     // at the top of domove_core's non-swallowed arm.  Both draw RNG that this
     // port used to skip: air_turbulence() rolls rn2(4) then rn2(3) on the air
@@ -2647,8 +2459,14 @@ export async function domove(dx, dy) {
         if (game.flags?.mention_walls) {
             const tgt = game.level?.at(newx, newy);
             const t = tgt ? tgt.typ : STONE;
-            const buf = (t === STONE) ? 'solid stone'
-                      : IS_WALL(t) ? 'a wall'
+            // C ref: display.c back_to_glyph() — SCORR/STONE are S_stone, TREE
+            // is S_tree, and a wall (or the SDOOR hiding in one) reads as the
+            // wall only once seenv is set.  defsym.h gives S_tree the
+            // explanation "tree", so an() makes it "a tree".
+            const buf = (t === STONE || t === SCORR) ? 'solid stone'
+                      : (t === TREE) ? 'a tree'
+                      : (IS_WALL(t) || t === SDOOR)
+                          ? ((tgt?.seenv | 0) ? 'a wall' : 'solid stone')
                       : null;
             if (buf) await pline(`It's ${buf}.`);
         }
@@ -3498,7 +3316,15 @@ async function domove_swap_with_pet(mtmp, x, y) {
     // drops a food ration.").  Our pline() stub doesn't set that state, so route
     // the swap line through update_topl() to keep the concatenation faithful.
     const verb = mtmp.mpeaceful ? 'swap places with' : 'frighten';
-    const who = x_monnam(mtmp, /*ARTICLE_YOUR*/ 3, null, /*SUPPRESS_SADDLE*/ 0, false);
+    // C ref: hack.c:2169 — the article is YOUR only for a pet; an unnamed
+    // non-pname monster takes THE, a named one takes NONE.  A displaced
+    // peaceful non-pet is described with the "peaceful" adjective
+    // ("the peaceful gnome"), and a named one suppresses "saddled ".
+    const _given = mtmp.mgivenname || mtmp.mextra?.mgivenname;
+    const who = x_monnam(mtmp,
+        mtmp.mtame ? /*ARTICLE_YOUR*/ 3 : !_given ? /*ARTICLE_THE*/ 1 : /*ARTICLE_NONE*/ 0,
+        (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null,
+        _given ? /*SUPPRESS_SADDLE*/ 0x08 : 0, false);
     await update_topl(`You ${verb} ${who}.`);
 
     // NOT PORTED: C follows the swap with `minliquid(mtmp) ? Trap_Killed_Mon :

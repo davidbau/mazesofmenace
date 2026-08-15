@@ -64,7 +64,7 @@ import { obj_doname, xname, makeknown, trycall, hands_obj }
     from './invent.js';
 import { observe_object } from './o_init.js';
 import { t_at, maketrap, seetrap, Can_fall_thru } from './trap.js';
-import { rloc, RLOC_MSG, tele_restrict } from './teleport.js';
+import { rloc, RLOC_MSG, tele_restrict, noteleport_level } from './teleport.js';
 import { ICE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
     STAIRS, LADDER, SCORR, CORR, PIT, HOLE, TRAPDOOR, TELEP_TRAP, WEB,
     BEAR_TRAP, FIRE_TRAP, POLY_TRAP, W_NONDIGGABLE, D_LOCKED, D_CLOSED,
@@ -244,6 +244,8 @@ function canseemon(mtmp) {
     if (!mtmp) return false;
     if (game.u?.uswallow) return true;
     if (mtmp.minvis && !game.u?.see_invis) return false;
+    // C ref: display.h _mon_visible() — `(!minvis || See_invisible) && !mundetected`.
+    if (mtmp.mundetected) return false;
     // C ref: display.h _canseemon() — `cansee(mx, my) || see_with_infrared(mon)`.
     // The infravision half is what lets a non-human hero (dwarf/gnome/orc/elf)
     // see a warm-blooded monster on an unlit square that is still in line of
@@ -446,9 +448,11 @@ function helpless(mon) {
 // callers only need "is a shopkeeper standing in its own shop", and every
 // shopkeeper in the corpus is inside its shop when it acts.
 function inhishop(shkp) { return !!shkp.isshk; }
-// C ref: hack.h noteleport_level(mon).  js/teleport.js has the hero-side
-// version; monsters read the same level flag.
-function noteleport_level(_mon) { return !!game.level?.flags?.noteleport; }
+// C ref: hack.h noteleport_level(mon).  This local copy read ONLY the level
+// flag, so it answered FALSE inside Gehennom's demon court, where C's version
+// returns TRUE for anyone who is not a demon lord/prince.  rnd_defensive_item()
+// (muse.c:1235) restarts its whole switch on that answer, so getting it wrong
+// costs an rn2 and picks a different item (seed0360 step 307).
 // C ref: teleport.c random_teleport_level() — see js/do.c's copy for the hero.
 // A monster reading a cursed teleport scroll needs the same depth roll.
 function random_teleport_level() {
@@ -776,7 +780,7 @@ function m_sees_sleepy_soldier(mtmp) {
 }
 
 async function m_tele(mtmp, vismon, oseen, how) {
-    if (tele_restrict(mtmp)) { /* mysterious force... */
+    if (await tele_restrict(mtmp)) { /* mysterious force... */
         if (vismon && how) makeknown(how);
         if (noteleport_level(mtmp)) mon_learns_traps(mtmp, TELEP_TRAP);
     } else if ((mon_has_amulet(mtmp) || On_W_tower_level(game.u?.uz)) && !rn2(3)) {
@@ -1851,7 +1855,7 @@ async function mbhitm(mtmp, otmp, hits_you) {
                is only reachable from hero commands today. */
             break;
         }
-        if (!tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
+        if (!await tele_restrict(mtmp)) await rloc(mtmp, RLOC_MSG);
         break;
     default:
         break;

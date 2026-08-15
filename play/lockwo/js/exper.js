@@ -98,15 +98,14 @@ function urole_adv() {
 }
 // C ref: gu.urace — the selected race's role.c entry.  game.initrace is the
 // races[] index (or its name); races[].mnum is the PM_HUMAN..PM_ORC key.
-function urace_adv() {
-    let mnum;
+export function urace_mnum() {
     if (Number.isInteger(game.initrace))
-        mnum = races[game.initrace]?.mnum ?? game.initrace;
-    else {
-        const nm = String(game.initrace || '').toLowerCase();
-        mnum = races.find((r) => r.name?.toLowerCase() === nm)?.mnum ?? RC_HUMAN;
-    }
-    return RACE_ADVANCE.get(mnum) || RACE_ADVANCE.get(RC_HUMAN);
+        return races[game.initrace]?.mnum ?? game.initrace;
+    const nm = String(game.initrace || '').toLowerCase();
+    return races.find((r) => r.name?.toLowerCase() === nm)?.mnum ?? RC_HUMAN;
+}
+function urace_adv() {
+    return RACE_ADVANCE.get(urace_mnum()) || RACE_ADVANCE.get(RC_HUMAN);
 }
 
 function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
@@ -410,41 +409,77 @@ function setuhpmax(newmax) {
     if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
 }
 
-// ── adjabil intrinsic messages (C: attrib.c adjabil + the *_abil[] tables) ──
-// Only the gain/loss "You feel <X>!" plines (no RNG) affect the recorded
-// screens.  Full {ulevel, gainstr, losestr} tables for every role, transcribed
-// from attrib.c *_abil[].  An empty gainstr/losestr suppresses the message.
-// The recorded sessions are all human (no race intrinsics that overlap a role
-// intrinsic), so the C "already have it from another source" suppression check
-// never applies here.
+// ── innate intrinsics (C: attrib.c adjabil + the *_abil[] tables) ──
+// Rows are {ulevel, gainstr, losestr, prop} transcribed from attrib.c
+// *_abil[]; `prop` is the H<Property> long the row toggles.  An empty
+// gainstr/losestr suppresses the "You feel <X>!" pline.
 const ROLE_ABIL = new Map([
-    [PM_ARCHEOLOGIST, [[1, '', ''], [5, 'stealthy', ''], [10, 'quick', 'slow']]],
-    [PM_BARBARIAN, [[1, '', ''], [7, 'quick', 'slow'], [15, 'stealthy', '']]],
-    [PM_CAVE_DWELLER, [[7, 'quick', 'slow'], [15, 'sensitive', '']]],
-    [PM_HEALER, [[1, '', ''], [15, 'sensitive', '']]],
-    [PM_KNIGHT, [[7, 'quick', 'slow']]],
-    [PM_MONK, [[1, '', ''], [1, '', ''], [1, '', ''], [3, 'healthy', ''],
-               [5, 'stealthy', ''], [7, 'sensitive', ''], [9, 'perceptive', 'unaware'],
-               [11, 'cool', 'warmer'], [13, 'warm', 'cooler'], [15, 'insulated', 'conductive'],
-               [17, 'controlled', 'uncontrolled']]],
-    [PM_CLERIC, [[15, 'sensitive', ''], [20, 'cool', 'warmer']]],
-    [PM_RANGER, [[1, '', ''], [7, 'stealthy', ''], [15, '', '']]],
-    [PM_ROGUE, [[1, '', ''], [10, 'perceptive', '']]],
-    [PM_SAMURAI, [[1, '', ''], [15, 'stealthy', '']]],
-    [PM_TOURIST, [[10, 'perceptive', ''], [20, 'hardy', '']]],
-    [PM_VALKYRIE, [[1, '', ''], [3, 'stealthy', ''], [7, 'quick', 'slow']]],
-    [PM_WIZARD, [[15, 'sensitive', ''], [17, 'controlled', 'uncontrolled']]],
+    [PM_ARCHEOLOGIST, [[1, '', '', 'HSearching'], [5, 'stealthy', '', 'HStealth'],
+                       [10, 'quick', 'slow', 'HFast']]],
+    [PM_BARBARIAN, [[1, '', '', 'HPoison_resistance'], [7, 'quick', 'slow', 'HFast'],
+                    [15, 'stealthy', '', 'HStealth']]],
+    [PM_CAVE_DWELLER, [[7, 'quick', 'slow', 'HFast'], [15, 'sensitive', '', 'HWarning']]],
+    [PM_HEALER, [[1, '', '', 'HPoison_resistance'], [15, 'sensitive', '', 'HWarning']]],
+    [PM_KNIGHT, [[7, 'quick', 'slow', 'HFast']]],
+    [PM_MONK, [[1, '', '', 'HFast'], [1, '', '', 'HSleep_resistance'],
+               [1, '', '', 'HSee_invisible'], [3, 'healthy', '', 'HPoison_resistance'],
+               [5, 'stealthy', '', 'HStealth'], [7, 'sensitive', '', 'HWarning'],
+               [9, 'perceptive', 'unaware', 'HSearching'],
+               [11, 'cool', 'warmer', 'HFire_resistance'],
+               [13, 'warm', 'cooler', 'HCold_resistance'],
+               [15, 'insulated', 'conductive', 'HShock_resistance'],
+               [17, 'controlled', 'uncontrolled', 'HTeleport_control']]],
+    [PM_CLERIC, [[15, 'sensitive', '', 'HWarning'], [20, 'cool', 'warmer', 'HFire_resistance']]],
+    [PM_RANGER, [[1, '', '', 'HSearching'], [7, 'stealthy', '', 'HStealth'],
+                 [15, '', '', 'HSee_invisible']]],
+    [PM_ROGUE, [[1, '', '', 'HStealth'], [10, 'perceptive', '', 'HSearching']]],
+    [PM_SAMURAI, [[1, '', '', 'HFast'], [15, 'stealthy', '', 'HStealth']]],
+    [PM_TOURIST, [[10, 'perceptive', '', 'HSearching'], [20, 'hardy', '', 'HPoison_resistance']]],
+    [PM_VALKYRIE, [[1, '', '', 'HCold_resistance'], [3, 'stealthy', '', 'HStealth'],
+                   [7, 'quick', 'slow', 'HFast']]],
+    [PM_WIZARD, [[15, 'sensitive', '', 'HWarning'],
+                 [17, 'controlled', 'uncontrolled', 'HTeleport_control']]],
 ]);
 
+// C ref: attrib.c dwa_abil[]/elf_abil[]/gno_abil[]/orc_abil[]/hum_abil[].
+// adjabil() only walks elf_abil/orc_abil (its switch maps DWARF and GNOME to
+// NULL); the dwarf/gnome Infravision row is unreachable there, so it is not
+// listed here either — vision.js Infravision() derives that from mflags3.
+const RACE_ABIL = new Map([
+    [RC_ELF, [[1, '', '', 'HInfravision'], [4, 'awake', 'tired', 'HSleep_resistance']]],
+    [RC_ORC, [[1, '', '', 'HInfravision'], [1, '', '', 'HPoison_resistance']]],
+]);
+
+// The innate intrinsics the hero holds right now.  C keeps these as
+// FROMEXPER/FROMRACE bits in u.uprops[]; here they are a pure function of
+// role/race/ulevel, which is equivalent because nothing else sets or clears
+// those two bits.
+export function innate_intrinsics(ulevel = game.u?.ulevel || 0) {
+    const s = new Set();
+    for (const tbl of [ROLE_ABIL.get(game.urole?.mnum), RACE_ABIL.get(urace_mnum())])
+        for (const [ulvl, , , prop] of tbl || [])
+            if (ulevel >= ulvl) s.add(prop);
+    return s;
+}
+export function has_innate(prop, ulevel) { return innate_intrinsics(ulevel).has(prop); }
+
 export async function adjabil(oldlevel, newlevel, emitMsg) {
-    const tbl = ROLE_ABIL.get(game.urole?.mnum);
-    if (!tbl) return;
-    for (const [ulvl, gainstr, losestr] of tbl) {
-        if (oldlevel < ulvl && newlevel >= ulvl) {
-            if (gainstr && emitMsg) await emitMsg(`You feel ${gainstr}!`);
-        } else if (oldlevel >= ulvl && newlevel < ulvl) {
-            if (losestr && emitMsg) await emitMsg(`You feel ${losestr}!`);
-            else if (gainstr && emitMsg) await emitMsg(`You feel less ${gainstr}!`);
+    const role = ROLE_ABIL.get(game.urole?.mnum) || [];
+    const race = RACE_ABIL.get(urace_mnum()) || [];
+    // C: `if (!(*ability & INTRINSIC & ~mask))` — a gain/loss message is
+    // suppressed when the OTHER table (role vs race) also confers the property.
+    const alsoFrom = (other, prop, lvl) =>
+        other.some(([ulvl, , , p]) => p === prop && lvl >= ulvl);
+    for (const [tbl, other] of [[role, race], [race, role]]) {
+        for (const [ulvl, gainstr, losestr, prop] of tbl) {
+            if (oldlevel < ulvl && newlevel >= ulvl) {
+                if (alsoFrom(other, prop, newlevel)) continue;
+                if (gainstr && emitMsg) await emitMsg(`You feel ${gainstr}!`);
+            } else if (oldlevel >= ulvl && newlevel < ulvl) {
+                if (alsoFrom(other, prop, newlevel)) continue;
+                if (losestr && emitMsg) await emitMsg(`You feel ${losestr}!`);
+                else if (gainstr && emitMsg) await emitMsg(`You feel less ${gainstr}!`);
+            }
         }
     }
     // add_weapon_skill/lose_weapon_skill: no RNG, no topline message.

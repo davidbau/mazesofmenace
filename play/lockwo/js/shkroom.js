@@ -14,10 +14,11 @@ import { objects, base_oc_cost } from './mkobj.js';
 import { acurr_eff } from './attrib.js';
 import { makemon, monster_by_pmidx, enexto_spawn } from './makemon.js';
 import { builds_up } from './dungeon.js';
+import { record_price_quote } from './o_init.js';
 import { depth as depth_of_level } from './hacklib.js';
 import {
     ROOMOFFSET, NO_ROOM, SHARED, SHARED_PLUS, SHOPBASE, COLNO, ROWNO,
-    A_CHA, HUNGRY,
+    A_CHA, HUNGRY, TEMPLE,
 } from './const.js';
 
 const PICK_AXE = 259, DWARVISH_MATTOCK = 71;
@@ -486,9 +487,10 @@ async function u_entered_shop(enterstring) {
     }
 }
 
-// C ref: hack.c check_special_room(newlev).  The u.uentered switch (zoo/court/
-// morgue/... entry messages, each with its own rn2(3) wake-up roll per resident
-// monster) is not ported; only the shop arm runs here.
+// C ref: hack.c check_special_room(newlev).  Of the u.uentered switch only the
+// TEMPLE arm is ported; the zoo/court/morgue/... entry messages — and the
+// per-resident `!Stealth && !rn2(3)` wake-up roll that follows COURT/SWAMP/
+// MORGUE/ZOO, plus their rtype->OROOM + level.flags reset — are still missing.
 export async function check_special_room(newlev) {
     const u = game.u;
     if (!u || !game.level) return;
@@ -499,6 +501,14 @@ export async function check_special_room(newlev) {
     if (!u.uentered.length && !u.ushops_entered.length) return;
 
     if (u.ushops_entered.length) await u_entered_shop(u.ushops_entered);
+
+    // C: `intemple(roomno + ROOMOFFSET)` — the offset room number, which is
+    // what u.uentered already holds.
+    for (const c of u.uentered) {
+        if (rtypeOf(c) !== TEMPLE) continue;
+        const { intemple } = await import('./priest.js');
+        await intemple(c);
+    }
 }
 
 
@@ -711,6 +721,9 @@ function add_one_tobill(obj, dummy, shkp) {
     };
     eshk.billct++;
     obj.unpaid = 1;
+    // C ref: shk.c:3362 — the bill price is remembered per object TYPE for the
+    // discoveries list's " {buy N}" suffix.
+    record_price_quote(obj.otyp, eshk.bill[eshk.billct - 1].price, true);
 }
 
 // C ref: shk.c append_honorific(buf) — rn2(SIZE(honored) - 1) picks among the

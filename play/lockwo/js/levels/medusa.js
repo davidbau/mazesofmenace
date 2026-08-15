@@ -572,7 +572,7 @@ export async function makemaz_medusa1() {
     vly_region(35, 9, 41, 10, med_litstate_rnd(0), OROOM, 0, false);
     splev_region_lit(31, 12, 45, 12, 0);
 
-    vly_teleport_region(1, 1, 5, 17, false);       // dir="down" -> svd.dndest
+    vly_teleport_region(1, 1, 5, 17, false, 'down');       // dir="down" -> svd.dndest
     med_updest(26, 4, 50, 15);                     // dir="up"   -> svu.updest
 
     quest_place_stair(5, 14, true);
@@ -624,7 +624,7 @@ export async function makemaz_medusa2() {
     splev_region_lit(71, 8, 72, 11, 0);
     vly_region(67, 8, 69, 11, med_litstate_rnd(1), OROOM, 0, false);
 
-    vly_teleport_region(2, 3, 5, 16, false);       // dir="down"
+    vly_teleport_region(2, 3, 5, 16, false, 'down');       // dir="down"
     med_updest(61, 3, 72, 16);                     // dir="up"
 
     quest_place_stair(4, 9, true);
@@ -694,7 +694,7 @@ export async function makemaz_medusa3() {
     vly_non_diggable(64, 3, 68, 7);
     vly_non_diggable(44, 13, 48, 17);
 
-    vly_teleport_region(33, 2, 38, 7, false);      // dir="down"
+    vly_teleport_region(33, 2, 38, 7, false, 'down');      // dir="down"
     const lregions = [med_lregion(LR_UPSTAIR, 32, 1, 39, 7)];
 
     quest_place_stair(medloc.x, medloc.y, false);
@@ -748,7 +748,7 @@ export async function makemaz_medusa4() {
     splev_region_lit(0, 0, 74, 19, 1);
     vly_region(13, 3, 18, 13, med_litstate_rnd(1), OROOM, 0, true);
 
-    vly_teleport_region(64, 1, 74, 17, false);     // dir="down"
+    vly_teleport_region(64, 1, 74, 17, false, 'down');     // dir="down"
     med_updest(2, 2, 18, 13);                      // dir="up"
 
     const lregions = [med_lregion(LR_UPSTAIR, 67, 1, 74, 20)];

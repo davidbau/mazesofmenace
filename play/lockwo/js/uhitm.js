@@ -295,6 +295,8 @@ function canseemon(mtmp) {
     if (!mtmp) return false;
     if (game.u?.uswallow) return true;
     if (mtmp.minvis && !game.u?.see_invis) return false;
+    // C ref: display.h _mon_visible() — `(!minvis || See_invisible) && !mundetected`.
+    if (mtmp.mundetected) return false;
     return !!cansee(mtmp.mx, mtmp.my);
 }
 
@@ -418,10 +420,13 @@ function that_is_a_mimic_message(mtmp) {
 export async function wakeupAttack(mtmp, viaAttack) {
     const wasSleeping = !!mtmp.msleeping;
     if (wasSleeping && canseemon(mtmp)) {
-        const { pline } = await import('./display.js');
+        // C's pline() is update_topl(): this line APPENDS to the hit message
+        // that precedes it ("You hit it.  The wood nymph wakes up!") instead of
+        // replacing it, which is where the turn's --More-- boundaries fall.
+        const { update_topl } = await import('./display.js');
         // mon.c:4325-4328 wake_msg() — flesh golem alone gets " It's alive!".
         const alive = mtmp.data?.name === 'flesh golem' ? " It's alive!" : '';
-        await pline(`${Monnam(mtmp)} wakes up${viaAttack ? '!' : '.'}${alive}`);
+        await update_topl(`${Monnam(mtmp)} wakes up${viaAttack ? '!' : '.'}${alive}`);
     }
     mtmp.msleeping = 0;
     if (mtmp.m_ap_type) seemimicLocal(mtmp);
@@ -429,9 +434,15 @@ export async function wakeupAttack(mtmp, viaAttack) {
     // priest; hot_pursuit() needs `!*u.ushops`, and u.ushops is set the moment
     // the hero steps onto the shop door, so an in-shop shopkeeper skips it.
     if (viaAttack) {
-        // growl() dropped: verified to cost screens on seed0030 (its topline
-        // lands where C's does not).  C ref sounds.c growl() is RNG-free, so
-        // omitting it cannot desync the stream.
+        // C ref: mon.c:4353 `if (was_sleeping) growl(mtmp);` — growl() itself
+        // draws only under Hallucination, but its wake_nearto(mlevel * 18) tail
+        // wakes nearby sleepers, and each one C woke skips disturb()'s rn2(50)
+        // next turn.  (An earlier attempt dropped growl for costing screens; it
+        // was missing the msound verb table and the helpless() guard.)
+        if (wasSleeping) {
+            const { growl } = await import('./sounds.js');
+            await growl(mtmp);
+        }
         await setmangry(mtmp, true);
     }
 }
@@ -954,14 +965,16 @@ function Role_if_SAMURAI() { return roleMnum() === PM_SAMURAI; }
 async function check_caitiff(mtmp) {
     const u = game.u;
     if ((u.ualign?.record ?? 0) <= -10) return;
-    const { pline } = await import('./display.js');
+    // C's pline() is update_topl(): the caitiff line OPENS the swing's topline
+    // and the hit message appends to it ("You caitiff!  You hit it.").
+    const { update_topl } = await import('./display.js');
     if (Role_if_KNIGHT() && (u.ualign?.type ?? 0) === A_LAWFUL
         && !is_undead(mtmp.data)
         && (helpless(mtmp) || (mtmp.mflee && !mtmp.mavenge))) {
-        await pline('You caitiff!');
+        await update_topl('You caitiff!');
         adjalign(-1);
     } else if (Role_if_SAMURAI() && mtmp.mpeaceful) {
-        await pline('You dishonorably attack the innocent!');
+        await update_topl('You dishonorably attack the innocent!');
         adjalign(-1);
     }
 }
@@ -1631,9 +1644,14 @@ export async function killed(mon, opts) {
         }
 
         // corpse_chance(mon): mon.c:3248 rn2(2 + (G_FREQ<2) + verysmall).
+        // C ref: mon.c:3583 `if (accessible(x, y) || is_pool(x, y))` — a kill
+        // over WATER still leaves a corpse (it floats); only the pool half was
+        // missing, so a monster killed on the Medusa level's water dropped
+        // nothing and skipped make_corpse's mkobj/next_ident draws.
+        const { is_pool } = await import('./dbridge.js');
         const accessible = (() => {
             const t = game.level?.at(x, y)?.typ;
-            return t != null && ACCESSIBLE(t);
+            return (t != null && ACCESSIBLE(t)) || is_pool(x, y);
         })();
         if (dropTreasure) {
             // mkobj(RANDOM_CLASS, TRUE): the item's own rolls (class, type,
@@ -1667,7 +1685,32 @@ export async function killed(mon, opts) {
                 place_object(otmp, x, y);
             }
         }
-        if (corpse_chance(mon) && accessible) {
+        // C ref: mon.c:3199-3236 corpse_chance() — the AT_BOOM arm comes BEFORE
+        // the ordinary rn2: a gas spore rolls its blast damage d(damn,damd),
+        // detonates (mon_explodes -> explode(), another d() plus the per-target
+        // destroy_items/resist draws) and leaves no corpse.  It sits in this
+        // caller rather than corpse_chance() itself because mon_explodes is
+        // async and corpse_chance's other callers are not.
+        let leaves_corpse;
+        {
+            const { mattk_list } = await import('./mhitm.js');
+            const { AT_BOOM } = await import('./monattk_data.js');
+            const boom = mattk_list(mon).find((a) => a[0] === AT_BOOM);
+            if (boom) {
+                // C ref: mon.c:3203 — corpse_chance() rolls the blast damage
+                // into a local `tmp` that only the swallowed-exploder arm uses,
+                // and mon_explodes() then rolls its OWN d(damn,damd).  Two
+                // separate draws off the same dice; dropping either desyncs.
+                if (boom[2]) d(boom[2], boom[3]);
+                else if (boom[3]) d((mon.data?.mlevel | 0) + 1, boom[3]);
+                const { mon_explodes } = await import('./explode.js');
+                await mon_explodes(mon, boom);
+                leaves_corpse = false;
+            } else {
+                leaves_corpse = corpse_chance(mon);
+            }
+        }
+        if (leaves_corpse && accessible) {
             make_corpse(mon, x, y);
         }
     }
@@ -1713,9 +1756,14 @@ export async function killed(mon, opts) {
 // stack at the same cell (NetHack merges same-type drops via stackobj()).
 export function relobj(mon, x, y) {
     const inv = mon?.minvent;
-    if (!inv || !inv.length) return;
+    // C ref: steal.c relobj() tail — `if (show && cansee(omx, omy)) newsym(omx, omy);`
+    // fires even for an EMPTY minvent (m_detach always passes show=1), which is
+    // what erases the dead monster's glyph.  Returning early on an empty
+    // inventory left a killed gas spore (no corpse, no gear) drawn on the map.
+    const repaint = () => { if (x > 0 && y >= 0) newsym(x, y); };
+    if (!inv || !inv.length) { repaint(); return; }
     const objs = (game.level && (game.level.objects || (game.level.objects = []))) || null;
-    if (!objs) return;
+    if (!objs) { repaint(); return; }
     // C ref: steal.c relobj() walks mon->minvent front-to-back but each
     // mdrop_obj() pushes onto the head of the floor pile, so the resulting
     // nexthere order is REVERSED relative to minvent.
@@ -1735,6 +1783,7 @@ export function relobj(mon, x, y) {
         if (!merged) place_object(otmp, x, y);
     }
     mon.minvent = [];
+    repaint();
 }
 
 // C ref: monsters.h LVL() mmove, keyed by pmidx.  mon.js owns the audited copy
@@ -2061,19 +2110,28 @@ export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
     // ARTICLE_YOUR only applies to tame monsters; otherwise downgrade to THE.
     if (article === 3 && !mtmp.mtame) article = 1;
 
-    if (given) {
-        // A personal name stands alone (name_at_start): ARTICLE_YOUR/NONE
-        // both drop the article. C: x_monnam name_at_start handling.
-        return given;
-    }
-
-    // C ref: do_name.c x_monnam — a saddled steed gets the "saddled " adjective
-    // (unless SUPPRESS_SADDLE, Blind, or Hallucinating), placed before the base
-    // name and after the article ("your saddled pony").
+    // C ref: do_name.c x_monnam "Put the adjectives in the buffer" — the
+    // caller-supplied adjective ("peaceful") comes first, then "saddled "
+    // (unless SUPPRESS_SADDLE, Blind, or Hallucinating).  Both sit between the
+    // article and the name ("the peaceful gnome", "your saddled pony").
     let adj = '';
+    if (_adjective) adj += _adjective + ' ';
     if (!(_suppress & SUPPRESS_SADDLE) && (mtmp?.misc_worn_check & W_SADDLE)
         && !Blind() && !game.u?.uhallu)
-        adj = 'saddled ';
+        adj += 'saddled ';
+    const has_adjectives = adj !== '';
+
+    if (given) {
+        // A personal name is name_at_start: C drops the article for
+        // ARTICLE_YOUR or when there are no adjectives, but keeps it otherwise
+        // ("the peaceful Slasher").
+        if (article === 3 || !has_adjectives) article = 0;
+        const gnamed = adj + given;
+        return article === 1 ? 'the ' + gnamed
+             : article === 2 ? an(gnamed)
+             : gnamed;
+    }
+
     const named = adj + base;
 
     switch (article) {

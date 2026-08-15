@@ -84,6 +84,8 @@ export {
 export { makemaz_minend1 } from './levels/minend1.js';
 export { makemaz_minend2 } from './levels/minend2.js';
 export { makemaz_minetown5 } from './levels/minetown5.js';
+export { makemaz_minend3 } from './levels/minend3.js';
+export { makemaz_minetown2, makemaz_minetown3, makemaz_minetown7 } from './levels/minetown_rooms.js';
 export { makemaz_pri_goal } from './levels/pri_goal.js';
 export { makemaz_pri_loca } from './levels/pri_loca.js';
 export { makemaz_pri_strt } from './levels/pri_strt.js';
@@ -94,6 +96,34 @@ export { makemaz_tower1 } from './levels/tower1.js';
 export { makemaz_tower2 } from './levels/tower2.js';
 export { makemaz_tower3 } from './levels/tower3.js';
 export { makemaz_valley } from './levels/valley.js';
+// Gehennom demon-lair levels (gehennom.diff)
+export { makemaz_asmodeus } from './levels/asmodeus.js';
+export { makemaz_baalz, baalz_fixup } from './levels/baalz.js';
+export { makemaz_juiblex } from './levels/juiblex.js';
+export { makemaz_orcus } from './levels/orcus.js';
+// Wizard's tower / fake wizard towers (wizard.diff)
+export { makemaz_fakewiz1 } from './levels/fakewiz1.js';
+export { makemaz_fakewiz2 } from './levels/fakewiz2.js';
+export { makemaz_wizard1 } from './levels/wizard1.js';
+export { makemaz_wizard2 } from './levels/wizard2.js';
+export { makemaz_wizard3 } from './levels/wizard3.js';
+// Elemental planes + Astral (bigroom-misc.diff)
+export { makemaz_air } from './levels/air.js';
+export { makemaz_astral } from './levels/astral.js';
+export { makemaz_earth } from './levels/earth.js';
+export { makemaz_fire } from './levels/fire.js';
+export { makemaz_water } from './levels/water.js';
+// Quest "home" levels for the ten remaining roles (quest-other.diff)
+export { makemaz_cav_strt } from './levels/cav_strt.js';
+export { makemaz_hea_strt } from './levels/hea_strt.js';
+export { makemaz_kni_strt } from './levels/kni_strt.js';
+export { makemaz_mon_strt } from './levels/mon_strt.js';
+export { makemaz_ran_strt } from './levels/ran_strt.js';
+export { makemaz_rog_strt } from './levels/rog_strt.js';
+export { makemaz_sam_strt } from './levels/sam_strt.js';
+export { makemaz_tou_strt } from './levels/tou_strt.js';
+export { makemaz_val_strt } from './levels/val_strt.js';
+export { makemaz_wiz_strt } from './levels/wiz_strt.js';
 
 export const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
 export const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
@@ -2439,18 +2469,32 @@ export function splev_get_location_room(croom, humidity, nowarn = false) {
 // returns (-1,-1) instead of the fallback, which is how create_monster asks
 // "is there a wet/solid spot?" before retrying with DRY added.
 export function splev_get_location_rnd(humidity, nowarn = false) {
+    // C ref: sp_lev.c get_location_coord():1348-1352 — a RANDOM coord reaches
+    // get_location() TWICE: first with NO_LOC_WARN forced on, then (only when
+    // that came back (-1,-1)) again with the caller's own flags.  Each call is
+    // its own 100-draw loop, so collapsing them to one let a water-only species
+    // fall through to its DRY retry 200 draws early (seed0373 step 99, pit viper
+    // on the Plane of Fire).
+    const r = get_location_rnd_once(humidity, true);
+    if (r.x !== -1 || r.y !== -1) return r;
+    return get_location_rnd_once(humidity, nowarn);
+}
+
+function get_location_rnd_once(humidity, nowarn) {
     let x = -1, y = -1, cpt = 0;
     do {
         x = gx.xstart + rn2(gx.xsize);   // sp_lev.c:1233
         y = gy.ystart + rn2(gy.ysize);   // sp_lev.c:1234
         if (is_ok_location(x, y, humidity)) return { x, y };
     } while (++cpt < 100);
-    if (nowarn) return { x: -1, y: -1 };
+    // C ref: sp_lev.c:1242 — the deterministic "last try" scan runs BEFORE the
+    // NO_LOC_WARN (-1,-1) bail, not after it.
     for (let xx = 0; xx < gx.xsize; xx++)
         for (let yy = 0; yy < gy.ysize; yy++) {
             x = gx.xstart + xx; y = gy.ystart + yy;
             if (is_ok_location(x, y, humidity)) return { x, y };
         }
+    if (nowarn) return { x: -1, y: -1 };
     return { x: gx.x_maze_max, y: gy.y_maze_max };
 }
 
@@ -2501,9 +2545,13 @@ export function bigrm_load_map(mapstr, lit) {
     const mf = mapfrag_fromstr(mapstr);
     gx.xsize = mf.wid;
     gy.ysize = mf.hei;
-    // SPLEV_CENTER
-    gx.xstart = 2 + Math.trunc((gx.x_maze_max - 2 - gx.xsize) / 2);
-    gy.ystart = 2 + Math.trunc((gy.y_maze_max - 2 - gy.ysize) / 2);
+    // SPLEV_CENTER.  C ref: decl.c g_init_x — x_maze_max defaults to
+    // (COLNO-1)&~1 == 78, not COLNO-1; the odd value shifts xstart by 2 after
+    // the `if (!(xstart % 2)) xstart++` parity fixup (seed0373 step 88: soko3-1
+    // landed two columns right of C's).  lspo_map already uses the masked pair.
+    const xmm = (COLNO - 1) & ~1, ymm = (ROWNO - 1) & ~1;
+    gx.xstart = 2 + Math.trunc((xmm - 2 - gx.xsize) / 2);
+    gy.ystart = 2 + Math.trunc((ymm - 2 - gy.ysize) / 2);
     if (!(gx.xstart % 2)) gx.xstart++;
     if (!(gy.ystart % 2)) gy.ystart++;
     if (gy.ystart < 0 || gy.ystart + gy.ysize > ROWNO) {
@@ -3182,11 +3230,15 @@ export function vly_region(mx1, my1, mx2, my2, lit, rtype, needfill, irregular,
 // `islev` is the Lua `region_islev` flag: the coordinates are then whole-level
 // absolute rather than relative to the last des.map() origin (sp_lev.c
 // lspo_teleport_region reads region_islev before get_location_coord).
-export function vly_teleport_region(mx1, my1, mx2, my2, islev) {
+export function vly_teleport_region(mx1, my1, mx2, my2, islev, dir = 'both') {
     const a = islev ? { x: mx1, y: my1 } : vly_abs(mx1, my1);
     const b = islev ? { x: mx2, y: my2 } : vly_abs(mx2, my2);
-    game.dndest = { lx: a.x, ly: a.y, hx: b.x, hy: b.y,
-                    nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+    // C ref: sp_lev.c lspo_teleport_region():5452 — dir defaults to "both"
+    // (LR_TELE), which fixup_special() copies into BOTH svu.updest and svd.dndest.
+    const rgn = { lx: a.x, ly: a.y, hx: b.x, hy: b.y,
+                  nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+    if (dir === 'both' || dir === 'up') game.updest = { ...rgn };
+    if (dir === 'both' || dir === 'down') game.dndest = { ...rgn };
 }
 
 // C ref: sp_lev.c create_altar() with croom == NULL — an explicit coordinate

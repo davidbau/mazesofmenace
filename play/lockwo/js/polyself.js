@@ -22,7 +22,7 @@ import { update_topl, newsym } from './display.js';
 const pline = update_topl;
 import { exercise } from './attrib.js';
 import { find_ac, race_attrmax, race_attrmin, race_attrmax_of } from './u_init.js';
-import { encumber_msg, freeinv, xname, makeplural } from './invent.js';
+import { encumber_msg, freeinv, xname, makeplural, near_capacity } from './invent.js';
 import { base_mmove } from './mon.js';
 import { P_NAME, weapon_type } from './enhance.js';
 import { objects as OBJECTS } from './mkobj.js';
@@ -374,6 +374,11 @@ export function set_uasmon() {
     // cosmetic: a poly'd flyer falls into pits it should soar over.
     u.uprops.Flying = (is_flyer_flag(mdat) && !is_floater(mdat)) ? 1 : 0;
     u.uprops.Levitation = is_floater(mdat) ? 1 : 0;
+    // C ref: polyself.c:153 — set_uasmon() ends with disp.botl = TRUE, so the
+    // status is ALREADY dirty by the time polymon's break_armor() -> dropp() ->
+    // encumber_msg() runs, and the FIRST pline after the form change publishes
+    // the new HD/HP *and* the new (much smaller) weight_cap's "Burdened".
+    game.botl = true;
 }
 
 // C ref: polyself.c uasmon_maxStr().
@@ -514,6 +519,14 @@ export async function polymon(mntmp) {
         u.mtimedone = Math.floor(u.mtimedone * (u.ulevel || 1) / mlvl);
     }
 
+    // C ref: polyself.c polymon() — the new form's u.mh/u.mhmax leave disp.botl
+    // dirty, so the NEXT pline()'s flush_screen(1) runs bot(), and bot()
+    // recomputes BL_CAP from a live near_capacity().  That pline is
+    // break_armor()'s "You shrink out of your <cloak>!", which is why seed0108
+    // step 78 shows "Burdened" on its --More-- while AC is still the
+    // pre-find_ac() value.  This port's status row is live except for the
+    // capacity field, which encumber_msg() publishes, so publish it here.
+    game._curcap = near_capacity();
     await break_armor();
     await drop_weapon(1);
     find_ac();

@@ -58,6 +58,8 @@ const P_SKILLED = 3, P_EXPERT = 4;
 
 // C ref: include/onames.h — the lock-picking tools (mkobj.js OBJECTS rows).
 const SKELETON_KEY = 221, LOCK_PICK = 222, CREDIT_CARD = 223;
+// C ref: include/onames.h SACK/OILSKIN_SACK/BAG_OF_HOLDING (mkobj.js rows).
+const SACK_OTYP = 217, OILSKIN_SACK_OTYP = 218, BAG_OF_HOLDING_OTYP = 219;
 
 // ECMD result codes (cmd.h).  doapply() returns one of these; the caller maps
 // ECMD_TIME -> game turn elapsed.
@@ -733,6 +735,16 @@ export async function doapply() {
     // lock: pick_lock() prompts for a direction and unlocks an adjacent door /
     // a container underfoot.  Non-zero result (DID/LEARNED_SOMETHING) -> a turn
     // elapsed (ECMD_TIME); PICKLOCK_DID_NOTHING (0) -> no turn (ECMD_OK).
+    // C ref apply.c:4277 — a carried sack / oilskin sack / bag of holding opens
+    // the "Do what with your bag?" loot menu (use_container(&obj, TRUE, FALSE)).
+    // Falling through to the yafm below handed the menu's keystrokes to the
+    // command parser instead (seed0012 steps 259-264).
+    if (obj.otyp === SACK_OTYP || obj.otyp === OILSKIN_SACK_OTYP
+        || obj.otyp === BAG_OF_HOLDING_OTYP) {
+        const { use_container_held } = await import('./extcmd-handlers.js');
+        return await use_container_held(obj) ? ECMD_TIME : ECMD_OK;
+    }
+
     if (obj.otyp === LOCK_PICK || obj.otyp === SKELETON_KEY || obj.otyp === CREDIT_CARD) {
         const r = await _cmd.pick_lock(obj);
         return r ? ECMD_TIME : ECMD_OK;

@@ -75,7 +75,7 @@ function HProp(...keys) {
 }
 // C ref: youprop.h BlindedTimeout — the timed part of HBlinded.  timeout.js's
 // BLINDED entry and display.js's status line both read u.blinded.
-function BlindedTimeout() { return game.u?.blinded || 0; }
+export function BlindedTimeout() { return game.u?.blinded || 0; }
 function set_blinded(v) { if (game.u) game.u.blinded = v; }
 function HHallucination() { return HProp('Hallucination', 'HHallucination') || (game.u?.uhallu ? 1 : 0); }
 function set_hallucination(v) {
@@ -214,6 +214,10 @@ async function make_sick(xtime, _cause, talk, type) {
 // C ref: potion.c make_blinded(xtime, talk).  No RNG of its own; the observable
 // part is the sight-toggle message plus vision_recalc().  The Blindfolded /
 // eyeless / Eyes-of-the-Overworld variants need state this port never sets.
+// Exported as make_blinded_hero for callers outside potion.c's file family
+// (monmove.js's AD_BLND arm); the name make_blinded is already taken by local
+// copies in eat.js/apply.js.
+export async function make_blinded_hero(xtime, talk) { return await make_blinded(xtime, talk); }
 async function make_blinded(xtime, talk) {
     const old = BlindedTimeout();
     const u_could_see = !Blind();
@@ -241,7 +245,7 @@ async function make_blinded(xtime, talk) {
 // C ref: potion.c make_hallucinated(xtime, talk, mask).  No RNG.  Only the
 // mask==0 (timer) arm is modelled: the mask arm belongs to Grayswandir /
 // hallucination-resistant gear, which nothing in this port equips.
-async function make_hallucinated(xtime, talk, _mask) {
+export async function make_hallucinated(xtime, talk, _mask) {
     const old = HHallucination();
     let changed = false;
     if (Unaware()) talk = false;
@@ -249,10 +253,18 @@ async function make_hallucinated(xtime, talk, _mask) {
         changed = true;
     set_hallucination(xtime);
     void old;
-    if (changed && talk) {
-        await update_topl(!xtime
-            ? `Everything ${!Blind() ? 'looks' : 'feels'} SO boring now.`
-            : `Oh wow!  Everything ${!Blind() ? 'looks' : 'feels'} so cosmic!`);
+    if (changed) {
+        // C ref: potion.c make_hallucinated() — the display refresh runs BEFORE
+        // the pline.  A swallowed hero has no map to re-see, just the stomach
+        // box, whose eight cells each re-pick a random_monster() colour.
+        const { swallowed } = await import('./display.js');
+        if (game.u?.uswallow) swallowed(0);
+        game.botl = true;
+        if (talk) {
+            await update_topl(!xtime
+                ? `Everything ${!Blind() ? 'looks' : 'feels'} SO boring now.`
+                : `Oh wow!  Everything ${!Blind() ? 'looks' : 'feels'} so cosmic!`);
+        }
     }
     return changed;
 }

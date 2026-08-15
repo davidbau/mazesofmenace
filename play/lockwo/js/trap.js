@@ -28,6 +28,7 @@ import {
     Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold, BURNING,
     LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC, VIBRATING_SQUARE,
     ARROW_TRAP, ROCKTRAP, SLP_GAS_TRAP, POLY_TRAP, In_sokoban, In_endgame,
+    VAULT,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER, STATUE as STATUE_OTYP,
@@ -860,11 +861,7 @@ function losehp(n) {
     if (!u) return;
     u.uhp -= n;
     if (u.uhp > u.uhpmax) u.uhpmax = u.uhp;
-    // C's `else disp.botl = TRUE;` is DELIBERATELY not mirrored: setting
-    // game.botl here measured -1 screen on seed0002 (step 221).  This port's
-    // status rows are a snapshot taken when bot() runs, so an extra release
-    // point moves a --More-- frame's HP; the botl release for trap damage
-    // already happens at the caller's own refresh.
+    else game.botl = true;
     if (u.uhp < 1) u.uhp = 0;
 }
 
@@ -1102,7 +1099,7 @@ function set_utrap(tim, typ) {
 // was near capacity becomes Burdened and gets the "slowed slightly" message
 // immediately — this fires BEFORE the bear trap's losehp(), which is why the
 // trap's --More-- frame still shows the pre-damage HP (seed0004 step 27).
-async function set_wounded_legs(side, timex) {
+export async function set_wounded_legs(side, timex) {
     const u = game.u;
     if (!u) return;
     game.botl = true; // C ref: do.c:2433 — disp.botl = TRUE; before encumber_msg()
@@ -1225,8 +1222,11 @@ async function domagictrap() {
         // !Invis for the contest hero -> self_invis_message(): "Gee!  All of
         // a sudden, you can't see yourself."  No RNG, but HInvis and the
         // hero's own glyph both change.
-        await pline('You hear a low hum.');
-        await pline("Gee!  All of a sudden, you can't see yourself.");
+        // C ref: trap.c:5115 You_hear()/self_invis_message() are pline()s, which
+        // page an unacknowledged topline with --More-- first; this port's bare
+        // pline() setter never pages, so route both through update_topl().
+        await update_topl('You hear a low hum.');
+        await update_topl("Gee!  All of a sudden, you can't see yourself.");
         // HInvis = HInvis ? 0 : HInvis|FROMOUTSIDE.  Two fields: uprops.HInvis
         // is the intrinsic table (#wizintrinsic reads it), u.uinvis is what
         // monmove/mcastu Invis() actually test — a monster that cannot see the
@@ -1419,6 +1419,9 @@ async function trapeffect_selector(trap, trflags) {
     case ANTI_MAGIC:
         await trapeffect_anti_magic(trap, trflags);
         break;
+    case TELEP_TRAP:
+        await trapeffect_telep_trap(trap, trflags);
+        break;
     case LEVEL_TELEP:
         await trapeffect_level_telep(trap, trflags);
         break;
@@ -1430,6 +1433,80 @@ async function trapeffect_selector(trap, trflags) {
         seetrap(trap);
         break;
     }
+}
+
+// C ref: trap.c:2070 trapeffect_telep_trap(&youmonst, ...) — the hero branch:
+// seetrap() then tele_trap().
+async function trapeffect_telep_trap(trap, _trflags) {
+    seetrap(trap);
+    await tele_trap(trap);
+}
+
+// C ref: teleport.c:1491 tele_trap(trap).  The trap->once arm is the vault
+// teleporter makevtele() plants (mklev.c makeniche sets ttmp->once on it): a
+// one-shot that deletes itself and drops the hero INSIDE the vault, which is
+// the only way a normal game reaches a vault at all.
+let in_tele_trap = false;
+async function tele_trap(trap) {
+    if (in_tele_trap) return;
+    in_tele_trap = true;
+    const u = game.u;
+    // C: noteleport_level(&gy.youmonst) — the hero is neither covetous nor a
+    // demon lord, so it reduces to the level flag.
+    if (In_endgame(u?.uz) || u?.uprops?.Antimagic || game.level?.flags?.noteleport) {
+        await update_topl('You feel a wrenching sensation.');
+    } else if (trap.once) {
+        deltrap(trap);
+        newsym(u.ux, u.uy); /* get rid of trap symbol */
+        await vault_tele();
+    } else if (trap.teledest && isok(trap.teledest.x, trap.teledest.y)) {
+        const { teleds_hero } = await import('./read.js');
+        const { settrack } = await import('./track.js');
+        let mtmp = m_at(trap.teledest.x, trap.teledest.y);
+        settrack();
+        if (mtmp) {
+            const { enexto_spawn } = await import('./makemon.js');
+            const cc = enexto_spawn(mtmp.mx, mtmp.my, mtmp.data);
+            if (!cc) {
+                await update_topl('You shudder for a moment.');
+            } else {
+                const { rloc_to } = await import('./teleport.js');
+                await rloc_to(mtmp, cc.x, cc.y);
+                mtmp = null;
+            }
+        }
+        if (!mtmp) await teleds_hero(trap.teledest.x, trap.teledest.y);
+    } else {
+        const { scrolltele } = await import('./read.js');
+        await scrolltele(null); /* teleport.c tele() */
+    }
+    in_tele_trap = false;
+}
+
+// C ref: teleport.c:772 vault_tele() — search_special(VAULT) then a
+// somexyspace() spot inside it.  The two rn2(2)s this draws (a vault is 2x2)
+// are seed0012's step 237.
+async function vault_tele() {
+    const { teleok_hero, teleds_hero } = await import('./read.js');
+    const { somexyspace } = await import('./mkroom.js');
+    const croom = search_special(VAULT);
+    const c = { x: 0, y: 0 };
+    if (croom && somexyspace(croom, c) && teleok_hero(c.x, c.y, false)) {
+        await teleds_hero(c.x, c.y); /* TELEDS_TELEPORT */
+        return;
+    }
+    const { scrolltele } = await import('./read.js');
+    await scrolltele(null);
+}
+
+// C ref: mkroom.c:765 search_special(type) — first room (then subroom) whose
+// rtype matches.  ANY_TYPE/ANY_SHOP are not needed by the callers here.
+function search_special(type) {
+    for (const croom of (game.level?.rooms || []))
+        if (croom.rtype === type) return croom;
+    for (const croom of (game.level?.subrooms || []))
+        if (croom.rtype === type) return croom;
+    return null;
 }
 
 // C ref: trap.c:2087 trapeffect_level_telep(&youmonst, ...) — the hero branch:

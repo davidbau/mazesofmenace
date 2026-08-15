@@ -238,15 +238,14 @@ export function preflight_describe_decor_at(x, y, state = game) {
 }
 
 // Temporary startup admission for the portion of pickup(1) selected by this
-// boundary. It runs before reset_justpicked(), so an excluded object,
-// engraving, or terrain leaves inventory and decor memory unchanged.
+// boundary. It runs before reset_justpicked(), so an excluded object or
+// terrain leaves inventory and decor memory unchanged. An engraving under the
+// hero needs none: pickup.c:702-709's no-object arm ends in read_engr_at(),
+// and pickup() below ports that arm whole.
 export function preflight_initial_pickup(state = game) {
     const { u } = state;
     if (state.level?.objects?.[u.ux]?.[u.uy]) {
         throw new UnsupportedPickupError('initial floor object');
-    }
-    if (engr_at(u.ux, u.uy, state)) {
-        throw new UnsupportedPickupError('initial engraving');
     }
     if (state.flags?.mention_decor) startupStairDecor(state);
 }
@@ -408,20 +407,13 @@ function preflightPickupObjects(selected, state) {
             'pickup() requiring a partial or failed lift',
         );
     }
-    // pickup.c:1757-1758 is `if (prev_encumbr < flags.pickup_burden)`.
-    // parseNethackrc() has no arm for pickup_burden and keeps an unported
-    // option's raw text in flags[<option name>], which for this option is the
-    // same field its parsed value would occupy. Raw text would make
-    // Math.max() NaN, every `>` against it false, and this refusal disappear,
-    // so the port would lift where C stops at ynq(). Refuse instead, until
-    // js/options.js gains the parse arm.
-    const pickupBurden = state.flags?.pickup_burden ?? MOD_ENCUMBER;
-    if (!Number.isInteger(pickupBurden)) {
-        throw new UnsupportedPickupError(
-            'pickup() with an unparsed pickup_burden',
-        );
-    }
-    const promptLimit = Math.max(near_capacity(state), pickupBurden);
+    // pickup.c:1757-1758 is `if (prev_encumbr < flags.pickup_burden)`, the
+    // max() below. options.c optfn_pickup_burden() writes that field and
+    // initoptions_init() starts it at MOD_ENCUMBER, both ported in
+    // js/options.js, so it always holds one of hack.h's encumbrance levels.
+    const promptLimit = Math.max(
+        near_capacity(state), state.flags.pickup_burden,
+    );
     if (calc_capacity(addedWeight, state) > promptLimit) {
         throw new UnsupportedPickupError('pickup() requiring a burden prompt');
     }

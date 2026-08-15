@@ -29,7 +29,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     NATTK, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
-    M_ATTK_AGR_DONE, W_SADDLE, STRAT_WAITMASK, is_pit,
+    M_ATTK_AGR_DONE, W_SADDLE, STRAT_WAITMASK,
 } from './const.js';
 import { DEADMONSTER, mvitals_died, healmon } from './mon.js';
 import { newsym, map_invisible, unmap_object, m_at, canseemon_shared } from './display.js';
@@ -45,8 +45,10 @@ import { WEP_HITBON } from './weapondmg_data.js';
 import { xname } from './invent.js';
 import { MATTK } from './monattk_data.js';
 import { name_to_pmidx, monster_by_pmidx, is_home_elemental } from './makemon.js';
-import { t_at } from './mkroom.js';
 import { mhitm_adtyping } from './mhitm_ad.js';
+// mhitu.c owns these four (mhitm.c:383/426/85/659 call them across the file
+// boundary); js/mhitu.js is the single faithful copy.
+import { getmattk, could_seduce, mtrapped_in_pit } from './mhitu.js';
 
 // C ref: mhitm.c:358 gv.vis — latched ONCE per mattackm() call, before the
 // attack loop.  Several mhitm_ad_* handlers rloc() a combatant and then still
@@ -234,10 +236,6 @@ const mm_resists_cold = (mon) => mm_resists(mon, MR_COLD);
 const mm_resists_elec = (mon) => mm_resists(mon, MR_ELEC);
 const mm_resists_acid = (mon) => mm_resists(mon, MR_ACID);
 
-// C ref: include/monsym.h S_NYMPH — could_seduce()'s "same gender still works"
-// exception and mhitm_ad_sedu()'s post-theft rloc() both key off this mlet.
-const S_NYMPH_MCLS = 14;
-
 // C ref: mon->data — the permonst record.  dog.js builds the starting pet with
 // a MINIMAL data object whose pmidx is the C PM_* value, which is NOT this
 // port's MONS-table index (kitten: C 34 == our jaguar; pony: C 102 == our gray
@@ -247,7 +245,7 @@ const S_NYMPH_MCLS = 14;
 // NAME, which both representations carry, and use the canonical MONS record
 // everywhere mattackm needs species data.
 const _permonst_cache = new Map();
-function permonst(mon) {
+export function permonst(mon) {
     const dat = mon?.data;
     if (!dat) return null;
     const nm = dat.name;
@@ -264,37 +262,15 @@ function permonst(mon) {
 // C ref: mons[].mattk[] — the attack list, trailing NO_ATTK slots dropped by
 // the generator (they can never match a getmattk()/attacktype() query, and
 // passivemm's "first AT_NONE slot" walk treats a missing slot as NO_ATTK).
-function mattk_list(mon) {
+export function mattk_list(mon) {
     const ptr = permonst(mon);
     const tbl = (ptr && ptr.pmidx != null) ? MATTK[ptr.pmidx] : null;
     return tbl || [];
 }
 
-// C ref: mondata.c gender(mtmp) — 2 for neuters, else mtmp->female.
-function gender_mm(mtmp) {
-    return is_neuter_flag(permonst(mtmp)) ? 2 : (mtmp?.female ? 1 : 0);
-}
-
-// C ref: mhitu.c could_seduce(magr, mdef, mattk) — the monster-vs-monster arm
-// (neither side is the hero).  1 = opposite gender ("seductively"), 2 = a nymph
-// whose gender matches ("engagingly"), 0 = not a seduction-capable attack.
-// SYSOPT_SEDUCE is on in this build (sys.c:100), so AD_SSEX is not downgraded.
-function could_seduce(magr, mdef, mattk) {
-    const pagr = permonst(magr);
-    if (is_animal(pagr)) return 0;
-    const genagr = gender_mm(magr);
-    const gendef = gender_mm(mdef);
-    const adtyp = mattk ? mattk.adtyp
-        : (pagr && attacktype_ad(magr, AD_SSEX)) ? AD_SSEX
-            : (pagr && attacktype_ad(magr, AD_SEDU)) ? AD_SEDU : AD_PHYS;
-    if (magr.minvis && !perceives_flag(permonst(mdef)) && adtyp === AD_SEDU) return 0;
-    // C: `pagr->mlet != S_NYMPH && pagr != &mons[PM_AMOROUS_DEMON]` — the
-    // amorous demon's name is unique in monsters.h so the name compare is exact.
-    if ((pagr?.mcls !== S_NYMPH_MCLS && pagr?.name !== 'amorous demon')
-        || (adtyp !== AD_SEDU && adtyp !== AD_SSEX && adtyp !== AD_SITM))
-        return 0;
-    return (genagr === 1 - gendef) ? 1 : (pagr?.mcls === S_NYMPH_MCLS) ? 2 : 0;
-}
+// could_seduce() now lives in js/mhitu.js (its C home, mhitu.c:1934) — the copy
+// that used to be here only had the monster-vs-monster arm, so the hero
+// direction (mhitu.c's own callers) could never be served from it.
 
 // C ref: mondata.h dmgtype(ptr, dtyp) — any attack slot with that damage type.
 function attacktype_ad(mon, adtyp) {
@@ -384,54 +360,10 @@ function find_mac(mdef) {
     return base;
 }
 
-// C ref: mhitu.c getmattk(magr, mdef, indx, prev_result, alt_attk_buf) — attack
-// `indx`, possibly substituted.  SYSOPT_SEDUCE is on in this build so the
-// AD_SSEX downgrade never fires, and AD_DREN only rescales against the hero.
-// Ported: the consecutive-disease -> AD_STUN swap, the mspec_used
-// can't-re-grab swap (which CHANGES damn/damd, so it changes the d() roll in
-// mdamagem), and the AT_WEAP non-physical -> AD_PHYS force for a cancelled
-// attacker.  None of them draw RNG.
-function getmattk(magr, mdef, i, prev_result) {
-    const list = mattk_list(magr);
-    const raw = list[i];
-    if (!raw) return { aatyp: AT_NONE, adtyp: AD_PHYS, damn: 0, damd: 0 };
-    const attk = { aatyp: raw[0], adtyp: raw[1], damn: raw[2], damd: raw[3] };
-    const prev = (i > 0 && list[i - 1]) ? list[i - 1][1] : -1;
-
-    if (i > 0 && prev_result[i - 1] > M_ATTK_MISS
-        && (attk.adtyp === AD_DISE || attk.adtyp === AD_PEST
-            || attk.adtyp === AD_FAMN)
-        && attk.adtyp === prev) {
-        attk.adtyp = AD_STUN;
-    } else if (magr.mspec_used
-               && (attk.aatyp === AT_ENGL || attk.aatyp === AT_HUGS
-                   || attk.adtyp === AD_STCK || attk.adtyp === AD_POLY)) {
-        const wimpy = (attk.damd === 0);  /* lichen, violet fungus */
-        if (attk.adtyp === AD_ACID || attk.adtyp === AD_ELEC
-            || attk.adtyp === AD_COLD || attk.adtyp === AD_FIRE) {
-            attk.aatyp = AT_TUCH;
-        } else {
-            attk.aatyp = AT_CLAW;
-            attk.adtyp = AD_PHYS;
-        }
-        attk.damn = 1;
-        attk.damd = 6;
-        if (wimpy && attk.aatyp === AT_CLAW) {
-            attk.aatyp = AT_TUCH;
-            attk.damn = attk.damd = 0;
-        }
-    } else if (i === 0 && attk.aatyp === AT_WEAP && attk.adtyp !== AD_PHYS
-               && !(list[1] && list[1][0] === AT_WEAP && list[1][1] === AD_PHYS)
-               && magr.mcan) {
-        // (the artifact-weapon arm of this test needs Stormbringer / Vorpal
-        // Blade / a petrifying corpse wielded by a monster — none exist here)
-        attk.adtyp = AD_PHYS;
-    } else if (i === 0 && attk.aatyp === AT_TUCH && attk.adtyp === AD_COLD
-               && mm_resists_cold(mdef) && permonst(mdef)?.name !== 'shade') {
-        attk.adtyp = AD_PHYS;
-    }
-    return attk;
-}
+// getmattk() now lives in js/mhitu.js (its C home, mhitu.c:310).  The copy that
+// used to be here dropped the is_home_elemental() tail — an elemental on its own
+// Elemental Plane doubles damn, which is a DIFFERENT number of d() rolls in
+// mdamagem — and the AD_DREN hero rescale.
 
 // C ref: hack.h distmin(x0,y0,x1,y1) — Chebyshev (king-move) distance.
 function distmin(x0, y0, x1, y1) {
@@ -611,7 +543,7 @@ function poly_when_stoned_mm(ptr) {
 }
 // C ref: mhitm.c:1475 attk_protection(aatyp) — the worn slot that blocks
 // contact petrification for that attack form; ~0L ("always safe") is -1 here.
-function attk_protection_mm(aatyp) {
+export function attk_protection_mm(aatyp) {
     switch (aatyp) {
     case AT_NONE: case AT_SPIT: case AT_EXPL: case AT_BOOM:
     case AT_GAZE: case AT_BREA: case AT_MAGC:
@@ -1008,14 +940,8 @@ function helpless_mm(mtmp) {
     return !!(mtmp && (mtmp.msleeping || !mtmp.mcanmove));
 }
 
-// C ref: mhitu.c:467 mtrapped_in_pit(mtmp) — an AT_KICK attack is skipped
-// entirely (C `continue`s, so no to-hit roll and no passive) while the kicker
-// is stuck in a pit.
-function mtrapped_in_pit(mtmp) {
-    if (!mtmp?.mtrapped) return false;
-    const t = t_at(mtmp.mx, mtmp.my);
-    return !!t && is_pit(t.ttyp);
-}
+// mtrapped_in_pit() now lives in js/mhitu.js (its C home, mhitu.c:467); the
+// copy that used to be here had no hero arm (u.utrap / u.utraptype).
 
 // C ref: do_name.c a_monnam(mtmp) — "a <species>" (the given name alone when
 // the monster has one).
