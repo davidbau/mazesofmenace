@@ -12,7 +12,7 @@ import {
 } from './display.js';
 import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname } from './objnam.js';
 import { yn_function } from './getline.js';
-import { mergable, is_damageable } from './mkobj.js';
+import { mergable, is_damageable, stop_timer } from './mkobj.js';
 import { cansee } from './vision.js';
 import {
     WEAPON_CLASS,
@@ -43,6 +43,7 @@ import {
     OBJ_INVENT,
     OBJ_CONTAINED,
     OBJ_FLOOR,
+    FIG_TRANSFORM,
     Has_contents,
     Is_container,
     Is_box,
@@ -693,6 +694,7 @@ export function learn_unseen_invent() {
 const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 const EGG = objectNames.indexOf('EGG');
 const STATUE = objectNames.indexOf('STATUE');
+const FIGURINE = objectNames.indexOf('FIGURINE');
 
 /** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
 function is_weptool_obj(obj) {
@@ -3155,6 +3157,18 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     // encumber_msg pline flushes prior prinv --More-- (xwaitforspace).
     await encumber_msg();
     return held;
+}
+
+/**
+ * C ref: invent.c freeinv_core — figurine stop FIG_TRANSFORM. Named omit:
+ * amulet/candelabrum/bell/book/artifact uhaves; loadstone curse;
+ * confers_luck set_moreluck; tin context.
+ */
+export function freeinv_core(obj) {
+    if (!obj) return;
+    if ((obj.otyp | 0) === FIGURINE && (obj.timed | 0)) {
+        stop_timer(FIG_TRANSFORM, obj);
+    }
 }
 
 const GOLD_SYM_ADJ = '$';

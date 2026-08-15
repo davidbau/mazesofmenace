@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
-    place_object,
+    place_object, hornoplenty,
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
@@ -28,6 +28,7 @@ import {
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     AUTOUNLOCK_APPLY_KEY,
+    nothing_seems_to_happen,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
 import { nhgetch } from './input.js';
@@ -59,6 +60,9 @@ function simpleonames(obj) {
     }
     return cxname(obj);
 }
+
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
 
 /** C ref: objnam.c thesimpleoname — "the" + simpleonames. */
 function thesimpleoname(obj) {
@@ -1653,7 +1657,8 @@ async function able_to_loot(x, y, looting) {
  * C ref: pickup.c tipcontainer — empty box onto floor (no target bag).
  * Named omissions: tipcontainer_gettarget menu; bag-of-holding explode;
  * ice-box thaw; shop billing; altar/highdrop; cursed mbag item-gone;
- * horn/bag-of-tricks tipcontainer_checks arms.
+ * otrapped chest_trap; invent getobj tip; check_unpaid_usage;
+ * subfrombill after floor shop BoT/horn.
  * @param {object} box
  */
 async function tipcontainer(box) {
@@ -1665,6 +1670,47 @@ async function tipcontainer(box) {
     if (box.olocked) {
         await pline(`${upstart(thesimpleoname(box))} is locked.`);
         return;
+    }
+    // C tipcontainer_checks: BAG_OF_TRICKS / HORN_OF_PLENTY empty via apply
+    if ((BAG_OF_TRICKS >= 0 && box.otyp === BAG_OF_TRICKS)
+        || (HORN_OF_PLENTY >= 0 && box.otyp === HORN_OF_PLENTY)) {
+        const bag = box.otyp === BAG_OF_TRICKS;
+        const oldSpe = box.spe | 0;
+        const maybeshopgoods = box.where !== OBJ_INVENT
+            && costly_spot(box.ox | 0, box.oy | 0);
+        const u = game.u || {};
+        let bx = u.ux | 0;
+        let by = u.uy | 0;
+        if (box.where === OBJ_FLOOR) {
+            bx = box.ox | 0;
+            by = box.oy | 0;
+        }
+        box.ox = bx;
+        box.oy = by;
+        if (maybeshopgoods && !box.no_charge) {
+            await addtobill(box, false, false, true);
+        }
+        let seen = 0;
+        let totseen = 0;
+        do {
+            if (bag) {
+                const seencount = { n: seen };
+                const { bagotricks } = await import('./apply.js');
+                const n = await bagotricks(box, true, seencount);
+                seen = seencount.n | 0;
+                if (!n) break;
+            } else if (!(await hornoplenty(box, true, null))) {
+                break;
+            }
+            totseen += seen;
+        } while ((box.spe | 0) > 0);
+        if ((box.spe | 0) < oldSpe) {
+            if (bag && !totseen) await pline(nothing_seems_to_happen);
+            // check_unpaid_usage deferred
+            box.spe = 0;
+            box.cknown = 1;
+        }
+        return; // C TIPCHECK_CANNOT — already emptied
     }
     if (!Has_contents(box)) {
         box.cknown = 1;

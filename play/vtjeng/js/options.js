@@ -7,6 +7,7 @@ import {
     AUTOUNLOCK_FORCE,
     AUTOUNLOCK_KICK,
     AUTOUNLOCK_UNTRAP,
+    CLR_MAX,
     DISCLOSE_PROMPT_DEFAULT_NO,
     EXT_ENCUMBER,
     GFILTER_AREA,
@@ -17,8 +18,17 @@ import {
     GPCOORDS_MAP,
     GPCOORDS_NONE,
     GPCOORDS_SCREEN,
+    HL_BLINK,
+    HL_BOLD,
+    HL_DIM,
+    HL_INVERSE,
+    HL_ITALIC,
+    HL_NONE,
+    HL_ULINE,
+    HL_UNDEF,
     HVY_ENCUMBER,
     Is_rogue_level,
+    LARGEST_INT,
     MENU_COMBINATION,
     MENU_FULL,
     MENU_TRADITIONAL,
@@ -42,6 +52,7 @@ import {
     PICK_ONE,
     ECMD_OK,
     PRIMARYSET,
+    QBUFSZ,
     ROGUESET,
     RUN_CRAWL,
     RUN_LEAP,
@@ -493,10 +504,6 @@ function trimCWhitespace(value) {
     );
 }
 
-function trimCWhitespaceStart(value) {
-    return String(value).replace(/^[\t\n\v\f\r ]+/u, '');
-}
-
 // C ref: hacklib.c trimspaces() (163-176).  Its two halves reach a caller
 // differently: leading blanks are only skipped, by advancing a pointer the
 // caller need not keep, while the trailing run is overwritten with NUL inside
@@ -615,48 +622,90 @@ function* logicalConfigLines(rc, frame) {
     }
 }
 
-function splitNameAndValue(option) {
-    const colon = option.indexOf(':');
-    const equals = option.indexOf('=');
-    let separator = -1;
-    if (colon >= 0 && equals >= 0) separator = Math.min(colon, equals);
-    else separator = Math.max(colon, equals);
-    if (separator < 0) return { name: trimCWhitespace(option), value: null };
+// C ref: options.c parseoptions() (543-556), which measures the name with
+// length_without_val(), and string_for_opt() (6664-6680), which finds the same
+// ':' or '=' again to answer the value.  The two ends of the name are not
+// treated alike: whitespace in front of the separator belongs to neither side,
+// while whitespace at the head belongs to the name, so "! time:on" looks for
+// an option called " time" and finds none.
+function splitNameAndValue(statement) {
+    // length_without_val() answers the length it was handed only when the
+    // statement carries no separator at all, since a separator at index i
+    // answers at most i.  That is how the two are told apart here, where C
+    // tells them apart by string_for_opt()'s empty_optstr.
+    const nameLength = length_without_val(statement, statement.length);
+    if (nameLength === statement.length) return { name: statement, value: null };
     return {
-        name: trimCWhitespace(option.slice(0, separator)),
-        value: option.slice(separator + 1),
+        name: statement.slice(0, nameLength),
+        value: string_for_opt(statement),
     };
 }
 
-// options.c toggles negation for every leading '!', "no", or "no-".
-function stripNegation(optionName) {
-    let name = trimCWhitespace(optionName);
+// C ref: options.c parseoptions() (539-542).  Negation toggles for every
+// leading '!', "no" or "no-", and each one advances by exactly its own one,
+// two or three bytes.  The loop strips no whitespace: parseoptions() strips
+// the element's leading and trailing whitespace once at 528-533, before this
+// runs, and a blank that follows a prefix therefore stays at the head of the
+// statement the match loop reads.
+function stripNegation(element) {
+    let statement = element;
     let negated = false;
-    for (;;) {
-        if (name.startsWith('!')) {
-            negated = !negated;
-            name = trimCWhitespaceStart(name.slice(1));
-        } else if (/^no-/iu.test(name)) {
-            negated = !negated;
-            name = trimCWhitespaceStart(name.slice(3));
-        } else if (/^no/iu.test(name)) {
-            negated = !negated;
-            name = trimCWhitespaceStart(name.slice(2));
-        } else {
-            break;
-        }
+    while (statement[0] === '!' || equal_ncasechars(statement, 'no', 2)) {
+        statement = statement.slice(
+            statement[0] === '!' ? 1 : (statement[2] !== '-' ? 2 : 3),
+        );
+        negated = !negated;
     }
-    return { name: name.toLowerCase(), sourceName: name, negated };
+    return { statement, negated };
 }
 
-function booleanValue(value, negated, optionName, lineNumber) {
-    if (value == null) return !negated;
-    if (negated) {
-        optionError(
-            lineNumber,
-            `negated boolean '${optionName}' must not have a value`,
-        );
-    }
+// C ref: options.c optfn_boolean() (5199-5222), the do_set request's three
+// exits that precede `*(allopt[optidx].addr) = !negated` at 5285 and are
+// reachable while a configuration file is being read.  True means C took one
+// of them, so the caller must leave the option at its previous value.
+//
+// parseoptions() calls this handler for every BoolOpt row, which is why the
+// caller keys on opttyp rather than on the handful of names the dispatch below
+// gives storage to: C reports the negation just the same for a row whose value
+// this port keeps opaque.  bad_negation() has already answered a row whose
+// negateok is No, matching C's order at 618-622.
+//
+// go.opt_initial is TRUE throughout a configuration-file read, so the
+// set_in_config guard at 5205 cannot fire here and only its set_wiznofuz
+// sibling can.  Neither that guard nor the null-address retreat reports
+// anything; the negation arm is the one exit that adds a message.
+function optfn_boolean_returns_before_setting(result, row, value, negated) {
+    /* silent retreat: the #ifdef arm that would have supplied storage for
+       this option compiled to a null pointer */
+    if (!row.addr) return true;
+    /* options that must NOT come from config file */
+    if (row.setwhere === set_wiznofuz) return true;
+    // C's `op = string_for_opt(opts, TRUE); if (op != empty_optstr)`.
+    if (value == null || value === '') return false;
+    if (!negated) return false;
+    configErrorAdd(
+        result,
+        `Negated boolean '${row.name}' should not have a parameter`,
+    );
+    return true;
+}
+
+// C ref: options.c optfn_boolean() (5209-5237), the do_set request's value
+// block, minus the negation arm optfn_boolean_returns_before_setting() above
+// answers first.
+//
+// C skips the whole block when string_for_opt(opts, TRUE) answers
+// empty_optstr, which it does both for a statement carrying no separator --
+// splitNameAndValue()'s null -- and for one whose separator ends it, where the
+// value is the empty string.  Either way the option takes !negated.
+//
+// `row` is allopt[optidx] and `statement` is `opts`, the trimmed
+// negation-stripped element parseoptions() hands the handler, still carrying
+// its value and its original case.  Null means C reported and returned
+// optn_silenterr without reaching `*(allopt[optidx].addr) = !negated`, so the
+// caller must leave the option and everything it drags with it alone.
+function booleanValue(result, row, statement, value, negated) {
+    if (value == null || value === '') return !negated;
     const normalized = value.toLowerCase();
     if ('true'.startsWith(normalized)
         || 'yes'.startsWith(normalized)
@@ -670,7 +719,17 @@ function booleanValue(value, negated, optionName, lineNumber) {
         || normalized === 'off'
         || (/^[0-9]/u.test(normalized)
             && Number.parseInt(normalized, 10) === 0)) return false;
-    optionError(lineNumber, `'${value}' is not valid for ${optionName}`);
+    // C's third arm (5233-5237) is `else if (!allopt[optidx].valok)`: a row
+    // that admits arbitrary values keeps `negated` as it was and falls through
+    // to the assignment, and only the rest report and return optn_silenterr.
+    // menucolors is the one BoolOpt row whose valok is Yes, and no caller
+    // reaches this function with it, so the fall-through below is C's branch
+    // written out rather than a branch this port can run.
+    if (!row.valok) {
+        configErrorAdd(result, `'${statement}' is not valid for a boolean`);
+        return null;
+    }
+    return !negated;
 }
 
 function requireValue(value, optionName, negated, lineNumber) {
@@ -947,8 +1006,9 @@ function setFruit(result, value, lineNumber) {
     );
 }
 
-function setRoleplay(result, field, value, negated, lineNumber) {
-    const enabled = booleanValue(value, negated, field, lineNumber);
+function setRoleplay(result, field, row, statement, value, negated) {
+    const enabled = booleanValue(result, row, statement, value, negated);
+    if (enabled === null) return;
     result.uroleplay[field] = enabled;
     if (field === 'pauper') result.uroleplay.nudist = enabled;
 }
@@ -982,12 +1042,24 @@ const MENU_HEADING_COLORS = Object.freeze({
     transparent: NO_COLOR,
 });
 
+// C ref: coloratt.c attrnames[] (47-58), read by match_str2attr() (374-393).
+// Its seven names are followed by a NULL row and then three aliases, and the
+// match loop walks past the NULL row, so all ten spell an attribute.
+//
+// This table is match_str2attr() composed with what optfn_menu_headings()'s
+// one caller does with the answer: iflags.menu_headings holds a single C ATR_
+// value that wintty.c hands to term_start_attr(), and recorder patch 006's
+// nomux_set_attr() records only ATR_INVERSE, ATR_BOLD and ATR_ULINE.  A
+// heading asking for dim, italic or blink is therefore drawn exactly as an
+// unstyled one, which is why those three share ATR_NONE's captured value here.
+//
+// STATUS_HILITE_ATTRIBUTES below is the other reading of the same ten names.
+// A status highlight accumulates several attributes at once and keeps the
+// tty-invisible ones apart from "none", so it cannot share this collapse.
 const MENU_HEADING_ATTRIBUTES = Object.freeze({
     none: ATR_NONE,
     normal: ATR_NONE,
     bold: ATR_BOLD,
-    // Recorder patch 006 only retains bold, underline, and inverse. These
-    // valid tty styles therefore have the same captured value as ATR_NONE.
     dim: ATR_NONE,
     italic: ATR_NONE,
     blink: ATR_NONE,
@@ -995,6 +1067,31 @@ const MENU_HEADING_ATTRIBUTES = Object.freeze({
     uline: ATR_UNDERLINE,
     inverse: ATR_INVERSE,
     reverse: ATR_INVERSE,
+});
+
+// The status-highlight reading of coloratt.c attrnames[]: match_str2attr()
+// composed with the ATR_ to HL_ chain that botl.c spells identically in
+// parse_status_hl2() (3040-3060) and parse_condition() (3306-3326).  Each
+// answer is the HL_ bit from include/botl.h:251-258 that the chain selects,
+// so a caller ORs it in -- except HL_NONE, which C assigns rather than ORs
+// and which therefore discards whatever the same action named earlier.
+//
+// The C ATR_ numbering (wintype.h:128-134) is deliberately absent: the ATR_
+// names js/terminal.js exports are the recorder's captured attribute bitmask,
+// a different vocabulary that happens to reuse the same identifiers, and
+// routing the status highlights through C's enum would put both in scope at
+// once.  The HL_ bits are the values C stores, so the port stores them too.
+const STATUS_HILITE_ATTRIBUTES = Object.freeze({
+    none: HL_NONE,
+    bold: HL_BOLD,
+    dim: HL_DIM,
+    italic: HL_ITALIC,
+    underline: HL_ULINE,
+    blink: HL_BLINK,
+    inverse: HL_INVERSE,
+    normal: HL_NONE,
+    uline: HL_ULINE,
+    reverse: HL_INVERSE,
 });
 
 function menuHeadingToken(value) {
@@ -1019,6 +1116,14 @@ function menuHeadingColor(token, rawToken = token) {
 function menuHeadingAttribute(token) {
     return Object.hasOwn(MENU_HEADING_ATTRIBUTES, token)
         ? MENU_HEADING_ATTRIBUTES[token] : null;
+}
+
+// Null is match_str2attr()'s -1, the answer its two status-highlight callers
+// take as "not an attribute, try a colour next".  Both pass complain FALSE,
+// so an unmatched name reports nothing here.
+function statusHiliteAttribute(token) {
+    return Object.hasOwn(STATUS_HILITE_ATTRIBUTES, token)
+        ? STATUS_HILITE_ATTRIBUTES[token] : null;
 }
 
 // C refs: botl.c initblstats[], fieldids_alias[], parse_status_hl1(), and
@@ -1142,21 +1247,29 @@ const STATUS_HILITE_CONDITIONS = Object.freeze({
     uhold: 'holding',
 });
 
+// C ref: botl.c condition_aliases[] (748-775).  The keys are the C ids
+// verbatim, underscores included, because match_str2conditionbitmask()'s
+// prefix pass compares them with strncmpi() rather than fuzzymatch().
 const STATUS_CONDITION_ALIASES = Object.freeze({
     strangled: ['strngl'],
     all: SOURCE_CONDITION_NAMES,
-    majortroubles: [
+    major_troubles: [
         'foodpois', 'grab', 'lava', 'slime', 'stone', 'strngl', 'termill',
     ],
-    minortroubles: [
+    minor_troubles: [
         'blind', 'conf', 'deaf', 'hallucinat', 'paralyzed', 'submerged',
         'stun',
     ],
     movement: ['levitate', 'fly', 'ride'],
-    optin: SOURCE_CONDITION_NAMES.filter(
+    opt_in: SOURCE_CONDITION_NAMES.filter(
         (name) => !DEFAULT_STATUS_CONDITIONS[name],
     ),
 });
+
+// C ref: botl.c parse_status_hl1()'s MAX_THRESH, the group count one
+// hilite_status statement can hold, and splitsubfields()'s MAX_SUBFIELDS.
+const MAX_THRESH = 21;
+const MAX_SUBFIELDS = 16;
 
 function statusHiliteFieldName(rawName) {
     const normalized = menuHeadingToken(rawName);
@@ -1167,289 +1280,512 @@ function statusHiliteFieldName(rawName) {
     if (Object.hasOwn(STATUS_HILITE_FIELD_ALIASES, normalized)) {
         return STATUS_HILITE_FIELD_ALIASES[normalized];
     }
+    // C ref: fldname_to_bl_indx()'s third pass, strncmpi(), which keeps the
+    // ' ', '-' and '_' the two fuzzymatch() passes above drop.  "carrying" is
+    // a prefix of carrying-capacity where "carryingc" is not.  The keys below
+    // are the initblstats[] names, and strncmpi() folds case, so the lowercase
+    // spelling of "HD" compares the same way.
+    const prefix = String(rawName).toLowerCase();
     const partials = Object.keys(STATUS_HILITE_FIELDS).filter(
-        (name) => menuHeadingToken(name).startsWith(normalized),
+        (name) => name.startsWith(prefix),
     );
     return partials.length === 1 ? partials[0] : null;
 }
 
-function parseStatusHiliteAction(
-    rawAction,
-    lineNumber,
-    { allowRepeatedColors = false, inheritedColor = NO_COLOR } = {},
-) {
-    const subfields = String(rawAction).split(/[+&]/u);
-    if (!subfields.length || subfields.some((part) => !part.trim())) {
-        optionError(lineNumber, `invalid status highlight '${rawAction}'`);
-    }
-    let attr = ATR_NONE;
-    let clearAttributes = false;
-    let color = inheritedColor;
-    let colorSeen = false;
-    for (const rawSubfield of subfields) {
-        const token = menuHeadingToken(rawSubfield);
-        const parsedAttr = menuHeadingAttribute(token);
-        if (parsedAttr != null) {
-            if (parsedAttr === ATR_NONE) {
-                attr = ATR_NONE;
-                clearAttributes = true;
-            } else {
-                attr |= parsedAttr;
-            }
-            continue;
-        }
-        const parsedColor = menuHeadingColor(token, rawSubfield.trim());
-        if (parsedColor == null || (colorSeen && !allowRepeatedColors)) {
-            optionError(lineNumber, `invalid status highlight '${rawAction}'`);
-        }
-        color = parsedColor;
-        colorSeen = true;
-    }
-    return { attr, clearAttributes, color };
+// C ref: botl.c initblstats[].fldname, which two of the messages below quote
+// verbatim.  Every key of STATUS_HILITE_FIELDS is already its C spelling
+// except this one, whose row reads INIT_BLSTAT("HD", ...).
+function statusHiliteFieldCName(field) {
+    return field === 'hd' ? 'HD' : field;
 }
 
-function statusConditionNames(rawConditions, lineNumber) {
-    const selected = new Set();
-    for (const rawCondition of String(rawConditions).split(/[+&]/u)) {
-        const token = menuHeadingToken(rawCondition);
-        if (!token) {
-            optionError(
-                lineNumber,
-                `unknown status condition '${rawCondition}'`,
-            );
+// C ref: botl.c splitsubfields() (2685-2726).  It splits str in place on '+'
+// and '&', so a trailing separator contributes no field while a leading or
+// doubled one contributes an empty one.  Its -1 answer, spelled null here,
+// needs fifteen separators and is silent; both callers below drop the group.
+function splitsubfields(str, maxsf = 0) {
+    const limit = maxsf === 0 ? MAX_SUBFIELDS : Math.min(maxsf, MAX_SUBFIELDS);
+    if (!str.includes('+') && !str.includes('&')) return [str];
+    const subfields = [];
+    let start = 0;
+    let index = 0;
+    while (index < str.length && subfields.length < limit) {
+        if (str[index] === '&' || str[index] === '+') {
+            subfields.push(str.slice(start, index));
+            start = index + 1;
         }
-        // Both tables are indexed by rc text, so an inherited name would
-        // otherwise answer for a condition C's strcmp() walks never spell.
-        const canonical = Object.hasOwn(STATUS_HILITE_CONDITIONS, token)
-            ? STATUS_HILITE_CONDITIONS[token] : undefined;
-        const alias = Object.hasOwn(STATUS_CONDITION_ALIASES, token)
-            ? STATUS_CONDITION_ALIASES[token] : undefined;
-        // botl.c accumulates every alias whose name shares this prefix.  In
-        // particular, "m" selects majortroubles, minortroubles, and movement.
-        const partialAliases = Object.keys(STATUS_CONDITION_ALIASES)
-            .filter((name) => name.startsWith(token));
-        const names = canonical ? [canonical]
-            : alias ?? partialAliases.flatMap(
-                (name) => STATUS_CONDITION_ALIASES[name],
-            );
+        index += 1;
+    }
+    if (subfields.length >= limit - 1) return null;
+    // C's `if (!*c && c != st)`: the tail after the last separator, which a
+    // string that ended on one does not have.
+    if (index >= str.length && index !== start) {
+        subfields.push(str.slice(start));
+    }
+    return subfields;
+}
+
+// C ref: coloratt.c match_str2clr() (348-371).  Every status-highlight caller
+// passes suppress_msg FALSE, so an unmatched name is reported here and comes
+// back as CLR_MAX for the caller to reject a second time.
+function match_str2clr(result, str) {
+    const color = menuHeadingColor(menuHeadingToken(str), str);
+    if (color != null) return color;
+    configErrorAdd(result, `Unknown color '${str.slice(0, 60)}'`);
+    return CLR_MAX;
+}
+
+// C ref: botl.c parse_status_hl2() (3021-3059), its action half: at most one
+// color, any number of attributes, and NO_COLOR when the action named none.
+// Null means it reported and its caller answers FALSE.
+//
+// `attrib` is C's disp_attrib, which the rule keeps as the hilite.coloridx
+// high byte (3070).  It starts at HL_UNDEF, gains a bit per named attribute,
+// and is *assigned* HL_NONE by "none" or "normal", so an action can end in
+// three distinguishable states: no attribute clause at all, an explicit
+// "normal", and one or more bits.  A bit named after "normal" still ORs in,
+// leaving HL_NONE set alongside it.
+function parseStatusHiliteAction(result, how) {
+    const subfields = splitsubfields(how);
+    // C's `if (sf < 1) return FALSE;`, which reports nothing.
+    if (!subfields) return null;
+    let attrib = HL_UNDEF;
+    let coloridx = -1;
+    for (const subfield of subfields) {
+        const parsedAttr = statusHiliteAttribute(menuHeadingToken(subfield));
+        if (parsedAttr != null) {
+            if (parsedAttr === HL_NONE) attrib = HL_NONE;
+            else attrib |= parsedAttr;
+            continue;
+        }
+        const color = match_str2clr(result, subfield);
+        if (color >= CLR_MAX || coloridx !== -1) {
+            configErrorAdd(result, `bad color '${color} ${coloridx}'`);
+            return null;
+        }
+        coloridx = color;
+    }
+    return {
+        attrib,
+        color: coloridx === -1 ? NO_COLOR : coloridx,
+    };
+}
+
+// C ref: botl.c match_str2conditionbitmask() (3170-3206).  Three passes: an
+// exact fuzzymatch against the conditions[] names, an exact fuzzymatch against
+// the aliases, then a strncmpi() prefix over the aliases, which is why "m"
+// selects major_troubles, minor_troubles and movement together.  Only the
+// first two ignore ' ', '-' and '_', so "major_" is a prefix of major_troubles
+// where "majort" is not.  The empty answer is C's zero mask.
+function match_str2conditionbitmask(str) {
+    if (!str) return [];
+    const token = menuHeadingToken(str);
+    // Both tables are indexed by rc text, so an inherited name would
+    // otherwise answer for a condition C's strcmp() walks never spell.
+    if (Object.hasOwn(STATUS_HILITE_CONDITIONS, token)) {
+        return [STATUS_HILITE_CONDITIONS[token]];
+    }
+    const aliases = Object.keys(STATUS_CONDITION_ALIASES);
+    const exact = aliases.find((name) => menuHeadingToken(name) === token);
+    if (exact) return STATUS_CONDITION_ALIASES[exact];
+    const prefix = str.toLowerCase();
+    return aliases.filter((name) => name.startsWith(prefix))
+        .flatMap((name) => STATUS_CONDITION_ALIASES[name]);
+}
+
+// C ref: botl.c str2conditionbitmask() (3208-3229).  Null is its 0UL: either
+// splitsubfields() refused the split, silently, or a subfield named no
+// condition, which it reports.
+function str2conditionbitmask(result, str) {
+    const subfields = splitsubfields(str, SOURCE_CONDITION_NAMES.length);
+    if (!subfields) return null;
+    const selected = new Set();
+    for (const subfield of subfields) {
+        const names = match_str2conditionbitmask(subfield);
         if (!names.length) {
-            optionError(lineNumber, `unknown status condition '${rawCondition}'`);
+            configErrorAdd(result, `Unknown condition '${subfield}'`);
+            return null;
         }
         for (const name of names) selected.add(name);
     }
     return [...selected];
 }
 
-function parseNumericStatusThreshold(rawThreshold) {
-    const match = String(rawThreshold).match(
-        /^([<>]=?|=)?([+-]?\d+)(%)?$/u,
-    );
+// C's hsbuf[] is a fixed 21-entry array of strings that parse_status_hl1()
+// blanks before it fills, so a read past the last group answers the empty
+// string rather than running off the end.
+function statusHiliteField(s, index) {
+    return s[index] ?? '';
+}
+
+// C ref: botl.c parse_condition() (3232-3348).  Its color index is set once,
+// before the loop, so a later group naming no color of its own keeps the
+// previous group's, and it reads the conditions before the action, which is
+// the order the two messages arrive in.  Each accepted group becomes one rule
+// in the port's single status_hilites array, standing for the bits C sets in
+// gc.cond_hilites[].
+function parse_condition(result, s, fieldIndex) {
+    let sidx = fieldIndex + 1;
+    let coloridx = NO_COLOR;
+    let accepted = false; /* C's `result` */
+
+    if (!statusHiliteField(s, sidx)) {
+        configErrorAdd(result, 'Missing condition(s)');
+        return false;
+    }
+    while (statusHiliteField(s, sidx)) {
+        const conditions = str2conditionbitmask(
+            result, statusHiliteField(s, sidx),
+        );
+        if (!conditions) return false;
+
+        /* actions */
+        sidx += 1;
+        const how = statusHiliteField(s, sidx);
+        if (!how) {
+            configErrorAdd(result, 'Missing color+attribute');
+            return false;
+        }
+        // C sets and clears bits of gc.cond_hilites[] directly, one array
+        // entry per attribute, and those entries outlive the group: "none"
+        // clears the six of them for these conditions, including bits an
+        // earlier statement set, and a name after it sets one again.  The
+        // port replays that at render time from the pair recorded here --
+        // `clearAttributes` for the &= ~mask sweep, `attrib` for the |= mask
+        // bits that survived it -- so the loop below has to keep the two in
+        // the order the subfields arrive.
+        let attrib = HL_UNDEF;
+        let clearAttributes = false;
+        // C has no `sf < 1` guard here, so a split it refuses leaves the color
+        // and the attributes at whatever the group before this one left.
+        for (const subfield of splitsubfields(how) ?? []) {
+            const parsedAttr = statusHiliteAttribute(menuHeadingToken(subfield));
+            if (parsedAttr != null) {
+                if (parsedAttr === HL_NONE) {
+                    attrib = HL_UNDEF;
+                    clearAttributes = true;
+                } else {
+                    attrib |= parsedAttr;
+                }
+                continue;
+            }
+            const color = match_str2clr(result, subfield);
+            // Unlike parse_status_hl2(), this loop has no "one color only"
+            // rule: the last color named wins.
+            if (color >= CLR_MAX) {
+                configErrorAdd(result, `bad color ${color}`);
+                return false;
+            }
+            coloridx = color;
+        }
+        result.iflags.status_hilites.push({
+            field: 'condition',
+            conditions,
+            style: { attrib, clearAttributes, color: coloridx },
+        });
+        accepted = true;
+        sidx += 1;
+    }
+    return accepted;
+}
+
+// C ref: botl.c is_ltgt_percentnumber() (2649-2669), the
+// "[<>]?=?[-+]?[0-9]+%?" predicate, together with the pieces
+// parse_status_hl2() reads back out of the same string afterwards: the
+// comparison prefix, the trailing '%', and the signed digits stripchars()
+// leaves behind.  Null is the predicate's FALSE.
+function is_ltgt_percentnumber(str) {
+    const match = /^([<>]=?|=)?([+-]?\d+)(%)?$/u.exec(str);
     if (!match) return null;
-    const operator = match[1] || '=';
+    const operator = match[1] ?? '';
     return {
-        behavior: match[3] ? 'percentage' : 'absolute',
-        relation: operator,
+        percent: match[3] === '%',
+        lt: operator === '<',
+        le: operator === '<=',
+        grt: operator === '>',
+        gte: operator === '>=',
         value: Number.parseInt(match[2], 10),
     };
 }
 
-function parseStatusHiliteRule(field, threshold, action, lineNumber) {
-    const fieldType = STATUS_HILITE_FIELDS[field];
-    const normalized = String(threshold).trim().toLowerCase();
-    let behavior;
-    let relation = '=';
-    let value = null;
-    let text = '';
-    if (normalized === 'always') {
-        behavior = 'always';
-    } else if (normalized === 'up') {
-        behavior = 'changed';
-        relation = fieldType === 'string' ? '=' : '>';
-    } else if (normalized === 'down') {
-        behavior = 'changed';
-        relation = fieldType === 'string' ? '=' : '<';
-    } else if (normalized === 'changed') {
-        behavior = 'changed';
-    } else if (field === 'hitpoints' && normalized === 'criticalhp') {
-        behavior = 'critical';
-    } else {
-        const numeric = parseNumericStatusThreshold(normalized);
-        if (numeric) {
-            if (fieldType === 'string') {
-                optionError(
-                    lineNumber,
-                    `status field '${field}' does not accept numeric thresholds`,
-                );
-            }
-            ({ behavior, relation, value } = numeric);
-            if (behavior === 'percentage') {
-                if (!STATUS_PERCENT_FIELDS.has(field)) {
-                    optionError(
-                        lineNumber,
-                        `status field '${field}' does not accept percentages`,
-                    );
-                }
-                if (value < 0 || value > 100
-                    || (relation === '<' && value === 0)
-                    || (relation === '>' && value === 100)) {
-                    optionError(
-                        lineNumber,
-                        `status percentage '${threshold}' is out of range`,
-                    );
-                }
-            } else {
-                const lower = field === 'armor-class' ? -128
-                    : relation === '>' ? -1 : relation === '<' ? 1 : 0;
-                if (value < lower
-                    || (fieldType === 'int' && value > 32767)) {
-                    optionError(
-                        lineNumber,
-                        `status threshold '${threshold}' is out of range`,
-                    );
-                }
-            }
-        } else if (Object.hasOwn(STATUS_TEXT_THRESHOLDS, field)) {
-            // The inner index is rc text too, so it needs the same guard the
-            // outer one already has.
-            const thresholds = STATUS_TEXT_THRESHOLDS[field];
-            const thresholdToken = menuHeadingToken(normalized);
-            const canonical = Object.hasOwn(thresholds, thresholdToken)
-                ? thresholds[thresholdToken] : undefined;
-            if (!canonical) {
-                optionError(
-                    lineNumber,
-                    `unknown status threshold '${threshold}'`,
-                );
-            }
-            behavior = 'text';
-            text = canonical;
-        } else if (fieldType === 'string') {
-            behavior = 'text';
-            text = normalized;
-        } else {
-            optionError(
-                lineNumber,
-                `unknown status behavior '${threshold}'`,
-            );
-        }
-    }
-    return {
-        field,
-        behavior,
-        relation,
-        value,
-        text,
-        style: parseStatusHiliteAction(action, lineNumber),
-    };
+// C ref: botl.c has_ltgt_percentnumber() (2671-2683), which only chooses
+// between two messages.
+function has_ltgt_percentnumber(str) {
+    return [...str].every((character) => '<>=-+0123456789%'.includes(character));
 }
 
-function parseStatusHiliteComponents(components, lineNumber) {
-    const field = statusHiliteFieldName(components[0]);
+// C ref: botl.c parse_status_hl2() (2811-3106).  `s` is parse_status_hl1()'s
+// split of one statement into a field name followed by threshold and action
+// pairs.  Every group it accepts is installed before the next one is read, so
+// C's closing `return (successes > 0)` is observable: a statement that fails
+// on its third group keeps the two groups before it.
+function parse_status_hl2(result, s) {
+    let sidx = 0;
+    const field = statusHiliteFieldName(statusHiliteField(s, sidx));
+
+    if (field === 'characteristics') {
+        // C rewrites s[0] in place and re-enters once per characteristic, so
+        // every threshold in the statement is parsed six times.
+        for (const target of STATUS_CHARACTERISTIC_FIELDS) {
+            s[sidx] = target;
+            if (!parse_status_hl2(result, s)) return false;
+        }
+        return true;
+    }
     if (!field) {
-        optionError(
-            lineNumber,
-            `unknown status field '${components[0]}'`,
+        configErrorAdd(
+            result, `Unknown status field '${statusHiliteField(s, sidx)}'`,
         );
+        return false;
     }
-    if (components.length < 2) {
-        optionError(lineNumber, 'incomplete status highlight rule');
-    }
-    const fields = field === 'characteristics'
-        ? STATUS_CHARACTERISTIC_FIELDS : [field];
-    const rules = [];
-    if (field === 'condition') {
-        if (components.length < 3 || components.length % 2 === 0) {
-            optionError(lineNumber, 'incomplete condition highlight rule');
-        }
-        let inheritedColor = NO_COLOR;
-        for (let index = 1; index < components.length; index += 2) {
-            const style = parseStatusHiliteAction(
-                components[index + 1],
-                lineNumber,
-                { allowRepeatedColors: true, inheritedColor },
-            );
-            inheritedColor = style.color;
-            rules.push({
-                field: 'condition',
-                conditions: statusConditionNames(
-                    components[index], lineNumber,
-                ),
-                style,
-            });
-        }
-        return rules;
-    }
-    if (components.length === 2) {
-        for (const target of fields) {
-            rules.push(parseStatusHiliteRule(
-                target, 'always', components[1], lineNumber,
-            ));
-        }
-        return rules;
-    }
-    if (components.length % 2 === 0) {
-        optionError(lineNumber, 'incomplete status highlight rule');
-    }
-    for (let index = 1; index < components.length; index += 2) {
-        for (const target of fields) {
-            rules.push(parseStatusHiliteRule(
-                target,
-                components[index],
-                components[index + 1],
-                lineNumber,
-            ));
-        }
-    }
-    return rules;
-}
+    if (field === 'condition') return parse_condition(result, s, sidx);
 
-function parseStatusHiliteRules(value, lineNumber) {
-    const rules = [];
-    let components = [''];
-    let componentIndex = 0;
-    const flush = () => {
-        if (components.some(Boolean)) {
-            rules.push(...parseStatusHiliteComponents(
-                components.map((part) => part.trim()), lineNumber,
-            ));
-        }
-        components = [''];
-        componentIndex = 0;
-    };
-    for (const character of String(value).toLowerCase()) {
-        if (character === '/') {
-            componentIndex++;
-            components[componentIndex] = '';
-        } else if (character === ' ') {
-            if (componentIndex === 1
-                && menuHeadingToken(components[0]) === 'title') {
-                components[componentIndex] += character;
-            } else if (componentIndex > 0) {
-                flush();
+    const fieldType = STATUS_HILITE_FIELDS[field];
+    // C ref: is_fld_arrayvalues() over enc_stat[] for BL_CAP and hutxt[] for
+    // BL_HUNGER, both compared with strcmpi() rather than fuzzymatch().  Its
+    // third caller, aligntxt[] for BL_ALIGN, needs no table: alignment is a
+    // string field, so the same spellings reach the ANY_STR arm below and
+    // store the same text.
+    const textThresholds = Object.hasOwn(STATUS_TEXT_THRESHOLDS, field)
+        ? STATUS_TEXT_THRESHOLDS[field] : null;
+    let successes = 0;
+
+    sidx += 1;
+    while (statusHiliteField(s, sidx)) {
+        const threshold = statusHiliteField(s, sidx);
+        const numericThreshold = is_ltgt_percentnumber(threshold);
+        let text = '';
+        let percent = false;
+        let numeric = false;
+        let always = false;
+        let changed = false;
+        let up = false;
+        let down = false;
+        let criticalhp = false;
+        let lt = false;
+        let le = false;
+        let grt = false;
+        let gte = false;
+        let txtval = false;
+        let value = null;
+
+        if (!statusHiliteField(s, sidx + 1) || threshold === 'always') {
+            /* "field/always/color" OR "field/color" */
+            always = true;
+            // The short spelling steps back so that the action is read out of
+            // this same slot, which is why an even number of groups ends as an
+            // "always" rule rather than as an error.
+            if (!statusHiliteField(s, sidx + 1)) sidx -= 1;
+        } else if (threshold === 'up' || threshold === 'down') {
+            // "LT/GT for the string fields is pointless; treat 'up' or 'down'
+            // for string fields as 'changed' rather than rejecting them".
+            if (fieldType !== 'string') {
+                if (threshold === 'down') down = true;
+                else up = true;
             }
+            changed = true;
+        } else if (textThresholds && Object.hasOwn(textThresholds, threshold)) {
+            text = textThresholds[threshold];
+            txtval = true;
+        } else if (threshold === 'changed') {
+            changed = true;
+        } else if (field === 'hitpoints' && threshold === 'criticalhp') {
+            criticalhp = true;
+        } else if (numericThreshold) {
+            ({ percent, lt, le, grt, gte, value } = numericThreshold);
+            numeric = true;
+            // C's dt: a percentage is compared as an int whatever type the
+            // field itself has, which is how a percentage on a string field
+            // reaches this range check before the one below refuses it.
+            const dt = percent ? 'int' : fieldType;
+            const op = grt ? '>' : gte ? '>=' : lt ? '<' : le ? '<=' : '=';
+            if (dt === 'int'
+                // "AC is the only field where negative values make sense but
+                // accept >-1 for other fields; reject <0 for non-AC"
+                && (value < (field === 'armor-class' ? -128
+                    : grt ? -1 : lt ? 1 : 0)
+                    || value > (percent ? (lt ? 101 : 100) : LARGEST_INT))) {
+                configErrorAdd(
+                    result,
+                    `hilite_status threshold '${op}${value}`
+                    + `${percent ? '%' : ''}' is out of range`,
+                );
+                return false;
+            }
+            if (dt === 'long' && value < (grt ? -1 : lt ? 1 : 0)) {
+                configErrorAdd(
+                    result,
+                    `hilite_status threshold '${op}${value}' is out of range`,
+                );
+                return false;
+            }
+        } else if (fieldType === 'string') {
+            text = threshold;
+            txtval = true;
         } else {
-            components[componentIndex] += character;
+            configErrorAdd(result, has_ltgt_percentnumber(threshold)
+                ? `Wrong format '${threshold}', expected a threshold number`
+                    + ' or percent'
+                : `Unknown behavior '${threshold}'`);
+            return false;
         }
+
+        // C ref: botl.c:2966-2978, hilite.rel.  The status renderer reads it
+        // only for the two numeric behaviors, so this keeps the numeric
+        // relation and spells C's LT_VALUE for 'always' and 'criticalhp' and
+        // its TXT_VALUE for a text match as the '=' the rest carry.
+        const relation = (grt || up) ? '>' : (lt || down) ? '<'
+            : gte ? '>=' : le ? '<=' : '=';
+
+        if (fieldType === 'string' && (percent || numeric)) {
+            configErrorAdd(
+                result,
+                `Field '${statusHiliteFieldCName(field)}' does not support`
+                + ' numeric values',
+            );
+            return false;
+        }
+        if (percent) {
+            // initblstats[fld].idxmax is set only by INIT_BLSTATP, the four
+            // rows that name a maximum to take the percentage of.
+            if (!STATUS_PERCENT_FIELDS.has(field)) {
+                configErrorAdd(
+                    result,
+                    `Cannot use percent with '${statusHiliteFieldCName(field)}'`,
+                );
+                return false;
+            }
+            // C ref: botl.c:2996-3006.  Two of its six tests compare
+            // hilite.value.a_int against a relationship constant where
+            // hilite.rel was meant, so -1 and 101 are refused whatever the
+            // relationship is; the bounds above keep every other combination
+            // out before this runs.
+            if (value <= -1
+                || (value === 0 && relation === '<')
+                || (value === 100 && relation === '>')
+                || value >= 101) {
+                configErrorAdd(
+                    result,
+                    'hilite_status: invalid percentage value'
+                    + ` '${relation}${value}%'`,
+                );
+                return false;
+            }
+        }
+
+        /* actions */
+        sidx += 1;
+        // C ref: botl.c:3013-3016.  Its `if (!how)` tests an array element
+        // that is never null, so the `successes` arm below it is unreachable.
+        const style = parseStatusHiliteAction(
+            result, statusHiliteField(s, sidx),
+        );
+        if (!style) return false;
+
+        // C ref: botl.c:3068-3089, hilite.behavior.  Its closing BL_TH_NONE is
+        // unreachable, because every arm of the threshold chain above sets one
+        // of the flags this reads.
+        const behavior = always ? 'always'
+            : percent ? 'percentage'
+                : changed ? 'changed'
+                    : numeric ? 'absolute'
+                        : txtval ? 'text'
+                            : criticalhp ? 'critical' : 'none';
+
+        result.iflags.status_hilites.push({
+            field,
+            behavior,
+            relation,
+            value,
+            // C copies txt into hilite.textmatch for BL_TH_TEXTMATCH only and
+            // then trimspaces() it; the blanks can only come from a title.
+            text: behavior === 'text' ? trimspaces(text) : '',
+            style,
+        });
+        successes += 1;
+        sidx += 1;
     }
-    flush();
-    if (!rules.length) {
-        optionError(lineNumber, 'hilite_status requires a value');
-    }
-    return rules;
+
+    return successes > 0;
 }
 
-function setStatusHiliteOption(result, value, negated, lineNumber) {
-    if (negated && value != null) {
-        result.iflags.status_hilites.length = 0;
+// C ref: botl.c parse_status_hl1() (2591-2647).  It cuts one hilite_status
+// value into space-separated statements and each statement into '/'-separated
+// groups, handing every statement to parse_status_hl2().  The first statement
+// that fails abandons the rest of the value, and the default highlight
+// duration is stored only when none failed.
+function parse_status_hl1(result, op) {
+    const hsbuf = new Array(MAX_THRESH).fill('');
+    let badopt = false;
+    let fldnum = 0;
+    let ccount = 0;
+    let index = 0;
+
+    while (index < op.length && fldnum < MAX_THRESH && ccount < QBUFSZ - 2) {
+        const c = lowc(op[index]);
+        if (c === ' ') {
+            if (fldnum >= 1) {
+                if (fldnum === 1 && hsbuf[0] === 'title') {
+                    /* spaces are allowed in title */
+                    hsbuf[fldnum] += c;
+                    ccount += 1;
+                    index += 1;
+                    continue;
+                }
+                if (!parse_status_hl2(result, hsbuf)) {
+                    badopt = true;
+                    break;
+                }
+            }
+            hsbuf.fill('');
+            fldnum = 0;
+            ccount = 0;
+        } else if (c === '/') {
+            fldnum += 1;
+            ccount = 0;
+        } else {
+            hsbuf[fldnum] += c;
+            ccount += 1;
+        }
+        index += 1;
+    }
+    // fldnum counts the '/' separators seen, so a value carrying none is
+    // accepted without parse_status_hl2() ever running.
+    if (fldnum >= 1 && !badopt && !parse_status_hl2(result, hsbuf)) {
+        badopt = true;
+    }
+    if (badopt) return false;
+    /* make sure highlighting is On; use short duration for temp highlights */
+    if (!result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
+    return true;
+}
+
+// C ref: botl.c clear_status_hilites() (3349-3366).  It empties each field's
+// threshold list and nothing else, so gc.cond_hilites[] survives; the
+// condition rules this port keeps in the same array have to survive with it.
+function clear_status_hilites(result) {
+    result.iflags.status_hilites = result.iflags.status_hilites.filter(
+        (rule) => rule.field === 'condition',
+    );
+}
+
+// C ref: options.c optfn_hilite_status() (1851-1893), the do_set arm.  Its
+// value comes from string_for_opt(opts, TRUE), so a statement with no ':' and
+// one with nothing after it both arrive as C's empty_optstr; parseoptions()
+// has already stripped the blanks around the element.
+function setStatusHiliteOption(result, value, negated) {
+    const op = value == null || value === '' ? null : value;
+    if (op !== null && negated) {
+        clear_status_hilites(result);
         return;
     }
-    if (value == null || !String(value).trim()) {
-        optionError(lineNumber, 'hilite_status requires a value');
+    if (op === null) {
+        configErrorAdd(result, 'Value is mandatory for hilite_status');
+        return;
     }
-    result.iflags.status_hilites.push(
-        ...parseStatusHiliteRules(value, lineNumber),
-    );
-    if (!result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
+    // parse_status_hl1()'s FALSE is optn_err, which parseoptions() answers by
+    // returning without a message of its own.
+    parse_status_hl1(result, op);
 }
 
 function setStatusHiliteDuration(result, value, negated) {
@@ -2009,8 +2345,13 @@ function applyMenuBindings(result, bindings) {
     }
 }
 
-function applyBooleanOption(result, name, value, negated, lineNumber) {
-    const enabled = booleanValue(value, negated, name, lineNumber);
+function applyBooleanOption(result, name, row, statement, value, negated) {
+    const enabled = booleanValue(result, row, statement, value, negated);
+    // Every arm below writes at least one field, and six of them -- female,
+    // color, hilite_pet, tutorial, rest_on_space and mention_decor -- write
+    // more than one, so C's "leave the option alone" has to stop ahead of the
+    // whole dispatch rather than inside the arm that owns the flag.
+    if (enabled === null) return;
     if (name === 'female' || name === 'male') {
         const female = name === 'female' ? enabled : !enabled;
         result.flags.female = female;
@@ -2364,7 +2705,7 @@ function applyOption(result, optionState, element, lineNumber) {
     // as `opts`, and what every message naming the statement reports --
     // "Unknown option" here and string_for_opt()'s "Missing parameter" below.
     // `element` keeps those prefixes and is read nowhere else.
-    const { sourceName: statement, negated } = stripNegation(element);
+    const { statement, negated } = stripNegation(element);
     const { name: rawName, value } = splitNameAndValue(statement);
     const parsedName = rawName.toLowerCase();
 
@@ -2395,6 +2736,10 @@ function applyOption(result, optionState, element, lineNumber) {
         bad_negation(result, matchedRow.name);
         return;
     }
+    if (matchedRow?.opttyp === 'BoolOpt'
+        && optfn_boolean_returns_before_setting(
+            result, matchedRow, value, negated,
+        )) return;
 
     const menuCommand = menuCommandOption(name);
 
@@ -2426,7 +2771,7 @@ function applyOption(result, optionState, element, lineNumber) {
     } else if (name === 'petattr') {
         setPetAttribute(result, value, lineNumber);
     } else if (name === 'hilite_status') {
-        setStatusHiliteOption(result, value, negated, lineNumber);
+        setStatusHiliteOption(result, value, negated);
     } else if (name === 'statushilites') {
         setStatusHiliteDuration(result, value, negated);
     } else if (name.startsWith('cond_')) {
@@ -2456,7 +2801,7 @@ function applyOption(result, optionState, element, lineNumber) {
         setPetName(result, name, value, lineNumber);
     } else if (name === 'blind' || name === 'deaf' || name === 'nudist'
                || name === 'pauper' || name === 'reroll') {
-        setRoleplay(result, name, value, negated, lineNumber);
+        setRoleplay(result, name, matchedRow, statement, value, negated);
     } else if (name === 'decgraphics') {
         result.flags.decgraphics = !negated;
         if (!negated) {
@@ -2568,7 +2913,7 @@ function applyOption(result, optionState, element, lineNumber) {
         }
         result.flags.versinfo = versinfo;
     } else if (HANDLED_BOOLEAN_OPTIONS.has(name)) {
-        applyBooleanOption(result, name, value, negated, lineNumber);
+        applyBooleanOption(result, name, matchedRow, statement, value, negated);
     } else if (value != null) {
         // Only an option whose optlist.h negateok is Yes reaches this: a
         // negated spelling of any other one is bad_negation()'s above.  What
@@ -2606,7 +2951,7 @@ function applyOption(result, optionState, element, lineNumber) {
             result.flags[name] = value;
         }
     } else {
-        applyBooleanOption(result, name, value, negated, lineNumber);
+        applyBooleanOption(result, name, matchedRow, statement, value, negated);
     }
 }
 
@@ -3662,9 +4007,12 @@ export function dosetMenuItems(state, helpers, skiphelp) {
 // ===========================================================================
 
 // C ref: options.c:84, the value each option handler answers with.  The third,
-// optn_silenterr, has no port: C's optfn_boolean() returns it only from the
-// value-parsing and "not anatomically possible" arms, both of which stop with
-// a refusal below, and parseoptions() treats it as every other error anyway.
+// optn_silenterr, has no constant here because this interactive parser never
+// produces one: of optfn_boolean()'s four (5220, 5236, 5267 and 5283), the
+// first two need a value on the statement and doset() builds none, and the
+// other two stop with a refusal below.  parseoptions() treats it as every
+// other error anyway.  The configuration-file parser above does port the
+// negation arm at 5220, in optfn_boolean_returns_before_setting().
 const optn_err = 0;
 const optn_ok = 1;
 
@@ -4131,16 +4479,11 @@ export async function parseoptions(
     if (encodeUtf8ByteString(statement).length > OPTION_ELEMENT_BYTE_LIMIT)
         return false; /* "Option too long" */
 
-    let opts = trimCWhitespace(statement);
-    if (!opts) return false; /* "Empty statement" */
+    const element = trimCWhitespace(statement);
+    if (!element) return false; /* "Empty statement" */
 
-    let negated = false;
-    while (opts[0] === '!' || equal_ncasechars(opts, 'no', 2)) {
-        opts = opts.slice(
-            opts[0] === '!' ? 1 : (opts[2] !== '-' ? 2 : 3),
-        );
-        negated = !negated;
-    }
+    /* options.c:539-542, the same loop parseNethackrc() above reaches */
+    const { statement: opts, negated } = stripNegation(element);
 
     let got_match = false;
     let matchidx = -1;

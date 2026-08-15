@@ -15,7 +15,7 @@ import {
     W_ACCESSORY, W_SADDLE, W_BALL, W_CHAIN, INVIS, CLAIRVOYANT, LOST_DROPPED,
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
-    VISITED, LFILE_EXISTS,
+    VISITED, LFILE_EXISTS, RANGE_LEVEL,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX,
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
     ACH_HELL, ACH_MINE, ACH_SOKO,
@@ -68,11 +68,13 @@ import {
 } from './hack.js';
 import { place_object, stackobj, weight, delobj, obj_extract_self,
     obj_nexto_xy, obj_meld, pudding_merge_message,
+    save_timers, restore_timers,
 } from './mkobj.js';
 import { ship_object } from './dokick.js';
 import { doname, xname, the, The, vtense, an } from './objnam.js';
 import {
     compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
+    freeinv_core,
 } from './invent.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
 import { pickup } from './pickup.js';
@@ -130,6 +132,174 @@ const WORN_SLOTS = [
     ['uball', W_BALL],
     ['uchain', W_CHAIN],
 ];
+/**
+ * C gi worn/ball pointers live outside struct you (decl.h). nhl_gamestate
+ * memcpy of `u` must not clobber slots that setworn just restored.
+ */
+const YOU_GI_PTRS = new Set([
+    ...WORN_SLOTS.map(([slot]) => slot),
+    'uskin',
+]);
+
+/** C memcpy identity for obj/monst pointers inside struct you. */
+function is_obj_ptr(v) {
+    return !!(v && typeof v === 'object'
+        && v.otyp != null
+        && (v.where != null || v.o_id != null));
+}
+function is_mon_ptr(v) {
+    return !!(v && typeof v === 'object'
+        && (v.m_id != null || (v.mx != null && v.data != null)));
+}
+function clone_you_value(v, seen) {
+    if (v === null || v === undefined) return v;
+    if (typeof v !== 'object') return v;
+    if (seen.has(v)) return seen.get(v);
+    if (is_obj_ptr(v) || is_mon_ptr(v)) return v;
+    if (Array.isArray(v)) {
+        const a = new Array(v.length);
+        seen.set(v, a);
+        for (let i = 0; i < v.length; i++) {
+            if (i in v) a[i] = clone_you_value(v[i], seen);
+        }
+        return a;
+    }
+    const o = {};
+    seen.set(v, o);
+    for (const k of Object.keys(v)) {
+        o[k] = clone_you_value(v[k], seen);
+    }
+    return o;
+}
+function snapshot_you(u) {
+    if (!u) return {};
+    const bak = {};
+    for (const k of Object.keys(u)) {
+        if (YOU_GI_PTRS.has(k)) continue;
+        bak[k] = clone_you_value(u[k], new WeakMap());
+    }
+    return bak;
+}
+function restore_you(u, bak) {
+    if (!u || !bak) return;
+    const cur_uz = u.uz;
+    const cur_uz0 = u.uz0;
+    for (const k of Object.keys(u)) {
+        if (YOU_GI_PTRS.has(k)) continue;
+        if (!(k in bak)) delete u[k];
+    }
+    for (const k of Object.keys(bak)) {
+        if (YOU_GI_PTRS.has(k)) continue;
+        u[k] = clone_you_value(bak[k], new WeakMap());
+    }
+    // C: some restored state would confuse the level change in progress
+    u.uz = cur_uz;
+    u.uz0 = cur_uz0;
+}
+function snapshot_disco() {
+    return (game.disco || []).slice();
+}
+function restore_disco(bak) {
+    if (!bak) return;
+    if (!game.disco) {
+        game.disco = bak.slice();
+        return;
+    }
+    game.disco.length = bak.length;
+    for (let i = 0; i < bak.length; i++) game.disco[i] = bak[i];
+}
+function snapshot_mvitals() {
+    const mv = game.mvitals || [];
+    const out = new Array(mv.length);
+    for (let i = 0; i < mv.length; i++) {
+        const s = mv[i];
+        out[i] = s ? {
+            born: s.born | 0,
+            died: s.died | 0,
+            mvflags: s.mvflags | 0,
+            seen_close: s.seen_close | 0,
+            photographed: s.photographed | 0,
+        } : s;
+    }
+    return out;
+}
+function restore_mvitals(bak) {
+    if (!bak) {
+        game.mvitals = [];
+        return;
+    }
+    const out = new Array(bak.length);
+    for (let i = 0; i < bak.length; i++) {
+        const s = bak[i];
+        out[i] = s ? { ...s } : s;
+    }
+    game.mvitals = out;
+}
+function snapshot_spl_book() {
+    const book = game.spl_book || [];
+    return book.map((s) => (s ? {
+        sp_id: s.sp_id | 0,
+        sp_know: s.sp_know | 0,
+        sp_lev: s.sp_lev | 0,
+    } : s));
+}
+function restore_spl_book(bak) {
+    if (!bak) return;
+    if (!game.spl_book) {
+        game.spl_book = bak.map((s) => (s ? { ...s } : s));
+        return;
+    }
+    const book = game.spl_book;
+    const n = Math.max(book.length, bak.length);
+    for (let i = 0; i < n; i++) {
+        const s = bak[i];
+        if (!s) {
+            if (book[i]) {
+                book[i].sp_id = 0;
+                book[i].sp_know = 0;
+                book[i].sp_lev = 0;
+            }
+            continue;
+        }
+        if (!book[i]) book[i] = { sp_id: 0, sp_know: 0, sp_lev: 0 };
+        book[i].sp_id = s.sp_id | 0;
+        book[i].sp_know = s.sp_know | 0;
+        book[i].sp_lev = s.sp_lev | 0;
+    }
+    book.length = bak.length;
+}
+/** C memset(svs.spl_book, 0, sizeof spl_book) after backup. */
+function memset_spl_book() {
+    const book = game.spl_book;
+    if (!book) return;
+    for (const s of book) {
+        if (!s) continue;
+        s.sp_id = 0;
+        s.sp_know = 0;
+        s.sp_lev = 0;
+    }
+}
+function clear_oc_uname() {
+    const objs = game.objects || [];
+    for (let otyp = 0; otyp < objs.length; otyp++) {
+        if (objs[otyp]?.oc_uname) objs[otyp].oc_uname = null;
+    }
+}
+/**
+ * C nhlua.c free_tutorial — leftover gmst_invent obfree + free backups.
+ * Full obfree contents/timers deferred (do not delobj: that consumes rn2).
+ */
+function free_tutorial() {
+    const stash = game.gmst_invent || [];
+    while (stash.length) {
+        const otmp = stash.shift();
+        if (otmp) otmp.owornmask = 0;
+    }
+    game.gmst_invent = [];
+    game.gmst_ubak = null;
+    game.gmst_disco = null;
+    game.gmst_mvitals = null;
+}
 /** C objclass.h DRAGON_HIDE — materials below are soft enough to burn in lava. */
 const DRAGON_HIDE = 10;
 /** C zap.c destroy_strings fire rows used by trap.c fire_damage. */
@@ -777,8 +947,8 @@ function setworn_restore(otmp, wornmask) {
 /**
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
  * Stash invent (preserve owornmask as restore flag) via setnotworn+freeinv
- * so extrinsics clear and find_ac → base 10. Named omissions: memcpy
- * u/disco/mvitals/spl_book backup.
+ * so extrinsics clear and find_ac → base 10. Backup u/disco/mvitals/spl_book
+ * then memset spells. Named omit: nhcore callback disable (tutorial()).
  */
 function tutorial_enter_gamestate() {
     if (game.gmst_stored) return;
@@ -798,14 +968,20 @@ function tutorial_enter_gamestate() {
     game.invent = [];
     game.gmst_invent = stash;
     game._lastinvnr = 51; // C gl.lastinvnr — next letter 'a'
+    game.gmst_ubak = snapshot_you(game.u);
+    game.gmst_disco = snapshot_disco();
+    game.gmst_mvitals = snapshot_mvitals();
+    game.gmst_spl_book = snapshot_spl_book();
+    memset_spl_book();
     game.gmst_stored = true;
 }
 
 /**
  * C ref: nhlua.c nhl_gamestate(true) via tutorial_leave / tutorial(FALSE).
- * useupall tutorial invent; addinv_nomerge stash + setworn from flag.
- * Named omit: memcpy u/disco/mvitals/spl_book; oc_uname clear;
- * init_uhunger; free_tutorial leftover obfree; nhcore callback disable.
+ * useupall tutorial invent; addinv_nomerge stash + setworn from flag;
+ * memcpy u (keep uz/uz0) / disco / mvitals; clear oc_uname; init_uhunger;
+ * free_tutorial; memcpy spl_book. Named omit: leftover obfree contents;
+ * nhcore_call_available disable; update_inventory redraw.
  */
 async function tutorial_leave_gamestate() {
     if (!game.gmst_stored) return;
@@ -826,8 +1002,23 @@ async function tutorial_leave_gamestate() {
         await addinv_nomerge(otmp);
         if (wornmask) setworn_restore(otmp, wornmask);
     }
-    game.gmst_invent = [];
+    restore_you(game.u, game.gmst_ubak);
+    restore_disco(game.gmst_disco);
+    restore_mvitals(game.gmst_mvitals);
+    clear_oc_uname();
+    const { init_uhunger } = await import('./eat.js');
+    await init_uhunger();
+    const splBak = game.gmst_spl_book;
+    free_tutorial();
     game.gmst_stored = false;
+    restore_spl_book(splBak);
+    game.gmst_spl_book = null;
+}
+
+/** C nhlua.c nhl_gamestate — Lua nh.gamestate([restore]). */
+export async function nhl_gamestate(reststate = false) {
+    if (reststate) await tutorial_leave_gamestate();
+    else tutorial_enter_gamestate();
 }
 
 /**
@@ -1053,10 +1244,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         if (In_tutorial(newlevel)) {
             game.flags = game.flags || {};
             game.flags.in_tutorial_branch = true;
-            tutorial_enter_gamestate();
+            await nhl_gamestate(false);
         } else if (In_tutorial(u.uz)) {
             game.flags && (game.flags.in_tutorial_branch = false);
-            await tutorial_leave_gamestate();
+            await nhl_gamestate(true);
             up = false; // C: re-enter level 1 as if starting new game
         }
     }
@@ -1155,6 +1346,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             updest: snapDest(game.updest),
             dndest: snapDest(game.dndest),
             lastseentyp: snapLastseen(game.lastseentyp),
+            // C save.c savelev → save_timers(RANGE_LEVEL); release peels
+            // local object/spot timers off gt.timer_base so they do not
+            // fire while the hero is on another level (D-1037).
+            timers: save_timers(RANGE_LEVEL),
         };
     }
 
@@ -1241,6 +1436,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             game.lastseentyp = null;
         }
         rebuildObjectsAt(game.fobj);
+        restore_timers(info.timers);
         relight_monsters();
         rest_track(info.track);
         // C: Sokoban ≡ level.flags.sokoban_rules — sync JS alias after getlev
@@ -1672,6 +1868,7 @@ function freeinv_drop(obj) {
     if (idx >= 0) inv.splice(idx, 1);
     obj.owornmask = 0;
     obj.nobj = null;
+    freeinv_core(obj);
     // where left for place_object to set OBJ_FLOOR
     // C invent.c freeinv_core — COIN_CLASS → disp.botl = TRUE; return
     if (obj.oclass === COIN_CLASS) {

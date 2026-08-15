@@ -1,5 +1,6 @@
 // mkobj.js — Object creation.
-// C ref: mkobj.c — mkobj, mksobj, mkgold, next_ident, mksobj_init (partial).
+// C ref: mkobj.c — mkobj, mksobj, mkgold, next_ident, mksobj_init (partial),
+//        hornoplenty / fixup_oil (D-1031).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
@@ -37,11 +38,14 @@ import {
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
-import { otyp_uses_known, distant_name, doname } from './objnam.js';
+import { otyp_uses_known, distant_name, doname, cxname, The, vtense } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
-    ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, TIMER_OBJECT, TIMER_LEVEL,
-    MELT_ICE_AWAY, HATCH_EGG, BURN_OBJECT, SHRINK_GLOB, MAX_EGG_HATCH_TIME,
+    ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
+    TIMER_OBJECT, TIMER_LEVEL, TIMER_GLOBAL, TIMER_MONSTER,
+    RANGE_LEVEL,
+    MELT_ICE_AWAY, HATCH_EGG, FIG_TRANSFORM, BURN_OBJECT, SHRINK_GLOB,
+    MAX_EGG_HATCH_TIME,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     OBJ_MIGRATING,
     G_GONE,
@@ -49,13 +53,26 @@ import {
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
     LS_OBJECT, OMONST, has_omonst, OMID, has_omid, MON_DETACH,
+    IRONBARS, ROOM, IS_ALTAR, IS_SOFT, Is_airlevel, Is_waterlevel,
+    MAX_OIL_IN_FLASK, nothing_happens,
 } from './const.js';
 import { recalc_block_point } from './vision.js';
 import { del_light_source } from './light.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
+const POT_BOOZE = objectNames.indexOf('POT_BOOZE');
+const POT_WATER = objectNames.indexOf('POT_WATER');
+const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
+const POT_OIL = objectNames.indexOf('POT_OIL');
+const FOOD_RATION = objectNames.indexOf('FOOD_RATION');
+const LUMP_OF_ROYAL_JELLY = objectNames.indexOf('LUMP_OF_ROYAL_JELLY');
+const CANDELABRUM_OF_INVOCATION =
+    objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const TALLOW_CANDLE = objectNames.indexOf('TALLOW_CANDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
+const FIGURINE = objectNames.indexOf('FIGURINE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const CORPSE = objectNames.indexOf('CORPSE');
 const GLOB_OF_GRAY_OOZE = objectNames.indexOf('GLOB_OF_GRAY_OOZE');
@@ -227,6 +244,11 @@ export function weight(obj) {
     }
     // HEAVY_IRON_BALL punish-levy owt preserve deferred (C owt!=0 short-circuit);
     // callers that must keep levy must not assign owt=weight(ball) after incr.
+    // C mkobj.c weight — candelabrum spe * tallow candle (use_candle owt)
+    if (obj.otyp === CANDELABRUM_OF_INVOCATION && (obj.spe | 0)) {
+        const cwt = objects[TALLOW_CANDLE]?.oc_weight ?? 0;
+        return wt + (obj.spe | 0) * (cwt | 0);
+    }
     if (!wt) return Math.trunc((quan + 1) / 2);
     return wt * quan;
 }
@@ -328,11 +350,22 @@ export function curse(otmp) {
     if (!otmp) return;
     otmp.cursed = true;
     otmp.blessed = false;
+    // C mkobj.c curse — FIGURINE attach when carried/mcarried + typed
+    if ((otmp.otyp | 0) === FIGURINE
+        && (otmp.corpsenm | 0) !== NON_PM
+        && !dead_species(otmp.corpsenm | 0, true)
+        && figurine_is_carried(otmp)) {
+        attach_fig_transform_timeout(otmp);
+    }
 }
 export function bless(otmp) {
     if (!otmp) return;
     otmp.blessed = true;
     otmp.cursed = false;
+    // C mkobj.c bless — stop FIG_TRANSFORM if figurine timed
+    if ((otmp.otyp | 0) === FIGURINE && (otmp.timed | 0)) {
+        stop_timer(FIG_TRANSFORM, otmp);
+    }
 }
 
 /** C ref: mkobj.c unbless — clear blessed only. */
@@ -342,14 +375,17 @@ export function unbless(otmp) {
 }
 
 /**
- * C ref: mkobj.c uncurse — clear cursed; bag weight / luck / figurine /
- * lamplit adjust deferred beyond BAG_OF_HOLDING owt.
+ * C ref: mkobj.c uncurse — clear cursed; bag weight; figurine stop
+ * FIG_TRANSFORM. luck / lamplit adjust still deferred.
  */
 export function uncurse(otmp) {
     if (!otmp) return;
     otmp.cursed = false;
     const bag = objectNames.indexOf('BAG_OF_HOLDING');
     if (bag >= 0 && (otmp.otyp | 0) === bag) otmp.owt = weight(otmp);
+    else if ((otmp.otyp | 0) === FIGURINE && (otmp.timed | 0)) {
+        stop_timer(FIG_TRANSFORM, otmp);
+    }
 }
 
 // C ref: mkobj.c blessorcurse()
@@ -575,14 +611,128 @@ function special_corpse(num) {
  * C ref: timeout.c timer queue (gt.timer_base) — object + level timers.
  * start_timer inserts by absolute timeout (moves+when); run_timers fires
  * when timeout <= moves. Envelope: ROT_CORPSE → rot_corpse floor extract;
- * HATCH_EGG queued via attach_egg_hatch_timeout (D-0533) but hatch_egg
- * callback deferred; TIMER_LEVEL MELT_ICE_AWAY → melt_ice_away (D-0965);
- * REVIVE_MON / ZOMBIFY_MON / burn / fig deferred (no-op fire clears the
- * queue entry).
+ * HATCH_EGG queued via attach_egg_hatch_timeout (D-0533); hatch_egg
+ * dispatched (D-1036/D-1037); TIMER_LEVEL MELT_ICE_AWAY → melt_ice_away
+ * (D-0965); REVIVE_MON / ZOMBIFY_MON deferred (no-op fire clears the
+ * queue entry). FIG_TRANSFORM → fig_transform (D-1032).
+ * save_timers(RANGE_LEVEL) peels local timers on level leave.
  */
 function timer_base() {
     if (!game._timer_base) game._timer_base = null;
     return game;
+}
+
+/**
+ * C ref: timeout.c insert_timer — ordered by timeout ascending; equal
+ * timeout inserts before the existing node (curr->timeout >= gnu).
+ */
+function insert_timer(gnu) {
+    const g = timer_base();
+    let prev = null;
+    let curr = g._timer_base;
+    while (curr && curr.timeout < gnu.timeout) {
+        prev = curr;
+        curr = curr.next;
+    }
+    gnu.next = curr;
+    if (prev) prev.next = gnu;
+    else g._timer_base = gnu;
+}
+
+/**
+ * C ref: timeout.c mon_is_local — not on migrating_mons / mydogs.
+ */
+function mon_is_local(mon) {
+    if (!mon) return false;
+    for (const curr of game.migrating_mons || []) {
+        if (curr === mon) return false;
+    }
+    for (const curr of game.mydogs || []) {
+        if (curr === mon) return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: timeout.c obj_is_local — floor/buried stay; invent/migrating
+ * follow the hero; contained/minvent recurse. OBJ_FREE panics in C;
+ * JS treats it as non-local so a stale timer is not saved onto a level.
+ */
+function obj_is_local(obj) {
+    if (!obj) return false;
+    switch (obj.where | 0) {
+    case OBJ_INVENT:
+    case OBJ_MIGRATING:
+        return false;
+    case OBJ_FLOOR:
+    case OBJ_BURIED:
+        return true;
+    case OBJ_CONTAINED:
+        return obj_is_local(obj.ocontainer);
+    case OBJ_MINVENT:
+        return mon_is_local(obj.ocarry);
+    default:
+        return false;
+    }
+}
+
+/**
+ * C ref: timeout.c timer_is_local — TIMER_LEVEL always; TIMER_OBJECT
+ * follows obj_is_local; TIMER_GLOBAL never; TIMER_MONSTER via mon.
+ */
+function timer_is_local(timer) {
+    if (!timer) return false;
+    switch (timer.kind | 0) {
+    case TIMER_LEVEL:
+        return true;
+    case TIMER_GLOBAL:
+        return false;
+    case TIMER_OBJECT:
+        return obj_is_local(timer.obj);
+    case TIMER_MONSTER:
+        return mon_is_local(timer.mon);
+    default:
+        return false;
+    }
+}
+
+/**
+ * C ref: timeout.c save_timers — peel RANGE_LEVEL locals (or RANGE_GLOBAL
+ * non-locals) off gt.timer_base. JS in-memory stash returns the peeled
+ * list; no NHFILE. C: !(range==LEVEL xor timer_is_local) → remove.
+ */
+export function save_timers(range) {
+    const wantLocal = (range | 0) === RANGE_LEVEL;
+    const saved = [];
+    const g = timer_base();
+    let prev = null;
+    let curr = g._timer_base;
+    while (curr) {
+        const next = curr.next;
+        if (timer_is_local(curr) === wantLocal) {
+            if (prev) prev.next = next;
+            else g._timer_base = next;
+            curr.next = null;
+            saved.push(curr);
+        } else {
+            prev = curr;
+        }
+        curr = next;
+    }
+    return saved;
+}
+
+/**
+ * C ref: timeout.c restore_timers — re-insert saved elements (adjust 0
+ * for in-memory getlev; bones ghostly timeout+=adjust deferred).
+ */
+export function restore_timers(list) {
+    if (!list) return;
+    for (const t of list) {
+        if (!t) continue;
+        t.next = null;
+        insert_timer(t);
+    }
 }
 
 export function obj_stop_timers(obj) {
@@ -664,15 +814,7 @@ export function start_timer(when, kind, action, arg) {
         obj,
         a_long,
     };
-    let prev = null;
-    let curr = g._timer_base;
-    while (curr && curr.timeout < gnu.timeout) {
-        prev = curr;
-        curr = curr.next;
-    }
-    gnu.next = curr;
-    if (prev) prev.next = gnu;
-    else g._timer_base = gnu;
+    insert_timer(gnu);
     if (isObj) obj.timed = (obj.timed | 0) + 1;
     return when;
 }
@@ -720,7 +862,6 @@ export function spot_stop_timers(x, y, action) {
 /**
  * C ref: timeout.c attach_egg_hatch_timeout — stop prior HATCH_EGG; if
  * when==0 roll rnd(i)>150 for i in 151..MAX_EGG_HATCH_TIME; queue timer.
- * hatch_egg body deferred (run_timers drops HATCH_EGG entries).
  */
 export function attach_egg_hatch_timeout(egg, when = 0) {
     if (!egg) return;
@@ -739,11 +880,41 @@ export function attach_egg_hatch_timeout(egg, when = 0) {
 
 /**
  * C ref: timeout.c kill_egg — stop HATCH_EGG so the egg never hatches.
- * hatch_egg callback body still deferred (run_timers drops HATCH_EGG).
  */
 export function kill_egg(egg) {
     if (!egg) return;
     stop_timer(HATCH_EGG, egg);
+}
+
+/**
+ * C ref: timeout.c attach_fig_transform_timeout — stop prior FIG_TRANSFORM;
+ * queue rnd(9000)+200.
+ */
+export function attach_fig_transform_timeout(figurine) {
+    if (!figurine) return;
+    stop_timer(FIG_TRANSFORM, figurine);
+    const i = rnd(9000) + 200;
+    start_timer(i, TIMER_OBJECT, FIG_TRANSFORM, figurine);
+}
+
+/** C invent.c carried / mcarried — invent or monster inventory. */
+function figurine_is_carried(obj) {
+    if (!obj) return false;
+    const where = obj.where | 0;
+    if (where === OBJ_INVENT || where === OBJ_MINVENT) return true;
+    return (game.invent || []).includes(obj);
+}
+
+/**
+ * C ref: invent.c carry_obj_effects — cursed figurine starts FIG_TRANSFORM
+ * after addinv / mpickobj.
+ */
+export function carry_obj_effects(obj) {
+    if (!obj || (obj.otyp | 0) !== FIGURINE) return;
+    if (obj.cursed && (obj.corpsenm | 0) !== NON_PM
+        && !dead_species(obj.corpsenm | 0, true)) {
+        attach_fig_transform_timeout(obj);
+    }
 }
 
 /**
@@ -772,8 +943,10 @@ async function rot_corpse(obj) {
  * C ref: timeout.c run_timers — fire due timers at start of list.
  * Called from nh_timeout after intrinsic TIMEOUT handling.
  * Envelope: ROT_CORPSE; ROT_ORGANIC (dig.c); TIMER_LEVEL MELT_ICE_AWAY
- * (D-0965/D-0967); BURN_OBJECT (D-0978); SHRINK_GLOB thin (D-0993).
- * Named omit: REVIVE_MON / ZOMBIFY_MON / hatch; full shrink ice/eat catch-up.
+ * (D-0965/D-0967); BURN_OBJECT (D-0978); SHRINK_GLOB thin (D-0993);
+ * FIG_TRANSFORM (D-1032). Named omit: REVIVE_MON / ZOMBIFY_MON;
+ * full shrink ice/eat catch-up. Local timers peel via save_timers
+ * RANGE_LEVEL on goto_level (D-1037).
  */
 export async function run_timers() {
     const g = timer_base();
@@ -798,8 +971,14 @@ export async function run_timers() {
             await burn_object(curr.obj, curr.timeout | 0);
         } else if (curr.action === SHRINK_GLOB && curr.obj) {
             await shrink_glob(curr.obj);
+        } else if (curr.action === FIG_TRANSFORM && curr.obj) {
+            const { fig_transform } = await import('./apply.js');
+            await fig_transform(curr.obj, curr.timeout | 0);
+        } else if (curr.action === HATCH_EGG && curr.obj) {
+            const { hatch_egg } = await import('./timeout.js');
+            await hatch_egg(curr.obj, curr.timeout | 0);
         }
-        // REVIVE_MON / ZOMBIFY_MON / hatch deferred — entry dropped
+        // REVIVE_MON / ZOMBIFY_MON deferred.
     }
 }
 
@@ -858,12 +1037,19 @@ export function set_corpsenm(obj, id) {
     if (name === 'CORPSE') {
         start_corpse_timeout(obj);
         obj.owt = weight(obj);
+    } else if (name === 'FIGURINE') {
+        // C mkobj.c set_corpsenm FIGURINE — attach when typed + carried
+        if (id !== NON_PM && !dead_species(id, true)
+            && figurine_is_carried(obj)) {
+            attach_fig_transform_timeout(obj);
+        }
+        obj.owt = weight(obj);
     } else if (name === 'EGG') {
         // C: attach_egg_hatch_timeout when typed + !dead_species; no owt here
         if (id !== NON_PM && !dead_species(id, true)) {
             attach_egg_hatch_timeout(obj, when);
         }
-    } else if (name === 'STATUE' || name === 'FIGURINE' || name === 'TIN') {
+    } else if (name === 'STATUE' || name === 'TIN') {
         obj.owt = weight(obj);
     }
 }
@@ -1468,6 +1654,10 @@ function merged(potmp, pobj) {
         otmp.owt = weight(otmp);
     }
     obj_extract_self(obj);
+    // C invent.c merged: "really should merge the timeouts" then
+    // obj_stop_timers(obj) so the absorbed object's HATCH_EGG (etc.)
+    // does not fire after extract.
+    if (obj.timed) obj_stop_timers(obj);
     if (obj.known !== otmp.known) otmp.known = 1;
     if (obj.bknown !== otmp.bknown) otmp.bknown = 1;
     if (obj.rknown !== otmp.rknown) otmp.rknown = 1;
@@ -2173,6 +2363,190 @@ export function corpse_revive_type(obj) {
         if (mtmp) revivetype = mtmp.mnum | 0;
     }
     return revivetype;
+}
+
+/**
+ * C invent.c consume_obj_charge — spe--; unpaid/update_inventory deferred.
+ */
+function consume_obj_charge_horn(obj, _maybe_unpaid) {
+    if (!obj) return;
+    obj.spe = (obj.spe | 0) - 1;
+}
+
+/** C objnam.c otense — plural verb if quan!=1, else vtense(null). */
+function otense_horn(obj, verb) {
+    if ((obj?.quan | 0) !== 1) return verb;
+    return vtense(null, verb);
+}
+
+/** C objnam.c aobjnam — count + cxname + optional otense verb. */
+function aobjnam_horn(otmp, verb) {
+    let bp = cxname(otmp);
+    if ((otmp?.quan | 0) !== 1) bp = `${otmp.quan} ${bp}`;
+    if (verb) bp = `${bp} ${otense_horn(otmp, verb)}`;
+    return bp;
+}
+
+/** C objnam.c Doname2 — capitalized doname. */
+function Doname2_horn(obj) {
+    const s = doname(obj);
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+/** C dungeon.c surface — enough for horn drop/hit messages. */
+function surface_horn(x, y) {
+    const typ = game.level?.at(x, y)?.typ ?? 0;
+    if (IS_ALTAR(typ)) return 'altar';
+    if (typ === ICE) return 'ice';
+    if (typ === ROOM) return 'floor';
+    return 'ground';
+}
+
+/**
+ * C mkobj.c fixup_oil — potion age when otyp changes to/from POT_OIL.
+ * source Null → non-oil becoming oil uses MAX_OIL_IN_FLASK (horn/poly).
+ */
+export function fixup_oil(potion, source) {
+    if (!potion) return;
+    if (potion.otyp === POT_OIL) {
+        if (source && source.otyp === POT_OIL) {
+            potion.age = source.age;
+        } else {
+            potion.age = MAX_OIL_IN_FLASK;
+        }
+    } else if (source && source.otyp === POT_OIL) {
+        if (potion.age === source.age) potion.age = game.moves | 0;
+        if ((source.age | 0) < MAX_OIL_IN_FLASK) potion.odiluted = 1;
+    }
+}
+
+/**
+ * C dothrow.c hitfloor — thin altar/soft/drop for horn tipping.
+ * Named omit: hero_breaks / ship_object / dropz(thrown=TRUE).
+ */
+async function hitfloor_horn(obj, verbosely) {
+    const { dropy, doaltarobj } = await import('./do.js');
+    const { pline } = await import('./display.js');
+    const u = game.u || {};
+    const typ = game.level?.at(u.ux | 0, u.uy | 0)?.typ ?? 0;
+    if (IS_SOFT(typ) || u.uinwater || u.uswallow) {
+        await dropy(obj);
+        return;
+    }
+    if (IS_ALTAR(typ)) {
+        await doaltarobj(obj);
+    } else if (verbosely) {
+        await pline(
+            `${Doname2_horn(obj)} ${otense_horn(obj, 'hit')} the ${
+                surface_horn(u.ux | 0, u.uy | 0)
+            }.`,
+        );
+    }
+    await dropy(obj);
+}
+
+/**
+ * C ref: mkobj.c hornoplenty — apply / tip HORN_OF_PLENTY.
+ * consume_obj_charge then rn2(13) potion vs food; magic potions reroll
+ * rnd_class(POT_BOOZE, POT_WATER) skipping SICKNESS; FOOD_RATION rn2(7)
+ * → royal jelly; copy horn BUC; unpaid addtobill; !tipping
+ * hold_another_object; tipping targetbox add_to_container else floor
+ * dropy / doaltarobj. Named omit: check_unpaid inside consume_obj_charge;
+ * update_inventory / perm_invent; hitfloor hero_breaks/ship_object.
+ * @returns {Promise<number>} objects created (0 or 1)
+ */
+export async function hornoplenty(horn, tipping = false, targetbox = null) {
+    const { pline } = await import('./display.js');
+    let objcount = 0;
+
+    if (!horn || horn.otyp !== HORN_OF_PLENTY) {
+        return 0;
+    }
+    if ((horn.spe | 0) < 1) {
+        await pline(nothing_happens);
+        if (!horn.cknown) horn.cknown = 1;
+        return 0;
+    }
+
+    consume_obj_charge_horn(horn, !tipping);
+    let obj;
+    let what;
+    if (!rn2(13)) {
+        obj = mkobj(POTION_CLASS, false);
+        if (game.objects?.[obj.otyp]?.oc_magic) {
+            do {
+                obj.otyp = rnd_class(POT_BOOZE, POT_WATER);
+            } while (obj.otyp === POT_SICKNESS);
+            if (obj.otyp === POT_OIL) fixup_oil(obj, null);
+        }
+        what = ((obj.quan | 0) > 1) ? 'Some potions' : 'A potion';
+    } else {
+        obj = mkobj(FOOD_CLASS, false);
+        if (obj.otyp === FOOD_RATION && !rn2(7)) {
+            obj.otyp = LUMP_OF_ROYAL_JELLY;
+        }
+        what = 'Some food';
+    }
+    objcount++;
+    await pline(`${what} ${vtense(what, 'spill')} out.`);
+    obj.blessed = horn.blessed ? 1 : 0;
+    obj.cursed = horn.cursed ? 1 : 0;
+    obj.owt = weight(obj);
+
+    if (horn.unpaid) {
+        const { addtobill } = await import('./shk.js');
+        await addtobill(obj, false, false, !!tipping);
+    }
+    if (!game.iflags) game.iflags = {};
+    game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
+    try {
+        const u = game.u || {};
+        if (!tipping) {
+            const { hold_another_object } = await import('./invent.js');
+            const typ = game.level?.at(u.ux | 0, u.uy | 0)?.typ ?? 0;
+            const dropFmt = u.uswallow
+                ? 'Oops!  %s out of your reach!'
+                : (Is_airlevel(u.uz) || Is_waterlevel(u.uz)
+                    || typ < IRONBARS || typ >= ICE)
+                    ? 'Oops!  %s away from you!'
+                    : 'Oops!  %s to the floor!';
+            await hold_another_object(
+                obj, dropFmt, The(aobjnam_horn(obj, 'slip')), null,
+            );
+        } else if (targetbox) {
+            add_to_container(targetbox, obj);
+            targetbox.owt = weight(targetbox);
+            if (targetbox.where === OBJ_INVENT) {
+                const { encumber_msg } = await import('./invent.js');
+                await encumber_msg();
+            }
+        } else {
+            const { dropy, doaltarobj } = await import('./do.js');
+            const { can_reach_floor } = await import('./engrave.js');
+            if (!can_reach_floor(true)) {
+                await hitfloor_horn(obj, true);
+            } else {
+                const typ = game.level?.at(u.ux | 0, u.uy | 0)?.typ ?? 0;
+                if (IS_ALTAR(typ)) {
+                    await doaltarobj(obj);
+                } else {
+                    await pline(
+                        `${Doname2_horn(obj)} ${otense_horn(obj, 'drop')} to the ${
+                            surface_horn(u.ux | 0, u.uy | 0)
+                        }.`,
+                    );
+                }
+                await dropy(obj);
+            }
+        }
+    } finally {
+        game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
+    }
+    if (horn.dknown) {
+        const { makeknown } = await import('./invent.js');
+        makeknown(HORN_OF_PLENTY);
+    }
+    return objcount;
 }
 
 export { O as OBJ };

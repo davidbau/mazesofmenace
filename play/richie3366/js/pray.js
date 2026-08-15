@@ -568,12 +568,12 @@ async function fix_worst_trouble(trouble) {
     case TROUBLE_STARVING:
         // C: FALLTHROUGH into TROUBLE_HUNGRY
         await pline(`Your ${body_part(STOMACH)} feels content.`);
-        init_uhunger();
+        await init_uhunger();
         game.flags.botl = true;
         break;
     case TROUBLE_HUNGRY:
         await pline(`Your ${body_part(STOMACH)} feels content.`);
-        init_uhunger();
+        await init_uhunger();
         game.flags.botl = true;
         break;
     case TROUBLE_SICK:

@@ -1,12 +1,18 @@
-// dog.js — Starting pet.
-// C ref: dog.c — pet_type, makedog.
+// dog.js — Starting pet + figurine/spell familiar.
+// C ref: dog.c — pet_type, makedog, pick_familiar_pm, make_familiar.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { makemon, set_malign } from './makemon.js';
+import { makemon, set_malign, rndmonst_adj } from './makemon.js';
 import { mons, NON_PM, is_human, regenerates, M2_STALK, is_domestic, haseyes } from './monsters.js';
-import { MM_EDOG, NO_MINVENT, STRAT_WAITFORU } from './const.js';
+import {
+    MM_EDOG, MM_IGNOREWATER, MM_NOMSG, MM_FEMALE, MM_MALE, NO_MINVENT,
+    STRAT_WAITFORU, G_EXTINCT, MAXMONNO, CORPSTAT_GENDER, CORPSTAT_FEMALE,
+    CORPSTAT_MALE, NEED_HTH_WEAPON, ismnum, has_oname, ONAME,
+} from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
+import { is_pool } from './hack.js';
+import { P_SKILL, mon_wield_item } from './weapon.js';
 import {
     monsterNames,
     PM_CAVE_DWELLER,
@@ -16,7 +22,7 @@ import {
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
 import { christen_monst, Monnam } from './do_name.js';
-import { monnear, m_at, see_monster_closeup } from './mon.js';
+import { monnear, m_at, see_monster_closeup, minliquid } from './mon.js';
 import { enexto, rloc_to } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
 import { newsym, pline, canspotmon } from './display.js';
@@ -27,7 +33,11 @@ import { objectNames } from './generated/objects_data.js';
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
 const PM_PONY = monsterNames.indexOf('PM_PONY');
+const PM_NAZGUL = monsterNames.indexOf('PM_NAZGUL');
+const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
+const SPE_CREATE_FAMILIAR = objectNames.indexOf('SPE_CREATE_FAMILIAR');
+const AT_WEAP = 254;
 
 function Role_if(pm) {
     return game.urole?.mnum === pm;
@@ -84,6 +94,132 @@ function initedog(mtmp, everything) {
     if (!game.u) game.u = {};
     if (!game.u.uconduct) game.u.uconduct = {};
     game.u.uconduct.pets = (game.u.uconduct.pets | 0) + 1;
+}
+
+/** C ref: makemon.c mbirth_limit — Nazgul 9 / Erinys 3 / else MAXMONNO. */
+function mbirth_limit(mndx) {
+    if (mndx === PM_NAZGUL) return 9;
+    if (mndx === PM_ERINYS) return 3;
+    return MAXMONNO;
+}
+
+/** C ref: mondata.h attacktype — any mattk slot with aatyp. */
+function attacktype(ptr, aatyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (let i = 0; i < slots.length; i++) {
+        if (slots[i]?.aatyp === aatyp) return true;
+    }
+    return false;
+}
+
+/** C ref: minion.c free_emin — drop emin and isminion. */
+function free_emin(mtmp) {
+    if (mtmp.mextra) mtmp.mextra.emin = null;
+    mtmp.isminion = 0;
+}
+
+/** C ref: spell.c spell_skilltype — objects[].oc_skill. */
+function spell_skilltype_familiar(booktype) {
+    return game.objects?.[booktype]?.oc_skill ?? 0;
+}
+
+/**
+ * C ref: dog.c pick_familiar_pm — figurine corpsenm (G_EXTINCT + special
+ * mbirth_limit → dust) else spell: 1/3 pet_type else rndmonst_adj(0, 3*skill).
+ * Named omit: SPE_CREATE_FAMILIAR spell.c dispatch (helper is complete).
+ */
+async function pick_familiar_pm(otmp, quietly) {
+    let pm = null;
+    if (otmp) {
+        const mndx = otmp.corpsenm | 0;
+        if (!ismnum(mndx)) return null;
+        pm = mons(mndx);
+        if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_EXTINCT)
+            && mbirth_limit(mndx) !== MAXMONNO) {
+            if (!quietly) await pline('... into a pile of dust.');
+            return null;
+        }
+    } else if (!rn2(3)) {
+        pm = mons(pet_type());
+    } else {
+        const skill = spell_skilltype_familiar(SPE_CREATE_FAMILIAR);
+        const max = 3 * P_SKILL(skill);
+        pm = rndmonst_adj(0, max);
+        if (!pm && !quietly) {
+            await pline('There seems to be nothing available for a familiar.');
+        }
+    }
+    return pm;
+}
+
+/**
+ * C ref: dog.c make_familiar — figurine (otmp) or create-familiar spell
+ * (otmp null). makemon MM_EDOG|MM_IGNOREWATER|NO_MINVENT|MM_NOMSG + gender;
+ * figurine shatter / angel free_emin; pool minliquid; rn2(10) then B/U/C
+ * 80/10/10 tame·peace·hostile; named christen; initedog; AT_WEAP wield.
+ * Named omit: livelog first pet; makemon MM_EDOG newedog alloc (initedog
+ * still creates edog).
+ */
+export async function make_familiar(otmp, x, y, quietly) {
+    let mtmp = null;
+    let trycnt = 100;
+    let reallytame = true;
+
+    do {
+        const pm = await pick_familiar_pm(otmp, quietly);
+        if (!pm) break;
+
+        let mmflags = MM_EDOG | MM_IGNOREWATER | NO_MINVENT | MM_NOMSG;
+        const cgend = otmp ? ((otmp.spe | 0) & CORPSTAT_GENDER) : 0;
+        mmflags |= (cgend === CORPSTAT_FEMALE) ? MM_FEMALE
+            : (cgend === CORPSTAT_MALE) ? MM_MALE : 0;
+
+        mtmp = makemon(pm, x, y, mmflags);
+        if (otmp) {
+            if (!mtmp) {
+                if (!quietly) {
+                    await pline(
+                        'The figurine writhes and then shatters into pieces!',
+                    );
+                }
+                break;
+            } else if (mtmp.isminion) {
+                mtmp.isminion = 0;
+                free_emin(mtmp);
+            }
+        }
+    } while (!mtmp && --trycnt > 0);
+
+    if (!mtmp) return null;
+
+    if (is_pool(mtmp.mx, mtmp.my) && await minliquid(mtmp)) return null;
+
+    if (otmp) {
+        let chance = rn2(10);
+        if (chance > 2) {
+            chance = otmp.blessed ? 0 : !otmp.cursed ? 1 : 2;
+        }
+        if (chance > 0) {
+            reallytame = false;
+            if (chance === 2) {
+                if (!quietly) await pline('You get a bad feeling about this.');
+                mtmp.mpeaceful = 0;
+                set_malign(mtmp);
+            }
+        }
+        if (has_oname(otmp)) mtmp = christen_monst(mtmp, ONAME(otmp));
+    }
+    if (reallytame) initedog(mtmp, true);
+    mtmp.msleeping = 0;
+    set_malign(mtmp);
+    newsym(mtmp.mx, mtmp.my);
+
+    if (mtmp.mtame && attacktype(mtmp.data, AT_WEAP)) {
+        mtmp.weapon_check = NEED_HTH_WEAPON;
+        await mon_wield_item(mtmp);
+    }
+    return mtmp;
 }
 
 // C ref: dog.c makedog()

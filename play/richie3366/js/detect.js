@@ -1,7 +1,7 @@
-// detect.js — Searching / dosearch0 / findit / do_mapping / #terrain /
-// monster_detect / use_crystal_ball.
+// detect.js — Searching / dosearch0 / findit / openit / do_mapping /
+// #terrain / monster_detect / use_crystal_ball.
 // C ref: detect.c — dosearch0, find_trap, cvt_sdoor_to_door, findit,
-// findone, show_map_spot, do_mapping, reveal_terrain, browse_map,
+// findone, openit, openone, show_map_spot, do_mapping, reveal_terrain, browse_map,
 // monster_detect, object_detect, trap_detect, furniture_detect,
 // level_distance, use_crystal_ball; drawing.c def_char_to_*;
 // cmd.c doterrain; vision.c do_clear_area (hero-centered).
@@ -18,6 +18,8 @@
 // browse_map(TER_DETECT|TER_MON) (D-0370);
 // **use_crystal_ball** Blind/fail/hallu/uncharged + charged detect
 // via furniture/object/monster/trap/level_distance (D-1010);
+// **openit** / **openone** (apply use_bell / knock) boxes+doors+scorr+
+// holding/falling traps + drawbridge (D-1028);
 // **premap_detect** Sokoban premapped levels (D-0567);
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
 // Named omissions: Hallucination/cls
@@ -27,6 +29,7 @@
 // notice_mon_off/on; findone flash_glyph / mimic / hider / invis /
 // chest-trap detect;
 // trapped-door dummytrap; FOUND_FLASH_COUNT==0 tmp_at path;
+// detecting() vision override for openone; open_drawbridge crush/entity;
 // reveal_terrain region/gascloud / trap keep restore /
 // M_AP_FURNITURE; wiz_map_levltyp / wiz_levltyp_legend;
 // TER_FULL explore-only map body; arboreal default tree;
@@ -43,18 +46,22 @@ import {
     newsym, pline, magic_map_background, terrain_glyph, obj_glyph,
     show_glyph_cell, map_trap, map_engraving, canspotmon, sensemon,
     map_invisible, glyph_is_invisible, warning_of, You_feel,
-    feel_location, feel_newsym, unmap_invisible, map_object,
+    feel_location, feel_newsym, unmap_invisible, map_object, Norep,
 } from './display.js';
-import { vision_recalc, couldsee, recalc_block_point } from './vision.js';
+import { vision_recalc, couldsee, recalc_block_point, cansee } from './vision.js';
 import { visible_region_at } from './region.js';
 import { an, the, xname, The, makeplural, vtense } from './objnam.js';
 import { A_WIS, A_INT, acurr, exercise } from './attrib.js';
-import { t_at, activate_statue_trap } from './trap.js';
+import {
+    t_at, activate_statue_trap, b_trapped, openholdingtrap, openfallingtrap,
+} from './trap.js';
 import { engr_at } from './engrave.js';
 import { cmd_safety_prevention, make_blinded } from './do.js';
-import { m_at, seemimic } from './mon.js';
+import { m_at, seemimic, wake_nearto } from './mon.js';
+import { find_drawbridge, open_drawbridge } from './dbridge.js';
+import { expels, digests } from './mhitu.js';
 import { is_hider, hides_under } from './monsters.js';
-import { x_monnam, x_monnam_tame } from './do_name.js';
+import { Monnam, x_monnam, x_monnam_tame } from './do_name.js';
 import {
     objectNames, MAXOCLASSES, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
     AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -65,9 +72,10 @@ import { objects_at, weight } from './mkobj.js';
 import { makeknown } from './invent.js';
 import { yn_function } from './getline.js';
 import { nomul, losehp, maybe_half_phys } from './hack.js';
-import { depth } from './hacklib.js';
+import { depth, dist2 } from './hacklib.js';
 import {
-    isok, SDOOR, SCORR, DOOR, CORR, D_NODOOR, D_CLOSED, D_LOCKED, WM_MASK,
+    isok, SDOOR, SCORR, DOOR, CORR, D_NODOOR, D_CLOSED, D_LOCKED, D_ISOPEN,
+    D_TRAPPED, WM_MASK, Is_box, NO_PART, u_at,
     STATUE_TRAP, NO_TRAP, TRAPNUM, Is_rogue_level, BOLT_LIM, COLNO, ROWNO,
     SVALL, IS_FURNITURE, STONE, W_NONDIGGABLE, W_NONPASSWALL,
     TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, ECMD_OK,
@@ -83,6 +91,18 @@ function Blind() {
     if (u.uroleplay?.blind) return true;
     if (u.ublind) return true;
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C youprop.h Deaf — TIMEOUT/extrinsic/intrinsic/roleplay. */
+function Deaf() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.Deaf || u.uroleplay?.deaf);
+}
+
+/** C you.h distu — squared distance from hero. */
+function distu_detect(x, y) {
+    const u = game.u || {};
+    return dist2(u.ux | 0, u.uy | 0, x | 0, y | 0);
 }
 
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -611,6 +631,88 @@ export async function findit() {
 
     if (!num) await pline("You don't find anything.");
     return num;
+}
+
+/**
+ * C ref: detect.c openone — unlock boxes; open SDOOR/closed doors / SCORR;
+ * reveal unseen traps; openholdingtrap / openfallingtrap; drawbridge.
+ * Named omit: detecting() vision override; trapped-door dummytrap.
+ */
+async function openone(zx, zy, num) {
+    for (let otmp = objects_at(zx, zy); otmp; otmp = otmp.nexthere) {
+        if (Is_box(otmp) && otmp.olocked) {
+            otmp.olocked = 0;
+            num.n++;
+        }
+    }
+    const lev = game.level?.at(zx, zy);
+    if (lev && (lev.typ === SDOOR
+        || (lev.typ === DOOR
+            && ((lev.doormask | 0) & (D_CLOSED | D_LOCKED))))) {
+        if (lev.typ === SDOOR) cvt_sdoor_to_door(lev);
+        if ((lev.doormask | 0) & D_TRAPPED) {
+            if (distu_detect(zx, zy) < 3) {
+                await b_trapped('door', NO_PART);
+            } else {
+                const how = cansee(zx, zy)
+                    ? 'see'
+                    : (!Deaf() ? 'hear' : 'feel the shock of');
+                await Norep(`You ${how} an explosion!`);
+            }
+            await wake_nearto(zx, zy, 11 * 11);
+            lev.doormask = D_NODOOR;
+        } else {
+            lev.doormask = D_ISOPEN;
+        }
+        recalc_block_point(zx, zy);
+        newsym(zx, zy);
+        num.n++;
+    } else if (lev && lev.typ === SCORR) {
+        lev.typ = CORR;
+        recalc_block_point(zx, zy);
+        newsym(zx, zy);
+        num.n++;
+    } else if (t_at(zx, zy)) {
+        const ttmp = t_at(zx, zy);
+        if (ttmp && !ttmp.tseen && ttmp.ttyp !== STATUE_TRAP) {
+            ttmp.tseen = 1;
+            newsym(zx, zy);
+            num.n++;
+        }
+        const mon = u_at(zx, zy) ? game.youmonst : m_at(zx, zy);
+        const hold = await openholdingtrap(mon);
+        let fall = { happened: false };
+        if (!hold.happened) fall = await openfallingtrap(mon, true);
+        if (hold.happened || fall.happened) num.n++;
+    } else {
+        const xy = { x: zx | 0, y: zy | 0 };
+        if (find_drawbridge(xy)) {
+            await open_drawbridge(xy.x, xy.y);
+            num.n++;
+        }
+    }
+}
+
+/**
+ * C ref: detect.c openit — swallow expels (return -1); else do_clear_area
+ * openone in BOLT_LIM. Returns count of things opened.
+ */
+export async function openit() {
+    const u = game.u || {};
+    if (u.uswallow) {
+        const stuck = u.ustuck;
+        if (stuck && digests(stuck.data)) {
+            if (Blind()) await pline('Its mouth opens!');
+            else await pline(`${Monnam(stuck)} opens its mouth!`);
+        }
+        if (stuck) await expels(stuck, stuck.data, true);
+        return -1;
+    }
+    const num = { n: 0 };
+    const cells = [];
+    do_clear_area(u.ux, u.uy, BOLT_LIM, (x, y) => { cells.push([x, y]); }, null);
+    for (const [x, y] of cells) await openone(x, y, num);
+    return num.n;
 }
 
 /**

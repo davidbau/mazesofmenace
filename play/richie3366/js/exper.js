@@ -1,15 +1,19 @@
 // exper.js — Experience / level-up.
 // C ref: exper.c — experience, more_experienced, newuexp, newexplevel,
-//         newpw, pluslvl (partial); callers in mon.c xkilled / wizcmds / …
+//         newpw, pluslvl (partial), losexp (D-1033); callers in mon.c
+//         xkilled / wizcmds / sit.c special_throne_effect / …
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { MAXULEV, NATTK, LARGEST_INT, Upolyd } from './const.js';
+import { MAXULEV, NATTK, LARGEST_INT, Upolyd, ismnum } from './const.js';
 import { pline } from './display.js';
 import { acurr, A_WIS, newhp, adjabil } from './attrib.js';
 import { find_mac } from './mhitm.js';
 import { NORMAL_SPEED } from './mon.js';
-import { extra_nasty } from './monsters.js';
+import {
+    extra_nasty, is_undead, is_demon, is_were, is_vampshifter,
+} from './monsters.js';
+import { Goodbye, xlev_to_rank } from './roles.js';
 import {
     PM_CLERIC,
     PM_WIZARD,
@@ -18,7 +22,6 @@ import {
     PM_BARBARIAN,
     PM_VALKYRIE,
 } from './generated/monsters_data.js';
-import { xlev_to_rank } from './roles.js';
 import { achieve_rank, record_achievement } from './insight.js';
 
 // C ref: monattk.h — experience() compares against these exact values
@@ -268,4 +271,69 @@ export async function newexplevel() {
     if ((u.ulevel | 0) < MAXULEV && (u.uexp | 0) >= newuexp(u.ulevel | 0)) {
         await pluslvl(true);
     }
+}
+
+/**
+ * C ref: mondata.c resists_drli — undead/demon/were/lycan/vampshifter.
+ * Named omit: defended(AD_DRLI) worn-item walk (Drain_resistance H||E
+ * covers the youprop throne gate).
+ */
+function resists_drli_you() {
+    const u = game.u || {};
+    const ptr = game.youmonst?.data;
+    if (is_undead(ptr) || is_demon(ptr) || is_were(ptr)
+        || ismnum(u.ulycn)
+        || is_vampshifter(game.youmonst)) {
+        return true;
+    }
+    return !!((u.HDrain_resistance | 0) || (u.EDrain_resistance | 0)
+        || u.Drain_resistance);
+}
+
+/**
+ * C ref: exper.c losexp — drain one experience level.
+ * Named omit: wizard "#levelchange" drainer override; level-1 done(DIED);
+ * livelog/SoundAchievement; Upolyd monhp_per_lvl/rehumanize; uhpmax-up
+ * clamp after minuhpmax.
+ */
+export async function losexp(drainer) {
+    const u = game.u || (game.u = {});
+    if (resists_drli_you()) return;
+
+    if ((u.ulevel | 0) > 1 || drainer) {
+        await pline(`${Goodbye()} level ${u.ulevel | 0}.`);
+    }
+
+    if ((u.ulevel | 0) > 1) {
+        u.ulevel = (u.ulevel | 0) - 1;
+        await adjabil((u.ulevel | 0) + 1, u.ulevel | 0);
+    } else {
+        // C: drainer → done(DIED) (noreturn). Named omit.
+        if (drainer) return;
+        u.uexp = 0;
+    }
+
+    const olduhpmax = u.uhpmax | 0;
+    const uhpmin = Math.max(u.ulevel | 0, 10); // attrib.c minuhpmax(10)
+    const numHp = (u.uhpinc?.[u.ulevel | 0] | 0);
+    u.uhpmax = olduhpmax - numHp;
+    if ((u.uhpmax | 0) < uhpmin) u.uhpmax = uhpmin;
+    if ((u.uhpmax | 0) > olduhpmax) u.uhpmax = olduhpmax;
+    u.uhp = (u.uhp | 0) - numHp;
+    if ((u.uhp | 0) < 1) u.uhp = 1;
+    else if ((u.uhp | 0) > (u.uhpmax | 0)) u.uhp = u.uhpmax;
+
+    const numEn = (u.ueninc?.[u.ulevel | 0] | 0);
+    u.uenmax = (u.uenmax | 0) - numEn;
+    if ((u.uenmax | 0) < 0) u.uenmax = 0;
+    u.uen = (u.uen | 0) - numEn;
+    if ((u.uen | 0) < 0) u.uen = 0;
+    else if ((u.uen | 0) > (u.uenmax | 0)) u.uen = u.uenmax;
+
+    if ((u.uexp | 0) > 0) u.uexp = newuexp(u.ulevel | 0) - 1;
+
+    // Upolyd mh strip + rehumanize deferred
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
 }

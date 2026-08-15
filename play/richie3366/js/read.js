@@ -1,11 +1,43 @@
 // read.js — Read command / scroll effects (partial).
 // C ref: read.c doread, seffects, seffect_magic_mapping, seffect_teleportation,
 // seffect_light / litroom / set_lit, seffect_remove_curse,
-// seffect_enchant_weapon, seffect_punishment / punish, create_particular;
+// seffect_enchant_weapon, seffect_punishment / punish, create_particular,
+// do_genocide;
 // invent.c getobj; detect.c do_mapping; spell.c study_book (via spell.js);
 // teleport.c scrolltele/safe_teleds; zap.c lightdamage (non-gremlin stub);
 // do_name.c trycall; mkobj.c uncurse/blessorcurse; wield.c chwepon;
 // ball.c placebc.
+//
+// Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
+// SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION / SCR_LIGHT /
+// SCR_REMOVE_CURSE / SCR_ENCHANT_WEAPON / SCR_DESTROY_ARMOR / SCR_IDENTIFY /
+// SCR_PUNISHMENT +
+// SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
+// named-monster path for #wizgenesis + do_genocide REALLY|ONTHRONE getlin
+// (throne sit case 8, D-1034).
+// Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
+// Blind gates; study_book novel / dull sleep (occupation learn D-0907);
+// other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
+// ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
+// SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
+// blessed getobj choice / disintegrate_cursed_armor; nommap/Hallucination/
+// blessed-SDOOR convert body; notice_mon_off/on; can_chant poly silent/
+// headless/buzz/burble; SPE_MAGIC_MAPPING cast; SPE_REMOVE_CURSE seffects
+// arm (throne fake book D-1033; #cast still deferred);
+// Teleport_control getpos; confused light yellow/black-light pets;
+// snuff_lit / impact_arti_light / Punished ball; gremlin light-hit list;
+// Rogue whole-room light; Sunsword radius-0; remove-curse shop water
+// costly_alteration; Punished/unpunish; buried_ball_to_freedom; steed saddle
+// Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
+// Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
+// proof strip; create_particular class-letter / * random / cant_revive yn /
+// tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes /
+// create_particular → makemon_appear_msg (makemon in-body still deferred;
+// mimic mhidden_description / set_msg_xy / dochugw omit);
+// punish Blind set_bc; flooreffects on placebc; HEAVY_IRON_BALL reuse
+// from angrygods; seffects SCR_GENOCIDE / do_class_genocide wire;
+// do_genocide livelog / Hallucination names / vampshifted POLY_REVERT /
+// kill_eggs / chameleon newcham.
 //
 // Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
 // SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION / SCR_LIGHT /
@@ -20,7 +52,8 @@
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor; nommap/Hallucination/
 // blessed-SDOOR convert body; notice_mon_off/on; can_chant poly silent/
-// headless/buzz/burble; SPE_MAGIC_MAPPING / SPE_REMOVE_CURSE cast;
+// headless/buzz/burble; SPE_MAGIC_MAPPING cast; SPE_REMOVE_CURSE seffects
+// arm (throne fake book D-1033; #cast still deferred);
 // Teleport_control getpos; confused light yellow/black-light pets;
 // snuff_lit / impact_arti_light / Punished ball; gremlin light-hit list;
 // Rogue whole-room light; Sunsword radius-0; remove-curse shop water
@@ -36,14 +69,14 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, newsym, You_feel } from './display.js';
-import { xname } from './objnam.js';
+import { flush_screen, flush_topl_more, pline, newsym, You_feel, verbalize } from './display.js';
+import { xname, makeplural, an } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, objectNames,
 } from './objects.js';
 import { weight, uncurse, blessorcurse, mkobj, delobj } from './mkobj.js';
-import { A_WIS, A_STR, A_CON, exercise } from './attrib.js';
+import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
     makeknown, display_pickinv_reply, identify_pack, near_capacity,
 } from './invent.js';
@@ -56,22 +89,30 @@ import { chwepon } from './wield.js';
 import { destroy_arm, some_armor, setworn } from './do_wear.js';
 import { dropy } from './do.js';
 import { placebc } from './ball.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rn1 } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
     W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM,
     NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
+    GENOCIDED, KILLED_BY, KILLED_BY_AN, NO_MINVENT, MM_NOMSG, Upolyd,
+    nothing_happens, G_GENOD, G_EXTINCT,
 } from './const.js';
 import { vision_recalc, do_clear_area } from './vision.js';
 import { getlin } from './getline.js';
 import { name_to_mon } from './mondata.js';
-import { mons, NON_PM, amorphous, is_whirly, unsolid } from './monsters.js';
-import { makemon, makemon_appear_msg } from './makemon.js';
+import { mons, NON_PM, amorphous, is_whirly, unsolid, G_GENO, G_UNIQ,
+    G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL, M2_PNAME,
+    monsterNames,
+} from './monsters.js';
+import { makemon, makemon_appear_msg, rndmonst } from './makemon.js';
+import { kill_genocided_monsters } from './mon.js';
+import { done } from './end.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
 const SCR_LIGHT = objectNames.indexOf('SCR_LIGHT');
 const SCR_REMOVE_CURSE = objectNames.indexOf('SCR_REMOVE_CURSE');
+const SPE_REMOVE_CURSE = objectNames.indexOf('SPE_REMOVE_CURSE');
 const SCR_ENCHANT_WEAPON = objectNames.indexOf('SCR_ENCHANT_WEAPON');
 const SCR_DESTROY_ARMOR = objectNames.indexOf('SCR_DESTROY_ARMOR');
 const SCR_IDENTIFY = objectNames.indexOf('SCR_IDENTIFY');
@@ -407,15 +448,17 @@ function learnscrolltyp(scrolltyp) {
  * loadstone/leash uncurse or confused blessorcurse.
  * Deferred: shop POT_WATER costly_alteration/alter_cost; Punished/
  * unpunish; buried_ball_to_freedom; steed saddle Yobjnam2/hcolor glow;
- * update_inventory; SPE_REMOVE_CURSE cast path (wired if seffects hit).
+ * update_inventory; SPE_REMOVE_CURSE #cast still deferred (throne fake
+ * book hits seffects switch, D-1033).
  */
 async function seffect_remove_curse(sobj) {
     const otyp = sobj.otyp | 0;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!(game.u?.Confusion);
-    const Hallucination = !!(game.u?.Hallucination);
     const u = game.u || {};
+    // C youprop.h Confusion — HConfusion || EConfusion (flat Confusion mirror)
+    const confused = !!(u.Confusion || (u.HConfusion | 0) || (u.EConfusion | 0));
+    const Hallucination = !!(u.Hallucination);
 
     const feel = !Hallucination
         ? (!confused ? 'like someone is helping you.'
@@ -792,7 +835,7 @@ async function seffect_punishment(sobj) {
  * @returns {number} 0 = caller useup/learn; 1 = already used up;
  *   -1 = unimplemented (caller must not useup)
  */
-async function seffects(sobj) {
+export async function seffects(sobj) {
     const otyp = sobj.otyp;
     const oc = game.objects?.[otyp];
 
@@ -810,6 +853,7 @@ async function seffects(sobj) {
         await seffect_light(sobj);
         break;
     case SCR_REMOVE_CURSE:
+    case SPE_REMOVE_CURSE:
         await seffect_remove_curse(sobj);
         break;
     case SCR_IDENTIFY: {
@@ -938,6 +982,200 @@ export async function doread() {
         if (otyp !== SCR_BLANK_PAPER) useup(scroll);
     }
     return 1;
+}
+
+const GENO_REALLY = 1;
+const GENO_PLAYER = 2;
+const GENO_ONTHRONE = 4;
+const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+
+function strcmpi_eq(a, b) {
+    return String(a).toLowerCase() === String(b).toLowerCase();
+}
+
+function sgn(n) {
+    const x = n | 0;
+    return (x > 0) - (x < 0);
+}
+
+function Your_Own_Role(mndx) {
+    return (mndx | 0) === (game.urole?.mnum | 0);
+}
+
+function Your_Own_Race(mndx) {
+    return (mndx | 0) === (game.urace?.mnum | 0);
+}
+
+function Deaf() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+}
+
+/**
+ * C ref: read.c do_genocide(how).
+ * how: 0 = cursed spawn; 1 = REALLY; 3 = REALLY|PLAYER; 5 = REALLY|ONTHRONE.
+ * Named omissions: livelog; Hallucination type names; vampshifted
+ * POLY_REVERT; kill_eggs; chameleon newcham; update_inventory;
+ * do_class_genocide / seffects SCR_GENOCIDE wire.
+ */
+export async function do_genocide(how) {
+    const u = game.u || (game.u = {});
+    let killplayer = 0;
+    let mndx = NON_PM;
+    let ptr = null;
+
+    if (how & GENO_PLAYER) {
+        mndx = u.umonster | 0;
+        ptr = mons(mndx);
+        killplayer++;
+    } else {
+        for (let i = 0; ; i++) {
+            if (i >= 5) {
+                if (!(how & GENO_REALLY)) {
+                    ptr = rndmonst();
+                    if (ptr) break;
+                }
+                await pline(thats_enough_tries);
+                return;
+            }
+            let promptbuf = 'What type of monster do you want to genocide?';
+            if (i > 0) {
+                promptbuf += game.iflags?.cmdassist
+                    ? " [enter the name of a type of monster, or '?']"
+                    : " [enter '?' to see previous genocides]";
+            }
+            let buf = mungspaces(await getlin(promptbuf));
+            if (!buf) {
+                await pline(
+                    (i + 1 < 5)
+                        ? 'Type the name of a type of monster or \'none\'.'
+                        : 'No type of monster specified.',
+                );
+                continue;
+            }
+            if (buf === '\x1b' || strcmpi_eq(buf, 'none')
+                || strcmpi_eq(buf, "'none'") || strcmpi_eq(buf, 'nothing')) {
+                if (!(how & GENO_REALLY)) {
+                    ptr = rndmonst();
+                    if (ptr) break;
+                }
+                return;
+            }
+            if (buf === '?' || buf === "'?'") {
+                const { list_genocided } = await import('./insight.js');
+                await list_genocided('g', false);
+                i--;
+                continue;
+            }
+
+            mndx = name_to_mon(buf);
+            if (mndx === NON_PM || mndx < 0
+                || (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) !== 0)) {
+                await pline(
+                    `Such creatures ${mndx === NON_PM || mndx < 0 ? 'do not' : 'no longer'} exist in this world.`,
+                );
+                continue;
+            }
+            ptr = mons(mndx);
+            // vampshifted POLY_REVERT deferred
+            if (Your_Own_Role(mndx) || Your_Own_Race(mndx)) {
+                killplayer++;
+                break;
+            }
+            if (is_human(ptr)) adjalign(-sgn(u.ualign?.type | 0));
+            if (is_demon(ptr)) adjalign(sgn(u.ualign?.type | 0));
+
+            if (!((ptr.geno | 0) & G_GENO)) {
+                if (!Deaf()) {
+                    if (game.flags?.verbose !== false) {
+                        await pline('A thunderous voice booms through the caverns:');
+                    }
+                    await verbalize('No, mortal!  That will not be done.');
+                }
+                continue;
+            }
+            const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+            if (Unchanging
+                && (ptr.mndx | 0) === (game.youmonst?.data?.mndx | 0)) {
+                killplayer++;
+            }
+            break;
+        }
+        mndx = ptr?.mndx ?? mndx;
+    }
+
+    if (!ptr) return;
+
+    let which = 'all ';
+    const realbuf = pmnames[mndx]?.[NEUTRAL] || ptr.name || 'creature';
+    // Hallucination type names deferred — use actual type
+    let buf = realbuf;
+    if (((ptr.geno | 0) & G_UNIQ) && mndx !== PM_HIGH_CLERIC) {
+        which = !((ptr.mflags2 | 0) & M2_PNAME) ? 'the ' : '';
+    }
+
+    if (how & GENO_REALLY) {
+        if (!game.mvitals) game.mvitals = [];
+        if (!game.mvitals[mndx]) {
+            game.mvitals[mndx] = { mvflags: 0, born: 0, died: 0 };
+        }
+        game.mvitals[mndx].mvflags =
+            (game.mvitals[mndx].mvflags | 0) | G_GENOD | G_NOCORPSE;
+        await pline(
+            `Wiped out ${which}${which.charAt(0) !== 'a' ? buf : makeplural(buf)}.`,
+        );
+
+        if (killplayer) {
+            u.uhp = -1;
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            if (how & GENO_PLAYER) {
+                game.killer.format = KILLED_BY;
+                game.killer.name = 'genocidal confusion';
+            } else if (how & GENO_ONTHRONE) {
+                game.killer.format = KILLED_BY_AN;
+                game.killer.name = 'imperious order';
+            } else {
+                game.killer.format = KILLED_BY_AN;
+                game.killer.name = 'scroll of genocide';
+            }
+            if (Upolyd(u)
+                && (ptr.mndx | 0) !== (game.youmonst?.data?.mndx | 0)) {
+                // delayed_killer(POLYMORPH) + udeadinside deferred
+                await You_feel('dead inside.');
+            } else {
+                await done(GENOCIDED);
+            }
+        } else if ((ptr.mndx | 0) === (game.youmonst?.data?.mndx | 0)) {
+            const { rehumanize } = await import('./polyself.js');
+            await rehumanize();
+        }
+        kill_genocided_monsters();
+        // update_inventory deferred
+    } else {
+        let cnt = 0;
+        const { monster_census } = await import('./minion.js');
+        const census = monster_census(false);
+        if (!((mons(mndx)?.geno | 0) & G_UNIQ)
+            && !(((game.mvitals?.[mndx]?.mvflags ?? 0) & (G_GENOD | G_EXTINCT)))) {
+            for (let i = rn1(3, 4); i > 0; i--) {
+                if (!makemon(ptr, u.ux | 0, u.uy | 0, NO_MINVENT | MM_NOMSG)) {
+                    break;
+                }
+                cnt++;
+                if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_EXTINCT) !== 0) {
+                    break;
+                }
+            }
+        }
+        if (cnt) {
+            cnt = monster_census(false) - census;
+            await pline(
+                `Sent in ${cnt > 1 ? 'some ' : ''}${cnt > 1 ? makeplural(buf) : an(buf)}.`,
+            );
+        } else {
+            await pline(nothing_happens);
+        }
+    }
 }
 
 function mungspaces(s) {

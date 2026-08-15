@@ -770,6 +770,9 @@ export function map_object(obj, show) {
         } else {
             loc.remembered_glyph = {
                 ch: og.ch, color: og.color, decgfx: !!og.dec, objpile: pile,
+                // C glyph ranges encode statue/boulder; JS has no integer IDs
+                statue: obj.otyp === STATUE_OTYP,
+                boulder: obj.otyp === BOULDER_OTYP,
             };
         }
     }
@@ -2154,6 +2157,8 @@ export function newsym(x, y) {
                 if (game.level?.flags?.hero_memory) {
                     loc.remembered_glyph = {
                         ch: apg.ch, color: apg.color, decgfx: !!apg.dec,
+                        statue: (mtmp.mappearance | 0) === STATUE_OTYP,
+                        boulder: (mtmp.mappearance | 0) === BOULDER_OTYP,
                     };
                 }
                 return;

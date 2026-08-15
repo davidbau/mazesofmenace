@@ -131,3 +131,18 @@ export function rnz(i) {
 
 export const c_d = d;
 export const lua_d = d;
+
+/**
+ * C ref: rnd.c shuffle_int_array — Fisher-Yates; skip swap when rn2(i+1)==i.
+ * Mutates indices[0..count).
+ */
+export function shuffle_int_array(indices, count = indices?.length) {
+    const n = count | 0;
+    for (let i = n - 1; i > 0; i--) {
+        const iswap = rn2(i + 1);
+        if (iswap === i) continue;
+        const temp = indices[i];
+        indices[i] = indices[iswap];
+        indices[iswap] = temp;
+    }
+}

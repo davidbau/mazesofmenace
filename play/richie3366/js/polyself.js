@@ -35,6 +35,7 @@ import {
     is_dwarf,
     is_gnome,
     is_golem,
+    is_unicorn,
     strongmonst,
     bigmonst,
     humanoid,
@@ -68,6 +69,7 @@ import {
     Upolyd,
     DIED,
     ECMD_OK,
+    ECMD_TIME,
     MALE,
     FEMALE,
     G_GENOD,
@@ -963,16 +965,23 @@ export async function dobreathe() {
 
 /**
  * C ref: cmd.c domonability — #monster special ability while poly'd.
- * Envelope: can_breathe → dobreathe; Upolyd reflexive; !Upolyd normal.
+ * Envelope: can_breathe → dobreathe; is_unicorn → use_unicorn_horn(null);
+ * Upolyd reflexive; !Upolyd normal.
  * Named omissions: spit/nymph/gaze/were/hide/web/mindflayer/gremlin/
- * unicorn/shriek/vampire/steed-breath; hide+web yn_function.
- * @returns {Promise<number>} ECMD_OK
+ * shriek/vampire/steed-breath; hide+web yn_function.
+ * @returns {Promise<number>} ECMD_OK | ECMD_TIME
  */
 export async function domonability() {
     const u = game.u || {};
     const uptr = game.youmonst?.data;
     if (can_breathe(uptr)) {
         return dobreathe();
+    }
+    // C cmd.c: is_unicorn(uptr) → use_unicorn_horn(NULL); ECMD_TIME (D-1030)
+    if (is_unicorn(uptr)) {
+        const { use_unicorn_horn } = await import('./apply.js');
+        await use_unicorn_horn(null);
+        return ECMD_TIME;
     }
     if (Upolyd(u)) {
         await pline('Any special ability you may have is purely reflexive.');

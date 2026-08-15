@@ -892,7 +892,7 @@ export async function monstone(mdef) {
 
 // C ref: mon.c mondead → m_detach(due_to_death) → relobj(mtmp, 1, FALSE)
 // Dead mons stay on fmon until dmonsfree (mon.c) — do not splice here.
-function mondead(mtmp) {
+export function mondead(mtmp) {
     mtmp.mhp = 0;
     const mx = mtmp.mx, my = mtmp.my;
     // C: after cham/were restore — mvitals[monsndx].died++

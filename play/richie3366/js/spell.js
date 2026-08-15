@@ -24,7 +24,7 @@ import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
-import { SPBOOK_CLASS, COIN_CLASS } from './objects.js';
+import { SPBOOK_CLASS } from './objects.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { morehungry, poison_strdmg } from './eat.js';
 import { zapyourself } from './zap.js';
@@ -35,7 +35,7 @@ import { trycall } from './do_name.js';
 import { nomul, losehp, maybe_half_phys } from './hack.js';
 import { erode_obj } from './trap.js';
 import { set_occupation } from './engrave.js';
-import { rndcurse } from './sit.js';
+import { rndcurse, take_gold } from './sit.js';
 import {
     P_NONE,
     P_ATTACK_SPELL,
@@ -306,30 +306,6 @@ function useup(otmp) {
     const inv = game.invent || [];
     const idx = inv.indexOf(otmp);
     if (idx >= 0) inv.splice(idx, 1);
-}
-
-/**
- * C ref: sit.c take_gold — strip COIN_CLASS from invent.
- * remove_worn_item deferred (coins rarely worn).
- */
-async function take_gold() {
-    let lost = false;
-    const inv = game.invent || [];
-    for (let i = inv.length - 1; i >= 0; i--) {
-        const otmp = inv[i];
-        if (otmp?.oclass === COIN_CLASS) {
-            lost = true;
-            inv.splice(i, 1);
-            delobj(otmp);
-        }
-    }
-    if (!lost) {
-        await You_feel('a strange sensation.');
-    } else {
-        await pline('You notice you have no gold!');
-        if (game.flags) game.flags.botl = true;
-        if (game._goldCount != null) game._goldCount = 0;
-    }
 }
 
 /**

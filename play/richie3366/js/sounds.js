@@ -399,6 +399,47 @@ export function mon_msound(mtmp) {
     return 0; // MS_SILENT — other sounds deferred
 }
 
+/**
+ * C ref: sounds.c cry_sound — gerund stem for hatch_egg mommy/daddy gag.
+ * Generated tables omit msound, so ptr.msound is 0 (MS_SILENT) unless set.
+ * Named omit: extractor msound; hiss/growl/chirp/buzz/screech/grunt/mumble
+ * only fire when ptr.msound is populated.
+ */
+export function cry_sound(mtmp) {
+    const ptr = mtmp?.data;
+    const ms = ptr?.msound | 0;
+    // C monflag.h (local — sounds.js growl table uses a different numbering)
+    const MS_SILENT = 0;
+    const MS_ROAR = 3;
+    const MS_GROWL = 5;
+    const MS_SQAWK = 7;
+    const MS_CHIRP = 8;
+    const MS_HISS = 9;
+    const MS_BUZZ = 10;
+    const MS_GRUNT = 11;
+    const MS_MUMBLE = 21;
+    switch (ms) {
+    default:
+    case MS_SILENT:
+        return ptr?.mlet === 'S_EEL' ? 'gurgle' : 'chitter';
+    case MS_HISS:
+        return 'hiss';
+    case MS_ROAR:
+    case MS_GROWL:
+        return 'growl';
+    case MS_CHIRP:
+        return 'chirp';
+    case MS_BUZZ:
+        return 'buzz';
+    case MS_SQAWK:
+        return 'screech';
+    case MS_GRUNT:
+        return 'grunt';
+    case MS_MUMBLE:
+        return 'mumble';
+    }
+}
+
 /** C ref: mondata.h helpless — msleeping || !mcanmove. */
 function helpless(mtmp) {
     return !!(mtmp?.msleeping || !mtmp?.mcanmove);

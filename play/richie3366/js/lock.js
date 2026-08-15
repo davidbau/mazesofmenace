@@ -32,6 +32,77 @@ import { b_trapped } from './trap.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
+/** C cmd.c number_pad dirchars (only when iflags.num_pad / Cmd.num_pad). */
+const NUMPAD_DIR = {
+    '1': { dx: -1, dy: 1 },
+    '2': { dx: 0, dy: 1 },
+    '3': { dx: 1, dy: 1 },
+    '4': { dx: -1, dy: 0 },
+    '6': { dx: 1, dy: 0 },
+    '7': { dx: -1, dy: -1 },
+    '8': { dx: 0, dy: -1 },
+    '9': { dx: 1, dy: -1 },
+};
+
+/**
+ * C ref: cmd.c movecmd(sym, MV_ANY) + GETDIR_SELF/SELF2 + <> + optional numpad.
+ * Named omit: mouse `_` getpos; dxdy_moveok grid-bug; trailing confdir
+ * (callers that need it, e.g. use_whip, already call confdir).
+ */
+function apply_dirsym(ch, key) {
+    const u = game.u || (game.u = {});
+    if (ch === '.' || ch === 's') {
+        u.dx = u.dy = u.dz = 0;
+        return true;
+    }
+    if (ch === '<') {
+        u.dx = u.dy = 0;
+        u.dz = -1;
+        return true;
+    }
+    if (ch === '>') {
+        u.dx = u.dy = 0;
+        u.dz = 1;
+        return true;
+    }
+    if (ch in DIR_DX) {
+        u.dx = DIR_DX[ch];
+        u.dy = DIR_DY[ch];
+        u.dz = 0;
+        return true;
+    }
+    const low = typeof ch === 'string' ? ch.toLowerCase() : '';
+    if (low in DIR_DX && ch === low.toUpperCase()) {
+        u.dx = DIR_DX[low];
+        u.dy = DIR_DY[low];
+        u.dz = 0;
+        return true;
+    }
+    if (typeof key === 'number' && key >= 1 && key <= 26) {
+        const rushCh = String.fromCharCode(key + 96);
+        if (rushCh in DIR_DX) {
+            u.dx = DIR_DX[rushCh];
+            u.dy = DIR_DY[rushCh];
+            u.dz = 0;
+            return true;
+        }
+    }
+    const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
+    if (numPad) {
+        if (ch === '5') {
+            u.dx = u.dy = u.dz = 0;
+            return true;
+        }
+        const nd = NUMPAD_DIR[ch];
+        if (nd) {
+            u.dx = nd.dx;
+            u.dy = nd.dy;
+            u.dz = 0;
+            return true;
+        }
+    }
+    return false;
+}
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
@@ -243,38 +314,62 @@ async function picklock() {
     return 0;
 }
 
-/** C ref: cmd.c getdir — movement key → u.dx/u.dy; default prompt. */
+/**
+ * C ref: cmd.c getdir — cmdq DIR/KEY then yn_function; self ./s; <>;
+ * movecmd walk/run/rush; optional numpad when number_pad on.
+ * Named omit: mouse `_` getpos; help_dir / cmdassist / "strange direction"
+ * (NEED_MORE key-eating; throw path keeps getdir_cmdassist); trailing
+ * confdir(FALSE) (use_whip already confdirs; adding it here would double
+ * confuse-whip); CQ_REPEAT; fuzzer; dxdy_moveok.
+ */
 export async function getdir(prompt) {
+    const q = game._cmdq_canned;
+    if (q?.length) {
+        const head = q[0];
+        if (head && typeof head === 'object'
+            && (head.typ === 'key' || head.typ === 'dir')) {
+            q.shift();
+            if (!game.u) game.u = {};
+            if (head.typ === 'dir') {
+                game.u.dx = head.dirx | 0;
+                game.u.dy = head.diry | 0;
+                game.u.dz = head.dirz | 0;
+                return true;
+            }
+            const ch = typeof head.key === 'string'
+                ? head.key
+                : String.fromCharCode(head.key | 0);
+            const key = typeof head.key === 'number'
+                ? head.key
+                : ch.charCodeAt(0);
+            return apply_dirsym(ch, key);
+        }
+        if (head && typeof head === 'object' && head.typ) {
+            // C: cmdq neither DIR nor KEY → cmdq_clear, fail
+            game._cmdq_canned = [];
+            return false;
+        }
+    }
+
     const msg = prompt || 'In what direction?';
-    game._pending_message = `${msg} `;
-    await flush_screen(1);
-    const disp = game.nhDisplay;
-    if (disp?.setCursor) {
-        disp.setCursor(game._pending_message.length, 0);
+    for (;;) {
+        game._pending_message = `${msg} `;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) {
+            disp.setCursor(game._pending_message.length, 0);
+        }
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        game._pending_message = '';
+        // C: redraw_cmd (^R) → docrt then retry
+        if (key === 18) continue;
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            return false;
+        }
+        if (!game.u) game.u = {};
+        return apply_dirsym(ch, key);
     }
-    const key = await nhgetch();
-    const ch = String.fromCharCode(key);
-    // Clear yn prompt before returning to the command loop (next capture).
-    game._pending_message = '';
-    // C ref: cmd.c getdir — NHKF_GETDIR_SELF / SELF2 → dx=dy=dz=0
-    // (JS previously treated '.' like ESC/cancel; that desynced #chat.)
-    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-        return false;
-    }
-    if (!game.u) game.u = {};
-    if (ch === '.') {
-        game.u.dx = 0;
-        game.u.dy = 0;
-        game.u.dz = 0;
-        return true;
-    }
-    if (!(ch in DIR_DX)) {
-        return false;
-    }
-    game.u.dx = DIR_DX[ch];
-    game.u.dy = DIR_DY[ch];
-    game.u.dz = 0;
-    return true;
 }
 
 /** C ref: cmd.c get_adjacent_loc — getdir (cmdassist) then adjacent cell. */

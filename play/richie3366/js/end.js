@@ -950,7 +950,7 @@ export async function done2() {
  * decline-to-die (or Lifesaved). Named omissions: make_sick TIMEOUT==1;
  * endmultishot; curs_on_u; uswallow expels / ustuck release; livelog.
  */
-function savelife(how) {
+async function savelife(how) {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
     if ((u.ulevel | 0) < 1) u.ulevel = 1;
@@ -965,7 +965,7 @@ function savelife(how) {
     const givehp = 50 + 10 * ((acurr(A_CON) / 2) | 0);
     u.uhp = Math.min(u.uhpmax | 0, givehp);
     if (Upolyd(u)) u.mh = Math.min(u.mhmax | 0, givehp);
-    if ((u.uhunger | 0) < 500 || how === CHOKING) init_uhunger();
+    if ((u.uhunger | 0) < 500 || how === CHOKING) await init_uhunger();
     game.nomovemsg = 'You survived that attempt on your life.';
     if (!game.context) game.context = {};
     game.context.move = 0;
@@ -1045,7 +1045,7 @@ export async function done(how) {
         await pline('The medallion crumbles to dust!');
         if (u.uamul) useup_amulet(u.uamul);
         await adjattrib(A_CON, -1, true);
-        savelife(how);
+        await savelife(how);
         if (how === GENOCIDED) {
             await pline('Unfortunately you are still genocided...');
         } else {
@@ -1062,7 +1062,7 @@ export async function done(how) {
             await pline(
                 `OK, so you don't ${how === CHOKING ? 'choke' : 'die'}.`,
             );
-            savelife(how);
+            await savelife(how);
             survive = true;
         }
     }

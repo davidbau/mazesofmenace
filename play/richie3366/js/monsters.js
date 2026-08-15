@@ -76,6 +76,7 @@ export const G_NOGEN = 0x0200;
 export const G_NOCORPSE = 0x0100;
 export const G_SGROUP = 0x0080; /* appear in small groups normally */
 export const G_LGROUP = 0x0040; /* appear in large groups normally */
+export const G_GENO = 0x0020; /* can be genocided (monflag.h mons[].geno) */
 export const G_FREQ = 0x0007;
 /* monflag.h — mkclass may ignore G_GENOD|G_EXTINCT via this non-geno bit */
 export const G_IGNORE = 0x8000;

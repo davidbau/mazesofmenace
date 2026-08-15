@@ -10,7 +10,7 @@
 //         invent.c getobj; attrib.c poison_strdmg / gainstr;
 //         potion.c make_vomiting / make_glib;
 //         costly_tin → shk costly_alteration; use_tin_opener (D-0940).
-// Named omissions: floorfood cockatrice-feel;
+// Named omissions: floorfood cockatrice-feel; floorfood sacrifice arm;
 // hallu AD_STUN covered D-0943; corpse_intrinsic/givit covered D-0944;
 // were*/mimic/attrcurse covered D-0945 (set_mimic_blocking /
 // retouch_equipment / display_nhwindow WIN_MAP polish / livelog /
@@ -68,7 +68,8 @@ import {
     W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, W_BALL, W_CHAIN,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING,
-    TIMEOUT, NON_PM, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
+    TIMEOUT, NON_PM, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, HEALTHY_TIN,
+    ismnum,
     KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, Has_contents, NO_PART,
     IRONBARS, W_NONDIGGABLE, BEAR_TRAP, TT_BEARTRAP,
     STONING, DIED, SLIMED, FROMOUTSIDE, Upolyd, NEUTRAL,
@@ -86,7 +87,8 @@ import {
     A_STR, A_DEX, A_CHA, A_WIS, A_INT, A_CON,
 } from './attrib.js';
 import { nomul, losehp, still_chewing, is_pool, is_lava } from './hack.js';
-import { near_capacity, observe_object, makeknown } from './invent.js';
+import { near_capacity, observe_object, makeknown, compactify_invlets,
+    freeinv_core, encumber_msg } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
     make_stunned, make_hallucinated,
@@ -399,17 +401,24 @@ function Hunger() {
 }
 
 /**
- * C ref: eat.c init_uhunger — reset hunger to Not Hungry / 900.
- * ATEMP(A_STR) repair + encumber_msg deferred.
+ * C ref: eat.c init_uhunger — 900 / NOT_HUNGRY; botl if was hungry or
+ * ATEMP(A_STR)<0; clear that temp STR loss then encumber_msg.
  */
-export function init_uhunger() {
+export async function init_uhunger() {
     const u = game.u;
     if (!u) return;
-    if ((u.uhs ?? NOT_HUNGRY) !== NOT_HUNGRY) {
-        if (game.flags) game.flags.botl = true;
-    }
+    if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
+    const strTemp = u.atemp.a[A_STR] | 0;
+    // C: disp.botl = (u.uhs != NOT_HUNGRY || ATEMP(A_STR) < 0);
+    const botl = ((u.uhs ?? NOT_HUNGRY) !== NOT_HUNGRY) || strTemp < 0;
+    if (game.flags) game.flags.botl = botl;
+    if (game.disp) game.disp.botl = botl;
     u.uhunger = 900;
     u.uhs = NOT_HUNGRY;
+    if (strTemp < 0) {
+        u.atemp.a[A_STR] = 0;
+        await encumber_msg();
+    }
 }
 
 /**
@@ -825,7 +834,7 @@ function Breathless() {
  * FOOD (non-coin) ynq; invent getobj_eat.
  * Named omissions: will_feel_cockatrice;
  * safe_qbuf ansimpleoname fallback; getobj_else "else" wording;
- * sacrifice/tin corpsecheck arms.
+ * sacrifice corpsecheck arm (tin: D-1027 floorfood("tin", 2)).
  */
 async function floorfood_eat() {
     const u = game.u || {};
@@ -935,7 +944,7 @@ async function floorfood_eat() {
  * invent-split children may copy where or be OBJ_FREE without addinv
  * (touchfood freeinv/addinv_nomerge still deferred).
  */
-function useup(otmp) {
+export function useup(otmp) {
     if (!otmp) return;
     const inInvent = otmp.where === OBJ_INVENT
         || (game.invent || []).includes(otmp);
@@ -952,6 +961,7 @@ function useup(otmp) {
             otmp.owt = weight(otmp);
             return;
         }
+        freeinv_core(otmp);
         const inv = game.invent || [];
         const idx = inv.indexOf(otmp);
         if (idx >= 0) inv.splice(idx, 1);
@@ -1866,7 +1876,7 @@ function cantwield(ptr) {
 }
 
 /** C invent.c carried — object is in invent[]. */
-function carried(obj) {
+export function carried(obj) {
     if (!obj) return false;
     return (game.invent || []).includes(obj);
 }
@@ -1936,6 +1946,39 @@ function tin_variety(obj, displ) {
 }
 
 /**
+ * C ref: eat.c set_tin_variety(obj, forcetype). HOMEMADE_TIN is the
+ * tinning-kit path (spe = -(r+1) = -2, no rn2). SPINACH/HEALTHY/RANDOM
+ * kept with the C function so callers do not invent a second encoding.
+ */
+export function set_tin_variety(obj, forcetype) {
+    if (!obj) return;
+    let r;
+    const mnum = obj.corpsenm;
+    if (forcetype === SPINACH_TIN
+        || (forcetype === HEALTHY_TIN
+            && (mnum === NON_PM || !vegetarian(mons(mnum))))) {
+        obj.corpsenm = NON_PM;
+        obj.spe = 1;
+        return;
+    } else if (forcetype === HEALTHY_TIN) {
+        r = tin_variety(obj, false);
+        if (r < 0 || r >= TTSZ) r = ROTTEN_TIN;
+        while ((r === ROTTEN_TIN && !obj.cursed) || !tintxts[r]?.fodder) {
+            r = rn2(TTSZ - 1);
+        }
+    } else if (forcetype >= 0 && forcetype < TTSZ - 1) {
+        r = forcetype;
+    } else {
+        /* RANDOM_TIN */
+        r = rn2(TTSZ - 1);
+        if (r === ROTTEN_TIN && ismnum(mnum) && nonrotting_corpse(mnum)) {
+            r = HOMEMADE_TIN;
+        }
+    }
+    obj.spe = -(r + 1);
+}
+
+/**
  * C ref: eat.c costly_tin — shop unpaid alteration of tin being opened.
  * Split stack if quan>1; costly_alteration(COST_OPEN/COST_DSTROY).
  */
@@ -1982,7 +2025,7 @@ function useupall(otmp) {
 /**
  * C ref: invent.c useupf — consume numused from floor pile (shop bill deferred).
  */
-function useupf(otmp, numused) {
+export function useupf(otmp, numused) {
     if (!otmp) return;
     let victim = otmp;
     const n = numused | 0;
@@ -2926,7 +2969,158 @@ async function start_tin(otmp) {
 
 /** C invent getobj ranks (hack.h) — match apply.js / C. */
 const GETOBJ_EXCLUDE = -3;
+const GETOBJ_EXCLUDE_NONINVENT = -2;
+const GETOBJ_EXCLUDE_SELECTABLE = 0;
+const GETOBJ_DOWNPLAY = 1;
 const GETOBJ_SUGGEST = 2;
+
+/**
+ * C eat.c getobj_else — floorfood declined a floor candidate; tin_ok(null)
+ * then EXCLUDE_NONINVENT so empty invent says "anything else to tin".
+ */
+let getobj_else = 0;
+
+/**
+ * C ref: apply.c tinnable — !oeaten && mons[corpsenm].cnutrit.
+ * In eat.js so tin_ok/floorfood stay acyclic (C exports from apply.c).
+ */
+export function tinnable(corpse) {
+    if (!corpse || corpse.oeaten) return false;
+    const ptr = mons(corpse.corpsenm);
+    if (!ptr || !ptr.cnutrit) return false;
+    return true;
+}
+
+/**
+ * C ref: eat.c tin_ok — FOOD only; CORPSE+tinnable SUGGEST else
+ * EXCLUDE_SELECTABLE; null → EXCLUDE or EXCLUDE_NONINVENT.
+ */
+function tin_ok(obj) {
+    if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+    if (obj.oclass !== FOOD_CLASS) return GETOBJ_EXCLUDE;
+    if ((obj.otyp | 0) !== CORPSE || !tinnable(obj)) {
+        return GETOBJ_EXCLUDE_SELECTABLE;
+    }
+    return GETOBJ_SUGGEST;
+}
+
+/**
+ * C ref: invent.c getobj("tin", tin_ok, GETOBJ_NOFLAGS).
+ * Named omit: ?/* pickinv menu; sortloot; compactify '-' hands (tin_ok
+ * null is never SUGGEST).
+ */
+async function getobj_tin() {
+    const word = 'tin';
+    const q = game._cmdq_canned;
+    if (q?.length) {
+        const head = q[0];
+        if (head && typeof head === 'object' && head.typ === 'key') {
+            q.shift();
+            const ch = typeof head.key === 'string'
+                ? head.key
+                : String.fromCharCode(head.key);
+            for (const o of game.invent || []) {
+                if (o.invlet === ch) {
+                    const v = tin_ok(o);
+                    if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY) return o;
+                }
+            }
+            game._cmdq_canned = [];
+            return null;
+        }
+    }
+
+    const suggest_lets = () => {
+        const lets = [];
+        for (const o of game.invent || []) {
+            if (o?.invlet && tin_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
+        }
+        lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+        return lets.join('');
+    };
+
+    for (;;) {
+        await flush_topl_more();
+        const rawLets = suggest_lets();
+        if (!rawLets) {
+            const else_ = getobj_else ? 'else ' : '';
+            await pline(`You don't have anything ${else_}to ${word}.`);
+            return null;
+        }
+        const lets = rawLets.length > 5 ? compactify_invlets(rawLets) : rawLets;
+        const query = `What do you want to ${word}? [${lets} or ?*]`;
+        const ch = await yn_function(query, null, '\0');
+        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === '?' || ch === '*') {
+            await pline('Never mind.');
+            return null;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        const v = tin_ok(otmp);
+        if (otmp.oclass === COIN_CLASS && v <= GETOBJ_EXCLUDE) {
+            await pline(`You cannot ${word} gold.`);
+            return null;
+        }
+        if (v === GETOBJ_EXCLUDE) {
+            await pline(`That is a silly thing to ${word}.`);
+            return null;
+        }
+        return otmp;
+    }
+}
+
+/**
+ * C ref: eat.c floorfood("tin", 2) — yn tinnable floor corpses, else
+ * invent getobj tin_ok. Not feeding: usteed does not skip floor.
+ * Named omit: will_feel_cockatrice; sacrifice arm; safe_qbuf fallback.
+ */
+async function floorfood_tin() {
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const form = hero_form_data();
+    getobj_else = 0;
+    const skip_floor = !!(game.flags?.menu_requested
+        || !can_reach_floor(true)
+        || (is_pool_or_lava(ux, uy)
+            && (Wwalking() || is_clinger(form)
+                || (Flying() && !Breathless()))));
+    if (!skip_floor) {
+        for (let otmp = objects_at(ux, uy); otmp; otmp = otmp.nexthere) {
+            if ((otmp.otyp | 0) !== CORPSE || !tinnable(otmp)) continue;
+            const one = (otmp.quan || 1) === 1;
+            const qbuf = `There ${one ? 'is' : 'are'} ${doname(otmp)} here; tin ${one ? 'it' : 'one'}?`;
+            const c = await yn_function(qbuf, 'ynq', 'n');
+            if (c === 'y') return otmp;
+            if (c === 'q') return null;
+            getobj_else++;
+        }
+    }
+    let otmp = await getobj_tin();
+    if (otmp && ((otmp.otyp | 0) !== CORPSE || !tinnable(otmp))) {
+        await pline("You can't tin that!");
+        otmp = null;
+    }
+    getobj_else = 0;
+    return otmp;
+}
+
+/**
+ * C ref: eat.c floorfood(verb, corpsecheck). Eat (0) and tin (2);
+ * sacrifice (1) deferred.
+ */
+export async function floorfood(verb, corpsecheck) {
+    if ((corpsecheck | 0) === 0) return floorfood_eat();
+    if ((corpsecheck | 0) === 2) return floorfood_tin();
+    return null;
+}
 
 /** C ref: eat.c tinopen_ok — SUGGEST TIN only. */
 function tinopen_ok(obj) {

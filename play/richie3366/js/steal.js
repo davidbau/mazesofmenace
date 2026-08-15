@@ -31,7 +31,7 @@ import { setworn } from './do_wear.js';
 import { setuwep, setuswapwep, setuqwep } from './wield.js';
 import { mpickobj } from './makemon.js';
 import { nomul, stop_occupation } from './hack.js';
-import { encumber_msg } from './invent.js';
+import { encumber_msg, freeinv_core } from './invent.js';
 import { hero_conflict } from './mondata.js';
 
 /**
@@ -152,6 +152,7 @@ function freeinv(otmp) {
     const idx = inv.indexOf(otmp);
     if (idx >= 0) inv.splice(idx, 1);
     otmp.nobj = null;
+    freeinv_core(otmp);
 }
 
 /**

@@ -2257,7 +2257,7 @@ function obfree_corpse(obj) {
  * animate_statue caller of montraits.
  * @returns {Promise<object|null>} revived monst or null
  */
-async function revive(corpse, by_hero) {
+export async function revive(corpse, by_hero) {
     if (!corpse || (corpse.otyp | 0) !== CORPSE) return null;
     let montype = corpse.corpsenm | 0;
     if (!ismnum(montype)) return null;

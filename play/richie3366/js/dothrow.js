@@ -7,15 +7,20 @@ import {
     flush_screen, flush_topl_more, pline, docrt, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output,
 } from './display.js';
-import { cansee } from './vision.js';
+import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd } from './rng.js';
-import { place_object, splitobj, stackobj, delobj, is_crackable } from './mkobj.js';
+import {
+    place_object, splitobj, stackobj, delobj, is_crackable, objects_at,
+} from './mkobj.js';
+import { losehp, maybe_half_phys, nomul } from './hack.js';
 import {
     WEAPON_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
     POTION_CLASS, objectNames, objectNameStrs,
 } from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
+    D_ISOPEN, IS_OBSTRUCTED, IS_TREE, KILLED_BY, OBJ_INVENT,
+    TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
     P_BOW, P_BOOMERANG,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
@@ -38,8 +43,8 @@ import {
     monsterNames,
 } from './generated/monsters_data.js';
 import { xname, singular, an, the, vtense, doname } from './objnam.js';
-import { m_at, wakeup, seemimic } from './mon.js';
-import { mon_nam, Monnam } from './do_name.js';
+import { m_at, wakeup, seemimic, wake_nearto } from './mon.js';
+import { mon_nam, Monnam, hliquid } from './do_name.js';
 import { is_domestic, nohands, M1_NOTAKE, MZ_HUGE } from './monsters.js';
 import { tamedog } from './dog.js';
 import { hmon } from './uhitm.js';
@@ -1108,6 +1113,143 @@ export function walk_path(src, dest, check_proc, arg) {
 
 function sgn_hurtle(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
+}
+
+function closed_door_hurtle(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+function sobj_at_hurtle(otyp, x, y) {
+    for (let o = objects_at(x, y); o; o = o.nexthere) {
+        if ((o.otyp | 0) === otyp) return o;
+    }
+    return null;
+}
+
+/**
+ * C ref: dothrow.c hurtle_step — one cell of hero hurtle.
+ * Named omit: in_out_region; Passes_walls/may_passwall; bad_rock squeeze;
+ * Sokoban diagonal halt; drag_ball; switch_terrain; check_special_room;
+ * drown/waterwall; jumping I_SPECIAL; petrify bump; setmangry; trap
+ * pass-over dotrap; nh_delay_output.
+ */
+async function hurtle_step(rangeArg, x, y) {
+    const u = game.u || {};
+    if (!isok(x, y)) {
+        await pline('You feel the spirits holding you back.');
+        return false;
+    }
+    if ((rangeArg.n | 0) === 0) return false;
+
+    const loc = game.level?.at?.(x, y);
+    const ltyp = loc?.typ | 0;
+    const diagonal = ((u.ux | 0) - x) !== 0 && ((u.uy | 0) - y) !== 0;
+    const open_door = IS_DOOR(ltyp) && ((loc?.doormask || 0) & D_ISOPEN) !== 0;
+    const odoor_diag = open_door && diagonal;
+
+    let why = null;
+    if (IS_OBSTRUCTED(ltyp) || closed_door_hurtle(x, y) || odoor_diag) {
+        why = IS_TREE(ltyp) ? 'bumping into a tree'
+            : IS_OBSTRUCTED(ltyp) ? 'bumping into a wall'
+                : odoor_diag ? 'bumping into a door frame'
+                    : 'bumping into a closed door';
+        if (odoor_diag) await pline('You hit the door frame!');
+        await pline('Ouch!');
+    } else if (ltyp === IRONBARS) {
+        why = 'crashing into iron bars';
+        await pline('You crash into some iron bars.  Ouch!');
+    } else {
+        const obj = sobj_at_hurtle(BOULDER, x, y);
+        if (obj) {
+            why = 'bumping into a boulder';
+            await pline(`You bump into a ${xname(obj)}.  Ouch!`);
+        }
+    }
+    if (why) {
+        const dmg = rnd(2 + (rangeArg.n | 0));
+        losehp(maybe_half_phys(dmg), why, KILLED_BY);
+        await wake_nearto(x, y, 10);
+        return false;
+    }
+
+    const mon = m_at(x, y);
+    if (mon) {
+        mon.mundetected = 0;
+        await pline(`You bump into ${mon_nam(mon)}.`);
+        await wakeup(mon, false);
+        await wake_nearto(x, y, 10);
+        return false;
+    }
+
+    const ox = u.ux | 0;
+    const oy = u.uy | 0;
+    u.ux = x;
+    u.uy = y;
+    if (u.usteed) {
+        u.usteed.mx = x;
+        u.usteed.my = y;
+    }
+    newsym(ox, oy);
+    vision_recalc(1);
+    flush_screen(1);
+
+    rangeArg.n = (rangeArg.n | 0) - 1;
+    if (rangeArg.n < 0) rangeArg.n = 0;
+    return true;
+}
+
+/**
+ * C ref: dothrow.c hurtle — knock hero through air for range steps.
+ * Named omit: endmultishot; Punished diagonal-chain slack beyond
+ * !carried(uball); surface() vs "floor" for TT_INFLOOR.
+ */
+export async function hurtle(dx, dy, range, verbose) {
+    const u = game.u || {};
+    if (u.Punished && u.uball && u.uball.where !== OBJ_INVENT) {
+        await pline('You feel a tug from the iron ball.');
+        nomul(0);
+        return;
+    }
+    if (u.utrap) {
+        const t = u.utraptype | 0;
+        const what = t === TT_WEB ? 'web'
+            : t === TT_LAVA ? hliquid('lava')
+                : t === TT_INFLOOR ? 'floor'
+                    : t === TT_BURIEDBALL ? 'buried ball'
+                        : 'trap';
+        await pline(`You are anchored by the ${what}.`);
+        nomul(0);
+        return;
+    }
+
+    dx = sgn_hurtle(dx);
+    dy = sgn_hurtle(dy);
+    if (!(range | 0) || (!dx && !dy) || u.ustuck) return;
+
+    nomul(-range);
+    game.multi_reason = 'moving through the air';
+    game.nomovemsg = '';
+    if (verbose) {
+        await pline(
+            `You ${range > 1 ? 'hurtle' : 'float'} in the opposite direction.`,
+        );
+    }
+
+    const rangeArg = { n: range | 0 };
+    let curx = u.ux | 0;
+    let cury = u.uy | 0;
+    const steps = rangeArg.n;
+    for (let i = 0; i < steps; i++) {
+        const nx = curx + dx;
+        const ny = cury + dy;
+        const ok = await hurtle_step(rangeArg, nx, ny);
+        if (!ok) break;
+        curx = (game.u?.ux | 0);
+        cury = (game.u?.uy | 0);
+        if (curx !== nx || cury !== ny) break;
+    }
 }
 
 /**

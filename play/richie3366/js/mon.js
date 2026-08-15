@@ -42,7 +42,7 @@ import { online2 } from './hacklib.js';
 import { worm_cross } from './worm.js';
 import { Monnam } from './do_name.js';
 import { cansee } from './vision.js';
-import { fightm } from './mhitm.js';
+import { fightm, mondead } from './mhitm.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
@@ -1683,7 +1683,7 @@ export function restrap(mtmp) {
  * Named omissions: You_see pline; pet cursed_object_at; cockatrice skip;
  * youmonst path; can_hide_under_obj filter.
  */
-function hideunder(mtmp) {
+export function hideunder(mtmp) {
     if (!mtmp?.data) return false;
     const u = game.u || {};
     const is_u = mtmp === game.youmonst;
@@ -1744,4 +1744,28 @@ export function hide_monst(mon) {
 
     if (viz?.[y]) viz[y][x] = save_viz;
     if (hider_under) hideunder(mon);
+}
+
+/**
+ * C ref: mon.c kill_genocided_monsters — wipe live mons of G_GENOD species.
+ * Named omissions: chameleon `newcham` when imitating a genocided form;
+ * `kill_eggs` on minvent/invent/fobj/migrating/buried.
+ */
+export function kill_genocided_monsters() {
+    const mv = game.mvitals || [];
+    for (const mtmp of [...(game.fmon || [])]) {
+        if (!mtmp || (mtmp.mhp | 0) < 1) continue;
+        const mndx = mtmp.data?.mndx ?? mtmp.mnum ?? -1;
+        const cham = mtmp.cham | 0;
+        const kill_cham = ismnum(cham) && (((mv[cham]?.mvflags ?? 0) & G_GENOD) !== 0);
+        if ((((mv[mndx]?.mvflags ?? 0) & G_GENOD) !== 0) || kill_cham) {
+            if (ismnum(cham) && !kill_cham) {
+                // newcham(mtmp, NULL, NC_SHOW_MSG) deferred
+                continue;
+            }
+            mondead(mtmp);
+        }
+        // kill_eggs(mtmp->minvent) deferred
+    }
+    // kill_eggs(invent/fobj/migrating_objs/buriedobjlist) deferred
 }

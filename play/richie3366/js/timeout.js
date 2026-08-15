@@ -11,27 +11,35 @@ import {
     OBJ_CONTAINED, OBJ_BURIED,
     CONTAINED_TOO, BURIED_TOO, TIMER_OBJECT, BURN_OBJECT, LS_OBJECT,
     MAX_RADIUS, W_ARM,
+    G_GENOD, G_EXTINCT, NO_MINVENT, MM_NOMSG, NON_PM,
+    MV_KNOWS_EGG, ARTICLE_NONE, ARTICLE_A, EXACT_NAME,
 } from './const.js';
 import { heal_legs } from './trap.js';
 import { stop_occupation, nomul, is_pool } from './hack.js';
 import { run_timers, start_timer, stop_timer, weight,
-    obj_extract_self, delobj, objects_at } from './mkobj.js';
+    obj_extract_self, delobj, objects_at, attach_egg_hatch_timeout,
+} from './mkobj.js';
 import { make_confused, make_slimed } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast } from './attrib.js';
-import { pline, You_feel, newsym } from './display.js';
+import { pline, You_feel, newsym, canseemon, verbalize } from './display.js';
 import { inv_weight } from './invent.js';
 import { doname, makeplural, xname, an, The } from './objnam.js';
 import { rn2, rnd } from './rng.js';
 import { objectNames } from './objects.js';
-import { G_UNIQ, is_were } from './monsters.js';
+import {
+    G_UNIQ, is_were, mons, is_floater, is_flyer, amorphous, nolimbs,
+    M1_SLITHY, MZ_SMALL,
+} from './monsters.js';
+import { little_to_big, big_to_little } from './mondata.js';
+import { cry_sound } from './sounds.js';
 import { rehumanize } from './polyself.js';
 import { you_unwere } from './were.js';
 import { new_light_source, del_light_source } from './light.js';
 import { cansee } from './vision.js';
 import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
-import { Monnam } from './do_name.js';
+import { Monnam, x_monnam } from './do_name.js';
 
 /**
  * Props whose TIMEOUT is already decremented by the dedicated arms below
@@ -481,8 +489,8 @@ function Blind() {
 }
 
 function carried(obj) {
-    return !!obj && (obj.where === OBJ_INVENT
-        || (game.invent || []).includes(obj));
+    // C invent.c: #define carried(o) ((o)->where == OBJ_INVENT)
+    return !!obj && obj.where === OBJ_INVENT;
 }
 
 /** C ref: zap.c get_obj_location — invent/floor/minvent + flags. */
@@ -506,11 +514,6 @@ export function get_obj_location(obj, locflags = 0) {
     case OBJ_CONTAINED:
         if (locflags & CONTAINED_TOO) {
             return get_obj_location(obj.ocontainer, locflags);
-        }
-        break;
-    default:
-        if ((game.invent || []).includes(obj)) {
-            return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
         }
         break;
     }
@@ -642,6 +645,23 @@ export function end_burn(obj, timer_attached) {
         return;
     }
     stop_timer(BURN_OBJECT, obj);
+}
+
+/**
+ * C ref: light.c obj_merge_light_sources — src folded into dest.
+ * src === dest means adding candles to a lit candelabrum (range only).
+ */
+export function obj_merge_light_sources(src, dest) {
+    if (src !== dest) end_burn(src, true);
+    const list = game.light_base;
+    if (!list?.length || !dest) return;
+    for (const ls of list) {
+        if (ls.type === LS_OBJECT && ls.id === dest) {
+            ls.range = candle_light_range(dest);
+            game.vision_full_recalc = 1;
+            break;
+        }
+    }
 }
 
 /**
@@ -860,4 +880,266 @@ export async function burn_object(obj, timeout) {
         break;
     }
     if (need_newsym && loc) newsym(loc.x, loc.y);
+}
+
+function Deaf_hatch() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.Deaf
+        || ((u.HDeaf | 0) & TIMEOUT) || (u.EDeaf | 0));
+}
+
+/** C mondata.h is_silent — msound == MS_SILENT. Tables omit msound → 0. */
+function is_silent_hatch(ptr) {
+    return (ptr?.msound | 0) === 0;
+}
+
+/**
+ * C ref: mondata.c locomotion — verb for how a monster moves.
+ */
+function locomotion_hatch(ptr, def) {
+    const cap = !!(def && def[0] === def[0].toUpperCase()
+        && def[0] !== def[0].toLowerCase());
+    const pick = (lo, hi) => (cap ? hi : lo);
+    if (is_floater(ptr)) return pick('float', 'Float');
+    if (is_flyer(ptr) && (ptr.msize ?? 2) <= MZ_SMALL) {
+        return pick('fly', 'Fly');
+    }
+    if (is_flyer(ptr)) return pick('fly', 'Fly');
+    if (((ptr?.mflags1 ?? 0) & M1_SLITHY) !== 0) {
+        return pick('slither', 'Slither');
+    }
+    if (amorphous(ptr)) return pick('ooze', 'Ooze');
+    if (!(ptr?.mmove | 0)) return pick('wiggle', 'Wiggle');
+    if (nolimbs(ptr)) return pick('crawl', 'Crawl');
+    return def;
+}
+
+/** C ref: hacklib.c ing_suffix — gerund; on/off/with split + vowel doubling. */
+function ing_suffix_hatch(s) {
+    let buf = String(s);
+    const vowel = 'aeiouwy';
+    let onoff = '';
+    if (/\s+on$/i.test(buf) || /\s+off$/i.test(buf) || /\s+with$/i.test(buf)) {
+        const sp = buf.lastIndexOf(' ');
+        onoff = buf.slice(sp);
+        buf = buf.slice(0, sp);
+    }
+    const n = buf.length;
+    if (n >= 2 && buf.slice(-2).toLowerCase() === 'er') {
+        // slither + ing
+    } else if (n >= 3
+        && !vowel.includes(buf[n - 1].toLowerCase())
+        && vowel.includes(buf[n - 2].toLowerCase())
+        && !vowel.includes(buf[n - 3].toLowerCase())) {
+        buf += buf[n - 1];
+    } else if (n >= 2 && buf.slice(-2).toLowerCase() === 'ie') {
+        buf = `${buf.slice(0, -2)}y`;
+    } else if (n >= 1 && buf[n - 1].toLowerCase() === 'e') {
+        buf = buf.slice(0, -1);
+    }
+    return `${buf}ing${onoff}`;
+}
+
+/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+function s_suffix_hatch(s) {
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`;
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+function m_monnam_hatch(mtmp) {
+    return x_monnam(mtmp, ARTICLE_NONE, null, EXACT_NAME, false);
+}
+
+function a_monnam_hatch(mtmp) {
+    return x_monnam(mtmp, ARTICLE_A, null, 0, false);
+}
+
+function obfree_hatch(obj) {
+    if (!obj) return;
+    obj.quan = 0;
+    obj.where = OBJ_FREE;
+    obj.timed = 0;
+}
+
+/**
+ * C ref: mkobj.c container_weight — owt = weight; recurse if contained.
+ */
+function container_weight_hatch(obj) {
+    if (!obj) return;
+    obj.owt = weight(obj);
+    if ((obj.where | 0) === OBJ_CONTAINED && obj.ocontainer) {
+        container_weight_hatch(obj.ocontainer);
+    }
+}
+
+/**
+ * C ref: timeout.c learn_egg_type — little_to_big then MV_KNOWS_EGG.
+ * Named omit: update_inventory redraw after the flag.
+ */
+export function learn_egg_type(mnum) {
+    mnum = little_to_big(mnum | 0);
+    if (!game.mvitals) game.mvitals = [];
+    if (!game.mvitals[mnum]) game.mvitals[mnum] = { mvflags: 0 };
+    game.mvitals[mnum].mvflags = (game.mvitals[mnum].mvflags | 0) | MV_KNOWS_EGG;
+}
+
+/**
+ * C ref: timeout.c hatch_egg — timer callback; spawn big_to_little of
+ * egg.corpsenm. Envelope: sterilized NON_PM; yours (spe / male carried
+ * rn2(2)); silent timeout!=moves; get_obj_location(0); rnd(quan);
+ * G_UNIQ/G_GENOD/G_EXTINCT skip spawn; enexto+makemon NO_MINVENT|MM_NOMSG;
+ * tamedog yours||carried-dragon; leftover rnd(12) re-arm; invent useup /
+ * floor extract+obfree+hideunder. Named omit: SetVoice before Gleep;
+ * update_inventory; migrating #if 0; generated msound (cry_sound default
+ * chitter/gurgle); impossible() unknown where.
+ */
+export async function hatch_egg(egg, timeout) {
+    if (!egg) return;
+    if ((egg.corpsenm | 0) === NON_PM) return;
+
+    const { enexto } = await import('./teleport.js');
+    const { makemon } = await import('./makemon.js');
+    const { tamedog } = await import('./dog.js');
+    const { useup } = await import('./eat.js');
+    const { m_at, hideunder } = await import('./mon.js');
+
+    let mon = null;
+    let mon2 = null;
+    const mnum = big_to_little(egg.corpsenm | 0);
+    const ptr = mons(mnum);
+    // C: yours = (egg->spe || (!flags.female && carried(egg) && !rn2(2)))
+    const yours = !!(egg.spe
+        || (!game.flags?.female && carried(egg) && !rn2(2)));
+    const silent = (timeout | 0) !== (game.moves | 0);
+    let hatchcount = 0;
+    let cansee_hatchspot = false;
+    let x = 0;
+    let y = 0;
+
+    const loc = get_obj_location(egg, 0);
+    if (loc) {
+        x = loc.x | 0;
+        y = loc.y | 0;
+        hatchcount = rnd(egg.quan | 0);
+        cansee_hatchspot = cansee(x, y) && !silent;
+        const mv = game.mvitals?.[mnum]?.mvflags | 0;
+        if (ptr && !(ptr.geno & G_UNIQ) && !(mv & (G_GENOD | G_EXTINCT))) {
+            let i = hatchcount;
+            for (; i > 0; i--) {
+                const cc = { x, y };
+                if (!enexto(cc, x, y, ptr)
+                    || !(mon = makemon(ptr, cc.x, cc.y, NO_MINVENT | MM_NOMSG))) {
+                    break;
+                }
+                if ((yours && !silent)
+                    || (carried(egg) && mon.data?.mlet === 'S_DRAGON')) {
+                    if (await tamedog(mon, null, false)) {
+                        if (carried(egg) && mon.data?.mlet !== 'S_DRAGON') {
+                            mon.mtame = 20;
+                        }
+                    }
+                }
+                if (((game.mvitals?.[mnum]?.mvflags | 0) & G_EXTINCT) !== 0) {
+                    break;
+                }
+                mon2 = mon;
+            }
+            if (!mon) mon = mon2;
+            hatchcount -= i;
+            egg.quan = (egg.quan | 0) - hatchcount;
+        }
+    }
+
+    if (!mon) return;
+
+    let knows_egg = false;
+    let redraw = false;
+    const siblings = hatchcount > 1;
+    let monnambuf = '';
+    if (cansee_hatchspot) {
+        monnambuf = `${siblings ? 'some ' : ''}${
+            siblings ? makeplural(m_monnam_hatch(mon)) : an(m_monnam_hatch(mon))
+        }`;
+    }
+
+    switch (egg.where | 0) {
+    case OBJ_INVENT:
+        knows_egg = true;
+        if (!cansee_hatchspot) {
+            await You_feel(
+                `something ${locomotion_hatch(mon.data, 'drop')} from your pack!`,
+            );
+        } else {
+            await You_see(
+                `${monnambuf} ${locomotion_hatch(mon.data, 'drop')} out of your pack!`,
+            );
+        }
+        if (yours) {
+            const cry = ing_suffix_hatch(cry_sound(mon));
+            const seems = (is_silent_hatch(mon.data) || Deaf_hatch())
+                ? 'seems' : 'sounds';
+            const parent = game.flags?.female ? 'mommy' : 'daddy';
+            const punct = egg.spe ? '.' : '?';
+            await pline(
+                `${siblings ? 'Their' : 'Its'} ${cry} ${seems} like "${parent}${punct}"`,
+            );
+        } else if (mon.data?.mlet === 'S_DRAGON' && !Deaf_hatch()) {
+            // C SetVoice(mon, 0, 80, 0) deferred
+            await verbalize('Gleep!');
+        }
+        break;
+
+    case OBJ_FLOOR:
+        if (cansee_hatchspot) {
+            knows_egg = true;
+            await You_see(`${monnambuf} hatch.`);
+            redraw = true;
+        }
+        break;
+
+    case OBJ_MINVENT:
+        if (cansee_hatchspot) {
+            const carrier = egg.ocarry;
+            let carriedby;
+            if (carrier && canseemon(carrier)
+                && (!(carrier.wormno | 0)
+                    || cansee(carrier.mx | 0, carrier.my | 0))) {
+                carriedby = `${s_suffix_hatch(a_monnam_hatch(carrier))} pack`;
+                knows_egg = true;
+            } else if (carrier && is_pool(carrier.mx | 0, carrier.my | 0)) {
+                carriedby = 'empty water';
+            } else {
+                carriedby = 'thin air';
+            }
+            await You_see(
+                `${monnambuf} ${locomotion_hatch(mon.data, 'drop')} out of ${carriedby}!`,
+            );
+        }
+        break;
+
+    default:
+        // C impossible("egg hatched where?")
+        break;
+    }
+
+    if (cansee_hatchspot && knows_egg) learn_egg_type(mnum);
+
+    if ((egg.quan | 0) > 0) {
+        attach_egg_hatch_timeout(egg, rnd(12));
+        container_weight_hatch(egg);
+    } else if (carried(egg)) {
+        useup(egg);
+    } else {
+        obj_extract_self(egg);
+        obfree_hatch(egg);
+        const hidemon = m_at(x, y);
+        if (hidemon && !hideunder(hidemon) && cansee(x, y)) {
+            redraw = true;
+        }
+    }
+    if (redraw) newsym(x, y);
 }
