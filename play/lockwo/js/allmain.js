@@ -959,6 +959,14 @@ export async function moveloop_turn() {
                 await invault();
             }
 
+            // C ref: allmain.c:358 — `if (u.uhave.amulet) amulet();`.  It sits
+            // between invault() and the u_wipe_engr roll and draws rn2(15) plus
+            // an rn2(40) per sleeping Wizard, every turn the hero carries it.
+            if (g.u?.uhave?.amulet) {
+                const { amulet } = await import('./wizard.js');
+                await amulet();
+            }
+
             // u_wipe_engr check: rn2(40 + ACURR(A_DEX) * 3).  acurr order is
             // [Str, Int, Wis, Dex, Con, Cha] -> Dex is index 3.  C ACURR()
             // includes atemp/abon, so wounded legs (atemp[DEX] = -1) lowers the
@@ -966,6 +974,18 @@ export async function moveloop_turn() {
             const dex = acurr_eff(3);
             if (!rn2(40 + dex * 3)) {
                 rnd(3); // u_wipe_engr(rnd(3))
+            }
+
+            // C ref: allmain.c:362 — once the Wizard is dead the hero is
+            // harassed on a countdown; intervene() itself rolls rn2(6) and
+            // then whatever its arm needs, and the reload is rn1(200, 50).
+            if (g.u?.uevent?.udemigod && !g.u.uinvulnerable) {
+                if (g.u.udg_cnt) g.u.udg_cnt--;
+                if (!g.u.udg_cnt) {
+                    const { intervene } = await import('./wizard.js');
+                    await intervene();
+                    g.u.udg_cnt = rn1(200, 50);
+                }
             }
 
             // C ref: allmain.c moveloop_core():380 — the multi<0 countdown sits
@@ -1482,9 +1502,22 @@ export async function moveloop_core() {
     // "only permit updating the hero when swallowed"), so swallowed(0)'s eight
     // swallow_to_glyph() picks are the whole cost.
     if (!g.context?.mv || (g.u?.blinded || 0) > 0 || g.ublindf) {
-        if (Hallucination() && g.u?.uswallow) {
-            const { swallowed } = await import('./display.js');
-            swallowed(0);
+        if (Hallucination()) {
+            if (g.u?.uswallow) {
+                const { swallowed } = await import('./display.js');
+                swallowed(0);
+            }
+        } else {
+            // C ref: allmain.c moveloop_core():464 — the `else if
+            // (Unblind_telepat || Warning || Warn_of_mon || any_visible_region())
+            // see_monsters();` arm.  Telepathy is not modelled; Warning and a
+            // live gas cloud are.  Warning glyphs and region-obscured monsters
+            // are both keyed on the HERO's position, so they have to be redrawn
+            // once per input or they linger where the monster no longer sets
+            // them (seed0360 wizard1: two '2's stayed put after a 'k').
+            const dsp = await import('./display.js');
+            const { any_visible_region } = await import('./region.js');
+            if (dsp.have_warning() || any_visible_region()) dsp.see_monsters();
         }
     }
 

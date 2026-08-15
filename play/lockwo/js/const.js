@@ -1900,14 +1900,20 @@ export const EXPL_MAGICAL = 4;
 export const EXPL_FIERY = 5;
 export const EXPL_FROSTY = 6;
 export const EXPL_MAX = 7;
-export const MON_EXPLODE = -1;
-export const BURNING_OIL = -2;
-export const TRAP_EXPLODE = -3;
-export const MAY_HITMON = 0x1;
-export const MAY_HITYOU = 0x2;
-export const MAY_HIT = (0x1 | 0x2);
-export const MAY_DESTROY = 0x4;
-export const MAY_FRACTURE = 0x8;
+// objclass.h:154-156 — BURNING_OIL/MON_EXPLODE/TRAP_EXPLODE are MAXOCLASSES+1
+// ..+3, and MAXOCLASSES is 18 (RANDOM_CLASS 0 .. VENOM_CLASS 17).  These were
+// -1/-2/-3, which collides with the object classes explode()'s `olet` also
+// carries.
+export const BURNING_OIL = 19;
+export const MON_EXPLODE = 20;
+export const TRAP_EXPLODE = 21;
+// hack.h:1339-1344 — the scatter() flag bits start at VIS_EFFECTS 0x01, so
+// every MAY_* below was one bit low (and MAY_HIT was 0x03 instead of 0x06).
+export const MAY_HITMON = 0x02;
+export const MAY_HITYOU = 0x04;
+export const MAY_HIT = (0x02 | 0x04);
+export const MAY_DESTROY = 0x08;
+export const MAY_FRACTURE = 0x10;
 
 // Steed dismount reason enum (src/steed.c)
 // Runtime fields: dismount_steed(reason) reason selector.

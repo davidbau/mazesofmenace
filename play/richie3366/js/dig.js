@@ -2060,14 +2060,17 @@ async function dig_getdir(prompt) {
     return true;
 }
 
+/** C ref: cmd.c cmdq_add_ec — rhack(0) awaits the function (D-1018). */
 function cmdq_add_ec(fn) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
-    game._cmdq_canned.push({ typ: 'ec', fn });
+    game._cmdq_canned.push(fn);
 }
 
+/** C ref: cmd.c cmdq_add_key — getobj pops CMDQ_KEY as invlet char. */
 function cmdq_add_key(ch) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
-    game._cmdq_canned.push({ typ: 'key', key: ch });
+    const key = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
+    game._cmdq_canned.push({ typ: 'key', key });
 }
 
 /**
@@ -2078,10 +2081,9 @@ export async function use_pick_axe(obj) {
     let res = ECMD_OK;
     if (obj !== u.uwep) {
         if (await wield_tool(obj, 'swing')) {
-            cmdq_add_ec(async () => {
-                const { doapply } = await import('./apply.js');
-                return doapply();
-            });
+            // C: cmdq_add_ec(CQ_CANNED, doapply); cmdq_add_key(CQ_CANNED, obj->invlet)
+            const { doapply } = await import('./apply.js');
+            cmdq_add_ec(doapply);
             cmdq_add_key(obj.invlet);
             return ECMD_TIME;
         }

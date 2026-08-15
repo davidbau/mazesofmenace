@@ -81,9 +81,13 @@ function may_passwall(x, y) {
 
 // C ref: mondata.h m_in_air(mon) — flying or levitating.
 function m_in_air(mtmp) { return !!mtmp?.mflying || !!mtmp?.mlevitating; }
-// C ref: mondata.h likes_lava(ptr) — fire elementals / salamanders.  None of
-// the species that reach goodpos() here qualify.
-function likes_lava(_mdat) { return false; }
+// C ref: mondata.h:190 likes_lava(ptr) == (ptr == &mons[PM_FIRE_ELEMENTAL]
+// || ptr == &mons[PM_SALAMANDER]).  Was a constant FALSE, which makes goodpos()
+// reject every lava square for the two species C lets stand on one.
+const PM_FIRE_ELEMENTAL_TP = 155, PM_SALAMANDER_TP = 329;
+function likes_lava(mdat) {
+    return mdat?.pmidx === PM_FIRE_ELEMENTAL_TP || mdat?.pmidx === PM_SALAMANDER_TP;
+}
 
 // C ref: mkobj.c sobj_at(BOULDER, x, y).
 function sobj_at_boulder(x, y) {

@@ -808,6 +808,21 @@ function m_next2m(mtmp) {
     return false;
 }
 
+// C ref: mkobj.c:2648 add_to_minv() — a monster's minvent CHAIN is newest-first
+// (each pickup is prepended).  Our minvent array is append-ordered, so every
+// muse.c scan that walks `mtmp->minvent` and keeps the FIRST/LAST match has to
+// read it backwards; walking it forwards makes a shopkeeper quaff its oldest
+// healing potion where C quaffs the newest (w3-human-knight-debug step 135).
+// Same inversion as monmove.js objPileAt()/invent.js objects_at() apply to the
+// floor `nexthere` chain.
+function m_chain(mtmp) {
+    const inv = mtmp?.minvent;
+    if (!inv || inv.length < 2) return inv || [];
+    const out = new Array(inv.length);
+    for (let i = 0, n = inv.length; i < n; i++) out[i] = inv[n - 1 - i];
+    return out;
+}
+
 /* ------------------------------------------------------------------------ *
  * muse.c:440 find_defensive(mtmp, tryescape)
  *
@@ -840,7 +855,7 @@ export function find_defensive(mtmp, tryescape) {
     if (mtmp.mconf || mtmp.mstun || !mtmp.mcansee) {
         obj = null;
         if (!nohands(mtmp.data)) {
-            for (const o of (mtmp.minvent || []))
+            for (const o of m_chain(mtmp))
                 if (o.otyp === OT().UNICORN_HORN && !o.cursed) { obj = o; break; }
         }
         if (obj || is_unicorn(mtmp.data) || mtmp.data?.name === 'ki-rin') {
@@ -852,7 +867,7 @@ export function find_defensive(mtmp, tryescape) {
 
     if (mtmp.mconf || mtmp.mstun) {
         let liztin = null;
-        for (const o of (mtmp.minvent || [])) {
+        for (const o of m_chain(mtmp)) {
             if (o.otyp === OT().CORPSE && is_lizard_pm(o.corpsenm)) {
                 m.defensive = o; m.has_defense = MUSE_LIZARD_CORPSE;
                 return true;
@@ -883,7 +898,7 @@ export function find_defensive(mtmp, tryescape) {
         && touch_petrifies_pm(uwep.corpsenm)
         && !poly_when_stoned(mtmp.data) && !resists_ston(mtmp)
         && m_lined_up(mtmp)) {
-        for (const o of (mtmp.minvent || []))
+        for (const o of m_chain(mtmp))
             if (o.otyp === OT().WAN_UNDEAD_TURNING && (o.spe | 0) > 0) {
                 m.defensive = o; m.has_defense = MUSE_WAN_UNDEAD_TURNING;
                 return true;
@@ -978,7 +993,7 @@ export function find_defensive(mtmp, tryescape) {
     if (t && (is_pit(t.ttyp) || t.ttyp === WEB || t.ttyp === BEAR_TRAP))
         t = null; /* ok for monster to dig here */
 
-    for (const o of (mtmp.minvent || [])) {
+    for (const o of m_chain(mtmp)) {
         /* don't always use the same selection pattern */
         if (m.has_defense && !rn2(3)) break;
 
@@ -1601,7 +1616,7 @@ export function find_offensive(mtmp) {
                              || monnear(mtmp, mtmp.mux ?? 0, mtmp.muy ?? 0));
     const mtmp_helmet = which_armor(mtmp, W_ARMH);
     /* this picks the last viable item rather than prioritizing choices */
-    for (const obj of (mtmp.minvent || [])) {
+    for (const obj of m_chain(mtmp)) {
         if (!reflection_skip) {
             if (m.has_offense === MUSE_WAN_DEATH) continue;
             if (obj.otyp === OT().WAN_DEATH && (obj.spe | 0) > 0
@@ -2069,7 +2084,7 @@ export function find_misc(mtmp) {
     // MUSE_BULLWHIP clause BEFORE its rn2(5) — C draws that roll for any armed
     // hero next to a whip-wielding monster, so the draw went missing entirely.
     const uwep = game.uwep;
-    for (const obj of (mtmp.minvent || [])) {
+    for (const obj of m_chain(mtmp)) {
         /* Monsters shouldn't recognize cursed items; this kludge is
            necessary to prevent serious problems though... */
         if (obj.otyp === OT().POT_GAIN_LEVEL
@@ -2807,7 +2822,7 @@ function attacktype_fordmg_fire(ptr) {
 // C ref: muse.c muse_unslime(mon, obj, trap, by_you).  The zhitm()/explode()
 // damage paths are unported, so the fire sources that need them stop after the
 // message + speed adjustment; the fire-trap path uses the ported mintrap.
-async function muse_unslime(mon, obj, trap, _by_you) {
+async function muse_unslime(mon, obj, trap, by_you) {
     const otyp = obj.otyp;
     let vis = canseemon(mon);
     const res = true;
@@ -2848,11 +2863,18 @@ async function muse_unslime(mon, obj, trap, _by_you) {
             vis = false;
             return false; /* failed to cure sliming */
         }
-        /* the damage roll happens before explode() even when explode is a
-           no-op here, so keep it in the stream */
-        void ((2 * (rn1(3, 3) + 2 * bcsign(obj)) + 1) / 3);
+        // C ref: muse.c:3161 — dmg is rolled, the scroll is used up BEFORE
+        // explode(), and the blast itself applies the damage.  A negative
+        // expltype names `mon` as the monster the hero gets kill credit for.
+        const dmg = Math.trunc((2 * (rn1(3, 3) + 2 * bcsign(obj)) + 1) / 3);
         m_useup(mon, obj);
-        /* GAP: explode() is unported. */
+        {
+            const { explode } = await import('./explode.js');
+            const { EXPL_FIERY } = await import('./const.js');
+            const { SCROLL_CLASS } = await import('./mkobj.js');
+            await explode(mon.mx, mon.my, -11, dmg, SCROLL_CLASS,
+                          by_you ? -EXPL_FIERY : EXPL_FIERY);
+        }
     } else if (otyp === OT().POT_OIL) {
         let o = obj;
         const was_lit = !!obj.lamplit;

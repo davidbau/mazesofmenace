@@ -10,7 +10,9 @@ import { rn2, rnd } from './rng.js';
 import { depth } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
-    W_ARMOR, W_ACCESSORY, W_SADDLE, W_BALL, W_CHAIN, LOST_DROPPED,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
+    W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_AMUL, W_TOOL,
+    W_ACCESSORY, W_SADDLE, W_BALL, W_CHAIN, INVIS, CLAIRVOYANT, LOST_DROPPED,
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS,
@@ -76,11 +78,16 @@ import { can_reach_floor, set_occupation } from './engrave.js';
 import { pickup } from './pickup.js';
 import { Fumbling } from './attrib.js';
 import {
-    welded, setuwep, setuswapwep, setuqwep,
+    welded, setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
-import { setworn } from './do_wear.js';
+import { setworn, confer_oc_oprop, recalc_telepat_range } from './do_wear.js';
+import { addinv_nomerge } from './u_init.js';
+import {
+    is_art, set_artifact_intrinsic,
+} from './artifact.js';
+import { ART_EYES_OF_THE_OVERWORLD } from './generated/artifacts_data.js';
 import { more_experienced, newexplevel } from './exper.js';
-import { PM_TOURIST, PM_ROGUE } from './generated/monsters_data.js';
+import { PM_TOURIST, PM_ROGUE, PM_WIZARD } from './generated/monsters_data.js';
 import { dismount_steed } from './steed.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
@@ -102,6 +109,27 @@ const ICE_BOX = objectNames.indexOf('ICE_BOX');
 const CHEST = objectNames.indexOf('CHEST');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const STATUE = objectNames.indexOf('STATUE');
+const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
+const CORNUTHAUM = objectNames.indexOf('CORNUTHAUM');
+/** C worn.c worn[] — hero slot pointer + mask (setnotworn). */
+const WORN_SLOTS = [
+    ['uarm', W_ARM],
+    ['uarmc', W_ARMC],
+    ['uarmh', W_ARMH],
+    ['uarms', W_ARMS],
+    ['uarmg', W_ARMG],
+    ['uarmf', W_ARMF],
+    ['uarmu', W_ARMU],
+    ['uleft', W_RINGL],
+    ['uright', W_RINGR],
+    ['uwep', W_WEP],
+    ['uswapwep', W_SWAPWEP],
+    ['uquiver', W_QUIVER],
+    ['uamul', W_AMUL],
+    ['ublindf', W_TOOL],
+    ['uball', W_BALL],
+    ['uchain', W_CHAIN],
+];
 /** C objclass.h DRAGON_HIDE — materials below are soft enough to burn in lava. */
 const DRAGON_HIDE = 10;
 /** C zap.c destroy_strings fire rows used by trap.c fire_damage. */
@@ -178,31 +206,58 @@ async function There(line) {
     await pline(`There ${line}`);
 }
 /**
- * C worn.c setnotworn — clear hero worn slots pointing at obj and
- * uprops[oc_oprop].extrinsic (via setworn). Does not find_ac.
+ * C worn.c w_blocks — mummy wrapping / cornuthaum / Eyes of the Overworld.
  */
-function setnotworn(obj) {
+function w_blocks_hero(o, m) {
+    if (!o) return 0;
+    if ((o.otyp | 0) === MUMMY_WRAPPING && (m & W_ARMC) !== 0) return INVIS;
+    if ((o.otyp | 0) === CORNUTHAUM && (m & W_ARMH) !== 0
+        && game.urole?.mnum !== PM_WIZARD) {
+        return CLAIRVOYANT;
+    }
+    if (is_art(o, ART_EYES_OF_THE_OVERWORLD) && (m & W_TOOL) !== 0) {
+        return BLINDED;
+    }
+    return 0;
+}
+
+/**
+ * C worn.c setnotworn — pointer-walk worn[]; does not call setworn.
+ * Clears oc_oprop extrinsic only for slots that currently point at obj.
+ * Leaves owornmask bits when obj is not in the slot (tutorial restore flag).
+ * Named omit: cancel_doff; monstunseesu_prop; update_inventory.
+ * Exported for shopdig snatch (D-1016); tutorial stash/restore (D-1015/D-1020).
+ */
+export function setnotworn(obj) {
     if (!obj) return;
-    const u = game.u || {};
-    const mask = obj.owornmask || 0;
-    if (u.uwep === obj) setuwep(null);
-    if (u.uquiver === obj) setuqwep(null);
-    if (u.uswapwep === obj) setuswapwep(null);
-    // Armor/accessory/ball/chain: setworn clears slot + oc_oprop extrinsic
-    // (e.g. ELVEN_CLOAK → EStealth). Slot-pointer-only clear left EStealth
-    // stuck after tutorial invent stash (seed0009 death attrs).
-    const propMask = mask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_BALL | W_CHAIN);
-    if (propMask) {
-        setworn(null, propMask);
-    } else {
-        for (const k of [
-            'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
-            'uleft', 'uright', 'uamul', 'ublindf',
-        ]) {
-            if (u[k] === obj) u[k] = null;
+    const u = game.u || (game.u = {});
+    if (u.twoweap && (obj === u.uwep || obj === u.uswapwep)) {
+        set_twoweap(false);
+    }
+    let unworn = 0;
+    for (const [slot, mask] of WORN_SLOTS) {
+        if (u[slot] !== obj) continue;
+        u[slot] = null;
+        unworn |= mask;
+        confer_oc_oprop(obj, mask, false);
+        obj.owornmask = (obj.owornmask || 0) & ~mask;
+        if (obj.oartifact) set_artifact_intrinsic(obj, false, mask);
+        const blocked = w_blocks_hero(obj, mask);
+        if (blocked) {
+            if (!u.uprops) u.uprops = {};
+            if (!u.uprops[blocked]) {
+                u.uprops[blocked] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+            }
+            u.uprops[blocked].blocked =
+                (u.uprops[blocked].blocked | 0) & ~mask;
         }
     }
-    obj.owornmask = 0;
+    if (!u.uarm && game.iflags) game.iflags.tux_penalty = false;
+    if ((game.flags?.weaponstatus && (unworn & W_WEP) !== 0)
+        || (game.flags?.armorstatus && (unworn & W_ARMOR) !== 0)) {
+        if (game.disp) game.disp.botl = true;
+    }
+    recalc_telepat_range();
 }
 /** C hack.h distu — squared distance from hero. */
 function distu(x, y) {
@@ -694,10 +749,36 @@ async function familiar_level_msg() {
 }
 
 /**
+ * C invent.c useupall subset for nhl_gamestate restore — setnotworn+freeinv.
+ * obfree contents / obj_resists deferred (do not delobj: that consumes rn2).
+ */
+function useupall_gamestate(obj) {
+    if (!obj) return;
+    setnotworn(obj);
+    const inv = game.invent || [];
+    const idx = inv.indexOf(obj);
+    if (idx >= 0) inv.splice(idx, 1);
+    obj.where = OBJ_FREE;
+}
+
+/**
+ * C worn.c setworn(otmp, wornmask) for nhl_gamestate restore.
+ * JS setworn is armor/accessory/ball/chain; weapons go through setu*.
+ */
+function setworn_restore(otmp, wornmask) {
+    if (!otmp || !wornmask) return;
+    if (wornmask & W_WEP) setuwep(otmp);
+    if (wornmask & W_SWAPWEP) setuswapwep(otmp);
+    if (wornmask & W_QUIVER) setuqwep(otmp);
+    const rest = wornmask & ~(W_WEP | W_SWAPWEP | W_QUIVER);
+    if (rest) setworn(otmp, rest);
+}
+
+/**
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
  * Stash invent (preserve owornmask as restore flag) via setnotworn+freeinv
- * so extrinsics clear and find_ac → base 10. Named omissions: u/disco/
- * mvitals/spl_book backup; leave-tutorial restore path.
+ * so extrinsics clear and find_ac → base 10. Named omissions: memcpy
+ * u/disco/mvitals/spl_book backup.
  */
 function tutorial_enter_gamestate() {
     if (game.gmst_stored) return;
@@ -712,12 +793,41 @@ function tutorial_enter_gamestate() {
         setnotworn(otmp);
         inv.shift();
         otmp.owornmask = wornmask;
-        stash.push(otmp);
+        stash.unshift(otmp); // C prepends gmst_invent
     }
     game.invent = [];
     game.gmst_invent = stash;
-    // C: u.uac stays stale until allmain once-per-input find_ac()
+    game._lastinvnr = 51; // C gl.lastinvnr — next letter 'a'
     game.gmst_stored = true;
+}
+
+/**
+ * C ref: nhlua.c nhl_gamestate(true) via tutorial_leave / tutorial(FALSE).
+ * useupall tutorial invent; addinv_nomerge stash + setworn from flag.
+ * Named omit: memcpy u/disco/mvitals/spl_book; oc_uname clear;
+ * init_uhunger; free_tutorial leftover obfree; nhcore callback disable.
+ */
+async function tutorial_leave_gamestate() {
+    if (!game.gmst_stored) return;
+
+    game.moves = game.gmst_moves | 0;
+    await pline(`Resetting time to move #${game.moves}.`);
+    game.gmst_moves = 0;
+
+    game._lastinvnr = 51;
+    const inv = game.invent || (game.invent = []);
+    while (inv.length) useupall_gamestate(inv[0]);
+
+    const stash = game.gmst_invent || [];
+    while (stash.length) {
+        const otmp = stash.shift();
+        const wornmask = otmp.owornmask || 0;
+        otmp.owornmask = 0;
+        await addinv_nomerge(otmp);
+        if (wornmask) setworn_restore(otmp, wornmask);
+    }
+    game.gmst_invent = [];
+    game.gmst_stored = false;
 }
 
 /**
@@ -946,6 +1056,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             tutorial_enter_gamestate();
         } else if (In_tutorial(u.uz)) {
             game.flags && (game.flags.in_tutorial_branch = false);
+            await tutorial_leave_gamestate();
             up = false; // C: re-enter level 1 as if starting new game
         }
     }
@@ -959,6 +1070,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     if (on_level(newlevel, u.uz)) return;
+
+    // C: maybe_reset_pick(NULL); reset_trapset() before leaving
+    try {
+        const { reset_trapset } = await import('./apply.js');
+        reset_trapset();
+    } catch { /* apply optional */ }
 
     // C: if (!iflags.nofollowers) keepdogs(FALSE)
     if (!game.iflags?.nofollowers) keepdogs(false);

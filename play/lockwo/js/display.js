@@ -38,7 +38,7 @@ import { engr_at } from './engrave.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { visible_region_at, show_region } from './region.js';
 import { ACCESSIBLE, IS_POOL, IS_LAVA, In_sokoban,
-         Is_knox_level } from './const.js';
+         Is_knox_level, Is_rogue_level } from './const.js';
 import { In_hell } from './dungeon.js';
 import { observe_object } from './o_init.js';
 
@@ -69,6 +69,13 @@ const OC_SYM = {
     16: '_', // CHAIN
     17: '.', // VENOM
 };
+
+// C ref: drawing.c def_r_oc_syms — the Rogue level's object-class symbols.
+// Only four differ from def_oc_syms; the rest reuse the primary *_SYM macros.
+const OC_SYM_ROGUE = { ...OC_SYM, 3: ']', 5: ',', 7: ':', 12: '*' };
+function oc_sym(oclass) {
+    return (rogue_symset() ? OC_SYM_ROGUE : OC_SYM)[oclass];
+}
 
 // C ref: include/color.h — HI_* material-color aliases.
 const HI_BY_MATERIAL = {
@@ -144,7 +151,7 @@ export function object_glyph(otmp) {
     // Statues display as the petrified monster's class symbol.
     if (otmp.otyp === STATUE_OTYP) {
         const mon = monster_by_pmidx(otmp.corpsenm);
-        const sym = mon?.mlet || OC_SYM[ROCK_CLASS];
+        const sym = mon?.mlet || oc_sym(ROCK_CLASS);
         // C ref: display.c GLYPH_STATUE_* branch — obj_color(STATUE) = CLR_WHITE.
         return { ch: sym, color: CLR_WHITE, dec: false };
     }
@@ -153,12 +160,12 @@ export function object_glyph(otmp) {
     // (e.g. a red mold's corpse is red, not the FLESH/brown default).
     if (otmp.otyp === CORPSE_OTYP && otmp.corpsenm != null && otmp.corpsenm >= 0) {
         const mon = monster_by_pmidx(otmp.corpsenm);
-        return { ch: OC_SYM[FOOD_CLASS], color: mon?.mcolor ?? NO_COLOR, dec: false };
+        return { ch: oc_sym(FOOD_CLASS), color: mon?.mcolor ?? NO_COLOR, dec: false };
     }
     // Boulder uses the rock symbol; the generic case below covers it.  A
     // generic object keeps its class symbol (potion '!', gem '*', book '+');
     // only the color is suppressed to the generic gray.
-    const sym = OC_SYM[otmp.oclass] || OC_SYM[1];
+    const sym = oc_sym(otmp.oclass) || oc_sym(1);
     return { ch: sym, color: obj_color(otmp), dec: false };
 }
 
@@ -368,7 +375,21 @@ const ANSI_COLOR = [
 // drawing.c symset[] / dat/symbols — without it the default ASCII glyphs
 // (defsym.h PCHAR) are used for walls/floor/doorways.
 function useDECgraphics() {
+    if (rogue_symset()) return false;
     return /^dec/i.test(String(game.symset || ''));
+}
+
+// C ref: do.c:1666 `assign_graphics(Is_rogue_level(newlevel) ? ROGUESET : ...)`.
+// symbols.c init_rogue_symbols() builds ROGUESET from the plain ASCII defsyms[]
+// (a symset file whose Restrictions line says "primary" — which DECgraphics is —
+// never reaches it), then overrides three door cmaps to '+' and both staircases
+// to '%', and swaps four object classes (drawing.c def_r_oc_syms: armor ']',
+// amulet ',', food ':', coin '*').  Monster symbols and every colour are
+// unchanged: the rogue-colour paths in reset_glyphmap all require
+// HAS_ROGUE_IBM_GRAPHICS, i.e. SYMHANDLING(H_IBM), which a DEC/ASCII build is
+// not.
+export function rogue_symset() {
+    return Is_rogue_level(game.u?.uz);
 }
 
 // ── Terrain to display character + color + DEC flag ──
@@ -705,6 +726,15 @@ export function terrain_glyph(loc, x, y) {
         // C ref: back_to_glyph — SDOOR falls through to the wall case.
         return wall_glyph_for(loc);
     case DOOR:
+        // C ref: symbols.c init_rogue_symbols() — ROGUESET forces S_vodoor,
+        // S_hodoor and S_ndoor all to '+', so on the Rogue level every doorway
+        // (broken/open/doorless, as well as the already-'+' closed one) draws
+        // the same.  Colour still comes from the normal cmap path.
+        if (rogue_symset())
+            return { ch: '+',
+                     color: (loc.doormask & (D_ISOPEN | D_CLOSED | D_LOCKED))
+                            ? CLR_BROWN : NO_COLOR,
+                     dec: false };
         // C ref: display.c back_to_glyph DOOR case — an open or closed door uses
         // the horizontal/vertical cmap variant per loc.horizontal (S_hodoor '-'
         // / S_vodoor '|' when open; S_hcdoor / S_vcdoor '+' when closed); broken
@@ -734,9 +764,13 @@ export function terrain_glyph(loc, x, y) {
         // hilite is nilstring (termcap.c init_hilite) so it emits no color
         // escape and records as the default (NO_COLOR) cell, matching how
         // walls/floors are handled here.
-        const ch = stairs_go_down(loc, x, y) ? '>' : '<';
-        const sway = known_branch_stairs(stairway_at(x, y)) ? CLR_YELLOW : NO_COLOR;
-        return { ch, color: sway, dec: false };
+        const branch = known_branch_stairs(stairway_at(x, y));
+        // C ref: symbols.c init_rogue_symbols() — ROGUESET sets S_upstair and
+        // S_dnstair to '%'.  The BRANCH pair (S_brupstair/S_brdnstair) is left
+        // at the defsyms default, so a known branch staircase still draws '<'/'>'.
+        const ch = (rogue_symset() && !branch) ? '%'
+                 : stairs_go_down(loc, x, y) ? '>' : '<';
+        return { ch, color: branch ? CLR_YELLOW : NO_COLOR, dec: false };
     }
     case LADDER: {
         // C ref: back_to_glyph LADDER — S_upladder/S_dnladder (CLR_BROWN) or
@@ -874,6 +908,11 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
 // Mapping these to NO_COLOR here makes the emitted SGR match the C reference
 // without touching the (frozen) terminal serializer.
 function has_color_or_default(color) {
+    // C ref: display.c reset_glyphmap tail — "Turn off color if no color
+    // defined, or rogue level w/o PC graphics": every glyph on the Rogue level
+    // loses its colour unless HAS_ROGUE_IBM_GRAPHICS (SYMHANDLING(H_IBM)),
+    // which neither the ASCII nor the DECgraphics build is.
+    if (rogue_symset()) return NO_COLOR;
     if (color === CLR_BLACK || color === CLR_GRAY) return NO_COLOR;
     return color;
 }
@@ -1060,7 +1099,7 @@ const WARNING_AT_LEVEL = Object.freeze({
 // C ref: hack.h Warning — HWarning|EWarning.  Only the role-granted intrinsic
 // is modelled; the extrinsic (ring of warning, warned-of-monster artifacts) is
 // not, so MATCH_WARN_OF_MON never applies either.
-function have_warning() {
+export function have_warning() {
     const lvl = WARNING_AT_LEVEL[game.urole?.mnum];
     if (lvl == null) return false;
     return (game.u?.ulevel ?? 1) >= lvl;
@@ -1078,6 +1117,20 @@ function mon_warning(mon) {
     const dx = mon.mx - (game.u?.ux ?? 0), dy = mon.my - (game.u?.uy ?? 0);
     if (dx * dx + dy * dy >= 100) return false;
     return Math.trunc((mon.m_lev || 0) / 4) >= WARNLEVEL;
+}
+
+// C ref: display.c see_monsters() — redraw every live monster's square (and the
+// hero's).  A warning glyph is a property of the HERO's current position
+// (mdistu(mon) < 100), so without this pass a '2' drawn when the hero was
+// adjacent stayed on screen after they stepped away.  Sting_effects and the
+// worm-segment redraw have no analogue here; newsym() draws no RNG unless the
+// hero is hallucinating, and C's Hallucination arm is a different branch.
+export function see_monsters() {
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || (mon.mhp != null && mon.mhp <= 0)) continue;
+        newsym(mon.mx, mon.my);
+    }
+    if (!game.u?.usteed) newsym(game.u?.ux, game.u?.uy);
 }
 
 // C ref: drawing.c def_warnsyms[] — the six warning levels, '0'..'5'.
@@ -1596,7 +1649,11 @@ function _statusLine2() {
     const levelDesc = In_quest(u.uz)
         ? `Home ${u.uz?.dlevel || 1}`
         : `${lvlLabel}:${dlvlNum}`;
-    let s = `${levelDesc} $:${game._goldCount || 0} HP:${hpShown}(${curHpMax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
+    // C ref: botl.c do_statusline2:131 — the gold field's label is the ENCODED
+    // GOLD_PIECE glyph, i.e. the live showsyms[COIN_CLASS], so the Rogue level's
+    // ROGUESET (drawing.c def_r_oc_syms: coin shares GEM_SYM) prints "*:0".
+    const goldSym = rogue_symset() ? '*' : '$';
+    let s = `${levelDesc} ${goldSym}:${game._goldCount || 0} HP:${hpShown}(${curHpMax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
     // C ref: botl.c do_statusline2 — Xp:<lvl>[/<exp>] normally, but HD:<mlevel>
     // (monster level/"Hit Dice") replaces it entirely while Upolyd.
     if (u.Upolyd) {

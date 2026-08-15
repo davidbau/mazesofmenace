@@ -26,6 +26,7 @@
 // the pudding-division clone_mon().
 
 import { game } from './gstate.js';
+import { hitval } from './weapon.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     NATTK, M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
@@ -507,6 +508,36 @@ async function monkilled_mm(mdef, _adtyp) {
     if (be_sad) await emitMMmsg('You have a sad feeling for a moment.');
 }
 
+// C ref: mhitm.c:970 explmm(magr, mdef, mattk) — an AT_EXPL monster detonates
+// next to another monster.  For the three adtyps that make a REAL explosion the
+// blast is mon_explodes(); anything else is an ordinary mdamagem().  Either way
+// the aggressor dies.
+async function explmm(magr, mdef, mattk) {
+    if (magr.mcan) return M_ATTK_MISS;
+
+    if (cansee(magr.mx, magr.my))
+        await emitMMmsg(`${Monnam(magr)} explodes!`);
+    else
+        await noises(magr, mattk);
+
+    let result;
+    if (mattk.adtyp === AD_FIRE || mattk.adtyp === AD_COLD
+        || mattk.adtyp === AD_ELEC) {
+        const { mon_explodes } = await import('./explode.js');
+        await mon_explodes(magr, [mattk.aatyp, mattk.adtyp, mattk.damn, mattk.damd]);
+        result = M_ATTK_AGR_DIED | (DEADMONSTER(mdef) ? M_ATTK_DEF_DIED : 0);
+    } else {
+        result = await mdamagem(magr, mdef, mattk, null, 0);
+    }
+
+    if (!(result & M_ATTK_AGR_DIED)) {
+        await killMonster(magr);                       /* mondead(magr) */
+        result |= M_ATTK_AGR_DIED;
+    }
+    if (magr.mtame) await emitMMmsg('You have a melancholy feeling for a moment.');
+    return result;
+}
+
 // C ref: mon.c monstone(mdef) — the victim becomes a STATUE.  Unlike
 // mondied() this does NOT run corpse_chance(), so it must not draw its rn2.
 async function monstone_mm(mdef) {
@@ -927,13 +958,7 @@ const SLASH_OTYPS_MM = new Set([
 // pick-axe-vs-xorn and artifact bonuses need tables this port doesn't carry.)
 // It is added to tmp BEFORE the to-hit roll and subtracted after, so leaving it
 // out changed whether an armed monster connects.
-function hitval_mm(weapon, mtmp) {
-    if (!weapon) return 0;
-    let tmp = (weapon.spe || 0) + (WEP_HITBON[weapon.otyp] ?? 0);
-    const ptr = permonst(mtmp);
-    if (weapon.blessed && (is_undead_flag(ptr) || is_demon_flag(ptr))) tmp += 2;
-    return tmp;
-}
+const hitval_mm = hitval;   // js/weapon.js owns the complete weapon.c:149
 
 // C ref: include/monst.h:251 helpless(mon) = msleeping || !mcanmove.
 function helpless_mm(mtmp) {
@@ -1144,10 +1169,12 @@ export async function mattackm(magr, mdef) {
             }
             break;
 
-        case AT_EXPL:                                  // mhitm.c:485
-            // explmm(): the explosion damage roll isn't modelled.  C's
-            // "cancelled, no attack" arm is strike = 0, attk = 0.
-            strike = 0; attk = 0;
+        case AT_EXPL:                                  // mhitm.c:497
+            /* D: Prevent explosions from a distance */
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) continue;
+            res[i] = await explmm(magr, mdef, mattk);
+            if (res[i] === M_ATTK_MISS) { strike = 0; attk = 0; }
+            else strike = 1;                           /* automatic hit */
             break;
 
         case AT_BREA:

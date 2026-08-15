@@ -90,6 +90,11 @@ import {
     NO_COLOR,
 } from './terminal.js';
 import {
+    config_error_add,
+    config_error_init,
+    config_error_nextline,
+} from './cfgfiles.js';
+import {
     DEFAULT_FRUIT,
     normalize_initial_fruit,
 } from './fruit.js';
@@ -99,6 +104,7 @@ import {
     encodeUtf8Text,
     lowc,
     str_start_is,
+    visctrl,
 } from './hacklib.js';
 // js/display.js, js/invent.js and js/vision.js do not import this file, so
 // these three are plain one-way dependencies; js/tty_message.js reaches
@@ -116,7 +122,13 @@ import { ttyPline } from './tty_message.js';
 import { vision_recalc } from './vision.js';
 import { sourceGlyphName } from './glyph_ids.js';
 import { allopt } from './optlist_data.js';
-import { AUTOCOMP_ADJ, extcmdlist } from './extcmdlist_data.js';
+import {
+    AUTOCOMP_ADJ,
+    CMD_PARAM,
+    INTERNALCMD,
+    MOUSECMD,
+    extcmdlist,
+} from './extcmdlist_data.js';
 import {
     DEFAULT_PRIMARY_SYMBOLS,
     SYM_OFF_O,
@@ -444,13 +456,31 @@ function defaultResult() {
         // cfgfiles.c append to a list the options menu counts, so the count
         // has to know the statement was there; see UNPORTED_CONFIG_STATEMENTS.
         unportedConfigStatements: [],
+        // C ref: cfgfiles.c config_error_data, the frame rcfile() (1943) opens
+        // around the configuration read.  parseNethackrc() feeds it one line
+        // at a time; js/jsmain.js closes it with config_error_done() and
+        // prints what it holds.
+        configErrorFrame: config_error_init(),
     };
     applyBooleanOptionDefaults(result);
     return result;
 }
 
+// The port's fail-closed stop for a configuration path it has not ported.
+// C has no such thing: every error the rc read produces is a config error that
+// leaves the game running, so a call here says the port cannot follow C rather
+// than that C refused the statement.  configErrorAdd() below is the ported
+// answer, and each site that moves from one to the other has had its C branch
+// read.
 function optionError(lineNumber, message) {
     throw new Error(`nethackrc line ${lineNumber}: ${message}`);
+}
+
+// C ref: pline.c config_error_add(), reached from an option handler.
+// parseoptions() carries on with the rest of the statement and the rest of the
+// file afterwards, and js/jsmain.js prints what accumulated.
+function configErrorAdd(result, message) {
+    config_error_add(result.configErrorFrame, message);
 }
 
 // The recorder's C locale treats only the six ASCII bytes below as
@@ -467,8 +497,18 @@ function trimCWhitespaceStart(value) {
     return String(value).replace(/^[\t\n\v\f\r ]+/u, '');
 }
 
-function trimConfigPadding(value) {
-    return String(value).replace(/^[ \t]+|[ \t]+$/gu, '');
+// C ref: hacklib.c trimspaces() (163-176).  Its two halves reach a caller
+// differently: leading blanks are only skipped, by advancing a pointer the
+// caller need not keep, while the trailing run is overwritten with NUL inside
+// the caller's own buffer.  A caller that keeps its own pointer therefore sees
+// the second half alone, which is what trimspacesTrailing() is.  C counts ' '
+// and '\t' and nothing else, unlike trimCWhitespace() above.
+function trimspacesTrailing(value) {
+    return String(value).replace(/[ \t]+$/u, '');
+}
+
+function trimspaces(value) {
+    return trimspacesTrailing(value).replace(/^[ \t]+/u, '');
 }
 
 // C ref: hacklib.c:mungspaces().  Configuration statements other than
@@ -490,12 +530,15 @@ function mungspaces(value) {
 // backslash continues onto the next non-comment text with one separating
 // space.  Ignored lines without their own continuation terminate a pending
 // logical line, matching the parser's p->buf lifetime.
-function logicalConfigLines(rc) {
+//
+// This yields rather than returns a list, because parse_conf_file() alternates
+// between reading a line and handing a completed statement to its proc.  An
+// error the proc reports is stamped with the line and text the frame is
+// holding at that moment, and both move on the next physical line.
+function* logicalConfigLines(rc, frame) {
     const input = encodeUtf8Text(rc);
-    const logical = [];
     let buffered = null;
     let cursor = 0;
-    let lineNumber = 0;
     let skip = false;
 
     while (cursor < input.length) {
@@ -528,12 +571,14 @@ function logicalConfigLines(rc) {
         if (newline < 0
             && cLength >= CONFIG_BUFFER_BYTE_CAPACITY - 2) {
             // parse_conf_buf() reports this non-fatally, then discards input
-            // through the next visible newline.
+            // through the next visible newline.  The error lands on whichever
+            // line config_error_nextline() last accepted, because this one
+            // never reaches it.
+            config_error_add(frame, 'Line too long, skipping');
             skip = true;
             continue;
         }
 
-        lineNumber += 1;
         let line = chunk.slice(0, newline >= 0 ? newline : cLength);
         const continued = line.at(-1) === 0x5C;
         if (continued) {
@@ -543,6 +588,11 @@ function logicalConfigLines(rc) {
         } else {
             while ([0x20, 0x09, 0x0D].includes(line.at(-1))) line.pop();
         }
+        // parse_conf_buf() reports the line to the error frame here, before
+        // the leading whitespace is stepped over, so a reported line keeps its
+        // indent.  A false answer abandons the rest of the file.
+        if (!config_error_nextline(frame, decodeUtf8ByteString(line))) return;
+        const lineNumber = frame.line_num;
         while (line[0] === 0x20 || line[0] === 0x09) line.shift();
 
         const ignored = line.length === 0 || line[0] === 0x23;
@@ -557,13 +607,12 @@ function logicalConfigLines(rc) {
         }
         if (continued || (ignored && !hadBuffered)) continue;
 
-        logical.push({
+        yield {
             line: decodeUtf8ByteString(buffered),
             lineNumber,
-        });
+        };
         buffered = null;
     }
-    return logical;
 }
 
 function splitNameAndValue(option) {
@@ -871,25 +920,25 @@ function sanitizePetName(value, eightBitTty) {
     return decodeUtf8ByteString(bytes);
 }
 
-function setPetName(result, field, value, negated, lineNumber) {
-    if (!negated && value == null) {
+// optlist.h:221-222, :288-289 and :382-383 give catname, dogname and horsename
+// negateok No, so parseoptions() answers a negated spelling with
+// bad_negation() and none of the three handlers sees one.
+function setPetName(result, field, value, lineNumber) {
+    if (value == null) {
         optionError(lineNumber, `${field} requires a value`);
     }
-    result[field] = negated || value === 'none' || value === '(none)'
+    result[field] = value === 'none' || value === '(none)'
         ? '' : sanitizePetName(value, result.iflags.wc_eight_bit_input);
 }
 
 // C ref: options.c optfn_fruit(do_set) during initial option parsing.
 // Singularization and fruit-chain insertion are deferred to
 // initoptions_finish(), after the complete configuration has been read.
-function setFruit(result, value, negated, lineNumber) {
-    if (negated) {
-        if (value != null && value !== '') {
-            optionError(lineNumber, 'negated fruit cannot have a value');
-        }
-        result.pl_fruit = DEFAULT_FRUIT;
-        return;
-    }
+// optlist.h:339-340 gives fruit negateok No, so parseoptions() answers a
+// negated spelling with bad_negation() and optfn_fruit()'s negation arm
+// (options.c:1717-1724), which resets svp.pl_fruit through `goodfruit`, is
+// unreachable from a configuration file.
+function setFruit(result, value, lineNumber) {
     if (value == null || value === '')
         optionError(lineNumber, 'fruit requires a value');
     result.pl_fruit = normalize_initial_fruit(
@@ -1169,8 +1218,12 @@ function statusConditionNames(rawConditions, lineNumber) {
                 `unknown status condition '${rawCondition}'`,
             );
         }
-        const canonical = STATUS_HILITE_CONDITIONS[token];
-        const alias = STATUS_CONDITION_ALIASES[token];
+        // Both tables are indexed by rc text, so an inherited name would
+        // otherwise answer for a condition C's strcmp() walks never spell.
+        const canonical = Object.hasOwn(STATUS_HILITE_CONDITIONS, token)
+            ? STATUS_HILITE_CONDITIONS[token] : undefined;
+        const alias = Object.hasOwn(STATUS_CONDITION_ALIASES, token)
+            ? STATUS_CONDITION_ALIASES[token] : undefined;
         // botl.c accumulates every alias whose name shares this prefix.  In
         // particular, "m" selects majortroubles, minortroubles, and movement.
         const partialAliases = Object.keys(STATUS_CONDITION_ALIASES)
@@ -1256,9 +1309,12 @@ function parseStatusHiliteRule(field, threshold, action, lineNumber) {
                 }
             }
         } else if (Object.hasOwn(STATUS_TEXT_THRESHOLDS, field)) {
-            const canonical = STATUS_TEXT_THRESHOLDS[field][
-                menuHeadingToken(normalized)
-            ];
+            // The inner index is rc text too, so it needs the same guard the
+            // outer one already has.
+            const thresholds = STATUS_TEXT_THRESHOLDS[field];
+            const thresholdToken = menuHeadingToken(normalized);
+            const canonical = Object.hasOwn(thresholds, thresholdToken)
+                ? thresholds[thresholdToken] : undefined;
             if (!canonical) {
                 optionError(
                     lineNumber,
@@ -1462,18 +1518,17 @@ function setMenuHeadings(result, value, negated, lineNumber) {
 
 // C ref: options.c:optfn_petattr(). The tty port accepts one text
 // attribute and keeps the chosen style when hilite_pet is later disabled.
-function setPetAttribute(result, value, negated, lineNumber) {
-    if (value != null && negated) {
-        optionError(lineNumber, 'negated petattr cannot have a value');
-    }
+// optlist.h:568-569 gives petattr negateok No, so parseoptions() answers a
+// negated spelling with bad_negation() and both of optfn_petattr()'s negation
+// arms -- its own bad_negation() and the ATR_NONE a value-less negation would
+// store -- are unreachable from a configuration file.
+function setPetAttribute(result, value, lineNumber) {
     if (value != null) {
         const attr = menuHeadingAttribute(menuHeadingToken(value));
         if (attr == null) {
             optionError(lineNumber, `unknown petattr parameter '${value}'`);
         }
         result.iflags.wc2_petattr = attr;
-    } else if (negated) {
-        result.iflags.wc2_petattr = ATR_NONE;
     }
     result.iflags.wc_hilite_pet = result.iflags.wc2_petattr !== ATR_NONE;
 }
@@ -1496,9 +1551,13 @@ const MENU_COMMAND_OPTIONS = Object.freeze([
     { name: 'menu_shift_left', command: '{' },
 ]);
 
-const MENU_COMMAND_BY_NAME = Object.freeze(Object.fromEntries(
+// C walks default_menu_cmd_info[] with strcmp(), so only the thirteen names
+// above can match.  A Map answers for those thirteen alone; a plain object
+// would also answer for every name Object.prototype carries, and rc text is
+// free to spell "constructor".
+const MENU_COMMAND_BY_NAME = new Map(
     MENU_COMMAND_OPTIONS.map(({ name, command }) => [name, command]),
-));
+);
 
 // C ref: cmd.c spkeys_binds[]. These names update prompt/navigation keys,
 // not the extended-command binding list queried by nh.eckey().
@@ -1603,8 +1662,11 @@ function firstEscapedByte(text) {
     return meta ? metaByte(value) : value;
 }
 
+// C ref: options.c txt2key() (6970-7067).  It opens on trimspaces(), so both
+// halves apply to the text it reads; only the trailing half is visible to a
+// caller that keeps the buffer it passed in.
 function textToKey(text) {
-    let value = String(text).trim();
+    let value = trimspaces(text);
     if (!value) return 0;
     if (value.length === 1) return byteOf(value);
     if (value === '<enter>') return 10;
@@ -1638,17 +1700,27 @@ function textToKey(text) {
     return 0;
 }
 
-function illegalMenuCommandKey(key) {
+// C ref: options.c illegal_menu_cmd_key().  Each of its two rejecting arms
+// reports its own configuration error before answering TRUE, so a caller adds
+// only whatever message it owes on top of this one.
+function illegalMenuCommandKey(result, key) {
     const ch = String.fromCharCode(key);
     const sourceLetter = (key >= 64 && key <= 90)
         || (key >= 97 && key <= 122);
     if (key === 0 || key === 10 || key === 13 || key === 27 || key === 32
         || (key >= 48 && key <= 57) || (sourceLetter && key !== 64)) {
+        configErrorAdd(result, `Reserved menu command key '${visctrl(key)}'`);
         return true;
     }
     // The comment above illegal_menu_cmd_key() also lists '#', but the
     // executable source omits it. Preserve that upstream quirk.
-    return DEFAULT_OBJECT_CLASS_SYMBOLS.has(ch);
+    if (DEFAULT_OBJECT_CLASS_SYMBOLS.has(ch)) {
+        configErrorAdd(
+            result, `Menu command key '${visctrl(key)}' is an object class`,
+        );
+        return true;
+    }
+    return false;
 }
 
 function addMenuCommandAlias(result, fromKey, command) {
@@ -1657,19 +1729,20 @@ function addMenuCommandAlias(result, fromKey, command) {
     result.iflags.mapped_menu_op += command;
 }
 
-function setMenuCommandOption(
-    result, descriptor, value, negated, lineNumber,
-) {
-    if (negated) {
-        optionError(lineNumber, `${descriptor.name} may not be negated`);
-    }
+// C ref: options.c spcfn_misc_menu_cmd() (5451-5477), the do_set request.  Its
+// own bad_negation() arm (5458-5460) is unreachable from a configuration file:
+// every menu command option's optlist.h negateok is No, so parseoptions()
+// answers a negated spelling before the handler runs.  The remaining two arms
+// both report and leave the alias list alone: string_for_opt(opts, FALSE)
+// names the whole statement when no value follows the separator, and
+// illegal_menu_cmd_key() reports for itself.
+function setMenuCommandOption(result, descriptor, statement, value) {
     if (value == null || value === '') {
-        optionError(lineNumber, `${descriptor.name} requires a value`);
+        configErrorAdd(result, `Missing parameter for '${statement}'`);
+        return;
     }
     const key = textToKey(value);
-    if (illegalMenuCommandKey(key)) {
-        optionError(lineNumber, `reserved menu command key '${value}'`);
-    }
+    if (illegalMenuCommandKey(result, key)) return;
     addMenuCommandAlias(result, key, descriptor.command);
 }
 
@@ -1685,56 +1758,165 @@ function bindingSeparator(bindings) {
     return separator;
 }
 
-function applyMenuBinding(result, binding, lineNumber) {
+// C ref: cmd.c bind_key() (2661-2728).  It strips a trailing "(param)" before
+// matching extcmdlist[] case-insensitively, passes over an INTERNALCMD row so
+// the loop runs out, and answers TRUE for the reserved name "nothing" without
+// looking at the table at all.  A FALSE answer is what makes parsebindings()
+// report an unknown command.
+//
+// C's matched arm has three effects, with three different owners here.
+//
+//  - cmdbind_add() (2694) is the caller's commandOperations push, which
+//    js/command_bindings.js createCommandBindingModel() replays -- including
+//    the "nothing" spelling, which it turns into the cmdbind_remove() this
+//    returns TRUE for.  That push carries the whole command text, parameter
+//    and all, and createCommandBindingModel() cuts it back at the first '('
+//    without asking for the ')' the test below also requires.  The two agree
+//    on every text that reaches the push: the looser cut can only differ over
+//    a text holding a '(' that this function leaves unparenthesized, and no
+//    extcmdlist[] row spells a parenthesis, so such a text matches no row and
+//    is never pushed.
+//  - The three parameter diagnostics (2696-2712) belong to the binding itself
+//    and are here: C reports every one of them for a key it has already
+//    bound, so none of them changes the answer.
+//  - The bind->param store (2706-2708) is unported.  include/func_tab.h:37
+//    declares that field and cmd.c dotoggleoption() (1376-1384) is its only
+//    reader, through gc.cmd_bind->param at 1378-1379; `parameter` below is
+//    computed for the diagnostics and then dropped.  Deferral
+//    bind-key-parameter-is-not-stored covers it.
+function bind_key(result, command) {
+    if (command.toLowerCase() === 'nothing') return true;
+    // C truncates its copy at the '(' and points p past it only when a ')'
+    // follows; otherwise the copy keeps the parenthesis and matches no row.
+    const opening = command.indexOf('(');
+    const closing = command.lastIndexOf(')');
+    const parenthesized = opening >= 0 && closing > opening;
+    const name = parenthesized ? command.slice(0, opening) : command;
+    const parameter = parenthesized
+        ? command.slice(opening + 1, closing) : null;
+    const row = extcmdlist.find((entry) => (
+        entry.ef_txt.toLowerCase() === name.toLowerCase()
+        && (entry.flags & INTERNALCMD) === 0
+    ));
+    if (!row) return false;
+
+    if ((row.flags & CMD_PARAM) !== 0) {
+        if (parameter == null) {
+            configErrorAdd(result, `'${name}' requires a parameter`);
+        } else if (!parameter) {
+            // C's guard is min(30, strlen(p)) + 1 <= 1, which only an empty
+            // parameter satisfies; the 30 is the length it stores.
+            configErrorAdd(result, 'Required parameter cannot be empty');
+        }
+    } else if (parameter) {
+        configErrorAdd(result, `'${name}' does not take a parameter`);
+    }
+    return true;
+}
+
+// C ref: options.c parsebindings() mousebtn_names[] (7602-7604).  strcmp()
+// compares the key text against these two case-sensitively.
+const MOUSE_BUTTON_NAMES = Object.freeze(['mouse1', 'mouse2']);
+
+// C ref: cmd.c bind_mousebtn() (2623-2659).  Only its answer is ported: the
+// button it stores into gc.Cmd.mousebtn[] has no reader in this port, and its
+// "Wrong mouse button" arm cannot fire from parsebindings(), whose loop runs
+// over exactly the two valid buttons.  The reserved name "nothing" is accepted
+// without consulting the table.  Unlike bind_key() this does not pass over an
+// INTERNALCMD row, so all three MOUSECMD rows -- therecmdmenu, clicklook and
+// mouseaction -- bind, and a name that matches a row without MOUSECMD keeps
+// the loop running and so answers FALSE.
+function bind_mousebtn(command) {
+    if (command.toLowerCase() === 'nothing') return true;
+    return extcmdlist.some((entry) => (
+        entry.ef_txt.toLowerCase() === command.toLowerCase()
+        && (entry.flags & MOUSECMD) !== 0
+    ));
+}
+
+// C ref: options.c parsebindings() (7595-7674) from its ':' split onwards.
+// The four candidates are tried in C's order: a mouse-button name, a special
+// key, a menu command, then an extended command.
+function applyMenuBinding(result, binding) {
     const colon = binding.indexOf(':');
     if (colon < 0) return;
-    const keyText = binding.slice(0, colon);
-    const commandName = binding.slice(colon + 1).trim();
-    const command = MENU_COMMAND_BY_NAME[commandName];
+    const rawKeyText = binding.slice(0, colon);
+    const commandName = trimspaces(binding.slice(colon + 1));
+    // C ref: parsebindings():7635-7641.  Only the accepting arm returns; a
+    // rejected command reports and falls out of the loop into the txt2key()
+    // below, which reads "mouse1" and "mouse2" alike as M-o.  The comparison
+    // runs before txt2key() has trimmed anything, so it sees the padding the
+    // key text still carries and " mouse1" is not a button name.
+    for (const [index, name] of MOUSE_BUTTON_NAMES.entries()) {
+        if (rawKeyText === name) {
+            if (bind_mousebtn(commandName)) return;
+            configErrorAdd(
+                result, `Error binding mouse button ${index + 1}`,
+            );
+        }
+    }
+    // txt2key() opens on trimspaces(), whose trailing half writes into the
+    // buffer parsebindings() holds, so the message below reports the key text
+    // without the blanks and with whatever leading ones it had.
+    const keyText = trimspacesTrailing(rawKeyText);
     const key = textToKey(keyText);
-    if (command === undefined) {
-        if (keyText === 'mouse1' || keyText === 'mouse2') return;
-        if (!key) {
-            optionError(lineNumber, `unknown key binding key '${keyText}'`);
-        }
-        if (SPECIAL_KEY_COMMANDS.has(commandName)) {
-            result.commandOperations.push({
-                type: 'special_key',
-                key,
-                command: commandName,
-            });
-            return;
-        }
-        // Keep gameplay bindings in source application order.
-        // commandOperations is the authoritative stream consumed by tutorial
-        // key lookup and runtime dispatch; gameplayBindings remains a
-        // compatibility projection of parsed option state.
-        const operation = {
-            key,
-            command: commandName.toLowerCase(),
-        };
-        result.gameplayBindings.push(operation);
-        result.commandOperations.push({ type: 'bind', ...operation });
+    if (!key) {
+        configErrorAdd(result, `Unknown key binding key '${keyText}'`);
         return;
     }
-    if (!key || illegalMenuCommandKey(key)) {
-        optionError(lineNumber, `reserved menu command key '${keyText}'`);
+    if (SPECIAL_KEY_COMMANDS.has(commandName)) {
+        result.commandOperations.push({
+            type: 'special_key',
+            key,
+            command: commandName,
+        });
+        return;
     }
-    addMenuCommandAlias(result, key, command);
+    const command = MENU_COMMAND_BY_NAME.get(commandName);
+    if (command !== undefined) {
+        // illegal_menu_cmd_key() has already reported which rule the key
+        // broke; parsebindings() adds this second message naming the pair.
+        if (illegalMenuCommandKey(result, key)) {
+            configErrorAdd(
+                result, `Bad menu key ${visctrl(key)}:${commandName}`,
+            );
+            return;
+        }
+        addMenuCommandAlias(result, key, command);
+        return;
+    }
+    // parsebindings() reports whatever bind_key() would not bind and
+    // leaves the key holding what it already had.
+    if (!bind_key(result, commandName)) {
+        configErrorAdd(
+            result, `Unknown key binding command '${commandName}'`,
+        );
+        return;
+    }
+    // Keep gameplay bindings in source application order.
+    // commandOperations is the authoritative stream consumed by tutorial
+    // key lookup and runtime dispatch; gameplayBindings remains a
+    // compatibility projection of parsed option state.
+    const operation = {
+        key,
+        command: commandName.toLowerCase(),
+    };
+    result.gameplayBindings.push(operation);
+    result.commandOperations.push({ type: 'bind', ...operation });
 }
 
 // C ref: options.c optfn_number_pad(). These fields affect cmd_from_ecname()
 // during tutorial generation and the same source-ordered runtime bindings.
-function setNumberPadOption(result, value, negated, lineNumber) {
+// optlist.h:535-536 gives the option negateok No, so parseoptions() answers a
+// negated spelling with bad_negation(); the handler's own bad_negation() and
+// its `iflags.num_pad = !negated` both see a negation that cannot happen.
+function setNumberPadOption(result, value, lineNumber) {
     let enabled;
     let mode;
     if (value == null || value === '') {
-        enabled = !negated;
+        enabled = true;
         mode = 0;
     } else {
-        if (negated) {
-            optionError(lineNumber, 'number_pad may not be negated with a value');
-        }
         const parsed = Number.parseInt(value, 10);
         if (!Number.isInteger(parsed) || parsed < -1 || parsed > 4
             || (parsed === 0 && value[0] !== '0')) {
@@ -1794,36 +1976,36 @@ const PICKUP_BURDEN_LEVELS = Object.freeze(new Map([
 ]));
 
 // optlist.h:573 gives pickup_burden negateok No, so parseoptions() answers a
-// negation with bad_negation() before the handler runs. The handler then reads
-// its value with string_for_env_opt(name, opts, FALSE), whose mandatory
-// parameter makes a spelling with no value the "Missing parameter" config
-// error rather than a default. This port stops on each of those errors.
-function setPickupBurden(result, value, negated, lineNumber) {
-    if (negated) {
-        optionError(
-            lineNumber,
-            "negated compound option 'pickup_burden' is not supported",
-        );
+// negation with bad_negation() before the handler runs and this arrives with
+// `negated` always false. The handler then reads its value with
+// string_for_env_opt(name, opts, FALSE), whose mandatory parameter makes a
+// spelling with no value string_for_opt()'s "Missing parameter" config error
+// rather than a default, and both that and an unmatched letter return
+// optn_err with flags.pickup_burden untouched.
+function setPickupBurden(result, statement, value) {
+    if (!value) {
+        configErrorAdd(result, `Missing parameter for '${statement}'`);
+        return;
     }
-    if (!value) optionError(lineNumber, "'pickup_burden' requires a value");
     const level = PICKUP_BURDEN_LEVELS.get(lowc(value[0]));
     if (level === undefined) {
-        optionError(
-            lineNumber, `unknown pickup_burden parameter '${value}'`,
+        configErrorAdd(
+            result, `Unknown pickup_burden parameter '${value}'`,
         );
+        return;
     }
     result.flags.pickup_burden = level;
 }
 
 // C ref: options.c parsebindings(). Comma-separated bindings recurse into
 // their suffix, so the rightmost alias is appended first and wins collisions.
-function applyMenuBindings(result, bindings, lineNumber) {
+function applyMenuBindings(result, bindings) {
     const separator = bindingSeparator(bindings);
     if (separator >= 0) {
-        applyMenuBindings(result, bindings.slice(separator + 1), lineNumber);
-        applyMenuBinding(result, bindings.slice(0, separator), lineNumber);
+        applyMenuBindings(result, bindings.slice(separator + 1));
+        applyMenuBinding(result, bindings.slice(0, separator));
     } else {
-        applyMenuBinding(result, bindings, lineNumber);
+        applyMenuBinding(result, bindings);
     }
 }
 
@@ -1980,10 +2162,78 @@ function sourceOptionMatch(parsedName) {
     ));
 }
 
-function isSourceOptionPrefix(parsedName) {
-    return SOURCE_OPTION_NAMES.some((canonical) => (
-        canonical.startsWith(parsedName)
+// C ref: options.c:556-580, the two ways parseoptions()'s match loop reaches a
+// pfx row.  str_start_is() accepts any suffix, and match_optname() accepts a
+// leading substring of the prefix itself down to minmatch, so "cond", "cond_",
+// "cond_bogus" and "fontbogus:value" all land on one.  The row's handler --
+// pfxfn_cond_() or pfxfn_font() -- then decides the suffix, and options.c
+// :675-682 adds "bad option suffix variation" on top of whatever it reported.
+// None of that is ported, so a statement that reaches a pfx row without
+// sourceConditionMatch() recognizing it stops rather than being reported as an
+// unknown option.  The two rows are the last in allopt[], so no ordinary row
+// can match after them.
+const PREFIX_OPTION_MATCHES = Object.freeze(SOURCE_OPTION_MATCHES.filter(
+    ([canonical]) => SOURCE_PREFIX_OPTION_NAMES.includes(canonical),
+));
+
+function matchesPrefixOptionRow(statement, parsedName) {
+    return PREFIX_OPTION_MATCHES.some(([canonical, minLength]) => (
+        str_start_is(statement, canonical, true)
+            || (parsedName.length >= minLength
+                && canonical.startsWith(parsedName))
     ));
+}
+
+// C ref: options.c parseoptions()'s allopt[matchidx], the row its two match
+// loops (556-612) settle on.  Three names this parser resolves are not that
+// row's name: "male" is optlist.h:306-308's alias for the female row, every
+// cond_<condition> comes from the single cond_ prefix row, and a name that
+// matched nothing has no row at all.
+const ALLOPT_ROWS = Object.freeze(new Map(
+    allopt.map((option) => [option.name.toLowerCase(), option]),
+));
+
+function matchedOptionRow(name) {
+    if (name.startsWith('cond_')) return ALLOPT_ROWS.get('cond_');
+    if (name === 'male') return ALLOPT_ROWS.get('female');
+    return ALLOPT_ROWS.get(name) ?? null;
+}
+
+// C ref: symbols.c parsesymbols(), which options.c:663 reaches only for a
+// statement that starts with "S_" and only once both match loops have failed.
+// It splits its argument in place at the first unquoted colon -- or, when
+// there is none, at the first '=' -- and mungspaces() what is left before
+// match_sym() decides, so a symbol name C does not know arrives at the
+// "Unknown option" message already cut down to the part before that
+// separator.  A statement carrying neither separator is reported whole.
+function unknownOptionText(statement) {
+    if (!statement.startsWith('S_')) return statement;
+    // parsesymbols()'s scan starts at the second character and stops before
+    // the last one, and passes over a colon that sits between two quotes.
+    let separator = -1;
+    for (let index = 1; index < statement.length - 1; ++index) {
+        if (statement[index] !== ':') continue;
+        if (statement[index - 1] === "'" && statement[index + 1] === "'")
+            continue;
+        separator = index;
+        break;
+    }
+    if (separator < 0) separator = statement.indexOf('=');
+    if (separator < 0) return statement;
+    return mungspaces(statement.slice(0, separator));
+}
+
+// C ref: options.c bad_negation() (6692-6697).  parseoptions() (625-629) is
+// the only caller this parser reaches, and it passes with_parameter TRUE
+// whether or not the statement carried a value, so the message names a value
+// either way.  Every option whose optlist.h negateok is No is answered here
+// rather than in its handler, which is why several C handlers declare their
+// `negated` argument UNUSED.
+function bad_negation(result, optname) {
+    configErrorAdd(
+        result,
+        `The ${optname} option may not both have a value and be negated.`,
+    );
 }
 
 function sourceConditionMatch(parsedName, value) {
@@ -2107,28 +2357,43 @@ function parseSymbolAssignments(value, lineNumber) {
     return parseAt(0);
 }
 
-function applyOption(result, optionState, option, lineNumber) {
-    const { name: rawName, value } = splitNameAndValue(option);
-    const {
-        name: parsedName,
-        sourceName,
-        negated,
-    } = stripNegation(rawName);
-    if (!parsedName) optionError(lineNumber, 'empty option');
+function applyOption(result, optionState, element, lineNumber) {
+    // options.c:538-542 strips the negation prefixes off the whole element,
+    // before length_without_val() looks for a value, so `statement` is what
+    // the rest of parseoptions() matches against, what it hands each handler
+    // as `opts`, and what every message naming the statement reports --
+    // "Unknown option" here and string_for_opt()'s "Missing parameter" below.
+    // `element` keeps those prefixes and is read nowhere else.
+    const { sourceName: statement, negated } = stripNegation(element);
+    const { name: rawName, value } = splitNameAndValue(statement);
+    const parsedName = rawName.toLowerCase();
 
     const sourceMatch = sourceOptionMatch(parsedName);
     const hasAlias = Object.hasOwn(OPTION_ALIASES, parsedName);
     const conditionMatch = sourceConditionMatch(parsedName, value);
     // options.c strips negation, then checks this prefix case-sensitively.
-    const isSymbolAssignment = isSourceSymbolAssignment(sourceName, value);
+    const isSymbolAssignment = isSourceSymbolAssignment(rawName, value);
     let name = sourceMatch?.[0]
         ?? (hasAlias ? OPTION_ALIASES[parsedName] : null);
     if (!name && conditionMatch) name = conditionMatch;
+    // options.c:618-629 reads allopt[matchidx], the row its two match loops
+    // settled on; a symbol assignment reaches parsesymbols() (663) only with
+    // got_match still false, so it has no row and gets no negation check.
+    const matchedRow = name ? matchedOptionRow(name) : null;
     if (!name && isSymbolAssignment) name = parsedName;
+    if (!name && matchesPrefixOptionRow(statement, parsedName)) {
+        optionError(lineNumber, `unported prefix option '${statement}'`);
+    }
     if (!name) {
-        const description = isSourceOptionPrefix(parsedName)
-            ? 'unknown or ambiguous option' : 'unknown option';
-        optionError(lineNumber, `${description} '${parsedName}'`);
+        // options.c:687-689, the last arm of parseoptions().
+        configErrorAdd(
+            result, `Unknown option '${unknownOptionText(statement)}'`,
+        );
+        return;
+    }
+    if (negated && matchedRow && !matchedRow.negateok) {
+        bad_negation(result, matchedRow.name);
+        return;
     }
 
     const menuCommand = menuCommandOption(name);
@@ -2159,7 +2424,7 @@ function applyOption(result, optionState, option, lineNumber) {
     } else if (name === 'menu_headings') {
         setMenuHeadings(result, value, negated, lineNumber);
     } else if (name === 'petattr') {
-        setPetAttribute(result, value, negated, lineNumber);
+        setPetAttribute(result, value, lineNumber);
     } else if (name === 'hilite_status') {
         setStatusHiliteOption(result, value, negated, lineNumber);
     } else if (name === 'statushilites') {
@@ -2169,9 +2434,7 @@ function applyOption(result, optionState, option, lineNumber) {
         result.flags[name] = enabled;
         result.iflags.status_conditions[name.slice('cond_'.length)] = enabled;
     } else if (menuCommand && parsedName === name) {
-        setMenuCommandOption(
-            result, menuCommand, value, negated, lineNumber,
-        );
+        setMenuCommandOption(result, menuCommand, statement, value);
     } else if (menuCommand || isMenuCommandPrefix(parsedName)) {
         optionError(
             lineNumber,
@@ -2181,15 +2444,16 @@ function applyOption(result, optionState, option, lineNumber) {
         // options.c change_inv_order() rewrites flags.inv_order from this
         // value. That is not ported, so the value is retained and
         // invent.c display_pickinv()'s port stops when it is present rather
-        // than listing the inventory in the default order.
-        result.flags.packorder = negated ? null : value;
+        // than listing the inventory in the default order.  optlist.h:541-542
+        // gives the option negateok No, so a negated spelling never arrives.
+        result.flags.packorder = value;
     } else if (name === 'pettype') {
         setPettype(result, value, negated, lineNumber);
     } else if (name === 'fruit') {
-        setFruit(result, value, negated, lineNumber);
+        setFruit(result, value, lineNumber);
     } else if (name === 'catname' || name === 'dogname'
                || name === 'horsename') {
-        setPetName(result, name, value, negated, lineNumber);
+        setPetName(result, name, value, lineNumber);
     } else if (name === 'blind' || name === 'deaf' || name === 'nudist'
                || name === 'pauper' || name === 'reroll') {
         setRoleplay(result, name, value, negated, lineNumber);
@@ -2215,13 +2479,13 @@ function applyOption(result, optionState, option, lineNumber) {
             rawValue: value,
         }]);
     } else if (name === 'number_pad') {
-        setNumberPadOption(result, value, negated, lineNumber);
+        setNumberPadOption(result, value, lineNumber);
     } else if (name === 'whatis_coord') {
         setWhatisCoord(result, value, negated, lineNumber);
     } else if (name === 'runmode') {
         setRunmode(result, value, negated, lineNumber);
     } else if (name === 'pickup_burden') {
-        setPickupBurden(result, value, negated, lineNumber);
+        setPickupBurden(result, statement, value);
     } else if (name === 'pile_limit') {
         setPileLimit(result, value, negated, lineNumber);
     } else if (name === 'msg_window') {
@@ -2235,16 +2499,20 @@ function applyOption(result, optionState, option, lineNumber) {
         if (!value) {
             tmp = negated ? 's' : 'f';
         } else if (negated) {
-            optionError(
-                lineNumber, "the 'msg_window' option may not be negated",
+            configErrorAdd(
+                result,
+                'The msg_window option may not both have a value and be'
+                + ' negated.',
             );
+            return;
         } else {
-            tmp = value[0].toLowerCase();
+            tmp = lowc(value[0]);
         }
         if (!'scfr'.includes(tmp)) {
-            optionError(
-                lineNumber, `unknown msg_window parameter '${value}'`,
+            configErrorAdd(
+                result, `Unknown msg_window parameter '${value}'`,
             );
+            return;
         }
         result.iflags.prevmsg_window = tmp;
     } else if (name === 'sortloot') {
@@ -2252,27 +2520,59 @@ function applyOption(result, optionState, option, lineNumber) {
         // lowercased first letter and rejects anything else. optlist.h gives
         // sortloot negateok No, so parseoptions() answers a negation with
         // bad_negation() before the handler runs, which is why the handler
-        // declares its negated argument UNUSED. The handler then re-reads the
-        // value with string_for_env_opt(name, opts, FALSE), so a spelling
-        // with no value is the "Missing parameter" config error rather than a
-        // default. This port stops on each of those errors.
-        if (negated) {
-            optionError(
-                lineNumber,
-                `negated compound option '${name}' is not supported`,
-            );
+        // declares its negated argument UNUSED.
+        // The handler re-reads the value with
+        // string_for_env_opt(name, opts, FALSE); its mandatory parameter makes
+        // a spelling without one string_for_opt()'s "Missing parameter" error
+        // over the whole statement text, and the handler then returns optn_err
+        // without touching flags.sortloot.
+        if (!value) {
+            configErrorAdd(result, `Missing parameter for '${statement}'`);
+            return;
         }
-        if (!value) optionError(lineNumber, "'sortloot' requires a value");
-        const c = value[0].toLowerCase();
+        const c = lowc(value[0]);
         if (!'nlf'.includes(c)) {
-            optionError(
-                lineNumber, `unknown sortloot parameter '${value}'`,
+            configErrorAdd(
+                result, `Unknown sortloot parameter '${value}'`,
             );
+            return;
         }
         result.flags.sortloot = c;
+    } else if (name === 'versinfo') {
+        // C ref: options.c optfn_versinfo()'s do_set arm.  optlist.h:816 gives
+        // it negateok No, so parseoptions() has already answered a negation
+        // with bad_negation() and the handler's own negation arm is dead on
+        // this path.
+        // string_for_opt(opts, FALSE) reports the missing parameter itself,
+        // and the handler then adds a second error naming the default it does
+        // not actually store.  nomakedefs.git_branch is null in a release
+        // build (js/version.js records the same reading), so have_branch is
+        // false and the default is VI_NUMBER.
+        if (!value) {
+            configErrorAdd(result, `Missing parameter for '${statement}'`);
+            configErrorAdd(
+                result, "'versinfo' requires a value; defaulting to 1",
+            );
+            return;
+        }
+        // atoi() answers 0 for text that starts with no digits, and the guard
+        // is `!val || (val & ~7) != 0`, which admits exactly 1 through 7.
+        const versinfo = Number.parseInt(value, 10);
+        if (!Number.isInteger(versinfo) || versinfo < 1 || versinfo > 7) {
+            configErrorAdd(
+                result,
+                "'versinfo' must be one of 1, 2, 4, or the sum of two or all"
+                + ' three of those',
+            );
+            return;
+        }
+        result.flags.versinfo = versinfo;
     } else if (HANDLED_BOOLEAN_OPTIONS.has(name)) {
         applyBooleanOption(result, name, value, negated, lineNumber);
     } else if (value != null) {
+        // Only an option whose optlist.h negateok is Yes reaches this: a
+        // negated spelling of any other one is bad_negation()'s above.  What
+        // C's handler does with the negation is what is unported here.
         if (negated) {
             optionError(
                 lineNumber,
@@ -2288,16 +2588,6 @@ function applyOption(result, optionState, option, lineNumber) {
         }
         else if (name === 'suppress_alert') {
             result.flags.suppress_alert = value;
-        } else if (name === 'versinfo') {
-            const versinfo = Number.parseInt(value, 10);
-            if (!Number.isInteger(versinfo)
-                || versinfo < 1 || versinfo > 7) {
-                optionError(
-                    lineNumber,
-                    "'versinfo' must be a bitmask from 1 through 7",
-                );
-            }
-            result.flags.versinfo = versinfo;
         } else if (name === 'statuslines') {
             // options.c:optfn_statuslines() uses atoi() and accepts only the
             // two window-port layouts supported by tty.
@@ -2389,7 +2679,7 @@ function configSection(line) {
     let suffixIndex = close + 1;
     while (line[suffixIndex] === ' ') ++suffixIndex;
     if (suffixIndex < line.length && line[suffixIndex] !== '#') return null;
-    return { name: trimConfigPadding(line.slice(1, close)) };
+    return { name: trimspaces(line.slice(1, close)) };
 }
 
 // C ref: cfgfiles.c:choose_random_part().  Keep its separator walk (including
@@ -2438,24 +2728,31 @@ export function parseNethackrc(rc, random = rn2) {
     // section gate is active. An empty [] header clears both.
     let chosenSection = null;
     let currentSection = null;
-    const lines = logicalConfigLines(rc);
+    const lines = logicalConfigLines(rc, result.configErrorFrame);
     for (const configLine of lines) {
         const { lineNumber } = configLine;
         // parse_conf_buf() calls handle_config_section() on every logical
         // line. is_config_section() applies trimspaces() before checking for
         // '[', so that outer padding is removed even from CHOOSE and OPTIONS.
         // parse_config_line() then normalizes a separate copy with mungspaces().
-        const paddingTrimmedLine = trimConfigPadding(configLine.line);
+        const paddingTrimmedLine = trimspaces(configLine.line);
         const mungedLine = mungspaces(paddingTrimmedLine);
         if (!mungedLine || mungedLine.startsWith('#')) continue;
 
         const section = configSection(paddingTrimmedLine);
         if (section) {
             currentSection = null;
-            if (chosenSection != null) {
-                if (section.name) currentSection = section.name;
-                else chosenSection = null;
+            // cfgfiles.c handle_config_section():560-563.  A section header
+            // read before any CHOOSE is reported and then skipped like any
+            // other; the file keeps being read.
+            if (chosenSection == null) {
+                configErrorAdd(
+                    result, `Section "[${section.name}]" without CHOOSE`,
+                );
+                continue;
             }
+            if (section.name) currentSection = section.name;
+            else chosenSection = null;
             continue;
         }
         if (currentSection != null
@@ -2468,19 +2765,42 @@ export function parseNethackrc(rc, random = rn2) {
             ? mungedLine.slice(0, delimiter) : mungedLine;
         const statementName = mungspaces(statementNameText).toLowerCase();
         if (matchesConfigName(statementName, 'choose', 6)) {
-            if (delimiter < 0) continue;
+            // cfgfiles.c parse_conf_buf():1775-1798.  Both arms report and
+            // leave gc.config_section_chosen null, which is what makes every
+            // later section header the "without CHOOSE" case above.
+            if (delimiter < 0) {
+                configErrorAdd(
+                    result, 'Format is CHOOSE=section1,section2,...',
+                );
+                continue;
+            }
             chosenSection = null;
             const rawDelimiter = configDelimiter(paddingTrimmedLine);
             chosenSection = chooseRandomPart(
                 paddingTrimmedLine.slice(rawDelimiter + 1), random,
             );
+            if (chosenSection == null)
+                configErrorAdd(result, 'No config section to choose');
             continue;
         }
-        if (delimiter < 0) continue;
+        if (delimiter < 0) {
+            // cfgfiles.c parse_config_line():1412-1416.  Its
+            // ignore_statement_errors guard belongs to
+            // rcfile_interface_options()'s earlier windowtype-only pass, which
+            // this port does not make.
+            configErrorAdd(result, "Not a config statement, missing '='");
+            continue;
+        }
 
         const statement = CONFIG_STATEMENTS.find(({ name, minLength }) => (
             matchesConfigName(statementName, name, minLength)
         ));
+        // cfgfiles.c parse_config_line():1436-1437 reports "Unknown config
+        // statement" here.  CONFIG_STATEMENTS holds 13 of config_line_stmt[]'s
+        // 31 non-syscnf_only rows, the ones a player's rc can match, so
+        // reporting from this table would flag WIZKIT, HILITE_STATUS, BOULDER,
+        // WARNINGS and the rest, which C accepts.  Completing the table is
+        // deferral options-unknown-config-statement.
         if (!statement) continue;
         if (statement.kind === 'unported') {
             result.unportedConfigStatements.push(statement.name);
@@ -2498,21 +2818,35 @@ export function parseNethackrc(rc, random = rn2) {
             for (let optionIndex = options.length - 1;
                 optionIndex >= 0; --optionIndex) {
                 const rawOption = options[optionIndex];
-                // parseoptions() enforces this before stripping whitespace or
-                // invoking an option handler, and continues with other items.
+                // options.c:520-524 enforces this before stripping whitespace
+                // or invoking an option handler.  The recursion into the comma
+                // suffix has already run, so the other elements on the line
+                // are unaffected.
                 if (encodeUtf8ByteString(rawOption).length
-                    > OPTION_ELEMENT_BYTE_LIMIT) continue;
-                const option = trimCWhitespace(rawOption);
-                if (option) {
-                    applyOption(result, optionState, option, lineNumber);
+                    > OPTION_ELEMENT_BYTE_LIMIT) {
+                    configErrorAdd(
+                        result,
+                        'Option too long, max length is'
+                        + ` ${OPTION_ELEMENT_BYTE_LIMIT} characters`,
+                    );
+                    continue;
                 }
+                const option = trimCWhitespace(rawOption);
+                // options.c:526-538.  An element that is nothing but
+                // whitespace is the "Empty statement" this reports; a bare
+                // `OPTIONS=` reaches it as the line's only element.
+                if (!option) {
+                    configErrorAdd(result, 'Empty statement');
+                    continue;
+                }
+                applyOption(result, optionState, option, lineNumber);
             }
             continue;
         }
 
         const normalizedValue = mungspaces(rawValue);
         if (statement.kind === 'bindings') {
-            applyMenuBindings(result, normalizedValue, lineNumber);
+            applyMenuBindings(result, normalizedValue);
             continue;
         }
         if (statement.kind === 'symbols') {

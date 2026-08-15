@@ -617,7 +617,7 @@ function cant_squeeze_thru_hero() {
 // m<dir> prefix.  squeezeablylightinvent() is `!gi.invent || inv_weight() <=
 // -WT_SQUEEZABLE_INV`; with a capacity of a few hundred, only a hero carrying
 // literally nothing clears it, which is the `!inventoryArray().length` case.
-function could_move_onto_boulder(sx, sy) {
+export function could_move_onto_boulder(sx, sy) {
     const u = game.u;
     if (Passes_walls()) return true;
     if (u?.usteed) return false;
@@ -963,6 +963,7 @@ async function travel_walk() {
     c.mv = true;
     game._travel_unsure = false;
 
+    let first = true;
     for (;;) {
         // C ref: hack.c domove_core():2724 — findtravelpath() runs at the top
         // of every travel domove(), which is what turns the destination into
@@ -977,9 +978,20 @@ async function travel_walk() {
             game._travel_unsure = false;
             await pline('You stop, unsure which way to go.');
         }
-        if (!u.dx && !u.dy) break;   // no path and no guess: nomul(0) already ran
+        // C ref: cmd.c rhack():3819 — dotravel_target() returns ECMD_TIME and
+        // rhack() then forces svc.context.move back to TRUE, so the FIRST
+        // domove() of a travel always costs a turn even when it moved nobody:
+        // findtravelpath() failing both modes leaves u.dx/u.dy 0 (a move onto
+        // one's own square), and test_move(DO_MOVE) refusing a boulder while
+        // run == 8 zeroes context.move.  Later steps come from moveloop_core()'s
+        // context.mv continuation, which has no such override.
+        if (!u.dx && !u.dy) {        // no path and no guess: nomul(0) already ran
+            if (first) { first = false; c.move = 1; await moveloop_turn(); }
+            break;
+        }
 
         await domove(u.dx, u.dy);
+        if (first) { first = false; c.move = 1; }
         if (!c.move) break;          // blocked move: no turn, travel stops
         await moveloop_turn();       // the elapsed turn, taken inline
         if ((game.multi ?? 0) <= 0) break;

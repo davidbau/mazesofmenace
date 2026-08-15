@@ -407,18 +407,20 @@ export function m_dowear(mon, creation) {
 export async function print_m_dowear(pending) {
     if (!pending || !pending.length) return;
     const { pline, canseemon_shared } = await import('./display.js');
-    const { distant_doname } = await import('./invent.js');
+    const { distant_doname, distant_far } = await import('./invent.js');
     const { Monnam } = await import('./uhitm.js');
     // C ref: hacklib.c s_suffix() — "Foo" -> "Foo's", "Kops" -> "Kops'".
     const s_suffix = (s) => (/s$/.test(s) ? `${s}'` : `${s}'s`);
     for (const { mon, old, best, autocurse } of pending) {
         if (!canseemon_shared(mon)) continue;
         let buf = '', oldarm = '';
+        // C ref: worn.c:931,936 distant_name(obj, doname) — <ox,oy> resolves to
+        // the wearer's spot for a minvent item.
         if (old) {
-            oldarm = distant_doname(old);
+            oldarm = distant_doname(old, distant_far(old, mon.mx, mon.my));
             buf = ` removes ${oldarm} and`;
         }
-        let newarm = distant_doname(best);
+        let newarm = distant_doname(best, distant_far(best, mon.mx, mon.my));
         // C: identical descriptions become "another <newarm>" so the line reads
         // "removes a +0 helmet and puts on another helmet."
         if (newarm.toLowerCase() === oldarm.toLowerCase()) {

@@ -29,13 +29,15 @@ import { print_dungeon, builds_up, In_hell, Is_valley, surface,
          find_hell, dunlevs_in_dungeon, single_level_branch, level_difficulty_c } from './dungeon.js';
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
 import { fumaroles } from './mkmaze.js';
+import { clear_regions } from './region.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
          ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, In_quest, In_mines, In_endgame,
          MAGIC_PORTAL, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          STAIRS, LADDER, VIBRATING_SQUARE, TT_PIT, TOOKPLUNGE, is_pit, is_hole,
-         UNENCUMBERED, SLT_ENCUMBER, In_sokoban, Is_knox_level } from './const.js';
+         UNENCUMBERED, SLT_ENCUMBER, In_sokoban, Is_knox_level,
+         Is_rogue_level } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
 import { seetrap, dotrap } from './trap.js';
@@ -44,6 +46,7 @@ import { near_capacity, addinv, prinv } from './invent.js';
 import { BOULDER, run_object_timers, mksobj, AMULET_OF_YENDOR } from './mkobj.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
+import { mflags2_of, M2_STALK, is_swimmer_flag, throws_rocks_flag } from './monflags_data.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { olfaction } from './eat.js';
 import { placebc, unplacebc } from './ball.js';
@@ -201,7 +204,7 @@ function accessible_mon(x, y) {
     return typ != null && ACCESSIBLE(typ) && !closed_door(x, y);
 }
 
-function goodpos_mon(x, y) {
+function goodpos_mon(x, y, mtmp) {
     if (!isok(x, y)) return false;
     if (game.u?.ux === x && game.u?.uy === y) return false;
     if (m_at(x, y)) return false;
@@ -218,19 +221,35 @@ function goodpos_mon(x, y) {
     // take an earlier ring square than C does, forking placement while the RNG
     // stream stays identical.
     // C ref: dbridge.c is_pool() — POOL/MOAT/WATER (is_moat()'s drawbridge
-    // indirection is unmodelled).  C returns is_swimmer(mdat) || m_in_air(mtmp)
-    // here rather than falling through; every pet a contest hero can bring
-    // (little dog, kitten, pony) is neither, so this is a flat rejection.
+    // indirection is unmodelled).  These used to be flat rejections justified by
+    // "no contest pet swims or flies"; C's real answers are the mondata.h flag
+    // tests, and goodpos() feeds enexto(), which takes the FIRST accepted ring
+    // square — so a wrong answer relocates the monster while the RNG stream
+    // stays identical (an invisible placement fork).
+    const mdat = mtmp?.data ?? null;
     const typ = game.level?.at(x, y)?.typ;
-    if (typ === POOL || typ === MOAT || typ === WATER) return false;
-    // C ref: dbridge.c is_lava() — LAVAPOOL/LAVAWALL.  Same shape: C returns
-    // m_in_air(mtmp) || likes_lava(mdat), both false for those pets.
-    if (typ === LAVAPOOL || typ === LAVAWALL) return false;
+    if (typ === POOL || typ === MOAT || typ === WATER)
+        return is_swimmer_flag(mdat) || m_in_air_do(mtmp);
+    // C ref: teleport.c goodpos() — an out-of-water eel usually refuses the
+    // square, and this rn2(13) FIRES whenever an eel is offered one.
+    if (mdat?.mcls === S_EEL_DO && rn2(13)) return false;
+    // C ref: dbridge.c is_lava() — LAVAPOOL/LAVAWALL; mondata.h:190 likes_lava.
+    if (typ === LAVAPOOL || typ === LAVAWALL)
+        return m_in_air_do(mtmp) || likes_lava_do(mdat);
     if (!accessible_mon(x, y)) return false;
     // C ref: teleport.c goodpos() — `sobj_at(BOULDER, x, y) && !throws_rocks`.
-    if (sobj_at(BOULDER, x, y)) return false;
+    if (sobj_at(BOULDER, x, y) && !throws_rocks_flag(mdat)) return false;
     return true;
 }
+
+// C ref: mondata.h m_in_air(mon) — flying or levitating.
+function m_in_air_do(mtmp) { return !!mtmp?.mflying || !!mtmp?.mlevitating; }
+// C ref: mondata.h:190 likes_lava(ptr) — fire elemental / salamander only.
+function likes_lava_do(mdat) {
+    return mdat?.pmidx === 155 /*PM_FIRE_ELEMENTAL*/
+        || mdat?.pmidx === 329 /*PM_SALAMANDER*/;
+}
+const S_EEL_DO = 57;   // defsym.h MONSYM(57, ';', EEL, S_EEL, ...)
 
 // C ref: teleport.c collect_coords — candidate spots in expanding rings,
 // each ring shuffled with rn2 in the same order as the C engine.
@@ -271,13 +290,13 @@ function collect_coords(cx, cy, maxradius) {
 
 // C ref: teleport.c enexto_core — first goodpos spot, nearest rings first
 // (radius 1-3), then the whole map.
-function enexto(xx, yy) {
+function enexto(xx, yy, mtmp) {
     const near = collect_coords(xx, yy, 3);
     for (const c of near)
-        if (goodpos_mon(c.x, c.y)) return c;
+        if (goodpos_mon(c.x, c.y, mtmp)) return c;
     const all = collect_coords(xx, yy, 0);
     for (let i = near.length; i < all.length; i++)
-        if (goodpos_mon(all[i].x, all[i].y)) return all[i];
+        if (goodpos_mon(all[i].x, all[i].y, mtmp)) return all[i];
     return null;
 }
 
@@ -296,7 +315,7 @@ function mon_arrive_with_you(mtmp) {
         // rloc_to(mtmp, u.ux, u.uy) — lands on hero's square (no extra rng)
         mtmp.mx = u.ux; mtmp.my = u.uy;
     } else {
-        const cc = enexto(u.ux, u.uy); // mnexto -> enexto
+        const cc = enexto(u.ux, u.uy, mtmp); // mnexto -> enexto
         if (cc) { mtmp.mx = cc.x; mtmp.my = cc.y; }
     }
 }
@@ -304,29 +323,15 @@ function mon_arrive_with_you(mtmp) {
 // C ref: mondata.c levl_follower(mtmp) — used by keepdogs() to decide whether
 // a nearby monster accompanies a level change.  Tame pets always qualify; a
 // hostile M2_STALK monster (e.g. the water demon a fountain can unleash) also
-// follows unless it is currently fleeing.  The JS mons table doesn't carry
-// mflags2, so the M2_STALK species are keyed by name (extracted from
-// include/monsters.h); the iswiz-with-Amulet and is_fshk branches are omitted
-// since no recorded session drives a followed Wizard or shopkeeper.
-const M2_STALK_NAMES = new Set(["gremlin", "manes", "homunculus", "imp", "lemure",
-    "quasit", "tengu", "lurker above", "trapper", "couatl", "Aleax", "Angel",
-    "ki-rin", "Archon", "stalker", "troll", "ice troll", "rock troll",
-    "water troll", "Olog-hai", "vampire", "vampire mage", "Vlad the Impaler",
-    "barrow wight", "wraith", "Nazgul", "kobold zombie", "gnome zombie",
-    "orc zombie", "dwarf zombie", "elf zombie", "human zombie", "ettin zombie",
-    "giant zombie", "soldier", "sergeant", "lieutenant", "captain", "watchman",
-    "watch captain", "Croesus", "ghost", "shade", "water demon", "horned devil",
-    "erinys", "barbed devil", "marilith", "vrock", "hezrou", "bone devil",
-    "ice devil", "nalfeshnee", "pit fiend", "sandestin", "balrog", "Juiblex",
-    "Yeenoghu", "Orcus", "Geryon", "Dispater", "Baalzebub", "Asmodeus",
-    "Demogorgon", "Death", "Pestilence", "Famine", "mail daemon", "djinni",
-    "salamander", "Minion of Huhetotl", "Thoth Amon", "Chromatic Dragon",
-    "Goblin King", "Cyclops", "Ixoth", "Master Kaen", "Nalzok", "Scorpius",
-    "Master Assassin", "Ashikaga Takauji", "Lord Surtur", "Dark One"]);
+// follows unless it is currently fleeing.  The iswiz-with-Amulet and is_fshk
+// branches are omitted since no recorded session drives a followed Wizard or
+// shopkeeper.  This was a species-name Set that had drifted off M2_STALK: it
+// listed the vampire mage and the Goblin King (neither stalks) and omitted the
+// vampire lord/lady/leader and incubus/succubus/amorous demon.
 function levl_follower(m) {
     if (m === game.u.usteed) return true;
     if (m.mtame) return true;
-    if (M2_STALK_NAMES.has(m.data?.name))
+    if (mflags2_of(m.data) & M2_STALK)
         return !m.mflee || !!game.u.uhave?.amulet;
     return false;
 }
@@ -382,7 +387,7 @@ function next2u(x, y) {
 // the hero via enexto(); on failure the monster goes to limbo (off-map).  The
 // enexto() near-ring scan consumes the same collect_coords rn2() draws as C.
 function mnexto(mtmp) {
-    const cc = enexto(game.u.ux, game.u.uy); // enexto(&mm, u.ux, u.uy, mtmp->data)
+    const cc = enexto(game.u.ux, game.u.uy, mtmp); // enexto(&mm, u.ux, u.uy, mtmp->data)
     if (!cc) {
         // deal_with_overcrowding -> m_into_limbo: remove from the live level.
         const mons = game.level?.monsters;
@@ -794,7 +799,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // level.  Mirror that here: stash the ring by reference into the old
         // level's store, then initrack() below installs a fresh empty ring.
         utrack: g._utrack, utcnt: g._utcnt, utpnt: g._utpnt,
+        // C ref: region.c save_regions() — the region list is part of the
+        // DEPARTING level's save file, and its release_data() arm then runs
+        // clear_regions().  Without this a gas cloud (m_everyturn_effect's fog
+        // vapour) survived the level change and painted its S_cloud '#' over
+        // the new level's terrain.
+        regions: g.regions, regionMoves: g.moves ?? 0,
     };
+    clear_regions();
     // C ref: save_track() release_data() -> initrack().  Clear the live ring so
     // a freshly-made destination (mklev, no saved track) starts with none, and a
     // reloaded destination gets its own ring back via getlev_restore().
@@ -1053,6 +1065,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await update_topl('You have penetrated a high security area!');
         await update_topl('An alarm sounds!');
         for (const mtmp of g.level?.monsters ?? []) mtmp.msleeping = 0;
+    } else if (!In_mines(u.uz) && !In_sokoban(u.uz)) {
+        // C ref: do.c:1912 — the final `else` arm of that chain.  Only the
+        // Rogue-level line produces output (Is_bigroom just records an
+        // achievement), and only on first entry.
+        if (firstVisit && Is_rogue_level(u.uz))
+            await update_topl('You enter what seems to be an older, more primitive world.');
     }
 
     // C ref: do.c:1937 temperature_change_msg(prev_temperature), right after the
@@ -1190,6 +1208,16 @@ async function getlev_restore(ledger) {
         g._utrack = store.utrack;
         g._utcnt = store.utcnt ?? 0;
         g._utpnt = store.utpnt ?? 0;
+    }
+
+    // C ref: region.c rest_regions() — clear_regions(), then this level's saved
+    // regions come back with their ttl aged by the turns spent away
+    // (`r->ttl = (r->ttl > tmstamp) ? r->ttl - tmstamp : 0`, ttl -1/-2 exempt).
+    {
+        const away = (g.moves ?? 0) - (store.regionMoves ?? 0);
+        g.regions = store.regions || [];
+        for (const r of g.regions)
+            if (r.ttl >= 0) r.ttl = (r.ttl > away) ? r.ttl - away : 0;
     }
 
     // C ref: restore.c getlev() — elapsed = svm.moves - svo.omoves (turns spent

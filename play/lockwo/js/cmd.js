@@ -32,7 +32,7 @@ import { wiz_level_tele, dodown, doup } from './do.js';
 import { spoteffects, t_at, immune_to_trap, into_vs_onto, trap_explanation,
          TRAP_CLEARLY_IMMUNE } from './trap.js';
 import { doset, dosetSimple } from './doset.js';
-import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap, run_stop_for_monster_at } from './hack.js';
+import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap, run_stop_for_monster_at, could_move_onto_boulder } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
@@ -44,7 +44,7 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          PIT, SPIKED_PIT, STATUE_TRAP, TIP_SWIM, TRAPNUM, In_sokoban, ICE,
          SLT_ENCUMBER, OVERLOADED } from './const.js';
 import { exercise, acurr_eff } from './attrib.js';
-import { is_hider_flag, hides_under_flag } from './monflags_data.js';
+import { is_hider_flag, hides_under_flag, throws_rocks_flag } from './monflags_data.js';
 import { noattacks, attacktype, AT_ENGL } from './monattk_data.js';
 // onscary() is an `export function` declaration in monmove.js, so this cycle
 // (cmd -> monmove -> uhitm -> allmain -> cmd) resolves through hoisting the
@@ -302,18 +302,21 @@ function blocksDiagonalDoor(ux, uy, x, y, dx, dy) {
 // domove() below rejects: an obstruction or iron bars (hack.c:1011), a closed
 // door (hack.c:1075-1136), and a diagonal into or out of an intact doorway
 // (hack.c:1140-1150, 1208-1214) — it just prints nothing and pushes nothing.
-// NOT PORTED: the boulder arm (hack.c:1216), which rejects when
-// svc.context.run >= 2 and could_move_onto_boulder() is false.  The trap caller
-// below can't reach it (a rush over a seen trap already stopped in
-// avoid_running_into_trap), but the visible-gas-cloud caller can, so a running
-// hero facing a boulder inside a cloud gets asked where C stays silent.  The
-// diagonal bad_rock squeeze (hack.c:1153) is likewise unported, but this port's
+// The diagonal bad_rock squeeze (hack.c:1153) is unported, but this port's
 // DO_MOVE doesn't model it either, so those two agree.
 export function test_move_quiet(x, y) {
     const u = game.u;
     if (!isok(x, y)) return false;
     if (blocksMove(x, y)) return false;
     if (blocksDiagonalDoor(u.ux, u.uy, x, y, u.dx, u.dy)) return false;
+    // C ref: hack.c:1216 boulder arm.  run >= 2 (rush 'g', run 'G', travel's
+    // run == 8) refuses to push: the runner stops in front of the boulder.
+    // findtravelpath()'s TRAVP_GUESS "just go in the general direction" probe
+    // runs with run == 8, so this is what makes an unreachable-except-through-
+    // a-boulder destination a no-op travel rather than a push.
+    if (boulder_at(x, y) && (game.context?.run || 0) >= 2
+        && !Blind() && !Hallucination() && !could_move_onto_boulder(x, y))
+        return false;
     return true;
 }
 
@@ -2436,6 +2439,19 @@ export async function domove(dx, dy) {
     // does not pass through walls (the corpus heroes never do).
     {
         const bobj = boulder_at(newx, newy);
+        // C ref: hack.c:1217 — a hero who is rushing/running/travelling
+        // (context.run >= 2) stops in front of a boulder instead of pushing it,
+        // and C's `if (!test_move(...DO_MOVE)) { move = 0; nomul(0); }` at
+        // hack.c:2841 ends the run there.  rhack() still forces context.move
+        // back on for a command that returned ECMD_TIME, so travel's first step
+        // costs the turn anyway (hack.js travel_walk()).
+        if (bobj && (game.context.run || 0) >= 2
+            && !Blind() && !Hallucination() && !could_move_onto_boulder(newx, newy)) {
+            if (game.flags?.mention_walls) await pline('A boulder blocks your path.');
+            game.context.move = 0;
+            game.multi = 0;             // C nomul(0)
+            return;
+        }
         if (bobj) {
             const pushed = await moverock(bobj, newx, newy, u.dx, u.dy);
             if (pushed < 0) {
@@ -2815,14 +2831,16 @@ function boulder_at(x, y) {
     return found;
 }
 
-// C ref: mondata.h throws_rocks(ptr) == (mons[].mflags2 & M2_ROCKTHROW).  Only
-// giant-kin (giants, ettin, titan, minotaur) and the Cyclops throw/lift rocks,
-// so a hero polymorphed into one of those forms pushes a boulder with "little"
-// rather than "great" effort.  Ordinary heroes are never in this set, so the
-// word is "great" for every recorded session.  pmidx values match u.umonnum
-// (== PM_* monster index); same set as monmove.js's ROCKTHROW_PMIDX.
-const ROCKTHROW_MONS = new Set([169, 170, 171, 172, 173, 174, 175, 176, 177, 359]);
-function hero_throws_rocks() { return ROCKTHROW_MONS.has(game.u?.umonnum); }
+// C ref: mondata.h throws_rocks(ptr) == (mons[].mflags2 & M2_ROCKTHROW) — a
+// hero polymorphed into a rock-thrower pushes a boulder with "little" rather
+// than "great" effort.  The hardcoded pmidx list this replaces named ettin,
+// minotaur and the Chromatic Dragon (none carry M2_ROCKTHROW) and omitted the
+// Cyclops and Lord Surtur; 359 was Chromatic Dragon, not Cyclops (360).
+// u.umonnum tracks gy.youmonst.data's pmidx in both the normal and polymorphed
+// state (polyself.js:352), and mflags2_of() keys on .pmidx alone.
+function hero_throws_rocks() {
+    return throws_rocks_flag({ pmidx: game.u?.umonnum });
+}
 
 // C ref: objnam.c the(xname(otmp)) for a lone boulder — "the boulder".  Built
 // from the object type's base name so it stays correct for any pushable object

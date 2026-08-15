@@ -738,6 +738,15 @@ export function attach_egg_hatch_timeout(egg, when = 0) {
 }
 
 /**
+ * C ref: timeout.c kill_egg — stop HATCH_EGG so the egg never hatches.
+ * hatch_egg callback body still deferred (run_timers drops HATCH_EGG).
+ */
+export function kill_egg(egg) {
+    if (!egg) return;
+    stop_timer(HATCH_EGG, egg);
+}
+
+/**
  * C ref: dig.c rot_corpse — corpse finished rotting.
  * Envelope: OBJ_FLOOR extract + newsym; invent/minvent/worn plines deferred.
  */

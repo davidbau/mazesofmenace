@@ -123,16 +123,16 @@ const TRAPPED_CHEST = 25;
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
 
-// Monster indices referenced only by extinction guards (mvitals_gone ignores
-// the value, so exact indices are non-load-bearing here — they document which
-// species each branch checks).
-const PM_LEPRECHAUN = 0;
-const PM_KILLER_BEE = 0;
-const PM_SOLDIER = 0;
-const PM_COCKATRICE = 0;
-const PM_SMALL_MIMIC = 0;
-const PM_LARGE_MIMIC = 0;
-const PM_GIANT_MIMIC = 0;
+// Monster indices for makelevel()'s extinction guards.  These were all 0
+// ("giant ant") while mvitals_gone() was a constant FALSE; now that it reads
+// mvitals they are load-bearing, so they are the real pmidx values.
+const PM_LEPRECHAUN = 63;
+const PM_KILLER_BEE = 1;
+const PM_SOLDIER = 277;
+const PM_COCKATRICE = 10;
+const PM_SMALL_MIMIC = 64;
+const PM_LARGE_MIMIC = 65;
+const PM_GIANT_MIMIC = 66;
 
 // C ref: monsym.h MONSYM(13, 'm', MIMIC, S_MIMIC, ...) — makemon.js keys its
 // set_mimic_sym() dispatch off the same 13.
@@ -1674,11 +1674,73 @@ async function themeroom_nesting_rooms() {
     });
 }
 
+// C ref: dat/nhlib.lua:17 shuffle(list) — Fisher-Yates from the tail down,
+// drawing `math.random(i)` == 1 + rn2(i) for i = #list .. 2.
+function lua_shuffle(list) {
+    for (let i = list.length; i >= 2; i--) {
+        const j = 1 + rn2(i);
+        const t = list[i - 1]; list[i - 1] = list[j - 1]; list[j - 1] = t;
+    }
+}
+
+// C ref: sp_lev.c create_monster() with an explicit (non-random) coord — same
+// induced_align -> mkclass -> makemon order as mk_monster_class(), minus
+// get_location's random spot roll.
+function mk_monster_class_at(classChar, x, y, waiting) {
+    const klass = MK_CLASS_CHAR[classChar] ?? 0;
+    oracle_induced_align();
+    const data = mk_mines_race_suppress(mkclass(klass, 0x0200 /* G_NOGEN */));
+    const c = { x, y };
+    mk_enexto_if_occupied(c, data);
+    const mtmp = make_monster(data, c.x, c.y, 0);
+    if (mtmp) {
+        mtmp.female = 0;
+        // C ref: sp_lev.c create_monster() `mtmp->mstrategy |= STRAT_WAITMASK`
+        // for des.monster({waiting=1}); no RNG, but it keeps the monster put.
+        if (waiting) mtmp.mstrategy = (mtmp.mstrategy | 0) | STRAT_WAITMASK_MK;
+    }
+    return mtmp;
+}
+// mon.h STRAT_CLOSE|STRAT_WAITFORU.
+const STRAT_WAITMASK_MK = 0x10000000 | 0x20000000;
+
+// C ref: themerms.lua:419-441 'Mausoleum' — an odd-sized themed room with a
+// sealed 1x1 crypt at its centre holding either a waiting undead or a human
+// corpse, and a 20% secret door.  The two nh.rn2(3) size rolls happen BEFORE
+// des.room()'s build_room chance roll.
+async function themeroom_mausoleum() {
+    const w = 5 + rn2(3) * 2;
+    const h = 5 + rn2(3) * 2;
+    return des_room({ rtype: THEMEROOM, w, h }, async (rm) => {
+        const width = rm.hx - rm.lx + 1, height = rm.hy - rm.ly + 1;
+        await des_room({
+            rtype: THEMEROOM, joined: false,
+            x: Math.trunc((width - 1) / 2), y: Math.trunc((height - 1) / 2),
+            w: 1, h: 1,
+        }, async (sub) => {
+            if (mk_percent(50)) {
+                const mons = ['M', 'V', 'L', 'Z'];
+                lua_shuffle(mons);
+                mk_monster_class_at(mons[0], sub.lx, sub.ly, true);
+            } else {
+                // des.object({id="corpse", montype="@", coord={0,0}}) — the
+                // montype class pre-roll (mkclass) precedes mksobj, as in
+                // oracle_place_statue().
+                const pm = mkclass(MK_CLASS_CHAR['@'], 0);
+                const otmp = mksobj_at(CORPSE, sub.lx, sub.ly, true, false);
+                if (pm && otmp) set_corpsenm(otmp, pm.pmidx);
+            }
+            if (mk_percent(20)) des_door({ state: 'secret', wall: 'all' });
+        });
+    });
+}
+
 const NESTED_ROOM_BUILDERS = {
     'Fake Delphi': themeroom_fake_delphi,
     'Room in a room': themeroom_room_in_a_room,
     'Huge room with another room inside': themeroom_huge_room_with_inner,
     'Nesting rooms': themeroom_nesting_rooms,
+    'Mausoleum': themeroom_mausoleum,
 };
 
 // C ref: sp_lev.c set_levltyp_lit() with lit=SET_LIT_NOCHANGE (-2) — set the
@@ -1903,15 +1965,15 @@ function create_vault() {
 // owned by sp_lev.js and runs from the fill loop, not here.
 // ============================================================
 
-// C ref: mon.h G_GONE == (G_GENOD | G_EXTINCT); the real test is
-// `svm.mvitals[mndx].mvflags & G_GONE`.  Consumes no RNG, but it is a live
-// predicate, not a constant: G_GENOD comes from #genocide and G_EXTINCT from
-// mvitals[].born hitting 255 (mon.c m_detach/makemon).  Neither happens in a
-// generation-only game, so "not gone" holds for every session that reaches
-// level generation; a session that genocides a gated species (leprechauns,
-// killer bees, soldiers, cockatrices, mimics) would take the wrong branch here.
-function mvitals_gone(_mndx) {
-    return false;
+// C ref: mon.h G_GONE == (G_GENOD | G_EXTINCT), tested as
+// `svm.mvitals[mndx].mvflags & G_GONE`.  Consumes no RNG, but it is a LIVE
+// predicate: G_GENOD comes from #genocide and G_EXTINCT from makemon.js's
+// propagate() when born reaches mbirth_limit().  It used to return a constant
+// FALSE, which takes the wrong makelevel() branch for any session that
+// genocides or exhausts a gated species.
+const G_GONE_MV = 0x03;
+function mvitals_gone(mndx) {
+    return ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GONE_MV) !== 0;
 }
 
 // C ref: mkroom.c antholemon() — picks one of SOLDIER_ANT/FIRE_ANT/GIANT_ANT
@@ -3246,7 +3308,9 @@ function mk_enexto_if_occupied(c, data) {
 // roll).  C ref: create_monster -> mkclass(class, G_NOGEN), then induced_align
 // + makemon.  S_GNOME=33 ('G'), S_HUMANOID=8 ('h').
 // S_OGRE=41, S_TROLL=46 (defsym.h), needed by Bar-fila's "O"/"T" class picks.
-const MK_CLASS_CHAR = { G: 33, h: 8, O: 41, T: 46 };
+// defsym.h MONSYM(): L 38 lich, M 39 mummy, V 48 vampire, Z 52 zombie
+// (themerms.lua 'Mausoleum'), '@' 53 human.
+const MK_CLASS_CHAR = { G: 33, h: 8, O: 41, T: 46, L: 38, M: 39, V: 48, Z: 52, '@': 53 };
 function mk_monster_class(classChar, peacefulOverride) {
     const klass = MK_CLASS_CHAR[classChar] ?? 0;
     // C ref: create_monster — amask = sp_amask_to_amask(AM_SPLEV_RANDOM) ->

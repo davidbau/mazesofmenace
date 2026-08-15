@@ -907,10 +907,16 @@ export async function explmu(mtmp, mattk, ufound) {
     }
 
     switch (mattk.adtyp) {
-    case AD_COLD: case AD_FIRE: case AD_ELEC:
-        // mon_explodes(mtmp, mattk): the explode() blast animation + damage.
+    case AD_COLD: case AD_FIRE: case AD_ELEC: {
+        // C ref: mhitu.c:1619 — mon_explodes(mtmp, mattk) rolls its OWN
+        // d(damn,damd) on top of the `tmp` above, kills the exploder and runs
+        // the whole explode() blast (destroy_items / resist / burnarmor).
+        const { mon_explodes } = await import('./explode.js');
+        await mon_explodes(mtmp, [mattk.aatyp, mattk.adtyp,
+                                  mattk.damn, mattk.damd]);
         if (!DEADMONSTER(mtmp)) kill_agr = false;
         break;
+    }
     case AD_BLND:
         not_affected = resists_blnd_u();
         if (ufound && !not_affected) {

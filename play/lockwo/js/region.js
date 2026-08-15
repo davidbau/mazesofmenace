@@ -10,11 +10,10 @@
 // wired to anything a covered session reaches, and create_gas_cloud_selection
 // (used only by special-level SP_LEV scripts) is omitted.
 //
-// The region list is a flat array on `game.regions`.  C's clear_regions() is
-// ported but not yet wired into do.js's goto_level() (a region that outlives
-// a level change currently leaks into the next level); no covered session
-// creates a region and then changes levels before it expires, so this gap
-// has not been exercised.
+// The region list is a flat array on `game.regions`.  do.js goto_level() plays
+// save_regions()/rest_regions(): it stashes the list on the departing level's
+// store, calls clear_regions(), and on a return visit restores it with the
+// ttl aged by the turns spent away.
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd } from './rng.js';
@@ -142,8 +141,8 @@ export async function remove_region(reg) {
     }
 }
 
-// C ref: region.c clear_regions() — wipe every region (level change).  Not
-// currently called anywhere (see file header); kept for a future do.js hook.
+// C ref: region.c clear_regions() — wipe every region (mklev's
+// clear_level_structures, and save_regions()'s release_data arm).
 export function clear_regions() {
     game.regions = [];
 }

@@ -279,11 +279,38 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         await mon_adjust_speed(mtmp, 1, null);
         break;
     }
+    case MCAST_SUMMON_MONS: {
+        // C ref: mcastu.c:421 mcast_summon_mons(mtmp) — nasty(mtmp) is the
+        // whole effect and it is far from RNG-free (rnd(u.ulevel/3) outer
+        // iterations, an rn2(44) pick_nasty per slot, makemon, rnd(4)).
+        const { nasty } = await import('./wizard.js');
+        const count = await nasty(mtmp);
+        if (count) {
+            const { update_topl } = await import('./display.js');
+            if (mtmp.iswiz) {
+                await update_topl(`"Destroy the thief, my pet${count === 1 ? '' : 's'}!"`);
+            } else {
+                const mappear = (count === 1) ? 'A monster appears' : 'Monsters appear';
+                await update_topl(`${mappear} from nowhere!`);
+            }
+        }
+        break;
+    }
+    case MCAST_CLONE_WIZ: {
+        // C ref: mcastu.c:411 mcast_clone_wiz(mtmp).
+        if (mtmp.iswiz && (game.context?.no_of_wizards | 0) === 1) {
+            const { update_topl } = await import('./display.js');
+            await update_topl('Double Trouble...');
+            const { clonewiz } = await import('./wizard.js');
+            await clonewiz();
+        }
+        break;
+    }
     default:
-        // The remaining undirected spells (DISAPPEAR, INSECTS, AGGRAVATION,
-        // SUMMON_MONS, CLONE_WIZ) need mon_set_minvis / makemon-driven summons
-        // that this port does not carry; their spell_would_be_useless() draws
-        // have already fired, so the stream stays aligned up to the effect.
+        // The remaining undirected spells (DISAPPEAR, INSECTS, AGGRAVATION)
+        // need mon_set_minvis / the insect-swarm makemon loop that this port
+        // does not carry; their spell_would_be_useless() draws have already
+        // fired, so the stream stays aligned up to the effect.
         break;
     }
     if (dmg) { /* mdamageu(mtmp, dmg) — directed spells only */ }

@@ -1045,7 +1045,12 @@ async function fprefx(otmp) {
         if (corpse_mon_name(otmp.corpsenm) === 'pyrolisk') {
             if (carried(otmp)) _invent.useup(otmp);
             else _invent.useupf(otmp, 1);
-            d(3, 6);                              /* explode() damage roll */
+            // C ref: eat.c:2108 — explode(u.ux, u.uy, -11, d(3,6), 0,
+            // EXPL_FIERY).  -11 % 10 == 1 -> AD_FIRE "fireball"; the damage
+            // roll is the argument, so it precedes explode()'s own draws.
+            const { explode } = await import('./explode.js');
+            const { EXPL_FIERY } = await import('./const.js');
+            await explode(game.u.ux, game.u.uy, -11, d(3, 6), 0, EXPL_FIERY);
             return false;
         } else if ((game.moves ?? 0) - (otmp.age ?? 0) > 400 /* 2*MAX_EGG_HATCH_TIME */) {
             await update_topl('Ugh.  Rotten egg.');

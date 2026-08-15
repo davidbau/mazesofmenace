@@ -56,10 +56,10 @@ import {
     is_shapeshifter_flag, humanoid as humanoid_flag, polyok_flag, is_animal,
     is_demon_flag,
     is_swimmer_flag, is_flyer_flag, amorphous_flag, passes_walls_flag,
-    throws_rocks_flag,
+    throws_rocks_flag, likes_gold_flag,
     MFLAGS1, M1_OVIPAROUS,
 } from './monflags_data.js';
-import { AT_EXPL, attacktype } from './monattk_data.js';
+import { AT_EXPL, attacktype, is_armed } from './monattk_data.js';
 const MM_NOWAIT = 0x00000002; // C ref: makemon.h MM_NOWAIT — suppress STRAT_WAITFORU/STRAT_CLOSE
 
 const G_UNIQ = 0x1000;
@@ -402,7 +402,7 @@ const GENDER_STR = ['random', 'male', 'female', 'neuter'];
 // spellbook-stuffing test (mkobj.c:1154).
 const VERYSMALL = new Set([
     0, 1, 2, 3, 5, 6, 9, 51, 52, 63, 88, 89, 90, 91, 94,
-    95, 116, 117, 126, 214, 322, 323, 324, 326, 327,
+    95, 116, 117, 126, 214, 322, 323, 324, 326, 327, 330,
 ]);
 
 // C ref: monflag.h M1_CARNIVORE / M1_HERBIVORE — per-monster diet flags,
@@ -412,8 +412,8 @@ const VERYSMALL = new Set([
 // for an apple to a herbivore pony, etc.) decides when the pet's invent/fobj
 // scans terminate — and therefore how many obj_resists rn2(100) rolls fire.
 const MFOOD = [
-    1, 0, 1, 1, 1, 0, 0, 0, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 3, 3, 3, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 3, 0, 1, 1, 1, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 3, 2, 3, 3, 2, 2, 2, 1, 1, 1, 1, 0, 2, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 3, 0, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 3, 3, 3,
-    1, 3, 3, 1, 0, 0, 3, 3, 3, 3, 3, 3, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 3, 3, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 1, 1, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 3, 3, 0, 3, 3, 2, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 0, 3, 1, 3, 1, 2, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+    1, 0, 1, 1, 1, 0, 0, 0, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 0, 1, 1, 1, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 3, 2, 3, 3, 2, 2, 2, 1, 1, 1, 1, 0, 2, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 3, 3, 3,
+    1, 3, 3, 1, 1, 1, 3, 3, 3, 3, 3, 3, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 3, 3, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 0, 3, 1, 3, 1, 2, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3,
 ];
 
 // C ref: include/monsters.h LVL(lvl, mov, ac, mr, aln) — the 3rd field is the
@@ -421,23 +421,23 @@ const MFOOD = [
 // armour to add for these monsters).  Indexed by pmidx, generated from the C
 // mons[] table (matched by name; a handful of renamed leaders use their C ac).
 const MON_AC = [
-    3, -1, 3, 3, 4, -4, 8, 8, 8, 8, 6, 6, 7, 7, 7, 10, 6, 5, 5, 4,
-    4, 10, 4, 4, 4, 4, 2, 10, 9, 4, 4, 4, 6, 5, 6, 6, 6, 4, 6, -10,
-    2, -4, -2, 10, 10, 5, 4, 2, 5, 0, 7, 6, 2, 7, 2, 5, 8, 8, 8, 10,
+    3, -1, 3, 3, 4, -4, 8, 8, 8, 8, 6, 6, 7, 7, 7, 7, 6, 5, 5, 4,
+    4, 4, 4, 4, 4, 4, 2, 10, 9, 4, 4, 4, 6, 5, 6, 6, 6, 4, 6, -10,
+    2, -4, -2, 10, 10, 5, 10, 10, 5, 0, 7, 6, 2, 7, 2, 5, 8, 8, 8, 10,
     10, 10, 6, 8, 7, 7, 7, 9, 9, 9, 10, 10, 10, 10, 10, 10, 5, 10, 3, 0,
-    0, 7, 0, 4, 2, 6, 5, 5, 7, 7, 6, 10, 0, 0, 3, 3, 4, 3, 3, 3,
+    0, 7, 0, 4, 2, 6, 5, 5, 7, 7, 6, 6, 0, 0, 3, 3, 4, 3, 3, 3,
     6, 2, 2, 2, 5, 4, 0, 2, 2, 2, 2, 2, 5, 5, 5, 6, 9, -4, 0, 0,
     3, 5, 0, -4, -5, -6, 8, 7, 6, 6, 4, 3, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, 2, 2, 2, 2, 9, 9,
-    9, 9, 9, 7, 7, 10, 10, 4, 4, 0, 0, 6, 4, 3, 3, 3, -3, 6, -2, 10,
+    9, 9, 9, 7, 7, 10, 10, 4, 10, 0, 0, 6, 4, 3, 3, 3, -3, 6, -2, 10,
     10, 10, 10, 0, -2, -4, -6, 6, 6, 5, 5, 4, 4, 4, 3, 6, 6, 6, 6, 4,
-    2, 2, 0, 5, 3, 0, 8, 8, 6, 6, 3, 3, 2, -10, 8, 3, 3, 5, 2, 2,
+    2, 2, 0, 5, 3, 4, 8, 8, 6, 6, 3, 3, 2, -10, 8, 3, 3, 5, 2, 2,
     4, 2, 0, 4, -4, 2, 1, 0, -6, 5, 4, 0, -2, 6, 6, 5, 6, 6, 6, 10,
     10, 9, 9, 9, 8, 6, 10, 6, 4, 10, 10, 8, 6, 6, 4, 9, 7, 5, 1, 3,
-    10, 10, 10, 10, 10, 10, 10, 10, 10, 5, 5, 0, 10, 10, 0, 0, -2, 10, 10, 0,
+    10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 5, 0, 10, 10, 0, 10, 7, 10, 10, 0,
     10, 10, 10, 10, 2, -8, 0, -5, 10, -4, 0, -5, 2, 0, -6, 0, -2, -1, -4, -1,
     -3, 4, -2, -7, -5, -6, -3, -2, -5, -7, -8, -5, -5, -5, 10, 4, 6, 4, 2, -1,
-    -3, 6, 8, 8, 7, 7, 6, 6, 5, -1, 0, 10, 10, 0, 10, 10, 10, 0, 10, 10,
+    -3, 6, 8, 8, 7, 7, 6, 6, 5, -1, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10,
     10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 10, 0, 0, -2, 0, 0,
     0, -1, -10, -2, 10, 0, 0, 2, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
     10, 10, 10,
@@ -500,13 +500,15 @@ const MON_CNUTRIT = [
     150, 250, 20, 20, 250, 200, 60, 80, 80, 100, 60, 100, 350, 300, 300, 350,
     400, 500, 400, 400, 400, 0, 0, 0, 700, 50, 500, 700, 700, 550, 750, 50,
     50, 75, 150, 175, 200, 250, 50, 375, 5, 0, 0, 0, 0, 0, 0, 600,
-    0, 0, 0, 0, 400, 30, 250, 250, 350, 350, 350, 350, 350, 350, 400, 400,
+    0, 0, 0, 0, 400, 400, 400, 400, 350, 350, 350, 350, 350, 350, 400, 400,
     400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 0,
     0, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 0,
     500, 500, 500, 500, 500, 500, 500, 1, 1, 1, 300, 400, 20, 30, 350, 250,
     250, 1000, 20, 20, 30, 200, 40, 100, 400, 400, 0, 400, 400, 400, 400, 400,
     400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 700,
     400, 400, 400, 550, 400, 400, 400, 1700, 700, 1600, 400,
+    400, 350, 400, 400, 850, 400, 400, 400, 400, 400, 400,
+    400, 400, 400, 400, 400, 400, 400, 400, 400,
 ];
 
 // C ref: include/monsters.h SIZ() body-size field (MZ_*).  MZ_TINY=0 (this set
@@ -593,7 +595,7 @@ const MPOIS = [
     1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
     0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
     1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0,
+    0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
     0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
@@ -775,12 +777,6 @@ const PM_SCORPIUS = 364;
 // pmidx 315) shift, so it named jellyfish/chameleon/Nalzok as egg-layers and
 // missed electric eel/crocodile/Scorpius.
 
-// Monsters with cnutrit == 0 (no nutrition); the complement is "has cnutrit".
-// Used by the TIN generation loop's mons[mndx].cnutrit test.
-const ZERO_CNUTRIT = new Set([
-    106, 107, 108, 109, 110, 111, 118, 119, 154, 155, 156, 157, 229, 230, 231,
-    249, 250, 251, 252, 253, 254, 256, 257, 258, 259, 287, 288, 303, 330,
-]);
 
 // grownups[] little -> big progression (src/mondata.c), as pmidx pairs.
 const GROWNUPS_LITTLE_TO_BIG = new Map([
@@ -858,7 +854,7 @@ export function dead_species(m_idx, egg) {
 // C ref: a monster's corpse nutrition (mons[mndx].cnutrit).  Returns truthy
 // when the species yields a nourishing corpse (used by tin generation).
 export function mon_has_cnutrit(mndx) {
-    return !ZERO_CNUTRIT.has(mndx);
+    return (MON_CNUTRIT[mndx] ?? 0) !== 0;
 }
 
 // G_NOCORPSE flag for a monster (mons[mndx].geno & G_NOCORPSE).
@@ -1534,11 +1530,9 @@ export function newmonhp(mon) {
 // Both rn2(20) and rn2(4) are the LEFT operand of an `||`, so each is always
 // drawn even when is_lord(ptr) would have made the test true anyway.
 function m_initweap_angel(mtmp, ptr) {
-    // C: `if (humanoid(ptr))`.  Within S_ANGEL exactly Aleax/Angel/Archon carry
-    // M1_HUMANOID (couatl is M1_SLITHY|M1_NOHANDS, ki-rin M1_NOHANDS), and those
-    // same three are precisely the AT_WEAP members, so ARMED_NAMES — which is
-    // attacktype(ptr, AT_WEAP) — doubles as the humanoid test for this class.
-    if (!ARMED_NAMES.has(ptr.name)) return;
+    // C ref: makemon.c:331 `if (humanoid(ptr))` — read M1_HUMANOID directly
+    // rather than through a species-name stand-in.
+    if (!humanoid_flag(ptr)) return;
     const is_lord = (mflags2_of(ptr) & M2_LORD) !== 0;
 
     const typ = rn2(3) ? W_LONG_SWORD : W_SILVER_MACE;          // makemon.c:333
@@ -1657,13 +1651,12 @@ const PM_GOBLIN_JS = 70, PM_ORC_SHAMAN_JS = 76, PM_ORC_CAPTAIN_JS = 77,
     PM_MORDOR_ORC_JS = 74, PM_URUK_HAI_JS = 75;
 const FOREST_CENTAUR_PM = 131;
 
-// C ref: is_armed(ptr) == attacktype(ptr, AT_WEAP) — every monster whose attack
-// list contains an AT_WEAP attack.  Keyed by name (the JS pmidx scheme is a
-// reordered subset, so name is stable).  Extracted verbatim from the MON()
-// entries in include/monsters.h.
-const ARMED_NAMES = new Set(["hobbit","dwarf","bugbear","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","mind flayer","master mind flayer","kobold","large kobold","kobold lord","kobold lady","kobold leader","goblin","hobgoblin","orc","hill orc","Mordor orc","Uruk-hai","orc-captain","Aleax","Angel","Archon","plains centaur","forest centaur","mountain centaur","gnome","gnome lord","gnome lady","gnome leader","gnome king","gnome queen","gnome ruler","giant","stone giant","hill giant","fire giant","frost giant","ettin","storm giant","titan","Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","ogre","ogre lord","ogre lady","ogre leader","ogre king","ogre queen","ogre tyrant","troll","ice troll","rock troll","water troll","Olog-hai","Vlad the Impaler","barrow wight","Nazgul","skeleton","iron golem","human","wererat","werejackal","werewolf","elf","Woodland-elf","Green-elf","Grey-elf","elf-lord","elf-lady","elf-noble","Elvenking","Elvenqueen","elven monarch","doppelganger","shopkeeper","guard","prisoner","priest","priestess","aligned cleric","high priest","high priestess","high cleric","soldier","sergeant","lieutenant","captain","watchman","watch captain","Medusa","Croesus","Charon","water demon","horned devil","erinys","marilith","bone devil","pit fiend","sandestin","balrog","Yeenoghu","Orcus","Dispater","djinni","salamander","archeologist","barbarian","caveman","cavewoman","cave dweller","healer","knight","cleric","ranger","rogue","samurai","tourist","valkyrie","wizard","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","Minion of Huhetotl","Thoth Amon","Goblin King","Cyclops","Nalzok","Master Assassin","Ashikaga Takauji","Lord Surtur","Dark One","student","chieftain","neanderthal","High-elf","attendant","page","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"]);
+// C ref: mondata.h is_armed(ptr) == attacktype(ptr, AT_WEAP).  This was a
+// species-NAME set, which cannot separate the monsters.h entries that share a
+// name: it called the ANIMAL forms of werejackal/werewolf/wererat armed because
+// their S_HUMAN namesakes are.  monattk_data is keyed by pmidx, so use it.
 function is_armed_pm(pmidx, mcls, name) {
-    return ARMED_NAMES.has(name);
+    return is_armed({ pmidx });
 }
 
 // C ref: mondata.h:121 strongmonst(ptr) == ((ptr->mflags2 & M2_STRONG) != 0).
@@ -1955,10 +1948,10 @@ function m_initweap_full(mtmp) {
 
 // Full C-faithful m_initinv for Big Room monsters (generic tail + per-class
 // prefixes reachable on dlvl<=~14).
-const LIKES_GOLD_PM = new Set([44,45,48,49,63,72,73,74,75,76,77,92,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,189,190,203,286,338,351,358,360,376]);
-// C ref: likes_gold(ptr) == (mflags2 & M2_GREEDY).  Name-keyed (complete; all
-// NAMS variants) from include/monsters.h — used by the Big Room m_initinv gold.
-const LIKES_GOLD_NAMES = new Set(["dwarf","dwarf lord","dwarf lady","dwarf leader","dwarf king","dwarf queen","dwarf ruler","mind flayer","master mind flayer","leprechaun","orc","hill orc","Mordor orc","Uruk-hai","orc shaman","orc-captain","rock mole","plains centaur","forest centaur","mountain centaur","baby gray dragon","baby gold dragon","baby silver dragon","baby shimmering dragon","baby red dragon","baby white dragon","baby orange dragon","baby black dragon","baby blue dragon","baby green dragon","baby yellow dragon","gray dragon","gold dragon","silver dragon","shimmering dragon","red dragon","white dragon","orange dragon","black dragon","blue dragon","green dragon","yellow dragon","orc mummy","dwarf mummy","ogre","ogre lord","ogre lady","ogre leader","ogre king","ogre queen","ogre tyrant","Croesus","Charon","rogue","Master of Thieves","Chromatic Dragon","Goblin King","Ixoth","thug"]);
+// C ref: mondata.h likes_gold(ptr) == (mflags2 & M2_GREEDY).  Was a hardcoded
+// pmidx Set plus a parallel name Set; both disagreed with M2_GREEDY (the pmidx
+// one ran one short from 314 up — the mail-daemon splice — and the name one
+// added Charon/Goblin King/the shimmering dragons).  Read the flag instead.
 // C ref: muse.c rnd_defensive_item()/rnd_misc_item() head — `is_animal(pm) ||
 // attacktype(pm, AT_EXPL) || mindless(pm) || mlet == S_GHOST || mlet == S_KOP`.
 // These were two hand-written pmidx Sets whose windows had drifted off the real
@@ -2334,7 +2327,7 @@ function m_initinv_full(mtmp) {
     if (mm === PM_SOLDIER_JS && rn2(13)) return;
     if ((mtmp.m_lev || 0) > rn2(50)) mongets(mtmp, rnd_defensive_item(mtmp));
     if ((mtmp.m_lev || 0) > rn2(100)) mongets(mtmp, rnd_misc_item(mtmp));
-    if (LIKES_GOLD_NAMES.has(ptr.name) && !mtmp._hasgold && !rn2(5)) {
+    if (likes_gold_flag(ptr) && !mtmp._hasgold && !rn2(5)) {
         // C ref: mkmonmoney(d(level_difficulty(), mtmp->minvent ? 5 : 10)).
         // Use the dice helper d() so it records a single d(n,x) RNG-log entry,
         // matching the C engine (rather than n separate rn2 calls).
@@ -2630,8 +2623,24 @@ function rndmonnum_local() {
 // msound leader-guardian-nemesis short-circuits that return WITHOUT consuming
 // RNG (e.g. a hostile lizard).  Read straight off mflags2/msound
 // (js/monflags_data.js) rather than a name-keyed guess.
-export const M2_HUMAN_NAMES = new Set(["Keystone Kop","Kop Sergeant","Kop Lieutenant","Kop Kaptain","human","wererat","werejackal","werewolf","doppelganger","shopkeeper","guard","prisoner","Oracle","priest","priestess","aligned cleric","high priest","high priestess","high cleric","soldier","sergeant","nurse","lieutenant","captain","watchman","watch captain","Wizard of Yendor","Croesus","Charon","archeologist","barbarian","caveman","cavewoman","cave dweller","healer","knight","monk","cleric","ranger","rogue","samurai","tourist","valkyrie","wizard","Lord Carnarvon","Pelias","Shaman Karnov","Earendil","Elwing","Hippocrates","King Arthur","Grand Master","Arch Priest","Orion","Master of Thieves","Lord Sato","Twoflower","Norn","Neferet the Green","Thoth Amon","Master Kaen","Master Assassin","Ashikaga Takauji","Dark One","student","chieftain","neanderthal","attendant","page","abbot","acolyte","hunter","thug","ninja","roshi","guide","warrior","apprentice"]);
-export const M2_MINION_NAMES = new Set(["couatl","Aleax","Angel","ki-rin","Archon","high priest","high priestess","high cleric"]);
+// C ref: mondata.h is_human(ptr) / is_minion(ptr) — (mflags2 & M2_HUMAN) and
+// (mflags2 & M2_MINION).  These were hand-written name Sets; the M2_HUMAN one
+// wrongly listed Charon (excluded by this build's #ifdef) and the Ranger quest
+// leader's Earendil/Elwing spellings, whose species is M2_ELF.  Derived from
+// the flag table so they cannot drift; every NAMS() spelling is included, since
+// a by-name caller may use any of the three.
+const _names_with_mflag2 = (bit) => {
+    const out = new Set();
+    for (const mon of MONS) {
+        if (!mon.name || !(mflags2_of(mon) & bit)) continue;
+        out.add(mon.name);
+        const g = _GENDERED_BY_NEUTRAL.get(mon.name);
+        if (g) { out.add(g[0]); out.add(g[1]); }
+    }
+    return out;
+};
+export const M2_HUMAN_NAMES = _names_with_mflag2(M2_HUMAN);
+export const M2_MINION_NAMES = _names_with_mflag2(M2_MINION);
 
 // C ref: role.c races[].lovemask / .hatemask, keyed off gu.urace.  race_hostile
 // /race_peaceful (mondata.h) test `ptr->mflags2 & mask` directly, so the masks
@@ -2834,7 +2843,7 @@ function nasties_table() {
 
 // C ref: wizard.c pick_nasty(difcap).  One ROLL_FROM, an extra ROLL_FROM on the
 // rogue level, then a NON-RNG substitution pass (arch-lich -> master lich etc).
-function pick_nasty(difcap) {
+export function pick_nasty(difcap) {
     const nasties = nasties_table();
     let res = nasties[rn2(nasties.length)];
     if (Is_rogue_level(game.u?.uz) && !is_upper_monsym(res))
@@ -3738,20 +3747,35 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
     cnt = Math.trunc(cnt / (ul < 3 ? 4 : ul < 5 ? 2 : 1));
     if (!cnt) cnt++;
     let mx = x, my = y;
-    while (cnt-- > 0) {
-        // C ref: makemon.c:125 — peace_minded(mtmp->data) per member; if
-        // peaceful, skip (no enexto/makemon).  One C function, one port.
-        if (peace_minded_bigrm(mtmp.data)) continue;
-        const spot = enexto_spawn(mx, my, mtmp.data);  // enexto_gpflags
-        if (spot) {
-            mx = spot.x; my = spot.y;
-            const mon = makemon(mtmp.data, spot.x, spot.y, mmflags | MM_NOGRP);
-            if (mon) {
-                placeOnLevel(mon, spot.x, spot.y);
-                mon.mpeaceful = false;
-                set_malign(mon);
+    // C ref: makemon.c:1248 place_monster() runs BEFORE the group block, so each
+    // member's enexto()/goodpos() sees the LEADER's square as occupied.  This
+    // port defers the leader's real chain insertion to the caller (fmon order is
+    // load-bearing, see makemon's _chainBefore note), so stage it on the map for
+    // the duration of the loop only and pull it back out afterwards — indices
+    // stay as the caller's grpFirstIdx expects.  Without this, members stacked
+    // on top of the leader (seed0360 bigrm: an orc zombie and a grid bug each
+    // doubled up instead of landing on their own square).
+    const mons = game.level?.monsters || (game.level ? (game.level.monsters = []) : null);
+    const staged = !!mons && !mons.includes(mtmp);
+    if (staged) mons.push(mtmp);
+    try {
+        while (cnt-- > 0) {
+            // C ref: makemon.c:125 — peace_minded(mtmp->data) per member; if
+            // peaceful, skip (no enexto/makemon).  One C function, one port.
+            if (peace_minded_bigrm(mtmp.data)) continue;
+            const spot = enexto_spawn(mx, my, mtmp.data);  // enexto_gpflags
+            if (spot) {
+                mx = spot.x; my = spot.y;
+                const mon = makemon(mtmp.data, spot.x, spot.y, mmflags | MM_NOGRP);
+                if (mon) {
+                    placeOnLevel(mon, spot.x, spot.y);
+                    mon.mpeaceful = false;
+                    set_malign(mon);
+                }
             }
         }
+    } finally {
+        if (staged) { const i = mons.indexOf(mtmp); if (i >= 0) mons.splice(i, 1); }
     }
 }
 

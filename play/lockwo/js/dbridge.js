@@ -17,6 +17,7 @@
 // trace; they are transcribed straight from the C.
 
 import { game } from './gstate.js';
+import { hliquid } from './do_name.js';
 import {
     STONE, DBWALL, POOL, MOAT, WATER, DRAWBRIDGE_UP, LAVAPOOL,
     LAVAWALL, DOOR, ROOM, ICE, DRAWBRIDGE_DOWN, D_NODOOR, W_NONDIGGABLE,
@@ -893,7 +894,7 @@ function delallobj(x, y) {
 
 // C ref: do_name.c hliquid(liquidpref) — the preferred word unless the hero is
 // hallucinating (which draws off the DISPLAY rng, not the game rng).
-function hliquid(word) { return word; }
+// js/do_name.js owns hliquid().
 
 // C ref: pline.c You_hear(...) — suppressed when Deaf.
 async function You_hear(msg) {

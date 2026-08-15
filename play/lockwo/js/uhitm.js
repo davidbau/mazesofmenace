@@ -29,6 +29,10 @@ function tended_shop(rno) {
     return rmno !== 0 && rmno === shkp.eshk?.shoproom;
 }
 import { WEP_SDAM, WEP_LDAM } from './weapondmg_data.js';
+import { dmgval, hitval, abon, dbon, weapon_type, is_axe,
+         mon_hates_blessings, weapon_hit_bonus_core,
+         weapon_dam_bonus_core } from './weapon.js';
+import { register_monnam_hooks, rndmonnam, bogon_is_pname } from './do_name.js';
 import { rn2, rnd, d } from './rng.js';
 import { cansee, couldsee } from './vision.js';
 import { m_at, newsym, map_invisible, canseemon_shared } from './display.js';
@@ -747,39 +751,10 @@ function mon_maybe_unparalyze(mtmp) {
 // C ref: attrib.c acurr() helpers used by abon().
 function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
 
-// C ref: weapon.c abon() — strength/dexterity to-hit bonus (non-polyd).
-function abon() {
-    const str = ACURR(A_STR), dex = ACURR(A_DEX);
-    let sbon;
-    if (str < 6) sbon = -2;
-    else if (str < 8) sbon = -1;
-    else if (str < 17) sbon = 0;
-    else if (str < 118 /* STR18(50) */) sbon = 1;
-    else if (str < 121 /* STR18(100) */) sbon = 2;
-    else sbon = 3;
-    sbon += ((game.u?.ulevel || 1) < 3) ? 1 : 0;
-    if (dex < 4) return sbon - 3;
-    if (dex < 6) return sbon - 2;
-    if (dex < 8) return sbon - 1;
-    if (dex < 14) return sbon;
-    return sbon + dex - 14;
-}
-
-// C ref: attrib.c dbon() — strength damage bonus (non-polyd).
-function dbon() {
-    const str = ACURR(A_STR);
-    if (str < 6) return -1;
-    if (str < 16) return 0;
-    if (str < 18) return 1;
-    if (str === 18) return 2;                 /* 18 */
-    if (str < 118) return 3;                  /* 18/01..18/49 */
-    if (str < 122) return 4;                  /* 18/50..18/99 */
-    if (str < 125) return 5;                  /* 18/** (up to 125) */
-    return 6;
-}
+// abon()/dbon() now live in js/weapon.js (weapon.c:950/:993).
 
 // ── role / martial-arts helpers (for the bare-handed monk path) ──
-const PM_MONK = 5, PM_SAMURAI = 9;
+const PM_MONK = 5, PM_SAMURAI = 9, PM_HEALER = 3;  // u_init.c role mnums
 function roleMnum() {
     const r = game.urole;
     return (r && r.mnum != null) ? r.mnum : null;
@@ -802,9 +777,42 @@ async function bare_handed_skill() {
 // C ref: weapon.c weapon_dam_bonus(NULL) — bare-handed-combat branch:
 //   bonus = P_SKILL - 1 (>=0); bonus = ((bonus+1)*(martial?3:1))/2.
 async function weapon_dam_bonus_barehand() {
-    let bonus = (await bare_handed_skill()) - 1;
-    if (bonus < 0) bonus = 0;
-    return Math.trunc((bonus + 1) * (martial_bonus() ? 3 : 1) / 2);
+    const { p_skill_of } = await import('./enhance.js');
+    const u = game.u;
+    return weapon_dam_bonus_core(P_BARE_HANDED_COMBAT,
+                                 await bare_handed_skill(), 0, {
+        martial: martial_bonus(),
+        usteed: !!u?.usteed,
+        twoweap: !!u?.twoweap,
+        skill_riding: p_skill_of(P_RIDING),
+    });
+}
+// C ref: weapon.c:1644 weapon_dam_bonus(weapon) for a WIELDED weapon.
+async function weapon_dam_bonus_wielded(weapon) {
+    const { p_skill_of } = await import('./enhance.js');
+    const u = game.u;
+    const wep_type = weapon_type(weapon);
+    const type = (u?.twoweap && (weapon === game.uwep || weapon === game.uswapwep))
+        ? P_TWO_WEAPON_COMBAT : wep_type;
+    return weapon_dam_bonus_core(type, p_skill_of(type), p_skill_of(wep_type), {
+        martial: martial_bonus(),
+        usteed: !!u?.usteed,
+        twoweap: !!u?.twoweap,
+        skill_riding: p_skill_of(P_RIDING),
+    });
+}
+// C ref: objects.h oc_bimanual — a two-handed weapon.
+const BIMANUAL_OTYPS = new Set([
+    55 /*TWO_HANDED_SWORD*/, 57 /*TSURUGI*/, 45 /*BATTLE_AXE*/,
+    71 /*DWARVISH_MATTOCK*/, 79 /*QUARTERSTAFF*/,
+    59 /*PARTISAN*/, 60 /*RANSEUR*/, 61 /*SPETUM*/, 62 /*GLAIVE*/,
+    63 /*HALBERD*/, 64 /*BARDICHE*/, 65 /*VOULGE*/, 66 /*BEC_DE_CORBIN*/,
+    67 /*GUISARME*/, 68 /*BILL_GUISARME*/, 69 /*LUCERN_HAMMER*/,
+    70 /*FAUCHARD*/,
+]);
+function bimanual_wep(otmp) {
+    return (otmp?.oclass === WEAPON_CLASS || is_weptool(otmp))
+        && BIMANUAL_OTYPS.has(otmp.otyp);
 }
 
 // ── weapon data (include/objects.h WEAPON sdam/ldam/hitbon + skill type) ──
@@ -848,15 +856,6 @@ const WEAP = {
     79: { ws: 6,  wl: 6,  hb: 0, sk: P_QUARTERSTAFF }, // QUARTERSTAFF (wizard start)
 };
 
-// C ref: weapon.c weapon_type(obj) — |oc_skill|; NULL maps to bare-handed.
-function weapon_type(obj) {
-    if (!obj) return P_BARE_HANDED_COMBAT;
-    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS
-        && obj.oclass !== GEM_CLASS)
-        return P_NONE;
-    const sk = objects[obj.otyp]?.oc_skill ?? P_NONE;
-    return sk < 0 ? -sk : sk;
-}
 
 // C ref: weapon.c weapon_hit_bonus(weapon) — skill-based to-hit modifier.  The
 // per-branch tables were previously collapsed to the constants a Basic-skilled
@@ -870,62 +869,19 @@ async function weapon_hit_bonus(weapon) {
     const wep_type = weapon_type(weapon);
     const type = (u?.twoweap && (weapon === game.uwep || weapon === game.uswapwep))
         ? P_TWO_WEAPON_COMBAT : wep_type;
-    let bonus = 0;
-
-    if (type === P_NONE) {
-        bonus = 0;
-    } else if (type <= P_LAST_WEAPON) {
-        switch (p_skill_of(type)) {
-        case P_ISRESTRICTED: case P_UNSKILLED: bonus = -4; break;
-        case P_BASIC: bonus = 0; break;
-        case P_SKILLED: bonus = 2; break;
-        default: bonus = 3; break;            // P_EXPERT and above
-        }
-    } else if (type === P_TWO_WEAPON_COMBAT) {
-        let skill = p_skill_of(P_TWO_WEAPON_COMBAT);
-        if (skill > p_skill_of(wep_type)) skill = p_skill_of(wep_type);
-        switch (skill) {
-        case P_ISRESTRICTED: case P_UNSKILLED: bonus = -9; break;
-        case P_BASIC: bonus = -7; break;
-        case P_SKILLED: bonus = -5; break;
-        default: bonus = -3; break;
-        }
-    } else if (type === P_BARE_HANDED_COMBAT) {
-        bonus = Math.max(p_skill_of(type), P_UNSKILLED) - 1;
-        bonus = Math.trunc((bonus + 2) * (martial_bonus() ? 2 : 1) / 2);
-    }
-
-    // KMH -- it's harder to hit while you are riding.
-    if (u?.usteed) {
-        switch (p_skill_of(P_RIDING)) {
-        case P_ISRESTRICTED: case P_UNSKILLED: bonus -= 2; break;
-        case P_BASIC: bonus -= 1; break;
-        default: break;                        // Skilled/Expert: no penalty
-        }
-        if (u.twoweap) bonus -= 2;
-    }
-    return bonus;
+    // js/weapon.js owns the arms (weapon.c:1545); this site supplies the live
+    // P_SKILL readings.
+    return weapon_hit_bonus_core(type, p_skill_of(type), p_skill_of(wep_type), {
+        martial: martial_bonus(),
+        usteed: !!u?.usteed,
+        twoweap: !!u?.twoweap,
+        skill_riding: p_skill_of(P_RIDING),
+    });
 }
 
-// C ref: weapon.c:149 hitval(otmp, mon) — `if (Is_weapon) tmp += otmp->spe;`
-// then the unconditional `tmp += objects[otyp].oc_hitbon`, then the vs-species
-// bonuses.  Only the blessed-vs-undead/demon one is ported: kebabable needs the
-// mlet set "SsXTVWLZ", trident-vs-swimmer needs is_swimmer + is_pool, and
-// pick-vs-xorn needs thick_skinned; artifact spec_abon has no artifacts here.
-// All four are flat modifiers (no RNG) that only shift hit/miss.
-function hitval(weapon, mtmp) {
-    if (!weapon) return 0;
-    const w = WEAP[weapon.otyp];
-    // C: Is_weapon = (oclass == WEAPON_CLASS || is_weptool(otmp)) — the
-    // enchantment only counts for a weapon/weptool (a wielded pick-axe is a
-    // weptool, so its spe DOES count), not e.g. a wielded corpse.  Objects
-    // built without an oclass field are treated as weapons, as before.
-    const isWeapon = weapon.oclass === undefined
-        || weapon.oclass === WEAPON_CLASS || is_weptool(weapon);
-    let tmp = (isWeapon ? (weapon.spe || 0) : 0) + (w ? w.hb : 0);
-    if (isWeapon && weapon.blessed && mon_hates_blessings(mtmp)) tmp += 2;
-    return tmp;
-}
+// hitval() now lives in js/weapon.js (weapon.c:149) — complete, including
+// the kebabable/trident/pick arms and the FULL oc_hitbon table (uhitm's local
+// WEAP subset silently read 0 for every weapon outside its 21 entries).
 
 // C ref: worn.c find_mac(mtmp) — mons[].ac reduced by every worn armour piece's
 // ARM_BONUS, then clamped to +-AC_MAX.  The minvent loop is a genuine no-op in
@@ -1166,12 +1122,25 @@ async function hmon(mon, weapon, dieroll) {
 async function hmon_hitmon(mon, weapon, dieroll) {
     const unarmed = !weapon;
     let dmg;
+    // C ref: uhitm.c:1768 `hmd.use_weapon_skill = FALSE;` — set TRUE by the
+    // ordinary-weapon and bare-handed arms only.
+    let use_weapon_skill = false;
     if (unarmed) {
         // hmon_hitmon_barehands (uhitm.c:847): dmg = rnd(martial ? 4 : 2).
         dmg = rnd(martial_bonus() ? 4 : 2);
     } else if (weapon.oclass === WEAPON_CLASS || is_weptool(weapon)) {
         // hmon_hitmon_weapon_melee: dmg = dmgval(weapon, mon).
         dmg = dmgval(weapon, mon);
+        use_weapon_skill = true;               // C ref: uhitm.c:943
+        // C ref: uhitm.c:947-951 — a Healer's anatomy knowledge: a knife-skill
+        // WEAPON_CLASS item in hand adds min(3, mvitals[species].died / 6).
+        // The Healer starts with a scalpel, so this fires as soon as the same
+        // species has been killed six times.
+        if (roleMnum() === PM_HEALER && weapon.oclass === WEAPON_CLASS
+            && (objects[weapon.otyp]?.oc_skill ?? 0) === P_KNIFE) {
+            const died = game.mvitals?.[mon?.data?.pmidx]?.died ?? 0;
+            dmg += Math.min(3, Math.trunc(died / 6));
+        }
     } else {
         // C ref: uhitm.c hmon_hitmon_misc_obj() `default:` — wielding an
         // ordinary object still hurts, by its weight.  dmgval() returns 0 for
@@ -1183,19 +1152,35 @@ async function hmon_hitmon(mon, weapon, dieroll) {
     }
     const train_weapon_skill = dmg > 1;   // uhitm.c:849 / :946
 
+
     // hmon_hitmon_dmg_recalc: strength + skill bonuses (get_dmg_bonus).  For a
     // two-weapon swing the STR bonus is scaled to 3/4; udaminc is 0 for the
     // starter hero.  weapon_dam_bonus is 0 at P_BASIC for a wielded weapon, and
     // the martial barehand branch for an unarmed monk/samurai.
     if (dmg > 0) {
         let strbonus = dbon();
+        const absb = Math.abs(strbonus);
         if (game.u?.twoweap) {
-            const absb = Math.abs(strbonus);
             strbonus = Math.trunc((3 * absb + 2) / 4) * Math.sign(strbonus || 1);
             if (strbonus === 0 && dbon() !== 0) strbonus = 0;
+        } else if (game.uwep && bimanual_wep(game.uwep)) {
+            // C ref: uhitm.c:1467 — a melee hit with a TWO-HANDED weapon uses a
+            // 3/2 strength bonus (to approximate a two-weapon double hit).
+            // This arm was missing, so every two-handed-sword / battle-axe /
+            // mattock wielder hit for less than C.
+            strbonus = Math.trunc((3 * absb + 1) / 2) * Math.sign(strbonus || 1);
         }
         dmg += strbonus;
-        dmg += unarmed ? await weapon_dam_bonus_barehand() : 0;
+        // C ref: uhitm.c:1484-1489 — `if (use_weapon_skill) dmgbonus +=
+        // weapon_dam_bonus(skillwep)`.  Only the bare-handed arm used to be
+        // applied here, so a WIELDED weapon got no skill modifier at all: a
+        // hero swinging something outside their role's skill table should take
+        // -2, and a Skilled/Expert one +1/+2.
+        if (unarmed) {
+            dmg += await weapon_dam_bonus_barehand();
+        } else if (use_weapon_skill) {
+            dmg += await weapon_dam_bonus_wielded(weapon);
+        }
         if (dmg < 1) dmg = 1;
     }
 
@@ -1928,95 +1913,12 @@ function hmon_misc_obj_dmg(obj) {
     return dmg;
 }
 
-export function dmgval(otmp, mon) {
-    if (!otmp) return 1;
-    const otyp = otmp.otyp;
-    const large = largemonst(mon?.data);
-    let tmp = 0;
-
-    // C: weapon.c:220-300 dmgval().  Dice come from the generated oc_wsdam /
-    // oc_wldam; the per-otyp bonus groups differ between the large and small arms
-    // and are NOT symmetric, so both are transcribed separately.
-    if (large) {
-        const d0 = WEP_LDAM[otyp];
-        if (d0) tmp = rnd(d0);
-        switch (otyp) {
-        case W.CROSSBOW_BOLT: case W.MORNING_STAR: case W.PARTISAN:
-        case W.RUNESWORD: case W.ELVEN_BROADSWORD: case W.BROADSWORD:
-            tmp++; break;
-        case W.FLAIL: case W.RANSEUR: case W.VOULGE:
-            tmp += rnd(4); break;
-        case W.ACID_VENOM: case W.HALBERD: case W.SPETUM:
-            tmp += rnd(6); break;
-        case W.BATTLE_AXE: case W.BARDICHE: case W.TRIDENT:
-            tmp += d(2, 4); break;
-        case W.TSURUGI: case W.DWARVISH_MATTOCK: case W.TWO_HANDED_SWORD:
-            tmp += d(2, 6); break;
-        default: break;
-        }
-    } else {
-        const d0 = WEP_SDAM[otyp];
-        if (d0) tmp = rnd(d0);
-        switch (otyp) {
-        case W.IRON_CHAIN: case W.CROSSBOW_BOLT: case W.MACE: case W.SILVER_MACE:
-        case W.WAR_HAMMER: case W.FLAIL: case W.SPETUM: case W.TRIDENT:
-            tmp++; break;
-        case W.BATTLE_AXE: case W.BARDICHE: case W.BILL_GUISARME:
-        case W.GUISARME: case W.LUCERN_HAMMER: case W.MORNING_STAR:
-        case W.RANSEUR: case W.BROADSWORD: case W.ELVEN_BROADSWORD:
-        case W.RUNESWORD: case W.VOULGE:
-            tmp += rnd(4); break;
-        case W.ACID_VENOM:
-            tmp += rnd(6); break;
-        default: break;
-        }
-    }
-    // C ref: weapon.c:305-311 — the enchantment only applies to a weapon or
-    // weptool, and a negative one is clamped to 0 HERE (not to 1 at the end).
-    const Is_weapon = (otmp.oclass === undefined
-        || otmp.oclass === WEAPON_CLASS || is_weptool(otmp));
-    if (Is_weapon) {
-        tmp += otmp.spe || 0;
-        if (tmp < 0) tmp = 0;
-    }
-    // (oc_material <= LEATHER vs thick_skinned, and the PM_SHADE shade_glare
-    //  zeroing, need objects[].oc_material, which mkobj.js does not carry.)
-
-    // C ref: weapon.c:330-352 — the "weapon vs. monster type" damage bonuses.
-    // These are RNG draws, not flat modifiers, and were missing entirely: a
-    // Priest's blessed mace vs any undead or demon rolls rnd(4) EVERY hit.
-    if (Is_weapon || otmp.oclass === COIN_CLASS /* GEM/BALL/CHAIN too */) {
-        let bonus = 0;
-        if (otmp.blessed && mon_hates_blessings(mon)) bonus += rnd(4);
-        if (is_axe(otmp) && is_wooden(mon?.data)) bonus += rnd(4);
-        // material == SILVER && mon_hates_silver(mon) -> rnd(20): also needs
-        // objects[].oc_material.  artifact_light() -> rnd(8): no artifacts.
-        tmp += bonus;
-    }
-
-    // C ref: weapon.c:365-371 — erosion is subtracted from any positive result.
-    if (tmp > 0) {
-        tmp -= Math.max(otmp.oeroded || 0, otmp.oeroded2 || 0);
-        if (tmp < 1) tmp = 1;
-    }
-    return tmp;
-}
-
-// C ref: mondata.c mon_hates_blessings(mon) = is_vampshifter(mon)
-// || is_undead(ptr) || is_demon(ptr).  (is_vampshifter needs mon->cham, which
-// this port does not track; no vampshifter reaches hero melee here.)
-function mon_hates_blessings(mon) {
-    const f2 = mflags2_of(mon?.data);
-    return (f2 & (M2_UNDEAD | M2_DEMON)) !== 0;
-}
-// C ref: obj.h is_axe(otmp) — WEAPON/TOOL with oc_skill == P_AXE.
-function is_axe(otmp) {
-    return (otmp.oclass === WEAPON_CLASS || otmp.oclass === TOOL_CLASS)
-        && (objects[otmp.otyp]?.oc_skill ?? 0) === P_AXE;
-}
-// C ref: mondata.h is_wooden(ptr) — the wood golem alone.
-const PM_WOOD_GOLEM = 254;
-function is_wooden(mdat) { return mdat?.pmidx === PM_WOOD_GOLEM; }
+// dmgval() now lives in js/weapon.js (weapon.c:216).  The copy that used to
+// sit here dropped the large-monster IRON_CHAIN case, the thick-skinned /
+// PM_SHADE zeroing, the HEAVY_IRON_BALL weight bonus and the silver rnd(20),
+// and gated the vs-monster bonus block on COIN_CLASS where C tests
+// GEM/BALL/CHAIN.
+export { dmgval } from './weapon.js';
 
 // C ref: include/mondata.h bigmonst() / mons[].msize >= MZ_LARGE.
 function largemonst(mdat) {
@@ -2132,6 +2034,24 @@ export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
              : gnamed;
     }
 
+    // C ref: do_name.c:127 — `if (do_hallu) { rname = rndmonnam(&code); ... }`.
+    // A hallucinating hero sees a RANDOM species (or a bogusmon line) in place
+    // of every monster name, and both picks come off the DISPLAY rng, so
+    // skipping them left that stream at the wrong offset for the next draw.
+    // SUPPRESS_HALLUCINATION (0x04) is how disclosure asks for the true name.
+    const do_hallu = !!game.u?.uhallu && !(_suppress & SUPPRESS_HALLUCINATION);
+    if (do_hallu) {
+        const { rndmonnam, bogon_is_pname } = halluc_naming();
+        const r = rndmonnam();
+        let art = article;
+        if (bogon_is_pname(r.code) && (art === 3 || !has_adjectives))
+            art = 0;
+        const hnamed = adj + r.name;
+        return art === 3 ? 'your ' + hnamed
+             : art === 1 ? 'the ' + hnamed
+             : art === 2 ? an(hnamed) : hnamed;
+    }
+
     const named = adj + base;
 
     switch (article) {
@@ -2142,7 +2062,23 @@ export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
     }
 }
 
+// do_name.js is registered from this file's tail, so it is always evaluated by
+// the time x_monnam() can run; the indirection keeps the import one-directional.
+const SUPPRESS_HALLUCINATION = 0x04;   // C ref: do_name.h
+let _halluc_naming = null;
+function halluc_naming() {
+    return _halluc_naming || { rndmonnam: () => ({ name: 'bogon', code: '' }),
+                               bogon_is_pname: () => false };
+}
+export function register_halluc_naming(m) { _halluc_naming = m; }
+
 // C ref: hacklib.c an() — prepend "a"/"an".
 function an(s) {
     return (/^[aeiou]/i.test(s) ? 'an ' : 'a ') + s;
 }
+
+// do_name.c's wrapper family (js/do_name.js) drives x_monnam(); register the
+// implementation here rather than importing uhitm.js from there, so do_name.js
+// stays below uhitm.js in the module graph.
+register_monnam_hooks({ x_monnam, mon_pmname });
+register_halluc_naming({ rndmonnam, bogon_is_pname });

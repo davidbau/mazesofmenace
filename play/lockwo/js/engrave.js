@@ -83,7 +83,7 @@ function dlb_fgets(data, pos) {
 // C ref: rumors.c get_rnd_line(). Position randomly inside [startpos,endpos),
 // land mid-line, read the rest of that line, then use the *next* line (wrapping
 // to startpos at EOF/endpos). Lines are xcrypt'd and underscore-padded.
-function get_rnd_line(data, startpos, endpos, padlength) {
+function get_rnd_line(data, startpos, endpos, padlength, rng = rn2) {
     if (!endpos) endpos = data.length;
     const filechunksize = endpos - startpos;
     if (filechunksize < 1) return '';
@@ -91,7 +91,7 @@ function get_rnd_line(data, startpos, endpos, padlength) {
     let bufstr = '';
     let next = startpos;
     for (let trylimit = 10; trylimit > 0; --trylimit) {
-        const chunkoffset = rn2(filechunksize);
+        const chunkoffset = rng(filechunksize);
         ({ line: bufstr, next } = dlb_fgets(data, startpos + chunkoffset));
         if (!padlength || bufstr.length <= padlength + 1) break;
     }
@@ -195,10 +195,15 @@ const rubouts = [
 
 // C ref: rumors.c get_rnd_text() — pick a random line from a whole data file
 // (no true/false split). Skips the leading "don't edit" comment line.
-function get_rnd_text(data, padlength) {
+// The `rng` argument is C's `int (*rng)(int)` parameter: bogusmon() passes
+// rn2_on_display_rng, everything else passes the core rn2.
+export function get_rnd_text(data, padlength, rng = rn2) {
     const { next: starttxt } = dlb_fgets(data, 0); // skip comment line
-    return get_rnd_line(data, starttxt, 0, padlength);
+    return get_rnd_line(data, starttxt, 0, padlength, rng);
 }
+// C ref: global.h:42 MD_PAD_BOGONS.
+export const MD_PAD_BOGONS = 20;
+export function decode_dlb(b64) { return decodeBase64(b64); }
 
 // C ref: engrave.c make_grave() -> get_rnd_text(EPITAPHFILE, buf, rn2, MD_PAD_RUMORS).
 // Emits the same rn2() draw the C side does against the makedefs-built 'epitaph' file

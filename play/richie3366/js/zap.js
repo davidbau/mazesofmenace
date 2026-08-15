@@ -82,7 +82,7 @@ import { zap_dig, fracture_rock, break_statue, bury_objs, unearth_objs } from '.
 import {
     killed, xkilled, flash_hits_mon, m_is_steadfast,
 } from './uhitm.js';
-import { mon_nam, Monnam, christen_monst, hliquid } from './do_name.js';
+import { mon_nam, Monnam, christen_monst, hliquid, Hallucination } from './do_name.js';
 import { finish_losehp_done } from './end.js';
 import {
     burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap,
@@ -130,7 +130,7 @@ import {
     STRAT_WAITMASK,
     POOL, MOAT, WATER, ICE, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP,
     DRAWBRIDGE_DOWN, ICED_POOL, ICED_MOAT, DB_ICE, DB_UNDER, DB_FLOOR,
-    Is_waterlevel, Is_rogue_level, Is_airlevel, AD_RBRE, UNCHANGING,
+    Is_waterlevel, Is_rogue_level, Is_airlevel, AD_RBRE, AD_SPEL, UNCHANGING,
     PLNMSG_ENVELOPED_IN_GAS, PLNMSG_OBJ_GLOWS, IRONBARS, SDOOR, SHOPBASE,
     SHOP_DOOR_COST,
     SHOP_BARS_COST, W_NONDIGGABLE, COST_CANCEL, COST_UNCURS, COST_UNBLSS,
@@ -2704,6 +2704,7 @@ async function cancel_item(obj) {
 /**
  * C ref: zap.c cancel_monst — resist gate; optional invent cancel;
  * hero rehumanize / mon mcan + normal_shape; clay golem kill.
+ * Hero invent is JS Array (C gi.invent nobj); minvent stays nobj (D-1017).
  * @returns {Promise<boolean>} true if not resisted
  */
 export async function cancel_monst(
@@ -2717,17 +2718,25 @@ export async function cancel_monst(
         return false;
     }
 
-    if (self_cancel) {
-        const chain = youdefend ? game.invent : mdef.minvent;
-        for (let otmp = chain; otmp; otmp = otmp.nobj) {
-            await cancel_item(otmp);
+    if (self_cancel) { /* 1st cancel inventory */
+        if (youdefend) {
+            for (const otmp of game.invent || []) {
+                await cancel_item(otmp);
+            }
+        } else {
+            for (let otmp = mdef.minvent; otmp; otmp = otmp.nobj) {
+                await cancel_item(otmp);
+            }
         }
         if (youdefend) {
+            if (game.disp) game.disp.botl = true; /* potential AC change */
             if (game.flags) game.flags.botl = true;
             find_ac();
+            /* update_inventory(); -- handled by caller */
         }
     }
 
+    /* now handle special cases */
     if (youdefend) {
         if (Upolyd()) {
             const umon = game.u?.umonnum | 0;
@@ -2735,7 +2744,10 @@ export async function cancel_monst(
                 if (!Blind()) {
                     await pline('Some writing vanishes from your head!');
                 } else {
-                    await You_feel('light headed.');
+                    /* C: "dark" rather than "heavy" is intentional */
+                    await You_feel(
+                        `${Hallucination() ? 'dark' : 'light'} headed.`,
+                    );
                 }
                 game.u.mh = 0;
             }
@@ -2756,12 +2768,12 @@ export async function cancel_monst(
             || (mdef.data?.mndx | 0) === PM_CLAY_GOLEM) {
             if (canseemon(mdef)) {
                 await pline(
-                    `Some writing vanishes from ${mon_nam(mdef)}'s head!`,
+                    `Some writing vanishes from ${s_suffix_zap(mon_nam(mdef))} head!`,
                 );
             }
             if (allow_cancel_kill) {
                 if (youattack) await killed(mdef);
-                else await monkilled(mdef, '', AD_RBRE);
+                else await monkilled(mdef, '', AD_SPEL);
             }
         }
     }

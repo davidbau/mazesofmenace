@@ -21,7 +21,8 @@ import {
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, Upolyd, HAND,
 } from './const.js';
-import { retouch_object, set_artifact_intrinsic } from './artifact.js';
+import { retouch_object, set_artifact_intrinsic, is_art } from './artifact.js';
+import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { makeknown, encumber_msg, compactify_invlets } from './invent.js';
 import { uncurse, weight } from './mkobj.js';
 import { trycall } from './do_name.js';
@@ -87,11 +88,14 @@ export function is_missile(obj) {
     return sk >= -P_BOOMERANG && sk <= -P_DART;
 }
 
-/** C ref: obj.h is_pole — polearms/lance (Snickersnee artifact deferred). */
+/**
+ * C ref: obj.h is_pole — polearms/lance, or Snickersnee (distance katana).
+ */
 export function is_pole(obj) {
     if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
-    return sk === P_POLEARMS || sk === P_LANCE;
+    return sk === P_POLEARMS || sk === P_LANCE || is_art(obj, ART_SNICKERSNEE);
 }
 
 /** C ref: wield.c erodeable_wep / will_weld */

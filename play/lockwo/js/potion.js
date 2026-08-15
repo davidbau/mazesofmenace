@@ -328,13 +328,19 @@ async function adjattrib(ndx, incr, msgflg) {
 }
 
 // C ref: timeout.c speed_up(incr) — HFast gets a timed boost.
-function speed_up(incr) {
-    const wasFast = Fast();
-    uprops().HFast = (HProp('HFast') | 0) + incr;
-    if (!wasFast) {
-        game._pending_message = 'You are suddenly moving much faster.';
-        game._toplines = game._pending_message;
-    }
+// C ref: potion.c:2919 speed_up(duration).  Two bugs lived here: the trailing
+// exercise(A_DEX, TRUE) (attrib.c:509 rn2(19)) was missing, and the message was
+// written straight into _toplines, so the follow-up "Your quickness feels very
+// natural." silently overwrote it instead of paging a --More--.  Mirrors the
+// already-correct zap.js copy.
+async function speed_up(incr) {
+    const { youHaveFast, youHaveVeryFast } = await import('./allmain.js');
+    if (!youHaveVeryFast())
+        await update_topl(`You are suddenly moving ${youHaveFast() ? '' : 'much '}faster.`);
+    else
+        await update_topl('Your legs get new energy.');
+    exercise(A_DEX, true);
+    uprops().HFast = (HProp('HFast') | 0) + incr;   /* incr_itimeout(&HFast, ...) */
 }
 
 // C ref: exper.c rndexp(gaining) — a random experience total within the current
@@ -453,10 +459,12 @@ export async function potionhit_hero(obj, how) {
     // isyou per-otyp direct effect (potion.c:1683)
     switch (obj.otyp) {
     case POT_OIL:
+        // C ref: potion.c:1687 — a LIT potion of oil that hits the hero
+        // detonates: explode_oil -> splatter_burning_oil -> explode(), whose
+        // d(diluted ? 3 : 4, 4) and per-target draws are real RNG.
         if (obj.lamplit) {
-            // explode_oil(obj, u.ux, u.uy) — explode() with its own damage rolls
-            // and the fire-vs-object sweep; that subsystem is not modelled, so
-            // this stops here rather than half-apply it.
+            const { explode_oil } = await import('./explode.js');
+            await explode_oil(obj, u.ux, u.uy);
         }
         break;
     case POT_ACID:
@@ -1097,7 +1105,7 @@ async function peffect_speed(otmp) {
         game.potion_unkn = (game.potion_unkn || 0) + 1;
         return;
     }
-    speed_up(rn1(10, 100 + 60 * bcsign(otmp)));           // potion.c:1061
+    await speed_up(rn1(10, 100 + 60 * bcsign(otmp)));     // potion.c:1061
     if (is_speed && !otmp.cursed && !(HProp('HFast') & INTRINSIC)) {
         await update_topl('Your quickness feels very natural.');
         uprops().HFast = (HProp('HFast') | 0) | FROMOUTSIDE;

@@ -7,6 +7,7 @@
 // the equipment-accessibility predicates, and invent.js calls into it.
 
 import { game } from './gstate.js';
+import { hcolor } from './do_name.js';
 import { rnd } from './rng.js';
 import { pline, update_topl, newsym } from './display.js';
 import { objects, ARMOR_CLASS, WEAPON_CLASS, CORPSE } from './mkobj.js';
@@ -235,7 +236,7 @@ export function change_luck(n) {
 // C ref: do_name.c hcolor() — hallucination substitutes a random color drawn
 // from the DISPLAY rng (rn2_on_display_rng), which is a separate stream from
 // the one the sessions score, so no core draw happens here either way.
-function hcolor(colorpref) { return colorpref; }
+// js/do_name.js owns hcolor(); a NULL colorpref DRAWS even when not hallucinating.
 
 function newsym_here() { newsym(game.u?.ux, game.u?.uy); }
 

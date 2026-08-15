@@ -1388,7 +1388,12 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
 // the arm every ordinary room square actually reaches — a fire ray burning the
 // scrolls and spellbooks lying on the floor, which draws obj_resists()'s rn2(100)
 // plus one rn2(3) per item in each stack.
-async function zap_over_floor(x, y, type) {
+export async function zap_over_floor(x, y, type, _exploding_wand_typ) {
+    // C ref: zap.c:5157 — a PHYS_EXPL_TYPE blast (gas spore) has no effect on
+    // the floor and returns before anything else.  Without this guard the
+    // zaptype(-1)%10 == ZT_FIRE coincidence made a physical explosion burn the
+    // scrolls under it.
+    if (type === -1 /* PHYS_EXPL_TYPE */) return -1000;
     const damgtype = zaptype(type) % 10;
     let rangemod = 0;
     if (damgtype === ZT_FIRE)
@@ -1975,7 +1980,7 @@ async function erode_armor_mon(mon) {
 // (body) hit.  The wet-towel pre-loop is skipped (no towel on the covered
 // hero); no monster in the covered sessions wears armor, so worn_slot() always
 // reports empty for a monster victim.
-async function burnarmor(victim) {
+export async function burnarmor(victim) {
     if (!victim) return false;
     // C: while (1) switch (rn2(5)) { ... } — case 1 (cloak/suit/shirt) always
     // returns TRUE (body hit); other cases continue when the slot is empty.
@@ -2234,7 +2239,7 @@ async function potionbreathe(obj) {
 // C ref: trap.c ignite_items(objchn) — every ignitable, not-already-lit item in
 // the chain catches fire.  catch_lit() draws rn2(2) for a CURSED oil/magic lamp,
 // so this is not RNG-free: the old empty stub silently swallowed that draw.
-async function ignite_items(objchn) {
+export async function ignite_items(objchn) {
     for (const obj of (objchn || [])) {
         if (!obj.lamplit && !obj.in_use)
             await catch_lit(obj);
@@ -2347,7 +2352,7 @@ async function zap_getdir() {
 // to fall through to a silent `default:` for all of them, so a self-zap of
 // striking/fire/cold/lightning/magic-missile/invisibility/speed drew NOTHING
 // and desynchronized the rest of the session.
-async function zapyourself(obj, ordinary) {
+export async function zapyourself(obj, ordinary) {
     let learn_it = false;
     let damage = 0;
     let orig_dmg = 0;   /* for passing to destroy_items() */

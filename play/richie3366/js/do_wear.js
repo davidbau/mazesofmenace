@@ -258,7 +258,7 @@ function count_worn_stuff(accessorizing) {
  * SWAPWEP/QUIVER skip (not in this setworn path), skin/nudist/tux;
  * mirror of most E* flat fields (BLINDED→EBlinded only so far).
  */
-function confer_oc_oprop(obj, mask, on) {
+export function confer_oc_oprop(obj, mask, on) {
     if (!obj) return;
     // C: prop #0 unused; items with no conferred property use 0
     const p = (game.objects?.[obj.otyp]?.oc_oprop | 0);

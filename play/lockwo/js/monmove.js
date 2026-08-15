@@ -11,6 +11,7 @@
 import { game } from './gstate.js';
 import { acurr_eff as _acurr_cf } from './attrib.js';
 import { in_rooms as in_rooms_shk } from './shkroom.js';
+import { costly_spot } from './shk.js';
 import { mindless as mindless_flag, mflags1_of as _mf1_web, mflags2_of as _mf2_web,
     M1_ACID as M1_ACID_WEB, M2_NASTY as M2_NASTY_WEB } from './monflags_data.js';
 const TEMPLE_RT = 10, SHOPBASE_RT = 14;   // mkroom.h TEMPLE / SHOPBASE
@@ -29,6 +30,7 @@ import { rn2, rnd, rn1, rnl, d } from './rng.js';
 // by the contest's low-level monsters" comment was false — seed0030's angered
 // shopkeeper zaps a wand of striking (muse.c:1884).
 import { find_misc, use_misc, searches_for_item, find_offensive,
+    find_defensive, use_defensive,
     use_offensive as muse_use_offensive } from './muse.js';
 import {
     COLNO, ROWNO, MTSZ, BOLT_LIM, DOOR, D_CLOSED, D_LOCKED, D_BROKEN,
@@ -84,11 +86,13 @@ import { is_armed, mattk_of,
     AD_BLND } from './monattk_data.js';
 import { castmu } from './mcastu.js';
 import { dog_move, m_cansee, could_reach_item } from './dogmove.js';
-import { mon_msize, monster_by_pmidx, makemon, level_difficulty_ext } from './makemon.js';
+import { mon_msize, mon_cwt, monster_by_pmidx, makemon, level_difficulty_ext } from './makemon.js';
 // polyself.c mbodypart needs the mlet of a pet, whose .data lacks .mcls.
 const mon_mlet = (pmidx) => monster_by_pmidx(pmidx)?.mcls;
 import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl, see_with_infrared, bot_snapshot } from './display.js';
-import { mdig_tunnel, may_dig } from './dig.js';
+import { mdig_tunnel, may_dig, in_town } from './dig.js';
+import { picking_lock } from './lock.js';
+import { hits_bars } from './mthrowu.js';
 import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, objects as OBJECTS,
     weight, base_oc_weight, BOULDER, WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS,
     AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS,
@@ -98,6 +102,7 @@ import { obj_resists, resists_sleep, sleep_monst } from './zap.js';
 import { resists_fire, resists_acid } from './mondata.js';
 import { clear_path, couldsee, cansee, vision_recalc, recalc_block_point, Blind } from './vision.js';
 import { mattackm, mdisplacem } from './mhitm.js';
+import { hitval } from './weapon.js';
 import { Monnam, mon_nam, canspotmon, make_corpse, corpse_chance, dmgval,
     setmangry, relobj } from './uhitm.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_AP_TYPE } from './const.js';
@@ -1375,6 +1380,51 @@ function is_watch(ptr) {
     const i = monsndx_of(ptr);
     return i === PM_WATCHMAN || i === PM_WATCH_CAPTAIN;
 }
+// C ref: monmove.c:175 watch_on_duty(mtmp) — a peaceful watchman notices the
+// hero picking a lock or digging in Mine Town.  The `!rn2(3)` sits in the OUTER
+// condition, so the draw happens whenever the watchman is peaceful, the hero is
+// stepping inside town, the watchman can see and can see the hero — not only
+// when a crime is in progress.  Leaving it out cost one core draw per watchman
+// turn in Mine Town.
+async function watch_on_duty(mtmp) {
+    const u = game.u;
+    if (!mtmp?.mpeaceful || !u) return;
+    if (!in_town((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))) return;
+    if (!mtmp.mcansee || !m_canseeu(mtmp)) return;
+    if (rn2(3)) return;
+
+    const at = picking_lock();
+    const loc = at ? game.level?.at(at.x, at.y) : null;
+    if (at && loc && IS_DOOR(loc.typ) && (loc.doormask & D_LOCKED)) {
+        if (couldsee(mtmp.mx, mtmp.my)) {
+            // mon_yells()/angry_guards() draw no RNG on the reachable path; the
+            // D_WARNED latch is what decides which line is spoken.
+            const D_WARNED = 0x10;   // C ref: rm.h
+            if ((loc.looted | 0) & D_WARNED) {
+                await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
+            } else {
+                await mon_yells(mtmp, 'Hey, stop picking that lock!');
+                loc.looted = (loc.looted | 0) | D_WARNED;
+            }
+            stop_occupation_local();
+        }
+    }
+    // else if (is_digging()) watch_dig(...): the hero-digging branch needs
+    // svc.context.digging, which this port does not carry on the watch path.
+}
+// C ref: sounds.c mon_yells(mon, msg) — spoken aloud when the hero isn't deaf.
+async function mon_yells(mtmp, msg) {
+    const { update_topl } = await import('./display.js');
+    if (canspotmon(mtmp)) await update_topl(`${Monnam(mtmp)} yells: "${msg}"`);
+    else await update_topl(`You hear someone yell: "${msg}"`);
+}
+// C ref: allmain.c stop_occupation() — drop the picklock/force occupation.
+function stop_occupation_local() {
+    game._picklock_box = null;
+    game._force_box = null;
+    game.xlock = null;
+}
+
 function is_mind_flayer(ptr) {
     const i = monsndx_of(ptr);
     return i === PM_MIND_FLAYER || i === PM_MASTER_MIND_FLAYER;
@@ -2445,6 +2495,15 @@ function acidic_mm(ptr) { return (_mf1_web(ptr) & M1_ACID_WEB) !== 0; }      // 
 function extra_nasty_mm(ptr) { return (_mf2_web(ptr) & M2_NASTY_WEB) !== 0; } // mondata.h:120
 function count_wsegs_mm() { return 0; }   // long worms carry no segment chain here
 
+// C ref: trap.c wearing_iron_shoes(mtmp) — which_armor(mtmp, W_ARMF) is a pair
+// of iron shoes.  js/objects_data.js row: otyp 164 == IRON_SHOES.
+const IRON_SHOES_OTYP = 164;
+function mon_wearing_iron_shoes(mtmp) {
+    for (const o of (mtmp?.minvent || []))
+        if (o.otyp === IRON_SHOES_OTYP && (o.owornmask | 0)) return true;
+    return false;
+}
+
 async function mon_trapeffect(mtmp, trap) {
     switch (trap.ttyp) {
     case ROCKTRAP: {
@@ -2502,6 +2561,53 @@ async function mon_trapeffect(mtmp, trap) {
                 : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
         }
         return Trap_Effect_Finished;
+    }
+    case LANDMINE: {
+        // C ref: trap.c:2527 trapeffect_landmine() — the monster branch.  The
+        // rnd(16) damage roll happens BEFORE the hero/monster split and BEFORE
+        // the trigger-weight test, so a mine a light monster walks over still
+        // burns two draws (rnd(16) + rn2(cwt+1)).  Dropping them made every
+        // monster step onto a mine silently (w3-human-wiz-debug step 494).
+        let damage = rnd(16);                                  // trap.c:2533
+        if (mon_wearing_iron_shoes(mtmp)) damage = Math.trunc((damage + 3) / 4);
+        // weight.h WT_ELF 800; MINE_TRIGGER_WT = WT_ELF / 2.  data.cwt is the
+        // species corpse weight (makemon.js mon_cwt for pets, whose own .data
+        // record carries none).
+        const cwt = (mtmp.data?.cwt != null) ? mtmp.data.cwt
+            : (mon_cwt(mtmp.data?.pmidx) ?? 0);
+        if (rn2(cwt + 1) < 400) return Trap_Effect_Finished;   // trap.c:2606
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        const already_seen = trap.tseen;
+        if (mon_check_in_air(mtmp)) {
+            if (in_sight && !already_seen) {
+                const { seetrap } = await import('./trap.js');
+                await pline_mon(mtmp,
+                    `A trigger appears in a pile of soil below ${mon_nam(mtmp)}.`);
+                seetrap(trap);
+            }
+            if (rn2(3)) return Trap_Effect_Finished;           // trap.c:2617
+            if (in_sight) {
+                newsym(mtmp.mx, mtmp.my);
+                await pline_mon(mtmp, `The air currents set `
+                    + `${already_seen ? 'a land mine' : 'it'} off!`);
+            }
+        } else if (in_sight) {
+            newsym(mtmp.mx, mtmp.my);
+            await pline_mon(mtmp, `KAABLAMM!!!  ${Monnam(mtmp)} triggers `
+                + `${trap.madeby_u ? 'your' : 'a'} land mine!`);
+        }
+        // C ref: trap.c blow_up_landmine() — scatter() (which draws) and the
+        // drawbridge/liquid arms are NOT ported; the mine still becomes the pit
+        // C leaves behind so the monster does not re-trigger it every turn.
+        trap.ttyp = PIT;
+        trap.madeby_u = false;
+        {
+            const { seetrap } = await import('./trap.js');
+            seetrap(trap);
+        }
+        const trapkilled = await mon_thitm(0, mtmp, null, damage, false);
+        return trapkilled ? Trap_Killed_Mon
+            : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
     }
     case SQKY_BOARD: {
         // C ref: trapeffect_sqky_board() else-branch (monster), trap.c:1438.  A
@@ -3318,9 +3424,12 @@ async function m_move(mtmp) {
     const poss = mfndpos(mtmp, flag);
     const cnt = poss.length;
     // C ref: monmove.c:1925-1929 — a boxed-in monster gives up, but a unicorn
-    // falls through to the (empty) selection loop.  C's find_defensive/
-    // use_defensive item-use arm is a separate unported subsystem.
-    if (cnt === 0 && !is_unicorn(ptr)) return MMOVE_NOMOVES;
+    // falls through to the (empty) selection loop.  tryescape=TRUE here (unlike
+    // dochug's FALSE), which drops find_defensive's dist2>25 early-out.
+    if (cnt === 0 && !is_unicorn(ptr)) {
+        if (find_defensive(mtmp, true) && await use_defensive(mtmp)) return MMOVE_DONE;
+        return MMOVE_NOMOVES;
+    }
 
     let nix = omx, niy = omy;
     let nidist = dist2(nix, niy, ggx, ggy);
@@ -3784,10 +3893,10 @@ export async function dochug(mtmp) {
     // miscellaneous items", immediately after distfleeck and before Demonic
     // Blackmail / PHASE THREE.  A monster that uses an item spends its whole turn
     // on it and does NOT move; getting this wrong made every item-user take a
-    // step C's stood still for.  find_defensive/use_defensive are not ported (see
-    // js/muse.js), so C's `if (find_defensive(...)) {...} else if (find_misc())`
-    // reduces to the else branch here.
-    if (find_misc(mtmp)) {
+    // step C's stood still for.
+    if (find_defensive(mtmp, false)) {
+        if (await use_defensive(mtmp) !== 0) return 1;
+    } else if (find_misc(mtmp)) {
         if (await use_misc(mtmp) !== 0) return 1;
     }
 
@@ -3796,10 +3905,8 @@ export async function dochug(mtmp) {
     // flayer's turn, so it belongs in the stream even though mind_blast() itself
     // (and its follow-up set_apparxy + distfleeck recalc) is not ported — that
     // 1-in-20 outcome is left as an honest divergence rather than a guess.
-    // watch_on_duty() draws no RNG unless the hero is actually committing a
-    // crime it can see, which needs the unported shk/vault bookkeeping.
     if (is_watch(mdat)) {
-        /* watch_on_duty(mtmp): not ported — see comment */
+        await watch_on_duty(mtmp);
     } else if (is_mind_flayer(mdat) && !rn2(20)) {
         /* mind_blast(mtmp) + set_apparxy + distfleeck recalc: not ported */
     }
@@ -4707,14 +4814,8 @@ async function mpickstuff(mtmp) {
             // not pline: C leaves toplin == NEED_MORE so a following message
             // ("You feel less confused now.") shares the line.
             if (cansee(mtmp.mx, mtmp.my) && game.flags?.verbose) {
-                const { distant_doname } = await import('./invent.js');
-                // C ref: objnam.c distant_name() — `far` is
-                // !(obj->oartifact || distu(x,y) <= (BOLT_LIM^2)*2 - BOLT_LIM)
-                // with the xray_range widening; ours always named it in full.
-                const _r = (game.u?.xray_range > 2) ? game.u.xray_range : 2;
-                const _neardist = (_r * _r) * 2 - _r;
-                const _dx = mtmp.mx - (game.u?.ux ?? 0), _dy = mtmp.my - (game.u?.uy ?? 0);
-                const _far = !(otmp.oartifact || (_dx * _dx + _dy * _dy) <= _neardist);
+                const { distant_doname, distant_far } = await import('./invent.js');
+                const _far = distant_far(otmp, mtmp.mx, mtmp.my);
                 await update_topl(`${Monnam(mtmp)} picks up ${distant_doname(otmp, _far)}.`);
             }
             // C ref: mon.c:1901 obj_extract_self(otmp3) — the split fragment was
@@ -4764,11 +4865,7 @@ function m_search_items(mtmp, goal, ap) {
     // but NOT of the rectangle below, which is (2*minr+1)^2 squares wide.
     if (!mtmp.mpeaceful && is_mercenary_flag(mtmp.data)) minr = 1;
 
-    // C ref:1354 — in a shop, usually skip the scan (rolls rn2(25)).  No hostile
-    // flee/balk monster stands in a shop in the recorded sessions, so this is a
-    // no-op here; kept faithful so the roll lands if a shop monster ever reaches
-    // it.  mon_in_shop() is conservatively FALSE (no shop detection wired), which
-    // matches the prior behaviour of not drawing this roll.
+    // C ref:1354 — in a shop, usually skip the scan (rolls rn2(25)).
     if (mon_in_shop(omx, omy) && (rn2(25) || mtmp.isshk)) {
         /* goto finish_search */
     } else {
@@ -4844,17 +4941,9 @@ function m_search_items(mtmp, goal, ap) {
     return false;
 }
 
-// C ref: shk.c *in_rooms(x,y,SHOPBASE) — is the square inside a shop?  No shop
-// detection is wired into the move loop yet; the recorded flee/balk monsters are
-// never in a shop, so a conservative FALSE preserves the (correct-here) rng
-// stream.  Replace with real in_rooms(SHOPBASE) lookup when shop-monster parity
-// is needed.
-function mon_in_shop(_x, _y) { return false; }
-
-// C ref: shk.c costly_spot(x, y) — is the square shop floor whose contents the
-// shopkeeper owns?  Same missing shop-room wiring as mon_in_shop() above, so
-// conservatively FALSE: a monster never skips a pile as "merchandise".
-function costly_spot(_x, _y) { return false; }
+// C ref: monmove.c:1355 `*in_rooms(omx, omy, SHOPBASE)` — the FIRST room letter
+// of the buffer, not its emptiness.  shkroom.js's in_rooms() returns an array.
+function mon_in_shop(x, y) { return !!in_rooms_shk(x, y, SHOPBASE_RT)[0]; }
 
 // C ref: levl[x][y].lit — is the map square lit?  Mirrors dogmove.js isLit().
 function levl_lit(x, y) { return !!game.level?.at(x, y)?.lit; }
@@ -5363,19 +5452,7 @@ function is_missile_otyp(otyp) {
 // previously ignored and wsdam always used, so a large/polymorphed hero took the
 // wrong die.  The blessed / silver / axe-vs-wood bonuses need artifact and
 // material bookkeeping the thrown path does not carry.
-function dmgval_thrown(otmp, mon) {
-    let tmp = 0;
-    // mdef is the hero here; gy.youmonst.data is mons[u.umonnum].
-    const ptr = (mon === game.u || mon?._isyou)
-        ? monster_by_pmidx(game.u?.umonnum ?? -1) : mon?.data;
-    const dam = bigmonst(ptr) ? thrown_wldam(otmp.otyp) : thrown_wsdam(otmp.otyp);
-    if (dam) tmp = rnd(dam);
-    if (otmp.oclass === WEAPON_CLASS_MM) {
-        tmp += (otmp.spe | 0);
-        if (tmp < 0) tmp = 0;
-    }
-    return tmp;
-}
+const dmgval_thrown = dmgval;   // js/weapon.js owns the complete weapon.c:216
 
 // ── monster weapon wielding (C ref: weapon.c select_hwep / mon_wield_item) ──
 // A monster with an AT_WEAP attack wields the best hand-to-hand weapon it
@@ -5395,10 +5472,14 @@ const HWEP_PRIORITY = [55 /*TWO_HANDED_SWORD*/, 45 /*BATTLE_AXE*/,
     35 /*ELVEN_DAGGER*/, 36 /*ORCISH_DAGGER*/, 40 /*KNIFE*/];
 
 // C ref: weapon.c m_carrying(mon, otyp) — the monster's first minvent obj of
-// that type, else null.
+// that type, else null.  C's minvent CHAIN is newest-first (mkobj.c:2648
+// add_to_minv prepends), so "first" means the most recently acquired one; our
+// minvent array is append-ordered and has to be read backwards.
 // Exported for muse.js: C's m_carrying() is used all over muse.c's item search.
 export function m_carrying(mon, otyp) {
-    for (const o of (mon?.minvent || [])) if (o.otyp === otyp) return o;
+    const inv = mon?.minvent;
+    if (!inv) return null;
+    for (let i = inv.length - 1; i >= 0; i--) if (inv[i].otyp === otyp) return inv[i];
     return null;
 }
 
@@ -5652,16 +5733,7 @@ function vtense_mm(subj, verb) {
 // per-otyp hand list.  The blessed-vs-undead/demon bonus is modelled; the
 // is_spear/kebabable, trident-vs-swimmer and pick-vs-xorn bonuses need tables
 // this port does not carry yet and would surface as an honest divergence.
-function hitval_mm(otmp, mtmp) {
-    if (!otmp) return 0;
-    const is_weapon = otmp.oclass === WEAPON_CLASS_MM;
-    let tmp = 0;
-    if (is_weapon) tmp += (otmp.spe | 0);
-    tmp += WEP_HITBON[otmp.otyp] ?? 0;
-    if (is_weapon && otmp.blessed && (is_undead(mtmp?.data) || is_demon(mtmp?.data)))
-        tmp += 2;
-    return tmp;
-}
+const hitval_mm = hitval;   // js/weapon.js owns the complete weapon.c:149
 
 // C ref: dothrow.c:1912 omon_adj(mon, obj, mon_notices) — how much easier this
 // target is to hit.  The rn2(10) "immobilized target wakes up" roll only fires
@@ -5695,7 +5767,7 @@ function omon_adj(mtmp, obj, mon_notices) {
 // can_blnd() answers FALSE without a roll for an AT_WEAP hit by anything that
 // isn't a cream pie / venom / potion of blindness, and setmangry() is skipped
 // while svc.context.mon_moving is set, so neither draws here.
-async function ohitmon(mtmp, otmp, range, verbose, bx, by, thrower) {
+export async function ohitmon(mtmp, otmp, range, verbose, bx, by, thrower) {
     const vis = !!cansee(bx, by);
     // notonhead (a long worm's tail square) only affects worm messaging.
     // shade_miss(): no shades are reachable on these levels, so a missile never
@@ -5855,15 +5927,23 @@ function mhim_mm(mtmp) {
 // square stop it?  TRUE for the edge of the map, an obstructed square
 // (wall/stone) or a closed door.
 //
-// The IRONBARS `hits_bars()` clause (which rolls rn2 for small objects) and the
-// `!pre && IS_SINK(bhitpos)` clause need terrain none of these levels puts in a
-// missile's path; they are omitted rather than approximated, so no RNG is
-// invented for them.
-function mt_flightcheck(bx, by, dx, dy) {
+// The IRONBARS clause is now real (js/mthrowu.js hits_bars): a dart, arrow,
+// spear, knife or pair of gloves slips BETWEEN the bars and flies on, while a
+// mace or a boulder stops dead — that changes where the missile lands and
+// therefore who it can still hit.  hit_bars()'s breakage half needs
+// dothrow.c's breaks()/hero_breaks(), so the flight check asks the
+// pass-through question only (C's `whodidit == -1` form).
+//
+// The `!pre && IS_SINK(bhitpos)` clause needs terrain none of these levels puts
+// in a missile's path and is still omitted, so no RNG is invented for it.
+function mt_flightcheck(bx, by, dx, dy, otmp, forcehit) {
     const nx = bx + dx, ny = by + dy;
     if (!isok(nx, ny)) return true;
     if (IS_OBSTRUCTED(terrainTyp(nx, ny))) return true;
-    return closed_door_at(nx, ny);
+    if (closed_door_at(nx, ny)) return true;
+    if (terrainTyp(nx, ny) === IRONBARS && hits_bars(otmp, !!forcehit))
+        return true;
+    return false;
 }
 
 // C ref: mthrowu.c m_throw() — fly the single missile from (x,y) toward the
@@ -5895,7 +5975,7 @@ async function m_throw_at_hero(mon, mdat, sx, sy, dx, dy, range, otmp) {
     // C ref: mthrowu.c:637 — `if (MT_FLIGHTCHECK(TRUE, 0)) { drop_throw(...);
     // return; }`.  Before any flight, if the very first square is off the map, a
     // wall or a closed door, the missile just falls at the thrower's feet.
-    if (mt_flightcheck(sx, sy, dx, dy)) {
+    if (mt_flightcheck(sx, sy, dx, dy, singleobj, false)) {
         drop_thrown_missile(mon, singleobj, sx, sy, 0);
         return;
     }
@@ -5923,7 +6003,7 @@ async function m_throw_at_hero(mon, mdat, sx, sy, dx, dy, range, otmp) {
     let bx = sx, by = sy;
     // C ref: mthrowu.c:639 — MT_FLIGHTCHECK(TRUE, 0) BEFORE the flight loop: a
     // missile launched straight into a wall/closed door never moves.
-    if (mt_flightcheck(bx, by, dx, dy, true)) {
+    if (mt_flightcheck(bx, by, dx, dy, singleobj, false)) {
         drop_thrown_missile(mon, singleobj, bx, by, 0);
         return;
     }
@@ -5972,11 +6052,14 @@ async function m_throw_at_hero(mon, mdat, sx, sy, dx, dy, range, otmp) {
         }
         // forcehit roll (mthrowu.c:798) — fires on every non-hit square the
         // missile crosses, including a hero-miss square.
-        rn2(5);
+        // C ref: mthrowu.c:798 `forcehit = !rn2(5);` — the result is the
+        // always_hit argument the IRONBARS clause reads, so it has to be kept,
+        // not discarded.
+        const forcehit = !rn2(5);
         // C ref: mthrowu.c:799 — `if (!range || MT_FLIGHTCHECK(FALSE, forcehit))`
         // the missile is out of range or about to fly into a wall/closed door, so
         // it lands on the square it currently occupies and the flight ends.
-        if (!range || mt_flightcheck(bx, by, dx, dy)) break;
+        if (!range || mt_flightcheck(bx, by, dx, dy, singleobj, forcehit)) break;
         // C: otherwise it draws the flight glyph at the just-crossed square
         // (mthrowu.c:824) and keeps going.
         flash_at(bx, by);

@@ -199,7 +199,14 @@ export async function geh_mazewalk(mx, my, dir) {
     const c = geh_loc(mx, my);
     let x = c.x, y = c.y;
     if (!isok(x, y)) return;
-    const ftyp = game.level?.flags?.corrmaze ? CORR : ROOM;
+    // C ref: sp_lev.c lspo_mazewalk():779 — `coordxy ftyp = ROOM;` is the
+    // INITIALISER, and only the table form's `typ = "<mapchr>"` can change it.
+    // The `if (ftyp < 1) ftyp = corrmaze ? CORR : ROOM;` fallback below it is
+    // therefore dead for every des.mazewalk() in dat/: the 3-argument
+    // positional form never touches ftyp.  baalz.lua is the only level that
+    // sets corrmaze, so it (alone) got a CORR maze here where C digs ROOM —
+    // one '#' where the recorder shows the DEC room dot.
+    const ftyp = ROOM;
 
     switch (dir) {
     case W_NORTH: y--; break;

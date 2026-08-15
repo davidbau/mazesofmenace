@@ -319,9 +319,9 @@ export async function growl(mtmp) {
     await wake_nearto(mtmp.mx, mtmp.my, (ptr?.mlevel ?? 0) * 18);
 }
 
-// SCOPE: the arms that hand off to an unported subsystem — MS_ORACLE
-// (doconsult), MS_PRIEST (priest_talk), MS_LEADER/MS_NEMESIS/MS_GUARDIAN
-// (quest_chat), MS_SELL (shk_chat), MS_VAMPIRE and MS_RIDER (both need the
+// SCOPE: the arms that hand off to an unported subsystem — MS_PRIEST
+// (priest_talk), MS_LEADER/MS_NEMESIS/MS_GUARDIAN
+// (quest_chat, ported), MS_SELL (shk_chat), MS_VAMPIRE and MS_RIDER (both need the
 // 3.6-tribute / urace-noun machinery) — fall through to the silent ECMD_TIME
 // tail, as does the In_endgame mplayer_talk() arm of MS_HUMANOID.  Their RNG is
 // therefore not emitted; nothing in the covered dungeon range reaches them.
@@ -363,6 +363,13 @@ export async function domonnoise(mtmp) {
         const { quest_talk } = await import('./questpgr.js');
         await quest_talk(mtmp);
         return ECMD_TIME;
+    }
+    case MS_ORACLE: {
+        // C ref: sounds.c:724 — the Oracle's whole consultation transaction
+        // (rumors.c doconsult), including outrumor()'s BY_ORACLE adverb draws
+        // and outoracle()'s rnd(oracle_cnt - 1).
+        const { doconsult } = await import('./rumors.js');
+        return await doconsult(mtmp);
     }
     case MS_WERE:
         // C: `night() ^ !rn2(13)` — the roll happens either way on a full moon.

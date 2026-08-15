@@ -1307,9 +1307,22 @@ export async function flash_hits_mon(mtmp, otmp) {
  * C ref: uhitm.c stumble_onto_mimic — reveal + wakeup(FALSE).
  * AD_STCK set_ustuck / map_invisible deferred.
  */
-async function stumble_onto_mimic(mtmp) {
+export async function stumble_onto_mimic(mtmp) {
     await that_is_a_mimic(mtmp, MIM_REVEAL);
     await wakeup(mtmp, false);
+}
+
+/**
+ * C ref: uhitm.c force_attack — temporarily set forcefight then do_attack.
+ * pets_too: also forcefight tame (whip uses FALSE).
+ */
+export async function force_attack(mtmp, pets_too) {
+    if (!game.context) game.context = {};
+    const save_Forcefight = !!game.context.forcefight;
+    if (pets_too || !mtmp?.mtame) game.context.forcefight = true;
+    const attacked = await do_attack(mtmp);
+    game.context.forcefight = save_Forcefight;
+    return attacked;
 }
 
 /**

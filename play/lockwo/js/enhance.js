@@ -137,16 +137,9 @@ export function P_NAME(skill, rolemnum) {
     return P_NAMES[skill] || 'no skill';
 }
 
-// C ref: weapon.c weapon_type — |oc_skill| (ammo's skill is the negated
-// launcher skill).  P_NONE (0) for non-weapons.
-export function weapon_type(obj) {
-    if (!obj) return P_BARE_HANDED_COMBAT;
-    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS
-        && obj.oclass !== GEM_CLASS)
-        return P_NONE;
-    const sk = objects[obj.otyp]?.oc_skill ?? P_NONE;
-    return sk < 0 ? -sk : sk;
-}
+// C ref: weapon.c:1517 weapon_type(obj) — js/weapon.js owns it.
+export { weapon_type } from './weapon.js';
+import { weapon_type } from './weapon.js';
 
 // C ref: weapon.c uwep_skill_type().
 export function uwep_skill_type() {
@@ -295,6 +288,12 @@ function peaked_skill(skill, S) {
 export function p_skill_of(skill) {
     const { P_SKILL } = build_skill_state();
     return P_SKILL[skill];
+}
+// C ref: weapon.c:1156 can_advance(skill, FALSE) — exported so weapon.c's
+// add_weapon_skill()/give_may_advance_msg() can count advanceable skills
+// without rebuilding the skill state themselves.
+export function can_advance_pub(skill, speedy = false) {
+    return can_advance(skill, speedy, build_skill_state());
 }
 
 // C ref: weapon.c skill_ranges[].

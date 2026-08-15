@@ -23,6 +23,7 @@ import {
     P_BARE_HANDED_COMBAT, In_quest,
 } from './const.js';
 import { objects as mkobjObjects } from './mkobj.js';
+import { weapon_type } from './weapon.js';
 import { p_skill_of } from './enhance.js';
 import { update_topl } from './display.js';
 import { phase_of_the_moon, friday_13th, night, NEW_MOON, FULL_MOON } from './calendar.js';
@@ -663,10 +664,7 @@ const SKILL_NAME_BY_NUM = {
     20: 'bow', 21: 'sling', 22: 'crossbow', 23: 'dart', 24: 'shuriken',
     25: 'boomerang', 26: 'whip', 27: 'unicorn horn',
 };
-function weapon_type(obj) {
-    const sk = mkobjObjects?.[obj.otyp]?.oc_skill ?? 0;
-    return sk < 0 ? -sk : sk; // P_NONE (0) for non-weapons
-}
+// weapon_type() comes from js/weapon.js (weapon.c:1517).
 function weaponDescr(obj) {
     return SKILL_NAME_BY_NUM[weapon_type(obj)] || obj.name || mkobjObjects?.[obj.otyp]?.name || 'weapon';
 }

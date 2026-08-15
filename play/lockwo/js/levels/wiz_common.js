@@ -231,7 +231,10 @@ export async function wiz_mazewalk(mx, my, dir) {
     const c = wiz_loc(mx, my);
     let x = c.x, y = c.y;
     if (!isok(x, y)) return;
-    const ftyp = game.level?.flags?.corrmaze ? CORR : ROOM;
+    // C ref: sp_lev.c lspo_mazewalk():779 `coordxy ftyp = ROOM;` — the
+    // corrmaze fallback only applies when an explicit `typ` maps below 1, so
+    // the 3-argument des.mazewalk() always digs ROOM.
+    const ftyp = ROOM;
 
     switch (dir) {
     case W_NORTH: y--; break;

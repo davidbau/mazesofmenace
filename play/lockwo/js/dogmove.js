@@ -45,7 +45,7 @@ import { mflags1_of, msound_of, perceives_flag, M1_NOEYES,
     M1_ACID, M1_POIS, M1_CARNIVORE, M1_HERBIVORE, M1_METALLIVORE,
     humanoid, is_human_flag, is_elf_flag, is_dwarf_flag, is_gnome_flag,
     is_orc_flag, is_giant_flag, is_undead_flag,
-    is_animal, mindless, nohands, M1_TUNNEL,
+    is_animal, mindless, nohands, M1_TUNNEL, M1_NEEDPICK,
     passes_walls_flag, throws_rocks_flag, is_swimmer_flag,
     regenerates_flag as regenerates, is_flyer_flag } from './monflags_data.js';
 import { healmon, mon_hates_silver } from './mon.js';
@@ -639,11 +639,12 @@ function which_armor_arms(mtmp) {
 // droppables() consults for a non-animal pet.
 function tunnels(ptr) { return cri_tunnels(ptr); }
 function needspick(ptr) {
-    // C ref: mondata.h needspick(ptr) — a tunneller that needs a digging tool
-    // (everything except the rock-eaters: rock mole, umber hulk, dwarf, ...).
-    return !!ptr && !NEEDSPICK_EXEMPT.has(ptr.name);
+    // C ref: mondata.h:33 needspick(ptr) == (mflags1 & M1_NEEDPICK).  Was a
+    // two-name exemption set ('rock mole', 'umber hulk') that answered TRUE for
+    // every other species — including the WOODCHUCK, the third M1_TUNNEL
+    // species C lets dig without a tool.
+    return (mflags1_of(ptr) & M1_NEEDPICK) !== 0;
 }
-const NEEDSPICK_EXEMPT = new Set(['rock mole', 'umber hulk']);
 // C ref: mondata.h verysmall(ptr) = (msize < MZ_SMALL).
 function verysmall(ptr) {
     const sz = ptr?.msize ?? mon_msize(ptr?.pmidx) ?? 2;

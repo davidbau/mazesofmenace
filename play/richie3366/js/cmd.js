@@ -16,7 +16,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR,
          ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1,
-         ECMD_OK, ECMD_TIME, ECMD_CANCEL, DOMOVE_RUSH, DOMOVE_WALK,
+         ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
          xdir, ydir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
@@ -1107,12 +1107,14 @@ export async function rhack(key) {
     const canned = (key === 0) ? cmdq_pop() : null;
     if (canned) {
         const res = await canned();
-        // C: ECMD_TIME keeps remaining CQ_CANNED; cancel clears queue.
-        if (res === 1) {
+        // C rhack: (res & ECMD_TIME) → context.move; CANCEL|FAIL →
+        // reset_cmd_vars(TRUE) clears remaining CQ_CANNED. Boolean true
+        // from doapply is ECMD_TIME (true & 1); D-1018 canned re-apply.
+        if ((res & ECMD_TIME) !== 0) {
             game.context.move = 1;
             game.kickedloc = { x: 0, y: 0 };
         } else {
-            if (res !== 0) cmdq_clear(); // cancel/fail
+            if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) cmdq_clear();
             game.context.move = 0;
         }
         return;

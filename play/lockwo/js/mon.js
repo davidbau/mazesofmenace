@@ -994,10 +994,10 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
     if (!creation) {
         if (sawmon) {
             // C ref: worn.c:924-947 — "<Mon> [removes <old> and ]puts on <new>."
-            const { distant_doname } = await import('./invent.js');
-            let newarm = distant_doname(best), buf = '';
+            const { distant_doname, distant_far } = await import('./invent.js');
+            let newarm = distant_doname(best, distant_far(best, mon.mx, mon.my)), buf = '';
             if (old) {
-                const oldarm = distant_doname(old);
+                const oldarm = distant_doname(old, distant_far(old, mon.mx, mon.my));
                 buf = ` removes ${oldarm} and`;
                 // identical descriptions read "another <armour>", not "a <armour>"
                 if (newarm.toLowerCase() === oldarm.toLowerCase())

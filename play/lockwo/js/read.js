@@ -326,6 +326,10 @@ async function seffects(sobj) {
         if (Confused() || sobj.cursed) break;
         if (await seffect_gold_detection(sobj)) return true; // strange_feeling used it up
         break;
+    case 339 /*SCR_FIRE*/:
+    case 368 /*SPE_FIREBALL*/:
+        await seffect_fire(sobj);
+        return true;                       // seffect_fire uses the scroll up
     case SCR_PUNISHMENT:
         // C ref: read.c seffect_punishment — a confused OR blessed read only
         // makes the hero feel guilty; otherwise punish(sobj).  gk.known is set
@@ -1330,6 +1334,53 @@ async function unpunish() {
     }
     u.bc_felt = 0;
 }
+
+// C ref: read.c:1850 seffect_fire(sobjp) — the scroll of fire / fireball spell.
+// The damage roll happens BEFORE useup(), and explode() applies it; the blessed
+// arm's getpos() consumes real input, so it must not be skipped.
+// ZT_SPELL_O_FIRE is 11 (splatter_burning_oil's kludge, explode.c:966).
+async function seffect_fire(sobj) {
+    const u = game.u;
+    const otyp = sobj.otyp;
+    const SCR_FIRE_OTYP = 339;
+    const sblessed = !!sobj.blessed;
+    const confused = !!Confused();
+    const already_known = (sobj.oclass === SPBOOK_CLASS
+                           || !!objects[otyp]?.oc_name_known);
+    const cc = { x: u.ux, y: u.uy };
+    const cval = (sobj.blessed ? 1 : 0) - (sobj.cursed ? 1 : 0);
+    let dam = Math.trunc((2 * (rn1(3, 3) + 2 * cval) + 1) / 3);
+    useup(sobj);
+    if (!already_known) learnscrolltyp(SCR_FIRE_OTYP);
+    if (confused) {
+        // Fire_resistance / Underwater are not reachable for the covered
+        // heroes; the ordinary confused arm burns a hand for 1 HP (no RNG).
+        await pline(`The scroll catches fire and you burn your ${
+            body_part_hands()}.`);
+        u.uhp = (u.uhp | 0) - 1;
+        game.disp = game.disp || {};
+        game.disp.botl = true;
+        return;
+    }
+    if (sblessed) {
+        if (!already_known) await pline('This is a scroll of fire!');
+        dam *= 5;
+        await pline('Where do you want to center the explosion?');
+        const { getpos } = await import('./hack.js');
+        const pos = await getpos('the desired position', u.ux, u.uy, null, true, true);
+        if (pos && pos.x != null) { cc.x = pos.x; cc.y = pos.y; }
+    }
+    if (cc.x === u.ux && cc.y === u.uy) {
+        await pline('The scroll erupts in a tower of flame!');
+        // burn_away_slime(): only matters to a sliming hero, and draws no RNG.
+    }
+    const { explode } = await import('./explode.js');
+    const { EXPL_FIERY } = await import('./const.js');
+    await explode(cc.x, cc.y, 11 /*ZT_SPELL_O_FIRE*/, dam, SCROLL_CLASS, EXPL_FIERY);
+}
+
+// C ref: body.c body_part(HAND) pluralised — "hands" for a normal hero.
+function body_part_hands() { return 'hands'; }
 
 // C ref: read.c learnscrolltyp(scrolltyp) — makeknown + more_experienced(0,10),
 // only for a not-yet-identified type.  Returns whether it did anything.

@@ -1253,13 +1253,10 @@ function On_stairs(x, y) {
     return false;
 }
 
-// C ref: do_name.c hliquid(liquidpref) — returns liquidpref as-is unless the
-// hero is hallucinating (then a random name off the display RNG, which does
-// not touch the game RNG).  The contest heroes that reach these liquid
-// messages are not hallucinating, so return the preferred word.
-export function hliquid(liquidpref) {
-    return liquidpref;
-}
+// C ref: do_name.c:1492 hliquid(liquidpref) — js/do_name.js owns it.  The old
+// identity stub here skipped the display-rng draw a hallucinating hero makes,
+// which shifts every later hallucination pick.
+export { hliquid } from './do_name.js';
 
 // C ref: dungeon.c surface(x,y) — the noun for the terrain at (x,y) used in
 // "sit on the %s", "Having fun sitting on the %s?", etc.  SURFACE_AT resolves

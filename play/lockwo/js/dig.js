@@ -405,7 +405,7 @@ export async function zap_dig() {
 // Duplicated from makemon.js in_town_js()/fountain.js in_town() rather than
 // imported: those two are file-private, and the S_LEVEL `town` flag stands in
 // for svl.level.flags.has_town, which nothing in this port writes.
-function in_town(x, y) {
+export function in_town(x, y) {
     const lvl = game.level;
     const slev = Is_special(game.u?.uz);
     if (!slev || !slev.flags?.town) return false;

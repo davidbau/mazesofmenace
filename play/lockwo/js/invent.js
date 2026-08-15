@@ -76,6 +76,10 @@ import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { find_ac } from './u_init.js';
 import { moveloop_turn, youHaveFast, youHaveVeryFast } from './allmain.js';
 import { acurr_eff, exercise } from './attrib.js';
+import { hitval, dbon, weapon_type, weapon_hit_bonus_core,
+         weapon_dam_bonus_core } from './weapon.js';
+import { P_TWO_WEAPON_COMBAT as P_TWO_WEAPON_COMBAT_INV,
+         P_RIDING as P_RIDING_INV } from './const.js';
 import {
     UNENCUMBERED, OVERLOADED,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
@@ -1873,16 +1877,45 @@ export function doname_invent(obj) {
 // that reveal, so the distant form is simply "doname without observing".
 // (mon.c mpickstuff() uses it: a monster grabbing an unidentified item must not
 // add its appearance to the hero's '\' discoveries list.)
-// C ref: objnam.c distant_name(obj, func) — it temporarily clears obj->dknown
-// when the object is FAR, so a distant pickup reads "a scroll" not "a scroll of
-// magic mapping".  Without the distance test every remote mpickstuff named the
-// item in full.
+// C ref: objnam.c distant_name(obj, func):386-404 — the FAR branch only bumps
+// gd.distantname, which suppresses xname_flags()'s observe_object(); it does
+// NOT hide what is already known, so an already-dknown gem still reads "blue
+// gem".  (Pre-3.6.1 C forced Blind here, which is where the old clear-dknown
+// port came from.)  The NEAR branch observes before the name is built, so the
+// appearance shows even on first sight.
 export function distant_doname(obj, far) {
     if (!obj) return 'nothing';
-    if (!far) return doname_invent_core(obj);
+    if (!far) { observe_object(obj); return doname_invent_core(obj); }
+    // FAR: C only bumps gd.distantname here, which suppresses xname's
+    // observe_object(); it does NOT hide dknown, so an already-seen gem still
+    // reads "blue gem".  This port however leaves obj.dknown UNSET on most
+    // freshly made objects and simple_obj_name() reads "unset" as known, so
+    // stand in for mkobj.c mksobj_init()'s missing `clear_dknown()` — and only
+    // for that unset case.  (C also clears it for shields and every oc_merge
+    // type; not modelled, no covered session names one from a distance.)
+    if (obj.dknown != null) return doname_invent_core(obj);
     const sav = obj.dknown;
-    obj.dknown = 0;
+    obj.dknown = DKNOWNS_CLASSES.has(obj.oclass) ? 0 : 1;
     try { return doname_invent_core(obj); } finally { obj.dknown = sav; }
+}
+
+// C ref: mkobj.c dknowns[] — the object classes whose appearance must be seen
+// up close before it is known.
+const DKNOWNS_CLASSES = new Set([WAND_CLASS, RING_CLASS, POTION_CLASS,
+    SCROLL_CLASS, GEM_CLASS, SPBOOK_CLASS, WEAPON_CLASS, TOOL_CLASS,
+    VENOM_CLASS]);
+
+// C ref: objnam.c distant_name():370-388 — the near/far test.  neardist is the
+// rounded square around the hero (widened by the Eyes of the Overworld's
+// xray_range); artifacts always count as near.  <ox,oy> is get_obj_location(),
+// i.e. the carrier's spot for a minvent item.
+export function distant_far(obj, ox, oy) {
+    if (obj?.oartifact) return false;
+    if (ox == null || oy == null) return true;
+    const r = (game.u?.xray_range > 2) ? game.u.xray_range : 2;
+    const neardist = (r * r) * 2 - r;
+    const dx = ox - (game.u?.ux ?? 0), dy = oy - (game.u?.uy ?? 0);
+    return (dx * dx + dy * dy) > neardist;
 }
 
 // C ref: objnam.c doname_base():1657 — an unpaid inventory item shows what the
@@ -4998,12 +5031,8 @@ export async function doswapweapon() {
 }
 
 
-// C ref: include/obj.h weapon_type()/uslinging() helpers used by throwing.
-function weapon_type(obj) {
-    if (!obj) return 0; // P_NONE
-    const sk = objects[obj.otyp]?.oc_skill ?? 0;
-    return sk < 0 ? -sk : sk; // ammo's skill is the negated launcher skill
-}
+// weapon_type() now comes from js/weapon.js (weapon.c:1517); the copy here
+// dropped C's WEAPON/TOOL/GEM class gate.
 function uslinging() {
     return !!game.uwep && (objects[game.uwep.otyp]?.oc_skill ?? 0) === 21; // P_SLING
 }
@@ -5235,14 +5264,7 @@ function find_mac_thrown(mtmp) {
 // C ref: weapon.c hitval(otmp, mon) — spe + oc_hitbon, plus the blessed bonus
 // against undead/demons.  (kebabable/trident/pick-axe are the other three arms;
 // they are flat modifiers with no RNG, like the ones js/uhitm.js also omits.)
-function hitval_thrown(weapon, mtmp) {
-    if (!weapon) return 0;
-    const isWeapon = weapon.oclass === WEAPON_CLASS || is_weptool(weapon);
-    let tmp = (isWeapon ? (weapon.spe || 0) : 0) + (WEP_HITBON[weapon.otyp] || 0);
-    const mf2 = mflags2_of(mtmp?.data) || 0;
-    if (isWeapon && weapon.blessed && (mf2 & (M2_UNDEAD | M2_DEMON))) tmp += 2;
-    return tmp;
-}
+const hitval_thrown = hitval;   // js/weapon.js owns the complete weapon.c:149
 
 // C ref: dothrow.c omon_adj(mon, obj, mon_notices) — target size/immobility and
 // the weapon's own to-hit value.
@@ -5371,7 +5393,9 @@ async function hmon_thrown(mon, obj, dieroll, skillsnap) {
         if (use_weapon_skill) {
             const fired = is_ammo(obj) && ammo_and_launcher(obj, game.uwep);
             const skillwep = fired ? game.uwep : obj;
-            dmg += weapon_dam_bonus_thrown(fired ? skillsnap.wep : skillsnap.obj);
+            dmg += weapon_dam_bonus_thrown(fired ? skillsnap.wep : skillsnap.obj,
+                                          skillsnap,
+                                          fired ? skillsnap.wep_type : skillsnap.obj_type);
             if (train_weapon_skill) use_skill(weapon_type(skillwep), 1);
         }
     }
@@ -5402,26 +5426,21 @@ async function hmon_thrown(mon, obj, dieroll, skillsnap) {
 }
 
 // C ref: attrib.c dbon() — strength damage bonus (same table as js/uhitm.js).
-function dbon_thrown() {
-    const str = acurr_eff(A_STR);
-    if (str < 6) return -1;
-    if (str < 16) return 0;
-    if (str < 18) return 1;
-    if (str === 18) return 2;
-    if (str < 118) return 3;
-    if (str < 122) return 4;
-    if (str < 125) return 5;
-    return 6;
+// C ref: skills.h martial_bonus() = Role_if(SAMURAI) || Role_if(MONK).
+const PM_MONK_INV = 5, PM_SAMURAI_INV = 9;
+function martial_bonus_inv() {
+    const m = game.urole?.mnum;
+    return m === PM_MONK_INV || m === PM_SAMURAI_INV;
 }
-// C ref: weapon.c weapon_dam_bonus(weapon) — the skill-level damage modifier.
-function weapon_dam_bonus_thrown(skill) {
-    switch (skill) {
-    case 0: /* P_ISRESTRICTED */
-    case 1: /* P_UNSKILLED */ return -2;
-    case 2: /* P_BASIC */     return 0;
-    case 3: /* P_SKILLED */   return 1;
-    default:                  return 2;   /* P_EXPERT and above */
-    }
+const dbon_thrown = dbon;   // js/weapon.js owns the complete weapon.c:993
+// C ref: weapon.c:1644 weapon_dam_bonus(weapon).  The old copy took a bare
+// skill LEVEL, so it had no P_NONE arm (a thrown non-weapon read -2 instead of
+// 0), no two-weapon arm and no riding term.
+function weapon_dam_bonus_thrown(skill, snap, type) {
+    return weapon_dam_bonus_core(type, skill, snap.wep, {
+        martial: snap.martial, usteed: snap.usteed,
+        twoweap: snap.twoweap, skill_riding: snap.riding,
+    });
 }
 // C ref: uhitm.c hmon_hitmon_misc_obj() default arm — `dmg = (obj->owt + 99)
 // / 100` capped, i.e. an ordinary object hurts by its weight.
@@ -5499,7 +5518,7 @@ async function thitmonst(mon, obj, skillsnap) {
                 // C ref: dothrow.c:2163 `tmp += uwep->spe - greatest_erosion(uwep)`
                 // — a rusty bow aims worse; the erosion term was missing.
                 tmp += (game.uwep.spe || 0) - greatest_erosion(game.uwep);
-                tmp += weapon_hit_bonus_thrown(skillsnap.wep);
+                tmp += weapon_hit_bonus_thrown(skillsnap.wep, skillsnap, skillsnap.wep_type);
                 // Elves and Samurai are highly trained with their own bows.
                 const elf = Race_if_ELF_thrown();
                 const samurai = Role_if_SAMURAI_thrown();
@@ -5514,7 +5533,7 @@ async function thitmonst(mon, obj, skillsnap) {
             if (otyp === BOOMERANG) tmp += 4;
             else if (throwing_weapon(obj)) tmp += 2;
             else tmp -= 2;      /* not meant to be thrown (obj == thrownobj) */
-            tmp += weapon_hit_bonus_thrown(skillsnap.obj);
+            tmp += weapon_hit_bonus_thrown(skillsnap.obj, skillsnap, skillsnap.obj_type);
         }
 
         if (tmp >= dieroll) {
@@ -5641,13 +5660,13 @@ async function hmon_misc_thrown(mon, obj) {
 
 // C ref: weapon.c weapon_hit_bonus(weapon) — skill-based to-hit modifier (the
 // riding and two-weapon arms don't apply to a throw).
-function weapon_hit_bonus_thrown(skill) {
-    switch (skill) {
-    case 0: case 1: return -4;      /* P_ISRESTRICTED / P_UNSKILLED */
-    case 2: return 0;               /* P_BASIC */
-    case 3: return 2;               /* P_SKILLED */
-    default: return 3;              /* P_EXPERT and above */
-    }
+// C ref: weapon.c:1545 weapon_hit_bonus(weapon) — same completeness gap the
+// damage copy had (no P_NONE arm, no two-weapon arm, no riding penalty).
+function weapon_hit_bonus_thrown(skill, snap, type) {
+    return weapon_hit_bonus_core(type, skill, snap.wep, {
+        martial: snap.martial, usteed: snap.usteed,
+        twoweap: snap.twoweap, skill_riding: snap.riding,
+    });
 }
 
 // C ref: dothrow.c should_mulch_missile(obj).
@@ -5790,6 +5809,17 @@ async function throw_obj(obj, dir, shotlimit = 0) {
         const skillsnap = {
             obj: _enh.p_skill_of(_enh.weapon_type(otmp)),
             wep: game.uwep ? _enh.p_skill_of(_enh.weapon_type(game.uwep)) : 0,
+            // weapon.c's other three P_SKILL() readings: the discipline TYPE
+            // (P_NONE has to answer 0, not the P_ISRESTRICTED -2/-4), the
+            // two-weapon skill, and riding.  Sampled here for the same reason
+            // as the two above.
+            obj_type: _enh.weapon_type(otmp),
+            wep_type: game.uwep ? _enh.weapon_type(game.uwep) : 0,
+            twoweap_skill: _enh.p_skill_of(P_TWO_WEAPON_COMBAT_INV),
+            riding: _enh.p_skill_of(P_RIDING_INV),
+            usteed: !!game.u?.usteed,
+            twoweap: !!game.u?.twoweap,
+            martial: martial_bonus_inv(),
         };
         freeinv(otmp);
         res = await throwit(otmp, skillsnap, wep_mask);
@@ -6111,6 +6141,8 @@ function harmless_missile(obj) {
 
 // C ref: youprop.h Blind — the hero cannot see.
 function Blinded_hero() { return (game.u?.blinded | 0) > 0 || !!game.ublindf; }
+// C ref: hack.h Hallucination — used by mergable()'s bknown/rknown arms.
+function Hallucination_hero() { return !!(game.u?.uhallu || game.u?.HHallucination || game.u?.uprops?.Hallucination); }
 // C ref: mondata.c can_blnd(&youmonst, &youmonst, AT_WEAP, obj) — a blindfold
 // or towel (but NOT lenses) already covers the eyes.  (The eyeless-form and
 // helmet-visor arms need polyform/visor state this port does not carry.)
@@ -8853,14 +8885,35 @@ export function stackobj(obj) {
 
 export function mergable(otmp, obj) {
     if (!obj || !otmp || obj === otmp || obj.otyp !== otmp.otyp || obj.nomerge || otmp.nomerge) return false;
+    // C ref: invent.c mergable():`|| !objects[obj->otyp].oc_merge` — the object
+    // TYPE has to be stackable at all.  mkobj.js packs oc_merge as bit 5
+    // (F_MERGE) of the row's `flags` word (same accessor zap.js:483 uses).
+    if (!(objects[obj.otyp]?.flags & 32 /*F_MERGE*/)) return false;
     if (obj.oclass === COIN_CLASS) return true;
     if (obj.cursed !== otmp.cursed || obj.blessed !== otmp.blessed) return false;
     if (obj.how_lost === LOST_EXPLODING || otmp.how_lost === LOST_EXPLODING) return false;
     if (otmp.how_lost && obj.how_lost !== otmp.how_lost) return false;
+    if (obj.globby) return true;
     if (obj.unpaid !== otmp.unpaid || obj.spe !== otmp.spe || obj.no_charge !== otmp.no_charge
         || obj.obroken !== otmp.obroken || obj.otrapped !== otmp.otrapped || obj.lamplit !== otmp.lamplit)
         return false;
     if (obj.oclass === FOOD_CLASS && (obj.oeaten !== otmp.oeaten || obj.orotten !== otmp.orotten)) return false;
+    // C ref: invent.c mergable() — the "have they been LOOKED at the same way"
+    // block.  Dropping it merged a seen stack into an unseen one (and an eroded
+    // item into a pristine one), which changes both the "Things that are here"
+    // listing and, when the level is saved to bones, its object count.
+    if ((obj.dknown | 0) !== (otmp.dknown | 0)
+        || ((obj.bknown | 0) !== (otmp.bknown | 0) && !Role_if(PM_CLERIC)
+            && (Blind_for_wear() || Hallucination_hero()))
+        || (obj.oeroded | 0) !== (otmp.oeroded | 0)
+        || (obj.oeroded2 | 0) !== (otmp.oeroded2 | 0)
+        || (obj.greased | 0) !== (otmp.greased | 0))
+        return false;
+    if (erosion_matters(obj)
+        && ((!!obj.oerodeproof) !== (!!otmp.oerodeproof)
+            || ((obj.rknown | 0) !== (otmp.rknown | 0)
+                && (Blind_for_wear() || Hallucination_hero()))))
+        return false;
     if (obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN)
         if (obj.corpsenm !== otmp.corpsenm) return false;
     if (safe_oname(obj) && safe_oname(otmp) && safe_oname(obj) !== safe_oname(otmp)) return false;
