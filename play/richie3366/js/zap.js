@@ -67,7 +67,7 @@ import {
 import { findit } from './detect.js';
 import {
     confdir, fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
-    is_lava, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
+    is_lava, is_moat, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
 } from './hack.js';
 import {
     nonliving, is_demon, nohands, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
@@ -392,12 +392,6 @@ export function is_ice(x, y) {
     if ((lev.typ | 0) === ICE) return true;
     return (lev.typ | 0) === DRAWBRIDGE_UP
         && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE;
-}
-
-/** C ref: dbridge.c is_moat — juiblex swamp deferred. */
-function is_moat(x, y) {
-    if (!isok(x, y)) return false;
-    return (game.level?.at?.(x, y)?.typ | 0) === MOAT;
 }
 
 /**

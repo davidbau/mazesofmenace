@@ -58,6 +58,7 @@ import {
     is_vampshifter,
     vampshifted,
     is_bat,
+    is_unicorn,
     nonliving,
     amorphous,
     unsolid,
@@ -445,16 +446,21 @@ function sgn(x) {
     return x < 0 ? -1 : x > 0 ? 1 : 0;
 }
 
+/** C ref: you.h Race_if — gu.urace.mnum == X. */
+function Race_if(pmnum) {
+    return (game.urace?.mnum | 0) === (pmnum | 0);
+}
+
 /** C ref: monflag.h enum ms_sounds — msounds[] D-1053; peace/malign D-1079. */
 const MS_LEADER = 36;
 const MS_NEMESIS = 37;
 const MS_GUARDIAN = 38;
+const MS_PRIEST = 41;
 
 /**
  * C ref: makemon.c set_malign — kill-alignment weight from type + peaceful.
  * Named omissions: priest/minion EPRI/EMIN individual align ×5 when those
- * mextra fields are absent. m_initweap still gates MS_GUARDIAN/MS_PRIEST
- * by mndx, not ptr.msound.
+ * mextra fields are absent.
  */
 export function set_malign(mtmp) {
     if (!mtmp?.data) return;
@@ -1180,15 +1186,14 @@ function m_initweap_default(mtmp, ptr) {
 
 /**
  * C ref: makemon.c quest_mon_represents_role — human quest leader/nemesis
- * as archetype of the hero's role. Tables omit msound; gate by urole
- * ldrnum/neminum (set in role_init).
+ * as archetype of the hero's role (priests and monks). Role_if(role_pm)
+ * plus ptr->msound MS_LEADER / MS_NEMESIS (D-1088; not ldrnum/neminum).
  */
 function quest_mon_represents_role(ptr, role_pm) {
     if (!ptr || ptr.mlet !== 'S_HUMAN') return false;
     if ((game.urole?.mnum | 0) !== (role_pm | 0)) return false;
-    const mndx = ptr.mndx | 0;
-    return mndx === (game.urole?.ldrnum | 0)
-        || mndx === (game.urole?.neminum | 0);
+    const ms = ptr.msound | 0;
+    return ms === MS_LEADER || ms === MS_NEMESIS;
 }
 
 // C ref: makemon.c m_initweap — ordinary-level armed-mlet envelope
@@ -1373,8 +1378,7 @@ function m_initweap(mtmp) {
             }
         } else if (
             // C: ptr->msound == MS_PRIEST || quest_mon_represents_role(ptr, PM_CLERIC)
-            // tables omit msound; ALIGNED/HIGH_CLERIC + Arch Priest / nemesis
-            mm === pm('ALIGNED_CLERIC') || mm === pm('HIGH_CLERIC')
+            (ptr.msound | 0) === MS_PRIEST
             || quest_mon_represents_role(ptr, pm('CLERIC'))
         ) {
             // C: makemon.c m_initweap MS_PRIEST — mksobj(MACE,FALSE,FALSE)
@@ -1383,14 +1387,9 @@ function m_initweap(mtmp) {
             if (!rn2(2)) curse(otmp);
             mpickobj(mtmp, otmp);
         } else if (
-            // C: ptr->msound == MS_GUARDIAN — tables omit msound; gate by mndx
-            mm === pm('STUDENT') || mm === pm('ATTENDANT')
-            || mm === pm('ABBOT') || mm === pm('ACOLYTE')
-            || mm === pm('GUIDE') || mm === pm('APPRENTICE')
-            || mm === pm('CHIEFTAIN') || mm === pm('PAGE')
-            || mm === pm('ROSHI') || mm === pm('WARRIOR')
-            || mm === pm('HUNTER') || mm === pm('THUG')
-            || mm === pm('NEANDERTHAL')
+            // C: ptr->msound == MS_GUARDIAN then switch(mm); PM_NINJA between
+            // priest and guardian is still named-omit (C-JS-MAP).
+            (ptr.msound | 0) === MS_GUARDIAN
         ) {
             // C: makemon.c m_initweap MS_GUARDIAN switch
             switch (mm) {
@@ -1452,7 +1451,7 @@ function m_initweap(mtmp) {
                 break;
             }
         }
-        // PM_NINJA + quest_mon_represents_role(PM_MONK) deferred (C-JS-MAP)
+        // C: PM_NINJA between priest and guardian — named omit (C-JS-MAP)
         break;
     case 'S_DEMON':
         // C: named demon specials then is_demon → FALLTHROUGH default
@@ -1854,7 +1853,7 @@ function m_initinv(mtmp) {
             }
         } else if (
             // C: ptr->msound == MS_PRIEST || quest_mon_represents_role(ptr, PM_CLERIC)
-            ptr.mndx === pm('ALIGNED_CLERIC') || ptr.mndx === pm('HIGH_CLERIC')
+            (ptr.msound | 0) === MS_PRIEST
             || quest_mon_represents_role(ptr, pm('CLERIC'))
         ) {
             // C: makemon.c m_initinv MS_PRIEST — robe/cloak, shield, gold
@@ -2106,7 +2105,8 @@ export function makemon(mdat, x, y, mmflags = 0) {
     // C: ptr->msound == MS_LEADER && quest_info(MS_LEADER) == mndx
     const ldr = game.urole?.ldrnum ?? NON_PM;
     const nem = game.urole?.neminum ?? NON_PM;
-    if (ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0)) {
+    if ((ptr.msound | 0) === MS_LEADER
+        && ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0)) {
         if (!game.quest_status) game.quest_status = {};
         game.quest_status.leader_m_id = mtmp.m_id;
     }
@@ -2120,10 +2120,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
         mtmp.female = 1;
     else if (is_male(ptr) || ((mmflags & MM_MALE) !== 0 && maleok))
         mtmp.female = 0;
-    // C: MS_LEADER/MS_NEMESIS gender from role_init (quest_status)
-    else if (ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0))
+    // C: ptr->msound == MS_LEADER/NEMESIS && quest_info(...) == mndx
+    else if ((ptr.msound | 0) === MS_LEADER
+        && ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0))
         mtmp.female = game.quest_status?.ldrgend | 0;
-    else if (nem !== NON_PM && nem != null && (ptr.mndx | 0) === (nem | 0))
+    else if ((ptr.msound | 0) === MS_NEMESIS
+        && nem !== NON_PM && nem != null && (ptr.mndx | 0) === (nem | 0))
         mtmp.female = game.quest_status?.nemgend | 0;
     else mtmp.female = femaleok ? rn2(2) : 0;
 
@@ -2152,7 +2154,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
 
     // C: switch (ptr->mlet) BEFORE set_malign / G_SGROUP (makemon.c:1303).
     // Cave spider is G_SGROUP — mkobj_at(RANDOM) must burn before group rn2(2)
-    // (D-0761). Named omissions: orc/elf peace; unicorn align peace.
+    // (D-0761). S_ORC/S_UNICORN mlet peace D-1092 (5.0 has no S_ELF mlet).
     if (ptr.mlet === 'S_MIMIC') set_mimic_sym(mtmp);
     else if (ptr.mlet === 'S_SPIDER' || ptr.mlet === 'S_SNAKE') {
         // C: in_mklev → mkobj_at(RANDOM) then hideunder(mtmp).
@@ -2197,6 +2199,17 @@ export function makemon(mdat, x, y, mmflags = 0) {
         // C: if (rn2(5) && !u.uhave.amulet) msleeping = 1
         if (rn2(5) && !(game.u?.uhave?.amulet || game.u?.uhave_amulet))
             mtmp.msleeping = 1;
+    } else if (ptr.mlet === 'S_ORC') {
+        // C: makemon.c case S_ORC — Race_if(PM_ELF) forces hostile after
+        // peace_minded (elves are S_HUMAN; hatemask already hates M2_ORC).
+        if (Race_if(pm('ELF'))) mtmp.mpeaceful = 0;
+    } else if (ptr.mlet === 'S_UNICORN') {
+        // C: case S_UNICORN — is_unicorn && co-align → always peaceful
+        // (overrides peace_minded rn2 / amulet hostility; pony/horse skip).
+        if (is_unicorn(ptr)
+            && sgn(game.u?.ualign?.type ?? 0) === sgn(ptr.maligntyp | 0)) {
+            mtmp.mpeaceful = 1;
+        }
     } else if (ptr.mlet === 'S_BAT') {
         // C: Inhell && is_bat(ptr) → mon_adjust_speed(mtmp, 2, NULL)
         // (case 2: permspeed=MFAST, no creation msg; boots check empty)
@@ -2241,8 +2254,8 @@ export function makemon(mdat, x, y, mmflags = 0) {
         // SPE_DIG when first Wizard on earth — deferred (fire/air/water first)
     } else if (ptr.mndx === PM_CROESUS) {
         mitem = otyp('TWO_HANDED_SWORD');
-    } else if (nem !== NON_PM && nem != null && (ptr.mndx | 0) === (nem | 0)) {
-        // C: ptr->msound == MS_NEMESIS (tables omit msound → urole.neminum)
+    } else if ((ptr.msound | 0) === MS_NEMESIS) {
+        // C: makemon.c — ptr->msound == MS_NEMESIS (role_init wrote msound)
         mitem = otyp('BELL_OF_OPENING');
     } else if (ptr.mndx === PM_PESTILENCE) {
         mitem = otyp('POT_SICKNESS');
@@ -2275,7 +2288,8 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     }
 
-    // C: set_malign after peaceful changes (orc/unicorn/emin deferred)
+    // C: set_malign after peaceful changes (S_ORC/S_UNICORN mlet D-1092;
+    // dprince bribe / raven BEC_DE_CORBIN / emin roaming still deferred)
     set_malign(mtmp);
 
     // C: anymon && !(mmflags & MM_NOGRP) → small/large group (after sleep)

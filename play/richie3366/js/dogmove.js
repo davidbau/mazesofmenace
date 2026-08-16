@@ -40,6 +40,10 @@ const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 
+/** C ref: monflag.h enum ms_sounds — pal/target tests (D-1093). */
+const MS_LEADER = 36;
+const MS_GUARDIAN = 38;
+
 const MTSZ = 4;
 const SQSRCHRADIUS = 5;
 
@@ -706,9 +710,11 @@ function find_friends(mtmp, mtarg, maxdist) {
         if (pal) {
             if (pal.mtame) {
                 if (!pal.minvis) return 1;
-            } else if (pal.data?.msound === 'MS_LEADER'
-                || pal.data?.msound === 'MS_GUARDIAN') {
-                return 1;
+            } else {
+                // C: quest leaders and guardians are always seen
+                const ms = pal.data?.msound | 0;
+                if (ms === MS_LEADER || ms === MS_GUARDIAN)
+                    return 1;
             }
         }
     }
@@ -719,8 +725,9 @@ function find_friends(mtmp, mtarg, maxdist) {
 function score_targ(mtmp, mtarg) {
     let score = 0;
     // Non-confused path (pet not conf) — early returns skip rnd(5)
-    if (mtarg.data?.msound === 'MS_LEADER'
-        || mtarg.data?.msound === 'MS_GUARDIAN') {
+    // C: never target quest friendlies (dogmove.c score_targ)
+    const tms = mtarg.data?.msound | 0;
+    if (tms === MS_LEADER || tms === MS_GUARDIAN) {
         return -5000;
     }
     if (distmin(mtmp.mx, mtmp.my,
@@ -866,8 +873,8 @@ export async function dog_move(mtmp, after) {
                 || (mtmp2.mtame && mtmp.mtame && !Conflict)
                 || (max_passive_dmg(mtmp2, mtmp) >= mtmp.mhp)
                 || (((mtmp.mhp * 4 < mtmp.mhpmax)
-                    || mtmp2.data?.msound === 'MS_GUARDIAN'
-                    || mtmp2.data?.msound === 'MS_LEADER')
+                    || (mtmp2.data?.msound | 0) === MS_GUARDIAN
+                    || (mtmp2.data?.msound | 0) === MS_LEADER)
                     && mtmp2.mpeaceful && !Conflict)) {
                 continue;
             }

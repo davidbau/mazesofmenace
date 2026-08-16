@@ -8,9 +8,10 @@ import {
     CC_NO_FLAGS, CC_INCL_CENTER, CC_UNSHUFFLED, CC_RING_PAIRS,
     CC_SKIP_MONS, CC_SKIP_INACCS,
     GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, GP_ALLOW_XY,
+    LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN,
     MM_IGNOREWATER, MM_IGNORELAVA,
-    ACCESSIBLE, IS_POOL, IS_LAVA, ZAP_POS, IS_DOOR, IS_WATERWALL,
-    D_CLOSED, D_LOCKED,
+    ACCESSIBLE, IS_POOL, ZAP_POS, IS_DOOR, IS_WATERWALL, IS_STWALL,
+    D_CLOSED, D_LOCKED, W_NONPASSWALL, IS_ALTAR, HEADSTONE,
     MIGR_RANDOM, MIGR_PORTAL, MON_MIGRATING, NO_TRAP,
     is_xport,
     ROOM, CORR, ICE, VAULT, SHOPBASE, ANY_SHOP, TEMPLE,
@@ -20,20 +21,21 @@ import {
     In_endgame, In_sokoban, In_quest, Is_waterlevel,
     MAGIC_PORTAL, RLOC_MSG, RLOC_NOMSG,
     BOLT_LIM, STRAT_APPEARMSG, ARTICLE_A, engulfing_u,
-    MON_FLOOR,
+    MON_FLOOR, Upolyd,
+    FIRE_RES, LEVITATION, FLYING, WWALKING, SWIMMING, MAGICAL_BREATHING,
 } from './const.js';
 import { objects_at, mksobj, obj_extract_self, place_object } from './mkobj.js';
 import { objectNames, SPBOOK_CLASS } from './objects.js';
 import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
-    monsterNames, passes_walls, is_dlord, is_dprince,
-    is_rider, control_teleport,
+    amphibious, monsterNames, passes_walls, is_dlord, is_dprince,
+    is_rider, control_teleport, haseyes, G_UNIQ,
 } from './monsters.js';
 import {
     newsym, pline, You_feel, see_monsters, canseemon, canspotmon, sensemon,
 } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
-import { nomul, in_rooms } from './hack.js';
+import { nomul, in_rooms, is_pool, is_lava } from './hack.js';
 import { makeknown, prinv, near_capacity } from './invent.js';
 import { more_experienced } from './exper.js';
 import { getlin } from './getline.js';
@@ -63,7 +65,9 @@ const Trap_Effect_Finished = 0;
 const Trap_Moved_Mon = 4;
 
 const BOULDER = objectNames.indexOf('BOULDER');
+const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_MINOTAUR = monsterNames.indexOf('PM_MINOTAUR');
 
 function isok(x, y) {
     return x >= 1 && x < COLNO && y >= 0 && y < ROWNO;
@@ -108,14 +112,55 @@ function sobj_at(otyp, x, y) {
     return null;
 }
 
+/** C ref: mondata.h unique_corpstat — G_UNIQ. Local (trap.js cycle). */
+function unique_corpstat(ptr) {
+    return !!((ptr?.geno | 0) & G_UNIQ);
+}
+
+/**
+ * C ref: engrave.c engr_at / sengr_at.
+ * Local clones — engrave.js imports trap.js/makemon.js which import this file.
+ * strict: strcmpi whole actual_text; else case-insensitive substring.
+ * HEADSTONE skipped (player named Elbereth). Future engr_time ignored.
+ */
+function engr_at(x, y) {
+    for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
+        if (ep.engr_x === x && ep.engr_y === y) return ep;
+    }
+    return null;
+}
+
+function sengr_at(s, x, y, strict) {
+    const ep = engr_at(x, y);
+    if (!ep || ep.engr_type === HEADSTONE) return null;
+    if ((ep.engr_time | 0) > (game.moves | 0)) return null;
+    const txt = String(ep.engr_txt?.actual_text ?? ep.engr_txt ?? '');
+    const needle = String(s ?? '');
+    const hay = txt.toLowerCase();
+    const want = needle.toLowerCase();
+    if (strict ? hay !== want : !hay.includes(want)) return null;
+    return ep;
+}
+
 /**
  * C ref: teleport.c goodpos_onscary — fakemon (m_id==0) scary approx.
- * Elbereth / SCR_SCARE_MONSTER / altar-vampire arms deferred (named omission).
+ * Altar S_VAMPIRE / SCR_SCARE_MONSTER / strict Elbereth (D-1102).
+ * Named: onscary when m_id != 0 (vampshifter altar, hero/image Elbereth).
  */
-function goodpos_onscary(_x, _y, mptr) {
+function goodpos_onscary(x, y, mptr) {
     if (!mptr) return false;
-    if (mptr.mlet === 'S_HUMAN' || mptr.mlet === 'S_ANGEL') return false;
-    return false;
+    /* C: onscary checks Angels and lawful minions; this oversimplifies */
+    if (mptr.mlet === 'S_HUMAN' || mptr.mlet === 'S_ANGEL'
+        || is_rider(mptr) || unique_corpstat(mptr)) {
+        return false;
+    }
+    /* C: onscary also checks vampshifted bats/fog/wolves — not here */
+    const loc = game.level?.at(x, y);
+    if (loc && IS_ALTAR(loc.typ) && mptr.mlet === 'S_VAMPIRE') return true;
+    if (sobj_at(SCR_SCARE_MONSTER, x, y)) return true;
+    if (Inhell() || In_endgame(game.u?.uz)) return false;
+    if ((mptr.mndx ?? -1) === PM_MINOTAUR || !haseyes(mptr)) return false;
+    return !!sengr_at('Elbereth', x, y, true);
 }
 
 /**
@@ -128,10 +173,119 @@ function m_in_air(mtmp) {
     return !!(is_flyer(ptr) || is_floater(ptr));
 }
 
+/** C youprop.h H/E/blocked via flat + uprops[idx] (confer may not mirror E*). */
+function _uprop_he(u, flatH, flatE, idx) {
+    const prop = u.uprops?.[idx];
+    return ((u[flatH] | 0) || (u[flatE] | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0));
+}
+
+/**
+ * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
+ * Sticky u.Levitation is not a C field; B must still block (D-1070).
+ */
+function Levitation() {
+    const u = game.u || {};
+    const prop = u.uprops?.[LEVITATION];
+    const blocked = (u.BLevitation | 0) || (prop?.blocked | 0);
+    return !!(_uprop_he(u, 'HLevitation', 'ELevitation', LEVITATION) && !blocked);
+}
+
+/**
+ * C youprop.h Flying — (H||E||steed is_flyer) && !BFlying.
+ * confer_oc_oprop writes AMULET_OF_FLYING to uprops[].extrinsic, not EFlying
+ * (D-1085). Sticky u.Flying is not a C field.
+ */
+function Flying() {
+    const u = game.u || {};
+    const prop = u.uprops?.[FLYING];
+    const blocked = (u.BFlying | 0) || (prop?.blocked | 0);
+    const steedFlyer = !!(u.usteed && is_flyer(u.usteed.data));
+    return !!((_uprop_he(u, 'HFlying', 'EFlying', FLYING) || steedFlyer)
+        && !blocked);
+}
+
+/**
+ * C youprop.h Wwalking — (HWwalking || EWwalking) && !Is_waterlevel.
+ * confer writes WATER_WALKING_BOOTS to uprops[WWALKING], not EWwalking.
+ */
+function Wwalking() {
+    const u = game.u || {};
+    return !!(_uprop_he(u, 'HWwalking', 'EWwalking', WWALKING)
+        && !Is_waterlevel(u.uz));
+}
+
+/**
+ * C youprop.h Swimming — H||E||steed is_swimmer.
+ */
+function Swimming() {
+    const u = game.u || {};
+    if (_uprop_he(u, 'HSwimming', 'ESwimming', SWIMMING)) return true;
+    return !!(u.usteed && is_swimmer(u.usteed.data));
+}
+
+/**
+ * C youprop.h Amphibious — magical breathing || amphibious(youmonst.data).
+ * confer writes AMULET_OF_MAGICAL_BREATHING to uprops, not EMagical_breathing.
+ */
+function Amphibious() {
+    const u = game.u || {};
+    if (_uprop_he(u, 'HMagical_breathing', 'EMagical_breathing', MAGICAL_BREATHING)) {
+        return true;
+    }
+    return amphibious(game.youmonst?.data);
+}
+
+/**
+ * C youprop.h Fire_resistance — H||E ≡ uprops[FIRE_RES].
+ * confer_oc_oprop does not mirror EFire_resistance (sit.js D-1089 shape).
+ */
+function Fire_resistance() {
+    const u = game.u || {};
+    const e = u.uprops?.[FIRE_RES];
+    return !!((u.HFire_resistance | 0) || (u.EFire_resistance | 0)
+        || u.Fire_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/**
+ * C ref: hack.c may_passwall — STWALL + W_NONPASSWALL blocks.
+ * Local copy avoids mon.js ↔ teleport cycle (D-1100).
+ */
+function may_passwall(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    // C: wall_info aliases flags; OR JS split W_* fields (D-0865).
+    const wi = (loc.wall_info | 0) | (loc.flags | 0);
+    return !(IS_STWALL(loc.typ) && (wi & W_NONPASSWALL));
+}
+
+/** C dungeon.h within_bounded_area. Local copy avoids rect.js coupling. */
+function within_bounded_area(x, y, lx, ly, hx, hy) {
+    return x >= lx && x <= hx && y >= ly && y <= hy;
+}
+
+/**
+ * C ref: mkmaze.c is_exclusion_zone.
+ * Local copy — mklev.js already imports teleport.js (cycle, D-1101).
+ */
+export function is_exclusion_zone(type, x, y) {
+    for (let ez = game.exclusion_zones; ez; ez = ez.next) {
+        if (((type === LR_DOWNTELE
+                && (ez.zonetype === LR_DOWNTELE || ez.zonetype === LR_TELE))
+            || (type === LR_UPTELE
+                && (ez.zonetype === LR_UPTELE || ez.zonetype === LR_TELE))
+            || type === ez.zonetype)
+            && within_bounded_area(x, y, ez.lx, ez.ly, ez.hx, ez.hy)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * C ref: teleport.c goodpos() — placement / enexto suitability.
- * Named omissions: youmonst swim/levitate pool·lava arms; passes_walls /
- * may_passwall early-out; GP_AVOID_MONPOS exclusion zones.
+ * Named omissions: onscary when m_id != 0 (fakemon uses goodpos_onscary).
  */
 export function goodpos(x, y, mtmp, gpflags = 0) {
     if (!isok(x, y)) return false;
@@ -163,35 +317,57 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
         // C: occupied by another mon (fakemon mx=0 never equals occupant)
         if (mtmp2 && (mtmp2 !== mtmp || mtmp.wormno)) return false;
 
-        // C: is_pool / is_swimmer / m_in_air — D-0653 (was blanket reject)
-        if (IS_POOL(typ) && !ignorewater) {
+        /* C teleport.c goodpos: is_pool()/is_lava() not IS_POOL/IS_LAVA
+         * (D-1091). IS_POOL(DRAWBRIDGE_UP) is every raised bridge, so
+         * UP+DB_LAVA must take the lava arm, not the swimmer arm. */
+        if (is_pool(x, y) && !ignorewater) {
+            /* C teleport.c goodpos: youmonst uses youprop.h Swimming /
+             * Amphibious / Levitation / Flying / Wwalking, not m_in_air
+             * (D-1099). Monster arm stays is_swimmer / m_in_air. */
+            if (mtmp === game.youmonst) {
+                return !!(Swimming() || Amphibious()
+                    || (!Is_waterlevel(game.u?.uz)
+                        && !IS_WATERWALL(typ)
+                        && (Levitation() || Flying() || Wwalking())));
+            }
             return !!(is_swimmer(mdat)
                 || (!Is_waterlevel(game.u?.uz)
                     && !IS_WATERWALL(typ)
                     && m_in_air(mtmp)));
         } else if (mdat?.mlet === 'S_EEL' && rn2(13) && !ignorewater) {
             return false;
-        } else if (IS_LAVA(typ) && !ignorelava) {
-            // C: PM_FLOATING_EYE avoids lava heat
+        } else if (is_lava(x, y) && !ignorelava) {
+            // C: PM_FLOATING_EYE avoids lava heat (before youmonst arm)
             if (mdat && (mdat.mndx ?? -1) === PM_FLOATING_EYE) return false;
+            if (mtmp === game.youmonst) {
+                const u = game.u || {};
+                return !!(Levitation() || Flying()
+                    || (Fire_resistance() && Wwalking() && u.uarmf
+                        && u.uarmf.oerodeproof)
+                    || (Upolyd(u) && likes_lava(game.youmonst.data)));
+            }
             return !!(m_in_air(mtmp) || likes_lava(mdat));
         }
-        // passes_walls + may_passwall deferred
+        /* C teleport.c goodpos: passes_walls(mdat) && may_passwall
+         * early-out before amorphous/accessible (D-1100). Form flag,
+         * not youprop Passes_walls. */
+        if (passes_walls(mdat) && may_passwall(x, y)) return true;
         // C: amorphous may ooze through closed doors before accessible()
         if (amorphous(mdat) && closed_door(x, y)) return true;
         if (checkscary && goodpos_onscary(x, y, mdat)) return false;
-    } else {
-        if (IS_POOL(typ) && !ignorewater) return false;
-        if (IS_LAVA(typ) && !ignorelava) return false;
     }
 
     // C: accessible() — rejects closed/locked doors (bare ACCESSIBLE is wrong)
     if (!accessible(x, y)) {
-        if (!(IS_POOL(typ) && ignorewater) && !(IS_LAVA(typ) && ignorelava)) {
+        if (!(is_pool(x, y) && ignorewater)
+            && !(is_lava(x, y) && ignorelava)) {
             return false;
         }
     }
     if (sobj_at(BOULDER, x, y) && (!mdat || !throws_rocks(mdat))) return false;
+    /* C teleport.c goodpos: pretend GP_AVOID_MONPOS == monster creation
+     * (D-1101). Wallwalk / pool / lava early-outs skip this. */
+    if (avoid_monpos && is_exclusion_zone(LR_MONGEN, x, y)) return false;
     return true;
 }
 

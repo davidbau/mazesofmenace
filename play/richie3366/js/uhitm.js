@@ -43,7 +43,7 @@ import {
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
-    wake_nearto, m_carrying,
+    wake_nearto, m_carrying, healmon,
 } from './mon.js';
 import { monflee } from './monmove.js';
 import { livelog_printf } from './pline.js';
@@ -863,10 +863,10 @@ function passive_obj(mon, obj, mattk) {
  * C ref: uhitm.c passive — defender AT_NONE after hero melee.
  * Finds first AT_NONE (incl. NO_ATTK fillers), rolls damage dice, applies
  * even-if-dead effects, then live gate `malive && !mcan && rn2(3)`.
- * Named omissions: full AD_PLYS gaze/cube / ugolemeffects / split_mon /
+ * Named omissions: full AD_PLYS gaze/cube / ugolemeffects /
  * erode_armor / done_in_by stone / attk_protection detail; dokick callers.
+ * D-1095: AD_COLD healmon + split_mon (potion.c via sit.js).
  */
-/** C ref: uhitm.c passive — mon AT_NONE after hero hit (kick/melee). */
 export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
     if (!mon) return (maliveb ? M_ATTK_HIT : M_ATTK_MISS)
         | (mhitb ? M_ATTK_HIT : M_ATTK_MISS);
@@ -1022,8 +1022,13 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
                 await pline('You are suddenly very cold!');
                 losehp(tmp, mon_nam(mon), 2);
-                // healmon / split_mon deferred — still burn healmon rn2(2)
-                void ((tmp + rn2(2)) / 2);
+                // C uhitm.c:6078–6082 healmon then split_mon on mhpmax gate
+                healmon(mon, Math.trunc((tmp + rn2(2)) / 2),
+                    Math.trunc((tmp + 1) / 2));
+                if ((mon.mhpmax | 0) > (((mon.m_lev | 0) + 1) * 8)) {
+                    const { split_mon } = await import('./sit.js');
+                    await split_mon(mon, game.youmonst);
+                }
             }
             break;
         case AD_STUN:

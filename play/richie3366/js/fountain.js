@@ -9,11 +9,14 @@
 // !FOUNTAIN_IS_LOOTED else fallthrough; case 28 dowaternymph;
 // case 30 dogushforth(TRUE).
 // Deferred: enlightenment body, vomit cantvomit/Sick/acid poly arms,
-// angry_guards after real dryup, wizard yn, Deaf shake/wave warn arm,
-// Excalibur LONG_SWORD body, wash_hands, dipfountain cases 17–20/
-// 29 (You see coins/mkgold); gush minliquid body; set_levltyp side
-// effects beyond typ/flags; Hallucination rndmonnam in snakes pline;
-// mongrantswish tmp_at glyph hide; dryup cansee cloud-glyph skip.
+// Excalibur LONG_SWORD body, wash_hands,
+// dipfountain cases 17–20/29 (You see coins/mkgold); gush minliquid
+// body; set_levltyp side effects beyond typ/flags; Hallucination
+// rndmonnam in snakes pline; mongrantswish tmp_at glyph hide;
+// dryup cansee cloud-glyph skip.
+// dryup wizard y_n after town warn (D-1096).
+// dryup angry_guards after real dryup (D-1104).
+// watchman_warn_fountain Deaf shake/wave (D-1105).
 //
 // Branch envelope (drinksink): Levitation floating_above; rn2(20)
 // switch cases 0–13 + 19/default sip; case 4 faucet → mkobj+dopotion;
@@ -47,7 +50,7 @@ import {
     KILLED_BY, G_GONE, M_SEEN_FIRE,
     SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP,
     TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP, ANTI_MAGIC,
-    is_pit, is_hole, ARTICLE_A,
+    is_pit, is_hole, ARTICLE_A, ARM, HEAD,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
@@ -58,15 +61,18 @@ import { depth as depth_of_level, distmin } from './hacklib.js';
 import { monster_detect } from './detect.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { makemon } from './makemon.js';
-import { mons, is_watch } from './monsters.js';
-import { m_at } from './mon.js';
+import { mons, is_watch, nolimbs, humanoid, is_neuter, G_UNIQ } from './monsters.js';
+import { m_at, angry_guards } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at } from './engrave.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { observe_object } from './invent.js';
-import { hliquid, x_monnam } from './do_name.js';
+import { hliquid, x_monnam, Hallucination, type_is_pname } from './do_name.js';
+import { mbodypart } from './polyself.js';
+import { makeplural } from './objnam.js';
 import { somegold } from './steal.js';
+import { yn_function } from './getline.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
@@ -101,6 +107,11 @@ function SET_FOUNTAIN_LOOTED(x, y) {
     if (loc) loc.looted = (loc.looted || 0) | F_LOOTED;
 }
 
+/** C flag.h `#define wizard flags.debug`. */
+function wizard_mode() {
+    return !!(game.flags?.debug || game.flags?.wizard);
+}
+
 /** C ref: rm.h CLEAR_FOUNTAIN_LOOTED */
 function CLEAR_FOUNTAIN_LOOTED(x, y) {
     const loc = game.level?.at(x, y);
@@ -115,19 +126,29 @@ function Amonnam(mtmp) {
 
 /**
  * C ref: fountain.c watchman_warn_fountain
- * Named omit: Deaf shake/wave (nolimbs/mhis/mbodypart) — !Deaf verbalize only.
+ * Deaf → visual shake/wave (D-1105); !Deaf yell + verbalize (D-0894).
  * @returns {Promise<boolean>}
  */
 async function watchman_warn_fountain(mtmp) {
     if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful) {
         const u = game.u || {};
+        // C youprop.h Deaf ≡ HDeaf || EDeaf || u.uroleplay.deaf
         const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
             || u.uroleplay?.deaf || u.Deaf);
         if (!Deaf) {
             await pline(`${Amonnam(mtmp)} yells:`);
             await verbalize('Hey, stop using that fountain!');
+        } else {
+            // C fountain.c:187–193 — left-to-right: Amonnam, nolimbs verb,
+            // mhis, then HEAD vs makeplural(ARM).
+            const who = Amonnam(mtmp);
+            const verb = nolimbs(mtmp.data) ? 'shakes' : 'waves';
+            const his = mhis(mtmp);
+            const part = nolimbs(mtmp.data)
+                ? mbodypart(mtmp, HEAD)
+                : makeplural(mbodypart(mtmp, ARM));
+            await pline(`${who} earnestly ${verb} ${his} ${part}!`);
         }
-        // else: Deaf shake/wave arm deferred
         return true;
     }
     return false;
@@ -410,14 +431,28 @@ function level_difficulty() {
     return depth_of_level(game.u?.uz) || 1;
 }
 
-/** C ref: you.h mhe / mhis — hallu pronoun rn2 deferred (wish msg path rare). */
+/**
+ * C you.h mhe / mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].
+ * C mondata.c pronoun_gender: hallu rn2(4); !canspotmon / is_neuter /
+ * non-(humanoid|G_UNIQ|pname) → 2 (it/its); else female.
+ */
+function pronoun_gender(mtmp) {
+    if (Hallucination()) return rn2(4);
+    if (!canspotmon(mtmp)) return 2;
+    const ptr = mtmp?.data;
+    if (!ptr || is_neuter(ptr)) return 2;
+    if (humanoid(ptr)
+        || ((ptr.geno | 0) & G_UNIQ)
+        || type_is_pname(ptr)) {
+        return mtmp.female ? 1 : 0;
+    }
+    return 2;
+}
 function mhe(mtmp) {
-    if (!canspotmon(mtmp)) return 'it';
-    return mtmp?.female ? 'she' : 'he';
+    return ['he', 'she', 'it', 'they'][pronoun_gender(mtmp)];
 }
 function mhis(mtmp) {
-    if (!canspotmon(mtmp)) return 'its';
-    return mtmp?.female ? 'her' : 'his';
+    return ['his', 'her', 'its', 'their'][pronoun_gender(mtmp)];
 }
 
 /**
@@ -631,9 +666,10 @@ export async function dogushforth(drinking) {
 
 /**
  * C ref: fountain.c dryup
- * Town first-use warn via watchman_warn_fountain (D-0894).
- * Named omit: wizard yn; angry_guards after real dryup; cloud-glyph
- * skip of dryup pline; Deaf shake/wave warn arm.
+ * Town first-use warn via watchman_warn_fountain (D-0894; Deaf D-1105).
+ * Wizard y_n after that return (D-1096).
+ * angry_guards(FALSE) after real dryup when isyou && in_town (D-1104).
+ * Named omit: cloud-glyph skip of dryup pline.
  */
 export async function dryup(x, y, isyou) {
     const loc = game.level?.at(x, y);
@@ -649,7 +685,13 @@ export async function dryup(x, y, isyou) {
         }
         return;
     }
-    // wizard yn deferred
+    // C fountain.c:216–219 — wizard y_n after town warn (D-1096).
+    // wizard ≡ flags.debug (flag.h). No debug_fuzzer gate (unlike sit getlin).
+    if (isyou && wizard_mode()) {
+        if ((await yn_function('Dry up fountain?', 'yn', 'n')) === 'n') {
+            return;
+        }
+    }
     if (cansee(x, y)) {
         // cloud-glyph skip deferred
         await pline('The fountain dries up!');
@@ -661,8 +703,10 @@ export async function dryup(x, y, isyou) {
         game.level.flags.nfountains--;
     }
     newsym(x, y);
-    // angry_guards(FALSE) when isyou && in_town deferred
-    void isyou;
+    // C fountain.c:236–237 — after ROOM/newsym, not on the town-warn return.
+    if (isyou && in_town(x, y)) {
+        await angry_guards(false);
+    }
 }
 
 /**

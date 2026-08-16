@@ -12,7 +12,7 @@ import {
     let_to_name, DEF_INV_ORDER, prinv, near_capacity, calc_capacity,
     max_capacity,
 } from './invent.js';
-import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall } from './hack.js';
+import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT } from './hack.js';
 import {
     flush_screen, pline, newsym, docrt, bot, flush_topl_more, canseemon,
     clear_nhwindow_message,
@@ -26,7 +26,7 @@ import { can_reach_floor } from './engrave.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     is_pit,
-    STONE, ICE, DRAWBRIDGE_UP,
+    STONE, ICE,
     IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL, IS_SINK,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
     Has_contents, Is_container,
@@ -174,17 +174,6 @@ function count_buc(olist, buc) {
 }
 
 /**
- * C ref: rm.h SURFACE_AT — under-typ for DRAWBRIDGE_UP deferred → raw typ.
- */
-function surface_at(x, y) {
-    const lev = game.level?.at(x, y);
-    if (!lev) return STONE;
-    // C: DRAWBRIDGE_UP → db_under_typ(drawbridgemask); deferred
-    if (lev.typ === DRAWBRIDGE_UP) return lev.typ;
-    return lev.typ;
-}
-
-/**
  * C ref: pickup.c describe_decor — mention_decor feedback for features.
  * Branch envelope: dfeature_at + skip open door/doorway; furniture/typ
  * change gate; verbose "There is %s here." Named omissions: Fumbling
@@ -199,7 +188,8 @@ export async function describe_decor() {
     const iflags = game.iflags;
     if (iflags.prev_decor == null) iflags.prev_decor = STONE;
 
-    const ltyp = surface_at(u.ux, u.uy);
+    // C: SURFACE_AT (rm.h) via db_under_typ for DRAWBRIDGE_UP (D-1103)
+    const ltyp = SURFACE_AT(u.ux, u.uy);
     let dfeature = dfeature_at(u.ux, u.uy);
 
     // C: skip ordinary open door / doorway (broken/closed still mentioned)

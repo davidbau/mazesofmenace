@@ -1,5 +1,6 @@
 // display.js — Map rendering and terminal output.
-// C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
+// C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen,
+// shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
 import { game } from './gstate.js';
 import { rank_of } from './roles.js';
@@ -1785,6 +1786,48 @@ export function tmp_at(x, y) {
 export async function nh_delay_output() {
     const af = game?.animationFrame;
     if (typeof af === 'function') await af.call(game);
+}
+
+/** C display.h SHIELD_COUNT — cmap indices in shield_static[]. */
+const SHIELD_COUNT = 21;
+
+/**
+ * C defsym.h S_ss1..S_ss4 Primary ASCII ('0' '#' '@' '*' / HI_ZAP).
+ * Full showsyms / DECgraphics S_ss* remap named (dat/symbols).
+ */
+const SHIELD_SS1 = { ch: '0', color: HI_ZAP, dec: false };
+const SHIELD_SS2 = { ch: '#', color: HI_ZAP, dec: false };
+const SHIELD_SS3 = { ch: '@', color: HI_ZAP, dec: false };
+const SHIELD_SS4 = { ch: '*', color: HI_ZAP, dec: false };
+
+/**
+ * C decl.c shield_static[SHIELD_COUNT] — S_ss1, S_ss2, S_ss3, S_ss2,
+ * S_ss1, S_ss2, S_ss4 (7 per row × 3).
+ */
+const shield_static = [
+    SHIELD_SS1, SHIELD_SS2, SHIELD_SS3, SHIELD_SS2, SHIELD_SS1, SHIELD_SS2, SHIELD_SS4,
+    SHIELD_SS1, SHIELD_SS2, SHIELD_SS3, SHIELD_SS2, SHIELD_SS1, SHIELD_SS2, SHIELD_SS4,
+    SHIELD_SS1, SHIELD_SS2, SHIELD_SS3, SHIELD_SS2, SHIELD_SS1, SHIELD_SS2, SHIELD_SS4,
+];
+
+/**
+ * C ref: display.c shieldeff — magic shield pyrotechnics at (x, y).
+ * flags.sparkle is optlist.h opt_out default On; missing JS field ≡ On.
+ * Named omissions: DEC/showsyms S_ss* remap; explode.c inline sparkle
+ * loop; shieldeff_mon (mon.c wrapper); other callers still unwired.
+ */
+export async function shieldeff(x, y) {
+    // C: if (!flags.sparkle) return;
+    if (game.flags?.sparkle === false) return;
+    if (cansee(x, y)) {
+        for (let i = 0; i < SHIELD_COUNT; i++) {
+            const g = shield_static[i];
+            show_glyph_cell(x, y, g.ch, g.color, g.dec);
+            await flush_screen(1); /* make sure the glyph shows up */
+            await nh_delay_output();
+        }
+        newsym(x, y); /* restore the old information */
+    }
 }
 
 /**

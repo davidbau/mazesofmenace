@@ -2600,8 +2600,9 @@ function splash_lit(obj) {
  * C ref: trap.c trapeffect_rust_trap — hero + monster branches.
  * Envelope: seetrap; rn2(5) aim switch; water_damage / splash_lit on
  * targeted slots; iron-golem rust death; gremlin rn2(3)→split_mon
- * (split body deferred). Named omissions: update_inventory; lantern
- * dunk; mlifesaver "starts to fall"; poly body_part table.
+ * (D-1095; potion.c split_mon via sit.js). Named omissions:
+ * update_inventory; lantern dunk; mlifesaver "starts to fall";
+ * poly body_part table.
  */
 async function trapeffect_rust_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
@@ -2658,7 +2659,9 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
             await pline('You are covered with rust!');
             losehp(maybe_half_phys(dam), 'rusting away', KILLED_BY);
         } else if ((u.umonnum | 0) === PM_GREMLIN && rn2(3)) {
-            // split_mon deferred — still consume the rn2(3) gate
+            // C trap.c:1652–1653 split_mon(&youmonst, NULL)
+            const { split_mon } = await import('./sit.js');
+            await split_mon(game.youmonst, null);
         }
         return Trap_Effect_Finished;
     }
@@ -2743,7 +2746,9 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
         await monkilled(mtmp, null, AD_RUST);
         if (!(mtmp.mhp | 0) || !mtmp.mx) trapkilled = true;
     } else if ((mptr?.mndx ?? -1) === PM_GREMLIN && rn2(3)) {
-        // split_mon deferred
+        // C trap.c:1719–1720 split_mon(mtmp, NULL)
+        const { split_mon } = await import('./sit.js');
+        await split_mon(mtmp, null);
     }
 
     return trapkilled ? Trap_Killed_Mon

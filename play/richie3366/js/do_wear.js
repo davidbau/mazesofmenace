@@ -549,7 +549,7 @@ function clear_worn(mask) {
 }
 
 /** C ref: do_wear.c Armor_off — suit; arti_light end_burn deferred */
-async function Armor_off() {
+export async function Armor_off() {
     const otmp = game.u?.uarm;
     clear_worn(W_ARM);
     // C: setworn(NULL) then dragon_armor_handling(otmp, FALSE, TRUE)
@@ -633,7 +633,7 @@ export async function Boots_off() {
     }
     return 0;
 }
-function Shirt_off() {
+export function Shirt_off() {
     clear_worn(W_ARMU);
     return 0;
 }

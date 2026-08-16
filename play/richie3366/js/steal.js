@@ -1,9 +1,14 @@
 // steal.js — Monster theft from hero inventory (partial).
-// C ref: steal.c steal / worn_item_removal / inv_cnt / somegold.
+// C ref: steal.c steal / worn_item_removal / remove_worn_item / inv_cnt /
+// somegold.
 //
 // Branch envelope (this peel): nymph AD_SITM/AD_SEDU via mhitm_ad_sedu —
 // weighted invent pick, worn accessory clear, non-delay armor, freeinv+mpickobj;
 // somegold proportional gold (dipfountain bath / stealgold).
+// **remove_worn_item** (D-1086): W_ARMOR → do_wear.c *_off; leftover
+// owornmask → setnotworn pointer-walk; W_BALL|W_CHAIN + unchain → unpunish;
+// W_WEAPONS → *gone. Named omit: donning/cancel_don; in_use; uskin
+// skinback; Amulet_off; Ring_gone / Blindf_off (still setworn).
 // Named omissions: monkey_business cant_take / ROLL_FROM how[]; stealarm
 // afternmv; Punished/uchain/buried-ball nothing_to_steal; Adornment ring
 // priority when gloves absent; leash; shop subfrombill; petrify corpse;
@@ -13,8 +18,7 @@ import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import {
     W_ARMOR, W_ACCESSORY, W_WEAPONS,
-    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
-    W_AMUL, W_RING, W_TOOL, W_RINGL, W_RINGR,
+    W_AMUL, W_RING, W_TOOL, W_RINGL, W_RINGR, W_BALL, W_CHAIN,
     LEFT_RING, RIGHT_RING, ADORNED, LOST_STOLEN,
     LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM,
 } from './const.js';
@@ -27,8 +31,12 @@ import { is_animal, throws_rocks } from './monsters.js';
 import { canspotmon, pline } from './display.js';
 import { Monnam } from './do_name.js';
 import { doname } from './objnam.js';
-import { setworn } from './do_wear.js';
-import { setuwep, setuswapwep, setuqwep } from './wield.js';
+import {
+    setworn,
+    Armor_off, Cloak_off, Boots_off, Gloves_off,
+    Helmet_off, Shield_off, Shirt_off,
+} from './do_wear.js';
+import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { mpickobj } from './makemon.js';
 import { nomul, stop_occupation } from './hack.js';
 import { encumber_msg, freeinv_core } from './invent.js';
@@ -84,7 +92,7 @@ function Some_Monnam(mtmp) {
 
 /**
  * C ref: steal.c worn_item_removal — pline + remove_worn_item(obj, TRUE).
- * Slot clear via setworn / setuwep subset; Lev/Fly descent deferred.
+ * Lev/Fly descent still from *_off bodies (named omit on those).
  */
 async function worn_item_removal(mon, obj) {
     if (!obj) return;
@@ -110,40 +118,64 @@ async function worn_item_removal(mon, obj) {
     // C: iflags.last_msg = PLNMSG_MON_TAKES_OFF_ITEM
     if (!game.iflags) game.iflags = {};
     game.iflags.last_msg = PLNMSG_MON_TAKES_OFF_ITEM;
-    remove_worn_item_steal(obj);
+    await remove_worn_item(obj, true);
 }
 
 /**
- * C ref: worn.c remove_worn_item — unwear before freeinv.
- * Armor/accessory via setworn(NULL); weapons via setu*wep.
+ * C ref: steal.c remove_worn_item(obj, unchain_ball).
+ * take_gold / cursed_book pass FALSE; worn_item_removal / steal armor
+ * pass TRUE. W_ARMOR dispatches do_wear.c *_off (D-1086); leftover
+ * bits use do.js setnotworn pointer-walk; W_BALL|W_CHAIN + unchain
+ * calls read.c unpunish.
+ * Named omit: donning/cancel_don; in_use; uskin skinback; Amulet_off
+ * (setworn W_AMUL stand-in); Ring_gone / Blindf_off still setworn.
  */
-function remove_worn_item_steal(obj) {
+export async function remove_worn_item(obj, unchain_ball) {
     if (!obj) return;
+    // C: if (donning(obj)) cancel_don(); named omit
+    if (!obj.owornmask) return;
+
     const u = game.u || {};
-    const mask = obj.owornmask || 0;
-    if (mask & W_ARMOR) {
-        if (obj === u.uarm) setworn(null, W_ARM);
-        else if (obj === u.uarmc) setworn(null, W_ARMC);
-        else if (obj === u.uarmh) setworn(null, W_ARMH);
-        else if (obj === u.uarms) setworn(null, W_ARMS);
-        else if (obj === u.uarmg) setworn(null, W_ARMG);
-        else if (obj === u.uarmf) setworn(null, W_ARMF);
-        else if (obj === u.uarmu) setworn(null, W_ARMU);
-        else setworn(null, mask & W_ARMOR);
-    } else if (mask & W_AMUL) {
+    // C: oldinuse = obj->in_use; obj->in_use = 1; restore at end — named omit
+
+    if (obj.owornmask & W_ARMOR) {
+        if (obj === u.uskin) {
+            // C skinback(TRUE) — named omit (no skinback in JS)
+        }
+        if (obj === u.uarm) await Armor_off();
+        else if (obj === u.uarmc) await Cloak_off();
+        else if (obj === u.uarmf) await Boots_off();
+        else if (obj === u.uarmg) Gloves_off();
+        else if (obj === u.uarmh) Helmet_off();
+        else if (obj === u.uarms) Shield_off();
+        else if (obj === u.uarmu) Shirt_off();
+        else setworn(null, obj.owornmask & W_ARMOR);
+    } else if (obj.owornmask & W_AMUL) {
+        // C Amulet_off() — named omit
         setworn(null, W_AMUL);
-    } else if (mask & W_RING) {
+    } else if (obj.owornmask & W_RING) {
+        // C Ring_gone(obj) — named omit this iter
         if (obj === u.uleft) setworn(null, W_RINGL);
         else if (obj === u.uright) setworn(null, W_RINGR);
         else setworn(null, W_RING);
-    } else if (mask & W_TOOL) {
+    } else if (obj.owornmask & W_TOOL) {
+        // C Blindf_off(obj) — named omit this iter
         setworn(null, W_TOOL);
-    } else if (mask & W_WEAPONS) {
-        if (obj === u.uwep) setuwep(null);
-        if (obj === u.uswapwep) setuswapwep(null);
-        if (obj === u.uquiver) setuqwep(null);
+    } else if (obj.owornmask & W_WEAPONS) {
+        if (obj === u.uwep) uwepgone();
+        if (obj === u.uswapwep) uswapwepgone();
+        if (obj === u.uquiver) uqwepgone();
     }
-    obj.owornmask = 0;
+
+    if (obj.owornmask & (W_BALL | W_CHAIN)) {
+        if (unchain_ball) {
+            const { unpunish } = await import('./read.js');
+            unpunish();
+        }
+    } else if (obj.owornmask) {
+        const { setnotworn } = await import('./do.js');
+        setnotworn(obj);
+    }
 }
 
 /** C invent.c freeinv — splice from game.invent array. */
@@ -296,7 +328,7 @@ export async function steal(mtmp, objnambuf) {
                 nomul(-armordelay);
                 game.multi_reason = 'taking off clothes';
                 game.nomovemsg = null;
-                remove_worn_item_steal(otmp);
+                await remove_worn_item(otmp, true);
                 otmp.cursed = curssv;
                 if ((game.multi | 0) < 0) {
                     game.stealoid = otmp.o_id | 0;
@@ -312,7 +344,9 @@ export async function steal(mtmp, objnambuf) {
         let item = otmp;
         if (otmp === u.uball) item = u.uchain || otmp;
         await worn_item_removal(mtmp, item);
-        if ((otmp.owornmask || 0) & W_WEAPONS) remove_worn_item_steal(otmp);
+        if ((otmp.owornmask || 0) & W_WEAPONS) {
+            await remove_worn_item(otmp, false);
+        }
     }
 
     if (objnambuf) objnambuf.value = doname(otmp); // yname approx

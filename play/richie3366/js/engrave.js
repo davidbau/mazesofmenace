@@ -28,8 +28,8 @@
 // Ported: Levitation (H||E)&&!B D-1070; ustuck AT_HUGS + !sticks
 // D-1071 (local mondata.c sticks — avoid engrave←monmove cycle);
 // sticks exported for sit.js dosit lap D-1072; ceiling_hider +
-// Flying||MZ_HUGE D-1082 (Flying is youprop.h, not sticky u.Flying);
-// check_pit uteetering/uescaped_shaft D-1083 (helpers in trap.js).
+// Flying||MZ_HUGE D-1082; Flying reads uprops[FLYING] (D-1085; confer
+// writes extrinsic, not EFlying); check_pit teeter/shaft D-1083.
 // disturb_grave (D-0985) via kick_nondoor / engraving callers.
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
@@ -52,6 +52,7 @@ import {
     ROOM, GRAVE, IS_GRAVE, MM_NOMSG,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
+    FLYING,
 } from './const.js';
 import { nomul } from './hack.js';
 import { t_at, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
@@ -236,13 +237,20 @@ function Levitation() {
 
 /**
  * C youprop.h Flying — (HFlying || EFlying || steed is_flyer) && !BFlying.
- * Sticky u.Flying is not a C field (same class as D-1070 Levitation).
+ * H/E/B ≡ uprops[FLYING] (prop.h:71). confer_oc_oprop writes worn
+ * AMULET_OF_FLYING to uprops[].extrinsic and never mirrors EFlying
+ * (D-1085; same OR as eat.js Flying). Sticky u.Flying is not a C
+ * field. Do not skip !blocked for a leftover sticky bit.
  */
 function Flying() {
     const u = game.u || {};
+    const prop = u.uprops?.[FLYING];
+    const blocked = (u.BFlying | 0) || (prop?.blocked | 0);
     const steedFlyer = !!(u.usteed && is_flyer(u.usteed.data));
-    return !!(((u.HFlying | 0) || (u.EFlying | 0) || steedFlyer)
-        && !(u.BFlying | 0));
+    return !!(((u.HFlying | 0) || (u.EFlying | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0)
+        || steedFlyer)
+        && !blocked);
 }
 
 /**
@@ -299,7 +307,7 @@ export function sticks(ptr) {
  * C ref: engrave.c can_reach_floor — whether hero can touch ground-level.
  * Branch envelope: swallow / ustuck AT_HUGS+!sticks / Levitation(+!air/water)
  * / unskilled steed / uundetected ceiling_hider FALSE / Flying||MZ_HUGE
- * TRUE (skips check_pit) / check_pit && t_at && (uteetering || uescaped)
+ * TRUE (skips check_pit; Flying ORs uprops[FLYING] D-1085) / check_pit && t_at && (uteetering || uescaped)
  * FALSE. invent/pickup caller pit-arg and cant_reach_floor named.
  */
 export function can_reach_floor(check_pit) {

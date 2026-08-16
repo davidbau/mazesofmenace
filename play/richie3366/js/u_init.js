@@ -64,7 +64,11 @@ import {
     PM_HUMAN, PM_ELF, PM_DWARF, PM_ORC, PM_GNOME,
     NON_PM,
 } from './generated/monsters_data.js';
-import { mons, is_male, is_female, is_neuter } from './monsters.js';
+import {
+    mons, is_male, is_female, is_neuter, commit_pm_fixup,
+    M2_PEACEFUL, M2_NASTY, M2_STALK, M2_HOSTILE,
+    M3_CLOSE, M3_WANTSARTI, M3_WAITFORU,
+} from './monsters.js';
 import { skill_init } from './weapon.js';
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
@@ -1657,7 +1661,7 @@ export function setup_role_race_from_rc(opts = {}) {
     // C: setup does not rewrite plname — unixmain set_playmode / askname
     // already applied OPTIONS=name (and debug → "wizard").
 
-    // C ref: role.c role_init() — pantheon (Priest) then nemesis gender
+    // C ref: role.c role_init() — pantheon, quest pm fixup, nemesis gender
     const initrole = roles.indexOf(role);
     game.flags.initrole = initrole >= 0 ? initrole : 0;
     if (fr.initrace >= 0) game.flags.initrace = fr.initrace;
@@ -1666,6 +1670,7 @@ export function setup_role_race_from_rc(opts = {}) {
     game.flags.pantheon = -1;
     role_init_pantheon();
     role_init_cleric_spe_light();
+    role_init_quest_pm_fixup();
     role_init_nemesis_gender();
 }
 
@@ -1706,6 +1711,48 @@ function role_init_cleric_spe_light() {
     const otyp = otypByName('SPE_LIGHT');
     if (otyp && game.objects?.[otyp]) {
         game.objects[otyp].oc_skill = P_CLERIC_SPELL;
+    }
+}
+
+// C ref: monflag.h — role_init writes these onto mons[ldr/nem].
+const MS_LEADER = 36;
+const MS_NEMESIS = 37;
+
+/**
+ * C ref: role.c role_init — Fix up quest leader / guardian / nemesis
+ * permonst (role.c:2027–2061). Mutates live mons[] in C; JS overlay
+ * via commit_pm_fixup (resetGame clears it). No extra RNG here —
+ * ldrgend/nemgend stay in role_init_nemesis_gender.
+ */
+function role_init_quest_pm_fixup() {
+    const alignmnt = (aligns[game.flags.initalign] || aligns[1])?.value ?? 0;
+
+    const ldr = game.urole?.ldrnum ?? NON_PM;
+    if (ldr !== NON_PM && ldr != null) {
+        const pm = mons(ldr);
+        commit_pm_fixup(ldr, {
+            msound: MS_LEADER,
+            mflags2: pm.mflags2 | M2_PEACEFUL,
+            mflags3: pm.mflags3 | M3_CLOSE,
+            maligntyp: alignmnt * 3,
+        });
+    }
+    const guard = game.urole?.guardnum ?? NON_PM;
+    if (guard !== NON_PM && guard != null) {
+        const pm = mons(guard);
+        commit_pm_fixup(guard, {
+            mflags2: pm.mflags2 | M2_PEACEFUL,
+            maligntyp: alignmnt * 3,
+        });
+    }
+    const nem = game.urole?.neminum ?? NON_PM;
+    if (nem !== NON_PM && nem != null) {
+        const pm = mons(nem);
+        commit_pm_fixup(nem, {
+            msound: MS_NEMESIS,
+            mflags2: (pm.mflags2 & ~M2_PEACEFUL) | M2_NASTY | M2_STALK | M2_HOSTILE,
+            mflags3: (pm.mflags3 & ~M3_CLOSE) | M3_WANTSARTI | M3_WAITFORU,
+        });
     }
 }
 

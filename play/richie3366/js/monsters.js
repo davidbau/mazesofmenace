@@ -174,25 +174,46 @@ export const M3_INFRAVISIBLE = 0x0200;
 
 export const CORPSTAT_INIT = 8;
 
+/**
+ * C ref: role.c role_init mutates mons[ldr/guard/nem] in place
+ * (msound MS_LEADER/MS_NEMESIS, M2/M3 flags, maligntyp = align*3).
+ * Overlay lives on `game` so resetGame() matches a fresh C process
+ * (Tourist must not leak Master-of-Thieves MS_NEMESIS into a later
+ * Rogue session). Generated msounds[] stay the monsters.h baseline.
+ */
+export function commit_pm_fixup(mndx, patch) {
+    if (mndx == null || mndx < 0 || mndx >= NUMMONS) return;
+    if (!game.pm_fixup) game.pm_fixup = Object.create(null);
+    const prev = game.pm_fixup[mndx];
+    game.pm_fixup[mndx] = {
+        msound: prev?.msound ?? msounds[mndx],
+        mflags2: prev?.mflags2 ?? mflags2s[mndx],
+        mflags3: prev?.mflags3 ?? mflags3s[mndx],
+        maligntyp: prev?.maligntyp ?? maligntyps[mndx],
+        ...patch,
+    };
+}
+
 export function mons(mndx) {
     if (mndx == null || mndx < 0 || mndx >= NUMMONS) return null;
+    const fix = game.pm_fixup?.[mndx];
     return {
         mndx,
         mlevel: mlevels[mndx],
         mmove: mmoves[mndx],
         ac: macs[mndx],
-        maligntyp: maligntyps[mndx],
+        maligntyp: fix?.maligntyp ?? maligntyps[mndx],
         geno: genos[mndx],
         difficulty: difficulties[mndx],
         mresists: mresists[mndx],
         mconveys: mconveys[mndx],
         mflags1: mflags1s[mndx],
-        mflags2: mflags2s[mndx],
-        mflags3: mflags3s[mndx],
+        mflags2: fix?.mflags2 ?? mflags2s[mndx],
+        mflags3: fix?.mflags3 ?? mflags3s[mndx],
         msize: msizes[mndx],
         cwt: cwts[mndx],
         cnutrit: cnutrits[mndx],
-        msound: msounds[mndx],
+        msound: fix?.msound ?? msounds[mndx],
         mlet: mlets[mndx],
         mcolor: mcolors[mndx],
         mattk: mattks[mndx],

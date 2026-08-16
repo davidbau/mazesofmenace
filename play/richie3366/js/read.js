@@ -1,8 +1,8 @@
 // read.js — Read command / scroll effects (partial).
 // C ref: read.c doread, seffects, seffect_magic_mapping, seffect_teleportation,
 // seffect_light / litroom / set_lit, seffect_remove_curse,
-// seffect_enchant_weapon, seffect_punishment / punish, create_particular,
-// do_genocide;
+// seffect_enchant_weapon, seffect_punishment / punish, seffect_genocide,
+// do_class_genocide, do_genocide; mondata.c name_to_monclass;
 // invent.c getobj; detect.c do_mapping; spell.c study_book (via spell.js);
 // teleport.c scrolltele/safe_teleds; zap.c lightdamage (non-gremlin stub);
 // do_name.c trycall; mkobj.c uncurse/blessorcurse; wield.c chwepon;
@@ -11,10 +11,11 @@
 // Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
 // SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION / SCR_LIGHT /
 // SCR_REMOVE_CURSE / SCR_ENCHANT_WEAPON / SCR_DESTROY_ARMOR / SCR_IDENTIFY /
-// SCR_PUNISHMENT +
+// SCR_PUNISHMENT / SCR_GENOCIDE +
 // SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
 // named-monster path for #wizgenesis + do_genocide REALLY|ONTHRONE getlin
-// (throne sit case 8, D-1034).
+// (throne sit case 8, D-1034) + seffects SCR_GENOCIDE / do_class_genocide
+// (D-1098).
 // Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
 // Blind gates; study_book novel / dull sleep (occupation learn D-0907);
 // other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
@@ -35,14 +36,13 @@
 // create_particular → makemon_appear_msg (makemon in-body still deferred;
 // mimic mhidden_description / set_msg_xy / dochugw omit);
 // punish Blind set_bc; flooreffects on placebc; HEAVY_IRON_BALL reuse
-// from angrygods; seffects SCR_GENOCIDE / do_class_genocide wire;
-// do_genocide livelog / Hallucination names / vampshifted POLY_REVERT /
-// kill_eggs / chameleon newcham.
+// from angrygods; do_genocide livelog / Hallucination names /
+// vampshifted POLY_REVERT / chameleon newcham; update_inventory.
 //
 // Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
 // SCROLL_CLASS path for SCR_MAGIC_MAPPING / SCR_TELEPORTATION / SCR_LIGHT /
 // SCR_REMOVE_CURSE / SCR_ENCHANT_WEAPON / SCR_DESTROY_ARMOR / SCR_IDENTIFY /
-// SCR_PUNISHMENT +
+// SCR_PUNISHMENT / SCR_GENOCIDE +
 // SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
 // named-monster path for #wizgenesis.
 // Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
@@ -69,7 +69,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, newsym, You_feel, verbalize } from './display.js';
+import { flush_screen, flush_topl_more, pline, urgent_pline, newsym, You_feel, verbalize } from './display.js';
 import { xname, makeplural, an } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
@@ -95,17 +95,17 @@ import {
     W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM,
     NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
     GENOCIDED, KILLED_BY, KILLED_BY_AN, NO_MINVENT, MM_NOMSG, Upolyd,
-    nothing_happens, G_GENOD, G_EXTINCT,
+    nothing_happens, G_GENOD, G_EXTINCT, UNCHANGING,
 } from './const.js';
 import { vision_recalc, do_clear_area } from './vision.js';
 import { getlin } from './getline.js';
-import { name_to_mon } from './mondata.js';
-import { mons, NON_PM, amorphous, is_whirly, unsolid, G_GENO, G_UNIQ,
-    G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL, M2_PNAME,
-    monsterNames,
+import { name_to_mon, name_to_monclass } from './mondata.js';
+import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, is_whirly, unsolid,
+    G_GENO, G_UNIQ, G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL,
+    M2_PNAME, monsterNames, nonliving, weirdnonliving,
 } from './monsters.js';
 import { makemon, makemon_appear_msg, rndmonst } from './makemon.js';
-import { kill_genocided_monsters } from './mon.js';
+import { kill_genocided_monsters, mongone } from './mon.js';
 import { done } from './end.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
@@ -117,6 +117,7 @@ const SCR_ENCHANT_WEAPON = objectNames.indexOf('SCR_ENCHANT_WEAPON');
 const SCR_DESTROY_ARMOR = objectNames.indexOf('SCR_DESTROY_ARMOR');
 const SCR_IDENTIFY = objectNames.indexOf('SCR_IDENTIFY');
 const SCR_PUNISHMENT = objectNames.indexOf('SCR_PUNISHMENT');
+const SCR_GENOCIDE = objectNames.indexOf('SCR_GENOCIDE');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
@@ -832,6 +833,32 @@ async function seffect_punishment(sobj) {
 }
 
 /**
+ * C ref: read.c seffect_genocide.
+ * Blessed → do_class_genocide; else do_genocide((!cursed)|(2*!!Confusion)).
+ * C youprop.h: Confusion ≡ HConfusion (D-1048). Named omissions:
+ * livelog; Hallucination type names; vampshifted POLY_REVERT;
+ * chameleon newcham; update_inventory.
+ */
+async function seffect_genocide(sobj) {
+    const otyp = sobj.otyp | 0;
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const already_known = sobj.oclass === SPBOOK_CLASS
+        || !!game.objects?.[otyp]?.oc_name_known;
+    if (!already_known) {
+        await pline('You have found a scroll of genocide!');
+    }
+    known = true;
+    if (sblessed) {
+        await do_class_genocide();
+    } else {
+        // C: (!scursed) | (2 * !!Confusion)
+        const confused = !!(game.u?.HConfusion | 0);
+        await do_genocide((scursed ? 0 : 1) | (2 * (confused ? 1 : 0)));
+    }
+}
+
+/**
  * C ref: read.c seffects — oc_magic exercise + otyp dispatch.
  * @returns {number} 0 = caller useup/learn; 1 = already used up;
  *   -1 = unimplemented (caller must not useup)
@@ -874,6 +901,9 @@ export async function seffects(sobj) {
     }
     case SCR_PUNISHMENT:
         await seffect_punishment(sobj);
+        break;
+    case SCR_GENOCIDE:
+        await seffect_genocide(sobj);
         break;
     default:
         // Other seffect_* deferred — do not useup
@@ -928,7 +958,7 @@ export async function doread() {
         && otyp !== SCR_TELEPORTATION && otyp !== SCR_LIGHT
         && otyp !== SCR_REMOVE_CURSE && otyp !== SCR_ENCHANT_WEAPON
         && otyp !== SCR_DESTROY_ARMOR && otyp !== SCR_IDENTIFY
-        && otyp !== SCR_PUNISHMENT) {
+        && otyp !== SCR_PUNISHMENT && otyp !== SCR_GENOCIDE) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }
@@ -1012,12 +1042,211 @@ function Deaf() {
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
 }
 
+function wizard_mode() {
+    return !!(game.flags?.debug || game.flags?.wizard);
+}
+
+function Unchanging() {
+    const u = game.u || {};
+    const p = u.uprops?.[UNCHANGING];
+    return !!((u.HUnchanging | 0) || (u.EUnchanging | 0) || u.Unchanging
+        || p?.intrinsic || p?.extrinsic);
+}
+
+function Role_if(pm) {
+    return (game.urole?.mnum | 0) === (pm | 0);
+}
+
+/** C ref: questpgr.c quest_info — urole ldr/nemi/guard/questarti. */
+function quest_info(typ) {
+    const urole = game.urole || {};
+    if (typ === 0) return urole.questarti | 0;
+    if (typ === MS_LEADER) return urole.ldrnum ?? NON_PM;
+    if (typ === MS_NEMESIS) return urole.neminum ?? NON_PM;
+    if (typ === MS_GUARDIAN) return urole.guardnum ?? NON_PM;
+    return 0;
+}
+
+function type_is_pname_ptr(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_PNAME);
+}
+
+function upstart(str) {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/** C ref: polyself.c udeadinside — dead / condemned / empty. */
+function udeadinside() {
+    const data = game.youmonst?.data;
+    if (!nonliving(data)) return 'dead';
+    if (!weirdnonliving(data)) return 'condemned';
+    return 'empty';
+}
+
+function ensure_mvitals(mndx) {
+    if (!game.mvitals) game.mvitals = [];
+    if (!game.mvitals[mndx]) {
+        game.mvitals[mndx] = { mvflags: 0, born: 0, died: 0 };
+    }
+    return game.mvitals[mndx];
+}
+
+const MS_LEADER = 36;
+const MS_NEMESIS = 37;
+const MS_GUARDIAN = 38;
+const PM_NINJA = monsterNames.indexOf('PM_NINJA');
+const PM_SAMURAI = monsterNames.indexOf('PM_SAMURAI');
+
+/**
+ * C ref: read.c do_class_genocide — blessed SCR_GENOCIDE class wipe.
+ * Named omissions: livelog; vampshifted POLY_REVERT; update_inventory.
+ */
+async function do_class_genocide() {
+    const u = game.u || (game.u = {});
+    let feel_dead = 0;
+    let gameover = false;
+
+    for (let j = 0; ; j++) {
+        if (j >= 5) {
+            await pline(thats_enough_tries);
+            return;
+        }
+        let promptbuf = 'What class of monsters do you want to genocide?';
+        if (j > 0) {
+            promptbuf += game.iflags?.cmdassist
+                ? " [enter the symbol or name representing a class, or '?']"
+                : " [enter '?' to see previous genocides]";
+        }
+        const buf = mungspaces(await getlin(promptbuf));
+        if (!buf) {
+            await pline(
+                (j + 1 < 5)
+                    ? 'Type letter (or punctuation) or name used for a class of monsters or \'none\'.'
+                    : 'No class of monsters specified.',
+            );
+            continue;
+        }
+        if (buf === '\x1b' || strcmpi_eq(buf, 'none')
+            || strcmpi_eq(buf, "'none'") || strcmpi_eq(buf, 'nothing')) {
+            return;
+        }
+        if (buf === '?' || buf === "'?'") {
+            const { list_genocided } = await import('./insight.js');
+            await list_genocided('g', false);
+            j--;
+            continue;
+        }
+
+        let monclass = name_to_monclass(buf);
+        if (!monclass) {
+            const i = name_to_mon(buf);
+            if (i !== NON_PM && i >= 0) monclass = mons(i)?.mlet || 0;
+        }
+        let immunecnt = 0;
+        let gonecnt = 0;
+        let goodcnt = 0;
+        for (let i = LOW_PM; i < NUMMONS; i++) {
+            if (mons(i)?.mlet !== monclass) continue;
+            if (!((mons(i).geno | 0) & G_GENO)) immunecnt++;
+            else if (((game.mvitals?.[i]?.mvflags ?? 0) & G_GENOD) !== 0) {
+                gonecnt++;
+            } else goodcnt++;
+        }
+        const role_let = mons(game.urole?.mnum)?.mlet;
+        const race_let = mons(game.urace?.mnum)?.mlet;
+        if (!goodcnt && monclass !== role_let && monclass !== race_let) {
+            if (gonecnt) {
+                await pline('All such monsters are already nonexistent.');
+            } else if (immunecnt || monclass === 'S_invisible') {
+                await pline("You aren't permitted to genocide such monsters.");
+            } else if (wizard_mode() && buf.charAt(0) === '*') {
+                gonecnt = 0;
+                for (const mtmp of (game.fmon || []).slice()) {
+                    if ((mtmp.mhp | 0) <= 0) continue;
+                    mongone(mtmp);
+                    gonecnt++;
+                }
+                await pline(
+                    `Eliminated ${gonecnt} monster${gonecnt === 1 ? '' : 's'}.`,
+                );
+                return;
+            } else {
+                await pline(
+                    `That ${buf.length === 1 ? 'symbol' : 'response'} does not represent any monster.`,
+                );
+            }
+            continue;
+        }
+
+        for (let i = LOW_PM; i < NUMMONS; i++) {
+            if (mons(i)?.mlet !== monclass) continue;
+            const nam = makeplural(pmnames[i]?.[NEUTRAL] || 'creature');
+            const mv = (game.mvitals?.[i]?.mvflags ?? 0);
+            if (Your_Own_Role(i) || Your_Own_Race(i)
+                || (((mons(i).geno | 0) & G_GENO) && !(mv & G_GENOD))) {
+                ensure_mvitals(i).mvflags =
+                    (ensure_mvitals(i).mvflags | 0) | G_GENOD | G_NOCORPSE;
+                kill_genocided_monsters();
+                await pline(`Wiped out all ${nam}.`);
+                // vampshifted POLY_REVERT deferred
+                if (Upolyd(u) && i === (u.umonnum | 0)) {
+                    u.mh = -1;
+                    if (Unchanging()) {
+                        if (!feel_dead++) await urgent_pline('You die.');
+                        gameover = true;
+                    } else {
+                        const { rehumanize } = await import('./polyself.js');
+                        await rehumanize();
+                    }
+                }
+                if (i === (game.urole?.mnum | 0)
+                    || i === (game.urace?.mnum | 0)) {
+                    u.uhp = -1;
+                    if (Upolyd(u)) {
+                        if (!feel_dead++) {
+                            await You_feel(`${udeadinside()} inside.`);
+                        }
+                    } else {
+                        if (!feel_dead++) await urgent_pline('You die.');
+                        gameover = true;
+                    }
+                }
+            } else if (mv & G_GENOD) {
+                if (!gameover) {
+                    await pline(`${upstart(nam)} are already nonexistent.`);
+                }
+            } else if (!gameover) {
+                const ptr = mons(i);
+                const ms = ptr.msound | 0;
+                if ((ms !== MS_LEADER || quest_info(MS_LEADER) === i)
+                    && (ms !== MS_NEMESIS || quest_info(MS_NEMESIS) === i)
+                    && (ms !== MS_GUARDIAN || quest_info(MS_GUARDIAN) === i)
+                    && (i !== PM_NINJA || Role_if(PM_SAMURAI))) {
+                    const named = type_is_pname_ptr(ptr);
+                    let uniq = !!((ptr.geno | 0) & G_UNIQ);
+                    if (i === PM_HIGH_CLERIC) uniq = false;
+                    await pline(
+                        `You aren't permitted to genocide ${uniq && !named ? 'the ' : ''}${uniq || named ? (pmnames[i]?.[NEUTRAL] || nam) : nam}.`,
+                    );
+                }
+            }
+        }
+        if (gameover || u.uhp === -1) {
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.format = KILLED_BY_AN;
+            game.killer.name = 'scroll of genocide';
+            if (gameover) await done(GENOCIDED);
+        }
+        return;
+    }
+}
+
 /**
  * C ref: read.c do_genocide(how).
  * how: 0 = cursed spawn; 1 = REALLY; 3 = REALLY|PLAYER; 5 = REALLY|ONTHRONE.
  * Named omissions: livelog; Hallucination type names; vampshifted
- * POLY_REVERT; kill_eggs; chameleon newcham; update_inventory;
- * do_class_genocide / seffects SCR_GENOCIDE wire.
+ * POLY_REVERT; chameleon newcham; update_inventory.
  */
 export async function do_genocide(how) {
     const u = game.u || (game.u = {});

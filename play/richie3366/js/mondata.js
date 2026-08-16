@@ -1,6 +1,7 @@
 // mondata.js — Monster name lookup + growth (partial).
-// C ref: mondata.c name_to_mon / name_to_monplus / little_to_big / big_to_little
-// + monstseesu / monstunseesu (seen_resistance) + resist_conflict.
+// C ref: mondata.c name_to_mon / name_to_monplus / name_to_monclass /
+// little_to_big / big_to_little + monstseesu / monstunseesu
+// (seen_resistance) + resist_conflict.
 
 import { game } from './gstate.js';
 import { couldsee } from './vision.js';
@@ -8,7 +9,7 @@ import { rnd, rn2 } from './rng.js';
 import { acurr, A_CHA } from './attrib.js';
 import { objectNames } from './objects.js';
 import {
-    monsterNames, pmnames, NON_PM, LOW_PM,
+    monsterNames, pmnames, NON_PM, LOW_PM, mons,
     MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
     M1_SEE_INVIS,
     is_human, is_elf, is_dwarf, is_gnome, is_orc, is_giant, is_golem,
@@ -21,6 +22,7 @@ import {
     M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID, CONFLICT,
 } from './const.js';
 import { mon_msound } from './sounds.js';
+import { makesingular } from './objnam.js';
 
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
 /** C monflag.h MS_SILENT / MS_BUZZ. */
@@ -370,6 +372,120 @@ export function name_to_monplus(in_str, remainder_p = null, gender_name_var = nu
 /** C ref: mondata.c name_to_mon */
 export function name_to_mon(in_str, gender_name_var = null) {
     return name_to_monplus(in_str, null, gender_name_var);
+}
+
+/** C drawing.c def_char_to_monclass — first def_monsyms[].sym. */
+const DEF_CHAR_TO_MLET = {
+    a: 'S_ANT', b: 'S_BLOB', c: 'S_COCKATRICE', d: 'S_DOG', e: 'S_EYE',
+    f: 'S_FELINE', g: 'S_GREMLIN', h: 'S_HUMANOID', i: 'S_IMP', j: 'S_JELLY',
+    k: 'S_KOBOLD', l: 'S_LEPRECHAUN', m: 'S_MIMIC', n: 'S_NYMPH', o: 'S_ORC',
+    p: 'S_PIERCER', q: 'S_QUADRUPED', r: 'S_RODENT', s: 'S_SPIDER',
+    t: 'S_TRAPPER', u: 'S_UNICORN', v: 'S_VORTEX', w: 'S_WORM', x: 'S_XAN',
+    y: 'S_LIGHT', z: 'S_ZRUTY',
+    A: 'S_ANGEL', B: 'S_BAT', C: 'S_CENTAUR', D: 'S_DRAGON', E: 'S_ELEMENTAL',
+    F: 'S_FUNGUS', G: 'S_GNOME', H: 'S_GIANT', I: 'S_invisible',
+    J: 'S_JABBERWOCK', K: 'S_KOP', L: 'S_LICH', M: 'S_MUMMY', N: 'S_NAGA',
+    O: 'S_OGRE', P: 'S_PUDDING', Q: 'S_QUANTMECH', R: 'S_RUSTMONST',
+    S: 'S_SNAKE', T: 'S_TROLL', U: 'S_UMBER', V: 'S_VAMPIRE', W: 'S_WRAITH',
+    X: 'S_XORN', Y: 'S_YETI', Z: 'S_ZOMBIE',
+    '@': 'S_HUMAN', ' ': 'S_GHOST', "'": 'S_GOLEM', '&': 'S_DEMON',
+    ';': 'S_EEL', ':': 'S_LIZARD', '~': 'S_WORM_TAIL', ']': 'S_MIMIC_DEF',
+};
+
+/** C drawing.c def_monsyms[].explain — index 1 = S_ANT … 60 = S_MIMIC_DEF. */
+const DEF_MONSYM_EXPLAIN = [
+    '',
+    'ant or other insect', 'blob', 'cockatrice', 'dog or other canine',
+    'eye or sphere', 'cat or other feline', 'gremlin', 'humanoid',
+    'imp or minor demon', 'jelly', 'kobold', 'leprechaun', 'mimic', 'nymph',
+    'orc', 'piercer', 'quadruped', 'rodent', 'arachnid or centipede',
+    'trapper or lurker above', 'unicorn or horse', 'vortex', 'worm',
+    'xan or other mythical/fantastic insect', 'light', 'zruty',
+    'angelic being', 'bat or bird', 'centaur', 'dragon', 'elemental',
+    'fungus or mold', 'gnome', 'giant humanoid', 'invisible monster',
+    'jabberwock', 'Keystone Kop', 'lich', 'mummy', 'naga', 'ogre',
+    'pudding or ooze', 'quantum mechanic', 'rust monster or disenchanter',
+    'snake', 'troll', 'umber hulk', 'vampire', 'wraith', 'xorn',
+    'apelike creature', 'zombie', 'human or elf', 'ghost', 'golem',
+    'major demon', 'sea monster', 'lizard', 'long worm tail', 'mimic',
+];
+const DEF_MONSYM_MLET = [
+    null,
+    'S_ANT', 'S_BLOB', 'S_COCKATRICE', 'S_DOG', 'S_EYE', 'S_FELINE',
+    'S_GREMLIN', 'S_HUMANOID', 'S_IMP', 'S_JELLY', 'S_KOBOLD',
+    'S_LEPRECHAUN', 'S_MIMIC', 'S_NYMPH', 'S_ORC', 'S_PIERCER',
+    'S_QUADRUPED', 'S_RODENT', 'S_SPIDER', 'S_TRAPPER', 'S_UNICORN',
+    'S_VORTEX', 'S_WORM', 'S_XAN', 'S_LIGHT', 'S_ZRUTY', 'S_ANGEL',
+    'S_BAT', 'S_CENTAUR', 'S_DRAGON', 'S_ELEMENTAL', 'S_FUNGUS', 'S_GNOME',
+    'S_GIANT', 'S_invisible', 'S_JABBERWOCK', 'S_KOP', 'S_LICH', 'S_MUMMY',
+    'S_NAGA', 'S_OGRE', 'S_PUDDING', 'S_QUANTMECH', 'S_RUSTMONST',
+    'S_SNAKE', 'S_TROLL', 'S_UMBER', 'S_VAMPIRE', 'S_WRAITH', 'S_XORN',
+    'S_YETI', 'S_ZOMBIE', 'S_HUMAN', 'S_GHOST', 'S_GOLEM', 'S_DEMON',
+    'S_EEL', 'S_LIZARD', 'S_WORM_TAIL', 'S_MIMIC_DEF',
+];
+const NAME_TO_MONCLASS_FALSE = ['an', 'the', 'or', 'other', 'or other'];
+const DEF_INVISIBLE = 'I';
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+
+function strcmpi_eq(a, b) {
+    return String(a).toLowerCase() === String(b).toLowerCase();
+}
+
+/**
+ * C ref: mondata.c name_to_monclass — class letter, explain, or species.
+ * Returns mlet name ('S_ANT') or 0 if no match (C returns 0 not MAXMCLASSES).
+ * mndx_p: optional `{ mndx }` out for a specific type (create_particular).
+ */
+export function name_to_monclass(in_str, mndx_p = null) {
+    if (mndx_p) mndx_p.mndx = NON_PM;
+    if (!in_str) return 0;
+    const s0 = String(in_str);
+    if (!s0.length) return 0;
+    if (s0.length === 1) {
+        let mlet = DEF_CHAR_TO_MLET[s0] || null;
+        if (mlet === 'S_MIMIC_DEF') return 'S_MIMIC';
+        if (mlet === 'S_WORM_TAIL') {
+            if (mndx_p) mndx_p.mndx = PM_LONG_WORM;
+            return 'S_WORM';
+        }
+        if (!mlet) {
+            return s0 === DEF_INVISIBLE ? 'S_invisible' : 0;
+        }
+        return mlet;
+    }
+    if (strcmpi_eq(s0, 'long')) return 0;
+    const in_str_s = makesingular(s0);
+    for (const bad of NAME_TO_MONCLASS_FALSE) {
+        if (strcmpi_eq(in_str_s, bad)) return 0;
+    }
+    if (strcmpi_eq(in_str_s, 'long worm')) {
+        if (mndx_p) mndx_p.mndx = PM_LONG_WORM;
+        return mons(PM_LONG_WORM)?.mlet || 'S_WORM';
+    }
+    if (strcmpi_eq(in_str_s, 'demon') || strcmpi_eq(in_str_s, 'devil')) {
+        return 'S_DEMON';
+    }
+    if (strcmpi_eq(in_str_s, 'bug')) return 'S_XAN';
+    if (strcmpi_eq(in_str_s, 'fish')) return 'S_EEL';
+    const needle = in_str_s.toLowerCase();
+    const nlen = needle.length;
+    for (let i = 1; i < DEF_MONSYM_EXPLAIN.length; i++) {
+        const x = DEF_MONSYM_EXPLAIN[i];
+        const xl = x.toLowerCase();
+        const p = xl.indexOf(needle);
+        if (p < 0) continue;
+        if (p !== 0 && x[p - 1] !== ' ') continue;
+        if (x.length - p < nlen) continue;
+        const after = x[p + nlen];
+        if (after !== undefined && after !== ' ') continue;
+        return DEF_MONSYM_MLET[i];
+    }
+    const i = name_to_mon(in_str_s);
+    if (i !== NON_PM && i >= 0) {
+        if (mndx_p) mndx_p.mndx = i;
+        return mons(i)?.mlet || 0;
+    }
+    return 0;
 }
 
 /**

@@ -216,16 +216,25 @@ function petMoveOperation(rawEnv, name) {
     return operation;
 }
 
+// C ref: youprop.h:218 Conflict, `(HConflict || EConflict)`. Two disjuncts and
+// no blocking term. youprop.h gives a `blocked` alias to six properties only
+// -- BLINDED, CLAIRVOYANT, INVIS, STEALTH, LEVITATION and FLYING, at :90,
+// :181, :197, :209, :239 and :252 -- and CONFLICT is not among them, so no C
+// path writes the field. dog_move() reads Conflict at dogmove.c:1017, :1046,
+// :1122 and :1127; js/mon.js:392 keeps the same two-disjunct copy.
 function conflictActive(state) {
     const conflict = state.u?.uprops?.[CONFLICT];
-    return Boolean(conflict?.intrinsic || conflict?.extrinsic)
-        && !conflict?.blocked;
+    return Boolean(conflict?.intrinsic || conflict?.extrinsic);
 }
 
+// C ref: youprop.h:125 Deaf, `(HDeaf || EDeaf || u.uroleplay.deaf)`. Three
+// disjuncts and no blocking term: the third is the deaf conduct, which only
+// `OPTIONS=roleplay:deaf` sets and nothing clears. js/apply.js and js/mhitm.js
+// each keep their own copy of this one-line macro, as C does.
 function heroDeaf(state) {
     const deafness = state.u?.uprops?.[DEAF];
-    return Boolean(deafness?.intrinsic || deafness?.extrinsic)
-        && !deafness?.blocked;
+    return Boolean(deafness?.intrinsic || deafness?.extrinsic
+        || state.u?.uroleplay?.deaf);
 }
 
 // C ref: youprop.h:120 Hallucination, over :115-119. The comment at :115 says

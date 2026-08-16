@@ -29,7 +29,7 @@ import {
     obj_ice_effects,
 } from './mkobj.js';
 import {
-    in_rooms, in_town, stop_occupation, is_pool, is_lava,
+    in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
     confdir, losehp, maybe_half_phys, nomul,
 } from './hack.js';
 import { objectNames } from './generated/objects_data.js';
@@ -76,7 +76,7 @@ import {
     W_NONDIGGABLE, SDOOR, SCORR, CORR, ROOM, DOOR, TREE, STONE,
     D_NODOOR, D_BROKEN, D_TRAPPED, D_CLOSED, D_LOCKED,
     SHOPBASE, SHOP_DOOR_COST, SHOP_PIT_COST, TT_PIT, TT_WEB, isok,
-    Is_earthlevel, Is_airlevel, Is_waterlevel, Is_juiblex_level,
+    Is_earthlevel, Is_airlevel, Is_waterlevel,
     Can_dig_down, Is_stronghold, Is_botlevel, DISP_BEAM, DISP_END,
     DIGCHECK_PASSED, DIGCHECK_PASSED_PITONLY, DIGCHECK_PASSED_DESTROY_TRAP,
     DIGCHECK_FAILED,
@@ -217,16 +217,9 @@ function undestroyable_trap(ttyp) {
     return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
 }
 
-/** C ref: dbridge.c is_pool_or_lava — drawbridge-under deferred. */
+/** C ref: dbridge.c is_pool_or_lava — wrappers ride shared is_pool/is_lava. */
 function is_pool_or_lava(x, y) {
     return is_pool(x, y) || is_lava(x, y);
-}
-
-/** C ref: dbridge.c is_moat — juiblex swamp not moat; drawbridge deferred. */
-function is_moat(x, y) {
-    if (!isok(x, y)) return false;
-    if (Is_juiblex_level(game.u?.uz)) return false;
-    return game.level?.at(x, y)?.typ === MOAT;
 }
 
 /** C ref: dungeon.c surface — enough for dig messages. */

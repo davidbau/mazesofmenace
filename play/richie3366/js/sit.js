@@ -67,19 +67,23 @@
 // else default having-fun; attrcurse
 // rnd(11) INTRINSIC strip (D-0945); rndcurse invent + Magicbane /
 // Antimagic / Half_spell_damage / SPFX_INTEL resist / steed saddle
-// (D-0969).
-// Deferred: shieldeff; update_inventory redraw; Hallucination hcolor synonyms;
+// (D-0969) + Antimagic `shieldeff(u.ux,u.uy)` (D-1087; display.c;
+// D-1089 Antimagic ≡ uprops[ANTIMAGIC] like youprop.h / invent.js
+// hero_Antimagic — confer cloak-of-MR never writes EAntimagic).
+// Deferred: update_inventory redraw; Hallucination hcolor synonyms;
 // Yobjnam2 shk_your/pname polish; SetVoice; eyecount poly. take_gold calls
-// steal.c remove_worn_item (D-1049); armor *_off / unpunish / setnotworn
-// pointer-walk still named on that helper. D-0956: set_mimic_blocking
+// steal.c remove_worn_item (D-1049/D-1086) via steal.js — W_WEAPONS *gone,
+// armor *_off, unpunish, setnotworn pointer-walk. donning/cancel_don /
+// in_use / uskin skinback / Amulet_off / Ring_gone / Blindf_off still
+// named on steal.js. D-0956: set_mimic_blocking
 // on SEE_INVIS attrcurse arm. D-1058/D-1077 uses shared hack.js is_lava
-// (LAVAPOOL/LAVAWALL or DRAWBRIDGE_UP+DB_LAVA). is_pool DRAWBRIDGE_UP
-// +DB_MOAT still named on that helper.
+// (LAVAPOOL/LAVAWALL or DRAWBRIDGE_UP+DB_LAVA). D-1090 is_pool/is_moat
+// DRAWBRIDGE_UP+DB_MOAT (Juiblex MOAT is pool, not moat).
 
 import { game } from './gstate.js';
 import {
     pline, You_feel, newsym, see_monsters, map_background, newsym_force,
-    verbalize, canspotmon,
+    verbalize, canspotmon, shieldeff,
 } from './display.js';
 import { set_mimic_blocking, cansee } from './vision.js';
 import { rnd, rn2, rn1, d } from './rng.js';
@@ -90,8 +94,9 @@ import {
     ICE, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
     Is_waterlevel,
     G_EXTINCT, NO_MINVENT, MM_EDOG, MM_NOMSG,
-    INTRINSIC, TIMEOUT, FROMOUTSIDE, W_SADDLE, W_WEAPONS, W_BALL, W_CHAIN,
+    INTRINSIC, TIMEOUT, FROMOUTSIDE, W_SADDLE,
     FIRE_RES, COLD_RES, POISON_RES, TELEPAT, TELEPORT, INVIS, SEE_INVIS,
+    ANTIMAGIC,
     FAST, STEALTH, PROTECTION, AGGRAVATE_MONSTER,
     KILLED_BY, KILLED_BY_AN, UTOTYPE_NONE, POLY_NOFLAGS, Upolyd, SICK_ALL,
     NO_MM_FLAGS, Never_mind,
@@ -118,7 +123,6 @@ import { find_hell } from './dungeon.js';
 import { yn_function, getlin } from './getline.js';
 import { t_at, dotrap, water_damage, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { losehp, finish_maybe_wail, is_pool, is_lava } from './hack.js';
-import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { burn_away_slime } from './timeout.js';
 import { hliquid, christen_monst, mon_nam, Monnam, type_is_pname } from './do_name.js';
 
@@ -160,10 +164,19 @@ function See_invisible() {
         || u.See_invisible);
 }
 
-/** C youprop.h Antimagic. */
+/**
+ * C youprop.h Antimagic — HAntimagic || EAntimagic
+ * ≡ uprops[ANTIMAGIC].intrinsic || uprops[ANTIMAGIC].extrinsic.
+ * confer_oc_oprop writes ANTIMAGIC only to uprops (EAntimagic
+ * unmirrored). Keep H/E/sticky flats for eat/poly (invent.js
+ * hero_Antimagic). Worn CLOAK_OF_MAGIC_RESISTANCE / gray DSM
+ * must gate rndcurse shieldeff + the cnt divisor (D-1089).
+ */
 function Antimagic() {
     const u = game.u || {};
-    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    const e = u.uprops?.[ANTIMAGIC];
+    return !!((u.Antimagic || u.HAntimagic || u.EAntimagic)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /** C youprop.h Half_spell_damage. */
@@ -235,48 +248,20 @@ function Yobjnam2(obj, verb) {
 }
 
 /**
- * C ref: steal.c remove_worn_item(obj, unchain_ball).
- * take_gold / cursed_book pass FALSE. Gold is worn as W_WEAPONS
- * (quiver — pickup.c / shk.c); C then uwepgone/uswapwepgone/uqwepgone.
- * Named omit: donning/cancel_don; in_use; Armor_off/Cloak_off/Boots_off/
- * Gloves_off/Helmet_off/Shield_off/Shirt_off; Amulet_off; Ring_gone;
- * Blindf_off; unpunish; do.js setnotworn pointer-walk (COIN_CLASS never
- * occupies those slots). sit cannot import steal.js (hack→eat cycle).
- */
-function remove_worn_item(obj, unchain_ball) {
-    if (!obj) return;
-    // C: if (donning(obj)) cancel_don();
-    if (!obj.owornmask) return;
-
-    const u = game.u || {};
-    // C: oldinuse = obj->in_use; obj->in_use = 1; restore at end
-    if (obj.owornmask & W_WEAPONS) {
-        if (obj === u.uwep) uwepgone();
-        if (obj === u.uswapwep) uswapwepgone();
-        if (obj === u.uquiver) uqwepgone();
-    }
-    if (obj.owornmask & (W_BALL | W_CHAIN)) {
-        if (unchain_ball) {
-            // C unpunish() — take_gold passes FALSE
-        }
-    } else if (obj.owornmask) {
-        // C catchall setnotworn(obj) — weapon slots already *gone
-        obj.owornmask = 0;
-    }
-}
-
-/**
  * C ref: sit.c take_gold — strip COIN_CLASS from invent.
  * C: remove_worn_item(otmp, FALSE) then delobj. JS invent[] splice
  * stays: obj_extract_self still omits OBJ_INVENT (mkobj.js).
+ * Unwear is steal.c remove_worn_item (D-1049/D-1086); sit cannot
+ * static-import steal.js (hack→eat cycle) so take_gold loads it.
  */
 export async function take_gold() {
     let lost_money = false;
     const invent = game.invent || [];
+    const { remove_worn_item } = await import('./steal.js');
     for (const otmp of [...invent]) {
         if (otmp?.oclass !== COIN_CLASS) continue;
         lost_money = true;
-        remove_worn_item(otmp, false);
+        await remove_worn_item(otmp, false);
         const idx = invent.indexOf(otmp);
         if (idx >= 0) invent.splice(idx, 1);
         delobj(otmp);
@@ -293,11 +278,12 @@ export async function take_gold() {
 
 /**
  * C ref: sit.c rndcurse — curse random invent (and maybe steed saddle).
- * Branch envelope: Magicbane absorb; Antimagic shield (flash deferred);
+ * Branch envelope: Magicbane absorb; Antimagic `shieldeff` (D-1087)
+ * gated on youprop.h Antimagic via uprops[ANTIMAGIC] (D-1089);
  * invent non-COIN sample; SPFX_INTEL resist; bless→unbless else curse;
  * steed W_SADDLE 1/4.
- * Named omissions: shieldeff; update_inventory redraw; Hallucination
- * hcolor; Yobjnam2 article polish.
+ * Named omissions: update_inventory redraw; Hallucination hcolor;
+ * Yobjnam2 article polish.
  */
 export async function rndcurse() {
     const u = game.u || (game.u = {});
@@ -309,7 +295,7 @@ export async function rndcurse() {
     }
 
     if (Antimagic()) {
-        // shieldeff(u.ux, u.uy) deferred
+        await shieldeff(u.ux, u.uy);
     }
 
     await You_feel('a malignant aura surround you.');
