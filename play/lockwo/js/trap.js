@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { rn2, rnl, rn1, rnd, d } from './rng.js';
 import { newsym, pline, m_at, update_topl } from './display.js';
-import { Blind } from './vision.js';
+import { Blind, recalc_block_point } from './vision.js';
 import { body_part, near_capacity, update_inventory, delobj, xname } from './invent.js';
 import { observe_object } from './o_init.js';
 import { find_ac } from './u_init.js';
@@ -24,8 +24,9 @@ import {
     IS_STWALL, IS_TREE,
     is_pit, IS_POOL, IS_LAVA, TELEP_TRAP, MAGIC_PORTAL,
     IS_DOOR, MOAT, WATER, LAVAPOOL, LAVAWALL, ACCESSIBLE, D_NODOOR, D_BROKEN,
-    IS_AIR, IS_ROOM, IS_WALL, SDOOR,
+    IS_AIR, IS_ROOM, IS_WALL, SDOOR, SCORR, CORR, ROOM, DRAWBRIDGE_UP,
     Is_rogue_level, SLT_ENCUMBER, STONE, Is_botlevel, Is_stronghold, BURNING,
+    STAIRS, LADDER,
     LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC, VIBRATING_SQUARE,
     ARROW_TRAP, ROCKTRAP, SLP_GAS_TRAP, POLY_TRAP, In_sokoban, In_endgame,
     VAULT,
@@ -522,18 +523,30 @@ function trap_mongone(mtmp) {
 }
 
 export function maketrap(x, y, typ) {
+    // C ref: trap.c maketrap() `if ((ttmp = t_at(x, y)) != 0) { ...
+    // oldplace = TRUE; }` — a square already carrying a trap gets that record
+    // RE-INITIALIZED in place; it is not chained again.  Appending a second
+    // record instead left t_at() answering with the FIRST (stale) type for the
+    // rest of the game: on wizard1 the des-file drops a squeaky board and then
+    // a sleeping gas trap on the same square, and mfndpos()/mon_mintrap() then
+    // read the board — so a monster that C sends onto the gas trap (rnd(25))
+    // never even gets the square as a candidate.
+    const old = game.level ? t_at(x, y) : null;
+    if (old && undestroyable_trap(old.ttyp)) return null;
     // C ref: maketrap() "[re-]initialize all fields except ntrap and <tx,ty>" —
     // tseen starts out as unhideable_trap(typ), i.e. TRUE only for a HOLE.
-    const trap = {
-        ttyp: typ, tx: x, ty: y, tseen: unhideable_trap(typ), once: false,
-        launch: { x: 0, y: 0 },
-        dst: { dnum: -1, dlevel: -1 },
-    };
+    const trap = old || { tx: x, ty: y };
+    trap.ttyp = typ;
+    trap.tseen = unhideable_trap(typ);
+    trap.once = false;
+    trap.madeby_u = 0;
+    trap.launch = { x: 0, y: 0 };
+    trap.dst = { dnum: -1, dlevel: -1 };
     if (!game.level) return trap;
     if (!game.level.traps) game.level.traps = [];
     // C ref: maketrap() pushes the trap onto the level list before running the
     // per-type setup (mkroll_launch reads t_at, so the trap must be present).
-    game.level.traps.push(trap);
+    if (!old) game.level.traps.push(trap);
 
     switch (typ) {
     case SQKY_BOARD:
@@ -547,16 +560,55 @@ export function maketrap(x, y, typ) {
         // C ref: maketrap():512 — boulder will roll towards the trigger.
         mkroll_launch(trap, x, y, BOULDER, 1);
         break;
+    case PIT:
+    case SPIKED_PIT:
+        trap.conjoined = 0;
+        /* FALLTHRU */
     case HOLE:
-    case TRAPDOOR:
+    case TRAPDOOR: {
         if (is_hole(typ))
             hole_destination(trap.dst);
+        // C ref: trap.c maketrap():529-561 — a hole/pit REWRITES the terrain it
+        // is dug into.  Omitting this left makeniche's TRAPDOOR niche as SCORR
+        // where C turns it into CORR, and SCORR blocks line of sight while CORR
+        // does not: the wrong viz_array flips m_move's `should_see`, which picks
+        // appr / gettrack and hence the rn2(4*(cnt-j)) modulus hundreds of calls
+        // later (w3-elf-wiz-debug Dlvl 8, cell (4,1)).
+        const lev = game.level?.at?.(x, y);
+        if (lev) {
+            let clear_flags = true;
+            if (lev.typ === DRAWBRIDGE_UP) {
+                clear_flags = false; // keep lev.drawbridgemask
+            } else if (IS_ROOM(lev.typ)) {
+                set_levltyp(x, y, ROOM);
+            } else if (lev.typ === STONE || lev.typ === SCORR) {
+                set_levltyp(x, y, CORR);
+            } else if (IS_WALL(lev.typ) || lev.typ === SDOOR) {
+                const lf = game.level?.flags || {};
+                set_levltyp(x, y, lf.is_maze_lev ? ROOM
+                                  : lf.is_cavernous_lev ? CORR : DOOR);
+            }
+            if (clear_flags) lev.flags = 0;
+            recalc_block_point(x, y);
+        }
         break;
+    }
     default:
         break;
     }
 
     return trap;
+}
+
+// C ref: mkmaze.c set_levltyp() — refuses to overwrite STAIRS/LADDER
+// (CAN_OVERWRITE_TERRAIN) and lights new lava.
+function set_levltyp(x, y, newtyp) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    if (loc.typ === STAIRS || loc.typ === LADDER) return false;
+    loc.typ = newtyp;
+    if (IS_LAVA(newtyp)) loc.lit = 1;
+    return true;
 }
 
 // ── erosion / water damage ────────────────────────────────────────────────

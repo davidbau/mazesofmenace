@@ -106,9 +106,15 @@ function mt_feature(croom, rx, ry, typ) {
 // des.monster("name") / des.monster({id="name", peaceful=1}) inside a room.
 function mt_monster(A, name, croom, peaceful) {
     if (!croom) return null;
-    const data = A.mk_find_montype(name);            // find_montype gender roll
+    // mk_find_montype returns { data, mgend }; passing the WRAPPER through left
+    // permonst fields undefined, so adj_lev() read mlevel as 0 and newmonhp drew
+    // rnd(4) where C draws d(m_lev,8), and mk_mines_race_suppress's rn2(3) never
+    // fired for a gnome/dwarf hero.
+    const { data, mgend } = A.mk_find_montype(name); // find_montype gender roll
     A.oracle_induced_align();                        // sp_amask_to_amask
-    return A.mt4_place_monster(A.mk_mines_race_suppress(data), croom, peaceful);
+    const mtmp = A.mt4_place_monster(A.mk_mines_race_suppress(data), croom, peaceful);
+    if (mtmp) mtmp.female = mgend;                   // create_monster: mtmp->female
+    return mtmp;
 }
 
 // des.monster("G"/"n") — a monster CLASS inside a room.

@@ -9,8 +9,7 @@
 // FIRE/FROST_HORN ubuzz/zapyourself + BUGLE awaken_soldiers (D-0974) +
 // passtune getlin / Castle drawbridge open/close + Mastermind hints
 // (D-0977).
-// Named omissions: Hero_playnotes audio; consume_obj_charge unpaid
-// polish; onscary wiz/angel/rider; can_blow poly;
+// Named omissions: Hero_playnotes audio; onscary wiz/angel/rider; can_blow poly;
 // flooreffects full (boulder→pit thin); maketrap shop-hole/
 // drawbridge-up/wall morph; Soundeffect; count_level_features on
 // fountain/sink morph; sleep_monst defended(AD_SLEE)/shieldeff;
@@ -49,7 +48,7 @@ import {
 import { obj_extract_self, delobj, objects_at, place_object, stackobj } from './mkobj.js';
 import { losehp, maybe_half_phys, in_rooms } from './hack.js';
 import { xkilled } from './uhitm.js';
-import { makeknown } from './invent.js';
+import { makeknown, consume_obj_charge } from './invent.js';
 import { align_str, uhim } from './roles.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { add_damage } from './shk.js';
@@ -155,12 +154,6 @@ function incr_itimeout_HDeaf(incr) {
     const cur = u.HDeaf | 0;
     const next = ((cur & TIMEOUT) + (incr | 0)) & TIMEOUT;
     u.HDeaf = (cur & ~TIMEOUT) | next;
-}
-
-/** C invent.c consume_obj_charge — spe--; unpaid/update_inventory deferred. */
-function consume_obj_charge(obj, _maybe_unpaid) {
-    if (!obj) return;
-    obj.spe = (obj.spe | 0) - 1;
 }
 
 /** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
@@ -886,7 +879,7 @@ async function do_improvisation(instr) {
 
     case DRUM_OF_EARTHQUAKE:
         // C: no deafness while magically functional (mundane → LEATHER arm)
-        consume_obj_charge(instr, true);
+        await consume_obj_charge(instr, true);
         await pline('You produce a heavy, thunderous rolling!');
         Hero_playnotes(itmp_otyp, 'C', 100);
         await pline(`The entire ${generic_lvl_desc()} is shaking around you!`);
@@ -896,7 +889,7 @@ async function do_improvisation(instr) {
         break;
 
     case MAGIC_FLUTE:
-        consume_obj_charge(instr, true);
+        await consume_obj_charge(instr, true);
         await pline(
             `You ${!Deaf() ? '' : 'seem to '}produce ${
                 Hallucination() ? 'piped' : 'soft'
@@ -930,7 +923,7 @@ async function do_improvisation(instr) {
 
     case FIRE_HORN:
     case FROST_HORN: {
-        consume_obj_charge(instr, true);
+        await consume_obj_charge(instr, true);
         if (!(await getdir(null))) {
             await pline(`${Tobjnam(instr, 'vibrate')}.`);
             break;
@@ -959,7 +952,7 @@ async function do_improvisation(instr) {
     }
 
     case MAGIC_HARP:
-        consume_obj_charge(instr, true);
+        await consume_obj_charge(instr, true);
         if (!Deaf()) {
             await pline(
                 `${Tobjnam(instr, 'produce')} very attractive${

@@ -13,7 +13,7 @@ import { rn2, rnd } from './rng.js';
 import { objects, base_oc_cost } from './mkobj.js';
 import { acurr_eff } from './attrib.js';
 import { makemon, monster_by_pmidx, enexto_spawn } from './makemon.js';
-import { builds_up } from './dungeon.js';
+import { builds_up, room_discovered } from './dungeon.js';
 import { record_price_quote } from './o_init.js';
 import { depth as depth_of_level } from './hacklib.js';
 import {
@@ -505,9 +505,15 @@ export async function check_special_room(newlev) {
     // C: `intemple(roomno + ROOMOFFSET)` — the offset room number, which is
     // what u.uentered already holds.
     for (const c of u.uentered) {
-        if (rtypeOf(c) !== TEMPLE) continue;
-        const { intemple } = await import('./priest.js');
-        await intemple(c);
+        const rt = rtypeOf(c);
+        if (rt === TEMPLE) {
+            const { intemple } = await import('./priest.js');
+            await intemple(c);
+        }
+        // C ref: hack.c:3734 — `msg_given = (rt == TEMPLE || rt >= SHOPBASE)`,
+        // then room_discovered(roomno).  That is what makes #overview name the
+        // shop; without it the level's mapseen never learned the room.
+        if (rt === TEMPLE || rt >= SHOPBASE) room_discovered(c - ROOMOFFSET);
     }
 }
 

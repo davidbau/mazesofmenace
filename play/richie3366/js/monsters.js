@@ -27,6 +27,7 @@ import {
     pmnames,
     mresists,
     mconveys,
+    msounds,
     PM_GIANT_SPIDER,
     PM_LICHEN,
     PM_ACID_BLOB,
@@ -191,6 +192,7 @@ export function mons(mndx) {
         msize: msizes[mndx],
         cwt: cwts[mndx],
         cnutrit: cnutrits[mndx],
+        msound: msounds[mndx],
         mlet: mlets[mndx],
         mcolor: mcolors[mndx],
         mattk: mattks[mndx],
@@ -337,6 +339,11 @@ export function can_track(ptr) {
 /** C ref: mondata.h lays_eggs() */
 export function lays_eggs(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_OVIPAROUS);
+}
+
+/** C ref: mondata.h eggs_in_water — oviparous eel swimmer. */
+export function eggs_in_water(ptr) {
+    return lays_eggs(ptr) && ptr?.mlet === 'S_EEL' && is_swimmer(ptr);
 }
 
 // C ref: mondata.h is_flyer / is_floater / is_clinger / grounded / passes_walls

@@ -38,6 +38,11 @@ export const ROCK_CLASS = 14;
 export const BALL_CLASS = 15;
 export const CHAIN_CLASS = 16;
 export const VENOM_CLASS = 17;
+// C ref: mkobj.c:828 dknowns[] — object classes whose APPEARANCE has to be
+// seen before it is known.  clear_dknown() gives these dknown=0 at creation.
+const DKNOWNS_OCLASS = new Set([WAND_CLASS, RING_CLASS, POTION_CLASS,
+    SCROLL_CLASS, GEM_CLASS, SPBOOK_CLASS, WEAPON_CLASS, TOOL_CLASS,
+    VENOM_CLASS]);
 export const MAXOCLASSES = 18;
 export const SPBOOK_no_NOVEL = -SPBOOK_CLASS;
 
@@ -1860,6 +1865,29 @@ function mksobj_init(otmp, artif) {
     mkobj_erosions(otmp);
 }
 
+// C ref: mkobj.c dknowns[]:828 + clear_dknown():835, reached from mksobj() via
+// unknow_object():1192.  ARMOR, FOOD, AMULET, COIN, ROCK, BALL and CHAIN are
+// NOT in dknowns[], so those objects are born dknown — a plumed helmet lying in
+// a shop is never "observed" by see_nearby_objects() (which skips dknown
+// objects), and its TYPE only enters the discoveries list when the hero walks
+// onto it and xname() runs.  Missing this put seed0002's plumed helmet ahead of
+// the shield of reflection in the '\' list.  The three exceptions are the
+// shields whose appearance is randomized and every oc_merge type.
+const DKNOWNS = new Set([WAND_CLASS, RING_CLASS, POTION_CLASS, SCROLL_CLASS,
+    GEM_CLASS, SPBOOK_CLASS, WEAPON_CLASS, TOOL_CLASS, VENOM_CLASS]);
+const ELVEN_SHIELD = 153, ORCISH_SHIELD = 155, SHIELD_OF_REFLECTION = 158;
+
+export function clear_dknown(obj) {
+    obj.dknown = DKNOWNS.has(obj.oclass) ? 0 : 1;
+    if ((obj.otyp >= ELVEN_SHIELD && obj.otyp <= ORCISH_SHIELD)
+        || obj.otyp === SHIELD_OF_REFLECTION
+        || (objects[obj.otyp]?.flags & F_MERGE))
+        obj.dknown = 0;
+    // globs keep dknown set to maximize merging
+    if (obj.otyp >= GLOB_OF_GRAY_OOZE && obj.otyp <= GLOB_OF_BLACK_PUDDING)
+        obj.dknown = 1;
+}
+
 export function mksobj(otyp, init = true, artif = false) {
     const obj = objects[otyp] || objects[STRANGE_OBJECT];
     const otmp = {
@@ -1875,6 +1903,13 @@ export function mksobj(otyp, init = true, artif = false) {
         corpsenm: null,
     };
     otmp.o_id = next_ident();
+    // C ref: mkobj.c:1192 unknow_object() -> clear_dknown(obj):
+    //   obj->dknown = strchr(dknowns, obj->oclass) ? 0 : 1;
+    //   ... also 0 for the elven/orcish shields and any oc_merge type.
+    // Without this every fresh object had dknown === undefined, which doname()
+    // reads as "known", so a BLIND hero named the appearance of things it had
+    // never seen ("a brilliant blue potion" where C prints "a potion").
+    otmp.dknown = DKNOWNS_OCLASS.has(otmp.oclass) ? 0 : 1;
     if (init) mksobj_init(otmp, artif);
 
     switch ((otmp.oclass === POTION_CLASS && otmp.otyp !== POT_OIL) ? POT_WATER : otmp.otyp) {

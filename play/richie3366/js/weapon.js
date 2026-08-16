@@ -4,7 +4,7 @@
 //         multishot_class_bonus.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rnl } from './rng.js';
 import { flush_topl_more, pline, You_feel, canseemon, bot } from './display.js';
 import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one } from './options.js';
@@ -187,9 +187,9 @@ export function should_mulch_missile(obj) {
 
     const chance = 3 + greatest_erosion(obj) - (obj.spe | 0);
     let broken = chance > 1 ? !!rn2(chance) : !rn2(4);
-    if (obj.blessed) {
-        const mon_moving = !!(game.context?.mon_moving);
-        if (mon_moving ? !rn2(3) : !rn2(4)) broken = false;
+    // C: obj->blessed && (svc.context.mon_moving ? !rn2(3) : !rnl(4))
+    if (obj.blessed && (game.context?.mon_moving ? !rn2(3) : !rnl(4))) {
+        broken = false;
     }
     const n = objectNames[obj.otyp];
     if (((obj.oclass === GEM_CLASS && game.objects?.[obj.otyp]?.oc_tough)

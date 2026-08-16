@@ -73,6 +73,7 @@ import { ICE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
     M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_ELEC,
     M_SEEN_ACID, M_SEEN_REFL } from './const.js';
 import { surface } from './dungeon.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 
 /* ------------------------------------------------------------------------ *
  * Object types.
@@ -132,8 +133,8 @@ const WEAPON_CLASS = 2, AMULET_CLASS = 5, TOOL_CLASS = 6, FOOD_CLASS = 7,
 // C ref: weight.h MAX_CARR_CAP / WT_HUMAN, monflag.h MZ_HUMAN (== MZ_MEDIUM).
 const MAX_CARR_CAP = 1000, WT_HUMAN = 1450, MZ_HUMAN = 2;
 const P_DAGGER = 1, P_KNIFE = 2;
-// C ref: objclass.h material values.
-const MAT_SILVER = 10;
+// C ref: objclass.h material enum — SILVER is 14 (10 is DRAGON_HIDE).
+const MAT_SILVER = 14;
 // C ref: defsym.h MONSYM() indices (permonst.mcls).
 const S_EYE = 5, S_GHOST = 54, S_KOP = 37, S_NYMPH_MCLS = 14, S_UNICORN = 21,
     S_LIGHT = 25, S_VORTEX = 22, S_EEL = 57, S_GOLEM = 55, S_DRAGON = 30;
@@ -217,6 +218,10 @@ export const MUSE_BAG = 10;
 const dist2 = (x0, y0, x1, y1) => (x0 - x1) * (x0 - x1) + (y0 - y1) * (y0 - y1);
 const distmin = (x0, y0, x1, y1) => Math.max(Math.abs(x0 - x1), Math.abs(y0 - y1));
 const sgn = (n) => (n > 0 ? 1 : n < 0 ? -1 : 0);
+// C ref: include/hack.h:1477/1490 — BZ_OFS_WAN(otyp) and the monster-wand ray
+// type window (-39..-30), which is what makes dobuzz() take its type<0 arms.
+const BZ_OFS_WAN_MUSE = (otyp) => Math.abs(otyp - 429 /*WAN_MAGIC_MISSILE*/) % 10;
+const BZ_M_WAND = (bztyp) => (-30 - bztyp);
 // C ref: hack.h mdistu(mon) == dist2(mon->mx, mon->my, u.ux, u.uy).
 const mdistu = (mon) => dist2(mon.mx, mon.my, game.u?.ux ?? 0, game.u?.uy ?? 0);
 const u_at = (x, y) => game.u?.ux === x && game.u?.uy === y;
@@ -593,12 +598,11 @@ function DESCR_FOR(idx) {
     if (!DESCR_TABLE) DESCR_TABLE = descr_table_sync();
     return DESCR_TABLE?.[idx] ?? null;
 }
-// o_descr_data.js is a pure data module with no cycle back to muse, so a
-// synchronous read of its export is safe once the module graph is loaded.
-// It is resolved through globalThis rather than a static import so that a
-// missing table degrades to "no appearance match" instead of a load error.
+// globalThis.__NH_DESCR_BY_OTYP was never assigned anywhere, so objdescr_is()
+// answered FALSE for every appearance and precheck()'s milky/smoky rn2 rolls
+// never fired.  o_descr_data.js is pure data with no cycle back to muse.
 function descr_table_sync() {
-    return globalThis.__NH_DESCR_BY_OTYP ?? null;
+    return DESCR_BY_OTYP;
 }
 // C ref: mon.c mvitals[].mvflags & G_GONE / mvitals[].born.
 function mvitals_gone(name) {
@@ -1933,14 +1937,39 @@ export async function use_offensive(mtmp, throw_potion) {
     case MUSE_WAN_FIRE:
     case MUSE_WAN_COLD:
     case MUSE_WAN_LIGHTNING:
-    case MUSE_WAN_MAGIC_MISSILE:
+    case MUSE_WAN_MAGIC_MISSILE: {
+        /* C ref: muse.c:1847-1861 — mzapwand(), makeknown() (whose
+           exercise(A_WIS, TRUE) rn2(19) is a REAL draw), then buzz() with a
+           NEGATIVE ray type so dobuzz() takes its monster-source path.  This
+           was a documented GAP ("this port does not have dobuzz"), but zap.js
+           has had dobuzz with the type<0 monster arm since breath attacks
+           landed — leaving the arm empty simply dropped the whole ray
+           (w3-human-knight-debug step 162: the robbed shopkeeper's wand). */
+        await mzapwand(mtmp, otmp, false);
+        if (oseen) makeknown(otmp.otyp);
+        m_using = true;
+        game.buzzer = mtmp;
+        game.current_wand = otmp;
+        const mux = mtmp.mux ?? game.u.ux, muy = mtmp.muy ?? game.u.uy;
+        const { dobuzz } = await import('./zap.js');
+        // C ref: muse.c:1833 `buzzfn = mtmp->mwandexp ? buzz : buzz_force_miss`
+        // — a monster's FIRST attack-wand shot always misses, and
+        // buzz_force_miss() passes forcemiss=TRUE, which short-circuits every
+        // zap_hit() rn2(20) in the beam.  Without it the shopkeeper's opening
+        // shot rolled to-hit and killed a Kop C only "misses".
+        await dobuzz(BZ_M_WAND(BZ_OFS_WAN_MUSE(otmp.otyp)),
+                     (otmp.otyp === OT().WAN_MAGIC_MISSILE) ? 2 : 6,
+                     mtmp.mx, mtmp.my, sgn(mux - mtmp.mx), sgn(muy - mtmp.my),
+                     true, false, !mtmp.mwandexp);
+        game.buzzer = null;
+        game.current_wand = null;
+        m_using = false;
+        mtmp.mwandexp = true;
+        return DEADMONSTER(mtmp) ? 1 : 2;
+    }
     case MUSE_FIRE_HORN:
     case MUSE_FROST_HORN:
-        /* GAP: these all bottom out in zap.c buzz()/dobuzz(), which this port
-           does not have.  Emitting mzapwand()'s message and burning a charge
-           for a ray that never travels would be worse than not acting, so
-           report "nothing happened" — C's own 0 return — and let the monster
-           fall through to its ordinary attack. */
+        /* GAP: mplayhorn()'s ray still needs the horn message machinery. */
         return 0;
     case MUSE_WAN_TELEPORTATION:
     case MUSE_WAN_UNDEAD_TURNING:

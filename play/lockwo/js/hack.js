@@ -169,6 +169,7 @@ export function nomul(nval = 0) {
 // set_occupation() txt.
 const OCC_SLOTS = [
     ['_search_occupation', 'searching'],           // cmd.c:1847
+    ['_wait_occupation', 'waiting'],               // cmd.c:1931
     ['_study_occupation', 'studying'],             // spell.c:639
     ['_wipe_occupation', 'wiping off your face'],  // do.c:2394
 ];
@@ -201,7 +202,10 @@ export async function stop_occupation() {
     for (const [slot, txt] of OCC_SLOTS) {
         if (!game[slot]) continue;
         game[slot] = null;
-        await pline(`You stop ${txt}.`);
+        // update_topl, not pline: C's You("stop %s.") lands on a topline that
+        // already holds this turn's messages ("It hits!  You stop waiting."),
+        // and only update_topl appends instead of replacing.
+        await update_topl(`You stop ${txt}.`);
         nomul(0);
         return;
     }

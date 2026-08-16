@@ -1153,6 +1153,23 @@ export function gethungry() {
 // The single rn2(100) is the RNG-relevant effect; the heal keeps uhp tracking
 // so the roll stops firing once the hero is back to full.  The caller invokes
 // this only when uhp < uhpmax, mirroring the C guard at allmain.c:290.
+// C ref: allmain.c:976 interrupt_multi(msg) — a voluntary multi-turn activity
+// (counted rest/search, a timed occupation) stops the instant the hero reaches
+// full HP or full Pw.  Running/travelling is exempt.  `msg` is only shown with
+// the verbose option, which the covered rc files turn off, so the Norep is not
+// modelled — but the nomul(0) is load-bearing: without it a counted "20." runs
+// all 20 turns where C stops at whichever turn tops the hero up.
+function interrupt_multi() {
+    const g = game;
+    if ((g.multi ?? 0) > 0 && !g.context?.travel && !g.context?.run) {
+        // nomul(0), inlined: hack.js imports this module, so importing back
+        // would be a cycle.  multi > 0 above already satisfies C's
+        // `if (gm.multi < nval) return` guard.
+        g.multi = 0;
+        if (g.context) g.context.travel = g.context.travel1 = g.context.mv = 0;
+    }
+}
+
 function regen_hp(wtcap = 0) {
     const u = game.u;
     if (!u) return;
@@ -1170,8 +1187,10 @@ function regen_hp(wtcap = 0) {
         // eel, which no covered session reaches; u.mh < 1 -> rehumanize() is
         // handled at the damage site.  Both are RNG-inert here.
         if (u.mh < u.mhmax) {
-            if (u_can_regen() || (encumbrance_ok && !((game.moves || 0) % 20)))
+            if (u_can_regen() || (encumbrance_ok && !((game.moves || 0) % 20))) {
                 u.mh += 1;
+                if (u.mh === u.mhmax) interrupt_multi();
+            }
         }
         return;
     }
@@ -1186,6 +1205,9 @@ function regen_hp(wtcap = 0) {
     if (heal) {
         u.uhp += heal;
         if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
+        // C ref: allmain.c:673 "stop voluntary multi-turn activity if now
+        // fully healed".
+        if (u.uhp === u.uhpmax) interrupt_multi();
     }
 }
 
@@ -1224,9 +1246,10 @@ function regen_pw(wtcap = 0) {
     // no covered hero wears.
     u.uen += rn1(upper, 1);
     if (u.uen > u.uenmax) u.uen = u.uenmax;
-    // C also sets disp.botl and, at full power, interrupt_multi("You feel full
-    // of energy.").  The status line is recomputed each frame here, and the
-    // interrupt only matters mid-occupation.
+    // C ref: allmain.c:616 — at full power, interrupt_multi("You feel full of
+    // energy.").  The message needs the verbose option (off in the covered rc
+    // files) but the nomul(0) inside interrupt_multi fires regardless.
+    if (u.uen === u.uenmax) interrupt_multi();
 }
 
 // C ref: hack.c overexert_hp() — "HP loss or passing out from overexerting
@@ -1482,6 +1505,25 @@ export async function moveloop_core() {
         }
     }
 
+    // C ref: allmain.c moveloop_core():445 — "the Amulet of Yendor gives a wish
+    // when initially picked up": once per game, at the first player-input
+    // boundary the hero holds it.  display_nhwindow(WIN_MESSAGE, TRUE) pages
+    // whatever is still on the top line before the two new lines, so the wish
+    // prompt gets its own input boundary (seed0373 steps 104-106).
+    if (g.u?.uhave?.amulet && !g.u.uevent?.amulet_wish) {
+        if (!g.u.uevent) g.u.uevent = {};
+        g.u.uevent.amulet_wish = 1;
+        const D = await import('./display.js');
+        await D.display_nhwindow_message();
+        await update_topl('The Amulet is bestowing a wish upon you!');
+        // C: makewish() itself; zap.c's wand path adds the verbose
+        // "You may wish for an object." line, and so does this one.
+        if (game.flags?.verbose !== false)
+            await update_topl('You may wish for an object.');
+        const { makewish } = await import('./extcmd-handlers.js');
+        await makewish();
+    }
+
     // C ref: allmain.c moveloop_core():452 — find_ac() runs once per player
     // input, right after the amulet-wish block and BEFORE bot(), so any AC
     // change a command or a monster's turn produced (erosion, a corroded suit,
@@ -1689,11 +1731,45 @@ export async function moveloop_core() {
         return;
     }
 
+    // C ref: cmd.c:1931 set_occupation(donull, "waiting", gm.multi) — a counted
+    // wait ("20.") is a timed occupation, exactly like the counted search above,
+    // so an interruption prints "You stop waiting." and a hostile that steps
+    // next to the hero ends the rest early.  donull() itself does nothing.
+    if (g._wait_occupation) {
+        if ((g.multi ?? 0) > 0) g.multi -= 1;
+        g.context = g.context || {};
+        g.context.move = 1;
+        g._pendingTurn = true;
+        const stillOccupied = (g.multi ?? 0) > 0;
+        if (!stillOccupied) g._wait_occupation = null;
+        if (monster_nearby()) {
+            if (stillOccupied) await pline('You stop waiting.');
+            g._wait_occupation = null;
+            g.multi = 0;
+        }
+        return;
+    }
+
+    // C ref: allmain.c moveloop_core():515 — `if (gm.multi > 0) { lookaround();
+    // ... else { --gm.multi; rhack(gc.cmd_key); } }`.  A count-prefixed command
+    // ("20.") REPEATS itself once per turn WITHOUT reading another key.  That
+    // arm was missing, so a counted rest ran exactly ONE turn and the leftover
+    // count sat in gm.multi while the loop went back to the keyboard: seed4500
+    // reached its 4th #pray at turn 156 where C reaches it at 195.
+    // lookaround() is a no-op here — C returns from it immediately unless
+    // svc.context.run is set, and a counted non-movement command leaves it 0 —
+    // so the run/travel (svc.context.mv) half stays with hack.js's own loop.
+    let cmd_key = 0;
+    if ((g.multi ?? 0) > 0 && !g.context?.mv && !g.context?.run && g._cmd_key) {
+        g.multi -= 1;
+        cmd_key = g._cmd_key;
+    }
+
     // Read and execute one command.  rhack clears the previous command's
     // top-line message only after the capture for that command has fired
     // (i.e. after its own nhgetch returns), so a free-action message such as
     // dolook's "You see no objects here." survives onto the captured screen.
-    await rhack(0);
+    await rhack(cmd_key);
 
     // C ref: allmain.c moveloop_core():538 — `if (u.utotype) deferred_goto();`
     // fires immediately after rhack() returns.  doread() runs its own copy for

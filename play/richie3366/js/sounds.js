@@ -349,28 +349,27 @@ const WALLTALK = [
     "doesn't seem to be interested.",
 ];
 
-/** C ref: monflag.h MS_SILENT. */
+/** C ref: monflag.h enum ms_sounds — must match extractor msounds[]. */
 const MS_SILENT = 0;
-/** C ref: monflag.h MS_BARK — dogs/canines (mlet S_DOG). */
 const MS_BARK = 1;
-/** C ref: monflag.h MS_MEW — felines (mlet S_FELINE). */
 const MS_MEW = 2;
-/** C ref: monflag.h MS_GROWL. */
+const MS_ROAR = 3;
+const MS_BELLOW = 4;
 const MS_GROWL = 5;
-/** C ref: monflag.h MS_ROAR. */
-const MS_ROAR = 6;
-/** C ref: monflag.h MS_SQEEK. */
-const MS_SQEEK = 8;
-/** C ref: monflag.h MS_SQAWK. */
-const MS_SQAWK = 9;
-/** C ref: monflag.h MS_WAIL. */
-const MS_WAIL = 12;
-/** C ref: monflag.h MS_ANIMAL — animal noises ceiling. */
+const MS_SQEEK = 6;
+const MS_SQAWK = 7;
+const MS_CHIRP = 8;
+const MS_HISS = 9;
+const MS_BUZZ = 10;
+const MS_GRUNT = 11;
+const MS_NEIGH = 12;
+const MS_MOO = 13;
+const MS_WAIL = 14;
 const MS_ANIMAL = 17;
-/** C ref: monflag.h MS_SEDUCE — nymphs / incubus ("cajoles you"). */
+const MS_MUMBLE = 21;
 const MS_SEDUCE = 31;
-/** C ref: monflag.h MS_LEADER — quest class leader. */
 const MS_LEADER = 36;
+const MS_GROAN = 44;
 
 /**
  * C ref: sounds.c h_sounds[] — Hallucination verb pool (SIZE 35).
@@ -386,8 +385,8 @@ const H_SOUNDS = [
 ];
 
 /**
- * Infer msound when generated tables omit it.
- * S_DOG → MS_BARK; S_FELINE → MS_MEW; S_NYMPH → MS_SEDUCE.
+ * C ref: permonst.msound (monflag.h). Tables extract SIZ sound.
+ * Stub data without msound still infers dog/feline/nymph.
  */
 export function mon_msound(mtmp) {
     const ptr = mtmp?.data;
@@ -396,28 +395,16 @@ export function mon_msound(mtmp) {
     if (ptr.mlet === 'S_DOG') return MS_BARK;
     if (ptr.mlet === 'S_FELINE') return MS_MEW;
     if (ptr.mlet === 'S_NYMPH') return MS_SEDUCE;
-    return 0; // MS_SILENT — other sounds deferred
+    return 0;
 }
 
 /**
  * C ref: sounds.c cry_sound — gerund stem for hatch_egg mommy/daddy gag.
- * Generated tables omit msound, so ptr.msound is 0 (MS_SILENT) unless set.
- * Named omit: extractor msound; hiss/growl/chirp/buzz/screech/grunt/mumble
- * only fire when ptr.msound is populated.
+ * ptr.msound is C monflag.h via generated msounds[].
  */
 export function cry_sound(mtmp) {
     const ptr = mtmp?.data;
     const ms = ptr?.msound | 0;
-    // C monflag.h (local — sounds.js growl table uses a different numbering)
-    const MS_SILENT = 0;
-    const MS_ROAR = 3;
-    const MS_GROWL = 5;
-    const MS_SQAWK = 7;
-    const MS_CHIRP = 8;
-    const MS_HISS = 9;
-    const MS_BUZZ = 10;
-    const MS_GRUNT = 11;
-    const MS_MUMBLE = 21;
     switch (ms) {
     default:
     case MS_SILENT:
@@ -447,24 +434,33 @@ function helpless(mtmp) {
 
 /**
  * C ref: sounds.c growl_sound — non-Hallu growl verb from msound.
- * Named omissions: MS_HISS/BELLOW/BUZZ/NEIGH/GROAN/MOO arms use defaults
- * via mon_msound inference until those mlets are wired.
  */
 function growl_sound(mtmp) {
     switch (mon_msound(mtmp)) {
     case MS_MEW:
+    case MS_HISS:
         return 'hiss';
     case MS_BARK:
     case MS_GROWL:
         return 'growl';
     case MS_ROAR:
         return 'roar';
+    case MS_BELLOW:
+        return 'bellow';
+    case MS_BUZZ:
+        return 'buzz';
     case MS_SQEEK:
         return 'squeal';
     case MS_SQAWK:
         return 'screech';
+    case MS_NEIGH:
+        return 'neigh';
     case MS_WAIL:
         return 'wail';
+    case MS_GROAN:
+        return 'groan';
+    case MS_MOO:
+        return 'low';
     case MS_SILENT:
         return 'commotion';
     default:
@@ -600,11 +596,10 @@ export async function domonnoise(mtmp) {
     if (game.u?.Deaf) return ECMD_OK;
     let msound = mon_msound(mtmp);
     // C: leader_m_id && msound > MS_ANIMAL → MS_LEADER (poly-safe).
-    // JS tables omit msound; treat known quest leader as speakable LEADER.
     const qs = game.quest_status;
     if (qs?.leader_m_id
         && (mtmp.m_id | 0) === (qs.leader_m_id | 0)
-        && (msound === 0 || msound > MS_ANIMAL)) {
+        && msound > MS_ANIMAL) {
         msound = MS_LEADER;
     }
     if (msound === 0 && !mtmp.isshk) return ECMD_OK;

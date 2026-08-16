@@ -456,8 +456,9 @@ async function seffect_remove_curse(sobj) {
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
     const u = game.u || {};
-    // C youprop.h Confusion — HConfusion || EConfusion (flat Confusion mirror)
-    const confused = !!(u.Confusion || (u.HConfusion | 0) || (u.EConfusion | 0));
+    // C youprop.h: #define Confusion HConfusion (no EConfusion). Throne
+    // case 10 sets only HConfusion=1L (D-1048); do not OR a flat flag.
+    const confused = !!(u.HConfusion | 0);
     const Hallucination = !!(u.Hallucination);
 
     const feel = !Hallucination

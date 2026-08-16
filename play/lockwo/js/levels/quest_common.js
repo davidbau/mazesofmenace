@@ -12,6 +12,7 @@ import {
 } from '../const.js';
 import { make_engr_at } from '../engrave.js';
 import { game } from '../gstate.js';
+import { artilist } from '../artifact.js';
 import {
     MGEND_NEUTRAL, enexto_spawn, makemon, mkclass, mm_mon_at, monster_by_pmidx,
     name_gender_hint, name_to_pmidx,
@@ -46,10 +47,12 @@ function is_hole_t(ttyp) { return ttyp === HOLE_T || ttyp === TRAPDOOR_T; }
 // getting it wrong costs 200 draws per snake.
 // ════════════════════════════════════════════════════════════════════════
 export function quest_getloc_coord_rnd(humidity, nowarn) {
-    // First pass always carries NO_LOC_WARN (get_location_coord adds it).
-    let c = splev_get_location_rnd(humidity, true);
-    if (c.x === -1 && c.y === -1) c = splev_get_location_rnd(humidity, !!nowarn);
-    return c;
+    // splev_get_location_rnd() IS get_location_coord(): it already runs the
+    // NO_LOC_WARN pass and then the caller's-flags pass.  Wrapping it in a
+    // second copy of that pair ran FOUR 100-iteration loops where C runs two,
+    // so every water-liking species on a dry quest level burned 200 extra
+    // rn2(xsize)/rn2(ysize) pairs before its DRY retry (seed0361 Arc-loca).
+    return splev_get_location_rnd(humidity, !!nowarn);
 }
 
 // C ref: sp_lev.c create_monster() placement — the humidity two-step, then the
@@ -191,7 +194,22 @@ export function quest_named_object_at(otyp, mx, my, { spe = null, buc = null, na
     case 'cursed': curse(otmp); break;
     default: break;
     }
-    if (name) { otmp.oname = name; otmp.onamelth = name.length; }
+    if (name) {
+        otmp.oname = name; otmp.onamelth = name.length;
+        // C ref: sp_lev.c create_object() -> oname(otmp, name, ONAME_NO_FLAGS):
+        // naming an object with an artifact's name MAKES it that artifact and
+        // sets artiexist[m].  Skipping that left every quest artifact invisible
+        // to nartifact_exist(), so mksobj_init()'s artifact gate rolled
+        // rn2(40 + 10*n) with the wrong modulus for the rest of the game.
+        for (let m = 1; m < artilist.length; m++) {
+            if (artilist[m]?.name === name) {
+                otmp.oartifact = m;
+                if (!(game.artiexist instanceof Set)) game.artiexist = new Set();
+                game.artiexist.add(m);
+                break;
+            }
+        }
+    }
     return otmp;
 }
 

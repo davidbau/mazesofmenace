@@ -837,7 +837,11 @@ async function peffect_healing(otmp) {
 }
 
 async function peffect_extra_healing(otmp) {
-    pline_sync('You feel much better.');
+    // update_topl, not pline_sync: C's You_feel("much better.") is a pline, so
+    // the "You can see again." healup() emits next CHAINS onto the same topline
+    // ("You feel much better.  You can see again.").  pline_sync only writes
+    // _pending_message, which the next update_topl then replaces.
+    await update_topl('You feel much better.');
     await healup(16 + d(4 + 2 * bcsign(otmp), 8),
                  otmp.blessed ? 5 : otmp.cursed ? 0 : 2, !otmp.cursed, true);
     // C: make_hallucinated(0L, TRUE, 0L).  Its "Everything looks SO boring now."

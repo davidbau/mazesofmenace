@@ -21,7 +21,7 @@ import { cansee, Blind } from './vision.js';
 import { t_at } from './trap.js';
 import { night, FULL_MOON } from './calendar.js';
 import { is_were_flag, is_human_flag, mflags1_of, mflags2_of, mflags3_of,
-    M1_NOTAKE, M1_NOHANDS, M1_AMORPHOUS, M1_HIDE, M1_CLING, M1_FLY,
+    M1_NOTAKE, M1_NOHANDS, M1_AMORPHOUS, M1_HIDE, M1_CLING, M1_FLY, M1_TPORT,
     M1_BREATHLESS, M1_SLITHY, M2_DEMON, M3_COVETOUS, mindless,
     humanoid, is_animal, nohands,
     strongmonst_flag, throws_rocks_flag } from './monflags_data.js';
@@ -99,17 +99,15 @@ const MMOVE_BY_PMIDX = Object.freeze([
     /* 368 */ 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
 ]);
 
-// Starting pets are created by dog.c/dog.js, which tag the pet's permonst
-// stand-in with a DIFFERENT pmidx convention than the makemon MONS table
-// (dog.js: little dog 16, kitten 34, pony 102).  Their real species speeds
-// (include/monsters.h) are little dog/kitten 18, pony 16.  Keyed by the
-// dog.js pet pmidx so a tame monster gets its true mmove instead of the
-// NORMAL_SPEED fallback.  C ref: monsters.h little dog/kitten LVL(.,18,.) and
-// pony LVL(.,16,.).
+// Starting pets get a hand-built permonst stand-in from dog.js with no mmove
+// field, so they miss the `d.mmove != null` fast path below.  Their pmidx now
+// agrees with MONS (little dog 16, kitten 32, pony 100), which makes this table
+// redundant with MMOVE_BY_PMIDX — keep it as the explicit statement of the
+// three species speeds C gives them (monsters.h LVL(.,18,.) / LVL(.,16,.)).
 const PET_MMOVE_BY_PMIDX = Object.freeze({
     16: 18,  // little dog (PM_LITTLE_DOG)
-    34: 18,  // kitten (dog.js PM_KITTEN)
-    102: 16, // pony (dog.js PM_PONY)
+    32: 18,  // kitten (PM_KITTEN)
+    100: 16, // pony (PM_PONY)
 });
 
 // C ref: permonst.mmove — base speed for a monster's species.
@@ -554,12 +552,20 @@ function breathless(ptr) { return (mflags1_of(ptr) & M1_BREATHLESS) !== 0; }
 //     it — makemon-level RNG with no entry point in this port — plus dryup().
 //   * iron golem in a pool (mon.c:994): rn2(5), then d(2,6) rust damage and
 //     possibly mondied().
-//   * the inlava / inpool arms (mon.c:1010, 1064): an rloc() escape for
-//     can_teleport species, then mondead()/mondied()/xkilled().  Monster death
-//     with corpse creation (make_corpse's corpse_chance rolls) has no shared
-//     helper here yet, and killing a monster this port would otherwise keep
-//     alive is the largest possible divergence.
-// Returns 1 if the monster died (never, until the arms above land).
+//   * the inpool arm (mon.c:1064): mondied() leaves a cadaver, so it needs
+//     make_corpse's corpse_chance rolls in the right order.
+// The INLAVA arm (mon.c:1010) IS ported below: a non-clinging, non-lava-liking
+// monster standing in lava is destroyed the next time movemon hands it a move,
+// and for the ordinary case (no M1_TPORT, no MR_FIRE) that costs ZERO RNG —
+// which is exactly why it was invisible here.  Leaving it out kept a monster
+// alive that C deletes, and that monster then runs a whole dochug() the C
+// stream does not have (seed0360 wizard2: a mumak on the lava at <55,9>).
+// Returns 1 if the monster died.
+// C ref: mondata.h:190 likes_lava(ptr) — fire elemental and salamander only.
+const LAVA_LIKER_NAMES = new Set(['fire elemental', 'salamander']);
+function mon_likes_lava(ptr) { return LAVA_LIKER_NAMES.has(ptr?.name); }
+// C ref: permonst.h MR_FIRE.
+const MR_FIRE_BIT = 0x01;
 async function minliquid(mtmp) {
     const loc = game.level?.at(mtmp.mx, mtmp.my);
     const typ = loc?.typ;
@@ -575,8 +581,48 @@ async function minliquid(mtmp) {
     const inpool = IS_POOL(typ) && (!airborne || Is_waterlevel(game.u?.uz));
     const inlava = IS_LAVA(typ) && !airborne;
 
-    if (inlava || inpool || waterwall)
-        return 0; /* deferred: see the drown/burn arms above */
+    if (inlava) {
+        // C ref: mon.c:1010 — a ceiling clinger hangs above the lava and a
+        // lava-liker is at home in it; everything else burns.
+        if (((mflags1_of(ptr) & M1_CLING) === 0) && !mon_likes_lava(ptr)) {
+            // C ref: mon.c:1015 — a teleporter escapes instead (rloc's RNG).
+            if ((mflags1_of(ptr) & M1_TPORT) !== 0) {
+                const { rloc, tele_restrict, RLOC_MSG } = await import('./teleport.js');
+                if (!(await tele_restrict(mtmp)) && await rloc(mtmp, RLOC_MSG))
+                    return 0;
+            }
+            const { mon_kill_leaving } = await import('./monmove.js');
+            if (((ptr?.mresists ?? 0) & MR_FIRE_BIT) === 0) {
+                if (cansee(mtmp.mx, mtmp.my))
+                    await pline(`${Monnam(mtmp)} burns to a crisp.`);
+                // C: svc.context.mon_moving is set for every minliquid() call
+                // reached from movemon, so this is mondead() — no corpse, and
+                // no corpse_chance roll.
+                mon_kill_leaving(mtmp, true);
+                return 1;
+            }
+            // Fire-resistant but not a lava-liker: 1 point of damage, then it
+            // is teleported clear of the lava (rloc draws).
+            mtmp.mhp -= 1;
+            if (mtmp.mhp <= 0) {
+                if (cansee(mtmp.mx, mtmp.my))
+                    await pline(`${Monnam(mtmp)} surrenders to the fire.`);
+                mon_kill_leaving(mtmp, true);
+                return 1;
+            }
+            if (cansee(mtmp.mx, mtmp.my))
+                await pline(`${Monnam(mtmp)} burns slightly.`);
+            if (!(is_flyer_m(ptr) || mtmp.mlevitating)) {
+                // fire_damage_chain(minvent) is deferred (no monster here
+                // carries burnable gear at a lava square); the rloc is not.
+                const { rloc, RLOC_MSG } = await import('./teleport.js');
+                await rloc(mtmp, RLOC_MSG);
+            }
+            return 0;
+        }
+    }
+    if (inpool || waterwall)
+        return 0; /* deferred: see the drown arm above */
 
     // C ref: mon.c:1108 — out of liquid entirely; only eels care.
     if (ptr?.mcls === S_EEL_MCLS && !Is_waterlevel(game.u?.uz)

@@ -7,7 +7,10 @@ import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { yn_function } from './getline.js';
 import { pline, docrt } from './display.js';
 import { change_luck } from './attrib.js';
-import { FULL_MOON, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, ECMD_OK } from './const.js';
+import {
+    FULL_MOON, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED,
+    OBJ_BURIED, ECMD_OK,
+} from './const.js';
 import { GameMap } from './game.js';
 import { mons } from './monsters.js';
 import { objects_globals_init } from './objects.js';
@@ -138,7 +141,12 @@ function deserObjChain(arr, where) {
         otmp.ocarry = null;
         otmp.ocontainer = null;
         otmp.where = where;
-        otmp.cobj = deserObjChain(kids, where);
+        // C restobjchn: nested restobj keeps saved where=OBJ_CONTAINED;
+        // only ocontainer pointers are rewritten (restore.c:270-277).
+        // Passing the parent chain's where (FLOOR/INVENT/MINVENT) made
+        // get_obj_location(obj, 0) accept contained eggs as if hatch
+        // had passed CONTAINED_TOO (D-1036 risk 4 / D-1054).
+        otmp.cobj = deserObjChain(kids, OBJ_CONTAINED);
         if (otmp.cobj) {
             for (let c = otmp.cobj; c; c = c.nobj) c.ocontainer = otmp;
         }
@@ -161,7 +169,7 @@ function deserInventArray(arr) {
         otmp.ocarry = null;
         otmp.ocontainer = null;
         otmp.where = OBJ_INVENT;
-        otmp.cobj = deserObjChain(kids, OBJ_INVENT);
+        otmp.cobj = deserObjChain(kids, OBJ_CONTAINED);
         if (otmp.cobj) {
             for (let c = otmp.cobj; c; c = c.nobj) c.ocontainer = otmp;
         }
@@ -395,7 +403,7 @@ export function try_restore_save() {
     map.flags = { ...map.flags, ...(payload.level_flags || {}) };
     map.upstair = payload.upstair || null;
     map.dnstair = payload.dnstair || null;
-    map.buriedobjlist = deserObjChain(payload.buriedobjlist, OBJ_FLOOR);
+    map.buriedobjlist = deserObjChain(payload.buriedobjlist, OBJ_BURIED);
     map.traps = payload.ftrap || [];
 
     const fmon = [];

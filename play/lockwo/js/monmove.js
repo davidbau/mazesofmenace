@@ -45,12 +45,14 @@ import {
     ALLOW_SSM, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_WALL, ALLOW_BARS,
     NOGARLIC, IS_ALTAR, In_endgame, HEADSTONE, u_at,
     STAIRS, LADDER, IRONBARS, WEB, LAVAWALL, IS_WATERWALL,
-    Is_airlevel, Is_waterlevel, ALLOW_ALL, W_NONDIGGABLE,
+    Is_airlevel, Is_waterlevel, Is_earthlevel, Is_firelevel, ALLOW_ALL, W_NONDIGGABLE,
     POOL, MOAT, WATER, DRAWBRIDGE_UP, LAVAPOOL, DB_UNDER, DB_MOAT, DB_LAVA,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_APPEARMSG,
     TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, ANTI_MAGIC, POLY_TRAP, ACCESSIBLE,
     ALLOW_MDISP, ALLOW_TM, NORMAL_SPEED, TEMPLE, ROOMOFFSET,
     AM_MASK, AM_SHRINE, Amask2align, I_SPECIAL,
+    M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
+    M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID,
 } from './const.js';
 import { quest_talk } from './questpgr.js';
 import { In_hell } from './dungeon.js';
@@ -83,13 +85,14 @@ import { is_armed, mattk_of,
     AD_PHYS, AD_ELEC, AD_DRST, AD_STUN, AD_DISE, AD_PEST, AD_FAMN, AD_STCK,
     AD_POLY, AD_ACID, AD_COLD, AD_FIRE, AD_SITM, AD_SEDU, AD_SSEX,
     AD_RUST, AD_CORR, AD_MAGM, AD_RBRE, AD_SPEL, AD_CLRC,
+    AD_SLEE, AD_DISN, AD_DRDX, AD_DRCO,
     AD_BLND } from './monattk_data.js';
 import { castmu } from './mcastu.js';
 import { dog_move, m_cansee, could_reach_item } from './dogmove.js';
 import { mon_msize, mon_cwt, monster_by_pmidx, makemon, level_difficulty_ext } from './makemon.js';
 // polyself.c mbodypart needs the mlet of a pet, whose .data lacks .mcls.
 const mon_mlet = (pmidx) => monster_by_pmidx(pmidx)?.mcls;
-import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl, see_with_infrared, bot_snapshot } from './display.js';
+import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl, see_with_infrared, bot_snapshot, impossible } from './display.js';
 import { mdig_tunnel, may_dig, in_town } from './dig.js';
 import { picking_lock } from './lock.js';
 import { hits_bars } from './mthrowu.js';
@@ -800,8 +803,15 @@ async function shk_move(shkp) {
     // merely adjacent hero sent every in-shop encounter down the generic m_move
     // path (wrong squares AND wrong RNG: m_move's peaceful rn2(10) getitems
     // probe plus its own chcnt rolls instead of move_special's).
-    if (!shkp.mpeaceful) return -1; // ANGRY: mattacku() not modelled here
-    if (eshk.following) return -1;  // following the hero: not modelled here
+    // C ref: shk.c:4895 `udist = distu(omx, omy)`.  The <3 arms (mattacku for an
+    // ANGRY shk, the "Didn't you forget to pay?" rn2(9) rile for a following
+    // one) are still unmodelled, so only THOSE bail to m_move.  Bailing for
+    // every angry/following shopkeeper regardless of distance was wrong: a
+    // robbed shopkeeper standing on his post then ran the generic m_move, whose
+    // m_search_items rn2(25) and boxed-in find_defensive/use_defensive rolls C
+    // never makes (w3-human-knight-debug step 139).
+    const udist = dist2(omx, omy, u.ux, u.uy);
+    if (udist < 3 && (!shkp.mpeaceful || eshk.following)) return -1;
 
     // Home target = eshk->shk; GDIST = dist2(pos, home).
     let gtx = eshk.shk?.x, gty = eshk.shk?.y;
@@ -813,7 +823,18 @@ async function shk_move(shkp) {
     // absent.  The else-branch below then applies.
 
     let appr = 1, uondoor = false, avoid = false, badinv = false;
-    if (Invis() || u.usteed) {
+    if (eshk.following) {
+        // C ref: shk.c:4939-4950 — a following shopkeeper walks at the hero and
+        // only hands the move back to m_move when it is far away AND has
+        // nothing left on the bill.
+        if (udist > 4 && !eshk.billct) return -1;
+        gtx = u.ux; gty = u.uy;
+    } else if (!shkp.mpeaceful) {
+        // C ref: shk.c:4951 ANGRY(shkp) — head for the hero when he can be seen
+        // (the same shape as pri_move()'s angry arm), never avoiding.
+        if (shkp.mcansee && m_canseeu(shkp)) { gtx = u.ux; gty = u.uy; }
+        avoid = false;
+    } else if (Invis() || u.usteed) {
         avoid = false;
     } else {
         uondoor = (u.ux === eshk.shd?.x && u.uy === eshk.shd?.y);
@@ -2611,11 +2632,11 @@ async function mon_trapeffect(mtmp, trap) {
     }
     case SQKY_BOARD: {
         // C ref: trapeffect_sqky_board() else-branch (monster), trap.c:1438.  A
-        // monster steps on a squeaky board and it announces itself.  No RNG:
-        // Soundeffect is an audio no-op and trapnote()/pline()/You_hear()/
-        // wake_nearto() all draw nothing here (no buried zombies at this depth,
-        // svc.context.mon_moving is set so wake_nearto_core's pet branch is
-        // skipped) — it is purely a hero-facing sound message.
+        // monster steps on a squeaky board and it announces itself.  The
+        // messages draw no RNG, but the trailing wake_nearto(mx, my, 40) is NOT
+        // cosmetic: every sleeper it wakes reaches distfleeck()/m_move() on the
+        // next monster phase instead of returning from dochug() at the
+        // msleeping gate, so leaving it out silently deletes their draws.
         const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
         const Deaf = !!game.u?.Deaf;
         const { trapnote, seetrap } = await import('./trap.js');
@@ -2637,6 +2658,7 @@ async function mon_trapeffect(mtmp, trap) {
             if (!Deaf)
                 await emitU(`You hear ${trapnote(trap, false)} squeak ${near ? 'nearby' : 'in the distance'}.`);
         }
+        wake_nearto(mtmp.mx, mtmp.my, 40);                 // trap.c:1473
         return Trap_Effect_Finished;
     }
     case RUST_TRAP: {
@@ -2821,6 +2843,47 @@ async function mon_trapeffect(mtmp, trap) {
         newsym(mtmp.mx, mtmp.my);
         return Trap_Moved_Mon;
     }
+    case MAGIC_PORTAL: {
+        // C ref: trap.c trapeffect_magic_portal() monster arm -> trapeffect_
+        // level_telep() -> teleport.c mlevel_tele_trap().  A monster that steps
+        // on a portal is migrated off the level (MIGR_PORTAL) and draws NOTHING
+        // doing it outside the Planes — which is why the old `default:` arm was
+        // invisible: the monster STAYED, and every later movemon pass gave it a
+        // distfleeck/m_move C does not have (seed0360 fakewiz1: the wraith that
+        // walks onto the Wizard's-tower portal at <66,13>).
+        if (mtmp === game.u?.ustuck) return Trap_Effect_Finished;
+        if (!teleport_pet_mm(mtmp)) return Trap_Effect_Finished;
+        const in_sight = canseemon_mm(mtmp) || mtmp === game.u?.usteed;
+        // C ref: teleport.c mlevel_tele_trap() — on the Planes a portal usually
+        // just shimmers.  rn2(7) is the LAST term of the &&-chain, so it is
+        // drawn only in the endgame (and only for an amulet-less non-native).
+        if (In_endgame() && (mon_has_amulet_mm(mtmp)
+                             || is_home_elemental_mm(mtmp) || rn2(7))) {
+            if (in_sight && mtmp.data?.mcls !== S_ELEMENTAL) {
+                await pline_mon(mtmp, `${Monnam(mtmp)} seems to shimmer for a moment.`);
+                const { seetrap } = await import('./trap.js');
+                seetrap(trap);
+            }
+            return Trap_Effect_Finished;
+        }
+        if (in_sight) {
+            await pline_mon(mtmp, `Suddenly, ${mon_nam(mtmp)} disappears out of sight.`);
+            const { seetrap } = await import('./trap.js');
+            seetrap(trap);
+        }
+        mtmp.mconf = 1;              /* is_xport(MAGIC_PORTAL) && !control_teleport */
+        // migrate_to_level(): unlink from this level's chain.  Other levels'
+        // monsters are not simulated, so dropping it here IS the outcome.
+        {
+            const list = game.level?.monsters;
+            if (list) {
+                const ix = list.indexOf(mtmp);
+                if (ix >= 0) list.splice(ix, 1);
+            }
+        }
+        newsym(mtmp.mx, mtmp.my);
+        return Trap_Moved_Mon;
+    }
     case SLP_GAS_TRAP: {
         // C ref: trapeffect_slp_gas_trap() monster branch (trap.c:1579-1589).
         // Guarded by resists_sleep/breathless/helpless (no RNG); on a pass,
@@ -2922,6 +2985,23 @@ async function mon_trapeffect(mtmp, trap) {
 
 // C ref: teleport.c teleport_pet(mtmp, force_it):766.  FALSE only for the
 // hero's steed or a monster held by a CURSED leash (that arm also yelps).
+// C ref: mon.c mon_has_amulet(mtmp) — the real Amulet of Yendor in minvent.
+const AMULET_OF_YENDOR_OTYP = 155;   // objects.js AMULET_OF_YENDOR
+function mon_has_amulet_mm(mtmp) {
+    return (mtmp.minvent || []).some((o) => o?.otyp === AMULET_OF_YENDOR_OTYP);
+}
+// C ref: mondata.h is_home_elemental(ptr) — the elemental native to the Plane
+// the hero is standing on (and the Wizard/Riders count as native to none).
+function is_home_elemental_mm(mtmp) {
+    const ptr = mtmp.data;
+    if (ptr?.mcls !== S_ELEMENTAL) return false;
+    const n = ptr?.name;
+    if (Is_earthlevel()) return n === 'earth elemental';
+    if (Is_firelevel()) return n === 'fire elemental';
+    if (Is_airlevel()) return n === 'air elemental';
+    if (Is_waterlevel()) return n === 'water elemental';
+    return false;
+}
 function teleport_pet_mm(mtmp) {
     if (mtmp === game.u?.usteed) return false;
     if (mtmp.mleashed) {
@@ -3263,8 +3343,47 @@ async function m_move(mtmp) {
                 if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
                 return MMOVE_DIED;
             }
+            // C ref: monmove.c postmov():1541 — the tail of the
+            // mmoved==MMOVE_MOVED block redraws the monster's NEW square.
+            // gd_move_cleanup() parks a departing vault guard at <0,0> and
+            // still returns 1, so this reaches newsym() with an x that fails
+            // isok(); display.c newsym():931-936 turns column-0 misuse into
+            // impossible() rather than panic().  That second message is what
+            // puts the --More-- on "Suddenly, the guard disappears."
+            if (isok(mtmp.mx, mtmp.my)) newsym(mtmp.mx, mtmp.my);
+            else await impossible(`newsym: attempting screen update for <${mtmp.mx},${mtmp.my}>`);
             return MMOVE_MOVED;
         }
+    }
+
+    // C ref: monmove.c:1840 — "teleport if that lies in our nature".  The
+    // rn2(5) sits FIRST in C's &&-chain, so a tengu draws it on every m_move
+    // whether or not it ends up teleporting; omitting the block dropped one
+    // call per tengu turn (seed0360 fakewiz1 step 384, call 14).
+    if (monsndx_of(ptr) === PM_TENGU && !rn2(5) && !mtmp.mcan
+        && !(await (await import('./teleport.js')).tele_restrict(mtmp))) {
+        const { rloc, RLOC_MSG } = await import('./teleport.js');
+        if (mtmp.mhp < 7 || mtmp.mpeaceful || rn2(2))
+            await rloc(mtmp, RLOC_MSG);
+        else
+            await (await import('./do.js')).mnexto_rloc(mtmp, RLOC_MSG);
+        // C: `return postmov(..., MMOVE_MOVED, ...)` — the tail that fires the
+        // destination square's trap and picks its objects up.
+        newsym(omx, omy);
+        const trapret = await mon_mintrap(mtmp);
+        if (trapret === Trap_Killed_Mon || trapret === Trap_Moved_Mon) {
+            if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+            return MMOVE_DIED;
+        }
+        if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
+            if (metallivorous(ptr)) {
+                if (await meatmetal(mtmp) === 2) return MMOVE_DIED;
+            }
+            if (is_gelatinous_cube(ptr)) await meatobj(mtmp);
+        }
+        await mpickstuff(mtmp);
+        await maybe_spin_web(mtmp);
+        return MMOVE_MOVED;
     }
 
     // C ref: monmove.c:1851 (label not_special) — while the hero is swallowed
@@ -4138,12 +4257,13 @@ function is_demon(mdat) {
     return (mflags2_of(mdat) & M2_DEMON) !== 0;
 }
 
-// C ref: mondata.c noattacks(ptr) — TRUE when the monster has no attacks.
-// Every monster our sessions drive into mattacku has at least one attack, so
-// this is FALSE; kept as a guard mirroring the C control flow.
+// C ref: mondata.c noattacks(ptr) — `if (mattk[i].aatyp) return FALSE`.  A
+// PASSIVE-only monster (aatyp AT_NONE == 0: yellow mold, blue jelly, ...) has
+// a populated mattk[0] but counts as having NO attacks, so an mdat.length test
+// answered FALSE for it and let dochug() run mattacku().
 function noattacks(mdat) {
-    const atks = mon_attacks(mdat);
-    return atks.length === 0;
+    for (const a of mon_attacks(mdat)) if (a.aatyp) return false;
+    return true;
 }
 
 // C ref: monattk.h AT_WEAP / mondata.c attacktype(ptr, AT_WEAP).
@@ -4151,12 +4271,36 @@ function attacktype_weap(mdat) {
     return mon_attacks(mdat).some((a) => a.aatyp === AT_WEAP);
 }
 
-// C ref: mhitu.c ranged_attk_available(mtmp) — TRUE only for AT_SPIT / AT_BREA
-// / AT_GAZE attackers (DISTANCE_ATTK_TYPE).  None of the monsters in the steed
-// combat sessions have such attacks, so this is FALSE (no RNG).
+// C ref: mhitu.c:2413 ranged_attk_available(mtmp).
+// monattk.h:31 DISTANCE_ATTK_TYPE is SPIT || BREA || MAGC || GAZE — AT_MAGC was
+// missing here, so every spellcaster read as having no ranged option and
+// dochug's MMOVE_MOVED arm (monmove.c:946) returned before mattacku().
+// get_atkdam_type() DRAWS rn2(8) for AD_RBRE, so this predicate is not RNG-free.
 function ranged_attk_available(mtmp) {
-    return mon_attacks(mtmp.data).some(
-        (a) => a.aatyp === AT_SPIT || a.aatyp === AT_BREA || a.aatyp === AT_GAZE);
+    for (const a of mon_attacks(mtmp.data)) {
+        if (!(a.aatyp === AT_SPIT || a.aatyp === AT_BREA
+              || a.aatyp === AT_MAGC || a.aatyp === AT_GAZE)) continue;
+        const typ = get_atkdam_type(a.adtyp);
+        if (typ >= 0 && !m_seenres_mm(mtmp, cvt_adtyp_to_mseenres_mm(typ)))
+            return true;
+    }
+    return false;
+}
+// get_atkdam_type() is defined once, below, next to breamm().
+// C ref: monst.h m_seenres(mon, bit) / mondata.c:1522 cvt_adtyp_to_mseenres.
+function m_seenres_mm(mon, bit) { return ((mon?.seen_resistance | 0) & bit) !== 0; }
+function cvt_adtyp_to_mseenres_mm(adtyp) {
+    switch (adtyp) {
+    case AD_MAGM: return M_SEEN_MAGR;
+    case AD_FIRE: return M_SEEN_FIRE;
+    case AD_COLD: return M_SEEN_COLD;
+    case AD_SLEE: return M_SEEN_SLEEP;
+    case AD_DISN: return M_SEEN_DISINT;
+    case AD_ELEC: return M_SEEN_ELEC;
+    case AD_DRST: return M_SEEN_POISON;
+    case AD_ACID: return M_SEEN_ACID;
+    default: return M_SEEN_NOTHING;
+    }
 }
 
 // C ref: mondata.c attacktype(ptr, atyp) — does the monster have that attack?
@@ -5178,6 +5322,14 @@ export async function mattacku(mtmp, mdat) {
             }
             break;
         }
+        // C ref: mhitu.c:873 AT_BREA — a dragon (or any breather) lined up with
+        // the hero at range fires a full dobuzz ray.  This used to fall through
+        // to `default:` and draw nothing at all.
+        case AT_BREA:
+            if (range2) {
+                sum[i] = await breamu(mtmp, mattk);
+            }
+            break;
         case AT_SPIT:
             // C ref: mhitu.c:878 — a ranged spitting attacker (cobra AT_SPIT
             // AD_BLND) spits at the hero when range2 (not adjacent to the
@@ -5326,7 +5478,101 @@ async function spitmu(mtmp, mattk) {
     return await spitmm(mtmp, mattk);
 }
 
-const AD_ACID_MM = 6; // monattk.h AD_ACID (cobra/snake spit is AD_BLND, not acid)
+// C ref: hack.h BZ_OFS_AD / BZ_M_BREATH / BZ_VALID_ADTYP.
+const AD_MAGM_MM = 1, AD_FIRE_MM = 2, AD_COLD_MM = 3, AD_SLEE_MM = 4,
+      AD_DISN_MM = 5, AD_ELEC_MM = 6, AD_DRST_MM = 7, AD_ACID_MM_T = 8,
+      AD_SPC2_MM = 10;
+
+// C ref: mondata.c:1659 get_atkdam_type(adtyp) — AD_RBRE ("random breath")
+// picks one of eight real damage types, and that pick is an rn2(8) DRAW.  Every
+// other adtyp passes straight through with no RNG.
+const AD_RBRE_MM = 242;                    // monattk.h
+const RND_BREATH_TYP = [AD_MAGM_MM, AD_FIRE_MM, AD_COLD_MM, AD_SLEE_MM,
+                        AD_DISN_MM, AD_ELEC_MM, AD_DRST_MM, AD_ACID_MM_T];
+function get_atkdam_type(adtyp) {
+    if (adtyp === AD_RBRE_MM) return RND_BREATH_TYP[rn2(8)];
+    return adtyp;
+}
+
+// C ref: mthrowu.c:1276 breamu(mtmp, mattk) -> breamm(mtmp, mattk, &youmonst).
+// mattacku's AT_BREA arm used to sit on the `default:` no-op, so a dragon (or
+// any other AT_BREA species) lined up with the hero drew NOTHING where C fires
+// a whole dobuzz ray — the gate roll, rn1(7,7) range, every crossed square's
+// zap_over_floor and every zhitm/zhitu along the beam.
+async function breamu(mtmp, mattk) {
+    return await breamm(mtmp, mattk);
+}
+
+// C ref: mthrowu.c:1093 breamm(mtmp, mattk, mtarg) — monster breathes (ranged).
+// Ported for mtarg == &youmonst (utarget), the only caller mattacku reaches.
+async function breamm(mtmp, mattk) {
+    const u = game.u;
+    const typ = get_atkdam_type(mattk.adtyp);
+    const utarget = true;
+
+    if (!m_lined_up(mtmp)) return M_ATTK_HIT;
+
+    // C ref: mthrowu.c:1101 — a cancelled breather just coughs (no RNG).
+    if (mtmp.mcan) {
+        if (!u?.Deaf) {
+            if (canseemon_mm(mtmp)) await pline_mon(mtmp, `${Monnam(mtmp)} coughs.`);
+            else await emitU('You hear a cough.');
+        }
+        return M_ATTK_MISS;
+    }
+    // C ref: mthrowu.c:1113 — m_seenres(): a monster that has SEEN the hero
+    // resist this damage type (or reflect) doesn't waste its breath.  The
+    // mseenres mask is only ever set by a hero reflection, which no covered
+    // session produces, so it reads 0 here.
+    if (utarget && ((mtmp.mseenres | 0) !== 0) && m_seenres_bream(mtmp, typ))
+        return M_ATTK_HIT;
+
+    if (!mtmp.mspec_used && rn2(3)) {
+        if (BZ_VALID_ADTYP(typ)) {
+            if (canseemon_mm(mtmp))
+                await pline_mon(mtmp,
+                    `${Monnam(mtmp)} breathes ${breathwep_name(typ)}!`);
+            const tx = mtmp.mux ?? u.ux, ty = mtmp.muy ?? u.uy;
+            game.buzzer = mtmp;
+            const { dobuzz } = await import('./zap.js');
+            await dobuzz(BZ_M_BREATH(BZ_OFS_AD(typ)), mattk.damn | 0,
+                         mtmp.mx, mtmp.my, sgn(tx - mtmp.mx), sgn(ty - mtmp.my),
+                         utarget, utarget, false);
+            game.buzzer = null;
+            { const { nomul } = await import('./hack.js'); nomul(0); }
+            // "breath runs out sometimes"; against the hero it only runs out
+            // 1-in-3 of the time, and the rn2(18) follow-up is INSIDE that arm.
+            if (!utarget || !rn2(3)) mtmp.mspec_used = 8 + rn2(18);
+            if (utarget && typ === AD_SLEE_MM && !Sleep_resistance_bream())
+                mtmp.mspec_used += rnd(20);
+            // (tame-breather hungrytime bookkeeping: no RNG.)
+        }
+    } else {
+        return M_ATTK_MISS;
+    }
+    return M_ATTK_HIT;
+}
+
+function BZ_OFS_AD(adtyp) { return Math.abs(adtyp - AD_MAGM_MM) % 10; }
+function BZ_M_BREATH(bztyp) { return -20 - bztyp; }
+function BZ_VALID_ADTYP(adtyp) { return adtyp >= AD_MAGM_MM && adtyp <= AD_SPC2_MM; }
+
+// C ref: mthrowu.c:24 breathwep[] — indexed by BZ_OFS_AD(typ).
+const BREATHWEP = ['fragments', 'fire', 'frost', 'sleep gas',
+                   'a disintegration blast', 'lightning', 'poison gas', 'acid',
+                   'strange breath #8', 'strange breath #9'];
+function breathwep_name(typ) {
+    // (rnd_hallublast() when hallucinating — the hero never is here.)
+    return BREATHWEP[BZ_OFS_AD(typ)];
+}
+
+// C ref: mon.c m_seenres(mtmp, adtyp-derived bit) — has this monster watched
+// the hero shrug off that damage type?  mseenres is written only by
+// monstseesu(), which fires on a hero reflection.
+function m_seenres_bream(mtmp, _typ) { return ((mtmp.mseenres | 0) !== 0); }
+function Sleep_resistance_bream() { return !!game.u?.uprops?.Sleep_resistance; }
+
+const AD_ACID_MM = 8; // monattk.h AD_ACID (cobra/snake spit is AD_BLND, not acid; 6 named AD_ELEC)
 
 // C ref: mthrowu.c:1041 spitmm(mtmp, mattk, mtarg=&youmonst) — the venom-spit.
 // A non-cancelled attacker that is m_lined_up with the hero mints a venom
@@ -6121,7 +6367,14 @@ function m_throw_single(mon, otmp) {
 // m_throw_potion path, which still settles its missile through m_useup_thrown.
 function drop_thrown_missile(mon, otmp, x, y, ohit) {
     let broken = false;
-    if (ohit) {
+    // C ref: mthrowu.c:170-175 — a cream pie / venom / (hit) egg ALWAYS breaks,
+    // and skips should_mulch_missile() entirely.  Omitting this arm left the pie
+    // lying on the floor and, worse, skipped delobj_core()'s obj_resists()
+    // rn2(100) (w3-human-knight-debug step 147: a Kop pie-blinding another Kop).
+    if (otmp?.otyp === CREAM_PIE_OTYP || otmp?.oclass === VENOM_CLASS
+        || (ohit && otmp?.otyp === EGG_OTYP)) {
+        broken = true;
+    } else if (ohit) {
         broken = should_mulch_missile(otmp); // rn2(3) for a fresh dart
     }
     if (mon?.minvent) {
@@ -6808,10 +7061,13 @@ async function mhitm_ad_drst(mtmp, mattk, mhm) {
     const negated = await mhitm_mgc_atk_negated(mtmp, false); // rn2(10), no msg (uhitm.c:3126)
     await hitmsg(mtmp, mattk);                    // "The cobra bites!"
     if (!negated && !rn2(8)) {                    // uhitm.c:3155
-        // poisoned(buf, ptmp=A_STR, pmname, 30, FALSE) — NOT reached by any
-        // recorded contest bite (every AD_DRST rn2(8) is nonzero).  Porting
-        // poisoned() (adjattrib/losehp/setuhpmax) is unnecessary for the
-        // sessions; if a future bite triggers it, the divergence is explicit.
+        // uhitm.c:3154 — ptmp from the adtyp; AD_DRDX/AD_DRCO share this handler.
+        const ptmp = mattk.adtyp === AD_DRDX ? 3 /*A_DEX*/
+            : mattk.adtyp === AD_DRCO ? 4 /*A_CON*/ : A_STR;
+        const { poisoned } = await import('./attrib.js');
+        const { mpoisons_subj } = await import('./mhitu.js');
+        const buf = `${s_suffix(Monnam(mtmp))} ${mpoisons_subj(mtmp, mattk)}`;
+        await poisoned(buf, ptmp, mtmp.data?.name || 'poison', 30, false);
     }
 }
 

@@ -5,19 +5,27 @@
 import { game } from './gstate.js';
 import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
-    place_object, hornoplenty,
+    place_object, hornoplenty, unbless, mergable, delobj,
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
-    let_to_name, DEF_INV_ORDER, prinv, near_capacity,
+    let_to_name, DEF_INV_ORDER, prinv, near_capacity, calc_capacity,
+    max_capacity,
 } from './invent.js';
 import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall } from './hack.js';
-import { flush_screen, pline, newsym, docrt, bot } from './display.js';
+import {
+    flush_screen, pline, newsym, docrt, bot, flush_topl_more, canseemon,
+    clear_nhwindow_message,
+} from './display.js';
 import { addinv } from './u_init.js';
-import { an, doname, xname, cxname, the as theArt } from './objnam.js';
+import {
+    an, doname, xname, cxname, cxname_singular,
+    the as theArt, The,
+} from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import {
-    ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, is_pit,
+    ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
+    is_pit,
     STONE, ICE, DRAWBRIDGE_UP,
     IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL, IS_SINK,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
@@ -28,17 +36,26 @@ import {
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     AUTOUNLOCK_APPLY_KEY,
-    nothing_seems_to_happen,
+    nothing_seems_to_happen, engulfing_u,
 } from './const.js';
-import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects } from './trap.js';
+import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects, instapetrify } from './trap.js';
 import { nhgetch } from './input.js';
 import { m_at } from './mon.js';
 import { oclass_to_sym } from './options.js';
 import { objectNames, COIN_CLASS } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
-import { addtobill, costly_spot } from './shk.js';
-import { nohands, M1_NOTAKE } from './monsters.js';
+import { addtobill, costly_spot, check_unpaid_usage } from './shk.js';
+import {
+    nohands, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider, mons,
+    monsterNames,
+} from './monsters.js';
 import { welded } from './wield.js';
+import { yn_function } from './getline.js';
+import { cansee } from './vision.js';
+import { touch_artifact, youmonst } from './artifact.js';
+import { exercise, A_WIS } from './attrib.js';
+import { inv_cnt } from './steal.js';
+import { trycall, Monnam } from './do_name.js';
 
 /** C ref: mondata.h notake — M1_NOTAKE. */
 function notake(ptr) {
@@ -63,6 +80,18 @@ function simpleonames(obj) {
 
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
 const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
+const CORPSE = objectNames.indexOf('CORPSE');
+const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
+const LOADSTONE = objectNames.indexOf('LOADSTONE');
+const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
+/* C hack.h invlet_basic — a-zA-Z invent slots. */
+const INVLET_BASIC = 52;
+/* C hack.h stoning_checks — u_safe_from_fatal_corpse tests. */
+const st_gloves = 0x1;
+const st_corpse = 0x2;
+const st_petrifies = 0x4;
+const st_resists = 0x8;
+const st_all = st_gloves | st_corpse | st_petrifies | st_resists;
 
 /** C ref: objnam.c thesimpleoname — "the" + simpleonames. */
 function thesimpleoname(obj) {
@@ -278,7 +307,7 @@ export async function pick_obj(otmp) {
  * Limits load-verb feedback to the first item that changes
  * gp.pickup_encumbrance within one pickup/loot operation.
  * Passes lifted `count` so invent.c prinv can show partial + "(N in total)".
- * Named omissions: lift_object yn Continue? arms that reuse these pfx strings.
+ * lift_object yn Continue? reuses the same pfx strings (D-1050).
  */
 async function pickup_prinv(obj, count, verb) {
     // C: nearload = near_capacity(); limit feedback via gp.pickup_encumbrance
@@ -297,38 +326,306 @@ async function pickup_prinv(obj, count, verb) {
     await prinv(pbuf, obj, count | 0);
 }
 
+/* C pickup.c GOLD_WT / GOLD_CAPACITY — coin weight in carry_count. */
+function GOLD_WT(n) {
+    return Math.trunc((Number(n) + 50) / 100);
+}
+function GOLD_CAPACITY(w, n) {
+    return (Number(w) * -100) - (Number(n) + 50) - 1;
+}
+
+function money_cnt_invent() {
+    let n = 0;
+    for (const otmp of game.invent || []) {
+        if (otmp.oclass === COIN_CLASS) n += otmp.quan || 0;
+    }
+    return n;
+}
+
+function otense_pickup(obj, verb) {
+    const singular = (obj?.quan || 1) === 1;
+    if (verb === 'are') return singular ? 'is' : 'are';
+    if (verb === 'turn') return singular ? 'turns' : 'turn';
+    return singular ? `${verb}s` : verb;
+}
+
+/**
+ * C ref: options.c initoptions_init flags.pickup_burden = MOD_ENCUMBER
+ * ("stressed"). JS flags may omit the numeric field.
+ */
+function flags_pickup_burden() {
+    const v = game.flags?.pickup_burden;
+    if (typeof v === 'number' && v >= 0) return v | 0;
+    return MOD_ENCUMBER;
+}
+
+function Stone_resistance_hero() {
+    const u = game.u || {};
+    return !!(u.Stone_resistance || u.HStone_resistance || u.EStone_resistance);
+}
+
+/**
+ * C ref: invent.c merge_choice — first mergable invent slot.
+ * Named omit: shop no_charge / inhishop unpaid reject.
+ */
+function merge_choice_invent(obj) {
+    if (!obj || (obj.otyp | 0) === SCR_SCARE_MONSTER) return null;
+    for (const otmp of game.invent || []) {
+        if (mergable(otmp, obj)) return otmp;
+    }
+    return null;
+}
+
+/**
+ * C ref: pickup.c u_safe_from_fatal_corpse — any listed test is enough.
+ */
+function u_safe_from_fatal_corpse(obj, tests) {
+    if ((tests & st_gloves) && game.u?.uarmg) return true;
+    if ((tests & st_corpse) && (obj?.otyp | 0) !== CORPSE) return true;
+    if ((tests & st_petrifies) && !touch_petrifies(mons(obj?.corpsenm))) {
+        return true;
+    }
+    if ((tests & st_resists) && Stone_resistance_hero()) return true;
+    return false;
+}
+
+/**
+ * C ref: pickup.c fatal_corpse_mistake — telekinesis/remotely skips touch.
+ */
+async function fatal_corpse_mistake(obj, remotely) {
+    if (u_safe_from_fatal_corpse(obj, st_all) || remotely) return false;
+    if (poly_when_stoned(game.youmonst?.data, game.mvitals)) {
+        const { polymon } = await import('./polyself.js');
+        if (await polymon(PM_STONE_GOLEM)) {
+            await flush_topl_more();
+            return false;
+        }
+    }
+    await pline(
+        `Touching ${an(cxname_singular(obj))} is a fatal mistake.`,
+    );
+    await instapetrify(cxname_singular(obj));
+    return true;
+}
+
+/**
+ * C ref: pickup.c rider_corpse_revival — still revives when remotely;
+ * message is "attempted acquisition" vs "touch".
+ */
+async function rider_corpse_revival(obj, remotely) {
+    if (!obj || (obj.otyp | 0) !== CORPSE
+        || !is_rider(mons(obj.corpsenm))) {
+        return false;
+    }
+    await pline(
+        `At your ${remotely ? 'attempted acquisition' : 'touch'}, the corpse suddenly moves...`,
+    );
+    const where = obj.where | 0;
+    const corpsex = obj.ox | 0;
+    const corpsey = obj.oy | 0;
+    const cname = cxname_singular(obj);
+    const { revive } = await import('./zap.js');
+    const mtmp = await revive(obj, false);
+    if (mtmp && where === OBJ_FLOOR
+        && (cansee(corpsex, corpsey) || canseemon(mtmp))) {
+        if (canseemon(mtmp)) {
+            await pline(`${Monnam(mtmp)} rises from the dead!`);
+        } else {
+            await pline(`${The(cname)} disappears!`);
+        }
+    }
+    exercise(A_WIS, false);
+    return true;
+}
+
+/**
+ * C ref: pickup.c carry_count — how many of obj can we lift.
+ * Floor path only (container/delta_cwt named omit — pickup_object
+ * always passes container NULL).
+ */
+async function carry_count(obj, count, telekinesis, wts) {
+    const is_gold = obj.oclass === COIN_CLASS;
+    const savequan = obj.quan || 1;
+    const saveowt = obj.owt | 0;
+    const umoney = money_cnt_invent();
+    let iw = max_capacity();
+    let wt;
+
+    if (count !== savequan) {
+        obj.quan = count;
+        obj.owt = weight(obj);
+    }
+    wt = iw + (obj.owt | 0);
+    if (is_gold) {
+        wt -= (GOLD_WT(umoney) + GOLD_WT(count) - GOLD_WT(umoney + count));
+    }
+    if (count !== savequan) {
+        obj.quan = savequan;
+        obj.owt = saveowt;
+    }
+    wts.before = iw;
+    wts.after = wt;
+    if (wt < 0) return count;
+
+    let qq;
+    if (is_gold) {
+        iw -= GOLD_WT(umoney) | 0;
+        qq = GOLD_CAPACITY(iw, umoney);
+        if (qq < 0) qq = 0;
+        else if (qq > count) qq = count;
+        wt = iw + GOLD_WT(umoney + qq);
+    } else if (count > 1 || count < (obj.quan || 1)) {
+        qq = 1;
+        for (; qq <= count; qq++) {
+            obj.quan = qq;
+            const ow = weight(obj);
+            obj.owt = ow;
+            if (iw + ow >= 0) break;
+            wt = iw + ow;
+        }
+        qq -= 1;
+    } else {
+        qq = 0;
+    }
+    obj.quan = savequan;
+    obj.owt = saveowt;
+
+    if (qq < count) {
+        const obj_nambuf = doname(obj);
+        const where = 'lying here';
+        const verb = telekinesis ? 'acquire' : 'lift';
+        if (qq > 0) {
+            await pline(
+                `You can only ${verb} ${qq === 1 ? 'one' : 'some'} of the ${obj_nambuf} ${where}.`,
+            );
+            wts.after = wt;
+            return qq;
+        }
+        const inventOrGold = (game.invent && game.invent.length) || umoney;
+        const prefx1 = inventOrGold ? 'you cannot ' : ((obj.quan || 1) === 1 ? 'it ' : 'even one ');
+        const prefx2 = inventOrGold ? '' : 'is too heavy for you to ';
+        const suffx = inventOrGold ? ' any more' : '';
+        await pline(
+            `There ${otense_pickup(obj, 'are')} ${obj_nambuf} here, but ${prefx1}${prefx2}${verb}${suffx}.`,
+        );
+        return 0;
+    }
+    return qq;
+}
+
+/**
+ * C ref: pickup.c lift_object — willing/able to carry. telekinesis
+ * skips the ynq Continue? and refuses when encumbrance would rise.
+ * Named omit: Sokoban boulder HAND wrap; LOADSTONE/giant-boulder
+ * weight override; container path; shop no_charge merge_choice.
+ */
+async function lift_object(obj, cntRef, telekinesis) {
+    cntRef.count = await carry_count(obj, cntRef.count, telekinesis, cntRef);
+    if (cntRef.count < 1) return -1;
+    if (obj.oclass !== COIN_CLASS
+        && inv_cnt(false) >= INVLET_BASIC
+        && !merge_choice_invent(obj)) {
+        await pline('Your knapsack cannot accommodate any more items.');
+        return -1;
+    }
+    let result = 1;
+    let prev_encumbr = near_capacity();
+    const burden = flags_pickup_burden();
+    if (prev_encumbr < burden) prev_encumbr = burden;
+    const next_encumbr = calc_capacity(cntRef.after - cntRef.before);
+    if (next_encumbr > prev_encumbr) {
+        if (telekinesis) {
+            result = 0;
+        } else {
+            const pfx = next_encumbr >= EXT_ENCUMBER ? overloadpfx
+                : next_encumbr >= HVY_ENCUMBER ? nearloadpfx
+                    : next_encumbr >= MOD_ENCUMBER ? moderateloadpfx
+                        : slightloadpfx;
+            const savequan = obj.quan;
+            obj.quan = cntRef.count;
+            const qbuf = `${pfx} lifting ${doname(obj)}.  Continue?`;
+            obj.quan = savequan;
+            const ans = await yn_function(qbuf, 'ynq', 'q');
+            if (ans === 'q') result = -1;
+            else if (ans === 'n') result = 0;
+            clear_nhwindow_message();
+        }
+    }
+    if ((obj.otyp | 0) === SCR_SCARE_MONSTER && result <= 0) obj.spe = 0;
+    return result;
+}
+
 /**
  * C ref: pickup.c pickup_object — lift one floor/minvent object into invent.
- * Branch envelope: observe_object; gold disp.botl; splitobj when count < quan;
- * pick_obj + prinv. Named omissions: uchain; engulfer worn; touch_artifact;
- * CORPSE fatal/rider; SCR_SCARE_MONSTER dust; lift_object carry_count fail;
- * LOADSTONE no-split; ghostly.
+ * Branch envelope: observe_object; telekinesis through corpse/scare/
+ * lift_object (D-1050); gold disp.botl; splitobj; pick_obj + prinv.
+ * Named omissions: LOADSTONE no-split already honored; ghostly
+ * fix_ghostly_obj; Sokoban boulder / LOADSTONE weight override;
+ * container carry_count; Death/Pestilence revive suffixes.
  */
 export async function pickup_object(obj, count, telekinesis) {
     if (!obj) return 0;
-    void telekinesis;
+    const remotely = !!telekinesis;
+
+    if ((obj.quan || 1) < count) return 0;
+    // JS callers pass 0 for "all"; C menu/autopick fill quan
+    // (pickup.c query_objlist: -1 / oversize → curr->quan).
+    if (!count) count = obj.quan || 1;
 
     if (!game.u?.Blind) observe_object(obj);
 
-    let quan = count > 0 ? count : (obj.quan || 1);
-    if (quan > (obj.quan || 1)) quan = obj.quan || 1;
+    if (obj === game.u?.uchain) return 0;
+    if ((obj.where | 0) === OBJ_MINVENT && (obj.owornmask | 0)
+        && engulfing_u(obj.ocarry)) {
+        await pline(`You can't pick ${ysimple_name(obj)} up.`);
+        return 0;
+    }
+    if (obj.oartifact && !touch_artifact(obj, youmonst)) return 0;
 
-    // lift_object carry_count deferred — always liftable for now
-    // C: What's left of the special case for gold :-) — botl before pick
-    // so prinv→pline→flush_screen paints $:N before any deferred more().
+    if ((obj.otyp | 0) === CORPSE) {
+        if (await fatal_corpse_mistake(obj, remotely)
+            || await rider_corpse_revival(obj, remotely)) {
+            return -1;
+        }
+    } else if ((obj.otyp | 0) === SCR_SCARE_MONSTER) {
+        const scareWts = { before: 0, after: 0 };
+        // C scare carry_count always FALSE even on telekinesis pickup.
+        count = await carry_count(obj, count, false, scareWts);
+        if (count < 1) return -1;
+        if (count > 0 && count < (obj.quan || 1)) obj = splitobj(obj, count);
+        if (obj.blessed) {
+            unbless(obj);
+        } else if (!(obj.spe | 0) && !obj.cursed) {
+            obj.spe = 1;
+        } else {
+            const q = obj.quan || 1;
+            await pline(
+                `The scroll${q === 1 ? '' : 's'} ${otense_pickup(obj, 'turn')} to dust as you ${remotely ? 'raise' : 'pick'} ${q === 1 ? 'it' : 'them'} up.`,
+            );
+            await trycall(obj);
+            delobj(obj);
+            return 1;
+        }
+    }
+
+    const lifted = { count, before: 0, after: 0 };
+    const res = await lift_object(obj, lifted, remotely);
+    if (res <= 0) return res;
+    count = lifted.count;
+
     if (obj.oclass === COIN_CLASS) {
         if (!game.flags) game.flags = {};
         game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
     }
-    // C: LOADSTONE never splits (named omission: always allow split here;
-    // AUTOSELECT full-quan path never hits this branch)
-    if (quan > 0 && quan < (obj.quan || 1)) {
-        obj = splitobj(obj, quan);
+    if ((obj.quan || 1) !== count && (obj.otyp | 0) !== LOADSTONE) {
+        obj = splitobj(obj, count);
     }
 
     obj = await pick_obj(obj);
-    // C: pickup_prinv(obj, count, "lifting")
-    await pickup_prinv(obj, quan, 'lifting');
+    if (game.u?.uwep && game.u.uwep === obj) game.mrg_to_wielded = true;
+    await pickup_prinv(obj, count, 'lifting');
+    game.mrg_to_wielded = false;
     return 1;
 }
 
@@ -738,8 +1035,8 @@ async function container_contents(box) {
 /**
  * C ref: pickup.c out_container — remove one object from current_container
  * into invent. Branch envelope: gold / ordinary; lift always ok. Named
- * omissions: artifact touch; fatal corpse; split count; icebox; shop bill;
- * pick_pick.
+ * omissions: container `lift_object`/`delta_cwt` (floor path is D-1050);
+ * artifact touch; fatal corpse; split count; icebox; shop bill; pick_pick.
  * @returns {number} -1 stop, 1 removed, 0 not removed
  */
 async function out_container(obj) {
@@ -1657,7 +1954,7 @@ async function able_to_loot(x, y, looting) {
  * C ref: pickup.c tipcontainer — empty box onto floor (no target bag).
  * Named omissions: tipcontainer_gettarget menu; bag-of-holding explode;
  * ice-box thaw; shop billing; altar/highdrop; cursed mbag item-gone;
- * otrapped chest_trap; invent getobj tip; check_unpaid_usage;
+ * otrapped chest_trap; invent getobj tip;
  * subfrombill after floor shop BoT/horn.
  * @param {object} box
  */
@@ -1706,7 +2003,9 @@ async function tipcontainer(box) {
         } while ((box.spe | 0) > 0);
         if ((box.spe | 0) < oldSpe) {
             if (bag && !totseen) await pline(nothing_seems_to_happen);
-            // check_unpaid_usage deferred
+            // C pickup.c: check_unpaid wants a non-zero charge count
+            box.spe = oldSpe;
+            await check_unpaid_usage(box, true);
             box.spe = 0;
             box.cknown = 1;
         }

@@ -8,7 +8,7 @@ import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { next_ident } from './mkobj.js';
 import { mons } from './monsters.js';
 import { GameMap } from './game.js';
-import { OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED } from './const.js';
+import { OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED } from './const.js';
 import { peace_minded, set_malign } from './makemon.js';
 import { save_track, rest_track } from './track.js';
 import { yn_function } from './getline.js';
@@ -266,7 +266,11 @@ function deserObjChain(arr, where) {
         otmp.ocarry = null;
         otmp.ocontainer = null;
         otmp.where = where;
-        otmp.cobj = deserObjChain(kids, where);
+        // C restobjchn: nested restobj keeps saved where=OBJ_CONTAINED;
+        // only ocontainer pointers are rewritten (restore.c:270-277).
+        // Parent-chain where made get_obj_location(obj, 0) accept
+        // contained objects (D-1036 risk 4 / D-1054).
+        otmp.cobj = deserObjChain(kids, OBJ_CONTAINED);
         if (otmp.cobj) {
             for (let c = otmp.cobj; c; c = c.nobj) c.ocontainer = otmp;
         }

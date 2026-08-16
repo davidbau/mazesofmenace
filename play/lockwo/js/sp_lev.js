@@ -2264,7 +2264,13 @@ export function tower1_load_map(mapstr, lit) {
             loc.roomno = 0;
             loc.edge = false;
             loc.typ = mptyp;
-            loc.lit = !!lit;
+            // C ref: sp_lev.c lspo_map() draws every cell through
+            // sel_set_ter() -> set_levltyp_lit(), and BOTH set_levltyp()
+            // and set_levltyp_lit() force `lit = 1` for lava whatever the
+            // map asked for.  Writing the map's own `lit` here left every
+            // lava pool dark, so the hero saw none of the Plane of Fire on
+            // arrival (seed0373 step 100).
+            loc.lit = IS_LAVA(mptyp) ? true : !!lit;
             // C ref: sp_lev.c sel_set_ter() — HWALL/IRONBARS get horizontal=1;
             // a door/secret-door inherits horizontal=1 when its left neighbour
             // (already loaded, x-inner scan) is a wall or itself horizontal.
@@ -2570,7 +2576,13 @@ export function bigrm_load_map(mapstr, lit) {
             loc.roomno = 0;
             loc.edge = false;
             loc.typ = mptyp;
-            loc.lit = !!lit;
+            // C ref: sp_lev.c lspo_map() draws every cell through
+            // sel_set_ter() -> set_levltyp_lit(), and BOTH set_levltyp()
+            // and set_levltyp_lit() force `lit = 1` for lava whatever the
+            // map asked for.  Writing the map's own `lit` here left every
+            // lava pool dark, so the hero saw none of the Plane of Fire on
+            // arrival (seed0373 step 100).
+            loc.lit = IS_LAVA(mptyp) ? true : !!lit;
             // C ref: sp_lev.c:4608-4630 sel_set_ter() — every des.map cell goes
             // through it, and its tail is what gives map-drawn walls and doors
             // their .horizontal flag.  back_to_glyph() renders an SDOOR as
@@ -3331,10 +3343,22 @@ export function vly_place_monster(ptr) {
 }
 export const VLY_S_LICH = 38, VLY_S_MUMMY = 39, VLY_S_VAMPIRE = 48, VLY_S_ZOMBIE = 52;
 
-// C ref: sp_lev.c flip_level() also flips gl.lregions[] — including the
-// teleport region that fixup_special() copies into svd.dndest.  No RNG.
-export function vly_flip_dndest(flp) {
-    const d = game.dndest;
+// C ref: sp_lev.c flip_level():697 "level (teleport) regions" — gl.lregions[]
+// is mirrored with the map, and fixup_special() copies the teleport region into
+// svd.dndest only AFTER that.  This port fills dndest at des.teleport_region()
+// time (BEFORE the flip), so every generator that flips must mirror it too or
+// the hero lands on the un-mirrored arrival square (seed0373: Plane of Fire,
+// x=72 where C has x=8).  No RNG.
+export function vly_flip_dndest(flp) { flip_lregion_dest(flp, game.dndest); }
+
+// The updest half of the same C loop.  Split out because only the four
+// elemental planes reach goto_level() with `up` set (their depth is negative,
+// so every arrival counts as going up) and therefore read svu.updest; flipping
+// it for the mine-end / Valley / sanctum generators as well measured -105 on
+// seed4500, whose exclusion regions sit off-map.
+export function vly_flip_updest(flp) { flip_lregion_dest(flp, game.updest); }
+
+function flip_lregion_dest(flp, d) {
     if (!d) return;
     const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
     const inArea = (x, y) => (x >= minx && x <= maxx && y >= miny && y <= maxy);

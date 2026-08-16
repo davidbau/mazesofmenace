@@ -28,11 +28,11 @@ import { m_at } from './display.js';
 import { vision_recalc } from './vision.js';
 import { x_monnam } from './uhitm.js';
 import { isok, MAXULEV, W_SADDLE, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED } from './const.js';
-import { pickup_after_move } from './cmd.js';
+import { pickup_after_move, getdir_confdir } from './cmd.js';
 
 // C ref: cmd.c getdir() — read a direction.  Renders "In what direction?",
 // reads one key; '.'/'s' = self.  Returns {dx,dy,dz} or null on cancel/ESC.
-// No RNG (the fuzzer path is never taken).  Mirrors spell.js getdir.
+// Ends with confdir(FALSE) like C's (cmd.c:4116) — see cmd.js getdir_confdir.
 async function getdir() {
     const prompt = 'In what direction?';
     game._pending_message = prompt;
@@ -46,14 +46,14 @@ async function getdir() {
     game._pending_message = '';
     const ch = String.fromCharCode(key);
     if (ch === '.' || ch === 's')
-        return { dx: 0, dy: 0, dz: 0 };
+        return getdir_confdir({ dx: 0, dy: 0, dz: 0 });
     if (ch === '\x1b' || ch === ' ')
         return null;
     const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1, '<': 0, '>': 0 };
     const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1, '<': 0, '>': 0 };
     const DZ = { '<': -1, '>': 1 };
     if (ch in DX)
-        return { dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 };
+        return getdir_confdir({ dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 });
     return null;
 }
 

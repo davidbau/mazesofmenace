@@ -16,7 +16,8 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { newsym } from './display.js';
+import { newsym, object_glyph } from './display.js';
+import { Blind } from './vision.js';
 import { place_object } from './mkobj.js';
 import { t_at } from './trap.js';
 import { IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, is_pit, is_hole, POOL,
@@ -122,17 +123,78 @@ export function unplacebc() {
     u.bc_felt = 0; /* feel nothing */
 }
 
-// C ref: ball.c move_bc(before, control, ballx, bally, chainx, chainy) — the
-// NON-blind arm.  "To make this work correctly, we need to pick up the ball and
-// chain before the hero moves, then put them in their new positions after the
-// hero moves."  The Blind arm maintains u.bc_felt/bglyph/cglyph so a blind hero
-// keeps feeling whichever of the pair it last touched; no recorded session is
-// blind while punished, so it is deliberately not ported (and would be dead
-// code that could only drift).  No RNG in either arm.
+// C ref: ball.c movobj(obj, ox, oy) — relocate a floor object in place, with a
+// newsym at both ends.  Only the Blind arm of move_bc() uses it.
+function movobj(obj, ox, oy) {
+    remove_object(obj);
+    newsym(obj.ox, obj.oy);
+    place_object(obj, ox, oy);
+    newsym(ox, oy);
+}
+
+// This port stores C's `levl[x][y].glyph` map memory as loc.remembered_glyph.
+const memGlyph = (x, y) => at(x, y)?.remembered_glyph ?? null;
+function setMemGlyph(x, y, g) { const loc = at(x, y); if (loc) loc.remembered_glyph = g; }
+
+// C ref: ball.c move_bc(before, control, ballx, bally, chainx, chainy).
+// Non-blind: "we need to pick up the ball and chain before the hero moves, then
+// put them in their new positions after the hero moves."
+// Blind: the pair is NOT lifted first — it is moved in place (movobj) after the
+// step, and the hero's stale memory of whichever piece it last felt is only
+// rewritten when u.bc_felt says it was actually being felt.  That difference is
+// visible: a blind punished hero who steps off the square holding the chain
+// keeps seeing '_' there (seed4500 step 1098), where the lift-then-drop arm
+// erases the memory while the objects are off the map.  No RNG in either arm.
 export function move_bc(before, control, ballx, bally, chainx, chainy) {
     const u = game.u;
     const uball = u?.uball, uchain = u?.uchain;
     if (!uball || !uchain) return;
+
+    if (Blind()) {
+        if (before) return;             // C: the whole Blind arm is `if (!before)`
+        if ((control & BC_CHAIN) && (control & BC_BALL)) {
+            /* both moved: drop the felt glyphs, then pick up the new ones */
+            if (u.bc_felt & BC_BALL) setMemGlyph(uball.ox, uball.oy, u.bglyph);
+            if (u.bc_felt & BC_CHAIN) setMemGlyph(uchain.ox, uchain.oy, u.cglyph);
+            u.bc_felt = 0;
+            u.bglyph = memGlyph(ballx, bally);
+            u.cglyph = memGlyph(chainx, chainy);
+            movobj(uball, ballx, bally);
+            movobj(uchain, chainx, chainy);
+        } else if (control & BC_BALL) {
+            if (u.bc_felt & BC_BALL) {
+                if (u.bc_order === BCPOS_DIFFER) {
+                    setMemGlyph(uball.ox, uball.oy, u.bglyph);
+                } else if (u.bc_order === BCPOS_BALL) {
+                    // C: map_object(uchain, 0) — the chain is now the top of
+                    // the pile the hero is still feeling.
+                    if (u.bc_felt & BC_CHAIN)
+                        setMemGlyph(uchain.ox, uchain.oy, object_glyph(uchain));
+                    else setMemGlyph(uball.ox, uball.oy, u.bglyph);
+                }
+                u.bc_felt &= ~BC_BALL;
+            }
+            u.bglyph = (ballx !== chainx || bally !== chainy)
+                ? memGlyph(ballx, bally) : u.cglyph;
+            movobj(uball, ballx, bally);
+        } else if (control & BC_CHAIN) {
+            if (u.bc_felt & BC_CHAIN) {
+                if (u.bc_order === BCPOS_DIFFER) {
+                    setMemGlyph(uchain.ox, uchain.oy, u.cglyph);
+                } else if (u.bc_order === BCPOS_CHAIN) {
+                    if (u.bc_felt & BC_BALL)
+                        setMemGlyph(uball.ox, uball.oy, object_glyph(uball));
+                    else setMemGlyph(uchain.ox, uchain.oy, u.cglyph);
+                }
+                u.bc_felt &= ~BC_CHAIN;
+            }
+            u.cglyph = (ballx !== chainx || bally !== chainy)
+                ? memGlyph(chainx, chainy) : u.bglyph;
+            movobj(uchain, chainx, chainy);
+        }
+        u.bc_order = bc_order();
+        return;
+    }
 
     if (before) {
         if (!control) {

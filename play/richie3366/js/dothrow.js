@@ -14,28 +14,31 @@ import {
 } from './mkobj.js';
 import { losehp, maybe_half_phys, nomul } from './hack.js';
 import {
-    WEAPON_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
+    WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
     POTION_CLASS, objectNames, objectNameStrs,
 } from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
-    D_ISOPEN, IS_OBSTRUCTED, IS_TREE, KILLED_BY, OBJ_INVENT,
+    D_ISOPEN, IS_OBSTRUCTED, IS_TREE, KILLED_BY, OBJ_INVENT, OBJ_FREE,
     TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
-    P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
-    P_BOW, P_BOOMERANG,
+    P_NONE, P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
+    P_BOW, P_BOOMERANG, P_SHORT_SWORD, P_SABER, P_AXE,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
-    ACCFOOD, HMON_THROWN, engulfing_u, STRAT_WAITMASK,
+    ACCFOOD, HMON_THROWN, HMON_KICKED, HMON_APPLIED, engulfing_u, STRAT_WAITMASK,
     M_AP_TYPE, M_AP_MONSTER, M_AP_NOTHING,
     BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME,
     ismnum, isok, u_at, MM_IGNOREWATER, MM_IGNORELAVA,
-    HURTLING, FORCEBUNGLE, IRONBARS,
+    HURTLING, FORCEBUNGLE, IRONBARS, Upolyd,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
 import {
-    ammo_and_launcher, is_ammo, doswapweapon, doquiver_core, welded,
+    ammo_and_launcher, is_ammo, is_missile, doswapweapon, doquiver_core, welded,
 } from './wield.js';
-import { acurr, A_DEX, change_luck } from './attrib.js';
+import { acurr, A_DEX, change_luck, exercise } from './attrib.js';
+import { find_mac } from './mhitm.js';
+import { hitval, weapon_hit_bonus, should_mulch_missile } from './weapon.js';
+import { spec_abon } from './artifact.js';
 import {
     PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_SAMURAI,
     PM_WIZARD, PM_HEALER, PM_TOURIST, PM_CLERIC,
@@ -43,11 +46,14 @@ import {
     monsterNames,
 } from './generated/monsters_data.js';
 import { xname, singular, an, the, vtense, doname } from './objnam.js';
-import { m_at, wakeup, seemimic, wake_nearto } from './mon.js';
+import { m_at, wakeup, seemimic, wake_nearto, distmin } from './mon.js';
 import { mon_nam, Monnam, hliquid } from './do_name.js';
-import { is_domestic, nohands, M1_NOTAKE, MZ_HUGE } from './monsters.js';
+import {
+    is_domestic, nohands, M1_NOTAKE, MZ_HUGE, MZ_MEDIUM,
+    is_unicorn, is_orc, is_elf, your_race,
+} from './monsters.js';
 import { tamedog } from './dog.js';
-import { hmon } from './uhitm.js';
+import { hmon, passive_obj } from './uhitm.js';
 import { potionbreathe } from './potion.js';
 import { goodpos, rloc_to } from './teleport.js';
 import {
@@ -68,6 +74,19 @@ const LENSES = objectNames.indexOf('LENSES');
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const WAR_HAMMER = objectNames.indexOf('WAR_HAMMER');
+const AKLYS = objectNames.indexOf('AKLYS');
+const BOOMERANG = objectNames.indexOf('BOOMERANG');
+const ELVEN_BOW = objectNames.indexOf('ELVEN_BOW');
+const YUMI = objectNames.indexOf('YUMI');
+const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
+const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
+const LEATHER_GLOVES = objectNames.indexOf('LEATHER_GLOVES');
+const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const MINERAL = 21; // objclass.h
+const PIERCE = 1; // objclass.h weapon oc_dir
 const PM_PYROLISK = monsterNames.indexOf('PM_PYROLISK');
 
 /** C ref: mondata.h notake — M1_NOTAKE (cannot pick up / throw). */
@@ -332,28 +351,262 @@ async function tmiss(obj, mon, maybe_wakeup) {
     if (maybe_wakeup && !rn2(3)) await wakeup(mon, true);
 }
 
+/** C ref: you.h Luck — u.uluck + u.moreluck. */
+function Luck() {
+    const u = game.u || {};
+    return (u.uluck || 0) + (u.moreluck || 0);
+}
+
+/** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE. */
+function is_weptool(obj) {
+    if (!obj || obj.oclass !== TOOL_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill;
+    if (sk != null && sk !== P_NONE) return true;
+    const n = objectNames[obj.otyp];
+    return n === 'PICK_AXE' || n === 'GRAPPLING_HOOK' || n === 'UNICORN_HORN'
+        || n === 'AKLYS' || n === 'BULLWHIP';
+}
+
+/** C ref: obj.h is_axe. */
+function is_axe(obj) {
+    if (!obj) return false;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
+    return (game.objects?.[obj.otyp]?.oc_skill | 0) === P_AXE;
+}
+
+/** C ref: obj.h is_spear / is_blade / is_sword. */
+function is_spear(obj) {
+    return !!obj && obj.oclass === WEAPON_CLASS
+        && (game.objects?.[obj.otyp]?.oc_skill | 0) === P_SPEAR;
+}
+function is_blade(obj) {
+    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill | 0;
+    return sk >= P_DAGGER && sk <= P_SABER;
+}
+function is_sword(obj) {
+    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill | 0;
+    return sk >= P_SHORT_SWORD && sk <= P_SABER;
+}
+
+/** C ref: wield.c / hack.h uslinging. */
+function uslinging() {
+    const uwep = game.u?.uwep;
+    return !!(uwep && (game.objects?.[uwep.otyp]?.oc_skill | 0) === P_SLING);
+}
+
 /**
- * C ref: dothrow.c thitmonst — mon-hit after bhit.
- * Ported: dieroll; EGG/CREAM_PIE/VENOM DEX `rnd(25)` → hmon; food befriend;
- * food-fail `tmiss(FALSE)`; non-weapon else `tmiss(TRUE)` (D-0867 armor).
- * Deferred: weapon/gem/ball/boulder hit-vs-miss, potionhit, unicorn gems,
- * leader catch, guaranteed_hit swallow body.
+ * C ref: dothrow.c throwing_weapon — missile/spear/pierce-blade/hammer/aklys.
+ */
+function throwing_weapon(obj) {
+    if (!obj) return false;
+    if (is_missile(obj) || is_spear(obj)) return true;
+    if (is_blade(obj) && !is_sword(obj)
+        && ((game.objects?.[obj.otyp]?.oc_dir | 0) & PIERCE)) {
+        return true;
+    }
+    return obj.otyp === WAR_HAMMER || obj.otyp === AKLYS;
+}
+
+/**
+ * C ref: dothrow.c omon_adj — size/sleep/immobile/otyp to-hit; mon_notices
+ * `!rn2(10)` unfreeze when mmove (thitmonst passes TRUE).
+ */
+function omon_adj(mon, obj, mon_notices) {
+    let tmp = 0;
+    tmp += ((mon.data?.msize ?? MZ_MEDIUM) - MZ_MEDIUM);
+    if (mon.msleeping) tmp += 2;
+    if (!mon.mcanmove || !(mon.data?.mmove)) {
+        tmp += 4;
+        if (mon_notices && mon.data?.mmove && !rn2(10)) {
+            mon.mcanmove = 1;
+            mon.mfrozen = 0;
+        }
+    }
+    if (obj.otyp === HEAVY_IRON_BALL) {
+        if (obj !== game.u?.uball) tmp += 2;
+    } else if (obj.otyp === BOULDER) {
+        tmp += 6;
+    } else if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
+        || obj.oclass === GEM_CLASS) {
+        tmp += hitval(obj, mon);
+    }
+    return tmp;
+}
+
+function helpless_thit(mon) {
+    return !!(mon.msleeping || !mon.mcanmove);
+}
+
+/**
+ * C ref: questpgr.c is_quest_artifact — otmp->oartifact == gu.urole.questarti.
+ * C compares raw; guard want!==0 so incomplete JS urole (questarti still 0
+ * on some roles) cannot treat every non-artifact as the quest item.
+ */
+function is_quest_artifact(obj) {
+    const want = game.urole?.questarti | 0;
+    return want !== 0 && (obj?.oartifact | 0) === want;
+}
+
+/**
+ * C ref: dothrow.c special_obj_hits_leader — quest artifact / unique /
+ * unknown fake Amulet vs quest leader. Body (catch / finish_quest) deferred.
+ */
+export function special_obj_hits_leader(obj, mon) {
+    const unique = !!(game.objects?.[obj.otyp]?.oc_unique);
+    const fake = obj.otyp === FAKE_AMULET_OF_YENDOR && !obj.known;
+    if (!(is_quest_artifact(obj) || unique || fake)) return false;
+    const lid = game.quest_status?.leader_m_id | 0;
+    return !!lid && (mon.m_id | 0) === lid;
+}
+
+/**
+ * C ref: dothrow.c thitmonst — mon-hit after bhit / use_pole / kick.
+ * Ported: tmp (Luck/DEX/distmin/bow-gloves/omon_adj/elf-orc);
+ * WEAPON/weptool/GEM hit-vs-miss (kicked/ammo/thrown/applied) → hmon /
+ * tmiss; APPLIED miss wakeup; pie/egg/venom DEX; food tamedog.
+ * Deferred: gem_accept luck/mpickobj; leader catch/return; iron ball /
+ * boulder hit; potionhit; swallow vanish body; cutworm; check_shop_obj
+ * on mulch; mshot_xname.
  * @returns {boolean} true if obj was consumed / taken care of
  */
 export async function thitmonst(mon, obj) {
+    const u = game.u || {};
     const otyp = obj.otyp | 0;
     const guaranteed_hit = engulfing_u(mon);
-    // C: dieroll = rnd(20) before class branches (unused on else/tmiss path)
+    const hmode = (obj === u.uwep) ? HMON_APPLIED
+        : (obj === game.kickedobj) ? HMON_KICKED
+            : HMON_THROWN;
+
+    // C dothrow.c:2026 — thrown/applied to-hit (not melee find_roll_to_hit)
+    let tmp = -1 + Luck() + find_mac(mon) + (u.uhitinc | 0)
+        + (Upolyd(u)
+            ? (game.youmonst?.data?.mlevel | 0)
+            : (u.ulevel | 0));
+    const dex = acurr(A_DEX);
+    if (dex < 4) tmp -= 3;
+    else if (dex < 6) tmp -= 2;
+    else if (dex < 8) tmp -= 1;
+    else if (dex >= 14) tmp += (dex - 14);
+
+    let disttmp = 3 - distmin(u.ux | 0, u.uy | 0, mon.mx | 0, mon.my | 0);
+    if (disttmp < -4) disttmp = -4;
+    tmp += disttmp;
+
+    const uwep = u.uwep;
+    if (u.uarmg && uwep && (game.objects?.[uwep.otyp]?.oc_skill | 0) === P_BOW) {
+        switch (u.uarmg.otyp) {
+        case GAUNTLETS_OF_POWER:
+            tmp -= 2;
+            break;
+        case GAUNTLETS_OF_FUMBLING:
+            tmp -= 3;
+            break;
+        case LEATHER_GLOVES:
+        case GAUNTLETS_OF_DEXTERITY:
+            break;
+        default:
+            break;
+        }
+    }
+
+    tmp += omon_adj(mon, obj, true);
+    if (is_orc(mon.data)
+        && (Upolyd(u) ? is_elf(game.youmonst?.data) : Race_if(PM_ELF))) {
+        tmp++;
+    }
+    if (guaranteed_hit) tmp += 1000;
+
+    // Unicorn gems before dieroll (C: not a weapon attack)
+    if (obj.oclass === GEM_CLASS && is_unicorn(mon.data)
+        && (game.objects?.[obj.otyp]?.oc_material | 0) !== MINERAL
+        && !uslinging()) {
+        if (helpless_thit(mon)) {
+            await tmiss(obj, mon, false);
+            return false;
+        } else if (mon.mtame) {
+            await pline(`${Monnam(mon)} catches and drops ${the(xname(obj))}.`);
+            return false;
+        } else {
+            await pline(`${Monnam(mon)} catches ${the(xname(obj))}.`);
+            // gem_accept luck / mpickobj deferred
+            return false;
+        }
+    }
+
+    if (hmode !== HMON_APPLIED && special_obj_hits_leader(obj, mon)) {
+        mon.msleeping = 0;
+        if (mon.mstrategy != null) mon.mstrategy &= ~STRAT_WAITMASK;
+        // catch / finish_quest / addinv deferred
+        return false;
+    }
+
     const dieroll = rnd(20);
 
-    // weapon / weptool / gem / iron ball / boulder arms deferred
-    // (those would hit-or-tmiss here; until ported they fall through to else)
+    if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
+        || obj.oclass === GEM_CLASS) {
+        if (hmode === HMON_KICKED) {
+            tmp -= is_ammo(obj) ? 5 : 3;
+        } else if (is_ammo(obj)) {
+            if (!ammo_and_launcher(obj, uwep)) {
+                tmp -= 4;
+            } else {
+                const erode = Math.max(uwep.oeroded | 0, uwep.oeroded2 | 0);
+                tmp += (uwep.spe | 0) - erode;
+                tmp += weapon_hit_bonus(uwep);
+                if (uwep.oartifact) tmp += spec_abon(uwep, mon);
+                if ((Race_if(PM_ELF) || Role_if(PM_SAMURAI))
+                    && (!Upolyd(u) || your_race(game.youmonst?.data))
+                    && (game.objects?.[uwep.otyp]?.oc_skill | 0) === P_BOW) {
+                    tmp++;
+                    if ((Race_if(PM_ELF) && uwep.otyp === ELVEN_BOW)
+                        || (Role_if(PM_SAMURAI) && uwep.otyp === YUMI)) {
+                        tmp++;
+                    }
+                }
+            }
+        } else {
+            // thrown non-ammo or applied polearm/grapnel
+            if (otyp === BOOMERANG) tmp += 4;
+            else if (throwing_weapon(obj)) tmp += 2;
+            else if (hmode === HMON_THROWN) tmp -= 2;
+            tmp += weapon_hit_bonus(obj);
+        }
+
+        if (tmp >= dieroll) {
+            const wasthrown = !!game.thrownobj;
+            const chopper = is_axe(obj);
+            if (hmode === HMON_APPLIED) {
+                if (!u.uconduct) u.uconduct = {};
+                u.uconduct.weaphit = (u.uconduct.weaphit | 0) + 1;
+            }
+            if (await hmon(mon, obj, hmode, dieroll)) {
+                // cutworm(mon, bhitpos, chopper) deferred
+                void chopper;
+            }
+            exercise(A_DEX, true);
+            if (wasthrown && !game.thrownobj) return true;
+            if (should_mulch_missile(obj)) {
+                obj.quan = 0;
+                obj.where = OBJ_FREE;
+                return true;
+            }
+            passive_obj(mon, obj, null);
+        } else {
+            await tmiss(obj, mon, true);
+            if (hmode === HMON_APPLIED) await wakeup(mon, true);
+        }
+        return false;
+    }
+
+    // iron ball / boulder hit-vs-miss deferred (not WEAPON/weptool)
 
     // C dothrow.c:2256 — pie/egg/venom hit vs DEX (or swallow)
     if ((otyp === EGG || otyp === CREAM_PIE
             || otyp === BLINDING_VENOM || otyp === ACID_VENOM)
         && (guaranteed_hit || acurr(A_DEX) > rnd(25))) {
-        await hmon(mon, obj, HMON_THROWN, dieroll);
+        await hmon(mon, obj, hmode, dieroll);
         return true; // C: hmon used it up
     }
 
@@ -362,7 +615,6 @@ export async function thitmonst(mon, obj) {
     if (befriend_with_obj(mon.data, obj)
         || (mon.mtame && dogfood(mon, obj) <= ACCFOOD)) {
         if (await tamedog(mon, obj, true)) return true;
-        // C: tmiss(obj, mon, FALSE) then clear sleep / WAITMASK
         await tmiss(obj, mon, false);
         mon.msleeping = 0;
         if (mon.mstrategy != null) mon.mstrategy &= ~STRAT_WAITMASK;
@@ -375,7 +627,6 @@ export async function thitmonst(mon, obj) {
         return false;
     }
 
-    // C dothrow.c:2299 else — armor / non-special thrown at mon
     await tmiss(obj, mon, true);
     return false;
 }
@@ -733,7 +984,8 @@ export async function breaks(obj, x, y) {
 /**
  * C ref: zap.c bhit + dothrow.c throwit — fly along dx/dy; stop before
  * !ZAP_POS / closed door (bhit backs up one step), then place / breaktest.
- * Monster hit → thitmonst (D-0415 food; D-0693 pie/egg DEX); weapon deferred.
+ * Monster hit → thitmonst (D-0415 food; D-0693 pie/egg DEX;
+ * D-1041 weapon/weptool/gem hit-vs-miss).
  */
 async function throwit(obj) {
     const u = game.u;

@@ -6,7 +6,7 @@ import { COLNO, ROWNO } from '../const.js';
 import { game } from '../gstate.js';
 import { rn2 } from '../rng.js';
 import {
-    bigrm_load_map, bigrm_wallification, flip_level, quest_level_init_solidfill, shuffle,
+    bigrm_load_map, bigrm_wallification, flip_level, vly_flip_dndest, vly_flip_updest, quest_level_init_solidfill, shuffle,
 } from '../sp_lev.js';
 import {
     S_EEL, plane_coder_init, plane_level_flags, plane_levregion_add, plane_message,
@@ -46,6 +46,8 @@ export async function makemaz_water() {
     let flp = 0;
     if (rn2(2)) flp |= 1;
     if (rn2(2)) flp |= 2;
-    if (flp) flip_level(flp);
+    // C ref: sp_lev.c flip_level() mirrors gl.lregions[] too, and
+    // fixup_special() only then copies the teleport region into svd.dndest.
+    if (flp) { flip_level(flp); vly_flip_dndest(flp); vly_flip_updest(flp); }
     plane_place_lregions();
 }

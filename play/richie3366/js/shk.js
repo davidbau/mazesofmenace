@@ -11,7 +11,8 @@
 //        pay_for_damage / getcad / hot_pursuit (D-0942);
 //        shopdig dig-warn / pack-snatch (D-0958);
 //        shopdig(1) um_dist snatch polarity + setnotworn (D-1016);
-//        sellobj BSS sell_response / robbed precedence (D-1019).
+//        sellobj BSS sell_response / robbed precedence (D-1019);
+//        check_unpaid / check_unpaid_usage / cost_per_charge (D-1047).
 // Named omissions: shk_fixes_damage body; holetime dig follow; angry
 // Displaced pline (shk path); following verbalize;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
@@ -67,9 +68,9 @@ import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable } from './shknam.js';
 import { splitobj, next_ident, obj_extract_self } from './mkobj.js';
 import { add_to_minv } from './makemon.js';
-import { acurr, acurrstr, A_CHA, adjalign } from './attrib.js';
+import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise } from './attrib.js';
 import { simpleonames, makeplural } from './objnam.js';
-import { xname, doname, paydoname, set_doname_shop_suffix } from './objnam.js';
+import { xname, doname, paydoname, set_doname_shop_suffix, otyp_is_charged } from './objnam.js';
 import {
     is_human, is_demon, nolimbs, is_floater, is_flyer, amorphous, M1_SLITHY,
 } from './monsters.js';
@@ -90,6 +91,19 @@ const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION
 const MIRROR = objectNames.indexOf('MIRROR');
 const GEMSTONE = 20; // materials.h
 const LEASH = objectNames.indexOf('LEASH');
+const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
+const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
+const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
+const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
+const BRASS_LANTERN = objectNames.indexOf('BRASS_LANTERN');
+const MAGIC_FLUTE = objectNames.indexOf('MAGIC_FLUTE');
+const DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
+const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
+const TINNING_KIT = objectNames.indexOf('TINNING_KIT');
+const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
+const POT_OIL = objectNames.indexOf('POT_OIL');
 /** C monflag.h MS_SILENT / MS_ANIMAL / MS_HUMANOID. */
 const MS_SILENT = 0;
 const MS_ANIMAL = 17;
@@ -2211,6 +2225,94 @@ function get_cost(obj, shkp) {
         tmp += Math.trunc((tmp + 2) / 3);
     }
     return tmp;
+}
+
+/**
+ * C ref: shk.c cost_per_charge — exhaustive unpaid use costs more than
+ * buying outright. MAGIC_LAMP light uses OIL_LAMP oc_cost; djinni
+ * altusage +1/3. Named omit: none for the billed otyps C lists.
+ */
+function cost_per_charge(shkp, otmp, altusage) {
+    if (!shkp || !inhishop(shkp) || !otmp) return 0;
+    let tmp = get_cost(otmp, shkp) | 0;
+    const otyp = otmp.otyp | 0;
+    if (otyp === MAGIC_LAMP) {
+        if (!altusage) tmp = objects()?.[OIL_LAMP]?.oc_cost | 0;
+        else tmp += Math.trunc(tmp / 3);
+    } else if (otyp === MAGIC_MARKER) {
+        tmp = Math.trunc(tmp / 2);
+    } else if (otyp === BAG_OF_TRICKS || otyp === HORN_OF_PLENTY) {
+        if (!altusage) tmp = Math.trunc(tmp / 5);
+    } else if (otyp === CRYSTAL_BALL
+        || otyp === OIL_LAMP
+        || otyp === BRASS_LANTERN
+        || (otyp >= MAGIC_FLUTE && otyp <= DRUM_OF_EARTHQUAKE)
+        || (otmp.oclass | 0) === WAND_CLASS) {
+        if ((otmp.spe | 0) > 1) tmp = Math.trunc(tmp / 4);
+    } else if ((otmp.oclass | 0) === SPBOOK_CLASS) {
+        tmp -= Math.trunc(tmp / 5);
+    } else if (otyp === CAN_OF_GREASE || otyp === TINNING_KIT
+        || otyp === EXPENSIVE_CAMERA) {
+        tmp = Math.trunc(tmp / 10);
+    } else if (otyp === POT_OIL) {
+        tmp = Math.trunc(tmp / 5);
+    }
+    return tmp;
+}
+
+/**
+ * C ref: shk.c check_unpaid_usage — partial-use shop debit + verbalize.
+ * bill_dummy_object is for fully used items. SetVoice deferred.
+ * @param {object} otmp
+ * @param {boolean} altusage
+ */
+export async function check_unpaid_usage(otmp, altusage) {
+    if (!otmp) return;
+    const ushops = game.u?.ushops || '';
+    const oc = objects()?.[otmp.otyp | 0];
+    const charged = !!(oc?.oc_charged) || otyp_is_charged(otmp.otyp | 0);
+    if (!otmp.unpaid || !ushops.charCodeAt(0)
+        || ((otmp.spe | 0) <= 0 && charged)) {
+        return;
+    }
+    const shkp = shop_keeper(ushops);
+    if (!shkp || !inhishop(shkp)) return;
+    const tmp = cost_per_charge(shkp, otmp, altusage) | 0;
+    if (!tmp) return;
+
+    let arg1 = '';
+    let arg2 = '';
+    let msg;
+    if ((otmp.oclass | 0) === SPBOOK_CLASS) {
+        const buf = `This is no free library, ${cad(false)}!  `;
+        arg1 = rn2(2) ? buf : '';
+        arg2 = (ESHK(shkp)?.debit | 0) > 0 ? ' an additional' : '';
+        msg = `${arg1}You owe${arg2} ${tmp} ${currency(tmp)}.`;
+    } else if ((otmp.otyp | 0) === POT_OIL) {
+        msg = `That will cost you ${tmp} ${currency(tmp)} (Yendorian Fuel Tax).`;
+    } else if (altusage && ((otmp.otyp | 0) === BAG_OF_TRICKS
+        || (otmp.otyp | 0) === HORN_OF_PLENTY)) {
+        if (!rn2(3)) arg1 = 'Whoa!  ';
+        if (!rn2(3)) arg1 = 'Watch it!  ';
+        msg = `${arg1}Emptying that will cost you ${tmp} ${currency(tmp)}.`;
+    } else {
+        if (!rn2(3)) arg1 = 'Hey!  ';
+        if (!rn2(3)) arg2 = 'Ahem.  ';
+        msg = `${arg1}${arg2}Usage fee, ${tmp} ${currency(tmp)}.`;
+    }
+
+    if (!hero_deaf() && !muteshk(shkp)) {
+        // C SetVoice(shkp, 0, 80, 0) deferred
+        await verbalize(msg);
+        exercise(A_WIS, true);
+    }
+    const eshk = ESHK(shkp);
+    if (eshk) eshk.debit = (eshk.debit | 0) + tmp;
+}
+
+/** C ref: shk.c check_unpaid — normal-use wrapper (altusage FALSE). */
+export async function check_unpaid(otmp) {
+    await check_unpaid_usage(otmp, false);
 }
 
 /** C shk.c onbill — find bill entry by o_id. */

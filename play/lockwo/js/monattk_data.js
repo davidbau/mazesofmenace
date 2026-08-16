@@ -492,9 +492,16 @@ export function dmgtype(ptr, dtyp) {
     return attacktype_fordmg(ptr, AT_ANY, dtyp);
 }
 
-/* C ref: mondata.h noattacks(ptr) — no attack slot at all. */
+/* C ref: mondata.c noattacks(ptr) — `for (i..NATTK) if (mattk[i].aatyp)
+   return FALSE; return TRUE`.  NOT !attacktype(ptr, AT_ANY): C's
+   attacktype_fordmg() matches AT_ANY/AD_ANY against mattk[0] unconditionally,
+   so that spelling is always FALSE.  The difference is exactly the
+   PASSIVE-only monsters (aatyp AT_NONE==0, e.g. yellow mold, blue jelly),
+   which C treats as having no attacks: they must not make monster_nearby()
+   block a #wait, and dochug() must not run mattacku() for them. */
 export function noattacks(ptr) {
-    return !attacktype(ptr, AT_ANY);
+    for (const a of mattk_of(ptr)) if (a.aatyp) return false;
+    return true;
 }
 
 /* C ref: mondata.h is_armed(ptr) — uses a weapon. */

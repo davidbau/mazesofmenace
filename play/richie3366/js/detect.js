@@ -69,7 +69,7 @@ import {
     BALL_CLASS, CHAIN_CLASS, VENOM_CLASS, ILLOBJ_CLASS,
 } from './objects.js';
 import { objects_at, weight } from './mkobj.js';
-import { makeknown } from './invent.js';
+import { makeknown, consume_obj_charge } from './invent.js';
 import { yn_function } from './getline.js';
 import { nomul, losehp, maybe_half_phys } from './hack.js';
 import { depth, dist2 } from './hacklib.js';
@@ -156,12 +156,6 @@ const DEF_MONSYM_TO_MLET = {
 /** C youprop.h BlindedTimeout */
 function BlindedTimeout() {
     return (game.u?.HBlinded | 0) & TIMEOUT;
-}
-
-/** C invent.c consume_obj_charge — spe--; unpaid/update deferred. */
-function consume_obj_charge(obj, _maybe_unpaid) {
-    if (!obj) return;
-    obj.spe = (obj.spe | 0) - 1;
 }
 
 /** C invent.c useup — quan-- or remove from invent. */
@@ -1353,7 +1347,7 @@ export async function use_crystal_ball(obj) {
         default:
             break;
         }
-        if (otmp) consume_obj_charge(otmp, true);
+        if (otmp) await consume_obj_charge(otmp, true);
         return otmp;
     }
 
@@ -1405,7 +1399,7 @@ export async function use_crystal_ball(obj) {
                 await pline('Oh wow... like a kaleidoscope!');
                 break;
             }
-            consume_obj_charge(otmp, true);
+            await consume_obj_charge(otmp, true);
         }
         return otmp;
     }
@@ -1441,7 +1435,7 @@ export async function use_crystal_ball(obj) {
     } else {
         let ret = 0;
         makeknown(CRYSTAL_BALL);
-        consume_obj_charge(otmp, true);
+        await consume_obj_charge(otmp, true);
 
         if (ch === DEF_MIMIC_DEF) ch = DEF_MIMIC;
 

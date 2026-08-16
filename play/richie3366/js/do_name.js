@@ -28,7 +28,7 @@ import {
     LOW_PM, SPECIAL_PM,
 } from './monsters.js';
 import { getlin } from './getline.js';
-import { an, xname, simpleonames } from './objnam.js';
+import { an, xname, simpleonames, set_y_monnam } from './objnam.js';
 import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
@@ -523,6 +523,26 @@ export function mon_nam(mtmp) {
 }
 
 /**
+ * C ref: do_name.c a_monnam — ARTICLE_A; SUPPRESS_SADDLE when named.
+ */
+export function a_monnam(mtmp) {
+    return x_monnam(
+        mtmp,
+        ARTICLE_A,
+        null,
+        has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+        false,
+    );
+}
+
+/**
+ * C ref: do_name.c Amonnam — highc(a_monnam()).
+ */
+export function Amonnam(mtmp) {
+    return highc_name(a_monnam(mtmp));
+}
+
+/**
  * C ref: do_name.c Monnam — highc(mon_nam()).
  */
 export function Monnam(mtmp) {
@@ -541,6 +561,8 @@ export function y_monnam(mtmp) {
         : 0;
     return x_monnam(mtmp, prefix, null, suppression, false);
 }
+
+set_y_monnam(y_monnam);
 
 /**
  * C ref: do_name.c noit_mon_nam / noit_Monnam — ARTICLE_YOUR + SUPPRESS_IT.

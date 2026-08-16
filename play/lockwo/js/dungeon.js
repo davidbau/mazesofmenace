@@ -18,7 +18,9 @@ import {
     IS_AIR, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, IS_WALL, IS_DOOR, IS_ROOM,
     IS_THRONE, IS_SINK, TREE, COLNO, ROWNO,
     Is_waterlevel, Is_earthlevel, Is_knox_level,
+    SHOPBASE,
 } from './const.js';
+import { shtypes } from './shtypes.js';
 
 const X_START = 'x-strt';
 const X_LOCATE = 'x-loca';
@@ -1099,6 +1101,71 @@ function overview_level_for(ledger) {
     return game._level_store?.[ledger]?.level || null;
 }
 
+// ── the mapseen bits that cannot be recomputed from a stored map ─────────────
+//
+// C keeps a `mapseen` per visited level.  Most of what print_mapseen() shows is
+// re-derived here from the stashed level object, but two fields are HISTORY,
+// not state: msrooms[].seen (which special rooms the hero actually walked into)
+// and br (which branch stairway the hero actually took).  Neither can be read
+// back off the map, so they are recorded at the moment C records them.
+function mapseen_of(ledger) {
+    const m = game._mapseen || (game._mapseen = {});
+    return m[ledger] || (m[ledger] = { msrooms: {}, br: null });
+}
+
+// C ref: dungeon.c:3282 room_discovered(roomno) — "room entry message has just
+// been delivered so learn room even if blind".  Called from hack.c
+// check_special_room() for every TEMPLE or shop the hero enters.
+export function room_discovered(roomno) {
+    const uz = game.u?.uz;
+    if (!uz) return;
+    mapseen_of(`${uz.dnum}:${uz.dlevel}`).msrooms[roomno] = { seen: 1 };
+}
+
+// C ref: dungeon.c:2446 recbranch_mapseen(source, dest) — record that the hero
+// KNOWS about a branch from `source`, which is what puts the "Stairs down to
+// The Gnomish Mines." line in #overview.  Only forward (end1 -> end2)
+// transitions count, and C deliberately does not call this for a level teleport
+// or the Eye, so a ^V-hopping wizard-mode game gets no branch annotations.
+export function recbranch_mapseen(source, dest) {
+    if (!source || !dest || source.dnum === dest.dnum) return;
+    const on = (l, e) => e && l.dnum === e.dnum && l.dlevel === e.dlevel;
+    let found = null;
+    for (const br of game.branches || []) {
+        if (on(source, br.end1) && on(dest, br.end2)) { found = br; break; }
+        if (on(source, br.end2) && on(dest, br.end1)) return;   // backward
+    }
+    if (!found) return;
+    mapseen_of(`${source.dnum}:${source.dlevel}`).br = found;
+}
+
+// C ref: dungeon.c:3388 br_string2(branch *).  The quest-portal "Sealed portal"
+// arm needs u.uevent.qexpelled, which this port does not track.
+function br_string2(br) {
+    switch (br.type) {
+    case BR_PORTAL: return 'Portal';
+    case BR_NO_END1: return 'Connection';
+    case BR_NO_END2: return br.end1_up ? 'One way stairs up' : 'One way stairs down';
+    case BR_STAIR: return br.end1_up ? 'Stairs up' : 'Stairs down';
+    }
+    return '(unknown)';
+}
+
+// C ref: dungeon.c:3441 shop_string(rtype) — the #overview name of a shop, which
+// is shtypes[].annotation when that second (shorter) name exists and
+// shtypes[].name otherwise.  A shop whose keeper has left is "untended shop"
+// (shoptype forced to SHOPBASE-1 by recalc_mapseen).
+// C ref: hacklib.c an() — every shop_string() result starts with a letter, so
+// the vowel test is the whole rule here (no "the"/"some" special cases).
+function an_dg(s) { return (/^[aeiouAEIOU]/.test(s) ? 'an ' : 'a ') + s; }
+
+function shop_string(rtype) {
+    const idx = rtype - SHOPBASE;
+    if (idx < 0) return 'untended shop';
+    const t = shtypes[idx];
+    return t?.annotation || t?.name || 'shop?';
+}
+
 // `final` mirrors print_mapseen()'s eponymous parameter: 0 (default) is the
 // live '#overview' command, which only lists levels interest_mapseen() flags
 // as "of interest"; 1 or 2 is the end-of-game disclosure, which (per
@@ -1113,6 +1180,13 @@ export function build_overview_lines(final = 0, how = 0) {
 
     const ledgers = new Set(Object.keys(game._visited_levels || {}));
     if (uzLedger) ledgers.add(uzLedger);
+    // C makes a mapseen for EVERY level the hero has been on, including the one
+    // chargen built (which do.js deliberately leaves out of _visited_levels).
+    // Anything with a stashed map, an annotation or mapseen history has been
+    // visited, so union those in or the annotated Dlvl 1 goes missing.
+    for (const k of Object.keys(game._level_store || {})) ledgers.add(k);
+    for (const k of Object.keys(game._level_annotations || {})) ledgers.add(k);
+    for (const k of Object.keys(game._mapseen || {})) ledgers.add(k);
     // C ref: allmain.c maybe_do_tutorial() -> goto_level(): a lua-scripted
     // level entry (the tutorial redirect) assigns u.ucamefrom the level the
     // hero is leaving, exactly as goto_level() would, but our tutorial-enter
@@ -1145,7 +1219,9 @@ export function build_overview_lines(final = 0, how = 0) {
     let lastdun = -1;
     for (const p of parsed) {
         const level = overview_level_for(p.ledger);
-        if (!level && !final) continue;
+        // C's mapseen survives without the level being in memory, so a level
+        // whose stashed map is gone still prints its heading line — dropping it
+        // here lost the annotated Dlvl 1 of any game that had moved on.
         const feat = level ? {
             nthrone: overview_count_feat(level, IS_THRONE),
             nfount: overview_count_feat(level, IS_FOUNTAIN),
@@ -1153,21 +1229,35 @@ export function build_overview_lines(final = 0, how = 0) {
             ngrave: overview_count_feat(level, IS_GRAVE),
             ntree: overview_count_feat(level, (t) => t === TREE),
         } : { nthrone: 0, nfount: 0, nsink: 0, ngrave: 0, ntree: 0 };
+        const ms = game._mapseen?.[p.ledger] || null;
+        // C ref: recalc_mapseen()'s msrooms loop — a shop counts only once the
+        // hero has been INSIDE it (room_discovered), and shoptype collapses to 0
+        // when two different shop types have been entered on the same level.
+        feat.nshop = 0; feat.shoptype = 0;
+        if (level && ms) {
+            for (const key of Object.keys(ms.msrooms)) {
+                const rt = level.rooms?.[+key]?.rtype | 0;
+                if (rt < SHOPBASE) continue;
+                if (!feat.nshop) feat.shoptype = rt;
+                else if (feat.shoptype !== rt) feat.shoptype = 0;
+                if (feat.nshop < 3) feat.nshop++;
+            }
+        }
         const custom = game._level_annotations?.[p.ledger] || '';
         const onHere = p.ledger === uzLedger;
-        const ofInterest = !!(feat.nthrone || feat.nfount || feat.nsink || feat.ngrave || feat.ntree);
+        const ofInterest = !!(feat.nshop || feat.nthrone || feat.nfount
+                              || feat.nsink || feat.ngrave || feat.ntree);
         const dptr = M.dungeons[p.dnum];
         if (!dptr) continue;
         const dunlevUreached = Math.max(dptr.dunlev_ureached ?? 0, maxDlevelByDnum.get(p.dnum) ?? 0);
         // C ref: dungeon.c interest_mapseen() last clause — a level is of
         // interest when it is "the furthest level reached in its branch"
         // (mptr->lev.dlevel == dungeons[dnum].dunlev_ureached), even with no
-        // features and no annotation.  GAP: C's mptr->br (a known branch
-        // connection) and the auto-annotation flags (oracle / bigroom /
-        // roguelevel / castle / valley / msanctum / vibrating_square /
+        // features and no annotation.  GAP: the auto-annotation flags (oracle /
+        // bigroom / roguelevel / castle / valley / msanctum / vibrating_square /
         // quest_summons / questing) are not tracked here yet.
         const isDeepest = p.dlevel === dunlevUreached;
-        if (!final && !onHere && !ofInterest && !custom && !isDeepest) continue;
+        if (!final && !onHere && !ofInterest && !custom && !ms?.br && !isDeepest) continue;
         const showheader = p.dnum !== lastdun;
         if (showheader) {
             const buf = (dunlevUreached === dptr.entry_lev)
@@ -1186,6 +1276,12 @@ export function build_overview_lines(final = 0, how = 0) {
         const depthstart = (p.dnum === game.quest_dnum || p.dnum === game.knox_level?.dnum)
             ? 1 : dptr.depth_start;
         let lbuf = `${OVERVIEW_TAB}Level ${depthstart + p.dlevel - 1}:`;
+        // C ref: print_mapseen():3567 — "wizmode prints out proto dungeon names
+        // for clarity".  Sits BEFORE the custom annotation.
+        if (wizard()) {
+            const slev = Is_special({ dnum: p.dnum, dlevel: p.dlevel });
+            if (slev) lbuf += ` [${slev.proto}]`;
+        }
         if (custom) lbuf += ` "${custom}"`;
         if (onHere) {
             const ASCENDED = 15, ESCAPED = 14;
@@ -1203,6 +1299,12 @@ export function build_overview_lines(final = 0, how = 0) {
                 fbuf += (n++ > 0 ? ', ' : OVERVIEW_PREFIX)
                     + `${overview_seen_string(val, nam)} ${nam}${overview_plur(val)}`;
             };
+            // C ref: print_mapseen() lists interests "in an order vaguely
+            // corresponding to how important they are" — shops first.  A single
+            // shop names its type ("a general store"); 2+ collapse to "N shops".
+            if (feat.nshop > 1) add('shop', feat.nshop);
+            else if (feat.nshop > 0)
+                fbuf += (n++ > 0 ? ', ' : OVERVIEW_PREFIX) + an_dg(shop_string(feat.shoptype));
             add('throne', feat.nthrone);
             add('fountain', feat.nfount);
             add('sink', feat.nsink);
@@ -1211,6 +1313,17 @@ export function build_overview_lines(final = 0, how = 0) {
             const idx = OVERVIEW_PREFIX.length;
             fbuf = fbuf.slice(0, idx) + fbuf[idx].toUpperCase() + fbuf.slice(idx + 1) + '.';
             lines.push({ text: fbuf, attr: 0 });
+        }
+
+        // C ref: print_mapseen():3681 — the known branch connection, printed
+        // after the feature line.  `, level N` is appended only for an upward
+        // branch (Sokoban, Vlad's), where the destination depth is not obvious.
+        if (ms?.br) {
+            const br = ms.br;
+            let bbuf = `${OVERVIEW_PREFIX}${br_string2(br)} to `
+                     + `${M.dungeons[br.end2.dnum]?.dname ?? ''}`;
+            if (br.end1_up) bbuf += `, level ${depth(br.end2)}`;
+            lines.push({ text: `${bbuf}.`, attr: 0 });
         }
 
         // C ref: print_mapseen()'s final_resting_place block — always entered

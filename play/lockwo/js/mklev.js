@@ -10,10 +10,11 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
-import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_arc_strt, makemaz_pri_strt, makemaz_tower1, makemaz_tower2, makemaz_tower3, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown2, makemaz_minetown3, makemaz_minetown5, makemaz_minetown7, makemaz_minend1, makemaz_minend2, makemaz_minend3, makemaz_medusa1, makemaz_medusa2, makemaz_medusa3, makemaz_medusa4, makemaz_asmodeus, makemaz_baalz, makemaz_juiblex, makemaz_orcus, makemaz_wizard1, makemaz_wizard2, makemaz_wizard3, makemaz_fakewiz1, makemaz_fakewiz2, makemaz_air, makemaz_earth, makemaz_fire, makemaz_water, makemaz_astral, makemaz_cav_strt, makemaz_hea_strt, makemaz_kni_strt, makemaz_mon_strt, makemaz_ran_strt, makemaz_rog_strt, makemaz_sam_strt, makemaz_tou_strt, makemaz_val_strt, makemaz_wiz_strt, shuffle,
+import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_bar_goal, makemaz_arc_strt, makemaz_arc_loca, makemaz_arc_goal, makemaz_pri_strt, makemaz_pri_loca, makemaz_pri_goal, makemaz_tower1, makemaz_tower2, makemaz_tower3, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown2, makemaz_minetown3, makemaz_minetown5, makemaz_minetown7, makemaz_minend1, makemaz_minend2, makemaz_minend3, makemaz_medusa1, makemaz_medusa2, makemaz_medusa3, makemaz_medusa4, makemaz_asmodeus, makemaz_baalz, makemaz_juiblex, makemaz_orcus, makemaz_wizard1, makemaz_wizard2, makemaz_wizard3, makemaz_fakewiz1, makemaz_fakewiz2, makemaz_air, makemaz_earth, makemaz_fire, makemaz_water, makemaz_astral, makemaz_cav_strt, makemaz_hea_strt, makemaz_kni_strt, makemaz_mon_strt, makemaz_ran_strt, makemaz_rog_strt, makemaz_sam_strt, makemaz_tou_strt, makemaz_val_strt, makemaz_wiz_strt, shuffle,
          mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
          splev_map_origin, flip_level, bigrm_get_level_extends, set_door_orientation,
          okdoor, bydoor, create_door, lspo_door_relative,
+         is_ok_location, pm_to_humidity, LOC_DRY,
          SET_LIT_NOCHANGE } from './sp_lev.js';
 import { create_maze, walkfrom, mz, reset_maze_bounds, mkportal } from './mkmaze.js';
 import {
@@ -468,6 +469,33 @@ async function makelevel() {
         await makemaz_bar_loca();
         return;
     }
+    // C ref: mklev.c:1269 makemaz(slev->proto) — the remaining role-quest
+    // "locate"/"goal" levels.  Their builders were landed (js/levels/*.js) but
+    // never wired into this dispatcher, so every one of them fell through to the
+    // generic maze and desynced the whole level's PRNG stream.  None of these
+    // .lua files registers a "branch" levregion (only the *-strt files do), so
+    // there is no quest_place_branch() finalize; each builder already ends with
+    // its own wallification/flip.
+    if (slev && slev.proto === 'Bar-goal') {
+        await makemaz_bar_goal();
+        return;
+    }
+    if (slev && slev.proto === 'Arc-loca') {
+        await makemaz_arc_loca();
+        return;
+    }
+    if (slev && slev.proto === 'Arc-goal') {
+        await makemaz_arc_goal();
+        return;
+    }
+    if (slev && slev.proto === 'Pri-loca') {
+        await makemaz_pri_loca();
+        return;
+    }
+    if (slev && slev.proto === 'Pri-goal') {
+        await makemaz_pri_goal();
+        return;
+    }
     // C ref: mklev.c:1269 makemaz(slev->proto) — the Archeologist quest "home"
     // (start) level, a moated keep.  Same finalize as Bar-strt: place the 1-cell
     // "branch" levregion (place_lregion rn2(1)/rn2(1)); then makelevel() runs
@@ -690,6 +718,11 @@ async function makelevel() {
             if (g.u.uz.dlevel < ql.dlevel) await makemaz_bar_fila();
             else await makemaz_bar_filb();
             return;
+        }
+        // Every other ported role's filler is the six-des.room() program.
+        if (fc && ql) {
+            const nm = fc + (g.u.uz.dlevel < ql.dlevel ? '-fila' : '-filb');
+            if (await makemaz_quest_fill(nm)) return;
         }
     }
 
@@ -3310,7 +3343,9 @@ function mk_enexto_if_occupied(c, data) {
 // S_OGRE=41, S_TROLL=46 (defsym.h), needed by Bar-fila's "O"/"T" class picks.
 // defsym.h MONSYM(): L 38 lich, M 39 mummy, V 48 vampire, Z 52 zombie
 // (themerms.lua 'Mausoleum'), '@' 53 human.
-const MK_CLASS_CHAR = { G: 33, h: 8, O: 41, T: 46, L: 38, M: 39, V: 48, Z: 52, '@': 53 };
+// S 45 snake (Arc-fil[ab]), W 49 wraith (Pri-fil[ab]).
+const MK_CLASS_CHAR = { G: 33, h: 8, O: 41, T: 46, L: 38, M: 39, V: 48, Z: 52, '@': 53,
+                        S: 45, W: 49, E: 31, X: 50, i: 9, l: 12 };
 function mk_monster_class(classChar, peacefulOverride) {
     const klass = MK_CLASS_CHAR[classChar] ?? 0;
     // C ref: create_monster — amask = sp_amask_to_amask(AM_SPLEV_RANDOM) ->
@@ -3345,7 +3380,13 @@ async function mk_trap() {
         const t = map.at(c.x, c.y);
         if (!(t && (t.typ === STAIRS))) break; // LADDER not present here
     } while (++trycnt <= 100);
-    // mktrap(type=-1 random): traptype loop + maketrap + victim gate.
+    await qf_mktrap_at(c.x, c.y);
+}
+
+// mktrap(type=-1 random): traptype loop + maketrap + victim gate.  Shared by
+// des.trap() with and without a croom.
+async function qf_mktrap_at(cx, cy) {
+    const c = { x: cx, y: cy };
     let kind;
     kind = mktrap_random_kind();
     const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
@@ -5233,6 +5274,204 @@ async function makemaz_bar_fila() {
     await mk_fixup_branch();
 }
 
+// -- Room-style quest filler levels (dat/<Fc>-fila.lua / <Fc>-filb.lua) ----
+// Every role except the Barbarian's has the same shape: six
+// des.room({ type=..., contents=function() ... end }) blocks and a closing
+// des.random_corridors().  C ref: mklev.c:1275 makelevel()'s In_quest arm.
+
+// C ref: sp_lev.c get_location() -- one 100-try loop, then the deterministic
+// footprint scan; NO_LOC_WARN turns the give-up into (-1,-1).  With a croom
+// the candidate comes from somexy(croom) instead of rn2(xsize)/rn2(ysize).
+function qf_getloc_once(okfn, croom, nowarn) {
+    const mx = croom ? croom.lx : 1, my = croom ? croom.ly : 0;
+    const sx = croom ? (croom.hx - croom.lx + 1) : (COLNO - 1);
+    const sy = croom ? (croom.hy - croom.ly + 1) : ROWNO;
+    let x = -1, y = -1, cpt = 0;
+    do {
+        if (croom) {
+            const c = { x: -1, y: -1 };
+            somexy(croom, c);   // C discards the return; c is set either way
+            x = c.x; y = c.y;
+        } else {
+            x = mx + rn2(sx);
+            y = my + rn2(sy);
+        }
+        if (okfn(x, y)) return { x, y };
+    } while (++cpt < 100);
+    for (let xx = 0; xx < sx; xx++)
+        for (let yy = 0; yy < sy; yy++)
+            if (okfn(mx + xx, my + yy)) return { x: mx + xx, y: my + yy };
+    if (nowarn) return { x: -1, y: -1 };
+    return { x: COLNO - 1, y: ROWNO - 1 };
+}
+
+// C ref: sp_lev.c get_location_coord() for SP_COORD_PACK_RANDOM -- get_location
+// runs TWICE, the first pass always with NO_LOC_WARN forced on.
+function qf_getloc_coord(okfn, croom, nowarn) {
+    const c = qf_getloc_once(okfn, croom, true);
+    if (c.x !== -1 || c.y !== -1) return c;
+    return qf_getloc_once(okfn, croom, nowarn);
+}
+
+const qf_ok_hum = (hum) => (x, y) => is_ok_location(x, y, hum);
+
+// C ref: sp_lev.c l_create_stairway() -- good_stair_loc via set_ok_location_func.
+function qf_stair(croom, up) {
+    const c = qf_getloc_coord(mk_ok_stair, croom, false);
+    const t = game.level.at(c.x, c.y);
+    if (t) t.typ = ROOM;
+    mkstairs(c.x, c.y, up ? 1 : 0, null);
+}
+
+// C ref: sp_lev.c create_object() with no id/class -- mkobj_at(RANDOM_CLASS).
+function qf_object(croom) {
+    const c = qf_getloc_coord(mk_ok_dry, croom, false);
+    mkobj_at(RANDOM_CLASS, c.x, c.y, true);
+}
+
+// C ref: sp_lev.c create_trap() -> get_free_room_loc() (DRY, then a ROOM-only
+// retry), then mktrap() with a random type.
+async function qf_trap(croom) {
+    const c = qf_getloc_coord(mk_ok_dry, croom, false);
+    let trycnt = 0;
+    while (game.level.at(c.x, c.y)?.typ !== ROOM && ++trycnt <= 100) {
+        const r = qf_getloc_once(() => true, croom, false);
+        c.x = r.x; c.y = r.y;
+    }
+    await qf_mktrap_at(c.x, c.y);
+}
+
+// C ref: sp_lev.c create_monster() with a croom -- pm_to_humidity's two-step
+// (a water-liking species burns two whole get_location_coord passes on a dry
+// level before the DRY retry), then the MON_AT/enexto nudge.
+function qf_place_monster(data, croom) {
+    const hum = data ? pm_to_humidity(data) : LOC_DRY;
+    let c = qf_getloc_coord(qf_ok_hum(hum), croom, true);
+    if (c.x === -1 && c.y === -1)
+        c = qf_getloc_coord(qf_ok_hum(hum | LOC_DRY), croom, false);
+    mk_enexto_if_occupied(c, data);
+    if (croom && !inside_room(croom, c.x, c.y)) return null;
+    return make_monster(data, c.x, c.y, 0);
+}
+
+// C ref: sp_lev.c lspo_monster()+create_monster() -- the single-char CLASS form
+// (no find_montype gender roll) and the named form (find_montype first).
+function qf_monster(croom, spec, peacefulOverride) {
+    if (spec.length === 1) {
+        const klass = MK_CLASS_CHAR[spec] ?? 0;
+        oracle_induced_align();
+        const data = mk_mines_race_suppress(mkclass(klass, 0x0200 /* G_NOGEN */));
+        const mtmp = qf_place_monster(data, croom);
+        if (mtmp) mtmp.female = 0;
+        // C ref: sp_lev.c create_monster() -- `peaceful=0` in the des table
+        // overrides makemon's own answer (no RNG).
+        if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
+        return mtmp;
+    }
+    const { data, mgend } = mk_find_montype(spec);
+    oracle_induced_align();
+    const mtmp = qf_place_monster(mk_mines_race_suppress(data), croom);
+    if (mtmp) mtmp.female = mgend;
+    if (mtmp && peacefulOverride != null) mtmp.mpeaceful = !!peacefulOverride;
+    return mtmp;
+}
+
+// dat/<Fc>-fil[ab].lua room programs.  Each entry is one des.room(); the
+// contents list is in file order.  'u'/'d' = des.stair("up"/"down"),
+// 'o' = des.object(), 't' = des.trap(), anything else = des.monster(<spec>).
+const QUEST_FILLERS = {
+    'Arc-fila': [[OROOM, ['u', 'o', 'S']], [OROOM, ['o', 'o', 'S']],
+                 [OROOM, ['o', 't', 'o', 'S']],
+                 [OROOM, ['d', 'o', 't', 'S', 'human mummy']],
+                 [OROOM, ['o', 'o', 't', 'S']], [OROOM, ['o', 't', 'S']]],
+    'Arc-filb': [[OROOM, ['u', 'o', 'M']], [OROOM, ['o', 'o', 'M']],
+                 [OROOM, ['o', 't', 'o', 'M']],
+                 [OROOM, ['d', 'o', 't', 'S', 'human mummy']],
+                 [OROOM, ['o', 'o', 't', 'S']], [OROOM, ['o', 't', 'S']]],
+    'Mon-fila': [[OROOM, ['u', 'o', ['E', 0]]], [OROOM, ['o', 'o', ['E', 0]]],
+                 [OROOM, ['o', 't', 'o', 'xorn', 'earth elemental']],
+                 [OROOM, ['d', 'o', 't', ['E', 0], 'earth elemental']],
+                 [OROOM, ['o', 'o', 't', ['X', 0]]],
+                 [OROOM, ['o', 't', 'earth elemental']]],
+    'Mon-filb': [[OROOM, ['u', 'o', ['X', 0]]], [OROOM, ['o', 'o', ['X', 0]]],
+                 [OROOM, ['o', 't', 'o', ['E', 0]]],
+                 [OROOM, ['d', 'o', 't', ['E', 0], 'earth elemental']],
+                 [OROOM, ['o', 'o', 't', ['X', 0]]],
+                 [OROOM, ['o', 't', 'earth elemental']]],
+    'Rog-fila': [[OROOM, ['u', 'o', ['leprechaun', 0]]],
+                 [OROOM, ['o', 'o', ['leprechaun', 0], ['guardian naga', 0]]],
+                 [OROOM, ['o', 't', 't', 'o', ['water nymph', 0]]],
+                 [OROOM, ['d', 'o', 't', 't', ['l', 0], ['guardian naga', 0]]],
+                 [OROOM, ['o', 'o', 't', 't', ['leprechaun', 0]]],
+                 [OROOM, ['o', 't', 't', ['leprechaun', 0], ['water nymph', 0]]]],
+    'Wiz-fila': [[OROOM, ['u', 'o', ['i', 0]]], [OROOM, ['o', 'o', ['i', 0]]],
+                 [OROOM, ['o', 't', 'o', 'vampire bat', 'vampire bat']],
+                 [OROOM, ['d', 'o', 't', ['i', 0], 'vampire bat']],
+                 [OROOM, ['o', 'o', 't', ['i', 0]]],
+                 [OROOM, ['o', 't', 'vampire bat']]],
+    'Wiz-filb': [[OROOM, ['u', 'o', ['X', 0]]], [OROOM, ['o', 'o', ['i', 0]]],
+                 [OROOM, ['o', 't', 'o', ['X', 0]]],
+                 [OROOM, ['d', 'o', 't', ['i', 0], 'vampire bat']],
+                 [OROOM, ['o', 'o', 't', ['i', 0]]],
+                 [OROOM, ['o', 't', 'vampire bat']]],
+};
+// Rog-filb is byte-identical to Rog-fila.
+QUEST_FILLERS['Rog-filb'] = QUEST_FILLERS['Rog-fila'];
+
+async function makemaz_quest_fill(name) {
+    const g = game;
+    const rooms = QUEST_FILLERS[name];
+    if (!rooms) return false;
+
+    // load_special -> load_lua -> nhlib.lua prelude shuffle(align): rn2(3),rn2(2)
+    shuffle(['law', 'neutral', 'chaos']);
+
+    const was_full = g._full_mon_gen;
+    g._full_mon_gen = true;
+    const was_mklev = g.in_mklev;
+    g.in_mklev = true;
+    try {
+        for (const [rtype, contents] of rooms) {
+            // C ref: sp_lev.c lspo_room() -- a level-file room defaults
+            // filled=1 and joined=true, but C's fill_special_room() returns
+            // immediately for an OROOM, so FILL_NORMAL is inert there.  This
+            // port's fastforward_fill_mineralize() DOES stock an OROOM with
+            // FILL_NORMAL (that is makelevel()'s regular arm, which a special
+            // level never reaches), so ordinary rooms must carry FILL_NONE.
+            await des_room({ rtype,
+                             needfill: rtype === OROOM ? FILL_NONE : FILL_NORMAL,
+                             joined: true },
+                async (croom) => {
+                    for (const item of contents) {
+                        if (item === 'u') qf_stair(croom, true);
+                        else if (item === 'd') qf_stair(croom, false);
+                        else if (item === 'o') qf_object(croom);
+                        else if (item === 't') await qf_trap(croom);
+                        else if (Array.isArray(item)) qf_monster(croom, item[0], item[1]);
+                        else qf_monster(croom, item);
+                    }
+                });
+        }
+    } finally {
+        g._full_mon_gen = was_full;
+        g.in_mklev = was_mklev;
+    }
+
+    // des.random_corridors() -> create_corridor() with src.room == -1 is a
+    // bare makecorridors() -- NO sort_rooms(), so the rooms are joined in
+    // creation order (sorting them re-pairs every join and desyncs finddpos).
+    if (g.level.nroom > 0) makecorridors();
+
+    // lspo_finalize_level: wallification, then flip_level_rnd(allow_flips).
+    // Neither file declares "noflip", so both bits roll.
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    let flp = 0;
+    if (rn2(2)) flp |= 1;                            // sp_lev.c:975
+    if (rn2(2)) flp |= 2;                            // sp_lev.c:977
+    if (flp) flip_level(flp);
+    return true;
+}
+
 // C ref: dat/Bar-filb.lua — the "at/after locate" quest filler.  Same engine
 // as Bar-fila but bg=STONE (not ROOM) and walled=true (an ordinary walled
 // mines cave, exactly like makemaz_minefill's shape), 11 objects, and a
@@ -5419,6 +5658,16 @@ async function makemaz_oracle() {
             // delphi subroom: des.room({ type="delphi", lit=1, x=4,y=3, w=3,h=3 })
             rn2(100);                               // build_room chance (subroom)
             const oksub = create_subroom(room1, 4, 3, 3, 3, OROOM, 1);
+            if (oksub) {
+                const delphi = room1.sbrooms[room1.nsubrooms - 1];
+                // C ref: sp_lev.c build_room():2826 — topologize() runs for a
+                // SUBROOM too, BEFORE lspo_room marks the parent irregular
+                // (sp_lev.c:4088).  Without it the delphi's cells kept the outer
+                // room's roomno, so somexy()'s irregular arm accepted a spot
+                // inside the delphi on the first try where C rejects it and
+                // re-rolls somex/somey (elf-wiz Dlvl 5, step 205).
+                topologize(delphi);
+            }
             room1.irregular = true;                 // parent made irregular
             if (oksub) {
                 const delphi = room1.sbrooms[room1.nsubrooms - 1];

@@ -268,6 +268,15 @@ const TIMED_PROPS = [
       } },
 ];
 
+// C ref: wizcmds.c wiz_intrinsic() reads/writes `u.uprops[p].intrinsic &
+// TIMEOUT` — the SAME storage nh_timeout() counts down.  This port keeps a few
+// of those timers outside u.uprops (BLINDED -> u.blinded, WOUNDED_LEGS ->
+// u.HWounded_legs, FUMBLING -> u.HFumbling), so a caller that goes through
+// u.uprops[key] silently reads 0 for them.  Route through the table instead.
+export function timed_prop(name) {
+    return TIMED_PROPS.find((p) => p.name === name) || null;
+}
+
 export async function nh_timeout() {
     const u = game.u;
     if (!u) return;
@@ -285,6 +294,14 @@ export async function nh_timeout() {
     // nomul(-N) that the hero's own move set up (paralysis trap) must keep
     // umoved TRUE for the next turn, exactly as C does.
     if ((game.multi ?? 0) < 0 && game._helpless_at_timeout) u.umoved = false;
+
+    // C ref: timeout.c:1052 `if (u.uinvulnerable) return;` — "things past this
+    // point could kill you".  EVERYTHING below (the dialogues, u.ucreamed, and
+    // the whole timed-property countdown) is skipped while the hero is
+    // invulnerable, i.e. for the three helpless turns of a #pray.  Without it a
+    // prayer left every timer three turns short (seed4500's blindness read 116
+    // where C shows 119).
+    if (u.uinvulnerable) return;
 
     // C ref: timeout.c — `if (u.ucreamed) u.ucreamed--;`, just above the
     // uprops[] loop.  Cream on the face wears off a point a turn independently

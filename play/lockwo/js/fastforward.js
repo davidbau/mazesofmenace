@@ -34,8 +34,11 @@ const REAL_UINIT_ROLES = new Set([
 
 function fastforward_role_init() {
     const role = initrole_name();
+    // C ref: role.c:2059 — the Arc/Wiz nemesis is the only quest monster with no
+    // gender flag, so role_init picks it here with rn2(100) < 50 and stores it
+    // in quest_status.nemgend.  makemon() then does NOT roll rn2(2) for it.
     if (role === 'wizard' || role === 'archeologist')
-        rn2(100);
+        game.quest_nemgend = (rn2(100) < 50) ? 1 : 0;
     if (game.initrole === ROLE_PRIEST || role === 'priest') {
         // C ref: role.c role_init — Priest has no own gods, so pick a random
         // other role's pantheon: pantheon = initrole; while(!roles[pantheon]

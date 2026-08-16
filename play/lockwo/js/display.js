@@ -15,6 +15,7 @@ import {
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     In_quest,
+    In_endgame,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
     HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP,
@@ -222,6 +223,7 @@ export function see_nearby_objects() {
             const distu = (ix - x) * (ix - x) + (iy - y) * (iy - y);
             if (distu > neardist) continue;
             const wasGeneric = obj_is_generic(obj);
+            if (process.env.DISCOLOG) console.error('[snob] u=(' + x + ',' + y + ') tile=(' + ix + ',' + iy + ') otyp=' + obj.otyp + ' ' + (obj.oname || '') + ' bnd=' + (globalThis.__BND || 0));
             obj.dknown = 1;
             observe_object(obj);
             if (wasGeneric) newsym(ix, iy);
@@ -230,6 +232,10 @@ export function see_nearby_objects() {
 }
 
 // Topmost visible object at (x, y).  C ref: display.h vobj_at.
+// C ref: you.h:411 — u.bc_felt bit masks (duplicated from ball.js, which
+// imports this module).
+const BC_BALL_D = 0x01, BC_CHAIN_D = 0x02;
+
 export function vobj_at(x, y) {
     const objs = game.level?.objects;
     if (!objs) return null;
@@ -1282,6 +1288,26 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, bg.ch, bg.color, bg.dec, pile_attr(bg.pile));
         }
         loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
+        // C ref: display.c feel_location():869 — the Punished block.  While
+        // blind, the hero's own square is mapped by feel_location(), which also
+        // records WHICH of the ball/chain it is currently feeling; ball.c
+        // move_bc()'s Blind arm reads u.bc_felt to decide whether the map
+        // memory it leaves behind has to be rewritten.  "A ball or chain is
+        // only felt if it is first on the object location list."
+        {
+            const u = game.u;
+            // Only the !cansee half of C's newsym u_at branch goes through
+            // feel_location(); the sighted half uses _map_location(), which has
+            // no bc_felt bookkeeping.
+            if (u?.uball && u?.uchain && !cansee(x, y)) {
+                const top = vobj_at(x, y);
+                u.bc_felt = (u.bc_felt | 0);
+                if (top === u.uchain) u.bc_felt |= BC_CHAIN_D;
+                else u.bc_felt &= ~BC_CHAIN_D;
+                if (top === u.uball) u.bc_felt |= BC_BALL_D;
+                else u.bc_felt &= ~BC_BALL_D;
+            }
+        }
         return;
     }
 
@@ -1470,6 +1496,32 @@ export function unmap_object(x, y) {
 // monster/object/terrain stack and hero are all redrawn from current state.
 export async function docrt() {
     if (!game.level) return;
+    // C ref: display.c:1747 docrt_flags -> cls(), and cls() (display.c:2196)
+    // opens with `display_nhwindow(WIN_MESSAGE, FALSE)` — pending toplines are
+    // flushed (with their --More--) BEFORE the map is cleared and repainted.
+    // Skipping that let the map repaint under a message the C side was still
+    // holding at a --More-- (seed0383 step 171, the expel from a stomach).
+    // C's `if (u.uswallow) { swallowed(1); goto post_map; }` runs first and
+    // never reaches cls(), so a swallowed hero gets no flush.
+    if (!game.u?.uswallow) {
+        await display_nhwindow_message();
+        // C ref: display.c cls():2199 `clear_nhwindow(WIN_MAP)` — the tty port
+        // answers that with clear_screen(), which blanks the WHOLE terminal,
+        // top line included.  Paging the message without also wiping it left
+        // the just-acknowledged line standing on every frame after an engulf or
+        // an expel (seed0383 steps 172/174/177).
+        game._pending_message = '';
+    }
+    // C ref: display.c:1740/1757 — docrt_flags() shuts vision down
+    // (vision_recalc(2)), repaints from map memory, then recomputes it
+    // (vision_recalc(0)) before see_monsters().  Without the recompute a hero
+    // who was just released from a stomach kept the blanked viz_array, so every
+    // monster in the room rendered as a warning glyph instead of itself.
+    if (!game.u?.uswallow) {
+        const { vision_recalc } = await import('./vision.js');
+        vision_recalc(2);
+        vision_recalc(0);
+    }
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++)
             newsym(x, y);
@@ -1605,7 +1657,11 @@ function _statusLine1() {
         const v = (a[i] ?? 0) + (atemp[i] || 0) + (abon[i] || 0);
         return v > 25 ? 25 : v < 3 ? 3 : v;
     };
-    const stats = `St:${_strengthStr(a[0] ?? 0)} Dx:${_eff(3)} Co:${_eff(4)} In:${_eff(1)} Wi:${_eff(2)} Ch:${_eff(5)}`;
+    // C ref: botl.c bot1() reads ACURR(A_STR) == acurr(A_STR), which worn
+    // gauntlets of power pin at 125 ("St:25"); a[0] alone showed the base Str.
+    const encStr = (game.uarmg?.otyp === 161 /* GAUNTLETS_OF_POWER */ && !u.Upolyd)
+        ? 125 : (a[0] ?? 0);
+    const stats = `St:${_strengthStr(encStr)} Dx:${_eff(3)} Co:${_eff(4)} In:${_eff(1)} Wi:${_eff(2)} Ch:${_eff(5)}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C ref: botl.c:1007 `Sprintf(blstats[idx][BL_TITLE].val, "%-30s", buf);` —
     // the tty takes the FIELDED status path, where BL_TITLE is padded to a flat
@@ -1646,9 +1702,16 @@ function _statusLine2() {
     const dlvlNum = inTut ? (u.uz?.dlevel || 1) : depth_of_level(u.uz);
     // C ref: botl.c describe_level — In_quest levels display "Home <dunlev>"
     // (the quest-branch-relative level, u.uz.dlevel), with no "Dlvl:" prefix.
+    // C ref: botl.c describe_level() In_endgame arm — endgamelevelname(depth)
+    // with the "Plane of " prefix stripped for the status line, so the Plane of
+    // Fire shows "Fire" (and the Astral Plane "Astral Plane"), never "Dlvl:-3".
+    const ENDGAME_PLANE = { '-5': 'Astral Plane', '-4': 'Water', '-3': 'Fire',
+                            '-2': 'Air', '-1': 'Earth' };
     const levelDesc = In_quest(u.uz)
         ? `Home ${u.uz?.dlevel || 1}`
-        : `${lvlLabel}:${dlvlNum}`;
+        : In_endgame(u.uz)
+            ? (ENDGAME_PLANE[String(dlvlNum)] || `unknown plane #${dlvlNum}`)
+            : `${lvlLabel}:${dlvlNum}`;
     // C ref: botl.c do_statusline2:131 — the gold field's label is the ENCODED
     // GOLD_PIECE glyph, i.e. the live showsyms[COIN_CLASS], so the Rogue level's
     // ROGUESET (drawing.c def_r_oc_syms: coin shares GEM_SYM) prints "*:0".
@@ -1979,6 +2042,20 @@ export async function pline(msg) {
     game._toplinSoft = msg;
 }
 
+// C ref: pline.c impossible():584-616 — a failed internal invariant prints the
+// offending text, then "Program in disorder!" (+ the save hint, because
+// program_state.something_worth_saving is set during play), then the report-to
+// line.  DEVTEAM_EMAIL is devteam@nethack.org and the recorder's sysconf sets
+// no SUPPORT, so the chain is exactly these three toplines — verified against
+// the C binary by replaying seed0012 with extra keys (its steps 308-310).
+// It is the SECOND line's arrival that turns whatever was already on the
+// topline into a --More--, which is the only part scored so far.
+export async function impossible(msg) {
+    await update_topl(msg);
+    await update_topl('Program in disorder!  (Saving and reloading may fix this problem.)');
+    await update_topl('Please report these messages to devteam@nethack.org.');
+}
+
 // C ref: win/tty/topl.c update_topl():284-297 — word-wrap a topline that is
 // wider than the screen (CO=80) by replacing the last space within each CO-wide
 // window with a newline (scan back from column CO-1; if the token is huge, split
@@ -2150,6 +2227,11 @@ async function botl_flush() {
 }
 
 export async function update_topl(bp) {
+    // C ref: pline.c vpline():129 `strncpy(gp.prevmsg, line, BUFSZ)` — the LAST
+    // INDIVIDUAL message, which is what Norep()'s dedup compares against.  It is
+    // NOT gt.toplines: that holds the whole CONCATENATED top row, so a Norep
+    // line that had another message merged in front of it would never dedup.
+    game._prevmsg = bp;
     // C ref: pline.c vpline():266 — update_topl() is only ever reached THROUGH
     // vpline(), which flushes a pending vision recalc and then flush_screen()
     // (i.e. bot()); this port calls update_topl() directly at many of C's
@@ -2163,6 +2245,14 @@ export async function update_topl(bp) {
     // is still accumulated into gt.toplines but is neither drawn nor more()d.
     // The flag dies at the very next nhgetch (input.js), so this window is one
     // command long; an earlier attempt with a longer lifetime measured -172.
+    // C ref: topl.c update_topl():299 `if (!notdied) cw->flags &= ~WIN_STOP,
+    // skip = FALSE;` — a "You die" line CANCELS the ESC suppression and is
+    // redrawn (with its own --More--).  Without this the wizard-mode "Die?"
+    // query never appears and the port runs several input boundaries ahead.
+    if (game._winStop && bp.startsWith('You die')) {
+        game._winStop = false;
+        game._toplin = 0;   // the skipped arm never more()s the pending line
+    }
     if (game._winStop) {
         game._toplines = (cur && n0 + cur.length + 3 < CO - 8) ? `${cur}  ${bp}` : bp;
         return;

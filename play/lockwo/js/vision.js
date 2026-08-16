@@ -647,7 +647,11 @@ export function vision_recalc(control = 0) {
         next_rmax[y] = 0;
     }
 
-    if (control !== 2) {
+    // C ref: vision.c:545 `if (u.uswallow || control == 2)` — "You see nothing,
+    // nothing can see you".  The u.uswallow half was missing, so the moveloop's
+    // vision_recalc(0) restored full sight on the turn AFTER gulpmu's
+    // vision_recalc(2), making canseemon(engulfer) true inside the stomach.
+    if (control !== 2 && !u.uswallow) {
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
     }
 

@@ -12,6 +12,7 @@ import { nhgetch } from './input.js';
 import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot, m_at } from './display.js';
 import { cansee, Blind as Blind_for_wear } from './vision.js';
 import { distmin, depth as depth_of_level } from './hacklib.js';
+import { surface } from './dungeon.js';
 import { mmove_of } from './mon.js';
 import { WEP_HITBON } from './weapondmg_data.js';
 import { ATR_INVERSE, CLR_GRAY, NO_COLOR } from './terminal.js';
@@ -314,6 +315,12 @@ function OMAILCMD(obj) { return obj?.omailcmd || ''; }
 // (the latter feeds the '\' discoveries list).  Delegates the encountered
 // bookkeeping to o_init.js so the discovery state lives in one place.
 function observe_object(obj) { if (obj) { obj.dknown = 1; disco_observe_object(obj); } }
+// C ref: objnam.c xname_flags():627 `if (!Blind && !gd.distantname)
+// observe_object(obj)` — every name built through xname()/doname() observes the
+// object, but ONLY when the hero can see.  Naming an object while blind must
+// not teach the hero its appearance ("o - a potion.", not "a brilliant blue
+// potion.").
+function observe_object_named(obj) { if (!Blind_for_wear()) observe_object(obj); }
 // C ref: hack.h makeknown(x) == discover_object(x, TRUE, TRUE, TRUE).
 export function makeknown(otyp) {
     discover_object(otyp, true, true, true);
@@ -461,10 +468,13 @@ function dupstr(s) { return String(s ?? ''); }
 // never prepends the BUC word ("blessed"/"uncursed"/"cursed") — that belongs to
 // doname() alone — so a BUC-known object still reads e.g. "ring of see invisible"
 // here (used by loot_xname, the itemactions title/label, and data.base lookups).
-export function cxname_singular(obj) { return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
+// C ref: cxname_singular() is xname_flags(obj, CXN_SINGULAR), so it observes
+// the object exactly like xname() does — that observe is what makes a visible
+// monster's weapon read "orcish dagger" rather than "crude dagger".
+export function cxname_singular(obj) { observe_object_named(obj); return simple_obj_name(obj, { article: false, quantity: false, buc: false }); }
 // C ref: objnam.c xname() — the bare object name: no "a"/"an" article and no
 // BUC word (unlike doname()), but still quantity-aware for stackable types.
-export function xname(obj) { observe_object(obj); return simple_obj_name(obj, { article: false, buc: false }); }
+export function xname(obj) { observe_object_named(obj); return simple_obj_name(obj, { article: false, buc: false }); }
 export function yname(obj) { return simple_obj_name(obj); }
 // C ref: objnam.c minimal_xname() — xname() of a BARE copy (cg.zeroobj with
 // only otyp/oclass/quan/dknown/known copied), so weight-derived prefixes such
@@ -491,13 +501,13 @@ function distant_name(obj, fn = doname) { return fn(obj); }
 // "(wielded)", "(on right hand)", ...) unconditionally — it is not limited to
 // the inventory window, so every doname()/obj_doname() caller (dip/wield/drop
 // prompts included) must see it too.
-function doname(obj) { observe_object(obj); return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj) + unpaid_price_suffix(obj); }
+function doname(obj) { observe_object_named(obj); return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj) + unpaid_price_suffix(obj); }
 // C ref: objnam.c doname_with_price() -> doname_base(obj, DONAME_WITH_PRICE) —
 // an object seen on shop floor reads " (for sale, <N> <currency>)", or
 // " (no charge)" for the shk's own free spot / a no_charge item.  Without this
 // every "You see here ..." line inside a shop dropped the price.
 function doname_with_price(obj) {
-    observe_object(obj);
+    observe_object_named(obj);
     return simple_obj_name(obj, { empty: true }) + worn_status_suffix(obj)
         + price_suffix(obj, true);
 }
@@ -772,7 +782,25 @@ export function obj_extract_self(obj) {
     obj.where = OBJ_FREE;
 }
 function setworn(obj, mask) { if (obj) obj.owornmask = mask; }
-function setnotworn(obj) { if (obj) obj.owornmask = 0; }
+// C ref: worn.c setnotworn() — clears the worn-slot POINTER (*objp = 0) as well
+// as owornmask.  Dropping only the mask left game.uamul pointing at a used-up
+// amulet of life saving, so the hero was saved a second time by an amulet that
+// had already crumbled.
+function setnotworn(obj) {
+    if (!obj) return;
+    if (obj === game.uamul) game.uamul = null;
+    if (obj === game.uleft) game.uleft = null;
+    if (obj === game.uright) game.uright = null;
+    if (obj === game.ublindf) game.ublindf = null;
+    if (obj === game.uarm) game.uarm = null;
+    if (obj === game.uarmc) game.uarmc = null;
+    if (obj === game.uarmh) game.uarmh = null;
+    if (obj === game.uarms) game.uarms = null;
+    if (obj === game.uarmg) game.uarmg = null;
+    if (obj === game.uarmf) game.uarmf = null;
+    if (obj === game.uarmu) game.uarmu = null;
+    obj.owornmask = 0;
+}
 export function welded(obj) {
     // C ref: wield.c:1053 welded(obj) — cursed + wielded + weld-prone (will_weld);
     // it also sets bknown, which is why a failed take-off teaches the curse.
@@ -1758,7 +1786,15 @@ function Japanese_item_name(otyp) {
 const MAT_IRON = 11, MAT_COPPER = 13, MAT_GLASS = 19;
 function is_rustprone(obj) { return objects[obj?.otyp]?.material === MAT_IRON; }
 function is_corrodeable(obj) { const m = objects[obj?.otyp]?.material; return m === MAT_COPPER; }
-function is_flammable(obj) { const m = objects[obj?.otyp]?.material; return m === 14 /*paper*/ || m === 22 /*cloth/leather*/ || m === 23 /*wood*/; }
+// C ref: mkobj.c is_flammable(otmp) — (oc_material <= WOOD && != LIQUID) ||
+// PLASTIC.  The old literals (14/22/23) named NO real objclass.h material:
+// PAPER is 5, CLOTH 6, LEATHER 7, WOOD 8 — so this answered TRUE only for
+// SILVER(14) and FALSE for every actually-flammable item.
+const MAT_LIQUID = 1, MAT_WOOD = 8, MAT_PLASTIC = 18;
+function is_flammable(obj) {
+    const m = objects[obj?.otyp]?.material | 0;
+    return (m <= MAT_WOOD && m !== MAT_LIQUID) || m === MAT_PLASTIC;
+}
 
 // C ref: objnam.c add_erosion_words — erosion / erodeproof prefix words.
 function add_erosion_words(obj) {
@@ -1867,7 +1903,7 @@ function worn_status_suffix(obj) {
 // classes outside this scope so unrelated callers are unaffected.
 export function doname_invent(obj) {
     if (!obj) return 'nothing';
-    observe_object(obj);
+    observe_object_named(obj);
     return doname_invent_core(obj);
 }
 
@@ -1885,7 +1921,7 @@ export function doname_invent(obj) {
 // appearance shows even on first sight.
 export function distant_doname(obj, far) {
     if (!obj) return 'nothing';
-    if (!far) { observe_object(obj); return doname_invent_core(obj); }
+    if (!far) { observe_object_named(obj); return doname_invent_core(obj); }
     // FAR: C only bumps gd.distantname here, which suppresses xname's
     // observe_object(); it does NOT hide dknown, so an already-seen gem still
     // reads "blue gem".  This port however leaves obj.dknown UNSET on most
@@ -2819,6 +2855,15 @@ export function carry_obj_effects(obj) {
 }
 
 export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
+    // PARKED (measured -44 public): C ref invent.c hold_another_object() is
+    // `if (!Blind) observe_object(obj)`.  With the guard, seed4500 step 1202
+    // prints C's "o - a potion." — but the wished potion then reaches
+    // dopotion()'s tail with dknown clear, so `if (otmp->dknown &&
+    // !oc_name_known) makeknown()` is skipped and o_init.c discover_object()'s
+    // exercise(A_WIS, TRUE) rn2(19) is never drawn (C's step-1204 slice has
+    // THREE rn2(19), ours only two).  regen_hp's phase then slips a turn and
+    // 44 later screens are lost.  Land the guard once that observe is located
+    // — C must be setting dknown between the blind wish and the quaff.
     observe_object(obj);
     // C ref: invent.c hold_another_object — when the object is an artifact it
     // is briefly placed on the floor and touch_artifact() is consulted, which
@@ -3337,6 +3382,13 @@ for (let otyp = 121; otyp <= 133; otyp++) ARMOR_OC_DELAY.set(otyp, 5);
 ARMOR_OC_DELAY.set(126, 1); // dwarvish mithril-coat
 ARMOR_OC_DELAY.set(127, 1); // elven mithril-coat
 ARMOR_OC_DELAY.set(131, 3); // studded leather armor
+// C ref: include/objects.h GLOVES() — all four glove otyps (159..162: leather
+// gloves and the three gauntlets) carry oc_delay 1.  Only LEATHER_GLOVES was
+// tabulated, so a gauntlet took the delay==0 branch: accessory_or_armor_on()
+// ran Gloves_on() (and its makeknown -> exercise(A_WIS) rn2(19)) BEFORE the
+// turn's monster movement instead of after it, rotating a whole boundary's
+// stream by one call (seed0360 step 495).
+for (let otyp = 159; otyp <= 162; otyp++) ARMOR_OC_DELAY.set(otyp, 1);
 // C ref: include/objects.h BOOTS() — every boots otyp (163..172) has oc_delay 2,
 // so putting on / taking off any footwear is a 2-turn dressing maneuver.
 for (let otyp = LOW_BOOTS; otyp <= LEVITATION_BOOTS; otyp++) ARMOR_OC_DELAY.set(otyp, 2);
@@ -4173,7 +4225,10 @@ async function accessory_or_armor_on(obj) {
     if (on_fn) await on_fn();
     // C ref: do_wear.c on_msg() — `an(xname(otmp))`, NOT doname(): xname omits
     // both the enchantment and the "(being worn)" suffix setworn() just added.
-    await pline(`You are now wearing ${simple_obj_name(obj, { buc: false })}.`);
+    // C ref: do_wear.c on_msg() is pline() -> update_topl(): when the slot's
+    // *_on() already put a line up (Cloak_on's displacement notice), this must
+    // page it with --More-- rather than overwrite it (seed0360 step 497).
+    await update_topl(`You are now wearing ${simple_obj_name(obj, { buc: false })}.`);
     if (game._allow_inventory_update !== undefined) update_inventory();
     return ECMD_TIME;
 }
@@ -8687,7 +8742,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const here = objects_at(x, y);
     const otmp = here[0] || null;
     let dfeature = dfeature_at(x, y);
-    const verb = game.Blind ? 'feel' : 'see';
+    const verb = Blind_for_wear() ? 'feel' : 'see';
     const picked_some = (lookhere_flags & LOOKHERE_PICKED_SOME) !== 0;
     // C ref: invent.c look_here():4117 — skip 'dfeature' when the caller already
     // showed it via describe_decor() (pickup.c check_here() sets this).
@@ -8701,6 +8756,22 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const skip_objects = LOOKHERE_PILE_LIMIT
         && pile_limit > 0 && obj_cnt >= pile_limit;
 
+    // C ref: invent.c:4184 — a BLIND hero gropes around FIRST, before anything
+    // else is described: "You try to feel what is lying here on the floor."
+    // This whole block was missing, so a blind #look printed the sighted
+    // wording with no groping line at all.  (can_reach_floor()'s "But you can't
+    // reach it!" early-out needs the levitation/ball-and-chain state this port
+    // does not model for the floor test, so only the reachable arm is emitted.)
+    if (Blind_for_wear()) {
+        if (dfeature && dfeature.startsWith('altar ')) {
+            await update_topl('You try to feel what is here.');
+        } else {
+            const surf = surface(x, y);
+            await update_topl(`You try to feel what is lying here on the ${surf}.`);
+            if (dfeature && dfeature === surf) dfeature = null; /* skip_dfeature */
+        }
+    }
+
     if (!otmp) {
         // No object: feature (if any), then any engraving, then "no objects"
         // (only when blind or there was no feature to report).
@@ -8708,9 +8779,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         // if (!skip_objects && (Blind || !dfeature)) You("%s no objects here.", verb).
         if (dfeature) await update_topl(`There is ${an(dfeature)} here.`);
         await read_engr_at_topl(x, y);
-        if (!skip_objects && (game.Blind || !dfeature))
+        if (!skip_objects && (Blind_for_wear() || !dfeature))
             await update_topl(`You ${verb} no objects here.`);
-        return game.Blind ? ECMD_TIME : ECMD_OK;
+        return Blind_for_wear() ? ECMD_TIME : ECMD_OK;
     }
     if (skip_objects) {
         // C ref: invent.c look_here():4249 — too many objects to list.
@@ -8728,7 +8799,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
                 feel_cockatrice(o, false);
                 break;
             }
-        return game.Blind ? ECMD_TIME : ECMD_OK;
+        return Blind_for_wear() ? ECMD_TIME : ECMD_OK;
     }
     if (here.length === 1) {
         // Single object (plus possibly a feature underneath).
@@ -8739,10 +8810,16 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
             game._pending_message = `There is ${an(dfeature)} here.`;
             game._toplin = 1; // NEED_MORE
             await update_topl(`You ${verb} here ${doname_with_price(otmp)}.`);
+        } else if (Blind_for_wear()) {
+            // The blind grope line above is already an unacknowledged topline,
+            // so this second pline must chain through update_topl — which pages
+            // it with --More-- when the pair overflows CO-8 (C's behaviour) —
+            // instead of silently overwriting it.
+            await update_topl(`You ${verb} here ${doname_with_price(otmp)}.`);
         } else {
             game._pending_message = `You ${verb} here ${doname_with_price(otmp)}.`;
         }
-        return game.Blind ? ECMD_TIME : ECMD_OK;
+        return Blind_for_wear() ? ECMD_TIME : ECMD_OK;
     }
     // Multiple objects (and obj_cnt < pile_limit, the default 5).  C ref:
     // invent.c look_here() else-branch — flush WIN_MESSAGE, build a menu window
@@ -8751,13 +8828,13 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     //           Blind ? "you feel" : "are");
     //   for (otmp...) putstr(tmpwin, 0, doname_with_price(otmp));
     //   display_nhwindow(tmpwin, TRUE);          // pages with --More--
-    const header = `${picked_some ? 'Other things' : 'Things'} that ${game.Blind ? 'you feel' : 'are'} here:`;
+    const header = `${picked_some ? 'Other things' : 'Things'} that ${Blind_for_wear() ? 'you feel' : 'are'} here:`;
     const itemLines = here.map((o) => doname_with_price(o));
     // C ref: invent.c look_here() else-branch — the dfeature line goes INSIDE
     // the menu window (putstr(fbuf); putstr("")), not on the topline.
     const pre = dfeature ? [`There is ${an(dfeature)} here.`, ''] : [];
     await renderThingsHereMenu(header, itemLines, pre);
-    return game.Blind ? ECMD_TIME : ECMD_OK;
+    return Blind_for_wear() ? ECMD_TIME : ECMD_OK;
 }
 
 // C ref: invent.h LOOKHERE_NOFLAGS / LOOKHERE_PICKED_SOME / LOOKHERE_SKIP_DFEATURE

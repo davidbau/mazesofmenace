@@ -42,7 +42,7 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          A_STR, A_DEX, A_CON, A_WIS, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
          PIT, SPIKED_PIT, STATUE_TRAP, TIP_SWIM, TRAPNUM, In_sokoban, ICE,
-         SLT_ENCUMBER, OVERLOADED } from './const.js';
+         SLT_ENCUMBER, OVERLOADED, Is_medusa_level, Is_juiblex_level } from './const.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { is_hider_flag, hides_under_flag, throws_rocks_flag } from './monflags_data.js';
 import { noattacks, attacktype, AT_ENGL } from './monattk_data.js';
@@ -188,16 +188,29 @@ function u_simple_floortyp(x, y) {
     return ROOM;
 }
 
-// C ref: pager.c waterbody_name(x,y) — non-hallucinating water-body name; the
-// special-level and hallucination variants aren't reached by the corpus.
+// C ref: pager.c:561 waterbody_name(x,y) — non-hallucinating water-body name.
+// The MOAT arm has THREE special-level overrides before the generic "moat";
+// dropping them made Medusa's level say "moat" where C says "shallow sea".
 function waterbody_name(x, y) {
     const loc = game.level?.at(x, y);
     const typ = loc ? loc.typ : STONE;
     if (typ === LAVAPOOL) return 'molten lava';
-    if (typ === MOAT) return 'moat';
+    if (typ === ICE) return 'ice';
+    if (typ === POOL) return 'pool of water';
+    if (typ === MOAT) {
+        if (Is_medusa_level()) return 'shallow sea';
+        if (Is_juiblex_level()) return 'swamp';
+        if (game.u?.urole?.name === 'Samurai' && Is_qstart()) return 'pond';
+        return 'moat';
+    }
     if (typ === WATER) return 'wall of water';
     if (typ === LAVAWALL) return 'wall of lava';
     return 'pool of water';
+}
+// C ref: dungeon.h Is_qstart(lev) — the quest home level.
+function Is_qstart(uz) {
+    const lev = uz ?? game.u?.uz;
+    return !!lev && lev.dnum === game.quest_dnum && lev.dlevel === 1;
 }
 
 // C ref: hack.c handle_tip(TIP_SWIM) — the first time paranoid_confirm:swim
@@ -549,6 +562,10 @@ export async function rhack(key) {
             game.command_count = 0;
             game.multi = 0;
         }
+        // C ref: cmd.c parse() `gc.cmd_key = foo;` — the command key AFTER the
+        // count, kept so moveloop_core's `gm.multi > 0` arm can repeat this
+        // command without reading another key.
+        game._cmd_key = key;
     }
 
     let ch = String.fromCharCode(key);
@@ -1080,6 +1097,13 @@ export async function rhack(key) {
         // (to rest)." and returns ECMD_OK (no turn elapses).  Otherwise the wait
         // returns ECMD_TIME and the hero's turn elapses (monsters move).
         game.context.move = await donull();
+        // C ref: cmd.c:1931 `{ '.', "wait", ..., donull, ..., "waiting" }` — the
+        // f_text is non-null, so rhack() turns a COUNTED wait into a timed
+        // occupation (set_occupation(donull, "waiting", gm.multi)).  That is
+        // what makes an interrupted "20." print "You stop waiting."; the plain
+        // gm.multi repeat arm never would.
+        if (game.context.move && (game.multi ?? 0) > 0)
+            game._wait_occupation = true;
     } else {
         // Unknown command.  C ref: cmd.c rhack() bad_command — no
         // reset_cmd_vars(), so a pending g/G prefix's svc.context.run stays
@@ -1457,8 +1481,15 @@ async function dotele_nonwizard() {
     return 1;
 }
 
+// C ref: cmd.c getdir():4116 — every successful direction prompt ends with
+//   if (!u.dz) confdir(FALSE);
+// so a Confused hero pays an rn2(5) at EVERY direction prompt (and 1-in-5 an
+// rn2(8) that REPLACES the direction typed).  This used to be documented "No
+// RNG"; that cost the rn2(5) C draws when a confused hero zaps at himself
+// (seed5006 step 183) and every draw after it.  u.dx/u.dy/u.dz are C's real
+// output of getdir(), so set them here too — confdir() writes through them.
 // C ref: cmd.c getdir() — read a direction key.  Renders "In what direction?",
-// reads one key.  Returns {dx,dy,dz} or null on cancel/ESC.  No RNG.
+// reads one key.  Returns {dx,dy,dz} or null on cancel/ESC.
 // An optional `s` overrides the prompt (e.g. dochat's "Talk to whom? ...").
 export async function getdir(s) {
     const prompt = s || 'In what direction?';
@@ -1483,14 +1514,14 @@ export async function getdir(s) {
     game._toplin = 0; // TEST: topl.c:544 clean_up -> TOPLINE_NON_EMPTY
     const ch = String.fromCharCode(key);
     if (ch === '.' || ch === 's')
-        return { dx: 0, dy: 0, dz: 0 };
+        return getdir_confdir({ dx: 0, dy: 0, dz: 0 });
     if (ch === '\x1b' || ch === ' ')
         return null;
     const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1, '<': 0, '>': 0 };
     const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1, '<': 0, '>': 0 };
     const DZ = { '<': -1, '>': 1 };
     if (ch in DX)
-        return { dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 };
+        return getdir_confdir({ dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 });
     // C ref: cmd.c getdir() — an invalid direction key (not a movement key and
     // not a quitchar) with iflags.cmdassist On (default) shows the help_dir()
     // text window "cmdassist: Invalid direction key!" + the direction-keys
@@ -1498,6 +1529,20 @@ export async function getdir(s) {
     // handled above and return null silently.
     await help_dir_window('Invalid direction key!');
     return null;
+}
+
+// C ref: cmd.c getdir():4116 — `if (!u.dz) confdir(FALSE);`.  EVERY answered
+// direction prompt (including '.', "at yourself") runs the impairment roll, so
+// a confused hero spends an rn2(5) — and, 1-in-5, an rn2(8) redirect — on the
+// zap/apply/throw itself, not just on movement.  Skipping it left the stream a
+// draw short at seed5006 step 183 (zapping a wand while confused).
+export function getdir_confdir(res) {
+    const u = game.u;
+    if (!u || res.dz) return res;
+    u.dx = res.dx; u.dy = res.dy;
+    confdir(false);
+    res.dx = u.dx; res.dy = u.dy;
+    return res;
 }
 
 // C ref: cmd.c help_dir() — the cmdassist explanation window shown for an
@@ -2260,14 +2305,18 @@ export async function domove(dx, dy) {
         return;
     }
 
-    // ── force-fight an empty square ──  C ref: hack.c domove_fight_empty(x,y).
-    // With the 'F' prefix (svc.context.forcefight) and no monster at the target,
-    // the hero wastes a turn "attacking" the terrain rather than moving there.
-    // (The remembered-invisible-'I' glyph trigger and the pick-axe dig branch
-    // are not exercised by the corpus, so only the plain forcefight-at-terrain
-    // case is modelled.)  Consumes no RNG.  C: domove_core runs this before
-    // trapmove()/test_move(), so it sits right after the monster-bump block.
-    if (game.context?.forcefight) {
+    // ── force-fight an empty square ──  C ref: hack.c:2228 domove_fight_empty(x,y).
+    // Two triggers, not one: the 'F' prefix (svc.context.forcefight), OR walking
+    // into a square still REMEMBERED as holding an unseen monster ('I') that has
+    // since moved away.  The second was omitted as "not exercised by the corpus"
+    // and it is: a blind hero who bumped an unseen monster leaves an 'I' behind,
+    // and stepping there later must print "You attack thin air." and stand
+    // still, not walk on and describe the floor.  Consumes no RNG.  C:
+    // domove_core runs this before trapmove()/test_move(), so it sits right
+    // after the monster-bump block.
+    const _ff_invis = isok(newx, newy) && !!game.level?.at(newx, newy)?.invisMon
+                      && !m_at(newx, newy) && !game.context?.nopick;
+    if (game.context?.forcefight || _ff_invis) {
         const off_edge = !isok(newx, newy);
         const loc = off_edge ? null : game.level?.at(newx, newy);
         const typ = loc ? loc.typ : STONE;
@@ -2279,6 +2328,10 @@ export async function domove(dx, dy) {
         // `!(boulder || solid)`), so without this a force-fight at a boulder
         // read "You attack thin air."
         const boulder = off_edge ? null : boulder_at(newx, newy);
+        // C ref: hack.c:2280 — "about to become known empty; remove 'I' if
+        // present", BEFORE the message.  Without this the 'I' persists and the
+        // hero force-fights thin air on that square forever.
+        if (!off_edge) { unmap_object(newx, newy); newsym(newx, newy); }
         let buf;
         if (off_edge) {
             buf = 'an unknown obstacle';
@@ -2312,6 +2365,12 @@ export async function domove(dx, dy) {
     // { if (avoid_trap_andor_region(x, y)) return; }`, between u_rooted() and
     // the u.utrap/trapmove() handling below.
     if (await avoid_trap_andor_region(newx, newy)) return;
+
+    // C ref: hack.c:2813 — immediately after domove_fight_empty(), before
+    // trapmove()/test_move(): `(void) unmap_invisible(x, y);`.  Walking toward a
+    // square still remembered as holding an unseen monster ('I') that is no
+    // longer there clears the marker even when the move itself is refused.
+    if (isok(newx, newy) && !m_at(newx, newy)) unmap_invisible(newx, newy);
 
     // ── trapped hero struggles instead of moving ──  C ref: hack.c
     // domove_core() (hack.c:2830): once past the monster-bump handling, a hero
@@ -3218,6 +3277,16 @@ async function look_here_after_move(x, y, _pickedSome = false, skipDfeature = fa
     // only when describe_decor() (mention_decor / tutorial) already reported
     // the same feature earlier this move.
     const dfeature = skipDfeature ? null : dfeature_at(x, y);
+    // C ref: invent.c look_here():4185 — a BLIND hero gropes ("You try to feel
+    // what is lying here on the <surface>.") BEFORE the object line, and names
+    // the find with "feel" rather than "see".  invent.js look_here() already
+    // ports that whole block, so hand the single-object case over instead of
+    // keeping a second, sighted-only copy of it here.
+    if (Blind()) {
+        const inv = await import('./invent.js');
+        await inv.look_here(objs.length, (_pickedSome ? 1 : 0) | (skipDfeature ? 2 : 0));
+        return;
+    }
     if (objs.length === 1) {
         // C ref: look_here() single-object case: [dfeature pline1] then
         // You("%s here %s.", verb, ...) -> pline() -> update_topl().  Both go

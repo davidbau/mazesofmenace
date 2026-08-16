@@ -258,12 +258,16 @@ const is_pm_named = (ptr, nm) => ptr?.name === nm;
 //
 // C ref: sounds.c h_sounds[] — the hallucinatory verb table growl()/yelp()/
 // whimper() index with rn2(SIZE(h_sounds)).
+// sounds.c:341 — 35 entries; this table used to stop at 30 with six invented
+// tail verbs, so ROLL_FROM() drew rn2(30) instead of rn2(35) on every
+// hallucinated growl/yelp/whimper (seed0383 step 178).
 const H_SOUNDS = [
     'beep', 'boing', 'sing', 'belche', 'creak', 'cough',
     'rattle', 'ululate', 'pop', 'jingle', 'sniffle', 'tinkle',
     'eep', 'clatter', 'hum', 'sizzle', 'twitter', 'wheeze',
     'rustle', 'honk', 'lisp', 'yodel', 'coo', 'burp',
-    'moo', 'boohoo', 'bark', 'hiss', 'buzz', 'hoot',
+    'moo', 'boom', 'murmur', 'oink', 'quack', 'rumble',
+    'twang', 'toot', 'gargle', 'hoot', 'warble',
 ];
 
 // C ref: objnam.c vtense((char *) 0, verb) — 3rd-person singular.
@@ -317,6 +321,38 @@ export async function growl(mtmp) {
     await update_topl(`${Monnam(mtmp)} ${vtense_sing_snd(verb)}!`);
     const { wake_nearto } = await import('./cmd.js');
     await wake_nearto(mtmp.mx, mtmp.my, (ptr?.mlevel ?? 0) * 18);
+}
+
+// C ref: sounds.c:426 yelp(mtmp) — the noise a mistreated pet makes
+// (dog.c abuse_dog).  Under Hallucination the verb is ROLL_FROM(h_sounds),
+// i.e. a REAL rn2(35) draw on the core stream, so this cannot be skipped.
+export async function yelp(mtmp) {
+    const { update_topl } = await import('./display.js');
+    const { Monnam } = await import('./uhitm.js');
+    const ptr = mtmp?.data;
+    const canmove = (mtmp.mcanmove == null) ? 1 : mtmp.mcanmove;
+    if (mtmp.msleeping || !canmove) return;
+    const ms = msound_of(ptr) ?? MS_SILENT;
+    if (!ms) return;                                  // C: `!mtmp->data->msound`
+    let verb = null;
+    if (game.u?.uhallu) {
+        verb = H_SOUNDS[rn2(H_SOUNDS.length)];
+    } else {
+        const deaf = false;                           // Deaf is never set here
+        switch (ms) {
+        case MS_MEW: verb = deaf ? 'arch' : 'yowl'; break;
+        case MS_BARK: case MS_GROWL: verb = deaf ? 'recoil' : 'yelp'; break;
+        case MS_ROAR: verb = deaf ? 'bluff' : 'snarl'; break;
+        case MS_SQEEK: verb = deaf ? 'quiver' : 'squeal'; break;
+        case MS_SQAWK: verb = deaf ? 'thrash' : 'screak'; break;
+        case MS_WAIL: verb = deaf ? 'cringe' : 'wail'; break;
+        default: verb = null; break;
+        }
+    }
+    if (!verb) return;
+    await update_topl(`${Monnam(mtmp)} ${vtense_sing_snd(verb)}!`);
+    const { wake_nearto } = await import('./cmd.js');
+    await wake_nearto(mtmp.mx, mtmp.my, (ptr?.mlevel ?? 0) * 12);
 }
 
 // SCOPE: the arms that hand off to an unported subsystem — MS_PRIEST

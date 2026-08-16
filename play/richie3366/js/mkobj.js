@@ -2365,14 +2365,6 @@ export function corpse_revive_type(obj) {
     return revivetype;
 }
 
-/**
- * C invent.c consume_obj_charge — spe--; unpaid/update_inventory deferred.
- */
-function consume_obj_charge_horn(obj, _maybe_unpaid) {
-    if (!obj) return;
-    obj.spe = (obj.spe | 0) - 1;
-}
-
 /** C objnam.c otense — plural verb if quan!=1, else vtense(null). */
 function otense_horn(obj, verb) {
     if ((obj?.quan | 0) !== 1) return verb;
@@ -2451,8 +2443,8 @@ async function hitfloor_horn(obj, verbosely) {
  * rnd_class(POT_BOOZE, POT_WATER) skipping SICKNESS; FOOD_RATION rn2(7)
  * → royal jelly; copy horn BUC; unpaid addtobill; !tipping
  * hold_another_object; tipping targetbox add_to_container else floor
- * dropy / doaltarobj. Named omit: check_unpaid inside consume_obj_charge;
- * update_inventory / perm_invent; hitfloor hero_breaks/ship_object.
+ * dropy / doaltarobj. Named omit: update_inventory / perm_invent;
+ * hitfloor hero_breaks/ship_object.
  * @returns {Promise<number>} objects created (0 or 1)
  */
 export async function hornoplenty(horn, tipping = false, targetbox = null) {
@@ -2468,7 +2460,8 @@ export async function hornoplenty(horn, tipping = false, targetbox = null) {
         return 0;
     }
 
-    consume_obj_charge_horn(horn, !tipping);
+    const { consume_obj_charge } = await import('./invent.js');
+    await consume_obj_charge(horn, !tipping);
     let obj;
     let what;
     if (!rn2(13)) {

@@ -1380,6 +1380,8 @@ function mongets(_mtmp, otyp) {
     return otmp;   // C mongets() returns the created obj (used by ARM_BONUS math)
 }
 const BELL_OF_OPENING_OTYP = 263, SPE_BOOK_OF_THE_DEAD_OTYP = 409;
+// objects.h otyps for makemon.c:1377-1381's `mitem` chain.
+const TWO_HANDED_SWORD_OTYP = 55, POT_SICKNESS_OTYP = 318;
 
 function m_initthrow(_mtmp, otyp, oquan) {
     const otmp = mksobj(otyp, true, false);
@@ -1401,9 +1403,10 @@ export function mpickobj(mtmp, otmp) {
     mtmp.minvent.push(otmp);
 }
 
-// C ref: golems.c golemhp(type) — fixed HP per golem species (no RNG).  JS
-// pmidx 249..259 = straw,paper,rope,leather,gold,wood,flesh,clay,stone,glass,
-// iron golem (verified by name); same order as the C PM_*_GOLEM constants.
+// C ref: makemon.c golemhp(type) — fixed HP per golem species (no RNG).  pmidx
+// 249..259 = straw,paper,rope,GOLD,LEATHER,wood,flesh,clay,stone,glass,iron
+// (monsters.h order: gold golem precedes leather golem; the values below are
+// right, an earlier comment listed the pair the other way round).
 const GOLEM_HP = { 249: 20, 250: 20, 251: 30, 252: 60, 253: 40, 254: 50, 255: 40, 256: 70, 257: 100, 258: 80, 259: 120 };
 export function golemhp_js(pmidx) { return GOLEM_HP[pmidx] || 0; }
 
@@ -3060,6 +3063,51 @@ function mon_learns_traps_local(mtmp, ttyp) {
     mtmp.mtrapseen = (mtmp.mtrapseen || 0) | (1 << (ttyp - 1));
 }
 
+// C ref: makemon.c:1303-1346 `switch (ptr->mlet)` — runs right after
+// place_monster()/mpeaceful for EVERY makemon() caller.  Shared with
+// makemon_rnd_spawn(), which reimplements makemon() for the x==0,y==0 random
+// spawn and used to skip the whole switch: a leprechaun spawned by
+// maybe_generate_rnd_mon() came out awake, moved, and desynced m_move's
+// rn2(4*(cnt-j)) (w3-elf-wiz-debug step 149).
+// S_MIMIC's set_mimic_sym and the S_JABBERWOCK/S_NYMPH rn2(5) DRAW RNG.
+function makemon_mlet_switch(mtmp, ptr, x, y) {
+    // C ref: makemon.c:1304 — set_mimic_sym() consumes RNG (rn2(17)
+    // ROLL_FROM(syms) + the mkobj that follows, rn2(10) + get_shop_item in a
+    // shop).  C runs it for EVERY mimic; gating it on the full-monster-gen
+    // flags dropped the draws for des.monster()-placed mimics (seed0360
+    // step 211: soko1's two "giant mimic" boulders).
+    if (ptr.mcls === 13 /* S_MIMIC */ && x && y) {
+        set_mimic_sym(mtmp);
+    }
+
+    // The S_SPIDER/S_SNAKE and S_EEL cases guard their body on in_mklev and are
+    // handled by the level-gen path; the rest run unconditionally.
+    switch (ptr.mcls) {
+    case 12: // S_LEPRECHAUN
+        mtmp.msleeping = true;
+        break;
+    case 36: // S_JABBERWOCK
+    case 14: // S_NYMPH
+        if (rn2(5) && !game.u?.uhave?.amulet) mtmp.msleeping = true;
+        break;
+    case 15: // S_ORC
+        if (game.urace?.adj === 'elf') mtmp.mpeaceful = false;
+        break;
+    case 21: // S_UNICORN
+        if (ptr.name && ptr.name.endsWith('unicorn')
+            && Math.sign(game.u?.ualign?.type ?? 0) === Math.sign(ptr.maligntyp ?? 0))
+            mtmp.mpeaceful = true;
+        break;
+    case 25: // S_LIGHT
+    case 31: // S_ELEMENTAL
+        if (ptr.name === 'stalker' || ptr.name === 'black light') {
+            mtmp.perminvis = true;
+            mtmp.minvis = true;
+        }
+        break;
+    }
+}
+
 export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     let ptr = mdat;
     let allow_minvent = true;
@@ -3162,6 +3210,13 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     else if (ptr.gcode === 1 || ptr.gcode === 3) mtmp.female = 0; /* male/neuter */
     else if (mmflags & MM_FEMALE) mtmp.female = 1;
     else if (mmflags & MM_MALE) mtmp.female = 0;
+    // C ref: makemon.c:1270-1273 — a quest leader's/nemesis's gender was already
+    // chosen by role_init() (quest_status.ldrgend/nemgend), so makemon does NOT
+    // roll rn2(2) for it.  Every leader and every nemesis but Arc's Minion of
+    // Huhetotl and Wiz's Dark One is fixed-gender, so those two are the only
+    // species this arm actually saves a draw for.
+    else if (msound_of(ptr) === MS_LEADER) mtmp.female = game.quest_ldrgend | 0;
+    else if (msound_of(ptr) === MS_NEMESIS) mtmp.female = game.quest_nemgend | 0;
     else mtmp.female = rn2(2);
 
     // C ref: makemon.c:1281-1289 — trap knowledge is granted at CREATION; no
@@ -3270,38 +3325,7 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
     // EVERY mimic; it used to be gated on the full-monster-gen flags here, which
     // silently dropped the draws for des.monster()-placed mimics (seed0360
     // step 211: soko1's two "giant mimic" boulders).
-    if (ptr.mcls === 13 /* S_MIMIC */ && x && y) {
-        set_mimic_sym(mtmp);
-    }
-
-    // C ref: makemon.c:1327-1346 — the remaining per-mlet switch cases.  Every
-    // one of these is state-only (no RNG) except S_JABBERWOCK/S_NYMPH, so they
-    // run unconditionally (the switch itself is never gated to in_mklev in C;
-    // only the S_SPIDER/S_SNAKE and S_EEL cases guard their body on it).
-    switch (ptr.mcls) {
-    case 12: // S_LEPRECHAUN
-        mtmp.msleeping = true;
-        break;
-    case 36: // S_JABBERWOCK
-    case 14: // S_NYMPH
-        if (rn2(5) && !game.u?.uhave?.amulet) mtmp.msleeping = true;
-        break;
-    case 15: // S_ORC
-        if (game.urace?.adj === 'elf') mtmp.mpeaceful = false;
-        break;
-    case 21: // S_UNICORN
-        if (ptr.name && ptr.name.endsWith('unicorn')
-            && Math.sign(game.u?.ualign?.type ?? 0) === Math.sign(ptr.maligntyp ?? 0))
-            mtmp.mpeaceful = true;
-        break;
-    case 25: // S_LIGHT
-    case 31: // S_ELEMENTAL
-        if (ptr.name === 'stalker' || ptr.name === 'black light') {
-            mtmp.perminvis = true;
-            mtmp.minvis = true;
-        }
-        break;
-    }
+    makemon_mlet_switch(mtmp, ptr, x, y);
 
     // C ref: makemon.c:1352-1390 — mitem selection + shapechanger handling.
     // Vlad gets the Candelabrum (mongets -> next_ident + mksobj) and stays in
@@ -3334,6 +3358,14 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
             // : plname, i.e. one rn2(7) plus (usually) one rn2(34).
             mtmp.mnamelth = 1;
             mtmp.mname = rndghostname();
+        } else if (ptr.name === 'Croesus') {
+            mitem = TWO_HANDED_SWORD_OTYP;                 // makemon.c:1377
+        } else if (msound_of(ptr) === MS_NEMESIS) {
+            // Every role's quest nemesis carries the Bell of Opening; mongets()
+            // draws next_ident, which this chain used to skip entirely.
+            mitem = BELL_OF_OPENING_OTYP;                  // makemon.c:1379
+        } else if (ptr.name === 'Pestilence') {
+            mitem = POT_SICKNESS_OTYP;                     // makemon.c:1381
         }
         if (mitem && allow_minvent) mongets(mtmp, mitem);  // next_ident + mksobj
     }
@@ -3855,6 +3887,9 @@ export function makemon_rnd_spawn() {
     else mtmp.female = (ptr.gcode === 2) ? 1 : 0;
 
     mtmp.mpeaceful = peace_minded_spawn(ptr) ? true : false;
+    // C ref: makemon.c:1303 — the per-mlet switch sits between mpeaceful and
+    // set_malign() and applies to this path too.
+    makemon_mlet_switch(mtmp, ptr, x, y);
     set_malign(mtmp);   // makemon.c:1429
 
     // Group handling (anymon && !MM_NOGRP).  G_SGROUP -> rn2(2); G_LGROUP ->
@@ -3910,7 +3945,10 @@ export function create_particular_monster(name, mmflags = 0) {
     // The placement RNG has been spent; makemon must not re-run it, so pass the
     // resolved (x,y).  MM_NOGRP keeps it from drawing group RNG (a named ptr is
     // anymon==FALSE in C, which already skips groups).
-    const mtmp = makemon(ptr, spot.x, spot.y, MM_NOGRP);
+    // MM_NOWAIT is the one caller flag that still matters past the placement:
+    // it suppresses the mflags3 STRAT_WAITFORU/CLOSE/APPEARMSG block, which is
+    // what wizard.c resurrect() passes.
+    const mtmp = makemon(ptr, spot.x, spot.y, MM_NOGRP | (mmflags & MM_NOWAIT));
     if (!mtmp) return null;
     placeOnLevel(mtmp, spot.x, spot.y);
 

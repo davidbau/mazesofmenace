@@ -10,7 +10,8 @@ import { engr_at } from './engrave.js';
 import { couldsee } from './vision.js';
 import { exercise } from './attrib.js';
 import { COLNO, ROWNO, BOLT_LIM, SDOOR, SCORR, DOOR, CORR, A_WIS, IS_FURNITURE,
-         STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
+         STONE, W_NONDIGGABLE, W_NONPASSWALL, ROOMOFFSET } from './const.js';
+import { room_discovered } from './dungeon.js';
 import { BOULDER, COIN_CLASS, GOLD_PIECE, objects } from './mkobj.js';
 import { NO_COLOR, CLR_WHITE } from './terminal.js';
 import { rnd } from './rng.js';
@@ -118,14 +119,21 @@ function show_map_spot(x, y) {
     // furniture takes precedence over traps, which take precedence over objects,
     // opposite to how normal vision behaves."
     let bg = terrain_background_glyph(lev, x, y);
+    // C's map_trap(t, 1) / map_engraving(ep, 1) run AFTER newsym() and SHOW
+    // their glyph, so during mapping a trap outranks whatever newsym just drew
+    // there — including a live monster standing on it (seed4500 step 1241 shows
+    // the giant spider's web, not the spider).
+    let overrideShown = false;
     if (!IS_FURNITURE(lev.typ)) {
         const t = (game.level?.traps || []).find((tr) => tr.tx === x && tr.ty === y);
         const ep = engr_at(x, y);
         if (t && t.tseen) {
             bg = trap_glyph(t);
+            overrideShown = true;
         } else if (ep) {
             ep.erevealed = 1;                     /* map_engraving(ep, 1) */
             bg = engraving_glyph(lev);
+            overrideShown = true;
         }
         // C's third arm restores a previously-shown trap/object glyph via
         // glyph_is_trap(oldglyph)/glyph_is_object(oldglyph); this port's
@@ -137,8 +145,13 @@ function show_map_spot(x, y) {
     lev.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, mapped: true };
     // Redraw via newsym so visible cells stay live and remembered ones appear.
     newsym(x, y);
-    if (lev.disp_ch === ' ' || lev.disp_ch == null)
+    if (overrideShown || lev.disp_ch === ' ' || lev.disp_ch == null)
         show_glyph_cell(x, y, bg.ch, bg.color, bg.dec);
+    // C ref: detect.c:1416 — "possibly update #overview".  Magic mapping learns
+    // every room on the level, which is how #overview names a shop the hero
+    // never walked into.  (The Confusion arm skips this; Confusion is not
+    // wired through show_map_spot here.)
+    if ((lev.roomno ?? 0) >= ROOMOFFSET) room_discovered(lev.roomno - ROOMOFFSET);
 }
 
 // C ref: detect.c do_mapping — reveal the whole level into hero memory, then

@@ -3,13 +3,13 @@
 // the gameplay sessions are ported here.
 
 import { game } from './gstate.js';
-import { rn2, rn1, rnd, d } from './rng.js';
+import { rn2, rn1, rnd, rnl, d } from './rng.js';
 import { pline, newsym, m_at, show_glyph_cell, update_topl, topl_more, y_n,
-         bot, flush_screen, canseemon_shared } from './display.js';
+         bot, flush_screen, canseemon_shared, map_invisible, unmap_object } from './display.js';
 import { getobj, makeknown, useupall, useup, delobj, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS, xname, near_capacity } from './invent.js';
 import { mon_mr } from './monmr_data.js';
-import { mflags1_of, M1_NOEYES } from './monflags_data.js';
+import { mflags1_of, M1_NOEYES, is_undead_flag } from './monflags_data.js';
 // AD_MAGM is NOT imported: this file already declares the AD_* block locally
 // (same values), and a duplicate binding is a module-load SyntaxError.
 import { attacktype_fordmg, dmgtype, AT_EXPL, AT_GAZE, AD_BLND,
@@ -19,7 +19,7 @@ import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { findit } from './detect.js';
 import { cansee } from './vision.js';
-import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
+import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS, WEAPON_CLASS, ARMOR_CLASS,
          FOOD_CLASS, RING_CLASS, POT_OIL, POT_WATER, GLOB_OF_GREEN_SLIME,
          SPBOOK_CLASS, mkobj as _mkobj, place_object, objects,
          mkcorpstat, CORPSE, AMULET_OF_YENDOR, BELL_OF_OPENING, next_ident,
@@ -28,7 +28,9 @@ import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
 import { A_WIS, A_STR, A_INT, A_CON, A_DEX, ROWNO, COLNO, ZAP_POS, IS_DOOR, IS_ROOM, IS_WALL, isok, ROOM, STONE,
          D_CLOSED, D_LOCKED, CORPSTAT_INIT, EXT_ENCUMBER, HEADSTONE, ENGRAVE,
          DUST, MM_NOMSG, In_mines, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG,
-         W_ARMF, W_ARMU } from './const.js';
+         W_ARMF, W_ARMU, POOL, IS_FOUNTAIN, Is_waterlevel } from './const.js';
+import { is_pool, is_ice } from './dbridge.js';
+import { create_gas_cloud } from './region.js';
 import { CLR_ORANGE, CLR_BLACK, CLR_GREEN, CLR_YELLOW, CLR_WHITE, CLR_BRIGHT_BLUE } from './terminal.js';
 // C ref: display.c:2661 zapcolors[NUM_ZAP], display.h:280 (HI_ZAP == CLR_BRIGHT_BLUE).
 // Indexed by the HALLUCINATED damage type, so every beam used to draw orange.
@@ -1238,10 +1240,20 @@ const ZT_MAGIC_MISSILE = 0, ZT_FIRE = 1, ZT_COLD = 2, ZT_SLEEP = 3,
 // otyps consulted by destroy path naming.  C ref: objects.h.
 const SCR_FIRE = 339, SPE_FIREBALL = 368, POT_INVISIBILITY = 305;
 
-// C ref: zap.c ubuzz(type, nd) -> dobuzz(type, nd, u.ux, u.uy, u.dx, u.dy, ...).
+// C ref: display.c:388 unmap_invisible(x, y) — drop a remembered 'I' when the
+// hero learns nothing is there; unmap_object() then newsym() to repaint.
+function unmap_invisible_zap(x, y) {
+    if (!isok(x, y) || !game.level?.at(x, y)?.invisMon) return false;
+    unmap_object(x, y);
+    newsym(x, y);
+    return true;
+}
+
+// C ref: zap.c ubuzz(type, nd) -> dobuzz(type, nd, u.ux, u.uy, u.dx, u.dy,
+// TRUE, FALSE, FALSE).
 export async function ubuzz(type, nd) {
     const u = game.u;
-    await dobuzz(type, nd, u.ux, u.uy, u.dx | 0, u.dy | 0);
+    await dobuzz(type, nd, u.ux, u.uy, u.dx | 0, u.dy | 0, true, false, false);
 }
 
 // C ref: zap.c dobuzz — fire a bouncing ray.  The beam walks the level,
@@ -1249,7 +1261,12 @@ export async function ubuzz(type, nd) {
 // crosses, and reflects off obstructions (bounce_dir) until range runs out.
 // u.uswallow / fireball(spell-only, unreachable via a 0-9 wand type) / gas
 // trailing clouds are not modelled (not exercised by any covered wand zap).
-async function dobuzz(type, nd, sx, sy, dx, dy) {
+//
+// `type` is NEGATIVE when a monster fires the ray (BZ_M_BREATH == -20-adtyp);
+// that changes the death path (monkilled, corpse-leaving, no hero kill credit),
+// the "your/the blast" wording and zap_over_floor's u_caused flag.
+export async function dobuzz(type, nd, sx, sy, dx, dy,
+                             sayhit = false, saymiss = false, forcemiss = false) {
     const u = game.u;
     const fltyp = zaptype(type);
     const damgtype = fltyp % 10;
@@ -1257,6 +1274,10 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
     // anything else in dobuzz, so a hallucinating hero's zap draws one extra
     // rn2(6) that this port used to skip.  hdmgtype only picks the beam colour.
     const hdmgtype = Hallucination() ? rn2(6) : damgtype;
+    // C: `if (type < 0) newsym(u.ux, u.uy);` — a monster-fired ray redraws the
+    // hero's square first (the hero may have been standing under a remembered
+    // glyph the beam is about to overwrite).
+    if (type < 0) newsym(u.ux, u.uy);
     let range = rn1(7, 7);              // C: range = rn1(7, 7)
     if (dx === 0 && dy === 0) range = 1;
     let lsx, lsy;
@@ -1279,17 +1300,26 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
         }
 
         const typ = game.level?.at(sx, sy)?.typ ?? STONE;
-        const mon = m_at(sx, sy);
-        // cansee()/tmp_at: leave the beam glyph along the path.
-        if (ZAP_POS(typ) || (isok(lsx, lsy)))
-            drawBeam(sx, sy);
+        let mon = m_at(sx, sy);
+        // C ref: zap.c:4838 — the WHOLE marker+beam block sits inside
+        // `if (cansee(sx, sy))`, so a blind hero sees no ray at all (cansee()
+        // is false everywhere while Blind: vision.c:548 skips the IN_SIGHT
+        // pass).  Without the gate a monster's breath left a permanent beam
+        // painted across the map of a blinded hero.
+        if (cansee(sx, sy)) {
+            if (mon && !canspotmon(mon)) map_invisible(sx, sy);
+            else if (!mon) unmap_invisible_zap(sx, sy);
+            if (ZAP_POS(typ) || (isok(lsx, lsy) && cansee(lsx, lsy)))
+                drawBeam(sx, sy);
+        }
 
         // C: `range += zap_over_floor(sx, sy, type, &shopdamage, TRUE, 0)`,
         // then mon is re-fetched (fire can melt ice and drown the monster).
         range += await zap_over_floor(sx, sy, type);
+        mon = m_at(sx, sy);
 
         if (mon) {
-            if (zap_hit(find_mac(mon), 0)) {
+            if (!forcemiss && zap_hit(find_mac(mon), 0)) {
                 if (await mon_reflects(mon)) {
                     // C: on a visible reflection the beam first "hits", then
                     // prints the reflection line; only then does it reverse.
@@ -1304,13 +1334,14 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
                     if (tmp === MAGIC_COOKIE) {
                         await disintegrate_mon(mon, type, flash_str(fltyp));
                     } else if (DEADMONSTER(mon)) {
+                        // C: `type < 0` -> the ray came from another monster, so
+                        // the hero gets no kill credit and mon.c monkilled()
+                        // (not xkilled()) runs.
                         if (type >= 0) await killed(mon);
-                        // (type < 0 -> monkilled(); dobuzz is only invoked
-                        // here for hero-caused wand zaps, so type is always
-                        // >= 0 in the reachable sessions.)
+                        else await monkilled_zap(mon, flash_str(fltyp));
                     } else {
                         if (!otmp) {
-                            if (canspotmon(mon))
+                            if (sayhit || canspotmon(mon))
                                 await hit(flash_str(fltyp), mon, exclam(tmp));
                         } else if (canspotmon(mon)) {
                             await update_topl(`${Monnam(mon)}'s item is disintegrated!`);
@@ -1321,14 +1352,20 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
                 }
                 range -= 2;
             } else {
-                if (canspotmon(mon) && !disguised_as_non_mon(mon))
+                if (saymiss || (canspotmon(mon) && !disguised_as_non_mon(mon)))
                     await miss(flash_str(fltyp), mon);
             }
         } else if (sx === u.ux && sy === u.uy && range >= 0) {
             // C: u_at(sx,sy) && range >= 0 -> the bolt strikes the hero.
-            if (zap_hit(u.uac | 0, 0)) {
+            // C ref zap.c:4954 `nomul(0)` — the hero's multi-turn occupation is
+            // broken the moment a ray reaches their square, BEFORE the to-hit
+            // roll (a missed bolt still interrupts).
+            await nomul_zap(0);
+            if (!forcemiss && zap_hit(u.uac | 0, 0)) {
                 range -= 2;
-                drawBeam(sx, sy); // beam shown over the hero's cell
+                // C ref: zap.c:4963 has NO tmp_at here — the hero's own square
+                // was already beamed (or not, when Blind) by the loop-top
+                // cansee() block above.
                 await update_topl(`${flash_The(type)} hits you!`);
                 // C ref: zap.c dobuzz() — `if (ureflects("But %s reflects from
                 // your %s!", "it")) { dx = -dx; dy = -dy; } else zhitu(...)`.
@@ -1348,6 +1385,8 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
             // duration, whether or not it connected.  The draw was missing.
             if (damgtype === ZT_LIGHTNING)
                 await flashburn(d(nd, 50), true);
+            await stop_occupation_zap();
+            await nomul_zap(0);
         }
 
         // C: `!ZAP_POS(typ) || (closed_door(sx, sy) && range >= 0)` — the
@@ -1382,12 +1421,11 @@ async function dobuzz(type, nd, sx, sy, dx, dy) {
 }
 
 // C ref: zap.c zap_over_floor(x, y, type, ...) — terrain/floor-object effects
-// along a ray's path.  Returns C's `rangemod`.  The ice / pool / lava / fountain
-// / iron-bars / door arms need terrain subsystems this port does not carry
-// (melt_ice timers, gas clouds, drawbridges) and are DEFERRED; what is ported is
-// the arm every ordinary room square actually reaches — a fire ray burning the
-// scrolls and spellbooks lying on the floor, which draws obj_resists()'s rn2(100)
-// plus one rn2(3) per item in each stack.
+// along a ray's path.  Returns C's `rangemod`.  The ZT_COLD / lava / iron-bars /
+// door arms still need terrain subsystems this port does not carry (freeze
+// timers, drawbridges) and are DEFERRED; ported here are the two a fire ray
+// actually crosses — the water/fountain steam clouds (each pool square draws
+// rnd(5) plus a whole create_gas_cloud) and the scroll/spellbook burn.
 export async function zap_over_floor(x, y, type, _exploding_wand_typ) {
     // C ref: zap.c:5157 — a PHYS_EXPL_TYPE blast (gas spore) has no effect on
     // the floor and returns before anything else.  Without this guard the
@@ -1396,9 +1434,87 @@ export async function zap_over_floor(x, y, type, _exploding_wand_typ) {
     if (type === -1 /* PHYS_EXPL_TYPE */) return -1000;
     const damgtype = zaptype(type) % 10;
     let rangemod = 0;
+    const lev = game.level?.at(x, y);
+    if (damgtype === ZT_FIRE && lev) {
+        const see_it = cansee(x, y);
+        // A fire ray over open water boils it: one 1..5 steam cloud per square.
+        // Skipped entirely, a dragon breathing across Medusa's moat lost the
+        // rnd(5) + create_gas_cloud shuffle for EVERY water square it crossed.
+        if (is_ice(x, y)) {
+            /* melt_ice(x, y): needs the melt-away timer subsystem; no RNG. */
+        } else if (is_pool(x, y)) {
+            const on_water_level = !!Is_waterlevel(game.u?.uz);
+            let msgtxt = !game.u?.Deaf ? 'You hear hissing gas.'
+                       : (type >= 0) ? 'That seemed remarkably uneventful.' : null;
+            if (!on_water_level)
+                await create_gas_cloud(x, y, rnd(5), 0);
+            if (lev.typ !== POOL) {          /* MOAT / DRAWBRIDGE_UP / WATER */
+                if (on_water_level) msgtxt = (see_it || !game.u?.Deaf) ? 'Some water boils.' : null;
+                else if (see_it) msgtxt = 'Some water evaporates.';
+            } else {
+                rangemod -= 3;
+                lev.typ = ROOM; lev.flags = 0;
+                /* maketrap(x, y, PIT) draws no RNG; the trap subsystem's
+                   dotrap/mintrap follow-up is not wired here. */
+                if (see_it) msgtxt = 'The water evaporates.';
+            }
+            if (msgtxt) await Norep_zap(msgtxt);
+            if (lev.typ === ROOM) newsym(x, y);
+        } else if (IS_FOUNTAIN(lev.typ)) {
+            await create_gas_cloud(x, y, rnd(3), 0);
+            if (see_it) await update_topl('Steam billows from the fountain.');
+            rangemod -= 1;
+            /* dryup(x, y, type > 0): fountain bookkeeping, no RNG on this path */
+        }
+    }
     if (damgtype === ZT_FIRE)
         burn_floor_objects(x, y, false, type > 0);
     return rangemod;
+}
+
+// C ref: mon.c:3395 monkilled(mon, fltxt, how) — a monster killed by ANOTHER
+// monster's attack.  It is NOT xkilled(): there is no hero kill credit, no
+// experience and, critically, none of xkilled()'s extra rolls (the rn2(6)
+// "illogical but traditional" treasure drop).  The whole RNG cost is
+// mondied() -> corpse_chance()'s rn2(2).
+async function monkilled_zap(mon, fltxt) {
+    if (cansee(mon.mx, mon.my) && fltxt)
+        await update_topl(`${Monnam(mon)} is ${nonliving_zap(mon) ? 'destroyed' : 'killed'}`
+                          + ` by the ${fltxt}!`);
+    const { mondied_mm } = await import('./mhitm.js');
+    await mondied_mm(mon);
+}
+// C ref: mondata.h:219 nonliving(ptr) = is_undead(ptr) || PM_MANES ||
+// weirdnonliving(ptr) [golem or S_VORTEX].  Derived from the generated M2_UNDEAD
+// flag and the monster class, NOT from a species-name regex.
+const S_VORTEX_Z = 22, S_GOLEM_Z = 55;   // defsym.h
+function nonliving_zap(mon) {
+    const p = mon?.data;
+    if (!p) return false;
+    if (is_undead_flag(p)) return true;
+    if (p.name === 'manes') return true;
+    return p.mcls === S_GOLEM_Z || p.mcls === S_VORTEX_Z;
+}
+
+// C ref: pline.c vpline() — Norep()'s dedup is `msgtyp == MSGTYP_NOREP &&
+// !strcmp(line, gp.prevmsg)`: it compares against the PREVIOUS INDIVIDUAL
+// message, not the concatenated top row.  A fire ray crossing two water squares
+// therefore prints ONE "You hear hissing gas." even though the first was merged
+// into "You kill it!  You hear hissing gas.".
+async function Norep_zap(msg) {
+    if (game._prevmsg === msg) return;
+    await update_topl(msg);
+}
+
+// hack.c nomul(0) / allmain.c stop_occupation(): imported lazily because
+// hack.js pulls zap.js back in (wand-zap command wiring).
+async function nomul_zap(nval) {
+    const { nomul } = await import('./hack.js');
+    nomul(nval);
+}
+async function stop_occupation_zap() {
+    const { stop_occupation } = await import('./hack.js');
+    await stop_occupation();
 }
 
 // C ref: zap.c burn_floor_objects(x, y, give_feedback, u_caused).
@@ -1744,14 +1860,24 @@ async function disintegrate_mon(mon, type, fltxt) {
     await killed(mon, { nomsg: true, nocorpse: true });
 }
 
-// C ref: zap.c flash_str — display name of a flash/bolt; "The bolt of fire"
-// via The().  Only the wand RAY types the covered sessions zap are needed.
-const FLASH_NAME = {
-    [ZT_MAGIC_MISSILE]: 'magic missile', [ZT_FIRE]: 'bolt of fire',
-    [ZT_COLD]: 'bolt of cold', [ZT_SLEEP]: 'sleep ray',
-    [ZT_DEATH]: 'death ray', [ZT_LIGHTNING]: 'bolt of lightning',
-};
-function flash_str(type) { return FLASH_NAME[type % 10] || 'bolt'; }
+// C ref: zap.c flash_types[] — indexed by zaptype(type), NOT by type % 10: the
+// wand (0-9), spell (10-19) and BREATH (20-29) bands have different names, so a
+// dragon's AD_FIRE breath is "blast of fire", not "bolt of fire".
+const FLASH_NAME = [
+    'magic missile',
+    'bolt of fire', 'bolt of cold', 'sleep ray', 'death ray',
+    'bolt of lightning', '', '', '', '',
+
+    'magic missile',
+    'fireball', 'cone of cold', 'sleep ray', 'finger of death',
+    'bolt of lightning', '', '', '', '',
+
+    'blast of missiles',
+    'blast of fire', 'blast of frost', 'blast of sleep gas',
+    'blast of disintegration', 'blast of lightning',
+    'blast of poison gas', 'blast of acid', '', '',
+];
+function flash_str(type) { return FLASH_NAME[zaptype(type)] || 'bolt'; }
 function flash_The(type) { return 'The ' + flash_str(type); }
 function flash_killer(type) { return flash_str(type); }
 
@@ -1982,30 +2108,33 @@ async function erode_armor_mon(mon) {
 // reports empty for a monster victim.
 export async function burnarmor(victim) {
     if (!victim) return false;
-    // C: while (1) switch (rn2(5)) { ... } — case 1 (cloak/suit/shirt) always
-    // returns TRUE (body hit); other cases continue when the slot is empty.
+    // C: `if (!burn_dmg(item, descr)) continue;` — the loop re-rolls whenever
+    // erode_obj returns ER_NOTHING, which is NOT the same as "the slot is
+    // empty": a NON-FLAMMABLE worn item (an iron helmet, iron boots) also
+    // returns 0 and makes C roll again.  Breaking on slot occupancy alone cut
+    // the rn2(5) chain short for every armoured hero hit by a fire ray.
     for (;;) {
         switch (rn2(5)) {
         case 0:
-            if (worn_slot(victim, 'uarmh')) { await erode_worn(victim, 'uarmh', 'helmet'); break; }
+            if (await erode_burn(victim, 'uarmh', 'helmet')) break;
             continue;
         case 1: {
-            const c = worn_slot(victim, 'uarmc');
-            if (c) { await erode_worn(victim, 'uarmc', cloak_simple_name(c)); return true; }
-            const s = worn_slot(victim, 'uarm');
-            if (s) { await erode_worn(victim, 'uarm', 'suit'); return true; }
-            const sh = worn_slot(victim, 'uarmu');
-            if (sh) await erode_worn(victim, 'uarmu', 'shirt');
+            if (worn_slot(victim, 'uarmc')) {
+                await erode_burn(victim, 'uarmc', cloak_simple_name(worn_slot(victim, 'uarmc')));
+                return true;
+            }
+            if (worn_slot(victim, 'uarm')) { await erode_burn(victim, 'uarm', 'suit'); return true; }
+            if (worn_slot(victim, 'uarmu')) await erode_burn(victim, 'uarmu', 'shirt');
             return true;
         }
         case 2:
-            if (worn_slot(victim, 'uarms')) { await erode_worn(victim, 'uarms', 'wooden shield'); break; }
+            if (await erode_burn(victim, 'uarms', 'wooden shield')) break;
             continue;
         case 3:
-            if (worn_slot(victim, 'uarmg')) { await erode_worn(victim, 'uarmg', 'gloves'); break; }
+            if (await erode_burn(victim, 'uarmg', 'gloves')) break;
             continue;
         case 4:
-            if (worn_slot(victim, 'uarmf')) { await erode_worn(victim, 'uarmf', 'boots'); break; }
+            if (await erode_burn(victim, 'uarmf', 'boots')) break;
             continue;
         }
         break;
@@ -2035,13 +2164,52 @@ function cloak_simple_name(obj) {
     // C ref: do_name.c cloak_simple_name — MR cloak / robe / etc. -> "cloak".
     return 'cloak';
 }
-// C ref: trap.c erode_obj via burn_dmg — increments erosion and prints a
-// "Your <ostr> smoulders!" line.  No RNG (no grease on the covered armor).
-async function erode_worn(victim, slot, ostr) {
+// C ref: trap.c erode_obj(otmp, ostr, ERODE_BURN, EF_GREASE) — the burn_dmg()
+// macro burnarmor() uses.  Returns an ER_* value; burnarmor only cares whether
+// it is non-zero.  RNG: exactly one rnl(4) when the item is BLESSED and not
+// erodeproof (that roll decides whether the blessing saves it) — missing it
+// shifted every later draw of a fire ray that touched blessed armour.
+const ER_NOTHING = 0, ER_DAMAGED = 2, MAX_ERODE = 3;
+const MAT_LIQUID = 1, MAT_WOOD_Z = 8, MAT_PLASTIC = 18;
+// C ref: mkobj.c is_flammable — material <= WOOD (but not LIQUID), or PLASTIC;
+// candles and FIRE_RES-conferring items are exempt.  The material numbers are
+// objclass.h's enum, NOT the 14/22/23 an older copy of this predicate used.
+function is_flammable_obj(obj) {
+    const m = objects[obj?.otyp]?.material | 0;
+    return (m <= MAT_WOOD_Z && m !== MAT_LIQUID) || m === MAT_PLASTIC;
+}
+// C ref: objnam.c erosion_matters — weapons, armour, ball/chain, weptools.
+function erosion_matters_obj(obj) {
+    return obj?.oclass === WEAPON_CLASS || obj?.oclass === ARMOR_CLASS;
+}
+// C ref: pline.c vtense(subj, verb) — "gloves smoulder" but "helmet smoulders".
+function vtense_burn(ostr, verb) {
+    return /s$/.test(ostr || '') ? verb : verb + 's';
+}
+async function erode_burn(victim, slot, ostr) {
     const obj = worn_slot(victim, slot);
-    if (obj) obj.oeroded = (obj.oeroded | 0) + 1;
-    if (victim === game.u) await update_topl(`Your ${ostr} smoulders!`);
-    else if (canspotmon(victim)) await update_topl(`${Monnam(victim)}'s ${ostr} smoulders!`);
+    if (!obj) return ER_NOTHING;
+    // inventory_resistance_check(AD_FIRE): rn2(100) only when the hero carries
+    // an item conferring partial fire resistance — none in the covered sessions.
+    const erosion = obj.oeroded | 0;
+    if (!erosion_matters_obj(obj)) return ER_NOTHING;
+    if (!is_flammable_obj(obj) || (obj.oerodeproof && obj.rknown)) return ER_NOTHING;
+    if (obj.oerodeproof || (obj.blessed && !rnl(4))) {
+        if (obj.oerodeproof) obj.rknown = true;
+        return ER_NOTHING;
+    }
+    if (erosion < MAX_ERODE) {
+        const adverb = (erosion + 1 === MAX_ERODE) ? ' completely'
+                     : erosion ? ' further' : '';
+        const verb = vtense_burn(ostr, 'smoulder');
+        if (victim === game.u) await update_topl(`Your ${ostr} ${verb}${adverb}!`);
+        else if (canspotmon(victim))
+            await update_topl(`${Monnam(victim)}'s ${ostr} ${verb}${adverb}!`);
+        obj.oeroded = erosion + 1;
+        return ER_DAMAGED;
+    }
+    // burn_dmg() passes no EF_DESTROY, so a fully-eroded item just survives.
+    return ER_NOTHING;
 }
 
 // ── destroy_items (zap.c) ────────────────────────────────────────────────
@@ -2329,8 +2497,15 @@ async function done_died() {
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
     } else {
-        // "OK, so you don't die." (savelife); not reached — input ends at prompt.
-        game._pending_message = 'OK, so you don\'t die.';
+        // C ref: end.c done():1113-1116 — pline("OK, so you don't die.") then
+        // savelife(how), which restores uhp to min(uhpmax, 50+10*Con/2).  The
+        // old stub only queued the message: the hero stayed at uhp 0, so
+        // regen_hp() rolled an extra rn2(100) on EVERY later turn
+        // (w3-elf-wiz-debug step 353).  update_topl so the caller's following
+        // message ("You are blinded by the flash!") shares the topline.
+        await update_topl('OK, so you don\'t die.');
+        const { savelife } = await import('./end.js');
+        savelife(0 /* DIED */);
     }
 }
 
@@ -2667,8 +2842,12 @@ async function flashburn(duration, _via_lightning) {
     const u = game.u;
     if (Blind()) return false;
     await update_topl('You are blinded by the flash!');
-    if (!u.uprops) u.uprops = {};
-    u.uprops.Blinded = (u.uprops.Blinded | 0) + (duration | 0);
+    // C ref: potion.c make_blinded(Blinded + duration, FALSE) — the timer is
+    // u.ublindf-free HBlinded, which this port keeps in u.blinded (Blind(),
+    // botl.c's " Blind" and timeout.js's BLINDED entry all read that field).
+    // Writing u.uprops.Blinded instead left the hero seeing normally.
+    u.blinded = (u.blinded | 0) + (duration | 0);
+    game.botl = true;
     return true;
 }
 
@@ -2737,10 +2916,16 @@ async function done_selfzap(how) {
     if (wizard || discover) {
         const ans = await y_n('Die?', 'yn\x1b', 'n');
         if (ans !== 'y') {
-            // "OK, so you don't die." + savelife() — not exercised (the contest
-            // player accepts death); leave the message pending for the next turn.
-            game._pending_message = "OK, so you don't die.";
-            game._toplin = 1;
+            // C ref: end.c done():1113-1116 — pline("OK, so you don't die.")
+            // then savelife(how).  Declining the query used to leave the
+            // message pending and RETURN WITHOUT savelife(), so the hero kept
+            // uhp 0 (which then rolled regen_hp's rn2(100) every later turn)
+            // and never got nomovemsg/multi = -1.  update_topl so the caller's
+            // next message ("You are blinded by the flash!") lands on the same
+            // topline, exactly as C's two consecutive plines do.
+            await update_topl("OK, so you don't die.");
+            const { savelife } = await import('./end.js');
+            savelife(how);
             return;
         }
     }

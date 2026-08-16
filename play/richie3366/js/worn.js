@@ -3,14 +3,14 @@
 //   extra_pref, racial_exception; mon.c check_gear_next_turn.
 // Named omissions: wear plines when !creation (freeze still applied);
 //   artifact_light begin_burn/end_burn; full w_blocks Clairvoyance/Eyes;
-//   dragon-scale altprop beyond alchemy smock; find_mac;
+//   dragon-scale altprop beyond alchemy smock;
 //   extract_from_minvent; youmonst which_armor slot table (hero uses uarm*).
 // D-0855: nambuf Monnam/mon_nam at m_dowear_type entry (Hallu display RNG).
 
 import { game } from './gstate.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL,
-    I_SPECIAL,
+    I_SPECIAL, AC_MAX,
     INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT, STEALTH,
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
@@ -161,6 +161,30 @@ function ARM_BONUS(obj) {
     const b = obj.oeroded2 | 0;
     const erode = Math.min(a > b ? a : b, a_ac);
     return a_ac + spe - erode;
+}
+
+/**
+ * C ref: worn.c find_mac — start at mon->data->ac, walk minvent where
+ * owornmask & misc_worn_check, subtract ARM_BONUS (or a flat 2 for
+ * AMULET_OF_GUARDING), then cap abs() at AC_MAX like find_ac.
+ */
+export function find_mac(mon) {
+    let base = (mon?.data?.ac ?? 10) | 0;
+    const mwflags = mon?.misc_worn_check | 0;
+    for (let obj = mon?.minvent; obj; obj = obj.nobj) {
+        if ((obj.owornmask | 0) & mwflags) {
+            if ((obj.otyp | 0) === AMULET_OF_GUARDING) {
+                base -= 2; /* fixed amount, not impacted by erosion */
+            } else {
+                base -= ARM_BONUS(obj);
+            }
+        }
+    }
+    if (Math.abs(base) > AC_MAX) {
+        const s = base < 0 ? -1 : base !== 0 ? 1 : 0;
+        base = s * AC_MAX;
+    }
+    return base | 0;
 }
 
 /** C ref: prop.h res_to_mr */

@@ -8702,6 +8702,9 @@ function load_tut1() {
 
     tut1_engr(72, 2, 'You "quaff" potions with \'q\'');
     tut1_object(xstart, ystart, 72, 2, POT_OBJECT_DETECTION, -127, 'blessed');
+    // C: tut-1.lua has no des.mineralize / no kelp object. Kelp is
+    // mklev.c mineralize(-1,-1,-1,-1,FALSE) in level_finalize_topology
+    // after makelevel (map 'P'→POOL / 'W'→WATER; D-1059).
 }
 
 /**
@@ -18026,25 +18029,43 @@ async function fill_ordinary_room(croom, bonus_items) {
 // Mineralize
 // ============================================================
 
+/**
+ * C ref: mklev.c water_has_kelp — POOL or (WATER && !Is_waterlevel)
+ * burns rn2(kelp_pool); MOAT burns rn2(kelp_moat). Short-circuit
+ * matches C && / || so WATER on the water plane does not consume
+ * kelp_pool (tut-1 is not endgame; D-1059).
+ */
 function water_has_kelp(x, y, kelp_pool, kelp_moat) {
     const loc = game.level.at(x, y);
     if (!loc) return false;
-    if (kelp_pool && (loc.typ === POOL || loc.typ === WATER) && !rn2(kelp_pool)) return true;
-    if (kelp_moat && loc.typ === MOAT && !rn2(kelp_moat)) return true;
+    if ((kelp_pool && (loc.typ === POOL
+                       || (loc.typ === WATER && !Is_waterlevel(game.u?.uz)))
+         && !rn2(kelp_pool))
+        || (kelp_moat && loc.typ === MOAT && !rn2(kelp_moat)))
+        return true;
     return false;
 }
 
 function mineralize_kelp(kelp_pool, kelp_moat) {
-    if (kelp_pool < 0) kelp_pool = 10;
-    if (kelp_moat < 0) kelp_moat = 30;
     for (let x = 2; x < COLNO - 2; x++)
         for (let y = 1; y < ROWNO - 1; y++)
             if (water_has_kelp(x, y, kelp_pool, kelp_moat))
                 mksobj_at(KELP_FROND, x, y, true, false);
 }
 
-function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
+/**
+ * C ref: mklev.c mineralize. Default args -1; kelp then most specials
+ * skip gold/gems. In_endgame returns before kelp unless skip_lvl_checks
+ * (des.mineralize / lspo_mineralize). tut-1 uses the mklev() call
+ * mineralize(-1,-1,-1,-1,FALSE) after load_tut1 (D-1059).
+ */
+export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
+    if (kelp_pool < 0) kelp_pool = 10;
+    if (kelp_moat < 0) kelp_moat = 30;
+    // C: Place kelp, except on the plane of water (all endgame dnum).
+    if (!skip_lvl_checks && In_endgame(game.u?.uz))
+        return;
     mineralize_kelp(kelp_pool, kelp_moat);
     // C ref: mklev.c mineralize — hell / V_tower / rogue / arboreal / most
     // specials skip rock deposits after kelp.

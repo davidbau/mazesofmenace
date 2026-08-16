@@ -27,6 +27,9 @@ import { mon_hates_silver } from './mon.js';
 import { which_armor } from './worn.js';
 import { attacktype, AT_WEAP } from './monattk_data.js';
 import { acurr_eff } from './attrib.js';
+// artifact.c spec_abon()/spec_dbon(): both were local `return 0` stubs, so a
+// wielded artifact's rnd(attk.damn) to-hit draw never happened.
+import { spec_abon, spec_dbon } from './artifact.js';
 
 // C ref: objects.h oc_material enum (mkobj.js keeps the same numbering).
 const MAT_LEATHER = 7, MAT_SILVER = 14;
@@ -167,11 +170,6 @@ function is_pool_at(x, y) {
     return typ === POOL || typ === MOAT || typ === WATER;
 }
 
-// artifact.c spec_abon/spec_dbon — no artifact is wired into the live combat
-// paths (js/artifact.js is not imported by anything), so both read 0.  Kept as
-// named seams so wiring artifact.js later is a one-line change here.
-function spec_abon(_otmp, _mon) { return 0; }
-function spec_dbon(_otmp, _mon, _tmp) { return 0; }
 
 // C ref: weapon.c:216 dmgval(otmp, mon).
 export function dmgval(otmp, mon) {

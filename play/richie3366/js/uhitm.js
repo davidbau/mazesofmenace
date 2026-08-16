@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import {
-    IS_OBSTRUCTED, HMON_MELEE, HMON_THROWN, STRAT_WAITMASK,
+    IS_OBSTRUCTED, HMON_MELEE, HMON_THROWN, HMON_APPLIED, STRAT_WAITMASK,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
@@ -713,7 +713,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
         && (obj === game.u?.uwep || (obj === game.u?.uswapwep && game.u?.twoweap))
         && (obj.oclass === WEAPON_CLASS
             || game.objects?.[obj.otyp]?.oc_skill != null)
-        && thrown === HMON_MELEE
+        && (thrown === HMON_MELEE || thrown === HMON_APPLIED)
         && dmg > 0
         && (game.u?.uconduct?.weaphit | 0) <= 1) {
         first_weapon_hit(obj);
@@ -733,13 +733,25 @@ async function hmon(mon, obj, thrown, _dieroll) {
     }
 
     // C: hmon_hitmon_msg_hit — !hittxt && (!destroyed || thrown-multishot)
-    if (thrown === HMON_MELEE && !destroyed && !hittxt) {
-        if (game.flags?.verbose !== false) {
-            // C: You("%s %s%s", verb, mon_nam, canseemon ? exclam(dmg) : ".")
-            const punct = canseemon(mon) ? exclam(dmg) : '.';
-            await pline(`You ${hmon_hit_verb(obj)} ${mon_nam(mon)}${punct}`);
-        } else {
-            await pline('You hit it.');
+    if (!hittxt && !destroyed) {
+        if (thrown === HMON_MELEE) {
+            if (game.flags?.verbose !== false) {
+                const punct = canseemon(mon) ? exclam(dmg) : '.';
+                await pline(`You ${hmon_hit_verb(obj)} ${mon_nam(mon)}${punct}`);
+            } else {
+                await pline('You hit it.');
+            }
+        } else if (thrown) {
+            // C: thrown/kicked/applied → hit(mshot_xname); mshot deferred
+            const missile = xname(obj);
+            const bx = game.bhitpos?.x ?? mon.mx;
+            const by = game.bhitpos?.y ?? mon.my;
+            const whom = ((cansee(bx, by) || canspotmon(mon))
+                && game.flags?.verbose !== false)
+                ? mon_nam(mon) : 'it';
+            await pline(
+                `${The(missile)} ${vtense(missile, 'hit')} ${whom}${exclam(dmg)}`,
+            );
         }
     }
 
@@ -761,7 +773,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
     return true;
 }
 
-export { hmon };
+export { hmon, passive_obj };
 
 /**
  * C ref: uhitm.c known_hitum — missum or hmon; flee rn2(25) if survives low.

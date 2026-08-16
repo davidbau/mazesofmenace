@@ -5,6 +5,7 @@ import { game } from './gstate.js';
 import {
     TIMEOUT, FROMOUTSIDE, FUMBLING, FAST, FOOT, ICE, STRAT_WAITMASK,
     UNCHANGING, LAST_PROP, WOUNDED_LEGS, CONFUSION, BLINDED, DEAF,
+    GLIB,
     STUNNED, HALLUC, LEVITATION, INVIS, SEE_INVIS, CLAIRVOYANT,
     TELEPORT, REGENERATION,
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_FREE,
@@ -66,6 +67,7 @@ const TIMEOUT_FLAT = {
     [TELEPORT]: 'HTeleportation',
     [REGENERATION]: 'HRegeneration',
     [FAST]: 'HFast',
+    [GLIB]: 'Glib',
 };
 
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
@@ -232,7 +234,7 @@ function incr_itimeout_HFumbling(incr) {
  * switch cases for those props still deferred (silent clear).
  * Named omissions: luck baseluck; Stoned/Slimed/Sick/… dialogues;
  * STUNNED/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… expiry messages;
- * Glib; ublesscnt (in allmain); usptime; ugallop; delayed
+ * GLIB `make_glib(0)` inventory on expiry; ublesscnt (in allmain); usptime; ugallop; delayed
  * killers; defer_decor; full ice/mount slip_or_trip arms;
  * you_unwere callers beyond mtimedone (pray TROUBLE / potion).
  * u.uinvulnerable early-return freezes all TIMEOUT (D-0928 #1171).
@@ -383,6 +385,7 @@ export async function nh_timeout() {
                 u.Hallucination = !!(u.HHallucination & TIMEOUT);
             }
             if (p === STUNNED) u.Stunned = u.HStun;
+            if (p === GLIB) u.HGlib = next;
         }
         // Expiry switch (STONED/HALLUC/INVIS/…) deferred — silent clear.
     }
@@ -493,10 +496,14 @@ function carried(obj) {
     return !!obj && obj.where === OBJ_INVENT;
 }
 
-/** C ref: zap.c get_obj_location — invent/floor/minvent + flags. */
+/** C ref: zap.c get_obj_location — invent/floor/minvent + flags.
+ * hatch_egg / burn_object / fig_transform / catch_lit pass 0:
+ * OBJ_CONTAINED and OBJ_BURIED are false unless CONTAINED_TOO /
+ * BURIED_TOO. Restore must keep cobj where=OBJ_CONTAINED
+ * (restore.c restobjchn; D-1054) — not the parent chain's where. */
 export function get_obj_location(obj, locflags = 0) {
     if (!obj) return null;
-    switch (obj.where) {
+    switch (obj.where | 0) {
     case OBJ_INVENT:
         return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
     case OBJ_FLOOR:
@@ -888,7 +895,7 @@ function Deaf_hatch() {
         || ((u.HDeaf | 0) & TIMEOUT) || (u.EDeaf | 0));
 }
 
-/** C mondata.h is_silent — msound == MS_SILENT. Tables omit msound → 0. */
+/** C mondata.h is_silent — ptr->msound == MS_SILENT. */
 function is_silent_hatch(ptr) {
     return (ptr?.msound | 0) === 0;
 }
@@ -994,8 +1001,7 @@ export function learn_egg_type(mnum) {
  * G_UNIQ/G_GENOD/G_EXTINCT skip spawn; enexto+makemon NO_MINVENT|MM_NOMSG;
  * tamedog yours||carried-dragon; leftover rnd(12) re-arm; invent useup /
  * floor extract+obfree+hideunder. Named omit: SetVoice before Gleep;
- * update_inventory; migrating #if 0; generated msound (cry_sound default
- * chitter/gurgle); impossible() unknown where.
+ * update_inventory; migrating #if 0; impossible() unknown where.
  */
 export async function hatch_egg(egg, timeout) {
     if (!egg) return;

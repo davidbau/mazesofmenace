@@ -37,7 +37,7 @@ export const SAVE_SKIP_KEYS = new Set([
     'viz_array', '_viz_rmin', '_viz_rmax',
     'vis_start_col', 'vis_start_row', 'vis_step',
     // display / status / top-line caches — rebuilt by docrt()/bot()
-    '_screen_output', '_toplines', '_toplin', '_pending_message',
+    '_screen_output', '_toplines', '_toplin', '_pending_message', '_prevmsg',
     'active_buf', '_wc', 'cs_func', 'cs_arg', 'cs_left', 'cs_right', 'cs_rows',
 ]);
 

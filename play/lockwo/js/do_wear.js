@@ -276,7 +276,10 @@ export async function toggle_displacement(obj, oldprop, on) {
         && ((!Blind() && !u.uswallow && !u.uprops?.Invis)
             || u.uprops?.Telepat || u.uprops?.Detect_monsters)) {
         if (obj) makeknown(obj.otyp);
-        await pline(`You feel that monsters${on ? '' : ' no longer'} have difficulty pinpointing your location.`);
+        // C ref: do_wear.c You_feel() is pline(), i.e. update_topl(): the
+        // following on_msg() ("You are now wearing ...") must page THIS line
+        // with a --More-- instead of overwriting it (seed0360 step 497).
+        await update_topl(`You feel that monsters${on ? '' : ' no longer'} have difficulty pinpointing your location.`);
     }
 }
 

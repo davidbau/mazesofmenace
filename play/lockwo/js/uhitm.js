@@ -35,7 +35,7 @@ import { dmgval, hitval, abon, dbon, weapon_type, is_axe,
 import { register_monnam_hooks, rndmonnam, bogon_is_pname } from './do_name.js';
 import { rn2, rnd, d } from './rng.js';
 import { cansee, couldsee } from './vision.js';
-import { m_at, newsym, map_invisible, canseemon_shared } from './display.js';
+import { m_at, newsym, map_invisible, unmap_object, canseemon_shared } from './display.js';
 import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, ACCESSIBLE,
          TAINT_AGE, CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE,
          SHOPBASE, engulfing_u, STRAT_WAITMASK,
@@ -48,7 +48,9 @@ import { exercise, adjalign } from './attrib.js';
 import { DEADMONSTER, Protection_from_shape_changers, mmove_of, base_mmove,
          healmon, mvitals_died } from './mon.js';
 import { MFLAGS1, MFLAGS2, M1_WALLWALK, M2_NASTY, M2_ORC, M2_UNDEAD, M2_DEMON,
-         M2_COLLECT, humanoid } from './monflags_data.js';
+         M2_COLLECT, M2_HUMAN, M2_HOSTILE, M2_PNAME, humanoid } from './monflags_data.js';
+// C ref: include/monflag.h G_UNIQ (0x1000) — generated only once.
+const G_UNIQ_XM = 0x1000;
 const mflags1_of = (ptr) => (ptr?.pmidx != null ? (MFLAGS1[ptr.pmidx] ?? 0) : 0);
 const mflags2_of = (ptr) => (ptr?.pmidx != null ? (MFLAGS2[ptr.pmidx] ?? 0) : 0);
 import { dmgtype, attacktype, AT_ENGL, AT_HUGS, AD_STCK } from './monattk_data.js';
@@ -297,7 +299,10 @@ async function overexertion() {
 // square.  Same shape as the copies in dogmove.js/mon.js/muse.js.
 function canseemon(mtmp) {
     if (!mtmp) return false;
-    if (game.u?.uswallow) return true;
+    // C ref: display.h canseemon() has NO u.uswallow arm — from inside a
+    // stomach vision_recalc() blanks viz_array, so cansee() is false even for
+    // the engulfer.  The blanket `return true` here made the hit message print
+    // exclam(dmg) where C prints the flat "." (uhitm.c:1659).
     if (mtmp.minvis && !game.u?.see_invis) return false;
     // C ref: display.h _mon_visible() — `(!minvis || See_invisible) && !mundetected`.
     if (mtmp.mundetected) return false;
@@ -1152,6 +1157,32 @@ async function hmon_hitmon(mon, weapon, dieroll) {
     }
     const train_weapon_skill = dmg > 1;   // uhitm.c:849 / :946
 
+    // C ref: uhitm.c:1015 hmon_hitmon_do_hit() — `if (obj->oartifact
+    // && artifact_hit(&youmonst, mon, obj, &hmd->dmg, hmd->dieroll))`.  Runs
+    // AFTER the train_weapon_skill snapshot and BEFORE dmg_recalc's STR/skill
+    // bonuses.  js/artifact.js was imported by nothing, so spec_dbon() never
+    // ran: a PHYS(n,0) artifact (Grayswandir, Dragonbane, …) doubles the blow
+    // and every artifact hit was landing for half of C's damage.
+    if (weapon?.oartifact) {
+        const { artifact_hit } = await import('./artifact.js');
+        const mdmg = { d: dmg };
+        const prevmsg = game._pending_message;
+        const special = await artifact_hit(game.youmonst || game.u, mon,
+                                           weapon, mdmg, dieroll);
+        dmg = mdmg.d;
+        if (game._pending_message && game._pending_message !== prevmsg) {
+            const { update_topl } = await import('./display.js');
+            const line = game._pending_message;
+            game._pending_message = prevmsg;
+            await update_topl(line);
+        }
+        if (special) {
+            /* C: artifact killed the monster / beheading missed a headless one */
+            if (DEADMONSTER(mon)) return false;
+            if (dmg === 0) return true;
+        }
+    }
+
 
     // hmon_hitmon_dmg_recalc: strength + skill bonuses (get_dmg_bonus).  For a
     // two-weapon swing the STR bonus is scaled to 3/4; udaminc is 0 for the
@@ -1297,11 +1328,12 @@ async function abuse_dog(mtmp) {
         mtmp.edog.abuse = (mtmp.edog.abuse || 0) + 1;
     // m_unleash() needs a leash, which this port never creates.
     if (mtmp.mx !== 0) {
-        if (mtmp.mtame && rn2(mtmp.mtame)) {
-            /* yelp(mtmp) */
-        } else {
-            /* growl(mtmp) */
-        }
+        // Both sounds DRAW while hallucinating (ROLL_FROM(h_sounds) == rn2(35)),
+        // and both wake_nearto(), which suppresses the woken sleepers' disturb()
+        // rolls next turn — so neither can be stubbed out.
+        const { yelp, growl } = await import('./sounds.js');
+        if (mtmp.mtame && rn2(mtmp.mtame)) await yelp(mtmp);
+        else await growl(mtmp);
         if (!mtmp.mtame) newsym(mtmp.mx, mtmp.my);
     }
 }
@@ -1401,10 +1433,25 @@ async function passive(mon, weapon, mhit, malive, aatyp) {
             }
             break;
         case AD_STUN:                          // specifically yellow mold
-            // make_stunned(tmp, TRUE) consumes no RNG.  Left unported because
-            // this tree has no property-timeout machinery for HStun: writing
-            // u.ustun without a decrementer would stun the hero permanently,
-            // which is further from C than not stunning at all.
+            // C ref: uhitm.c:6085 `if (!Stunned) make_stunned((long) tmp, TRUE)`.
+            // The timer IS materialised — u.uprops.Stun is timeout.js's STUNNED
+            // entry, and cmd.js b_trapped() already writes it the same way.
+            // Draws no RNG itself, but it makes u_maybe_impaired() true, so
+            // every later move runs impaired_movement()'s confdir() rn2(8)
+            // redirect (elf-wiz step 282) and the botl gains " Stun".
+            {
+                const u = game.u;
+                if (u && !((u.uprops?.Stun || 0) > 0)) {
+                    u.uprops = u.uprops || {};
+                    u.uprops.Stun = tmp;
+                    // update_topl, not pline: C's You() lands on the SAME
+                    // topline as the "You miss the yellow mold." that the same
+                    // command already printed ("... mold.  You stagger...").
+                    const { update_topl } = await import('./display.js');
+                    await update_topl('You stagger...');
+                    game.botl = true;
+                }
+            }
             break;
         case AD_FIRE:
             if (monnear(mon, game.u.ux, game.u.uy)) {
@@ -1556,6 +1603,11 @@ function unstuck_mon(mtmp) {
     u.ustuck = null;
     u.uswallow = 0;
     // The swallowed branch (repositioning the hero + docrt) needs an engulfer.
+    unstuck_mspec_used(mtmp);
+}
+// C ref: mon.c:3462-3466 — the tail of unstuck(); split out so mhitu.c's
+// expels() (which does its own set_ustuck/docrt) can draw the same rnd(2).
+export function unstuck_mspec_used(mtmp) {
     if (!mtmp.mspec_used
         && (dmgtype(mtmp.data, AD_STCK) || attacktype(mtmp.data, AT_ENGL)
             || attacktype(mtmp.data, AT_HUGS)))
@@ -1599,6 +1651,12 @@ export async function killed(mon, opts) {
     // mspec_used = rnd(2) so it can't immediately re-grab; that rnd(2) is a
     // real draw in the kill turn.
     unstuck_mon(mon);
+
+    // C ref: mon.c:3170 mondead() — `if (glyph_is_invisible(levl[mx][my].glyph))
+    // unmap_object(mx, my)` runs just before m_detach.  Killing a monster the
+    // hero can only sense (blind / invisible) must drop the remembered 'I';
+    // m_detach -> mon_leaving_level's newsym() then repaints the real square.
+    if (game.level?.at(x, y)?.invisMon) unmap_object(x, y);
 
     // mondead(): detach the monster from the level BEFORE the once-per-turn
     // mcalcmove realloc (allmain.js) so that loop iterates the post-kill set,
@@ -1698,6 +1756,31 @@ export async function killed(mon, opts) {
         if (leaves_corpse && accessible) {
             make_corpse(mon, x, y);
         }
+    }
+
+    // C ref: mon.c:3638 xkilled() "Punish bad behavior", between the corpse
+    // block and the experience award.  The `(mpeaceful && !rn2(2)) || mtame`
+    // luck penalty DRAWS whenever the victim was peaceful — a pet is peaceful
+    // too, so killing your own dog rolls it (seed0383 step 178).
+    {
+        const mdat0 = mon.data;
+        const alignType = game.u?.ualign?.type ?? 0;
+        const A_CHAOTIC = -1;
+        // mondata.h is_human(ptr) == (mflags2 & M2_HUMAN);
+        // always_hostile(ptr) == (mflags2 & M2_HOSTILE).
+        const f2_0 = mflags2_of(mdat0);
+        if ((f2_0 & M2_HUMAN) && !(f2_0 & M2_HOSTILE) && (mon.malign | 0) <= 0
+            && alignType !== A_CHAOTIC) {
+            change_luck(-2);
+            await update_topl('You murderer!');
+        }
+        if ((mon.mpeaceful && !rn2(2)) || mon.mtame)      // mon.c:3664
+            change_luck(-1);
+        const sgn = (v) => (v > 0 ? 1 : v < 0 ? -1 : 0);
+        const S_UNICORN = 21;   // monsym.h (mons[].mcls for the unicorn class)
+        if (mdat0?.mcls === S_UNICORN
+            && sgn(alignType) === sgn(mdat0?.maligntyp | 0))
+            change_luck(-5);
     }
 
     // C ref: mon.c xkilled() — give experience points (no RNG).  experience()
@@ -1941,11 +2024,16 @@ export function mon_nam(mtmp) {
 // (golem or S_VORTEX).  These are "destroyed" rather than "killed".  NOTE:
 // elementals are LIVING in C (S_ELEMENTAL is not golem/vortex/undead), so an
 // earth elemental is "killed", not "destroyed" (seed4500 step-269).
+const S_VORTEX_U = 22, S_GOLEM_U = 55;   // defsym.h
 function nonliving(mtmp) {
-    const name = mtmp?.data?.name || '';
-    // is_undead (M2_UNDEAD): zombies, mummies, skeletons, wraiths, ghouls,
-    // ghosts, liches, vampires, shades + manes; weirdnonliving: golems, vortices.
-    return /\bzombie\b|\bmummy\b|\bskeleton\b|\bwraith\b|\bghoul\b|\bghost\b|\blich\b|\bvampire\b|golem\b|\bvortex\b|\bshade\b|\bmanes\b/.test(name);
+    // Derived from the generated M2_UNDEAD flag + monster class, NOT a species
+    // name regex: a regex answers FALSE for every undead whose name it forgot
+    // and TRUE for lookalikes (a "vampire bat" is not M2_UNDEAD).
+    const p = mtmp?.data;
+    if (!p) return false;
+    if (mflags2_of(p) & M2_UNDEAD) return true;
+    if (p.name === 'manes') return true;
+    return p.mcls === S_GOLEM_U || p.mcls === S_VORTEX_U;
 }
 
 // C ref: do_name.c Monnam()/x_monnam() — capitalized monster name.  Minimal
@@ -2054,7 +2142,18 @@ export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
 
     const named = adj + base;
 
-    switch (article) {
+    // C ref: do_name.c:1000 — name_at_start is type_is_pname(mdat) for a plain
+    // species name.  A proper-noun species ("Medusa", a quest leader) drops its
+    // article entirely; the Wizard of Yendor takes "the" instead.  Any G_UNIQ
+    // monster asked for with ARTICLE_A is upgraded to "the" as well.
+    let art = article;
+    const mdat = mtmp?.data;
+    if ((mflags2_of(mdat) & M2_PNAME) && (art === 3 || !has_adjectives))
+        art = (mdat?.name === 'Wizard of Yendor') ? 1 : 0;
+    else if (((mdat?.geno ?? 0) & G_UNIQ_XM) !== 0 && art === 2)
+        art = 1;
+
+    switch (art) {
     case 3: return 'your ' + named; // ARTICLE_YOUR
     case 1: return 'the ' + named;  // ARTICLE_THE
     case 2: return an(named);       // ARTICLE_A

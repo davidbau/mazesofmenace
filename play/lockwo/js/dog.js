@@ -21,13 +21,13 @@ const SADDLE = 235;
 // kitten additionally has M3_INFRAVISION (0x100).
 const PET_DATA = {
     16: { name: 'little dog', mlet: 'd', mcolor: 15, mflags3: 0x200 }, // PM_LITTLE_DOG
-    34: { name: 'kitten', mlet: 'f', mcolor: 15, mflags3: 0x300 },     // PM_KITTEN (INFRAVISIBLE|INFRAVISION)
-    102: { name: 'pony', mlet: 'u', mcolor: 3, mflags3: 0x200 },        // PM_PONY (brown)
+    32: { name: 'kitten', mlet: 'f', mcolor: 15, mflags3: 0x300 },     // PM_KITTEN (INFRAVISIBLE|INFRAVISION)
+    100: { name: 'pony', mlet: 'u', mcolor: 3, mflags3: 0x200 },       // PM_PONY (brown)
 };
 
 export const PM_LITTLE_DOG = 16;
-export const PM_KITTEN = 34;
-export const PM_PONY = 102;
+export const PM_KITTEN = 32;
+export const PM_PONY = 100;
 
 const ROLE_PETNUM = {
     Caveman: PM_LITTLE_DOG,

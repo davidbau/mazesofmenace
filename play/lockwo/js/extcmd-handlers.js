@@ -56,6 +56,7 @@ import { name_to_pmidx, monster_by_pmidx } from './makemon.js';
 import { polyok_flag } from './monflags_data.js';
 import { polymon, newman, domonability, PM_HUMAN } from './polyself.js';
 import { obj_resists } from './zap.js';
+import { timed_prop } from './timeout.js';
 
 // ── extcmd flag bits (only the ones we filter on) ──
 // C ref: hack.h AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD.
@@ -976,10 +977,16 @@ async function create_particular() {
     // C makemon.c:1473-1508 — newsym + "<Mon> appears<place>." (MM_NOEXCLAM, so
     // no " suddenly" and a trailing '.').  what = Amonnam(mtmp) when spottable.
     newsym(made.x, made.y);
-    const what = capitalize(x_monnam(made.mtmp, /*ARTICLE_A*/ 2, null, 0, false));
-    const place = made.next2u ? ' next to you'
-        : (distu_xy(made.x, made.y) <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
-    await pline(`${what} appears${place}.`);
+    // C ref: makemon.c:1479 — the "<Mon> appears." line is gated on
+    // `canseemon(mtmp) || sensemon(mtmp)`: a BLIND hero who ^G's a monster gets
+    // NO message at all (C leaves the top line empty).  Printing it
+    // unconditionally emitted a phantom "It appears close by." line.
+    if (canspotmon(made.mtmp)) {
+        const what = capitalize(x_monnam(made.mtmp, /*ARTICLE_A*/ 2, null, 0, false));
+        const place = made.next2u ? ' next to you'
+            : (distu_xy(made.x, made.y) <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
+        await pline(`${what} appears${place}.`);
+    }
 }
 
 // C ref: hacklib.c upstart() — capitalize first letter.
@@ -2743,6 +2750,10 @@ const DEFAULT_TIMEOUT_INCR = 30;   // C ref: wizcmds.c:945
 // prompt and a blank line are prepended, in that order, to the item list).
 function wizIntrinsicEntries() {
     const uprops = game.u?.uprops || {};
+    const propTimeout = (propId, key) => {
+        const t = timed_prop(propId);
+        return t ? (t.get(game.u || {}) || 0) : (uprops[key] || 0);
+    };
     const entries = [
         { text: 'Which intrinsics?', attr: ATR_INVERSE },
         { text: '', attr: 0 },
@@ -2758,7 +2769,7 @@ function wizIntrinsicEntries() {
         // Grayswandir vs hallucination: never offered.
         if (propId === 'HALLUC_RES') continue;
         if (propId === 'FIRE_RES') entries.push({ text: '--', attr: 0 });
-        const oldtimeout = uprops[key] || 0;
+        const oldtimeout = propTimeout(propId, key);
         // C: Sprintf(buf, "%-27s [%li]", propname, oldtimeout)
         const label = oldtimeout ? `${name.padEnd(27)} [${oldtimeout}]` : name;
         entries.push({ text: label, attr: 0, item: { propId, name, key, oldtimeout, selected: false } });
@@ -2843,7 +2854,8 @@ async function wiz_intrinsic() {
     for (const e of entries) {
         const it = e.item;
         if (!it || !it.selected) continue;
-        const oldtimeout = u.uprops[it.key] || 0;
+        const slot = timed_prop(it.propId);
+        const oldtimeout = slot ? (slot.get(u) || 0) : (u.uprops[it.key] || 0);
         let newtimeout = oldtimeout + DEFAULT_TIMEOUT_INCR;
         // C: SICK/SLIMED/STONED never have their existing timeout extended.
         if ((it.propId === 'SICK' || it.propId === 'SLIMED' || it.propId === 'STONED')
@@ -2858,15 +2870,32 @@ async function wiz_intrinsic() {
             await make_hallucinated(newtimeout, true, 0);
             continue;
         }
-        u.uprops[it.key] = newtimeout;
+        // C ref: wizcmds.c:1020 `case BLINDED: make_blinded(newtimeout, TRUE)`
+        // — also NOT the default arm, so there is no "Timeout for blinded"
+        // line.  make_blinded only talks when sight is actually regained, so
+        // topping up an already-blind hero is silent (and therefore raises no
+        // --More--, which is what kept the following steps misaligned).
+        if (it.propId === 'BLINDED') {
+            const wasBlind = Blind();
+            slot.set(u, newtimeout);
+            game.botl = true;
+            if (!Blind() && wasBlind) {
+                game.vision_full_recalc = 1;
+                await update_topl('You can see again.');
+            }
+            continue;
+        }
+        if (slot) slot.set(u, newtimeout); else u.uprops[it.key] = newtimeout;
         game.botl = true;
         // update_topl, not pline: the two "Timeout for ..." lines share one
         // topline (C update_topl appends with two spaces while it fits).
         await update_topl(`Timeout for ${it.name} ${oldtimeout ? 'increased by' : 'set to'} ${DEFAULT_TIMEOUT_INCR}.`);
     }
     // C: docrt() — clears the screen (flushing the topline through --More--)
-    // and repaints the map.
-    await topl_more();
+    // and repaints the map.  A pick whose handler prints nothing (BLINDED on an
+    // already-blind hero) leaves the topline EMPTY, and C never --More--s an
+    // empty topline.
+    if (game._pending_message) await topl_more();
     game._pending_message = '';
     // C ref: display.c docrt():1727 — `if (u.uswallow) { swallowed(1); goto
     // post_map; }`.  That is a SECOND full stomach repaint after the one

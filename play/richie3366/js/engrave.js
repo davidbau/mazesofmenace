@@ -1,20 +1,24 @@
 // engrave.js — Engrave command / floor inscriptions (partial).
 // C ref: engrave.c doengrave, engrave occupation, make_engr_at, engr_at,
-//        read_engr_at, wipeout_text, wipe_engr_at, random_engraving,
-//        make_grave, can_reach_floor; hack.c maybe_smudge_engr.
+//        read_engr_at, wipeout_text, wipe_engr_at, u_wipe_engr,
+//        random_engraving, make_grave, can_reach_floor;
+//        hack.c maybe_smudge_engr.
 //
 // Branch envelope: u_can_engrave floor gate + getobj write-with (hands `-`
 // SUGGEST) + DUST fingertip You/getlin + literate bump + DUST/blood/
 // Blind/Confusion/Stunned/Hallu mix-up + set_occupation one-tick finish
 // via make_engr_at (Elbereth → exercise(A_WIS,TRUE)); look_here/`:` via
-// read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind); mklev niche age
-// via wipe_engr_at → wipeout_text (seed==0 RNG path); fill graffiti via
+// read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind); `u_wipe_engr`
+// → can_reach_floor(TRUE)+wipe_engr_at (D-1051 apply pole/grapple);
+// mklev niche age via wipe_engr_at → wipeout_text (seed==0 RNG path);
+// fill graffiti via
 // random_engraving → getrumor or get_rnd_text(ENGRAVEFILE);
 // mklev graves via make_grave → get_rnd_text(EPITAPHFILE) HEADSTONE;
 // domove smudge via maybe_smudge_engr → wipe_engr_at(rnd(5)).
 // Named omissions: wand/weapon/marker/towel/gem/ring stylus sfx;
 // altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
-// dulling occupation; del_engr/rloc_engr; u_wipe_engr body; livelog;
+// dulling occupation; del_engr/rloc_engr; livelog;
+// allmain/dokick/uhitm `u_wipe_engr` callers still stubbed;
 // demon/vampire blood default beyond type; Blind feel path for
 // engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
 // (non-zero) path; can_reach_floor ustuck-hugs /
@@ -279,6 +283,17 @@ export function wipe_engr_at(x, y, cnt, magical = false) {
         return;
     }
     ep.engr_txt.actual_text = txt;
+}
+
+/**
+ * C ref: engrave.c u_wipe_engr — wipe the hero cell when the floor is
+ * reachable. No RNG when there is no engraving (wipe_engr_at returns).
+ */
+export function u_wipe_engr(cnt) {
+    if (can_reach_floor(true)) {
+        const u = game.u || {};
+        wipe_engr_at(u.ux | 0, u.uy | 0, cnt, false);
+    }
 }
 
 /**

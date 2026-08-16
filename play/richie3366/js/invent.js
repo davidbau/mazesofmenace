@@ -1,5 +1,6 @@
 // invent.js — Inventory / discoveries / attributes / #adjust.
 // C ref: invent.c display_inventory / ddoinv / let_to_name / doorganize;
+//        consume_obj_charge unpaid check_unpaid (D-1047);
 //        o_init.c dodiscovered / discover_object;
 //        insight.c enlightenment (BASICENLIGHTENMENT subset).
 // D-0856: display_pickinv / invent_lines obj_to_glyph Hallu display RNG.
@@ -182,6 +183,15 @@ export function calc_capacity(xtra_wt = 0) {
 
 export function near_capacity() {
     return calc_capacity(0);
+}
+
+/**
+ * C ref: hack.c max_capacity — inv_weight() - 2*wc. Negative remaining
+ * until 3× cap (carry_count / lift_object).
+ */
+export function max_capacity() {
+    const wt = inv_weight();
+    return wt - (2 * (game._weight_cap || weight_cap()));
 }
 
 /**
@@ -1211,6 +1221,22 @@ export function discover_object(
 /** C ref: hack.h makeknown — discover_object(x, TRUE, TRUE, TRUE). */
 export function makeknown(otyp) {
     discover_object(otyp, true, true, true);
+}
+
+/**
+ * C ref: invent.c consume_obj_charge — maybe check_unpaid, then spe--,
+ * then update_inventory when known. Named omit: perm_invent redraw.
+ * @param {object} obj
+ * @param {boolean} maybe_unpaid false if caller handles shop billing
+ */
+export async function consume_obj_charge(obj, maybe_unpaid) {
+    if (!obj) return;
+    if (maybe_unpaid) {
+        const { check_unpaid } = await import('./shk.js');
+        await check_unpaid(obj);
+    }
+    obj.spe = (obj.spe | 0) - 1;
+    // C: if (obj->known) update_inventory(); perm_invent redraw deferred
 }
 
 /**

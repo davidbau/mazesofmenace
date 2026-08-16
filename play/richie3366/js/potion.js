@@ -19,7 +19,7 @@ import {
     IS_FOUNTAIN, IS_SINK, IS_POOL,
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
-    TIMEOUT, HALLUC_RES,
+    TIMEOUT, HALLUC_RES, GLIB,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
 } from './const.js';
@@ -415,18 +415,54 @@ export async function make_vomiting(xtime, talk) {
 }
 
 /**
+ * C youprop.h: `#define Glib u.uprops[GLIB].intrinsic` (malady; no
+ * EGlib in C). Remaining timeout is `(HGlib|EGlib)&TIMEOUT` with
+ * HGlib ≡ intrinsic and EGlib ≡ extrinsic (0 unless a leftover
+ * JS extrinsic exists). Leftover flat `u.Glib`/`u.HGlib` only
+ * when the uprops slot has never been created.
+ */
+export function Glib() {
+    const u = game.u || {};
+    const p = u.uprops?.[GLIB];
+    if (p) {
+        const HGlib = p.intrinsic | 0;
+        const EGlib = p.extrinsic | 0;
+        return HGlib | EGlib;
+    }
+    return (u.HGlib | 0) | (u.EGlib | 0) | (u.Glib | 0);
+}
+
+function glib_uprop(u) {
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[GLIB]) {
+        // leftover flats → C Glib intrinsic on first write
+        u.uprops[GLIB] = {
+            intrinsic: (u.HGlib | 0) || (u.Glib | 0),
+            extrinsic: u.EGlib | 0,
+            blocked: 0,
+        };
+    }
+    return u.uprops[GLIB];
+}
+
+/**
  * C ref: potion.c make_glib(xtime)
- * Set/clear Glib TIMEOUT; inventory polish deferred.
+ * set_itimeout(&Glib, xtime); inventory polish deferred.
  */
 export function make_glib(xtime) {
     const u = game.u || (game.u = {});
-    const was = !!(u.Glib | 0);
+    const p = glib_uprop(u);
+    // C: disp.botl |= (!Glib ^ !!xtime)
+    const was = !!(p.intrinsic | 0);
     const now = !!(xtime | 0);
     if (was !== now) {
         if (game.disp) game.disp.botl = true;
         if (game.flags) game.flags.botl = true;
     }
-    u.Glib = ((u.Glib | 0) & ~TIMEOUT) | itimeout(xtime);
+    // C: set_itimeout(&Glib, xtime) — Glib ≡ uprops[GLIB].intrinsic
+    p.intrinsic = ((p.intrinsic | 0) & ~TIMEOUT) | itimeout(xtime);
+    u.HGlib = p.intrinsic;
+    u.Glib = p.intrinsic | (p.extrinsic | 0);
     // C: if (uarmg) update_inventory() — deferred
 }
 

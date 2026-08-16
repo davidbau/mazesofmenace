@@ -63,7 +63,7 @@ function pet_type() {
 }
 
 // C ref: dog.c initedog()
-function initedog(mtmp, everything) {
+export function initedog(mtmp, everything) {
     if (!mtmp.edog) mtmp.edog = {};
     const edogp = mtmp.edog;
     const minhungry = (game.moves ?? 1) + 1000;

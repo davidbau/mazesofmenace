@@ -100,6 +100,8 @@ import {
     UNCHANGING,
     I_SPECIAL,
     TT_PIT,
+    NO_PART, ARM, EYE, FINGER, FINGERTIP, FOOT, HAND, HANDED,
+    HEAD, LEG, TOE, NOSE, HAIR,
 } from './const.js';
 import {
     PM_HUMAN,
@@ -120,9 +122,23 @@ const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL')
 const PM_GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
 const PM_URUK_HAI = monsterNames.indexOf('PM_URUK_HAI');
 const PM_ORC_CAPTAIN = monsterNames.indexOf('PM_ORC_CAPTAIN');
+const PM_OWLBEAR = monsterNames.indexOf('PM_OWLBEAR');
+const PM_MUMAK = monsterNames.indexOf('PM_MUMAK');
+const PM_MASTODON = monsterNames.indexOf('PM_MASTODON');
+const PM_SHARK = monsterNames.indexOf('PM_SHARK');
+const PM_JELLYFISH = monsterNames.indexOf('PM_JELLYFISH');
+const PM_KRAKEN = monsterNames.indexOf('PM_KRAKEN');
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
+const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
+const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
+const PM_KI_RIN = monsterNames.indexOf('PM_KI_RIN');
+const PM_ROTHE = monsterNames.indexOf('PM_ROTHE');
+const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 
-// C ref: monattk.h AT_BREA — breath attack type
+// C ref: monattk.h AT_BREA / AT_CLAW
 const AT_BREA = 12;
+const AT_CLAW = 1;
 
 function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
@@ -182,6 +198,159 @@ function breakarm(ptr) {
 /** C ref: mondata.h slithy — M1_SLITHY */
 function slithy(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_SLITHY);
+}
+
+/**
+ * C ref: polyself.c mbodypart — anatomy noun for a monster's form.
+ * Tables and specials match C order. JS mons() allocates, so compare mndx.
+ */
+const HUMANOID_PARTS = [
+    'arm', 'eye', 'face', 'finger', 'fingertip', 'foot', 'hand', 'handed',
+    'head', 'leg', 'light headed', 'neck', 'spine', 'toe', 'hair', 'blood',
+    'lung', 'nose', 'stomach',
+];
+const JELLY_PARTS = [
+    'pseudopod', 'dark spot', 'front', 'pseudopod extension',
+    'pseudopod extremity', 'pseudopod root', 'grasp', 'grasped',
+    'cerebral area', 'lower pseudopod', 'viscous', 'middle', 'surface',
+    'pseudopod extremity', 'ripples', 'juices', 'surface', 'sensor', 'stomach',
+];
+const ANIMAL_PARTS = [
+    'forelimb', 'eye', 'face', 'foreclaw', 'claw tip', 'rear claw',
+    'foreclaw', 'clawed', 'head', 'rear limb', 'light headed', 'neck',
+    'spine', 'rear claw tip', 'fur', 'blood', 'lung', 'nose', 'stomach',
+];
+const BIRD_PARTS = [
+    'wing', 'eye', 'face', 'wing', 'wing tip', 'foot', 'wing', 'winged',
+    'head', 'leg', 'light headed', 'neck', 'spine', 'toe', 'feathers',
+    'blood', 'lung', 'bill', 'stomach',
+];
+const HORSE_PARTS = [
+    'foreleg', 'eye', 'face', 'forehoof', 'hoof tip', 'rear hoof',
+    'forehoof', 'hooved', 'head', 'rear leg', 'light headed', 'neck',
+    'backbone', 'rear hoof tip', 'mane', 'blood', 'lung', 'nose', 'stomach',
+];
+const SPHERE_PARTS = [
+    'appendage', 'optic nerve', 'body', 'tentacle', 'tentacle tip',
+    'lower appendage', 'tentacle', 'tentacled', 'body', 'lower tentacle',
+    'rotational', 'equator', 'body', 'lower tentacle tip', 'cilia',
+    'life force', 'retina', 'olfactory nerve', 'interior',
+];
+const FUNGUS_PARTS = [
+    'mycelium', 'visual area', 'front', 'hypha', 'hypha', 'root', 'strand',
+    'stranded', 'cap area', 'rhizome', 'sporulated', 'stalk', 'root',
+    'rhizome tip', 'spores', 'juices', 'gill', 'gill', 'interior',
+];
+const VORTEX_PARTS = [
+    'region', 'eye', 'front', 'minor current', 'minor current',
+    'lower current', 'swirl', 'swirled', 'central core', 'lower current',
+    'addled', 'center', 'currents', 'edge', 'currents', 'life force',
+    'center', 'leading edge', 'interior',
+];
+const SNAKE_PARTS = [
+    'vestigial limb', 'eye', 'face', 'large scale', 'large scale tip',
+    'rear region', 'scale gap', 'scale gapped', 'head', 'rear region',
+    'light headed', 'neck', 'length', 'rear scale', 'scales', 'blood',
+    'lung', 'forked tongue', 'stomach',
+];
+const WORM_PARTS = [
+    'anterior segment', 'light sensitive cell', 'clitellum', 'setae', 'setae',
+    'posterior segment', 'segment', 'segmented', 'anterior segment',
+    'posterior', 'over stretched', 'clitellum', 'length', 'posterior setae',
+    'setae', 'blood', 'skin', 'prostomium', 'stomach',
+];
+const SPIDER_PARTS = [
+    'pedipalp', 'eye', 'face', 'pedipalp', 'tarsus', 'claw', 'pedipalp',
+    'palped', 'cephalothorax', 'leg', 'spun out', 'cephalothorax', 'abdomen',
+    'claw', 'hair', 'hemolymph', 'book lung', 'labrum', 'digestive tract',
+];
+const FISH_PARTS = [
+    'fin', 'eye', 'premaxillary', 'pelvic axillary', 'pelvic fin', 'anal fin',
+    'pectoral fin', 'finned', 'head', 'peduncle', 'played out', 'gills',
+    'dorsal fin', 'caudal fin', 'scales', 'blood', 'gill', 'nostril',
+    'stomach',
+];
+const NOT_CLAWS = new Set([
+    'S_HUMAN', 'S_MUMMY', 'S_ZOMBIE', 'S_ANGEL', 'S_NYMPH', 'S_LEPRECHAUN',
+    'S_QUANTMECH', 'S_VAMPIRE', 'S_ORC', 'S_GIANT',
+]);
+
+export function mbodypart(mon, part) {
+    part = part | 0;
+    if (part <= NO_PART) return 'mystery part';
+    const mptr = mon?.data;
+    if (!mptr) return HUMANOID_PARTS[part] || 'body part';
+    const mlet = mptr.mlet;
+    const mndx = mptr.mndx | 0;
+
+    if (mlet === 'S_DOG' || mlet === 'S_FELINE' || mlet === 'S_RODENT'
+        || mndx === PM_OWLBEAR) {
+        if (part === HAND) return 'paw';
+        if (part === HANDED) return 'pawed';
+        if (part === FOOT) return 'rear paw';
+        if (part === ARM || part === LEG) return HORSE_PARTS[part];
+        // other parts: animal_parts[] below
+    } else if (mlet === 'S_YETI') {
+        return HUMANOID_PARTS[part];
+    }
+    if ((part === HAND || part === HANDED)
+        && humanoid(mptr) && attacktype(mptr, AT_CLAW)
+        && !NOT_CLAWS.has(mlet)
+        && mndx !== PM_STONE_GOLEM && mndx !== PM_AMOROUS_DEMON) {
+        return part === HAND ? 'claw' : 'clawed';
+    }
+    if ((mndx === PM_MUMAK || mndx === PM_MASTODON) && part === NOSE) {
+        return 'trunk';
+    }
+    if (mndx === PM_SHARK && part === HAIR) return 'skin';
+    if ((mndx === PM_JELLYFISH || mndx === PM_KRAKEN)
+        && (part === ARM || part === FINGER || part === HAND || part === FOOT
+            || part === TOE)) {
+        return 'tentacle';
+    }
+    if (mndx === PM_FLOATING_EYE && part === EYE) return 'cornea';
+    if (humanoid(mptr) && (part === ARM || part === FINGER || part === FINGERTIP
+            || part === HAND || part === HANDED)) {
+        return HUMANOID_PARTS[part];
+    }
+    if (mlet === 'S_COCKATRICE') {
+        return part === HAIR ? SNAKE_PARTS[part] : BIRD_PARTS[part];
+    }
+    if (mndx === PM_RAVEN) return BIRD_PARTS[part];
+    if (mlet === 'S_CENTAUR' || mlet === 'S_UNICORN'
+        || mndx === PM_KI_RIN
+        || (mndx === PM_ROTHE && part !== HAIR)) {
+        return HORSE_PARTS[part];
+    }
+    if (mlet === 'S_LIGHT') {
+        if (part === HANDED) return 'rayed';
+        if (part === ARM || part === FINGER || part === FINGERTIP
+            || part === HAND) {
+            return 'ray';
+        }
+        return 'beam';
+    }
+    if (mndx === PM_STALKER && part === HEAD) return 'head';
+    if (mlet === 'S_EEL' && mndx !== PM_JELLYFISH) return FISH_PARTS[part];
+    if (mlet === 'S_WORM') return WORM_PARTS[part];
+    if (mlet === 'S_SPIDER') return SPIDER_PARTS[part];
+    if (slithy(mptr) || (mlet === 'S_DRAGON' && part === HAIR)) {
+        return SNAKE_PARTS[part];
+    }
+    if (mlet === 'S_EYE') return SPHERE_PARTS[part];
+    if (mlet === 'S_JELLY' || mlet === 'S_PUDDING' || mlet === 'S_BLOB'
+        || mndx === PM_JELLYFISH) {
+        return JELLY_PARTS[part];
+    }
+    if (mlet === 'S_VORTEX' || mlet === 'S_ELEMENTAL') return VORTEX_PARTS[part];
+    if (mlet === 'S_FUNGUS') return FUNGUS_PARTS[part];
+    if (humanoid(mptr)) return HUMANOID_PARTS[part];
+    return ANIMAL_PARTS[part] || 'body part';
+}
+
+/** C ref: polyself.c body_part — mbodypart(&youmonst, part). */
+export function body_part(part) {
+    return mbodypart(game.youmonst || {}, part);
 }
 
 /**

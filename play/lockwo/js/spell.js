@@ -550,8 +550,8 @@ function healup(nhp, nxtra, curesick, cureblind) {
 }
 
 // C ref: cmd.c getdir — read a direction.  Renders "In what direction?" and
-// reads one key; '.'/'s' = self.  Returns {dx,dy,dz} or null on cancel.  No RNG
-// outside the (unused) fuzzer path.
+// reads one key; '.'/'s' = self.  Returns {dx,dy,dz} or null on cancel.  Ends
+// with confdir(FALSE) like C's (cmd.c:4116) — see cmd.js getdir_confdir.
 async function getdir() {
     const prompt = 'In what direction?';
     game._pending_message = prompt;
@@ -565,14 +565,14 @@ async function getdir() {
     game._pending_message = '';
     const ch = String.fromCharCode(key);
     if (ch === '.' || ch === 's')
-        return { dx: 0, dy: 0, dz: 0 };
+        return (await import('./cmd.js')).getdir_confdir({ dx: 0, dy: 0, dz: 0 });
     if (ch === '\x1b' || ch === ' ')
         return null;
     const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1, '<': 0, '>': 0 };
     const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1, '<': 0, '>': 0 };
     const DZ = { '<': -1, '>': 1 };
     if (ch in DX)
-        return { dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 };
+        return (await import('./cmd.js')).getdir_confdir({ dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 });
     return null;
 }
 

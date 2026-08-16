@@ -25,6 +25,7 @@ import { rn2 } from './rng.js';
 import {
     objects,
     mksobj,
+    mkobj,
     weight,
     STRANGE_OBJECT,
     WEAPON_CLASS,
@@ -270,6 +271,17 @@ const WRP = [
     ['tool', TOOL_CLASS],
     ['food', FOOD_CLASS],
     ['comestible', FOOD_CLASS],
+];
+
+// C ref: objnam.c:2523 wrpsym[] — the 13 classes an unparseable/empty wish
+// falls back to, SPBOOK and FOOD each listed twice (so they are twice as
+// likely).  Order is load-bearing: rn2(13) indexes straight into it.
+const WRPSYM = [
+    WAND_CLASS, RING_CLASS, POTION_CLASS,
+    SCROLL_CLASS, GEM_CLASS, AMULET_CLASS,
+    SPBOOK_CLASS, SPBOOK_CLASS, WEAPON_CLASS,
+    ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS,
+    FOOD_CLASS,
 ];
 
 // ── parse-state object (subset of C struct _readobjnam_data) ───────────────
@@ -688,12 +700,19 @@ function typfnd(d) {
 // finalize: create the object via mksobj, apply wizard-mode spe/bless, handle
 // artifact naming + the rn2(nartifact_exist()) draw.  C ref: objnam.c:5037+.
 function finalize(d, anyRandom) {
-    if (anyRandom && !d.oclass && !d.typ) return null;
+    // C ref: objnam.c:4996 `any:` — `if (!d.oclass) d.oclass =
+    // wrpsym[rn2(sizeof wrpsym)]`, then :5037 `d.otmp = d.typ ? mksobj(...)
+    // : mkobj(d.oclass, FALSE)`.  Returning null here instead made an EMPTY
+    // wish string ("For what do you wish?" answered with ESC) produce nothing
+    // at all, where C hands over a random object off a random class.
+    if (anyRandom && !d.oclass && !d.typ)
+        d.oclass = WRPSYM[rn2(WRPSYM.length)];
 
     // wizard-mode non-wishable remaps (AMULET_OF_YENDOR etc.) are skipped:
     // in wizard mode the player gets exactly what was asked for.
 
-    const otmp = d.typ ? mksobj(d.typ, true, false) : null;
+    const otmp = d.typ ? mksobj(d.typ, true, false)
+                       : (d.oclass ? mkobj(d.oclass, false) : null);
     if (!otmp) return null;
     d.typ = otmp.otyp;
     d.oclass = otmp.oclass;

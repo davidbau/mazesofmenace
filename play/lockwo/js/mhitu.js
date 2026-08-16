@@ -618,13 +618,29 @@ export async function expels(mtmp, mdat, message) {
         }
     }
     const u = game.u || {};
+    // C ref: mon.c:3438 unstuck(mtmp) — set_ustuck(0), then (when the hero was
+    // swallowed) move the hero onto the engulfer's square and redraw, then the
+    // re-grab cooldown rnd(2) (mon.c:3465).  That rnd(2) was missing entirely.
+    const swallowed = u.uswallow;
     u.uswallow = 0;
     u.uswldtim = 0;
     u.ustuck = null;
-    // mnexto(mtmp, RLOC_NOMSG) drops the ex-swallower on a free adjacent
-    // square; js/do.js's copy is module-private and takes no rloc flag, so the
-    // relocation is left to the caller rather than approximated with a
-    // different placement walk (mnexto's enexto() search DRAWS).
+    if (swallowed) {
+        u.ux = mtmp.mx; u.uy = mtmp.my;
+        const { docrt } = await import('./display.js');
+        await docrt();
+    }
+    {
+        const { unstuck_mspec_used } = await import('./uhitm.js');
+        unstuck_mspec_used(mtmp);
+    }
+    // C ref: mhitu.c:300 mnexto(mtmp, RLOC_NOMSG) — the enexto() ring search
+    // DRAWS (collect_coords shuffles rings 1..3), so it belongs in the stream.
+    {
+        const { mnexto_rloc } = await import('./do.js');
+        const { RLOC_NOMSG } = await import('./teleport.js');
+        await mnexto_rloc(mtmp, RLOC_NOMSG);
+    }
     newsym(u.ux, u.uy);
     if (um_dist(mtmp.mx, mtmp.my, 1))
         await emitU('Brrooaa...  You land hard at some distance.');

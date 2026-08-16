@@ -643,6 +643,7 @@ function is_pool(x, y) {
 // mondied() -> mondead() [detach] then, if corpse_chance() succeeds and the
 // square is accessible (or a pool), make_corpse() which rolls next_ident,
 // rndmonnum and the corpse-timeout sequence.
+export async function mondied_mm(mdef) { return await killMonster(mdef); }
 async function killMonster(mdef) {
     mdef.mhp = 0;
     // C ref: mon.c mondead() — "if (glyph_is_invisible(...)) unmap_object(...)"

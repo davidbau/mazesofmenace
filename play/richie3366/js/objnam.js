@@ -23,10 +23,11 @@ import {
     objectDescrs,
     objects,
 } from './objects.js';
-import { monsterNames, mons, vegetarian, is_rider } from './monsters.js';
+import { monsterNames, mons, vegetarian, is_rider, M2_PNAME, G_UNIQ } from './monsters.js';
 import {
-    PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB,
+    PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
 } from './generated/monsters_data.js';
+import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import {
     W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
     W_BALL, W_CHAIN,
@@ -1165,6 +1166,15 @@ export function set_distant_cansee(fn) {
 }
 
 /**
+ * Late-bound from do_name.js — C shk.c mon_owns uses y_monnam.
+ * Avoids static objnam↔do_name cycle (do_name already imports xname).
+ */
+let _y_monnam = null;
+export function set_y_monnam(fn) {
+    _y_monnam = fn;
+}
+
+/**
  * C ref: objnam.c the_unique_obj — "the unique_item" vs "a unique_item".
  * Named omissions: iflags.override_ID ID-reveal paths.
  */
@@ -1188,6 +1198,74 @@ export function obj_is_pname(obj) {
         if (!obj.known || !obj.dknown || !obj.bknown) return false;
     }
     return true;
+}
+
+const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
+
+/** C ref: mondata.h type_is_pname — M2_PNAME. Local to avoid do_name cycle. */
+function type_is_pname_objnam(ptr) {
+    return !!((ptr?.mflags2 ?? 0) & M2_PNAME);
+}
+
+/**
+ * C ref: objnam.c the_unique_pm — G_UNIQ "the Name" article gate.
+ * High priest / worm-tail false; Wizard-of-Yendor forced true.
+ */
+export function the_unique_pm(ptr) {
+    if (!ptr || type_is_pname_objnam(ptr)) return false;
+    let uniq = !!((ptr.geno | 0) & G_UNIQ);
+    if (PM_HIGH_CLERIC >= 0 && (ptr.mndx | 0) === PM_HIGH_CLERIC) uniq = false;
+    if ((ptr.mndx | 0) === PM_LONG_WORM_TAIL) uniq = false;
+    if (PM_WIZARD_OF_YENDOR >= 0 && (ptr.mndx | 0) === PM_WIZARD_OF_YENDOR) {
+        uniq = true;
+    }
+    return uniq;
+}
+
+/** C obj.h carried — where==OBJ_INVENT. */
+function carried_objnam(obj) {
+    return !!(obj && obj.where === OBJ_INVENT);
+}
+
+/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+function s_suffix_objnam(s) {
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`;
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+/**
+ * C ref: shk.c shk_your — trailing space; "your "/"the "/"Foobar's ".
+ * Named omit: shk_owns (unpaid / floor costly shopkeeper possessive).
+ */
+export function shk_your(obj) {
+    if (!obj) return 'the ';
+    const chk_pm = objectNames[obj.otyp] === 'CORPSE' && ismnum(obj.corpsenm);
+    if (chk_pm && type_is_pname_objnam(mons(obj.corpsenm))) return '';
+    if (chk_pm && the_unique_pm(mons(obj.corpsenm))) return 'the ';
+    // C mon_owns: OBJ_MINVENT → s_suffix(y_monnam(ocarry))
+    if (obj.where === OBJ_MINVENT && obj.ocarry) {
+        const nam = _y_monnam ? _y_monnam(obj.ocarry) : 'it';
+        return `${s_suffix_objnam(nam)} `;
+    }
+    return carried_objnam(obj) ? 'your ' : 'the ';
+}
+
+/**
+ * C ref: objnam.c yname — cxname plus shk_your unless carried pname
+ * artifact before ART_ORB_OF_DETECTION.
+ */
+export function yname(obj) {
+    const s = cxname(obj);
+    if (!carried_objnam(obj) || !obj_is_pname(obj)
+        || (obj.oartifact | 0) >= ART_ORB_OF_DETECTION) {
+        return `${shk_your(obj)}${s}`;
+    }
+    return s;
 }
 
 /**

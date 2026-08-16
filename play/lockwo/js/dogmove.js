@@ -65,7 +65,7 @@ const MMOVE_NOTHING = 0, MMOVE_MOVED = 2, MMOVE_DIED = 3, MMOVE_DONE = 5;
 // is DOG_WEAK.  The value gates pet_ranged_attk's rn2(5).
 const DOG_HUNGRY = 300, DOG_WEAK = 500, DOG_STARVE = 750;
 
-const PM_LITTLE_DOG = 16, PM_KITTEN = 34, PM_PONY = 102;
+const PM_LITTLE_DOG = 16, PM_KITTEN = 32, PM_PONY = 100;
 
 // Food object types referenced by dogfood() (mkobj.js OBJECT_DATA otyp order).
 const TRIPE_RATION = 264, EGG = 266, MEATBALL = 267, MEAT_STICK = 268,

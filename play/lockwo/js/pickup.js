@@ -6,6 +6,7 @@
 // branch/count logic stays here, on C's line order.
 
 import { game } from './gstate.js';
+import { Blind } from './vision.js';
 import { rn2, rnd, d } from './rng.js';
 import { pline, bot, m_at, newsym, flush_screen } from './display.js';
 import {
@@ -1078,7 +1079,11 @@ function nxtobj_gold(obj) {
 export async function pickup_object(obj, count, telekinesis) {
     if (obj.quan < count) return 0;
 
-    if (!game.Blind) obj.dknown = 1;   /* observe_object() */
+    // C ref: pickup.c:1817 `if (!Blind) observe_object(obj)`.  This read
+    // `game.Blind`, which no module ever sets, so a BLIND hero still learned
+    // every picked-up object's appearance ("o - a brilliant blue potion."
+    // where C prints "o - a potion.").
+    if (!Blind()) obj.dknown = 1;   /* observe_object() */
 
     if (obj === game.u?.uchain) {
         return 0;   /* do not pick up attached chain */
@@ -1278,7 +1283,7 @@ export async function doloot_core() {
         let anyfound = false;
         if (!(await able_to_loot(cc.x, cc.y, true))) return ECMD_OK;
 
-        if (game.Blind && !game.uarmg) {
+        if (Blind() && !game.uarmg) {
             for (const nobj of objects_at(cc.x, cc.y))
                 if (nobj.otyp === CORPSE && will_feel_cockatrice(nobj, false)) {
                     feel_cockatrice(nobj, false);
@@ -1447,7 +1452,7 @@ export async function mbag_item_gone(held, item, silent) {
         if (item.dknown)
             await pline(`${upstart(doname(item))} ${otense(item, 'have')} vanished!`);
         else
-            await pline(`You ${game.Blind ? 'notice' : 'see'} ${doname(item)} disappear!`);
+            await pline(`You ${Blind() ? 'notice' : 'see'} ${doname(item)} disappear!`);
     }
     obfree(item, null);
     return 0;

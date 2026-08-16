@@ -1,6 +1,6 @@
 // mhitm.js — Monster vs monster combat (minimal RNG-faithful peel).
-// C ref: mhitm.c — mattackm, passivemm, mdamagem; worn.c find_mac;
-//         uhitm.c mhitm_knockback (RNG order only).
+// C ref: mhitm.c — mattackm, passivemm, mdamagem;
+//         worn.c find_mac (re-export); uhitm.c mhitm_knockback (RNG order only).
 
 import { rn2, rnd, d } from './rng.js';
 import { distmin, m_at, record_mvitals_died, undead_to_corpse, monnear } from './mon.js';
@@ -10,6 +10,7 @@ import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval } from './weapon.js';
+import { find_mac } from './worn.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -112,7 +113,6 @@ const AD_DRDX = 30; /* drains dexterity (quasit) — monattk.h */
 const AD_DRCO = 31; /* drains constitution — monattk.h */
 const AD_SSEX = 35; /* Succubus seduction (extended) */
 const AD_POLY = 43; /* polymorph target (genetic engineer) — monattk.h */
-const AC_MAX = 99;
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
 const MR_ELEC = 0x10;
@@ -530,12 +530,8 @@ function helpless(m) {
     return !!(m.msleeping || !m.mcanmove);
 }
 
-// C ref: worn.c find_mac() — base AC, no worn armor peel yet
-export function find_mac(mon) {
-    let base = mon.data?.ac ?? 10;
-    if (Math.abs(base) > AC_MAX) base = Math.sign(base) * AC_MAX;
-    return base;
-}
+// C ref: worn.c find_mac — body lives in worn.js (minvent ARM_BONUS).
+export { find_mac };
 
 // C ref: mondata.c max_passive_dmg() — AT_NONE/AT_BOOM passives × magr hits.
 // Elemental AD_ACID/FIRE/COLD/ELEC + AD_PHYS; complete-burn/rot/rust deferred.

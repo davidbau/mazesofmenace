@@ -33,6 +33,7 @@ import { clear_regions } from './region.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
+         STRAT_WAITMASK,
          ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, In_quest, In_mines, In_endgame,
          MAGIC_PORTAL, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          STAIRS, LADDER, VIBRATING_SQUARE, TT_PIT, TOOKPLUNGE, is_pit, is_hole,
@@ -298,6 +299,24 @@ function enexto(xx, yy, mtmp) {
     for (let i = near.length; i < all.length; i++)
         if (goodpos_mon(all[i].x, all[i].y, mtmp)) return all[i];
     return null;
+}
+
+// C ref: mon.c:3955 mnexto(mtmp, rlocflags) — put the monster next to the hero.
+// The enexto() search DRAWS (collect_coords shuffles every ring it gathers), so
+// a caller that "leaves the relocation to someone else" loses those calls.
+// C's enexto() is enexto_core(GP_CHECKSCARY) || enexto_core(NO_MM_FLAGS); the
+// scary-square filter only matters on a square with a scare-monster item or
+// Elbereth, so the first pass answers here and the second never runs.
+// (the module-private mnexto() below is the same C routine minus the
+// rloc_to_core() display/track bookkeeping; kept separate so the pet-arrival
+// path it serves is not perturbed.)
+export async function mnexto_rloc(mtmp, rlocflags = 0) {
+    const u = game.u;
+    if (mtmp === u?.usteed) { mtmp.mx = u.ux; mtmp.my = u.uy; return; }
+    const mm = enexto(u.ux, u.uy);
+    if (!mm || !isok(mm.x, mm.y)) return;   // deal_with_overcrowding -> limbo
+    const { rloc_to_core } = await import('./teleport.js');
+    await rloc_to_core(mtmp, mm.x, mm.y, rlocflags);
 }
 
 // C ref: dog.c mon_arrive(mtmp, With_you).  A tame pet either lands on the
@@ -815,6 +834,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C ref: display.c cls():2196 display_nhwindow(WIN_MESSAGE,FALSE)
     { const { topl_more } = await import('./display.js');
       if (game._toplin === 1) { await topl_more(); game._toplin = 0; } }
+    // C ref: do.c:1672 — "record this level transition as a potential seen
+    // branch unless using some non-standard means of transportation (level
+    // teleport)".  Runs BEFORE u.uz is reassigned; it is what puts the
+    // "Stairs down to The Gnomish Mines." line in #overview.
+    if ((at_stairs || falling || portal) && u.uz.dnum !== newlevel.dnum) {
+        const { recbranch_mapseen } = await import('./dungeon.js');
+        recbranch_mapseen(u.uz, newlevel);
+    }
     u.uz0 = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
     u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
 
@@ -1052,7 +1079,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // if/else chain: In_endgame / In_quest -> onquest() / Is_knox -> alarm /
     // In_mines / In_sokoban / else.  Only the quest and Knox arms have output
     // here; onquest() draws no RNG (it opens com_pager text windows).
-    if (In_quest(u.uz)) {
+    if (In_endgame(u.uz)) {
+        // C ref: do.c:1881-1890 — the endgame arm.  Astral gets final_level()
+        // (not ported); every other plane entered while carrying the Amulet
+        // forces the confrontation with the Wizard of Yendor.
+        const astral = g.astral_level;
+        const onAstral = !!astral && u.uz.dnum === astral.dnum
+                         && u.uz.dlevel === astral.dlevel;
+        if (!(firstVisit && onAstral) && newdungeon && u.uhave?.amulet)
+            await resurrect();
+    } else if (In_quest(u.uz)) {
         await onquest(); /* might be reaching locate|goal level */
     } else if (Is_knox_level(u.uz)) {
         // C ref: do.c:1897 — arriving in Fort Ludios trips the alarm: two plines
@@ -1150,6 +1186,43 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     {
         const { pickup_after_move } = await import('./cmd.js');
         await pickup_after_move(u.ux, u.uy);
+    }
+}
+
+// ── resurrect (C ref: wizard.c resurrect()) ──
+// Only the `no_of_wizards == 0` arm is reachable here: goto_level() calls this
+// the first time the hero enters the endgame carrying the Amulet, before any
+// Wizard has been created.  makemon(ptr, u.ux, u.uy, MM_NOWAIT) takes makemon's
+// `byyou && !in_mklev` branch, so the placement spends enexto_core()'s three
+// ring shuffles (45 rn2 calls) BEFORE next_ident/newmonhp — skipping the whole
+// call left the stream 54 draws short at the arrival boundary.
+const MM_NOWAIT_DO = 0x00000002;   // C ref: makemon.h MM_NOWAIT
+async function resurrect() {
+    const M = await import('./makemon.js');
+    const U = await import('./uhitm.js');
+    const made = M.create_particular_monster('Wizard of Yendor', MM_NOWAIT_DO);
+    if (!made) return;
+    const mtmp = made.mtmp;
+    mtmp.mrevived = 1;
+    // C ref: makemon.c:1472-1500 — makemon's own tail prints the arrival line
+    // (no MM_NOEXCLAM here, so " suddenly" and a trailing '!').
+    newsym(made.x, made.y);
+    if (U.canspotmon(mtmp)) {
+        const what = U.x_monnam(mtmp, /*ARTICLE_A*/ 2, null, 0, false);
+        const dx = made.x - game.u.ux, dy = made.y - game.u.uy;
+        const place = made.next2u ? ' next to you'
+            : (dx * dx + dy * dy <= 8 * 8) ? ' close by' : '';
+        await update_topl(
+            `${what.charAt(0).toUpperCase()}${what.slice(1)} suddenly appears${place}!`);
+    }
+    mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_WAITMASK;
+    mtmp.mtame = 0;
+    mtmp.mpeaceful = 0;
+    M.set_malign(mtmp);
+    // C: `if (!Deaf) { pline("A voice booms out..."); verbalize(...); }`
+    if (!game.u?.Deaf) {
+        await update_topl('A voice booms out...');
+        await update_topl('"So thou thought thou couldst kill me, fool."');
     }
 }
 
@@ -1406,6 +1479,23 @@ export async function wiz_level_tele(readLevel) {
     if (!m) return 0;
     let newlev = parseInt(m[1], 10);
     if (newlev === 0) return 0; // "Go to Nowhere" path not modelled
+
+    // C ref: teleport.c level_tele():1305 — while already IN the endgame the
+    // typed number selects a plane directly: dlevel = dunlevs_in_dungeon + n
+    // (so -1 is the last plane, -4 the first), with no arrival message.  This
+    // arm sits ahead of every other range check, and without it a ^V to another
+    // plane silently did nothing (seed0373 step 110, Fire -> Air).
+    if (In_endgame(u.uz)) {
+        const llimit = dunlevs_in_dungeon(u.uz);
+        if (newlev >= 0 || newlev <= -llimit) {
+            await pline("You can't get there from here.");
+            return 0;
+        }
+        game._goto_post_msg = null;
+        await goto_level({ dnum: u.uz.dnum, dlevel: llimit + newlev },
+                         false, false, false);
+        return 0;
+    }
 
     // C ref: teleport.c level_tele() — "if in Knox and the requested level > 0,
     // stay put".  force_dest is only set by the wizard "?" menu, handled above.
