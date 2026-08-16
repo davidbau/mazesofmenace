@@ -63,7 +63,7 @@ import {
     obj_extract_self, place_object, stackobj, weight, mksobj, stop_timer,
     start_timer, hornoplenty,
 } from './mkobj.js';
-import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, cxname_singular, thesimpleoname, yname, shk_your } from './objnam.js';
+import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, yname, shk_your } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam } from './do_name.js';
@@ -112,7 +112,10 @@ import {
     make_hallucinated, make_deaf,
 } from './potion.js';
 import { Blindf_on, Blindf_off, cursed_check } from './do_wear.js';
-import { dropx, setnotworn, fire_damage, make_blinded as potion_make_blinded } from './do.js';
+import {
+    dropx, setnotworn, fire_damage, make_blinded as potion_make_blinded,
+    revive_corpse,
+} from './do.js';
 import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
 import { findit, openit } from './detect.js';
@@ -2401,41 +2404,6 @@ export async function use_grease(obj) {
         await pline(`${Tobjnam_grease(obj, 'seem')} to be empty.`);
     }
     return ECMD_TIME;
-}
-
-/**
- * C ref: do.c revive_corpse — zap.revive + invent/floor messages.
- * Named omit: MINVENT/CONTAINED/BURIED; Adjmonnam bite-covered;
- * Rider Death/Pestilence/Famine visual suffixes.
- * @returns {Promise<boolean>}
- */
-async function revive_corpse(corpse) {
-    if (!corpse) return false;
-    const inInvent = corpse.where === OBJ_INVENT
-        || (game.invent || []).includes(corpse);
-    const where = inInvent ? OBJ_INVENT : (corpse.where | 0);
-    const is_uwep = corpse === game.u?.uwep;
-    const cname = cxname_singular(corpse) || 'corpse';
-    const corpsex = corpse.ox | 0;
-    const corpsey = corpse.oy | 0;
-    const mtmp = await revive(corpse, false);
-    if (!mtmp) return false;
-    if (where === OBJ_INVENT) {
-        if (is_uwep) {
-            await pline(`The ${cname} writhes out of your grasp!`);
-        } else {
-            await You_feel('squirming in your backpack!');
-        }
-    } else if (where === OBJ_FLOOR) {
-        if (cansee(corpsex, corpsey) || canseemon(mtmp)) {
-            if (canseemon(mtmp)) {
-                await pline(`${Monnam(mtmp)} rises from the dead!`);
-            } else {
-                await pline(`${The(cname)} disappears!`);
-            }
-        }
-    }
-    return true;
 }
 
 /**

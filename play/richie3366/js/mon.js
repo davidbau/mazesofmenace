@@ -73,14 +73,10 @@ function mdistu(mtmp) {
     return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy);
 }
 
-/** Local is_pool/is_lava — avoid mon.js ↔ hack.js cycle. */
+/** Local is_pool — is_lava uses shared hack.js (D-1077). */
 function mfndpos_is_pool(x, y) {
     const typ = game.level?.at(x, y)?.typ;
     return typ === POOL || typ === MOAT || typ === WATER;
-}
-function mfndpos_is_lava(x, y) {
-    const typ = game.level?.at(x, y)?.typ;
-    return typ === LAVAPOOL || typ === LAVAWALL;
 }
 
 /** C ref: hack.c may_passwall — STWALL + W_NONPASSWALL blocks. */
@@ -421,6 +417,22 @@ export function can_be_hatched(mnum) {
         return mnum;
     }
     return NON_PM;
+}
+
+/**
+ * C ref: mon.c egg_type_from_parent — #sit / learn_egg_type corpsenm.
+ * BREEDER_EGG is !rn2(77). `force_ordinary || !BREEDER_EGG` short-circuits
+ * the roll when force_ordinary is true (polyself); sit passes FALSE so
+ * rn2(77) always runs. Queen bee → killer bee and winged gargoyle →
+ * gargoyle unless the 1/77 breeder roll keeps the parent.
+ */
+export function egg_type_from_parent(mnum, force_ordinary) {
+    // C: if (force_ordinary || !BREEDER_EGG) with BREEDER_EGG (!rn2(77))
+    if (force_ordinary || rn2(77)) {
+        if (mnum === pm('QUEEN_BEE')) mnum = pm('KILLER_BEE');
+        else if (mnum === pm('WINGED_GARGOYLE')) mnum = pm('GARGOYLE');
+    }
+    return mnum;
 }
 
 /**
@@ -1279,7 +1291,7 @@ export function mfndpos(mon, data, flag) {
                 }
                 // C: poolok/lavaok outer gate
                 if (!((poolok || mfndpos_is_pool(nx, ny) === wantpool)
-                    && (lavaok || !mfndpos_is_lava(nx, ny)))) {
+                    && (lavaok || !is_lava(nx, ny)))) {
                     continue;
                 }
 

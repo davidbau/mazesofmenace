@@ -1,6 +1,7 @@
 // makemon.js — Monster creation / random selection.
-// C ref: makemon.c — rndmonst_adj, makemon, newmonhp, peace_minded,
-//   m_initweap / m_initthrow / mongets (ordinary armed-mlet envelope).
+// C ref: makemon.c — rndmonst_adj, makemon, clone_mon, newmonhp,
+//   peace_minded, m_initweap / m_initthrow / mongets (ordinary
+//   armed-mlet envelope).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -77,7 +78,8 @@ import {
     MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     In_mines, In_sokoban, In_endgame,
-    OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD,
+    OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD, G_EXTINCT,
+    isok, has_mgivenname, MGIVENNAME, has_emin, MON_FLOOR,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     ARTICLE_A, BOLT_LIM,
     IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
@@ -89,7 +91,7 @@ import {
     A_LAWFUL, ONAME_RANDOM, EMIN,
     MFAST, MAXMONNO,
 } from './const.js';
-import { enexto_core, enexto_gpflags, goodpos, noteleport_level } from './teleport.js';
+import { enexto, enexto_core, enexto_gpflags, goodpos, noteleport_level } from './teleport.js';
 import {
     mksobj, mkobj, mkobj_at, weight, objects_at, curse, bless, is_crackable,
     set_corpsenm, stop_timer, add_to_container, rnd_class, carry_obj_effects,
@@ -125,7 +127,7 @@ import { newsym, Norep, canseemon, sensemon } from './display.js';
 import { emits_light, new_light_source } from './light.js';
 import { christen_monst, oname, x_monnam } from './do_name.js';
 import { vtense } from './objnam.js';
-import { get_shop_item } from './shknam.js';
+import { get_shop_item, shkname } from './shknam.js';
 import {
     get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
     worm_mon_at,
@@ -443,10 +445,16 @@ function sgn(x) {
     return x < 0 ? -1 : x > 0 ? 1 : 0;
 }
 
+/** C ref: monflag.h enum ms_sounds — msounds[] D-1053; peace/malign D-1079. */
+const MS_LEADER = 36;
+const MS_NEMESIS = 37;
+const MS_GUARDIAN = 38;
+
 /**
  * C ref: makemon.c set_malign — kill-alignment weight from type + peaceful.
- * Named omissions: MS_LEADER (msound not extracted); priest/minion EPRI/EMIN
- * individual align ×5 when those mextra fields are absent.
+ * Named omissions: priest/minion EPRI/EMIN individual align ×5 when those
+ * mextra fields are absent. m_initweap still gates MS_GUARDIAN/MS_PRIEST
+ * by mndx, not ptr.msound.
  */
 export function set_malign(mtmp) {
     if (!mtmp?.data) return;
@@ -461,8 +469,10 @@ export function set_malign(mtmp) {
     }
     const ual = game.u?.ualign?.type ?? 0;
     const coaligned = sgn(mal) === sgn(ual);
-    // MS_LEADER → -20 deferred (msound not on ptr)
-    if (mal === A_NONE) {
+    // C: ptr->msound == MS_LEADER before A_NONE / always_peaceful (D-1079)
+    if ((mtmp.data.msound | 0) === MS_LEADER) {
+        mtmp.malign = -20;
+    } else if (mal === A_NONE) {
         mtmp.malign = mtmp.mpeaceful ? 0 : 20;
     } else if (always_peaceful(mtmp.data)) {
         const absmal = Math.abs(mal);
@@ -1012,7 +1022,10 @@ function race_hostile(ptr) {
 export function peace_minded(ptr) {
     if (always_peaceful(ptr)) return true;
     if (always_hostile(ptr)) return false;
-    // Named omissions: MS_LEADER/GUARDIAN/NEMESIS msound (tables omit msound).
+    // C: ptr->msound after always_* , before PM_ERINYS (D-1079; msounds[] D-1053)
+    const ms = ptr.msound | 0;
+    if (ms === MS_LEADER || ms === MS_GUARDIAN) return true;
+    if (ms === MS_NEMESIS) return false;
     // C: PM_ERINYS → !u.ualign.abuse (no co-aligned rn2) — D-0905
     if (ptr.mndx === pm('ERINYS')) return !(game.u?.ualign?.abuse | 0);
     if (race_peaceful(ptr)) return true;
@@ -2446,6 +2459,141 @@ export function set_mimic_sym(mtmp) {
         mtmp.mextra.mcorpsenm = game.context?.current_fruit ?? 0;
     }
     // altar Align2amask / block_point deferred
+}
+
+/**
+ * C ref: makemon.c clone_mon.
+ * Occupancy is fmon + worm segs (same as makemon MON_AT). C
+ * place_monster 2D grid / impossible() diagnostics named omit.
+ * Long-worm callers still use cutworm. tamedog via dynamic import
+ * (dog.js → makemon.js).
+ */
+export async function clone_mon(mon, x, y) {
+    if (!mon) return null;
+    const mndx = mon.data?.mndx | 0;
+    if ((mon.mhp | 0) <= 1
+        || ((game.mvitals?.[mndx]?.mvflags ?? 0) & G_EXTINCT) !== 0) {
+        return null;
+    }
+
+    const mm = { x: 0, y: 0 };
+    if ((x | 0) === 0) {
+        mm.x = mon.mx | 0;
+        mm.y = mon.my | 0;
+    } else {
+        mm.x = x | 0;
+        mm.y = y | 0;
+    }
+    if (!isok(mm.x, mm.y)) {
+        // C: impossible("clone_mon trying to create a monster at <%d,%d>?")
+        return null;
+    }
+    if (clone_mon_occupied(mm.x, mm.y)) {
+        if (!enexto(mm, mm.x, mm.y, mon.data)
+            || clone_mon_occupied(mm.x, mm.y)) {
+            return null;
+        }
+    }
+
+    // C: newmonst(); *m2 = *mon; then drop mextra / minvent pointers.
+    const m2 = { ...mon };
+    m2.mextra = null;
+    m2.minvent = null;
+    delete m2.edog;
+    m2.mtrack = [
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+    ];
+
+    if (!game.fmon) game.fmon = [];
+    game.fmon.unshift(m2);
+    m2.m_id = next_ident();
+    m2.mx = mm.x;
+    m2.my = mm.y;
+    m2.mstate = MON_FLOOR;
+
+    m2.mundetected = 0;
+    m2.mtrapped = 0;
+    m2.mcloned = 1;
+    m2.mleashed = 0;
+
+    // Max HP copied; current HP halved (odd point stays with original).
+    m2.mhpmax = mon.mhpmax | 0;
+    m2.mhp = Math.trunc((mon.mhp | 0) / 2);
+    mon.mhp = (mon.mhp | 0) - (m2.mhp | 0);
+
+    m2.isshk = 0;
+    m2.isgd = 0;
+    m2.ispriest = 0;
+    // isminion kept; emin attached below
+
+    const lit = emits_light(m2.data);
+    if (lit) {
+        new_light_source(m2.mx, m2.my, lit, LS_MONSTER, m2);
+    }
+
+    if (has_mgivenname(mon)) {
+        christen_monst(m2, MGIVENNAME(mon));
+    } else if (mon.isshk) {
+        christen_monst(m2, shkname(mon));
+    }
+
+    if (!game.context?.mon_moving && mon.mpeaceful) {
+        const luckn = Math.max(2 + (game.u?.uluck | 0), 2);
+        if (mon.mtame) {
+            m2.mtame = rn2(luckn) ? mon.mtame : 0;
+        } else if (mon.mpeaceful) {
+            m2.mpeaceful = rn2(luckn) ? 1 : 0;
+        }
+    }
+
+    if (m2.isminion) {
+        newemin(m2);
+        const src = has_emin(mon) ? EMIN(mon) : null;
+        const dst = EMIN(m2);
+        if (src && dst) {
+            dst.parentmid = src.parentmid | 0;
+            dst.min_align = src.min_align | 0;
+            dst.renegade = src.renegade;
+        }
+        const atyp = EMIN(m2)?.min_align | 0;
+        const ual = game.u?.ualign?.type | 0;
+        // C: (atyp != u.ualign.type) ^ !m2->mpeaceful
+        if (EMIN(m2)) {
+            EMIN(m2).renegade = (atyp !== ual) ^ !m2.mpeaceful;
+        }
+    } else if (m2.mtame) {
+        m2.mtame = 0;
+        const { tamedog } = await import('./dog.js');
+        if (await tamedog(m2, null, false)) {
+            const src = mon.edog || mon.mextra?.edog;
+            if (src) {
+                m2.edog = { ...src };
+                if (src.ogoal) {
+                    m2.edog.ogoal = { x: src.ogoal.x | 0, y: src.ogoal.y | 0 };
+                }
+                if (!m2.mextra) m2.mextra = {};
+                m2.mextra.edog = m2.edog;
+            }
+        }
+    }
+    set_malign(m2);
+    newsym(m2.mx, m2.my);
+    return m2;
+}
+
+/** C MON_AT — living fmon head or worm seg. Skip mounted steed. */
+function clone_mon_occupied(x, y) {
+    if (worm_mon_at(x, y)) return true;
+    const steed = game.u?.usteed;
+    for (const m of game.fmon || []) {
+        if (m === steed) continue;
+        if ((m.mhp | 0) <= 0) continue;
+        if (m.mx === x && m.my === y) return true;
+    }
+    return false;
 }
 
 export { MM_NOGRP };

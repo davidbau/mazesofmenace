@@ -131,9 +131,11 @@ import {
     PM_HEALER,
     PM_KNIGHT,
     PM_MONK,
+    PM_PURPLE_WORM,
     PM_ROGUE,
     PM_SAMURAI,
     PM_SHADE,
+    PM_SHRIEKER,
     S_BLOB,
     S_EYE,
     S_FUNGUS,
@@ -1391,10 +1393,11 @@ function first_weapon_hit() {
 // A shock attack landing on the hero: the attack's own message, the magic
 // cancellation test, and the item destruction a high-level attacker adds.
 //
-// C's other two arms are the hero's own shock attack (uhitm) and one monster
-// shocking another (mhitm). Neither has a caller here: js/uhitm.js damageum()
-// is unported and js/mhitm.js mattackm() stops long before any damage type, so
-// both refuse.
+// C's other two arms refuse. The hero's own shock attack (uhitm) has no caller
+// here, because js/uhitm.js damageum() is unported. One monster shocking
+// another (mhitm) does: js/mhitm.js mdamagem() reaches mhitm_adtyping(), which
+// dispatches AD_ELEC here, so a pet that fights a shocking monster stops at
+// that arm.
 export async function mhitm_ad_elec(
     magr,
     mattk,
@@ -1443,15 +1446,16 @@ export async function mhitm_ad_elec(
     }
 }
 
-// C ref: uhitm.c mhitm_ad_phys() (3980-4200), the `mdef == &gy.youmonst` arm
-// (4021-4127) as far as its hand-to-hand path (4038-4040 and 4122-4126). An
-// ordinary blow landing on the hero prints its line and records the hit; the
-// damage is the roll hitmu() already made, which this arm leaves alone.
+// C ref: uhitm.c mhitm_ad_phys() (3980-4200), two of its three arms: the
+// `mdef == &gy.youmonst` one (4021-4127) as far as its hand-to-hand path
+// (4038-4040 and 4122-4126), and the mhitm one (4128-4200). An ordinary blow
+// landing on the hero prints its line and records the hit; the damage is the
+// roll hitmu() already made, which that arm leaves alone. One monster's blow
+// on another adjusts the damage mdamagem() rolled and prints nothing, because
+// mhitm.c hitmm() has already printed.
 //
-// C's other two arms are the hero's own physical attack (uhitm) and one monster
-// hitting another (mhitm). Neither has a caller here, for the reasons
-// mhitm_ad_elec() gives above: js/uhitm.js damageum() is unported and
-// js/mhitm.js mattackm() stops long before any damage type.
+// The third arm is the hero's own physical attack (uhitm). It has no caller
+// here, because js/uhitm.js damageum() is unported.
 //
 // Two pieces of the hero's arm stop where C acts:
 //
@@ -1482,6 +1486,7 @@ export async function mhitm_ad_phys(
     env = {},
 ) {
     const unsupported = requireAttackOperation(env, 'unsupported');
+    const pa = magr.data;
     const pd = mdef.data;
 
     if (magr === state.youmonst) {
@@ -1509,8 +1514,69 @@ export async function mhitm_ad_phys(
         }
     } else {
         /* mhitm */
-        unsupported('one monster hitting another');
+        let mwep = magr.mw; /* MON_WEP(magr) */
+        /* C's own local, not gv.vis: this arm asks whether the hero sees both
+           combatants, while mhitm.c's gv.vis asks whether it sees either. */
+        const vis = canSeeMonster(magr, state) && canSeeMonster(mdef, state);
+
+        if (mattk.aatyp !== AT_WEAP && mattk.aatyp !== AT_CLAW) mwep = null;
+
+        if (shade_miss(magr, mdef, mwep, false, vis, state, env)) {
+            mhm.damage = 0;
+        } else if (mattk.aatyp === AT_KICK && thick_skinned(pd)) {
+            /* [no 'kicking boots' check needed; monsters with kick attacks
+               can't wear boots and monsters that wear boots don't kick] */
+            mhm.damage = 0;
+        } else if (mwep) { /* non-Null 'mwep' implies AT_WEAP || AT_CLAW */
+            // uhitm.c:4145-4188 is the armed blow: a cockatrice corpse
+            // wielded as a club, dmgval(), the gauntlets of power,
+            // artifact_hit() with the grow_up() that follows it, rustm() and
+            // the poison tail. mhitm.c mattackm() refuses AT_WEAP outright,
+            // so the only way in is an AT_CLAW attacker holding a weapon.
+            unsupported("a monster's wielded weapon landing on another");
+        } else if (pa === state.mons[PM_PURPLE_WORM]
+                   && pd === state.mons[PM_SHRIEKER]) {
+            /* hack to enhance mm_aggression(); we don't want purple
+               worm's bite attack to kill a shrieker because then it
+               won't swallow the corpse; but if the target survives,
+               the subsequent engulf attack should accomplish that */
+            if (mhm.damage >= mdef.mhp && mdef.mhp > 1)
+                mhm.damage = mdef.mhp - 1;
+        }
     }
+}
+
+// C ref: uhitm.c shade_miss() (2013-2050). "used for hero vs monster and
+// monster vs monster; also handles monster vs hero but that won't happen
+// because hero can't be a shade".
+//
+// Partial: the head is the whole answer for every defender that is not a
+// shade, and it is FALSE. C's `||` short-circuits on the species test, so
+// dmgval() is not reached for one and is called here only when it is.
+//
+// A shade defender refuses. Everything below the head prints -- through
+// objnam.c cxname(), hacklib.c vtense() and do_name.c mon_nam() -- and then
+// calls display.c map_invisible() and clears the shade's msleeping. The
+// refusal sits above all of it, and above the TRUE that would tell the caller
+// the blow passed harmlessly through.
+export function shade_miss(
+    magr,
+    mdef,
+    obj,
+    thrown,
+    verbose,
+    state = game,
+    env = {},
+) {
+    const unsupported = requireAttackOperation(env, 'unsupported');
+
+    /* we're using dmgval() for zero/not-zero, not for actual damage amount */
+    if (mdef.data !== state.mons[PM_SHADE]
+        || (obj && dmgval(obj, mdef, state, env)))
+        return false;
+
+    unsupported('an attack passing through a shade');
+    return true;
 }
 
 // C ref: uhitm.c mhitm_adtyping() (4781-4832). One landed blow's damage type
@@ -1625,11 +1691,13 @@ export async function missum(
 // and everything past it stops here: is_blunt_weapon(), unsolid(),
 // m_is_steadfast() and the mhurtle() that does the knocking back have no port.
 //
-// Two callers reach this: hmon_hitmon():1927, where the hero is the attacker,
-// and hitmu():1200, where the hero is the defender. C's `hitflags`
-// out-parameter serves neither, because it is first read at 5337 and first
-// written at 5399, both past the stop above; it is left off the signature
-// rather than accepted and ignored.
+// Three ported callers reach this: uhitm.c hmon_hitmon():1928, where the hero
+// is the attacker; mhitu.c hitmu():1193, where the hero is the defender; and
+// mhitm.c mdamagem():1061, where neither is. C's fourth, hmonas():5833, is a
+// polymorphed hero's attack and is unported. The `hitflags` out-parameter
+// serves none of the three, because it is first read at 5337 and first written
+// at 5399, both past the stop below; it is left off the signature rather than
+// accepted and ignored.
 //
 // The hero as defender reaches the `u_def` refusal below whenever an AD_PHYS
 // AT_CLAW, AT_KICK, AT_BUTT or AT_WEAP blow lands on him and rn2(6) answers 0,
@@ -1691,13 +1759,16 @@ export function mhitm_knockback(
     /* subset of test_move() */
     if (!isok(defx + dx, defy + dy)) return false;
     const here = state.level?.at(defx, defy);
-    /* C means this as "the push is diagonal", but it spells it against
-       magr->mx rather than against dx and dy two lines above, and for a hero
-       attacker magr is gy.youmonst, whose mx and my no line of src/ ever
-       assigns -- light.c:16-17 records that they always remain 0. So the test
-       C actually makes here is that the target is on neither column 0 nor row
-       0, and an orthogonal push out of a doorway is refused along with a
-       diagonal one. `?? 0` is that unset coordinate. */
+    /* C means this as "the push is diagonal", and it is that whenever magr is a
+       monster, which mhitm.c mdamagem() and mhitu.c hitmu() both make it. It is
+       not that for a hero attacker: magr is gy.youmonst, whose mx and my no
+       line of src/ ever assigns -- light.c:16-17 records that they always
+       remain 0 -- so the test C makes for uhitm.c hmon_hitmon() is that the
+       target is on neither column 0 nor row 0, and an orthogonal push out of a
+       doorway is refused along with a diagonal one. `?? 0` is that unset
+       coordinate. Of the two monster attackers only mdamagem() reaches this
+       line, because hitmu() makes the hero the defender and the refusal above
+       stops it first. */
     if (IS_DOOR(here?.typ)
         && (defx - (magr.mx ?? 0)) && (defy - (magr.my ?? 0))
         && !doorless_door(here))

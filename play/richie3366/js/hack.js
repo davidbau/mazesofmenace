@@ -9,7 +9,8 @@ import {
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
     is_pit, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
     LEPREHALL, COCKNEST, ANTHOLE, DELPHI,
-    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, CORR, DOOR, SDOOR, TREE, ICE,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_LAVA,
+    ROOM, CORR, DOOR, SDOOR, TREE, ICE,
     W_NONDIGGABLE, SHOP_DOOR_COST,
     IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
@@ -741,12 +742,17 @@ export function is_pool(x, y) {
 }
 
 /**
- * C ref: dbridge.c is_lava — LAVAPOOL/LAVAWALL; drawbridge-under deferred.
+ * C ref: dbridge.c is_lava — LAVAPOOL/LAVAWALL or DRAWBRIDGE_UP with
+ * DB_LAVA under (D-1077). is_pool/is_moat DRAWBRIDGE_UP+DB_MOAT still named.
  */
 export function is_lava(x, y) {
     if (!isok(x, y)) return false;
-    const typ = game.level?.at(x, y)?.typ;
-    return typ === LAVAPOOL || typ === LAVAWALL;
+    const lev = game.level?.at(x, y);
+    if (!lev) return false;
+    const ltyp = lev.typ | 0;
+    if (ltyp === LAVAPOOL || ltyp === LAVAWALL) return true;
+    return ltyp === DRAWBRIDGE_UP
+        && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_LAVA;
 }
 
 /**

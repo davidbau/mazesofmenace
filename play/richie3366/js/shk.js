@@ -16,9 +16,9 @@
 // Named omissions: shk_fixes_damage body; holetime dig follow; angry
 // Displaced pline (shk path); following verbalize;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
-// Fast + sobj_at pickaxe doorway block / dochug; m_canseeu for angry chase;
-// deserted_shop body; ACH_SHOP mapseen; Hallu shkname;
-// angry/surcharge/robbed welcome arms; Invis welcome; leave-bill verbalize;
+// m_canseeu for angry chase; ACH_SHOP mapseen; Hallu shkname;
+// SetVoice / Soundeffect robbed mutter; leave-bill verbalize;
+// shk_move Fast + sobj_at pickaxe (u_entered_shop doorway is D-1080);
 // addupbill body; clear_unpaid walks in setpaid; mongone full;
 // mnearto full (door yank uses enexto/rloc); paygd; M1_NOHEAD has_head;
 // container bill_box_content / contained_cost; remote_burglary; gem glass
@@ -45,13 +45,14 @@ import {
     OBJ_ONBILL,
     NO_ROOM, TEMPLE, RLOC_MSG, RLOC_NOMSG,
     DISPLACED, LOW_PM, Has_contents, MAXULEV, ECMD_OK, ECMD_TIME,
+    EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE,
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
     W_SWAPWEP, W_QUIVER, TT_PIT,
     SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, CANDLESHOP,
     ARTICLE_THE,
 } from './const.js';
 import { hero_conflict, resist_conflict, m_canseeu } from './mondata.js';
-import { mon_nam, x_monnam } from './do_name.js';
+import { mon_nam, x_monnam, y_monnam } from './do_name.js';
 import {
     COIN_CLASS, FOOD_CLASS, WAND_CLASS, POTION_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
@@ -59,6 +60,7 @@ import {
 } from './objects.js';
 import {
     newsym, pline, verbalize, docrt, flush_screen, canspotmon, canseemon,
+    sensemon,
 } from './display.js';
 import { cansee } from './vision.js';
 import { objectNames } from './generated/objects_data.js';
@@ -66,9 +68,9 @@ import { mattacku } from './mhitu.js';
 import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT } from './generated/monsters_data.js';
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable } from './shknam.js';
-import { splitobj, next_ident, obj_extract_self } from './mkobj.js';
+import { splitobj, next_ident, obj_extract_self, objects_at } from './mkobj.js';
 import { add_to_minv } from './makemon.js';
-import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise } from './attrib.js';
+import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attrib.js';
 import { simpleonames, makeplural } from './objnam.js';
 import { xname, doname, paydoname, set_doname_shop_suffix, otyp_is_charged } from './objnam.js';
 import {
@@ -227,11 +229,82 @@ export async function u_left_shop(leavestring, _newlev) {
     // bill unpaid arms (verbalize / rob_shop) deferred
 }
 
+/** C shk.c empty_shops[5] — latch so deserted_shop does not re-pline. */
+let empty_shops = '';
+
+/** C youprop.h Invis — (HInvis||EInvis)&&!BInvis; sticky u.Invis if H/E unset. */
+function hero_invis() {
+    const u = game.u || {};
+    if (u.Invis && !((u.HInvis | 0) || (u.EInvis | 0))) return true;
+    return !!(((u.HInvis | 0) || (u.EInvis | 0)) && !(u.BInvis | 0));
+}
+
+/** C youprop.h Blind — (HBlinded||EBlinded)&&!BBlinded. */
+function hero_blind() {
+    const u = game.u || {};
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C youprop.h Blind_telepat — HTelepat||ETelepat. */
+function hero_blind_telepat() {
+    const u = game.u || {};
+    return !!((u.HTelepat | 0) || (u.ETelepat | 0) || u.Blind_telepat);
+}
+
+/** C youprop.h Detect_monsters — HDetect_monsters||EDetect_monsters. */
+function hero_detect_monsters() {
+    const u = game.u || {};
+    return !!(u.Detect_monsters
+        || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0));
+}
+
+/** C mkobj.c sobj_at — first floor object of otyp at (x,y). */
+function sobj_at_shk(otyp, x, y) {
+    for (let o = objects_at(x, y); o; o = o.nexthere) {
+        if ((o.otyp | 0) === otyp) return o;
+    }
+    return null;
+}
+
+/**
+ * C ref: shk.c deserted_shop — untended/deserted pline (caller verified).
+ * Named omit: mimic-as-object still increments n not m (matches C M_AP).
+ */
+async function deserted_shop(enterstring) {
+    const r = game.level?.rooms?.[(enterstring.charCodeAt(0) | 0) - ROOMOFFSET];
+    let m = 0;
+    let n = 0;
+    if (r) {
+        const { m_at } = await import('./mon.js');
+        for (let x = r.lx | 0; x <= (r.hx | 0); ++x) {
+            for (let y = r.ly | 0; y <= (r.hy | 0); ++y) {
+                if (u_at(x, y)) continue;
+                const mtmp = m_at(x, y);
+                if (!mtmp) continue;
+                ++n;
+                const ap = M_AP_TYPE(mtmp);
+                if (sensemon(mtmp)
+                    || ((ap === M_AP_NOTHING || ap === M_AP_MONSTER)
+                        && canseemon(mtmp))) {
+                    ++m;
+                }
+            }
+        }
+    }
+    if (hero_blind() && !(hero_blind_telepat() || hero_detect_monsters())) {
+        ++n; /* force feedback to be less specific */
+    }
+    await pline(
+        `This shop ${m < n ? 'seems to be' : 'is'} ${!n ? 'deserted' : 'untended'}.`,
+    );
+}
+
 /**
  * C ref: shk.c u_entered_shop — welcome / deserted / blocking.
- * Covered: tended peaceful first-visit Welcome verbalize.
- * Deferred: deserted_shop; angry/surcharge/robbed/Invis arms; pickaxe/
- * steed/Fast doorway block + dochug; inside_shop gate for those arms.
+ * Covered: tended peaceful Welcome; deserted_shop + empty_shops latch;
+ * Invis; angry / surcharge / robbed; pickaxe/mattock/steed/Fast doorway
+ * + extra `dochug`. Named omit: SetVoice; Soundeffect robbed mutter;
+ * Hallu shkname; C bill_p poison on !inhishop.
  */
 export async function u_entered_shop(enterstring) {
     if (!enterstring) return;
@@ -241,13 +314,22 @@ export async function u_entered_shop(enterstring) {
     const enterCh = enterstring.charCodeAt(0);
     const shkp = shop_keeper(enterCh);
     if (!shkp) {
-        // deserted_shop deferred; clear ushops like C empty path
+        if (!empty_shops.includes(enterstring.charAt(0))
+            && in_rooms(u.ux, u.uy, SHOPBASE)
+                !== in_rooms(u.ux0, u.uy0, SHOPBASE)) {
+            await deserted_shop(enterstring);
+        }
+        empty_shops = u.ushops || '';
         u.ushops = '';
         return;
     }
 
     const eshkp = ESHK(shkp);
     if (!inhishop(shkp)) {
+        if (!empty_shops.includes(enterstring.charAt(0))) {
+            await deserted_shop(enterstring);
+        }
+        empty_shops = u.ushops || '';
         u.ushops = '';
         return;
     }
@@ -265,34 +347,127 @@ export async function u_entered_shop(enterstring) {
         pacify_shk(shkp, true);
     }
 
-    if (muteshk(shkp) || eshkp.following) return;
+    if (muteshk(shkp) || eshkp.following) return; /* no dialog */
 
-    if (u.Invis) {
-        // Invis welcome arms deferred
+    if (hero_invis()) {
+        await pline(`${Shknam(shkp)} senses your presence.`);
+        if (!hero_deaf() && !muteshk(shkp)) {
+            // SetVoice deferred
+            await verbalize('Invisible customers are not welcome!');
+        } else {
+            await pline(
+                `${Shknam(shkp)} stands firm as if ${noit_mhe(shkp)} knows you are there.`,
+            );
+        }
         return;
     }
 
     const rt = game.level?.rooms?.[enterCh - ROOMOFFSET]?.rtype | 0;
     const shopName = shtypes[rt - SHOPBASE]?.name || 'shop';
+    const deaf = hero_deaf();
 
-    if (ANGRY(shkp) || eshkp.surcharge || eshkp.robbed) {
-        // angry / surcharge / robbed welcome arms deferred
-        return;
-    }
-
-    const deaf = !!(u.Deaf || (u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf);
-    if (!deaf && !muteshk(shkp)) {
-        const again = eshkp.visitct++ ? ' again' : '';
-        await verbalize(
-            `${Hello(shkp)}, ${plname}!  Welcome${again} to ${s_suffix(shkname(shkp))} ${shopName}!`,
-        );
+    if (ANGRY(shkp)) {
+        if (!deaf && !muteshk(shkp)) {
+            await verbalize(
+                `So, ${plname}, you dare return to ${s_suffix(shkname(shkp))} ${shopName}?!`,
+            );
+        } else {
+            await pline(
+                `${Shknam(shkp)} seems ${ANGRYTEXTS[rn2(ANGRYTEXTS.length)]} over your return to ${noit_mhis(shkp)} ${shopName}!`,
+            );
+        }
+    } else if (eshkp.surcharge) {
+        if (!deaf && !muteshk(shkp)) {
+            const { mbodypart } = await import('./polyself.js');
+            await verbalize(
+                `Back again, ${plname}?  I've got my ${mbodypart(shkp, EYE)} on you.`,
+            );
+        } else {
+            await pline(
+                `The atmosphere at ${s_suffix(shkname(shkp))} ${shopName} seems unwelcoming.`,
+            );
+        }
+    } else if (eshkp.robbed) {
+        if (!deaf) {
+            // Soundeffect(se_mutter_imprecations) deferred
+            await pline(
+                `${Shknam(shkp)} mutters imprecations against shoplifters.`,
+            );
+        } else {
+            await pline(
+                `${Shknam(shkp)} is combing through ${noit_mhis(shkp)} inventory list.`,
+            );
+        }
     } else {
-        const again = eshkp.visitct++ ? ' again' : '';
-        await pline(
-            `You enter ${s_suffix(shkname(shkp))} ${shopName}${again}!`,
-        );
+        if (!deaf && !muteshk(shkp)) {
+            const again = eshkp.visitct++ ? ' again' : '';
+            await verbalize(
+                `${Hello(shkp)}, ${plname}!  Welcome${again} to ${s_suffix(shkname(shkp))} ${shopName}!`,
+            );
+        } else {
+            const again = eshkp.visitct++ ? ' again' : '';
+            await pline(
+                `You enter ${s_suffix(shkname(shkp))} ${shopName}${again}!`,
+            );
+        }
     }
-    // doorway pickaxe / steed / Fast block + dochug deferred
+
+    /* can't do anything about blocking if teleported in */
+    if (!inside_shop(u.ux, u.uy)) {
+        const not_upset = !eshkp.surcharge;
+        let should_block = false;
+        const pick = carrying(PICK_AXE);
+        const mattock = carrying(DWARVISH_MATTOCK);
+        if (pick || mattock) {
+            let cnt = 1;
+            let tool;
+            if (pick && mattock) {
+                tool = 'digging tool';
+                cnt = 2;
+            } else if (pick) {
+                tool = 'pick-axe';
+                cnt = count_otyp_from(pick, PICK_AXE);
+            } else {
+                tool = 'mattock';
+                cnt = count_otyp_from(mattock, DWARVISH_MATTOCK);
+                if (!hero_blind()) makeknown(DWARVISH_MATTOCK);
+            }
+            if (!deaf && !muteshk(shkp)) {
+                await verbalize(
+                    not_upset
+                        ? `Will you please leave your ${tool}${plur(cnt)} outside?`
+                        : `Leave the ${tool}${plur(cnt)} outside.`,
+                );
+            } else {
+                await pline(
+                    `${Shknam(shkp)} ${not_upset ? 'is hesitant' : 'refuses'} to let you in with your ${tool}${plur(cnt)}.`,
+                );
+            }
+            should_block = true;
+        } else if (u.usteed) {
+            const steed = y_monnam(u.usteed);
+            if (!deaf && !muteshk(shkp)) {
+                await verbalize(
+                    not_upset
+                        ? `Will you please leave ${steed} outside?`
+                        : `Leave ${steed} outside.`,
+                );
+            } else {
+                await pline(
+                    `${Shknam(shkp)} ${not_upset ? "doesn't want" : 'refuses'} to let you in while you're riding ${steed}.`,
+                );
+            }
+            should_block = true;
+        } else {
+            should_block = !!(Fast()
+                && (sobj_at_shk(PICK_AXE, u.ux, u.uy)
+                    || sobj_at_shk(DWARVISH_MATTOCK, u.ux, u.uy)));
+        }
+        if (should_block) {
+            const { dochug } = await import('./monmove.js');
+            await dochug(shkp); /* shk gets extra move */
+        }
+    }
 }
 
 /** C ref: shk.c inhishop — roomno match (full in_rooms / on_level deferred). */
@@ -2510,10 +2685,24 @@ export async function addtobill(obj, ininv, dummy, silent) {
 /** C ref: invent.c carrying — first matching otyp in hero invent. */
 function carrying(otyp) {
     if (otyp < 0) return null;
-    for (let o = game.u?.invent; o; o = o.nobj) {
-        if (o.otyp === otyp) return o;
+    for (const otmp of game.invent || []) {
+        if ((otmp?.otyp | 0) === otyp) return otmp;
     }
     return null;
+}
+
+/**
+ * C: after carrying(), walk nobj counting further otyp (not quan).
+ * JS invent is an array (C nobj); count slots after `first`.
+ */
+function count_otyp_from(first, otyp) {
+    let cnt = 1;
+    const inv = game.invent || [];
+    const start = inv.indexOf(first);
+    for (let i = start + 1; i < inv.length; i++) {
+        if ((inv[i]?.otyp | 0) === otyp) cnt++;
+    }
+    return cnt;
 }
 
 /** C ref: dig.c holetime — dig occupation in shop (D-0951). */

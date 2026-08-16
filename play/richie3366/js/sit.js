@@ -6,19 +6,47 @@
 // sit (D-1058; terrain, not trap TT_LAVA; D-1060 Fire/Cold
 // youprop.h uprops[FIRE_RES]/[COLD_RES] intrinsic||extrinsic) +
 // dosit steed You + mon_nam(usteed) (D-1067; ARTICLE_THE, not
-// "your steed" / not y_monnam).
-// C ref: sit.c dosit / throne_sit_effect / special_throne_effect /
+// "your steed" / not y_monnam) + hider u.uundetected clear except
+// trapper (D-1068; sit.c after usteed, before can_reach_floor) +
+// can_reach_floor(FALSE) swallow / Levitation tumble / sit-on-air
+// (D-1069; replace Levitation-only early return; air/water Levitation
+// may sit) + helper/message Levitation ≡ youprop.h (H||E)&&!B
+// (D-1070; not sticky u.Levitation) + helper hugs AT_HUGS+!sticks
+// (D-1071; sit-on-air reachable) + dosit ustuck !sticks lap
+// (D-1072; Monnam / mhis; not swallow combat) + OBJ_AT picnic skip
+// when uteetering_at_seen_pit or uescaped_shaft (D-1073; C sit.c
+// 437–439 / trap.c; helpers in trap.js) + dragon coin hoard
+// "meager " vs money_cnt(invent) < ulevel*1000 (D-1074; C sit.c
+// 443–446 / hack.c money_cnt first COIN_CLASS quan) + lay_an_egg
+// after IS_THRONE (D-1075; C sit.c 357–396 / 559–560; male / hunger /
+// splash tetra / Sargasso ECMD_OK; spawn vs lay; egg_type_from_parent
+// in mon.js).
+// C ref: sit.c dosit / lay_an_egg / throne_sit_effect / special_throne_effect /
 // take_gold / attrcurse / rndcurse; dungeon.c surface (fountain branch);
 // potion.c split_mon / mhitu.c cloneu (locals — sit cannot import
-// potion.js/mhitu.js: eat←potion, zap←mhitu cycles).
+// potion.js/mhitu.js: eat←potion, zap←mhitu cycles). D-1078: monster
+// split_mon arm calls makemon.js clone_mon (C home).
 //
 // Branch envelope: usteed early-return You+mon_nam (D-1067),
-// reachable floor (Levitation only), OBJ_AT picnic body
-// (dragon/towel/slithy/sit+comfort/squishy/cream-pie), trap-before-throne
+// hider ceiling drop u.uundetected=0 except PM_TRAPPER (D-1068),
+// !can_reach_floor(FALSE) swallow / Levitation tumble / sit-on-air
+// (D-1069/D-1070; shared engrave.js helper; Levitation is C
+// youprop.h (H||E)&&!B; hugs AT_HUGS+!sticks D-1071; ceiling_hider /
+// Flying||MZ_HUGE D-1082; check_pit D-1083 — dosit still FALSE so
+// teeter is picnic-only; ceiling arm dead at #sit after non-trapper
+// hider clear), ustuck !sticks lap Monnam/mhis
+// (D-1072; eel WRAP / mimic STCK / trapper-not-swallow; hugs already
+// air via helper), OBJ_AT picnic body
+// (dragon/towel/slithy/sit+comfort/squishy/cream-pie) with C precipice
+// skip (D-1073: !(uteetering_at_seen_pit || uescaped_shaft) from
+// trap.c via trap.js; D-1074 dragon COIN_CLASS You("%shoard")
+// meager when obj.quan + money_cnt(invent) < u.ulevel * 1000),
+// trap-before-throne
 // (D-1039: already-trapped sit / dotrap VIASITTING), water/pool/gremlin
 // (D-1055: early goto in_water for pool !Underwater and gremlin
 // fountain/pool; Underwater/waterlevel cushions/mud; in_water sit +
-// split_mon+dryup / rn2(10) water_damage uarm twice; D-1056: C
+// split_mon+dryup (D-1078 monster clone_mon arm) / rn2(10)
+// water_damage uarm twice; D-1056: C
 // youprop.h Underwater ≡ u.uinwater), IS_SINK/IS_ALTAR/IS_GRAVE/STAIRS/
 // LADDER sit_message (D-1057; sink humanoid rump vs underside; altar
 // altar_wrath via dynamic import — pray.js already imports sit.js),
@@ -32,25 +60,26 @@
 // VS-goto/msummon/ confused remove-curse HConfusion-only D-1048 /
 // poly/acid/shuffle) + ordinary throne_sit_effect 1–13 (adjattrib/shock/
 // heal/take_gold/luck-wish/courtmon/genocide/ curse/see-invis mapping/
-// aggravate-tele/identify/pretzel), default having-fun; attrcurse
+// aggravate-tele/identify/pretzel) + wizard getlin 1..13 (D-1084;
+// wizard && !iflags.debug_fuzzer after rnd(13); ESC Never_mind return;
+// atoi 1..13 override; 0/empty keep rnd — not Analyze y_n),
+// lays_eggs → lay_an_egg (D-1075)
+// else default having-fun; attrcurse
 // rnd(11) INTRINSIC strip (D-0945); rndcurse invent + Magicbane /
 // Antimagic / Half_spell_damage / SPFX_INTEL resist / steed saddle
 // (D-0969).
-// Deferred: hider, can_reach_floor full, ustuck, uteetering/
-// uescaped_shaft gate, wizard getlin / Analyze y_n,
-// lay_an_egg, money_cnt meager coil; clone_mon monster split_mon;
-// shieldeff; update_inventory redraw; Hallucination hcolor synonyms;
-// Yobjnam2 shk_your/pname polish; SetVoice; eyecount poly; hero
-// pit/hole dotrap bodies still named-omit in trap.js. take_gold calls
+// Deferred: shieldeff; update_inventory redraw; Hallucination hcolor synonyms;
+// Yobjnam2 shk_your/pname polish; SetVoice; eyecount poly. take_gold calls
 // steal.c remove_worn_item (D-1049); armor *_off / unpunish / setnotworn
 // pointer-walk still named on that helper. D-0956: set_mimic_blocking
-// on SEE_INVIS attrcurse arm. D-1058 uses shared hack.js is_lava
-// (LAVAPOOL/LAVAWALL); DRAWBRIDGE_UP+DB_LAVA under still named there.
+// on SEE_INVIS attrcurse arm. D-1058/D-1077 uses shared hack.js is_lava
+// (LAVAPOOL/LAVAWALL or DRAWBRIDGE_UP+DB_LAVA). is_pool DRAWBRIDGE_UP
+// +DB_MOAT still named on that helper.
 
 import { game } from './gstate.js';
 import {
     pline, You_feel, newsym, see_monsters, map_background, newsym_force,
-    verbalize,
+    verbalize, canspotmon,
 } from './display.js';
 import { set_mimic_blocking, cansee } from './vision.js';
 import { rnd, rn2, rn1, d } from './rng.js';
@@ -65,29 +94,33 @@ import {
     FIRE_RES, COLD_RES, POISON_RES, TELEPAT, TELEPORT, INVIS, SEE_INVIS,
     FAST, STEALTH, PROTECTION, AGGRAVATE_MONSTER,
     KILLED_BY, KILLED_BY_AN, UTOTYPE_NONE, POLY_NOFLAGS, Upolyd, SICK_ALL,
-    NO_MM_FLAGS,
+    NO_MM_FLAGS, Never_mind,
     EYE, HEAD, FOOT,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     SPIKED_PIT, VIASITTING,
 } from './const.js';
-import { objects_at, delobj, curse, unbless } from './mkobj.js';
+import {
+    objects_at, delobj, curse, unbless, mksobj, weight, set_corpsenm, stackobj,
+} from './mkobj.js';
+import { observe_object } from './invent.js';
+import { egg_type_from_parent } from './mon.js';
 import { objectNames, COIN_CLASS, SPBOOK_CLASS } from './objects.js';
 import { xname, the, The, vtense, makeplural } from './objnam.js';
 import {
     amorphous, mons, M1_SLITHY, is_prince, is_vampire, eggs_in_water,
-    humanoid, likes_lava, monsterNames,
+    lays_eggs, humanoid, likes_lava, is_hider, monsterNames, is_neuter, G_UNIQ,
 } from './monsters.js';
 import { get_artifact, SPFX_INTEL } from './artifact.js';
 import { ART_MAGICBANE } from './generated/artifacts_data.js';
 import { A_MAX, A_CON, A_STR, A_WIS, adjattrib, exercise, change_luck } from './attrib.js';
 import { losexp } from './exper.js';
 import { find_hell } from './dungeon.js';
-import { yn_function } from './getline.js';
-import { t_at, dotrap, water_damage } from './trap.js';
+import { yn_function, getlin } from './getline.js';
+import { t_at, dotrap, water_damage, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { losehp, finish_maybe_wail, is_pool, is_lava } from './hack.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { burn_away_slime } from './timeout.js';
-import { hliquid, christen_monst, mon_nam } from './do_name.js';
+import { hliquid, christen_monst, mon_nam, Monnam, type_is_pname } from './do_name.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const TOWEL = objectNames.indexOf('TOWEL');
@@ -96,7 +129,11 @@ const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const CHEST = objectNames.indexOf('CHEST');
 const SPE_REMOVE_CURSE = objectNames.indexOf('SPE_REMOVE_CURSE');
 const WATER_WALKING_BOOTS = objectNames.indexOf('WATER_WALKING_BOOTS');
+const EGG = objectNames.indexOf('EGG');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const PM_TRAPPER = monsterNames.indexOf('PM_TRAPPER');
+const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
+const PM_ELECTRIC_EEL = monsterNames.indexOf('PM_ELECTRIC_EEL');
 const CLOTH = 6; // objclass.h obj_material_types
 
 /** C youprop.h:279 `#define Underwater (u.uinwater)`. */
@@ -142,6 +179,27 @@ function Hallucination() {
     if (u.Halluc_resistance) return false;
     return !!((u.Hallucination)
         || ((u.HHallucination | 0) & TIMEOUT));
+}
+
+/**
+ * C you.h mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his.
+ * C mondata.c pronoun_gender: hallu rn2(4); !canspotmon / is_neuter /
+ * non-(humanoid|G_UNIQ|pname) → 2 (its); else female.
+ * Local: sit cannot import mhitu.js (zap←mhitu cycle).
+ */
+function mhis(mtmp) {
+    if (Hallucination()) {
+        return ['his', 'her', 'its', 'their'][rn2(4)];
+    }
+    if (!canspotmon(mtmp)) return 'its';
+    const ptr = mtmp?.data;
+    if (!ptr || is_neuter(ptr)) return 'its';
+    if (humanoid(ptr)
+        || ((ptr.geno | 0) & G_UNIQ)
+        || type_is_pname(ptr)) {
+        return mtmp.female ? 'her' : 'his';
+    }
+    return 'its';
 }
 
 /** C ref: obj.h u_wield_art — is_art(uwep, art). */
@@ -480,6 +538,17 @@ function Flying() {
 }
 
 /**
+ * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
+ * Sticky u.Levitation is not a C field; BLevitation (floor I_SPECIAL)
+ * must still block (D-1070). Do not sticky-true past !B.
+ */
+function Levitation() {
+    const u = game.u || {};
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+
+/**
  * C youprop.h Fire_resistance — HFire_resistance || EFire_resistance
  * ≡ uprops[FIRE_RES].intrinsic || uprops[FIRE_RES].extrinsic.
  * confer_oc_oprop writes FIRE_RES only to uprops (EFire unmirrored).
@@ -699,8 +768,8 @@ export async function special_throne_effect(effect) {
 }
 
 /**
- * C ref: sit.c throne_sit_effect — rnd(6)>4 then rnd(13); Vlad special
- * returns before vanish. Wizard getlin deferred.
+ * C ref: sit.c throne_sit_effect — rnd(6)>4 then rnd(13); wizard
+ * getlin may override 1..13 (D-1084); Vlad special returns before vanish.
  */
 async function throne_sit_effect() {
     const u = game.u || (game.u = {});
@@ -710,7 +779,19 @@ async function throne_sit_effect() {
 
     if (rnd(6) > 4) {
         let effect = rnd(13);
-        // wizard getlin "Throne sit effect (1..13)" deferred
+        // C sit.c: if (wizard && !iflags.debug_fuzzer) getlin then atoi.
+        // wizard ≡ flags.debug||flags.wizard (D-0576). Analyze y_n is
+        // the later vanish arm, not this prompt.
+        if (wizard_mode() && !game.iflags?.debug_fuzzer) {
+            const buf = await getlin('Throne sit effect (1..13) [0=random]');
+            if (buf === '\x1b') {
+                await pline(Never_mind);
+                return; /* caller still spends the sit turn */
+            }
+            // C atoi: leading digits; empty/junk → 0 → keep rnd(13).
+            const which = parseInt(String(buf ?? ''), 10);
+            if (which >= 1 && which <= 13) effect = which | 0;
+        }
         if (special_throne) {
             await special_throne_effect(effect);
             return;
@@ -897,7 +978,8 @@ async function throne_sit_effect() {
 
 /**
  * C ref: mhitu.c cloneu. Local: sit cannot import mhitu.js
- * (mhitu→zap→potion→eat→sit). clone_mon named omit.
+ * (mhitu→zap→potion→eat→sit). Monster clones use makemon.js
+ * clone_mon (D-1078).
  */
 async function cloneu() {
     const u = game.u || {};
@@ -926,10 +1008,11 @@ async function cloneu() {
 }
 
 /**
- * C ref: potion.c split_mon. Hero path for dosit gremlin; clone_mon
- * monster arm named omit (returns null).
+ * C ref: potion.c split_mon. Hero path cloneu; monster path
+ * clone_mon (D-1078). Non-youmonst heat reason still "its"
+ * (C s_suffix(mon_nam(mtmp)) named).
  */
-async function split_mon(mon, mtmp) {
+export async function split_mon(mon, mtmp) {
     let reason = '';
     if (mtmp) {
         // C: the_your[1]=="your" when attacker is youmonst; else
@@ -949,7 +1032,17 @@ async function split_mon(mon, mtmp) {
         }
         return mtmp2;
     }
-    return null;
+    if ((mon.mhp | 0) > (mon.mhpmax | 0)) mon.mhp = mon.mhpmax | 0;
+    const { clone_mon } = await import('./makemon.js');
+    const mtmp2 = ((mon.mhp | 0) > 1) ? await clone_mon(mon, 0, 0) : null;
+    if (mtmp2) {
+        mtmp2.mhpmax = Math.trunc((mon.mhpmax | 0) / 2);
+        mon.mhpmax = (mon.mhpmax | 0) - (mtmp2.mhpmax | 0);
+        if (canspotmon(mon)) {
+            await pline(`${Monnam(mon)} multiplies${reason}!`);
+        }
+    }
+    return mtmp2;
 }
 
 /**
@@ -987,6 +1080,79 @@ async function You_sit_message(what) {
 }
 
 /**
+ * C ref: hack.c money_cnt — first COIN_CLASS quan on the invent
+ * chain (gold merges, so first pile is the wallet). Not a sum.
+ * Local: sit cannot import the other money_cnt clones (end/shk
+ * cycles). JS invent is an array ≡ C nobj walk.
+ */
+function money_cnt(invent) {
+    for (const otmp of invent || []) {
+        if (otmp.oclass === COIN_CLASS) return otmp.quan | 0;
+    }
+    return 0;
+}
+
+/**
+ * C objects.h FOOD("egg", …, 80, …). Extractor may omit oc_nutrition.
+ */
+function egg_oc_nutrition() {
+    const oc = game.objects?.[EGG];
+    if (oc?.oc_nutrition != null) return oc.oc_nutrition | 0;
+    return 80;
+}
+
+/**
+ * C ref: sit.c lay_an_egg — hero lays/spawns after furniture/throne.
+ * dropy/morehungry via dynamic import (do←engrave←hack←eat←sit;
+ * eat already imports sit).
+ */
+async function lay_an_egg() {
+    const u = game.u || {};
+    const data = game.youmonst?.data;
+    if (!game.flags?.female) {
+        await pline(
+            `${Hallucination()
+                ? 'You may think you are a platypus, but a male still'
+                : 'Males'} can't lay eggs!`,
+        );
+        return ECMD_OK;
+    } else if ((u.uhunger | 0) < egg_oc_nutrition()) {
+        await pline("You don't have enough energy to lay an egg.");
+        return ECMD_OK;
+    } else if (eggs_in_water(data)) {
+        if (!(Underwater() || Is_waterlevel(u.uz))) {
+            await pline('A splash tetra you are not.');
+            return ECMD_OK;
+        }
+        // C: youmonst.data == &mons[PM_*] — JS mons() is a new object
+        // each call, so compare umonnum (≡ data.mndx when poly is consistent).
+        if (Upolyd(u)
+            && ((u.umonnum | 0) === PM_GIANT_EEL
+                || (u.umonnum | 0) === PM_ELECTRIC_EEL)) {
+            await pline('You yearn for the Sargasso Sea.');
+            return ECMD_OK;
+        }
+    }
+    const uegg = mksobj(EGG, false, false);
+    uegg.spe = 1;
+    uegg.quan = 1;
+    uegg.owt = weight(uegg);
+    // C: set_corpsenm(uegg, egg_type_from_parent(u.umonnum, FALSE))
+    set_corpsenm(uegg, egg_type_from_parent(u.umonnum | 0, false));
+    uegg.known = 1;
+    observe_object(uegg);
+    await pline(
+        `You ${eggs_in_water(data) ? 'spawn' : 'lay'} an egg.`,
+    );
+    const { dropy } = await import('./do.js');
+    await dropy(uegg);
+    stackobj(uegg);
+    const { morehungry } = await import('./eat.js');
+    morehungry(egg_oc_nutrition());
+    return ECMD_TIME;
+}
+
+/**
  * C ref: sit.c dosit — #sit
  */
 export async function dosit() {
@@ -997,11 +1163,43 @@ export async function dosit() {
         await pline(`You are already sitting on ${mon_nam(u.usteed)}.`);
         return ECMD_OK;
     }
-    if (u.Levitation) {
-        await pline('You tumble in place.');
-        return ECMD_OK;
+    // C sit.c dosit: u.uundetected && is_hider(youmonst.data)
+    // && umonnum != PM_TRAPPER — trapper stays hidden on the floor;
+    // other hiders drop from the ceiling. No newsym at this locus.
+    if (u.uundetected && is_hider(game.youmonst?.data)
+        && (u.umonnum | 0) !== PM_TRAPPER) {
+        u.uundetected = 0;
     }
-    // can_reach_floor / uswallow / ustuck still deferred
+    // Dynamic import: sit←engrave←hack←eat←sit. C sit.c dosit:
+    // if (!can_reach_floor(FALSE)) { swallow / Levitation / air }.
+    {
+        const { can_reach_floor, sticks } = await import('./engrave.js');
+        if (!can_reach_floor(false)) {
+            if (u.uswallow) {
+                await pline('There are no seats in here!');
+            } else if (Levitation()) {
+                await pline('You tumble in place.');
+            } else {
+                await pline('You are sitting on air.');
+            }
+            return ECMD_OK;
+        }
+        // C sit.c dosit: else if (u.ustuck && !sticks(youmonst.data))
+        // — grabber is beside the hero, not under the seat. Hugs already
+        // FALSE from the helper (D-1071), so this arm is WRAP/STCK
+        // (eel, mimic, trapper not swallowed). C sticks from engrave,
+        // not monmove.js (AT_HUGS 6/7 ≠ C 7/11).
+        if (u.ustuck && !sticks(game.youmonst?.data)) {
+            if (humanoid(u.ustuck.data)) {
+                await pline(
+                    `${Monnam(u.ustuck)} won't offer ${mhis(u.ustuck)} lap.`,
+                );
+            } else {
+                await pline(`${Monnam(u.ustuck)} has no lap.`);
+            }
+            return ECMD_OK;
+        }
+    }
     const trap = t_at(u.ux, u.uy);
     const typ = game.level?.at(u.ux, u.uy)?.typ ?? 0;
     // C: else if (is_pool && !Underwater) goto in_water — skips OBJ_AT/trap
@@ -1016,13 +1214,22 @@ export async function dosit() {
         return ECMD_TIME;
     }
 
-    // C: OBJ_AT && !(uteetering_at_seen_pit || uescaped_shaft) — pit gates deferred
+    // C sit.c dosit: OBJ_AT && !(uteetering_at_seen_pit(trap)
+    // || uescaped_shaft(trap)) — precipice skip so picnic does not
+    // hide the trap arm (D-1073). In-pit utrap still picnics (C
+    // uteetering is false when utraptype==TT_PIT).
     const obj = objects_at(u.ux, u.uy);
-    if (obj) {
+    if (obj && !(uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
         const youdata = game.youmonst?.data;
         if (youdata?.mlet === 'S_DRAGON' && obj.oclass === COIN_CLASS) {
-            // money_cnt meager-hoard threshold deferred → always bare "hoard"
-            await pline('You coil up around your hoard.');
+            // C sit.c dosit: You("coil up around your %shoard.",
+            // (obj->quan + money_cnt(gi.invent) < u.ulevel * 1000)
+            // ? "meager " : "") — first invent gold pile, not a sum.
+            const meager =
+                ((obj.quan | 0) + money_cnt(game.invent)
+                    < (u.ulevel | 0) * 1000)
+                    ? 'meager ' : '';
+            await pline(`You coil up around your ${meager}hoard.`);
         } else if (obj.otyp === TOWEL) {
             await pline("It's probably not a good time for a picnic...");
         } else {
@@ -1181,7 +1388,10 @@ export async function dosit() {
         return ECMD_TIME;
     }
 
-    // lay_an_egg deferred → default
+    // C sit.c dosit: else if (lays_eggs(youmonst.data)) return lay_an_egg();
+    if (lays_eggs(game.youmonst?.data)) {
+        return lay_an_egg();
+    }
     await pline(`Having fun sitting on the ${surface(u.ux, u.uy)}?`);
     return ECMD_TIME;
 }

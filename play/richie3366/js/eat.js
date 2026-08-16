@@ -21,8 +21,7 @@
 // accessorytime + newuhs; losestr setuhpmax / terminal-frailty full
 // death path; vomit cantvomit/Sick/FAINTING/acid-breath;
 // Fixed_abil Popeye Olive/Bluto;
-// livelog conduct; cprefx revive_corpse after rider death; cprefx
-// polymon stone-golem failure polish.
+// livelog conduct; cprefx polymon stone-golem failure polish.
 // D-0953: floorfood pool/lava reach + vault_gd_watching(GD_EATGOLD).
 // D-0956: Ring_gone / float_up / rescham / choke(strangle) /
 // set_mimic_blocking / perceives in eataccessory.
@@ -94,7 +93,7 @@ import {
     make_stunned, make_hallucinated,
 } from './potion.js';
 import { addinv_nomerge } from './u_init.js';
-import { dropy, dropx, make_blinded } from './do.js';
+import { dropy, dropx, make_blinded, revive_corpse } from './do.js';
 import { type_is_pname, rndmonnam, pmname, Ugender } from './do_name.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
@@ -2610,10 +2609,11 @@ async function fix_petrification() {
 /**
  * C ref: eat.c cprefx — pre-corpse / pre-tin-meat effects.
  * Branch envelope: maybe_cannibal; flesh_petrifies → stone / polymon;
- * dog/cat aggravate; lizard unstone; Death/Pestilence/Famine done;
- * green slime; acidic unstone.
- * Named omissions: revive_corpse after rider lifesave; polymon failure
- * detail when stone-golem form unavailable.
+ * dog/cat aggravate; lizard unstone; Death/Pestilence/Famine done +
+ * revive_corpse(victual.piece) when CORPSE (not tin) then zero_victual
+ * (D-1081); green slime; acidic unstone.
+ * Named omissions: polymon failure detail when stone-golem form
+ * unavailable.
  */
 async function cprefx(pm) {
     await maybe_cannibal(pm, true);
@@ -2671,8 +2671,15 @@ async function cprefx(pm) {
         game.killer.name = `unwisely ate the body of ${nm}`;
         game.killer.format = NO_KILLER_PREFIX;
         await done(DIED);
+        // C: life-saving needed to reach here
         exercise(A_WIS, false);
-        // revive_corpse for corpse (not tin) deferred
+        // revive an actual corpse; can't do that if it was a tin
+        const piece = game.context?.victual?.piece;
+        if (piece
+            && (piece.otyp | 0) === CORPSE
+            && await revive_corpse(piece)) {
+            game.context.victual = {}; // C: zero_victual
+        }
         return;
     }
     case PM_GREEN_SLIME: {

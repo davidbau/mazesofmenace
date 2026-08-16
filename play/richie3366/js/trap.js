@@ -1,5 +1,5 @@
 // trap.js — Trap creation + monster-step subset + hero dotrap dart /
-// rolling boulder + b_trapped (doors/tins).
+// rolling boulder + b_trapped (doors/tins) + hero pit/hole (D-1076).
 // C ref: trap.c — maketrap/choose_trapnote/hole_destination/trapnote,
 // t_at, t_missile, thitm, mintrap, dotrap, trapeffect_dart_trap /
 // trapeffect_pit / trapeffect_rocktrap / trapeffect_rolling_boulder_trap /
@@ -8,6 +8,8 @@
 // trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap /
 // trapeffect_web / trapeffect_landmine / blow_up_landmine /
 // mu_maybe_destroy_web, b_trapped,
+// uteetering_at_seen_pit / uescaped_shaft (D-1073 sit OBJ_AT gate +
+// do.c flooreffects; D-1083 can_reach_floor(check_pit)),
 // make_corpse ordinary path via thitm death.
 
 import { game } from './gstate.js';
@@ -25,9 +27,9 @@ import {
     unmap_object, glyph_is_invisible, tmp_at, nh_delay_output, obj_glyph,
     flush_topl_more, feel_newsym, canspotmon, map_invisible,
 } from './display.js';
-import { doname, an, the, The, xname, makeplural, vtense } from './objnam.js';
+import { doname, an, the, The, xname, yname, makeplural, vtense } from './objnam.js';
 import {
-    Monnam, mon_nam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
+    Monnam, mon_nam, x_monnam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
     christen_monst, rndmonnam, hliquid,
 } from './do_name.js';
 import { dist2, distmin, m_at, wakeup, seemimic, m_carrying } from './mon.js';
@@ -65,7 +67,9 @@ import {
     LOW_PM, BOLT_LIM, STRAT_WAITMASK,
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
     UTOTYPE_NONE, UTOTYPE_FALLING, Is_stronghold,
-    KILLED_BY, KILLED_BY_AN, NO_PART, STONING,
+    KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, NO_PART, STONING,
+    ARTICLE_NONE, ARTICLE_THE, SUPPRESS_SADDLE, has_mgivenname,
+    DISMOUNT_POLY,
     WATER, BURNING, DROWNING, DISSOLVED, PLNMSG_BACK_ON_GROUND,
     TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
@@ -88,7 +92,8 @@ import {
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
-    maybe_half_phys, nomul, losehp, stop_occupation, in_rooms,
+    maybe_half_phys, nomul, losehp, finish_maybe_wail, stop_occupation,
+    in_rooms,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap_once_vault } from './teleport.js';
 import {
@@ -152,6 +157,9 @@ const AD_RUST = 24; /* monattk.h */
 const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
 const PM_DOPPELGANGER = monsterNames.indexOf('PM_DOPPELGANGER');
 const PM_ARCHEOLOGIST = monsterNames.indexOf('PM_ARCHEOLOGIST');
+const PM_RANGER = monsterNames.indexOf('PM_RANGER');
+const PM_PIT_VIPER = monsterNames.indexOf('PM_PIT_VIPER');
+const PM_PIT_FIEND = monsterNames.indexOf('PM_PIT_FIEND');
 const something = 'something';
 
 /** C ref: hacklib.c upstart — capitalize first letter. */
@@ -1006,9 +1014,19 @@ export async function mselftouch(mon, arg, byplayer) {
     }
 }
 
-// C ref: trap.c wearing_iron_shoes
-function wearing_iron_shoes(_mtmp) {
-    return false; /* which_armor W_ARMF deferred */
+/** C obj.h IRON material index. */
+const MAT_IRON = 11;
+
+/**
+ * C ref: trap.c wearing_iron_shoes — which_armor(W_ARMF) + oc_material==IRON.
+ * Hero uses u.uarmf (C worn.c which_armor(&youmonst)).
+ */
+function wearing_iron_shoes(mtmp) {
+    const armf = is_youmonst(mtmp)
+        ? game.u?.uarmf
+        : which_armor(mtmp, W_ARMF);
+    if (!armf) return false;
+    return (game.objects?.[armf.otyp]?.oc_material | 0) === MAT_IRON;
 }
 
 // C ref: trap.c thitm() — monster hit by trap missile / pit fall damage
@@ -1113,6 +1131,41 @@ export function conjoined_pits(trap2, trap1, u_entering_trap2) {
 }
 
 /**
+ * C ref: trap.c adj_nonconjoined_pit — walk from a pit you are trapped
+ * in into an adjacent pit that is not conjoined.
+ */
+function adj_nonconjoined_pit(adjtrap) {
+    const u = game.u || {};
+    const trap_with_u = t_at(u.ux0, u.uy0);
+    if (trap_with_u && adjtrap && u.utrap && (u.utraptype | 0) === TT_PIT
+        && is_pit(trap_with_u.ttyp) && is_pit(adjtrap.ttyp)) {
+        if (xytodir(u.dx, u.dy) !== DIR_ERR) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: trap.c uteetering_at_seen_pit — seen pit under the hero, not
+ * trapped in it (standing on the precipice).
+ * @param {object|null} trap
+ */
+export function uteetering_at_seen_pit(trap) {
+    const u = game.u || {};
+    return !!(trap && is_pit(trap.ttyp) && trap.tseen
+        && u_at(trap.tx, trap.ty)
+        && !(u.utrap && (u.utraptype | 0) === TT_PIT));
+}
+
+/**
+ * C ref: trap.c uescaped_shaft — seen hole/trapdoor under the hero.
+ * @param {object|null} trap
+ */
+export function uescaped_shaft(trap) {
+    return !!(trap && is_hole(trap.ttyp) && trap.tseen
+        && u_at(trap.tx, trap.ty));
+}
+
+/**
  * C ref: trap.c delfloortrap — destroy floor-emanating trap types.
  * Clears hero utrap (unless buried ball) or mon mtrapped, then deltrap.
  */
@@ -1171,21 +1224,26 @@ function floor_trigger(ttyp) {
 /**
  * C ref: trap.c check_in_air — HURTLING / Levitation·floater /
  * Flying·flyer (!plunged). Clinger mundetected is m_in_air only, not here.
+ * Hero Levitation/Flying are youprop.h macros, not sticky u.Levitation
+ * / u.Flying (D-1070).
  */
+function hero_Levitation() {
+    const u = game.u || {};
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+function hero_Flying() {
+    const u = game.u || {};
+    const steedFlyer = !!(u.usteed && is_flyer(u.usteed.data));
+    return !!(((u.HFlying | 0) || (u.EFlying | 0) || steedFlyer)
+        && !(u.BFlying | 0));
+}
 function check_in_air(mtmp, trflags) {
     const is_you = is_youmonst(mtmp);
     const plunged = (trflags & (TOOKPLUNGE | VIASITTING)) !== 0;
-    if ((trflags & HURTLING) !== 0) return true;
-    if (is_you) {
-        const u = game.u || {};
-        if (u.Levitation) return true;
-        if (u.Flying && !plunged) return true;
-        return false;
-    }
-    // C: is_floater(data) || (is_flyer(data) && !plunged)
-    if (is_floater(mtmp?.data)) return true;
-    if (is_flyer(mtmp?.data) && !plunged) return true;
-    return false;
+    return ((trflags & HURTLING) !== 0
+        || (is_you ? hero_Levitation() : is_floater(mtmp?.data))
+        || ((is_you ? hero_Flying() : is_flyer(mtmp?.data)) && !plunged));
 }
 
 /**
@@ -1232,8 +1290,9 @@ export function trapname(ttyp, _override) {
  * C ref: trap.c dotrap — hero steps on a trap.
  * Envelope: nomul(0); floor_trigger+in_air skip; already_seen escape rn2(5);
  * mons_see_trap; trapeffect_selector(youmonst). Named omissions: Sokoban
- * air-currents, undestroyable/ANTI_MAGIC/Fumbling force, conj/adj pit,
- * steed mon_learns; FORCETRAP morph recursion; hero pit/slp_gas/anti-magic/…
+ * air-currents, undestroyable/ANTI_MAGIC/Fumbling force, conj/adj pit
+ * escape, steed mon_learns; FORCETRAP morph recursion; hero slp_gas/
+ * anti-magic/…  Hero pit/hole via trapeffect_pit / trapeffect_hole.
  */
 export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
     if (!trap) return;
@@ -1276,17 +1335,205 @@ export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
 }
 
 /**
- * C ref: trap.c trapeffect_pit — monster branch (hero dotrap path deferred).
- * Envelope: grounded pets/monsters on PIT/SPIKED_PIT; Sokoban drag omitted;
- * flyer avoid; iron shoes clear spikes; thitm(rnd(6|10)) fall damage.
+ * C objnam.c Yname2 — capitalized yname.
+ * C quest.h Is_qlocate — on_level vs qlocate_level.
+ * C hack.c u_locomotion — Lev/Fly verbs; poly locomotion() deferred.
+ */
+function Yname2_pit(obj) {
+    return upstart(yname(obj));
+}
+function Is_qlocate_lev(lev) {
+    const loc = game.qlocate_level;
+    if (!lev || !loc) return false;
+    return (lev.dnum | 0) === (loc.dnum | 0)
+        && (lev.dlevel | 0) === (loc.dlevel | 0);
+}
+function u_locomotion_pit(defWord) {
+    if (hero_Levitation()) return 'float';
+    if (hero_Flying()) return 'fly';
+    return defWord;
+}
+
+/** C hack.c losehp then maybe_wail / done(DIED). */
+async function finish_hero_losehp() {
+    await finish_maybe_wail();
+    if (game._losehp_needs_done) {
+        const { finish_losehp_done } = await import('./end.js');
+        await finish_losehp_done();
+        return true;
+    }
+    return !!(game.program_state?.gameover);
+}
+
+/**
+ * C ref: trap.c steedintrap — PIT/SPIKED_PIT arm only (other types omit).
+ * Returns 0 when no steed (hero takes the fall); 1 if steed was hit;
+ * Trap_Killed_Mon if the steed died.
+ */
+async function steedintrap_pit(trap) {
+    const u = game.u || {};
+    const steed = u.usteed;
+    if (!steed || !trap) return Trap_Effect_Finished;
+    steed.mx = u.ux;
+    steed.my = u.uy;
+    const tt = trap.ttyp | 0;
+    const trapkilled = (steed.mhp | 0) <= 0
+        || await thitm(0, steed, null, rnd(tt === PIT ? 6 : 10), false);
+    if (trapkilled) {
+        const { dismount_steed } = await import('./steed.js');
+        await dismount_steed(DISMOUNT_POLY);
+        return Trap_Killed_Mon;
+    }
+    return 1;
+}
+
+/**
+ * C ref: trap.c trapeffect_pit — hero + monster branches.
+ * Hero: Lev/Fly skip, clinger, fall/plunge/sit verbs, spikes, set_utrap
+ * rn1(6,2), losehp, SPIKED poisoned(), selftouch, exercise STR/DEX.
+ * Named omissions: Punished ballfall/unplacebc/placebc; poly locomotion.
  */
 async function trapeffect_pit(mtmp, trap, trflags) {
     const ttype = trap.ttyp;
     let relevant_spikes = ttype === SPIKED_PIT;
     const a_your = ['a', 'your'];
+    const A_Your = ['A', 'Your'];
 
     if (is_youmonst(mtmp)) {
-        // Hero pit/spiked-pit body deferred (named omission)
+        const u = game.u || {};
+        const plunged = (trflags & TOOKPLUNGE) !== 0;
+        const viasitting = (trflags & VIASITTING) !== 0;
+        const conj_pit = conjoined_pits(trap, t_at(u.ux0, u.uy0), true);
+        const adj_pit = adj_nonconjoined_pit(trap);
+        const already_known = !!trap.tseen;
+        let deliberate = false;
+        let steed_article = ARTICLE_THE;
+        const Sokoban = !!(game.level?.flags?.sokoban || game.Sokoban);
+
+        if (u.usteed && has_mgivenname(u.usteed) && !Hallucination()) {
+            steed_article = ARTICLE_NONE;
+        }
+
+        // C: !Sokoban && (Levitation || (Flying && !plunged && !viasitting))
+        if (!Sokoban && (hero_Levitation()
+            || (hero_Flying() && !plunged && !viasitting))) {
+            return Trap_Effect_Finished;
+        }
+        feeltrap(trap);
+        if (!Sokoban && is_clinger(game.youmonst?.data) && !plunged) {
+            const spiked = ttype === SPIKED_PIT ? 'spiked ' : '';
+            if (already_known) {
+                await pline(
+                    `You see ${a_your[trap.madeby_u ? 1 : 0]} ${spiked}pit below you.`,
+                );
+            } else {
+                const full = ttype === SPIKED_PIT ? 'full of spikes ' : '';
+                await pline(
+                    `${A_Your[trap.madeby_u ? 1 : 0]} pit ${full}opens up under you!`,
+                );
+                await pline("You don't fall in!");
+            }
+            return Trap_Effect_Finished;
+        }
+        if (!Sokoban) {
+            let verbbuf = '';
+            if (u.usteed) {
+                if ((trflags & RECURSIVETRAP) !== 0) {
+                    verbbuf = `and ${x_monnam(u.usteed, steed_article, null, SUPPRESS_SADDLE, false)} fall`;
+                } else {
+                    verbbuf = `lead ${x_monnam(u.usteed, steed_article, 'poor', SUPPRESS_SADDLE, false)}`;
+                }
+            } else if (game.iflags?.menu_requested && already_known) {
+                await pline(
+                    `You carefully ${u_locomotion_pit('lower yourself')} into the pit.`,
+                );
+                deliberate = true;
+            } else if (conj_pit) {
+                await pline('You move into an adjacent pit.');
+            } else if (adj_pit) {
+                await pline(
+                    `You stumble over debris${!rn2(5) ? ' between the pits' : ''}.`,
+                );
+            } else {
+                verbbuf = !plunged ? 'fall' : (hero_Flying() ? 'dive' : 'plunge');
+            }
+            if (verbbuf) {
+                await pline(
+                    `You ${verbbuf} into ${a_your[trap.madeby_u ? 1 : 0]} pit!`,
+                );
+            }
+        }
+        if (Role_if(PM_RANGER) && !trap.madeby_u && !trap.once
+            && In_quest(u.uz) && Is_qlocate_lev(u.uz)) {
+            await pline('Fortunately it has a bottom after all...');
+            trap.once = 1;
+        } else if ((u.umonnum | 0) === PM_PIT_VIPER
+            || (u.umonnum | 0) === PM_PIT_FIEND) {
+            await pline("How pitiful.  Isn't that the pits?");
+        }
+        if (relevant_spikes && wearing_iron_shoes(mtmp)) {
+            await pline(
+                `${Yname2_pit(u.uarmf)} protects you from the sharp iron spikes.`,
+            );
+            relevant_spikes = false;
+        } else if (relevant_spikes) {
+            const predicament = 'on a set of sharp iron spikes';
+            if (u.usteed) {
+                await pline(
+                    `${upstart(x_monnam(u.usteed, steed_article, 'poor', SUPPRESS_SADDLE, false))} ${conj_pit ? 'steps' : 'lands'} ${predicament}!`,
+                );
+            } else {
+                await pline(
+                    `You ${conj_pit ? 'step' : 'land'} ${predicament}!`,
+                );
+            }
+        }
+        set_utrap(rn1(6, 2), TT_PIT);
+        if (!await steedintrap_pit(trap)) {
+            if (relevant_spikes) {
+                const oldumort = u.umortality | 0;
+                losehp(
+                    maybe_half_phys(rnd(conj_pit ? 4 : adj_pit ? 6 : 10)),
+                    plunged
+                        ? 'deliberately plunged into a pit of iron spikes'
+                        : (conj_pit || deliberate)
+                            ? 'stepped into a pit of iron spikes'
+                            : adj_pit
+                                ? 'stumbled into a pit of iron spikes'
+                                : 'fell into a pit of iron spikes',
+                    NO_KILLER_PREFIX,
+                );
+                if (await finish_hero_losehp()) return Trap_Effect_Finished;
+                if (!rn2(6)) {
+                    await poisoned(
+                        'spikes', A_STR,
+                        (conj_pit || adj_pit || deliberate)
+                            ? 'stepping on poison spikes'
+                            : 'fall onto poison spikes',
+                        ((u.umortality | 0) > oldumort) ? 0 : 8,
+                        false,
+                    );
+                    if (game.program_state?.gameover) {
+                        return Trap_Effect_Finished;
+                    }
+                }
+            } else if (!conj_pit && !deliberate
+                && !(plunged && (hero_Flying()
+                    || is_clinger(game.youmonst?.data)))) {
+                losehp(
+                    maybe_half_phys(rnd(adj_pit ? 3 : 6)),
+                    plunged ? 'deliberately plunged into a pit'
+                        : 'fell into a pit',
+                    NO_KILLER_PREFIX,
+                );
+                if (await finish_hero_losehp()) return Trap_Effect_Finished;
+            }
+            // Punished !carried(uball) unplacebc/ballfall/placebc deferred
+            if (!conj_pit) await selftouch('Falling, you');
+            game.vision_full_recalc = 1;
+            exercise(A_STR, false);
+            exercise(A_DEX, false);
+        }
         return Trap_Effect_Finished;
     }
 
@@ -2748,12 +2995,16 @@ export async function fall_through(td, ftflags = 0) {
 }
 
 /**
- * C ref: trap.c trapeffect_hole — HOLE/TRAPDOOR monster fall → level tele.
- * Envelope: Can_fall_thru; grounded / !huge; then mlevel_tele_trap.
- * Hero → fall_through (D-0986). Named omissions: Sokoban yank detail.
+ * C ref: trap.c trapeffect_hole — HOLE/TRAPDOOR hero + monster.
+ * Hero: Can_fall_thru else seetrap and skip; else fall_through (D-0986).
+ * Named omissions: Sokoban yank detail; impossible() on bad level.
  */
 async function trapeffect_hole(mtmp, trap, trflags) {
     if (is_youmonst(mtmp)) {
+        if (!Can_fall_thru(game.u?.uz)) {
+            seetrap(trap);
+            return Trap_Effect_Finished;
+        }
         await fall_through(true, (trflags | 0) & TOOKPLUNGE);
         return Trap_Effect_Finished;
     }

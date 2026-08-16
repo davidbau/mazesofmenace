@@ -21,8 +21,15 @@
 // allmain/dokick/uhitm `u_wipe_engr` callers still stubbed;
 // demon/vampire blood default beyond type; Blind feel path for
 // engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
-// (non-zero) path; can_reach_floor ustuck-hugs /
-// ceiling_hider / MZ_HUGE / uteetering_at_seen_pit / uescaped_shaft.
+// (non-zero) path; invent lookhere / pickup() still pass FALSE/TRUE
+// vs C `trap && is_pit` at those callers; cant_reach_floor pit-bottom
+// message; display.js feel_can_reach_floor clone still omits hugs /
+// ceiling / Flying (uses FALSE so check_pit N/A).
+// Ported: Levitation (H||E)&&!B D-1070; ustuck AT_HUGS + !sticks
+// D-1071 (local mondata.c sticks — avoid engrave←monmove cycle);
+// sticks exported for sit.js dosit lap D-1072; ceiling_hider +
+// Flying||MZ_HUGE D-1082 (Flying is youprop.h, not sticky u.Flying);
+// check_pit uteetering/uescaped_shaft D-1083 (helpers in trap.js).
 // disturb_grave (D-0985) via kick_nondoor / engraving callers.
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
@@ -47,10 +54,10 @@ import {
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
 } from './const.js';
 import { nomul } from './hack.js';
-import { t_at } from './trap.js';
+import { t_at, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { makemon } from './makemon.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { mons } from './monsters.js';
+import { mons, is_hider, is_clinger, is_flyer, MZ_HUGE } from './monsters.js';
 
 const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
 
@@ -217,16 +224,93 @@ export function wipeout_text(engr, cnt, seed = 0) {
 }
 
 /**
+ * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
+ * confer_oc_oprop mirrors E (D-0976); timeout/eat write H. Sticky
+ * u.Levitation is not a C field (D-1070).
+ */
+function Levitation() {
+    const u = game.u || {};
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+
+/**
+ * C youprop.h Flying — (HFlying || EFlying || steed is_flyer) && !BFlying.
+ * Sticky u.Flying is not a C field (same class as D-1070 Levitation).
+ */
+function Flying() {
+    const u = game.u || {};
+    const steedFlyer = !!(u.usteed && is_flyer(u.usteed.data));
+    return !!(((u.HFlying | 0) || (u.EFlying | 0) || steedFlyer)
+        && !(u.BFlying | 0));
+}
+
+/**
+ * C ref: mondata.h ceiling_hider — hider that clings (not mimic) or
+ * flies (lurker above). Trapper is HIDE without CLING/FLY.
+ */
+function ceiling_hider(ptr) {
+    if (!is_hider(ptr)) return false;
+    return (is_clinger(ptr) && ptr.mlet !== 'S_MIMIC') || is_flyer(ptr);
+}
+
+/** C monattk.h — used by can_reach_floor hugs arm / local sticks. */
+const AT_HUGS = 7;
+const AT_ENGL = 11;
+const AD_STCK = 19;
+const AD_WRAP = 28;
+
+/**
+ * C ref: mondata.c attacktype — any mattk slot with aatyp.
+ * Local copy: monmove.js already imports wipe_engr_at (cycle).
+ */
+function attacktype(ptr, aatyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (let i = 0; i < slots.length; i++) {
+        if (slots[i]?.aatyp === aatyp) return true;
+    }
+    return false;
+}
+
+/** C ref: mondata.c dmgtype — any mattk slot with adtyp. */
+function dmgtype(ptr, adtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (let i = 0; i < slots.length; i++) {
+        if (slots[i]?.adtyp === adtyp) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mondata.c sticks — AD_STCK, non-engulf AD_WRAP, or AT_HUGS.
+ * Short-circuit matches C: STCK || (WRAP && !ENGL) || HUGS.
+ * Exported for sit.js dosit lap (D-1072). Do not import monmove.js
+ * sticks (AT_HUGS commented as 6, AT_ENGL as 7).
+ */
+export function sticks(ptr) {
+    return !!(dmgtype(ptr, AD_STCK)
+        || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
+        || attacktype(ptr, AT_HUGS));
+}
+
+/**
  * C ref: engrave.c can_reach_floor — whether hero can touch ground-level.
- * Branch envelope: swallow / Levitation(+!air/water) / unskilled steed /
- * Flying early-true; pit teeter/shaft, ustuck AT_HUGS, ceiling_hider,
- * MZ_HUGE named omissions (treated as reachable when other gates pass).
+ * Branch envelope: swallow / ustuck AT_HUGS+!sticks / Levitation(+!air/water)
+ * / unskilled steed / uundetected ceiling_hider FALSE / Flying||MZ_HUGE
+ * TRUE (skips check_pit) / check_pit && t_at && (uteetering || uescaped)
+ * FALSE. invent/pickup caller pit-arg and cant_reach_floor named.
  */
 export function can_reach_floor(check_pit) {
     const u = game.u || {};
-    if (u.uswallow) return false;
-    // ustuck + AT_HUGS + !sticks deferred
-    if (u.Levitation && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
+    const youdata = game.youmonst?.data;
+    // C engrave.c: uswallow || (ustuck && !sticks(youmonst.data)
+    // && attacktype(ustuck->data, AT_HUGS)) || (Levitation && !air/water)
+    if (u.uswallow
+        || (u.ustuck && !sticks(youdata)
+            && attacktype(u.ustuck.data, AT_HUGS))
+        || (Levitation() && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz)))) {
         return false;
     }
     if (u.usteed) {
@@ -234,11 +318,20 @@ export function can_reach_floor(check_pit) {
         const rank = typeof sk === 'object' ? (sk.skill ?? 0) : (sk ?? 0);
         if (rank < P_BASIC) return false;
     }
-    // uundetected + ceiling_hider deferred
-    if (u.Flying) return true;
-    // youmonst msize >= MZ_HUGE deferred (would also return TRUE)
-    if (check_pit && t_at(u.ux, u.uy)) {
-        // uteetering_at_seen_pit / uescaped_shaft deferred → not blocked
+    // C: u.uundetected && ceiling_hider(youmonst.data) → FALSE
+    if (u.uundetected && ceiling_hider(youdata)) {
+        return false;
+    }
+    // C: Flying || msize >= MZ_HUGE → TRUE (before check_pit)
+    if (Flying() || (youdata?.msize | 0) >= MZ_HUGE) {
+        return true;
+    }
+    // C: check_pit && t_at && (uteetering_at_seen_pit || uescaped_shaft)
+    if (check_pit) {
+        const t = t_at(u.ux, u.uy);
+        if (t && (uteetering_at_seen_pit(t) || uescaped_shaft(t))) {
+            return false;
+        }
     }
     return true;
 }

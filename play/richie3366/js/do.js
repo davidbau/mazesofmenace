@@ -3,7 +3,8 @@
 //         Punished unplacebc/placebc D-0915),
 //         cmd_safety_prevention, dodrop/drop/dropx/dropy/dropz,
 //         canletgo; flooreffects / boulder_hits_pool (D-0987);
-//         doaltarobj / fire_damage / hot-ground potion (D-0992).
+//         doaltarobj / fire_damage / hot-ground potion (D-0992);
+//         revive_corpse (D-1081; eat.c cprefx rider + apply tinning).
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -19,7 +20,8 @@ import {
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX,
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
     ACH_HELL, ACH_MINE, ACH_SOKO,
-    OBJ_FREE, ER_DESTROYED, WT_SPLASH_THRESHOLD, TT_PIT, FIRE_RES,
+    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, ER_DESTROYED, WT_SPLASH_THRESHOLD,
+    TT_PIT, FIRE_RES,
     ROOM, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
     IS_WATERWALL, IS_ALTAR, is_pit, is_hole, u_at, Has_contents,
     Is_container, Is_waterlevel, Is_airlevel,
@@ -31,7 +33,7 @@ import {
 } from './const.js';
 import {
     seetrap, t_at, delfloortrap, reset_utrap, water_damage, erode_obj,
-    selftouch,
+    selftouch, uteetering_at_seen_pit, uescaped_shaft,
 } from './trap.js';
 import {
     COIN_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, objectNames,
@@ -39,6 +41,7 @@ import {
 import {
     pline, Norep, docrt, flush_screen, flush_topl_more, newsym,
     mark_topline_prompt, assign_graphics, check_gold_symbol,
+    You_feel, canseemon,
 } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
@@ -73,7 +76,9 @@ import { place_object, stackobj, weight, delobj, obj_extract_self,
     save_timers, restore_timers,
 } from './mkobj.js';
 import { ship_object } from './dokick.js';
-import { doname, xname, the, The, vtense, an } from './objnam.js';
+import { doname, xname, the, The, vtense, an, cxname_singular } from './objnam.js';
+import { Monnam } from './do_name.js';
+import { revive } from './zap.js';
 import {
     compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
     freeinv_core,
@@ -91,7 +96,9 @@ import {
 } from './artifact.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './generated/artifacts_data.js';
 import { more_experienced, newexplevel } from './exper.js';
-import { PM_TOURIST, PM_ROGUE, PM_WIZARD } from './generated/monsters_data.js';
+import {
+    PM_TOURIST, PM_ROGUE, PM_WIZARD, monsterNames,
+} from './generated/monsters_data.js';
 import { dismount_steed } from './steed.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
@@ -102,6 +109,9 @@ import {
 import { placebc, unplacebc, drag_down, ballrelease } from './ball.js';
 import { obj_resists } from './dogmove.js';
 
+const PM_DEATH = monsterNames.indexOf('PM_DEATH');
+const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
+const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const WAN_FIRE = objectNames.indexOf('WAN_FIRE');
@@ -459,24 +469,6 @@ function u_locomotion(defWord) {
     if (Levitation()) return 'float';
     if (Flying()) return 'fly';
     return defWord;
-}
-
-/**
- * C ref: trap.c uteetering_at_seen_pit — seen pit under hero, not trapped in it.
- */
-function uteetering_at_seen_pit(trap) {
-    const u = game.u || {};
-    return !!(trap && is_pit(trap.ttyp) && trap.tseen
-        && u_at(trap.tx, trap.ty)
-        && !(u.utrap && (u.utraptype | 0) === TT_PIT));
-}
-
-/**
- * C ref: trap.c uescaped_shaft — seen hole/trapdoor under hero.
- */
-function uescaped_shaft(trap) {
-    return !!(trap && is_hole(trap.ttyp) && trap.tseen
-        && u_at(trap.tx, trap.ty));
 }
 
 /**
@@ -2324,4 +2316,52 @@ export async function dowipe() {
     }
     await pline('Your face is already clean.');
     return ECMD_TIME;
+}
+
+/**
+ * C ref: do.c revive_corpse — zap.revive then location messages.
+ * Branch envelope: OBJ_INVENT uwep/backpack; OBJ_FLOOR cansee/canseemon
+ * plus Death/Pestilence/Famine visual suffixes (eat.c cprefx rider).
+ * Named omit: OBJ_MINVENT / OBJ_CONTAINED / OBJ_BURIED (zombie pit);
+ * Adjmonnam bite-covered when oeaten.
+ * @returns {Promise<boolean>}
+ */
+export async function revive_corpse(corpse) {
+    if (!corpse) return false;
+    const inInvent = corpse.where === OBJ_INVENT
+        || (game.invent || []).includes(corpse);
+    const where = inInvent ? OBJ_INVENT : (corpse.where | 0);
+    const is_uwep = corpse === game.u?.uwep;
+    const cname = cxname_singular(corpse) || 'corpse';
+    const corpsex = corpse.ox | 0;
+    const corpsey = corpse.oy | 0;
+    const mtmp = await revive(corpse, false);
+    if (!mtmp) return false;
+    if (where === OBJ_INVENT) {
+        if (is_uwep) {
+            await pline(`The ${cname} writhes out of your grasp!`);
+        } else {
+            await You_feel('squirming in your backpack!');
+        }
+    } else if (where === OBJ_FLOOR) {
+        if (cansee(corpsex, corpsey) || canseemon(mtmp)) {
+            // C: mtmp->data == &mons[PM_*]; JS mons() allocates per call
+            const mndx = mtmp.data?.mndx ?? (mtmp.mnum | 0);
+            let effect = '';
+            if (mndx === PM_DEATH) {
+                effect = ' in a whirl of spectral skulls';
+            } else if (mndx === PM_PESTILENCE) {
+                effect = ' in a churning pillar of flies';
+            } else if (mndx === PM_FAMINE) {
+                effect = ' in a ring of withered crops';
+            }
+            if (canseemon(mtmp)) {
+                await pline(`${Monnam(mtmp)} rises from the dead${effect}!`);
+            } else {
+                await pline(`${The(cname)} disappears${effect}!`);
+            }
+        }
+    }
+    // MINVENT / CONTAINED / BURIED still named omit
+    return true;
 }
