@@ -26,6 +26,8 @@ import {
     In_quest, In_endgame, In_mines, In_sokoban, Is_rogue_level,
     PRIMARYSET, ROGUESET,
     ERODE_BURN, EF_DESTROY,
+    NHCORE_GETPOS_TIP, NHCORE_ENTER_TUTORIAL, NHCORE_LEAVE_TUTORIAL,
+    NUM_NHCORE_CALLS,
 } from './const.js';
 import {
     seetrap, t_at, delfloortrap, reset_utrap, water_damage, erode_obj,
@@ -948,7 +950,7 @@ function setworn_restore(otmp, wornmask) {
  * C ref: nhlua.c nhl_gamestate(false) via tutorial_enter / tutorial(TRUE).
  * Stash invent (preserve owornmask as restore flag) via setnotworn+freeinv
  * so extrinsics clear and find_ac → base 10. Backup u/disco/mvitals/spl_book
- * then memset spells. Named omit: nhcore callback disable (tutorial()).
+ * then memset spells. Named omit: leftover `obfree` contents/timers.
  */
 function tutorial_enter_gamestate() {
     if (game.gmst_stored) return;
@@ -981,7 +983,7 @@ function tutorial_enter_gamestate() {
  * useupall tutorial invent; addinv_nomerge stash + setworn from flag;
  * memcpy u (keep uz/uz0) / disco / mvitals; clear oc_uname; init_uhunger;
  * free_tutorial; memcpy spl_book. Named omit: leftover obfree contents;
- * nhcore_call_available disable; update_inventory redraw.
+ * update_inventory redraw. `nhcore_call_available` disable is tutorial().
  */
 async function tutorial_leave_gamestate() {
     if (!game.gmst_stored) return;
@@ -1019,6 +1021,73 @@ async function tutorial_leave_gamestate() {
 export async function nhl_gamestate(reststate = false) {
     if (reststate) await tutorial_leave_gamestate();
     else tutorial_enter_gamestate();
+}
+
+/**
+ * C ref: dat/nhlib.lua tutorial_enter via nhcore.lua enter_tutorial.
+ * Named omit: nh.callback("cmd_before", "tutorial_cmd_before") and
+ * nh.callback("end_turn", "tutorial_turn") (Lua NHCB; no VM).
+ */
+async function tutorial_enter() {
+    await nhl_gamestate(false);
+}
+
+/**
+ * C ref: dat/nhlib.lua tutorial_leave via nhcore.lua leave_tutorial.
+ * Named omit: nh.callback(..., true) rm of cmd_before / end_turn.
+ */
+async function tutorial_leave() {
+    await nhl_gamestate(true);
+}
+
+/**
+ * C ref: nhlua.c nhcore_call_available — all TRUE after l_nhcore_init
+ * loads nhcore.lua. Stored on `game` so resetGame matches a new process.
+ */
+function ensure_nhcore_available() {
+    if (!game.nhcore_call_available
+        || game.nhcore_call_available.length !== NUM_NHCORE_CALLS) {
+        game.nhcore_call_available = new Array(NUM_NHCORE_CALLS).fill(true);
+    }
+    return game.nhcore_call_available;
+}
+
+/**
+ * C ref: nhlua.c l_nhcore_call — skip if !available; if nhcore.<name> is
+ * a Lua function, pcall it, else mark unavailable.
+ * JS: ENTER/LEAVE → tutorial_enter/leave. GETPOS_TIP is a Lua function
+ * (wired in getpos.js, not here). start/restore/moveloop/exit are
+ * commented out in nhcore.lua so the first call disables them.
+ */
+export async function l_nhcore_call(callidx) {
+    if (callidx < 0 || callidx >= NUM_NHCORE_CALLS) return;
+    const avail = ensure_nhcore_available();
+    if (!avail[callidx]) return;
+    if (callidx === NHCORE_ENTER_TUTORIAL) {
+        await tutorial_enter();
+        return;
+    }
+    if (callidx === NHCORE_LEAVE_TUTORIAL) {
+        await tutorial_leave();
+        return;
+    }
+    // C: lua_type != LUA_TFUNCTION → available[callidx] = FALSE
+    if (callidx !== NHCORE_GETPOS_TIP) avail[callidx] = false;
+}
+
+/**
+ * C ref: nhlua.c tutorial — l_nhcore_call ENTER/LEAVE then, after
+ * leaving, disable both so the hero cannot re-enter the tutorial.
+ */
+export async function tutorial(entering) {
+    await l_nhcore_call(
+        entering ? NHCORE_ENTER_TUTORIAL : NHCORE_LEAVE_TUTORIAL,
+    );
+    if (!entering) {
+        const avail = ensure_nhcore_available();
+        avail[NHCORE_ENTER_TUTORIAL] = false;
+        avail[NHCORE_LEAVE_TUTORIAL] = false;
+    }
 }
 
 /**
@@ -1244,10 +1313,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         if (In_tutorial(newlevel)) {
             game.flags = game.flags || {};
             game.flags.in_tutorial_branch = true;
-            await nhl_gamestate(false);
+            await tutorial(true);
         } else if (In_tutorial(u.uz)) {
             game.flags && (game.flags.in_tutorial_branch = false);
-            await nhl_gamestate(true);
+            await tutorial(false);
             up = false; // C: re-enter level 1 as if starting new game
         }
     }

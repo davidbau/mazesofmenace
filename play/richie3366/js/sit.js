@@ -4,13 +4,16 @@
 // + water/pool/gremlin sit (D-1055/D-1056) + furniture sit_message
 // (D-1057: sink/altar/grave/stairs/ladder) + lava/ice/DRAWBRIDGE_DOWN
 // sit (D-1058; terrain, not trap TT_LAVA; D-1060 Fire/Cold
-// youprop.h uprops[FIRE_RES]/[COLD_RES] intrinsic||extrinsic).
+// youprop.h uprops[FIRE_RES]/[COLD_RES] intrinsic||extrinsic) +
+// dosit steed You + mon_nam(usteed) (D-1067; ARTICLE_THE, not
+// "your steed" / not y_monnam).
 // C ref: sit.c dosit / throne_sit_effect / special_throne_effect /
 // take_gold / attrcurse / rndcurse; dungeon.c surface (fountain branch);
 // potion.c split_mon / mhitu.c cloneu (locals — sit cannot import
 // potion.js/mhitu.js: eat←potion, zap←mhitu cycles).
 //
-// Branch envelope: reachable floor (Levitation only), OBJ_AT picnic body
+// Branch envelope: usteed early-return You+mon_nam (D-1067),
+// reachable floor (Levitation only), OBJ_AT picnic body
 // (dragon/towel/slithy/sit+comfort/squishy/cream-pie), trap-before-throne
 // (D-1039: already-trapped sit / dotrap VIASITTING), water/pool/gremlin
 // (D-1055: early goto in_water for pool !Underwater and gremlin
@@ -33,7 +36,7 @@
 // rnd(11) INTRINSIC strip (D-0945); rndcurse invent + Magicbane /
 // Antimagic / Half_spell_damage / SPFX_INTEL resist / steed saddle
 // (D-0969).
-// Deferred: steed name, hider, can_reach_floor full, ustuck, uteetering/
+// Deferred: hider, can_reach_floor full, ustuck, uteetering/
 // uescaped_shaft gate, wizard getlin / Analyze y_n,
 // lay_an_egg, money_cnt meager coil; clone_mon monster split_mon;
 // shieldeff; update_inventory redraw; Hallucination hcolor synonyms;
@@ -84,7 +87,7 @@ import { t_at, dotrap, water_damage } from './trap.js';
 import { losehp, finish_maybe_wail, is_pool, is_lava } from './hack.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { burn_away_slime } from './timeout.js';
-import { hliquid, christen_monst } from './do_name.js';
+import { hliquid, christen_monst, mon_nam } from './do_name.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const TOWEL = objectNames.indexOf('TOWEL');
@@ -989,7 +992,9 @@ async function You_sit_message(what) {
 export async function dosit() {
     const u = game.u || {};
     if (u.usteed) {
-        await pline('You are already sitting on your steed.');
+        // C sit.c dosit: You("are already sitting on %s.", mon_nam(u.usteed))
+        // — ARTICLE_THE (named → bare; saddled adj unless named).
+        await pline(`You are already sitting on ${mon_nam(u.usteed)}.`);
         return ECMD_OK;
     }
     if (u.Levitation) {

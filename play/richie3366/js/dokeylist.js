@@ -207,6 +207,77 @@ function build_default_cmdbinds() {
     return binds;
 }
 
+/**
+ * Default cmdbinds plus BIND=/BINDINGS= overlays from parsebindings.
+ * C ref: cmd.c commands_init + reset_commands(!num_pad) + bind_key.
+ * Named omissions: number_pad/phone/swap_yz/pcHack dir layouts;
+ * rest_on_space; initoptions_finish rebinding dirchars after RC
+ * (C overwrites hjkl BIND=; this overlay can stick).
+ */
+function cmdbinds_live() {
+    const binds = build_default_cmdbinds();
+    const overlay = game.Cmd?.binds;
+    if (overlay instanceof Map) {
+        const byTxt = new Map(EXTCMDLIST.map((e) => [e.txt, e]));
+        for (const [key, name] of overlay) {
+            const k = Number(key) & 0xff;
+            if (!k) continue;
+            if (!name) {
+                binds[k] = null;
+                continue;
+            }
+            const entry = byTxt.get(String(name));
+            if (entry) binds[k] = entry;
+        }
+    }
+    return binds;
+}
+
+/**
+ * C ref: cmd.c cmd_from_func — first printable bind for fn, else last
+ * non-printable; skip space until last resort; skip digits and fight
+ * '-' when !Cmd.num_pad. Matched here by extcmd name (tut-1 eckey),
+ * not ef_funct pointer. Walks keys 0..255; list-order vs index-order
+ * can differ when two non-printable keys share a command (overview).
+ */
+function cmd_from_func_ecname(ecname) {
+    const binds = cmdbinds_live();
+    const numPad = !!(game.Cmd?.num_pad);
+    let ret = 0;
+    for (let i = 0; i < 256; i++) {
+        if (i === 32) continue;
+        if (((i >= 48 && i <= 57) || (i === 45 && ecname === 'fight'))
+            && !numPad) {
+            continue;
+        }
+        if (binds[i]?.txt === ecname) {
+            if (i >= 32 && i <= 126) return i;
+            ret = i;
+        }
+    }
+    if (binds[32]?.txt === ecname) return 32;
+    return ret;
+}
+
+/**
+ * C ref: cmd.c cmd_from_ecname / nhlua.c nhl_get_cmd_key (`nh.eckey`).
+ * visctrl(bound key), or `#name` if unbound, or empty if unknown.
+ */
+export function cmd_from_ecname(ecname) {
+    if (ecname == null || ecname === '') return '';
+    let found = false;
+    for (const e of EXTCMDLIST) {
+        if (e.txt === ecname) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) return '';
+    const key = cmd_from_func_ecname(ecname);
+    if (key) return visctrl(key);
+    return `#${ecname}`;
+}
+
 function keylist_func_has_key(extcmd, skipKeys, binds) {
     for (let i = 0; i < 256; i++) {
         if (skipKeys[i]) continue;

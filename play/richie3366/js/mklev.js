@@ -69,8 +69,10 @@ import {
     Is_airlevel,
     Is_waterlevel,
     DRY, WET, HOT, SOLID, ANY_LOC, NO_LOC_WARN, SPACELOC,
+    SP_OBJ_CONTENT, SP_OBJ_CONTAINER,
     Can_fall_thru, Can_dig_down, G_GONE,
-    CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NONE,
+    CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_NONE,
+    NUM_NHCORE_CALLS,
 } from './const.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
@@ -85,7 +87,7 @@ import {
     mkobj, mksobj, mksobj_at, mkobj_at, mkgold, mkcorpstat, next_ident,
     curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, obj_extract_self,
-    add_to_container, objects_at,
+    add_to_container, objects_at, stackobj,
 } from './mkobj.js';
 import {
     makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, newcham,
@@ -99,6 +101,7 @@ import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
     PM_ARCHEOLOGIST, PM_WIZARD, PM_GIANT_SPIDER, PM_MONK, PM_LICHEN,
     is_male, is_female, mons, G_NOGEN, G_UNIQ, G_IGNORE, monsterNames,
+    LOW_PM, pmnames,
     MALE, FEMALE, NEUTRAL,
     is_flyer, is_floater, is_swimmer, amphibious,
     passes_walls, noncorporeal, likes_fire,
@@ -109,6 +112,7 @@ import { name_to_monplus, name_to_mon } from './mondata.js';
 import { christen_monst, oname } from './do_name.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
 import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
+import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch,
 } from './dungeon.js';
@@ -127,6 +131,9 @@ const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
 const BELL = objectNames.indexOf('BELL');
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
+const EGG = objectNames.indexOf('EGG');
+const TIN = objectNames.indexOf('TIN');
+const FIGURINE = objectNames.indexOf('FIGURINE');
 const SPBOOK_no_NOVEL = 0 - SPBOOK_CLASS; // C: objclass.h -(int)SPBOOK_CLASS
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
@@ -641,11 +648,138 @@ function baalz_fixup() {
     bh.inarea.y2 = bh.delarea.y2 = 0;
 }
 
+/**
+ * C ref: sp_lev.c levregion_add — get_location ANY_LOC unless in_islev /
+ * del_islev, then append to gl.lregions. Exclude omitted → delarea -1 and
+ * del_islev so get_location does not treat -1 as random.
+ */
+function levregion_add(lregion) {
+    if (!lregion.in_islev) {
+        const a = get_location(lregion.inarea.x1, lregion.inarea.y1, ANY_LOC, null);
+        const b = get_location(lregion.inarea.x2, lregion.inarea.y2, ANY_LOC, null);
+        lregion.inarea.x1 = a.x;
+        lregion.inarea.y1 = a.y;
+        lregion.inarea.x2 = b.x;
+        lregion.inarea.y2 = b.y;
+    }
+    if (!lregion.del_islev) {
+        const a = get_location(lregion.delarea.x1, lregion.delarea.y1, ANY_LOC, null);
+        const b = get_location(lregion.delarea.x2, lregion.delarea.y2, ANY_LOC, null);
+        lregion.delarea.x1 = a.x;
+        lregion.delarea.y1 = a.y;
+        lregion.delarea.x2 = b.x;
+        lregion.delarea.y2 = b.y;
+    }
+    if (!game.lregions) game.lregions = [];
+    game.lregions.push({
+        ...lregion,
+        inarea: { ...lregion.inarea },
+        delarea: { ...lregion.delarea },
+        rname: lregion.rname && typeof lregion.rname === 'object'
+            ? { ...lregion.rname } : lregion.rname,
+    });
+}
+
+/**
+ * C ref: sp_lev.c lspo_teleport_region / l_get_lregion (unpacked table).
+ * dir default "both" → LR_TELE. Missing exclude → delarea -1,-1,-1,-1 and
+ * del_islev. Named omit: Lua argc parse; other load_* still push lregions
+ * by hand (earth/fire/air/hell) rather than this helper.
+ */
+export function l_teleport_region(opts) {
+    const region = opts.region;
+    const exclude = opts.exclude;
+    const dir = opts.dir || 'both';
+    const rtype = dir === 'up' ? LR_UPTELE
+        : dir === 'down' ? LR_DOWNTELE
+        : LR_TELE;
+    const lregion = {
+        inarea: {
+            x1: region[0] | 0, y1: region[1] | 0,
+            x2: region[2] | 0, y2: region[3] | 0,
+        },
+        delarea: exclude
+            ? {
+                x1: exclude[0] | 0, y1: exclude[1] | 0,
+                x2: exclude[2] | 0, y2: exclude[3] | 0,
+            }
+            : { x1: -1, y1: -1, x2: -1, y2: -1 },
+        in_islev: !!opts.region_islev,
+        del_islev: !!opts.exclude_islev,
+        rtype,
+        padding: 0,
+        rname: { str: null },
+    };
+    if (!exclude || (exclude[0] | 0) < 0)
+        lregion.del_islev = true;
+    levregion_add(lregion);
+}
+
 // C ref: mkmaze.c fixup_special — post-special-level branch/lregion placement
 function fixup_special() {
-    // lev_region[] from level compiler deferred (minefill has none / noflip)
-    // load_fire applies tele/portal lregions inline after flip.
-    if (!game.made_branch && is_branchlev()) {
+    // C: leftover gl.lregions. Other load_* still consume inline after
+    // flip then call this (array empty). tut-1 leaves TELE for dest copy.
+    // Fallback still uses made_branch: inline BRANCH would double-place
+    // if this used C's added_branch-only gate.
+    let added_branch = false;
+    const lregions = game.lregions || [];
+    game.lregions = [];
+    for (const r of lregions) {
+        switch (r.rtype) {
+        case LR_BRANCH:
+            added_branch = true;
+            // fall through
+        case LR_PORTAL:
+        case LR_UPSTAIR:
+        case LR_DOWNSTAIR: {
+            let lev = null;
+            if (r.rtype === LR_PORTAL) {
+                const name = (r.rname && typeof r.rname === 'object')
+                    ? r.rname.str : r.rname;
+                if (name) {
+                    if (name[0] >= '0' && name[0] <= '9') {
+                        lev = {
+                            dnum: game.u?.uz?.dnum | 0,
+                            dlevel: parseInt(name, 10) | 0,
+                        };
+                    } else {
+                        const sp = find_level(name);
+                        if (sp?.dlevel) {
+                            lev = {
+                                dnum: sp.dlevel.dnum | 0,
+                                dlevel: sp.dlevel.dlevel | 0,
+                            };
+                        }
+                    }
+                }
+            }
+            place_lregion(
+                r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
+                r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
+                r.rtype, lev,
+            );
+            break;
+        }
+        case LR_TELE:
+        case LR_UPTELE:
+        case LR_DOWNTELE: {
+            // C: copy dests only — place_lregion runs from goto_level
+            // u_on_rndspot, not here.
+            const tele = {
+                lx: r.inarea.x1, ly: r.inarea.y1,
+                hx: r.inarea.x2, hy: r.inarea.y2,
+                nlx: r.delarea.x1, nly: r.delarea.y1,
+                nhx: r.delarea.x2, nhy: r.delarea.y2,
+            };
+            if (r.rtype === LR_TELE || r.rtype === LR_UPTELE)
+                game.updest = { ...tele };
+            if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
+                game.dndest = { ...tele };
+            break;
+        }
+        }
+    }
+    if (!added_branch && !game.made_branch && is_branchlev()) {
         place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
     }
 
@@ -752,7 +886,8 @@ async function getbones() {
     return try_load_bones(game.u?.uz);
 }
 
-// C ref: allmain.c l_nhcore_init()
+// C ref: nhlua.c l_nhcore_init() — nhlib shuffle is the second load;
+// after nhl_loadlua("nhcore.lua") every nhcore_call_available[] is TRUE.
 export function l_nhcore_init() {
     const align = [0, 0, 0]; // A_LAWFUL, A_NEUTRAL, A_CHAOTIC
     for (let i = align.length; i > 1; i--) {
@@ -760,6 +895,7 @@ export function l_nhcore_init() {
         [align[i - 1], align[j]] = [align[j], align[i - 1]];
     }
     game.splev_align = align;
+    game.nhcore_call_available = new Array(NUM_NHCORE_CALLS).fill(true);
 }
 
 // C ref: mklev.c mklev()
@@ -8354,8 +8490,8 @@ function splev_map_center_start(wid, hei) {
 
 /**
  * C ref: dat/tut-1.lua via load_special — map + des.* through end of file.
- * Named omissions: tut_key/eckey (hardcoded defaults), Knight jump,
- * leave-tutorial invent restore, map_location tseen traps.
+ * Named omissions: Knight jump (role gate); leftover obfree;
+ * Lua nh.callback cmd_before/end_turn; update_inventory.
  */
 function load_tut1() {
     // C: load_special loads nhlib.lua → shuffle(align) then runs tut-1.lua
@@ -8421,13 +8557,10 @@ function load_tut1() {
             if (loc) loc.flags = (loc.flags | 0) | W_NONDIGGABLE;
         }
     }
-    // des.teleport_region({ region = { 9,3, 9,3 } }) — C levregion_add
-    // get_location then fixup_special → updest/dndest; place via u_on_rndspot.
-    const tx = xstart + 9;
-    const ty = ystart + 3;
-    const tele = { lx: tx, ly: ty, hx: tx, hy: ty, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
-    game.updest = { ...tele };
-    game.dndest = { ...tele };
+    // des.teleport_region({ region = { 9,3, 9,3 } }) — C lspo_teleport_region
+    // → levregion_add (get_location ANY_LOC). fixup_special copies dests
+    // after the lua body; place_lregion runs from u_on_rndspot.
+    l_teleport_region({ region: [9, 3, 9, 3] });
 
     // C: nh.parse_config OPTIONS=mention_walls/mention_decor/lit_corridor
     if (!game.flags) game.flags = {};
@@ -8436,7 +8569,6 @@ function load_tut1() {
     game.flags.lit_corridor = true;
 
     // C: lspo_engraving degrade=false → nowipeout; coords map-relative.
-    // tut_key/eckey deferred — default hjkl / single-letter binds.
     const tut1_engr = (mx, my, text, etype = ENGRAVE) => {
         const ep = make_engr_at(
             xstart + mx, ystart + my, text, null, 0, etype,
@@ -8453,15 +8585,43 @@ function load_tut1() {
         loc.doormask = mask;
         loc.flags = mask;
     };
+    // C: dat/tut-1.lua tut_key / tut_key_help — nh.eckey (cmd_from_ecname)
+    // then ^^([A-Z])$ → Ctrl-X (stash for caret help), M-X → Alt-X.
+    let tut_ctrl_key = null;
+    const tut_key = (command) => {
+        const s = cmd_from_ecname(command);
+        const ctrl = /^\^([A-Z])$/.exec(s);
+        if (ctrl) {
+            tut_ctrl_key = ctrl[1];
+            return `Ctrl-${ctrl[1]}`;
+        }
+        const alt = /^M-([A-Z])$/.exec(s);
+        if (alt) return `Alt-${alt[1]}`;
+        return s;
+    };
+    const tut_key_help = (mx, my) => {
+        if (tut_ctrl_key != null) {
+            tut1_engr(mx, my,
+                `Note: Outside the tutorial, Ctrl-key combinations are shown prefixed with a caret, like '^${tut_ctrl_key}'`);
+            tut_ctrl_key = null;
+        }
+    };
 
-    tut1_engr(9, 3, 'Move around with h j k l');
-    // C: diagmovekeys via tut_key; default b u n y for hjkl.
-    tut1_engr(5, 2, 'Move diagonally with b u n y');
+    const movekeys = tut_key('movewest') + ' '
+        + tut_key('movesouth') + ' '
+        + tut_key('movenorth') + ' '
+        + tut_key('moveeast');
+    const diagmovekeys = tut_key('movesouthwest') + ' '
+        + tut_key('movenortheast') + ' '
+        + tut_key('movesoutheast') + ' '
+        + tut_key('movenorthwest');
+    tut1_engr(9, 3, 'Move around with ' + movekeys);
+    tut1_engr(5, 2, 'Move diagonally with ' + diagmovekeys);
     // Knight jump engraving deferred (role gate).
     tut1_engr(2, 4, 'Some actions may require multiple tries before succeeding');
     tut1_engr(2, 5, 'Open the door by moving into it');
     tut1_door(2, 6, D_CLOSED);
-    tut1_engr(2, 7, "Close the door with 'c'");
+    tut1_engr(2, 7, "Close the door with '" + tut_key('close') + "'");
     tut1_engr(4, 5, 'You can leave the tutorial via the magic portal.');
     // C: create_trap → mktrap(SEEN); victim gate always burns rnd(4)
     {
@@ -8470,14 +8630,14 @@ function load_tut1() {
     }
 
     // --- tut-1.lua kick door through search traps (RNG-critical) ---
-    tut1_engr(5, 9, "This door is locked. Kick it with 'Ctrl-D'");
+    tut1_engr(5, 9, "This door is locked. Kick it with '" + tut_key('kick') + "'");
     tut1_door(5, 10, D_LOCKED);
-    // tut_key_help(6,8): kick is Ctrl-D → ctrl-key help engraving
-    tut1_engr(6, 8,
-        "Note: Outside the tutorial, Ctrl-key combinations are shown prefixed with a caret, like '^D'");
+    // C: tut_key_help(6,8) after kick — first Ctrl combo by default.
+    tut_key_help(6, 8);
     tut1_engr(5, 12,
-        "Look around the map with ';', press ESC when you're done");
-    tut1_engr(10, 13, "Use 's' to search for secret doors");
+        "Look around the map with '" + tut_key('glance')
+        + "', press ESC when you're done");
+    tut1_engr(10, 13, "Use '" + tut_key('search') + "' to search for secret doors");
     tut1_engr(10, 15, 'Wrong secret');
     tut1_engr(10, 10, 'Behind this door is a dark corridor');
     // des.door percent(50) locked/closed — C nhlib percent → rn2(100)
@@ -8499,7 +8659,7 @@ function load_tut1() {
             mktrap_seen_victim(ttmp, { novictim: true });
         }
     }
-    tut1_engr(15, 15, "Some traps can be disabled with 'Ctrl-T'");
+    tut1_engr(15, 15, "Some traps can be disabled with '" + tut_key('untrap') + "'");
     {
         // spider_on_web=false → no spider; still burns victim-gate rnd(4)
         const ttmp = maketrap(xstart + 15, ystart + 16, WEB);
@@ -8507,7 +8667,7 @@ function load_tut1() {
     }
     tut1_door(18, 13, D_CLOSED);
 
-    tut1_engr(19, 13, "Pick up items with ','");
+    tut1_engr(19, 13, "Pick up items with '" + tut_key('pickup') + "'");
     // C: Monk → leather gloves; else leather armor; spe=0 cursed
     {
         const otyp = (game.urole?.mnum === PM_MONK)
@@ -8515,9 +8675,9 @@ function load_tut1() {
             : objectNames.indexOf('LEATHER_ARMOR');
         tut1_object(xstart, ystart, 19, 14, otyp, 0, 'cursed');
     }
-    tut1_engr(19, 15, "Wear armor with 'W'");
+    tut1_engr(19, 15, "Wear armor with '" + tut_key('wear') + "'");
     tut1_object(xstart, ystart, 21, 15, DAGGER, 0, 'not-cursed');
-    tut1_engr(21, 14, "Wield weapons with 'w'");
+    tut1_engr(21, 14, "Wield weapons with '" + tut_key('wield') + "'");
     tut1_engr(22, 13, 'Hit monsters by walking into them.');
     // lichen: find_montype gender + induced_align + makemon waiting
     {
@@ -8538,7 +8698,7 @@ function load_tut1() {
     }
     tut1_engr(25, 13, 'Push boulders by moving into them');
     tut1_object(xstart, ystart, 25, 12, BOULDER, -127, null);
-    tut1_engr(27, 9, "Take off armor with 'T'");
+    tut1_engr(27, 9, "Take off armor with '" + tut_key('takeoff') + "'");
     {
         const otmp = tut1_object(xstart, ystart, 23, 11,
             objectNames.indexOf('SCR_REMOVE_CURSE'), -127, 'blessed');
@@ -8547,7 +8707,8 @@ function load_tut1() {
     tut1_engr(22, 11,
         'Some items have shuffled descriptions, different each game');
     tut1_engr(23, 11,
-        "Pick up this scroll, read it with 'r', and try to remove the armor again");
+        "Pick up this scroll, read it with '" + tut_key('read')
+        + "', and try to remove the armor again");
     tut1_engr(19, 10, 'Another magic portal, a way to leave this tutorial');
     {
         const ttmp = maketrap(xstart + 19, ystart + 11, MAGIC_PORTAL);
@@ -8562,7 +8723,7 @@ function load_tut1() {
     tut1_object(xstart, ystart, 14, 6, BOULDER, -127, null);
     tut1_door(20, 3, percent(50) ? D_ISOPEN : D_CLOSED);
     tut1_engr(21, 3, 'Avoid being burdened, it slows you down');
-    tut1_engr(22, 3, "Drop items with 'd'");
+    tut1_engr(22, 3, "Drop items with '" + tut_key('drop') + "'");
     tut1_engr(22, 4,
         'You can drop partial stacks by prefixing the item slot letter with a number');
     {
@@ -8572,7 +8733,7 @@ function load_tut1() {
         const mtmp = pm >= 0 ? makemon(mons(pm), xstart + 26, ystart + 2, MM_NOGRP) : null;
         if (mtmp) mtmp.mstrategy = (mtmp.mstrategy || 0) | STRAT_WAITFORU;
     }
-    tut1_engr(25, 5, "Throw items with 't'");
+    tut1_engr(25, 5, "Throw items with '" + tut_key('throw') + "'");
     {
         const ttmp = maketrap(xstart + 21, ystart + 1, MAGIC_PORTAL);
         mktrap_seen_victim(ttmp, { seen: true });
@@ -8592,81 +8753,73 @@ function load_tut1() {
     tut1_object(xstart, ystart, 37, 3,
         objectNames.indexOf('SLING'), 9, 'not-cursed');
     tut1_engr(37, 3, 'Wield the sling');
-    tut1_engr(36, 1, "Use 'f' to fire missiles with the wielded launcher");
+    tut1_engr(36, 1, "Use '" + tut_key('fire') + "' to fire missiles with the wielded launcher");
     tut1_engr(35, 4,
-        "Firing launches items from your quiver; Use 'Q' to put items in it");
-    tut1_engr(33, 4, "You can wait a turn with '.'");
+        "Firing launches items from your quiver; Use '" + tut_key('quiver')
+        + "' to put items in it");
+    tut1_engr(33, 4, "You can wait a turn with '" + tut_key('wait') + "'");
     tut1_door(38, 6, D_CLOSED);
 
     // --- tut-1.lua loot box through end (RNG-critical) ---
-    tut1_engr(39, 6, "You loot containers with ':'");
-    // C: create_object large box broken+trapped=false + contents wand
-    {
-        const box = tut1_object(xstart, ystart, 41, 6, LARGE_BOX, -127, null);
-        if (box) {
-            // C: broken → obroken=1 olocked=0; trapped=0 overrides mksobj
-            box.obroken = 1;
-            box.olocked = 0;
-            box.otrapped = 0;
-            // C: SP_OBJ_CONTAINER → delete_contents (mkbox_cnts already burned)
-            box.cobj = null;
-            // contents: get_location RANDOM then mksobj_at wand spe=30
-            const sx = game.splev_xsize | 0;
-            const sy = game.splev_ysize | 0;
-            let wx = xstart + rn2(sx);
-            let wy = ystart + rn2(sy);
-            const wand = mksobj_at(
-                WAN_SECRET_DOOR_DETECTION, wx, wy, true, true,
-            );
-            if (wand) {
-                wand.spe = 30;
-                wand.oeroded = 0;
-                wand.oeroded2 = 0;
-                wand.oerodeproof = 0;
-                obj_extract_self(wand);
-                add_to_container(box, wand);
-                box.owt = weight(box);
-            }
-        }
-    }
-    tut1_engr(42, 6, "Containers can also be emptied with '\\'");
-    tut1_engr(45, 6, "Magic wands are used with 'z'");
+    tut1_engr(39, 6, "You loot containers with '" + tut_key('loot') + "'");
+    // C: dat/tut-1.lua des.object packed large box + contents wand
+    // → lspo_object / create_object (D-1062).
+    l_create_object({
+        id: LARGE_BOX,
+        rx: 41,
+        ry: 6,
+        broken: 1,
+        trapped: 0,
+    }, () => {
+        l_create_object({
+            id: WAN_SECRET_DOOR_DETECTION,
+            spe: 30,
+        });
+    });
+    tut1_engr(42, 6, "Containers can also be emptied with '" + tut_key('tip') + "'");
+    tut1_engr(45, 6, "Magic wands are used with '" + tut_key('zap') + "'");
 
     tut1_door(35, 9, D_NODOOR);
-    tut1_engr(34, 9, "You can run by prefixing a movement key with 'G'");
+    tut1_engr(34, 9, "You can run by prefixing a movement key with '" + tut_key('run') + "'");
     tut1_door(33, 16, D_NODOOR);
-    tut1_engr(35, 15, "Travel across the level with '_'");
+    tut1_engr(35, 15, "Travel across the level with '" + tut_key('travel') + "'");
 
     {
         const ttmp = maketrap(xstart + 27, ystart + 14, MAGIC_PORTAL);
         mktrap_seen_victim(ttmp, { seen: true });
     }
 
-    tut1_engr(48, 1, "Use 'e' to eat edible things", BURN);
-    tut1_object(xstart, ystart, 50, 3, APPLE, -127, 'not-cursed');
-    tut1_object(xstart, ystart, 50, 3, CANDY_BAR, -127, 'not-cursed');
-    {
-        const otmp = tut1_object(xstart, ystart, 50, 3, CORPSE, -127, 'not-cursed');
-        if (otmp) set_corpsenm(otmp, PM_LICHEN);
-    }
+    tut1_engr(48, 1, "Use '" + tut_key('eat') + "' to eat edible things", BURN);
+    // C: dat/tut-1.lua des.object apple / candy bar / lichen corpse
+    // → lspo_object / create_object (D-1063). buc "not-cursed" is
+    // curse_state 4 (uncurse). Corpse montype is pmnames strcmpi, not
+    // find_montype gender RNG; spe becomes CORPSTAT lflags (0).
+    l_create_object({ id: APPLE, rx: 50, ry: 3, buc: 'not-cursed' });
+    l_create_object({ id: CANDY_BAR, rx: 50, ry: 3, buc: 'not-cursed' });
+    l_create_object({
+        id: CORPSE, rx: 50, ry: 3, buc: 'not-cursed', montype: 'lichen',
+    });
 
     tut1_door(46, 11, D_CLOSED);
-    tut1_engr(43, 11, "Use '#twoweapon' to use two weapons at once", BURN);
+    tut1_engr(43, 11, "Use '" + tut_key('twoweapon') + "' to use two weapons at once", BURN);
     tut1_object(xstart, ystart, 43, 13, KNIFE, -127, 'uncursed');
     tut1_object(xstart, ystart, 43, 14, DAGGER, -127, 'blessed');
-    tut1_engr(43, 16, "Swap weapons quickly with 'x'", BURN);
+    tut1_engr(43, 16, "Swap weapons quickly with '" + tut_key('swap') + "'", BURN);
     // C: lspo_door state=random → rnddoor() / ROLL_FROM
     tut1_door(40, 15, rnddoor());
 
     tut1_object(xstart, ystart, 48, 7, RIN_LEVITATION, -127, 'not-cursed');
-    tut1_engr(48, 10, "Put on accessories with 'P'", BURN);
-    tut1_engr(48, 16, "Remove accessories with 'R'", BURN);
+    tut1_engr(48, 10, "Put on accessories with '" + tut_key('puton') + "'", BURN);
+    tut1_engr(48, 16, "Remove accessories with '" + tut_key('remove') + "'", BURN);
     tut1_door(50, 16, D_CLOSED);
 
-    tut1_engr(58, 9, "Use '>' to go down the stairs", BURN);
-    mkstairs(xstart + 58, ystart + 10, 0, null);
+    tut1_engr(58, 9, "Use '" + tut_key('down') + "' to go down the stairs", BURN);
+    // C: dat/tut-1.lua des.stair({ dir = "down", coord = { 58,10 } })
+    // → l_create_stairway packed, force=TRUE (D-1061).
+    l_create_stairway(0, 58, 10, null, false);
 
-    // tut_key_help(64,4): no pending Ctrl key after kick help already emitted
+    // C: tut_key_help(64,4) — no pending Ctrl after kick help already emitted
+    tut_key_help(64, 4);
     tut1_engr(65, 3, 'UNDER CONSTRUCTION', BURN);
     {
         const ttmp = maketrap(xstart + 66, ystart + 2, MAGIC_PORTAL);
@@ -8688,10 +8841,10 @@ function load_tut1() {
         tut1_engr(59, 2,
             "Unfortunately you don't have enough energy to cast spells.");
     }
-    tut1_engr(57, 2, "Pick up the spellbook with ','");
+    tut1_engr(57, 2, "Pick up the spellbook with '" + tut_key('pickup') + "'");
     tut1_object(xstart, ystart, 57, 2, SPE_LIGHT, -127, 'blessed');
-    tut1_engr(55, 2, "Read the spellbook with 'r'");
-    tut1_engr(53, 2, "Use 'Z' to cast a spell");
+    tut1_engr(55, 2, "Read the spellbook with '" + tut_key('read') + "'");
+    tut1_engr(53, 2, "Use '" + tut_key('cast') + "' to cast a spell");
     // des.region(selection.area(53,01, 59, 3), "unlit")
     for (let y = ystart + 1; y <= ystart + 3 && y < ROWNO; y++) {
         for (let x = xstart + 53; x <= xstart + 59 && x < COLNO; x++) {
@@ -8700,11 +8853,15 @@ function load_tut1() {
         }
     }
 
-    tut1_engr(72, 2, 'You "quaff" potions with \'q\'');
+    tut1_engr(72, 2, "You \"quaff\" potions with '" + tut_key('quaff') + "'");
     tut1_object(xstart, ystart, 72, 2, POT_OBJECT_DETECTION, -127, 'blessed');
     // C: tut-1.lua has no des.mineralize / no kelp object. Kelp is
     // mklev.c mineralize(-1,-1,-1,-1,FALSE) in level_finalize_topology
     // after makelevel (map 'P'→POOL / 'W'→WATER; D-1059).
+
+    // C load_special: noflip → skip flip; fixup_special copies TELE dests.
+    // wallify / map_cleanup / count_level_features deferred (not this cluster).
+    fixup_special();
 }
 
 /**
@@ -9896,6 +10053,386 @@ function splev_create_monster(id_or_class, peaceful) {
     }
     if (mtmp && peaceful != null && peaceful > BOOL_RANDOM)
         mtmp.mpeaceful = peaceful;
+}
+
+// C ref: sp_lev.c — static container_obj[MAX_CONTAINMENT] / container_idx
+const MAX_CONTAINMENT = 10;
+let container_idx = 0;
+const container_obj = new Array(MAX_CONTAINMENT).fill(null);
+
+/** C ref: sp_lev.c spo_pop_container */
+function spo_pop_container() {
+    if (container_idx > 0) {
+        container_idx--;
+        container_obj[container_idx] = null;
+    }
+}
+
+/**
+ * C ref: shk.c delete_contents — obj_extract_self + obfree (no obj_resists).
+ */
+function create_object_delete_contents(obj) {
+    while (obj?.cobj) {
+        const curr = obj.cobj;
+        obj_extract_self(curr);
+        if (curr.cobj) create_object_delete_contents(curr);
+        curr.quan = 0;
+        curr.where = OBJ_FREE;
+        curr.nobj = null;
+        curr.nexthere = null;
+    }
+}
+
+/**
+ * C ref: sp_lev.c get_location. Packed (x>=0): add map/room origin.
+ * ANY_LOC skips the !isok maze-max clamp. Random (x<0): existing
+ * get_location_random / in-room somexy. levregion_add always passes
+ * ANY_LOC and NULL croom.
+ */
+function get_location(x, y, humidity, croom) {
+    let mx, my;
+    if (croom) {
+        mx = croom.lx | 0;
+        my = croom.ly | 0;
+    } else {
+        const o = splev_map_origin();
+        mx = o.mx;
+        my = o.my;
+    }
+    if (x >= 0) {
+        x = (x | 0) + mx;
+        y = (y | 0) + my;
+    } else {
+        const pos = croom
+            ? get_location_in_room(croom, humidity)
+            : get_location_random(null, humidity);
+        x = pos.x;
+        y = pos.y;
+    }
+    if (!(humidity & ANY_LOC) && !isok(x, y)) {
+        if (!(humidity & NO_LOC_WARN)) {
+            x = X_MAZE_MAX;
+            y = Y_MAZE_MAX;
+        } else {
+            x = -1;
+            y = -1;
+        }
+    }
+    return { x, y };
+}
+
+/**
+ * C ref: sp_lev.c get_location_coord — packed add origin; random DRY retry.
+ * Packed does not consult humidity (same as l_create_stairway). Random uses
+ * get_location_coord_random / in-room double-try. Named omit: class-letter
+ * def_char_to_objclass path lives in create_object.
+ */
+function get_location_coord(humidity, croom, rx, ry) {
+    if (rx < 0 && ry < 0) {
+        return croom
+            ? get_location_coord_in_room(croom, humidity)
+            : get_location_coord_random(humidity);
+    }
+    const mx = croom ? (croom.lx | 0) : (game.splev_xstart | 0);
+    const my = croom ? (croom.ly | 0) : (game.splev_ystart | 0);
+    let x = mx + (rx | 0);
+    let y = my + (ry | 0);
+    if (!isok(x, y)) {
+        x = X_MAZE_MAX;
+        y = Y_MAZE_MAX;
+    }
+    return { x, y };
+}
+
+/**
+ * C ref: sp_lev.c create_object (~2193–2439).
+ * Named omit: oname / novelidx; quan>0 oc_merge; recharged; tknown;
+ * invent_carrying_monster / saddle; artifact uncreate when container_obj
+ * is NULL; Medusa statue fill; achievement prizes; lit begin_burn;
+ * buried bury_an_obj; class-letter def_char_to_objclass (id-less
+ * RANDOM_CLASS / mkobj_at oclass still work).
+ */
+function create_object(o, croom) {
+    const named = !!(o.name);
+    const pos = get_location_coord(DRY, croom, o.rx ?? -1, o.ry ?? -1);
+    const x = pos.x;
+    const y = pos.y;
+
+    let c = (o.class != null && o.class >= 0) ? o.class : 0;
+    let otmp;
+    const id = o.id ?? -1;
+    if (!c) {
+        otmp = mkobj_at(RANDOM_CLASS, x, y, !named);
+    } else if (id !== -1) {
+        otmp = mksobj_at(id, x, y, true, !named);
+    } else {
+        otmp = mkobj_at(c, x, y, !named);
+    }
+    if (!otmp) return null;
+
+    if (o.spe !== -127 && o.spe != null) otmp.spe = o.spe | 0;
+
+    switch (o.curse_state | 0) {
+    case 1:
+        bless(otmp);
+        break;
+    case 2:
+        unbless(otmp);
+        uncurse(otmp);
+        break;
+    case 3:
+        curse(otmp);
+        break;
+    case 4:
+        uncurse(otmp);
+        break;
+    case 5:
+        blessorcurse(otmp, 1);
+        break;
+    case 6:
+        unbless(otmp);
+        break;
+    default:
+        break;
+    }
+
+    // C: corpsenm is "empty" if NON_PM, random if NON_PM-1, else specific.
+    // set_corpsenm restarts egg hatch / corpse timers (D-1063).
+    const cn = (o.corpsenm == null) ? NON_PM : (o.corpsenm | 0);
+    if (cn !== NON_PM) {
+        if (cn === NON_PM - 1) set_corpsenm(otmp, rndmonnum());
+        else set_corpsenm(otmp, cn);
+    }
+
+    const eroded = o.eroded | 0;
+    if (eroded) {
+        if (eroded < 0) {
+            otmp.oerodeproof = 1;
+        } else {
+            otmp.oeroded = eroded % 4;
+            otmp.oeroded2 = ((eroded >> 2) % 4);
+        }
+    } else {
+        otmp.oeroded = 0;
+        otmp.oeroded2 = 0;
+        otmp.oerodeproof = 0;
+    }
+    if (o.locked === 0 || o.locked === 1) {
+        otmp.olocked = o.locked;
+    } else if (o.broken) {
+        otmp.obroken = 1;
+        otmp.olocked = 0;
+    }
+    if (o.trapped === 0 || o.trapped === 1) otmp.otrapped = o.trapped;
+    otmp.greased = o.greased ? 1 : 0;
+
+    const containment = o.containment | 0;
+    if (containment & SP_OBJ_CONTENT) {
+        if (container_idx) {
+            const cobj = container_obj[container_idx - 1];
+            obj_extract_self(otmp);
+            if (cobj) {
+                otmp = add_to_container(cobj, otmp);
+                cobj.owt = weight(cobj);
+            } else {
+                otmp.quan = 0;
+                otmp.where = OBJ_FREE;
+                return null;
+            }
+        }
+    }
+    if (containment & SP_OBJ_CONTAINER) {
+        create_object_delete_contents(otmp);
+        if (container_idx < MAX_CONTAINMENT) {
+            container_obj[container_idx] = otmp;
+            container_idx++;
+        }
+    }
+
+    if (!(containment & SP_OBJ_CONTENT)) stackobj(otmp);
+    return otmp;
+}
+
+/**
+ * C ref: sp_lev.c get_table_buc — bucs[] / bucs2i[].
+ */
+function get_table_buc(buc) {
+    const bucs = {
+        random: 0,
+        blessed: 1,
+        uncursed: 2,
+        cursed: 3,
+        'not-cursed': 4,
+        'not-uncursed': 5,
+        'not-blessed': 6,
+    };
+    if (buc == null) return 0;
+    return bucs[String(buc).toLowerCase()] ?? 0;
+}
+
+/**
+ * C ref: sp_lev.c lspo_object montype — strcmpi pmnames, no find_montype
+ * gender RNG.
+ */
+function lspo_object_montype_mndx(montype) {
+    const want = String(montype).toLowerCase();
+    for (let i = LOW_PM; i < monsterNames.length; i++) {
+        const names = pmnames[i];
+        if (!names) continue;
+        if ((names[NEUTRAL] && names[NEUTRAL].toLowerCase() === want)
+            || (names[MALE] && names[MALE].toLowerCase() === want)
+            || (names[FEMALE] && names[FEMALE].toLowerCase() === want)) {
+            return i;
+        }
+    }
+    return NON_PM;
+}
+
+/**
+ * C ref: sp_lev.c lspo_object STATUE/EGG/CORPSE/TIN/FIGURINE montype + spe.
+ * Class-letter montype uses mkclass(G_NOGEN|G_IGNORE). Corpse/statue spe
+ * becomes CORPSTAT lflags (historic/male/female), overwriting mksobj gender.
+ */
+function lspo_object_apply_montype(tmp) {
+    const id = tmp.id | 0;
+    if (id !== STATUE && id !== EGG && id !== CORPSE && id !== TIN
+        && id !== FIGURINE) {
+        return;
+    }
+    let nonpmobj = false;
+    const montype = tmp.montype;
+    if (montype != null && montype !== '') {
+        const mt = String(montype);
+        const low = mt.toLowerCase();
+        if ((id === TIN && (low === 'spinach' || low === 'empty'))
+            || (id === EGG && low === 'empty')) {
+            tmp.corpsenm = NON_PM;
+            tmp.spe = low === 'spinach' ? 1 : 0;
+            nonpmobj = true;
+        } else if (mt.length === 1) {
+            const mlet = monclass_letter_to_mlet(mt);
+            if (mlet) {
+                const pm = mkclass(mlet, G_NOGEN | G_IGNORE);
+                if (pm) tmp.corpsenm = pm.mndx | 0;
+            } else {
+                const mndx = lspo_object_montype_mndx(mt);
+                if (mndx !== NON_PM) tmp.corpsenm = mndx;
+            }
+        } else {
+            const mndx = lspo_object_montype_mndx(mt);
+            if (mndx !== NON_PM) tmp.corpsenm = mndx;
+        }
+    }
+    if (id === STATUE || id === CORPSE) {
+        let lflags = 0;
+        if (tmp.historic) lflags |= CORPSTAT_HISTORIC;
+        if (tmp.male) lflags |= CORPSTAT_MALE;
+        if (tmp.female) lflags |= CORPSTAT_FEMALE;
+        tmp.spe = lflags;
+    } else if (id === EGG) {
+        tmp.spe = tmp.laid_by_you ? 1 : 0;
+    } else if (!nonpmobj) {
+        tmp.spe = 0;
+    }
+}
+
+/**
+ * C ref: sp_lev.c lspo_object table form (unpacked; not lua_State).
+ * contentsFn runs after create_object like Lua contents=function.
+ * Named omit: argc string/coord overloads; quan non-merge repeat loop;
+ * other load_* des.object still hand-rolled.
+ */
+export function l_create_object(o, contentsFn, croom = null) {
+    const tmp = { ...o };
+    if (tmp.spe == null) tmp.spe = -127;
+    if (tmp.trapped == null) tmp.trapped = -1;
+    if (tmp.locked == null) tmp.locked = -1;
+    if (tmp.eroded == null) tmp.eroded = 0;
+    if (tmp.buc != null) tmp.curse_state = get_table_buc(tmp.buc);
+    if (tmp.curse_state == null) tmp.curse_state = 0;
+    if (tmp.rx == null) tmp.rx = -1;
+    if (tmp.ry == null) tmp.ry = -1;
+    if (tmp.corpsenm == null) tmp.corpsenm = NON_PM;
+    if ((tmp.class == null || tmp.class < 0) && (tmp.id | 0) > 0) {
+        const oc = game.objects?.[tmp.id]?.oc_class;
+        tmp.class = (oc != null && oc >= 0) ? oc : 1;
+    }
+    lspo_object_apply_montype(tmp);
+    tmp.containment = tmp.containment | 0;
+    if (container_idx) tmp.containment |= SP_OBJ_CONTENT;
+    if (contentsFn) tmp.containment |= SP_OBJ_CONTAINER;
+    const otmp = create_object(tmp, croom);
+    if (typeof contentsFn === 'function') contentsFn(otmp);
+    if ((tmp.containment & SP_OBJ_CONTAINER) !== 0) spo_pop_container();
+    return otmp;
+}
+
+/**
+ * C ref: sp_lev.c l_create_stairway (lspo_stair / lspo_ladder).
+ * Packed coord: get_location adds xstart/ystart (or croom lx/ly), deltrap,
+ * SpLev_Map[x][y]=1, mkstairs(..., force=TRUE). Random: good_stair_loc then
+ * mkstairs force=FALSE. Ladder skips mkstairs (no dungeon-end no-op).
+ * Named omit: Lua argc table/string parse (loaders pass unpacked dir/coord);
+ * splev_create_stair / splev_room_stair still hand-rolled (no SpLev_Map /
+ * level.traps deltrap); other des.stair loaders still raw mkstairs without
+ * force; deltrap conjoined pits / Sokoban.
+ */
+export function l_create_stairway(up, rx, ry, croom, using_ladder) {
+    const random = rx === -1 && ry === -1;
+    let x, y;
+    if (random) {
+        const pos = croom
+            ? get_location_coord_in_room(croom, DRY, good_stair_loc)
+            : get_location_random(good_stair_loc);
+        x = pos.x;
+        y = pos.y;
+    } else {
+        const mx = croom ? (croom.lx | 0) : (game.splev_xstart | 0);
+        const my = croom ? (croom.ly | 0) : (game.splev_ystart | 0);
+        x = mx + rx;
+        y = my + ry;
+        // C get_location: !ANY_LOC && !isok → x_maze_max, y_maze_max
+        if (!isok(x, y)) {
+            x = X_MAZE_MAX;
+            y = Y_MAZE_MAX;
+        }
+    }
+    const trap = t_at(x, y);
+    if (trap) {
+        // C deltrap unlinks gf.ftrap; JS maketrap also keeps level.traps
+        let prev = null;
+        for (let t = game.ftrap; t; t = t.ntrap) {
+            if (t === trap) {
+                if (prev) prev.ntrap = t.ntrap;
+                else game.ftrap = t.ntrap;
+                break;
+            }
+            prev = t;
+        }
+        const traps = game.level?.traps;
+        if (Array.isArray(traps)) {
+            const i = traps.indexOf(trap);
+            if (i >= 0) traps.splice(i, 1);
+        }
+    }
+    if (!game.SpLev_Map) game.SpLev_Map = new Set();
+    game.SpLev_Map.add(`${x},${y}`);
+
+    if (using_ladder) {
+        const loc = game.level.at(x, y);
+        if (loc) {
+            loc.typ = LADDER;
+            loc.ladder = up ? LA_UP : LA_DOWN;
+        }
+        const dlev = game.u?.uz?.dlevel ?? 1;
+        stairway_add(x, y, !!up, true, {
+            dnum: game.u?.uz?.dnum ?? 0,
+            dlevel: dlev + (up ? -1 : 1),
+        });
+        return;
+    }
+    // C: mkstairs(..., !(scoord & SP_COORD_IS_RANDOM))
+    mkstairs(x, y, up ? 1 : 0, croom, !random);
 }
 
 function splev_create_stair(up) {
@@ -17356,25 +17893,28 @@ function generate_stairs_find_room() {
  * C ref: mklev.c mkstairs — place ordinary up/down stairs within the branch.
  * Cannot place stairs off an end of the dungeon (up on dunlev 1, down on
  * botlevel); des.stair / minefill still call this and rely on the no-op.
- * Branch stairs go through place_branch → stairway_add, not here.
+ * Packed des.stair passes force=TRUE so the cell becomes ROOM before that
+ * return (D-1061). Branch stairs go through place_branch → stairway_add.
  */
-function mkstairs(x, y, up, croom) {
+function mkstairs(x, y, up, croom, force = false) {
     const g = game;
     if (!x || !isok(x, y)) return;
+    const loc = g.level.at(x, y);
+    // C: if (force) levl[x][y].typ = ROOM; then dungeon-end return
+    if (force && loc) loc.typ = ROOM;
     // C: if (dunlev(&u.uz) == (up ? 1 : dunlevs_in_dungeon(&u.uz))) return;
     const dlev = g.u?.uz?.dlevel ?? 1;
     if (up ? dlev === 1 : Is_botlevel(g.u?.uz)) return;
 
-    const loc = g.level.at(x, y);
-    if (loc) {
-        loc.typ = STAIRS;
-        loc.ladder = up ? LA_UP : LA_DOWN;
-    }
     const dest = {
         dnum: g.u?.uz?.dnum ?? 0,
         dlevel: dlev + (up ? -1 : 1),
     };
     stairway_add(x, y, !!up, false, dest);
+    if (loc) {
+        loc.typ = STAIRS;
+        loc.ladder = up ? LA_UP : LA_DOWN;
+    }
     if (up) g.level.upstair = { x, y };
     else g.level.dnstair = { x, y };
 }
