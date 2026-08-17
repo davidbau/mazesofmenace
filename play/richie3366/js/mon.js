@@ -15,7 +15,8 @@ import {
     ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
     Is_astralevel, Is_airlevel, Is_firelevel,
     IS_FOUNTAIN,
-    ismnum, M_POISONGAS_OK, u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_MIGRATING, MON_DETACH,
+    ismnum, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD, POISON_RES,
+    u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_MIGRATING, MON_DETACH,
     MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
     has_emin, has_epri, has_eshk,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
@@ -29,7 +30,7 @@ import {
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
     is_rider, nonliving, breathless, is_giant, is_minion, is_human,
-    is_undead, amphibious, can_teleport, MR_FIRE, mindless, G_UNIQ,
+    is_undead, amphibious, can_teleport, MR_FIRE, MR_POISON, mindless, G_UNIQ,
     is_watch,
 } from './monsters.js';
 import {
@@ -70,6 +71,11 @@ const PM_AIR_ELEMENTAL = monsterNames.indexOf('PM_AIR_ELEMENTAL');
 const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
 const PM_EARTH_ELEMENTAL = monsterNames.indexOf('PM_EARTH_ELEMENTAL');
 const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
+const PM_HEZROU = monsterNames.indexOf('PM_HEZROU');
+const PM_VROCK = monsterNames.indexOf('PM_VROCK');
+const AT_BREA = 12; // C monattk.h
+const AD_DRST = 7;
+const AD_RBRE = 242;
 const EGG = objectNames.indexOf('EGG');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const NC_SHOW_MSG = 1;
@@ -187,16 +193,90 @@ const OTYP_CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const PM_ANGEL = monsterNames.indexOf('PM_ANGEL');
 const PM_MINOTAUR = monsterNames.indexOf('PM_MINOTAUR');
 
+/** C mondata.h immune_poisongas — Hezrou or Vrock (mndx; JS mons() allocs). */
+function immune_poisongas(ptr) {
+    const n = ptr?.mndx ?? -1;
+    return n === PM_HEZROU || n === PM_VROCK;
+}
+
 /**
- * C ref: mon.c m_poisongas_ok — subset for mfndpos avoid-gas gate.
- * Named omissions: vampshifter; eel/waterlevel pool; breath AD_DRST/RBRE;
- * resists_poison → MINOR (treated as not OK so gas still avoided).
+ * C ref: mondata.c attacktype_fordmg — first mattk with aatyp+adtyp.
+ * Local clone (eat.js / region.js); cycle if imported from those.
  */
-function m_poisongas_ok(mtmp) {
+function attacktype_fordmg(ptr, atyp, dtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return null;
+    for (let i = 0; i < slots.length; i++) {
+        const a = slots[i];
+        if ((a?.aatyp | 0) === atyp
+            && (dtyp === -1 || (a?.adtyp | 0) === dtyp)) {
+            return a;
+        }
+    }
+    return null;
+}
+
+/** C youprop.h Poison_resistance — H || E || uprops (JS split storage). */
+function Poison_resistance() {
+    const u = game.u || {};
+    const p = u.uprops?.[POISON_RES];
+    return !!((u.HPoison_resistance | 0) || (u.EPoison_resistance | 0)
+        || u.Poison_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
+}
+
+/** C youprop.h Breathless — magical breathing || breathless(form). */
+function Breathless() {
+    const u = game.u || {};
+    if ((u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)
+        || u.Magical_breathing) {
+        return true;
+    }
+    const data = game.youmonst?.data;
+    return data ? breathless(data) : false;
+}
+
+/**
+ * C ref: monst.h resists_poison → Resists_Elem(POISON_RES) subset:
+ * data.mresists | mextrinsics | mintrinsics. Artifact/worn grants named.
+ */
+function resists_poison(mtmp) {
+    if (!mtmp || mtmp === game.youmonst) return Poison_resistance();
+    const bits = (mtmp.data?.mresists | 0)
+        | (mtmp.mextrinsics | 0)
+        | (mtmp.mintrinsics | 0);
+    return !!(bits & MR_POISON);
+}
+
+/**
+ * C ref: mon.c m_poisongas_ok — OK / MINOR / BAD. mfndpos treats only
+ * OK as willing to enter poisoncloud (MINOR still avoids). region.js
+ * keeps a local clone (mon.js imports visible_region_at).
+ */
+export function m_poisongas_ok(mtmp) {
+    const is_you = mtmp === game.youmonst;
     const ptr = mtmp?.data;
-    if (nonliving(ptr) || breathless(ptr)) return M_POISONGAS_OK;
-    // immune_poisongas deferred → false
-    return 0; // M_POISONGAS_BAD
+    if (nonliving(ptr) || is_vampshifter(mtmp)
+        || breathless(ptr) || immune_poisongas(ptr)) {
+        return M_POISONGAS_OK;
+    }
+    const u = game.u || {};
+    const px = is_you ? (u.ux | 0) : (mtmp.mx | 0);
+    const py = is_you ? (u.uy | 0) : (mtmp.my | 0);
+    if ((ptr?.mlet === 'S_EEL' || Is_waterlevel(u.uz)) && is_pool(px, py)) {
+        return M_POISONGAS_OK;
+    }
+    if (attacktype_fordmg(ptr, AT_BREA, AD_DRST)
+        || attacktype_fordmg(ptr, AT_BREA, AD_RBRE)) {
+        return M_POISONGAS_OK;
+    }
+    if (is_you && (u.uinvulnerable || Breathless() || u.uinwater)) {
+        return M_POISONGAS_OK;
+    }
+    if (is_you ? Poison_resistance() : resists_poison(mtmp)) {
+        return M_POISONGAS_MINOR;
+    }
+    return M_POISONGAS_BAD;
 }
 
 /**

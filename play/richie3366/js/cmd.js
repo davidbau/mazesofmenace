@@ -69,6 +69,7 @@ import {
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
+import { in_out_region } from './region.js';
 
 /** C ref: cmd.c cmdq_clear(CQ_CANNED) */
 function cmdq_clear() {
@@ -1817,6 +1818,15 @@ async function domove(dx, dy) {
         if (bc_picked) move_bc(0, bc_control, ballx, bally, chainx, chainy);
         bc_picked = false;
     };
+
+    /* C hack.c:2866–2868 — Check regions entering/leaving after
+     * drag_ball, before m_at / occupy. Gas NO_CALLBACK never
+     * rejects; still updates REG_HERO_INSIDE (D-1157). C returns
+     * without move_bc put-down. dothrow hurtle_step / do.c
+     * goto_level callers still named. */
+    if (!(await in_out_region(newx, newy))) {
+        return;
+    }
 
     const oldx = u.ux, oldy = u.uy;
 

@@ -36,7 +36,10 @@
 // drinksink case 4 !Blind hcolor(OBJ_DESCR) (D-1135).
 // make_gas_cloud enveloped You + PLNMSG_ENVELOPED_IN_GAS (D-1137).
 // inside_f dam>0 HP + m_poisongas_ok size-1 gate (D-1146 region.js).
-// Deferred: expire dissipation; mfndpos m_poisongas_ok subset; monstseesu
+// expire_gas_cloud dissipation plines (D-1155 region.js).
+// fumaroles clear_heros_fault + Norep whoosh (D-1156 mklev.js).
+// mfndpos m_poisongas_ok vamp/eel/breath (D-1159 mon.js).
+// Deferred: monstseesu
 // when Fire_resistance already set; sit/apply/pray/detect/do/wield/read
 // identity hcolor stubs (rndcolor is D-1147 in do_name.js / chest_trap).
 

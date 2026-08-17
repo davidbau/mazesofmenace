@@ -33,7 +33,6 @@ import {
     back_to_glyph,
     cls,
     docrt,
-    glyph_is_invisible,
     hero_glyph_info,
     map_glyphinfo,
     newsym,
@@ -497,8 +496,11 @@ function preflightTrap(env, trap) {
 /**
  * The three discovery arms of detect.c mfind0(), which decide whether a
  * monster on an adjacent square is found rather than merely redrawn.  Each one
- * exercises Wisdom, writes a message and needs a helper this port does not
- * have: seemimic(), map_invisible(), or the mundetected reveal.
+ * exercises Wisdom, writes a message and needs something this port does not
+ * have: seemimic(), the mundetected reveal, or -- for an unspotted monster --
+ * detect.c:2003-2005's `You_feel("an unseen monster!")` with the set_msg_xy()
+ * that places its cursor, and the `-1` at 1997 that declines to spend the turn
+ * when the square already carries the marker.
  *
  * mfind0() calls this at the square it is looking at and
  * preflightExplicitSearch() calls it at all eight, so a refusal here always
@@ -524,7 +526,7 @@ function preflightSearchMonster(monster, env) {
     }
     if (!canSpotMonster(monster, state)) {
         throw new UnsupportedSearchError(
-            'searching out an unspotted monster needs map_invisible()',
+            'searching out an unspotted monster needs its own message',
         );
     }
 }
@@ -572,16 +574,9 @@ function preflightExplicitSearch(env) {
                 continue;
             }
             const monster = m_at(x, y, state);
-            if (monster) {
-                preflightSearchMonster(monster, env);
-            } else if (glyph_is_invisible(location)) {
-                // unmap_invisible()'s TRUE arm is unwritten because
-                // map_invisible(), the only writer of the 'I' it clears, is
-                // unported, so the arm has never run.
-                throw new UnsupportedSearchError(
-                    'clearing a remembered invisible monster is not ported',
-                );
-            }
+            if (monster) preflightSearchMonster(monster, env);
+            // detect.c:2076-2077's unmap_invisible() needs no preflight: both
+            // of its arms are ported now, and neither draws.
             const trap = t_at(x, y, state);
             if (trap && !trap.tseen) {
                 // Two source branches the port does not own. They are refused

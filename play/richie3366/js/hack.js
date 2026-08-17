@@ -5,20 +5,22 @@ import { game } from './gstate.js';
 import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, isok,
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, IS_WALL, IS_TREE, IS_STWALL,
-    D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_TRAPPED,
+    D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
     is_pit, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
     LEPREHALL, COCKNEST, ANTHOLE, DELPHI,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
     DB_LAVA, DB_ICE, STONE,
     ROOM, CORR, DOOR, SDOOR, TREE, ICE,
+    xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA,
+    xWATERWALL,
     W_NONDIGGABLE, SHOP_DOOR_COST,
     IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     xdir, ydir, N_DIRS,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
     OVERLOADED, SLT_ENCUMBER, HVY_ENCUMBER, Is_airlevel, Is_waterlevel,
-    Is_medusa_level, Is_juiblex_level,
+    Is_earthlevel, Is_medusa_level, Is_juiblex_level,
     TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
     SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
     INTRINSIC, UNCHANGING,
@@ -1408,10 +1410,77 @@ function Flying_st() {
 }
 
 /**
+ * C ref: hack.c classify_terrain — set iflags.terrain_typ from
+ * lastseentyp[u.ux][u.uy] with status remaps (Underwater, arboreal
+ * STONE, ROOM/CORR floor vs earth ground, door open/shut,
+ * DRAWBRIDGE_UP under-typ, Medusa sea / Juiblex swamp,
+ * WATER→xWATERWALL off the water level). Request disp.botl when
+ * flags.terrainstatus && !context.run. C youprop.h Underwater ≡
+ * u.uinwater. Named omit: botl terrain_descr[] paint; options.c
+ * toggle; end_running MAX_TYPE reset; dungeon.c u_on_newpos
+ * MAX_TYPE; spoteffects / set_uinwater / dissolve_bars callers.
+ */
+export function classify_terrain() {
+    const u = game.u;
+    if (!u) return;
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const lev = game.level?.at(ux, uy);
+    /* C: typ = svl.lastseentyp[u.ux][u.uy]; comment says lev->typ */
+    let typ = game.lastseentyp?.[ux]?.[uy] | 0;
+
+    if (u.uinwater) {
+        typ = xSUBMERGED;
+    } else {
+        switch (typ) {
+        case STONE:
+            if (game.level?.flags?.arboreal) typ = TREE;
+            break;
+        case CORR:
+        case ROOM:
+            typ = !Is_earthlevel(u.uz) ? xFLOOR : xGROUND;
+            break;
+        case DOOR: {
+            const mask = lev?.doormask | 0;
+            if ((mask & D_ISOPEN) !== 0) typ = xOPENDOOR;
+            else if ((mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) !== 0) {
+                typ = xSHUTDOOR;
+            }
+            break;
+        }
+        case DRAWBRIDGE_UP:
+            typ = db_under_typ(lev?.drawbridgemask);
+            if (typ === STONE || typ === ROOM) typ = xGROUND;
+            break;
+        case MOAT:
+            if (Is_medusa_level(u.uz)) typ = xSEA;
+            else if (Is_juiblex_level(u.uz)) typ = xSWAMP;
+            break;
+        case WATER:
+            if (!Is_waterlevel(u.uz)) typ = xWATERWALL;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (!game.iflags) game.iflags = {};
+    /* C: if (typ != iflags.terrain_typ); BSS 0 ≡ JS undefined|0 */
+    if ((typ | 0) !== (game.iflags.terrain_typ | 0)) {
+        game.iflags.terrain_typ = typ | 0;
+        if (game.flags?.terrainstatus && !(game.context?.run | 0)) {
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+            if (game.disp) game.disp.botl = true;
+        }
+    }
+}
+
+/**
  * C ref: hack.c switch_terrain — moving onto different terrain may block
  * or unblock levitation/flight via B* FROMOUTSIDE (solid rock, closed
  * door, waterwall, lavawall). Skip float_down when blocking.
- * Named omit: classify_terrain when flags.terrainstatus.
+ * flags.terrainstatus → classify_terrain (D-1151).
  */
 export async function switch_terrain() {
     const u = game.u;
@@ -1458,7 +1527,7 @@ export async function switch_terrain() {
         game.flags.botl = true;
         if (game.disp) game.disp.botl = true;
     }
-    // C: if (flags.terrainstatus) classify_terrain(); named omit
+    if (game.flags?.terrainstatus) classify_terrain();
 }
 
 /**
@@ -1646,8 +1715,9 @@ export async function notice_all_mons(reset) {
  * C hack.c invocation_message — clue when standing on the Invocation
  * square (not a stair). teleds calls this after spoteffects (D-1141);
  * walk `domove` after vision_recalc(1) (D-1150 / hack.c:2973).
- * Named omit: mkmaze.c inv_pos placement; apply.js still uses a local
- * invocation_pos clone; shared dungeon.c Invocation_lev export.
+ * Named omit: apply.js still uses a local invocation_pos clone;
+ * shared dungeon.c Invocation_lev export. mkmaze.c inv_pos /
+ * VIBRATING_SQUARE placement is D-1154.
  */
 export async function invocation_message() {
     const u = game.u;

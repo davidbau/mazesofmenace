@@ -2477,6 +2477,15 @@ export const MAXEXPCHARS = 9;                               // number of explosi
 // ==========================================================================
 
 export const MATCH_WALL      = 38;
+/* C rm.h extra indices into terrain_descr[] for botl (not levl.typ). */
+export const xFLOOR          = 39;
+export const xGROUND         = 40;
+export const xOPENDOOR       = 41;
+export const xSHUTDOOR       = 42;
+export const xSWAMP          = 43;
+export const xSUBMERGED      = 44;
+export const xSEA            = 45;
+export const xWATERWALL      = 46;
 export const INVALID_TYPE    = 127;
 
 // Level type utility macros (from include/rm.h, lines 104-128)

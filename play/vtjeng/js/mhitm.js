@@ -160,18 +160,30 @@ async function noises(magr, mattk, env) {
 // even if hero can't see it because the formerly concealed monster is now in
 // action".
 //
-// Three arms refuse. A mimic on either side needs mon.c seemimic(), and a
-// monster the hero cannot spot needs display.c map_invisible(); both write to
-// the map and print nothing, so the stop sits exactly where C's branch begins.
+// Two arms refuse. A mimic on either side needs mon.c seemimic(), which writes
+// to the map and prints nothing, so the stop sits exactly where C's branch
+// begins.
 //
 // Both mundetected clears are ported, and only the aggressor's runs. A hidden
 // defender stops mattackm() at its own :337-359 block, well above the call
 // that arrives here, so `mdef.mundetected` is 0 on every path that reaches
 // this function. The clear is written because C writes it.
+//
+// The marker write goes through the `markInvisible` seam for the same reason
+// `redraw` does. Both write the live map: newsym() paints the module-global
+// game, and display.c map_invisible() writes map memory and then paints
+// through show_glyph_cell(), which reads that same global. The once-per-turn
+// planning scan reaches this function -- js/unported_monster_actions.js
+// preflightSimpleMonsterActions() runs moveSimplePet() with `planning: true`,
+// and a pet's blow arrives here through dogmove.c dog_move() -- and its clone
+// shares the live level's cells, so a dry run marking a square would leave a
+// remembered 'I' and a painted cell behind in a game the scan may still refuse.
+// The scan binds both seams to no-ops and replays the turn live afterwards.
 function pre_mm_attack(magr, mdef, env) {
     const { state } = env;
     const unsupported = requireAttackOperation(env, 'unsupported');
     const redraw = requireAttackOperation(env, 'redraw');
+    const markInvisible = requireAttackOperation(env, 'markInvisible');
     let showit = false;
 
     if (M_AP_TYPE(mdef)) {
@@ -188,11 +200,14 @@ function pre_mm_attack(magr, mdef, env) {
     }
 
     if (state.gv.vis) {
+        // C's `if/else if` per participant: a marker write and a redraw are
+        // mutually exclusive, so a monster the hero cannot spot is marked and
+        // not redrawn even when showit is set.
         if (!canSpotMonster(magr, state))
-            unsupported('an unseen attacker marked on the map');
+            markInvisible(magr.mx, magr.my);
         else if (showit) redraw(magr.mx, magr.my);
         if (!canSpotMonster(mdef, state))
-            unsupported('an unseen defender marked on the map');
+            markInvisible(mdef.mx, mdef.my);
         else if (showit) redraw(mdef.mx, mdef.my);
     }
 }

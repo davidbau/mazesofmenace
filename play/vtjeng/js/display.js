@@ -30,11 +30,10 @@ import {
     SLIMED, STONED, STR18, STRANGLED, STUNNED, OBJ_FLOOR,
     BACKTRACK, DISP_ALL, DISP_ALWAYS, DISP_BEAM, DISP_CHANGE, DISP_END,
     DISP_FLASH, DISP_FREEMEM, DISP_TETHER,
-    P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD, P_SABER,
-    P_CLUB, P_MACE, P_MORNING_STAR, P_FLAIL, P_HAMMER,
-    P_QUARTERSTAFF, P_POLEARMS, P_SPEAR, P_TRIDENT, P_LANCE,
+    P_SHORT_SWORD, P_SABER,
+    P_MORNING_STAR, P_QUARTERSTAFF, P_POLEARMS, P_SPEAR, P_TRIDENT, P_LANCE,
     P_BOW, P_SLING, P_CROSSBOW, P_DART, P_SHURIKEN, P_BOOMERANG,
-    P_WHIP, P_UNICORN_HORN,
+    P_UNICORN_HORN,
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, SCORR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER, SDOOR,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
@@ -53,7 +52,8 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     HI_DOMESTIC, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
     M_AP_TYPMASK, MON_STILL_ARRIVING, WARN_OF_MON,
-    SYM_BOULDER, SYM_NOTHING, SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE,
+    SYM_BOULDER, SYM_INVISIBLE, SYM_NOTHING,
+    SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE,
     WARNING, WARNCOUNT,
     PROT_FROM_SHAPE_CHANGERS,
     def_warnsyms,
@@ -199,6 +199,7 @@ import {
     GLYPH_CMAP_MINES_OFF,
     GLYPH_CMAP_SOKO_OFF,
     GLYPH_CMAP_STONE_OFF,
+    GLYPH_INVIS_OFF,
     GLYPH_NOTHING_OFF,
     GLYPH_OBJ_OFF,
     GLYPH_OBJ_PILETOP_OFF,
@@ -1132,6 +1133,12 @@ const wallcolors = Object.freeze([
 // glyph, returned by cmap_to_glyph() for an index outside every cmap range.
 export const NO_GLYPH = MAX_GLYPH;
 
+// C ref: display.h GLYPH_INVISIBLE (549), an alias for GLYPH_INVIS_OFF. The
+// range is one number wide -- display.h:504 puts GLYPH_DETECT_OFF one place
+// above it -- so "the hero remembers an invisible monster here" is a single
+// glyph rather than a species.
+export const GLYPH_INVISIBLE = GLYPH_INVIS_OFF;
+
 // C ref: display.h altar_to_glyph() (569-579). Unaligned is the default rather
 // than a tested case, because AM_MASK has three bits and only four of its
 // eight values are defined.
@@ -1443,10 +1450,16 @@ export function glyph_is_object(glyph) {
 }
 
 // C ref: display.h:995-1013, the glyphflags reset_glyphmap() encodes and
-// map_glyphinfo() passes on. Only the bits the object and monster arms raise
-// are spelled here; the rest belong with the arms that raise them, which are
-// not ported.
+// map_glyphinfo() passes on. Only the bits the object, monster and
+// invisible-monster arms raise are spelled here; the rest belong with the arms
+// that raise them, which are not ported.
+//
+// MG_INVIS is write-only in the tty window port: reset_glyphmap() (3035) is
+// its only writer and `grep -rn MG_INVIS src/ include/ win/` finds no reader,
+// so tty_print_glyph()'s attribute chain never sees it and the marker draws
+// with ATR_NONE. It is carried because C carries it.
 export const MG_CORPSE = 0x00002;
+export const MG_INVIS = 0x00004;
 export const MG_DETECT = 0x00008;
 export const MG_PET = 0x00010;
 export const MG_RIDDEN = 0x00020;
@@ -1533,6 +1546,7 @@ export const ALTAR_CUSTOMIZATION_NAMES = Object.freeze([
 // unexplored glyph, so no path produces the number and this refuses it.
 function mapGlyphinfoResolves(glyph) {
     return glyph === GLYPH_NOTHING_OFF
+        || glyph === GLYPH_INVISIBLE
         || glyph_is_object(glyph)
         || (glyph_is_cmap(glyph) && !glyph_is_cmap_zap(glyph));
 }
@@ -1672,11 +1686,19 @@ export function map_glyphinfo(glyph, state = game) {
     } else if ((offset = glyph - GLYPH_OBJ_OFF) >= 0) {
         symbol = objectSymbol(offset, state);
         color = state.objects?.[offset]?.oc_color ?? NO_COLOR;
-    } else {
-        offset = glyph - GLYPH_BODY_OFF;
+    } else if ((offset = glyph - GLYPH_BODY_OFF) >= 0) {
         symbol = corpseSymbol(state);
         color = state.mons?.[offset]?.mcolor ?? NO_COLOR;
         glyphflags = MG_CORPSE;
+    } else {
+        // display.c:3029-3035, the GLYPH_INVIS_OFF arm. It sits below every
+        // object and cmap arm in C's descending chain and above the pet arms,
+        // which have no port, so the guard above leaves it the only glyph that
+        // reaches here. invis_color() is `color = NO_COLOR` (display.c:2687),
+        // one of the two arms whose colour never varies.
+        symbol = misc_symbol(SYM_INVISIBLE, state);
+        color = NO_COLOR;
+        glyphflags = MG_INVIS;
     }
     let customization = null;
     if (cmap !== null) {
@@ -2119,16 +2141,12 @@ export function remembered_glyph_presentation(remembered, state = game) {
  * record on every map-memory write, so `!==` would answer "changed" for a
  * square feel_location() left exactly as it found it.
  *
- * Compare the numbers instead, which is C's own comparison. `invisible_monster`
- * joins them because map_invisible() would store GLYPH_INVISIBLE, a number this
- * port has no range for yet; glyph_is_invisible() explains that marker.
+ * Compare the numbers instead, which is C's own comparison.
  */
 export function same_remembered_glyph(before, after) {
     if (before === after) return true;
     if (!before || !after) return false;
-    return before.glyph === after.glyph
-        && (before.invisible_monster ?? null)
-            === (after.invisible_monster ?? null);
+    return before.glyph === after.glyph;
 }
 
 // C ref: display.c feel_location() (736-905), the branch taken by a hero who
@@ -2168,9 +2186,8 @@ export function feel_location(x, y, state = game) {
     if (!location) return;
     // display.c:763-767. An accurate memory of an invisible monster is left
     // alone so that searching does not rediscover it every turn.
-    // glyph_is_invisible() reads a marker only map_invisible() writes, and
-    // map_invisible() is unported, so this never returns yet.
-    if (glyph_is_invisible(location) && m_at(x, y, state)) return;
+    if (glyph_is_invisible(location.remembered_glyph?.glyph)
+        && m_at(x, y, state)) return;
     // display.c:902-905 finishes by drawing a monster the hero senses on top
     // of everything else, through display_monster(), which this port has only
     // as newsym()'s inlined arms. sensemon() needs telepathy, monster
@@ -2366,40 +2383,81 @@ function sameLevel(a, b) {
 }
 
 /**
- * C ref: display.h glyph_is_invisible().  C compares levl[x][y].glyph with
- * GLYPH_INVISIBLE.  Map memory here holds C's glyph number too, but not that
- * one: display.c map_invisible() (378-385) is its only writer and has no
- * port, so map_glyphinfo() has no arm for GLYPH_INVIS_OFF and nothing
- * produces it.  The boolean `invisible_monster` sidecar stands in until that
- * arm exists, and nothing writes it either, so this predicate is currently
- * always false.  Porting map_invisible() replaces the sidecar with the
- * number; same_remembered_glyph() and unmap_invisible() below are the two
- * readers that change with it.
+ * C ref: display.h glyph_is_invisible() (773), `((glyph) == GLYPH_INVISIBLE)`.
+ * The argument is the glyph number, which every caller reads out of map
+ * memory as `levl[x][y].glyph` and this port spells
+ * `loc.remembered_glyph?.glyph`; an unexplored square remembers nothing and
+ * answers `undefined`, which is not the marker either.
  */
-export function glyph_is_invisible(location) {
-    return Boolean(location?.remembered_glyph?.invisible_monster);
+export function glyph_is_invisible(glyph) {
+    assertGlyphNumber(glyph, 'glyph_is_invisible');
+    return glyph === GLYPH_INVISIBLE;
 }
 
 /**
- * C ref: display.c unmap_invisible().  detect.c dosearch0() calls this for
- * every adjacent square with no monster on it, to clear the remembered 'I' of
- * an invisible monster which has since moved away.
+ * C ref: display.c map_invisible() (377-385). "Make the hero remember that a
+ * square contains an invisible monster.  This is a special case in that the
+ * square will continue to be displayed this way even when the hero is close
+ * enough to see it."
  *
- * Only the FALSE arm is ported.  The TRUE arm is `unmap_object(x, y);
- * newsym(x, y); return TRUE;`, and both callees now exist in this file, but
- * it is unreachable and stays unwritten: glyph_is_invisible() cannot answer
- * TRUE while map_invisible(), its only writer, is unported, so the arm has
- * never run and nothing would exercise it.  It throws rather than leaving
- * stale memory behind.
+ * Two guards, and they are not the same guard. The hero's own square is
+ * skipped outright -- C's comment is "don't display I at hero's location" --
+ * while svl.level.flags.hero_memory gates only the memory write, so a game
+ * with hero memory off still paints the marker for one frame. No ported path
+ * clears hero_memory, so the second guard is pinned by a test rather than by a
+ * recording.
+ *
+ * The marker lives in the object layer of map memory, which is why
+ * newsym()'s monster arms clear it before drawing anything on top.
+ *
+ * The two halves land in different places: the memory write goes to the
+ * `state` handed in, and show_glyph_cell() below takes no state and paints the
+ * module-global `game`. see_nearby_objects() settled what to do about that
+ * shape, and this refuses a foreign state for the same reason rather than
+ * splitting the two halves silently. It matters here because the once-per-turn
+ * planning clone shares its level cells with the live game
+ * (js/unported_monster_actions.js planningState()), so a dry run that reached
+ * this function would leave a remembered 'I' and a painted cell behind in the
+ * running game. The clone never reaches it: js/mhitm.js pre_mm_attack() marks
+ * through an injected operation that a planning scan binds to a no-op, the way
+ * it binds `redraw`.
+ */
+export function map_invisible(x, y, state = game) {
+    if (state !== game) {
+        throw new TypeError('map_invisible() draws to the global game');
+    }
+    if (x === state.u?.ux && y === state.u?.uy) return;
+    const location = state.level?.at(x, y);
+    if (!location) return;
+    if (state.level.flags?.hero_memory) {
+        location.remembered_glyph
+            = rememberedGlyphNumber(GLYPH_INVISIBLE, state);
+    }
+    show_glyph_cell(x, y, map_glyphinfo(GLYPH_INVISIBLE, state));
+}
+
+/**
+ * C ref: display.c unmap_invisible() (387-396).  detect.c dosearch0() calls
+ * this for every adjacent square with no monster on it, to clear the
+ * remembered 'I' of an invisible monster which has since moved away.
+ *
+ * It splits its two halves the way map_invisible() does: unmap_object() writes
+ * the memory of the `state` handed in, and the newsym() below takes none and
+ * repaints the module-global `game`. map_invisible() refuses a foreign state
+ * over that; this one does not, because every caller in the running game
+ * (js/detect.js dosearch0(), js/dokick.js, js/hack.js domove_core()) passes the
+ * live state, while scripts/detect.test.mjs drives dosearch0() through a
+ * hand-built state whose memory half is exactly what that test reads. The
+ * repaint is covered separately, against the live game, in
+ * scripts/display-symbols.test.mjs.
  */
 export function unmap_invisible(x, y, state = game) {
     if (!isok(x, y)) return false;
     const location = state.level?.at?.(x, y);
-    if (!glyph_is_invisible(location)) return false;
-    throw new UnsupportedMapMemoryError(
-        'clearing a remembered invisible monster, which needs map_invisible() '
-        + 'to have written one',
-    );
+    if (!glyph_is_invisible(location?.remembered_glyph?.glyph)) return false;
+    unmap_object(x, y, state);
+    newsym(x, y);
+    return true;
 }
 
 function floorLayersCovered(loc, state) {
@@ -2636,8 +2694,12 @@ export function newsym(x, y) {
                 monster.m_ap_type & M_AP_TYPMASK,
             )
             && dist2(x, y, game.u?.ux ?? 0, game.u?.uy ?? 0) <= 2;
+        // display.c mon_overrides_region()'s closing line (697-699): with no
+        // monster to prefer, a remembered invisible monster still overrides
+        // the cloud, so the marker survives a gas cloud drifting over it.
         if (!monsterSensed && !monsterWarning
-            && !adjacentVisibleMonster) {
+            && !adjacentVisibleMonster
+            && !glyph_is_invisible(loc.remembered_glyph?.glyph)) {
             show_region(region, x, y, game);
             return;
         }
@@ -2651,6 +2713,35 @@ export function newsym(x, y) {
     const shouldDisplayMonster = Boolean(
         monster && (monsterDirectlyVisible || monsterSensed),
     );
+
+    // display.c:1032-1033, `else if (glyph_is_invisible(lev->glyph))
+    // map_invisible(x, y);`. The third arm of C's four-arm chain: a visible
+    // square with no monster to draw and no warning, whose memory already
+    // holds the marker, re-asserts the marker instead of recomputing itself
+    // from its layers. Without it the layer choice below would quietly replace
+    // a remembered 'I' with the floor under it on the next repaint.
+    //
+    // It is placed above the layer work rather than beside the draw because
+    // C's arm skips _map_location() entirely, and _map_location() is what
+    // reaches map_object() and its observe_object() -- so taking this arm must
+    // not mark a nearby object as seen up close.
+    //
+    // Every term below is load-bearing, including the hero-square one. C runs
+    // this chain inside the `else` of `if (u_at(x, y))`, so the flat arm here
+    // needs its own exclusion to stand in for that structure. Dropping it on
+    // the grounds that map_invisible() declines the hero's square anyway would
+    // decline the write and the draw but not the `return` below, and newsym()
+    // would then leave the hero undrawn on a square whose memory holds the
+    // marker.
+    //
+    // update_lastseentyp() above stays where the port already had it, one
+    // hoist further out than C's copy inside _map_location().
+    if (visible && !shouldDisplayMonster && !monsterWarning
+        && !(game.u?.ux === x && game.u?.uy === y)
+        && glyph_is_invisible(loc.remembered_glyph?.glyph)) {
+        map_invisible(x, y, game);
+        return;
+    }
 
     const covered = floorLayersCovered(loc, game);
     const object = covered
@@ -2767,6 +2858,17 @@ export function newsym(x, y) {
         // PHYSICALLY_SEEN object and furniture mimics map their disguise
         // before sensing reveals the real monster. M_AP_MONSTER leaves the
         // underlying floor memory intact, and DETECTED skips every disguise.
+        //
+        // display.c show_mon_or_warn()'s marker clear (486-493) has no
+        // separate statement here. C reaches it through display_monster()
+        // after _map_location(x, y, FALSE) has already rewritten
+        // levl[x][y].glyph from the layers -- map_background(),
+        // map_object() and map_trap() each write it under
+        // svl.level.flags.hero_memory -- so the clear finds no marker left to
+        // clear and its vobj_at() re-map repeats _map_location()'s own
+        // map_object(). The write below is that same write, so both halves are
+        // covered. C's warning arm is the one that reaches show_mon_or_warn()
+        // with the marker intact, and this port raises no warning level.
         const remembered = mapsMimicDisguise
             ? mappedMimic.remembered : rememberedUnderlying;
         if (game.level?.flags?.hero_memory

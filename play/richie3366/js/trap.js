@@ -3706,9 +3706,10 @@ async function trapeffect_slp_gas_trap(mtmp, trap, _trflags) {
  * C ref: trap.c trapeffect_telep_trap — hero seetrap then tele_trap;
  * monster mtele_trap.
  * Envelope: tele_trap wrenching (D-1120) / once vault; teledest
- * displace+teleds else tele() (D-1133); mon in_sight pline+seetrap.
- * Named omissions: dotele trap-at-feet teledest; vault_tele tele()
- * fallback; mtele_trap dest-occupied skip (C: no displace).
+ * displace+teleds else tele() (D-1133); vault_tele no-vault/space
+ * → tele() (D-1153); mon in_sight pline+seetrap.
+ * Named omissions: dotele trap-at-feet teledest; mtele_trap
+ * dest-occupied skip (C: no displace).
  */
 async function trapeffect_telep_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {

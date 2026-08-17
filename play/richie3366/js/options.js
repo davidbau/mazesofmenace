@@ -1270,7 +1270,7 @@ const DOSET_BOOL_ADDR = {
     sparkle: { obj: 'flags', key: 'sparkle' },
     spot_monsters: { obj: 'flags', key: 'spot_monsters' },
     standout: { obj: 'flags', key: 'standout' },
-    terrainstatus: { obj: 'iflags', key: 'terrainstatus' },
+    terrainstatus: { obj: 'flags', key: 'terrainstatus' },
     time: { obj: 'flags', key: 'time' },
     tips: { obj: 'flags', key: 'tips' },
     tombstone: { obj: 'flags', key: 'tombstone' },

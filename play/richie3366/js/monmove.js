@@ -640,6 +640,7 @@ function can_fog(mtmp) {
 /**
  * C ref: monmove.c set_apparxy — decide where monster thinks hero stands.
  * Covers Displaced / Invis / Underwater / already-know early exits.
+ * Also rloc_to_core after dest newsym (teleport.c:1702, D-1160).
  */
 export function set_apparxy(mtmp) {
     const u = game.u || {};
@@ -980,10 +981,11 @@ async function hideunder(mtmp) {
 
 /**
  * C ref: mon.c maybe_unhide_at — reveal hider when floor obj gone / eel
- * left water. Called from m_move after place_monster (monmove.c:2060).
+ * left water. Callers: m_move after place (monmove.c:2060);
+ * rloc_to_core after ustuck, before newsym (teleport.c:1700, D-1152).
  * Named omission: hero (youmonst / uundetected) path.
  */
-async function maybe_unhide_at(x, y) {
+export async function maybe_unhide_at(x, y) {
     const mtmp = m_at(x, y);
     if (!mtmp) return;
     if (!mtmp.mundetected) return;

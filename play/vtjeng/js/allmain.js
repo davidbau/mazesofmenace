@@ -40,7 +40,6 @@ import {
     were_change,
 } from './mon.js';
 import {
-    dmonsfree,
     m_dowear,
     makemon_runtime,
     UnsupportedMonsterCreationError,
@@ -88,6 +87,7 @@ import {
     flush_screen,
     newsym,
     timebot,
+    UnsupportedMapMemoryError,
 } from './display.js';
 import {
     dismissPendingTtyMessage,
@@ -722,9 +722,23 @@ async function finishElapsedTurn(
         state.disp.time_botl = true;
     }
 
+    // The timer queue's refusal is decided here on the dry run, where
+    // advanceElapsedTurn()'s catch turns it into the turn's boundary, and
+    // again at :1009 against the turn being entered. Nothing between those two
+    // and this call can invalidate either verdict: the live monster scan
+    // cannot take a due corpse off the floor without refusing first, since
+    // monster pickup and dog_eat() are themselves unported, and a corpse a
+    // monster's death creates is scheduled about 250 turns out. So no
+    // converting try belongs here, any more than around the state the same
+    // preflight admits above it.
     await nh_timeout_elapsed_turn(state, {
         message: turnMessage,
         statusRefresh: turnStatusRefresh,
+        // dig.c rot_corpse() redraws the square it cleared. The dry run works
+        // on a clone whose objects are copies, so its rotting is discarded
+        // with the clone -- but newsym() paints the live map whatever state it
+        // is handed, so the clone must draw nothing.
+        newsym: planning ? () => {} : newsym,
     });
     // Full planning remains specific to the burdened multi-allocation path.
     // An unburdened clone returns just after random monster generation above,
@@ -775,12 +789,13 @@ async function finishElapsedTurn(
     //
     // No converting try wraps the call, and none is owed. detect.c dosearch0()
     // keeps every branch this port cannot finish behind one of its `!aflag`
-    // tests -- feel_location() at 2040, mfind0() at 2064, unmap_invisible() at
-    // 2076 -- or behind the Norep() at 2023, so UnsupportedSearchError belongs
-    // to the explicit `s` command alone and js/cmd.js
-    // failClosedCommandRefusals() is its only owner. scripts/detect.test.mjs
+    // tests -- feel_location() at 2040 and mfind0() at 2064 -- or behind the
+    // Norep() at 2023, so UnsupportedSearchError belongs to the explicit `s`
+    // command alone and js/cmd.js failClosedCommandRefusals() is its only
+    // owner. The third `!aflag` test, unmap_invisible() at 2076, refuses
+    // nothing now that both of its arms are ported. scripts/detect.test.mjs
     // 'every explicit search refusal leaves the automatic arm intact' pins
-    // that split on eleven shared states.
+    // that split on ten shared states.
     //
     // detect.c:2079-2088, the trap block, is the one C does not gate on aflag,
     // and js/detect.js preflightTrap() refuses its two unported branches --
@@ -897,6 +912,12 @@ function elapsedTurnPlanningRefusals() {
         UnsupportedObjectNameError,
         UnsupportedObjectOperationError,
         UnsupportedMonsterPickupOperationError,
+        // mon.c mondead() forgets the invisible-monster marker through
+        // display.c unmap_object(), which refuses an engraved square. A
+        // monster dying on a square that carries both reaches that refusal
+        // from inside the monster scan, where the previous code raised the
+        // injected refusal of the first class above.
+        UnsupportedMapMemoryError,
     ];
 }
 
@@ -1002,7 +1023,7 @@ async function advanceElapsedTurn(state) {
             preflight_nh_timeout_elapsed_turn({
                 ...state,
                 moves: (state.moves || 1) + 1,
-            });
+            }, { newsym });
         } catch (error) {
             if (!(error instanceof UnsupportedHeroTimeoutBoundaryError))
                 throw error;

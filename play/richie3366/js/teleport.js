@@ -56,7 +56,7 @@ import { depth, distmin } from './hacklib.js';
 import { addinv } from './u_init.js';
 import { mon_nam, Monnam, x_monnam, noit_mon_nam } from './do_name.js';
 import { placebc, unplacebc, drag_ball, move_bc } from './ball.js';
-import { in_out_region, update_player_regions } from './region.js';
+import { in_out_region, update_player_regions, update_monster_region } from './region.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 
 /** C ref: do_name.c Amonnam — highc(a_monnam). */
@@ -644,10 +644,12 @@ export function enexto_gpflags(cc, xx, yy, mdat, entflags) {
 /**
  * C ref: teleport.c rloc_to / rloc_to_core — place monster at (x,y).
  * RLOC_NOMSG path: worm remove_worm else remove+newsym(old); place;
+ * update_monster_region (D-1161; after place, before worm tail);
  * place_worm_tail_randomly; ustuck swallow u_on_newpos/check_special_room/
- * docrt else !m_next2u unstuck; newsym(new) (D-1123).
- * Named omissions: shopkeeper home teleport; maybe_unhide_at;
- * update_monster_region; set_apparxy; shop bill on leave.
+ * docrt else !m_next2u unstuck (D-1123); maybe_unhide_at then newsym(new)
+ * (D-1152); set_apparxy after dest newsym (D-1160; C place_monster
+ * writes mx/my only).
+ * Named omissions: shopkeeper home teleport; shop bill on leave.
  * RLOC_MSG vanish+appear live in async `rloc` (D-0885 / D-0886).
  */
 export async function rloc_to(mtmp, x, y) {
@@ -676,12 +678,15 @@ export async function rloc_to(mtmp, x, y) {
             mtmp.mtrack[j] = { x: 0, y: 0 };
         }
     }
+    // C place_monster (steed.c): mx/my + occupancy; mux/muy stay until
+    // set_apparxy after dest newsym (teleport.c:1702, D-1160).
     mtmp.mx = x;
     mtmp.my = y;
-    mtmp.mux = game.u?.ux ?? x;
-    mtmp.muy = game.u?.uy ?? y;
+    // C: update_monster_region after place, before worm tail
+    // (teleport.c:1685 / region.c:598–611, D-1161).
+    update_monster_region(mtmp);
     if (mtmp.wormno) {
-        // C: place_worm_tail_randomly after place_monster
+        // C: place_worm_tail_randomly after update_monster_region
         place_worm_tail_randomly(mtmp, x, y);
     }
 
@@ -706,8 +711,12 @@ export async function rloc_to(mtmp, x, y) {
         }
     }
 
-    // C: newsym(x, y) after maybe_unhide_at (unhide named omit)
+    // C: maybe_unhide_at; newsym; set_apparxy (teleport.c:1700–1702).
+    // Dynamic import: monmove.js already imports rloc from this file.
+    const { maybe_unhide_at, set_apparxy } = await import('./monmove.js');
+    await maybe_unhide_at(x, y);
     newsym(x, y);
+    set_apparxy(mtmp);
 }
 
 /**
@@ -1153,8 +1162,9 @@ export async function mtele_trap(mtmp, trap) {
  * pit/hole ok iff Levitation||Flying (D-1111); then goodpos,
  * tele_jump_ok, in_out_region (D-1119). in_out_region awaits
  * pline1(enter_msg/leave_msg) when set (D-1143).
- * Named omit: hack.c / dothrow.c / do.c in_out_region callers;
- * force-field enter/leave callbacks.
+ * Named omit: dothrow.c hurtle_step / do.c goto_level
+ * in_out_region callers; force-field enter/leave callbacks.
+ * hack.c walk caller is D-1157.
  */
 export async function teleok(x, y, trapok) {
     if (!trapok) {
@@ -1192,10 +1202,10 @@ export async function teleok(x, y, trapok) {
  * notice_all_mons(TRUE) after invocation (D-1142).
  * Named omissions: fill_pit still uses thin
  * extract+deltrap+delobj (C flooreffects("settle") named);
- * classify_terrain; shop-enter plines beyond spoteffects subset;
+ * shop-enter plines beyond spoteffects subset;
  * hostile gd_move rloc/gd_letknow/wallify_vault (uleftvault calls
  * gd_move after mpeaceful=0; JS gd_move still early-returns hostile);
- * walk invocation_message is D-1150; mkmaze.c inv_pos;
+ * walk invocation_message is D-1150; mkmaze.c inv_pos is D-1154;
  * vision.c vision_recalc / goto_level / newgame / seffect_magic_mapping
  * / wizcmds / save / postmov notice_mon callers; spot_monsters option.
  *
@@ -1907,18 +1917,18 @@ export async function level_tele() {
     );
 }
 /**
- * C ref: teleport.c vault_tele — somexyspace into VAULT then teleds.
- * Named omission: tele() fallback RNG when no vault/space.
+ * C ref: teleport.c vault_tele — somexyspace into VAULT then teleds;
+ * else tele() (D-1153). Named omit: dotele trap-at-feet still uses
+ * teleds without this helper.
  */
 export async function vault_tele() {
     const croom = search_special(VAULT);
     const c = { x: 0, y: 0 };
     if (croom && somexyspace(croom, c) && await teleok(c.x, c.y, false)) {
         await teleds(c.x, c.y, TELEDS_TELEPORT);
-        return true;
+        return;
     }
-    // tele() deferred — no vault room / no free cell
-    return false;
+    await tele();
 }
 
 /**
@@ -1927,8 +1937,8 @@ export async function vault_tele() {
  * Antimagic shieldeff (D-1120); !next_to_u sibling shudder (D-1005);
  * once → deltrap + vault_tele; isok(teledest) settrack + displace via
  * enexto/rloc_to then teleds, else tele() (D-1133).
- * Named omissions: dotele trap-at-feet teledest; vault_tele tele()
- * fallback when no vault/space.
+ * vault_tele no-vault/space → tele() (D-1153).
+ * Named omission: dotele trap-at-feet teledest.
  */
 export async function tele_trap(trap) {
     /* a fixed-destination teleport trap could theoretically place hero onto a

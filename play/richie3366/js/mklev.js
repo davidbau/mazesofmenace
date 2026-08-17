@@ -117,7 +117,11 @@ import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
-import { create_gas_cloud, clear_regions } from './region.js';
+import {
+    create_gas_cloud, create_gas_cloud_selection, clear_regions,
+    clear_heros_fault,
+} from './region.js';
+import { Norep } from './display.js';
 import { ndemon } from './minion.js';
 import { readobjnam } from './readobjnam.js';
 
@@ -749,6 +753,34 @@ export function lspo_exclusion(opts) {
         next: game.exclusion_zones || null,
     };
     game.exclusion_zones = ez;
+}
+
+/**
+ * C ref: sp_lev.c lspo_gas_cloud.
+ * gas_cloud({ x, y } | { coord } | { selection, damage?, ttl? }).
+ * Coords go to create_gas_cloud size-1 (no get_location). Selection
+ * uses create_gas_cloud_selection (bitmap 1×1 rects, ttl stays -1).
+ * ttl > -2 overwrites after create. Default damage 0, ttl -2 (no
+ * overwrite). If x,y are both -1, C reads the selection field.
+ */
+export async function lspo_gas_cloud(opts) {
+    const tx = opts?.x ?? -1;
+    const ty = opts?.y ?? -1;
+    let x = tx | 0;
+    let y = ty | 0;
+    if (tx === -1 && ty === -1 && opts?.coord) {
+        x = opts.coord[0] | 0;
+        y = opts.coord[1] | 0;
+    }
+    let sel = null;
+    if (x === -1 && y === -1) sel = opts?.selection ?? null;
+    const damage = opts?.damage | 0;
+    const ttl = opts?.ttl != null ? (opts.ttl | 0) : -2;
+    const reg = sel
+        ? await create_gas_cloud_selection(sel, damage)
+        : await create_gas_cloud(x, y, 1, damage);
+    if (ttl > -2) reg.ttl = ttl;
+    return reg;
 }
 
 /** C ref: dungeon.c free_exclusions — drop the list on clear_level_structures. */
@@ -6418,8 +6450,9 @@ function load_earth() {
 
 /**
  * C ref: dat/fire.lua via load_special — Plane of Fire.
- * Named omissions: solidify/premap; water/astral planes; Norep whoosh
- * on fumaroles. Map load uses SpLev_Map lit epilogue (D-0569).
+ * Named omissions: solidify/premap; water/astral planes.
+ * Map load uses SpLev_Map lit epilogue (D-0569).
+ * fumaroles whoosh / clear_heros_fault D-1156 (moveloop caller named).
  */
 function load_fire() {
     const g = game;
@@ -7979,7 +8012,10 @@ function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax) {
 
 /**
  * C ref: mkmaze.c fumaroles — gas-cloud bursts on lava (arrival / moveloop).
- * Named omission: Norep whoosh; clear_heros_fault.
+ * make_gas_cloud set_heros_fault when !in_mklev; C then clear_heros_fault
+ * so natural steam is not the hero's (killed vs monkilled). Norep whoosh
+ * after the loop if any burst and !Deaf (D-1156).
+ * Named omission: allmain.c moveloop_core caller (goto_level wired).
  */
 export async function fumaroles() {
     const g = game;
@@ -7987,6 +8023,8 @@ export async function fumaroles() {
     if (!lf?.fumaroles) return;
     let nmax = rn2(3);
     let sizemin = 5;
+    let snd = false;
+    let loud = false;
     if (Is_firelevel(g.u?.uz)) {
         nmax++;
         sizemin += 5;
@@ -7999,10 +8037,21 @@ export async function fumaroles() {
         const x = rn1(COLNO - 4, 3);
         const y = rn1(ROWNO - 4, 3);
         if (g.level.at(x, y)?.typ === LAVAPOOL) {
-            await create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5));
-            // Norep whoosh / clear_heros_fault deferred
+            const r = await create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5));
+            clear_heros_fault(r);
+            snd = true;
+            if (dist2(x, y, g.u?.ux | 0, g.u?.uy | 0) < 15) loud = true;
         }
     }
+    if (snd && !Deaf_fumaroles()) {
+        await Norep(`You hear a ${loud ? 'loud ' : ''}whoosh!`);
+    }
+}
+
+/** C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf. */
+function Deaf_fumaroles() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
 }
 
 /**
@@ -9560,6 +9609,73 @@ function maze_y_max() {
     return game.y_maze_max != null ? (game.y_maze_max | 0) : Y_MAZE_MAX;
 }
 
+/**
+ * C dungeon.c Invocation_lev — In_hell && dlevel == num_dunlevs-1.
+ * Local clone (hack.js / apply.js still have theirs; shared dungeon.c
+ * export named).
+ */
+function Invocation_lev_mk(lev) {
+    if (!lev) return false;
+    const dun = game.dungeons?.[lev.dnum | 0];
+    if (!dun?.flags?.hellish) return false;
+    return (lev.dlevel | 0) === ((dun.num_dunlevs | 0) - 1);
+}
+
+/** C decl.c svi.inv_pos — always a coord, never missing. */
+function svi_inv_pos() {
+    if (!game.svi) game.svi = {};
+    if (!game.svi.inv_pos) game.svi.inv_pos = { x: 0, y: 0 };
+    return game.svi.inv_pos;
+}
+
+/**
+ * C hack.c invocation_pos — Invocation_lev && (x,y)==svi.inv_pos.
+ * occupied uses this; unset {0,0} matches C (not a legal maze cell).
+ */
+function invocation_pos_mk(x, y) {
+    if (!Invocation_lev_mk(game.u?.uz)) return false;
+    const ip = svi_inv_pos();
+    return (x | 0) === (ip.x | 0) && (y | 0) === (ip.y | 0);
+}
+
+/**
+ * C mkmaze.c pick_vibrasquare_location — choose svi.inv_pos away from
+ * upstairs (same row/col/diagonal / distmin<=11), on SPACE_POS,
+ * !occupied. No-upstairs short-circuit keeps the first rn1 pair.
+ * Named omit: makemaz("") create_maze Invocation_lev caller (load
+ * fallback still empty); Can_dig_down !Invocation_lev.
+ */
+export function pick_vibrasquare_location() {
+    const x_maze_min = 2;
+    const y_maze_min = 2;
+    const INVPOS_X_MARGIN = 6 - 2;
+    const INVPOS_Y_MARGIN = 5 - 2;
+    const INVPOS_DISTANCE = 11;
+    const x_range = maze_x_max() - x_maze_min - 2 * INVPOS_X_MARGIN - 1;
+    const y_range = maze_y_max() - y_maze_min - 2 * INVPOS_Y_MARGIN - 1;
+    const ip = svi_inv_pos();
+    /* {occupied() => invocation_pos()} */
+    ip.x = 0;
+    ip.y = 0;
+    let x = 0;
+    let y = 0;
+    let stway;
+    let trycnt = 0;
+    do {
+        x = rn1(x_range, x_maze_min + INVPOS_X_MARGIN + 1);
+        y = rn1(y_range, y_maze_min + INVPOS_Y_MARGIN + 1);
+        if (++trycnt > 1000)
+            break;
+    } while ((stway = stairway_find_dir(true))
+             && (x === stway.sx || y === stway.sy
+                 || Math.abs(x - stway.sx) === Math.abs(y - stway.sy)
+                 || distmin(x, y, stway.sx, stway.sy) <= INVPOS_DISTANCE
+                 || !SPACE_POS(game.level.at(x, y)?.typ)
+                 || occupied(x, y)));
+    ip.x = x;
+    ip.y = y;
+}
+
 function maze_okay(x, y, dir) {
     let xx = x, yy = y;
     const step = (d) => {
@@ -10536,7 +10652,14 @@ function splev_create_stair(up) {
 
 // C ref: sp_lev.c create_trap → mktrap(random) — retry until kind != NO_TRAP
 // Default spider_on_web=true → no MKTRAP_NOSPIDERONWEB (giant spider on WEB).
-function splev_create_trap() {
+// type===VIBRATING_SQUARE: pick_vibrasquare_location + maketrap, no DRY.
+function splev_create_trap(type) {
+    if ((type | 0) === VIBRATING_SQUARE) {
+        pick_vibrasquare_location();
+        const ip = svi_inv_pos();
+        maketrap(ip.x, ip.y, VIBRATING_SQUARE);
+        return;
+    }
     // C create_trap: get_location_coord(DRY) with stairs/ladder retry
     let pos = { x: -1, y: -1 };
     let trycnt = 0;
@@ -10663,9 +10786,9 @@ function splev_room_monster(croom, id_or_class, peaceful) {
     } else {
         pos = get_location_coord_in_room(croom, DRY);
     }
-    if (pos.x < 0) return;
+    if (pos.x < 0) return null;
     pos = splev_resolve_occupied(pos.x, pos.y, pm);
-    if (croom && !inside_room(croom, pos.x, pos.y)) return;
+    if (croom && !inside_room(croom, pos.x, pos.y)) return null;
     const mtmp = makemon(pm, pos.x, pos.y, 0);
     // C: create_monster always mtmp->female = m->female (D-0873)
     if (mtmp) {
@@ -10675,6 +10798,7 @@ function splev_room_monster(croom, id_or_class, peaceful) {
     }
     if (mtmp && peaceful != null && peaceful > BOOL_RANDOM)
         mtmp.mpeaceful = peaceful;
+    return mtmp;
 }
 
 /**
@@ -14101,7 +14225,6 @@ function load_sanctum() {
  * C ref: dat/hellfill.lua via load_special — Gehennom filler levels.
  * hellno = math.random(1,#hells) → 7 styles; stairs; populatemaze.
  * Named omissions: rnd_hell_prefab (styles 2/4/6 percent arms);
- * Invocation_lev vibrating square (always down stair);
  * hellobjects/hellmonsters (defined but unused in Lua).
  */
 function load_hellfill() {
@@ -14113,9 +14236,12 @@ function load_hellfill() {
     hellfill_run_style(hellno);
 
     splev_create_stair(true);
-    // C: if u.invocation_level then trap else down stair — Invocation_lev
-    // deferred (always place down stair).
-    splev_create_stair(false);
+    // hellfill.lua:437 — u.invocation_level → des.trap("vibrating square")
+    // else des.stair("down"). C create_trap VS = pick_vibrasquare + maketrap.
+    if (Invocation_lev_mk(g.u?.uz))
+        splev_create_trap(VIBRATING_SQUARE);
+    else
+        splev_create_stair(false);
 
     hellfill_populatemaze();
 
@@ -16642,6 +16768,23 @@ function themeroom_fill_buried_zombies(croom) {
     }
 }
 
+/**
+ * C ref: themerms.lua "Cloud room" contents + sp_lev.c lspo_gas_cloud.
+ * selection.room() then asleep fog clouds (numpoints/4, Lua float /)
+ * then des.gas_cloud({ selection = fog }) — damage 0, ttl default -1.
+ */
+function themeroom_fill_cloud(croom) {
+    const fog = selection_from_mkroom(croom);
+    const n = (selection_numpoints(fog) / 4) | 0;
+    for (let i = 0; i < n; i++) {
+        const mtmp = splev_room_monster(croom, 'fog cloud');
+        // C create_monster: asleep > BOOL_RANDOM → msleeping
+        if (mtmp) mtmp.msleeping = 1;
+    }
+    // in_mklev: make_gas_cloud has no await; registration is sync.
+    void lspo_gas_cloud({ selection: fog });
+}
+
 // C ref: themerms.lua "Ghost of an Adventurer" contents + sp_lev create_monster/object
 function themeroom_fill_ghost(croom) {
     const sel = selection_from_mkroom(croom);
@@ -16796,6 +16939,7 @@ const THEMEROOM_FILL_BODIES = {
     'Storeroom': themeroom_fill_storeroom,
     'Buried zombies': themeroom_fill_buried_zombies,
     'Temple of the gods': themeroom_fill_temple_of_the_gods,
+    'Cloud room': themeroom_fill_cloud,
 };
 
 // C ref: themerms.lua themeroom_fill() — reservoir + dispatched fill bodies
@@ -16814,7 +16958,7 @@ function themeroom_fill(croom) {
     croom._themeroom_fill = pick.name;
     const body = THEMEROOM_FILL_BODIES[pick.name];
     if (body) body(croom);
-    // Named omission: other fill contents (Ice/Cloud/Boulder/Spider/Trap/
+    // Named omission: other fill contents (Ice/Boulder/Spider/Trap/
     // Garden/Buried treasure/Massacre/Statuary/Light source/…)
 }
 
@@ -17906,16 +18050,16 @@ function somexy(croom, c) {
     return true;
 }
 
-// C ref: mklev.c occupied() — traps/furniture/lava/pool/invocation
-function occupied(x, y) {
+// C ref: mklev.c occupied() — traps/furniture/lava/pool/invocation_pos
+export function occupied(x, y) {
     if (!isok(x, y)) return false;
     const loc = game.level.at(x, y);
     if (!loc) return false;
-    // invocation_pos: omitted until inv_pos/Invocation_lev exist (always false)
     return !!(t_at(x, y)
         || IS_FURNITURE(loc.typ)
         || loc.typ === LAVAPOOL || loc.typ === LAVAWALL
-        || IS_POOL(loc.typ));
+        || IS_POOL(loc.typ)
+        || invocation_pos_mk(x, y));
 }
 
 function somexyspace(croom, c) {
