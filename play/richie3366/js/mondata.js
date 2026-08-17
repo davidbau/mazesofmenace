@@ -612,4 +612,40 @@ export function cantvomit(ptr) {
     return false;
 }
 
+/** C monattk.h AT_HUGS — on_fire default "being roasted". */
+const AT_HUGS = 7;
+
+/**
+ * C ref: mondata.c on_fire — phrase for a fire attack on this form.
+ * minliquid_core lava maps boiling→boils away, melting→melts away,
+ * else burns to a crisp (D-1138).
+ */
+export function on_fire(mptr, mattk) {
+    const mndx = mptr?.mndx | 0;
+    switch (mndx) {
+    case pm('FLAMING_SPHERE'):
+    case pm('FIRE_VORTEX'):
+    case pm('FIRE_ELEMENTAL'):
+    case pm('SALAMANDER'):
+        return 'already on fire';
+    case pm('WATER_ELEMENTAL'):
+    case pm('FOG_CLOUD'):
+    case pm('STEAM_VORTEX'):
+        return 'boiling';
+    case pm('ICE_VORTEX'):
+    case pm('GLASS_GOLEM'):
+        return 'melting';
+    case pm('STONE_GOLEM'):
+    case pm('CLAY_GOLEM'):
+    case pm('GOLD_GOLEM'):
+    case pm('AIR_ELEMENTAL'):
+    case pm('EARTH_ELEMENTAL'):
+    case pm('DUST_VORTEX'):
+    case pm('ENERGY_VORTEX'):
+        return 'heating up';
+    default:
+        return ((mattk?.aatyp | 0) === AT_HUGS) ? 'being roasted' : 'on fire';
+    }
+}
+
 export { MALE, FEMALE, NEUTRAL, NUM_MGENDERS };

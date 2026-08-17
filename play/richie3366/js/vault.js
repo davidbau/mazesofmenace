@@ -1,9 +1,10 @@
 // vault.js — Vault occupancy and guard summoning.
 // C ref: vault.c — vault_occupied, findgd, newegd, find_guard_dest, invault,
 //        clear_fcorr, restfakecorr, gd_move dig + restore,
-//        vault_gd_watching (D-0953); vault_summon_gd (D-1007).
+//        vault_gd_watching (D-0953); vault_summon_gd (D-1007);
+//        uleftvault (D-1140).
 // Named omissions: migrating_mons findgd park;
-// uleftvault; wallify_vault body (cleanup calls stub); Croesus mon_wield;
+// wallify_vault body (cleanup calls stub); Croesus mon_wield;
 // fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
 // xy_set_wall_state; mimic_obj_name; full Deaf/Blind message variants that
 // need noit_mhis; gd_move goldincorridor (witness consume/destroy live);
@@ -333,6 +334,34 @@ export function vault_summon_gd() {
     const u = game.u || (game.u = {});
     if (vault_occupied(u.urooms) && !findgd()) {
         u.uinvault = (VAULT_GUARD_TIME - 1) | 0;
+    }
+}
+
+/**
+ * C ref: vault.c uleftvault — hero teleported out of vault with a live
+ * guard. Gold (invent or hidden_gold(TRUE)) and not adjacent → irate +
+ * mpeaceful=0 (bypass setmangry); if dest is outside fakecorr, extra
+ * gd_move. Named omit: hostile gd_move rloc / gd_letknow / wallify
+ * (gd_move still early-returns when !mpeaceful).
+ */
+export async function uleftvault(grd) {
+    // C: only called if caller checked vault_occupied + findgd
+    if (!grd || !grd.isgd || (grd.mhp | 0) < 1) {
+        // C: impossible("escaping vault without guard?");
+        return;
+    }
+    const u = game.u || {};
+    if ((money_cnt(game.invent) || hidden_gold(true))
+        && um_dist(grd.mx, grd.my, 1)) {
+        if (grd.mpeaceful) {
+            if (canspotmon(grd)) {
+                await pline(`${Monnam(grd)} becomes irate.`);
+            }
+            grd.mpeaceful = 0; // bypass setmangry()
+        }
+        if (!in_fcorridor(grd, u.ux, u.uy)) {
+            await gd_move(grd);
+        }
     }
 }
 

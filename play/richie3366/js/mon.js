@@ -13,11 +13,14 @@ import {
     MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
     ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
+    Is_astralevel, Is_airlevel, Is_firelevel,
     IS_FOUNTAIN,
     ismnum, M_POISONGAS_OK, u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_MIGRATING, MON_DETACH,
+    MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
+    has_emin, has_epri, has_eshk,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
 } from './const.js';
-import { t_at, m_harmless_trap, water_damage_chain } from './trap.js';
+import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain } from './trap.js';
 import {
     nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
     monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
@@ -31,14 +34,14 @@ import {
 } from './monsters.js';
 import {
     little_to_big, big_to_little, hero_conflict, resist_conflict,
-    m_canseeu,
+    m_canseeu, on_fire,
 } from './mondata.js';
-import { objects_at, kill_egg } from './mkobj.js';
+import { objects_at, kill_egg, place_object, stackobj } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
-import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag } from './teleport.js';
+import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco } from './teleport.js';
 import { may_dig } from './dig.js';
-import { newsym, pline, sensemon, canseemon, canspotmon } from './display.js';
+import { newsym, pline, You_feel, sensemon, canseemon, canspotmon } from './display.js';
 import { online2 } from './hacklib.js';
 import { worm_cross } from './worm.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -62,7 +65,13 @@ const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
+const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
+const PM_AIR_ELEMENTAL = monsterNames.indexOf('PM_AIR_ELEMENTAL');
+const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
+const PM_EARTH_ELEMENTAL = monsterNames.indexOf('PM_EARTH_ELEMENTAL');
+const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 const EGG = objectNames.indexOf('EGG');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const NC_SHOW_MSG = 1;
 
 /** C ref: monmove.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
@@ -967,9 +976,232 @@ export function m_at(x, y) {
     return null;
 }
 
+/** C ref: dungeon.c ledger_no — local copy (avoid mon↔do cycle). */
+function ledger_no(lev) {
+    const dnum = lev?.dnum | 0;
+    const dlevel = lev?.dlevel | 0;
+    const dun = game.dungeons?.[dnum];
+    return ((dun?.ledger_start | 0) + dlevel) | 0;
+}
+
+/** C ref: questpgr.c is_quest_artifact — oartifact == urole.questarti. */
+function is_quest_artifact(obj) {
+    const want = game.urole?.questarti | 0;
+    return want !== 0 && (obj?.oartifact | 0) === want;
+}
+
+/**
+ * C ref: zap.c obj_resists(obj, 0, 0) — invocation/rider TRUE with no rn2;
+ * ordinary always consumes rn2(100) then fails (ochance/achance 0).
+ */
+function obj_resists_00(obj) {
+    if (!obj) return false;
+    const n = objectNames[obj.otyp];
+    if (n === 'AMULET_OF_YENDOR'
+        || n === 'SPE_BOOK_OF_THE_DEAD'
+        || n === 'CANDELABRUM_OF_INVOCATION'
+        || n === 'BELL_OF_OPENING'
+        || (n === 'CORPSE' && is_rider(mons(obj.corpsenm)))) {
+        return true;
+    }
+    rn2(100);
+    return false;
+}
+
+/** C ref: wizard.c mon_has_amulet — local copy (apply.js cycle). */
+function mon_has_amulet(mtmp) {
+    if (!mtmp || AMULET_OF_YENDOR < 0) return 0;
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if ((otmp.otyp | 0) === AMULET_OF_YENDOR) return 1;
+    }
+    return 0;
+}
+
+/** C ref: makemon.c is_home_elemental — local copy (makemon.js cycle). */
+function is_home_elemental(ptr) {
+    if (ptr?.mlet !== 'S_ELEMENTAL') return false;
+    switch (ptr.mndx ?? -1) {
+    case PM_AIR_ELEMENTAL:
+        return Is_airlevel(game.u?.uz);
+    case PM_FIRE_ELEMENTAL:
+        return Is_firelevel(game.u?.uz);
+    case PM_EARTH_ELEMENTAL:
+        return Is_earthlevel(game.u?.uz);
+    case PM_WATER_ELEMENTAL:
+        return Is_waterlevel(game.u?.uz);
+    default:
+        return false;
+    }
+}
+
+function unlink_minvent(mon, obj) {
+    if (!mon || !obj) return;
+    if (mon.minvent === obj) {
+        mon.minvent = obj.nobj || null;
+    } else {
+        for (let p = mon.minvent; p; p = p.nobj) {
+            if (p.nobj === obj) {
+                p.nobj = obj.nobj || null;
+                break;
+            }
+        }
+    }
+    obj.ocarry = null;
+}
+
+/**
+ * C ref: steal.c mdrop_obj subset — extract to floor at mon. Named omit:
+ * distant_name observe; extract_from_minvent worn extrinsics; saddle shop.
+ */
+function mdrop_obj_overcrowd(mon, obj) {
+    unlink_minvent(mon, obj);
+    obj.owornmask = 0;
+    if (mon.mw === obj) mon.mw = null;
+    obj.nobj = null;
+    obj.nexthere = null;
+    place_object(obj, mon.mx | 0, mon.my | 0);
+    stackobj(obj);
+}
+
+/**
+ * C ref: steal.c mdrop_special_objs — drop Amulet/invocation/Rider/quest
+ * arti before migrate or mongone. Ordinary items still burn
+ * obj_resists(0,0) rn2(100).
+ */
+function mdrop_special_objs(mon) {
+    if (!mon) return;
+    for (let obj = mon.minvent; obj; ) {
+        const next = obj.nobj;
+        if (obj_resists_00(obj) || is_quest_artifact(obj)) {
+            if (mon.mx) {
+                mdrop_obj_overcrowd(mon, obj);
+            } else {
+                unlink_minvent(mon, obj);
+                obj.nobj = null;
+                obj.nexthere = null;
+                rloco(obj);
+            }
+        }
+        obj = next;
+    }
+}
+
+/**
+ * C ref: mon.c migrate_mon — unstuck + mdrop_special_objs when on map,
+ * then migrate_to_level.
+ */
+async function migrate_mon(mtmp, target_lev, xyloc) {
+    if ((mtmp.mx | 0)) {
+        const { unstuck } = await import('./mhitu.js');
+        await unstuck(mtmp);
+        mdrop_special_objs(mtmp);
+    }
+    migrate_to_level(mtmp, target_lev, xyloc, null);
+}
+
+/**
+ * C ref: mon.c m_into_limbo — MON_LIMBO then migrate to current ledger
+ * with MIGR_APPROX_XY.
+ */
+async function m_into_limbo(mtmp) {
+    const target_lev = ledger_no(game.u?.uz);
+    mtmp.mstate = (mtmp.mstate | 0) | MON_LIMBO;
+    await migrate_mon(mtmp, target_lev, MIGR_APPROX_XY);
+}
+
+/**
+ * C ref: mon.c ok_to_obliterate — Wizard/Rider/emin/epri/eshk/ustuck/usteed
+ * must not be chosen as the clog victim.
+ */
+function ok_to_obliterate(mtmp) {
+    if ((mtmp.data?.mndx ?? -1) === PM_WIZARD_OF_YENDOR
+        || is_rider(mtmp.data)
+        || has_emin(mtmp) || has_epri(mtmp) || has_eshk(mtmp)
+        || mtmp === game.u?.ustuck || mtmp === game.u?.usteed) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: mon.c elemental_clog — endgame overcrowding: You_feel besieged
+ * (first time, then every 200 moves with rn2(2)); pick a victim to mongone
+ * (unstuck + mdrop_special_objs + discard, D-1149) and rloc_to the clogged
+ * mon into that cell; else migrate to the previous plane unless already
+ * on Astral.
+ */
+async function elemental_clog(mon) {
+    if (!In_endgame(game.u?.uz)) return;
+    let m1 = null;
+    let m2 = null;
+    let m3 = null;
+    let m4 = null;
+    let m5 = null;
+    let m_lev = 0;
+    const msgmv = game._elemental_clog_msgmv | 0;
+    const moves = game.moves | 0;
+    if (!msgmv || (moves - msgmv) > 200) {
+        if (!msgmv || rn2(2)) {
+            await You_feel('besieged.');
+        }
+        game._elemental_clog_msgmv = moves;
+    }
+    for (const mtmp of game.fmon || []) {
+        if ((mtmp.mhp | 0) <= 0 || mtmp === mon) continue;
+        if ((mtmp.mx | 0) === 0 && (mtmp.my | 0) === 0) continue;
+        if (mon_has_amulet(mtmp) || !ok_to_obliterate(mtmp)) continue;
+        if (mtmp.data?.mlet === 'S_ELEMENTAL') {
+            if (!is_home_elemental(mtmp.data)) {
+                if (!m1) m1 = mtmp;
+            } else if (!m2) {
+                m2 = mtmp;
+            }
+        } else if (!mtmp.mtame) {
+            if (!m_lev || (mtmp.m_lev | 0) < m_lev) {
+                m_lev = mtmp.m_lev | 0;
+                m3 = mtmp;
+            } else if (!m4) {
+                m4 = mtmp;
+            }
+        } else {
+            if (!m5) m5 = mtmp;
+            break;
+        }
+    }
+    const victim = m1 || m2 || m3 || m4 || m5 || null;
+    if (victim) {
+        const mx = victim.mx | 0;
+        const my = victim.my | 0;
+        victim.mstate = (victim.mstate | 0) | MON_OBLITERATE;
+        await mongone(victim);
+        await rloc_to(mon, mx, my);
+    } else if (!Is_astralevel(game.u?.uz)) {
+        const dest = {
+            dnum: game.u?.uz?.dnum | 0,
+            dlevel: (game.u?.uz?.dlevel | 0) - 1,
+        };
+        mon.mstate = (mon.mstate | 0) | MON_ENDGAME_MIGR;
+        await migrate_mon(mon, ledger_no(dest), MIGR_RANDOM);
+    }
+}
+
+/**
+ * C ref: mon.c deal_with_overcrowding — endgame elemental_clog, else limbo.
+ * Callers: minliquid_core failed survivor rloc (lava RLOC_MSG / pool
+ * RLOC_NOMSG); mnexto when enexto fails (D-1148).
+ */
+export async function deal_with_overcrowding(mtmp) {
+    if (!mtmp) return;
+    if (In_endgame(game.u?.uz)) {
+        await elemental_clog(mtmp);
+    } else {
+        await m_into_limbo(mtmp);
+    }
+}
+
 /**
  * C ref: mon.c mnexto — place next to hero via enexto + rloc_to_flag.
- * Omits mon_telecontrol / overcrowding limbo.
+ * Failed enexto → deal_with_overcrowding (D-1148). Omits mon_telecontrol.
  * RLOC_MSG / STRAT_APPEARMSG appear plines need the flag path (D-0928 #1128).
  */
 export async function mnexto(mtmp, rlocflags = 0) {
@@ -981,7 +1213,10 @@ export async function mnexto(mtmp, rlocflags = 0) {
         return;
     }
     const mm = { x: 0, y: 0 };
-    if (!enexto(mm, u.ux, u.uy, mtmp.data) || !isok_xy(mm.x, mm.y)) return;
+    if (!enexto(mm, u.ux, u.uy, mtmp.data) || !isok_xy(mm.x, mm.y)) {
+        await deal_with_overcrowding(mtmp);
+        return;
+    }
     await rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
 }
 
@@ -1079,21 +1314,6 @@ function resists_fire(mtmp) {
 }
 
 /**
- * C ref: mon.c mondead (lava/pool death subset) — no corpse; drop invent deferred.
- * Named omissions: lifesave, sad_feeling, unmap_object glyph_is_invisible,
- * full relobj_on_death chain.
- */
-function mondead_liquid(mtmp) {
-    mtmp.mhp = 0;
-    const mx = mtmp.mx | 0;
-    const my = mtmp.my | 0;
-    record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
-    // C: m_detach — stay on fmon until dmonsfree
-    mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
-    if (mx > 0) newsym(mx, my);
-}
-
-/**
  * C ref: mon.c healmon. Monster HP bump + optional max overheal.
  * youmonst healup arm named (potion.js cycle via eat/sit).
  */
@@ -1115,10 +1335,11 @@ export function healmon(mtmp, amt, overheal) {
 /**
  * C ref: mon.c minliquid / minliquid_core — liquid compatibility; 1=died.
  * Envelope: gremlin pool/fountain rn2(3)→split_mon + dryup (D-1095);
- * iron-golem inpool rust (D-1117); pool drown mondied vs xkilled (D-1117).
- * Named omissions: steed Flying/Levitation gate; lava fire_damage_chain /
- * on_fire plines / xkilled(!mon_moving); deal_with_overcrowding;
- * engulfing_u drown flush.
+ * iron-golem inpool rust (D-1117); pool drown mondied vs xkilled (D-1117);
+ * lava on_fire / mondead vs xkilled / fire_damage_chain (D-1138);
+ * deal_with_overcrowding after failed survivor rloc (D-1148).
+ * Named omissions: steed Flying/Levitation gate; engulfing_u drown flush;
+ * mdrop_obj worn/saddle/`extract_from_minvent` (mongone specials D-1149).
  */
 export async function minliquid(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return 1;
@@ -1176,28 +1397,53 @@ async function minliquid_core(mtmp) {
     }
 
     if (inlava) {
+        // C minliquid_core:1010–1067 — lava unlike pool: on_fire death
+        // pline; mon_moving → mondead (no corpse) else xkilled(XKILL_NOMSG);
+        // fire-resist −1 hp; survivor fire_damage_chain then rloc (D-1138).
         if (!is_clinger(ptr) && !likes_lava(ptr)) {
             if (can_teleport(ptr) && !(await tele_restrict(mtmp))) {
                 if (await rloc(mtmp, RLOC_MSG)) return 0;
             }
             if (!resists_fire(mtmp)) {
-                // C: mon_moving → mondead (no corpse); else xkilled — lava
-                // xkilled / on_fire plines still named (gush is pool-only).
-                mondead_liquid(mtmp);
-                return 1;
-            }
-            mtmp.mhp = (mtmp.mhp | 0) - 1;
-            if ((mtmp.mhp | 0) <= 0) {
-                mondead_liquid(mtmp);
-                return 1;
-            }
-            // fire_damage_chain deferred; try escape teleport
-            if (!m_in_air(mtmp) && !likes_lava(ptr)) {
-                if (!(await rloc(mtmp, RLOC_MSG))) {
-                    // deal_with_overcrowding deferred
+                if (cansee(mx, my)) {
+                    const dummy = ptr?.mattk?.[0];
+                    const how = on_fire(ptr, dummy);
+                    const fate = how === 'boiling' ? 'boils away'
+                        : how === 'melting' ? 'melts away'
+                        : 'burns to a crisp';
+                    await pline(`${Monnam(mtmp)} ${fate}.`);
+                }
+                if (game.context?.mon_moving) {
+                    mondead(mtmp);
+                } else {
+                    const { xkilled } = await import('./uhitm.js');
+                    await xkilled(mtmp, XKILL_NOMSG);
+                }
+            } else {
+                mtmp.mhp = (mtmp.mhp | 0) - 1;
+                if ((mtmp.mhp | 0) <= 0) {
+                    if (cansee(mx, my)) {
+                        await pline(`${Monnam(mtmp)} surrenders to the fire.`);
+                    }
+                    mondead(mtmp);
+                } else if (cansee(mx, my)) {
+                    await pline(`${Monnam(mtmp)} burns slightly.`);
                 }
             }
-            return 0;
+            if ((mtmp.mhp | 0) > 0) {
+                if (m_in_air(mtmp)) {
+                    /* vampshifter wolf → flyer: skip teleport */
+                } else if (likes_lava(ptr)) {
+                    /* hypothetical — outer gate already skipped likers */
+                } else {
+                    await fire_damage_chain(mtmp.minvent, false, false, mx, my);
+                    if (!(await rloc(mtmp, RLOC_MSG))) {
+                        await deal_with_overcrowding(mtmp);
+                    }
+                }
+                return 0;
+            }
+            return 1;
         }
     } else if (inpool || waterwall) {
         if ((waterwall || !is_clinger(ptr)) && !cant_drown(ptr)) {
@@ -1223,7 +1469,7 @@ async function minliquid_core(mtmp) {
                 if (!m_in_air(mtmp)) {
                     await water_damage_chain(mtmp.minvent, false);
                     if (!(await rloc(mtmp, RLOC_NOMSG))) {
-                        // deal_with_overcrowding deferred
+                        await deal_with_overcrowding(mtmp);
                     }
                 }
                 return 0;
@@ -1625,19 +1871,40 @@ export function find_mid(mid, _fm = 0) {
 }
 
 /**
- * C ref: mon.c mongone — remove living mon from map/fmon (ghost join).
- * Named omit: timers, worm segs, shop, light sources, invent drop.
+ * C ref: mkobj.c discard_minvent — remaining invent leaves the game.
+ * mongone passes FALSE. Named omit: extract_from_minvent worn extrinsics;
+ * artifact_exists when uncreate_artifacts.
  */
-export function mongone(mtmp) {
+function discard_minvent(mtmp, _uncreate_artifacts) {
     if (!mtmp) return;
-    // Drop invent silently — C transfers invent before mongone in revive
-    mtmp.minvent = null;
+    while (mtmp.minvent) {
+        const otmp = mtmp.minvent;
+        unlink_minvent(mtmp, otmp);
+        otmp.nobj = null;
+        otmp.nexthere = null;
+    }
+}
+
+/**
+ * C ref: mon.c mongone — unstuck, mdrop_special_objs, discard_minvent,
+ * then m_detach subset (D-1149). Clog victim must not vanish specials.
+ * Named omit: isgd && !grddead; m_detach wizdead/shkgone/wormgone/
+ * MON_DETACH/dismount_steed; extract_from_minvent worn.
+ */
+export async function mongone(mtmp) {
+    if (!mtmp) return;
+    mtmp.mhp = 0;
+    if (game.u?.ustuck === mtmp) {
+        const { unstuck } = await import('./mhitu.js');
+        await unstuck(mtmp);
+    }
+    mdrop_special_objs(mtmp);
+    discard_minvent(mtmp, false);
     const list = game.fmon;
     if (list) {
         const i = list.indexOf(mtmp);
         if (i >= 0) list.splice(i, 1);
     }
-    if (game.u?.ustuck === mtmp) game.u.ustuck = null;
     if (game.u?.usteed === mtmp) game.u.usteed = null;
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;

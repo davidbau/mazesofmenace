@@ -1,14 +1,18 @@
 // potion.js — Quaff / #dip commands (dodrink / dodip subset).
 // C ref: potion.c dodrink, dopotion, peffects, peffect_oil,
 //         peffect_confusion, peffect_booze, peffect_healing,
-//         peffect_extra_healing, peffect_water, make_confused, dodip;
+//         peffect_extra_healing, peffect_water, make_confused, dodip,
+//         djinni_from_bottle (D-1144);
 //         invent.c getobj; fountain.c drinkfountain / dipfountain / dipsink.
 // Branch envelope: POT_WATER peffect + potionbreathe lycan vapor (D-1004).
 // dodip pool yn wash_hands / water_damage (D-1128).
+// djinni_from_bottle chance remap + mongrantswish (D-1144).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, You_feel } from './display.js';
+import {
+    flush_screen, flush_topl_more, pline, You_feel, verbalize, canspotmon,
+} from './display.js';
 import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { weight, obj_extract_self } from './mkobj.js';
 import { A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise } from './attrib.js';
@@ -17,7 +21,7 @@ import { yn_function } from './getline.js';
 import { doname, xname, short_oname, thesimpleoname, makeplural } from './objnam.js';
 import {
     dipfountain, drinkfountain, drinksink, dipsink,
-    wash_hands, floating_above,
+    wash_hands, floating_above, mongrantswish,
 } from './fountain.js';
 import {
     IS_FOUNTAIN, IS_SINK,
@@ -26,19 +30,22 @@ import {
     TIMEOUT, HALLUC_RES, GLIB,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
-    P_RIDING, P_BASIC, ER_DESTROYED,
+    P_RIDING, P_BASIC, ER_DESTROYED, MM_NOMSG,
 } from './const.js';
 import { hands_obj, P_SKILL } from './weapon.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import { losehp, nomul, maybe_half_phys, is_pool, waterbody_name } from './hack.js';
 import { cansee } from './vision.js';
-import { mons, mon_hates_blessings, pmnames, is_swimmer } from './monsters.js';
+import { mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames } from './monsters.js';
 import { rider_cant_reach } from './steed.js';
 import { PM_HUMAN, PM_HEALER } from './generated/monsters_data.js';
+import { makemon, set_malign } from './makemon.js';
+import { mongone } from './mon.js';
+import { tamedog } from './dog.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
 import { more_experienced } from './exper.js';
-import { trycall, hliquid } from './do_name.js';
+import { trycall, hliquid, a_monnam, Monnam } from './do_name.js';
 import { newuhs } from './eat.js';
 import { heal_legs, water_damage } from './trap.js';
 import {
@@ -60,6 +67,7 @@ const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 const POT_WATER = objectNames.indexOf('POT_WATER');
+const PM_DJINNI = monsterNames.indexOf('PM_DJINNI');
 
 /** C: gp.potion_nothing / gp.potion_unkn for dopotion trycall gate. */
 let potion_nothing = 0;
@@ -929,6 +937,76 @@ export async function dopotion(otmp) {
     return 1;
 }
 
+/** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky). */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/**
+ * C ref: potion.c djinni_from_bottle — makemon djinni, BUC chance remap,
+ * then wish / tame / peaceful / vanish / hostile.
+ * Caller this peel: apply.c dorub MAGIC_LAMP after OIL_LAMP transform
+ * (D-1144). dodrink smoky POTION_OCCUPANT_CHANCE still named.
+ * SetVoice soundlib named omit. Vanish uses shared mongone specials
+ * drop (D-1149); mongrantswish still its own mongone subset (D-0472).
+ * @param {object} obj bottle or transformed lamp (BUC flags)
+ */
+export async function djinni_from_bottle(obj) {
+    const u = game.u || {};
+    const mtmp = makemon(mons(PM_DJINNI), u.ux, u.uy, MM_NOMSG);
+    if (!mtmp) {
+        await pline('It turns out to be empty.');
+        return;
+    }
+
+    if (!Blind()) {
+        await pline(`In a cloud of smoke, ${a_monnam(mtmp)} emerges!`);
+        await pline(`${Monnam(mtmp)} speaks.`);
+    } else {
+        await pline('You smell acrid fumes.');
+        await pline('Something speaks.');
+    }
+
+    let chance = rn2(5);
+    if (obj?.blessed) {
+        chance = (chance === 4) ? rnd(4) : 0;
+    } else if (obj?.cursed) {
+        chance = (chance === 0) ? rn2(4) : 4;
+    }
+    // 0,1,2,3,4: b=80%,5,5,5,5; nc=20% each; c=5%,5,5,5,80
+    // C SetVoice(mtmp, 0, 80, 0) named omit
+
+    switch (chance) {
+    case 0:
+        await verbalize('I am in your debt.  I will grant one wish!');
+        await mongrantswish(mtmp);
+        break;
+    case 1:
+        await verbalize('Thank you for freeing me!');
+        await tamedog(mtmp, null, false);
+        break;
+    case 2:
+        await verbalize('You freed me!');
+        mtmp.mpeaceful = 1;
+        set_malign(mtmp);
+        break;
+    case 3:
+        await verbalize('It is about time!');
+        if (canspotmon(mtmp)) {
+            await pline(`${Monnam(mtmp)} vanishes.`);
+        }
+        await mongone(mtmp);
+        break;
+    default:
+        await verbalize('You disturbed me, fool!');
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        break;
+    }
+}
+
 /**
  * C ref: potion.c healup — add HP; optional sick/blind cure.
  * cureblind → make_blinded(0,TRUE) (learn_unseen_invent via toggle).
@@ -973,7 +1051,8 @@ export async function healup(nhp, nxtra, curesick, cureblind) {
 /**
  * C ref: potion.c dodrink() / #quaff
  * Fountain-at-feet yn → drinkfountain; sink yn → drinksink.
- * Underwater / Strangled / milky-ghost / smoky-djinni deferred.
+ * Underwater / Strangled / milky-ghost / smoky occupant chance deferred
+ * (`djinni_from_bottle` itself is D-1144; MAGIC_LAMP `#rub` is the caller).
  * Worn-stack split deferred (starting oils are unworn).
  * @returns {number} ECMD_* — CANCEL on getobj abort; TIME after quaff
  */

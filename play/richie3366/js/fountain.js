@@ -11,8 +11,8 @@
 // drinkfountain case 19 MAGICENLIGHTENMENT body (D-1116).
 // drinkfountain case 24 buc_changed → update_inventory (D-1126).
 // gush m_at → minliquid else newsym (D-1117).
-// Deferred: set_levltyp side effects beyond typ/flags;
-// mongrantswish tmp_at glyph hide.
+// Deferred: set_levltyp side effects beyond typ/flags.
+// mongrantswish tmp_at(DISP_ALWAYS, glyph_at) hide (D-1136).
 // dowatersnakes Hallucination makeplural(rndmonnam(NULL)) (D-1125).
 // dryup wizard y_n after town warn (D-1096).
 // dryup angry_guards after real dryup (D-1104).
@@ -24,6 +24,8 @@
 // dodip pool yn wash_hands / water_damage (D-1128).
 // dipfountain cases 17–20 uncurse (D-1114).
 // dipfountain case 29 mkgold coins (D-1115).
+// dipfountain after-switch update_inventory (D-1134).
+// dipfountain Excalibur :441 update_inventory (D-1145).
 //
 // Branch envelope (drinksink): Levitation floating_above; rn2(20)
 // switch cases 0–13 + 19/default sip; case 4 faucet → mkobj+dopotion;
@@ -31,15 +33,18 @@
 // case 9 sewage morehungry+vomit; case 10 Unchanging gate +
 // polyself(POLY_NOFLAGS) (D-1118); case 13 create_gas_cloud(1,4)
 // (D-1124; size-1: ttl rn1(3,4) only).
-// Deferred: Hallucination hcolor synonyms; make_gas_cloud enveloped
-// pline / inside_f damage (region.js); monstseesu when
-// Fire_resistance already set.
+// drinksink case 4 !Blind hcolor(OBJ_DESCR) (D-1135).
+// make_gas_cloud enveloped You + PLNMSG_ENVELOPED_IN_GAS (D-1137).
+// inside_f dam>0 HP + m_poisongas_ok size-1 gate (D-1146 region.js).
+// Deferred: expire dissipation; mfndpos m_poisongas_ok subset; monstseesu
+// when Fire_resistance already set; sit/apply/pray/detect/do/wield/read
+// identity hcolor stubs (rndcolor is D-1147 in do_name.js / chest_trap).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
     pline, newsym, You_feel, flush_topl_more, canspotmon, verbalize,
-    glyph_is_invisible,
+    glyph_is_invisible, tmp_at,
 } from './display.js';
 import {
     curse, bless, uncurse, mksobj_at, rnd_class, mkobj, mkobj_at,
@@ -66,6 +71,7 @@ import {
     is_pit, is_hole, ARTICLE_A, ARM, HEAD, HAND, FINGER,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
     POLY_NOFLAGS, UNCHANGING,
+    DISP_ALWAYS, DISP_END,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
@@ -87,7 +93,8 @@ import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { observe_object, enlightenment, update_inventory } from './invent.js';
 import {
-    hliquid, x_monnam, Hallucination, rndmonnam, type_is_pname, oname, trycall,
+    hliquid, hcolor, x_monnam, Hallucination, rndmonnam, type_is_pname, oname,
+    trycall,
 } from './do_name.js';
 import {
     exist_artifact, artiname, discover_artifact, ART_EXCALIBUR,
@@ -276,11 +283,6 @@ function a_monnam(mtmp) {
     const plain = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
     const art = /^[aeiou]/i.test(plain) ? 'an' : 'a';
     return `${art} ${plain}`;
-}
-
-/** C ref: potion.c hcolor — Hallucination synonym deferred. */
-function hcolor(colorword) {
-    return colorword || 'odd';
 }
 
 /** Potion appearance string for faucet liquid (OBJ_DESCR). */
@@ -475,10 +477,9 @@ export async function drinksink() {
     case 13:
         // C fountain.c:696–698 — stench then create_gas_cloud(ux,uy,1,4).
         // Size-1 skips BFS expand (no shuffle rn2); ttl = rn1(3,4).
-        // make_gas_cloud enveloped pline / inside_f damage stay named
-        // on region.js.
+        // Enveloped You after add_region (D-1137); inside_f HP D-1146.
         await pline('Ew, what a stench!');
-        create_gas_cloud(u.ux, u.uy, 1, 4);
+        await create_gas_cloud(u.ux, u.uy, 1, 4);
         break;
     case 19:
         if (u.Hallucination) {
@@ -528,20 +529,42 @@ function mhis(mtmp) {
 
 /**
  * C ref: potion.c mongrantswish — mongone then makewish.
- * tmp_at DISP_ALWAYS glyph hide deferred.
+ * Capture gbuf glyph_at before removal, then tmp_at(DISP_ALWAYS)
+ * so the map still shows the monster during the wish prompt
+ * (D-1136). Not a recomputed mon_to_glyph (no extra Hallu rng).
+ * Full C mongone (mdrop_special_objs / discard_minvent / m_detach)
+ * still named. djinni_from_bottle calls this (D-1144); dodrink smoky
+ * occupant chance still named.
  */
-async function mongrantswish(mtmp) {
+export async function mongrantswish(mtmp) {
     if (!mtmp) return;
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    // C display.c glyph_at — gbuf, not levl[].glyph. OOB → S_room.
+    const loc = game.level?.at?.(mx, my);
+    const glyph = loc
+        ? {
+            ch: loc.disp_ch,
+            color: loc.disp_color,
+            dec: !!loc.disp_decgfx,
+        }
+        : { ch: '.', color: 0, dec: false };
+
+    // C mongone subset (D-0472): off fmon + newsym. C keeps stale
+    // mx/my; JS zeros like the prior peel so later m_at misses.
     const list = game.fmon || [];
     const i = list.indexOf(mtmp);
     if (i >= 0) list.splice(i, 1);
-    const ox = mtmp.mx | 0;
-    const oy = mtmp.my | 0;
     mtmp.mx = 0;
     mtmp.my = 0;
-    if (ox || oy) newsym(ox, oy);
+    if (mx || my) newsym(mx, my);
+
+    // C: hide that removal from player — map is visible during wish.
+    tmp_at(DISP_ALWAYS, glyph);
+    tmp_at(mx, my);
     const { makewish } = await import('./zap.js');
     await makewish();
+    tmp_at(DISP_END, 0);
 }
 
 /**
@@ -688,6 +711,7 @@ function delfloortrap(ttmp) {
 /**
  * C ref: fountain.c gush — pool along LOS from overflowing fountain.
  * D-1117: m_at → minliquid; else newsym (C 157–160).
+ * D-1148: occupied minliquid survivor failed rloc → deal_with_overcrowding.
  * Named omissions: full set_levltyp side effects (typ/flags only).
  */
 async function gush(x, y, poolcnt) {
@@ -1270,7 +1294,11 @@ export async function dipfountain(obj) {
                 artiname(ART_EXCALIBUR), lady,
             );
         }
-        // C update_inventory() — perm_invent redraw named omit.
+        // C fountain.c:441 — update_inventory() after gift or deny,
+        // before set_levltyp ROOM. Both arms share this call (C).
+        // Default perm_invent Off: tty without TTY_PERM_INVENT no-ops
+        // (D-1126). Not artidisco save/rest.
+        update_inventory();
         const loc = game.level?.at(u.ux, u.uy);
         if (loc) {
             // C set_levltyp(u.ux,u.uy,ROOM) + levl[].flags=0.
@@ -1410,5 +1438,10 @@ export async function dipfountain(obj) {
         }
         break;
     }
+    // C fountain.c:552 — update_inventory() after switch, before dryup.
+    // Unconditional (unlike drinkfountain case 24 buc_changed).
+    // Default perm_invent Off: tty without TTY_PERM_INVENT no-ops (D-1126).
+    // Excalibur LONG_SWORD path returns after :441 and skips this site (C).
+    update_inventory();
     await dryup(u.ux, u.uy, true);
 }

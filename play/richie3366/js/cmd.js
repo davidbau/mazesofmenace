@@ -65,6 +65,7 @@ import { getpos } from './getpos.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
     impaired_movement, is_pool, is_lava, carrying_too_much,
+    invocation_message,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -1885,10 +1886,17 @@ async function domove(dx, dy) {
         }
     }
 
-    // Update display
+    // Update display. C hack.c:2964–2973 — newsym(ux0,uy0);
+    // vision_recalc(1); invocation_message(); only when the hero
+    // actually stepped (ux0!=ux || uy0!=uy). JS extra newsym(dest)
+    // is display-only, not this peel. Same-cell occupy (swallow onto
+    // ustuck) skips the clue.
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+    if (u.ux0 !== u.ux || u.uy0 !== u.uy) {
+        await invocation_message();
+    }
 
     // C: Punished → move_bc(0, ...) put ball&chain back after move
     put_bc();

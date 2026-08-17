@@ -1656,7 +1656,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (Is_waterlevel(u.uz) || Is_airlevel(u.uz)) {
         movebubbles();
     } else if (game.level?.flags?.fumaroles) {
-        fumaroles();
+        await fumaroles();
     }
 
     vision_reset();

@@ -1164,7 +1164,7 @@ async function do_class_genocide() {
                 gonecnt = 0;
                 for (const mtmp of (game.fmon || []).slice()) {
                     if ((mtmp.mhp | 0) <= 0) continue;
-                    mongone(mtmp);
+                    await mongone(mtmp);
                     gonecnt++;
                 }
                 await pline(

@@ -575,7 +575,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                     : null);
 
             if (!on_water_level) {
-                create_gas_cloud(x, y, rnd(5), 0);
+                await create_gas_cloud(x, y, rnd(5), 0);
                 if ((game.iflags?.last_msg | 0) === PLNMSG_ENVELOPED_IN_GAS) {
                     msggiven = true;
                 }
@@ -608,7 +608,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                 }
             }
         } else if (IS_FOUNTAIN(loc.typ)) {
-            create_gas_cloud(x, y, rnd(3), 0);
+            await create_gas_cloud(x, y, rnd(3), 0);
             if (see_it) await pline('Steam billows from the fountain.');
             rangemod -= 1;
             await dryup(x, y, (type | 0) > 0);
@@ -700,7 +700,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
         break;
     }
     case ZT_POISON_GAS:
-        if (ZAP_POS(loc.typ)) create_gas_cloud(x, y, 1, 8);
+        if (ZAP_POS(loc.typ)) await create_gas_cloud(x, y, 1, 8);
         break;
     case ZT_LIGHTNING:
     case ZT_ACID:
@@ -2476,7 +2476,7 @@ export async function revive(corpse, by_hero) {
                 }
             }
             mtmp.mconf = 1;
-            mongone(ghost);
+            await mongone(ghost);
         }
         free_omid(used);
     }

@@ -45,7 +45,7 @@ import {
 } from './mon.js';
 import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
-    hold_another_object, consume_obj_charge,
+    hold_another_object, consume_obj_charge, update_inventory,
 } from './invent.js';
 import { rn2, rn1, rnd, d, rnl, shuffle_int_array } from './rng.js';
 import {
@@ -85,6 +85,7 @@ import {
 import { yn_function, paranoid_query } from './getline.js';
 import {
     costly_alteration, costly_spot, add_damage, bill_dummy_object, shop_keeper,
+    check_unpaid_usage,
 } from './shk.js';
 import { zappable, release_hold, revive } from './zap.js';
 import { explode } from './explode.js';
@@ -109,7 +110,7 @@ import { addinv } from './u_init.js';
 import { stairway_at, morguemon } from './mklev.js';
 import {
     make_glib, Glib, make_sick, make_confused, make_stunned, make_vomiting,
-    make_hallucinated, make_deaf,
+    make_hallucinated, make_deaf, djinni_from_bottle,
 } from './potion.js';
 import { Blindf_on, Blindf_off, cursed_check } from './do_wear.js';
 import {
@@ -5483,8 +5484,8 @@ function cmdq_add_key(ch) {
 
 /**
  * C ref: apply.c dorub — #rub lamp/stone/jelly.
- * Named omissions: djinni_from_bottle / begin_burn
- * full lamp transform; check_unpaid_usage; Blind smoke wording uses see/smell.
+ * MAGIC_LAMP spe>0 !rn2(3) → transform then djinni_from_bottle (D-1144).
+ * Named omissions: SetVoice; royal jelly already via use_royal_jelly.
  * @returns {number} ECMD_*
  */
 export async function dorub() {
@@ -5521,11 +5522,15 @@ export async function dorub() {
     // now uwep is obj
     if (obj.otyp === MAGIC_LAMP) {
         if ((obj.spe | 0) > 0 && !rn2(3)) {
-            // djinni_from_bottle / begin_burn / check_unpaid deferred
+            // C apply.c:1818–1831 — bones: transform before djinni
+            await check_unpaid_usage(obj, true);
             obj.otyp = OIL_LAMP;
             obj.spe = 0;
             obj.age = rn1(500, 1000);
+            if (obj.lamplit) begin_burn(obj, true);
+            await djinni_from_bottle(obj);
             makeknown(MAGIC_LAMP);
+            update_inventory();
         } else if (rn2(2)) {
             const Blind = !!(u.Blind);
             await pline(`You ${Blind ? 'smell' : 'see a puff of'} smoke.`);

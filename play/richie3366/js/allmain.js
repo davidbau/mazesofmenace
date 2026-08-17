@@ -779,11 +779,18 @@ export async function moveloop_core() {
             // C: encumber_msg() at top of hero-can't-move loop
             await encumber_msg();
 
+            // C allmain.c:210–216 — mon_moving around movemon so lava/pool
+            // minliquid uses mondead/mondied, not hero xkilled (D-1138).
+            g.context.mon_moving = true;
             do {
                 monscanmove = await movemon();
-                if (g.program_state?.gameover) return;
+                if (g.program_state?.gameover) {
+                    g.context.mon_moving = false;
+                    return;
+                }
                 if ((g.u.umovement || 0) >= NORMAL_SPEED) break;
             } while (monscanmove);
+            g.context.mon_moving = false;
 
             // C: after monster loop (burden may have changed)
             mvl_wtcap = near_capacity();
@@ -812,7 +819,7 @@ export async function moveloop_core() {
 
                 // once-per-turn — C: nh_timeout then run_regions
                 await nh_timeout();
-                run_regions();
+                await run_regions();
                 // C allmain.c moveloop: if (u.ublesscnt) u.ublesscnt--;
                 if (g.u.ublesscnt) g.u.ublesscnt = (g.u.ublesscnt | 0) - 1;
 

@@ -30,7 +30,7 @@ import {
 import { doname, an, the, The, xname, yname, makeplural, vtense } from './objnam.js';
 import {
     Monnam, mon_nam, x_monnam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
-    christen_monst, rndmonnam, hliquid,
+    christen_monst, rndmonnam, hliquid, rndcolor,
 } from './do_name.js';
 import { dist2, distmin, m_at, wakeup, seemimic, m_carrying } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point, vision_recalc } from './vision.js';
@@ -3705,9 +3705,10 @@ async function trapeffect_slp_gas_trap(mtmp, trap, _trflags) {
 /**
  * C ref: trap.c trapeffect_telep_trap — hero seetrap then tele_trap;
  * monster mtele_trap.
- * Envelope: tele_trap wrenching (D-1120) / once vault; mon in_sight
- * pline+seetrap. Named omissions: teledest/tele hero arms; fixed-dest
- * mon displace.
+ * Envelope: tele_trap wrenching (D-1120) / once vault; teledest
+ * displace+teleds else tele() (D-1133); mon in_sight pline+seetrap.
+ * Named omissions: dotele trap-at-feet teledest; vault_tele tele()
+ * fallback; mtele_trap dest-occupied skip (C: no displace).
  */
 async function trapeffect_telep_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
@@ -4206,6 +4207,31 @@ export async function water_damage(obj, _ostr, force) {
 }
 
 /**
+ * C ref: trap.c fire_damage_chain — walk invent (nobj) or floor (nexthere).
+ * Snapshot next before fire_damage may delobj. Sets bhitpos for erode_obj.
+ * Blind && !couldsee → "You smell smoke." when any object burned (D-1138).
+ * @returns {Promise<number>} destroyed count
+ */
+export async function fire_damage_chain(chain, force, here, x, y) {
+    if (!chain) return 0;
+    const { fire_damage } = await import('./do.js');
+    if (!game.bhitpos) game.bhitpos = {};
+    game.bhitpos.x = x | 0;
+    game.bhitpos.y = y | 0;
+
+    let num = 0;
+    for (let obj = chain; obj; ) {
+        const nobj = here ? obj.nexthere : obj.nobj;
+        if (await fire_damage(obj, force, x, y)) num++;
+        obj = nobj;
+    }
+    if (num && Blind() && !couldsee(x, y)) {
+        await pline('You smell smoke.');
+    }
+    return num;
+}
+
+/**
  * C ref: trap.c water_damage_chain — walk invent / floor chain.
  * acid_ctx / bhitpos save deferred.
  */
@@ -4683,11 +4709,17 @@ function delete_contents_chest(obj) {
     }
 }
 
+// C ref: trap.c blindgas[] — ROLL_FROM when Blind in chest_trap gas.
+const BLINDGAS = [
+    'humid', 'odorless', 'pungent', 'chilling', 'acrid', 'biting',
+];
+
 /**
  * C ref: trap.c chest_trap — hero triggers box trap (kick/open/force).
  * Returns true if chest destroyed.
- * Named omit: Soundeffect; bot() redraw polish; Blind gas rndcolor table
- * (uses "strange"); Halluc_resistance stagger suffix polish; shieldeff.
+ * Named omit: Soundeffect; bot() redraw polish; Halluc_resistance
+ * stagger suffix polish; shieldeff. Gas adjective is D-1147
+ * (Blind ? ROLL_FROM(blindgas) : rndcolor()).
  */
 export async function chest_trap(obj, bodypart, disarm) {
     if (!obj) return false;
@@ -4792,7 +4824,7 @@ export async function chest_trap(obj, bodypart, disarm) {
             if (rn2(3)) {
                 await poisoned('gas cloud', A_STR, 'cloud of poison gas', 15, false);
             } else {
-                create_gas_cloud(obj.ox | 0, obj.oy | 0, 1, 8);
+                await create_gas_cloud(obj.ox | 0, obj.oy | 0, 1, 8);
             }
             exercise(A_CON, false);
             break;
@@ -4844,7 +4876,10 @@ export async function chest_trap(obj, bodypart, disarm) {
             break;
         }
         case 2: case 1: case 0: {
-            const gas = Blind() ? 'strange' : 'colorful';
+            // C trap.c:6474–6476 Blind ? ROLL_FROM(blindgas) : rndcolor()
+            const gas = Blind()
+                ? BLINDGAS[rn2(BLINDGAS.length)]
+                : rndcolor();
             await pline(
                 `A cloud of ${gas} gas billows from ${the(xname(obj))}.`,
             );

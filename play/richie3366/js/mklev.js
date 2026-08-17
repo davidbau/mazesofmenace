@@ -7981,7 +7981,7 @@ function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax) {
  * C ref: mkmaze.c fumaroles — gas-cloud bursts on lava (arrival / moveloop).
  * Named omission: Norep whoosh; clear_heros_fault.
  */
-export function fumaroles() {
+export async function fumaroles() {
     const g = game;
     const lf = g.level?.flags;
     if (!lf?.fumaroles) return;
@@ -7999,7 +7999,7 @@ export function fumaroles() {
         const x = rn1(COLNO - 4, 3);
         const y = rn1(ROWNO - 4, 3);
         if (g.level.at(x, y)?.typ === LAVAPOOL) {
-            create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5));
+            await create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5));
             // Norep whoosh / clear_heros_fault deferred
         }
     }

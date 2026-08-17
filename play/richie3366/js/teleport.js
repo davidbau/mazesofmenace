@@ -43,7 +43,10 @@ import {
     shieldeff, docrt,
 } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
-import { nomul, in_rooms, is_pool, is_lava, check_special_room, switch_terrain } from './hack.js';
+import {
+    nomul, in_rooms, is_pool, is_lava, check_special_room, switch_terrain,
+    invocation_message, notice_mon_off, notice_mon_on, notice_all_mons,
+} from './hack.js';
 import { remove_worm, place_worm_tail_randomly } from './worm.js';
 import { makeknown, prinv, near_capacity } from './invent.js';
 import { more_experienced } from './exper.js';
@@ -1148,11 +1151,12 @@ export async function mtele_trap(mtmp, trap) {
 /**
  * C ref: teleport.c teleok — trapok; VIBRATING_SQUARE always ok;
  * pit/hole ok iff Levitation||Flying (D-1111); then goodpos,
- * tele_jump_ok, in_out_region (D-1119).
- * Named omit: enter_msg/leave_msg pline in in_out_region;
- * hack.c / dothrow.c in_out_region callers.
+ * tele_jump_ok, in_out_region (D-1119). in_out_region awaits
+ * pline1(enter_msg/leave_msg) when set (D-1143).
+ * Named omit: hack.c / dothrow.c / do.c in_out_region callers;
+ * force-field enter/leave callbacks.
  */
-export function teleok(x, y, trapok) {
+export async function teleok(x, y, trapok) {
     if (!trapok) {
         /* C: allow vibrating square (not a real trap); pits and holes
          * if levitating or flying. Local trapok is by-value. */
@@ -1171,7 +1175,7 @@ export function teleok(x, y, trapok) {
     if (!goodpos(x, y, you, 0)) return false;
     const u = game.u || {};
     if (!tele_jump_ok(u.ux, u.uy, x, y)) return false;
-    if (!in_out_region(x, y)) return false;
+    if (!(await in_out_region(x, y))) return false;
     return true;
 }
 
@@ -1179,18 +1183,25 @@ export function teleok(x, y, trapok) {
  * C ref: teleport.c teleds — hero placement (vault_tele / ^T / scroll).
  * Envelope: TT_BURIEDBALL buried_ball_to_punishment before ball_active
  * (D-1132); Punished unplacebc/placebc (or drag_ball when in range);
- * hideunder(&youmonst)+mimic m_ap_type (D-1131); place + fill_pit(ux0,uy0)
- * + update_player_regions (D-1130) + vision; TELEDS_TELEPORT+verbose
- * materialize; dest-typ≠origin → switch_terrain (D-1129);
- * spoteffects(TRUE).
- * Named omissions: swallow docrt, vault_guard uleftvault,
- * notice_mon_*; fill_pit still uses thin
+ * set_ustuck(Null)+swallow docrt (D-1139); hideunder(&youmonst)+mimic
+ * m_ap_type (D-1131); place + fill_pit(ux0,uy0) + update_player_regions
+ * (D-1130) + vision; TELEDS_TELEPORT+verbose materialize;
+ * dest-typ≠origin → switch_terrain (D-1129); vault_guard save/restore
+ * + uleftvault (D-1140); spoteffects(TRUE); invocation_message (D-1141);
+ * notice_mon_off around vision_recalc, notice_mon_on +
+ * notice_all_mons(TRUE) after invocation (D-1142).
+ * Named omissions: fill_pit still uses thin
  * extract+deltrap+delobj (C flooreffects("settle") named);
- * classify_terrain; shop-enter plines beyond spoteffects subset.
+ * classify_terrain; shop-enter plines beyond spoteffects subset;
+ * hostile gd_move rloc/gd_letknow/wallify_vault (uleftvault calls
+ * gd_move after mpeaceful=0; JS gd_move still early-returns hostile);
+ * walk invocation_message is D-1150; mkmaze.c inv_pos;
+ * vision.c vision_recalc / goto_level / newgame / seffect_magic_mapping
+ * / wizcmds / save / postmov notice_mon callers; spot_monsters option.
  *
  * Do NOT set u.urooms before spoteffects — C only temporarily fakes
  * urooms for vault_guard exit, then restores so move_update can detect
- * newly entered TEMPLE/shop rooms (D-0639).
+ * newly entered TEMPLE/shop rooms (D-0639 / D-1140).
  */
 export async function teleds(nux, nuy, teleds_flags) {
     const u = game.u;
@@ -1199,6 +1210,11 @@ export async function teleds(nux, nuy, teleds_flags) {
     let allow_drag = ((teleds_flags | 0) & TELEDS_ALLOW_DRAG) !== 0;
     const ox = u.ux | 0;
     const oy = u.uy | 0;
+    /* C: vault_guard = vault_occupied(u.urooms) ? findgd() : 0
+     * captured at origin before buried-ball / move. Dynamic import:
+     * vault.js → trap.js → teleport.js cycle. */
+    const { vault_occupied, findgd, uleftvault } = await import('./vault.js');
+    const vault_guard = vault_occupied(u.urooms) ? findgd() : null;
     /* C: if (u.utraptype == TT_BURIEDBALL) buried_ball_to_punishment()
      * before ball_active — unearth then Punished drag/unplace. */
     if ((u.utraptype | 0) === TT_BURIEDBALL) {
@@ -1227,20 +1243,39 @@ export async function teleds(nux, nuy, teleds_flags) {
         }
     }
 
-    u.ux0 = ox;
-    u.uy0 = oy;
     // u.utrap clear (C reset_utrap(FALSE) — messages deferred)
     u.utrap = 0;
     u.utraptype = 0;
-    /* C: hideunder(&youmonst) after reset_utrap, before drag_ball.
-     * Mimics that fail to hide drop m_ap_type (not seemimic).
-     * set_ustuck / swallow docrt still deferred. */
+    /* C: was_swallowed = u.uswallow; set_ustuck(Null) clears uswallow.
+     * Always release grab/swallow (not unstuck — that would u_on_newpos
+     * to the engulfer and placebc early). Then ux0/uy0, hideunder. */
+    const was_swallowed = !!(u.uswallow | 0);
+    {
+        const { set_ustuck } = await import('./mhitu.js');
+        set_ustuck(null);
+    }
+    u.ux0 = ox;
+    u.uy0 = oy;
+    /* C: hideunder(&youmonst) after reset_utrap/set_ustuck, before
+     * drag_ball. Mimics that fail to hide drop m_ap_type (not seemimic). */
     {
         const { hideunder } = await import('./mon.js');
         const you = game.youmonst;
         if (!hideunder(you) && you?.data?.mlet === 'S_MIMIC') {
             you.m_ap_type = M_AP_NOTHING;
         }
+    }
+
+    if (was_swallowed) {
+        /* C: ball&chain are off map while swallowed — force placebc later,
+         * skip drag. docrt after set_ustuck so uswallow is already 0
+         * (dungeon map, not gulp). */
+        if (u.uball) {
+            ball_active = true;
+            ball_still_in_range = false;
+            allow_drag = false;
+        }
+        await docrt();
     }
 
     if (ball_active && (ball_still_in_range || allow_drag)) {
@@ -1285,6 +1320,10 @@ export async function teleds(nux, nuy, teleds_flags) {
     // C: vision_recalc(0) before materialize so --More-- shows new map
     game.vision_full_recalc = 1;
     nomul(0);
+    /* C: notice_mon_off() before vision_recalc so vision.c's
+     * notice_all_mons(TRUE) does not fire until after materialize /
+     * switch_terrain / vault / spoteffects / invocation_message. */
+    notice_mon_off();
     vision_recalc(0);
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
@@ -1303,10 +1342,26 @@ export async function teleds(nux, nuy, teleds_flags) {
             await switch_terrain();
         }
     }
-    // C: vault_guard temporary urooms fake then restore — deferred (no guard)
+    /* C: vault_guard alarm before room-entry; fake dest VAULT occupancy
+     * then restore so spoteffects→move_update still sees origin urooms. */
+    if (vault_guard) {
+        const save_urooms = u.urooms || '';
+        u.urooms = in_rooms(u.ux, u.uy, VAULT);
+        if (!vault_occupied(u.urooms)) {
+            await uleftvault(vault_guard);
+        }
+        u.urooms = save_urooms;
+    }
     // C: spoteffects(TRUE) → move_update detects temple/shop entry
     const { spoteffects } = await import('./pickup.js');
     await spoteffects(true);
+    /* C: invocation_message() after spoteffects (hack.c). Walk
+     * caller is D-1150 (hack.c:2973 / cmd.js domove). */
+    await invocation_message();
+    /* C: notice_mon_on(); notice_all_mons(TRUE); catch-up after the
+     * wrap. Other callers (vision_recalc, goto_level, newgame) named. */
+    notice_mon_on();
+    await notice_all_mons(true);
 }
 
 /**
@@ -1333,7 +1388,7 @@ export async function tele_to_rnd_pet() {
     if (dx * dx + dy * dy <= 2) return; // m_next2u
     const tx = (pet.mx | 0) + rn2(3) - 1;
     const ty = (pet.my | 0) + rn2(3) - 1;
-    if (isok(tx, ty) && teleok(tx, ty, false)) {
+    if (isok(tx, ty) && await teleok(tx, ty, false)) {
         await teleds(tx, ty, TELEDS_TELEPORT);
     }
 }
@@ -1362,7 +1417,7 @@ export async function safe_teleds(teleds_flags) {
     for (let tcnt = 0; tcnt < 40; ++tcnt) {
         nux = rnd(COLNO - 1);
         nuy = rn2(ROWNO);
-        if (teleok(nux, nuy, false)) {
+        if (await teleok(nux, nuy, false)) {
             await teleds(nux, nuy, teleds_flags);
             return true;
         }
@@ -1380,11 +1435,11 @@ export async function safe_teleds(teleds_flags) {
     for (let tcnt = 0; tcnt < candycount; ++tcnt) {
         nux = candy[tcnt].x;
         nuy = candy[tcnt].y;
-        if (teleok(nux, nuy, false)) {
+        if (await teleok(nux, nuy, false)) {
             await teleds(nux, nuy, teleds_flags);
             return true;
         }
-        if (!backupspot.x && trap_at(nux, nuy) && teleok(nux, nuy, true)) {
+        if (!backupspot.x && trap_at(nux, nuy) && await teleok(nux, nuy, true)) {
             backupspot.x = nux;
             backupspot.y = nuy;
         }
@@ -1436,7 +1491,7 @@ export async function scrolltele(scroll) {
         }
         const { getpos } = await import('./getpos.js');
         if ((await getpos(cc, true, 'the desired position')) < 0) return;
-        if (teleok(cc.x, cc.y, false)) {
+        if (await teleok(cc.x, cc.y, false)) {
             await teleds(cc.x, cc.y, TELEDS_TELEPORT);
             // C: if (u_at(travelcc)) clear travelcc
             const tcc = game.iflags?.travelcc;
@@ -1858,7 +1913,7 @@ export async function level_tele() {
 export async function vault_tele() {
     const croom = search_special(VAULT);
     const c = { x: 0, y: 0 };
-    if (croom && somexyspace(croom, c) && teleok(c.x, c.y, false)) {
+    if (croom && somexyspace(croom, c) && await teleok(c.x, c.y, false)) {
         await teleds(c.x, c.y, TELEDS_TELEPORT);
         return true;
     }
@@ -1869,8 +1924,11 @@ export async function vault_tele() {
 /**
  * C ref: teleport.c tele_trap — hero TELEP_TRAP.
  * Envelope: In_endgame / Antimagic / noteleport_level wrenching +
- * Antimagic shieldeff (D-1120); !next_to_u shudder (D-1005); once →
- * deltrap + vault_tele. Named omissions: teledest / tele().
+ * Antimagic shieldeff (D-1120); !next_to_u sibling shudder (D-1005);
+ * once → deltrap + vault_tele; isok(teledest) settrack + displace via
+ * enexto/rloc_to then teleds, else tele() (D-1133).
+ * Named omissions: dotele trap-at-feet teledest; vault_tele tele()
+ * fallback when no vault/space.
  */
 export async function tele_trap(trap) {
     /* a fixed-destination teleport trap could theoretically place hero onto a
@@ -1884,18 +1942,39 @@ export async function tele_trap(trap) {
         if (In_endgame(u.uz) || Antimagic() || noteleport_level(game.youmonst)) {
             if (Antimagic()) await shieldeff(u.ux, u.uy);
             await You_feel('a wrenching sensation.');
-        } else if (trap?.once) {
+        } else {
             const { next_to_u } = await import('./apply.js');
             if (!(await next_to_u())) {
                 await pline('You shudder for a moment.');
-            } else {
+            } else if (trap?.once) {
                 const { deltrap } = await import('./trap.js');
                 deltrap(trap);
                 newsym(u.ux, u.uy); /* get rid of trap symbol */
                 await vault_tele();
+            } else if (isok(trap?.teledest?.x, trap?.teledest?.y)) {
+                const dx = trap.teledest.x | 0;
+                const dy = trap.teledest.y | 0;
+                let mtmp = m_at(dx, dy);
+                const { settrack } = await import('./track.js');
+                settrack();
+                if (mtmp) {
+                    const cc = { x: 0, y: 0 };
+                    if (!enexto(cc, mtmp.mx | 0, mtmp.my | 0, mtmp.data)) {
+                        /* could not find some other place to put mtmp; the level must
+                         * be nearly or completely full */
+                        await pline('You shudder for a moment.');
+                    } else {
+                        await rloc_to(mtmp, cc.x, cc.y);
+                        mtmp = null; /* no longer a monster at dest */
+                    }
+                }
+                if (!mtmp) {
+                    await teleds(dx, dy, TELEDS_TELEPORT);
+                }
+            } else {
+                await tele();
             }
         }
-        // else teledest / tele() named omit
     } finally {
         in_tele_trap = false;
     }

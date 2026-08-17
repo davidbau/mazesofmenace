@@ -18,9 +18,9 @@ import {
     SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
     SUPPRESS_SADDLE, SUPPRESS_NAME,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
-    has_oname, ONAME,
+    has_oname, ONAME, CLR_MAX,
 } from './const.js';
-import { ATR_INVERSE } from './terminal.js';
+import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
@@ -213,6 +213,59 @@ export function rndmonnam(codeOut = null) {
     if (name >= SPECIAL_PM) return bogusmon(codeOut);
     const g = rn2_on_display_rng(2);
     return pmname(name, g === 0 ? MALE : FEMALE);
+}
+
+// C ref: do_name.c hcolors[] — Hallu substitutes for hcolor().
+const HCOLORS = [
+    'ultraviolet', 'infrared', 'bluish-orange', 'reddish-green', 'dark white',
+    'light black', 'sky blue-pink', 'pinkish-cyan', 'indigo-chartreuse',
+    'salty', 'sweet', 'sour', 'bitter', 'umami', // basic tastes
+    'striped', 'spiral', 'swirly', 'plaid', 'checkered', 'argyle', 'paisley',
+    'blotchy', 'guernsey-spotted', 'polka-dotted', 'square', 'round',
+    'triangular', 'cabernet', 'sangria', 'fuchsia', 'wisteria', 'lemon-lime',
+    'strawberry-banana', 'peppermint', 'romantic', 'incandescent',
+    'octarine', // Discworld: the Colour of Magic
+    'excitingly dull', 'mauve', 'electric',
+    'neon', 'fluorescent', 'phosphorescent', 'translucent', 'opaque',
+    'psychedelic', 'iridescent', 'rainbow-colored', 'polychromatic',
+    'colorless', 'colorless green',
+    'dancing', 'singing', 'loving', 'loudy', 'noisy', 'clattery', 'silent',
+    'apocyan', 'infra-pink', 'opalescent', 'violant', 'tuneless',
+    'viridian', 'aureolin', 'cinnabar', 'purpurin', 'gamboge', 'madder',
+    'bistre', 'ecru', 'fulvous', 'tekhelet', 'selective yellow',
+];
+
+/**
+ * C ref: do_name.c hcolor — Hallu or NULL pref → rn2_on_display_rng
+ * over hcolors[] (SIZE only). Pref is not a last choice. Unlike
+ * hliquid, program_state.gameover does not skip the Hallu arm.
+ * Empty string is a live pref (C pointer), not NULL.
+ */
+export function hcolor(colorpref) {
+    if (Hallucination() || colorpref == null) {
+        return HCOLORS[rn2_on_display_rng(HCOLORS.length)];
+    }
+    return colorpref;
+}
+
+// C ref: decl.c c_obj_colors[] — rndcolor uses this; NO_COLOR (8) is
+// "transparent" in the table but rndcolor maps that k to "colorless".
+const C_OBJ_COLORS = [
+    'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+    'transparent', 'orange', 'bright green', 'yellow', 'bright blue',
+    'bright magenta', 'bright cyan', 'white',
+];
+
+/**
+ * C ref: do_name.c rndcolor — always rn2(CLR_MAX) on the core stream
+ * (even when Hallu). Hallu then hcolor(NULL) display-rng; else
+ * k==NO_COLOR → "colorless", else c_obj_colors[k].
+ */
+export function rndcolor() {
+    const k = rn2(CLR_MAX);
+    return Hallucination() ? hcolor(null)
+        : (k === NO_COLOR) ? 'colorless'
+            : C_OBJ_COLORS[k];
 }
 
 // C ref: do_name.c hliquids[] — Hallu substitutes for hliquid().
