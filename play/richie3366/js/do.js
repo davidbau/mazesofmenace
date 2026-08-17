@@ -46,7 +46,7 @@ import {
 import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
 import { clear_light_sources, relight_monsters } from './light.js';
-import { clear_regions } from './region.js';
+import { clear_regions, in_out_region } from './region.js';
 import {
     stairway_at,
     stairway_find_from,
@@ -75,7 +75,7 @@ import { place_object, stackobj, weight, delobj, obj_extract_self,
     obj_nexto_xy, obj_meld, pudding_merge_message,
     save_timers, restore_timers,
 } from './mkobj.js';
-import { ship_object } from './dokick.js';
+import { ship_object, obj_delivery } from './dokick.js';
 import { doname, xname, the, The, vtense, an, cxname_singular } from './objnam.js';
 import { Monnam } from './do_name.js';
 import { revive } from './zap.js';
@@ -1275,6 +1275,7 @@ function getlev_catchup_monsters(elapsed) {
  * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
  * RMPORTAL, endgame astral `final_level` / migrating-Wizard resurrect arm,
  * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
+ * fix_shop_damage (obj_delivery is D-1177; in_out_region is D-1166),
  * MICRO display_nhwindow after Valley odor; ACH_ENDG/ASTR/BGRM;
  * poly `locomotion()` climb verb / steed-flyer Flying;
  * u_collide_m full limbo. Ported: Punished climb
@@ -1643,6 +1644,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // losedogs (D-0915). Without this, uchain.where stays non-FREE and
     // placebc is a no-op → ball stranded → false drag_ball cause_delay.
     if (u.uball || u.Punished) placebc();
+    // C do.c:1815 — obj_delivery(FALSE) after placebc, before losedogs.
+    // XOR delivers MIGR_WITH_HERO (trap-door objs landing at the hero).
+    await obj_delivery(false);
 
     losedogs();
 
@@ -1653,6 +1657,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     // C: do.c goto_level — movebubbles / fumaroles before vision_recalc
+    // (allmain moveloop EOT twin D-1168).
     if (Is_waterlevel(u.uz) || Is_airlevel(u.uz)) {
         movebubbles();
     } else if (game.level?.flags?.fumaroles) {
@@ -1761,6 +1766,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     // C: goto_level — room entrance messages before pickup
     await check_special_room(false);
+
+    // C do.c:1978 — obj_delivery(TRUE) after check_special_room.
+    // XOR delivers non-WITH_HERO (stairs/ladder/sstairs/random).
+    await obj_delivery(true);
+
+    // C do.c:1980–1981 — after obj_delivery(TRUE), before !new
+    // fix_shop_damage / do_fall_dmg / pickup(1). (void): do not abort
+    // the level change if can_enter/leave would reject (C assumes TRUE
+    // on level change). Restored REG_HERO_INSIDE is leave-time; this
+    // updates enter/leave for the landing cell (D-1166).
+    // fix_shop_damage / do_fall_dmg still named.
+    await in_out_region(u.ux, u.uy);
 
     // C: goto_level ends with pickup(1) — autopick or check_here/engr
     await pickup(1);

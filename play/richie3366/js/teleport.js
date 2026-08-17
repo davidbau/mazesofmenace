@@ -24,7 +24,7 @@ import {
     In_endgame, In_sokoban, In_quest, Is_waterlevel,
     Is_airlevel, Is_firelevel, Is_earthlevel,
     HOLE, TRAPDOOR, LEVEL_TELEP,
-    MAGIC_PORTAL, VIBRATING_SQUARE, RLOC_MSG, RLOC_NOMSG,
+    MAGIC_PORTAL, VIBRATING_SQUARE, RLOC_MSG, RLOC_NOMSG, NO_TRAP_FLAGS,
     BOLT_LIM, STRAT_APPEARMSG, ARTICLE_A, engulfing_u,
     MON_FLOOR, Upolyd,
     FIRE_RES, ANTIMAGIC, LEVITATION, FLYING, WWALKING, SWIMMING,
@@ -642,22 +642,94 @@ export function enexto_gpflags(cc, xx, yy, mdat, entflags) {
 }
 
 /**
+ * C ref: teleport.c rloc_to_core — resident shk leaving shop after dest
+ * (1734–1740). Snapshot inhishop at origin (before pickup); after place,
+ * !inhishop → make_angry_shk. C ox/oy ARGSUSED. Dynamic import: shk.js
+ * already imports rloc_to_flag from this file.
+ */
+async function rloc_maybe_angry_shk(mtmp, resident_shk, oldx, oldy) {
+    if (resident_shk && !inhishop(mtmp)) {
+        const { make_angry_shk } = await import('./shk.js');
+        await make_angry_shk(mtmp, oldx, oldy);
+    }
+}
+
+/**
+ * C ref: teleport.c rloc_to_core 1742–1758 — minvent shop goods after angry.
+ * Dest !costly_spot: clear no_charge; onshopbill → stolen_value(oldxy).
+ * Shop-to-shop keeps no_charge and the first shk's bill. Dynamic import:
+ * shk.js already imports rloc_to_flag from this file.
+ */
+async function rloc_maybe_minvent_shop_bill(mtmp, destx, desty, oldx, oldy) {
+    if (!mtmp?.minvent) return;
+    const { costly_spot, find_objowner, onshopbill, stolen_value } =
+        await import('./shk.js');
+    if (costly_spot(destx, desty)) return;
+    const shkp = find_objowner(mtmp.minvent, oldx, oldy);
+    const peaceful = !shkp || !!shkp.mpeaceful;
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if (otmp.no_charge) {
+            otmp.no_charge = 0;
+        } else if (shkp && onshopbill(otmp, shkp, true)) {
+            await stolen_value(otmp, oldx, oldy, peaceful, false);
+        }
+    }
+}
+
+/**
+ * C ref: teleport.c rloc_to_core 1761–1763 — if hero is busy, maybe
+ * stop occupation. After dest (and after appear when rloc_to_flag),
+ * after angry+bill, before mintrap. chug FALSE: do not move mtmp;
+ * only the newly-spotted threat check (monmove.c dochugw). Dynamic
+ * import: monmove.js already imports rloc from this file.
+ */
+async function rloc_maybe_occupation(mtmp) {
+    if (typeof game.occupation === 'function') {
+        const { dochugw } = await import('./monmove.js');
+        await dochugw(mtmp, false);
+    }
+}
+
+/**
+ * C ref: teleport.c rloc_to_core 1765–1767 — trapped monster teleported
+ * away. After dest (and after appear when rloc_to_flag). Worms skip.
+ * mintrap at dest: no trap → clear mtrapped ("perhaps teleported?");
+ * trap still there → already-trapped escape, not a fresh step-on.
+ * Dynamic import: trap.js already imports teleport.js.
+ */
+async function rloc_maybe_mintrap(mtmp) {
+    if (mtmp?.mtrapped && !mtmp.wormno) {
+        const { mintrap } = await import('./trap.js');
+        await mintrap(mtmp, NO_TRAP_FLAGS);
+    }
+}
+
+/**
  * C ref: teleport.c rloc_to / rloc_to_core — place monster at (x,y).
  * RLOC_NOMSG path: worm remove_worm else remove+newsym(old); place;
  * update_monster_region (D-1161; after place, before worm tail);
  * place_worm_tail_randomly; ustuck swallow u_on_newpos/check_special_room/
  * docrt else !m_next2u unstuck (D-1123); maybe_unhide_at then newsym(new)
  * (D-1152); set_apparxy after dest newsym (D-1160; C place_monster
- * writes mx/my only).
- * Named omissions: shopkeeper home teleport; shop bill on leave.
- * RLOC_MSG vanish+appear live in async `rloc` (D-0885 / D-0886).
+ * writes mx/my only); resident shk !inhishop dest → make_angry_shk
+ * (D-1162; after dest, after vanish/appear when rloc_to_flag);
+ * minvent shop bill after angry (D-1163; dest !costly_spot → clear
+ * no_charge else stolen_value for onshopbill); occupation dochugw
+ * after bill (D-1170; go.occupation → dochugw(mtmp, FALSE) — no
+ * dochug, only stop-if-newly-spotted-threat); trapped !wormno
+ * mintrap after occupation (D-1164; dest no trap clears mtrapped).
+ * Named omission: vanish-msg. RLOC_MSG vanish+appear live in async
+ * `rloc` (D-0885 / D-0886). rloc_opts.defer_shk_angry is JS-only so
+ * rloc_to_flag can run appear pline before angry (C order).
  */
-export async function rloc_to(mtmp, x, y) {
-    if (!mtmp) return;
+export async function rloc_to(mtmp, x, y, rloc_opts = null) {
+    if (!mtmp) return null;
     const oldx = mtmp.mx | 0;
     const oldy = mtmp.my | 0;
+    // C: resident_shk = isshk && inhishop — before same-cell return / pickup
+    const resident_shk = !!(mtmp.isshk && inhishop(mtmp));
     // C: if (x == mx && y == my && m_at(x, y) == mtmp) return;
-    if (x === oldx && y === oldy && m_at(x, y) === mtmp) return;
+    if (x === oldx && y === oldy && m_at(x, y) === mtmp) return null;
 
     if (oldx) {
         /* JS m_at scans fmon by mx/my; zero coords before newsym so the
@@ -717,6 +789,18 @@ export async function rloc_to(mtmp, x, y) {
     await maybe_unhide_at(x, y);
     newsym(x, y);
     set_apparxy(mtmp);
+    // C: vanish/appear pline then resident_shk && !inhishop make_angry_shk
+    // then minvent shop bill then occupation then trapped mintrap
+    // (teleport.c:1739, 1748, 1762, 1766). Silent rloc_to (RLOC_NOMSG)
+    // skips the pline block; rloc_to_flag defers angry+bill+occupation
+    // +mintrap until after rloc_post_move_msg.
+    if (!rloc_opts?.defer_shk_angry) {
+        await rloc_maybe_angry_shk(mtmp, resident_shk, oldx, oldy);
+        await rloc_maybe_minvent_shop_bill(mtmp, x, y, oldx, oldy);
+        await rloc_maybe_occupation(mtmp);
+        await rloc_maybe_mintrap(mtmp);
+    }
+    return { resident_shk, oldx, oldy };
 }
 
 /**
@@ -883,16 +967,30 @@ function tele_jump_ok(x1, y1, x2, y2) {
 }
 
 /**
- * C ref: teleport.c rloc_pos_ok — goodpos(GP_CHECKSCARY) + tele_jump_ok.
- * Named omissions: migrating mx==0 updest/dndest bit flags; shk/priest
- * room lock.
+ * C ref: teleport.c rloc_pos_ok — goodpos(GP_CHECKSCARY), then when
+ * already on the map keep resident shk/priest in their room, then
+ * tele_jump_ok. Dest is levl.roomno vs ESHK.shoproom / EPRI.shroom
+ * (unsigned char), not in_rooms; rloc may still goodpos-fallback.
+ * Named omissions: migrating mx==0 updest/dndest bit flags.
  */
 function rloc_pos_ok(x, y, mtmp) {
     if (!goodpos(x, y, mtmp, GP_CHECKSCARY)) return false;
     const xx = mtmp?.mx | 0;
     const yy = mtmp?.my | 0;
     if (xx) {
-        // isshk/ispriest room arms deferred
+        /* C teleport.c:1620–1626 — try to keep shopkeeper / temple
+         * priest in-room (caller may still resort to goodpos). */
+        if (mtmp.isshk && inhishop(mtmp)) {
+            const destRoom = (game.level?.at(x, y)?.roomno | 0) & 0xff;
+            if (destRoom !== ((ESHK(mtmp)?.shoproom | 0) & 0xff)) {
+                return false;
+            }
+        } else if (mtmp.ispriest && inhistemple(mtmp)) {
+            const destRoom = (game.level?.at(x, y)?.roomno | 0) & 0xff;
+            if (destRoom !== ((EPRI(mtmp)?.shroom | 0) & 0xff)) {
+                return false;
+            }
+        }
         if (!tele_jump_ok(xx, yy, x, y)) return false;
     }
     // migrating mx==0 restricted-arrival arms deferred
@@ -963,8 +1061,15 @@ async function rloc_post_move_msg(mtmp, x, y, state) {
  */
 export async function rloc_to_flag(mtmp, x, y, rlocflags) {
     const state = await rloc_pre_move_msg(mtmp, x, y, rlocflags);
-    await rloc_to(mtmp, x, y);
+    // Defer shk angry until after appear pline (C rloc_to_core 1703 then 1739).
+    const snap = await rloc_to(mtmp, x, y, { defer_shk_angry: true });
     await rloc_post_move_msg(mtmp, x, y, state);
+    if (snap) {
+        await rloc_maybe_angry_shk(mtmp, snap.resident_shk, snap.oldx, snap.oldy);
+        await rloc_maybe_minvent_shop_bill(mtmp, x, y, snap.oldx, snap.oldy);
+        await rloc_maybe_occupation(mtmp);
+        await rloc_maybe_mintrap(mtmp);
+    }
 }
 
 /**
@@ -995,8 +1100,9 @@ function stairway_find_forwiz(isladder, up) {
 /**
  * C ref: teleport.c control_mon_tele — wizard-mode getpos destination.
  * Gated on flags.debug||flags.wizard and iflags.mon_telecontrol (default
- * Off). mnexto still omits this caller. Named omit: OPTIONS= parse into
- * doset (iflags may be set directly); debug_fuzzer skips force y_n.
+ * Off). Callers: rloc via_rloc TRUE (D-1122); mnexto via_rloc FALSE
+ * (D-1173). Named omit: OPTIONS= parse into doset (iflags may be set
+ * directly); debug_fuzzer skips force y_n.
  */
 export async function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
     if (!isok(cc_p.x, cc_p.y)) {
@@ -1033,13 +1139,18 @@ export async function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
 /**
  * C ref: teleport.c rloc — Wizard stair / control_mon_tele then 50× rnd/rn2
  * then unshuffled candy shuffle (D-1122).
- * Named omissions: steed→tele(); mnexto control_mon_tele; telemsg
- * "vanishes and reappears"; ustuck-together; shop bill on leave;
- * RLOC_ERR impossible().
+ * Steed is hero teleport: tele() then TRUE even if tele() does not
+ * move (noteleport) (D-1172; C 1808–1811). Not Wizard stair.
+ * Named omissions: telemsg "vanishes and reappears"; ustuck-together;
+ * RLOC_ERR impossible(). mnexto control_mon_tele is D-1173.
  */
 export async function rloc(mtmp, rlocflags = 0) {
     if (!mtmp) return false;
-    if (mtmp === game.u?.usteed) return false; // tele() deferred
+    // C: if (mtmp == u.usteed) { tele(); return TRUE; } — before iswiz.
+    if (mtmp === game.u?.usteed) {
+        await tele();
+        return true;
+    }
 
     let x = 0;
     let y = 0;
@@ -1162,9 +1273,9 @@ export async function mtele_trap(mtmp, trap) {
  * pit/hole ok iff Levitation||Flying (D-1111); then goodpos,
  * tele_jump_ok, in_out_region (D-1119). in_out_region awaits
  * pline1(enter_msg/leave_msg) when set (D-1143).
- * Named omit: dothrow.c hurtle_step / do.c goto_level
- * in_out_region callers; force-field enter/leave callbacks.
- * hack.c walk caller is D-1157.
+ * Named omit: force-field enter/leave callbacks. hack.c walk is
+ * D-1157; dothrow.c hurtle_step is D-1165; do.c goto_level is
+ * D-1166.
  */
 export async function teleok(x, y, trapok) {
     if (!trapok) {

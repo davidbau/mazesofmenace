@@ -59,6 +59,7 @@ import { goodpos, rloc_to } from './teleport.js';
 import {
     mintrap, t_at, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
 } from './trap.js';
+import { in_out_region, m_in_out_region } from './region.js';
 
 const GLASS = 19;
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -1382,18 +1383,22 @@ function sobj_at_hurtle(otyp, x, y) {
 
 /**
  * C ref: dothrow.c hurtle_step — one cell of hero hurtle.
- * Named omit: in_out_region; Passes_walls/may_passwall; bad_rock squeeze;
+ * in_out_region after isok, before *range==0 (D-1165; C 787–790).
+ * Named omit: Passes_walls/may_passwall; bad_rock squeeze;
  * Sokoban diagonal halt; drag_ball; switch_terrain; check_special_room;
  * drown/waterwall; jumping I_SPECIAL; petrify bump; setmangry; trap
  * pass-over dotrap; nh_delay_output.
  */
-async function hurtle_step(rangeArg, x, y) {
+export async function hurtle_step(rangeArg, x, y) {
     const u = game.u || {};
     if (!isok(x, y)) {
         await pline('You feel the spirits holding you back.');
         return false;
+    } else if (!(await in_out_region(x, y))) {
+        return false;
+    } else if ((rangeArg.n | 0) === 0) {
+        return false; /* previous step wants to stop now */
     }
-    if ((rangeArg.n | 0) === 0) return false;
 
     const loc = game.level?.at?.(x, y);
     const ltyp = loc?.typ | 0;
@@ -1518,12 +1523,13 @@ function will_hurtle(mon, x, y) {
 
 /**
  * C ref: dothrow.c mhurtle_step — move along hurtle path (thin).
+ * will_hurtle && m_in_out_region before place (D-1176; C :1000).
  * Named omit: steed u_on_newpos; set_apparxy; waterwall stop; bump
- * petrify / hero touch; m_in_out_region.
+ * petrify / hero touch; place_monster vs rloc_to.
  */
 async function mhurtle_step(mon, x, y) {
     if (!isok(x, y)) return false;
-    if (will_hurtle(mon, x, y)) {
+    if (will_hurtle(mon, x, y) && m_in_out_region(mon, x, y)) {
         if (mon !== game.u?.usteed) {
             await rloc_to(mon, x, y);
         } else {
@@ -1555,8 +1561,8 @@ async function mhurtle_step(mon, x, y) {
 
 /**
  * C ref: dothrow.c mhurtle — knock monster through air for range steps.
- * Named omit: NODIAG grid-bug; minliquid after path; full mhurtle_step
- * petrify/steed vision.
+ * mhurtle_step region gate is D-1176. Named omit: NODIAG grid-bug;
+ * minliquid after path; full mhurtle_step petrify/steed vision.
  */
 export async function mhurtle(mon, dx, dy, range) {
     if (!mon) return;

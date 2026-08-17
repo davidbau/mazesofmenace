@@ -40,7 +40,7 @@ import {
 import { objects_at, kill_egg, place_object, stackobj } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
-import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco } from './teleport.js';
+import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele } from './teleport.js';
 import { may_dig } from './dig.js';
 import { newsym, pline, You_feel, sensemon, canseemon, canspotmon } from './display.js';
 import { online2 } from './hacklib.js';
@@ -1281,8 +1281,11 @@ export async function deal_with_overcrowding(mtmp) {
 
 /**
  * C ref: mon.c mnexto — place next to hero via enexto + rloc_to_flag.
- * Failed enexto → deal_with_overcrowding (D-1148). Omits mon_telecontrol.
- * RLOC_MSG / STRAT_APPEARMSG appear plines need the flag path (D-0928 #1128).
+ * Failed enexto → deal_with_overcrowding (D-1148). Wizard-mode
+ * iflags.mon_telecontrol may override dest via control_mon_tele(..., FALSE)
+ * then restore savemm on cancel so the hero cell is never forced (D-1173).
+ * Default Off: public paths unchanged. RLOC_MSG / STRAT_APPEARMSG appear
+ * plines need the flag path (D-0928 #1128).
  */
 export async function mnexto(mtmp, rlocflags = 0) {
     if (!mtmp) return;
@@ -1296,6 +1299,15 @@ export async function mnexto(mtmp, rlocflags = 0) {
     if (!enexto(mm, u.ux, u.uy, mtmp.data) || !isok_xy(mm.x, mm.y)) {
         await deal_with_overcrowding(mtmp);
         return;
+    }
+    /* C: wizard-mode 'montelecontrol'; enexto mm is the default; savemm
+     * is a coord copy so a cancelled / hero-cell getpos cannot stick. */
+    if (game.iflags?.mon_telecontrol) {
+        const savemm = { x: mm.x, y: mm.y };
+        if (!(await control_mon_tele(mtmp, mm, rlocflags, false))) {
+            mm.x = savemm.x;
+            mm.y = savemm.y;
+        }
     }
     await rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
 }
@@ -1825,7 +1837,7 @@ async function movemon_singlemon(mtmp) {
     if (((mtmp.mstate | 0) !== MON_FLOOR)) return false;
 
     // C: m_everyturn_effect before movement gate (fog vapor even if idle)
-    m_everyturn_effect(mtmp);
+    await m_everyturn_effect(mtmp);
 
     if ((mtmp.movement | 0) < NORMAL_SPEED) return false;
 

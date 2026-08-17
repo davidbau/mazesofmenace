@@ -1,16 +1,18 @@
 // mhitm.js — Monster vs monster combat (minimal RNG-faithful peel).
-// C ref: mhitm.c — mattackm, passivemm, mdamagem;
+// C ref: mhitm.c — mdisplacem, mattackm, passivemm, mdamagem;
 //         worn.c find_mac (re-export); uhitm.c mhitm_knockback (RNG order only).
 
 import { rn2, rnd, d } from './rng.js';
-import { distmin, m_at, record_mvitals_died, undead_to_corpse, monnear } from './mon.js';
+import { distmin, m_at, record_mvitals_died, undead_to_corpse, monnear, seemimic } from './mon.js';
 import { game } from './gstate.js';
-import { pline, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel } from './display.js';
+import { pline, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel, flush_screen } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval } from './weapon.js';
-import { find_mac } from './worn.js';
+import { find_mac, which_armor } from './worn.js';
+import { update_monster_region } from './region.js';
+import { remove_worm, place_worm_tail_randomly } from './worm.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -22,6 +24,7 @@ import {
     CORPSTAT_NONE,
     CORPSTAT_HISTORIC,
     W_ARMOR,
+    W_ARMG,
     TAINT_AGE,
     NORMAL_SPEED,
     engulfing_u,
@@ -46,12 +49,16 @@ import {
     XKILL_NOCORPSE,
     nothing_happens,
     AD_RBRE,
+    STRAT_WAITMASK,
+    M_AP_TYPE,
+    M_AP_MONSTER,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, G_UNIQ, is_neuter, nonliving,
     bigmonst, is_golem, is_mplayer, is_rider, monsterNames, mons,
     is_animal, M1_SEE_INVIS, is_vampshifter, MZ_TINY, amorphous,
     is_flyer, MR_STONE, MALE, FEMALE, NEUTRAL, can_teleport,
+    touch_petrifies, poly_when_stoned, resists_ston, humanoid,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import {
@@ -80,6 +87,7 @@ const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const PM_SHADE = monsterNames.indexOf('PM_SHADE');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
+const PM_GRID_BUG = monsterNames.indexOf('PM_GRID_BUG');
 
 const NATTK = 6;
 // C ref: monattk.h — AT_SPIT is 10; AT_WEAP/AT_MAGC are 254/255 (not 10).
@@ -528,6 +536,116 @@ function could_seduce(magr, mdef, mattk) {
 
 function helpless(m) {
     return !!(m.msleeping || !m.mcanmove);
+}
+
+/**
+ * C ref: you.h mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his.
+ * Hallu uses core rn2(4) (mondata.c), not the display stream.
+ * type_is_pname still named (uniq/humanoid cover most vis displace msgs).
+ */
+function mhis_disp(mtmp) {
+    if (game.u?.Hallucination) {
+        return ['his', 'her', 'its', 'their'][rn2(4)];
+    }
+    const ptr = mtmp?.data;
+    if (is_neuter(ptr)) return 'its';
+    if (humanoid(ptr) || ((ptr?.geno | 0) & G_UNIQ)) {
+        return mtmp?.female ? 'her' : 'his';
+    }
+    return 'its';
+}
+
+/**
+ * C ref: mhitm.c mdisplacem — swap magr onto mdef's cell.
+ * update_monster_region both after both place_monster and the
+ * defender's worm tail (mhitm.c:251–257, D-1174). Not rloc_to
+ * (that updates the relocating mon before tail, D-1161).
+ * dogmove caller / should_displace / dbridge still named.
+ */
+export async function mdisplacem(magr, mdef, quietly) {
+    if (!magr || !mdef || magr === mdef) return M_ATTK_MISS;
+    const pa = magr.data;
+    const pd = mdef.data;
+    const tx = mdef.mx | 0, ty = mdef.my | 0; /* destination */
+    const fx = magr.mx | 0, fy = magr.my | 0; /* current location */
+    if (m_at(fx, fy) !== magr || m_at(tx, ty) !== mdef) return M_ATTK_MISS;
+
+    // C: 1-in-7 miss matches do_attack pet displacement
+    if (!rn2(7)) return M_ATTK_MISS;
+
+    if ((pa?.mndx | 0) === PM_GRID_BUG && magr.mx !== mdef.mx
+        && magr.my !== mdef.my) {
+        return M_ATTK_MISS;
+    }
+
+    if (mdef.mundetected) mdef.mundetected = 0;
+    if (M_AP_TYPE(mdef) && M_AP_TYPE(mdef) !== M_AP_MONSTER) {
+        seemimic(mdef);
+    }
+    mdef.msleeping = 0;
+    mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITMASK;
+    // C finish_meating — dogmove.js export would cycle; mimic AP named there
+    mdef.meating = 0;
+
+    const vis = !!(canspotmon(magr) && canspotmon(mdef));
+
+    if (touch_petrifies(pd) && !resists_ston(magr)) {
+        if (!which_armor(magr, W_ARMG)) {
+            if (poly_when_stoned(pa, game.mvitals)) {
+                await mon_to_stone(magr);
+                return M_ATTK_HIT;
+            }
+            if (!quietly && canspotmon(magr)) {
+                if (vis) {
+                    const whose = is_rider(pa) ? 'the' : mhis_disp(magr);
+                    await pline(
+                        `${Monnam(magr)} tries to move ${mon_nam(mdef)} out of ${whose} way.`,
+                    );
+                }
+                await pline(`${Monnam(magr)} turns to stone!`);
+            }
+            await monstone(magr);
+            if ((magr.mhp | 0) > 0) return M_ATTK_HIT;
+            if (magr.mtame && !vis) {
+                await pline(
+                    'You have a peculiarly sad feeling for a moment, then it passes.',
+                );
+            }
+            return M_ATTK_AGR_DIED;
+        }
+    }
+
+    // JS occupancy is mx/my (C remove_monster clears level.monsters[][]).
+    magr.mx = 0;
+    magr.my = 0;
+    if (mdef.wormno) {
+        remove_worm(mdef);
+    } else {
+        mdef.mx = 0;
+        mdef.my = 0;
+    }
+    magr.mx = tx;
+    magr.my = ty;
+    mdef.mx = fx;
+    mdef.my = fy;
+    if (mdef.wormno) {
+        place_worm_tail_randomly(mdef, fx, fy);
+    }
+    // C: after both places + defender tail — not rloc's before-tail
+    update_monster_region(magr);
+    update_monster_region(mdef);
+
+    if (vis && !quietly) {
+        const whose = is_rider(pa) ? 'the' : mhis_disp(magr);
+        await pline(
+            `${Monnam(magr)} moves ${mon_nam(mdef)} out of ${whose} way!`,
+        );
+    }
+    newsym(fx, fy);
+    newsym(tx, ty);
+    await flush_screen(0);
+
+    return M_ATTK_HIT;
 }
 
 // C ref: worn.c find_mac — body lives in worn.js (minvent ARM_BONUS).

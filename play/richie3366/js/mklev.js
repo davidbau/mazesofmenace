@@ -6452,7 +6452,7 @@ function load_earth() {
  * C ref: dat/fire.lua via load_special — Plane of Fire.
  * Named omissions: solidify/premap; water/astral planes.
  * Map load uses SpLev_Map lit epilogue (D-0569).
- * fumaroles whoosh / clear_heros_fault D-1156 (moveloop caller named).
+ * fumaroles whoosh / clear_heros_fault D-1156; moveloop EOT D-1168.
  */
 function load_fire() {
     const g = game;
@@ -8015,7 +8015,7 @@ function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax) {
  * make_gas_cloud set_heros_fault when !in_mklev; C then clear_heros_fault
  * so natural steam is not the hero's (killed vs monkilled). Norep whoosh
  * after the loop if any burst and !Deaf (D-1156).
- * Named omission: allmain.c moveloop_core caller (goto_level wired).
+ * Moveloop EOT caller D-1168; goto_level already wired.
  */
 export async function fumaroles() {
     const g = game;

@@ -2127,6 +2127,18 @@ export function obj_extract_self(obj) {
             cont.owt = weight(cont);
         }
         obj.ocontainer = null;
+    } else if (obj.where === OBJ_MIGRATING) {
+        // C mkobj.c obj_extract_self OBJ_MIGRATING → extract_nobj(&migrating_objs)
+        if (game.migrating_objs === obj) {
+            game.migrating_objs = obj.nobj || null;
+        } else {
+            for (let p = game.migrating_objs; p; p = p.nobj) {
+                if (p.nobj === obj) {
+                    p.nobj = obj.nobj || null;
+                    break;
+                }
+            }
+        }
     } else if (obj.where === OBJ_BURIED) {
         // C: extract_nobj(obj, &svl.level.buriedobjlist)
         const lvl = game.level;

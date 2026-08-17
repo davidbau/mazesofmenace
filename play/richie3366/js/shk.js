@@ -29,7 +29,8 @@
 // SetVoice; Izchak candle special_stock polish; safe_qbuf sell prompt;
 // money2u invent-full dropy; break_seq simultaneous shop shatter;
 // billobjs residual when sub_one_frombill partial quan; nextoid shop-price
-// oid match; stolen_value callers beyond revive/kick/dig/lock/costly_alteration;
+// oid match; stolen_value callers beyond revive/kick/dig/lock/costly_alteration
+// / rloc_to minvent (D-1163);
 // SetVoice; copy_oextra / free_omid / Is_candle on bill_dummy;
 // ghod_hitsu; clear_no_charge shop-rival filter / buriedobjlist;
 // mbodypart/body_part lunge text; sleep(1) door-yank pause.
@@ -59,7 +60,7 @@ import {
     BALL_CLASS, CHAIN_CLASS, FIRST_REAL_GEM, objects, POT_WATER,
 } from './objects.js';
 import {
-    newsym, pline, verbalize, docrt, flush_screen, canspotmon, canseemon,
+    newsym, pline, Norep, verbalize, docrt, flush_screen, canspotmon, canseemon,
     sensemon,
 } from './display.js';
 import { cansee } from './vision.js';
@@ -1382,7 +1383,7 @@ export async function costly_alteration(obj, alter_type) {
 /**
  * C ref: shk.c onshopbill — whether obj is on shk's bill.
  */
-function onshopbill(obj, shkp, silent) {
+export function onshopbill(obj, shkp, silent) {
     return !!onbill(obj, shkp, silent);
 }
 

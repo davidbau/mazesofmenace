@@ -26,7 +26,7 @@ import {
     count_traps,
 } from './trap.js';
 import { mattacku } from './mhitu.js';
-import { mattackm } from './mhitm.js';
+import { mattackm, mdisplacem } from './mhitm.js';
 import { castmu, AD_SPEL, AD_CLRC } from './mcastu.js';
 import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from './vision.js';
 import {
@@ -1074,32 +1074,43 @@ async function maybe_spin_web(mtmp) {
 
 /**
  * C ref: monmove.c m_everyturn_effect — fog leaves size-1 vapor each visit.
- * Named omission: polyed-hero path (is_u).
+ * Hero: allmain.c:481 once-per-player-input at current u.ux/u.uy (not
+ * ux0 — that trail is m_postmove_effect). Monster: movemon_singlemon
+ * before the movement gate (even if idle).
  */
-export function m_everyturn_effect(mtmp) {
+export async function m_everyturn_effect(mtmp) {
     if (!mtmp) return;
-    const mnum = mtmp.mnum ?? mtmp.data?.mndx ?? -1;
+    const is_u = mtmp === game.youmonst;
+    const u = game.u || {};
+    const x = is_u ? (u.ux | 0) : (mtmp.mx | 0);
+    const y = is_u ? (u.uy | 0) : (mtmp.my | 0);
+    // C compares mtmp->data == &mons[PM_FOG_CLOUD], not mnum.
+    const mnum = mtmp.data?.mndx ?? mtmp.mnum ?? -1;
     if (mnum !== PM_FOG_CLOUD) return;
-    const x = mtmp.mx | 0;
-    const y = mtmp.my | 0;
     if (!closed_door(x, y) && !visible_region_at(x, y)) {
-        create_gas_cloud(x, y, 1, 0);
+        await create_gas_cloud(x, y, 1, 0);
     }
 }
 
 /**
- * C ref: monmove.c m_postmove_effect — Hezrou stench / Steam vortex vapor
- * at pre-move cell. Called before place_monster in C.
+ * C ref: monmove.c m_postmove_effect — Hezrou stench / Steam vortex vapor.
+ * Hero: after occupy, cloud at u.ux0/u.uy0 (hack.c:2877) so the trail
+ * is behind, not under the new cell. Monster: before place_monster,
+ * cloud at mx/my (still the old cell). allmain m_everyturn youmonst
+ * (fog at u.ux) is D-1175.
  */
-export function m_postmove_effect(mtmp) {
+export async function m_postmove_effect(mtmp) {
     if (!mtmp) return;
-    const mnum = mtmp.mnum ?? mtmp.data?.mndx ?? -1;
-    const x = mtmp.mx | 0;
-    const y = mtmp.my | 0;
+    const is_u = mtmp === game.youmonst;
+    const u = game.u || {};
+    const x = is_u ? (u.ux0 | 0) : (mtmp.mx | 0);
+    const y = is_u ? (u.uy0 | 0) : (mtmp.my | 0);
+    // C compares mtmp->data == &mons[PM_*], not mnum.
+    const mnum = mtmp.data?.mndx ?? mtmp.mnum ?? -1;
     if (mnum === PM_HEZROU) {
-        create_gas_cloud(x, y, 1, 8);
+        await create_gas_cloud(x, y, 1, 8);
     } else if (mnum === PM_STEAM_VORTEX && !mtmp.mcan) {
-        create_gas_cloud(x, y, 1, 0);
+        await create_gas_cloud(x, y, 1, 0);
     }
 }
 
@@ -1645,9 +1656,14 @@ export async function m_move(mtmp, after) {
         return m_move_aggress(mtmp, nix, niy);
     }
 
-    // C: ALLOW_MDISP → mdisplacem; body deferred → treat as failed displace
+    // C: ALLOW_MDISP → mdisplacem (mhitm.c); region update is inside
+    // mdisplacem after both places (D-1174). should_displace still named
+    // (better_with_displacing stays false → MDISP-only squares skipped).
     if ((chiInfo & ALLOW_MDISP) !== 0) {
-        // Named: mdisplacem body still deferred
+        const mtmp2 = m_at(nix, niy); /* ALLOW_MDISP implies m_at is set */
+        const mstatus = await mdisplacem(mtmp, mtmp2, false);
+        if (mstatus & (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED)) return MMOVE_DIED;
+        if (mstatus & M_ATTK_HIT) return MMOVE_MOVED;
         return MMOVE_DONE;
     }
 
@@ -1660,8 +1676,8 @@ export async function m_move(mtmp, after) {
         // Named: m_can_break_boulder / m_break_boulder deferred
     }
 
-    // C: m_postmove_effect before place (Hezrou/Steam at old cell)
-    m_postmove_effect(mtmp);
+    // C: m_postmove_effect before place (Hezrou/Steam at old mx/my)
+    await m_postmove_effect(mtmp);
 
     // C: place_monster + maybe_unhide_at + mon_track_add then postmov
     mtmp.mx = nix;
@@ -1866,7 +1882,9 @@ export async function dochug(mtmp) {
 
 /**
  * C ref: monmove.c dochugw — move mon; stop occupation if newly spotted threat.
- * onscary stubbed false (Elbereth / sanctuary deferred).
+ * rloc_to_core calls this with chug FALSE (teleport.c:1762, D-1170): no
+ * dochug, only the threat check. onscary stubbed false (Elbereth /
+ * sanctuary deferred). makemon occupation still named.
  */
 export async function dochugw(mtmp, chug) {
     const x = mtmp.mx;

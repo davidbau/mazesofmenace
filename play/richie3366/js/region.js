@@ -9,12 +9,17 @@
 // fields; incremental fill_point (JS uses vision_reset);
 // create_msg_region (#if 0; never sets enter/leave_msg in live C);
 // can_enter/leave/enter/leave table indices (gas NO_CALLBACK);
-// attach_2_m; run_regions / region_danger / region_safety still use
-// geometry for inside_f (do.c goto_level in_out_region still named);
+// attach_2_m skip is m_in_out_region (D-1176; update_monster_region
+// does not skip — C); region_danger / region_safety still use geometry
+// (run_regions hero inside_f uses the REG_HERO_INSIDE bit, D-1169);
 // mfndpos m_poisongas_ok D-1159 (mon.js; this file keeps a local clone
 // — mon.js imports visible_region_at). fumaroles whoosh D-1156. Walk
-// in_out_region D-1157. Selection create D-1158.
-// rloc_to update_monster_region D-1161 (mhitm displace / dbridge named).
+// in_out_region D-1157. hurtle_step in_out_region D-1165. goto_level
+// in_out_region D-1166. mhurtle_step m_in_out_region D-1176. youmonst
+// m_postmove_effect D-1167 (trail at u.ux0). allmain moveloop fumaroles
+// D-1168. allmain youmonst m_everyturn_effect D-1175 (fog at u.ux).
+// Selection create D-1158. rloc_to update_monster_region D-1161; mhitm
+// mdisplacem D-1174 (dbridge named).
 // Level leave stashes the regions array (D-0675).
 
 import { game } from './gstate.js';
@@ -220,8 +225,9 @@ function invoke_region_cb(f_indx, reg, arg) {
 
 function is_hero_inside_gas_cloud() {
     /* C region.c:1168–1176 — REG_HERO_INSIDE bit, not geometry.
-     * Walk in_out_region (D-1157) and teleds update_player_regions
-     * keep the bit live; add_region still sets it from dest. */
+     * Walk in_out_region (D-1157), hurtle_step (D-1165), goto_level
+     * (D-1166), and teleds update_player_regions keep the bit live;
+     * add_region still sets it from dest. */
     for (const reg of game.regions || []) {
         if (hero_inside(reg) && reg.inside_f === INSIDE_GAS_CLOUD) {
             return true;
@@ -377,6 +383,7 @@ async function make_gas_cloud(cloud, damage, inside_cloud) {
     if (cloud.can_leave_f == null) cloud.can_leave_f = NO_CALLBACK;
     if (cloud.enter_f == null) cloud.enter_f = NO_CALLBACK;
     if (cloud.leave_f == null) cloud.leave_f = NO_CALLBACK;
+    if (cloud.attach_2_m == null) cloud.attach_2_m = 0;
     cloud.attach_2_u = !!cloud.attach_2_u;
     cloud.player_flags = cloud.player_flags | 0;
     {
@@ -450,7 +457,8 @@ export function clear_regions() {
  * pline1(enter_msg) after set, when the pointer is non-NULL (D-1143).
  * create_msg_region is #if 0 so live gas never sets those strings;
  * save/rest can still restore them. hack.c walk caller D-1157;
- * dothrow.c hurtle_step / do.c goto_level still named.
+ * dothrow.c hurtle_step D-1165; do.c goto_level D-1166.
+ * Monster analog is m_in_out_region (walk; mhurtle_step D-1176).
  */
 export async function in_out_region(x, y) {
     const regs = game.regions || [];
@@ -499,7 +507,8 @@ export async function in_out_region(x, y) {
  * / fill_pit / placebc. Absolute REG_HERO_INSIDE from (u.ux,u.uy).
  * attach_2_u always clear_hero_inside (C dangling else of
  * !attach_2_u && inside). No enter/leave callbacks or msgs —
- * those are in_out_region (teleok probes; hack.c walk D-1157).
+ * those are in_out_region (teleok probes; hack.c walk D-1157;
+ * dothrow.c hurtle_step D-1165; do.c goto_level D-1166).
  */
 export function update_player_regions() {
     const u = game.u || {};
@@ -518,9 +527,10 @@ export function update_player_regions() {
  * C ref: region.c update_monster_region — rloc_to_core after
  * place_monster, before worm tail (teleport.c:1685, D-1161).
  * Absolute membership from (mon.mx, mon.my). No can_enter/leave
- * or enter/leave callbacks — those are m_in_out_region (walk).
- * C does not skip attach_2_m here. mhitm displace / dbridge
- * callers still named.
+ * or enter/leave callbacks — those are m_in_out_region (walk /
+ * mhurtle_step D-1176). C does not skip attach_2_m here. mhitm
+ * mdisplacem D-1174 (after both place_monster + defender worm tail).
+ * dbridge named.
  */
 export function update_monster_region(mon) {
     const mx = mon.mx | 0;
@@ -535,17 +545,47 @@ export function update_monster_region(mon) {
 }
 
 /**
- * C ref: region.c m_in_out_region — maintain reg.monsters on move.
- * Gas clouds have no can_enter/leave/enter/leave callbacks.
- * Walk dest (x,y) before place; rloc uses update_monster_region.
+ * C ref: region.c m_in_out_region — dest (x,y) before place (walk;
+ * dothrow.c mhurtle_step D-1176). Skip attach_2_m == m_id. can_enter/
+ * can_leave may reject; then leave_f after remove, enter_f after add.
+ * Gas NO_CALLBACK never rejects. rloc uses update_monster_region
+ * (no callbacks). No enter/leave msgs (hero in_out_region only).
  */
 export function m_in_out_region(mon, x, y) {
     if (!mon) return true;
-    for (const reg of game.regions || []) {
-        if (inside_region(reg, x, y)) {
-            if (!mon_in_region(reg, mon)) add_mon_to_reg(reg, mon);
-        } else if (mon_in_region(reg, mon)) {
+    const regs = game.regions || [];
+    const mid = mon.m_id | 0;
+
+    /* First check if mon can do the move */
+    for (const reg of regs) {
+        if ((reg.attach_2_m | 0) === mid) continue;
+        const dest_in = inside_region(reg, x, y);
+        let f_indx = NO_CALLBACK;
+        const need = dest_in
+            ? (!mon_in_region(reg, mon)
+                && callback_set(f_indx = (reg.can_enter_f ?? NO_CALLBACK)))
+            : (mon_in_region(reg, mon)
+                && callback_set(f_indx = (reg.can_leave_f ?? NO_CALLBACK)));
+        if (need && !invoke_region_cb(f_indx, reg, mon)) return false;
+    }
+
+    /* Callbacks for the regions mon does leave */
+    for (const reg of regs) {
+        if ((reg.attach_2_m | 0) === mid) continue;
+        if (mon_in_region(reg, mon) && !inside_region(reg, x, y)) {
             remove_mon_from_reg(reg, mon);
+            const f_indx = reg.leave_f ?? NO_CALLBACK;
+            if (callback_set(f_indx)) invoke_region_cb(f_indx, reg, mon);
+        }
+    }
+
+    /* Callbacks for the regions mon does enter */
+    for (const reg of regs) {
+        if ((reg.attach_2_m | 0) === mid) continue;
+        if (!mon_in_region(reg, mon) && inside_region(reg, x, y)) {
+            add_mon_to_reg(reg, mon);
+            const f_indx = reg.enter_f ?? NO_CALLBACK;
+            if (callback_set(f_indx)) invoke_region_cb(f_indx, reg, mon);
         }
     }
     return true;
@@ -636,8 +676,11 @@ function expire_gas_cloud(reg) {
  * Envelope: gas-cloud ttl; fog-in-cloud TTL refresh (D-0834);
  * inside_f dam>0 hero/mon HP (D-1146); expire_gas_cloud thick
  * halve + thin diss_within / diss_seen plines.
- * Hero inside_f still uses geometry (not the bit) until do.c
- * goto_level in_out_region; walk steps now set the bit (D-1157).
+ * Hero inside_f uses hero_inside() (D-1169; C 439–441), not
+ * inside_region(u.ux,u.uy). Walk / hurtle_step / goto_level /
+ * teleds keep the bit (D-1157 / D-1165 / D-1166 / D-1130).
+ * region_danger / region_safety still geometric (named).
+ * Polyed Hezrou/Steam walk leaves a size-1 trail at u.ux0 (D-1167).
  */
 export async function run_regions() {
     const gg = game.gg || (game.gg = {});
@@ -660,8 +703,9 @@ export async function run_regions() {
     for (const reg of game.regions || []) {
         if ((reg.ttl | 0) > 0) reg.ttl = (reg.ttl | 0) - 1;
         if (reg.inside_f !== INSIDE_GAS_CLOUD) continue;
-        const u = game.u || {};
-        if (inside_region(reg, u.ux | 0, u.uy | 0)) {
+        /* C region.c:439–441 — f_indx != NO_CALLBACK &&
+         * hero_inside(reg) then callbacks[f_indx](reg, Null). */
+        if (hero_inside(reg)) {
             await inside_gas_cloud(reg, null);
             if (game.program_state?.gameover) return;
         }
@@ -843,6 +887,8 @@ function Breathless() {
 /**
  * C ref: region.c region_danger — prayer trouble: hero in damaging gas.
  * Completely harmless when nonliving/Breathless; Poison_resistance skips.
+ * Membership still uses inside_region geometry (named; C uses
+ * hero_inside()). run_regions inside_f is the bit (D-1169).
  */
 export function region_danger() {
     const u = game.u || {};
@@ -862,6 +908,7 @@ export function region_danger() {
  * C ref: region.c region_safety — clear prayer gas-cloud trouble.
  * Envelope: multi/non-expiring → safe_teleds (+ Magical_breathing if
  * still in danger); single expiring → remove_region; already gone msg.
+ * Membership still geometric (named; C uses hero_inside()).
  * Named omissions: BlindedTimeout==1 make_blinded polish.
  */
 export async function region_safety() {

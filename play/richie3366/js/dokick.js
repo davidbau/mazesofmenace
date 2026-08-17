@@ -1,7 +1,8 @@
 // dokick.js — #kick command + object fall-through (impact_drop / ship_object).
 // C ref: dokick.c — dokick, kick_dumb, kick_door, kick_nondoor, maybe_kick_monster,
 // kick_monster, kickdmg (partial); down_gate / drop_to / impact_drop (D-0961);
-// ship_object / otransit_msg (D-0984); kick_nondoor SDOOR/furniture (D-0985);
+// ship_object / otransit_msg (D-0984); obj_delivery (D-1177);
+// kick_nondoor SDOOR/furniture (D-0985);
 // throne fall_through + tree scatter/swarm (D-0986);
 // kick_object + bhit KICKED_WEAPON (D-0988);
 // Is_box container_impact/lock/lid/chest_trap + ghitm (D-0989).
@@ -21,7 +22,7 @@ import { getdir, breakchestlock } from './lock.js';
 import { near_capacity, inv_weight, weight_cap } from './invent.js';
 import {
     objects_at, obj_extract_self, add_to_migration, mksobj_at, mksobj, mkgold,
-    weight, rnd_class, place_object, stackobj, splitobj,
+    weight, rnd_class, place_object, stackobj, splitobj, delobj,
 } from './mkobj.js';
 import {
     mon_at, attack_checks, passive, killed, check_caitiff,
@@ -44,7 +45,7 @@ import {
 } from './monsters.js';
 import { objectNames, COIN_CLASS, GEM_CLASS } from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { stairway_at } from './mklev.js';
+import { stairway_at, stairway_find_from } from './mklev.js';
 import { ok_to_quest } from './quest.js';
 import {
     xname, The, cxname, An, doname, singular, distant_name, the, makeplural,
@@ -62,7 +63,8 @@ import {
     P_MARTIAL_ARTS,
     RIGHT_SIDE, TIMEOUT, FOOT, LEG, SHOPBASE, SHOP_DOOR_COST,
     MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP, MIGR_SSTAIRS,
-    MIGR_WITH_HERO, TRAPDOOR, is_hole, is_pit, Is_stronghold, Is_botlevel,
+    MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES,
+    IS_SOFT, TRAPDOOR, is_hole, is_pit, Is_stronghold, Is_botlevel,
     In_endgame, Is_airlevel, Is_waterlevel, ZAP_POS, Is_box, Is_container,
     ESHK, Has_contents, ismnum, ER_NOTHING, A_LAWFUL,
     S_LPUDDING, S_LDWASHER, G_GONE, MM_NOMSG, MM_MALE, MM_FEMALE, MM_ANGRY,
@@ -82,10 +84,10 @@ import { del_engr_at, disturb_grave } from './engrave.js';
 import { sink_backs_up } from './fountain.js';
 import { makemon, mpickobj } from './makemon.js';
 import { scatter } from './explode.js';
-import { enexto } from './teleport.js';
+import { enexto, rloco } from './teleport.js';
 import { is_art } from './artifact.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
-import { hero_breaks, thitmonst } from './dothrow.js';
+import { hero_breaks, thitmonst, breaks, breaktest } from './dothrow.js';
 import { finish_meating, obj_resists } from './dogmove.js';
 import { polymon } from './polyself.js';
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -1874,5 +1876,113 @@ export async function impact_drop(missile, x, y, dlev) {
                 `You owe ${shkname(shkp)} ${amt} ${currency(amt)} for goods lost.`,
             );
         }
+    }
+}
+
+/**
+ * C ref: dokick.c obj_delivery — place migrating_objs whose ox/oy dest
+ * matches u.uz. Callers: do.c goto_level FALSE after placebc (WITH_HERO
+ * trap-door with the hero), TRUE after check_special_room (stairs /
+ * random). C XOR: skip when (!near_hero) != (where == MIGR_WITH_HERO).
+ * nx/ny persist across the loop like C (only RANDOM/default zeros).
+ * Named omit: deliver_obj_to_mon; allmain newgame wizkit FALSE.
+ */
+export async function obj_delivery(near_hero) {
+    const u = game.u || {};
+    const uz = u.uz || {};
+    // C: nx, ny declared outside the for-loop
+    let nx = 0;
+    let ny = 0;
+
+    for (let otmp = game.migrating_objs; otmp; ) {
+        const otmp2 = otmp.nobj;
+        if ((otmp.ox | 0) !== (uz.dnum | 0)
+            || (otmp.oy | 0) !== (uz.dlevel | 0)) {
+            otmp = otmp2;
+            continue;
+        }
+
+        let where = (otmp.owornmask | 0) & 0x7fff;
+        if ((where & MIGR_TO_SPECIES) !== 0) {
+            otmp = otmp2;
+            continue;
+        }
+
+        const nobreak = (where & MIGR_NOBREAK) !== 0;
+        // C: noscatter = (where & MIGR_WITH_HERO) != 0 — bitmask 9, not
+        // the NOSCATTER flag (2048), and not equality with dest 9.
+        const noscatter = (where & MIGR_WITH_HERO) !== 0;
+        where &= ~(MIGR_NOBREAK | MIGR_NOSCATTER);
+
+        // C: if (!near_hero ^ (where == MIGR_WITH_HERO)) continue;
+        if ((!near_hero) !== (where === MIGR_WITH_HERO)) {
+            otmp = otmp2;
+            continue;
+        }
+
+        obj_extract_self(otmp);
+        otmp.owornmask = 0;
+        const fromdlev = {
+            dnum: otmp.omigr_from_dnum | 0,
+            dlevel: otmp.omigr_from_dlevel | 0,
+        };
+
+        let isladder = false;
+        switch (where) {
+        case MIGR_LADDER_UP:
+            isladder = true;
+            // FALLTHROUGH
+        case MIGR_STAIRS_UP:
+        case MIGR_SSTAIRS: {
+            const stway = stairway_find_from(fromdlev, isladder);
+            if (stway) {
+                nx = stway.sx | 0;
+                ny = stway.sy | 0;
+            }
+            break;
+        }
+        case MIGR_WITH_HERO:
+            nx = u.ux | 0;
+            ny = u.uy | 0;
+            break;
+        default:
+        case MIGR_RANDOM:
+            nx = 0;
+            ny = 0;
+            break;
+        }
+        otmp.omigr_from_dnum = 0;
+        otmp.omigr_from_dlevel = 0;
+        if (nx > 0) {
+            place_object(otmp, nx, ny);
+            const typ = game.level?.at(nx, ny)?.typ | 0;
+            if (!nobreak && !IS_SOFT(typ)) {
+                if (where === MIGR_WITH_HERO) {
+                    if (await breaks(otmp, nx, ny)) {
+                        otmp = otmp2;
+                        continue;
+                    }
+                } else if (breaktest(otmp)) {
+                    // assume it broke before player arrived, no messages
+                    delobj(otmp);
+                    otmp = otmp2;
+                    continue;
+                }
+            }
+            stackobj(otmp);
+            if (!noscatter) {
+                await scatter(nx, ny, rnd(2), 0, otmp);
+            } else {
+                newsym(nx, ny);
+            }
+        } else {
+            // dummy coords; rloco has no current position to update
+            otmp.ox = 0;
+            otmp.oy = 0;
+            if (rloco(otmp) && !nobreak && breaktest(otmp)) {
+                delobj(otmp);
+            }
+        }
+        otmp = otmp2;
     }
 }

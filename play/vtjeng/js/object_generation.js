@@ -15,10 +15,23 @@ import { is_reviver } from './mondata.js';
 import { monsterObject } from './monster_object.js';
 import { obj_no_longer_held, remove_object } from './obj.js';
 import { obj_stop_timers } from './timeout.js';
+import { block_point } from './vision.js';
 
 export function objectGenerationHooks(overrides = {}) {
     return {
         artifactCount,
+        // mkobj.c place_object() calls vision.c block_point() for a boulder
+        // landing on a square that does not already show one, level generation
+        // included: mklev.c dig_corridor() drops one on about one corridor
+        // square in fifty. js/obj.js place_object() runs it unconditionally
+        // and says there what that costs.
+        //
+        // The third argument is the lifecycle env, not a state. Binding
+        // block_point directly makes vision_reset() read env.level, find none
+        // and return in silence, which leaves the transparency index unaware
+        // of the boulder and shows up only as a screen mismatch many steps
+        // later.
+        blockPoint: (x, y, env) => block_point(x, y, env.state),
         deleteObjectLightSource: (obj, env) => {
             del_light_source(LS_OBJECT, obj, env.state);
         },
