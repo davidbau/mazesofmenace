@@ -38,6 +38,7 @@ import {
 } from './display.js';
 import { cansee, couldsee, block_point, unblock_point, recalc_block_point } from './vision.js';
 import { Monnam, mon_nam, canspotmon, setmangry, relobj } from './uhitm.js';
+import { noit_Monnam, noit_mon_nam } from './do_name.js';
 import { m_carrying, m_canseeu, mon_wield_item } from './monmove.js';
 import { rloc, rloc_to, RLOC_MSG, RLOC_ERR } from './teleport.js';
 import { makemon, set_malign, monster_by_pmidx, enexto_spawn } from './makemon.js';
@@ -96,10 +97,9 @@ const pline_The = (s) => update_topl(`The ${s}`);
 const an = (s) => (/^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`);
 const upstart = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const mungspaces = (s) => String(s ?? '').replace(/\s+/g, ' ').replace(/^ | $/g, '');
-// C ref: pronoun.c noit_Monnam / noit_mon_nam / mhe / noit_mhis — a guard is
-// never "it".
-const noit_Monnam = (m) => Monnam(m);
-const noit_mon_nam = (m) => mon_nam(m);
+// C ref: do_name.c noit_Monnam / noit_mon_nam — SUPPRESS_IT, i.e. a guard is
+// named even when the hero cannot spot it.  The shim used to be mon_nam(),
+// which was indistinguishable only while x_monnam() ignored canspotmon().
 const mhe = (m) => (m?.female ? 'she' : 'he');
 const noit_mhis = (m) => (m?.female ? 'her' : 'his');
 // C ref: do_name.c Some_Monnam(mon) — "Someone" when the hero can't spot it.

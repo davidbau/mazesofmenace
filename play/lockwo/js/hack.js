@@ -17,12 +17,13 @@ import { game } from './gstate.js';
 import { t_at as t_at_hk, trap_explanation as trap_explanation_hk } from './trap.js';
 import { domove, blocksMove, test_move_quiet } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
-import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature } from './display.js';
+import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, wrap_topl, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature } from './display.js';
 import { obj_doname, whatis_pick_inventory, carried_weight, inventoryArray, is_pick, ansimpleoname } from './invent.js';
 import { rnd } from './rng.js';
 import { vision_recalc, Blind, couldsee, cansee } from './vision.js';
 import { nhgetch } from './input.js';
 import { is_safemon, canspotmon } from './uhitm.js';
+import { distant_monnam, ARTICLE_NONE } from './do_name.js';
 import { dist2, distmin } from './hacklib.js';
 import { worm_seg_at } from './worm.js';
 import { monster_by_pmidx } from './makemon.js';
@@ -38,8 +39,8 @@ import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
          DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
          AM_MASK, AM_SANCTUM, Amask2align, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
          IS_WALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_AIR, IS_POOL, IS_LAVA,
-         IS_WATERWALL, In_sokoban, Is_rogue_level,
-         Is_waterlevel, isok, VIBRATING_SQUARE } from './const.js';
+         IS_WATERWALL, In_sokoban, Is_rogue_level, CLOUD, Is_airlevel,
+         Is_waterlevel, isok, VIBRATING_SQUARE, STRAT_WAITMASK, I_SPECIAL } from './const.js';
 
 // Run direction deltas for the capital-letter run commands (and the
 // 'G'/'g' prefix followed by a movement key).  C: xdir[]/ydir[].
@@ -1377,11 +1378,17 @@ function terrain_description(x, y) {
     // such cells are only ever painted as blank S_stone.
     if (!loc.seenv && loc.remembered_glyph == null) return 'unexplored area';
     const typ = loc.typ;
-    // unexplored / never-seen rock reads as solid stone
-    if (typ === STONE) {
-        return (loc.seenv || loc.disp_ch && loc.disp_ch !== ' ')
-            ? 'dark part of a room' : 'solid stone';
-    }
+    // C ref: pager.c:779 do_screen_description() case S_stone —
+    //     if (!levl[x][y].seenv)                       "unexplored"
+    //     else if (Underwater && !Is_waterlevel)       "land"/"unknown"
+    //     else if (typ == STONE || typ == SCORR)       "stone"
+    //     else FALLTHROUGH to defsyms[S_stone].explanation ("dark part of a
+    //         room" -- i.e. a remembered ROOM square drawn as blank, which the
+    //         ROOM arm below handles on its own).
+    // So real rock is "stone", never "dark part of a room" and never the
+    // "solid stone" wording (that string is hack.c's movement message).
+    // Underwater is not modelled (no covered hero is submerged).
+    if (typ === STONE) return loc.seenv ? 'stone' : 'unexplored';
     { const _t = t_at_hk(x, y); if (_t && _t.tseen) return trap_explanation_hk(_t.ttyp); }
     if (IS_WALL(typ)) return 'wall';
     if (typ === DOOR) {
@@ -1418,13 +1425,25 @@ function terrain_description(x, y) {
     if (typ === MOAT) return 'moat';
     if (typ === WATER)
         return Is_waterlevel(game.u?.uz) ? 'limitless water' : 'wall of water';
-    if (typ === STAIRS) return stair_descr(x, y);
+    if (typ === STAIRS) {
+        const sd = stair_descr(x, y);
+        // C ref: pager.c do_screen_description():1604 — lookat()'s "staircase
+        // down" is rewritten on the quest start level for a hero the leader has
+        // not yet sent on the quest, matching goto_level()'s own refusal.
+        return (sd === 'staircase down' && on_qstart_level_hk() && !ok_to_quest_hk())
+               ? 'blocked staircase down' : sd;
+    }
     if (typ === FOUNTAIN) return 'fountain';
     // C ref: defsym.h PCHAR desc field (defsyms[].explanation), the string
     // do_screen_description() hands back as *firstmatch for a single cmap
     // match.  Without these the catch-all below described a tree as "floor of
     // a room" (seed0367 step 155, autodescribe over the Priest quest home).
     if (typ === TREE) return 'tree';
+    // C ref: pager.c lookat():765 case S_cloud — CLOUD gets its own wording
+    // rather than defsyms[S_cloud].explanation ("cloud"); '#' shares its symbol
+    // with corridor/bars/tree so found>1 always sends S_cloud through lookat().
+    if (typ === CLOUD)
+        return Is_airlevel(game.u?.uz) ? 'cloudy area' : 'fog/vapor cloud';
     if (typ === IRONBARS) return 'iron bars';
     if (typ === THRONE) return 'opulent throne';
     if (typ === SINK) return 'sink';
@@ -1441,8 +1460,8 @@ function terrain_description(x, y) {
     // Secret doors/corridors are DISPLAYED as their concealing terrain, and C
     // dispatches on the displayed glyph.
     if (typ === SDOOR) return 'wall';
-    if (typ === SCORR) return (loc.seenv || (loc.disp_ch && loc.disp_ch !== ' '))
-                              ? 'dark part of a room' : 'solid stone';
+    // pager.c:788 groups SCORR with STONE in the same "stone" arm.
+    if (typ === SCORR) return loc.seenv ? 'stone' : 'unexplored';
     if (typ === DRAWBRIDGE_UP) return 'raised drawbridge';
     if (typ === DRAWBRIDGE_DOWN) return 'lowered drawbridge';
     return 'floor of a room';
@@ -1506,6 +1525,18 @@ function known_branch_stairs_local(sway) {
         && sway.tolev.dnum !== (game.u?.uz?.dnum ?? 0)
         && sway.u_traversed);
 }
+// C ref: dungeon.c on_level(&u.uz, &qstart_level) — game.qstart_level is filled
+// in by dungeon.js's branch table.
+function on_qstart_level_hk() {
+    const uz = game.u?.uz, q = game.qstart_level;
+    return !!(uz && q && uz.dnum === q.dnum && uz.dlevel === q.dlevel);
+}
+
+// C ref: quest.c ok_to_quest() — `((got_quest || got_thanks) && is_pure() > 0)
+// || killed_leader`.  questpgr.js tracks got_quest; the other two flags have no
+// counterpart here, and neither can be true before got_quest is.
+function ok_to_quest_hk() { return !!game._quest_got_quest; }
+
 function stair_descr(x, y) {
     const up = (game.level?.upstair?.x === x && game.level?.upstair?.y === y);
     const sway = stairway_at_local(x, y);
@@ -1747,6 +1778,15 @@ async function getpos_render(message, cx, cy) {
     await flush_screen(1);
     const disp = game.nhDisplay;
     if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+    // C ref: topl.c redotoplin():139 — auto_describe()'s custompline() goes
+    // through update_topl like any other message, so a description long enough
+    // to word-wrap onto a second row blocks on --More-- right away (the long
+    // "a doorway or the floor of a room or ..." cmap list does).
+    if (message && wrap_topl(message).length > 1) {
+        await topl_more();
+        game._toplin = 0;
+        game._pending_message = '';
+    }
 }
 
 // C ref: getpos.c getpos(ccp, force, goal) — cursor-positioning loop.  The loop
@@ -1777,9 +1817,16 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
     // update_topl("(For instructions...)") call.
     const TIP_GETPOS_BIT = 1 << 4;
     const willShowTip = !((game.context.tips || 0) & TIP_GETPOS_BIT);
-    if (verbose && willShowTip && game._toplin === 1) {
+    // The pending line is paged whether it came from the verbose "Please move
+    // the cursor to ..." or the quick "Pick a monster, object or location."
+    // (pager.c:1908): what forces the --More-- is the tip WINDOW going up over
+    // an unacknowledged message window, not flags.verbose.
+    const softPending = !!game._pending_message
+        && game._toplinSoft === game._pending_message;
+    if (willShowTip && (game._toplin === 1 || softPending)) {
         await topl_more();
         game._toplin = 0;
+        game._toplinSoft = null;
         game._pending_message = '';
     }
 
@@ -2097,7 +2144,10 @@ export async function do_farlook() {
     // C: flags.verbose is off in our rc-less default, and quick suppresses the
     // verbose form, so the prompt is "Pick <what>." (custompline NHKF path).
     const WHAT = 'a monster, object or location';
-    game._pending_message = `Pick ${WHAT}.`;
+    // C ref: pager.c:1908 `pline("Pick %s.", what_is_a_location)` — a real
+    // pline, so the line is left unacknowledged; the tip window getpos() raises
+    // next has to page it with --More-- before it can draw.
+    await pline(`Pick ${WHAT}.`);
     await flush_screen(1);
 
     const cc = await getpos(WHAT, u.ux, u.uy, null);
@@ -2112,7 +2162,10 @@ export async function do_farlook() {
     } else {
         desc = look_pick_description(cc.x, cc.y).text;
     }
-    game._pending_message = desc;
+    // C ref: pager.c:1919 `putmixed(WIN_MESSAGE, 0, out_str)` — tty routes that
+    // through update_topl(), so a description too wide for one row wraps and
+    // blocks on --More-- before do_look returns.
+    await update_topl(desc);
     await flush_screen(1);
     const disp = game.nhDisplay;
     if (disp?.setCursor) disp.setCursor(cc.x - 1, cc.y + 1);
@@ -2332,8 +2385,19 @@ export async function monster_detect(otmp, mclass) {
     await update_topl('You sense the presence of monsters.');
 
     const verbose = game.flags?.verbose !== false;
-    await getpos('monster of interest', u.ux, u.uy, null, /*force=*/false,
-                 verbose, /*travelMode=*/false, /*detectMode=*/true);
+    // C ref: detect.c:854 — `EDetect_monsters |= I_SPECIAL` for the duration of
+    // the browse, so canspotmon() (== canseemon || sensemon) is TRUE for every
+    // detected monster and autodescribe can NAME them ("small mimic") instead
+    // of falling back to x_monnam's unseen "it".
+    const props = (game.u.uprops = game.u.uprops || {});
+    const saveE = props.EDetect_monsters;
+    props.EDetect_monsters = (saveE | 0) | I_SPECIAL;
+    try {
+        await getpos('monster of interest', u.ux, u.uy, null, /*force=*/false,
+                     verbose, /*travelMode=*/false, /*detectMode=*/true);
+    } finally {
+        props.EDetect_monsters = saveE;
+    }
 
     if (game._pending_message) {
         await topl_more();
@@ -2990,30 +3054,22 @@ function mon_hidden_suffix(mtmp) {
     return '';
 }
 
-// C ref: pager.c look_at_monster() — the health/tame/peaceful-prefixed monster
-// name.  monhealthdescr is disabled in C (#if 0), so only the tame/peaceful
-// adjective + distant_monnam (bare monster type name) matter for the sessions
-// modelled here; the ", holding you"/", asleep"/etc. suffixes aren't reached.
+// C ref: pager.c:422 look_at_monster() — the health/tame/peaceful-prefixed
+// monster name.  monhealthdescr is disabled in C (#if 0), so the adjective plus
+// distant_monnam() is the whole name; the "isn't able to move" suffixes below
+// are what turn the bones ghost into "Elara's ghost, asleep".
 function look_at_monster_desc(mtmp) {
-    // C: distant_monnam(mtmp, ARTICLE_NONE) — the bare monster type name (or a
-    // given name); mgivenname is used when present.  x_monnam's isshk branch
-    // (do_hallu/do_mappear false here) replaces the whole name with the
-    // shopkeeper's personal name, only appending "the <species>" when the
-    // shopkeeper isn't the plain shopkeeper species (e.g. polymorphed) or is
-    // invisible.
-    let name;
-    if (mtmp.isshk) {
-        name = mtmp.eshk?.shknam || mtmp.data?.name || 'shopkeeper';
-        if ((mtmp.data?.name !== 'shopkeeper') || mtmp.minvis) {
-            name += ' the ' + (mtmp.minvis ? 'invisible ' : '')
-                + (mtmp.data?.name || mtmp.data?.pmname || 'monster');
-        }
-    } else {
-        const given = mtmp.mgivenname || mtmp.mextra?.mgivenname;
-        name = given || mtmp.data?.name || mtmp.data?.pmname || 'monster';
-    }
+    // C: distant_monnam(mtmp, ARTICLE_NONE, buf) — which is x_monnam(called),
+    // so the shopkeeper / given-name / "<name>'s ghost" spellings all come from
+    // the one place that already models them, instead of a local subset.
+    let buf = distant_monnam(mtmp, ARTICLE_NONE);
     const adj = mtmp.mtame ? 'tame ' : (mtmp.mpeaceful ? 'peaceful ' : '');
-    return `${adj}${name}${mon_hidden_suffix(mtmp)}`;
+    buf = `${adj}${buf}`;
+    // C ref: pager.c:455-464 — "if mtmp isn't able to move ... say so".
+    if (mtmp.mfrozen) buf += ', can\'t move (paralyzed or sleeping or busy)';
+    else if (mtmp.msleeping) buf += ', asleep';
+    else if ((mtmp.mstrategy & STRAT_WAITMASK) !== 0) buf += ', meditating';
+    return `${buf}${mon_hidden_suffix(mtmp)}`;
 }
 
 // C ref: pager.c look_all() — list monsters (do_mons) or objects (!do_mons) in
@@ -3281,6 +3337,14 @@ export async function dotele_wizard() {
         await teleds_hero(cc.x, cc.y);
     } else {
         await pline('Sorry...');
+        // C ref: topl.c update_topl() leaves toplin == TOPLINE_NEED_MORE, and
+        // wintty.c:1902 tty_display_nhwindow()'s NHW_MENU arm pages an
+        // unacknowledged topline with more() BEFORE laying down the overlay.
+        // safe_teleds() lands the hero on the chained ball/chain pile, whose
+        // look_here() menu must therefore be preceded by a "Sorry...--More--"
+        // frame.  Set per call site: js/display.js pline() deliberately does not
+        // raise _toplin globally (measured -191 public).
+        game._toplin = 1;
         await safe_teleds_hero();
     }
     return 1;

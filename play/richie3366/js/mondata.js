@@ -1,7 +1,7 @@
 // mondata.js — Monster name lookup + growth (partial).
 // C ref: mondata.c name_to_mon / name_to_monplus / name_to_monclass /
 // little_to_big / big_to_little + monstseesu / monstunseesu
-// (seen_resistance) + resist_conflict.
+// (seen_resistance) + resist_conflict + cantvomit (D-1127).
 
 import { game } from './gstate.js';
 import { couldsee } from './vision.js';
@@ -590,6 +590,26 @@ export function can_blow(mtmp) {
         if (u.Strangled || (u.EStrangled | 0)) return false;
     }
     return true;
+}
+
+/**
+ * C ref: mondata.c cantvomit — rats/mice (S_RODENT except rock mole /
+ * woodchuck) and horses cannot vomit. Compare mndx (JS mons() is a
+ * fresh object; C uses &mons[PM_*]).
+ */
+export function cantvomit(ptr) {
+    if (!ptr) return false;
+    const mndx = ptr.mndx | 0;
+    if (ptr.mlet === 'S_RODENT'
+        && mndx !== pm('ROCK_MOLE')
+        && mndx !== pm('WOODCHUCK')) {
+        return true;
+    }
+    if (mndx === pm('WARHORSE') || mndx === pm('HORSE')
+        || mndx === pm('PONY')) {
+        return true;
+    }
+    return false;
 }
 
 export { MALE, FEMALE, NEUTRAL, NUM_MGENDERS };

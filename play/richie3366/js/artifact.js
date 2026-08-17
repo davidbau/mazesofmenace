@@ -52,10 +52,11 @@ const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 export { NROFARTIFACTS };
 import {
     ART_NONARTIFACT,
+    ART_EXCALIBUR,
     ART_GRIMTOOTH,
     ART_GRAYSWANDIR,
 } from './generated/artifacts_data.js';
-export { ART_NONARTIFACT, ART_GRIMTOOTH, ART_GRAYSWANDIR };
+export { ART_NONARTIFACT, ART_EXCALIBUR, ART_GRIMTOOTH, ART_GRAYSWANDIR };
 
 // C ref: include/artifact.h — subset used by touch/wish / spec_applies
 export const SPFX_NOGEN = 0x00000001;
@@ -134,11 +135,42 @@ export function artifacts_globals_init() {
         bones: 0,
         rnd: 0,
     }));
+    // C: xint16 artidisco[NROFARTIFACTS] — save/rest still named.
+    game.artidisco = Array(NROFARTIFACTS).fill(0);
 }
 
 function artilist() {
     if (!_artilist) artifacts_globals_init();
     return _artilist;
+}
+
+/**
+ * C ref: artifact.c artiname
+ * @param {number} artinum
+ * @returns {string}
+ */
+export function artiname(artinum) {
+    if (artinum <= 0 || artinum > NROFARTIFACTS) return '';
+    const list = artilist();
+    return list[artinum]?.name || '';
+}
+
+/**
+ * C ref: artifact.c discover_artifact — insert m into artidisco[].
+ * Full-table `impossible` named omit (NROFARTIFACTS slots).
+ * @param {number} m
+ */
+export function discover_artifact(m) {
+    if (!game.artidisco) {
+        game.artidisco = Array(NROFARTIFACTS).fill(0);
+    }
+    const artidisco = game.artidisco;
+    for (let i = 0; i < NROFARTIFACTS; i++) {
+        if (artidisco[i] === 0 || artidisco[i] === m) {
+            artidisco[i] = m;
+            return;
+        }
+    }
 }
 
 /** C ref: artifact.c get_artifact */

@@ -1,5 +1,6 @@
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen,
+// suppress_map_output (D-1126),
 // shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
 import { game } from './gstate.js';
@@ -1966,12 +1967,23 @@ function feel_can_reach_floor() {
 }
 
 /**
+ * C ref: display.c suppress_map_output / _suppress_map_output.
+ * gi.in_mklev || program_state.saving || program_state.restoring
+ * (hangup done_hup still named).
+ */
+export function suppress_map_output() {
+    if (game.in_mklev || game.gi?.in_mklev) return true;
+    const ps = game.program_state || {};
+    return !!(ps.saving || ps.restoring);
+}
+
+/**
  * C ref: display.c feel_location — Blind map update for hero cell or
  * adjacent (boulder-push). Reachable arm: engr_can_be_felt →
  * _map_location(show) → Punished bc_felt → ROOM/CORR dark adjust;
  * sensed mon overlay when !u_at.
  * Named omissions: full levitate-arm boulder/do_room_glyph litcorr
- * polish; MATCH_WARN_OF_MON in sensemon overlay; _suppress_map_output.
+ * polish; MATCH_WARN_OF_MON in sensemon overlay.
  */
 export function feel_location(x, y) {
     if (!isok(x, y)) return;
@@ -3301,7 +3313,7 @@ export async function bot() {
 /**
  * C ref: botl.c timebot — status update when only svm.moves changed.
  * VIA_WINDOWPORT → stat_update_time deferred; tty path → full bot().
- * Named omissions: gb.bot_disabled; suppress_map_output hangup/restore.
+ * Named omissions: gb.bot_disabled; hangup done_hup in suppress_map_output.
  */
 export async function timebot() {
     const flags = game.flags || {};

@@ -95,7 +95,7 @@ import {
     maybe_half_phys, nomul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms,
 } from './hack.js';
-import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap_once_vault } from './teleport.js';
+import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap } from './teleport.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS,
@@ -3703,23 +3703,16 @@ async function trapeffect_slp_gas_trap(mtmp, trap, _trflags) {
 }
 
 /**
- * C ref: trap.c trapeffect_telep_trap — hero tele_trap once→vault_tele;
+ * C ref: trap.c trapeffect_telep_trap — hero seetrap then tele_trap;
  * monster mtele_trap.
- * Envelope: once vault deltrap+vault_tele; mon in_sight pline+seetrap.
- * Named omissions: Antimagic wrenching pline; teledest/tele hero arms;
- * fixed-dest mon displace; seetrap before hero vault_tele.
+ * Envelope: tele_trap wrenching (D-1120) / once vault; mon in_sight
+ * pline+seetrap. Named omissions: teledest/tele hero arms; fixed-dest
+ * mon displace.
  */
 async function trapeffect_telep_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
         seetrap(trap);
-        if (trap.once) {
-            // C: deltrap then vault_tele (keep trap off before landing)
-            deltrap(trap);
-            newsym(game.u.ux, game.u.uy);
-            await tele_trap_once_vault();
-            return Trap_Effect_Finished;
-        }
-        // teledest / tele() hero arms deferred
+        await tele_trap(trap);
         return Trap_Effect_Finished;
     }
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);

@@ -760,6 +760,13 @@ for (const o of objects)
               || o.name === 'cloak of magic resistance'))
         o.oc_oprop = ANTIMAGIC_PROP;
 
+// C ref: include/objects.h:486 HELM_OF_TELEPATHY — the only non-amulet row with
+// oc_oprop TELEPAT, which worn.c recalc_telepat_range() counts.
+const TELEPAT_PROP = 30; // prop.h TELEPAT
+for (const o of objects)
+    if (o && o.name === 'helm of telepathy')
+        o.oc_oprop = TELEPAT_PROP;
+
 // C ref: include/objects.h RING()/AMULET() `power` argument — the oc_oprop of
 // every ring and amulet, i.e. the prop.h property the item confers while worn.
 // Keyed by NAME for the same reason as above.  Enlightenment reads this to
@@ -851,10 +858,26 @@ function Inhell() {
 // of this same C function for the full rationale.
 function level_difficulty() { return level_difficulty_c(); }
 
+// C ref: o_init.c:53 setgemprobs(dlev), reached from oinit() with &u.uz.  Its
+// `lev` is the LEDGER number (dungeon.c ledger_no: dlevel + the dungeon's
+// ledger_start), capped at maxledgerno() — NOT depth(): every Gnomish Mines
+// level sits ~25 ledger entries below its depth, so a depth-based lev zeroed
+// seven gems C leaves generatable and reweighted the rest (seed0014's mined
+// obsidian came out as agate).
+function gem_lev() {
+    const dgns = game.dungeons, uz = game.u?.uz;
+    if (!dgns || !uz) return 0;
+    const n = game.n_dgns ?? dgns.length;
+    const ledger = (dgns[uz.dnum ?? 0]?.ledger_start ?? 0) + (uz.dlevel ?? 1);
+    const maxledger = n
+        ? (dgns[n - 1]?.ledger_start ?? 0) + (dgns[n - 1]?.num_dunlevs ?? 0) : 0;
+    return Math.min(ledger, maxledger);
+}
+
 function gem_probability(obj) {
     if (obj.otyp < DILITHIUM_CRYSTAL || obj.otyp > LAST_REAL_GEM)
         return obj.oc_prob;
-    const lev = Math.max(0, level_difficulty() || 0);
+    const lev = Math.max(0, gem_lev());
     let first = DILITHIUM_CRYSTAL + Math.max(0, 9 - Math.trunc(lev / 3));
     if (first > LAST_REAL_GEM) first = LAST_REAL_GEM + 1;
     if (obj.otyp < first) return 0;

@@ -46,7 +46,7 @@ import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, ACCESSIBLE,
 import { Blind } from './vision.js';
 import { exercise, adjalign } from './attrib.js';
 import { DEADMONSTER, Protection_from_shape_changers, mmove_of, base_mmove,
-         healmon, mvitals_died } from './mon.js';
+         healmon, mvitals_died, sensemon } from './mon.js';
 import { MFLAGS1, MFLAGS2, M1_WALLWALK, M2_NASTY, M2_ORC, M2_UNDEAD, M2_DEMON,
          M2_COLLECT, M2_HUMAN, M2_HOSTILE, M2_PNAME, humanoid } from './monflags_data.js';
 // C ref: include/monflag.h G_UNIQ (0x1000) — generated only once.
@@ -61,7 +61,7 @@ import { mattk_of, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_STNG, AT_BUTT, AT_TUCH
 import { mkcorpstat, mkobj, mksobj, CORPSE, FIGURINE, place_object, WEAPON_CLASS,
          TOOL_CLASS, GEM_CLASS, SPBOOK_CLASS, FOOD_CLASS, objects, COIN_CLASS,
          STRANGE_OBJECT } from './mkobj.js';
-import { mon_nocorpse, undead_to_corpse } from './makemon.js';
+import { mon_nocorpse, undead_to_corpse, name_to_pmidx } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { gethungry } from './allmain.js';
 import { is_weptool, objectBaseName, simple_typename, is_plural, otense,
@@ -104,7 +104,10 @@ export function canspotmon(mtmp) {
     // Blind/telepathy not modelled in the starter state; a lit-room adjacent
     // pet is simply seen when its square is in view.
     if (game.u?.uswallow) return true;
-    return canseemon_shared(mtmp);
+    // C ref: display.h:129 canspotmon(mon) = canseemon(mon) || sensemon(mon).
+    // The sensemon half is what makes a monster the hero only knows about
+    // through Detect_monsters nameable ("small mimic", not "it").
+    return canseemon_shared(mtmp) || sensemon(mtmp);
 }
 
 export function is_safemon(mtmp) {
@@ -287,7 +290,7 @@ async function overexert_hp() {
 // 1.  The overexert_hp() arm was previously hardcoded away as "never fires for
 // the unencumbered starter hero": it fires on 2 turns in 3 for ANY hero at
 // Strained or worse, and its exercise(A_CON, FALSE) draws rn2(2).
-async function overexertion() {
+export async function overexertion() {
     gethungry(); // hack.c:3056 — "consume extra nutrition during combat"
     if (((game.moves || 0) % 3) !== 0 && near_capacity() >= HVY_ENCUMBER)
         await overexert_hp();
@@ -309,11 +312,6 @@ function canseemon(mtmp) {
     return !!cansee(mtmp.mx, mtmp.my);
 }
 
-// C ref: display.c sensemon(mon) — telepathy / detect-monster sensing.  No
-// covered session carries telepathy or a detect-monster effect, so the hero
-// never senses a monster magically.  Same stub as mon.js's copy.
-function sensemon(_mtmp) { return false; }
-
 // C ref: mondata.h hides_under(ptr) = (mflags1 & M1_CONCEAL).  Same pmidx set
 // as monmove.js's hides_under_pm (cave spider, centipede, scorpion, garter
 // snake, snake, water moccasin, pit viper, cobra); duplicated locally rather
@@ -329,7 +327,7 @@ const S_MIMIC_MCLS = 13; // monsym.h S_MIMIC
 // C ref: rm.h glyph_is_invisible(glyph) — a square remembered as holding a
 // sensed-but-unseen monster.  display.js tracks this per-square as `invisMon`
 // (see game.js's rm-cell shape / map_invisible()).
-function glyph_is_invisible(x, y) {
+export function glyph_is_invisible(x, y) {
     return !!game.level?.at(x, y)?.invisMon;
 }
 
@@ -355,7 +353,7 @@ const FURNITURE_EXPLANATION = {
 
 // C ref: mon.c seemimic(mtmp) — a discovered mimic drops its object/furniture
 // appearance and is redrawn as its true form.
-function seemimicLocal(mtmp) {
+export function seemimicLocal(mtmp) {
     mtmp.m_ap_type = 0;
     mtmp.mappearance = 0;
     newsym(mtmp.mx, mtmp.my);
@@ -554,7 +552,7 @@ async function stumble_onto_mimic(mtmp) {
 // prompt the recorded input streams can't drive, not modeled).  Returns TRUE
 // when the "attack" is fully resolved here (do_attack must return
 // immediately, no swing this turn); FALSE means fall through to hitum().
-async function attack_checks(mtmp) {
+export async function attack_checks(mtmp) {
     // uhitm.c:216 — clear the monster's "waiting for you" AI flag now that
     // you're adjacent enough to attack it (STRAT_WAITMASK = 0x00ff0000).
     if (mtmp.mstrategy != null) mtmp.mstrategy &= ~0x00ff0000;
@@ -572,8 +570,12 @@ async function attack_checks(mtmp) {
     // monster marker there.
     if (!canspotmon(mtmp) && !glyphWarning && !glyphInvisible
         && !(!Blind() && mtmp.mundetected && hides_under_pm(mtmp.data))) {
-        const { pline } = await import('./display.js');
-        await pline("Wait!  There's something there you can't see!");
+        // update_topl(), not pline(): C's pline() routes through update_topl(),
+        // which more()s an unacknowledged topline that the new text will not fit
+        // beside.  Reaching here right after a monster's message (the bullwhip
+        // disarm's "yanks ... to the floor!") swallowed that --More-- boundary.
+        const { update_topl } = await import('./display.js');
+        await update_topl("Wait!  There's something there you can't see!");
         map_invisible(gx, gy);
         // dmgtype(AD_STCK)+set_ustuck sticky-hold branch: large/giant-mimic
         // only, not modeled (see stumble_onto_mimic's note above).
@@ -923,7 +925,7 @@ function Role_if_SAMURAI() { return roleMnum() === PM_SAMURAI; }
 // unported: adjalign() moves u.ualign.record, which is the MODULUS of
 // peace_minded()'s rn2(16 + u.ualign.record) for every monster generated
 // afterwards (the same mechanism killed() documents below).
-async function check_caitiff(mtmp) {
+export async function check_caitiff(mtmp) {
     const u = game.u;
     if ((u.ualign?.record ?? 0) <= -10) return;
     // C's pline() is update_topl(): the caitiff line OPENS the swing's topline
@@ -1100,11 +1102,13 @@ async function missum(mon) {
         await update_topl(`You miss ${mon_nam(mon)}.`);
     else
         await update_topl('You miss it.');
-    // C ref: uhitm.c missum() — `if (!mdef->msleeping && mdef->mcanmove)
-    // wakeup(mdef, TRUE);`.  The via_attack half (setmangry) was omitted, so a
-    // missed swing at a peaceful monster never angered it.
+    // C ref: uhitm.c:5212 missum() — `if (!helpless(mdef)) wakeup(mdef, TRUE);`,
+    // and helpless(mon) is (msleeping || !mcanmove).  The via_attack half
+    // (setmangry) was omitted, so a missed swing at a peaceful monster never
+    // angered it.  The unconditional `msleeping = 0` that used to follow undid
+    // the guard: a MISS does not wake a sleeper, which is why the bones ghost
+    // is still "asleep" when the farlook that follows names it.
     if (!mon.msleeping && mon.mcanmove) await wakeupAttack(mon, true);
-    mon.msleeping = 0;
 }
 
 // C ref: uhitm.c hmon(mon, obj, thrown, dieroll) — the thin wrapper around
@@ -1320,7 +1324,7 @@ async function hmon_hitmon_pet(mon, dmg, destroyed) {
 // C ref: dog.c abuse_dog(mtmp) — reduce tameness.  The yelp/growl choice draws
 // rn2(mtame) (short-circuited away once mtame reaches 0); both sounds are
 // RNG-free, and growl() is deliberately silent in this port (see wakeupAttack).
-async function abuse_dog(mtmp) {
+export async function abuse_dog(mtmp) {
     if (!mtmp.mtame) return;
     // Aggravate_monster/Conflict (the mtame/=2 arm) aren't modelled here.
     mtmp.mtame--;
@@ -1348,7 +1352,7 @@ async function abuse_dog(mtmp) {
 // and floating eye (d(m_lev+1, damd)) has a real one, and those are among the
 // first monsters any hero meets: each swing at a blue jelly draws five rolls
 // here that this port was not making.
-async function passive(mon, weapon, mhit, malive, aatyp) {
+export async function passive(mon, weapon, mhit, malive, aatyp) {
     const ptr = mon.data;
     const attacks = mattk_of(ptr);
     const NATTK = 6;
@@ -1640,10 +1644,20 @@ export async function killed(mon, opts) {
         u.uconduct.killer = (u.uconduct.killer || 0) + 1;
     }
     if (!nomsg) {
-        if (canspotmon(mon))
-            await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} ${mon_nam(mon)}!`);
-        else
-            await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} it!`);
+        // C ref: mon.c xkilled():3506 — a TAME victim is named through
+        // x_monnam(..., "poor", ...) ("You kill the poor kitten!"), and a pet
+        // with a given name drops the article instead.  Hallucination hides the
+        // given name, so namedpet is gated on it.  The extra five characters
+        // are load-bearing: they push the topline over 80 columns and move the
+        // --More-- boundary (seed0383 step 178).
+        const namedpet = !!(mon?.mgivenname || mon?.mextra?.mgivenname)
+            && !game.u?.uhallu;
+        const wasinside = !!(game.u?.uswallow && game.u?.ustuck === mon);
+        const who = !(wasinside || canspotmon(mon)) ? 'it'
+            : !mon.mtame ? mon_nam(mon)
+              : x_monnam(mon, namedpet ? 0 /*ARTICLE_NONE*/ : 1 /*ARTICLE_THE*/,
+                         'poor', namedpet ? SUPPRESS_SADDLE : 0, false);
+        await update_topl(`You ${nonliving(mon) ? 'destroy' : 'kill'} ${who}!`);
     }
 
     // C ref: mon.c:3438 unstuck(mtmp), reached via mondead -> m_detach ->
@@ -1808,6 +1822,13 @@ export async function killed(mon, opts) {
                 adjalign(Math.trunc(ALIGNLIM() / 4));
         } else if (mon.mtame) {
             adjalign(-15);
+            // C ref: mon.c xkilled():3705 — "your god is mighty displeased".
+            // Killing a pet always sounds off, and the hallucinatory variant is
+            // the longer of the two, which is what pushes the topline past 80
+            // columns and forces the --More-- (seed0383 step 178).
+            await update_topl(game.u?.uhallu
+                ? 'You hear the studio audience applaud!'
+                : 'You hear the rumble of distant thunder...');
         } else if (mon.mpeaceful) {
             adjalign(-5);
         }
@@ -2073,6 +2094,13 @@ export function mon_pmname(mtmp) {
     if (!pair) return n || 'monster';
     return pair[mtmp.female ? 1 : 0] || n;
 }
+// C ref: monsym.h PM_GHOST — resolved once off mons[] rather than transcribed,
+// so the mons[] table can grow without silently re-pointing this test.
+let _pm_ghost = -1;
+function PM_GHOST() {
+    if (_pm_ghost < 0) _pm_ghost = name_to_pmidx('ghost') ?? -2;
+    return _pm_ghost;
+}
 export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
     const base = mon_pmname(mtmp);
     const given = mtmp?.mgivenname || mtmp?.mextra?.mgivenname;
@@ -2087,15 +2115,23 @@ export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
         return buf;
     }
 
-    // C ref: do_name.c x_monnam do_it — an unspottable monster (e.g. while the
-    // hero is blind) is just "it" unless ARTICLE_YOUR was requested.  Gated on
-    // Blind specifically (rather than the broader !canspotmon) to avoid shifting
-    // coincidental matches in early-diverged sessions whose monsters are merely
-    // out of line-of-sight; the recorded seed5006 case is blindfold-blindness.
-    if (article !== 3 && mtmp && mtmp !== game.u?.usteed
-        && (game.u?.ublindf || (game.u?.blinded || 0) > 0 || game.ublindf)
-        && !canspotmon(mtmp))
-        return 'it';
+    // C ref: do_name.c x_monnam do_it — any monster the hero cannot spot is
+    // just "it".  Blindness is only ONE way to fail canspotmon(): a monster in
+    // an unlit square a few steps away is equally unseen, and C prints "It
+    // hits!" / "You kick it." for it.  AUGMENT_IT upgrades that to
+    // "someone"/"something" (and rolls rn2(2) while hallucinating).
+    const do_it = !canspotmon(mtmp) && article !== 3
+        && !game.program_state?.gameover && mtmp && mtmp !== game.u?.usteed
+        && !(game.u?.uswallow && game.u?.ustuck === mtmp)
+        && !(_suppress & SUPPRESS_IT);
+    if (do_it) {
+        if (!(_suppress & AUGMENT_IT)) return 'it';
+        // C: !is_animal excludes all Y; !mindless excludes Z, M, '
+        const md = mtmp.data;
+        const s_one = humanoid(md) && !is_animal_xm(md) && !mindless_xm(md);
+        const hallu = !!game.u?.uhallu && !(_suppress & SUPPRESS_HALLUCINATION);
+        return ((!hallu ? s_one : !rn2(2)) ? 'someone' : 'something');
+    }
 
     // ARTICLE_YOUR only applies to tame monsters; otherwise downgrade to THE.
     if (article === 3 && !mtmp.mtame) article = 1;
@@ -2116,7 +2152,13 @@ export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
         // ARTICLE_YOUR or when there are no adjectives, but keeps it otherwise
         // ("the peaceful Slasher").
         if (article === 3 || !has_adjectives) article = 0;
-        const gnamed = adj + given;
+        // C ref: do_name.c:1006 — a named GHOST is "<name>'s ghost", never the
+        // bare name: christen_monst() puts the dead hero's name on the bones
+        // ghost, so "You miss Elara." must read "You miss Elara's ghost."
+        // (hacklib.c s_suffix: a name already ending in 's' takes a bare "'").
+        const gnamed = (mtmp?.data?.pmidx === PM_GHOST())
+            ? adj + (/s$/i.test(given) ? `${given}'` : `${given}'s`) + ' ghost'
+            : adj + given;
         return article === 1 ? 'the ' + gnamed
              : article === 2 ? an(gnamed)
              : gnamed;
@@ -2164,6 +2206,11 @@ export function x_monnam(mtmp, article, _adjective, _suppress, _called) {
 // do_name.js is registered from this file's tail, so it is always evaluated by
 // the time x_monnam() can run; the indirection keeps the import one-directional.
 const SUPPRESS_HALLUCINATION = 0x04;   // C ref: do_name.h
+const SUPPRESS_IT = 0x01, AUGMENT_IT = 0x40;  // C ref: do_name.h
+// C ref: mondata.h is_animal(ptr) / mindless(ptr) — x_monnam's "someone" test.
+const M1_MINDLESS_XM = 0x10000, M1_ANIMAL_XM = 0x40000;  // monflag.h
+const is_animal_xm = (ptr) => (mflags1_of(ptr) & M1_ANIMAL_XM) !== 0;
+const mindless_xm = (ptr) => (mflags1_of(ptr) & M1_MINDLESS_XM) !== 0;
 let _halluc_naming = null;
 function halluc_naming() {
     return _halluc_naming || { rndmonnam: () => ({ name: 'bogon', code: '' }),

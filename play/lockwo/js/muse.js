@@ -60,7 +60,8 @@ import { base_mmove, healmon, DEADMONSTER, monsterList, mon_hates_silver }
 import { update_topl, newsym, map_invisible, see_with_infrared } from './display.js';
 import { Monnam, mon_nam, monflee } from './uhitm.js';
 import { cansee, couldsee } from './vision.js';
-import { obj_doname, xname, makeknown, trycall, hands_obj }
+import { obj_doname, xname, makeknown, trycall, hands_obj,
+    W_ARMOR_WORN, W_ACCESSORY_WORN }
     from './invent.js';
 import { observe_object } from './o_init.js';
 import { t_at, maketrap, seetrap, Can_fall_thru } from './trap.js';
@@ -142,8 +143,11 @@ const S_EYE = 5, S_GHOST = 54, S_KOP = 37, S_NYMPH_MCLS = 14, S_UNICORN = 21,
 const MS_SILENT = 0, MS_BUZZ = 10;
 // C ref: monflag.h MZ_SMALL, monst.h W_ARMG / W_ARM / W_ARMS / W_ARMH / W_AMUL.
 const MZ_SMALL = 1;
+// which_armor(mon, ...) reads a MONSTER's misc_worn_check, which js/worn.js
+// stamps from js/const.js's prop.h bits — W_AMUL is 0x00010000 there, not the
+// 0x100 this block used to carry (that is prop.h W_WEP).
 const W_ARM = 0x01, W_ARMC = 0x02, W_ARMH = 0x04, W_ARMS = 0x08,
-    W_ARMG = 0x10, W_ARMF = 0x20, W_ARMU = 0x40, W_AMUL = 0x100;
+    W_ARMG = 0x10, W_ARMF = 0x20, W_ARMU = 0x40, W_AMUL = 0x00010000;
 const W_WEP_BIT = 0x1;
 // C ref: monst.h MR_STONE.
 const MR_STONE_BIT = 0x80;
@@ -510,8 +514,12 @@ function m_splitobj(obj, num) {
 function canletgo(obj) {
     if (!obj) return false;
     const worn = obj.owornmask || 0;
-    if ((worn & (W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU
-                 | W_AMUL)) !== 0)
+    // C: `obj->owornmask & (W_ARMOR | W_ACCESSORY)`.  These must be the bits
+    // js/invent.js actually stamps on a HERO object, not the prop.h values:
+    // the local W_AMUL literal here was 0x100, which is invent.js's W_WEP, so
+    // canletgo() answered FALSE for every wielded weapon and the bullwhip
+    // disarm (find_misc MUSE_BULLWHIP) could never fire.
+    if ((worn & (W_ARMOR_WORN | W_ACCESSORY_WORN)) !== 0)
         return false;
     if (obj === game.uwep && welded_hero(obj)) return false;
     if (obj === game.u?.uball || obj === game.u?.uchain) return false;
@@ -2394,12 +2402,14 @@ export async function use_misc(mtmp) {
         /* attempt to disarm the hero */
         const The_whip = vismon ? 'The bullwhip' : 'A whip';
         let where_to = rn2(4);
-        const u = game.u;
-        let obj = u?.uwep;
+        // uwep/uswapwep live on `game` (js/invent.js setuwep), not on `game.u`;
+        // reading them off `u` made obj undefined, so the whole disarm bailed
+        // out through the `if (!obj) break` after already rolling its rn2(4).
+        let obj = game.uwep;
 
         if (!obj || !canletgo(obj)
-            || (u?.twoweap && canletgo(u?.uswapwep) && rn2(2)))
-            obj = u?.uswapwep;
+            || (game.u?.twoweap && canletgo(game.uswapwep) && rn2(2)))
+            obj = game.uswapwep;
         if (!obj) break; /* shouldn't happen after find_misc() */
 
         const the_weapon = the_(xname(obj));
@@ -2471,7 +2481,10 @@ function ceiling(_x, _y) { return 'ceiling'; }
 function hero_unwield(obj) {
     // same slot-location fix as welded_hero(): clearing u.uwep left game.uwep
     // still pointing at an object that had just been removed from invent.
-    if (game.uwep === obj) game.uwep = null;
+    // C ref: worn.c remove_worn_item() -> wield.c uwepgone(), which also sets
+    // gu.unweapon so the next melee swing prints "You begin bashing monsters
+    // with your bare hands." (uhitm.c:539).
+    if (game.uwep === obj) { game.uwep = null; game.unweapon = true; }
     if (game.uswapwep === obj) game.uswapwep = null;
     obj.owornmask = 0;
     const inv = game.invent || [];

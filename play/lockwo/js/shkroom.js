@@ -18,14 +18,27 @@ import { record_price_quote } from './o_init.js';
 import { depth as depth_of_level } from './hacklib.js';
 import {
     ROOMOFFSET, NO_ROOM, SHARED, SHARED_PLUS, SHOPBASE, COLNO, ROWNO,
-    A_CHA, HUNGRY, TEMPLE,
+    A_CHA, HUNGRY, TEMPLE, MAXNROFROOMS,
 } from './const.js';
 
 const PICK_AXE = 259, DWARVISH_MATTOCK = 71;
 
 const IS_SHOP = (rt) => rt >= SHOPBASE;
 
-function roomAt(rno) { return game.level?.rooms?.[rno - ROOMOFFSET] || null; }
+// C ref: decl.c `struct mkroom svr.rooms[(MAXNROFROOMS + 1) * 2]` with
+// `gs.subrooms = &svr.rooms[MAXNROFROOMS + 1]` — rooms and SUBrooms share one
+// array, so C's `svr.rooms[rno - ROOMOFFSET]` resolves a subroom's roomno too.
+// This port keeps them in two arrays; without the second lookup every roomno
+// belonging to a subroom (Mine Town's temple, its shops) resolved to nothing,
+// so in_rooms(x, y, TEMPLE) answered "no temple here" and the priest never
+// took pri_move()'s mill-around-the-altar branch (seed0014 step 669).
+function roomAt(rno) {
+    const idx = rno - ROOMOFFSET;
+    if (idx < 0) return null;
+    if (idx > MAXNROFROOMS)
+        return (game.level?.subrooms || [])[idx - (MAXNROFROOMS + 1)] || null;
+    return game.level?.rooms?.[idx] || null;
+}
 function rtypeOf(rno) { return roomAt(rno)?.rtype ?? 0; }
 
 // C ref: hack.c in_rooms(x, y, typewanted) — the room numbers covering (x,y),

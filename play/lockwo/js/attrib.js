@@ -5,6 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { A_STR, A_INT, A_WIS, A_CON, A_CHA, A_MAX, POISONING } from './const.js';
+import { adj_erinys } from './makemon.js';
 
 const AVAL = 50; // C ref: attrib.c — tune value for exercise gains.
 
@@ -266,8 +267,11 @@ export function adjalign(n) {
     if (n < 0) {
         const newabuse = (u.ualign.abuse | 0) - n;
         if (newalign < cur) u.ualign.record = newalign;
-        // adj_erinys(newabuse) only arms a future erinys spawn; no RNG here.
-        if (newabuse > (u.ualign.abuse | 0)) u.ualign.abuse = newabuse;
+        // C ref: attrib.c:1309 — raising abuse also runs adj_erinys(), which
+        // rewrites mons[PM_ERINYS] in place (mlevel = min(7 + abuse, 50)).  No
+        // RNG here, but the new mlevel feeds adj_lev() -> newmonhp()'s d(lvl,8)
+        // for every erinys made afterwards.
+        if (newabuse > (u.ualign.abuse | 0)) { u.ualign.abuse = newabuse; adj_erinys(newabuse); }
     } else if (newalign > cur) {
         u.ualign.record = Math.min(newalign, ALIGNLIM());
     }

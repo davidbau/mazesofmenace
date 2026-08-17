@@ -4262,7 +4262,7 @@ async function use_grapple(obj) {
             check_caitiff(mtmp);
             await pline(`You pull in ${mon_nam(mtmp)}!`);
             mtmp.mundetected = 0;
-            rloc_to(mtmp, pullcc.x, pullcc.y);
+            await rloc_to(mtmp, pullcc.x, pullcc.y);
             return ECMD_TIME;
         } else if ((!bigmonst(mtmp.data) && !strongmonst(mtmp.data))
             || rn2(4)) {
@@ -4854,7 +4854,7 @@ export async function use_unicorn_horn(obj) {
             await make_stunned(((u.HStun | 0) & TIMEOUT) + lcount, true);
             break;
         case 4:
-            if (u.Vomiting) vomit();
+            if (u.Vomiting) await vomit();
             else await make_vomiting(14, false);
             break;
         case 5:

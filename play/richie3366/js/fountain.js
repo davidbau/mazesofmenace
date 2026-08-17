@@ -1,80 +1,115 @@
-// fountain.js — Fountain dryup / dip / drink effects; sink drink.
+// fountain.js — Fountain dryup / dip / drink effects; sink drink / dip.
 // C ref: fountain.c dryup, dipfountain, drinkfountain, dofindgem,
-//         dogushforth, gush, breaksink, drinksink.
+//         dogushforth, gush, breaksink, drinksink, dipsink.
 //
 // Branch envelope (drinkfountain): fate=rnd(30) before Levitation;
 // mgkftn restore+adjattrib; fate<10 refresh; switch default/19–30
 // message+RNG arms; case 22 dowatersnakes; case 23 dowaterdemon;
 // case 26 monster_detect + browse_map; case 27 dofindgem when
 // !FOUNTAIN_IS_LOOTED else fallthrough; case 28 dowaternymph;
-// case 30 dogushforth(TRUE).
-// Deferred: enlightenment body, vomit cantvomit/Sick/acid poly arms,
-// Excalibur LONG_SWORD body, wash_hands,
-// dipfountain cases 17–20/29 (You see coins/mkgold); gush minliquid
-// body; set_levltyp side effects beyond typ/flags; Hallucination
-// rndmonnam in snakes pline; mongrantswish tmp_at glyph hide;
-// dryup cansee cloud-glyph skip.
+// case 30 dogushforth(TRUE);
+// drinkfountain case 19 MAGICENLIGHTENMENT body (D-1116).
+// drinkfountain case 24 buc_changed → update_inventory (D-1126).
+// gush m_at → minliquid else newsym (D-1117).
+// Deferred: set_levltyp side effects beyond typ/flags;
+// mongrantswish tmp_at glyph hide.
+// dowatersnakes Hallucination makeplural(rndmonnam(NULL)) (D-1125).
 // dryup wizard y_n after town warn (D-1096).
 // dryup angry_guards after real dryup (D-1104).
 // watchman_warn_fountain Deaf shake/wave (D-1105).
+// dryup cansee cloud-glyph skip (D-1106).
+// dipfountain Excalibur LONG_SWORD body (D-1107).
+// wash_hands + dipfountain hands/uarmg wire (D-1108).
+// dipsink + dodip sink yn + local polymorph_sink (D-1113).
+// dodip pool yn wash_hands / water_damage (D-1128).
+// dipfountain cases 17–20 uncurse (D-1114).
+// dipfountain case 29 mkgold coins (D-1115).
 //
 // Branch envelope (drinksink): Levitation floating_above; rn2(20)
 // switch cases 0–13 + 19/default sip; case 4 faucet → mkobj+dopotion;
 // case 5 S_LRING ring; case 6 breaksink; case 8 more_experienced;
-// case 9 sewage morehungry+vomit.
-// Deferred: case 10 polyself body; case 13 create_gas_cloud region;
-// dipsink; Hallucination hcolor synonyms; monstseesu when
+// case 9 sewage morehungry+vomit; case 10 Unchanging gate +
+// polyself(POLY_NOFLAGS) (D-1118); case 13 create_gas_cloud(1,4)
+// (D-1124; size-1: ttl rn1(3,4) only).
+// Deferred: Hallucination hcolor synonyms; make_gas_cloud enveloped
+// pline / inside_f damage (region.js); monstseesu when
 // Fire_resistance already set.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
     pline, newsym, You_feel, flush_topl_more, canspotmon, verbalize,
+    glyph_is_invisible,
 } from './display.js';
 import {
-    curse, mksobj_at, rnd_class, mkobj, mkobj_at, obj_extract_self,
-    objects_at, delobj,
+    curse, bless, uncurse, mksobj_at, rnd_class, mkobj, mkobj_at,
+    obj_extract_self, objects_at, delobj, mkgold,
 } from './mkobj.js';
 import {
     water_damage, water_damage_chain, t_at, deltrap, mintrap, NO_TRAP_FLAGS,
 } from './trap.js';
 import {
     COIN_CLASS, RING_CLASS, POTION_CLASS, POT_WATER,
-    objectNames, objectDescrs, objects,
+    objectNames, objectNameStrs, objectDescrs, objects,
 } from './objects.js';
 import {
-    ROOM, FOUNTAIN, IS_FOUNTAIN, IS_DOOR, SDOOR, POOL, u_at, isok,
-    ER_NOTHING, ER_DESTROYED,
-    F_LOOTED, F_WARNED, FROMOUTSIDE, S_LRING, MM_NOMSG,
+    ROOM, FOUNTAIN, IS_FOUNTAIN, IS_SINK, SINK, THRONE, ALTAR, GRAVE,
+    IS_DOOR, SDOOR, POOL, u_at, isok,
+    ER_NOTHING, ER_GREASED, ER_DESTROYED, GLIB,
+    F_LOOTED, F_WARNED, FROMOUTSIDE, S_LRING, T_LOOTED, MM_NOMSG,
     nothing_seems_to_happen,
+    A_LAWFUL, AM_NONE, Align2amask, GEHENNOM,
+    ONAME_VIA_DIP, ONAME_KNOW_ARTI, LL_ARTIFACT,
     KILLED_BY, G_GONE, M_SEEN_FIRE,
     SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP,
     TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP, ANTI_MAGIC,
-    is_pit, is_hole, ARTICLE_A, ARM, HEAD,
+    is_pit, is_hole, ARTICLE_A, ARM, HEAD, HAND, FINGER,
+    MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
+    POLY_NOFLAGS, UNCHANGING,
 } from './const.js';
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, A_DEX, adjattrib, exercise, acurr } from './attrib.js';
-import { lesshungry, morehungry, poison_strdmg, vomit } from './eat.js';
+import { lesshungry, morehungry, poison_strdmg, vomit, useup } from './eat.js';
 import { losehp, in_town } from './hack.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
 import { monster_detect } from './detect.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { makemon } from './makemon.js';
-import { mons, is_watch, nolimbs, humanoid, is_neuter, G_UNIQ } from './monsters.js';
-import { m_at, angry_guards } from './mon.js';
+import {
+    mons, is_watch, nolimbs, humanoid, is_neuter, G_UNIQ,
+    breathless, haseyes,
+} from './monsters.js';
+import { m_at, angry_guards, minliquid } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
-import { del_engr_at } from './engrave.js';
+import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu } from './mondata.js';
-import { observe_object } from './invent.js';
-import { hliquid, x_monnam, Hallucination, type_is_pname } from './do_name.js';
-import { mbodypart } from './polyself.js';
-import { makeplural } from './objnam.js';
+import { observe_object, enlightenment, update_inventory } from './invent.js';
+import {
+    hliquid, x_monnam, Hallucination, rndmonnam, type_is_pname, oname, trycall,
+} from './do_name.js';
+import {
+    exist_artifact, artiname, discover_artifact, ART_EXCALIBUR,
+} from './artifact.js';
+import { livelog_printf } from './pline.js';
+import { uhim } from './roles.js';
+import { mbodypart, body_part, polyself } from './polyself.js';
+import { makeplural, the, xname, an } from './objnam.js';
 import { somegold } from './steal.js';
 import { yn_function } from './getline.js';
+import { visible_region_at, create_gas_cloud } from './region.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
+const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
+const POT_OIL = objectNames.indexOf('POT_OIL');
+const POT_ACID = objectNames.indexOf('POT_ACID');
+const POT_LEVITATION = objectNames.indexOf('POT_LEVITATION');
+const POT_OBJECT_DETECTION = objectNames.indexOf('POT_OBJECT_DETECTION');
+const POT_GAIN_LEVEL = objectNames.indexOf('POT_GAIN_LEVEL');
+const POT_GAIN_ENERGY = objectNames.indexOf('POT_GAIN_ENERGY');
+const POT_MONSTER_DETECTION = objectNames.indexOf('POT_MONSTER_DETECTION');
+const POT_FRUIT_JUICE = objectNames.indexOf('POT_FRUIT_JUICE');
 const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
 const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -83,6 +118,11 @@ const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 const PM_WATER_DEMON = monsterNames.indexOf('PM_WATER_DEMON');
 const PM_WATER_MOCCASIN = monsterNames.indexOf('PM_WATER_MOCCASIN');
 const PM_WATER_NYMPH = monsterNames.indexOf('PM_WATER_NYMPH');
+
+/** C ref: you.h Role_if — urole.mnum match. */
+function Role_if(pm) {
+    return (game.urole?.mnum ?? -1) === pm;
+}
 
 /** C ref: rm.h FOUNTAIN_IS_WARNED */
 function FOUNTAIN_IS_WARNED(x, y) {
@@ -110,6 +150,23 @@ function SET_FOUNTAIN_LOOTED(x, y) {
 /** C flag.h `#define wizard flags.debug`. */
 function wizard_mode() {
     return !!(game.flags?.debug || game.flags?.wizard);
+}
+
+/**
+ * C fountain.c:224–226 — glyph_is_cmap(glyph_at) && glyph_to_cmap == S_cloud.
+ * JS has no integer glyphs. C gbuf is S_cloud when newsym show_region
+ * painted fog/steam (make_gas_cloud damage=0 → 'S_cloud'). Poison clouds
+ * are 'S_poisoncloud' and do not skip. A shown monster / remembered I is
+ * !glyph_is_cmap (display.c mon_overrides_region; full _mon_visible /
+ * distu / M_AP still named).
+ */
+function glyph_at_cmap_is_s_cloud(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    if (m_at(x, y)) return false;
+    if (glyph_is_invisible(loc)) return false;
+    const reg = visible_region_at(x, y);
+    return !!reg && reg.glyph === 'S_cloud';
 }
 
 /** C ref: rm.h CLEAR_FOUNTAIN_LOOTED */
@@ -199,8 +256,8 @@ async function dofindgem() {
     exercise(A_WIS, true);
 }
 
-/** C ref: fountain.c floating_above */
-async function floating_above(what) {
+/** C ref: fountain.c floating_above — dip/drink while levitating. */
+export async function floating_above(what) {
     await pline(`You are floating high above the ${what}.`);
 }
 
@@ -237,6 +294,13 @@ function potion_descr(otyp) {
 function Fire_resistance() {
     const u = game.u || {};
     return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
+}
+
+/** C ref: youprop.h Unchanging — H || E via flat + uprops. */
+function Unchanging(u = game.u || {}) {
+    const e = u.uprops?.[UNCHANGING];
+    return !!((u.Unchanging || u.HUnchanging || u.EUnchanging)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /**
@@ -389,14 +453,17 @@ export async function drinksink() {
     case 9:
         await pline('Gaggg... this tastes like sewage!  You vomit.');
         // C: morehungry(rn1(30 - ACURR(A_CON), 11))
-        morehungry(rn1(30 - acurr(A_CON), 11));
-        vomit();
+            morehungry(rn1(30 - acurr(A_CON), 11));
+            await vomit();
         break;
     case 10:
+        // C fountain.c:680–686 — toxic wastes; !Unchanging →
+        // metamorphosis + polyself(POLY_NOFLAGS). Unchanging skips
+        // both the You() and the call (no "fail to transform").
         await pline(`This ${hliquid('water')} contains toxic wastes!`);
-        if (!(u.Unchanging || u.HUnchanging)) {
+        if (!Unchanging(u)) {
             await pline('You undergo a freakish metamorphosis!');
-            // polyself(POLY_NOFLAGS) deferred — no poly RNG yet
+            await polyself(POLY_NOFLAGS);
         }
         break;
     case 11:
@@ -406,8 +473,12 @@ export async function drinksink() {
         await You_hear('snatches of song from among the sewers...');
         break;
     case 13:
+        // C fountain.c:696–698 — stench then create_gas_cloud(ux,uy,1,4).
+        // Size-1 skips BFS expand (no shuffle rn2); ttl = rn1(3,4).
+        // make_gas_cloud enveloped pline / inside_f damage stay named
+        // on region.js.
         await pline('Ew, what a stench!');
-        // create_gas_cloud(ux,uy,1,4) deferred (size-1: no expand RNG)
+        create_gas_cloud(u.ux, u.uy, 1, 4);
         break;
     case 19:
         if (u.Hallucination) {
@@ -475,7 +546,8 @@ async function mongrantswish(mtmp) {
 
 /**
  * C ref: fountain.c dowatersnakes — rn1(5,2) then makemon water moccasins.
- * Hallucination makeplural(rndmonnam) deferred (uses "snakes").
+ * !Blind pline: Hallucination ? makeplural(rndmonnam(NULL)) : "snakes"
+ * (D-1125). Display-rng only on the Hallucination arm (C ternary).
  */
 async function dowatersnakes() {
     const u = game.u || {};
@@ -485,8 +557,12 @@ async function dowatersnakes() {
     if (!gone) {
         const Blind = !!(u.Blind || u.ublind);
         if (!Blind) {
-            // C: Hallucination ? makeplural(rndmonnam(NULL)) : "snakes"
-            await pline('An endless stream of snakes pours forth!');
+            // C fountain.c:45–46 — ternary is the pline %s; rndmonnam
+            // is display-rng and is not evaluated when !Hallucination.
+            const what = Hallucination()
+                ? makeplural(rndmonnam(null))
+                : 'snakes';
+            await pline(`An endless stream of ${what} pours forth!`);
         } else {
             await You_hear('something hissing!');
         }
@@ -611,8 +687,8 @@ function delfloortrap(ttmp) {
 
 /**
  * C ref: fountain.c gush — pool along LOS from overflowing fountain.
- * Named omissions: full set_levltyp side effects; minliquid body
- * (newsym only when mon present).
+ * D-1117: m_at → minliquid; else newsym (C 157–160).
+ * Named omissions: full set_levltyp side effects (typ/flags only).
  */
 async function gush(x, y, poolcnt) {
     const u = game.u || {};
@@ -638,10 +714,10 @@ async function gush(x, y, poolcnt) {
     del_engr_at(x, y);
     await water_damage_chain(objects_at(x, y), true);
 
+    // C fountain.c:157–160 — minliquid when occupied; newsym only if empty.
     const mtmp = m_at(x, y);
-    // minliquid deferred when mon present — newsym only
-    void mtmp;
-    newsym(x, y);
+    if (mtmp) await minliquid(mtmp);
+    else newsym(x, y);
 }
 
 /**
@@ -669,7 +745,7 @@ export async function dogushforth(drinking) {
  * Town first-use warn via watchman_warn_fountain (D-0894; Deaf D-1105).
  * Wizard y_n after that return (D-1096).
  * angry_guards(FALSE) after real dryup when isyou && in_town (D-1104).
- * Named omit: cloud-glyph skip of dryup pline.
+ * cansee cloud-glyph skip of dryup pline (D-1106).
  */
 export async function dryup(x, y, isyou) {
     const loc = game.level?.at(x, y);
@@ -692,8 +768,8 @@ export async function dryup(x, y, isyou) {
             return;
         }
     }
-    if (cansee(x, y)) {
-        // cloud-glyph skip deferred
+    // C fountain.c:223–227 — skip pline when gbuf cmap is S_cloud.
+    if (cansee(x, y) && !glyph_at_cmap_is_s_cloud(x, y)) {
         await pline('The fountain dries up!');
     }
     loc.typ = ROOM;
@@ -756,18 +832,19 @@ export async function drinkfountain() {
         if (mgkftn) return;
     } else {
         switch (fate) {
-        case 19: // Self-knowledge — enlightenment body deferred
+        case 19: // Self-knowledge — C fountain.c:287–293
             await You_feel('self-knowledgeable...');
-            await flush_topl_more();
-            // enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS) deferred
+            await flush_topl_more(); // display_nhwindow(WIN_MESSAGE, FALSE)
+            // MAGIC only — not doattributes BASIC ^X (insight.c:290 / :2009)
+            await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
             exercise(A_WIS, true);
             await pline('The feeling subsides.');
             break;
         case 20: // Foul water
             await pline('The water is foul!  You gag and vomit.');
             morehungry(rn1(20, 11));
-            // C: eat.c vomit() — nomul(-2); poly acid spew deferred
-            vomit();
+            // C: eat.c vomit() — nomul(-2); cantvomit/Sick/acid poly (D-1127)
+            await vomit();
             break;
         case 21: { // Poisonous
             await pline('The water is contaminated!');
@@ -793,10 +870,11 @@ export async function drinkfountain() {
         case 23: // Water demon
             await dowaterdemon();
             break;
-        case 24: { // Maybe curse some items
+        case 24: { // Maybe curse some items — C fountain.c:317–334
             await pline("This water's no good!");
             morehungry(rn1(20, 11));
             exercise(A_CON, false);
+            // more severe than rndcurse(); coins skipped
             let buc_changed = 0;
             for (const obj of [...(game.invent || [])]) {
                 if (obj.oclass !== COIN_CLASS && !obj.cursed && !rn2(5)) {
@@ -804,7 +882,7 @@ export async function drinkfountain() {
                     buc_changed++;
                 }
             }
-            void buc_changed; // update_inventory deferred
+            if (buc_changed) update_inventory();
             break;
         }
         case 25: // See invisible
@@ -867,6 +945,272 @@ export async function drinkfountain() {
 }
 
 /**
+ * C youprop.h Glib — uprops[GLIB].intrinsic only (no EGlib).
+ * Leftover flats when the slot was never created.
+ */
+function wash_Glib() {
+    const u = game.u || {};
+    const p = u.uprops?.[GLIB];
+    if (p) return p.intrinsic | 0;
+    return (u.HGlib | 0) || (u.Glib | 0);
+}
+
+/**
+ * C ref: objnam.c gloves_simple_name — "gauntlets" iff dknown and
+ * (oc_name_known ? OBJ_NAME : OBJ_DESCR) contains "gauntlets".
+ */
+function gloves_simple_name(gloves) {
+    if (gloves && gloves.dknown) {
+        const otyp = gloves.otyp | 0;
+        const ocl = objects()?.[otyp];
+        const actualn = objectNameStrs[otyp] || '';
+        const descrpn = objectDescrs[otyp] || '';
+        const s = ocl?.oc_name_known ? actualn : descrpn;
+        if (String(s).toLowerCase().includes('gauntlets')) return 'gauntlets';
+    }
+    return 'gloves';
+}
+
+/**
+ * C ref: do_wear.c fingers_or_gloves — gloves vs makeplural(FINGER).
+ */
+function fingers_or_gloves(check_gloves) {
+    const u = game.u || {};
+    if (check_gloves && u.uarmg) return gloves_simple_name(u.uarmg);
+    return makeplural(body_part(FINGER));
+}
+
+/**
+ * C ref: fountain.c wash_hands — dip '-' or worn gloves in fountain.
+ * Always You-wash pline; clear Glib + slippery pline; water_damage(uarmg);
+ * was_glib && ER_NOTHING → ER_GREASED so dipfountain's er!=NOTHING / !rn2(2)
+ * skip can fire (C comment: not what ER_GREASED is for).
+ * dipsink and potion.c pool dip call this (D-1113 / D-1128).
+ * @returns {Promise<number>} ER_*
+ */
+export async function wash_hands() {
+    const u = game.u || {};
+    const hands = makeplural(body_part(HAND));
+    let res = ER_NOTHING;
+    const was_glib = !!wash_Glib();
+
+    await pline(
+        `You wash your ${u.uarmg ? 'gloved ' : ''}${hands}`
+        + ` in the ${hliquid('water')}.`,
+    );
+    if (wash_Glib()) {
+        const { make_glib } = await import('./potion.js');
+        make_glib(0);
+        await pline(
+            `Your ${fingers_or_gloves(true)} are no longer slippery.`,
+        );
+    }
+    if (u.uarmg) {
+        res = await water_damage(u.uarmg, null, true);
+    }
+    if (was_glib && res === ER_NOTHING) res = ER_GREASED;
+    return res;
+}
+
+/** C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded. */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf. */
+function Deaf() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+}
+
+/** C dungeon.h Inhell — In_hell(&u.uz). */
+function Inhell() {
+    return (game.u?.uz?.dnum | 0) === GEHENNOM;
+}
+
+/** C dungeon.c dunlev / dunlevs_in_dungeon — dipfountain case 29 gold. */
+function dunlev(lev) {
+    return lev?.dlevel ?? 1;
+}
+function dunlevs_in_dungeon(lev) {
+    return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 1;
+}
+
+/**
+ * Incremental analog of mkmaze.c set_levltyp fountain/sink counts.
+ * Named omit: ice timers, CAN_OVERWRITE, full count_level_features scan.
+ */
+function dipsink_set_levltyp(x, y, newtyp) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const oldtyp = loc.typ | 0;
+    loc.typ = newtyp;
+    const lf = game.level?.flags;
+    if (!lf) return;
+    if (IS_FOUNTAIN(oldtyp) !== IS_FOUNTAIN(newtyp)
+        || IS_SINK(oldtyp) !== IS_SINK(newtyp)) {
+        if (IS_FOUNTAIN(oldtyp) && !IS_FOUNTAIN(newtyp)
+            && (lf.nfountains | 0) > 0) {
+            lf.nfountains--;
+        }
+        if (!IS_FOUNTAIN(oldtyp) && IS_FOUNTAIN(newtyp)) {
+            lf.nfountains = (lf.nfountains | 0) + 1;
+        }
+        if (IS_SINK(oldtyp) && !IS_SINK(newtyp) && (lf.nsinks | 0) > 0) {
+            lf.nsinks--;
+        }
+        if (!IS_SINK(oldtyp) && IS_SINK(newtyp)) {
+            lf.nsinks = (lf.nsinks | 0) + 1;
+        }
+    }
+}
+
+/**
+ * C ref: do.c polymorph_sink — tight dipsink POT_POLYMORPH callee.
+ * Sink → fountain / throne / altar / grave-or-vanish via rn2(4).
+ * defsyms explanations are the PCHAR strings (not PCHAR2 extra).
+ */
+async function polymorph_sink() {
+    const u = game.u || {};
+    const loc = game.level?.at(u.ux, u.uy);
+    if (!loc || loc.typ !== SINK) return;
+
+    const sinklooted = (loc.looted | 0) !== 0;
+    loc.flags = 0;
+    loc.looted = 0;
+    let expl = 'fountain';
+    switch (rn2(4)) {
+    default:
+    case 0:
+        expl = 'fountain';
+        dipsink_set_levltyp(u.ux, u.uy, FOUNTAIN);
+        loc.blessedftn = 0;
+        if (sinklooted) SET_FOUNTAIN_LOOTED(u.ux, u.uy);
+        break;
+    case 1:
+        expl = 'throne';
+        dipsink_set_levltyp(u.ux, u.uy, THRONE);
+        if (sinklooted) loc.looted = T_LOOTED;
+        break;
+    case 2: {
+        expl = 'altar';
+        dipsink_set_levltyp(u.ux, u.uy, ALTAR);
+        const algn = rn2(3) - 1;
+        loc.altarmask = (Inhell() && rn2(3)) ? AM_NONE : Align2amask(algn);
+        break;
+    }
+    case 3:
+        expl = 'floor of a room';
+        dipsink_set_levltyp(u.ux, u.uy, ROOM);
+        make_grave(u.ux, u.uy, null);
+        if (loc.typ === GRAVE) expl = 'grave';
+        break;
+    }
+    if (loc.typ !== ROOM) {
+        await pline(`The sink transforms into ${an(expl)}!`);
+    } else {
+        await pline('The sink vanishes.');
+    }
+    newsym(u.ux, u.uy);
+}
+
+/**
+ * C ref: fountain.c dipsink — #dip while standing on a sink (potion.c dodip).
+ * Lottery !rn2(25/15) → breaksink (+ Glib hands still-slippery); hands/uarmg
+ * → wash_hands; non-potion → tap + water_damage; potion pour + otyp switch
+ * then trycall/useup. potion.c pool dip yn is D-1128.
+ */
+export async function dipsink(obj) {
+    const u = game.u || {};
+    const loc = game.level?.at(u.ux, u.uy);
+    const not_looted_yet = !((loc?.looted | 0) & S_LRING);
+    const is_hands = obj === hands_obj || (u.uarmg && obj === u.uarmg);
+
+    if (!rn2(not_looted_yet ? 25 : 15)) {
+        await breaksink(u.ux, u.uy);
+        if (wash_Glib() && is_hands) {
+            await pline(
+                `Your ${fingers_or_gloves(true)} are still slippery.`,
+            );
+        }
+        return;
+    }
+    if (is_hands) {
+        await wash_hands();
+        return;
+    }
+    if (obj.oclass !== POTION_CLASS) {
+        await pline(`You hold ${the(xname(obj))} under the tap.`);
+        if ((await water_damage(obj, null, true)) === ER_NOTHING) {
+            await pline(nothing_seems_to_happen);
+        }
+        return;
+    }
+
+    await pline(
+        `You pour ${(obj.quan | 0) > 1 ? 'one of ' : ''}`
+        + `${the(xname(obj))} down the drain.`,
+    );
+    let try_call = false;
+    switch (obj.otyp) {
+    case POT_POLYMORPH:
+        await polymorph_sink();
+        try_call = true;
+        break;
+    case POT_OIL:
+        if (!Blind()) {
+            await pline('It leaves an oily film on the basin.');
+            try_call = true;
+        } else {
+            await pline(nothing_seems_to_happen);
+        }
+        break;
+    case POT_ACID:
+        try_call = true;
+        if (!Blind()) {
+            await pline('The drain seems less clogged.');
+        } else if (!Deaf()) {
+            await pline('You hear a sucking sound.');
+        } else {
+            await pline(nothing_seems_to_happen);
+            try_call = false;
+        }
+        break;
+    case POT_LEVITATION:
+        await sink_backs_up(u.ux, u.uy);
+        try_call = true;
+        break;
+    case POT_OBJECT_DETECTION:
+        if (!((loc?.looted | 0) & S_LRING)) {
+            await pline('You sense a ring lost down the drain.');
+            try_call = true;
+            break;
+        }
+        // FALLTHROUGH — C potions with no potionbreathe effects + water
+    case POT_GAIN_LEVEL:
+    case POT_GAIN_ENERGY:
+    case POT_MONSTER_DETECTION:
+    case POT_FRUIT_JUICE:
+    case POT_WATER:
+        await pline(nothing_seems_to_happen);
+        break;
+    default: {
+        await pline('A wisp of vapor rises up...');
+        const youdata = game.youmonst?.data;
+        if (!breathless(youdata) || haseyes(youdata)) {
+            const { potionbreathe } = await import('./potion.js');
+            await potionbreathe(obj);
+        }
+        break;
+    }
+    }
+    if (try_call && obj.dknown) await trycall(obj);
+    useup(obj);
+}
+
+/**
  * C ref: fountain.c dipfountain
  * @param {object} obj invent object or hands_obj
  */
@@ -879,19 +1223,75 @@ export async function dipfountain(obj) {
 
     const is_hands = obj === hands_obj;
 
-    // C && order: otyp, ulevel, rn2, quan, !oartifact, !exist_artifact
+    // C fountain.c:404–447 — Excalibur LONG_SWORD body (D-1107).
+    // && order: otyp, ulevel, rn2(Role_if(PM_KNIGHT)?6:30), quan==1,
+    // !oartifact, !exist_artifact(LONG_SWORD, artiname(ART_EXCALIBUR)).
+    // Not dryup: no rn2(3), no town-warn, no wizard yn. Fountain → ROOM
+    // via set_levltyp analog + flags=0, then in_town angry_guards.
     if (obj && obj.otyp === LONG_SWORD && (u.ulevel | 0) >= 5
-        && !rn2(game.urole?.mnum === PM_KNIGHT ? 6 : 30)
-        && (obj.quan | 0) === 1 && !obj.oartifact) {
-        // exist_artifact stub: assume none — Excalibur body deferred
-        await dryup(u.ux, u.uy, true);
+        && !rn2(Role_if(PM_KNIGHT) ? 6 : 30)
+        && (obj.quan | 0) === 1 && !obj.oartifact
+        && !exist_artifact(LONG_SWORD, artiname(ART_EXCALIBUR))) {
+        const lady = 'Lady of the Lake';
+        if ((u.ualign?.type | 0) !== A_LAWFUL) {
+            await pline(
+                `A freezing mist rises from the ${hliquid('water')}`
+                + ' and envelopes the sword.',
+            );
+            await pline('The fountain disappears!');
+            curse(obj);
+            if ((obj.spe | 0) > -6 && !rn2(3)) {
+                obj.spe = (obj.spe | 0) - 1;
+            }
+            obj.oerodeproof = false;
+            exercise(A_WIS, false);
+            livelog_printf(
+                LL_ARTIFACT,
+                'was denied %s!  The %s has deemed %s unworthy',
+                artiname(ART_EXCALIBUR), lady, uhim(),
+            );
+        } else {
+            await pline(
+                'From the murky depths, a hand reaches up to bless the sword.',
+            );
+            await pline('As the hand retreats, the fountain disappears!');
+            obj = oname(
+                obj, artiname(ART_EXCALIBUR),
+                ONAME_VIA_DIP | ONAME_KNOW_ARTI,
+            );
+            discover_artifact(ART_EXCALIBUR);
+            bless(obj);
+            obj.oeroded = 0;
+            obj.oeroded2 = 0;
+            obj.oerodeproof = true;
+            exercise(A_WIS, true);
+            livelog_printf(
+                LL_ARTIFACT, 'was given %s by the %s',
+                artiname(ART_EXCALIBUR), lady,
+            );
+        }
+        // C update_inventory() — perm_invent redraw named omit.
+        const loc = game.level?.at(u.ux, u.uy);
+        if (loc) {
+            // C set_levltyp(u.ux,u.uy,ROOM) + levl[].flags=0.
+            // Full set_levltyp (ice/lava/count_level_features) still named.
+            loc.typ = ROOM;
+            loc.flags = 0;
+            loc.looted = 0;
+            if (game.level?.flags && (game.level.flags.nfountains | 0) > 0) {
+                game.level.flags.nfountains--;
+            }
+        }
+        newsym(u.ux, u.uy);
+        if (in_town(u.ux, u.uy)) {
+            await angry_guards(false);
+        }
         return;
     }
 
     let er = ER_NOTHING;
     if (is_hands || obj === u.uarmg) {
-        // wash_hands deferred — ER_NOTHING (no RNG)
-        er = ER_NOTHING;
+        er = await wash_hands();
     } else {
         er = await water_damage(obj, null, true);
     }
@@ -909,8 +1309,19 @@ export async function dipfountain(obj) {
     case 17:
     case 18:
     case 19:
-    case 20:
-        // Uncurse the item — deferred
+    case 20: // Uncurse the item
+        // C fountain.c:464–475 — !hands && cursed → glow (unless Blind)
+        // then uncurse; else "feeling of loss" (blessed/uncursed/hands).
+        // Coins are not skipped (unlike case 16). Luck/lamplit uncurse
+        // side effects stay on mkobj.js uncurse.
+        if (!is_hands && obj.cursed) {
+            if (!Blind()) {
+                await pline(`The ${hliquid('water')} glows for a moment.`);
+            }
+            uncurse(obj);
+        } else {
+            await pline('A feeling of loss comes over you.');
+        }
         break;
     case 21: // Water Demon
         await dowaterdemon();
@@ -974,7 +1385,24 @@ export async function dipfountain(obj) {
         break;
     }
     case 29:
-        // You see coins / mkgold — deferred
+        // C fountain.c:530–546 — You see coins. More gold nearer
+        // the surface: rnd((num_dunlevs - dlevel + 1)*2) + 5.
+        // Already-looted fountains skip mkgold/pline/exercise/newsym
+        // (dryup still runs after the switch). Blind skips the
+        // glistening pline but still places gold.
+        if (FOUNTAIN_IS_LOOTED(u.ux, u.uy)) break;
+        SET_FOUNTAIN_LOOTED(u.ux, u.uy);
+        mkgold(
+            rnd((dunlevs_in_dungeon(u.uz) - dunlev(u.uz) + 1) * 2) + 5,
+            u.ux, u.uy,
+        );
+        if (!Blind()) {
+            await pline(
+                `Far below you, you see coins glistening in the ${hliquid('water')}.`,
+            );
+        }
+        exercise(A_WIS, true);
+        newsym(u.ux, u.uy);
         break;
     default:
         if (er === ER_NOTHING) {

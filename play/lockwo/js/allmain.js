@@ -24,6 +24,7 @@ import { mflags1_of, M1_CARNIVORE, M1_HERBIVORE, M1_METALLIVORE }
 import { dosounds } from './sounds.js';
 import { age_spells } from './spell.js';
 import { newuhs } from './eat.js';
+import { adj_erinys } from './makemon.js';
 import { find_ac, u_init_skills_discoveries, moveloop_preamble_startup,
          race_attrmin, race_attrmax } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
@@ -108,6 +109,13 @@ function welcomeMessage() {
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
+
+    // C ref: mons[] is pristine at process start in C, and restore.c:727 calls
+    // adj_erinys(u.ualign.abuse) when reloading a save.  This port runs many
+    // games in one process and adj_erinys() mutates the shared mons[] /
+    // MFLAGS1[] / MATTK[] tables, so reset the erinys to its abuse-0 state here
+    // or a previous session's abuse would leak into this one.  No RNG.
+    adj_erinys(0);
 
     // Fast-forward through pre-mklev startup RNG calls.
     // Covers: o_init (shuffles), dungeon init, u_init_misc.
@@ -1545,21 +1553,24 @@ export async function moveloop_core() {
     // swallow_to_glyph() picks are the whole cost.
     if (!g.context?.mv || (g.u?.blinded || 0) > 0 || g.ublindf) {
         if (Hallucination()) {
-            if (g.u?.uswallow) {
-                const { swallowed } = await import('./display.js');
-                swallowed(0);
-            }
+            const dsp = await import('./display.js');
+            dsp.see_monsters();
+            dsp.see_objects();
+            dsp.see_traps();
+            if (g.u?.uswallow) await dsp.swallowed(0);
         } else {
             // C ref: allmain.c moveloop_core():464 — the `else if
             // (Unblind_telepat || Warning || Warn_of_mon || any_visible_region())
-            // see_monsters();` arm.  Telepathy is not modelled; Warning and a
-            // live gas cloud are.  Warning glyphs and region-obscured monsters
-            // are both keyed on the HERO's position, so they have to be redrawn
-            // once per input or they linger where the monster no longer sets
-            // them (seed0360 wizard1: two '2's stayed put after a 'k').
+            // see_monsters();` arm.  Warn_of_mon is not modelled; the other
+            // three are.  Telepathy, warning glyphs and region-obscured
+            // monsters are all keyed on the HERO's position, so they have to be
+            // redrawn once per input or they linger where the monster no longer
+            // sets them (seed0360 wizard1: two '2's stayed put after a 'k').
             const dsp = await import('./display.js');
             const { any_visible_region } = await import('./region.js');
-            if (dsp.have_warning() || any_visible_region()) dsp.see_monsters();
+            const { Unblind_telepat } = await import('./worn.js');
+            if (dsp.have_warning() || Unblind_telepat() || any_visible_region())
+                dsp.see_monsters();
         }
     }
 

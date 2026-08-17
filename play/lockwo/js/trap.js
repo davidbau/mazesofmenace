@@ -633,6 +633,30 @@ function splash_lit(_obj) {
     return false;
 }
 
+// C ref: obj.h:337-344 — Is_container / Is_box / Waterproof_container.  otyps
+// from mkobj.js's OBJECT_DATA order (LARGE_BOX 214 .. BAG_OF_TRICKS 220).
+const LARGE_BOX_OTYP = 214, CHEST_OTYP = 215, ICE_BOX_OTYP = 216,
+      OILSKIN_SACK_OTYP = 218, BAG_OF_TRICKS_OTYP = 220,
+      TOWEL_OTYP = 234, CAN_OF_GREASE_OTYP = 240;
+function Is_container_otyp(o) {
+    return o.otyp >= LARGE_BOX_OTYP && o.otyp <= BAG_OF_TRICKS_OTYP;
+}
+function Waterproof_container(o) {
+    return o.otyp === OILSKIN_SACK_OTYP || o.otyp === ICE_BOX_OTYP
+        || o.otyp === LARGE_BOX_OTYP || o.otyp === CHEST_OTYP;
+}
+
+// C ref: trap.c water_damage_chain(obj, here) — walk a container's contents (or
+// a floor pile) and water_damage() each with force=FALSE.  `here` selects the
+// nexthere chain; contents use the nobj chain, which for this port is the
+// container's cobj array in order.
+async function water_damage_chain(list, here) {
+    if (!list) return;
+    const chain = Array.isArray(list) ? [...list] : [list];
+    for (const o of chain) await water_damage(o, null, false);
+    void here;
+}
+
 // C ref: trap.c water_damage(obj, ostr, force).  Faithful port covering the
 // branches reachable from the rust trap and from dipping into a fountain/pool.
 // `force` (TRUE from the rust trap and fountain dips) skips the luck-based
@@ -645,6 +669,20 @@ export async function water_damage(obj, ostr, force) {
     // (the CORPSE special case in cxname() isn't reachable via water_damage).
     if (!ostr) ostr = xname(obj);
 
+    // C ref: trap.c water_damage() — a full can of grease and a not-yet-soaked
+    // towel are handled before the greased/container/luck arms.  Neither is
+    // reached by a covered session, but the ORDER is what matters: both sit
+    // ahead of the luck saving throw, so a missing arm shows up as a phantom
+    // rn2(20).
+    if (obj.otyp === CAN_OF_GREASE_OTYP && (obj.spe | 0) > 0) return ER_NOTHING;
+    if (obj.otyp === TOWEL_OTYP && (obj.spe | 0) < 7) {
+        // wet_a_towel(obj, -rnd(7 - obj->spe), TRUE): a negative amt is an
+        // increment by -amt (weapon.c:1043), capped at 7 by finish_towel_change.
+        const amt = -rnd(7 - (obj.spe | 0));
+        obj.spe = Math.min((obj.spe | 0) - amt, 7);
+        return ER_NOTHING;
+    }
+
     // Greased items: a coin-flip washes the grease off.  (rn2(2) must fire.)
     if (obj.greased) {
         if (!rn2(2)) {
@@ -652,6 +690,20 @@ export async function water_damage(obj, ostr, force) {
         }
         return ER_GREASED;
     }
+
+    // C ref: trap.c water_damage() container arms, both ahead of the luck
+    // throw.  A waterproof container (oilskin sack / ice box / large box /
+    // chest) shrugs the water off with NO roll at all unless it is cursed, in
+    // which case `obj->cursed && !rn2(3)` decides whether the contents get wet.
+    // Missing both arms, a chest on a square flooded by fountain.c gush() fell
+    // through to `(Luck + 5) > rn2(20)` and drew a phantom rn2(20) (seed4500
+    // step 1329).
+    if (Is_container_otyp(obj)
+        && (!Waterproof_container(obj) || (obj.cursed && !rn2(3)))) {
+        await water_damage_chain(obj.cobj, false);
+        return ER_DAMAGED;   /* contents were damaged */
+    }
+    if (Waterproof_container(obj)) return ER_DAMAGED;
 
     // Luck-based protection (skipped when force is TRUE, as the rust trap does).
     if (!force) {

@@ -58,8 +58,10 @@ import {
     is_swimmer_flag, is_flyer_flag, amorphous_flag, passes_walls_flag,
     throws_rocks_flag, likes_gold_flag,
     MFLAGS1, M1_OVIPAROUS,
+    M1_SEE_INVIS, M1_AMPHIBIOUS, M1_FLY, M1_REGEN, M1_TPORT_CNTRL, M1_TPORT,
 } from './monflags_data.js';
-import { AT_EXPL, attacktype, is_armed } from './monattk_data.js';
+import { AT_EXPL, attacktype, is_armed, MATTK,
+         AT_WEAP, AT_MAGC, AD_DRST, AD_SPEL } from './monattk_data.js';
 const MM_NOWAIT = 0x00000002; // C ref: makemon.h MM_NOWAIT — suppress STRAT_WAITFORU/STRAT_CLOSE
 
 const G_UNIQ = 0x1000;
@@ -2671,7 +2673,7 @@ function urace_masks() {
     }
 }
 
-function peace_minded_bigrm(ptr) {
+export function peace_minded_bigrm(ptr) {
     const f2 = mflags2_of(ptr);
     if (f2 & M2_PEACEFUL) return true;   // always_peaceful, no RNG
     if (f2 & M2_HOSTILE) return false;   // always_hostile, no RNG
@@ -3955,4 +3957,52 @@ export function create_particular_monster(name, mmflags = 0) {
     // next2u(x,y): chebyshev distance <= 1 from the hero.
     const next2u = Math.max(Math.abs(spot.x - u.ux), Math.abs(spot.y - u.uy)) <= 1;
     return { mtmp, x: spot.x, y: spot.y, next2u, ptr };
+}
+
+// ── adj_erinys (C ref: mon.c:5922) ───────────────────────────────────────
+// The erinys grows with the hero's alignment abuse: mons[PM_ERINYS] itself is
+// mutated, so every erinys made afterwards is stronger.  mlevel is the part
+// that reaches the RNG — makemon()'s newmonhp() rolls d(adj_lev(ptr), 8), and
+// adj_lev caps at 3*mlevel/2, so seed4500's sanctum erinys is d(13,8) at
+// abuse 2 (mlevel 9) where an unmodified mlevel 7 gives d(10,8).
+//
+// C ORs the flag bits and never clears them, and mons[] is per-process there.
+// This port runs many games in one process, so instead of accumulating we
+// recompute from a pristine snapshot on every call: for a monotonically
+// growing abuse the result is identical to C's, and calling adj_erinys(0) at
+// game start restores the table exactly.
+let erinys_pristine = null;
+
+function erinys_pm() {
+    const idx = name_to_pmidx('erinys');
+    return idx >= 0 ? { idx, pm: monster_by_pmidx(idx) } : null;
+}
+
+export function adj_erinys(abuse) {
+    const e = erinys_pm();
+    if (!e || !e.pm) return;
+    const { idx, pm } = e;
+    if (!erinys_pristine) {
+        erinys_pristine = {
+            mflags1: MFLAGS1[idx] || 0,
+            mattk: (MATTK[idx] || []).map(a => a.slice()),
+            mlevel: pm.mlevel, difficulty: pm.difficulty,
+        };
+    }
+    const p = erinys_pristine;
+    let f1 = p.mflags1;
+    const atk = p.mattk.map(a => a.slice());
+    if (abuse > 5) f1 |= M1_SEE_INVIS;
+    if (abuse > 10) f1 |= M1_AMPHIBIOUS;
+    if (abuse > 15) f1 |= M1_FLY;
+    if (abuse > 20 && atk[0]) atk[0][2] = 3;              /* more powerful attack */
+    if (abuse > 25) f1 |= M1_REGEN;
+    if (abuse > 30) f1 |= M1_TPORT_CNTRL;
+    if (abuse > 35) atk[1] = [AT_WEAP, AD_DRST, 3, 4];    /* second attack */
+    if (abuse > 40) f1 |= M1_TPORT;
+    if (abuse > 50) atk[2] = [AT_MAGC, AD_SPEL, 3, 4];    /* third (spellcasting) attack */
+    MFLAGS1[idx] = f1;
+    MATTK[idx] = atk;
+    pm.mlevel = Math.min(7 + abuse, 50);
+    pm.difficulty = Math.min(10 + Math.trunc(abuse / 3), 25);
 }

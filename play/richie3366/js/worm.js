@@ -2,7 +2,7 @@
 // C ref: worm.c — get_wormno, initworm, create_worm_tail, count_wsegs,
 //   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h).
 // Named omissions: worm_move/grow/shrink, cutworm, wormgone save/restore,
-//   remove_worm full, worm_known, detect_wsegs display.
+//   worm_known, detect_wsegs display.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -95,6 +95,25 @@ export function count_wsegs(mtmp) {
         for (let curr = wtails[mtmp.wormno]?.nseg; curr; curr = curr.nseg) i++;
     }
     return i;
+}
+
+/**
+ * C ref: worm.c remove_worm — take head+tail off the map grid without
+ * freeing the wseg chain or unlinking fmon. newsym each occupied cell.
+ * Only wx is zeroed (C occupancy test is `if (curr->wx)`).
+ */
+export function remove_worm(worm) {
+    const wnum = worm?.wormno | 0;
+    if (!wnum) return;
+    let curr = wtails[wnum];
+    while (curr) {
+        if (curr.wx) {
+            remove_monster_xy(curr.wx, curr.wy);
+            newsym(curr.wx, curr.wy);
+            curr.wx = 0;
+        }
+        curr = curr.nseg;
+    }
 }
 
 /** C ref: worm.c toss_wsegs — free segs; optionally update display. */

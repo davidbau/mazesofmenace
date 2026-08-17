@@ -47,7 +47,8 @@ import { near_capacity, addinv, prinv } from './invent.js';
 import { BOULDER, run_object_timers, mksobj, AMULET_OF_YENDOR } from './mkobj.js';
 import { vision_reset, vision_recalc, Blind } from './vision.js';
 import { hide_monst } from './mon.js';
-import { mflags2_of, M2_STALK, is_swimmer_flag, throws_rocks_flag } from './monflags_data.js';
+import { mflags2_of, M2_STALK, is_swimmer_flag, throws_rocks_flag,
+         is_flyer_flag } from './monflags_data.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { olfaction } from './eat.js';
 import { placebc, unplacebc } from './ball.js';
@@ -243,8 +244,20 @@ function goodpos_mon(x, y, mtmp) {
     return true;
 }
 
-// C ref: mondata.h m_in_air(mon) — flying or levitating.
-function m_in_air_do(mtmp) { return !!mtmp?.mflying || !!mtmp?.mlevitating; }
+// C ref: mon.c m_in_air(mon) — `is_flyer(mon->data) || is_floater(mon->data)
+// || (is_clinger(mon->data) && has_ceiling(&u.uz) && mon->mundetected)`.  It
+// reads the SPECIES, not per-monster flags: `mtmp->mflying` does not exist in
+// C, so this answered FALSE for every flyer and goodpos() refused pool/lava
+// squares C accepts — an invisible, RNG-free enexto() placement fork.
+// goodpos()'s caller here is enexto_core(), which passes a zeroed fake monst
+// carrying only mdat, so the is_clinger arm's mundetected is always 0.
+function m_in_air_do(mtmp) {
+    const d = mtmp?.data;
+    if (!d) return false;
+    // C ref: mondata.h is_floater(ptr) — mlet == S_EYE || mlet == S_LIGHT.
+    return is_flyer_flag(d) || d.mcls === S_EYE_DO || d.mcls === S_LIGHT_DO;
+}
+const S_EYE_DO = 5, S_LIGHT_DO = 25;  // defsym.h MONSYM S_EYE / S_LIGHT
 // C ref: mondata.h:190 likes_lava(ptr) — fire elemental / salamander only.
 function likes_lava_do(mdat) {
     return mdat?.pmidx === 155 /*PM_FIRE_ELEMENTAL*/
@@ -313,7 +326,13 @@ function enexto(xx, yy, mtmp) {
 export async function mnexto_rloc(mtmp, rlocflags = 0) {
     const u = game.u;
     if (mtmp === u?.usteed) { mtmp.mx = u.ux; mtmp.my = u.uy; return; }
-    const mm = enexto(u.ux, u.uy);
+    // C ref: mon.c mnexto() — `enexto(&mm, u.ux, u.uy, mtmp->data)`.  The mdat
+    // was being dropped, so goodpos() judged every candidate square as if for a
+    // species with no flags: a flying engulfer was refused the pool square C
+    // puts it on (seed0383 step 177) with the ring shuffle drawing identically.
+    // enexto_core() builds a zeroed fake monst carrying only mdat, so pass the
+    // same thing rather than the live monster.
+    const mm = enexto(u.ux, u.uy, { data: mtmp?.data ?? null });
     if (!mm || !isok(mm.x, mm.y)) return;   // deal_with_overcrowding -> limbo
     const { rloc_to_core } = await import('./teleport.js');
     await rloc_to_core(mtmp, mm.x, mm.y, rlocflags);
@@ -634,6 +653,17 @@ function m_easy_escape_pit() {
     return !!mdat && (mdat.msize ?? 0) >= 4;
 }
 
+// C ref: dungeon.c on_level(&u.uz, &qstart_level); game.qstart_level comes from
+// dungeon.js's branch table.
+function on_qstart_level_do() {
+    const uz = game.u?.uz, q = game.qstart_level;
+    return !!(uz && q && uz.dnum === q.dnum && uz.dlevel === q.dlevel);
+}
+
+// C ref: quest.c ok_to_quest() — `((got_quest || got_thanks) && is_pure() > 0)
+// || killed_leader`.
+function ok_to_quest_do() { return !!game._quest_got_quest; }
+
 // ── goto_level (C ref: do.c goto_level) ──
 //
 // Restricted to the level-teleport / first-visit-makelevel path used by the
@@ -669,20 +699,24 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const at_ladder = !!g.at_ladder;
     let do_fall_dmg = false;
 
-    // NOT ported (measured -3 public screens on seed0367): do.c:1578
-    //   `if (on_level(&u.uz, &qstart_level) && !newdungeon && !ok_to_quest()) {
-    //        pline("A mysterious force prevents you from descending."); return; }`
-    // The predicate is faithful C but its INPUTS are not modelled here:
-    // quest.c ok_to_quest() reads Qstat(got_quest)/Qstat(got_thanks) and
-    // is_pure()'s u.ualign.record, and this port leaves record at 0 and never
-    // sets got_quest outside chat_with_leader().  So it answers FALSE for a hero
-    // C considers ready (seed0367's XL-20 Priest teleports freely off the quest
-    // home level) and would block 5 level changes C performs.  Wire it up once
-    // alignment record + quest_status are tracked; the same gate also guards
-    // dokick.c:1950, zap.c:3278 and pager.c:1605.
+    // C ref: do.c:1578 — "Prevent the player from going past the first quest
+    // level unless (s)he has been given the go-ahead by the leader."
+    // quest.c ok_to_quest() = ((got_quest || got_thanks) && is_pure() > 0)
+    // || killed_leader; questpgr.js tracks got_quest, and neither of the other
+    // two flags can be true before it is.
+    if (on_qstart_level_do() && !newdungeon && !ok_to_quest_do()) {
+        await pline('A mysterious force prevents you from descending.');
+        return;
+    }
 
     if (newlevel.dnum === u.uz.dnum && newlevel.dlevel === u.uz.dlevel)
         return; // on_level(newlevel, &u.uz): nothing to do
+
+    // C ref: do.c:1607 — discard the context that applies to the level we're
+    // leaving.  travelcc is what getpos() opens the '_' prompt's cursor on, so
+    // a stale one puts the cursor on the previous level's destination instead
+    // of the hero (seed0014 step 647).
+    (game.iflags = game.iflags || {}).travelcc = { x: 0, y: 0 };
 
     // C ref: do.c:1615 check_special_room(TRUE) — clears u.urooms/u.ushops for
     // the level being left so the arrival scan below sees a clean slate.
@@ -824,6 +858,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // vapour) survived the level change and painted its S_cloud '#' over
         // the new level's terrain.
         regions: g.regions, regionMoves: g.moves ?? 0,
+        // C ref: save.c:518 savelev_core() — `Sfo_dest_area(nhfp, &svu.updest)`
+        // / `&svd.dndest`.  The level-change destination regions belong to the
+        // LEVEL, not the game, so getlev() reads them back (restore.c:1114) and
+        // a revisit lands inside the same des.teleport_region() box as the first
+        // arrival.  Stashed here (before goto_level zeroes them) by reference.
+        updest: g.updest, dndest: g.dndest,
     };
     clear_regions();
     // C ref: save_track() release_data() -> initrack().  Clear the live ring so
@@ -895,14 +935,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             // factors it into fastforward_fill_mineralize().
             await fastforward_fill_mineralize();
         }
-        // C ref: do.c goto_level() `familiar = bones_include_name(svp.plname)` —
-        // only ever set on this first-visit/mklev() branch.  bones_include_name()
-        // does a prefix match of the player's name against every cemetery entry
-        // savebones() attached to the level; the JS harness's bones storage (see
-        // bones.js) is scoped to this one save-slot/character, so any blob that
-        // successfully grafts here (g._bones_loaded) was necessarily written by
-        // this same character's own earlier death — the name match is guaranteed.
-        g._goto_familiar = g._bones_loaded;
+        // C ref: do.c:1701 goto_level() `familiar = bones_include_name(svp.plname)`
+        // — only ever set on this first-visit/mklev() branch.  A prefix match of
+        // the player's name against the cemetery entries savebones() attached to
+        // the level: bones left by a DIFFERENT hero (multi-character sessions
+        // share one bones store) are not familiar, so neither the message nor
+        // familiar_level_msg()'s rn2(4) happens.
+        const { bones_include_name } = await import('./bones.js');
+        g._goto_familiar = g._bones_loaded && bones_include_name(g.plname);
     } else {
         // C ref: do.c goto_level() "returning to previously visited level;
         // reload it" -> reseed_random() (a no-op in this build:
@@ -1272,6 +1312,17 @@ async function getlev_restore(ledger) {
     g.stairs = store.stairs;
     g.fmon = g.level.monsters;
 
+    // C ref: restore.c:1114 getlev() — `Sfi_dest_area(nhfp, &svu.updest)` /
+    // `&svd.dndest`, read back straight after save_stairs' counterpart.
+    // goto_level() zeroed both before coming here; only mklev() refills them (a
+    // special level's des.teleport_region()), so without this a REVISIT had no
+    // region and u_on_rndspot() fell back to the whole-level default.  seed4500
+    // returns to the Valley at step 1256 and C draws place_lregion's
+    // rn2(15)/rn2(10) over valley.lua's {58,09,72,18} where we drew rn2(79)/
+    // rn2(21) over the entire map.
+    g.updest = store.updest ?? null;
+    g.dndest = store.dndest ?? null;
+
     // C ref: track.c rest_track() (called from getlev()) — restore this level's
     // saved footprint ring.  goto_level() cleared the live ring (initrack) when
     // it left the previous level, so a level we never departed keeps its empty
@@ -1301,7 +1352,15 @@ async function getlev_restore(ledger) {
     // REST_LEVELS (an ordinary in-game level change) and u.uz.dlevel != 0, so no
     // monster is skipped by the "regenerate monsters while on another level"
     // continue; ghostly is FALSE (this is not a bones file).
-    for (const mtmp of [...(g.level.monsters || [])]) {
+    // C walks the chain restmonchn() just rebuilt, which preserves the order
+    // savelev() wrote it in -- i.e. fmon order, newest monster first
+    // (makemon.c:1249 prepends).  Our level array is in creation order, so
+    // iterate it reversed, the same convention mon.c's fmonOrder() uses for
+    // movemon().  Forward order gave the rnd(10)/hide_monst rolls to the wrong
+    // monsters: on seed4500's Dlvl 14 revisit the level's one eligible hider (a
+    // lurker above) is C's 13th of 14 and our 2nd, so our restrap() drew an
+    // extra rn2(3) 11 monsters early and shifted the whole PRNG stream by one.
+    for (const mtmp of fmon_order(g.level.monsters)) {
         if (mtmp === g.u?.usteed) continue; // steed kept on list but off map
         if (elapsed > 0)
             mon_catchup_elapsed_time(mtmp, elapsed);
@@ -1310,6 +1369,16 @@ async function getlev_restore(ledger) {
         if (elapsed > 0 && elapsed > rnd(10))
             await hide_monst(mtmp);
     }
+}
+
+// C ref: the `fmon` chain — makemon prepends (makemon.c:1249), so C visits
+// monsters newest-first while our level array is in creation order.  Same
+// helper mon.c/polyself.c/read.c keep privately (mon.js fmonOrder()).
+function fmon_order(list) {
+    const src = list || [];
+    const out = new Array(src.length);
+    for (let i = 0; i < src.length; i++) out[i] = src[src.length - 1 - i];
+    return out;
 }
 
 // ── prev_level (C ref: dungeon.c prev_level) — climb toward the level above ──

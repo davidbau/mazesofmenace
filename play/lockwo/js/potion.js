@@ -16,7 +16,8 @@ import { pline, update_topl, y_n, newsym } from './display.js';
 import { getobj, makeknown, useup, trycall, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_PROMPT,
          GETOBJ_DOWNPLAY, body_part, hands_obj, short_oname, xname,
-         makeplural, remove_worn_item, is_plural, pair_of } from './invent.js';
+         makeplural, remove_worn_item, is_plural, pair_of,
+         learn_unseen_invent } from './invent.js';
 import { surface, hliquid } from './dungeon.js';
 import { heal_legs, water_damage } from './trap.js';
 import { monster_detect } from './hack.js';
@@ -239,7 +240,15 @@ async function make_blinded(xtime, talk) {
                 : 'A cloud of darkness falls upon you.');
     }
     set_blinded(xtime);
-    if (u_could_see !== can_see_now) vision_recalc(0);   // toggle_blindness()
+    // C ref: potion.c:336 toggle_blindness() — vision_recalc(0), then
+    // `if (!Blind) learn_unseen_invent()`.  Without that tail an item picked up
+    // (or wished for) while blind kept dknown clear after sight returned, so
+    // dopotion()'s `if (otmp->dknown && !oc_name_known) makeknown()` was skipped
+    // and discover_object's exercise(A_WIS, TRUE) rn2 never drawn.
+    if (u_could_see !== can_see_now) {
+        vision_recalc(0);
+        if (can_see_now) learn_unseen_invent();
+    }
 }
 
 // C ref: potion.c make_hallucinated(xtime, talk, mask).  No RNG.  Only the
@@ -258,7 +267,7 @@ export async function make_hallucinated(xtime, talk, _mask) {
         // the pline.  A swallowed hero has no map to re-see, just the stomach
         // box, whose eight cells each re-pick a random_monster() colour.
         const { swallowed } = await import('./display.js');
-        if (game.u?.uswallow) swallowed(0);
+        if (game.u?.uswallow) await swallowed(0);
         game.botl = true;
         if (talk) {
             await update_topl(!xtime

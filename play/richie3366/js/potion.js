@@ -2,8 +2,9 @@
 // C ref: potion.c dodrink, dopotion, peffects, peffect_oil,
 //         peffect_confusion, peffect_booze, peffect_healing,
 //         peffect_extra_healing, peffect_water, make_confused, dodip;
-//         invent.c getobj; fountain.c drinkfountain / dipfountain.
+//         invent.c getobj; fountain.c drinkfountain / dipfountain / dipsink.
 // Branch envelope: POT_WATER peffect + potionbreathe lycan vapor (D-1004).
+// dodip pool yn wash_hands / water_damage (D-1128).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -14,27 +15,32 @@ import { A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise } from './attrib
 import { makeknown, compactify_invlets } from './invent.js';
 import { yn_function } from './getline.js';
 import { doname, xname, short_oname, thesimpleoname, makeplural } from './objnam.js';
-import { dipfountain, drinkfountain, drinksink } from './fountain.js';
 import {
-    IS_FOUNTAIN, IS_SINK, IS_POOL,
+    dipfountain, drinkfountain, drinksink, dipsink,
+    wash_hands, floating_above,
+} from './fountain.js';
+import {
+    IS_FOUNTAIN, IS_SINK,
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     TIMEOUT, HALLUC_RES, GLIB,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
+    P_RIDING, P_BASIC, ER_DESTROYED,
 } from './const.js';
-import { hands_obj } from './weapon.js';
+import { hands_obj, P_SKILL } from './weapon.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
-import { losehp, nomul, maybe_half_phys } from './hack.js';
+import { losehp, nomul, maybe_half_phys, is_pool, waterbody_name } from './hack.js';
 import { cansee } from './vision.js';
-import { mons, mon_hates_blessings, pmnames } from './monsters.js';
+import { mons, mon_hates_blessings, pmnames, is_swimmer } from './monsters.js';
+import { rider_cant_reach } from './steed.js';
 import { PM_HUMAN, PM_HEALER } from './generated/monsters_data.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
 import { more_experienced } from './exper.js';
 import { trycall, hliquid } from './do_name.js';
 import { newuhs } from './eat.js';
-import { heal_legs } from './trap.js';
+import { heal_legs, water_damage } from './trap.js';
 import {
     delayed_killer, find_delayed_killer, dealloc_killer,
 } from './end.js';
@@ -1054,10 +1060,22 @@ async function getobj_dip(at_here) {
 }
 
 /**
+ * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
+ * Sticky u.Levitation is not a C field (D-1070).
+ */
+function Levitation() {
+    const u = game.u || {};
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+
+/**
  * C ref: potion.c dodip — #dip
- * Branch envelope: fountain-at-feet yn → dipfountain.
- * Deferred: sink/pool dips, potion_dip alchemy, m-prefix skip floor,
- * inaccessible_equipment, can_reach_floor false.
+ * Branch envelope: fountain-at-feet yn → dipfountain; sink-at-feet yn →
+ * dipsink (D-1113); pool yn → wash_hands / water_damage (D-1128).
+ * Deferred: potion_dip alchemy, m-prefix skip floor,
+ * inaccessible_equipment, drink_ok_extra potion getobj after 'n',
+ * pot_acid_damage boom+delobj (ER_DESTROYED without delete).
  * @returns {number} ECMD_*
  */
 export async function dodip() {
@@ -1066,7 +1084,9 @@ export async function dodip() {
     const here = loc?.typ ?? 0;
     const at_fountain = IS_FOUNTAIN(here);
     const at_sink = IS_SINK(here);
-    const at_pool = IS_POOL(here);
+    // C: is_pool(u.ux,u.uy) not IS_POOL(here) — raised lava bridges
+    // are not pools (D-1090 / D-1128).
+    const at_pool = is_pool(u.ux, u.uy);
     const at_here = !game.iflags?.menu_requested
         && (at_pool || at_fountain || at_sink);
 
@@ -1091,9 +1111,9 @@ export async function dodip() {
         );
 
     if (!game.iflags?.menu_requested) {
-        // can_reach_floor deferred — assume reachable when not levitating
-        if (u.Levitation) {
-            // leave floor prompts; potion getobj path deferred
+        // C: !can_reach_floor(FALSE) skips fountain/sink/pool yn
+        if (!can_reach_floor(false)) {
+            // cannot dip into floor water
         } else if (at_fountain) {
             const q = `Dip ${game.flags?.verbose !== false ? obuf : shortestname} into the fountain?`;
             if ((await yn_function(q, 'yn', 'n')) === 'y') {
@@ -1103,8 +1123,38 @@ export async function dodip() {
             }
             // drink_ok_extra++ then potion getobj — deferred cancel
             return ECMD_CANCEL;
-        } else if (at_sink || at_pool) {
-            // dipsink / pool dip deferred
+        } else if (at_sink) {
+            const q = `Dip ${game.flags?.verbose !== false ? obuf : shortestname} into the sink?`;
+            if ((await yn_function(q, 'yn', 'n')) === 'y') {
+                if (!is_hands) obj.pickup_prev = 0;
+                await dipsink(obj);
+                return ECMD_TIME;
+            }
+            // drink_ok_extra++ then potion getobj — deferred cancel
+            return ECMD_CANCEL;
+        } else if (at_pool) {
+            const pooltype = waterbody_name(u.ux, u.uy);
+            const q = `Dip ${game.flags?.verbose !== false ? obuf : shortestname} into the ${pooltype}?`;
+            if ((await yn_function(q, 'yn', 'n')) === 'y') {
+                if (Levitation()) {
+                    await floating_above(pooltype);
+                } else if (u.usteed && !is_swimmer(u.usteed.data)
+                    && P_SKILL(P_RIDING) < P_BASIC) {
+                    await rider_cant_reach();
+                } else if (is_hands || obj === u.uarmg) {
+                    if (!is_hands) obj.pickup_prev = 0;
+                    await wash_hands();
+                } else {
+                    obj.pickup_prev = 0;
+                    if (obj.otyp === POT_ACID) obj.in_use = 1;
+                    if ((await water_damage(obj, null, true)) !== ER_DESTROYED
+                        && obj.in_use) {
+                        useup(obj);
+                    }
+                }
+                return ECMD_TIME;
+            }
+            // drink_ok_extra++ then potion getobj — deferred cancel
             return ECMD_CANCEL;
         }
     }

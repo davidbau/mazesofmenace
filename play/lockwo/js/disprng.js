@@ -33,3 +33,11 @@ export function rn2_on_display_rng(x) {
 // full mons[] length (383 with the recorder's MAIL_STRUCTURES daemon).
 export const NUMMONS = 383;
 export function random_monster() { return rn2_on_display_rng(NUMMONS); }
+
+// C ref: display.h:187 random_object(rng) == rng(NUM_OBJECTS - FIRST_OBJECT)
+// + FIRST_OBJECT — skips STRANGE_OBJECT and the MAXOCLASSES generic-class
+// placeholders (objects.h MARKER(FIRST_OBJECT, LAST_GENERIC + 1)).
+const FIRST_OBJECT = 18;   // objclass.h MAXOCLASSES
+export function random_object(num_objects) {
+    return rn2_on_display_rng(num_objects - FIRST_OBJECT) + FIRST_OBJECT;
+}

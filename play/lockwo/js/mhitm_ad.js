@@ -282,6 +282,98 @@ async function destroy_items_mon(mon, dmgtyp, dmg_in, ops) {
     return dmg_out;
 }
 
+// C ref: zap.c destroy_strings[dindx][0 singular, 1 plural, 2 killer reason].
+const DESTROY_STRINGS = [
+    ['freezes and shatters', 'freeze and shatter', 'shattered potion'],
+    ['boils and explodes', 'boil and explode', 'boiling potion'],
+    ['ignites and explodes', 'ignite and explode', 'exploding potion'],
+    ['catches fire and burns', 'catch fire and burn', 'burning scroll'],
+    ['catches fire and burns', null, 'burning book'],
+    ['turns to dust and vanishes', null, null],
+    ['breaks apart and explodes', null, 'exploding wand'],
+];
+
+// C ref: zap.c destroy_items(&gy.youmonst, dmgtyp, dmg_in) — the u_carry arm of
+// the same routine destroy_items_mon() ports.  It runs off gi.invent and its
+// damage lands on the hero through losehp() instead of being returned.  The
+// leading rn2(DMG_DESTROY_SCALE) fires even when 'limit' ends up 0, which is
+// the common case for a small melee hit — and it is a real call in the stream.
+export async function destroy_items_hero(dmgtyp, dmg_in, ops) {
+    let limit = Math.floor(dmg_in / DMG_DESTROY_SCALE);
+    if (dmg_in % DMG_DESTROY_SCALE > rn2(DMG_DESTROY_SCALE)) limit++;
+    if (limit > MAX_ITEMS_DESTROYED) limit = MAX_ITEMS_DESTROYED;
+    if (limit < 1) return 0;
+
+    const picks = new Array(MAX_ITEMS_DESTROYED).fill(null);
+    let elig = 0;
+    for (const obj of (game.invent || [])) {
+        if (!destroyable(obj, dmgtyp)) continue;
+        const i = (elig < limit) ? elig : rn2(elig);   // reservoir sample
+        elig++;
+        if (i < 0 || i >= limit) continue;
+        picks[i] = obj;
+    }
+    if (elig > limit) elig = limit;
+    let dmg_out = 0;
+    for (let i = 0; i < elig; i++) {
+        const obj = picks[i];
+        if (obj) dmg_out += await maybe_destroy_item_hero(obj, dmgtyp, ops);
+    }
+    return dmg_out;
+}
+
+// C ref: zap.c u_adtyp_resistance_obj() / inventory_resistance_check() — an
+// EXTRINSIC source of the matching resistance protects carried items 99% of the
+// time (a dwarvish cloak 90% against heat/cold).  The rn2(100) only happens
+// when such a source is worn, so a hero without one spends no call here.
+function inventory_resistance_check(dmgtyp) {
+    const u = game.u || {};
+    const prop = (dmgtyp === AD_COLD) ? 'Cold_resistance'
+        : (dmgtyp === AD_FIRE) ? 'Fire_resistance'
+            : (dmgtyp === AD_ELEC) ? 'Shock_resistance' : null;
+    if (!prop) return false;
+    const prob = (u.uprops?.['E' + prop] || u['E' + prop]) ? 99 : 0;
+    if (!prob) return false;
+    return rn2(100) < prob;
+}
+
+// C ref: zap.c maybe_destroy_item(&gy.youmonst, obj, dmgtyp).
+async function maybe_destroy_item_hero(obj, dmgtyp, ops) {
+    if (inventory_resistance_check(dmgtyp)) return 0;
+    let dmg = 0, dindx = 0, quan = obj.quan | 0;
+    switch (dmgtyp) {
+    case AD_COLD: dindx = 0; dmg = rnd(4); break;
+    case AD_FIRE:
+        switch (obj.oclass) {
+        case POTION_CLASS: dindx = (obj.otyp !== POT_OIL) ? 1 : 2; dmg = rnd(6); break;
+        case SCROLL_CLASS: dindx = 3; dmg = 1; break;
+        case SPBOOK_CLASS: dindx = 4; dmg = 1; break;
+        default: dindx = 1; dmg = Math.floor(((obj.owt | 0) + 19) / 20); break;
+        }
+        break;
+    case AD_ELEC:
+        if (obj.oclass === WAND_CLASS) { dindx = 6; dmg = rnd(10); }
+        else { dindx = 5; dmg = 0; }
+        break;
+    default: return 0;
+    }
+    if (obj.in_use) quan--;
+    let cnt = 0;
+    for (let i = 0; i < quan; i++) if (!rn2(3)) cnt++;
+    if (!cnt) return 0;
+    const mult = (cnt === 1) ? ((quan === 1) ? '' : 'One of ')
+        : ((cnt < quan) ? 'Some of ' : (quan === 2) ? 'Both of ' : 'All of ');
+    const nm = ops.yname ? ops.yname(obj) : (OBJECTS[obj.otyp]?.name || 'item');
+    await ops.emit(`${mult}${cnt === 1 && quan === 1 ? 'Your' : 'your'} ${nm} ${
+        DESTROY_STRINGS[dindx][(cnt > 1) ? 1 : 0]}!`);
+    // potionbreathe() (AD_FIRE/AD_ELEC potions only), Ring_gone()/setnotworn()
+    // and gc.current_wand are not reached by an AD_COLD potion shatter, the only
+    // caller wired to this today.
+    if (ops.useup) for (let i = 0; i < cnt; i++) ops.useup(obj);
+    if (dmg && ops.losehp) await ops.losehp(dmg);
+    return dmg;
+}
+
 async function maybe_destroy_item_mon(mon, obj, dmgtyp, ops) {
     let dmg = 0, quan = obj.quan | 0, xresist = false;
     switch (dmgtyp) {

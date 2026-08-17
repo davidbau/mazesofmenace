@@ -30,7 +30,8 @@ import { objects as OBJECTS, CORPSE, BOULDER, BELL_OF_OPENING,
     COIN_CLASS, GEM_CLASS, ROCK_CLASS, place_object } from './mkobj.js';
 import { monster_by_pmidx, newcham, enexto_spawn,
     pickvampshape_pub, set_mimic_sym } from './makemon.js';
-import { newsym, pline, update_topl, see_with_infrared, canseemon_shared } from './display.js';
+import { newsym, pline, update_topl, see_with_infrared, canseemon_shared,
+    tp_sensemon } from './display.js';
 import { dist2 } from './hacklib.js';
 import { Monnam } from './uhitm.js';
 
@@ -690,30 +691,18 @@ function ceiling_hider(ptr) {
         || ((f1 & M1_FLY) !== 0);
 }
 
-// C ref: display.h:41/55 _tp_sensemon(mon) / _sensemon(mon).  Nothing in this
-// port grants telepathy, monster detection or warn-of-monster yet, so this is
-// still False throughout — but it now reads the hero's state instead of being
-// hardcoded, so the day an ESP source lands (eating a floating eye corpse, an
-// amulet of ESP, a blessed potion of object detection) restrap()'s
-// "won't hide when adjacent to hero" test starts answering correctly.
-// MATCH_WARN_OF_MON needs svc.warntype (worn warn-of-monster gear), which this
-// port does not track at all; it is the one term left out.
-function tp_sensemon(mtmp) {
-    const u = game.u, p = u?.uprops || {};
-    if (mindless(mtmp.data)) return false;
-    // C: Blind_telepat is the INTRINSIC half (HTelepat); it only works blind.
-    if (Blind() && ((p.Telepat ?? 0) || (p.HTelepat ?? 0))) return true;
-    // C: Unblind_telepat is the EXTRINSIC (worn/wielded) half only.
-    return !!(p.ETelepat) && mdistu(mtmp) <= (u?.unblind_telepat_range ?? -1);
-}
-function sensemon(mtmp) {
+export function sensemon(mtmp) {
     if (!mtmp) return false;
     const u = game.u, p = u?.uprops || {};
     if (u?.uswallow && mtmp !== u.ustuck) return false;
     if (u?.uunderwater
         && !(mdistu(mtmp) <= 2 && IS_POOL(game.level?.at(mtmp.mx, mtmp.my)?.typ)))
         return false;
-    return !!((p.Detect_monsters ?? 0) || (p.HDetect_monsters ?? 0))
+    // C ref: youprop.h Detect_monsters == (HDetect_monsters || EDetect_monsters);
+    // detect.c:854 sets the EXTRINSIC half for the one-shot browse, so leaving
+    // it out made every detected monster read as "it".
+    return !!((p.Detect_monsters ?? 0) || (p.HDetect_monsters ?? 0)
+              || (p.EDetect_monsters ?? 0))
         || tp_sensemon(mtmp);
 }
 
@@ -1609,3 +1598,4 @@ export function can_carry(mtmp, otmp) {
 
     return iquan;
 }
+

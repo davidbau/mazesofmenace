@@ -24,13 +24,13 @@ import {
     INTRINSIC, UNCHANGING,
     In_mines, ACH_TOWN, NO_PART,
     NO_KILLER_PREFIX, IS_SINK, W_ARTI, I_SPECIAL, TIMEOUT, FROMOUTSIDE,
-    FROMFORM, P_NONE,
+    FROMFORM, P_NONE, LEVITATION, FLYING,
 } from './const.js';
 import { pline, Norep, newsym, canspotmon, map_invisible } from './display.js';
 import { gethungry, morehungry } from './eat.js';
 import { m_at } from './mon.js';
 import { recalc_block_point } from './vision.js';
-import { is_hider, throws_rocks, noncorporeal, metallivorous, mons } from './monsters.js';
+import { is_hider, throws_rocks, noncorporeal, metallivorous, mons, is_flyer } from './monsters.js';
 import { objects_at, obj_extract_self, place_object, delobj } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { WEAPON_CLASS, TOOL_CLASS } from './objects.js';
@@ -1371,6 +1371,91 @@ function Is_special_local(lev) {
         if (on_level_dig(lev, s.dlevel)) return s;
     }
     return null;
+}
+
+/** C youprop.h H/E via flat + uprops[idx] (confer may not mirror E*). */
+function _uprop_he_st(u, flatH, flatE, idx) {
+    const prop = u.uprops?.[idx];
+    return ((u[flatH] | 0) || (u[flatE] | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0));
+}
+
+/**
+ * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
+ * B is u.BLevitation | uprops[LEVITATION].blocked (D-1070).
+ */
+function Levitation_st() {
+    const u = game.u || {};
+    const prop = u.uprops?.[LEVITATION];
+    const blocked = (u.BLevitation | 0) || (prop?.blocked | 0);
+    return !!(_uprop_he_st(u, 'HLevitation', 'ELevitation', LEVITATION)
+        && !blocked);
+}
+
+/**
+ * C youprop.h Flying — (H||E||steed is_flyer) && !BFlying.
+ */
+function Flying_st() {
+    const u = game.u || {};
+    const prop = u.uprops?.[FLYING];
+    const blocked = (u.BFlying | 0) || (prop?.blocked | 0);
+    const steedFlyer = !!(u.usteed && is_flyer(u.usteed.data));
+    return !!((_uprop_he_st(u, 'HFlying', 'EFlying', FLYING) || steedFlyer)
+        && !blocked);
+}
+
+/**
+ * C ref: hack.c switch_terrain — moving onto different terrain may block
+ * or unblock levitation/flight via B* FROMOUTSIDE (solid rock, closed
+ * door, waterwall, lavawall). Skip float_down when blocking.
+ * Named omit: classify_terrain when flags.terrainstatus.
+ */
+export async function switch_terrain() {
+    const u = game.u;
+    if (!u) return;
+    const lev = game.level?.at(u.ux | 0, u.uy | 0);
+    if (!lev) return;
+    const blocklev = !!(IS_OBSTRUCTED(lev.typ)
+        || closed_door(u.ux | 0, u.uy | 0)
+        || IS_WATERWALL(lev.typ)
+        || (lev.typ | 0) === LAVAWALL);
+    const was_levitating = !!Levitation_st();
+    const was_flying = !!Flying_st();
+
+    if (blocklev) {
+        // C: stop levitating but skip float_down()
+        if (Levitation_st()) {
+            await pline("You can't levitate in here.");
+        }
+        u.BLevitation = (u.BLevitation | 0) | FROMOUTSIDE;
+    } else if (u.BLevitation) {
+        u.BLevitation = (u.BLevitation | 0) & ~FROMOUTSIDE;
+        // C: if (Levitation || BLevitation) float_up();
+        if (Levitation_st() || (u.BLevitation | 0)) {
+            const { float_up } = await import('./trap.js');
+            await float_up();
+        }
+    }
+    if (blocklev) {
+        if (Flying_st()) {
+            await pline("You can't fly in here.");
+        }
+        u.BFlying = (u.BFlying | 0) | FROMOUTSIDE;
+    } else if (u.BFlying) {
+        u.BFlying = (u.BFlying | 0) & ~FROMOUTSIDE;
+        const { float_vs_flight } = await import('./polyself.js');
+        float_vs_flight();
+        if (Flying_st()) {
+            await pline('You start flying.');
+        }
+    }
+    if ((!!Levitation_st() !== was_levitating)
+        || (!!Flying_st() !== was_flying)) {
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    }
+    // C: if (flags.terrainstatus) classify_terrain(); named omit
 }
 
 /**

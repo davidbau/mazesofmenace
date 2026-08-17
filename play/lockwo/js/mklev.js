@@ -12,7 +12,7 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
 import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_bar_goal, makemaz_arc_strt, makemaz_arc_loca, makemaz_arc_goal, makemaz_pri_strt, makemaz_pri_loca, makemaz_pri_goal, makemaz_tower1, makemaz_tower2, makemaz_tower3, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown2, makemaz_minetown3, makemaz_minetown5, makemaz_minetown7, makemaz_minend1, makemaz_minend2, makemaz_minend3, makemaz_medusa1, makemaz_medusa2, makemaz_medusa3, makemaz_medusa4, makemaz_asmodeus, makemaz_baalz, makemaz_juiblex, makemaz_orcus, makemaz_wizard1, makemaz_wizard2, makemaz_wizard3, makemaz_fakewiz1, makemaz_fakewiz2, makemaz_air, makemaz_earth, makemaz_fire, makemaz_water, makemaz_astral, makemaz_cav_strt, makemaz_hea_strt, makemaz_kni_strt, makemaz_mon_strt, makemaz_ran_strt, makemaz_rog_strt, makemaz_sam_strt, makemaz_tou_strt, makemaz_val_strt, makemaz_wiz_strt, shuffle,
          mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
-         splev_map_origin, flip_level, bigrm_get_level_extends, set_door_orientation,
+         splev_map_origin, reset_xystart_size, flip_level, bigrm_get_level_extends, set_door_orientation,
          okdoor, bydoor, create_door, lspo_door_relative,
          is_ok_location, pm_to_humidity, LOC_DRY,
          SET_LIT_NOCHANGE } from './sp_lev.js';
@@ -4476,6 +4476,14 @@ async function makemaz_hellfill() {
     const was_mklev = g.in_mklev;
     g.in_mklev = true;
     reset_maze_bounds();
+    // C ref: sp_lev.c:6373 sp_level_coder_init() ends with reset_xystart_size(),
+    // so every level's Lua starts from xstart=1/ystart=0.  hellfill.lua has no
+    // des.map to re-anchor them, so without this it inherited the PREVIOUS
+    // special level's map origin: arriving from the Valley (a 76x20 des.map ->
+    // xstart=3, ystart=1) shifted des.mazewalk's {01,10} and walkfrom() started
+    // at (5,11) instead of C's (3,9), changing okay()'s count from 3 to 4 and
+    // desynchronising the whole maze carve.
+    reset_xystart_size();
     try {
         const hellno = mk_mrandom(1, 7);
         switch (hellno) {

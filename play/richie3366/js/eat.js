@@ -19,7 +19,7 @@
 // sellobj_state on invent-full dropy; costly_alteration COST_BITE;
 // ?/* menu; multi-turn choke/newuhs messages; gethungry ring/amulet
 // accessorytime + newuhs; losestr setuhpmax / terminal-frailty full
-// death path; vomit cantvomit/Sick/FAINTING/acid-breath;
+// death path; timeout.c vomiting_dialog cantvomit/Hallu texts;
 // Fixed_abil Popeye Olive/Bluto;
 // livelog conduct; cprefx polymon stone-golem failure polish.
 // D-0953: floorfood pool/lava reach + vault_gd_watching(GD_EATGOLD).
@@ -56,7 +56,7 @@ import {
     MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON, MR_ACID, MR_STONE,
     M1_SEE_INVIS, is_were,
 } from './monsters.js';
-import { same_race } from './mondata.js';
+import { same_race, cantvomit } from './mondata.js';
 import { were_beastie, set_ulycn, you_unwere } from './were.js';
 import { monflee } from './monmove.js';
 import { dist2, rescham } from './mon.js';
@@ -66,7 +66,8 @@ import {
     SLT_ENCUMBER, EXT_ENCUMBER, FROMFORM, W_ARTI, W_WEP, W_RINGL, W_RINGR,
     W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, W_BALL, W_CHAIN,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
-    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING,
+    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, STOMACH, SICK_VOMITABLE,
+    IS_ALTAR,
     TIMEOUT, NON_PM, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, HEALTHY_TIN,
     ismnum,
     KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, Has_contents, NO_PART,
@@ -90,7 +91,7 @@ import { near_capacity, observe_object, makeknown, compactify_invlets,
     freeinv_core, encumber_msg } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
-    make_stunned, make_hallucinated,
+    make_stunned, make_hallucinated, make_sick,
 } from './potion.js';
 import { addinv_nomerge } from './u_init.js';
 import { dropy, dropx, make_blinded, revive_corpse } from './do.js';
@@ -99,7 +100,7 @@ import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
 import { t_at, deltrap, reset_utrap, b_trapped, self_invis_message, float_up } from './trap.js';
 import { done, delayed_killer } from './end.js';
-import { polymon, polyself, rehumanize, change_sex } from './polyself.js';
+import { polymon, polyself, rehumanize, change_sex, body_part } from './polyself.js';
 import { costly_alteration, costly_spot } from './shk.js';
 import {
     wield_tool, uwepgone, uswapwepgone, uqwepgone,
@@ -296,20 +297,34 @@ const tintxts = [
     { txt: '', nut: 0, fodder: 0, greasy: 0 },
 ];
 const TTSZ = tintxts.length;
-// C ref: monattk.h AT_MAGC
+// C ref: monattk.h AT_MAGC / AT_BREA / AD_ACID
 const AT_MAGC = 255;
+const AT_BREA = 12;
+const AD_ACID = 8;
 
 /**
  * C ref: mondata.h attacktype — true if any mattk slot has aatyp.
  * Local copy to avoid makemon export / import cycles.
  */
 function attacktype(ptr, aatyp) {
+    return !!attacktype_fordmg(ptr, aatyp, -1);
+}
+
+/**
+ * C ref: mondata.c attacktype_fordmg — first mattk with aatyp and adtyp
+ * (AD_ANY==-1 wildcard). Local copy to avoid makemon import cycles.
+ */
+function attacktype_fordmg(ptr, atyp, dtyp) {
     const slots = ptr?.mattk;
-    if (!slots) return false;
+    if (!slots) return null;
     for (let i = 0; i < slots.length; i++) {
-        if (slots[i]?.aatyp === aatyp) return true;
+        const a = slots[i];
+        if ((a?.aatyp | 0) === atyp
+            && (dtyp === -1 || (a?.adtyp | 0) === dtyp)) {
+            return a;
+        }
     }
-    return false;
+    return null;
 }
 
 /** C ref: mondata.h dmgtype — true if any mattk slot has adtyp. */
@@ -555,16 +570,60 @@ export function morehungry(num) {
 
 /**
  * C ref: eat.c vomit — side effects of vomiting (fountain foul water, etc.).
- * Branch envelope: nomul(-2) when multi >= -2 + You_can_move_again.
- * Named omissions: cantvomit jaw-gape; Sick SICK_VOMITABLE cure; FAINTING
- * dry-heave message; yellow-dragon AT_BREA AD_ACID spew (RNG when poly).
+ * Branch envelope (D-0371 + D-1127): cantvomit jaw-gape; else Sick
+ * SICK_VOMITABLE make_sick(0) + FAINTING dry-heave vs spewed; nomul(-2)
+ * when multi >= -2 + You_can_move_again; spewed → AT_BREA AD_ACID
+ * ubreatheu, altar_wrath, acidic melt_ice.
+ * Named omissions: timeout.c vomiting_dialog cantvomit/Hallu texts;
+ * zhitu acid_damage/erode_armor bodies; C web-destroy TODO before ice.
  */
-export function vomit() {
-    // cantvomit / Sick / uhs FAINTING / acid-breath deferred
+export async function vomit() {
+    const u = game.u || (game.u = {});
+    const ptr = hero_form_data();
+    let spewed = false;
+
+    if (cantvomit(ptr)) {
+        // doesn't cure food poisoning
+        await pline('Your jaw gapes convulsively.');
+    } else {
+        if (u.Sick && ((u.usick_type | 0) & SICK_VOMITABLE) !== 0) {
+            await make_sick(0, null, true, SICK_VOMITABLE);
+        }
+        if ((u.uhs | 0) >= FAINTING) {
+            await pline(`Your ${body_part(STOMACH)} heaves convulsively!`);
+        } else {
+            spewed = true;
+        }
+    }
+
     if ((game.multi || 0) >= -2) {
         nomul(-2);
         game.multi_reason = 'vomiting';
         game.nomovemsg = 'You can move again.';
+    }
+
+    if (spewed) {
+        const mattk = attacktype_fordmg(ptr, AT_BREA, AD_ACID);
+        if (mattk) {
+            await pline('You breathe acid on yourself...');
+            const { ubreatheu } = await import('./zap.js');
+            await ubreatheu(mattk);
+        }
+        const lev = game.level?.at?.(u.ux, u.uy);
+        if (lev && IS_ALTAR(lev.typ)) {
+            const { altar_wrath } = await import('./pray.js');
+            await altar_wrath(u.ux, u.uy);
+        }
+        if (acidic(ptr)) {
+            // C TODO: destroy web here (before ice)
+            const { is_ice, melt_ice } = await import('./zap.js');
+            if (is_ice(u.ux, u.uy)) {
+                await melt_ice(
+                    u.ux, u.uy,
+                    'Your stomach acid melts straight through the ice!',
+                );
+            }
+        }
     }
 }
 
@@ -2178,7 +2237,7 @@ async function choke(food) {
         }
         await pline('You stuff yourself and then vomit voluminously.');
         morehungry(Hunger() ? ((u.uhunger | 0) - 60) : 1000);
-        vomit();
+        await vomit();
     } else {
         if (!game.killer) game.killer = { name: '', format: 0 };
         game.killer.format = KILLED_BY_AN;

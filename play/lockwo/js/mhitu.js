@@ -587,7 +587,16 @@ export async function wildmiss(mtmp, mattk) {
             await emitU(`${Monst_name} is fooled by water reflections and misses!`);
     }
 }
-function Displaced() { return (game.u?.uprops?.Displaced | 0); }
+// C ref: youprop.h Displaced == (HDisplaced || EDisplaced).  EDisplaced comes
+// from setworn() on the cloak of displacement (otyp 149); u.uprops.Displaced is
+// not a field this port ever writes, so reading it made wildmiss() answer "not
+// displaced" for a hero every monmove.js set_apparxy() had already treated as
+// displaced, and the "strikes at your displaced image" line went missing.
+const CLOAK_OF_DISPLACEMENT_OTYP = 149;
+function Displaced() {
+    return (game.uarmc?.otyp === CLOAK_OF_DISPLACEMENT_OTYP
+            || !!game.u?.uprops?.HDisplaced) ? 1 : 0;
+}
 function Underwater() { return game.u?.uinwater ? 1 : 0; }
 
 // ═══ mhitu.c:264 expels ═════════════════════════════════════════════════════
@@ -797,7 +806,7 @@ export async function gulpmu(mtmp, mattk) {
         // C ref mhitu.c:1396 — swallowed(1) redraws the map as the stomach view
         // (cls() first, so the dungeon is gone); snuff_lit() over the whole
         // inventory for a non-flaming engulfer draws nothing.
-        disp.swallowed(1);
+        await disp.swallowed(1);
     }
 
     if (mtmp !== u.ustuck) return M_ATTK_MISS;

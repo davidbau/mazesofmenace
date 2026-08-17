@@ -317,6 +317,45 @@ function killer_epitaph(how) {
     return DEATHS[how] || 'died';
 }
 
+// C ref: end.c:851 done_object_cleanup() — deal with objects left in an
+// abnormal state by the death blow.  The hero can die *while* a missile is in
+// transit (an arrow that mortally wounds them is still OBJ_FREE: out of the
+// thrower's inventory and not yet on the map), and savebones() would lose it.
+// C puts it on the map at u.ux+u.dx, u.uy+u.dy — the square the hero was
+// facing — falling back to the hero's own square when that isn't accessible,
+// deliberately bypassing flooreffects().  No RNG.
+// Only the thrown/kicked-missile arm is modelled: inven_inuse()'s disposable
+// items and the Punished uball/uchain limbo have no counterpart here (nothing
+// in js/ leaves them OBJ_FREE), and perm_invent is never on.
+async function done_object_cleanup() {
+    try {
+        const u = game.u;
+        if (!u) return;
+        const { place_object } = await import('./mkobj.js');
+        const { stackobj } = await import('./invent.js');
+        const { isok, ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED } = await import('./const.js');
+        // monmove.c:2188 accessible() == ACCESSIBLE(typ) && !closed_door(x,y).
+        const accessible = (x, y) => {
+            const lev = game.level?.at?.(x, y);
+            return !!lev && ACCESSIBLE(lev.typ)
+                && !(IS_DOOR(lev.typ) && (lev.doormask & (D_CLOSED | D_LOCKED)));
+        };
+        let ox = (u.ux | 0) + (u.dx | 0), oy = (u.uy | 0) + (u.dy | 0);
+        if (!isok(ox, oy) || !accessible(ox, oy)) { ox = u.ux; oy = u.uy; }
+        const floor = game.level?.objects || [];
+        for (const key of ['thrownobj', 'kickedobj']) {
+            const obj = game[key];
+            // C tests `where == OBJ_FREE`; ours is the mirror test that the
+            // object reached neither the map nor an inventory.
+            if (obj && !floor.includes(obj) && !(game.invent || []).includes(obj)) {
+                place_object(obj, ox, oy);
+                stackobj(obj);
+            }
+            game[key] = null;
+        }
+    } catch { /* cleanup is best-effort; never break the death sequence */ }
+}
+
 async function done(how) {
     const d = await deps();
     const u = game.u;
@@ -391,6 +430,9 @@ async function done(how) {
     }
 
     if (!survive) {
+        // C ref: end.c:1157 — `if (!program_state.panicking) done_object_cleanup()`,
+        // run before disclosure and before bones are written.
+        await done_object_cleanup();
         // C ref: end.c really_done(how) — the hero really dies.  Before the
         // disclosure/topten teardown, really_done computes
         //   bones_ok = (how < GENOCIDED) && can_make_bones();

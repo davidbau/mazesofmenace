@@ -2,20 +2,20 @@
 // C ref: mon.c — mcalcmove, movemon, seemimic, wakeup, mon_allowflags (partial).
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, d } from './rng.js';
 import { dochugw, m_everyturn_effect, monflee } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
     NOGARLIC, IRONBARS, IS_ALTAR, DISPLACED,
-    IS_WATERWALL, LAVAWALL, Is_waterlevel, POOL, MOAT, WATER, LAVAPOOL,
+    IS_WATERWALL, LAVAWALL, Is_waterlevel,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
     ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
     IS_FOUNTAIN,
     ismnum, M_POISONGAS_OK, u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_MIGRATING, MON_DETACH,
-    Has_contents,
+    Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
 } from './const.js';
 import { t_at, m_harmless_trap, water_damage_chain } from './trap.js';
 import {
@@ -41,9 +41,9 @@ import { may_dig } from './dig.js';
 import { newsym, pline, sensemon, canseemon, canspotmon } from './display.js';
 import { online2 } from './hacklib.js';
 import { worm_cross } from './worm.js';
-import { Monnam } from './do_name.js';
-import { cansee } from './vision.js';
-import { fightm, mondead } from './mhitm.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { cansee, couldsee } from './vision.js';
+import { fightm, mondead, mondied } from './mhitm.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
@@ -58,6 +58,7 @@ import { experience, more_experienced, newexplevel } from './exper.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
@@ -531,7 +532,7 @@ function mon_regen(mon, digest_meal) {
  * Named omissions: mon_has_special Vlad stay in pickvampshape; NC_SHOW_MSG
  * display polish; canseemon worm_known.
  */
-function decide_to_shapeshift(mon) {
+async function decide_to_shapeshift(mon) {
     let ptr = null;
     let mndx;
     const was_female = mon.female ? 1 : 0;
@@ -567,7 +568,7 @@ function decide_to_shapeshift(mon) {
                 && closed_door(mon.mx, mon.my)) {
                 const new_xy = { x: 0, y: 0 };
                 if (enexto(new_xy, mon.mx, mon.my, ptr)) {
-                    rloc_to(mon, new_xy.x, new_xy.y);
+                    await rloc_to(mon, new_xy.x, new_xy.y);
                 }
             }
         } else {
@@ -602,7 +603,7 @@ async function m_calcdistress(mtmp) {
         if (await minliquid(mtmp)) return;
     }
     mon_regen(mtmp, false);
-    if (ismnum(mtmp.cham)) decide_to_shapeshift(mtmp);
+    if (ismnum(mtmp.cham)) await decide_to_shapeshift(mtmp);
     were_change(mtmp);
     if (mtmp.mblinded && !(--mtmp.mblinded)) mtmp.mcansee = 1;
     if (mtmp.mfrozen && !(--mtmp.mfrozen)) mtmp.mcanmove = 1;
@@ -1113,14 +1114,25 @@ export function healmon(mtmp, amt, overheal) {
 
 /**
  * C ref: mon.c minliquid / minliquid_core — liquid compatibility; 1=died.
- * Envelope: gremlin pool/fountain rn2(3)→split_mon + dryup (D-1095).
- * Named omissions: iron-golem rust d(2,6); steed Flying/Levitation gate;
- * fire_damage_chain; lava/pool water_damage_chain on non-gremlin;
- * deal_with_overcrowding; xkilled(!mon_moving); engulfing_u drown flush;
- * pline death messages.
+ * Envelope: gremlin pool/fountain rn2(3)→split_mon + dryup (D-1095);
+ * iron-golem inpool rust (D-1117); pool drown mondied vs xkilled (D-1117).
+ * Named omissions: steed Flying/Levitation gate; lava fire_damage_chain /
+ * on_fire plines / xkilled(!mon_moving); deal_with_overcrowding;
+ * engulfing_u drown flush.
  */
 export async function minliquid(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return 1;
+    // C minliquid:947–956 — sad_feeling for mondead/xkilled, always cleared.
+    game.iflags = game.iflags || {};
+    game.iflags.sad_feeling = !!(mtmp.mtame && !canseemon(mtmp));
+    try {
+        return await minliquid_core(mtmp);
+    } finally {
+        game.iflags.sad_feeling = false;
+    }
+}
+
+async function minliquid_core(mtmp) {
     const ptr = mtmp.data;
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;
@@ -1131,7 +1143,7 @@ export async function minliquid(mtmp) {
         && !(is_flyer(ptr) || is_floater(ptr));
     const infountain = IS_FOUNTAIN(game.level?.at?.(mx, my)?.typ);
 
-    // steed Flying/Levitation deferred — usteed rare on this path
+    // steed Flying/Levitation deferred — usteed is on u_at, which gush skips
 
     // C minliquid_core:987–992 — gremlin split before iron-golem / lava
     if ((ptr?.mndx ?? -1) === PM_GREMLIN && (inpool || infountain) && rn2(3)) {
@@ -1145,15 +1157,32 @@ export async function minliquid(mtmp) {
         }
         return 0;
     }
-    // iron-golem rust d(2,6) still named
+    // C minliquid_core:993–1008 — iron golem rusts in pool (D-1117).
+    if ((ptr?.mndx ?? -1) === PM_IRON_GOLEM && inpool && !rn2(5)) {
+        const dam = d(2, 6);
+        if (cansee(mx, my)) {
+            await pline(`${Monnam(mtmp)} rusts.`);
+        }
+        mtmp.mhp = (mtmp.mhp | 0) - dam;
+        if ((mtmp.mhpmax | 0) > dam) {
+            mtmp.mhpmax = (mtmp.mhpmax | 0) - dam;
+        }
+        if ((mtmp.mhp | 0) <= 0) {
+            await mondied(mtmp);
+            if ((mtmp.mhp | 0) <= 0) return 1;
+        }
+        await water_damage_chain(mtmp.minvent, false);
+        return 0;
+    }
 
     if (inlava) {
         if (!is_clinger(ptr) && !likes_lava(ptr)) {
             if (can_teleport(ptr) && !(await tele_restrict(mtmp))) {
-                if (rloc(mtmp, 0)) return 0;
+                if (await rloc(mtmp, RLOC_MSG)) return 0;
             }
             if (!resists_fire(mtmp)) {
-                // C: mon_moving → mondead (no corpse); else xkilled
+                // C: mon_moving → mondead (no corpse); else xkilled — lava
+                // xkilled / on_fire plines still named (gush is pool-only).
                 mondead_liquid(mtmp);
                 return 1;
             }
@@ -1164,7 +1193,7 @@ export async function minliquid(mtmp) {
             }
             // fire_damage_chain deferred; try escape teleport
             if (!m_in_air(mtmp) && !likes_lava(ptr)) {
-                if (!rloc(mtmp, 0)) {
+                if (!(await rloc(mtmp, RLOC_MSG))) {
                     // deal_with_overcrowding deferred
                 }
             }
@@ -1173,10 +1202,32 @@ export async function minliquid(mtmp) {
     } else if (inpool || waterwall) {
         if ((waterwall || !is_clinger(ptr)) && !cant_drown(ptr)) {
             if (can_teleport(ptr) && !(await tele_restrict(mtmp))) {
-                if (rloc(mtmp, 0)) return 0;
+                if (await rloc(mtmp, RLOC_MSG)) return 0;
             }
-            // C: mon_moving → mondied (corpse ok); pool corpse deferred → mondead
-            mondead_liquid(mtmp);
+            // C minliquid_core:1081–1109 — drown pline + mondied vs xkilled.
+            if (cansee(mx, my)) {
+                if (game.context?.mon_moving) {
+                    await pline(`${Monnam(mtmp)} drowns.`);
+                } else {
+                    await pline(`You drown ${mon_nam(mtmp)}.`);
+                }
+            }
+            // engulfing_u flush named
+            if (game.context?.mon_moving) {
+                await mondied(mtmp);
+            } else {
+                const { xkilled } = await import('./uhitm.js');
+                await xkilled(mtmp, XKILL_NOMSG);
+            }
+            if ((mtmp.mhp | 0) > 0) {
+                if (!m_in_air(mtmp)) {
+                    await water_damage_chain(mtmp.minvent, false);
+                    if (!(await rloc(mtmp, RLOC_NOMSG))) {
+                        // deal_with_overcrowding deferred
+                    }
+                }
+                return 0;
+            }
             return 1;
         }
     } else if (ptr?.mlet === 'S_EEL' && !Is_waterlevel(game.u?.uz)
@@ -1722,9 +1773,10 @@ export function restrap(mtmp) {
 
 /**
  * C ref: mon.c hideunder — set mundetected under object / pool for eels.
- * Used by hide_monst; monmove.js keeps a parallel local for postmov.
+ * Used by hide_monst and teleds(&youmonst) (D-1131). monmove.js keeps
+ * a parallel local for postmov.
  * Named omissions: You_see pline; pet cursed_object_at; cockatrice skip;
- * youmonst path; can_hide_under_obj filter.
+ * can_hide_under_obj filter.
  */
 export function hideunder(mtmp) {
     if (!mtmp?.data) return false;
@@ -1741,27 +1793,26 @@ export function hideunder(mtmp) {
         || (t && !is_pit(t.ttyp))) {
         // trapped or non-pit trap site
     } else if (mtmp.data.mlet === 'S_EEL') {
-        const typ = game.level?.at?.(x, y)?.typ;
-        const pool = typ === POOL || typ === MOAT || typ === WATER;
-        undetected = !!(pool && !Is_waterlevel(u.uz)
-            && (!(u.Underwater) || !cansee(x, y)));
+        /* C: is_pool && !Is_waterlevel && (!Underwater || !couldsee) */
+        undetected = !!(is_pool(x, y) && !Is_waterlevel(u.uz)
+            && (!(u.Underwater) || !couldsee(x, y)));
     } else if (hides_under(mtmp.data)) {
         const otmp = objects_at(x, y);
-        if (otmp) {
-            const typ = game.level?.at?.(x, y)?.typ;
-            const poolOrLava = typ === POOL || typ === MOAT || typ === WATER
-                || typ === LAVAPOOL || typ === LAVAWALL;
-            if (!poolOrLava) undetected = true;
+        /* C: !is_pool_or_lava — drawbridge-under via is_pool/is_lava */
+        if (otmp && !is_pool(x, y) && !is_lava(x, y)) {
+            undetected = true;
         }
     }
 
+    let oldundetctd;
     if (is_u) {
+        oldundetctd = !!(u.uundetected);
         u.uundetected = undetected ? 1 : 0;
     } else {
-        const oldundetctd = !!mtmp.mundetected;
+        oldundetctd = !!mtmp.mundetected;
         mtmp.mundetected = undetected ? 1 : 0;
-        if (undetected !== oldundetctd) newsym(x, y);
     }
+    if (undetected !== oldundetctd) newsym(x, y);
     return undetected;
 }
 

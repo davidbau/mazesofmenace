@@ -33,7 +33,9 @@ import {
     DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
 import { monster_by_pmidx, infravisible } from './makemon.js';
-import { random_monster } from './disprng.js';
+import { recalc_telepat_range } from './worn.js';
+import { mindless } from './monflags_data.js';
+import { random_monster, random_object, rn2_on_display_rng } from './disprng.js';
 import { objects } from './mkobj.js';
 import { engr_at } from './engrave.js';
 import { depth as depth_of_level } from './hacklib.js';
@@ -170,6 +172,41 @@ export function object_glyph(otmp) {
     return { ch: sym, color: obj_color(otmp), dec: false };
 }
 
+// C ref: display.h random_obj_to_glyph(rng) — one random_object() draw, plus a
+// SECOND random_monster() draw when that lands on CORPSE (the body glyph needs
+// a species).  The `go.otg_temp` global in C exists only to keep those two
+// draws in that order.
+function random_obj_glyph() {
+    const otyp = random_object(objects.length);
+    if (otyp === CORPSE_OTYP) {
+        const mon = monster_by_pmidx(random_monster());
+        return { ch: oc_sym(FOOD_CLASS), color: mon?.mcolor ?? NO_COLOR, dec: false };
+    }
+    const o = objects[otyp];
+    // C ref: display.c reset_glyphmap GLYPH_OBJ branch — sym from
+    // objects[otyp].oc_class, colour from obj_color(otyp) with no dknown/
+    // generic-object filtering (random_object never returns a generic).
+    return { ch: oc_sym(o?.oc_class) || oc_sym(1), dec: false,
+             color: (o?.oc_color != null) ? o.oc_color : NO_COLOR };
+}
+
+// C ref: display.h statue_to_glyph(obj, rng) Hallucination arm — a statue is
+// seen as a random monster, and the gender pick is a second draw even though
+// it only chooses between two glyph offsets that render identically.
+function halluc_statue_glyph() {
+    const mon = monster_by_pmidx(random_monster());
+    rn2_on_display_rng(2);
+    return { ch: mon?.mlet || 'x', color: mon?.mcolor ?? NO_COLOR, dec: false };
+}
+
+// C ref: display.h what_mon(monsndx(mon->data), rng) — while Hallucination
+// every monster (pet, detected, worm tail, mimic) is redrawn as a fresh
+// random species.
+function halluc_mon_glyph() {
+    const mon = monster_by_pmidx(random_monster());
+    return { ch: mon?.mlet || 'x', color: mon?.mcolor ?? NO_COLOR, dec: false };
+}
+
 // C ref: display.c map_object + see_nearby_objects — when the hero can see an
 // undescribed potion/gem/spellbook closely enough (distu(x,y) <= neardist,
 // where neardist is the small rounded square around the hero), it is observed:
@@ -299,6 +336,14 @@ export function m_at(x, y) {
 // which calls obj_to_glyph(mappearance) / cmap_to_glyph(mappearance).
 function monster_glyph(mon) {
     if (!mon) return null;
+    // C ref: display.c display_monster — the whole function funnels through
+    // what_mon()/map_object(), so while Hallucination the species (and, for an
+    // M_AP_OBJECT mimic, the fake object) is re-rolled off the display rng on
+    // EVERY draw.  One draw per rendered monster, in newsym()'s call order.
+    if (Hallucination_u()) {
+        return (mon.m_ap_type === 'obj' && mon.mappearance != null)
+            ? random_obj_glyph() : halluc_mon_glyph();
+    }
     if (mon.m_ap_type === 'obj' && mon.mappearance != null) {
         // Appear as an object: same glyph the floor object would draw.  C ref:
         // display.c map_object/obj_to_glyph(mappearance) for an M_AP_OBJECT mon.
@@ -322,6 +367,22 @@ function monster_glyph(mon) {
 export function see_with_infrared(mon) {
     return !!mon && !Blind() && Infravision()
         && infravisible(mon.data) && couldsee(mon.mx, mon.my);
+}
+
+// C ref: display.h _tp_sensemon(mon) — telepathy senses any monster with a mind:
+// unconditionally while blind and telepathic, otherwise only inside the range a
+// worn ESP source confers (worn.c recalc_telepat_range()).  This port has no
+// source of INTRINSIC telepathy yet, so the HTelepat reads below are inert.
+export function tp_sensemon(mtmp) {
+    if (!mtmp || mindless(mtmp.data)) return false;
+    const u = game.u || {}, p = u.uprops || {};
+    // C: `Unblind_telepat && mdistu(mon) <= u.unblind_telepat_range` — with no
+    // ESP source the range is -1, which fails the distance test on its own.
+    const range = recalc_telepat_range();
+    // C: Blind_telepat == HTelepat || ETelepat, and it ignores the range.
+    if (Blind() && ((p.Telepat ?? 0) || (p.HTelepat ?? 0) || range > 0)) return true;
+    const dx = mtmp.mx - (u.ux ?? 0), dy = mtmp.my - (u.uy ?? 0);
+    return dx * dx + dy * dy <= range;
 }
 
 // C ref: display.h canseemon(mon) — (cansee(mx,my) || see_with_infrared(mon))
@@ -1057,6 +1118,19 @@ export function background_glyph(loc, x, y) {
     // submerged), so the terrain is drawn instead.  _map_location only shows the
     // object when !covers_objects.
     if (obj && !covers_objects(loc)) {
+        // C ref: display.c map_object() Hallucination arms — obj_to_glyph()
+        // re-rolls the object (a STATUE becomes a random MONSTER), and when
+        // hero_memory is on a hallucinated statue is REMEMBERED as a second,
+        // independently drawn random object.  Both draws happen inside
+        // map_object, i.e. whether or not the caller asked to show anything.
+        if (Hallucination_u()) {
+            const og = (obj.otyp === STATUE_OTYP)
+                ? halluc_statue_glyph() : random_obj_glyph();
+            if (obj_is_piletop(obj)) og.pile = true;
+            if (obj.otyp === STATUE_OTYP && game.level?.flags?.hero_memory)
+                og.mem = random_obj_glyph();
+            return og;
+        }
         const og = object_glyph(obj);
         if (og) {
             // C ref: display.h obj_to_glyph — a stack of 2+ floor objects makes
@@ -1132,11 +1206,43 @@ function mon_warning(mon) {
 // worm-segment redraw have no analogue here; newsym() draws no RNG unless the
 // hero is hallucinating, and C's Hallucination arm is a different branch.
 export function see_monsters() {
-    for (const mon of game.level?.monsters || []) {
+    // C ref: makemon.c m_initweap-era `mtmp->nmon = fmon; fmon = mtmp` — fmon is
+    // a PREPEND list, so C walks the level's monsters newest-first.  This port's
+    // level.monsters[] is append-ordered, i.e. exactly the reverse.  The order
+    // is invisible in a normal game (each newsym() paints its own square) but
+    // fixes which display-rng draw each hallucinated monster gets.
+    const mons = game.level?.monsters || [];
+    for (let i = mons.length - 1; i >= 0; i--) {
+        const mon = mons[i];
         if (!mon || (mon.mhp != null && mon.mhp <= 0)) continue;
         newsym(mon.mx, mon.my);
     }
     if (!game.u?.usteed) newsym(game.u?.ux, game.u?.uy);
+}
+
+// C ref: display.c see_objects() — newsym() every square whose top floor
+// object is this one.  fobj is prepend-ordered like fmon (see see_monsters).
+export function see_objects() {
+    const objs = game.level?.objects || [];
+    for (let i = objs.length - 1; i >= 0; i--) {
+        const obj = objs[i];
+        if (!obj || obj.where !== 'floor') continue;
+        if (vobj_at(obj.ox, obj.oy) === obj) newsym(obj.ox, obj.oy);
+    }
+}
+
+// C ref: display.c see_traps() — newsym() every square currently DISPLAYING a
+// trap glyph (a trap under an object or a monster is not redrawn).
+export function see_traps() {
+    const traps = game.level?.traps || [];
+    for (let i = traps.length - 1; i >= 0; i--) {
+        const trap = traps[i];
+        if (!trap) continue;
+        const loc = game.level?.at(trap.tx, trap.ty);
+        if (!loc || !trap.tseen) continue;
+        const tg = trap_glyph(trap);
+        if (loc.disp_ch === tg.ch) newsym(trap.tx, trap.ty);
+    }
 }
 
 // C ref: drawing.c def_warnsyms[] — the six warning levels, '0'..'5'.
@@ -1148,10 +1254,14 @@ const WARNSYMS = [
 const WARNCOUNT = 6;
 
 // C ref: display.c display_warning() / warning_of() — a warning glyph floats
-// above the map wherever an unseen threatening monster is sensed.  No RNG.
+// above the map wherever an unseen threatening monster is sensed.  Only RNG
+// while Hallucination, which replaces the level with rn2(WARNCOUNT-1)+1 (so
+// never '0') off the display rng.
 function display_warning(mon, x, y) {
     const tmp = Math.trunc((mon.m_lev || 0) / 4);
-    const wl = (tmp > WARNCOUNT - 1) ? WARNCOUNT - 1 : tmp;
+    const wl = Hallucination_u()
+        ? rn2_on_display_rng(WARNCOUNT - 1) + 1
+        : ((tmp > WARNCOUNT - 1) ? WARNCOUNT - 1 : tmp);
     const sym = WARNSYMS[wl];
     show_glyph_cell(x, y, sym.ch, sym.color, false);
 }
@@ -1202,10 +1312,19 @@ const SWALLOW_SYMS = [
     { ch: 's', dec: true },    // S_sw_bc  (DEC scan line 9)
     { ch: '/', dec: false },   // S_sw_br
 ];
-export function swallowed(first) {
+export async function swallowed(first) {
     const u = game.u;
     if (!u?.ustuck || !game.level) return;
     if (first) {
+        // C ref: display.c swallowed():`if (first) { cls(); bot(); }` and
+        // cls():2196 — `display_nhwindow(WIN_MESSAGE, FALSE)` pages the pending
+        // topline through its --More--, then `clear_nhwindow(WIN_MAP)` blanks
+        // the WHOLE tty (top line included).  Same pair docrt() already does;
+        // without it the engulf message stayed on screen after the --More--.
+        // C's toplin == TOPLINE_NEED_MORE always implies a non-empty topline,
+        // so an already-paged one must not --More-- a second time.
+        if (game._pending_message) await display_nhwindow_message();
+        game._pending_message = '';
         for (let y = 0; y < ROWNO; y++)
             for (let x = 1; x < COLNO; x++) show_glyph_cell(x, y, ' ', NO_COLOR, false, 0);
     } else {
@@ -1242,6 +1361,14 @@ export function swallowed(first) {
         if (rght_ok) put(u.ux + 1, u.uy + 1, 7);
     }
     game._swallow_lastx = u.ux; game._swallow_lasty = u.uy;
+}
+
+// C ref: display.c map_object — `levl[x][y].glyph = glyph`, except for the
+// hallucinated-statue case where the remembered glyph is its own random object
+// (background_glyph hands that back as bg.mem).
+function remember_bg(loc, bg) {
+    const m = bg.mem || bg;
+    loc.remembered_glyph = { ch: m.ch, color: m.color, decgfx: m.dec, pile: !!bg.pile };
 }
 
 export function newsym(x, y) {
@@ -1287,7 +1414,7 @@ export function newsym(x, y) {
         } else {
             show_glyph_cell(x, y, bg.ch, bg.color, bg.dec, pile_attr(bg.pile));
         }
-        loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
+        remember_bg(loc, bg);
         // C ref: display.c feel_location():869 — the Punished block.  While
         // blind, the hero's own square is mapped by feel_location(), which also
         // records WHICH of the ball/chain it is currently feeling; ball.c
@@ -1343,7 +1470,11 @@ export function newsym(x, y) {
             if (tt === BEAR_TRAP || tt === PIT || tt === SPIKED_PIT || tt === WEB)
                 mtrap.tseen = 1;
         }
-        const bg = background_glyph(loc, x, y);
+        // C ref: display.c newsym — only three of the five arms below reach
+        // _map_location(); the region / warning / remembered-invisible arms
+        // return without mapping the square at all.  While Hallucination
+        // map_object() draws off the display rng, so computing the background
+        // up front (as this used to) would spend a draw C never makes.
         // C ref: display.c newsym — a visible gas-cloud region drawn on top of
         // the background, UNLESS a directly-occupying monster overrides it
         // (mon_overrides_region()).  SCOPE: mon_overrides_region's adjacent-
@@ -1360,10 +1491,15 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, rg.ch, rg.color, false);
             return;
         }
-        if (mon && mon_visible(mon)) {
+        // C ref: display.c newsym:1014 — `see_it = mon && (mon_visible(mon)
+        // || (!worm_tail && (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon))))`;
+        // a telepathically sensed monster shows even on a square whose own
+        // occupant the hero cannot make out (invisible, hiding).
+        if (mon && (mon_visible(mon) || tp_sensemon(mon))) {
             // Remember the background (not the monster — monsters move).
+            const bg = background_glyph(loc, x, y);   // _map_location(x, y, FALSE)
             if (game.level?.flags?.hero_memory) {
-                loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
+                remember_bg(loc, bg);
             }
             // C ref: display.c newsym — showing an actual monster here "also
             // gets rid of any invisibility glyph".
@@ -1373,7 +1509,11 @@ export function newsym(x, y) {
             // is drawn with iflags.wc2_petattr (default ATR_INVERSE) when
             // iflags.hilite_pet is set.  Only the attribute is changed, not the
             // monster's color.
-            const petAttr = (mon.mtame && game.flags?.hilite_pet) ? ATR_INVERSE : 0;
+            // C ref: display.c display_monster — `mon->mtame && !Hallucination`:
+            // a hallucinated pet takes the plain mon_to_glyph arm, so it carries
+            // no MG_PET and loses the highlight along with its own species.
+            const petAttr = (mon.mtame && !Hallucination_u() && game.flags?.hilite_pet)
+                ? ATR_INVERSE : 0;
             show_glyph_cell(x, y, mg.ch, mg.color, mg.dec, petAttr);
         } else if (mon && mon_warning(mon)) {
             // C ref: display.c newsym:1030 — `else if (mon && mon_warning(mon)
@@ -1387,8 +1527,9 @@ export function newsym(x, y) {
             map_invisible(x, y);
         } else {
             // Remember the background (not the monster — monsters move).
+            const bg = background_glyph(loc, x, y);   // _map_location(x, y, 1)
             if (game.level?.flags?.hero_memory) {
-                loc.remembered_glyph = { ch: bg.ch, color: bg.color, decgfx: bg.dec, pile: !!bg.pile };
+                remember_bg(loc, bg);
             }
             show_glyph_cell(x, y, bg.ch, bg.color, bg.dec, pile_attr(bg.pile));
         }
@@ -1396,7 +1537,12 @@ export function newsym(x, y) {
         // Can't physically see <x,y>.  C ref: display.c newsym "Can't see the
         // location" branch.
         const mon = m_at(x, y);
-        if (mon && mon_visible(mon) && see_with_infrared(mon)) {
+        // C ref: display.c newsym:1046 — `see_it = tp_sensemon(mon)
+        // || MATCH_WARN_OF_MON(mon) || (see_with_infrared(mon)
+        // && mon_visible(mon))`.  Telepathy reaches monsters the hero has no
+        // line of sight to at all, which is what keeps a warning glyph off a
+        // sensed one (display.c takes this arm before the mon_warning arm).
+        if (mon && (tp_sensemon(mon) || (mon_visible(mon) && see_with_infrared(mon)))) {
             // A warm monster within the hero's line of sight but on a square too
             // dark to see is revealed by infravision (see_with_infrared &&
             // mon_visible).  display_monster draws the normal monster glyph; it
@@ -1517,21 +1663,37 @@ export async function docrt() {
     // (vision_recalc(0)) before see_monsters().  Without the recompute a hero
     // who was just released from a stomach kept the blanked viz_array, so every
     // monster in the room rendered as a warning glyph instead of itself.
-    if (!game.u?.uswallow) {
-        const { vision_recalc } = await import('./vision.js');
-        vision_recalc(2);
-        vision_recalc(0);
+    if (game.u?.uswallow) {
+        for (let y = 0; y < ROWNO; y++)
+            for (let x = 1; x < COLNO; x++)
+                newsym(x, y);
+        if (game.u?.ux > 0 && canspotself()) {
+            const hg = hero_glyph();
+            show_glyph_cell(game.u.ux, game.u.uy, hg.ch, hg.color, false);
+        }
+        return;
     }
-    for (let y = 0; y < ROWNO; y++)
-        for (let x = 1; x < COLNO; x++)
-            newsym(x, y);
-    // C ref: display.c docrt -> vision_recalc/see_monsters — the hero glyph is
-    // only redrawn when canspotself(); an invisible hero's own square keeps the
-    // background newsym() just drew there.
-    if (game.u?.ux > 0 && canspotself()) {
-        const hg = hero_glyph();
-        show_glyph_cell(game.u.ux, game.u.uy, hg.ch, hg.color, false);
+    const { vision_recalc } = await import('./vision.js');
+    vision_recalc(2);
+    // C ref: display.c docrt_flags — cls() blanks the glyph buffer, then the
+    // "display memory" loop reposts levl[x][y].glyph for EVERY square with no
+    // recomputation, and only then does vision_recalc(0) + see_monsters()
+    // newsym() the squares that are actually seen or hold a monster.  Calling
+    // newsym() on all 21x79 cells instead (what this used to do) draws each
+    // visible square twice, which is invisible in a normal game but doubles
+    // every hallucinated map_object()/what_mon() display-rng draw.
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level.at(x, y);
+            const rg = loc?.remembered_glyph;
+            if (rg) show_glyph_cell(x, y, rg.ch, rg.color, rg.decgfx, pile_attr(rg.pile));
+            else show_glyph_cell(x, y, ' ', NO_COLOR, false, 0);
+        }
     }
+    vision_recalc(0);
+    // C ref: display.c docrt -> see_monsters(), whose tail newsym()s the hero's
+    // own square (which honours canspotself()).
+    see_monsters();
 }
 
 // C ref: display.c display_self() — the glyph drawn at the hero's tile.  When

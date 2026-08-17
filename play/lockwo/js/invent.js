@@ -337,6 +337,7 @@ function Role_if(pm) {
     const m = game.urole?.mnum ?? game.u?.umonnum;
     return m === pm;
 }
+const PM_ARCHEOLOGIST = 0;
 const PM_HEALER = 3;
 const PM_CLERIC = 6;
 const PM_MONK = 5;
@@ -2855,16 +2856,14 @@ export function carry_obj_effects(obj) {
 }
 
 export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
-    // PARKED (measured -44 public): C ref invent.c hold_another_object() is
-    // `if (!Blind) observe_object(obj)`.  With the guard, seed4500 step 1202
-    // prints C's "o - a potion." — but the wished potion then reaches
-    // dopotion()'s tail with dknown clear, so `if (otmp->dknown &&
-    // !oc_name_known) makeknown()` is skipped and o_init.c discover_object()'s
-    // exercise(A_WIS, TRUE) rn2(19) is never drawn (C's step-1204 slice has
-    // THREE rn2(19), ours only two).  regen_hp's phase then slips a turn and
-    // 44 later screens are lost.  Land the guard once that observe is located
-    // — C must be setting dknown between the blind wish and the quaff.
-    observe_object(obj);
+    // C ref: invent.c:2755 hold_another_object() — `if (!Blind)
+    // observe_object(obj); /* maximize mergeability */`.  The missing observe
+    // that made this guard cost -44 on its own is learn_unseen_invent(), which
+    // toggle_blindness() runs when sight returns: seed4500 wishes for a potion
+    // of extra healing while blind (step 1202 "o - a potion."), and quaffing it
+    // cures the blindness, which re-observes the pack so dopotion()'s
+    // `if (otmp->dknown) makeknown()` still fires.
+    if (!Blind_for_wear()) observe_object(obj);
     // C ref: invent.c hold_another_object — when the object is an artifact it
     // is briefly placed on the floor and touch_artifact() is consulted, which
     // draws rn2(4) for SPFX_RESTR artifacts (artifact.c:945).  The recorded
@@ -3784,6 +3783,7 @@ async function Blindf_off(obj) {
         await update_topl('You can see again.');
         game.vision_full_recalc = 1;
         vision_recalc(0);
+        learn_unseen_invent();   // toggle_blindness() tail (potion.c:362)
     }
 }
 
@@ -7709,7 +7709,26 @@ export function wiz_identify() {
     return ECMD_OK;
 }
 
-export function learn_unseen_invent() { for (const obj of inventoryArray()) observe_object(obj); update_inventory(); }
+// C ref: invent.c:2750 learn_unseen_invent() — toggle_blindness() runs this the
+// moment sight returns, so anything acquired while blind finally gets its
+// appearance.  xname() is what sets dknown (through its own !Blind
+// observe_object); an object that is already fully seen is SKIPPED, so its type
+// is not re-appended to the disco[] '\' list.  Looping observe_object() over
+// the whole pack instead re-encountered every born-dknown item (armor, food)
+// on each recovery and reordered the discoveries.
+export function learn_unseen_invent() {
+    if (Blind_for_wear()) return;   /* sanity check */
+    let invupdated = false;
+    for (const otmp of inventoryArray()) {
+        if (otmp.dknown && (otmp.bknown || !Role_if(PM_CLERIC))
+            && (otmp.oclass !== SCROLL_CLASS || !Role_if(PM_ARCHEOLOGIST)))
+            continue;
+        invupdated = true;
+        xname(otmp);
+        addinv_core2(otmp);
+    }
+    if (invupdated) update_inventory();
+}
 export function update_inventory() { if (!program_state().in_moveloop && !game._allow_inventory_update) return; }
 export function doperminv() { return ECMD_OK; }
 export function obj_to_let(obj) { if (!flags().invlet_constant) reassign(); return obj?.invlet || NOINVSYM; }

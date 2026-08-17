@@ -1,24 +1,54 @@
 // C ref: src/worn.c — the monster half (find_mac, which_armor, m_dowear,
-// m_dowear_type, update_mon_extrinsics).  The hero half of worn.c (setworn/
-// setnotworn) already lives in invent.js/do_wear.js and is not duplicated here.
+// m_dowear_type, update_mon_extrinsics) plus recalc_telepat_range().  The rest
+// of the hero half of worn.c (setworn/setnotworn) lives in invent.js/do_wear.js
+// and is not duplicated here.
 //
 // Everything in this file is RNG-free; it exists because the state it writes
 // (owornmask, misc_worn_check, mspeed) is the INPUT to moduli drawn elsewhere:
 // find_mac() is a term of every to-hit roll, and which_armor() gates muse.c's
 // item choices.
+import { game } from './gstate.js';
 import { objects } from './mkobj.js';
 import {
     mflags1_of, humanoid,
     M1_NOHANDS, M1_MINDLESS, M1_ANIMAL, M1_SLITHY,
 } from './monflags_data.js';
 import {
-    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_ART,
 } from './const.js';
 // Cycle with makemon.js (which imports m_dowear from here) is safe: both sides
 // only touch the other's bindings from inside function bodies.
 import { name_to_pmidx, monster_by_pmidx } from './makemon.js';
 
 const ARMOR_CLASS = 3, AMULET_CLASS = 5, WEAPON_CLASS = 2, TOOL_CLASS = 6;
+
+const TELEPAT = 30;  // prop.h
+const BOLT_LIM = 8;  // hack.h
+
+// C ref: worn.c recalc_telepat_range() — BOLT_LIM*BOLT_LIM per worn TELEPAT
+// source, -1 with none.  C caches it in u.unblind_telepat_range from
+// setworn()/setnotworn()/set_artifact_intrinsic(); the hero's worn slots have no
+// single choke point in this port, so it is derived on demand instead (same
+// value — it is a pure function of what is worn).
+export function recalc_telepat_range() {
+    const u = game.u;
+    if (!u) return -1;
+    // C ref: worn.c worn[] — every hero worn/wielded slot, in C's order.
+    const slots = [game.uarm, game.uarmc, game.uarmh, game.uarms, game.uarmg,
+        game.uarmf, game.uarmu, game.uleft, game.uright, game.uwep,
+        game.uswapwep, game.uquiver, game.uamul, game.ublindf, u.uball, u.uchain];
+    let nobjs = 0;
+    for (const o of slots)
+        if (o && objects[o.otyp]?.oc_oprop === TELEPAT) nobjs++;
+    // C: `if (ETelepat & W_ART) nobjs++` — all SPFX_ESP artifacts count as one.
+    if ((u.uprops_extrinsic?.[TELEPAT] || 0) & W_ART) nobjs++;
+    u.unblind_telepat_range = nobjs ? (BOLT_LIM * BOLT_LIM) * nobjs : -1;
+    return u.unblind_telepat_range;
+}
+
+// C ref: youprop.h Unblind_telepat == ETelepat — extrinsic telepathy only, which
+// is exactly "a worn/carried TELEPAT source exists".
+export function Unblind_telepat() { return recalc_telepat_range() > 0; }
 
 // C ref: objclass.h enum obj_armor_types (oc_armcat, stored in oc_subtyp).
 export const ARM_SUIT = 0, ARM_SHIELD = 1, ARM_HELM = 2, ARM_GLOVES = 3,

@@ -68,7 +68,7 @@ import {
     find_drawbridge, is_drawbridge_wall, destroy_drawbridge,
 } from './dbridge.js';
 import { obj_resists } from './dogmove.js';
-import { unpunish } from './read.js';
+import { unpunish, punish } from './read.js';
 import {
     IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FOUNTAIN,
     IS_THRONE, IS_ALTAR, IS_ROOM, IS_SINK, IS_FURNITURE, IS_GRAVE,
@@ -499,6 +499,26 @@ function buried_ball(cc) {
         cc.y = ball.oy | 0;
     }
     return ball;
+}
+
+/**
+ * C ref: dig.c buried_ball_to_punishment — unbury nearest ball and punish().
+ * Named omit: RUST_METAL timer stop (C #if 0). Other callers (trapmove
+ * wriggle, unearth_objs, digactualhole, level_tele, domagicportal)
+ * still named.
+ */
+export async function buried_ball_to_punishment() {
+    const u = game.u || {};
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    const ball = buried_ball(cc);
+    if (ball) {
+        obj_extract_self(ball);
+        // RUST_METAL stop_timer is C #if 0
+        await punish(ball); /* reuse_ball flag for unearthed buried ball */
+        reset_utrap(false);
+        del_engr_at(cc.x, cc.y);
+        newsym(cc.x, cc.y);
+    }
 }
 
 /**

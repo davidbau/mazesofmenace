@@ -1525,10 +1525,10 @@ async function mhurtle_step(mon, x, y) {
     if (!isok(x, y)) return false;
     if (will_hurtle(mon, x, y)) {
         if (mon !== game.u?.usteed) {
-            rloc_to(mon, x, y);
+            await rloc_to(mon, x, y);
         } else {
             // steed hurtle → move hero; thin: rloc steed only named omit
-            rloc_to(mon, x, y);
+            await rloc_to(mon, x, y);
         }
         flush_screen(1);
         await nh_delay_output();

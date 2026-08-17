@@ -583,6 +583,34 @@ export function In_tutorial(lev) {
     return (lev?.dnum | 0) === (td | 0);
 }
 
+/** C dungeon.h on_level vs game.wiz1/2/3_level. */
+function on_wiz_level(lev, key) {
+    const w = game[key];
+    if (!w || !lev) return false;
+    return (lev.dnum | 0) === (w.dnum | 0)
+        && (lev.dlevel | 0) === (w.dlevel | 0);
+}
+
+/** C ref: dungeon.c On_W_tower_level — wizard1/2/3 specials. */
+export function On_W_tower_level(lev) {
+    return on_wiz_level(lev, 'wiz1_level')
+        || on_wiz_level(lev, 'wiz2_level')
+        || on_wiz_level(lev, 'wiz3_level');
+}
+
+/**
+ * C ref: dungeon.c In_W_tower — inside the Wizard's Tower rectangle.
+ * Both exclusion regions (updest/dndest) define the tower; C asserts they
+ * match and tests svd.dndest. Named omit: impossible() when nlx==0.
+ */
+export function In_W_tower(x, y, lev) {
+    if (!On_W_tower_level(lev)) return false;
+    const d = game.dndest;
+    if (!d || !(d.nlx | 0)) return false;
+    return (x | 0) >= (d.nlx | 0) && (x | 0) <= (d.nhx | 0)
+        && (y | 0) >= (d.nly | 0) && (y | 0) <= (d.nhy | 0);
+}
+
 function dname_to_dnum(s) {
     for (let i = 0; i < game.n_dgns; i++) {
         if (game.dungeons[i].dname === s) return i;

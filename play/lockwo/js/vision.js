@@ -715,7 +715,12 @@ export function vision_recalc(control = 0) {
 
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;
-    if (old_array && control !== 2 && game.level) {
+    // C ref: vision.c vision_recalc — only the Blind arm skips the main update
+    // loop (`goto skip`).  control == 2 just leaves the new work area nulled and
+    // still runs the loop, so every square that WAS in sight gets newsym()'d
+    // (that is how being engulfed erases the dungeon, and while Hallucination
+    // each of those squares spends its own display-rng draw).
+    if (old_array && game.level) {
         for (let row = 0; row < ROWNO; row++) {
             const old_row = old_array[row];
             const next_row = next[row];

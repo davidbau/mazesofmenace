@@ -1,6 +1,7 @@
 // steed.js — Saddle / riding.
-// C ref: steed.c — can_saddle, use_saddle, put_saddle_on_mon, can_ride,
-// doride, mount_steed, landing_spot, dismount_steed (BYCHOICE subset).
+// C ref: steed.c — rider_cant_reach, can_saddle, use_saddle,
+// put_saddle_on_mon, can_ride, doride, mount_steed, landing_spot,
+// dismount_steed (BYCHOICE subset).
 
 import { game } from './gstate.js';
 import { mksobj, objects_at } from './mkobj.js';
@@ -31,7 +32,7 @@ import { pline, newsym, canspotmon } from './display.js';
 import { getdir } from './lock.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
-import { Monnam, mon_nam, pmname } from './do_name.js';
+import { Monnam, mon_nam, pmname, y_monnam } from './do_name.js';
 import { losehp, maybe_half_phys } from './hack.js';
 import { finish_meating } from './dogmove.js';
 import { an } from './objnam.js';
@@ -50,6 +51,17 @@ const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const STEED_MLETS = new Set([
     'S_QUADRUPED', 'S_UNICORN', 'S_ANGEL', 'S_CENTAUR', 'S_DRAGON', 'S_JABBERWOCK',
 ]);
+
+/**
+ * C ref: steed.c rider_cant_reach — unskilled mount cannot reach floor
+ * water (potion.c dodip pool yn).
+ */
+export async function rider_cant_reach() {
+    const u = game.u || {};
+    await pline(
+        `You aren't skilled enough to reach from ${y_monnam(u.usteed)}.`,
+    );
+}
 
 /** C monflag.h M1_SWIM */
 const M1_SWIM = 0x00000002;

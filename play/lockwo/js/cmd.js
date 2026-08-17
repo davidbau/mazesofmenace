@@ -9,6 +9,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object, canseemon_shared } from './display.js';
 import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
+import { hliquid } from './do_name.js';
 import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam, Monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
@@ -25,7 +26,8 @@ import { docast } from './spell.js';
 import { doread } from './read.js';
 import { dohelp } from './pager.js';
 import { rnl, rn2, rnd } from './rng.js';
-import { doextcmd, doddoremarm, hooked_tty_getlin, wiz_wish, wiz_genesis } from './extcmd-handlers.js';
+import { doextcmd, doddoremarm, hooked_tty_getlin, wiz_wish, wiz_genesis,
+         wiz_map_extcmd } from './extcmd-handlers.js';
 import { do_gamelog } from './insight.js';
 import { skill_window_advance } from './enhance.js';
 import { wiz_level_tele, dodown, doup } from './do.js';
@@ -194,17 +196,24 @@ function u_simple_floortyp(x, y) {
 function waterbody_name(x, y) {
     const loc = game.level?.at(x, y);
     const typ = loc ? loc.typ : STONE;
-    if (typ === LAVAPOOL) return 'molten lava';
-    if (typ === ICE) return 'ice';
-    if (typ === POOL) return 'pool of water';
+    // C ref: pager.c waterbody_name — every liquid word goes through
+    // hliquid(), which while Hallucination replaces it with one of forty
+    // joke liquids off the DISPLAY rng.  Hallucination also overrides the
+    // MOAT special-level names with a plain "deep <liquid>" and turns "ice"
+    // into "frozen <liquid>".
+    const hallucinate = Hallucination() && !game.program_state_gameover;
+    if (typ === LAVAPOOL) return `molten ${hliquid('lava')}`;
+    if (typ === ICE) return hallucinate ? `frozen ${hliquid('water')}` : 'ice';
+    if (typ === POOL) return `pool of ${hliquid('water')}`;
     if (typ === MOAT) {
+        if (hallucinate) return `deep ${hliquid('water')}`;
         if (Is_medusa_level()) return 'shallow sea';
         if (Is_juiblex_level()) return 'swamp';
         if (game.u?.urole?.name === 'Samurai' && Is_qstart()) return 'pond';
         return 'moat';
     }
-    if (typ === WATER) return 'wall of water';
-    if (typ === LAVAWALL) return 'wall of lava';
+    if (typ === WATER) return `wall of ${hliquid('water')}`;
+    if (typ === LAVAWALL) return `wall of ${hliquid('lava')}`;
     return 'pool of water';
 }
 // C ref: dungeon.h Is_qstart(lev) — the quest home level.
@@ -816,6 +825,17 @@ export async function rhack(key) {
             game.context.move = 0;
             await pline(`Unavailable command 'wizgenesis'.`);
         }
+    } else if (key === 6) { // ^F — wizard-mode magic mapping (wizcmds.c wiz_map)
+        // C ref: cmd.c:1982 { C('f'), "wizmap", ..., IFBURIED | WIZMODECMD }.
+        // Unbound here, ^F fell through to "Unknown command", so do_mapping()'s
+        // whole-level reveal AND its closing exercise(A_WIS, TRUE) rn2(19) both
+        // went missing.
+        if (game.flags?.debug) {
+            await wiz_map_extcmd();
+        } else {
+            await pline(`Unavailable command 'wizmap'.`);
+        }
+        game.context.move = 0;
     } else if (key === 20) { // ^T — teleport (cmd.c dotelecmd -> teleport.c)
         // C ref: cmd.c keymap C('t') = dotelecmd.  In wizard mode (playmode:
         // debug) with no 'm' prefix, dotelecmd sets ignore_restrictions and
@@ -3075,6 +3095,18 @@ export async function pickup_after_move(x, y) {
         const loc = game.level?.at?.(x, y);
         const inLiquid = !!loc && (IS_POOL(loc.typ) || IS_LAVA(loc.typ));
         if (!inLiquid) decorAnnounced = await describe_decor();
+    }
+    // C ref: pickup.c pickup():701 — `if (autopickup && (svc.context.nopick
+    // || !OBJ_AT(...) ...)) { read_engr_at(...); return 0; }`.  This function
+    // models pickup(1), so autopickup is always TRUE: with nopick set (travel,
+    // or an 'm'-prefixed move) C returns before autopick() AND before
+    // check_here(), so the pile the hero walks over is neither lifted nor
+    // announced.  Without this a travel over a corpse pile opened the "Things
+    // that are here:" menu mid-walk and burned an input boundary on its
+    // --More-- (seed0014 step 653).
+    if (ctx.nopick) {
+        await read_engr_at(x, y);
+        return;
     }
     // C ref: pickup.c pickup() — "if there's anything here, stop running":
     //   if (OBJ_AT(u.ux,u.uy) && svc.context.run && svc.context.run != 8

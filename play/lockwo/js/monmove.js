@@ -41,7 +41,7 @@ import {
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
     SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_TRAP, NO_TRAP_FLAGS, ALL_TRAPS, NO_TRAP,
     A_STR, SQSRCHRADIUS, ALLOW_TRAPS, STATUE_TRAP, VIBRATING_SQUARE, TRAPNUM,
-    W_ARMOR, W_AMUL, NOTONL, ALLOW_ROCK, ALLOW_M, ALLOW_U, ALLOW_SANCT,
+    W_ARMOR, W_ARMS, W_ARMG, W_AMUL, NOTONL, ALLOW_ROCK, ALLOW_M, ALLOW_U, ALLOW_SANCT,
     ALLOW_SSM, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_WALL, ALLOW_BARS,
     NOGARLIC, IS_ALTAR, In_endgame, HEADSTONE, u_at,
     STAIRS, LADDER, IRONBARS, WEB, LAVAWALL, IS_WATERWALL,
@@ -100,6 +100,7 @@ import { place_object, next_ident, BLINDING_VENOM, ACID_VENOM, VENOM_CLASS, obje
     weight, base_oc_weight, BOULDER, WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS,
     AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS,
     SPBOOK_CLASS, BALL_CLASS } from './mkobj.js';
+import { stackobj } from './invent.js';
 import { obj_resists, resists_sleep, sleep_monst } from './zap.js';
 // m_harmless_trap's FIRE_TRAP arm; mondata.js reads permonst.mresists (MR_FIRE).
 import { resists_fire, resists_acid } from './mondata.js';
@@ -919,10 +920,14 @@ export function set_apparxy(mtmp) {
         } while (!isok(mx, my)
                  || (displ !== 2 && mx === mtmp.mx && my === mtmp.my)
                  || ((mx !== u.ux || my !== u.uy) && !passes_walls(mtmp.data)
-                     // C: accessible(mx,my) || (closed_door && (can_ooze||can_fog));
-                     // both ooze/fog need an amorphous or vampshifter monster and
-                     // neither helper exists here yet.
-                     && !(ACCESSIBLE(terrainTyp(mx, my)) && !closed_door_at(mx, my)))
+                     // C ref: monmove.c:2188 accessible(x,y) = ACCESSIBLE(typ)
+                     // && !closed_door(x,y); a shut door is still a legal guess
+                     // for a monster that can ooze or fog its way under it, and
+                     // dropping that arm made every vampshifter reject a door
+                     // square C accepted (one extra rn2(2*displ+1) pair).
+                     && !(ACCESSIBLE(terrainTyp(mx, my)) && !closed_door_at(mx, my))
+                     && !(closed_door_at(mx, my)
+                          && (can_ooze(mtmp) || can_fog(mtmp))))
                  || !couldsee(mx, my));
     } else {
         mx = u.ux; my = u.uy;
@@ -969,6 +974,10 @@ function likes_lava(ptr) {
 // and flow under a shut door.  The mvitals genocide test and
 // Protection_from_shape_changers are not tracked, so both read as "allowed".
 function can_fog(mtmp) { return is_vampshifter(mtmp); }
+// C ref: monmove.c:2160 can_ooze(mtmp) — an amorphous monster can squeeze under
+// a shut door unless its inventory is too bulky (stuff_prevents_passage, which
+// needs a modelled monster inventory weight and reads as "allowed" here).
+function can_ooze(mtmp) { return amorphous(mtmp?.data); }
 // C ref: monst.h engulfing_u(mon) = (u.uswallow && u.ustuck == mon).
 function engulfing_u(mon) { return !!game.u?.uswallow && game.u?.ustuck === mon; }
 // C ref: hack.c:937 bad_rock(mdat, x, y) — terrain that blocks a tight
@@ -1607,12 +1616,11 @@ function mm_displacement(magr, mdef) {
 function histemple_at(priest, x, y) {
     const epri = priest?.epri;
     if (!epri) return false;
-    const lvl = game.level;
-    const loc = lvl?.at(x, y);
-    if (!loc) return false;
-    const rno = (loc.roomno ?? 0) - ROOMOFFSET;
-    const room = rno >= 0 ? lvl.rooms?.[rno] : null;
-    const shroom = (room && room.rtype === TEMPLE) ? (rno + ROOMOFFSET) : 0;
+    // C: `*in_rooms(x, y, TEMPLE)` — the FIRST room number of the buffer, 0 for
+    // "no temple here".  Going through in_rooms() (rather than indexing
+    // level.rooms directly) is what makes a temple SUBroom resolve.
+    const hits = in_rooms_shk(x, y, TEMPLE);
+    const shroom = hits.length ? hits[0] : 0;
     if (epri.shroom !== shroom) return false;
     const sl = epri.shrlevel, uz = game.u?.uz;
     return !!(sl && uz && sl.dnum === uz.dnum && sl.dlevel === uz.dlevel);
@@ -5260,7 +5268,10 @@ export async function mattacku(mtmp, mdat) {
                         await missmu(mtmp, tmp === j);
                     }
                 } else {
-                    // wildmiss(): no RNG; skip remaining non-magic attacks.
+                    // C ref mhitu.c:816 — wildmiss() reports the swing at the
+                    // wrong square, then further physical attacks are skipped.
+                    const { wildmiss } = await import('./mhitu.js');
+                    await wildmiss(mtmp, mattk);
                     skipnonmagc = true;
                 }
             }
@@ -5317,7 +5328,9 @@ export async function mattacku(mtmp, mdat) {
                 }
                 tmp -= hittmp; // KMH: don't accumulate to-hit bonuses
             } else {
-                // wildmiss(): no RNG.
+                // C ref mhitu.c:920 — same wild swing report for AT_WEAP.
+                const { wildmiss } = await import('./mhitu.js');
+                await wildmiss(mtmp, mattk);
                 skipnonmagc = true;
             }
             break;
@@ -5707,15 +5720,29 @@ const dmgval_thrown = dmgval;   // js/weapon.js owns the complete weapon.c:216
 // only prints "<Mon> wields <weapon>!" and sets MON_WEP.  Implemented so the
 // goblin's crude dagger shows up (seed0360 step-136 message + step-140 dmgval).
 
-// C ref: include/onames.h — hand-to-hand weapon priority list (weapon.c hwep[]),
-// restricted to the otyps the contest's armed monsters actually carry.  Only the
-// orcish dagger (36) is reachable for the low-level orc/kobold slice; the rest
-// are listed for faithful priority order should a richer monster appear.
-const HWEP_PRIORITY = [55 /*TWO_HANDED_SWORD*/, 45 /*BATTLE_AXE*/,
-    54 /*LONG_SWORD*/, 52 /*BROADSWORD*/, 50 /*SCIMITAR*/, 46 /*SHORT_SWORD*/,
-    48 /*ORCISH_SHORT_SWORD*/, 73 /*MACE*/, 44 /*AXE*/, 27 /*SPEAR*/,
-    30 /*DWARVISH_SPEAR*/, 28 /*ELVEN_SPEAR*/, 77 /*CLUB*/, 34 /*DAGGER*/,
-    35 /*ELVEN_DAGGER*/, 36 /*ORCISH_DAGGER*/, 40 /*KNIFE*/];
+// C ref: weapon.c:688 hwep[] — the COMPLETE hand-to-hand preference list, in C
+// order.  A SUBSET silently answers "carries no melee weapon" for every omitted
+// otyp, so mon_wield_item() returns 0 and dochug falls through to m_move: the
+// bugbear that had picked up a bullwhip kept walking instead of spending its
+// move on the wield (seed0014 step 619).
+const HWEP_PRIORITY = [
+    265 /*CORPSE*/, 57 /*TSURUGI*/, 58 /*RUNESWORD*/, 71 /*DWARVISH_MATTOCK*/,
+    55 /*TWO_HANDED_SWORD*/, 45 /*BATTLE_AXE*/, 56 /*KATANA*/,
+    261 /*UNICORN_HORN*/, 43 /*CRYSKNIFE*/, 33 /*TRIDENT*/, 54 /*LONG_SWORD*/,
+    53 /*ELVEN_BROADSWORD*/, 52 /*BROADSWORD*/, 50 /*SCIMITAR*/,
+    51 /*SILVER_SABER*/, 75 /*MORNING_STAR*/, 47 /*ELVEN_SHORT_SWORD*/,
+    49 /*DWARVISH_SHORT_SWORD*/, 46 /*SHORT_SWORD*/, 48 /*ORCISH_SHORT_SWORD*/,
+    74 /*SILVER_MACE*/, 73 /*MACE*/, 44 /*AXE*/, 30 /*DWARVISH_SPEAR*/,
+    31 /*SILVER_SPEAR*/, 28 /*ELVEN_SPEAR*/, 27 /*SPEAR*/, 29 /*ORCISH_SPEAR*/,
+    81 /*FLAIL*/, 82 /*BULLWHIP*/, 79 /*QUARTERSTAFF*/, 32 /*JAVELIN*/,
+    80 /*AKLYS*/, 77 /*CLUB*/, 259 /*PICK_AXE*/, 78 /*RUBBER_HOSE*/,
+    76 /*WAR_HAMMER*/, 37 /*SILVER_DAGGER*/, 35 /*ELVEN_DAGGER*/,
+    34 /*DAGGER*/, 36 /*ORCISH_DAGGER*/, 38 /*ATHAME*/, 39 /*SCALPEL*/,
+    40 /*KNIFE*/, 42 /*WORM_TOOTH*/];
+// C ref: objects.h WEAPON()'s `bi` field for the hwep[] entries (the same set
+// js/invent.js keeps for the hero, which it does not export).
+const BIMANUAL_HWEP = new Set([57 /*TSURUGI*/, 71 /*DWARVISH_MATTOCK*/,
+    55 /*TWO_HANDED_SWORD*/, 45 /*BATTLE_AXE*/, 79 /*QUARTERSTAFF*/]);
 
 // C ref: weapon.c m_carrying(mon, otyp) — the monster's first minvent obj of
 // that type, else null.  C's minvent CHAIN is newest-first (mkobj.c:2648
@@ -5729,13 +5756,34 @@ export function m_carrying(mon, otyp) {
     return null;
 }
 
-// C ref: weapon.c select_hwep(mtmp) — choose the best wieldable melee weapon.
-// No RNG.  The contest monsters carry no artifacts/silver/bimanual conflicts,
-// so the priority scan reduces to "first carried weapon in hwep[] order".
+// C ref: weapon.c:704 select_hwep(mtmp) — choose the best wieldable melee
+// weapon.  No RNG.  Only strong monsters without a shield may take a two-handed
+// weapon, and a silver-hating monster skips silver entirely.
 function select_hwep(mtmp) {
+    const ptr = permonst_of(mtmp?.data);
+    const strong = strongmonst_flag(ptr);
+    const wearing_shield = ((mtmp?.misc_worn_check ?? 0) & W_ARMS) !== 0;
+    let otmp;
+    // C ref: weapon.c:712 — an artifact beats every hwep[] entry.
+    for (const o of ((mtmp?.minvent) || [])) {
+        if (o.oclass === WEAPON_CLASS && o.oartifact && can_touch_safely(mtmp, o)
+            && ((strong && !wearing_shield) || !BIMANUAL_HWEP.has(o.otyp)))
+            return o;
+    }
+    // C ref: weapon.c:720 — giants love clubs; a balrog reaches for its whip.
+    if ((mflags2_of(mtmp?.data) & M2_GIANT) !== 0) {
+        if ((otmp = oselect_mm(mtmp, 77 /*CLUB*/))) return otmp;
+    } else if (permonst_of(mtmp?.data)?.name === 'balrog' && game.uwep) {
+        if ((otmp = oselect_mm(mtmp, 82 /*BULLWHIP*/))) return otmp;
+    }
     for (const otyp of HWEP_PRIORITY) {
-        const o = m_carrying(mtmp, otyp);
-        if (o) return o;
+        if (otyp === CORPSE && !((mtmp?.misc_worn_check ?? 0) & W_ARMG)
+            && !resists_ston_mon(mtmp))
+            continue;
+        if (((strong && !wearing_shield) || !BIMANUAL_HWEP.has(otyp))
+            && (OBJECTS[otyp]?.material !== MAT_SILVER || !mon_hates_silver(mtmp))) {
+            if ((otmp = oselect_mm(mtmp, otyp))) return otmp;
+        }
     }
     return null;
 }
@@ -6218,6 +6266,11 @@ async function m_throw_at_hero(mon, mdat, sx, sy, dx, dy, range, otmp) {
     // just extracts the object (no RNG); quan>1 calls splitobj(), whose
     // nextoid()/next_ident() advances svc.context.ident by rnd(2).
     const singleobj = m_throw_single(mon, otmp);
+    // C ref: mthrowu.c:616 — `gt.thrownobj = singleobj`, the global handle on the
+    // missile while it is OBJ_FREE (out of every inventory, not yet on the map).
+    // If thitu() below kills the hero, end.c done_object_cleanup() is what puts
+    // this object back on the map so it reaches bones.
+    game.thrownobj = singleobj;
     // C ref: mthrowu.c:637 — `if (MT_FLIGHTCHECK(TRUE, 0)) { drop_throw(...);
     // return; }`.  Before any flight, if the very first square is off the map, a
     // wall or a closed door, the missile just falls at the thrower's feet.
@@ -6271,11 +6324,14 @@ async function m_throw_at_hero(mon, mdat, sx, sy, dx, dy, range, otmp) {
         if (inpath) {
             if (await ohitmon(inpath, singleobj, range, true, bx, by, mon)) {
                 flash_end();
+                game.thrownobj = null;  // C ref: mthrowu.c:842
                 return;
             }
         } else if (bx === u.ux && by === u.uy) {
             // hero square: catch attempt, then the hit resolution.
-            if (u_catch_thrown_obj(singleobj)) { flash_end(); return; } // caught
+            if (u_catch_thrown_obj(singleobj)) {
+                flash_end(); game.thrownobj = null; return;  // mthrowu.c:842
+            }
             const dam0 = dmgval_thrown(singleobj, u);    // rnd(wsdam) (+spe)
             let hitv = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
             if (hitv < -4) hitv = -4;
@@ -6382,11 +6438,18 @@ function drop_thrown_missile(mon, otmp, x, y, ohit) {
         if (i >= 0) mon.minvent.splice(i, 1);
     }
     if (broken) {
+        game.thrownobj = null;  // C ref: mthrowu.c:192 `gt.thrownobj = 0`
         rn2(100); // delobj_core -> obj_resists(obj, 0, 0): rn2(100), then free
         return true;   // shattered missile: no object settles on the floor
     }
     otmp.owornmask = 0;
-    try { place_object(otmp, x, y); newsym(x, y); } catch (e) { /* ignore */ }
+    // C ref: mthrowu.c:189 — place_object() then stackobj(): three arrows shot
+    // at the same square are ONE pile entry, not three.  The count is invisible
+    // on screen but reaches the next segment through savebones(): restobjchn()
+    // re-stamps one o_id [rnd(2)] per surviving entry, so a missing merge shows
+    // up as extra next_ident() draws when the bones level is read back.
+    try { place_object(otmp, x, y); stackobj(otmp); newsym(x, y); } catch (e) { /* ignore */ }
+    game.thrownobj = null;  // C ref: mthrowu.c:192 `gt.thrownobj = 0`
     return false; // C drop_throw() returns `broken`
 }
 
@@ -6445,8 +6508,12 @@ const BIMANUAL_RWEP = new Set([63, 64, 61, 68, 65, 60, 67, 62, 69, 70, 66, 59]);
 // C ref: weapon.c:471 oselect(mtmp, x) — the first minvent object of type x the
 // monster may use: a CORPSE/EGG only if it petrifies on touch, and never an
 // artifact it cannot handle (no monster in reach carries one).
+// C's minvent CHAIN is newest-first (mkobj.c:2648 add_to_minv prepends), so
+// "first" is the most recently acquired one — same inversion m_carrying applies.
 function oselect_mm(mtmp, otyp) {
-    for (const o of (mtmp.minvent || [])) {
+    const inv = mtmp?.minvent || [];
+    for (let i = inv.length - 1; i >= 0; i--) {
+        const o = inv[i];
         if (o.otyp !== otyp) continue;
         if ((otyp === CORPSE || otyp === EGG_OTYP)
             && !(o.corpsenm != null && o.corpsenm >= 0
@@ -6871,6 +6938,7 @@ async function stop_occupation() {
 async function mhitm_adtyping(mtmp, mattk, mhm) {
     switch (mattk.adtyp) {
     case AD_ELEC: await mhitm_ad_elec(mtmp, mattk, mhm); break;
+    case AD_COLD: await mhitm_ad_cold_u(mtmp, mattk, mhm); break;
     case AD_PHYS: await mhitm_ad_phys(mtmp, mattk, mhm); break;
     case AD_DRST: // drain strength (poison); AD_DRDX/AD_DRCO share this handler
         await mhitm_ad_drst(mtmp, mattk, mhm); break;
@@ -7006,6 +7074,44 @@ function Adjmonnam_mm(mtmp, adj) {
 }
 
 // C ref: uhitm.c:2706 mhitm_ad_elec() — mdef == &youmonst branch.
+// The three things zap.c's u_carry arm of maybe_destroy_item() needs from this
+// module: the object's "your <name>" rendering, useup() and losehp().
+function destroy_ops_hero() {
+    return {
+        emit: emitU,
+        yname: (obj) => { const { yname } = _inventMod; return yname ? yname(obj) : 'item'; },
+        useup: (obj) => { const { useup } = _inventMod; if (useup) useup(obj); },
+        // hack.c losehp() reduced to the hp arithmetic, matching this port's
+        // other per-file copies.
+        losehp: (n) => { const u = game.u; if (u && n > 0) u.uhp = Math.max(0, (u.uhp || 0) - n); },
+    };
+}
+let _inventMod = {};
+
+// C ref: uhitm.c:2645 mhitm_ad_cold() — the `mdef == &gy.youmonst` arm.  Same
+// shape as the AD_ELEC one below: hitmsg(), then the magical-cancellation
+// rn2(10), then (when it lands) the "m_lev > rn2(20)" destroy_items roll.  It
+// was missing from the dispatcher, so an AD_COLD melee (an ice vortex that has
+// already used up its engulf) printed the bare hit verb and drew NOTHING —
+// two calls short for the rest of the turn (seed0383 step 179).
+async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
+    const orig_dmg = mhm.damage;
+    await hitmsg(mtmp, mattk);
+    if (!await mhitm_mgc_atk_negated(mtmp, true)) {  // uhitm.c:2651 verbosely=TRUE
+        await emitU("You're covered in frost!");
+        // Cold_resistance ("The frost doesn't seem cold!" + damage = 0) is off
+        // for every hero in this corpus; monstunseesu() draws nothing.
+        const mlev = mtmp.m_lev ?? mtmp.data?.mlevel ?? 0;
+        if (mlev > rn2(20)) {
+            const { destroy_items_hero } = await import('./mhitm_ad.js');
+            _inventMod = await import('./invent.js');
+            await destroy_items_hero(AD_COLD, orig_dmg, destroy_ops_hero());
+        }
+    } else {
+        mhm.damage = 0;
+    }
+}
+
 async function mhitm_ad_elec(mtmp, mattk, mhm) {
     const orig_dmg = mhm.damage;
     await hitmsg(mtmp, mattk);                       // "The grid bug bites!"

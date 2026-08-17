@@ -242,6 +242,31 @@ async function bones_getlev(blob) {
     // not `buriedobjlist` — this was reading the wrong field and silently
     // skipping every buried object's re-stamp.
     for (const o of level.buriedobjs || []) stamp_obj(o);
+
+    // C ref: restore.c:1203 getlev()'s `if (ghostly)` arm — "reset peaceful/malign
+    // relative to new character".  The bones level was saved with the DEAD hero's
+    // relations baked in: Elara the lawful Priest's dwarves were peaceful, and
+    // left as-is they run monmove.c:1894's peaceful-only rn2(10) getitems probe
+    // for the neutral Healer who inherits them.  peace_minded() itself only rolls
+    // for a CO-aligned monster, so a cross-aligned bones level draws nothing here.
+    {
+        const { peace_minded_bigrm, set_malign, monster_by_pmidx } = await import('./makemon.js');
+        const S_UNICORN = 'u';
+        const ual = Math.sign(game.u?.ualign?.type ?? 0);
+        for (const m of level.monsters || []) {
+            const ptr = m.data || monster_by_pmidx(m.mnum);
+            if (!ptr) continue;
+            if (!m.isshk) {
+                // likes_gems is implied by the S_UNICORN class here: the only
+                // S_UNICORN members that aren't unicorns are ponies/horses, whose
+                // maligntyp is 0 — so the sign test below already excludes them.
+                const uni = ptr.mcls === S_UNICORN && Math.sign(ptr.maligntyp ?? 0) !== 0;
+                m.mpeaceful = (uni && ual === Math.sign(ptr.maligntyp ?? 0))
+                    ? true : !!peace_minded_bigrm(ptr);
+            }
+            set_malign(m);
+        }
+    }
     return { level, stairs: bundle.stairs };
 }
 
@@ -442,13 +467,43 @@ export async function savebones(how = 0, corpse = null) {
             }
         }
 
+        // C ref: bones.c:573-591 — attach the cemetery entry before saving.  Only
+        // `who`'s "<plname>-" prefix is ever read back (bones_include_name), but
+        // it decides whether the NEXT hero to reach this level gets do.c's
+        // familiar_level_msg() and its rn2(4): these bones belong to whoever is
+        // named here, and a stranger recognises nothing.
+        {
+            const { roles, races, genders, aligns } = await import('./role.js');
+            const fc3 = (s) => String(s || '?').slice(0, 3);
+            const female = !!g.flags?.female;
+            const entry = {
+                who: `${g.plname || 'Hero'}-${fc3(roles[g.initrole]?.filecode)}`
+                    + `-${fc3(races[g.initrace]?.filecode)}`
+                    + `-${fc3(genders[female ? 1 : 0]?.filecode)}`
+                    + `-${fc3(aligns.find(a => a.value === (g.u?.ualign?.type ?? 0))?.filecode)}`,
+                frpx: x, frpy: y, bonesknown: false,
+            };
+            // "most recent (this dead hero) first"
+            g.level.bonesinfo = [entry, ...(g.level.bonesinfo || [])];
+        }
+
         // C ref: bones.c:610 savelev() — serialise the level for the next hero.
         const { serializeGameState } = await import('./save.js');
         storage.setItem(key, serializeGameState({ level: g.level, stairs: g.stairs }));
     } catch { /* bones write is best-effort; never break the death sequence */ }
 }
 
-export default { getbones, can_make_bones, no_bones_level,
+// C ref: bones.c:762 bones_include_name(name) — prefix-match `name + "-"`
+// against every cemetery entry the loaded level carries.  The trailing hyphen
+// is what stops "Hermi" matching "Hermione-Hea-Hum-Fem-Neu".
+export function bones_include_name(name) {
+    const buf = `${name || ''}-`;
+    for (const bp of game.level?.bonesinfo || [])
+        if (String(bp?.who || '').startsWith(buf)) return true;
+    return false;
+}
+
+export default { getbones, can_make_bones, no_bones_level, bones_include_name,
                  give_to_nearby_mon, drop_upon_death, savebones, bones_key };
 
 // ── dispatch note (NOT applied here; I own only js/bones.js) ──

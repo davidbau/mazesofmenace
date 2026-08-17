@@ -374,7 +374,10 @@ export async function hooked_tty_getlin(query, hook) {
             }
             continue;
         }
-        if (code >= 32 && code !== 0x7f && typed.length < 79) {
+        // C ref: getline.c:168 `bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO`
+        // — the cap is COLNO (80) typed characters, not 79; the 80th character
+        // is what pushes the echo onto a second screen row.
+        if (code >= 32 && code !== 0x7f && typed.length < TOPL_CO) {
             typed += String.fromCharCode(code);
             const expanded = hook ? hook(typed) : null;
             shown = expanded != null ? expanded : typed;
@@ -2626,7 +2629,7 @@ const FOOD_CLASS_X = 7;   // js/mkobj.js object classes
 // the draw went missing and the whole map stayed dark.  do_mapping() takes C's
 // hero_memory branch here, so there is no browse_map() getpos loop and no extra
 // keystroke is consumed.
-async function wiz_map_extcmd() {
+export async function wiz_map_extcmd() {
     const { do_mapping } = await import('./detect.js');
     for (const t of (game.level?.traps || [])) t.tseen = 1;
     for (const ep of (game.level?.engravings || [])) ep.erevealed = 1;
@@ -2904,7 +2907,7 @@ async function wiz_intrinsic() {
     // frame one batch behind (seed0383 step 165).
     if (game.u?.uswallow) {
         const { swallowed } = await import('./display.js');
-        swallowed(1);
+        await swallowed(1);
     }
     await flush_screen(1);
     return 0;
@@ -3015,5 +3018,24 @@ async function dountrap() {
     else if ((data && nohands(data) && !webmaker) || !base_mmove({ data }))
         buf = 'And just how do you expect to do that?';
     if (buf) { await pline(buf); return 0; }
-    return 0;   // untrap() itself is unported; no session reaches it.
+
+    // C ref: trap.c:5253 `untrap(FALSE, 0, 0, (struct obj *) 0)`.  With no rx/ry
+    // and no container, untrap() opens with the usual-case prompt
+    // (trap.c:5870-5875): `if (!getdir((char *) 0)) return 0;` then
+    // x = u.ux + u.dx, y = u.uy + u.dy.  getdir draws "In what direction?" and
+    // consumes one key, so skipping it both lost that screen and left the
+    // direction key to be re-read as a top-level command.
+    const { getdir } = await import('./cmd.js');
+    const dir = await getdir(null);
+    if (!dir) return 0;
+    const u = game.u;
+    const x = (u?.ux | 0) + (dir.dx | 0), y = (u?.uy | 0) + (dir.dy | 0);
+    if (!isok(x, y)) {
+        // C ref: trap.c:5886.
+        await pline('The perils lurking there are beyond your grasp.');
+        return 0;
+    }
+    // The rest of untrap() (floor trap / door / box disarming) is unported; no
+    // covered session gets past the direction prompt.
+    return 0;
 }

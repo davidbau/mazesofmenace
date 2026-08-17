@@ -1,24 +1,30 @@
 // region.js — gas-cloud / NhRegion subset.
 // C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at /
-// clear_regions / run_regions / m_in_out_region / inside_gas_cloud;
-// region_danger / region_safety (pray); read.c valid_cloud_pos.
+// clear_regions / run_regions / in_out_region / m_in_out_region /
+// inside_gas_cloud; region_danger / region_safety (pray);
+// read.c valid_cloud_pos.
 // Named omissions: inside_f damage/pline (dam>0); dissipation plines;
 // numeric cmap glyph ints (JS tags 'S_poisoncloud'/'S_cloud'); hero
 // enveloped pline; create_gas_cloud_selection; binary save_regions
 // format; force fields; incremental fill_point (JS uses vision_reset);
-// can_enter/leave/enter/leave callbacks (gas has none); attach_2_m/u.
+// enter_msg/leave_msg pline (async; gas has none; create_msg_region
+// #if 0); can_enter/leave/enter/leave table indices (gas NO_CALLBACK);
+// attach_2_m; is_hero_inside_gas_cloud still geometric not the bit
+// (walk `in_out_region` still named — do not flip until that bit is
+// live on steps).
 // Level leave stashes the regions array (D-0675).
 
 import { game } from './gstate.js';
 import { rn2, rn1, d } from './rng.js';
 import { pline, You_feel } from './display.js';
-import { isok, ACCESSIBLE, u_at, TIMEOUT } from './const.js';
+import { isok, ACCESSIBLE, u_at, TIMEOUT, REG_HERO_INSIDE } from './const.js';
 import { is_pool, is_lava } from './hack.js';
 import { recalc_block_point } from './vision.js';
 import { monsterNames, nonliving, breathless } from './monsters.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // callback index stand-in
+const NO_CALLBACK = -1; // C region.c
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 
 /**
@@ -57,6 +63,31 @@ function inside_region(reg, x, y) {
         if (x >= r.lx && x <= r.hx && y >= r.ly && y <= r.hy) return true;
     }
     return false;
+}
+
+/** C region.h hero_inside / set_hero_inside / clear_hero_inside. */
+function hero_inside(reg) {
+    return ((reg.player_flags | 0) & REG_HERO_INSIDE) !== 0;
+}
+function set_hero_inside(reg) {
+    reg.player_flags = (reg.player_flags | 0) | REG_HERO_INSIDE;
+}
+function clear_hero_inside(reg) {
+    reg.player_flags = (reg.player_flags | 0) & ~REG_HERO_INSIDE;
+}
+
+function callback_set(f) {
+    return f != null && f !== NO_CALLBACK;
+}
+
+/**
+ * C region.c callbacks[] is inside_gas/expire_gas only; enter/leave
+ * are always NO_CALLBACK in live C (force field #if 0). A function
+ * value is for a canary / future enter_force_field.
+ */
+function invoke_region_cb(f_indx, reg, arg) {
+    if (typeof f_indx === 'function') return !!f_indx(reg, arg);
+    return true;
 }
 
 function is_hero_inside_gas_cloud() {
@@ -140,6 +171,18 @@ function make_gas_cloud(cloud, damage, _inside_cloud) {
     cloud.glyph = damage ? 'S_poisoncloud' : 'S_cloud';
     cloud.visible = true;
     if (!cloud.monsters) cloud.monsters = [];
+    /* C create_region defaults + add_region hero_inside. */
+    if (cloud.can_enter_f == null) cloud.can_enter_f = NO_CALLBACK;
+    if (cloud.can_leave_f == null) cloud.can_leave_f = NO_CALLBACK;
+    if (cloud.enter_f == null) cloud.enter_f = NO_CALLBACK;
+    if (cloud.leave_f == null) cloud.leave_f = NO_CALLBACK;
+    cloud.attach_2_u = !!cloud.attach_2_u;
+    cloud.player_flags = cloud.player_flags | 0;
+    {
+        const u = game.u || {};
+        if (inside_region(cloud, u.ux | 0, u.uy | 0)) set_hero_inside(cloud);
+        else clear_hero_inside(cloud);
+    }
     // set_heros_fault / enveloped pline deferred
     if (!game.regions) game.regions = [];
     game.regions.push(cloud);
@@ -188,6 +231,70 @@ function remove_region(reg) {
  */
 export function clear_regions() {
     game.regions = [];
+}
+
+/**
+ * C ref: region.c in_out_region — can_enter/leave then membership.
+ * Gas has NO_CALLBACK enter/leave so this never rejects; it still
+ * updates REG_HERO_INSIDE. enter_msg/leave_msg pline deferred
+ * (async; create_msg_region #if 0).
+ */
+export function in_out_region(x, y) {
+    const regs = game.regions || [];
+
+    /* First check if hero can do the move */
+    for (const reg of regs) {
+        if (reg.attach_2_u) continue;
+        const dest_in = inside_region(reg, x, y);
+        let f_indx = NO_CALLBACK;
+        const need = dest_in
+            ? (!hero_inside(reg)
+                && callback_set(f_indx = (reg.can_enter_f ?? NO_CALLBACK)))
+            : (hero_inside(reg)
+                && callback_set(f_indx = (reg.can_leave_f ?? NO_CALLBACK)));
+        if (need && !invoke_region_cb(f_indx, reg, null)) return false;
+    }
+
+    /* Callbacks for the regions hero does leave */
+    for (const reg of regs) {
+        if (reg.attach_2_u) continue;
+        if (hero_inside(reg) && !inside_region(reg, x, y)) {
+            clear_hero_inside(reg);
+            const f_indx = reg.leave_f ?? NO_CALLBACK;
+            if (callback_set(f_indx)) invoke_region_cb(f_indx, reg, null);
+        }
+    }
+
+    /* Callbacks for the regions hero does enter */
+    for (const reg of regs) {
+        if (reg.attach_2_u) continue;
+        if (!hero_inside(reg) && inside_region(reg, x, y)) {
+            set_hero_inside(reg);
+            const f_indx = reg.enter_f ?? NO_CALLBACK;
+            if (callback_set(f_indx)) invoke_region_cb(f_indx, reg, null);
+        }
+    }
+    return true;
+}
+
+/**
+ * C ref: region.c update_player_regions — teleds after u_on_newpos
+ * / fill_pit / placebc. Absolute REG_HERO_INSIDE from (u.ux,u.uy).
+ * attach_2_u always clear_hero_inside (C dangling else of
+ * !attach_2_u && inside). No enter/leave callbacks or msgs —
+ * those are in_out_region (teleok probes; hack.c walk still named).
+ */
+export function update_player_regions() {
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    for (const reg of game.regions || []) {
+        if (!reg.attach_2_u && inside_region(reg, ux, uy)) {
+            set_hero_inside(reg);
+        } else {
+            clear_hero_inside(reg);
+        }
+    }
 }
 
 /**

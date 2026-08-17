@@ -37,7 +37,7 @@ import {
     N_DIRS, W_ARMC, RLOC_NOMSG,
     FILL_LVFLAGS, STRAT_WAITFORU, NON_PM, ONAME_LEVEL_DEF,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH,
-    LR_TELE, LR_UPTELE, LR_DOWNTELE,
+    LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN,
     BR_PORTAL, BR_NO_END1, BR_NO_END2,
     TAINT_AGE,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
@@ -715,6 +715,47 @@ export function l_teleport_region(opts) {
     levregion_add(lregion);
 }
 
+/**
+ * C ref: sp_lev.c lspo_exclusion.
+ * des.exclusion({ type = "teleport"|"teleport-up"|"teleport-down"|
+ *                 "monster-generation", region = { x1,y1,x2,y2 } }).
+ * Default type "teleport". get_location(ANY_LOC|NO_LOC_WARN) so packed
+ * coords become absolute (map origin, or croom lx/ly). Prepend onto
+ * sve.exclusion_zones. Named omit: hellfill rnd_hell_prefab maps;
+ * soko2-2 (load deferred); save_exclusions / load_exclusions.
+ */
+const EZ_TYPES = {
+    teleport: LR_TELE,
+    'teleport-up': LR_UPTELE,
+    'teleport-down': LR_DOWNTELE,
+    'monster-generation': LR_MONGEN,
+};
+
+export function lspo_exclusion(opts) {
+    const typeName = opts?.type ?? 'teleport';
+    const zonetype = EZ_TYPES[typeName] ?? LR_TELE;
+    const region = opts.region;
+    const croom = opts.croom ?? null;
+    const a = get_location(region[0] | 0, region[1] | 0,
+        ANY_LOC | NO_LOC_WARN, croom);
+    const b = get_location(region[2] | 0, region[3] | 0,
+        ANY_LOC | NO_LOC_WARN, croom);
+    const ez = {
+        zonetype,
+        lx: a.x,
+        ly: a.y,
+        hx: b.x,
+        hy: b.y,
+        next: game.exclusion_zones || null,
+    };
+    game.exclusion_zones = ez;
+}
+
+/** C ref: dungeon.c free_exclusions — drop the list on clear_level_structures. */
+function free_exclusions() {
+    game.exclusion_zones = null;
+}
+
 // C ref: mkmaze.c fixup_special — post-special-level branch/lregion placement
 function fixup_special() {
     // C: leftover gl.lregions. Other load_* still consume inline after
@@ -992,6 +1033,8 @@ function clear_level_structures() {
     lf.stasis_until = 0;
     // C: clear_regions() — gas must not survive into a freshly mklev'd map
     clear_regions();
+    // C mklev.c clear_level_structures — free_exclusions after clear_regions
+    free_exclusions();
     init_rect();
 }
 
@@ -5398,7 +5441,7 @@ function load_tower3() {
 /**
  * C ref: dat/soko1-1.lua via load_special.
  * Named omissions: ensure_way_out;
- * populate exclusion_zones from des.exclusion; link_doors_rooms full scan;
+ * link_doors_rooms full scan; soko2-2 des.exclusion (load deferred);
  * COURT/BEEHIVE/… fill_zoo arms beyond ZOO. Room fill is deferred to
  * makelevel (not here).
  */
@@ -5482,6 +5525,9 @@ function load_soko1_1() {
     for (const [mx, my] of boulderCoords) {
         mksobj_at(BOULDER, xstart + mx, ystart + my, true, true);
     }
+
+    // des.exclusion({ type = "monster-generation", region = { 07,01, 23,01 } })
+    lspo_exclusion({ type: 'monster-generation', region: [7, 1, 23, 1] });
 
     // Traps: hole / rolling boulder / holes — create_trap → mktrap + victim gate
     const trapSpecs = [
@@ -5568,7 +5614,7 @@ function load_soko1_1() {
 /**
  * C ref: dat/soko1-2.lua via load_special.
  * Named omissions: ensure_way_out;
- * populate exclusion_zones from des.exclusion; other soko*-*;
+ * soko2-2 des.exclusion (load deferred); other soko*-*;
  * COURT/BEEHIVE/… fill_zoo arms beyond ZOO. Room fill deferred to makelevel.
  */
 function load_soko1_2() {
@@ -5647,6 +5693,9 @@ function load_soko1_2() {
     for (const [mx, my] of boulderCoords) {
         mksobj_at(BOULDER, xstart + mx, ystart + my, true, true);
     }
+
+    // des.exclusion({ type = "monster-generation", region = { 05,01, 23,01 } })
+    lspo_exclusion({ type: 'monster-generation', region: [5, 1, 23, 1] });
 
     const trapSpecs = [
         [ROLLING_BOULDER_TRAP, 5, 1],
@@ -5729,7 +5778,7 @@ function load_soko1_2() {
 /**
  * C ref: dat/soko3-1.lua via load_special.
  * Named omissions: ensure_way_out;
- * populate exclusion_zones from des.exclusion; soko2-2 / soko4-1.
+ * soko2-2 des.exclusion (load deferred).
  */
 function load_soko3_1() {
     const g = game;
@@ -5804,6 +5853,9 @@ function load_soko3_1() {
         mksobj_at(BOULDER, xstart + mx, ystart + my, true, true);
     }
 
+    // des.exclusion({ type = "monster-generation", region = { 11,10, 27,10 } })
+    lspo_exclusion({ type: 'monster-generation', region: [11, 10, 27, 10] });
+
     const trapSpecs = [
         [ROLLING_BOULDER_TRAP, 11, 10],
         [HOLE, 12, 10], [HOLE, 13, 10], [HOLE, 14, 10], [HOLE, 15, 10],
@@ -5827,7 +5879,7 @@ function load_soko3_1() {
 /**
  * C ref: dat/soko3-2.lua via load_special.
  * Named omissions: ensure_way_out;
- * populate exclusion_zones from des.exclusion; soko2-2 / soko4-1.
+ * soko2-2 des.exclusion (load deferred).
  */
 function load_soko3_2() {
     const g = game;
@@ -5905,6 +5957,9 @@ function load_soko3_2() {
         mksobj_at(BOULDER, xstart + mx, ystart + my, true, true);
     }
 
+    // des.exclusion({ type = "monster-generation", region = { 11,10, 24,10 } })
+    lspo_exclusion({ type: 'monster-generation', region: [11, 10, 24, 10] });
+
     const trapSpecs = [
         [ROLLING_BOULDER_TRAP, 11, 10],
         [HOLE, 12, 10], [HOLE, 13, 10], [HOLE, 14, 10], [HOLE, 15, 10],
@@ -5927,7 +5982,7 @@ function load_soko3_2() {
 /**
  * C ref: dat/soko4-1.lua via load_special — Sokoban entry (bottom).
  * Named omissions: ensure_way_out;
- * populate exclusion_zones from des.exclusion; soko2-2.
+ * soko2-2 des.exclusion (load deferred).
  */
 function load_soko4_1() {
     const g = game;
@@ -6006,6 +6061,9 @@ function load_soko4_1() {
         mksobj_at(BOULDER, xstart + mx, ystart + my, true, true);
     }
 
+    // des.exclusion({ type = "monster-generation", region = { 01,06, 07,11 } })
+    lspo_exclusion({ type: 'monster-generation', region: [1, 6, 7, 11] });
+
     const trapSpecs = [
         [PIT, 4, 6],
         [PIT, 2, 6], [PIT, 2, 7], [PIT, 2, 8],
@@ -6051,7 +6109,7 @@ function load_soko4_1() {
 /**
  * C ref: dat/soko4-2.lua via load_special — Sokoban entry (bottom).
  * Named omissions: ensure_way_out;
- * populate exclusion_zones from des.exclusion; soko2-2;
+ * soko2-2 des.exclusion (load deferred);
  * levregion coords after flip (same Bar-strt pattern).
  */
 function load_soko4_2() {
@@ -6115,6 +6173,10 @@ function load_soko4_2() {
     for (const [mx, my] of boulderCoords) {
         mksobj_at(BOULDER, xstart + mx, ystart + my, true, true);
     }
+
+    // des.exclusion monster-generation {01,01,01,09} then {01,08,07,09}
+    lspo_exclusion({ type: 'monster-generation', region: [1, 1, 1, 9] });
+    lspo_exclusion({ type: 'monster-generation', region: [1, 8, 7, 9] });
 
     const trapSpecs = [
         [PIT, 1, 2], [PIT, 1, 3], [PIT, 1, 4], [PIT, 1, 5], [PIT, 1, 6],
@@ -7946,7 +8008,7 @@ export function fumaroles() {
 /**
  * C ref: dat/soko2-1.lua via load_special.
  * Named omissions: ensure_way_out;
- * populate exclusion_zones from des.exclusion; soko2-2 / soko4-1.
+ * soko2-2 des.exclusion (load deferred).
  */
 function load_soko2_1() {
     const g = game;
@@ -8021,6 +8083,9 @@ function load_soko2_1() {
     for (const [mx, my] of boulderCoords) {
         mksobj_at(BOULDER, xstart + mx, ystart + my, true, true);
     }
+
+    // des.exclusion({ type = "monster-generation", region = { 07,09, 18,09 } })
+    lspo_exclusion({ type: 'monster-generation', region: [7, 9, 18, 9] });
 
     const trapSpecs = [
         [ROLLING_BOULDER_TRAP, 7, 9],
@@ -8243,8 +8308,8 @@ function flip_level_rnd(flp, extras) {
  * shrpos / shk shk|shd via Flip_coord (inFlipArea+x gate); ungated stairs;
  * `_level_monsters` swap (C level.monsters[][]). Named omissions:
  * SpLev_Map flip (C leaves unflipped); drawbridge helpers; vault-guard
- * extras; worm-seg helpers beyond grid swap; exclusion zones; ball/chain;
- * flip_visuals(extras).
+ * extras; worm-seg helpers beyond grid swap; ball/chain;
+ * flip_visuals(extras). Exclusion rectangles flip with the level (D-1109).
  */
 function flip_level(flp, _extras) {
     if ((flp & 3) === 0) return;
@@ -8370,6 +8435,23 @@ function flip_level(flp, _extras) {
             r.delarea.x2 = FlipX(r.delarea.x2);
             if (r.delarea.x1 > r.delarea.x2) {
                 const t = r.delarea.x1; r.delarea.x1 = r.delarea.x2; r.delarea.x2 = t;
+            }
+        }
+    }
+    // C ref: sp_lev.c flip_level — exclusion zones (ungated FlipX/Y, swap if inverted)
+    for (let ez = game.exclusion_zones; ez; ez = ez.next) {
+        if (flp & 1) {
+            ez.ly = FlipY(ez.ly);
+            ez.hy = FlipY(ez.hy);
+            if (ez.ly > ez.hy) {
+                const t = ez.ly; ez.ly = ez.hy; ez.hy = t;
+            }
+        }
+        if (flp & 2) {
+            ez.lx = FlipX(ez.lx);
+            ez.hx = FlipX(ez.hx);
+            if (ez.lx > ez.hx) {
+                const t = ez.lx; ez.lx = ez.hx; ez.hx = t;
             }
         }
     }
@@ -16869,12 +16951,7 @@ function water_vault_contents() {
     }
 
     // des.exclusion({ type="teleport", region={2,2,3,3} })
-    g.exclusion_zones = {
-        zonetype: LR_TELE,
-        lx: mx + 2, ly: my + 2,
-        hx: mx + 3, hy: my + 3,
-        next: g.exclusion_zones || null,
-    };
+    lspo_exclusion({ type: 'teleport', region: [2, 2, 3, 3] });
 }
 
 // C ref: nhlib.lua shuffle() — Fisher–Yates with math.random(i)=1+rn2(i)

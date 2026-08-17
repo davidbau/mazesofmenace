@@ -1,6 +1,6 @@
 // zap.js — Zap command / wish helpers (partial).
 // C ref: zap.c dozap, zappable, weffects, zapnodir, learnwand, makewish,
-//        zapyourself, ubuzz, dobuzz, zhitm, destroy_items, resist,
+//        zapyourself, ubreatheu, ubuzz, dobuzz, zhitm, destroy_items, resist,
 //        bhit, bhito, bhitm, bhitpile, poly_obj, obj_shudders,
 //        cancel_item, cancel_monst, revive, revive_egg, unturn_dead,
 //        unturn_you
@@ -267,6 +267,12 @@ function Cold_resistance() {
 function Shock_resistance() {
     const u = game.u || {};
     return !!(u.Shock_resistance || u.HShock_resistance || u.EShock_resistance);
+}
+
+/** C ref: youprop.h Acid_resistance */
+function Acid_resistance() {
+    const u = game.u || {};
+    return !!(u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance);
 }
 
 /** C ref: youprop.h Antimagic */
@@ -1369,10 +1375,11 @@ async function zhitm(mon, type, nd, ootmp) {
 /**
  * C ref: zap.c zhitu — hero hit by ray (wand/spell/breath).
  * Envelope: ZT_MAGIC_MISSILE..ZT_LIGHTNING damage + ZT_FIRE burnarmor/
- * destroy_items/ignite gate + ZT_COLD/ELEC destroy_items + losehp.
+ * destroy_items/ignite gate + ZT_COLD/ELEC destroy_items + losehp;
+ * ZT_ACID Acid_resistance + hliquid + d(nd,6) (D-1127).
  * Named omissions: shieldeff/monstunseesu/ugolemeffects;
- * death/disintegrate arms; poison/acid; killer buzzer
- * verb polish.
+ * death/disintegrate arms; poison; acid_damage/erode_armor bodies;
+ * killer buzzer verb polish.
  */
 async function zhitu(type, nd, fltxt, _sx, _sy) {
     let dam = 0;
@@ -1468,9 +1475,24 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
         }
         break;
     case ZT_POISON_GAS:
-    case ZT_ACID:
-        // poisoned/acid arms deferred
+        // poisoned("blast", A_DEX, ...) deferred
         break;
+    case ZT_ACID: {
+        const u = game.u || {};
+        if (Acid_resistance()) {
+            await pline(`The ${hliquid('acid')} doesn't hurt.`);
+            dam = 0;
+        } else {
+            await pline(`The ${hliquid('acid')} burns!`);
+            dam = d(nd, 6);
+            exercise(A_STR, false);
+        }
+        // acid_damage / erode_armor bodies deferred; consume C rn2 gates
+        rn2(u.twoweap ? 3 : 6);
+        if (u.twoweap) rn2(3);
+        rn2(6);
+        break;
+    }
     default:
         break;
     }
@@ -1490,6 +1512,18 @@ async function zhitu(type, nd, fltxt, _sx, _sy) {
             await finish_losehp_done();
         }
     }
+}
+
+/**
+ * C ref: zap.c ubreatheu — poly'd hero breath against self.
+ * dtyp = 20 + adtyp - 1 (ZT_BREATH); flash_str(..., TRUE) no-hallu killer
+ * (JS flash_str already skips Hallu).
+ */
+export async function ubreatheu(mattk) {
+    if (!mattk) return;
+    const dtyp = 20 + (mattk.adtyp | 0) - 1;
+    const u = game.u || {};
+    await zhitu(dtyp, mattk.damn | 0, flash_str(dtyp), u.ux, u.uy);
 }
 
 /**
