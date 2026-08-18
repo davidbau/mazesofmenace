@@ -9055,6 +9055,13 @@ function mktrap_seen_victim(ttmp, opts) {
         makemon(mons(PM_GIANT_SPIDER), ttmp.tx, ttmp.ty, 0);
     }
     if (opts?.seen) ttmp.tseen = true;
+    // C mklev.c mktrap: MAGIC_PORTAL dst ← u.ucamefrom when set
+    if (kind === MAGIC_PORTAL) {
+        const from = game.u?.ucamefrom;
+        if ((from?.dnum | 0) || (from?.dlevel | 0)) {
+            ttmp.dst = { dnum: from.dnum | 0, dlevel: from.dlevel | 0 };
+        }
+    }
     const novictim = !!(opts?.novictim
         || ((opts?.mktrapflags ?? 0) & MKTRAP_NOVICTIM));
     const lvl = level_difficulty();

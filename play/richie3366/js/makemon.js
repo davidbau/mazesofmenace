@@ -90,7 +90,7 @@ import {
     In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
-    MFAST, MAXMONNO,
+    MFAST, MAXMONNO, DF_NONE,
 } from './const.js';
 import { enexto, enexto_core, enexto_gpflags, goodpos, noteleport_level } from './teleport.js';
 import {
@@ -133,6 +133,7 @@ import {
     get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
     worm_mon_at,
 } from './worm.js';
+import { deliver_obj_to_mon } from './dokick.js';
 
 /** C ref: shknam.c neweshk — allocate eshk for MM_ESHK makemon. */
 export function neweshk(mtmp) {
@@ -2312,6 +2313,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
             && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {
             put_saddle_on_mon(null, mtmp);
         }
+    } /* else C discard_minvent — named */
+
+    // C makemon.c:1469–1470 after invent / mflags3, before !in_mklev
+    // newsym. JS already applied mflags3 earlier (D-0928 #1128).
+    if (allow_minvent_local && game.migrating_objs) {
+        deliver_obj_to_mon(mtmp, 1, DF_NONE);
     }
 
     // C: !in_mklev → newsym so the mon shows up (even with MM_NOMSG)

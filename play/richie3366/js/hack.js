@@ -15,8 +15,9 @@ import {
     xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA,
     xWATERWALL,
     W_NONDIGGABLE, SHOP_DOOR_COST,
-    IS_WATERWALL, PARANOID_SWIM, TIP_SWIM,
+    IS_WATERWALL, PARANOID_SWIM, PARANOID_TRAP, PARANOID_CONFIRM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
+    TRAP_CLEARLY_IMMUNE, TRAPNUM,
     xdir, ydir, N_DIRS,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
     OVERLOADED, SLT_ENCUMBER, HVY_ENCUMBER, Is_airlevel, Is_waterlevel,
@@ -47,7 +48,8 @@ import {
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname } from './do_name.js';
 import { near_capacity } from './invent.js';
 import { record_achievement } from './insight.js';
-import { b_trapped, selftouch } from './trap.js';
+import { b_trapped, selftouch, t_at, into_vs_onto, immune_to_trap, trapname } from './trap.js';
+import { paranoid_query } from './getline.js';
 
 /** C ref: decl.c dirs_ord — cardinals first. */
 const DIRS_ORD = [
@@ -972,6 +974,130 @@ export async function swim_move_danger(x, y) {
     return false;
 }
 
+/** C youprop.h Blind / Stunned / Confusion for avoid_trap_andor_region. */
+function Blind_prop() {
+    const u = game.u || {};
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+function Stunned_prop() {
+    const u = game.u || {};
+    return !!((u.HStun | 0) || u.Stunned);
+}
+function Confusion_prop() {
+    const u = game.u || {};
+    return !!((u.HConfusion | 0) || u.Confusion);
+}
+
+/** C hacklib.c upstart — capitalize first letter. */
+function upstart_word(str) {
+    const s = String(str ?? '');
+    if (!s) return s;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * C region.c visible_region_at / reg_damg — local clones so hack.js
+ * does not import region.js (region.js already imports hack.js).
+ */
+function visible_region_at_xy(x, y) {
+    const regs = game.regions || [];
+    for (const reg of regs) {
+        if (!reg.visible || reg.ttl === -2) continue;
+        for (const r of reg.rects || []) {
+            if (x >= r.lx && x <= r.hx && y >= r.ly && y <= r.hy) return reg;
+        }
+    }
+    return null;
+}
+function reg_damg(reg) {
+    if (!reg || !reg.visible || reg.ttl === -2) return 0;
+    return reg.arg | 0;
+}
+
+/**
+ * C ref: hack.c test_move(TEST_MOVE) — silent viability for
+ * avoid_trap_andor_region. Named omissions: Passes_walls/ooze/chew/
+ * autodig/Underwater/squeeze/worm_cross/boulder-run. C always clears
+ * context.door_opened.
+ */
+function test_move_viable(dx, dy) {
+    const u = game.u;
+    if (!u) return false;
+    const x = (u.ux | 0) + (dx | 0);
+    const y = (u.uy | 0) + (dy | 0);
+    if (game.context) game.context.door_opened = false;
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) return false;
+    if (closed_door(x, y)) return false;
+    if (dx && dy) {
+        if (IS_DOOR(loc.typ) && !doorless_door(x, y)) return false;
+        const here = game.level?.at(u.ux, u.uy);
+        if (here && IS_DOOR(here.typ) && !doorless_door(u.ux, u.uy)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * C ref: hack.c avoid_trap_andor_region — ParanoidTrap yn before a
+ * viable step onto a tseen trap (or into a visible gas region).
+ * Default paranoia_bits include PARANOID_TRAP, not PARANOID_CONFIRM,
+ * so paranoid_query uses yn (not getlin "yes").
+ * @returns {Promise<boolean>} true → stop moving
+ */
+export async function avoid_trap_andor_region(x, y) {
+    const u = game.u || {};
+    const bits = game.flags?.paranoia_bits | 0;
+    const ParanoidTrap = (bits & PARANOID_TRAP) !== 0;
+    const ParanoidConfirm = (bits & PARANOID_CONFIRM) !== 0;
+    const nopick = !!(game.context?.nopick);
+    const running = !!(game.context?.run);
+    // C: skip m-prefix unless also running
+    const wouldAsk = !nopick || running;
+
+    if (ParanoidTrap && !Blind_prop() && !Stunned_prop() && !Confusion_prop()
+        && !Hallucination() && wouldAsk) {
+        const newreg = visible_region_at_xy(x, y);
+        if (newreg) {
+            const oldreg = visible_region_at_xy(u.ux, u.uy);
+            const newDmg = reg_damg(newreg);
+            const oldDmg = oldreg ? reg_damg(oldreg) : 0;
+            if ((!oldreg || (newDmg > 0 && oldDmg === 0))
+                && test_move_viable(u.dx, u.dy)) {
+                const cloud = newDmg > 0 ? 'poison gas' : 'vapor';
+                const qbuf = upstart_word(
+                    `${u_locomotion('step')} into that ${cloud} cloud?`,
+                );
+                if (!(await paranoid_query(ParanoidConfirm, qbuf))) {
+                    nomul(0);
+                    if (game.context) game.context.move = 0;
+                    return true;
+                }
+            }
+        }
+    }
+
+    if (ParanoidTrap && !Stunned_prop() && !Confusion_prop() && wouldAsk) {
+        const trap = t_at(x, y);
+        if (trap && trap.tseen && test_move_viable(u.dx, u.dy)
+            && (immune_to_trap(game.youmonst, trap.ttyp) !== TRAP_CLEARLY_IMMUNE
+                || Hallucination())) {
+            const traptype = Hallucination() ? rnd(TRAPNUM - 1) : (trap.ttyp | 0);
+            const into = into_vs_onto(traptype);
+            const qbuf = `Really ${u_locomotion('step')} ${into ? 'into' : 'onto'} that ${trapname(traptype)}?`;
+            if (!(await paranoid_query(ParanoidConfirm, qbuf))) {
+                nomul(0);
+                if (game.context) game.context.move = 0;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 /**
  * C ref: hack.c crawl_destination — orthogonal always; diagonal door/
  * squeeze checks. NODIAG / Passes_walls / bad_rock squeeze deferred →
@@ -1638,7 +1764,7 @@ function notice_distu(x, y) {
 }
 
 /** C pline.c set_msg_xy — a11y.msg_loc; pline consume still named. */
-function set_msg_xy(x, y) {
+export function set_msg_xy(x, y) {
     const a = a11y_state();
     a.msg_loc.x = x | 0;
     a.msg_loc.y = y | 0;
@@ -1685,8 +1811,9 @@ function notice_mons_cmp(m1, m2) {
  * C hack.c notice_all_mons — if a11y.mon_notices && !blocked, count
  * canspotmon, qsort distu, notice_mon each. reset=TRUE clears mspotted
  * on unspotted even when cnt==0 (first-loop else). Named omit:
- * vision.c vision_recalc; do.c goto_level; allmain.c newgame;
+ * vision.c vision_recalc; allmain.c newgame;
  * read.c seffect_magic_mapping; wizcmds.c; save.c.
+ * do.c goto_level wrap is D-1194.
  */
 export async function notice_all_mons(reset) {
     const a = a11y_state();

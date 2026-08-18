@@ -1,9 +1,10 @@
 // do_name.js — Object naming helpers (partial).
-// C ref: do_name.c oname / artifact naming / docallcmd.
+// C ref: do_name.c oname / artifact naming / docallcmd;
+//        christen_orc / rndorcname / free_oname (D-1193).
 
 import { artifact_exists, exist_artifact } from './artifact.js';
 import { game } from './gstate.js';
-import { rn2, rn2_on_display_rng } from './rng.js';
+import { rn2, rn1, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, docrt, canspotmon, pline,
@@ -18,7 +19,7 @@ import {
     SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
     SUPPRESS_SADDLE, SUPPRESS_NAME,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
-    has_oname, ONAME, CLR_MAX,
+    has_oname, ONAME, CLR_MAX, BUFSZ,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
@@ -675,6 +676,63 @@ export function oname(obj, name, oflgs = 0) {
 
 export function safe_oname(obj) {
     return obj?.oextra?.oname || '';
+}
+
+/** C ref: do_name.c free_oname — drop oname; keep oextra. */
+export function free_oname(obj) {
+    if (has_oname(obj)) delete obj.oextra.oname;
+}
+
+/** C ref: hacklib.c upstart — capitalize first letter. */
+function upstart(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/* C do_name.c rndorcname syllable tables */
+const ORC_V = ['a', 'ai', 'og', 'u'];
+const ORC_SND = [
+    'gor', 'gris', 'un', 'bane', 'ruk', 'oth', 'ul', 'z', 'thos', 'akh', 'hai',
+];
+
+/**
+ * C ref: do_name.c rndorcname — rn1(2,3) syllables; v/snd flip;
+ * rare '-' via !rn2(30). Callers always pass a buffer.
+ */
+export function rndorcname() {
+    const iend = rn1(2, 3);
+    let vstart = rn2(2);
+    let s = '';
+    for (let i = 0; i < iend; ++i) {
+        vstart = 1 - vstart;
+        const dash = (i > 0 && !rn2(30)) ? '-' : '';
+        s += dash + (vstart ? ORC_V[rn2(ORC_V.length)] : ORC_SND[rn2(ORC_SND.length)]);
+    }
+    return s;
+}
+
+/**
+ * C ref: do_name.c christen_orc — rndorcname + " of gang" or other
+ * suffix when sz < BUFSZ. Caller: dokick.c deliver_obj_to_mon.
+ */
+export function christen_orc(mtmp, gang, other) {
+    const orcname = rndorcname();
+    let sz = orcname.length;
+    if (gang) sz += String(gang).length + 4; /* sizeof " of " - 1 */
+    else if (other) sz += String(other).length;
+    if (sz < BUFSZ) {
+        let buf = '';
+        let nameit = false;
+        if (gang) {
+            buf = `${upstart(orcname)} of ${upstart(gang)}`;
+            nameit = true;
+        } else if (other) {
+            buf = `${upstart(orcname)}${other}`;
+            nameit = true;
+        }
+        if (nameit) mtmp = christen_monst(mtmp, buf);
+    }
+    return mtmp;
 }
 
 /**

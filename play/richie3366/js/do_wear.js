@@ -1,6 +1,6 @@
 // do_wear.js — Wear / take-off / put-on (partial).
 // C ref: do_wear.c — dowear, doputon, canwearobj, accessory_or_armor_on,
-// Amulet_on, Armor_on, dotakeoff, armor_or_accessory_off, armoroff, *_off.
+// Amulet_on, Armor_on, dotakeoff, doddoremarm, armor_or_accessory_off, armoroff, *_off.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -23,6 +23,7 @@ import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
     W_QUIVER, W_BALL, W_CHAIN, LEFT_RING, RIGHT_RING, W_ART,
+    ECMD_OK,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
     TIMEOUT, BLINDED, FAST, TELEPAT, STEALTH, WORN_BOOTS, WORN_CLOAK, WORN_GLOVES,
@@ -1174,6 +1175,42 @@ export async function dotakeoff() {
     }
     if (!otmp) return 0;
     return armor_or_accessory_off(otmp);
+}
+
+/**
+ * C ref: invent.c wearing_armor — any armor slot occupied.
+ */
+function wearing_armor() {
+    const u = game.u || {};
+    return !!(u.uarm || u.uarmc || u.uarmf || u.uarmg
+        || u.uarmh || u.uarms || u.uarmu);
+}
+
+/**
+ * C ref: do_wear.c doddoremarm — #takeoffall / 'A'.
+ * Empty-worn: You("are not wearing anything.") ECMD_OK.
+ * Named omit: in-progress take_off occupation; ggetobj / menu_remarm
+ * when something is worn (select_off / take_off delay).
+ */
+export async function doddoremarm() {
+    const u = game.u || {};
+    if (!game.context) game.context = {};
+    if (!game.context.takeoff) game.context.takeoff = {};
+    const to = game.context.takeoff;
+    if (to.what || to.mask) {
+        // C: You("continue %s.", takeoff.disrobing); set_occupation(take_off)
+        const verb = to.disrobing || 'disrobing';
+        await pline(`You continue ${verb}.`);
+        // take_off occupation deferred
+        return ECMD_OK;
+    }
+    if (!u.uwep && !u.uswapwep && !u.uquiver && !u.uamul && !u.ublindf
+        && !u.uleft && !u.uright && !wearing_armor()) {
+        await pline('You are not wearing anything.');
+        return ECMD_OK;
+    }
+    // ggetobj("take off", select_off) / menu_remarm / take_off deferred
+    return ECMD_OK;
 }
 
 /**

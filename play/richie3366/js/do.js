@@ -7,7 +7,7 @@
 //         revive_corpse (D-1081; eat.c cprefx rider + apply tinning).
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { depth } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
@@ -65,15 +65,16 @@ import { record_achievement } from './insight.js';
 import { com_pager } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
 import { save_track, rest_track } from './track.js';
-import { m_at, mnexto, hide_monst, wake_nearto, dist2 } from './mon.js';
+import { m_at, mnexto, hide_monst, wake_nearto, dist2, kill_genocided_monsters } from './mon.js';
 import { enexto } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
     check_special_room, is_pool, is_lava, waterbody_name,
+    notice_mon_off, notice_mon_on, notice_all_mons,
 } from './hack.js';
 import { place_object, stackobj, weight, delobj, obj_extract_self,
     obj_nexto_xy, obj_meld, pudding_merge_message,
-    save_timers, restore_timers,
+    save_timers, restore_timers, run_timers,
 } from './mkobj.js';
 import { ship_object, obj_delivery } from './dokick.js';
 import { doname, xname, the, The, vtense, an, cxname_singular } from './objnam.js';
@@ -1266,21 +1267,30 @@ function getlev_catchup_monsters(elapsed) {
  * Ported: keepdogs → stash (VISITED|LFILE_EXISTS + omoves + track) →
  * assign uz → mklev or restore stash + getlev catchup + rest_track →
  * stairway_find_from → climb/descend pline (Flying / encumber|Punished|
- * Fumbling fall `rnd(3)` losehp / ordinary) → losedogs → vision/docrt →
- * pickup(1).
+ * Fumbling fall `rnd(3)` losehp / ordinary) → losedogs →
+ * kill_genocided_monsters (D-1190) → run_timers (D-1191) →
+ * vision/docrt → pickup(1).
  * Ported: portal MAGIC_PORTAL find / missing → u_on_rndspot (D-0594).
  * Ported: quest entrance `com_pager(quest_portal*)` (D-0650).
  * Ported: quest-home gate — on qstart && !newdungeon && !ok_to_quest()
  * → "mysterious force prevents you from descending" (D-0798).
  * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
  * RMPORTAL, endgame astral `final_level` / migrating-Wizard resurrect arm,
- * trap-door fall damage (`do_fall_dmg`), Lua NHCB_LVL_LEAVE,
- * fix_shop_damage (obj_delivery is D-1177; in_out_region is D-1166),
- * MICRO display_nhwindow after Valley odor; ACH_ENDG/ASTR/BGRM;
- * poly `locomotion()` climb verb / steed-flyer Flying;
+ * Punished `ballfall` on trap-door falling, W-tower `u_on_rndspot` bit 2,
+ * Lua NHCB_LVL_LEAVE, MICRO display_nhwindow after Valley odor;
+ * ACH_ENDG/ASTR/BGRM; poly `locomotion()` climb verb / steed-flyer Flying;
  * u_collide_m full limbo. Ported: Punished climb
  * `great_effort` + Flying ladder "along" (D-0928 #1159);
  * Punished `drag_down`/`ballrelease` on stair fall (D-0918);
+ * `fix_shop_damage` catchup on !new after in_out_region (D-1178);
+ * trap-door `do_fall_dmg` `d(max(dist,1),6)` after shop repair (D-1179);
+ * `kill_genocided_monsters` after losedogs (D-1190);
+ * `run_timers` after kill_genocided before u_collide_m (D-1191;
+ * C `do.c:1818–1823`; destination + delivered-object timers that
+ * expired while away);
+ * `notice_mon_off` before docrt + `notice_mon_on` /
+ * `notice_all_mons(TRUE)` after uz0 reset (D-1194; C `do.c:1839`,
+ * `:1971–1972`; `reset_glyphmap` / vision_recalc caller still named);
  * In_quest `onquest`;
  * In_endgame `newdungeon`+amulet `resurrect` new-Wizard makemon + appear
  * Norep; `familiar_level_msg` via `bones_include_name` (D-0577);
@@ -1297,6 +1307,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const prev_temperature = (game.level?.flags?.temperature | 0);
 
     let up = depth_of(newlevel) < depth_of(u.uz);
+    // C: dist = depth(newlevel) - depth(&u.uz) before uz reassignment.
+    const dist = depth_of(newlevel) - depth_of(u.uz);
+    let do_fall_dmg = false;
     const newdungeon = (u.uz.dnum | 0) !== (newlevel.dnum | 0);
     const new_ledger = ledger_no(newlevel);
     if (new_ledger <= 0) return; // C: done(ESCAPED)
@@ -1633,8 +1646,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             }
         }
     } else if (!at_stairs) {
-        // C: trap door / level_tele / tutorial UTOTYPE_NONE → u_on_rndspot
+        // C: trap door / level_tele / In_endgame → u_on_rndspot
+        // Named omit: was_in_W_tower bit 2 (D-1179).
         u_on_rndspot(up ? 1 : 0);
+        if (falling) {
+            // C do.c:1805–1809 — Punished && !welded(uball) ballfall still
+            // named (ball.js). selftouch then do_fall_dmg (D-1179).
+            await selftouch('Falling, you');
+            do_fall_dmg = true;
+        }
     }
 
     game.at_ladder = false;
@@ -1649,6 +1669,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await obj_delivery(false);
 
     losedogs();
+    // C do.c:1817 — after losedogs, before run_timers / u_collide_m.
+    // Migrating mons (and eggs) genocided while in limbo die here so
+    // possessions land on this level.
+    kill_genocided_monsters();
+    // C do.c:1818–1823 — after losedogs + obj_delivery, before
+    // u_collide_m. Expire timers that went off while away (restored
+    // RANGE_LEVEL list + invent/migrating timers that save_timers
+    // left on gt.timer_base because obj_is_local is false). Do not
+    // peel invent/migrating here (D-1037).
+    await run_timers();
 
     // C: u_collide_m if still co-located — rn2(2)+enexto path
     let mtmp = m_at(u.ux, u.uy);
@@ -1665,6 +1695,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     vision_reset();
+    // C do.c:1839 — notice_mon_off after vision_reset / reset_glyphmap
+    // (glyphmap still named), before docrt. Blocks vision.c
+    // notice_all_mons(TRUE) until after arrival plines + uz0 reset
+    // (D-1194). JS vision_recalc still omits that caller.
+    notice_mon_off();
     // C: docrt → cls flushes NEED_MORE (--More-- on stale Dlvl:N map) then redraws
     await docrt();
     await flush_screen(-1); // un-postpone + flush new map/botl
@@ -1760,6 +1795,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await newexplevel();
     }
 
+    // C: assign_level(&u.uz0, &u.uz); /* reset u.uz0 */
+    // so later same-level portal steps are not treated as landing.
+    assign_level(u.uz0 || (u.uz0 = { dnum: 0, dlevel: 0 }), u.uz);
+
+    // C do.c:1971–1972 — after uz0 reset (INSURANCE save_currentstate
+    // named), before print_level_annotation. Catch-up after the
+    // docrt wrap (D-1194). Default mon_notices Off (optlist
+    // spot_monsters). Did not pull newgame / mapping / wizcmds / save.
+    notice_mon_on();
+    await notice_all_mons(true);
+
     // C: print_level_annotation() before check_special_room / pickup
     // (dungeon.c — #annotate custom → "You remember this level as …")
     await print_level_annotation();
@@ -1772,12 +1818,29 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await obj_delivery(true);
 
     // C do.c:1980–1981 — after obj_delivery(TRUE), before !new
-    // fix_shop_damage / do_fall_dmg / pickup(1). (void): do not abort
-    // the level change if can_enter/leave would reject (C assumes TRUE
-    // on level change). Restored REG_HERO_INSIDE is leave-time; this
-    // updates enter/leave for the landing cell (D-1166).
-    // fix_shop_damage / do_fall_dmg still named.
+    // fix_shop_damage. (void): do not abort the level change (D-1166).
     await in_out_region(u.ux, u.uy);
+
+    // C do.c:1985–1986 — shop repair catchup on revisited levels (!new)
+    // before do_fall_dmg / pickup so bones map includes it (D-1178).
+    if (!madeNew) {
+        const { fix_shop_damage } = await import('./shk.js');
+        await fix_shop_damage();
+    }
+
+    // C do.c:1988–1994 — trap-door/hole fall after shop repair, before
+    // pickup. losehp is noreturn on death so skip pickup (D-1179).
+    if (do_fall_dmg) {
+        let dmg = d(Math.max(dist | 0, 1), 6);
+        dmg = maybe_half_phys(dmg);
+        losehp(dmg, 'falling down a mine shaft', KILLED_BY);
+        await finish_maybe_wail();
+        if (game._losehp_needs_done) {
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return;
+        }
+    }
 
     // C: goto_level ends with pickup(1) — autopick or check_here/engr
     await pickup(1);

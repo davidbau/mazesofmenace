@@ -2,6 +2,7 @@
 // C ref: dokick.c — dokick, kick_dumb, kick_door, kick_nondoor, maybe_kick_monster,
 // kick_monster, kickdmg (partial); down_gate / drop_to / impact_drop (D-0961);
 // ship_object / otransit_msg (D-0984); obj_delivery (D-1177);
+// deliver_obj_to_mon (D-1193);
 // kick_nondoor SDOOR/furniture (D-0985);
 // throne fall_through + tree scatter/swarm (D-0986);
 // kick_object + bhit KICKED_WEAPON (D-0988);
@@ -36,12 +37,14 @@ import {
     fall_through, chest_trap, instapetrify, activate_statue_trap,
 } from './trap.js';
 import { setmangry, seemimic, angry_guards, wakeup, wake_nearto } from './mon.js';
-import { mon_nam, Monnam } from './do_name.js';
+import { mon_nam, Monnam, christen_orc, free_oname } from './do_name.js';
 import { martial_bonus, use_skill } from './weapon.js';
 import {
     verysmall, bigmonst, thick_skinned, nohands, haseyes,
     is_flyer, is_floater, can_teleport, M1_SLITHY, is_watch, mons,
     likes_gold, is_mercenary, touch_petrifies, poly_when_stoned,
+    M2_UNDEAD, M2_WERE, M2_HUMAN, M2_ELF, M2_DWARF, M2_GNOME, M2_ORC,
+    M2_DEMON, M2_GIANT,
 } from './monsters.js';
 import { objectNames, COIN_CLASS, GEM_CLASS } from './objects.js';
 import { monsterNames } from './generated/monsters_data.js';
@@ -64,6 +67,8 @@ import {
     RIGHT_SIDE, TIMEOUT, FOOT, LEG, SHOPBASE, SHOP_DOOR_COST,
     MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP, MIGR_SSTAIRS,
     MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES,
+    DF_RANDOM, DF_ALL, In_mines, NON_PM, has_oname, has_mgivenname,
+    ONAME,
     IS_SOFT, TRAPDOOR, is_hole, is_pit, Is_stronghold, Is_botlevel,
     In_endgame, Is_airlevel, Is_waterlevel, ZAP_POS, Is_box, Is_container,
     ESHK, Has_contents, ismnum, ER_NOTHING, A_LAWFUL,
@@ -82,7 +87,7 @@ import { cvt_sdoor_to_door } from './detect.js';
 import { altar_wrath } from './pray.js';
 import { del_engr_at, disturb_grave } from './engrave.js';
 import { sink_backs_up } from './fountain.js';
-import { makemon, mpickobj } from './makemon.js';
+import { makemon, mpickobj, add_to_minv } from './makemon.js';
 import { scatter } from './explode.js';
 import { enexto, rloco } from './teleport.js';
 import { is_art } from './artifact.js';
@@ -1885,7 +1890,7 @@ export async function impact_drop(missile, x, y, dlev) {
  * trap-door with the hero), TRUE after check_special_room (stairs /
  * random). C XOR: skip when (!near_hero) != (where == MIGR_WITH_HERO).
  * nx/ny persist across the loop like C (only RANDOM/default zeros).
- * Named omit: deliver_obj_to_mon; allmain newgame wizkit FALSE.
+ * Named omit: mkmaze stolen_booty producer. wizkit FALSE is D-1192.
  */
 export async function obj_delivery(near_hero) {
     const u = game.u || {};
@@ -1982,6 +1987,75 @@ export async function obj_delivery(near_hero) {
             if (rloco(otmp) && !nobreak && breaktest(otmp)) {
                 delobj(otmp);
             }
+        }
+        otmp = otmp2;
+    }
+}
+
+/* C dokick.c DELIVER_PM — race/kind bits that migr_species matches */
+const DELIVER_PM = M2_UNDEAD | M2_WERE | M2_HUMAN | M2_ELF | M2_DWARF
+    | M2_GNOME | M2_ORC | M2_DEMON | M2_GIANT;
+
+/** C obj.h: migr_species overlays corpsenm. */
+function migr_species_of(otmp) {
+    if (otmp.migr_species != null) return otmp.migr_species | 0;
+    return otmp.corpsenm | 0;
+}
+
+/**
+ * C ref: dokick.c deliver_obj_to_mon — extract MIGR_TO_SPECIES
+ * migrating_objs whose migr_species equals
+ * (mtmp->data->mflags2 & DELIVER_PM). No dest-level filter (unlike
+ * obj_delivery). Callers: makemon.c after allow_minvent (DF_NONE,
+ * cnt=1). dog.c mon_arrive MIGR_LEFTOVERS (DF_ALL) still named.
+ * Named omit: mkobj.c mksobj_migr_to_species / mkmaze stolen_booty;
+ * add_to_minv merge.
+ */
+export function deliver_obj_to_mon(mtmp, cnt, deliverflags) {
+    if (!mtmp) return;
+    let maxobj = 1;
+    const at_crime_scene = In_mines(game.u?.uz);
+    if ((deliverflags & DF_RANDOM) && cnt > 1) maxobj = rnd(cnt);
+    else if (deliverflags & DF_ALL) maxobj = 0;
+    else maxobj = 1;
+
+    cnt = 0;
+    for (let otmp = game.migrating_objs; otmp; ) {
+        const otmp2 = otmp.nobj;
+        const where = (otmp.owornmask | 0) & 0x7fff;
+        if ((where & MIGR_TO_SPECIES) === 0) {
+            otmp = otmp2;
+            continue;
+        }
+        const species = migr_species_of(otmp);
+        const monmask = ((mtmp.data?.mflags2 | 0) & DELIVER_PM) >>> 0;
+        if (species !== NON_PM && monmask === (species >>> 0)) {
+            obj_extract_self(otmp);
+            otmp.owornmask = 0;
+            otmp.ox = 0;
+            otmp.oy = 0;
+
+            /* special treatment for orcs and their kind */
+            if ((species & M2_ORC) !== 0 && has_oname(otmp)) {
+                if (!has_mgivenname(mtmp)) {
+                    if (at_crime_scene || !rn2(2)) {
+                        mtmp = christen_orc(
+                            mtmp,
+                            at_crime_scene ? ONAME(otmp) : null,
+                            ' the Fence',
+                        );
+                    }
+                }
+                free_oname(otmp);
+            }
+            otmp.migr_species = NON_PM;
+            otmp.corpsenm = NON_PM;
+            otmp.omigr_from_dnum = 0;
+            otmp.omigr_from_dlevel = 0;
+            add_to_minv(mtmp, otmp);
+            cnt++;
+            if (maxobj && cnt >= maxobj) break;
+            /* getting here implies DF_ALL */
         }
         otmp = otmp2;
     }

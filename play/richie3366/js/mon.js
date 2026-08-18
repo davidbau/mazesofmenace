@@ -2228,7 +2228,7 @@ function kill_eggs_one(otmp) {
  * C ref: mon.c kill_genocided_monsters — wipe live mons of G_GENOD species
  * then kill_eggs on minvent / invent / fobj / migrating_objs / buried.
  * Named omissions: chameleon `newcham` when imitating a genocided form;
- * do.c `goto_level` / cmd.c wiz-level-change callers.
+ * cmd.c wiz-level-change caller (do.c `goto_level` is D-1190).
  */
 export function kill_genocided_monsters() {
     const mv = game.mvitals || [];

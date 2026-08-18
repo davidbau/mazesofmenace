@@ -32,6 +32,7 @@ import {
     MENU_PREVIOUS_PAGE,
     MENU_FIRST_PAGE,
     MENU_LAST_PAGE,
+    WIZKIT_MAX,
 } from './const.js';
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -360,6 +361,13 @@ export function parseNethackrc(rc) {
         const bindMatch = line.match(/^BIND(?:INGS)?=(.+)/i);
         if (bindMatch) {
             parsebindings(bindMatch[1], result.binds);
+            continue;
+        }
+
+        // C cfgfiles.c cnf_line_WIZKIT — top-level WIZKIT=filename (not OPTIONS=).
+        const wizkitMatch = line.match(/^WIZKIT=(.+)/i);
+        if (wizkitMatch) {
+            result.wizkit = wizkitMatch[1].trim().slice(0, WIZKIT_MAX - 1);
             continue;
         }
 

@@ -19,12 +19,13 @@ import {
     ESHK, EPRI, EMIN, DISPLACED,
     LAVAPOOL, LAVAWALL, IS_FURNITURE, TELEDS_TELEPORT, TELEDS_ALLOW_DRAG,
     M_AP_NOTHING,
-    UTOTYPE_NONE, OBJ_FREE, SLT_ENCUMBER, TT_BURIEDBALL,
+    UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_PORTAL, TIMEOUT,
+    OBJ_FREE, SLT_ENCUMBER, TT_BURIEDBALL,
     is_hole, is_pit, Is_stronghold, Is_botlevel, Is_knox_level,
     In_endgame, In_sokoban, In_quest, Is_waterlevel,
     Is_airlevel, Is_firelevel, Is_earthlevel,
     HOLE, TRAPDOOR, LEVEL_TELEP,
-    MAGIC_PORTAL, VIBRATING_SQUARE, RLOC_MSG, RLOC_NOMSG, NO_TRAP_FLAGS,
+    MAGIC_PORTAL, VIBRATING_SQUARE, RLOC_MSG, RLOC_NOMSG, RLOC_ERR, NO_TRAP_FLAGS,
     BOLT_LIM, STRAT_APPEARMSG, ARTICLE_A, engulfing_u,
     MON_FLOOR, Upolyd,
     FIRE_RES, ANTIMAGIC, LEVITATION, FLYING, WWALKING, SWIMMING,
@@ -40,24 +41,26 @@ import {
 } from './monsters.js';
 import {
     newsym, pline, You_feel, see_monsters, canseemon, canspotmon, sensemon,
-    shieldeff, docrt,
+    shieldeff, docrt, impossible,
 } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
 import {
     nomul, in_rooms, is_pool, is_lava, check_special_room, switch_terrain,
     invocation_message, notice_mon_off, notice_mon_on, notice_all_mons,
+    set_msg_xy,
 } from './hack.js';
 import { remove_worm, place_worm_tail_randomly } from './worm.js';
 import { makeknown, prinv, near_capacity } from './invent.js';
 import { more_experienced } from './exper.js';
 import { getlin, yn_function } from './getline.js';
-import { get_level, find_hell, In_W_tower } from './dungeon.js';
+import { get_level, find_hell, In_W_tower, On_W_tower_level, In_tutorial } from './dungeon.js';
 import { depth, distmin } from './hacklib.js';
 import { addinv } from './u_init.js';
 import { mon_nam, Monnam, x_monnam, noit_mon_nam } from './do_name.js';
 import { placebc, unplacebc, drag_ball, move_bc } from './ball.js';
 import { in_out_region, update_player_regions, update_monster_region } from './region.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 
 /** C ref: do_name.c Amonnam — highc(a_monnam). */
 function Amonnam(mtmp) {
@@ -718,8 +721,11 @@ async function rloc_maybe_mintrap(mtmp) {
  * after bill (D-1170; go.occupation → dochugw(mtmp, FALSE) — no
  * dochug, only stop-if-newly-spotted-threat); trapped !wormno
  * mintrap after occupation (D-1164; dest no trap clears mtrapped).
- * Named omission: vanish-msg. RLOC_MSG vanish+appear live in async
- * `rloc` (D-0885 / D-0886). rloc_opts.defer_shk_angry is JS-only so
+ * `set_msg_xy` at dest-msg is D-1196 (rloc_to_flag / rloc_post_move_msg).
+ * RLOC_MSG vanish+appear live in async `rloc` (D-0885 / D-0886);
+ * telemsg "vanishes and reappears" D-1180; ustuck-together You() D-1183;
+ * wand `makeknown(WAN_TELEPORTATION)` after a delivered dest msg D-1195.
+ * rloc_opts.defer_shk_angry is JS-only so
  * rloc_to_flag can run appear pline before angry (C order).
  */
 export async function rloc_to(mtmp, x, y, rloc_opts = null) {
@@ -967,17 +973,48 @@ function tele_jump_ok(x1, y1, x2, y2) {
 }
 
 /**
- * C ref: teleport.c rloc_pos_ok — goodpos(GP_CHECKSCARY), then when
- * already on the map keep resident shk/priest in their room, then
- * tele_jump_ok. Dest is levl.roomno vs ESHK.shoproom / EPRI.shroom
- * (unsigned char), not in_rooms; rloc may still goodpos-fallback.
- * Named omissions: migrating mx==0 updest/dndest bit flags.
+ * C ref: teleport.c rloc_pos_ok — goodpos(GP_CHECKSCARY), then either
+ * migrating mx==0 (my holds flags: bit 0 up, bit 1 W-tower) against
+ * updest/dndest, or on-map keep resident shk/priest in their room then
+ * tele_jump_ok. Dest roomno vs ESHK.shoproom / EPRI.shroom (unsigned
+ * char), not in_rooms; rloc may still goodpos-fallback.
+ * Named omissions: migrate_to_level In_W_tower xyflags bit 2;
+ * mon_arrive my=xyflags before rloc.
  */
 function rloc_pos_ok(x, y, mtmp) {
     if (!goodpos(x, y, mtmp, GP_CHECKSCARY)) return false;
     const xx = mtmp?.mx | 0;
     const yy = mtmp?.my | 0;
-    if (xx) {
+    if (!xx) {
+        /* C teleport.c:1592–1615 — no current location (migrating
+         * arrival). yy is flags, not a row. */
+        const dndest = game.dndest || {};
+        const updest = game.updest || {};
+        if ((dndest.nlx | 0) && On_W_tower_level(game.u?.uz)) {
+            return (((yy & 2) !== 0)
+                ^ !within_bounded_area(x, y,
+                    dndest.nlx | 0, dndest.nly | 0,
+                    dndest.nhx | 0, dndest.nhy | 0)) !== 0;
+        }
+        if ((updest.lx | 0) && ((yy & 1) !== 0)) {
+            return within_bounded_area(x, y,
+                    updest.lx | 0, updest.ly | 0,
+                    updest.hx | 0, updest.hy | 0)
+                && (!(updest.nlx | 0)
+                    || !within_bounded_area(x, y,
+                        updest.nlx | 0, updest.nly | 0,
+                        updest.nhx | 0, updest.nhy | 0));
+        }
+        if ((dndest.lx | 0) && ((yy & 1) === 0)) {
+            return within_bounded_area(x, y,
+                    dndest.lx | 0, dndest.ly | 0,
+                    dndest.hx | 0, dndest.hy | 0)
+                && (!(dndest.nlx | 0)
+                    || !within_bounded_area(x, y,
+                        dndest.nlx | 0, dndest.nly | 0,
+                        dndest.nhx | 0, dndest.nhy | 0));
+        }
+    } else {
         /* C teleport.c:1620–1626 — try to keep shopkeeper / temple
          * priest in-room (caller may still resort to goodpos). */
         if (mtmp.isshk && inhishop(mtmp)) {
@@ -993,15 +1030,15 @@ function rloc_pos_ok(x, y, mtmp) {
         }
         if (!tele_jump_ok(xx, yy, x, y)) return false;
     }
-    // migrating mx==0 restricted-arrival arms deferred
     return true;
 }
 
 /**
  * C ref: teleport.c rloc_to_core message envelope — vanish before move,
  * appear after place. Returns msg state for the post-place arm.
- * Named omit: telemsg "vanishes and reappears" distance polish;
- * ustuck-together; wand discovery; set_msg_xy.
+ * Telemsg "vanishes and reappears" is D-1180; ustuck-together You() D-1183;
+ * wand `makeknown` after a delivered dest msg is D-1195;
+ * dest-msg `set_msg_xy` is D-1196.
  */
 async function rloc_pre_move_msg(mtmp, x, y, rlocflags) {
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
@@ -1024,35 +1061,61 @@ async function rloc_pre_move_msg(mtmp, x, y, rlocflags) {
 }
 
 /**
- * C ref: teleport.c rloc_to_core post-place appear / reappear pline.
+ * C ref: teleport.c rloc_to_core post-place appear / reappear pline
+ * (1703–1726). Telemsg "vanishes and reappears" + next/close-by/
+ * closer/farther (D-1180). Ustuck-together You() first arm (D-1183;
+ * C 1710–1711). Wand `makeknown(WAN_TELEPORTATION)` after any
+ * delivered dest msg (D-1195; C 1727–1731). Dest-msg `set_msg_xy`
+ * before those plines (D-1196; C 1708).
  */
 async function rloc_post_move_msg(mtmp, x, y, state) {
-    const { domsg, telemsg } = state;
+    const { domsg, telemsg, oldx, oldy } = state;
     let appearmsg = state.appearmsg;
     if (!domsg) return;
-    if (!(canspotmon(mtmp) || appearmsg || mtmp === game.u?.ustuck)) return;
+    const u = game.u || {};
+    if (!(canspotmon(mtmp) || appearmsg || mtmp === u.ustuck)) return;
 
+    const du = distu_xy(x, y);
+    const next = du <= 2 ? ' next to you' : null; /* next2u() */
+    const nearu = du <= BOLT_LIM * BOLT_LIM ? ' close by' : null;
+
+    // C teleport.c:1708 set_msg_xy(x, y) before dest plines (D-1196).
+    set_msg_xy(x, y);
     // C: mtmp->mstrategy &= ~STRAT_APPEARMSG
     if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_APPEARMSG;
 
-    // ustuck-together ("You and %s teleport together") deferred
-    if (telemsg && (couldsee(x, y) || sensemon(mtmp))) {
-        // telemsg "vanishes and reappears" + closer/farther deferred
-        return;
+    // C teleport.c:1710–1711 first arm; else-if telemsg; else appear
+    if (mtmp === u.ustuck && !u_at(u.ux0, u.uy0)) {
+        await pline(`You and ${mon_nam(mtmp)} teleport together.`);
+    } else if (telemsg && (couldsee(x, y) || sensemon(mtmp))) {
+        // C: next ? next : nearu ? nearu : (olddu==du)?"" : closer/farther
+        let where;
+        if (next) {
+            where = next;
+        } else if (nearu) {
+            where = nearu;
+        } else {
+            const olddu = distu_xy(oldx | 0, oldy | 0);
+            where = olddu === du ? ''
+                : (du < olddu) ? ' closer to you' : ' farther away';
+        }
+        await pline(`${Monnam(mtmp)} vanishes and reappears${where}.`);
+    } else {
+        const near = next || nearu || '';
+        // C youprop.h Blind — poly brown mold is blind (D-0928 #1128).
+        const Blind = !!(((u.HBlinded | 0) || (u.EBlinded | 0) || u.Blind || u.ublind)
+            && !(u.BBlinded | 0));
+        const who = appearmsg ? Amonnam(mtmp) : Monnam(mtmp);
+        const sud = appearmsg ? 'suddenly ' : '';
+        const verb = Blind ? 'arrives' : 'appears';
+        await pline(`${who} ${sud}${verb}${near}!`);
     }
-
-    const du = distu_xy(x, y);
-    const near = du <= 2
-        ? ' next to you'
-        : (du <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
-    // C youprop.h Blind — poly brown mold is blind (D-0928 #1128).
-    const u = game.u || {};
-    const Blind = !!(((u.HBlinded | 0) || (u.EBlinded | 0) || u.Blind || u.ublind)
-        && !(u.BBlinded | 0));
-    const who = appearmsg ? Amonnam(mtmp) : Monnam(mtmp);
-    const sud = appearmsg ? 'suddenly ' : '';
-    const verb = Blind ? 'arrives' : 'appears';
-    await pline(`${who} ${sud}${verb}${near}!`);
+    /* C teleport.c:1727–1731 — wand discovery only if a message is
+     * delivered (C comment: bug?). Spell / q.mechanic / artifact
+     * #invoke leave current_wand Null. */
+    if (game.current_wand && game.current_wand.otyp === WAN_TELEPORTATION) {
+        makeknown(WAN_TELEPORTATION);
+    }
 }
 
 /**
@@ -1060,6 +1123,11 @@ async function rloc_post_move_msg(mtmp, x, y, state) {
  * C ref: teleport.c rloc_to_flag.
  */
 export async function rloc_to_flag(mtmp, x, y, rlocflags) {
+    if (!mtmp) return;
+    // C rloc_to_core: same-cell return before vanish/appear (1658–1659).
+    if (x === (mtmp.mx | 0) && y === (mtmp.my | 0) && m_at(x, y) === mtmp) {
+        return;
+    }
     const state = await rloc_pre_move_msg(mtmp, x, y, rlocflags);
     // Defer shk angry until after appear pline (C rloc_to_core 1703 then 1739).
     const snap = await rloc_to(mtmp, x, y, { defer_shk_angry: true });
@@ -1141,8 +1209,9 @@ export async function control_mon_tele(mon, cc_p, rlocflags, via_rloc) {
  * then unshuffled candy shuffle (D-1122).
  * Steed is hero teleport: tele() then TRUE even if tele() does not
  * move (noteleport) (D-1172; C 1808–1811). Not Wizard stair.
- * Named omissions: telemsg "vanishes and reappears"; ustuck-together;
- * RLOC_ERR impossible(). mnexto control_mon_tele is D-1173.
+ * Dest-msg `set_msg_xy` is D-1196 (rloc_to_flag).
+ * mnexto control_mon_tele is D-1173. RLOC_ERR impossible is D-1181.
+ * Ustuck-together You() is D-1183. Wand makeknown is D-1195.
  */
 export async function rloc(mtmp, rlocflags = 0) {
     if (!mtmp) return false;
@@ -1220,7 +1289,15 @@ export async function rloc(mtmp, rlocflags = 0) {
             }
         }
         if (!found) {
-            if (!backupx) return false;
+            /* C teleport.c:1884–1888 — no rloc_pos_ok and no goodpos
+             * backup: RLOC_ERR callers treat failure as a programming
+             * error (mkmaze baalz, dismount bones, mplayer insurance). */
+            if (!backupx) {
+                if ((rlocflags & RLOC_ERR) !== 0) {
+                    await impossible("rloc(): couldn't relocate monster");
+                }
+                return false;
+            }
             x = backupx;
             y = backupy;
         }
@@ -1572,11 +1649,18 @@ export async function safe_teleds(teleds_flags) {
     return false;
 }
 
+/** C youprop.h Blinded — HBlinded && !BBlinded (not EBlinded/Blindfolded). */
+function Blinded() {
+    const u = game.u || {};
+    return !!(u.HBlinded | 0) && !(u.BBlinded | 0);
+}
+
 /**
  * C ref: teleport.c scrolltele — scroll/intrinsic teleport placement.
- * Envelope: noteleport pline; wizard/Teleport_control getpos path;
- * uncontrolled → learnscroll + safe_teleds.
- * Named omissions: make_blinded clear; W-tower half of amulet gate;
+ * Envelope: noteleport pline; !Blinded make_blinded(0,FALSE);
+ * wizard/Teleport_control getpos path; uncontrolled → learnscroll +
+ * safe_teleds.
+ * Named omissions: W-tower half of amulet gate (Override yn);
  * unconscious controlled fail; steed whobuf.
  * dotele clears travelcc before tele (D-0789); scrolltele clears when
  * controlled dest equals travelcc.
@@ -1589,7 +1673,13 @@ export async function scrolltele(scroll) {
         if (scroll) learnscroll(scroll);
         return;
     }
-    // make_blinded(0, FALSE) deferred
+    /* C teleport.c:861–863 — don't show trap if "Sorry..."; skip when
+     * Blinded so timeout/FROMFORM blindness is not cured. Dynamic import:
+     * do.js → enexto cycle. */
+    if (!Blinded()) {
+        const { make_blinded } = await import('./do.js');
+        await make_blinded(0, false);
+    }
     const u = game.u || {};
     if ((u.uhave?.amulet || u.uhave_amulet) && !rn2(3)) {
         await pline('You feel disoriented for a moment.');
@@ -2027,6 +2117,72 @@ export async function level_tele() {
         flags.verbose ? 'You materialize on a different level!' : null,
     );
 }
+
+/**
+ * C ref: teleport.c domagicportal — hero MAGIC_PORTAL.
+ * Envelope: buried-ball punish; !next_to_u shudder; same-turn
+ * landing (uz!=uz0) no-op; "You activated a magic portal!";
+ * endgame without amulet dizzy-return; tutorial leave
+ * UTOTYPE_ATSTAIRS + "Resuming regular play."; else PORTAL +
+ * stunmsg + make_stunned((HStun&TIMEOUT)+3, FALSE).
+ * Named omissions: level_tele_trap; UTOTYPE_RMPORTAL deltrap.
+ */
+export async function domagicportal(ttmp) {
+    const u = game.u;
+    if (!u) return;
+
+    if (u.utrap && (u.utraptype | 0) === TT_BURIEDBALL) {
+        const { buried_ball_to_punishment } = await import('./dig.js');
+        await buried_ball_to_punishment();
+    }
+
+    const { next_to_u } = await import('./apply.js');
+    if (!(await next_to_u())) {
+        await pline('You shudder for a moment.');
+        return;
+    }
+
+    /* if landed from another portal, do nothing */
+    /* problem: level teleport landing escapes the check */
+    if (!on_level(u.uz, u.uz0)) return;
+
+    await pline('You activated a magic portal!');
+
+    /* prevent the poor shnook, whose amulet was stolen while in
+     * the endgame, from accidently triggering the portal to the
+     * next level, and thus losing the game
+     */
+    if (In_endgame(u.uz) && !(u.uhave?.amulet || u.uhave_amulet)) {
+        await You_feel('dizzy for a moment, but nothing happens...');
+        return;
+    }
+
+    const target_level = {
+        dnum: ttmp?.dst?.dnum | 0,
+        dlevel: ttmp?.dst?.dlevel | 0,
+    };
+
+    let totype;
+    let stunmsg;
+    /* coming back from tutorial doesn't trigger stunning */
+    if (In_tutorial(u.uz) && !In_tutorial(target_level)) {
+        /* returning to normal play => arrive on level 1 stairs */
+        totype = UTOTYPE_ATSTAIRS;
+        stunmsg = 'Resuming regular play.';
+    } else {
+        totype = UTOTYPE_PORTAL;
+        // C: Stunned ≡ HStun (youprop.h)
+        stunmsg = !(u.HStun | 0)
+            ? 'You feel slightly dizzy.'
+            : 'You feel dizzier.';
+        const { make_stunned } = await import('./potion.js');
+        await make_stunned(((u.HStun | 0) & TIMEOUT) + 3, false);
+    }
+
+    const { schedule_goto } = await import('./do.js');
+    schedule_goto(target_level, totype, stunmsg, null);
+}
+
 /**
  * C ref: teleport.c vault_tele — somexyspace into VAULT then teleds;
  * else tele() (D-1153). Named omit: dotele trap-at-feet still uses
@@ -2245,7 +2401,7 @@ function is_home_elemental(ptr) {
  * (D-0782) with endgame amulet/home-elemental/rn2(7) stay; LEVEL_TELEP
  * random_teleport_level+get_level; NO_TRAP same-level migrate unless
  * amulet/endgame/onscary(0,0). Named omissions: valley_level stronghold
- * dest; botlevel hole avoid pline; hero level_tele_trap / domagicportal.
+ * dest; botlevel hole avoid pline; hero level_tele_trap.
  */
 export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
     const tt = trap ? (trap.ttyp | 0) : NO_TRAP;

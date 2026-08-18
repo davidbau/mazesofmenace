@@ -434,6 +434,8 @@ export async function tamedog(mtmp, obj, givemsg = true) {
 
 /**
  * C ref: dog.c mon_arrive(With_you) — place accompanying pet near hero.
+ * Named omit: full mon_arrive MIGR_LEFTOVERS → deliver_obj_to_mon
+ * DF_ALL (D-1193 callee; later Open my=xyflags).
  */
 function mon_arrive_with_you(mtmp) {
     const u = game.u;

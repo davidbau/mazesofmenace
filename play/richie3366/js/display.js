@@ -56,6 +56,7 @@ import {
     Upolyd,
     MALE,
     FEMALE,
+    DEVTEAM_EMAIL,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -3573,4 +3574,36 @@ export async function urgent_pline(msg) {
         // C: NOSTOP is one-shot after putstr returns
         _win_nostop = false;
     }
+}
+
+/**
+ * C ref: pline.c impossible — urgent bug pline, then disorder / report.
+ * Envelope: in_impossible guard; URGENT_MESSAGE first line; skip extra
+ * lines when in_sanity_check; something_worth_saving save-hint.
+ * Named omit: paniclog file (Rule #2); recursive panic(); debug_fuzzer
+ * panic; sysopt.support; CRASHREPORT yn (network).
+ */
+export async function impossible(s, ...args) {
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    /* C: if (in_impossible) panic("impossible called impossible"); */
+    if (ps.in_impossible) return;
+    ps.in_impossible = 1;
+    let i = 0;
+    const pbuf = String(s ?? '').replace(/%[%sd]/g, (m) => {
+        if (m === '%%') return '%';
+        return String(args[i++] ?? '');
+    });
+    await urgent_pline(pbuf);
+    if (ps.in_sanity_check) {
+        ps.in_impossible = 0;
+        return;
+    }
+    let pbuf2 = 'Program in disorder!';
+    if (ps.something_worth_saving) {
+        pbuf2 += '  (Saving and reloading may fix this problem.)';
+    }
+    await pline(pbuf2);
+    await pline(`Please report these messages to ${DEVTEAM_EMAIL}.`);
+    ps.in_impossible = 0;
 }

@@ -16,6 +16,8 @@ import { init_objects } from './o_init.js';
 import { init_dungeons, find_level } from './dungeon.js';
 import { depth } from './hacklib.js';
 import { schedule_goto, deferred_goto } from './do.js';
+import { obj_delivery } from './dokick.js';
+import { read_wizkit } from './files.js';
 import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries, find_ac } from './u_init.js';
 import { makedog } from './dog.js';
 import { makemon, reset_align_shift_cache } from './makemon.js';
@@ -647,6 +649,14 @@ export async function newgame() {
 
     // C ref: allmain.c → u_init_skills_discoveries() (wear/wield/discover)
     u_init_skills_discoveries();
+
+    // C allmain.c:826–829 — wizard read_wizkit + obj_delivery(FALSE)
+    // after skills, before flags.legacy. Overflow WIZKIT items are
+    // MIGR_WITH_HERO (files.c wizkit_addinv); FALSE delivers that dest.
+    if (g.flags?.debug || g.flags?.wizard) {
+        await read_wizkit();
+        await obj_delivery(false);
+    }
 
     // C ref: allmain.c — if (flags.legacy) com_pager("legacy")
     if (g.flags.legacy !== false) {

@@ -8,12 +8,14 @@
 //        sub_one_frombill / subfrombill / alter_cost;
 //        mkobj.c bill_dummy_object / costly_alteration (D-0940);
 //        add_damage shop repair list (D-0941);
+//        fix_shop_damage catchup + repair_damage (D-1178);
 //        pay_for_damage / getcad / hot_pursuit (D-0942);
 //        shopdig dig-warn / pack-snatch (D-0958);
 //        shopdig(1) um_dist snatch polarity + setnotworn (D-1016);
 //        sellobj BSS sell_response / robbed precedence (D-1019);
 //        check_unpaid / check_unpaid_usage / cost_per_charge (D-1047).
-// Named omissions: shk_fixes_damage body; holetime dig follow; angry
+// Named omissions: shk_fixes_damage in shk_move; allmain/bones
+// fix_shop_damage callers; holetime dig follow; angry
 // Displaced pline (shk path); following verbalize;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
 // m_canseeu for angry chase; ACH_SHOP mapseen; Hallu shkname;
@@ -38,10 +40,12 @@
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
 import { dist2, online2 } from './hacklib.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, stop_occupation } from './hack.js';
 import {
-    ESHK, EPRI, IS_ROOM, IS_DOOR, NOTONL, u_at, isok, ROOMOFFSET, SHOPBASE,
-    ACH_SHOP, SVALL, ROWNO, COLNO,
+    ESHK, EPRI, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, u_at, isok,
+    ROOMOFFSET, SHOPBASE, ACH_SHOP, SVALL, ROWNO, COLNO,
+    D_CLOSED, D_BROKEN, D_LOCKED, REPAIR_DELAY,
+    LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT,
     OBJ_MINVENT, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_FREE, OBJ_DELETED,
     OBJ_ONBILL,
     NO_ROOM, TEMPLE, RLOC_MSG, RLOC_NOMSG,
@@ -60,22 +64,29 @@ import {
     BALL_CLASS, CHAIN_CLASS, FIRST_REAL_GEM, objects, POT_WATER,
 } from './objects.js';
 import {
-    newsym, pline, Norep, verbalize, docrt, flush_screen, canspotmon, canseemon,
-    sensemon,
+    newsym, pline, Norep, verbalize, You_feel, docrt, flush_screen,
+    canspotmon, canseemon, sensemon,
 } from './display.js';
-import { cansee } from './vision.js';
+import { cansee, recalc_block_point } from './vision.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
 import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT } from './generated/monsters_data.js';
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable } from './shknam.js';
-import { splitobj, next_ident, obj_extract_self, objects_at } from './mkobj.js';
-import { add_to_minv } from './makemon.js';
+import {
+    splitobj, next_ident, obj_extract_self, objects_at, place_object,
+    mksobj, weight,
+} from './mkobj.js';
+import { add_to_minv, mpickobj } from './makemon.js';
 import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attrib.js';
 import { simpleonames, makeplural } from './objnam.js';
-import { xname, doname, paydoname, set_doname_shop_suffix, otyp_is_charged } from './objnam.js';
+import {
+    xname, doname, paydoname, set_doname_shop_suffix, otyp_is_charged,
+    ansimpleoname,
+} from './objnam.js';
 import {
     is_human, is_demon, nolimbs, is_floater, is_flyer, amorphous, M1_SLITHY,
+    passes_walls,
 } from './monsters.js';
 import { nhgetch } from './input.js';
 import {
@@ -107,6 +118,10 @@ const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
 const TINNING_KIT = objectNames.indexOf('TINNING_KIT');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const POT_OIL = objectNames.indexOf('POT_OIL');
+const LAND_MINE = objectNames.indexOf('LAND_MINE');
+const BEARTRAP = objectNames.indexOf('BEARTRAP');
+const BOULDER = objectNames.indexOf('BOULDER');
+const ROCK = objectNames.indexOf('ROCK');
 /** C monflag.h MS_SILENT / MS_ANIMAL / MS_HUMANOID. */
 const MS_SILENT = 0;
 const MS_ANIMAL = 17;
@@ -737,7 +752,8 @@ export function shop_wall_dmg() {
 /**
  * C ref: shk.c add_damage — schedule shop repair; accumulate cost.
  * Door cells only schedule when they are a real shop entrance (shd).
- * Named omission: shk_fixes_damage / repairable_damage body (uses list).
+ * Catchup repair is D-1178 `fix_shop_damage`. Live `shk_fixes_damage`
+ * from `shk_move` still named.
  */
 export function add_damage(x, y, cost) {
     const lev = game.level?.at(x, y);
@@ -777,6 +793,311 @@ export function add_damage(x, y, cost) {
     };
     game.level.damagelist = tmp_dam;
     if (cansee(x, y)) lev.seenv = SVALL;
+}
+
+/** C youprop.h Passes_walls. */
+function Passes_walls() {
+    const u = game.u || {};
+    return !!(u.Passes_walls || u.HPasses_walls || u.EPasses_walls);
+}
+
+/** C hack.c closed_door — D_CLOSED | D_LOCKED. */
+function closed_door_shk(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+/** C: strchr(in_rooms(x,y,SHOPBASE), ESHK(shkp)->shoproom). */
+function shop_owns_cell(shkp, x, y) {
+    const rooms = in_rooms(x, y, SHOPBASE) || '';
+    return rooms.includes(String.fromCharCode(ESHK(shkp)?.shoproom | 0));
+}
+
+/**
+ * C ref: shk.c shk_impaired — not in shop, helpless, or following.
+ */
+function shk_impaired(shkp) {
+    if (!shkp || !shkp.isshk || !inhishop(shkp)) return true;
+    if (helpless(shkp) || ESHK(shkp)?.following) return true;
+    return false;
+}
+
+/**
+ * C ref: shk.c repairable_damage — delay, occupancy, trap occupant, owner.
+ */
+function repairable_damage(dam, shkp, m_at, t_at) {
+    if (!dam || shk_impaired(shkp)) return false;
+    const x = dam.place?.x | 0;
+    const y = dam.place?.y | 0;
+    if (((game.moves | 0) - (dam.when | 0)) < REPAIR_DELAY) return false;
+    if (!IS_ROOM(dam.typ | 0)) {
+        const mtmp = m_at(x, y);
+        if ((u_at(x, y) && !Passes_walls())
+            || ((x | 0) === (shkp.mx | 0) && (y | 0) === (shkp.my | 0))
+            || (mtmp && !passes_walls(mtmp.data))) {
+            return false;
+        }
+    }
+    const ttmp = t_at(x, y);
+    if (ttmp) {
+        if (u_at(x, y)) return false;
+        const mtmp = m_at(x, y);
+        if (mtmp && mtmp.mtrapped) return false;
+    }
+    if (!shop_owns_cell(shkp, x, y)) return false;
+    return true;
+}
+
+/**
+ * C ref: shk.c discard_damage_struct — unlink from damagelist.
+ */
+function discard_damage_struct(dam) {
+    if (!dam || !game.level) return;
+    if (dam === game.level.damagelist) {
+        game.level.damagelist = dam.next || null;
+    } else {
+        let prev = game.level.damagelist;
+        while (prev && prev.next !== dam) prev = prev.next;
+        if (prev) prev.next = dam.next || null;
+    }
+    dam.next = null;
+}
+
+const LITTER_UPDATE = 0x01;
+const LITTER_OPEN = 0x02;
+const LITTER_INSHOP = 0x04;
+function litter_horiz(i) { return (i % 3) - 1; }
+function litter_vert(i) { return ((i / 3) | 0) - 1; }
+
+/**
+ * C ref: shk.c litter_getpos — adjacent ZAP_POS shop cells for wall gap.
+ */
+function litter_getpos(litter, x, y, shkp) {
+    for (let i = 0; i < 9; i++) litter[i] = 0;
+    const loc = game.level?.at(x, y);
+    if (!objects_at(x, y) || (loc && IS_ROOM(loc.typ))) return 0;
+    let k = 0;
+    for (let i = 0; i < 9; i++) {
+        const ix = x + litter_horiz(i);
+        const iy = y + litter_vert(i);
+        const adj = game.level?.at(ix, iy);
+        if (i === 4 || !isok(ix, iy) || !adj || !ZAP_POS(adj.typ)) continue;
+        litter[i] = LITTER_OPEN;
+        if ((inside_shop(ix, iy) | 0) === (ESHK(shkp)?.shoproom | 0)) {
+            litter[i] |= LITTER_INSHOP;
+            k++;
+        }
+    }
+    return k;
+}
+
+/**
+ * C ref: shk.c litter_scatter — move floor objects out of a repaired gap.
+ */
+async function litter_scatter(litter, x, y, shkp) {
+    const u = game.u || {};
+    const chain = u.uchain;
+    const ball = u.uball;
+    if (ball && !u.uswallow
+        && ((chain && (chain.ox | 0) === x && (chain.oy | 0) === y)
+            || ((ball.where | 0) === OBJ_FLOOR
+                && (ball.ox | 0) === x && (ball.oy | 0) === y))) {
+        if (!hero_deaf() && !muteshk(shkp)) {
+            await verbalize('Get your junk out of my wall!');
+        }
+        const { unplacebc, placebc } = await import('./ball.js');
+        unplacebc();
+        placebc();
+    }
+    let otmp;
+    while ((otmp = objects_at(x, y))) {
+        if ((otmp.otyp | 0) === BOULDER || (otmp.otyp | 0) === ROCK) {
+            // C obj_extract_self + obfree — not delobj (no obj_resists rn2).
+            obj_extract_self(otmp);
+            otmp.quan = 0;
+            otmp.where = OBJ_FREE;
+            continue;
+        }
+        let trylimit = 10;
+        let i = rn2(9);
+        do {
+            i = (i + 1) % 9;
+        } while (--trylimit && !(litter[i] & LITTER_INSHOP));
+        let ix;
+        let iy;
+        if ((litter[i] & (LITTER_OPEN | LITTER_INSHOP)) !== 0) {
+            ix = x + litter_horiz(i);
+            iy = y + litter_vert(i);
+        } else {
+            ix = shkp.mx | 0;
+            iy = shkp.my | 0;
+        }
+        if (otmp.unpaid) {
+            let oshk = shkp;
+            if (costly_spot(ix, iy)
+                && (onbill(otmp, oshk, true)
+                    || ((oshk = find_objowner(otmp, ix, iy))
+                        && onbill(otmp, oshk, false)))) {
+                subfrombill(otmp, oshk);
+            }
+        }
+        if (otmp.no_charge) {
+            if (!costly_spot(ix, iy) && !costly_adjacent(shkp, ix, iy)) {
+                otmp.no_charge = 0;
+            }
+        }
+        obj_extract_self(otmp);
+        place_object(otmp, ix, iy);
+        litter[i] |= LITTER_UPDATE;
+    }
+}
+
+/** C ref: shk.c litter_newsyms. */
+function litter_newsyms(litter, x, y) {
+    for (let i = 0; i < 9; i++) {
+        if (litter[i] & LITTER_UPDATE) {
+            newsym(x + litter_horiz(i), y + litter_vert(i));
+        }
+    }
+}
+
+/**
+ * C ref: shk.c repair_damage — 0 postponed, 1 silent, 2 normal, 3 untrap.
+ * catchup=TRUE skips messages after terrain restore (goto_level / bones).
+ */
+async function repair_damage(shkp, tmp_dam, catchup, deps) {
+    const { m_at, t_at, deltrap, trapname, picking_at, del_engr_at } = deps;
+    if (!repairable_damage(tmp_dam, shkp, m_at, t_at)) return 0;
+
+    const x = tmp_dam.place.x | 0;
+    const y = tmp_dam.place.y | 0;
+    const seeit = cansee(x, y);
+    let disposition = 1;
+    let stop_picking = false;
+    const loc = game.level?.at(x, y);
+
+    const ttmp = t_at(x, y);
+    if (ttmp) {
+        const ttyp = ttmp.ttyp | 0;
+        switch (ttyp) {
+        case LANDMINE:
+        case BEAR_TRAP: {
+            const otmp = mksobj(
+                ttyp === LANDMINE ? LAND_MINE : BEARTRAP, true, false,
+            );
+            otmp.quan = 1;
+            otmp.owt = weight(otmp);
+            if (!catchup) {
+                if (canseemon(shkp)
+                    && dist2(x, y, shkp.mx | 0, shkp.my | 0) <= 2) {
+                    await pline(
+                        `${Shknam(shkp)} untraps ${ansimpleoname(otmp)}.`,
+                    );
+                } else if (ttmp.tseen && cansee(ttmp.tx | 0, ttmp.ty | 0)) {
+                    await pline(`The ${trapname(ttyp, true)} vanishes.`);
+                }
+            }
+            mpickobj(shkp, otmp);
+            break;
+        }
+        case HOLE:
+        case PIT:
+        case SPIKED_PIT:
+            if (!catchup && ttmp.tseen && cansee(ttmp.tx | 0, ttmp.ty | 0)) {
+                await pline(`The ${trapname(ttyp, true)} is filled in.`);
+            }
+            break;
+        default:
+            if (!catchup && ttmp.tseen && cansee(ttmp.tx | 0, ttmp.ty | 0)) {
+                await pline(`The ${trapname(ttyp, true)} vanishes.`);
+            }
+            break;
+        }
+        deltrap(ttmp);
+        del_engr_at(x, y);
+        if (seeit) newsym(x, y);
+        if (!catchup) disposition = 3;
+    }
+    const savedTyp = tmp_dam.typ | 0;
+    const curTyp = loc?.typ | 0;
+    const curDoor = loc?.doormask | 0;
+    if (IS_ROOM(savedTyp)
+        || (savedTyp === curTyp
+            && (!IS_DOOR(savedTyp) || curDoor > D_BROKEN))) {
+        return disposition;
+    }
+
+    if (closed_door_shk(x, y)) stop_picking = picking_at(x, y);
+
+    if (loc) {
+        loc.typ = savedTyp;
+        if (IS_DOOR(savedTyp)) {
+            loc.doormask = D_CLOSED;
+        } else {
+            loc.flags = tmp_dam.flags | 0;
+            loc.wall_info = tmp_dam.flags | 0;
+        }
+    }
+
+    const litter = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    if (litter_getpos(litter, x, y, shkp)) {
+        await litter_scatter(litter, x, y, shkp);
+    }
+    del_engr_at(x, y);
+
+    if (seeit) newsym(x, y);
+    recalc_block_point(x, y);
+
+    if (catchup) return 1;
+
+    if (seeit) {
+        if (IS_WALL(savedTyp)) {
+            if (loc) loc.seenv = SVALL;
+            await pline('Suddenly, a section of the wall closes up!');
+        } else if (IS_DOOR(savedTyp)) {
+            await pline('Suddenly, the shop door reappears!');
+        }
+        newsym(x, y);
+    } else if (IS_WALL(savedTyp)) {
+        if ((inside_shop(game.u?.ux | 0, game.u?.uy | 0) | 0)
+            === (ESHK(shkp)?.shoproom | 0)) {
+            await You_feel('more claustrophobic than before.');
+        } else if (!hero_deaf() && !rn2(10)) {
+            await Norep('The dungeon acoustics noticeably change.');
+        }
+    }
+
+    if (stop_picking) await stop_occupation();
+    litter_newsyms(litter, x, y);
+    if (disposition < 3) disposition = 2;
+    return disposition;
+}
+
+/**
+ * C ref: shk.c fix_shop_damage — catch up shop repairs on a revisited
+ * level (goto_level !new; also allmain restore / bones, unwired here).
+ */
+export async function fix_shop_damage() {
+    if (!game.level?.damagelist) return;
+    const { m_at } = await import('./mon.js');
+    const { t_at, deltrap, trapname } = await import('./trap.js');
+    const { picking_at } = await import('./lock.js');
+    const { del_engr_at } = await import('./engrave.js');
+    const deps = { m_at, t_at, deltrap, trapname, picking_at, del_engr_at };
+    for (let walk = next_shkp(0, false); walk.shkp;
+        walk = next_shkp(walk.nextIdx, false)) {
+        const shkp = walk.shkp;
+        if (shk_impaired(shkp)) continue;
+        let damg = game.level.damagelist;
+        while (damg) {
+            const nextdamg = damg.next;
+            if (await repair_damage(shkp, damg, true, deps)) {
+                discard_damage_struct(damg);
+            }
+            damg = nextdamg;
+        }
+    }
 }
 
 /** C shk.c angrytexts — Deaf pline ROLL_FROM. */
@@ -2816,7 +3137,8 @@ export async function shk_move(shkp) {
     const omy = shkp.my;
     const u = game.u;
 
-    // shk_fixes_damage deferred (no damage chain)
+    // C: inhishop → shk_fixes_damage (live repair; catchup is D-1178
+    // goto_level fix_shop_damage). Named omit here.
 
     const udist = dist2(omx, omy, u.ux, u.uy);
     // C: udist < 3 && (data != GRID_BUG || same row/col)

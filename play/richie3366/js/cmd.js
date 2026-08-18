@@ -20,6 +20,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          xdir, ydir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
+         PARANOID_TRAP,
          ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
          has_mgivenname,
          } from './const.js';
@@ -49,7 +50,7 @@ import { do_attack, mon_at, is_safemon, mundisplaceable } from './uhitm.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { doextcmd } from './getline.js';
 import { dosearch, doterrain } from './detect.js';
-import { dotakeoff, dowear, doputon } from './do_wear.js';
+import { dotakeoff, doddoremarm, dowear, doputon } from './do_wear.js';
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
@@ -62,10 +63,11 @@ import { stairway_at, u_on_newpos } from './mklev.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
 import { getpos } from './getpos.js';
+import { visctrl } from './dokeylist.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
     impaired_movement, is_pool, is_lava, carrying_too_much,
-    invocation_message,
+    invocation_message, avoid_trap_andor_region,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -1157,8 +1159,9 @@ export async function rhack(key) {
     // Silent clear used to let F+# fall through into doextcmd, desyncing
     // later getobj letters as movement (D-0927 seed4500 @87803).
     // Named omissions: nested g/G PREFIXCMD after F; full CMD_gGF table.
+    // C: g/G are PREFIXCMD so they do not trip the F-prefix error.
     if (game.context?.forcefight
-        && ch !== 'F' && ch !== 'm'
+        && ch !== 'F' && ch !== 'm' && ch !== 'g' && ch !== 'G'
         && !isMovementKey(ch) && !isRunKey(ch) && !rushDir) {
         const upDown = (ch === '<' || ch === '>');
         await pline(
@@ -1176,6 +1179,33 @@ export async function rhack(key) {
         if (game.iflags) game.iflags.menu_requested = false;
         return;
     }
+    // C rhack: g/G PREFIXCMD then a non-walk, non-PREFIXCMD key (capital
+    // run / Ctrl-rush lack CMD_gGF_PREFIX) → same pline, reset_cmd_vars.
+    const pendingRushPrefix = !!(
+        ((game.domove_attempting || 0) & DOMOVE_RUSH)
+        && !game.context?.mv
+        && (game.context?.run === 2 || game.context?.run === 3)
+    );
+    if (pendingRushPrefix
+        && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== 'm'
+        && !isMovementKey(ch)) {
+        const which = game.context.run === 3 ? 'G' : 'g';
+        const upDown = (ch === '<' || ch === '>');
+        await pline(
+            `The '${which}' prefix should be followed by a movement command${
+                upDown ? ' other than up or down' : ''}.`,
+        );
+        game.context.forcefight = 0;
+        game.domove_attempting = 0;
+        game.context.move = 0;
+        game.context.mv = 0;
+        game.context.run = 0;
+        game.multi = 0;
+        game.context.travel = 0;
+        game.context.travel1 = 0;
+        if (game.iflags) game.iflags.menu_requested = false;
+        return;
+    }
     // C rhack: keep menu_requested for CMD_M_PREFIX commands (O→doset_simple
     // reads it to call doset). Drop only when the next command rejects 'm'.
     // Named omission: full accept_menu_prefix table — O/,/e/q/a/s/p/>/< enough
@@ -1183,18 +1213,28 @@ export async function rhack(key) {
     const accepts_m_prefix = ch === 'O' || ch === ',' || ch === 'e'
         || ch === 'q' || ch === 'a' || ch === 's' || ch === 'p'
         || ch === '>' || ch === '<';
-    if (ch !== 'm' && !accepts_m_prefix && !isMovementKey(ch) && !isRunKey(ch)
+    if (ch !== 'm' && ch !== 'g' && ch !== 'G' && ch !== 'F'
+        && !accepts_m_prefix && !isMovementKey(ch) && !isRunKey(ch)
         && !rushDir && game.iflags?.menu_requested) {
         game.iflags.menu_requested = false;
     }
 
     if (isMovementKey(ch)) {
         // C ref: cmd.c set_move_cmd(dir, 0) — clear stale travel; DOMOVE_WALK
+        // unless a g/G PREFIXCMD already set DOMOVE_RUSH (keeps context.run).
         if (!game.context) game.context = {};
         game.context.travel = 0;
         game.context.travel1 = 0;
-        if (!game.domove_attempting) {
+        const attempting = game.domove_attempting || 0;
+        if (!attempting) {
             game.domove_attempting = DOMOVE_WALK;
+        } else if ((attempting & DOMOVE_WALK) === 0
+                   && (attempting & DOMOVE_RUSH) !== 0
+                   && !game.context.mv) {
+            // C rhack DOMOVE_RUSH after do_rush/do_run: firsttime multi + mv
+            if (!game.multi) game.multi = Math.max(COLNO, ROWNO);
+            if (game.u) game.u.last_str_turn = 0;
+            game.context.mv = 1;
         }
         await domove(DIR_DX[ch], DIR_DY[ch]);
         // C: forcefight cleared after DOMOVE_WALK domove
@@ -1253,6 +1293,25 @@ export async function rhack(key) {
             await pline("Double m prefix, canceled.");
         } else {
             game.iflags.menu_requested = true;
+            game.context.move = 0;
+        }
+    } else if (ch === 'g' || ch === 'G') {
+        // C ref: cmd.c do_rush ('g') / do_run ('G') — PREFIXCMD, ECMD_OK.
+        // run=2 rush-until-interesting; run=3 run-until-interesting.
+        // Following walk key keeps run (set_move_cmd sees attempting).
+        if (!game.context) game.context = {};
+        if ((game.domove_attempting || 0) & DOMOVE_RUSH) {
+            game.context.run = 0;
+            game.domove_attempting = 0;
+            game.context.mv = 0;
+            game.multi = 0;
+            game.context.move = 0;
+            await pline(ch === 'G'
+                ? 'Double run prefix, canceled.'
+                : 'Double rush prefix, canceled.');
+        } else {
+            game.context.run = ch === 'G' ? 3 : 2;
+            game.domove_attempting = (game.domove_attempting || 0) | DOMOVE_RUSH;
             game.context.move = 0;
         }
     } else if (ch >= '0' && ch <= '9') {
@@ -1353,6 +1412,11 @@ export async function rhack(key) {
         const tookTime = await dotakeoff();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'A') {
+        // C ref: do_wear.c doddoremarm / cmd.c 'A' takeoffall
+        const res = await doddoremarm();
+        game.context.move = (res & ECMD_TIME) ? 1 : 0;
+        if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'w') {
         // C ref: wield.c dowield — wield a weapon
         const tookTime = await dowield();
@@ -1530,12 +1594,14 @@ export async function rhack(key) {
         game.context.move = 0;
     } else {
         // Unknown command (includes unbound space when !rest_on_space)
+        // C rhack: custompline(SUPPRESS_HISTORY, "Unknown command '%s'.",
+        // visctrl(key)) — Ctrl-C is "^C", not raw ETX (D-1189).
         if (game.context?.forcefight) game.context.forcefight = 0;
         if (game.context?.run || (game.multi || 0) > 0) end_running();
         if (game.context) game.context.command_count = 0;
         game._repeat_search = false;
         game.context.move = 0;
-        await pline(`Unknown command '${ch}'.`);
+        await pline(`Unknown command '${visctrl(key)}'.`);
     }
 }
 
@@ -1659,6 +1725,12 @@ async function domove(dx, dy) {
     if (await u_rooted()) {
         if (game.context?.run) end_running();
         return;
+    }
+
+    // C ref: hack.c domove_core — ParanoidTrap → avoid_trap_andor_region
+    // after u_rooted, before u.utrap/trapmove (D-1187).
+    if (((game.flags?.paranoia_bits | 0) & PARANOID_TRAP) !== 0) {
+        if (await avoid_trap_andor_region(newx, newy)) return;
     }
 
     // C ref: hack.c domove_core — u.utrap → trapmove before test_move
