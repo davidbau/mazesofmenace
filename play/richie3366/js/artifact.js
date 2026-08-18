@@ -56,6 +56,8 @@ import {
     ART_GRIMTOOTH,
     ART_GRAYSWANDIR,
 } from './generated/artifacts_data.js';
+import { PM_KNIGHT } from './generated/monsters_data.js';
+import { aligns } from './roles.js';
 export { ART_NONARTIFACT, ART_EXCALIBUR, ART_GRIMTOOTH, ART_GRAYSWANDIR };
 
 // C ref: include/artifact.h — subset used by touch/wish / spec_applies
@@ -142,6 +144,60 @@ export function artifacts_globals_init() {
 function artilist() {
     if (!_artilist) artifacts_globals_init();
     return _artilist;
+}
+
+/** C ref: you.h Role_if / Role_switch — urole.mnum. */
+function Role_if(pm) {
+    return (game.urole?.mnum | 0) === (pm | 0);
+}
+
+function Role_switch() {
+    return game.urole?.mnum | 0;
+}
+
+/**
+ * C ref: artifact.c hack_artifacts — gift align, Excalibur role, questarti.
+ * Called from init_artifacts after role_init (C allmain.c:785–793), not
+ * after u_init despite the C comment. restore_artifacts still named.
+ */
+function hack_artifacts() {
+    const list = artilist();
+    const alignIdx = game.flags?.initalign | 0;
+    const alignmnt = aligns[alignIdx]?.value | 0;
+
+    // C: for (art = artilist + 1; art->otyp; art++)
+    for (let i = 1; i < list.length; i++) {
+        const art = list[i];
+        if (!art || !art.otyp) break;
+        if (art.role === Role_switch() && art.alignment !== A_NONE) {
+            art.alignment = alignmnt;
+        }
+    }
+
+    // C: Excalibur can be used by any lawful character, not just knights
+    if (!Role_if(PM_KNIGHT)) {
+        list[ART_EXCALIBUR].role = NON_PM;
+    }
+
+    const questarti = game.urole?.questarti | 0;
+    if (questarti) {
+        const qa = list[questarti];
+        if (qa) {
+            qa.alignment = alignmnt;
+            qa.role = Role_switch();
+        }
+    }
+}
+
+/**
+ * C ref: artifact.c init_artifacts — zero artiexist/artidisco then
+ * hack_artifacts. Caller allmain.c newgame after init_dungeons, before
+ * u_init_misc (WIZKIT may name artifacts). Rebuild artilist from generated
+ * raw so JS process-reuse matches C's compile-time table.
+ */
+export function init_artifacts() {
+    artifacts_globals_init();
+    hack_artifacts();
 }
 
 /**

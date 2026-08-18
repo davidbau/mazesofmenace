@@ -316,3 +316,44 @@ export async function ttyPline(message, state = game) {
 export async function ttyNorep(message, state = game) {
     return ttyPlineCore(message, state, true);
 }
+
+export class UnsupportedUrgentMessageError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'UnsupportedUrgentMessageError';
+    }
+}
+
+// C ref: pline.c urgent_pline() (313-323). It is custompline(URGENT_MESSAGE),
+// and that flag reaches the top line twice: vpline():253 stops MSGTYPE=hide
+// and MSGTYPE=norep from swallowing the message, and putmesg():72-74 turns it
+// into tty_putstr()'s ATR_URGENT, whose arm at wintty.c:2277-2283 clears a
+// WIN_STOP the player set with Escape at an earlier --More-- and marks this
+// one message WIN_NOSTOP.
+//
+// Neither of the first two matters here: the port models no MSGTYPE rules, so
+// vpline() suppresses nothing. The third does, and it stops. With WIN_STOP
+// clear -- which is every message the port has drawn so far -- the arm sets
+// only WIN_NOSTOP, which has two readers. update_topl():257 reads it as
+// `skip = FALSE`, exactly what a clear WIN_STOP already gives; and more():233
+// reads it when the player answers this message's own --More-- with Escape,
+// where it is what stops that Escape setting WIN_STOP for whatever comes
+// next.
+//
+// The second reader is modelled, but by text rather than by a flag:
+// ttyPlineCore()'s `deathComparisonReached` clears the stop after the --More--
+// is dismissed, which is the same clearing for every input either rule can
+// see, because "You die..." is urgent_pline()'s only caller in this port. A
+// second urgent caller would separate them, and would want the flag instead.
+//
+// With WIN_STOP set at entry the arm does more still: tty_clear_nhwindow(
+// WIN_MESSAGE) wipes the top line before the message is written, where an
+// ordinary message would have been held back invisibly, and that stops.
+export async function ttyUrgentPline(message, state = game) {
+    if (state._ttyMessageStopped) {
+        throw new UnsupportedUrgentMessageError(
+            'tty_putstr()\'s ATR_URGENT arm clearing WIN_STOP',
+        );
+    }
+    return ttyPlineCore(message, state, false);
+}

@@ -3,7 +3,10 @@
 //         worn.c find_mac (re-export); uhitm.c mhitm_knockback (RNG order only).
 
 import { rn2, rnd, d } from './rng.js';
-import { distmin, m_at, record_mvitals_died, undead_to_corpse, monnear, seemimic } from './mon.js';
+import {
+    distmin, m_at, record_mvitals_died, undead_to_corpse, monnear, seemimic,
+    zombie_maker, zombie_form,
+} from './mon.js';
 import { game } from './gstate.js';
 import { pline, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel, flush_screen } from './display.js';
 import { cansee } from './vision.js';
@@ -795,7 +798,9 @@ async function corpse_chance(mon) {
 }
 
 // C ref: mon.c make_corpse — undead specials before G_NOCORPSE; pudding globs;
-// else default_1. Named omission: dragon scales, unicorn horn, worm tooth,
+// else default_1. gz.zombify is set by callers around this call, not inside
+// it: xkilled D-1210; mhitm mdamagem around monkilled D-1211.
+// Named omission: dragon scales, unicorn horn, worm tooth,
 // golem drops, lich dust, and other pre-G_NOCORPSE switch arms (D-0271
 // undead; D-0993 pudding merge).
 export function make_corpse(mtmp) {
@@ -1098,6 +1103,21 @@ async function missmm(magr, mdef, mattk) {
     }
 }
 
+/**
+ * C ref: mhitm.c mdamagem — gz.zombify around monkilled, then reset.
+ * Barehand TUCH/CLAW/BITE from a zombie_maker, victim has zombie_form.
+ * Named omit: troll_baned mkcorpstat_norevive; gulpmm m_at swap before
+ * this call; passivemm/AD_RBRE shock monkilled do not set the flag.
+ */
+async function mdamagem_monkilled(magr, mdef, mattk, mwep) {
+    const aatyp = mattk.aatyp | 0;
+    game.zombify = (!mwep && zombie_maker(magr)
+        && (aatyp === AT_TUCH || aatyp === AT_CLAW || aatyp === AT_BITE)
+        && zombie_form(mdef.data) !== NON_PM);
+    await monkilled(mdef, '', mattk.adtyp | 0);
+    game.zombify = false;
+}
+
 // C ref: mhitm.c mdamagem() — physical bite damage + AD_POLY + knockback RNG
 async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     let damage = d(mattk.damn || 0, mattk.damd || 0);
@@ -1124,7 +1144,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         mdef.mhp -= damage;
         if (mdef.mhp < 1) {
             mdef.mhp = 0;
-            await monkilled(mdef, '', mattk.adtyp | 0);
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
             const grew = grow_up(magr, mdef);
             return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
         }
@@ -1138,8 +1158,8 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     mdef.mhp -= damage;
     if (mdef.mhp < 1) {
         mdef.mhp = 0;
-        // C: mdamagem → monkilled(mdef, "", mattk->adtyp)
-        await monkilled(mdef, '', mattk.adtyp | 0);
+        // C: mdamagem → gz.zombify; monkilled(mdef, "", mattk->adtyp); reset
+        await mdamagem_monkilled(magr, mdef, mattk, mwep);
         const grew = grow_up(magr, mdef);
         return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
     }

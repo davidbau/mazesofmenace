@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { pline, docrt } from './display.js';
 import { getlin } from './getline.js';
-import { pluslvl } from './exper.js';
+import { pluslvl, losexp } from './exper.js';
 import { makewish } from './zap.js';
 import { create_particular } from './read.js';
 import { level_tele } from './teleport.js';
@@ -224,48 +224,52 @@ export async function wiz_intrinsic() {
 
 /**
  * C ref: wizcmds.c wiz_level_change — #levelchange
- * Level-drain (losexp) path deferred; raise via pluslvl(FALSE) only.
+ * Drain via losexp("#levelchange") then u.ulevelmax = u.ulevel (D-1203).
+ * Raise via pluslvl(FALSE) (D-0061).
+ * Named omissions: +N sscanf; livelog/SoundAchievement inside losexp;
+ * Upolyd mh strip; level-1 done(DIED) (caller returns at ulevel==1;
+ * override also nulls drainer so never fatal).
  */
 export async function wiz_level_change() {
     const u = game.u || (game.u = {});
     const buf = await getlin('To what experience level do you want to be set?');
-    if (!buf || buf === '\x1b') return;
-
-    const trimmed = buf.trim();
-    if (!trimmed) return;
-
-    // C: sscanf("%d%c") must consume the whole string as one int
-    if (!/^-?\d+$/.test(trimmed)) {
-        await pline('Never mind.');
-        return;
+    // C: mungspaces then sscanf("%d%c"); ESC/empty → ret=0 → Never_mind.
+    const trimmed = (buf || '').trim();
+    let newlevel = 0;
+    let ret = 0;
+    if (buf && buf !== '\x1b' && trimmed && /^-?\d+$/.test(trimmed)) {
+        newlevel = parseInt(trimmed, 10);
+        if (Number.isFinite(newlevel)) ret = 1;
     }
-    let newlevel = parseInt(trimmed, 10);
-    if (!Number.isFinite(newlevel)) {
+    if (ret !== 1) {
         await pline('Never mind.');
-        return;
+        return ECMD_OK;
     }
 
     if (newlevel === (u.ulevel | 0)) {
         await pline('You are already that experienced.');
     } else if (newlevel < (u.ulevel | 0)) {
-        // C: losexp("#levelchange") loop — deferred (tours only raise)
         if ((u.ulevel | 0) === 1) {
             await pline('You are already as inexperienced as you can get.');
-            return;
+            return ECMD_OK;
         }
-        // Drain path omitted; see C-JS-MAP.
-        return;
+        if (newlevel < 1) newlevel = 1;
+        while ((u.ulevel | 0) > newlevel) {
+            await losexp('#levelchange');
+        }
     } else {
         if ((u.ulevel | 0) >= MAXULEV) {
             await pline('You are already as experienced as you can get.');
-            return;
+            return ECMD_OK;
         }
         if (newlevel > MAXULEV) newlevel = MAXULEV;
         while ((u.ulevel | 0) < newlevel) {
             await pluslvl(false);
         }
     }
+    // Blessed full healing / restore ability must not un-drain.
     u.ulevelmax = u.ulevel;
+    return ECMD_OK;
 }
 
 /**

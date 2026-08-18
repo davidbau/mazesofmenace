@@ -31,6 +31,7 @@ import {
 } from './makemon.js';
 import {
     undead_to_corpse, can_be_hatched, dead_species, copy_mextra,
+    zombie_form,
 } from './mon.js';
 import { nartifact_exist, mk_artifact } from './artifact.js';
 import {
@@ -613,8 +614,8 @@ function special_corpse(num) {
  * when timeout <= moves. Envelope: ROT_CORPSE → rot_corpse floor extract;
  * HATCH_EGG queued via attach_egg_hatch_timeout (D-0533); hatch_egg
  * dispatched (D-1036/D-1037); TIMER_LEVEL MELT_ICE_AWAY → melt_ice_away
- * (D-0965); REVIVE_MON / ZOMBIFY_MON deferred (no-op fire clears the
- * queue entry). FIG_TRANSFORM → fig_transform (D-1032).
+ * (D-0965); REVIVE_MON / ZOMBIFY_MON → revive_mon / zombify_mon
+ * (D-1202). FIG_TRANSFORM → fig_transform (D-1032).
  * save_timers(RANGE_LEVEL) peels local timers on level leave.
  */
 function timer_base() {
@@ -787,6 +788,23 @@ export function stop_timer(action, obj) {
 }
 
 /**
+ * C ref: timeout.c obj_has_timer / peek_timer — true if this object
+ * already has a TIMER_OBJECT of the given action (absolute timeout
+ * is never 0 for a live entry).
+ */
+export function obj_has_timer(obj, action) {
+    if (!obj) return false;
+    for (let curr = timer_base()._timer_base; curr; curr = curr.next) {
+        if ((curr.kind | 0) === TIMER_OBJECT
+            && curr.obj === obj
+            && curr.action === action) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * C ref: timeout.c start_timer — queue timer; timeout = moves+when.
  * TIMER_OBJECT: arg is obj (duplicate same obj+action aborted).
  * TIMER_LEVEL: arg is packed a_long (or `{ a_long }`); used for
@@ -921,7 +939,7 @@ export function carry_obj_effects(obj) {
  * C ref: dig.c rot_corpse — corpse finished rotting.
  * Envelope: OBJ_FLOOR extract + newsym; invent/minvent/worn plines deferred.
  */
-async function rot_corpse(obj) {
+export async function rot_corpse(obj) {
     if (!obj) return;
     const onFloor = obj.where === OBJ_FLOOR;
     const x = obj.ox | 0;
@@ -944,9 +962,9 @@ async function rot_corpse(obj) {
  * Called from nh_timeout after intrinsic TIMEOUT handling.
  * Envelope: ROT_CORPSE; ROT_ORGANIC (dig.c); TIMER_LEVEL MELT_ICE_AWAY
  * (D-0965/D-0967); BURN_OBJECT (D-0978); SHRINK_GLOB thin (D-0993);
- * FIG_TRANSFORM (D-1032). Named omit: REVIVE_MON / ZOMBIFY_MON;
- * full shrink ice/eat catch-up. Local timers peel via save_timers
- * RANGE_LEVEL on goto_level (D-1037).
+ * FIG_TRANSFORM (D-1032); REVIVE_MON / ZOMBIFY_MON (D-1202).
+ * Named omit: full shrink ice/eat catch-up. Local timers peel via
+ * save_timers RANGE_LEVEL on goto_level (D-1037).
  */
 export async function run_timers() {
     const g = timer_base();
@@ -977,8 +995,13 @@ export async function run_timers() {
         } else if (curr.action === HATCH_EGG && curr.obj) {
             const { hatch_egg } = await import('./timeout.js');
             await hatch_egg(curr.obj, curr.timeout | 0);
+        } else if (curr.action === REVIVE_MON && curr.obj) {
+            const { revive_mon } = await import('./timeout.js');
+            await revive_mon(curr.obj, curr.timeout | 0);
+        } else if (curr.action === ZOMBIFY_MON && curr.obj) {
+            const { zombify_mon } = await import('./timeout.js');
+            await zombify_mon(curr.obj, curr.timeout | 0);
         }
-        // REVIVE_MON / ZOMBIFY_MON deferred.
     }
 }
 
@@ -1055,7 +1078,7 @@ export function set_corpsenm(obj, id) {
 }
 
 // C ref: mkobj.c rider_revival_time
-function rider_revival_time(body, retry) {
+export function rider_revival_time(body, retry) {
     const minturn = retry ? 3 : (body.corpsenm === PM_DEATH ? 6 : 12);
     let when;
     for (when = minturn; when < 67; when++) {
@@ -1088,8 +1111,11 @@ function start_corpse_timeout(body) {
                 break;
             }
         }
+    } else if (ptr && game.zombify && zombie_form(ptr) !== MON_NON_PM
+               && !body.norevive) {
+        action = ZOMBIFY_MON;
+        when = rn1(15, 5); /* 5..19 */
     }
-    /* zombify + zombie_form → ZOMBIFY_MON + rn1(15,5) deferred (no game.zombify yet) */
 
     start_timer(when, TIMER_OBJECT, action, body);
 }

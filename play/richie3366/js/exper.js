@@ -1,7 +1,7 @@
 // exper.js — Experience / level-up.
 // C ref: exper.c — experience, more_experienced, newuexp, newexplevel,
-//         newpw, pluslvl (partial), losexp (D-1033); callers in mon.c
-//         xkilled / wizcmds / sit.c special_throne_effect / …
+//         newpw, pluslvl (partial), losexp (D-1033 / D-1203 #levelchange);
+//         callers in mon.c xkilled / wizcmds / sit.c special_throne_effect / …
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -292,13 +292,18 @@ function resists_drli_you() {
 
 /**
  * C ref: exper.c losexp — drain one experience level.
- * Named omit: wizard "#levelchange" drainer override; level-1 done(DIED);
- * livelog/SoundAchievement; Upolyd monhp_per_lvl/rehumanize; uhpmax-up
- * clamp after minuhpmax.
+ * Named omit: level-1 done(DIED); livelog/SoundAchievement; Upolyd
+ * monhp_per_lvl/rehumanize; uhpmax-up clamp via setuhpmax.
  */
 export async function losexp(drainer) {
     const u = game.u || (game.u = {});
-    if (resists_drli_you()) return;
+    // C exper.c:214–217 — #levelchange overrides Drain_resistance and
+    // is never fatal (drainer becomes Null).
+    if (drainer && drainer === '#levelchange') {
+        drainer = null;
+    } else if (resists_drli_you()) {
+        return;
+    }
 
     if ((u.ulevel | 0) > 1 || drainer) {
         await pline(`${Goodbye()} level ${u.ulevel | 0}.`);

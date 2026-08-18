@@ -60,8 +60,11 @@ import {
 import { reset_pick, UnsupportedLockError } from './lock.js';
 import { UnsupportedMonsterCreationError } from './makemon_create.js';
 import { UnsupportedRegionPlacementError } from './mkmaze.js';
+import { UnsupportedObjectNamingError } from './do_name.js';
 import { UnsupportedObjectOperationError } from './obj.js';
 import { UnsupportedPickupError } from './pickup.js';
+import { UnsupportedPotionError } from './potion.js';
+import { UnsupportedItemDestructionError } from './zap_destroy_items.js';
 import { UnsupportedPositionCheckError } from './teleport.js';
 import { UnsupportedHeroTimeoutBoundaryError } from './timeout.js';
 import { UnsupportedErosionError } from './trap_erode_obj.js';
@@ -133,6 +136,8 @@ import {
 import { nhgetch } from './input.js';
 import { doride, UnsupportedSteedError } from './steed.js';
 import { UnsupportedHitPointLossError } from './hack.js';
+import { UnsupportedEndOfGameError } from './end.js';
+import { UnsupportedItemIgnitionError } from './apply_catch_lit.js';
 import { UnsupportedAbilityChangeError } from './attrib.js';
 import { UnsupportedExperienceChangeError } from './exper.js';
 import { UnsupportedMonsterRequestError } from './read.js';
@@ -156,6 +161,7 @@ import {
     clearTtyMessageWindow,
     ttyNorep,
     ttyPline,
+    UnsupportedUrgentMessageError,
 } from './tty_message.js';
 
 export const MAX_COMMAND_COUNT = 32767;
@@ -1290,6 +1296,25 @@ export function failClosedCommandRefusals() {
         UnsupportedBhitError,
         UnsupportedTransientDisplayError,
         UnsupportedHitPointLossError,
+        // Two classes a killing blow reaches below
+        // UnsupportedHitPointLossError, each after the status line has already
+        // been redrawn with the hero at zero. hack.c losehp() prints
+        // urgent_pline("You die..."), which win/tty/topl.c update_topl():265
+        // forces onto a line of its own, so the --More-- that message raises
+        // is the last screen the segment can match; end.c done() owns
+        // everything after it. tty_message.js raises the second from that same
+        // urgent_pline() when the player has an Escape-suppressed message
+        // window.
+        //
+        // The third is not a killing blow's. apply_catch_lit.js raises it from
+        // zhitu()'s ignite_items() call at zap.c:4437, one guard above the
+        // killer block at 4561-4589, for an ignitable object in the hero's own
+        // pack. The hero may still be at full hit points there and the bolt
+        // may not kill at all, so the last screen a segment ending on it
+        // matched carries whatever the status line held before the ray.
+        UnsupportedEndOfGameError,
+        UnsupportedUrgentMessageError,
+        UnsupportedItemIgnitionError,
         UnsupportedArtifactDisplayError,
         UnsupportedDropError,
         UnsupportedLevelChangeError,
@@ -1346,6 +1371,17 @@ export function failClosedCommandRefusals() {
         // and for the wet towel a hero's own fire would dry. zhitu()'s fire
         // arm is the ported caller, one frame below UnsupportedZapError.
         UnsupportedErosionError,
+        // The three classes zhitu()'s destroy_items() call reaches below
+        // UnsupportedErosionError, each after the bolt has been drawn and the
+        // items it destroyed have been announced. zap.c maybe_destroy_item()
+        // raises the first from its AD_COLD and AD_ELEC cases and from a worn
+        // or wielded object; potion.c potionbreathe() raises the second from
+        // the sixteen vapor arms this port leaves unported; do_name.c docall()
+        // raises the third for an object type the hero has neither identified
+        // nor already called something.
+        UnsupportedItemDestructionError,
+        UnsupportedPotionError,
+        UnsupportedObjectNamingError,
         // Two paths raise this. invent.c hold_another_object(), which
         // makewish() calls unguarded, raises it from its drop, artifact,
         // Fumbling and autoquiver arms. A wish heavy or numerous enough to

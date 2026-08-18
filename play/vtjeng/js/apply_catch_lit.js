@@ -3,6 +3,7 @@
 
 import {
     OBJ_FLOOR,
+    OBJ_INVENT,
     OBJ_MINVENT,
 } from './const.js';
 import {
@@ -44,17 +45,28 @@ function ignitable(obj) {
         || obj.otyp === POT_OIL;
 }
 
+// An object the fire would set alight through a path this port has not
+// reached. js/cmd.js failClosedCommandRefusals() lists this class, so the
+// segment ends on its last matching screen instead of losing every screen the
+// command had already earned.
+export class UnsupportedItemIgnitionError extends Error {
+    constructor(reason) {
+        super(`unsupported item ignition: ${reason}`);
+        this.name = 'UnsupportedItemIgnitionError';
+        this.reason = reason;
+    }
+}
+
 export async function catch_item_light(obj, env) {
     if (obj.lamplit || !ignitable(obj)) return false;
-    if (obj.where !== OBJ_FLOOR && obj.where !== OBJ_MINVENT) {
-        const unsupported = ignitionOperation(
-            env,
-            'unsupported',
-            (reason) => {
-                throw new RangeError(`unsupported item ignition: ${reason}`);
-            },
+    if (obj.where !== OBJ_FLOOR && obj.where !== OBJ_MINVENT
+        && obj.where !== OBJ_INVENT) {
+        // C's own gate is get_obj_location() answering FALSE at 1581, which is
+        // what a buried, migrating or contained object gets. The three `where`
+        // values above are the ones it locates.
+        throw new UnsupportedItemIgnitionError(
+            'an object get_obj_location() does not place',
         );
-        return unsupported('non-floor, non-monster inventory');
     }
     const carrier = obj.where === OBJ_MINVENT ? obj.ocarry : null;
     if (carrier && !carrier.mx) return false;
@@ -69,6 +81,21 @@ export async function catch_item_light(obj, env) {
     if ((obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP)
         && obj.cursed && !env.random.rn2(2)) {
         return false;
+    }
+    if (obj.where === OBJ_INVENT) {
+        // Every guard C evaluates first has now run, so an object C declines
+        // to light -- a brass lantern, an empty magic lamp or candelabrum, a
+        // burnt-out candle, a cursed candelabrum, or a cursed lamp whose
+        // rn2(2) came up zero -- has already answered false, and the draw that
+        // last one makes has been spent.
+        //
+        // What remains is apply.c catch_lit():1598-1614, which announces the
+        // item with Yname2() and otense(), makeknown()s a potion of oil, and
+        // bills an unpaid one to the shopkeeper watching it burn. None of that
+        // is ported, and zap.c zhitu():4437 is the caller that reaches it, one
+        // hit in three for a hero carrying an oil lamp, a wax or tallow
+        // candle, or a potion of oil.
+        throw new UnsupportedItemIgnitionError("the hero's own pack");
     }
 
     const squareVisible = ignitionOperation(env, 'squareVisible', cansee);

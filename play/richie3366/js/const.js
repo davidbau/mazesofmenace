@@ -131,6 +131,19 @@ export function xytodir(x, y) {
     return -1; // DIR_ERR
 }
 
+/**
+ * C ref: cmd.c directionname — N_DIRS_Z names; C enum DIR_DOWN then DIR_UP.
+ * Out of range (including DIR_ERR -1) → "invalid".
+ */
+export function directionname(dir) {
+    const dirnames = [
+        'west', 'northwest', 'north', 'northeast', 'east',
+        'southeast', 'south', 'southwest', 'down', 'up',
+    ];
+    if (dir < 0 || dir >= N_DIRS_Z) return 'invalid';
+    return dirnames[dir];
+}
+
 // Encumbrance levels (hack.h)
 export const UNENCUMBERED = 0;
 export const SLT_ENCUMBER = 1;

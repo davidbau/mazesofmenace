@@ -162,7 +162,7 @@ export async function remove_worn_item(obj, unchain_ball) {
         // C Blindf_off(obj) — named omit this iter
         setworn(null, W_TOOL);
     } else if (obj.owornmask & W_WEAPONS) {
-        if (obj === u.uwep) uwepgone();
+        if (obj === u.uwep) await uwepgone();
         if (obj === u.uswapwep) uswapwepgone();
         if (obj === u.uquiver) uqwepgone();
     }

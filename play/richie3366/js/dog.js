@@ -2,13 +2,17 @@
 // C ref: dog.c — pet_type, makedog, pick_familiar_pm, make_familiar.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rn1 } from './rng.js';
 import { makemon, set_malign, rndmonst_adj } from './makemon.js';
 import { mons, NON_PM, is_human, regenerates, M2_STALK, is_domestic, haseyes } from './monsters.js';
 import {
     MM_EDOG, MM_IGNOREWATER, MM_NOMSG, MM_FEMALE, MM_MALE, NO_MINVENT,
     STRAT_WAITFORU, G_EXTINCT, MAXMONNO, CORPSTAT_GENDER, CORPSTAT_FEMALE,
     CORPSTAT_MALE, NEED_HTH_WEAPON, ismnum, has_oname, ONAME,
+    MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP,
+    MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS,
+    MIGR_PORTAL, MIGR_WITH_HERO, MON_MIGRATING, MON_LIMBO, STRAT_ARRIVE,
+    RLOC_NOMSG, MAGIC_PORTAL, In_endgame, isok, MTSZ,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { is_pool } from './hack.js';
@@ -22,8 +26,8 @@ import {
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
 import { christen_monst, Monnam } from './do_name.js';
-import { monnear, m_at, see_monster_closeup, minliquid } from './mon.js';
-import { enexto, rloc_to } from './teleport.js';
+import { monnear, m_at, see_monster_closeup, minliquid, restore_cham } from './mon.js';
+import { enexto, rloc_to, rloc, rloc_to_flag, goodpos } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
 import { newsym, pline, canspotmon } from './display.js';
 import { hero_conflict } from './mondata.js';
@@ -435,7 +439,7 @@ export async function tamedog(mtmp, obj, givemsg = true) {
 /**
  * C ref: dog.c mon_arrive(With_you) — place accompanying pet near hero.
  * Named omit: full mon_arrive MIGR_LEFTOVERS → deliver_obj_to_mon
- * DF_ALL (D-1193 callee; later Open my=xyflags).
+ * DF_ALL (D-1193 callee).
  */
 function mon_arrive_with_you(mtmp) {
     const u = game.u;
@@ -456,15 +460,214 @@ function mon_arrive_with_you(mtmp) {
     }
 }
 
+/** C ref: stairs.c stairway_find_from — first stair matching fromdlev+ladder. */
+function arrive_stairway_find_from(fromdlev, isladder) {
+    const dnum = fromdlev?.dnum | 0;
+    const dlevel = fromdlev?.dlevel | 0;
+    const ladder = !!isladder;
+    for (let s = game.stairs; s; s = s.next) {
+        if ((s.tolev?.dnum | 0) === dnum
+            && (s.tolev?.dlevel | 0) === dlevel
+            && !!s.isladder === ladder) {
+            return s;
+        }
+    }
+    return null;
+}
+
+/** C ref: stairs.c stairway_find — first stair matching fromdlev. */
+function arrive_stairway_find(fromdlev) {
+    const dnum = fromdlev?.dnum | 0;
+    const dlevel = fromdlev?.dlevel | 0;
+    for (let s = game.stairs; s; s = s.next) {
+        if ((s.tolev?.dnum | 0) === dnum
+            && (s.tolev?.dlevel | 0) === dlevel) {
+            return s;
+        }
+    }
+    return null;
+}
+
+/** C ref: dog.c mon_arrive MIGR_PORTAL — first MAGIC_PORTAL on ftrap. */
+function arrive_find_magic_portal() {
+    const ftrap = game.ftrap;
+    if (Array.isArray(ftrap)) {
+        for (const t of ftrap) {
+            if ((t?.ttyp | 0) === MAGIC_PORTAL) return t;
+        }
+        return null;
+    }
+    for (let t = ftrap; t; t = t.ntrap) {
+        if ((t.ttyp | 0) === MAGIC_PORTAL) return t;
+    }
+    return null;
+}
+
 /**
- * C ref: dog.c losedogs — place mydogs (With_you); migrating_mons deferred.
+ * C ref: mon.c mnearto(..., move_other=FALSE) — place at/near (x,y).
+ * Yank of m_at(x,y) is named (mon_arrive always passes FALSE).
  */
-export function losedogs() {
+async function mnearto_no_yank(mtmp, x, y, rlocflags) {
+    x = x | 0;
+    y = y | 0;
+    if ((mtmp.mx | 0) === x && (mtmp.my | 0) === y && m_at(x, y) === mtmp) {
+        return true;
+    }
+    let newx = x;
+    let newy = y;
+    if (!goodpos(newx, newy, mtmp, 0)) {
+        const mm = { x: 0, y: 0 };
+        if (!enexto(mm, newx, newy, mtmp.data) || !isok(mm.x, mm.y)) {
+            return false;
+        }
+        newx = mm.x | 0;
+        newy = mm.y | 0;
+    }
+    await rloc_to_flag(mtmp, newx, newy, rlocflags);
+    return true;
+}
+
+function arrive_track_clear(mtmp) {
+    if (!mtmp.mtrack) {
+        mtmp.mtrack = [];
+    }
+    for (let j = 0; j < MTSZ; j++) {
+        mtmp.mtrack[j] = { x: 0, y: 0 };
+    }
+}
+
+/**
+ * C ref: dog.c mon_arrive After_you — independent migrant.
+ * D-1199: mtmp.my = xyflags (mx stays 0) before mnearto/rloc so
+ * rloc_pos_ok reads up/W-tower bits (D-1182 / D-1198 writer).
+ * Named omissions: worm/isshk residency; wander/somexy; MIGR_LEFTOVERS
+ * DF_ALL; Wiz_arrive; failed_arrivals/relmon; debug_fuzzer portal;
+ * impossible() no-portal; full mnearto yank.
+ */
+async function mon_arrive_after_you(mtmp) {
+    const u = game.u;
+    if (!game.fmon) game.fmon = [];
+    game.fmon.unshift(mtmp);
+    mtmp.mstrategy = (mtmp.mstrategy | 0) | STRAT_ARRIVE;
+    mtmp.mstate = (mtmp.mstate | 0) & ~(MON_MIGRATING | MON_LIMBO);
+
+    mtmp.mux = u.ux | 0;
+    mtmp.muy = u.uy | 0;
+    const xyloc0 = mtmp.mtrack?.[0]?.x | 0;
+    const xyflags = mtmp.mtrack?.[0]?.y | 0;
+    let xlocale = mtmp.mtrack?.[1]?.x | 0;
+    let ylocale = mtmp.mtrack?.[1]?.y | 0;
+    const fromdlev = {
+        dnum: mtmp.mtrack?.[2]?.x | 0,
+        dlevel: mtmp.mtrack?.[2]?.y | 0,
+    };
+    arrive_track_clear(mtmp);
+    restore_cham(mtmp);
+
+    if (mtmp === u.usteed) return;
+
+    const moves = game.moves | 0;
+    if ((mtmp.mlstmv | 0) < moves - 1) {
+        const nmv = (moves - 1) - (mtmp.mlstmv | 0);
+        mon_catchup_elapsed_time(mtmp, nmv);
+        /* wander/somexy after catchup still named */
+    }
+
+    switch (xyloc0) {
+    case MIGR_APPROX_XY:
+        break;
+    case MIGR_EXACT_XY:
+        break;
+    case MIGR_WITH_HERO:
+        xlocale = u.ux | 0;
+        ylocale = u.uy | 0;
+        break;
+    case MIGR_STAIRS_UP:
+    case MIGR_STAIRS_DOWN: {
+        const stway = arrive_stairway_find_from(fromdlev, false);
+        if (stway) {
+            xlocale = stway.sx | 0;
+            ylocale = stway.sy | 0;
+        }
+        break;
+    }
+    case MIGR_LADDER_UP:
+    case MIGR_LADDER_DOWN: {
+        const stway = arrive_stairway_find_from(fromdlev, true);
+        if (stway) {
+            xlocale = stway.sx | 0;
+            ylocale = stway.sy | 0;
+        }
+        break;
+    }
+    case MIGR_SSTAIRS: {
+        const stway = arrive_stairway_find(fromdlev);
+        if (stway) {
+            xlocale = stway.sx | 0;
+            ylocale = stway.sy | 0;
+        }
+        break;
+    }
+    case MIGR_PORTAL: {
+        if (In_endgame(u.uz)) {
+            const updest = game.updest || {};
+            xlocale = rn1((updest.hx | 0) - (updest.lx | 0) + 1, updest.lx | 0);
+            ylocale = rn1((updest.hy | 0) - (updest.ly | 0) + 1, updest.ly | 0);
+            break;
+        }
+        const t = arrive_find_magic_portal();
+        if (t) {
+            xlocale = t.tx | 0;
+            ylocale = t.ty | 0;
+            break;
+        }
+        /* debug_fuzzer / impossible() named — FALLTHROUGH to random */
+    }
+    /* falls through */
+    default:
+    case MIGR_RANDOM:
+        xlocale = 0;
+        ylocale = 0;
+        break;
+    }
+
+    /* C dog.c:607–613 — mx already 0; my holds flags for rloc_pos_ok. */
+    mtmp.mx = 0;
+    mtmp.my = xyflags;
+
+    if (xlocale) {
+        await mnearto_no_yank(mtmp, xlocale, ylocale, RLOC_NOMSG);
+    } else {
+        await rloc(mtmp, RLOC_NOMSG);
+    }
+}
+
+/**
+ * C ref: dog.c losedogs — mydogs With_you then migrating_mons After_you
+ * (mux/muy match u.uz, xyloc != MIGR_EXACT_XY). Named omissions:
+ * kops dismiss; MIGR_EXACT_XY Before_you; failed_arrivals / m_into_limbo.
+ */
+export async function losedogs() {
     const dogs = game.mydogs || [];
     game.mydogs = [];
     for (const mtmp of dogs) {
         mon_arrive_with_you(mtmp);
     }
+
+    const uz = game.u?.uz || {};
+    const mig = game.migrating_mons || [];
+    const stay = [];
+    for (const mtmp of mig) {
+        const xyloc = mtmp.mtrack?.[0]?.x | 0;
+        if ((mtmp.mux | 0) === (uz.dnum | 0)
+            && (mtmp.muy | 0) === (uz.dlevel | 0)
+            && xyloc !== MIGR_EXACT_XY) {
+            await mon_arrive_after_you(mtmp);
+        } else {
+            stay.push(mtmp);
+        }
+    }
+    game.migrating_mons = stay;
 }
 
 const LARGEST_INT = 2147483647;

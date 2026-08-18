@@ -2,13 +2,14 @@
 // C ref: spell.c initialspell, study_book, cursed_book, learn, dovspell,
 //        dospellmenu, percent_success, spellretention, spelltypemnemonic,
 //        spell_skilltype, skill_based_spellbook_id, docast, getspell,
-//        rejectcasting, spelleffects_check, spelleffects.
+//        rejectcasting, spelleffects_check, spelleffects, tport_spell.
 //
 // Branch envelope: spl_book init; initialspell from ini_inv_use_obj;
 // study_book blank + known-refresh yn + delay/too_hard + cursed_book
 // (D-0681) + begin-memorize + set_occupation(learn) (D-0907); dovspell
 // VIEW menu; Wizard skill_based_spellbook_id; Z/#cast → getspell CAST →
-// spelleffects_check + SPE_HEALING self-zap.
+// spelleffects_check + SPE_HEALING self-zap; tport_spell hide/add for
+// dotelecmd m-prefix (D-1209).
 // Named omissions: novel/tribute; dull sleep; confused_book body;
 // learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
 // swap/sort; other spelleffects otyps; directional weffects;
@@ -18,7 +19,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, You_feel } from './display.js';
+import { flush_screen, pline, You_feel, impossible } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
@@ -93,6 +94,7 @@ const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
 const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
 const SPE_DETECT_FOOD = objectNames.indexOf('SPE_DETECT_FOOD');
 const SPE_RESTORE_ABILITY = objectNames.indexOf('SPE_RESTORE_ABILITY');
+const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
@@ -239,6 +241,74 @@ export function init_spl_book() {
     }));
     game.spl_orderindx = null;
     game.spl_sortmode = 0; // SORTBY_LETTER
+}
+
+/* also defined in teleport.c dotelecmd */
+const NOOP_SPELL = 0;
+const HIDE_SPELL = 1;
+const ADD_SPELL = 2;
+const UNHIDESPELL = 3;
+const REMOVESPELL = 4;
+
+/** C static tport_hideaway — zero-init; tport_indx=MAXSPELL is burned. */
+const save_tport = {
+    savespell: { sp_id: 0, sp_lev: 0, sp_know: 0 },
+    tport_indx: 0,
+};
+
+function copy_spell_slot(slot) {
+    return {
+        sp_id: slot?.sp_id | 0,
+        sp_lev: slot?.sp_lev | 0,
+        sp_know: slot?.sp_know | 0,
+    };
+}
+
+/**
+ * C ref: spell.c tport_spell — hide/add/unhide/remove SPE_TELEPORT_AWAY
+ * for wizard dotelecmd m-prefix modes. Caller restores via the returned
+ * reverse op (UNHIDESPELL / REMOVESPELL).
+ * @param {number} what NOOP/HIDE/ADD/UNHIDE/REMOVE
+ * @returns {Promise<number>} reverse op or NOOP_SPELL
+ */
+export async function tport_spell(what) {
+    if (!game.spl_book) init_spl_book();
+    const book = game.spl_book;
+    let i;
+    for (i = 0; i < MAXSPELL; i++) {
+        if (spellid(i) === SPE_TELEPORT_AWAY || spellid(i) === NO_SPELL) break;
+    }
+    if (i === MAXSPELL) {
+        await impossible('tport_spell: spellbook full');
+        /* wizard mode ^T is not able to honor player's menu choice */
+    } else if (spellid(i) === NO_SPELL) {
+        if (what === HIDE_SPELL || what === REMOVESPELL) {
+            save_tport.tport_indx = MAXSPELL;
+        } else if (what === UNHIDESPELL) {
+            book[save_tport.tport_indx] = copy_spell_slot(save_tport.savespell);
+            save_tport.tport_indx = MAXSPELL;
+        } else if (what === ADD_SPELL) {
+            save_tport.savespell = copy_spell_slot(book[i]);
+            save_tport.tport_indx = i;
+            book[i].sp_id = SPE_TELEPORT_AWAY;
+            book[i].sp_lev = game.objects?.[SPE_TELEPORT_AWAY]?.oc_level ?? 0;
+            book[i].sp_know = KEEN;
+            return REMOVESPELL;
+        }
+    } else { /* spellid(i) === SPE_TELEPORT_AWAY */
+        if (what === ADD_SPELL || what === UNHIDESPELL) {
+            save_tport.tport_indx = MAXSPELL;
+        } else if (what === REMOVESPELL) {
+            book[i] = copy_spell_slot(save_tport.savespell);
+            save_tport.tport_indx = MAXSPELL;
+        } else if (what === HIDE_SPELL) {
+            save_tport.savespell = copy_spell_slot(book[i]);
+            save_tport.tport_indx = i;
+            book[i].sp_id = NO_SPELL;
+            return UNHIDESPELL;
+        }
+    }
+    return NOOP_SPELL;
 }
 
 /**

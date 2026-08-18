@@ -171,6 +171,7 @@ export const M3_CLOSE = 0x0080;
 export const M3_WAITMASK = 0x00c0; /* M3_WAITFORU | M3_CLOSE */
 export const M3_INFRAVISION = 0x0100;
 export const M3_INFRAVISIBLE = 0x0200;
+export const M3_DISPLACES = 0x0400; /* moves monsters out of its way */
 
 export const CORPSTAT_INIT = 8;
 
@@ -289,6 +290,10 @@ export function infravision(ptr) {
 }
 export function infravisible(ptr) {
     return !!((ptr?.mflags3 ?? 0) & M3_INFRAVISIBLE);
+}
+/** C ref: mondata.h is_displacer — M3_DISPLACES (Riders, displacer beast). */
+export function is_displacer(ptr) {
+    return !!((ptr?.mflags3 ?? 0) & M3_DISPLACES);
 }
 /** C ref: mondata.h is_covetous — any M3_WANTS* bit (M3_COVETOUS mask). */
 export function is_covetous(ptr) {

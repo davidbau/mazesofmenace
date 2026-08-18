@@ -13,6 +13,7 @@ import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
 import { fastforward_pre_mklev } from './fastforward.js';
 import { init_objects } from './o_init.js';
+import { init_artifacts } from './artifact.js';
 import { init_dungeons, find_level } from './dungeon.js';
 import { depth } from './hacklib.js';
 import { schedule_goto, deferred_goto } from './do.js';
@@ -31,7 +32,10 @@ import {
 } from './attrib.js';
 import { dosearch0, warnreveal } from './detect.js';
 import { nhgetch } from './input.js';
-import { unmul, monster_nearby, stop_occupation, overexert_hp, is_pool } from './hack.js';
+import {
+    unmul, monster_nearby, stop_occupation, overexert_hp, is_pool,
+    notice_mon_off, notice_mon_on, notice_all_mons,
+} from './hack.js';
 import { reset_justpicked } from './pickup.js';
 import { set_wear } from './do_wear.js';
 import { gethungry } from './eat.js';
@@ -555,6 +559,11 @@ export async function welcome(new_game) {
 export async function newgame() {
     const g = game;
 
+    // C allmain.c:771 — notice_mon_off first so welcome / legacy /
+    // docrt happen before noticing monsters (D-1200). Catch-up after
+    // welcome. Default mon_notices Off (optlist spot_monsters).
+    notice_mon_off();
+
     // C: moves starts 0 until u_init_role; reset align_shift statics
     g.moves = 0;
     reset_align_shift_cache();
@@ -600,6 +609,10 @@ export async function newgame() {
 
     // C ref: allmain.c → init_dungeons() (dungeon.c) — peels fastforward_pre_mklev
     init_dungeons();
+    // C allmain.c:792 — init_artifacts after role_init/init_dungeons,
+    // before u_init_misc so WIZKIT can name artifacts (D-1201). Not
+    // wizkit delivery / reset_glyphmap.
+    init_artifacts();
     // C ref: allmain.c → u_init_misc() (u_init.c)
     await u_init_misc();
     fastforward_pre_mklev(); // emptied — kept as delete-only hook
@@ -676,6 +689,15 @@ export async function newgame() {
 
     // C ref: allmain.c welcome(TRUE)
     await welcome(true);
+
+    // C allmain.c:844–848 — notice_mon_on after welcome; glyph_updates
+    // dolookaround named; else notice_all_mons(TRUE) (D-1200).
+    notice_mon_on();
+    if (g.a11y?.glyph_updates) {
+        /* C: (void) dolookaround(); named — no JS lookaround export */
+    } else {
+        await notice_all_mons(true);
+    }
 
     // C ref: unixmain.c wd_message() after newgame() — explore/discovery
     if (g.flags.explore || g.flags.discover) {

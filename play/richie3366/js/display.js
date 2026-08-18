@@ -44,6 +44,9 @@ import {
     M_AP_OBJECT, M_AP_TYPE,
     MCORPSENM,
     isok,
+    xytodir, directionname,
+    GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_COMFULL,
+    GPCOORDS_SCREEN,
     SVALL,
     TER_TRP, TER_OBJ, TER_MON, TER_FULL,
     OBJ_FLOOR,
@@ -3453,6 +3456,91 @@ export function get_win_stop() {
     return _win_stop;
 }
 
+/**
+ * C ref: getpos.c dxdy_to_dist_descr — "here" / unit directionname /
+ * counted n,s,w,e (comma when both). fulldir → north vs n.
+ */
+export function dxdy_to_dist_descr(dx, dy, fulldir) {
+    dx = dx | 0;
+    dy = dy | 0;
+    if (!dx && !dy) return 'here';
+    const dst = xytodir(dx, dy);
+    if (dst !== -1) return directionname(dst);
+    const dirnames = [
+        ['n', 'north'],
+        ['s', 'south'],
+        ['w', 'west'],
+        ['e', 'east'],
+    ];
+    const word = fulldir ? 1 : 0;
+    const sgn = (n) => (n < 0 ? -1 : 1);
+    let buf = '';
+    if (dy) {
+        if (Math.abs(dy) > 9999) dy = sgn(dy) * 9999;
+        buf += `${Math.abs(dy)}${dirnames[dy > 0 ? 1 : 0][word]}${dx ? ',' : ''}`;
+    }
+    if (dx) {
+        if (Math.abs(dx) > 9999) dx = sgn(dx) * 9999;
+        buf += `${Math.abs(dx)}${dirnames[2 + (dx > 0 ? 1 : 0)][word]}`;
+    }
+    return buf;
+}
+
+/**
+ * C ref: getpos.c coord_desc — MAP `<%d,%d>`; SCREEN `[y+2,x]` zero-pad;
+ * COMPASS/COMFULL `(dxdy_to_dist_descr)`. Empty for unknown cmode.
+ */
+export function coord_desc(x, y, cmode) {
+    x = x | 0;
+    y = y | 0;
+    switch (cmode) {
+    case GPCOORDS_COMFULL:
+    case GPCOORDS_COMPASS: {
+        const u = game.u || {};
+        const dx = x - (u.ux | 0);
+        const dy = y - (u.uy | 0);
+        return `(${dxdy_to_dist_descr(dx, dy, cmode === GPCOORDS_COMFULL)})`;
+    }
+    case GPCOORDS_MAP:
+        return `<${x},${y}>`;
+    case GPCOORDS_SCREEN: {
+        const yw = (ROWNO - 1 + 2 < 100) ? 2 : 3;
+        const xw = (COLNO - 1 < 100) ? 2 : 3;
+        return `[${String(y + 2).padStart(yw, '0')},${String(x).padStart(xw, '0')}]`;
+    }
+    default:
+        return '';
+    }
+}
+
+/**
+ * C pline.c vpline 162–189 — snapshot a11y.msg_loc then always reset to
+ * 0,0 (even empty / Norep-suppressed / accessiblemsg Off). If
+ * accessiblemsg && isok(saved), prefix `coord_desc: ` (NONE→COMFULL).
+ * D-1207. Named: pline_xy/pline_mon/set_msg_dir writers; optlist wire
+ * onto a11y.accessiblemsg (JS doset still flags.accessiblemsg).
+ */
+function vpline_consume_msg_loc(msg) {
+    if (!game.a11y) {
+        game.a11y = { accessiblemsg: false, msg_loc: { x: 0, y: 0 } };
+    }
+    if (!game.a11y.msg_loc) game.a11y.msg_loc = { x: 0, y: 0 };
+    const loc = game.a11y.msg_loc;
+    const mx = loc.x | 0;
+    const my = loc.y | 0;
+    loc.x = 0;
+    loc.y = 0;
+    if (msg == null || msg === '') return msg;
+    if (game.a11y.accessiblemsg && isok(mx, my)) {
+        const gpc = game.iflags?.getpos_coords;
+        const cmode = (gpc == null || gpc === GPCOORDS_NONE)
+            ? GPCOORDS_COMFULL
+            : gpc;
+        return `${coord_desc(mx, my, cmode)}: ${msg}`;
+    }
+    return msg;
+}
+
 // C ref: pline.c You_feel — prefix "You feel " (Unaware dream path deferred)
 export async function You_feel(msg) {
     if (msg == null || msg === '') return;
@@ -3468,18 +3556,25 @@ export async function verbalize(msg) {
 /**
  * C ref: pline.c Norep — PLINE_NOREPEAT → MSGTYP_NOREP; suppress when
  * identical to gp.prevmsg (last shown pline), not a Norep-only cache.
+ * Consume msg_loc before the repeat check (C vpline always does).
  * Msgtype-pattern table deferred.
  */
 export async function Norep(msg) {
+    msg = vpline_consume_msg_loc(msg);
     if (msg == null || msg === '') return;
     if (_prevmsg === String(msg)) return;
-    await pline(msg);
+    await pline_after_consume(msg);
 }
 
 // ── pline ──
 // C ref: pline.c vpline — flush_screen before putmesg; topl.c update_topl.
 export async function pline(msg) {
+    msg = vpline_consume_msg_loc(msg);
     if (msg == null || msg === '') return;
+    await pline_after_consume(msg);
+}
+
+async function pline_after_consume(msg) {
     const CO = game?.nhDisplay?.cols || 80;
     // C pline.c vpline: vision_recalc before flush when dirty (boulder
     // extract / door / light sets vision_full_recalc mid-turn).

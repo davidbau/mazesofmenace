@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname, xname, makeplural, vtense, an, doname } from './objnam.js';
+import { xprname, xname, makeplural, vtense, an, doname, The } from './objnam.js';
 import { yn_function } from './getline.js';
 import { hands_obj } from './weapon.js';
 import { humanoid, mons } from './monsters.js';
@@ -23,7 +23,7 @@ import {
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
-import { makeknown, encumber_msg, compactify_invlets } from './invent.js';
+import { makeknown, encumber_msg, compactify_invlets, update_inventory } from './invent.js';
 import { uncurse, weight } from './mkobj.js';
 import { trycall } from './do_name.js';
 
@@ -270,36 +270,65 @@ export function setuqwep(obj) {
 }
 
 /**
- * C ref: wield.c uwepgone — clear W_WEP before destroying last wielded item.
- * Named omissions: artifact_light end_burn / Tobjnam shine; update_inventory.
+ * C ref: objnam.c Tobjnam — The(xname) + optional otense verb.
  */
-export function uwepgone() {
+function Tobjnam(obj, verb) {
+    let bp = The(xname(obj));
+    if (verb) {
+        const plural = (obj?.quan | 0) !== 1;
+        bp += ` ${plural ? verb : vtense(null, verb)}`;
+    }
+    return bp;
+}
+
+/** C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded. */
+function Blind_w() {
+    const u = game.u || {};
+    if (u.Blind || u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/**
+ * C ref: wield.c uwepgone — clear W_WEP before destroying last wielded item.
+ * artifact_light end_burn + Tobjnam shine before setuwep (D-1204).
+ * Named omissions: setuwep-path Sunsword begin_burn / ready_weapon shine.
+ */
+export async function uwepgone() {
     const u = game.u || (game.u = {});
     if (!u.uwep) return;
-    // artifact_light end_burn deferred
+    const uwep = u.uwep;
+    // Dynamic import: timeout.js → trap.js → wield.js.
+    const { artifact_light, end_burn } = await import('./timeout.js');
+    if (artifact_light(uwep) && uwep.lamplit) {
+        end_burn(uwep, false);
+        if (!Blind_w()) {
+            await pline(`${Tobjnam(uwep, 'stop')} shining.`);
+        }
+    }
     setuwep(null);
     if (!game.gu) game.gu = {};
     game.gu.unweapon = true;
+    update_inventory();
 }
 
 /**
  * C ref: wield.c uswapwepgone — clear W_SWAPWEP before destroy.
- * Named omissions: update_inventory.
  */
 export function uswapwepgone() {
     const u = game.u || (game.u = {});
     if (!u.uswapwep) return;
     setuswapwep(null);
+    update_inventory();
 }
 
 /**
  * C ref: wield.c uqwepgone — clear W_QUIVER before destroy.
- * Named omissions: update_inventory.
  */
 export function uqwepgone() {
     const u = game.u || (game.u = {});
     if (!u.uquiver) return;
     setuqwep(null);
+    update_inventory();
 }
 
 /**

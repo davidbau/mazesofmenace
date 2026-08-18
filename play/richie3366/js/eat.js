@@ -25,6 +25,7 @@
 // D-0953: floorfood pool/lava reach + vault_gd_watching(GD_EATGOLD).
 // D-0956: Ring_gone / float_up / rescham / choke(strangle) /
 // set_mimic_blocking / perceives in eataccessory.
+// D-1204: eatspecial MAIL_STRUCTURES SCR_MAIL + uwepgone artifact_light.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -88,7 +89,7 @@ import {
 } from './attrib.js';
 import { nomul, losehp, still_chewing, is_pool, is_lava } from './hack.js';
 import { near_capacity, observe_object, makeknown, compactify_invlets,
-    freeinv_core, encumber_msg } from './invent.js';
+    freeinv_core, encumber_msg, update_inventory } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
     make_stunned, make_hallucinated, make_sick,
@@ -125,6 +126,7 @@ const BEARTRAP = objectNames.indexOf('BEARTRAP');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ORANGE_OTYP = objectNames.indexOf('ORANGE');
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
+const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 const LEASH = objectNames.indexOf('LEASH');
 const TRIDENT = objectNames.indexOf('TRIDENT');
 const FLINT = objectNames.indexOf('FLINT');
@@ -2112,7 +2114,6 @@ function sgn(n) {
 
 /**
  * C ref: apply.c o_unleash — clear leashmon on destroy/steal.
- * Named omissions: update_inventory.
  */
 function o_unleash(otmp) {
     if (!otmp) return;
@@ -2126,6 +2127,7 @@ function o_unleash(otmp) {
         }
     }
     otmp.leashmon = 0;
+    update_inventory();
 }
 
 /**
@@ -2272,8 +2274,8 @@ async function accessory_has_effect(otmp) {
  * (default oc_oprop FROMOUTSIDE + see-invis/invis/levitation/PfSC arms;
  * adorn/gain-str/con/increase/protection/free-action; amulet change/
  * unchanging/strangle choke/restful; sustain/life/fly/reflect no-ops).
- * Named omissions: sink-fall death beyond Ring_gone;
- * restartcham polish beyond restartcham helper.
+ * Named omissions: float_down→spoteffects sink polish beyond
+ * Ring_gone uhp-return; restartcham polish beyond helper.
  */
 async function eataccessory(otmp) {
     const u = game.u || (game.u = {});
@@ -2456,12 +2458,11 @@ async function eataccessory(otmp) {
  * C ref: eat.c eatspecial — finish non-food meal: lesshungry + side
  * effects + useup.
  * Branch envelope: coin useupall/useupf + vault_gd_watching(GD_EATGOLD);
- * PAPER messages; dopotion; eataccessory; leash o_unleash;
- * trident/flint exercise; uwep/uqwep/uswapwep gone; unpunish ball/chain;
- * carried useup else useupf.
- * Named omissions: SCR_MAIL ifdef;
- * artifact_light in uwepgone; sink-fall death beyond Ring_gone;
- * sink-fall death polish beyond Ring_gone.
+ * PAPER messages (MAIL_STRUCTURES SCR_MAIL D-1204); dopotion; eataccessory;
+ * leash o_unleash; trident/flint exercise; uwep/uqwep/uswapwep gone;
+ * unpunish ball/chain; carried useup else useupf.
+ * Named omissions: lesshungry choke/fullwarn (occupation set for C
+ * iseating); float_down→spoteffects sink polish beyond Ring_gone uhp-return.
  */
 async function eatspecial() {
     const otmp = game.context?.victual?.piece;
@@ -2482,8 +2483,10 @@ async function eatspecial() {
 
     const material = game.objects?.[otmp.otyp]?.oc_material ?? 0;
     if (material === MAT_PAPER) {
-        // SCR_MAIL ifdef MAIL_STRUCTURES deferred
-        if ((otmp.otyp | 0) === SCR_SCARE_MONSTER) {
+        // C eat.c:2432–2447 MAIL_STRUCTURES (D-0848) — SCR_MAIL before scare/YUM
+        if (SCR_MAIL >= 0 && (otmp.otyp | 0) === SCR_MAIL) {
+            await pline('This junk mail is less than satisfying.');
+        } else if ((otmp.otyp | 0) === SCR_SCARE_MONSTER) {
             await pline(`Yuck${otmp.blessed ? '!' : '.'}`);
         } else if (otmp.oclass === SCROLL_CLASS
             && objdescr_is(otmp, 'YUM YUM')) {
@@ -2517,7 +2520,7 @@ async function eatspecial() {
     }
 
     const u = game.u || {};
-    if (otmp === u.uwep && (otmp.quan || 1) === 1) uwepgone();
+    if (otmp === u.uwep && (otmp.quan || 1) === 1) await uwepgone();
     if (otmp === u.uquiver && (otmp.quan || 1) === 1) uqwepgone();
     if (otmp === u.uswapwep && (otmp.quan || 1) === 1) uswapwepgone();
 
@@ -2538,7 +2541,7 @@ async function eatspecial() {
  * Branch envelope: nutrition from quan/weight/oc_nutrition; vegan/
  * vegetarian conduct for leather/bone/dragon_hide/wax; cursed rottenfood;
  * poisoned weapon; delicious pline; eatspecial.
- * Named omissions: SCR_MAIL; livelog first-time conduct.
+ * Named omissions: livelog first-time conduct.
  */
 async function doeat_nonfood(otmp) {
     if (!game.context) game.context = {};

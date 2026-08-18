@@ -20,8 +20,8 @@ import {
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX,
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
     ACH_HELL, ACH_MINE, ACH_SOKO,
-    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, ER_DESTROYED, WT_SPLASH_THRESHOLD,
-    TT_PIT, FIRE_RES,
+    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, ER_DESTROYED, WT_SPLASH_THRESHOLD,
+    TT_PIT, FIRE_RES, PIT,
     ROOM, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
     IS_WATERWALL, IS_ALTAR, is_pit, is_hole, u_at, Has_contents,
     Is_container, Is_waterlevel, Is_airlevel,
@@ -33,7 +33,7 @@ import {
 } from './const.js';
 import {
     seetrap, t_at, delfloortrap, reset_utrap, water_damage, erode_obj,
-    selftouch, uteetering_at_seen_pit, uescaped_shaft,
+    selftouch, uteetering_at_seen_pit, uescaped_shaft, maketrap,
 } from './trap.js';
 import {
     COIN_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, objectNames,
@@ -41,7 +41,7 @@ import {
 import {
     pline, Norep, docrt, flush_screen, flush_topl_more, newsym,
     mark_topline_prompt, assign_graphics, check_gold_symbol,
-    You_feel, canseemon,
+    You_feel, canseemon, canspotmon,
 } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
@@ -78,7 +78,7 @@ import { place_object, stackobj, weight, delobj, obj_extract_self,
 } from './mkobj.js';
 import { ship_object, obj_delivery } from './dokick.js';
 import { doname, xname, the, The, vtense, an, cxname_singular } from './objnam.js';
-import { Monnam } from './do_name.js';
+import { Monnam, Amonnam } from './do_name.js';
 import { revive } from './zap.js';
 import {
     compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
@@ -106,6 +106,7 @@ import { resurrect } from './wizard.js';
 import { bones_include_name } from './bones.js';
 import {
     olfaction, passes_walls, throws_rocks, is_flyer, is_floater,
+    mons, is_rider,
 } from './monsters.js';
 import { placebc, unplacebc, drag_down, ballrelease } from './ball.js';
 import { obj_resists } from './dogmove.js';
@@ -1668,7 +1669,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // XOR delivers MIGR_WITH_HERO (trap-door objs landing at the hero).
     await obj_delivery(false);
 
-    losedogs();
+    await losedogs();
     // C do.c:1817 — after losedogs, before run_timers / u_collide_m.
     // Migrating mons (and eggs) genocided while in limbo die here so
     // possessions land on this level.
@@ -1802,7 +1803,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C do.c:1971–1972 — after uz0 reset (INSURANCE save_currentstate
     // named), before print_level_annotation. Catch-up after the
     // docrt wrap (D-1194). Default mon_notices Off (optlist
-    // spot_monsters). Did not pull newgame / mapping / wizcmds / save.
+    // spot_monsters). newgame wrap is D-1200; mapping / wizcmds /
+    // save still named.
     notice_mon_on();
     await notice_all_mons(true);
 
@@ -2401,9 +2403,10 @@ export async function dowipe() {
 /**
  * C ref: do.c revive_corpse — zap.revive then location messages.
  * Branch envelope: OBJ_INVENT uwep/backpack; OBJ_FLOOR cansee/canseemon
- * plus Death/Pestilence/Famine visual suffixes (eat.c cprefx rider).
- * Named omit: OBJ_MINVENT / OBJ_CONTAINED / OBJ_BURIED (zombie pit);
- * Adjmonnam bite-covered when oeaten.
+ * plus Death/Pestilence/Famine visual suffixes (eat.c cprefx rider);
+ * OBJ_BURIED zombie/reviver pit + claw pline / nearby You_hear + fill_pit
+ * (D-1202 zombify). Named omit: OBJ_MINVENT / OBJ_CONTAINED; Adjmonnam
+ * bite-covered when oeaten; Soundeffect se_scratching.
  * @returns {Promise<boolean>}
  */
 export async function revive_corpse(corpse) {
@@ -2411,6 +2414,11 @@ export async function revive_corpse(corpse) {
     const inInvent = corpse.where === OBJ_INVENT
         || (game.invent || []).includes(corpse);
     const where = inInvent ? OBJ_INVENT : (corpse.where | 0);
+    const montype = corpse.corpsenm | 0;
+    const mptr = mons(montype);
+    const is_zomb = !!(mptr && (mptr.mlet === 'S_ZOMBIE'
+        || (where === OBJ_BURIED
+            && (is_rider(mptr) || mptr.mlet === 'S_TROLL'))));
     const is_uwep = corpse === game.u?.uwep;
     const cname = cxname_singular(corpse) || 'corpse';
     const corpsex = corpse.ox | 0;
@@ -2441,7 +2449,22 @@ export async function revive_corpse(corpse) {
                 await pline(`${The(cname)} disappears${effect}!`);
             }
         }
+    } else if (where === OBJ_BURIED && is_zomb) {
+        const mx = mtmp.mx | 0;
+        const my = mtmp.my | 0;
+        maketrap(mx, my, PIT);
+        if (cansee(mx, my)) {
+            const ttmp = t_at(mx, my);
+            if (ttmp) ttmp.tseen = true;
+            const mnam = canspotmon(mtmp) ? Amonnam(mtmp) : 'Something';
+            await pline(`${mnam} claws itself out of the ground!`);
+            newsym(mx, my);
+        } else if (dist2(mx, my, game.u?.ux | 0, game.u?.uy | 0) < 25) {
+            await You_hear('scratching noises.');
+        }
+        const { fill_pit } = await import('./dig.js');
+        fill_pit(mx, my);
     }
-    // MINVENT / CONTAINED / BURIED still named omit
+    // MINVENT / CONTAINED still named omit
     return true;
 }

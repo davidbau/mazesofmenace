@@ -37,13 +37,14 @@ import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
     is_golem, is_mplayer, is_rider, is_undead, is_flyer, is_floater,
+    NON_PM,
 } from './monsters.js';
 import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
-    wake_nearto, m_carrying, healmon,
+    wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
 } from './mon.js';
 import { monflee } from './monmove.js';
 import { livelog_printf } from './pline.js';
@@ -437,7 +438,7 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
  * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance
  * → make_corpse; cleanup luck/align before experience.
  * Named omissions: LEVEL_SPECIFIC_NOCORPSE, accessible||is_pool gate,
- * flooreffects non-floor arms, wasinside/burycorpse/zombify,
+ * flooreffects non-floor arms, wasinside/burycorpse,
  * human-murder Telepat/luck-2 arm, unicorn coaligned luck-5,
  * quest leader/nemesis/guardian/priest special adjalign arms,
  * artifact un-create on oversized; tame You_hear Soundeffect.
@@ -501,8 +502,16 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     } else if (!nocorpse) {
         // accessible/pool gate deferred — always attempt RNG like floor tile
         if (!rn2(6)) xkilled_treasure_drop(mtmp, mdat, mndx, x, y);
-        // C: if (!wasinside && corpse_chance(...)) make_corpse(...)
-        if (await corpse_chance(mtmp)) make_corpse(mtmp);
+        // C: if (!wasinside && corpse_chance(...)) { gz.zombify=...; make_corpse; reset }
+        // wasinside skip still named. mhitm mdamagem monkilled zombify is D-1211.
+        if (await corpse_chance(mtmp)) {
+            game.zombify = (!game.thrownobj && !game.context?.stoned
+                && !game.u?.uwep
+                && zombie_maker(game.youmonst)
+                && zombie_form(mtmp.data) !== NON_PM);
+            make_corpse(mtmp);
+            game.zombify = false;
+        }
     }
     // C mon.c xkilled: newsym after treasure/corpse — mondead's early
     // newsym runs before drops, so treasure-only kills need this paint.

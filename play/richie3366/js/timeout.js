@@ -14,11 +14,15 @@ import {
     MAX_RADIUS, W_ARM,
     G_GENOD, G_EXTINCT, NO_MINVENT, MM_NOMSG, NON_PM,
     MV_KNOWS_EGG, ARTICLE_NONE, ARTICLE_A, EXACT_NAME,
+    REVIVE_MON, ROT_CORPSE, ZOMBIFY_MON, RLOC_NOMSG,
+    has_omid, has_omonst,
 } from './const.js';
 import { heal_legs } from './trap.js';
 import { stop_occupation, nomul, is_pool } from './hack.js';
 import { run_timers, start_timer, stop_timer, weight,
     obj_extract_self, delobj, objects_at, attach_egg_hatch_timeout,
+    obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
+    free_omid, free_omonst,
 } from './mkobj.js';
 import { make_confused, make_slimed } from './potion.js';
 import { make_blinded } from './do.js';
@@ -26,13 +30,15 @@ import { Fumbling, Fast, Very_fast } from './attrib.js';
 import { pline, You_feel, newsym, canseemon, verbalize } from './display.js';
 import { inv_weight } from './invent.js';
 import { doname, makeplural, xname, an, The } from './objnam.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { objectNames } from './objects.js';
 import {
     G_UNIQ, is_were, mons, is_floater, is_flyer, amorphous, nolimbs,
-    M1_SLITHY, MZ_SMALL,
+    M1_SLITHY, MZ_SMALL, is_rider, is_displacer,
 } from './monsters.js';
 import { little_to_big, big_to_little } from './mondata.js';
+import { dist2 } from './hacklib.js';
+import { zombie_form } from './mon.js';
 import { cry_sound } from './sounds.js';
 import { rehumanize } from './polyself.js';
 import { you_unwere } from './were.js';
@@ -1148,4 +1154,83 @@ export async function hatch_egg(egg, timeout) {
         }
     }
     if (redraw) newsym(x, y);
+}
+
+/**
+ * C ref: do.c revive_mon — timeout.c REVIVE_MON callback.
+ * Floor displacer bump: get_obj_location(0) then m_at then rloc(RLOC_NOMSG)
+ * under stasis_until < moves; revive_corpse; rider rn2(99) retry via
+ * rider_revival_time(TRUE) else ROT_CORPSE d(5,50)−age. Named omit:
+ * Soundeffect on buried claw (revive_corpse BURIED).
+ * @param {object} body corpse
+ * @param {number} timeout unused in C
+ */
+export async function revive_mon(body, timeout) {
+    void timeout;
+    if (!body) return;
+    const mptr = mons(body.corpsenm | 0);
+    if (is_displacer(mptr) && (body.where | 0) === OBJ_FLOOR) {
+        const loc = get_obj_location(body, 0);
+        if (loc) {
+            const { m_at } = await import('./mon.js');
+            const mtmp = m_at(loc.x | 0, loc.y | 0);
+            if (mtmp
+                && (game.level?.flags?.stasis_until | 0) < (game.moves | 0)) {
+                const notice_it = canseemon(mtmp);
+                const monname = Monnam(mtmp);
+                const { rloc } = await import('./teleport.js');
+                if (await rloc(mtmp, RLOC_NOMSG)) {
+                    if (notice_it && !canseemon(mtmp)) {
+                        await pline(`${monname} vanishes.`);
+                    } else if (!notice_it && canseemon(mtmp)) {
+                        await pline(`${Monnam(mtmp)} appears.`);
+                    } else if (notice_it
+                        && dist2(mtmp.mx | 0, mtmp.my | 0,
+                            loc.x | 0, loc.y | 0) > 2) {
+                        await pline(`${monname} teleports.`);
+                    }
+                }
+            }
+        }
+    }
+    const { revive_corpse } = await import('./do.js');
+    if (!(await revive_corpse(body))) {
+        let action;
+        let when;
+        if (is_rider(mptr) && rn2(99)) {
+            action = REVIVE_MON;
+            when = rider_revival_time(body, true);
+        } else {
+            if (!obj_has_timer(body, ROT_CORPSE)) {
+                await You_feel(`${is_rider(mptr) ? 'much ' : ''}less hassled.`);
+            }
+            action = ROT_CORPSE;
+            when = d(5, 50) - ((game.moves | 0) - (body.age | 0));
+            if (when < 1) when = 1;
+        }
+        if (!obj_has_timer(body, action)) {
+            start_timer(when, TIMER_OBJECT, action, body);
+        }
+    }
+}
+
+/**
+ * C ref: do.c zombify_mon — timeout.c ZOMBIFY_MON callback.
+ * zombie_form + !G_GENOD → drop omid/omonst, set_corpsenm, revive_mon;
+ * else rot_corpse. xkilled gz.zombify D-1210; mhitm mdamagem D-1211.
+ * @param {object} body corpse
+ * @param {number} timeout passed through to revive_mon
+ */
+export async function zombify_mon(body, timeout) {
+    if (!body) return;
+    const zmon = zombie_form(mons(body.corpsenm | 0));
+    const mv = game.mvitals?.[zmon]?.mvflags | 0;
+    if (zmon !== NON_PM && !(mv & G_GENOD)) {
+        if (has_omid(body)) free_omid(body);
+        if (has_omonst(body)) free_omonst(body);
+        set_corpsenm(body, zmon);
+        await revive_mon(body, timeout);
+    } else {
+        await rot_corpse(body);
+    }
 }
