@@ -4,7 +4,8 @@
 // t_at, t_missile, thitm, mintrap, dotrap, trapeffect_dart_trap /
 // trapeffect_pit / trapeffect_rocktrap / trapeffect_rolling_boulder_trap /
 // launch_obj / trapeffect_sqky_board /
-// trapeffect_bear_trap / trapeffect_hole / trapeffect_magic_portal /
+// trapeffect_bear_trap / trapeffect_hole / trapeffect_level_telep /
+// trapeffect_magic_portal /
 // trapeffect_magic_trap /
 // trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap /
 // trapeffect_web / trapeffect_landmine / blow_up_landmine /
@@ -98,7 +99,7 @@ import {
     maybe_half_phys, nomul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms,
 } from './hack.js';
-import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, domagicportal } from './teleport.js';
+import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal } from './teleport.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS,
@@ -3014,12 +3015,13 @@ async function trapeffect_sqky_board(mtmp, trap, _trflags) {
 }
 
 /**
- * C ref: trap.c trapeffect_level_telep — monster mlevel_tele_trap.
- * Hero level_tele_trap still named.
+ * C ref: trap.c trapeffect_level_telep — hero seetrap+level_tele_trap
+ * (D-1224); monster mlevel_tele_trap.
  */
 async function trapeffect_level_telep(mtmp, trap, trflags) {
     if (is_youmonst(mtmp)) {
-        // level_tele_trap deferred
+        seetrap(trap);
+        await level_tele_trap(trap, trflags);
         return Trap_Effect_Finished;
     }
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);

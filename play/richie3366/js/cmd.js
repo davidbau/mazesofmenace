@@ -74,6 +74,7 @@ import {
     impaired_movement, is_pool, is_lava, carrying_too_much,
     invocation_message, avoid_trap_andor_region,
     hero_tread_disturb_buried_zombies,
+    test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -460,8 +461,8 @@ function end_running() {
  * C: pline_dir(xytodir(dx,dy), "It's %s.", buf) (D-1216).
  * Deferred: Blind feel_location, Passes_walls/may_passwall, Underwater,
  * IRONBARS chew, tunnels/still_chewing, autodig, is_db_wall, Sokoban
- * resist, full back_to_glyph/wall_angle→S_stone edge cases,
- * run>=2 boulder pline_dir.
+ * resist, full back_to_glyph/wall_angle→S_stone edge cases.
+ * run>=2 boulder pline_dir is D-1226 (test_move, not this bump).
  */
 async function mention_walls_obstructed(x, y) {
     if (!game.flags?.mention_walls) return;
@@ -2143,8 +2144,24 @@ async function domove(dx, dy) {
         }
     }
 
-    // C ref: hack.c test_move — sobj_at(BOULDER) → moverock before advance
-    if (boulder_at(newx, newy)) {
+    // C hack.c test_move 1216–1230 — sobj_at(BOULDER) && (Sokoban ||
+    // !Passes_walls): run>=2 abort before moverock (D-1226). TEST_TRAV
+    // excluded in C; this is DO_MOVE. Passes_walls && !Sokoban skips the
+    // whole arm (walk onto the boulder). cannot_push squeeze named.
+    if (test_move_boulder_is_blocking(newx, newy)) {
+        if (test_move_run_blocked_by_boulder(newx, newy)) {
+            if (game.flags?.mention_walls) {
+                await pline_dir(
+                    xytodir(u.dx | 0, u.dy | 0),
+                    'A boulder blocks your path.',
+                );
+            }
+            if (!game.context?.door_opened) {
+                if (game.context) game.context.move = 0;
+                nomul(0);
+            }
+            return;
+        }
         const mr = await moverock();
         if (mr < 0) {
             if (game.context?.run) end_running();

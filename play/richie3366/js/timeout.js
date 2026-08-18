@@ -1160,8 +1160,9 @@ export async function hatch_egg(egg, timeout) {
  * C ref: do.c revive_mon — timeout.c REVIVE_MON callback.
  * Floor displacer bump: get_obj_location(0) then m_at then rloc(RLOC_NOMSG)
  * under stasis_until < moves; revive_corpse; rider rn2(99) retry via
- * rider_revival_time(TRUE) else ROT_CORPSE d(5,50)−age. Named omit:
- * Soundeffect on buried claw (revive_corpse BURIED).
+ * rider_revival_time(TRUE) else ROT_CORPSE d(5,50)−age.
+ * Soundeffect(se_scratching, 50) on buried hear arm lives in
+ * revive_corpse (D-1222).
  * @param {object} body corpse
  * @param {number} timeout unused in C
  */

@@ -64,6 +64,7 @@ import {
     touch_petrifies, poly_when_stoned, resists_ston, humanoid,
 } from './monsters.js';
 import { objectNames } from './objects.js';
+import { ART_TROLLSBANE } from './generated/artifacts_data.js';
 import {
     relobj_on_death, mkcorpstat, stackobj, mksobj_at, obj_nexto,
     obj_meld, pudding_merge_message, place_object, add_to_container,
@@ -798,8 +799,8 @@ async function corpse_chance(mon) {
 }
 
 // C ref: mon.c make_corpse — undead specials before G_NOCORPSE; pudding globs;
-// else default_1. gz.zombify is set by callers around this call, not inside
-// it: xkilled D-1210; mhitm mdamagem around monkilled D-1211.
+// else default_1. gz.zombify / mkcorpstat_norevive are set by callers around
+// this call, not inside it: xkilled D-1210; mhitm mdamagem D-1211/D-1223.
 // Named omission: dragon scales, unicorn horn, worm tooth,
 // golem drops, lich dust, and other pre-G_NOCORPSE switch arms (D-0271
 // undead; D-0993 pudding merge).
@@ -1104,18 +1105,33 @@ async function missmm(magr, mdef, mattk) {
 }
 
 /**
- * C ref: mhitm.c mdamagem — gz.zombify around monkilled, then reset.
+ * C ref: monst.h troll_baned — victim S_TROLL and weapon is Trollsbane.
+ * Callers: mhitm.c mdamagem; uhitm.c hmon_hitmon / hmonas still named.
+ */
+export function troll_baned(m, o) {
+    return !!(m && m.data && m.data.mlet === 'S_TROLL'
+        && o && (o.oartifact | 0) === ART_TROLLSBANE);
+}
+
+/**
+ * C ref: mhitm.c mdamagem — troll_baned mkcorpstat_norevive + gz.zombify
+ * around monkilled, then reset both (D-1223 / D-1211).
  * Barehand TUCH/CLAW/BITE from a zombie_maker, victim has zombie_form.
- * Named omit: troll_baned mkcorpstat_norevive; gulpmm m_at swap before
- * this call; passivemm/AD_RBRE shock monkilled do not set the flag.
+ * Named omit: gulpmm m_at swap before this call; passivemm/AD_RBRE shock
+ * monkilled; uhitm hmon_hitmon / hmonas troll_baned.
  */
 async function mdamagem_monkilled(magr, mdef, mattk, mwep) {
     const aatyp = mattk.aatyp | 0;
+    // C: mhitm.c:1081–1082 / :1090 — AT_WEAP||AT_CLAW only; always reset
+    if (aatyp === AT_WEAP || aatyp === AT_CLAW) {
+        game.mkcorpstat_norevive = troll_baned(mdef, mwep) ? true : false;
+    }
     game.zombify = (!mwep && zombie_maker(magr)
         && (aatyp === AT_TUCH || aatyp === AT_CLAW || aatyp === AT_BITE)
         && zombie_form(mdef.data) !== NON_PM);
     await monkilled(mdef, '', mattk.adtyp | 0);
     game.zombify = false;
+    game.mkcorpstat_norevive = false;
 }
 
 // C ref: mhitm.c mdamagem() — physical bite damage + AD_POLY + knockback RNG
@@ -1158,7 +1174,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     mdef.mhp -= damage;
     if (mdef.mhp < 1) {
         mdef.mhp = 0;
-        // C: mdamagem → gz.zombify; monkilled(mdef, "", mattk->adtyp); reset
+        // C: mdamagem → troll_baned + gz.zombify; monkilled; reset both
         await mdamagem_monkilled(magr, mdef, mattk, mwep);
         const grew = grow_up(magr, mdef);
         return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);

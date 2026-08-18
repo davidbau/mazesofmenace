@@ -9,18 +9,19 @@
 // (D-0681) + begin-memorize + set_occupation(learn) (D-0907); dovspell
 // VIEW menu; Wizard skill_based_spellbook_id; Z/#cast → getspell CAST →
 // spelleffects_check + SPE_HEALING self-zap; tport_spell hide/add for
-// dotelecmd m-prefix (D-1209).
+// dotelecmd m-prefix (D-1209); known_spell + SPE_TELEPORT_AWAY atme
+// zapyourself + check_capacity in spelleffects_check (D-1225).
 // Named omissions: novel/tribute; dull sleep; confused_book body;
 // learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
 // swap/sort; other spelleffects otyps; directional weffects;
 // spell_backfire; amulet drain; CQ_REPEAT; cursed_book shieldeff polish;
-// In_W_tower in aggravate.
+// In_W_tower in aggravate. #teleport doextcmd still named.
 // Wizard turns column in dospellmenu ported (D-0586).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, You_feel, impossible } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj } from './mkobj.js';
@@ -34,6 +35,7 @@ import { aggravate } from './wizard.js';
 import { make_confused } from './potion.js';
 import { trycall } from './do_name.js';
 import { nomul, losehp, maybe_half_phys } from './hack.js';
+import { uhim } from './roles.js';
 import { erode_obj } from './trap.js';
 import { set_occupation } from './engrave.js';
 import { rndcurse, take_gold } from './sit.js';
@@ -56,6 +58,8 @@ import {
     ECMD_OK,
     ECMD_TIME,
     ECMD_FAIL,
+    EXT_ENCUMBER,
+    NO_KILLER_PREFIX,
     TIMEOUT,
     ERODE_CORRODE,
     EF_GREASE,
@@ -82,6 +86,11 @@ export const MAXSPELL = LAST_SPELL_OTYP - FIRST_SPELL_OTYP + 1;
 
 /** C ref: spell.c KEEN */
 const KEEN = 20000;
+/** C ref: spell.h enum spellknowledge */
+export const spe_Forgotten = -1;
+export const spe_Unknown = 0;
+export const spe_Fresh = 1;
+export const spe_GoingStale = 2;
 /** C ref: spell.h MAX_SPELL_STUDY */
 const MAX_SPELL_STUDY = 3;
 
@@ -855,6 +864,19 @@ function spell_idx(otyp) {
     return UNKNOWN_SPELL;
 }
 
+/** C ref: spell.c known_spell — spe_Unknown / spe_Fresh / spe_GoingStale / spe_Forgotten. */
+export function known_spell(otyp) {
+    for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
+        if (spellid(i) === otyp) {
+            const k = spellknow(i);
+            return k > Math.trunc(KEEN / 10) ? spe_Fresh
+                : (k > 0) ? spe_GoingStale
+                    : spe_Forgotten;
+        }
+    }
+    return spe_Unknown;
+}
+
 /**
  * C ref: weapon.c use_skill — advance practice; may-advance msg deferred.
  * Local copy avoids weapon.js ↔ spell.js import cycle.
@@ -1086,12 +1108,16 @@ async function spelleffects_check(spell) {
     if ((game.u.uhunger ?? 900) <= 10 && spellid(spell) !== SPE_DETECT_FOOD) {
         await pline('You are too hungry to cast that spell.');
         return { abort: true, res: ECMD_OK, energy };
-    }
-    if (acurr(A_STR) < 4 && spellid(spell) !== SPE_RESTORE_ABILITY) {
+    } else if (acurr(A_STR) < 4 && spellid(spell) !== SPE_RESTORE_ABILITY) {
         await pline('You lack the strength to cast spells.');
         return { abort: true, res: ECMD_OK, energy };
+    } else if (near_capacity() >= EXT_ENCUMBER) {
+        /* C spell.c:1279–1283 check_capacity — TIME, unlike hunger/STR */
+        await pline(
+            'Your concentration falters while carrying so much stuff.',
+        );
+        return { abort: true, res: ECMD_TIME, energy };
     }
-    // check_capacity deferred
 
     // Amulet of Yendor drain deferred
 
@@ -1136,10 +1162,11 @@ async function spelleffects_check(spell) {
 
 /**
  * C ref: spell.c spelleffects
- * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING directional self-zap.
- * Other otyps named omission (return TIME after energy spent + exercise).
+ * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING / SPE_TELEPORT_AWAY
+ * directional self-zap (D-1225 atme ^T). Other otyps named omission
+ * (return TIME after energy spent + exercise). Directional weffects named.
  */
-async function spelleffects(spell_otyp, atme, force) {
+export async function spelleffects(spell_otyp, atme, force) {
     const spell = force ? spell_otyp : spell_idx(spell_otyp);
     let energy = 0;
 
@@ -1163,17 +1190,28 @@ async function spelleffects(spell_otyp, atme, force) {
     const skill = spell_skilltype(otyp);
     const role_skill = P_SKILL(skill);
 
-    if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING) {
-        if (role_skill >= P_SKILLED) pseudo.blessed = true;
+    if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING
+        || otyp === SPE_TELEPORT_AWAY) {
+        if ((otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING)
+            && role_skill >= P_SKILLED) {
+            pseudo.blessed = true;
+        }
         if (atme) {
             game.u.dx = game.u.dy = game.u.dz = 0;
         } else if (!(await getdir_spell())) {
             await pline('The magical energy is released!');
         }
         if (!game.u.dx && !game.u.dy && !game.u.dz) {
-            await zapyourself(pseudo, true);
+            const damage = await zapyourself(pseudo, true);
+            if (damage) {
+                losehp(
+                    damage,
+                    `zapped ${uhim()}self with a spell`,
+                    NO_KILLER_PREFIX,
+                );
+            }
         }
-        // else weffects deferred — directional heal on monster
+        // else weffects deferred — directional teleport/heal on monster
     } else {
         // Other spell otyps deferred after energy/exercise/mksobj RNG
         await pline('Nothing happens.');

@@ -24,7 +24,7 @@ import {
     Is_earthlevel, Is_medusa_level, Is_juiblex_level,
     TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
     SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
-    INTRINSIC, UNCHANGING,
+    INTRINSIC, UNCHANGING, PASSES_WALLS, WT_SQUEEZABLE_INV,
     In_mines, ACH_TOWN, NO_PART, WT_ELF, TIMER_OBJECT, ZOMBIFY_MON,
     NO_KILLER_PREFIX, IS_SINK, W_ARTI, I_SPECIAL, TIMEOUT, FROMOUTSIDE,
     FROMFORM, P_NONE, LEVITATION, FLYING, BLINDED, FOOT,
@@ -37,7 +37,7 @@ import {
 import { gethungry, morehungry } from './eat.js';
 import { m_at } from './mon.js';
 import { recalc_block_point } from './vision.js';
-import { is_hider, throws_rocks, noncorporeal, metallivorous, mons, is_flyer } from './monsters.js';
+import { is_hider, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, verysmall } from './monsters.js';
 import {
     objects_at, obj_extract_self, place_object, delobj,
     peek_timer, stop_timer, start_timer,
@@ -52,7 +52,7 @@ import {
     PM_GRID_BUG, PM_WIZARD, PM_ELF, PM_VALKYRIE, PM_SAMURAI,
 } from './generated/monsters_data.js';
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname } from './do_name.js';
-import { near_capacity } from './invent.js';
+import { near_capacity, inv_weight } from './invent.js';
 import { record_achievement } from './insight.js';
 import { b_trapped, selftouch, t_at, into_vs_onto, immune_to_trap, trapname } from './trap.js';
 import { paranoid_query } from './getline.js';
@@ -139,15 +139,79 @@ async function cannot_push_msg(otmp, sx, sy) {
 }
 
 /**
+ * C youprop.h Passes_walls — H||E, no B.
+ * C Sokoban ≡ level.flags.sokoban_rules (JS also mirrors game.Sokoban).
+ */
+function Passes_walls_prop() {
+    const u = game.u || {};
+    return !!_uprop_he_st(u, 'HPasses_walls', 'EPasses_walls', PASSES_WALLS);
+}
+function Sokoban_here() {
+    return !!(game.Sokoban || game.level?.flags?.sokoban_rules);
+}
+
+/**
+ * C hack.c squeezeablylightinvent — empty pack or inv_weight() <= -WT_SQUEEZABLE_INV.
+ */
+function squeezeablylightinvent() {
+    const inv = game.invent;
+    if (!inv || (Array.isArray(inv) ? inv.length === 0 : !inv)) return true;
+    return inv_weight() <= -WT_SQUEEZABLE_INV;
+}
+
+/**
+ * C hack.c could_move_onto_boulder 145–163 — phaze / not riding / giant
+ * unless diagonal-squeeze / tiny / extremely light pack.
+ * Uses u.dx/u.dy (C), not the dest-relative step passed to test_move.
+ */
+export function could_move_onto_boulder(sx, sy) {
+    if (Passes_walls_prop()) return true;
+    const u = game.u || {};
+    if (u.usteed) return false;
+    if (throws_rocks(game.youmonst?.data)) {
+        const dx = u.dx | 0;
+        const dy = u.dy | 0;
+        if (!dx || !dy) return true;
+        const flankA = game.level?.at(u.ux, sy);
+        const flankB = game.level?.at(sx, u.uy);
+        return !(IS_OBSTRUCTED(flankA?.typ) && IS_OBSTRUCTED(flankB?.typ));
+    }
+    if (verysmall(game.youmonst?.data)) return true;
+    return squeezeablylightinvent();
+}
+
+/**
+ * C hack.c test_move 1216 — outer boulder gate (Sokoban || !Passes_walls).
+ */
+export function test_move_boulder_is_blocking(x, y) {
+    return !!(sobj_at(BOULDER, x, y) && (Sokoban_here() || !Passes_walls_prop()));
+}
+
+/**
+ * C hack.c test_move 1217–1221 — run>=2 abort (mode != TEST_TRAV).
+ * Caller prints pline_dir on DO_MOVE + flags.mention_walls (D-1226).
+ */
+export function test_move_run_blocked_by_boulder(x, y) {
+    if (!test_move_boulder_is_blocking(x, y)) return false;
+    if ((game.context?.run | 0) < 2) return false;
+    const u = game.u || {};
+    const Blind = !!(u.Blind || u.ublind || Blind_im());
+    if (Blind || Hallucination()) return false;
+    if (could_move_onto_boulder(x, y)) return false;
+    return true;
+}
+
+/**
  * C ref: hack.c cannot_push — giant/squeeze may return 0; else -1.
- * Named omissions: throws_rocks pickup/maneuver arms, could_move_onto_boulder.
+ * Named omissions: throws_rocks pickup/maneuver arms, squeeze pline
+ * + sokoban_guilt (could_move_onto_boulder is live for test_move D-1226).
  */
 async function cannot_push(otmp, sx, sy) {
     if (throws_rocks(game.youmonst?.data)) {
         // giant pickup / maneuver-over plines deferred — still abort push
         return -1;
     }
-    // could_move_onto_boulder squeeze deferred
+    // squeeze-over pline / sokoban_guilt deferred
     return -1;
 }
 
@@ -1072,8 +1136,8 @@ function reg_damg(reg) {
 /**
  * C ref: hack.c test_move(TEST_MOVE) — silent viability for
  * avoid_trap_andor_region. Named omissions: Passes_walls/ooze/chew/
- * autodig/Underwater/squeeze/worm_cross/boulder-run. C always clears
- * context.door_opened.
+ * autodig/Underwater/squeeze/worm_cross. C always clears
+ * context.door_opened. run>=2 boulder abort is D-1226 (silent here).
  */
 function test_move_viable(dx, dy) {
     const u = game.u;
@@ -1093,6 +1157,7 @@ function test_move_viable(dx, dy) {
             return false;
         }
     }
+    if (test_move_run_blocked_by_boulder(x, y)) return false;
     return true;
 }
 
@@ -1774,8 +1839,9 @@ export function invocation_pos(x, y) {
  * C flag.h `struct accessibility_data` / `a11y`. Default Off matches
  * optlist `spot_monsters`. `opt_accessiblemsg` addr is D-1218
  * (`options.js` / `jsmain.js`). `mention_map` addr is D-1219
- * (`&a11y.glyph_updates` + `display.c` `show_glyph`). Named omit:
- * `spot_monsters` → `mon_notices`; `mon_movement`. vpline consume of
+ * (`&a11y.glyph_updates` + `display.c` `show_glyph`). `msg_mon_movement`
+ * dest pline_xy is D-1228 (`monmove.js`). Named omit: `spot_monsters`
+ * → `mon_notices`; optlist `&a11y.mon_movement` addr. vpline consume of
  * msg_loc is D-1207; pline_xy/pline_mon writers are D-1215;
  * set_msg_dir/pline_dir D-1216 (`display.js`). `cmd.c` `dolookaround`
  * is D-1217 (`cmd.js`; newgame then-arm + `#lookaround`).
