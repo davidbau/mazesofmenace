@@ -12,7 +12,7 @@ import {
 } from './mkobj.js';
 import { mattackm, max_passive_dmg } from './mhitm.js';
 import { mattacku } from './mhitu.js';
-import { newsym, pline, canseemon } from './display.js';
+import { newsym, pline, canseemon, pline_mon, pline_xy } from './display.js';
 import { doname, distant_name } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { t_at } from './trap.js';
@@ -586,9 +586,9 @@ async function mdrop_obj(mon, obj, verbosely) {
     // C: extract_from_minvent(mon, obj, FALSE, TRUE) → core is obj_extract_self
     obj_extract_self(obj);
     if (obj.owornmask) obj.owornmask = 0;
-    // C: if (verbosely && cansee(omx, omy)) pline_mon(...)
+    // C steal.c mdrop_obj: verbosely && cansee → pline_mon
     if (verbosely && cansee(omx, omy)) {
-        await pline(`${Monnam(mon)} drops ${obj_name}.`);
+        await pline_mon(mon, `${Monnam(mon)} drops ${obj_name}.`);
     }
     // flooreffects omitted — ordinary missiles/items place on floor
     place_object(obj, omx, omy);
@@ -655,7 +655,10 @@ async function dog_invent(mtmp, edog, udist) {
                 if (cansee(omx, omy)) {
                     const otmpname = distant_name(otmp, doname);
                     if (game.flags?.verbose !== false) {
-                        await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
+                        await pline_xy(
+                            omx, omy,
+                            `${Monnam(mtmp)} picks up ${otmpname}.`,
+                        );
                     }
                 }
                 obj_extract_self(otmp);

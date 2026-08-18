@@ -1,5 +1,6 @@
 // display.js — Map rendering and terminal output.
-// C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen,
+// C ref: display.c — newsym, show_glyph (glyph_updates / show_glyph_change
+// D-1219), docrt (in_docrt), cls, flush_screen,
 // suppress_map_output (D-1126),
 // shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
@@ -23,7 +24,7 @@ import {
     LA_DOWN,
     BC_BALL, BC_CHAIN,
     ENGRAVE, BURN, HEADSTONE,
-    IS_OBSTRUCTED, IS_DOOR, IS_ROOM,
+    IS_OBSTRUCTED, IS_DOOR, IS_ROOM, IS_WALL, IS_FURNITURE,
     Is_waterlevel, Is_airlevel,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
@@ -44,7 +45,8 @@ import {
     M_AP_OBJECT, M_AP_TYPE,
     MCORPSENM,
     isok,
-    xytodir, directionname,
+    u_at,
+    xytodir, dirtocoord, directionname,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_COMFULL,
     GPCOORDS_SCREEN,
     SVALL,
@@ -1416,8 +1418,126 @@ export function terrain_glyph(loc, x, y) {
     }
 }
 
+/**
+ * C display.c show_glyph — JS has no integer glyph IDs. Classify the
+ * tty cell about to be stored so is_cmap_* / glyph_is_monster can run.
+ * Named: full cmap_to_glyph / GLYPH_NOTHING vs UNEXPLORED IDs.
+ */
+function gbuf_show_kind(x, y, ch, color, decgfx, loc) {
+    const mtmp = mon_at_display(x, y);
+    if (mtmp) {
+        const mg = mon_glyph(mtmp);
+        if (ch === mg.ch) return 'monster';
+        const apg = mimic_object_appearance_glyph(mtmp);
+        if (apg && ch === apg.ch) return 'object';
+    }
+    if (ch === 'I' && !decgfx) return 'invisible';
+    const trap = t_at_display(x, y);
+    if (trap && trap.tseen) {
+        const tg = trap_glyph(trap);
+        if (tg.ch === ch) return 'trap';
+    }
+    const obj = objects_at(x, y);
+    if (obj && !covers_objects(x, y)) {
+        const og = obj_glyph(obj);
+        if (og.ch === ch) return 'object';
+    }
+    const tg = terrain_glyph(loc, x, y);
+    if (tg && ch === tg.ch) return 'terrain';
+    if ((!ch || ch === ' ') && !decgfx
+        && (color == null || color === NO_COLOR)) {
+        return 'unexplored';
+    }
+    return 'other';
+}
+
+function gbuf_old_unexplored_or_nothing(loc) {
+    const kind = loc.disp_kind;
+    if (kind === 'unexplored' || kind === 'nothing') return true;
+    return loc.disp_ch == null || loc.disp_ch === '';
+}
+
+/** C sym.h is_cmap_furniture — S_upstair..S_fountain via loc.typ. */
+function new_cmap_is_furniture(kind, loc) {
+    return kind === 'terrain' && IS_FURNITURE(loc.typ);
+}
+
+/** C sym.h is_cmap_wall — S_stone..S_trwall. SCORR paints as stone. */
+function new_cmap_is_wall(kind, loc) {
+    if (kind !== 'terrain') return false;
+    const t = loc.typ | 0;
+    return t === STONE || t === SCORR || IS_WALL(t);
+}
+
+/** C sym.h is_cmap_room — S_room..S_darkroom (ROOM typ, not IS_ROOM). */
+function new_cmap_is_room(kind, loc) {
+    return kind === 'terrain' && (loc.typ | 0) === ROOM;
+}
+
+/**
+ * C display.c show_glyph 2011–2028 — local `show_glyph_change`.
+ * Default Off. firstmatch / pline is the then-arm in show_glyph_cell.
+ */
+export function show_glyph_change_wanted(loc, x, y, ch, color = NO_COLOR,
+    decgfx = false, attr = 0) {
+    if (!loc) return false;
+    const a11y = game.a11y;
+    if (!a11y?.glyph_updates || (a11y.mon_notices_blocked | 0)) return false;
+    const ps = game.program_state || {};
+    if (ps.in_docrt || ps.gameover || ps.in_getlev
+        || (ps.stopprint | 0) || (ps.done_stopprint | 0)) {
+        return false;
+    }
+    if (suppress_map_output()) return false;
+    const storedColor = tty_map_color(color);
+    const glyphChanged = loc.disp_ch !== ch
+        || loc.disp_color !== storedColor
+        || !!loc.disp_decgfx !== !!decgfx
+        || (loc.disp_attr | 0) !== (attr | 0);
+    if (!glyphChanged && !loc.gnew) return false;
+    const kind = gbuf_show_kind(x, y, ch, color, decgfx, loc);
+    if (!(gbuf_old_unexplored_or_nothing(loc) || new_cmap_is_furniture(kind, loc))) {
+        return false;
+    }
+    if (new_cmap_is_wall(kind, loc) || new_cmap_is_room(kind, loc)) return false;
+    if ((a11y.mon_notices && kind === 'monster')
+        || loc.disp_kind === 'monster'
+        || u_at(x, y)) {
+        return false;
+    }
+    return true;
+}
+
+let _auto_describe_text = null;
+
+/**
+ * C display.c show_glyph 2059–2070 — force accessiblemsg, describe, pline_xy.
+ * firstmatch via getpos auto_describe_text (D-1217 named full table).
+ */
+async function emit_show_glyph_change(x, y) {
+    if (!game.a11y) {
+        game.a11y = { accessiblemsg: false, msg_loc: { x: 0, y: 0 } };
+    }
+    const tmp = !!game.a11y.accessiblemsg;
+    game.a11y.accessiblemsg = true;
+    try {
+        if (!_auto_describe_text) {
+            const m = await import('./getpos.js');
+            _auto_describe_text = m.auto_describe_text;
+        }
+        const firstmatch = _auto_describe_text(x, y) || '';
+        await pline_xy(x, y, `${firstmatch}.`);
+    } finally {
+        game.a11y.accessiblemsg = tmp;
+    }
+}
+
 // ── show_glyph_cell ──
-export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0) {
+/**
+ * C ref: display.c show_glyph — store gbuf then optional glyph_updates pline.
+ * Async only yields when mention_map/glyph_updates fires (default Off).
+ */
+export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     // C reset_glyphmap: (GMAP_ROGUELEVEL && !has_rogue_color) → NO_COLOR
@@ -1425,11 +1545,15 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
         color = NO_COLOR;
         decgfx = false;
     }
+    const announce = show_glyph_change_wanted(loc, x, y, ch, color, decgfx, attr);
+    const kind = gbuf_show_kind(x, y, ch, color, decgfx, loc);
     loc.disp_ch = ch;
     loc.disp_color = tty_map_color(color);
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
+    loc.disp_kind = kind;
     loc.gnew = 1;
+    if (announce) await emit_show_glyph_change(x, y);
 }
 
 /**
@@ -2525,36 +2649,45 @@ function show_memory_glyph(x, y) {
 
 export async function docrt() {
     if (!game.u?.ux || !game.level) return;
-    // C docrt_flags: if uswallow → swallowed(1); skip map vision path
-    if (game.u.uswallow) {
-        await cls();
-        swallowed(1);
-        return;
-    }
-    // C vision_recalc(2) update loop newsyms prior sight while !cansee
-    // (Hallu mon_warning → rn2(5)). JS vision_recalc(2) skips that loop
-    // (D-0583 getbones/getpos paint). Under Hallu, burn-only newsyms on
-    // live viz before cls (D-0852). Non-Hallu skipped — incomplete
-    // !cansee memory/waslit arms regress PASS screens (#992 cohort).
-    {
-        const u = game.u || {};
-        if (u.Hallucination
-            || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))) {
-            vision_off_newsym_gbuf({ useLiveViz: true });
+    if (!game.program_state) game.program_state = {};
+    // C display.c docrt_flags 1717–1720 / 1772 — in_docrt skips nested
+    // redraw and gates show_glyph_change (D-1219).
+    if (game.program_state.in_docrt) return;
+    game.program_state.in_docrt = true;
+    try {
+        // C docrt_flags: if uswallow → swallowed(1); skip map vision path
+        if (game.u.uswallow) {
+            await cls();
+            swallowed(1);
+            return;
         }
+        // C vision_recalc(2) update loop newsyms prior sight while !cansee
+        // (Hallu mon_warning → rn2(5)). JS vision_recalc(2) skips that loop
+        // (D-0583 getbones/getpos paint). Under Hallu, burn-only newsyms on
+        // live viz before cls (D-0852). Non-Hallu skipped — incomplete
+        // !cansee memory/waslit arms regress PASS screens (#992 cohort).
+        {
+            const u = game.u || {};
+            if (u.Hallucination
+                || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))) {
+                vision_off_newsym_gbuf({ useLiveViz: true });
+            }
+        }
+        vision_recalc(2);
+        await cls();
+        // C: show_glyph(x,y, lev->glyph) for all cells (memory; no Hallu RNG)
+        for (let y = 0; y < ROWNO; y++)
+            for (let x = 1; x < COLNO; x++)
+                show_memory_glyph(x, y);
+        // C: vision_recalc(0) — see what is to be seen (+ newsym updates)
+        vision_recalc(0);
+        // C docrt also see_monsters() after vision — floating warns / sensed mons
+        see_monsters();
+        // Named omission: underwater/buried;
+        // docrt_flags maponly/redrawonly/nocls; disp.botlx + update_inventory.
+    } finally {
+        game.program_state.in_docrt = false;
     }
-    vision_recalc(2);
-    await cls();
-    // C: show_glyph(x,y, lev->glyph) for all cells (memory; no Hallu RNG)
-    for (let y = 0; y < ROWNO; y++)
-        for (let x = 1; x < COLNO; x++)
-            show_memory_glyph(x, y);
-    // C: vision_recalc(0) — see what is to be seen (+ newsym updates)
-    vision_recalc(0);
-    // C docrt also see_monsters() after vision — floating warns / sensed mons
-    see_monsters();
-    // Named omission: underwater/buried;
-    // docrt_flags maponly/redrawonly/nocls; disp.botlx + update_inventory.
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -3279,6 +3412,7 @@ export function clear_glyph_buffer() {
             loc.disp_color = NO_COLOR;
             loc.disp_decgfx = false;
             loc.disp_attr = 0;
+            loc.disp_kind = 'unexplored';
             loc.gnew = 0;
         }
     }
@@ -3514,11 +3648,77 @@ export function coord_desc(x, y, cmode) {
 }
 
 /**
+ * C pline.c set_msg_xy 93–97 — store a11y.msg_loc for the next vpline.
+ * Consume is D-1207; pline_xy/pline_mon writers are D-1215.
+ * set_msg_dir / pline_dir are D-1216.
+ */
+export function set_msg_xy(x, y) {
+    if (!game.a11y) {
+        game.a11y = { accessiblemsg: false, msg_loc: { x: 0, y: 0 } };
+    }
+    if (!game.a11y.msg_loc) game.a11y.msg_loc = { x: 0, y: 0 };
+    game.a11y.msg_loc.x = x | 0;
+    game.a11y.msg_loc.y = y | 0;
+}
+
+/**
+ * C pline.c set_msg_dir 82–89 — dirtocoord then += u.ux/u.uy.
+ * Invalid dir (DIR_ERR / >= N_DIRS_Z) leaves loc unchanged then still
+ * adds hero (C: dirtocoord no-op, then +=). Up/down xdir/ydir are 0,0
+ * so loc becomes the hero cell (isok prefixes "here").
+ */
+export function set_msg_dir(dir) {
+    if (!game.a11y) {
+        game.a11y = { accessiblemsg: false, msg_loc: { x: 0, y: 0 } };
+    }
+    if (!game.a11y.msg_loc) game.a11y.msg_loc = { x: 0, y: 0 };
+    dirtocoord(game.a11y.msg_loc, dir);
+    const u = game.u || {};
+    game.a11y.msg_loc.x = ((game.a11y.msg_loc.x | 0) + (u.ux | 0)) | 0;
+    game.a11y.msg_loc.y = ((game.a11y.msg_loc.y | 0) + (u.uy | 0)) | 0;
+}
+
+/**
+ * C pline.c pline_xy 126–135 — set_msg_xy then vpline.
+ */
+export async function pline_xy(x, y, msg) {
+    set_msg_xy(x, y);
+    await pline(msg);
+}
+
+/**
+ * C pline.c pline_mon 137–150 — &youmonst → (0,0) (not hero ux,uy);
+ * else mx,my; then vpline. isok rejects x=0 so youmonst never prefixes.
+ * Named omit: remaining pline sites that C calls as pline_mon;
+ * msg_mon_movement; rolling-boulder TELEP pline_xy;
+ * mention_walls run>=2 boulder path block.
+ */
+export async function pline_mon(mtmp, msg) {
+    if (mtmp === game.youmonst) {
+        set_msg_xy(0, 0);
+    } else {
+        set_msg_xy(mtmp.mx, mtmp.my);
+    }
+    await pline(msg);
+}
+
+/**
+ * C pline.c pline_dir 113–123 — set_msg_dir then vpline.
+ * Live: mention_walls "It's %s."; dobuzz "%s hits you!" via
+ * xytodir(-dx,-dy). Named: run>=2 boulder pline_dir.
+ */
+export async function pline_dir(dir, msg) {
+    set_msg_dir(dir);
+    await pline(msg);
+}
+
+/**
  * C pline.c vpline 162–189 — snapshot a11y.msg_loc then always reset to
  * 0,0 (even empty / Norep-suppressed / accessiblemsg Off). If
  * accessiblemsg && isok(saved), prefix `coord_desc: ` (NONE→COMFULL).
- * D-1207. Named: pline_xy/pline_mon/set_msg_dir writers; optlist wire
- * onto a11y.accessiblemsg (JS doset still flags.accessiblemsg).
+ * D-1207. Writers: pline_xy/pline_mon D-1215; set_msg_dir/pline_dir
+ * D-1216. Option addr `&a11y.accessiblemsg` is D-1218. `show_glyph`
+ * glyph_updates pline_xy is D-1219.
  */
 function vpline_consume_msg_loc(msg) {
     if (!game.a11y) {

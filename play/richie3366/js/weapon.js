@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rnl } from './rng.js';
-import { flush_topl_more, pline, You_feel, canseemon, bot } from './display.js';
+import { flush_topl_more, pline, You_feel, canseemon, bot, pline_mon } from './display.js';
 import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one } from './options.js';
 import { yn_function } from './getline.js';
@@ -446,7 +446,8 @@ export async function mon_wield_item(mon) {
         // C: canseemon → pline_mon("%s wields %s%c", Monnam, doname, !|.)
         // before final owornmask (weld/artifact_light arms deferred)
         if (canseemon(mon)) {
-            await pline(
+            await pline_mon(
+                mon,
                 `${Monnam(mon)} wields ${doname(obj)}${exclaim ? '!' : '.'}`,
             );
         }

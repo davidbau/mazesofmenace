@@ -344,10 +344,47 @@ export function parsebindings(bindings, outMap) {
     return ok;
 }
 
+/**
+ * C options.c optfn_boolean do_set parameter words: strncmpi true/yes,
+ * strcmpi on, digit+atoi==1 → On; false/no/off / atoi==0 → Off.
+ * Null if the token is not a boolean word (valok No → C config_error).
+ */
+function optfn_boolean_word(op) {
+    const s = String(op ?? '');
+    const ln = s.length;
+    if (!ln) return null;
+    const low = s.toLowerCase();
+    if ((ln <= 4 && 'true'.startsWith(low))
+        || (ln <= 3 && 'yes'.startsWith(low))
+        || low === 'on'
+        || (/^\d/.test(s) && parseInt(s, 10) === 1)) {
+        return true;
+    }
+    if ((ln <= 5 && 'false'.startsWith(low))
+        || (ln <= 2 && 'no'.startsWith(low))
+        || low === 'off'
+        || (/^\d/.test(s) && parseInt(s, 10) === 0)) {
+        return false;
+    }
+    return null;
+}
+
+function parse_a11y_accessiblemsg(result, value) {
+    if (!result.a11y) result.a11y = {};
+    result.a11y.accessiblemsg = !!value;
+}
+
+function parse_a11y_glyph_updates(result, value) {
+    if (!result.a11y) result.a11y = {};
+    result.a11y.glyph_updates = !!value;
+}
+
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
         flags: {}, iflags: {},
+        // C optlist.h NHOPTB accessiblemsg addr &a11y.accessiblemsg (D-1218)
+        a11y: {},
         // C: cfgfiles.c BINDINGS → parsebindings → Cmd.cmdbinds overlays
         binds: new Map(),
     };
@@ -411,6 +448,21 @@ export function parseNethackrc(rc) {
                 else if (key === 'disclose') {
                     result.flags.end_disclose = parseDiscloseOption(val, negated);
                 }
+                else if (key === 'accessiblemsg') {
+                    // C optfn_boolean: negated boolean must not have a
+                    // parameter; invalid word is silent-err when !valok.
+                    if (negated) continue;
+                    const parsed = optfn_boolean_word(val);
+                    if (parsed == null) continue;
+                    parse_a11y_accessiblemsg(result, parsed);
+                }
+                else if (key === 'mention_map') {
+                    // C optlist.h NHOPTB mention_map addr &a11y.glyph_updates
+                    if (negated) continue;
+                    const parsed = optfn_boolean_word(val);
+                    if (parsed == null) continue;
+                    parse_a11y_glyph_updates(result, parsed);
+                }
                 else result.flags[key] = val;
             } else {
                 // Boolean flag
@@ -428,6 +480,12 @@ export function parseNethackrc(rc) {
                 else if (lname === 'verbose') result.flags.verbose = value;
                 // C: OPTIONS=DECgraphics loads Primary DEC showsyms (same as symset:)
                 else if (lname === 'decgraphics') result.flags.decgraphics = value;
+                else if (lname === 'accessiblemsg') {
+                    parse_a11y_accessiblemsg(result, value);
+                }
+                else if (lname === 'mention_map') {
+                    parse_a11y_glyph_updates(result, value);
+                }
                 else result.flags[lname] = value;
             }
         }
@@ -1217,7 +1275,7 @@ const DOSET_BOOL_ADDR = {
     use_darkgray: { obj: 'iflags', key: 'wc2_darkgray' },
     use_truecolor: { obj: 'iflags', key: 'use_truecolor' },
     // modifiable
-    accessiblemsg: { obj: 'flags', key: 'accessiblemsg' },
+    accessiblemsg: { obj: 'a11y', key: 'accessiblemsg' }, // C: &a11y.accessiblemsg
     acoustics: { obj: 'flags', key: 'acoustics' },
     altmeta: { obj: 'iflags', key: 'altmeta' },
     armorstatus: { obj: 'iflags', key: 'armorstatus' },
@@ -1253,7 +1311,7 @@ const DOSET_BOOL_ADDR = {
     lootabc: { obj: 'flags', key: 'lootabc' },
     mail: { obj: 'flags', key: 'mail' }, // C: flags.biff
     mention_decor: { obj: 'flags', key: 'mention_decor' },
-    mention_map: { obj: 'flags', key: 'mention_map' },
+    mention_map: { obj: 'a11y', key: 'glyph_updates' }, // C: &a11y.glyph_updates
     mention_walls: { obj: 'flags', key: 'mention_walls' },
     menu_overlay: { obj: 'iflags', key: 'menu_overlay' },
     menucolors: { obj: 'iflags', key: 'use_menu_color' },
@@ -1347,6 +1405,33 @@ function doset_bool_value(name) {
     const v = bag[addr.key];
     if (v === undefined) return DOSET_BOOL_DEFAULT_ON.has(name);
     return !!v;
+}
+
+/**
+ * C options.c optfn_boolean do_set — `*(allopt[].addr) = !negated` then
+ * after-change. `initial` is `go.opt_initial`: config returns before the
+ * in-game switch (no botl, no `opt_accessiblemsg` msg_loc zero, no
+ * toggle pline). C optlist.h NHOPTB accessiblemsg addr is
+ * `&a11y.accessiblemsg` (D-1218); mention_map is `&a11y.glyph_updates`
+ * (D-1219).
+ */
+export function optfn_boolean_do_set(name, negated, initial = false) {
+    const addr = DOSET_BOOL_ADDR[name];
+    if (!addr) return;
+    if (!game[addr.obj]) game[addr.obj] = {};
+    game[addr.obj][addr.key] = !negated;
+    if (initial) return;
+    if (name === 'showexp' || name === 'time' || name === 'showscore'
+        || name === 'showvers' || name === 'showrace') {
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+    }
+    if (name === 'accessiblemsg') {
+        // C options.c:5428–5430 case opt_accessiblemsg (!opt_initial)
+        if (!game.a11y.msg_loc) game.a11y.msg_loc = { x: 0, y: 0 };
+        game.a11y.msg_loc.x = 0;
+        game.a11y.msg_loc.y = 0;
+    }
 }
 
 function doset_bool_term(name) {
@@ -1525,17 +1610,11 @@ export async function doset() {
     // flush_screen→bot() runs before more() on the *previous* pair — matching
     // C’s Xp:1/0 without T: during price_quotes More (D-0499).
     for (const name of boolPicks) {
-        const addr = DOSET_BOOL_ADDR[name];
-        if (!addr) continue;
-        if (!game[addr.obj]) game[addr.obj] = {};
-        const on = !doset_bool_value(name);
-        game[addr.obj][addr.key] = on;
-        // C optfn_boolean after-change: showexp/time/… → disp.botl
-        if (name === 'showexp' || name === 'time' || name === 'showscore'
-            || name === 'showvers' || name === 'showrace') {
-            game.flags.botl = true;
-        }
-        await pline(`'${name}' option toggled ${on ? 'on' : 'off'}.`);
+        if (!DOSET_BOOL_ADDR[name]) continue;
+        // C: doset toggle → parseoptions → optfn_boolean negated = old value
+        const negated = doset_bool_value(name);
+        optfn_boolean_do_set(name, negated, false);
+        await pline(`'${name}' option toggled ${!negated ? 'on' : 'off'}.`);
     }
     for (const name of handlerPicks) {
         if (name === 'pickup_types') {

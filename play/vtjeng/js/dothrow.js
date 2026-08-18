@@ -786,8 +786,16 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, state = game) {
     }
 
     if (mon) {
-        /* throwit_mon_hit() calls thitmonst(); bhit() stops ahead of it */
-        throw new UnsupportedThrowError('throwit_mon_hit()');
+        /* C ref: dothrow.c throwit_mon_hit() (1482-1506), reached from 1695.
+           Three statements stand between its entry and thitmonst() at 1492,
+           and none of them can act on a path this port admits. The shopkeeper
+           arm at 1487-1489 needs obj->where == OBJ_MINVENT, which only shk.c
+           shkcatch() produces and js/zap.js bhit() refuses. snuff_candle()
+           at 1490 needs obj->lamplit, which bhit()'s show_transient_light()
+           arm refuses. The gn.notonhead write at 1491 recomputes from
+           gb.bhitpos what bhit() already wrote at zap.c:3995 from the same
+           square. So thitmonst() is the first thing here that would run. */
+        throw new UnsupportedThrowError('thitmonst()');
     }
 
     const bx = state.gb.bhitpos.x;
@@ -916,9 +924,10 @@ export function impact_disturbs_zombies(obj, violent, state = game) {
 //   pair, and js/dungeon.js surface() on digests() and enfolds().
 // - dokick.c ghitm() (295-407), for gold a monster in the flight path catches:
 //   likes_gold(), wakeup(), setmangry(), finish_meating() and the shopkeeper's
-//   bribe accounting. Unreachable from here today, exactly as throwit()'s
-//   own monster arm is, because js/zap.js bhit() stops for a monster in the
-//   path before it can return one.
+//   bribe accounting. This one is reachable. js/zap.js bhit() ports C's
+//   THROWN_WEAPON arm at zap.c:4021-4029, so it returns the monster rather
+//   than stopping for it, and the refusal below is what holds the branch --
+//   the same is true of throwit()'s own monster arm.
 // - shk.c sellobj(), for gold that lands on a shop's floor.
 async function throw_gold(obj, state = game) {
     const u = state.u;

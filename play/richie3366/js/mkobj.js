@@ -48,7 +48,7 @@ import {
     MELT_ICE_AWAY, HATCH_EGG, FIG_TRANSFORM, BURN_OBJECT, SHRINK_GLOB,
     MAX_EGG_HATCH_TIME,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
-    OBJ_MIGRATING,
+    OBJ_MIGRATING, W_WEP,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
@@ -611,8 +611,9 @@ function special_corpse(num) {
 /**
  * C ref: timeout.c timer queue (gt.timer_base) — object + level timers.
  * start_timer inserts by absolute timeout (moves+when); run_timers fires
- * when timeout <= moves. Envelope: ROT_CORPSE → rot_corpse floor extract;
- * HATCH_EGG queued via attach_egg_hatch_timeout (D-0533); hatch_egg
+ * when timeout <= moves. Envelope: ROT_CORPSE → rot_corpse floor extract
+ * + invent/minvent worn (D-1213); HATCH_EGG queued via
+ * attach_egg_hatch_timeout (D-0533); hatch_egg
  * dispatched (D-1036/D-1037); TIMER_LEVEL MELT_ICE_AWAY → melt_ice_away
  * (D-0965); REVIVE_MON / ZOMBIFY_MON → revive_mon / zombify_mon
  * (D-1202). FIG_TRANSFORM → fig_transform (D-1032).
@@ -788,20 +789,27 @@ export function stop_timer(action, obj) {
 }
 
 /**
- * C ref: timeout.c obj_has_timer / peek_timer — true if this object
- * already has a TIMER_OBJECT of the given action (absolute timeout
- * is never 0 for a live entry).
+ * C ref: timeout.c peek_timer — absolute timeout for this
+ * (func_index, obj), or 0 if none. Does not subtract moves
+ * (unlike stop_timer remaining). C matches func_index + arg
+ * pointer, not kind.
  */
-export function obj_has_timer(obj, action) {
-    if (!obj) return false;
+export function peek_timer(type, obj) {
+    if (!obj) return 0;
     for (let curr = timer_base()._timer_base; curr; curr = curr.next) {
-        if ((curr.kind | 0) === TIMER_OBJECT
-            && curr.obj === obj
-            && curr.action === action) {
-            return true;
+        if (curr.action === type && curr.obj === obj) {
+            return curr.timeout | 0;
         }
     }
-    return false;
+    return 0;
+}
+
+/**
+ * C ref: timeout.c obj_has_timer — peek_timer != 0. Absolute
+ * timeout is never 0 for a live entry.
+ */
+export function obj_has_timer(obj, action) {
+    return peek_timer(action, obj) !== 0;
 }
 
 /**
@@ -936,14 +944,67 @@ export function carry_obj_effects(obj) {
 }
 
 /**
+ * C ref: objnam.c otense — plural verb if quan != 1; else vtense(null).
+ * ART_EYES_OF_THE_OVERWORLD plural named omit.
+ */
+function otense_corpse(obj, verb) {
+    if ((obj?.quan | 0) !== 1) return verb;
+    return vtense(null, verb);
+}
+
+/**
+ * C ref: weapon.c setmnotwielded — MON_NOWEP + clear W_WEP.
+ * Named omit: artifact_light end_burn + canseemon shine pline.
+ */
+function setmnotwielded_rot(mon, obj) {
+    if (!obj) return;
+    if (mon && mon.mw === obj) mon.mw = null;
+    obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
+}
+
+/**
  * C ref: dig.c rot_corpse — corpse finished rotting.
- * Envelope: OBJ_FLOOR extract + newsym; invent/minvent/worn plines deferred.
+ * Envelope (D-1213): OBJ_INVENT verbose Your + owornmask
+ * remove_worn_item(TRUE)/stop_occupation; OBJ_MINVENT wielded
+ * setmnotwielded; OBJ_MIGRATING owornmask=0; invent extract splice;
+ * in_invent update_inventory after rot_organic extract.
+ * Named omit: hideunder/mundetected expose; rot_organic contents bury;
+ * unique/pname corpse_xname CXN_NO_PFX "the"; setmnotwielded artifact_light.
  */
 export async function rot_corpse(obj) {
     if (!obj) return;
     const onFloor = obj.where === OBJ_FLOOR;
-    const x = obj.ox | 0;
-    const y = obj.oy | 0;
+    const inInvent = obj.where === OBJ_INVENT;
+    let x = 0;
+    let y = 0;
+
+    if (onFloor) {
+        x = obj.ox | 0;
+        y = obj.oy | 0;
+    } else if (inInvent) {
+        if (game.flags?.verbose !== false) {
+            const { pline } = await import('./display.js');
+            const cname = cxname(obj);
+            const uwep = game.u?.uwep;
+            const wielded = obj === uwep ? 'wielded ' : '';
+            const verb = otense_corpse(obj, 'rot');
+            const punct = obj === uwep ? '!' : '.';
+            await pline(`Your ${wielded}${cname} ${verb} away${punct}`);
+        }
+        if (obj.owornmask) {
+            const { remove_worn_item } = await import('./steal.js');
+            await remove_worn_item(obj, true);
+            const { stop_occupation } = await import('./hack.js');
+            await stop_occupation();
+        }
+    } else if (obj.where === OBJ_MINVENT) {
+        if (obj.owornmask && obj === obj.ocarry?.mw) {
+            setmnotwielded_rot(obj.ocarry, obj);
+        }
+    } else if (obj.where === OBJ_MIGRATING) {
+        obj.owornmask = 0;
+    }
+
     // C: rot_organic — contents bury deferred; extract + obfree
     obj_extract_self(obj);
     obj.quan = 0;
@@ -954,6 +1015,9 @@ export async function rot_corpse(obj) {
         // Dynamic import avoids display.js ↔ mkobj.js cycle (objects_at).
         const { newsym } = await import('./display.js');
         newsym(x, y);
+    } else if (inInvent) {
+        const { update_inventory } = await import('./invent.js');
+        update_inventory();
     }
 }
 
@@ -2077,7 +2141,8 @@ export function replace_object(obj, otmp) {
     }
 }
 
-// C ref: mkobj.c obj_extract_self — floor / minvent (invent/contained omitted)
+// C ref: mkobj.c obj_extract_self — floor / invent / minvent / contained /
+// migrating / buried. OBJ_ONBILL / LUAFREE / DELETED panic named omit.
 export function obj_extract_self(obj) {
     if (!obj) return;
     // Floor: also accept legacy objs with coords but unset where
@@ -2120,6 +2185,20 @@ export function obj_extract_self(obj) {
         // C remove_object: if (otmp->timed) obj_timer_checks(otmp, x, y, 0)
         if (wasTimed) obj_timer_checks(obj, ox, oy, 0);
         return;
+    } else if (obj.where === OBJ_INVENT) {
+        // C invent.c freeinv via obj_extract_self: extract_nobj(&gi.invent)
+        const inv = game.invent;
+        if (Array.isArray(inv)) {
+            const idx = inv.indexOf(obj);
+            if (idx >= 0) inv.splice(idx, 1);
+        }
+        obj.pickup_prev = 0;
+        if ((obj.otyp | 0) === FIGURINE && (obj.timed | 0)) {
+            stop_timer(FIG_TRANSFORM, obj);
+        }
+        // C freeinv also update_inventory(); rot_corpse in_invent tail
+        // repeats it. Shared extract skips the extra redraw (perm_invent
+        // Off default is a no-op).
     } else if (obj.where === OBJ_MINVENT || obj.where === 'MINVENT') {
         // C: extract_nobj(obj, &obj->ocarry->minvent); clear ocarry
         const mon = obj.ocarry;

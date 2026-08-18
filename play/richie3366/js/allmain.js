@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './mklev.js';
-import { rhack, continue_run, run_active, continue_search, search_repeat_active } from './cmd.js';
+import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround } from './cmd.js';
 import {
     docrt, cls, bot, flush_screen, pline, flush_topl_more, see_monsters,
     see_objects, see_traps, swallowed,
@@ -691,10 +691,10 @@ export async function newgame() {
     await welcome(true);
 
     // C allmain.c:844–848 — notice_mon_on after welcome; glyph_updates
-    // dolookaround named; else notice_all_mons(TRUE) (D-1200).
+    // then dolookaround else notice_all_mons(TRUE) (D-1200/D-1217).
     notice_mon_on();
     if (g.a11y?.glyph_updates) {
-        /* C: (void) dolookaround(); named — no JS lookaround export */
+        await dolookaround();
     } else {
         await notice_all_mons(true);
     }

@@ -347,6 +347,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "lookaround" IFBURIED|GENERALCMD (no AUTOCOMPLETE)
+        name: 'lookaround',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { dolookaround } = await import('./cmd.js');
+            return dolookaround();
+        },
+    },
+    {
         name: 'loot',
         wiz: false,
         autocomplete: true,

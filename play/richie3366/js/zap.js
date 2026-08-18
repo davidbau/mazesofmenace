@@ -51,7 +51,7 @@ import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { getlin } from './getline.js';
 import {
-    flush_screen, flush_topl_more, pline, Norep, You_feel, newsym,
+    flush_screen, flush_topl_more, pline, pline_dir, Norep, You_feel, newsym,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon, canspotmon,
     obj_glyph,
 } from './display.js';
@@ -124,7 +124,7 @@ import {
     NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
     IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
     DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH,
-    OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
+    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
     Has_contents, ZAPPED_WAND, THROWN_WEAPON, KICKED_WEAPON,
     FLASHED_LIGHT, INVIS_BEAM, NOTELL, TELL,
     STRAT_WAITMASK,
@@ -143,6 +143,7 @@ import {
     OMONST, has_oname, ONAME, has_omonst, has_omid, OMID, ESHK,
     WEB, PIT, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
     TIMER_LEVEL, MELT_ICE_AWAY, EXPL_FIERY, COLNO, ROWNO,
+    xytodir,
     IS_ALTAR, IS_STWALL, Is_earthlevel, IS_AIR, CLOUD, IS_SINK,
     MM_NOTAIL, MM_ADJACENTOK, NATTK,
 } from './const.js';
@@ -1655,8 +1656,12 @@ export async function dobuzz(
                     nomul(0);
                     if (!forcemiss && zap_hit(game.u?.uac ?? 10, 0)) {
                         range -= 2;
-                        // C: pline_The / The(flash) via article + capitalize
-                        await pline(`The ${flash_str(fltyp)} hits you!`);
+                        // C zap.c:4964 pline_dir(xytodir(-dx,-dy), "%s hits you!",
+                        // The(flash_str)) (D-1216). Steed rn2(3) still named.
+                        await pline_dir(
+                            xytodir(-dx, -dy),
+                            `The ${flash_str(fltyp)} hits you!`,
+                        );
                         if (Reflecting()) {
                             if (!Blind()) {
                                 await ureflects(

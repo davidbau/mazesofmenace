@@ -10,7 +10,7 @@
 // (D-0928 #1187; D-0819 help), mMoOdDxX gather_locs cycle (D-0928 #1189),
 // autodescribe topline, force unknown-direction pline, '.' →
 // LOOK_TRADITIONAL, ESC → -1.
-// getpos_menu / GFILTER_VIEW|AREA / aA interesting / S_goodpos tmp_at
+// getpos_menu / GFILTER_AREA / aA interesting cycle / S_goodpos tmp_at
 // hilite / getloc_moveskip glyph-skip / engraving full showsyms /
 // docrtRefresh redraw_map-only deferred. getpos_getvalid `(invalid
 // target)` live (D-0899).
@@ -25,7 +25,7 @@ import { cansee } from './vision.js';
 import { distant_name, doname, ansimpleoname } from './objnam.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
-    GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING,
+    GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING, GLOC_VALID,
     GFILTER_VIEW,
     NHKF_GETPOS_SELF, NHKF_GETPOS_PICK, NHKF_GETPOS_SHOWVALID,
     NHKF_GETPOS_AUTODESC,
@@ -38,7 +38,7 @@ import {
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, STRAT_WAITMASK,
     STAIRS, LADDER, LA_DOWN, ROOM, CORR, STONE, SCORR, TREE, CLOUD, IS_WALL,
     DOOR, IS_DOOR, IS_DRAWBRIDGE, D_NODOOR, D_ISOPEN, D_BROKEN,
-    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, AIR,
     FOUNTAIN, SINK, THRONE, GRAVE, ALTAR, VIBRATING_SQUARE,
     ROGUESET, Upolyd, Is_airlevel, Is_rogue_level,
 } from './const.js';
@@ -46,11 +46,12 @@ import { paint_corner_nhw_menu } from './invent.js';
 import { distant_monnam_none, pmname, Ugender } from './do_name.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import { t_at, trapname } from './trap.js';
-import { waterbody_name } from './hack.js';
+import { waterbody_name, invocation_pos } from './hack.js';
 import { is_valid_travelpt } from './cmd.js';
 import { ok_to_quest } from './quest.js';
 import { visctrl } from './dokeylist.js';
 import { distmin } from './hacklib.js';
+import { engr_at } from './engrave.js';
 import { objectNames } from './objects.js';
 import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
 
@@ -587,7 +588,7 @@ function cmap_defsym_explanation(x, y, loc) {
  * (D-0809). getpos_getvalid "(invalid target)" live (D-0899); S_goodpos
  * hilite glyphs deferred.
  */
-function auto_describe_text(cx, cy) {
+export function auto_describe_text(cx, cy) {
     const u = game.u || {};
     const terrainmode = game.iflags?.terrainmode | 0;
     if (
@@ -742,10 +743,45 @@ function is_unexplored_loc(x, y) {
 }
 
 /**
- * C ref: getpos.c gather_locs_interesting — GLOC_MONS/OBJS/DOOR/EXPLORE.
- * GFILTER_AREA (needs gloc_filter_map) and GLOC_INTERESTING/VALID deferred.
+ * C getpos.c known_vibrating_square_at — genuine VS at invocation_pos.
  */
-function gather_locs_interesting(x, y, gloc) {
+function known_vibrating_square_at(x, y) {
+    if (!invocation_pos(x, y)) return false;
+    const ttmp = t_at(x, y);
+    return !!(ttmp && (ttmp.ttyp | 0) === VIBRATING_SQUARE && ttmp.tseen);
+}
+
+/**
+ * C getpos.c gather_locs_interesting boring cmap — wall/tree/bars/ice/
+ * air/cloud/lava/water/room/corr. Not S_engr* (erevealed). Integer
+ * glyph_is_cmap IDs named; typ+look_shown_at stand in.
+ */
+function shown_boring_cmap(x, y) {
+    if (look_shown_at(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    const typ = loc.typ | 0;
+    const ch = loc.disp_ch;
+    const blank = !ch || ch === ' ' || ch === '';
+    if (!(loc.seenv | 0) && blank) return false;
+    const ep = engr_at(x, y);
+    if (ep?.erevealed) return false;
+    if (IS_WALL(typ) || typ === STONE || typ === SCORR) return true;
+    if (typ === TREE || typ === IRONBARS || typ === ICE) return true;
+    if (typ === AIR || typ === CLOUD) return true;
+    if (typ === LAVAPOOL || typ === LAVAWALL) return true;
+    if (typ === POOL || typ === MOAT || typ === WATER) return true;
+    if (typ === ROOM) return true;
+    if (typ === CORR) return true;
+    return false;
+}
+
+/**
+ * C ref: getpos.c gather_locs_interesting — GLOC_MONS/OBJS/DOOR/EXPLORE
+ * plus GLOC_INTERESTING / GLOC_VALID FALLTHROUGH (D-1217). GFILTER_AREA
+ * (needs gloc_filter_map) still named.
+ */
+export function gather_locs_interesting(x, y, gloc) {
     const filter = game.iflags?.getloc_filter | 0;
     if (filter === GFILTER_VIEW && !cansee(x, y)) return false;
 
@@ -786,6 +822,13 @@ function gather_locs_interesting(x, y, gloc) {
             || is_unexplored_loc(x, y - 1)
         );
     }
+    case GLOC_VALID:
+        if (getpos_getvalid) return !!getpos_getvalid(x, y);
+        // FALLTHROUGH — C getpos.c:487
+    case GLOC_INTERESTING:
+        return (gather_locs_interesting(x, y, GLOC_DOOR)
+            || !(shown_boring_cmap(x, y) || is_unexplored_loc(x, y))
+            || known_vibrating_square_at(x, y));
     default:
         return false;
     }

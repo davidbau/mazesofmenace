@@ -132,6 +132,18 @@ export function xytodir(x, y) {
 }
 
 /**
+ * C cmd.c dirtocoord 3858–3865 — write xdir/ydir into cc when
+ * dd > DIR_ERR (-1) && dd < N_DIRS_Z. Invalid dir is a no-op (does
+ * not zero cc). Caller of set_msg_dir still adds u.ux/u.uy.
+ */
+export function dirtocoord(cc, dd) {
+    if (dd > -1 && dd < N_DIRS_Z) {
+        cc.x = xdir[dd];
+        cc.y = ydir[dd];
+    }
+}
+
+/**
  * C ref: cmd.c directionname — N_DIRS_Z names; C enum DIR_DOWN then DIR_UP.
  * Out of range (including DIR_ERR -1) → "invalid".
  */

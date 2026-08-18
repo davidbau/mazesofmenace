@@ -133,6 +133,21 @@ export class NethackGame {
         if (!g.flags.end_disclose || typeof g.flags.end_disclose !== 'string') {
             g.flags.end_disclose = 'n'.repeat(6);
         }
+        // C optlist.h NHOPTB accessiblemsg &a11y.accessiblemsg (D-1218);
+        // mention_map &a11y.glyph_updates (D-1219). OPTIONS= writes the
+        // a11y bag; default Off. In-game msg_loc zero is optfn_boolean
+        // !opt_initial only (accessiblemsg). spot_monsters / mon_movement
+        // addr still named.
+        if (typeof opts.a11y?.accessiblemsg === 'boolean'
+            || typeof opts.a11y?.glyph_updates === 'boolean') {
+            if (!g.a11y) g.a11y = { msg_loc: { x: 0, y: 0 } };
+            if (typeof opts.a11y.accessiblemsg === 'boolean') {
+                g.a11y.accessiblemsg = opts.a11y.accessiblemsg;
+            }
+            if (typeof opts.a11y.glyph_updates === 'boolean') {
+                g.a11y.glyph_updates = opts.a11y.glyph_updates;
+            }
+        }
         // C optlist.h — autodescribe default On (opt_out); rc may negate.
         g.iflags = { autodescribe: true, ...opts.iflags };
         // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics

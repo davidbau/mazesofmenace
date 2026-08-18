@@ -9,6 +9,7 @@ import {
     mon_knows_traps, can_teleport, hides_under, webmaker, PM_GIANT_SPIDER,
     is_vampshifter, is_watch, is_mind_flayer, is_covetous,
     is_floater, is_flyer, amorphous, nolimbs, M1_SLITHY, MZ_SMALL,
+    grounded,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -44,7 +45,7 @@ import {
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG,
 } from './const.js';
-import { is_pool, is_lava, in_town, stop_occupation, noattacks } from './hack.js';
+import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies } from './hack.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -66,7 +67,7 @@ import { stairway_at, u_on_newpos } from './mklev.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
 import { check_gear_next_turn } from './worn.js';
 import { picking_lock } from './lock.js';
-import { newsym, pline, canseemon as display_canseemon } from './display.js';
+import { newsym, pline, canseemon as display_canseemon, pline_mon } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { tactics } from './wizard.js';
@@ -830,7 +831,7 @@ function monhaskey(mon, for_unlocking) {
 async function mb_trapped(mtmp, canseeit) {
     if (game.flags?.verbose !== false) {
         if (canseeit && !game.u?.Unaware) {
-            await pline('KABOOM!!  You see a door explode.');
+            await pline_mon(mtmp, 'KABOOM!!  You see a door explode.');
         } else if (!game.u?.Deaf) {
             const far = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) > 7 * 7;
             await pline(`You hear a ${far ? 'distant' : 'nearby'} explosion.`);
@@ -1846,6 +1847,10 @@ export async function dochug(mtmp) {
             }
         }
         if (status === MMOVE_MOVED) {
+            // C: unstuck grabber / helpless after disturb still named
+            if (grounded(mdat)) {
+                disturb_buried_zombies(mtmp.mx | 0, mtmp.my | 0);
+            }
             /* Monsters can move and then shoot on same turn;
                C: ranged_attk_available || AT_WEAP || find_offensive */
             if (nearby

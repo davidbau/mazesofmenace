@@ -8,17 +8,22 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    newsym, flush_screen, pline, see_nearby_objects, clear_nhwindow_message,
+    newsym, flush_screen, pline, pline_dir, pline_xy, set_msg_xy,
+    see_nearby_objects,
+    clear_nhwindow_message,
     mon_visible, sensemon, glyph_is_invisible, unmap_object, map_object,
+    look_shown_at,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
-         D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
+         D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, SCORR, LAVAWALL,
+         DRAWBRIDGE_UP, ROOMOFFSET,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
-         IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR,
+         IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL,
          ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
-         xdir, ydir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
+         xdir, ydir, xytodir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
+         GFILTER_VIEW, GLOC_INTERESTING,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
          PARANOID_TRAP,
          ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
@@ -29,7 +34,7 @@ import { FOOD_CLASS, objectNames } from './objects.js';
 const STATUE_OTYP = objectNames.indexOf('STATUE');
 const BOULDER_OTYP = objectNames.indexOf('BOULDER');
 import { dist2, bad_rock, cant_squeeze_thru } from './mon.js';
-import { vision_recalc, couldsee } from './vision.js';
+import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
     doprring, dopramulet, doprtool,
@@ -39,7 +44,7 @@ import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { doread } from './read.js';
-import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor } from './engrave.js';
+import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor, engr_at } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
 import { doapply, check_leash } from './apply.js';
 import { dokick } from './dokick.js';
@@ -62,12 +67,13 @@ import { objects_at } from './mkobj.js';
 import { stairway_at, u_on_newpos } from './mklev.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
-import { getpos } from './getpos.js';
+import { getpos, gather_locs_interesting, auto_describe_text } from './getpos.js';
 import { visctrl } from './dokeylist.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
     impaired_movement, is_pool, is_lava, carrying_too_much,
     invocation_message, avoid_trap_andor_region,
+    hero_tread_disturb_buried_zombies,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -451,9 +457,11 @@ function end_running() {
 /**
  * C ref: hack.c test_move DO_MOVE + flags.mention_walls on IS_OBSTRUCTED.
  * Uses defsyms[].explanation via an(); S_stone → "solid stone".
+ * C: pline_dir(xytodir(dx,dy), "It's %s.", buf) (D-1216).
  * Deferred: Blind feel_location, Passes_walls/may_passwall, Underwater,
  * IRONBARS chew, tunnels/still_chewing, autodig, is_db_wall, Sokoban
- * resist, full back_to_glyph/wall_angle→S_stone edge cases, pline_dir a11y.
+ * resist, full back_to_glyph/wall_angle→S_stone edge cases,
+ * run>=2 boulder pline_dir.
  */
 async function mention_walls_obstructed(x, y) {
     if (!game.flags?.mention_walls) return;
@@ -473,7 +481,10 @@ async function mention_walls_obstructed(x, y) {
         // STONE / SCORR / unseen wall (wall_angle→S_stone) / other rock
         buf = 'solid stone';
     }
-    await pline(`It's ${buf}.`);
+    const u = game.u || {};
+    const dx = ((x | 0) - (u.ux | 0)) | 0;
+    const dy = ((y | 0) - (u.uy | 0)) | 0;
+    await pline_dir(xytodir(dx, dy), `It's ${buf}.`);
 }
 
 /**
@@ -644,6 +655,291 @@ function lookaround() {
             u.dy = y0 - u.uy;
         }
     }
+}
+
+/** C cmd.c u_at — hero cell. */
+function look_u_at(x, y) {
+    const u = game.u || {};
+    return (u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0);
+}
+
+/**
+ * C selvar.c selection_new — Set-backed COLNO×ROWNO; empty bounds lx=COLNO.
+ * Local to cmd.c dolookaround (mklev.js Lua floodfill stays matchTyp).
+ */
+function look_sel_new() {
+    return { pts: new Set(), lx: COLNO, ly: ROWNO, hx: 0, hy: 0 };
+}
+
+function look_sel_getpoint(x, y, sel) {
+    if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return 0;
+    return sel.pts.has(`${x},${y}`) ? 1 : 0;
+}
+
+function look_sel_setpoint(x, y, sel, c) {
+    if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return;
+    const key = `${x},${y}`;
+    if (c) {
+        sel.pts.add(key);
+        if (x < sel.lx) sel.lx = x;
+        if (y < sel.ly) sel.ly = y;
+        if (x > sel.hx) sel.hx = x;
+        if (y > sel.hy) sel.hy = y;
+    } else {
+        sel.pts.delete(key);
+    }
+}
+
+/** C selvar.c selection_getbounds — empty lx>=COLNO → full map. */
+function look_sel_bounds(sel) {
+    if (!sel || sel.lx >= COLNO) {
+        return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 };
+    }
+    return { lx: sel.lx, ly: sel.ly, hx: sel.hx, hy: sel.hy };
+}
+
+/**
+ * C cmd.c dolookaround_floodfill_findroom — stop at wall/door/tree/bars/
+ * waterwall/lavawall/scorr/sdoor/DRAWBRIDGE_UP. CORR and ROOM pass.
+ */
+function dolookaround_floodfill_findroom(x, y) {
+    const loc = game.level?.at?.(x, y);
+    const typ = loc?.typ | 0;
+    if (IS_STWALL(typ) || IS_DOOR(typ) || IS_TREE(typ)
+        || IS_WATERWALL(typ) || typ === LAVAWALL || typ === IRONBARS
+        || typ === SCORR || typ === SDOOR || typ === DRAWBRIDGE_UP) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C selvar.c selection_floodfill + set_selection_floodfillchk.
+ * Seed is always included; neighbors need check_func.
+ */
+function look_sel_floodfill(ov, x0, y0, diagonals, check_func) {
+    if (!ov || typeof check_func !== 'function') return;
+    const tmp = look_sel_new();
+    const stackX = [];
+    const stackY = [];
+    const queued = new Set();
+    const enqueue = (nx, ny) => {
+        if (!isok(nx, ny)) return;
+        const key = `${nx},${ny}`;
+        if (queued.has(key) || look_sel_getpoint(nx, ny, tmp)) return;
+        if (!check_func(nx, ny)) return;
+        queued.add(key);
+        stackX.push(nx);
+        stackY.push(ny);
+    };
+    // C: SEL_FLOOD seed without check_func
+    queued.add(`${x0},${y0}`);
+    stackX.push(x0);
+    stackY.push(y0);
+    while (stackX.length) {
+        const x = stackX.pop();
+        const y = stackY.pop();
+        if (isok(x, y)) {
+            look_sel_setpoint(x, y, ov, 1);
+            look_sel_setpoint(x, y, tmp, 1);
+        }
+        enqueue(x + 1, y);
+        enqueue(x - 1, y);
+        enqueue(x, y + 1);
+        enqueue(x, y - 1);
+        if (diagonals) {
+            enqueue(x + 1, y + 1);
+            enqueue(x - 1, y - 1);
+            enqueue(x - 1, y + 1);
+            enqueue(x + 1, y - 1);
+        }
+    }
+}
+
+/** C display.h glyph_is_unexplored — blank !seenv. Integer glyph IDs named. */
+function look_glyph_unexplored_at(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return true;
+    if (loc.seenv | 0) return false;
+    const ch = loc.disp_ch;
+    return !ch || ch === ' ' || ch === '';
+}
+
+/** C cmd.c u_have_seen_whole_selection. */
+function u_have_seen_whole_selection(sel) {
+    const rect = look_sel_bounds(sel);
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (isok(x, y) && look_sel_getpoint(x, y, sel)
+                && look_glyph_unexplored_at(x, y)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/** C cmd.c u_have_seen_bounds_selection — rectangular outline only. */
+function u_have_seen_bounds_selection(sel) {
+    const rect = look_sel_bounds(sel);
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        let y = rect.ly;
+        if (isok(x, y) && look_sel_getpoint(x, y, sel)
+            && look_glyph_unexplored_at(x, y)) {
+            return false;
+        }
+        y = rect.hy;
+        if (isok(x, y) && look_sel_getpoint(x, y, sel)
+            && look_glyph_unexplored_at(x, y)) {
+            return false;
+        }
+    }
+    for (let y = rect.ly; y <= rect.hy; y++) {
+        let x = rect.lx;
+        if (isok(x, y) && look_sel_getpoint(x, y, sel)
+            && look_glyph_unexplored_at(x, y)) {
+            return false;
+        }
+        x = rect.hx;
+        if (isok(x, y) && look_sel_getpoint(x, y, sel)
+            && look_glyph_unexplored_at(x, y)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** C cmd.c u_can_see_whole_selection. */
+function u_can_see_whole_selection(sel) {
+    const rect = look_sel_bounds(sel);
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (isok(x, y) && look_sel_getpoint(x, y, sel) && !cansee(x, y)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/** C selvar.c selection_is_irregular — hole in the bounding rect. */
+function look_sel_is_irregular(sel) {
+    const rect = look_sel_bounds(sel);
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (isok(x, y) && !look_sel_getpoint(x, y, sel)) return true;
+        }
+    }
+    return false;
+}
+
+/** C selvar.c selection_size_description. */
+function look_sel_size_description(sel) {
+    const rect = look_sel_bounds(sel);
+    const dx = (rect.hx - rect.lx + 1) | 0;
+    const dy = (rect.hy - rect.ly + 1) | 0;
+    const shape = look_sel_is_irregular(sel)
+        ? 'irregularly shaped'
+        : (dx === dy) ? 'square' : 'rectangular';
+    return `${shape} ${dx} by ${dy}`;
+}
+
+/**
+ * C cmd.c lookaround_known_room. u.urooms[0] even when describing an
+ * adjacent doorway room (C quirk). Corridor-goes-to TODO named.
+ */
+async function lookaround_known_room(x, y) {
+    const sel = look_sel_new();
+    const rooms = game.u?.urooms || '';
+    const rmno = rooms.length
+        ? (rooms.charCodeAt(0) - ROOMOFFSET)
+        : -ROOMOFFSET;
+    look_sel_floodfill(sel, x, y, true, dolookaround_floodfill_findroom);
+    if (!look_u_at(x, y)) set_msg_xy(x, y);
+    const where = look_u_at(x, y) ? 'this' : 'that';
+    const kind = rmno >= 0 ? 'room' : 'area';
+    if (u_have_seen_whole_selection(sel)) {
+        const u_in = !!look_sel_getpoint(x, y, sel);
+        const verb = (look_u_at(x, y) && u_in && u_can_see_whole_selection(sel))
+            ? 'are in'
+            : look_u_at(x, y) ? 'remember this as' : 'remember that as';
+        await pline(`You ${verb} ${an(look_sel_size_description(sel))} ${kind}.`);
+    } else if (u_have_seen_bounds_selection(sel)) {
+        await pline(
+            `You guess ${where} to be ${an(look_sel_size_description(sel))} ${kind}.`,
+        );
+    } else {
+        await pline(`You can't guess the size of ${where} area.`);
+    }
+}
+
+/**
+ * C cmd.c shown corridor cmap for corr_next2u — glyph_is_cmap S_corr /
+ * S_litcorr. S_engrcorr is GLOC_INTERESTING, not this arm.
+ */
+function shown_corr_cmap(x, y) {
+    if (look_shown_at(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc || (loc.typ | 0) !== CORR) return false;
+    const ep = engr_at(x, y);
+    if (ep?.erevealed) return false;
+    const ch = loc.disp_ch;
+    if (!ch || ch === ' ' || ch === '') return false;
+    return ch === '#';
+}
+
+/**
+ * C cmd.c dolookaround — #lookaround and newgame glyph_updates then-arm.
+ * Temporarily forces a11y.accessiblemsg On and getloc_filter VIEW.
+ * Named: corridor-goes-to rooms TODO; stuff outside current room TODO;
+ * integer glyph_at / full do_screen_description table (firstmatch via
+ * getpos auto_describe_text / lookat).
+ */
+export async function dolookaround() {
+    if (!game.iflags) game.iflags = {};
+    if (!game.a11y) {
+        game.a11y = { accessiblemsg: false, msg_loc: { x: 0, y: 0 } };
+    }
+    if (!game.a11y.msg_loc) game.a11y.msg_loc = { x: 0, y: 0 };
+    const tmp_getloc_filter = game.iflags.getloc_filter | 0;
+    const tmp_accessiblemsg = !!game.a11y.accessiblemsg;
+    let corr_next2u = false;
+    const u = game.u || {};
+    const here = game.level?.at?.(u.ux, u.uy);
+    const htyp = here?.typ | 0;
+
+    game.a11y.accessiblemsg = true;
+    if (htyp === CORR) {
+        corr_next2u = true;
+    } else if (IS_DOOR(htyp)) {
+        for (let i = DIR_W; i < N_DIRS; i += 2) {
+            const x = (u.ux | 0) + xdir[i];
+            const y = (u.uy | 0) + ydir[i];
+            const loc = isok(x, y) ? game.level?.at?.(x, y) : null;
+            if (loc && IS_ROOM(loc.typ)) await lookaround_known_room(x, y);
+        }
+        corr_next2u = true;
+    } else {
+        await lookaround_known_room(u.ux | 0, u.uy | 0);
+    }
+
+    game.iflags.getloc_filter = GFILTER_VIEW;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const iscorr = corr_next2u && shown_corr_cmap(x, y);
+            if (!look_u_at(x, y)
+                && (gather_locs_interesting(x, y, GLOC_INTERESTING)
+                    || iscorr)) {
+                const firstmatch = auto_describe_text(x, y) || '';
+                await pline_xy(x, y, `${firstmatch}.`);
+            }
+        }
+    }
+
+    game.iflags.getloc_filter = tmp_getloc_filter;
+    game.a11y.accessiblemsg = tmp_accessiblemsg;
+    return ECMD_OK;
 }
 
 // C ref: cmd.c — continue a DOMOVE_RUSH after the first step (moveloop multi>0)
@@ -1974,6 +2270,9 @@ async function domove(dx, dy) {
             end_running();
         }
     }
+
+    // C hack.c:2944–2947 — tread may disturb buried zombies
+    hero_tread_disturb_buried_zombies();
 
     // Update display. C hack.c:2964–2973 — newsym(ux0,uy0);
     // vision_recalc(1); invocation_message(); only when the hero

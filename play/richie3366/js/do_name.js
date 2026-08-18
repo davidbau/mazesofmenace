@@ -597,6 +597,20 @@ export function Amonnam(mtmp) {
 }
 
 /**
+ * C ref: do_name.c Adjmonnam — ARTICLE_THE + adjective, then highc.
+ * Unseen still "It" (x_monnam do_it). Named: invis adj / priest polish.
+ */
+export function Adjmonnam(mtmp, adj) {
+    return highc_name(x_monnam(
+        mtmp,
+        ARTICLE_THE,
+        adj,
+        has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+        false,
+    ));
+}
+
+/**
  * C ref: do_name.c Monnam — highc(mon_nam()).
  */
 export function Monnam(mtmp) {

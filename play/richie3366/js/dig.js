@@ -19,7 +19,7 @@ import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import {
     newsym, pline, You_feel, tmp_at, nh_delay_output, verbalize,
-    feel_newsym, flush_screen, flush_topl_more,
+    feel_newsym, flush_screen, flush_topl_more, pline_mon,
 } from './display.js';
 import { cansee, recalc_block_point, vision_recalc } from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
@@ -920,7 +920,7 @@ function rnd_treefruit_at(x, y) {
 async function mb_trapped(mtmp, canseeit) {
     if (game.flags?.verbose !== false) {
         if (canseeit && !Unaware()) {
-            await pline('KABOOM!!  You see a door explode.');
+            await pline_mon(mtmp, 'KABOOM!!  You see a door explode.');
         } else if (!game.u?.Deaf) {
             const far = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) > 7 * 7;
             await pline(`You hear a ${far ? 'distant' : 'nearby'} explosion.`);

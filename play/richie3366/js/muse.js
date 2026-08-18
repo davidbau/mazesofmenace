@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { cansee, couldsee } from './vision.js';
-import { pline, mon_visible, see_with_infrared } from './display.js';
+import { pline, mon_visible, see_with_infrared, pline_mon } from './display.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { doname, singular, an, xname, the, makeplural } from './objnam.js';
 import { dist2, distmin, m_at, m_carrying } from './mon.js';
@@ -981,7 +981,7 @@ async function mzapwand(mtmp, otmp, self) {
         // C xname_flags observe_object sets dknown before WAND descr arm.
         // Full observe (discover_object) deferred — dknown alone for appearance.
         if (!game.u?.Blind) otmp.dknown = 1;
-        await pline(`${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} zaps ${an(xname(otmp))}!`);
         // stop_occupation deferred
     }
     otmp.spe = (otmp.spe | 0) - 1;

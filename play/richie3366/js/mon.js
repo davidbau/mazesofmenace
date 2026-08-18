@@ -53,7 +53,7 @@ import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
 import { set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd, newemin, newepri } from './makemon.js';
 import { in_your_sanctuary, p_coaligned } from './priest.js';
-import { in_rooms, is_pool, is_lava } from './hack.js';
+import { in_rooms, is_pool, is_lava, disturb_buried_zombies } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special } from './worn.js';
 import { adjalign } from './attrib.js';
@@ -934,8 +934,9 @@ export function setmangry(mtmp, via_attack) {
 
 /**
  * C ref: mon.c wake_nearto_core — clear sleep/wait in radius.
- * Named omissions: disturb_buried_zombies; wake_msg when msleeping already
- * cleared by sync callers.
+ * Named omissions: wake_msg when msleeping already
+ * cleared by sync callers. Buried zombies via disturb_buried_zombies
+ * (D-1214).
  * @param {boolean} [petcall=false] — whistle: set EDOG.whistletime + clear track
  */
 async function wake_nearto_core(x, y, distance, petcall = false) {
@@ -963,6 +964,7 @@ async function wake_nearto_core(x, y, distance, petcall = false) {
             }
         }
     }
+    disturb_buried_zombies(x, y);
 }
 
 /**

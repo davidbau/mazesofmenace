@@ -4,7 +4,8 @@
 //         cmd_safety_prevention, dodrop/drop/dropx/dropy/dropz,
 //         canletgo; flooreffects / boulder_hits_pool (D-0987);
 //         doaltarobj / fire_damage / hot-ground potion (D-0992);
-//         revive_corpse (D-1081; eat.c cprefx rider + apply tinning).
+//         revive_corpse (D-1081 invent/floor rider; D-1212 MINVENT/CONTAINED;
+//         D-1220 BURIED !is_zomb FALLTHROUGH impossible).
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
@@ -20,7 +21,8 @@ import {
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX,
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
     ACH_HELL, ACH_MINE, ACH_SOKO,
-    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, ER_DESTROYED, WT_SPLASH_THRESHOLD,
+    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
+    CONTAINED_TOO, BURIED_TOO, ER_DESTROYED, WT_SPLASH_THRESHOLD,
     TT_PIT, FIRE_RES, PIT,
     ROOM, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
     IS_WATERWALL, IS_ALTAR, is_pit, is_hole, u_at, Has_contents,
@@ -41,7 +43,7 @@ import {
 import {
     pline, Norep, docrt, flush_screen, flush_topl_more, newsym,
     mark_topline_prompt, assign_graphics, check_gold_symbol,
-    You_feel, canseemon, canspotmon,
+    You_feel, canseemon, canspotmon, impossible,
 } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
@@ -77,8 +79,8 @@ import { place_object, stackobj, weight, delobj, obj_extract_self,
     save_timers, restore_timers, run_timers,
 } from './mkobj.js';
 import { ship_object, obj_delivery } from './dokick.js';
-import { doname, xname, the, The, vtense, an, cxname_singular } from './objnam.js';
-import { Monnam, Amonnam } from './do_name.js';
+import { doname, xname, the, The, vtense, an, cxname_singular, yname } from './objnam.js';
+import { Monnam, Amonnam, Adjmonnam, mon_nam } from './do_name.js';
 import { revive } from './zap.js';
 import {
     compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
@@ -106,7 +108,7 @@ import { resurrect } from './wizard.js';
 import { bones_include_name } from './bones.js';
 import {
     olfaction, passes_walls, throws_rocks, is_flyer, is_floater,
-    mons, is_rider,
+    amorphous, nolimbs, M1_SLITHY, MZ_SMALL, mons, is_rider,
 } from './monsters.js';
 import { placebc, unplacebc, drag_down, ballrelease } from './ball.js';
 import { obj_resists } from './dogmove.js';
@@ -2401,12 +2403,85 @@ export async function dowipe() {
 }
 
 /**
+ * C ref: zap.c get_obj_location — invent/floor/minvent + contained/buried
+ * when locflags request. Local copy: timeout.js import would cycle do.js.
+ * @returns {{ x: number, y: number }|null}
+ */
+function get_obj_location_revive(obj, locflags = 0) {
+    if (!obj) return null;
+    switch (obj.where | 0) {
+    case OBJ_INVENT:
+        return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
+    case OBJ_FLOOR:
+        return { x: obj.ox | 0, y: obj.oy | 0 };
+    case OBJ_MINVENT:
+        if (obj.ocarry && (obj.ocarry.mx | 0)) {
+            return { x: obj.ocarry.mx | 0, y: obj.ocarry.my | 0 };
+        }
+        break;
+    case OBJ_BURIED:
+        if (locflags & BURIED_TOO) {
+            return { x: obj.ox | 0, y: obj.oy | 0 };
+        }
+        break;
+    case OBJ_CONTAINED:
+        if (locflags & CONTAINED_TOO) {
+            return get_obj_location_revive(obj.ocontainer, locflags);
+        }
+        break;
+    default:
+        break;
+    }
+    return null;
+}
+
+/**
+ * C ref: zap.c get_container_location — outermost container where + carrier.
+ * @returns {{ carrier: object|null, loc: number }}
+ */
+function get_container_location_revive(obj) {
+    let cur = obj;
+    while (cur && (cur.where | 0) === OBJ_CONTAINED) {
+        cur = cur.ocontainer;
+    }
+    if (!cur) return { carrier: null, loc: 0 };
+    const loc = cur.where | 0;
+    const carrier = loc === OBJ_MINVENT ? (cur.ocarry || null) : null;
+    return { carrier, loc };
+}
+
+/**
+ * C ref: mondata.c locomotion — verb for how a monster moves.
+ * Local copy: monmove.js import would cycle do.js via mhitu.
+ */
+function locomotion_revive(ptr, def) {
+    const cap = !!(def && def[0] === def[0].toUpperCase()
+        && def[0] !== def[0].toLowerCase());
+    const pick = (lo, hi) => (cap ? hi : lo);
+    if (is_floater(ptr)) return pick('float', 'Float');
+    if (is_flyer(ptr) && (ptr.msize ?? 2) <= MZ_SMALL) {
+        return pick('fly', 'Fly');
+    }
+    if (is_flyer(ptr)) return pick('fly', 'Fly');
+    if (((ptr?.mflags1 ?? 0) & M1_SLITHY) !== 0) {
+        return pick('slither', 'Slither');
+    }
+    if (amorphous(ptr)) return pick('ooze', 'Ooze');
+    if (!(ptr?.mmove | 0)) return pick('wiggle', 'Wiggle');
+    if (nolimbs(ptr)) return pick('crawl', 'Crawl');
+    return def;
+}
+
+/**
  * C ref: do.c revive_corpse — zap.revive then location messages.
  * Branch envelope: OBJ_INVENT uwep/backpack; OBJ_FLOOR cansee/canseemon
  * plus Death/Pestilence/Famine visual suffixes (eat.c cprefx rider);
- * OBJ_BURIED zombie/reviver pit + claw pline / nearby You_hear + fill_pit
- * (D-1202 zombify). Named omit: OBJ_MINVENT / OBJ_CONTAINED; Adjmonnam
- * bite-covered when oeaten; Soundeffect se_scratching.
+ * OBJ_MINVENT drop/appear (D-1212); OBJ_CONTAINED pack/floor/minvent
+ * sack plines (D-1212); OBJ_BURIED zombie/reviver pit + claw pline /
+ * nearby You_hear + fill_pit (D-1202 zombify); Adjmonnam bite-covered
+ * when oeaten (FLOOR + MINVENT); BURIED !is_zomb FALLTHROUGH
+ * impossible (D-1220). Named omit: Soundeffect se_scratching;
+ * corpse_xname unique/pname adjective placement.
  * @returns {Promise<boolean>}
  */
 export async function revive_corpse(corpse) {
@@ -2420,18 +2495,34 @@ export async function revive_corpse(corpse) {
         || (where === OBJ_BURIED
             && (is_rider(mptr) || mptr.mlet === 'S_TROLL'))));
     const is_uwep = corpse === game.u?.uwep;
-    const cname = cxname_singular(corpse) || 'corpse';
-    const corpsex = corpse.ox | 0;
-    const corpsey = corpse.oy | 0;
+    const chewed = (corpse.oeaten | 0) !== 0;
+    let cname = cxname_singular(corpse) || 'corpse';
+    if (chewed) cname = `bite-covered ${cname}`;
+    let mcarry = where === OBJ_MINVENT ? (corpse.ocarry || null) : null;
+    let container = null;
+    let container_where = 0;
+    const loc = get_obj_location_revive(corpse, CONTAINED_TOO | BURIED_TOO);
+    const corpsex = loc ? loc.x : (corpse.ox | 0);
+    const corpsey = loc ? loc.y : (corpse.oy | 0);
+    if (where === OBJ_CONTAINED) {
+        container = corpse.ocontainer || null;
+        const info = get_container_location_revive(container);
+        container_where = info.loc | 0;
+        if (container_where === OBJ_MINVENT && info.carrier) {
+            mcarry = info.carrier;
+        }
+    }
     const mtmp = await revive(corpse, false);
     if (!mtmp) return false;
-    if (where === OBJ_INVENT) {
+    switch (where) {
+    case OBJ_INVENT:
         if (is_uwep) {
             await pline(`The ${cname} writhes out of your grasp!`);
         } else {
             await You_feel('squirming in your backpack!');
         }
-    } else if (where === OBJ_FLOOR) {
+        break;
+    case OBJ_FLOOR:
         if (cansee(corpsex, corpsey) || canseemon(mtmp)) {
             // C: mtmp->data == &mons[PM_*]; JS mons() allocates per call
             const mndx = mtmp.data?.mndx ?? (mtmp.mnum | 0);
@@ -2444,27 +2535,66 @@ export async function revive_corpse(corpse) {
                 effect = ' in a ring of withered crops';
             }
             if (canseemon(mtmp)) {
-                await pline(`${Monnam(mtmp)} rises from the dead${effect}!`);
+                const who = chewed ? Adjmonnam(mtmp, 'bite-covered') : Monnam(mtmp);
+                await pline(`${who} rises from the dead${effect}!`);
             } else {
                 await pline(`${The(cname)} disappears${effect}!`);
             }
         }
-    } else if (where === OBJ_BURIED && is_zomb) {
-        const mx = mtmp.mx | 0;
-        const my = mtmp.my | 0;
-        maketrap(mx, my, PIT);
-        if (cansee(mx, my)) {
-            const ttmp = t_at(mx, my);
-            if (ttmp) ttmp.tseen = true;
-            const mnam = canspotmon(mtmp) ? Amonnam(mtmp) : 'Something';
-            await pline(`${mnam} claws itself out of the ground!`);
-            newsym(mx, my);
-        } else if (dist2(mx, my, game.u?.ux | 0, game.u?.uy | 0) < 25) {
-            await You_hear('scratching noises.');
+        break;
+    case OBJ_MINVENT:
+        if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
+            if (mcarry && canseemon(mcarry)) {
+                const how = canspotmon(mtmp) ? 'revives' : 'disappears';
+                await pline(
+                    `Startled, ${mon_nam(mcarry)} drops ${an(cname)} as it ${how}!`,
+                );
+            } else if (canspotmon(mtmp)) {
+                const who = chewed ? Adjmonnam(mtmp, 'bite-covered') : Monnam(mtmp);
+                await pline(`${who} suddenly appears!`);
+            }
         }
-        const { fill_pit } = await import('./dig.js');
-        fill_pit(mx, my);
+        break;
+    case OBJ_CONTAINED: {
+        const mnam = canspotmon(mtmp) ? Amonnam(mtmp) : 'Something';
+        if (!container) {
+            await impossible('reviving corpse from non-existent container');
+        } else if (mcarry && canseemon(mcarry)) {
+            await pline(`${mnam} writhes out of ${yname(container)}!`);
+        } else if (container_where === OBJ_INVENT) {
+            const sackname = an(xname(container));
+            const loco = locomotion_revive(mtmp.data, 'writhes');
+            await pline(`${mnam} ${loco} out of ${sackname} in your pack!`);
+        } else if (container_where === OBJ_FLOOR
+            && cansee(corpsex, corpsey)) {
+            const sackname = an(xname(container));
+            await pline(`${mnam} escapes from ${sackname}!`);
+        }
+        break;
     }
-    // MINVENT / CONTAINED still named omit
+    case OBJ_BURIED:
+        if (is_zomb) {
+            const mx = mtmp.mx | 0;
+            const my = mtmp.my | 0;
+            maketrap(mx, my, PIT);
+            if (cansee(mx, my)) {
+                const ttmp = t_at(mx, my);
+                if (ttmp) ttmp.tseen = true;
+                const mnam = canspotmon(mtmp) ? Amonnam(mtmp) : 'Something';
+                await pline(`${mnam} claws itself out of the ground!`);
+                newsym(mx, my);
+            } else if (dist2(mx, my, game.u?.ux | 0, game.u?.uy | 0) < 25) {
+                await You_hear('scratching noises.');
+            }
+            const { fill_pit } = await import('./dig.js');
+            fill_pit(mx, my);
+            break;
+        }
+        // FALLTHROUGH — C do.c:2236–2240 !is_zomb → impossible
+    default:
+        /* we should be able to handle the other cases... */
+        await impossible('revive_corpse: lost corpse @ %d', where);
+        break;
+    }
     return true;
 }
