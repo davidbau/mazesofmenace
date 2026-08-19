@@ -3675,7 +3675,8 @@ export function coord_desc(x, y, cmode) {
 /**
  * C pline.c set_msg_xy 93–97 — store a11y.msg_loc for the next vpline.
  * Consume is D-1207; pline_xy/pline_mon writers are D-1215.
- * set_msg_dir / pline_dir are D-1216.
+ * set_msg_dir / pline_dir are D-1216. Live: rolling-boulder LANDMINE
+ * KAABLAMM then pline (D-1256; not pline_xy).
  */
 export function set_msg_xy(x, y) {
     if (!game.a11y) {

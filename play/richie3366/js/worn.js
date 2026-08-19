@@ -4,13 +4,14 @@
 // Named omissions: wear plines when !creation (freeze still applied);
 //   artifact_light begin_burn/end_burn; full w_blocks Clairvoyance/Eyes;
 //   dragon-scale altprop beyond alchemy smock;
-//   extract_from_minvent; youmonst which_armor slot table (hero uses uarm*).
+//   extract_from_minvent artifact_light/obj_no_longer_held;
+//   youmonst which_armor slot table (hero uses uarm*).
 // D-0855: nambuf Monnam/mon_nam at m_dowear_type entry (Hallu display RNG).
 
 import { game } from './gstate.js';
 import {
-    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL,
-    I_SPECIAL, AC_MAX,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_WEP,
+    I_SPECIAL, AC_MAX, OBJ_MINVENT, NEED_WEAPON,
     INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT, STEALTH,
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
@@ -25,7 +26,7 @@ import {
     ARMOR_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames,
 } from './objects.js';
-import { curse } from './mkobj.js';
+import { curse, obj_extract_self } from './mkobj.js';
 import { canseemon, newsym } from './display.js';
 import { dist2 } from './hacklib.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -233,6 +234,31 @@ export function which_armor(mon, flag) {
 export function check_gear_next_turn(mon) {
     if (!mon) return;
     mon.misc_worn_check = (mon.misc_worn_check || 0) | I_SPECIAL;
+}
+
+/**
+ * C ref: worn.c extract_from_minvent — unlink minvent obj; worn extras
+ * when owornmask. Named omit: artifact_light end_burn; obj_no_longer_held
+ * (crysknife); setmnotwielded light polish (mwepgone core inlined to
+ * avoid worn↔weapon).
+ */
+export function extract_from_minvent(mon, obj, do_extrinsics, silently) {
+    if (!mon || !obj) return;
+    if (obj.where !== OBJ_MINVENT && obj.where !== 'MINVENT') return;
+    const unwornmask = obj.owornmask | 0;
+    obj_extract_self(obj);
+    obj.owornmask = 0;
+    if (unwornmask) {
+        if ((mon.mhp | 0) >= 1 && do_extrinsics) {
+            update_mon_extrinsics(mon, obj, false, silently);
+        }
+        mon.misc_worn_check = (mon.misc_worn_check || 0) & ~unwornmask;
+        check_gear_next_turn(mon);
+    }
+    if (unwornmask & W_WEP) {
+        mon.mw = null;
+        mon.weapon_check = NEED_WEAPON;
+    }
 }
 
 /** C ref: worn.c extra_pref — speed boots bias */

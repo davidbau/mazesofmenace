@@ -23,11 +23,12 @@ import {
     objects_at, splitobj, nxtobj, add_to_migration,
 } from './mkobj.js';
 import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone } from './mhitm.js';
-import { mon_explodes } from './explode.js';
+import { mon_explodes, scatter } from './explode.js';
 import {
     newsym, pline, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
+    set_msg_xy,
 } from './display.js';
 import { doname, an, the, The, xname, yname, makeplural, vtense } from './objnam.js';
 import {
@@ -87,6 +88,7 @@ import {
     OBJ_INVENT, has_oname, has_omonst, ONAME, OMONST,
     ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at, MIGR_RANDOM,
     DISP_FLASH, DISP_END,
+    MAY_DESTROY, MAY_HIT, MAY_FRACTURE, VIS_EFFECTS,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE, IRONBARS,
     HVY_ENCUMBER, ECMD_OK, ECMD_TIME, MON_DETACH,
     Is_container, Waterproof_container,
@@ -1821,10 +1823,12 @@ function sobj_at(otyp, x, y) {
  * with hero dmgval+thitu and mon ohitmon/throws_rocks snatch; stop on
  * obstructed/tree/door; IRONBARS hits_bars (D-0990); place at rest.
  * Mid-roll TELEP_TRAP / LEVEL_TELEP: cansee pline_xy else !Deaf You_hear,
- * then rloco or add_to_migration (D-1237). Named omissions: LAUNCH_UNSEEN
- * bowling msgs; dig context clear; launch_drop_spot bones; mid-roll
- * landmine/pit flooreffects; boulder-on-boulder chain; ship_object
- * down_gate; wake_nearto polish; curs_on_u.
+ * then rloco or add_to_migration (D-1237). Mid-roll LANDMINE rn2(10)>2
+ * KAABLAMM / fracture_rock / scatter + PIT/SPIKED_PIT/HOLE/TRAPDOOR
+ * flooreffects + dist=-1 (D-1256). Named omissions: LAUNCH_UNSEEN
+ * bowling msgs; dig context clear; launch_drop_spot bones; down_gate /
+ * ship_object; post-switch flooreffects; boulder-on-boulder chain;
+ * scatter MAY_FRACTURE/MAY_DESTROY/VIS_EFFECTS (explode.js); curs_on_u.
  * @returns {Promise<number>} 0 none, 1 placed, 2 used up
  */
 async function launch_obj(otyp, x1, y1, x2, y2, style) {
@@ -1933,43 +1937,84 @@ async function launch_obj(otyp, x1, y1, x2, y2, style) {
 
             /* C trap.c launch_obj 3423–3508 — ROLL mid-cell traps.
              * TELEP_TRAP / LEVEL_TELEP pline_xy then rloco or migrate
-             * (D-1237). Landmine / pit / flooreffects still named. */
+             * (D-1237). LANDMINE rn2(10)>2 KAABLAMM/fracture_rock/scatter
+             * + PIT/SPIKED_PIT/HOLE/TRAPDOOR flooreffects+dist=-1 (D-1256).
+             * down_gate / ship_object / post-switch flooreffects /
+             * boulder-on-boulder / launch_drop_spot still named. */
             if (style === ROLL) {
                 const t = t_at(x, y);
                 if (t && otyp === BOULDER) {
                     let newlev = 0;
                     const ttyp = t.ttyp | 0;
-                    let telep = ttyp === TELEP_TRAP;
-                    if (ttyp === LEVEL_TELEP) {
-                        /* 20% stay (and 100% in Knox/endgame) skips
-                         * the disappears message; FALLTHROUGH otherwise. */
-                        newlev = random_teleport_level();
-                        telep = newlev !== (depth(game.u?.uz) | 0);
-                    }
-                    if (telep) {
-                        if (cansee(x, y)) {
-                            await pline_xy(
-                                x, y,
-                                'Suddenly the rolling boulder disappears!',
+                    if (ttyp === LANDMINE) {
+                        if (rn2(10) > 2) {
+                            if (cansee(x, y)) set_msg_xy(x, y);
+                            await pline(`KAABLAMM!!!${
+                                cansee(x, y)
+                                    ? '  The rolling boulder triggers a land mine.'
+                                    : ''
+                            }`);
+                            deltrap(t);
+                            del_engr_at(x, y);
+                            place_object(singleobj, x, y);
+                            singleobj.otrapped = 0;
+                            const { fracture_rock } = await import('./dig.js');
+                            fracture_rock(singleobj);
+                            await scatter(
+                                x, y, 4,
+                                MAY_DESTROY | MAY_HIT | MAY_FRACTURE
+                                    | VIS_EFFECTS,
+                                null,
                             );
-                        } else if (!Deaf()) {
-                            await You_hear('a rumbling stop abruptly.');
+                            if (cansee(x, y)) newsym(x, y);
+                            used_up = true;
                         }
-                        singleobj.otrapped = 0;
-                        if (ttyp === TELEP_TRAP) {
-                            rloco(singleobj);
-                        } else {
-                            add_to_migration(singleobj);
-                            const dest = { dnum: 0, dlevel: 0 };
-                            get_level(dest, newlev);
-                            singleobj.ox = dest.dnum | 0;
-                            singleobj.oy = dest.dlevel | 0;
-                            singleobj.owornmask = MIGR_RANDOM;
+                    } else {
+                        let telep = ttyp === TELEP_TRAP;
+                        if (ttyp === LEVEL_TELEP) {
+                            /* 20% stay (and 100% in Knox/endgame) skips
+                             * the disappears message; FALLTHROUGH otherwise. */
+                            newlev = random_teleport_level();
+                            telep = newlev !== (depth(game.u?.uz) | 0);
                         }
-                        seetrap(t);
-                        used_up = true;
-                        break;
+                        if (telep) {
+                            if (cansee(x, y)) {
+                                await pline_xy(
+                                    x, y,
+                                    'Suddenly the rolling boulder disappears!',
+                                );
+                            } else if (!Deaf()) {
+                                await You_hear('a rumbling stop abruptly.');
+                            }
+                            singleobj.otrapped = 0;
+                            if (ttyp === TELEP_TRAP) {
+                                rloco(singleobj);
+                            } else {
+                                add_to_migration(singleobj);
+                                const dest = { dnum: 0, dlevel: 0 };
+                                get_level(dest, newlev);
+                                singleobj.ox = dest.dnum | 0;
+                                singleobj.oy = dest.dlevel | 0;
+                                singleobj.owornmask = MIGR_RANDOM;
+                            }
+                            seetrap(t);
+                            used_up = true;
+                        } else if (ttyp === PIT || ttyp === SPIKED_PIT
+                            || ttyp === HOLE || ttyp === TRAPDOOR) {
+                            /* boulder may survive a trapped monster
+                             * (flooreffects hmon named); stop rolling. */
+                            xRest = x;
+                            yRest = y;
+                            const { flooreffects } = await import('./do.js');
+                            if (await flooreffects(
+                                singleobj, xRest, yRest, 'fall',
+                            )) {
+                                used_up = true;
+                            }
+                            dist = -1;
+                        }
                     }
+                    if (used_up || dist === -1) break;
                 }
             }
 

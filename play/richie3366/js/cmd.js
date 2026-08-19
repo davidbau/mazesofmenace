@@ -74,6 +74,7 @@ import {
     impaired_movement, is_pool, is_lava, carrying_too_much,
     invocation_message, avoid_trap_andor_region,
     hero_tread_disturb_buried_zombies, hero_hideunder_after_move,
+    hero_mimic_unhide_after_move,
     test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
@@ -2295,6 +2296,8 @@ async function domove(dx, dy) {
     hero_tread_disturb_buried_zombies();
     // C hack.c:2949–2951 — hideunder after tread (D-1245)
     hero_hideunder_after_move();
+    // C hack.c:2953–2960 — mimic furniture/object unhide (D-1260)
+    hero_mimic_unhide_after_move();
 
     // Update display. C hack.c:2964–2973 — newsym(ux0,uy0);
     // vision_recalc(1); invocation_message(); only when the hero

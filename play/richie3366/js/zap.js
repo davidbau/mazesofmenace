@@ -720,7 +720,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                         damgtype === ZT_ACID ? 'corrode away' : 'melt'
                     }.`);
                 }
-                dissolve_bars(x, y);
+                await dissolve_bars(x, y);
                 if (in_rooms(x, y, SHOPBASE)) {
                     const { add_damage } = await import('./shk.js');
                     add_damage(x, y, (type | 0) >= 0 ? SHOP_BARS_COST : 0);

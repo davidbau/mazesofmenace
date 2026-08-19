@@ -13,7 +13,7 @@ import {
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
-import { objects_at, obj_extract_self, splitobj, delobj } from './mkobj.js';
+import { objects_at, obj_extract_self, splitobj, delobj, eaten_stat, is_organic, is_mines_prize, is_soko_prize } from './mkobj.js';
 import { find_defensive, use_defensive, find_misc, use_misc, find_offensive, searches_for_item } from './muse.js';
 import { hero_conflict, resist_conflict } from './mondata.js';
 import {
@@ -68,7 +68,7 @@ import { rloc, tele_restrict, noteleport_level } from './teleport.js';
 import { quest_talk, quest_stat_check } from './quest.js';
 import { stairway_at, u_on_newpos } from './mklev.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
-import { check_gear_next_turn } from './worn.js';
+import { check_gear_next_turn, extract_from_minvent } from './worn.js';
 import { picking_lock } from './lock.js';
 import { mbodypart } from './polyself.js';
 import {
@@ -90,6 +90,7 @@ import {
     m_avoid_kicked_loc,
     mnexto,
     wakeup,
+    m_consume_obj,
 } from './mon.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
@@ -328,8 +329,8 @@ function could_reach_item(mon, nx, ny) {
 
 /**
  * C ref: mon.c mpickstuff — pick one wanted floor object underfoot.
- * Named omissions: shopkeeper inhishop; in_rooms shop rn2(25); is_mines_prize/
- * is_soko_prize; nymph/corpse specials.
+ * Named omissions: shopkeeper inhishop; in_rooms shop rn2(25);
+ * prize helpers unwired (D-1257 gelcube uses them); nymph/corpse specials.
  */
 async function mpickstuff(mtmp) {
     if (mtmp.isshk) return false;
@@ -337,7 +338,7 @@ async function mpickstuff(mtmp) {
     if (!could_reach_item(mtmp, mtmp.mx, mtmp.my)) return false;
 
     for (let otmp = objects_at(mtmp.mx, mtmp.my); otmp; otmp = otmp.nexthere) {
-        // is_mines_prize / is_soko_prize deferred
+        // prize helpers unwired (D-1257 gelcube)
         if (!mon_would_take_item(mtmp, otmp)) continue;
         if (otmp.otyp === CORPSE && mtmp.data?.mlet !== 'S_NYMPH') {
             // touch_petrifies / lizard / acidic corpse exceptions deferred
@@ -372,7 +373,7 @@ async function mpickstuff(mtmp) {
  * C ref: monmove.c m_search_items — redirect gg toward interesting floor loot.
  * Returns true → caller postmov(MMOVE_DONE) for underfoot claim (mpickstuff).
  * Named omissions: in_rooms shop rn2(25); hides_under; onscary; costly_spot
- * merchandise; is_mines_prize/is_soko_prize; helpless under-monster skip
+ * merchandise; prize helpers unwired (D-1257); helpless under-monster skip
  * beyond mcanmove/msleeping/mmove; can_touch_safely in search loop
  * (mpickstuff/can_carry still gates).
  */
@@ -426,7 +427,7 @@ function m_search_items(mtmp, gg) {
 
             for (; otmp; otmp = otmp.nexthere) {
                 if (otmp.otyp === ROCK) continue;
-                // is_mines_prize / is_soko_prize deferred
+                // prize helpers unwired (D-1257 gelcube)
                 if ((mon_would_take_item(mtmp, otmp) && can_carry(mtmp, otmp) > 0)
                     || mon_would_consume_item(mtmp, otmp)) {
                     const ix = otmp.ox ?? xx;
@@ -1259,9 +1260,9 @@ export async function m_postmove_effect(mtmp) {
  * D-1227; IRONBARS eat/Norep (D-1247).
  * Named omissions: vampshift fog; shop add_damage;
  * has_magic_key disarm; metallivorous/cube/corpse_eater meat*;
- * hideunder You_see (ported); check_gear_next_turn; swallowed() display polish;
- * ALLOW_BARS rust/corr/metallivore in mon_allowflags; dissolve_bars
- * switch_terrain. mon_yells is D-1248.
+ * hideunder You_see (ported); check_gear_next_turn; swallowed() display polish.
+ * ALLOW_BARS is D-1258; dissolve_bars switch_terrain is D-1259;
+ * mon_yells is D-1248.
  * (shk/gd/priest via shk.js D-0205)
  */
 export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
@@ -1361,8 +1362,8 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
         // Eat (AD_RUST / AD_CORR / metallivorous) unless W_NONDIGGABLE,
         // then dissolve_bars and return MMOVE_DONE (skips mdig_tunnel
         // rnd(12) and OBJ_AT pickup). Else Norep pass through/between.
-        // Named: ALLOW_BARS rust/corr/metallivore (mon_allowflags);
-        // dissolve_bars switch_terrain; meatmetal.
+        // Named: meatmetal. ALLOW_BARS rust/corr/metallivore is
+        // D-1258 (mon_allowflags). switch_terrain is D-1259.
         const wi = (loc.wall_info | 0) | (loc.flags | 0);
         if (!(wi & W_NONDIGGABLE)
             && (dmgtype(ptr, AD_RUST) || dmgtype(ptr, AD_CORR)
@@ -1373,7 +1374,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                     `${Monnam(mtmp)} eats through the iron bars.`,
                 );
             }
-            dissolve_bars(mtmp.mx, mtmp.my);
+            await dissolve_bars(mtmp.mx, mtmp.my);
             return MMOVE_DONE;
         } else if (game.flags?.verbose !== false && display_canseemon(mtmp)) {
             await Norep(
@@ -1884,7 +1885,7 @@ function sobj_at_monmove(otyp, x, y) {
 /**
  * C ref: monmove.c bee_eat_jelly — killer bee on royal jelly becomes
  * queen if none on the level. 1 died, 0 ate and froze, -1 queen present.
- * gelcube_digests still named. postmov IRONBARS is D-1247.
+ * gelcube_digests is D-1257. postmov IRONBARS is D-1247.
  * mon_yells is D-1248.
  */
 export async function bee_eat_jelly(mon, obj) {
@@ -1908,6 +1909,32 @@ export async function bee_eat_jelly(mon, obj) {
     if ((mon.mhp | 0) < 1) return 1; /* queen bees genocided */
     mon.mfrozen = m_delay;
     mon.mcanmove = 0;
+    return 0;
+}
+
+/**
+ * C ref: monmove.c gelcube_digests — cube spends a turn digesting the first
+ * organic non-artifact non-prize minvent object. 0 ate, -1 nothing.
+ * meatobj floor engulf still named. m_consume_obj meatbox/poly/uball named.
+ */
+export function gelcube_digests(mtmp) {
+    let otmp = mtmp.minvent;
+
+    if (mtmp.meating || !mtmp.minvent) return -1;
+
+    while (otmp) {
+        if (is_organic(otmp) && !otmp.oartifact
+            && !is_mines_prize(otmp) && !is_soko_prize(otmp)) {
+            break;
+        }
+        otmp = otmp.nobj;
+    }
+
+    if (!otmp) return -1;
+
+    mtmp.meating = eaten_stat(mtmp.meating | 0, otmp);
+    extract_from_minvent(mtmp, otmp, true, true);
+    m_consume_obj(mtmp, otmp);
     return 0;
 }
 
@@ -2089,13 +2116,18 @@ export async function dochug(mtmp) {
     }
 
     // C ref: monmove.c dochug — killer bee may eat royal jelly (no queen).
-    // gelcube_digests named.
     if ((mdat?.mndx | 0) === PM_KILLER_BEE) {
         const otmp = sobj_at_monmove(LUMP_OF_ROYAL_JELLY, mtmp.mx, mtmp.my);
         if (otmp) {
             const res = await bee_eat_jelly(mtmp, otmp);
             if (res >= 0) return res;
         }
+    }
+
+    // C ref: monmove.c dochug — gelatinous cube may digest minvent organic.
+    if ((mdat?.mndx | 0) === PM_GELATINOUS_CUBE) {
+        const cres = gelcube_digests(mtmp);
+        if (cres >= 0) return cres;
     }
 
     // C: short-circuit OR — wanderer rn2(4) is evaluated before mpeaceful

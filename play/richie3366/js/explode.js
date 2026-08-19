@@ -611,6 +611,7 @@ function closed_door(x, y) {
  * Branch envelope (D-0986): individual_object or pile peel via splitobj;
  * random 8-dir flight; stop on !isok / !ZAP_POS / closed_door / sink;
  * MAY_HITMON → ohitmon; MAY_HITYOU → thitu; place_object+stackobj.
+ * Live caller: trap.js launch_obj ROLL LANDMINE (D-1256) with C flags.
  * Named omit: MAY_FRACTURE/MAY_DESTROY; shop credit/stolen; flooreffects
  * (always place); VIS_EFFECTS; uball/uchain shatter; hideunder.
  * @returns {number} total quantity that left the origin square

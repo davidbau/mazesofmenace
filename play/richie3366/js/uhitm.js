@@ -1529,7 +1529,8 @@ export async function explum(mdef, mattk) {
  * C ref: uhitm.c hmonas — poly'd hero attacks as monster.
  * AT_WEAP / weapon-using claw/touch/magc → known_hitum; natural hits → damageum
  * (troll_baned ternary/uwep D-1233). AT_HUGS grab/crush/throttle D-1250
- * (special_dmgval callee). AT_EXPL explum + dhit==-1 rehumanize D-1251.
+ * (special_dmgval callee; mon_hates_silver = C hates_silver D-1254).
+ * AT_EXPL explum + dhit==-1 rehumanize D-1251.
  * Named omit: two-weapon altwep; AT_ENGL gulpum; fight_empty explum;
  * skipdrin; pit kick.
  */

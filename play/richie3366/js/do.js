@@ -2492,8 +2492,8 @@ function locomotion_revive(ptr, def) {
  * (D-1202 zombify; D-1222 se_scratching); Adjmonnam bite-covered
  * when oeaten (FLOOR + MINVENT); BURIED !is_zomb FALLTHROUGH
  * impossible (D-1220); unique/pname corpse_xname adjective
- * placement (D-1234). Named omit: glob corpse_xname; doname
- * CXN_ARTICLE|CXN_NOCORPSE prefix-as-adjective.
+ * placement (D-1234); glob / doname CXN_ARTICLE|CXN_NOCORPSE (D-1255).
+ * Named omit: doname EGG / MEAT_RING / candle partly used.
  * @returns {Promise<boolean>}
  */
 export async function revive_corpse(corpse) {

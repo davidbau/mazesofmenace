@@ -991,7 +991,7 @@ export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags) {
                     game.u?.Hallucination ? 'angry snakes!' : 'a hissing noise.',
                 );
             }
-            if (!nodissolve) dissolve_bars(barsx, barsy);
+            if (!nodissolve) await dissolve_bars(barsx, barsy);
         }
         return;
     }
@@ -1024,7 +1024,7 @@ export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags) {
         const chance = (melee_attk ? 40 : 60) - acurrstr() - spe;
         if (!rn2(Math.max(2, chance))) {
             await pline('You break the bars apart!');
-            dissolve_bars(barsx, barsy);
+            await dissolve_bars(barsx, barsy);
             noise = noise * 2;
         }
     }

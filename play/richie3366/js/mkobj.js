@@ -2312,6 +2312,18 @@ export function is_organic(otmp) {
     return mat <= WOOD;
 }
 
+/** C ref: obj.h is_mines_prize — o_id == achieveo.mines_prize_oid. */
+export function is_mines_prize(o) {
+    if (!o) return false;
+    return (o.o_id | 0) === ((game.context?.achieveo?.mines_prize_oid) | 0);
+}
+
+/** C ref: obj.h is_soko_prize — o_id == achieveo.soko_prize_oid. */
+export function is_soko_prize(o) {
+    if (!o) return false;
+    return (o.o_id | 0) === ((game.context?.achieveo?.soko_prize_oid) | 0);
+}
+
 // C ref: mkobj.c mkgold()
 export function mkgold(amount, x, y) {
     if (amount <= 0) {

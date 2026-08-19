@@ -12,7 +12,7 @@ import { dist2, distmin, m_at, m_carrying } from './mon.js';
 import { lined_up, m_throw } from './mthrowu.js';
 import {
     is_animal, mindless, nohands, is_floater, needspick, nonliving,
-    is_vampshifter, monsterNames, mons, haseyes, M2_WERE, M2_DEMON,
+    is_vampshifter, monsterNames, mons, haseyes, mon_hates_silver,
 } from './monsters.js';
 import {
     objectNames, objectDescrs, POTION_CLASS, WAND_CLASS, SPEED_BOOTS,
@@ -134,12 +134,6 @@ function bimanual(obj) {
     if (!obj) return false;
     const ocl = game.objects?.[obj.otyp];
     return !!(ocl?.oc_bimanual || ocl?.oc_big);
-}
-
-/** C ref: mondata.h mon_hates_silver */
-function mon_hates_silver(mtmp) {
-    const f2 = mtmp?.data?.mflags2 ?? 0;
-    return !!(f2 & (M2_WERE | M2_DEMON));
 }
 
 /**

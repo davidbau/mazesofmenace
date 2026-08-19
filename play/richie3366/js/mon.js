@@ -7,7 +7,7 @@ import { dochugw, m_everyturn_effect, monflee } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
-    NOGARLIC, IRONBARS, IS_ALTAR, DISPLACED,
+    NOGARLIC, IRONBARS, IS_ALTAR, DISPLACED, W_NONDIGGABLE,
     IS_WATERWALL, LAVAWALL, Is_waterlevel,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
@@ -28,7 +28,8 @@ import {
     monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
     is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
     is_flyer, is_floater, is_clinger, is_swimmer, likes_lava,
-    bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY,
+    bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY, unsolid,
+    dmgtype, passes_bars,
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
     is_rider, nonliving, breathless, is_giant, is_minion, is_human,
     is_elf, is_dwarf, is_undead, amphibious, can_teleport, MR_FIRE,
@@ -38,7 +39,7 @@ import {
     little_to_big, big_to_little, hero_conflict, resist_conflict,
     m_canseeu, on_fire,
 } from './mondata.js';
-import { objects_at, kill_egg, place_object, stackobj } from './mkobj.js';
+import { objects_at, kill_egg, place_object, stackobj, delobj } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele } from './teleport.js';
@@ -78,6 +79,8 @@ const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const AT_BREA = 12; // C monattk.h
 const AD_DRST = 7;
 const AD_RBRE = 242;
+const AD_RUST = 24;
+const AD_CORR = 42;
 const EGG = objectNames.indexOf('EGG');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const NC_SHOW_MSG = 1;
@@ -1424,12 +1427,14 @@ export function mon_allowflags(mtmp) {
     if (doorbuster) allowflags |= BUSTDOOR;
     if (can_open) allowflags |= OPENDOOR;
     if (can_unlock) allowflags |= UNLOCKDOOR;
-    // C: passes_bars → ALLOW_BARS (rust/corr/metallivorous/slithy subset deferred)
-    if (passes_walls(mtmp.data) || amorphous(mtmp.data) || is_whirly(mtmp.data)
-        || verysmall(mtmp.data)) {
+    // C: passes_bars → ALLOW_BARS unless this mon is u.ustuck carrying the
+    // hero (poly'd hero unsolid/verysmall still allowed — not full
+    // passes_bars(youmonst.data)).
+    if (passes_bars(mtmp.data)
+        && (mtmp !== game.u?.ustuck
+            || unsolid(game.youmonst?.data)
+            || verysmall(game.youmonst?.data))) {
         allowflags |= ALLOW_BARS;
-        // Named: unsolid; dmgtype RUST/CORR; metallivorous; slithy&&!big;
-        // ustuck engulfer gate
     }
     if (is_minion(mtmp.data) || is_rider(mtmp.data)) {
         allowflags |= ALLOW_SANCT;
@@ -1488,6 +1493,22 @@ export function healmon(mtmp, amt, overheal) {
         if ((mtmp.mhp | 0) > (mtmp.mhpmax | 0)) mtmp.mhpmax = mtmp.mhp | 0;
     }
     return (mtmp.mhp | 0) - oldhp;
+}
+
+/**
+ * C ref: mon.c m_consume_obj — non-pet heal by oc_weight then delobj.
+ * Named omit: Has_contents meatbox; uball/uchain unpunish; polyfood/slime
+ * newcham; mlevelgain grow_up; mstoning; mhealup/carrot mcureblindness;
+ * deadmimic quickmimic; pyrolisk egg explode; mon_givit.
+ */
+export function m_consume_obj(mtmp, otmp) {
+    if (!mtmp || !otmp) return;
+    const ispet = !!mtmp.mtame;
+    if (!ispet && (mtmp.mhp | 0) < (mtmp.mhpmax | 0)) {
+        const ocw = game.objects?.[otmp.otyp]?.oc_weight | 0;
+        healmon(mtmp, ocw, 0);
+    }
+    delobj(otmp);
 }
 
 /** C ref: prop.h res_to_mr — FIRE_RES..STONE_RES → MR_* bit. */
@@ -1731,8 +1752,8 @@ async function minliquid_core(mtmp) {
 // C ref: mon.c mfndpos() — neighbour scan; ALLOW_DIG rock/tree + thrudoor
 // Named omissions still: mm_aggression/MDISP;
 // can_fog in cant_squeeze_thru;
-// peaceful shop/temple dig avoid; Inhell Elbereth;
-// passes_bars full (rust/corr/metallivorous/slithy); m_can_break_boulder.
+// Inhell Elbereth; m_can_break_boulder.
+// passes_bars / ALLOW_BARS rust/corr/metallivore is D-1258.
 export function mfndpos(mon, data, flag) {
     const x = mon.mx;
     const y = mon.my;
@@ -1821,8 +1842,16 @@ export function mfndpos(mon, data, flag) {
                 }
                 // C: IS_WATERWALL && !is_swimmer
                 if (IS_WATERWALL(ntyp) && !is_swimmer(mdat)) continue;
-                // C: IRONBARS — need ALLOW_BARS; nondiggable+rust/corr deferred
-                if (ntyp === IRONBARS && !(flag & ALLOW_BARS)) continue;
+                // C: IRONBARS — need ALLOW_BARS; rust/corr cannot eat
+                // W_NONDIGGABLE bars (metallivorous may still path there).
+                if (ntyp === IRONBARS
+                    && (!(flag & ALLOW_BARS)
+                        || ((((loc.wall_info | 0) | (loc.flags | 0))
+                            & W_NONDIGGABLE)
+                            && (dmgtype(mdat, AD_RUST)
+                                || dmgtype(mdat, AD_CORR))))) {
+                    continue;
+                }
                 if (IS_DOOR(ntyp)) {
                     const dm = loc.doormask || 0;
                     if (((dm & D_CLOSED) && !(flag & OPENDOOR))

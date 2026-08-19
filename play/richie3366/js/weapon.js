@@ -17,7 +17,9 @@ import {
 import {
     is_ammo, ammo_and_launcher, is_missile,
 } from './wield.js';
-import { is_lord, is_prince, strongmonst, mon_hates_blessings } from './monsters.js';
+import {
+    is_lord, is_prince, strongmonst, mon_hates_blessings, mon_hates_silver,
+} from './monsters.js';
 import { which_armor } from './worn.js';
 import {
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE,
@@ -321,8 +323,6 @@ const CORPSE = objectNames.indexOf('CORPSE');
 const CLUB = objectNames.indexOf('CLUB');
 const SILVER = 14; // objclass.h
 const M2_GIANT = 0x00002000; // monflag.h
-const M2_WERE = 0x00000004;
-const M2_DEMON = 0x00000100;
 
 /** C hwep[] — weapon.c preference order */
 const HWEP_NAMES = [
@@ -340,15 +340,6 @@ const HWEP_NAMES = [
 /** C ref: mondata.h is_giant */
 function is_giant(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_GIANT);
-}
-
-/**
- * C ref: mondata.h hates_silver / mon_hates_silver — were/demon arms.
- * Named omission: is_vampshifter + full hates_silver(ptr) body.
- */
-function mon_hates_silver(mtmp) {
-    const f2 = mtmp?.data?.mflags2 ?? 0;
-    return !!(f2 & (M2_WERE | M2_DEMON));
 }
 
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
@@ -376,6 +367,7 @@ function which_armor_magr(magr, flag) {
  * C ref: weapon.c special_dmgval — blessed and/or silver bonus for
  * non-weapon hits (hug cloak/suit/shirt or gloves+rings).
  * silverhit_p is `{ v }` out-param like C long*.
+ * mon_hates_silver is C mondata.c (D-1254), not M2_WERE|M2_DEMON.
  */
 export function special_dmgval(magr, mdef, armask, silverhit_p) {
     const left_ring = !!(armask & W_RINGL);

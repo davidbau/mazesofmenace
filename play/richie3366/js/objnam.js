@@ -410,6 +410,18 @@ function pretty_base(obj) {
     // C ref: objnam.c xname_flags FOOD_CLASS — Concat(actualn);
     // if (typ == TIN && known) tin_details(...). Unidentified → bare "tin".
     if (n === 'TIN') return obj.known ? tin_details(obj) : 'tin';
+    // C: FOOD_CLASS globby — "%s %s" size + OBJ_NAME (owt thresholds).
+    // Named omit: iflags.partly_eaten_hack (shrink_glob Yname2).
+    if (obj.globby) {
+        const actualn = objectNameStrs[obj.otyp]
+            || (n ? n.toLowerCase().replace(/_/g, ' ') : 'glob');
+        const owt = obj.owt | 0;
+        const size = owt <= 100 ? 'small'
+            : owt <= 300 ? 'medium'
+                : owt <= 500 ? 'large'
+                    : 'very large';
+        return `${size} ${actualn}`;
+    }
     // C: corpse → "<monster> corpse" when corpsenm known
     if (n === 'CORPSE' && obj.corpsenm != null && obj.corpsenm >= 0)
         return `${mon_name(obj.corpsenm)} corpse`;
@@ -680,7 +692,7 @@ function pretty_base(obj) {
  * Distant formatting must go through distant_name so the flag suppresses
  * discovery; map generic glyphs still observe via display.map_object.
  * C: xname omits monster type for CORPSE ("corpse"); cxname/doname use
- * corpse_xname — pretty_base still carries mon name for doname.
+ * corpse_xname (doname CXN_ARTICLE|CXN_NOCORPSE; D-1255).
  */
 export function xname(obj) {
     if (!obj) return 'something';
@@ -808,9 +820,9 @@ function obj_pmname_corpse(obj) {
 
 /**
  * C ref: objnam.c corpse_xname — unique/pname possessive + adjective
- * placement (D-1234). CXN_SINGULAR / NO_PFX / PFX_THE / ARTICLE / NOCORPSE.
- * Named omit: glob (globby non-CORPSE); doname prefix-as-adjective
- * CXN_ARTICLE|CXN_NOCORPSE wiring (FOOD_CLASS still uses pretty_base).
+ * placement (D-1234); glob OBJ_NAME (D-1255). CXN_SINGULAR / NO_PFX /
+ * PFX_THE / ARTICLE / NOCORPSE.
+ * Named omit: doname EGG / MEAT_RING / candle partly used.
  */
 export function corpse_xname(obj, adjective, cxn_flags) {
     const flags = cxn_flags | 0;
@@ -821,9 +833,15 @@ export function corpse_xname(obj, adjective, cxn_flags) {
     let any_prefix = (flags & CXN_ARTICLE) !== 0;
     const omit_corpse = (flags & CXN_NOCORPSE) !== 0;
     let possessive = false;
+    const glob = objectNames[obj?.otyp] !== 'CORPSE' && !!obj?.globby;
 
     let mnam;
-    if (omndx == null || omndx < 0 || omndx === NON_PM) {
+    if (glob) {
+        // C: OBJ_NAME(objects[otmp->otyp]) — "glob of <monster>"
+        mnam = objectNameStrs[obj.otyp]
+            || objectNames[obj.otyp]?.toLowerCase().replace(/_/g, ' ')
+            || 'glob';
+    } else if (omndx == null || omndx < 0 || omndx === NON_PM) {
         mnam = 'thing';
     } else {
         mnam = obj_pmname_corpse(obj);
@@ -851,14 +869,18 @@ export function corpse_xname(obj, adjective, cxn_flags) {
     } else if (possessive) {
         // C: Medusa's cursed partly eaten corpse
         nambuf += `${mnam} ${adjective}`;
+        nambuf = mungspaces_objnam(nambuf);
+        if (/^\d/.test(adjective)) any_prefix = false;
     } else {
         // C: cursed partly eaten troll corpse
         nambuf += `${adjective} ${mnam}`;
+        nambuf = mungspaces_objnam(nambuf);
+        if (/^\d/.test(adjective)) any_prefix = false;
     }
-    nambuf = mungspaces_objnam(nambuf);
-    if (adjective && /^\d/.test(adjective)) any_prefix = false;
 
-    if (!omit_corpse) {
+    if (glob) {
+        // C: omit_corpse doesn't apply; quantity is always 1
+    } else if (!omit_corpse) {
         nambuf += ' corpse';
         if ((obj?.quan || 1) > 1 && !ignore_quan) {
             nambuf += 's';
@@ -1500,6 +1522,7 @@ export function doname(obj) {
     const known = !!obj.known;
     const bknown = !!obj.bknown;
     const quan = obj.quan || 1;
+    const oname = objectNames[otyp];
     let base = pretty_base(obj);
     // C doname_base: xname may start with "poisoned "; strip into prefix
     // so order is article/BUC/poisoned/erosion/spe + bare name.
@@ -1508,18 +1531,25 @@ export function doname(obj) {
         base = base.slice(9);
         ispoisoned = true;
     }
-    if (quan !== 1) base = makeplural(base);
+    // C xname CORPSE is bare "corpse"; corpse_xname owns the monster type.
+    if (oname === 'CORPSE') {
+        base = (quan !== 1) ? makeplural('corpse') : 'corpse';
+    } else if (quan !== 1) {
+        base = makeplural(base);
+    }
 
     // C ref: objnam.c doname_base — COIN_CLASS uses the same quan/article
     // path as other objects ("a gold piece", "25 gold pieces"), not a bare
     // numeric string. xname for coins is just "gold piece".
     // Article: quan / the_unique_obj|obj_is_pname → "the " / else "a "
-    // (then just_an redo). C skips article for CORPSE (corpse_xname owns
-    // it) — deferred until callers stop relying on doname's "a "/"an ".
-    // Slime-mold fake_arti deferred.
+    // (then just_an redo). C skips article for CORPSE so corpse_xname
+    // can take the BUC/greased/oeaten prefix as its adjective
+    // (CXN_ARTICLE|CXN_NOCORPSE; D-1255). Slime-mold fake_arti deferred.
     let prefix = '';
     if (quan !== 1) {
         prefix = `${quan} `;
+    } else if (oname === 'CORPSE') {
+        // skip article — corpse_xname owns it
     } else if (obj_is_pname(obj) || the_unique_obj(obj)) {
         if (/^the /i.test(base)) base = base.slice(4);
         prefix = 'the ';
@@ -1528,7 +1558,6 @@ export function doname(obj) {
     }
 
     // C: cknown + (Is_container || STATUE) + !Has_contents → "empty "
-    const oname = objectNames[otyp];
     if (obj.cknown
         && ((Is_container(obj) || oname === 'STATUE') && !Has_contents(obj))) {
         prefix += 'empty ';
@@ -1588,9 +1617,15 @@ export function doname(obj) {
     }
 
     // C: FOOD_CLASS — oeaten → "partly eaten " (before just_an redo).
-    // CORPSE → corpse_xname / EGG / MEAT_RING still deferred.
+    // CORPSE → corpse_xname(prefix, CXN_ARTICLE|CXN_NOCORPSE) so unique/
+    // pname adjectives sit after the possessive (D-1255). EGG / MEAT_RING
+    // still deferred.
     if (donameClass === FOOD_CLASS && obj.oeaten) {
         prefix += 'partly eaten ';
+    }
+    if (donameClass === FOOD_CLASS && oname === 'CORPSE') {
+        const cxarg = ((quan !== 1 ? 0 : CXN_ARTICLE) | CXN_NOCORPSE);
+        prefix = `${corpse_xname(obj, prefix, cxarg)} `;
     }
 
     // C ref: objnam.c — redo article based on text after "a "

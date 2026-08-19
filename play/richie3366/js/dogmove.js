@@ -6,6 +6,7 @@ import { rn2, rnd } from './rng.js';
 import {
     dist2, distmin, mon_allowflags, mfndpos, m_at, monnear, onscary, ALLOW_M,
     ALLOW_U, ALLOW_TRAPS, m_avoid_kicked_loc, m_avoid_soko_push_loc,
+    m_consume_obj,
 } from './mon.js';
 import {
     objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
@@ -349,12 +350,6 @@ function mons_cwt(corpsenm) {
 
 function mons_cnutrit(corpsenm) {
     return mons(corpsenm)?.cnutrit ?? 20;
-}
-
-// C ref: mon.c m_consume_obj — pet heal omitted; delobj always rolls obj_resists(0,0).
-function m_consume_obj(_mtmp, otmp) {
-    // Has_contents/meatbox, uball/uchain, polyfood/slime deferred
-    delobj(otmp);
 }
 
 /**

@@ -482,6 +482,43 @@ export function passes_walls(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_WALLWALK);
 }
 
+/** C ref: mondata.h slithy — M1_SLITHY. */
+export function slithy(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_SLITHY);
+}
+
+/* C monattk.h — rust monster / gray ooze·pudding (passes_bars). */
+const AD_RUST = 24;
+const AD_CORR = 42;
+
+/**
+ * C ref: mondata.c dmgtype :712–715 — any mattk slot matches adtyp
+ * (AT_ANY). Empty slots are adtyp 0, not rust/corr.
+ */
+export function dmgtype(ptr, dtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    const want = dtyp | 0;
+    for (const a of slots) {
+        if ((a.adtyp | 0) === want) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mondata.c passes_bars :552–563 — walls / amorphous / unsolid /
+ * whirly / verysmall, rust or corr dmgtype, metallivorous, or
+ * slithy && !bigmonst. Callers: mon_allowflags ALLOW_BARS (D-1258).
+ * Hero hack.c test_move still named.
+ */
+export function passes_bars(mptr) {
+    return !!(passes_walls(mptr) || amorphous(mptr) || unsolid(mptr)
+        || is_whirly(mptr) || verysmall(mptr)
+        || dmgtype(mptr, AD_RUST) || dmgtype(mptr, AD_CORR)
+        || metallivorous(mptr)
+        || (slithy(mptr) && !bigmonst(mptr)));
+}
+
 /** C ref: mondata.h tunnels / needspick */
 export function tunnels(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_TUNNEL);
@@ -739,6 +776,28 @@ export function is_vampshifter(mon) {
     const cham = mon?.cham ?? NON_PM;
     if (cham < LOW_PM) return false;
     return is_vampire(mons(cham));
+}
+
+const PM_SHADE = monsterNames.indexOf('PM_SHADE');
+const PM_TENGU = monsterNames.indexOf('PM_TENGU');
+
+/**
+ * C ref: mondata.c hates_silver :524–528 — were / S_VAMPIRE / demon /
+ * PM_SHADE / (S_IMP && not tengu). JS uses mndx (mons() is not a stable
+ * &mons[PM] pointer).
+ */
+export function hates_silver(ptr) {
+    if (!ptr) return false;
+    return !!(is_were(ptr) || ptr.mlet === 'S_VAMPIRE' || is_demon(ptr)
+        || (ptr.mndx | 0) === PM_SHADE
+        || (ptr.mlet === 'S_IMP' && (ptr.mndx | 0) !== PM_TENGU));
+}
+
+/**
+ * C ref: mondata.c mon_hates_silver :517–519 — vampshifter or hates_silver.
+ */
+export function mon_hates_silver(mon) {
+    return !!(is_vampshifter(mon) || hates_silver(mon?.data));
 }
 
 /**
