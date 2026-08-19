@@ -27,14 +27,14 @@ import { doread } from './read.js';
 import { dohelp } from './pager.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, doddoremarm, hooked_tty_getlin, wiz_wish, wiz_genesis,
-         wiz_map_extcmd } from './extcmd-handlers.js';
+         wiz_map_extcmd, run_extcmd_by_name } from './extcmd-handlers.js';
 import { do_gamelog } from './insight.js';
 import { skill_window_advance } from './enhance.js';
 import { wiz_level_tele, dodown, doup } from './do.js';
 import { spoteffects, t_at, immune_to_trap, into_vs_onto, trap_explanation,
          TRAP_CLEARLY_IMMUNE } from './trap.js';
 import { doset, dosetSimple } from './doset.js';
-import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap, run_stop_for_monster_at, could_move_onto_boulder } from './hack.js';
+import { do_run, do_run_prefixed, isRunKey, RUN_DX, RUN_DY, do_farlook, do_look_full, dotele_wizard, doterrain, avoid_moving_on_trap, run_stop_for_monster_at, could_move_onto_boulder, getpos } from './hack.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
@@ -141,6 +141,312 @@ const CTRL_RUSH_DIR = (() => {
         m[letter.charCodeAt(0) & 0x1f] = letter;
     return m;
 })();
+
+// ── number_pad: the C command table ────────────────────────────────────────
+// C ref: cmd.c commands_init() + reset_commands().  With number_pad set, the
+// digits become the movement keys and the letters they no longer displace fall
+// back to the bindings commands_init() always installs (h #help, j #jump,
+// k #kick, l #loot, u #untrap, N #name, ^L #redraw, ^N #annotate, 5 the run
+// prefix, M-5 the rush prefix).  Modelled as C's Cmd_bind list: a key code
+// (0..255) -> extcmdlist name map that reset_commands() rebuilds; our dispatch
+// chain is keyed on each command's default character, so resolving a key
+// through the map and handing back that character reproduces C's dispatch.
+
+const SDIR = 'hykulnjb><';                 // cmd.c reset_commands() sdir[]
+const SDIR_SWAP_YZ = 'hzkulnjb><';         //   ... sdir_swap_yz[]
+const NDIR = '47896321><';                 //   ... ndir[]
+const NDIR_PHONE_LAYOUT = '41236987><';    //   ... ndir_phone_layout[]
+const N_DIRS = 8;                          // hack.h N_DIRS_Z - 2
+const MV_WALK = 0, MV_RUN = 1, MV_RUSH = 2, N_MOVEMODES = 3;  // hack.h
+
+// Direction deltas in sdir[]/ndir[] order (h y k u l n j b > <).
+const DIR_XYZ = [
+    [-1, 0, 0], [-1, -1, 0], [0, -1, 0], [1, -1, 0], [1, 0, 0],
+    [1, 1, 0], [0, 1, 0], [-1, 1, 0], [0, 0, 1], [0, 0, -1],
+];
+
+const kC = (c) => 0x1f & (typeof c === 'string' ? c.charCodeAt(0) : c);   // global.h C()
+const kM = (c) => 0x80 | (typeof c === 'string' ? c.charCodeAt(0) : c);   // global.h M()
+const kHighc = (k) => (k >= 97 && k <= 122) ? (k & ~0x20) : k;           // hacklib.c highc()
+
+// C ref: hacklib.c visctrl() — "^X" / "M-x" rendering, for bad_command's
+// "Unknown command '%s'." (a control key must not be emitted raw).
+function visctrl_code(k) {
+    let s = (k & 0x80) ? 'M-' : '';
+    const c = k & 0x7f;
+    if (c < 32) return s + '^' + String.fromCharCode(c | 0x40);
+    if (c === 127) return s + '^?';
+    return s + String.fromCharCode(c);
+}
+
+// C ref: cmd.c extcmdlist[] — every entry that carries a default key.  This is
+// the table commands_init() walks; CMD_DEFAULT_KEY above is the subset our
+// dispatch chain has a branch for and is used to translate back.
+const EXTCMD_DEFAULT_KEY = {
+    adjust: kM('a'), annotate: kM('A'), apply: 0x61, attributes: kC('x'),
+    autopickup: 0x40, call: 0x43, cast: 0x5a, chat: kM('c'), chronicle: 0x76,
+    close: 0x63, conduct: kM('C'), dip: kM('d'), down: 0x3e, drop: 0x64,
+    droptype: 0x44, eat: 0x65, engrave: 0x45, enhance: kM('e'),
+    exploremode: kM('X'), fight: 0x46, fire: 0x66, force: kM('f'),
+    genocided: kM('g'), glance: 0x3b, help: 0x3f, inventory: 0x69,
+    inventtype: 0x49, invoke: kM('i'), jump: kM('j'), kick: kC('d'),
+    known: 0x5c, knownclass: 0x60, look: 0x3a, loot: kM('l'),
+    monster: kM('m'), name: kM('n'), offer: kM('o'), open: 0x6f,
+    options: 0x4f, overview: kC('o'), pay: 0x70, perminv: 0x7c, pray: kM('p'),
+    prevmsg: kC('p'), puton: 0x50, quaff: 0x71, quiver: 0x51, read: 0x72,
+    redraw: kC('r'), remove: 0x52, repeat: kC('a'), reqmenu: 0x6d,
+    retravel: kC('_'), ride: kM('R'), rub: kM('r'), run: 0x47, rush: 0x67,
+    save: 0x53, search: 0x73, seeall: 0x2a, seeamulet: 0x22, seearmor: 0x5b,
+    seerings: 0x3d, seetools: 0x28, seeweapon: 0x29, shell: 0x21,
+    showgold: 0x24, showspells: 0x2b, showtrap: 0x5e, sit: kM('s'),
+    suspend: kC('z'), swap: 0x78, takeoff: 0x54, takeoffall: 0x41,
+    teleport: kC('t'), terrain: 0x7f, throw: 0x74, tip: kM('T'), travel: 0x5f,
+    turn: kM('t'), twoweapon: 0x58, untrap: kM('u'), up: 0x3c,
+    vanquished: kM('V'), version: kM('v'), versionshort: 0x56, wait: 0x2e,
+    wear: 0x57, whatdoes: 0x26, whatis: 0x2f, wield: 0x77, wipe: kM('w'),
+    wizdetect: kC('e'), wizgenesis: kC('g'), wizidentify: kC('i'),
+    wizlevelport: kC('v'), wizmap: kC('f'), wizwish: kC('w'), zap: 0x7a,
+    // extcmdlist names that are punctuation: '#' (doextcmd) and '?' (doextlist).
+    '#': 0x23, '?': kM('?'),
+};
+
+// Resolution target for numpad_resolve(): CMD_DEFAULT_KEY is built for BIND=
+// translation and omits '#', whose dispatch branch does exist.  Kept separate so
+// BOUND_COMMAND_KEYS / is_bound_key() keep their current membership.
+const EXTCMD_DISPATCH_KEY = { ...CMD_DEFAULT_KEY, '#': '#' };
+
+// C ref: cmd.c spkeys_binds[] — only the entries the command loop reads.
+const NHKF_COUNT_KEY = 0x6e;        // 'n'
+const NHKF_GETDIR_SELF = 0x2e;      // '.'
+const NHKF_GETDIR_SELF2 = 0x73;     // 's'
+const NHKF_GETDIR_MOUSE = 0x5f;     // '_'
+const NHKF_GETPOS_PICK_Q = 0x2c;    // ','
+const NHKF_GETPOS_PICK = 0x2e;      // '.'
+
+// C ref: cmd.c cmdbind_add()/cmdbind_remove()/cmdbind_swapkeys().
+function cmdbind_add(binds, key, name) {
+    if (!key) return;
+    if (!name) { binds.delete(key); return; }
+    binds.set(key, name);
+}
+function cmdbind_swapkeys(binds, key1, key2) {
+    const b1 = binds.get(key1), b2 = binds.get(key2);
+    if (b1 !== undefined && b2 !== undefined) {
+        binds.set(key1, b2);
+        binds.set(key2, b1);
+    }
+}
+
+// C ref: cmd.c commands_init() — extcmdlist defaults, then the bindings that
+// exist for number_pad's sake; reset_commands() strips whichever of them the
+// movement keys claim.
+function commands_init(binds) {
+    for (const [name, key] of Object.entries(EXTCMD_DEFAULT_KEY))
+        cmdbind_add(binds, key, name);
+    cmdbind_add(binds, kC('l'), 'redraw');
+    cmdbind_add(binds, 0x68, 'help');    // 'h'
+    cmdbind_add(binds, 0x6a, 'jump');    // 'j'
+    cmdbind_add(binds, 0x6b, 'kick');    // 'k'
+    cmdbind_add(binds, 0x6c, 'loot');    // 'l'
+    cmdbind_add(binds, kC('n'), 'annotate');
+    cmdbind_add(binds, 0x4e, 'name');    // 'N'
+    cmdbind_add(binds, 0x75, 'untrap');  // 'u'
+    cmdbind_add(binds, 0x35, 'run');     // '5'
+    cmdbind_add(binds, kM('5'), 'rush');
+    cmdbind_add(binds, 0x2d, 'fight');   // '-'
+    cmdbind_add(binds, kM('O'), 'overview');
+    cmdbind_add(binds, kM('2'), 'twoweapon');
+    cmdbind_add(binds, kM('N'), 'name');
+}
+
+// C ref: options.c optfn_number_pad() — decode the OPTIONS value into
+// iflags.num_pad / iflags.num_pad_mode.  `raw` is what the rc parser stored:
+// a string for "number_pad:N", true for a bare "number_pad", false for
+// "!number_pad".  An out-of-range value is a config error and leaves the
+// option alone (C's config_error_add path).
+function numpad_iflags(raw) {
+    if (typeof raw === 'boolean') return { num_pad: raw, num_pad_mode: 0 };
+    const op = String(raw).trim();
+    const parsed = parseInt(op, 10);
+    const mode = Number.isNaN(parsed) ? 0 : parsed;   // C atoi()
+    if (mode < -1 || mode > 4 || (mode === 0 && op[0] !== '0'))
+        return null;
+    if (mode <= 0)
+        return { num_pad: false, num_pad_mode: mode < 0 ? 1 : 0 };
+    let num_pad_mode = 0;
+    if (mode === 2 || mode === 4) num_pad_mode |= 1;   // PC Hack / MSDOS compat
+    if (mode === 3 || mode === 4) num_pad_mode |= 2;   // phone keypad layout
+    return { num_pad: true, num_pad_mode };
+}
+
+// C ref: cmd.c reset_commands() — called at startup (initial) and again every
+// time number_pad is twiddled.
+function reset_commands(Cmd, iflags, initial) {
+    let dir, mode, updated = 0;
+
+    if (initial) {
+        updated = 1;
+        Cmd.num_pad = false;
+        Cmd.pcHack_compat = Cmd.phone_layout = Cmd.swap_yz = false;
+        commands_init(Cmd.binds);
+    } else {
+        if (Cmd.backed_dir_cmd) {
+            for (dir = 0; dir < N_DIRS; dir++)
+                for (mode = 0; mode < N_MOVEMODES; mode++)
+                    cmdbind_add(Cmd.binds, Cmd.back_dir_key[dir][mode],
+                                Cmd.back_dir_cmd[dir][mode]);
+        }
+        let flagtemp = iflags.num_pad;
+        if (flagtemp !== Cmd.num_pad) { Cmd.num_pad = flagtemp; ++updated; }
+        // swap_yz: QWERTZ keyboards (number_pad:-1); only for !num_pad.
+        flagtemp = (iflags.num_pad_mode & 1) ? !Cmd.num_pad : false;
+        if (flagtemp !== Cmd.swap_yz) {
+            Cmd.swap_yz = flagtemp;
+            ++updated;
+            // cmd.c ylist[]: y Y ^Y M-y M-Y M-^Y each swap with the next code.
+            for (const c of [0x79, 0x59, kC('y'), kM('y') & 0xff, kM('Y') & 0xff,
+                             kM(kC('y')) & 0xff])
+                cmdbind_swapkeys(Cmd.binds, c, c + 1);
+        }
+        // pcHack_compat: MSDOS compatibility (number_pad:2/4); only for num_pad.
+        // C's '5'/M-5 swap is #if 0'd out, so M-0 is the only real effect.
+        flagtemp = (iflags.num_pad_mode & 1) ? Cmd.num_pad : false;
+        if (flagtemp !== Cmd.pcHack_compat) {
+            Cmd.pcHack_compat = flagtemp;
+            ++updated;
+            if (Cmd.pcHack_compat) cmdbind_add(Cmd.binds, kM('0'), 'inventtype');
+            else cmdbind_add(Cmd.binds, kM('0'), null);
+        }
+        // phone_layout: 1,2,3 <-> 7,8,9 (number_pad:3/4); only for num_pad.
+        flagtemp = (iflags.num_pad_mode & 2) ? Cmd.num_pad : false;
+        if (flagtemp !== Cmd.phone_layout) {
+            Cmd.phone_layout = flagtemp;
+            ++updated;
+            for (let i = 0; i < 3; i++) {
+                cmdbind_swapkeys(Cmd.binds, 0x31 + i, 0x31 + i + 6);
+                cmdbind_swapkeys(Cmd.binds, (kM('1') & 0xff) + i,
+                                 (kM('1') & 0xff) + i + 6);
+            }
+        }
+    }
+
+    if (updated) Cmd.serialno = (Cmd.serialno | 0) + 1;
+    Cmd.dirchars = !Cmd.num_pad ? (!Cmd.swap_yz ? SDIR : SDIR_SWAP_YZ)
+                                : (!Cmd.phone_layout ? NDIR : NDIR_PHONE_LAYOUT);
+    Cmd.alphadirchars = !Cmd.num_pad ? Cmd.dirchars : SDIR;
+
+    // Back up the commands & keys the new movement keys are about to overwrite.
+    for (dir = 0; dir < N_DIRS; dir++) {
+        for (mode = MV_WALK; mode < N_MOVEMODES; mode++) {
+            let di = Cmd.dirchars.charCodeAt(dir);
+            if (!Cmd.num_pad) {
+                if (mode === MV_RUN) di = kHighc(di);
+                else if (mode === MV_RUSH) di = kC(di);
+            } else {
+                // C uses M(di) for BOTH modes here, so the MV_RUSH pass reads
+                // back the key MV_WALK/MV_RUN already removed and saves null.
+                if (mode === MV_RUN || mode === MV_RUSH) di = kM(di);
+            }
+            Cmd.back_dir_key[dir][mode] = di;
+            const had = Cmd.binds.get(di);
+            Cmd.back_dir_cmd[dir][mode] = had === undefined ? null : had;
+            Cmd.binds.delete(di);
+        }
+    }
+    Cmd.backed_dir_cmd = true;
+
+    // Bind the new keys to movement commands.
+    for (let i = 0; i < N_DIRS; i++) {
+        const di = Cmd.dirchars.charCodeAt(i);
+        cmdbind_add(Cmd.binds, di, `move:${i}`);
+        if (!Cmd.num_pad) {
+            cmdbind_add(Cmd.binds, kHighc(di), `run:${i}`);
+            cmdbind_add(Cmd.binds, kC(di), `rush:${i}`);
+        } else {
+            // M(number) works when altmeta is on; digits have no highc()/C().
+            cmdbind_add(Cmd.binds, kM(di), `run:${i}`);
+        }
+    }
+}
+
+// The live Cmd struct, rebuilt whenever the rc's number_pad value changes.
+// C runs reset_commands(TRUE) from initoptions_init() and reset_commands(FALSE)
+// from the option handler; the rc is parsed once, so the same two calls here
+// reproduce the table exactly.
+let _numpad_cmd = null, _numpad_cmd_src = null;
+function numpad_cmd() {
+    const raw = game?.flags?.number_pad;
+    const key = raw === undefined ? '\0none' : String(raw);
+    // Memoised at module scope, not on `game`: the save/restore path round-trips
+    // `game` through JSON, which would turn Cmd.binds into a plain object.
+    if (_numpad_cmd && _numpad_cmd_src === key) return _numpad_cmd;
+    const Cmd = {
+        binds: new Map(), num_pad: false, pcHack_compat: false,
+        phone_layout: false, swap_yz: false, serialno: 0,
+        dirchars: SDIR, alphadirchars: SDIR, backed_dir_cmd: false,
+        back_dir_key: Array.from({ length: N_DIRS }, () => new Array(N_MOVEMODES).fill(0)),
+        back_dir_cmd: Array.from({ length: N_DIRS }, () => new Array(N_MOVEMODES).fill(null)),
+    };
+    reset_commands(Cmd, null, true);
+    if (raw !== undefined) {
+        const ifl = numpad_iflags(raw);
+        if (ifl) reset_commands(Cmd, ifl, false);
+    }
+    _numpad_cmd = Cmd;
+    _numpad_cmd_src = key;
+    return Cmd;
+}
+
+// C ref: cmd.c gc.Cmd.dirchars / gc.Cmd.num_pad — the live movement-key layout,
+// for the help screens that render the key list (pager.c dokeylist(),
+// show_direction_keys(), key2extcmddesc()).
+export function Cmd_dirchars() { return numpad_cmd().dirchars; }
+export function Cmd_num_pad() { return numpad_cmd().num_pad; }
+export function Cmd_pcHack_compat() { return numpad_cmd().pcHack_compat; }
+
+// True once the command table differs from the plain alphabetic default, i.e.
+// once a key can mean something other than what the dispatch chain assumes.
+function numpad_active(Cmd) {
+    return Cmd.num_pad || Cmd.swap_yz;
+}
+
+// C ref: cmd.c movecmd(sym, mode) — resolve a keystroke to a direction index
+// through the command table.  MV_ANY accepts the walk, run and rush keys.
+function movecmd_dir(Cmd, key, mode) {
+    const name = Cmd.binds.get(key);
+    if (!name) return -1;
+    // move_funcs[DIR_DOWN] and [DIR_UP] hold dodown/doup for all three modes,
+    // so the '>' and '<' commands answer movecmd() for any mode.
+    if (name === 'down') return 8;          // DIR_DOWN
+    if (name === 'up') return 9;            // DIR_UP
+    const m = /^(move|run|rush):(\d)$/.exec(name);
+    if (!m) return -1;
+    if (mode !== null && ((m[1] === 'move' && mode !== MV_WALK)
+                          || (m[1] === 'run' && mode !== MV_RUN)
+                          || (m[1] === 'rush' && mode !== MV_RUSH)))
+        return -1;
+    return Number(m[2]);
+}
+
+// C ref: cmd.c rhack() `gc.cmd_bind = cmdbind_get(key & 0xFF)` — resolve the
+// pressed key through the (number_pad-aware) command table and report it as the
+// default character our dispatch chain branches on.  `ch` is null when the key
+// is unbound (rhack's bad_command); `ext` names a command that has no key our
+// chain handles, so it runs through its extcmdlist function instead.
+function numpad_resolve(Cmd, key) {
+    const name = Cmd.binds.get(key & 0xff);
+    if (!name) return { ch: null, ext: null, name: null };
+    const m = /^(move|run|rush):(\d)$/.exec(name);
+    if (m) {
+        // Report movement in the alphabetic form the dispatch chain expects.
+        const c = SDIR.charCodeAt(Number(m[2]));
+        const code = m[1] === 'move' ? c : m[1] === 'run' ? kHighc(c) : kC(c);
+        return { ch: String.fromCharCode(code), ext: null, name };
+    }
+    const dflt = EXTCMD_DISPATCH_KEY[name];
+    if (dflt !== undefined) return { ch: dflt, ext: null, name };
+    return { ch: null, ext: name, name };
+}
 
 // C ref: hack.c — check if a cell blocks movement
 export function blocksMove(x, y) {
@@ -533,6 +839,29 @@ async function get_count(inkey) {
 
 // C ref: cmd.c rhack — main command dispatcher
 export async function rhack(key) {
+    // C ref: cmd.c rhack() head — `iflags.menu_requested = FALSE;
+    // svc.context.nopick = 0;` sit ABOVE the `got_prefix_input:` label, so a
+    // PREFIXCMD's re-entry keeps them but every FRESH command starts clean.
+    // Our g/G prefix re-enters via a recursive rhack(0) with _prefix_seen set,
+    // so a fresh call is the only place either flag may be dropped.
+    if (game.context && !game.context._prefix_seen) {
+        game.context.nopick = 0;
+        // C ref: same two lines — `iflags.menu_requested = FALSE`.  In C the 'm'
+        // prefix and the command it modifies are ONE rhack() call, so the flag
+        // dies with that command even when the follow-up key is unbound: `m`
+        // <space> `l` moves east WITHOUT the m-prefix, and pickup() therefore
+        // still runs check_here() ("You see here a +1 spear.").  Our do_reqmenu
+        // returns instead of re-entering parse(), so the flag has to survive
+        // exactly ONE following rhack() call — _m_fresh is that one-command
+        // grace, and this drops it on the call after.  (Making 'm' recurse into
+        // rhack(0) the way g/G does is the structurally faithful alternative and
+        // measured -369 public: the recursive call's flush_screen()/top-line
+        // clear is not what C's `goto got_prefix_input` does.)
+        if (game.iflags?.menu_requested) {
+            if (game.context._m_fresh) game.context._m_fresh = 0;
+            else game.iflags.menu_requested = false;
+        }
+    }
     if (key === 0) {
         // Read key from input.  The flush renders the *previous* command's
         // top-line message so it is captured for that command's screen; once
@@ -549,14 +878,21 @@ export async function rhack(key) {
         // (C ref: topl.c clears toplin when the player's input is read).
         game._toplin = 0;
 
-        // C ref: cmd.c parse() — with number_pad Off, the first command key is
-        // routed through get_count(); a leading digit accumulates a repeat
-        // count and get_count() returns the following command key.  A bare ESC
-        // (no digits) cancels with no count.  Any digit-prefixed command thus
-        // sets gm.multi so the move loop repeats it.
+        // C ref: cmd.c parse():
+        //   if (!Cmd.num_pad || (foo = readchar()) == Cmd.spkeys[NHKF_COUNT])
+        //       foo = get_count(...);
+        // With number_pad Off the first command key is routed through
+        // get_count(), so a leading digit accumulates a repeat count and
+        // get_count() returns the following command key.  With number_pad On
+        // the digits are movement, so only the count prefix ('n') opens a
+        // count and get_count() reads the digits itself.  A bare ESC (no
+        // digits) cancels with no count.
+        const npCmd = numpad_cmd();
         const fc = String.fromCharCode(key);
-        if (fc >= '0' && fc <= '9') {
-            key = await get_count(key);
+        const startsCount = npCmd.num_pad ? (key === NHKF_COUNT_KEY)
+                                          : (fc >= '0' && fc <= '9');
+        if (startsCount) {
+            key = await get_count(npCmd.num_pad ? await nhgetch() : key);
             // ESC after a count cancels it (C: clears WIN_MESSAGE, multi 0).
             if (key === 27) {
                 game._pending_message = '';
@@ -590,6 +926,33 @@ export async function rhack(key) {
         }
     }
 
+    // C ref: cmd.c rhack() `gc.cmd_bind = cmdbind_get(key & 0xFF)`.  Once
+    // number_pad (or its y/z-swapped variant) has rebuilt the command table a
+    // keystroke no longer means what the alphabetic dispatch below assumes, so
+    // resolve it through the table first: `npExt` is a command with no key of
+    // its own, `npBad` an unbound key headed for bad_command, and `npBound`
+    // replaces is_bound_key() for the prefix bookkeeping.
+    const Cmd = numpad_cmd();
+    let npExt = null, npBad = null, npBound = null;
+    // C rhack() returns for !key / 0377 / ESC before it ever calls
+    // cmdbind_get(); a modal window consumes its keys in the window code.
+    if (numpad_active(Cmd) && !game._modal_screen
+        && key !== 0 && key !== 27 && key !== 0xff) {
+        const res = numpad_resolve(Cmd, key);
+        npBound = res.name != null;
+        npExt = res.ext;
+        if (res.ch != null) {
+            ch = res.ch;
+            key = ch.charCodeAt(0);
+        } else {
+            // Unbound (bad_command) or a #command with no key of its own:
+            // either way no alphabetic branch below may claim this keystroke.
+            if (!npExt) npBad = visctrl_code(key & 0xff);
+            ch = '\0';
+            key = 0;
+        }
+    }
+
     // C ref: cmd.c rhack():3689-3722 — a pending g/G/F prefix followed by a
     // command that lacks CMD_gGF_PREFIX (only the eight plain move commands
     // carry it) is refused with this message; the command itself never runs.
@@ -598,7 +961,10 @@ export async function rhack(key) {
     // read inside the prefix command's own rhack() call.  svc.context.run
     // (game.context.run_prefix) outlives that call; prefix_seen does not, so
     // the complaint must key on the local one.
+    // C guards the whole block with `tlist != 0`: an UNBOUND key falls through
+    // to bad_command instead of complaining about the prefix.
     if ((game.context.forcefight || game.context._prefix_seen)
+        && npBound !== false
         && !game._modal_screen && !isMovementKey(ch)
         && ch !== '\x1b' && key !== 32 && key !== 13 && key !== 10
         && ch !== 'F' && ch !== 'g' && ch !== 'G' && ch !== 'm') {
@@ -620,25 +986,34 @@ export async function rhack(key) {
     // command path ends in reset_cmd_vars(), which clears it.
     const staleRun = game.context.stale_run || 0;
     game.context.stale_run = 0;
+    let badCommand = false;
     // A pending g/G prefix is dropped by ESC or a quitchar with no message.
     if (game.context.run_prefix && !game._modal_screen && !isMovementKey(ch)) {
-        if (!is_bound_key(ch))
+        if (!(npBound ?? is_bound_key(ch)))
             game.context.stale_run = game.context.run_prefix || staleRun;
         game.context.run_prefix = 0;
-    } else if (!is_bound_key(ch) && !isMovementKey(ch) && !game._modal_screen) {
+    } else if (!(npBound ?? is_bound_key(ch)) && !isMovementKey(ch) && !game._modal_screen) {
         game.context.stale_run = staleRun; // consecutive unbound keys keep it
     }
 
     // A paged ^X attributes window consumes space/return to advance pages and
     // dismiss after the last; ESC cancels.  C ref: process_menu_window().
-    if (game._modal_screen === 'attrwin'
-        && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '>')) {
-        await attr_window_advance();
+    if (game._modal_screen === 'attrwin') {
+        // C ref: insight.c:389 `ge.en_win = create_nhwindow(NHW_MENU)` — the ^X
+        // attributes window is a MENU, so wintty.c process_menu_window() swallows
+        // EVERY key (its `default:` is tty_nhbell(), window stays up), exactly like
+        // the #enhance listing below.  Routing only space/CR/LF/'>' here let every
+        // other key fall through to rhack() and run as a command over the window.
+        await attr_window_advance(ch);
         game.context.move = 0;
-    } else if (game._modal_screen === 'skillwin'
-        && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '>')) {
-        // A paged #enhance "Current skills:" window advances/dismisses on
-        // space/return/'>' (PICK_NONE menu).  ESC falls through below.
+    } else if (game._modal_screen === 'skillwin') {
+        // C ref: wintty.c process_menu_window().  The #enhance "Current
+        // skills:" listing is a PICK_NONE menu, so it swallows EVERY key: the
+        // page/finish keys act, and its `default:` arm is tty_nhbell() with the
+        // menu left up.  This used to route only space/CR/LF/'>' here, so any
+        // other key fell through to rhack() and ran as a COMMAND over the open
+        // window -- an 'E' pressed on the listing ran engrave and desynchronised
+        // every input boundary after it (rc-baseline step 239 onward).
         await skill_window_advance(ch);
         game.context.move = 0;
     } else if (game._modal_screen === 'textwin' && game._disco_pages
@@ -677,6 +1052,22 @@ export async function rhack(key) {
         } else {
             game.context.move = 0;
         }
+    } else if (npExt) {
+        // C ref: cmd.c rhack() `res = (*func)()` — number_pad rebinds plain
+        // letters to commands that have no ordinary key of their own (j #jump,
+        // l #loot, u #untrap, N #name, ^N #annotate); rhack runs their
+        // ef_funct directly, exactly as doextcmd() would.
+        const res = await run_extcmd_by_name(npExt);
+        game.context.move = res === 1 ? 1 : 0;
+    } else if (npBad) {
+        // C ref: cmd.c rhack() bad_command — cmdbind_get() found no binding
+        // (with number_pad on, y/b/Y/H/J/K/L/U/B and ^J are all unbound).
+        game.context.move = 0;
+        await pline(`Unknown command '${npBad}'.`);
+    } else if (ch === '\x12') {
+        // C ref: cmd.c { C('r'), "redraw", doredraw } -> docrt(): repaint the
+        // screen.  ECMD_OK, no message; number_pad also puts it on ^L.
+        game.context.move = 0;
     } else if (ch === 'O') {
         // C ref: cmd.c { 'O', "options", doset_simple, ... CMD_M_PREFIX }.
         // Plain 'O' runs doset_simple() (the categorized "Options" PICK_ONE
@@ -756,14 +1147,17 @@ export async function rhack(key) {
     } else if (ch === '@') {
         // C ref: cmd.c { '@', "autopickup", ..., dotogglepickup } -> options.c
         // dotogglepickup(): flip flags.pickup and report the new state.  No game
-        // time elapses (ECMD_OK).  With no pickup_types restriction (the default
-        // for these sessions) the ON message is "for all objects"; the apelist
-        // exception clause stays empty.
+        // time elapses (ECMD_OK).  The trailing clause counts ga.apelist (the
+        // AUTOPICKUP_EXCEPTION entries), which is empty unless the rc supplied
+        // a *quoted* pattern.
         game.flags = game.flags || {};
         game.flags.pickup = !game.flags.pickup;
         if (game.flags.pickup) {
             const types = game.flags.pickup_types;
-            await pline(`Autopickup: ON, for ${types ? types : 'all'} objects.`);
+            const napes = (game.apelist || []).length;
+            const exc = !napes ? ''
+                : (napes === 1 ? ', with one exception' : ', with some exceptions');
+            await pline(`Autopickup: ON, for ${types ? types : 'all'} objects${exc}.`);
         } else {
             await pline('Autopickup: OFF.');
         }
@@ -1018,6 +1412,8 @@ export async function rhack(key) {
         // A still-armed g/G prefix wins: set_move_cmd() leaves context.run at
         // the prefix's value when gd.domove_attempting is already set.
         const rprun = game.context.run_prefix || staleRun;
+        game.context.nopick = game.iflags?.menu_requested ? 1 : 0; // set_move_cmd()
+        game.iflags && (game.iflags.menu_requested = false);
         if (rprun) {
             game.context.run_prefix = 0;
             await do_run_prefixed(RUN_DX[ch], RUN_DY[ch], rprun);
@@ -1057,6 +1453,7 @@ export async function rhack(key) {
         } else {
             game.iflags = game.iflags || {};
             game.iflags.menu_requested = true;
+            game.context._m_fresh = 1; // survives exactly the next command
         }
         game.context.move = 0;
     } else if (ch === 'G' || ch === 'g') {
@@ -1080,6 +1477,14 @@ export async function rhack(key) {
         if (game.context.run_prefix || staleRun) {
             const rp = game.context.run_prefix || staleRun;
             game.context.run_prefix = 0;
+            // C ref: cmd.c set_move_cmd() — `if (iflags.menu_requested)
+            // svc.context.nopick = 1;` runs for the RUSH/RUN movement commands
+            // too, and rhack() cleared nopick on entry.  Without this the flag
+            // stayed set from an earlier 'm'-prefixed step, so pickup() took its
+            // `autopickup && nopick` early return for every step of the run: no
+            // check_here(), hence no "You see here ..." and no nomul(0), and the
+            // run sailed past the pile C halts on (wave4 rc-explore step 154).
+            game.context.nopick = game.iflags?.menu_requested ? 1 : 0;
             game.iflags && (game.iflags.menu_requested = false);
             await do_run_prefixed(DIR_DX[ch], DIR_DY[ch], rp);
             return;
@@ -1128,9 +1533,19 @@ export async function rhack(key) {
         // Unknown command.  C ref: cmd.c rhack() bad_command — no
         // reset_cmd_vars(), so a pending g/G prefix's svc.context.run stays
         // armed for the next command (context.stale_run, set at the head).
+        badCommand = true;
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
     }
+
+    // C ref: cmd.c rhack() — every command that isn't a PREFIXCMD ends in
+    // reset_cmd_vars(), which clears iflags.menu_requested; only bad_command
+    // skips it.  Without this an 'm' whose follow-up key was some unrelated
+    // command left the flag armed, and the NEXT 'm' answered "Double m prefix,
+    // canceled." instead of arming a fresh one.
+    if (!badCommand && !npBad && game.iflags?.menu_requested
+        && ch !== 'm' && ch !== 'g' && ch !== 'G' && ch !== 'F')
+        game.iflags.menu_requested = false;
 
     // C ref: cmd.c rhack() — after a command that elapsed a game turn, if the
     // hero did something OTHER than kicking, reset the kicked location so pets
@@ -1533,15 +1948,36 @@ export async function getdir(s) {
     game._pending_message = '';
     game._toplin = 0; // TEST: topl.c:544 clean_up -> TOPLINE_NON_EMPTY
     const ch = String.fromCharCode(key);
-    if (ch === '.' || ch === 's')
+    // C ref: cmd.c getdir() — spkeys[NHKF_GETDIR_SELF] ('.') and
+    // NHKF_GETDIR_SELF2 ('s') both mean "at yourself", for either number_pad.
+    if (key === NHKF_GETDIR_SELF || key === NHKF_GETDIR_SELF2)
         return getdir_confdir({ dx: 0, dy: 0, dz: 0 });
-    if (ch === '\x1b' || ch === ' ')
-        return null;
-    const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1, '<': 0, '>': 0 };
-    const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1, '<': 0, '>': 0 };
-    const DZ = { '<': -1, '>': 1 };
-    if (ch in DX)
-        return getdir_confdir({ dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 });
+    // C ref: cmd.c getdir() — the 'simulated mouse' key runs getpos() and
+    // reports the picked spot as a click; the direction itself is left alone
+    // (C never writes u.dx/u.dy on this path when a spot was picked), and a
+    // rejected pick zeroes it.  iflags.getdir_click, which carries CLICK_1 vs
+    // CLICK_2 to #therecmdmenu, is only read by callers that set it first.
+    if (key === NHKF_GETDIR_MOUSE) {
+        const u = game.u;
+        const qbuf = `desired location, then type '${String.fromCharCode(NHKF_GETPOS_PICK_Q)}'`
+            + ` for left click, '${String.fromCharCode(NHKF_GETPOS_PICK)}' for right`;
+        const verbose = game.flags?.verbose !== false;
+        const cc = await getpos(qbuf, u.ux, u.uy, null, /*force=*/true, verbose);
+        if (!cc) { u.dx = 0; u.dy = 0; u.dz = 0; return null; }
+        return { dx: u.dx | 0, dy: u.dy | 0, dz: u.dz | 0 };
+    }
+    // C ref: cmd.c getdir() `movecmd(dirsym, MV_ANY)` — the direction comes out
+    // of the command table, so it follows number_pad: the walk keys, and (with
+    // number_pad off) the run/rush keys their capitals and control codes are
+    // bound to, all name a direction.
+    const Cmd = numpad_cmd();
+    const d = movecmd_dir(Cmd, key, null);
+    if (d >= 0) {
+        const [dx, dy, dz] = DIR_XYZ[d];
+        return getdir_confdir({ dx, dy, dz });
+    }
+    if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n')
+        return null;                        // decl.c quitchars[] " \r\n\033"
     // C ref: cmd.c getdir() — an invalid direction key (not a movement key and
     // not a quitchar) with iflags.cmdassist On (default) shows the help_dir()
     // text window "cmdassist: Invalid direction key!" + the direction-keys
@@ -1569,19 +2005,27 @@ export function getdir_confdir(res) {
 // invalid direction key (no prefix handling, no ^-key suggestion for our
 // callers).  Renders a full-screen NHW_TEXT window with a "--More--" footer.
 async function help_dir_window(msg) {
+    // C ref: cmd.c show_direction_keys() — the legend is drawn from
+    // cmd_from_func(do_move_*), i.e. from Cmd.dirchars, so number_pad shows the
+    // digits; the "direct at yourself" key is spkeys[NHKF_GETDIR_SELF2] ('s')
+    // with number_pad on and NHKF_GETDIR_SELF ('.') with it off.
+    const Cmd = numpad_cmd();
+    const dc = Cmd.dirchars;
+    const self = String.fromCharCode(Cmd.num_pad ? NHKF_GETDIR_SELF2
+                                                 : NHKF_GETDIR_SELF);
     const lines = [
         `cmdassist: ${msg}`,
         '',
         'Valid direction keys are:',
-        '          y  k  u',
+        `          ${dc[1]}  ${dc[2]}  ${dc[3]}`,
         '           \\ | / ',
-        '          h- . -l',
+        `          ${dc[0]}- . -${dc[4]}`,
         '           / | \\ ',
-        '          b  j  n',
+        `          ${dc[7]}  ${dc[6]}  ${dc[5]}`,
         '',
         '          <  up',
         '          >  down',
-        '          .  direct at yourself',
+        `          ${self}  direct at yourself`,
         '',
         '(Suppress this message with !cmdassist in config file.)',
     ];
@@ -3219,52 +3663,36 @@ async function read_engr_at(x, y) {
 }
 
 // C ref: pickup.c pickup(1) with flags.pickup set -> autopick() picks every
-// floor object matching pickup_types (all classes when unset), then check_here
-// reports any remainder.  The owned sessions only ever auto-pick a single item
-// at a time, which prints the bare prinv line "<letter> - <name>." (no prefix).
-// Multi-object piles would page with --More-- between lines; not exercised, so
-// the single/sequential case is modeled and extra items just chain via pline.
+// floor object autopick_testobj() approves, then check_here reports any
+// remainder.  The eligibility test is js/pickup.js's port of
+// autopick_testobj(): pickup_types is only one of its five inputs — a shop's
+// unpaid items are never taken, pickup_thrown/pickup_stolen and
+// dropped_nopick override the class list entirely, and an
+// AUTOPICKUP_EXCEPTION pattern overrides all of those.  A local
+// pickup_types-only filter answered wrong for every one of those cases.
+// The owned sessions only ever auto-pick a single item at a time, which prints
+// the bare prinv line "<letter> - <name>." (no prefix).  Multi-object piles
+// would page with --More-- between lines; not exercised, so the
+// single/sequential case is modeled and extra items just chain via pline.
 async function autopickup_after_move(x, y) {
     const objs = (game.level?.objects || []).filter(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y);
     if (objs.length === 0) return 0;
     game._pickup_encumbrance = 0; // C ref: pickup.c pickup(1) — gp.pickup_encumbrance = 0
     const inv = await import('./invent.js');
+    const { autopick_testobj } = await import('./pickup.js');
     // autopick order is the floor chain (topmost-first); objects_at returns that
-    // order.  Pick each eligible object (pickup_types unset => all classes).
-    const types = game.flags?.pickup_types;
+    // order.  calc_costly is TRUE for the first object only, as in autopick().
+    let check_costly = true;
     let nPicked = 0;
     for (const obj of objs) {
-        if (types && !types.includes(classLetter(obj))) continue;
+        const take = autopick_testobj(obj, check_costly);
+        check_costly = false;
+        if (!take) continue;
         await pickup_one(inv, obj, x, y);
         nPicked++;
     }
     return nPicked;
-}
-
-// Map an oclass to its pickup_types letter (objclass.h def_oc_syms).  Keyed by
-// the JS internal oclass enum (mkobj.js): WEAPON_CLASS=2 ... CHAIN_CLASS=16.
-// pickup_types stores these symbols; a chest (TOOL_CLASS=6 -> '(') is only
-// auto-lifted when '(' is in the set.
-function classLetter(obj) {
-    const SYMS = {
-        2: ')',  // WEAPON_CLASS
-        3: '[',  // ARMOR_CLASS
-        4: '=',  // RING_CLASS
-        5: '"',  // AMULET_CLASS
-        6: '(',  // TOOL_CLASS
-        7: '%',  // FOOD_CLASS
-        8: '!',  // POTION_CLASS
-        9: '?',  // SCROLL_CLASS
-        10: '+', // SPBOOK_CLASS
-        11: '/', // WAND_CLASS
-        12: '$', // COIN_CLASS
-        13: '*', // GEM_CLASS
-        14: '`', // ROCK_CLASS
-        15: '0', // BALL_CLASS
-        16: '_', // CHAIN_CLASS
-    };
-    return SYMS[obj.oclass] || '';
 }
 
 // Pick up a single floor object, emitting the prinv pickup line.  Mirrors

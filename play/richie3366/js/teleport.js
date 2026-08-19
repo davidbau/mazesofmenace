@@ -28,7 +28,7 @@ import {
     MAGIC_PORTAL, VIBRATING_SQUARE, RLOC_MSG, RLOC_NOMSG, RLOC_ERR, NO_TRAP_FLAGS,
     FORCETRAP, VIASITTING,
     BOLT_LIM, STRAT_APPEARMSG, ARTICLE_A, engulfing_u,
-    MON_FLOOR, Upolyd,
+    MON_FLOOR, MON_OFFMAP, Upolyd,
     FIRE_RES, ANTIMAGIC, LEVITATION, FLYING, WWALKING, SWIMMING,
     MAGICAL_BREATHING, I_SPECIAL, ECMD_TIME,
 } from './const.js';
@@ -105,11 +105,18 @@ function u_at(x, y) {
 }
 
 function m_at(x, y) {
-    // C: level.monsters[][] — include worm body segs (place_worm_seg).
+    // C: level.monsters[][] — worm segs via place_worm_seg; heads on fmon.
+    // Dead mons stay on fmon until dmonsfree but are off the map grid.
+    // gulpmm remove_monster leaves mx/my; JS MON_OFFMAP matches C's empty
+    // cell so goodpos occupancy after digest death is not the corpse
+    // (D-1243; D-1231 named this clone seeing dead fmon).
     const seg = game._level_monsters?.get(`${x},${y}`);
-    if (seg) return seg;
+    if (seg && (seg.mhp | 0) > 0
+        && !((seg.mstate | 0) & MON_OFFMAP)) return seg;
     const list = game.fmon || [];
     for (const m of list) {
+        if ((m.mhp | 0) <= 0) continue; // DEADMONSTER — not on map
+        if ((m.mstate | 0) & MON_OFFMAP) continue;
         if (m.mx === x && m.my === y) return m;
     }
     return null;
@@ -1806,9 +1813,9 @@ export async function u_teleport_mon(mtmp, give_feedback) {
 
 /**
  * C ref: teleport.c rloco — relocate a floor object.
- * Envelope: extract + goodpos pick + place_object. Named omit:
- * Rider corpse revive; flooreffects; shop bill/stolen_value; W-tower
- * /dndest restricted_fall.
+ * Caller: trap.c launch_obj TELEP_TRAP (D-1237). Envelope: extract +
+ * goodpos pick + place_object. Named omit: Rider corpse revive;
+ * flooreffects; shop bill/stolen_value; W-tower /dndest restricted_fall.
  * @returns {boolean} true if placed elsewhere
  */
 export function rloco(obj) {
@@ -1851,7 +1858,7 @@ function u_locomotion(defWord) {
  * Energy/spellcast (D-1225): !trap && !break_the_rules hunger/STR/uen/
  * capacity; !Teleportation or low XL without can_teleport → known_spell
  * SPE_TELEPORT_AWAY (spe_Fresh, !Confusion) then spelleffects(atme);
- * else debit 5*oc_level and fall through. #teleport doextcmd named.
+ * else debit 5*oc_level and fall through. #teleport doextcmd D-1230.
  * Named omit: poly locomotion(). dotelecmd m-prefix D-1209.
  */
 export async function dotele(break_the_rules) {
@@ -2041,7 +2048,8 @@ async function dotelecmd_mode_menu() {
  * n/s/t/w then tport_spell hide/add; dotele; restore H/E and reverse
  * tport_spell (D-1209). Snapshot-then-clear menu_requested (JS split
  * rhack has no next-entry reset). Energy/spellcast D-1225 (s-mode
- * actually casts). Named omit: #teleport doextcmd wire. LEVEL_TELEP
+ * actually casts). #teleport doextcmd D-1230 (no AUTOCOMPLETE;
+ * rhack '#' keeps m; doextcmd accept_menu_prefix). LEVEL_TELEP
  * yn D-1224.
  */
 export async function dotelecmd() {

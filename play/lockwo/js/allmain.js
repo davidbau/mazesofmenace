@@ -359,6 +359,17 @@ async function moveloop_preamble_messages() {
     const g = game;
     const moonphase = phase_of_the_moon();
     const msgs = [];
+    // C ref: sys/unix/unixmain.c main():316 — `newgame(); wd_message();` and
+    // only THEN moveloop(), so wd_message()'s explore banner is printed BEFORE
+    // moveloop_preamble()'s moon-phase greeting, not after it.  Our rc parser
+    // stores the play-mode as flags.playmode === 'explore' (see bones.js
+    // is_discover); `discover` in C is flags.explore (restore.c:583).  No luck
+    // side effect.  wave4 rc-explore step 5: C shows the explore line, this
+    // file used to show "You are lucky!  Full moon tonight." instead.
+    const f = g.flags || {};
+    if (f.explore || f.discover || f.playmode === 'explore') {
+        msgs.push('You are in non-scoring explore/discovery mode.');
+    }
     // C ref: allmain.c moveloop_preamble() — a full moon grants +1 Luck and
     // Friday the 13th costs -1 via change_luck().  That starting Luck feeds the
     // rnl() bias roll (rnl() fires a secondary rn2(37+|Luck|) when Luck != 0),
@@ -378,17 +389,6 @@ async function moveloop_preamble_messages() {
         g.u.uluck = (g.u.uluck || 0) - 1; // change_luck(-1)
     }
 
-    // C ref: allmain.c moveloop_preamble() — right after the moon-phase/Friday
-    // messages, a discover-mode (playmode:explore, the `discover` macro =
-    // flags.explore) game announces "You are in non-scoring explore/discovery
-    // mode."  Our options parser stores the play-mode as flags.playmode ===
-    // 'explore' (see bones.js is_discover), so accept either spelling.  No luck
-    // side effect.
-    const f = g.flags || {};
-    if (f.explore || f.discover || f.playmode === 'explore') {
-        msgs.push('You are in non-scoring explore/discovery mode.');
-    }
-
     if (msgs.length === 0) return false;
 
     // Each preamble message can't share the top line with the one before it
@@ -397,8 +397,16 @@ async function moveloop_preamble_messages() {
     // message pages the current top-line message with --More-- first: the
     // welcome line is paged before the first preamble message, and (when both
     // hold) the moon message is paged before the Friday-13th warning.
+    // C ref: win/tty/topl.c more():231 — a --More-- dismissed with ESC sets
+    // WIN_STOP, and update_topl() reads `skip` BEFORE calling more(): the
+    // message whose own --More-- was ESC'd is still drawn, every LATER one is
+    // only accumulated into gt.toplines.  Tracked locally rather than off
+    // game._winStop so an ESC that dismissed some earlier window can't leak in.
+    let win_stop = false;
     for (const m of msgs) {
+        if (win_stop) { game._toplines = m; continue; } // C: skip -> no more(), no redraw
         await topl_more();
+        win_stop = !!game._winStop; // more() set it iff this --More-- was ESC'd
         await pline(m);
     }
     return true;

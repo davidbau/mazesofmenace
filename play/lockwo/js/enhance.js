@@ -593,14 +593,22 @@ export async function doenhance() {
 export async function skill_window_advance(key) {
     if (game._modal_screen !== 'skillwin') return false;
     const pages = game._skill_pages || [];
-    const idx = (game._skill_page || 0) + 1;
-    // C ref: wintty.c process_menu_window() `case ' ': case MENU_NEXT_PAGE:` —
-    // "' ' finishes menus here, but stop '>' doing the same": '>' on the LAST
-    // page is a no-op that redisplays, only space/return dismiss.
-    if (key === '>' && idx >= pages.length) { renderSkillPage(); return true; }
-    if (idx < pages.length) {
-        game._skill_page = idx;
+    const cur = game._skill_page || 0;
+    const onLast = cur >= pages.length - 1;
+    // C ref: wintty.c process_menu_window(), PICK_NONE.  Only these keys act;
+    // everything else is tty_nhbell() and the menu stays up unchanged.
+    if (key === '<') {                              // MENU_PREVIOUS_PAGE
+        if (cur > 0) game._skill_page = cur - 1;
         renderSkillPage();
+        return true;
+    }
+    if (key === '>' || key === ' ') {               // MENU_NEXT_PAGE / space
+        if (!onLast) { game._skill_page = cur + 1; renderSkillPage(); return true; }
+        // "' ' finishes menus here, but stop '>' doing the same": on the last
+        // page '>' redisplays; only space and return finish.
+        if (key === '>') { renderSkillPage(); return true; }
+    } else if (key !== '\n' && key !== '\r' && key !== '\x1b') {
+        renderSkillPage();                          // bell; menu unchanged
         return true;
     }
     delete game._skill_pages;

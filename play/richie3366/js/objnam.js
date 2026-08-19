@@ -23,7 +23,10 @@ import {
     objectDescrs,
     objects,
 } from './objects.js';
-import { monsterNames, mons, vegetarian, is_rider, M2_PNAME, G_UNIQ } from './monsters.js';
+import {
+    monsterNames, mons, vegetarian, is_rider, M2_PNAME, G_UNIQ,
+    pmnames, MALE, FEMALE, NEUTRAL, NON_PM,
+} from './monsters.js';
 import {
     PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
 } from './generated/monsters_data.js';
@@ -36,7 +39,12 @@ import {
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
     ONAME, has_oname,
+    CXN_NORMAL, CXN_SINGULAR, CXN_NO_PFX, CXN_PFX_THE, CXN_ARTICLE,
+    CXN_NOCORPSE,
+    CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
 } from './const.js';
+
+const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 
 /** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky u.Blind). */
 function Blind() {
@@ -765,14 +773,100 @@ function get_obj_loc_for_distant(obj) {
 }
 
 /**
- * C ref: objnam.c corpse_xname — "<monster> corpse" (CXN_SINGULAR / article deferred).
+ * C ref: hacklib.c mungspaces — collapse runs of whitespace; drop trailing.
  */
-function corpse_xname(obj, _adjective, singular) {
+function mungspaces_objnam(s) {
+    return String(s ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * C ref: do_name.c obj_pmname — CORPSE/STATUE/FIGURINE pmnames + gender.
+ * Aligned-cleric + CORPSTAT_RANDOM remaps to PM_CLERIC (avoid "aligned").
+ * Named omit: omonst traits (#if 0 in C).
+ */
+function obj_pmname_corpse(obj) {
+    const otypName = objectNames[obj?.otyp];
     const omndx = obj?.corpsenm;
-    const mnam = (omndx == null || omndx < 0) ? 'thing' : mon_name(omndx);
-    let base = `${mnam} corpse`;
-    if (!singular && (obj.quan || 1) !== 1) base = makeplural(base);
-    return base;
+    if ((otypName === 'CORPSE' || otypName === 'STATUE' || otypName === 'FIGURINE')
+        && ismnum(omndx)) {
+        const cgend = (obj.spe | 0) & CORPSTAT_GENDER;
+        const mgend = cgend === CORPSTAT_MALE ? MALE
+            : cgend === CORPSTAT_FEMALE ? FEMALE
+                : NEUTRAL;
+        let mndx = omndx;
+        if (mndx === PM_ALIGNED_CLERIC && cgend === CORPSTAT_RANDOM) {
+            mndx = PM_CLERIC;
+        }
+        const names = pmnames[mndx];
+        if (!names) return 'thing';
+        let g = mgend;
+        if (g < MALE || g >= 3 || !names[g]) g = NEUTRAL;
+        return names[g] || names[NEUTRAL] || names[MALE] || names[FEMALE] || 'thing';
+    }
+    return 'thing';
+}
+
+/**
+ * C ref: objnam.c corpse_xname — unique/pname possessive + adjective
+ * placement (D-1234). CXN_SINGULAR / NO_PFX / PFX_THE / ARTICLE / NOCORPSE.
+ * Named omit: glob (globby non-CORPSE); doname prefix-as-adjective
+ * CXN_ARTICLE|CXN_NOCORPSE wiring (FOOD_CLASS still uses pretty_base).
+ */
+export function corpse_xname(obj, adjective, cxn_flags) {
+    const flags = cxn_flags | 0;
+    const omndx = obj?.corpsenm;
+    const ignore_quan = (flags & CXN_SINGULAR) !== 0;
+    let no_prefix = (flags & CXN_NO_PFX) !== 0;
+    let the_prefix = (flags & CXN_PFX_THE) !== 0;
+    let any_prefix = (flags & CXN_ARTICLE) !== 0;
+    const omit_corpse = (flags & CXN_NOCORPSE) !== 0;
+    let possessive = false;
+
+    let mnam;
+    if (omndx == null || omndx < 0 || omndx === NON_PM) {
+        mnam = 'thing';
+    } else {
+        mnam = obj_pmname_corpse(obj);
+        const ptr = mons(omndx);
+        if (the_unique_pm(ptr) || type_is_pname_objnam(ptr)) {
+            mnam = s_suffix_objnam(mnam);
+            possessive = true;
+            if (type_is_pname_objnam(ptr)) {
+                no_prefix = true;
+            } else if (the_unique_pm(ptr) && !no_prefix) {
+                the_prefix = true;
+            }
+        }
+    }
+    if (no_prefix) {
+        the_prefix = false;
+        any_prefix = false;
+    } else if (the_prefix) {
+        any_prefix = false;
+    }
+
+    let nambuf = the_prefix ? 'the ' : '';
+    if (!adjective) {
+        nambuf += mnam;
+    } else if (possessive) {
+        // C: Medusa's cursed partly eaten corpse
+        nambuf += `${mnam} ${adjective}`;
+    } else {
+        // C: cursed partly eaten troll corpse
+        nambuf += `${adjective} ${mnam}`;
+    }
+    nambuf = mungspaces_objnam(nambuf);
+    if (adjective && /^\d/.test(adjective)) any_prefix = false;
+
+    if (!omit_corpse) {
+        nambuf += ' corpse';
+        if ((obj?.quan || 1) > 1 && !ignore_quan) {
+            nambuf += 's';
+            any_prefix = false;
+        }
+    }
+    if (any_prefix) nambuf = an(nambuf);
+    return nambuf;
 }
 
 /**
@@ -780,7 +874,7 @@ function corpse_xname(obj, _adjective, singular) {
  */
 export function cxname(obj) {
     if (obj && objectNames[obj.otyp] === 'CORPSE') {
-        return corpse_xname(obj, null, false);
+        return corpse_xname(obj, null, CXN_NORMAL);
     }
     return xname(obj);
 }
@@ -790,7 +884,7 @@ export function cxname(obj) {
  */
 export function cxname_singular(obj) {
     if (obj && objectNames[obj.otyp] === 'CORPSE') {
-        return corpse_xname(obj, null, true);
+        return corpse_xname(obj, null, CXN_SINGULAR);
     }
     if (!obj) return xname(obj);
     const saveq = obj.quan;

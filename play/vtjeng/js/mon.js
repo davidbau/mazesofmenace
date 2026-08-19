@@ -1,10 +1,11 @@
 // mon.js -- Runtime monster turn state, and the removal lifecycle a monster
 // runs when the hero kills it.
 // C refs: mon.c movemon(), mcalcmove(), mpickstuff(), curr_mon_load(),
-// max_mon_load(), zombie_maker(), unstuck(), mon_leaving_level(), m_detach(),
-// mlifesaver(), lifesaved_monster(), logdeadmon(), mondead(), corpse_chance(),
-// make_corpse(), mondied(), monkilled(), killed(), xkilled() and adj_erinys();
-// mthrowu.c m_carrying(); do_name.c safe_oname().
+// max_mon_load(), m_consume_obj(), zombie_maker(), unstuck(),
+// mon_leaving_level(), m_detach(), mlifesaver(), lifesaved_monster(),
+// logdeadmon(), mondead(), corpse_chance(), make_corpse(), mondied(),
+// monkilled(), killed(), xkilled() and adj_erinys(); mthrowu.c m_carrying();
+// do_name.c safe_oname().
 
 import {
     A_CHAOTIC,
@@ -34,6 +35,7 @@ import {
     G_GENOD,
     HALLUC,
     HALLUC_RES,
+    has_mcorpsenm,
     has_mgivenname,
     has_oname,
     In_endgame,
@@ -61,6 +63,7 @@ import {
     ONAME_NO_FLAGS,
     OPENDOOR,
     PROT_FROM_SHAPE_CHANGERS,
+    ROOM,
     STRAT_WAITFORU,
     STRAT_WAITMASK,
     TAINT_AGE,
@@ -80,7 +83,7 @@ import { glyph_is_invisible, newsym, unmap_object } from './display.js';
 import { capitalizedMonsterName, monsterCommonName } from './do_name.js';
 import { flooreffects } from './do.js';
 import { finish_meating } from './dogmove.js';
-import { on_level } from './dungeon.js';
+import { has_ceiling, on_level } from './dungeon.js';
 import { sengr_at } from './engrave.js';
 import { adjalign } from './attrib.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
@@ -91,6 +94,7 @@ import { delobj, obj_extract_self, stackobj } from './invent.js';
 import { any_light_source, del_light_source } from './light.js';
 import { mkcorpstat } from './corpstat.js';
 import { change_luck } from './moveloop_preamble.js';
+import { freemcorpsenm } from './makemon.js';
 import {
     dmonsfree,
     newcham_distress,
@@ -100,11 +104,13 @@ import {
     set_mon_data,
     wormgone,
 } from './makemon_create.js';
+import { m_next2u } from './mhitu.js';
 import {
     always_hostile,
     amorphous,
     attacktype,
     bigmonst,
+    ceiling_hider,
     completelyburns,
     completelyrots,
     completelyrusts,
@@ -213,6 +219,8 @@ import {
     PM_IRON_GOLEM,
     PM_KOBOLD_MUMMY,
     PM_KOBOLD_ZOMBIE,
+    PM_GIANT_MIMIC,
+    PM_LARGE_MIMIC,
     PM_LEATHER_GOLEM,
     PM_LIZARD,
     PM_LONG_WORM,
@@ -227,6 +235,7 @@ import {
     PM_ROPE_GOLEM,
     PM_SILVER_DRAGON,
     PM_SKELETON,
+    PM_SMALL_MIMIC,
     PM_STEAM_VORTEX,
     PM_STONE_GOLEM,
     PM_VAMPIRE,
@@ -244,6 +253,7 @@ import {
     S_GHOST,
     S_KOP,
     S_LICH,
+    S_MIMIC,
     S_VAMPIRE,
     S_ZOMBIE,
 } from './monsters.js';
@@ -286,7 +296,12 @@ import { mpickobj, relobj } from './steal.js';
 import { noteleport_level } from './teleport.js';
 import { fill_pit, is_pool, t_at } from './trap.js';
 import { ttyPline } from './tty_message.js';
-import { cansee } from './vision.js';
+import {
+    cansee,
+    does_block,
+    is_lightblocker_mappear,
+    unblock_point,
+} from './vision.js';
 import { which_armor } from './worn.js';
 
 function monsterTurnEnv(env = {}) {
@@ -589,6 +604,40 @@ export function m_carrying(monster, type, state = game) {
         if (obj.otyp === type) return obj;
     }
     return null;
+}
+
+// C ref: mon.c m_consume_obj() (1392-1461), the tame-monster branch for a
+// mimic corpse.  dogmove.c dog_eat() is its live caller.  Other object types
+// can polymorph, grow, heal, blind, petrify, slime, explode, spill container
+// contents, or interact with punishment; those branches stop before this
+// function changes the pet or object.
+export async function m_consume_obj(mtmp, otmp, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const mimicCorpse = otmp?.otyp === CORPSE
+        && (otmp.corpsenm === PM_SMALL_MIMIC
+            || otmp.corpsenm === PM_LARGE_MIMIC
+            || otmp.corpsenm === PM_GIANT_MIMIC);
+    const unsupported = rawEnv.unsupported;
+    const stop = (reason) => {
+        if (typeof unsupported === 'function') unsupported(reason);
+        throw new TypeError(`m_consume_obj requires ${reason}`);
+    };
+
+    // Every excluded source arm precedes delobj(), so reject the complete
+    // branch set before consuming the object.  Mimics convey no intrinsic
+    // (monst.c gives them mconveys 0 and they are not giants), so mon_givit()
+    // has no effect and makes no random draw for this admitted branch.
+    if (!mtmp?.mtame) stop('a tame monster');
+    if (!mimicCorpse) stop('a mimic corpse');
+    if (otmp.cobj) stop('an empty corpse object');
+    if (otmp === state.uball || otmp === state.uchain)
+        stop('an unpunished corpse object');
+    if (otmp.oartifact) stop('an ordinary corpse object');
+    if (typeof rawEnv.quickMimic !== 'function')
+        throw new TypeError('m_consume_obj requires a quickMimic operation');
+
+    delobj(otmp, objectGenerationEnv({ ...rawEnv, state })); /* munch */
+    await rawEnv.quickMimic(mtmp, { ...rawEnv, state });
 }
 
 // C ref: mon.c check_gear_next_turn(). Setting misc_worn_check's I_SPECIAL bit
@@ -1252,6 +1301,35 @@ export async function wake_nearby(rawEnv = {}) {
     const state = rawEnv.state ?? game;
     return wake_nearto(state.u.ux, state.u.uy, state.u.ulevel * 20,
                        { ...rawEnv, state });
+}
+
+// C ref: mon.c seemimic() (4406-4426), which strips a mimic's disguise. C's
+// own comment above it says the caller must have checked for mimicry first,
+// and the one ported caller -- apply.c use_stethoscope()'s monster arm -- does.
+//
+// is_blocker_appear is read before the appearance is cleared and used after,
+// because the point of the pair is that a mimic which was blocking light as a
+// boulder or a door stops blocking it once it is recognized. does_block() is
+// asked again afterwards so that a square blocked by something else as well --
+// a real boulder lying there, a cloud -- keeps its block.
+export function seemimic(mtmp, state = game) {
+    const is_blocker_appear = is_lightblocker_mappear(mtmp);
+
+    if (has_mcorpsenm(mtmp))
+        freemcorpsenm(mtmp);
+
+    mtmp.m_ap_type = M_AP_NOTHING;
+    mtmp.mappearance = 0;
+
+    /*
+     *  Discovered mimics don't block light.
+     */
+    if (is_blocker_appear
+        && !does_block(mtmp.mx, mtmp.my, state.level.at(mtmp.mx, mtmp.my),
+                       state))
+        unblock_point(mtmp.mx, mtmp.my, state);
+
+    newsym(mtmp.mx, mtmp.my);
 }
 
 async function wakeNearForWereHowl(x, y, distance, normalized) {
@@ -2373,6 +2451,74 @@ export class UnsupportedHideError extends Error {
         super(`hiding reached an unported branch: ${what}`);
         this.name = 'UnsupportedHideError';
     }
+}
+
+// C ref: mon.c:4670-4672, restrap()'s trapped term,
+// `(mtmp->mtrapped && (t = t_at(mtmp->mx, mtmp->my)) != 0 && !is_pit(t->ttyp))`.
+// It is spelled as a function because C assigns inside the condition; t_at() is
+// a pure lookup, so the only thing that matters is that an untrapped monster
+// and a monster in a pit both answer false.
+function trappedOutsideAPit(monster, state) {
+    if (!monster.mtrapped) return false;
+    const trap = t_at(monster.mx, monster.my, state);
+    return trap !== null && !is_pit(trap.ttyp);
+}
+
+// C ref: mon.c restrap() (4661-4693), "unwatched hiders may hide again; if so,
+// returns True". movemon_singlemon() above is its only caller, and it calls it
+// for every M1_HIDE monster that has a movement ration to spend.
+//
+// The guard chain's order is the whole of this function's correctness, because
+// rn2(3) is its fourth term. Every term above it short-circuits with no draw,
+// and every term below it is only reached once the draw has happened. A port
+// that rolls before it tests cansee() draws the same screens as this one and
+// diverges on the random-number log from the first watched hider onward, which
+// is why scripts/monster-hiding.test.mjs asserts on the draws each call spends
+// rather than on anything it prints.
+//
+// The success is silent: cansee() being false is a precondition, so nothing
+// newsym() would repaint is on screen, and C calls no display function here.
+// A hidden monster is observed through what it stops doing -- movemon_singlemon
+// returns immediately for a monster whose mundetected this set -- and through
+// the rn2(3) it keeps drawing on every action afterwards, because C calls
+// restrap() before it reads mundetected.
+//
+// One arm is unported. C's S_MIMIC arm re-disguises a waking mimic through
+// makemon.c set_mimic_sym(), which draws randomness and rewrites m_ap_type and
+// mappearance; that call refuses through the caller's `setMimicSym` operation.
+// It is unreachable today in any case: the second guard term already excludes
+// every mimic that carries a disguise, and only mon.c seemimic() clears one.
+// The msleeping and mfrozen return above it is C's own answer and is ported,
+// so a sleeping mimic that has been revealed stays revealed rather than
+// stopping the turn.
+export function restrap(monster, env = {}) {
+    const state = env.state ?? game;
+    const random = env.random ?? { rn2 };
+    if (monster.mcan
+        || M_AP_TYPE(monster)
+        || cansee(monster.mx, monster.my, state)
+        || random.rn2(3)
+        || monster === state.u?.ustuck
+        /* can't hide while trapped except in pits */
+        || trappedOutsideAPit(monster, state)
+        /* can't hide on ceiling if there isn't one */
+        || (ceiling_hider(monster.data) && !has_ceiling(state.u?.uz, state))
+        /* won't hide when adjacent to hero */
+        || (sensesMonster(monster, state) && m_next2u(monster, state))) {
+        return false;
+    }
+
+    if (monster.data?.mlet === S_MIMIC) {
+        /* "The mimic needs to be awake to disguise itself as something else." */
+        if (monster.msleeping || monster.mfrozen) return false;
+        requiredSingleMonsterOperation(env, 'setMimicSym')(monster, env);
+        return true;
+    } else if (state.level?.at(monster.mx, monster.my)?.typ === ROOM) {
+        monster.mundetected = 1;
+        return true;
+    }
+
+    return false;
 }
 
 // C ref: mon.c maybe_unhide_at() (4696-4720), "reveal a hiding monster at x,y,

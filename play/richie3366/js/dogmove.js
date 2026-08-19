@@ -303,7 +303,7 @@ function food_oc_nutrition(otyp) {
 }
 
 // C ref: dogmove.c dog_nutrition — meating/hungrytime; corpse uses cwt/cnutrit.
-function dog_nutrition(mtmp, obj) {
+export function dog_nutrition(mtmp, obj) {
     const oclass = obj.oclass ?? 0;
     const otyp = obj.otyp ?? -1;
     const oc = game.objects?.[otyp];

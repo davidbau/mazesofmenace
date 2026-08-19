@@ -37,6 +37,7 @@ import {
 import { monster_by_pmidx } from './makemon.js';
 import { mflags1_of, mflags2_of, M1_NOTAKE, M1_NOHANDS, M1_NOLIMBS,
          M2_ROCKTHROW } from './monflags_data.js';
+import { makesingular } from './objnam.js';
 import { costly_spot } from './shkroom.js';
 import { hliquid } from './dungeon.js';
 
@@ -698,15 +699,57 @@ function unconscious() {
     return !!(u.usleep || u.uprops?.Unconscious);
 }
 
-/* pickup.c:912 check_autopickup_exceptions() — flags.autopickup_exceptions
-   comes from an OPTIONS line; this port parses no config file, so the list is
-   empty and everything falls through to pickup_types. */
+/* C ref: options.c optfn_pickup_types() — flags.pickup_types holds object
+   CLASS CODES, not the symbols the user typed: each character goes through
+   def_char_to_objclass(), duplicates and unrecognized symbols are dropped, and
+   a leading 'a'/'A' (after any spaces) means "all classes", i.e. an empty list.
+   Converted here rather than in the parser because js/options.js records every
+   compound option's value verbatim under its C option name. */
+let pickup_types_src = null, pickup_types_oc = [];
+function pickup_types() {
+    const raw = flags().pickup_types;
+    const src = (raw == null) ? '' : String(raw);
+    if (src === pickup_types_src) return pickup_types_oc;
+    pickup_types_src = src;
+    let op = 0;
+    while (op < src.length && src[op] === ' ') op++;
+    const out = [];
+    if (src[op] !== 'a' && src[op] !== 'A') {
+        for (; op < src.length; op++) {
+            const oc_sym = def_char_to_objclass(src[op]);
+            if (oc_sym !== MAXOCLASSES && !out.includes(oc_sym)) out.push(oc_sym);
+        }
+    }
+    pickup_types_oc = out;
+    return out;
+}
+
+/* C ref: options.c optfn_pickup_burden() — the value's FIRST character,
+   lowercased, selects the level ("streSsed"/"straiNed"/"overTaxed" are picked
+   by their capitalized letter, not their initial); anything else is a config
+   error that leaves the previous value.  Converted here for the same reason as
+   pickup_types: js/options.js records compound values verbatim. */
+function pickup_burden() {
+    const raw = flags().pickup_burden;
+    if (typeof raw === 'number') return raw;
+    switch (String(raw ?? '').charAt(0).toLowerCase()) {
+    case 'u': return UNENCUMBERED;
+    case 'b': return SLT_ENCUMBER;
+    case 's': return MOD_ENCUMBER;
+    case 'n': return HVY_ENCUMBER;
+    case 'o': case 't': return EXT_ENCUMBER;
+    case 'l': return OVERLOADED;
+    default: return MOD_ENCUMBER; /* options.c:7207 initial value */
+    }
+}
+
+/* pickup.c:912 check_autopickup_exceptions() — ga.apelist, newest entry first,
+   matched against makesingular(doname(obj)) as an unanchored POSIX ERE. */
 export function check_autopickup_exceptions(obj) {
-    const apelist = flags().autopickup_exceptions;
+    const apelist = game.apelist;
     if (!apelist || !apelist.length) return null;
-    const objdesc = String(doname(obj)).replace(/s$/, ''); /* makesingular */
-    for (const ape of apelist)
-        if (new RegExp(ape.pattern).test(objdesc)) return ape;
+    const objdesc = makesingular(String(doname(obj)));
+    for (const ape of apelist) if (ape.regex.test(objdesc)) return ape;
     return null;
 }
 
@@ -714,7 +757,7 @@ export function check_autopickup_exceptions(obj) {
    run (calc_costly on the first object only), exactly as in C. */
 let autopick_costly = false;
 export function autopick_testobj(otmp, calc_costly) {
-    const otypes = flags().pickup_types;
+    const otypes = pickup_types();
 
     if (calc_costly)
         autopick_costly = (otmp.where === 'floor'
@@ -723,14 +766,18 @@ export function autopick_testobj(otmp, calc_costly) {
     /* an unpaid item in a shop is never auto-picked */
     if (autopick_costly && !otmp.no_charge) return false;
 
+    /* pickup_thrown/pickup_stolen/dropped_nopick override BOTH pickup_types
+       and the exception list.  All three default ON in C (optlist.h Term_False
+       + initoptions' On), and js/options.js keys them by C OPTION name — so
+       'dropped_nopick', not the flags.nopick_dropped field it feeds. */
     if ((flags().pickup_thrown !== false && otmp.how_lost === LOST_THROWN)
         || (flags().pickup_stolen !== false && otmp.how_lost === LOST_STOLEN))
         return true;
-    if (flags().nopick_dropped && otmp.how_lost === LOST_DROPPED) return false;
+    if (flags().dropped_nopick !== false && otmp.how_lost === LOST_DROPPED)
+        return false;
     if (otmp.how_lost === LOST_EXPLODING) return false;
 
-    let pickit = !otypes || !otypes.length
-        || otypes.includes(def_oc_syms[otmp.oclass]);
+    let pickit = !otypes.length || otypes.includes(otmp.oclass);
 
     const ape = check_autopickup_exceptions(otmp);
     if (ape) pickit = !!ape.grab;
@@ -1029,8 +1076,8 @@ export async function lift_object(obj, container, cnt_p, telekinesis) {
     } else {
         result = 1;
         let prev_encumbr = near_capacity();
-        const pickup_burden = flags().pickup_burden ?? MOD_ENCUMBER;
-        if (prev_encumbr < pickup_burden) prev_encumbr = pickup_burden;
+        const burden_limit = pickup_burden();
+        if (prev_encumbr < burden_limit) prev_encumbr = burden_limit;
         const next_encumbr = calc_capacity(wts.after - wts.before);
         if (next_encumbr > prev_encumbr) {
             if (telekinesis) {

@@ -31,6 +31,7 @@ import {
 import { AT_KICK } from './mhitm.js';
 import {
     overexertion, losehp, maybe_half_phys, in_rooms, in_town, is_pool,
+    impact_disturbs_zombies,
 } from './hack.js';
 import {
     set_wounded_legs, legs_in_no_shape, b_trapped, t_at, water_damage,
@@ -313,13 +314,13 @@ async function get_iter_mons_xy(bfunc, x, y) {
 
 /**
  * C ref: dokick.c watchman_thief_arrest — peaceful watch who can see hero
- * yells and angry_guards. Named omit: mon_yells SetVoice/Deaf arms
- * (verbalize like dig.js watch_dig).
+ * yells and angry_guards. mon_yells is D-1248 (SetVoice empty without
+ * SND_LIB_INTEGRATED). Dynamic import: dokick←makemon←monmove cycle.
  */
 async function watchman_thief_arrest(mtmp) {
     if (is_watch(mtmp?.data) && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful) {
-        await verbalize("Halt, thief!  You're under arrest!");
-        const { angry_guards } = await import('./mon.js');
+        const { mon_yells } = await import('./monmove.js');
+        await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
         await angry_guards(false);
         return true;
     }
@@ -328,7 +329,7 @@ async function watchman_thief_arrest(mtmp) {
 
 /**
  * C ref: dokick.c watchman_door_damage — warn once (D_WARNED) then arrest.
- * Named omit: mon_yells SetVoice/Deaf arms.
+ * mon_yells is D-1248. Dynamic import: dokick←makemon←monmove cycle.
  */
 async function watchman_door_damage(mtmp, x, y) {
     if (!(is_watch(mtmp?.data) && mtmp.mpeaceful
@@ -336,12 +337,12 @@ async function watchman_door_damage(mtmp, x, y) {
         return false;
     }
     const loc = game.level?.at(x, y);
+    const { mon_yells } = await import('./monmove.js');
     if ((loc?.looted | 0) & D_WARNED) {
-        await verbalize("Halt, vandal!  You're under arrest!");
-        const { angry_guards } = await import('./mon.js');
+        await mon_yells(mtmp, "Halt, vandal!  You're under arrest!");
         await angry_guards(false);
     } else {
-        await verbalize('Hey, stop damaging that door!');
+        await mon_yells(mtmp, 'Hey, stop damaging that door!');
         if (loc) loc.looted = (loc.looted | 0) | D_WARNED;
     }
     return true;
@@ -352,8 +353,7 @@ async function watchman_door_damage(mtmp, x, y) {
  * CLOSED/LOCKED bust attempt (exercise DEX, rnl(35) vs avrg_attrib).
  * Shop in_rooms + add_damage/pay_for_damage + town watch wired (D-0947).
  * Blind feel_location / feel_newsym wired (D-0997).
- * Named omit: mon_yells SetVoice/Deaf polish; giant doorbuster poly
- * completeness.
+ * Named omit: giant doorbuster poly completeness. mon_yells is D-1248.
  */
 async function kick_door(x, y, avrg_attrib) {
     const loc = game.level?.at(x, y);
@@ -873,9 +873,11 @@ async function kick_monster(mon, x, y) {
 
 /**
  * C ref: dokick.c container_impact_dmg — kick/drop/throw shatter contents.
- * Assumes container on floor. Named omit: Soundeffect.
+ * Assumes container on floor. x,y is the pre-impact cell (throw origin
+ * u.ux,u.uy; dropz hero feet; kick dest). Named omit: Soundeffect;
+ * hitfloor dropz(TRUE).
  */
-async function container_impact_dmg(obj, x, y) {
+export async function container_impact_dmg(obj, x, y) {
     if (!Is_container(obj) || !Has_contents(obj) || Is_mbag(obj)) return;
 
     const rooms = in_rooms(x, y, SHOPBASE) || '';
@@ -1099,8 +1101,7 @@ async function kick_object(x, y, kickobjnam) {
  * grease/Mjollnir/blocker; Norep; obstructed-loose; Is_box impact/lock/lid;
  * hero_breaks; thump; split; slide; bhit KICKED_WEAPON; mon thitmonst/
  * ghitm; shop stolen_value; flooreffects; place+stack.
- * Named omit: snuff_candle; impact_disturbs_zombies; killer_xname polish
- * (xname stand-in).
+ * Named omit: snuff_candle; killer_xname polish (xname stand-in).
  */
 async function really_kick_object(x, y) {
     const u = game.u || {};
@@ -1238,7 +1239,7 @@ async function really_kick_object(x, y) {
             const { flooreffects: fe } = await import('./do.js');
             if (!(await fe(kicked, u.ux | 0, u.uy | 0, 'fall'))) {
                 place_object(kicked, u.ux | 0, u.uy | 0);
-                // impact_disturbs_zombies deferred
+                impact_disturbs_zombies(kicked, true);
                 stackobj(kicked);
                 newsym(u.ux | 0, u.uy | 0);
             }
@@ -1370,7 +1371,7 @@ async function really_kick_object(x, y) {
         }
     }
     place_object(kicked, bx, by);
-    // impact_disturbs_zombies deferred
+    impact_disturbs_zombies(kicked, true);
     stackobj(kicked);
     newsym(kicked.ox | 0, kicked.oy | 0);
     return 1;

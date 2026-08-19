@@ -186,7 +186,7 @@ function del_engr_at(x, y) {
 
 // C ref: engrave.c disturb_grave(x, y) — kicking (or engraving on) a headstone
 // summons the grave's ghoul, once.  makemon() draws; exercise() draws rn2(2).
-async function disturb_grave(x, y) {
+export async function disturb_grave(x, y) {
     const lev = game.level?.at(x, y);
     if (!lev || lev.disturbed) return;
     await pline('You disturb the undead!');
@@ -209,7 +209,7 @@ function change_luck(n) {
 // C ref: pray.c altar_wrath(x, y) — the altar's god objects to being kicked.
 // RNG: rn2(4) for the "own god" test, else rn2(Luck + 6) and, when that fires,
 // change_luck(rn2(20) ? -1 : -2).
-async function altar_wrath(x, y) {
+export async function altar_wrath(x, y) {
     const u = game.u;
     const lev = game.level?.at(x, y);
     const altaralign = Amask2align((lev?.altarmask ?? 0) & AM_MASK);

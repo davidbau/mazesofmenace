@@ -44,6 +44,7 @@ import { ACCESSIBLE, IS_POOL, IS_LAVA, In_sokoban,
          Is_knox_level, Is_rogue_level } from './const.js';
 import { In_hell } from './dungeon.js';
 import { observe_object } from './o_init.js';
+import { xlev_to_rank } from './exper.js';
 
 const COIN_CLASS = 12;
 const S_EEL_CLS = 57;            // monsym.h S_EEL
@@ -1696,6 +1697,10 @@ export async function docrt() {
     see_monsters();
 }
 
+// C ref: role.c races[].mnum — PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC,
+// indexed by js/role.js races[] order (which is C's races[] order).
+const RACE_PM = [260, 264, 44, 165, 72];
+
 // C ref: display.c display_self() — the glyph drawn at the hero's tile.  When
 // riding a steed the steed's glyph is shown instead of the hero's '@'.
 function hero_glyph() {
@@ -1709,6 +1714,14 @@ function hero_glyph() {
     // is shown instead of '@'.
     if (u?.Upolyd && u.data) {
         return { ch: u.data.mlet || '@', color: (u.data.mcolor != null) ? u.data.mcolor : CLR_WHITE };
+    }
+    // C ref: display.h hero_glyph — with 'showrace' a non-poly'd hero is drawn
+    // as their RACE's monster (mons[gu.urace.mnum]) rather than their role's,
+    // so a dwarf shows 'h' and a gnome 'G'.  display.c map_glyphinfo() then
+    // puts the color back to HI_DOMESTIC, i.e. the same white as the '@'.
+    if (game.flags?.showrace) {
+        const rd = monster_by_pmidx(RACE_PM[game.urace?.mnum | 0]);
+        if (rd) return { ch: rd.mlet || '@', color: CLR_WHITE };
     }
     return { ch: '@', color: CLR_WHITE };
 }
@@ -1773,6 +1786,62 @@ function render_map_row(y) {
 }
 
 // ── Status lines ──
+// C ref: botl.h enum statusfields — the field ids bot_via_windowport() fills
+// and wintty.c render_status() walks in fieldorder[] order.
+const BL_TITLE = 0, BL_STR = 1, BL_DX = 2, BL_CO = 3, BL_IN = 4, BL_WI = 5,
+      BL_CH = 6, BL_ALIGN = 7, BL_SCORE = 8, BL_CAP = 9, BL_GOLD = 10,
+      BL_ENE = 11, BL_ENEMAX = 12, BL_XP = 13, BL_AC = 14, BL_HD = 15,
+      BL_TIME = 16, BL_HUNGER = 17, BL_HP = 18, BL_HPMAX = 19,
+      BL_LEVELDESC = 20, BL_EXP = 21, BL_CONDITION = 22, BL_WEAPON = 23,
+      BL_ARMOR = 24, BL_TERRAIN = 25, BL_VERS = 26, MAXBLSTATS = 27;
+const BL_FLUSH = -1;
+const MAX_STATUS_ROWS = 3;
+// wins[WIN_STATUS]->cols; tty_putstatusfield() refuses to write at cols-1.
+const STATUS_COLS = 80;
+// limit of the player's name in the status window (botl.h BOTL_NSIZ)
+const BOTL_NSIZ = 16;
+// config.h ships SCORE_ON_BOTL commented out, so BL_SCORE is compiled out of
+// the status window entirely and 'showscore' is not even a known option.
+const SCORE_ON_BOTL = false;
+
+// C ref: botl.c initblstats[].fldfmt, indexed by field id.  (initblstats[] is
+// ordered by declaration, and its last four entries do NOT line up with their
+// fld ids — version sits at slot 23 while BL_VERS is 26 — but all four carry
+// " %s" so status_enablefield() ends up with the same table either way.)
+const BL_FLDFMT = [
+    '%s',     ' St:%s', ' Dx:%s', ' Co:%s', ' In:%s', ' Wi:%s', ' Ch:%s',
+    ' %s',    ' S:%s',  ' %s',    ' %s',    ' Pw:%s', '(%s)',   ' Xp:%s',
+    ' AC:%s', ' HD:%s', ' T:%s',  ' %s',    ' HP:%s', '(%s)',   '%s',
+    '/%s',    '%s',     ' %s',    ' %s',    ' %s',    ' %s',
+];
+
+// C ref: wintty.c twolineorder[]/threelineorder[].  Three lines is not "two
+// lines plus one": align moves from row 0 to row 1, and leveldesc/time/
+// conditions/version move from row 1 to row 2.
+const TWOLINEORDER = [
+    [BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_ALIGN,
+     BL_SCORE, BL_FLUSH],
+    [BL_LEVELDESC, BL_GOLD, BL_HP, BL_HPMAX, BL_ENE, BL_ENEMAX,
+     BL_AC, BL_XP, BL_EXP, BL_HD, BL_TIME, BL_HUNGER, BL_CAP,
+     BL_CONDITION, BL_WEAPON, BL_ARMOR, BL_TERRAIN, BL_VERS, BL_FLUSH],
+    [BL_FLUSH],
+];
+const THREELINEORDER = [
+    [BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_SCORE, BL_FLUSH],
+    [BL_ALIGN, BL_GOLD, BL_HP, BL_HPMAX, BL_ENE, BL_ENEMAX,
+     BL_AC, BL_XP, BL_EXP, BL_HD, BL_HUNGER, BL_CAP, BL_FLUSH],
+    [BL_LEVELDESC, BL_TIME, BL_CONDITION, BL_WEAPON, BL_ARMOR, BL_TERRAIN,
+     BL_VERS, BL_FLUSH],
+];
+
+// C ref: options.c optfn_statuslines() — anything but 2 or 3 is rejected at
+// parse time, so the runtime value is only ever 2 or 3.
+// C ref: wintty.c StatusRows().
+export function StatusRows() {
+    const raw = game.iflags?.wc2_statuslines ?? game.flags?.statuslines;
+    return (parseInt(raw, 10) === 3) ? MAX_STATUS_ROWS : 2;
+}
+
 // Hero name as shown on the status line. In debug (wizard) mode the C
 // game forces plname to "wizard"; status capitalizes the first letter.
 function _statusPlname() {
@@ -1793,20 +1862,123 @@ function _strengthStr(st) {
     return String(st);
 }
 
-export function statusLine1Text() { return _statusLine1(); }
-export function statusLine2Text() { return _statusLine2(); }
+// C ref: pray.c critically_low_hp(only_if_injured) — drives the hitpointbar's
+// "repad with dashes" rendering.  Duplicated here rather than imported from
+// pray.js (which imports display.js) to keep the module graph acyclic.
+function _criticallyLowHp(curhp, maxhp) {
+    const u = game.u || {};
+    const ulevel = u.ulevel || 1;
+    if (!(curhp < maxhp)) return false; /* only_if_injured */
+    const hplim = 15 * ulevel;
+    if (maxhp > hplim) maxhp = hplim;
+    const rank = xlev_to_rank(ulevel);
+    const divisor = rank <= 1 ? 5 : rank <= 3 ? 6 : rank <= 5 ? 7
+                    : rank <= 7 ? 8 : 9;
+    return curhp <= 5 || curhp * divisor <= maxhp;
+}
 
-function _statusLine1() {
-    const u = game.u;
-    if (!u) return '';
-    const name = _statusPlname();
-    // C ref: botl.c bot1() — titl = !Upolyd ? rank() : pmname(&mons[u.umonnum],
-    // Ugender); when Upolyd, each word of the monster name is capitalized
-    // ("Gnome", "Red Dragon") instead of showing the role rank.
-    const role = u.Upolyd
+// C ref: botl.c repad_with_dashes() — the hitpointbar's trailing padding is
+// re-drawn as alternating "- " when HP is critically low.
+function _repadWithDashes(s) {
+    const b = s.split('');
+    let p = b.length;
+    while (p >= 2 && b[p - 1] === ' ' && b[p - 2] === ' ') {
+        b[p - 1] = '-';
+        p -= 2;
+    }
+    return b.join('');
+}
+
+// C ref: botl.c bot_via_windowport() — "Name the Rank" (or the capitalized
+// monster name while polymorphed), truncated to 30 characters by shortening
+// the name, then padded out to a flat 30 with "%-30s".
+function _botTitle() {
+    const u = game.u || {};
+    let name = _statusPlname();
+    const titl = u.Upolyd
         ? (u.data?.name || '').replace(/(^|\s)([a-z])/g, (_m, sp, c) => sp + c.toUpperCase())
         : (game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer');
-    const title = `${name} the ${role}`;
+    let i = name.length + ' the '.length + titl.length;
+    if (i > 30) {
+        i = 30 - (' the '.length + titl.length);
+        name = name.slice(0, Math.max(i, BOTL_NSIZ));
+    }
+    return `${name} the ${titl}`.padEnd(30);
+}
+
+// C ref: botl.c bot_via_windowport() condtests[]/cond_idx[] — the words in the
+// order wintty.c render_status() emits them.  NOT bot2()'s order: the tty takes
+// the fielded status path and walks cond_idx[], which botl.c condopt() sorts by
+// conditions[].ranking then case-insensitively by condtests[].useroption.
+// botl.c:781 rankings for the default-enabled (opt_out) set are
+//   2 grab | 4 strngl | 6 foodPois,slime,stone,termIll | 8 lava
+//   | 10 blind,conf,deaf,fly,hallucinat,levitate,ride,stun | 15 iron
+// so everything below ranking 10 prints BEFORE Blind.  bl_elf_iron's test is
+// hardcoded FALSE (botl.c:1204), so Iron never shows.
+function _botConditions() {
+    const u = game.u;
+    const out = [];
+    if (!u) return out;
+    // C ref: botl.c:1164 — grab == held by a sea monster (S_EEL) and about to
+    // be drowned; the plain "held" arm is opt_in, hence off by default.
+    const stuck = u.ustuck;
+    if (stuck && !u.uswallow && stuck.data?.mcls === S_EEL_CLS) out.push('Grab');
+    // C ref: youprop.h Strangled — u.uprops[STRANGLED].
+    if ((u.uprops?.Strangled || 0) > 0) out.push('Strngl');
+    // C ref: botl.c:1149 — Sick splits by u.usick_type: SICK_VOMITABLE is food
+    // poisoning ("FoodPois"), SICK_NONVOMITABLE is illness ("TermIll"); both
+    // bits can be set at once, and then both conditions show.
+    const sickTime = (u.uprops?.Sick || 0) || (u.sick ? 1 : 0);
+    const sickType = u.usick_type | 0;
+    if (sickTime > 0 && (sickType & SICK_VOMITABLE)) out.push('FoodPois');
+    if ((u.uprops?.Slimed || 0) > 0) out.push('Slime');
+    if ((u.uprops?.Stoned || 0) > 0) out.push('Stone');
+    if (sickTime > 0 && (sickType & SICK_NONVOMITABLE)) out.push('TermIll');
+    // C ref: botl.c:1154 — u.utrap with utraptype == TT_LAVA; the generic
+    // "trap" condition is opt_in, so a pit/bear trap shows nothing.
+    if (u.utrap && u.utraptype === TT_LAVA) out.push('InLava');
+    if ((u.blinded || 0) > 0 || game.ublindf) out.push('Blind');
+    if ((u.uprops?.Confusion || 0) > 0) out.push('Conf');
+    // C ref: youprop.h Deaf — HDeaf || EDeaf (mon.js Deaf()).
+    // _deafPending: incr_itimeout(&HDeaf) happens INSIDE the drum's pline, so
+    // the --More-- frame that carries "You beat a deafening row!" still shows
+    // the pre-drum status; bot() clears the flag at the next real refresh.
+    if (((u.uprops?.HDeaf || 0) > 0 || u.Deaf) && !game._deafPending) out.push('Deaf');
+    if (u.uprops?.Flying) out.push('Fly');
+    // C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance.
+    // potion.js set_hallucination() writes the timer to four aliases at once.
+    const halluTime = (u.uprops?.Hallucination || 0) || (u.uprops?.HHallucination || 0)
+        || (u.HHallucination || 0) || (u.uhallu ? 1 : 0);
+    const halluRes = (u.uprops?.HHalluc_resistance || 0) || (u.uprops?.EHalluc_resistance || 0);
+    if (halluTime > 0 && !halluRes) out.push('Hallu');
+    if (u.uprops?.Levitation) out.push('Lev');
+    if (u.usteed) out.push('Ride');
+    // C ref: youprop.h Stunned — HStun (timeout.js STUNNED entry).
+    if ((u.uprops?.Stun || 0) > 0 || u.Stunned) out.push('Stun');
+    return out;
+}
+
+// C ref: botl.c bot_via_windowport() — fill in every field's raw value, then
+// windows.c/wintty.c tty_status_update() wraps it in initblstats[].fldfmt.
+// Returns { val[], active[], lth[], cond[], hpPct, critHp }.
+function _botFields(order) {
+    const u = game.u || {};
+    const raw = new Array(MAXBLSTATS).fill('');
+    const active = new Array(MAXBLSTATS).fill(true);
+
+    // C ref: botl.c status_initialize() fldenabl.
+    active[BL_SCORE] = SCORE_ON_BOTL && !!game.flags?.showscore;
+    active[BL_TIME] = !!game.flags?.time;
+    active[BL_EXP] = !!game.flags?.showexp && !u.Upolyd;
+    active[BL_XP] = !u.Upolyd;
+    active[BL_HD] = !!u.Upolyd;
+    active[BL_VERS] = !!game.flags?.showvers;
+    active[BL_WEAPON] = !!game.flags?.weaponstatus;
+    active[BL_ARMOR] = !!game.flags?.armorstatus;
+    active[BL_TERRAIN] = !!game.flags?.terrainstatus;
+
+    raw[BL_TITLE] = _botTitle();
+
     // acurr.a is stored in attribute order [STR, INT, WIS, DEX, CON, CHA]
     // (A_STR..A_CHA); the status line displays St Dx Co In Wi Ch.
     // C ref: attrib.c acurr() — the shown value is abon+atemp+acurr clamped to
@@ -1823,27 +1995,16 @@ function _statusLine1() {
     // gauntlets of power pin at 125 ("St:25"); a[0] alone showed the base Str.
     const encStr = (game.uarmg?.otyp === 161 /* GAUNTLETS_OF_POWER */ && !u.Upolyd)
         ? 125 : (a[0] ?? 0);
-    const stats = `St:${_strengthStr(encStr)} Dx:${_eff(3)} Co:${_eff(4)} In:${_eff(1)} Wi:${_eff(2)} Ch:${_eff(5)}`;
-    const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
-    // C ref: botl.c:1007 `Sprintf(blstats[idx][BL_TITLE].val, "%-30s", buf);` —
-    // the tty takes the FIELDED status path, where BL_TITLE is padded to a flat
-    // 30 columns (not do_statusline1()'s role-dependent mrank_sz + 15) and the
-    // next field follows one space later.  "%-30s" never truncates, so a title
-    // of 30+ chars keeps exactly one separating space; the old max(2, ...)
-    // inserted two and shifted every stat right for long names.
-    const gap = Math.max(1, 31 - title.length);
-    if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}`;
-    return `${title}${' '.repeat(gap)}${stats} ${align}`;
-}
+    raw[BL_STR] = _strengthStr(encStr);
+    raw[BL_DX] = String(_eff(3));
+    raw[BL_CO] = String(_eff(4));
+    raw[BL_IN] = String(_eff(1));
+    raw[BL_WI] = String(_eff(2));
+    raw[BL_CH] = String(_eff(5));
+    raw[BL_ALIGN] = u.ualign?.type === 0 ? 'Neutral'
+                    : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
+    raw[BL_SCORE] = '0';
 
-function _statusLine2() {
-    const u = game.u;
-    if (!u) return '';
-    // C ref: botl.c describe_level — "Tutorial:n" while In_tutorial(&u.uz),
-    // else "Dlvl:n".  The level number is the depth within the tutorial branch
-    // (1 for tut-1).
-    const inTut = (u.uz?.dnum != null && u.uz.dnum === game.tutorial_dnum);
-    const lvlLabel = inTut ? 'Tutorial' : 'Dlvl';
     // C ref: botl.c bot() — `if (u.uhp != -1 && ...)` guards the whole status
     // redraw.  u.uhp==-1 is dosave()'s "game's over" sentinel (save.c:58); a
     // hit whose damage lands HP exactly on -1 collides with it, so bot()
@@ -1854,122 +2015,226 @@ function _statusLine2() {
     // freeze by caching the last shown value and holding it while uhp===-1.
     // C ref: botl.c bot1() — hp = Upolyd ? u.mh : u.uhp; hpmax likewise u.mhmax.
     const curHp = u.Upolyd ? u.mh : u.uhp;
-    const curHpMax = u.Upolyd ? u.mhmax : u.uhpmax;
+    const curHpMax = (u.Upolyd ? u.mhmax : u.uhpmax) || 0;
     const hpShown = curHp === -1
         ? (game._botlHpShown ?? 0)
         : (game._botlHpShown = Math.max(0, curHp || 0));
-    // C ref: botl.c describe_level — the displayed level number is depth(&u.uz),
-    // the ledger depth across branches (so the Gnomish Mines show Dlvl:3, not
-    // the mines-relative dlevel 1), not u.uz.dlevel.
-    const dlvlNum = inTut ? (u.uz?.dlevel || 1) : depth_of_level(u.uz);
-    // C ref: botl.c describe_level — In_quest levels display "Home <dunlev>"
-    // (the quest-branch-relative level, u.uz.dlevel), with no "Dlvl:" prefix.
-    // C ref: botl.c describe_level() In_endgame arm — endgamelevelname(depth)
-    // with the "Plane of " prefix stripped for the status line, so the Plane of
-    // Fire shows "Fire" (and the Astral Plane "Astral Plane"), never "Dlvl:-3".
-    const ENDGAME_PLANE = { '-5': 'Astral Plane', '-4': 'Water', '-3': 'Fire',
-                            '-2': 'Air', '-1': 'Earth' };
-    const levelDesc = In_quest(u.uz)
-        ? `Home ${u.uz?.dlevel || 1}`
-        : In_endgame(u.uz)
-            ? (ENDGAME_PLANE[String(dlvlNum)] || `unknown plane #${dlvlNum}`)
-            : `${lvlLabel}:${dlvlNum}`;
+    raw[BL_HP] = String(Math.min(hpShown, 9999));
+    raw[BL_HPMAX] = String(Math.min(curHpMax, 9999));
+    // C ref: botl.c percentage() — 100*hp/hpmax on the un-truncated values.
+    const hpPct = curHpMax ? Math.trunc((100 * hpShown) / curHpMax) : 0;
+
+    raw[BL_LEVELDESC] = _describeLevel();
     // C ref: botl.c do_statusline2:131 — the gold field's label is the ENCODED
     // GOLD_PIECE glyph, i.e. the live showsyms[COIN_CLASS], so the Rogue level's
     // ROGUESET (drawing.c def_r_oc_syms: coin shares GEM_SYM) prints "*:0".
     const goldSym = rogue_symset() ? '*' : '$';
-    let s = `${levelDesc} ${goldSym}:${game._goldCount || 0} HP:${hpShown}(${curHpMax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 0}`;
-    // C ref: botl.c do_statusline2 — Xp:<lvl>[/<exp>] normally, but HD:<mlevel>
-    // (monster level/"Hit Dice") replaces it entirely while Upolyd.
-    if (u.Upolyd) {
-        s += ` HD:${u.data?.mlevel ?? 0}`;
-    } else if (game.flags?.showexp) {
-        s += ` Xp:${u.ulevel || 1}/${u.uexp || 0}`;
-    } else {
-        s += ` Xp:${u.ulevel || 1}`;
-    }
-    if (game.flags?.time)
-        s += ` T:${game.moves || 1}`;
-    // C ref: botl.c bot2 — the hunger field (BL_HUNGER) precedes the
-    // encumbrance field: `if (u.uhs != NOT_HUNGRY) hu_stat[u.uhs]`.  hu_stat[]
-    // (eat.c) = {Satiated, "", Hungry, Weak, Fainting, Fainted, Starved}; the
-    // empty NOT_HUNGRY(1) entry is skipped.  u.uhs is maintained by newuhs().
+    raw[BL_GOLD] = `${goldSym}:${Math.min(Math.max(game._goldCount || 0, 0), 999999)}`;
+    raw[BL_ENE] = String(Math.min(u.uen || 0, 9999));
+    raw[BL_ENEMAX] = String(Math.min(u.uenmax || 0, 9999));
+    raw[BL_AC] = String(u.uac ?? 0);
+    raw[BL_HD] = String(u.data?.mlevel ?? 0);
+    raw[BL_XP] = String(u.ulevel || 1);
+    raw[BL_EXP] = String(u.uexp || 0);
+    raw[BL_TIME] = String(game.moves || 1);
+    // C ref: botl.c bot_via_windowport — hu_stat[] (eat.c) = {Satiated, "",
+    // Hungry, Weak, Fainting, Fainted, Starved}; NOT_HUNGRY(1) shows nothing.
     const HU_STAT = ['Satiated', '', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved'];
     const uhs = u.uhs ?? 1;
-    if (uhs !== 1 && HU_STAT[uhs]) s += ` ${HU_STAT[uhs]}`;
-    // C ref: botl.c bot1()/enc_stat[] — the encumbrance field (BL_CAP) precedes
-    // the status conditions.  botl.c:1106 recomputes near_capacity() inside
-    // bot(), but bot() only runs when disp.botl is dirty, so the DISPLAYED value
-    // is a snapshot: seed0399 step 435 still shows "Burdened" after the throw
-    // that unburdened the hero.  A live call here measured -14 there / -1 on
-    // seed0002 against +3 on seed0108; encumber_msg() owns the snapshot instead.
-    const encWord = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'][game._curcap | 0];
-    if (encWord) s += ` ${encWord}`;
-    // Status conditions follow the numeric fields.  NOTE the order is NOT
-    // bot2()'s (Blind, Deaf, Stun, Conf, Hallu, Lev, Fly, Ride): the tty uses
-    // the *fielded* status API (botl.c bot() -> bot_via_windowport(), since
-    // VIA_WINDOWPORT()), and wintty.c render_status walks cond_idx[], which
-    // botl.c condopt() qsorts by conditions[].ranking then case-insensitively
-    // by condtests[].useroption.  botl.c:781 conditions[] rankings for the
-    // default-enabled (opt_out) set are
-    //   2 grab | 4 strngl | 6 foodPois,slime,stone,termIll | 8 lava
-    //   | 10 blind,conf,deaf,fly,hallucinat,levitate,ride,stun | 15 iron
-    // so everything below ranking 10 prints BEFORE Blind.  ("Satiated Conf
-    // Stun" / "Burdened Deaf" in the recordings pin the ranking-10 run.)
-    // bl_elf_iron's test is hardcoded FALSE (botl.c:1204), so Iron never shows.
-    //
-    // C ref: botl.c:1164 — grab == held by a sea monster (S_EEL) and about to
-    // be drowned; the plain "held" arm is opt_in, hence off by default.
-    const stuck = u.ustuck;
-    if (stuck && !u.uswallow && stuck.data?.mcls === S_EEL_CLS)
-        s += ` Grab`;
-    // C ref: youprop.h Strangled — u.uprops[STRANGLED].
-    if ((u.uprops?.Strangled || 0) > 0)
-        s += ` Strngl`;
-    // C ref: botl.c:1149 — Sick splits by u.usick_type: SICK_VOMITABLE is food
-    // poisoning ("FoodPois"), SICK_NONVOMITABLE is illness ("TermIll"); both
-    // bits can be set at once, and then both conditions show.
-    const sickTime = (u.uprops?.Sick || 0) || (u.sick ? 1 : 0);
-    const sickType = u.usick_type | 0;
-    if (sickTime > 0 && (sickType & SICK_VOMITABLE))
-        s += ` FoodPois`;
-    if ((u.uprops?.Slimed || 0) > 0)
-        s += ` Slime`;
-    if ((u.uprops?.Stoned || 0) > 0)
-        s += ` Stone`;
-    if (sickTime > 0 && (sickType & SICK_NONVOMITABLE))
-        s += ` TermIll`;
-    // C ref: botl.c:1154 — u.utrap with utraptype == TT_LAVA; the generic
-    // "trap" condition is opt_in, so a pit/bear trap shows nothing.
-    if (u.utrap && u.utraptype === TT_LAVA)
-        s += ` InLava`;
-    if ((u.blinded || 0) > 0 || game.ublindf)
-        s += ` Blind`;
-    if ((u.uprops?.Confusion || 0) > 0)
-        s += ` Conf`;
-    // C ref: youprop.h Deaf — HDeaf || EDeaf (mon.js Deaf()).
-    // _deafPending: incr_itimeout(&HDeaf) happens INSIDE the drum's pline, so
-    // the --More-- frame that carries "You beat a deafening row!" still shows
-    // the pre-drum status; bot() clears the flag at the next real refresh.
-    if (((u.uprops?.HDeaf || 0) > 0 || u.Deaf) && !game._deafPending)
-        s += ` Deaf`;
-    if (u.uprops?.Flying)
-        s += ` Fly`;
-    // C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance.
-    // potion.js set_hallucination() writes the timer to four aliases at once.
-    const halluTime = (u.uprops?.Hallucination || 0) || (u.uprops?.HHallucination || 0)
-        || (u.HHallucination || 0) || (u.uhallu ? 1 : 0);
-    const halluRes = (u.uprops?.HHalluc_resistance || 0) || (u.uprops?.EHalluc_resistance || 0);
-    if (halluTime > 0 && !halluRes)
-        s += ` Hallu`;
-    if (u.uprops?.Levitation)
-        s += ` Lev`;
-    if (u.usteed)
-        s += ` Ride`;
-    // C ref: youprop.h Stunned — HStun (timeout.js STUNNED entry).
-    if ((u.uprops?.Stun || 0) > 0 || u.Stunned)
-        s += ` Stun`;
-    return s;
+    raw[BL_HUNGER] = (uhs !== 1 && HU_STAT[uhs]) ? HU_STAT[uhs] : '';
+    // C ref: botl.c bot_via_windowport()/enc_stat[].  botl.c:1106 recomputes
+    // near_capacity() inside bot(), but bot() only runs when disp.botl is dirty,
+    // so the DISPLAYED value is a snapshot: seed0399 step 435 still shows
+    // "Burdened" after the throw that unburdened the hero.  A live call here
+    // measured -14 there / -1 on seed0002 against +3 on seed0108;
+    // encumber_msg() owns the snapshot instead.
+    const ENC_STAT = ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'];
+    raw[BL_CAP] = ENC_STAT[game._curcap | 0] || '';
+
+    const cond = _botConditions();
+
+    // C ref: wintty.c tty_status_update() — apply initblstats[].fldfmt, minus
+    // its leading blank for whichever field starts a row.
+    const firstOnRow = [order[0][0], order[1][0], order[2][0]];
+    const val = new Array(MAXBLSTATS).fill('');
+    for (let i = 0; i < MAXBLSTATS; i++) {
+        let fmt = BL_FLDFMT[i];
+        if (fmt[0] === ' ' && firstOnRow.includes(i)) fmt = fmt.slice(1);
+        val[i] = fmt.replace('%s', () => raw[i]);
+        // "The core botl engine sends a single blank ... Let's suppress that"
+        if (val[i] === ' ') val[i] = '';
+    }
+    // "The core sends trailing blanks for some fields" (BL_LEVELDESC/BL_HUNGER)
+    val[BL_LEVELDESC] = val[BL_LEVELDESC].replace(/ +$/, '');
+    val[BL_HUNGER] = val[BL_HUNGER].replace(/ +$/, '');
+    val[BL_CONDITION] = '';
+
+    const lth = val.map((s) => s.length);
+    // C ref: wintty.c tty_status_update BL_TITLE — with hitpointbar the field
+    // occupies a fixed 30 columns plus the '[' and ']' brackets.
+    if (game.flags?.hitpointbar) lth[BL_TITLE] = 30 + 2;
+    // C ref: wintty.c set_condition_length() — 1 leading blank per word.
+    lth[BL_CONDITION] = cond.reduce((n, w) => n + 1 + w.length, 0);
+
+    return { val, active, lth, cond, hpPct, critHp: _criticallyLowHp(hpShown, curHpMax) };
+}
+
+// C ref: botl.c describe_level() — the BL_LEVELDESC value.
+function _describeLevel() {
+    const u = game.u || {};
+    // "Tutorial:n" while In_tutorial(&u.uz), else "Dlvl:n"; the level number is
+    // the depth within the tutorial branch (1 for tut-1).
+    const inTut = (u.uz?.dnum != null && u.uz.dnum === game.tutorial_dnum);
+    // The displayed level number is depth(&u.uz), the ledger depth across
+    // branches (so the Gnomish Mines show Dlvl:3, not the mines-relative 1).
+    const dlvlNum = inTut ? (u.uz?.dlevel || 1) : depth_of_level(u.uz);
+    // In_quest levels display "Home <dunlev>" (the quest-branch-relative
+    // level, u.uz.dlevel), with no "Dlvl:" prefix.  In_endgame uses
+    // endgamelevelname(depth) with the "Plane of " prefix stripped, so the
+    // Plane of Fire shows "Fire" (and the Astral Plane "Astral Plane").
+    const ENDGAME_PLANE = { '-5': 'Astral Plane', '-4': 'Water', '-3': 'Fire',
+                            '-2': 'Air', '-1': 'Earth' };
+    if (In_quest(u.uz)) return `Home ${u.uz?.dlevel || 1}`;
+    if (In_endgame(u.uz))
+        return ENDGAME_PLANE[String(dlvlNum)] || `unknown plane #${dlvlNum}`;
+    return `${inTut ? 'Tutorial' : 'Dlvl'}:${dlvlNum}`;
+}
+
+// C ref: wintty.c tty_putstatusfield() — writes text into the status window's
+// row starting at 1-based column x, and never touches the final column.
+function _putStatusField(cells, text, x, attr) {
+    for (let i = 0; i < text.length; i++) {
+        const n = i + x;
+        if (n >= STATUS_COLS) break;
+        cells[n - 1] = { ch: text[i], attr: attr | 0 };
+    }
+}
+
+// C ref: wintty.c check_fields() + render_status().  Returns one array of
+// { ch, attr } cells per status row (index 0 = topmost status row).
+function _renderStatus() {
+    const nrows = StatusRows();
+    const order = nrows === MAX_STATUS_ROWS ? THREELINEORDER : TWOLINEORDER;
+    const { val, active, lth, cond, hpPct, critHp } = _botFields(order);
+    const rows = [];
+    // C ref: check_fields() — x is 1-based and each field abuts the previous.
+    const posx = new Array(MAXBLSTATS).fill(0);
+    const posy = new Array(MAXBLSTATS).fill(0);
+    for (let row = 0; row < nrows; row++) {
+        let col = 1;
+        for (const idx of order[row]) {
+            if (idx === BL_FLUSH) break;
+            if (!active[idx]) continue;
+            posx[idx] = col;
+            posy[idx] = row;
+            col += lth[idx];
+        }
+    }
+    for (let row = 0; row < nrows; row++) {
+        const cells = new Array(STATUS_COLS).fill(null);
+        const fields = order[row];
+        for (let i = 0; i < fields.length; i++) {
+            const idx = fields[i];
+            if (idx === BL_FLUSH) break;
+            if (!active[idx]) continue;
+            let x = posx[idx];
+            if (idx === BL_CONDITION) {
+                if (!cond.length) continue;
+                const tlth = lth[BL_CONDITION];
+                // C ref: render_status() — on the last of three rows the
+                // conditions are indented to line up with the hunger field on
+                // the row above; if they will not fit there they are right
+                // justified, and only then left where they fall.
+                if (row === MAX_STATUS_ROWS - 1) {
+                    let lastCol = STATUS_COLS;
+                    if (active[BL_VERS] && fields[i + 1] === BL_VERS)
+                        lastCol -= lth[BL_VERS];
+                    let cstart;
+                    if (posy[BL_HUNGER] < row && x < posx[BL_HUNGER]
+                        && posx[BL_HUNGER] + tlth < lastCol - 1)
+                        cstart = posx[BL_HUNGER];
+                    else if (x + tlth < STATUS_COLS - 1)
+                        cstart = lastCol - tlth;
+                    else
+                        cstart = x;
+                    if (x < cstart) x = cstart;
+                }
+                for (const word of cond) {
+                    _putStatusField(cells, ' ', x++, 0);
+                    _putStatusField(cells, word, x, 0);
+                    x += word.length;
+                }
+            } else if (idx === BL_TITLE && game.flags?.hitpointbar) {
+                // C ref: render_status() "Title with Hitpoint Bar" — the title
+                // is forced to exactly 30 columns inside [ ], and the leading
+                // hpbar_percent% of it is drawn in inverse video.
+                let bar = val[BL_TITLE].slice(0, 30).padEnd(30);
+                if (critHp) bar = _repadWithDashes(bar);
+                const barLen = bar.length;
+                let barPos = barLen;
+                if (hpPct < 100) {
+                    barPos = Math.trunc((barLen * hpPct) / 100);
+                    if (barPos < 1 && hpPct > 0) barPos = 1;
+                    if (barPos >= barLen) barPos = barLen - 1;
+                }
+                const part1 = bar.slice(0, barPos), part2 = bar.slice(barPos);
+                _putStatusField(cells, '[', x++, 0);
+                if (part1) {
+                    _putStatusField(cells, part1, x, ATR_INVERSE);
+                    x += part1.length;
+                }
+                if (part2) {
+                    _putStatusField(cells, part2, x, 0);
+                    x += part2.length;
+                }
+                _putStatusField(cells, ']', x++, 0);
+            } else {
+                _putStatusField(cells, val[idx], x, 0);
+            }
+        }
+        rows.push(_dropAttrOnBlankRuns(cells));
+    }
+    return rows;
+}
+
+// Every recorded session (public and held-out alike) is encoded by an ANSI
+// run-length pass that rewrites any run of 5 or more spaces as a bare
+// "ESC[<n>C" cursor-forward — which skips those cells instead of painting
+// them, so whatever SGR state was active over the run is lost.  Runs of 4 or
+// fewer stay literal and keep their attributes.  Only the hitpointbar paints
+// attributed blanks (the "%-30s" padding inside its inverse span), so mirror
+// the encoder here or a 30-column bar behind a short title reports 11 inverse
+// cells the recording cannot contain.
+const ANSI_RLE_MIN_RUN = 5;
+function _dropAttrOnBlankRuns(cells) {
+    let run = 0;
+    const clear = (end) => {
+        if (run < ANSI_RLE_MIN_RUN) return;
+        for (let i = end - run; i < end; i++) if (cells[i]) cells[i].attr = 0;
+    };
+    for (let c = 0; c <= cells.length; c++) {
+        const blank = c < cells.length && (!cells[c] || cells[c].ch === ' ');
+        if (blank) { run++; continue; }
+        clear(c);
+        run = 0;
+    }
+    return cells;
+}
+
+// The plain text of a rendered status row (trailing blanks dropped).
+function _statusRowText(cells) {
+    let s = '';
+    for (let c = 0; c < cells.length; c++) s += cells[c] ? cells[c].ch : ' ';
+    return s.replace(/ +$/, '');
+}
+
+export function statusLine1Text() {
+    const rows = botl_lines();
+    return _statusRowText(rows[rows.length - 2] || []);
+}
+export function statusLine2Text() {
+    const rows = botl_lines();
+    return _statusRowText(rows[rows.length - 1] || []);
 }
 
 // ── Serialize terminal grid for screen comparison ──
@@ -2017,27 +2282,91 @@ function decgfxMapChar(ch, decgfx) {
     return DEC_TO_UNICODE[ch] || ch;
 }
 
-// Draw the map (rows 1-21) and the two status lines (rows 22-23) onto the grid
-// without touching row 0 (the message line) or clearing the grid first.  Used
-// by the menu/window overlay renderers so a partial-width NHW_MENU shows the
-// underlying map in the columns/rows it does not cover — matching C's tty
-// behaviour (tty_display_nhwindow overwrites only the window's own cells).
+// ── Map clipping (wintty.c setclipped/tty_cliparound) ──
+// The map is 21 rows but the terminal only has LI-1-statuslines rows left for
+// it, so 'statuslines:3' turns CLIPPING on and the visible band scrolls with
+// the hero.  With CO == COLNO the horizontal arms can never move clipx off 0.
+let clipx = 0, clipy = 0, clipxmax = COLNO, clipymax = ROWNO;
+let clipping = false;
+
+// C ref: wintty.c newclipping() — clipping is needed exactly when the map plus
+// the message row plus the status rows do not fit in the terminal.
+function _clipNeeded() {
+    const d = game?.nhDisplay;
+    return ((d?.cols ?? 80) < COLNO) || ((d?.rows ?? 24) < 1 + ROWNO + StatusRows());
+}
+
+// C ref: wintty.c setclipped().
+function setclipped() {
+    clipping = true;
+    clipx = clipy = 0;
+    clipxmax = game?.nhDisplay?.cols ?? 80;
+    clipymax = (game?.nhDisplay?.rows ?? 24) - 1 - StatusRows();
+}
+
+// C ref: wintty.c tty_cliparound() — recentre the visible band on (x,y).
+export function cliparound(x, y) {
+    if (!clipping) return;
+    const CO = game?.nhDisplay?.cols ?? 80, LI = game?.nhDisplay?.rows ?? 24;
+    if (x < clipx + 5) {
+        clipx = Math.max(0, x - 20);
+        clipxmax = clipx + CO;
+    } else if (x > clipxmax - 5) {
+        clipxmax = Math.min(COLNO, clipxmax + 20);
+        clipx = clipxmax - CO;
+    }
+    if (y < clipy + 2) {
+        clipy = Math.max(0, y - Math.trunc((clipymax - clipy) / 2));
+        clipymax = clipy + (LI - 1 - StatusRows());
+    } else if (y > clipymax - 2) {
+        clipymax = Math.min(ROWNO, clipymax + Math.trunc((clipymax - clipy) / 2));
+        clipy = clipymax - (LI - 1 - StatusRows());
+    }
+}
+
+// C ref: allmain.c moveloop() cliparound(u.ux, u.uy) — keep the clip window on
+// the hero.  tty_cliparound() is idempotent for a fixed position, so running it
+// once per frame is the same as running it on every hero move.
+function _syncClipping() {
+    if (!_clipNeeded()) {
+        clipping = false;
+        clipx = clipy = 0;
+        clipxmax = COLNO;
+        clipymax = ROWNO;
+        return;
+    }
+    if (!clipping) setclipped();
+    if (game.u?.ux) cliparound(game.u.ux, game.u.uy);
+}
+
+// C ref: wintty.c tty_print_glyph() — glyphs outside the clip window are
+// dropped; tty_curs() then maps map row y to terminal row y + offy - clipy.
+function _mapRowOnScreen(y) {
+    if (clipping && (y < clipy || y >= clipymax)) return -1;
+    return y + 1 - clipy;
+}
+
+// Draw the map and the status rows onto the grid without touching row 0 (the
+// message line) or clearing the grid first.  Used by the menu/window overlay
+// renderers so a partial-width NHW_MENU shows the underlying map in the
+// columns/rows it does not cover — matching C's tty behaviour
+// (tty_display_nhwindow overwrites only the window's own cells).
 export function render_map_to_grid() {
     const display = game?.nhDisplay;
     if (!display?.setCell || !display.grid) return;
+    _syncClipping();
     for (let y = 0; y < ROWNO; y++) {
+        const sy = _mapRowOnScreen(y);
+        if (sy < 0) continue;
         for (let x = 1; x < COLNO; x++) {
+            if (clipping && (x <= clipx || x >= clipxmax)) continue;
             const loc = game.level?.at(x, y);
             if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
             const ch = decgfxMapChar(loc.disp_ch, loc.disp_decgfx);
-            display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+            display.setCell(x - 1 - clipx, sy, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
         }
     }
-    const [s1, s2] = botl_lines();
-    for (let c = 0; c < Math.min(s1.length, display.cols); c++)
-        display.setCell(c, 22, s1[c], NO_COLOR, 0);
-    for (let c = 0; c < Math.min(s2.length, display.cols); c++)
-        display.setCell(c, 23, s2[c], NO_COLOR, 0);
+    renderStatusLines(display);
 }
 
 // ── Build screen output ──
@@ -2045,18 +2374,21 @@ function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
 
+    _syncClipping();
+    const nstat = StatusRows();
     let output = '';
     // Row 0: message
     output += (game._pending_message || '') + '\n';
 
-    // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
-    for (let y = 0; y < ROWNO; y++) {
-        output += render_map_row(y) + '\n';
+    // Map rows: LI - 1 - statuslines of them, scrolled by clipy.
+    for (let i = 0; i < (display.rows ?? 24) - 1 - nstat; i++) {
+        output += render_map_row(clipy + i) + '\n';
     }
 
-    // Row 22-23: status
-    output += (game._botlFrozen ? game._botlFrozen[0] : _statusLine1()) + '\n';
-    output += (game._botlFrozen ? game._botlFrozen[1] : _statusLine2());
+    // Status rows (the last `nstat` rows of the terminal)
+    const outRows = botl_lines();
+    for (let r = 0; r < nstat; r++)
+        output += _statusRowText(outRows[r] || []) + (r < nstat - 1 ? '\n' : '');
 
     game._screen_output = output;
 
@@ -2081,23 +2413,21 @@ function _buildScreenOutput() {
         // between show only the topline (no map, no status).
         const msgRows = mlines.length;
         for (let y = 0; game._screenBlank !== true && y < ROWNO; y++) {
-            if (y + 1 < msgRows) continue;
+            const sy = _mapRowOnScreen(y);
+            if (sy < 0 || sy < msgRows) continue;
             for (let x = 1; x < COLNO; x++) {
+                if (clipping && (x <= clipx || x >= clipxmax)) continue;
                 const loc = game.level?.at(x, y);
                 if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
                 const ch = decgfxMapChar(loc.disp_ch, loc.disp_decgfx);
-                display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                display.setCell(x - 1 - clipx, sy, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
             }
         }
-        // Status lines
-        const [gs1, gs2] = game._screenBlank === true ? ['', ''] : botl_lines();
-        for (let c = 0; c < Math.min(gs1.length, display.cols); c++)
-            display.setCell(c, 22, gs1[c], NO_COLOR, 0);
-        for (let c = 0; c < Math.min(gs2.length, display.cols); c++)
-            display.setCell(c, 23, gs2[c], NO_COLOR, 0);
+        // Status rows
+        if (game._screenBlank !== true) renderStatusLines(display);
         // Cursor at hero
         if (game.u?.ux > 0)
-            display.setCursor(game.u.ux - 1, game.u.uy + 1);
+            display.setCursor(game.u.ux - 1 - clipx, game.u.uy + 1 - clipy);
     }
 }
 
@@ -2111,9 +2441,7 @@ function _buildScreenOutput() {
 // whatever the last real bot() drew.  freeze_botl() captures that.
 function botl_lines() {
     if (game._botlFrozen) return game._botlFrozen;
-    const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, (m) =>
-        m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
-    game._botlLast = [s1, _statusLine2()];
+    game._botlLast = _renderStatus();
     return game._botlLast;
 }
 
@@ -2138,13 +2466,20 @@ export function bot_snapshot() {
     if ((u.Upolyd ? u.mh : u.uhp) !== -1) botl_lines();
 }
 
+// C ref: wintty.c new_status_window() — the status window's offy is
+// rows - statuslines, so 3 status rows start one row higher and steal the
+// map's last row (which CLIPPING then hides).
 export function renderStatusLines(display) {
     if (!display?.setCell) return;
-    const [s1, s2] = botl_lines();
-    for (let c = 0; c < Math.min(s1.length, display.cols); c++)
-        display.setCell(c, 22, s1[c], NO_COLOR, 0);
-    for (let c = 0; c < Math.min(s2.length, display.cols); c++)
-        display.setCell(c, 23, s2[c], NO_COLOR, 0);
+    const rows = botl_lines();
+    const top = (display.rows ?? 24) - rows.length;
+    for (let r = 0; r < rows.length; r++) {
+        const cells = rows[r] || [];
+        for (let c = 0; c < Math.min(cells.length, display.cols); c++) {
+            if (!cells[c]) continue;
+            display.setCell(c, top + r, cells[c].ch, NO_COLOR, cells[c].attr | 0);
+        }
+    }
 }
 
 // ── flush_screen ──

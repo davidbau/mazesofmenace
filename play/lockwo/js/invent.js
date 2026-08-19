@@ -2375,16 +2375,27 @@ export function doattributes() {
 // Advance the paged attributes window.  Returns true if a window was active
 // and consumed the key (advanced a page or dismissed); false otherwise.
 // C ref: process_menu_window() page navigation (space/'>' -> next page).
-export async function attr_window_advance() {
+export async function attr_window_advance(key) {
     if (game._modal_screen !== 'attrwin') return false;
     const pages = game._attr_pages || [];
-    const idx = (game._attr_page || 0) + 1;
-    if (idx < pages.length) {
-        game._attr_page = idx;
+    const cur = game._attr_page || 0;
+    const onLast = cur >= pages.length - 1;
+    // C ref: wintty.c process_menu_window(), PICK_NONE (insight.c builds this
+    // as an NHW_MENU).  Only the page/finish keys act; every other key is
+    // tty_nhbell() with the window left up unchanged.
+    if (key === '<') {                              // MENU_PREVIOUS_PAGE
+        if (cur > 0) game._attr_page = cur - 1;
         renderAttributesPage();
         return true;
     }
-    // last page -> dismiss
+    if (key === '>' || key === ' ') {               // MENU_NEXT_PAGE / space
+        if (!onLast) { game._attr_page = cur + 1; renderAttributesPage(); return true; }
+        // '>' on the last page redisplays; only space and return finish.
+        if (key === '>') { renderAttributesPage(); return true; }
+    } else if (key !== undefined && key !== '\n' && key !== '\r' && key !== '\x1b') {
+        renderAttributesPage();                     // bell; window unchanged
+        return true;
+    }
     delete game._attr_pages;
     delete game._attr_page;
     await dismiss_invent_screen();

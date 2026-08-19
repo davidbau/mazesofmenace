@@ -12,7 +12,7 @@ import { rn2, rnd } from './rng.js';
 import {
     place_object, splitobj, stackobj, delobj, is_crackable, objects_at,
 } from './mkobj.js';
-import { losehp, maybe_half_phys, nomul } from './hack.js';
+import { losehp, maybe_half_phys, nomul, impact_disturbs_zombies } from './hack.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
     POTION_CLASS, objectNames, objectNameStrs,
@@ -986,7 +986,9 @@ export async function breaks(obj, x, y) {
  * C ref: zap.c bhit + dothrow.c throwit — fly along dx/dy; stop before
  * !ZAP_POS / closed door (bhit backs up one step), then place / breaktest.
  * Monster hit → thitmonst (D-0415 food; D-0693 pie/egg DEX;
- * D-1041 weapon/weptool/gem hit-vs-miss).
+ * D-1041 weapon/weptool/gem hit-vs-miss). After place, !IS_SOFT
+ * container_impact_dmg(obj, u.ux, u.uy) then impact_disturbs TRUE
+ * (D-1249 / D-1229). hitfloor dropz(TRUE) still named.
  */
 async function throwit(obj) {
     const u = game.u;
@@ -1093,10 +1095,17 @@ async function throwit(obj) {
     }
     // C: !mon && ship_object(obj, bhitpos, FALSE) before place
     {
-        const { ship_object } = await import('./dokick.js');
+        const { ship_object, container_impact_dmg } = await import('./dokick.js');
         if (await ship_object(obj, x, y, false)) return;
+        place_object(obj, x, y);
+        // C dothrow.c:1828–1831 — !IS_SOFT → container at throw origin
+        // (u.ux,u.uy, not bhitpos) then impact_disturbs TRUE
+        const land = game.level?.at?.(x, y);
+        if (land && !IS_SOFT(land.typ)) {
+            await container_impact_dmg(obj, u.ux | 0, u.uy | 0);
+            impact_disturbs_zombies(obj, true);
+        }
     }
-    place_object(obj, x, y);
     // C: charge / take possession for shop throw land (D-0994)
     {
         const ushops = game.u?.ushops || '';

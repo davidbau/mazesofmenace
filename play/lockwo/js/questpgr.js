@@ -2624,6 +2624,19 @@ function qrole() {
     return QUEST_ROLE_DATA[urole_filecode()] ?? null;
 }
 
+// C ref: role.c:2058 role_init() "Fix up the quest nemesis" —
+//   quest_status.nemgend = is_neuter(pm) ? 2 : is_female(pm) ? 1
+//                          : is_male(pm) ? 0 : (rn2(100) < 50)
+// so the rn2(100) fires exactly when this role's nemesis species carries none
+// of M2_NEUTER/M2_FEMALE/M2_MALE.  QUEST_ROLE_DATA already records that as a
+// null nemgend for every role.  Exported (read-only) because restore.c
+// restgamestate() re-runs role_init() on every restore, and restore.js has to
+// reproduce the draw without a second copy of the table.
+export function quest_nemgend_or_null() {
+    const q = qrole();
+    return q ? (q.nemgend ?? null) : null;
+}
+
 // ── the readiness gate (C ref: quest.c chat_with_leader "Rule 5" tail) ───────
 // C ref: include/quest.h
 const MIN_QUEST_ALIGN = 20; // at least this align.record to start

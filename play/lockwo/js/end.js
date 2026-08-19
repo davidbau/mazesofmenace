@@ -9,6 +9,8 @@
 // (it can't here), and savelife()'s HP/hunger fixups are deterministic.
 
 import { game } from './gstate.js';
+// C ref: monflag.h G_GENOD / G_EXTINCT — the two mvitals[].mvflags "gone" bits.
+import { G_GENOD, G_EXTINCT } from './const.js';
 
 // end.h death codes (subset).  DIED=0; GENOCIDED separates the death codes
 // that leave a tombstone/bones from the ones that don't (QUIT/ESCAPED/
@@ -49,6 +51,19 @@ function goodbye_for_role(roleName) {
 
 // C ref: hack.h plur(x) — "" when x == 1, "s" otherwise.
 function plur(n) { return (n === 1) ? '' : 's'; }
+
+// C ref: restore.c:583 "wizard and discover are actually flags.debug and
+// flags.explore".  Our rc parser records `playmode:explore` as
+// flags.playmode === 'explore' and never sets flags.explore, so reading only
+// flags.discover (as this file used to) answered FALSE for every explore game:
+// done() then skipped the "Die?" paranoid query entirely and killed a hero C
+// keeps alive.  Same predicate as bones.js is_discover() / insight.js.
+function is_discover() {
+    const f = game.flags || {};
+    return !!(f.explore || f.discover || f.playmode === 'explore');
+}
+// C ref: options.c optfn_playmode() — `playmode:debug` sets wizard.
+function is_wizard() { return !!game.flags?.debug; }
 
 // Sum the coins carried directly in `inv` (C ref: engrave.c money_cnt — does NOT
 // descend into containers; that is hidden_gold()'s job).
@@ -412,8 +427,8 @@ async function done(how) {
     // paranoid_query shows the deferred "You die...--More--" first
     // (game._yn_need_more) then "Die? [yn] (n)".  A 'y' would end the game;
     // the contest player declines.
-    const wizard = !!game.flags?.debug;
-    const discover = !!game.flags?.discover;
+    const wizard = is_wizard();
+    const discover = is_discover();
     if (!survive && (wizard || discover) && how <= GENOCIDED) {
         game._yn_need_more = true; // page the pending "You die..." line first
         const ans = await d.y_n('Die?', 'yn\x1b', 'n');
@@ -454,10 +469,11 @@ async function done(how) {
         // computation and before display_nhwindow(WIN_MESSAGE) pages the
         // "You die..." line.  An angry shopkeeper the hero died next to takes
         // everything, and that message shares the death topline.
+        let taken = false;
         if (how !== PANICKED && !stopprint) {
             const { paybill } = await import('./shkroom.js');
             const before = game._pending_message;
-            await paybill(how === ESCAPED ? -1 : (how !== QUIT ? 1 : 0));
+            taken = !!await paybill(how === ESCAPED ? -1 : (how !== QUIT ? 1 : 0));
             // C ref: pline.c vpline() `if (u.ux) flush_screen(1)` ->
             // display.c:2236 `if (disp.botl || disp.botlx) bot()`.  done() has
             // just forced u.uhp to 0 and set disp.botl, so the shopkeeper's
@@ -477,12 +493,16 @@ async function done(how) {
             // left is topten()'s wizard/discover branch: a bare score-skipped
             // notice, no table.
             await quit_final_message();
-        } else if (!wizard && !discover) {
-            // C ref: end.c really_done() — normal-game (non-wizard/explore)
-            // death tail.  After the bones check, display_nhwindow(WIN_MESSAGE,
-            // FALSE) pages the still-unseen "You die..." top line with
-            // --More--, then disclose() offers its six end-of-game queries
-            // before the tombstone/topten teardown.
+        } else {
+            // C ref: end.c really_done() — the death tail.  This used to be
+            // gated on `!wizard && !discover`, i.e. a wizard/explore hero who
+            // answered 'y' to "Die?" got NO disclosure, NO tombstone and NO
+            // score notice at all; C runs the identical really_done() for them
+            // and only swaps topten()'s high-score table for the "score list
+            // will not be checked" line (topten.c:725).  After the bones check,
+            // display_nhwindow(WIN_MESSAGE, FALSE) pages the still-unseen
+            // "You die..." top line with --More--, then disclose() offers its
+            // six end-of-game queries before the tombstone/topten teardown.
             if (game._toplin === 1) { // display_nhwindow(WIN_MESSAGE): more()
                 await d.topl_more();
                 game._toplin = 0;
@@ -504,16 +524,24 @@ async function done(how) {
                     : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
                 for (const obj of inv) invmod.fully_identify_obj(obj);
             }
-            const clean = await disclose(how);
+            const clean = await disclose(how, taken);
             // C ref: end.c:1363 — savebones() runs AFTER disclose(), i.e. after
             // the "You die..." --More-- has been paged; doing it earlier wiped
             // the map out from under those frames.
             if (bones_ok) {
-                const corpse = await make_hero_corpse_and_grave(how);
-                const { savebones } = await import('./bones.js');
-                await savebones(how, corpse || game._death_corpse || null);
+                // C ref: end.c:1366 — `if (!wizard || paranoid_query(
+                // ParanoidBones, "Save bones?")) savebones(...)`.  ParanoidBones
+                // is off by default, so this is a plain yn() defaulting to 'n';
+                // 'n' skips the bones file but the game still ends.
+                let save_bones = true;
+                if (wizard) save_bones = (await d.y_n('Save bones?', 'yn', 'n')) === 'y';
+                if (save_bones) {
+                    const corpse = await make_hero_corpse_and_grave(how);
+                    const { savebones } = await import('./bones.js');
+                    await savebones(how, corpse || game._death_corpse || null);
+                }
             }
-            if (clean) await real_death_epilogue(how);
+            if (clean) await real_death_epilogue(how, wizard || discover);
         }
     }
 }
@@ -567,135 +595,234 @@ export async function doquit() {
     return 0;
 }
 
-// C ref: flag.h DISCLOSE_* char values + decl.c disclosure_options="iavgco".
-function disclose_ask(c) {
-    switch (c) {
-    case '+': return { ask: false, defquery: 'y' };
-    case '#': return { ask: false, defquery: 'a' };
-    case '-': return { ask: false, defquery: 'n' };
-    case 'y': return { ask: true, defquery: 'y' };
-    case '?': return { ask: true, defquery: 'a' };
-    default: return { ask: true, defquery: 'n' }; // 'n' (the startup default) or unset
+// C ref: flag.h:110-115 — the six values flags.end_disclose[] can hold.
+const DISCLOSE_PROMPT_DEFAULT_YES = 'y';
+const DISCLOSE_PROMPT_DEFAULT_NO = 'n';
+const DISCLOSE_PROMPT_DEFAULT_SPECIAL = '?'; // v/g only: prompt, default 'a'
+const DISCLOSE_YES_WITHOUT_PROMPT = '+';
+const DISCLOSE_NO_WITHOUT_PROMPT = '-';
+const DISCLOSE_SPECIAL_WITHOUT_PROMPT = '#'; // v/g only: no prompt, use 'a'
+// C ref: decl.c:54 `const char disclosure_options[] = "iavgco";` — the array
+// order is inventory, attributes, vanquished, genocided, conduct, overview.
+const disclosure_options = 'iavgco';
+
+// C ref: end.c:477 should_query_disclose_option(category, &defquery) — map one
+// end_disclose[] setting to {prompt?, default answer}.  Any value outside the
+// six DISCLOSE_* constants falls through C's final `else` to prompt-with-'n'.
+function should_query_disclose_option(end_disclose, category) {
+    const disclose = end_disclose[category];
+    switch (disclose) {
+    case DISCLOSE_YES_WITHOUT_PROMPT:     return { ask: false, defquery: 'y' };
+    case DISCLOSE_SPECIAL_WITHOUT_PROMPT: return { ask: false, defquery: 'a' };
+    case DISCLOSE_NO_WITHOUT_PROMPT:      return { ask: false, defquery: 'n' };
+    case DISCLOSE_PROMPT_DEFAULT_YES:     return { ask: true, defquery: 'y' };
+    case DISCLOSE_PROMPT_DEFAULT_SPECIAL: return { ask: true, defquery: 'a' };
+    default:                              return { ask: true, defquery: 'n' };
     }
 }
 
-// C ref: options.c optfn_disclose() do_set — parse the `disclose:` rc option
-// into per-category settings (i,a,v,g,c,o order, decl.c disclosure_options).
-// Absent an rc override, options.c's initoptions() sets every category to
-// DISCLOSE_PROMPT_DEFAULT_NO ('n') at startup, so that is the default here too.
-const DISCLOSURE_CATS = ['i', 'a', 'v', 'g', 'c', 'o'];
+// C ref: options.c:1442 optfn_disclose() req == do_set — parse the `disclose:`
+// rc value into flags.end_disclose[].  Ported as the real character walk rather
+// than a lookup of the two spellings the public corpus happens to use
+// (`-i -a -v -g -c -o` and `yi ya yv yg yc yo`), because every other
+// combination — `+i`, `#v`, `?g`, `disclose:all`, `!disclose`, `ki` (killed ->
+// vanquished), `di` (dungeon -> overview) — is equally legal in an rc file.
 function parse_end_disclose() {
-    const settings = { i: 'n', a: 'n', v: 'n', g: 'n', c: 'n', o: 'n' };
+    // C ref: options.c:7211 initoptions_init() — every category starts at
+    // DISCLOSE_PROMPT_DEFAULT_NO.
+    const end_disclose = {};
+    for (const c of disclosure_options) end_disclose[c] = DISCLOSE_PROMPT_DEFAULT_NO;
     const raw = game.flags?.disclose;
-    if (raw == null) return settings;
-    const s = String(raw).trim();
-    if (s === '' || /^all$/i.test(s)) {
-        for (const k of DISCLOSURE_CATS) settings[k] = 'y';
-        return settings;
+    if (raw === undefined || raw === null) return end_disclose; // option absent
+    // C: `op = string_for_opt(opts, TRUE)` yields empty_optstr for a bare
+    // `disclose` with no ':value'; `!disclose` arrives with negated set.  Our
+    // rc parser turns both of those into a boolean, so recover them here —
+    // String(false) would otherwise be scanned as the letters f/a/l/s/e and set
+    // the 'a' category.
+    let negated = false, op;
+    if (raw === true) op = '';
+    else if (raw === false) { op = ''; negated = true; }
+    else op = String(raw);
+    // C: "disclose" without a value means "all with prompting" and negated
+    // means "none without prompting".
+    if (op === '' || op.toLowerCase() === 'all' || op.toLowerCase() === 'none') {
+        if (op !== '' && op.toLowerCase() === 'none') negated = true;
+        for (const c of disclosure_options)
+            end_disclose[c] = negated ? DISCLOSE_NO_WITHOUT_PROMPT
+                                      : DISCLOSE_PROMPT_DEFAULT_YES;
+        return end_disclose;
     }
-    if (/^none$/i.test(s)) {
-        for (const k of DISCLOSURE_CATS) settings[k] = '-';
-        return settings;
-    }
-    let prefix = null;
-    for (const ch of s) {
-        let c = ch.toLowerCase();
+    const valid_settings = DISCLOSE_PROMPT_DEFAULT_YES + DISCLOSE_PROMPT_DEFAULT_NO
+        + DISCLOSE_PROMPT_DEFAULT_SPECIAL + DISCLOSE_YES_WITHOUT_PROMPT
+        + DISCLOSE_NO_WITHOUT_PROMPT + DISCLOSE_SPECIAL_WITHOUT_PROMPT;
+    let prefix_val = null;
+    for (const ch of op) {
+        let c = ch.toLowerCase(); // C: lowc(*op) — a prefix may be capitalised
         if (c === 'k') c = 'v'; // killed -> vanquished
         if (c === 'd') c = 'o'; // dungeon -> overview
-        if (DISCLOSURE_CATS.includes(c)) {
-            settings[c] = prefix || '+'; // bare category letter -> YES_WITHOUT_PROMPT
-            prefix = null;
-        } else if ('yn+-#?'.includes(ch)) {
-            prefix = ch;
+        if (disclosure_options.includes(c)) {
+            if (prefix_val !== null) {
+                let pv = prefix_val;
+                // The two 'a' (sort-order) settings only mean anything for the
+                // vanquished/genocided lists; elsewhere they degrade to yes.
+                if (c !== 'v' && c !== 'g') {
+                    if (pv === DISCLOSE_PROMPT_DEFAULT_SPECIAL) pv = DISCLOSE_PROMPT_DEFAULT_YES;
+                    if (pv === DISCLOSE_SPECIAL_WITHOUT_PROMPT) pv = DISCLOSE_YES_WITHOUT_PROMPT;
+                }
+                end_disclose[c] = pv;
+                prefix_val = null;
+            } else {
+                // "For backward compatibility, no prefix is required, and the
+                // presence of a i,a,g,v, or c without a prefix sets the
+                // corresponding value to DISCLOSE_YES_WITHOUT_PROMPT."
+                end_disclose[c] = DISCLOSE_YES_WITHOUT_PROMPT;
+            }
+        } else if (valid_settings.includes(c)) {
+            prefix_val = c;
+        } else if (c === ' ') {
+            /* do nothing */
+        } else {
+            // C: config_error_add("Unknown disclose parameter '%c'") then
+            // `return optn_err` — the rest of the value is never scanned, but
+            // the settings applied so far stand.
+            break;
         }
-        // spaces and unrecognized chars: ignored, matching the C parser.
     }
-    return settings;
+    return end_disclose;
 }
 
-// C ref: end.c disclose(how, taken) — end-of-game disclosure queries.  The
-// 'i' query's 'y' content (display_inventory) is ported via invent.js's
-// display_inventory_interactive(); 'a'/'c'/'o' render their content through
-// insight.js's show_attributes_disclosure()/show_conduct_disclosure() and
-// dungeon.js's build_overview_lines() (via extcmd-handlers.js's
-// show_overview_disclosure()).  'v'/'g' (list_vanquished/list_genocided) are
-// gated in C on there being at least one dead/genocided species to list
-// (ntypes/ngone != 0); when that count is 0 neither ever prompts at all, no
-// matter what 'ask' is, so only treat a true 'ask' as an unmodeled gap (their
-// bespoke sort-order sub-menus aren't ported) when the list would actually be
-// non-empty.  taken (items confiscated before death) is never true for a
-// plain HP-loss death, so the 'i' query always uses the "possessions
-// identified?" wording.
-async function disclose(how) {
+// C ref: end.c:620 disclose(how, taken) — the six end-of-game disclosure
+// queries, in disclosure_options order (i, a, v, g, c, o).  Content renderers:
+// 'i' -> invent.js display_inventory_interactive(); 'a'/'c' -> insight.js
+// show_attributes_disclosure()/show_conduct_disclosure(); 'v' -> insight.js
+// list_vanquished_screen(); 'o' -> extcmd-handlers.js
+// show_overview_disclosure().  Every block is gated on !done_stopprint, which a
+// 'q' answer sets — so 'q' suppresses the remaining queries AND (back in
+// really_done) the tombstone window and the score list; returning `false` is how
+// that reaches the caller.
+async function disclose(how, taken = false) {
     const d = await deps();
-    const settings = parse_end_disclose();
+    const end_disclose = parse_end_disclose();
     const inv = Array.isArray(game.invent) ? game.invent
         : (Array.isArray(game.gi?.invent) ? game.gi.invent : []);
     const final = (how >= PANICKED) ? 1 : 2; // ENL_GAMEOVERALIVE : ENL_GAMEOVERDEAD
+    // C ref: decl.c ynqchars = "ynq"; tty_yn_function also always accepts ESC.
+    const ynqchars = 'ynq\x1b';
+    let stopprint = false;
 
-    async function query(settingChar, qbuf) {
-        const { ask, defquery } = disclose_ask(settingChar);
-        return ask ? await d.y_n(qbuf, 'ynq\x1b', defquery) : defquery;
+    async function query(category, qbuf) {
+        const { ask, defquery } = should_query_disclose_option(end_disclose, category);
+        return ask ? await d.y_n(qbuf, ynqchars, defquery) : defquery;
     }
 
     if (inv.length) {
-        const c = await query(settings.i, 'Do you want your possessions identified?');
+        // C ref: end.c:626 — when a shopkeeper confiscated everything before the
+        // hero died (paybill() returned TRUE), the question is about what they
+        // HAD rather than about identifying what they still carry.
+        const qbuf = taken
+            ? `Do you want to see what you had when you ${(how === QUIT) ? 'quit' : 'died'}?`
+            : 'Do you want your possessions identified?';
+        const c = await query('i', qbuf);
         if (c === 'y') {
             const invmod = await import('./invent.js');
             await invmod.display_inventory_interactive(null);
+            // C ref: end.c:641 `container_contents(gi.invent, TRUE, TRUE,
+            // FALSE)` — one "Contents of the <box>:" window per carried
+            // container, recursing into nested ones.  Not ported: reachable only
+            // for a hero who both carries a container and answers 'y' here.
         }
-        if (c === 'q') return true;
+        if (c === 'q') stopprint = true;
     }
 
-    {
-        const c = await query(settings.a, 'Do you want to see your attributes?');
+    if (!stopprint) {
+        const c = await query('a', 'Do you want to see your attributes?');
         if (c === 'y') {
             const { show_attributes_disclosure } = await import('./insight.js');
             await show_attributes_disclosure(final);
         }
-        if (c === 'q') return true;
+        if (c === 'q') stopprint = true;
     }
 
-    {
-        // C ref: insight.c:2826 list_vanquished() — the prompt exists only when
-        // some species has died; ntypes > 1 widens the answer set to ynaqchars,
-        // which shows as "[ynaq]".  'a' means "choose a sort order first".
-        const { vanquished_ntypes, anyGenocidedOrExtinct, list_vanquished_screen }
-            = await import('./insight.js');
-        const ntypes = vanquished_ntypes();
+    const insight = await import('./insight.js');
+    if (!stopprint) {
+        // C ref: insight.c:2826 list_vanquished(defquery, ask) — the prompt only
+        // exists when some species has died.  ntypes > 1 widens the answer set to
+        // ynaqchars ("[ynaq]"); with exactly one type 'a' is accepted but not
+        // advertised, and a defquery of 'a' (from `disclose:#v` / `?v`) is
+        // demoted to 'y' because there is nothing to sort.
+        const ntypes = insight.vanquished_ntypes();
         if (ntypes > 0) {
-            const { ask, defquery } = disclose_ask(settings.v);
+            const q = should_query_disclose_option(end_disclose, 'v');
+            let defquery = q.defquery;
             const resp = (ntypes > 1) ? 'ynaq\x1b' : 'ynq\x1b a';
-            const c = ask
+            if (ntypes <= 1 && defquery === 'a') defquery = 'y';
+            const c = q.ask
                 ? await d.y_n('Do you want an account of creatures vanquished?', resp, defquery)
                 : defquery;
-            if (c === 'y' || c === 'a') await list_vanquished_screen();
-            if (c === 'q') return true;
+            if (c === 'q') stopprint = true;
+            // 'a' with more than one type first asks for a sort order via
+            // set_vanq_order(); only the default VANQ_MLVL_MNDX ordering is
+            // ported, so both answers render the same list.
+            if (c === 'y' || c === 'a') await insight.list_vanquished_screen();
         }
-        // list_genocided() prints nothing at all when nothing was genocided or
-        // went extinct, so there is no prompt in that case.
-        if (anyGenocidedOrExtinct() && disclose_ask(settings.g).ask) return false;
+    }
+    if (!stopprint) {
+        // C ref: insight.c:3007 list_genocided(defquery, ask) — at end of game
+        // `both` is TRUE (program_state.gameover), so extinct species count too.
+        // With nothing gone there is no prompt at all.
+        const { ngenocided, nextinct, ngone } = genocided_counts();
+        if (ngone > 0) {
+            const q = should_query_disclose_option(end_disclose, 'g');
+            let defquery = q.defquery;
+            const qbuf = `Do you want a list of ${(nextinct && !ngenocided) ? 'extinct ' : ''}species`
+                + `${ngenocided ? ' genocided' : ''}${(nextinct && ngenocided) ? ' and extinct' : ''}?`;
+            const resp = (ngone > 1) ? 'ynaq\x1b' : 'ynq\x1b a';
+            const c = q.ask ? await d.y_n(qbuf, resp, defquery) : defquery;
+            if (c === 'q') stopprint = true;
+            // The "Genocided species:" window itself is unported (insight.js
+            // dogenocided() is the other caller and is a stub); reachable only
+            // after an actual genocide or a species hitting its birth limit.
+        }
     }
 
-    {
-        const c = await query(settings.c, 'Do you want to see your conduct?');
+    if (!stopprint) {
+        // C ref: end.c:670 — the question gains " and achievements" whenever
+        // count_achievements() > 0 (u.uachieved is non-empty).
+        const acnt = Array.isArray(game.u?.uachieved) ? game.u.uachieved.length : 0;
+        const c = await query('c',
+            `Do you want to see your conduct${(acnt > 0) ? ' and achievements' : ''}?`);
         if (c === 'y') {
-            const { show_conduct_disclosure } = await import('./insight.js');
-            await show_conduct_disclosure(final);
+            await insight.show_conduct_disclosure(final);
         }
-        if (c === 'q') return true;
+        if (c === 'q') stopprint = true;
     }
 
-    {
-        const c = await query(settings.o, 'Do you want to see the dungeon overview?');
+    if (!stopprint) {
+        const c = await query('o', 'Do you want to see the dungeon overview?');
         if (c === 'y') {
             const { show_overview_disclosure } = await import('./extcmd-handlers.js');
             await show_overview_disclosure(final, how);
         }
-        if (c === 'q') return true;
+        if (c === 'q') stopprint = true;
     }
 
-    return true;
+    if (stopprint) game._done_stopprint = (game._done_stopprint || 0) + 1;
+    return !stopprint;
+}
+
+// C ref: insight.c num_genocides()/num_extinct()/num_gone(mvflags, mindx) — the
+// three counts list_genocided() decides its prompt wording from.  mvitals[]
+// carries G_GENOD / G_EXTINCT per species; a species can be both.
+function genocided_counts() {
+    const mv = game.mvitals || [];
+    let ngenocided = 0, nextinct = 0, ngone = 0;
+    for (let i = 0; i < mv.length; i++) {
+        const f = mv[i]?.mvflags | 0;
+        if (f & G_GENOD) ngenocided++;
+        if (f & G_EXTINCT) nextinct++;
+        if (f & (G_GENOD | G_EXTINCT)) ngone++;
+    }
+    return { ngenocided, nextinct, ngone };
 }
 
 // C ref: end.c really_done() tail for a normal (non-wizard, non-discover)
@@ -705,7 +832,10 @@ async function disclose(how) {
 // state persists a real high-score list), so the just-died entry is always
 // rank 1 ("You made the top ten list!"); other rank0/skip_scores branches
 // of topten() are not reachable here.
-async function real_death_epilogue(how) {
+// `scoreSkipped` == (wizard || discover): topten() then prints the "score list
+// will not be checked" notice in place of the high-score table (topten.c:725)
+// and the 'record' file is left alone.
+async function real_death_epilogue(how, scoreSkipped = false) {
     const disp = game?.nhDisplay;
     const { nhgetch } = await import('./input.js');
     if (!disp?.putstr) return;
@@ -806,6 +936,27 @@ async function real_death_epilogue(how) {
     const scorePoints = urexp < 1 ? 0 : urexp;
 
     // topten() real (non-wizard) output.
+    if (scoreSkipped) {
+        // C ref: topten.c:725 — `if (wizard || discover) { if (how != PANICKED)
+        // { topten_print(""); topten_print("Since you were in %s mode, the score
+        // list will not be checked."); } goto showwin; }`.  No table, no record
+        // update, and the window is still displayed.
+        disp.clearScreen();
+        if (how !== PANICKED) {
+            const msg = `Since you were in ${is_wizard() ? 'wizard' : 'discover'} mode,`
+                + ' the score list will not be checked.';
+            disp.putstr(0, 1, msg, NO_COLOR, 0);
+            disp.setCursor(0, 2);
+        } else {
+            disp.setCursor(0, 0);
+        }
+        game.program_state = game.program_state || {};
+        game.program_state.gameover = true;
+        const q = game?.nhDisplay;
+        while ((q?.inputQueueLength ?? 0) > 0) await nhgetch();
+        await nhgetch();
+        return;
+    }
     const roleFC = roles[game.initrole]?.filecode || '?';
     const raceFC = races[game.initrace]?.filecode || '?';
     const genderFC = genders[female ? 1 : 0]?.filecode || '?';

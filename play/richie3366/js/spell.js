@@ -15,7 +15,7 @@
 // learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
 // swap/sort; other spelleffects otyps; directional weffects;
 // spell_backfire; amulet drain; CQ_REPEAT; cursed_book shieldeff polish;
-// In_W_tower in aggravate. #teleport doextcmd still named.
+// In_W_tower in aggravate. #teleport doextcmd D-1230.
 // Wizard turns column in dospellmenu ported (D-0586).
 
 import { game } from './gstate.js';

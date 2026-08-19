@@ -4,9 +4,8 @@
 // spelleffects for the healing-on-self case exercised by the gameplay sessions.
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn1, d } from './rng.js';
-import { nhgetch } from './input.js';
-import { pline, update_topl, flush_screen } from './display.js';
+import { rn2, rnd, rn1 } from './rng.js';
+import { pline, update_topl } from './display.js';
 import { exercise } from './attrib.js';
 import { objects, mksobj, weight, SPE_BLANK_PAPER, SPE_NOVEL } from './mkobj.js';
 import { SPELL_META } from './u_init.js';
@@ -478,14 +477,8 @@ async function spelleffects(spell_otyp, atme, force) {
     pseudo.blessed = 0;
     pseudo.cursed = 0;
     pseudo.quan = 20;
-    // C ref: spell.c spelleffects:1600 — the healing family is treated as a
-    // blessed potion at Skilled+, which is what makes a healing spell also cure
-    // blindness and raise max HP.
     const role_skill = p_skill_of(spell_skilltype(pseudo.otyp));
-    if ((pseudo.otyp === SPE_HEALING || pseudo.otyp === SPE_EXTRA_HEALING)
-        && role_skill >= P_SKILLED)
-        pseudo.blessed = 1;
-    const rc = await applySpell(spell_otyp, atme, pseudo);
+    const rc = await applySpell(pseudo.otyp, atme, pseudo, role_skill, spell);
     // C ref: spell.c spelleffects tail — "gain skill for successful cast".
     // use_skill() bumps P_ADVANCE and can print "You feel more confident in
     // your <school> skills." (and changes what #enhance offers); omitting it
@@ -500,43 +493,218 @@ function spell_idx(otyp) {
     return -1;
 }
 
-// C ref: spell.c spelleffects switch -> zapyourself for self-targeted healing.
-// Healing/extra-healing take a direction; '.' targets self (u.dx/dy/dz = 0).
-async function applySpell(otyp, atme, pseudo) {
+// C ref: include/objects.h — the spellbook otyps spelleffects() dispatches on.
+const SPE_DIG = 366, SPE_MAGIC_MISSILE = 367, SPE_FIREBALL = 368,
+    SPE_CONE_OF_COLD = 369, SPE_SLEEP = 370, SPE_FINGER_OF_DEATH = 371,
+    SPE_FORCE_BOLT = 376,
+    SPE_LIGHT = 372, SPE_DETECT_MONSTERS = 373, SPE_KNOCK = 375,
+    SPE_CONFUSE_MONSTER = 377, SPE_DRAIN_LIFE = 379, SPE_SLOW_MONSTER = 380,
+    SPE_WIZARD_LOCK = 381, SPE_CREATE_MONSTER = 382, SPE_CAUSE_FEAR = 384,
+    SPE_CLAIRVOYANCE = 385, SPE_CHARM_MONSTER = 387, SPE_HASTE_SELF = 388,
+    SPE_DETECT_UNSEEN = 389, SPE_LEVITATION = 390, SPE_INVISIBILITY = 393,
+    SPE_DETECT_TREASURE = 394, SPE_MAGIC_MAPPING = 396, SPE_IDENTIFY = 397,
+    SPE_TURN_UNDEAD = 398, SPE_POLYMORPH = 399, SPE_TELEPORT_AWAY = 400,
+    SPE_CREATE_FAMILIAR = 401, SPE_CANCELLATION = 402, SPE_PROTECTION = 403,
+    SPE_JUMPING = 404, SPE_STONE_TO_FLESH = 405, SPE_CHAIN_LIGHTNING = 406;
+
+// C ref: objclass.h oc_dir — NODIR/IMMEDIATE/RAY, as carried by objects[].dir.
+const NODIR = 1;
+
+// C ref: hack.c losehp(n, knam, k_format) — the local copy every file that
+// damages the hero keeps (potion.js, dig.js, ...).
+async function losehp_spell(dmg) {
+    const u = game.u;
+    if (!u) return;
+    if (u.Upolyd) {
+        u.mh = (u.mh | 0) - dmg;
+        if (u.mh < 1) u.mh = 0;
+        game.botl = true;
+        return;
+    }
+    u.uhp = (u.uhp | 0) - dmg;
+    game.botl = true;
+    if (u.uhp < 1) {
+        const { done_in_by } = await import('./end.js');
+        await done_in_by(null, 0 /*DIED*/);
+    }
+}
+
+// C ref: youprop.h Maybe_Half_Phys(dmg).
+function Maybe_Half_Phys(dmg) {
+    return (game.u?.uprops?.Half_physical_damage) ? Math.trunc((dmg + 1) / 2) : dmg;
+}
+
+// C ref: spell.c spelleffects() switch — the per-otyp effect, split out so the
+// energy/exercise/mksobj preamble above reads like C's.  `otyp` is pseudo->otyp,
+// `role_skill` is P_SKILL(spell_skilltype(otyp)) and `spell` the spl_book index.
+//
+// The wand-duplicate arm (the first case group) used to be missing entirely:
+// only SPE_HEALING/SPE_EXTRA_HEALING had a case and every other directional
+// spell fell through a silent `default:`.  That skipped getdir(), so casting
+// force bolt or magic missile consumed the turn WITHOUT prompting "In what
+// direction?" and the direction key the player typed next fell through to
+// rhack() as a phantom movement command.
+async function applySpell(otyp, atme, pseudo, role_skill, spell) {
+    const u = game.u;
+    let physical_damage = false;
+
     switch (otyp) {
-    case SPE_HEALING:
-    case SPE_EXTRA_HEALING: {
-        const u = game.u;
-        if (atme) {
-            u.dx = u.dy = u.dz = 0;
-        } else {
-            const dir = await getdir();
-            if (dir === null) {
-                // C ref: spell.c spelleffects:1487 — a cancelled getdir does NOT
-                // abort; C announces the release and falls through with the
-                // PREVIOUS u.dx/u.dy/u.dz still in place (commonly the last
-                // movement direction, which zaps the beam that way).
-                await pline('The magical energy is released!');
-            } else {
-                u.dx = dir.dx; u.dy = dir.dy; u.dz = dir.dz;
-            }
+    /*
+     * At first spells act as expected.  As the hero increases in skill
+     * with the appropriate spell type, some spells increase in their
+     * effects, e.g. more damage, further distance, and so on, without
+     * additional cost to the spellcaster.
+     */
+    case SPE_FIREBALL:
+    case SPE_CONE_OF_COLD:
+        if (role_skill >= P_SKILLED) {
+            // DEFERRED: C's Skilled+ arm runs throwspell() (a getpos() spot
+            // pick with a highlighted 10-square radius, then walk_path) and
+            // explode()s rnd(8)+1 times around it.  Neither throwspell's
+            // getpos_sethilite overlay nor explode() is ported; falling through
+            // to the beam arm below would draw the WRONG RNG, so leave the
+            // whole cast a no-op until both exist.
+            break;
         }
-        if (!u.dx && !u.dy && !u.dz) {
-            // C: zapyourself -> healup(d(6, EXTRA?8:4), 0, FALSE, blessed||EXTRA)
-            const extra = (otyp === SPE_EXTRA_HEALING);
-            healup(d(6, extra ? 8 : 4), 0, false, (pseudo?.blessed || extra));
-            await pline(`You feel ${extra ? 'much ' : ''}better.`);
+        /* FALLTHRU */
+
+    /* these spells are all duplicates of wand effects */
+    case SPE_FORCE_BOLT:
+        physical_damage = true;
+        /* FALLTHRU */
+    case SPE_SLEEP:
+    case SPE_MAGIC_MISSILE:
+    case SPE_KNOCK:
+    case SPE_SLOW_MONSTER:
+    case SPE_WIZARD_LOCK:
+    case SPE_DIG:
+    case SPE_TURN_UNDEAD:
+    case SPE_POLYMORPH:
+    case SPE_TELEPORT_AWAY:
+    case SPE_CANCELLATION:
+    case SPE_FINGER_OF_DEATH:
+    case SPE_LIGHT:
+    case SPE_DETECT_UNSEEN:
+    case SPE_HEALING:
+    case SPE_EXTRA_HEALING:
+    case SPE_DRAIN_LIFE:
+    case SPE_STONE_TO_FLESH: {
+        const { weffects, zapyourself } = await import('./zap.js');
+        if (objects[otyp]?.dir !== NODIR) {
+            if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING) {
+                /* healing and extra healing are actually potion effects,
+                   but they've been extended to take a direction like wands */
+                if (role_skill >= P_SKILLED) pseudo.blessed = 1;
+            }
+            if (atme) {
+                u.dx = u.dy = u.dz = 0;
+            } else {
+                const { getdir } = await import('./cmd.js');
+                const dir = await getdir(null);
+                if (dir) {
+                    // C's getdir() reports through u.dx/u.dy/u.dz (movecmd()
+                    // writes all three, and the '.'-at-self arm zeroes them).
+                    // cmd.js's getdir_confdir() only writes u.dx/u.dy, and skips
+                    // even those when dz != 0, so a '<'/'>' cast would read the
+                    // previous direction; publish the whole triple here.
+                    u.dx = dir.dx; u.dy = dir.dy; u.dz = dir.dz;
+                } else {
+                    // C ref: spell.c spelleffects — a cancelled getdir does NOT
+                    // abort; C announces the release and falls through with the
+                    // PREVIOUS u.dx/u.dy still in place (commonly the last
+                    // movement direction).  cmd.c movecmd() zeroes only u.dz on
+                    // the reject path, so mirror that and leave dx/dy alone.
+                    u.dz = 0;
+                    await pline('The magical energy is released!');
+                }
+            }
+            if (!u.dx && !u.dy && !u.dz) {
+                let damage = await zapyourself(pseudo, true);
+                if (damage) {
+                    if (physical_damage) damage = Maybe_Half_Phys(damage);
+                    await losehp_spell(damage);
+                }
+            } else {
+                await weffects(pseudo);
+            }
+        } else {
+            await weffects(pseudo);
+        }
+        /* C: update_inventory() — invent.js's is a no-op without perm_invent. */
+        break;
+    }
+
+    /* these are all duplicates of scroll effects */
+    case SPE_REMOVE_CURSE:
+    case SPE_CONFUSE_MONSTER:
+    case SPE_DETECT_FOOD:
+    case SPE_CAUSE_FEAR:
+    case SPE_IDENTIFY:
+    case SPE_CHARM_MONSTER:
+        /* high skill yields effect equivalent to blessed scroll */
+        if (role_skill >= P_SKILLED) pseudo.blessed = 1;
+        /* FALLTHRU */
+    case SPE_MAGIC_MAPPING:
+    case SPE_CREATE_MONSTER: {
+        const { seffects } = await import('./read.js');
+        await seffects(pseudo);
+        break;
+    }
+
+    /* these are all duplicates of potion effects */
+    case SPE_HASTE_SELF:
+    case SPE_DETECT_TREASURE:
+    case SPE_DETECT_MONSTERS:
+    case SPE_LEVITATION:
+    case SPE_RESTORE_ABILITY:
+        /* high skill yields effect equivalent to blessed potion */
+        if (role_skill >= P_SKILLED) pseudo.blessed = 1;
+        /* FALLTHRU */
+    case SPE_INVISIBILITY: {
+        const { peffects } = await import('./potion.js');
+        await peffects(pseudo);
+        break;
+    }
+    /* end of potion-like spells */
+
+    case SPE_CURE_BLINDNESS:
+        await healup(0, 0, false, true);
+        break;
+    case SPE_CURE_SICKNESS: {
+        const was_sick = !!(u?.uprops?.Sick), was_slimed = !!(u?.uprops?.Slimed);
+
+        /* cure conditions (which updates status) before feedback */
+        await healup(0, 0, true, false);
+        if (was_sick || !was_slimed)
+            await pline(`You are ${was_sick ? 'no longer' : 'not'} ill.`);
+        if (was_slimed) {
+            // C: make_slimed(0L, "The slime disappears!").  potion.c's timer
+            // helper has no port; artifact.js clears u.uprops.Slimed the same
+            // way.  Neither draws RNG.
+            u.uprops.Slimed = 0;
+            await pline('The slime disappears!');
         }
         break;
     }
+    case SPE_CLAIRVOYANCE:
+    case SPE_CREATE_FAMILIAR:
+    case SPE_PROTECTION:
+    case SPE_JUMPING:
+    case SPE_CHAIN_LIGHTNING:
+        // DEFERRED: do_vicinity_map(), make_familiar(), cast_protection(),
+        // jump() and cast_chain_lightning() have no port yet.  cast_protection
+        // in particular can't land alone: nothing decrements u.usptime in the
+        // move loop, so its AC bonus would never expire.
+        break;
     default:
+        // C: impossible("Unknown spell %d attempted.", spell) then ECMD_OK.
         break;
     }
     return ECMD_TIME;
 }
 
-// C ref: potion.c healup — restore HP (and optionally cap-raise / cure).
-function healup(nhp, nxtra, curesick, cureblind) {
+// C ref: potion.c healup(nhp, nxtra, curesick, cureblind).
+async function healup(nhp, nxtra, curesick, cureblind) {
     const u = game.u;
     if (nhp) {
         u.uhp += nhp;
@@ -546,34 +714,19 @@ function healup(nhp, nxtra, curesick, cureblind) {
             if (u.uhpmax > (u.uhppeak || 0)) u.uhppeak = u.uhpmax;
         }
     }
-    // curesick / cureblind have no covered effect at full health.
-}
-
-// C ref: cmd.c getdir — read a direction.  Renders "In what direction?" and
-// reads one key; '.'/'s' = self.  Returns {dx,dy,dz} or null on cancel.  Ends
-// with confdir(FALSE) like C's (cmd.c:4116) — see cmd.js getdir_confdir.
-async function getdir() {
-    const prompt = 'In what direction?';
-    game._pending_message = prompt;
-    await flush_screen(1);
-    game._modal_screen = 'topl';
-    const disp = game.nhDisplay;
-    // C tty yn_function parks the cursor one column past the prompt + space.
-    if (disp?.setCursor) disp.setCursor(Math.min(prompt.length + 1, 79), 0);
-    const key = await nhgetch();
-    delete game._modal_screen;
-    game._pending_message = '';
-    const ch = String.fromCharCode(key);
-    if (ch === '.' || ch === 's')
-        return (await import('./cmd.js')).getdir_confdir({ dx: 0, dy: 0, dz: 0 });
-    if (ch === '\x1b' || ch === ' ')
-        return null;
-    const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1, '<': 0, '>': 0 };
-    const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1, '<': 0, '>': 0 };
-    const DZ = { '<': -1, '>': 1 };
-    if (ch in DX)
-        return (await import('./cmd.js')).getdir_confdir({ dx: DX[ch], dy: DY[ch], dz: DZ[ch] || 0 });
-    return null;
+    if (!u.uprops) u.uprops = {};
+    if (cureblind) {
+        // C: make_blinded(0L, TRUE) + make_deaf(0L, TRUE); u.ucreamed = 0 is
+        // done inside make_blinded.
+        const { make_blinded_hero } = await import('./potion.js');
+        await make_blinded_hero(0, true);
+        u.uprops.HDeaf = 0;
+    }
+    if (curesick) {
+        u.uprops.Sick = 0;
+        u.usick_type = 0;
+        game.botl = true;
+    }
 }
 
 // C ref: include/objects.h SPELL(...,delay,...) — objects[otyp].oc_delay, the

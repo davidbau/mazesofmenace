@@ -1,17 +1,17 @@
 // mhitm.js — Monster vs monster combat (minimal RNG-faithful peel).
-// C ref: mhitm.c — mdisplacem, mattackm, passivemm, mdamagem;
+// C ref: mhitm.c — mdisplacem, mattackm, gulpmm, passivemm, mdamagem;
 //         worn.c find_mac (re-export); uhitm.c mhitm_knockback (RNG order only).
 
 import { rn2, rnd, d } from './rng.js';
 import {
     distmin, m_at, record_mvitals_died, undead_to_corpse, monnear, seemimic,
-    zombie_maker, zombie_form,
+    zombie_maker, zombie_form, minliquid, healmon, wake_nearto, mon_givit,
 } from './mon.js';
 import { game } from './gstate.js';
-import { pline, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel, flush_screen } from './display.js';
+import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel, flush_screen, verbalize } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
-import { resist_conflict } from './mondata.js';
+import { resist_conflict, set_mon_data } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval } from './weapon.js';
 import { find_mac, which_armor } from './worn.js';
 import { update_monster_region } from './region.js';
@@ -34,8 +34,20 @@ import {
     NEED_WEAPON,
     NEED_HTH_WEAPON,
     MON_DETACH,
+    MON_FLOOR,
+    MON_OFFMAP,
     LOW_PM,
     NON_PM,
+    NO_NC_FLAGS,
+    NC_SHOW_MSG,
+    NO_TRAP_FLAGS,
+    MM_IGNOREWATER,
+    IS_OBSTRUCTED,
+    IS_TREE,
+    IS_DOOR,
+    IRONBARS,
+    D_CLOSED,
+    D_LOCKED,
     ismnum,
     has_mgivenname,
     MGIVENNAME,
@@ -53,30 +65,44 @@ import {
     nothing_happens,
     AD_RBRE,
     STRAT_WAITMASK,
+    STRAT_WAITFORU,
     M_AP_TYPE,
     M_AP_MONSTER,
+    W_ARM,
+    W_ARMC,
+    W_ARMH,
+    W_ARMS,
+    W_ARMF,
+    W_ARMU,
+    W_AMUL,
+    ERODE_CORRODE,
+    EF_GREASE,
+    EF_VERBOSE,
+    ER_NOTHING,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, G_UNIQ, is_neuter, nonliving,
     bigmonst, is_golem, is_mplayer, is_rider, monsterNames, mons,
-    is_animal, M1_SEE_INVIS, is_vampshifter, MZ_TINY, amorphous,
+    is_animal, M1_SEE_INVIS, is_vampshifter, MZ_TINY, MZ_HUGE, amorphous,
     is_flyer, MR_STONE, MALE, FEMALE, NEUTRAL, can_teleport,
     touch_petrifies, poly_when_stoned, resists_ston, humanoid,
+    unsolid, is_whirly, passes_walls, haseyes, flaming, slimeproof,
+    is_male, is_female, is_shapeshifter,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import { ART_TROLLSBANE } from './generated/artifacts_data.js';
 import {
     relobj_on_death, mkcorpstat, stackobj, mksobj_at, obj_nexto,
     obj_meld, pudding_merge_message, place_object, add_to_container,
-    weight,
+    weight, mksobj, set_corpsenm, obj_stop_timers,
 } from './mkobj.js';
-import { Monnam, mon_nam, oname, pmname, x_monnam } from './do_name.js';
-import { an } from './objnam.js';
+import { Monnam, mon_nam, oname, pmname, x_monnam, hliquid, y_monnam } from './do_name.js';
+import { an, xname, makeplural } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { newcham, pm_to_cham } from './makemon.js';
 import { polyself } from './polyself.js';
 import { you_were, you_unwere } from './were.js';
-import { rloc, tele_restrict, tele } from './teleport.js';
+import { rloc, tele_restrict, tele, goodpos } from './teleport.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
@@ -87,11 +113,29 @@ const PM_GRAY_OOZE = monsterNames.indexOf('PM_GRAY_OOZE');
 const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
+const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
+const PM_NURSE = monsterNames.indexOf('PM_NURSE');
+const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
+const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
+const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
+const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
+const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const PM_SHADE = monsterNames.indexOf('PM_SHADE');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_GRID_BUG = monsterNames.indexOf('PM_GRID_BUG');
+const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
+const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
+const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
+const PM_QUEEN_BEE = monsterNames.indexOf('PM_QUEEN_BEE');
+const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
+const PM_CHROMATIC_DRAGON = monsterNames.indexOf('PM_CHROMATIC_DRAGON');
+const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
+const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
+const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
+const SILVER_DRAGON_SCALE_MAIL = objectNames.indexOf('SILVER_DRAGON_SCALE_MAIL');
 
 const NATTK = 6;
 // C ref: monattk.h — AT_SPIT is 10; AT_WEAP/AT_MAGC are 254/255 (not 10).
@@ -121,9 +165,14 @@ const AD_ACID = 8; /* acid damage — monattk.h (was wrongly AD_DRDX=8) */
 const AD_STCK = 19;
 const AD_SITM = 21; /* steals item (nymphs) — monattk.h */
 const AD_SEDU = 22; /* seduces & steals multiple items */
+const AD_DGST = 26; /* digestion (engulf) — monattk.h */
+const AD_WRAP = 28; /* wrap / engulf hold — monattk.h */
 const AD_DRDX = 30; /* drains dexterity (quasit) — monattk.h */
 const AD_DRCO = 31; /* drains constitution — monattk.h */
 const AD_SSEX = 35; /* Succubus seduction (extended) */
+const AD_STUN = 12; /* stuns — monattk.h */
+const AD_PLYS = 14; /* paralyzes — monattk.h */
+const AD_ENCH = 41; /* remove enchantment (disenchanter) — monattk.h */
 const AD_POLY = 43; /* polymorph target (genetic engineer) — monattk.h */
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
@@ -182,6 +231,26 @@ function resists_cold(mon) {
     const bits = (mon.data?.mresists | 0) | (mon.mextrinsics | 0)
         | (mon.mintrinsics | 0);
     return !!(bits & MR_COLD);
+}
+
+/** C ref: mondata.c resists_fire / resists_elec / resists_acid. */
+function resists_fire(mon) {
+    if (!mon) return false;
+    const bits = (mon.data?.mresists | 0) | (mon.mextrinsics | 0)
+        | (mon.mintrinsics | 0);
+    return !!(bits & MR_FIRE);
+}
+function resists_elec(mon) {
+    if (!mon) return false;
+    const bits = (mon.data?.mresists | 0) | (mon.mextrinsics | 0)
+        | (mon.mintrinsics | 0);
+    return !!(bits & MR_ELEC);
+}
+function resists_acid(mon) {
+    if (!mon) return false;
+    const bits = (mon.data?.mresists | 0) | (mon.mextrinsics | 0)
+        | (mon.mintrinsics | 0);
+    return !!(bits & MR_ACID);
 }
 
 function is_you_defender(mdef) {
@@ -696,21 +765,316 @@ function max_passive_dmg(mdef, magr) {
 
 export { max_passive_dmg };
 
-// C ref: mhitm.c passivemm() — always burns rn2(3) when defender alive
-function passivemm(magr, mdef, mhitb, mdead) {
+/**
+ * C ref: mhitm.c paralyze_monst — clamp amt to 127; clear meating and
+ * STRAT_WAITFORU. Same file as passivemm (AD_PLYS).
+ */
+function paralyze_monst(mon, amt) {
+    if ((amt | 0) > 127) amt = 127;
+    mon.mcanmove = 0;
+    mon.mfrozen = amt | 0;
+    mon.meating = 0;
+    mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_WAITFORU;
+}
+
+/**
+ * C ref: mon.c golemeffects — flesh/iron heal arms only.
+ * Named omit: MSLOW via muse.c mon_adjust_speed (mhitm→muse→zap cycle).
+ */
+async function golemeffects_mm(mon, damtype, dam) {
+    let heal = 0;
+    const mndx = mon?.data?.mndx ?? mon?.mnum ?? -1;
+    if (mndx === PM_FLESH_GOLEM) {
+        if ((damtype | 0) === AD_ELEC) heal = Math.trunc(((dam | 0) + 5) / 6);
+        // AD_FIRE / AD_COLD slow named
+    } else if (mndx === PM_IRON_GOLEM) {
+        if ((damtype | 0) === AD_FIRE) heal = dam | 0;
+        // AD_ELEC slow named
+    } else {
+        return;
+    }
+    if (heal && healmon(mon, heal, 0) && cansee(mon.mx, mon.my)) {
+        await pline_mon(mon, `${Monnam(mon)} seems healthier.`);
+    }
+}
+
+/**
+ * C ref: muse.c mon_reflects — shield / amulet / silver DSM / silver or
+ * chromatic dragon. Named omit: arti_reflects(MON_WEP); makeknown.
+ */
+async function mon_reflects_mm(mon, fmt) {
+    let orefl = which_armor(mon, W_ARMS);
+    if (orefl && (orefl.otyp | 0) === SHIELD_OF_REFLECTION) {
+        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'shield'));
+        return true;
+    }
+    orefl = which_armor(mon, W_AMUL);
+    if (orefl && (orefl.otyp | 0) === AMULET_OF_REFLECTION) {
+        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'amulet'));
+        return true;
+    }
+    orefl = which_armor(mon, W_ARM);
+    if (orefl && ((orefl.otyp | 0) === SILVER_DRAGON_SCALES
+            || (orefl.otyp | 0) === SILVER_DRAGON_SCALE_MAIL)) {
+        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'armor'));
+        return true;
+    }
+    const mndx = mon?.data?.mndx ?? mon?.mnum ?? -1;
+    if (mndx === PM_SILVER_DRAGON || mndx === PM_CHROMATIC_DRAGON) {
+        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'scales'));
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: uhitm.c erode_armor — rn2(5) until a slot resolves (case 1 always
+ * breaks). Dynamic erode_obj: trap.js already imports this module.
+ */
+async function erode_armor_mm(mdef, hurt) {
+    const { erode_obj } = await import('./trap.js');
+    for (;;) {
+        switch (rn2(5)) {
+        case 0: {
+            const target = which_armor(mdef, W_ARMH);
+            if (!target
+                || (await erode_obj(target, xname(target), hurt, EF_GREASE))
+                    === ER_NOTHING) {
+                continue;
+            }
+            break;
+        }
+        case 1: {
+            let target = which_armor(mdef, W_ARMC);
+            if (target) {
+                await erode_obj(target, xname(target), hurt,
+                    EF_GREASE | EF_VERBOSE);
+                break;
+            }
+            target = which_armor(mdef, W_ARM);
+            if (target) {
+                await erode_obj(target, xname(target), hurt,
+                    EF_GREASE | EF_VERBOSE);
+            } else if ((target = which_armor(mdef, W_ARMU))) {
+                await erode_obj(target, xname(target), hurt,
+                    EF_GREASE | EF_VERBOSE);
+            }
+            break;
+        }
+        case 2: {
+            const target = which_armor(mdef, W_ARMS);
+            if (!target
+                || (await erode_obj(target, xname(target), hurt, EF_GREASE))
+                    === ER_NOTHING) {
+                continue;
+            }
+            break;
+        }
+        case 3: {
+            const target = which_armor(mdef, W_ARMG);
+            if (!target
+                || (await erode_obj(target, xname(target), hurt, EF_GREASE))
+                    === ER_NOTHING) {
+                continue;
+            }
+            break;
+        }
+        case 4: {
+            const target = which_armor(mdef, W_ARMF);
+            if (!target
+                || (await erode_obj(target, xname(target), hurt, EF_GREASE))
+                    === ER_NOTHING) {
+                continue;
+            }
+            break;
+        }
+        }
+        break;
+    }
+}
+
+/**
+ * C ref: trap.c acid_damage — else-arm erode_obj CORRODE.
+ * Named omit: grease_protect; scroll fade to SCR_BLANK_PAPER.
+ */
+async function acid_damage_mm(obj) {
+    if (!obj) return;
+    const { erode_obj } = await import('./trap.js');
+    await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
+}
+
+/**
+ * C ref: mhitm.c passivemm — AT_NONE dice, AD_ACID/ENCH even if defender
+ * died, live rn2(3) elemental/stun/paralyze, then assess_dmg
+ * monkilled(magr) without gz.zombify (D-1241). Raw mddat.mattk, not
+ * get_mattk. AD_ACID goto assess skips mcan/mdead return and rn2(3).
+ * Named omit: zap.c drain_item ring/helm ABON (spe-- + obj_resists 10/90
+ * still); golem MSLOW; arti_reflects; stagger locomotion table.
+ */
+async function passivemm(magr, mdef, mhitb, mdead, mwep) {
     const mhit = mhitb ? M_ATTK_HIT : M_ATTK_MISS;
-    // Find AT_NONE slot (NO_ATTK for jackal/lichen at i>=1)
+    const mddat = mdef?.data;
+    const madat = magr?.data;
+    if (!mddat?.mattk) return mdead | mhit;
+
     let i = 0;
     for (;; i++) {
         if (i >= NATTK) return mdead | mhit;
-        const mattk = get_mattk(mdef, i);
-        if (mattk.aatyp === AT_NONE) break;
+        if ((mddat.mattk[i]?.aatyp | 0) === AT_NONE) break;
     }
-    const mattk = get_mattk(mdef, i);
-    void mattk;
-    if (mdead || deadmonster(mdef)) return mdead | mhit;
-    // C always rolls rn2(3) for passives even when AT_NONE does nothing
-    rn2(3);
+    const slot = mddat.mattk[i] || NO_ATTK;
+    const adtyp = slot.adtyp | 0;
+    let tmp;
+    if (slot.damn) tmp = d(slot.damn | 0, slot.damd | 0);
+    else if (slot.damd) tmp = d((mddat.mlevel | 0) + 1, slot.damd | 0);
+    else tmp = 0;
+
+    /* These affect the enemy even if defender killed */
+    let skip_live = false;
+    switch (adtyp) {
+    case AD_ACID:
+        if (mhitb && !rn2(2)) {
+            if (canseemon(magr)) {
+                await pline(
+                    `${Monnam(magr)} is splashed by ${s_suffix_mm(mon_nam(mdef))} ${hliquid('acid')}!`,
+                );
+            }
+            if (resists_acid(magr)) {
+                if (canseemon(magr)) {
+                    await pline(`${Monnam(magr)} is not affected.`);
+                }
+                tmp = 0;
+            }
+        } else {
+            tmp = 0;
+        }
+        if (!rn2(30)) await erode_armor_mm(magr, ERODE_CORRODE);
+        if (!rn2(6)) await acid_damage_mm(MON_WEP(magr));
+        skip_live = true;
+        break;
+    case AD_ENCH:
+        if (mhitb && !mdef.mcan && mwep && (mwep.spe | 0) > 0) {
+            /* C drain_item(mwep, FALSE): defends(AD_DRLI) named; then
+             * obj_resists(10,90) then spe--. Ring/helm ABON named. */
+            if (rn2(100) >= (mwep.oartifact ? 90 : 10)) mwep.spe--;
+        }
+        break;
+    default:
+        break;
+    }
+    if (!skip_live) {
+        if (mdead || mdef.mcan) return mdead | mhit;
+
+        /* These affect the enemy only if defender is still alive */
+        if (rn2(3)) {
+            switch (adtyp) {
+            case AD_PLYS: {
+                if (tmp > 127) tmp = 127;
+                if ((mdef.data?.mndx ?? mdef.mnum) === PM_FLOATING_EYE) {
+                    if (!rn2(4)) tmp = 127;
+                    if (magr.mcansee && haseyes(madat) && mdef.mcansee
+                        && (perceives(madat) || !mdef.minvis)) {
+                        const gazeFmt = canseemon(magr)
+                            ? (who, what) =>
+                                `${s_suffix_mm(Monnam(mdef))} gaze is reflected by ${who} ${what}.`
+                            : null;
+                        if (await mon_reflects_mm(magr, gazeFmt)) {
+                            return mdead | mhit;
+                        }
+                        if (canseemon(magr)) {
+                            await pline(
+                                `${Monnam(magr)} is frozen by ${s_suffix_mm(mon_nam(mdef))} gaze!`,
+                            );
+                        }
+                        paralyze_monst(magr, tmp);
+                        return mdead | mhit;
+                    }
+                } else {
+                    /* gelatinous cube */
+                    if (canseemon(magr)) {
+                        await pline(
+                            `${Monnam(magr)} is frozen by ${mon_nam(mdef)}.`,
+                        );
+                    }
+                    paralyze_monst(magr, tmp);
+                    return mdead | mhit;
+                }
+                return M_ATTK_HIT; /* C: return 1 */
+            }
+            case AD_COLD:
+                if (resists_cold(magr)) {
+                    if (canseemon(magr)) {
+                        await pline_mon(magr, `${Monnam(magr)} is mildly chilly.`);
+                        await golemeffects_mm(magr, AD_COLD, tmp);
+                    }
+                    tmp = 0;
+                    break;
+                }
+                if (canseemon(magr)) {
+                    await pline_mon(magr, `${Monnam(magr)} is suddenly very cold!`);
+                }
+                healmon(mdef, Math.trunc(tmp / 2), Math.trunc(tmp / 2));
+                if ((mdef.mhpmax | 0) > (((mdef.m_lev | 0) + 1) * 8)) {
+                    const { split_mon } = await import('./sit.js');
+                    await split_mon(mdef, magr);
+                }
+                break;
+            case AD_STUN:
+                if (!magr.mstun) {
+                    magr.mstun = 1;
+                    if (canseemon(magr)) {
+                        await pline_mon(
+                            magr,
+                            `${Monnam(magr)} ${makeplural('stagger')}...`,
+                        );
+                    }
+                }
+                tmp = 0;
+                break;
+            case AD_FIRE:
+                if (resists_fire(magr)) {
+                    if (canseemon(magr)) {
+                        await pline_mon(magr, `${Monnam(magr)} is mildly warmed.`);
+                        await golemeffects_mm(magr, AD_FIRE, tmp);
+                    }
+                    tmp = 0;
+                    break;
+                }
+                if (canseemon(magr)) {
+                    await pline_mon(magr, `${Monnam(magr)} is suddenly very hot!`);
+                }
+                break;
+            case AD_ELEC:
+                if (resists_elec(magr)) {
+                    if (canseemon(magr)) {
+                        await pline_mon(magr, `${Monnam(magr)} is mildly tingled.`);
+                        await golemeffects_mm(magr, AD_ELEC, tmp);
+                    }
+                    tmp = 0;
+                    break;
+                }
+                if (canseemon(magr)) {
+                    await pline_mon(
+                        magr,
+                        `${Monnam(magr)} is jolted with electricity!`,
+                    );
+                }
+                break;
+            default:
+                tmp = 0;
+                break;
+            }
+        } else {
+            tmp = 0;
+        }
+    }
+
+    /* assess_dmg */
+    magr.mhp = (magr.mhp | 0) - (tmp | 0);
+    if ((magr.mhp | 0) <= 0) {
+        await monkilled(magr, '', adtyp);
+        return mdead | mhit | M_ATTK_AGR_DIED;
+    }
     return mdead | mhit;
 }
 
@@ -771,20 +1135,91 @@ export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
     return false;
 }
 
+/** C ref: mondata.h attacktype — any mattk slot matches aatyp. */
+function attacktype_mm(ptr, aatyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (const a of slots) {
+        if ((a.aatyp | 0) === (aatyp | 0)) return true;
+    }
+    return false;
+}
+
+/** C ref: mondata.c completelyburns — paper/straw golem. */
+function completelyburns_mm(data) {
+    const mndx = data?.mndx ?? data?.mnum;
+    return mndx === PM_PAPER_GOLEM || mndx === PM_STRAW_GOLEM;
+}
+
+/** C ref: mon.c mlifesaver — worn AMULET_OF_LIFE_SAVING on living/vampshift. */
+function mlifesaver(mon) {
+    if (!mon?.data) return null;
+    if (!nonliving(mon.data) || is_vampshifter(mon)) {
+        const otmp = which_armor(mon, W_AMUL);
+        if (otmp && (otmp.otyp | 0) === AMULET_OF_LIFE_SAVING) return otmp;
+    }
+    return null;
+}
+
+/** C ref: mthrowu.c m_useup — consume one from monster invent. */
+function m_useup_mm(mon, obj) {
+    if (!mon || !obj) return;
+    if ((obj.quan | 0) > 1) {
+        obj.quan = (obj.quan | 0) - 1;
+        return;
+    }
+    if (mon.minvent === obj) mon.minvent = obj.nobj || null;
+    else {
+        for (let p = mon.minvent; p; p = p.nobj) {
+            if (p.nobj === obj) {
+                p.nobj = obj.nobj || null;
+                break;
+            }
+        }
+    }
+}
+
 /**
  * C ref: mon.c corpse_chance() — AT_BOOM then always-TRUE arms then !rn2(tmp).
- * Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE.
+ * magr + was_swallowed: contained boom inside an engulfer (D-1244).
+ * Named omissions: Vlad/lich dust; youmonst stomach boom (gulpmu);
+ * LEVEL_SPECIFIC_NOCORPSE.
  */
-async function corpse_chance(mon) {
+async function corpse_chance(mon, magr = null, was_swallowed = false) {
     const mdat = mon.data;
     if (!mdat) return false;
+    if (!magr && game.mswallower && attacktype_mm(game.mswallower.data, AT_ENGL)) {
+        magr = game.mswallower;
+        was_swallowed = true;
+    }
     const slots = mdat.mattk;
     if (slots) {
         for (let i = 0; i < NATTK; i++) {
             const at = slots[i];
             if (!at || (at.aatyp | 0) !== AT_BOOM) continue;
-            if (at.damn) d(at.damn | 0, at.damd | 0);
-            else if (at.damd) d((mdat.mlevel | 0) + 1, at.damd | 0);
+            let tmp = 0;
+            if (at.damn) tmp = d(at.damn | 0, at.damd | 0);
+            else if (at.damd) tmp = d((mdat.mlevel | 0) + 1, at.damd | 0);
+            if (was_swallowed && magr) {
+                if (is_youmonst(magr)) {
+                    // C youmonst stomach explosion lives in gulpmu
+                    return false;
+                }
+                await You_hear('an explosion.');
+                magr.mhp = (magr.mhp | 0) - tmp;
+                if ((magr.mhp | 0) < 1) await mondied(magr);
+                if ((magr.mhp | 0) < 1) {
+                    if (canspotmon(magr)) {
+                        await pline_mon(magr, `${Monnam(magr)} rips open!`);
+                    }
+                } else if (canseemon(magr)) {
+                    await pline_mon(
+                        magr,
+                        `${Monnam(magr)} seems to have indigestion.`,
+                    );
+                }
+                return false;
+            }
             await mon_explodes(mon, at);
             return false;
         }
@@ -800,7 +1235,8 @@ async function corpse_chance(mon) {
 
 // C ref: mon.c make_corpse — undead specials before G_NOCORPSE; pudding globs;
 // else default_1. gz.zombify / mkcorpstat_norevive are set by callers around
-// this call, not inside it: xkilled D-1210; mhitm mdamagem D-1211/D-1223.
+// this call, not inside it: xkilled D-1210; mhitm mdamagem D-1211/D-1223;
+// uhitm hmon_hitmon D-1232 / hmonas damageum D-1233 / AT_HUGS D-1250.
 // Named omission: dragon scales, unicorn horn, worm tooth,
 // golem drops, lich dust, and other pre-G_NOCORPSE switch arms (D-0271
 // undead; D-0993 pudding merge).
@@ -1039,10 +1475,10 @@ export async function mondied(mdef) {
 
 /**
  * C ref: mon.c monkilled — pline then mondied (or mondead if disintegested).
- * Named omissions: worm_known; AD_DGST/-AD_RBRE/FIRE completelyburns
- * disintegested → mondead; pet roast pline.
+ * D-1244: AD_DGST / -AD_RBRE / FIRE completelyburns → mondead, no corpse.
+ * Named omissions: worm_known; pet roast pline.
  */
-export async function monkilled(mdef, fltxt, _how) {
+export async function monkilled(mdef, fltxt, how) {
     const txt = fltxt || '';
     if (cansee(mdef.mx, mdef.my)) {
         const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
@@ -1053,31 +1489,95 @@ export async function monkilled(mdef, fltxt, _how) {
         game.iflags = game.iflags || {};
         game.iflags.sad_feeling = true;
     }
-    // disintegested → mondead-only deferred; ordinary path uses mondied
-    await mondied(mdef);
+    const howi = how | 0;
+    const disintegested = howi === AD_DGST || howi === -AD_RBRE
+        || (howi === AD_FIRE && completelyburns_mm(mdef.data));
+    if (disintegested) mondead(mdef);
+    else await mondied(mdef);
 }
 
-// C ref: makemon.c grow_up() — HP gain from kill; transform later
-function grow_up(mtmp, victim) {
+// C ref: makemon.c grow_up() — HP gain from kill; null victim = wraith/potion.
+// Killer bee + !victim → queen (D-1246; not in little_to_big). Named omit:
+// little_to_big form change; mplayer/golem/home-elemental caps; mleashed
+// update_inventory.
+export async function grow_up(mtmp, victim) {
     if (deadmonster(mtmp)) return null;
+    const oldtype = mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM;
+    const newtype = (oldtype === PM_KILLER_BEE && !victim)
+        ? PM_QUEEN_BEE
+        : oldtype;
+
     if (!victim) {
         const gain = rnd(8);
         mtmp.mhpmax += gain;
         mtmp.mhp += gain;
-        return mtmp.data;
+        let lev = (mtmp.m_lev | 0) + 1;
+        if (lev > 50) lev = 50;
+        mtmp.m_lev = lev;
+    } else {
+        let hp_threshold = (mtmp.m_lev || 0) * 8;
+        if (!mtmp.m_lev) hp_threshold = 4;
+        let max_increase = rnd((victim.m_lev || 0) + 1);
+        if (mtmp.mhpmax + max_increase > hp_threshold + 1) {
+            max_increase = Math.max((hp_threshold + 1) - mtmp.mhpmax, 0);
+        }
+        const cur_increase = max_increase > 1 ? rn2(max_increase) : 0;
+        mtmp.mhpmax += max_increase;
+        mtmp.mhp += cur_increase;
+        if (mtmp.mhpmax <= hp_threshold) return mtmp.data;
+        mtmp.m_lev = (mtmp.m_lev || 0) + 1;
     }
-    let hp_threshold = (mtmp.m_lev || 0) * 8;
-    if (!mtmp.m_lev) hp_threshold = 4;
-    let max_increase = rnd((victim.m_lev || 0) + 1);
-    if (mtmp.mhpmax + max_increase > hp_threshold + 1) {
-        max_increase = Math.max((hp_threshold + 1) - mtmp.mhpmax, 0);
+
+    // C: ++m_lev >= mons[newtype].mlevel && newtype != oldtype
+    if (newtype !== oldtype
+        && (mtmp.m_lev | 0) >= (mons(newtype)?.mlevel | 0)) {
+        const ptr = mons(newtype);
+        const fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : (mtmp.female ? 1 : 0);
+        if (((game.mvitals?.[newtype]?.mvflags ?? 0) & G_GENOD) !== 0) {
+            if (canspotmon(mtmp)) {
+                const who = mon_nam(mtmp);
+                const into = an(pmname(ptr, mtmp.female ? FEMALE : MALE));
+                const dies = nonliving(ptr) ? 'expires' : 'dies';
+                await pline(
+                    `As ${who} grows up into ${into}, ${mhe_grow(mtmp)} ${dies}!`,
+                );
+            }
+            set_mon_data(mtmp, ptr);
+            await mondied(mtmp);
+            return null;
+        }
+        if (canspotmon(mtmp)) {
+            const genderAdj = (mtmp.female && !fem) ? 'male '
+                : (fem && !mtmp.female) ? 'female ' : '';
+            const buf = `${genderAdj}${pmname(ptr, fem ? FEMALE : MALE)}`;
+            const verb = (fem !== (mtmp.female ? 1 : 0))
+                ? 'changes into'
+                : humanoid(ptr) ? 'becomes' : 'grows up into';
+            await pline_mon(mtmp, `${YMonnam_grow(mtmp)} ${verb} ${an(buf)}.`);
+        }
+        set_mon_data(mtmp, ptr);
+        if ((mtmp.cham | 0) === oldtype && is_shapeshifter(ptr)) {
+            mtmp.cham = newtype;
+        }
+        newsym(mtmp.mx, mtmp.my);
+        mtmp.female = fem;
+        // mleashed update_inventory named
+        if ((mtmp.mhpmax | 0) > 50 * 8) mtmp.mhpmax = 50 * 8;
+        if ((mtmp.mhp | 0) > (mtmp.mhpmax | 0)) mtmp.mhp = mtmp.mhpmax;
     }
-    const cur_increase = max_increase > 1 ? rn2(max_increase) : 0;
-    mtmp.mhpmax += max_increase;
-    mtmp.mhp += cur_increase;
-    if (mtmp.mhpmax <= hp_threshold) return mtmp.data;
-    mtmp.m_lev = (mtmp.m_lev || 0) + 1;
-    return mtmp.data;
+    return deadmonster(mtmp) ? null : mtmp.data;
+}
+
+/** C do_name.c YMonnam — highc(y_monnam). */
+function YMonnam_grow(mtmp) {
+    const s = y_monnam(mtmp) || '';
+    if (!s) return s;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** C you.h mhe — genders[pronoun_gender].he; Hallu named. */
+function mhe_grow(mtmp) {
+    return ['he', 'she', 'it'][gender(mtmp)] || 'it';
 }
 
 // C ref: mhitm.c pre_mm_attack — reveal + map_invisible when gv.vis
@@ -1106,7 +1606,8 @@ async function missmm(magr, mdef, mattk) {
 
 /**
  * C ref: monst.h troll_baned — victim S_TROLL and weapon is Trollsbane.
- * Callers: mhitm.c mdamagem; uhitm.c hmon_hitmon / hmonas still named.
+ * Callers: mhitm.c mdamagem (D-1223); uhitm.c hmon_hitmon (D-1232);
+ * uhitm.c damageum/hmonas (D-1233).
  */
 export function troll_baned(m, o) {
     return !!(m && m.data && m.data.mlet === 'S_TROLL'
@@ -1114,13 +1615,111 @@ export function troll_baned(m, o) {
 }
 
 /**
- * C ref: mhitm.c mdamagem — troll_baned mkcorpstat_norevive + gz.zombify
- * around monkilled, then reset both (D-1223 / D-1211).
- * Barehand TUCH/CLAW/BITE from a zombie_maker, victim has zombie_form.
- * Named omit: gulpmm m_at swap before this call; passivemm/AD_RBRE shock
- * monkilled; uhitm hmon_hitmon / hmonas troll_baned.
+ * C ref: uhitm.c mhitm_ad_dgst — mhitm (mon→mon) arm only (D-1244).
+ * Instant digest: rider kills magr; Burrrrp; damage = mdef.mhp; use up
+ * mlifesaver; corpse_chance may boom-kill magr; tame nutrition.
+ * Named omit: SetVoice; youmonst/uhitm/mhitu arms (damage 0).
+ */
+async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
+    void mattk;
+    if (is_youmonst(magr) || is_youmonst(mdef)) {
+        mhm.damage = 0;
+        return;
+    }
+    const pd = mdef.data;
+    if (is_rider(pd)) {
+        if (_mm_vis && canseemon(magr)) {
+            const fate = (pd?.mndx | 0) === PM_FAMINE
+                ? 'belches feebly, shrivels up and dies'
+                : (pd?.mndx | 0) === PM_PESTILENCE
+                    ? 'coughs spasmodically and collapses'
+                    : 'vomits violently and drops dead';
+            await pline_mon(magr, `${Monnam(magr)} ${fate}!`);
+        }
+        await mondied(magr);
+        if (!deadmonster(magr)) {
+            mhm.hitflags = M_ATTK_MISS; /* lifesaved */
+            mhm.done = true;
+            return;
+        }
+        if (magr.mtame && !_mm_vis) {
+            await pline(
+                'You have a queasy feeling for a moment, then it passes.',
+            );
+        }
+        mhm.hitflags = M_ATTK_AGR_DIED;
+        mhm.done = true;
+        return;
+    }
+    if (game.flags?.verbose !== false && !game.u?.Deaf) {
+        // SetVoice named
+        await verbalize('Burrrrp!');
+    }
+    await wake_nearto(magr.mx, magr.my, 2 * 2);
+    mhm.damage = mdef.mhp | 0;
+    const obj = mlifesaver(mdef);
+    if (obj) m_useup_mm(mdef, obj);
+
+    if (!(await corpse_chance(mdef, magr, true)) || deadmonster(magr)) return;
+
+    const num = pd?.mndx ?? NON_PM;
+    if (magr.mtame && !magr.isminion
+        && !((game.mvitals?.[num]?.mvflags ?? 0) & G_NOCORPSE)) {
+        const virtualcorpse = mksobj(CORPSE, false, false);
+        set_corpsenm(virtualcorpse, num);
+        const { dog_nutrition } = await import('./dogmove.js');
+        let nutrit = dog_nutrition(magr, virtualcorpse);
+        obj_stop_timers(virtualcorpse);
+        if ((magr.meating | 0) > 1) {
+            magr.meating = Math.trunc(((magr.meating | 0) + 3) / 4);
+        }
+        if (nutrit > 1) nutrit = Math.trunc(nutrit / 2);
+        if (magr.edog) {
+            magr.edog.hungrytime = (magr.edog.hungrytime | 0) + nutrit;
+        }
+    }
+}
+
+/**
+ * C ref: mhitm.c mdamagem :1096–1116 — post-monkilled AD_DGST eat.
+ * cham / green slime / wraith / nurse then mon_givit; wraith returns
+ * early so grow_up is not applied twice.
+ */
+async function mdamagem_digest_eat(magr, mdef, pa, pd) {
+    if (ismnum(mdef.cham)) {
+        newcham(magr, null, NC_SHOW_MSG);
+    } else if ((pd?.mndx | 0) === PM_GREEN_SLIME && !slimeproof(pa)) {
+        newcham(magr, mons(PM_GREEN_SLIME), NC_SHOW_MSG);
+    } else if ((pd?.mndx | 0) === PM_WRAITH) {
+        await grow_up(magr, null);
+        return M_ATTK_DEF_DIED
+            | (deadmonster(magr) ? M_ATTK_AGR_DIED : 0);
+    } else if ((pd?.mndx | 0) === PM_NURSE) {
+        healmon(magr, magr.mhpmax | 0, 0);
+    }
+    await mon_givit(magr, pd);
+    const grew = await grow_up(magr, mdef);
+    return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+}
+
+/**
+ * C ref: mhitm.c mdamagem — gulpmm m_at swap (D-1231) then troll_baned
+ * mkcorpstat_norevive + gz.zombify around monkilled, then reset both
+ * (D-1223 / D-1211). Barehand TUCH/CLAW/BITE from a zombie_maker,
+ * victim has zombie_form.
+ * AD_DGST eat is D-1244. gulpmm snuff_lit minvent is D-1242.
+ * !goodpos return-home is D-1243. passivemm assess_dmg monkilled(magr)
+ * is D-1241 (no zombify in C).
  */
 async function mdamagem_monkilled(magr, mdef, mattk, mwep) {
+    // C: mhitm.c:1075–1080 — gulpmm occupies mdef's cell; re-place
+    // mdef before monkilled so relmon removes the defender, not magr.
+    if (m_at(mdef.mx, mdef.my) === magr) { /* see gulpmm() */
+        remove_monster(mdef.mx, mdef.my);
+        mdef.mhp = 1; /* otherwise place_monster will complain */
+        place_monster(mdef, mdef.mx, mdef.my);
+        mdef.mhp = 0;
+    }
     const aatyp = mattk.aatyp | 0;
     // C: mhitm.c:1081–1082 / :1090 — AT_WEAP||AT_CLAW only; always reset
     if (aatyp === AT_WEAP || aatyp === AT_CLAW) {
@@ -1161,8 +1760,36 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         if (mdef.mhp < 1) {
             mdef.mhp = 0;
             await mdamagem_monkilled(magr, mdef, mattk, mwep);
-            const grew = grow_up(magr, mdef);
+            const grew = await grow_up(magr, mdef);
             return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return hitflags || M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_dgst for AD_DGST (D-1244)
+    if ((mattk.adtyp | 0) === AD_DGST) {
+        const pa = magr.data;
+        const pd = mdef.data;
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_dgst(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            return mdamagem_digest_eat(magr, mdef, pa, pd);
         }
         return hitflags || M_ATTK_HIT;
     }
@@ -1176,7 +1803,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         mdef.mhp = 0;
         // C: mdamagem → troll_baned + gz.zombify; monkilled; reset both
         await mdamagem_monkilled(magr, mdef, mattk, mwep);
-        const grew = grow_up(magr, mdef);
+        const grew = await grow_up(magr, mdef);
         return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
     }
     return M_ATTK_HIT;
@@ -1215,6 +1842,235 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
         await noises(magr, mattk);
     }
     return mdamagem(magr, mdef, mattk, mwep, dieroll);
+}
+
+/** C ref: hacklib.c s_suffix — local for shade futile / failed_grab. */
+function s_suffix_mm(s) {
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`;
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+/** C ref: monmove.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
+function closed_door_mm(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+/**
+ * C ref: mondata.h digests — AT_ENGL + AD_DGST.
+ * Local copy: mhitu.js exports this; importing it would cycle.
+ */
+function digests(ptr) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (const a of slots) {
+        if ((a.aatyp | 0) === AT_ENGL && (a.adtyp | 0) === AD_DGST) return true;
+    }
+    return false;
+}
+
+/** C ref: mondata.h enfolds — AT_ENGL + AD_WRAP. */
+function enfolds(ptr) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (const a of slots) {
+        if ((a.aatyp | 0) === AT_ENGL && (a.adtyp | 0) === AD_WRAP) return true;
+    }
+    return false;
+}
+
+/**
+ * C rm.h remove_monster — clear level.monsters[x][y]; mx/my unchanged.
+ * JS occupancy is mx/my, so MON_OFFMAP makes m_at skip like C's empty
+ * grid cell (D-1231). C does not set this bit at this locus.
+ */
+function remove_monster(x, y) {
+    const m = m_at(x, y);
+    if (m) m.mstate = (m.mstate | 0) | MON_OFFMAP;
+}
+
+/**
+ * C steed.c place_monster — mx/my, grid occupant, mstate = MON_FLOOR.
+ */
+function place_monster(mon, x, y) {
+    mon.mx = x | 0;
+    mon.my = y | 0;
+    mon.mstate = MON_FLOOR;
+}
+
+/**
+ * C ref: mhitm.c engulf_target — size + whirly + trap + rock/door/tree/bars.
+ * gulpmm is mon-vs-mon; youmonst Passes_walls arms live in mhitu gulpmu.
+ */
+function engulf_target(magr, mdef) {
+    if (!magr?.data || !mdef?.data) return false;
+    if ((mdef.data.msize | 0) >= MZ_HUGE
+        || ((magr.data.msize | 0) < (mdef.data.msize | 0)
+            && !is_whirly(magr.data))) {
+        return false;
+    }
+    if (mdef.mtrapped || magr.mtrapped) return false;
+
+    const dx = mdef.mx | 0;
+    const dy = mdef.my | 0;
+    if (!passes_walls(mdef.data) && engulf_blocked(dx, dy, magr.data)) {
+        return false;
+    }
+    const ax = magr.mx | 0;
+    const ay = magr.my | 0;
+    if (!passes_walls(magr.data) && engulf_blocked(ax, ay, mdef.data)) {
+        return false;
+    }
+    return true;
+}
+
+/** C mhitm.c engulf_target — IS_OBSTRUCTED / closed_door / IS_TREE / bars. */
+function engulf_blocked(x, y, whirlyPtr) {
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return true;
+    const typ = lev.typ | 0;
+    return !!(IS_OBSTRUCTED(typ) || closed_door_mm(x, y) || IS_TREE(typ)
+        || (typ === IRONBARS && !is_whirly(whirlyPtr)));
+}
+
+/**
+ * C ref: mhitm.c failed_grab — unsolid / notonhead grab miss (no RNG).
+ * Named omit: some_mon_nam tail wording (uses s_suffix(mon_nam)+" tail").
+ */
+async function failed_grab(magr, mdef, mattk) {
+    if (!(unsolid(mdef?.data) || game.notonhead)
+        || !((mattk.aatyp | 0) === AT_HUGS
+            || (mattk.adtyp | 0) === AD_WRAP
+            || (mattk.adtyp | 0) === AD_STCK
+            || (mattk.adtyp | 0) === AD_DGST)) {
+        return false;
+    }
+    if ((_mm_vis && canspotmon(mdef))
+        || magr === game.youmonst || mdef === game.youmonst) {
+        const verb = (mattk.adtyp | 0) === AD_DGST ? 'gulp'
+            : (mattk.adtyp | 0) === AD_STCK ? 'adhere' : 'grab';
+        const magrnam = magr === game.youmonst
+            ? 'Your' : s_suffix_mm(Monnam(magr));
+        let mdefnam;
+        if (!game.notonhead) {
+            mdefnam = mdef === game.youmonst ? 'you' : mon_nam(mdef);
+        } else {
+            mdefnam = `${s_suffix_mm(mon_nam(mdef))} tail`;
+        }
+        await pline(
+            `${magrnam} ${verb} attempt ${
+                game.notonhead ? 'fails to hold' : 'passes right through'
+            } ${mdefnam}!`,
+        );
+    }
+    return true;
+}
+
+/**
+ * C ref: mhitm.c gulpmm — swallow/enfold/engulf another monster.
+ * Occupancy: magr onto mdef's cell; mdef stays in fmon with mx/my
+ * (C remove_monster clears the grid). mdamagem swap (D-1231) puts
+ * mdef back before monkilled.
+ * snuff_lit minvent when !flaming (D-1242). !goodpos inhospitable dest
+ * return-home (D-1243; teleport.js m_at skips dead/OFFMAP like C grid).
+ * AD_DGST eat (mhitm_ad_dgst + post-monkilled cham/slime/wraith/nurse/
+ * mon_givit) is D-1244. grow_up killer-bee !victim → queen is D-1246.
+ * gulpmu invent / gulpum / litroom / pickup snuff_lit callers still
+ * named. Digest-Medusa stone magr / newcham NC_SHOW_MSG pline /
+ * grow_up little_to_big still named.
+ */
+async function gulpmm(magr, mdef, mattk) {
+    if (!engulf_target(magr, mdef)) return M_ATTK_MISS;
+
+    if (_mm_vis) {
+        const how = digests(magr.data) ? 'swallows'
+            : enfolds(magr.data) ? 'encloses' : 'engulfs';
+        await pline(`${Monnam(magr)} ${how} ${mon_nam(mdef)}.`);
+    }
+    // C: mhitm.c:868–871 — non-flaming innards snuff defender minvent.
+    if (!flaming(magr.data)) {
+        const { snuff_lit } = await import('./apply.js');
+        for (let obj = mdef.minvent; obj; obj = obj.nobj) {
+            await snuff_lit(obj);
+        }
+    }
+
+    if (is_vampshifter(mdef) && newcham(mdef, mons(mdef.cham), NO_NC_FLAGS)) {
+        if (_mm_vis) {
+            await pline(
+                `${Monnam(magr)} expels ${canspotmon(mdef) ? 'it' : 'something'}.`,
+            );
+            if (canspotmon(mdef)) {
+                await pline(`It turns into ${x_monnam(mdef, ARTICLE_A, null,
+                    (SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE), false)}.`);
+            }
+        }
+        return M_ATTK_HIT; /* bypass mdamagem() */
+    }
+
+    const ax = magr.mx | 0;
+    const ay = magr.my | 0;
+    let dx = mdef.mx | 0;
+    let dy = mdef.my | 0;
+    // C: leave defender in the chain at current position, off the grid;
+    // move aggressor onto defender's cell.
+    remove_monster(dx, dy);
+    remove_monster(ax, ay);
+    place_monster(magr, dx, dy);
+    newsym(ax, ay);
+    newsym(dx, dy);
+
+    game.mswallower = magr; /* corpse_chance() wants this */
+    let status = await mdamagem(magr, mdef, mattk, null, 0);
+    game.mswallower = null;
+
+    if ((status & (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED))
+        === (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED)) {
+        ; /* both died -- do nothing */
+    } else if (status & M_ATTK_DEF_DIED) {
+        // C: mhitm.c:932–947 — inhospitable gulp dest: magr returns home
+        // instead of staying (MM_IGNOREWATER). Occupancy after the D-1231
+        // swap is an empty grid; JS m_at skips dead/OFFMAP (D-1243).
+        if (!goodpos(dx, dy, magr, MM_IGNOREWATER)) {
+            if (m_at(dx, dy) === magr) {
+                remove_monster(dx, dy);
+                newsym(dx, dy);
+            }
+            dx = ax;
+            dy = ay; /* magr's spot at start of the attack */
+        }
+        if (m_at(dx, dy) !== magr) {
+            place_monster(magr, dx, dy);
+            newsym(dx, dy);
+        }
+        const { t_at, mintrap, Trap_Killed_Mon } = await import('./trap.js');
+        if (await minliquid(magr)
+            || (t_at(dx, dy)
+                && (await mintrap(magr, NO_TRAP_FLAGS)) === Trap_Killed_Mon)) {
+            status |= M_ATTK_AGR_DIED;
+        }
+    } else if (status & M_ATTK_AGR_DIED) {
+        place_monster(mdef, dx, dy);
+        newsym(dx, dy);
+    } else {
+        if (cansee(dx, dy)) {
+            const how = digests(magr.data) ? 'regurgitated'
+                : enfolds(magr.data) ? 'released' : 'expelled';
+            await pline(`${Monnam(mdef)} is ${how}!`);
+        }
+        remove_monster(dx, dy);
+        place_monster(magr, ax, ay);
+        place_monster(mdef, dx, dy);
+        newsym(ax, ay);
+        newsym(dx, dy);
+    }
+
+    return status;
 }
 
 /**
@@ -1291,6 +2147,37 @@ export async function mattackm(magr, mdef) {
                 }
                 break;
             }
+            case AT_ENGL: {
+                // C: mhitm.c mattackm AT_ENGL — shade futile; usteed skip;
+                // distmin>1 continue; engulfing_u miss; rnd hit then
+                // failed_grab / gulpmm (D-1231).
+                if ((mdef.data?.mndx ?? mdef.mnum) === PM_SHADE) {
+                    if (_mm_vis) {
+                        await pline(
+                            `${s_suffix_mm(Monnam(magr))} attempt to engulf ${mon_nam(mdef)} is futile.`,
+                        );
+                    }
+                    strike = 0;
+                    break;
+                }
+                if (game.u?.usteed && mdef === game.u.usteed) {
+                    strike = 0;
+                    break;
+                }
+                if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) continue;
+                if (engulfing_u(magr)) {
+                    strike = 0;
+                } else if ((strike = (tmp > rnd(20 + i)) ? 1 : 0) !== 0) {
+                    if (await failed_grab(magr, mdef, mattk)) {
+                        strike = 0;
+                    } else {
+                        res[i] = await gulpmm(magr, mdef, mattk);
+                    }
+                } else {
+                    await missmm(magr, mdef, mattk);
+                }
+                break;
+            }
             // AT_SPIT/AT_BREA: spitmm/breamm live in mthrowu; mon-mon spit
             // deferred to avoid mhitm↔mthrowu import cycle (hero spitmu wired
             // in mhitu). Same point-blank skip as C when near.
@@ -1302,7 +2189,7 @@ export async function mattackm(magr, mdef) {
 
         if (attk && !(res[i] & M_ATTK_AGR_DIED)
             && distmin(magr.mx, magr.my, mdef.mx, mdef.my) <= 1) {
-            res[i] = passivemm(magr, mdef, strike,
+            res[i] = await passivemm(magr, mdef, strike,
                 (res[i] & M_ATTK_DEF_DIED), mwep);
         }
 

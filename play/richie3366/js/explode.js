@@ -261,8 +261,8 @@ function explosionmask(m, adtyp, olet) {
     }
 }
 
-/** C ref: explode.c adtyp_to_expltype */
-function adtyp_to_expltype(adtyp) {
+/** C ref: explode.c adtyp_to_expltype — explum / mon_explodes callee. */
+export function adtyp_to_expltype(adtyp) {
     if (adtyp === AD_FIRE) return EXPL_FIERY;
     if (adtyp === AD_COLD) return EXPL_FROSTY;
     if (adtyp === AD_ELEC) return EXPL_MAGICAL;

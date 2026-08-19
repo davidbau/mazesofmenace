@@ -9,7 +9,7 @@
 // trapeffect_magic_trap /
 // trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap /
 // trapeffect_web / trapeffect_landmine / blow_up_landmine /
-// mu_maybe_destroy_web, b_trapped,
+// mu_maybe_destroy_web, b_trapped, sokoban_guilt (D-1239),
 // uteetering_at_seen_pit / uescaped_shaft (D-1073 sit OBJ_AT gate +
 // do.c flooreffects; D-1083 can_reach_floor(check_pit)),
 // make_corpse ordinary path via thitm death.
@@ -20,14 +20,14 @@ import {
     mksobj, place_object, weight, stackobj, relobj_on_death,
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, delobj, mkcorpstat, add_to_container, obj_extract_self,
-    objects_at, splitobj, nxtobj,
+    objects_at, splitobj, nxtobj, add_to_migration,
 } from './mkobj.js';
 import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone } from './mhitm.js';
 import { mon_explodes } from './explode.js';
 import {
-    newsym, pline, urgent_pline, mon_visible, see_with_infrared, You_feel,
-    unmap_object, glyph_is_invisible, tmp_at, nh_delay_output, obj_glyph,
-    flush_topl_more, feel_newsym, canspotmon, map_invisible,
+    newsym, pline, pline_xy, urgent_pline, mon_visible, see_with_infrared,
+    You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
+    obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
 } from './display.js';
 import { doname, an, the, The, xname, yname, makeplural, vtense } from './objnam.js';
 import {
@@ -85,7 +85,7 @@ import {
     MM_FEMALE, NO_MINVENT, M_AP_TYPE, ismnum, ANIMATE_NORMAL,
     ANIMATE_SHATTER, ANIMATE_SPELL, AS_OK, AS_NO_MON, AS_MON_IS_UNIQUE,
     OBJ_INVENT, has_oname, has_omonst, ONAME, OMONST,
-    ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at,
+    ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at, MIGR_RANDOM,
     DISP_FLASH, DISP_END,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE, IRONBARS,
     HVY_ENCUMBER, ECMD_OK, ECMD_TIME, MON_DETACH,
@@ -99,7 +99,8 @@ import {
     maybe_half_phys, nomul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms,
 } from './hack.js';
-import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal } from './teleport.js';
+import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level } from './teleport.js';
+import { get_level } from './dungeon.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS,
@@ -111,6 +112,7 @@ import { observe_object, encumber_msg, near_capacity } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
 import {
     A_CHA, A_STR, A_DEX, A_CON, adjattrib, exercise, adjalign, poisoned,
+    change_luck,
 } from './attrib.js';
 import { tamedog, wary_dog } from './dog.js';
 import { welded, uwepgone, uswapwepgone } from './wield.js';
@@ -1284,6 +1286,21 @@ const TRAP_EXPLANATIONS = [
     'trapped chest',
 ];
 
+/**
+ * C ref: trap.c sokoban_guilt — Sokoban ≡ level.flags.sokoban_rules.
+ * Conduct + luck only; C TODO feedback still unnamed. maybe_finish_sokoban
+ * and other callers (zap/read/steed/dig/nopick m-dir) still named.
+ */
+export function sokoban_guilt() {
+    const Sokoban = !!(game.Sokoban || game.level?.flags?.sokoban_rules);
+    if (Sokoban) {
+        const u = game.u || (game.u = {});
+        if (!u.uconduct) u.uconduct = {};
+        u.uconduct.sokocheat = (u.uconduct.sokocheat | 0) + 1;
+        change_luck(-1);
+    }
+}
+
 /** C ref: trap.c trapname(ttyp, override) — non-hallucination only. */
 export function trapname(ttyp, _override) {
     const t = ttyp | 0;
@@ -1803,10 +1820,11 @@ function sobj_at(otyp, x, y) {
  * DISP_FLASH tmp_at + nh_delay_output while cansee (D-0890); ROLL path
  * with hero dmgval+thitu and mon ohitmon/throws_rocks snatch; stop on
  * obstructed/tree/door; IRONBARS hits_bars (D-0990); place at rest.
- * Named omissions: LAUNCH_UNSEEN bowling msgs; dig context clear;
- * launch_drop_spot bones; mid-roll landmine/telep/pit flooreffects;
- * boulder-on-boulder chain; ship_object down_gate; wake_nearto polish;
- * curs_on_u.
+ * Mid-roll TELEP_TRAP / LEVEL_TELEP: cansee pline_xy else !Deaf You_hear,
+ * then rloco or add_to_migration (D-1237). Named omissions: LAUNCH_UNSEEN
+ * bowling msgs; dig context clear; launch_drop_spot bones; mid-roll
+ * landmine/pit flooreffects; boulder-on-boulder chain; ship_object
+ * down_gate; wake_nearto polish; curs_on_u.
  * @returns {Promise<number>} 0 none, 1 placed, 2 used up
  */
 async function launch_obj(otyp, x1, y1, x2, y2, style) {
@@ -1913,7 +1931,48 @@ async function launch_obj(otyp, x1, y1, x2, y2, style) {
                 }
             }
 
-            // Mid-roll trap interactions (landmine/telep/pit) deferred
+            /* C trap.c launch_obj 3423–3508 — ROLL mid-cell traps.
+             * TELEP_TRAP / LEVEL_TELEP pline_xy then rloco or migrate
+             * (D-1237). Landmine / pit / flooreffects still named. */
+            if (style === ROLL) {
+                const t = t_at(x, y);
+                if (t && otyp === BOULDER) {
+                    let newlev = 0;
+                    const ttyp = t.ttyp | 0;
+                    let telep = ttyp === TELEP_TRAP;
+                    if (ttyp === LEVEL_TELEP) {
+                        /* 20% stay (and 100% in Knox/endgame) skips
+                         * the disappears message; FALLTHROUGH otherwise. */
+                        newlev = random_teleport_level();
+                        telep = newlev !== (depth(game.u?.uz) | 0);
+                    }
+                    if (telep) {
+                        if (cansee(x, y)) {
+                            await pline_xy(
+                                x, y,
+                                'Suddenly the rolling boulder disappears!',
+                            );
+                        } else if (!Deaf()) {
+                            await You_hear('a rumbling stop abruptly.');
+                        }
+                        singleobj.otrapped = 0;
+                        if (ttyp === TELEP_TRAP) {
+                            rloco(singleobj);
+                        } else {
+                            add_to_migration(singleobj);
+                            const dest = { dnum: 0, dlevel: 0 };
+                            get_level(dest, newlev);
+                            singleobj.ox = dest.dnum | 0;
+                            singleobj.oy = dest.dlevel | 0;
+                            singleobj.owornmask = MIGR_RANDOM;
+                        }
+                        seetrap(t);
+                        used_up = true;
+                        break;
+                    }
+                }
+            }
+
             if (dist > 0 && isok(x + dx, y + dy)) {
                 const typ = game.level?.at?.(x + dx, y + dy)?.typ ?? 0;
                 if (typ === IRONBARS) {

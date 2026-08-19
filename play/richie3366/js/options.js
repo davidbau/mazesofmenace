@@ -379,11 +379,24 @@ function parse_a11y_glyph_updates(result, value) {
     result.a11y.glyph_updates = !!value;
 }
 
+function parse_a11y_mon_notices(result, value) {
+    if (!result.a11y) result.a11y = {};
+    result.a11y.mon_notices = !!value;
+}
+
+function parse_a11y_mon_movement(result, value) {
+    if (!result.a11y) result.a11y = {};
+    result.a11y.mon_movement = !!value;
+}
+
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
         flags: {}, iflags: {},
-        // C optlist.h NHOPTB accessiblemsg addr &a11y.accessiblemsg (D-1218)
+        // C optlist.h NHOPTB accessiblemsg addr &a11y.accessiblemsg (D-1218);
+        // mention_map &a11y.glyph_updates (D-1219); spot_monsters
+        // &a11y.mon_notices (D-1235); mon_movement &a11y.mon_movement
+        // (D-1236).
         a11y: {},
         // C: cfgfiles.c BINDINGS → parsebindings → Cmd.cmdbinds overlays
         binds: new Map(),
@@ -463,6 +476,20 @@ export function parseNethackrc(rc) {
                     if (parsed == null) continue;
                     parse_a11y_glyph_updates(result, parsed);
                 }
+                else if (key === 'spot_monsters') {
+                    // C optlist.h NHOPTB spot_monsters addr &a11y.mon_notices
+                    if (negated) continue;
+                    const parsed = optfn_boolean_word(val);
+                    if (parsed == null) continue;
+                    parse_a11y_mon_notices(result, parsed);
+                }
+                else if (key === 'mon_movement') {
+                    // C optlist.h NHOPTB mon_movement addr &a11y.mon_movement
+                    if (negated) continue;
+                    const parsed = optfn_boolean_word(val);
+                    if (parsed == null) continue;
+                    parse_a11y_mon_movement(result, parsed);
+                }
                 else result.flags[key] = val;
             } else {
                 // Boolean flag
@@ -485,6 +512,12 @@ export function parseNethackrc(rc) {
                 }
                 else if (lname === 'mention_map') {
                     parse_a11y_glyph_updates(result, value);
+                }
+                else if (lname === 'spot_monsters') {
+                    parse_a11y_mon_notices(result, value);
+                }
+                else if (lname === 'mon_movement') {
+                    parse_a11y_mon_movement(result, value);
                 }
                 else result.flags[lname] = value;
             }
@@ -1315,7 +1348,7 @@ const DOSET_BOOL_ADDR = {
     mention_walls: { obj: 'flags', key: 'mention_walls' },
     menu_overlay: { obj: 'iflags', key: 'menu_overlay' },
     menucolors: { obj: 'iflags', key: 'use_menu_color' },
-    mon_movement: { obj: 'flags', key: 'mon_movement' },
+    mon_movement: { obj: 'a11y', key: 'mon_movement' }, // C: &a11y.mon_movement
     null: { obj: 'flags', key: 'null' },
     pickup_stolen: { obj: 'flags', key: 'pickup_stolen' },
     pickup_thrown: { obj: 'flags', key: 'pickup_thrown' },
@@ -1334,7 +1367,7 @@ const DOSET_BOOL_ADDR = {
     sortpack: { obj: 'flags', key: 'sortpack' },
     sounds: { obj: 'flags', key: 'sounds' },
     sparkle: { obj: 'flags', key: 'sparkle' },
-    spot_monsters: { obj: 'flags', key: 'spot_monsters' },
+    spot_monsters: { obj: 'a11y', key: 'mon_notices' }, // C: &a11y.mon_notices
     standout: { obj: 'flags', key: 'standout' },
     terrainstatus: { obj: 'flags', key: 'terrainstatus' },
     time: { obj: 'flags', key: 'time' },
@@ -1413,7 +1446,10 @@ function doset_bool_value(name) {
  * in-game switch (no botl, no `opt_accessiblemsg` msg_loc zero, no
  * toggle pline). C optlist.h NHOPTB accessiblemsg addr is
  * `&a11y.accessiblemsg` (D-1218); mention_map is `&a11y.glyph_updates`
- * (D-1219).
+ * (D-1219); spot_monsters is `&a11y.mon_notices` (D-1235);
+ * mon_movement is `&a11y.mon_movement` (D-1236). No
+ * optfn_boolean after-change arm for spot_monsters or
+ * mon_movement (unlike accessiblemsg msg_loc zero).
  */
 export function optfn_boolean_do_set(name, negated, initial = false) {
     const addr = DOSET_BOOL_ADDR[name];

@@ -134,18 +134,27 @@ export class NethackGame {
             g.flags.end_disclose = 'n'.repeat(6);
         }
         // C optlist.h NHOPTB accessiblemsg &a11y.accessiblemsg (D-1218);
-        // mention_map &a11y.glyph_updates (D-1219). OPTIONS= writes the
-        // a11y bag; default Off. In-game msg_loc zero is optfn_boolean
-        // !opt_initial only (accessiblemsg). spot_monsters / mon_movement
-        // addr still named.
+        // mention_map &a11y.glyph_updates (D-1219); spot_monsters
+        // &a11y.mon_notices (D-1235); mon_movement &a11y.mon_movement
+        // (D-1236). OPTIONS= writes the a11y bag; default Off.
+        // In-game msg_loc zero is optfn_boolean !opt_initial only
+        // (accessiblemsg).
         if (typeof opts.a11y?.accessiblemsg === 'boolean'
-            || typeof opts.a11y?.glyph_updates === 'boolean') {
+            || typeof opts.a11y?.glyph_updates === 'boolean'
+            || typeof opts.a11y?.mon_notices === 'boolean'
+            || typeof opts.a11y?.mon_movement === 'boolean') {
             if (!g.a11y) g.a11y = { msg_loc: { x: 0, y: 0 } };
             if (typeof opts.a11y.accessiblemsg === 'boolean') {
                 g.a11y.accessiblemsg = opts.a11y.accessiblemsg;
             }
             if (typeof opts.a11y.glyph_updates === 'boolean') {
                 g.a11y.glyph_updates = opts.a11y.glyph_updates;
+            }
+            if (typeof opts.a11y.mon_notices === 'boolean') {
+                g.a11y.mon_notices = opts.a11y.mon_notices;
+            }
+            if (typeof opts.a11y.mon_movement === 'boolean') {
+                g.a11y.mon_movement = opts.a11y.mon_movement;
             }
         }
         // C optlist.h — autodescribe default On (opt_out); rc may negate.

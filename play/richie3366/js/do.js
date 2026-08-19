@@ -6,7 +6,8 @@
 //         doaltarobj / fire_damage / hot-ground potion (D-0992);
 //         revive_corpse (D-1081 invent/floor rider; D-1212 MINVENT/CONTAINED;
 //         D-1220 BURIED !is_zomb FALLTHROUGH impossible;
-//         D-1222 Soundeffect se_scratching).
+//         D-1222 Soundeffect se_scratching; D-1234 unique/pname
+//         corpse_xname adjective).
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
@@ -23,6 +24,7 @@ import {
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
     ACH_HELL, ACH_MINE, ACH_SOKO,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
+    CXN_SINGULAR,
     CONTAINED_TOO, BURIED_TOO, ER_DESTROYED, WT_SPLASH_THRESHOLD,
     TT_PIT, FIRE_RES, PIT,
     ROOM, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
@@ -74,13 +76,14 @@ import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
     check_special_room, is_pool, is_lava, waterbody_name,
     notice_mon_off, notice_mon_on, notice_all_mons,
+    impact_disturbs_zombies,
 } from './hack.js';
 import { place_object, stackobj, weight, delobj, obj_extract_self,
     obj_nexto_xy, obj_meld, pudding_merge_message,
     save_timers, restore_timers, run_timers,
 } from './mkobj.js';
-import { ship_object, obj_delivery } from './dokick.js';
-import { doname, xname, the, The, vtense, an, cxname_singular, yname } from './objnam.js';
+import { ship_object, obj_delivery, container_impact_dmg } from './dokick.js';
+import { doname, xname, the, The, vtense, an, yname, corpse_xname } from './objnam.js';
 import { Monnam, Amonnam, Adjmonnam, mon_nam } from './do_name.js';
 import { revive } from './zap.js';
 import {
@@ -2029,9 +2032,9 @@ function freeinv_drop(obj) {
  * C ref: do.c dropz — place at hero feet; always encumber_msg (polyself
  * break_armor armor-drop More packs load before gloves).
  * Named omissions: engulf digest; shop sell wired (D-0994); altar; ball;
- * container_impact; impact_disturbs_zombies.
+ * hitfloor dropz(TRUE) still dropy in mkobj.js.
  */
-export async function dropz(obj, _with_impact) {
+export async function dropz(obj, with_impact) {
     if (!obj) return;
     const u = game.u || {};
     if (obj === u.uwep) setuwep(null);
@@ -2048,6 +2051,11 @@ export async function dropz(obj, _with_impact) {
         return;
     }
     place_object(obj, u.ux, u.uy);
+    // C do.c:831 — with_impact → container_impact_dmg(obj, u.ux, u.uy)
+    if (with_impact) {
+        await container_impact_dmg(obj, u.ux | 0, u.uy | 0);
+    }
+    impact_disturbs_zombies(obj, !!with_impact);
     // C: sellobj when has_shop (after place, before stack)
     if (game.level?.flags?.has_shop) {
         const { sellobj } = await import('./shk.js');
@@ -2483,8 +2491,9 @@ function locomotion_revive(ptr, def) {
  * nearby Soundeffect(se_scratching, 50) then You_hear + fill_pit
  * (D-1202 zombify; D-1222 se_scratching); Adjmonnam bite-covered
  * when oeaten (FLOOR + MINVENT); BURIED !is_zomb FALLTHROUGH
- * impossible (D-1220). Named omit: unique/pname corpse_xname
- * adjective placement.
+ * impossible (D-1220); unique/pname corpse_xname adjective
+ * placement (D-1234). Named omit: glob corpse_xname; doname
+ * CXN_ARTICLE|CXN_NOCORPSE prefix-as-adjective.
  * @returns {Promise<boolean>}
  */
 export async function revive_corpse(corpse) {
@@ -2499,8 +2508,12 @@ export async function revive_corpse(corpse) {
             && (is_rider(mptr) || mptr.mlet === 'S_TROLL'))));
     const is_uwep = corpse === game.u?.uwep;
     const chewed = (corpse.oeaten | 0) !== 0;
-    let cname = cxname_singular(corpse) || 'corpse';
-    if (chewed) cname = `bite-covered ${cname}`;
+    // C: do.c:2131–2133 corpse_xname(chewed ? "bite-covered" : 0, CXN_SINGULAR)
+    const cname = corpse_xname(
+        corpse,
+        chewed ? 'bite-covered' : null,
+        CXN_SINGULAR,
+    );
     let mcarry = where === OBJ_MINVENT ? (corpse.ocarry || null) : null;
     let container = null;
     let container_where = 0;

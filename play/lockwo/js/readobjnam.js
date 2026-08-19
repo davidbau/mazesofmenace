@@ -55,6 +55,7 @@ import {
     strstri,
 } from './objnam.js';
 import { game } from './gstate.js';
+import { wizterrainwish } from './wizterrainwish.js';
 
 const NUM_OBJECTS = objects.length;
 
@@ -687,7 +688,15 @@ function srch(d) {
             continue;
         }
     }
-    // wiztrap / polearm / hammer paths not exercised; fall to "any".
+    // C ref: objnam.c:4976 `wiztrap:` — in wizard mode (and only there; a
+    // wand-of-wishing wish by an ordinary hero must NOT reshape the dungeon) a
+    // wish that named no object class may be a trap or terrain wish.  Messages
+    // are handed back rather than printed because this function is synchronous.
+    if (game.flags?.debug && !d.oclass) {
+        const messages = [];
+        if (wizterrainwish(d, messages)) return { kind: 'hands', messages };
+    }
+    // polearm / hammer paths not exercised; fall to "any".
     if (!d.oclass && !d.typ) return null; /* C: !wizardable furniture => null */
     return finalize(d, !d.oclass && !d.typ);
 }

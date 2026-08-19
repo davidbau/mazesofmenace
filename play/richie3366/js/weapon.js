@@ -1,7 +1,7 @@
 // weapon.js — Monster weapon selection + damage (partial).
-// C ref: weapon.c select_rwep / select_hwep / dmgval / mon_wield_item;
-//         enhance_weapon_skill (#enhance); dothrow.c should_mulch_missile /
-//         multishot_class_bonus.
+// C ref: weapon.c select_rwep / select_hwep / dmgval / special_dmgval /
+//         silver_sears / mon_wield_item; enhance_weapon_skill (#enhance);
+//         dothrow.c should_mulch_missile / multishot_class_bonus.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rnl } from './rng.js';
@@ -9,7 +9,7 @@ import { flush_topl_more, pline, You_feel, canseemon, bot, pline_mon } from './d
 import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one } from './options.js';
 import { yn_function } from './getline.js';
-import { Monnam } from './do_name.js';
+import { Monnam, mon_nam } from './do_name.js';
 import { doname, xname, vtense } from './objnam.js';
 import {
     WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, objectNames, objectNameStrs,
@@ -17,7 +17,8 @@ import {
 import {
     is_ammo, ammo_and_launcher, is_missile,
 } from './wield.js';
-import { is_lord, is_prince, strongmonst } from './monsters.js';
+import { is_lord, is_prince, strongmonst, mon_hates_blessings } from './monsters.js';
+import { which_armor } from './worn.js';
 import {
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE,
     P_SHORT_SWORD, P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD,
@@ -35,6 +36,7 @@ import {
     NEED_WEAPON, NEED_RANGED_WEAPON, NEED_HTH_WEAPON,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
     NO_WEAPON_WANTED, W_WEP, W_ARMS, W_ARMG,
+    W_ARM, W_ARMC, W_ARMH, W_ARMF, W_ARMU, W_RINGL, W_RINGR,
     ECMD_OK, STR18, Upolyd, MAXULEV,
 } from './const.js';
 import { acurr, A_STR } from './attrib.js';
@@ -347,6 +349,111 @@ function is_giant(ptr) {
 function mon_hates_silver(mtmp) {
     const f2 = mtmp?.data?.mflags2 ?? 0;
     return !!(f2 & (M2_WERE | M2_DEMON));
+}
+
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+
+/**
+ * C ref: worn.c which_armor youmonst switch — hero uses u.uarm* slots.
+ * Monster path is worn.js which_armor (minvent owornmask).
+ */
+function which_armor_magr(magr, flag) {
+    if (magr === game.youmonst) {
+        const u = game.u || {};
+        if (flag === W_ARM) return u.uarm || null;
+        if (flag === W_ARMC) return u.uarmc || null;
+        if (flag === W_ARMH) return u.uarmh || null;
+        if (flag === W_ARMS) return u.uarms || null;
+        if (flag === W_ARMG) return u.uarmg || null;
+        if (flag === W_ARMF) return u.uarmf || null;
+        if (flag === W_ARMU) return u.uarmu || null;
+        return null;
+    }
+    return which_armor(magr, flag);
+}
+
+/**
+ * C ref: weapon.c special_dmgval — blessed and/or silver bonus for
+ * non-weapon hits (hug cloak/suit/shirt or gloves+rings).
+ * silverhit_p is `{ v }` out-param like C long*.
+ */
+export function special_dmgval(magr, mdef, armask, silverhit_p) {
+    const left_ring = !!(armask & W_RINGL);
+    const right_ring = !!(armask & W_RINGR);
+    let silverhit = 0;
+    let bonus = 0;
+    let obj = null;
+    if (armask & (W_ARMC | W_ARM | W_ARMU)) {
+        if ((armask & W_ARMC) && (obj = which_armor_magr(magr, W_ARMC))) {
+            armask = W_ARMC;
+        } else if ((armask & W_ARM) && (obj = which_armor_magr(magr, W_ARM))) {
+            armask = W_ARM;
+        } else if ((armask & W_ARMU) && (obj = which_armor_magr(magr, W_ARMU))) {
+            armask = W_ARMU;
+        } else {
+            armask = 0;
+            obj = null;
+        }
+    } else if (armask & (W_ARMG | W_RINGL | W_RINGR)) {
+        obj = which_armor_magr(magr, W_ARMG);
+        armask = obj ? W_ARMG : 0;
+    } else {
+        obj = which_armor_magr(magr, armask);
+    }
+
+    if (obj) {
+        if (obj.blessed && mon_hates_blessings(mdef)) bonus += rnd(4);
+        if ((game.objects?.[obj.otyp]?.oc_material | 0) === SILVER
+            && mon_hates_silver(mdef)) {
+            bonus += rnd(20);
+            silverhit |= armask;
+        }
+    } else if ((left_ring || right_ring) && magr === game.youmonst) {
+        const u = game.u || {};
+        if (left_ring && u.uleft) {
+            if ((game.objects?.[u.uleft.otyp]?.oc_material | 0) === SILVER
+                && mon_hates_silver(mdef)) {
+                bonus += rnd(20);
+                silverhit |= W_RINGL;
+            }
+        }
+        if (right_ring && u.uright) {
+            if ((game.objects?.[u.uright.otyp]?.oc_material | 0) === SILVER
+                && mon_hates_silver(mdef)) {
+                if (!(silverhit & W_RINGL)) bonus += rnd(20);
+                silverhit |= W_RINGR;
+            }
+        }
+    }
+
+    if (silverhit_p) silverhit_p.v = silverhit;
+    return bonus;
+}
+
+/**
+ * C ref: weapon.c silver_sears — "silver <item> sears <target>"; rings only.
+ */
+export async function silver_sears(_magr, mdef, silverhit) {
+    const u = game.u || {};
+    const ltyp = (u.uleft && (silverhit & W_RINGL))
+        ? (u.uleft.otyp | 0) : STRANGE_OBJECT;
+    const rtyp = (u.uright && (silverhit & W_RINGR))
+        ? (u.uright.otyp | 0) : STRANGE_OBJECT;
+    const l_dknown = !!(u.uleft && u.uleft.dknown);
+    const r_dknown = !!(u.uright && u.uright.dknown);
+    const l_ag = (game.objects?.[ltyp]?.oc_material | 0) === SILVER && l_dknown;
+    const r_ag = (game.objects?.[rtyp]?.oc_material | 0) === SILVER && r_dknown;
+
+    if (silverhit & (W_RINGL | W_RINGR)) {
+        const both = ((ltyp === rtyp && l_dknown === r_dknown) || (l_ag && r_ag));
+        const rings = `ring${both ? 's' : ''}`;
+        const prefix = (l_ag || r_ag) ? 'silver '
+            : both ? ''
+            : (silverhit & W_RINGL) ? 'left ' : 'right ';
+        await pline(
+            `Your ${prefix}${rings} ${vtense(rings, 'sear')} ${mon_nam(mdef)}!`,
+        );
+    }
 }
 
 /**

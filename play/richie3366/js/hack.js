@@ -27,7 +27,7 @@ import {
     INTRINSIC, UNCHANGING, PASSES_WALLS, WT_SQUEEZABLE_INV,
     In_mines, ACH_TOWN, NO_PART, WT_ELF, TIMER_OBJECT, ZOMBIFY_MON,
     NO_KILLER_PREFIX, IS_SINK, W_ARTI, I_SPECIAL, TIMEOUT, FROMOUTSIDE,
-    FROMFORM, P_NONE, LEVITATION, FLYING, BLINDED, FOOT,
+    FROMFORM, P_NONE, P_RIDING, P_BASIC, LEVITATION, FLYING, BLINDED, FOOT,
     ARTICLE_NONE, ARTICLE_A, ARTICLE_YOUR, SUPPRESS_SADDLE, has_mgivenname,
 } from './const.js';
 import {
@@ -35,16 +35,17 @@ import {
     set_msg_xy,
 } from './display.js';
 import { gethungry, morehungry } from './eat.js';
-import { m_at } from './mon.js';
+import { m_at, hideunder } from './mon.js';
 import { recalc_block_point } from './vision.js';
-import { is_hider, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, verysmall } from './monsters.js';
+import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, verysmall } from './monsters.js';
 import {
     objects_at, obj_extract_self, place_object, delobj,
     peek_timer, stop_timer, start_timer,
 } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
-import { WEAPON_CLASS, TOOL_CLASS } from './objects.js';
-import { xname, The, makeplural } from './objnam.js';
+import { WEAPON_CLASS, TOOL_CLASS, COIN_CLASS } from './objects.js';
+import { xname, the, The, makeplural } from './objnam.js';
+import { oclass_to_sym } from './options.js';
 import { A_STR, A_CON, A_DEX, acurr, exercise } from './attrib.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { midnight } from './calendar.js';
@@ -54,7 +55,10 @@ import {
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname } from './do_name.js';
 import { near_capacity, inv_weight } from './invent.js';
 import { record_achievement } from './insight.js';
-import { b_trapped, selftouch, t_at, into_vs_onto, immune_to_trap, trapname } from './trap.js';
+import {
+    b_trapped, selftouch, t_at, into_vs_onto, immune_to_trap, trapname,
+    sokoban_guilt,
+} from './trap.js';
 import { paranoid_query } from './getline.js';
 
 export { set_msg_xy };
@@ -65,8 +69,13 @@ const DIRS_ORD = [
 ];
 
 const BOULDER = objectNames.indexOf('BOULDER');
+/** C hack.h invlet_basic — a-zA-Z slots; overflow '#' is extra. */
+const INVLET_BASIC = 52;
 const CORPSE = objectNames.indexOf('CORPSE');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const RUBBER_HOSE = objectNames.indexOf('RUBBER_HOSE');
+/** C materials.h LEATHER — is_flimsy ceiling (obj.h). */
+const LEATHER = 7;
 const CANDELABRUM_OF_INVOCATION =
     objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 
@@ -202,16 +211,68 @@ export function test_move_run_blocked_by_boulder(x, y) {
 }
 
 /**
- * C ref: hack.c cannot_push — giant/squeeze may return 0; else -1.
- * Named omissions: throws_rocks pickup/maneuver arms, squeeze pline
- * + sokoban_guilt (could_move_onto_boulder is live for test_move D-1226).
+ * C pickup.c autopick_testobj — pickup_types symbol filter.
+ * calc_costly TRUE unused: costly_spot / thrown/stolen/dropped named omit
+ * (same envelope as pickup.js).
  */
-async function cannot_push(otmp, sx, sy) {
-    if (throws_rocks(game.youmonst?.data)) {
-        // giant pickup / maneuver-over plines deferred — still abort push
-        return -1;
+function autopick_testobj(otmp, _calc_costly) {
+    const otypes = String(game.flags?.pickup_types || '');
+    if (!otypes) return true;
+    const sym = oclass_to_sym(otmp.oclass);
+    return !!(sym && otypes.includes(sym));
+}
+
+/**
+ * C hack.c inv_cnt — count invent entries; !inclgold skips coins.
+ */
+function inv_cnt(inclgold) {
+    let n = 0;
+    for (const otmp of game.invent || []) {
+        if (!inclgold && otmp.oclass === COIN_CLASS) continue;
+        n++;
     }
-    // squeeze-over pline / sokoban_guilt deferred
+    return n;
+}
+
+/**
+ * C ref: hack.c cannot_push — giant/squeeze may return 0; else -1.
+ * Giant pickup/maneuver + sokoban_guilt (D-1253). Squeeze D-1239.
+ * Named: nopick m-dir over/against in moverock_core; costly autopick.
+ */
+export async function cannot_push(otmp, sx, sy) {
+    if (throws_rocks(game.youmonst?.data)) {
+        /* similar exception as in can_lift(): when poly'd into a giant,
+           pick up a boulder if a free a-zA-Z slot or overflow '#' unless
+           already carrying at least one */
+        const canpickup = !Sokoban_here()
+            && (inv_cnt(false) < INVLET_BASIC || !carrying(BOULDER));
+        const willpickup = !!(canpickup
+            && game.flags?.pickup && !game.context?.nopick
+            && autopick_testobj(otmp, true));
+        const u = game.u || {};
+        const riding = u.weapon_skills?.[P_RIDING]?.skill ?? 0;
+        if (u.usteed && riding < P_BASIC) {
+            const verb = willpickup ? 'pick up' : 'push aside';
+            await pline(
+                `You aren't skilled enough to ${verb} ${the(xname(otmp))} from ${y_monnam(u.usteed)}.`,
+            );
+        } else {
+            const act = willpickup ? 'easily pick it up' : 'maneuver over it';
+            const extra = (canpickup && !willpickup)
+                ? ' and could pick it up'
+                : '';
+            await pline(`However, you ${act}${extra}.`);
+            sokoban_guilt();
+        }
+        return 0;
+    }
+    if (could_move_onto_boulder(sx, sy)) {
+        await pline(
+            'However, you can squeeze yourself into a small opening.',
+        );
+        sokoban_guilt();
+        return 0;
+    }
     return -1;
 }
 
@@ -279,9 +340,8 @@ async function dopush(sx, sy, rx, ry, otmp) {
  * + closed_door cannot_push_msg (D-0317) + rumbling
  * disturb_buried_zombies (D-1214). Named omissions: Sokoban diagonal,
  * shop costly, trap/teleport/pool arms, Blind feel, Levitation (present),
- * verysmall, giant/squeeze/nopick, tunneling chew, revive_nasty,
- * next_boulder naming, y_monnam steed wording, cannot_push giant arms,
- * impact_disturbs_zombies.
+ * verysmall, nopick m-dir, tunneling chew, revive_nasty,
+ * next_boulder naming, y_monnam steed wording. Giant pickup/maneuver D-1253.
  * Returns 0 to advance onto vacated cell, -1 to abort the move.
  */
 async function moverock_core(sx, sy) {
@@ -375,11 +435,32 @@ export async function moverock() {
 }
 
 /**
+ * C ref: obj.h is_flimsy — oc_material ≤ LEATHER or rubber hose.
+ */
+function is_flimsy(otmp) {
+    const mat = game.objects?.[otmp?.otyp]?.oc_material ?? 99;
+    return mat <= LEATHER || (otmp?.otyp | 0) === RUBBER_HOSE;
+}
+
+/**
+ * C ref: hack.c impact_disturbs_zombies — drop/throw/kick owt/flimsy
+ * gate then disturb at obj->ox,oy (D-1229). Call after place_object.
+ * Violent (throw/kick / dropz TRUE): owt < 10 skip; else owt < 100.
+ * dropz/throwit container_impact_dmg is D-1249. Named omit: hitfloor
+ * dropz(TRUE). Hideunder after tread is D-1245.
+ */
+export function impact_disturbs_zombies(obj, violent) {
+    if ((obj.owt | 0) < (violent ? 10 : 100) || is_flimsy(obj)) {
+        return;
+    }
+    disturb_buried_zombies(obj.ox | 0, obj.oy | 0);
+}
+
+/**
  * C ref: hack.c disturb_buried_zombies — shrink ZOMBIFY_MON remaining
  * on buried CORPSE in the 3×3 around (x,y) to max(1, t*2/3).
  * peek_timer is absolute timeout (gate > 0); stop_timer returns
- * remaining; integer t*2/3 toward 0. Named omit:
- * impact_disturbs_zombies (drop/throw owt/flimsy gate).
+ * remaining; integer t*2/3 toward 0. Impact owt/flimsy is D-1229.
  */
 export function disturb_buried_zombies(x, y) {
     const px = x | 0;
@@ -415,6 +496,23 @@ export function hero_tread_disturb_buried_zombies() {
         && (game.youmonst?.data?.cwt | 0) >= ((WT_ELF / 2) | 0)) {
         disturb_buried_zombies(u.ux | 0, u.uy | 0);
     }
+}
+
+/**
+ * C ref: hack.c:2949–2951 — hideunder(&youmonst) after tread, before
+ * mimic unhide / check_leash. Gate: hides_under || S_EEL || dx || dy.
+ * Youmonst writes u.uundetected (mon.c hideunder; D-1131). Named:
+ * hitfloor dropz(TRUE); mimic m_ap_type unhide.
+ */
+export function hero_hideunder_after_move() {
+    const u = game.u;
+    const you = game.youmonst;
+    const data = you?.data;
+    if (!u || !data) return;
+    if (!(hides_under(data) || data.mlet === 'S_EEL' || u.dx || u.dy)) {
+        return;
+    }
+    hideunder(you);
 }
 
 /** True if floor cell has a boulder (domove test_move gate). */
@@ -1839,12 +1937,13 @@ export function invocation_pos(x, y) {
  * C flag.h `struct accessibility_data` / `a11y`. Default Off matches
  * optlist `spot_monsters`. `opt_accessiblemsg` addr is D-1218
  * (`options.js` / `jsmain.js`). `mention_map` addr is D-1219
- * (`&a11y.glyph_updates` + `display.c` `show_glyph`). `msg_mon_movement`
- * dest pline_xy is D-1228 (`monmove.js`). Named omit: `spot_monsters`
- * → `mon_notices`; optlist `&a11y.mon_movement` addr. vpline consume of
- * msg_loc is D-1207; pline_xy/pline_mon writers are D-1215;
- * set_msg_dir/pline_dir D-1216 (`display.js`). `cmd.c` `dolookaround`
- * is D-1217 (`cmd.js`; newgame then-arm + `#lookaround`).
+ * (`&a11y.glyph_updates` + `display.c` `show_glyph`). `spot_monsters`
+ * addr is D-1235 (`&a11y.mon_notices`). `mon_movement` addr is
+ * D-1236 (`&a11y.mon_movement`). `msg_mon_movement` dest
+ * pline_xy is D-1228 (`monmove.js`). vpline consume of msg_loc is D-1207;
+ * pline_xy/pline_mon writers are D-1215; set_msg_dir/pline_dir D-1216
+ * (`display.js`). `cmd.c` `dolookaround` is D-1217 (`cmd.js`; newgame
+ * then-arm + `#lookaround`).
  */
 function a11y_state() {
     if (!game.a11y) {

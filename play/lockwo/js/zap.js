@@ -214,7 +214,7 @@ function Maybe_Half_Phys(dmg) {
 // wand picked up blind and zapped stays undiscovered.  Discovery is not
 // cosmetic: it renames the object everywhere and gates zapnodir()'s
 // more_experienced(0, 10).
-function learnwand(obj) {
+export function learnwand(obj) {
     if (!obj || obj.oclass === SPBOOK_CLASS) return;
     if (objects[obj.otyp]?.oc_name_known) {
         observe_object(obj);
@@ -1036,7 +1036,7 @@ async function zapwrapup() {
 // C ref: zap.c weffects — dispatch a wand/spell effect.  Always exercises
 // Wisdom (rn2(19) via exercise) first.  NODIR -> zapnodir; IMMEDIATE -> bhit beam
 // (the WAN_POLYMORPH-on-a-pile case the wizard sessions exercise).
-async function weffects(obj) {
+export async function weffects(obj) {
     const otyp = obj.otyp;
     // C ref: zap.c weffects — was_unkn snapshots whether the type is still
     // undiscovered; `disclose` gates the post-effect learnwand()/experience.

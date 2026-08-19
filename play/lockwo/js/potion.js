@@ -1267,7 +1267,7 @@ async function peffect_object_detection(_otmp) {
 // "used up with possible discovery", >=0 to signal an already-handled result.
 // Every potion otyp has a case: the old `default:` covered the 18 types the
 // recorded corpus never quaffs, and each of those draws RNG in C.
-async function peffects(otmp) {
+export async function peffects(otmp) {
     switch (otmp.otyp) {
     case POT_RESTORE_ABILITY:
         await peffect_restore_ability(otmp);

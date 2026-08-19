@@ -5825,6 +5825,73 @@ export async function jump(magic) {
     return ECMD_TIME;
 }
 
+/** C objnam.c Yname2 — capitalized yname (minvent uses shk_your mon_owns). */
+function Yname2_snuff(obj) {
+    const s = yname(obj);
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+/** C shk.c Shk_Your — capitalized shk_your (trailing space). */
+function Shk_Your_snuff(obj) {
+    const s = shk_your(obj);
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+/** C objnam.c otense — plural verb if quan!=1, else vtense(NULL, verb). */
+function otense_snuff(obj, verb) {
+    if ((obj?.quan | 0) !== 1) return verb;
+    return vtense(null, verb);
+}
+
+/**
+ * C ref: apply.c snuff_candle — lit candles / candelabrum; end_burn TRUE.
+ * Callers: snuff_lit; dokick still named.
+ * @returns {Promise<boolean>}
+ */
+export async function snuff_candle(otmp) {
+    if (!otmp) return false;
+    const candle = Is_candle(otmp);
+    if ((candle || (otmp.otyp | 0) === CANDELABRUM_OF_INVOCATION)
+        && otmp.lamplit) {
+        const loc = get_obj_location(otmp, 0) || { x: 0, y: 0 };
+        const many = candle ? ((otmp.quan | 0) > 1) : ((otmp.spe | 0) > 1);
+        if (otmp.where === OBJ_MINVENT ? cansee(loc.x, loc.y) : !Blind()) {
+            await pline(
+                `${Shk_Your_snuff(otmp)}${candle ? '' : "candelabrum's "}candle${
+                    many ? "s'" : "'s"
+                } flame${many ? 's are' : ' is'} extinguished.`,
+            );
+        }
+        end_burn(otmp, true);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: apply.c snuff_lit — lamps / lantern / POT_OIL, else snuff_candle.
+ * gulpmm minvent (D-1242). Named omit: splash_lit; gulpmu invent; gulpum;
+ * litroom artifact_light; pickup obj_is_burning; dokick snuff_candle.
+ * @returns {Promise<boolean>}
+ */
+export async function snuff_lit(obj) {
+    if (!obj?.lamplit) return false;
+    const t = obj.otyp | 0;
+    if (t === OIL_LAMP || t === MAGIC_LAMP
+        || t === BRASS_LANTERN || t === POT_OIL) {
+        const loc = get_obj_location(obj, 0) || { x: 0, y: 0 };
+        if (obj.where === OBJ_MINVENT ? cansee(loc.x, loc.y) : !Blind()) {
+            await pline(
+                `${Yname2_snuff(obj)} ${otense_snuff(obj, 'go')} out!`,
+            );
+        }
+        end_burn(obj, true);
+        return true;
+    }
+    if (await snuff_candle(obj)) return true;
+    return false;
+}
+
 /**
  * C ref: apply.c catch_lit — fire-damage ignition of light sources.
  * Named omissions: shop check_unpaid / SetVoice verbalize / bill_dummy;

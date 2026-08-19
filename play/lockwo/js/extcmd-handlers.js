@@ -600,7 +600,29 @@ function turn_xlev(mcls) {
 // and no time passes (ECMD_FAIL).  On a valid, non-self target the hero
 // hurtles to the landing spot (teleds) and morehungry(rnd(25)) is rolled —
 // the command then costs a turn (ECMD_TIME) so monsters move once.
+// C ref: youprop.h `#define Jumping (HJumping || EJumping)`.  HJumping is set
+// FROMOUTSIDE for knights at u_init.c:691; the only extrinsic source is
+// objects[JUMPING_BOOTS].oc_oprop, and this port has no oc_oprop column, so the
+// worn item stands in for it the way js/do_wear.js derives its extrinsics.
+function Jumping() {
+    const u = game.u;
+    if (u?.uprops?.Jumping || u?.HJumping || u?.EJumping) return true;
+    const PM_KNIGHT_ROLE = 4;                          // roles[] index
+    if ((game.urole?.mnum ?? -1) === PM_KNIGHT_ROLE) return true;
+    const JUMPING_BOOTS_OTYP = 168;                    // js/mkobj.js:137
+    return game.uarmf?.otyp === JUMPING_BOOTS_OTYP;
+}
+
 async function dojump() {
+    // C ref: apply.c jump():2001 `else if (!magic && !Jumping) {
+    // You_cant("jump very far"); return ECMD_OK; }` — without innate or worn
+    // jumping the command never reaches the targeting prompt.  (The two arms
+    // ahead of it, the SPE_JUMPING recast and the nolimbs/slithy form check,
+    // need known_spell()/polymorph state this port doesn't carry here.)
+    if (!Jumping()) {
+        await pline("You can't jump very far.");
+        return 0;                                      // ECMD_OK
+    }
     // C ref: apply.c jump():  pline("Where do you want to jump?"); cc = <u>;
     // getpos_sethilite(...); getpos(&cc, TRUE, "the desired position").
     // C places the cursor on the hero (curs WIN_MAP) and flush_screen()s with
@@ -920,7 +942,14 @@ export async function makewish() {
             return;
         }
         if (r.kind === 'nothing') return; /* declined to make a wish */
-        if (r.kind === 'hands') return;   /* terrain wish; not exercised */
+        if (r.kind === 'hands') {
+            // C ref: zap.c makewish() `else if (otmp == &hands_obj)` — a wizard
+            // -mode trap/terrain wish created no object, so the wish is over
+            // (no hold, and no ublesscnt bump).  readobjnam() is synchronous,
+            // so wizterrainwish()'s pline()s come back as a list.
+            for (const m of r.messages || []) await pline(m);
+            return;
+        }
         result = r.obj;
         break;
     }
@@ -3038,4 +3067,14 @@ async function dountrap() {
     // The rest of untrap() (floor trap / door / box disarming) is unported; no
     // covered session gets past the direction prompt.
     return 0;
+}
+
+// C ref: cmd.c rhack() `res = (*func)()` — run an extended command's ef_funct
+// straight from its extcmdlist name.  number_pad binds plain letters to
+// commands that have no non-'#' key of their own (j/#jump, l/#loot, u/#untrap,
+// N/#name, ^N/#annotate), and rhack() dispatches them exactly as doextcmd()
+// would.  Returns the ECMD_* result; an unmodelled command is a no-op.
+export async function run_extcmd_by_name(txt) {
+    const fn = HANDLERS[txt];
+    return fn ? await fn() : 0;
 }

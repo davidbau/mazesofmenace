@@ -310,6 +310,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "teleport" IFBURIED|CMD_M_PREFIX (no AUTOCOMPLETE) → dotelecmd
+        name: 'teleport',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { dotelecmd } = await import('./teleport.js');
+            return dotelecmd();
+        },
+    },
+    {
         name: 'terrain',
         wiz: false,
         autocomplete: true,
@@ -557,6 +567,17 @@ function availableExtCmds() {
     return EXT_CMDS.filter((ec) => !ec.wiz || wizardMode());
 }
 
+/**
+ * C ref: cmd.c accept_menu_prefix — CMD_M_PREFIX on the resolved extcmd.
+ * Names currently in EXT_CMDS that C marks CMD_M_PREFIX. Expand when a
+ * new runner is added with that flag. cmd_from_func(do_reqmenu) named
+ * (this port's m-prefix key is always 'm').
+ */
+const EXTCMD_M_PREFIX = new Set([
+    'annotate', 'dip', 'genocided', 'loot', 'offer', 'overview',
+    'pay', 'teleport', 'tip', 'travel', 'vanquished', 'wizwish',
+]);
+
 /** C ref: cmd.c extcmds_match(ECM_NOFLAGS) — AUTOCOMPLETE + !WIZ unless wizard */
 function availableAcNames() {
     return EXT_CMD_AC.filter((ec) => !ec.wiz || wizardMode());
@@ -650,6 +671,11 @@ export async function doextcmd() {
     if (ec.wiz && !wizardMode()) {
         await pline(`That is a wizard-mode command.`);
         return 0;
+    }
+    /* C cmd.c:507–511 — keep m only if the resolved command accepts it. */
+    if (game.iflags?.menu_requested && !EXTCMD_M_PREFIX.has(ec.name)) {
+        await pline(`'m' prefix has no effect for the ${ec.name} command.`);
+        game.iflags.menu_requested = false;
     }
     const res = await ec.run();
     return res | 0;

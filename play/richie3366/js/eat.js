@@ -1256,7 +1256,7 @@ function intrinsic_possible(type, ptr) {
 /**
  * C ref: eat.c should_givit — permanent-intrinsic chance vs mlevel.
  */
-function should_givit(type, ptr) {
+export function should_givit(type, ptr) {
     let chance;
     switch (type | 0) {
     case POISON_RES:
@@ -1397,7 +1397,7 @@ async function givit(type, ptr) {
  * C ref: eat.c corpse_intrinsic — pick one conveyable prop (or -1 STR).
  * Non-deterministic; call once per corpse.
  */
-function corpse_intrinsic(ptr) {
+export function corpse_intrinsic(ptr) {
     const conveys_STR = is_giant(ptr);
     let count = 0;
     let prop = 0;

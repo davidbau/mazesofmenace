@@ -22,6 +22,9 @@ import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import { HELP, SHELP, HISTORY, OPTIONFILE, OPTMENUHELP, USAGEHELP, LICENSE }
     from './pager_data.js';
 import { EXTCMD_TABLE } from './cmd_data.js';
+// cmd.js <-> pager.js is a static cycle (cmd.js imports dohelp); both names
+// crossing it are hoisted `export function` declarations, so it resolves.
+import { Cmd_dirchars, Cmd_num_pad, Cmd_pcHack_compat } from './cmd.js';
 
 const COLS = 80;
 const ROWS = 24;
@@ -162,13 +165,17 @@ function key2txt(c) {
 // Default rogue-like movement keys (number_pad off): walk = h j k l y u b n,
 // run = the capitalized forms, rush = the Ctrl forms.  C ref: cmd.c movecmd()
 // against the default gc.Cmd movement keymap.
-const DIRLETTERS = 'hjklyubn';
 function movecmd(key, mode) {
+    // C ref: cmd.c reset_commands() — with number_pad the run key is M(digit)
+    // and there is no per-direction rush key at all.
+    const dirs = Cmd_dirchars().slice(0, 8);
     const ch = String.fromCharCode(key & 0xff);
-    if (mode === 'walk') return DIRLETTERS.includes(ch);
-    if (mode === 'run') return DIRLETTERS.toUpperCase().includes(ch);
+    if (mode === 'walk') return dirs.includes(ch);
+    if (Cmd_num_pad())
+        return mode === 'run' && dirs.includes(String.fromCharCode(key & 0x7f));
+    if (mode === 'run') return dirs.toUpperCase().includes(ch);
     if (mode === 'rush') {
-        for (const d of DIRLETTERS) if ((d.charCodeAt(0) & 0x1f) === key) return true;
+        for (const d of dirs) if ((d.charCodeAt(0) & 0x1f) === key) return true;
         return false;
     }
     return false;
@@ -192,7 +199,19 @@ function key2extcmddesc(key) {
     if (movecmd(key, 'rush')) return 'rush';
     if (movecmd(key, 'run')) return 'run';
     const ch = String.fromCharCode(key & 0xff);
-    if (ch >= '0' && ch <= '9') return 'start of, or continuation of, a count';
+    // C ref: cmd.c key2extcmddesc() digit block — with number_pad the digits
+    // are movement, so only '5'/M-5 (the run|rush prefix, swapped by
+    // pcHack_compat) and '0'/M-0 describe themselves; the rest fall through to
+    // the command table.  Without number_pad every digit starts a count.
+    if ((ch >= '0' && ch <= '9')
+        || (Cmd_num_pad() && (key & 0x7f) >= 0x30 && (key & 0x7f) <= 0x39)) {
+        const M_5 = 0x80 | 0x35, M_0 = 0x80 | 0x30;
+        if (!Cmd_num_pad()) return 'start of, or continuation of, a count';
+        if (key === 0x35 || key === M_5)
+            return `${(!!Cmd_pcHack_compat() !== (key === M_5)) ? 'run' : 'rush'} prefix`;
+        if (key === 0x30 || (Cmd_pcHack_compat() && key === M_0))
+            return "synonym for 'i'";
+    }
     if (key === 0o33) return 'cancel current prompt or pending prefix';
     const e = KEY2CMD.get(key);
     if (e && e.txt) {
@@ -275,7 +294,7 @@ function cmdHasFlag(e, f) { return !!e.flags && e.flags.includes(f); }
 
 // cmd.c reset_commands() movement layout: sdir[] = "hykulnjb><"; the first 8
 // chars are the direction keys W,NW,N,NE,E,SE,S,SW.
-const DIRCHARS = 'hykulnjb';
+const NHKF_COUNT_KEY = 0x6e;   // cmd.c spkeys_binds[] NHKF_COUNT == 'n'
 
 // Build the default key -> command map exactly as cmd.c installs it:
 //   commands_init(): bind every extcmdlist entry with a non-zero default key
@@ -297,13 +316,20 @@ function buildKeymap() {
         [metaKey('2'), 'twoweapon'], [metaKey('N'), 'name'],
     ];
     for (const [k, t] of overrides) { const e = byTxt(t); if (e) map.set(k, e); }
-    // Movement rebind (MOVEMENTCMD) overwrites the 24 movement keys.
+    // Movement rebind (MOVEMENTCMD) overwrites the movement keys; which keys
+    // those are follows Cmd.dirchars, and with number_pad only the walk digit
+    // and its Meta form are claimed (digits have no Shift/Ctrl form).
     const moveMarker = { txt: '', desc: '', flags: 'MOVEMENTCMD' };
-    for (const ch of DIRCHARS) {
+    const num_pad = Cmd_num_pad();
+    for (const ch of Cmd_dirchars().slice(0, 8)) {
         const lc = ch.charCodeAt(0);
-        map.set(lc, moveMarker);                              // walk
-        map.set(ch.toUpperCase().charCodeAt(0), moveMarker);  // run (Shift)
-        map.set(lc & 0x1f, moveMarker);                       // rush (Ctrl)
+        map.set(lc, moveMarker);                                  // walk
+        if (num_pad) {
+            map.set(0x80 | lc, moveMarker);                       // run (Meta)
+        } else {
+            map.set(ch.toUpperCase().charCodeAt(0), moveMarker);  // run (Shift)
+            map.set(lc & 0x1f, moveMarker);                       // rush (Ctrl)
+        }
     }
     return map;
 }
@@ -368,7 +394,9 @@ async function dokeylist() {
     const wizard = !!game.flags?.debug;
     const keymap = buildKeymap();
     const lines = [];
-    const dc = (i) => DIRCHARS[i];
+    const dirchars = Cmd_dirchars();
+    const num_pad = Cmd_num_pad();
+    const dc = (i) => dirchars[i];
 
     lines.push('');
     lines.push(padLeft('', 7) + ' ' + '    Full Current Key Bindings List');
@@ -383,16 +411,24 @@ async function dokeylist() {
     lines.push('           / | \\ ');
     lines.push('          ' + dc(7) + '  ' + dc(6) + '  ' + dc(5));
     lines.push('');
-    lines.push('Ctrl+<direction> will run in specified direction until something very');
-    lines.push(padLeft('', 7) + ' ' + 'interesting is seen.');
-    lines.push('Shift+<direction> will run in specified direction until you encounter');
+    // C ref: cmd.c dokeylist() — with number_pad the Ctrl rush paragraph is
+    // dropped entirely and the run modifier is "Meta" rather than "Shift".
+    if (!num_pad) {
+        lines.push('Ctrl+<direction> will run in specified direction until something very');
+        lines.push(padLeft('', 7) + ' ' + 'interesting is seen.');
+    }
+    lines.push((num_pad ? 'Meta' : 'Shift')
+               + '+<direction> will run in specified direction until you encounter');
     lines.push(padLeft('', 7) + ' ' + 'an obstacle.');
 
-    // Miscellaneous keys — misc_keys[] (only <esc> for !num_pad) + the SIGINT
-    // line for ^C.
+    // Miscellaneous keys — misc_keys[]: <esc> always, the count prefix only
+    // when number_pad is on (cmd.c misc_keys[].numpad) + the SIGINT line for ^C.
     lines.push('');
     lines.push('Miscellaneous keys:');
     lines.push(padRight(key2txt(0o33), 7) + ' ' + 'cancel current prompt or pending prefix');
+    if (num_pad)
+        lines.push(padRight(key2txt(NHKF_COUNT_KEY), 7)
+                   + ' ' + 'Prefix: for digits when preceding a command with a count');
     lines.push(padRight(key2txt(ctrlKey('c')), 7) + ' interrupt: break out of NetHack (SIGINT)');
 
     // Menu control keys — show_menu_controls(win, TRUE).
@@ -407,6 +443,7 @@ async function dokeylist() {
     const keysUsed = new Array(256).fill(false);
     keysUsed[ctrlKey('c')] = true;
     keysUsed[0o33] = true;
+    if (num_pad) keysUsed[NHKF_COUNT_KEY] = true;   // misc_keys[] NHKF_COUNT
 
     const IGNORE = ['WIZMODECMD', 'INTERNALCMD', 'MOVEMENTCMD'];
     if (keylistPutcmds(lines, keymap, keysUsed, true, ['GENERALCMD'], IGNORE)) {

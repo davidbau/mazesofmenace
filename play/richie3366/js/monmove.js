@@ -9,11 +9,11 @@ import {
     mon_knows_traps, can_teleport, hides_under, webmaker, PM_GIANT_SPIDER,
     is_vampshifter, is_watch, is_mind_flayer, is_covetous,
     is_floater, is_flyer, amorphous, nolimbs, M1_SLITHY, MZ_SMALL,
-    grounded,
+    grounded, telepathic, mons, metallivorous, humanoid, is_neuter, G_UNIQ,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
-import { objects_at, obj_extract_self, splitobj } from './mkobj.js';
+import { objects_at, obj_extract_self, splitobj, delobj } from './mkobj.js';
 import { find_defensive, use_defensive, find_misc, use_misc, find_offensive, searches_for_item } from './muse.js';
 import { hero_conflict, resist_conflict } from './mondata.js';
 import {
@@ -27,7 +27,7 @@ import {
     count_traps,
 } from './trap.js';
 import { mattacku } from './mhitu.js';
-import { mattackm, mdisplacem } from './mhitm.js';
+import { mattackm, mdisplacem, monkilled, grow_up } from './mhitm.js';
 import { castmu, AD_SPEL, AD_CLRC } from './mcastu.js';
 import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from './vision.js';
 import {
@@ -38,22 +38,25 @@ import {
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
-    M_AP_FURNITURE,
+    M_AP_FURNITURE, M_AP_NOTHING, M_AP_MONSTER, KILLED_BY_AN,
     STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
-    STAIRS, LADDER, IRONBARS, WEB,
+    STAIRS, LADDER, IRONBARS, WEB, W_NONDIGGABLE, ARM, HEAD,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG,
 } from './const.js';
-import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies } from './hack.js';
+import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars } from './hack.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
     WAND_CLASS, RING_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS,
     objectNames,
 } from './objects.js';
-import { Monnam, y_monnam, Adjmonnam } from './do_name.js';
-import { doname, distant_name, ansimpleoname, vtense } from './objnam.js';
+import {
+    Monnam, y_monnam, Adjmonnam, mon_nam, Amonnam, Hallucination,
+    type_is_pname,
+} from './do_name.js';
+import { doname, distant_name, ansimpleoname, vtense, an, xname, makeplural } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { may_dig, mdig_tunnel } from './dig.js';
 import { MON_WEP, mon_wield_item, select_rwep } from './weapon.js';
@@ -67,9 +70,10 @@ import { stairway_at, u_on_newpos } from './mklev.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
 import { check_gear_next_turn } from './worn.js';
 import { picking_lock } from './lock.js';
+import { mbodypart } from './polyself.js';
 import {
     newsym, pline, canseemon as display_canseemon, pline_mon, pline_xy,
-    canspotmon as display_canspotmon,
+    canspotmon as display_canspotmon, sensemon, Norep, verbalize,
 } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
@@ -85,6 +89,7 @@ import {
     m_at,
     m_avoid_kicked_loc,
     mnexto,
+    wakeup,
 } from './mon.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
@@ -104,6 +109,14 @@ const PM_JABBERWOCK = monsterNames.indexOf('PM_JABBERWOCK');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const PM_HEZROU = monsterNames.indexOf('PM_HEZROU');
 const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
+const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
+const PM_QUEEN_BEE = monsterNames.indexOf('PM_QUEEN_BEE');
+const LUMP_OF_ROYAL_JELLY = objectNames.indexOf('LUMP_OF_ROYAL_JELLY');
+/** C ref: monattk.h AD_DRIN — mind_blast monkilled how. */
+const AD_DRIN = 32;
+/** C ref: monattk.h — postmov iron-bars eat (rust monster / gray ooze / pudding). */
+const AD_RUST = 24;
+const AD_CORR = 42;
 const GEMSTONE = 20; // objclass.h
 const MINERAL = 21; // objclass.h
 const MAX_CARR_CAP = 1000;
@@ -567,6 +580,19 @@ function Aggravate_monster() {
     return !!((u.HAggravate_monster | 0) || (u.EAggravate_monster | 0));
 }
 
+/** C ref: youprop.h Blind_telepat — HTelepat || ETelepat. */
+function Blind_telepat() {
+    const u = game.u || {};
+    return !!((u.HTelepat | 0) || (u.ETelepat | 0) || u.Blind_telepat);
+}
+
+/** C ref: youprop.h Half_spell_damage — HHalf_spell_damage || EHalf_spell_damage. */
+function Half_spell_damage() {
+    const u = game.u || {};
+    return !!(u.Half_spell_damage || (u.HHalf_spell_damage | 0)
+        || (u.EHalf_spell_damage | 0));
+}
+
 /** C ref: monmove.c / muse.c mdistu — squared distance to hero. */
 function mdistu(mtmp) {
     const u = game.u;
@@ -776,11 +802,71 @@ export function distfleeck(mtmp) {
     return { inrange: inrange ? 1 : 0, nearby: nearby ? 1 : 0, scared };
 }
 
+/** C youprop.h Deaf ≡ HDeaf || EDeaf || uroleplay.deaf (plus u.Deaf flag). */
+function hero_Deaf() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0)
+        || u.uroleplay?.deaf || u.Deaf);
+}
+
+/**
+ * C you.h mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his.
+ * C mondata.c pronoun_gender: hallu rn2(4); !canspotmon / is_neuter /
+ * non-(humanoid|G_UNIQ|pname) → 2 (its); else female.
+ */
+function mhis_yell(mtmp) {
+    if (Hallucination()) {
+        return ['his', 'her', 'its', 'their'][rn2(4)];
+    }
+    if (!display_canspotmon(mtmp)) return 'its';
+    const ptr = mtmp?.data;
+    if (!ptr || is_neuter(ptr)) return 'its';
+    if (humanoid(ptr)
+        || ((ptr.geno | 0) & G_UNIQ)
+        || type_is_pname(ptr)) {
+        return mtmp.female ? 'her' : 'his';
+    }
+    return 'its';
+}
+
+/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
+async function You_hear_yell(line) {
+    if (hero_Deaf() || game.flags?.acoustics === false) return;
+    await pline(`You hear ${line}`);
+}
+
+/**
+ * C ref: monmove.c mon_yells — Deaf spotted waves/shakes; else
+ * "X yells:" or You_hear someone yell, then verbalize1(shout).
+ * SetVoice is empty without SND_LIB_INTEGRATED (contest sndprocs.h).
+ * C Soundeffect(se_someone_yells) is commented out.
+ */
+export async function mon_yells(mon, shout) {
+    if (hero_Deaf()) {
+        if (display_canspotmon(mon)) {
+            const who = Amonnam(mon);
+            const verb = nolimbs(mon.data) ? 'shakes' : 'waves';
+            const his = mhis_yell(mon);
+            const part = nolimbs(mon.data)
+                ? mbodypart(mon, HEAD)
+                : makeplural(mbodypart(mon, ARM));
+            await pline_mon(mon, `${who} angrily ${verb} ${his} ${part}!`);
+        }
+        return;
+    }
+    if (display_canspotmon(mon)) {
+        await pline_mon(mon, `${Amonnam(mon)} yells:`);
+    } else {
+        await You_hear_yell('someone yell:');
+    }
+    await verbalize(shout);
+}
+
 /**
  * C ref: monmove.c watch_on_duty — peaceful watch that can see hero in town
  * may notice lockpicking / digging (!rn2(3) gate).
- * Named omissions: mon_yells polish (plain pline); pickaxe dig occupation
- * via dig.js is_digging() (D-0951).
+ * Named omissions: pickaxe dig occupation via dig.js is_digging() (D-0951).
+ * mon_yells is D-1248.
  */
 async function watch_on_duty(mtmp) {
     const u = game.u || {};
@@ -796,15 +882,11 @@ async function watch_on_duty(mtmp) {
             && ((loc.doormask || loc.flags || 0) & D_LOCKED)) {
             if (couldsee(mtmp.mx, mtmp.my)) {
                 if ((loc.looted | 0) & D_WARNED) {
-                    // mon_yells deferred — arrest pline + angry_guards
-                    await pline('Halt, thief!  You\'re under arrest!');
-                    const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
-                        || u.uroleplay?.deaf || u.Deaf);
+                    await mon_yells(mtmp, 'Halt, thief!  You\'re under arrest!');
                     const { angry_guards } = await import('./mon.js');
-                    await angry_guards(!!Deaf);
+                    await angry_guards(!!hero_Deaf());
                 } else {
-                    // mon_yells deferred
-                    await pline('Hey, stop picking that lock!');
+                    await mon_yells(mtmp, 'Hey, stop picking that lock!');
                     loc.looted = (loc.looted | 0) | D_WARNED;
                 }
                 await stop_occupation();
@@ -934,11 +1016,21 @@ function locomotion(ptr, def) {
     return def;
 }
 
+/** C ref: mondata.c dmgtype — any mattk slot matches adtyp (AT_ANY). */
+function dmgtype(ptr, adtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (const a of slots) {
+        if ((a.adtyp | 0) === (adtyp | 0)) return true;
+    }
+    return false;
+}
+
 /**
  * C monmove.c msg_mon_movement 32–48 — a11y.mon_movement dest pline_xy
  * after place_monster. Not pline_mon (C uses nix,niy). Requires already
  * spotted (`mspotted`; notice_mon when mon_notices On). Default Off.
- * Named omit: optlist `&a11y.mon_movement` addr (still flags).
+ * optlist `&a11y.mon_movement` addr is D-1236.
  */
 export async function msg_mon_movement(mtmp, omx, omy) {
     const a = game.a11y || {};
@@ -1164,13 +1256,15 @@ export async function m_postmove_effect(mtmp) {
  * amorphous squeeze pline_mon (YMonnam + fog/S_LIGHT flows); mb_trapped;
  * mpickstuff one-object pickup; hides_under / S_EEL rn2(5) → hideunder
  * (D-0496); maybe_spin_web (D-0595); door/flee/web/itsstuck pline_mon
- * D-1227.
- * Named omissions: vampshift fog; iron bars; shop add_damage;
+ * D-1227; IRONBARS eat/Norep (D-1247).
+ * Named omissions: vampshift fog; shop add_damage;
  * has_magic_key disarm; metallivorous/cube/corpse_eater meat*;
- * hideunder You_see (ported); check_gear_next_turn; swallowed() display polish.
+ * hideunder You_see (ported); check_gear_next_turn; swallowed() display polish;
+ * ALLOW_BARS rust/corr/metallivore in mon_allowflags; dissolve_bars
+ * switch_terrain. mon_yells is D-1248.
  * (shk/gd/priest via shk.js D-0205)
  */
-async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
+export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
     if (mmoved !== MMOVE_MOVED && mmoved !== MMOVE_DONE) return mmoved;
 
     const ptr = mtmp.data;
@@ -1262,6 +1356,32 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
             }
             // shop add_damage deferred
         }
+    } else if (loc && loc.typ === IRONBARS) {
+        // C ref: monmove.c postmov :1624–1640 — else-if of the door arm.
+        // Eat (AD_RUST / AD_CORR / metallivorous) unless W_NONDIGGABLE,
+        // then dissolve_bars and return MMOVE_DONE (skips mdig_tunnel
+        // rnd(12) and OBJ_AT pickup). Else Norep pass through/between.
+        // Named: ALLOW_BARS rust/corr/metallivore (mon_allowflags);
+        // dissolve_bars switch_terrain; meatmetal.
+        const wi = (loc.wall_info | 0) | (loc.flags | 0);
+        if (!(wi & W_NONDIGGABLE)
+            && (dmgtype(ptr, AD_RUST) || dmgtype(ptr, AD_CORR)
+                || metallivorous(ptr))) {
+            if (display_canseemon(mtmp)) {
+                await pline_mon(
+                    mtmp,
+                    `${Monnam(mtmp)} eats through the iron bars.`,
+                );
+            }
+            dissolve_bars(mtmp.mx, mtmp.my);
+            return MMOVE_DONE;
+        } else if (game.flags?.verbose !== false && display_canseemon(mtmp)) {
+            await Norep(
+                `${Monnam(mtmp)} ${makeplural(locomotion(ptr, 'pass'))} ${
+                    passes_walls(ptr) ? 'through' : 'between'
+                } the iron bars.`,
+            );
+        }
     }
 
     // C: possibly dig — can_tunnel && may_dig → mdig_tunnel (burns rnd(12)
@@ -1282,7 +1402,6 @@ async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open)
     } else if (mtmp.mx) {
         newsym(mtmp.mx, mtmp.my);
     }
-    // IRONBARS deferred
     } // end MMOVE_MOVED
 
     // C: shared MOVED|DONE floor pickup
@@ -1740,6 +1859,131 @@ export async function m_move(mtmp, after) {
     return postmov(mtmp, omx, omy, MMOVE_MOVED, can_tunnel, can_unlock, can_open);
 }
 
+/**
+ * C ref: monmove.c find_pmmonst — first living mons[pm] on fmon, or null
+ * when G_GENOD. DEADMONSTER skipped. data compared by mndx (JS mons()
+ * allocates).
+ */
+export function find_pmmonst(pm) {
+    if (((game.mvitals?.[pm]?.mvflags ?? 0) & G_GENOD) !== 0) return null;
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) < 1) continue;
+        if ((mtmp.data?.mndx ?? mtmp.mnum) === pm) return mtmp;
+    }
+    return null;
+}
+
+/** C ref: mkobj.c sobj_at — first floor object of otyp. */
+function sobj_at_monmove(otyp, x, y) {
+    for (let o = objects_at(x, y); o; o = o.nexthere) {
+        if ((o.otyp | 0) === otyp) return o;
+    }
+    return null;
+}
+
+/**
+ * C ref: monmove.c bee_eat_jelly — killer bee on royal jelly becomes
+ * queen if none on the level. 1 died, 0 ate and froze, -1 queen present.
+ * gelcube_digests still named. postmov IRONBARS is D-1247.
+ * mon_yells is D-1248.
+ */
+export async function bee_eat_jelly(mon, obj) {
+    const queen = find_pmmonst(PM_QUEEN_BEE);
+    if (queen) return -1;
+
+    const m_delay = obj.blessed ? 3 : !obj.cursed ? 5 : 7;
+    let lump = obj;
+    if ((lump.quan || 1) > 1) {
+        lump = splitobj(lump, 1) || lump;
+    }
+    if (display_canseemon(mon)) {
+        await pline_mon(mon, `${Monnam(mon)} eats ${an(xname(lump))}.`);
+    }
+    delobj(lump);
+
+    const queenLev = (mons(PM_QUEEN_BEE)?.mlevel | 0) - 1;
+    if ((mon.m_lev | 0) < queenLev) mon.m_lev = queenLev;
+    await grow_up(mon, null);
+
+    if ((mon.mhp | 0) < 1) return 1; /* queen bees genocided */
+    mon.mfrozen = m_delay;
+    mon.mcanmove = 0;
+    return 0;
+}
+
+/**
+ * C ref: monmove.c mind_blast — mind flayer psychic wave (dochug !rn2(20)).
+ * Hero Half_spell_damage uses youprop H||E; other-mon dmg is raw rnd(15).
+ * fmon nmon snapshot: JS copies the live array. bee_eat_jelly is D-1246.
+ * postmov IRONBARS eat/Norep is D-1247. mon_yells is D-1248.
+ */
+export async function mind_blast(mtmp) {
+    const u = game.u || (game.u = {});
+
+    // C: canseemon → pline_mon concentrates (display.h, not the local stub)
+    if (display_canseemon(mtmp)) {
+        await pline_mon(mtmp, `${Monnam(mtmp)} concentrates.`);
+    }
+    if (mdistu(mtmp) > BOLT_LIM * BOLT_LIM) {
+        await pline('You sense a faint wave of psychic energy.');
+        return;
+    }
+    await pline('A wave of psychic energy pours over you!');
+    // C: mpeaceful && (!Conflict || resist_conflict) — resist RNG only
+    // when Conflict is on.
+    if (mtmp.mpeaceful && (!hero_conflict() || resist_conflict(mtmp))) {
+        await pline('It feels quite soothing.');
+    } else if (!u.uinvulnerable) {
+        const m_sen = sensemon(mtmp);
+        // C short-circuit: m_sen || (Blind_telepat && rn2(2)) || !rn2(10)
+        if (m_sen || (Blind_telepat() && rn2(2)) || !rn2(10)) {
+            if (u.uundetected) {
+                u.uundetected = 0;
+                newsym(u.ux, u.uy);
+            } else if (M_AP_TYPE(game.youmonst) !== M_AP_NOTHING
+                && M_AP_TYPE(game.youmonst) !== M_AP_MONSTER) {
+                const you = game.youmonst;
+                if (you) {
+                    you.m_ap_type = M_AP_NOTHING;
+                    you.mappearance = 0;
+                }
+                newsym(u.ux, u.uy);
+            }
+            const lock = m_sen ? 'telepathy'
+                : Blind_telepat() ? 'latent telepathy'
+                    : 'mind';
+            await pline(`It locks on to your ${lock}!`);
+            let dmg = rnd(15);
+            if (Half_spell_damage()) dmg = Math.trunc((dmg + 1) / 2);
+            losehp(dmg, 'psychic blast', KILLED_BY_AN);
+            await finish_maybe_wail();
+            if (game._losehp_needs_done) {
+                const { finish_losehp_done } = await import('./end.js');
+                await finish_losehp_done();
+                return; /* C losehp noreturn — skip fmon loop */
+            }
+        }
+    }
+    // C: nmon = m2->nmon at the top of each iter (may mondead m2).
+    const fmon = (game.fmon || []).slice();
+    for (const m2 of fmon) {
+        if (!m2 || (m2.mhp | 0) < 1) continue;
+        if ((m2.mpeaceful | 0) === (mtmp.mpeaceful | 0)) continue;
+        if (mindless(m2.data)) continue;
+        if (m2 === mtmp) continue;
+        // C: (telepathic && (rn2(2) || mblinded)) || !rn2(10)
+        if ((telepathic(m2.data) && (rn2(2) || m2.mblinded)) || !rn2(10)) {
+            await wakeup(m2, false);
+            if (cansee(m2.mx, m2.my)) {
+                await pline(`It locks on to ${mon_nam(m2)}.`);
+            }
+            m2.mhp -= rnd(15);
+            if ((m2.mhp | 0) < 1) {
+                await monkilled(m2, '', AD_DRIN);
+            }
+        }
+    }
+}
 
 // C ref: monmove.c dochug()
 export async function dochug(mtmp) {
@@ -1825,8 +2069,10 @@ export async function dochug(mtmp) {
     if (is_watch(mdat)) {
         await watch_on_duty(mtmp);
     } else if (is_mind_flayer(mdat) && !rn2(20)) {
-        // mind_blast deferred — still burn rn2(20) gate only when watch N/A
-        // Named omission: mind_blast body + set_apparxy/distfleeck refresh
+        await mind_blast(mtmp);
+        if (game.program_state?.gameover) return 0;
+        set_apparxy(mtmp);
+        ({ inrange, nearby, scared } = distfleeck(mtmp));
     }
 
     // C ref: monmove.c dochug — nearby AT_WEAP may spend the turn wielding
@@ -1839,6 +2085,16 @@ export async function dochug(mtmp) {
             && !(mtmp.mtrapped && !nearby && select_rwep(mtmp))) {
             mtmp.weapon_check = NEED_HTH_WEAPON;
             if ((await mon_wield_item(mtmp)) !== 0) return 0;
+        }
+    }
+
+    // C ref: monmove.c dochug — killer bee may eat royal jelly (no queen).
+    // gelcube_digests named.
+    if ((mdat?.mndx | 0) === PM_KILLER_BEE) {
+        const otmp = sobj_at_monmove(LUMP_OF_ROYAL_JELLY, mtmp.mx, mtmp.my);
+        if (otmp) {
+            const res = await bee_eat_jelly(mtmp, otmp);
+            if (res >= 0) return res;
         }
     }
 

@@ -16,7 +16,8 @@ import {
     Is_astralevel, Is_airlevel, Is_firelevel,
     IS_FOUNTAIN,
     ismnum, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD, POISON_RES,
-    u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_MIGRATING, MON_DETACH,
+    FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, STONE_RES,
+    u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_OFFMAP, MON_MIGRATING, MON_DETACH,
     MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
     has_emin, has_epri, has_eshk,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
@@ -42,7 +43,7 @@ import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele } from './teleport.js';
 import { may_dig } from './dig.js';
-import { newsym, pline, You_feel, sensemon, canseemon, canspotmon } from './display.js';
+import { newsym, pline, pline_mon, You_feel, sensemon, canseemon, canspotmon } from './display.js';
 import { online2 } from './hacklib.js';
 import { worm_cross } from './worm.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -73,6 +74,7 @@ const PM_EARTH_ELEMENTAL = monsterNames.indexOf('PM_EARTH_ELEMENTAL');
 const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 const PM_HEZROU = monsterNames.indexOf('PM_HEZROU');
 const PM_VROCK = monsterNames.indexOf('PM_VROCK');
+const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const AT_BREA = 12; // C monattk.h
 const AD_DRST = 7;
 const AD_RBRE = 242;
@@ -1104,13 +1106,17 @@ export function m_at(x, y) {
     // C: level.monsters[][] — worm segs via place_worm_seg; heads on fmon.
     // Steed is remove_monster'd while mounted.
     // Dead mons stay on fmon until dmonsfree but are off the map grid (C).
+    // gulpmm remove_monster leaves mx/my; JS marks MON_OFFMAP so this
+    // skip matches C's empty grid cell (D-1231).
     const seg = game._level_monsters?.get(`${x},${y}`);
-    if (seg && (seg.mhp | 0) > 0) return seg;
+    if (seg && (seg.mhp | 0) > 0
+        && !((seg.mstate | 0) & MON_OFFMAP)) return seg;
     const list = game.fmon || [];
     const steed = game.u?.usteed;
     for (const m of list) {
         if (m === steed) continue;
         if ((m.mhp | 0) <= 0) continue; // DEADMONSTER — not on map
+        if ((m.mstate | 0) & MON_OFFMAP) continue;
         if (m.mx === x && m.my === y) return m;
     }
     return null;
@@ -1482,6 +1488,88 @@ export function healmon(mtmp, amt, overheal) {
         if ((mtmp.mhp | 0) > (mtmp.mhpmax | 0)) mtmp.mhpmax = mtmp.mhp | 0;
     }
     return (mtmp.mhp | 0) - oldhp;
+}
+
+/** C ref: prop.h res_to_mr — FIRE_RES..STONE_RES → MR_* bit. */
+function res_to_mr_mon(r) {
+    if (r >= FIRE_RES && r <= STONE_RES) return 1 << (r - 1);
+    return 0;
+}
+
+/**
+ * C ref: worn.c mon_set_minvis — permanent invis (FALSE = not cursed potion).
+ * Worm segments / newsym polish deferred.
+ */
+function mon_set_minvis_eat(mon, cursed_potion) {
+    mon.perminvis = cursed_potion ? 0 : 1;
+    if (!mon.invis_blkd) mon.minvis = mon.perminvis;
+}
+
+/**
+ * C ref: mon.c mon_give_prop — MR_* mintrinsics from corpse resist props.
+ * Strength / teleport / other hero-only props are ignored.
+ */
+async function mon_give_prop(mtmp, prop) {
+    let msg = null;
+    switch (prop | 0) {
+    case FIRE_RES:
+        msg = `${Monnam(mtmp)} shivers slightly.`;
+        break;
+    case COLD_RES:
+        msg = `${Monnam(mtmp)} looks quite warm.`;
+        break;
+    case SLEEP_RES:
+        msg = `${Monnam(mtmp)} looks wide awake.`;
+        break;
+    case DISINT_RES:
+        msg = `${Monnam(mtmp)} looks very firm.`;
+        break;
+    case SHOCK_RES:
+        msg = `${Monnam(mtmp)} crackles with static electricity.`;
+        break;
+    case POISON_RES:
+        msg = `${Monnam(mtmp)} looks healthy.`;
+        break;
+    default:
+        return;
+    }
+    const intrinsic = res_to_mr_mon(prop);
+    if (((mtmp.data?.mresists | 0) | (mtmp.mintrinsics | 0)) & intrinsic) {
+        msg = null;
+    }
+    if (intrinsic) mtmp.mintrinsics = (mtmp.mintrinsics | 0) | intrinsic;
+    if (canseemon(mtmp) && msg) await pline_mon(mtmp, msg);
+}
+
+/**
+ * C ref: mon.c mon_givit — maybe grant a resist intrinsic from a corpse.
+ * Callers: mhitm.c mdamagem AD_DGST (D-1244); meatobj still named.
+ */
+export async function mon_givit(mtmp, ptr) {
+    if (!mtmp) return;
+    // C: corpse_intrinsic before DEADMONSTER / stalker (RNG even if unused)
+    const { corpse_intrinsic, should_givit } = await import('./eat.js');
+    const prop = corpse_intrinsic(ptr);
+    const vis = canseemon(mtmp);
+    if ((mtmp.mhp | 0) < 1) return;
+    if ((ptr?.mndx | 0) === PM_STALKER) {
+        if (!mtmp.perminvis || mtmp.invis_blkd) {
+            const buf = Monnam(mtmp);
+            mon_set_minvis_eat(mtmp, false);
+            if (vis) {
+                let how;
+                if (!canspotmon(mtmp)) how = 'vanishes';
+                else if (mtmp.invis_blkd) how = 'seems to flicker';
+                else how = 'becomes invisible';
+                await pline_mon(mtmp, `${buf} ${how}.`);
+            }
+        }
+        mtmp.mstun = 1;
+        return;
+    }
+    if (prop === 0) return;
+    if (!should_givit(prop, ptr)) return;
+    await mon_give_prop(mtmp, prop);
 }
 
 /**
@@ -2192,7 +2280,8 @@ export function restrap(mtmp) {
 
 /**
  * C ref: mon.c hideunder — set mundetected under object / pool for eels.
- * Used by hide_monst and teleds(&youmonst) (D-1131). monmove.js keeps
+ * Used by hide_monst, teleds(&youmonst) (D-1131), and
+ * hack.js hero_hideunder_after_move (D-1245). monmove.js keeps
  * a parallel local for postmov.
  * Named omissions: You_see pline; pet cursed_object_at; cockatrice skip;
  * can_hide_under_obj filter.

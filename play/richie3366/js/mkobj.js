@@ -39,7 +39,7 @@ import {
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
-import { otyp_uses_known, distant_name, doname, cxname, The, vtense } from './objnam.js';
+import { otyp_uses_known, distant_name, doname, cxname, The, vtense, corpse_xname } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
@@ -52,6 +52,7 @@ import {
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
+    CXN_NO_PFX,
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
     LS_OBJECT, OMONST, has_omonst, OMID, has_omid, MON_DETACH,
     IRONBARS, ROOM, IS_ALTAR, IS_SOFT, Is_airlevel, Is_waterlevel,
@@ -968,8 +969,9 @@ function setmnotwielded_rot(mon, obj) {
  * remove_worn_item(TRUE)/stop_occupation; OBJ_MINVENT wielded
  * setmnotwielded; OBJ_MIGRATING owornmask=0; invent extract splice;
  * in_invent update_inventory after rot_organic extract.
+ * unique/pname corpse_xname CXN_NO_PFX "the" (D-1234).
  * Named omit: hideunder/mundetected expose; rot_organic contents bury;
- * unique/pname corpse_xname CXN_NO_PFX "the"; setmnotwielded artifact_light.
+ * setmnotwielded artifact_light.
  */
 export async function rot_corpse(obj) {
     if (!obj) return;
@@ -984,7 +986,7 @@ export async function rot_corpse(obj) {
     } else if (inInvent) {
         if (game.flags?.verbose !== false) {
             const { pline } = await import('./display.js');
-            const cname = cxname(obj);
+            const cname = corpse_xname(obj, null, CXN_NO_PFX);
             const uwep = game.u?.uwep;
             const wielded = obj === uwep ? 'wielded ' : '';
             const verb = otense_corpse(obj, 'rot');

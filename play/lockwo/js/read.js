@@ -248,7 +248,7 @@ function read_ok(obj) {
 // C ref: read.c seffects — apply a scroll (or fake-spellbook) effect.  Magic
 // scrolls exercise Wisdom "just for trying" (rn2(19) via exercise) before the
 // per-type effect.  Returns true if the object was consumed inside seffects.
-async function seffects(sobj) {
+export async function seffects(sobj) {
     const otyp = sobj.otyp;
     if (scroll_is_magic(otyp))
         exercise(A_WIS, true);

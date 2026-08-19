@@ -18,8 +18,8 @@ import { destroy_items } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys, is_pool } from './hack.js';
 import { rnd, d, rn2 } from './rng.js';
 import {
-    pline, mon_visible, canspotmon, map_invisible, canseemon, newsym, docrt,
-    swallowed, flush_topl_more, tp_sensemon,
+    pline, pline_mon, mon_visible, canspotmon, map_invisible, canseemon, newsym,
+    docrt, swallowed, flush_topl_more, tp_sensemon,
 } from './display.js';
 import { cansee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { Monnam, mon_nam, pmname, hliquid, x_monnam } from './do_name.js';
@@ -927,6 +927,7 @@ async function gulpmu(mtmp, mattk) {
 
 /**
  * C ref: uhitm.c mhitm_ad_sedu — mhitu (monster→you) arm only.
+ * Brag/remarks is pline_mon (D-1240); charm-fail stays pline.
  * Named omissions: uhitm steal_it; mhitm minvent steal; SYSOPT_SEDUCE
  * doseduce; Adjmonnam charm polish; animal locomotion flee pline.
  */
@@ -939,7 +940,9 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
         const youdat = game.youmonst?.data;
         if (dmgtype(youdat, AD_SEDU) || dmgtype(youdat, AD_SSEX)) {
             const Deaf = !!(game.u?.Deaf || game.u?.HDeaf);
-            await pline(
+            // C uhitm.c mhitm_ad_sedu :4647 — pline_mon(magr); charm-fail stays pline
+            await pline_mon(
+                mtmp,
                 `${Monnam(mtmp)} ${Deaf
                     ? "says something but you can't hear it"
                     : mtmp.minvent
@@ -1057,7 +1060,8 @@ async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_ad_legs — mhitu (mdef == youmonst) arm only.
- * Side rn2(2) always; steed/Lev/Fly vs non-flyer reach fail; mcan nuzzle;
+ * Side rn2(2) always; steed/Lev/Fly vs non-flyer reach fail; mcan nuzzle
+ * via pline_mon (D-1240; reach/prick/scratch stay pline like C);
  * boots may scratch (damage 0 return) or prick; else set_wounded_legs +
  * exercise STR/DEX. Named omissions: uhitm/mhitm arms; poly body_part.
  */
@@ -1073,7 +1077,10 @@ async function mhitm_ad_legs_u(mtmp, _mattk, mhm) {
         await pline(`${Monst_name} tries to reach your ${sidestr} ${leg}!`);
         mhm.damage = 0;
     } else if (mtmp.mcan) {
-        await pline(`${Monnam(mtmp)} nuzzles against your ${sidestr} ${leg}!`);
+        await pline_mon(
+            mtmp,
+            `${Monnam(mtmp)} nuzzles against your ${sidestr} ${leg}!`,
+        );
         mhm.damage = 0;
     } else {
         if (u.uarmf) {

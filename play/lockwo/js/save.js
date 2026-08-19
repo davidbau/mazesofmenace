@@ -33,6 +33,16 @@ import { nhgetch } from './input.js';
 export const SAVE_SKIP_KEYS = new Set([
     // runtime environment (kept fresh by the restoring segment)
     'nhDisplay', '_preNhgetchHook', '_pendingDisplay', 'storage', 'datetime',
+    // PRNG state — savegamestate() writes no RNG state at all, and the
+    // restoring process re-seeds from its own NETHACK_SEED (both segments of a
+    // save/restore session carry the same seed).  It also cannot survive JSON:
+    // isaac64's a/b/c/r[]/m[] are BigInt, which encodes to nothing and leaves a
+    // ctx whose next_uint64() returns a Number ("Cannot mix BigInt and other
+    // types" out of rng.js RND).
+    'coreCtx',
+    // the storage.js VFS backing handle (an InMemoryStorage whose Map cannot
+    // round-trip); like `storage` it belongs to the running segment.
+    'mockStorage',
     // vision — "recompute vision (not saved)" (restore.c)
     'viz_array', '_viz_rmin', '_viz_rmax',
     'vis_start_col', 'vis_start_row', 'vis_step',
@@ -153,17 +163,29 @@ export async function dosave() {
 // C ref: win/tty/wintty.c tty_exit_nhwindows() -> tty_suspend_nhwindows() ->
 // settty("Be seeing you...") -> term_end_screen() clears the screen (cursor
 // home), then raw_print(str) writes the text at row 0 and a newline leaves the
-// cursor at column 0 of row 1.  nh_terminate() then ends the program; we model
-// termination by firing the capture (via nhgetch's pre-hook) on the cleared
-// "Be seeing you..." screen and letting the empty input queue end the segment.
+// cursor at column 0 of row 1.  nh_terminate() then ends the program.
 async function exit_be_seeing_you() {
     const disp = game.nhDisplay;
     if (disp?.clearScreen) {
+        // termcap.c nomux_raw_putch() keeps its own row counter and
+        // nomux_raw_active is never cleared, so when an rc error already put
+        // the recorder in raw mode this text lands at that row, not row 0.
+        const row = game._nomux_raw ? game._nomux_raw.row : 0;
         disp.clearScreen();
-        disp.putstr(0, 0, 'Be seeing you...', NO_COLOR, 0);
-        disp.setCursor(0, 1);
+        disp.putstr(0, row, 'Be seeing you...', NO_COLOR, 0);
+        disp.setCursor(0, row + 1);
+        if (game._nomux_raw) game._nomux_raw = { row: row + 1, col: 0 };
     }
-    // Capture this final frame, then terminate: nhgetch fires the capture hook
-    // (recording "Be seeing you...") and, with no keys left, ends the segment.
+    // C ref: save.c dosave() -> nh_terminate(EXIT_SUCCESS).  The PROCESS ends
+    // here, so the recorder flushes this one final frame and never reads
+    // another key — a recorded segment that saves has fewer boundaries than its
+    // keyplan has keys, and the leftovers are C's un-consumed tail.  Dropping
+    // them is load-bearing: the judge concatenates each segment's screens into
+    // ONE flat index (frozen/ps_test_runner.mjs), so every key we consume past
+    // the save shifts the whole NEXT segment against the recording.  Clear the
+    // replay queue first, then let nhgetch fire the capture hook for this frame
+    // and raise its end-of-input signal, which runSegment treats as a clean
+    // end of segment.
+    disp?.clearInputQueue?.();
     await nhgetch();
 }

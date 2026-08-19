@@ -13,7 +13,7 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
-import { parseNethackrc } from './options.js';
+import { parseNethackrc, config_error_report } from './options.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
 import {
@@ -269,6 +269,9 @@ export class NethackGame {
         // SYMBOLS= rc line overrides one cmap glyph's display character,
         // independent of (and layered on top of) the base symset.
         g.symoverride = opts.symoverride || {};
+        // C ref: options.c ga.apelist — the AUTOPICKUP_EXCEPTION list, read by
+        // pickup.c check_autopickup_exceptions().
+        g.apelist = opts.apelist || [];
         const optsel = initialSelectionFromOptions(opts);
         g.initrole = optsel.role;
         g.initrace = optsel.race;
@@ -295,6 +298,13 @@ export class NethackGame {
 
         // Install capture hook
         this._installCaptureHook();
+
+        // C ref: cfgfiles.c config_error_done() — a rejected rc line is
+        // raw_print()ed BEFORE init_nhwindows and then dismissed by a getret()
+        // that eats input (each eaten key is a captured boundary).  It runs
+        // here rather than at parse time because the boundaries only exist once
+        // the display and the capture hook are installed.
+        await config_error_report(opts);
 
         // C prompts for a name before role/race selection when OPTIONS
         // does not supply one.  That selection can consume RNG before
@@ -1022,7 +1032,13 @@ export class NethackGame {
             nhGame._screens.push(term?.serialize ? term.serialize() : '');
             nhGame._rngSlices.push(slice);
 
-            const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
+            // termcap.c nomux_get_cursor() reports the RAW writer's row/col
+            // whenever nomux_raw_active, and that flag is never cleared once a
+            // raw_print has happened — so an rc error freezes the recorded
+            // cursor for the whole session.
+            const cursor = game._nomux_raw
+                ? [game._nomux_raw.col, game._nomux_raw.row, 1]
+                : (disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null);
             nhGame._cursors.push(cursor);
 
             // Commit animation frames accumulated since the previous

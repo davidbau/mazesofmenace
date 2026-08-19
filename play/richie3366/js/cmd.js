@@ -73,7 +73,7 @@ import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
     impaired_movement, is_pool, is_lava, carrying_too_much,
     invocation_message, avoid_trap_andor_region,
-    hero_tread_disturb_buried_zombies,
+    hero_tread_disturb_buried_zombies, hero_hideunder_after_move,
     test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
@@ -1504,14 +1504,16 @@ export async function rhack(key) {
         return;
     }
     // C rhack: keep menu_requested for CMD_M_PREFIX commands (O→doset_simple
-    // reads it to call doset; ^T→dotelecmd m-prefix menu D-1209). Drop only
-    // when the next command rejects 'm'.
-    // Named omission: full accept_menu_prefix table — O/,/e/q/a/s/p/>/< /^T
+    // reads it to call doset; ^T→dotelecmd m-prefix menu D-1209; #→doextcmd
+    // then the resolved extcmd's own flag, D-1230). Drop only when the next
+    // command rejects 'm'.
+    // Named omission: full accept_menu_prefix table — O/,/e/q/a/s/p/>/< /^T /#
     // enough for current sessions; expand when m-prefix + other cmds desync.
     const accepts_m_prefix = ch === 'O' || ch === ',' || ch === 'e'
         || ch === 'q' || ch === 'a' || ch === 's' || ch === 'p'
         || ch === '>' || ch === '<'
-        || key === 20; // C('t') dotelecmd CMD_M_PREFIX
+        || key === 20 // C('t') dotelecmd CMD_M_PREFIX
+        || ch === '#'; // doextcmd CMD_M_PREFIX; resolved cmd checked in doextcmd
     if (ch !== 'm' && ch !== 'g' && ch !== 'G' && ch !== 'F'
         && !accepts_m_prefix && !isMovementKey(ch) && !isRunKey(ch)
         && !rushDir && game.iflags?.menu_requested) {
@@ -2147,7 +2149,8 @@ async function domove(dx, dy) {
     // C hack.c test_move 1216–1230 — sobj_at(BOULDER) && (Sokoban ||
     // !Passes_walls): run>=2 abort before moverock (D-1226). TEST_TRAV
     // excluded in C; this is DO_MOVE. Passes_walls && !Sokoban skips the
-    // whole arm (walk onto the boulder). cannot_push squeeze named.
+    // whole arm (walk onto the boulder). cannot_push squeeze D-1239;
+    // giant pickup/maneuver D-1253; nopick m-dir still named.
     if (test_move_boulder_is_blocking(newx, newy)) {
         if (test_move_run_blocked_by_boulder(newx, newy)) {
             if (game.flags?.mention_walls) {
@@ -2290,6 +2293,8 @@ async function domove(dx, dy) {
 
     // C hack.c:2944–2947 — tread may disturb buried zombies
     hero_tread_disturb_buried_zombies();
+    // C hack.c:2949–2951 — hideunder after tread (D-1245)
+    hero_hideunder_after_move();
 
     // Update display. C hack.c:2964–2973 — newsym(ux0,uy0);
     // vision_recalc(1); invocation_message(); only when the hero

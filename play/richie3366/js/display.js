@@ -3705,8 +3705,8 @@ export function set_msg_dir(dir) {
 
 /**
  * C pline.c pline_xy 126–135 — set_msg_xy then vpline.
- * Live dest: msg_mon_movement after place (D-1228). Named omit:
- * rolling-boulder TELEP pline_xy.
+ * Live dest: msg_mon_movement after place (D-1228); rolling-boulder
+ * TELEP/LEVEL_TELEP in launch_obj (D-1237).
  */
 export async function pline_xy(x, y, msg) {
     set_msg_xy(x, y);
@@ -3717,10 +3717,15 @@ export async function pline_xy(x, y, msg) {
  * C pline.c pline_mon 137–150 — &youmonst → (0,0) (not hero ux,uy);
  * else mx,my; then vpline. isok rejects x=0 so youmonst never prefixes.
  * Live callers: wield/zap/drop/pickup/mb_trapped (D-1215) + monmove
- * monflee/itsstuck/maybe_spin_web/postmov door (D-1227).
- * Named omit: remaining uhitm/worn/trap/weapon drop·tether / muse drinks /
- * iron bars / mind_blast / bee_eat / mon_yells; rolling-boulder TELEP
- * pline_xy. Do not wrap msg_mon_movement as pline_mon (D-1228).
+ * monflee/itsstuck/maybe_spin_web/postmov door (D-1227) + mind_blast
+ * concentrates (D-1238) + uhitm light_hits_gremlin cry/recoil, mhitm_ad_legs
+ * nuzzle, mhitm_ad_sedu brag (D-1240). flash_hits_mon awaken/blind stay pline.
+ * Named omit: remaining unported uhitm mhitm_ad_* (rust/fire/hugs/heal/wrap/…) /
+ * worn/trap/weapon drop·tether / muse drinks / iron bars /
+ * mhitu hitmsg. bee_eat_jelly eat + grow_up queen is D-1246.
+ * mon_yells is D-1248.
+ * Rolling-boulder TELEP is pline_xy (D-1237).
+ * Do not wrap msg_mon_movement as pline_mon (D-1228).
  */
 export async function pline_mon(mtmp, msg) {
     if (mtmp === game.youmonst) {
