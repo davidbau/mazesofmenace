@@ -1291,7 +1291,7 @@ const TRAP_EXPLANATIONS = [
 /**
  * C ref: trap.c sokoban_guilt — Sokoban ≡ level.flags.sokoban_rules.
  * Conduct + luck only; C TODO feedback still unnamed. maybe_finish_sokoban
- * and other callers (zap/read/steed/dig/nopick m-dir) still named.
+ * and other callers (zap/read/steed/dig) still named. nopick m-dir D-1262.
  */
 export function sokoban_guilt() {
     const Sokoban = !!(game.Sokoban || game.level?.flags?.sokoban_rules);

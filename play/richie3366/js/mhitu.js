@@ -34,7 +34,7 @@ import { monflee } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
-    hides_under, is_flyer,
+    hides_under, is_flyer, thick_skinned,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import { done_in_by } from './end.js';
@@ -46,7 +46,7 @@ import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
     could_seduce, mon_poly,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
-    AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_BOOM, AT_MAGC,
+    AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
     AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
 } from './mhitm.js';
@@ -206,13 +206,30 @@ async function mswings(mtmp, otemp, bash) {
 }
 
 /**
- * C ref: mhitu.c hitmsg — seduce smile/talk arm, else aatyp verb +
- * consecutive-same-aatyp " again". Named omissions: AT_TENT s_suffix;
- * AT_EXPL/BOOM; thick_skinned kick punct ".".
+ * C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s.
+ * C compares only the last char to 's' (not 'S'). Distinct from
+ * s_suffix_poison (extra z/x/sh/ch).
  */
-async function hitmsg(mtmp, mattk) {
+function s_suffix_hitmsg(s) {
+    const buf = String(s ?? '');
+    if (buf.toLowerCase() === 'it') return `${buf}s`;
+    if (buf.toLowerCase() === 'you') return `${buf}r`;
+    if (buf.endsWith('s')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+/**
+ * C ref: mhitu.c hitmsg :29–81 — could_seduce smile/talk/touch pline_mon;
+ * else aatyp verb + consecutive-same-aatyp " again" + punct.
+ * AT_TENT s_suffix(Monnam)+" tentacles suck your brain"; AT_EXPL/BOOM
+ * "explodes"; AT_KICK thick_skinned(youmonst.data) punct ".".
+ * Named omit: missmu/wildmiss/mswings still pline; mattacku AT_TENT
+ * melee case / explmu / AT_HUGS; remaining unported mhitm_ad_*.
+ */
+export async function hitmsg(mtmp, mattk) {
     const youmonst = game.youmonst;
     const compat = could_seduce(mtmp, youmonst, mattk);
+    let Monst_name = Monnam(mtmp);
     if (compat && !mtmp.mcan && !mtmp.mspec_used) {
         const Blind = !!(game.u?.Blind || game.u?.ublind
             || (((game.u?.HBlinded | 0) || (game.u?.EBlinded | 0))
@@ -220,16 +237,38 @@ async function hitmsg(mtmp, mattk) {
         const Deaf = !!(game.u?.Deaf || game.u?.HDeaf);
         const how = Blind ? (Deaf ? 'touches' : 'talks to') : 'smiles at';
         const adv = (compat === 2) ? 'engagingly' : 'seductively';
-        await pline(`${Monnam(mtmp)} ${how} you ${adv}.`);
+        await pline_mon(mtmp, `${Monst_name} ${how} you ${adv}.`);
     } else {
         let verb = 'hits';
+        let punct = '!';
         switch (mattk.aatyp) {
-        case AT_BITE: verb = 'bites'; break;
-        case AT_KICK: verb = 'kicks'; break;
-        case AT_STNG: verb = 'stings'; break;
-        case AT_BUTT: verb = 'butts'; break;
-        case AT_TUCH: verb = 'touches you'; break;
-        default: verb = 'hits'; break;
+        case AT_BITE:
+            verb = 'bites';
+            break;
+        case AT_KICK:
+            if (thick_skinned(youmonst?.data)) punct = '.';
+            verb = 'kicks';
+            break;
+        case AT_STNG:
+            verb = 'stings';
+            break;
+        case AT_BUTT:
+            verb = 'butts';
+            break;
+        case AT_TUCH:
+            verb = 'touches you';
+            break;
+        case AT_TENT:
+            verb = 'tentacles suck your brain';
+            Monst_name = s_suffix_hitmsg(Monst_name);
+            break;
+        case AT_EXPL:
+        case AT_BOOM:
+            verb = 'explodes';
+            break;
+        default:
+            verb = 'hits';
+            break;
         }
         // C: mattk == gh.hitmsg_prev + 1 && same aatyp → " again"
         const prev = game.hitmsg_prev;
@@ -241,7 +280,7 @@ async function hitmsg(mtmp, mattk) {
             && (mattk._indx | 0) === ((prev._indx | 0) + 1)
             && (mattk.aatyp | 0) === (prev.aatyp | 0)
         ) ? ' again' : '';
-        await pline(`${Monnam(mtmp)} ${verb}${again}!`);
+        await pline_mon(mtmp, `${Monst_name} ${verb}${again}${punct}`);
     }
     game.hitmsg_mid = mtmp.m_id | 0;
     game.hitmsg_prev = mattk;

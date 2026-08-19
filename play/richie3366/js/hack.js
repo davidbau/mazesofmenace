@@ -33,7 +33,7 @@ import {
 } from './const.js';
 import {
     pline, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
-    set_msg_xy,
+    set_msg_xy, feel_location,
 } from './display.js';
 import { gethungry, morehungry } from './eat.js';
 import { m_at, hideunder } from './mon.js';
@@ -238,7 +238,7 @@ function inv_cnt(inclgold) {
 /**
  * C ref: hack.c cannot_push — giant/squeeze may return 0; else -1.
  * Giant pickup/maneuver + sokoban_guilt (D-1253). Squeeze D-1239.
- * Named: nopick m-dir over/against in moverock_core; costly autopick.
+ * nopick m-dir over/against is D-1262 in moverock_core. Named: costly autopick.
  */
 export async function cannot_push(otmp, sx, sy) {
     if (throws_rocks(game.youmonst?.data)) {
@@ -337,12 +337,13 @@ async function dopush(sx, sy, rx, ry, otmp) {
 
 /**
  * C ref: hack.c moverock_core — push boulder(s) at (sx,sy) along u.dx/u.dy.
- * Branch envelope: clear-dest dopush + monster-behind You_hear/canspotmon
- * + closed_door cannot_push_msg (D-0317) + rumbling
- * disturb_buried_zombies (D-1214). Named omissions: Sokoban diagonal,
- * shop costly, trap/teleport/pool arms, Blind feel, Levitation (present),
- * verysmall, nopick m-dir, tunneling chew, revive_nasty,
- * next_boulder naming, y_monnam steed wording. Giant pickup/maneuver D-1253.
+ * Branch envelope: nopick m-dir over/against (D-1262) + clear-dest dopush
+ * + monster-behind You_hear/canspotmon + closed_door cannot_push_msg
+ * (D-0317) + rumbling disturb_buried_zombies (D-1214). Named omissions:
+ * Sokoban diagonal, shop costly, trap/teleport/pool arms, Blind unseen
+ * start-of-loop feel, Levitation (after nopick), verysmall vain-push,
+ * tunneling chew, revive_nasty, next_boulder naming, y_monnam steed
+ * wording. Giant pickup/maneuver D-1253.
  * Returns 0 to advance onto vacated cell, -1 to abort the move.
  */
 async function moverock_core(sx, sy) {
@@ -356,6 +357,35 @@ async function moverock_core(sx, sy) {
         const rx = u.ux + 2 * u.dx;
         const ry = u.uy + 2 * u.dy;
         await nomul(0);
+
+        /* C hack.c moverock_core :382–413 — m<dir> (context.nopick)
+           steps over (giant) or squeezes over/against without pushing;
+           else in-way. Glyph change spends the turn via door_opened.
+           Before Levitation leverage abort. D-1262. */
+        if (game.context?.nopick) {
+            const oldglyph = glyph_at_fp(sx, sy);
+            feel_location(sx, sy);
+            if (throws_rocks(game.youmonst?.data)) {
+                await pline(
+                    `You ${u_locomotion('step')} over a boulder here.`,
+                );
+                sokoban_guilt();
+                return 0;
+            }
+            if (could_move_onto_boulder(sx, sy)) {
+                const how = Flying_st() ? 'over' : 'against';
+                await pline(`You squeeze yourself ${how} the boulder.`);
+                sokoban_guilt();
+                return 0;
+            }
+            await pline('There is a boulder in your way.');
+            if (glyph_at_fp(sx, sy) !== oldglyph) {
+                if (!game.context) game.context = {};
+                game.context.door_opened = true;
+                game.context.move = 1;
+            }
+            return -1;
+        }
 
         if (u.Levitation || game.dungeon_topology?.Is_airlevel) {
             await pline(`You don't have enough leverage to push the ${xname(otmp)}.`);
@@ -433,6 +463,25 @@ export async function moverock() {
     const sx = u.ux + u.dx;
     const sy = u.uy + u.dy;
     return moverock_core(sx, sy);
+}
+
+/**
+ * C display.c glyph_at — JS has no integer glyph IDs; fingerprint
+ * gbuf disp_* plus remembered_glyph for the nopick in-way compare.
+ */
+function glyph_at_fp(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return '';
+    const rg = loc.remembered_glyph;
+    return [
+        loc.disp_ch ?? '',
+        loc.disp_color ?? '',
+        loc.disp_decgfx ? 1 : 0,
+        loc.disp_attr | 0,
+        rg?.ch ?? '',
+        rg?.color ?? '',
+        rg?.invisible ? 1 : 0,
+    ].join('\0');
 }
 
 /**

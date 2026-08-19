@@ -2151,8 +2151,10 @@ async function domove(dx, dy) {
     // !Passes_walls): run>=2 abort before moverock (D-1226). TEST_TRAV
     // excluded in C; this is DO_MOVE. Passes_walls && !Sokoban skips the
     // whole arm (walk onto the boulder). cannot_push squeeze D-1239;
-    // giant pickup/maneuver D-1253; nopick m-dir still named.
+    // giant pickup/maneuver D-1253; nopick m-dir over/against D-1262.
     if (test_move_boulder_is_blocking(newx, newy)) {
+        // C test_move starts door_opened = FALSE; moverock may set it.
+        if (game.context) game.context.door_opened = false;
         if (test_move_run_blocked_by_boulder(newx, newy)) {
             if (game.flags?.mention_walls) {
                 await pline_dir(
@@ -2168,8 +2170,12 @@ async function domove(dx, dy) {
         }
         const mr = await moverock();
         if (mr < 0) {
-            if (game.context?.run) end_running();
-            game.context.move = 0;
+            // C hack.c:2843–2848 — !test_move keeps move when door_opened
+            // (nopick in-way learned a glyph; D-1262).
+            if (!game.context?.door_opened) {
+                if (game.context?.run) end_running();
+                game.context.move = 0;
+            }
             return;
         }
         // moverock pushed boulder(s); fall through to occupy vacated cell

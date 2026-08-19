@@ -9,9 +9,9 @@
 // its three guards, the free-action rule, the self-probe that confdir() leads
 // to, the monster on the adjacent square, both secret-terrain arms, and the
 // adjacent square that holds nothing to report, the ordinary sighted corpse
-// and statue results, and a blind hero's ordinary statue report. The mounted,
-// swallowed, vertical, cursed, off-map, and exceptional dead-thing arms still
-// stop.
+// and statue results, a blind hero's ordinary statue report, and a Healer's
+// statue-trap report. The mounted, swallowed, vertical, cursed, off-map, and
+// remaining exceptional dead-thing arms still stop.
 
 import {
     ARTICLE_A,
@@ -225,9 +225,9 @@ export function apply_ok(obj, state = game) {
 // (apply.c:253); that arm still refuses here, so the port answers a bare
 // boolean. The admitted corpse branch is sighted, reachable, has no statue in
 // its pile, and has no REVIVE_MON timer. The admitted statue branch is
-// reachable, has no corpse in its pile, and is not a Healer's statue trap or
-// statue carrying contents; it has separate sighted and blind names. The
-// remaining exceptional siblings stay named refusals.
+// reachable, has no corpse in its pile, and either carries no contents or lies
+// on a statue trap; it has separate sighted and blind names. The remaining
+// exceptional siblings stay named refusals.
 function unportedItsDeadBranch(rx, ry, state) {
     let corpse = sobj_at(CORPSE, rx, ry, state);
     const statue = sobj_at(STATUE, rx, ry, state);
@@ -256,9 +256,9 @@ function unportedItsDeadBranch(rx, ry, state) {
     if (statue) {
         if (state.urole?.mnum === PM_HEALER) {
             const trap = t_at(rx, ry, state);
-            if (trap?.ttyp === STATUE_TRAP)
-                return 'a Healer examining a statue trap';
-            if (hasContents(statue))
+            // apply.c:299-303 gives the trap priority over contents. Admit
+            // that adjective while keeping contents-only statues retryable.
+            if (trap?.ttyp !== STATUE_TRAP && hasContents(statue))
                 return 'a Healer examining statue contents';
         }
         return null;
@@ -295,6 +295,7 @@ export async function its_dead(rx, ry, state) {
     if (statue) {
         const species = state.mons[statue.corpsenm];
         let what;
+        let how = 'fine';
         if (heroIsBlind(state)) {
             what = `${u_at(rx, ry, state) ? 'This' : 'That'} ${
                 humanoid(species) ? 'person' : 'creature'}`;
@@ -302,7 +303,10 @@ export async function its_dead(rx, ry, state) {
             what = obj_pmname(statue, state);
             if (!type_is_pname(species)) what = The(what, state);
         }
-        await ttyPline(`${what} is in fine health for a statue.`, state);
+        if (state.urole?.mnum === PM_HEALER
+            && t_at(rx, ry, state)?.ttyp === STATUE_TRAP)
+            how = 'extraordinary';
+        await ttyPline(`${what} is in ${how} health for a statue.`, state);
         return true;
     }
     return false;
@@ -311,10 +315,10 @@ export async function its_dead(rx, ry, state) {
 // Fail-closed commands are retryable. Inspect only the adjacent paths that
 // still refuse before apply.c:340 starts changing the listen sequence and
 // observation globals. The checks follow use_stethoscope()'s C branch order:
-// an off-map square first; a monster or secret terrain returns before
-// its_dead(); then the dead-thing family. Admitted paths run the source body
-// below, where unmap_invisible(), messages, terrain, vision, and display still
-// happen in C order.
+// an off-map square returns before any map reader; a monster or secret terrain
+// returns before its_dead(); then the dead-thing family. Admitted paths run the
+// source body below, where unmap_invisible(), messages, terrain, vision, and
+// display still happen in C order.
 function preflightAdjacentStethoscope(obj, state) {
     const u = state.u;
     // These source arms precede confdir() and the adjacent-square body. Their
@@ -326,9 +330,7 @@ function preflightAdjacentStethoscope(obj, state) {
 
     const rx = u.ux + u.dx;
     const ry = u.uy + u.dy;
-    if (!isok(rx, ry)) {
-        throw new UnsupportedApplyError('listening off the edge of the map');
-    }
+    if (!isok(rx, ry)) return;
     if (m_at(rx, ry, state)) return;
 
     const lev = state.level.at(rx, ry);
@@ -350,9 +352,9 @@ function preflightAdjacentStethoscope(obj, state) {
 // the cursed arm on obj.cursed alone keeps that draw out of the random-number
 // stream for the uncursed tools the ported path uses.
 //
-// Below confdir() the adjacent-square arm (384-470) runs through the monster
-// branch, both secret-terrain arms, and the empty square's answer. The
-// remaining off-map and dead-thing arms stop before the shared listen effects,
+// Below confdir() the adjacent-square arm (384-470) runs through the off-map
+// answer, monster branch, both secret-terrain arms, and the empty square's
+// answer. The remaining dead-thing arms stop before the shared listen effects,
 // so retrying their command cannot retain half of the unported path.
 async function use_stethoscope(obj, state = game) {
     const u = state.u;
@@ -411,9 +413,13 @@ async function use_stethoscope(obj, state = game) {
     const ry = u.uy + u.dy;
     // apply.c:386-390 answers a square off the map with "You hear a faint
     // typing noise." and ECMD_OK, the one arm below here that discards `res`
-    // rather than returning it. Its Soundeffect() interface is unported.
-    if (!isok(rx, ry))
-        throw new UnsupportedApplyError('listening off the edge of the map');
+    // rather than returning it. Soundeffect(se_typing_noise, 100) expands to
+    // nothing in the tty build; You_hear() still applies the acoustics gate.
+    if (!isok(rx, ry)) {
+        const heard = youHear('a faint typing noise.', state);
+        if (heard) await ttyPline(heard, state);
+        return ECMD_OK;
+    }
     const mtmp = m_at(rx, ry, state);
     if (mtmp) {
         // Named before seemimic() runs, so a mimic is still wearing its
