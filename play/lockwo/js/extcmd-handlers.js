@@ -16,11 +16,12 @@ import {
     obj_doname, sortloot, SORTLOOT_LOOT, SORTLOOT_INVLET, SORTLOOT_PACK, mergable,
     name_inventory_object, call_inventory_object, doorganize,
     addinv, prinv, prinv_fmt, let_to_name, report_merge_discovery,
-    wiz_identify, renderWindowScreen, useup, xname,
+    wiz_identify, renderWindowScreen, renderMenuLines, useup, xname,
 } from './invent.js';
 import { pluslvl, losexp } from './exper.js';
 import { MAXULEV, IS_WALL, SDOOR, MM_NOEXCLAM, BOLT_LIM, STRAT_WAITMASK,
-         IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR } from './const.js';
+         IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, COLNO, ROWNO,
+         QBUFSZ } from './const.js';
 import { create_particular_monster } from './makemon.js';
 import { mon_mr } from './monmr_data.js';
 import { is_undead_flag, is_demon_flag, humanoid } from './monflags_data.js';
@@ -33,8 +34,9 @@ import { delobj, stackobj } from './invent.js';
 import { count_unpaid, is_worn, wearing_armor, inventoryArray, takeoff_worn_obj,
          dismiss_invent_screen } from './invent.js';
 import { exercise } from './attrib.js';
+import { livelog_printf, LL_WISH, LL_CONDUCT } from './livelog.js';
 import { rn2 } from './rng.js';
-import { A_STR, A_WIS, A_DEX } from './const.js';
+import { A_STR, A_WIS, A_DEX, POLY_CONTROLLED } from './const.js';
 import { getpos, get_valid_jump_position, is_valid_jump_pos, getpos_render, jump_landing, jump_hilite_first_cursor } from './hack.js';
 import { dotwoweapon } from './wield.js';
 import { doride } from './steed.js';
@@ -71,181 +73,184 @@ const ECM_IGNOREAC = 0x1;   // ignore the AUTOCOMPLETE requirement
 const ECM_EXACTMATCH = 0x2; // require exact (full) name match
 
 // The extended-command table.  C ref: cmd.c extcmdlist[].  Each entry is
-// [ef_txt, flagbits].  We retain only the flag bits relevant to matching
-// (AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD); the rest
-// don't affect which entries match a typed prefix.  Ordering mirrors C so
-// matchlist indexes are stable.
+// [ef_txt, flagbits, ef_desc].  We retain only the flag bits relevant to
+// matching (AUTOCOMPLETE / WIZMODECMD / CMD_NOT_AVAILABLE / INTERNALCMD); the
+// rest don't affect which entries match a typed prefix.  Ordering mirrors C so
+// matchlist indexes are stable.  ef_desc is what extcmd_via_menu() shows (null
+// for the INTERNALCMD entries, which C also leaves NULL).
+// The recorder build defines DEBUG (its binary carries "bury objs under and
+// around you"), so the #ifdef DEBUG / NH_DEVEL_STATUS entries are all present.
 const EXTCMDLIST = [
-    ["#", 0],
-    ["?", AUTOCOMPLETE],
-    ["adjust", AUTOCOMPLETE],
-    ["annotate", AUTOCOMPLETE],
-    ["apply", 0],
-    ["attributes", 0],
-    ["autopickup", 0],
-    ["bugreport", 0],
-    ["call", 0],
-    ["cast", 0],
-    ["chat", AUTOCOMPLETE],
-    ["chronicle", AUTOCOMPLETE],
-    ["close", 0],
-    ["conduct", AUTOCOMPLETE],
-    ["debugfuzzer", WIZMODECMD],
-    ["dip", AUTOCOMPLETE],
-    ["down", 0],
-    ["drop", 0],
-    ["droptype", 0],
-    ["eat", 0],
-    ["engrave", 0],
-    ["enhance", AUTOCOMPLETE],
-    ["exploremode", 0],
-    ["fight", 0],
-    ["fire", 0],
-    ["force", AUTOCOMPLETE],
-    ["genocided", AUTOCOMPLETE],
-    ["glance", 0],
-    ["help", 0],
-    ["herecmdmenu", AUTOCOMPLETE],
-    ["history", AUTOCOMPLETE],
-    ["inventory", 0],
-    ["inventtype", 0],
-    ["invoke", AUTOCOMPLETE],
-    ["jump", AUTOCOMPLETE],
-    ["kick", 0],
-    ["known", 0],
-    ["knownclass", 0],
-    ["levelchange", AUTOCOMPLETE | WIZMODECMD],
-    ["lightsources", AUTOCOMPLETE | WIZMODECMD],
-    ["look", 0],
-    ["lookaround", 0],
-    ["loot", AUTOCOMPLETE],
-    ["migratemons", AUTOCOMPLETE | WIZMODECMD],
-    ["monster", AUTOCOMPLETE],
-    ["name", AUTOCOMPLETE],
-    ["offer", AUTOCOMPLETE],
-    ["open", 0],
-    ["options", 0],
-    ["optionsfull", 0],
-    ["overview", AUTOCOMPLETE],
-    ["panic", AUTOCOMPLETE | WIZMODECMD],
-    ["pay", 0],
-    ["perminv", 0],
-    ["pickup", 0],
-    ["polyself", AUTOCOMPLETE | WIZMODECMD],
-    ["pray", AUTOCOMPLETE],
-    ["prevmsg", 0],
-    ["puton", 0],
-    ["quaff", 0],
-    ["quit", AUTOCOMPLETE],
-    ["quiver", 0],
-    ["read", 0],
-    ["redraw", 0],
-    ["remove", 0],
-    ["repeat", 0],
-    ["reqmenu", 0],
-    ["retravel", 0],
-    ["ride", AUTOCOMPLETE],
-    ["rub", AUTOCOMPLETE],
-    ["run", 0],
-    ["rush", 0],
-    ["save", 0],
-    ["saveoptions", 0],
-    ["search", 0],
-    ["seeall", 0],
-    ["seeamulet", 0],
-    ["seearmor", 0],
-    ["seerings", 0],
-    ["seetools", 0],
-    ["seeweapon", 0],
-    ["shell", CMD_NOT_AVAILABLE],
-    ["showgold", 0],
-    ["showspells", 0],
-    ["showtrap", 0],
-    ["sit", AUTOCOMPLETE],
-    ["stats", AUTOCOMPLETE | WIZMODECMD],
-    ["suspend", CMD_NOT_AVAILABLE],
-    ["swap", 0],
-    ["takeoff", 0],
-    ["takeoffall", 0],
-    ["teleport", 0],
-    ["terrain", AUTOCOMPLETE],
-    ["therecmdmenu", AUTOCOMPLETE],
-    ["throw", 0],
-    ["timeout", AUTOCOMPLETE | WIZMODECMD],
-    ["tip", AUTOCOMPLETE],
-    ["toggle", 0],
-    ["travel", 0],
-    ["turn", AUTOCOMPLETE],
-    ["twoweapon", 0],
-    ["untrap", AUTOCOMPLETE],
-    ["up", 0],
-    ["vanquished", AUTOCOMPLETE],
-    ["version", AUTOCOMPLETE],
-    ["versionshort", 0],
-    ["vision", AUTOCOMPLETE | WIZMODECMD],
-    ["wait", 0],
-    ["wear", 0],
-    ["whatdoes", 0],
-    ["whatis", 0],
-    ["wield", 0],
-    ["wipe", AUTOCOMPLETE],
-    ["wizborn", WIZMODECMD],
-    ["wizbury", AUTOCOMPLETE | WIZMODECMD],
-    ["wizcast", WIZMODECMD],
-    ["wizcustom", WIZMODECMD],
-    ["wizdetect", WIZMODECMD],
-    ["wizdispmacros", AUTOCOMPLETE | WIZMODECMD],
-    ["wizfliplevel", WIZMODECMD],
-    ["wizgenesis", WIZMODECMD],
-    ["wizidentify", WIZMODECMD],
-    ["wizintrinsic", AUTOCOMPLETE | WIZMODECMD],
-    ["wizkill", AUTOCOMPLETE | WIZMODECMD],
-    ["wizlevelport", WIZMODECMD],
-    ["wizloaddes", WIZMODECMD],
-    ["wizloadlua", WIZMODECMD],
-    ["wizobjprobs", WIZMODECMD],
-    ["wizmakemap", WIZMODECMD],
-    ["wizmap", WIZMODECMD],
-    ["wizmondiff", AUTOCOMPLETE | WIZMODECMD],
-    ["wizrumorcheck", AUTOCOMPLETE | WIZMODECMD],
-    ["wizseenv", AUTOCOMPLETE | WIZMODECMD],
-    ["wizshownhuuid", AUTOCOMPLETE | WIZMODECMD],
-    ["wizsmell", AUTOCOMPLETE | WIZMODECMD],
-    ["wiztelekinesis", AUTOCOMPLETE | WIZMODECMD],
-    ["wizwhere", AUTOCOMPLETE | WIZMODECMD],
-    ["wizwish", WIZMODECMD],
-    ["wmode", AUTOCOMPLETE | WIZMODECMD],
-    ["zap", 0],
-    ["movewest", 0],
-    ["movenorthwest", 0],
-    ["movenorth", 0],
-    ["movenortheast", 0],
-    ["moveeast", 0],
-    ["movesoutheast", 0],
-    ["movesouth", 0],
-    ["movesouthwest", 0],
-    ["rushwest", 0],
-    ["rushnorthwest", 0],
-    ["rushnorth", 0],
-    ["rushnortheast", 0],
-    ["rusheast", 0],
-    ["rushsoutheast", 0],
-    ["rushsouth", 0],
-    ["rushsouthwest", 0],
-    ["runwest", 0],
-    ["runnorthwest", 0],
-    ["runnorth", 0],
-    ["runnortheast", 0],
-    ["runeast", 0],
-    ["runsoutheast", 0],
-    ["runsouth", 0],
-    ["runsouthwest", 0],
-    ["clicklook", INTERNALCMD],
-    ["mouseaction", INTERNALCMD],
-    ["altadjust", INTERNALCMD],
-    ["altdip", INTERNALCMD],
-    ["alttakeoff", INTERNALCMD],
-    ["altunwield", INTERNALCMD],
+    ["#", 0, "enter and perform an extended command"],
+    ["?", AUTOCOMPLETE, "list all extended commands"],
+    ["adjust", AUTOCOMPLETE, "adjust inventory letters"],
+    ["annotate", AUTOCOMPLETE, "name current level"],
+    ["apply", 0, "apply (use) a tool (pick-axe, key, lamp...)"],
+    ["attributes", 0, "show your attributes"],
+    ["autopickup", 0, "toggle the 'autopickup' option on/off"],
+    ["bugreport", 0, "file a bug report"],
+    ["call", 0, "name a monster, specific object, or type of object"],
+    ["cast", 0, "zap (cast) a spell"],
+    ["chat", AUTOCOMPLETE, "talk to someone"],
+    ["chronicle", AUTOCOMPLETE, "show journal of major events"],
+    ["close", 0, "close a door"],
+    ["conduct", AUTOCOMPLETE, "list voluntary challenges you have maintained"],
+    ["debugfuzzer", WIZMODECMD, "start the fuzz tester"],
+    ["dip", AUTOCOMPLETE, "dip an object into something"],
+    ["down", 0, "go down a staircase"],
+    ["drop", 0, "drop an item"],
+    ["droptype", 0, "drop specific item types"],
+    ["eat", 0, "eat something"],
+    ["engrave", 0, "engrave writing on the floor"],
+    ["enhance", AUTOCOMPLETE, "advance or check weapon and spell skills"],
+    ["exploremode", 0, "enter explore (discovery) mode"],
+    ["fight", 0, "prefix: force fight even if you don't see a monster"],
+    ["fire", 0, "fire ammunition from quiver"],
+    ["force", AUTOCOMPLETE, "force a lock"],
+    ["genocided", AUTOCOMPLETE, "list monsters that have been genocided or become extinct"],
+    ["glance", 0, "show what type of thing a map symbol corresponds to"],
+    ["help", 0, "give a help message"],
+    ["herecmdmenu", AUTOCOMPLETE, "show menu of commands you can do here"],
+    ["history", AUTOCOMPLETE, "show a summary of the game's development"],
+    ["inventory", 0, "show your inventory"],
+    ["inventtype", 0, "show inventory of one specific item class"],
+    ["invoke", AUTOCOMPLETE, "invoke an object's special powers"],
+    ["jump", AUTOCOMPLETE, "jump to another location"],
+    ["kick", 0, "kick something"],
+    ["known", 0, "show what object types have been discovered"],
+    ["knownclass", 0, "show discovered types for one class of objects"],
+    ["levelchange", AUTOCOMPLETE | WIZMODECMD, "change experience level"],
+    ["lightsources", AUTOCOMPLETE | WIZMODECMD, "show mobile light sources"],
+    ["look", 0, "look at what is here"],
+    ["lookaround", 0, "describe what you can see"],
+    ["loot", AUTOCOMPLETE, "loot a box on the floor"],
+    ["migratemons", AUTOCOMPLETE | WIZMODECMD, "show migrating monsters and migrate N random ones"],
+    ["monster", AUTOCOMPLETE, "use monster's special ability"],
+    ["name", AUTOCOMPLETE, "same as call; name a monster or object or object type"],
+    ["offer", AUTOCOMPLETE, "offer a sacrifice to the gods"],
+    ["open", 0, "open a door"],
+    ["options", 0, "show option settings"],
+    ["optionsfull", 0, "show all option settings, possibly change them"],
+    ["overview", AUTOCOMPLETE, "show a summary of the explored dungeon"],
+    ["panic", AUTOCOMPLETE | WIZMODECMD, "test panic routine (fatal to game)"],
+    ["pay", 0, "pay your shopping bill"],
+    ["perminv", 0, "scroll persistent inventory display"],
+    ["pickup", 0, "pick up things at the current location"],
+    ["polyself", AUTOCOMPLETE | WIZMODECMD, "polymorph self"],
+    ["pray", AUTOCOMPLETE, "pray to the gods for help"],
+    ["prevmsg", 0, "view recent game messages"],
+    ["puton", 0, "put on an accessory (ring, amulet, etc)"],
+    ["quaff", 0, "quaff (drink) something"],
+    ["quit", AUTOCOMPLETE, "exit without saving current game"],
+    ["quiver", 0, "select ammunition for quiver"],
+    ["read", 0, "read a scroll or spellbook"],
+    ["redraw", 0, "redraw screen"],
+    ["remove", 0, "remove an accessory (ring, amulet, etc)"],
+    ["repeat", 0, "repeat a previous command"],
+    ["reqmenu", 0, "prefix: request menu or modify command"],
+    ["retravel", 0, "travel to previously selected travel location"],
+    ["ride", AUTOCOMPLETE, "mount or dismount a saddled steed"],
+    ["rub", AUTOCOMPLETE, "rub a lamp or a stone"],
+    ["run", 0, "prefix: run until something interesting is seen"],
+    ["rush", 0, "prefix: rush until something interesting is seen"],
+    ["save", 0, "save the game and exit"],
+    ["saveoptions", 0, "save the game configuration"],
+    ["search", 0, "search for traps and secret doors"],
+    ["seeall", 0, "show all equipment in use"],
+    ["seeamulet", 0, "show the amulet currently worn"],
+    ["seearmor", 0, "show the armor currently worn"],
+    ["seerings", 0, "show the ring(s) currently worn"],
+    ["seetools", 0, "show the tools currently in use"],
+    ["seeweapon", 0, "show the weapon currently wielded"],
+    ["shell", CMD_NOT_AVAILABLE, "leave game to enter a sub-shell ('exit' to come back)"],
+    ["showgold", 0, "show gold, possibly shop credit or debt"],
+    ["showspells", 0, "list and reorder known spells"],
+    ["showtrap", 0, "describe an adjacent, discovered trap"],
+    ["sit", AUTOCOMPLETE, "sit down"],
+    ["stats", AUTOCOMPLETE | WIZMODECMD, "show memory statistics"],
+    ["suspend", CMD_NOT_AVAILABLE, "push game to background ('fg' to come back)"],
+    ["swap", 0, "swap wielded and secondary weapons"],
+    ["takeoff", 0, "take off one piece of armor"],
+    ["takeoffall", 0, "remove all armor"],
+    ["teleport", 0, "teleport around the level"],
+    ["terrain", AUTOCOMPLETE, "view map without monsters or objects obstructing it"],
+    ["therecmdmenu", AUTOCOMPLETE, "menu of commands you can do from here to adjacent spot"],
+    ["throw", 0, "throw something"],
+    ["timeout", AUTOCOMPLETE | WIZMODECMD, "look at timeout queue and hero's timed intrinsics"],
+    ["tip", AUTOCOMPLETE, "empty a container"],
+    ["toggle", 0, "toggle boolean option"],
+    ["travel", 0, "travel to a specific location on the map"],
+    ["turn", AUTOCOMPLETE, "turn undead away"],
+    ["twoweapon", 0, "toggle two-weapon combat"],
+    ["untrap", AUTOCOMPLETE, "untrap something"],
+    ["up", 0, "go up a staircase"],
+    ["vanquished", AUTOCOMPLETE, "list vanquished monsters"],
+    ["version", AUTOCOMPLETE, "list compile time options for this version of NetHack"],
+    ["versionshort", 0, "show version and date+time program was built"],
+    ["vision", AUTOCOMPLETE | WIZMODECMD, "show vision array"],
+    ["wait", 0, "rest one move while doing nothing"],
+    ["wear", 0, "wear a piece of armor"],
+    ["whatdoes", 0, "tell what a command does"],
+    ["whatis", 0, "show what type of thing a symbol corresponds to"],
+    ["wield", 0, "wield (put in use) a weapon"],
+    ["wipe", AUTOCOMPLETE, "wipe off your face"],
+    ["wizborn", WIZMODECMD, "show stats of monsters created"],
+    ["wizbury", AUTOCOMPLETE | WIZMODECMD, "bury objs under and around you"],
+    ["wizcast", WIZMODECMD, "cast any spell"],
+    ["wizcustom", WIZMODECMD, "show customized glyphs"],
+    ["wizdetect", WIZMODECMD, "reveal hidden things within a small radius"],
+    ["wizdispmacros", AUTOCOMPLETE | WIZMODECMD, "validate the display macro ranges"],
+    ["wizfliplevel", WIZMODECMD, "flip the level"],
+    ["wizgenesis", WIZMODECMD, "create a monster"],
+    ["wizidentify", WIZMODECMD, "identify all items in inventory"],
+    ["wizintrinsic", AUTOCOMPLETE | WIZMODECMD, "set an intrinsic"],
+    ["wizkill", AUTOCOMPLETE | WIZMODECMD, "slay a monster"],
+    ["wizlevelport", WIZMODECMD, "teleport to another level"],
+    ["wizloaddes", WIZMODECMD, "load and execute a des-file lua script"],
+    ["wizloadlua", WIZMODECMD, "load and execute a lua script"],
+    ["wizobjprobs", WIZMODECMD, "list object generation probabilities"],
+    ["wizmakemap", WIZMODECMD, "recreate the current level"],
+    ["wizmap", WIZMODECMD, "map the level"],
+    ["wizmondiff", AUTOCOMPLETE | WIZMODECMD, "validate the difficulty ratings of monsters"],
+    ["wizrumorcheck", AUTOCOMPLETE | WIZMODECMD, "verify rumor boundaries"],
+    ["wizseenv", AUTOCOMPLETE | WIZMODECMD, "show map locations' seen vectors"],
+    ["wizshownhuuid", AUTOCOMPLETE | WIZMODECMD, "show NHUUID for this game"],
+    ["wizsmell", AUTOCOMPLETE | WIZMODECMD, "smell monster"],
+    ["wiztelekinesis", AUTOCOMPLETE | WIZMODECMD, "telekinesis"],
+    ["wizwhere", AUTOCOMPLETE | WIZMODECMD, "show locations of special levels"],
+    ["wizwish", WIZMODECMD, "wish for something"],
+    ["wmode", AUTOCOMPLETE | WIZMODECMD, "show wall modes"],
+    ["zap", 0, "zap a wand"],
+    ["movewest", 0, "move west (screen left)"],
+    ["movenorthwest", 0, "move northwest (screen upper left)"],
+    ["movenorth", 0, "move north (screen up)"],
+    ["movenortheast", 0, "move northeast (screen upper right)"],
+    ["moveeast", 0, "move east (screen right)"],
+    ["movesoutheast", 0, "move southeast (screen lower right)"],
+    ["movesouth", 0, "move south (screen down)"],
+    ["movesouthwest", 0, "move southwest (screen lower left)"],
+    ["rushwest", 0, "rush west (screen left)"],
+    ["rushnorthwest", 0, "rush northwest (screen upper left)"],
+    ["rushnorth", 0, "rush north (screen up)"],
+    ["rushnortheast", 0, "rush northeast (screen upper right)"],
+    ["rusheast", 0, "rush east (screen right)"],
+    ["rushsoutheast", 0, "rush southeast (screen lower right)"],
+    ["rushsouth", 0, "rush south (screen down)"],
+    ["rushsouthwest", 0, "rush southwest (screen lower left)"],
+    ["runwest", 0, "run west (screen left)"],
+    ["runnorthwest", 0, "run northwest (screen upper left)"],
+    ["runnorth", 0, "run north (screen up)"],
+    ["runnortheast", 0, "run northeast (screen upper right)"],
+    ["runeast", 0, "run east (screen right)"],
+    ["runsoutheast", 0, "run southeast (screen lower right)"],
+    ["runsouth", 0, "run south (screen down)"],
+    ["runsouthwest", 0, "run southwest (screen lower left)"],
+    ["clicklook", INTERNALCMD, null],
+    ["mouseaction", INTERNALCMD, null],
+    ["altadjust", INTERNALCMD, null],
+    ["altdip", INTERNALCMD, null],
+    ["alttakeoff", INTERNALCMD, null],
+    ["altunwield", INTERNALCMD, null],
 ];
 
 function isWizard() { return !!game.flags?.debug; }
@@ -386,10 +391,253 @@ export async function hooked_tty_getlin(query, hook) {
     }
 }
 
+// ── OPTIONS=extmenu — the '#' extended-command MENU ────────────────────────
+// C ref: cmd.c extcmd_via_menu(), reached from win/tty/getline.c
+// tty_get_ext_cmd() when iflags.extmenu is set: '#' shows a PICK_ONE menu of
+// the AUTOCOMPLETE commands instead of the type-in prompt.  Each pick appends
+// its accelerator to cbuf and the list is re-filtered on that longer prefix
+// until exactly one command is left; that one is the selection.
+
+// C ref: win/tty/wintty.c default_menu_cmds[] (wintype.h MENU_*).  These are
+// accepted alongside the current page's selector letters, the digits and the
+// quitchars.  gm.mapped_menu_cmds is empty unless a menu_* option rebinds one,
+// which makes map_menu_cmd() the identity, so it is not modelled.
+const MENU_FIRST_PAGE = '^', MENU_LAST_PAGE = '|';
+const MENU_NEXT_PAGE = '>', MENU_PREVIOUS_PAGE = '<';
+const MENU_SEARCH = ':';
+const DEFAULT_MENU_CMDS = MENU_FIRST_PAGE + MENU_LAST_PAGE + MENU_NEXT_PAGE
+    + MENU_PREVIOUS_PAGE + '.' + '-' + '@' + ',' + '\\' + '~' + MENU_SEARCH;
+
+// C ref: strutil.c pmatch_internal(..., ci=TRUE) — '*' matches zero or more
+// characters, '?' matches exactly one.
+function pmatchi(patrn, strng) {
+    if (!patrn.length) return !strng.length;
+    const p = patrn[0];
+    if (p === '*')
+        return patrn.length === 1
+            || pmatchi(patrn.slice(1), strng)
+            || (strng.length > 0 && pmatchi(patrn, strng.slice(1)));
+    if (!strng.length) return false;
+    if (p !== '?' && p.toLowerCase() !== strng[0].toLowerCase()) return false;
+    return pmatchi(patrn.slice(1), strng.slice(1));
+}
+
+// C ref: win/tty/wintty.c tty_end_menu() — the prompt is PREPENDED as two
+// entries (a blank, then the prompt itself, which lands first), pages hold
+// min(52, rows-1) entries, an entry needing the last screen column is cut to
+// cols-2, and cw->cols is the widest entry + 2 but never below the morestr.
+// Then tty_display_nhwindow(NHW_MENU): a menu whose maxrow reaches the screen
+// height takes the whole screen, anything shorter floats as an overlay.
+function extcmd_end_menu(items, promptStr) {
+    const rows = game.nhDisplay?.rows ?? 24;
+    const cols = game.nhDisplay?.cols ?? 80;
+    // tty_menu_promptstyle is iflags.menu_headings (allmain.c:728), whose
+    // default is no-color&inverse.
+    const flat = [
+        { text: promptStr, attr: ATR_INVERSE },
+        { text: '' },
+        ...items.map((it) => ({ text: (it.sel ? it.sel + ' - ' : '') + it.text,
+                                sel: it.sel })),
+    ];
+    const lmax = Math.min(52, rows - 1);
+    const npages = Math.ceil(flat.length / lmax);
+    let maxcol = 0;
+    for (const ln of flat) {
+        if (ln.text.length + 2 > cols) ln.text = ln.text.slice(0, cols - 2);
+        if (ln.text.length + 2 > maxcol) maxcol = ln.text.length + 2;
+    }
+    // C measures the paging morestr from its widest "(M of M) " form.
+    const morelen = npages > 1 ? `(${npages} of ${npages}) `.length : 6;
+    if (morelen > maxcol) maxcol = morelen;
+    const maxrow = npages > 1 ? lmax + 1 : flat.length + 1;
+    const pages = [];
+    for (let i = 0; i < flat.length; i += lmax) pages.push(flat.slice(i, i + lmax));
+    return { flat, pages, npages, maxrow, fullscreen: maxrow >= rows };
+}
+
+// C ref: win/tty/wintty.c process_menu_window() page paint + dmore().  The
+// morestr sits on the row just past the page's last entry, indented one column,
+// with the cursor parked immediately after it.
+function render_extcmd_page(m, idx) {
+    const page = m.pages[idx];
+    if (m.fullscreen) {
+        renderWindowScreen(page, {
+            menu: true,
+            footer: m.npages > 1 ? `(${idx + 1} of ${m.npages})` : '(end) ',
+            footerRow: page.length,
+            footerCol: 1,
+            modal: 'extcmdwin',
+        });
+        return;
+    }
+    // Only a single-page menu can be an overlay (npages > 1 forces maxrow to
+    // the screen height), so renderMenuLines' "(end)" footer is always right.
+    renderMenuLines(page);
+    game._modal_screen = 'extcmdwin';
+}
+
+// C ref: win/tty/getline.c xwaitforspace() — read until the key is listed in
+// `s`; '\n'/'\r' break with morc still 0 and ESC forces morc = '\033'.  Any
+// other key is a tty_nhbell() and another read, with no redraw in between (so
+// each rejected key is captured showing the unchanged menu).
+async function xwaitforspace(s) {
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 10 || c === 13) return '\0';
+        if (c === 27) return '\x1b';
+        const ch = String.fromCharCode(c);
+        if (s.indexOf(ch) >= 0) return ch;
+    }
+}
+
+// C ref: win/tty/wintty.c process_menu_window()/tty_select_menu() for one
+// PICK_ONE round.  Returns the picked entry's accelerator, or null when the
+// menu was cancelled or committed with nothing selected (C's n == -1 / n == 0,
+// which extcmd_via_menu() handles identically).
+async function extcmd_select_menu(m) {
+    // tty_display_nhwindow(): an unacknowledged top line is --More--'d before
+    // the menu paints over it.
+    if (game._toplin === 1) {
+        await topl_more();
+        game._toplin = 0;
+    }
+    game._pending_message = '';
+    let curr_page = 0, counting = false, count = 0, reset_count = true;
+    for (;;) {
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
+        render_extcmd_page(m, curr_page);
+        const page = m.pages[curr_page];
+        const sels = page.filter((it) => it.sel).map((it) => it.sel).join('');
+        const morc = await xwaitforspace(sels + ' 0123456789\x1b\n\r'
+                                        + DEFAULT_MENU_CMDS);
+        // An explicit menu choice is never re-read as a menu command; with no
+        // menu_* rebinding map_menu_cmd() is the identity for everything else.
+        if (sels.indexOf(morc) >= 0) return morc;
+        if (morc >= '0' && morc <= '9') {
+            count = count * 10 + (morc.charCodeAt(0) - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
+        switch (morc) {
+        case '\x1b':                            // cancel, or just stop a count
+            if (!counting) return null;
+            break;
+        case '\0':                              // commit
+            return null;
+        case ' ':
+        case MENU_NEXT_PAGE:
+            if (curr_page !== m.npages - 1) curr_page++;
+            else if (morc === ' ') return null; // ' ' finishes, '>' does not
+            break;
+        case MENU_PREVIOUS_PAGE:
+            if (curr_page !== 0) curr_page--;
+            break;
+        case MENU_FIRST_PAGE:
+            curr_page = 0;
+            break;
+        case MENU_LAST_PAGE:
+            curr_page = m.npages - 1;
+            break;
+        case MENU_SEARCH: {
+            const tmpbuf = await hooked_tty_getlin('Search for:', null);
+            if (!tmpbuf || tmpbuf[0] === '\x1b') break;
+            const searchbuf = '*' + tmpbuf + '*';
+            // PICK_ONE finishes on the first hit, matched against the whole
+            // rendered entry (accelerator prefix included), not just the page.
+            for (const it of m.flat)
+                if (it.sel && pmatchi(searchbuf, it.text)) return it.sel;
+            break;
+        }
+        default:
+            // MENU_SELECT_*/MENU_INVERT_* are PICK_ANY-only, and nothing is
+            // ever selected here for MENU_UNSELECT_* to clear.
+            break;
+        }
+    }
+}
+
+// C ref: cmd.c extcmd_via_menu().
+async function extcmd_via_menu() {
+    let ret = 0, cbuf = '', matchlevel = 0, biggest = 0;
+    while (ret === 0) {
+        const choices = [];
+        for (let i = 0; i < EXTCMDLIST.length; i++) {
+            const [txt, flags, desc] = EXTCMDLIST[i];
+            if ((flags & (CMD_NOT_AVAILABLE | INTERNALCMD))
+                || !(flags & AUTOCOMPLETE)
+                || (!isWizard() && (flags & WIZMODECMD))) continue;
+            if (!matchlevel
+                || txt.slice(0, matchlevel) === cbuf.slice(0, matchlevel)) {
+                choices.push(i);
+                if (desc.length > biggest) biggest = desc.length;
+            }
+        }
+        const nchoices = choices.length;
+        // "if we're down to one, we have our selection"
+        if (nchoices <= 1) { ret = nchoices === 1 ? choices[0] : -1; break; }
+
+        // Group the choices by their matchlevel'th character: one line per
+        // command while the list is short enough, otherwise one line per
+        // accelerator holding "cmd or cmd or cmd" for that letter.
+        const width = biggest + 15;             // C: fmtstr = "%-*s"
+        const one_per_line = nchoices < ROWNO - 3;
+        const items = [];
+        let prompt = '', acount = 0, prevaccelerator = '', wastoolong = false;
+        for (let i = 0; i < nchoices; i++) {
+            const [txt, , desc] = EXTCMDLIST[choices[i]];
+            const accelerator = matchlevel < txt.length ? txt[matchlevel] : '';
+            if (accelerator !== prevaccelerator || one_per_line) wastoolong = false;
+            if (accelerator !== prevaccelerator || one_per_line
+                // +4: sizeof " or "; -6: 1 space margin + "%c - " + 1 margin
+                || (acount >= 2
+                    && prompt.length + 4 + txt.length
+                       >= Math.min(QBUFSZ, COLNO - 6))) {
+                if (acount) {
+                    items.push({ sel: prevaccelerator, text: prompt.padEnd(width) });
+                    acount = 0;
+                    if (!(accelerator !== prevaccelerator || one_per_line))
+                        wastoolong = true;
+                }
+            }
+            prevaccelerator = accelerator;
+            if (!acount || one_per_line)
+                prompt = (wastoolong ? 'or ' : '') + txt + ' [' + desc + ']';
+            else if (acount === 1)
+                prompt = (wastoolong ? 'or ' : '')
+                    + EXTCMDLIST[choices[i - 1]][0] + ' or ' + txt;
+            else
+                prompt = prompt + ' or ' + txt;
+            ++acount;
+        }
+        if (acount) items.push({ sel: prevaccelerator, text: prompt.padEnd(width) });
+
+        const m = extcmd_end_menu(items, 'Extended Command: ' + cbuf);
+        const picked = await extcmd_select_menu(m);
+        // destroy_nhwindow() -> erase_menu_or_text(): a full-screen menu
+        // docrt()s the map back before the chosen command runs.
+        await dismiss_invent_screen();
+        if (picked == null) {
+            // C leaves cbuf alone here, so a cancelled sub-menu returns to the
+            // top level with its stale text still in the "Extended Command:"
+            // prompt; only matchlevel is reset.
+            if (matchlevel) { ret = 0; matchlevel = 0; } else ret = -1;
+        } else if (matchlevel > QBUFSZ - 2) {
+            ret = -1;
+        } else {
+            cbuf = cbuf.slice(0, matchlevel) + picked;
+            matchlevel++;
+        }
+    }
+    return ret;
+}
+
 // C ref: win/tty/getline.c tty_get_ext_cmd().  Read a full-word extended
 // command name with completion, then resolve it to an extcmdlist index via
 // an exact (autocomplete-ignoring) match.  Returns the index, or -1.
 async function tty_get_ext_cmd() {
+    if (game.flags?.extmenu)
+        return await extcmd_via_menu();
+
     let buf = await hooked_tty_getlin('#', ext_cmd_getlin_hook);
     buf = mungspaces(buf);
 
@@ -924,7 +1172,7 @@ export async function wiz_wish() {
 // would add a line to every #wizwish.  zapnodir() prints it itself.
 export async function makewish() {
     let tries = 0;
-    let result = null;
+    let result = null, bufcpy = '';
     for (;;) {
         const prompt = (game.iflags?.cmdassist && tries > 0)
             ? 'For what do you wish (enter \'help\' for assistance)?'
@@ -951,7 +1199,25 @@ export async function makewish() {
             return;
         }
         result = r.obj;
+        bufcpy = buf;
         break;
+    }
+
+    // C ref: zap.c makewish():6386-6397 — the wish is chronicled BEFORE the
+    // object is held, with the request echoed verbatim and the result rendered
+    // by doname() (so an unheld, letter-less object).  `uhis()` is
+    // genders[flags.female].his (you.h:316).  Without this the #chronicle /
+    // gamelog window listed only "entered the dungeon" for a wishing session.
+    {
+        const u0 = game.u || {};
+        u0.uconduct = u0.uconduct || {};
+        const wish = `"${bufcpy}", got "${obj_doname(result)}"`;
+        const uhis = game.flags?.female ? 'her' : 'his';
+        if (!(u0.uconduct.wishes || 0))
+            livelog_printf(LL_CONDUCT | LL_WISH, `made ${uhis} first wish - ${wish}`);
+        else
+            livelog_printf(LL_WISH, `wished for ${wish}`);
+        u0.uconduct.wishes = (u0.uconduct.wishes || 0) + 1;
     }
 
     // hold the wished object (addinv).  drop_fmt/hold_msg as in C makewish.
@@ -1042,52 +1308,17 @@ export async function wiz_genesis() {
 
 // ── #polyself (wizcmds.c wiz_polyself -> polyself.c polyself(POLY_CONTROLLED)) ──
 //
-// Wizard-mode polymorph-self.  wiz_polyself() always calls polyself() with
-// forcecontrol=TRUE and controllable_poly=FALSE (no ring of polymorph
-// control in any covered session), so the "Become <x>?" y_n confirmation and
-// the draconian/vampire/lycanthrope goto-shortcuts (none of which a covered
-// session's hero ever is) never fire; those branches are therefore left out
-// rather than half-wired.  Random ("*") selection is likewise unreached (no
-// covered session ever types "*"/"random"/ESC at this prompt) and left out.
-//
-// Name resolution mirrors makemon.js's create_particular_monster(): a plain
-// name_to_pmidx() exact-match lookup (matching that established precedent),
-// not C's full name_to_mon() prefix/plural/alt-spelling matching.
-const POLYSELF_TRYLIM = 5;
+// C ref: wizcmds.c:568 wiz_polyself() — the whole body is polyself(POLY_CONTROLLED).
+// This used to be a hand-rolled getlin loop here that duplicated (and
+// diverged from) polyself.c: it resolved names with a bare exact-match
+// name_to_pmidx(), never ran the is_placeholder() orc/elf/giant substitution
+// or mkclass_poly()'s by-class path, never printed "That's enough tries!",
+// and reverted nothing when a poly'd wizard named their own role.  polyself()
+// in js/polyself.js is the faithful port; delegate to it.
 export async function wiz_polyself() {
     if (!isWizard()) return 0;
-    let tryct = POLYSELF_TRYLIM;
-    do {
-        const raw = await getlin_top('Become what kind of monster? [type the name]');
-        if (raw === '\x1b' || (raw.length && raw[0] === '\x1b')) {
-            await pline('Never mind.');
-            return 0;
-        }
-        const buf = mungspaces(raw);
-        let mntmp = name_to_pmidx(buf);
-
-        if (mntmp < 0) {
-            await pline("I've never heard of such monsters.");
-            continue;
-        }
-        // is_placeholder() ORC/ELF/GIANT substitution (mkclass_poly-style
-        // random pick within the class): not modeled — no covered session
-        // types a bare class placeholder name ("orc"/"elf"/"giant"); PM_HUMAN
-        // is exempted from is_placeholder() handling entirely, matching C.
-        const mdat = monster_by_pmidx(mntmp);
-        if (mntmp !== PM_HUMAN && !polyok_flag(mdat)) {
-            const pmName = mdat?.name || 'that';
-            await pline(`You can't polymorph into ${/^[aeiou]/i.test(pmName) ? 'an' : 'a'} ${pmName}.`);
-            continue;
-        }
-        if (mntmp === PM_HUMAN) {
-            await newman();
-        } else {
-            await polymon(mntmp);
-        }
-        return 0;
-    } while (--tryct > 0);
-    await pline("That's enough tries!");
+    const { polyself } = await import('./polyself.js');
+    await polyself(POLY_CONTROLLED);
     return 0;
 }
 
@@ -1324,12 +1555,19 @@ function draw_corner_window(lines, maxcol, morestr, curPad) {
 // (quit, pre-selected default when there is no next container); 'o'/'b' appear
 // when the container has contents (outokay) and 'i'/'r'/'s' when the hero
 // carries other inventory (inokay).
-function render_in_or_out_menu(box, outokay, inokay, alreadyused, more_containers, held) {
+function render_in_or_out_menu(box, outokay, inokay, alreadyused, more_containers, held,
+                               deselected = false) {
     const name = `the ${box_basename(box.otyp)}`;
     // C ref: use_container()'s safe_qbuf(..., yname, ...) for the prompt vs
     // in_or_out_menu()'s thesimpleoname(obj) for the entries: a CARRIED
     // container is "your bag" in the title but still "the bag" in the lines.
-    const title = `Do what with ${held ? `your ${box_basename(box.otyp)}` : name}?`;
+    // pickup.c:3076 — when there is nothing to take out AND the contents are
+    // already known, the prompt is the Yname2()/" is empty.  Do what with it?"
+    // form instead ("Your sack is empty.  Do what with it?"), with two spaces
+    // after the period.  Same `outmaybe` that hides the o/b entries.
+    const title = outokay
+        ? `Do what with ${held ? `your ${box_basename(box.otyp)}` : name}?`
+        : `${held ? 'Your' : 'The'} ${box_basename(box.otyp)} is empty.  Do what with it?`;
     // C ref: menuselector = flags.lootabc ? abc_chars : lootchars.  With the
     // 'lootabc' option on, the entries are lettered a/b/c/d/e in place of the
     // mnemonic o/i/b/r/s.  a.a_int (1..8) indexes the selector; element [0]
@@ -1345,10 +1583,13 @@ function render_in_or_out_menu(box, outokay, inokay, alreadyused, more_container
         lines.push({ text: `${sel[6]} - stash one item into ${name}` });
     }
     lines.push({ text: '' }); // C: add_menu_str(win, "") — blank separator
-    if (more_containers) lines.push({ text: `${sel[7]} - loot next container` });
-    // The 'q' entry is the pre-selected PICK_ONE default (no next container),
-    // so process_menu_window renders its selection indicator '*' (count == -1).
-    lines.push({ text: `${sel[8]} * ${alreadyused ? 'done' : 'do nothing'}` });
+    // C ref: in_or_out_menu() — 'n' carries MENU_ITEMFLAGS_SELECTED and 'q'
+    // gets it only when there is no next container, so exactly one of the two
+    // shows the PICK_ONE selection indicator '*' (count == -1).
+    // MENU_UNSELECT_ALL / MENU_UNSELECT_PAGE clear it back to '-'.
+    const mark = (on) => (on && !deselected ? '*' : '-');
+    if (more_containers) lines.push({ text: `${sel[7]} ${mark(true)} loot next container` });
+    lines.push({ text: `${sel[8]} ${mark(!more_containers)} ${alreadyused ? 'done' : 'do nothing'}` });
     // add_menu width convention: cw.maxcol = max(str.length + 2), vs "(end) ".
     let maxcol = '(end) '.length;
     for (const ln of lines) maxcol = Math.max(maxcol, ln.text.length + 2);
@@ -1411,26 +1652,73 @@ async function use_container(box, more_containers, held = false) {
     // C: inokay = invent && (invent != container || invent->nobj) — the hero
     // carries something OTHER than the container itself.
     const inokay = inv.some((o) => o !== box);
+    const sel = game?.flags?.lootabc ? '_:abcdenq' : '_:oibrsnq';
+    // C ref: win/tty/wintty.c process_menu_window() builds `resp` from the
+    // selectors of the entries ACTUALLY on the page, then appends
+    // " 0123456789\033\n\r" + default_menu_cmds, and dmore() -> xwaitforspace()
+    // rings the bell and reads again for anything outside it.  So a stray key
+    // over an open loot menu neither closes it nor reaches rhack() as a command
+    // — the screen simply does not change.
+    let respsel = sel[1]; // ':' look inside is always present
+    if (outmaybe) respsel += sel[2] + sel[4];
+    if (inokay) respsel += sel[3] + sel[5] + sel[6];
+    if (more_containers) respsel += sel[7];
+    respsel += sel[8];
+    // wintype.h MENU_FIRST_PAGE/LAST/NEXT/PREVIOUS, SELECT_ALL/UNSELECT_ALL/
+    // INVERT_ALL, SELECT_PAGE/UNSELECT_PAGE/INVERT_PAGE, SEARCH.
+    const MENU_CMDS = '^|><.-@,\\~:';
+    // C ref: wintty.c tty_display_nhwindow() NHW_MENU, corner (offx != 0) arm —
+    // an unacknowledged top line is paged first, then
+    // tty_clear_nhwindow(WIN_MESSAGE) blanks the message window outright.  So
+    // the getobj/#loot prompt that preceded the menu is GONE once the menu
+    // closes; without this the next flush_screen() repainted it.
+    if (game._toplin === 1) await topl_more();
+    game._pending_message = '';
+    game._toplin = 0;
+    let deselected = false;
     let c = 'q';
     for (;;) { // repeats iff ':' (look inside) gets chosen
-        render_in_or_out_menu(box, outmaybe, inokay, used !== 0, !!more_containers, held);
-        const key = await nhgetch();
-        const ch = (key === 27) ? '\x1b' : String.fromCharCode(key);
-        if (ch === ':') {
+        render_in_or_out_menu(box, outmaybe, inokay, used !== 0, !!more_containers, held,
+                              deselected);
+        let ch = '';
+        for (;;) { // xwaitforspace(resp): ignore keys outside the response set
+            const key = await nhgetch();
+            ch = (key === 27) ? '\x1b' : String.fromCharCode(key);
+            if (respsel.includes(ch)) break;             // explicit menu choice
+            if (ch === '\x1b' || ch === '\n' || ch === '\r' || ch === ' ') break;
+            if (ch >= '0' && ch <= '9') continue;        // count prefix: no redraw
+            if (ch === '-' || ch === '\\') {             // deselect the default
+                if (!deselected) { deselected = true; break; }
+                continue;
+            }
+            if (MENU_CMDS.includes(ch)) continue;       // no-op on a 1-page PICK_ONE
+            // not in resp: tty_nhbell() and read the next key
+        }
+        if (ch === '-' || ch === '\\') continue;         // redraw with '-' marker
+        if (ch === sel[1]) { // ':' look inside
             if (!box.cknown) used = 1; // gaining info costs a turn
             render_container_contents(box);
-            await nhgetch(); // --More-- (any key dismisses)
+            // C ref: process_text_window() -> dmore(cw, quitchars): only
+            // " \r\n\033" dismiss the contents window.
+            for (;;) {
+                const k = await nhgetch();
+                const kc = (k === 27) ? '\x1b' : String.fromCharCode(k);
+                if (kc === ' ' || kc === '\r' || kc === '\n' || kc === '\x1b') break;
+            }
             continue;
         }
-        // ':' loops; anything else (a valid action, 'q', or ESC) ends the menu.
-        c = (ch === '\x1b') ? 'q' : ch;
+        // C ref: '\033' cancels (select_menu -> -1 -> 'q'); ' ', '\n' and '\r'
+        // commit the pre-selected default entry, which is 'n' when there is
+        // another container and 'q' otherwise.
+        if (ch === '\x1b') c = 'q';
+        else if (ch === ' ' || ch === '\n' || ch === '\r') c = more_containers ? sel[7] : sel[8];
+        else c = ch;
         break;
     }
     // Map the chosen accelerator back to the canonical loot action.  The menu is
     // rendered with the same accelerators (lootabc's a/b/c/d/e or the mnemonic
     // o/i/b/r/s), and the picked slot maps to lootchars[slot].  C ref: pickup.c
     // in_or_out_menu() return -> use_container() c.
-    const sel = game?.flags?.lootabc ? '_:abcdenq' : '_:oibrsnq';
     const lootchars = '_:oibrsnq';
     const idx = sel.indexOf(c);
     const action = idx >= 1 ? lootchars[idx] : 'q';
@@ -2112,6 +2400,13 @@ async function pick_lock_box(pick, box) {
 // (AUTOUNLOCK_APPLY_KEY): pick an unlocking tool and run pick_lock(); unlocked
 // -> use_container().
 async function doloot() {
+    // C ref: pickup.c doloot_core():2194 — check_capacity((char *) 0) runs
+    // FIRST: an Overtaxed hero "can't do that while carrying so much stuff"
+    // and no turn passes (so the container prompts never appear).
+    {
+        const { check_capacity_throw } = await import('./invent.js');
+        if (await check_capacity_throw()) return 0; // ECMD_OK
+    }
     // C ref: pickup.c doloot():2198 — a handless polyform can't loot at all.
     // Skipping this opened the container menu, which then ate the keystrokes
     // C hands to the command parser.
@@ -2294,14 +2589,17 @@ async function doforce() {
             // redundantly ("a locked large box ... already unlocked"), then sets
             // it: the player has now learned the lock state either way.
             box.lknown = 0;
-            await pline(`There is a ${box_basename(box.otyp)} here, but its lock is already ${box.obroken ? 'broken' : 'unlocked'}.`);
+            await pline(`There is ${obj_doname(box)} here, but its lock is already ${box.obroken ? 'broken' : 'unlocked'}.`);
             box.lknown = 1;
             continue;
         }
-        // safe_qbuf: doname(locked box) -> "a locked <box>".
-        const name = box_basename(box.otyp);
-        box.lknown = 1;
-        const c = await yn_function(`There is a locked ${name} here; force its lock?`, 'ynq', 'q');
+        // C ref: lock.c doforce() — safe_qbuf(..., otmp, doname, ...) is built
+        // BEFORE `otmp->lknown = 1`, so a box whose lock state the hero has not
+        // learned yet is still just "a chest" in the question; only a box that
+        // was already lknown reads "a locked chest".
+        const qbuf = `There is ${obj_doname(box)} here; force its lock?`;
+        box.lknown = 1;   /* set before ynq(), so 'n'/'q' still learns it */
+        const c = await yn_function(qbuf, 'ynq', 'q');
         if (c === 'q') return 0;
         if (c === 'n') continue;
         // update_topl (not plain pline) so the message is left in NEED_MORE

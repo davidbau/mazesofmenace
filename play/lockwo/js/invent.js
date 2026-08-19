@@ -1226,7 +1226,7 @@ export function cmdq_pop(which = CQ_CANNED) {
 }
 function cmdq_clear(which = CQ_CANNED) { _cmdq(which).length = 0; }
 function cmdq_add_int(which, n) { _cmdq(which).push({ typ: CMDQ_INT, intval: n }); }
-function cmdq_add_key(which, k) {
+export function cmdq_add_key(which, k) {
     _cmdq(which).push({ typ: CMDQ_KEY, key: typeof k === 'number' ? k : String(k).charCodeAt(0) });
 }
 function silly_thing_to() { return 'That is a silly thing to do.'; }
@@ -1704,12 +1704,11 @@ function simple_obj_name(obj, opts = {}) {
     // just "a tin".
     if (obj.otyp === TIN && obj.known) base = tin_details(obj, base);
     let prefix = (empty ? empty_prefix(obj) : '') + (buc ? bucPrefix(obj) : '');
-    // C ref: objnam.c doname_base — a lockable box (chest/large box/ice box)
-    // whose lock state is known (lknown, set once the hero loots/kicks/forces
-    // it) shows "broken "/"locked "/"unlocked "; a box with a known trap shows
-    // "trapped " first.  These follow the BUC prefix and precede the base name,
-    // so a freshly-seen (lknown==0) box is still just "a chest".
-    if (Is_box(obj)) {
+    // C ref: objnam.c:1356-1368 doname_base — a lockable box whose lock state is
+    // known (lknown) shows "broken "/"locked "/"unlocked ", preceded by
+    // "trapped " for a known trap, so a freshly-seen box is still "a chest".
+    // Inside doname_base(), hence gated on `buc` like "partly eaten" below.
+    if (buc && Is_box(obj)) {
         if (obj.otrapped && obj.tknown && obj.dknown) prefix += 'trapped ';
         if (obj.lknown)
             prefix += obj.obroken ? 'broken ' : obj.olocked ? 'locked ' : 'unlocked ';
@@ -1718,11 +1717,11 @@ function simple_obj_name(obj, opts = {}) {
     // doname-only (xname_flags adds it only under iflags.partly_eaten_hack), so
     // it is gated on `buc`, this function's "this is doname" flag.
     if (buc && obj.oclass === FOOD_CLASS && obj.oeaten) prefix += 'partly eaten ';
-    // C ref: objnam.c doname_base RING_CLASS — a known charged ring appends its
-    // enchantment as a signed prefix ("%+d "), so "+1 ", "+0 ", "-2 " all show
-    // (there is no spe != 0 guard).  Non-charged rings (e.g. see invisible) and
-    // unidentified rings get no prefix.
-    if (obj.oclass === RING_CLASS && obj.known && is_oc_charged(obj))
+    // C ref: objnam.c:1500 doname_base RING_CLASS — a known charged ring appends
+    // its enchantment as a signed prefix ("%+d "), so "+1 ", "+0 ", "-2 " all
+    // show (there is no spe != 0 guard).  Non-charged rings (e.g. see
+    // invisible) and unidentified ones get no prefix.
+    if (buc && obj.oclass === RING_CLASS && obj.known && is_oc_charged(obj))
         prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe | 0} `;
     // C ref: objnam.c xname_flags WEAPON_CLASS — "poisoned " is part of the
     // bare xname (both xname() and doname() show it), unlike erosion words
@@ -1736,13 +1735,19 @@ function simple_obj_name(obj, opts = {}) {
         prefix += add_erosion_words(obj);
         if (obj.known) prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe | 0} `;
     }
-    const chg = charge_suffix(obj);
+    // C ref: objnam.c:1486 — the " (recharged:charges)" suffix is emitted by
+    // doname_base(), never by xname_flags(), so cxname()/xname()/yname() leave
+    // it off.  Measured beyond the wording: uhitm.c's yname(uwep) "You begin
+    // bashing monsters with your tinning kit." plus the hit message that
+    // follows fits on one top line, but with a stray " (0:48)" it does not, so
+    // the port inserted an extra --More-- boundary and lost the rest of the run.
+    const chg = buc ? charge_suffix(obj) : '';
     // C ref: objnam.c:1373 doname_base — a container whose contents are known
     // (cknown) and non-empty names its stack count: "a bag containing 1 item".
     // Appended to the NAME (before the class suffixes), not to the prefix, so
     // the article still comes from the bare base word.
     let containing = '';
-    if (obj.cknown && Has_contents(obj)) {
+    if (buc && obj.cknown && Has_contents(obj)) {
         const n = count_contents(obj, false, false, true, false);
         containing = ` containing ${n} item${n === 1 ? '' : 's'}`;
     }

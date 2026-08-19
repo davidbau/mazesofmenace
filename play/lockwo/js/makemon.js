@@ -708,6 +708,15 @@ const _NAME_TO_PMIDX = (() => {
     }
     return m;
 })();
+// C ref: do_name.c pmname(pm, mgender) — mons[].pmnames[MALE|FEMALE], falling
+// back to pmnames[NEUTRAL] (which is what MONS_NAMES stores) for the species
+// that carry no gendered pair.  Exported for botl.c's polymorphed status title.
+export function pmname_of_pmidx(pmidx, female) {
+    const m = MONS[pmidx];
+    if (!m) return 'monster';
+    const pair = _GENDERED_BY_NEUTRAL.get(m.name);
+    return (pair && pair[female ? 1 : 0]) || m.name;
+}
 export function name_to_pmidx(name) {
     const v = _NAME_TO_PMIDX.get(name);
     return v == null ? -1 : v;

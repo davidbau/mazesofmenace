@@ -239,7 +239,7 @@ function dowhatdoes_core(q) {
 // C ref: pager.c dowhatdoes() — "Ask about '&' or '?'..." shown once, then the
 // bare "What command? " prompt (yn_function with NULL resp: reads any single
 // key), then the key's description is plined.  Returns ECMD_OK (no game time).
-async function dowhatdoes() {
+export async function dowhatdoes() {
     let needMore = false;
     if (!game._dowhatdoes_once) {
         await pline("Ask about '&' or '?' to get more info.");
@@ -589,4 +589,224 @@ function renderHelpMenu(offx, lines) {
     const morestr = '(end) ';
     d.putstr(offx + 1, footRow, morestr, NO_COLOR, 0);
     d.setCursor(offx + 1 + morestr.length, footRow);
+}
+
+// ---------------------------------------------------------------------------
+// The tty PICK_ONE menu response loop, and do_look()'s "What do you want to
+// look at:" menu that uses it.
+//
+// C ref: win/tty/wintty.c process_menu_window() (cw->how == PICK_ONE) plus
+// win/tty/getline.c xwaitforspace(resp), which does the accept/bell filtering
+// BEFORE the menu switch ever sees the key.  The port previously read a single
+// key and treated anything unrecognised as a cancel; C rings the bell and
+// re-reads with the menu still on screen, so every stray keystroke over an open
+// menu left our display a whole command out of step.
+
+// wintype.h MENU_* menu-window keyboard commands, in win/tty/wintty.c
+// default_menu_cmds[] order.  MENUCOMMAND bindings would populate
+// gm.mapped_menu_cmds/gm.mapped_menu_op; with none set map_menu_cmd() is the
+// identity, which is the only case reachable from a config-less recording.
+const MENU_FIRST_PAGE = '^', MENU_LAST_PAGE = '|', MENU_NEXT_PAGE = '>',
+      MENU_PREVIOUS_PAGE = '<', MENU_SELECT_ALL = '.', MENU_UNSELECT_ALL = '-',
+      MENU_INVERT_ALL = '@', MENU_SELECT_PAGE = ',', MENU_UNSELECT_PAGE = '\\',
+      MENU_INVERT_PAGE = '~', MENU_SEARCH = ':';
+const DEFAULT_MENU_CMDS =
+    MENU_FIRST_PAGE + MENU_LAST_PAGE + MENU_NEXT_PAGE + MENU_PREVIOUS_PAGE
+    + MENU_SELECT_ALL + MENU_UNSELECT_ALL + MENU_INVERT_ALL + MENU_SELECT_PAGE
+    + MENU_UNSELECT_PAGE + MENU_INVERT_PAGE + MENU_SEARCH;
+const GOLD_SYM = '$';
+
+// C ref: getline.c xwaitforspace(s) — read keys until one is acceptable,
+// ringing the bell for the rest.  Returns C's `morc`: '\0' for return/newline,
+// '\033' for escape, else the accepted character.  ttyDisplay->dismiss_more is
+// 0 outside topl.c's --More--, so the `c == x` arm never fires here.
+async function xwaitforspace(s) {
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 10 || c === 13) return '\0';
+        if (c === 27) return '\x1b';
+        const ch = String.fromCharCode(c);
+        if (s.indexOf(ch) >= 0) return ch;
+        // tty_nhbell(): the key is discarded, nothing is redrawn, read again.
+    }
+}
+
+// C ref: process_menu_window() gacc[] collection.  A group accelerator only
+// enters gacc when it differs from its own entry's selector (or is GOLD_SYM),
+// and for PICK_ONE only when exactly one entry claims it.
+function menu_group_accels(items, pick_one) {
+    const gcnt = new Map();
+    let n = 0;
+    for (const it of items)
+        if (it.gsel && it.gsel !== it.ch) {
+            n++;
+            gcnt.set(it.gsel, (gcnt.get(it.gsel) || 0) + 1);
+        }
+    let gacc = '';
+    if (n > 0)
+        for (const it of items)
+            if (it.gsel && (it.gsel !== it.ch || it.gsel === GOLD_SYM)
+                && gacc.indexOf(it.gsel) < 0
+                && (!pick_one || gcnt.get(it.gsel) === 1))
+                gacc += it.gsel;
+    return gacc;
+}
+
+// C ref: process_menu_window() with cw->how == PICK_ONE, for a menu that fits
+// on one page (cw->npages == 1, which is every menu this drives).  `items` is
+// the add_menu() order; entries with no `ch` are add_menu_str() headers.
+// `render` redraws the window and parks the cursor after the morestr, which is
+// what C's "just put the cursor back" else-branch does on every re-read.
+// Returns the selected entry's a_char, or null when the menu was cancelled or
+// committed with nothing picked.
+export async function menu_select_pick_one(items, render) {
+    const gacc = menu_group_accels(items, /*pick_one=*/true);
+
+    // resp[]: the page's selectors, then gacc, then the always-accepted keys.
+    // resp_len covers selectors+gacc: a key inside it is an explicit choice and
+    // is NOT re-read as a mapped menu command.
+    let resp = '';
+    for (const it of items) if (it.ch) resp += it.ch;
+    resp += gacc;
+    const resp_len = resp.length;
+    resp += ' ' + '0123456789\x1b\n\r' + DEFAULT_MENU_CMDS;
+
+    let counting = false, count = 0, reset_count = true;
+    for (;;) {
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
+
+        render(items);
+        const raw = await xwaitforspace(resp);
+
+        // MENU_EXPLICIT_CHOICE: a selector/group key keeps its own meaning even
+        // when it also happens to be a menu command (':' vs a ':' selector).
+        const explicit = raw !== '\0' && resp.indexOf(raw) >= 0
+                         && resp.indexOf(raw) < resp_len;
+        const morc = explicit ? raw : map_menu_cmd(raw);
+
+        if (!explicit && morc >= '0' && morc <= '9') {
+            // '0'..'9' start/extend a count unless the digit is a group accel.
+            if (!counting && gacc.indexOf(morc) >= 0) {
+                const hit = items.find((it) => it.gsel === morc);
+                if (hit) return hit.ch;
+                continue;
+            }
+            count = count * 10 + (morc.charCodeAt(0) - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
+        if (!explicit && morc === '\x1b') {
+            // ESC while counting only stops the count; otherwise it cancels.
+            if (!counting) return null;
+            continue;
+        }
+        if (!explicit && (morc === '\0')) return null;   // committed, no pick
+        if (!explicit && morc === ' ') return null;      // single page: finish
+        if (!explicit && (morc === MENU_NEXT_PAGE || morc === MENU_PREVIOUS_PAGE
+                          || morc === MENU_FIRST_PAGE || morc === MENU_LAST_PAGE))
+            continue;                                    // single page: no-op
+        if (!explicit && (morc === MENU_SELECT_PAGE || morc === MENU_UNSELECT_PAGE
+                          || morc === MENU_INVERT_PAGE || morc === MENU_SELECT_ALL
+                          || morc === MENU_UNSELECT_ALL || morc === MENU_INVERT_ALL))
+            continue;                    // PICK_ANY-only, or nothing selected
+        if (!explicit && morc === MENU_SEARCH) {
+            const picked = await menu_search_pick_one(items);
+            if (picked) return picked;
+            continue;
+        }
+
+        // default: an explicit choice (or an unmapped key that reached here).
+        if (gacc.indexOf(morc) >= 0) {
+            // invert_all(..., morc): for PICK_ONE gacc holds only keys that
+            // match exactly one entry, so this selects that entry and finishes.
+            const hit = items.find((it) => it.gsel === morc);
+            if (hit) return hit.ch;
+            continue;
+        }
+        const sel = items.find((it) => it.ch === morc);
+        if (sel) return sel.ch;
+        // Not in resp at all cannot happen (xwaitforspace filtered); anything
+        // else falls through as C's tty_nhbell() no-op.
+    }
+}
+
+// C ref: options.c map_menu_cmd() — identity without MENUCOMMAND bindings.
+function map_menu_cmd(ch) { return ch; }
+
+// C ref: process_menu_window() case MENU_SEARCH — tty_getlin("Search for:"),
+// then the first entry whose displayed string matches "*<reply>*" (pmatchi, so
+// case-insensitively) is selected and PICK_ONE finishes.
+async function menu_search_pick_one(items) {
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    const reply = await hooked_tty_getlin('Search for:', null);
+    if (!reply || reply[0] === '\x1b') return null;
+    const needle = reply.toLowerCase();
+    for (const it of items)
+        if (it.ch && (it.str || '').toLowerCase().indexOf(needle) >= 0)
+            return it.ch;
+    return null;
+}
+
+// C ref: pager.c do_look() — the "What do you want to look at:" menu entries,
+// in add_menu() order.  add_menu()'s 4th/5th arguments are the selector and the
+// group accelerator; with flags.lootabc unset the selector is the entry's own
+// a_char and the group accelerators preserve the original y|n question ('y' =>
+// the map, 'n' => by symbol/name) plus '^'/'"'/'`'/'|' for the list choices.
+// The second block is suppressed while swallowed or hallucinating, exactly as
+// in C, because the screen then can't show what those choices scan for.
+export function whatis_menu_items() {
+    const lootabc = !!game?.flags?.lootabc;
+    const u = game?.u;
+    const Hallucination = ((u?.uprops?.Hallucination || 0) > 0)
+                          || !!u?.HHallucination || !!u?.uhallu;
+    const at = (ch, gsel, desc) =>
+        ({ ch, gsel: lootabc ? 0 : gsel, desc, str: `${ch} - ${desc}` });
+
+    const items = [
+        at('/', 'y', 'something on the map'),
+        // [don't use 'i' as lootabc group accelerator because it will make the
+        // regular 'i' choice inaccessible]
+        at('i', 0, "something you're carrying"),
+        at('?', 'n', 'something else (by symbol or name)'),
+    ];
+    if (!u?.uswallow && !Hallucination) {
+        items.push({ blank: true });   // add_menu_str(win, "")
+        items.push(at('m', 0, 'nearby monsters'));
+        items.push(at('M', 0, 'all monsters shown on map'));
+        items.push(at('o', 0, 'nearby objects'));
+        items.push(at('O', 0, 'all objects shown on map'));
+        items.push(at('t', '^', 'nearby traps'));
+        items.push(at('T', '"', 'all seen or remembered traps'));
+        // [don't use 'e' as lootabc group accelerator]
+        items.push(at('e', '`', 'nearby engravings'));
+        items.push(at('E', '|', 'all seen or remembered engravings'));
+    }
+    if (lootabc) {
+        // flags.lootabc relabels the entries a/b/c/... and the group
+        // accelerators become '/', '?' and each list entry's own letter.
+        const abc = 'abcdefghijklmnopqrstuvwxyz';
+        let n = 0;
+        for (const it of items) {
+            if (it.blank) continue;
+            const gsel = it.ch === 'i' ? 0 : it.ch === '/' ? '/'
+                       : it.ch === '?' ? '?' : it.ch === 'e' ? 0 : it.ch;
+            it.gsel = gsel;
+            it.sel = abc[n++];
+            it.str = `${it.sel} - ${it.desc}`;
+        }
+        // The a_char stays the mnemonic; only the typed selector changes.
+        for (const it of items) if (!it.blank) { it.a_char = it.ch; it.ch = it.sel; }
+    }
+    return items;
+}
+
+// C ref: pager.c do_look() — build the menu, run select_menu(PICK_ONE) and hand
+// back the chosen a_char (C's `i`, which stays '\0' -> the `default:`/'q' arm
+// when nothing was picked).
+export async function whatis_menu_pick(render) {
+    const items = whatis_menu_items();
+    const picked = await menu_select_pick_one(items, render);
+    if (!picked) return 'q';
+    const hit = items.find((it) => it.ch === picked);
+    return (hit && hit.a_char) ? hit.a_char : picked;
 }

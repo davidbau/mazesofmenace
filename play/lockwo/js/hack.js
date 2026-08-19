@@ -928,11 +928,11 @@ export async function travel_adjacent_step(tx, ty) {
     if (!dx && !dy) return false;
     if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
         u.dx = dx; u.dy = dy; u.dz = 0;
-        // C's guard is crawl_destination() + test_move(TEST_MOVE); when it
-        // fails C drops into the BFS (which walks the hero into the obstacle
-        // and loses the turn to the bump).  This port keeps the old
-        // no-op-on-failure behaviour for the adjacent case.
-        if (!test_move_quiet(tx, ty)) return false;
+        // C ref: hack.c findtravelpath():1276 — when the fast path's test_move()
+        // refuses the step C does NOT abandon the command: it sets
+        // context.run = 8 and falls through to the same call's BFS, so an
+        // adjacent unreachable destination still spends the turn.
+        if (!test_move_quiet(tx, ty)) return await travel_walk();
         c.travel = 1; c.nopick = 1; c.mv = true;
         c.travel1 = 0;                  // domove_core() clears it past findtravelpath
         c.run = 0;                      // end_running(FALSE)
@@ -2150,7 +2150,11 @@ export async function do_farlook() {
     await pline(`Pick ${WHAT}.`);
     await flush_screen(1);
 
-    const cc = await getpos(WHAT, u.ux, u.uy, null);
+    // C ref: pager.c do_look() `ans = getpos(&cc, quick, what_is_a_location)`
+    // — the force argument IS `quick`, so the ';' glance runs getpos in FORCED
+    // mode: a quit char (space/return) is swallowed and the loop keeps going,
+    // where the unforced '/' whatis getpos prints "Done." and gives up.
+    const cc = await getpos(WHAT, u.ux, u.uy, null, /*force=*/true);
     if (!cc) { game.context.move = 0; return; }
 
     // do_screen_description: describe the chosen cell.  Monster/object naming
@@ -2420,30 +2424,12 @@ export async function monster_detect(otmp, mclass) {
 //
 // C ref: pager.c do_look() + win/tty/wintty.c process_menu_window.
 
-// The whatis menu entries in the !lootabc default ordering.  A blank marker
-// reproduces the add_menu_str(win, "") separator after the first three items
-// (only present when !u.uswallow && !Hallucination, the recorded state).
-const WHATIS_ITEMS = [
-    { ch: '/', desc: 'something on the map' },
-    { ch: 'i', desc: "something you're carrying" },
-    { ch: '?', desc: 'something else (by symbol or name)' },
-    { blank: true },
-    { ch: 'm', desc: 'nearby monsters' },
-    { ch: 'M', desc: 'all monsters shown on map' },
-    { ch: 'o', desc: 'nearby objects' },
-    { ch: 'O', desc: 'all objects shown on map' },
-    { ch: 't', desc: 'nearby traps' },
-    { ch: 'T', desc: 'all seen or remembered traps' },
-    { ch: 'e', desc: 'nearby engravings' },
-    { ch: 'E', desc: 'all seen or remembered engravings' },
-];
-
 // Render the whatis PICK_ONE menu as a tty corner overlay (the map shows
 // through on the left of offx).  Mirrors render_corner_menu in
 // extcmd-handlers.js / process_menu_window: title (inverse) on row 0, a blank
 // separator, the "<accel> - <text>" item lines (and the mid-list blank), then
 // the "(end)" morestr with the cursor parked after it.
-function render_whatis_menu() {
+function render_whatis_menu(items) {
     const disp = game.nhDisplay;
     if (!disp?.setCell) return;
     const cols = disp.cols || 80;
@@ -2451,7 +2437,7 @@ function render_whatis_menu() {
     const lines = [];
     lines.push({ text: 'What do you want to look at:', attr: ATR_INVERSE });
     lines.push({ text: '' });
-    for (const it of WHATIS_ITEMS) {
+    for (const it of items) {
         lines.push({ text: it.blank ? '' : `${it.ch} - ${it.desc}` });
     }
 
@@ -3150,17 +3136,12 @@ export async function do_look_full() {
     const u = game.u;
     const WHAT = 'a monster, object or location';
 
-    // 1. Present the whatis menu and read the PICK_ONE selection.
-    render_whatis_menu();
-    const k0 = await nhgetch();
-    const sel = String.fromCharCode(k0);
-
-    // Map the key to a selection; ESC/space/return/'q' cancel.
-    let i = 'q';
-    if (k0 !== 27 && k0 !== 32 && k0 !== 13 && k0 !== 10
-        && WHATIS_ITEMS.some((it) => it.ch === sel)) {
-        i = sel;
-    }
+    // 1. Present the whatis menu and read the PICK_ONE selection.  The tty
+    //    PICK_ONE loop (wintty.c process_menu_window + xwaitforspace) lives in
+    //    pager.js: a key that is neither a selector nor a menu command rings
+    //    the bell and is re-read with the menu still displayed.
+    const { whatis_menu_pick } = await import('./pager.js');
+    const i = await whatis_menu_pick(render_whatis_menu);
     // Redraw the map under the dismissed menu before any prompt is shown.
     game._pending_message = '';
     game._toplin = 0;

@@ -7254,6 +7254,20 @@ function mhitm_knockback(mtmp, mattk) {
 async function mdamageu(mtmp, n) {
     const u = game.u;
     if (n < 0) n = 0;
+    // C ref: mhitu.c:1910-1918 — while Upolyd the damage lands on u.mh, and
+    // running the monster form out of hit points calls rehumanize() rather
+    // than done().  This copy went straight to u.uhp, so a polymorphed hero
+    // was immortal in the form (the status HP field reads u.mh) while the
+    // real hero HP silently drained underneath it.
+    if (u.Upolyd) {
+        u.mh = (u.mh | 0) - n;
+        if (u.mh > u.mhmax) u.mh = u.mhmax;
+        if (u.mh < 1) {
+            const { rehumanize } = await import('./polyself.js');
+            if (rehumanize) await rehumanize();
+        }
+        return;
+    }
     u.uhp -= n;
     if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;
     // C ref mhitu.c:1925 — `if (u.uhp < 1) done_in_by(mtmp, DIED)`.  A hostile

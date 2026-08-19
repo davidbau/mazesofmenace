@@ -20,7 +20,7 @@ import { update_topl, newsym } from './display.js';
 // update_topl() is the function that appends-or-flushes-with-"--More--"
 // (pline() just clobbers the pending line, dropping earlier messages).
 const pline = update_topl;
-import { exercise } from './attrib.js';
+import { exercise, acurr_eff } from './attrib.js';
 import { find_ac, race_attrmax, race_attrmin, race_attrmax_of } from './u_init.js';
 import { encumber_msg, freeinv, xname, makeplural, near_capacity } from './invent.js';
 import { base_mmove } from './mon.js';
@@ -34,23 +34,30 @@ import { makesingular } from './objnam.js';
 import { newuexp, newhp, newpw, adjabil, update_rank } from './exper.js';
 import { newuhs } from './eat.js';
 import { monster_by_pmidx, name_to_pmidx, golemhp_js as golemhp,
-    is_home_elemental } from './makemon.js';
+    is_home_elemental, MGEND_MALE, MGEND_FEMALE, MGEND_NEUTRAL } from './makemon.js';
 import { livelog_printf, LL_CONDUCT } from './livelog.js';
 import { A_STR, A_INT, A_WIS, A_CON, A_DEX, A_MAX, TT_PIT, TT_BURIEDBALL,
-    IS_FOUNTAIN, IS_POOL, IS_LAVA, IS_AIR, In_endgame } from './const.js';
+    IS_FOUNTAIN, IS_POOL, IS_LAVA, IS_AIR, In_endgame,
+    POLY_CONTROLLED, POLY_MONSTER, POLY_REVERT, POLY_LOW_CTRL } from './const.js';
+import { Unaware } from './const.js';
 import {
     is_hider_flag, hides_under_flag, is_were_flag, likes_gems_flag,
     strongmonst_flag, is_male_flag, is_flyer_flag, mflags1_of, M1_CLING,
+    M1_SLITHY, M1_NOEYES,
     lays_eggs_flag, mindless, msound_of, is_swimmer_flag,
     is_female_flag, is_neuter_flag, is_orc_flag, is_elf_flag, is_dwarf_flag,
     is_gnome_flag, is_giant_flag, is_undead_flag, nohands, humanoid,
+    polyok_flag, mflags2_of, M2_HUMAN, M2_ELF, M2_DWARF, M2_GNOME, M2_ORC,
+    M2_PNAME,
 } from './monflags_data.js';
 import { attacktype, mattk_of, AT_BREA, AT_SPIT, AT_GAZE,
     AD_MAGM, AD_CONF, AD_FIRE } from './monattk_data.js';
 import { monsterList, DEADMONSTER } from './mon.js';
 import { races } from './role.js';
 import { Blind } from './vision.js';
-import { surface } from './dungeon.js';
+import { surface, In_hell } from './dungeon.js';
+import { emits_light, new_light_source, del_light_source, LS_MONSTER,
+    HERO } from './light.js';
 
 // ── real (not session-specific) monster-index constants (mons[] order) ──
 const PM_HUMAN = 260;
@@ -58,6 +65,9 @@ const PM_ORC = 72;
 const PM_GIANT = 169;
 const PM_ELF = 264;
 const PM_GRAY_DRAGON = name_to_pmidx('gray dragon');
+let _uruk = -2, _orccap = -2;
+function PM_URUK_HAI() { if (_uruk === -2) _uruk = name_to_pmidx('Uruk-hai'); return _uruk; }
+function PM_ORC_CAPTAIN() { if (_orccap === -2) _orccap = name_to_pmidx('orc-captain'); return _orccap; }
 const PM_CAVE_SPIDER = name_to_pmidx('cave spider');
 const PM_GIANT_SPIDER = name_to_pmidx('giant spider');
 const PM_MIND_FLAYER = name_to_pmidx('mind flayer');
@@ -120,6 +130,8 @@ function telepathic(mdat) {
     return !!mdat && (mdat.pmidx === PM_FLOATING_EYE
         || mdat.pmidx === PM_MIND_FLAYER || mdat.pmidx === PM_MASTER_MIND_FLAYER);
 }
+// C ref: mondata.h haseyes(ptr) — !(mflags1 & M1_NOEYES).
+function haseyes(mdat) { return !!mdat && (mflags1_of(mdat) & M1_NOEYES) === 0; }
 function bigmonst(mdat) { return !!mdat && (mdat.msize ?? 0) >= MZ_LARGE; }
 function cantwield(mdat) { return nohands(mdat) || !!mdat?.verysmall; }
 function is_placeholder_pm(pmidx) {
@@ -218,38 +230,90 @@ async function dropp(obj) {
 }
 
 // C ref: polyself.c break_armor() — shed worn armor that no longer fits the
-// new form.  Only the uarmc (cloak) slot is ever populated in the covered
-// sessions; the rest are real, general ports (guarded by the real worn-object
-// pointers) rather than session-specific.
+// new form.  Every arm is C's, including the two gates that used to be folded
+// into `nohands || verysmall`: the helmet has a SEPARATE has_horns() arm
+// (horns pierce a flimsy hat instead of knocking it off) and the boots arm
+// also fires for slithy forms and centaurs.
+const MAT_LEATHER = 7;                 // objclass.h LEATHER
+const RUBBER_HOSE_NAME = 'rubber hose';
+function is_flimsy(otmp) {
+    const mat = OBJECTS[otmp?.otyp]?.material;
+    return (mat !== undefined && mat <= MAT_LEATHER)
+        || OBJECTS[otmp?.otyp]?.name === RUBBER_HOSE_NAME;
+}
+// C ref: do_wear.c hard_helmet(obj) / objnam.c helm_simple_name(helmet).
+const MAT_IRON = 11, MAT_MITHRIL = 17, MAT_GLASS = 19;
+function hard_helmet(otmp) {
+    const mat = OBJECTS[otmp?.otyp]?.material;
+    if (mat === undefined) return false;
+    return (mat >= MAT_IRON && mat <= MAT_MITHRIL) || mat === MAT_GLASS;
+}
+function helm_simple_name(helmet) { return hard_helmet(helmet) ? 'helm' : 'hat'; }
+// C ref: mondata.c num_horns(ptr) — four two-horned and four one-horned forms.
+// Resolved by name off mons[] so a table reshuffle cannot re-point them.
+let _hornPmidx = null;
+function num_horns(ptr) {
+    if (!_hornPmidx) {
+        _hornPmidx = new Map();
+        for (const n of ['horned devil', 'minotaur', 'Asmodeus', 'Balrog'])
+            _hornPmidx.set(name_to_pmidx(n), 2);
+        for (const n of ['white unicorn', 'gray unicorn', 'black unicorn', 'ki-rin'])
+            _hornPmidx.set(name_to_pmidx(n), 1);
+        _hornPmidx.delete(-1);
+    }
+    return _hornPmidx.get(ptr?.pmidx) || 0;
+}
+function has_horns(ptr) { return num_horns(ptr) > 0; }
+// C ref: mondata.h slithy(ptr) — M1_SLITHY.
+function slithy(ptr) { return !!ptr && (mflags1_of(ptr) & M1_SLITHY) !== 0; }
+const S_CENTAUR_CLS = 29;
+// C ref: invent.c useup(obj) — the item is DESTROYED, not dropped.
+function useup_worn(otmp) {
+    otmp.owornmask = 0;
+    freeinv(otmp);
+}
 async function break_armor() {
     const mdat = game.u.data;
     if (breakarm(mdat)) {
         if (game.uarm) {
+            const otmp = game.uarm;
             await pline('You break out of your armor!');
             exercise(A_STR, false);
-            const otmp = game.uarm;
             game.uarm = null;
-            otmp.owornmask = 0;
-        await dropp(otmp);
+            useup_worn(otmp);           /* C: useup(), NOT dropp() */
         }
         if (game.uarmc) {
-            await pline(`Your ${cloak_simple_name(game.uarmc)} tears apart!`);
             const otmp = game.uarmc;
             game.uarmc = null;
-            otmp.owornmask = 0;
-        await dropp(otmp);
+            // MUMMY_WRAPPING has no clasp and is used up; ALCHEMY_SMOCK has a
+            // knot; every other cloak's clasp breaks open and it DROPS.
+            const nm = cloak_simple_name(otmp);
+            if (nm === 'mummy wrapping') {
+                await pline(`Your ${nm} tears apart!`);
+                useup_worn(otmp);
+            } else if (nm === 'apron') {
+                await pline(`The knot on your ${nm} is pulled apart!`);
+                otmp.owornmask = 0;
+                await dropp(otmp);
+            } else {
+                await pline(`The clasp on your ${nm} breaks open!`);
+                otmp.owornmask = 0;
+                await dropp(otmp);
+            }
         }
         if (game.uarmu) {
+            const otmp = game.uarmu;
             await pline('Your shirt rips to shreds!');
             game.uarmu = null;
+            useup_worn(otmp);
         }
     } else if (sliparm(mdat)) {
         if (game.uarm) {
-            await pline('Your armor falls around you!');
             const otmp = game.uarm;
+            await pline('Your armor falls around you!');
             game.uarm = null;
             otmp.owornmask = 0;
-        await dropp(otmp);
+            await dropp(otmp);
         }
         if (game.uarmc) {
             const otmp = game.uarmc;
@@ -257,53 +321,69 @@ async function break_armor() {
             else await pline(`You shrink out of your ${cloak_simple_name(otmp)}!`);
             game.uarmc = null;
             otmp.owornmask = 0;
-        await dropp(otmp);
+            await dropp(otmp);
         }
         if (game.uarmu) {
+            const otmp = game.uarmu;
             if (is_whirly(mdat)) await pline('You seep right through your shirt!');
             else await pline('You become much too small for your shirt!');
             game.uarmu = null;
+            otmp.owornmask = 0;
+            await dropp(otmp);
+        }
+    }
+    // C ref: polyself.c:1229 — the helmet's FIRST gate is has_horns(), which is
+    // a different set from nohands||verysmall: a minotaur or unicorn keeps its
+    // hands but still cannot wear a hat.
+    if (has_horns(mdat) && game.uarmh) {
+        const otmp = game.uarmh;
+        if (is_flimsy(otmp)) {
+            const hornbuf = `horn${num_horns(mdat) === 1 ? '' : 's'}`;
+            await pline(`Your ${hornbuf} ${num_horns(mdat) === 1 ? 'pierces' : 'pierce'} your ${xname(otmp)}.`);
+        } else {
+            await pline(`Your ${helm_simple_name(otmp)} falls to the ${surface(game.u.ux, game.u.uy)}!`);
+            game.uarmh = null;
+            otmp.owornmask = 0;
+            await dropp(otmp);
         }
     }
     if (nohands(mdat) || mdat?.verysmall) {
         if (game.uarmg) {
+            const otmp = game.uarmg;
             await pline(`You drop your gloves${game.uwep ? ' and weapon' : ''}!`);
             await drop_weapon(0);
-            const otmp = game.uarmg;
             game.uarmg = null;
             otmp.owornmask = 0;
-        await dropp(otmp);
+            await dropp(otmp);
         }
         if (game.uarms) {
-            await pline("You can no longer hold your shield!");
             const otmp = game.uarms;
+            await pline('You can no longer hold your shield!');
             game.uarms = null;
             otmp.owornmask = 0;
-        await dropp(otmp);
+            await dropp(otmp);
         }
         if (game.uarmh) {
-            await pline('Your helmet falls to the ground!');
             const otmp = game.uarmh;
+            await pline(`Your ${helm_simple_name(otmp)} falls to the ${surface(game.u.ux, game.u.uy)}!`);
             game.uarmh = null;
             otmp.owornmask = 0;
-        await dropp(otmp);
+            await dropp(otmp);
         }
     }
-    if (nohands(mdat) || mdat?.verysmall) {
+    // C ref: polyself.c:1272 — slithy forms and centaurs shed boots too.
+    if (nohands(mdat) || mdat?.verysmall || slithy(mdat) || mdat?.mlet === 'C') {
         if (game.uarmf) {
+            const otmp = game.uarmf;
             if (is_whirly(mdat)) await pline('Your boots fall away!');
             else await pline(`Your boots ${mdat?.verysmall ? 'slide' : 'are pushed'} off your feet!`);
-            const otmp = game.uarmf;
             game.uarmf = null;
             otmp.owornmask = 0;
-        await dropp(otmp);
+            await dropp(otmp);
         }
     }
-    // C ref: polyself.c:1291-1300 — the ublindf arm.  The gate is
-    // !has_head(uptr) (NOT eyelessness): "Your blindfold/towel/lenses
-    // fall(s) off!" + Blindf_off(NULL) + dropp().  DEFERRED: this port has no
-    // ublindf slot at all, so there is nothing to shed.  (Rings stay worn even
-    // with no hands, which is why there is no uleft/uright arm.)
+    // C ref: polyself.c:1291-1300 — the ublindf arm ("Your blindfold falls
+    // off!", gated on !has_head).  This port has no ublindf slot to shed.
 }
 
 // C ref: polyself.c drop_weapon(alone) — shed a wielded weapon the new form
@@ -374,6 +454,13 @@ export function set_uasmon() {
     // cosmetic: a poly'd flyer falls into pits it should soar over.
     u.uprops.Flying = (is_flyer_flag(mdat) && !is_floater(mdat)) ? 1 : 0;
     u.uprops.Levitation = is_floater(mdat) ? 1 : 0;
+    // C ref: polyself.c:96 PROPSET(BLINDED, !haseyes(mdat)) — an eyeless form
+    // (vortex, black pudding, ...) is blind for as long as it lasts.  Kept in
+    // its OWN field rather than u.blinded: u.blinded is a TIMEOUT that
+    // timeout.js counts down, and C carries this on a separate FROMFORM bit.
+    // Only ever non-zero while polymorphed, so an unpolymorphed hero (whose
+    // player monster always haseyes) is unaffected.
+    u.uprops.BlindedFromForm = (u.Upolyd && !haseyes(mdat)) ? 1 : 0;
     // C ref: polyself.c:153 — set_uasmon() ends with disp.botl = TRUE, so the
     // status is ALREADY dirty by the time polymon's break_armor() -> dropp() ->
     // encumber_msg() runs, and the FIRST pline after the form change publishes
@@ -383,13 +470,22 @@ export function set_uasmon() {
 
 // C ref: polyself.c uasmon_maxStr().
 export function uasmon_maxStr() {
-    const mdat = monster_by_pmidx(game.u.umonnum);
+    const mndx = game.u.umonnum;
+    const mdat = monster_by_pmidx(mndx);
     let raceLocal = null;
-    if (is_orc_flag(mdat)) raceLocal = RACE_LOCAL.ORC;
-    else if (is_elf_flag(mdat)) raceLocal = RACE_LOCAL.ELF;
+    // C ref: polyself.c:1085-1088 — orc captains and Uruk-hai are the two orcs
+    // that KEEP mndx (and so get no player-race cap), because they retain
+    // 18/100 where a hero orc is limited to 18/50.
+    if (is_orc_flag(mdat)) {
+        if (mndx !== PM_URUK_HAI() && mndx !== PM_ORC_CAPTAIN())
+            raceLocal = RACE_LOCAL.ORC;
+    } else if (is_elf_flag(mdat)) raceLocal = RACE_LOCAL.ELF;
     else if (is_dwarf_flag(mdat)) raceLocal = RACE_LOCAL.DWARF;
     else if (is_gnome_flag(mdat)) raceLocal = RACE_LOCAL.GNOME;
-    else if (mdat?.pmidx === PM_HUMAN) raceLocal = RACE_LOCAL.HUMAN;
+    // C's is_human() arm is #if 0'd out ("use the mons[] value for humans"),
+    // but character_race(PM_HUMAN) still answers the human race, so the
+    // placeholder keeps human bounds.
+    else if (mndx === PM_HUMAN) raceLocal = RACE_LOCAL.HUMAN;
 
     if (raceLocal != null) {
         const amax = race_attrmax_of(raceLocal);
@@ -397,7 +493,10 @@ export function uasmon_maxStr() {
     }
     if (strongmonst_flag(mdat)) {
         const liveH = is_giant_flag(mdat) && !is_undead_flag(mdat);
-        return liveH ? 19 : 118; // STR19(19), STR18(100)
+        // attrib.h:36-37 STR18(x) == 18+x, STR19(x) == 100+x.  This used to
+        // return a bare 19 for STR19(19); 19 is the ENCODING for 18/01, so
+        // every live giant form showed St:18/01 instead of St:19.
+        return liveH ? 119 : 118;
     }
     return 18;
 }
@@ -432,6 +531,18 @@ function redist_attr() {
     }
 }
 
+// C ref: do_name.c pmname(pm, mgender) — a NAMS() species carries distinct
+// male/female names ("gnome lord"/"gnome lady", "priest"/"priestess"), and
+// every polyself message prints the one matching flags.female.  Using
+// mons[].pmnames[NEUTRAL] instead makes a female hero "turn into a gnome
+// lord".  Lazily imported: uhitm.js owns the gendered-name map and pulling it
+// in statically would put polyself.js on uhitm's import chain.
+let _mon_pmname = null;
+async function pmname_of(mdat, female) {
+    if (!_mon_pmname) ({ mon_pmname: _mon_pmname } = await import('./uhitm.js'));
+    return _mon_pmname({ data: mdat, female: !!female });
+}
+
 // C ref: polyself.c polymon(mntmp) — (try to) make a mntmp monster out of the
 // player.  gs.sex_change_ok's gate around the gender-flip roll is modeled as
 // always-active: ground truth (seed0108's recorded RNG trace) shows the
@@ -446,14 +557,15 @@ export async function polymon(mntmp) {
     if (!mdatNew) return 0;
 
     if ((game.mvitals?.[mntmp]?.mvflags ?? 0) & 0x02 /* G_GENOD */) {
-        await pline(`You feel rather ${mdatNew.name}-ish.`);
+        await pline(`You feel rather ${await pmname_of(mdatNew, game.flags.female)}-ish.`);
         exercise(A_WIS, true);
         return 0;
     }
 
     u.uconduct = u.uconduct || {};
     if (!u.uconduct.polyselfs++) {
-        livelog_printf(LL_CONDUCT, `changed form for the first time, becoming ${an(mdatNew.name)}`);
+        livelog_printf(LL_CONDUCT,
+            `changed form for the first time, becoming ${an(await pmname_of(mdatNew, game.flags.female))}`);
     }
 
     exercise(A_CON, false);
@@ -484,7 +596,7 @@ export async function polymon(mntmp) {
         game.flags.female = !game.flags.female;
         buf += (is_male_flag(mdatNew) || is_female_flag(mdatNew)) ? '' : (game.flags.female ? 'female ' : 'male ');
     }
-    buf += mdatNew.name;
+    buf += await pmname_of(mdatNew, game.flags.female);
     await pline(`You ${turnedInto ? 'turn into' : 'feel like'} ${an(buf)}!`);
 
     u.mtimedone = rn1(500, 500);
@@ -675,6 +787,556 @@ async function polyman(fmt, arg) {
     newsym(u.ux, u.uy);
 
     await pline(fmt.replace('%s', arg));
+}
+
+
+// ── polyself.c polyself() and its name-resolution helpers ────────────────────
+
+// C ref: include/defsym.h MONSYM(idx, ch, basename, sym, desc) — the monster
+// CLASS table.  name_to_monclass() matches a typed word against `desc`, so a
+// controlled polymorph accepts "dragon", "major demon" or "ant or other
+// insect" as readily as the class letter.  Transcribed whole: a subset
+// covering only the classes one corpus happens to name answers 0 (== "I've
+// never heard of such monsters") for every other class.
+const DEF_MONSYMS = [
+    [1, 'a', 'ant or other insect'], [2, 'b', 'blob'], [3, 'c', 'cockatrice'],
+    [4, 'd', 'dog or other canine'], [5, 'e', 'eye or sphere'],
+    [6, 'f', 'cat or other feline'], [7, 'g', 'gremlin'], [8, 'h', 'humanoid'],
+    [9, 'i', 'imp or minor demon'], [10, 'j', 'jelly'], [11, 'k', 'kobold'],
+    [12, 'l', 'leprechaun'], [13, 'm', 'mimic'], [14, 'n', 'nymph'],
+    [15, 'o', 'orc'], [16, 'p', 'piercer'], [17, 'q', 'quadruped'],
+    [18, 'r', 'rodent'], [19, 's', 'arachnid or centipede'],
+    [20, 't', 'trapper or lurker above'], [21, 'u', 'unicorn or horse'],
+    [22, 'v', 'vortex'], [23, 'w', 'worm'],
+    [24, 'x', 'xan or other mythical/fantastic insect'], [25, 'y', 'light'],
+    [26, 'z', 'zruty'], [27, 'A', 'angelic being'], [28, 'B', 'bat or bird'],
+    [29, 'C', 'centaur'], [30, 'D', 'dragon'], [31, 'E', 'elemental'],
+    [32, 'F', 'fungus or mold'], [33, 'G', 'gnome'], [34, 'H', 'giant humanoid'],
+    [35, 'I', 'invisible monster'], [36, 'J', 'jabberwock'],
+    [37, 'K', 'Keystone Kop'], [38, 'L', 'lich'], [39, 'M', 'mummy'],
+    [40, 'N', 'naga'], [41, 'O', 'ogre'], [42, 'P', 'pudding or ooze'],
+    [43, 'Q', 'quantum mechanic'], [44, 'R', 'rust monster or disenchanter'],
+    [45, 'S', 'snake'], [46, 'T', 'troll'], [47, 'U', 'umber hulk'],
+    [48, 'V', 'vampire'], [49, 'W', 'wraith'], [50, 'X', 'xorn'],
+    [51, 'Y', 'apelike creature'], [52, 'Z', 'zombie'], [53, '@', 'human or elf'],
+    [54, ' ', 'ghost'], [55, "'", 'golem'], [56, '&', 'major demon'],
+    [57, ';', 'sea monster'], [58, ':', 'lizard'], [59, '~', 'long worm tail'],
+    [60, ']', 'mimic'],
+];
+const MAXMCLASSES = 61;
+const S_MIMIC_CLS = 13, S_MIMIC_DEF_CLS = 60, S_WORM_CLS = 23,
+      S_WORM_TAIL_CLS = 59, S_INVISIBLE_CLS = 35, S_LICH_CLS = 38,
+      S_DRAGON_CLS = 30, S_DEMON_CLS = 56, S_XAN_CLS = 24, S_EEL_CLS = 57;
+
+// C ref: monsym.h def_char_to_monclass(ch).
+function def_char_to_monclass(ch) {
+    for (const [idx, sym] of DEF_MONSYMS) if (sym === ch) return idx;
+    return MAXMCLASSES;
+}
+
+// mons[] bounds, resolved off the table rather than transcribed (permonst.h
+// SPECIAL_PM == PM_LONG_WORM_TAIL; mons[SPECIAL_PM..NUMMONS-1] are never
+// generated randomly and cannot be polymorphed into).
+const LOW_PM_IDX = 0, NON_PM = -1;
+let _NUMMONS = -1, _SPECIAL_PM = -1;
+function NUMMONS() {
+    if (_NUMMONS < 0) { let i = 0; while (monster_by_pmidx(i)) i++; _NUMMONS = i; }
+    return _NUMMONS;
+}
+function SPECIAL_PM() {
+    if (_SPECIAL_PM < 0) _SPECIAL_PM = name_to_pmidx('long worm tail');
+    return _SPECIAL_PM;
+}
+// Two mons[] rows share a name for each werecreature (animal form first, then
+// the '@' human form), so the alt-spelling table has to address them by
+// occurrence rather than by name_to_pmidx()'s first-hit answer.
+function nth_pmidx_by_name(name, nth) {
+    let seen = 0;
+    for (let i = 0; i < NUMMONS(); i++)
+        if (monster_by_pmidx(i)?.name === name && seen++ === nth) return i;
+    return NON_PM;
+}
+
+// C ref: mondata.c name_to_monplus()'s alt_spl names[] — alternate spellings,
+// outdated names and irregular plurals, matched as a whole leading WORD before
+// the mons[] scan.  Table order is C's; first match wins.  Entries whose
+// target species this port's mons[] slice lacks resolve to NON_PM and fall
+// through to the general scan rather than being dropped from the table.
+const ALT_SPELLINGS = [
+    ['grey dragon', 'gray dragon', 2], ['baby grey dragon', 'baby gray dragon', 2],
+    ['grey unicorn', 'gray unicorn', 2], ['grey ooze', 'gray ooze', 2],
+    ['gray-elf', 'Grey-elf', 2], ['mindflayer', 'mind flayer', 2],
+    ['master mindflayer', 'master mind flayer', 2],
+    ['aligned priest', 'aligned cleric', 0], ['aligned priestess', 'aligned cleric', 1],
+    ['high priest', 'high cleric', 0], ['high priestess', 'high cleric', 1],
+    ['master of thief', 'master of thieves', 2], ['master thief', 'master of thieves', 2],
+    ['master of assassin', 'master assassin', 2],
+    ['master-lich', 'master lich', 2], ['masterlich', 'master lich', 2],
+    ['invisible stalker', 'stalker', 2], ['high-elf', 'elven monarch', 2],
+    ['wood-elf', 'Woodland-elf', 2], ['wood elf', 'Woodland-elf', 2],
+    ['woodland nymph', 'wood nymph', 2], ['halfling', 'hobbit', 2],
+    ['genie', 'djinni', 2],
+    ['human wererat', ['wererat', 1], 2], ['human werejackal', ['werejackal', 1], 2],
+    ['human werewolf', ['werewolf', 1], 2],
+    ['rat wererat', ['wererat', 0], 2], ['jackal werejackal', ['werejackal', 0], 2],
+    ['wolf werewolf', ['werewolf', 0], 2],
+    ['ki rin', 'ki-rin', 2], ['kirin', 'ki-rin', 2], ['uruk hai', 'Uruk-hai', 2],
+    ['orc captain', 'orc-captain', 2], ['woodland elf', 'Woodland-elf', 2],
+    ['green elf', 'Green-elf', 2], ['grey elf', 'Grey-elf', 2],
+    ['gray elf', 'Grey-elf', 2],
+    ['elf lady', 'elf-noble', 1], ['elf lord', 'elf-noble', 0],
+    ['elf noble', 'elf-noble', 2], ['olog hai', 'Olog-hai', 2],
+    ['arch lich', 'arch-lich', 2], ['archlich', 'arch-lich', 2],
+    ['incubi', 'amorous demon', 0], ['succubi', 'amorous demon', 1],
+    ['violet fungi', 'violet fungus', 2], ['homunculi', 'homunculus', 2],
+    ['baluchitheria', 'baluchitherium', 2], ['lurkers above', 'lurker above', 2],
+    ['cavemen', 'cave dweller', 0], ['cavewomen', 'cave dweller', 1],
+    ['watchmen', 'watchman', 2], ['djinn', 'djinni', 2], ['mumakil', 'mumak', 2],
+    ['erinyes', 'erinys', 2],
+];
+
+// Every pmnames[] slot of every mons[] row: [name, pmidx, mgender].  C's
+// name_to_monplus() walks mons[] rows in index order and, within a row, MALE
+// then FEMALE then NEUTRAL, keeping the LONGEST match — so build the rows in
+// that same order.
+let _PMNAME_ROWS = null;
+async function pmnameRows() {
+    if (_PMNAME_ROWS) return _PMNAME_ROWS;
+    const rows = [];
+    for (let i = 0; i < NUMMONS(); i++) {
+        const mdat = monster_by_pmidx(i);
+        if (!mdat) continue;
+        const male = await pmname_of(mdat, false), female = await pmname_of(mdat, true);
+        if (male) rows.push([male, i, MGEND_MALE]);
+        if (female && female !== male) rows.push([female, i, MGEND_FEMALE]);
+        if (mdat.name && mdat.name !== male && mdat.name !== female)
+            rows.push([mdat.name, i, MGEND_NEUTRAL]);
+    }
+    _PMNAME_ROWS = rows;
+    return rows;
+}
+
+// C ref: mondata.c name_to_monplus(in_str, remainder_p, gender_name_var).
+// DEFERRED: title_to_mon()'s rank-title fallback (what makes "lord" resolve to
+// a player monster) — role.js has the rank titles but not the role ->
+// player-monster map it needs.
+async function name_to_mon(in_str) {
+    let str = String(in_str || '');
+    let gvariant = MGEND_NEUTRAL, matchgend = -1;
+
+    if (str.startsWith('a ')) str = str.slice(2);
+    else if (str.startsWith('an ')) str = str.slice(3);
+    else if (str.startsWith('the ')) str = str.slice(4);
+
+    const vi = str.toLowerCase().indexOf('vortices');
+    if (vi >= 0) str = str.slice(0, vi + 4) + 'ex';
+    else if (str.length > 3 && /ies$/i.test(str)
+             && (str.length < 7 || !/zombies$/i.test(str)))
+        str = str.slice(0, -3) + 'y';
+    else if (str.length > 3 && /ves$/i.test(str)) str = str.slice(0, -3) + 'f';
+
+    const lower = str.toLowerCase();
+    for (const [alt, real, gh] of ALT_SPELLINGS) {
+        if (!lower.startsWith(alt)) continue;
+        const c = lower[alt.length];
+        if (c !== undefined && c !== ' ' && c !== "'") continue;
+        const pm = Array.isArray(real) ? nth_pmidx_by_name(real[0], real[1])
+                                       : name_to_pmidx(real);
+        if (pm >= LOW_PM_IDX) return { mntmp: pm, gvariant: gh };
+    }
+
+    let mntmp = NON_PM, len = 0;
+    for (const [nm, idx, mgend] of await pmnameRows()) {
+        const nl = nm.length;
+        if (nl <= len || !lower.startsWith(nm.toLowerCase())) continue;
+        const rest = lower.slice(nl);
+        if (rest === '') { mntmp = idx; len = nl; matchgend = mgend; break; }
+        if (rest[0] === ' ' || rest === 's' || rest.startsWith('s ')
+            || rest === "'" || rest.startsWith("' ") || rest === "'s"
+            || rest.startsWith("'s ") || rest === 'es' || rest.startsWith('es ')) {
+            mntmp = idx; len = nl; matchgend = mgend;
+        }
+    }
+    if (matchgend !== -1) gvariant = matchgend;
+    return { mntmp, gvariant };
+}
+
+// C ref: mondata.c name_to_monclass(in_str, mndx_p).  klass is 0 for no match.
+const CLASS_FALSEMATCH = ['an', 'the', 'or', 'other', 'or other'];
+const CLASS_TRUEMATCH = [
+    ['long worm', 'long worm', 0], ['demon', null, S_DEMON_CLS],
+    ['devil', null, S_DEMON_CLS], ['bug', null, S_XAN_CLS],
+    ['fish', null, S_EEL_CLS],
+];
+async function name_to_monclass(in_str) {
+    let mndx = NON_PM;
+    const s = String(in_str || '');
+    if (!s) return { klass: 0, mndx };
+    if (s.length === 1) {
+        let i = def_char_to_monclass(s);
+        if (i === S_MIMIC_DEF_CLS) i = S_MIMIC_CLS;
+        else if (i === S_WORM_TAIL_CLS) { i = S_WORM_CLS; mndx = name_to_pmidx('long worm'); }
+        else if (i === MAXMCLASSES) i = (s === 'I') ? S_INVISIBLE_CLS : 0;
+        return { klass: i, mndx };
+    }
+    if (s.toLowerCase() === 'long') return { klass: 0, mndx };
+    const sing = String(makesingular(s));
+    const lower = sing.toLowerCase();
+    if (CLASS_FALSEMATCH.includes(lower)) return { klass: 0, mndx };
+    for (const [nm, monName, klass] of CLASS_TRUEMATCH) {
+        if (lower !== nm) continue;
+        if (monName) {
+            const pm = name_to_pmidx(monName);
+            if (pm >= LOW_PM_IDX)
+                return { klass: monster_by_pmidx(pm)?.mcls ?? 0, mndx: pm };
+        }
+        return { klass, mndx };
+    }
+    for (const [idx, , explain] of DEF_MONSYMS) {
+        const x = explain.toLowerCase();
+        const p = x.indexOf(lower);
+        if (p < 0) continue;
+        if (p !== 0 && x[p - 1] !== ' ') continue;
+        const after = x[p + lower.length];
+        if (after === undefined || after === ' ') return { klass: idx, mndx };
+    }
+    const found = await name_to_mon(sing);
+    if (found.mntmp !== NON_PM)
+        return { klass: monster_by_pmidx(found.mntmp)?.mcls ?? 0, mndx: found.mntmp };
+    return { klass: 0, mndx };
+}
+
+// C ref: makemon.c mk_gen_ok(mndx, mvflagsmask, genomask).
+const G_UNIQ_F = 0x1000, G_NOHELL_F = 0x0800, G_HELL_F = 0x0400,
+      G_NOGEN_F = 0x0200, G_FREQ_F = 0x0007, G_GENOD_F = 0x02;
+function mvflags_of(mndx) { return game.mvitals?.[mndx]?.mvflags ?? 0; }
+function geno_of(mndx) { return monster_by_pmidx(mndx)?.geno ?? 0; }
+function mk_gen_ok(mndx, mvflagsmask, genomask) {
+    if (mvflags_of(mndx) & mvflagsmask) return false;
+    if (geno_of(mndx) & genomask) return false;
+    return !is_placeholder_pm(mndx);
+}
+
+// C ref: makemon.c mkclass_poly(class) — a G_FREQ-weighted random member of a
+// monster class, for a controlled polymorph that named a CLASS.  Genocided
+// types are skipped, extinct ones are acceptable, and polyok() is deliberately
+// NOT checked here (polyself() re-rolls).
+function mkclass_poly(klass) {
+    let first, num = 0;
+    for (first = LOW_PM_IDX; first < SPECIAL_PM(); first++)
+        if (monster_by_pmidx(first)?.mcls === klass) break;
+    if (first === SPECIAL_PM()) return NON_PM;
+
+    let gmask = (G_NOGEN_F | G_UNIQ_F);
+    if (rn2(9) || klass === S_LICH_CLS)
+        gmask |= (In_hell(game.u?.uz) ? G_NOHELL_F : G_HELL_F);
+
+    for (let last = first; last < SPECIAL_PM()
+         && monster_by_pmidx(last)?.mcls === klass; last++)
+        if (mk_gen_ok(last, G_GENOD_F, gmask)) num += geno_of(last) & G_FREQ_F;
+    if (!num) return NON_PM;
+
+    for (num = rnd(num); num > 0; first++)
+        if (mk_gen_ok(first, G_GENOD_F, gmask)) num -= geno_of(first) & G_FREQ_F;
+    first--; /* correct an off-by-one error */
+    return first;
+}
+
+// C ref: obj.h Is_dragon_scales/Is_dragon_mail + polyself.c armor_to_dragon().
+// objects[] runs GRAY..YELLOW scale mail then GRAY..YELLOW scales in the same
+// colour order mons[] runs the adult dragons — the identity artifact.js:625
+// already relies on for the inverse map.
+let _dragonOtyps = null;
+function dragonOtyps() {
+    if (!_dragonOtyps) {
+        const find = (nm) => OBJECTS.findIndex((o) => o && o.name === nm);
+        _dragonOtyps = {
+            mail0: find('gray dragon scale mail'), mail1: find('yellow dragon scale mail'),
+            scal0: find('gray dragon scales'), scal1: find('yellow dragon scales'),
+        };
+    }
+    return _dragonOtyps;
+}
+function Is_dragon_mail(obj) {
+    const t = dragonOtyps();
+    return !!obj && t.mail0 >= 0 && obj.otyp >= t.mail0 && obj.otyp <= t.mail1;
+}
+function Is_dragon_scales(obj) {
+    const t = dragonOtyps();
+    return !!obj && t.scal0 >= 0 && obj.otyp >= t.scal0 && obj.otyp <= t.scal1;
+}
+function Is_dragon_armor(obj) { return Is_dragon_mail(obj) || Is_dragon_scales(obj); }
+function armor_to_dragon(atyp) {
+    const t = dragonOtyps();
+    if (t.mail0 >= 0 && atyp >= t.mail0 && atyp <= t.mail1)
+        return PM_GRAY_DRAGON + (atyp - t.mail0);
+    if (t.scal0 >= 0 && atyp >= t.scal0 && atyp <= t.scal1)
+        return PM_GRAY_DRAGON + (atyp - t.scal0);
+    return NON_PM;
+}
+
+// C ref: youprop.h Unchanging / Polymorph_control — intrinsic OR the extrinsic
+// a worn item confers.  This port has no u.uprops[].extrinsic word, so the worn
+// half is read off objects[].oc_oprop the way insight.c what_gives() does.
+const PROP_POLYMORPH_CONTROL = 62, PROP_UNCHANGING = 63;
+function worn_gives_prop(propidx) {
+    for (const o of (game.invent || []))
+        if ((o.owornmask || 0) && OBJECTS[o.otyp]?.oc_oprop === propidx) return true;
+    return false;
+}
+function Unchanging() {
+    return ((game.u?.uprops?.HUnchanging | 0) > 0) || worn_gives_prop(PROP_UNCHANGING);
+}
+// timeout.c's polymorph countdown needs the same predicate (its Unchanging arm
+// re-arms u.mtimedone instead of reverting).
+export { Unchanging as Unchanging_poly };
+function Polymorph_control() {
+    return ((game.u?.uprops?.HPolymorph_control | 0) > 0)
+        || worn_gives_prop(PROP_POLYMORPH_CONTROL);
+}
+function Stunned() {
+    const u = game.u;
+    return ((u?.uprops?.Stun | 0) > 0) || ((u?.uprops?.HStun | 0) > 0) || !!u?.Stunned;
+}
+// C ref: hack.c losehp(dmg, ...) — the same reduction every other file-local
+// losehp() in this port makes (the done(DIED) half needs end.js).
+function losehp_poly(dmg) {
+    const u = game.u;
+    if (!u || dmg <= 0) return;
+    u.uhp = (u.uhp ?? 0) - dmg;
+    if (u.uhp < 0) u.uhp = 0;
+    game.botl = true;
+}
+// C ref: mondata.h your_race(ptr) == (mflags2 & gu.urace.selfmask).
+const RACE_SELFMASK = { human: M2_HUMAN, elven: M2_ELF, dwarven: M2_DWARF,
+    gnomish: M2_GNOME, orcish: M2_ORC };
+function your_race_pm(mdat) {
+    const mask = RACE_SELFMASK[game.urace?.adj] || 0;
+    return !!mdat && (mflags2_of(mdat) & mask) !== 0;
+}
+function ismnum(x) { return Number.isInteger(x) && x >= LOW_PM_IDX && x < NUMMONS(); }
+function the_unique_pm(mdat) { return !!mdat && ((mdat.geno | 0) & G_UNIQ_F) !== 0; }
+function type_is_pname(mdat) { return !!mdat && (mflags2_of(mdat) & M2_PNAME) !== 0; }
+// C ref: hacklib.c mungspaces().
+function mungspaces_poly(s) {
+    return String(s ?? '').replace(/\s+/g, ' ').replace(/^ | $/g, '');
+}
+
+// C ref: polyself.c rehumanize() — leave monster form.  Reached from the
+// u.mtimedone countdown (timeout.c), from losing the form's last hit point
+// (mhitu.c losehp), and from wizard-mode #polyself onto your own role.
+// mhitu.js already dynamic-imports this name; until now polyself.js exported
+// no such function, so that call silently did nothing and a poly'd hero could
+// be beaten past 0 monster HP and stay in the form.
+export async function rehumanize() {
+    const u = game.u;
+    if (Unchanging()) {
+        /* C's u.mh < 1 arm is done(DIED); deferred with the rest of the death
+           path.  The amulet arm is the observable one. */
+        const uamul = game.uamul;
+        if (uamul && OBJECTS[uamul.otyp]?.oc_oprop === PROP_UNCHANGING)
+            await pline(`Your ${xname(uamul)} fails!`);
+        return;
+    }
+    if (emits_light(u.data)) del_light_source(LS_MONSTER, HERO);
+    await polyman('You return to %s form!', game.urace?.adj || 'human');
+    /* nomul(0) */
+    game.multi = 0;
+    game.botl = true;
+    game.vision_full_recalc = 1;
+    await encumber_msg();
+}
+
+// C ref: polyself.c:729-741, the `made_change:` label every arm converges on.
+async function polyself_made_change(old_light) {
+    const u = game.u;
+    let new_light = emits_light(u.data);
+    if (old_light !== new_light) {
+        if (old_light) del_light_source(LS_MONSTER, HERO);
+        if (new_light === 1) ++new_light; /* otherwise it's undetectable */
+        if (new_light) new_light_source(u.ux, u.uy, new_light, LS_MONSTER, HERO);
+    }
+}
+
+// C ref: polyself.c:627-661 `do_merge:` — dragon scale MAIL reverts to scales
+// and the armor merges into uskin.  This port has no uskin slot, so the item
+// is only unworn; the messages and the otyp conversion are C's.
+async function do_merge_dragon_armor(mntmp) {
+    const uarm = game.uarm;
+    if (!uarm) return;
+    if (mvflags_of(mntmp) & G_GENOD_F) return;
+    const t = dragonOtyps();
+    if (Is_dragon_scales(uarm)) {
+        await pline('You merge with your scaly armor.');
+    } else {
+        const nm = String(xname(uarm)).replace(' dragon ', ' ');
+        await pline(`Your ${nm} reverts to scales as you merge with them.`);
+        uarm.otyp += t.scal0 - t.mail0;
+        game.botl = true;
+    }
+    uarm.owornmask = 0;
+    game.uarm = null;
+}
+
+// C ref: polyself.c polyself(psflags) — THE self-polymorph entry point, shared
+// by the wand/spell/potion of polymorph, a polymorph trap, a fountain quaff, a
+// magic throne, eating a chameleon/genetic-engineer corpse and #polyself.
+// Every RNG draw below is C's, in C's order (verified against a recorded C
+// trace):
+//   rn2(20)  polyself.c:490  system shock, when there is no control source
+//   rn2(3)   polyself.c:558  orc/elf/giant placeholder substitution
+//   rn2(9)+rnd(n)            mkclass_poly(), when a CLASS was named
+//   rn2(330) polyself.c:702  rn1(SPECIAL_PM - LOW_PM, LOW_PM) random form
+//   rn2(5)   polyself.c:712  the "newman() instead" roll, skipped for
+//                            forcecontrol (wizard #polyself) but NOT for a
+//                            ring of polymorph control
+// DEFERRED (no supporting state in this port): the vampire-shifter and
+// lycanthrope arms (u.ulycn / youmonst.cham are never set), retouch_equipment,
+// selftouch and polysense.
+export async function polyself(psflags) {
+    const u = game.u;
+    if (!u) return;
+    let mntmp = NON_PM, tryct;
+    let forcecontrol = (psflags & POLY_CONTROLLED) !== 0;
+    const low_control = (psflags & POLY_LOW_CTRL) !== 0;
+    let monsterpoly = (psflags & POLY_MONSTER) !== 0;
+    const formrevert = (psflags & POLY_REVERT) !== 0;
+    const draconian = !!game.uarm && Is_dragon_armor(game.uarm);
+    const iswere = ismnum(u.ulycn);
+    const isvamp = is_vampire_pm(u.data);
+    let controllable_poly = Polymorph_control() && !(Stunned() || Unaware());
+
+    if (Unchanging()) {
+        await pline('You fail to transform!');
+        return;
+    }
+    /* being Stunned|Unaware doesn't negate this aspect of Poly_control */
+    if (!Polymorph_control() && !forcecontrol && !draconian && !iswere && !isvamp) {
+        if (rn2(20) > acurr_eff(A_CON)) {
+            await pline('You shudder for a moment.');
+            losehp_poly(rnd(30));
+            exercise(A_CON, false);
+            return;
+        }
+    }
+    const old_light = emits_light(u.data);
+
+    if (formrevert) {
+        mntmp = ismnum(u.ucham) ? u.ucham : NON_PM;
+        monsterpoly = true;
+        controllable_poly = false;
+    }
+    if (forcecontrol && low_control && (draconian || monsterpoly || isvamp || iswere))
+        forcecontrol = false;
+
+    if (controllable_poly || forcecontrol) {
+        tryct = 5;
+        let accepted = false;
+        do {
+            mntmp = NON_PM;
+            const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+            const raw = await hooked_tty_getlin('Become what kind of monster? [type the name]', null);
+            let buf = mungspaces_poly(raw);
+            if (buf === '\x1b' || (buf.length && buf[0] === '\x1b')) {
+                if (forcecontrol) {            /* wizard mode #polyself */
+                    await pline('Never mind.');
+                    return;
+                }
+                buf = '*';                      /* resort to random */
+            }
+            if (buf === '*' || buf === 'random') {
+                tryct = 0;   /* skips the thats_enough_tries message */
+                continue;
+            }
+            let klass = 0;
+            ({ mntmp } = await name_to_mon(buf));
+            let by_class = (mntmp < LOW_PM_IDX);
+            if (!by_class && is_placeholder_pm(mntmp)
+                && !your_race_pm(monster_by_pmidx(mntmp)) && mntmp !== PM_HUMAN) {
+                /* far less general than mkclass() */
+                if (mntmp === PM_ORC)
+                    mntmp = rn2(3) ? name_to_pmidx('hill orc') : name_to_pmidx('Mordor orc');
+                else if (mntmp === PM_ELF)
+                    mntmp = rn2(3) ? name_to_pmidx('Green-elf') : name_to_pmidx('Grey-elf');
+                else if (mntmp === PM_GIANT)
+                    mntmp = rn2(3) ? name_to_pmidx('stone giant') : name_to_pmidx('hill giant');
+            }
+            for (;;) {
+                if (by_class) {
+                    by_class = false;
+                    ({ klass, mndx: mntmp } = await name_to_monclass(buf));
+                    if (klass && mntmp === NON_PM)
+                        mntmp = (draconian && klass === S_DRAGON_CLS)
+                            ? armor_to_dragon(game.uarm.otyp) : mkclass_poly(klass);
+                }
+                const mdat = mntmp >= LOW_PM_IDX ? monster_by_pmidx(mntmp) : null;
+                if (mntmp < LOW_PM_IDX) {
+                    await pline(klass ? "You can't polymorph into any of those."
+                                      : "I've never heard of such monsters.");
+                } else if (game.flags?.debug && u.Upolyd && mntmp === u.umonster) {
+                    /* wizard mode: picking your own role while poly'd reverts
+                       without newman()'s level/sex-change chance */
+                    await rehumanize();
+                    return;   /* rehumanize() extinguishes u-as-mon light */
+                } else if (!polyok_flag(mdat)
+                           && !(mntmp === PM_HUMAN
+                                || (your_race_pm(mdat) && !the_unique_pm(mdat))
+                                || mntmp === u.umonster)) {
+                    /* mkclass_poly() can pick a !polyok() candidate; if so,
+                       usually try again */
+                    if (klass) {
+                        if (rn2(3) || --tryct > 0) { by_class = true; continue; }
+                        ++tryct;
+                    }
+                    let pm_name = await pmname_of(mdat, game.flags?.female);
+                    if (the_unique_pm(mdat)) pm_name = `the ${pm_name}`;
+                    else if (!type_is_pname(mdat)) pm_name = an(pm_name);
+                    await pline(`You can't polymorph into ${pm_name}.`);
+                } else {
+                    accepted = true;
+                }
+                break;
+            }
+            if (accepted) break;
+        } while (--tryct > 0);
+
+        if (!tryct) await pline("That's enough tries!");
+        if (draconian && (tryct <= 0 || mntmp === armor_to_dragon(game.uarm.otyp))) {
+            const dragon = armor_to_dragon(game.uarm.otyp);
+            await do_merge_dragon_armor(dragon);
+            if (dragon === PM_HUMAN) await newman();
+            else if (dragon >= LOW_PM_IDX) await polymon(dragon);
+            await polyself_made_change(old_light);
+            return;
+        }
+    } else if (draconian) {
+        /* special change that doesn't require polyok() */
+        const dragon = armor_to_dragon(game.uarm.otyp);
+        await do_merge_dragon_armor(dragon);
+        if (dragon === PM_HUMAN) await newman();
+        else if (dragon >= LOW_PM_IDX) await polymon(dragon);
+        await polyself_made_change(old_light);
+        return;
+    }
+
+    if (mntmp < LOW_PM_IDX) {
+        tryct = 200;
+        do {
+            /* randomly pick an "ordinary" monster */
+            mntmp = rn1(SPECIAL_PM() - LOW_PM_IDX, LOW_PM_IDX);
+            if (polyok_flag(monster_by_pmidx(mntmp)) && !is_placeholder_pm(mntmp)) break;
+        } while (--tryct > 0);
+    }
+
+    /* polyok() fails either if everything is genocided, or if we deliberately
+       chose something illegal to force newman(). */
+    const mdatFinal = monster_by_pmidx(mntmp);
+    if (!polyok_flag(mdatFinal) || (!forcecontrol && !rn2(5)) || your_race_pm(mdatFinal))
+        await newman();
+    else
+        await polymon(mntmp);
+
+    await polyself_made_change(old_light);
 }
 
 // C ref: include/hack.h ECMD_OK(0)/ECMD_TIME(1)/ECMD_CANCEL(2).

@@ -214,8 +214,12 @@ export async function do_attack(mtmp) {
             // (not only while running); the following end_running(TRUE) is a
             // no-op for the single-step commands the corpus uses.
             const buf = x_monnam(mtmp, /*ARTICLE_YOUR*/ 3, null, 0, false);
-            const { pline } = await import('./display.js');
-            await pline(`You stop.  ${buf.charAt(0).toUpperCase()}${buf.slice(1)} is in the way!`);
+            // C ref: topl.c update_topl():298 — You() leaves toplin ==
+            // NEED_MORE, and the movemon() pass that follows in the SAME
+            // command has no nhgetch to demote it, so a monster message that
+            // will not fit alongside this one pages it first.
+            const { update_topl } = await import('./display.js');
+            await update_topl(`You stop.  ${buf.charAt(0).toUpperCase()}${buf.slice(1)} is in the way!`);
             return true;
         } else if (mtmp.mfrozen || helpless(mtmp)
                    || (movement_rate(mtmp) === 0 && rn2(6))) {

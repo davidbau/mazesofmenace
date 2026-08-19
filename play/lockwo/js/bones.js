@@ -26,6 +26,8 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { Is_special } from './dungeon.js';
+import { MAGIC_PORTAL, VIBRATING_SQUARE } from './const.js';
+import { msound_of, MS_LEADER, MS_NEMESIS } from './monflags_data.js';
 
 // ── small accessors that mirror the C globals/macros bones.c relies on ──
 
@@ -49,6 +51,46 @@ function is_wizard() {
 // flags object leaves it undefined unless a !bones rc line set it to false.
 function bones_enabled() {
     return FLAGS().bones !== false;
+}
+
+// C: svp.plname — unixmain.c overwrites it with "wizard" when the -D flag put
+// the game into debug mode, so the ghost's name and the cemetery entry's `who`
+// (which must agree, since bones_include_name() matches the latter against the
+// hero's own plname) both read "wizard" there.
+function svp_plname() {
+    return is_wizard() ? 'wizard' : (game.plname || 'Hero');
+}
+
+// ── ledger / branch helpers (C ref: dungeon.c) ──
+//
+// dungeon.c:1376 ledger_no(lev) = lev->dlevel + svd.dungeons[lev->dnum].ledger_start
+// dungeon.c:1392 maxledgerno()  = dungeons[n_dgns-1].ledger_start + .num_dunlevs
+// Both feed can_make_bones()'s range check, which runs BEFORE its rn2().
+function ledger_no(lev) {
+    const dnum = lev?.dnum ?? 0;
+    const dng = game.dungeons?.[dnum];
+    if (!dng) return null;                       // dungeon table not built yet
+    return (lev?.dlevel ?? 1) + (dng.ledger_start ?? 0);
+}
+
+function maxledgerno() {
+    const dgns = game.dungeons;
+    if (!dgns || !dgns.length) return null;
+    const last = dgns[dgns.length - 1];
+    return (last.ledger_start ?? 0) + (last.num_dunlevs ?? 0);
+}
+
+// C ref: dungeon.c:1464 Is_branchlev(lev) — walks the GLOBAL branch chain and
+// matches either END, so a level is a branch level whether it holds the up- or
+// the down-side stair.  Returns the branch (truthy) like C does.
+function Is_branchlev(lev) {
+    const dnum = lev?.dnum ?? 0, dlevel = lev?.dlevel ?? 1;
+    for (const br of (game.branches || [])) {
+        if ((br?.end1?.dnum === dnum && br.end1.dlevel === dlevel)
+            || (br?.end2?.dnum === dnum && br.end2.dlevel === dlevel))
+            return br;
+    }
+    return null;
 }
 
 // ── no_bones_level (C ref: bones.c:18) — pure predicate, consumes no RNG ──
@@ -78,19 +120,11 @@ export function no_bones_level(lev) {
         if (dng && dng.num_dunlevs != null && dlevel === dng.num_dunlevs)
             return true;
 
-        // Is_branchlev(lev) && lev->dlevel > 1 — dungeon.c:1464 walks the GLOBAL
-        // branch chain and matches either END of a branch, so a level is a
-        // branch level whether it holds the up- or the down-side stair.  The
-        // old code read `game.dungeons[dnum].branches`, a field the dungeon
-        // model never sets (init_dungeon_branches only counts them into
-        // pd.tmpdungeon), so this arm answered FALSE on every level.
-        if (dlevel > 1) {
-            for (const br of (game.branches || [])) {
-                if ((br?.end1?.dnum === dnum && br.end1.dlevel === dlevel)
-                    || (br?.end2?.dnum === dnum && br.end2.dlevel === dlevel))
-                    return true;
-            }
-        }
+        // Is_branchlev(lev) && lev->dlevel > 1.  (The old code read
+        // `game.dungeons[dnum].branches`, a field the dungeon model never sets —
+        // init_dungeon_branches only counts them into pd.tmpdungeon — so this
+        // arm answered FALSE on every level.)
+        if (dlevel > 1 && Is_branchlev({ dnum, dlevel })) return true;
 
         // In_hell(lev) && lev->dlevel == dunlevs_in_dungeon(lev) - 1 — the
         // invocation level.
@@ -284,8 +318,26 @@ async function bones_getlev(blob) {
 export function can_make_bones() {
     if (!bones_enabled()) return false;       // C: if (!flags.bones) return FALSE;
     const uz = game.u?.uz;
+
+    // C: if (ledger_no(&u.uz) <= 0 || ledger_no(&u.uz) > maxledgerno())
+    //        return FALSE;                                      (bones.c:361)
+    // Skipped only when the dungeon table hasn't been built, where C's
+    // svd.dungeons[] would be all-zero and this test is meaningless.
+    const led = ledger_no(uz), maxled = maxledgerno();
+    if (led != null && maxled != null && (led <= 0 || led > maxled)) return false;
+
     if (no_bones_level(uz)) return false;     // no bones for specific levels
     if (game.u?.uswallow) return false;       // no bones when swallowed
+
+    // C: if (!Is_branchlev(&u.uz)) { for (ttmp = gf.ftrap; ...) if (ttmp->ttyp
+    //        == MAGIC_PORTAL) return FALSE; }                   (bones.c:369)
+    // "no bones on non-branches with portals".  RNG-free, but it decides whether
+    // the rn2() below happens at all — getting it wrong on a quest-portal or
+    // Vlad's-tower level fabricates a draw and desyncs the rest of the run.
+    if (!Is_branchlev(uz)) {
+        for (const ttmp of (game.level?.traps || []))
+            if (ttmp?.ttyp === MAGIC_PORTAL) return false;
+    }
 
     const dep = depth_of_level(uz);
     // C: if (depth <= 0 || (!rn2(1 + (depth >> 2)) && !wizard)) return FALSE;
@@ -360,6 +412,110 @@ export function drop_upon_death(mtmp, cont, x, y, hooks = {}) {
     }
 }
 
+// ── resetobjs (C ref: bones.c:50), saving arm ──
+//
+// Every object that goes into a bones file is stripped of what the DEAD hero
+// knew about it and of the few types that must not survive into another game.
+// None of it draws RNG, but all of it is what the next hero sees: without the
+// *known flags being cleared the reloaded loot renders with the previous
+// hero's identifications ("a scroll of magic mapping" instead of "a scroll
+// labeled FOOBIE BLETCH").
+//
+// The `restore` arm (artifact re-registration, shop no_charge for part-eaten
+// food) is deliberately not ported: getbones() re-stamps o_ids itself and the
+// artifact registry lives outside this module.
+// `O` is the js/mkobj.js namespace, imported once by savebones() — a static
+// import would close a cycle through mkobj.js -> eat.js.
+function reset_obj_chain(chain, O, container) {
+    if (!Array.isArray(chain)) return;
+    for (const otmp of [...chain]) {
+        if (!otmp) continue;
+        if (Array.isArray(otmp.cobj)) reset_obj_chain(otmp.cobj, O, otmp);
+
+        // C: if (otmp->in_use) { obj_extract_self(otmp); dealloc_obj(otmp); }
+        if (otmp.in_use) {
+            const host = container ? container.cobj : chain;
+            const i = host.indexOf(otmp);
+            if (i >= 0) host.splice(i, 1);
+            continue;
+        }
+
+        // C: otmp->dknown = otmp->bknown = otmp->rknown = otmp->lknown
+        //      = otmp->cknown = otmp->tknown = 0; invlet = 0; no_charge = 0;
+        //      how_lost = LOST_NONE.
+        // (The `if (objects[otyp].oc_uses_known) otmp->known = 0;` line above
+        // them has no counterpart here: js/mkobj.js's objects[] carries no
+        // oc_uses_known bit, and guessing which types have it would answer
+        // wrong for every type not in front of me.)
+        otmp.dknown = 0; otmp.bknown = 0; otmp.rknown = 0;
+        otmp.lknown = 0; otmp.cknown = 0; otmp.tknown = 0;
+        otmp.invlet = 0;
+        otmp.no_charge = 0;
+        otmp.how_lost = 0;                       // LOST_NONE
+
+        // C: strip user-supplied names, but keep them on artifacts, statues,
+        // novels and corpses of unique monsters (those came from a score file).
+        if (otmp.oname
+            && !(otmp.oartifact || otmp.otyp === O.STATUE || otmp.otyp === O.SPE_NOVEL
+                 || (otmp.otyp === O.CORPSE && otmp.corpsenm >= O.SPECIAL_PM)))
+            otmp.oname = null;
+
+        if (otmp.otyp === O.EGG) {
+            otmp.spe = 0;                        // not "laid by you" next game
+        } else if (otmp.otyp === O.AMULET_OF_YENDOR) {
+            otmp.otyp = O.FAKE_AMULET_OF_YENDOR; // no longer the real Amulet
+            O.curse(otmp);
+        } else if (otmp.otyp === O.CANDELABRUM_OF_INVOCATION) {
+            otmp.otyp = O.WAX_CANDLE;
+            otmp.age = 50;                       // assume used
+            if (otmp.spe > 0) otmp.quan = otmp.spe;
+            otmp.spe = 0;
+            otmp.owt = O.weight(otmp);
+            O.curse(otmp);
+        } else if (otmp.otyp === O.BELL_OF_OPENING) {
+            otmp.otyp = O.BELL;
+            O.curse(otmp);
+        } else if (otmp.otyp === O.SPE_BOOK_OF_THE_DEAD) {
+            otmp.otyp = O.SPE_BLANK_PAPER;
+            O.curse(otmp);
+        }
+    }
+}
+
+// C ref: bones.c:697 set_ghostly_objlist() — fix_ghostly_obj() reads the bit
+// back when the next hero picks the item up.
+function set_ghostly_objlist(chain) {
+    for (const o of (chain || [])) {
+        if (!o) continue;
+        o.ghostly = 1;
+        if (Array.isArray(o.cobj)) set_ghostly_objlist(o.cobj);
+    }
+}
+
+// C ref: bones.c:391 remove_mon_from_bones() — "send various unique monsters
+// away, in case these characters are not in their home bases".  C's test is
+//   mtmp->iswiz || mptr == &mons[PM_MEDUSA] || mptr->msound == MS_NEMESIS
+//   || mptr->msound == MS_LEADER || is_Vlad(mtmp)
+//   || (mptr == &mons[PM_ORACLE] && !fixuporacle(mtmp))
+// The two species arms are mons[] identity comparisons in C, so resolving them
+// through name_to_pmidx() is the faithful translation, not a name heuristic —
+// everything else is a flag test.  The Oracle arm is omitted: fixuporacle()
+// succeeds whenever her level has a Delphi room, which is the only way she is
+// on a level at all, so C keeps her in that case too.
+function remove_mon_from_bones(m, PM_MEDUSA, PM_VLAD) {
+    const p = m?.data;
+    if (!p) return false;
+    const snd = msound_of(p);
+    return !!(m.iswiz || snd === MS_NEMESIS || snd === MS_LEADER
+              || (PM_MEDUSA >= 0 && m.mnum === PM_MEDUSA)
+              || (PM_VLAD >= 0 && (m.mnum === PM_VLAD || m.cham === PM_VLAD)));
+}
+
+// C ref: trap.c unhideable_trap() — the traps that are always shown.
+function unhideable_trap(ttyp) {
+    return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+}
+
 // ── savebones (C ref: bones.c:400) ──
 //
 // Called from end.c really_done() once can_make_bones() has approved a bones
@@ -383,7 +539,53 @@ export async function savebones(how = 0, corpse = null) {
         const uz = g.u?.uz;
         const key = bones_key(uz);
 
+        // C ref: bones.c:417-431 — open_bonesfile() FIRST.  If a bones file for
+        // this level already exists C does NOT overwrite it: in wizard mode it
+        // offers "Bones file already exists.  Replace it?" and only proceeds on
+        // 'y' (via delete_bonesfile), otherwise it returns leaving the older
+        // bones in place.  Our port used to clobber the blob unconditionally, so
+        // a second hero dying on a level another hero already haunted would hand
+        // the THIRD hero the wrong legacy level.
+        {
+            const existing = (typeof storage.getItem === 'function')
+                ? storage.getItem(key) : null;
+            if (existing != null && existing !== '') {
+                if (!is_wizard()) return;
+                const { y_n } = await import('./display.js');
+                if ((await y_n('Bones file already exists.  Replace it?')) !== 'y')
+                    return;
+                if (storage.removeItem) storage.removeItem(key);
+                else storage.setItem(key, '');
+            }
+        }
+
         const x = g.u?.ux ?? 0, y = g.u?.uy ?? 0;
+
+        // C ref: bones.c:446 forget_engravings() — "next hero won't have read any
+        // engravings yet".
+        for (const ep of (g.level?.engravings || [])) {
+            if (!ep) continue;
+            ep.erevealed = 0;
+            ep.eread = 0;
+        }
+
+        // C ref: bones.c:443 iter_mons(remove_mon_from_bones) + dmonsfree().
+        {
+            const { name_to_pmidx } = await import('./makemon.js');
+            const PM_MEDUSA = name_to_pmidx('Medusa') ?? -1;
+            const PM_VLAD = name_to_pmidx('Vlad the Impaler') ?? -1;
+            const mons_list = g.level?.monsters;
+            if (Array.isArray(mons_list)) {
+                for (let i = mons_list.length - 1; i >= 0; i--)
+                    if (remove_mon_from_bones(mons_list[i], PM_MEDUSA, PM_VLAD))
+                        mons_list.splice(i, 1);
+            }
+        }
+
+        // C ref: bones.c:456 set_ghostly_objlist(gi.invent) — done BEFORE the
+        // inventory is scattered, so every item the hero was carrying carries the
+        // bit into the bones file.
+        set_ghostly_objlist(g.u?.invent || g.invent || []);
 
         // C ref: bones.c:436 drop_upon_death() — scatter the hero's inventory
         // onto the floor so the reloaded bones level shows the loot.  We add each
@@ -425,8 +627,11 @@ export async function savebones(how = 0, corpse = null) {
             try { mtmp = makemon(gdata, x, y, MM_NONAME); }
             finally { g.in_mklev = saved_in_mklev; }
             if (mtmp) {
-                const plname = g.flags?.debug ? 'wizard' : (g.plname || 'Hero');
-                mtmp.mgivenname = plname;
+                // C: mtmp = christen_monst(mtmp, svp.plname);
+                const { christen_monst } = await import('./do_name.js');
+                const plname = svp_plname();
+                mtmp.mextra = mtmp.mextra || {};
+                christen_monst(mtmp, plname);
                 mtmp.mname = plname;
                 mtmp.m_lev = g.u?.ulevel || 1;
                 mtmp.mhp = mtmp.mhpmax = g.u?.uhpmax ?? 1;
@@ -436,13 +641,39 @@ export async function savebones(how = 0, corpse = null) {
             }
         }
 
-        // C ref: bones.c:508-514 — un-tame the level's monsters (they forget the
-        // dead hero) and, bones.c:544-547, strip trap "made by you".
+        // C ref: bones.c:538-546 — per-monster: mark its pack ghostly, resetobjs
+        // it, forget the dead hero (mlstmv, tameness, and seen_resistance — "
+        // observations about the current hero won't apply to future game").
+        // js/mkobj.js exports every otyp resetobjs() names except
+        // FAKE_AMULET_OF_YENDOR and permonst.h's SPECIAL_PM; both are looked up
+        // symbolically (objects[] carries the C enum name in `sym`, and
+        // SPECIAL_PM is mons[PM_LONG_WORM_TAIL]) rather than pasted as numbers.
+        const mk = await import('./mkobj.js');
+        const { name_to_pmidx: n2p } = await import('./makemon.js');
+        const O = Object.assign(Object.create(null), mk, {
+            FAKE_AMULET_OF_YENDOR:
+                mk.objects.find((o) => o.sym === 'FAKE_AMULET_OF_YENDOR')?.otyp,
+            SPECIAL_PM: n2p('long worm tail') ?? Infinity,
+        });
         for (const m of g.level?.monsters || []) {
+            set_ghostly_objlist(m.minvent || []);
+            reset_obj_chain(m.minvent, O);
             m.mlstmv = 0;
             if (m.mtame) { m.mtame = 0; m.mpeaceful = 0; }
+            m.seen_resistance = 0;               // M_SEEN_NOTHING
         }
-        for (const t of g.level?.traps || []) { t.madeby_u = 0; }
+        // C ref: bones.c:548-551 — strip trap "made by you" and re-hide every
+        // trap the next hero has no business already knowing about.
+        for (const t of g.level?.traps || []) {
+            t.madeby_u = 0;
+            t.tseen = unhideable_trap(t.ttyp) ? 1 : 0;
+        }
+        // C ref: bones.c:552-555 — the floor and buried chains get the same
+        // ghostly mark + reset the hero's pack just got.
+        set_ghostly_objlist(g.level?.objects || []);
+        reset_obj_chain(g.level?.objects, O);
+        set_ghostly_objlist(g.level?.buriedobjs || []);
+        reset_obj_chain(g.level?.buriedobjs, O);
 
         // C ref: bones.c:555-560 — wipe every cell's seen/lit/remembered state so
         // the arriving hero explores the legacy level from scratch (this is what
@@ -473,18 +704,34 @@ export async function savebones(how = 0, corpse = null) {
         // familiar_level_msg() and its rn2(4): these bones belong to whoever is
         // named here, and a stranger recognises nothing.
         {
+            // C: Sprintf(newbones->who, "%s-%.3s-%.3s-%.3s-%.3s", svp.plname,
+            //            gu.urole.filecode, gu.urace.filecode,
+            //            genders[flags.female].filecode,
+            //            aligns[1 - u.ualign.type].filecode);
+            // aligns[] is ordered {lawful, neutral, chaotic} and u.ualign.type is
+            // {1, 0, -1}, so `1 - type` is the index — and it is the FINAL
+            // alignment, not the one chargen picked, "same as topten and logfile
+            // entries".
             const { roles, races, genders, aligns } = await import('./role.js');
-            const fc3 = (s) => String(s || '?').slice(0, 3);
+            const fc3 = (s) => String(s ?? '').slice(0, 3);
             const female = !!g.flags?.female;
+            const alignIdx = 1 - (g.u?.ualign?.type ?? 0);
             const entry = {
-                who: `${g.plname || 'Hero'}-${fc3(roles[g.initrole]?.filecode)}`
+                who: `${svp_plname()}-${fc3(roles[g.initrole]?.filecode)}`
                     + `-${fc3(races[g.initrace]?.filecode)}`
                     + `-${fc3(genders[female ? 1 : 0]?.filecode)}`
-                    + `-${fc3(aligns.find(a => a.value === (g.u?.ualign?.type ?? 0))?.filecode)}`,
-                frpx: x, frpy: y, bonesknown: false,
+                    + `-${fc3(aligns[alignIdx]?.filecode)}`,
+                how, frpx: x, frpy: y, bonesknown: false,
             };
             // "most recent (this dead hero) first"
             g.level.bonesinfo = [entry, ...(g.level.bonesinfo || [])];
+
+            // C ref: bones.c:596 — "flag these bones if they are being created in
+            // wizard mode".
+            if (is_wizard()) {
+                g.level.flags = g.level.flags || {};
+                g.level.flags.wizard_bones = 1;
+            }
         }
 
         // C ref: bones.c:610 savelev() — serialise the level for the next hero.

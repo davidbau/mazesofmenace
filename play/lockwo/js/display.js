@@ -32,7 +32,7 @@ import {
     CLR_ORANGE, CLR_GREEN, CLR_MAGENTA, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA,
     DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
-import { monster_by_pmidx, infravisible } from './makemon.js';
+import { monster_by_pmidx, infravisible, pmname_of_pmidx } from './makemon.js';
 import { recalc_telepat_range } from './worn.js';
 import { mindless } from './monflags_data.js';
 import { random_monster, random_object, rn2_on_display_rng } from './disprng.js';
@@ -1895,8 +1895,13 @@ function _repadWithDashes(s) {
 function _botTitle() {
     const u = game.u || {};
     let name = _statusPlname();
+    // C ref: botl.c:991 `titl = !Upolyd ? rank() : pmname(&mons[u.umonnum],
+    // Ugender)`, with you.h:555 Ugender == (Upolyd ? u.mfemale : flags.female).
+    // mons[].name is pmnames[NEUTRAL], so a female hero polymorphed into a
+    // NAMS() species read "the Gnome Leader" where C shows "the Gnome Lady".
     const titl = u.Upolyd
-        ? (u.data?.name || '').replace(/(^|\s)([a-z])/g, (_m, sp, c) => sp + c.toUpperCase())
+        ? pmname_of_pmidx(u.umonnum, !!u.mfemale)
+            .replace(/(^|\s)([a-z])/g, (_m, sp, c) => sp + c.toUpperCase())
         : (game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer');
     let i = name.length + ' the '.length + titl.length;
     if (i > 30) {
@@ -1937,7 +1942,8 @@ function _botConditions() {
     // C ref: botl.c:1154 — u.utrap with utraptype == TT_LAVA; the generic
     // "trap" condition is opt_in, so a pit/bear trap shows nothing.
     if (u.utrap && u.utraptype === TT_LAVA) out.push('InLava');
-    if ((u.blinded || 0) > 0 || game.ublindf) out.push('Blind');
+    if ((u.blinded || 0) > 0 || game.ublindf
+        || (u.uprops?.BlindedFromForm | 0) > 0) out.push('Blind');
     if ((u.uprops?.Confusion || 0) > 0) out.push('Conf');
     // C ref: youprop.h Deaf — HDeaf || EDeaf (mon.js Deaf()).
     // _deafPending: incr_itimeout(&HDeaf) happens INSIDE the drum's pline, so

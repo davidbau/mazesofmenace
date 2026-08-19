@@ -22,6 +22,7 @@
 // hero_seq differ on the first use, giving the free ECMD_OK.
 
 import { game } from './gstate.js';
+import { CQ_CANNED } from './const.js';
 import { rn2, rnd, rn1 } from './rng.js';
 
 import {
@@ -716,12 +717,14 @@ export async function doapply() {
     // picks at the "use or apply" prompt (a Knight's lance is invlet 'b', an
     // Archeologist's/dwarf's pick-axe is a starting item).
     if (_invent.is_pole(obj)) return await use_pole(obj, false);
-    // use_pick_axe() lives in dig.c and this port has no dig occupation, so a
-    // pick/axe still falls through to the yafm below — but C would instead
-    // prompt "In what direction do you want to dig?" and consume that key.
+    // C ref: apply.c:4292/4413 default: -> dig.c use_pick_axe(obj).
     if (_invent.is_pick(obj) || _invent.is_axe(obj)) {
-        await _display.pline("Sorry, I don't know how to use that.");
-        return ECMD_OK;
+        const { use_pick_axe, USE_PICK_AXE_REWIELDED, USE_PICK_AXE_DIG }
+            = await import('./dig.js');
+        const r = await use_pick_axe(obj);
+        if (r === USE_PICK_AXE_REWIELDED) return await reapply_after_wield(obj);
+        if (r === USE_PICK_AXE_DIG) return ECMD_TIME;
+        return r === 1 ? ECMD_CANCEL : ECMD_OK;
     }
 
     // Any other tool isn't exercised; mirror C's "I don't know how to use that"
@@ -1099,6 +1102,28 @@ function find_poleable_mon(pos, min_range, max_range) {
     return true;
 }
 
+// C ref: dig.c use_pick_axe():1100 and apply.c use_pole():3441 — a weapon-tool
+// that had to be wielded first re-queues its own command:
+//     cmdq_add_ec(CQ_CANNED, doapply); cmdq_add_key(CQ_CANNED, obj->invlet);
+//     return ECMD_TIME;
+// rhack() returns, moveloop_core() spends the turn the wield cost, and the next
+// rhack() dispatches the queued doapply without reading a key — so the whole
+// thing is ONE input boundary for the player.  invent.js dofire() models the
+// same cmdq_add_ec pair this way.
+async function reapply_after_wield(obj) {
+    const { moveloop_turn } = await import('./allmain.js');
+    game.context = game.context || {};
+    game.context.move = 0;
+    await moveloop_turn();
+    // C ref: allmain.c moveloop_core() tail — `if (disp.botl || disp.botlx)
+    // bot();` runs after the turn and before the next rhack(), so the queued
+    // command's first frame already carries the new turn counter.
+    await _display.flush_screen(1);
+    // getobj()'s cmdq fast path pops this invlet instead of drawing a prompt.
+    _invent.cmdq_add_key(CQ_CANNED, obj.invlet);
+    return await doapply();
+}
+
 // C ref: apply.c use_pole(obj, autohit) — reached from dofire() as
 // use_pole(uwep, TRUE) when the quiver is empty and a polearm is wielded.
 // With autohit set there is NO "Where do you want to hit?" prompt and no
@@ -1116,9 +1141,11 @@ export async function use_pole(obj, autohit) {
         // dofire() only ever calls this with uwep, so before doapply()
         // dispatched here this arm was dead code that returned silently.
         if (await _invent.wield_tool(obj, 'swing')) {
-            // The cmdq re-run is not modelled (dorub() makes the same
-            // simplification); the wield itself costs the turn.
-            return ECMD_TIME;
+            // C: cmdq_add_ec(CQ_CANNED, doapply); cmdq_add_key(CQ_CANNED,
+            // obj->invlet); return ECMD_TIME -> moveloop spends the wield turn,
+            // then rhack() pops the queue and re-runs doapply with obj == uwep,
+            // reaching the "spot to hit" getpos.  No nhgetch separates them.
+            return await reapply_after_wield(obj);
         }
         return ECMD_OK;
     }
@@ -1145,7 +1172,8 @@ export async function use_pole(obj, autohit) {
         const picked = await getpos('the spot to hit', cc.x, cc.y,
                                     (x, y) => valid_polearm_position(
                                         x, y, min_range, max_range),
-                                    /*force=*/true);
+                                    /*force=*/true,
+                                    /*verbose=*/game.flags?.verbose !== false);
         if (!picked) return ECMD_CANCEL; // ESC
         cc.x = picked.x; cc.y = picked.y;
     }

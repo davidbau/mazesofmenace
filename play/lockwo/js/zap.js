@@ -9,7 +9,7 @@ import { pline, newsym, m_at, show_glyph_cell, update_topl, topl_more, y_n,
 import { getobj, makeknown, useupall, useup, delobj, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_NOFLAGS, xname, near_capacity } from './invent.js';
 import { mon_mr } from './monmr_data.js';
-import { mflags1_of, M1_NOEYES, is_undead_flag } from './monflags_data.js';
+import { mflags1_of, M1_NOEYES, is_undead_flag, nohands } from './monflags_data.js';
 // AD_MAGM is NOT imported: this file already declares the AD_* block locally
 // (same values), and a duplicate binding is a module-load SyntaxError.
 import { attacktype_fordmg, dmgtype, AT_EXPL, AT_GAZE, AD_BLND,
@@ -28,7 +28,8 @@ import { WAND_CLASS, GEM_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS, WEAPON_C
 import { A_WIS, A_STR, A_INT, A_CON, A_DEX, ROWNO, COLNO, ZAP_POS, IS_DOOR, IS_ROOM, IS_WALL, isok, ROOM, STONE,
          D_CLOSED, D_LOCKED, CORPSTAT_INIT, EXT_ENCUMBER, HEADSTONE, ENGRAVE,
          DUST, MM_NOMSG, In_mines, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG,
-         W_ARMF, W_ARMU, POOL, IS_FOUNTAIN, Is_waterlevel } from './const.js';
+         W_ARMF, W_ARMU, POOL, IS_FOUNTAIN, Is_waterlevel,
+         POLY_NOFLAGS } from './const.js';
 import { is_pool, is_ice } from './dbridge.js';
 import { create_gas_cloud } from './region.js';
 import { CLR_ORANGE, CLR_BLACK, CLR_GREEN, CLR_YELLOW, CLR_WHITE, CLR_BRIGHT_BLUE } from './terminal.js';
@@ -2606,12 +2607,15 @@ export async function zapyourself(obj, ordinary) {
 
     case WAN_POLYMORPH:
     case SPE_POLYMORPH:
-        // polyself(POLY_NOFLAGS) — the random-form self-polymorph subsystem is
-        // not modelled by this port (polyself.js only exposes the controlled
-        // polymon()/newman() entry points the #polyself wizard command uses).
-        // DEFERRED: C draws polymon()'s form roll here.
-        if (!Unchanging())
+        // C ref: zap.c:2804-2810 — polyself(POLY_NOFLAGS) is now ported
+        // (js/polyself.js), so the self-zap runs the real system-shock roll,
+        // the random-form pick and polymon()/newman() instead of just
+        // learning the wand.
+        if (!Unchanging()) {
             learn_it = true;
+            const { polyself } = await import('./polyself.js');
+            await polyself(POLY_NOFLAGS);
+        }
         break;
 
     case WAN_CANCELLATION:
@@ -2978,7 +2982,15 @@ async function done_selfzap(how) {
 // wands go straight to weffects(); directional (IMMEDIATE) wands prompt getdir()
 // first, then weffects() runs bhit() along the chosen direction.
 export async function dozap() {
-    if (game.u?.nohands) {
+    // C ref: zap.c dozap():6 — nohands(gy.youmonst.data).  This read
+    // `game.u.nohands`, a field nothing ever sets, so the check was dead: a
+    // hero polymorphed into a handless form could still zap wands.
+    // The Upolyd guard is load-bearing: this port stores the ROLE INDEX in
+    // u.umonnum (u_init.js:1334), not C's gu.urole.mnum, so set_uasmon()
+    // leaves u.data pointing at an unrelated mons[] row while unpolymorphed
+    // (a Wizard reads as mons[12], the jackal).  Every player monster is
+    // M1_HUMANOID, so C's answer for an unpolymorphed hero is always FALSE.
+    if (game.u?.Upolyd && nohands(game.u?.data)) {
         await pline("You aren't able to zap anything in your current form.");
         return ECMD_OK;
     }

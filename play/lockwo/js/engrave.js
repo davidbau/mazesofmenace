@@ -413,7 +413,7 @@ async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {
 // ceiling-hider clauses need mon/skill state this file cannot see, so only the
 // swallow, Levitation, Flying and pit clauses are modelled.
 // C ref: trap.c uteetering_at_seen_pit()/uescaped_shaft() for the last one.
-function can_reach_floor(check_pit) {
+export function can_reach_floor(check_pit) {
     const u = game.u;
     if (!u) return true;
     if (u.uswallow) return false;

@@ -133,6 +133,7 @@ import {
 } from './eat.js';
 import { m_everyturn_effect } from './monmove.js';
 import {
+    admitPlannedVisionChange,
     preflightSimpleMonsterActions,
     runSimpleMonsterAction,
     unportedMinliquidReason,
@@ -629,7 +630,7 @@ function elapsedTurnMinLiquid(monster, env) {
     return false;
 }
 
-async function finishElapsedTurn(
+export async function finishElapsedTurn(
     state,
     random,
     { planning = false, randomMonsterOnly = false } = {},
@@ -690,9 +691,26 @@ async function finishElapsedTurn(
                 );
             }
         : undefined;
+    // A random mimic can be born during this cloned allocation. makemon.c
+    // set_mimic_sym() rebuilds vision after choosing a blocking disguise, so
+    // run that tail against the cloned monster map and mark the borrowed
+    // transparency index for preflightSimpleMonsterActions() to restore.
+    const planningCreationVisionHooks = planning ? {
+        doesBlock: (x, y, location, normalized) => does_block(
+            x,
+            y,
+            location,
+            normalized.state,
+        ),
+        blockPoint: (x, y, normalized) => {
+            admitPlannedVisionChange(x, y, normalized.state);
+            block_point(x, y, normalized.state);
+        },
+    } : null;
     await maybe_generate_rnd_mon(state, {
         random,
         displayRandom: planningDisplayRandom,
+        hooks: planningCreationVisionHooks,
         message: turnMessage,
         norepMessage: turnNorep,
         statusRefresh: turnStatusRefresh,
@@ -952,10 +970,28 @@ async function moveElapsedTurnMonster(monster, env) {
         }),
         // C ref: mon.c restrap(). The planning scan binds the same
         // set_mimic_sym() implementation, so the two passes take the same
-        // branches and spend the same draws.
+        // branches and spend the same draws. This live binding also preserves
+        // makemon.c set_mimic_sym()'s final visibility-blocking update against
+        // the live monster map.
         restrap: (subject, subjectEnv) => restrap(subject, {
             ...subjectEnv,
-            setMimicSym: set_mimic_sym,
+            setMimicSym: (mimic, mimicEnv) => set_mimic_sym(mimic, {
+                ...mimicEnv,
+                hooks: {
+                    ...(mimicEnv.hooks ?? {}),
+                    doesBlock: (x, y, location, normalized) => does_block(
+                        x,
+                        y,
+                        location,
+                        normalized.state,
+                    ),
+                    blockPoint: (x, y, normalized) => block_point(
+                        x,
+                        y,
+                        normalized.state,
+                    ),
+                },
+            }),
         }),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
         hideUnder: unavailableElapsedTurnOperation('eel concealment'),

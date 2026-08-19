@@ -116,6 +116,7 @@ import {
     block_point,
     cansee,
     couldsee,
+    does_block,
     makeVisionBuffers,
     recalc_block_point,
     vision_recalc,
@@ -662,12 +663,39 @@ function isolatePlannedVision(state) {
     state._visionBuffers = makeVisionBuffers();
 }
 
-function admitPlannedVisionChange(x, y, state) {
+// Shared by the cloned movement scan and allmain.js's cloned elapsed-turn
+// allocation. Every planned block_point() caller must enter through here
+// before it rebuilds the borrowed transparency index.
+export function admitPlannedVisionChange(x, y, state) {
     isolatePlannedVision(state);
     // block_point() rebuilds the complete module-wide transparency index, so
     // one affected coordinate is sufficient to rebuild it from the live map
     // when planning finishes, even when the clone makes several changes.
     state._plannedVisionChange ??= { x, y };
+}
+
+// makemon.c set_mimic_sym() rebuilds vision when the selected disguise blocks
+// light. The planning pass borrows vision.c's module-wide transparency index,
+// so it marks that borrow before block_point() derives the index from the
+// cloned monster map. preflightSimpleMonsterActions() restores the index from
+// the live map in its finally block.
+function setPlannedMimicSym(monster, env) {
+    return set_mimic_sym(monster, {
+        ...env,
+        hooks: {
+            ...(env.hooks ?? {}),
+            doesBlock: (x, y, location, normalized) => does_block(
+                x,
+                y,
+                location,
+                normalized.state,
+            ),
+            blockPoint: (x, y, normalized) => {
+                admitPlannedVisionChange(x, y, normalized.state);
+                block_point(x, y, normalized.state);
+            },
+        },
+    });
 }
 
 function admitDoorOpening(x, y, env) {
@@ -1034,10 +1062,11 @@ async function planSimpleMonsterScan(monster, env) {
             wearArmor: () => unsupported('monster equipment changes'),
         }),
         // C ref: mon.c restrap(). js/allmain.js binds the same function for the
-        // live pass, including set_mimic_sym()'s disguise selection.
+        // live pass. This clone binding keeps set_mimic_sym()'s disguise and
+        // visibility updates on the planning state.
         restrap: (subject, subjectEnv) => restrap(subject, {
             ...subjectEnv,
-            setMimicSym: set_mimic_sym,
+            setMimicSym: setPlannedMimicSym,
         }),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
         hideUnder: () => unsupported('eel concealment'),
@@ -1077,9 +1106,10 @@ export async function preflightSimpleMonsterActions(
     try {
         upkeepCount = await planSimpleMonsterTurn(planned, random, advanceRound);
     } finally {
-        // admitDoorOpening() rebuilt js/vision.js's shared transparency index
-        // from the planned map. Deriving it again from the live map restores
-        // it, whether the plan finished or refused partway through.
+        // A planned door opening or blocking mimic disguise rebuilt
+        // js/vision.js's shared transparency index from the planned map.
+        // Deriving it again from the live map restores it, whether the plan
+        // finished or refused partway through.
         //
         // recalc_block_point() is not side-effect-free on the live state:
         // rebuildVisionPoint() sets vision_full_recalc whenever the change

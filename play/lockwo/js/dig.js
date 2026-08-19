@@ -18,7 +18,12 @@ import {
     D_NODOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     W_NONDIGGABLE, isok, Is_earthlevel,
 } from './const.js';
-import { mksobj_at, ROCK, BOULDER, objects as OBJECTS_TBL } from './mkobj.js';
+import { mksobj_at, ROCK, BOULDER, STATUE, objects as OBJECTS_TBL } from './mkobj.js';
+import {
+    DIGTYP_UNDIGGABLE, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_BOULDER,
+    DIGTYP_DOOR, DIGTYP_TREE, N_DIRS, N_DIRS_Z, TT_WEB,
+} from './const.js';
+import { is_pick, is_axe } from './weapon.js';
 import { Is_special } from './dungeon.js';
 import { inside_room } from './mkroom.js';
 
@@ -420,3 +425,115 @@ export function in_town(x, y) {
     }
     return !has_subrooms;
 }
+
+// C ref: dig.c dig_typ(otmp, x, y) — what a pick/axe would be working on at
+// <x,y>.  Only a pick digs rock/boulders/statues; only an axe fells a tree;
+// both chop a closed door.  Anything else is DIGTYP_UNDIGGABLE, which is what
+// keeps ordinary floor out of use_pick_axe()'s direction list.
+export function dig_typ(otmp, x, y) {
+    if (!isok(x, y) || !otmp || (!is_pick(otmp) && !is_axe(otmp)))
+        return DIGTYP_UNDIGGABLE;
+    const ltyp = game.level?.at(x, y)?.typ;
+    if (is_axe(otmp))
+        return closed_door(x, y) ? DIGTYP_DOOR
+             : IS_TREE(ltyp) ? DIGTYP_TREE
+             : DIGTYP_UNDIGGABLE;
+    // is_pick(otmp)
+    if (sobj_at_typ(STATUE, x, y) && pick_can_reach(otmp, x, y))
+        return DIGTYP_STATUE;
+    if (sobj_at_boulder(x, y) && pick_can_reach(otmp, x, y))
+        return DIGTYP_BOULDER;
+    if (closed_door(x, y)) return DIGTYP_DOOR;
+    if (IS_TREE(ltyp)) return DIGTYP_UNDIGGABLE;   // pick vs tree
+    if (IS_OBSTRUCTED(ltyp) && (!game.level?.flags?.arboreal || IS_WALL(ltyp)))
+        return DIGTYP_ROCK;
+    return DIGTYP_UNDIGGABLE;
+}
+
+// C ref: dig.c pick_can_reach(otmp, x, y) — a pick reaches a boulder/statue
+// only from a square the hero can actually swing from; the airborne and
+// engulfed cases are the whole of the guard the hero ever meets here.
+function pick_can_reach(_otmp, _x, _y) {
+    const u = game.u;
+    return !(u?.uswallow) && !(u?.uprops?.Levitation);
+}
+
+function sobj_at_typ(otyp, x, y) {
+    for (let o = game.level?.at(x, y)?.objects; o; o = o.nexthere)
+        if (o.otyp === otyp) return o;
+    return null;
+}
+
+// C ref: dig.c use_pick_axe(obj) — applying a pick-axe/mattock or an axe.
+// An unwielded tool is wielded first and the command re-queues itself
+// (cmdq_add_ec(doapply) + the invlet), so the direction prompt only appears on
+// the second pass, one turn later.  The prompt's bracketed key list is built
+// from the directions that actually have something to work on, which is why an
+// axe swung in an ordinary room offers only "[>]".
+export async function use_pick_axe(obj) {
+    const u = game.u;
+    const { wield_tool } = await import('./invent.js');
+    const { pline } = await import('./display.js');
+
+    // Check tool
+    if (obj !== game.uwep) {
+        if (await wield_tool(obj, 'swing')) return USE_PICK_AXE_REWIELDED;
+        return 0;                        // ECMD_OK
+    }
+    const ispick = is_pick(obj);
+    const verb = ispick ? 'dig' : 'chop';
+
+    if (u.utrap && u.utraptype === TT_WEB) {
+        // res is always 0 here: the wielded-already path prints nothing first.
+        await pline(`Unfortunately, you can't ${verb} while entangled in a web.`);
+        return 0;
+    }
+
+    // C ref: dig.c:1122 — "construct list of directions to show player for
+    // likely choices".  dir 0..7 are the plane moves in sdir[] order, 8 is
+    // down and 9 is up; a plane direction survives only if something there is
+    // diggable, and the up/down pair is filtered by can_reach_floor().
+    const { can_reach_floor } = await import('./engrave.js');
+    const { Cmd_dirchars } = await import('./cmd.js');
+    const dirchars = Cmd_dirchars();
+    const downok = !!can_reach_floor(false);
+    let dirsyms = '';
+    for (let dir = 0; dir < N_DIRS_Z; dir++) {
+        const dirch = dirchars[dir];
+        if (u.uswallow) {
+            /* all directions are viable when swallowed */
+        } else if (dir < N_DIRS) {
+            const [dx, dy] = DIG_DIR_XY[dir];
+            // C: dxdy_moveok() — only a grid bug is barred from diagonals.
+            if (dx && dy && NODIAG(u.umonnum)) continue;
+            const rx = u.ux + dx, ry = u.uy + dy;
+            if (!isok(rx, ry) || dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE)
+                continue;
+        } else {
+            // C: `if ((u.dz > 0) ^ downok) continue;` — dir 8 is '>' (dz > 0).
+            if ((dir === 8) !== downok) continue;
+        }
+        dirsyms += dirch;
+    }
+
+    const { getdir } = await import('./cmd.js');
+    if (!(await getdir(`In what direction do you want to ${verb}? [${dirsyms}]`)))
+        return 1;                        // ECMD_CANCEL
+    // use_pick_axe2() — the dig itself (dig_check/dighole and the multi-turn
+    // digging occupation) is a separate unported subsystem; reaching it means
+    // the hero answered the direction prompt, which no covered session does.
+    return USE_PICK_AXE_DIG;
+}
+
+// Direction deltas in sdir[] order (h y k u l n j b), matching cmd.js DIR_XYZ.
+const DIG_DIR_XY = [
+    [-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1],
+];
+// C ref: mondata.h NODIAG(mnum) == (mnum == PM_GRID_BUG).
+const PM_GRID_BUG = 116;
+function NODIAG(mnum) { return mnum === PM_GRID_BUG; }
+
+// Sentinels for apply.js: the tool had to be wielded (C re-queues doapply), or
+// the direction prompt was answered and the dig occupation would start.
+export const USE_PICK_AXE_REWIELDED = -1;
+export const USE_PICK_AXE_DIG = -2;

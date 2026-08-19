@@ -797,7 +797,11 @@ export function vision_recalc(control = 0) {
 // the other worn-slot pointers (game.uarm, game.uarmg, ...).
 export function Blind() {
     const u = game.u;
-    return !!u && ((u.blinded || 0) > 0 || !!game.ublindf);
+    // C ref: youprop.h Blinded — HBlinded carries a FROMFORM bit that
+    // polyself.c set_uasmon() sets for an eyeless polymorph form; js/polyself.js
+    // keeps that source in its own field because u.blinded is a countdown.
+    return !!u && ((u.blinded || 0) > 0 || !!game.ublindf
+                   || (u.uprops?.BlindedFromForm | 0) > 0);
 }
 
 // C ref: youprop.h Infravision (HInfravision || EInfravision).  polyself.c

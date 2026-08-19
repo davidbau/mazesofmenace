@@ -18,21 +18,16 @@ import { NO_COLOR } from './terminal.js';
 // seed/game state), so it reproduces C's window for every session identically.
 
 // get_configfile(): the run-time configuration file path substituted into the
-// intro line.  It is environment-specific (differs per machine/recording) and
-// is NOT present in any harness input we receive — it exists only inside the
-// recorded screen itself, so we can never reproduce its exact characters and
-// that one substituted line is always lost.  But C's initoptions() always
-// resolves *some* (non-empty) configfile path before option_help() can run
-// (cfgfiles.c set_configfile_name() fallback chain always sets one), and
-// tty_putstr()'s line-break-on-overflow (ported below as wput()) always
-// splits "Set options as OPTIONS=<options> in <cfg>" onto its own line
-// whenever that combined string doesn't fit in COLNO — which it never does
-// for any real absolute path.  Losing that split (by leaving the substituted
-// text empty, so the combined line fits on one row after all) shifts every
-// following putstr() line up by one row and costs many more matches than the
-// single unrecoverable line does, so we still emit the split's second line —
-// just with unknown/empty content instead of a fabricated path.
-const OPT_CONFIGFILE = '';
+// intro line.  It comes from the RECORDING ENVIRONMENT rather than from the
+// game.  docs/recording-environment.md (upstream, 2026-08-18) documents that
+// environment and rules that "Hard-coding them is fine": the harness set HOME
+// to its own results directory and wrote each session's nethackrc to
+// $HOME/.nethackrc before every launch, so NetHack reports this same path for
+// EVERY session — held-out included.  tty_putstr()'s line-break-on-overflow
+// (ported below as wput()) splits on the string's exact length, so it has to
+// be verbatim.
+const OPT_CONFIGFILE =
+    '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison/c-harness/results/.nethackrc';
 
 // Boolean option names, in allopt[] order (option_help() BoolOpt loop output).
 const OPT_BOOL = [
@@ -295,13 +290,35 @@ function parseSymbols(str, result) {
 // SCREEN CONTENT written by the recorder's raw shadow-buffer writer, and the
 // dismissal is a getret() that eats input.  Both are modelled here.
 
+const BUFSZ = 256;     /* global.h */
+const PL_NSIZ = 32;    /* global.h — name of player */
+const PL_PSIZ = 63;    /* global.h — name of pet */
+const WARNCOUNT = 6;   /* sym.h — number of warning levels */
+
 // The frame is per-parse rather than a stack: parseNethackrc reads one file.
 let config_error_data = null;
+
+// The ordered stream of everything the raw writer emitted while the file was
+// read, so the boundaries fall where C's do: a string is one raw_print() line,
+// WAIT_SYNCH is one wait_synch() -> getret().  get_uchars() calls both in the
+// MIDDLE of the file, so the pauses cannot be inferred from the text.
+let raw_stream = null;
+const WAIT_SYNCH = Object.freeze({ wait_synch: true });
+
+function raw_print(str) {
+    if (raw_stream) raw_stream.push(str);
+}
+
+// C ref: hack.h wait_synch() -> wintty.c getret(): the reader below eats input
+// until Return, and each eaten key is one captured input boundary.
+function wait_synch() {
+    if (raw_stream) raw_stream.push(WAIT_SYNCH);
+}
 
 function config_error_init(sourcename) {
     config_error_data = {
         line_num: 0, num_errors: 0, origline_shown: false,
-        source: sourcename || '', raw: [],
+        source: sourcename || '', origline: '',
     };
 }
 
@@ -324,30 +341,70 @@ function config_error_add(buf) {
     if (!ced) return;
     ced.num_errors++;
     if (!ced.origline_shown) {
-        ced.raw.push('\n' + ced.origline);
+        raw_print('\n' + ced.origline);
         ced.origline_shown = true;
     }
     const lineno = ced.line_num > 0 ? `Line ${ced.line_num}: ` : '';
-    ced.raw.push(` * ${lineno}${buf}${punct}`);
+    raw_print(` * ${lineno}${buf}${punct}`);
 }
 
 // C ref: cfgfiles.c config_error_done() — the trailing count line, then
-// wait_synch().  `configfile` is the RESOLVED $HOME/.nethackrc, i.e. an
-// absolute path that exists only inside the recorded screen; emit the
-// unresolved cfgfiles.c default_configfile instead (that row is lost either
-// way, and a fabricated path would be an environment hardcode).
-const DEFAULT_CONFIGFILE = '.nethackrc';
-
-function config_error_done(result) {
+// wait_synch().  `configfile` here is the RESOLVED $HOME/.nethackrc, the same
+// string option_help() prints; docs/recording-environment.md fixes $HOME for
+// every recording and rules that hard-coding what NetHack printed from it is
+// fine, so OPT_CONFIGFILE is the value C reported.
+function config_error_done() {
     const ced = config_error_data;
     config_error_data = null;
-    if (!ced || !ced.num_errors) return;
+    if (!ced || !ced.num_errors) return 0;
     const n = ced.num_errors;
-    ced.raw.push(`\n${n} error${n === 1 ? '' : 's'} `
-                 + `${ced.source === 'command line' ? 'on' : 'in'} `
-                 + `${ced.source || DEFAULT_CONFIGFILE}.\n`);
-    result.config_error_raw = ced.raw;
-    result.config_error_count = n;
+    raw_print(`\n${n} error${n === 1 ? '' : 's'} `
+              + `${ced.source === 'command line' ? 'on' : 'in'} `
+              + `${ced.source || OPT_CONFIGFILE}.\n`);
+    wait_synch();
+    return n;
+}
+
+// C ref: cfgfiles.c get_uchars() — read a list of decimal numbers into a uchar
+// array.  Only digits and blanks are legal, so the comma that looks natural in
+// a config file ("WARNINGS=0,1,2") is a syntax error — and the complaint is a
+// raw_printf() + wait_synch() DURING the read, not a config_error_add(), so it
+// neither shows the offending line nor counts toward config_error_done()'s
+// total.  With modlist set a zero leaves the list entry alone.
+function get_uchars(bufp, list, modlist, size, name) {
+    let num = 0, count = 0, havenum = false, i = 0;
+
+    for (;;) {
+        const c = i < bufp.length ? bufp[i] : '\0';
+        switch (c) {
+        case ' ': case '\0': case '\t': case '\n':
+            if (havenum) {
+                if (num || !modlist) list[count] = num & 0xff;
+                count++;
+                num = 0;
+                havenum = false;
+            }
+            if (count === size || c === '\0') return count;
+            i++;
+            break;
+        case '0': case '1': case '2': case '3': case '4':
+        case '5': case '6': case '7': case '8': case '9':
+            havenum = true;
+            num = num * 10 + (c.charCodeAt(0) - 0x30);
+            i++;
+            break;
+        default:
+            raw_print(`Syntax error in ${name}`);
+            wait_synch();
+            return count;
+        }
+    }
+}
+
+// C ref: options.c assign_warnings() — a zero entry leaves gw.warnsyms alone.
+function assign_warnings(graph_chars, result) {
+    for (let i = 0; i < WARNCOUNT; i++)
+        if (graph_chars[i]) result.warnsyms[i] = String.fromCharCode(graph_chars[i]);
 }
 
 // C ref: options.c add_autopickup_exception() — one sscanf per accepted form.
@@ -428,8 +485,10 @@ export async function config_error_report(result) {
     if (!raw || !raw.length) return;
     const disp = game.nhDisplay;
     const rows = disp?.rows ?? 24, cols = disp?.cols ?? 80;
-    /* nomux_enter_raw_mode() clears the shadow buffer: exit_nhwindows/settty
-       switch off the alt screen, so the visible terminal is blank first. */
+    /* nomux_enter_raw_mode() clears the shadow buffer ONCE, on the first
+       raw_print: exit_nhwindows/settty switch off the alt screen, so the
+       visible terminal is blank first.  Its row/col then only ever advance,
+       which is why a later wait_synch() finds the earlier text still there. */
     if (disp?.clearScreen) disp.clearScreen();
     let row = 0, col = 0;
     const putch = (ch) => {
@@ -439,20 +498,23 @@ export async function config_error_report(result) {
             disp?.putstr?.(col, row, ch, NO_COLOR, 0);
         col++;
     };
-    for (const s of raw) {
-        for (const ch of s) putch(ch);
-        putch('\n'); /* puts() / tty_raw_print_bold both append one */
-    }
-    game._nomux_raw = { row, col };
-    if (disp?.setCursor) disp.setCursor(col, row);
-
-    /* getline.c xwaitforspace(): iflags.cbreak is still FALSE this early
-       (setftty() runs from tty_init_nhwindows), so the entire cbreak branch is
-       skipped — neither space nor ESC dismisses this, ONLY '\n' or '\r'.  Every
-       key before that is one captured input boundary with an unchanged screen. */
-    for (;;) {
-        const c = await nhgetch();
-        if (c === 10 || c === 13) break;
+    for (const item of raw) {
+        if (typeof item === 'string') {
+            for (const ch of item) putch(ch);
+            putch('\n'); /* puts() / tty_raw_print_bold both append one */
+            game._nomux_raw = { row, col };
+            if (disp?.setCursor) disp.setCursor(col, row);
+            continue;
+        }
+        /* getline.c xwaitforspace(): iflags.cbreak is still FALSE this early
+           (setftty() runs from tty_init_nhwindows), so the entire cbreak
+           branch is skipped — neither space nor ESC dismisses this, ONLY '\n'
+           or '\r'.  Every key before that is one captured input boundary with
+           an unchanged screen. */
+        for (;;) {
+            const c = await nhgetch();
+            if (c === 10 || c === 13) break;
+        }
     }
 }
 
@@ -912,7 +974,10 @@ function optfn_compound(o, negated, opts, op, result) {
     if (op === '') return; /* "Missing parameter for ..." */
 
     switch (o.name) {
-    case 'name': result.name = nmcpy(op, 32); return;   // PL_NSIZ
+    // optn_name is what the recording harness reads back out of the rc to
+    // build its '-u' argument, so it is the value that survives into the game
+    // (see parseNethackrc()); result.name itself is assigned from it there.
+    case 'name': result.optname = nmcpy(op, PL_NSIZ); return;
     // C ref: optfn_boulder() — deprecated spelling of SYMBOLS=S_boulder:c.
     case 'boulder': result.symoverride.S_boulder = symVal(op); return;
     case 'symset': result.symset = op; return;
@@ -938,10 +1003,17 @@ function optfn_compound(o, negated, opts, op, result) {
     }
 }
 
+// C ref: options.c allopt[].dupdetected, reset per config FILE by
+// reset_duplicate_opt_detection(), and go.using_alias.
+let dupdetected = [];
+let using_alias = false;
+
 // C ref: options.c parseoptions() — one element of a comma-separated OPTIONS
 // list, or the whole list (it splits and recurses itself).
 function parseoptions(optstr, tinitial, result) {
     let opts = optstr;
+
+    using_alias = false;
 
     // Elements are processed RIGHT TO LEFT: split at the first comma and
     // recurse on the rest before handling the current element.  So with a
@@ -953,11 +1025,17 @@ function parseoptions(optstr, tinitial, result) {
             opts = opts.slice(0, comma);
         }
     }
-    if (opts.length > 128) return; // BUFSZ / 2
+    if (opts.length > BUFSZ / 2) {
+        config_error_add(`Option too long, max length is ${BUFSZ / 2} characters`);
+        return;
+    }
 
     while (opts.length && isspace(opts[0])) opts = opts.slice(1);
     while (opts.length && isspace(opts[opts.length - 1])) opts = opts.slice(0, -1);
-    if (!opts) return;
+    if (!opts) {
+        config_error_add('Empty statement');
+        return;
+    }
 
     // options.c:540 — a LOOP, so "!no", "nono" and the "no-" spelling all work.
     // Note there is no re-trim afterwards, so "no legacy" does NOT parse.
@@ -981,7 +1059,13 @@ function parseoptions(optstr, tinitial, result) {
         }
         if (!got_match) got_match = match_optname(opts, o.name, o.minmatch, true);
         if (got_match) {
-            if (!o.pfx && optlen < o.minmatch) break; /* ambiguous */
+            if (!o.pfx && optlen < o.minmatch) {
+                /* matchidx deliberately left alone, as C leaves it: an
+                   ambiguous option reports once and sets nothing. */
+                config_error_add(`Ambiguous option ${opts}, ${o.minmatch}`
+                                 + ' characters are needed to differentiate');
+                break;
+            }
             matchidx = i;
             break;
         }
@@ -995,6 +1079,7 @@ function parseoptions(optstr, tinitial, result) {
             if (match_optname(opts, o.alias, o.alias.length, true)) {
                 matchidx = i;
                 got_match = true;
+                using_alias = true;
                 break;
             }
         }
@@ -1002,15 +1087,40 @@ function parseoptions(optstr, tinitial, result) {
 
     if (got_match && matchidx >= 0) {
         const o = ALLOPT[matchidx];
-        if (negated && !o.negateok) return; /* bad_negation() */
+        // C ref: options.c duplicate_opt_detection()/complain_about_duplicate()
+        // — the counter is per allopt[] entry and is reset per config FILE, so
+        // the same option on two different lines complains too.  OthrOpt
+        // entries print "boolean" along with the Boolean ones.
+        if (dupdetected[matchidx]++ && !o.dupeok) {
+            const via = using_alias ? ` (via alias: ${o.alias})` : '';
+            config_error_add(`${o.typ === 'C' ? 'compound' : 'boolean'}`
+                             + ` option specified multiple times: ${o.name}${via}`);
+        }
+        if (negated && !o.negateok) {
+            /* C ref: options.c bad_negation(name, TRUE). */
+            config_error_add(`The ${o.name} option may not both have a value`
+                             + ' and be negated.');
+            return;
+        }
         const op = string_for_opt(opts);
         if (o.typ === 'B') optfn_boolean(o, negated, opts, op, result);
         else if (o.typ === 'C') optfn_compound(o, negated, opts, op, result);
         return;
     }
 
-    // Unmatched, but a symbol override?
-    if (opts.startsWith('S_')) parseSymbols(opts, result);
+    // Unmatched, but a symbol override?  C requires parsesymbols() to succeed
+    // too and reports the leftovers as an unknown option; parseSymbols() here
+    // accepts what it understands and drops the rest, so an S_ line is treated
+    // as matched — under-reporting rather than inventing an error screen.
+    if (opts.startsWith('S_')) {
+        parseSymbols(opts, result);
+        return;
+    }
+
+    // C ref: options.c parseoptions() falling off the end.  Only an option
+    // name that matched NOTHING lands here: a matched option with a bad value
+    // reports its own complaint from inside its optfn and returns first.
+    config_error_add(`Unknown option '${opts}'`);
 }
 
 // C ref: cfgfiles.c config_line_stmt[] — [directive name, minimum number of
@@ -1055,12 +1165,18 @@ function find_optparam(buf) {
     return bufp;
 }
 
-// C ref: cfgfiles.c parse_config_line().
+// C ref: cfgfiles.c parse_config_line().  A line that names no statement in
+// the table is an ERROR, not a silent skip: config_error_add() puts it on the
+// screen and config_error_done() then blocks for a Return, so one unsupported
+// rc line costs a whole session's worth of boundaries if it is not modelled.
 function parse_config_line(origbuf, result) {
     while (origbuf[0] === ' ' || origbuf[0] === '\t') origbuf = origbuf.slice(1);
     const buf = mungspaces(origbuf);
     const sep = find_optparam(buf);
-    if (sep < 0) return; /* "Not a config statement, missing '='" */
+    if (sep < 0) {
+        config_error_add("Not a config statement, missing '='");
+        return;
+    }
     let bufp = buf.slice(sep + 1);
     if (bufp[0] === ' ') bufp = bufp.slice(1);
 
@@ -1075,36 +1191,133 @@ function parse_config_line(origbuf, result) {
         case 'AUTOPICKUP_EXCEPTION': add_autopickup_exception(bufp, result); return;
         case 'BINDINGS': parseBindings(bufp, result); return;
         case 'SYMBOLS': parseSymbols(bufp, result); return;
-        case 'NAME': result.name = bufp.slice(0, 31); return; // PL_NSIZ - 1
+        // C ref: cnf_line_NAME() — strncpy(svp.plname, ...).  The recorded
+        // games never show it: process_options() runs AFTER initoptions(), and
+        // the recording harness always passes '-u <name>', so unixmain.c's
+        // case 'u' overwrites plname with the command-line value (empty when
+        // the rc has no OPTIONS=name:).  See the override in parseNethackrc().
+        case 'NAME': result.plname = bufp.slice(0, PL_NSIZ - 1); return;
         case 'ROLE': case 'CHARACTER': result.role = bufp; return;
-        case 'dogname': case 'catname': result.flags[nm] = bufp; return;
-        // C ref: cnf_line_BOULDER() — get_uchars() into ov_primary_syms[].
-        case 'BOULDER': result.symoverride.S_boulder = symVal(bufp); return;
+        case 'dogname': case 'catname': result.flags[nm] = bufp.slice(0, PL_PSIZ - 1); return;
+        // C ref: cnf_line_BOULDER() — get_uchars() into ov_primary_syms[], one
+        // entry, in place: a 0 (or a syntax error) leaves the default symbol.
+        case 'BOULDER': {
+            const list = [];
+            get_uchars(bufp, list, true, 1, 'BOULDER');
+            if (list[0]) result.symoverride.S_boulder = String.fromCharCode(list[0]);
+            return;
+        }
+        // C ref: cnf_line_WARNINGS().
+        case 'WARNINGS': {
+            const translate = new Array(WARNCOUNT).fill(0);
+            get_uchars(bufp, translate, false, WARNCOUNT, 'WARNINGS');
+            assign_warnings(translate, result);
+            return;
+        }
         // ROGUESYMBOLS targets ROGUESET, which display.js does not model; the
         // rest are directories / 'O'-menu editors with no effect on a screen.
+        // They still have to MATCH here so that no error is reported.
         default: return;
         }
     }
+
+    config_error_add('Unknown config statement');
+}
+
+// C ref: cfgfiles.c is_config_section() — " [ section ] # comment", spaces
+// optional; returns the section name, or null when the line is not one.
+function is_config_section(str) {
+    const a = str.trim();
+    if (a[0] !== '[') return null;
+    const z = a.indexOf(']', 1);
+    if (z < 0) return null;
+    let c = z + 1;
+    while (a[c] === ' ') c++;
+    if (c < a.length && a[c] !== '#') return null;
+    return a.slice(1, z).trim();
+}
+
+// C ref: cfgfiles.c handle_config_section() — returns true when the caller
+// should skip the line, either because it IS a section header or because it
+// falls inside a section that CHOOSE did not pick.
+//
+// CHOOSE picks its section with rn2() (choose_random_part()), the first draw of
+// the game; jsmain.js seeds the PRNG only after the rc has been read, so the
+// pick is left unresolved and section_chosen holds a sentinel that matches no
+// header.  That keeps a CHOOSE file off the "without CHOOSE" error path — the
+// only part of it that would otherwise cost screens the file has not lost
+// already to the missing draw.
+const SECTION_UNRESOLVED = '\0unresolved';
+
+function handle_config_section(buf, st) {
+    const sect = is_config_section(buf);
+    if (sect !== null) {
+        st.section_current = null;
+        if (!st.section_chosen) {
+            config_error_add(`Section "[${sect}]" without CHOOSE`);
+            return true;
+        }
+        if (sect) st.section_current = sect;
+        else st.section_chosen = null; /* free_config_sections() */
+        return true;
+    }
+    if (st.section_current) {
+        if (!st.section_chosen) return true;
+        return st.section_chosen !== st.section_current;
+    }
+    return false;
 }
 
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
         flags: {}, iflags: {}, keybind: {}, symoverride: {}, apelist: [],
+        warnsyms: [],
     };
     if (!rc) return result;
 
+    raw_stream = [];
+    dupdetected = new Array(ALLOPT.length).fill(0);
     config_error_init('');
-    // C ref: cfgfiles.c read_config_file() — leading whitespace is skipped and
-    // blank / '#' comment lines never reach parse_config_line().  But
-    // config_error_nextline() runs for EVERY physical line, so the line number
-    // an error reports counts blanks and comments too.
+    // C ref: cfgfiles.c parse_conf_buf() — trailing spaces/CR are stripped, a
+    // trailing '\\' continues onto the next physical line (merged with one
+    // space between), and blank / '#' comment lines never reach
+    // parse_config_line().  But config_error_nextline() runs for EVERY
+    // physical line, so the line number an error reports counts them too.
+    const st = { section_current: null, section_chosen: null };
+    let pending = null;
     for (const rawLine of rc.split('\n')) {
-        config_error_nextline(rawLine.replace(/[ \t\r]+$/, ''));
-        const line = rawLine.trim();
-        if (!line || line.startsWith('#')) continue;
-        parse_config_line(line, result);
+        let line = rawLine.replace(/[\r]+$/, '');
+        const morelines = line.endsWith('\\');
+        if (morelines) line = line.slice(0, -1);
+        line = line.replace(/[ \t\r]+$/, '');
+        config_error_nextline(line);
+        const ep = line.replace(/^[ \t]+/, '');
+        const ignoreline = !ep || ep[0] === '#';
+        const oldline = pending !== null;
+        if (!ignoreline) pending = (pending !== null) ? pending + ' ' + ep : ep;
+        if (morelines || (ignoreline && !oldline)) continue;
+        const buf = pending;
+        pending = null;
+        if (handle_config_section(buf, st)) continue;
+        // C ref: cfgfiles.c parse_conf_buf() CHOOSE branch.
+        if (match_optname(buf, 'CHOOSE', 6, true)) {
+            if (find_optparam(buf) < 0)
+                config_error_add('Format is CHOOSE=section1,section2,...');
+            else
+                st.section_chosen = SECTION_UNRESOLVED;
+            continue;
+        }
+        parse_config_line(buf, result);
     }
-    config_error_done(result);
+    config_error_done();
+    // C ref: sys/unix/unixmain.c process_options() case 'u', which runs after
+    // initoptions(): the command line overrides whatever the rc set.  The
+    // recording harness derives it from the rc's OPTIONS=name: value and
+    // passes an empty string when there is none, so plname ends up being
+    // exactly that value and a NAME= statement never reaches the game.
+    result.name = result.optname || '';
+    if (raw_stream.length) result.config_error_raw = raw_stream;
+    raw_stream = null;
     return result;
 }

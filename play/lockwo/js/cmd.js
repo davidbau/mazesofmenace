@@ -24,7 +24,7 @@ import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { docast } from './spell.js';
 import { doread } from './read.js';
-import { dohelp } from './pager.js';
+import { dohelp, dowhatdoes } from './pager.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, doddoremarm, hooked_tty_getlin, wiz_wish, wiz_genesis,
          wiz_map_extcmd, run_extcmd_by_name } from './extcmd-handlers.js';
@@ -1375,6 +1375,12 @@ export async function rhack(key) {
         // C ref: cmd.c keymap 'x' = doswapweapon (wield.c) — swap the primary
         // and secondary weapons.
         game.context.move = (await doswapweapon()) === 3 ? 1 : 0;
+    } else if (ch === 'X') {
+        // C ref: cmd.c { 'X', "twoweapon", dotwoweapon } (wield.c).  Unbound
+        // here, 'X' fell through to "Unknown command 'X'."; only the '#twoweapon'
+        // spelling reached the handler.  ECMD_TIME is 0x01 in wield.c.
+        const rX = await run_extcmd_by_name('twoweapon');
+        game.context.move = rX === 1 ? 1 : 0;
     } else if (ch === 't') {
         // C ref: cmd.c — 't' (#throw) throw/shoot an item.  throw_obj returns
         // ECMD_TIME (3) when the throw takes a turn; getdir (the direction
@@ -1397,6 +1403,13 @@ export async function rhack(key) {
         // C ref: cmd.c ';' "glance" -> pager.c do_look(1): quick farlook.
         // Cursor-positioning loop + look-at description; no game time passes.
         await do_farlook();
+        game.context.move = 0;
+    } else if (ch === '&') {
+        // C ref: cmd.c { '&', "whatdoes", dowhatdoes } -> pager.c dowhatdoes():
+        // prompt, read ONE key, print that key's description; no game time
+        // passes.  The key was named in the command table but never dispatched,
+        // so '&' fell through and its ARGUMENT key ran as a command instead.
+        await dowhatdoes();
         game.context.move = 0;
     } else if (ch === '/') {
         // C ref: cmd.c { '/', "whatis", dowhatis } -> pager.c do_look(0): the
@@ -2653,10 +2666,11 @@ export async function domove(dx, dy) {
 
     // C ref: hack.c domove_core():19 carrying_too_much() — an overloaded hero,
     // or a badly hurt one carrying more than Burdened, cannot move at all.  The
-    // "not enough stamina" arm draws exercise(A_CON, FALSE)'s rn2(2) and neither
-    // arm elapses a turn.  This runs BEFORE everything below, including the
-    // uswallow split.
-    if (await carrying_too_much()) return;
+    // "not enough stamina" arm draws exercise(A_CON, FALSE)'s rn2(2).  The turn
+    // STILL elapses: cmd.c parse() sets svc.context.move = TRUE before reading
+    // the key and carrying_too_much() only calls nomul(0), never clearing it
+    // (contrast domove_dopickup()'s explicit `svc.context.move = 0`).
+    if (await carrying_too_much()) { game.context.move = 1; return; }
 
     // C ref: hack.c:2733 domove_core() — the swallowed arm.  A direction key
     // inside an engulfer is ALWAYS an attack on the engulfer: the step itself is
