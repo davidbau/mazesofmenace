@@ -139,7 +139,7 @@ const HELP_MENU_ITEMS = [
     { text: 'Long description of the game and commands.', fn: dispfile_help },
     { text: 'List of game commands.', fn: dispfile_shelp },
     { text: 'Concise history of NetHack.', fn: dohistory },
-    { text: 'Info on a character in the game display.', fn: null },
+    { text: 'Info on a character in the game display.', fn: hmenu_dowhatis },
     { text: 'Info on what a given key does.', fn: dowhatdoes },
     { text: 'List of game options.', fn: option_help },
     { text: 'Longer explanation of game options.', fn: dispfile_optionfile },
@@ -152,6 +152,13 @@ const HELP_MENU_ITEMS = [
     { text: 'Support information.', fn: docontact },
     { text: 'List of wizard-mode commands.', fn: null, wizonly: true },
 ];
+
+// C ref: pager.c hmenu_dowhatis() — `do_look(0, (coord *) 0)`, the same full
+// whatis the '/' command runs.  Dynamic import: hack.js imports this file.
+async function hmenu_dowhatis() {
+    const { do_look_full } = await import('./hack.js');
+    await do_look_full();
+}
 
 // C ref: pager.c hmenu_doextversion()/dispfile_*()/dohistory() — thin wrappers
 // that each display one help/data file (or the version info) full-screen.
@@ -607,6 +614,15 @@ export async function dohelp() {
     }
 
     if (picked >= 0 && items[picked].fn) {
+        // C ref: pager.c dohelp() — destroy_nhwindow(tmpwin) runs BEFORE the
+        // chosen handler, and tty_dismiss_nhwindow()'s corner path repaints the
+        // area the menu covered.  Without it the next handler's own overlay
+        // (e.g. hmenu_dowhatis()'s "What do you want to look at:") was drawn on
+        // top of a help menu C had already taken down.
+        {
+            const d0 = disp();
+            if (d0?.clearScreen) { d0.clearScreen(); render_map_to_grid(); }
+        }
         await items[picked].fn();
     } else if (picked >= 0) {
         // Chosen topic not yet ported: dismiss the menu overlay back to the map

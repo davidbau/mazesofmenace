@@ -33,7 +33,8 @@ import { FOOD_CLASS, objectNames } from './objects.js';
 
 const STATUE_OTYP = objectNames.indexOf('STATUE');
 const BOULDER_OTYP = objectNames.indexOf('BOULDER');
-import { dist2, bad_rock, cant_squeeze_thru } from './mon.js';
+const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
+import { dist2, bad_rock, cant_squeeze_thru, wake_nearto } from './mon.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
@@ -51,7 +52,10 @@ import { dokick } from './dokick.js';
 import { donull, dodown, doup, dodrop } from './do.js';
 import { dosave } from './save.js';
 import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
-import { do_attack, mon_at, is_safemon, mundisplaceable } from './uhitm.js';
+import {
+    do_attack, mon_at, is_safemon, mundisplaceable, explum, attacktype_fordmg,
+} from './uhitm.js';
+import { rehumanize } from './polyself.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { doextcmd } from './getline.js';
 import { dosearch, doterrain } from './detect.js';
@@ -494,10 +498,11 @@ async function mention_walls_obstructed(x, y) {
  * with no monster and !nopick, wastes a turn.
  * Always unmap_object (not only for 'I') so stale object memory becomes
  * background — matching C before the thin-air / obstacle message.
- * Named omissions: boulder/statue dig with pick; Underwater; explode poly;
- * Hallu monster-as-statue; ansimpleoname boulder wording polish.
+ * Upolyd AT_EXPL: futilely/explode-at wording then wake_nearto, explum(null),
+ * mh=-1, rehumanize (D-1265). Named omissions: boulder/statue dig with pick;
+ * Underwater; Hallu monster-as-statue; ansimpleoname boulder wording.
  */
-async function domove_fight_empty(x, y) {
+export async function domove_fight_empty(x, y) {
     const offEdge = !isok(x, y);
     const loc = (!offEdge && game.level?.at(x, y)) || null;
     let boulder = null;
@@ -538,8 +543,22 @@ async function domove_fight_empty(x, y) {
     } else {
         target = 'thin air';
     }
-    const harmlessly = (boulder || (solid && !offEdge)) ? 'harmlessly ' : '';
-    await pline(`You ${harmlessly}attack ${target}.`);
+    const explo = Upolyd(game.u)
+        && !!attacktype_fordmg(game.youmonst?.data, AT_EXPL, -1);
+    /* C: !(boulder || solid) ? "" : !explo ? "harmlessly " : "futilely " */
+    const prefix = !(boulder || solid) ? '' : !explo ? 'harmlessly ' : 'futilely ';
+    const verb = explo ? 'explode at' : 'attack';
+    await pline(`You ${prefix}${verb} ${target}.`);
+    nomul(0);
+    if (explo) {
+        const attk = attacktype_fordmg(game.youmonst?.data, AT_EXPL, -1);
+        const u = game.u || {};
+        /* no monster has been attacked so we have bypassed explum() */
+        await wake_nearto(u.ux | 0, u.uy | 0, 7 * 7);
+        if (attk) await explum(null, attk);
+        u.mh = -1; /* dead in the current form */
+        await rehumanize();
+    }
     return true;
 }
 

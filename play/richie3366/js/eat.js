@@ -2609,9 +2609,9 @@ async function doeat_nonfood(otmp) {
 
 /**
  * C ref: eat.c eating_conducts — food/unvegan/unvegetarian counters.
- * Livelog first-time messages deferred.
+ * gulpum AD_DGST (D-1264). Livelog first-time messages deferred.
  */
-function eating_conducts(pd) {
+export function eating_conducts(pd) {
     if (!game.u.uconduct) game.u.uconduct = {};
     game.u.uconduct.food = (game.u.uconduct.food | 0) + 1;
     if (!vegan(pd)) {
@@ -2620,6 +2620,16 @@ function eating_conducts(pd) {
     if (!vegetarian(pd)) {
         violated_vegetarian();
     }
+}
+
+/** C eat.c Finish_digestion — gulpum afternmv; cpostfx (D-1264). */
+export async function Finish_digestion() {
+    const pm = game.corpsenm_digested ?? NON_PM;
+    if (pm !== NON_PM) {
+        await cpostfx(pm);
+        game.corpsenm_digested = NON_PM;
+    }
+    return 0;
 }
 
 /**

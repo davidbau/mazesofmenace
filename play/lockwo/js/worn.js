@@ -19,6 +19,7 @@ import {
 // Cycle with makemon.js (which imports m_dowear from here) is safe: both sides
 // only touch the other's bindings from inside function bodies.
 import { name_to_pmidx, monster_by_pmidx } from './makemon.js';
+import { mon_nam, Monnam as Monnam_u } from './do_name.js';
 
 const ARMOR_CLASS = 3, AMULET_CLASS = 5, WEAPON_CLASS = 2, TOOL_CLASS = 6;
 
@@ -294,6 +295,13 @@ function extra_pref(mon, obj) {
 // C ref: worn.c MON_WEP(mon) — the wielded weapon (monmove.js stores it on .mw).
 function MON_WEP(mon) { return mon?.mw || null; }
 
+// C ref: youprop.h See_invisible.  Spelled three ways across this port (see
+// hack.js mon_visible), so read all of them.
+function see_invisible_u() {
+    const u = game.u;
+    return !!(u?.see_invis || u?.See_invisible || u?.uprops?.See_invisible);
+}
+
 // C ref: worn.c m_dowear_type(mon, flag, creation, racialexception).
 // The wear MESSAGES and the mfrozen delay are the !creation half; at creation
 // C charges no delay at all, which is why the creation-time call in makemon.c
@@ -301,6 +309,16 @@ function MON_WEP(mon) { return mon?.mw || null; }
 function m_dowear_type(mon, flag, creation, racialexception, pending) {
     if (mon.mfrozen) return; /* probably putting previous item on */
     const ptr = species(mon);
+
+    // C ref: worn.c m_dowear_type():532 `Strcpy(nambuf, See_invisible ?
+    // Monnam(mon) : mon_nam(mon))` — "get a copy of monster's name before
+    // altering its visibility", built UNCONDITIONALLY on every call (all eight
+    // wornmask types, creation included) and read only by the closing "Suddenly
+    // you cannot see %s" line.  It looks free, but while hallucinating each name
+    // is an x_monnam() -> rndmonnam() pick off the DISPLAY rng, so a monster
+    // sorting its armour advances that stream seven or eight times per turn
+    // (seed0383 step 199).
+    const nambuf = see_invisible_u() ? Monnam_u(mon) : mon_nam(mon);
 
     let old = which_armor(mon, flag);
     if (old && old.cursed) return;
@@ -382,7 +400,7 @@ function m_dowear_type(mon, flag, creation, racialexception, pending) {
         // doname(), which is async here; queue a descriptor and let the caller
         // flush it through print_m_dowear() before anything else prints.  Both
         // objects' owornmask are 0 at this point, exactly as C arranges.
-        if (pending) pending.push({ mon, old, best, autocurse });
+        if (pending) pending.push({ mon, old, best, autocurse, nambuf });
         m_delay += armor_delay(best.otyp);
         mon.mfrozen = m_delay;
         if (mon.mfrozen) mon.mcanmove = 0;

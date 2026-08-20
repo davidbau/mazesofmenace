@@ -253,8 +253,19 @@ export function bones_key(uz) {
 async function bones_getlev(blob) {
     const { deserializeGameState } = await import('./restore.js');
     const { next_ident } = await import('./mkobj.js');
+    const { rest_track } = await import('./track.js');
     const bundle = deserializeGameState(blob);
     const level = bundle.level || bundle;
+
+    // C ref: restore.c:1228 getlev() -> rest_track(nhfp).  utrack lives in the
+    // LEVEL file (save.c:553 savelev_core), and a bones file IS a level file, so
+    // the dead hero's last footprints come back with it.  m_move()'s
+    // `!should_see && can_track` arm (monmove.c:1882) then redirects every
+    // tracking monster at that square rather than at the live hero, which
+    // changes the mfndpos() cnt that is the modulus of the rn2(4*(cnt-j))
+    // backtrack roll.  goto_level() already ran initrack() on departure, so a
+    // bones blob written before this field existed simply keeps the empty ring.
+    rest_track(bundle.track);
 
     // restobjchn(): one next_ident() per object, recursing into cobj first —
     // C restores container contents inside the container's loop iteration
@@ -735,8 +746,13 @@ export async function savebones(how = 0, corpse = null) {
         }
 
         // C ref: bones.c:610 savelev() — serialise the level for the next hero.
+        // savelev_core() (save.c:553) also writes save_track(), so the DEAD
+        // hero's footprint ring travels with the bones level.
         const { serializeGameState } = await import('./save.js');
-        storage.setItem(key, serializeGameState({ level: g.level, stairs: g.stairs }));
+        const { save_track } = await import('./track.js');
+        storage.setItem(key, serializeGameState({
+            level: g.level, stairs: g.stairs, track: save_track(),
+        }));
     } catch { /* bones write is best-effort; never break the death sequence */ }
 }
 

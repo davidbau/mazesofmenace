@@ -1,29 +1,32 @@
 // uhitm.js — Hero hitting monsters (partial).
-// C ref: uhitm.c — do_attack / attack_checks mimic / stumble_onto_mimic / hitum / known_hitum / find_roll_to_hit / hmon / hmonas / explum / damageum;
+// C ref: uhitm.c — do_attack / attack_checks mimic / stumble_onto_mimic / hitum / known_hitum / find_roll_to_hit / hmon / hmonas / explum / gulpum / damageum;
 //         hack.c overexertion; mon.c killed / xkilled / corpse_chance.
 
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import {
-    IS_OBSTRUCTED, HMON_MELEE, HMON_THROWN, HMON_APPLIED, STRAT_WAITMASK,
+    IS_OBSTRUCTED, IS_TREE, IS_DOOR, IRONBARS, D_CLOSED, D_LOCKED,
+    HMON_MELEE, HMON_THROWN, HMON_APPLIED, STRAT_WAITMASK,
     STRAT_WAITFORU, AD_SPEL,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
     MIM_REVEAL, engulfing_u, OBJ_FREE, MON_DETACH,
-    has_mgivenname, ARTICLE_NONE, ARTICLE_THE, SUPPRESS_SADDLE,
+    has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, SUPPRESS_SADDLE,
+    SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE,
     HAND, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT,
     W_ARM, W_ARMC, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_AMUL,
-    MON_EXPLODE, NO_MM_FLAGS,
+    MON_EXPLODE, NO_MM_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX,
+    KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
     objectNameStrs, objectNames,
 } from './objects.js';
-import { exercise, A_STR, A_DEX, A_WIS, acurr, adjalign, change_luck } from './attrib.js';
-import { overexertion, nomul, losehp, is_pool } from './hack.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, map_invisible, unmap_object, glyph_is_invisible, flush_topl_more, You_feel } from './display.js';
+import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck } from './attrib.js';
+import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, map_invisible, unmap_object, glyph_is_invisible, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -40,10 +43,12 @@ import {
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY,
 } from './mhitm.js';
 import {
-    verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM,
+    verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
     is_golem, is_mplayer, is_rider, is_undead, is_flyer, is_floater,
     is_demon, NON_PM, has_head, mindless, unsolid, breathless, mons,
+    flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
+    is_whirly, passes_walls, MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
@@ -56,12 +61,12 @@ import { monflee } from './monmove.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
-import { rehumanize } from './polyself.js';
-import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination } from './do_name.js';
+import { rehumanize, body_part } from './polyself.js';
+import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname } from './do_name.js';
 import { artifact_hit, youmonst, is_art } from './artifact.js';
-import { xname, vtense, The, An, singular, makeplural, cxname } from './objnam.js';
+import { xname, vtense, The, An, an, singular, makeplural, cxname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
-import { makemon, makemon_appear_msg } from './makemon.js';
+import { makemon, makemon_appear_msg, newcham } from './makemon.js';
 import { ndemon } from './minion.js';
 import { ART_GIANTSLAYER, ART_STORMBRINGER } from './generated/artifacts_data.js';
 import { paranoid_query } from './getline.js';
@@ -85,6 +90,7 @@ const AD_HALU = 36; // monattk.h — black-light AT_EXPL
 const AD_ACID = 8;
 const AD_STUN = 12;
 const AD_PLYS = 14;
+const AD_DREN = 16;
 const AD_STON = 18;
 const AD_STCK = 19;
 const AD_RUST = 24;
@@ -96,6 +102,12 @@ const AD_CORR = 42;
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
 const PM_SHADE = monsterNames.indexOf('PM_SHADE');
+const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
+const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
+const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
+const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
+const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
+const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const PM_BALROG = monsterNames.indexOf('PM_BALROG');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
@@ -191,9 +203,10 @@ function s_suffix(s) {
 }
 
 /**
- * C ref: mondata.c can_blnd — cream pie / blinding venom AT_WEAP|AT_SPIT subset.
+ * C ref: mondata.c can_blnd — cream pie / blinding venom AT_WEAP|AT_SPIT subset
+ * plus AT_ENGL sleep gate for gulpum (D-1264).
  * Named omissions: mon_perma_blind; raven-vs-raven; Blindfolded/ublindf you
- * arms; visored helmet scan; other aatyp (gaze/engl/claw).
+ * arms; visored helmet scan; other aatyp (gaze/claw).
  */
 function can_blnd(magr, mdef, aatyp, obj) {
     if (!haseyes(mdef?.data)) return false;
@@ -212,6 +225,7 @@ function can_blnd(magr, mdef, aatyp, obj) {
         if (magr === game.youmonst && game.u?.uswallow) return false;
         return true;
     }
+    if (aatyp === AT_ENGL) return !(!is_you && mdef.msleeping);
     return true;
 }
 
@@ -360,22 +374,58 @@ function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
 }
 
 /**
- * C ref: mon.c corpse_chance — AT_BOOM then always-TRUE arms then !rn2(tmp).
- * Named omissions: Vlad/lich dust; swallowed boom; LEVEL_SPECIFIC_NOCORPSE.
+ * C ref: mondata.c attacktype_fordmg — first mattk with aatyp and adtyp
+ * (AD_ANY==-1 wildcard). fight_empty explum caller (D-1265).
  */
-async function corpse_chance(mon) {
+export function attacktype_fordmg(ptr, atyp, dtyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return null;
+    for (let i = 0; i < slots.length; i++) {
+        const a = slots[i];
+        if ((a?.aatyp | 0) === (atyp | 0)
+            && (dtyp === -1 || (a?.adtyp | 0) === (dtyp | 0))) {
+            return a;
+        }
+    }
+    return null;
+}
+
+/** C ref: mondata.h attacktype — any mattk slot matches aatyp. */
+function attacktype_aatyp(ptr, aatyp) {
+    return !!attacktype_fordmg(ptr, aatyp, -1);
+}
+
+/**
+ * C ref: mon.c corpse_chance — AT_BOOM then always-TRUE arms then !rn2(tmp).
+ * magr + was_swallowed: contained boom inside an engulfer (gulpum D-1264).
+ * Named omissions: Vlad/lich dust; gulpmu you-as-mdef boom; LEVEL_SPECIFIC_NOCORPSE.
+ */
+async function corpse_chance(mon, magr = null, was_swallowed = false) {
     const mdat = mon.data;
     if (!mdat) return false;
+    if (!magr && game.mswallower
+        && attacktype_aatyp(game.mswallower.data, AT_ENGL)) {
+        magr = game.mswallower;
+        was_swallowed = true;
+    }
     // Gas spores always explode upon death
     const slots = mdat.mattk;
     if (slots) {
         for (let i = 0; i < NATTK_CC; i++) {
             const at = slots[i];
             if (!at || (at.aatyp | 0) !== AT_BOOM) continue;
-            // C burns d(damn,damd) even when not swallowed (tmp unused outdoors)
-            if (at.damn) d(at.damn | 0, at.damd | 0);
-            else if (at.damd) d((mdat.mlevel | 0) + 1, at.damd | 0);
-            // swallowed boom deferred
+            let tmp = 0;
+            if (at.damn) tmp = d(at.damn | 0, at.damd | 0);
+            else if (at.damd) tmp = d((mdat.mlevel | 0) + 1, at.damd | 0);
+            if (was_swallowed && magr) {
+                if (magr === game.youmonst || magr._youmonst) {
+                    await pline(`There is an explosion in your ${body_part(STOMACH)}!`);
+                    losehp(maybe_half_phys(tmp),
+                        `${s_suffix(pmname(mdat, mon.female ? FEMALE : MALE))} explosion`,
+                        KILLED_BY_AN);
+                }
+                return false;
+            }
             await mon_explodes(mon, at);
             return false;
         }
@@ -1480,8 +1530,8 @@ async function hmonas_hugs(mon, mattk, i, sum) {
 /**
  * C ref: uhitm.c explum :4891–4928.
  * Hero exploding at mdef, or at nothing (forcefight) when mdef is null.
- * Always rolls d(damn,damd) then wake_nearto(7*7). Named omit: fight_empty
- * caller (hack.c); explmm; AT_ENGL gulpum.
+ * Always rolls d(damn,damd) then wake_nearto(7*7). fight_empty null-mdef
+ * caller is D-1265. Named omit: explmm.
  */
 export async function explum(mdef, mattk) {
     const tmp = d(mattk.damn | 0, mattk.damd | 0);
@@ -1525,14 +1575,315 @@ export async function explum(mdef, mattk) {
     return M_ATTK_HIT;
 }
 
+/** C mondata.h digests/enfolds — AT_ENGL + AD_DGST/AD_WRAP. Local: mhitu cycles. */
+function engl_ad(ptr, ad) {
+    return !!(ptr?.mattk || []).some((a) => (a.aatyp | 0) === AT_ENGL
+        && (a.adtyp | 0) === ad);
+}
+function he_prop(flat, H, E, uprop) {
+    const u = game.u || {};
+    if (u[flat] || u[H] || u[E]) return true;
+    const p = uprop != null ? u.uprops?.[uprop] : null;
+    return !!(p?.intrinsic || p?.extrinsic);
+}
+function Invisible_you() {
+    const u = game.u || {};
+    const invis = !!(u.Invis
+        || (((u.HInvis | 0) || (u.EInvis | 0)) && !(u.BInvis | 0)));
+    return invis && !((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+        || u.See_invisible);
+}
+
+/** C mondata.c resists_* — mresists|mextrinsics|mintrinsics. */
+function resists_elem_mon(mon, bit) {
+    const bits = (mon?.data?.mresists | 0) | (mon?.mextrinsics | 0)
+        | (mon?.mintrinsics | 0);
+    return !!(bits & bit);
+}
+
+/** C mon.c mlifesaver + mthrowu.c m_useup. */
+function mlifesaver_you(mon) {
+    if (!mon?.data) return null;
+    if (!nonliving(mon.data) || is_vampshifter(mon)) {
+        const otmp = which_armor(mon, W_AMUL);
+        if (otmp && (otmp.otyp | 0) === AMULET_OF_LIFE_SAVING) return otmp;
+    }
+    return null;
+}
+function m_useup_you(mon, obj) {
+    if (!mon || !obj) return;
+    if ((obj.quan | 0) > 1) { obj.quan = (obj.quan | 0) - 1; return; }
+    if (mon.minvent === obj) { mon.minvent = obj.nobj || null; return; }
+    for (let p = mon.minvent; p; p = p.nobj) {
+        if (p.nobj === obj) { p.nobj = obj.nobj || null; break; }
+    }
+}
+
+/** C mhitm.c xdrainenergym; mon.c golemeffects flesh/iron heal (MSLOW named). */
+async function xdrainenergym(mon, givemsg) {
+    if ((mon.mspec_used | 0) < 20
+        && (attacktype_aatyp(mon.data, AT_MAGC)
+            || attacktype_aatyp(mon.data, AT_BREA))) {
+        mon.mspec_used = (mon.mspec_used | 0) + d(2, 2);
+        if (givemsg) await pline_mon(mon, `${Monnam(mon)} seems lethargic.`);
+    }
+}
+async function golemeffects_you(mon, damtype, dam) {
+    const mndx = mon?.data?.mndx ?? mon?.mnum ?? -1;
+    let heal = 0;
+    if (mndx === PM_FLESH_GOLEM && (damtype | 0) === AD_ELEC) {
+        heal = Math.trunc(((dam | 0) + 5) / 6);
+    } else if (mndx === PM_IRON_GOLEM && (damtype | 0) === AD_FIRE) {
+        heal = dam | 0;
+    } else return;
+    if (heal && healmon(mon, heal, 0) && cansee(mon.mx, mon.my)) {
+        await pline_mon(mon, `${Monnam(mon)} seems healthier.`);
+    }
+}
+
+/** C mhitm.c engulf_target — youmonst magr (uatk / !udef). */
+function engulf_blocked_you(x, y, whirlyPtr) {
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return true;
+    const typ = lev.typ | 0;
+    const door = !!(IS_DOOR(typ) && ((lev.doormask || 0) & (D_CLOSED | D_LOCKED)));
+    return !!(IS_OBSTRUCTED(typ) || door || IS_TREE(typ)
+        || (typ === IRONBARS && !is_whirly(whirlyPtr)));
+}
+function engulf_target_you(mdef) {
+    const magr = game.youmonst;
+    const u = game.u || {};
+    if (!magr?.data || !mdef?.data) return false;
+    if ((mdef.data.msize | 0) >= MZ_HUGE
+        || ((magr.data.msize | 0) < (mdef.data.msize | 0)
+            && !is_whirly(magr.data))) return false;
+    if (mdef.mtrapped || magr.mtrapped) return false;
+    if (!passes_walls(mdef.data)
+        && engulf_blocked_you(mdef.mx | 0, mdef.my | 0, magr.data)) return false;
+    if (!he_prop('Passes_walls', 'HPasses_walls', 'EPasses_walls', PASSES_WALLS)
+        && engulf_blocked_you(u.ux | 0, u.uy | 0, mdef.data)) return false;
+    return true;
+}
+
+/** C uhitm.c start_engulf :4931 / end_engulf :4949. */
+async function start_engulf(mdef) {
+    const u = game.u || {};
+    const ym = game.youmonst || {};
+    const u_digest = engl_ad(ym.data, AD_DGST);
+    if (!Invisible_you()) {
+        map_location(u.ux | 0, u.uy | 0, true);
+        tmp_at(DISP_ALWAYS, mon_glyph(ym));
+        tmp_at(mdef.mx | 0, mdef.my | 0);
+    }
+    const how = u_digest ? 'swallow' : engl_ad(ym.data, AD_WRAP) ? 'enclose' : 'engulf';
+    await pline(`You ${how} ${mon_nam(mdef)}${u_digest ? ' whole' : ''}!`);
+    await nh_delay_output();
+    await nh_delay_output();
+}
+function end_engulf() {
+    if (!Invisible_you()) {
+        tmp_at(DISP_END, 0);
+        newsym(game.u?.ux | 0, game.u?.uy | 0);
+    }
+}
+
+/**
+ * C ref: uhitm.c gulpum :4958–5194 — poly'd hero engulfs a monster.
+ * Instant (not multi-move). d() then engulf_target then stuffed/uswallow
+ * gate. Named omit: altwep.
+ */
+export async function gulpum(mdef, mattk) {
+    const u = game.u || {};
+    const ym = game.youmonst || {};
+    let dam = d(mattk.damn | 0, mattk.damd | 0);
+    const u_digest = engl_ad(ym.data, AD_DGST);
+    const u_enfold = engl_ad(ym.data, AD_WRAP);
+    const pd = mdef.data;
+    const pdn = pd?.mndx ?? mdef.mnum ?? -1;
+    const expel_verb = u_digest ? 'regurgitate' : u_enfold ? 'release' : 'expel';
+    const engl_verb = u_digest ? 'swallow' : u_enfold ? 'enclose' : 'engulf';
+
+    if (!engulf_target_you(mdef)) return M_ATTK_MISS;
+
+    if (!(u_digest && (u.uhunger | 0) >= 1500) && !u.uswallow) {
+        if (!flaming(ym.data)) {
+            const { snuff_lit } = await import('./apply.js');
+            for (let otmp = mdef.minvent; otmp; otmp = otmp.nobj) {
+                await snuff_lit(otmp);
+            }
+        }
+
+        if (is_vampshifter(mdef) && newcham(mdef, mons(mdef.cham), 0)) {
+            await pline(`You ${engl_verb} it, then ${expel_verb} it.`);
+            if (canspotmon(mdef)) {
+                await pline(`It turns into ${x_monnam(mdef, ARTICLE_A, null,
+                    (SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE), false)}.`);
+            } else {
+                map_invisible(mdef.mx, mdef.my);
+            }
+            return M_ATTK_HIT;
+        }
+
+        const fatal_gulp = (touch_petrifies(pd)
+            && !he_prop('Stone_resistance', 'HStone_resistance', 'EStone_resistance'))
+            || ((mattk.adtyp | 0) === AD_DGST
+                && (is_rider(pd) || (pdn === PM_MEDUSA
+                    && !he_prop('Stone_resistance', 'HStone_resistance', 'EStone_resistance'))));
+
+        if ((mattk.adtyp | 0) === AD_DGST
+            && (!he_prop('Slow_digestion', 'HSlow_digestion', 'ESlow_digestion', SLOW_DIGESTION)
+                || fatal_gulp)) {
+            const { eating_conducts } = await import('./eat.js');
+            eating_conducts(pd);
+        }
+
+        if (fatal_gulp && !is_rider(pd)) {
+            let mnam = pmname(pd, mdef.female ? FEMALE : MALE);
+            if (!type_is_pname(pd)) mnam = an(mnam);
+            await pline(`You ${u_digest ? 'englut' : 'engulf'} ${mon_nam(mdef)}.`);
+            const kbuf = `${u_digest ? 'swallowing' : u_enfold ? 'enclosing' : 'engulfing'} ${mnam}${u_digest ? ' whole' : ''}`;
+            const { instapetrify } = await import('./trap.js');
+            await instapetrify(kbuf);
+        } else {
+            await start_engulf(mdef);
+            switch (mattk.adtyp | 0) {
+            case AD_DGST: {
+                if (is_rider(pd)) {
+                    await pline('Unfortunately, digesting any of it is fatal.');
+                    end_engulf();
+                    if (!game.killer) game.killer = { name: '', format: 0 };
+                    game.killer.name = `unwisely tried to eat ${pmname(pd, mdef.female ? FEMALE : MALE)}`;
+                    game.killer.format = NO_KILLER_PREFIX;
+                    const { done } = await import('./end.js');
+                    await done(DIED);
+                    return M_ATTK_MISS; /* lifesaved */
+                }
+                if (he_prop('Slow_digestion', 'HSlow_digestion', 'ESlow_digestion', SLOW_DIGESTION)) {
+                    dam = 0;
+                    break;
+                }
+                const saver = mlifesaver_you(mdef);
+                if (saver) m_useup_you(mdef, saver);
+                const { newuhs } = await import('./eat.js');
+                newuhs(false);
+                game.mswallower = ym;
+                await xkilled(mdef, XKILL_GIVEMSG | XKILL_NOCORPSE);
+                if ((mdef.mhp | 0) >= 1) {
+                    await pline(`You hurriedly regurgitate the sizzling in your ${body_part(STOMACH)}.`);
+                } else {
+                    let tmp = 1 + ((pd.cwt | 0) >> 8);
+                    const mv = game.mvitals?.[pdn]?.mvflags ?? 0;
+                    if (await corpse_chance(mdef, ym, true) && !(mv & G_NOCORPSE)) {
+                        u.uhunger = (u.uhunger | 0) + Math.trunc(((pd.cnutrit | 0) + 1) / 2);
+                    } else tmp = 0;
+                    let digest_msg = `You totally digest ${mon_nam(mdef)}.`;
+                    if (tmp !== 0) {
+                        await pline(`You digest ${mon_nam(mdef)}.`);
+                        if (he_prop('Slow_digestion', 'HSlow_digestion', 'ESlow_digestion', SLOW_DIGESTION)) tmp *= 2;
+                        nomul(-tmp);
+                        game.multi_reason = 'digesting something';
+                        game.nomovemsg = digest_msg;
+                        game.corpsenm_digested = pdn;
+                        game.afternmv = (await import('./eat.js')).Finish_digestion;
+                    } else await pline(digest_msg);
+                    if (pdn === PM_GREEN_SLIME) {
+                        digest_msg = `${The(pmname(pd, mdef.female ? FEMALE : MALE))} isn't sitting well with you.`;
+                        if (tmp !== 0) game.nomovemsg = digest_msg;
+                        if (!he_prop('Unchanging', 'HUnchanging', 'EUnchanging')) {
+                            await (await import('./potion.js')).make_slimed(5, null);
+                        }
+                    } else exercise(A_CON, true);
+                }
+                game.mswallower = null;
+                end_engulf();
+                return M_ATTK_DEF_DIED;
+            }
+            case AD_PHYS:
+                if ((ym.data?.mndx ?? ym.mnum) === PM_FOG_CLOUD) {
+                    await pline(`${Monnam(mdef)} is laden with your moisture.`);
+                    if ((breathless(pd) || amphibious(pd)) && !flaming(pd)) {
+                        dam = 0;
+                        await pline(`${Monnam(mdef)} seems unharmed.`);
+                    }
+                } else {
+                    await pline(`${Monnam(mdef)} is ${engl_ad(ym.data, AD_WRAP) ? 'being squashed' : 'pummeled with your debris'}!`);
+                }
+                break;
+            case AD_ACID:
+                await pline(`${Monnam(mdef)} is covered with your goo!`);
+                if (resists_elem_mon(mdef, MR_ACID)) {
+                    await pline(`It seems harmless to ${mon_nam(mdef)}.`);
+                    dam = 0;
+                }
+                break;
+            case AD_BLND:
+                if (can_blnd(ym, mdef, mattk.aatyp | 0, null)) {
+                    if (mdef.mcansee) await pline(`${Monnam(mdef)} can't see in there!`);
+                    mdef.mcansee = 0;
+                    dam += mdef.mblinded | 0;
+                    if (dam > 127) dam = 127;
+                    mdef.mblinded = dam;
+                }
+                dam = 0;
+                break;
+            case AD_ELEC:
+            case AD_COLD:
+            case AD_FIRE: {
+                const ad = mattk.adtyp | 0;
+                const bit = ad === AD_ELEC ? MR_ELEC : ad === AD_COLD ? MR_COLD : MR_FIRE;
+                if (!rn2(2)) { dam = 0; break; }
+                if (ad === AD_ELEC) {
+                    await pline(`The air around ${mon_nam(mdef)} crackles with electricity.`);
+                }
+                if (resists_elem_mon(mdef, bit)) {
+                    await pline(`${Monnam(mdef)} ${
+                        ad === AD_ELEC ? 'seems unhurt.'
+                            : ad === AD_COLD ? 'seems mildly chilly.'
+                                : 'seems mildly hot.'
+                    }`);
+                    dam = 0;
+                } else if (ad !== AD_ELEC) {
+                    await pline(`${Monnam(mdef)} ${
+                        ad === AD_COLD ? 'is freezing to death!' : 'is burning to a crisp!'
+                    }`);
+                }
+                await golemeffects_you(mdef, ad, dam);
+                break;
+            }
+            case AD_DREN:
+                if (!rn2(4)) await xdrainenergym(mdef, true);
+                dam = 0;
+                break;
+            default:
+                break;
+            }
+            end_engulf();
+            mdef.mhp = (mdef.mhp | 0) - dam;
+            if ((mdef.mhp | 0) < 1) {
+                await killed(mdef);
+                if ((mdef.mhp | 0) < 1) return M_ATTK_DEF_DIED;
+            }
+            await pline(`You ${expel_verb} ${mon_nam(mdef)}!`);
+            if ((he_prop('Slow_digestion', 'HSlow_digestion', 'ESlow_digestion', SLOW_DIGESTION)
+                || is_animal(ym.data)) && u_digest) {
+                await pline(
+                    `Obviously, you didn't like ${s_suffix(mon_nam(mdef))} taste.`,
+                );
+            }
+        }
+    }
+    return M_ATTK_MISS;
+}
+
 /**
  * C ref: uhitm.c hmonas — poly'd hero attacks as monster.
  * AT_WEAP / weapon-using claw/touch/magc → known_hitum; natural hits → damageum
  * (troll_baned ternary/uwep D-1233). AT_HUGS grab/crush/throttle D-1250
  * (special_dmgval callee; mon_hates_silver = C hates_silver D-1254).
  * AT_EXPL explum + dhit==-1 rehumanize D-1251.
- * Named omit: two-weapon altwep; AT_ENGL gulpum; fight_empty explum;
- * skipdrin; pit kick.
+ * AT_ENGL gulpum D-1264 (rnd(20+i); shade surround; zombie/mummy Sick).
+ * fight_empty explum(null) D-1265. Named omit: two-weapon altwep; skipdrin;
+ * pit kick.
  */
 export async function hmonas(mon) {
     const u = game.u || {};
@@ -1644,8 +1995,31 @@ export async function hmonas(mon) {
             await wakeup(mon, true);
             await pline('You explode!');
             sum[i] = await explum(mon, mattk);
+        } else if (aatyp === AT_ENGL) {
+            // C uhitm.c hmonas AT_ENGL :5769–5794 — rnd(20+i); gulpum.
+            const tmp = find_roll_to_hit(mon, aatyp, null, attk_count,
+                role_roll_penalty);
+            mon_maybe_unparalyze(mon);
+            dhit = (tmp > rnd(20 + i)) ? 1 : 0;
+            if (dhit) {
+                await wakeup(mon, true);
+                if ((mon.mnum ?? mon.data?.mndx) === PM_SHADE) {
+                    await pline(`Your attempt to surround ${mon_nam(mon)} is harmless.`);
+                } else if (!(await failed_grab_you(mon, mattk))) {
+                    sum[i] = await gulpum(mon, mattk);
+                    if (sum[i] === M_ATTK_DEF_DIED
+                        && (mon.data?.mlet === 'S_ZOMBIE' || mon.data?.mlet === 'S_MUMMY')
+                        && rn2(5)
+                        && !he_prop('Sick_resistance', 'HSick_resistance', 'ESick_resistance')) {
+                        await You_feel(`${(u.Sick | 0) ? 'very ' : ''}sick.`);
+                        const { mdamageu } = await import('./mhitu.js');
+                        await mdamageu(mon, rnd(8));
+                    }
+                }
+            } else {
+                await missum(mon, mattk, false);
+            }
         } else if (aatyp === AT_NONE || aatyp === AT_BOOM
-            || aatyp === AT_ENGL
             || aatyp === AT_MAGC) {
             continue;
         } else if (aatyp === AT_BREA || aatyp === AT_SPIT || aatyp === AT_GAZE) {
@@ -1981,12 +2355,6 @@ function ing_suffix(s) {
         buf = buf.slice(0, -1);
     }
     return `${buf}ing${onoff}`;
-}
-
-/** C ref: mondata.c body_part(HAND) — poly table deferred → "hand". */
-function body_part(part) {
-    if (part === HAND) return 'hand';
-    return 'body';
 }
 
 /**

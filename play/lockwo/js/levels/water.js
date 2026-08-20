@@ -49,5 +49,5 @@ export async function makemaz_water() {
     // C ref: sp_lev.c flip_level() mirrors gl.lregions[] too, and
     // fixup_special() only then copies the teleport region into svd.dndest.
     if (flp) { flip_level(flp); vly_flip_dndest(flp); vly_flip_updest(flp); }
-    plane_place_lregions();
+    await plane_place_lregions();
 }

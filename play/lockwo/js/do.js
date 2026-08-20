@@ -26,9 +26,18 @@ import { exercise } from './attrib.js';
 import { A_STR } from './const.js';
 import { rn2, rn1, rnd, rnl, d } from './rng.js';
 import { print_dungeon, builds_up, In_hell, Is_valley, surface,
-         find_hell, dunlevs_in_dungeon, single_level_branch, level_difficulty_c } from './dungeon.js';
+         find_hell, dunlevs_in_dungeon, single_level_branch, level_difficulty_c,
+         at_dgn_entrance, Is_bigroom } from './dungeon.js';
+
+// insight.c record_achievement(), reached lazily: insight.js -> u_init.js ->
+// mkobj.js is a static cycle this file must not join.
+async function record_ach(achidx) {
+    const { record_achievement } = await import('./insight.js');
+    record_achievement(achidx);
+}
 import { mklev, place_lregion, u_on_upstairs } from './mklev.js';
-import { fumaroles } from './mkmaze.js';
+import { fumaroles, movebubbles } from './mkmaze.js';
+const PM_ROGUE_DO = 339;   // mons[] index; C's Role_if(PM_ROGUE)
 import { clear_regions } from './region.js';
 import { fastforward_fill_mineralize } from './fastforward.js';
 import { depth as depth_of_level } from './hacklib.js';
@@ -38,7 +47,7 @@ import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
          MAGIC_PORTAL, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          STAIRS, LADDER, VIBRATING_SQUARE, TT_PIT, TOOKPLUNGE, is_pit, is_hole,
          UNENCUMBERED, SLT_ENCUMBER, In_sokoban, Is_knox_level,
-         Is_rogue_level } from './const.js';
+         Is_rogue_level, Is_waterlevel, Is_airlevel } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
 import { seetrap, dotrap } from './trap.js';
@@ -60,7 +69,7 @@ import { placebc, unplacebc } from './ball.js';
 const PM_TOURIST = 10; // makemon/exper PM index
 function level_difficulty() { return level_difficulty_c(); }
 import { mon_catchup_elapsed_time, monnear } from './dogmove.js';
-import { onquest } from './questpgr.js';
+import { onquest, com_pager } from './questpgr.js';
 import { initrack } from './track.js';
 
 // ── small geometry / occupancy helpers (C ref: mklev.c occupied,
@@ -153,7 +162,7 @@ function place_hero_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy) {
 // still names the level being left.  There map_location() only seeds
 // lastseentyp for a later switch_terrain(), and the subsequent docrt() repaints
 // the whole level anyway, so it has no observable effect here.  Consumes no RNG.
-function u_on_newpos(x, y) {
+export function u_on_newpos(x, y) {
     const u = game.u;
     u.ux = x;
     u.uy = y;
@@ -358,21 +367,40 @@ function mon_arrive_with_you(mtmp) {
     }
 }
 
-// C ref: mondata.c levl_follower(mtmp) — used by keepdogs() to decide whether
-// a nearby monster accompanies a level change.  Tame pets always qualify; a
-// hostile M2_STALK monster (e.g. the water demon a fountain can unleash) also
-// follows unless it is currently fleeing.  The iswiz-with-Amulet and is_fshk
-// branches are omitted since no recorded session drives a followed Wizard or
-// shopkeeper.  This was a species-name Set that had drifted off M2_STALK: it
-// listed the vampire mage and the Goblin King (neither stalks) and omitted the
-// vampire lord/lady/leader and incubus/succubus/amorous demon.
+// C ref: mondata.c:1211 levl_follower(mtmp) — used by keepdogs() to decide
+// whether a nearby monster accompanies a level change.  Tame pets, the Wizard
+// of Yendor and a following shopkeeper always qualify (even while fleeing); a
+// hostile M2_STALK monster (e.g. the water demon a fountain can unleash)
+// follows unless it is currently fleeing and the hero has no Amulet.  The one
+// monster that refuses is the Wizard once HE holds the Amulet — he wants to
+// fight, not chase.  This was a species-name Set that had drifted off M2_STALK:
+// it listed the vampire mage and the Goblin King (neither stalks) and omitted
+// the vampire lord/lady/leader and incubus/succubus/amorous demon.  The iswiz
+// arms were then omitted as "no recorded session drives a followed Wizard",
+// which is false: seed0373's wizard-mode level teleports drag him from the
+// Plane of Fire to the Plane of Air (step 110, C's second mon_arrive rn2(2)).
 function levl_follower(m) {
     if (m === game.u.usteed) return true;
-    if (m.mtame) return true;
+    /* Wizard with Amulet won't bother trying to follow across levels */
+    if (m.iswiz && mon_has_amulet(m)) return false;
+    /* some monsters will follow even while intending to flee from you */
+    if (m.mtame || m.iswiz || is_fshk(m)) return true;
     if (mflags2_of(m.data) & M2_STALK)
         return !m.mflee || !!game.u.uhave?.amulet;
     return false;
 }
+
+// C ref: wizard.c:106 mon_has_amulet(mtmp) — the REAL Amulet in its inventory
+// (the plastic imitation, otyp 212, does not count).
+function mon_has_amulet(m) {
+    return (m?.minvent || []).some((o) => o.otyp === AMULET_OF_YENDOR);
+}
+
+// C ref: shk.c:5012 is_fshk(mtmp) — `mtmp->isshk && ESHK(mtmp)->following`, a
+// shopkeeper chasing the hero over an unpaid bill.  eshk.following is not
+// modelled in this port, so this answers FALSE for every shopkeeper; the
+// hostile-shk chase itself is unported, not merely unreached.
+function is_fshk(_m) { return false; }
 
 // C ref: include/monst.h helpless(mon) = msleeping || !mcanmove.
 function keepdogs_helpless(m) {
@@ -774,6 +802,22 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // drag_down() is now ported (drag_down_hero below); litter()'s per-item
     // rnd(weight_cap) is still missing, as is the u.usteed
     // dismount_steed(DISMOUNT_FELL) alternative to the losehp() below.
+    // C ref: topl.c — a topline the CALLING command left unacknowledged (the
+    // wizard '?' level teleport's prinv("Endgame prerequisite:", amu),
+    // teleport.c:1244) fires its --More-- before the destination map is drawn,
+    // and C paints that frame over the pre-departure screen: nothing flushes the
+    // map between here and goto_level's closing flush_screen(-1), so the tty
+    // still shows the departing level with the accompanying pet on it.  This
+    // port re-renders live state at every --More--, so the frame has to be taken
+    // HERE, while the departing level's glyph buffer is still intact — ahead of
+    // the keepdogs pet-cell redraw and vision_recalc(2)'s blanking sweep below.
+    // (seed0373 step 99.)
+    if (game._toplin === 1) {
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
+
     const fell_downstairs = at_stairs && !up
         && !Flying_do() && (near_capacity() > UNENCUMBERED || Punished_do() || Fumbling_do());
     if (at_stairs && !In_endgame(newlevel)) {
@@ -819,6 +863,20 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // as C shows it.  u.uz still refers to the departing level here, so the
     // hero's vision (and thus the redrawn terrain) is correct.
     for (const m of kept) newsym(m.mx, m.my);
+
+    // C ref: do.c goto_level():1637 `vision_recalc(2)` — "we no longer see
+    // anything on the level", between keepdogs()/recalc_mapseen() and the save
+    // of the level being left.  Shutting vision down newsym()s every square
+    // that WAS in sight, so while hallucinating it re-picks a display-rng glyph
+    // for each of them (seed0383 step 195: nine warning glyphs on the bigroom
+    // level the hero level-teleports off, then nine more from the arrival
+    // docrt()).  It sits AFTER the hoisted transit-message frame above rather
+    // than at C's textual position because that frame is RNG-free: C emits the
+    // message at do.c:1799 (post-mklev) and the tty still shows the departing
+    // level, which this port reproduces by rendering live state early.  Running
+    // the vision shutdown first would blank that frame's monsters and costs 19
+    // screens across seed0030/0014/0002; the draw ORDER is identical either way.
+    vision_recalc(2);
 
     // Move to the destination level.
     g._visited_levels = g._visited_levels || {};
@@ -1041,20 +1099,21 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     // C ref: do.c:1831-1834 — `if (Is_waterlevel || Is_airlevel) movebubbles();
-    // else if (svl.level.flags.fumaroles) fumaroles();`.  The Plane of Fire
-    // draws its fumarole rolls on ARRIVAL, before the screen reset.
-    if (g.level?.flags?.fumaroles) fumaroles();
+    // else if (svl.level.flags.fumaroles) fumaroles();`.  The Planes of Water
+    // and Air get their first bubble sweep here, and the Plane of Fire draws
+    // its fumarole rolls, both on ARRIVAL and before the screen reset.
+    if (Is_waterlevel(u.uz) || Is_airlevel(u.uz)) await movebubbles();
+    else if (g.level?.flags?.fumaroles) fumaroles();
 
     // Reset the screen and draw the new level.  C ref: do.c goto_level()
     // lines ~1837-1841: vision_reset() (clear old level's line-of-sight),
     // reset_glyphmap(gm_levelchange), docrt() (full vision recalc + redraw),
-    // flush_screen(-1).  None of these consume RNG, so the call sequence the
-    // recorder captured is unaffected; this only paints the destination map
-    // that the hero now stands on (otherwise the screen stays blank after a
-    // level change).
+    // flush_screen(-1).  There is NO vision_recalc() of its own here — docrt()
+    // does the whole recalc.  Adding one made docrt()'s leading
+    // vision_recalc(2) find squares still in sight and spend an extra
+    // display-rng draw on each (seed0383 step 195).
     game.vision_full_recalc = 0;
     vision_reset();
-    vision_recalc(0);
     // C ref: display.c docrt_flags() -> cls() -> display_nhwindow(WIN_MESSAGE,
     // FALSE): an unacknowledged topline (drag_down's "The iron ball smacks into
     // you!") is paged HERE, while the physical screen is still the blank one
@@ -1083,6 +1142,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await update_topl(pmsg);
     }
 
+    // C ref: do.c:1858 deliver_splev_message() — "special levels can have a
+    // custom arrival message", i.e. every des.message() the .lua script ran,
+    // delivered one pline() per line (questpgr.c:423 deliver_by_pline splits at
+    // the newlines lspo_message() joined them with) right after the deferred
+    // level-teleport feedback and before the Gehennom / familiar lines.
+    if (g.lev_message) {
+        const lines = String(g.lev_message).split('\n');
+        g.lev_message = null;
+        for (const line of lines) if (line) await update_topl(line);
+    }
+
     // C ref: do.c goto_level() ~1861 — "Check whether we just entered
     // Gehennom."  No RNG.  Fires once, the first time In_hell flips from
     // false to true (the Valley of the Dead is Gehennom's own entry level).
@@ -1093,6 +1163,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // plines above, which always print).
         if (!game.u?.Deaf && game.flags?.acoustics !== false)
             await update_topl('You hear groans and moans everywhere.');
+        await record_ach(2 /* you.h ACH_HELL */);
     }
     // C ref: do.c:1876 — "in case we've managed to bypass the Valley's stairway
     // down": ANY Gehennom level other than the Valley marks the gate as already
@@ -1126,6 +1197,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const astral = g.astral_level;
         const onAstral = !!astral && u.uz.dnum === astral.dnum
                          && u.uz.dlevel === astral.dlevel;
+        if (newdungeon) await record_ach(7 /* ACH_ENDG */);
+        if (firstVisit && onAstral) await record_ach(8 /* ACH_ASTR */);
         if (!(firstVisit && onAstral) && newdungeon && u.uhave?.amulet)
             await resurrect();
     } else if (In_quest(u.uz)) {
@@ -1141,12 +1214,36 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await update_topl('You have penetrated a high security area!');
         await update_topl('An alarm sounds!');
         for (const mtmp of g.level?.monsters ?? []) mtmp.msleeping = 0;
-    } else if (!In_mines(u.uz) && !In_sokoban(u.uz)) {
+    } else if (In_mines(u.uz)) {
+        if (newdungeon) await record_ach(15 /* ACH_MINE */);
+    } else if (In_sokoban(u.uz)) {
+        if (newdungeon) await record_ach(21 /* ACH_SOKO */);
+    } else {
         // C ref: do.c:1912 — the final `else` arm of that chain.  Only the
-        // Rogue-level line produces output (Is_bigroom just records an
-        // achievement), and only on first entry.
+        // Rogue-level line produces output; Is_bigroom just records an
+        // achievement.
         if (firstVisit && Is_rogue_level(u.uz))
             await update_topl('You enter what seems to be an older, more primitive world.');
+        else if (firstVisit && Is_bigroom(u.uz))
+            await record_ach(22 /* ACH_BGRM */);
+        // C ref: do.c:1917-1932 — "main dungeon message from your quest
+        // leader".  Fires on the PARENT-side level of the Quest branch (the one
+        // fixup_special() drops the magic portal on), so it needs mklev()'s
+        // LR_BRANCH placement to have run.  com_pager() itself is not free: it
+        // rebuilds the Lua state, so nhlib.lua's top-level shuffle(align) draws
+        // rn2(3) then rn2(2) before a single line is printed.
+        if (!In_quest(u.uz0) && at_dgn_entrance('The Quest')
+            && !(u.uevent?.qcompleted || u.uevent?.qexpelled
+                 || game.quest_status?.leader_is_dead)) {
+            if (!u.uevent?.qcalled) {
+                u.uevent = u.uevent || {};
+                u.uevent.qcalled = 1;
+                await com_pager('quest_portal');
+            } else {
+                await com_pager((game.urole?.mnum) === PM_ROGUE_DO
+                                ? 'quest_portal_demand' : 'quest_portal_again');
+            }
+        }
     }
 
     // C ref: do.c:1937 temperature_change_msg(prev_temperature), right after the
@@ -1501,25 +1598,50 @@ export async function next_level(at_stairs) {
 // to cancel).
 export async function wiz_level_tele(readLevel) {
     const u = game.u;
-    const buf = await readLevel('To what level do you want to teleport?');
+    // C ref: teleport.c:1194 — qbuf is declared OUTSIDE the do-while and the
+    // hint is Strcat'd once, so passes 3..10 keep the long prompt.  Without the
+    // loop an unparseable answer read as a cancel and printed nothing at all,
+    // where C re-prompts: measured 2026-08-19, both `dp-named-tour` sessions
+    // died at step 7 on exactly this (7/1410 and 7/216).
+    let qbuf = 'To what level do you want to teleport?';
+    let trycnt = 0;
+    let buf = null;
+    let gotoRandom = false;
+    let namedLev = 0;
+    for (;;) {
+        if (++trycnt === 2)
+            qbuf += ' [type a number, name, or ? for a menu]';
+        buf = await readLevel(qbuf);
 
-    // C ref: wizcmds.c wiz_level_tele() is just level_tele(), so ^V runs the
-    // same getlin loop: teleport.c:1212-1221 tests "*" and the confused
-    // mispronunciation BEFORE the ESC check, and both `goto random_levtport`.
-    // A confused hero therefore lands on a random level whatever was typed —
-    // including ESC.
-    let gotoRandom = String(buf) === '*';
-    if (!gotoRandom && (u.uprops?.Confusion || 0) > 0 && rnl(5)) {
-        await pline('Oops...');
-        // Same deferred-docrt capture as level_tele() below: the "Oops..."
-        // --More-- is drawn over the OLD level, before goto_level() switches.
-        game._toplin = 1;
-        await topl_more();
-        game._pending_message = '';
-        game._toplin = 0;
-        gotoRandom = true;
+        // C ref: wizcmds.c wiz_level_tele() is just level_tele(), so ^V runs the
+        // same getlin loop: teleport.c:1212-1221 tests "*" and the confused
+        // mispronunciation BEFORE the ESC check, and both `goto random_levtport`.
+        // A confused hero therefore lands on a random level whatever was typed —
+        // including ESC.
+        gotoRandom = String(buf) === '*';
+        if (!gotoRandom && (u.uprops?.Confusion || 0) > 0 && rnl(5)) {
+            await pline('Oops...');
+            // Same deferred-docrt capture as level_tele() below: the "Oops..."
+            // --More-- is drawn over the OLD level, before goto_level() switches.
+            game._toplin = 1;
+            await topl_more();
+            game._pending_message = '';
+            game._toplin = 0;
+            gotoRandom = true;
+        }
+        if (gotoRandom) break;
+        if (buf == null || buf === '\x1b') return 0; // cancelled (ESC)
+        if (String(buf) === '?') break;             // the print_dungeon menu
+
+        // C: `else if ((newlev = lev_by_name(buf)) == 0) newlev = atoi(buf);`
+        // then the do-while repeats while newlev is 0 AND buf does not start a
+        // (optionally negative) number AND trycnt < 10.
+        namedLev = lev_by_name(String(buf)) || 0;
+        const s = String(buf);
+        const dig = (c) => c >= '0' && c <= '9';
+        if (namedLev || dig(s[0]) || (s[0] === '-' && dig(s[1])) || trycnt >= 10)
+            break;
     }
-    if (!gotoRandom && (buf == null || buf === '\x1b')) return 0; // cancelled (ESC)
 
     if (gotoRandom) {
         // C ref: teleport.c random_levtport: — the involuntary branch, which
@@ -1583,9 +1705,17 @@ export async function wiz_level_tele(readLevel) {
 
     if (buf === '') return 0; // empty line: cancelled
 
-    const m = String(buf).match(/^(-?\d+)/);
-    if (!m) return 0;
-    let newlev = parseInt(m[1], 10);
+    // C ref: teleport.c:1246 — lev_by_name() wins over atoi(), so a level or
+    // branch NAME ("oracle", "mine end") is a legal ^V destination.  This path
+    // used to fall through the digits-only regex below and silently return.
+    let newlev;
+    if (namedLev) {
+        newlev = namedLev;
+    } else {
+        const m = String(buf).match(/^(-?\d+)/);
+        if (!m) return 0;
+        newlev = parseInt(m[1], 10);
+    }
     if (newlev === 0) return 0; // "Go to Nowhere" path not modelled
 
     // C ref: teleport.c level_tele():1305 — while already IN the endgame the

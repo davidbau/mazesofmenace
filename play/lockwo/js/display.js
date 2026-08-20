@@ -42,7 +42,7 @@ import { depth as depth_of_level } from './hacklib.js';
 import { visible_region_at, show_region } from './region.js';
 import { ACCESSIBLE, IS_POOL, IS_LAVA, In_sokoban,
          Is_knox_level, Is_rogue_level } from './const.js';
-import { In_hell } from './dungeon.js';
+import { In_hell, endgamelevelname } from './dungeon.js';
 import { observe_object } from './o_init.js';
 import { xlev_to_rank } from './exper.js';
 
@@ -1306,7 +1306,7 @@ function canspotself() {
 // plain ASCII '/' and '\'.
 // C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance.
 // (potion.js set_hallucination() writes the timer to several aliases.)
-function Hallucination_u() {
+export function Hallucination_u() {
     const u = game.u || {};
     const t = (u.uprops?.Hallucination || 0) || (u.uprops?.HHallucination || 0)
         || (u.HHallucination || 0) || (u.uhallu ? 1 : 0);
@@ -1381,6 +1381,77 @@ function remember_bg(loc, bg) {
     const m = bg.mem || bg;
     loc.remembered_glyph = { ch: m.ch, color: m.color, decgfx: m.dec, pile: !!bg.pile };
 }
+
+// C ref: display.c:3357 seenv_matrix[3][3] — shared with vision.c.
+const SEENV_MATRIX_D = [
+    [SV2, SV1, SV0],
+    [SV3, 0xff /* SVALL */, SV7],
+    [SV4, SV5, SV6],
+];
+// C ref: display.c:3369 set_seenv(lev, x0, y0, x, y).
+function set_seenv(lev, x0, y0, x, y) {
+    const dx = x - x0, dy = y0 - y;
+    const sgn = (z) => (z < 0 ? -1 : (z !== 0 ? 1 : 0));
+    lev.seenv = (lev.seenv | 0) | SEENV_MATRIX_D[sgn(dy) + 1][sgn(dx) + 1];
+}
+
+// ── feel_location ──
+// C ref: display.c:822 feel_location(x, y) — "feel the location: the hero
+// cannot see it, but is touching it".  Drives blind searching, blind movement
+// and the blind pick-lock probe.  Consumes NO RNG; what it does is write the
+// square's MAP MEMORY, which is why leaving it out froze a blind hero's map at
+// whatever was there when the lights went out.
+export function feel_location(x, y) {
+    if (!isok(x, y)) return;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    // C ref: display.c:836 — an accurate 'I' memory is left alone so a repeated
+    // search doesn't re-detect the same unseen monster every turn.
+    if (loc.invisMon && m_at(x, y)) return;
+    // The Underwater arm needs a submerged hero, which no covered session has.
+    const u = game.u;
+    set_seenv(loc, u?.ux ?? x, u?.uy ?? y, x, y);
+
+    if (!can_reach_floor_disp()) {
+        // Levitation rules: walls/closed doors, then boulders, then doors, then
+        // room/pool, then everything else — all terrain-only (map_background),
+        // because the hero cannot reach the floor to feel objects.
+        const bg = terrain_glyph(loc, x, y);
+        if (game.level?.flags?.hero_memory) remember_bg(loc, bg);
+        show_glyph_cell(x, y, bg.ch, bg.color, bg.dec);
+        return;
+    }
+
+    // C ref: display.c:900 — feeling a square reveals an engraving on it.
+    const ep = engr_at(x, y);
+    if (ep) ep.erevealed = 1;
+
+    // _map_location(x, y, 1): object > trap > engraving > terrain.
+    const bg = background_glyph(loc, x, y);
+    if (game.level?.flags?.hero_memory) remember_bg(loc, bg);
+    show_glyph_cell(x, y, bg.ch, bg.color, bg.dec, pile_attr(bg.pile));
+
+    // C ref: display.c:912 — which of the ball/chain the hero is touching.
+    if (u?.uball && u?.uchain) {
+        const top = vobj_at(x, y);
+        u.bc_felt = (u.bc_felt | 0);
+        if (top === u.uchain) u.bc_felt |= BC_CHAIN_D; else u.bc_felt &= ~BC_CHAIN_D;
+        if (top === u.uball) u.bc_felt |= BC_BALL_D; else u.bc_felt &= ~BC_BALL_D;
+    }
+}
+
+// engrave.c can_reach_floor(FALSE); imported lazily because engrave.js pulls in
+// display.js.
+let _crf = null;
+function can_reach_floor_disp() {
+    if (_crf) return _crf(false);
+    const u = game.u;
+    if (!u) return true;
+    if (u.uswallow) return false;
+    if (u.uprops?.Levitation) return false;
+    return true;
+}
+export function _set_can_reach_floor(fn) { _crf = fn; }
 
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
@@ -2108,11 +2179,11 @@ function _describeLevel() {
     // level, u.uz.dlevel), with no "Dlvl:" prefix.  In_endgame uses
     // endgamelevelname(depth) with the "Plane of " prefix stripped, so the
     // Plane of Fire shows "Fire" (and the Astral Plane "Astral Plane").
-    const ENDGAME_PLANE = { '-5': 'Astral Plane', '-4': 'Water', '-3': 'Fire',
-                            '-2': 'Air', '-1': 'Earth' };
     if (In_quest(u.uz)) return `Home ${u.uz?.dlevel || 1}`;
-    if (In_endgame(u.uz))
-        return ENDGAME_PLANE[String(dlvlNum)] || `unknown plane #${dlvlNum}`;
+    if (In_endgame(u.uz)) {
+        const nm = endgamelevelname(dlvlNum);
+        return nm.startsWith('Plane of ') ? nm.slice('Plane of '.length) : nm;
+    }
     return `${inTut ? 'Tutorial' : 'Dlvl'}:${dlvlNum}`;
 }
 

@@ -2032,7 +2032,7 @@ function freeinv_drop(obj) {
  * C ref: do.c dropz — place at hero feet; always encumber_msg (polyself
  * break_armor armor-drop More packs load before gloves).
  * Named omissions: engulf digest; shop sell wired (D-0994); altar; ball;
- * hitfloor dropz(TRUE) still dropy in mkobj.js.
+ * Blind+Levitation map_object. hitfloor dropz(TRUE) is D-1263.
  */
 export async function dropz(obj, with_impact) {
     if (!obj) return;
@@ -2089,10 +2089,10 @@ export async function dropx(obj) {
 
 /**
  * C ref: do.c drop — canletgo, unwield, verbose pline, dropx.
- * Named omissions: corpse better_not_try; sink rings; levitation
- * hitfloor/Heart of Ahriman; swallowed digests path.
+ * Named omissions: corpse better_not_try; sink rings; Heart of
+ * Ahriman finesse_ahriman/float_down; swallowed digests path.
  */
-async function drop(obj) {
+export async function drop(obj) {
     if (!obj) return ECMD_FAIL;
     if (!(await canletgo(obj, 'drop'))) return ECMD_FAIL;
 
@@ -2110,12 +2110,14 @@ async function drop(obj) {
         }
     } else {
         if (!can_reach_floor(true)) {
-            // hitfloor deferred — still freeinv+place via dropx after pline
+            // C do.c:758–772 — freeinv + hitfloor(TRUE); how_lost not
+            // set on this arm. finesse_ahriman / float_down named.
             if (game.flags?.verbose !== false) {
                 await pline(`You drop ${doname(obj)}.`);
             }
-            obj.how_lost = LOST_DROPPED;
-            await dropx(obj);
+            freeinv_drop(obj);
+            const { hitfloor } = await import('./dothrow.js');
+            await hitfloor(obj, true);
             return ECMD_TIME;
         }
         // C: skip verbose "You drop" when standing on altar (doaltarobj speaks)

@@ -518,14 +518,16 @@ export function tty_create_nhwindow(type) {
     return newid;
 }
 
-export function erase_menu_or_text(window, cw, clear) {
+// docrt() is async in this port, so this has to be awaited to keep its
+// display-prng draws in the caller's order.
+export async function erase_menu_or_text(window, cw, clear) {
     if (cw.offx === 0) {
         if (cw.offy) {
             tty_curs(window, 1, 0);
             cl_eos();
         } else if (clear) term_clear_screen();
         else {
-            docrt();
+            await docrt();
             flush_screen(1);
         }
     } else {
@@ -778,7 +780,7 @@ export function tty_display_nhwindow(window, blocking) {
     void blocking;
 }
 
-export function tty_dismiss_nhwindow(window) {
+export async function tty_dismiss_nhwindow(window) {
     const cw = wins[window];
     if (window === WIN_ERR || !cw) ttywindowpanic(window);
     print_vt_code(2, window);
@@ -786,12 +788,17 @@ export function tty_dismiss_nhwindow(window) {
         tty_display_nhwindow(window, true);
     if (cw.type === NHW_MENU || cw.type === NHW_TEXT || cw.type === NHW_PERMINVENT) {
         if (cw.active && game.iflags?.window_inited && !erasing_tty_screen)
-            erase_menu_or_text(window, cw, false);
+            await erase_menu_or_text(window, cw, false);
     }
     cw.active = false;
     cw.flags = 0;
 }
 
+// Stays synchronous: new_status_window() destroys WIN_STATUS inline and relies
+// on wins[] being cleared before it returns.  NHW_STATUS never reaches
+// erase_menu_or_text(), so nothing here needs the async dismiss; a caller
+// destroying a still-active MENU/TEXT window must await tty_dismiss_nhwindow()
+// itself first (see dungeon.js print_dungeon).
 export function tty_destroy_nhwindow(window) {
     const cw = wins[window];
     if (window === WIN_ERR || !cw) {
@@ -955,6 +962,41 @@ export function reverse(curr) {
     return head;
 }
 
+// C ref: win/tty/wintty.c tty_end_menu():1932-2007 (maxcol/maxrow/npages) plus
+// tty_display_nhwindow()'s NHW_MENU arm:1902-1941 (offx/offy).  Split out
+// because the geometry decides which branch erase_menu_or_text() takes on
+// dismissal — docorner() for a corner menu vs docrt() for a full-width one —
+// and docrt() re-picks every hallucinated glyph on the level, so a menu's
+// width and height are load-bearing on the DISPLAY prng.
+// `itemstrs` are the final rendered item lines (prompt + blank included),
+// WITHOUT process_menu_window's leading pad space.
+export function tty_menu_layout(itemstrs) {
+    const rows = ttyDisplay?.rows || displayRows();
+    const cols = ttyDisplay?.cols || displayCols();
+    /* 52: 'a'..'z' and 'A'..'Z'; avoids selector duplication within a page */
+    const lmax = min(52, rows - 1);
+    const nitems = itemstrs.length;
+    const npages = Math.ceil(nitems / max(1, lmax));
+    let maxcol = 0;
+    for (const s of itemstrs)
+        maxcol = max(maxcol, min((s || '').length + 2, cols)); /* space at beg & end */
+    // C keeps morestr == "" for a paged menu but still widens cols by the
+    // LARGEST "(x of y) " it could print.
+    const morelen = npages > 1 ? `(${npages} of ${npages}) `.length : '(end) '.length;
+    maxcol = max(maxcol, min(morelen, cols));
+    const maxrow = npages > 1 ? lmax + 1 : nitems + 1;
+    let offx = max(10, cols - maxcol - 1);
+    if (offx < 0) offx = 0;
+    if (offx === 10 || maxrow >= rows || !menu_overlay()) offx = 0;
+    return { offx, offy: 0, maxcol, maxrow, npages, lmax, nitems,
+             morestr: npages > 1 ? '' : '(end) ' };
+}
+
+function menu_overlay() {
+    const v = game.flags?.menu_overlay ?? game.iflags?.menu_overlay;
+    return v === undefined ? true : !!v;
+}
+
 export function tty_end_menu(window, prompt) {
     const cw = wins[window];
     if (window === WIN_ERR || !cw || cw.type !== NHW_MENU) {
@@ -980,7 +1022,8 @@ export function tty_end_menu(window, prompt) {
     cw.npages = Math.ceil(cw.nitems / max(1, lmax));
     cw.plist = [];
     let menu_ch = 'a'.charCodeAt(0);
-    let n = 0, maxcols = 0;
+    let n = 0;
+    const strs = [];
     for (let curr = cw.mlist; curr; curr = curr.next, n++) {
         if ((n % lmax) === 0) {
             menu_ch = 'a'.charCodeAt(0);
@@ -993,15 +1036,16 @@ export function tty_end_menu(window, prompt) {
         }
         if (curr.str.length + 2 > (ttyDisplay?.cols || displayCols()))
             curr.str = curr.str.slice(0, (ttyDisplay?.cols || displayCols()) - 2);
-        maxcols = max(maxcols, curr.str.length + 2);
+        strs.push(curr.str);
     }
     cw.plist[cw.npages] = null;
-    cw.morestr = cw.npages > 1 ? '' : '(end) ';
-    cw.cols = cw.maxcol = max(maxcols, cw.morestr.length);
-    cw.maxrow = cw.rows = cw.npages > 1 ? lmax + 1 : cw.nitems + 1;
+    const lay = tty_menu_layout(strs);
+    cw.morestr = lay.morestr;
+    cw.cols = cw.maxcol = lay.maxcol;
+    cw.maxrow = cw.rows = lay.maxrow;
 }
 
-export function tty_select_menu(window, how, menu_list) {
+export async function tty_select_menu(window, how, menu_list) {
     const cw = wins[window];
     if (window === WIN_ERR || !cw || cw.type !== NHW_MENU) ttywindowpanic(window);
     if (cw.mbehavior === MENU_BEHAVE_PERMINV) return 0;
@@ -1009,7 +1053,7 @@ export function tty_select_menu(window, how, menu_list) {
     morc = 0;
     tty_display_nhwindow(window, true);
     const cancelled = !!(cw.flags & WIN_CANCELLED);
-    tty_dismiss_nhwindow(window);
+    await tty_dismiss_nhwindow(window);
     if (cancelled) return -1;
     const selected = menuArray(cw.mlist).filter(it => it.selected);
     if (Array.isArray(menu_list)) {

@@ -284,5 +284,5 @@ export async function makemaz_astral() {
     if (rn2(2)) flp |= 1;
     if (rn2(2)) flp |= 2;
     if (flp) flip_level(flp);
-    plane_place_lregions();
+    await plane_place_lregions();
 }

@@ -1162,6 +1162,9 @@ export class NethackGame {
             const term = disp?.terminal || disp;
             nhGame._screens.push(term?.serialize ? term.serialize() : '');
             nhGame._rngSlices.push(slice);
+            // Step boundary for the display-prng trace (js/disprng.js); inert
+            // unless swarm/bin/dispdiff.mjs armed it.
+            if (globalThis.__DISPLOG) globalThis.__DISPLOG.push('---STEP---');
 
             // termcap.c nomux_get_cursor() reports the RAW writer's row/col
             // whenever nomux_raw_active, and that flag is never cleared once a

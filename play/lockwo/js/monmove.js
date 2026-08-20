@@ -55,6 +55,8 @@ import {
     M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
     M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID,
 } from './const.js';
+import { phase_of_the_moon, NEW_MOON } from './calendar.js';
+import { Amonnam as Amonnam_dn } from './do_name.js';
 import { quest_talk } from './questpgr.js';
 import { In_hell } from './dungeon.js';
 import { COIN_CLASS, ROCK, ROCK_CLASS, GOLD_PIECE, GEM_CLASS, CORPSE, ARROW, DART,
@@ -87,13 +89,13 @@ import { is_armed, mattk_of,
     AD_POLY, AD_ACID, AD_COLD, AD_FIRE, AD_SITM, AD_SEDU, AD_SSEX,
     AD_RUST, AD_CORR, AD_MAGM, AD_RBRE, AD_SPEL, AD_CLRC,
     AD_SLEE, AD_DISN, AD_DRDX, AD_DRCO,
-    AD_BLND } from './monattk_data.js';
+    AD_BLND, AD_STON } from './monattk_data.js';
 import { castmu } from './mcastu.js';
 import { dog_move, m_cansee, could_reach_item } from './dogmove.js';
 import { mon_msize, mon_cwt, monster_by_pmidx, makemon, level_difficulty_ext } from './makemon.js';
 // polyself.c mbodypart needs the mlet of a pet, whose .data lacks .mcls.
 const mon_mlet = (pmidx) => monster_by_pmidx(pmidx)?.mcls;
-import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl, see_with_infrared, bot_snapshot, impossible } from './display.js';
+import { newsym, map_invisible, show_glyph_cell, object_glyph, pline, update_topl, see_with_infrared, bot_snapshot, impossible, Hallucination_u, tp_sensemon, vobj_at } from './display.js';
 import { mdig_tunnel, may_dig, in_town } from './dig.js';
 import { picking_lock } from './lock.js';
 import { hits_bars } from './mthrowu.js';
@@ -1925,7 +1927,9 @@ async function maybe_unhide_at(x, y) {
 export async function hideunder(mtmp) {
     const ptr = mtmp.data;
     const x = mtmp.mx, y = mtmp.my;
-    const seeit = canseemon_mm(mtmp);
+    // C ref: mon.c:4732 `int seeit = gi.in_mklev ? 0 : canseemon(mtmp);` —
+    // a monster hiding while the level is being built announces nothing.
+    const seeit = game.in_mklev ? false : canseemon_mm(mtmp);
     let undetected = false;
     let seenobj = null;
     let seenlocomo = null;
@@ -2239,11 +2243,13 @@ export function mons_see_trap(ttmp) {
     }
 }
 
-// C ref: do_name.c Amonnam(mtmp) — Monnam() with the indefinite article.
+// C ref: do_name.c:186 Amonnam(mtmp) == highc(a_monnam(mtmp)).  do_name.js
+// owns the faithful x_monnam(); this used to rebuild the name out of mon_nam()
+// and an(), which gets the unspottable case wrong — x_monnam()'s do_it arm
+// returns "it" BEFORE any article is applied, so Amonnam is "It", never
+// "An it".
 function Amonnam_mm(mtmp) {
-    const s = mon_nam(mtmp);                       // "the <mon>"
-    const bare = s.replace(/^the /i, '');
-    return upstart_mm(an_name(bare));
+    return Amonnam_dn(mtmp);
 }
 
 // C ref: include/mondata.h:208 passes_rocks(ptr) = passes_walls(ptr) && !unsolid.
@@ -3991,10 +3997,12 @@ export async function dochug(mtmp) {
     // C ref: monmove.c:717-723 — a monster frozen by STRAT_WAITMASK (the one
     // named quest leader per role, via STRAT_CLOSE; or "prisoner") never
     // moves or attacks on its own.  While hero-adjacent and awake it gets one
-    // chance per turn to speak instead (quest_talk).  The Hallucination
-    // newsym() repaint is not modeled: Hallucination is never active in the
-    // covered sessions.
+    // chance per turn to speak instead (quest_talk).
     if (!mtmp.mcanmove || (mtmp.mstrategy & STRAT_WAITMASK)) {
+        // C ref: monmove.c:718-719 — a hallucinating hero sees even a frozen
+        // monster change shape every turn, so the repaint spends one
+        // random_monster() display-rng draw per frozen monster.
+        if (Hallucination_u()) newsym(mtmp.mx, mtmp.my);
         if (mtmp.mcanmove && (mtmp.mstrategy & STRAT_CLOSE)
             && !mtmp.msleeping && monnear(mtmp, game.u?.ux, game.u?.uy))
             await quest_talk(mtmp);
@@ -4003,8 +4011,12 @@ export async function dochug(mtmp) {
 
     // C ref: monmove.c:727 — "there is a chance we will wake it".  disturb()
     // draws (for nearly every sleeper in line of sight) an rn2(7).
-    if (mtmp.msleeping && !(await disturb(mtmp)))
+    if (mtmp.msleeping && !(await disturb(mtmp))) {
+        // C ref: monmove.c:728-729 — same hallucination repaint for a sleeper
+        // that stayed asleep.
+        if (Hallucination_u()) newsym(mtmp.mx, mtmp.my);
         return 0;
+    }
 
     // C ref: monmove.c:733-734 — "not frozen or sleeping: wipe out texts
     // written in the dust".  Every monster that reaches this point erodes any
@@ -4158,6 +4170,15 @@ export async function dochug(mtmp) {
             // (engulfing_u path not modeled — our monsters never swallow)
             if (!canShootAfterMove)
                 return 0;
+        } else {
+            // C ref: monmove.c:944-947 — the MMOVE_NOMOVES/NOTHING/DONE arm:
+            // "During hallucination, monster appearance should still change -
+            // even if it doesn't move."  One random_monster() draw per monster
+            // that stood still (seed0383 step 198).  C's preceding vault-guard
+            // `if (mtmp->isgd && (DEADMONSTER || mx == 0)) return 1` is not
+            // ported, so guard the coordinates instead of repainting column 0.
+            if (Hallucination_u() && mtmp.mx > 0 && !DEADMONSTER(mtmp))
+                newsym(mtmp.mx, mtmp.my);
         }
         return await phase_four(mtmp, mdat, status, r.inrange, r.nearby, r.scared,
                                 panicattk);
@@ -6915,14 +6936,38 @@ function canseemon_mm(mtmp) {
 //   [m_lev > rn2(20)? destroy_items]; mhitm_knockback -> rn2(3) + rn2(6).
 async function hitmu(mtmp, mdat, mattk) {
     const mhm = { damage: 0, done: false, hitflags: M_ATTK_MISS };
+    // C ref: mhitu.c:1147 — the hero's form BEFORE the hit; a blow that
+    // rehumanizes still fires the old form's passive counterattack.
+    const olduasmon = youmonst_data_mm();
 
     // C ref: mhitu.c:1155 — if the hero cannot spot the attacker, remember its
-    // square with the 'I' glyph.  Restricted to the blinded hero (the recorded
-    // blindfold case) to avoid disturbing coincidental matches in early-diverged
-    // sessions where a monster is merely out of line-of-sight.
-    if ((game.u?.ublindf || (game.u?.blinded || 0) > 0 || game.ublindf)
-        && !canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
-    // mtmp->mundetected hides_under/S_EEL reveal: not reachable for these mons.
+    // square with the 'I' glyph.  Unconditional in C: being merely out of line
+    // of sight is enough, blindness is not required.
+    if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
+
+    // C ref: mhitu.c:1160 — a hider that just struck stops hiding, and (unless
+    // the hero already senses it) the game says what it was hiding under.  The
+    // reveal costs no RNG but IS a top-line message, so omitting it moved every
+    // --More-- boundary for the rest of the turn.
+    if (mtmp.mundetected && (hides_under_pm(mdat) || mdat?.mcls === S_EEL)) {
+        mtmp.mundetected = 0;
+        if (!tp_sensemon(mtmp) && !Detect_monsters_mm()) {
+            const obj = vobj_at(mtmp.mx, mtmp.my);
+            if (obj) {
+                let what;
+                if (Blind() && !obj.dknown) what = 'something';
+                else if (is_pool_at(mtmp.mx, mtmp.my) && !game.u?.uinwater)
+                    what = 'the water';
+                else what = await doname_mm(obj);
+                // C ref: mhitu.c:1178 — an unnameable attacker is "Something",
+                // not "It", in this one message.
+                let amon = Amonnam_mm(mtmp);
+                if (amon === 'It') amon = 'Something';
+                await emitU(`${amon} was hidden under ${what}!`);
+            }
+            newsym(mtmp.mx, mtmp.my);
+        }
+    }
 
     // mhitu.c:1187 — base damage roll.
     mhm.damage = d(mattk.damn | 0, mattk.damd | 0);
@@ -6952,12 +6997,23 @@ async function hitmu(mtmp, mdat, mattk) {
         await mdamageu(mtmp, mhm.damage);
     }
 
-    // C ref mhitu.c:1261 — `res = mhm.damage ? passiveum(...) : M_ATTK_HIT`.
-    // None of the monsters this path drives has a passive counterattack, and
-    // passiveum() returns M_ATTK_HIT when there is nothing to fire, so both
-    // branches land on M_ATTK_HIT here (no RNG, no message).
+    // C ref: mhitu.c:1261 — the passive belongs to the HERO's form (olduasmon),
+    // not to the attacker: a brown-mold hero freezes whatever hit it.
+    let res = M_ATTK_HIT;
+    if (mhm.damage) {
+        const { passiveum } = await import('./mhitu.js');
+        res = await passiveum(olduasmon, mtmp, mattk);
+    }
     await stop_occupation();            // mhitu.c:1265 — after the mhm.done arm
-    return M_ATTK_HIT;
+    return res;
+}
+
+// C ref: monst.h gy.youmonst.data.  u.umonnum is the ROLE index unless Upolyd
+// (see js/invent.js youmonst_data), so the mons[] lookup only applies then.
+function youmonst_data_mm() {
+    const u = game.u;
+    if (u?.Upolyd) return _monster_by_pmidx_cf(u.umonnum) || u?.data || null;
+    return _monster_by_pmidx_cf(331 + (u?.umonnum ?? 0)) || u?.data || null;
 }
 
 // Dynamic import: hack.js -> cmd.js -> monmove.js is a static cycle.
@@ -6981,6 +7037,7 @@ async function mhitm_adtyping(mtmp, mattk, mhm) {
         await mhitm_ad_sedu(mtmp, mattk, mhm); break;
     case AD_STCK: await mhitm_ad_stck(mtmp, mattk, mhm); break;
     case AD_BLND: await mhitm_ad_blnd_u(mtmp, mattk, mhm); break;
+    case AD_STON: await mhitm_ad_ston_u(mtmp, mattk, mhm); break;
     default:
         // Unmodelled adtyp: leave damage as the base roll, emit the hit verb.
         await hitmsg(mtmp, mattk);
@@ -7263,6 +7320,71 @@ async function mhitm_mgc_atk_negated(mtmp, verbosely = false) {
     return negated;
 }
 
+// C ref: uhitm.c:4203 mhitm_ad_ston() — the `mdef == &gy.youmonst` arm (a
+// cockatrice/chickatrice/Medusa touch).  ALWAYS draws rn2(3) after the hit
+// verb; the dispatcher's `default:` arm printed the verb and drew nothing, so
+// every cockatrice touch shifted the stream by one draw.
+async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);                     // uhitm.c:4214
+    if (rn2(3)) return;                            // uhitm.c:4215
+    const Deaf = !!game.u?.Deaf;
+    if (mtmp.mcan) {
+        if (!Deaf) await emitU(`You hear a cough from ${mon_nam(mtmp)}!`);
+        return;
+    }
+    if (Hallucination_dcw() && !Blind()) {
+        await emitU('You hear hissing.');
+        await emitU(`${Monnam(mtmp)} appears to be blowing you a kiss...`);
+    } else if (!Deaf) {
+        await emitU(`You hear ${s_suffix(mon_nam(mtmp))} hissing!`);
+    } else if (!Blind()) {
+        await emitU(`${Monnam(mtmp)} seems to grimace.`);
+    }
+    // uhitm.c:4245 — a new moon petrifies on every hiss, otherwise 1 in 10.
+    if (!rn2(10) || phase_of_the_moon() === NEW_MOON) {
+        if (await do_stone_u(mtmp)) {
+            mhm.hitflags = M_ATTK_HIT;
+            mhm.done = true;
+        }
+    }
+}
+
+// C ref: mondata.c:80 poly_when_stoned(ptr) — a golem other than the stone
+// golem itself turns INTO a stone golem instead of petrifying (unless the
+// stone golem has been genocided).
+const S_GOLEM_CLS_MM = 55;                                   // monsym.h S_GOLEM
+function poly_when_stoned_u(ptr) {
+    if (ptr?.mcls !== S_GOLEM_CLS_MM || ptr?.name === 'stone golem') return false;
+    const golem = _name_to_pmidx_cf('stone golem');
+    return !((game.mvitals?.[golem]?.mvflags ?? 0) & 0x02 /* G_GENOD */);
+}
+
+// C ref: uhitm.c:3923 do_stone_u(mtmp) — start the hero petrifying.  Returns 1
+// when the hit "took" (the caller then ends the attack).  make_stoned()'s
+// 5-turn countdown has no timeout.c arm in this port yet (see timeout.js), so
+// the Stoned property is set and shown on the status line but never expires.
+async function do_stone_u(mtmp) {
+    const u = game.u;
+    const Stoned = (u?.uprops?.Stoned || 0) > 0;
+    const Stone_resistance = !!(u?.uprops?.Stone_resistance || u?.Stone_resistance);
+    if (Stoned || Stone_resistance) return 0;
+    if (poly_when_stoned_u(youmonst_data_mm())) {
+        const { polymon } = await import('./polyself.js');
+        const golem = _name_to_pmidx_cf('stone golem');
+        if (golem >= 0 && await polymon(golem)) return 0;
+    }
+    u.uprops = u.uprops || {};
+    u.uprops.Stoned = 5;
+    game._delayed_killer = pmname_of_mon(mtmp);
+    return 1;
+}
+// C ref: uhitm.c:3929 — the killer name is the attacker's species (the()'d for
+// a unique).
+function pmname_of_mon(mtmp) {
+    const ptr = mtmp?.data || permonst(mtmp);
+    return ptr?.name || 'monster';
+}
+
 // C ref: uhitm.c:5247 mhitm_knockback() — hero is the defender.  The
 // knockdistance rn2(3) and the rn2(chance) gate roll fire before any adtyp /
 // engulf checks, so they always advance the stream; knockback only proceeds for
@@ -7352,6 +7474,17 @@ async function missmu(mtmp, nearmiss) {
 }
 
 // Append a hero-facing message to the top line (C pline -> update_topl).
+// C ref: youprop.h Detect_monsters — HDetect_monsters || EDetect_monsters.
+function Detect_monsters_mm() {
+    const u = game.u || {}, p = u.uprops || {};
+    return !!(p.HDetect_monsters || p.EDetect_monsters || u.HDetect_monsters);
+}
+// C ref: objnam.c doname(obj) — full name with enchantment/BUC when known.
+async function doname_mm(obj) {
+    const { doname_invent } = await import('./invent.js');
+    return doname_invent(obj);
+}
+
 async function emitU(msg) {
     const { update_topl } = await import('./display.js');
     await update_topl(msg);

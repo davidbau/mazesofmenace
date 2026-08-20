@@ -29,7 +29,7 @@ import {
     STAIRS, LADDER,
     LANDMINE, FIRE_TRAP, LEVEL_TELEP, WEB, ANTI_MAGIC, VIBRATING_SQUARE,
     ARROW_TRAP, ROCKTRAP, SLP_GAS_TRAP, POLY_TRAP, In_sokoban, In_endgame,
-    VAULT,
+    VAULT, IS_FURNITURE, TRAPPED_DOOR, TRAPPED_CHEST,
 } from './const.js';
 import {
     objects, mksobj, weight, place_object, BOULDER, STATUE as STATUE_OTYP,
@@ -40,7 +40,7 @@ import {
 import { makemon, rndmonst_adj, monster_by_pmidx } from './makemon.js';
 import { likes_gems_flag } from './monflags_data.js';
 import { MM_NOCOUNTBIRTH, MM_NOMSG, STATUE_TRAP } from './const.js';
-import { In_hell as dungeon_In_hell } from './dungeon.js';
+import { In_hell as dungeon_In_hell, single_level_branch } from './dungeon.js';
 import { check_special_room } from './shkroom.js';
 
 // C ref: include/onames.h — object type indices (mkobj.js OBJECT_DATA order).
@@ -523,6 +523,9 @@ function trap_mongone(mtmp) {
 }
 
 export function maketrap(x, y, typ) {
+    // C ref: trap.c:466 — the two container/door pseudo-types never become a
+    // map trap.
+    if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
     // C ref: trap.c maketrap() `if ((ttmp = t_at(x, y)) != 0) { ...
     // oldplace = TRUE; }` — a square already carrying a trap gets that record
     // RE-INITIALIZED in place; it is not chained again.  Appending a second
@@ -533,6 +536,25 @@ export function maketrap(x, y, typ) {
     // never even gets the square as a candidate.
     const old = game.level ? t_at(x, y) : null;
     if (old && undestroyable_trap(old.ttyp)) return null;
+    // C ref: trap.c:476-484 — the `else if` arm between "there was already a
+    // trap here" and "make a new one": a FRESH trap is refused outright on
+    // stairs/ladders, on water/lava, on furniture (unless it is a pit or hole),
+    // on an air/cloud square, and a level teleporter inside a one-level branch.
+    // Load-bearing for RNG, not just for the map: mktrap() draws its victim
+    // rnd(4) only when a trap was actually made, so every refusal removes a
+    // draw (Wiz-loca drops 3 of its 11 fixed traps onto replace_terrain'd
+    // CLOUD/MOAT squares).
+    if (!old && game.level) {
+        const ltyp = game.level.at(x, y)?.typ;
+        if (ltyp == null
+            || ltyp === STAIRS || ltyp === LADDER          // CAN_OVERWRITE_TERRAIN
+            || is_pool_or_lava(x, y)
+            || (IS_FURNITURE(ltyp) && typ !== PIT && typ !== HOLE)
+            || (ltyp === DRAWBRIDGE_UP && typ === MAGIC_PORTAL)
+            || (IS_AIR(ltyp) && typ !== MAGIC_PORTAL)
+            || (typ === LEVEL_TELEP && single_level_branch(game.u?.uz)))
+            return null;
+    }
     // C ref: maketrap() "[re-]initialize all fields except ntrap and <tx,ty>" —
     // tseen starts out as unhideable_trap(typ), i.e. TRUE only for a HOLE.
     const trap = old || { tx: x, ty: y };

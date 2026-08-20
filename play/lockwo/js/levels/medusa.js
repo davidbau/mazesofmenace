@@ -17,7 +17,8 @@
 //     away with a bare rn2(3).
 
 import {
-    COLNO, CORR, FOUNTAIN, IS_FURNITURE, IS_LAVA, IS_POOL, LADDER, LA_DOWN, LA_UP, MAGIC_TRAP,
+    ACCESSIBLE, COLNO, CORR, DOOR, D_CLOSED, D_LOCKED, FOUNTAIN, IS_FURNITURE, IS_LAVA, IS_POOL,
+    LADDER, LA_DOWN, LA_UP, MAGIC_TRAP,
     MM_NOCOUNTBIRTH, MM_NOMSG, NO_TRAP, OROOM, ROCKTRAP, ROOM, ROWNO, RUST_TRAP, SQKY_BOARD,
     STAIRS, TRAPNUM, is_hole, isok,
 } from '../const.js';
@@ -225,9 +226,11 @@ function med_mongone(mtmp) {
     }
 }
 
-// C ref: mondata.h poly_when_stoned(ptr) — a golem other than the stone golem
-// turns to stone instead of dying, so it cannot be a Medusa statue.
-const MED_S_GOLEM = 16;                            // monsym.h MONSYM(16, '\'')
+// C ref: mondata.c:80 poly_when_stoned(ptr) — a golem other than the stone
+// golem turns to stone instead of dying, so it cannot be a Medusa statue.
+// C's third term (!mvitals[PM_STONE_GOLEM].mvflags & G_GENOD) needs a
+// genocide, which no covered session performs.
+const MED_S_GOLEM = 55;                            // defsym.h MONSYM(55, '\'')
 function med_poly_when_stoned(ptr) {
     return !!ptr && ptr.mcls === MED_S_GOLEM && ptr.name !== 'stone golem';
 }
@@ -467,15 +470,30 @@ function med_goodpos(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     if (game.u && game.u.ux === x && game.u.uy === y) return false;
-    if (!med_accessible(loc.typ)) return false;
+    if (!med_accessible(x, y)) return false;
     for (const o of (game.level?.objects || []))
         if (o && o.otyp === BOULDER && o.ox === x && o.oy === y) return false;
     return true;
 }
 
-// C ref: rm.h ACCESSIBLE(typ) — ROOM..DOOR, i.e. anything walkable.
-function med_accessible(typ) {
-    return typ >= ROOM && typ <= 25 /* DOOR */;
+// C ref: monmove.c:2188 accessible(x, y) — ACCESSIBLE(SURFACE_AT(x,y))
+// && !closed_door(x,y).  rm.h's ACCESSIBLE is `typ >= DOOR`, an OPEN-ENDED
+// range: DOOR/CORR/ROOM/STAIRS/LADDER/FOUNTAIN/THRONE/SINK/GRAVE/ALTAR/ICE/
+// DRAWBRIDGE_DOWN/AIR/CLOUD all pass.  This read `typ >= ROOM && typ <= DOOR`
+// with DOOR spelled 25, i.e. exactly ROOM, so a statue spot on any of the
+// other thirteen was rejected and fixup_special()'s mk_tt_object() never ran
+// (seed0367 step 243).
+// C ref: rm.h SURFACE_AT — only a raised drawbridge reports its underlying
+// terrain; medusa-N has none, so levl[x][y].typ is the surface.
+function med_accessible(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return ACCESSIBLE(loc.typ) && !med_closed_door(loc);
+}
+
+// C ref: rm.h closed_door(x,y) == IS_DOOR(typ) && (doormask & (D_LOCKED|D_CLOSED))
+function med_closed_door(loc) {
+    return loc.typ === DOOR && !!(loc.doormask & (D_LOCKED | D_CLOSED));
 }
 
 // C ref: mkmaze.c fixup_special()'s Is_medusa_level() block — the "leaderboard

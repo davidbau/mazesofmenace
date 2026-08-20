@@ -233,8 +233,8 @@ export function apply_ok(obj, state = game) {
 // "You hear nothing special."
 //
 // C takes `int *resp` so that its hallucination arm can charge the turn. The
-// private consumer accepts a response holder for that write while the exported
-// source-named helper retains its established boolean result.
+// exported source-named helper retains its boolean result and optionally
+// accepts the caller-owned response holder for that write.
 function selectedDeadObject(rx, ry, state) {
     let corpse = sobj_at(CORPSE, rx, ry, state);
     let statue = sobj_at(STATUE, rx, ry, state);
@@ -261,9 +261,9 @@ function selectedDeadObject(rx, ry, state) {
     return { corpse, statue };
 }
 
-// The private body accepts use_stethoscope()'s response holder while the
-// exported source-named helper below retains its established boolean result.
-async function its_dead_after_preflight(rx, ry, state, response = null) {
+// C ref: apply.c its_dead(). The optional response holder models C's `int
+// *resp`; direct callers that need only the source boolean result may omit it.
+export async function its_dead(rx, ry, state = game, response = null) {
     const { corpse, statue } = selectedDeadObject(rx, ry, state);
     if ((corpse || statue) && heroHallucinating(state)) {
         let answer;
@@ -343,10 +343,6 @@ async function its_dead_after_preflight(rx, ry, state, response = null) {
         return true;
     }
     return false;
-}
-
-export async function its_dead(rx, ry, state = game) {
-    return its_dead_after_preflight(rx, ry, state);
 }
 
 // Fail-closed commands are retryable. Inspect the earlier adjacent paths that
@@ -545,7 +541,7 @@ async function use_stethoscope(obj, state = game) {
     }
 
     const response = { value: res };
-    if (!await its_dead_after_preflight(rx, ry, state, response))
+    if (!await its_dead(rx, ry, state, response))
         await ttyPline('You hear nothing special.', state); /* not You_hear() */
     return response.value;
 }

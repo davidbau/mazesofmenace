@@ -1391,6 +1391,8 @@ function mongets(_mtmp, otyp) {
     return otmp;   // C mongets() returns the created obj (used by ARM_BONUS math)
 }
 const BELL_OF_OPENING_OTYP = 263, SPE_BOOK_OF_THE_DEAD_OTYP = 409;
+// objects.h otyp for makemon.c:1373's Plane-of-Earth Wizard `mitem`.
+const SPE_DIG_OTYP = 366;
 // objects.h otyps for makemon.c:1377-1381's `mitem` chain.
 const TWO_HANDED_SWORD_OTYP = 55, POT_SICKNESS_OTYP = 318;
 
@@ -3363,6 +3365,16 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
             // Vlad stays in his normal shape so he can carry the Candelabrum.
             if (ptr.pmidx !== PM_VLAD_THE_IMPALER && newcham(mtmp, null))
                 allow_minvent = false;
+        } else if (ptr.pmidx === PM_WIZARD_OF_YENDOR_JS) {
+            // C ref: makemon.c:1369-1373.  This arm was missing entirely, so no
+            // monster in this port was ever flagged iswiz: levl_follower()
+            // refused to bring the Wizard across a level change (seed0373 step
+            // 110 wants a second mon_arrive), and every `mtmp->iswiz` predicate
+            // in mcastu/muse/monmove answered FALSE for him.
+            mtmp.iswiz = 1;
+            game.context.no_of_wizards = (game.context.no_of_wizards | 0) + 1;
+            if (game.context.no_of_wizards === 1 && Is_earthlevel(game.u?.uz))
+                mitem = SPE_DIG_OTYP;
         } else if (ptr.name === 'ghost' && !(mmflags & MM_NONAME)) {
             // C ref: makemon.c:1374 `christen_monst(mtmp, rndghostname())` —
             // do_name.c rndghostname() is rn2(7) ? ROLL_FROM(ghostnames)
@@ -3861,69 +3873,15 @@ export function placeOnLevel(mtmp, x, y) {
 // loop) -> next_ident -> newmonhp -> gender -> group(m_initgrp) -> m_initweap/
 // m_initinv -> saddle, then place on the level.
 export function makemon_rnd_spawn() {
-    // Position first (x==0,y==0 path).  C uses a fakemon whose data is set per
-    // rndmonst try inside the loop, but makemon_rnd_goodpos is called BEFORE
-    // rndmonst with fakemon.data == ptr (NULL here since ptr is 0) — goodpos
-    // with a null mdat skips the data-dependent branches, exactly matching
-    // goodpos_spawn(ptr=null).
-    const pos = makemon_rnd_goodpos(null);
-    if (!pos) return null;
-    let x = pos.x, y = pos.y;
-
-    // Random type with up to 50 goodpos retries at the chosen square.
-    let ptr = null, tryct = 0;
-    do {
-        ptr = rndmonst();
-        if (!ptr) return null;
-        // C ref: makemon.c:1228 — in Sokoban the FIRST roll never accepts a
-        // boulder carrier; after that they are fair game.
-    } while (++tryct <= 50
-             && ((tryct === 1 && throws_rocks_flag(ptr) && In_sokoban(game.u?.uz))
-                 || !goodpos_spawn(x, y, ptr)));
-    if (!ptr) return null;
-
-    propagate(ptr.pmidx, true, false);   // makemon.c:1233
-
-    const mtmp = { data: ptr, mx: x, my: y, mmflags: 0 };
-    // C ref: makemon.c:1248-1250 — the new monster is linked into fmon (and gets
-    // its m_id) HERE, before newmonhp/group/inventory.  Placing it on the level
-    // now (rather than at the end) keeps the fmon traversal order correct: the
-    // top monster precedes its group members, so the newest-first movemon loop
-    // visits members before the top, exactly as C does.
-    placeOnLevel(mtmp, x, y);
-    mtmp.m_id = next_ident();
-    newmonhp(mtmp);
-
-    if (ptr.gcode === 0) mtmp.female = rn2(2);
-    else mtmp.female = (ptr.gcode === 2) ? 1 : 0;
-
-    mtmp.mpeaceful = peace_minded_spawn(ptr) ? true : false;
-    // C ref: makemon.c:1303 — the per-mlet switch sits between mpeaceful and
-    // set_malign() and applies to this path too.
-    makemon_mlet_switch(mtmp, ptr, x, y);
-    set_malign(mtmp);   // makemon.c:1429
-
-    // Group handling (anymon && !MM_NOGRP).  G_SGROUP -> rn2(2); G_LGROUP ->
-    // rn2(3) ? lgrp : sgrp.  Members are created/placed before the top
-    // monster's inventory (matching the C call order at makemon.c:1429).
-    if ((ptr.geno & G_SGROUP) && rn2(2)) {
-        m_initgrp(mtmp, x, y, 3, 0);               // m_initsgrp -> rnd(3)
-    } else if (ptr.geno & G_LGROUP) {
-        if (rn2(3)) m_initgrp(mtmp, x, y, 10, 0);  // m_initlgrp -> rnd(10)
-        else m_initgrp(mtmp, x, y, 3, 0);          // m_initsgrp -> rnd(3)
-    }
-
-    // C ref: makemon.c:1442-1451 — the same two calls every other makemon()
-    // path makes.  This entry point used to call a pair of stubs: an
-    // m_initweap() with bodies for only S_KOBOLD/S_ORC/S_ANGEL gated on an
-    // ARMED_MCLS class list (instead of C's is_armed() == attacktype AT_WEAP),
-    // and an m_initinv() that was literally `rn2(50); rn2(100);` — no per-class
-    // branch, and no mongets() for either roll it won.
-    if (is_armed_pm(ptr.pmidx, ptr.mcls, ptr.name)) m_initweap_full(mtmp);
-    m_initinv_full(mtmp);
-    rn2(100); // saddle chance
-
-    return mtmp;
+    // C ref: allmain.c maybe_generate_rnd_mon() — `makemon((struct permonst *)0,
+    // 0, 0, NO_MM_FLAGS)`, i.e. the ordinary makemon() with a random species AND
+    // a random position.  This used to be a second, reduced copy of makemon()
+    // that stopped after the group block, so an in-game spawn skipped
+    // makemon.c:1352-1390 entirely: no mitem, and no cham/newcham(), which is
+    // where a chameleon/doppelganger/sandestin picks its initial shape
+    // (select_newcham_form -> rn2(3) + pick_animal for a chameleon).  It also
+    // skipped the long-worm tail and the cleric/Angel minion rolls.
+    return makemon(null, 0, 0, 0);
 }
 
 // C ref: read.c create_particular_creation() for the ^G (#wizgenesis) command

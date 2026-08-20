@@ -928,7 +928,8 @@ async function floorfood_eat() {
 // an overloaded hero burns no turn even after answering the floor prompt.
 async function check_capacity() {
     if (_invent && _invent.near_capacity() >= 3 /* EXT_ENCUMBER */) {
-        await pline('You cannot do that while carrying so much stuff.');
+        // You_cant() contracts to "can't"; "cannot" is not a NetHack string.
+        await pline("You can't do that while carrying so much stuff.");
         return true;
     }
     return false;

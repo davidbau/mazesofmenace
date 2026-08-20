@@ -94,6 +94,11 @@ function bc_order() {
 export function placebc() {
     const u = game.u;
     if (!u?.uball || !u?.uchain) return;
+    // C ref: ball.c placebc() — `if (uchain && uchain->where != OBJ_FREE)
+    // { impossible("bc already placed?"); return; }`.  Without the guard a
+    // second placebc() puts a SECOND chain+ball on the pile, and look_here()
+    // then lists each of them twice.
+    if (u.uchain.where !== 'free') return;
     if (carried(u.uball)) {
         u.bc_order = BCPOS_DIFFER;
     } else {

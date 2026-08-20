@@ -68,8 +68,9 @@ import { getpos, getpos_render, travel_adjacent_step } from './hack.js';
 import { observe_object as disco_observe_object, build_discoveries_rows, discover_object } from './o_init.js';
 import { monster_by_pmidx } from './makemon.js';
 import { strongmonst_flag as strongmonst, throws_rocks_flag, is_were_flag,
-         is_neuter_flag, humanoid as humanoid_flag,
+         is_neuter_flag, humanoid as humanoid_flag, nolimbs as nolimbs_flag,
          mflags1_of, mflags2_of, likes_gems_flag,
+         M1_NOHEAD, M1_NOTAKE, M1_NOHANDS,
          M2_DEMON, M2_UNDEAD, M2_ORC } from './monflags_data.js';
 import { tin_variety, SPINACH_TIN, ROTTEN_TIN, HOMEMADE_TIN, tintxts, vegetarian } from './eat.js';
 import { enlightenment_lines } from './insight.js';
@@ -138,6 +139,9 @@ import {
 // autoquiver, ok_to_throw, endmultishot) plus apply.c's use_whip, which is
 // reached only from dofire() below.  The cycle is fine: neither side touches
 // the other at module-evaluation time.
+// polyself.js owns mbodypart()/body_part(); the cycle back to this file is
+// fine (both sides only call each other's hoisted declarations at run time).
+import { body_part as poly_body_part } from './polyself.js';
 import * as DT from './dothrow.js';
 
 const LEASH = 236;
@@ -1363,15 +1367,11 @@ function s_suffix(s) { return /s$/.test(s) ? `${s}'` : `${s}'s`; }
 function highc(s) { return String(s).charAt(0).toUpperCase(); }
 function mungspaces(s) { return String(s).replace(/\s+/g, ' ').trim(); }
 function ing_suffix(s) { return `${s.replace(/e$/, '')}ing`; }
-// C ref: polyself.c body_part() — humanoid_parts[] indexed by bodypart_types.
-// The contest hero is never polymorphed, so the humanoid table always applies.
-const HUMANOID_PARTS = [
-    'arm', 'eye', 'face', 'finger', 'fingertip', 'foot', 'hand', 'handed',
-    'head', 'leg', 'light headed', 'neck', 'spine', 'toe', 'hair', 'blood',
-    'lung', 'nose', 'stomach',
-];
+// C ref: polyself.c body_part(part) == mbodypart(&gy.youmonst, part).  The
+// humanoid-only table this used to carry answered "hand"/"finger" for every
+// polyform, so a poly'd hero's inventory and 'P' prompts named the wrong part.
 export function body_part(part) {
-    return (part >= 0 && part < HUMANOID_PARTS.length) ? HUMANOID_PARTS[part] : 'body part';
+    return poly_body_part(part);
 }
 // C ref: wield.c empty_handed() — gloves imply hands so "empty handed"; a
 // gloveless humanoid is "bare handed"; a paws/handless polyform (never reached
@@ -4174,9 +4174,17 @@ async function accessory_or_armor_on(obj) {
         // C ref: do_wear.c accessory_or_armor_on() — accessory branch.
         if (ring) {
             let mask = 0;
-            // nolimbs/full-fingers guards are unreachable for the humanoid hero.
+            // C ref: do_wear.c:2254 — a nolimbs polyform has nothing to put a
+            // ring on; costs no time.
+            if (nolimbs_flag(youmonst_data())) {
+                await pline('You cannot make the ring stick to your body.');
+                return ECMD_OK;
+            }
+            // C ref: do_wear.c:2258 — the "ring-" qualifier is dropped for a
+            // non-humanoid form (which has plain fingers, paws, tentacles...).
+            const ringpfx = humanoid_flag(youmonst_data()) ? 'ring-' : '';
             if (game.uleft && game.uright) {
-                await pline(`There are no more ring-${fingers_or_gloves(false)} to fill.`);
+                await pline(`There are no more ${ringpfx}${fingers_or_gloves(false)} to fill.`);
                 return ECMD_OK;
             }
             if (game.uleft) mask = W_RINGR;
@@ -4185,10 +4193,9 @@ async function accessory_or_armor_on(obj) {
                 // C ref: yn_function(qbuf, rightleftchars="rl", '\0', TRUE) — prompt
                 // until a valid finger is chosen; ESC/space (default '\0') cancels.
                 while (!mask) {
-                    // body_part(FINGER=3) === 'finger'; humanoid hero -> "ring-finger".
                     // def '' (no shown default) matches C yn_function(..,'\0',TRUE);
                     // quitchars (space/return/ESC) return '' -> cancel like C's '\0'.
-                    const ans = await y_n(`Which ring-${body_part(3)}, Right or Left?`,
+                    const ans = await y_n(`Which ${ringpfx}${body_part(3)}, Right or Left?`,
                                           'rl\x1b', '');
                     if (ans === '' || ans === '\x1b') return ECMD_OK;
                     if (ans === 'l') mask = W_RINGL;
@@ -4235,7 +4242,12 @@ async function accessory_or_armor_on(obj) {
             if (game._allow_inventory_update !== undefined) update_inventory();
             return ECMD_TIME;
         } else if (eyewear) {
-            // has_head(): a headless polyform can't wear eyewear; not modelled.
+            // C ref: do_wear.c:2323 has_head() — a headless polyform has
+            // nowhere to put a blindfold/lenses/towel; costs no time.
+            if ((mflags1_of(youmonst_data()) & M1_NOHEAD) !== 0) {
+                await pline(`You have no head to wear ${ansimpleoname(obj)} on.`);
+                return ECMD_OK;
+            }
             if (game.ublindf) {
                 // C ref: do_wear.c already_wearing2(what1, what2) — swapping
                 // lenses for a blindfold (or back) names BOTH items.
@@ -4373,6 +4385,12 @@ async function run_dress_occupation(delay, msg, afternmv) {
 
 // C ref: do_wear.c dowear() — the 'W' command.
 export async function dowear() {
+    // C ref: do_wear.c:2425 — cantweararm() is about suits; what 'W' checks
+    // first is whether the hero's CURRENT FORM could manipulate armor at all.
+    if (verysmall_youmonst() || nohands_youmonst()) {
+        await pline("Don't even bother.");
+        return ECMD_OK;
+    }
     // C ref: do_wear.c:2432 — 'W' only reports a full complement when EVERY
     // slot is filled, accessories included; the armor-only test refused to open
     // getobj() for a hero who was merely fully armored.
@@ -4722,7 +4740,9 @@ export async function doputon() {
     if (game.uleft && game.uright && game.uamul && game.ublindf
         && game.uarm && game.uarmu && game.uarmc && game.uarmh && game.uarms
         && game.uarmg && game.uarmf) {
-        await pline(`Your ring-${fingers_or_gloves(false)} are full, and you're already wearing an amulet and ${game.ublindf.otyp === LENSES ? 'some lenses' : 'a blindfold'}.`);
+        // C ref: do_wear.c:2453 — "ring-" only for a humanoid form.
+        const ringpfx = humanoid_flag(youmonst_data()) ? 'ring-' : '';
+        await pline(`Your ${ringpfx}${fingers_or_gloves(false)} are full, and you're already wearing an amulet and ${game.ublindf.otyp === LENSES ? 'some lenses' : 'a blindfold'}.`);
         return ECMD_OK;
     }
     // C ref: do_wear.c doputon() — the faithful 'P' ALWAYS opens the getobj
@@ -6414,12 +6434,19 @@ export { obj_resists, uslinging, is_ammo, is_missile, is_launcher,
          acurr_eff as acurr_attr, Role_if };
 
 // C ref: mondata.h notake(ptr) / nohands(ptr) applied to gy.youmonst.data.
-// M1_NOTAKE 0x00080000, M1_NOHANDS 0x00000200 (monflags_data.js mflags1_of).
+// monflag.h: M1_NOTAKE is 0x00000800 and M1_NOHANDS 0x00002000; the literals
+// that used to sit here (0x00080000 / 0x00000200) are M1_SLITHY and
+// M1_AMPHIBIOUS, so both predicates answered FALSE for every polyform that
+// really has neither.
 export function notake_youmonst() {
-    return (mflags1_of(youmonst_data()) & 0x00080000) !== 0;
+    return (mflags1_of(youmonst_data()) & M1_NOTAKE) !== 0;
 }
 export function nohands_youmonst() {
-    return (mflags1_of(youmonst_data()) & 0x00000200) !== 0;
+    return (mflags1_of(youmonst_data()) & M1_NOHANDS) !== 0;
+}
+// C ref: mondata.h verysmall(ptr) — msize < MZ_SMALL, i.e. MZ_TINY only.
+export function verysmall_youmonst() {
+    return (youmonst_data()?.msize ?? 1) < 1 /* MZ_SMALL */;
 }
 // C ref: hack.c check_capacity(str) — `near_capacity() >= EXT_ENCUMBER`, i.e.
 // refuse from "extremely burdened" upward (NOT only at OVERLOADED).

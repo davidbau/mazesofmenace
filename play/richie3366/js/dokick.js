@@ -874,8 +874,8 @@ async function kick_monster(mon, x, y) {
 /**
  * C ref: dokick.c container_impact_dmg — kick/drop/throw shatter contents.
  * Assumes container on floor. x,y is the pre-impact cell (throw origin
- * u.ux,u.uy; dropz hero feet; kick dest). Named omit: Soundeffect;
- * hitfloor dropz(TRUE).
+ * u.ux,u.uy; dropz hero feet; kick dest). hitfloor dropz(TRUE) is
+ * D-1263. Named omit: Soundeffect.
  */
 export async function container_impact_dmg(obj, x, y) {
     if (!Is_container(obj) || !Has_contents(obj) || Is_mbag(obj)) return;

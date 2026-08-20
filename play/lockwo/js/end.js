@@ -584,7 +584,15 @@ async function quit_final_message() {
 export async function doquit() {
     const d = await deps();
     const ans = await d.y_n('Really quit without saving?', 'yn', 'n');
-    if (ans !== 'y') return 0; // ECMD_OK: declined, keep playing
+    if (ans !== 'y') {
+        // C ref: end.c:105 — the declined arm opens with
+        // clear_nhwindow(WIN_MESSAGE), so the prompt line is wiped rather than
+        // left standing under the next command.
+        game._pending_message = '';
+        game._toplin = 0;
+        if (d.flush_screen) await d.flush_screen(1);
+        return 0; // ECMD_OK: declined, keep playing
+    }
 
     const wizard = !!game.flags?.debug;
     if (wizard) {

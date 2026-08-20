@@ -16,7 +16,7 @@ import {
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     SDOOR, isok,
     IS_AIR, IS_ALTAR, IS_GRAVE, IS_FOUNTAIN, IS_WALL, IS_DOOR, IS_ROOM,
-    IS_THRONE, IS_SINK, TREE, COLNO, ROWNO,
+    IS_THRONE, IS_SINK, TREE, COLNO, ROWNO, NHW_MENU,
     Is_waterlevel, Is_earthlevel, Is_knox_level,
     SHOPBASE,
 } from './const.js';
@@ -198,6 +198,24 @@ function dname_to_dnum(s) {
     throw new Error(`Couldn't resolve dungeon number for name "${s}".`);
 }
 
+// C ref: dungeon.c:1884 dungeon_branch(s) — the branch whose FAR end is the
+// dungeon named `s`.  C panic()s when there is none; every caller names a
+// dungeon that init_dungeons() always builds, so returning null is equivalent.
+export function dungeon_branch(s) {
+    const dnum = dname_to_dnum(s);
+    for (const br of game.branches || [])
+        if (br?.end2?.dnum === dnum) return br;
+    return null;
+}
+
+// C ref: dungeon.c:1897 at_dgn_entrance(s) — is the hero standing on the
+// PARENT-side level of that branch?
+export function at_dgn_entrance(s) {
+    const br = dungeon_branch(s);
+    const uz = game.u?.uz;
+    return !!br && !!uz && br.end1.dnum === uz.dnum && br.end1.dlevel === uz.dlevel;
+}
+
 export function find_level(s) {
     return (game.sp_levchn || []).find((lev) => lev.proto.toLowerCase() === s.toLowerCase()) || null;
 }
@@ -216,6 +234,12 @@ export function In_hell(lev) {
 export function Is_valley(lev) {
     const vl = game.valley_level;
     return !!vl && !!lev && lev.dnum === vl.dnum && lev.dlevel === vl.dlevel;
+}
+
+// C ref: dungeon.h Is_bigroom(x) = Lcheck(x, &bigroom_level).
+export function Is_bigroom(lev) {
+    const bl = game.bigroom_level;
+    return !!bl && !!lev && lev.dnum === bl.dnum && lev.dlevel === bl.dlevel;
 }
 
 // C ref: dungeon.c find_hell(lev) — the entrance to Gehennom, i.e. the first
@@ -951,6 +975,136 @@ function build_levtport_menu(M) {
     return entries;
 }
 
+// C ref: dungeon.c:2290 print_dungeon(FALSE, 0, 0) — the #wizwhere form.  Same
+// walk as build_levtport_menu() (which is the bymenu==TRUE form), but every
+// line is a plain putstr(): branches get a literal ' ' in place of
+// chr_u_on_lvl(), nothing is skipped for being unreachable, and the floating
+// branches / invocation-or-portal tail is appended.  No RNG.
+export function print_dungeon_lines() {
+    const M = pd_model();
+    const lines = [];
+
+    // C ref: print_branch(win, dnum, lower, upper, FALSE, ...) — the bymenu
+    // FALSE arm always formats the leading %c as a space.
+    const print_branch = (dnum, lowerBound, upperBound) => {
+        for (const br of (M.branches || [])) {
+            if (br.end1.dnum === dnum && lowerBound < br.end1.dlevel
+                && br.end1.dlevel <= upperBound) {
+                lines.push(`  ${br_string(br.type)} to `
+                    + `${M.dungeons[br.end2.dnum].dname}: ${pd_depth(M, br.end1)}`);
+            }
+        }
+    };
+
+    for (let i = 0; i < M.n_dgns; i++) {
+        const dptr = M.dungeons[i];
+        const unplaced = unplaced_floater(M, i);
+        const descr = unplaced ? 'depth' : 'level';
+        const nlev = dptr.num_dunlevs;
+        let buf;
+        if (nlev > 1)
+            buf = `${dptr.dname}: ${pd_makeplural(descr)} ${dptr.depth_start} to `
+                + `${dptr.depth_start + nlev - 1}`;
+        else
+            buf = `${dptr.dname}: ${descr} ${dptr.depth_start}`;
+        if (dptr.entry_lev !== 1) {
+            if (dptr.entry_lev === nlev) buf += ', entrance from below';
+            else buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
+        }
+        lines.push(buf);
+
+        let lastLevel = 0;
+        for (const slev of (M.sp_levchn || [])) {
+            if (slev.dlevel.dnum !== i) continue;
+            print_branch(i, lastLevel, slev.dlevel.dlevel);
+            // C ref: dungeon.c:2345 — the special-level line keeps
+            // chr_u_on_lvl() even in the non-menu form, so the level the hero
+            // is standing on is flagged with '*'.
+            let lbuf = `${chr_u_on_lvl(slev.dlevel)} ${slev.proto}: ${pd_depth(M, slev.dlevel)}`;
+            if (M.stronghold_level && slev.dlevel.dnum === M.stronghold_level.dnum
+                && slev.dlevel.dlevel === M.stronghold_level.dlevel)
+                lbuf += ` (tune ${(M.tune || []).join('').replace(/\0/g, '')})`;
+            lines.push(lbuf);
+            lastLevel = slev.dlevel.dlevel;
+        }
+        print_branch(i, lastLevel, MAXLEVEL);
+    }
+
+    // C ref: dungeon.c:2380 — branches whose parent end is the pseudo-dungeon
+    // n_dgns have not been attached to a real level yet.
+    let first = true;
+    for (const br of (M.branches || [])) {
+        if (br.end1.dnum === M.n_dgns) {
+            if (first) { lines.push(''); lines.push('Floating branches'); first = false; }
+            lines.push(`   ${br_string(br.type)} to ${M.dungeons[br.end2.dnum].dname}`);
+        }
+    }
+
+    // C ref: dungeon.c:2395 — on the invocation level report its position,
+    // otherwise report this level's magic portal (or say there is none, but
+    // only where one is expected).
+    const uz = game.u?.uz;
+    if (Invocation_lev(uz)) {
+        lines.push('');
+        lines.push(`Invocation position @ (${game.inv_pos?.x ?? 0},${game.inv_pos?.y ?? 0}), `
+            + `hero @ (${game.u?.ux ?? 0},${game.u?.uy ?? 0})`);
+    } else {
+        const MAGIC_PORTAL = 17;                       // trap.h
+        const trap = (game.level?.traps || []).find((t) => t.ttyp === MAGIC_PORTAL);
+        let buf = '';
+        if (trap) {
+            buf = `Portal @ (${trap.tx},${trap.ty}), hero @ (${game.u?.ux ?? 0},${game.u?.uy ?? 0})`;
+        } else if (pd_portal_expected(M, uz)) {
+            buf = 'No portal found.';
+        }
+        if (buf) { lines.push(''); lines.push(buf); }
+    }
+    return lines;
+}
+
+// C ref: dungeon.c:2419 — the levels where "No portal found." is worth saying.
+function pd_portal_expected(M, uz) {
+    if (!uz) return false;
+    const planes = M.dungeons?.[uz.dnum]?.dname === 'The Elemental Planes';
+    if (planes) return true;
+    const q = (M.sp_levchn || []).find((l) => /-strt$/.test(l.proto));
+    if (q && q.dlevel.dnum === uz.dnum && q.dlevel.dlevel === uz.dlevel) return true;
+    // at_dgn_entrance("The Quest") / Is_knox()
+    for (const br of (M.branches || [])) {
+        const dn = M.dungeons?.[br.end2.dnum]?.dname;
+        if ((dn === 'The Quest' || dn === 'Fort Ludios')
+            && br.end1.dnum === uz.dnum && br.end1.dlevel === uz.dlevel)
+            return true;
+    }
+    return M.knox_level && uz.dnum === M.knox_level.dnum
+        && uz.dlevel === M.knox_level.dlevel;
+}
+
+// C ref: dungeon.h Invocation_lev(lev) — the level just above the sanctum.
+function Invocation_lev(lev) {
+    if (!lev) return false;
+    const hell = game._full_dungeon?.dungeons?.findIndex?.((d) => d?.flags?.hellish);
+    const dun = game.dungeons?.[lev.dnum];
+    if (!dun?.flags?.hellish) return false;
+    void hell;
+    return lev.dlevel === (dun.num_dunlevs - 1);
+}
+
+// Resolve the dungeon model: gameplay sessions stub g.dungeons down to a single
+// dnum-0 level for level generation, but allmain.newgame() stashes the complete
+// model (built by init_dungeons) in g._full_dungeon.
+function pd_model() {
+    return game._full_dungeon || {
+        dungeons: game.dungeons,
+        branches: game.branches,
+        sp_levchn: game.sp_levchn,
+        n_dgns: game.n_dgns,
+        tune: game.tune,
+        knox_level: game.knox_level,
+        stronghold_level: game.stronghold_level,
+    };
+}
+
 // Render one page of the level-teleport menu to the terminal grid and leave it
 // there; the caller reads the selection key (the pre-nhgetch capture hook
 // snapshots this rendered menu as the boundary screen).  Mirrors
@@ -981,6 +1135,15 @@ export async function print_dungeon(bymenu, _rlev, _rdgn) {
     const lines = [{ title: true, text: 'Level teleport to where:' }, { blank: true }];
     for (const e of entries) lines.push(e);
 
+    // The exact string tty_add_menu() stored for each row: a selectable entry
+    // gets the "%c - " accelerator prefix, a heading and an unreachable entry
+    // (added with a_int == 0, hence no selector) keep their text verbatim.
+    // Shared by the renderer and the menu-geometry calculation so the two can
+    // never disagree about the window's width.
+    const lineText = (e) => (e.blank ? ''
+        : (e.heading || e.title || !e.reachable) ? e.text
+        : `${e.menuletter} - ${e.text}`);
+
     const disp = game.nhDisplay;
     const rows = (disp && disp.rows) || 24;
     // Each page fills rows-1 lines (the last row holds the morestr).
@@ -1003,8 +1166,7 @@ export async function print_dungeon(bymenu, _rlev, _rdgn) {
             // C ref: tport_menu — an unreachable level is added with a_int==0
             // (zeroany), so the tty windowport shows no accelerator; its entry
             // text already carries the 4-space padding in place of "X - ".
-            const line = (e.heading || !e.reachable) ? e.text : `${e.menuletter} - ${e.text}`;
-            disp.putstr(1, row, line, NO_COLOR, e.heading ? ATR_INVERSE : 0);
+            disp.putstr(1, row, lineText(e), NO_COLOR, e.heading ? ATR_INVERSE : 0);
         }
         const morestr = npages > 1 ? `(${pageNo} of ${npages})` : '(end) ';
         clearRow(row);
@@ -1014,26 +1176,39 @@ export async function print_dungeon(bymenu, _rlev, _rdgn) {
         disp.setCursor(1 + morestr.length, row);
     };
 
+    // C ref: dungeon.c print_dungeon() `win = create_nhwindow(NHW_MENU)` ...
+    // `select_menu(win, PICK_ONE, &selected); destroy_nhwindow(win);`.  The
+    // window is real because tty_select_menu() DISMISSES it before returning,
+    // and for a full-width menu that dismissal runs docrt() — which under
+    // Hallucination re-picks every glyph on the level off the display prng
+    // (seed0383 step 195: 54 draws on the old level before the teleport).
+    const wt = await import('./wintty.js');
+    const win = wt.tty_create_nhwindow(NHW_MENU);
+    Object.assign(wt.wins[win], wt.tty_menu_layout(lines.map(lineText)));
+    wt.wins[win].active = true;
+
+    let result = 0;
     let pageNo = 1;
-    for (;;) {
+    pick: for (;;) {
         renderPage(pageNo);
         const key = await nhgetch();
         const ch = String.fromCharCode(key);
 
         // Cancel: ESC.
-        if (key === 27) return 0;
+        if (key === 27) break pick;
 
         // Accelerator selection: a letter that maps to a reachable entry on
         // ANY page selects it immediately (tty PICK_ONE behavior).
         const sel = entries.find((e) => !e.heading && e.reachable && e.menuletter === ch);
         if (sel) {
-            return { playerlev: sel.playerlev, destlev: sel.lev, destdnum: sel.dgn };
+            result = { playerlev: sel.playerlev, destlev: sel.lev, destdnum: sel.dgn };
+            break pick;
         }
 
         // Paging keys: space / '>' / return advance; '<' goes back.
         if (key === 32 || ch === '>' || key === 13 || key === 10) {
             if (pageNo < npages) pageNo++;
-            else return 0; // past the last page with no selection: cancel
+            else break pick; // past the last page with no selection: cancel
             continue;
         }
         if (ch === '<') {
@@ -1042,6 +1217,16 @@ export async function print_dungeon(bymenu, _rlev, _rdgn) {
         }
         // Any other key: ignore and redraw.
     }
+
+    // C ref: wintty.c tty_dismiss_nhwindow()'s NHW_MENU arm.  Its
+    // `iflags.window_inited` guard is TRUE for the whole game in C (set during
+    // tty_init_nhwindows), but this port drives the terminal directly and never
+    // runs that init, so go straight to the erase instead of through a flag
+    // that is permanently unset here.
+    await wt.erase_menu_or_text(win, wt.wins[win], false);
+    wt.wins[win].active = false;
+    wt.tty_destroy_nhwindow(win);
+    return result;
 }
 
 // ── #overview command (C ref: dungeon.c dooverview()/show_overview() ──
@@ -1410,4 +1595,20 @@ export function surface(x, y) {
         return 'floor';
     else
         return 'ground';
+}
+
+// C ref: dungeon.c:3410 endgamelevelname(outbuf, indx) — name the endgame level
+// whose observable_depth() is `indx`.  -5 is the Astral Plane (it keeps its own
+// name); -4..-1 are the four Elemental Planes, spelled "Plane of <element>".
+// Callers that want the bare element strip the "Plane of " prefix themselves
+// (the status line), and insight.c prefixes "Elemental " instead.
+export function endgamelevelname(indx) {
+    switch (indx) {
+    case -5: return 'Astral Plane';
+    case -4: return 'Plane of Water';
+    case -3: return 'Plane of Fire';
+    case -2: return 'Plane of Air';
+    case -1: return 'Plane of Earth';
+    default: return `unknown plane #${indx}`;
+    }
 }

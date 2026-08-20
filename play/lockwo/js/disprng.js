@@ -24,9 +24,23 @@ function dispCtx() {
 }
 
 // C ref: rnd.c:70 rn2_on_display_rng(x).
+//
+// The recorded sessions carry only rnglist[CORE], so scripts/rngdiff.mjs and
+// swarm/bin/rngstep.mjs are BLIND to this stream.  The optional trace below is
+// the substitute oracle: set globalThis.__DISPLOG to an array (and
+// __DISPLOG_SITES for JS call sites) and compare against a recording made with
+// NETHACK_RNGLOG_DISP=1.  swarm/bin/dispdiff.mjs drives it.
 export function rn2_on_display_rng(x) {
     if (x <= 0) return 0;
-    return Number(isaac64_next_uint64(dispCtx()) % BigInt(x));
+    const v = Number(isaac64_next_uint64(dispCtx()) % BigInt(x));
+    if (globalThis.__DISPLOG) {
+        const site = globalThis.__DISPLOG_SITES
+            ? ' @ ' + (new Error()).stack.split('\n').slice(2, 8)
+                .map(l => l.trim().replace(/^at /, '').replace(/\(.*\/js\//, '(')).join(' <- ')
+            : '';
+        globalThis.__DISPLOG.push(`~drn2(${x})=${v}${site}`);
+    }
+    return v;
 }
 
 // C ref: display.h:186 random_monster(rng) == rng(NUMMONS).  NUMMONS is the

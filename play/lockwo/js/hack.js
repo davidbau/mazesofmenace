@@ -1325,6 +1325,16 @@ function gp_glyph_at(x, y) {
 // role player-monster name is the role title lowercased (knight, wizard, ...).
 function self_lookat() {
     const u = game.u || {};
+    // C ref: pager.c:112 — "include race with role unless polymorphed".  While
+    // Upolyd, u.umonnum is a real mons[] index and pmname() names the FORM,
+    // so a poly'd hero farlooks as e.g. "brown mold called wizard".
+    if (u.Upolyd) {
+        const ptr = monster_by_pmidx(u.umonnum);
+        const plnameP = game.flags?.debug ? 'wizard' : (game.plname || 'Player');
+        let bufP = `${ptr?.name || 'creature'} called ${plnameP}`;
+        if (u.uball) bufP += `, chained to ${ansimpleoname(u.uball)}`;
+        return bufP;
+    }
     const rolemnum = u.umonnum ?? game.urole?.mnum;
     const roleDef = roles.find((r) => r.mnum === rolemnum) || {};
     const female = !!game.flags?.female;
@@ -1378,6 +1388,15 @@ function terrain_description(x, y) {
     // model "never revealed" is seenv == 0 with no remembered background glyph;
     // such cells are only ever painted as blank S_stone.
     if (!loc.seenv && loc.remembered_glyph == null) return 'unexplored area';
+    // C ref: pager.c:779 — do_screen_description dispatches on the DISPLAYED
+    // glyph.  A square drawn BLANK is S_stone (S_darkroom's symbol is '.', not
+    // ' '), and every arm of case S_stone answers "stone" once seenv is set:
+    // the typ==STONE||SCORR arm directly, and the fallthrough via
+    // defsyms[S_stone].explanation, which defsym.h's PCHAR2 row makes "stone"
+    // ("dark part of a room" in that row is the TILE name, not the
+    // explanation).  Reading levl[][].typ instead made an unfelt corridor
+    // under a blind hero read "corridor".
+    if (loc.disp_ch === ' ') return loc.seenv ? 'stone' : 'unexplored';
     const typ = loc.typ;
     // C ref: pager.c:779 do_screen_description() case S_stone —
     //     if (!levl[x][y].seenv)                       "unexplored"
@@ -2018,14 +2037,15 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
         // C getpos.c:944 — NHKF_GETPOS_HELP ('?') or redraw_cmd (^R): show the
         // help window (a blocking --More--), refresh, then re-show the goal
         // message.  ^L is claimed by the rush binding above, as in C.
-        // NOT PORTED: the redraw_cmd(^R) half.  It is the same `showGoal = true`
-        // (getpos_refresh() is docrt_flags(docrtRefresh) == redraw_map(FALSE),
-        // a RE-SEND of the existing glyph buffer that our flush_screen already
-        // does), and it does bring seed4500 step 1689 closer (470 bad cells ->
-        // 433); but that session's map is already 1054 screens divergent there
-        // and the reshuffle coincidentally breaks two later screens (1797/1798,
-        // an unrelated level-teleport menu), so it scores -2.  Re-land it with
-        // the seed4500 map fixed.
+        // redraw_cmd(c) is (c == C('r') || c == C('l')); ^L is claimed by the
+        // rush binding above, as in C.  getpos_refresh() is
+        // docrt_flags(docrtRefresh) == redraw_map(FALSE), a RE-SEND of the
+        // existing glyph buffer that flush_screen already does, so the only
+        // observable half is the goal message it re-shows.
+        if (k === 0x12 /* C('r') */) {
+            showGoal = true;
+            continue;
+        }
         if (ch === '?') {
             // C's two help-line gates are getpos_getvalid ("Use 'z' or 'Z'...")
             // and getpos_hilitefunc ("Use '$' to toggle marking..."), and every
@@ -2559,6 +2579,18 @@ function look_pick_description(x, y) {
             text: `${prefix}the interior of a monster or ${an(look)} (${look})`,
             firstmatch: look,
             found: 2,
+        };
+    }
+
+    // C ref: do_screen_description() — a square drawn BLANK is S_stone, whose
+    // symbol ' ' is shared by more than four cmap entries (every unlit/undrawn
+    // cmap row), so found > 4 and the line reads "can be many things".
+    if (look_prefix_char(loc) === ' ') {
+        const look = terrain_description(x, y);
+        return {
+            text: `${prefix}can be many things (${look})`,
+            firstmatch: look,
+            found: 1,
         };
     }
 
@@ -3244,18 +3276,20 @@ export async function do_look_full() {
     //    resumes where the previous one left off).  flags.verbose (default on)
     //    => "Please move the cursor to <what>." then the verbose getpos loop.
     //    The do-while loops for LOOK_TRADITIONAL ('.') until ESC.
-    let firstIter = true;
     let cx = u.ux, cy = u.uy;
+    // C ref: pager.c:1892/1961 — do_look snapshots flags.verbose and restores
+    // it on the way out, so the "only print long question once" clear at :1911
+    // lasts for this command's repeat loop only.  Modelled as a local.
+    let verbose = game.flags?.verbose !== false;
     for (;;) {
-        if (firstIter) {
+        if (verbose) {
             // C do_look:1903 pline("Please move the cursor to %s.") — NEED_MORE;
             // getpos's tip/verbose handling fires its --More-- frame.
             await update_topl(`Please move the cursor to ${WHAT}.`);
         } else {
-            // Subsequent loop passes: flags.verbose was cleared, so the prompt
-            // is the short "Pick %s." form.  Route through update_topl so any
-            // pending description (NEED_MORE from a found>1 pick) gets its
-            // --More-- frame before this prompt replaces it.
+            // Route through update_topl so any pending description (NEED_MORE
+            // from a found>1 pick) gets its --More-- frame before this prompt
+            // replaces it.
             await update_topl(`Pick ${WHAT}.`);
             await flush_screen(1);
             const disp = game.nhDisplay;
@@ -3263,9 +3297,9 @@ export async function do_look_full() {
         }
 
         const cc = await getpos(WHAT, cx, cy, null, /*force=*/false,
-                                /*verbose=*/firstIter);
-        firstIter = false;
+                                /*verbose=*/verbose);
         if (!cc) break; // ESC -> exit the do-while loop
+        verbose = false;              // pager.c:1911 flags.verbose = FALSE
         cx = cc.x; cy = cc.y;
 
         // do_screen_description on the picked square.  putmixed leaves the

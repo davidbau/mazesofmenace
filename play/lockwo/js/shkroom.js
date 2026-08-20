@@ -511,6 +511,23 @@ export async function check_special_room(newlev) {
 
     if (u.ushops0.length) await u_left_shop(u.ushops_left, newlev);
 
+    // C ref: hack.c:3648 — the Mine Town achievement is checked BEFORE the
+    // "no entrance messages necessary" early return, because two minetn
+    // variants cover the whole level and so are entered without entering any
+    // room.  achieveo.minetn_reached makes it fire once.
+    {
+        const { in_town } = await import('./dig.js');
+        const { In_mines } = await import('./const.js');
+        game.context = game.context || {};
+        game.context.achieveo = game.context.achieveo || {};
+        if (!game.context.achieveo.minetn_reached
+            && In_mines(u.uz) && in_town(u.ux, u.uy)) {
+            const { record_achievement } = await import('./insight.js');
+            record_achievement(16 /* you.h ACH_TOWN */);
+            game.context.achieveo.minetn_reached = true;
+        }
+    }
+
     if (!u.uentered.length && !u.ushops_entered.length) return;
 
     if (u.ushops_entered.length) await u_entered_shop(u.ushops_entered);

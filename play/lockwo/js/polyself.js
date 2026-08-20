@@ -11,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
-import { update_topl, newsym } from './display.js';
+import { update_topl, newsym, see_monsters } from './display.js';
 // C ref: win/tty/topl.c pline()/update_topl() — this module always uses
 // update_topl() (never the simpler pline()) because every message here can be
 // immediately followed by another one from the same command (polymon()'s
@@ -755,6 +755,9 @@ export async function polymon(mntmp) {
     }
 
     u.uconduct = u.uconduct || {};
+    // `undefined++` is NaN, and NaN is falsy forever: the counter never left 0
+    // so #conduct always said "You have never changed form."
+    u.uconduct.polyselfs = u.uconduct.polyselfs | 0;
     if (!u.uconduct.polyselfs++) {
         livelog_printf(LL_CONDUCT,
             `changed form for the first time, becoming ${an(await pmname_of(mdatNew, game.flags.female))}`);
@@ -844,6 +847,11 @@ export async function polymon(mntmp) {
 
     find_ac();
     game.botl = true;
+    // C ref: polyself.c:1016-1018 — vision_full_recalc + see_monsters().  A
+    // blind hero keeps a stale monster glyph on screen until something
+    // newsym()s that square; without this pass the pre-poly 'e' never cleared.
+    game.vision_full_recalc = 1;
+    see_monsters();
     await encumber_msg();
 
     if (game.flags.verbose) {

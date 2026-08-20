@@ -7,7 +7,8 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object, canseemon_shared, wall_shows_as_stone } from './display.js';
+import { maybe_adjust_hero_bubble, water_friction } from './mkmaze.js';
+import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object, canseemon_shared, wall_shows_as_stone, feel_location } from './display.js';
 import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
 import { hliquid } from './do_name.js';
 import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam, Monnam } from './uhitm.js';
@@ -17,7 +18,7 @@ import { ddoinv, dismiss_invent_screen, dolook,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
          doprgold, doprwep, doprarm, doprring, dopramulet, doprinuse,
          renderWindowScreen, ECMD_NOTHANDLED, describe_decor, dfeature_at,
-         dotypeinv, doprtool } from './invent.js';
+         dotypeinv, doprtool, nohands_youmonst, notake_youmonst } from './invent.js';
 import { WEAPON_CLASS, objects as OBJECTS, KICKING_BOOTS } from './mkobj.js';
 import { doeat } from './eat.js';
 import { doapply, ECMD } from './apply.js';
@@ -45,7 +46,8 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          A_STR, A_DEX, A_CON, A_WIS, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
          PIT, SPIKED_PIT, STATUE_TRAP, TIP_SWIM, TRAPNUM, In_sokoban, ICE,
-         SLT_ENCUMBER, OVERLOADED, Is_medusa_level, Is_juiblex_level } from './const.js';
+         SLT_ENCUMBER, MOD_ENCUMBER, OVERLOADED, Is_medusa_level, Is_juiblex_level,
+         Is_waterlevel } from './const.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { is_hider_flag, hides_under_flag, throws_rocks_flag } from './monflags_data.js';
 import { noattacks, attacktype, AT_ENGL } from './monattk_data.js';
@@ -1722,9 +1724,10 @@ export async function dosearch0(aflag) {
             if (x === u.ux && y === u.uy) continue;
             const loc = game.level?.at(x, y);
             if (!loc) continue;
-            // C: `if (!aflag && (Blind || visible_region_at(x,y))) feel_location()`
-            // — remembered-glyph bookkeeping for a hero who cannot see the
-            // square.  Not ported: this port has no feel_location().
+            // C ref: detect.c:1873 `if (!aflag && (Blind || visible_region_at(x,y)))
+            // feel_location(x, y)`.  visible_region_at() needs a gas/vapor
+            // region, which no covered session creates.
+            if (!aflag && Blind()) feel_location(x, y);
             if (loc.typ === SDOOR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = DOOR;
@@ -2120,11 +2123,15 @@ function ACURR(i) { return acurr_eff(i); }
 // Returns 1 (ECMD_TIME) when a turn elapses, else 0 (ECMD_OK).
 export async function doopen_indir(x, y) {
     const u = game.u;
+    // C ref: lock.c:788 — refused BEFORE getdir(), so no direction key is read.
+    if (nohands_youmonst()) {
+        await pline("You can't open anything -- you have no hands!");
+        return 0; // ECMD_OK
+    }
     let cx, cy;
     if (x > 0 && y >= 0) {
         cx = x; cy = y;
     } else {
-        // nohands(youmonst): the starter roles all have hands -> skip.
         // C ref: lock.c doopen_indir() -> get_adjacent_loc(): when getdir()
         // returns 0 (a quitchar, or an invalid-direction key after the cmdassist
         // help window), get_adjacent_loc prints "Never mind." and returns 0.
@@ -2216,7 +2223,11 @@ export async function doopen_indir(x, y) {
 // is exactly what seed5002 exercises after the #search safety-block).
 async function doclose() {
     const u = game.u;
-    // nohands(youmonst): the starter roles all have hands.
+    // C ref: lock.c:964 — refused BEFORE the pit test and BEFORE getdir().
+    if (nohands_youmonst()) {
+        await pline("You can't close anything -- you have no hands!");
+        return 0; // ECMD_OK
+    }
     // C ref: lock.c doclose() — a hero stuck in a pit can't reach the door and
     // is refused BEFORE getdir(), so no direction key is consumed at all.
     if (u.utrap && u.utraptype === TT_PIT) {
@@ -2747,7 +2758,28 @@ export async function domove(dx, dy) {
     // swallowed path, which this port does not model.
     const redirected = impaired_movement(u.ux + dx, u.uy + dy);
     if (!redirected) return; // 50 tries found no valid square; turn wasted
-    const newx = redirected.x, newy = redirected.y;
+    let newx = redirected.x, newy = redirected.y;
+
+    // C ref: hack.c:2751 `if (water_turbulence(&x, &y)) return;` — "turbulence
+    // might alter your actual destination".  Underwater only, so this is inert
+    // on dry land; on the Plane of Water it is what makes a swim drift.
+    if (u.uinwater) {
+        const wtmod = u.uprops?.Swimming ? MOD_ENCUMBER : SLT_ENCUMBER;
+        await water_friction();
+        if (!u.dx && !u.dy) { game.multi = 0; return; }
+        newx = u.ux + u.dx;
+        newy = u.uy + u.dy;
+        /* are we trying to move out of water while carrying too much? */
+        if (isok(newx, newy) && !IS_POOL(game.level?.at(newx, newy)?.typ)
+            && !Is_waterlevel(u.uz)) {
+            const { near_capacity } = await import('./invent.js');
+            if (near_capacity() > wtmod) {
+                await update_topl('You are carrying too much to climb out of the water.');
+                game.multi = 0;
+                return;
+            }
+        }
+    }
 
     // C ref: hack.c:2757 — a run/rush/travel step onto a known trap stops the
     // hero here, before the monster-bump block, so C never reaches the
@@ -3175,6 +3207,10 @@ export async function domove(dx, dy) {
     // (called from spoteffects' pickup path), so what gets read/displayed this
     // turn is the engraving as it stood BEFORE this move's smudge.
     maybe_smudge_engr(oldx, oldy, u.ux, u.uy);
+    // C ref: hack.c domove():2704 — the same DOMOVE_RUSH|DOMOVE_WALK guard also
+    // gives the bubble the hero is riding on the Plane of Water a 1-in-2 chance
+    // of taking up the hero's heading.
+    maybe_adjust_hero_bubble();
 }
 
 // C ref: drawing.c defsyms[].explanation (the short "desc" field) for the
@@ -3621,6 +3657,15 @@ export async function pickup_after_move(x, y) {
         game.multi = 0;
         game.context = game.context || {};
         game.context.travel = game.context.travel1 = game.context.mv = 0;
+    }
+    // C ref: pickup.c:724 — a notake polyform still gets check_here() (so the
+    // pile IS announced) and is then told it cannot lift anything.  This arm
+    // sits ahead of both the autopickup and the plain look-here paths.
+    if (notake_youmonst()) {
+        if (hasObj) await look_here_after_move(x, y, false, decorAnnounced);
+        else await read_engr_at(x, y);
+        if (hasObj) await pline('You are physically incapable of picking anything up.');
+        return;
     }
     if (game.flags?.pickup) {
         const nPicked = await autopickup_after_move(x, y);

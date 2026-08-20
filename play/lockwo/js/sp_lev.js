@@ -65,6 +65,9 @@ import { races } from './roles.js';
 import { match_maptyps,
          selection_new as selection_new_var,
          selection_setpoint as selection_setpoint_var,
+         selection_clear as selection_clear_var,
+         selection_getpoint as selection_getpoint_var,
+         selection_getbounds as selection_getbounds_var,
          selection_recalc_bounds } from './selvar.js';
 
 // Special-level builders live one-per-file under js/levels/; re-exported here so
@@ -88,6 +91,7 @@ export { makemaz_minend3 } from './levels/minend3.js';
 export { makemaz_minetown2, makemaz_minetown3, makemaz_minetown7 } from './levels/minetown_rooms.js';
 export { makemaz_pri_goal } from './levels/pri_goal.js';
 export { makemaz_pri_loca } from './levels/pri_loca.js';
+export { makemaz_wiz_loca } from './levels/wiz_loca.js';
 export { makemaz_pri_strt } from './levels/pri_strt.js';
 export { makemaz_sanctum } from './levels/sanctum.js';
 export { makemaz_soko1 } from './levels/soko1.js';
@@ -1846,22 +1850,60 @@ export function quest_level_init_solidfill() {
     return lit;
 }
 
-// C ref: sp_lev.c lspo_replace_terrain region form.  The region {x1,y1,x2,y2}
-// is map-relative; get_location(ANY_LOC) adds the map offset, the selection is
-// the whole rect, and the iterate is x-outer (max(1,lx)..hx) / y-inner
-// (ly..hy).  For each cell whose typ==fromtyp an rn2(100) is drawn and, when
-// < chance, the cell becomes totyp.  No lit change (tolit==NOCHANGE).
-export function quest_replace_terrain(x1, y1, x2, y2, fromtyp, totyp, chance) {
-    const rx1 = q_absx(x1), ry1 = q_absy(y1);
-    const rx2 = q_absx(x2), ry2 = q_absy(y2);
-    const lox = Math.max(1, rx1), hix = Math.min(rx2, COLNO - 1);
-    const loy = Math.max(0, ry1), hiy = Math.min(ry2, ROWNO - 1);
-    for (let x = lox; x <= hix; x++)
-        for (let y = loy; y <= hiy; y++) {
+// C ref: sp_lev.c:5051 lspo_replace_terrain() — des.replace_terrain{}.
+// `spec` mirrors the Lua table: toterrain/fromterrain are already-resolved
+// typs, mapfragment is the alternative matcher, and region/x1..y2/selection
+// pick the squares.  Coordinates are map-relative (C runs the corners through
+// get_location(ANY_LOC), which adds gx.xstart/gy.ystart outside a room).
+//
+// RNG: ONE rn2(100) per square that MATCHES (not per square scanned), drawn
+// even at chance == 100.  Getting the match test or the scan order wrong
+// therefore shifts every later draw on the level.
+export function lspo_replace_terrain({
+    totyp, fromtyp = INVALID_TYPE, mapfragment = null, chance = 100,
+    tolit = SET_LIT_NOCHANGE, region = null,
+    x1 = -1, y1 = -1, x2 = -1, y2 = -1, selection = null,
+}) {
+    if (totyp == null || totyp >= MAX_TYPE) return;        // sp_lev.c:5068
+    const mf = (fromtyp === INVALID_TYPE && mapfragment != null)
+        ? mapfrag_fromstr(mapfragment) : null;
+    if (region && x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1)
+        [x1, y1, x2, y2] = region;                         // get_table_region
+
+    let sel = selection;
+    if (!sel) {
+        sel = selection_new_var();
+        if (x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1) {
+            selection_clear_var(sel, 1);                   // sp_lev.c:5109
+        } else {
+            const a = vly_abs(x1, y1), b = vly_abs(x2, y2);
+            for (let x = Math.max(a.x, 0); x <= Math.min(b.x, COLNO - 1); x++)
+                for (let y = Math.max(a.y, 0); y <= Math.min(b.y, ROWNO - 1); y++)
+                    selection_setpoint_var(x, y, sel, 1);
+        }
+    }
+
+    const rect = selection_getbounds_var(sel);
+    for (let x = Math.max(1, rect.lx); x <= rect.hx; x++)  // sp_lev.c:5123
+        for (let y = rect.ly; y <= rect.hy; y++) {
+            if (!selection_getpoint_var(x, y, sel)) continue;
             const loc = game.level?.at(x, y);
             if (!loc) continue;
-            if (loc.typ === fromtyp && rn2(100) < chance) loc.typ = totyp;
+            if (mf) {
+                if (mapfrag_match(mf, x, y) && rn2(100) < chance)
+                    set_levltyp_lit(x, y, totyp, tolit);
+            } else if (((fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
+                        || loc.typ === fromtyp)
+                       && rn2(100) < chance) {             // sp_lev.c:5132
+                set_levltyp_lit(x, y, totyp, tolit);
+            }
         }
+}
+
+// The region form, as the quest levels spell it.  Thin wrapper so the loop
+// above stays the single implementation.
+export function quest_replace_terrain(x1, y1, x2, y2, fromtyp, totyp, chance) {
+    lspo_replace_terrain({ totyp, fromtyp, chance, region: [x1, y1, x2, y2] });
 }
 
 // C ref: sp_lev.c lspo_region 2-arg form (selection, "lit"/"unlit").  No RNG,
@@ -3361,14 +3403,32 @@ export function vly_flip_updest(flp) { flip_lregion_dest(flp, game.updest); }
 function flip_lregion_dest(flp, d) {
     if (!d) return;
     const { minx, maxx, miny, maxy } = bigrm_get_level_extends();
-    const inArea = (x, y) => (x >= minx && x <= maxx && y >= miny && y <= maxy);
+    // C ref: sp_lev.c flip_level():698-731 — the lregion loop applies FlipX /
+    // FlipY to inarea and delarea UNCONDITIONALLY; unlike the map/monster/object
+    // loops it has no inFlipArea() test, so a corner outside the level extents
+    // is flipped anyway.  An in-extents guard here turned air.lua's up region
+    // {1,0}-{24,20} into a ONE-ROW box whenever y=0 fell outside the extents,
+    // which made u_on_rndspot draw rn2(1) where C draws rn2(21).
     for (const [kx, ky] of [['lx', 'ly'], ['hx', 'hy']]) {
-        if (!inArea(d[kx], d[ky])) continue;
         if (flp & 1) d[ky] = miny + maxy - d[ky];
         if (flp & 2) d[kx] = minx + maxx - d[kx];
     }
     if (d.lx > d.hx) { const t = d.lx; d.lx = d.hx; d.hx = t; }
     if (d.ly > d.hy) { const t = d.ly; d.ly = d.hy; d.hy = t; }
+    // C ref: sp_lev.c flip_level():708-714 / 725-731 — the EXCLUSION half of
+    // each lregion (delarea) is flipped by the same FlipX/FlipY, with no
+    // in-extents test and its own low/high swap.  Leaving it unflipped left the
+    // Plane of Air's arrival region and its exclusion pointing at opposite ends
+    // of the level, so every one of place_lregion()'s 200 rn1() tries landed
+    // inside the exclusion and the hero fell through to the deterministic scan
+    // (seed0373 step 110: C accepts its FIRST try).  An all-zero delarea means
+    // "no exclusion" and must stay all-zero, so skip it.
+    if (d.nlx || d.nly || d.nhx || d.nhy) {
+        if (flp & 1) { d.nly = miny + maxy - d.nly; d.nhy = miny + maxy - d.nhy; }
+        if (flp & 2) { d.nlx = minx + maxx - d.nlx; d.nhx = minx + maxx - d.nhx; }
+        if (d.nlx > d.nhx) { const t = d.nlx; d.nlx = d.nhx; d.nhx = t; }
+        if (d.nly > d.nhy) { const t = d.nly; d.nly = d.nhy; d.nhy = t; }
+    }
 }
 
 // C ref: lspo_finalize_level()'s trailing `for (i = 0; i < svn.nroom; ++i)

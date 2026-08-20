@@ -306,7 +306,11 @@ async function use_stethoscope(obj) {
     // C ref: apply.c:326 — three guards BEFORE getdir(), each returning ECMD_OK
     // WITHOUT reading a direction key.  Getting that wrong is a keystroke-count
     // bug, not a message bug: the direction key would be handed to the command
-    // parser instead.  (nohands() needs polymorph, which is unported.)
+    // parser instead.
+    if (_invent.nohands_youmonst()) {
+        await _display.pline('You have no hands!');   /* not body_part(HAND) */
+        return ECMD_OK;
+    }
     if (Deaf()) {
         await _display.pline("You can't hear anything!");
         return ECMD_OK;
@@ -573,7 +577,12 @@ function write_ok(obj) {
 // already-written one, so the blank-paper creation branch isn't reached; if it
 // ever is, fall back to ECMD_TIME rather than mis-spend RNG.
 async function dowrite(_pen) {
-    // nohands / Glib guards: not applicable to the starter heroes.
+    // C ref: write.c:31 — a handless form can't write at all (the Glib arm
+    // needs slippery fingers, which no covered session produces).
+    if (_invent.nohands_youmonst()) {
+        await _display.pline('You need hands to be able to write!');
+        return ECMD_OK;
+    }
     const paper = await _invent.getobj('write on', write_ok, _invent.GETOBJ_NOFLAGS);
     if (!paper) return ECMD_CANCEL; // cancelled / silly_thing -> no turn
 
@@ -657,7 +666,13 @@ function apply_obj_descr(otyp) {
 export async function doapply() {
     await loadDeps();
 
-    // check_capacity()/nohands() guards don't fire for the starter heroes.
+    // C ref: apply.c:4223 — both guards run BEFORE getobj(), so a refused
+    // 'a' consumes no item-letter key.
+    if (_invent.nohands_youmonst()) {
+        await _display.pline("You aren't able to use or apply tools in your current form.");
+        return ECMD_OK;
+    }
+    if (await _invent.check_capacity_throw()) return ECMD_OK;
     const obj = await _invent.getobj('use or apply', apply_ok);
     if (!obj) return ECMD_CANCEL;
 

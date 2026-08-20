@@ -72,3 +72,30 @@ export function hastrack(x, y) {
         if (tk[i].x === x && tk[i].y === y) return true;
     return false;
 }
+
+// C ref: track.c:76 save_track(nhfp) — called from savelev_core() (save.c:553),
+// so the footprint ring is part of the LEVEL file, not the game file.  Only the
+// live utcnt entries are written; the tail of the ring is never read back.
+// (C's `if (release_data(nhfp)) initrack()` arm is the caller's job here — see
+// do.js goto_level(), which clears the ring after stashing it.)
+export function save_track() {
+    const tk = trk();
+    const pts = [];
+    for (let i = 0; i < game._utcnt; i++) pts.push({ x: tk[i].x, y: tk[i].y });
+    return { utcnt: game._utcnt, utpnt: game._utpnt, utrack: pts };
+}
+
+// C ref: track.c:93 rest_track(nhfp) — called from getlev() (restore.c:1228),
+// which is also the path a BONES file takes, so the dead hero's last footprints
+// come back with the bones level.  m_move()'s `!should_see && can_track` arm
+// then steers monsters at that square instead of at the live hero.
+export function rest_track(saved) {
+    initrack();
+    if (!saved) return;
+    const n = Math.min(saved.utcnt | 0, UTSZ);
+    const pts = saved.utrack || [];
+    for (let i = 0; i < n; i++)
+        if (pts[i]) { game._utrack[i].x = pts[i].x | 0; game._utrack[i].y = pts[i].y | 0; }
+    game._utcnt = n;
+    game._utpnt = saved.utpnt | 0;
+}

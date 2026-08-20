@@ -740,7 +740,7 @@ export async function pickup(what) {
             || (autopickup && !flags().pickup)
             || notake_hero()) {
             await check_here(false);
-            if (notake_hero() && OBJ_AT && (autopickup || flags().pickup))
+            if (notake_hero() && OBJ_AT(u.ux, u.uy) && (autopickup || flags().pickup))
                 await pline('You are physically incapable of picking anything up.');
             return 0;
         }

@@ -21,6 +21,8 @@ import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
     D_ISOPEN, IS_OBSTRUCTED, IS_TREE, KILLED_BY, OBJ_INVENT, OBJ_FREE,
     TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
+    IS_ALTAR, IS_FOUNTAIN, IS_ROOM, ICE, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
+    Is_earthlevel,
     P_NONE, P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
     P_BOW, P_BOOMERANG, P_SHORT_SWORD, P_SABER, P_AXE,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
@@ -78,6 +80,7 @@ const STATUE = objectNames.indexOf('STATUE');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const WAR_HAMMER = objectNames.indexOf('WAR_HAMMER');
 const AKLYS = objectNames.indexOf('AKLYS');
+const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const ELVEN_BOW = objectNames.indexOf('ELVEN_BOW');
 const YUMI = objectNames.indexOf('YUMI');
@@ -982,13 +985,75 @@ export async function breaks(obj, x, y) {
     return breakobj(obj, x, y, false, false);
 }
 
+/** C dungeon.c surface — hitfloor verbose wording (soft/altar skipped). */
+function hitfloor_surface(x, y) {
+    const loc = game.level?.at?.(x, y);
+    const typ = loc?.typ ?? 0;
+    if (typ === ICE) return 'ice';
+    if (IS_FOUNTAIN(typ)) return 'fountain';
+    if (IS_ALTAR(typ)) return 'altar';
+    if (IS_ROOM(typ) && !Is_earthlevel(game.u?.uz)) return 'floor';
+    return 'ground';
+}
+
+/**
+ * C ref: dothrow.c hitfloor — object hits floor at hero's feet.
+ * Soft/water/swallow → dropy; altar doaltarobj then continues;
+ * verbosely WAN_STRIKING "strike" else "hit" + tseen trap overlay;
+ * hero_breaks BRK_FROM_INV; ship_object; dropz(TRUE) (D-1263).
+ * Wired: do.c drop !can_reach_floor; mkobj hornoplenty tip.
+ * Named omit: invent hold_another_object; pickup highdrop; toss_up /
+ * throwit dz; ball litter; artifact; finesse_ahriman float_down.
+ */
+export async function hitfloor(obj, verbosely) {
+    if (!obj) return;
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const typ = game.level?.at?.(ux, uy)?.typ ?? 0;
+    const { dropy, dropz, doaltarobj } = await import('./do.js');
+    if (IS_SOFT(typ) || u.uinwater || u.uswallow) {
+        await dropy(obj);
+        return;
+    }
+    if (IS_ALTAR(typ)) {
+        await doaltarobj(obj);
+    } else if (verbosely) {
+        const verb = ((obj.otyp | 0) === WAN_STRIKING) ? 'strike' : 'hit';
+        let surf = hitfloor_surface(ux, uy);
+        const t = t_at(ux, uy);
+        if (t && t.tseen) {
+            switch (t.ttyp | 0) {
+            case TRAPDOOR:
+                surf = 'trap door';
+                break;
+            case HOLE:
+                surf = 'edge of the hole';
+                break;
+            case PIT:
+            case SPIKED_PIT:
+                surf = 'edge of the pit';
+                break;
+            default:
+                break;
+            }
+        }
+        await pline(`${Doname2(obj)} ${otense(obj, verb)} the ${surf}.`);
+    }
+    if (await hero_breaks(obj, ux, uy, BRK_FROM_INV)) return;
+    const { ship_object } = await import('./dokick.js');
+    if (await ship_object(obj, ux, uy, false)) return;
+    await dropz(obj, true);
+}
+
 /**
  * C ref: zap.c bhit + dothrow.c throwit — fly along dx/dy; stop before
  * !ZAP_POS / closed door (bhit backs up one step), then place / breaktest.
  * Monster hit → thitmonst (D-0415 food; D-0693 pie/egg DEX;
  * D-1041 weapon/weptool/gem hit-vs-miss). After place, !IS_SOFT
  * container_impact_dmg(obj, u.ux, u.uy) then impact_disturbs TRUE
- * (D-1249 / D-1229). hitfloor dropz(TRUE) still named.
+ * (D-1249 / D-1229). hitfloor dropz(TRUE) is D-1263 (drop/horn);
+ * toss_up / throwit dz still named.
  */
 async function throwit(obj) {
     const u = game.u;

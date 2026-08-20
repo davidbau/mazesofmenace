@@ -52,7 +52,7 @@ import { dogenocided, do_gamelog, doconduct, dovanquished } from './insight.js';
 import { isok } from './hacklib.js';
 import { Monnam, canspotmon, x_monnam, mon_nam, oc_wldam } from './uhitm.js';
 import { domonnoise } from './sounds.js';
-import { build_overview_lines, surface } from './dungeon.js';
+import { build_overview_lines, surface, print_dungeon_lines } from './dungeon.js';
 import { doextversion } from './version.js';
 import { name_to_pmidx, monster_by_pmidx } from './makemon.js';
 import { polyok_flag } from './monflags_data.js';
@@ -2838,6 +2838,72 @@ export async function show_overview_disclosure(final, how) {
     await flush_screen(1);
 }
 
+// C ref: wizcmds.c:218 wiz_where() — `print_dungeon(FALSE, 0, 0)`, the
+// #wizwhere dungeon-overview dump.  No RNG at all: every line is derived from
+// the static dungeon model init_dungeons() already built.
+export async function wiz_where() {
+    if (!game.flags?.debug) {
+        await pline("Unavailable command '#wizwhere'.");
+        return 0;
+    }
+    await display_text_fullscreen(print_dungeon_lines());
+    return 0;
+}
+
+// C ref: win/tty/wintty.c process_text_window() with cw->offx == 0, the
+// full-screen arm tty_display_nhwindow() picks whenever the window has at
+// least ttyDisplay->rows lines.  Text starts at column 0 (tty_curs(win,1,n)
+// with offx 0), a page holds rows-1 lines, and dmore() prints "--More--" at
+// (curx + 2) 1-based, i.e. column 1, on the row after the last text line.
+// Each page break does term_clear_screen() before the next page.
+async function display_text_fullscreen(lines) {
+    const disp = game.nhDisplay;
+    if (!disp?.setCell) return;
+    const rows = disp.rows || 24, cols = disp.cols || 80;
+    const clearRow = (r) => { for (let c = 0; c < cols; c++) disp.setCell(c, r, ' ', NO_COLOR, 0); };
+    const clearAll = () => { for (let r = 0; r < rows; r++) clearRow(r); };
+    // tty_display_nhwindow(): offx == 0 takes the cl_eos()/term_clear_screen()
+    // arm, so the map and status rows are gone for the whole window.
+    clearAll();
+    game._pending_message = '';
+
+    // xwaitforspace(quitchars) — space/return dismiss the page, ESC cancels the
+    // rest of the window; any other key is ignored (the frame is unchanged).
+    const dmore = async (row) => {
+        clearRow(row);
+        disp.putstr(1, row, '--More--', NO_COLOR, 0);
+        disp.setCursor(1 + '--More--'.length, row);
+        for (;;) {
+            game._modal_screen = 'textwin';
+            const c = await nhgetch();
+            if (c === 27) { delete game._modal_screen; return false; }
+            if (c === 32 || c === 13 || c === 10) { delete game._modal_screen; return true; }
+        }
+    };
+
+    let n = 0;
+    for (let i = 0; i < lines.length; i++) {
+        if (n === rows - 1) {
+            if (!(await dmore(n))) { await docrt_after_text(); return; }
+            clearAll();
+            n = 0;
+        }
+        clearRow(n);
+        disp.putstr(0, n, lines[i], NO_COLOR, 0);
+        n++;
+    }
+    await dmore(n);
+    await docrt_after_text();
+}
+
+// tty_dismiss_nhwindow(): a window that covered the whole screen is torn down
+// with docrt(), which repaints map + status from scratch.
+async function docrt_after_text() {
+    const { docrt } = await import('./display.js');
+    await docrt();
+    await flush_screen(1);
+}
+
 // Map extcmdlist index -> handler.  Unimplemented commands fall through to
 // a no-op (no message), which keeps RNG/state untouched.
 const HANDLERS = {
@@ -2880,6 +2946,7 @@ const HANDLERS = {
     terrain: doterrain_extcmd,
     wizmap: wiz_map_extcmd,
     herecmdmenu: doherecmdmenu,
+    wizwhere: wiz_where,
 };
 
 // C ref: cmd.c:4332 doherecmdmenu() -> here_cmd_menu() -> there_cmd_menu(u.ux,

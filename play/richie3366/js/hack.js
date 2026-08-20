@@ -496,8 +496,8 @@ function is_flimsy(otmp) {
  * C ref: hack.c impact_disturbs_zombies — drop/throw/kick owt/flimsy
  * gate then disturb at obj->ox,oy (D-1229). Call after place_object.
  * Violent (throw/kick / dropz TRUE): owt < 10 skip; else owt < 100.
- * dropz/throwit container_impact_dmg is D-1249. Named omit: hitfloor
- * dropz(TRUE). Hideunder after tread is D-1245.
+ * dropz/throwit container_impact_dmg is D-1249. hitfloor dropz(TRUE)
+ * is D-1263. Hideunder after tread is D-1245.
  */
 export function impact_disturbs_zombies(obj, violent) {
     if ((obj.owt | 0) < (violent ? 10 : 100) || is_flimsy(obj)) {
@@ -551,8 +551,7 @@ export function hero_tread_disturb_buried_zombies() {
 /**
  * C ref: hack.c:2949–2951 — hideunder(&youmonst) after tread, before
  * mimic unhide / check_leash. Gate: hides_under || S_EEL || dx || dy.
- * Youmonst writes u.uundetected (mon.c hideunder; D-1131). Named:
- * hitfloor dropz(TRUE).
+ * Youmonst writes u.uundetected (mon.c hideunder; D-1131).
  */
 export function hero_hideunder_after_move() {
     const u = game.u;

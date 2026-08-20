@@ -31,7 +31,8 @@ import { com_pager_legacy } from './questpgr.js';
 import { roles, races, aligns, Hello, rankName } from './role.js';
 import { Unaware,
          ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_INT, A_DEX, A_CON,
-    SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER } from './const.js';
+    SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
+    Is_waterlevel, Is_airlevel } from './const.js';
 import { near_capacity } from './invent.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { settrack } from './track.js';
@@ -1017,6 +1018,19 @@ export async function moveloop_turn() {
                     await intervene();
                     g.u.udg_cnt = rn1(200, 50);
                 }
+            }
+
+            // C ref: allmain.c:373-377 — "vision will be updated as bubbles
+            // move".  The Planes of Water and Air redraw their whole bubble
+            // chain once per turn (and the Plane of Fire its fumaroles), in
+            // this slot, i.e. after u_wipe_engr/intervene and before the
+            // multi<0 countdown.
+            if (Is_waterlevel(g.u?.uz) || Is_airlevel(g.u?.uz)) {
+                const { movebubbles } = await import('./mkmaze.js');
+                await movebubbles();
+            } else if (g.level?.flags?.fumaroles) {
+                const { fumaroles } = await import('./mkmaze.js');
+                fumaroles();
             }
 
             // C ref: allmain.c moveloop_core():380 — the multi<0 countdown sits

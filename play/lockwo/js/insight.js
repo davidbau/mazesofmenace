@@ -20,7 +20,7 @@ import {
     ROLE_MALE, ROLE_FEMALE, ROLE_GENDMASK,
     G_GONE, G_GENOD, G_EXTINCT,
     P_NONE, P_ISRESTRICTED, P_UNSKILLED, P_SKILLED, P_TWO_WEAPON_COMBAT,
-    P_BARE_HANDED_COMBAT, In_quest,
+    P_BARE_HANDED_COMBAT, In_quest, In_endgame, Is_knox_level,
 } from './const.js';
 import { objects as mkobjObjects } from './mkobj.js';
 import { weapon_type } from './weapon.js';
@@ -30,8 +30,9 @@ import { phase_of_the_moon, friday_13th, night, NEW_MOON, FULL_MOON } from './ca
 import { race_attrmax } from './u_init.js';
 import { acurr_eff } from './attrib.js';
 import { depth } from './hacklib.js';
-import { newuexp, has_innate } from './exper.js';
-import { youHaveSearching } from './allmain.js';
+import { endgamelevelname } from './dungeon.js';
+import { newuexp, has_innate, innate_source, rank_of } from './exper.js';
+import { youHaveSearching, youHaveFast, youHaveVeryFast } from './allmain.js';
 import { Infravision, Blind } from './vision.js';
 import { objects as OBJECTS } from './mkobj.js';
 import { MFLAGS2, M2_PNAME } from './monflags_data.js';
@@ -81,18 +82,34 @@ function cause_known(propidx) {
             return true;
     return false;
 }
-// C ref: attrib.c from_what(propidx) — wizard mode only; picks the most
-// significant source.  is_innate() outranks what_gives(); adjabil() tags a
-// level-1 row FROMOUTSIDE (-> "intrinsically") and a later row FROMEXPER
-// (-> "because of your experience").
+// C ref: attrib.c:904 from_what(propidx) — wizard mode only; picks the most
+// significant source.  is_innate() outranks what_gives(), and innately()
+// (attrib.c:864) itself ranks the role/race tables above a FROMOUTSIDE
+// intrinsic.  The three phrasings are attrib.c:939-944: FROM_ROLE (a role row
+// at ulevel 1) and FROM_RACE both read " innately", a FROMOUTSIDE intrinsic
+// reads " intrinsically", and a role row at ulevel 2+ reads " because of your
+// experience".  This had " intrinsically" on the ulevel-1 arm, so a Barbarian's
+// level-1 poison resistance read "intrinsically" instead of "innately"
+// (seed0373 step 119), and an elf's level-4 sleep resistance would have read
+// "because of your experience".
+// NOT ported: attrib.c:949's Very_fast arm, which names the potion/spell or the
+// speed boots; what_gives() below finds worn speed boots by oc_oprop anyway.
 function from_what(propidx, hkey) {
     if (!_wizard()) return '';
-    if (hkey && has_innate(hkey))
-        return has_innate(hkey, 1) ? ' intrinsically' : ' because of your experience';
-    if (hkey && (game.u?.uprops?.[hkey] || game.u?.[hkey])) return ' intrinsically';
+    if (hkey) {
+        // C ref: attrib.c:887 is_innate() — "can't become very fast innately",
+        // so worn/timed speed suppresses the innate answer for FAST.
+        const suppress = (propidx === FAST_PROP && youHaveVeryFast());
+        const src = suppress ? null : innate_source(hkey);
+        if (src === 'role' || src === 'race') return ' innately';
+        if (src === 'exp') return ' because of your experience';
+        if (!src && (game.u?.uprops?.[hkey] || game.u?.[hkey])) return ' intrinsically';
+    }
     const o = what_gives(propidx);
     return o ? ` because of ${ysimple_name(o)}` : '';
 }
+// C ref: prop.h FAST = 64.
+const FAST_PROP = 64;
 import { LL_WISH, LL_ACHIEVE, LL_UMONST, LL_DIVINEGIFT, LL_LIFESAVE,
          LL_ARTIFACT, LL_GENOCIDE, LL_DUMP, LL_SPOILER, LL_MINORAC,
          livelog_printf } from './livelog.js';
@@ -218,12 +235,26 @@ export function enlightenment_lines(final = 0) {
     // across branches, so e.g. Sokoban level 1 reads "level 2" — except within
     // the Quest, which shows the branch-relative dunlev.  (C's rogue /
     // very-big-room annotations are not exercised by the covered sessions.)
-    const dnum = u.uz?.dnum ?? 0;
-    let dgnName = game.dungeons?.[dnum]?.dname || 'The Dungeons of Doom';
-    if (/^the /i.test(dgnName))
-        dgnName = dgnName.charAt(0).toLowerCase() + dgnName.slice(1);
-    const dgnLevel = In_quest(u.uz) ? (u.uz?.dlevel ?? 1) : depth(u.uz);
-    youAre(`in ${dgnName}, on level ${dgnLevel}`);
+    if (In_endgame(u.uz)) {
+        // C ref: insight.c:604-609 — the endgame arm names the plane instead of
+        // a level number; endgamelevelname() (dungeon.c:3410) maps
+        // observable_depth() (== depth()) -5..-1 to Astral / Water / Fire / Air
+        // / Earth, and insight.c prefixes "Elemental " to every "Plane ..." name
+        // (so the Astral Plane keeps its bare name).
+        const nm = endgamelevelname(depth(u.uz));
+        youAre(`in the endgame, on the ${nm.startsWith('Plane') ? 'Elemental ' : ''}${nm}`);
+    } else if (Is_knox_level(u.uz)) {
+        // C ref: insight.c:610-612 — "this gives away the fact that the knox
+        // branch is only 1 level".
+        youAre(`on the ${game.dungeons?.[u.uz?.dnum ?? 0]?.dname || ''} level`);
+    } else {
+        const dnum = u.uz?.dnum ?? 0;
+        let dgnName = game.dungeons?.[dnum]?.dname || 'The Dungeons of Doom';
+        if (/^the /i.test(dgnName))
+            dgnName = dgnName.charAt(0).toLowerCase() + dgnName.slice(1);
+        const dgnLevel = In_quest(u.uz) ? (u.uz?.dlevel ?? 1) : depth(u.uz);
+        youAre(`in ${dgnName}, on level ${dgnLevel}`);
+    }
 
     // turns
     if (moves === 1) youHave('just started your adventure');
@@ -454,6 +485,13 @@ export function enlightenment_lines(final = 0) {
         // insight.c:1800 — the worn-armour magic-cancellation level.
         const armpro = magic_negation_hero();
         if (armpro > 0) youAre(MC_TYPES[Math.min(armpro, MC_TYPES.length - 1)]);
+        // C ref: insight.c:1896-1898 "movement and non-armor-based protection"
+        // — `if (Fast) you_are(Very_fast ? "very fast" : "fast",
+        // from_what(FAST));`, between the magic-cancellation line and Miscellany.
+        // Omitting it shifted every later line of the ^X page (seed0373 step 119).
+        if (youHaveFast() || youHaveVeryFast())
+            youAre(youHaveVeryFast() ? 'very fast' : 'fast', from_what(FAST_PROP, 'HFast'));
+
         // C ref: insight.c:1908 /*** Miscellany ***/ — the Luck block, which
         // was omitted entirely.  Luck = u.uluck + u.moreluck, and it is non-zero
         // for any full-moon / Friday-13th game (allmain.c:59 change_luck(1)).
@@ -907,6 +945,14 @@ export function record_achievement(achidx) {
     livelog_printf(entry[0], entry[1]);
 }
 
+// C ref: insight.c:2504 achieve_rank(rank) — the rank index encoded as an
+// achievement number, negated when the hero is female so the rank title can be
+// reported with the right gender later.
+export function achieve_rank(rank) {
+    const achidx = (rank - 1) + 23 /* ACH_RNK1 */;
+    return game.flags?.female ? -achidx : achidx;
+}
+
 // C ref: insight.c show_conduct(final)'s "only report Sokoban conduct if the
 // Sokoban branch has been entered" gate.  ACH_SOKO isn't otherwise tracked by
 // this port (no covered session enters Sokoban), so this is always false.
@@ -1011,9 +1057,105 @@ function conduct_lines(final = 0) {
             enlLine('You ', 'have violated', ` the special Sokoban rules ${N_times(uc.sokocheat)}`);
     }
 
-    // show_achievements(final): requires final || wizard; both false for the
-    // in-game, non-wizard #conduct the covered sessions exercise.
+    // C ref: insight.c:2230 show_achievements(final) — appended to the SAME
+    // window, so a blank line separates it from the conduct list.
+    for (const l of show_achievement_lines(final)) out(l);
     return lines;
+}
+
+// C ref: insight.c:2243 show_achievements(final).  Gated on `final || wizard`,
+// which is why a wizard-mode #conduct shows the block and an ordinary one does
+// not (the achievements would give away the Mine's End luckstone).  Emits in
+// u.uachieved order — the order they were earned.
+function show_achievement_lines(final) {
+    const u = game.u || {};
+    const wizard = !!game.flags?.debug;
+    if (!final && !wizard) return [];
+    const ach = Array.isArray(u.uachieved) ? u.uachieved : [];
+    const acnt = ach.length;
+    if (!acnt) return [];
+
+    const out = [];
+    const enlLine = (start, mid, end, ps = '') => {
+        let buf = ` ${start}${mid}${end}${ps}.`;
+        buf = buf.replace(' are not ', " aren't ").replace(' were not ', " weren't ")
+            .replace(' have not ', " haven't ").replace(' had not ', " hadn't ")
+            .replace(' can not ', " can't ").replace(' could not ', " couldn't ");
+        out.push(buf);
+    };
+    const you_have_X = (thing) => enlLine('You ', final ? '' : 'have ', thing);
+
+    out.push('');                                     // insight.c:2265 putstr("")
+    out.push(`Achievement${acnt === 1 ? '' : 's'}:`);
+
+    // The ascension reshuffle (ACH_UWIN/ACH_AMUL moved to the end) only applies
+    // to a winning game's disclosure.
+    for (const achidx of ach) {
+        const absidx = Math.abs(achidx);
+        switch (absidx) {
+        case 13 /* ACH_BLND */:
+            enlLine('You ', final ? 'explored' : 'are exploring',
+                    ' without being able to see');
+            break;
+        case 14 /* ACH_NUDE */:
+            enlLine('You ', final ? 'went' : 'have gone', ' without any armor');
+            break;
+        case 15 /* ACH_MINE */: you_have_X('entered the Gnomish Mines'); break;
+        case 16 /* ACH_TOWN */: you_have_X('entered Minetown'); break;
+        case 17 /* ACH_SHOP */: you_have_X('entered a shop'); break;
+        case 18 /* ACH_TMPL */: you_have_X('entered a temple'); break;
+        case 19 /* ACH_ORCL */: you_have_X('consulted the Oracle of Delphi'); break;
+        case 20 /* ACH_NOVL */: you_have_X('read from a Discworld novel'); break;
+        case 21 /* ACH_SOKO */: you_have_X('entered Sokoban'); break;
+        case 11 /* ACH_SOKO_PRIZE */: you_have_X('completed Sokoban'); break;
+        case 10 /* ACH_MINE_PRIZE */: you_have_X('completed the Gnomish Mines'); break;
+        case 22 /* ACH_BGRM */: you_have_X('entered the Big Room'); break;
+        case 12 /* ACH_MEDU */: you_have_X('defeated Medusa'); break;
+        case 31 /* ACH_TUNE */:
+            you_have_X("learned the tune to open and close the Castle's drawbridge");
+            break;
+        case 1 /* ACH_BELL */:
+            enlLine('You ', u.uhave?.bell ? (final ? 'had ' : 'have ')
+                    : (final ? 'handled' : 'have handled'), ' the Bell of Opening');
+            break;
+        case 2 /* ACH_HELL */:
+            enlLine('You ', final ? '' : 'have ', 'entered Gehennom');
+            break;
+        case 3 /* ACH_CNDL */:
+            enlLine('You ', u.uhave?.menorah ? (final ? 'had ' : 'have ')
+                    : (final ? 'handled' : 'have handled'),
+                    ' the Candelabrum of Invocation');
+            break;
+        case 4 /* ACH_BOOK */:
+            enlLine('You ', u.uhave?.book ? (final ? 'had ' : 'have ')
+                    : (final ? 'handled' : 'have handled'), ' the Book of the Dead');
+            break;
+        case 5 /* ACH_INVK */: you_have_X("gained access to Moloch's Sanctum"); break;
+        case 6 /* ACH_AMUL */:
+            enlLine('You ', u.uhave?.amulet ? (final ? 'had ' : 'have ')
+                    : (final ? 'had obtained' : 'have obtained'),
+                    ' the Amulet of Yendor');
+            break;
+        case 7 /* ACH_ENDG */: you_have_X('reached the Elemental Planes'); break;
+        case 8 /* ACH_ASTR */: you_have_X('reached the Astral Plane'); break;
+        case 9 /* ACH_UWIN */: out.push(' You ascended!'); break;
+        case 23: case 24: case 25: case 26:
+        case 27: case 28: case 29: case 30: /* ACH_RNK1..8 */
+            you_have_X(`attained the rank of ${
+                rank_of(rank_to_xlev(absidx - 22 /* ACH_RNK1 - 1 */),
+                        game.urole?.mnum, achidx < 0)}`);
+            break;
+        default:
+            out.push(` [Unexpected achievement #${achidx}.]`);
+            break;
+        }
+    }
+    return out;
+}
+
+// C ref: botl.c:314 rank_to_xlev(rank) — the LOW end of the rank's xlev range.
+function rank_to_xlev(rank) {
+    return (rank < 1) ? 1 : (rank < 2) ? 3 : (rank < 8) ? (rank * 4 - 2) : 30;
 }
 
 // C ref: win/tty/wintty.c process_text_window()'s corner-menu placement

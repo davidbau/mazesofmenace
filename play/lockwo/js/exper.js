@@ -344,6 +344,8 @@ export async function pluslvl(incr, emitMsg) {
 
     if ((u.ulevel || 0) < MAXULEV) {
         const oldlevel = u.ulevel || 0;
+        // C ref: exper.c:340 — oldrank is snapshotted BEFORE ++u.ulevel.
+        const oldrank = xlev_to_rank(oldlevel);
         if (incr) {
             const tmp = newuexp((u.ulevel || 0) + 1);
             if ((u.uexp || 0) >= tmp) u.uexp = tmp - 1;
@@ -358,6 +360,16 @@ export async function pluslvl(incr, emitMsg) {
         // adjabil(): give new intrinsics; only the (RNG-free) "You feel X!"
         // messages matter for the recorded screens.
         await adjabil(oldlevel, u.ulevel, emitMsg);
+        // C ref: exper.c:358 — crossing into a new rank is an achievement, and
+        // it is the ORDER of u.uachieved that #conduct prints, so this has to
+        // run here rather than be derived from the final level.
+        const newrank = xlev_to_rank(u.ulevel);
+        if (newrank > oldrank) {
+            // Dynamic import: insight.js -> u_init.js -> mkobj.js is a static
+            // cycle this file must not join.
+            const I = await import('./insight.js');
+            I.record_achievement(I.achieve_rank(newrank));
+        }
     }
 }
 
@@ -462,6 +474,18 @@ export function innate_intrinsics(ulevel = game.u?.ulevel || 0) {
     return s;
 }
 export function has_innate(prop, ulevel) { return innate_intrinsics(ulevel).has(prop); }
+
+// C ref: attrib.c:864 innately(ability) — WHICH table conferred an intrinsic,
+// which is what from_what() turns into English.  A FROMEXPER (role) row reports
+// FROM_ROLE when its ulevel is 1 and FROM_EXP otherwise; a FROMRACE row is
+// FROM_RACE whatever its level.  Returns null when neither table grants it.
+export function innate_source(prop, ulevel = game.u?.ulevel || 0) {
+    for (const [ulvl, , , p] of ROLE_ABIL.get(game.urole?.mnum) || [])
+        if (p === prop && ulevel >= ulvl) return (ulvl === 1) ? 'role' : 'exp';
+    for (const [ulvl, , , p] of RACE_ABIL.get(urace_mnum()) || [])
+        if (p === prop && ulevel >= ulvl) return 'race';
+    return null;
+}
 
 export async function adjabil(oldlevel, newlevel, emitMsg) {
     const role = ROLE_ABIL.get(game.urole?.mnum) || [];

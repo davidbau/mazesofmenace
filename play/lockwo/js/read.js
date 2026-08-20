@@ -1018,10 +1018,16 @@ export async function teleds_hero(nux, nuy) {
     // teleport, so C's unplacebc()+placebc() pair is what runs.)
     const ball_active = !!(u.uball && u.uchain);
     if (ball_active) {
-        // ball.js has no unplacebc(); move_bc(before=1) is the same lift
-        // (remove_object on chain, and on ball when it isn't carried).
-        const { move_bc, placebc } = await import('./ball.js');
-        move_bc(1, 0, u.uball.ox, u.uball.oy, u.uchain.ox, u.uchain.oy);
+        // C ref: teleds() — unplacebc() takes the pair off the map, placebc()
+        // puts it back at the destination.  move_bc(before=1) was used here as
+        // "the same lift", but move_bc's whole body is the Blind arm's
+        // `if (!before)` and a control mask of 0 moves nothing, so the pair was
+        // never removed and placebc() duplicated it on the pile.
+        // (C's drag_ball()/move_bc() path for a destination within 2 squares of
+        // the ball is not ported; lifting and re-placing lands the pair on the
+        // hero's own square, which is where a 0-step hop leaves it anyway.)
+        const { unplacebc, placebc } = await import('./ball.js');
+        unplacebc();
         // C ref: teleds() — reset_utrap(FALSE): teleporting frees the hero from
         // a pit/web/bear trap.  Leaving u.utrap set kept a teleported hero
         // "still stuck" at the destination.

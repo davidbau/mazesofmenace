@@ -8,7 +8,9 @@
 
 import {
     AIR, COLNO, CORR, IS_FURNITURE, IS_LAVA, MOAT, POOL, ROOM, ROWNO, WATER, isok,
+    Is_airlevel, Is_waterlevel,
 } from '../const.js';
+import { setup_waterlevel } from '../mkmaze.js';
 import { game } from '../gstate.js';
 import {
     MGEND_NEUTRAL, enexto_spawn, makemon, mkclass, mm_mon_at, monster_by_pmidx,
@@ -186,7 +188,16 @@ function plane_bad_location(x, y, nlx, nly, nhx, nhy) {
 // recorded on the lregion instead.  Returning "accepted" at the same moment C
 // does is what keeps the rn1 loop the right length, which is the part of this
 // the RNG stream can see.
-export function plane_place_lregions() {
+export async function plane_place_lregions() {
+    // C ref: mkmaze.c fixup_special():580 — "water level is an odd beast, it has
+    // to be set up before calling place_lregions etc."  setup_waterlevel() turns
+    // the script's solid element into the AIR/CLOUD (or WATER/AIR) mix the
+    // portal's levregion then has to find an accessible square in, so its
+    // bubbles are what decide how many rn1() tries place_lregion() burns.
+    if (Is_waterlevel(game.u?.uz) || Is_airlevel(game.u?.uz)) {
+        if (game.level?.flags) game.level.flags.hero_memory = false;
+        await setup_waterlevel();
+    }
     for (const lr of (game.lregions || [])) {
         let { lx, ly, hx, hy } = lr;
         if (!lx) { lx = 1; hx = COLNO - 1; ly = 0; hy = ROWNO - 1; }

@@ -55,7 +55,7 @@ import {
     CXN_NO_PFX,
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
     LS_OBJECT, OMONST, has_omonst, OMID, has_omid, MON_DETACH,
-    IRONBARS, ROOM, IS_ALTAR, IS_SOFT, Is_airlevel, Is_waterlevel,
+    IRONBARS, ROOM, IS_ALTAR, Is_airlevel, Is_waterlevel,
     MAX_OIL_IN_FLASK, nothing_happens,
 } from './const.js';
 import { recalc_block_point } from './vision.js';
@@ -2544,38 +2544,13 @@ export function fixup_oil(potion, source) {
 }
 
 /**
- * C dothrow.c hitfloor — thin altar/soft/drop for horn tipping.
- * Named omit: hero_breaks / ship_object / dropz(thrown=TRUE).
- */
-async function hitfloor_horn(obj, verbosely) {
-    const { dropy, doaltarobj } = await import('./do.js');
-    const { pline } = await import('./display.js');
-    const u = game.u || {};
-    const typ = game.level?.at(u.ux | 0, u.uy | 0)?.typ ?? 0;
-    if (IS_SOFT(typ) || u.uinwater || u.uswallow) {
-        await dropy(obj);
-        return;
-    }
-    if (IS_ALTAR(typ)) {
-        await doaltarobj(obj);
-    } else if (verbosely) {
-        await pline(
-            `${Doname2_horn(obj)} ${otense_horn(obj, 'hit')} the ${
-                surface_horn(u.ux | 0, u.uy | 0)
-            }.`,
-        );
-    }
-    await dropy(obj);
-}
-
-/**
  * C ref: mkobj.c hornoplenty — apply / tip HORN_OF_PLENTY.
  * consume_obj_charge then rn2(13) potion vs food; magic potions reroll
  * rnd_class(POT_BOOZE, POT_WATER) skipping SICKNESS; FOOD_RATION rn2(7)
  * → royal jelly; copy horn BUC; unpaid addtobill; !tipping
  * hold_another_object; tipping targetbox add_to_container else floor
- * dropy / doaltarobj. Named omit: update_inventory / perm_invent;
- * hitfloor hero_breaks/ship_object.
+ * dropy / doaltarobj / hitfloor (D-1263). Named omit: update_inventory /
+ * perm_invent.
  * @returns {Promise<number>} objects created (0 or 1)
  */
 export async function hornoplenty(horn, tipping = false, targetbox = null) {
@@ -2648,7 +2623,8 @@ export async function hornoplenty(horn, tipping = false, targetbox = null) {
             const { dropy, doaltarobj } = await import('./do.js');
             const { can_reach_floor } = await import('./engrave.js');
             if (!can_reach_floor(true)) {
-                await hitfloor_horn(obj, true);
+                const { hitfloor } = await import('./dothrow.js');
+                await hitfloor(obj, true);
             } else {
                 const typ = game.level?.at(u.ux | 0, u.uy | 0)?.typ ?? 0;
                 if (IS_ALTAR(typ)) {
