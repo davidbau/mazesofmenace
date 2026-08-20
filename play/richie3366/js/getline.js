@@ -538,6 +538,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizmakemap" IFBURIED|WIZMODECMD (no AUTOCOMPLETE)
+        name: 'wizmakemap',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_makemap } = await import('./wizcmds.js');
+            return wiz_makemap();
+        },
+    },
+    {
         name: 'monster',
         wiz: false,
         autocomplete: true,

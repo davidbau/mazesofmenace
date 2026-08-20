@@ -16,7 +16,7 @@ import {
     has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, SUPPRESS_SADDLE,
     SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE,
     HAND, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
-    W_ARM, W_ARMC, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_AMUL,
+    W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_AMUL,
     MON_EXPLODE, NO_MM_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE,
 } from './const.js';
@@ -43,7 +43,7 @@ import {
     troll_baned, mhitm_ad_poly, could_seduce,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
-    AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY,
+    AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN,
 } from './mhitm.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
@@ -51,14 +51,17 @@ import {
     is_golem, is_mplayer, is_rider, is_undead, is_flyer, is_floater,
     is_demon, NON_PM, has_head, mindless, unsolid, breathless, mons,
     flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
-    is_whirly, passes_walls, hates_silver, MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
+    is_whirly, passes_walls, hates_silver, humanoid, is_neuter, G_UNIQ,
+    MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
+    is_metallic, is_crackable,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
     wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
+    mtrapped_in_pit,
 } from './mon.js';
 import { monflee } from './monmove.js';
 import { livelog_printf } from './pline.js';
@@ -111,6 +114,12 @@ const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
+const OILSKIN_CLOAK = objectNames.indexOf('OILSKIN_CLOAK');
+const ROBE = objectNames.indexOf('ROBE');
+const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
+const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
+// C objclass.h oc_armcat — helm slot (objects table stores it as oc_skill)
+const ARM_HELM = 2;
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const PM_BALROG = monsterNames.indexOf('PM_BALROG');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
@@ -940,15 +949,151 @@ function damageum_ad_phys(mdef, mattk, mhm) {
     }
 }
 
+/** C ref: obj.h is_helmet — ARMOR + oc_armcat ARM_HELM. */
+function is_helmet_uhitm(obj) {
+    return obj?.oclass === ARMOR_CLASS
+        && (game.objects?.[obj.otyp]?.oc_skill ?? -1) === ARM_HELM;
+}
+
+/**
+ * C ref: do_wear.c hard_helmet `:567–573` — metallic or glass helm.
+ */
+function hard_helmet(obj) {
+    if (!obj || !is_helmet_uhitm(obj)) return false;
+    return is_metallic(obj) || is_crackable(obj);
+}
+
+/** C ref: objnam.c helm_simple_name `:5513–5528` — hat vs helm. */
+function helm_simple_name(helmet) {
+    return !hard_helmet(helmet) ? 'hat' : 'helm';
+}
+
+/**
+ * C ref: objnam.c cloak_simple_name `:5492–5509`.
+ * Used by m_slips_free when the grab target is undiscovered oilskin.
+ */
+function cloak_simple_name(cloak) {
+    if (cloak) {
+        const t = cloak.otyp | 0;
+        if (t === ROBE) return 'robe';
+        if (t === MUMMY_WRAPPING) return 'wrapping';
+        if (t === ALCHEMY_SMOCK) {
+            const ocl = game.objects?.[t];
+            return (ocl?.oc_name_known && cloak.dknown) ? 'smock' : 'apron';
+        }
+    }
+    return 'cloak';
+}
+
+/**
+ * C ref: you.h mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his.
+ * Hallu rn2(4) live; canspotmon→its named on the C macro.
+ */
+function mhis(mtmp) {
+    if (game.u?.Hallucination) {
+        return ['his', 'her', 'its', 'their'][rn2(4)];
+    }
+    const ptr = mtmp?.data;
+    if (is_neuter(ptr)) return 'its';
+    if (humanoid(ptr) || ((ptr?.geno | 0) & G_UNIQ)) {
+        return mtmp?.female ? 'her' : 'his';
+    }
+    return 'its';
+}
+
+/**
+ * C ref: uhitm.c m_slips_free `:2053–2093` — greased/oilskin clothing
+ * slips a hug or drain. AD_DRIN looks at W_ARMH; other attacks walk
+ * cloak then suit then shirt. Assumes the hero is the attacker.
+ * AD_WRAP caller (mhitm_ad_wrap) still named.
+ */
+async function m_slips_free(mdef, mattk) {
+    let obj;
+    if ((mattk?.adtyp | 0) === AD_DRIN) {
+        obj = which_armor(mdef, W_ARMH);
+    } else {
+        obj = which_armor(mdef, W_ARMC);
+        if (!obj) obj = which_armor(mdef, W_ARM);
+        if (!obj) obj = which_armor(mdef, W_ARMU);
+    }
+    const otyp = obj?.otyp | 0;
+    if (obj && (obj.greased || otyp === OILSKIN_CLOAK)
+        && (!obj.cursed || rn2(3))) {
+        const verb = (mattk?.adtyp | 0) === AD_WRAP
+            ? 'slip off of'
+            : 'grab, but cannot hold onto';
+        const greasy = obj.greased ? 'greased' : 'slippery';
+        const ocl = game.objects?.[otyp];
+        const what = (obj.greased || ocl?.oc_name_known)
+            ? xname(obj)
+            : cloak_simple_name(obj);
+        await pline(
+            `You ${verb} ${s_suffix(mon_nam(mdef))} ${greasy} ${what}!`,
+        );
+        if (obj.greased && !rn2(2)) {
+            await pline('The grease wears off.');
+            obj.greased = 0;
+        }
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_drin `:3167–3303` — uhitm (hero→mon).
+ * Headless / notonhead wastes the tentacle, zeros damage, skipdrin
+ * (D-1298). Headed: m_slips_free then helmet which_armor(W_ARMH)&&rn2(8)
+ * then eat_brains (D-1306) then lifsav skipdrin if the amulet vanished.
+ * Helmet/slip return without zeroing dice and without skipdrin.
+ * mhitu (u_slip_free / uarmh) + mhitm arms named.
+ */
+async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
+    const pd = mdef?.data;
+    if (magr !== game.youmonst) return;
+    if (game.notonhead || !has_head(pd)) {
+        await pline(`${Monnam(mdef)} doesn't seem harmed.`);
+        game.skipdrin = true;
+        mhm.damage = 0;
+        const pdn = pd?.mndx ?? mdef.mnum;
+        if (!he_prop('Unchanging', 'HUnchanging', 'EUnchanging')
+            && pdn === PM_GREEN_SLIME) {
+            const u = game.u || {};
+            if (!(u.Slimed | 0)) {
+                await pline("You suck in some slime and don't feel very well.");
+                await (await import('./potion.js')).make_slimed(10, null);
+            }
+        }
+        return; // C `:3202` — helmet / eat_brains must not run headless
+    }
+    if (await m_slips_free(mdef, mattk)) return;
+
+    const helmet = which_armor(mdef, W_ARMH);
+    if (helmet && rn2(8)) {
+        await pline(
+            `${s_suffix(Monnam(mdef))} ${helm_simple_name(helmet)} blocks your attack to ${mhis(mdef)} head.`,
+        );
+        return;
+    }
+    const amu = which_armor(mdef, W_AMUL);
+    const lifsav = !!(amu && (amu.otyp | 0) === AMULET_OF_LIFE_SAVING);
+
+    const { eat_brains } = await import('./eat.js');
+    await eat_brains(game.youmonst, mdef, true, mhm);
+
+    if (lifsav && !which_armor(mdef, W_AMUL)) game.skipdrin = true;
+}
+
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
- * AD_PHYS + AD_POLY live; remaining mhitm_ad_* youmonst arms named omit.
+ * AD_PHYS + AD_POLY + AD_DRIN skipdrin live; remaining mhitm_ad_* named.
  */
 async function damageum_adtyping(mattk, mdef, mhm) {
     const adtyp = mattk.adtyp | 0;
     if (adtyp === AD_PHYS) damageum_ad_phys(mdef, mattk, mhm);
     else if (adtyp === AD_POLY) {
         await mhitm_ad_poly(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_DRIN) {
+        await mhitm_ad_drin(game.youmonst, mattk, mdef, mhm);
     }
 }
 
@@ -1925,8 +2070,11 @@ export async function gulpum(mdef, mattk) {
  * AT_EXPL explum + dhit==-1 rehumanize D-1251.
  * AT_ENGL gulpum D-1264 (rnd(20+i); shade surround; zombie/mummy Sick).
  * fight_empty explum(null) D-1265. altwep / uswapwep D-1266 (toggle +
- * originalweapon re-read + passivedone drop_uswapwep). Named omit:
- * skipdrin; pit kick.
+ * originalweapon re-read + passivedone drop_uswapwep). skipdrin AT_TENT
+ * AD_DRIN + pit AT_KICK D-1298 (`gs.skipdrin`; `mtrapped_in_pit`).
+ * eat_brains D-1306 (uhitm headed). Helmet / m_slips_free / lifsav
+ * skipdrin D-1307 (uhitm arm). Named: mhitu+mhitm AD_DRIN callers;
+ * AD_WRAP m_slips_free; remaining mhitm_ad_*; mattacku AT_TENT melee.
  */
 export async function hmonas(mon) {
     const u = game.u || {};
@@ -1946,12 +2094,20 @@ export async function hmonas(mon) {
     }
     gt_twohits = 0;
 
+    // C uhitm.c hmonas `:5451` — [see mattackm]
+    game.skipdrin = false;
+
     for (let i = 0; i < NATTK; i++) {
         if (i > 0) {
             const bp = game.bhitpos || {};
             if (m_at(bp.x, bp.y) !== mon || (mon.mhp | 0) < 1) continue;
         }
         const mattk = get_mattk(ym, i, mon);
+        // C `:5464` — skip remaining tentacle-DRIN after skipdrin
+        if (game.skipdrin && (mattk.aatyp | 0) === AT_TENT
+            && (mattk.adtyp | 0) === AD_DRIN) {
+            continue;
+        }
         weapon = null;
         let skip_passive = false;
         const aatyp = mattk.aatyp | 0;
@@ -1999,6 +2155,10 @@ export async function hmonas(mon) {
         } else if (aatyp === AT_CLAW || aatyp === AT_TUCH || aatyp === AT_KICK
             || aatyp === AT_BITE || aatyp === AT_STNG || aatyp === AT_BUTT
             || aatyp === AT_TENT) {
+            // C `:5558–5560` — pit-trapped poly kick cannot reach
+            if (aatyp === AT_KICK && mtrapped_in_pit(game.youmonst)) {
+                continue;
+            }
             const tmp = find_roll_to_hit(mon, aatyp, null, attk_count,
                 role_roll_penalty);
             mon_maybe_unparalyze(mon);

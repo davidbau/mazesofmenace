@@ -11,13 +11,19 @@ import {
     CORPSTAT_INIT, CORPSTAT_SPE_VAL,
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     TIMER_OBJECT, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON, HATCH_EGG,
+    FIG_TRANSFORM, SHRINK_GLOB,
+    OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT,
+    OBJ_MIGRATING, OBJ_BURIED, OBJ_ONBILL, OBJ_LUAFREE, OBJ_DELETED,
+    ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, MAX_OIL_IN_FLASK,
+    COLNO, ROWNO, LUCKADD,
+    ONAME, has_oname, OMONST, Has_contents, ismnum, isok,
 } from './const.js';
 import {
     rndmonst_adj, monster_by_pmidx, can_be_hatched, dead_species,
     undead_to_corpse, mon_has_cnutrit, mon_nocorpse, mon_cwt, mon_msize,
-    name_to_pmidx,
+    mon_cnutrit, name_to_pmidx,
 } from './makemon.js';
-import { set_tin_variety, SPINACH_TIN, RANDOM_TIN } from './eat.js';
+import { set_tin_variety, SPINACH_TIN, RANDOM_TIN, food_nutrit } from './eat.js';
 import { is_human_flag } from './monflags_data.js';
 
 export const RANDOM_CLASS = 0;
@@ -132,6 +138,8 @@ export const FROST_HORN = 250;
 export const FIRE_HORN = 251;
 export const DRUM_OF_EARTHQUAKE = 258;
 export const UNICORN_HORN = 261;
+export const LEASH = 236;
+export const LUMP_OF_ROYAL_JELLY = 286;
 export const SPEED_BOOTS = 166;
 export const WATER_WALKING_BOOTS = 167;
 export const JUMPING_BOOTS = 168;
@@ -186,6 +194,7 @@ const PLASTIC = 18;
 const GLASS = 19;
 const GEMSTONE = 20;
 const MINERAL = 21;
+const MZ_SMALL = 1; /* monflag.h MZ_SMALL; verysmall() == msize < MZ_SMALL */
 const NODIR = 1;
 const NON_PM = -1;
 
@@ -798,6 +807,14 @@ for (const o of objects)
         if (p) o.oc_oprop = p;
     }
 
+// C ref: include/objects.h:513/540 DRGN_ARMR("red dragon scale mail"/"red
+// dragon scales", ..., FIRE_RES, ...) — the only NON-ring/amulet rows whose
+// oc_oprop is FIRE_RES, which mkobj.c is_flammable() tests directly.
+const FIRE_RES_PROP = 1; // prop.h FIRE_RES
+for (const o of objects)
+    if (o && (o.name === 'red dragon scale mail' || o.name === 'red dragon scales'))
+        o.oc_oprop = FIRE_RES_PROP;
+
 // C ref: include/objects.h BITS() mgc field — oc_magic, the "magic" flag used
 // by poly_obj() (zap.c) to keep a polymorphed object's magic-or-not status the
 // same as the source, and by obj_shuffle_range().  Extracted from the per-class
@@ -816,6 +833,23 @@ const OC_MAGIC_RANGES = [
 for (const [lo, hi] of OC_MAGIC_RANGES)
     for (let i = lo; i <= hi; i++)
         if (objects[i]) objects[i].oc_magic = 1;
+
+// C ref: include/objects.h BITS() uskn field — oc_uses_known, "obj->known
+// affects the full description" (objclass.h:53).  Reading every macro's BITS
+// arguments shows uskn is IDENTICAL to chrg (already carried here as F_CHARGED)
+// for WEAPON / PROJECTILE / BOW / ARMOR family / RING / TOOL / CONTAINER /
+// WEPTOOL / WAND, and 0 for every class whose chrg is 0 (AMULET, EYEWEAR,
+// POTION, SCROLL, SPELL, COIN, GEM, ROCK, the raw ball/chain/venom/statue
+// rows).  FOOD is the single exception: its uskn comes from the `unk` argument
+// and only "egg" and "tin" pass 1 there while chrg is always 0.  Deriving it
+// this way rather than listing the otyps that happen to matter here keeps it
+// right for every object the held-out corpus can reach.
+for (const o of objects) {
+    if (!o) continue;
+    o.oc_uses_known = (o.oclass === FOOD_CLASS)
+        ? ((o.otyp === EGG || o.otyp === TIN) ? 1 : 0)
+        : ((o.flags & F_CHARGED) ? 1 : 0);
+}
 
 const objectsByClass = Array.from({ length: MAXOCLASSES + 1 }, () => []);
 for (const obj of objects) {
@@ -922,6 +956,20 @@ export function rnd_class(first, last) {
     return first === last ? first : STRANGE_OBJECT;
 }
 
+/* C ref: makemon.c mvitals[] mvflags — G_GENOD | G_EXTINCT. */
+const G_GONE = 0x03;
+function mvitals_flags(mndx) { return game.mvitals?.[mndx]?.mvflags ?? 0; }
+
+// C ref: gu.urole.mnum — the mons[] index of the hero's role monster.
+// js/roles.js numbers roles 0..12 in mons[] order starting at PM_ARCHEOLOGIST
+// ([[umonnum-is-a-role-index]]: u.umonnum is that same role index, NOT a
+// mons[] index), so resolve it from the species name rather than a literal.
+function urole_mnum() {
+    const base = PM('archeologist');
+    const m = game.urole?.mnum;
+    return (base >= 0 && Number.isInteger(m)) ? base + m : base;
+}
+
 export function next_ident() {
     // C mkobj.c:508 next_ident(): returns the current context.ident, then
     // advances it by rnd(2) (so half the potential ids are skipped). The
@@ -934,24 +982,156 @@ export function next_ident() {
     return res;
 }
 
-export function curse(otmp) {
-    if (otmp) { otmp.cursed = true; otmp.blessed = false; }
+// C ref: eat.c eaten_stat(base, obj) — scale `base` by the fraction of the
+// item's nutrition that is still left, never below 1.
+function eaten_stat(base, obj) {
+    const full = (obj.otyp === CORPSE)
+        ? mon_cnutrit(obj.corpsenm)
+        : food_nutrit(obj.otyp);
+    let uneaten = obj.oeaten | 0;
+    if (full && uneaten > full) uneaten = full;
+    const v = full ? Math.trunc(base * uneaten / full) : 0;
+    return v < 1 ? 1 : v;
 }
 
+// C ref: artifact.c confers_luck(obj) — a luckstone, or an artifact with
+// SPFX_LUCK.  Only the luckstone arm can be answered from this file (artifact
+// data lives in artifact.js), and it is the arm that matters for the objects
+// mkobj.c creates.
+function confers_luck(obj) {
+    return obj?.otyp === LUCKSTONE || !!(obj?.oartifact && obj?.spfx_luck);
+}
+
+// C ref: attrib.c stone_luck(include_uncursed) / set_moreluck() — u.moreluck is
+// +-LUCKADD while a luck-conferring stone is carried, and Luck (= u.uluck +
+// u.moreluck) is the modulus-shifting input to every rnl() call.  gi.invent is
+// game.invent in this port; nothing else reads it here.
+function set_moreluck() {
+    const u = game.u;
+    if (!u) return;
+    let bonchance = 0, carrying_luckstone = false;
+    for (const o of (Array.isArray(game.invent) ? game.invent : [])) {
+        if (o.otyp === LUCKSTONE) carrying_luckstone = true;
+        if (confers_luck(o)) {
+            if (o.cursed) bonchance -= (o.quan || 1);
+            else bonchance += (o.quan || 1);        /* include_uncursed */
+        }
+    }
+    const luckbon = Math.sign(bonchance);
+    if (!luckbon && !carrying_luckstone) u.moreluck = 0;
+    else if (luckbon >= 0) u.moreluck = LUCKADD;
+    else u.moreluck = -LUCKADD;
+}
+
+function carried(obj) { return obj?.where === 'invent' || obj?.where === OBJ_INVENT; }
+
+// C ref: artifact.c arti_light_radius(obj) — only artifacts light up, and the
+// radius varies with bless/curse state.  Returns 0 for everything mkobj.c can
+// create by itself, which makes maybe_adjust_light() a no-op for them.
+function arti_light_radius(obj) {
+    if (!obj?.oartifact || !obj?.lamplit) return 0;
+    return obj.cursed ? 1 : obj.blessed ? 3 : 2;
+}
+
+// C ref: mkobj.c maybe_adjust_light(obj, old_range) — an artifact light source
+// whose radius changed with its bless/curse state re-registers and reports
+// "shines brighter"/"less brightly".  light.js owns the light-source list, so
+// this records the new radius and leaves the (RNG-free) message to the caller.
+export function maybe_adjust_light(obj, old_range) {
+    if (!obj) return;
+    const new_range = arti_light_radius(obj);
+    if (new_range !== old_range) obj.light_radius = new_range;
+}
+
+/*
+ *      bless(), curse(), unbless(), uncurse() -- any relevant message
+ *      about glowing amber/black/&c should be delivered prior to calling
+ *      these routines to make the actual curse/bless state change.
+ */
+
+// C ref: mkobj.c bless(otmp).
 export function bless(otmp) {
-    if (otmp) { otmp.blessed = true; otmp.cursed = false; }
+    if (!otmp) return;
+    if (otmp.oclass === COIN_CLASS) return;
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
+    otmp.cursed = false;
+    otmp.blessed = true;
+    if (carried(otmp) && confers_luck(otmp)) set_moreluck();
+    else if (otmp.otyp === BAG_OF_HOLDING) otmp.owt = weight(otmp);
+    else if (otmp.otyp === FIGURINE && otmp.timed)
+        stop_object_timer(otmp, FIG_TRANSFORM);
+    if (otmp.lamplit) maybe_adjust_light(otmp, old_light);
 }
 
-export function uncurse(otmp) {
-    if (otmp) otmp.cursed = false;
-}
-
+// C ref: mkobj.c unbless(otmp) — no COIN_CLASS early-out (unlike bless).
 export function unbless(otmp) {
-    if (otmp) otmp.blessed = false;
+    if (!otmp) return;
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
+    otmp.blessed = false;
+    if (carried(otmp) && confers_luck(otmp)) set_moreluck();
+    else if (otmp.otyp === BAG_OF_HOLDING) otmp.owt = weight(otmp);
+    if (otmp.lamplit) maybe_adjust_light(otmp, old_light);
 }
 
-function bcsign(otmp) {
+// C ref: mkobj.c curse(otmp).  The two-handed-weapon reset_remarm() and the
+// twoweapon drop_uswapwep() arms live in wield.c/do_wear.c; the parts that
+// change object state (and so the hero's weight/luck/timers) are here.
+export function curse(otmp) {
+    if (!otmp) return;
+    if (otmp.oclass === COIN_CLASS) return;
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
+    const already_cursed = otmp.cursed;
+    otmp.blessed = false;
+    otmp.cursed = true;
+    if (carried(otmp) && confers_luck(otmp)) {
+        set_moreluck();
+    } else if (otmp.otyp === BAG_OF_HOLDING) {
+        otmp.owt = weight(otmp);
+    } else if (otmp.otyp === FIGURINE) {
+        // C: a cursed figurine of a still-living species gets a transform timer.
+        if (otmp.corpsenm != null && otmp.corpsenm !== NON_PM
+            && !dead_species(otmp.corpsenm, true)
+            && (carried(otmp) || otmp.where === 'minvent'
+                || otmp.where === OBJ_MINVENT))
+            attach_fig_transform_timeout(otmp);
+    } else if (otmp.oclass === SPBOOK_CLASS) {
+        // C: `if (!already_cursed) book_cursed(otmp);` — read.c interrupts the
+        // hero's study; the interrupt itself belongs to read.js.
+        if (!already_cursed) otmp.book_just_cursed = 1;
+    }
+    if (otmp.lamplit) maybe_adjust_light(otmp, old_light);
+}
+
+// C ref: mkobj.c uncurse(otmp).
+export function uncurse(otmp) {
+    if (!otmp) return;
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
+    otmp.cursed = false;
+    if (carried(otmp) && confers_luck(otmp)) set_moreluck();
+    else if (otmp.otyp === BAG_OF_HOLDING) otmp.owt = weight(otmp);
+    else if (otmp.otyp === FIGURINE && otmp.timed)
+        stop_object_timer(otmp, FIG_TRANSFORM);
+    if (otmp.lamplit) maybe_adjust_light(otmp, old_light);
+}
+
+// C ref: mkobj.c bcsign(otmp) — !!blessed - !!cursed.
+export function bcsign(otmp) {
     return (otmp?.blessed ? 1 : 0) - (otmp?.cursed ? 1 : 0);
+}
+
+// C ref: mkobj.c set_bknown(obj, onoff) — the bless/curse-state-known flag,
+// which is what makes doname() print "blessed"/"cursed"/"uncursed"; a change to
+// an inventory object refreshes the open inventory window (but not during
+// startup, moves <= 1).
+export function set_bknown(obj, onoff) {
+    if (!obj) return;
+    const v = onoff ? 1 : 0;
+    if ((obj.bknown ? 1 : 0) !== v) {
+        obj.bknown = v;
+        if ((obj.where === 'invent' || obj.where === OBJ_INVENT)
+            && (game.moves ?? 0) > 1)
+            game._invent_dirty = true;   /* update_inventory() */
+    }
 }
 
 export function blessorcurse(otmp, chance) {
@@ -1031,17 +1211,13 @@ function hasFlag(otmp, flag) {
     return !!(objects[otmp.otyp]?.flags & flag);
 }
 
+// C ref: objclass.h:209 is_damageable(otmp) — the OR of the five erosion
+// predicates.  It used to re-derive all five inline, which is how the
+// is_flammable FIRE_RES arm came to be missing from one copy and not the other.
 function is_damageable(otmp) {
-    const obj = objects[otmp.otyp];
-    if (!obj) return false;
-    const mat = obj.material;
-    const rust = mat === IRON;
-    const crack = mat === GLASS && otmp.oclass === ARMOR_CLASS;
-    const corrode = mat === COPPER || mat === IRON;
-    const flame = obj.otyp !== TALLOW_CANDLE && obj.otyp !== WAX_CANDLE
-        && obj.otyp !== WAN_FIRE && ((mat <= WOOD && mat !== LIQUID) || mat === PLASTIC);
-    const rot = ((mat <= WOOD && mat !== LIQUID) || mat === DRAGON_HIDE);
-    return rust || crack || corrode || flame || rot;
+    if (!objects[otmp.otyp]) return false;
+    return is_rustprone(otmp) || is_flammable(otmp) || is_rottable(otmp)
+        || is_corrodeable(otmp) || is_crackable(otmp);
 }
 
 function erosion_matters(otmp) {
@@ -1059,11 +1235,16 @@ function may_generate_eroded(otmp) {
     return true;
 }
 
+// C ref: mkobj.c is_flammable(otmp):2269.  Candles burn but are not "flammable"
+// (they can't take fire damage and can't be fireproofed), and neither is
+// anything whose oc_oprop is FIRE_RES -- the arm the old copy dropped, so a red
+// dragon scale mail / ring of fire resistance answered by material alone.
 function is_flammable(otmp) {
     const obj = objects[otmp.otyp];
     const mat = obj?.material ?? NO_MATERIAL;
-    return otmp.otyp !== TALLOW_CANDLE && otmp.otyp !== WAX_CANDLE
-        && otmp.otyp !== WAN_FIRE && ((mat <= WOOD && mat !== LIQUID) || mat === PLASTIC);
+    if (otmp.otyp === TALLOW_CANDLE || otmp.otyp === WAX_CANDLE) return false;
+    if (obj?.oc_oprop === 1 /* FIRE_RES */ || otmp.otyp === WAN_FIRE) return false;
+    return (mat <= WOOD && mat !== LIQUID) || mat === PLASTIC;
 }
 function is_rottable(otmp) {
     const mat = objects[otmp.otyp]?.material ?? NO_MATERIAL;
@@ -1182,13 +1363,33 @@ function obj_stop_timers(obj) {
     delete obj.timer;
 }
 
-// C ref: timeout.c run_timers() — dispatch expired TIMER_OBJECT timers.  Only
-// ROT_CORPSE on a floor object is modelled (dig.c rot_corpse() -> rot_organic()
-// silently frees the object for the common on-floor case; no message, no RNG).
-// Other timer kinds/locations (REVIVE_MON, ZOMBIFY_MON, carried/buried objects)
-// are outside the sessions this contest exercises and are left unfired.
+// C ref: timeout.c run_timers() — dispatch expired TIMER_OBJECT timers.
+// ROT_CORPSE on a floor object (dig.c rot_corpse() -> rot_organic() silently
+// frees it; no message, no RNG) and SHRINK_GLOB, whose handler mkobj.c
+// shrink_glob() is ported below and DOES draw (start_glob_timeout's rn2(5)) each
+// time it reschedules.  REVIVE_MON / ZOMBIFY_MON / FIG_TRANSFORM need
+// makemon()-side handlers that live outside this file and stay unfired.
 export function run_object_timers() {
     const moves = game.moves ?? 0;
+    // Globs can be anywhere; collect the timed ones from every list mkobj.c
+    // maintains so a glob in a pack or a container keeps shrinking as in C.
+    const globs = [];
+    const scan = (list) => {
+        if (!Array.isArray(list)) return;
+        for (const o of list) {
+            if (o.timed && o.timer?.action === SHRINK_GLOB && o.timer.when <= moves)
+                globs.push(o);
+            if (Array.isArray(o.cobj)) scan(o.cobj);
+        }
+    };
+    scan(game.level?.objects);
+    scan(game.invent);
+    scan(game.level?.buriedobjlist);
+    scan(game.migrating_objs);
+    for (const mon of (Array.isArray(game.level?.monsters) ? game.level.monsters : []))
+        scan(mon.minvent);
+    for (const g of globs) shrink_glob(g, g.timer?.when ?? moves);
+
     const objs = game.level?.objects;
     if (!Array.isArray(objs)) return;
     for (let i = objs.length - 1; i >= 0; i--) {
@@ -1251,6 +1452,16 @@ function stop_object_timer(obj, action) {
     obj.timed = false;
     delete obj.timer;
     return remaining;
+}
+
+// C ref: timeout.c attach_fig_transform_timeout(figurine):1204 — replace any
+// existing FIG_TRANSFORM timer with one that fires in rnd(9000)+200 turns.
+// The draw is rnd(9000), NOT rn1(9000,1000).
+function attach_fig_transform_timeout(figurine) {
+    if (!figurine) return;
+    stop_object_timer(figurine, FIG_TRANSFORM);
+    const i = rnd(9000) + 200;
+    start_timer(i, TIMER_OBJECT, FIG_TRANSFORM, figurine);
 }
 
 // C ref: timeout.c attach_egg_hatch_timeout(egg, when) — decide if and when a
@@ -1317,10 +1528,32 @@ export function set_corpsenm(obj, id) {
     // obj_to_any(obj));` — a re-typed egg hands its remaining hatch time to
     // attach_egg_hatch_timeout so it keeps the original schedule instead of
     // rolling a fresh one.  A newly created egg has no timer, so when stays 0.
-    const when = obj.otyp === EGG ? stop_object_timer(obj, HATCH_EGG) : 0;
+    const old_id = obj.corpsenm;
+    let when = 0;
+    if (obj.timed) {
+        if (obj.otyp === EGG) when = stop_object_timer(obj, HATCH_EGG);
+        else obj_stop_timers(obj);              /* corpse or figurine */
+    }
+    // C ref: mkobj.c:1334 — oeaten is "nutrition left" AND the basis for the
+    // HP a monster revived from a partly eaten corpse gets, so re-typing a
+    // partly eaten corpse rescales it by the ratio of the two species' cnutrit
+    // (a <foo> corpse revived as a <foo> zombie can have a different cnutrit).
+    if (obj.otyp === CORPSE && (obj.oeaten | 0) !== 0) {
+        const oldn = mon_cnutrit(old_id), newn = mon_cnutrit(id);
+        if (oldn && oldn !== newn)
+            obj.oeaten = Math.trunc((obj.oeaten | 0) * newn / oldn);
+    }
     obj.corpsenm = id;
     if (obj.otyp === CORPSE) {
         start_corpse_timeout(obj);
+        obj.owt = weight(obj);
+    } else if (obj.otyp === FIGURINE) {
+        // C ref: mkobj.c:1353 — a figurine of a still-living species that the
+        // hero or a monster is CARRYING gets a transform timer (rnd(9000)+200).
+        if (id != null && id !== NON_PM && !dead_species(id, true)
+            && (obj.where === 'invent' || obj.where === OBJ_INVENT
+                || obj.where === 'minvent' || obj.where === OBJ_MINVENT))
+            attach_fig_transform_timeout(obj);
         obj.owt = weight(obj);
     } else if (obj.otyp === EGG) {
         // C: only a typed egg of a still-living species gets a hatch timer.
@@ -1409,6 +1642,16 @@ const OC_WEIGHT = Object.freeze({
 });
 
 // C ref: objclass.h Is_container(otmp) — LARGE_BOX..BAG_OF_TRICKS.
+// C ref: obj.h:327 Is_pudding(o) — the four pudding globs.
+export function Is_pudding(obj) {
+    return obj?.otyp >= GLOB_OF_GRAY_OOZE && obj?.otyp <= GLOB_OF_BLACK_PUDDING;
+}
+
+// C ref: obj.h:339 Is_mbag(o) — a "magic bag", i.e. one that can eat items.
+export function Is_mbag(obj) {
+    return obj?.otyp === BAG_OF_HOLDING || obj?.otyp === BAG_OF_TRICKS;
+}
+
 function Is_container(otyp) {
     return otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS;
 }
@@ -1566,7 +1809,17 @@ export function weight(otmp) {
     }
     if (otmp.otyp === CORPSE && otmp.corpsenm != null && otmp.corpsenm >= 0) {
         const cwt = mon_cwt(otmp.corpsenm);
-        if (cwt != null) return (otmp.quan || 1) * cwt; // (eaten_stat not modeled here)
+        // C ref: mkobj.c weight() — `if (obj->oeaten) wt = eaten_stat(wt, obj)`.
+        // A partly eaten corpse/food weighs only the remaining fraction; without
+        // this a half-eaten food ration still counted its full 20 units, which
+        // shifts near_capacity() and so the "Burdened" word on the status row.
+        if (cwt != null) {
+            const w = (otmp.quan || 1) * cwt;
+            return otmp.oeaten ? eaten_stat(w, otmp) : w;
+        }
+    }
+    if (otmp.oclass === FOOD_CLASS && otmp.oeaten) {
+        return eaten_stat((otmp.quan || 1) * wt, otmp);
     }
     if (otmp.oclass === COIN_CLASS) {
         return Math.max(Math.trunc(((otmp.quan || 1) + 50) / 100), 1);
@@ -1580,22 +1833,82 @@ export function weight(otmp) {
     return wt ? wt * (otmp.quan || 1) : ((otmp.quan || 1) + 1) >> 1;
 }
 
+// C ref: mkobj.c place_object(otmp, x, y) — link the object into the tile's
+// nexthere chain and the level's fobj chain.  This port keeps floor objects in
+// one flat game.level.objects array in which the LAST entry matching (x,y) is
+// the head of C's nexthere chain (what vobj_at draws and what dog_invent
+// apports), so "push" == "put on top of the current pile".
+//
+// The boulder rule is what makes the pile order observable: C deliberately
+// slides a NON-boulder underneath any run of boulders already on the tile so
+// the map shows the boulder without the display having to walk the chain.
+// Without it a rock dropped on a boulder square became the drawn glyph and the
+// pet apported it instead of what C picks.
 export function place_object(otmp, x, y) {
     if (!otmp) return otmp;
-    otmp.ox = x; otmp.oy = y; otmp.where = 'floor';
     if (game.level) {
-        if (!game.level.objects) game.level.objects = [];
-        game.level.objects.push(otmp);
+        if (!Array.isArray(game.level.objects)) game.level.objects = [];
+        const objs = game.level.objects;
+        // indices of the tile's pile, deepest first (== C's chain, reversed)
+        const idx = [];
+        for (let i = 0; i < objs.length; i++)
+            if (objs[i] !== otmp && objs[i].where === 'floor'
+                && objs[i].ox === x && objs[i].oy === y) idx.push(i);
+        // C: `if (!otmp2 || otmp2->otyp != BOULDER) block_point(x,y)` for a new
+        // boulder, and recalc_block_point() in remove_object().  Both are done
+        // at this port's call sites (cmd.js moverock, dig.c, dbridge.c) because
+        // vision.js cannot be imported here without a module cycle.
+        const topIsBoulder = idx.length
+            && objs[idx[idx.length - 1]].otyp === BOULDER;
+        let at = -1;
+        if (topIsBoulder && otmp.otyp !== BOULDER) {
+            // C: walk down the run of consecutive boulders, then splice in just
+            // BELOW the deepest of them.
+            let k = idx.length - 1;
+            while (k > 0 && objs[idx[k - 1]].otyp === BOULDER) k--;
+            at = idx[k];
+        }
+        const cur = objs.indexOf(otmp);
+        if (cur >= 0) objs.splice(cur, 1);
+        if (at >= 0 && cur >= 0 && cur < at) at--;
+        if (at >= 0) objs.splice(at, 0, otmp);
+        else objs.push(otmp);
     }
+    // set the object's new location (after the splice, so the scan above sees
+    // the pile as it stood BEFORE this object arrived)
+    otmp.ox = x; otmp.oy = y; otmp.where = 'floor';
+    otmp.ocarry = null; otmp.ocontainer = null; /* obj_no_longer_held */
+    // C: `if (otmp->no_charge && !costly_spot(x,y) && !costly_adjacent(...))
+    // otmp->no_charge = 0;`  shk.js owns costly_spot; leaving no_charge set
+    // outside a shop is the conservative half of this (it only suppresses a
+    // bill), so it is deliberately not guessed at here.
+    if (otmp.timed) obj_timer_checks(otmp, x, y, 0);
     return otmp;
 }
 
+// C ref: mkobj.c add_to_container(container, obj) — obj must be free; merge
+// into an existing stack if possible, else push onto the container's cobj
+// chain.  Does NOT update the container's weight (callers do).
 export function add_to_container(container, otmp) {
     if (!container || !otmp) return otmp;
-    if (!container.cobj) container.cobj = [];
+    if (!Array.isArray(container.cobj)) container.cobj = [];
+    if (container.where !== OBJ_INVENT && container.where !== 'invent'
+        && container.where !== OBJ_MINVENT && container.where !== 'minvent') {
+        otmp.ocarry = null;                    /* obj_no_longer_held */
+    }
     container.cobj.push(otmp);
     otmp.where = 'contained';
+    otmp.ocontainer = container;
     return otmp;
+}
+
+// C ref: mkobj.c container_weight(object) — recompute owt after the contents
+// changed, recursing outward through nested containers.
+export function container_weight(object) {
+    if (!object) return;
+    object.owt = weight(object);
+    if (object.where === 'contained' || object.where === OBJ_CONTAINED)
+        container_weight(object.ocontainer);
 }
 
 function mkbox_cnts(box) {
@@ -1616,7 +1929,17 @@ function mkbox_cnts(box) {
         let otmp;
         if (box.otyp === ICE_BOX) {
             otmp = mksobj(CORPSE, true, false);
+            // C ref: mkobj.c:2340 — "setting age to 0 is correct.  Age has a
+            // different from usual meaning for objects stored in ice boxes."
             otmp.age = 0;
+            // C ref: mkobj.c:2342 — and the rot/revive/shrink timers are
+            // STOPPED: a corpse in an ice box is frozen, so it must not rot
+            // away (or revive) while it sits there.
+            if (otmp.timed) {
+                stop_object_timer(otmp, ROT_CORPSE);
+                stop_object_timer(otmp, REVIVE_MON);
+                stop_object_timer(otmp, SHRINK_GLOB);
+            }
         } else {
             let tprob = rnd(100);
             let oclass = boxiprobs[boxiprobs.length - 1][1];
@@ -1636,7 +1959,13 @@ function mkbox_cnts(box) {
                 }
             }
             if (box.otyp === BAG_OF_HOLDING) {
-                if (otmp.otyp === BAG_OF_HOLDING) {
+                // C ref: obj.h:339 Is_mbag(o) == (BAG_OF_HOLDING ||
+                // BAG_OF_TRICKS) — a bag of TRICKS inside a bag of holding is
+                // demoted to a plain sack too.  Testing only BAG_OF_HOLDING
+                // left a bag of tricks in the loot; the swap draws no RNG, so
+                // the mistake is invisible in the call stream and only shows up
+                // in the item's name.
+                if (Is_mbag(otmp)) {
                     otmp.otyp = SACK; otmp.spe = 0; otmp.owt = weight(otmp);
                 } else {
                     while (otmp.otyp === WAN_CANCELLATION)
@@ -1709,20 +2038,47 @@ function mksobj_init(otmp, artif) {
             }
             blessorcurse(otmp, 10);
             break;
+        case SLIME_MOLD:
+            // C ref: mkobj.c:942 — a random slime mold is the CURRENT fruit
+            // (spe indexes the fruit-name chain) and flags.made_fruit records
+            // that one exists.  Without this a generated slime mold had spe 0,
+            // which objnam.c formats as "bad fruit #0".
+            otmp.spe = game.context?.current_fruit ?? 0;
+            if (game.flags) game.flags.made_fruit = true;
+            break;
         case KELP_FROND:
             otmp.quan = rnd(2);
             break;
         case CANDY_BAR:
+            // C ref: read.c assign_candy_wrapper() — 1 + rn2(SIZE-1); the
+            // candy_wrappers[] table has 13 entries and skips index 0.
             otmp.spe = 1 + rn2(12);
             break;
         default:
             break;
         }
-        if (otmp.otyp !== CORPSE && otmp.otyp !== MEAT_RING
-            && otmp.otyp !== KELP_FROND && !rn2(6))
+        // C ref: mkobj.c:955 — the pudding globs are their OWN arm and the
+        // quan==2 roll below is the ELSE of it.  A glob keeps quantity 1, gets
+        // its weight from oc_weight directly, is born dknown/known (to maximise
+        // merging), takes a corpsenm from its otyp, and starts a SHRINK_GLOB
+        // timer -- which draws rn2(5).  Falling through to the else-branch
+        // instead drew rn2(6), so every glob desynced the whole call stream.
+        if (Is_pudding(otmp)) {
+            otmp.globby = 1;
+            otmp.quan = 1;
+            otmp.owt = base_oc_weight(otmp);
+            otmp.known = otmp.dknown = 1;
+            const gray_ooze = PM('gray ooze');
+            if (gray_ooze >= 0)
+                otmp.corpsenm = gray_ooze + (otmp.otyp - GLOB_OF_GRAY_OOZE);
+            start_glob_timeout(otmp, 0);
+        } else if (otmp.otyp !== CORPSE && otmp.otyp !== MEAT_RING
+                   && otmp.otyp !== KELP_FROND && !rn2(6)) {
             otmp.quan = 2;
+        }
         break;
     case GEM_CLASS:
+        otmp.corpsenm = 0; /* LOADSTONE hack (C ref: mkobj.c:975) */
         if (otmp.otyp === LOADSTONE) curse(otmp);
         else if (otmp.otyp === ROCK) otmp.quan = rn1(6, 6);
         else if (otmp.otyp !== LUCKSTONE && !rn2(6)) otmp.quan = 2;
@@ -1733,6 +2089,10 @@ function mksobj_init(otmp, artif) {
         case TALLOW_CANDLE:
         case WAX_CANDLE:
             otmp.spe = 1;
+            // C ref: mkobj.c:990 — `age = 20L * oc_cost` (400 turns for a
+            // tallow candle at cost 20, 200 for wax at 10): how long it burns.
+            otmp.age = 20 * base_oc_cost(otmp.otyp);
+            otmp.lamplit = 0;
             otmp.quan = 1 + (rn2(2) ? rn2(7) : 0);
             blessorcurse(otmp, 5);
             break;
@@ -1871,8 +2231,11 @@ function mksobj_init(otmp, artif) {
     case ROCK_CLASS:
         if (otmp.otyp === STATUE) {
             otmp.corpsenm = rndmonnum();
-            const ptr = monster_by_pmidx(otmp.corpsenm);
-            if (ptr?.verysmall !== true
+            // C ref: mondata.h verysmall(ptr) == (ptr->msize < MZ_SMALL), i.e.
+            // MZ_TINY only.  The old `ptr?.verysmall !== true` read a field the
+            // monster records do not have, so it answered TRUE for every
+            // species and a tiny monster's statue could hold a spellbook.
+            if (!(mon_msize(otmp.corpsenm) < MZ_SMALL)
                 && rn2(Math.trunc(level_difficulty() / 2) + 10) > 10)
                 add_to_container(otmp, mkobj(SPBOOK_no_NOVEL, false));
         }
@@ -1926,23 +2289,45 @@ export function mksobj(otyp, init = true, artif = false) {
         corpsenm: null,
     };
     otmp.o_id = next_ident();
-    // C ref: mkobj.c:1192 unknow_object() -> clear_dknown(obj):
-    //   obj->dknown = strchr(dknowns, obj->oclass) ? 0 : 1;
-    //   ... also 0 for the elven/orcish shields and any oc_merge type.
-    // Without this every fresh object had dknown === undefined, which doname()
-    // reads as "known", so a BLIND hero named the appearance of things it had
-    // never seen ("a brilliant blue potion" where C prints "a potion").
-    clear_dknown(otmp);
+    // C ref: mkobj.c:1192 `unknow_object(otmp)` — "set up dknown and known:
+    // non-0 for some things".  clear_dknown() alone left `known` undefined,
+    // which reads as 0 for every otyp; C sets it to 1 whenever the type does
+    // NOT use the flag (oc_uses_known == 0), and invent.c merged() compares
+    // obj->known between two stacks for the types that DO use it.
+    unknow_object(otmp);
     if (init) mksobj_init(otmp, artif);
 
     switch ((otmp.oclass === POTION_CLASS && otmp.otyp !== POT_OIL) ? POT_WATER : otmp.otyp) {
     case CORPSE:
+        // C ref: mkobj.c:1204 — a corpse created with init == FALSE still needs
+        // a species: rndmonnum() run through undead_to_corpse(), and if that
+        // species can't leave a corpse (or has been genocided/gone extinct) the
+        // hero's own role-monster corpse is used instead.  The old code shared
+        // the STATUE/FIGURINE line below, which skipped BOTH the
+        // undead_to_corpse mapping and the G_NOCORPSE|G_GONE fallback.
+        if (otmp.corpsenm == null || otmp.corpsenm === NON_PM) {
+            otmp.corpsenm = undead_to_corpse(rndmonnum());
+            if (mon_nocorpse(otmp.corpsenm) || (mvitals_flags(otmp.corpsenm) & G_GONE))
+                otmp.corpsenm = urole_mnum();
+        }
+        /* FALLTHROUGH */
     case STATUE:
     case FIGURINE:
-        if (otmp.corpsenm == null)
+        if (otmp.corpsenm == null || otmp.corpsenm === NON_PM)
             otmp.corpsenm = rndmonnum();
-        if (otmp.corpsenm != null)
+        if (otmp.corpsenm != null && otmp.corpsenm !== NON_PM)
             otmp.spe = mkcorpstat_spe(otmp.corpsenm);
+        /* FALLTHROUGH — C ref: mkobj.c:1224 falls into `case EGG:` */
+        set_corpsenm(otmp, otmp.corpsenm);
+        break;
+    case BOULDER:
+        // C ref: mkobj.c:1231 — next_boulder overloads corpsenm, whose default
+        // is NON_PM (non-zero), so xname() would take its "next boulder" arm
+        // unless this is cleared explicitly.
+        otmp.next_boulder = 0;
+        break;
+    case LEASH:
+        otmp.leashmon = 0;   /* also overloads corpsenm (C ref: mkobj.c:1241) */
         break;
     case EGG:
         // C ref: mkobj.c mksobj() — the CORPSE/STATUE case falls through into
@@ -1955,7 +2340,10 @@ export function mksobj(otyp, init = true, artif = false) {
         set_corpsenm(otmp, otmp.corpsenm);
         break;
     case POT_OIL:
-        otmp.age = 400;
+        otmp.age = MAX_OIL_IN_FLASK; /* amount of oil */
+        /* FALLTHROUGH */
+    case POT_WATER: /* POTION_CLASS */
+        otmp.fromsink = 0;   /* overloads corpsenm (C ref: mkobj.c:1240) */
         break;
     case SPE_NOVEL:
         // C ref: mkobj.c:1246-1249 — novelidx starts at "none of the above" and
@@ -1966,8 +2354,10 @@ export function mksobj(otyp, init = true, artif = false) {
     default:
         break;
     }
-    if (otmp.otyp === CORPSE && otmp.corpsenm != null)
-        start_corpse_timeout(otmp);
+    // C ref: mkobj.c:1227 — start_corpse_timeout() is reached THROUGH
+    // set_corpsenm() in the CORPSE/STATUE/FIGURINE/EGG fall-through above, not
+    // as a separate step; calling it twice would restart the rot timer with a
+    // second rnz() draw.
     otmp.owt = weight(otmp);
     return otmp;
 }
@@ -2012,6 +2402,17 @@ export function mkcorpstat(objtype, mtmp, pm, x, y, corpstatflags = 0) {
 
     otmp.spe = corpstatflags & CORPSTAT_SPE_VAL;
     otmp.norevive = !!game.mkcorpstat_norevive;
+
+    // C ref: mkobj.c:2091 — when 'mtmp' is given, its whole monster record is
+    // saved into the corpse/statue's oextra so a revival (or a statue-to-
+    // monster) restores THAT monster (its level, HP, tameness, given name),
+    // and it forces the corpse type.  A cancelled non-Rider corpse gets
+    // norevive set so a cancelled troll stays dead.
+    if (mtmp) {
+        save_mtraits(otmp, mtmp);
+        if (mtmp.mcan && !is_rider_pm(mtmp.data?.pmidx ?? mtmp.mnum))
+            otmp.norevive = true;
+    }
 
     if (mtmp && pm == null)
         pm = mtmp.data?.pmidx ?? mtmp.mnum ?? null;
@@ -2096,4 +2497,998 @@ export function mkgold(amount, x, y) {
     }
     gold.owt = weight(gold);
     return gold;
+}
+
+/* ------------------------------------------------------------------------- *
+ *  mkobj.c, part 2 — the oextra side-tables, the object lists (floor pile,
+ *  migration, burial, containers), the on-ice corpse timers, glob shrinking
+ *  and merging, object teardown, and the wizard-mode sanity checks.
+ *
+ *  This port keeps floor objects in one flat game.level.objects array where
+ *  the LAST entry matching (x,y) is the head of C's nexthere chain, keeps a
+ *  container's contents in obj.cobj, a monster's in mon.minvent, and the
+ *  hero's in game.invent.  The C list-surgery routines below are written
+ *  against that model rather than against nobj/nexthere pointers, so they
+ *  are the real thing (callable, with C's side effects) and not dead code.
+ * ------------------------------------------------------------------------- */
+
+/* ---- oextra ------------------------------------------------------------- */
+
+// C ref: mkobj.c init_oextra(oex) — `*oex = zerooextra`.
+export function init_oextra(oex) {
+    if (!oex) return oex;
+    oex.oname = null;
+    oex.omonst = null;
+    oex.omid = 0;
+    oex.omailcmd = null;
+    return oex;
+}
+
+// C ref: mkobj.c newoextra() — allocate a zeroed oextra.
+export function newoextra() {
+    return init_oextra({});
+}
+
+// C ref: mkobj.c OMID(obj) / has_omid(obj) accessors (obj.h).  const.js already
+// exports ONAME/has_oname/OMONST; these are the rest of the set.
+export function OMID(obj) { return obj?.oextra?.omid || 0; }
+export function has_omid(obj) { return !!(obj?.oextra && obj.oextra.omid); }
+export function has_omonst(obj) { return !!(obj?.oextra && obj.oextra.omonst); }
+export function OMAILCMD(obj) { return obj?.oextra?.omailcmd || null; }
+export function has_omailcmd(obj) { return !!(obj?.oextra && obj.oextra.omailcmd); }
+
+// C ref: mkobj.c newomonst(otmp) — attach a zeroed monst record to the object.
+export function newomonst(otmp) {
+    if (!otmp) return;
+    if (!otmp.oextra) otmp.oextra = newoextra();
+    if (!otmp.oextra.omonst) otmp.oextra.omonst = {};
+}
+
+// C ref: mkobj.c free_omonst(otmp).
+export function free_omonst(otmp) {
+    if (otmp?.oextra) otmp.oextra.omonst = null;
+}
+
+// C ref: mkobj.c newomid(otmp) — OMID(otmp) = 0 (and allocate oextra first).
+export function newomid(otmp) {
+    if (!otmp) return;
+    if (!otmp.oextra) otmp.oextra = newoextra();
+    otmp.oextra.omid = 0;
+}
+
+// C ref: mkobj.c free_omid(otmp) — OMID(otmp) = 0.
+export function free_omid(otmp) {
+    if (otmp?.oextra) otmp.oextra.omid = 0;
+}
+
+// C ref: mkobj.c new_omailcmd(otmp, response_cmd) — the scroll of mail's
+// "respond with this command" string.
+export function new_omailcmd(otmp, response_cmd) {
+    if (!otmp) return;
+    if (!otmp.oextra) otmp.oextra = newoextra();
+    if (otmp.oextra.omailcmd) free_omailcmd(otmp);
+    otmp.oextra.omailcmd = String(response_cmd ?? '');
+}
+
+// C ref: mkobj.c free_omailcmd(otmp).
+export function free_omailcmd(otmp) {
+    if (otmp?.oextra && otmp.oextra.omailcmd) otmp.oextra.omailcmd = null;
+}
+
+// C ref: mkobj.c dealloc_oextra(o) — release oname/omonst/omailcmd and the
+// oextra itself.  do_name.js also reads obj.oname directly, so clear both.
+export function dealloc_oextra(o) {
+    if (!o?.oextra) return;
+    if (o.oextra.omonst) free_omonst(o);
+    o.oextra.oname = null;
+    o.oextra.omailcmd = null;
+    o.oextra = null;
+    o.oname = null;
+}
+
+// C ref: mkobj.c copy_oextra(obj2, obj1) — obj2 inherits obj1's name, saved
+// monster traits, mail command and m_id association.  Used by splitobj() and
+// bill_dummy_object(); the `OMONST(obj2)->m_id = next_ident()` line is #if 0 in
+// C, so the copy shares the original's m_id and draws NO rnd(2).
+export function copy_oextra(obj2, obj1) {
+    if (!obj2 || !obj1 || !obj1.oextra) return;
+    if (!obj2.oextra) obj2.oextra = newoextra();
+    if (has_oname(obj1)) {
+        obj2.oextra.oname = ONAME(obj1);
+        obj2.oname = obj2.oextra.oname;      /* ONAME_SKIP_INVUPD */
+    }
+    if (has_omonst(obj1)) {
+        if (!obj2.oextra.omonst) newomonst(obj2);
+        obj2.oextra.omonst = { ...OMONST(obj1) };
+        obj2.oextra.omonst.mextra = null;
+        obj2.oextra.omonst.nmon = null;
+        if (OMONST(obj1).mextra)
+            obj2.oextra.omonst.mextra = { ...OMONST(obj1).mextra }; /* copy_mextra */
+    }
+    if (has_omailcmd(obj1)) new_omailcmd(obj2, OMAILCMD(obj1));
+    if (has_omid(obj1)) {
+        if (!obj2.oextra.omid) newomid(obj2);
+        obj2.oextra.omid = OMID(obj1);
+    }
+}
+
+// C ref: mkobj.c obj_attach_mid(obj, mid) — lasting object<->monster link.
+export function obj_attach_mid(obj, mid) {
+    if (!mid || !obj) return null;
+    newomid(obj);
+    obj.oextra.omid = mid;
+    return obj;
+}
+
+// C ref: mkobj.c save_mtraits(obj, mtmp) — stash the dead monster's record in
+// the corpse/statue so a revival restores the SAME monster (level, HP, tameness,
+// name) rather than a fresh one of that species.  Pointers are invalidated and
+// mhpmax is forced high enough for the revived monster to survive.
+export function save_mtraits(obj, mtmp) {
+    if (!obj || !mtmp) return obj;
+    if (!has_omonst(obj)) newomonst(obj);
+    if (has_omonst(obj)) {
+        const baselevel = mtmp.data?.mlevel | 0;
+        const m2 = { ...mtmp };
+        m2.mextra = mtmp.mextra ? { ...mtmp.mextra } : null; /* copy_mextra */
+        m2.mnum = (mtmp.data?.pmidx ?? mtmp.mnum ?? NON_PM);
+        /* invalidate pointers; m_id is kept (revived quest leader check) */
+        m2.nmon = null;
+        m2.data = null;
+        m2.minvent = [];
+        m2.mw = null;                          /* MON_NOWEP */
+        m2.wormno = 0;
+        if ((m2.mhpmax | 0) <= baselevel) m2.mhpmax = baselevel + 1;
+        if ((m2.mhp | 0) > m2.mhpmax) m2.mhp = m2.mhpmax;
+        if ((m2.mhp | 0) < 1) m2.mhp = 0;
+        obj.oextra.omonst = m2;
+    }
+    return obj;
+}
+
+// C ref: mkobj.c get_mtraits(obj, copyof) — the saved monster record, with
+// ->data resolved from ->mnum.  copyof=FALSE returns the stored object itself
+// (never insert that into a monster chain).
+export function get_mtraits(obj, copyof) {
+    const mtmp = has_omonst(obj) ? OMONST(obj) : null;
+    if (!mtmp) return null;
+    let mnew = mtmp;
+    if (copyof) {
+        mnew = { ...mtmp };
+        mnew.mextra = mtmp.mextra ? { ...mtmp.mextra } : null;
+    }
+    mnew.data = monster_by_pmidx(mnew.mnum);
+    return mnew;
+}
+
+// C ref: mkobj.c corpse_revive_type(obj) — a vampire's human corpse revives as
+// the vampire, so the saved traits override obj->corpsenm.
+export function corpse_revive_type(obj) {
+    let revivetype = obj?.corpsenm;
+    if (has_omonst(obj)) {
+        const mtmp = get_mtraits(obj, false);
+        if (mtmp) revivetype = mtmp.mnum;
+    }
+    return revivetype;
+}
+
+/* ---- object lists ------------------------------------------------------- */
+
+// C ref: mkobj.c extract_nobj(obj, head_ptr) — unlink from a nobj chain and
+// mark the object free.  `list` is this port's array standing in for the chain.
+export function extract_nobj(obj, list) {
+    if (!obj) return;
+    if (Array.isArray(list)) {
+        const ix = list.indexOf(obj);
+        if (ix >= 0) list.splice(ix, 1);
+    }
+    obj.where = OBJ_FREE;
+}
+
+// C ref: mkobj.c extract_nexthere(obj, head_ptr) — unlink from a tile's pile
+// chain.  Deliberately does NOT set obj->where (extract_nobj does that); in
+// this port the pile and the fobj chain are the same array, so removing the
+// entry once covers both and remove_object() does the where update.
+export function extract_nexthere(obj, list) {
+    if (!obj) return;
+    if (Array.isArray(list)) {
+        const ix = list.indexOf(obj);
+        if (ix >= 0) list.splice(ix, 1);
+    }
+    obj.nexthere = null;
+}
+
+// C ref: mkobj.c remove_object(otmp) — take a floor object off the tile pile
+// and the level's object chain, re-checking boulder vision and ice timers.
+export function remove_object(otmp) {
+    if (!otmp) return;
+    const x = otmp.ox, y = otmp.oy;
+    const objs = game.level?.objects;
+    extract_nexthere(otmp, objs);
+    extract_nobj(otmp, null);         /* the pile IS the fobj array here */
+    otmp.where = OBJ_FREE;
+    // C: `if (otmp->otyp == BOULDER) recalc_block_point(x, y)` — vision.js is
+    // not importable from this module (cycle); the port's boulder movers
+    // (cmd.js moverock, dig.js, dbridge.js) already do this at their call sites.
+    if (otmp.timed) obj_timer_checks(otmp, x, y, 0);
+}
+
+// C ref: mkobj.c add_to_migration(obj) — obj travels with the hero to another
+// level.  no_charge only means anything inside a shop, and a container being
+// migrated invalidates any lock-picking context aimed at it.
+export function add_to_migration(obj) {
+    if (!obj) return;
+    obj.no_charge = 0;
+    if (Is_container(obj.otyp) && game.context?.lock?.box === obj)
+        game.context.lock = null;              /* maybe_reset_pick(obj) */
+    obj.where = OBJ_MIGRATING;
+    if (!Array.isArray(game.migrating_objs)) game.migrating_objs = [];
+    game.migrating_objs.push(obj);
+    obj.omigr_from_dnum = game.u?.uz?.dnum ?? 0;
+    obj.omigr_from_dlevel = game.u?.uz?.dlevel ?? 0;
+}
+
+// C ref: mkobj.c add_to_buried(obj) — obj joins this level's buried list.
+export function add_to_buried(obj) {
+    if (!obj || !game.level) return;
+    obj.where = OBJ_BURIED;
+    if (!Array.isArray(game.level.buriedobjlist)) game.level.buriedobjlist = [];
+    game.level.buriedobjlist.push(obj);
+}
+
+// C ref: mkobj.c mksobj_migr_to_species(otyp, mflags2, init, artif) — extra
+// orctown loot, created straight onto the migration list with the destination
+// encoded in the overloaded owornmask field.  MIGR_TO_SPECIES == 10 (dungeon.h).
+export function mksobj_migr_to_species(otyp, mflags2, init, artif) {
+    const otmp = mksobj(otyp, init, artif);
+    add_to_migration(otmp);
+    otmp.owornmask = 10;                       /* MIGR_TO_SPECIES */
+    otmp.migr_species = mflags2;
+    return otmp;
+}
+
+// C ref: mkobj.c replace_object(obj, otmp) — an in-place swap: otmp takes over
+// obj's slot in whatever list obj is on, keeping the ORDER (which is why C
+// avoids obj_extract_self here).
+export function replace_object(obj, otmp) {
+    if (!obj || !otmp) return;
+    otmp.where = obj.where;
+    const swapIn = (list) => {
+        if (!Array.isArray(list)) return;
+        const ix = list.indexOf(obj);
+        if (ix >= 0) list.splice(ix, 1, otmp);
+    };
+    switch (obj.where) {
+    case OBJ_FREE:
+        break;
+    case 'invent': case OBJ_INVENT:
+        swapIn(game.invent);
+        break;
+    case 'contained': case OBJ_CONTAINED:
+        otmp.ocontainer = obj.ocontainer;
+        swapIn(obj.ocontainer?.cobj);
+        break;
+    case 'minvent': case OBJ_MINVENT:
+        otmp.ocarry = obj.ocarry;
+        swapIn(obj.ocarry?.minvent);
+        break;
+    case 'floor': case OBJ_FLOOR:
+        otmp.ox = obj.ox; otmp.oy = obj.oy;
+        swapIn(game.level?.objects);
+        break;
+    default:
+        break;
+    }
+    obj.where = OBJ_FREE;
+}
+
+// C ref: mkobj.c recreate_pile_at(x, y) — tear the tile's pile down and rebuild
+// it in the same order so place_object()'s boulder rule forces every boulder to
+// the top.  Called after a boulder is created under existing objects.
+export function recreate_pile_at(x, y) {
+    const objs = game.level?.objects;
+    if (!Array.isArray(objs)) return;
+    /* C walks the nexthere chain top-down into `reversed`, i.e. bottom-up. */
+    const pile = [];
+    for (const o of objs)
+        if (o.where === 'floor' && o.ox === x && o.oy === y) pile.push(o);
+    for (const o of pile) remove_object(o);
+    for (const o of pile) place_object(o, x, y);
+}
+
+// C ref: mkobj.c obj_extract_self(obj) — unlink obj from whatever list holds it.
+// The floor case is remove_object(); this port's invent.js owns freeinv() and
+// re-exports its own obj_extract_self for hero inventory, so the arms here
+// cover the lists mkobj.c itself maintains.
+export function obj_extract_self_mkobj(obj) {
+    if (!obj) return;
+    switch (obj.where) {
+    case OBJ_FREE: case OBJ_LUAFREE: case OBJ_DELETED:
+        break;
+    case 'floor': case OBJ_FLOOR:
+        remove_object(obj);
+        break;
+    case 'contained': case OBJ_CONTAINED: {
+        const c = obj.ocontainer;
+        extract_nobj(obj, c?.cobj);
+        if (c) container_weight(c);
+        obj.ocontainer = null;
+        break;
+    }
+    case 'invent': case OBJ_INVENT:
+        extract_nobj(obj, game.invent);
+        break;
+    case 'minvent': case OBJ_MINVENT:
+        extract_nobj(obj, obj.ocarry?.minvent);
+        obj.ocarry = null;
+        break;
+    case OBJ_MIGRATING:
+        extract_nobj(obj, game.migrating_objs);
+        break;
+    case OBJ_BURIED:
+        extract_nobj(obj, game.level?.buriedobjlist);
+        break;
+    case OBJ_ONBILL:
+        extract_nobj(obj, game.billobjs);
+        break;
+    default:
+        obj.where = OBJ_FREE;
+        break;
+    }
+}
+
+// C ref: mkobj.c dealloc_obj(obj) — mark an object for deletion.  C stages it on
+// go.objs_deleted and dobjsfree() releases it later; the staging matters because
+// the object must stop being the thrown/kicked/tinning target and must lose its
+// timers and light source FIRST.
+export function dealloc_obj(obj) {
+    if (!obj) return;
+    if (obj.otyp === BOULDER) obj.next_boulder = 0;
+    if (obj.where === OBJ_DELETED) return;     /* impossible() in C */
+    // C ref: mkobj.c:2755 — `panic("dealloc_obj: obj not free")`.  Callers must
+    // obj_extract_self() first; record the violation rather than aborting.
+    if (obj.where !== OBJ_FREE && obj.where !== OBJ_LUAFREE)
+        insane_object(obj, 'ofmt0', 'dealloc_obj: obj not free', null);
+    if (obj.timed) obj_stop_timers(obj);
+    if (obj.lamplit) obj.lamplit = 0;          /* del_light_source() */
+    if (game.thrownobj === obj) game.thrownobj = null;
+    if (game.gk_kickedobj === obj) game.gk_kickedobj = null;
+    if (game.context?.tin?.tin === obj) {
+        game.context.tin.tin = null;
+        game.context.tin.o_id = 0;
+    }
+    // C: inline clear_splitobjs() — obj is no longer eligible for unsplitobj().
+    const sp = game.context?.objsplit;
+    if (sp && (obj.o_id === sp.parent_oid || obj.o_id === sp.child_oid))
+        sp.parent_oid = sp.child_oid = 0;
+    obj.where = OBJ_DELETED;
+    if (!Array.isArray(game.objs_deleted)) game.objs_deleted = [];
+    game.objs_deleted.push(obj);
+}
+
+// C ref: mkobj.c dealloc_obj_real(obj) — release the oextra and zero the record
+// so a use-after-free shows up as an object-lost panic rather than stale data.
+export function dealloc_obj_real(obj) {
+    if (!obj) return;
+    if (obj.oextra) dealloc_oextra(obj);
+    obj.o_id = 0;
+    obj.otyp = STRANGE_OBJECT;
+    obj.quan = 0;
+    obj.where = OBJ_FREE;
+    obj.dealloc = true;
+}
+
+// C ref: mkobj.c dobjsfree() — free everything queued by dealloc_obj().
+export function dobjsfree() {
+    const q = game.objs_deleted;
+    if (!Array.isArray(q)) return;
+    while (q.length) {
+        const otmp = q.shift();
+        if (otmp.where !== OBJ_DELETED) continue;   /* panic() in C */
+        // C ref: mkobj.c:2838 — obj_extract_self() here is a safety net; the
+        // object's `where` is OBJ_DELETED so it no-ops.  dealloc_obj() panics
+        // unless the caller already unlinked the object, so do NOT rewrite
+        // `where` to OBJ_FREE first: that would make the net silently miss a
+        // still-linked object instead of leaving it detectable.
+        obj_extract_self_mkobj(otmp);
+        dealloc_obj_real(otmp);
+    }
+}
+
+// C ref: mkobj.c discard_minvent(mtmp, uncreate_artifacts) — throw away a
+// monster's whole inventory (a monster leaving the game, not dying, so nothing
+// drops).  `uncreate_artifacts` releases the artifact-exists reservation so the
+// artifact can be generated again.
+export function discard_minvent(mtmp, uncreate_artifacts) {
+    if (!mtmp) return;
+    const inv = mtmp.minvent;
+    if (!Array.isArray(inv)) { mtmp.minvent = []; return; }
+    while (inv.length) {
+        const otmp = inv[0];
+        inv.splice(0, 1);
+        otmp.where = OBJ_FREE;
+        otmp.ocarry = null;
+        otmp.owornmask = 0;
+        if (uncreate_artifacts && otmp.oartifact) {
+            const reg = game.artifact_exists;
+            if (reg) delete reg[otmp.oartifact];
+        }
+        dealloc_obj(otmp);                     /* obfree() in C */
+    }
+}
+
+/* ---- on-ice corpses ----------------------------------------------------- */
+
+// C ref: dbridge.c is_ice(x, y).  Local so this module stays free of the
+// dbridge.js -> mkobj.js import cycle.
+function is_ice_at(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    return loc.typ === ICE
+        || (loc.typ === DRAWBRIDGE_UP
+            && ((loc.drawbridgemask | 0) & DB_UNDER) === DB_ICE);
+}
+
+// C ref: mkobj.c item_on_ice(item) — SET_ON_ICE / BURIED_UNDER_ICE / NOT_ON_ICE
+// for `item` or, if it is contained, for its outermost container.
+export const NOT_ON_ICE = 0, SET_ON_ICE = 1, BURIED_UNDER_ICE = 2;
+export function item_on_ice(item) {
+    let otmp = item;
+    while (otmp && (otmp.where === 'contained' || otmp.where === OBJ_CONTAINED))
+        otmp = otmp.ocontainer;
+    if (!otmp) return NOT_ON_ICE;
+    const ox = otmp.ox, oy = otmp.oy;
+    if (otmp.where === 'floor' || otmp.where === OBJ_FLOOR) {
+        if (is_ice_at(ox, oy)) return SET_ON_ICE;
+    } else if (otmp.where === OBJ_BURIED) {
+        if (is_ice_at(ox, oy)) return BURIED_UNDER_ICE;
+    }
+    return NOT_ON_ICE;
+}
+
+/* C ref: mkobj.c ROT_ICE_ADJUSTMENT — rotting on ice takes twice as long. */
+const ROT_ICE_ADJUSTMENT = 2;
+
+// C ref: mkobj.c peek_at_iced_corpse_age(otmp) — the obj->age a corpse WOULD
+// have if it were lifted off the ice right now, so callers (dogfood(), eat.c's
+// freshness tests) can compare against moves without stopping the rot timer.
+export function peek_at_iced_corpse_age(otmp) {
+    let retval = otmp?.age | 0;
+    if (otmp && otmp.otyp === CORPSE && otmp.on_ice) {
+        const age = (game.moves ?? 0) - (otmp.age | 0);
+        retval += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
+    }
+    return retval;
+}
+
+// C ref: mkobj.c obj_timer_checks(otmp, x, y, force) — a corpse placed on ice
+// has its rot/revive timer stretched (and its age back-dated so peeking at it
+// is the exact inverse); coming off ice undoes both.  force<0 forces the
+// off-ice branch.
+export function obj_timer_checks(otmp, x, y, force) {
+    if (!otmp) return;
+    let tleft = 0;
+    let action = ROT_CORPSE;
+    let restart_timer = false;
+    const on_floor = (otmp.where === 'floor' || otmp.where === OBJ_FLOOR);
+    const buried = (otmp.where === OBJ_BURIED);
+
+    if (otmp.otyp === CORPSE && (on_floor || buried) && is_ice_at(x, y)) {
+        tleft = stop_object_timer(otmp, action);
+        if (tleft === 0) {
+            action = REVIVE_MON;
+            tleft = stop_object_timer(otmp, action);
+        }
+        if (tleft !== 0) {
+            otmp.on_ice = 1;
+            tleft *= ROT_ICE_ADJUSTMENT;
+            restart_timer = true;
+            const age = (game.moves ?? 0) - (otmp.age | 0);
+            otmp.age = (game.moves ?? 0) - (age * ROT_ICE_ADJUSTMENT);
+        }
+    } else if (force < 0
+               || (otmp.otyp === CORPSE && otmp.on_ice
+                   && !((on_floor || buried) && is_ice_at(x, y)))) {
+        tleft = stop_object_timer(otmp, action);
+        if (tleft === 0) {
+            action = REVIVE_MON;
+            tleft = stop_object_timer(otmp, action);
+        }
+        if (tleft !== 0) {
+            otmp.on_ice = 0;
+            tleft = Math.trunc(tleft / ROT_ICE_ADJUSTMENT);
+            restart_timer = true;
+            const age = (game.moves ?? 0) - (otmp.age | 0);
+            otmp.age = (otmp.age | 0)
+                + Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
+        }
+    }
+    if (restart_timer) start_timer(tleft, TIMER_OBJECT, action, otmp);
+}
+
+// C ref: mkobj.c obj_ice_effects(x, y, do_buried) — re-run the ice checks for
+// every timed object at (x,y) after the terrain there froze or melted.
+export function obj_ice_effects(x, y, do_buried) {
+    for (const otmp of (game.level?.objects || []))
+        if (otmp.where === 'floor' && otmp.ox === x && otmp.oy === y && otmp.timed)
+            obj_timer_checks(otmp, x, y, 0);
+    if (do_buried) {
+        for (const otmp of (game.level?.buriedobjlist || []))
+            if (otmp.ox === x && otmp.oy === y && otmp.timed)
+                obj_timer_checks(otmp, x, y, 0);
+    }
+}
+
+/* ---- globs -------------------------------------------------------------- */
+
+const LOWEST_GLOB = GLOB_OF_GRAY_OOZE, HIGHEST_GLOB = GLOB_OF_BLACK_PUDDING;
+
+// C ref: mkobj.c start_glob_timeout(obj, when) — a glob loses 1 unit of weight
+// every ~25 turns.  when==0 rolls 25+rn2(5)-2 (23..27), which is the ONLY RNG
+// in the glob machinery besides obj_meld's tie-break rn2(2).
+export function start_glob_timeout(obj, when) {
+    if (!obj?.globby) return;
+    if (obj.timed) stop_object_timer(obj, SHRINK_GLOB);
+    let w = when | 0;
+    if (w < 1) w = 25 + rn2(5) - 2;
+    start_timer(w, TIMER_OBJECT, SHRINK_GLOB, obj);
+}
+
+// C ref: mkobj.c check_glob(obj, mesg) — sanity check for an object whose
+// globby flag is set.
+export function check_glob(obj, mesg) {
+    if (!obj) return;
+    if ((obj.quan || 1) !== 1 || !obj.owt
+        || obj.otyp < LOWEST_GLOB || obj.otyp > HIGHEST_GLOB)
+        insane_object(obj, 'ofmt0', ` glob ${obj.otyp},quan=${obj.quan},owt=${obj.owt} ${mesg}`,
+                      (obj.where === OBJ_MINVENT || obj.where === 'minvent') ? obj.ocarry : null);
+}
+
+// C ref: mkobj.c shrinking_glob_gone(obj) — the glob shrank to nothing; take it
+// off whatever list holds it and delete it.
+export function shrinking_glob_gone(obj) {
+    if (!obj) return;
+    const owhere = obj.where;
+    if (owhere === OBJ_MIGRATING) obj.owornmask = 0;
+    obj_extract_self_mkobj(obj);
+    dealloc_obj(obj);                          /* obfree() in C */
+}
+
+// C ref: mkobj.c shrink_glob(arg, expire_time) — the SHRINK_GLOB timer.  Catches
+// up for turns spent on another level, skips shrinking while on/under ice or
+// while being eaten, then removes one unit of weight (and one unit of remaining
+// nutrition when partly eaten), rescheduling or deleting the glob.
+export function shrink_glob(obj, expire_time) {
+    if (!obj?.globby) return;
+    check_glob(obj, 'shrink obj ');
+    const moves = game.moves ?? 0;
+    const globloc = item_on_ice(obj);
+    const contnr = (obj.where === 'contained' || obj.where === OBJ_CONTAINED)
+        ? obj.ocontainer : null;
+
+    if (expire_time < moves && globloc !== BURIED_UNDER_ICE) {
+        let delta = Math.trunc((moves - expire_time + 24) / 25);
+        const moddelta = 25 - (delta % 25);
+        if (globloc === SET_ON_ICE) delta = Math.trunc((delta + 2) / 3);
+        if (delta >= (obj.owt | 0)) {
+            obj.owt = 0;
+            shrinking_glob_gone(obj);
+        } else {
+            obj.owt = (obj.owt | 0) - delta;
+            if (contnr) container_weight(contnr);
+            start_glob_timeout(obj, moddelta);
+        }
+        return;
+    }
+
+    if (globloc === BURIED_UNDER_ICE
+        || (globloc === SET_ON_ICE && (moves % 3) === 1)) {
+        start_glob_timeout(obj, 0);
+        return;
+    }
+
+    if ((obj.owt | 0) > 0) {
+        obj.owt = (obj.owt | 0) - 1;
+        if ((obj.oeaten | 0) > 1) obj.oeaten = (obj.oeaten | 0) - 1;
+    }
+    if (!obj.owt) shrinking_glob_gone(obj);
+    else {
+        if (contnr) container_weight(contnr);
+        start_glob_timeout(obj, 0);
+    }
+}
+
+// C ref: mkobj.c obj_nexto(otmp) — "is there a mergeable twin next to me?"
+export function obj_nexto(otmp) {
+    if (!otmp) return null;
+    return obj_nexto_xy(otmp, otmp.ox, otmp.oy, true);
+}
+
+// C ref: mkobj.c obj_nexto_xy(obj, x, y, recurs) — look for a mergeable object
+// of obj's type under (x,y) first, then in the 8 surrounding squares scanned in
+// a RANDOM order: two rn2(2) rolls pick the scan direction, and those two draws
+// happen whether or not anything is found.
+export function obj_nexto_xy(obj, x, y, recurs) {
+    if (!obj) return null;
+    const otyp = obj.otyp;
+    for (const otmp of (game.level?.objects || []))
+        if (otmp !== obj && otmp.where === 'floor' && otmp.ox === x && otmp.oy === y
+            && otmp.otyp === otyp && mergable_glob(otmp, obj))
+            return otmp;
+    if (!recurs) return null;
+    const dx = rn2(2) ? -1 : 1;
+    const dy = rn2(2) ? -1 : 1;
+    const ex = x - dx, ey = y - dy;
+    for (let fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
+        for (let fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
+            if (isok(fx, fy) && (fx !== x || fy !== y)) {
+                const otmp = obj_nexto_xy(obj, fx, fy, false);
+                if (otmp) return otmp;
+            }
+        }
+    }
+    return null;
+}
+
+// C ref: invent.c mergable(otmp, obj) reduced to the glob case: globs of the
+// same type always merge (that is why they keep dknown set).
+function mergable_glob(otmp, obj) {
+    if (!otmp || !obj || otmp.otyp !== obj.otyp) return false;
+    if (obj.globby) return true;
+    return otmp.oclass === obj.oclass && !otmp.oeaten === !obj.oeaten
+        && !!otmp.cursed === !!obj.cursed && !!otmp.blessed === !!obj.blessed
+        && (otmp.spe | 0) === (obj.spe | 0);
+}
+
+// C ref: mkobj.c obj_absorb(obj1, obj2) — obj1 swallows obj2: weights add,
+// quantity stays 1, ages are averaged by weight, and the two shrink timers are
+// averaged into a new one.  obj2 is deleted.  Returns obj1.
+export function obj_absorb(o1ref, o2ref) {
+    const otmp1 = o1ref?.obj, otmp2 = o2ref?.obj;
+    if (!otmp1 || !otmp2 || otmp1 === otmp2) return null;
+    if (!!otmp1.bknown !== !!otmp2.bknown) otmp1.bknown = otmp2.bknown = 0;
+    if (!!otmp1.rknown !== !!otmp2.rknown) otmp1.rknown = otmp2.rknown = 0;
+    if (!!otmp1.greased !== !!otmp2.greased) otmp1.greased = otmp2.greased = 0;
+    if (otmp1.orotten || otmp2.orotten) otmp1.orotten = otmp2.orotten = 1;
+    const o1wt = otmp1.oeaten ? otmp1.oeaten : (otmp1.owt | 0);
+    const o2wt = otmp2.oeaten ? otmp2.oeaten : (otmp2.owt | 0);
+    const moves = game.moves ?? 0;
+    const agetmp = Math.trunc(((moves - (otmp1.age | 0)) * o1wt
+                               + (moves - (otmp2.age | 0)) * o2wt) / (o1wt + o2wt));
+    otmp1.age = moves - agetmp;
+    otmp1.owt = (otmp1.owt | 0) + o2wt;
+    if (otmp1.oeaten || otmp2.oeaten) otmp1.oeaten = o1wt + o2wt;
+    otmp1.quan = 1;
+    if (otmp1.globby && otmp2.globby) {
+        let tm1 = stop_object_timer(otmp1, SHRINK_GLOB);
+        const tm2 = stop_object_timer(otmp2, SHRINK_GLOB);
+        tm1 = Math.trunc(((tm1 || 25) + (tm2 || 25) + 1) / 2);
+        start_glob_timeout(otmp1, tm1);
+    }
+    obj_extract_self_mkobj(otmp2);
+    dealloc_obj(otmp2);
+    o2ref.obj = null;
+    return otmp1;
+}
+
+// C ref: mkobj.c obj_meld(obj1, obj2) — the heavier glob absorbs the lighter
+// one, except that a floor glob always wins against a free (being-dropped) one.
+// The equal-weight tie-break is rn2(2).
+export function obj_meld(o1ref, o2ref) {
+    const otmp1 = o1ref?.obj, otmp2 = o2ref?.obj;
+    if (!otmp1 || !otmp2 || otmp1 === otmp2) return null;
+    const isfloor = (o) => o.where === 'floor' || o.where === OBJ_FLOOR;
+    const isfree = (o) => o.where === OBJ_FREE;
+    if (!(isfloor(otmp2) && isfree(otmp1))
+        && ((otmp1.owt | 0) > (otmp2.owt | 0)
+            || ((otmp1.owt | 0) === (otmp2.owt | 0) && rn2(2))))
+        return obj_absorb(o1ref, o2ref);
+    return obj_absorb(o2ref, o1ref);
+}
+
+/* ---- name / knowledge -------------------------------------------------- */
+
+// C ref: mkobj.c unknow_object(obj) — the hero loses everything it knew about
+// this object (an unseen monster picked it up or used it).
+export function unknow_object(obj) {
+    if (!obj) return;
+    clear_dknown(obj);
+    obj.bknown = obj.rknown = 0;
+    obj.cknown = obj.lknown = 0;
+    obj.tknown = 0;
+    obj.known = objects[obj.otyp]?.oc_uses_known ? 0 : 1;
+}
+
+// C ref: mkobj.c unknwn_contnr_contents(obj) — the OUTERMOST enclosing
+// container whose contents the hero has not seen, or null.
+export function unknwn_contnr_contents(obj) {
+    let result = null, o = obj;
+    while (o && (o.where === 'contained' || o.where === OBJ_CONTAINED)) {
+        const parent = o.ocontainer;
+        if (!parent) break;
+        if (!parent.cknown) result = parent;
+        o = parent;
+    }
+    return result;
+}
+
+// C ref: mkobj.c nextoid(oldobj, newobj) — pick an o_id for a split stack that
+// keeps the same o_id-based shop price adjustment, then advance context.ident.
+// oid_price_adjustment() is shk.js's; with no shop price in play the do-loop
+// exits on its first pass, so this is `ident-1 + 1` followed by next_ident().
+export function nextoid(oldobj, newobj) {
+    let oid = (game.context_ident ?? 2) - 1;
+    ++oid;
+    if (!oid) ++oid;
+    game.context_ident = oid;
+    next_ident();
+    return oid;
+}
+
+// C ref: mkobj.c bill_dummy_object(otmp) — a shop object is about to be altered,
+// so put a copy of the ORIGINAL on the bill.  The copy gets a fresh o_id from
+// nextoid() (which spends next_ident()'s rnd(2)), inherits the oextra but never
+// the m_id association, and is never worn or timed.
+export function bill_dummy_object(otmp) {
+    if (!otmp) return;
+    const dummy = { ...otmp };
+    dummy.oextra = null;
+    dummy.where = OBJ_FREE;
+    dummy.o_id = nextoid(otmp, dummy);
+    dummy.timed = 0;
+    delete dummy.timer;
+    copy_oextra(dummy, otmp);
+    if (has_omid(dummy)) free_omid(dummy);
+    dummy.owornmask = 0;
+    if (!Array.isArray(game.billobjs)) game.billobjs = [];
+    dummy.where = OBJ_ONBILL;
+    game.billobjs.push(dummy);                 /* addtobill() */
+    otmp.no_charge = (otmp.where === 'floor' || otmp.where === OBJ_FLOOR
+                      || otmp.where === 'contained' || otmp.where === OBJ_CONTAINED)
+        ? 1 : 0;
+    otmp.unpaid = 0;
+}
+
+/* ---- misc object queries ----------------------------------------------- */
+
+/* C ref: mkobj.c treefruits[] — APPLE, ORANGE, PEAR, BANANA, EUCALYPTUS_LEAF. */
+const TREEFRUITS = [277, 278, 279, 281, 276];
+
+// C ref: mkobj.c rnd_treefruit_at(x, y) — what a kicked tree drops.
+export function rnd_treefruit_at(x, y) {
+    return mksobj_at(TREEFRUITS[rn2(TREEFRUITS.length)], x, y, true, false);
+}
+
+// C ref: mkobj.c is_treefruit(otmp) — for describing objects embedded in trees.
+export function is_treefruit(otmp) {
+    return !!otmp && TREEFRUITS.includes(otmp.otyp);
+}
+
+// C ref: mkobj.c stone_object_type(mappearance) — mimic shapes that stone-to-
+// flesh should undo.  Wands, rings and gems are deliberately excluded.
+export function stone_object_type(mappearance) {
+    const otyp = mappearance | 0;
+    return otyp === BOULDER || otyp === STATUE || otyp === FIGURINE;
+}
+
+// C ref: mkobj.c stone_furniture_type(mappearance) — for FURNITURE the
+// mappearance is a DISPLAY SYMBOL (a cmap index), not a terrain type: the two
+// staircases, both branch staircases, altar, throne, sink, and every wall.
+// defsym.h cmap order (S_vwall == 1 ... S_trwall == 11, S_upstair == 20 ...).
+const S_vwall = 1, S_trwall = 11;
+const S_upstair = 20, S_dnstair = 21, S_brupstair = 22, S_brdnstair = 23;
+const S_altar = 30, S_throne = 31, S_sink = 32;
+export function stone_furniture_type(mappearance) {
+    const sym = mappearance | 0;
+    switch (sym) {
+    case S_upstair: case S_dnstair:
+    case S_brupstair: case S_brdnstair:
+    case S_altar: case S_throne: case S_sink:
+        return true;
+    default:
+        return sym >= S_vwall && sym <= S_trwall;
+    }
+}
+
+// C ref: mkobj.c fixup_oil(potion, source) — potions of oil use obj->age as
+// "amount of burn time remaining" while every other potion uses it as "turn
+// created", so any otyp change into or out of POT_OIL has to translate.
+export function fixup_oil(potion, source) {
+    if (!potion) return;
+    if (potion.otyp === POT_OIL) {
+        if (source && source.otyp === POT_OIL) potion.age = source.age;
+        else potion.age = MAX_OIL_IN_FLASK;
+    } else if (source && source.otyp === POT_OIL) {
+        if (potion.age === source.age) potion.age = game.moves ?? 0;
+        if (source.age < MAX_OIL_IN_FLASK) potion.odiluted = 1;
+    }
+}
+
+// C ref: mkobj.c mk_named_object(objtype, ptr, x, y, nm) — a corpse or statue of
+// `ptr`, named `nm`.  A statue is created uninitialized (no books inside).
+export function mk_named_object(objtype, ptr, x, y, nm) {
+    const corpstatflags = (objtype !== STATUE) ? CORPSTAT_INIT : 0;
+    const otmp = mkcorpstat(objtype, null, ptr, x, y, corpstatflags);
+    if (nm && otmp) {
+        if (!otmp.oextra) otmp.oextra = newoextra();
+        otmp.oextra.oname = nm;
+        otmp.oname = nm;
+    }
+    return otmp;
+}
+
+// C ref: mkobj.c init_dummyobj(obj, otyp, oquan) — the throwaway obj used when
+// a stethoscope is applied at a mimic pretending to be an object.  `known` is
+// suppressed except for amulets, and corpsenm is NON_PM so no statue/figurine
+// details leak (with the LEASH / BOULDER / SLIME_MOLD overload exceptions).
+export function init_dummyobj(obj, otyp, oquan) {
+    if (!obj) return obj;
+    for (const k of Object.keys(obj)) delete obj[k];
+    obj.otyp = otyp;
+    obj.oclass = objects[otyp]?.oclass ?? 0;
+    obj.known = (obj.oclass === AMULET_CLASS)
+        ? (obj.known ? 1 : 0)
+        : (objects[otyp]?.oc_uses_known ? 0 : 1);
+    obj.quan = oquan || 1;
+    obj.corpsenm = NON_PM;
+    if (obj.otyp === LEASH) obj.leashmon = 0;
+    if (obj.otyp === BOULDER) obj.next_boulder = 0;
+    if (obj.otyp === SLIME_MOLD) obj.spe = game.context?.current_fruit ?? 0;
+    return obj;
+}
+
+/* ---- wizard-mode sanity checks ----------------------------------------- */
+
+/* C ref: obj.h NOBJ_STATES names, used by insane_object()'s feedback. */
+const OBJ_STATE_NAMES = ['free', 'floor', 'contained', 'invent',
+                         'minvent', 'migrating', 'buried', 'onbill',
+                         'luafree', 'deleted'];
+
+// C ref: mkobj.c where_name(obj).
+export function where_name(obj) {
+    if (!obj) return 'nowhere';
+    const w = obj.where;
+    if (typeof w === 'string' && OBJ_STATE_NAMES.includes(w)) return w;
+    const i = w | 0;
+    if (i < 0 || i >= OBJ_STATE_NAMES.length) return `unknown[${w}]`;
+    return OBJ_STATE_NAMES[i];
+}
+
+// C ref: mkobj.c nomerge_exception(obj) — mines/Sokoban prize objects legally
+// carry the nomerge flag until the hero picks them up.
+export function nomerge_exception(obj) {
+    return !!(obj && (obj.mines_prize || obj.soko_prize));
+}
+
+// C ref: mkobj.c insane_object(obj, fmt, mesg, mon) — report a sanity failure
+// via impossible().  Recorded here rather than plined: impossible() writes three
+// toplines and none of the sanity checks fire in a consistent game, so raising
+// them as toplines would be strictly worse than logging them.
+export function insane_object(obj, fmt, mesg, mon) {
+    if (!Array.isArray(game._insane_objects)) game._insane_objects = [];
+    game._insane_objects.push({ mesg, where: where_name(obj), otyp: obj?.otyp,
+                                mon: mon?.m_id ?? null });
+}
+
+// C ref: mkobj.c insane_obj_bits(obj, mon) — in_use / bypass / nomerge /
+// next_boulder should all be clear between commands.
+export function insane_obj_bits(obj, mon) {
+    if (!obj || obj.where === OBJ_DELETED) return;
+    const o_in_use = !!obj.in_use;
+    const o_bypass = !!obj.bypass;
+    const o_nomerge = !!(obj.nomerge && !nomerge_exception(obj));
+    const o_boulder = (obj.otyp === BOULDER && !!obj.next_boulder);
+    if (o_in_use || o_bypass || o_nomerge || o_boulder)
+        insane_object(obj, 'ofmt0',
+            `flagged${o_in_use ? ' in_use' : ''}${o_bypass ? ' bypass' : ''}`
+            + `${o_nomerge ? ' nomerge' : ''}${o_boulder ? ' nxtbldr' : ''}`, mon);
+}
+
+// C ref: mkobj.c check_contained(container, mesg) — every object inside
+// `container` must be OBJ_CONTAINED and point back at it; recurse into nested
+// containers, and panic on a container cycle.
+export function check_contained(container, mesg) {
+    if (!Has_contents(container)) return;
+    let m = mesg;
+    if (!String(m).includes('contained')) m = `contained ${m}`;
+    for (const obj of (container.cobj || [])) {
+        if (obj === container) return;         /* panic() in C */
+        if (obj.where !== 'contained' && obj.where !== OBJ_CONTAINED)
+            insane_object(obj, 'ofmt0', m, null);
+        else if (obj.ocontainer !== container)
+            insane_object(obj, 'ofmt0', `${m} wrong container`, null);
+        if (obj.globby) check_glob(obj, m);
+        if (Has_contents(obj)) {
+            if (obj.cobj === container.cobj) return;
+            check_contained(obj, `nested ${m}`);
+        }
+    }
+}
+
+// C ref: mkobj.c sanity_check_worn(obj) — only meaningful with the development
+// wearbits[] table; the release build compiles it out entirely
+// (NH_DEVEL_STATUS == NH_STATUS_RELEASED and DEBUG undefined), and the recorder
+// binary is a release build, so this is a no-op there too.
+export function sanity_check_worn(_obj) { }
+
+// C ref: mkobj.c objlist_sanity(objlist, wheretype, mesg).
+export function objlist_sanity(objlist, wheretype, mesg) {
+    for (const obj of (objlist || [])) {
+        if (obj.where !== wheretype) insane_object(obj, 'ofmt0', mesg, null);
+        if (obj.globby) check_glob(obj, mesg);
+        if (Has_contents(obj)) check_contained(obj, mesg);
+        if (obj.owornmask) sanity_check_worn(obj);
+        insane_obj_bits(obj, null);
+    }
+}
+
+// C ref: mkobj.c shop_obj_sanity(obj, mesg) — unpaid/no_charge bookkeeping is
+// shk.js's; the where-consistency half is checked here.
+export function shop_obj_sanity(obj, mesg) {
+    if (!obj) return;
+    if (obj.unpaid && obj.no_charge)
+        insane_object(obj, 'ofmt0', `${mesg} unpaid and no_charge`, null);
+}
+
+// C ref: mkobj.c mon_obj_sanity(monlist, mesg).
+export function mon_obj_sanity(monlist, mesg) {
+    for (const mon of (monlist || [])) {
+        for (const obj of (mon.minvent || [])) {
+            if (obj.where !== 'minvent' && obj.where !== OBJ_MINVENT)
+                insane_object(obj, 'mfmt1', mesg, mon);
+            else if (obj.ocarry !== mon)
+                insane_object(obj, 'mfmt2', mesg, mon);
+            if (obj.globby) check_glob(obj, mesg);
+            if (Has_contents(obj)) check_contained(obj, mesg);
+            if (obj.owornmask) sanity_check_worn(obj);
+            insane_obj_bits(obj, mon);
+        }
+    }
+}
+
+// C ref: mkobj.c obj_sanity_check() — walk every object list the game owns.
+export function obj_sanity_check() {
+    game._insane_objects = [];
+    objlist_sanity(game.level?.objects, 'floor', 'floor sanity');
+    objlist_sanity(game.invent, 'invent', 'invent sanity');
+    objlist_sanity(game.migrating_objs, OBJ_MIGRATING, 'migrating sanity');
+    objlist_sanity(game.level?.buriedobjlist, OBJ_BURIED, 'buried sanity');
+    objlist_sanity(game.billobjs, OBJ_ONBILL, 'bill sanity');
+    mon_obj_sanity(game.level?.monsters, 'minvent sanity');
+    for (const obj of (game.level?.objects || [])) shop_obj_sanity(obj, 'shop sanity');
+    return game._insane_objects;
+}
+
+/* ---- horn of plenty ---------------------------------------------------- */
+
+// C ref: mkobj.c hornoplenty(horn, tipping, targetbox) — mirrors bagotricks():
+// spend a charge, then 1-in-13 a random non-magic potion (magic ones are
+// re-rolled into the booze..water range, never sickness, with fixup_oil for
+// oil) and otherwise a random comestible (a food ration becomes a lump of royal
+// jelly 1-in-7).  The new item inherits the horn's bless/curse state.
+// RNG order: consume_obj_charge, rn2(13), mkobj(class), [rnd_class loop | rn2(7)].
+// Returns the created object plus the message the caller must print, so the
+// (async) drop/put-in-container half stays with the caller in apply.js.
+export function hornoplenty(horn) {
+    if (!horn || horn.otyp !== HORN_OF_PLENTY) return null;
+    let obj, what;
+    if (!rn2(13)) {
+        obj = mkobj(POTION_CLASS, false);
+        if (objects[obj.otyp]?.oc_magic) {
+            do {
+                obj.otyp = rnd_class(POT_BOOZE, POT_WATER);
+            } while (obj.otyp === POT_SICKNESS);
+            if (obj.otyp === POT_OIL) fixup_oil(obj, null);
+        }
+        what = (obj.quan > 1) ? 'Some potions' : 'A potion';
+    } else {
+        obj = mkobj(FOOD_CLASS, false);
+        if (obj.otyp === FOOD_RATION && !rn2(7)) obj.otyp = LUMP_OF_ROYAL_JELLY;
+        what = 'Some food';
+    }
+    obj.blessed = horn.blessed;
+    obj.cursed = horn.cursed;
+    obj.owt = weight(obj);
+    return { obj, what };
 }

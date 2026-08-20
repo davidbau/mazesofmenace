@@ -412,3 +412,100 @@ export async function wiz_identify() {
     game.iflags.override_ID = 0;
     return ECMD_OK;
 }
+
+/** C dest_area memset 0 — updest/dndest are not inside the level struct. */
+function zero_dest_area() {
+    return {
+        lx: 0, ly: 0, hx: 0, hy: 0,
+        nlx: 0, nly: 0, nhx: 0, nhy: 0,
+    };
+}
+
+/**
+ * C ref: cmd.c makemap_prepost — discard (pre) then place (post) after
+ * #wizmakemap mklev. Post places via u_on_rndspot
+ * ((amulet?1:0)|(wiztower?2:0)) (D-1288; C :1043–1046) instead of
+ * safe_teleds, then losedogs / kill_genocided / u_collide_m / initrack /
+ * Punished placebc / docrt / flush / splev / check_special_room(FALSE).
+ * Named omissions: makemap_remove_mons / rm_mapseen / mine·soko prize;
+ * maybe_reset_pick; digging memset; polearm.hitmon; dmonsfree/dobjsfree;
+ * savelev freeing nhfile; INSURANCE save_currentstate;
+ * sp_lev.c lspo_reset_level / lspo_finalize_level.
+ */
+export async function makemap_prepost(pre, wiztower) {
+    const u = game.u || (game.u = {});
+    if (pre) {
+        const { ballrelease, unplacebc } = await import('./ball.js');
+        const { reset_utrap } = await import('./trap.js');
+        const { check_special_room, set_uinwater } = await import('./hack.js');
+        // C: Punished ≡ uball != 0
+        if (u.uball) {
+            await ballrelease(false);
+            unplacebc();
+        }
+        if (!game.iflags) game.iflags = {};
+        if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+        game.iflags.travelcc.x = 0;
+        game.iflags.travelcc.y = 0;
+        reset_utrap(false);
+        await check_special_room(true);
+        game.dndest = zero_dest_area();
+        game.updest = zero_dest_area();
+        u.ustuck = null;
+        u.uswallow = 0;
+        u.uswldtim = 0;
+        await set_uinwater(0);
+        u.uundetected = 0;
+        return;
+    }
+
+    const { vision_reset } = await import('./vision.js');
+    const { cls, flush_screen } = await import('./display.js');
+    const { u_on_rndspot } = await import('./mklev.js');
+    const { losedogs } = await import('./dog.js');
+    const { m_at, kill_genocided_monsters } = await import('./mon.js');
+    const { u_collide_m, deliver_splev_message } = await import('./do.js');
+    const { initrack } = await import('./track.js');
+    const { unplacebc, placebc } = await import('./ball.js');
+    const { check_special_room } = await import('./hack.js');
+
+    vision_reset();
+    game.vision_full_recalc = 1;
+    await cls();
+    /* C cmd.c:1043–1046 — was using safe_teleds; honor arrival region. */
+    const amulet = !!(u.uhave?.amulet || u.uhave_amulet);
+    await u_on_rndspot((amulet ? 1 : 0) | (wiztower ? 2 : 0));
+    await losedogs();
+    kill_genocided_monsters();
+    const mtmp = m_at(u.ux, u.uy);
+    if (mtmp) await u_collide_m(mtmp);
+    initrack();
+    if (u.uball) {
+        unplacebc();
+        placebc();
+    }
+    await docrt();
+    await flush_screen(1);
+    await deliver_splev_message();
+    await check_special_room(false);
+}
+
+/**
+ * C ref: wizcmds.c wiz_makemap — #wizmakemap recreate current level.
+ * wizard → In_W_tower snapshot, makemap_prepost(TRUE), mklev,
+ * makemap_prepost(FALSE). Else unavailcmd (generic "You can't do that.").
+ */
+export async function wiz_makemap() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline("You can't do that.");
+        return ECMD_OK;
+    }
+    const { In_W_tower } = await import('./dungeon.js');
+    const { mklev } = await import('./mklev.js');
+    const u = game.u || {};
+    const was_in_W_tower = In_W_tower(u.ux | 0, u.uy | 0, u.uz);
+    await makemap_prepost(true, was_in_W_tower);
+    await mklev();
+    await makemap_prepost(false, was_in_W_tower);
+    return ECMD_OK;
+}

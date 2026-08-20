@@ -9,6 +9,11 @@ import {
     AUTOUNLOCK_UNTRAP,
     CLR_MAX,
     DISCLOSE_PROMPT_DEFAULT_NO,
+    DISCLOSE_PROMPT_DEFAULT_YES,
+    DISCLOSE_PROMPT_DEFAULT_SPECIAL,
+    DISCLOSE_SPECIAL_WITHOUT_PROMPT,
+    DISCLOSE_NO_WITHOUT_PROMPT,
+    DISCLOSE_YES_WITHOUT_PROMPT,
     EXT_ENCUMBER,
     GFILTER_AREA,
     GFILTER_NONE,
@@ -286,23 +291,22 @@ const SOURCE_SYMBOL_NAMES = new Set((
     + '|s_vwall|s_wand|s_water|s_weapon|s_web|s_worm|s_worm_tail'
     + '|s_wraith|s_xan|s_xorn|s_yeti|s_zombie|s_zruty'
 ).split('|'));
-const OPTION_ALIASES = Object.freeze({
-    character: 'role',
-    align: 'alignment',
-    altkeyhandler: 'altkeyhandling',
-    permablind: 'blind',
-    permadeaf: 'deaf',
-    colour: 'color',
-    customcolours: 'customcolors',
-    pet: 'pettype',
-    prayconfirm: 'paranoid_confirmation',
-    termcolumns: 'term_cols',
-    use_menu_glyphs: 'menu_objsyms',
-    use_truecolour: 'use_truecolor',
-    male: 'male',
-});
-// options.c's exact "male" alias stays distinct so applyBooleanOption() can
-// invert its value rather than treating it as an ordinary spelling of female.
+// C ref: options.c parseoptions()'s alias loop over allopt[].alias.  The
+// generated metadata is the sole owner of ordinary aliases; a self-alias can
+// never reach C's alias loop because the canonical-name loop matched first.
+// "male" stays distinct from its female row so applyBooleanOption() can invert
+// it using the original spelling, as options.c's opt_female arm does.
+const OPTION_ALIASES = Object.freeze(Object.fromEntries(
+    Object.entries(optionParserMetadata).flatMap(([canonical, { alias }]) => (
+        !alias || alias === canonical
+            ? [] : [[alias, alias === 'male' ? 'male' : canonical]]
+    )),
+));
+
+export function optionAliasTarget(alias) {
+    return Object.hasOwn(OPTION_ALIASES, alias)
+        ? OPTION_ALIASES[alias] : null;
+}
 
 const ROLEPLAY_FIELDS = Object.freeze([
     'blind',
@@ -515,6 +519,14 @@ function trimCWhitespace(value) {
 // and '\t' and nothing else, unlike trimCWhitespace() above.
 function trimspacesTrailing(value) {
     return String(value).replace(/[ \t]+$/u, '');
+}
+
+// botl.c parse_status_hl2() ignores trimspaces()'s returned pointer after
+// copying a title threshold.  When that buffer is all blanks, trimspaces()
+// advances its local pointer to NUL and its trailing loop changes nothing.
+function trimspacesIgnoredReturn(value) {
+    const text = String(value);
+    return /^[ \t]*$/u.test(text) ? text : trimspacesTrailing(text);
 }
 
 function trimspaces(value) {
@@ -1387,8 +1399,10 @@ const STATUS_CONDITION_ALIASES = Object.freeze({
 });
 
 // C ref: botl.c parse_status_hl1()'s MAX_THRESH, the group count one
-// hilite_status statement can hold, and splitsubfields()'s MAX_SUBFIELDS.
+// hilite_status statement can hold; botl.h's MAXVALWIDTH, the fixed storage
+// for a text-match threshold; and splitsubfields()'s MAX_SUBFIELDS.
 const MAX_THRESH = 21;
+const MAXVALWIDTH = 80;
 const MAX_SUBFIELDS = 16;
 
 function statusHiliteFieldName(rawName) {
@@ -1551,12 +1565,19 @@ function str2conditionbitmask(result, str) {
 //
 // Index MAX_THRESH is not inside it.  parse_status_hl1()'s `fldnum++` on '/'
 // is unguarded and its loop only stops once fldnum has already reached
-// MAX_THRESH, so hsbuf[20] is the last entry ever written; a statement that
-// fills every group then leaves parse_status_hl2()'s `while (s[sidx][0])` and
-// parse_condition()'s reading hsbuf[21], one past the end of the array.  This
-// port answers the empty string there instead, which ends the group loop.
-function statusHiliteField(s, index) {
-    return s[index] ?? '';
+// MAX_THRESH, so hsbuf[20] is the last entry ever written.  The pinned C
+// binary then reads changing stack garbage when a parser actually asks for
+// hsbuf[21].  The port preserves every in-range write, but makes that access a
+// deterministic configuration error and propagates the failure immediately.
+const STATUS_HILITE_BOUNDARY_ERROR = Symbol('statusHiliteBoundaryError');
+
+function statusHiliteField(result, s, index, boundaryMessage) {
+    if (index < s.length) return s[index] ?? '';
+    if (!s[STATUS_HILITE_BOUNDARY_ERROR]) {
+        s[STATUS_HILITE_BOUNDARY_ERROR] = true;
+        configErrorAdd(result, boundaryMessage);
+    }
+    return '';
 }
 
 // One accepted or partly accepted condition group, standing for the
@@ -1582,20 +1603,23 @@ function parse_condition(result, s, fieldIndex) {
     let sidx = fieldIndex + 1;
     let coloridx = NO_COLOR;
     let accepted = false; /* C's `result` */
+    const fieldAt = (index) => statusHiliteField(
+        result, s, index, "Unknown condition ''",
+    );
 
-    if (!statusHiliteField(s, sidx)) {
+    if (!fieldAt(sidx)) {
         configErrorAdd(result, 'Missing condition(s)');
         return false;
     }
-    while (statusHiliteField(s, sidx)) {
+    while (fieldAt(sidx)) {
         const conditions = str2conditionbitmask(
-            result, statusHiliteField(s, sidx),
+            result, fieldAt(sidx),
         );
         if (!conditions) return false;
 
         /* actions */
         sidx += 1;
-        const how = statusHiliteField(s, sidx);
+        const how = fieldAt(sidx);
         if (!how) {
             configErrorAdd(result, 'Missing color+attribute');
             return false;
@@ -1651,7 +1675,7 @@ function parse_condition(result, s, fieldIndex) {
         accepted = true;
         sidx += 1;
     }
-    return accepted;
+    return s[STATUS_HILITE_BOUNDARY_ERROR] ? false : accepted;
 }
 
 // C ref: botl.c is_ltgt_percentnumber() (2649-2669), the
@@ -1686,7 +1710,10 @@ function has_ltgt_percentnumber(str) {
 // on its third group keeps the two groups before it.
 function parse_status_hl2(result, s) {
     let sidx = 0;
-    const field = statusHiliteFieldName(statusHiliteField(s, sidx));
+    const fieldAt = (index) => statusHiliteField(
+        result, s, index, "Unknown behavior ''",
+    );
+    const field = statusHiliteFieldName(fieldAt(sidx));
 
     if (field === 'characteristics') {
         // C rewrites s[0] in place and re-enters once per characteristic, so
@@ -1699,7 +1726,7 @@ function parse_status_hl2(result, s) {
     }
     if (!field) {
         configErrorAdd(
-            result, `Unknown status field '${statusHiliteField(s, sidx)}'`,
+            result, `Unknown status field '${fieldAt(sidx)}'`,
         );
         return false;
     }
@@ -1716,8 +1743,8 @@ function parse_status_hl2(result, s) {
     let successes = 0;
 
     sidx += 1;
-    while (statusHiliteField(s, sidx)) {
-        const threshold = statusHiliteField(s, sidx);
+    while (fieldAt(sidx)) {
+        const threshold = fieldAt(sidx);
         const numericThreshold = is_ltgt_percentnumber(threshold);
         let text = '';
         let percent = false;
@@ -1734,13 +1761,14 @@ function parse_status_hl2(result, s) {
         let txtval = false;
         let value = null;
 
-        if (!statusHiliteField(s, sidx + 1) || threshold === 'always') {
+        const nextField = fieldAt(sidx + 1);
+        if (!nextField || threshold === 'always') {
             /* "field/always/color" OR "field/color" */
             always = true;
             // The short spelling steps back so that the action is read out of
             // this same slot, which is why an even number of groups ends as an
             // "always" rule rather than as an error.
-            if (!statusHiliteField(s, sidx + 1)) sidx -= 1;
+            if (!nextField) sidx -= 1;
         } else if (threshold === 'up' || threshold === 'down') {
             // "LT/GT for the string fields is pointless; treat 'up' or 'down'
             // for string fields as 'changed' rather than rejecting them".
@@ -1842,9 +1870,8 @@ function parse_status_hl2(result, s) {
         sidx += 1;
         // C ref: botl.c:3013-3016.  Its `if (!how)` tests an array element
         // that is never null, so the `successes` arm below it is unreachable.
-        const style = parseStatusHiliteAction(
-            result, statusHiliteField(s, sidx),
-        );
+        const action = fieldAt(sidx);
+        const style = parseStatusHiliteAction(result, action);
         if (!style) return false;
 
         // C ref: botl.c:3068-3089, hilite.behavior.  Its closing BL_TH_NONE is
@@ -1862,16 +1889,21 @@ function parse_status_hl2(result, s) {
             behavior,
             relation,
             value,
-            // C copies txt into hilite.textmatch for BL_TH_TEXTMATCH only and
-            // then trimspaces() it; the blanks can only come from a title.
-            text: behavior === 'text' ? trimspaces(text) : '',
+            // C copies txt into hilite.textmatch[MAXVALWIDTH], terminates its
+            // last byte, then ignores trimspaces()'s returned pointer.  The
+            // buffer therefore keeps leading blanks but loses trailing ones.
+            text: behavior === 'text'
+                ? trimspacesIgnoredReturn(
+                    truncateByteString(text, MAXVALWIDTH - 1),
+                )
+                : '',
             style,
         });
         successes += 1;
         sidx += 1;
     }
 
-    return successes > 0;
+    return s[STATUS_HILITE_BOUNDARY_ERROR] ? false : successes > 0;
 }
 
 // C ref: botl.c parse_status_hl1() (2591-2647).  It cuts one hilite_status
@@ -1880,43 +1912,54 @@ function parse_status_hl2(result, s) {
 // that fails abandons the rest of the value, and the default highlight
 // duration is stored only when none failed.
 function parse_status_hl1(result, op) {
-    const hsbuf = new Array(MAX_THRESH).fill('');
+    // `op` is a char pointer in C.  Its component limit and pointer walk are
+    // byte-based, including a cut through the middle of a UTF-8 sequence.
+    // Keep the groups as bytes until parse_status_hl2() reads them so the
+    // repository's reversible decoder preserves such a cut.
+    const opBytes = encodeUtf8ByteString(op);
+    const hsbufBytes = Array.from({ length: MAX_THRESH }, () => []);
     let badopt = false;
     let fldnum = 0;
     let ccount = 0;
     let index = 0;
 
-    while (index < op.length && fldnum < MAX_THRESH && ccount < QBUFSZ - 2) {
-        const c = lowc(op[index]);
-        if (c === ' ') {
+    const parsedFields = () => hsbufBytes.map(decodeUtf8ByteString);
+    const parseFields = () => parse_status_hl2(result, parsedFields());
+    while (index < opBytes.length
+           && fldnum < MAX_THRESH && ccount < QBUFSZ - 2) {
+        const sourceByte = opBytes[index];
+        const c = sourceByte >= 0x41 && sourceByte <= 0x5A
+            ? sourceByte | 0x20 : sourceByte;
+        if (c === 0x20) {
             if (fldnum >= 1) {
-                if (fldnum === 1 && hsbuf[0] === 'title') {
+                if (fldnum === 1
+                    && decodeUtf8ByteString(hsbufBytes[0]) === 'title') {
                     /* spaces are allowed in title */
-                    hsbuf[fldnum] += c;
+                    hsbufBytes[fldnum].push(c);
                     ccount += 1;
                     index += 1;
                     continue;
                 }
-                if (!parse_status_hl2(result, hsbuf)) {
+                if (!parseFields()) {
                     badopt = true;
                     break;
                 }
             }
-            hsbuf.fill('');
+            for (const field of hsbufBytes) field.length = 0;
             fldnum = 0;
             ccount = 0;
-        } else if (c === '/') {
+        } else if (c === 0x2F) {
             fldnum += 1;
             ccount = 0;
         } else {
-            hsbuf[fldnum] += c;
+            hsbufBytes[fldnum].push(c);
             ccount += 1;
         }
         index += 1;
     }
     // fldnum counts the '/' separators seen, so a value carrying none is
     // accepted without parse_status_hl2() ever running.
-    if (fldnum >= 1 && !badopt && !parse_status_hl2(result, hsbuf)) {
+    if (fldnum >= 1 && !badopt && !parseFields()) {
         badopt = true;
     }
     if (badopt) return false;
@@ -2765,7 +2808,7 @@ function optfn_msghistory(result, statement, negated) {
 // is converted back to uint32; in particular, paranoia[]'s ~0 "all" row is
 // 0xFFFFFFFF rather than JavaScript's signed -1.
 function optfn_paranoid_confirmation(
-    result, value, negated, usingPrayconfirmAlias,
+    result, value, optionNegated, usingPrayconfirmAlias,
 ) {
     let op = value ?? '';
 
@@ -2777,19 +2820,20 @@ function optfn_paranoid_confirmation(
         if (op !== '') {
             configErrorAdd(
                 result,
-                `deprecated ${negated ? '!' : ''}prayconfirm option takes no`
-                    + ` parameters (found '${op}')`,
+                `deprecated ${optionNegated ? '!' : ''}`
+                    + 'prayconfirm option takes no parameters '
+                    + `(found '${op}')`,
             );
             return;
         }
         configErrorAdd(
             result,
-            `${negated ? '!' : ''}prayconfirm option is deprecated; switching`
-                + ` to paranoid_confirmation:${negated ? '-' : '+'}pray`,
+            `${optionNegated ? '!' : ''}`
+                + 'prayconfirm option is deprecated; switching to '
+                + `paranoid_confirmation:${optionNegated ? '-' : '+'}pray`,
         );
-        op = `${negated ? '-' : '+'}pray`;
-        negated = false;
-    } else if (negated) {
+        op = `${optionNegated ? '-' : '+'}pray`;
+    } else if (optionNegated) {
         if (op === '') {
             result.flags.paranoia_bits = 0;
             return;
@@ -2808,12 +2852,16 @@ function optfn_paranoid_confirmation(
 
     op = mungspaces(op);
     let plusOrMinus = false;
+    // options.c says "context is changed" here: optionNegated described the
+    // leading '!' on the compound option, while listNegated describes the '-'
+    // modifier that applies to every token in its value.
+    let listNegated = false;
     let index = 0;
     if (op[0] !== '+' && op[0] !== '-') {
         result.flags.paranoia_bits = 0;
     } else {
         plusOrMinus = true;
-        negated = op[0] === '-';
+        listNegated = op[0] === '-';
         index = 1;
         if (op[index] === ' ') ++index;
     }
@@ -2857,7 +2905,7 @@ function optfn_paranoid_confirmation(
         const [mask] = matched;
         if (mask === 0) {
             if (!plusOrMinus) result.flags.paranoia_bits = 0;
-        } else if (negated || fieldNegated) {
+        } else if (listNegated || fieldNegated) {
             result.flags.paranoia_bits = (
                 result.flags.paranoia_bits & ~mask
             ) >>> 0;
@@ -3192,6 +3240,76 @@ function parseSymbolAssignments(value, lineNumber) {
 // `aliasState` carries options.c's `using_alias` static across the elements of
 // one configuration-file line; complain_about_duplicate() above states how far
 // it reaches and why this parser cannot keep it in a local.
+//
+// C ref: options.c optfn_disclose() (1442-1560), the do_set request during
+// configuration-file parsing.  `flags.end_disclose` is the sole copy of this
+// option: the existing get_val formatter below reads the same six bytes for
+// the #optionsfull value column.
+function optfn_disclose(result, statement, negated) {
+    const op = string_for_opt(statement, true);
+    if (op !== '' && negated) {
+        bad_negation(result, 'disclose');
+        return;
+    }
+
+    const isAll = op.length === 3 && equal_ncasechars(op, 'all', 3);
+    const isNone = op.length === 4 && equal_ncasechars(op, 'none', 4);
+    // A bare disclose asks each question with Yes preselected; a bare
+    // negation, or "none", suppresses every question without asking.
+    if (op === '' || isAll || isNone) {
+        if (isNone) negated = true;
+        result.flags.end_disclose.fill(
+            negated ? DISCLOSE_NO_WITHOUT_PROMPT
+                : DISCLOSE_PROMPT_DEFAULT_YES,
+        );
+        return;
+    }
+
+    let num = 0;
+    let prefixVal = null;
+    const validSettings = new Set([
+        DISCLOSE_PROMPT_DEFAULT_YES,
+        DISCLOSE_PROMPT_DEFAULT_NO,
+        DISCLOSE_PROMPT_DEFAULT_SPECIAL,
+        DISCLOSE_YES_WITHOUT_PROMPT,
+        DISCLOSE_NO_WITHOUT_PROMPT,
+        DISCLOSE_SPECIAL_WITHOUT_PROMPT,
+    ]);
+    // C's source declares `num` for this bound but never increments it.  Keep
+    // that exact fixed-array condition: every byte before the terminating NUL
+    // is parsed, including one beyond the six disclosure categories.
+    for (let index = 0; index < op.length
+        && num < NUM_DISCLOSURE_OPTIONS; ++index) {
+        let c = lowc(op[index]);
+        if (c === 'k') c = 'v'; // killed -> vanquished
+        if (c === 'd') c = 'o'; // dungeon -> overview
+        const disclosureIndex = disclosure_options.indexOf(c);
+        if (disclosureIndex >= 0) {
+            if (prefixVal !== null) {
+                let setting = prefixVal;
+                if (c !== 'v' && c !== 'g') {
+                    if (setting === DISCLOSE_PROMPT_DEFAULT_SPECIAL)
+                        setting = DISCLOSE_PROMPT_DEFAULT_YES;
+                    if (setting === DISCLOSE_SPECIAL_WITHOUT_PROMPT)
+                        setting = DISCLOSE_YES_WITHOUT_PROMPT;
+                }
+                result.flags.end_disclose[disclosureIndex] = setting;
+                prefixVal = null;
+            } else {
+                result.flags.end_disclose[disclosureIndex]
+                    = DISCLOSE_YES_WITHOUT_PROMPT;
+            }
+        } else if (validSettings.has(c)) {
+            prefixVal = c;
+        } else if (c !== ' ') {
+            configErrorAdd(
+                result, `Unknown disclose parameter '${op[index]}'`,
+            );
+            return;
+        }
+    }
+}
+
 function applyOption(result, optionState, element, lineNumber, aliasState) {
     // options.c:538-542 strips the negation prefixes off the whole element,
     // before length_without_val() looks for a value, so `statement` is what
@@ -3204,12 +3322,12 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     const parsedName = rawName.toLowerCase();
 
     const sourceMatch = sourceOptionMatch(parsedName);
-    const hasAlias = Object.hasOwn(OPTION_ALIASES, parsedName);
+    const aliasTarget = optionAliasTarget(parsedName);
+    const hasAlias = aliasTarget !== null;
     const conditionMatch = sourceConditionMatch(parsedName, value);
     // options.c strips negation, then checks this prefix case-sensitively.
     const isSymbolAssignment = isSourceSymbolAssignment(rawName, value);
-    let name = sourceMatch?.[0]
-        ?? (hasAlias ? OPTION_ALIASES[parsedName] : null);
+    let name = sourceMatch?.[0] ?? aliasTarget;
     // options.c:592-612 runs the alias loop only after the name loop has
     // failed, and raises using_alias there and nowhere else, so a name match
     // leaves the flag as the element to the right of this one left it.
@@ -3264,6 +3382,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         const op = string_for_env_opt(statement, false, result);
         if (op === '') return;
         result.name = truncateByteString(op, PLAYER_NAME_BYTE_LIMIT);
+    } else if (name === 'disclose') {
+        optfn_disclose(result, statement, negated);
     } else if (name === 'role' || name === 'race' || name === 'gender'
                || name === 'alignment') {
         setCharacterOption(
@@ -3529,6 +3649,7 @@ const CONFIG_STATEMENT_HANDLERS = Object.freeze({
     bindings: Object.freeze({ kind: 'bindings' }),
     roguesymbols: Object.freeze({ kind: 'symbols', set: 'rogue' }),
     symbols: Object.freeze({ kind: 'symbols', set: 'primary' }),
+    hilite_status: Object.freeze({ kind: 'status-hilite' }),
     name: Object.freeze({ kind: 'direct', directName: 'name' }),
     role: Object.freeze({ kind: 'direct', directName: 'role' }),
     character: Object.freeze({ kind: 'direct', directName: 'role' }),
@@ -3739,6 +3860,16 @@ export function parseNethackrc(rc, random = rn2) {
                 statement.set,
                 parseSymbolAssignments(normalizedValue, lineNumber),
             );
+            continue;
+        }
+        if (statement.kind === 'status-hilite') {
+            // cfgfiles.c cnf_line_HILITE_STATUS() passes parse_config_line()'s
+            // munged post-delimiter value directly to parse_status_hl1() with
+            // from_configfile TRUE.  OPTIONS=hilite_status reaches the same
+            // parser while reading an rc file, so its port already has those
+            // semantics; unlike that option handler, an empty direct value is
+            // accepted and enables the default duration.
+            parse_status_hl1(result, normalizedValue);
             continue;
         }
 
@@ -4417,7 +4548,7 @@ function symsetValue(state, set, withHandling) {
 // so the set cannot drift from OPTION_VALUE_HANDLERS unnoticed.
 export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set([
     'boulder', 'crash_email', 'crash_name', 'crash_urlmax',
-    'disclose', 'glyph', 'menu_objsyms', 'menuinvertmode',
+    'glyph', 'menu_objsyms', 'menuinvertmode',
     'scores', 'sortvanquished',
     'soundlib', 'whatis_filter', 'windowtype',
 ]));

@@ -6,6 +6,7 @@ import { rn2, rnd, d } from './rng.js';
 import {
     distmin, m_at, record_mvitals_died, undead_to_corpse, monnear, seemimic,
     zombie_maker, zombie_form, minliquid, healmon, wake_nearto, mon_givit,
+    mtrapped_in_pit,
 } from './mon.js';
 import { game } from './gstate.js';
 import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel, flush_screen, verbalize } from './display.js';
@@ -169,6 +170,7 @@ const AD_DGST = 26; /* digestion (engulf) — monattk.h */
 const AD_WRAP = 28; /* wrap / engulf hold — monattk.h */
 const AD_DRDX = 30; /* drains dexterity (quasit) — monattk.h */
 const AD_DRCO = 31; /* drains constitution — monattk.h */
+const AD_DRIN = 32; /* drains intelligence (mind flayer) — monattk.h */
 const AD_SSEX = 35; /* Succubus seduction (extended) */
 const AD_STUN = 12; /* stuns — monattk.h */
 const AD_PLYS = 14; /* paralyzes — monattk.h */
@@ -500,7 +502,7 @@ export {
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
-    AD_DRDX, AD_DRCO, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
+    AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
     could_seduce,
 };
 
@@ -2094,6 +2096,9 @@ export async function mattackm(magr, mdef) {
     // C ref: mhitm.c mattackm — out-of-sequence attack still counts as move
     magr.mlstmv = game.moves | 0;
 
+    // C: gs.skipdrin = FALSE — mind flayer tentacle-DRIN verbosity
+    game.skipdrin = false;
+
     let struck = 0;
     const res = new Array(NATTK).fill(M_ATTK_MISS);
 
@@ -2105,6 +2110,11 @@ export async function mattackm(magr, mdef) {
         }
 
         const mattk = get_mattk(magr, i, mdef);
+        // C mhitm.c mattackm `:387` — skip remaining AT_TENT+AD_DRIN
+        if (game.skipdrin && (mattk.aatyp | 0) === AT_TENT
+            && (mattk.adtyp | 0) === AD_DRIN) {
+            continue;
+        }
         let mwep = null;
         let attk = 1;
         let strike = 0;
@@ -2136,6 +2146,10 @@ export async function mattackm(magr, mdef) {
             case AT_STNG:
             case AT_TUCH:
             case AT_BUTT: {
+                // C mhitm.c mattackm `:426` — pit-trapped kicker skips AT_KICK
+                if ((mattk.aatyp | 0) === AT_KICK && mtrapped_in_pit(magr)) {
+                    continue;
+                }
                 if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) continue;
                 const dieroll = rnd(20 + i);
                 strike = tmp > dieroll ? 1 : 0;

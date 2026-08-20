@@ -3447,9 +3447,12 @@ async function dountrap() {
         await pline('The perils lurking there are beyond your grasp.');
         return 0;
     }
-    // The rest of untrap() (floor trap / door / box disarming) is unported; no
-    // covered session gets past the direction prompt.
-    return 0;
+    // C ref: trap.c:5886 onwards — the floor-trap / door / box arms.  They live
+    // in js/trap.js as untrap_at(x, y, force) because C reads the direction
+    // inside untrap() and this port reads it above; `force` is TRUE only for
+    // #invoke or a magic key, neither of which reaches dountrap().
+    const { untrap_at } = await import('./trap.js');
+    return await untrap_at(x, y, false) ? 1 : 0;
 }
 
 // C ref: cmd.c rhack() `res = (*func)()` — run an extended command's ef_funct

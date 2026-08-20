@@ -12,7 +12,7 @@ import {
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
-    ROOM, IN_SIGHT, COULD_SEE, is_pit, In_endgame, Is_earthlevel,
+    ROOM, IN_SIGHT, COULD_SEE, is_pit, TT_PIT, In_endgame, Is_earthlevel,
     Is_astralevel, Is_airlevel, Is_firelevel,
     IS_FOUNTAIN,
     ismnum, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD, POISON_RES,
@@ -34,13 +34,20 @@ import {
     is_rider, nonliving, breathless, is_giant, is_minion, is_human,
     is_elf, is_dwarf, is_undead, amphibious, can_teleport, MR_FIRE,
     MR_POISON, mindless, G_UNIQ, is_watch,
+    touch_petrifies, flesh_petrifies, slimeproof, resists_ston, vegan,
 } from './monsters.js';
 import {
     little_to_big, big_to_little, hero_conflict, resist_conflict,
     m_canseeu, on_fire,
 } from './mondata.js';
-import { objects_at, kill_egg, place_object, stackobj, delobj, is_metallic, is_rustprone, mksobj_at } from './mkobj.js';
-import { objectNames } from './generated/objects_data.js';
+import {
+    objects_at, kill_egg, place_object, stackobj, delobj, is_metallic,
+    is_rustprone, mksobj_at, is_organic, is_mines_prize, is_soko_prize,
+    obj_extract_self, nxtobj, splitobj,
+} from './mkobj.js';
+import {
+    objectNames, objectDescrs, ROCK_CLASS, SCROLL_CLASS,
+} from './generated/objects_data.js';
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele } from './teleport.js';
 import { may_dig } from './dig.js';
@@ -53,7 +60,7 @@ import { fightm, mondead, mondied } from './mhitm.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
-import { set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd, newemin, newepri } from './makemon.js';
+import { set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd, newemin, newepri, mpickobj } from './makemon.js';
 import { in_your_sanctuary, p_coaligned } from './priest.js';
 import { in_rooms, is_pool, is_lava, disturb_buried_zombies } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
@@ -88,6 +95,9 @@ const AD_RBRE = 242;
 const AD_RUST = 24;
 const AD_CORR = 42;
 const EGG = objectNames.indexOf('EGG');
+const TIN = objectNames.indexOf('TIN');
+const CORPSE = objectNames.indexOf('CORPSE');
+const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const NC_SHOW_MSG = 1;
 
@@ -1532,7 +1542,7 @@ async function You_hear_meat(line) {
  * that is not indigestible. 0 nothing, 1 ate, 2 died (grow_up geno; not
  * reachable until m_consume_obj poly/stone is live). Caller:
  * monmove.c postmov OBJ_AT when metallivorous (D-1271).
- * Named omit: meatbox/poly/uball in m_consume_obj; meatobj; meatcorpse.
+ * Named omit: meatbox/poly/uball in m_consume_obj.
  */
 export async function meatmetal(mtmp) {
     if (!mtmp || mtmp.mtame) return 0;
@@ -1598,6 +1608,197 @@ export async function meatmetal(mtmp) {
     return 0;
 }
 
+/** C ref: obj.h ofood — CORPSE / EGG / TIN. */
+function ofood_meat(obj) {
+    const t = obj?.otyp | 0;
+    return t === CORPSE || t === EGG || t === TIN;
+}
+
+/**
+ * C ref: mon.c mstoning — ofood + ismnum + flesh_petrifies (Medusa eggs
+ * engulf rather than skip; cockatrice corpses are the untouchable arm).
+ */
+function mstoning_meat(obj) {
+    if (!obj || !ofood_meat(obj) || !ismnum(obj.corpsenm)) return false;
+    return flesh_petrifies(mons(obj.corpsenm));
+}
+
+/** C ref: o_init.c objdescr_is — OBJ_DESCR(objects[otyp]) vs descr. */
+function objdescr_is_meat(obj, descr) {
+    if (!obj) return false;
+    const oc = game.objects?.[obj.otyp];
+    if (!oc) return false;
+    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
+    return dn != null && dn === descr;
+}
+
+/**
+ * C ref: mon.c meatobj — non-pet eats organic floor objects and engulfs
+ * the rest except rocks/prizes/ball&chain/scare. 0 nothing, 1 ate or
+ * engulfed, 2 died (data became null after consume). Caller:
+ * monmove.c postmov OBJ_AT when PM_GELATINOUS_CUBE (D-1284).
+ * Named omit: m_consume_obj meatbox/poly/uball/grow/stone/mon_givit;
+ * rider off-level return 3 (C comments unimplemented).
+ */
+export async function meatobj(mtmp) {
+    if (!mtmp || mtmp.mtame) return 0;
+
+    const originalMndx = mtmp.data?.mndx ?? mtmp.mnum ?? -1;
+    let count = 0;
+    let ecount = 0;
+    let buf = '';
+    const verbose = game.flags?.verbose !== false;
+    const u = game.u || {};
+
+    for (let otmp = objects_at(mtmp.mx, mtmp.my); otmp; ) {
+        const otmp2 = otmp.nexthere;
+
+        if (is_mines_prize(otmp) || is_soko_prize(otmp)) {
+            otmp = otmp2;
+            continue;
+        }
+
+        if ((otmp.otyp | 0) === CORPSE && is_rider(mons(otmp.corpsenm))) {
+            const ox = otmp.ox;
+            const oy = otmp.oy;
+            const { revive_corpse } = await import('./do.js');
+            const revived_it = await revive_corpse(otmp);
+            newsym(ox, oy);
+            if (!revived_it) {
+                otmp = otmp2;
+                continue;
+            }
+            break;
+        } else if (((otmp.otyp | 0) === CORPSE
+                    && touch_petrifies(mons(otmp.corpsenm))
+                    && !resists_ston(mtmp))
+                   || (otmp.oclass | 0) === ROCK_CLASS
+                   || otmp === u.uball || otmp === u.uchain
+                   || (otmp.otyp | 0) === SCR_SCARE_MONSTER) {
+            otmp = otmp2;
+            continue;
+        } else if (!is_organic(otmp) || obj_resists(otmp, 5, 95)
+                   || !touch_artifact(otmp, mtmp)
+                   || ((otmp.otyp | 0) === AMULET_OF_STRANGULATION
+                       || (otmp.otyp | 0) === RIN_SLOW_DIGESTION)
+                   || (otmp.opoisoned && !resists_poison(mtmp))
+                   || (mstoning_meat(otmp) && !resists_ston(mtmp))
+                   || ((otmp.otyp | 0) === GLOB_OF_GREEN_SLIME
+                       && !slimeproof(mtmp.data))) {
+            ecount++;
+            const otmpname = distant_name(otmp, doname);
+            if (ecount === 1) {
+                buf = `${Monnam(mtmp)} engulfs ${otmpname}.`;
+            } else if (ecount === 2) {
+                buf = `${Monnam(mtmp)} engulfs several objects.`;
+            }
+            obj_extract_self(otmp);
+            mpickobj(mtmp, otmp);
+        } else {
+            count++;
+            if (cansee(mtmp.mx, mtmp.my)) {
+                const otmpname = distant_name(otmp, doname);
+                if (verbose) {
+                    await pline_mon(
+                        mtmp,
+                        `${Monnam(mtmp)} eats ${otmpname}!`,
+                    );
+                }
+                if ((otmp.oclass | 0) === SCROLL_CLASS
+                    && objdescr_is_meat(otmp, 'YUM YUM')) {
+                    await pline(`Yum${otmp.blessed ? '!' : '.'}`);
+                }
+            } else {
+                // C Soundeffect(se_slurping_sound) empty without SND_LIB
+                if (verbose) {
+                    await You_hear_meat('a slurping sound.');
+                }
+            }
+            m_consume_obj(mtmp, otmp);
+            const ptr = mtmp.data;
+            if (!ptr || (ptr.mndx ?? mtmp.mnum ?? -1) !== originalMndx) {
+                return !ptr ? 2 : 1;
+            }
+        }
+
+        if (mtmp.minvis) newsym(mtmp.mx, mtmp.my);
+        otmp = otmp2;
+    }
+
+    if (ecount > 0) {
+        if (cansee(mtmp.mx, mtmp.my) && verbose && buf) {
+            await pline(buf);
+        } else if (verbose) {
+            await You_hear_meat(
+                `${ecount === 1 ? 'a' : 'several'} slurping sound${
+                    ecount === 1 ? '' : 's'
+                }.`,
+            );
+        }
+    }
+    return (count > 0 || ecount > 0) ? 1 : 0;
+}
+
+/**
+ * C ref: mon.c meatcorpse — non-pet corpse_eater eats one floor CORPSE
+ * (sobj_at skips globs). 0 nothing, 1 ate, 2 died (data became null after
+ * consume). Caller: monmove.c postmov OBJ_AT when corpse_eater (D-1285).
+ * Named omit: m_consume_obj meatbox/poly/uball/grow/stone/mon_givit;
+ * rider off-level return 3 (C comments unimplemented);
+ * mon_would_consume_item still stub.
+ */
+export async function meatcorpse(mtmp) {
+    if (!mtmp || mtmp.mtame) return 0;
+
+    const originalMndx = mtmp.data?.mndx ?? mtmp.mnum ?? -1;
+    const x = mtmp.mx | 0;
+    const y = mtmp.my | 0;
+    const verbose = game.flags?.verbose !== false;
+
+    for (let otmp = sobj_at_otyp(CORPSE, x, y); otmp;
+         otmp = nxtobj(otmp, CORPSE, true)) {
+        const corpsepm = mons(otmp.corpsenm);
+        if (vegan(corpsepm)
+            || (flesh_petrifies(corpsepm) && !resists_ston(mtmp))) {
+            continue;
+        }
+        if (is_rider(corpsepm)) {
+            const { revive_corpse } = await import('./do.js');
+            const revived_it = await revive_corpse(otmp);
+            newsym(x, y);
+            if (!revived_it) continue;
+            break;
+        }
+
+        if ((otmp.quan | 0) > 1) {
+            otmp = splitobj(otmp, 1) || otmp;
+        }
+
+        if (cansee(x, y) && canseemon(mtmp)) {
+            const otmpname = distant_name(otmp, doname);
+            if (verbose) {
+                await pline_mon(
+                    mtmp,
+                    `${Monnam(mtmp)} eats ${otmpname}!`,
+                );
+            }
+        } else if (verbose) {
+            // C Soundeffect(se_masticating_sound) empty without SND_LIB
+            await You_hear_meat('a masticating sound.');
+        }
+
+        m_consume_obj(mtmp, otmp);
+        const ptr = mtmp.data;
+        if (!ptr || (ptr.mndx ?? mtmp.mnum ?? -1) !== originalMndx) {
+            return !ptr ? 2 : 1;
+        }
+
+        if (mtmp.minvis) newsym(x, y);
+        return 1;
+    }
+    return 0;
+}
+
 /** C ref: prop.h res_to_mr — FIRE_RES..STONE_RES → MR_* bit. */
 function res_to_mr_mon(r) {
     if (r >= FIRE_RES && r <= STONE_RES) return 1 << (r - 1);
@@ -1651,7 +1852,7 @@ async function mon_give_prop(mtmp, prop) {
 
 /**
  * C ref: mon.c mon_givit — maybe grant a resist intrinsic from a corpse.
- * Callers: mhitm.c mdamagem AD_DGST (D-1244); meatobj still named.
+ * Callers: mhitm.c mdamagem AD_DGST (D-1244); meatobj D-1284.
  */
 export async function mon_givit(mtmp, ptr) {
     if (!mtmp) return;
@@ -2492,8 +2693,8 @@ function kill_eggs_one(otmp) {
 /**
  * C ref: mon.c kill_genocided_monsters — wipe live mons of G_GENOD species
  * then kill_eggs on minvent / invent / fobj / migrating_objs / buried.
- * Named omissions: chameleon `newcham` when imitating a genocided form;
- * cmd.c wiz-level-change caller (do.c `goto_level` is D-1190).
+ * Named omissions: chameleon `newcham` when imitating a genocided form.
+ * Callers: do.c goto_level (D-1190); cmd.c makemap_prepost post (D-1288).
  */
 export function kill_genocided_monsters() {
     const mv = game.mvitals || [];
@@ -2516,4 +2717,23 @@ export function kill_genocided_monsters() {
     kill_eggs(game.fobj);
     kill_eggs(game.migrating_objs);
     kill_eggs(game.level?.buriedobjlist);
+}
+
+/**
+ * C ref: mhitu.c mtrapped_in_pit `:465–479` — TRUE iff monster or hero is
+ * trapped in a (spiked) pit. Hero: utrap && TT_PIT then t_at(ux,uy).
+ * Monster: mtrapped then t_at(mx,my). Then is_pit(ttyp). Shared by
+ * hmonas / mattackm / mattacku AT_KICK continues (D-1298).
+ */
+export function mtrapped_in_pit(mtmp) {
+    if (!mtmp) return false;
+    let ttmp = null;
+    if (mtmp === game.youmonst) {
+        const u = game.u || {};
+        ttmp = (u.utrap && (u.utraptype | 0) === TT_PIT)
+            ? t_at(u.ux | 0, u.uy | 0) : null;
+    } else {
+        ttmp = mtmp.mtrapped ? t_at(mtmp.mx | 0, mtmp.my | 0) : null;
+    }
+    return !!(ttmp && is_pit(ttmp.ttyp));
 }

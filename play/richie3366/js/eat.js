@@ -3,7 +3,8 @@
 //           start_tin / opentin / consume_tin; metallivore non-food).
 // C ref: eat.c doeat / floorfood / touchfood / fprefx / eatcorpse /
 //         start_eating / bite / eatfood / done_eating / lesshungry /
-//         morehungry / vomit / obj_nutrition / is_edible / gethungry
+//         morehungry / vomit / obj_nutrition / is_edible / gethungry /
+//         eat_brains (D-1306);
 //         (metabolic uhunger-- + accessorytime Regen/encumb/Hunger/Conflict);
 //         doeat_nonfood / eatspecial / foodword;
 //         start_tin / opentin / consume_tin / tin_variety / use_up_tin;
@@ -29,7 +30,10 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { flush_topl_more, pline, You_feel, newsym, see_monsters, more } from './display.js';
+import {
+    flush_topl_more, pline, You_feel, newsym, see_monsters, more,
+    canspotmon, canseemon,
+} from './display.js';
 import { yn_function } from './getline.js';
 import {
     FOOD_CLASS, COIN_CLASS, WEAPON_CLASS, BALL_CLASS, CHAIN_CLASS,
@@ -49,7 +53,7 @@ import {
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
     vegan, vegetarian, nohands, verysmall,
-    is_rider, is_undead, olfaction, is_giant,
+    is_rider, is_undead, olfaction, is_giant, mindless, noncorporeal,
     can_teleport, control_teleport, telepathic,
     flesh_petrifies, slimeproof, your_race, poly_when_stoned,
     is_clinger, breathless, is_flyer,
@@ -73,7 +77,8 @@ import {
     ismnum,
     KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, Has_contents, NO_PART,
     IRONBARS, W_NONDIGGABLE, BEAR_TRAP, TT_BEARTRAP,
-    STONING, DIED, SLIMED, FROMOUTSIDE, Upolyd, NEUTRAL,
+    STONING, DIED, SLIMED, FROMOUTSIDE, Upolyd, NEUTRAL, FEMALE, MALE,
+    M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, EDOG, LIFESAVED,
     COST_DSTROY, COST_OPEN, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
     INTRINSIC, POLY_NOFLAGS, DISPLACED,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
@@ -96,7 +101,7 @@ import {
 } from './potion.js';
 import { addinv_nomerge } from './u_init.js';
 import { dropy, dropx, make_blinded, revive_corpse } from './do.js';
-import { type_is_pname, rndmonnam, pmname, Ugender } from './do_name.js';
+import { type_is_pname, rndmonnam, pmname, Ugender, mon_nam, Monnam } from './do_name.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
 import { t_at, deltrap, reset_utrap, b_trapped, self_invis_message, float_up } from './trap.js';
@@ -2630,6 +2635,178 @@ export async function Finish_digestion() {
         game.corpsenm_digested = NON_PM;
     }
     return 0;
+}
+
+/** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+function s_suffix_eat(s) {
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`;
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+function add_brain_dmg(dmg_p, xtra) {
+    if (!dmg_p) return;
+    dmg_p.damage = (dmg_p.damage | 0) + (xtra | 0);
+}
+
+function hero_Lifesaved_eat(u = game.u || {}) {
+    return !!((u.uprops?.[LIFESAVED]?.extrinsic | 0));
+}
+
+/**
+ * C ref: eat.c eat_brains `:601–754` — mind-flayer tentacle side-effects.
+ * xtra_dmg = rnd(10) before DEADMONSTER / noncorporeal. Hero→mon: conducts,
+ * mindless miss (no xtra), rider done(DIED), else morehungry(-rnd(30)) +
+ * INT recover + exercise WIS + *dmg_p += xtra; then maybe_cannibal.
+ * mhitu / mhitm branches live here; mhitm_ad_drin mhitu+mhitm callers named.
+ * uhitm helmet / m_slips_free / lifsav skipdrin: D-1307.
+ */
+export async function eat_brains(magr, mdef, visflag, dmg_p) {
+    const pd = mdef?.data;
+    const youmonst = game.youmonst;
+    let result = M_ATTK_HIT;
+    const xtra_dmg = rnd(10); // C: same decl as result — before DEADMONSTER
+
+    if (magr !== youmonst && (magr?.mhp | 0) < 1) {
+        return M_ATTK_AGR_DIED;
+    }
+
+    if (noncorporeal(pd)) {
+        if (visflag) {
+            const whose = (mdef === youmonst)
+                ? 'Your'
+                : s_suffix_eat(Monnam(mdef));
+            await pline(`${whose} brain is unharmed.`);
+        }
+        return M_ATTK_MISS;
+    } else if (magr === youmonst) {
+        await pline(`You eat ${s_suffix_eat(mon_nam(mdef))} brain!`);
+    } else if (mdef === youmonst) {
+        await pline('Your brain is eaten!');
+    } else if (visflag && canspotmon(mdef)) {
+        await pline(`${s_suffix_eat(Monnam(mdef))} brain is eaten!`);
+    }
+
+    if (flesh_petrifies(pd)) {
+        if (magr === youmonst) {
+            const u = game.u || {};
+            const Stone_resistance = !!(u.HStone_resistance
+                || u.EStone_resistance || u.Stone_resistance);
+            const Stoned = !!(u.Stoned | 0);
+            if (!Stone_resistance && !Stoned) {
+                await make_stoned(5, null, KILLED_BY_AN,
+                    pmname(pd, mdef.female ? FEMALE : MALE));
+            }
+        } else {
+            if (visflag && canseemon(magr)) {
+                await pline(`${Monnam(magr)} turns to stone!`);
+            }
+            const { monstone } = await import('./mhitm.js');
+            await monstone(magr);
+            if ((magr.mhp | 0) > 0) {
+                return M_ATTK_MISS;
+            }
+            if (magr.mtame && !visflag) {
+                await pline(
+                    'You have a sad thought for a moment, then it passes.',
+                );
+            }
+            return M_ATTK_AGR_DIED;
+        }
+    }
+
+    let give_nutrit = false;
+    if (magr === youmonst) {
+        eating_conducts(pd);
+        if (mindless(pd)) {
+            await pline(`${Monnam(mdef)} doesn't notice.`);
+            return M_ATTK_MISS;
+        } else if (is_rider(pd)) {
+            await pline('Ingesting that is fatal.');
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.name = `unwisely ate the brain of ${
+                pmname(pd, mdef.female ? FEMALE : MALE)}`;
+            game.killer.format = NO_KILLER_PREFIX;
+            await done(DIED);
+            exercise(A_WIS, false);
+            add_brain_dmg(dmg_p, xtra_dmg);
+        } else {
+            morehungry(-rnd(30)); // cannot choke
+            const u = game.u || (game.u = {});
+            if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
+            if (!u.amax) u.amax = { a: [...u.acurr.a] };
+            const abase = u.acurr.a[A_INT] | 0;
+            const amax = u.amax.a[A_INT] | 0;
+            if (abase < amax) {
+                u.acurr.a[A_INT] = abase + rnd(4);
+                if ((u.acurr.a[A_INT] | 0) > amax) u.acurr.a[A_INT] = amax;
+                if (game.disp) game.disp.botl = true;
+                if (game.flags) game.flags.botl = true;
+            }
+            exercise(A_WIS, true);
+            add_brain_dmg(dmg_p, xtra_dmg);
+        }
+        await maybe_cannibal(pd?.mndx ?? mdef.mnum ?? NON_PM, true);
+    } else if (mdef === youmonst) {
+        const u = game.u || (game.u = {});
+        if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
+        const amin = game.urace?.attrmin?.[A_INT] ?? 3;
+        if ((u.acurr.a[A_INT] | 0) <= amin) {
+            const brainlessness = 'brainlessness';
+            if (hero_Lifesaved_eat(u)) {
+                if (!game.killer) game.killer = { name: '', format: 0 };
+                game.killer.name = brainlessness;
+                game.killer.format = KILLED_BY;
+                await done(DIED);
+                await pline('Unfortunately your brain is still gone.');
+                if (!u.uprops) u.uprops = {};
+                if (!u.uprops[LIFESAVED]) u.uprops[LIFESAVED] = {};
+                u.uprops[LIFESAVED].extrinsic = 0;
+                u.uprops[LIFESAVED].intrinsic = 0;
+            } else {
+                await pline('Your last thought fades away.');
+            }
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.name = brainlessness;
+            game.killer.format = KILLED_BY;
+            await done(DIED);
+            u.acurr.a[A_INT] = amin + 2;
+            await You_feel('like a scarecrow.');
+        }
+        give_nutrit = true;
+        exercise(A_WIS, false);
+    } else {
+        if (mindless(pd)) {
+            if (visflag && canspotmon(mdef)) {
+                await pline(`${Monnam(mdef)} doesn't notice.`);
+            }
+            return M_ATTK_MISS;
+        } else if (is_rider(pd)) {
+            const { mondied } = await import('./mhitm.js');
+            await mondied(magr);
+            if ((magr.mhp | 0) < 1) result = M_ATTK_AGR_DIED;
+            add_brain_dmg(dmg_p, xtra_dmg);
+        } else {
+            add_brain_dmg(dmg_p, xtra_dmg);
+            give_nutrit = true;
+            if ((dmg_p?.damage | 0) >= (mdef.mhp | 0)
+                && visflag && canspotmon(mdef)) {
+                await pline(`${s_suffix_eat(Monnam(mdef))} last thought fades away...`);
+            }
+        }
+    }
+
+    if (give_nutrit && magr.mtame && !magr.isminion) {
+        const nut = rnd(60);
+        const dog = EDOG(magr) || magr.edog;
+        if (dog) dog.hungrytime = (dog.hungrytime | 0) + nut;
+        magr.mconf = 0;
+    }
+
+    return result;
 }
 
 /**

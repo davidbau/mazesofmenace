@@ -1519,7 +1519,7 @@ async function stop_occupation_zap() {
 }
 
 // C ref: zap.c burn_floor_objects(x, y, give_feedback, u_caused).
-function burn_floor_objects(x, y, _give_feedback, u_caused) {
+export function burn_floor_objects(x, y, _give_feedback, u_caused) {
     const arr = game.level?.objects || [];
     // C walks the nexthere chain (newest first); place_object prepends, and
     // this port's flat list appends, so iterate in reverse (same convention

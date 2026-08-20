@@ -26,8 +26,6 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          GFILTER_VIEW, GLOC_INTERESTING,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
          PARANOID_TRAP,
-         ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
-         has_mgivenname,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
 
@@ -35,6 +33,7 @@ const STATUE_OTYP = objectNames.indexOf('STATUE');
 const BOULDER_OTYP = objectNames.indexOf('BOULDER');
 const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
 import { dist2, bad_rock, cant_squeeze_thru, wake_nearto } from './mon.js';
+import { is_hider } from './monsters.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
@@ -53,7 +52,7 @@ import { donull, dodown, doup, dodrop } from './do.js';
 import { dosave } from './save.js';
 import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
 import {
-    do_attack, mon_at, is_safemon, mundisplaceable, explum, attacktype_fordmg,
+    do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
 } from './uhitm.js';
 import { rehumanize } from './polyself.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
@@ -64,7 +63,7 @@ import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp } from './pager.js';
-import { x_monnam, type_is_pname, Monnam } from './do_name.js';
+import { visctrl } from './dokeylist.js';
 import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
@@ -72,13 +71,12 @@ import { stairway_at, u_on_newpos } from './mklev.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
 import { getpos, gather_locs_interesting, auto_describe_text } from './getpos.js';
-import { visctrl } from './dokeylist.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
     impaired_movement, is_pool, is_lava, carrying_too_much,
     invocation_message, avoid_trap_andor_region,
     hero_tread_disturb_buried_zombies, hero_hideunder_after_move,
-    hero_mimic_unhide_after_move,
+    hero_mimic_unhide_after_move, domove_swap_with_pet,
     test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
     test_move_hero_passes_bars, test_move_hero_chews_bars, still_chewing,
 } from './hack.js';
@@ -2266,36 +2264,9 @@ async function domove(dx, dy) {
 
     const oldx = u.ux, oldy = u.uy;
 
-    // C: after test_move — safemon displace/swap (attack already tried above)
+    // C hack.c:2870 then 2874–2927 — m_at before occupy; swap after
+    // m_postmove_effect. Ceiling hiders skip swap (falling-monster).
     mtmp = mon_at(newx, newy);
-    if (mtmp && is_safemon(mtmp)) {
-        // C ref: hack.c domove_swap_with_pet — mundisplaceable (leader/
-        // Oracle/priest/shk/gd) refuse; goodpos/trap-on-dest deferred.
-        if (mundisplaceable(mtmp)) {
-            await pline(`You stop.  ${Monnam(mtmp)} doesn't want to swap places.`);
-            if (game.context?.run) end_running();
-            game.context.move = 0;
-            nomul(0);
-            put_bc();
-            return;
-        }
-        mtmp.mx = oldx;
-        mtmp.my = oldy;
-        // C ref: hack.c domove_swap_with_pet — You("%s %s.", …, x_monnam)
-        // peaceful non-tame → adjective "peaceful"; tame → ARTICLE_YOUR;
-        // named / pname → ARTICLE_NONE; else ARTICLE_THE.
-        const swapArt = mtmp.mtame
-            ? ARTICLE_YOUR
-            : (!has_mgivenname(mtmp) && !type_is_pname(mtmp.data))
-                ? ARTICLE_THE
-                : ARTICLE_NONE;
-        const swapAdj = (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null;
-        const swapSupp = has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0;
-        const swapVerb = mtmp.mpeaceful ? 'swap places with' : 'frighten';
-        await pline(
-            `You ${swapVerb} ${x_monnam(mtmp, swapArt, swapAdj, swapSupp, false)}.`,
-        );
-    }
 
     // Move the hero. C hack.c:2874–2884 — occupy, then
     // m_postmove_effect(&youmonst) at u.ux0, then usteed mx/my.
@@ -2307,25 +2278,40 @@ async function domove(dx, dy) {
         u.usteed.my = newy;
     }
 
-    // C: ux changed → record DOMOVE_RUSH|WALK from attempting (hack.c:2964)
-    game.domove_succeeded |= (game.domove_attempting || 0)
-        & (DOMOVE_RUSH | DOMOVE_WALK);
-    smudgeCoords = { oldx, oldy, newx, newy };
+    if (mtmp && is_safemon(mtmp)
+        && !(is_hider(mtmp.data) && mtmp.mundetected)) {
+        if (!(await domove_swap_with_pet(mtmp, newx, newy))) {
+            u.ux = u.ux0;
+            u.uy = u.uy0;
+            if (u.usteed) {
+                u.usteed.mx = u.ux;
+                u.usteed.my = u.uy;
+            }
+        }
+    }
+
+    const did_step = (u.ux !== u.ux0 || u.uy !== u.uy0);
+    // C hack.c:2964–2973 — only when ux0!=ux (failed swap bounces)
+    if (did_step) {
+        game.domove_succeeded |= (game.domove_attempting || 0)
+            & (DOMOVE_RUSH | DOMOVE_WALK);
+        smudgeCoords = { oldx, oldy, newx, newy };
+    }
 
     // C ref: hack.c domove — check_leash(u.ux0, u.uy0) after place, before
-    // newsym/vision (D-1005).
+    // newsym/vision (D-1005). Runs even when swap bounced.
     await check_leash(u.ux0 | 0, u.uy0 | 0);
 
     // C ref: dungeon.c u_on_newpos — same-level → see_nearby_objects
     // (upgrade generic potion/gem/spellbook glyphs when within neardist).
-    if (!u.Blind && !u.Hallucination && !u.uswallow) {
+    if (did_step && !u.Blind && !u.Hallucination && !u.uswallow) {
         see_nearby_objects();
     }
 
     // C ref: hack.c domove — clear kickedloc after a successful move
-    game.kickedloc = { x: 0, y: 0 };
+    if (did_step) game.kickedloc = { x: 0, y: 0 };
 
-    // C: running stops on door / obstructed / furniture
+    // C: running stops on door / obstructed / furniture (dest tmpr)
     if (game.context?.run && game.context.run < 8) {
         const tmpr = game.level?.at(newx, newy);
         if (tmpr && (tmpr.typ === DOOR || IS_OBSTRUCTED(tmpr.typ)
@@ -2346,10 +2332,10 @@ async function domove(dx, dy) {
     // actually stepped (ux0!=ux || uy0!=uy). JS extra newsym(dest)
     // is display-only, not this peel. Same-cell occupy (swallow onto
     // ustuck) skips the clue.
-    newsym(oldx, oldy);
-    vision_recalc(1);
-    newsym(newx, newy);
-    if (u.ux0 !== u.ux || u.uy0 !== u.uy) {
+    if (did_step) {
+        newsym(oldx, oldy);
+        vision_recalc(1);
+        newsym(newx, newy);
         await invocation_message();
     }
 
@@ -2357,8 +2343,10 @@ async function domove(dx, dy) {
     put_bc();
 
     // C: if (u.umoved) spoteffects(TRUE) — autopickup / check_here look
-    u.umoved = true;
-    await spoteffects(true);
+    if (did_step) {
+        u.umoved = true;
+        await spoteffects(true);
+    }
 
     // C: delay next move because of ball dragging (after spoteffects)
     if (cause_delay) {

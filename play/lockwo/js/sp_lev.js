@@ -43,7 +43,8 @@ import { readobjnam } from './readobjnam.js';
 import { objects as OBJDATA } from './mkobj.js';
 import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
          CORPSE, CHEST, LARGE_BOX, STATUE, mk_tt_object, mkobj_at, BOULDER,
-         FOOD_CLASS, GOLD_PIECE, add_to_container, weight, mkobj, RANDOM_CLASS } from './mkobj.js';
+         FOOD_CLASS, GOLD_PIECE, add_to_container, weight, mkobj, RANDOM_CLASS,
+         OIL_LAMP } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
          mkclass, mkclass_aligned, mm_mon_at, enexto_spawn, mongets_pub,
          name_gender_hint, MGEND_NEUTRAL, MM_ASLEEP, MM_NOGRP } from './makemon.js';
@@ -51,7 +52,9 @@ import { somexy, inside_room, occupied } from './mkroom.js';
 import { create_gas_cloud_selection } from './region.js';
 import { is_flyer_flag, is_swimmer_flag, passes_walls_flag,
          mflags1_of, mflags2_of, M1_AMPHIBIOUS } from './monflags_data.js';
-import { maketrap } from './trap.js';
+import { maketrap, Can_fall_thru } from './trap.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { new_light_source, LS_OBJECT } from './light.js';
 import { stock_room } from './shknam.js';
 import { In_hell } from './dungeon.js';
 // Unreferenced here since the soko builders moved to js/levels/ (which import
@@ -507,7 +510,9 @@ function fill_trap_room(croom) {
     const sel = [];
     for (const c of selection_room(croom)) if (rn2(100) < 30) sel.push(c);
     const lvl = level_difficulty_ext();
-    for (const c of sel) {
+    // sel:percentage() filtered in x-major order; sel:iterate() runs the
+    // callback in y-major order (see selection_iterate_order).
+    for (const c of selection_iterate_order(sel)) {
         const t = maketrap(c.x, c.y, kind);
         const k = t ? t.ttyp : NO_TRAP;
         if (k !== NO_TRAP && lvl <= rnd(4)
@@ -521,6 +526,212 @@ function fill_trap_room(croom) {
             if (_mktrap_victim) _mktrap_victim(t);
         }
     }
+}
+
+// ── themed-room fill primitives (sp_lev.c create_object / create_trap) ────
+// C ref: mklev.h MKTRAP_* — the flag word sp_lev.c create_trap() builds.
+// MAZEFLAG is always set there; NOSPIDERONWEB unless the des.trap() table asked
+// for spider_on_web.
+const MKTRAP_SEEN = 0x01, MKTRAP_MAZEFLAG = 0x02,
+      MKTRAP_NOSPIDERONWEB = 0x04, MKTRAP_NOVICTIM = 0x08;
+
+// C ref: mklev.c mktrap(num, flags, croom, tm) with a non-Null `tm` — the form
+// sp_lev.c create_trap() always uses, since it resolves the location itself.
+// A non-Null tm skips mktrap's own mazexy()/somexyspace() search, so the only
+// draws are maketrap()'s own plus the mktrap_victim() gate (mklev.c:2135),
+// whose `lvl <= rnd(4)` runs BEFORE every trap-kind test.
+function splev_mktrap_at(num, x, y, mktrapflags) {
+    if (!isok(x, y) || is_pool_or_lava(x, y)) return null;
+    let kind = num;
+    if ((kind === HOLE || kind === TRAPDOOR) && !Can_fall_thru(game.u?.uz))
+        kind = ROCKTRAP;
+    const t = maketrap(x, y, kind);
+    kind = t ? t.ttyp : NO_TRAP;
+    if (kind === WEB && !(mktrapflags & MKTRAP_NOSPIDERONWEB)) {
+        const spider = name_to_pmidx('giant spider');
+        if (spider >= 0) makemon(monster_by_pmidx(spider), x, y, 0);
+    }
+    if (t && (mktrapflags & MKTRAP_SEEN)) t.tseen = true;
+    const lvl = level_difficulty_ext();
+    if (kind !== NO_TRAP && !(mktrapflags & MKTRAP_NOVICTIM)
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        // A rolling boulder trap with no viable launch path keeps launch == the
+        // trap square, i.e. no boulder, hence no dead predecessor.
+        && !(kind === ROLLING_BOULDER_TRAP
+             && t.launch?.x === t.tx && t.launch?.y === t.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        // C ref: mklev.c:2146 — a land mine that already killed someone is
+        // treated as detonated: it becomes an ALREADY-SEEN pit, so the cell
+        // renders as `^` from the moment the level is built.  Runs before
+        // mktrap_victim() and is not conditional on it succeeding.
+        if (kind === LANDMINE) { t.ttyp = PIT; t.tseen = true; }
+        if (_mktrap_victim) _mktrap_victim(t);
+    }
+    return t;
+}
+
+// C ref: sp_lev.c get_location_coord():1348-1352 — a RANDOM coord reaches
+// get_location() twice, first with NO_LOC_WARN forced on and then (only if that
+// came back (-1,-1)) again with the caller's own flags.
+function splev_room_coord(croom, humidity) {
+    let r = splev_get_location_room(croom, humidity, true);
+    if (r.x === -1 && r.y === -1) r = splev_get_location_room(croom, humidity);
+    return r;
+}
+
+// C ref: sp_lev.c get_free_room_loc(x, y, croom, pos) — get_location_coord(DRY),
+// then, only if the square is not plain ROOM, up to 100 get_room_loc() re-rolls.
+// create_trap passes x == y == -1, so every retry is a bare somexy().
+function splev_get_free_room_loc(croom, mx = -1, my = -1) {
+    // An explicit coord: get_location() adds croom->lx/ly to the map-relative
+    // pair a selection iterate handed the Lua.  Our selections already hold
+    // absolute cells, so the offset is already applied.
+    let { x, y } = (mx >= 0) ? { x: mx, y: my } : splev_room_coord(croom, LOC_DRY);
+    let trycnt = 0;
+    if (game.level?.at(x, y)?.typ !== ROOM) {
+        do {
+            const c = { x: -1, y: -1 };
+            if (!somexy(croom, c)) break;
+            x = c.x; y = c.y;
+        } while (game.level?.at(x, y)?.typ !== ROOM && ++trycnt <= 100);
+    }
+    return { x, y };
+}
+
+// C ref: sp_lev.c create_trap(t, croom) — the des.trap() body.  A themed-room
+// fill always runs with gc.coder->croom set, so the get_free_room_loc arm is
+// the live one.
+function splev_create_trap(type, croom, { mx = -1, my = -1, spider_on_web = false,
+                                          seen = false, novictim = false } = {}) {
+    let mktrapflags = MKTRAP_MAZEFLAG;
+    if (!spider_on_web) mktrapflags |= MKTRAP_NOSPIDERONWEB;
+    if (seen) mktrapflags |= MKTRAP_SEEN;
+    if (novictim) mktrapflags |= MKTRAP_NOVICTIM;
+    const p = splev_get_free_room_loc(croom, mx, my);
+    return splev_mktrap_at(type, p.x, p.y, mktrapflags);
+}
+
+// C ref: sp_lev.c create_object(o, croom) for `des.object({ id = ... })` —
+// get_location_coord(DRY) then mksobj_at(id, x, y, TRUE, TRUE) (artif is
+// `!named`, and no themed-room fill names its objects).
+function splev_create_object_id(otyp, croom, { mx = -1, my = -1, lit = false,
+                                              spe = null } = {}) {
+    const { x, y } = (mx >= 0) ? { x: mx, y: my } : splev_room_coord(croom, LOC_DRY);
+    if (!isok(x, y)) return null;
+    const otmp = mksobj_at(otyp, x, y, true, true);
+    // C: `if (o->spe != -127) otmp->spe = o->spe`.  lspo_object forces spe to
+    // the CORPSTAT_* flag word (0 with no historic/male/female key) for a
+    // STATUE/CORPSE, overwriting the gender mksobj just rolled.
+    if (otmp && spe != null) otmp.spe = spe;
+    // C: `if (o->lit) begin_burn(otmp, FALSE)`.  No RNG (the BURN_OBJECT
+    // timeout is obj->age, not a roll), but a lit lamp IS a light source.
+    if (otmp && lit) {
+        otmp.lamplit = 1;
+        new_light_source(x, y, 3, LS_OBJECT, otmp);  // timeout.c begin_burn radius
+    }
+    return otmp;
+}
+
+// C ref: nhlsel.c l_selection_iterate() walks y OUTER, x INNER over the
+// selection's bounding box, while selvar.c selection_filter_percent()
+// (`sel:percentage(n)`) walks x outer, y inner.  A fill that filters and then
+// iterates therefore draws its per-cell rn2(100) in one order and runs the
+// callback in the other.
+function selection_iterate_order(cells) {
+    return cells.slice().sort((a, b) => (a.y - b.y) || (a.x - b.x));
+}
+
+// C ref: themerms.lua:69 "Boulder room" (mindiff 4).
+//   local locs = selection.room():percentage(30);
+//   locs:iterate(function(x,y)
+//      if (percent(50)) then des.object("boulder", x, y);
+//      else des.trap("rolling boulder", x, y); end
+//   end);
+function create_boulder_room(croom) {
+    const sel = [];
+    for (const c of selection_room(croom)) if (rn2(100) < 30) sel.push(c);
+    for (const c of selection_iterate_order(sel)) {
+        if (percent(50)) splev_create_object_id(BOULDER, croom, { mx: c.x, my: c.y });
+        // C ref: lspo_trap sets spider_on_web = TRUE before parsing and the
+        // 3-arg STRING form never overrides it (only the table form re-reads
+        // the key), so create_trap does NOT add MKTRAP_NOSPIDERONWEB here.
+        else splev_create_trap(ROLLING_BOULDER_TRAP, croom,
+                               { mx: c.x, my: c.y, spider_on_web: true });
+    }
+}
+
+// C ref: themerms.lua:85 "Spider nest".
+//   local spooders = nh.level_difficulty() > 8;
+//   local locs = selection.room():percentage(30);
+//   locs:iterate(function(x,y)
+//      des.trap({ type = "web", x = x, y = y,
+//                 spider_on_web = spooders and percent(80) });
+//   end);
+// `spooders and percent(80)` short-circuits: below difficulty 9 the rn2(100) is
+// never drawn at all.  spider_on_web unset also means create_trap passes
+// MKTRAP_NOSPIDERONWEB, which is what lets a web exist below Dlvl 7.
+function create_spider_nest(croom) {
+    const spooders = level_difficulty_ext() > 8;
+    const sel = [];
+    for (const c of selection_room(croom)) if (rn2(100) < 30) sel.push(c);
+    for (const c of selection_iterate_order(sel)) {
+        const on_web = spooders && percent(80);
+        splev_create_trap(WEB, croom, { mx: c.x, my: c.y, spider_on_web: on_web });
+    }
+}
+
+// C ref: themerms.lua:113 "Garden" (eligible only in a LIT room).
+//   local s = selection.room();
+//   for i = 1, (s:numpoints() / 6) do
+//      des.monster({ id = "wood nymph", asleep = true });
+//      if (percent(30)) then des.feature("fountain"); end
+//   end
+//   table.insert(postprocess, { handler = make_garden_walls, ... });
+// Lua's numeric `for` with a float limit runs floor(limit) times.
+function create_garden(croom) {
+    const npts = Math.floor(selection_room(croom).length / 6);
+    for (let i = 0; i < npts; i++) {
+        splev_create_monster({ name: 'wood nymph', croom, asleep: true });
+        if (percent(30)) {
+            // des.feature("fountain") with no coord: a random DRY spot in croom,
+            // then sel_set_feature(), which leaves existing furniture alone and
+            // does NOT bump level.flags.nfountains (only set_levltyp does).
+            const r = splev_room_coord(croom, LOC_DRY);
+            const loc = isok(r.x, r.y) ? game.level?.at(r.x, r.y) : null;
+            if (loc && !IS_FURNITURE(loc.typ)) loc.typ = FOUNTAIN;
+        }
+    }
+    if (!game.level._themeroom_postprocess)
+        game.level._themeroom_postprocess = [];
+    game.level._themeroom_postprocess.push({
+        handler: 'garden_walls', roomnoidx: croom.roomnoidx,
+        lx: croom.lx, ly: croom.ly, hx: croom.hx, hy: croom.hy,
+    });
+}
+
+// C ref: themerms.lua:189 "Statuary".
+//   for i = 1, d(5,5) do des.object({ id = "statue" }); end
+//   for i = 1, d(3)   do des.trap("statue");          end
+// Each statue is mksobj_at(STATUE, x, y, TRUE, TRUE): next_ident, then
+// mksobj_init's ROCK_CLASS arm (rndmonnum, plus the
+// `rn2(level_difficulty()/2 + 10) > 10` spellbook-inside roll for a
+// non-verysmall species), then mksobj's gender rn2(2) for a species with no
+// fixed sex.  lspo_object then forces spe back to the CORPSTAT_* flag word (0).
+function create_statuary(croom) {
+    const count = lua_d(5, 5);
+    for (let i = 0; i < count; i++)
+        splev_create_object_id(STATUE, croom, { spe: 0 });
+    // d(3) is nhlib.lua's 1-arg form: math.random(1,3) == 1 + rn2(3), one draw.
+    const ntraps = lua_d(1, 3);
+    for (let i = 0; i < ntraps; i++)
+        splev_create_trap(STATUE_TRAP, croom, { spider_on_web: true });
+}
+
+// C ref: themerms.lua:207 "Light source" (eligible only in an UNLIT room).
+//   des.object({ id = "oil lamp", lit = true });
+function create_light_source(croom) {
+    splev_create_object_id(OIL_LAMP, croom, { lit: true });
 }
 
 export function themeroom_fill(croom) {
@@ -541,7 +752,11 @@ export function themeroom_fill(croom) {
         { name: 'Storeroom' },
         { name: 'Teleportation hub' },
     ];
-    const diff = depth_of_level(game.u?.uz);
+    // C ref: themerms.lua is_eligible() reads nh.level_difficulty(), which is
+    // dungeon.c level_difficulty() (amulet / builds_up / aggravate-monster
+    // adjusted) — NOT a bare depth().  The value picks the eligible SET, so it
+    // also decides the reservoir modulus.
+    const diff = level_difficulty_ext();
     let pick = null;
     let total_frequency = 0;
     for (const fill of fills) {
@@ -587,6 +802,16 @@ export function themeroom_fill(croom) {
         create_buried_treasure(croom);
     } else if (pick?.name === 'Cloud room') {
         create_cloud_room(croom);
+    } else if (pick?.name === 'Statuary') {
+        create_statuary(croom);
+    } else if (pick?.name === 'Light source') {
+        create_light_source(croom);
+    } else if (pick?.name === 'Boulder room') {
+        create_boulder_room(croom);
+    } else if (pick?.name === 'Spider nest') {
+        create_spider_nest(croom);
+    } else if (pick?.name === 'Garden') {
+        create_garden(croom);
     }
 }
 
@@ -714,11 +939,62 @@ function create_teleportation_hub(croom) {
 //      the explicit coord skips trap-type/location RNG; the mktrap_victim gate
 //      still evaluates `lvl <= rnd(4)` (one rnd(4)) before the kind<HOLE test
 //      short-circuits it out for a teleport trap (mklev.c:2135-2144).
+// C ref: themerms.lua:1071 make_garden_walls(data) — the "Garden" fill's
+// postprocess handler:
+//   local sel = data.sel:grow();                        -- W_ANY 8-neighbour dilation
+//   des.replace_terrain({ selection = sel, fromterrain="w", toterrain = "T" });
+//   des.replace_terrain({ selection = sel, fromterrain="S", toterrain = "A" });
+// lspo_replace_terrain draws `rn2(100) < chance` for EVERY matching cell even at
+// the default chance == 100, so both passes consume RNG — one draw per wall cell
+// and one per secret door.  "w" is MATCH_WALL (IS_STWALL), and mkmaze.c
+// set_levltyp turns a SDOOR -> AIR request into arboreal_sdoor with typ intact.
+function run_garden_walls(entry) {
+    const rmno = entry.roomnoidx + ROOMOFFSET;
+    const grown = new Set();
+    const key = (x, y) => (y * COLNO + x);
+    for (let x = entry.lx; x <= entry.hx; x++)
+        for (let y = entry.ly; y <= entry.hy; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc || loc.edge || loc.roomno !== rmno) continue;
+            // selection_do_grow(sel, W_ANY): the cell plus all eight neighbours.
+            for (let dx = -1; dx <= 1; dx++)
+                for (let dy = -1; dy <= 1; dy++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx < 0 || nx > COLNO - 1 || ny < 0 || ny > ROWNO - 1) continue;
+                    grown.add(key(nx, ny));
+                }
+        }
+    if (!grown.size) return;
+    let lox = COLNO, hix = 0, loy = ROWNO, hiy = 0;
+    for (const k of grown) {
+        const y = Math.floor(k / COLNO), x = k - y * COLNO;
+        if (x < lox) lox = x; if (x > hix) hix = x;
+        if (y < loy) loy = y; if (y > hiy) hiy = y;
+    }
+    // lspo_replace_terrain walks x outer (from max(1, rect.lx)), y inner.
+    const CHANCE = 100;  // get_table_int_opt(L, "chance", 100)
+    for (let x = Math.max(1, lox); x <= hix; x++)
+        for (let y = loy; y <= hiy; y++) {
+            if (!grown.has(key(x, y))) continue;
+            const loc = game.level?.at(x, y);
+            if (loc && IS_STWALL(loc.typ) && rn2(100) < CHANCE)
+                set_levltyp_lit(x, y, TREE, SET_LIT_NOCHANGE);
+        }
+    for (let x = Math.max(1, lox); x <= hix; x++)
+        for (let y = loy; y <= hiy; y++) {
+            if (!grown.has(key(x, y))) continue;
+            const loc = game.level?.at(x, y);
+            if (loc && loc.typ === SDOOR && rn2(100) < CHANCE)
+                loc.arboreal_sdoor = 1;
+        }
+}
+
 export async function run_themeroom_postprocess() {
     const queue = game.level?._themeroom_postprocess;
     if (!queue || !queue.length) return;
     game.level._themeroom_postprocess = [];
     for (const entry of queue) {
+        if (entry.handler === 'garden_walls') { run_garden_walls(entry); continue; }
         if (entry.handler !== 'teleport_trap' && entry.handler !== 'dig_engraving')
             continue;
         // selection.negate():filter_mapchar(".") — every ROOM ("." char) cell on

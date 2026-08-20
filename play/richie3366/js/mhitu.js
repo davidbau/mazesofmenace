@@ -3,7 +3,7 @@
 //         uhitm.c mhitm_ad_phys (mhitu bare / weapon subset).
 
 import { game } from './gstate.js';
-import { monnear, mnexto } from './mon.js';
+import { monnear, mnexto, mtrapped_in_pit } from './mon.js';
 import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
@@ -18,8 +18,8 @@ import { destroy_items } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys, is_pool } from './hack.js';
 import { rnd, d, rn2 } from './rng.js';
 import {
-    pline, pline_mon, mon_visible, canspotmon, map_invisible, canseemon, newsym,
-    docrt, swallowed, flush_topl_more, tp_sensemon,
+    pline, pline_mon, set_msg_xy, mon_visible, canspotmon, map_invisible,
+    canseemon, newsym, docrt, swallowed, flush_topl_more, tp_sensemon,
 } from './display.js';
 import { cansee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { Monnam, mon_nam, pmname, hliquid, x_monnam } from './do_name.js';
@@ -34,7 +34,7 @@ import { monflee } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
-    hides_under, is_flyer, thick_skinned,
+    hides_under, is_flyer, thick_skinned, nolimbs,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import { done_in_by } from './end.js';
@@ -48,7 +48,7 @@ import {
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
-    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
+    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN,
 } from './mhitm.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize } from './polyself.js';
@@ -189,15 +189,17 @@ export function mswings_verb(mwep, bash) {
 }
 
 /**
- * C ref: mhitu.c mswings — verbose visible weapon swing pline before hit/miss.
- * is_art(Snickersnee) bash exemption deferred (no pole+artifact here).
+ * C ref: mhitu.c mswings :128–141 — verbose visible weapon swing
+ * pline_mon before hit/miss (D-1305). is_art(Snickersnee) bash
+ * exemption deferred (caller still omits !is_art).
  */
-async function mswings(mtmp, otemp, bash) {
+export async function mswings(mtmp, otemp, bash) {
     const u = game.u || {};
     const Blind = !!(u.Blind || u.ublind);
     const verbose = game.flags?.verbose !== false;
     if (verbose && !Blind && mon_visible(mtmp)) {
-        await pline(
+        await pline_mon(
+            mtmp,
             `${Monnam(mtmp)} ${mswings_verb(otemp, bash)} `
             + `${(otemp.quan | 0) > 1 ? 'one of ' : ''}`
             + `${mhis(mtmp)} ${xname(otemp)}.`,
@@ -223,8 +225,10 @@ function s_suffix_hitmsg(s) {
  * else aatyp verb + consecutive-same-aatyp " again" + punct.
  * AT_TENT s_suffix(Monnam)+" tentacles suck your brain"; AT_EXPL/BOOM
  * "explodes"; AT_KICK thick_skinned(youmonst.data) punct ".".
- * Named omit: missmu/wildmiss/mswings still pline; mattacku AT_TENT
- * melee case / explmu / AT_HUGS; remaining unported mhitm_ad_*.
+ * Named omit: mattacku AT_TENT melee case / explmu / AT_HUGS;
+ * remaining unported mhitm_ad_*. missmu pline_mon is D-1286.
+ * wildmiss set_msg_xy then pline is D-1291. mswings pline_mon
+ * is D-1305.
  */
 export async function hitmsg(mtmp, mattk) {
     const youmonst = game.youmonst;
@@ -287,35 +291,42 @@ export async function hitmsg(mtmp, mattk) {
 }
 
 /**
- * C ref: mhitu.c missmu — map_invisible when unseen; seduce pretend-friendly;
- * "just " on near-miss when flags.verbose. Named omission: stop_occupation
- * already called by some callers — also invoke here like C.
+ * C ref: mhitu.c missmu :83–99 — clear hitmsg_mid/prev; map_invisible
+ * when unseen; seduce pretend-friendly or "just " near-miss when
+ * flags.verbose; both arms pline_mon (D-1286). stop_occupation after
+ * the line like C. Named omit: mattacku AT_ENGL gulps/lunges
+ * pline_mon. wildmiss set_msg_xy then pline is D-1291. mswings
+ * pline_mon is D-1305.
  */
-async function missmu(mtmp, nearmiss, mattk) {
+export async function missmu(mtmp, nearmiss, mattk) {
     game.hitmsg_mid = 0;
     game.hitmsg_prev = null;
     if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
     if (could_seduce(mtmp, game.youmonst, mattk) && !mtmp.mcan) {
-        await pline(`${Monnam(mtmp)} pretends to be friendly.`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} pretends to be friendly.`);
     } else {
         const just = nearmiss && game.flags?.verbose !== false ? 'just ' : '';
-        await pline(`${Monnam(mtmp)} ${just}misses!`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} ${just}misses!`);
     }
     await stop_occupation();
 }
 
 /**
- * C ref: mhitu.c wildmiss — attack at wrong spot (Invis / Displaced /
- * Underwater). Named omissions: set_msg_xy; Some_Monnam impossible;
- * nolimbs lunge polish (uses swings fallback).
+ * C ref: mhitu.c wildmiss :176–261 — attack at wrong spot (Invis /
+ * Displaced / Underwater). After verbose/cansee early returns:
+ * Monnam, then set_msg_xy(mx,my), then pline (not pline_mon;
+ * D-1291). nolimbs uses "lunges" like C :210–213.
+ * Named omit: Some_Monnam impossible; mattacku AT_ENGL gulps/lunges
+ * pline_mon; AT_TENT / explmu / AT_HUGS. mswings pline_mon is D-1305.
  */
-async function wildmiss(mtmp, mattk) {
+export async function wildmiss(mtmp, mattk) {
     const unotseen = !mtmp.mcansee || (Invis() && !perceives(mtmp.data));
     const unotthere = Displaced();
     const usubmerged = !!(game.u?.Underwater);
 
     if (!unotseen && !unotthere && !usubmerged) {
-        // C: impossible(...); skip
+        // C: impossible("%s attacks you without knowing your location?",
+        // Some_Monnam(mtmp)); Some_Monnam still named.
         return;
     }
     if (game.flags?.verbose === false) return;
@@ -327,13 +338,15 @@ async function wildmiss(mtmp, mattk) {
     const Monst_name = Monnam(mtmp);
     const inv = Invis() ? 'invisible ' : '';
 
+    set_msg_xy(mtmp.mx, mtmp.my);
     if (unotseen) {
         const aatyp = mattk?.aatyp | 0;
         let swings = 'swings';
         if (aatyp === AT_BITE) swings = 'snaps';
         else if (aatyp === AT_KICK) swings = 'kicks';
-        else if (aatyp === AT_STNG || aatyp === AT_BUTT) swings = 'lunges';
-        // nolimbs → lunges deferred
+        else if (aatyp === AT_STNG || aatyp === AT_BUTT || nolimbs(mtmp.data)) {
+            swings = 'lunges';
+        }
         if (compat) {
             await pline(`${Monst_name} tries to touch you and misses!`);
         } else {
@@ -1553,6 +1566,8 @@ export async function mattacku(mtmp) {
     const sum = new Array(NATTK).fill(M_ATTK_MISS);
     const firstfoundyou = foundyou;
     let skipnonmagc = false;
+    // C mhitu.c mattacku `:765` — [see mattackm]
+    game.skipdrin = false;
 
     for (let i = 0; i < NATTK; i++) {
         sum[i] = M_ATTK_MISS;
@@ -1565,9 +1580,12 @@ export async function mattacku(mtmp) {
 
         const mattk = get_mattk(mtmp, i, null); // null = hero defender
         if (mattk.aatyp === AT_NONE) continue;
-        // C: uswallow skips non-ENGL; skipnonmagc skips non-MAGC
+        // C: uswallow skips non-ENGL; skipnonmagc skips non-MAGC;
+        // skipdrin skips remaining AT_TENT+AD_DRIN (`:787–790`)
         if ((u.uswallow | 0) && (mattk.aatyp | 0) !== AT_ENGL) continue;
         if (skipnonmagc && (mattk.aatyp | 0) !== AT_MAGC) continue;
+        if (game.skipdrin && (mattk.aatyp | 0) === AT_TENT
+            && (mattk.adtyp | 0) === AD_DRIN) continue;
 
         switch (mattk.aatyp) {
         case AT_CLAW:
@@ -1576,6 +1594,10 @@ export async function mattacku(mtmp) {
         case AT_STNG:
         case AT_TUCH:
         case AT_BUTT:
+            // C mhitu.c mattacku `:801` — pit-trapped kicker skips AT_KICK
+            if ((mattk.aatyp | 0) === AT_KICK && mtrapped_in_pit(mtmp)) {
+                continue;
+            }
             if (!range2) {
                 if (foundyou) {
                     const j = rnd(20 + i);

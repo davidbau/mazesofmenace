@@ -329,17 +329,27 @@ export function makedog() {
             put_saddle_on_mon(null, mtmp);
     }
 
-    // C ref: dog.c makedog() — default pet names (dogs only): Slasher
-    // (Caveman), Hachi (Samurai), Idefix (Barbarian), Sirius (Ranger).
+    // C ref: dog.c makedog():232 — the pet's name comes from gd.dogname /
+    // gc.catname / gh.horsename (an OPTIONS=dogname: or a `dogname=` config
+    // statement; js/options.js records them under flags.<name>), and only when
+    // there is none does a little dog fall back to the per-role default:
+    // Slasher (Caveman), Hachi (Samurai), Idefix (Barbarian), Sirius (Ranger).
     // christen_monst() stores the name in mtmp->mextra->mgivenname, which
     // x_monnam() then renders standalone (no article).
-    if (mtmp && pettype === PM_LITTLE_DOG) {
-        const role = current_role_name();
-        const DOG_NAMES = { 'Caveman': 'Slasher', 'Samurai': 'Hachi',
-                            'Barbarian': 'Idefix', 'Ranger': 'Sirius' };
-        const petname = DOG_NAMES[role];
-        if (petname)
-            mtmp.mgivenname = petname;
+    if (mtmp) {
+        let petname = (pettype === PM_LITTLE_DOG) ? (g.flags?.dogname || '')
+                      : (pettype === PM_KITTEN) ? (g.flags?.catname || '')
+                        : (pettype === PM_PONY) ? (g.flags?.horsename || '') : '';
+        if (!petname && pettype === PM_LITTLE_DOG) {
+            const role = current_role_name();
+            const DOG_NAMES = { 'Caveman': 'Slasher', 'Samurai': 'Hachi',
+                                'Barbarian': 'Idefix', 'Ranger': 'Sirius' };
+            petname = DOG_NAMES[role] || '';
+        }
+        // C: `if (!gp.petname_used++ && *petname)` — only the first pet of the
+        // game gets the configured name.
+        if (petname && !g.petname_used) mtmp.mgivenname = petname;
+        g.petname_used = (g.petname_used || 0) + 1;
     }
     // Place the pet on the level so the renderer can draw it.
     if (mtmp && mtmp.mx > 0 && mtmp.my >= 0 && g.level) {

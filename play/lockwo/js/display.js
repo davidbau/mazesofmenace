@@ -729,7 +729,7 @@ function wall_cmap_index(loc) {
 // a plain array instead, so walk whichever shape is present (walking an array
 // as a list silently found nothing, which made known_branch_stairs() answer
 // FALSE on every special level).
-function stairway_at(x, y) {
+export function stairway_at(x, y) {
     const head = game.stairs;
     if (Array.isArray(head)) {
         for (const s of head) if (s && s.sx === x && s.sy === y) return s;
@@ -747,7 +747,7 @@ function stairway_at(x, y) {
 // Using level.upstair alone is wrong on a level that carries a branch
 // up-staircase as well as the main one — mklev's branch maker overwrites
 // level.upstair with the branch, leaving the real upstair drawn as '>'.
-function stairs_go_down(loc, x, y) {
+export function stairs_go_down(loc, x, y) {
     if (loc.ladder) return !!(loc.ladder & LA_DOWN);
     const sway = stairway_at(x, y);
     if (sway) return !sway.up;
@@ -756,7 +756,7 @@ function stairs_go_down(loc, x, y) {
 
 // C ref: stairs.c known_branch_stairs — True if 'sway' is a branch staircase
 // (leads to a different dungeon) and the hero has traversed it.
-function known_branch_stairs(sway) {
+export function known_branch_stairs(sway) {
     return !!(sway && sway.tolev
         && sway.tolev.dnum !== (game.u?.uz?.dnum ?? 0)
         && sway.u_traversed);
@@ -2605,8 +2605,26 @@ export function pline_vision_flush() {
     }
 }
 
+// C ref: include/hack.h MSGTYP_*.
+const MSGTYP_NOREP = 1, MSGTYP_NOSHOW = 2, MSGTYP_STOP = 3;
+
+// C ref: pline.c vpline():229-243 — a MSGTYPE=hide pattern drops the message
+// entirely (no vision flush, no flush_screen, no putmesg, no prevmsg update),
+// and MSGTYPE=norep drops it when it repeats the previous one.  Both topline
+// writers in this port stand in for C's single vpline(), so both consult this.
+// js/options.js publishes msgtype_type() on `game` rather than exporting it
+// for import here: options.js -> pickup.js -> display.js is already a cycle and
+// closing it changes module init order.
+function msgtype_suppressed(msg) {
+    if (!game.msgtypes) return false;   /* no MSGTYPE= line in the config */
+    const typ = game.msgtype_type(msg, false);
+    return typ === MSGTYP_NOSHOW
+           || (typ === MSGTYP_NOREP && msg === game._prevmsg);
+}
+
 // ── pline ──
 export async function pline(msg) {
+    if (msgtype_suppressed(msg)) return;
     // C ref: pline.c vpline():266-274 — vision_recalc() FIRST, then
     // flush_screen(), which is what runs bot() when disp.botl is set.
     pline_vision_flush();
@@ -2811,6 +2829,7 @@ async function botl_flush() {
 }
 
 export async function update_topl(bp) {
+    if (msgtype_suppressed(bp)) return;
     // C ref: pline.c vpline():129 `strncpy(gp.prevmsg, line, BUFSZ)` — the LAST
     // INDIVIDUAL message, which is what Norep()'s dedup compares against.  It is
     // NOT gt.toplines: that holds the whole CONCATENATED top row, so a Norep

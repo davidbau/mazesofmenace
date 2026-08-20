@@ -3805,8 +3805,9 @@ export async function dozap() {
 
 /**
  * C ref: zap.c makewish — prompt + readobjnam + hold_another_object.
- * Terrain wish via readobjnam_wish → wizterrainwish switch_terrain (D-1279).
- * Help / history / livelog still named.
+ * Terrain wish via readobjnam_wish → wizterrainwish traps (D-1289) +
+ * door/wall (D-1290) + secret corridor (D-1304) + switch_terrain
+ * (D-1279). Help / history / livelog still named.
  */
 export async function makewish() {
     const nothing = NOTHING_OBJ;

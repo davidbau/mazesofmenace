@@ -10,8 +10,8 @@
 // passtune getlin / Castle drawbridge open/close + Mastermind hints
 // (D-0977).
 // Named omissions: Hero_playnotes audio; onscary wiz/angel/rider; can_blow poly;
-// flooreffects full (boulder→pit thin); maketrap shop-hole/
-// DRAWBRIDGE_UP ice morph (D-1280 PIT/HOLE set_levltyp in trap.js);
+// flooreffects full (boulder→pit thin); maketrap shop-hole named
+// (D-1280 PIT/HOLE set_levltyp + D-1296 DRAWBRIDGE_UP ice in trap.js);
 // Soundeffect; count_level_features on
 // fountain/sink morph; sleep_monst defended(AD_SLEE)/shieldeff;
 // tamedog givemsg pline; set_entity crush on open/close.

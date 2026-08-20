@@ -968,3 +968,18 @@ export function vegetarian(ptr) {
     if (vegan(ptr)) return true;
     return ptr?.mlet === 'S_PUDDING' && ptr.mndx !== PM_BLACK_PUDDING;
 }
+
+const PM_PURPLE_WORM = monsterNames.indexOf('PM_PURPLE_WORM');
+const PM_BABY_PURPLE_WORM = monsterNames.indexOf('PM_BABY_PURPLE_WORM');
+const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
+const PM_PIRANHA = monsterNames.indexOf('PM_PIRANHA');
+
+/**
+ * C ref: mondata.h corpse_eater — purple worm / baby / ghoul / piranha.
+ * mndx: mons() allocates (D-0928 #1130).
+ */
+export function corpse_eater(ptr) {
+    const mndx = ptr?.mndx ?? -1;
+    return mndx === PM_PURPLE_WORM || mndx === PM_BABY_PURPLE_WORM
+        || mndx === PM_GHOUL || mndx === PM_PIRANHA;
+}

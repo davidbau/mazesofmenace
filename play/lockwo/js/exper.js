@@ -409,13 +409,13 @@ export async function losexp(drainer, emitMsg) {
 }
 
 // C ref: attrib.c minuhpmax — min uhpmax floor.
-function minuhpmax(altmin) {
+export function minuhpmax(altmin) {
     if (altmin < 1) altmin = 1;
     return Math.max(game.u.ulevel || 1, altmin);
 }
 
 // C ref: attrib.c setuhpmax — set uhpmax, clamp uhp.
-function setuhpmax(newmax) {
+export function setuhpmax(newmax) {
     const u = game.u;
     u.uhpmax = newmax;
     if (u.uhp > u.uhpmax) u.uhp = u.uhpmax;

@@ -641,7 +641,7 @@ export async function newgame() {
     g.plname = g.plname || 'Contestant';
 
     // C ref: allmain.c newgame() — u_on_upstairs before makedog
-    u_on_upstairs();
+    await u_on_upstairs();
     // C ref: allmain.c → makedog() (skipped when preferred_pet === 'n')
     await makedog();
 

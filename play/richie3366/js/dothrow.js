@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, newsym, mark_topline_seen,
-    canseemon, canspotmon, nh_delay_output,
+    canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -35,7 +35,9 @@ import {
     ismnum, isok, u_at, MM_IGNOREWATER, MM_IGNORELAVA,
     HURTLING, FORCEBUNGLE, IRONBARS, Upolyd, FACE, HEAD, ARM, FOOT, STONING,
     TIMEOUT, WT_TO_DMG, POTHIT_HERO_THROW, Has_contents, NON_PM, LOW_PM,
-    W_WEP, W_SWAPWEP, W_QUIVER, STR19, LOST_NONE,
+    W_WEP, W_SWAPWEP, W_QUIVER, STR19, LOST_NONE, SLT_ENCUMBER, Is_airlevel,
+    xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
+    DISP_FLASH, DISP_CHANGE, DISP_END, ECMD_TIME,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
@@ -43,8 +45,11 @@ import {
     ammo_and_launcher, is_ammo, is_missile, doswapweapon, doquiver_core, welded,
     setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
-import { acurr, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
+import { acurr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
+import { calc_capacity } from './invent.js';
+import { add_to_minv } from './makemon.js';
 import { find_mac } from './mhitm.js';
+import { digests } from './mhitu.js';
 import { hitval, weapon_hit_bonus, should_mulch_missile, dmgval } from './weapon.js';
 import { spec_abon, artifact_hit, is_art } from './artifact.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
@@ -210,6 +215,15 @@ function AutoReturn(o, wmsk) {
 }
 
 /**
+ * C weapon.c autoreturn_weapon — AKLYS only (boomerang row commented out).
+ * throwit uses arw->tethered && W_WEP; range/isqrt named with DISP_TETHER.
+ */
+function autoreturn_weapon(otmp) {
+    if (!otmp || (otmp.otyp | 0) !== AKLYS) return null;
+    return { otyp: AKLYS, tethered: 1 };
+}
+
+/**
  * C ref: dothrow.c throw_ok — SUGGEST coins + weapons (!uslinging);
  * AutoReturn (wielded aklys / Valk Mjollnir / boomerang) before lone-uwep
  * DOWNPLAY (D-1282). Named omit: gem-sling uslinging.
@@ -348,7 +362,10 @@ function freeinv(otmp) {
     const inv = game.invent || [];
     const idx = inv.indexOf(otmp);
     if (idx >= 0) inv.splice(idx, 1);
-    // Also handle when otmp was split from a stack still in invent
+    if (otmp) {
+        otmp.nobj = null;
+        otmp.where = OBJ_FREE;
+    }
 }
 
 /** C ref: mondata.h befriend_with_obj — banana→monkey/ape; domestic+food. */
@@ -742,16 +759,95 @@ function multishot_class_bonus(pm, ammo, launcher) {
 }
 
 /**
+ * C hacklib.c ordin — 1st/2nd/3rd/11th (teen exception).
+ */
+function ordin(n) {
+    const dd = (n | 0) % 10;
+    return (dd === 0 || dd > 3 || Math.trunc(((n | 0) % 100) / 10) === 1)
+        ? 'th' : (dd === 1) ? 'st' : (dd === 2) ? 'nd' : 'rd';
+}
+
+/**
+ * C dothrow.c endmultishot — stop remaining volley (boomhit self-hit /
+ * hurtle). Verbose pline only when hero is not mon_moving.
+ */
+async function endmultishot(verbose) {
+    const ms = game.m_shot;
+    if (!ms || (ms.i | 0) >= (ms.n | 0)) return;
+    if (verbose && !game.context?.mon_moving) {
+        const i = ms.i | 0;
+        await pline(
+            `You stop ${ms.s ? 'firing' : 'throwing'} after the ${i}${ordin(i)} ${
+                ms.s ? 'shot' : 'toss'
+            }.`,
+        );
+    }
+    ms.n = ms.i | 0;
+}
+
+/**
+ * C hacklib.c s_suffix — it→its, you→your, *s→*', else *'s.
+ * throw_gold strcat's " entrails" onto that buffer (dothrow.c:2674–2676).
+ */
+function s_suffix_throw_gold(s) {
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`;
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+/**
+ * C dothrow.c throw_gold. Swallow (D-1302): after the self-cancel gate,
+ * freeinv then add_to_minv(ustuck) — not swallowit/mpickobj — with
+ * pline_The entrails when digests(ustuck->data). Named omit: You()
+ * self pline / unsplitobj (D-0720); dz ceiling; bhit; ghitm;
+ * ship_object; flooreffects; sellobj; quivered gold via throwit.
+ */
+export async function throw_gold(obj) {
+    const u = game.u || {};
+    // C :2661 — self before freeinv. Do not ingest gold thrown at `.`.
+    if (!(u.dx || 0) && !(u.dy || 0) && !(u.dz || 0)) {
+        // C You("cannot throw gold at yourself.") + unsplitobj named.
+        return 0; // C ECMD_CANCEL; JS cmd.js treats truthy as time
+    }
+    if (u.uswallow) {
+        freeinv(obj);
+        if (obj?.oclass === COIN_CLASS) {
+            game._goldCount = Math.max(
+                0, (game._goldCount || 0) - (obj.quan || 0),
+            );
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+        }
+        let swallower = mon_nam(u.ustuck);
+        // C :2674 — digests → s_suffix(mon_nam) + " entrails"
+        if (u.ustuck?.data && digests(u.ustuck.data)) {
+            swallower = `${s_suffix_throw_gold(swallower)} entrails`;
+        }
+        await pline(`The gold disappears into ${swallower}.`);
+        if (u.ustuck && obj) add_to_minv(u.ustuck, obj);
+        return ECMD_TIME;
+    }
+    // Named omit: rest of throw_gold (dz / bhit / ghitm / ship / floor)
+    return 0;
+}
+
+/**
  * C ref: dothrow.c throw_obj — multishot + split + throwit.
  * getdir is done by caller (dofire/dothrow) matching JS input boundary;
  * C calls getdir inside throw_obj — same one prompt either way.
  */
-async function throw_obj(obj, shotlimit) {
-    // C: coin class → throw_gold (body deferred; `$` still in getobj suggest list)
-    if (obj.oclass === COIN_CLASS) return 0;
+export async function throw_obj(obj, shotlimit) {
+    const u = game.u || {};
+    // C throw_obj :112 — non-quiver coins → throw_gold (swallow D-1302)
+    if (obj.oclass === COIN_CLASS) {
+        if (obj !== (u.uquiver || null)) return throw_gold(obj);
+        return 0; // quivered gold via throwit named omit
+    }
 
     // C ref: dothrow.c throw_obj — after getdir, self (dx=dy=dz=0) refuses
-    const u = game.u || {};
     if (!(u.dx || 0) && !(u.dy || 0) && !(u.dz || 0)) {
         await pline('You cannot throw an object at yourself.');
         return 0; // ECMD_OK — no time
@@ -815,6 +911,9 @@ async function throw_obj(obj, shotlimit) {
     }
 
     const shot = ammo_and_launcher(obj, uwep);
+    if (!game.m_shot) game.m_shot = { i: 0, n: 0, o: 0, s: false };
+    // C throw_obj :240 — m_shot.s before volley pline
+    game.m_shot.s = !!shot;
     if (multishot > 1 || shotlimit > 0) {
         // C ref: dothrow.c throw_obj — You("%s %d %s.", shoot|throw, n,
         //   (n==1) ? singular(obj, xname) : xname(obj));
@@ -826,7 +925,9 @@ async function throw_obj(obj, shotlimit) {
     // reads this after freeinv has cleared the slot (D-1282).
     const wep_mask = obj.owornmask || 0;
     let oldslot = null;
-    for (let i = 1; i <= multishot; i++) {
+    game.m_shot.o = obj.otyp | 0;
+    game.m_shot.n = multishot;
+    for (game.m_shot.i = 1; game.m_shot.i <= game.m_shot.n; game.m_shot.i++) {
         const twoweap = !!game.u?.twoweap;
         let otmp;
         if ((obj.quan || 1) > 1) {
@@ -850,6 +951,10 @@ async function throw_obj(obj, shotlimit) {
         const { encumber_msg } = await import('./invent.js');
         await encumber_msg();
     }
+    game.m_shot.n = 0;
+    game.m_shot.i = 0;
+    game.m_shot.o = 0; // STRANGE_OBJECT
+    game.m_shot.s = false;
     return 1;
 }
 /** C ref: pline.c You_hear — acoustics; Unaware/Underwater deferred. */
@@ -1187,8 +1292,9 @@ function hitfloor_surface(x, y) {
  * invent hold_another_object drop_it hitfloor(FALSE) (D-1272);
  * pickup tipcontainer highdrop hitfloor(TRUE) (D-1273);
  * toss_up / throwit u.dz (D-1274).
- * Named omit: ball litter; artifact; finesse_ahriman float_down;
- * throwit slip / stamina / steed potion (swallowit is D-1283).
+ * Named omit: ball litter; artifact; finesse_ahriman float_down.
+ * throwit boomhit is D-1301 (stamina D-1293; slip D-1292; swallowit D-1283;
+ * steed potion D-1297).
  */
 export async function hitfloor(obj, verbosely) {
     if (!obj) return;
@@ -1512,14 +1618,46 @@ async function swallowit(obj) {
 }
 
 /**
+ * C dothrow.c sho_obj_return_to_u — flash the missile back along the
+ * throw vector (not boomerangs). Display RNG via obj_to_glyph(...,
+ * rn2_on_display_rng). Wielded aklys uses tmp_at(DISP_END, BACKTRACK)
+ * instead (outbound DISP_TETHER named). Leader !next2u caller named
+ * (thitmonst catch / finish_quest).
+ */
+export async function sho_obj_return_to_u(obj) {
+    const u = game.u || {};
+    const bp = game.bhitpos || {};
+    const dx = u.dx | 0;
+    const dy = u.dy | 0;
+    if (!(dx || dy)
+        || ((bp.x | 0) === (u.ux | 0) && (bp.y | 0) === (u.uy | 0))) {
+        return;
+    }
+    let x = (bp.x | 0) - dx;
+    let y = (bp.y | 0) - dy;
+    tmp_at(DISP_FLASH, obj_glyph(obj));
+    while (isok(x, y) && (x !== (u.ux | 0) || y !== (u.uy | 0))) {
+        tmp_at(x, y);
+        await nh_delay_output();
+        x -= dx;
+        y -= dy;
+    }
+    tmp_at(DISP_END, 0);
+}
+
+/**
  * C dothrow.c throwit returning_missile after bhit (Mjollnir or aklys).
  * Returns true if the object was handled (do not land).
- * Named omit: sho_obj_return_to_u / tmp_at tether.
+ * Named omit: tethered tmp_at BACKTRACK / outbound DISP_TETHER.
  */
 async function throwit_returning_missile(
     obj, wep_mask, twoweap, oldslot, x, y, impaired,
 ) {
     if (!game.iflags?.returning_missile) return false;
+    // C bhit left gb.bhitpos at the stop cell; JS fly uses locals.
+    if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+    game.bhitpos.x = x | 0;
+    game.bhitpos.y = y | 0;
     if (!rn2(100)) {
         await pline(`${Tobjnam(obj, 'fail')} to return!`);
         // C :1772 — fail-to-return while swallowed → swallowit, do not land
@@ -1529,7 +1667,14 @@ async function throwit_returning_missile(
         }
         return false;
     }
-    // sho_obj_return_to_u named omit (display RNG / tmp_at)
+    // C :1712–1715 — tethered BACKTRACK else sho_obj_return_to_u
+    const tethered_weapon = !!(autoreturn_weapon(obj)?.tethered
+        && ((wep_mask | 0) & W_WEP) !== 0);
+    if (tethered_weapon) {
+        // tmp_at(DISP_END, BACKTRACK) needs outbound DISP_TETHER
+    } else {
+        await sho_obj_return_to_u(obj);
+    }
     if (!impaired && rn2(100)) {
         await pline(`${Tobjnam(obj, 'return')} to your hand!`);
         obj = await addinv_before_throw(obj, oldslot);
@@ -1588,6 +1733,140 @@ async function throwit_returning_missile(
     return true;
 }
 
+/** C hack.h DIR_LEFT / DIR_RIGHT / DIR_CLAMP — 8-dir wrap. */
+function DIR_LEFT(dir) { return ((dir | 0) + 7) % N_DIRS; }
+function DIR_RIGHT(dir) { return ((dir | 0) + 1) % N_DIRS; }
+function DIR_CLAMP(dir) { return ((dir | 0) + N_DIRS) % N_DIRS; }
+
+/** C youprop.h URIGHTY — u.uhandedness == RIGHT_HANDED. */
+function URIGHTY() {
+    return ((game.u?.uhandedness | 0) === RIGHT_HANDED);
+}
+
+/** C youprop.h Deaf — H||E||uroleplay.deaf (Klonk). */
+function Deaf_boom() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+}
+
+/** C youprop.h Levitation — (H||E) && !B. throwit air/lev hurtle before boomhit. */
+function Levitation_boom() {
+    const u = game.u || {};
+    return !!((u.Levitation || (u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+
+/** C defsym.h S_boomleft ')' / S_boomright '(' HI_WOOD. */
+const BOOM_LEFT_GLYPH = { ch: ')', color: HI_WOOD, dec: false };
+const BOOM_RIGHT_GLYPH = { ch: '(', color: HI_WOOD, dec: false };
+
+function youmonst_ptr() {
+    if (!game.youmonst) game.youmonst = { _youmonst: true };
+    return game.youmonst;
+}
+
+function is_youmonst_ptr(mon) {
+    return !!(mon && (mon === game.youmonst || mon._youmonst));
+}
+
+/** C hack.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
+function closed_door_boom(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
+}
+
+/**
+ * C dothrow.c throwit_mon_hit — thitmonst; clear thrownobj if consumed.
+ * Named omit: snuff_candle; shk hot_pursuit.
+ */
+async function throwit_mon_hit(obj, mon) {
+    if (!mon) return false;
+    if (mon.isshk && (obj.where | 0) === OBJ_MINVENT && obj.ocarry === mon) {
+        return true;
+    }
+    const bp = game.bhitpos || {};
+    game.notonhead = ((bp.x | 0) !== (mon.mx | 0) || (bp.y | 0) !== (mon.my | 0));
+    const obj_gone = await thitmonst(mon, obj);
+    if (obj_gone) game.thrownobj = null;
+    return false;
+}
+
+/**
+ * C zap.c boomhit — thrown boomerang 10-step curve (not linear bhit).
+ * m_respond shrieker/Medusa/Erinys named omit. Soundeffect named.
+ */
+export async function boomhit(obj, dx, dy) {
+    const u = game.u || {};
+    let nhits = Math.max(1, (obj.spe | 0) + 1);
+    const counterclockwise = URIGHTY();
+    if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+    game.bhitpos.x = u.ux | 0;
+    game.bhitpos.y = u.uy | 0;
+    let boom = counterclockwise ? BOOM_LEFT_GLYPH : BOOM_RIGHT_GLYPH;
+    let i = xytodir(dx | 0, dy | 0);
+    tmp_at(DISP_FLASH, boom);
+    for (let ct = 0; ct < 10; ct++) {
+        i = DIR_CLAMP(i);
+        boom = (boom === BOOM_LEFT_GLYPH) ? BOOM_RIGHT_GLYPH : BOOM_LEFT_GLYPH;
+        tmp_at(DISP_CHANGE, boom);
+        dx = xdir[i] | 0;
+        dy = ydir[i] | 0;
+        game.bhitpos.x += dx;
+        game.bhitpos.y += dy;
+        if (!isok(game.bhitpos.x, game.bhitpos.y)) {
+            game.bhitpos.x -= dx;
+            game.bhitpos.y -= dy;
+            break;
+        }
+        const mtmp = m_at(game.bhitpos.x, game.bhitpos.y);
+        if (mtmp) {
+            // C mon.c m_respond — shrieker / Medusa / Erinys named omit
+            const oldHits = nhits;
+            nhits = oldHits - 1;
+            if (oldHits < 0) {
+                tmp_at(DISP_END, 0);
+                return mtmp;
+            } else if ((await throwit_mon_hit(obj, mtmp)) || !game.thrownobj) {
+                break;
+            }
+        }
+        const loc = game.level?.at?.(game.bhitpos.x, game.bhitpos.y);
+        const typ = loc?.typ ?? 0;
+        if (!ZAP_POS(typ) || closed_door_boom(game.bhitpos.x, game.bhitpos.y)) {
+            game.bhitpos.x -= dx;
+            game.bhitpos.y -= dy;
+            break;
+        }
+        if (u_at(game.bhitpos.x, game.bhitpos.y)) {
+            if (Fumbling() || rn2(20) >= acurr(A_DEX)) {
+                const dam = dmgval(obj, youmonst_ptr());
+                const { thitu } = await import('./mthrowu.js');
+                const box = { obj };
+                await thitu(10 + (obj.spe | 0), maybe_half_phys(dam), box, 'boomerang');
+                await endmultishot(true);
+                break;
+            } else {
+                tmp_at(DISP_END, 0);
+                await pline('You skillfully catch the boomerang.');
+                return youmonst_ptr();
+            }
+        }
+        tmp_at(game.bhitpos.x, game.bhitpos.y);
+        await nh_delay_output();
+        if (IS_SINK(typ)) {
+            if (!Deaf_boom()) await pline('Klonk!');
+            await wake_nearto(game.bhitpos.x, game.bhitpos.y, 20);
+            break;
+        }
+        if (ct % 5 !== 0) {
+            i = counterclockwise ? DIR_LEFT(i) : DIR_RIGHT(i);
+        }
+    }
+    tmp_at(DISP_END, 0);
+    return null;
+}
+
 /**
  * C ref: zap.c bhit + dothrow.c throwit — fly along dx/dy; stop before
  * !ZAP_POS / closed door (bhit backs up one step), then place / breaktest.
@@ -1600,13 +1879,51 @@ async function throwit_returning_missile(
  * toss_up / throwit u.dz is D-1274.
  * returning_missile AutoReturn / throwit_return / ceiling + post-flight
  * return-to-hand is D-1282. swallowit / u.uswallow before u.dz is D-1283.
- * Named omit: slip; stamina drop; steed potionhit; boomhit;
- * sho_obj_return_to_u / tethered tmp_at; throw_gold swallow;
- * thitmonst vanish pline; objsplit unsplit; killer_xname polish.
+ * cursed/greased horizontal slip/misfire is D-1292.
+ * low-HP encumbered stamina drop is D-1293.
+ * throwit steed potionhit rn2(6) is D-1297.
+ * boomhit curve (D-1301). throw_gold swallow (D-1302).
+ * sho_obj_return_to_u (D-1303). Named omit: tethered tmp_at
+ * DISP_TETHER/BACKTRACK; leader catch finish_quest; thitmonst vanish
+ * pline; objsplit unsplit; killer_xname polish; m_respond.
  */
 export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null) {
     const u = game.u;
-    const impaired = throw_impaired();
+    let impaired = throw_impaired();
+    // C throwit :1525 — reset stale gn.notonhead before slip / stamina / thrownobj
+    game.notonhead = false;
+    // C throwit :1526–1547 — cursed/greased && (dx||dy) && !rn2(7)
+    if ((obj.cursed || obj.greased) && (u.dx || u.dy) && !rn2(7)) {
+        let slipok = true;
+        if (ammo_and_launcher(obj, u.uwep)) {
+            await pline(`${Tobjnam(obj, 'misfire')}!`);
+        } else if (obj.greased || throwing_weapon(obj)) {
+            await pline(`${Tobjnam(obj, 'slip')} as you throw it!`);
+        } else {
+            slipok = false;
+        }
+        if (slipok) {
+            u.dx = rn2(3) - 1;
+            u.dy = rn2(3) - 1;
+            if (!u.dx && !u.dy) u.dz = 1;
+            impaired = true;
+        }
+    }
+    // C throwit :1549–1560 — after slip, before thrownobj
+    if ((u.dx || u.dy || (u.dz < 1))
+        && calc_capacity(obj.owt | 0) > SLT_ENCUMBER
+        && (Upolyd(u) ? ((u.mh | 0) < 5 && (u.mh | 0) !== (u.mhmax | 0))
+                      : ((u.uhp | 0) < 10 && (u.uhp | 0) !== (u.uhpmax | 0)))
+        && (obj.owt | 0) > ((Upolyd(u) ? (u.mh | 0) : (u.uhp | 0)) * 2)
+        && !Is_airlevel(u.uz)) {
+        await pline(
+            `You have so little stamina, ${the(xname(obj))} drops from your grasp.`,
+        );
+        exercise(A_CON, false);
+        u.dx = 0;
+        u.dy = 0;
+        u.dz = 1;
+    }
     game.thrownobj = obj;
     obj.how_lost = LOST_THROWN;
     if (!game.iflags) game.iflags = {};
@@ -1648,8 +1965,11 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
             await return_throw_to_inv(obj, wep_mask, twoweap, oldslot);
         } else if ((u.dz | 0) < 0) {
             await toss_up(obj, !!(rn2(5) && !(u.uinwater)));
+        } else if ((u.dz | 0) > 0 && u.usteed
+            && (obj.oclass | 0) === POTION_CLASS && rn2(6)) {
+            // C throwit :1590–1594 — holy water vs cursed saddle
+            await potionhit(u.usteed, obj, POTHIT_HERO_THROW);
         } else {
-            // steed potionhit rn2(6) named
             await hitfloor(obj, true);
         }
         throwit_return(true);
@@ -1657,10 +1977,22 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
     }
 
     if (!u.uswallow) {
-    // C boomhit named omit — after that path C clears returning_missile
     if ((obj.otyp | 0) === BOOMERANG && !u.uinwater) {
+        // C throwit :1601–1611 — boomhit instead of bhit; then clear AutoReturn
+        if (Is_airlevel(u.uz) || Levitation_boom()) {
+            await hurtle(-(u.dx || 0), -(u.dy || 0), 1, true);
+        }
+        hitmon = await boomhit(obj, u.dx || 0, u.dy || 0);
+        x = game.bhitpos?.x | 0;
+        y = game.bhitpos?.y | 0;
         game.iflags.returning_missile = null;
-    }
+        if (is_youmonst_ptr(hitmon)) {
+            exercise(A_DEX, true);
+            await return_throw_to_inv(obj, wep_mask, twoweap, oldslot);
+            throwit_return(true);
+            return;
+        }
+    } else {
     const dx = u.dx || 0;
     const dy = u.dy || 0;
     // C: urange = ACURRSTR/2, then range capped; adjacent wall needs ≥1
@@ -1732,7 +2064,8 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
             break;
         }
     }
-    } // !uswallow: boomhit skip + bhit
+    } // else bhit
+    } // !uswallow: boomhit else bhit
     if (hitmon) {
         if (await thitmonst(hitmon, obj)) {
             // C throwit_mon_hit: obj_gone clears gt.thrownobj
@@ -2175,8 +2508,9 @@ export async function hurtle_step(rangeArg, x, y) {
 
 /**
  * C ref: dothrow.c hurtle — knock hero through air for range steps.
- * Named omit: endmultishot; Punished diagonal-chain slack beyond
- * !carried(uball); surface() vs "floor" for TT_INFLOOR.
+ * endmultishot after verbose (C :1119). Named omit: Punished
+ * diagonal-chain slack beyond !carried(uball); surface() vs "floor"
+ * for TT_INFLOOR.
  */
 export async function hurtle(dx, dy, range, verbose) {
     const u = game.u || {};
@@ -2209,6 +2543,7 @@ export async function hurtle(dx, dy, range, verbose) {
             `You ${range > 1 ? 'hurtle' : 'float'} in the opposite direction.`,
         );
     }
+    await endmultishot(true);
 
     const rangeArg = { n: range | 0 };
     let curx = u.ux | 0;

@@ -1029,7 +1029,7 @@ function acurrstr() {
 // predicate downstream (allmain.c moveloop_core, do.c doup, uhitm.c) reads it.
 // The Boots_on/afternmv ELevitation deferral and float_vs_flight() are not
 // modelled (no multi-turn levitation-boots don in this port).
-function weight_cap() {
+export function weight_cap() {
     const u = game.u;
     let carrcap = WT_WEIGHTCAP_STRCON * (acurrstr() + acurr_eff(A_CON))
                   + WT_WEIGHTCAP_SPARE;
@@ -1091,7 +1091,7 @@ export function carried_weight() { return inv_weight() + weight_cap(); }
 // C ref: hack.c calc_capacity(xtra_wt) — encumbrance level for a given extra
 // weight.  Returns UNENCUMBERED when within capacity, else (wt*2/wc)+1 capped
 // at OVERLOADED.
-function calc_capacity(xtra_wt) {
+export function calc_capacity(xtra_wt) {
     const wt = inv_weight() + (xtra_wt || 0);
     if (wt <= 0) return UNENCUMBERED;
     const wc = game._wc;
@@ -2116,9 +2116,16 @@ function inventoryRows(lets = null, ofilter = null) {
     // which already leads with COIN_CLASS) exactly once per class.  classOrder()
     // already begins with COIN_CLASS, so it must NOT be prepended again or gold
     // renders twice ("Coins / $ - N gold pieces" duplicated).
+    // C ref: invent.c display_pickinv():3176 `sortflags = (flags.sortloot == 'f')
+    // ? SORTLOOT_LOOT : SORTLOOT_INVLET` — with 'sortloot:full' each class's
+    // items are alphabetized by description instead of by inventory letter.
+    const lootOrder = (flags().sortloot === 'f');
     const order = classOrder();
     for (const oclass of order) {
-        const items = inv.filter((obj) => obj.oclass === oclass).sort(compareInvlet);
+        const ofclass = inv.filter((obj) => obj.oclass === oclass);
+        const items = lootOrder
+            ? sortloot(ofclass, SORTLOOT_LOOT).map((sli) => sli.obj).filter(Boolean)
+            : ofclass.sort(compareInvlet);
         if (!items.length) continue;
         rows.push([let_to_name(oclass, false, false), ...items.map((obj) => {
             const letter = obj.invlet || obj_to_let(obj);

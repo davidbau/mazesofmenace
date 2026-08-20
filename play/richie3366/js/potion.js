@@ -7,18 +7,25 @@
 // Branch envelope: POT_WATER peffect + potionbreathe lycan vapor (D-1004).
 // dodip pool yn wash_hands / water_damage (D-1128).
 // djinni_from_bottle chance remap + mongrantswish (D-1144).
+// throwit steed potionhit crash/saddle/H2Opotion_dip/POT_WATER (D-1297).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, You_feel, verbalize, canspotmon,
+    canseemon,
 } from './display.js';
 import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
-import { weight, obj_extract_self } from './mkobj.js';
-import { A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise } from './attrib.js';
+import {
+    weight, obj_extract_self, bless, curse, unbless, uncurse,
+} from './mkobj.js';
+import { A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise, acurr } from './attrib.js';
 import { makeknown, compactify_invlets } from './invent.js';
 import { yn_function } from './getline.js';
-import { doname, xname, short_oname, thesimpleoname, makeplural } from './objnam.js';
+import {
+    doname, xname, short_oname, thesimpleoname, makeplural,
+    The, vtense, an, cxname,
+} from './objnam.js';
 import {
     dipfountain, drinkfountain, drinksink, dipsink,
     wash_hands, floating_above, mongrantswish,
@@ -26,32 +33,40 @@ import {
 import {
     IS_FOUNTAIN, IS_SINK,
     ECMD_TIME, ECMD_CANCEL,
-    POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
+    POTHIT_HERO_THROW, POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     TIMEOUT, HALLUC_RES, GLIB,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
-    P_RIDING, P_BASIC, ER_DESTROYED, MM_NOMSG,
+    P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
+    OBJ_INVENT, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, W_SADDLE,
 } from './const.js';
 import { hands_obj, P_SKILL } from './weapon.js';
-import { rn2, rnd, d, rn1 } from './rng.js';
+import { rn2, rnd, d, rn1, rnl } from './rng.js';
 import { losehp, nomul, maybe_half_phys, is_pool, waterbody_name } from './hack.js';
 import { cansee } from './vision.js';
-import { mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames } from './monsters.js';
+import {
+    mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames,
+    has_head, is_were, is_vampshifter, is_human, breathless, haseyes,
+} from './monsters.js';
 import { rider_cant_reach } from './steed.js';
 import { PM_HUMAN, PM_HEALER } from './generated/monsters_data.js';
 import { makemon, set_malign } from './makemon.js';
-import { mongone } from './mon.js';
+import { mongone, wakeup, healmon, wake_nearto, dist2 } from './mon.js';
 import { tamedog } from './dog.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
 import { more_experienced } from './exper.js';
-import { trycall, hliquid, a_monnam, Monnam } from './do_name.js';
+import {
+    trycall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
+    Hallucination,
+} from './do_name.js';
 import { newuhs } from './eat.js';
 import { heal_legs, water_damage } from './trap.js';
 import {
     delayed_killer, find_delayed_killer, dealloc_killer,
 } from './end.js';
-import { you_were, you_unwere, set_ulycn } from './were.js';
+import { you_were, you_unwere, set_ulycn, new_were } from './were.js';
+import { which_armor } from './worn.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const POT_ACID = objectNames.indexOf('POT_ACID');
@@ -67,7 +82,14 @@ const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 const POT_WATER = objectNames.indexOf('POT_WATER');
+const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
 const PM_DJINNI = monsterNames.indexOf('PM_DJINNI');
+const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
+const MS_SILENT = 0;
+const NH_AMBER = 'amber';
+const NH_LIGHT_BLUE = 'light blue';
+const NH_BLACK = 'black';
 
 /** C: gp.potion_nothing / gp.potion_unkn for dopotion trycall gate. */
 let potion_nothing = 0;
@@ -1341,52 +1363,287 @@ export async function potionbreathe(obj) {
     }
 }
 
+/** C objnam.c otense — plural verb if quan ≠ 1. */
+function otense_pot(obj, verb) {
+    if ((obj?.quan | 0) !== 1) return verb;
+    return vtense(null, verb);
+}
+
+/** C objnam.c Tobjnam — The(xname) + optional otense. */
+function Tobjnam_pot(obj, verb) {
+    let bp = The(xname(obj));
+    if (verb) bp += ` ${otense_pot(obj, verb)}`;
+    return bp;
+}
+
+/** C objnam.c aobjnam — quan prefix + cxname + optional otense. */
+function aobjnam_pot(otmp, verb) {
+    let bp = cxname(otmp) || '';
+    if ((otmp?.quan | 0) !== 1) bp = `${otmp.quan | 0} ${bp}`;
+    if (verb) bp += ` ${otense_pot(otmp, verb)}`;
+    return bp;
+}
+
+/** C hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
+function s_suffix_pot(s) {
+    const buf = String(s ?? '');
+    const low = buf.toLowerCase();
+    if (low === 'it') return `${buf}s`;
+    if (low === 'you') return `${buf}r`;
+    if (buf.endsWith('s') || buf.endsWith('S')) return `${buf}'`;
+    return `${buf}'s`;
+}
+
+/** C hacklib.c upstart — capitalize first letter. */
+function upstart_pot(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/** C youprop.h Blind — H||E blinded unless blocked. */
+function Blind_pot() {
+    const u = game.u || {};
+    return !!(u.Blind || u.ublind
+        || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
+}
+
+/** C youprop.h Protection_from_shape_changers. */
+function Protection_from_shape_changers_pot() {
+    const u = game.u || {};
+    return !!(u.HProtection_from_shape_changers
+        || u.EProtection_from_shape_changers
+        || u.Protection_from_shape_changers);
+}
+
+/** C obj.h carried — invent chain; JS invent[] or where. */
+function carried_pot(obj) {
+    if (!obj) return false;
+    if ((obj.where | 0) === OBJ_INVENT) return true;
+    return (game.invent || []).includes(obj);
+}
+
+/** C mondata.h is_silent — msound == MS_SILENT. */
+function is_silent_pot(ptr) {
+    return (ptr?.msound | 0) === MS_SILENT;
+}
+
 /**
- * C ref: potion.c potionhit — hero-hit path (mon == null → youmonst).
- * Monster-target / saddle / shop unpaid deferred.
+ * C potion.c H2Opotion_dip — holy/unholy water BUC change on targobj
+ * (steed saddle splash / #dip water). Unpaid POT_WATER alter_cost /
+ * costly_alteration named; mentioned_water makeknown named.
+ * @returns {Promise<boolean>}
+ */
+async function H2Opotion_dip(potion, targobj, useeit, objphrase) {
+    if (!potion || (potion.otyp | 0) !== POT_WATER) return false;
+    let func = null;
+    let glowcolor = null;
+    let altfmt = false;
+    let res = false;
+
+    if (potion.blessed) {
+        if (targobj.cursed) {
+            func = uncurse;
+            glowcolor = NH_AMBER;
+        } else if (!targobj.blessed) {
+            func = bless;
+            glowcolor = NH_LIGHT_BLUE;
+            altfmt = true;
+        }
+    } else if (potion.cursed) {
+        if (targobj.blessed) {
+            func = unbless;
+            glowcolor = 'brown';
+        } else if (!targobj.cursed) {
+            func = curse;
+            glowcolor = NH_BLACK;
+            altfmt = true;
+        }
+    } else if (carried_pot(targobj)) {
+        // gm.mentioned_water / makeknown(POT_WATER) named
+        if ((await water_damage(targobj, 0, true)) !== ER_NOTHING) res = true;
+    }
+    if (func) {
+        if (useeit) {
+            glowcolor = hcolor(glowcolor);
+            if (altfmt) {
+                await pline(`${objphrase} with ${an(glowcolor)} aura.`);
+            } else {
+                await pline(`${objphrase} ${glowcolor}.`);
+            }
+            targobj.bknown = !Hallucination();
+        } else if (!potion.bknown || !potion.dknown) {
+            targobj.bknown = 0;
+        }
+        // unpaid POT_WATER alter_cost / costly_alteration named
+        func(targobj);
+        res = true;
+    }
+    return res;
+}
+
+/**
+ * C potion.c potionhit monster body POT_WATER — undead/were/vamp,
+ * gremlin split, iron golem rust. Healing / sickness / confusion /
+ * invis / sleep / paralysis / speed / blindness / oil explode / acid /
+ * polymorph otyps named.
+ */
+async function potionhit_mon_water(mon, obj, tx, ty, your_fault) {
+    let angermon = your_fault;
+    if (mon_hates_blessings(mon) || is_were(mon.data) || is_vampshifter(mon)) {
+        if (obj.blessed) {
+            await pline(`${Monnam(mon)} ${is_silent_pot(mon.data) ? 'writhes' : 'shrieks'} in pain!`);
+            if (!is_silent_pot(mon.data)) {
+                await wake_nearto(tx, ty, (mon.data?.mlevel | 0) * 10);
+            }
+            mon.mhp = (mon.mhp | 0) - d(2, 6);
+            if ((mon.mhp | 0) < 1) {
+                const { killed } = await import('./uhitm.js');
+                await killed(mon);
+            } else if (is_were(mon.data) && !is_human(mon.data)) {
+                new_were(mon);
+            }
+        } else if (obj.cursed) {
+            angermon = false;
+            if (canseemon(mon)) {
+                await pline(`${Monnam(mon)} looks healthier.`);
+            }
+            healmon(mon, d(2, 6), 0);
+            if (is_were(mon.data) && is_human(mon.data)
+                && !Protection_from_shape_changers_pot()) {
+                new_were(mon);
+            }
+        }
+    } else if ((mon.data?.mndx ?? mon.mnum) === PM_GREMLIN) {
+        angermon = false;
+        const { split_mon } = await import('./sit.js');
+        await split_mon(mon, null);
+    } else if ((mon.data?.mndx ?? mon.mnum) === PM_IRON_GOLEM) {
+        if (canseemon(mon)) await pline(`${Monnam(mon)} rusts.`);
+        mon.mhp = (mon.mhp | 0) - d(1, 6);
+        if ((mon.mhp | 0) < 1) {
+            const { killed } = await import('./uhitm.js');
+            await killed(mon);
+        }
+    }
+    return angermon;
+}
+
+/**
+ * C ref: potion.c potionhit — hero (mon == null → youmonst) plus
+ * monster-target crash / saddle / POT_WATER (throwit steed D-1297).
+ * Named omit: remaining monster otyp switch (healing, sickness,
+ * confusion, invis, sleep, paralysis, speed, blindness, oil explode,
+ * acid, polymorph); shop unpaid stolen_value; explode_oil.
  * @param {object|null} mon null = hero
  * @param {object} obj potion missile (consumed)
  * @param {number} how POTHIT_*
  */
 export async function potionhit(mon, obj, how) {
-    const isyou = mon == null;
-    if (!isyou) {
-        // Monster-target potionhit deferred — destroy missile via obfree
-        obj_extract_self(obj);
-        obj.quan = 0;
-        obj.where = 0;
-        return;
-    }
-
     const botlnam = bottlename();
+    const isyou = mon == null;
     const u = game.u || {};
-    // C: pline blocks through --More-- while m_throw tmp_at flash still shows
-    await pline(`The ${botlnam} crashes on your head and breaks into shards.`);
-    const killer = (how === POTHIT_OTHER_THROW)
-        ? 'propelled potion'
-        : 'thrown potion';
-    losehp(maybe_half_phys(rnd(2)), killer, KILLED_BY_AN);
+    const your_fault = (how | 0) <= POTHIT_HERO_THROW;
+    let distance;
+    let tx;
+    let ty;
+    let saddle = null;
+    let hit_saddle = false;
 
-    if (obj.otyp !== POT_OIL && cansee(u.ux, u.uy)) {
-        // C: pline("%s.", Tobjnam(obj, "evaporate"))
-        await pline(`The ${xname(obj)} evaporates.`);
+    if (isyou) {
+        tx = u.ux | 0;
+        ty = u.uy | 0;
+        distance = 0;
+        // C: pline blocks through --More-- while m_throw tmp_at flash still shows
+        await pline(`The ${botlnam} crashes on your head and breaks into shards.`);
+        const killer = (how === POTHIT_OTHER_THROW)
+            ? 'propelled potion'
+            : 'thrown potion';
+        losehp(maybe_half_phys(rnd(2)), killer, KILLED_BY_AN);
+    } else {
+        tx = mon.mx | 0;
+        ty = mon.my | 0;
+        // C potionhit :1645–1651 — sometimes it hits the saddle
+        if (((mon.misc_worn_check | 0) & W_SADDLE)
+            && (saddle = which_armor(mon, W_SADDLE))
+            && (!rn2(10)
+                || ((obj.otyp | 0) === POT_WATER
+                    && ((rnl(10) > 7 && obj.cursed)
+                        || (rnl(10) < 4 && obj.blessed) || !rn2(3))))) {
+            hit_saddle = true;
+        }
+        distance = dist2(u.ux | 0, u.uy | 0, tx, ty);
+        if (!cansee(tx, ty)) {
+            await pline('Crash!');
+        } else {
+            const mnam = mon_nam(mon);
+            let buf;
+            if (hit_saddle && saddle) {
+                buf = `${s_suffix_pot(x_monnam(mon, ARTICLE_THE, null,
+                    SUPPRESS_IT | SUPPRESS_SADDLE, false))} saddle`;
+            } else if (has_head(mon.data)) {
+                buf = `${s_suffix_pot(mnam)} ${game.notonhead ? 'body' : 'head'}`;
+            } else {
+                buf = mnam;
+            }
+            await pline(`The ${botlnam} crashes on ${buf} and breaks into shards.`);
+        }
+        if (rn2(5) && (mon.mhp | 0) > 1 && !hit_saddle) mon.mhp--;
     }
 
-    if (obj.otyp === POT_ACID) {
-        const Acid_resistance = !!(u.HAcid_resistance || u.EAcid_resistance);
-        if (!Acid_resistance) {
-            const burn = obj.blessed ? ' a little' : obj.cursed ? ' a lot' : '';
-            await pline(`This burns${burn}!`);
-            const dmg = d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
-            losehp(maybe_half_phys(dmg), 'potion of acid', KILLED_BY_AN);
+    // oil doesn't instantly evaporate; Neither does a saddle hit
+    if ((obj.otyp | 0) !== POT_OIL && !hit_saddle && cansee(tx, ty)) {
+        if (isyou) {
+            await pline(`The ${xname(obj)} evaporates.`);
+        } else {
+            await pline(`${Tobjnam_pot(obj, 'evaporate')}.`);
         }
     }
-    // POT_OIL explode / POLYMORPH deferred
 
-    // distance == 0 for hero hit → always breathe if humanoid eyes/breath
-    // breathless/haseyes deferred — human start always qualifies
-    void mons(PM_HUMAN);
-    await potionbreathe(obj);
+    if (isyou) {
+        if (obj.otyp === POT_ACID) {
+            const Acid_resistance = !!(u.HAcid_resistance || u.EAcid_resistance);
+            if (!Acid_resistance) {
+                const burn = obj.blessed ? ' a little' : obj.cursed ? ' a lot' : '';
+                await pline(`This burns${burn}!`);
+                const dmg = d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
+                losehp(maybe_half_phys(dmg), 'potion of acid', KILLED_BY_AN);
+            }
+        }
+        // POT_OIL explode / POLYMORPH deferred
+    } else if (hit_saddle && saddle) {
+        const useeit = !Blind_pot() && canseemon(mon) && cansee(tx, ty);
+        const mnam = x_monnam(mon, ARTICLE_THE, null,
+            SUPPRESS_IT | SUPPRESS_SADDLE, false);
+        const buf = upstart_pot(s_suffix_pot(mnam));
+        let affected = false;
+        if ((obj.otyp | 0) === POT_WATER) {
+            const saddle_glows = `${buf} ${aobjnam_pot(saddle, 'glow')}`;
+            affected = await H2Opotion_dip(obj, saddle, useeit, saddle_glows);
+        }
+        // POT_POLYMORPH saddle named (C empty break)
+        if (useeit && !affected) {
+            await pline(`${buf} ${aobjnam_pot(saddle, 'get')} wet.`);
+        }
+    } else {
+        let angermon = your_fault;
+        if ((obj.otyp | 0) === POT_WATER) {
+            angermon = await potionhit_mon_water(mon, obj, tx, ty, your_fault);
+        }
+        // remaining monster otyp switch named
+        if ((mon.mhp | 0) >= 1) {
+            if (angermon) await wakeup(mon, true);
+            else mon.msleeping = 0;
+        }
+    }
+
+    const yd = game.youmonst?.data || mons(PM_HUMAN);
+    if ((distance === 0 || (distance < 3 && !rn2(Math.trunc((1 + acurr(A_DEX)) / 2))))
+        && (!breathless(yd) || haseyes(yd))) {
+        await potionbreathe(obj);
+    } else if (obj.dknown && cansee(tx, ty)) {
+        await trycall(obj);
+    }
+    // shop unpaid stolen_value / subfrombill named
 
     // C: obfree — no obj_resists (delobj would burn rn2(100))
     game._thrownobj = null;

@@ -1950,7 +1950,10 @@ export async function run_deferred_lvltport() {
     // C ref: do.c deferred_goto() -> goto_level(), which delivers gd.dfr_post_msg
     // itself via maybe_lvltport_feedback() right after its docrt().
     game._goto_post_msg = pend.post_msg;
-    await goto_level(pend.newlevel, false, false, false);
+    // C ref: do.c deferred_goto() passes `!!(typmask & UTOTYPE_FALLING)` as
+    // goto_level's `falling`; trap.c fall_through() schedules with that bit set
+    // (js/trap.js sets pend.falling), level_tele() with UTOTYPE_NONE.
+    await goto_level(pend.newlevel, false, !!pend.falling, false);
     game._goto_post_msg = null;
 }
 

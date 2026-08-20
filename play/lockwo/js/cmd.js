@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { maybe_adjust_hero_bubble, water_friction } from './mkmaze.js';
-import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object, canseemon_shared, wall_shows_as_stone, feel_location } from './display.js';
+import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object, canseemon_shared, wall_shows_as_stone, feel_location, stairway_at, stairs_go_down, known_branch_stairs } from './display.js';
 import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
 import { hliquid } from './do_name.js';
 import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam, Monnam } from './uhitm.js';
@@ -42,7 +42,9 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          SDOOR, SCORR, CORR, IS_WALL, IS_OBSTRUCTED, IS_ROCK, isok, IS_DOOR,
          IS_STWALL, IS_FURNITURE, ACCESSIBLE,
          TREE, IRONBARS, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ROOM, IS_POOL, IS_LAVA,
-         DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
+         DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE, DB_FLOOR,
+         DBWALL, DRAWBRIDGE_DOWN, STAIRS, LADDER, LA_DOWN,
+         FOUNTAIN, SINK, THRONE, GRAVE, ALTAR, AIR, CLOUD,
          A_STR, A_DEX, A_CON, A_WIS, Is_rogue_level,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR,
          PIT, SPIKED_PIT, STATUE_TRAP, TIP_SWIM, TRAPNUM, In_sokoban, ICE,
@@ -213,10 +215,78 @@ const EXTCMD_DEFAULT_KEY = {
     '#': 0x23, '?': kM('?'),
 };
 
-// Resolution target for numpad_resolve(): CMD_DEFAULT_KEY is built for BIND=
-// translation and omits '#', whose dispatch branch does exist.  Kept separate so
+// Resolution target for numpad_resolve() and bind_key_resolve(): the commands
+// whose default key the dispatch chain below actually branches on.
+// CMD_DEFAULT_KEY omits '#', whose dispatch branch does exist; kept separate so
 // BOUND_COMMAND_KEYS / is_bound_key() keep their current membership.
 const EXTCMD_DISPATCH_KEY = { ...CMD_DEFAULT_KEY, '#': '#' };
+
+// C ref: cmd.c extcmdlist[] ef_txt column — every name bind_key() will match
+// (`strcmpi(buf, extcmd->ef_txt)`), for this build's #ifdefs.  bind_key()
+// returns FALSE for a name that is in no entry and never calls cmdbind_add(),
+// so such a BIND= leaves the key bound to whatever it already ran.  The full
+// set matters because only 93 of these 152 carry a default key: without it a
+// valid `BINDINGS=q:loot` found no default key to translate to and fell
+// through, so 'q' still ran quaff (cf-bindings-full step 138 onward).
+const EXTCMD_NAMES = new Set([
+    'adjust', 'annotate', 'apply', 'attributes', 'autopickup', 'bugreport',
+    'call', 'cast', 'chat', 'chronicle', 'close', 'conduct', 'debugfuzzer',
+    'dip', 'down', 'drop', 'droptype', 'eat', 'engrave', 'enhance',
+    'exploremode', 'fight', 'fire', 'force', 'genocided', 'glance', 'help',
+    'herecmdmenu', 'history', 'inventory', 'inventtype', 'invoke', 'jump',
+    'kick', 'known', 'knownclass', 'levelchange', 'lightsources', 'look',
+    'lookaround', 'loot', 'monster', 'moveeast', 'movenorth',
+    'movenortheast', 'movenorthwest', 'movesouth', 'movesoutheast',
+    'movesouthwest', 'movewest', 'name', 'offer', 'open', 'options',
+    'optionsfull', 'overview', 'panic', 'pay', 'perminv', 'pickup',
+    'polyself', 'pray', 'prevmsg', 'puton', 'quaff', 'quit', 'quiver',
+    'read', 'redraw', 'remove', 'repeat', 'reqmenu', 'retravel', 'ride',
+    'rub', 'run', 'runeast', 'runnorth', 'runnortheast', 'runnorthwest',
+    'runsouth', 'runsoutheast', 'runsouthwest', 'runwest', 'rush',
+    'rusheast', 'rushnorth', 'rushnortheast', 'rushnorthwest', 'rushsouth',
+    'rushsoutheast', 'rushsouthwest', 'rushwest', 'save', 'saveoptions',
+    'search', 'shell', 'showtrap', 'sit', 'stats', 'suspend', 'swap',
+    'takeoff', 'takeoffall', 'teleport', 'terrain', 'therecmdmenu',
+    'throw', 'timeout', 'tip', 'toggle', 'travel', 'turn', 'twoweapon',
+    'untrap', 'up', 'vanquished', 'version', 'versionshort', 'vision',
+    'wait', 'whatdoes', 'whatis', 'wield', 'wipe', 'wizborn', 'wizbury',
+    'wizcast', 'wizcustom', 'wizdetect', 'wizdispmacros', 'wizfliplevel',
+    'wizgenesis', 'wizidentify', 'wizintrinsic', 'wizkill', 'wizlevelport',
+    'wizloaddes', 'wizloadlua', 'wizmakemap', 'wizmap', 'wizmondiff',
+    'wizobjprobs', 'wizrumorcheck', 'wizseenv', 'wizshownhuuid',
+    'wizsmell', 'wiztelekinesis', 'wizwhere', 'wizwish', 'wmode', 'zap',
+    '#', '?',
+]);
+
+// C ref: cmd.c move_funcs[N_DIRS_Z][N_MOVEMODES] rows, in sdir[] order
+// (cmd.c:3346 "hykulnjb><") — the direction suffix of the movewest/runwest/
+// rushwest family of extcmdlist names, whose keys come from Cmd.dirchars via
+// bind_key_fn() rather than from an extcmdlist default key.
+const MOVE_DIR_NAMES = ['west', 'northwest', 'north', 'northeast',
+                        'east', 'southeast', 'south', 'southwest'];
+
+// C ref: cmd.c bind_key(key, command, user), plus rhack()'s use of what it
+// stored: C hangs the extcmdlist ENTRY on the key and later calls that entry's
+// ef_funct, so a command with no default key of its own binds exactly like one
+// that has a key.  Our dispatch chain branches on characters, so report the
+// binding the way numpad_resolve() does — `ch` when the command has a key the
+// chain handles, else `ext` to run through the command's extcmdlist function.
+// `unbind` is C's "nothing" special case (cmdbind_remove); an unknown name
+// resolves to nothing at all, leaving the key's existing binding in place.
+function bind_key_resolve(command) {
+    if (command === 'nothing') return { ch: null, ext: null, unbind: true };
+    if (!EXTCMD_NAMES.has(command)) return { ch: null, ext: null, unbind: false };
+    const mv = /^(move|run|rush)(west|northwest|north|northeast|east|southeast|south|southwest)$/
+               .exec(command);
+    if (mv) {
+        const c = SDIR.charCodeAt(MOVE_DIR_NAMES.indexOf(mv[2]));
+        const code = mv[1] === 'move' ? c : mv[1] === 'run' ? kHighc(c) : kC(c);
+        return { ch: String.fromCharCode(code), ext: null, unbind: false };
+    }
+    const dflt = EXTCMD_DISPATCH_KEY[command];
+    if (dflt !== undefined) return { ch: dflt, ext: null, unbind: false };
+    return { ch: null, ext: command, unbind: false };
+}
 
 // C ref: cmd.c spkeys_binds[] — only the entries the command loop reads.
 const NHKF_COUNT_KEY = 0x6e;        // 'n'
@@ -918,16 +988,10 @@ export async function rhack(key) {
 
     let ch = String.fromCharCode(key);
 
-    // C ref: cmd.c parsebindings() — a nethackrc BIND=key:command entry rebinds
-    // `key` to run `command`.  Translate a custom-bound key to that command's
-    // default key so the existing (default-key) dispatch below handles it.
-    if (game.keybind && Object.prototype.hasOwnProperty.call(game.keybind, ch)) {
-        const dflt = CMD_DEFAULT_KEY[game.keybind[ch]];
-        if (dflt !== undefined) {
-            ch = dflt;
-            key = ch.charCodeAt(0);
-        }
-    }
+    // n78's BIND= translation is intentionally dropped: n80's
+    // bind_key_resolve() below already does it and running both translated the
+    // key twice. Its later arms (`npExt || bindExt`) still reference this name.
+    let bindExt = null;
 
     // C ref: cmd.c rhack() `gc.cmd_bind = cmdbind_get(key & 0xFF)`.  Once
     // number_pad (or its y/z-swapped variant) has rebuilt the command table a
@@ -937,9 +1001,36 @@ export async function rhack(key) {
     // replaces is_bound_key() for the prefix bookkeeping.
     const Cmd = numpad_cmd();
     let npExt = null, npBad = null, npBound = null;
+
+    // C ref: cmd.c bind_key() — a nethackrc BIND=key:command entry replaced this
+    // key's extcmdlist entry at config time, so resolve the bound command the
+    // way rhack() runs it.  A command with a key our dispatch chain branches on
+    // is reported as that key; one without runs through its extcmdlist function
+    // (npExt), which is how #loot/#version/#pray become bindable at all.
+    if (game.keybind && Object.prototype.hasOwnProperty.call(game.keybind, ch)) {
+        const b = bind_key_resolve(game.keybind[ch]);
+        if (b.ch !== null) {
+            ch = b.ch;
+            key = ch.charCodeAt(0);
+        } else if (!game._modal_screen && b.ext) {
+            // A modal window swallows every key in the window code, so only
+            // resolve to a command when no window is up.
+            npExt = b.ext;
+            npBound = true;
+        } else if (!game._modal_screen && b.unbind) {
+            // C: cmdbind_remove() leaves the key unbound -> bad_command.
+            npBad = visctrl_code(key & 0xff);
+            npBound = false;
+            ch = '\0';
+            key = 0;
+        }
+    }
+
     // C rhack() returns for !key / 0377 / ESC before it ever calls
     // cmdbind_get(); a modal window consumes its keys in the window code.
-    if (numpad_active(Cmd) && !game._modal_screen
+    // A BIND= already resolved above owns the key: C keeps one binds table, so
+    // whichever of the two wrote it last wins and nothing re-resolves it.
+    if (numpad_active(Cmd) && !game._modal_screen && npExt === null && npBad === null
         && key !== 0 && key !== 27 && key !== 0xff) {
         const res = numpad_resolve(Cmd, key);
         npBound = res.name != null;
@@ -1055,12 +1146,13 @@ export async function rhack(key) {
         } else {
             game.context.move = 0;
         }
-    } else if (npExt) {
+    } else if (npExt || bindExt) {
         // C ref: cmd.c rhack() `res = (*func)()` — number_pad rebinds plain
         // letters to commands that have no ordinary key of their own (j #jump,
         // l #loot, u #untrap, N #name, ^N #annotate); rhack runs their
-        // ef_funct directly, exactly as doextcmd() would.
-        const res = await run_extcmd_by_name(npExt);
+        // ef_funct directly, exactly as doextcmd() would.  A BIND= line can
+        // put any such command on any key, which lands here too.
+        const res = await run_extcmd_by_name(npExt || bindExt);
         game.context.move = res === 1 ? 1 : 0;
     } else if (npBad) {
         // C ref: cmd.c rhack() bad_command — cmdbind_get() found no binding
@@ -2893,8 +2985,8 @@ export async function domove(dx, dy) {
             // as an unknown obstacle.
             const seen = ((loc?.seenv ?? 0) & 0xff) || IS_STWALL(typ)
                        || typ === SDOOR || typ === SCORR;
-            const expl = seen ? forcefight_terrain_expl(loc) : null;
-            buf = expl ? `the ${expl}` : 'an unknown obstacle';
+            buf = seen ? forcefight_terrain_name(loc, newx, newy)
+                       : 'an unknown obstacle';
         } else {
             buf = 'thin air';
         }
@@ -2999,7 +3091,14 @@ export async function domove(dx, dy) {
                     game.context.move = 1; // C: context.door_opened = context.move = TRUE
                     return;
                 }
-                await pline('That door is closed.');
+                // C ref: hack.c:1132 pline("That door is closed.").  pline()
+                // routes through vpline() -> update_topl(), so when the topline
+                // still holds an UNACKNOWLEDGED message this one is APPENDED
+                // after two spaces instead of replacing it.  During a run the
+                // pet's "The little dog drops a +1 spear." from an earlier turn
+                // of the same run is exactly that case, and the raw pline()
+                // here was silently discarding it.
+                await update_topl('That door is closed.');
             }
             game.context.move = 0;
             return;
@@ -3213,22 +3312,160 @@ export async function domove(dx, dy) {
     maybe_adjust_hero_bubble();
 }
 
-// C ref: drawing.c defsyms[].explanation (the short "desc" field) for the
-// terrain a hero force-fights via domove_fight_empty().  Walls (and secret
-// doors, which display as walls) read as "wall"; pools/moat/water read as
-// "water"; lava as "molten lava"; stone/tree/iron-bars name themselves.
-// Returns null for terrain types not named here (caller falls back to "an
-// unknown obstacle"), mirroring the seen-but-unhandled case conservatively.
-function forcefight_terrain_expl(loc) {
+// ── defsyms[].explanation ───────────────────────────────────────────────────
+// C ref: drawing.c defsyms[], built by including defsym.h with PCHAR_DRAWING
+// defined: `#define PCHAR(idx, ch, sym, desc, clr) { ch, desc, clr }` and
+// `#define PCHAR2(idx, ch, sym, tilenm, desc, clr) PCHAR(idx, ch, sym, desc, clr)`
+// — so for a PCHAR2 row the explanation is the FIFTH argument (`desc`), not the
+// fourth (`tilenm`, used only by the tile map).  Indexed by cmap index, i.e.
+// the S_* enum, over the dungeon range S_stone(0) .. S_water(48).
+//
+// This is a COMPLETE range, deliberately: the previous version of this table
+// named six terrain types and returned null for everything else, so the caller
+// fell back to "an unknown obstacle" for a force-fought staircase, closed door,
+// fountain, altar, throne, sink, grave, ladder, ice or drawbridge.  C only ever
+// says "unknown obstacle" for the edge of the level or an unseen non-wall.
+const DEFSYM_EXPLANATION = [
+    'stone',                 //  0 S_stone      (PCHAR2 tilenm "dark part of a room")
+    'wall',                  //  1 S_vwall
+    'wall',                  //  2 S_hwall
+    'wall',                  //  3 S_tlcorn
+    'wall',                  //  4 S_trcorn
+    'wall',                  //  5 S_blcorn
+    'wall',                  //  6 S_brcorn
+    'wall',                  //  7 S_crwall
+    'wall',                  //  8 S_tuwall
+    'wall',                  //  9 S_tdwall
+    'wall',                  // 10 S_tlwall
+    'wall',                  // 11 S_trwall
+    'doorway',               // 12 S_ndoor
+    'open door',             // 13 S_vodoor
+    'open door',             // 14 S_hodoor
+    'closed door',           // 15 S_vcdoor
+    'closed door',           // 16 S_hcdoor
+    'iron bars',             // 17 S_bars
+    'tree',                  // 18 S_tree
+    'floor of a room',       // 19 S_room
+    'dark part of a room',   // 20 S_darkroom
+    'engraving',             // 21 S_engroom
+    'corridor',              // 22 S_corr
+    'lit corridor',          // 23 S_litcorr
+    'engraving',             // 24 S_engrcorr
+    'staircase up',          // 25 S_upstair
+    'staircase down',        // 26 S_dnstair
+    'ladder up',             // 27 S_upladder
+    'ladder down',           // 28 S_dnladder
+    'branch staircase up',   // 29 S_brupstair
+    'branch staircase down', // 30 S_brdnstair
+    'branch ladder up',      // 31 S_brupladder
+    'branch ladder down',    // 32 S_brdnladder
+    'altar',                 // 33 S_altar
+    'grave',                 // 34 S_grave
+    'opulent throne',        // 35 S_throne
+    'sink',                  // 36 S_sink
+    'fountain',              // 37 S_fountain
+    'water',                 // 38 S_pool      (POOL and MOAT share this)
+    'ice',                   // 39 S_ice
+    'molten lava',           // 40 S_lava
+    'wall of lava',          // 41 S_lavawall
+    'lowered drawbridge',    // 42 S_vodbridge
+    'lowered drawbridge',    // 43 S_hodbridge
+    'raised drawbridge',     // 44 S_vcdbridge
+    'raised drawbridge',     // 45 S_hcdbridge
+    'air',                   // 46 S_air
+    'cloud',                 // 47 S_cloud
+    'water',                 // 48 S_water
+];
+// The S_* indices this file names directly (defsym.h PCHAR idx column).
+const S_stone = 0, S_vwall = 1, S_ndoor = 12, S_vodoor = 13, S_hodoor = 14,
+      S_vcdoor = 15, S_hcdoor = 16, S_bars = 17, S_tree = 18, S_room = 19,
+      S_corr = 22, S_litcorr = 23, S_upstair = 25, S_dnstair = 26,
+      S_upladder = 27, S_dnladder = 28, S_brupstair = 29, S_brdnstair = 30,
+      S_brupladder = 31, S_brdnladder = 32, S_altar = 33, S_grave = 34,
+      S_throne = 35, S_sink = 36, S_fountain = 37, S_pool = 38, S_ice = 39,
+      S_lava = 40, S_lavawall = 41, S_vodbridge = 42, S_hodbridge = 43,
+      S_vcdbridge = 44, S_hcdbridge = 45, S_air = 46, S_cloud = 47, S_water = 48;
+
+// C ref: display.c back_to_glyph(x, y) composed with glyphs.c glyph_to_cmap().
+// The composition collapses to back_to_glyph's own `idx`: glyph_to_cmap() maps
+// every cmap glyph back to the index cmap_to_glyph() built it from, and the
+// ALTAR arm's `bypass_glyph = altar_to_glyph(altarmask)` round-trips through
+// glyph_is_cmap_altar() -> S_altar (the same idx that arm already set).  So this
+// returns the cmap index directly rather than going through a glyph number.
+//
+// Only the index matters here, so wall_angle() is not needed: every index it can
+// return (S_vwall..S_trwall) has the explanation "wall", and an unseen wall is
+// S_stone either way — which is exactly what wall_shows_as_stone() reports.
+function back_to_cmap(loc, x, y) {
     const typ = loc?.typ ?? STONE;
-    if (typ === STONE) return 'stone';
-    if (IS_WALL(typ) || typ === SDOOR)
-        return wall_shows_as_stone(loc) ? 'stone' : 'wall';
-    if (typ === TREE) return 'tree';
-    if (typ === IRONBARS) return 'iron bars';
-    if (typ === POOL || typ === MOAT || typ === WATER) return 'water';
-    if (typ === LAVAPOOL) return 'molten lava';
-    return null;
+    // C ref: back_to_glyph's `case SDOOR:` (arboreal_sdoor -> S_tree) falling
+    // through into HWALL/VWALL/TLCORNER..TRWALL, whose arm is
+    // `idx = ptr->seenv ? wall_angle(ptr) : S_stone`.  A JS switch can't test
+    // IS_WALL(), so both live here, ahead of the switch.
+    if (typ === SDOOR && loc.arboreal_sdoor) return S_tree;
+    if (typ === SDOOR || IS_WALL(typ))
+        return wall_shows_as_stone(loc) ? S_stone : S_vwall;
+    switch (typ) {
+    case SCORR:
+    case STONE:
+        return game.level?.flags?.arboreal ? S_tree : S_stone;
+    case ROOM:
+        return S_room;
+    case CORR:
+        return (loc.waslit || game.flags?.lit_corridor) ? S_litcorr : S_corr;
+    case DOOR:
+        if (loc.doormask) {
+            if (loc.doormask & D_BROKEN) return S_ndoor;
+            if (loc.doormask & D_ISOPEN) return loc.horizontal ? S_hodoor : S_vodoor;
+            return loc.horizontal ? S_hcdoor : S_vcdoor;   /* else is closed */
+        }
+        return S_ndoor;
+    case IRONBARS: return S_bars;
+    case TREE:     return S_tree;
+    case POOL:
+    case MOAT:     return S_pool;
+    case STAIRS:
+        return known_branch_stairs(stairway_at(x, y))
+            ? (stairs_go_down(loc, x, y) ? S_brdnstair : S_brupstair)
+            : (stairs_go_down(loc, x, y) ? S_dnstair : S_upstair);
+    case LADDER:
+        return known_branch_stairs(stairway_at(x, y))
+            ? (stairs_go_down(loc, x, y) ? S_brdnladder : S_brupladder)
+            : (stairs_go_down(loc, x, y) ? S_dnladder : S_upladder);
+    case FOUNTAIN: return S_fountain;
+    case SINK:     return S_sink;
+    case ALTAR:    return S_altar;   /* C: bypass_glyph -> glyph_to_cmap -> S_altar */
+    case GRAVE:    return S_grave;
+    case THRONE:   return S_throne;
+    case LAVAPOOL: return S_lava;
+    case LAVAWALL: return S_lavawall;
+    case ICE:      return S_ice;
+    case AIR:      return S_air;
+    case CLOUD:    return S_cloud;
+    case WATER:    return S_water;
+    case DBWALL:   return loc.horizontal ? S_hcdbridge : S_vcdbridge;
+    case DRAWBRIDGE_UP:
+        switch ((loc.drawbridgemask ?? 0) & DB_UNDER) {
+        case DB_MOAT:  return S_pool;
+        case DB_LAVA:  return S_lava;
+        case DB_ICE:   return S_ice;
+        case DB_FLOOR: return S_room;
+        default:       return S_room;   /* C impossible(): "better than nothing" */
+        }
+    case DRAWBRIDGE_DOWN:
+        return loc.horizontal ? S_hodbridge : S_vodbridge;
+    default:
+        return S_room;                  /* C impossible() then idx = S_room */
+    }
+}
+
+// C ref: hack.c domove_fight_empty() `Strcpy(buf, the(defsyms[glyph_to_cmap(
+// back_to_glyph(x, y))].explanation))` — the name of the terrain a hero
+// force-fights.  Every defsyms explanation is a lowercase common noun, so
+// hacklib.c the() reduces to the "the " prefix (its Ipluralize/uppercase/"the "
+// early-outs cannot fire on any string in the table above).
+function forcefight_terrain_name(loc, x, y) {
+    return `the ${DEFSYM_EXPLANATION[back_to_cmap(loc, x, y)]}`;
 }
 
 // C ref: hack.c trapmove(x, y, desttrap) — the hero, already trapped, tries to

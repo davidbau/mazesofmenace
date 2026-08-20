@@ -594,9 +594,10 @@ export async function liquid_flow(x, y, typ, ttmp, fillmsg) {
  * impact_drop floor objs through hole.
  * PIT after wake_nearby and HOLE at_u await switch_terrain then
  * re-read Lev/Fly (D-1269; C dig.c:733 / :757). maketrap PIT/HOLE
- * set_levltyp STONE/SCORR→CORR / wall|SDOOR (D-1280). Named omit:
+ * set_levltyp STONE/SCORR→CORR / wall|SDOOR (D-1280);
+ * DRAWBRIDGE_UP ice→floor (D-1296). Named omit:
  * buried_ball_to_punishment; make_angry_shk; ship_object;
- * DRAWBRIDGE_UP ice morph; shop add_damage; liquid_flow.
+ * shop add_damage; liquid_flow.
  */
 export async function digactualhole(x, y, madeby, ttyp) {
     const lev = game.level?.at(x, y);

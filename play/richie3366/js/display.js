@@ -3850,7 +3850,8 @@ export function coord_desc(x, y, cmode) {
  * C pline.c set_msg_xy 93–97 — store a11y.msg_loc for the next vpline.
  * Consume is D-1207; pline_xy/pline_mon writers are D-1215.
  * set_msg_dir / pline_dir are D-1216. Live: rolling-boulder LANDMINE
- * KAABLAMM then pline (D-1256; not pline_xy).
+ * KAABLAMM then pline (D-1256; not pline_xy); mhitu wildmiss then
+ * pline (D-1291; not pline_mon).
  */
 export function set_msg_xy(x, y) {
     if (!game.a11y) {
@@ -3894,11 +3895,14 @@ export async function pline_xy(x, y, msg) {
  * Live callers: wield/zap/drop/pickup/mb_trapped (D-1215) + monmove
  * monflee/itsstuck/maybe_spin_web/postmov door (D-1227) + mind_blast
  * concentrates (D-1238) + uhitm light_hits_gremlin cry/recoil, mhitm_ad_legs
- * nuzzle, mhitm_ad_sedu brag (D-1240) + mhitu hitmsg (D-1261).
+ * nuzzle, mhitm_ad_sedu brag (D-1240) + mhitu hitmsg (D-1261) +
+ * mhitu missmu (D-1286) + mhitu mswings (D-1305).
+ * mhitu wildmiss is set_msg_xy then pline (D-1291; not pline_mon).
  * flash_hits_mon awaken/blind stay pline.
  * Named omit: remaining unported uhitm mhitm_ad_* (rust/fire/hugs/heal/wrap/…) /
  * worn/trap/weapon drop·tether / muse drinks / iron bars /
- * missmu/wildmiss/mswings. bee_eat_jelly eat + grow_up queen is D-1246.
+ * mattacku AT_ENGL gulps/lunges. bee_eat_jelly eat +
+ * grow_up queen is D-1246.
  * mon_yells is D-1248.
  * Rolling-boulder TELEP is pline_xy (D-1237).
  * Do not wrap msg_mon_movement as pline_mon (D-1228).

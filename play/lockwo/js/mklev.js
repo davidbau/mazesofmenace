@@ -5445,6 +5445,22 @@ const QUEST_FILLERS = {
                  [OROOM, ['d', 'o', 't', ['E', 0], 'earth elemental']],
                  [OROOM, ['o', 'o', 't', ['X', 0]]],
                  [OROOM, ['o', 't', 'earth elemental']]],
+    // dat/Pri-fila.lua / Pri-filb.lua — the only room-style fillers with
+    // `type = "morgue"` rooms (rooms 4 and 6 of fila; 2, 4 and 6 of filb), so
+    // these are the first entries here whose rtype is not OROOM and whose
+    // needfill therefore reaches fill_special_room().
+    'Pri-fila': [[OROOM, ['u', 'o', 'human zombie']],
+                 [OROOM, ['o', 'o']],
+                 [OROOM, ['o', 't', 'o', 'human zombie']],
+                 [MORGUE, ['d', 'o', 't']],
+                 [OROOM, ['o', 'o', 't', 'wraith']],
+                 [MORGUE, ['o', 't']]],
+    'Pri-filb': [[OROOM, ['u', 'o', 'human zombie', 'wraith']],
+                 [MORGUE, ['o', 'o', 'o']],
+                 [OROOM, ['o', 't', 'o', 'human zombie', 'wraith']],
+                 [MORGUE, ['d', 'o', 'o', 't']],
+                 [OROOM, ['o', 'o', 't', 'human zombie', 'wraith']],
+                 [MORGUE, ['o', 't']]],
     'Rog-fila': [[OROOM, ['u', 'o', ['leprechaun', 0]]],
                  [OROOM, ['o', 'o', ['leprechaun', 0], ['guardian naga', 0]]],
                  [OROOM, ['o', 't', 't', 'o', ['water nymph', 0]]],

@@ -32,7 +32,7 @@ import {
 } from './generated/monsters_data.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import {
-    W_ARMOR, W_AMUL, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
+    W_ARMOR, W_AMUL, W_RING, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
     W_BALL, W_CHAIN,
     Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
     P_DART, P_BOOMERANG,
@@ -45,6 +45,7 @@ import {
 } from './const.js';
 
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
+const BOULDER = objectNames.indexOf('BOULDER');
 
 /** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky u.Blind). */
 function Blind() {
@@ -714,6 +715,13 @@ export function xname(obj) {
     // C: obj_is_pname → goto nameit (bare ONAME) — deferred; partial ID
     // artifacts fall through to actualn + " named ONAME" below.
     let base = pretty_base(obj);
+    /* C objnam.c xname ROCK_CLASS :814–823 — BOULDER && next_boulder==1
+       formats "next boulder" then clears to 0. Overloaded corpsenm
+       defaults to NON_PM (-1); check ==1 not !=0. D-1294. */
+    if ((obj.otyp | 0) === BOULDER && (obj.next_boulder | 0) === 1) {
+        base = `next ${base}`;
+        obj.next_boulder = 0;
+    }
     if ((obj.quan || 1) !== 1) base = makeplural(base);
     // C xname_flags: has_oname && dknown → " named " ONAME
     const onameStr = obj.oextra?.oname;
@@ -822,7 +830,7 @@ function obj_pmname_corpse(obj) {
  * C ref: objnam.c corpse_xname — unique/pname possessive + adjective
  * placement (D-1234); glob OBJ_NAME (D-1255). CXN_SINGULAR / NO_PFX /
  * PFX_THE / ARTICLE / NOCORPSE.
- * Named omit: doname MEAT_RING / candle partly used.
+ * Named omit: doname candle partly used.
  */
 export function corpse_xname(obj, adjective, cxn_flags) {
     const flags = cxn_flags | 0;
@@ -1620,7 +1628,8 @@ export function doname(obj) {
     // CORPSE → corpse_xname(prefix, CXN_ARTICLE|CXN_NOCORPSE) so unique/
     // pname adjectives sit after the possessive (D-1255). EGG →
     // pmnames[NEUTRAL] + optional "(laid by you)" (D-1276). MEAT_RING
-    // still deferred.
+    // goto ring worn/+spe (D-1295). Candle partly used still named.
+    const isMeatRing = oname === 'MEAT_RING';
     let eggLaidByYou = false;
     if (donameClass === FOOD_CLASS && obj.oeaten) {
         prefix += 'partly eaten ';
@@ -1636,6 +1645,14 @@ export function doname(obj) {
             const mnam = pmnames[omndx]?.[NEUTRAL] || '';
             prefix += `${mnam} `;
             if ((obj.spe | 0) === 1) eggLaidByYou = true;
+        }
+    } else if (donameClass === FOOD_CLASS && isMeatRing) {
+        // C doname_base FOOD MEAT_RING goto ring (objnam.c:1536–1538 /
+        // :1492–1503): known && oc_charged → "+spe " on prefix after
+        // oeaten. objects.h BITS chrg=0 so this is idle for meat rings.
+        if (known && is_charged_otyp(otyp)) {
+            const spe = obj.spe | 0;
+            prefix += (spe >= 0 ? `+${spe} ` : `${spe} `);
         }
     }
 
@@ -1669,10 +1686,18 @@ export function doname(obj) {
         bp += ' (being worn)';
     if (obj.owornmask & W_AMUL)
         bp += ' (being worn)';
-    if (obj.owornmask & W_RINGR)
-        bp += ' (on right hand)';
-    if (obj.owornmask & W_RINGL)
-        bp += ' (on left hand)';
+    // C doname_base RING_CLASS ring: + FOOD MEAT_RING goto ring —
+    // " (on right " / " (on left " then body_part(HAND) + ")".
+    // Humanoid default is "hand"; full mbodypart poly variants named
+    // (same as W_WEP hardcoded hands).
+    if (donameClass === RING_CLASS || isMeatRing) {
+        if (obj.owornmask & W_RINGR)
+            bp += ' (on right ';
+        if (obj.owornmask & W_RINGL)
+            bp += ' (on left ';
+        if (obj.owornmask & W_RING)
+            bp += 'hand)';
+    }
     // C ref: objnam.c doname_base BALL_CLASS/CHAIN_CLASS —
     // W_BALL → "(chained to you)"; W_CHAIN → "(attached to you)".
     if (obj.owornmask & (W_BALL | W_CHAIN)) {

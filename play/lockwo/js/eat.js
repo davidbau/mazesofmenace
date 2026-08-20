@@ -335,7 +335,7 @@ function is_rottable(otmp) {
 function foodword(_otmp) { return 'food'; }
 
 function food_delay(otyp) { const p = FOOD_PROPS[otyp]; return p ? p[0] : 0; }
-function food_nutrit(otyp) { const p = FOOD_PROPS[otyp]; return p ? p[1] : 0; }
+export function food_nutrit(otyp) { const p = FOOD_PROPS[otyp]; return p ? p[1] : 0; }
 
 // C ref: eat.c:325 obj_nutrition(otmp) — a corpse's nutrition is the species
 // cnutrit, a glob's is its current weight, everything else is the objects[]
