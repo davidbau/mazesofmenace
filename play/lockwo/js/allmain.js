@@ -343,7 +343,22 @@ async function newgame_real() {
     // seer_turn rolls fire right after the moon-phase/Friday-13th messages
     // (still inside moveloop_preamble(), before maybe_do_tutorial()/
     // moveloop_core()'s first real command read).
-    moveloop_preamble_startup();
+    await moveloop_preamble_startup();
+
+    // C ref: allmain.c moveloop_preamble():74 — `reset_justpicked(gi.invent);
+    // (void) pickup(1);` (autopickup at the initial location).  It sits between
+    // the rnd(9000) and rnd(30) rolls in C but draws nothing itself on the
+    // start square, so it goes after moveloop_preamble_startup() alongside the
+    // other RNG-free tail of that routine.  Not calling it at all was invisible
+    // while every recorded rc had mention_decor off AND nothing under the start
+    // square; with 'mention_decor' this is what prints the "There is a
+    // staircase up out of the dungeon here." that pages the moon-phase line.
+    {
+        const { pickup, reset_justpicked } = await import('./pickup.js');
+        const { inventoryArray } = await import('./invent.js');
+        reset_justpicked(inventoryArray());
+        await pickup(1);
+    }
 
     // C ref: allmain.c moveloop() -> maybe_do_tutorial().  When the tutorial
     // wasn't disabled in the rc, a menu asking "Do you want a tutorial?" is

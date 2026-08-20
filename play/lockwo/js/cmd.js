@@ -7,16 +7,17 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object, canseemon_shared } from './display.js';
+import { newsym, flush_screen, pline, m_at, update_topl, y_n, topl_more, wrap_topl, see_nearby_objects, map_invisible, unmap_object, canseemon_shared, wall_shows_as_stone } from './display.js';
 import { vision_recalc, cansee, recalc_block_point, Blind } from './vision.js';
 import { hliquid } from './do_name.js';
 import { do_attack, is_safemon, x_monnam, canspotmon, mon_nam, Monnam } from './uhitm.js';
 import { ddoinv, dismiss_invent_screen, dolook,
          dodiscovered, doattributes, dovspell,
-         attr_window_advance, disco_window_advance, dowieldquiver, dowield, doswapweapon, dothrow, dofire, dotravel, dodrop,
+         attr_window_advance, disco_window_advance, dowieldquiver, dowield, doswapweapon, dothrow, dofire, dotravel, dodrop, doddrop,
          dopickup, dowear, dotakeoff, doputon, doremring, dopay, floor_object_name,
          doprgold, doprwep, doprarm, doprring, dopramulet, doprinuse,
-         renderWindowScreen, ECMD_NOTHANDLED, describe_decor, dfeature_at } from './invent.js';
+         renderWindowScreen, ECMD_NOTHANDLED, describe_decor, dfeature_at,
+         dotypeinv, doprtool } from './invent.js';
 import { WEAPON_CLASS, objects as OBJECTS, KICKING_BOOTS } from './mkobj.js';
 import { doeat } from './eat.js';
 import { doapply, ECMD } from './apply.js';
@@ -27,7 +28,7 @@ import { doread } from './read.js';
 import { dohelp, dowhatdoes } from './pager.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { doextcmd, doddoremarm, hooked_tty_getlin, wiz_wish, wiz_genesis,
-         wiz_map_extcmd, run_extcmd_by_name } from './extcmd-handlers.js';
+         wiz_map_extcmd, run_extcmd_by_name, docallcmd, dooverview } from './extcmd-handlers.js';
 import { do_gamelog } from './insight.js';
 import { skill_window_advance } from './enhance.js';
 import { wiz_level_tele, dodown, doup } from './do.js';
@@ -1127,6 +1128,12 @@ export async function rhack(key) {
         // C ref: cmd.c { AMULET_SYM, "seeamulet", ..., dopramulet } — worn amulet.
         await dopramulet();
         game.context.move = 0;
+    } else if (ch === '(') {
+        // C ref: cmd.c { TOOL_SYM, "seetools", doprtool, IFBURIED | GENERALCMD |
+        // CMD_M_PREFIX } — the tools currently in use.  Handler was ported, key
+        // was never bound.
+        await doprtool();
+        game.context.move = 0;
     } else if (ch === '+') {
         await dovspell();
         game.context.move = 0;
@@ -1326,6 +1333,39 @@ export async function rhack(key) {
         // item then drops it on the floor (ECMD_TIME when something is
         // dropped, so the turn elapses and monsters move).
         game.context.move = (await dodrop()) ? 1 : 0;
+    } else if (ch === 'D') {
+        // C ref: cmd.c { 'D', "droptype", doddrop } -> do.c doddrop(): the
+        // multi-item drop.  Under the default menustyle:Full it opens the
+        // query_category() "Drop what type of items?" menu, then the item
+        // menu; ECMD_TIME only when something actually left the pack.
+        game.context.move = (await doddrop()) ? 1 : 0;
+    } else if (ch === '!') {
+        // C ref: cmd.c { '!', "shell", dosh_core, IFBURIED | GENERALCMD |
+        // NOFUZZERCMD } -> sys/unix/unixunix.c dosh():349 — with SYSCF and no
+        // SHELLERS line in the shipped sysconf, sysopt.shellers is empty, so
+        // every shell escape is refused with this Norep() line.  ECMD_OK.
+        await Norep_topl("Unavailable command '!'.");
+        game.context.move = 0;
+    } else if (ch === 'C') {
+        // C ref: cmd.c:1687 { 'C', "call", docallcmd, IFBURIED | GENERALCMD }
+        // (do_name.c) — the "What do you want to name?" PICK_ONE menu.  The
+        // handler was already ported for #name/#call; only this key binding was
+        // missing, so 'C' fell through to "Unknown command" and the menu's own
+        // keys then ran as commands.  ECMD_OK.
+        await docallcmd();
+        game.context.move = 0;
+    } else if (ch === 'I') {
+        // C ref: cmd.c { 'I', "inventtype", dotypeinv, IFBURIED | GENERALCMD |
+        // CMD_M_PREFIX } (invent.c) — the "What type of object do you want an
+        // inventory of?" class menu, then itemactions() on the pick.  ECMD_OK.
+        await dotypeinv();
+        game.context.move = 0;
+    } else if (key === 15) {   /* ^O */
+        // C ref: cmd.c { C('o'), "overview", dooverview, IFBURIED |
+        // GENERALCMD } (dungeon.c) — the dungeon-overview menu.  Another
+        // already-ported handler whose key was never bound.  ECMD_OK.
+        await dooverview();
+        game.context.move = 0;
     } else if (ch === ',') {
         // C ref: cmd.c { ',', "pickup", dopickup } -> hack.c dopickup().  Pick up
         // the objects under the hero.  ECMD_TIME (turn elapses, monsters move) when
@@ -2821,7 +2861,7 @@ export async function domove(dx, dy) {
             // as an unknown obstacle.
             const seen = ((loc?.seenv ?? 0) & 0xff) || IS_STWALL(typ)
                        || typ === SDOOR || typ === SCORR;
-            const expl = seen ? forcefight_terrain_expl(typ) : null;
+            const expl = seen ? forcefight_terrain_expl(loc) : null;
             buf = expl ? `the ${expl}` : 'an unknown obstacle';
         } else {
             buf = 'thin air';
@@ -3018,8 +3058,8 @@ export async function domove(dx, dy) {
             // explanation "tree", so an() makes it "a tree".
             const buf = (t === STONE || t === SCORR) ? 'solid stone'
                       : (t === TREE) ? 'a tree'
-                      : (IS_WALL(t) || t === SDOOR)
-                          ? ((tgt?.seenv | 0) ? 'a wall' : 'solid stone')
+                       : (IS_WALL(t) || t === SDOOR)
+                           ? (wall_shows_as_stone(tgt) ? 'solid stone' : 'a wall')
                       : null;
             if (buf) await pline(`It's ${buf}.`);
         }
@@ -3143,9 +3183,11 @@ export async function domove(dx, dy) {
 // "water"; lava as "molten lava"; stone/tree/iron-bars name themselves.
 // Returns null for terrain types not named here (caller falls back to "an
 // unknown obstacle"), mirroring the seen-but-unhandled case conservatively.
-function forcefight_terrain_expl(typ) {
+function forcefight_terrain_expl(loc) {
+    const typ = loc?.typ ?? STONE;
     if (typ === STONE) return 'stone';
-    if (IS_WALL(typ) || typ === SDOOR) return 'wall';
+    if (IS_WALL(typ) || typ === SDOOR)
+        return wall_shows_as_stone(loc) ? 'stone' : 'wall';
     if (typ === TREE) return 'tree';
     if (typ === IRONBARS) return 'iron bars';
     if (typ === POOL || typ === MOAT || typ === WATER) return 'water';
@@ -3689,20 +3731,32 @@ async function read_engr_at(x, y) {
 // would page with --More-- between lines; not exercised, so the
 // single/sequential case is modeled and extra items just chain via pline.
 async function autopickup_after_move(x, y) {
-    const objs = (game.level?.objects || []).filter(
-        (o) => o.where === 'floor' && o.ox === x && o.oy === y);
+    const inv = await import('./invent.js');
+    // objects_at(), NOT a filter over game.level.objects: autopick() follows the
+    // nexthere chain, which is TOPMOST-FIRST, and the flat array is in placement
+    // order.  A hero stepping back onto a pile they dropped picked it up bottom
+    // -up, so the invlets (each object reclaims the letter it was dropped from)
+    // came out reversed against C's.
+    const objs = inv.objects_at(x, y);
     if (objs.length === 0) return 0;
     game._pickup_encumbrance = 0; // C ref: pickup.c pickup(1) — gp.pickup_encumbrance = 0
-    const inv = await import('./invent.js');
-    const { autopick_testobj } = await import('./pickup.js');
-    // autopick order is the floor chain (topmost-first); objects_at returns that
-    // order.  calc_costly is TRUE for the first object only, as in autopick().
+    const { autopick_testobj, reset_justpicked } = await import('./pickup.js');
+    // calc_costly is TRUE for the first object only, as in autopick().
     let check_costly = true;
-    let nPicked = 0;
+    const takes = [];
     for (const obj of objs) {
         const take = autopick_testobj(obj, check_costly);
         check_costly = false;
-        if (!take) continue;
+        if (take) takes.push(obj);
+    }
+    // C ref: pickup.c pickup() `menu_pickup: if (n > 0) reset_justpicked(gi.invent);`
+    // — the marks are per pickup COMMAND, so the previous command's are cleared
+    // before anything is lifted.  Without this every autopickup since the game
+    // started stayed "just picked up" and query_category()'s 'P' entry read
+    // "Items you just picked up" instead of naming the single new stack.
+    if (takes.length) reset_justpicked(inv.inventoryArray());
+    let nPicked = 0;
+    for (const obj of takes) {
         await pickup_one(inv, obj, x, y);
         nPicked++;
     }
@@ -3776,10 +3830,12 @@ async function look_here_after_move(x, y, _pickedSome = false, skipDfeature = fa
     }
     // Multiple objects: delegate to invent.js look_here(), which renders the
     // "Things that are here:" menu and blocks on --More-- (consuming the
-    // recorded dismissal keystroke).  obj_cnt = count; picked_some = false
-    // (autopickup is off here, so nothing was lifted).
+    // recorded dismissal keystroke).  LOOKHERE_SKIP_DFEATURE has to be passed
+    // on here as well as on the Blind path: dropping it made a mention_decor
+    // hero who stepped onto a pile on the stairs get BOTH describe_decor's line
+    // and look_here's "There is a staircase ... here."
     const inv = await import('./invent.js');
-    await inv.look_here(objs.length, _pickedSome ? 1 : 0);
+    await inv.look_here(objs.length, (_pickedSome ? 1 : 0) | (skipDfeature ? 2 : 0));
 }
 
 // COIN_CLASS (gold) — objclass.h; defined inline here to gate the gold look-here

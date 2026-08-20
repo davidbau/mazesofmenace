@@ -105,7 +105,7 @@ function Detect_monsters() { return HProp('HDetect_monsters') > 0; }
 // C ref: youprop.h Half_gas_damage — a damp/wet towel worn over the face
 // (ublindf is the blindfold slot; objects.js TOWEL otyp).
 const TOWEL_OTYP = 234; // mkobj.js OBJECT_DATA row 234 == onames.h TOWEL
-function Half_gas_damage() {
+export function Half_gas_damage() {
     const bf = game.ublindf;
     return !!bf && bf.otyp === TOWEL_OTYP && (bf.spe | 0) > 0;
 }

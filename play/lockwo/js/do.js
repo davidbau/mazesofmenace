@@ -1502,7 +1502,46 @@ export async function next_level(at_stairs) {
 export async function wiz_level_tele(readLevel) {
     const u = game.u;
     const buf = await readLevel('To what level do you want to teleport?');
-    if (buf == null || buf === '\x1b') return 0; // cancelled (ESC)
+
+    // C ref: wizcmds.c wiz_level_tele() is just level_tele(), so ^V runs the
+    // same getlin loop: teleport.c:1212-1221 tests "*" and the confused
+    // mispronunciation BEFORE the ESC check, and both `goto random_levtport`.
+    // A confused hero therefore lands on a random level whatever was typed —
+    // including ESC.
+    let gotoRandom = String(buf) === '*';
+    if (!gotoRandom && (u.uprops?.Confusion || 0) > 0 && rnl(5)) {
+        await pline('Oops...');
+        // Same deferred-docrt capture as level_tele() below: the "Oops..."
+        // --More-- is drawn over the OLD level, before goto_level() switches.
+        game._toplin = 1;
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+        gotoRandom = true;
+    }
+    if (!gotoRandom && (buf == null || buf === '\x1b')) return 0; // cancelled (ESC)
+
+    if (gotoRandom) {
+        // C ref: teleport.c random_levtport: — the involuntary branch, which
+        // skips the Knox/Quest adjustments of the controlled one.
+        const rlev = random_teleport_level();
+        if (rlev === depth_of_level(u.uz)) {
+            await pline('You shudder for a moment.');
+            return 0;
+        }
+        if (!next_to_u()) {
+            await pline('You shudder for a moment.');
+            return 0;
+        }
+        const rdest = await level_tele_destination(rlev);
+        if (!rdest) return 0;
+        if (rdest.dnum === u.uz.dnum && rdest.dlevel === u.uz.dlevel) return 0;
+        game._goto_post_msg = (game.flags?.verbose !== false)
+            ? 'You materialize on a different level!' : null;
+        await goto_level(rdest, false, false, false);
+        game._goto_post_msg = null;
+        return 0; // ECMD_OK
+    }
 
     // C ref: teleport.c level_tele() — wizard "?" opens the print_dungeon level
     // menu.  The menu consumes no RNG and force_dest bypasses the usual range

@@ -22,7 +22,8 @@ import { update_topl, newsym } from './display.js';
 const pline = update_topl;
 import { exercise, acurr_eff } from './attrib.js';
 import { find_ac, race_attrmax, race_attrmin, race_attrmax_of } from './u_init.js';
-import { encumber_msg, freeinv, xname, makeplural, near_capacity } from './invent.js';
+import { encumber_msg, freeinv, xname, makeplural, near_capacity,
+    youmonst_data_pub } from './invent.js';
 import { base_mmove } from './mon.js';
 import { P_NAME, weapon_type } from './enhance.js';
 import { objects as OBJECTS } from './mkobj.js';
@@ -40,6 +41,9 @@ import { A_STR, A_INT, A_WIS, A_CON, A_DEX, A_MAX, TT_PIT, TT_BURIEDBALL,
     IS_FOUNTAIN, IS_POOL, IS_LAVA, IS_AIR, In_endgame,
     POLY_CONTROLLED, POLY_MONSTER, POLY_REVERT, POLY_LOW_CTRL } from './const.js';
 import { Unaware } from './const.js';
+// C ref: hack.h enum bodypart_types — mbodypart()/body_part() selectors.
+import { ARM, EYE, FINGER, FINGERTIP, FOOT, HAND, HANDED, HEAD, LEG, TOE,
+    HAIR, NOSE, STOMACH } from './const.js';
 import {
     is_hider_flag, hides_under_flag, is_were_flag, likes_gems_flag,
     strongmonst_flag, is_male_flag, is_flyer_flag, mflags1_of, M1_CLING,
@@ -50,7 +54,7 @@ import {
     polyok_flag, mflags2_of, M2_HUMAN, M2_ELF, M2_DWARF, M2_GNOME, M2_ORC,
     M2_PNAME,
 } from './monflags_data.js';
-import { attacktype, mattk_of, AT_BREA, AT_SPIT, AT_GAZE,
+import { attacktype, mattk_of, AT_BREA, AT_SPIT, AT_GAZE, AT_CLAW,
     AD_MAGM, AD_CONF, AD_FIRE } from './monattk_data.js';
 import { monsterList, DEADMONSTER } from './mon.js';
 import { races } from './role.js';
@@ -267,6 +271,194 @@ function has_horns(ptr) { return num_horns(ptr) > 0; }
 // C ref: mondata.h slithy(ptr) — M1_SLITHY.
 function slithy(ptr) { return !!ptr && (mflags1_of(ptr) & M1_SLITHY) !== 0; }
 const S_CENTAUR_CLS = 29;
+
+// ── mbodypart(): the per-form anatomy tables ─────────────────────────────────
+// C ref: polyself.c mbodypart(mon, part) / body_part(part), indexed by
+// hack.h enum bodypart_types (js/const.js ARM..STOMACH).  js/invent.js carries
+// a humanoid-only body_part() whose comment says "the contest hero is never
+// polymorphed"; that answer is wrong for every polymorphed form and for every
+// monster mbodypart() is asked about, so the real dispatch lives here beside
+// the rest of polyself.c.
+//
+// mons[].mcls is C's mptr->mlet (the monsym.h S_* class index, NOT the display
+// char, which a symset can remap).
+const S_BLOB_CLS = 2, S_COCKATRICE_CLS = 3, S_DOG_CLS = 4, S_EYE_CLS = 5,
+      S_FELINE_CLS = 6, S_JELLY_CLS = 10, S_LEPRECHAUN_CLS = 12,
+      S_NYMPH_CLS = 14, S_ORC_CLS = 15, S_RODENT_CLS = 18, S_SPIDER_CLS = 19,
+      S_UNICORN_CLS = 21, S_VORTEX_CLS = 22, S_WORM_CLS_BP = 23,
+      S_LIGHT_CLS = 25, S_ANGEL_CLS = 27, S_DRAGON_CLS_BP = 30,
+      S_ELEMENTAL_CLS = 31, S_FUNGUS_CLS = 32, S_GIANT_CLS = 34,
+      S_MUMMY_CLS = 39, S_PUDDING_CLS = 42, S_QUANTMECH_CLS = 43,
+      S_VAMPIRE_CLS = 48, S_YETI_CLS = 51, S_ZOMBIE_CLS = 52,
+      S_HUMAN_CLS = 53, S_EEL_CLS_BP = 57;
+
+const HUMANOID_PARTS = ['arm', 'eye', 'face', 'finger',
+    'fingertip', 'foot', 'hand', 'handed',
+    'head', 'leg', 'light headed', 'neck',
+    'spine', 'toe', 'hair', 'blood',
+    'lung', 'nose', 'stomach'];
+const JELLY_PARTS = ['pseudopod', 'dark spot', 'front',
+    'pseudopod extension', 'pseudopod extremity', 'pseudopod root', 'grasp',
+    'grasped', 'cerebral area', 'lower pseudopod', 'viscous', 'middle',
+    'surface', 'pseudopod extremity', 'ripples', 'juices', 'surface',
+    'sensor', 'stomach'];
+const ANIMAL_PARTS = ['forelimb', 'eye', 'face',
+    'foreclaw', 'claw tip', 'rear claw',
+    'foreclaw', 'clawed', 'head',
+    'rear limb', 'light headed', 'neck',
+    'spine', 'rear claw tip', 'fur',
+    'blood', 'lung', 'nose',
+    'stomach'];
+const BIRD_PARTS = ['wing', 'eye', 'face', 'wing',
+    'wing tip', 'foot', 'wing', 'winged',
+    'head', 'leg', 'light headed', 'neck',
+    'spine', 'toe', 'feathers', 'blood',
+    'lung', 'bill', 'stomach'];
+const HORSE_PARTS = ['foreleg', 'eye', 'face',
+    'forehoof', 'hoof tip', 'rear hoof',
+    'forehoof', 'hooved', 'head',
+    'rear leg', 'light headed', 'neck',
+    'backbone', 'rear hoof tip', 'mane',
+    'blood', 'lung', 'nose',
+    'stomach'];
+const SPHERE_PARTS = ['appendage', 'optic nerve', 'body', 'tentacle',
+    'tentacle tip', 'lower appendage', 'tentacle', 'tentacled', 'body',
+    'lower tentacle', 'rotational', 'equator', 'body', 'lower tentacle tip',
+    'cilia', 'life force', 'retina', 'olfactory nerve', 'interior'];
+const FUNGUS_PARTS = ['mycelium', 'visual area', 'front',
+    'hypha', 'hypha', 'root',
+    'strand', 'stranded', 'cap area',
+    'rhizome', 'sporulated', 'stalk',
+    'root', 'rhizome tip', 'spores',
+    'juices', 'gill', 'gill',
+    'interior'];
+const VORTEX_PARTS = ['region', 'eye', 'front',
+    'minor current', 'minor current', 'lower current',
+    'swirl', 'swirled', 'central core',
+    'lower current', 'addled', 'center',
+    'currents', 'edge', 'currents',
+    'life force', 'center', 'leading edge',
+    'interior'];
+const SNAKE_PARTS = ['vestigial limb', 'eye', 'face', 'large scale',
+    'large scale tip', 'rear region', 'scale gap', 'scale gapped', 'head',
+    'rear region', 'light headed', 'neck', 'length', 'rear scale', 'scales',
+    'blood', 'lung', 'forked tongue', 'stomach'];
+const WORM_PARTS = ['anterior segment', 'light sensitive cell',
+    'clitellum', 'setae', 'setae', 'posterior segment',
+    'segment', 'segmented', 'anterior segment',
+    'posterior', 'over stretched', 'clitellum',
+    'length', 'posterior setae', 'setae', 'blood',
+    'skin', 'prostomium', 'stomach'];
+const SPIDER_PARTS = ['pedipalp', 'eye', 'face', 'pedipalp', 'tarsus',
+    'claw', 'pedipalp', 'palped', 'cephalothorax',
+    'leg', 'spun out', 'cephalothorax', 'abdomen',
+    'claw', 'hair', 'hemolymph', 'book lung',
+    'labrum', 'digestive tract'];
+const FISH_PARTS = ['fin', 'eye', 'premaxillary', 'pelvic axillary',
+    'pelvic fin', 'anal fin', 'pectoral fin', 'finned',
+    'head', 'peduncle', 'played out', 'gills',
+    'dorsal fin', 'caudal fin', 'scales', 'blood',
+    'gill', 'nostril', 'stomach'];
+// C ref: polyself.c not_claws[] — claw attacks are overloaded in mons[], so
+// these humanoid classes still say "hand".
+const NOT_CLAWS_CLS = [S_HUMAN_CLS, S_MUMMY_CLS, S_ZOMBIE_CLS, S_ANGEL_CLS,
+    S_NYMPH_CLS, S_LEPRECHAUN_CLS, S_QUANTMECH_CLS, S_VAMPIRE_CLS, S_ORC_CLS,
+    S_GIANT_CLS];
+
+const PM_OWLBEAR = name_to_pmidx('owlbear');
+const PM_MUMAK = name_to_pmidx('mumak');
+const PM_MASTODON = name_to_pmidx('mastodon');
+const PM_SHARK = name_to_pmidx('shark');
+const PM_JELLYFISH = name_to_pmidx('jellyfish');
+const PM_KRAKEN = name_to_pmidx('kraken');
+const PM_RAVEN = name_to_pmidx('raven');
+const PM_KI_RIN = name_to_pmidx('ki-rin');
+const PM_ROTHE = name_to_pmidx('rothe');
+const PM_STALKER = name_to_pmidx('stalker');
+const PM_STONE_GOLEM = name_to_pmidx('stone golem');
+// 3.7 merged incubus/succubus into one row; both names resolve to it.
+const PM_AMOROUS_DEMON = name_to_pmidx('amorous demon');
+
+export function mbodypart(mon, part) {
+    const mptr = mon?.data || null;
+    // C impossible("mbodypart: bad part %d") for part <= NO_PART; the upper
+    // bound is C's implicit array extent.
+    if (!mptr || !(part >= ARM && part <= STOMACH)) return 'mystery part';
+    const mcls = mptr.mcls | 0, mndx = mptr.pmidx;
+
+    /* some special cases */
+    if (mcls === S_DOG_CLS || mcls === S_FELINE_CLS || mcls === S_RODENT_CLS
+        || mndx === PM_OWLBEAR) {
+        switch (part) {
+        case HAND: return 'paw';
+        case HANDED: return 'pawed';
+        case FOOT: return 'rear paw';
+        case ARM: case LEG: return HORSE_PARTS[part]; /* "foreleg", "rear leg" */
+        default: break; /* other parts fall through to animal_parts[] */
+        }
+    } else if (mcls === S_YETI_CLS) {
+        /* opposable thumbs: yeti/sasquatch, monkey/ape */
+        return HUMANOID_PARTS[part];
+    }
+    if ((part === HAND || part === HANDED)
+        && humanoid(mptr) && attacktype(mptr, AT_CLAW)
+        && !NOT_CLAWS_CLS.includes(mcls)
+        && mndx !== PM_STONE_GOLEM && mndx !== PM_AMOROUS_DEMON)
+        return (part === HAND) ? 'claw' : 'clawed';
+    if ((mndx === PM_MUMAK || mndx === PM_MASTODON) && part === NOSE)
+        return 'trunk';
+    if (mndx === PM_SHARK && part === HAIR)
+        return 'skin'; /* sharks don't have scales */
+    if ((mndx === PM_JELLYFISH || mndx === PM_KRAKEN)
+        && (part === ARM || part === FINGER || part === HAND || part === FOOT
+            || part === TOE))
+        return 'tentacle';
+    if (mndx === PM_FLOATING_EYE && part === EYE)
+        return 'cornea';
+    if (humanoid(mptr) && (part === ARM || part === FINGER || part === FINGERTIP
+                           || part === HAND || part === HANDED))
+        return HUMANOID_PARTS[part];
+    if (mcls === S_COCKATRICE_CLS)
+        return (part === HAIR) ? SNAKE_PARTS[part] : BIRD_PARTS[part];
+    if (mndx === PM_RAVEN) return BIRD_PARTS[part];
+    if (mcls === S_CENTAUR_CLS || mcls === S_UNICORN_CLS || mndx === PM_KI_RIN
+        || (mndx === PM_ROTHE && part !== HAIR))
+        return HORSE_PARTS[part];
+    if (mcls === S_LIGHT_CLS) {
+        if (part === HANDED) return 'rayed';
+        if (part === ARM || part === FINGER || part === FINGERTIP
+            || part === HAND) return 'ray';
+        return 'beam';
+    }
+    if (mndx === PM_STALKER && part === HEAD) return 'head';
+    if (mcls === S_EEL_CLS_BP && mndx !== PM_JELLYFISH) return FISH_PARTS[part];
+    if (mcls === S_WORM_CLS_BP) return WORM_PARTS[part];
+    if (mcls === S_SPIDER_CLS) return SPIDER_PARTS[part];
+    if (slithy(mptr) || (mcls === S_DRAGON_CLS_BP && part === HAIR))
+        return SNAKE_PARTS[part];
+    if (mcls === S_EYE_CLS) return SPHERE_PARTS[part];
+    if (mcls === S_JELLY_CLS || mcls === S_PUDDING_CLS || mcls === S_BLOB_CLS
+        || mndx === PM_JELLYFISH)
+        return JELLY_PARTS[part];
+    if (mcls === S_VORTEX_CLS || mcls === S_ELEMENTAL_CLS)
+        return VORTEX_PARTS[part];
+    if (mcls === S_FUNGUS_CLS) return FUNGUS_PARTS[part];
+    if (humanoid(mptr)) return HUMANOID_PARTS[part];
+    return ANIMAL_PARTS[part];
+}
+
+// C ref: polyself.c body_part(part) == mbodypart(&gy.youmonst, part).
+export function body_part(part) {
+    return mbodypart({ data: youmonst_data_pub() }, part);
+}
+
+// C ref: mondata.c eyecount(ptr) — 0 for an eyeless form, 1 for the two
+// one-eyed ones, 2 otherwise.
+const PM_CYCLOPS = name_to_pmidx('Cyclops');
+export function eyecount(ptr) {
+    return !haseyes(ptr) ? 0
+        : (ptr?.pmidx === PM_CYCLOPS || ptr?.pmidx === PM_FLOATING_EYE) ? 1 : 2;
+}
 // C ref: invent.c useup(obj) — the item is DESTROYED, not dropped.
 function useup_worn(otmp) {
     otmp.owornmask = 0;

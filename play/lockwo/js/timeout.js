@@ -44,6 +44,10 @@ async function expire_confusion() {
     u.uprops.Confusion = 0;
     u.uconf = false;
     await update_topl(`You feel less ${Hallucination() ? 'trippy' : 'confused'} now.`);
+    // C ref: timeout.c:734 `if (!Confusion) stop_occupation();` — clearing the
+    // timer also breaks off a run/rush/occupation.  Without it a confused rush
+    // kept going past the turn the confusion ran out.
+    if (!(u.uprops.Confusion || 0)) await stop_occupation();
 }
 
 // C ref: potion.c make_stunned(0L, TRUE) —
@@ -53,6 +57,8 @@ async function expire_stun() {
     u.uprops.Stun = 0;
     u.Stunned = false;
     await update_topl(`You feel ${Hallucination() ? 'less wobbly' : 'a bit steadier'} now.`);
+    // C ref: timeout.c:741 `if (!Stunned) stop_occupation();`.
+    if (!(u.uprops.Stun || 0)) await stop_occupation();
 }
 
 // C ref: potion.c make_blinded(0L, TRUE) — regaining sight prints
@@ -64,14 +70,22 @@ async function expire_blinded() {
     const u = game.u;
     u.blinded = 0;
     await update_topl('Your vision clears.');
+    // C ref: timeout.c:747 `if (was_blind && !Blind) stop_occupation();` —
+    // was_blind is necessarily true here (the timer just ran out), so the test
+    // is whether some OTHER blindness source (blindfold, cream, eyeless form)
+    // still applies.
+    const { Blind } = await import('./vision.js');
+    if (!Blind()) await stop_occupation();
 }
 
 // C ref: potion.c make_hallucinated(0L, TRUE, 0L) — the display refresh and
 // its "Everything looks SO boring now." line need hallucination to have been
 // drawing something; no covered session sets the timer, so only the counter is
 // modelled.
-function expire_hallucination() {
+async function expire_hallucination() {
     game.u.uprops.Hallucination = 0;
+    // C ref: timeout.c:779 `if (!Hallucination) stop_occupation();`.
+    if (!Hallucination()) await stop_occupation();
 }
 
 // C ref: timeout.c:1222 slip_or_trip() — the fumble feedback.  Only the on-foot,
@@ -221,8 +235,9 @@ const TIMED_PROPS = [
     { name: 'WOUNDED_LEGS',
       get: (u) => u.HWounded_legs || 0,
       set: (u, v) => { u.HWounded_legs = v; },
-      // C: heal_legs(0) then stop_occupation().
-      expire: async () => { await heal_legs(0); } },
+      // C ref: timeout.c:774 case WOUNDED_LEGS — heal_legs(0) then an
+      // UNCONDITIONAL stop_occupation().
+      expire: async () => { await heal_legs(0); await stop_occupation(); } },
     { name: 'VOMITING',
       get: (u) => u.uprops?.Vomiting || 0,
       set: (u, v) => { u.uprops.Vomiting = v; },
@@ -247,6 +262,9 @@ const TIMED_PROPS = [
           const old = u?.uprops?.HDeaf || 0;
           if (u?.uprops) u.uprops.HDeaf = 0;
           if (!Unaware() && old) await update_topl('You can hear again.');
+          // C ref: timeout.c:756 `if (!Deaf) stop_occupation();` — outside
+          // make_deaf(), so it runs even on the Unaware (silent) path.
+          if (!(u?.uprops?.HDeaf || 0)) await stop_occupation();
       } },
     // prop.h FUMBLING = 25.  The only expiry case here that draws RNG (rn2(4)
     // in slip_or_trip, then the rnd(20) re-arm).

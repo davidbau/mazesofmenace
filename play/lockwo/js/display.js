@@ -710,8 +710,18 @@ function wall_cmap_color() {
 // show from the angles C would draw them.  C ref: back_to_glyph wall case:
 //   idx = ptr->seenv ? wall_angle(ptr) : S_stone;
 function wall_glyph_for(loc) {
-    const idx = loc.seenv ? wall_angle(loc) : S_stone;
+    const idx = wall_cmap_index(loc);
     return wall_cmap_glyph(idx);
+}
+
+// Semantic counterpart to wall_glyph_for() for messages which name the
+// projected background rather than drawing it.
+export function wall_shows_as_stone(loc) {
+    return wall_cmap_index(loc) === S_stone;
+}
+
+function wall_cmap_index(loc) {
+    return loc.seenv ? wall_angle(loc) : S_stone;
 }
 
 // C ref: stairs.c stairway_at — find the stairway node at (x,y).  mklev builds

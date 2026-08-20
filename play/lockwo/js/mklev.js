@@ -71,7 +71,7 @@ import {
     IS_SDOOR,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL, OBJ_AT,
     MATCH_WALL, INVALID_TYPE,
-    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, AIR, TREE,
+    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, AIR, TREE, CLOUD,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
@@ -1768,12 +1768,34 @@ async function themeroom_mausoleum() {
     });
 }
 
+// C ref: themerms.lua:445-457 'Random dungeon feature in the middle of an
+// odd-sized room' — two nh.rn2(3) size rolls BEFORE des.room()'s build_room
+// chance roll, then one of five features at the exact centre.  Falling through
+// to the generic "default room" path instead left those two rn2(3)s undrawn,
+// which shifts every later mklev draw on the level by two calls.
+async function themeroom_random_feature() {
+    const wid = 3 + rn2(3) * 2;
+    const hei = 3 + rn2(3) * 2;
+    return des_room({ rtype: OROOM, needfill: FILL_NORMAL, w: wid, h: hei },
+        (rm) => {
+            // local feature = { "C", "L", "I", "P", "T" } (nhlua.c char2typ[]).
+            const feature = [CLOUD, LAVAPOOL, ICE, POOL, TREE];
+            lua_shuffle(feature);
+            // des.terrain((rm.width-1)/2, (rm.height-1)/2, feature[1]) — both
+            // dimensions are odd, so Lua's float divide lands on an integer.
+            const width = rm.hx - rm.lx + 1, height = rm.hy - rm.ly + 1;
+            set_levltyp_lit(rm.lx + (width - 1) / 2, rm.ly + (height - 1) / 2,
+                            feature[0], SET_LIT_NOCHANGE);
+        });
+}
+
 const NESTED_ROOM_BUILDERS = {
     'Fake Delphi': themeroom_fake_delphi,
     'Room in a room': themeroom_room_in_a_room,
     'Huge room with another room inside': themeroom_huge_room_with_inner,
     'Nesting rooms': themeroom_nesting_rooms,
     'Mausoleum': themeroom_mausoleum,
+    'Random dungeon feature': themeroom_random_feature,
 };
 
 // C ref: sp_lev.c set_levltyp_lit() with lit=SET_LIT_NOCHANGE (-2) — set the

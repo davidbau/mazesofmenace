@@ -43,7 +43,7 @@ import { doride } from './steed.js';
 import { doenhance } from './enhance.js';
 import { dorub, dowipe, ECMD as APPLY_ECMD } from './apply.js';
 import { readobjnam } from './readobjnam.js';
-import { hold_another_object, encumber_msg } from './invent.js';
+import { hold_another_object, encumber_msg, objects_at, otense } from './invent.js';
 import { rn1 } from './rng.js';
 import { dopray as pray_dopray, dosacrifice } from './pray.js';
 import { dosit } from './sit.js';
@@ -410,7 +410,7 @@ const DEFAULT_MENU_CMDS = MENU_FIRST_PAGE + MENU_LAST_PAGE + MENU_NEXT_PAGE
 
 // C ref: strutil.c pmatch_internal(..., ci=TRUE) — '*' matches zero or more
 // characters, '?' matches exactly one.
-function pmatchi(patrn, strng) {
+export function pmatchi(patrn, strng) {
     if (!patrn.length) return !strng.length;
     const p = patrn[0];
     if (p === '*')
@@ -1220,8 +1220,26 @@ export async function makewish() {
         u0.uconduct.wishes = (u0.uconduct.wishes || 0) + 1;
     }
 
-    // hold the wished object (addinv).  drop_fmt/hold_msg as in C makewish.
-    await hold_another_object(result, 'Oops!  %s to the floor!', null, null);
+    // hold the wished object (addinv).  drop_fmt/hold_msg as in C makewish:
+    //   hold_another_object(otmp, uswallow ? "Oops!  %s out of your reach!"
+    //                              : (airlevel || waterlevel
+    //                                 || level.objects[u.ux][u.uy])
+    //                                ? "Oops!  %s away from you!"
+    //                                : "Oops!  %s to the floor!",
+    //                       The(aobjnam(otmp, "drop")), (char *) 0);
+    // The argument only shows when the wish is too heavy to hold (pickup_burden),
+    // which is why it used to be passed as null.
+    {
+        const here = objects_at(game.u?.ux, game.u?.uy);
+        const fmt = game.u?.uswallow ? 'Oops!  %s out of your reach!'
+            : here.length ? 'Oops!  %s away from you!'
+                : 'Oops!  %s to the floor!';
+        /* objnam.c aobjnam(obj, verb) then The() */
+        let bp = xname(result);
+        if ((result.quan || 1) !== 1) bp = `${result.quan} ${bp}`;
+        bp = `${bp} ${otense(result, 'drop')}`;
+        await hold_another_object(result, fmt, `The ${bp}`, null);
+    }
 
     // u.ublesscnt += rn1(100, 50);  /* the gods take notice */
     const u = game.u;
@@ -1400,7 +1418,7 @@ async function donamelevel() {
 
 // C ref: do_name.c docallcmd.  Present the name/call menu, read a single
 // PICK_ONE selection (ESC/space cancels), then dispatch the sub-action.
-async function docallcmd() {
+export async function docallcmd() {
     const disp = game?.nhDisplay;
     // C: inventory branches are only present when the pack is non-empty.
     const haveInvent = (game.invent || game.gi?.invent || []).length > 0;

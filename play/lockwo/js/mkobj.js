@@ -1932,7 +1932,7 @@ export function mksobj(otyp, init = true, artif = false) {
     // Without this every fresh object had dknown === undefined, which doname()
     // reads as "known", so a BLIND hero named the appearance of things it had
     // never seen ("a brilliant blue potion" where C prints "a potion").
-    otmp.dknown = DKNOWNS_OCLASS.has(otmp.oclass) ? 0 : 1;
+    clear_dknown(otmp);
     if (init) mksobj_init(otmp, artif);
 
     switch ((otmp.oclass === POTION_CLASS && otmp.otyp !== POT_OIL) ? POT_WATER : otmp.otyp) {

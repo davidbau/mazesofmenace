@@ -19,14 +19,18 @@ import { GameDisplay } from './game_display.js';
 import {
     ROLE_NONE, ROLE_RANDOM, ROLE_RACEMASK, ROLE_GENDMASK, ROLE_ALIGNMASK,
     ROLE_MALE, ROLE_FEMALE, ROLE_LAWFUL, ROLE_NEUTRAL, ROLE_CHAOTIC,
+    PICK_RANDOM, PL_NSIZ,
 } from './const.js';
+import { bail } from './wintty.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import './light.js';   // registers game.lightsources_hook for vision_recalc
 import {
-    aligns, apply_selection, count_ok_race, count_ok_gend, count_ok_align,
-    genders, gotrolefilter, ok_align, ok_gend, ok_race, ok_role, races,
-    random_player_selection, rigid_role_checks, roleName, roles,
-    selectionIsComplete, str2align, str2gend, str2race, str2role,
+    aligns, apply_selection, build_plselection_prompt, count_ok_race,
+    count_ok_gend, count_ok_align, genders, gotrolefilter, ok_align, ok_gend,
+    ok_race, ok_role, pick_align, pick_gend, pick_race, pick_role, races,
+    randalign, randgend, randrace, randrole, rigid_role_checks, roleName,
+    roles, str2align, str2gend, str2race, str2role, validalign, validgend,
+    validrace,
 } from './role.js';
 
 function initialSelectionFromOptions(opts) {
@@ -336,6 +340,11 @@ export class NethackGame {
         disp.putstr(9, 5, 'By Stichting Mathematisch Centrum and M. Stephenson.', NO_COLOR);
         disp.putstr(9, 6, 'Version 5.0.0 MacOS, built May  2 2026 12:00:00.', NO_COLOR);
         disp.putstr(9, 7, 'See license for details.', NO_COLOR);
+        // C ref: wintty.c tty_askname() tryct > 1 — the retry hint is written to
+        // the BASE window one row above the prompt, so it stays on screen under
+        // every later chargen menu (the confirmation overlay starts at col 31).
+        if (this._asknameRetry)
+            disp.putstr(0, 11, 'Enter a name for your character...', NO_COLOR);
         const prompt = `Who are you? ${name || ''}`;
         disp.putstr(0, 12, prompt, NO_COLOR);
         // The topLine is a tty yn_function prompt ("...? [ynaq]"). C's
@@ -374,16 +383,21 @@ export class NethackGame {
         const gender = genders[sel.gender]?.adj || 'male';
         const align = aligns[sel.align]?.adj || 'neutral';
         const nameLine = `${game.plname || 'Hero'} the ${align} ${gender} ${race} ${role}`;
-        // C ref: role.c plsel_confirm() — the confirmation NHW_MENU.  Title +
-        // blank + unselectable name line + blank + y/n/a/q items + "(end)".
+        // C ref: role.c genl_player_setup() getconfirmation loop — the
+        // confirmation NHW_MENU: title + blank + unselectable name line + blank
+        // + y/n/[a]/q items + "(end)".  The rename entry (and the 'a' in the
+        // title) exist only when iflags.renameallowed, which C sets in
+        // tty_askname() alone: a name pinned by OPTIONS=name: gives "[ynq]".
+        const renameallowed = !!game.iflags?.renameallowed;
         const lines = [
-            { text: 'Is this ok? [ynaq]', attr: ATR_INVERSE },
+            { text: `Is this ok? [yn${renameallowed ? 'a' : ''}q]`, attr: ATR_INVERSE },
             { text: '' },
             { text: nameLine },
             { text: '' },
             { sel: 'y', text: 'Yes; start game', preselect: true },
             { sel: 'n', text: 'No; choose role again' },
-            { sel: 'a', text: 'Not yet; choose another name' },
+            ...(renameallowed
+                ? [{ sel: 'a', text: 'Not yet; choose another name' }] : []),
             { sel: 'q', text: 'Quit' },
             { text: '(end)' },
         ];
@@ -644,30 +658,61 @@ export class NethackGame {
         if (!disp?.clearScreen) return;
         this._bannerOnScreen = false;
         disp.clearScreen();
+        if (this._asknameRetry && row > 0)
+            disp.putstr(0, row - 1, 'Enter a name for your character...', NO_COLOR);
         const prompt = `Who are you? ${name || ''}`;
         disp.putstr(0, row, prompt, NO_COLOR);
         disp.setCursor(Math.min(prompt.length, 79), row);
     }
 
+    // C ref: win/tty/wintty.c tty_askname() — NOT getlin(): it echoes each key
+    // itself, and on UNIX forces every character other than [A-Za-z-@] (plus
+    // digits once ct > 0) to '_', so a stray space or ESC-sequence byte lands
+    // on screen as an underscore.  ESC discards the whole response and retries
+    // with the hint line one row up; ten empty tries give up.
     async _promptForName(renameRow = -1) {
-        let name = '';
+        let name = '', tryct = 0;
+        this._asknameRetry = false;
         const render = (n) => renameRow >= 0
             ? this._renderRenameScreen(n, renameRow)
             : this._renderStartupScreen(n);
-        render(name);
-        for (;;) {
-            const code = await nhgetch();
-            if (code === 13 || code === 10) break;
-            if (code === 8 || code === 127) {
-                name = name.slice(0, -1);
-            } else if (code >= 32 && code < 127) {
-                name += String.fromCharCode(code);
+        do {
+            if (++tryct > 1) {
+                if (tryct > 10) {
+                    bail('Giving up after 10 tries.\n');
+                    return;
+                }
+                this._asknameRetry = true;
             }
+            name = '';
             render(name);
-        }
-        game.plname = name || 'Hero';
+            for (;;) {
+                const code = await nhgetch();
+                if (code === 10 || code === 13) break;
+                if (code === 27) { name = ''; break; } /* continue outer loop */
+                if (code === 8 || code === 127) {
+                    if (name.length) name = name.slice(0, -1);
+                    render(name);
+                    continue;
+                }
+                let c = String.fromCharCode(code);
+                if (c !== '-' && c !== '@'
+                    && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z')
+                    /* a leading digit is rejected, later ones are kept */
+                    && !(c >= '0' && c <= '9' && name.length > 0))
+                    c = '_';
+                if (name.length < PL_NSIZ - 1) name += c;
+                render(name);
+            }
+        } while (!name.length);
+        game.plname = name;
         // Remember a rename line so a following confirmation menu overlays it.
         this._renameTextRow = renameRow >= 0 ? renameRow : null;
+        // C: "since we let user pick an arbitrary name now, he/she can pick
+        // another one during role selection" — this is what puts the 'a' entry
+        // in the "Is this ok?" menu.
+        game.iflags = game.iflags || {};
+        game.iflags.renameallowed = true;
     }
 
     _nextManualPrompt(sel) {
@@ -744,7 +789,7 @@ export class NethackGame {
                 if (lower === 'y' || ch === '\r' || ch === '\n') return true;
                 if (lower === 'n') {
                     sel.role = sel.race = sel.gender = sel.align = ROLE_NONE;
-                } else if (lower === 'a') {
+                } else if (lower === 'a' && game.iflags?.renameallowed) {
                     await this._promptForName(this._okMenuRenameRow);
                 } else if (lower === 'q') {
                     return false;
@@ -959,6 +1004,64 @@ export class NethackGame {
         return sel2.length > 0;
     }
 
+    // C ref: role.c genl_player_setup() makepicks loop.  Facet order is role ->
+    // race -> gender -> alignment, and a facet is only (re)resolved when it is
+    // unset or INVALID for the facets before it (rc-pinned "Valkyrie male" lands
+    // here).  Within a facet, 'y'/'a' (and an explicit ROLE_RANDOM) pick at
+    // random, while any other pick4u -- including the '\0' of a config that
+    // pinned everything -- counts the valid choices instead and assigns silently
+    // when exactly one is left, drawing NO RNG.  Returns 'menu' when C would
+    // open a selection menu (more than one choice, or a missing role), which is
+    // the manual-selection path.
+    _makepicks(sel, pick4u) {
+        const rnd = (facet) => (pick4u === 'y' || pick4u === 'a'
+                                || facet === ROLE_RANDOM);
+        let k;
+        if (sel.role < 0) {
+            if (!rnd(sel.role)) return 'menu'; /* role is always menu-picked */
+            k = pick_role(sel.race, sel.gender, sel.align, PICK_RANDOM);
+            if (k < 0) k = randrole(false);
+            sel.role = k;
+        }
+        if (sel.race < 0 || !validrace(sel.role, sel.race)) {
+            if (rnd(sel.race)) {
+                k = pick_race(sel.role, sel.gender, sel.align, PICK_RANDOM);
+                if (k < 0) k = randrace(sel.role);
+            } else {
+                const cnt = count_ok_race(sel.role, sel.gender, sel.align);
+                if (cnt.n > 1) return 'menu';
+                k = cnt.k;
+            }
+            sel.race = k;
+        }
+        if (sel.gender < 0 || !validgend(sel.role, sel.race, sel.gender)) {
+            if (rnd(sel.gender)) {
+                k = pick_gend(sel.role, sel.race, sel.align, PICK_RANDOM);
+                if (k < 0) k = randgend(sel.role, sel.race);
+            } else {
+                const cnt = count_ok_gend(sel.role, sel.race, sel.align);
+                if (cnt.n > 1) return 'menu';
+                k = cnt.k;
+            }
+            sel.gender = k;
+        }
+        if (sel.align < 0 || !validalign(sel.role, sel.race, sel.align)) {
+            if (rnd(sel.align)) {
+                k = pick_align(sel.role, sel.race, sel.gender, PICK_RANDOM);
+                if (k < 0) k = randalign(sel.role, sel.race);
+            } else {
+                const cnt = count_ok_align(sel.role, sel.race, sel.gender);
+                if (cnt.n > 1) return 'menu';
+                k = cnt.k;
+            }
+            sel.align = k;
+        }
+        return null;
+    }
+
+    // C ref: role.c genl_player_setup() — askname (when no name is pinned),
+    // rigid_role_checks(), the "Shall I pick ... for you? [ynaq]" question, the
+    // makepicks loop and the "Is this ok?" confirmation, in that order.
     async _startupCharacterSelection(optsel) {
         // C ref: src/files.c / role.c — NetHack prompts "Who are you?"
         // for the player name whenever OPTIONS supplied no name:, even
@@ -969,48 +1072,76 @@ export class NethackGame {
             await this._promptForName();
 
         const sel = { ...optsel };
-        if (selectionIsComplete(sel)) {
-            apply_selection(sel);
-            return;
+        // Sampled BEFORE rigid_role_checks(): a facet that only gets filled in
+        // because the role forces it still counts as "something was picked", and
+        // that is what gates the confirmation menu below.
+        const picksomething = (sel.role === ROLE_NONE || sel.race === ROLE_NONE
+                               || sel.gender === ROLE_NONE
+                               || sel.align === ROLE_NONE);
+        let pick4u = '\0';
+
+        // Skip prompting for what a pinned facet already implies: role forces
+        // race (samurai) or gender (valkyrie) or alignment (rogue), race forces
+        // alignment (orc).  Each still-forced facet costs one rn2(1).
+        rigid_role_checks(sel);
+
+        if (sel.role === ROLE_NONE || sel.race === ROLE_NONE
+            || sel.gender === ROLE_NONE || sel.align === ROLE_NONE) {
+            // C names only the facets that are still open, and passes
+            // choices=NULL to yn_function so that it can carry its own
+            // "[ynaq]"; the answer is validated here instead, which means any
+            // unrecognized key silently re-asks.
+            const prompt = build_plselection_prompt(sel.role, sel.race,
+                                                    sel.gender, sel.align).trim();
+            for (;;) {
+                this._renderStartupScreen(game.plname || '', prompt);
+                pick4u = (await this._readPromptKey()).toLowerCase();
+                if (pick4u === '\x1b' || pick4u === 'q') return; /* [q] */
+                if (pick4u === ' ' || pick4u === '\n' || pick4u === '\r')
+                    pick4u = 'y'; /* default */
+                else if (pick4u === '@' || pick4u === '*')
+                    pick4u = 'a'; /* similar to '-@' on the command line */
+                if (pick4u === 'y' || pick4u === 'n' || pick4u === 'a') break;
+            }
         }
 
-        this._renderStartupScreen(
-            game.plname || '',
-            "Shall I pick character's race, role, gender and alignment for you? [ynaq]",
-        );
-        const ch = await this._readPromptKey();
-        if (ch.toLowerCase() === 'y' || ch === '\r' || ch === '\n') {
-            random_player_selection(sel);
-            this._renderSelectionOk(sel);
-            for (;;) {
-                const answer = await this._readPromptKey();
-                const lower = answer.toLowerCase();
-                if (lower === 'y' || answer === '\r' || answer === '\n') {
-                    game._startup_selected_character = true;
-                    apply_selection(sel);
-                    return;
-                }
-                if (lower === 'n') {
-                    sel.role = sel.race = sel.gender = sel.align = ROLE_NONE;
-                    if (await this._manualCharacterSelection(sel)) {
-                        game._startup_selected_character = true;
-                        apply_selection(sel);
-                        return;
-                    }
-                    return;
-                }
-                if (lower === 'a') {
-                    await this._promptForName();
-                    this._renderSelectionOk(sel);
-                }
-                if (lower === 'q') return;
-            }
-        } else if (ch.toLowerCase() === 'n') {
+        if (pick4u === 'n' || this._makepicks(sel, pick4u) === 'menu') {
             if (await this._manualCharacterSelection(sel)) {
                 game._startup_selected_character = true;
                 apply_selection(sel);
             }
+            return;
         }
+
+        // C: getconfirmation = (picksomething && pick4u != 'a' && !randomall);
+        // 'a' means "pick for me and just start", and nothing was open at all
+        // when the rc pinned every facet.
+        while (picksomething && pick4u !== 'a') {
+            this._renderSelectionOk(sel);
+            const answer = await this._readPromptKey();
+            const lower = answer.toLowerCase();
+            // A PICK_ONE menu with a preselected entry returns it for <space>,
+            // <return> and for explicitly re-picking it.
+            if (lower === 'y' || answer === ' ' || answer === '\r'
+                || answer === '\n')
+                break;
+            if (lower === 'n') {
+                // Start fresh with the menus, discarding any partial selection.
+                sel.role = sel.race = sel.gender = sel.align = ROLE_NONE;
+                if (await this._manualCharacterSelection(sel)) {
+                    game._startup_selected_character = true;
+                    apply_selection(sel);
+                }
+                return;
+            }
+            if (lower === 'a' && game.iflags?.renameallowed) {
+                await this._promptForName();
+                continue;
+            }
+            if (lower === 'q' || answer === '\x1b') return;
+        }
+        game._startup_selected_character = true;
+        apply_selection(sel);
     }
 
     _installCaptureHook() {

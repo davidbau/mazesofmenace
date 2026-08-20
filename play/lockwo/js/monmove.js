@@ -40,6 +40,7 @@ import {
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
     SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_TRAP, NO_TRAP_FLAGS, ALL_TRAPS, NO_TRAP,
+    TRAPPED_DOOR,
     A_STR, SQSRCHRADIUS, ALLOW_TRAPS, STATUE_TRAP, VIBRATING_SQUARE, TRAPNUM,
     W_ARMOR, W_ARMS, W_ARMG, W_AMUL, NOTONL, ALLOW_ROCK, ALLOW_M, ALLOW_U, ALLOW_SANCT,
     ALLOW_SSM, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_WALL, ALLOW_BARS,
@@ -3100,9 +3101,8 @@ function deltrap_local(trap) {
 // ("<mon> opens a door.") or, failing that, hear it ("You hear a door
 // open.").  UnblockDoor sets the doormask, redraws the square, retires the
 // square's LOS blockage (recalc_block_point) and re-runs vision_recalc(0).
-// The amorphous flow-under case and the D_TRAPPED explosion (mb_trapped)
-// don't occur at the depths these sessions reach, so they're left as
-// documented no-ops.
+// A D_TRAPPED door runs mb_trapped() instead of the normal feedback, which
+// draws rnd(15) and can kill the opener (-> MMOVE_DIED).
 //
 // The recalc_block_point() step is load-bearing and easy to miss: while the
 // door was CLOSED it blocked light, and NetHack's vision algorithm always
@@ -3114,11 +3114,35 @@ function deltrap_local(trap) {
 // "wall-visible", which both mis-renders the monster standing in the doorway
 // and flips the canseeit/canspotmon feedback from "You see a door open." to
 // "<Mon> opens a door.".
+// C ref: monmove.c mb_trapped(mtmp, canseeit) — the monster set off a door
+// trap.  Returns TRUE when it dies.  The rnd(15) is drawn unconditionally, so
+// skipping this call shifts every later draw on the level.
+async function mb_trapped(mtmp, canseeit) {
+    if (game.flags?.verbose !== false) {
+        if (canseeit && !game.u?.Unaware) {
+            await emitU('KABOOM!!  You see a door explode.');
+        } else if (!game.u?.Deaf) {
+            await emitU(`You hear a ${mdistu(mtmp) > 7 * 7 ? 'distant' : 'nearby'} explosion.`);
+        }
+    }
+    wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
+    mtmp.mstun = 1;
+    mtmp.mhp -= rnd(15);
+    if (DEADMONSTER(mtmp)) {
+        // mondied(): mondead() detach + relobj + corpse_chance()/make_corpse.
+        // No lifesaving is modelled, so the monster stays dead.
+        mon_kill_leaving(mtmp, false);
+        return true;
+    }
+    mon_learns_traps(mtmp, TRAPPED_DOOR);
+    return false;
+}
+
 async function m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel) {
     const here = game.level?.at(mtmp.mx, mtmp.my);
     // C: IS_DOOR(...) && !passes_walls(ptr) && !can_tunnel  (tunnellers dig
     // through below instead of opening).
-    if (!here || !IS_DOOR(here.typ) || passes_walls(ptr) || can_tunnel) return;
+    if (!here || !IS_DOOR(here.typ) || passes_walls(ptr) || can_tunnel) return false;
     const btrapped = (here.doormask & D_TRAPPED) !== 0;
     const verbose = game.flags?.verbose !== false;
     const Deaf = !!game.u?.Deaf;
@@ -3155,14 +3179,18 @@ async function m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel) {
         }
     } else if ((here.doormask & D_LOCKED) !== 0 && can_unlock) {
         UnblockDoor(!btrapped ? D_ISOPEN : D_NODOOR);
-        if (!btrapped && verbose) {
+        if (btrapped) {
+            if (await mb_trapped(mtmp, canseeit)) return true;
+        } else if (verbose) {
             if (canseeit && canspotmon(mtmp)) await emitU(`${Monnam(mtmp)} unlocks and opens a door.`);
             else if (canseeit) await emitU('You see a door unlock and open.');
             else if (!Deaf) await emitU('You hear a door unlock and open.');
         }
     } else if (here.doormask === D_CLOSED && can_open) {
         UnblockDoor(!btrapped ? D_ISOPEN : D_NODOOR);
-        if (!btrapped && verbose) {
+        if (btrapped) {
+            if (await mb_trapped(mtmp, canseeit)) return true;
+        } else if (verbose) {
             if (canseeit && canspotmon(mtmp)) await emitU(`${Monnam(mtmp)} opens a door.`);
             else if (canseeit) await emitU('You see a door open.');
             else if (!Deaf) await emitU('You hear a door open.');
@@ -3172,12 +3200,15 @@ async function m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel) {
         // or (locked and rn2(2)), else D_BROKEN.
         const mask = (btrapped || (((here.doormask & D_LOCKED) !== 0) && !rn2(2))) ? D_NODOOR : D_BROKEN;
         UnblockDoor(mask);
-        if (!btrapped && verbose) {
+        if (btrapped) {
+            if (await mb_trapped(mtmp, canseeit)) return true;
+        } else if (verbose) {
             if (canseeit && canspotmon(mtmp)) await emitU(`${Monnam(mtmp)} smashes down a door.`);
             else if (canseeit) await emitU('You see a door crash open.');
             else if (!Deaf) await emitU('You hear a door crash open.');
         }
     }
+    return false;
 }
 
 // C ref: mon.c:2064 mon_allowflags(mtmp) — the candidate-list flag bitmask
@@ -3695,7 +3726,10 @@ async function m_move(mtmp) {
         // 'mtmp' can".  The monster has already been stepped onto (nix,niy);
         // if that square is a door it can open/unlock/smash, do so now and
         // announce it (pline when spotted, "You see"/"You hear" otherwise).
-        await m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel);
+        if (await m_move_door(mtmp, ptr, can_open, can_unlock, can_tunnel)) {
+            if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+            return MMOVE_DIED;
+        }
         // C ref: monmove.c:1644 — possibly dig.  The tunneller has already been
         // stepped onto its (rock) destination; carve it now.  mdig_tunnel draws
         // rnd(12) (+rn2(5) for a wall) and may drop a boulder/rock; propagate a

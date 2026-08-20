@@ -44,12 +44,59 @@ function disp() { return game.nhDisplay; }
 // page stays shown and is re-read.  On dismissal tty tears the window down and
 // the map is redrawn (docrt), which dismiss_invent_screen() reproduces.
 //
+// C ref: win/tty/wintty.c compress_str() — a menu/text-window line that is at
+// least CO chars long (or holds a newline) has newlines turned into spaces and
+// every run of spaces collapsed to one; was_space starts TRUE, so leading
+// spaces are dropped entirely, and a trailing space is trimmed.
+function compress_str(str) {
+    if (str.length < COLS && str.indexOf('\n') < 0) return str;
+    let out = '', was = true;
+    for (let k = 0; k < str.length; k++) {
+        let c = str[k];
+        if (c === '\n') c = ' ';
+        if (was && c === ' ') continue;
+        out += c;
+        was = (c === ' ');
+    }
+    if (was && out.length > 0) out = out.slice(0, -1);
+    return out;
+}
+
+// C ref: win/tty/wintty.c tty_putstr() NHW_MENU/NHW_TEXT branch — after
+// compress_str(), a line with strlen()+1 > CO is broken at the last space at or
+// before index CO-1 (`data[++i] = '\0'` nulls the space, so it is dropped) and
+// the tail is tty_putstr()'d again with the same attr.  With no such space the
+// scan runs down to i == 0 and the over-long line is stored whole, to be
+// truncated at display time by process_text_window().
+function tty_putstr_text(out, ln) {
+    const isStr = typeof ln === 'string';
+    const mk = (t) => (isStr ? t : { ...ln, text: t });
+    let str = compress_str(String(isStr ? ln : (ln?.text ?? '')));
+    for (;;) {
+        if (str.length + 1 > COLS) {
+            let i = COLS - 1;
+            while (i && str[i] !== ' ' && str[i] !== '\n') i--;
+            if (i) {
+                out.push(mk(str.slice(0, i)));
+                str = str.slice(i + 1);
+                continue;
+            }
+        }
+        out.push(mk(str));
+        break;
+    }
+}
+
 // `lines` may be plain strings (ATR_NONE) or {text, attr} objects.
 export async function display_text_window(lines) {
+    // C ref: win/tty/wintty.c tty_putstr() — every string reaching a text
+    // window is compress_str()'d and line-broken before it is ever paged.
+    const wrapped = [];
+    for (const ln of lines) tty_putstr_text(wrapped, ln);
     const perPage = ROWS - 1; // 23 content lines; footer on row 23
     const pages = [];
-    for (let i = 0; i < lines.length; i += perPage)
-        pages.push(lines.slice(i, i + perPage));
+    for (let i = 0; i < wrapped.length; i += perPage)
+        pages.push(wrapped.slice(i, i + perPage));
     if (pages.length === 0) pages.push([]);
 
     let pi = 0;

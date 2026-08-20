@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { NO_COLOR } from './terminal.js';
+import { ere_compile } from './pickup.js';
 
 // ---------------------------------------------------------------------------
 // option_help() — the "List of game options." help topic ('?g').
@@ -457,9 +458,19 @@ function add_autopickup_exception(mapping, result) {
         grab = false;
     }
 
+    /* C ref: options.c add_autopickup_exception() — regex_compile() failing
+       reports regerror()'s text, not V8's.  ere_compile() classifies the
+       pattern the way Darwin's regcomp(REG_EXTENDED) does and hands back a
+       JS-safe source for the ones it accepts (ERE-literal ')' and '{', POSIX
+       character classes). */
+    const ere = ere_compile(r.text);
+    if (ere.error) {
+        config_error_add(`${APE_regex_error}: ${ere.error}`);
+        return 0;
+    }
     let re;
     try {
-        re = new RegExp(r.text);
+        re = new RegExp(ere.jsSource);
     } catch (e) {
         config_error_add(`${APE_regex_error}: ${e.message}`);
         return 0;

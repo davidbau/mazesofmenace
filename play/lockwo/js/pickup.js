@@ -8,12 +8,13 @@
 import { game } from './gstate.js';
 import { Blind } from './vision.js';
 import { rn2, rnd, d } from './rng.js';
-import { pline, bot, m_at, newsym, flush_screen } from './display.js';
+import { pline, bot, m_at, newsym, flush_screen, y_n, update_topl } from './display.js';
 import {
     isok, is_pit, is_hole, TT_PIT,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     UNENCUMBERED, OVERLOADED,
     IS_ALTAR, IS_GRAVE, IS_THRONE, STONE, POOL, MOAT, WATER, LAVAPOOL,
+    MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL, MENU_PARTIAL,
 } from './const.js';
 import {
     COIN_CLASS, MAXOCLASSES, CORPSE, STATUE, BOULDER, LOADSTONE, GOLD_PIECE,
@@ -24,7 +25,8 @@ import {
 import {
     invlet_basic, inventoryArray, near_capacity, inv_weight, xname,
     obj_doname as doname, otense, currency, merge_choice, addinv, freeinv,
-    obj_here, prinv, is_worn, count_unpaid, count_buc, look_here,
+    obj_here, prinv, is_worn, count_unpaid, count_buc, look_here, tally_BUCX,
+    ansimpleoname, display_inventory_interactive,
     describe_decor, sortloot, unsortloot, will_feel_cockatrice, feel_cockatrice,
     SORTLOOT_LOOT, SORTLOOT_INVLET, SORTLOOT_PACK, SORTLOOT_PETRIFY,
     GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
@@ -349,25 +351,140 @@ export function collect_obj_classes(ilets, otmp, here, filter, itemcount) {
 }
 
 /* pickup.c:141 query_classes() — the menustyle:Traditional/Combination class
-   prompt.  Its "What kinds of thing do you want to <action>?" line needs
-   getlin(), which js/invent.js still stubs, so a multi-class list answers 'm'
-   (menu on demand), the same escape hatch C gives the player. */
-export function query_classes(oclasses, one_at_a_time, everything, action,
-                              objs, here, menu_on_demand) {
-    const ilets = [];
+   prompt, "What kinds of thing do you want to <action>? [<ilets>]".
+   oclasses.buf collects object-class NUMBERS (C's strchr(oclasses,
+   obj->oclass)); valid_menu_classes collects class SYMBOLS, because that is
+   what this port's allow_category() compares against. */
+export async function query_classes(oclasses, one_at_a_time, everything, action,
+                                    objs, here, menu_on_demand) {
+    const iletsArr = [];
     const itemcount = { count: 0 };
+    let oclassct = 0, m_seen = false;
     oclasses.buf = '';
     one_at_a_time.value = everything.value = false;
     if (menu_on_demand) menu_on_demand.value = 0;
-    const iletct = collect_obj_classes(ilets, objs, here, null, itemcount);
+    const iletct = collect_obj_classes(iletsArr, objs, here, null, itemcount);
     if (iletct === 0) return false;
+    let ilets = iletsArr.join('');
+
     if (iletct === 1) {
-        oclasses.buf = String.fromCharCode(def_char_to_objclass(ilets[0]));
-        return true;
+        oclasses.buf = String.fromCharCode(def_char_to_objclass(ilets));
+    } else {
+        /* C: objs == gi.invent picks 'i', anything else ':'.  A pointer
+           compare there; here the chain's own where field says the same. */
+        ilets += ' aA' + (chain_to_array(objs, here)[0]?.where === 'invent' ? 'i' : ':');
     }
-    if (menu_on_demand) menu_on_demand.value = -2;
-    return false;
+    if (itemcount.count && menu_on_demand) ilets += 'm';
+    if (count_unpaid(objs)) ilets += 'u';
+    const bc = { value: 0 }, uc = { value: 0 }, cc = { value: 0 },
+          xc = { value: 0 }, oc = { value: 0 }, jc = { value: 0 };
+    tally_BUCX(objs, here, bc, uc, cc, xc, oc, jc);
+    if (bc.value) ilets += 'B';
+    if (uc.value) ilets += 'U';
+    if (cc.value) ilets += 'C';
+    if (xc.value) ilets += 'X';
+    if (jc.value) ilets += 'P';
+
+    if (ilets.length > 1) {
+        let where = null;
+        ask_again:
+        for (;;) {
+            oclasses.buf = ''; oclassct = 0;
+            one_at_a_time.value = everything.value = false;
+            let not_everything = false, filtered = false;
+            const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+            const inbuf = await hooked_tty_getlin(
+                `What kinds of thing do you want to ${action}? [${ilets}]`, null);
+            if (String(inbuf).charAt(0) === '\x1b') return false;
+
+            for (const sym of String(inbuf)) {
+                if (sym === ' ') {
+                    continue;
+                } else if (sym === 'A') {
+                    one_at_a_time.value = true;
+                } else if (sym === 'a') {
+                    everything.value = true;
+                } else if (sym === ':') {
+                    await simple_look(objs, here); /* dumb if objs==invent */
+                    const head = chain_to_array(objs, here)[0];
+                    if (head?.where === 'contained' && head.ocontainer)
+                        head.ocontainer.cknown = 1;
+                    continue ask_again;
+                } else if (sym === 'i') {
+                    await display_inventory_interactive(null);
+                    continue ask_again;
+                } else if (sym === 'm') {
+                    m_seen = true;
+                } else if ('uBUCXP'.includes(sym)) {
+                    add_valid_menu_class(sym);
+                    filtered = true;
+                } else {
+                    const oc_of_sym = def_char_to_objclass(sym);
+                    if (ilets.includes(sym)) {
+                        add_valid_menu_class(sym);
+                        oclasses.buf += String.fromCharCode(oc_of_sym);
+                        oclassct++;
+                    } else {
+                        if (where === null)
+                            where = (action === 'pick up') ? 'here'
+                                : (action === 'take out') ? 'inside' : '';
+                        /* update_topl, not pline: these accumulate onto one
+                           topline (C's pline concat rule) — "There are no #'s
+                           here.  There are no l's here. ..." for a typed
+                           "#loot" — and page it when the next one won't fit. */
+                        await update_topl(where ? `There are no ${sym}'s ${where}.`
+                                                : `You have no ${sym}'s.`);
+                        not_everything = true;
+                    }
+                }
+            }
+            if (m_seen && menu_on_demand) {
+                menu_on_demand.value = ((everything.value || !oclassct) && !filtered)
+                    ? -2 : -3;
+                return false;
+            }
+            if (!oclassct && (!everything.value || not_everything)) {
+                one_at_a_time.value = true;  /* force 'A' */
+                everything.value = false;    /* inhibit 'a' */
+            }
+            break;
+        }
+    }
+    return true;
 }
+
+/* objnam.c safe_qbuf() — "<prefix><object name><suffix>", falling back to a
+   shorter name (then to `lastR`) when the whole thing would not fit in
+   QBUFSZ-1.  short_oname()'s intermediate forms are not needed here: every
+   caller's doname() is far shorter than the 127-character budget. */
+const QBUFSZ = 128;
+const something = 'something';
+function safe_qbuf(qprefix, qsuffix, obj, func, altfunc, lastR) {
+    const lenlimit = QBUFSZ - 1;
+    const budget = lenlimit - qprefix.length - qsuffix.length;
+    let name = String(func(obj));
+    if (name.length > budget) name = String(altfunc(obj));
+    if (name.length > budget) name = lastR;
+    return qprefix + name + qsuffix;
+}
+
+/* hack.h ynaq()/ynNaq() — yn_function(query, "ynaq"/"yn#aq", 'y').  The '#'
+   count entry needs tty_yn_function's digit-collection mode, which js/display's
+   y_n() does not have, so a digit is ignored rather than starting a count. */
+/* win/tty/topl.c tty_yn_function():398 — a NEED_MORE topline is paged before
+   the prompt is drawn (unless a previous --More-- was ESC'd, i.e. WIN_STOP).
+   js/display's y_n() keys that off its own _yn_need_more flag, so the
+   pline-pending case is handled here. */
+async function yn_pending_more() {
+    if (game._toplin === 1 && !game._winStop) {
+        const { topl_more } = await import('./display.js');
+        await topl_more();
+        game._pending_message = '';
+        game._toplin = 0;
+    }
+}
+async function ynaq(query) { await yn_pending_more(); return await y_n(query, 'ynaq\x1b', 'y'); }
+async function ynNaq(query) { await yn_pending_more(); return await y_n(query, 'yn#aq\x1b', 'y'); }
 
 /* pickup.c:273 u_safe_from_fatal_corpse() */
 export function u_safe_from_fatal_corpse(obj, tests) {
@@ -639,15 +756,15 @@ export async function pickup(what) {
         : objects_at(u.ux, u.uy);
     let traverse_how = u.uswallow ? 0 : BY_NEXTHERE;
 
+    /* C's `goto menu_pickup` / `goto pickupdone` */
+    let menu_pickup = false, pickupdone = false;
+
     if (autopickup) {
         const picked = { list: null };
         n = autopick(objchain_p, traverse_how, picked);
         pick_list = picked.list;
-    } else {
-        /* menustyle:Traditional needs query_classes()'s getlin() and
-           askchain(); query_classes() answers 'm' for a multi-class pile, so
-           both styles reach the same item menu — hence no MENU_TRADITIONAL
-           branch here. */
+        menu_pickup = true;
+    } else if (menu_style() !== MENU_TRADITIONAL || iflags().menu_requested) {
         traverse_how |= AUTOSELECT_SINGLE
             | (flags().sortpack !== false ? INVORDER_SORT : 0);
         const picked = { list: null };
@@ -662,37 +779,130 @@ export async function pickup(what) {
                                     picked, PICK_ANY, all_but_uchain);
         }
         pick_list = picked.list;
-    }
+        menu_pickup = true;
+    } else {
+        /* pickup.c:786 "old style interface" — menustyle:Traditional without
+           the 'm' prefix: a class prompt, then one y/n per object. */
+        const chain = chain_to_array(objchain_p, (traverse_how & BY_NEXTHERE) !== 0);
+        const oclasses = { buf: '' };       /* types to consider (empty for all) */
+        const all_of_a_type = { value: true };  /* take all of considered types */
+        const selective = { value: false };     /* ask for each item */
+        const ct = chain.length;
+        let end_query = false;
 
-    /* menu_pickup: */
-    if (n > 0) reset_justpicked(inventoryArray());
-    n_tried = n;
-    for (let i = 0; i < n; i++) {
-        /* C's pline() chaining: each prinv line accumulates onto the same
-           topline (CO-8 rule) rather than replacing the previous one. */
-        const prior = i > 0 ? (game._pending_message || '') : '';
-        const res = await pickup_object(pick_list[i].obj, pick_list[i].count,
-                                        false);
-        if (i > 0 && prior) {
-            const line = game._pending_message || '';
-            if (line !== prior) {
-                const { update_topl } = await import('./display.js');
-                game._pending_message = prior;
-                game._toplin = 1; /* TOPLIN_NEED_MORE */
-                await update_topl(line);
+        if (ct === 1 && count) {
+            /* if only one thing, then pick it */
+            const obj = chain[0];
+            const lcount = Math.min(obj.quan, count);
+            n_tried++;
+            reset_justpicked(inventoryArray());
+            if ((await pickup_object(obj, lcount, false)) > 0) n_picked++;
+            end_query = true;
+        } else if (ct >= 2) {
+            const via_menu = { value: 0 };
+            /* update_topl, not pline: C's pline() leaves toplin == NEED_MORE,
+               which is what makes getline.c page this line before drawing
+               query_classes()'s prompt. */
+            await update_topl(`There are ${ct <= 10 ? 'several' : 'many'} objects here.`);
+            if (!(await query_classes(oclasses, selective, all_of_a_type, 'pick up',
+                                      objchain_p, (traverse_how & BY_NEXTHERE) !== 0,
+                                      via_menu))) {
+                if (!via_menu.value) {
+                    pickupdone = true;
+                } else {
+                    if (selective.value) traverse_how |= INVORDER_SORT;
+                    const picked = { list: null };
+                    n = await query_objlist('Pick up what?', objchain_p, traverse_how,
+                                            picked, PICK_ANY,
+                                            via_menu.value === -2 ? allow_all
+                                                                  : allow_category);
+                    pick_list = picked.list;
+                    menu_pickup = true;
+                }
             }
         }
-        if (res < 0) break;
-        n_picked += res;
+
+        if (!pickupdone && !menu_pickup && !end_query) {
+            const bycat = menu_class_present('B') || menu_class_present('U')
+                || menu_class_present('C') || menu_class_present('X');
+            for (const obj of chain) {
+                if (bycat ? !allow_category(obj)
+                          : (!selective.value && oclasses.buf
+                             && !oclasses.buf.includes(String.fromCharCode(obj.oclass))))
+                    continue;
+
+                let lcount = -1;
+                if (!all_of_a_type.value) {
+                    const qbuf = safe_qbuf('Pick up ', '?', obj, doname,
+                                           ansimpleoname, something);
+                    const ans = (obj.quan < 2) ? await ynaq(qbuf) : await ynNaq(qbuf);
+                    if (ans === 'q') break;      /* end_query: out 2 levels */
+                    if (ans === 'n') continue;
+                    if (ans === 'a') {
+                        all_of_a_type.value = true;
+                        if (selective.value) {
+                            selective.value = false;
+                            oclasses.buf = String.fromCharCode(obj.oclass);
+                        }
+                    }
+                    /* '#' (count entry) can't be answered; see ynNaq() */
+                }
+                if (lcount === -1) lcount = obj.quan;
+
+                if (!n_tried) reset_justpicked(inventoryArray());
+                n_tried++;
+                const res = await pickup_object(obj, lcount, false);
+                if (res < 0) break;
+                n_picked += res;
+            }
+        }
     }
 
-    if (!u.uswallow) {
+    if (menu_pickup) {
+        if (n > 0) reset_justpicked(inventoryArray());
+        n_tried = n;
+        for (let i = 0; i < n; i++) {
+            /* C's pline() chaining: each prinv line accumulates onto the same
+               topline (CO-8 rule) rather than replacing the previous one. */
+            const prior = i > 0 ? (game._pending_message || '') : '';
+            const res = await pickup_object(pick_list[i].obj, pick_list[i].count,
+                                            false);
+            if (i > 0 && prior) {
+                const line = game._pending_message || '';
+                if (line !== prior) {
+                    game._pending_message = prior;
+                    game._toplin = 1; /* TOPLIN_NEED_MORE */
+                    await update_topl(line);
+                }
+            }
+            if (res < 0) break;
+            n_picked += res;
+        }
+    }
+
+    if (!pickupdone && !u.uswallow) {
         if (n_picked) newsym_force(u.ux, u.uy);
         if (autopickup) await check_here(n_picked > 0);
     }
     set_pickup_encumbrance(0);
     add_valid_menu_class(0); /* reset */
     return n_tried > 0 ? 1 : 0;
+}
+
+/* C ref: options.c optfn_menustyle() — flags.menu_style.  Only the value's
+   FIRST letter matters ('n'/'t' Traditional, 'c' Combination, 'f' Full,
+   'p' Partial), and a negated "!menustyle" selects Traditional too.  Converted
+   here rather than in the parser for the same reason as pickup_types(). */
+export function menu_style() {
+    const raw = flags().menustyle;
+    if (typeof raw === 'number') return raw;
+    if (raw === false) return MENU_TRADITIONAL;
+    switch (String(raw ?? '').charAt(0).toLowerCase()) {
+    case 'n': case 't': return MENU_TRADITIONAL;
+    case 'c': return MENU_COMBINATION;
+    case 'p': return MENU_PARTIAL;
+    default: return MENU_FULL;   /* optlist.h initial value */
+    }
 }
 function unconscious() {
     const u = ustate();
@@ -729,7 +939,7 @@ function pickup_types() {
    by their capitalized letter, not their initial); anything else is a config
    error that leaves the previous value.  Converted here for the same reason as
    pickup_types: js/options.js records compound values verbatim. */
-function pickup_burden() {
+export function pickup_burden() {
     const raw = flags().pickup_burden;
     if (typeof raw === 'number') return raw;
     switch (String(raw ?? '').charAt(0).toLowerCase()) {
@@ -1925,3 +2135,145 @@ export async function tipcontainer(box, targetbox = null) {
 /* pickup.c:3505 choose_tip_container_menu(), 3562 dotip() and 3871
    tipcontainer_gettarget() are the #tip command's menu halves; they are
    rendered by js/extcmd-handlers.js and drive tipcontainer() above. */
+
+/* ── sys/share/posixregex.c regex_compile() / regerror(3) ─────────────────
+   AUTOPICKUP_EXCEPTION patterns are compiled by regcomp(REG_EXTENDED), and a
+   failure is reported to the player as "regex error in AUTOPICKUP_EXCEPTION:
+   <regerror text>" — a config-error line that then sits on screen for every
+   step up to the first Return, so its exact wording is worth as many screens
+   as the rest of the session.  JS RegExp neither accepts the same language nor
+   produces the same message, so classify the pattern the way Spencer's ERE
+   parser (Darwin libc) does and emit its regerror() string.
+
+   Returns { error, jsSource }: `error` is the regerror text (null when regcomp
+   would have succeeded) and `jsSource` is the pattern with any construct that
+   is literal in ERE but special in JS made literal, so `new RegExp` accepts
+   what regcomp accepted. */
+const REG_BADRPT_MSG = 'repetition-operator operand invalid';
+const REG_EBRACK_MSG = 'brackets ([ ]) not balanced';
+const REG_EPAREN_MSG = 'parentheses not balanced';
+const REG_EBRACE_MSG = 'braces not balanced';
+const REG_EESCAPE_MSG = 'trailing backslash (\\)';
+const REG_BADBR_MSG = 'invalid repetition count(s)';
+const REG_ERANGE_MSG = 'invalid character range';
+const REG_ECTYPE_MSG = 'invalid character class';
+const REG_EMPTY_MSG = 'empty (sub)expression';
+/* regex(3) POSIX character class names */
+const CCLASS_JS = {
+    alnum: 'A-Za-z0-9', alpha: 'A-Za-z', blank: ' \\t', cntrl: '\\x00-\\x1f\\x7f',
+    digit: '0-9', graph: '\\x21-\\x7e', lower: 'a-z', print: '\\x20-\\x7e',
+    punct: '!-\\/:-@\\[-`{-~', space: ' \\t\\n\\v\\f\\r', upper: 'A-Z',
+    xdigit: '0-9A-Fa-f',
+};
+const CCLASS_NAMES = new Set(Object.keys(CCLASS_JS));
+
+/* one bracket expression, starting at the '['; returns the index just past the
+   closing ']' or an error */
+function ere_bracket(pat, start) {
+    let i = start + 1;
+    if (pat[i] === '^') i++;
+    if (pat[i] === ']') i++;               /* a leading ']' is a literal */
+    let prevWasRange = false, prevChar = null;
+    for (; i < pat.length; i++) {
+        const c = pat[i];
+        if (c === ']') return { end: i + 1 };
+        if (c === '[' && (pat[i + 1] === ':')) {
+            const close = pat.indexOf(':]', i + 2);
+            if (close < 0) return { error: REG_ECTYPE_MSG };
+            if (!CCLASS_NAMES.has(pat.slice(i + 2, close)))
+                return { error: REG_ECTYPE_MSG };
+            i = close + 1; prevChar = null; prevWasRange = false;
+            continue;
+        }
+        if (c === '-' && prevChar !== null && pat[i + 1] !== ']'
+            && i + 1 < pat.length) {
+            if (prevWasRange) return { error: REG_ERANGE_MSG };
+            const hi = pat[i + 1];
+            if (hi < prevChar) return { error: REG_ERANGE_MSG };
+            i++; prevWasRange = true; prevChar = hi;
+            continue;
+        }
+        prevChar = c; prevWasRange = false;
+    }
+    return { error: REG_EBRACK_MSG };
+}
+
+export function ere_compile(pat) {
+    const src = String(pat);
+    if (!src) return { error: REG_EMPTY_MSG, jsSource: src };
+    let out = '', prevAtom = false, branchContent = false;
+    /* one entry per open group; sawAlt says whether this group has a '|', which
+       is what makes an empty branch an error ("()" compiles, "(a|)" does not) */
+    const groups = [{ sawAlt: false }];
+    const bad = (error) => ({ error, jsSource: src });
+    for (let i = 0; i < src.length; i++) {
+        const c = src[i];
+        if (c === '\\') {
+            if (i + 1 >= src.length) return bad(REG_EESCAPE_MSG);
+            out += src[i] + src[i + 1]; i++;
+            prevAtom = true; branchContent = true;
+            continue;
+        }
+        if (c === '[') {
+            const r = ere_bracket(src, i);
+            if (r.error) return bad(r.error);
+            out += src.slice(i, r.end); i = r.end - 1;
+            prevAtom = true; branchContent = true;
+            continue;
+        }
+        if (c === '(') {
+            out += c; groups.push({ sawAlt: false });
+            prevAtom = false; branchContent = false;
+            continue;
+        }
+        if (c === ')') {
+            if (groups.length > 1) {
+                const g = groups.pop();
+                if (g.sawAlt && !branchContent) return bad(REG_EMPTY_MSG);
+                out += c; prevAtom = true; branchContent = true;
+            } else {
+                out += '\\)';        /* literal in ERE, special in JS */
+                prevAtom = true; branchContent = true;
+            }
+            continue;
+        }
+        if (c === '|') {
+            if (!branchContent) return bad(REG_EMPTY_MSG);
+            groups[groups.length - 1].sawAlt = true;
+            out += c; prevAtom = false; branchContent = false;
+            continue;
+        }
+        if (c === '*' || c === '+' || c === '?') {
+            if (!prevAtom) return bad(REG_BADRPT_MSG);
+            out += c; prevAtom = false;
+            continue;
+        }
+        if (c === '{') {
+            if (!(src[i + 1] >= '0' && src[i + 1] <= '9')) {
+                out += '\\{';        /* not a bound: literal brace */
+                prevAtom = true; branchContent = true;
+                continue;
+            }
+            if (!prevAtom) return bad(REG_BADRPT_MSG);
+            const close = src.indexOf('}', i + 1);
+            if (close < 0) return bad(REG_EBRACE_MSG);
+            const body = src.slice(i + 1, close);
+            const m = /^(\d+)(,(\d*)?)?$/.exec(body);
+            if (!m) return bad(REG_BADBR_MSG);
+            if (m[3] && Number(m[3]) < Number(m[1])) return bad(REG_BADBR_MSG);
+            out += src.slice(i, close + 1); i = close;
+            prevAtom = false;
+            continue;
+        }
+        if (c === '^' || c === '$') {
+            out += c; prevAtom = false; branchContent = true;
+            continue;
+        }
+        out += c; prevAtom = true; branchContent = true;
+    }
+    if (groups.length > 1) return bad(REG_EPAREN_MSG);
+    if (groups[0].sawAlt && !branchContent) return bad(REG_EMPTY_MSG);
+    /* JS has no POSIX classes; ere_bracket() has already validated the names */
+    out = out.replace(/\[:([a-z]+):\]/g, (_m, nm) => CCLASS_JS[nm] ?? '');
+    return { error: null, jsSource: out };
+}

@@ -517,11 +517,21 @@ export async function use_pick_axe(obj) {
     }
 
     const { getdir } = await import('./cmd.js');
-    if (!(await getdir(`In what direction do you want to ${verb}? [${dirsyms}]`)))
+    const dir = await getdir(`In what direction do you want to ${verb}? [${dirsyms}]`);
+    if (!dir)
         return 1;                        // ECMD_CANCEL
-    // use_pick_axe2() — the dig itself (dig_check/dighole and the multi-turn
-    // digging occupation) is a separate unported subsystem; reaching it means
-    // the hero answered the direction prompt, which no covered session does.
+
+    // use_pick_axe2() reports a mismatched tool before attempting an occupation.
+    if (!u.uswallow && dir.dz === 0 && (dir.dx || dir.dy)) {
+        const rx = u.ux + dir.dx, ry = u.uy + dir.dy;
+        if (dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE) {
+            const typ = game.level?.at(rx, ry)?.typ;
+            if (IS_TREE(typ)) await pline('You need an axe to cut down a tree.');
+            else if (IS_OBSTRUCTED(typ)) await pline('You need a pick to dig rock.');
+        }
+    }
+
+    // The actual terrain change and multi-turn occupation remain unported.
     return USE_PICK_AXE_DIG;
 }
 

@@ -12,7 +12,7 @@ import { rnd, rn2, rn1, d } from './rng.js';
 import { pline, topl_more, update_topl, newsym } from './display.js';
 import { getobj, makeknown, useup, useupall, xname, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_EXCLUDE, GETOBJ_PROMPT, identify_pack, trycall, near_capacity,
-         remove_worn_item } from './invent.js';
+         remove_worn_item, makeplural } from './invent.js';
 import { exercise } from './attrib.js';
 import { discover_object } from './o_init.js';
 import { do_mapping } from './detect.js';
@@ -1730,6 +1730,51 @@ function Role_if_tourist() {
 // conical hats this is used for.
 function simpleonames_read(obj) { return xname(obj); }
 
+// C ref: read.c hawaiian_motif() / hawaiian_design() — a Hawaiian shirt's
+// printed design.  Both indices are a 32-bit hash of the shirt's o_id against
+// ubirthday (the game-start wall clock), so the same shirt always reads the
+// same way within a game but differs between games; no RNG is drawn.  The two
+// hashes deliberately differ (`ubirthday` vs `~ubirthday`) so that list sizes
+// sharing a factor cannot lock out combinations.
+const HAWAIIAN_MOTIFS = [
+    /* birds */
+    'flamingo', 'parrot', 'toucan', 'bird of paradise',
+    /* sea creatures */
+    'sea turtle', 'tropical fish', 'jellyfish', 'giant eel', 'water nymph',
+    /* plants */
+    'plumeria', 'orchid', 'hibiscus flower', 'palm tree',
+    /* other */
+    'hula dancer', 'sailboat', 'ukulele',
+];
+const HAWAIIAN_BGS = [
+    /* solid colors */
+    'purple', 'yellow', 'red', 'blue', 'orange', 'black', 'green',
+    /* adjectives */
+    'abstract', 'geometric', 'patterned', 'naturalistic',
+];
+// C ref: u_init.c ubirthday — the game-start wall clock in seconds, cast to
+// `unsigned` (32 bits) by both hashes.  js/shk.js owns the same derivation for
+// get_cost()'s glass-gem bit; keep the two in step.
+const UBIRTHDAY_UTC_OFFSET = -4 * 3600;
+function ubirthday_secs() {
+    if (typeof game.ubirthday === 'number' && game.ubirthday) return game.ubirthday;
+    const dt = String(game.datetime || '');
+    if (!/^\d{14}$/.test(dt)) return 0;
+    const y = +dt.slice(0, 4), mo = +dt.slice(4, 6), d = +dt.slice(6, 8);
+    const h = +dt.slice(8, 10), mi = +dt.slice(10, 12), sec = +dt.slice(12, 14);
+    return Math.trunc(Date.UTC(y, mo - 1, d, h, mi, sec) / 1000) - UBIRTHDAY_UTC_OFFSET;
+}
+export function hawaiian_motif(shirt) {
+    const motif = ((shirt?.o_id | 0) ^ (ubirthday_secs() | 0)) >>> 0;
+    return HAWAIIAN_MOTIFS[motif % HAWAIIAN_MOTIFS.length];
+}
+function hawaiian_design(shirt) {
+    const bg = ((shirt?.o_id | 0) ^ (~ubirthday_secs() | 0)) >>> 0;
+    const bgword = HAWAIIAN_BGS[bg % HAWAIIAN_BGS.length];
+    const article = /^[aeiou]/i.test(bgword) ? 'an' : 'a';
+    return `${makeplural(hawaiian_motif(shirt))} on ${article} ${bgword} background`;
+}
+
 const T_SHIRT = 137, ALCHEMY_SMOCK = 144, HAWAIIAN_SHIRT = 136,
       DUNCE_CAP = 94, CREDIT_CARD = 223, MAGIC_MARKER = 242, CANDY_BAR = 288,
       SCR_FIRE = 339; // C ref: include/objects.h otyp
@@ -1784,9 +1829,9 @@ export async function doread() {
             return ECMD_OK;
         }
         if (otyp === HAWAIIAN_SHIRT) {
-            // (hawaiian_design()'s motif tables aren't ported; no RNG in them —
-            // they key off o_id — so only the wording is wrong here.)
-            await pline(`${game.flags?.verbose !== false ? 'The design' : 'It'} features a Hawaiian motif.`);
+            // C ref: read.c:392 `pline("%s features %s.", flags.verbose ?
+            // "The design" : "It", hawaiian_design(scroll, buf));`
+            await pline(`${game.flags?.verbose !== false ? 'The design' : 'It'} features ${hawaiian_design(scroll)}.`);
             return ECMD_TIME;
         }
         bump_literate();

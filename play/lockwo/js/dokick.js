@@ -10,8 +10,8 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rnl, rn1 } from './rng.js';
-import { pline, newsym, m_at, topl_more, unmap_object, y_n } from './display.js';
-import { Blind, couldsee, recalc_block_point, unblock_point } from './vision.js';
+import { pline, newsym, m_at, topl_more, unmap_object, y_n, update_topl } from './display.js';
+import { Blind, couldsee, cansee, recalc_block_point, unblock_point } from './vision.js';
 import { exercise, acurr_eff, adjalign } from './attrib.js';
 import {
     A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, FACE, LEG,
@@ -26,14 +26,19 @@ import {
     In_endgame, Is_stronghold, Is_botlevel,
     MM_ANGRY, MM_NOMSG, MM_MALE, MM_FEMALE, ER_NOTHING,
     AM_MASK, Amask2align, W_ARMF,
+    PIT, SPIKED_PIT, WEB, WATER, ZAP_POS, FOOT, VIS_EFFECTS, MAY_HIT,
+    ER_DESTROYED,
 } from './const.js';
 import { KICKING_BOOTS, BOULDER, ROCK, DILITHIUM_CRYSTAL, LUCKSTONE,
          RING_CLASS, GEM_CLASS, EGG, BAG_OF_HOLDING, BAG_OF_TRICKS,
+         COIN_CLASS, CORPSE, LARGE_BOX, CHEST, ICE_BOX, place_object, next_ident,
          mkgold, mksobj_at, mkobj_at, rnd_class, objects, weight } from './mkobj.js';
 import { makemon, monster_by_pmidx, name_to_pmidx, enexto_spawn } from './makemon.js';
 import { in_rooms, shop_keeper } from './shkroom.js';
 import { water_damage, set_wounded_legs, t_at } from './trap.js';
-import { near_capacity, sobj_at, useup, body_part, inv_weight, makeplural } from './invent.js';
+import { near_capacity, sobj_at, useup, body_part, inv_weight, makeplural,
+         objects_at, obj_extract_self, stackobj, splitobj, xname, otense,
+         obj_doname, thitmonst } from './invent.js';
 import { obj_resists } from './zap.js';
 import { surface, hliquid, dunlevs_in_dungeon, Is_special } from './dungeon.js';
 import { attacktype, AT_ENGL } from './monattk_data.js';
@@ -54,6 +59,11 @@ import { a_monnam } from './do_name.js';
 import { wipe_engr_at } from './engrave.js';
 import { getdir, wake_nearby, wake_nearto, b_trapped } from './cmd.js';
 import { goto_level } from './do.js';
+import { is_pool, is_lava, is_pool_or_lava, is_ice } from './dbridge.js';
+import { scatter } from './explode.js';
+import { hero_breaks } from './dothrow.js';
+import { is_art, ART_MJOLLNIR } from './artifact.js';
+import { costly_spot, addtobill } from './shkroom.js';
 
 const ECMD_OK = 0, ECMD_TIME = 1, ECMD_FAIL = 0, ECMD_CANCEL = 0;
 const S_LIZARD = 58;      // defsym.h S_LIZARD, as numbered in permonst.mcls
@@ -927,6 +937,436 @@ async function kick_monster(mon, x, y) {
 
 // C ref: dokick.c dokick() — the ^D kick command.  Returns ECMD_TIME (1) when a
 // game turn elapses, 0 otherwise.
+/* ------------------------------------------------------------------ *
+ * dokick.c's OBJ_AT(x, y) arm: kick_object() -> really_kick_object(). *
+ * ------------------------------------------------------------------ */
+
+// C ref: dokick.c gk.kickedobj — the object currently being kicked.  Module
+// state rather than a game field: container_impact_dmg()'s `frominv` test is
+// the only other reader and it does not need it here.
+let gk_kickedobj = null;
+
+// C ref: mkobj.c sobj_at(otyp, x, y).  NOT js/invent.js's sobj_at: that one
+// walks `game.level.objects[x][y]` while place_object() keeps a FLAT array, so
+// it answers null for every square (js/do.js keeps the same private copy).
+function sobj_at_floor(otyp, x, y) {
+    for (const o of objects_at(x, y)) if (o.otyp === otyp) return o;
+    return null;
+}
+
+// C ref: pline.c Norep() — vpline() with PLINE_NOREPEAT, suppressed when the
+// text equals gp.prevmsg, the last INDIVIDUAL message (display.js tracks that
+// as game._prevmsg; gt.toplines is the concatenated row and would never match).
+async function Norep_kick(msg) {
+    if (game._prevmsg === msg) return;
+    await update_topl(msg);
+}
+
+// C ref: objnam.c the()/The()/upstart() (js/pickup.js:187 keeps the same copy).
+function the_k(s) {
+    const str = String(s ?? '');
+    if (/^(the |The |a |an |A |An |your |Your |his |her |its |their )/.test(str)) return str;
+    if (/^[A-Z]/.test(str)) return str;
+    return `the ${str}`;
+}
+function The_k(s) { const t = the_k(s); return t.charAt(0).toUpperCase() + t.slice(1); }
+// C ref: objnam.c Doname2(obj) — doname() with the first letter capitalized.
+function Doname2_k(obj) { const s = obj_doname(obj); return s.charAt(0).toUpperCase() + s.slice(1); }
+// C ref: objnam.c singular(obj, func) — format with quan forced to 1.
+function singular_k(obj, fn) {
+    const savequan = obj.quan;
+    obj.quan = 1;
+    const nam = fn(obj);
+    obj.quan = savequan;
+    return nam;
+}
+
+// C ref: objclass.h Is_box(o) — the three lockable floor containers.
+function Is_box(o) {
+    return o.otyp === LARGE_BOX || o.otyp === CHEST || o.otyp === ICE_BOX;
+}
+// C ref: monmove.c closed_door(x, y).
+function closed_door(x, y) {
+    const loc = isok(x, y) ? game.level?.at(x, y) : null;
+    return !!loc && IS_DOOR(loc.typ) && ((loc.doormask | 0) & (D_CLOSED | D_LOCKED)) !== 0;
+}
+// C ref: trap.h is_pit(ttyp).
+function is_pit_ttyp(ttyp) { return ttyp === PIT || ttyp === SPIKED_PIT; }
+
+// C ref: shk.c find_objowner(obj, x, y) — the shopkeeper whose bill the object
+// belongs on.  onshopbill() needs the per-shk bill, which shkroom.js keeps
+// private, so this is C's `deflt_shkp` fallback: the first shk of the rooms
+// covering (x, y).  No RNG either way.
+function find_objowner(obj, x, y) {
+    for (const rno of in_rooms(x, y, SHOPBASE)) {
+        const shkp = shop_keeper(rno);
+        if (shkp) return shkp;
+    }
+    return null;
+}
+
+// C ref: do.c flooreffects(obj, x, y, verb) — what happens to an object as it
+// lands.  Only the water arm has a ported body (trap.js water_damage); the
+// boulder-fills-a-pit, lava, hole/ship_object, globby-merge and hot-Gehennom-
+// floor arms need subsystems this port lacks and are NOT reached by a kick on
+// the levels it covers.  Returns TRUE when the object is used up.
+async function kick_flooreffects(obj, x, y) {
+    if (is_pool(x, y))
+        return (await water_damage(obj, null, false)) === ER_DESTROYED;
+    return false;
+}
+
+// C ref: zap.c bhit(ddx, ddy, range, KICKED_WEAPON, 0, 0, &obj) — a kicked
+// object's flight.  Differences from invent.js's THROWN_WEAPON walk: the object
+// starts one square in front of the hero (range--), a web catches it on !rn2(3),
+// coins stop on any square that already holds objects, and pool / lava / sink
+// squares end the flight WITH the object on them (a thrown one reverts).
+// hits_bars() (IRONBARS) and ship_object() are not ported; an IRONBARS square
+// still stops the flight below, via ZAP_POS.
+async function bhit_kicked(ddx, ddy, range, obj) {
+    const u = game.u;
+    let bx = u.ux + ddx, by = u.uy + ddy;
+    range--;
+    let result = null;
+    while (range-- > 0) {
+        bx += ddx; by += ddy;
+        if (!isok(bx, by)) { bx -= ddx; by -= ddy; break; }
+        const loc = game.level?.at(bx, by);
+        const typ = loc ? loc.typ : 0 /* STONE */;
+        /* "wall of water" and lava wall stop items */
+        if (typ === WATER || typ === LAVAWALL) break;
+
+        const mtmp = m_at(bx, by);
+        const ttmp = t_at(bx, by);
+        if (!mtmp && ttmp && ttmp.ttyp === WEB && !rn2(3)) {
+            if (cansee(bx, by)) {
+                // C: Yname2(obj) — yname() capitalized; shk_your() resolves to
+                // "the " for a floor object outside a shop, which is every kick
+                // that can reach a web square here.
+                await update_topl(`${The_k(xname(obj))} gets stuck in a web!`);
+                ttmp.tseen = 1;
+                newsym(bx, by);
+            }
+            break;
+        }
+        if (mtmp) {
+            // shade_miss()/M_AP_OBJECT mimic evasion draw no RNG; not modelled.
+            if (cansee(bx, by) && !canspotmon(mtmp)) map_invisible(bx, by);
+            result = mtmp;
+            break;
+        }
+        /* KICKED_WEAPON with no fhito: coins join a pile they land on */
+        if (obj.oclass === COIN_CLASS && objects_at(bx, by).length) break;
+        if (!ZAP_POS(typ) || closed_door(bx, by)) { bx -= ddx; by -= ddy; break; }
+        /* kicked objects fall in pools; physical objects fall onto sinks */
+        if (is_pool_or_lava(bx, by)) break;
+        if (IS_SINK(typ)) break;
+    }
+    return { x: bx, y: by, mon: result };
+}
+
+// C ref: dokick.c kick_object(x, y, kickobjnam) — jacket around
+// really_kick_object: the TOP object of the pile is the one kicked, and its
+// formatted name is handed back for kickstr() when the kick fails (res == 0).
+async function kick_object(x, y, kickobjnam) {
+    kickobjnam.name = '';
+    /* if a pile, the "top" object gets kicked */
+    gk_kickedobj = objects_at(x, y)[0] || null;
+    let res = 0;
+    if (gk_kickedobj) {
+        kickobjnam.name = killer_xname_k(gk_kickedobj);
+        res = await really_kick_object(x, y);
+        gk_kickedobj = null;
+    }
+    return res;
+}
+
+// C ref: objnam.c killer_xname(obj) — xname() with the BUC/erosion/charge
+// details kept but no article.  js/invent.js's killer_xname is module-private;
+// its body is `simple_obj_name(obj, { article: false })`, which xname() differs
+// from only in also dropping the BUC prefix.
+function killer_xname_k(obj) { return xname(obj); }
+
+// C ref: dokick.c really_kick_object(x, y) — the guts of kicking a floor
+// object.  Returns 1 when the kick "worked" (the caller spends the turn) and 0
+// when it did not (the caller falls through to kick_ouch()).
+async function really_kick_object(x, y) {
+    const u = game.u;
+    let range;
+    let shkp = null;
+    let slide = false;
+
+    /* uball/uchain are not modelled (no punishment in this port) */
+    if (!gk_kickedobj || gk_kickedobj.otyp === BOULDER) return 0;
+
+    const trap = t_at(x, y);
+    if (trap) {
+        if ((is_pit_ttyp(trap.ttyp) && !Passes_walls()) || trap.ttyp === WEB) {
+            if (!trap.tseen) { trap.tseen = 1; newsym(x, y); }
+            await update_topl(`You can't kick something that's in a ${
+                Hallucination_k() ? 'tizzy'
+                    : trap.ttyp === WEB ? 'web' : 'pit'}!`);
+            return 1;
+        }
+        // STATUE_TRAP: activate_statue_trap() is not ported (it makemon()s the
+        // statue's monster, which draws RNG); the trap is left dormant.
+    }
+
+    if (Fumbling() && !rn2(3)) {
+        await update_topl('Your clumsy kick missed.');
+        return 1;
+    }
+
+    // Kicking a cockatrice corpse barefoot: instapetrify() is a death path this
+    // port has no equivalent for, and poly_when_stoned() cannot be true for an
+    // unpolymorphed hero.  Neither arm draws RNG, so only the message runs.
+    if (!game.uarmf && gk_kickedobj.otyp === CORPSE
+        && touch_petrifies_k(gk_kickedobj.corpsenm)
+        && !game.u?.uprops?.Stone_resistance) {
+        await update_topl(`You kick ${the_k(xname(gk_kickedobj))} with your bare ${
+            makeplural(body_part(FOOT))}.`);
+    }
+
+    const isgold = gk_kickedobj.oclass === COIN_CLASS;
+    {
+        let k_owt = gk_kickedobj.owt | 0;
+
+        /* for a non-gold stack, 1 item will be split off below; the range is
+           calculated for that 1 rather than for the whole stack */
+        if ((gk_kickedobj.quan | 0) > 1 && !isgold) {
+            const save_quan = gk_kickedobj.quan;
+            gk_kickedobj.quan = 1;
+            k_owt = weight(gk_kickedobj);
+            gk_kickedobj.quan = save_quan;
+        }
+
+        /* range < 2 means the object will not move */
+        range = Math.trunc(ACURRSTR() / 2) - Math.trunc(k_owt / 40);
+    }
+
+    if (martial()) range += rnd(3);
+
+    if (is_pool(x, y)) {
+        /* you're in the water too; significantly reduce range */
+        range = Math.trunc(range / 3) + 1;
+    } else if (Is_airlevel_k() || Is_waterlevel_k()) {
+        range += rnd(3);
+    } else {
+        if (is_ice(x, y)) { range += rnd(3); slide = true; }
+        if (gk_kickedobj.greased) { range += rnd(3); slide = true; }
+    }
+
+    /* Mjollnir is magically too heavy to kick */
+    if (is_art(gk_kickedobj, ART_MJOLLNIR)) range = 1;
+
+    /* see if the object has a place to move into */
+    if (!isok(x + u.dx, y + u.dy)
+        || !ZAP_POS(game.level?.at(x + u.dx, y + u.dy)?.typ | 0)
+        || closed_door(x + u.dx, y + u.dy))
+        range = 1;
+
+    shkp = find_objowner(gk_kickedobj, x, y);
+    let costly = !!(shkp && (costly_spot(x, y)
+                             || (costly_adjacent_k(shkp, x, y) && gk_kickedobj.unpaid)));
+
+    await Norep_kick(`You kick ${
+        !isgold ? singular_k(gk_kickedobj, obj_doname) : obj_doname(gk_kickedobj)}.`);
+
+    const maploc = game.level?.at(x, y);
+    if (IS_OBSTRUCTED(maploc?.typ | 0) || closed_door(x, y)) {
+        /* the object is embedded in rock or in a closed door */
+        const uloc = game.level?.at(u.ux, u.uy);
+        if ((!martial() && rn2(20) > ACURR(A_DEX))
+            || IS_OBSTRUCTED(uloc?.typ | 0) || closed_door(u.ux, u.uy)) {
+            if (Blind()) await update_topl("It doesn't come loose.");
+            else await update_topl(`${The_k(xname(gk_kickedobj))} ${
+                otense(gk_kickedobj, 'do')}n't come loose.`);
+            return (!rn2(3) || martial()) ? 1 : 0;
+        }
+        if (Blind()) await update_topl('It comes loose.');
+        else await update_topl(`${The_k(xname(gk_kickedobj))} ${
+            otense(gk_kickedobj, 'come')} loose.`);
+        obj_extract_self(gk_kickedobj);
+        newsym(x, y);
+        if (costly && (!costly_spot(u.ux, u.uy)
+                       || !in_rooms(x, y, SHOPBASE).some((r) => (game.u?.urooms || '').includes(r)))) {
+            if (!gk_kickedobj.no_charge) await addtobill(gk_kickedobj, false, false, false);
+            else gk_kickedobj.no_charge = 0;
+        }
+        if (!(await kick_flooreffects(gk_kickedobj, u.ux, u.uy))) {
+            place_object(gk_kickedobj, u.ux, u.uy);
+            stackobj(gk_kickedobj);
+            newsym(u.ux, u.uy);
+        }
+        return 1;
+    }
+
+    /* a box gets a chance of breaking open here */
+    if (Is_box(gk_kickedobj)) {
+        const otrp = gk_kickedobj.otrapped;
+
+        if (range < 2) await update_topl('THUD!');
+        container_impact_dmg(gk_kickedobj, x, y);
+        if (gk_kickedobj.olocked) {
+            if (!rn2(5) || (martial() && !rn2(2))) {
+                await update_topl('You break open the lock!');
+                await breakchestlock_k(gk_kickedobj);
+                // chest_trap(obj, LEG, FALSE) is not ported; an otrapped box
+                // kicked open leaves its trap dormant here.
+                void otrp;
+                return 1;
+            }
+        } else {
+            if (!rn2(3) || (martial() && !rn2(2))) {
+                await update_topl('The lid slams open, then falls shut.');
+                gk_kickedobj.lknown = 1;
+                void otrp;
+                return 1;
+            }
+        }
+        if (range < 2) return 1;
+        /* else let it fall through to the next cases... */
+    }
+
+    /* fragile objects should not be kicked */
+    if (await hero_breaks(gk_kickedobj, gk_kickedobj.ox, gk_kickedobj.oy, 0))
+        return 1;
+
+    /* too heavy to move: range == 2 means the object may move one square */
+    if (range < 2) {
+        if (!Is_box(gk_kickedobj)) await update_topl('Thump!');
+        return (!rn2(3) || martial()) ? 1 : 0;
+    }
+
+    if ((gk_kickedobj.quan | 0) > 1) {
+        if (!isgold) {
+            // C: splitobj -> nextoid -> next_ident spends one rnd(2) on the
+            // fragment's o_id; this port's splitobj() leaves it to the caller.
+            next_ident();
+            gk_kickedobj = splitobj(gk_kickedobj, 1);
+        } else {
+            if (rn2(20)) {
+                const flyingcoinmsg = [
+                    'scatter the coins', 'knock coins all over the place',
+                    'send coins flying in all directions',
+                ];
+                if (!Deaf()) await update_topl('Thwwpingg!');
+                await update_topl(`You ${flyingcoinmsg[rn2(flyingcoinmsg.length)]}!`);
+                await scatter(x, y, rnd(3), VIS_EFFECTS | MAY_HIT, gk_kickedobj);
+                newsym(x, y);
+                return 1;
+            }
+            if ((gk_kickedobj.quan | 0) > 300) {
+                await update_topl('Thump!');
+                return (!rn2(3) || martial()) ? 1 : 0;
+            }
+        }
+    }
+
+    if (slide && !Blind())
+        await update_topl(`Whee!  ${Doname2_k(gk_kickedobj)} ${
+            otense(gk_kickedobj, 'slide')} across the ${surface(x, y)}.`);
+
+    obj_extract_self(gk_kickedobj);
+    // snuff_candle(gk.kickedobj): the light-source list isn't modelled; no RNG.
+    newsym(x, y);
+    const land = await bhit_kicked(u.dx, u.dy, range, gk_kickedobj);
+    const mon = land.mon;
+
+    if (mon) {
+        if (mon.isshk && gk_kickedobj.where === 'minvent' && gk_kickedobj.ocarry === mon)
+            return 1; /* alert shk caught it */
+        game.notonhead = (mon.mx !== land.x || mon.my !== land.y);
+        if (isgold ? await ghitm_k(mon, gk_kickedobj)
+                   : await thitmonst(mon, gk_kickedobj, await kick_skillsnap(gk_kickedobj)))
+            return 1;
+    }
+
+    // ship_object() (the object falls down a hole) is not ported, so
+    // kickedobj->where can never be OBJ_MIGRATING here.
+
+    const bhitroom = in_rooms(land.x, land.y, SHOPBASE)[0];
+    if (costly && (!costly_spot(land.x, land.y)
+                   || in_rooms(x, y, SHOPBASE)[0] !== bhitroom)) {
+        // costly_gold()/stolen_value() billing is not ported; the flag is
+        // cleared so the in-shop arm below doesn't double-charge.
+        costly = false;
+    }
+
+    if (await kick_flooreffects(gk_kickedobj, land.x, land.y)) return 1;
+    place_object(gk_kickedobj, land.x, land.y);
+    stackobj(gk_kickedobj);
+    newsym(gk_kickedobj.ox, gk_kickedobj.oy);
+    return 1;
+}
+
+// C ref: weapon.c P_SKILL() as read by dothrow.c thitmonst()/hmon().  C reads
+// the skill table live; js/invent.js's thitmonst takes a snapshot instead
+// (js/invent.js:5880) because a THROWN object has already left inventory by
+// then.  A kicked object was never in inventory, so sampling here is the same
+// reading.  No RNG.
+async function kick_skillsnap(obj) {
+    const _enh = await import('./enhance.js');
+    const { P_TWO_WEAPON_COMBAT, P_RIDING } = await import('./const.js');
+    return {
+        obj: _enh.p_skill_of(_enh.weapon_type(obj)),
+        wep: game.uwep ? _enh.p_skill_of(_enh.weapon_type(game.uwep)) : 0,
+        obj_type: _enh.weapon_type(obj),
+        wep_type: game.uwep ? _enh.weapon_type(game.uwep) : 0,
+        twoweap_skill: _enh.p_skill_of(P_TWO_WEAPON_COMBAT),
+        riding: _enh.p_skill_of(P_RIDING),
+        usteed: !!game.u?.usteed,
+        twoweap: !!game.u?.twoweap,
+        // C ref: skills.h martial_bonus() = Role_if(SAMURAI) || Role_if(MONK);
+        // NOT this file's martial(), which also counts kicking boots/bigfoot.
+        martial: game.urole?.mnum === PM_MONK || game.urole?.mnum === PM_SAMURAI,
+    };
+}
+
+// C ref: shk.c costly_adjacent(shkp, x, y) — an unpaid item just outside the
+// shop door still belongs to the shk.  eshk->shd (the door) is not modelled
+// here; the covered kicks are all inside or outside a shop, never in its
+// doorway.  No RNG.
+function costly_adjacent_k(_shkp, _x, _y) { return false; }
+
+// C ref: steal.c ghitm(mtmp, gold) — js/dothrow.js keeps the same body module-
+// private for throw_gold().  Returns TRUE when the monster keeps the coins.
+async function ghitm_k(mtmp, gold) {
+    mtmp.msleeping = 0;
+    if (!mtmp.mcanmove) return false;
+    const U = await import('./uhitm.js');
+    await U.wakeupAttack(mtmp, false);
+    const { mpickobj } = await import('./steal.js');
+    mpickobj(mtmp, gold);
+    return true;
+}
+
+// C ref: lock.c breakchestlock(box, destroyit) — the !destroyit half: the box
+// is forced open and its lock destroyed.  js/extcmd-handlers.js keeps the same
+// function module-private for #force.  No RNG in this half.
+async function breakchestlock_k(box) {
+    box.olocked = 0;
+    box.obroken = 1;
+    box.lknown = 1;
+}
+
+// C ref: mondata.h:200 touch_petrifies(ptr) — the two mons[] rows compared by
+// identity there (Medusa is flesh_petrifies, not this).  js/invent.js keeps the
+// same body module-private.
+function touch_petrifies_k(corpsenm) {
+    const nm = monster_by_pmidx(corpsenm)?.name;
+    return nm === 'cockatrice' || nm === 'chickatrice';
+}
+
+// C ref: youprop.h Hallucination.
+function Hallucination_k() {
+    return ((game.u?.uprops?.Hallucination || 0) > 0) || !!game.u?.HHallucination;
+}
+// C ref: dungeon.c Is_airlevel/Is_waterlevel — the two endgame planes, which
+// this port never reaches; kept so the range arms read as C's.
+function Is_airlevel_k() { return false; }
+function Is_waterlevel_k() { return false; }
+
 export async function dokick() {
     const u = game.u;
     let no_kick = false;
@@ -1101,8 +1541,15 @@ export async function dokick() {
         return ECMD_TIME;
     }
 
-    // NOT PORTED: the OBJ_AT(x,y) arm (kick_object -> really_kick_object).
-    // Terrain handling below is C's and is unaffected by that gap.
+    // C ref: dokick.c:1452 — objects come before doors and non-doors.  A
+    // levitating hero can only kick a boulder (nothing else is braceable).
+    if (objects_at(x, y).length
+        && (!Levitation() || sobj_at_floor(BOULDER, x, y))) {
+        const kickobjnam = { name: '' };
+        if (await kick_object(x, y, kickobjnam)) return ECMD_TIME;
+        await kick_ouch(x, y, kickobjnam.name, maploc);
+        return ECMD_TIME;
+    }
 
     if (IS_DOOR(maploc.typ)) {
         await kick_door(x, y, avrg_attrib);

@@ -444,7 +444,11 @@ export function discover_object(oindx, markKnown, markEncountered, creditHero) {
 export function observe_object(obj) {
     if (!obj) return;
     const oindx = obj.otyp;
-    if (oindx >= FIRST_OBJECT()) discover_object(oindx, false, true);
+    // C ref: o_init.c observe_object() — seeing an object also learns its
+    // APPEARANCE (obj->dknown = 1), which is what tells doname_vague_quan()
+    // that the exact quantity of a stack is known.  (C's !Hallucination guard
+    // covers both statements and is not modelled here either.)
+    if (oindx >= FIRST_OBJECT()) { obj.dknown = 1; discover_object(oindx, false, true); }
 }
 
 // C ref: u_init.c knows_object() — mark a type known (not encountered).

@@ -655,6 +655,51 @@ export function unfaint() {
     return 0;
 }
 
+// C ref: flag.h:92 PARANOID_EATING / :578 ParanoidEating.  The default
+// paranoia_bits (options.c:7173) are PRAY|SWIM|TRAP, so this is normally off.
+function ParanoidEating() {
+    return (((game.flags?.paranoia_bits) | 0) & 0x0200) !== 0;
+}
+// C ref: objnam.c mungspaces() — collapse runs of whitespace and trim.
+function mungspaces(s) { return String(s).replace(/\s+/g, ' ').trim(); }
+// C ref: cmd.c paranoid_ynq(be_paranoid, prompt, accept_q) / paranoid_query().
+// When not paranoid this is plain yn_function(prompt, "yn", 'n'); when paranoid
+// the answer is typed on the top line and only a full "yes" confirms (and, with
+// paranoid_confirm also set, only a full "no" rejects, up to 6 tries).
+async function paranoid_ynq(be_paranoid, prompt, accept_q) {
+    let c = 'n';
+    if (be_paranoid) {
+        const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+        const paranoidConfirm = (((game.flags?.paranoia_bits) | 0) & 0x0001) !== 0;
+        const responsetype = paranoidConfirm
+            ? (accept_q ? '[yes|no|quit]' : '[yes|no]')
+            : (accept_q ? '[yes|n|q] (n)' : '[yes|n] (n)');
+        let promptprefix = '', trylimit = 6, ans;
+        do {
+            const raw = await hooked_tty_getlin(`${promptprefix}${prompt} ${responsetype}`, null);
+            ans = mungspaces(raw == null ? '\x1b' : raw);
+            if (ans.toLowerCase() === 'yes') { c = 'y'; break; }
+            if (ans.toLowerCase() === 'quit' || ans[0] === '\x1b') { c = 'q'; break; }
+            promptprefix = '"Yes" or "No": ';
+        } while (paranoidConfirm && ans.toLowerCase() !== 'no' && --trylimit);
+    } else {
+        // C ref: hack.h y_n(q) == yn_function(q, ynchars, 'n', FALSE), and
+        // win/tty/topl.c tty_yn_function():`if (toplin == TOPLINE_NEED_MORE &&
+        // (cw->flags & (WIN_STOP | WIN_NOSTOP)) != WIN_STOP) more();` followed by
+        // `cw->flags &= ~(WIN_STOP | WIN_NOSTOP)`.  So the pending warning is
+        // paged with --More-- UNLESS the previous --More-- was dismissed with
+        // ESC (WIN_STOP), in which case the query simply replaces it.
+        game._yn_need_more = (game._toplin === 1) && !game._winStop;
+        game._winStop = false;
+        c = await y_n(prompt, accept_q ? 'ynq\x1b' : 'yn\x1b', 'n');
+    }
+    if (c !== 'y' && (c !== 'q' || !accept_q)) c = 'n';
+    return c;
+}
+async function paranoid_query(be_paranoid, prompt) {
+    return (await paranoid_ynq(be_paranoid, prompt, false)) === 'y';
+}
+
 // C ref: eat.c lesshungry(num) — add nutrition, then either choke (over 2000)
 // or warn about being nearly full (1500), then recompute the hunger status.
 // The choke and fullwarn arms used to be missing entirely, so a hero who ate
@@ -679,9 +724,22 @@ async function lesshungry_eat(num) {
             game.multi = -2;
         } else {
             v.fullwarn = 1;
-            // C also offers ParanoidEating's "Continue eating?" prompt here;
-            // that option is off in the recorded config, so the query never
-            // appears and no input boundary moves.
+            // C ref: eat.c:3323 — `if (victual.canchoke && (reqtime - usedtime)
+            // > 1) if (!paranoid_query(ParanoidEating, "Continue eating?")) {
+            // reset_eat(); nomovemsg = 0; }`.  paranoid_query() asks the
+            // question EITHER WAY: the paranoid flag only decides whether the
+            // answer is typed in full ("yes") instead of a single 'y'/'n'
+            // (cmd.c paranoid_ynq()).  This used to be skipped entirely on the
+            // grounds that paranoid_confirmation:eating is off by default, but
+            // that removed a whole input boundary: C pages the "hard time"
+            // warning with --More-- and then blocks on the query, so every
+            // following keystroke was read by the wrong reader.
+            if (v.canchoke && ((v.reqtime | 0) - (v.usedtime | 0)) > 1) {
+                if (!(await paranoid_query(ParanoidEating(), 'Continue eating?'))) {
+                    reset_eat();
+                    game.nomovemsg = null;
+                }
+            }
         }
     }
     newuhs(false);

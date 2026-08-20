@@ -45,8 +45,10 @@ import {
     ROCK,
     TALLOW_CANDLE,
     WAX_CANDLE,
+    LAST_REAL_GEM,
 } from './mkobj.js';
-import { P_BOOMERANG, P_DART, P_BOW, P_CROSSBOW } from './const.js';
+import { P_BOOMERANG, P_DART, P_BOW, P_CROSSBOW, P_SHURIKEN,
+    WT_IRON_BALL_INCR } from './const.js';
 import {
     rnd_otyp_by_namedesc,
     o_ranges,
@@ -54,10 +56,87 @@ import {
     wishymatch,
     strstri,
 } from './objnam.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { game } from './gstate.js';
 import { wizterrainwish } from './wizterrainwish.js';
 
 const NUM_OBJECTS = objects.length;
+
+// C ref: objnam.c:3928 — d.contents states for tins/containers.
+const TIN_UNDEFINED = 0, TIN_EMPTY = 1, TIN_SPINACH = 2;
+// C ref: hack.h:1197 CORPSTAT_RANDOM/FEMALE/MALE/NEUTER + CORPSTAT_HISTORIC.
+const CORPSTAT_RANDOM = 0, CORPSTAT_FEMALE = 1, CORPSTAT_MALE = 2;
+const CORPSTAT_HISTORIC = 4;
+// C ref: monattk.h/you.h gender codes used by name_to_mon()'s gender out-param.
+const MALE = 0, FEMALE = 1, NEUTRAL = 2;
+
+// Resolve an otyp by its C constant name off the objects[] row `sym` field, so
+// no index literal is pasted here (mkobj.js is the single source of truth).
+const otypCache = new Map();
+function OT(sym) {
+    if (!otypCache.has(sym)) otypCache.set(sym, objects.findIndex((o) => o && o.sym === sym));
+    return otypCache.get(sym);
+}
+
+// C ref: drawing.c def_oc_syms[] — the object-class symbol chars, indexed by
+// oclass; def_char_to_objclass() is the reverse lookup.
+const DEF_OC_SYMS = [
+    '\0', ']', ')', '[', '=', '"', '(', '%', '!', '?', '+', '/', '$', '*',
+    '`', '0', '_', '.',
+];
+function def_char_to_objclass(ch) {
+    const i = DEF_OC_SYMS.indexOf(ch);
+    return i < 0 ? MAXOCLASSES : i;
+}
+
+// C ref: objnam.c Japanese_items[] — alternate names accepted for a wish.
+const JAPANESE_ITEMS = [
+    ['SHORT_SWORD', 'wakizashi'], ['BROADSWORD', 'ninja-to'],
+    ['FLAIL', 'nunchaku'], ['GLAIVE', 'naginata'],
+    ['LOCK_PICK', 'osaku'], ['WOODEN_HARP', 'koto'],
+    ['MAGIC_HARP', 'magic koto'], ['KNIFE', 'shito'],
+    ['PLATE_MAIL', 'tanko'], ['HELMET', 'kabuto'],
+    ['LEATHER_GLOVES', 'yugake'], ['FOOD_RATION', 'gunyoki'],
+    ['POT_BOOZE', 'sake'],
+];
+
+// C ref: OBJ_DESCR(objects[AMULET_OF_YENDOR]) — the real Amulet's description
+// text, which is also the fake Amulet's appearance.
+function OBJ_DESCR_AOY() {
+    const i = OT('AMULET_OF_YENDOR');
+    return i >= 0 ? (DESCR_BY_OTYP[i] || objects[i].name) : '';
+}
+
+// C ref: o_init.c init_objects() — svb.bases[oclass] scans from MAXOCLASSES,
+// SKIPPING the 17 per-class GENERIC_* placeholder rows at objects[1..17]; a
+// plain findIndex() would return GENERIC_GEM (13) and make the gem-name scan
+// below cover every tool and weapon in the table.
+let gemBaseCache = -1;
+function gemBase() {
+    if (gemBaseCache < 0) {
+        gemBaseCache = MAXOCLASSES;
+        while (gemBaseCache < objects.length
+               && objects[gemBaseCache].oc_class !== GEM_CLASS) gemBaseCache++;
+    }
+    return gemBaseCache;
+}
+
+// C ref: hack.h Luck — u.uluck + u.moreluck.
+function Luck() { return (game.u?.uluck | 0) + (game.u?.moreluck | 0); }
+// C ref: obj.h Is_box(o) / NON_PM.
+const NON_PM = -1;
+function Is_box(o) { return o.otyp === OT('LARGE_BOX') || o.otyp === OT('CHEST'); }
+
+// C ref: objclass.h FIRST_GLASS_GEM..LAST_GLASS_GEM — the worthless glass run.
+function firstGlassGem() { return OT('WORTHLESS_WHITE_GLASS'); }
+function numGlassGems() {
+    let n = 0;
+    for (let i = firstGlassGem(); i < objects.length; i++) {
+        if (!objects[i] || !/^worthless piece of /.test(objects[i].name || '')) break;
+        n++;
+    }
+    return n;
+}
 
 // ── hacklib string helpers (C ref: hacklib.c) ─────────────────────────────
 function digit(c) { return c >= '0' && c <= '9'; }
@@ -74,6 +153,13 @@ function bstrcmpi_tail(s, suffixLen, str) {
 function atoiPrefix(s) {
     const m = /^-?\d+/.exec(s);
     return m ? parseInt(m[0], 10) : 0;
+}
+// C ref: hacklib.c strsubst(bp, orig, replacement) — replace the FIRST
+// occurrence (strstr, so case-sensitive) of `orig`; used by the corpse/statue
+// gender hack, which deletes the gender word from the backtracked buffer.
+function strsubst(bp, orig, repl) {
+    const i = bp.indexOf(orig);
+    return i < 0 ? bp : bp.slice(0, i) + repl + bp.slice(i + orig.length);
 }
 // mungspaces: collapse internal whitespace and trim (C: hacklib.c).
 function mungspaces(s) { return String(s).replace(/\s+/g, ' ').replace(/^ | $/g, ''); }
@@ -294,6 +380,19 @@ function newData(bp) {
         ispoisoned: 0, isgreased: 0, eroded: 0, eroded2: 0, erodeproof: 0,
         halfeaten: 0, islit: 0, unlabeled: 0, ishistoric: 0, isdiluted: 0,
         trapped: 0,
+        // C ref: objnam.c readobjnam_init():3942-3954 — the rest of the parse
+        // state.  These used to be absent entirely, so every prefix that sets
+        // one ("locked", "wet", "empty", "real", "female", ...) was silently
+        // dropped even though wizterrainwish() already reads d.locked/d.looted.
+        locked: 0, unlocked: 0, broken: 0,
+        open: 0, closed: 0, doorless: 0,
+        looted: 0,
+        real: 0, fake: 0,
+        mgend: -1,          /* not specified, aka random */
+        contents: TIN_UNDEFINED,
+        wetness: 0,
+        gsize: 0,
+        zombify: false,
         oclass: 0,
         actualn: null, dn: null, un: null, name: null,
         dragonIdx: null, /* set by stripDragonPrefix; C d->mntmp dragon family */
@@ -307,6 +406,10 @@ function newData(bp) {
 // the "wet"/"moist" towel RNG (rn2/rnd), so this consumes no RNG here.
 function preparse(d) {
     let res = 1;
+    // C ref: objnam.c:3968 `char *save_bp = 0` — the corpse/statue/figurine
+    // "of [a] " skip records where to backtrack to; modelled as the prefix text
+    // that was stepped over, re-prepended at the end.
+    let save_bp = null;
     for (;;) {
         if (!d.bp || !d.bp.length) break;
         res = 0;
@@ -345,6 +448,11 @@ function preparse(d) {
             d.islit = 1; l = strncmpi(bp, 'lit ', 4) ? 4 : 8;
         } else if (strncmpi(bp, 'unlit ', 6) || strncmpi(bp, 'extinguished ', 13)) {
             d.islit = 0; l = strncmpi(bp, 'unlit ', 6) ? 6 : 13;
+        // C ref: objnam.c:4021 — "wet"/"moist" only apply to towels, and this
+        // is the ONE prefix that draws: rn2(3) for "wet", rnd(2) for "moist".
+        } else if (strncmpi(bp, 'moist ', 6) || strncmpi(bp, 'wet ', 4)) {
+            if (strncmpi(bp, 'wet ', 4)) { d.wetness = 3 + rn2(3); l = 4; }
+            else { d.wetness = rnd(2); l = 6; }
         } else if (strncmpi(bp, 'unlabeled ', 10) || strncmpi(bp, 'unlabelled ', 11)
             || strncmpi(bp, 'blank ', 6)) {
             d.unlabeled = 1;
@@ -355,8 +463,34 @@ function preparse(d) {
             d.trapped = wizard() ? 1 : 0; l = 8;
         } else if (strncmpi(bp, 'untrapped ', 10)) {
             d.trapped = 2; l = 10;
+        // C ref: objnam.c:4046 — box/chest lock states, also door states for
+        // the wizard-mode terrain wish (js/wizterrainwish.js already reads
+        // d.locked/d.open/d.broken/d.doorless/d.looted).
+        } else if (strncmpi(bp, 'locked ', 7)) {
+            d.locked = d.closed = 1;
+            d.unlocked = d.broken = d.open = d.doorless = 0; l = 7;
+        } else if (strncmpi(bp, 'unlocked ', 9)) {
+            d.unlocked = d.closed = 1;
+            d.locked = d.broken = d.open = d.doorless = 0; l = 9;
+        } else if (strncmpi(bp, 'broken ', 7)) {
+            d.broken = 1;
+            d.locked = d.unlocked = d.open = d.closed = d.doorless = 0; l = 7;
+        } else if (strncmpi(bp, 'open ', 5)) {
+            d.open = 1;
+            d.closed = d.locked = d.broken = d.doorless = 0; l = 5;
+        } else if (strncmpi(bp, 'closed ', 7)) {
+            d.closed = 1;
+            d.open = d.locked = d.broken = d.doorless = 0; l = 7;
+        } else if (strncmpi(bp, 'doorless ', 9)) {
+            d.doorless = 1;
+            d.open = d.closed = d.locked = d.unlocked = d.broken = 0; l = 9;
+        // looted: fountain/sink/throne/tree; disturbed: grave.
+        } else if (strncmpi(bp, 'looted ', 7) || strncmpi(bp, 'disturbed ', 10)) {
+            d.looted = 1; l = strncmpi(bp, 'looted ', 7) ? 7 : 10;
         } else if (strncmpi(bp, 'greased ', 8)) {
             d.isgreased = 1; l = 8;
+        } else if (strncmpi(bp, 'zombifying ', 11)) {
+            d.zombify = true; l = 11;
         } else if (strncmpi(bp, 'very ', 5)) {
             d.very = 1; l = 5;
         } else if (strncmpi(bp, 'thoroughly ', 11)) {
@@ -373,11 +507,61 @@ function preparse(d) {
             d.ishistoric = 1; l = 9;
         } else if (strncmpi(bp, 'diluted ', 8)) {
             d.isdiluted = 1; l = 8;
+        } else if (strncmpi(bp, 'empty ', 6)) {
+            d.contents = TIN_EMPTY; l = 6;
+        } else if (strncmpi(bp, 'small ', 6)) {
+            // C ref: objnam.c:4102 — "small"/"large" are glob size prefixes,
+            // but they are also part of monster and object names ("small
+            // mimic", "large box"), so only consume them ahead of a glob.
+            if (!strncmpi(bp.slice(6), 'glob', 4) && strstri(bp.slice(6), ' glob') < 0) break;
+            d.gsize = 1; l = 6;
+        } else if (strncmpi(bp, 'medium ', 7)) {
+            d.gsize = 2; l = 7;
+        } else if (strncmpi(bp, 'large ', 6)) {
+            if (!strncmpi(bp.slice(6), 'glob', 4) && strstri(bp.slice(6), ' glob') < 0) break;
+            /* "very large " had "very " peeled off on the previous pass */
+            d.gsize = (d.very !== 1) ? 3 : 4; l = 6;
+        } else if (strncmpi(bp, 'real ', 5)) {
+            /* don't negate 'fake' here; C comments why */
+            d.real = 1; l = 5;
+        } else if (strncmpi(bp, 'fake ', 5)) {
+            d.fake = 1; d.real = 0; l = 5;
+        } else if (strncmpi(bp, 'female ', 7)) {
+            d.mgend = FEMALE;
+            // C: strsubst() deletes the word from the buffer save_bp points
+            // into, rather than advancing past it, so the backtracked string
+            // no longer carries it.
+            if (save_bp !== null) { d.bp = strsubst(d.bp, 'female ', ''); l = 0; }
+            else l = 7;
+        } else if (strncmpi(bp, 'male ', 5)) {
+            d.mgend = MALE;
+            if (save_bp !== null) { d.bp = strsubst(d.bp, 'male ', ''); l = 0; }
+            else l = 5;
+        } else if (strncmpi(bp, 'neuter ', 7)) {
+            d.mgend = NEUTRAL;
+            if (save_bp !== null) { d.bp = strsubst(d.bp, 'neuter ', ''); l = 0; }
+            else l = 7;
+        } else if ((strncmpi(bp, 'corpse ', 7) || strncmpi(bp, 'statue ', 7)
+                    || strncmpi(bp, 'figurine ', 9))
+                   && strncmpi(bp.slice(strncmpi(bp, 'figurine ', 9) ? 9 : 7), 'of ', 3)) {
+            // C ref: objnam.c:4149 — the corpse/statue/figurine gender hack:
+            // skip "statue of [a ]" so "statue of a female gnome ruler" can be
+            // read as a female gnome ruler, then backtrack at the end.
+            save_bp = ''; /* placeholder; filled in below */
+            l = strncmpi(bp, 'figurine ', 9) ? 9 : 7;
+            l += 3;
+            let more_l = 0;
+            if (strncmpi(bp.slice(l), 'a ', (more_l = 2))
+                || strncmpi(bp.slice(l), 'an ', (more_l = 3))
+                || strncmpi(bp.slice(l), 'the ', (more_l = 4)))
+                l += more_l;
+            save_bp = bp.slice(0, l);
         } else {
             break;
         }
         d.bp = d.bp.slice(l);
     }
+    if (save_bp !== null) d.bp = save_bp + d.bp;
     return res;
 }
 
@@ -386,7 +570,10 @@ function matchAny(bp, words) {
     return 0;
 }
 
-function wizard() { return !!(game.flags && game.flags.debug) || !!game.wizard || true; }
+// C ref: the `wizard` global (flags.debug).  This used to be `|| true`, which
+// made every non-wizard wand-of-wishing wish skip the player-restriction RNG
+// (readobjnam's rnd(5) spe clamp and WAN_WISHING's rn2(10)).
+function wizard() { return !!(game.flags && game.flags.debug) || !!game.wizard; }
 
 // readobjnam_parse_charges (C objnam.c:4178): strip a trailing "(spe)",
 // "(rechrg:spe)" or "(lit)" annotation from d.bp, setting d.spe / d.rechrg /
@@ -454,6 +641,29 @@ function postparse1(d) {
     } else if ((p = strstri(d.bp, ' labelled ')) >= 0) {
         d.dn = d.bp.slice(p + 10); d.bp = d.bp.slice(0, p);
     }
+    // C ref: objnam.c:4278 — "<anything> of spinach" marks the tin's contents.
+    if ((p = strstri(d.bp, ' of spinach')) >= 0) {
+        d.bp = d.bp.slice(0, p);
+        d.contents = TIN_SPINACH;
+    }
+    // C ref: objnam.c:4283 — "Amulet of Yendor" is both the real amulet's NAME
+    // and the fake one's DESCRIPTION, so readobjnam resolves it here rather
+    // than letting the name lookup pick one.  "cheap"/"plastic"/"imitation"
+    // (in that order) force the fake; anything else forces the real one, and
+    // the wizard-mode-only restriction is applied by the caller.
+    {
+        const aoy = OBJ_DESCR_AOY();
+        const q = strstri(d.bp, aoy);
+        if (aoy && q >= 0 && (q === 0 || d.bp[q - 1] === ' ')) {
+            let sIdx = 0;
+            if (strncmpi(d.bp.slice(sIdx), 'cheap ', 6)) { d.fake = 1; sIdx += 6; }
+            if (strncmpi(d.bp.slice(sIdx), 'plastic ', 8)) { d.fake = 1; sIdx += 8; }
+            if (strncmpi(d.bp.slice(sIdx), 'imitation ', 10)) { d.fake = 1; sIdx += 10; }
+            d.real = d.fake ? 0 : 1;
+            d.typ = d.real ? OT('AMULET_OF_YENDOR') : OT('FAKE_AMULET_OF_YENDOR');
+            return 2; /* typfnd */
+        }
+    }
     // "pair of"/"set of" prefixes
     if (strncmpi(d.bp, 'pair of ', 8)) { d.bp = d.bp.slice(8); d.cnt *= 2; }
     else if (strncmpi(d.bp, 'pairs of ', 9)) { d.bp = d.bp.slice(9); if (d.cnt > 1) d.cnt *= 2; }
@@ -509,6 +719,62 @@ function postparse2(d) {
     for (const [sp, ob] of spellings)
         if (wishymatch(d.bp, sp, true)) { d.typ = ob; return 2; }
 
+    // C ref: objnam.c:4469 — two fixups the shuffled spellings list can't do:
+    // "grey spell..." -> "gray spell...", and British "armour" -> "armor".
+    if (strncmpi(d.bp, 'grey spell', 10))
+        d.bp = d.bp.slice(0, 2) + 'a' + d.bp.slice(3);
+    {
+        const q = strstri(d.bp, 'armour');
+        if (q >= 0) d.bp = d.bp.slice(0, q + 4) + d.bp.slice(q + 5);
+    }
+
+    // C ref: objnam.c:4480 — "<color> dragon scales" (the scales, not the
+    // mail); stripDragonPrefix() left the color behind in d.dragonIdx.
+    if (strcmpi(d.bp, 'scales') && d.dragonIdx != null) {
+        d.typ = OT('GRAY_DRAGON_SCALES') + d.dragonIdx;
+        d.dragonIdx = null; /* C: d->mntmp = NON_PM, no monster */
+        return 2;
+    }
+
+    // C ref: objnam.c:4487 — "[un]holy water" reaches here only via "potion of
+    // [un]holy water" (the bare adjectives were eaten by preparse); neither is
+    // an actual potion type, so resolve it to POT_WATER and set the b/u/c.
+    if (bstrcmpi_tail(d.bp, 10, 'holy water')) {
+        if (d.bp.length >= 12 && strncmpi(d.bp.slice(d.bp.length - 12), 'un', 2)) {
+            d.iscursed = 1; d.blessed = d.uncursed = 0;
+        } else {
+            d.blessed = 1; d.iscursed = d.uncursed = 0;
+        }
+        d.typ = OT('POT_WATER');
+        return 2;
+    }
+
+    // C ref: objnam.c:4502 — accept "paperback"/"paperback book", reject
+    // "paperback spellbook" (which returns no object at all).
+    if (strncmpi(d.bp, 'paperback', 9)) {
+        const rest = d.bp.slice(9);
+        if (!rest.length || strncmpi(rest, ' book', 5)) {
+            d.typ = OT('SPE_NOVEL');
+            return 2;
+        }
+        d.otmp = null;
+        return 3;
+    }
+    if (d.unlabeled && bstrcmpi_tail(d.bp, 6, 'scroll')) {
+        d.typ = OT('SCR_BLANK_PAPER');
+        return 2;
+    }
+    if (d.unlabeled && bstrcmpi_tail(d.bp, 9, 'spellbook')) {
+        d.typ = OT('SPE_BLANK_PAPER');
+        return 2;
+    }
+    // C ref: objnam.c:4521 — "orange" is the fruit here, not the gem/potion
+    // colour, unless a monster name was recognised (orange dragon).
+    if (bstrcmpi_tail(d.bp, 6, 'orange') && d.dragonIdx == null) {
+        d.typ = OT('ORANGE');
+        return 2;
+    }
+
     // C ref: objnam.c:4528 postparse1() — the gold-piece early-out returns the
     // object directly (no mksobj otyp path, so no blessorcurse/spe draws).
     if (bstrcmpi_tail(d.bp, 10, 'gold piece') || bstrcmpi_tail(d.bp, 7, 'zorkmid')
@@ -523,11 +789,16 @@ function postparse2(d) {
         return 3;
     }
 
-    // "grey stone" before general; o_ranges exact match -> rnd_class.
-    for (const r of o_ranges)
-        if (strcmpi(d.bp, r[0])) { d.typ = rnd_class_local(r[2], r[3]); return 2; }
-
-    // single-character object-class code is not exercised; skip.
+    // C ref: objnam.c:4548 — a single-character object-class code ("/" for a
+    // random wand, "*" for a random gem, ...); VENOM_CLASS is wizard-only.
+    if (d.bp.length === 1) {
+        const i = def_char_to_objclass(d.bp);
+        if (i < MAXOCLASSES && i > 1 /* ILLOBJ_CLASS */
+            && (i !== VENOM_CLASS || wizard())) {
+            d.oclass = i;
+            return 4; /* any */
+        }
+    }
 
     // class-name search: "<class> [of] something" / "something <class>"
     if (!noClassSearch(d.bp)) {
@@ -559,6 +830,43 @@ function postparse2(d) {
                 d.actualn = d.dn = d.bp;
                 return 1;
             }
+        }
+    }
+
+    // C ref: objnam.c readobjnam_postparse2():4671 — "grey stone" and friends
+    // must be tested before the generic " stone" suffix below.
+    for (const r of o_ranges)
+        if (strcmpi(d.bp, r[0])) { d.typ = rnd_class_local(r[2], r[3]); return 2; }
+
+    // C ref: objnam.c:4676 — a trailing " stone"/" gem" fixes the class and
+    // leaves the colour/name for the search.
+    if (bstrcmpi_tail(d.bp, 6, ' stone') || bstrcmpi_tail(d.bp, 4, ' gem')) {
+        d.bp = d.bp.slice(0, d.bp.length - (bstrcmpi_tail(d.bp, 4, ' gem') ? 4 : 6));
+        d.oclass = GEM_CLASS;
+        d.dn = d.actualn = d.bp;
+        return 1; /* srch */
+    } else if (strcmpi(d.bp, 'looking glass')) {
+        /* avoid a false hit on "* glass" */
+    } else if (bstrcmpi_tail(d.bp, 6, ' glass') || strcmpi(d.bp, 'glass')) {
+        let str = d.bp;
+        // "broken glass" is a non-existent item; "broken" may already have
+        // been eaten by the chest/box prefix loop.
+        if (d.broken || strstri(str, 'broken') >= 0) {
+            d.otmp = null;
+            return 3;
+        }
+        if (strncmpi(str, 'worthless ', 10)) str = str.slice(10);
+        if (strncmpi(str, 'piece of ', 9)) str = str.slice(9);
+        if (strncmpi(str, 'colored ', 8)) str = str.slice(8);
+        else if (strncmpi(str, 'coloured ', 9)) str = str.slice(9);
+        if (strcmpi(str, 'glass')) {
+            // C DRAWS rn2(NUM_GLASS_GEMS) here to pick a random colour.
+            d.typ = firstGlassGem() + rn2(numGlassGems());
+            if (objects[d.typ].oc_class === GEM_CLASS) return 2;
+            d.typ = 0; /* somebody changed objects[]? punt */
+        } else {
+            /* construct the canonical form, assuming str starts with a colour */
+            d.bp = 'worthless piece of ' + str;
         }
     }
 
@@ -601,6 +909,17 @@ function rnd_class_local(first, last) {
 // readobjnam_postparse3 (srch): rnd_otyp_by_namedesc on actualn/dn/un/origbp,
 // then artifact-by-name.  Returns code 0/1/2/6.
 function postparse3(d) {
+    // C ref: objnam.c:4731 — check the REAL names of gems first, so "ruby"
+    // means the gem and not a ruby-coloured potion; and plain "tin" is the
+    // food tin, not a random "tin wand".
+    if (!d.oclass && d.actualn) {
+        for (let i = gemBase(); i > 0 && i <= LAST_REAL_GEM; i++) {
+            const zn = objects[i] && objects[i].name;
+            if (zn && strcmpi(d.actualn, zn)) { d.typ = i; return 2; }
+        }
+        if (strcmpi(d.actualn, 'tin')) { d.typ = OT('TIN'); return 2; }
+    }
+
     // rnd_otyp_by_namedesc tries actualn, dn, un, origbp in turn.
     let t;
     if ((t = rnd_otyp_by_namedesc(d.actualn, d.oclass, 1)) !== STRANGE_OBJECT) {
@@ -617,10 +936,23 @@ function postparse3(d) {
     }
     d.typ = 0;
 
+    // C ref: objnam.c:4762 Japanese_items[] — the Samurai's alternate names.
+    if (d.actualn) {
+        for (const [sym, jname] of JAPANESE_ITEMS)
+            if (strcmpi(d.actualn, jname)) { d.typ = OT(sym); return 2; }
+    }
+
     // armor "mail" retry
     if (d.oclass === ARMOR_CLASS && strstri(d.bp, 'mail') < 0) {
         d.bp = d.bp + ' mail';
         return 6; /* retry */
+    }
+
+    // C ref: objnam.c:4782 — bare "spinach" is a tin of spinach.
+    if (strcmpi(d.bp, 'spinach')) {
+        d.contents = TIN_SPINACH;
+        d.typ = OT('TIN');
+        return 2;
     }
 
     // artifact specified by name (only when no class).
@@ -779,6 +1111,44 @@ function finalize(d, anyRandom) {
     }
     if (d.spesgn !== 0) otmp.spe = spe;
 
+    // C ref: objnam.c:5121 `switch (d.typ)` — the otyps whose spe is NOT the
+    // requested enchantment.  Without these a wished tin was never empty or
+    // spinach, a wet towel came out dry, and a wished venom/scroll of mail
+    // carried spe 0 (the "delivered in-game" / "transitory" variants).
+    switch (d.typ) {
+    case OT('TIN'):
+        otmp.spe = 0; /* default: not spinach */
+        if (d.contents === TIN_EMPTY) {
+            otmp.corpsenm = NON_PM;
+        } else if (d.contents === TIN_SPINACH) {
+            otmp.corpsenm = NON_PM;
+            otmp.spe = 1;
+        }
+        break;
+    case OT('TOWEL'):
+        if (d.wetness) otmp.spe = d.wetness;
+        break;
+    case OT('SCR_MAIL'):
+        /* 0: delivered in-game; 1: from bones or wishing; 2: marker */
+        otmp.spe = 1;
+        break;
+    case OT('ACID_VENOM'):
+    case OT('BLINDING_VENOM'):
+        /* 0: normal, and transitory; 1: wishing */
+        otmp.spe = 1;
+        break;
+    case OT('WAN_WISHING'):
+        if (!wizard()) otmp.spe = (rn2(10) ? -1 : 0);
+        break;
+    case OT('STATUE'):
+        // The corpse/statue/figurine gender arm needs a monster name, which
+        // this port does not parse; the historic flag does not.
+        if (d.ishistoric) otmp.spe |= CORPSTAT_HISTORIC;
+        break;
+    default:
+        break;
+    }
+
     // blessed/cursed: direct field sets (no RNG in wizard mode).
     if (d.iscursed) { otmp.cursed = true; otmp.blessed = false; }
     else if (d.uncursed) { otmp.blessed = false; otmp.cursed = false; }
@@ -788,6 +1158,47 @@ function finalize(d, anyRandom) {
     if (d.erodeproof && erosion_matters(otmp)) otmp.oerodeproof = true;
     if (d.eroded) otmp.oeroded = d.eroded;
     if (d.eroded2) otmp.oeroded2 = d.eroded2;
+
+    // C ref: objnam.c:5290 — "(n:m)" recharge count; a non-wizard can't wish a
+    // wand of wishing with charges left to recharge.
+    if (d.oclass === WAND_CLASS) {
+        if (otmp.otyp === OT('WAN_WISHING') && !wizard()) d.rechrg = 1;
+        otmp.recharged = d.rechrg;
+    }
+
+    // C ref: objnam.c:5298 — "poisoned"; is_poisonable() is the ammo/missile
+    // skill window, and a food item is tainted by being made maximally old.
+    if (d.ispoisoned) {
+        const sk = objects[d.typ].oc_skill ?? 0;
+        if (d.oclass === WEAPON_CLASS && sk >= -P_SHURIKEN && sk <= -P_BOW)
+            otmp.opoisoned = (Luck() >= 0);
+        else if (d.oclass === FOOD_CLASS)
+            otmp.age = 1;
+    }
+    // C ref: objnam.c:5306 — "[un]trapped" only applies to boxes and tins.
+    if (d.trapped) {
+        if (Is_box(otmp) || d.typ === OT('TIN')) otmp.otrapped = (d.trapped === 1);
+    }
+    // C ref: objnam.c:5311 — "empty" for containers rather than for tins.
+    if (d.contents === TIN_EMPTY) {
+        if (otmp.otyp === OT('BAG_OF_TRICKS') || otmp.otyp === OT('HORN_OF_PLENTY')) {
+            if (otmp.spe > 0) otmp.spe = 0;
+        } else if (otmp.cobj) {
+            otmp.cobj = null; /* delete_contents(): no artifact can be inside */
+            otmp.owt = weight(otmp);
+        }
+    }
+    // C ref: objnam.c:5322 — locked/unlocked/broken box state.
+    if (Is_box(otmp)) {
+        if (d.locked) { otmp.olocked = 1; otmp.obroken = 0; }
+        else if (d.unlocked) { otmp.olocked = 0; otmp.obroken = 0; }
+        else if (d.broken) { otmp.olocked = 0; otmp.obroken = 1; }
+        if (otmp.obroken) otmp.otrapped = 0;
+    }
+    if (d.isgreased) otmp.greased = 1;
+    // C ref: objnam.c:5337 — water can't be diluted.
+    if (d.isdiluted && otmp.oclass === POTION_CLASS)
+        otmp.odiluted = (otmp.otyp !== OT('POT_WATER'));
 
     // artifact naming (C objnam.c:5346) + the wishing-abuse rn2 (5374).
     if (d.name) {
@@ -817,6 +1228,9 @@ function finalize(d, anyRandom) {
     // per-unit weight.  Without this a wished dragon scale mail keeps the scale
     // mail's weight and wrongly encumbers the hero.
     otmp.owt = weight(otmp);
+    // C ref: objnam.c:5397 — "very heavy iron ball" is heavier than the plain
+    // one; weight() has no way to know, so readobjnam adds the increment.
+    if (d.very && otmp.otyp === OT('HEAVY_IRON_BALL')) otmp.owt += WT_IRON_BALL_INCR;
 
     return { kind: 'obj', obj: otmp };
 }

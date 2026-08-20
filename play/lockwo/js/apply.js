@@ -46,7 +46,9 @@ const SPE_NOVEL = 406; // mkobj.js OBJECT_DATA — novel (a spellbook subtype)
 // C ref: include/onames.h — lamp/lantern object types rubbed by dorub().
 const BRASS_LANTERN = 226, OIL_LAMP = 227, MAGIC_LAMP = 228;
 // Graystones and royal jelly route to use_stone/use_royal_jelly (not exercised).
-const GEM_CLASS = 9, FOOD_CLASS = 7;
+// C ref: objclass.h enum obj_class_types — GEM_CLASS is 13; the 9 that used to
+// be here is SCROLL_CLASS, so dorub()'s graystone arm could never fire.
+const GEM_CLASS = 13, FOOD_CLASS = 7, RING_CLASS = 4, RANDOM_CLASS = 0;
 // Applicable foods (mkobj.js OBJECT_DATA indices).
 const EUCALYPTUS_LEAF = 276, LUMP_OF_ROYAL_JELLY_OTYP = 286, CREAM_PIE = 287;
 const BANANA = 281;       // apply_ok DOWNPLAYs a banana while hallucinating
@@ -712,6 +714,24 @@ export async function doapply() {
         return (r & 0x01) ? ECMD_TIME : ECMD_OK;
     }
 
+    // C ref: apply.c:4396 `case FLINT: case LUCKSTONE: case LOADSTONE:
+    // case TOUCHSTONE: res = use_stone(obj);` — rub something on a graystone.
+    if (is_graystone_otyp(obj.otyp)) return await use_stone(obj);
+
+    // C ref: apply.c:4265 `case BULLWHIP: res = use_whip(obj); break;` — the
+    // whip is a WEAPON_CLASS item apply_ok() SUGGESTs, so it is offered at the
+    // "use or apply" prompt for every hero who carries one (an Archeologist
+    // starts wielding theirs in slot a).  use_whip() lives in dothrow.js, which
+    // reached it only from dofire()'s empty-quiver arm; without this branch the
+    // apply path fell through to "Sorry, I don't know how to use that." and
+    // swallowed the direction key that follows.  dothrow.js uses its own ECMD
+    // numbering (ECMD_TIME === 3), so translate rather than pass through.
+    if (obj.otyp === BULLWHIP_OTYP) {
+        const DT = await import('./dothrow.js');
+        const r = await DT.use_whip(obj, () => _cmd.getdir());
+        return r === 3 ? ECMD_TIME : (r ? ECMD_CANCEL : ECMD_OK);
+    }
+
     // C ref apply.c:4400 default: — a polearm strikes at a distance, a
     // pick/axe digs.  Both are SUGGESTed by apply_ok(), so both are ordinary
     // picks at the "use or apply" prompt (a Knight's lance is invlet 'b', an
@@ -966,6 +986,159 @@ function is_graystone_otyp(otyp) {
     return otyp === FLINT || otyp === LUCKSTONE || otyp === LOADSTONE
         || otyp === TOUCHSTONE;
 }
+// C ref: objclass.h enum obj_material_types — the materials use_stone()
+// branches on.
+const MAT_LIQUID = 1, MAT_WAX = 2, MAT_CLOTH = 6, MAT_LEATHER = 7,
+      MAT_WOOD = 8, MAT_SILVER = 14, MAT_GOLD = 15, MAT_GLASS = 19,
+      MAT_GEMSTONE = 20, MAT_MINERAL = 21;
+// C ref: decl.c c_obj_colors[] indexed by objects[].oc_color (color.h CLR_*).
+const C_OBJ_COLORS = [
+    'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+    'transparent', 'orange', 'bright green', 'yellow', 'bright blue',
+    'bright magenta', 'bright cyan', 'white',
+];
+const RUBBER_HOSE_OTYP = 78; // mkobj.js OBJECT_DATA — the other is_flimsy item
+// C ref: obj.h:418 is_flimsy(otmp) — oc_material <= LEATHER, or a rubber hose.
+function is_flimsy_obj(obj) {
+    return (objects[obj?.otyp]?.oc_material ?? 99) <= MAT_LEATHER
+        || obj?.otyp === RUBBER_HOSE_OTYP;
+}
+function plur(n) { return Number(n) === 1 ? '' : 's'; }
+// C ref: objnam.c the(str) — "the " unless the name is already capitalised.
+function the_of(obj) {
+    const nm = _invent.xname(obj);
+    return /^[A-Z]/.test(nm) ? nm : `the ${nm}`;
+}
+// C ref: hack.h Role_if(pm)/Race_if(pm) — gu.urole.malenum / gu.urace.malenum.
+// This port carries the 0-based role/race indices instead of the PM_ numbers.
+const ROLE_ARCHEOLOGIST = 0, RACE_GNOME = 3;
+function role_is(idx) { return (game.urole?.mnum ?? -1) === idx; }
+function race_is(idx) { return (game.urace?.mnum ?? -1) === idx; }
+// C ref: objnam.c Tobjnam(obj, verb) — "The <xname> <verb>s".
+function Tobjnam(obj, verb) {
+    const nm = _invent.xname(obj);
+    const v = _invent.otense(obj, verb);
+    return `${/^[A-Z]/.test(nm) ? '' : 'The '}${nm} ${v}`.replace(/^The The /, 'The ');
+}
+// C ref: apply.c touchstone_ok() — getobj() callback used once the touchstone
+// itself is identified: coins and UNidentified gems are the useful targets.
+function touchstone_ok(obj) {
+    const I = _invent;
+    if (!obj) return I.GETOBJ_EXCLUDE;
+    if (obj.oclass === COIN_CLASS) return I.GETOBJ_SUGGEST;
+    if (obj.oclass === GEM_CLASS
+        && !(obj.dknown && objects[obj.otyp]?.oc_name_known))
+        return I.GETOBJ_SUGGEST;
+    return I.GETOBJ_DOWNPLAY;
+}
+
+// C ref: apply.c use_stone(tstone) — rub something on a graystone.  Reached
+// from doapply()'s FLINT/LUCKSTONE/LOADSTONE/TOUCHSTONE case and from dorub()'s
+// graystone arm.  A touchstone the hero has not identified prompts with
+// any_obj_ok ("[*]"); once identified it prompts with touchstone_ok, which
+// suggests coins and unidentified gems only.
+async function use_stone(tstone) {
+    await loadDeps();
+    const I = _invent;
+    const O = await import('./o_init.js');
+    const Z = await import('./zap.js');
+    const blind = _vision.Blind();
+    const hallu = !!game.Hallucination;
+    const scritch = '"scritch, scritch"';
+
+    if (!blind) O.observe_object(tstone);
+    const known = tstone.otyp === TOUCHSTONE && tstone.dknown
+        && !!objects[TOUCHSTONE]?.oc_name_known;
+    const stonebuf = `rub on the stone${plur(tstone.quan)}`;
+    const obj = await I.getobj(stonebuf, known ? touchstone_ok : I.any_obj_ok,
+                               I.GETOBJ_PROMPT);
+    if (!obj) return ECMD_CANCEL;
+
+    if (obj === tstone && Number(obj.quan) === 1) {
+        await _display.pline(`You can't rub ${the_of(obj)} on itself.`);
+        return ECMD_OK;
+    }
+
+    if (tstone.otyp === TOUCHSTONE && tstone.cursed
+        && obj.oclass === GEM_CLASS && !is_graystone_otyp(obj.otyp)
+        && !Z.obj_resists(obj, 80, 100)) {
+        if (blind) await _display.pline('You feel something shatter.');
+        else if (hallu) await _display.pline('Oh, wow, look at the pretty shards.');
+        else await _display.pline(`A sharp crack shatters ${
+            Number(obj.quan) > 1 ? 'one of ' : ''}${the_of(obj)}.`);
+        I.useup(obj);
+        return ECMD_TIME;
+    }
+
+    if (blind) { await _display.pline(scritch); return ECMD_TIME; }
+    if (hallu) { await _display.pline('Oh wow, man: Fractals!'); return ECMD_TIME; }
+
+    let do_scratch = false, streak_color = null;
+    const material = objects[obj.otyp]?.oc_material ?? 0;
+    // C ref: apply.c:2745 — a non-gemstone, non-mineral ring is neither gem nor
+    // ring for the purposes of the switch below.
+    let oclass = obj.oclass;
+    if (oclass === RING_CLASS && material !== MAT_GEMSTONE
+        && material !== MAT_MINERAL)
+        oclass = RANDOM_CLASS;
+
+    if (oclass === GEM_CLASS || oclass === RING_CLASS) {
+        // C ref: apply.c:2752 — only the GLASS arm `break`s before the shared
+        // streak_color assignment; the tstone-isn't-a-touchstone arm falls into
+        // it, so a scratch there ALSO names a colour.
+        let glass_break = false;
+        if (tstone.otyp !== TOUCHSTONE) {
+            do_scratch = true;
+        } else if (obj.oclass === GEM_CLASS
+                   && (tstone.blessed
+                       || (!tstone.cursed && (role_is(ROLE_ARCHEOLOGIST)
+                                              || race_is(RACE_GNOME))))) {
+            I.makeknown(TOUCHSTONE);
+            I.makeknown(obj.otyp);
+            await I.prinv(null, obj, 0);
+            return ECMD_TIME;
+        } else if (material === MAT_GLASS) {
+            do_scratch = true;
+            glass_break = true;
+        }
+        if (!glass_break)
+            streak_color = C_OBJ_COLORS[objects[obj.otyp]?.oc_color ?? 7];
+    } else {
+        switch (material) {
+        case MAT_CLOTH:
+            await _display.pline(`${Tobjnam(tstone, 'look')} a little more polished now.`);
+            return ECMD_TIME;
+        case MAT_LIQUID:
+            if (!obj.known)
+                await _display.pline('You must think this is a wetstone, do you?');
+            else
+                await _display.pline(`${Tobjnam(tstone, 'are')} a little wetter now.`);
+            return ECMD_TIME;
+        case MAT_WAX: streak_color = 'waxy'; break;
+        case MAT_WOOD: streak_color = 'wooden'; break;
+        case MAT_GOLD: do_scratch = true; streak_color = 'golden'; break;
+        case MAT_SILVER: do_scratch = true; streak_color = 'silvery'; break;
+        default:
+            // C ref: apply.c:2790 — flimsy things streak but never scratch.
+            if (is_flimsy_obj(obj))
+                streak_color = C_OBJ_COLORS[objects[obj.otyp]?.oc_color ?? 7];
+            else
+                do_scratch = (tstone.otyp !== TOUCHSTONE);
+            break;
+        }
+    }
+
+    const stones = `stone${plur(tstone.quan)}`;
+    if (do_scratch)
+        await _display.pline(`You make ${streak_color ? `${streak_color} ` : ''
+            }scratch marks on the ${stones}.`);
+    else if (streak_color)
+        await _display.pline(`You see ${streak_color} streaks on the ${stones}.`);
+    else
+        await _display.pline(scritch);
+    return ECMD_TIME;
+}
+
 function rub_ok(obj) {
     const I = _invent;
     const EXCLUDE = I ? I.GETOBJ_EXCLUDE : -3;
@@ -994,8 +1167,10 @@ export async function dorub() {
     if (!obj) return ECMD_CANCEL;
 
     if (obj.oclass === GEM_CLASS || obj.oclass === FOOD_CLASS) {
-        // graystone -> use_stone, royal jelly -> use_royal_jelly (unmodelled);
-        // any other gem/food: "Sorry, I don't know how to use that." (no turn).
+        // C ref: apply.c dorub() — graystone -> use_stone, royal jelly ->
+        // use_royal_jelly (unmodelled); any other gem/food: "Sorry, I don't know
+        // how to use that." (no turn).
+        if (is_graystone_otyp(obj.otyp)) return await use_stone(obj);
         await _display.pline("Sorry, I don't know how to use that.");
         return ECMD_OK;
     }

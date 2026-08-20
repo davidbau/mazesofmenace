@@ -18,7 +18,8 @@ import { t_at as t_at_hk, trap_explanation as trap_explanation_hk } from './trap
 import { domove, blocksMove, test_move_quiet } from './cmd.js';
 import { moveloop_turn } from './allmain.js';
 import { m_at, vobj_at, covers_objects, object_glyph, flush_screen, newsym, pline, update_topl, topl_more, wrap_topl, y_n, docrt, show_glyph_cell, terrain_background_glyph, getpos_is_feature_sym, getpos_find_feature } from './display.js';
-import { obj_doname, whatis_pick_inventory, carried_weight, inventoryArray, is_pick, ansimpleoname } from './invent.js';
+import { obj_doname, whatis_pick_inventory, carried_weight, inventoryArray, is_pick, ansimpleoname,
+         floor_object_name, doname_vague_quan, distant_name_pub } from './invent.js';
 import { rnd } from './rng.js';
 import { vision_recalc, Blind, couldsee, cansee } from './vision.js';
 import { nhgetch } from './input.js';
@@ -1507,7 +1508,10 @@ function look_at_object_here(x, y) {
     if (covers_objects(loc)) return null;
     const obj = vobj_at(x, y);
     if (!obj) return null;
-    return obj_doname(obj);
+    // C ref: pager.c look_at_object() — distant_name(otmp, otmp->dknown ?
+    // doname_with_price : doname_vague_quan).  A floor stack the hero has not
+    // examined up close reads "some gold pieces", not the exact count.
+    return distant_name_pub(obj, obj.dknown ? floor_object_name : doname_vague_quan);
 }
 
 // C ref: stairs.c known_branch_stairs() + defsym.h S_upstair/S_dnstair vs
@@ -1823,8 +1827,18 @@ async function getpos(goalText, startx, starty, validfn, force = false, verbose 
     // an unacknowledged message window, not flags.verbose.
     const softPending = !!game._pending_message
         && game._toplinSoft === game._pending_message;
-    if (willShowTip && (game._toplin === 1 || softPending)) {
-        await topl_more();
+    if (willShowTip) {
+        // C ref: wintty.c tty_display_nhwindow() NHW_MENU — `if (toplin ==
+        // TOPLINE_NEED_MORE) tty_display_nhwindow(WIN_MESSAGE, TRUE)`, and that
+        // nested call opens with `if (cw->flags & WIN_CANCELLED) return;`.
+        // WIN_CANCELLED and WIN_STOP are THE SAME BIT (wintty.h:99-100), so a
+        // --More-- dismissed with ESC suppresses this page too, not just the
+        // messages update_topl() skips.
+        if (!game._winStop && (game._toplin === 1 || softPending))
+            await topl_more();
+        // Both overlay branches end with the message window empty
+        // (tty_clear_nhwindow(WIN_MESSAGE) / toplin = TOPLINE_EMPTY), so the
+        // pending line is dropped whether or not it got paged.
         game._toplin = 0;
         game._toplinSoft = null;
         game._pending_message = '';

@@ -15,7 +15,8 @@ import { rn2, rnd, rnl } from './rng.js';
 import { m_at, newsym, update_topl } from './display.js';
 import { cansee } from './vision.js';
 import { isok, IS_FURNITURE, IS_SINK, LAVAWALL, WATER, POOL, MOAT,
-         LAVAPOOL, TT_PIT, P_DAGGER, A_DEX, MM_NOMSG } from './const.js';
+         LAVAPOOL, TT_PIT, P_DAGGER, A_DEX, MM_NOMSG, EYE } from './const.js';
+import { mflags1_of, M1_BREATHLESS, M1_NOEYES } from './monflags_data.js';
 import { objects, BOULDER, CORPSE, POTION_CLASS, GEM_CLASS, WEAPON_CLASS,
          ARMOR_CLASS, EGG, STATUE, place_object } from './mkobj.js';
 import { surface } from './dungeon.js';
@@ -28,9 +29,15 @@ const ECMD_OK = 0, ECMD_CANCEL = 1, ECMD_TIME = 3;
 
 // onames.h otyps (mkobj.js OBJECT_DATA numbering).
 export const BULLWHIP = 82;
-const AKLYS = 80, FLINT = 473, ROCK = 472,
-    MIRROR = 227, EXPENSIVE_CAMERA = 229, CRYSTAL_BALL = 231, LENSES = 232,
-    MELON = 280, CREAM_PIE = 287, POT_OIL = 297, POT_WATER = 300,
+// Four of these were off: ROCK named touchstone(472), MIRROR named oil
+// lamp(227), POT_OIL named gain ability(297) and POT_WATER named blindness(300).
+// POT_WATER was self-cancelling — breakmsg()/breakobj() switch on
+// `oclass == POTION_CLASS ? POT_WATER : otyp`, so the same wrong number sat on
+// both sides — until breakobj()'s `otyp != POT_WATER` vapor gate read it
+// directly and made holy water smell of vapors.
+const AKLYS = 80, FLINT = 473, ROCK = 474,
+    MIRROR = 230, EXPENSIVE_CAMERA = 229, CRYSTAL_BALL = 231, LENSES = 232,
+    MELON = 280, CREAM_PIE = 287, POT_OIL = 321, POT_WATER = 322,
     BLINDING_VENOM = 479, ACID_VENOM = 480;
 
 // C ref: objclass.h obj_material_types.
@@ -47,6 +54,38 @@ function is_lava_at(x, y) { const t = typ_at(x, y); return t === LAVAPOOL || t =
 function is_pool_at(x, y) { const t = typ_at(x, y); return t === POOL || t === MOAT || t === WATER; }
 function is_pool_or_lava_at(x, y) { return is_pool_at(x, y) || is_lava_at(x, y); }
 function Blind() { return !!(game.u?.uprops?.Blinded || game.u?.Blinded); }
+// C ref: mondata.h breathless(ptr) == (mflags1 & M1_BREATHLESS),
+// haseyes(ptr) == !(mflags1 & M1_NOEYES).
+function breathless(ptr) { return (mflags1_of(ptr) & M1_BREATHLESS) !== 0; }
+function haseyes(ptr) { return (mflags1_of(ptr) & M1_NOEYES) === 0; }
+// C ref: objnam.c vtense(subj, verb) — `verb` arrives in the plural (no
+// trailing s) and is returned unchanged when `subj` reads as plural.  The
+// special_subjs[] false-match table and the " of "/" from "/" called " head-noun
+// scan are omitted: this port's only caller passes a body_part() noun, which
+// contains neither.
+function vtense(subj, verb) {
+    if (subj) {
+        const s = String(subj);
+        if (!/^an? /i.test(s)) {
+            const last = s.charAt(s.length - 1).toLowerCase();
+            const prev = s.length > 1 ? s.charAt(s.length - 2).toLowerCase() : '';
+            if ((last === 's' && s.length > 1 && prev !== 'u' && prev !== 's')
+                || /eeth$|feet$|ia$|ae$/i.test(s))
+                return verb;
+            if (/^(they|you)$/i.test(s)) return verb;
+        }
+    }
+    const v = String(verb), lc = v.toLowerCase(), end = lc.charAt(v.length - 1);
+    if (lc === 'are') return 'is';
+    if (lc === 'have') return `${v.slice(0, -2)}s`;
+    if ('zxs'.includes(end)
+        || (v.length >= 2 && end === 'h' && 'cs'.includes(lc.charAt(v.length - 2)))
+        || (v.length === 2 && end === 'o'))
+        return `${v}es`;
+    if (end === 'y' && !'aeiou'.includes(lc.charAt(v.length - 2)))
+        return `${v.slice(0, -1)}ies`;
+    return `${v}s`;
+}
 // C ref: hack.h next2u(x,y).
 function next2u(x, y) {
     const u = game.u;
@@ -326,9 +365,27 @@ export async function breakobj(obj, x, y, hero_caused, from_invent) {
         break;
     case POT_WATER: /* really, all potions */
         obj.in_use = 1; /* in case it's fatal */
-        if (!(obj.otyp === POT_OIL && obj.lamplit) && next2u(x, y)) {
-            const P = await import('./potion.js');
-            if (P.potionbreathe_hero) await P.potionbreathe_hero(obj);
+        if (obj.otyp === POT_OIL && obj.lamplit) {
+            const { explode_oil } = await import('./explode.js');
+            await explode_oil(obj, x, y);
+        } else if (next2u(x, y)) {
+            const ptr = I.youmonst_data_pub();
+            if (!breathless(ptr) || haseyes(ptr)) {
+                const P = await import('./potion.js');
+                /* wet towel protects both eyes and breathing */
+                if (obj.otyp !== POT_WATER && !P.Half_gas_damage()) {
+                    if (!breathless(ptr)) {
+                        // [what about "familiar odor" when known?]
+                        await update_topl('You smell a peculiar odor...');
+                    } else {
+                        const PS = await import('./polyself.js');
+                        let eyes = PS.body_part(EYE);
+                        if (PS.eyecount(ptr) !== 1) eyes = I.makeplural(eyes);
+                        await update_topl(`Your ${eyes} ${vtense(eyes, 'water')}.`);
+                    }
+                }
+                await P.potionbreathe_hero(obj);
+            }
         }
         break;
     case EXPENSIVE_CAMERA:

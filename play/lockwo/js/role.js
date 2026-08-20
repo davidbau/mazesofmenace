@@ -8,7 +8,7 @@ import {
     PICK_RANDOM, PICK_RIGID,
     ROLE_ALIGNMASK, ROLE_ALIGNS, ROLE_CHAOTIC, ROLE_FEMALE,
     ROLE_GENDERS, ROLE_GENDMASK, ROLE_LAWFUL, ROLE_MALE,
-    ROLE_NEUTRAL, ROLE_NONE, ROLE_RACEMASK, ROLE_RANDOM,
+    ROLE_NEUTER, ROLE_NEUTRAL, ROLE_NONE, ROLE_RACEMASK, ROLE_RANDOM,
 } from './const.js';
 
 const MH_HUMAN = 0x0008;
@@ -814,4 +814,187 @@ export function count_ok_align(rolenum, racenum, gendnum) {
         for (let i = 0; i < ROLE_ALIGNS; i++)
             if (validalign(rolenum, racenum, i)) { n++; k = i; }
     return { n, k };
+}
+
+// ── "Shall I pick ... for you? [ynaq]" prompt ──
+// C ref: role.c gr.role_post_attribs / gr.role_pa[] — which facets still have
+// to be named in the prompt's trailing list.  hack.h BP_ALIGN 0 .. BP_ROLE 3.
+const BP_ALIGN = 0, BP_GEND = 1, BP_RACE = 2, BP_ROLE = 3, NUM_BP = 4;
+const gr = { role_post_attribs: 0, role_pa: new Array(NUM_BP).fill(0) };
+
+// C ref: role.c race_alignmentcount().
+function race_alignmentcount(racenum) {
+    let aligncount = 0;
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM) {
+        if (races[racenum].allow & ROLE_CHAOTIC) ++aligncount;
+        if (races[racenum].allow & ROLE_LAWFUL) ++aligncount;
+        if (races[racenum].allow & ROLE_NEUTRAL) ++aligncount;
+    }
+    return aligncount;
+}
+
+// C ref: role.c role_gendercount().
+function role_gendercount(rolenum) {
+    let gendcount = 0;
+    if (validrole(rolenum)) {
+        if (roles[rolenum].allow & ROLE_MALE) ++gendcount;
+        if (roles[rolenum].allow & ROLE_FEMALE) ++gendcount;
+        if (roles[rolenum].allow & ROLE_NEUTER) ++gendcount;
+    }
+    return gendcount;
+}
+
+// C ref: role.c promptsep() — the ", " / " and " separators, driven by how many
+// facets are left to list; it DECREMENTS gr.role_post_attribs as a side effect.
+function promptsep(buf, num_post_attribs) {
+    if (num_post_attribs > 1 && gr.role_post_attribs < num_post_attribs
+        && gr.role_post_attribs > 1)
+        buf += ',';
+    buf += ' ';
+    --gr.role_post_attribs;
+    if (!gr.role_post_attribs && num_post_attribs > 1)
+        buf += 'and ';
+    return buf;
+}
+
+// C ref: hacklib.c s_suffix().
+function s_suffix(s) {
+    if (/^it$/i.test(s)) return s + 's';
+    if (/^you$/i.test(s)) return s + 'r';
+    return s + (s.endsWith('s') ? "'" : "'s");
+}
+
+// C ref: hacklib.c strsubst() — replaces the FIRST occurrence only.
+function strsubst(bp, orig, replacement) {
+    const found = bp.indexOf(orig);
+    return found < 0 ? bp
+        : bp.slice(0, found) + replacement + bp.slice(found + orig.length);
+}
+
+// C ref: role.c root_plselection_prompt() — "<your lawful female gnomish
+// cavewoman>": every facet that is already pinned is spelled out here, and
+// every facet still open sets gr.role_pa[] so build_plselection_prompt() can
+// list it after the possessive.
+function root_plselection_prompt(rolenum, racenum, gendnum, alignnum) {
+    let buf = '', donefirst = false, gendercount = 0, aligncount = 0;
+
+    gr.role_post_attribs = 0;
+    gr.role_pa = new Array(NUM_BP).fill(0);
+
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM)
+        aligncount = race_alignmentcount(racenum);
+
+    if (alignnum !== ROLE_NONE && alignnum !== ROLE_RANDOM
+        && ok_align(rolenum, racenum, gendnum, alignnum)) {
+        if (donefirst) buf += ' ';
+        buf += aligns[alignnum].adj;
+        donefirst = true;
+    } else {
+        // C keeps this reset in a local, and the ok_race() tests below see it.
+        if (alignnum !== ROLE_RANDOM) alignnum = ROLE_NONE;
+        if ((((racenum !== ROLE_NONE && racenum !== ROLE_RANDOM)
+              && ok_race(rolenum, racenum, gendnum, alignnum))
+             && (aligncount > 1))
+            || (racenum === ROLE_NONE || racenum === ROLE_RANDOM)) {
+            gr.role_pa[BP_ALIGN] = 1;
+            gr.role_post_attribs++;
+        }
+    }
+
+    if (validrole(rolenum)) gendercount = role_gendercount(rolenum);
+
+    if (gendnum !== ROLE_NONE && gendnum !== ROLE_RANDOM) {
+        if (validrole(rolenum)) {
+            if (rolenum !== ROLE_NONE && gendercount > 1
+                && !roles[rolenum].name.f) {
+                if (donefirst) buf += ' ';
+                buf += genders[gendnum].adj;
+                donefirst = true;
+            }
+        } else {
+            if (donefirst) buf += ' ';
+            buf += genders[gendnum].adj;
+            donefirst = true;
+        }
+    } else if ((validrole(rolenum) && gendercount > 1) || !validrole(rolenum)) {
+        gr.role_pa[BP_GEND] = 1;
+        gr.role_post_attribs++;
+    }
+
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM) {
+        if (validrole(rolenum) && ok_race(rolenum, racenum, gendnum, alignnum)) {
+            if (donefirst) buf += ' ';
+            buf += (rolenum === ROLE_NONE) ? races[racenum].noun
+                                           : races[racenum].adj;
+            donefirst = true;
+        } else if (!validrole(rolenum)) {
+            if (donefirst) buf += ' ';
+            buf += races[racenum].noun;
+            donefirst = true;
+        } else {
+            gr.role_pa[BP_RACE] = 1;
+            gr.role_post_attribs++;
+        }
+    } else {
+        gr.role_pa[BP_RACE] = 1;
+        gr.role_post_attribs++;
+    }
+
+    if (validrole(rolenum)) {
+        if (donefirst) buf += ' ';
+        if (gendnum !== ROLE_NONE) {
+            buf += (gendnum === 1 && roles[rolenum].name.f)
+                ? roles[rolenum].name.f : roles[rolenum].name.m;
+        } else {
+            buf += roles[rolenum].name.f
+                ? `${roles[rolenum].name.m}/${roles[rolenum].name.f}`
+                : roles[rolenum].name.m;
+        }
+        donefirst = true;
+    } else if (rolenum === ROLE_NONE) {
+        gr.role_pa[BP_ROLE] = 1;
+        gr.role_post_attribs++;
+    }
+
+    if ((racenum === ROLE_NONE || racenum === ROLE_RANDOM)
+        && !validrole(rolenum)) {
+        if (donefirst) buf += ' ';
+        buf += 'character';
+    }
+    return buf;
+}
+
+// C ref: role.c build_plselection_prompt() — returns the whole yn_function
+// query, INCLUDING the "[ynaq]" (genl_player_setup passes choices=NULL so
+// yn_function adds nothing) and C's trailing space, which the caller trims.
+export function build_plselection_prompt(rolenum, racenum, gendnum, alignnum) {
+    let tmpbuf = 'Shall I pick ';
+    tmpbuf += (racenum !== ROLE_NONE || validrole(rolenum)) ? 'your ' : 'a ';
+    tmpbuf += root_plselection_prompt(rolenum, racenum, gendnum, alignnum);
+    // "pick a character's <anything>" sounds stilted, so C drops the article.
+    tmpbuf = strsubst(tmpbuf, 'pick a character', 'pick character');
+    let buf = s_suffix(tmpbuf);
+    if (buf.endsWith("priest/priestess'")) buf += 's';
+
+    let num_post_attribs = gr.role_post_attribs;
+    if (!num_post_attribs) {
+        // Mutually exclusive constraints can leave nothing to list; then C asks
+        // about every facet the config did not pin.
+        if (game.initrole === ROLE_NONE && !gr.role_pa[BP_ROLE])
+            gr.role_pa[BP_ROLE] = ++gr.role_post_attribs;
+        if (game.initrace === ROLE_NONE && !gr.role_pa[BP_RACE])
+            gr.role_pa[BP_RACE] = ++gr.role_post_attribs;
+        if (game.initalign === ROLE_NONE && !gr.role_pa[BP_ALIGN])
+            gr.role_pa[BP_ALIGN] = ++gr.role_post_attribs;
+        if (game.initgend === ROLE_NONE && !gr.role_pa[BP_GEND])
+            gr.role_pa[BP_GEND] = ++gr.role_post_attribs;
+        num_post_attribs = gr.role_post_attribs;
+    }
+    if (num_post_attribs) {
+        if (gr.role_pa[BP_RACE]) { buf = promptsep(buf, num_post_attribs); buf += 'race'; }
+        if (gr.role_pa[BP_ROLE]) { buf = promptsep(buf, num_post_attribs); buf += 'role'; }
+        if (gr.role_pa[BP_GEND]) { buf = promptsep(buf, num_post_attribs); buf += 'gender'; }
+        if (gr.role_pa[BP_ALIGN]) { buf = promptsep(buf, num_post_attribs); buf += 'alignment'; }
+    }
+    return `${buf} for you? [ynaq] `;
 }

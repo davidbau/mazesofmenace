@@ -61,6 +61,7 @@ import { mattk_of, AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_STNG, AT_BUTT, AT_TUCH
 import { mkcorpstat, mkobj, mksobj, CORPSE, FIGURINE, place_object, WEAPON_CLASS,
          TOOL_CLASS, GEM_CLASS, SPBOOK_CLASS, FOOD_CLASS, objects, COIN_CLASS,
          STRANGE_OBJECT } from './mkobj.js';
+import { base_armcat } from './objarmor_data.js';
 import { mon_nocorpse, undead_to_corpse, name_to_pmidx } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { gethungry } from './allmain.js';
@@ -765,12 +766,33 @@ function ACURR(i) { return game.u?.acurr?.a?.[i] ?? 0; }
 // abon()/dbon() now live in js/weapon.js (weapon.c:950/:993).
 
 // ── role / martial-arts helpers (for the bare-handed monk path) ──
-const PM_MONK = 5, PM_SAMURAI = 9, PM_HEALER = 3;  // u_init.c role mnums
+const PM_MONK = 5, PM_SAMURAI = 9, PM_HEALER = 3, PM_BARBARIAN = 1; // role mnums
+// C ref: skills.h P_WHIP; objclass.h ARMOR_CLASS/ARM_SHIELD; onames.h TOWEL,
+// HEAVY_IRON_BALL (mkobj.js OBJECT_DATA otyp column).
+const P_WHIP = 26, ARMOR_CLASS_UH = 3, ARM_SHIELD_UH = 1;
+const TOWEL_OTYP = 234, HEAVY_IRON_BALL_OTYP = 477;
 function roleMnum() {
     const r = game.urole;
     return (r && r.mnum != null) ? r.mnum : null;
 }
 function Role_if_MONK() { return roleMnum() === PM_MONK; }
+// C ref: uhitm.c:1650 hmon_hitmon_msg_hand_to_hand() — the melee verb is picked
+// off the WIELDED item, not off the monster: a shield or the heavy iron ball
+// "bash", a P_WHIP-skill weapon or a still-wet towel "lash", a Barbarian
+// "smite", everything else "hit".  is_wet_towel/is_shield are obj.h macros.
+function hit_verb(obj) {
+    if (obj && (is_shield_uh(obj) || obj.otyp === HEAVY_IRON_BALL_OTYP))
+        return 'bash';
+    if (obj && ((objects[obj.otyp]?.oc_skill ?? 0) === P_WHIP
+                || (obj.otyp === TOWEL_OTYP && (obj.spe | 0) > 0)))
+        return 'lash';
+    return roleMnum() === PM_BARBARIAN ? 'smite' : 'hit';
+}
+// C ref: obj.h is_shield(obj) — ARMOR_CLASS with oc_armcat == ARM_SHIELD.  The
+// mkobj.js objects[] rows carry no oc_armcat column; objarmor_data.js does.
+function is_shield_uh(obj) {
+    return obj.oclass === ARMOR_CLASS_UH && base_armcat(obj.otyp) === ARM_SHIELD_UH;
+}
 // C ref: include/skills.h martial_bonus() = Role_if(SAMURAI) || Role_if(MONK).
 function martial_bonus() {
     const m = roleMnum();
@@ -1291,7 +1313,7 @@ async function hmon_hitmon(mon, weapon, dieroll) {
     if (!verbose)
         await update_topl('You hit it.');
     else if (canspotmon(mon))
-        await update_topl(`You hit ${mon_nam(mon)}${canseemon(mon) ? exclamU(dmg) : '.'}`);
+        await update_topl(`You ${hit_verb(weapon)} ${mon_nam(mon)}${canseemon(mon) ? exclamU(dmg) : '.'}`);
     else
         await update_topl('You hit it.');
     // C ref: uhitm.c:1925 — `wakeup(mon, TRUE)` for a surviving, on-map hit.

@@ -506,7 +506,7 @@ function unmap_invisible_at(x, y) {
 // and rnd(force) for the range.
 export async function scatter(sx, sy, blastforce, scflags, obj) {
     const { objects_at, splitobj, obj_extract_self, stackobj } = await import('./invent.js');
-    const { place_object, objects, weight } = await import('./mkobj.js');
+    const { place_object, objects, weight, next_ident } = await import('./mkobj.js');
     const { breaks } = await import('./dothrow.js');
     const individual_object = !!obj;
     const schain = [];
@@ -521,6 +521,11 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
         // like any other object here.
         if ((otmp.quan | 0) > 1) {
             const qtmp = rnd((otmp.quan | 0) - 1);
+            // C ref: mkobj.c splitobj() -> nextoid() -> next_ident(): every
+            // stack split spends one rnd(2) on the fragment's o_id.  This
+            // port's splitobj() draws nothing, so each call site pays it (as
+            // js/invent.js:5856, js/monmove.js:6399, js/eat.js:439 do).
+            next_ident();
             otmp = splitobj(otmp, qtmp);
         } else {
             obj = null;                              /* all used */

@@ -1576,7 +1576,7 @@ export function u_init_skills_discoveries() {
     }
 }
 
-export function moveloop_preamble_startup() {
+export async function moveloop_preamble_startup() {
     // C ref: allmain.c moveloop_preamble() — new-game-only RNG.
     //   svc.context.rndencode = rnd(9000);
     //   ... set_wear / pickup (no RNG for our starting gear) ...
@@ -1588,10 +1588,13 @@ export function moveloop_preamble_startup() {
     game.context.rndencode = rnd(9000);
     game.context.seer_turn = rnd(30);
 
-    // C ref: allmain.c set_wear() side-effects of starting gear.  A worn cloak
-    // of displacement is recognized by a sighted hero (the displacement effect
-    // is apparent), so its type is discovered — this is what makes it show as
-    // "cloak of displacement (opera cloak)" in the discoveries window.
-    if (game.uarmc?.otyp === CLOAK_OF_DISPLACEMENT && !game.Blind)
-        discover_object(CLOAK_OF_DISPLACEMENT, true, true);
+    // C ref: allmain.c:73 `set_wear((struct obj *) 0);` — "for side-effects of
+    // starting gear".  u_init's setworn() only sets the worn masks; every
+    // don-time side effect (the Archeologist fedora's +1 Luck via Helmet_on(),
+    // a cloak of displacement's discovery via Cloak_on(), the extrinsic
+    // property toggles) comes from here.  This used to be a single hand-copied
+    // special case for the displacement cloak, so an Archeologist played with
+    // Luck 0 all game and every rnl() was one rn2(37+|Luck|) short.
+    const { set_wear } = await import('./do_wear.js');
+    await set_wear(null);
 }

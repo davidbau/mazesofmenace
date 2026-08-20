@@ -99,6 +99,7 @@ import {
     Is_airlevel,
     DUST, ENGRAVE, HEADSTONE, BURN, MARK, ENGR_BLOOD,
     PLNMSG_MON_TAKES_OFF_ITEM,
+    MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
     TIMEOUT, isok,
 } from './const.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
@@ -113,7 +114,13 @@ import { roles, align_gname } from './role.js';
 // function bodies, never at module-evaluation time.
 import { pickup, pickup_prinv_prefix, allow_category, add_valid_menu_class,
          menu_class_present, collect_obj_classes, container_gone, loot_mon,
-         u_safe_from_fatal_corpse, reset_justpicked } from './pickup.js';
+         u_safe_from_fatal_corpse, reset_justpicked,
+         menu_style, count_categories, allow_all, count_justpicked,
+         find_justpicked, PICK_NONE, PICK_ONE, PICK_ANY,
+         BY_NEXTHERE, AUTOSELECT_SINGLE, USE_INVLET, INVORDER_SORT,
+         INCLUDE_VENOM, ALL_TYPES, ALL_TYPES_SELECTED, UNPAID_TYPES,
+         WORN_TYPES, BILLED_TYPES, CHOOSE_ALL, BUC_BLESSED_F, BUC_CURSED_F,
+         BUC_UNCURSED_F, BUC_UNKNOWN_F, JUSTPICKED } from './pickup.js';
 // C ref: src/do_wear.c — the per-slot on/off side effects, wearability checks
 // and *_simple_name() family now live in their own module.
 import {
@@ -320,7 +327,13 @@ function observe_object(obj) { if (obj) { obj.dknown = 1; disco_observe_object(o
 // object, but ONLY when the hero can see.  Naming an object while blind must
 // not teach the hero its appearance ("o - a potion.", not "a brilliant blue
 // potion.").
-function observe_object_named(obj) { if (!Blind_for_wear()) observe_object(obj); }
+// C ref: objnam.c xname_flags():627 `if (!Blind && !gd.distantname)
+// observe_object(obj);` — naming an object up close learns its appearance.
+function observe_object_named(obj) {
+    if (!Blind_for_wear() && !gd_distantname) observe_object(obj);
+}
+/* objnam.c gd.distantname — set while distant_name() formats a far object. */
+let gd_distantname = 0;
 // C ref: hack.h makeknown(x) == discover_object(x, TRUE, TRUE, TRUE).
 export function makeknown(otyp) {
     discover_object(otyp, true, true, true);
@@ -497,7 +510,17 @@ function simpleonames(obj) {
     const nm = simple_obj_name(obj, { article: false, quantity: false, buc: false });
     return (obj?.quan || 1) !== 1 ? makeplural(nm) : nm;
 }
-function distant_name(obj, fn = doname) { return fn(obj); }
+// C ref: objnam.c distant_name(obj, func):370 — a VISIBLE object within
+// neardist is named with the usual side effects (xname_flags() observes it, so
+// its appearance and stack size become known); anything further away bumps
+// gd.distantname so that observation is skipped.
+function distant_name(obj, fn = doname) {
+    const ox = obj?.ox, oy = obj?.oy;
+    if (!distant_far(obj, ox, oy) && cansee(ox, oy)) return fn(obj);
+    ++gd_distantname;
+    try { return fn(obj); } finally { --gd_distantname; }
+}
+export function distant_name_pub(obj, fn) { return distant_name(obj, fn); }
 // C ref: objnam.c doname() appends the worn-status suffix ("(being worn)",
 // "(wielded)", "(on right hand)", ...) unconditionally — it is not limited to
 // the inventory window, so every doname()/obj_doname() caller (dip/wield/drop
@@ -519,6 +542,15 @@ export function floor_object_name(obj) { return doname_with_price(obj); }
 
 // C ref: invent.c doname()/wield.c wield_tool() — exposed for apply.js #rub.
 export function obj_doname(obj) { return doname(obj); }
+
+// C ref: objnam.c doname_vague_quan():1768 -> doname_base(DONAME_VAGUE_QUAN).
+// Farlook's namer: a stack that has not been seen up close (!dknown) reports
+// "some gold pieces" rather than the exact count it has no way to know.
+export function doname_vague_quan(obj) {
+    observe_object_named(obj);
+    return simple_obj_name(obj, { empty: true, vague_quan: true })
+        + worn_status_suffix(obj) + unpaid_price_suffix(obj);
+}
 
 // C ref: objnam.c short_oname(obj, func, altfunc, lenlimit) — used to build a
 // getobj/y_n prompt's object phrase within a fixed buffer budget.  When the
@@ -1493,8 +1525,17 @@ export function objectBaseName(obj) {
     }
 
     const ocl = objects[obj.otyp];
-    const actualn = ocl?.name || obj.name || 'object';
-    const dn = obj_appearance_descr(obj);
+    let actualn = ocl?.name || obj.name || 'object';
+    let dn = obj_appearance_descr(obj);
+    // C ref: objnam.c xname_flags():605 — `if (Role_if(PM_SAMURAI)) { actualn =
+    // Japanese_item_name(typ, actualn); if (typ == WOODEN_HARP || typ ==
+    // MAGIC_HARP) dn = "koto"; }`, ahead of every class formatter below.  Doing
+    // it in doname_invent() alone left every other namer (the drop/wield menus,
+    // "You see here", getobj prompts) saying "short sword" for a Samurai.
+    if (is_samurai()) {
+        actualn = Japanese_item_name(obj.otyp) || actualn;
+        if (obj.otyp === WOODEN_HARP_OTYP || obj.otyp === MAGIC_HARP_OTYP) dn = 'koto';
+    }
     const nn = ocl ? !!ocl.oc_name_known : false;
     const un = ocl?.oc_uname || null;
     // C: observe_object() runs inside xname_flags when not blind/distant, so
@@ -1693,10 +1734,17 @@ function tin_details(obj, base) {
 }
 
 function simple_obj_name(obj, opts = {}) {
-    const { article = true, quantity = true, buc = true, empty = false } = opts;
+    const { article = true, quantity = true, buc = true, empty = false,
+            vague_quan = false } = opts;
     if (!obj) return 'nothing';
-    if (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE)
-        return objectBaseName(obj);
+    // C ref: objnam.c doname_base():1283 — `if (obj->quan != 1L) { if (dknown
+    // || !vague_quan) Sprintf(prefix, "%ld ", quan); else Strcpy(prefix,
+    // "some "); }`.  Only farlook passes DONAME_VAGUE_QUAN.
+    const vagueQuan = vague_quan && !obj.dknown && (obj.quan || 1) !== 1;
+    if (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE) {
+        const nm = objectBaseName(obj);          /* "<quan> gold piece(s)" */
+        return vagueQuan ? nm.replace(/^\d+ /, 'some ') : nm;
+    }
     let base = objectBaseName(obj);
     // C ref: objnam.c xname_flags "if (typ == TIN && known) tin_details(...)" —
     // the species-derived "tin of X" wording only appears once the tin's
@@ -1752,7 +1800,7 @@ function simple_obj_name(obj, opts = {}) {
         containing = ` containing ${n} item${n === 1 ? '' : 's'}`;
     }
     if (quantity && (obj.quan || 1) > 1 && !pair_of(obj))
-        return `${obj.quan} ${prefix}${makeplural(base)}${containing}${chg}${oname_suffix(obj)}`;
+        return `${vagueQuan ? 'some' : obj.quan} ${prefix}${makeplural(base)}${containing}${chg}${oname_suffix(obj)}`;
     const phrase = `${prefix}${base}`;
     return (article ? with_article_obj(obj, phrase) : phrase) + containing + chg + oname_suffix(obj);
 }
@@ -2893,18 +2941,36 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         }
     }
     // C ref: invent.c hold_another_object — capture quan before addinv so
-    // prinv reports the original count, then announce the held object.  The
-    // recorded wishes always fit in inventory (the encumbrance/can't-hold
-    // branches that lead to 'drop_it' are not exercised), so we take the
-    // "object made it into inventory" path.
+    // prinv reports the original count, then announce the held object.
     const oquan = obj?.quan;
+    // C ref: invent.c:1259 — the encumbrance limit is max(current state,
+    // flags.pickup_burden).  Without it a wish (or a returning thrown weapon)
+    // that pushes the hero past 'pickup_burden' still landed in inventory
+    // instead of on the floor, so every later invlet was off by one.
+    const { pickup_burden } = await import('./pickup.js');
+    let prev_encumbr = near_capacity();
+    const burden_limit = pickup_burden();
+    if (prev_encumbr < burden_limit) prev_encumbr = burden_limit;
+
     obj = addinv_core0(obj, null, false);
     await report_merge_discovery();
+    if (inv_cnt(false) > invlet_basic
+        || ((obj.otyp !== LOADSTONE || !obj.cursed)
+            && near_capacity() > prev_encumbr)) {
+        /* drop_it: undo any merge which took place */
+        if (obj.quan > oquan) obj = splitobj(obj, oquan);
+        if (drop_fmt) await pline(String(drop_fmt).replace('%s', drop_arg ?? ''));
+        obj.nomerge = 0;
+        dropz(obj, game.u?.ux, game.u?.uy);
+        update_inventory();
+        return null;  /* might be gone */
+    }
     // C: `if (hold_msg || drop_fmt) prinv(hold_msg, obj, oquan);` — makewish
     // passes a non-NULL drop_fmt with a NULL hold_msg, so prinv runs with a
     // null prefix and prints the default "o - a silver wand." line.
     if (hold_msg || drop_fmt) prinv(hold_msg, obj, oquan);
     update_inventory();
+    await encumber_msg();
     return obj;
 }
 
@@ -4806,7 +4872,7 @@ async function doquiver_core(verb) {
         const use_plural = is_plural(game.uwep) || pair_of(game.uwep);
         const qbuf = `You are wielding ${!use_plural ? 'that' : 'those'}.  Ready ${!use_plural ? 'it' : 'them'} instead?`;
         if (await ynq(qbuf) !== 'y') {
-            game._pending_message = `${simpleonames(game.uwep)} ${otense(game.uwep, 'remain')} wielded.`;
+            game._pending_message = `Your ${simpleonames(game.uwep)} ${otense(game.uwep, 'remain')} wielded.`;
             return ECMD_OK;
         }
         setuwep_slot(null);
@@ -4816,7 +4882,7 @@ async function doquiver_core(verb) {
         const use_plural = is_plural(game.uswapwep) || pair_of(game.uswapwep);
         const qbuf = `${!use_plural ? 'That is' : 'Those are'} your ${game.u?.twoweap ? 'second' : 'alternate'} weapon.  Ready ${!use_plural ? 'it' : 'them'} instead?`;
         if (await ynq(qbuf) !== 'y') {
-            game._pending_message = `${simpleonames(game.uswapwep)} ${otense(game.uswapwep, 'remain')} ${game.u?.twoweap ? 'wielded' : 'as secondary weapon'}.`;
+            game._pending_message = `Your ${simpleonames(game.uswapwep)} ${otense(game.uswapwep, 'remain')} ${game.u?.twoweap ? 'wielded' : 'as secondary weapon'}.`;
             return ECMD_OK;
         }
         setuswapwep(null);
@@ -6721,6 +6787,483 @@ async function drop(obj) {
 // IS_ALTAR check stub — none of the recorded drop tiles are altars.
 function IS_ALTAR_typ(_u) { return false; }
 
+// ══════════════════════════════════════════════════════════════════════════
+// The 'D' (#droptype) command: do.c doddrop() / menu_drop(), and the two
+// pickup.c menus it drives.  js/pickup.js's query_category()/query_objlist()
+// stop at the point a window would have to be drawn (each caller renders its
+// own), so the menu halves live here, next to renderMenuLines().
+// ══════════════════════════════════════════════════════════════════════════
+
+/* wintty.c set_item_state():1209 — '+' == all of it, '#' == a counted pick.
+   A page's first paint uses '*' for '+', but a single-page menu is painted
+   once and then patched one column per toggle, so '+' is what ever shows. */
+function menu_sel_char(it) {
+    return !it.selected ? '-' : (it.count === -1 ? '+' : '#');
+}
+/* wintty.c tty_add_menu() — "<selector> <state> <description>". */
+function menu_item_line(it) { return `${it.selector} ${menu_sel_char(it)} ${it.desc}`; }
+
+/* options.c menuitem_invert_test() with the default iflags.menuinvertmode 1:
+   a SKIPINVERT entry joins a bulk change only in order to be turned OFF. */
+function menuitem_invert_test(_mode, skipinvert, is_selected) {
+    if (!skipinvert) return true;
+    const mode = game.iflags?.menuinvertmode ?? 1;
+    if (mode === 2) return false;
+    if (mode === 1) return !!is_selected;
+    return true;
+}
+
+/* wintty.c process_menu_window():1359 — the selection loop for a menu that
+   fits on one page (every menu built here does, so C's page comparisons all
+   collapse to "commit" or "no-op").  `plan` is the rendered line list: each
+   entry is either { str, attr } for an add_menu_str()/add_menu_heading() line
+   or { item } for a selectable one.  Returns the picks in menu order. */
+async function tty_select_menu(items, plan, how) {
+    /* gacc[]: group accelerators; one equal to its own entry's selector is
+       excluded, except GOLD_SYM.  PICK_ONE only takes unambiguous ones. */
+    const gacc = new Set();
+    if (how !== PICK_NONE) {
+        const gcnt = new Map();
+        for (const it of items)
+            if (it.gselector && it.gselector !== it.selector)
+                gcnt.set(it.gselector, (gcnt.get(it.gselector) || 0) + 1);
+        for (const it of items)
+            if (it.gselector
+                && (it.gselector !== it.selector || it.gselector === GOLD_SYM)
+                && (how === PICK_ANY || gcnt.get(it.gselector) === 1))
+                gacc.add(it.gselector);
+    }
+    const selectors = new Set(items.map((it) => it.selector));
+
+    /* wintty.c toggle_menu_curr():1138 */
+    const toggle_menu_curr = (it, counting, count) => {
+        if (it.selected) {
+            if (counting && count > 0) it.count = count;
+            else { it.selected = false; it.count = -1; }
+        } else if (counting && count > 0) {
+            it.count = count; it.selected = true;
+        } else if (!counting) {
+            it.selected = true;
+        }
+    };
+    /* wintty.c invert_all_on_page():1265 — acc 0 means "every entry" */
+    const invert_all = (acc, count) => {
+        for (const it of items) {
+            if (acc ? it.gselector !== acc
+                    : !menuitem_invert_test(0, it.skipinvert, it.selected))
+                continue;
+            if (it.selected) { it.selected = false; it.count = -1; }
+            else { it.selected = true; if (count > 0) it.count = count; }
+        }
+    };
+    /* wintty.c set_all_on_page() / unset_all_on_page() */
+    const set_all = () => {
+        for (const it of items)
+            if (!it.selected && menuitem_invert_test(1, it.skipinvert, false))
+                it.selected = true;
+    };
+    const unset_all = () => {
+        for (const it of items)
+            if (it.selected && menuitem_invert_test(2, it.skipinvert, true)) {
+                it.selected = false; it.count = -1;
+            }
+    };
+
+    let counting = false, count = 0, reset_count = true, cancelled = false;
+    for (;;) {
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
+        renderMenuLines(plan.map((p) => (p.item
+            ? { text: menu_item_line(p.item), attr: p.item.attr || 0 }
+            : { text: p.str, attr: p.attr || 0 })), null);
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        /* an explicit page selector outranks the menu-command mapping */
+        const explicit = selectors.has(ch);
+
+        if (!explicit && ch >= '0' && ch <= '9') {
+            if (!counting && gacc.has(ch)) { invert_all(ch, -1); continue; }
+            count = count * 10 + (key - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
+        if (key === 27) {           /* ESC: cancel, or just stop a count */
+            if (counting) continue;
+            for (const it of items) { it.selected = false; it.count = -1; }
+            cancelled = true;
+            break;
+        }
+        if (key === 13 || key === 10) break;            /* commit */
+        if (!explicit && ch === ' ') break;             /* last page: finish */
+        if (!explicit) {
+            /* wintype.h default_menu_cmds[]; gm.mapped_menu_cmds is empty
+               unless the config rebinds them, so these are the literals. */
+            if (ch === '^' || ch === '|' || ch === '>' || ch === '<') continue;
+            if (ch === '.' || ch === ',') {             /* SELECT_ALL/_PAGE */
+                if (how === PICK_ANY) set_all();
+                continue;
+            }
+            if (ch === '-' || ch === '\\') { unset_all(); continue; }
+            if (ch === '@' || ch === '~') {             /* INVERT_ALL/_PAGE */
+                if (how === PICK_ANY) invert_all(0, -1);
+                continue;
+            }
+        }
+        if (how === PICK_NONE) continue;
+        if (gacc.has(ch)) {
+            invert_all(ch, counting ? count : -1);
+            if (how === PICK_ONE) break;
+            continue;
+        }
+        const hit = items.find((it) => it.selector === ch);
+        if (hit) {
+            toggle_menu_curr(hit, counting, count);
+            if (how === PICK_ONE) break;
+        }
+        /* anything else: rejected (tty_nhbell), the menu stays up */
+    }
+    if (cancelled) return [];
+    return items.filter((it) => it.selected);
+}
+
+/* invent.c nxt_unbypassed_obj() */
+function nxt_unbypassed_obj(list) {
+    for (const obj of iterateObjects(list))
+        if (!obj.bypass) { obj.bypass = 1; return obj; }
+    return null;
+}
+
+/* flag.h ParanoidAutoAll — flags.paranoia_bits & PARANOID_AUTOALL. */
+function ParanoidAutoAll() {
+    return /autoall/i.test(String(flags().paranoid_confirmation || ''));
+}
+
+/* ── pickup.c:1226 query_category() — the menustyle:Full class-filter menu.
+   Returns the picks as { a_int, count }, where a_int is an object class
+   NUMBER, ALL_TYPES_SELECTED, or one of 'A'/'u'/'x'/'B'/'C'/'U'/'X'/'P'. */
+async function query_category_menu(qstr, olist, qflags, how) {
+    const chain = [...iterateObjects(olist, (qflags & BY_NEXTHERE) !== 0)];
+    if (!chain.length) return [];
+
+    let ofilter = null;
+    let do_unpaid = false, do_usedup = false, do_blessed = false,
+        do_cursed = false, do_uncursed = false, do_buc_unknown = false,
+        do_worn = false, verify_All = false;
+    let num_buc_types = 0, num_justpicked = 0;
+
+    if ((qflags & UNPAID_TYPES) && count_unpaid(chain)) do_unpaid = true;
+    if (qflags & BILLED_TYPES) do_usedup = true;
+    if (qflags & WORN_TYPES) { do_worn = true; ofilter = is_worn; }
+    if ((qflags & BUC_BLESSED_F) && count_buc(chain, BUC_BLESSED, ofilter)) {
+        do_blessed = true; num_buc_types++;
+    }
+    if ((qflags & BUC_CURSED_F) && count_buc(chain, BUC_CURSED, ofilter)) {
+        do_cursed = true; num_buc_types++;
+    }
+    if ((qflags & BUC_UNCURSED_F) && count_buc(chain, BUC_UNCURSED, ofilter)) {
+        do_uncursed = true; num_buc_types++;
+    }
+    if ((qflags & BUC_UNKNOWN_F) && count_buc(chain, BUC_UNKNOWN, ofilter)) {
+        do_buc_unknown = true; num_buc_types++;
+    }
+    if (qflags & JUSTPICKED) num_justpicked = count_justpicked(chain);
+
+    const ccount = count_categories(chain, qflags);
+    /* "no point in actually showing a menu for a single category" */
+    if (ccount === 1 && !do_unpaid && !do_usedup && num_buc_types <= 1) {
+        for (const curr of chain) {
+            if (ofilter && !ofilter(curr)) continue;
+            return [{ a_int: curr.oclass, count: -1 }];
+        }
+        return [];
+    }
+
+    const pack = classOrder().slice();
+    if (qflags & INCLUDE_VENOM) pack.push(VENOM_CLASS);   /* not in inv_order */
+
+    const items = [], plan = [];
+    const mkitem = (selector, desc, a_int, opts = {}) => {
+        items.push({ selector, desc, a_int, selected: false, count: -1,
+                     gselector: opts.gselector || 0,
+                     skipinvert: !!opts.skipinvert });
+        plan.push({ item: items[items.length - 1] });
+    };
+
+    const show_a = !!(qflags & ALL_TYPES) && ccount > 1;
+    /* iflags.cmdassist defaults on, so `!ga.A_first_hint++ || cmdassist`
+       shows the parenthetical every time, not only on the game's first 'A'. */
+    const cmdassist = game.iflags?.cmdassist !== false;
+    const gs = giState();
+
+    if (qflags & CHOOSE_ALL) {
+        mkitem('A', do_worn ? 'Auto-select every item being worn or wielded'
+                            : 'Auto-select every relevant item',
+               'A', { skipinvert: true });
+        verify_All = (how === PICK_ANY) && ParanoidAutoAll();
+        if (!verify_All) {
+            const firstA = (gs.A_first_hint = (gs.A_first_hint || 0) + 1) === 1;
+            if (firstA || cmdassist)
+                plan.push({ str: '    (ignored unless some other choices are also picked)' });
+        } else if (show_a) {
+            const firstA2 = (gs.A_second_hint = (gs.A_second_hint || 0) + 1) === 1;
+            if (firstA2 || cmdassist)
+                plan.push({ str: "    (if no other choices are picked, 'a' is implied)" });
+        }
+        plan.push({ str: '' });                          /* blank separator */
+    }
+
+    let invlet = 'a';
+    if (show_a) {
+        mkitem(invlet, do_worn ? 'All worn and wielded types' : 'All types',
+               ALL_TYPES_SELECTED, { skipinvert: true });
+        invlet = String.fromCharCode(invlet.charCodeAt(0) + 1);
+    }
+    const with_oc_sym = (how !== PICK_NONE) && !!game.iflags?.menu_head_objsym;
+    for (const oclass of pack) {
+        let collected_type_name = false;
+        for (const curr of chain) {
+            if (curr.oclass !== oclass) continue;
+            if (ofilter && !ofilter(curr)) continue;
+            if (collected_type_name) continue;
+            mkitem(invlet, let_to_name(oclass, false, with_oc_sym), oclass,
+                   { gselector: def_oc_syms[oclass]?.sym });
+            invlet = String.fromCharCode(invlet.charCodeAt(0) + 1);
+            collected_type_name = true;
+        }
+        if (invlet >= 'u') return [];      /* C: impossible("too many"), n = 0 */
+    }
+
+    if (do_unpaid || do_usedup || do_blessed || do_cursed || do_uncursed
+        || do_buc_unknown || num_justpicked)
+        plan.push({ str: '' });
+    if (do_unpaid) mkitem('u', 'Unpaid items', 'u', { skipinvert: true });
+    if (do_usedup) mkitem('x', 'Unpaid items already used up', 'x', { skipinvert: true });
+    /* this cluster is alphabetical, reversing the usual 'U'/'C' of BUCX */
+    if (do_blessed) mkitem('B', 'Items known to be Blessed', 'B', { skipinvert: true });
+    if (do_cursed) mkitem('C', 'Items known to be Cursed', 'C', { skipinvert: true });
+    if (do_uncursed) mkitem('U', 'Items known to be Uncursed', 'U', { skipinvert: true });
+    if (do_buc_unknown) mkitem('X', 'Items of unknown Bless/Curse status', 'X', { skipinvert: true });
+    if (num_justpicked)
+        mkitem('P', num_justpicked === 1
+                    ? `Just picked up: ${doname(find_justpicked(chain))}`
+                    : 'Items you just picked up', 'P', { skipinvert: true });
+
+    /* end_menu(win, qstr): the query heads the window, then a blank line */
+    plan.unshift({ str: qstr, attr: ATR_INVERSE }, { str: '' });
+
+    let picked = await tty_select_menu(items, plan, how);
+
+    if (picked.length && verify_All && picked.some((it) => it.a_int === 'A')) {
+        /* paranoid_ynq()'s spelled-out "yes"/"no" variant is not modelled. */
+        const i = picked.findIndex((it) => it.a_int === 'A');
+        const ans = await y_n('Really autoselect All?', 'ynq\x1b', 'q');
+        if (ans === 'n' && picked.length > 1) picked.splice(i, 1);
+        else if (ans === 'n' && (qflags & ALL_TYPES)) picked[0].a_int = ALL_TYPES_SELECTED;
+        else if (ans !== 'y') picked = [];
+    } else if (picked.length === 1 && !verify_All && picked[0].a_int === 'A') {
+        /* without paranoid_confirm:A, 'A' by itself is rejected */
+        picked = [];
+        /* C plines this and only then destroys the window; a corner window's
+           teardown never touches the topline, so dismiss first here. */
+        await dismiss_invent_screen();
+        await pline('No relevant items selected.');
+    }
+    return picked.map((it) => ({ a_int: it.a_int, count: it.count }));
+}
+
+/* ── pickup.c:1025 query_objlist() — the item menu.  Returns the picks as
+   { obj, count }; js/pickup.js's copy delegates its menu to invent.js's
+   floor-pickup renderer, which has neither invlet accelerators nor the
+   computed window offset this one needs. */
+async function query_objlist_menu(qstr, olist, qflags, how, allow) {
+    const by_nexthere = (qflags & BY_NEXTHERE) !== 0;
+    const chain = [...iterateObjects(olist, by_nexthere)];
+    if (!chain.length) return [];
+
+    let n = 0, last = null;
+    for (const curr of chain) if (allow(curr)) { last = curr; n++; }
+    if (n === 0) return [];
+    if (n === 1 && (qflags & AUTOSELECT_SINGLE))
+        return [{ obj: last, count: last.quan }];
+
+    const sorted = (qflags & INVORDER_SORT) !== 0;
+    const sortflags =
+        (((flags().sortloot === 'f'
+           || (flags().sortloot === 'l' && !(qflags & USE_INVLET)))
+            ? SORTLOOT_LOOT
+            : ((qflags & USE_INVLET) ? SORTLOOT_INVLET : 0))
+         | (flags().sortpack !== false ? SORTLOOT_PACK : 0));
+    const sortedolist = sortloot(chain, sortflags, by_nexthere, allow)
+        .map((sli) => sli.obj).filter(Boolean);
+
+    const pack = classOrder().slice();
+    if (qflags & INCLUDE_VENOM) pack.push(VENOM_CLASS);
+
+    const items = [], plan = [];
+    const with_oc_sym = (how !== PICK_NONE) && !!game.iflags?.menu_head_objsym;
+    let menu_ch = 'a', first = true;
+    const nextLetter = () => {
+        const c = menu_ch;
+        menu_ch = (menu_ch === 'z') ? 'A'
+            : String.fromCharCode(menu_ch.charCodeAt(0) + 1);
+        return c;
+    };
+    for (const oclass of (sorted ? pack : [null])) {
+        let printed_type_name = false;
+        for (const curr of sortedolist) {
+            if (sorted && curr.oclass !== oclass) continue;
+            if (!allow(curr)) continue;
+            if (sorted && !printed_type_name) {
+                plan.push({ str: let_to_name(curr.oclass, false, with_oc_sym),
+                            attr: ATR_INVERSE });
+                printed_type_name = true;
+            }
+            const selector = (qflags & USE_INVLET) ? curr.invlet
+                : ((first && curr.oclass === COIN_CLASS) ? GOLD_SYM : nextLetter());
+            items.push({ selector, desc: doname_with_price(curr), obj: curr,
+                         selected: false, count: -1,
+                         gselector: def_oc_syms[curr.oclass]?.sym,
+                         skipinvert: false });
+            plan.push({ item: items[items.length - 1] });
+            first = false;
+        }
+    }
+    /* C: dotypeinv() supplies gt.this_title as an initial add_menu_str(),
+       deliberately without the menu_headings highlight attribute. */
+    if (game.this_title) plan.unshift({ str: game.this_title });
+    /* end_menu(win, qstr) skips the prompt line entirely when qstr is NULL */
+    if (qstr) plan.unshift({ str: qstr, attr: ATR_INVERSE }, { str: '' });
+
+    const picked = await tty_select_menu(items, plan, how);
+    /* fix up counts: -1 means no count was given, i.e. the whole stack */
+    return picked.map((it) => ({
+        obj: it.obj,
+        count: (it.count === -1 || it.count > it.obj.quan) ? it.obj.quan : it.count,
+    }));
+}
+
+/* do.c:963 menudrop_split() */
+async function menudrop_split(otmp, cnt) {
+    let obj = otmp;
+    if (cnt && cnt < obj.quan) {
+        if (welded(obj)) {
+            /* don't split */
+        } else if (obj.otyp === LOADSTONE && obj.cursed) {
+            obj.corpsenm = cnt;              /* same kludge as getobj() */
+        } else {
+            obj = splitobj(obj, cnt);
+        }
+    }
+    return await drop(obj);
+}
+
+/* do.c:981 menu_drop() — drop things from inventory, using a menu. */
+async function menu_drop(retry) {
+    let n_dropped = 0;
+    let all_categories = true, drop_everything = false, autopick = false;
+    let drop_justpicked = false, justpicked_quan = 0;
+
+    if (retry) {
+        all_categories = (retry === -2);
+    } else if (menu_style() === MENU_FULL) {
+        all_categories = false;
+        const picks = await query_category_menu('Drop what type of items?',
+            inventoryArray(),
+            UNPAID_TYPES | ALL_TYPES | CHOOSE_ALL | BUC_BLESSED_F | BUC_CURSED_F
+            | BUC_UNCURSED_F | BUC_UNKNOWN_F | JUSTPICKED | INCLUDE_VENOM,
+            PICK_ANY);
+        /* no non-autopick category filters specified */
+        if (!picks.length) return ECMD_OK;
+        for (const p of picks) {
+            if (p.a_int === ALL_TYPES_SELECTED) {
+                all_categories = true;
+            } else if (p.a_int === 'A') {
+                drop_everything = autopick = true;
+            } else if (p.a_int === 'P') {
+                justpicked_quan = Math.max(0, p.count);
+                drop_justpicked = true;
+                drop_everything = false;
+                add_valid_menu_class(p.a_int);
+            } else {
+                /* this port's valid_menu_classes[] holds class SYMBOLS, not
+                   C's class numbers (js/pickup.js allow_category()). */
+                add_valid_menu_class(typeof p.a_int === 'number'
+                    ? def_oc_syms[p.a_int]?.sym : p.a_int);
+                drop_everything = false;
+            }
+        }
+    } else if (menu_style() === MENU_COMBINATION) {
+        /* C gathers the classes with ggetobj("drop", drop, 0, TRUE, &res) and
+           returns early when it finished the job itself; ggetobj()/askchain()
+           are still stubs here, so only the class filter is skipped. */
+        all_categories = false;
+        ggetobj('drop', drop, 0, true, null);
+    }
+
+    /* C destroys the category window before dropping anything or opening the
+       item menu; the drop messages have to land on the restored map. */
+    await dismiss_invent_screen();
+
+    if (autopick) {
+        /* the bypass bit marks items already processed, so a drop that
+           destroys inventory (a burning oil potion) can't walk a freed chain */
+        bypass_objlist(inventoryArray(), false);
+        let otmp;
+        while ((otmp = nxt_unbypassed_obj(inventoryArray())) != null) {
+            if (drop_everything || all_categories || allow_category(otmp))
+                n_dropped += (((await drop(otmp)) & ECMD_TIME) !== 0) ? 1 : 0;
+        }
+        bypass_objlist(inventoryArray(), false);
+    } else if (drop_justpicked && count_justpicked(inventoryArray()) === 1) {
+        /* drop the just picked item automatically, if only one stack */
+        const otmp = find_justpicked(inventoryArray());
+        if (otmp)
+            n_dropped += (((await menudrop_split(otmp, justpicked_quan))
+                           & ECMD_TIME) !== 0) ? 1 : 0;
+    } else {
+        const picks = await query_objlist_menu('What would you like to drop?',
+            inventoryArray(), USE_INVLET | INVORDER_SORT | INCLUDE_VENOM,
+            PICK_ANY, all_categories ? allow_all : allow_category);
+        if (picks.length) {
+            /* C sets bypass on all of invent and re-verifies every pick,
+               because dropping one item can free/reuse another's slot */
+            bypass_objlist(inventoryArray(), true);
+            await dismiss_invent_screen();
+            for (const p of picks) {
+                if (!inventoryArray().includes(p.obj) || !p.obj.bypass) continue;
+                n_dropped += (((await menudrop_split(p.obj, p.count))
+                               & ECMD_TIME) !== 0) ? 1 : 0;
+            }
+            bypass_objlist(inventoryArray(), false);
+        }
+    }
+    return n_dropped ? ECMD_TIME : ECMD_OK;
+}
+
+/* do.c:924 doddrop() — the #droptype ('D') command: drop several things. */
+export async function doddrop() {
+    let result = ECMD_OK;
+
+    if (!inventoryArray().length) {
+        await pline('You have nothing to drop.');
+        return ECMD_OK;
+    }
+    add_valid_menu_class(0);            /* clear any classes already there */
+    /* (*u.ushops) sellobj_state(SELL_DELIBERATE/SELL_NORMAL): this port's
+       drop() does not run the shop sell-price bookkeeping. */
+    if (menu_style() !== MENU_TRADITIONAL
+        || (result = ggetobj('drop', drop, 0, false, null)) < -1)
+        result = await menu_drop(result);
+    /* a menu left up (ESC'd, or nothing picked) is a corner window still on
+       screen; C's destroy_nhwindow() restores the map under it */
+    await dismiss_invent_screen();
+    if (result) reset_occupations();
+    return result;
+}
+
+/* allmain.c reset_occupations() — reset_pick()/reset_trapset()/
+   reset_engraving() have no state in this port; reset_remarm() does. */
+function reset_occupations() { reset_remarm(); }
+
 // C ref: shk.c menu_pick_pay_items(ibillct, ibill):1668 — the "Pay for which
 // items?" PICK_ANY menu.  The rendered text is what the recorded screens show:
 // one line per augmented-bill entry, "<amt> Zm, <paydoname>" with the amount
@@ -8307,6 +8850,62 @@ async function itemactions_dispatch(otmp, act, getDir) {
     }
 }
 
+// C ref: wintty.c process_menu_window() MENU_SEARCH.  Search all selectable
+// rows, not just the current page, and return the first case-insensitive match.
+async function search_inventory_menu(rows, byLet) {
+    const { hooked_tty_getlin, pmatchi } = await import('./extcmd-handlers.js');
+    const reply = await hooked_tty_getlin('Search for:', null);
+    if (!reply || reply[0] === '\x1b') return null;
+
+    const pattern = `*${reply}*`;
+    for (const [, ...items] of rows) {
+        for (const text of items) {
+            const obj = byLet.get(text[0]);
+            if (obj && pmatchi(pattern, text)) return obj;
+        }
+    }
+    return null;
+}
+
+// C ref: invent.c display_pickinv() -> select_menu(PICK_ONE).  The three
+// inventory callers differ after a pick, but share paging and menu commands.
+async function select_inventory_menu(rows, byLet) {
+    let page = 0;
+    let repaint = true;
+    let info = null;
+    for (;;) {
+        if (repaint) info = renderInventoryMenu(rows, page);
+        repaint = true;
+        const c = await nhgetch();
+        if (c === 32 && info.multipage && page < info.pages - 1) {
+            page++;
+            continue;
+        }
+        if (c === 27 || c === 32 || c === 13 || c === 10) {
+            await dismiss_invent_screen();
+            return null;
+        }
+
+        const ch = String.fromCharCode(c);
+        if (ch === ':') {
+            const cursor = game.nhDisplay?.getCursor?.();
+            const picked = await search_inventory_menu(rows, byLet);
+            if (picked) {
+                delete game._modal_screen;
+                return picked;
+            }
+            if (cursor) game.nhDisplay.setCursor(cursor[0], cursor[1]);
+            repaint = false;
+            continue;
+        }
+
+        const picked = byLet.get(ch);
+        if (!picked) continue;
+        delete game._modal_screen;
+        return picked;
+    }
+}
+
 // C ref: invent.c dispinv_with_action(lets, use_inuse_ordering, alt_label) —
 // show the inventory and, when it was a PICK_ONE menu (lets==NULL for the 'i'
 // command), call itemactions() on the selected object.  The interactive menu
@@ -8337,30 +8936,8 @@ export async function dispinv_with_action(lets = null, use_inuse_ordering = fals
     for (const obj of inventoryArray())
         if (!lets || String(lets).includes(obj.invlet)) byLet.set(obj.invlet, obj);
 
-    // Interactive PICK_ONE menu loop.  C ref: display_pickinv + select_menu.
-    let page = 0;
-    for (;;) {
-        const info = renderInventoryMenu(rows, page);
-        const c = await nhgetch();
-        // C ref: process_menu_window() case ' '/MENU_NEXT_PAGE — space advances
-        // to the next page; only on the last page does space finish the menu.
-        if (c === 32 && info.multipage && page < info.pages - 1) {
-            page++;
-            continue;
-        }
-        // ESC cancels; space/return commit-with-nothing (dismiss).
-        if (c === 27 || c === 32 || c === 13 || c === 10) {
-            await dismiss_invent_screen();
-            return ECMD_OK;
-        }
-        const ch = String.fromCharCode(c);
-        const otmp = byLet.get(ch);
-        if (!otmp) continue; // invalid selector: bell, menu stays (re-render)
-        // PICK_ONE: selecting an item finishes; dispinv_with_action then runs
-        // itemactions(otmp).
-        delete game._modal_screen;
-        return await itemactions(otmp, getDir);
-    }
+    const otmp = await select_inventory_menu(rows, byLet);
+    return otmp ? await itemactions(otmp, getDir) : ECMD_OK;
 }
 
 // C ref: end.c disclose() 'i' branch — `(void) display_inventory((char *) 0,
@@ -8378,22 +8955,8 @@ export async function display_inventory_interactive(lets = null) {
     const byLet = new Map();
     for (const obj of inventoryArray())
         if (!lets || String(lets).includes(obj.invlet)) byLet.set(obj.invlet, obj);
-    let page = 0;
-    for (;;) {
-        const info = renderInventoryMenu(rows, page);
-        const c = await nhgetch();
-        if (c === 32 && info.multipage && page < info.pages - 1) {
-            page++;
-            continue;
-        }
-        if (c === 27 || c === 32 || c === 13 || c === 10) {
-            await dismiss_invent_screen();
-            return;
-        }
-        if (!byLet.get(String.fromCharCode(c))) continue; // invalid selector: bell, menu stays
-        await dismiss_invent_screen();
-        return;
-    }
+    const picked = await select_inventory_menu(rows, byLet);
+    if (picked) await dismiss_invent_screen();
 }
 
 // Render the selectable inventory.  When the content fits one page it is a tty
@@ -8469,23 +9032,8 @@ export async function whatis_pick_inventory() {
     }
     const byLet = new Map();
     for (const obj of inventoryArray()) byLet.set(obj.invlet, obj);
-    let page = 0;
-    for (;;) {
-        const info = renderInventoryMenu(rows, page);
-        const c = await nhgetch();
-        if (c === 32 && info.multipage && page < info.pages - 1) {
-            page++;
-            continue;
-        }
-        if (c === 27 || c === 32 || c === 13 || c === 10) {
-            await dismiss_invent_screen();
-            return null;
-        }
-        const otmp = byLet.get(String.fromCharCode(c));
-        if (!otmp) continue; // invalid selector: bell, menu stays
-        delete game._modal_screen;
-        return cxname_singular(otmp);
-    }
+    const picked = await select_inventory_menu(rows, byLet);
+    return picked ? cxname_singular(picked) : null;
 }
 
 export function find_unpaid(list, last_found) {
@@ -8538,7 +9086,14 @@ export function count_unpaid(list) { let n = 0; for (const obj of iterateObjects
 export function count_buc(list, type, filterfunc = null) {
     let n = 0;
     for (const obj of iterateObjects(list)) {
+        /* priests always know bless/curse state (set BEFORE the filter) */
+        if (Role_if(PM_CLERIC)) obj.bknown = (obj.oclass !== COIN_CLASS) ? 1 : 0;
         if (filterfunc && !filterfunc(obj)) continue;
+        /* coins are either uncursed or unknown, per flags.goldX */
+        if (obj.oclass === COIN_CLASS) {
+            if (type === (flags().goldX ? BUC_UNKNOWN : BUC_UNCURSED)) ++n;
+            continue;
+        }
         const actual = !obj.bknown ? BUC_UNKNOWN : obj.blessed ? BUC_BLESSED : obj.cursed ? BUC_CURSED : BUC_UNCURSED;
         if (actual === type) ++n;
     }
@@ -8583,7 +9138,134 @@ export function this_type_only(obj) {
     return obj.oclass === typ;
 }
 
-export function dotypeinv() { display_inventory(null, false); return ECMD_OK; }
+/* invent.c dotypeinv() — the 'I' command: itemize one class (or one BUC
+   category) of inventory, then run itemactions() on the chosen object. */
+export async function dotypeinv() {
+    const prompt = 'What type of object do you want an inventory of?';
+    let c = '\0', i = 0, before = '', after = '', title = '';
+    let traditional = true;
+    /* C: `boolean billx = *u.ushops && doinvbill(0)`.  doinvbill() (the shop's
+       used-up list) is not ported, and outside a shop C's test is FALSE too. */
+    const billx = false;
+    const doI_done = () => { game.this_type = 0; game.this_title = null; return ECMD_OK; };
+
+    game.this_type = 0;
+    game.this_title = null;
+    const invent = inventoryArray();
+    if (!invent.length && !billx) {
+        await pline("You aren't carrying anything.");
+        return doI_done();
+    }
+    const u_carried = count_unpaid(invent);
+    const u_floor = count_unpaid(game.level?.objects);
+    const u_buried = count_unpaid(game.level?.buriedobjlist);
+    const any_unpaid = u_carried + u_floor + u_buried;
+    const bc = { value: 0 }, uc = { value: 0 }, cc = { value: 0 },
+          xc = { value: 0 }, oc = { value: 0 }, jc = { value: 0 };
+    tally_BUCX(invent, false, bc, uc, cc, xc, oc, jc);
+
+    if (menu_style() !== MENU_TRADITIONAL) {
+        if (menu_style() === MENU_FULL || menu_style() === MENU_PARTIAL) {
+            traditional = false;
+            i = UNPAID_TYPES;
+            if (billx) i |= BILLED_TYPES;
+            if (bc.value) i |= BUC_BLESSED_F;
+            if (uc.value) i |= BUC_UNCURSED_F;
+            if (cc.value) i |= BUC_CURSED_F;
+            if (xc.value) i |= BUC_UNKNOWN_F;
+            if (jc.value) i |= JUSTPICKED;
+            i |= INCLUDE_VENOM;
+            /* PICK_ONE, and neither ALL_TYPES nor CHOOSE_ALL: no 'A'
+               auto-select entry, no 'a - All types', so the first object
+               class takes accelerator 'a'. */
+            const picks = await query_category_menu(prompt, invent, i, PICK_ONE);
+            /* C: query_category() destroys its window before returning, so the
+               map is back under any message the branches below print. */
+            await dismiss_invent_screen();
+            if (!picks.length) return doI_done();
+            game.this_type = c = picks[0].a_int;
+        }
+    }
+    let types = '';
+    if (traditional) {
+        /* collect the classes carried, for use as the prompt's response set */
+        const tbuf = { buf: '' };
+        let class_count = collect_obj_classes(tbuf, invent, false, null, null);
+        types = tbuf.buf;
+        if (any_unpaid || billx || (bc.value + cc.value + uc.value + xc.value) !== 0
+            || jc.value) { types += ' '; class_count++; }
+        if (any_unpaid) { types += 'u'; class_count++; }
+        if (billx) { types += 'x'; class_count++; }
+        if (bc.value) { types += 'B'; class_count++; }
+        if (uc.value) { types += 'U'; class_count++; }
+        if (cc.value) { types += 'C'; class_count++; }
+        if (xc.value) { types += 'X'; class_count++; }
+        if (jc.value) { types += 'P'; class_count++; }
+        /* everything not already included, after an ESC the user never sees;
+           strchr(types, c) > strchr(types, ESC) is C's "not really carried" */
+        let extra = '\x1b';
+        if (!any_unpaid) extra += 'u';
+        if (!billx) extra += 'x';
+        if (!bc.value) extra += 'B';
+        if (!uc.value) extra += 'U';
+        if (!cc.value) extra += 'C';
+        if (!xc.value) extra += 'X';
+        if (!jc.value) extra += 'P';
+        for (let k = 0; k < MAXOCLASSES; k++) {
+            const sym = def_oc_syms[k]?.sym;
+            if (sym && !types.includes(sym) && !extra.includes(sym)) extra += sym;
+        }
+        types += extra;
+        if (class_count > 1) {
+            c = await y_n(prompt, types, '\0');
+            if (c === '\0' || c === '\x1b') return doI_done();
+        } else if (any_unpaid) c = 'u';
+        else if (billx) c = 'x';
+        else c = types.charAt(0);
+    }
+    if (c === 'x' || (c === 'X' && billx && !xc.value)) {
+        await pline(`No used-up objects${any_unpaid ? ' on your shopping bill' : ''}.`);
+        return doI_done();
+    }
+    if (c === 'u' || (c === 'U' && any_unpaid && !uc.value)) {
+        if (any_unpaid) dounpaid(u_carried, u_floor, u_buried);
+        else await pline('You are not carrying any unpaid objects.');
+        return doI_done();
+    }
+
+    const oclass = 'BUCXP'.includes(String(c)) ? c : def_char_to_objclass(c);
+    switch (c) {
+    case 'B': before = 'known to be blessed '; break;
+    case 'U': before = 'known to be uncursed '; break;
+    case 'C': before = 'known to be cursed '; break;
+    case 'X': after = ' whose blessed/uncursed/cursed status is unknown'; break;
+    case 'P': after = ' that were just picked up'; break;
+    default: before = 'such '; break;
+    }
+    if (traditional) {
+        if (types.indexOf(String(c)) > types.indexOf('\x1b')) {
+            await pline(`You have no ${before}objects${after}.`);
+            return doI_done();
+        }
+        game.this_type = oclass;
+    }
+    if ('BUCXP'.includes(String(c))) {
+        /* before/after are mutually exclusive, so either serves as a suffix */
+        title = `Items ${before || after}`.replace(/\s+/g, ' ').replace(/\s+$/, '') + ':';
+        game.this_title = title;
+    }
+
+    const picks = await query_objlist_menu(null, invent,
+        ((flags().invlet_constant !== false ? USE_INVLET : 0)
+         | INVORDER_SORT | INCLUDE_VENOM), PICK_ONE, this_type_only);
+    if (picks.length) {
+        await dismiss_invent_screen();
+        await itemactions(picks[0].obj);
+    } else {
+        await dismiss_invent_screen();
+    }
+    return doI_done();
+}
 
 // C ref: stairs.c stairs_description() — describe a staircase/ladder.  Only the
 // cases the recorded sessions need are ported: an ordinary staircase, and the
@@ -8716,8 +9398,27 @@ export async function describe_decor() {
         if (waterhere) dfeature = decor_waterbody_name(ltyp);
         // C: an() unless it's "swamp" or the ice descriptions (which self-name).
         if (dfeature !== 'swamp' && ltyp !== ICE) dfeature = an(dfeature);
-        // flags.verbose defaults on: "There is <feature> here."
-        await pline(`There is ${dfeature} here.`);
+        // C ref: pickup.c describe_decor() — !verbose drops the frame entirely
+        // and just capitalises the feature: "A fountain." for "There is a
+        // fountain here."  Length matters as much as text: the short form fits
+        // beside a pending topline and merges onto it, the long one doesn't and
+        // forces a --More--.
+        const decorMsg = (game.flags?.verbose === false)
+            ? `${dfeature.charAt(0).toUpperCase()}${dfeature.slice(1)}.`  /* upstart() */
+            : `There is ${dfeature} here.`;
+        // update_topl, not pline: C's pline() pages an unacknowledged topline
+        // and this message routinely lands on one — from moveloop_preamble()'s
+        // pickup(1) it arrives while the moon-phase greeting is still pending,
+        // which is what puts the --More-- on that line.  update_topl() only
+        // more()s a HARD-pending line (game._toplin); making it also more() a
+        // pline()'d one globally costs -119 public (seed0014), so C's
+        // "doesn't fit, so page it" rule (topl.c update_topl():257) is applied
+        // here at the one call site that needs it.
+        const pend = game._pending_message || '';
+        if (!game._winStop && pend && game._toplinSoft === pend
+            && decorMsg.length + pend.length + 3 >= 80 - 8)
+            await topl_more();
+        await update_topl(decorMsg);
     }
     game.iflags = game.iflags || {};
     game.iflags.prev_decor = game.flags?.mention_decor ? ltyp : STONE;
@@ -8790,6 +9491,20 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     const pile_limit = flags().pile_limit ?? 5;
     const skip_objects = LOOKHERE_PILE_LIMIT
         && pile_limit > 0 && obj_cnt >= pile_limit;
+
+    // C ref: invent.c look_here():4162 — before ANYTHING else (even the blind
+    // grope), a gas cloud and/or an already-seen trap under the hero is
+    // announced.  Only the trap half is modelled: visible_region_at() (gas
+    // clouds) has no port.  Without this a ':' on a trap with objects on it
+    // went straight to the "Things that are here:" window and lost C's
+    // "There is an arrow trap here.--More--" frame.
+    if (!skip_objects) {
+        const trap = trap_at_hero();
+        if (trap && trap.tseen) {
+            const { trap_explanation } = await import('./trap.js');
+            await update_topl(`There is ${an(trap_explanation(trap.ttyp))} here.`);
+        }
+    }
 
     // C ref: invent.c:4184 — a BLIND hero gropes around FIRST, before anything
     // else is described: "You try to feel what is lying here on the floor."
@@ -9129,10 +9844,13 @@ export function tool_being_used(obj) {
     return obj === game.uwep || obj.lamplit || (obj.otyp === LEASH && obj.leashmon);
 }
 
-export function doprtool() {
+// C ref: invent.c doprtool() — the '(' command.  Nothing in use is a one-line
+// message; otherwise dispinv_with_action(lets, TRUE, NULL), a PICK_ONE menu
+// whose keystrokes belong to the menu rather than to the command parser.
+export async function doprtool() {
     const lets = inventoryArray().filter(tool_being_used).map((obj) => obj_to_let(obj)).join('');
-    if (!lets) game._pending_message = 'You are not using any tools.';
-    else display_inventory(lets, false);
+    if (!lets) await pline('You are not using any tools.');
+    else await dispinv_with_action(lets, true, null);
     return ECMD_OK;
 }
 
