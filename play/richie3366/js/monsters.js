@@ -508,8 +508,8 @@ export function dmgtype(ptr, dtyp) {
 /**
  * C ref: mondata.c passes_bars :552–563 — walls / amorphous / unsolid /
  * whirly / verysmall, rust or corr dmgtype, metallivorous, or
- * slithy && !bigmonst. Callers: mon_allowflags ALLOW_BARS (D-1258).
- * Hero hack.c test_move still named.
+ * slithy && !bigmonst. Callers: mon_allowflags ALLOW_BARS (D-1258);
+ * hero hack.c test_move (D-1270).
  */
 export function passes_bars(mptr) {
     return !!(passes_walls(mptr) || amorphous(mptr) || unsolid(mptr)

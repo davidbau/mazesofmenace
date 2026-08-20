@@ -2,7 +2,7 @@
 // C ref: mon.c — mcalcmove, movemon, seemimic, wakeup, mon_allowflags (partial).
 
 import { game } from './gstate.js';
-import { rn2, d } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { dochugw, m_everyturn_effect, monflee } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
@@ -39,7 +39,7 @@ import {
     little_to_big, big_to_little, hero_conflict, resist_conflict,
     m_canseeu, on_fire,
 } from './mondata.js';
-import { objects_at, kill_egg, place_object, stackobj, delobj } from './mkobj.js';
+import { objects_at, kill_egg, place_object, stackobj, delobj, is_metallic, is_rustprone, mksobj_at } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele } from './teleport.js';
@@ -59,7 +59,9 @@ import { in_rooms, is_pool, is_lava, disturb_buried_zombies } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special } from './worn.js';
 import { adjalign } from './attrib.js';
-import { vtense } from './objnam.js';
+import { vtense, doname, distant_name } from './objnam.js';
+import { obj_resists } from './dogmove.js';
+import { touch_artifact } from './artifact.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
@@ -76,6 +78,10 @@ const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 const PM_HEZROU = monsterNames.indexOf('PM_HEZROU');
 const PM_VROCK = monsterNames.indexOf('PM_VROCK');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_RUST_MONSTER = monsterNames.indexOf('PM_RUST_MONSTER');
+const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
+const RIN_SLOW_DIGESTION = objectNames.indexOf('RIN_SLOW_DIGESTION');
+const ROCK = objectNames.indexOf('ROCK');
 const AT_BREA = 12; // C monattk.h
 const AD_DRST = 7;
 const AD_RBRE = 242;
@@ -1509,6 +1515,87 @@ export function m_consume_obj(mtmp, otmp) {
         healmon(mtmp, ocw, 0);
     }
     delobj(otmp);
+}
+
+/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
+async function You_hear_meat(line) {
+    const u = game.u || {};
+    if (u.Deaf || (u.HDeaf | 0) || (u.EDeaf | 0)
+        || u.uroleplay?.deaf || game.flags?.acoustics === false) {
+        return;
+    }
+    await pline(`You hear ${line}`);
+}
+
+/**
+ * C ref: mon.c meatmetal — non-pet eats the topmost metallic floor object
+ * that is not indigestible. 0 nothing, 1 ate, 2 died (grow_up geno; not
+ * reachable until m_consume_obj poly/stone is live). Caller:
+ * monmove.c postmov OBJ_AT when metallivorous (D-1271).
+ * Named omit: meatbox/poly/uball in m_consume_obj; meatobj; meatcorpse.
+ */
+export async function meatmetal(mtmp) {
+    if (!mtmp || mtmp.mtame) return 0;
+
+    const vis = canseemon(mtmp);
+    const verbose = game.flags?.verbose !== false;
+    const rustmon = (mtmp.data?.mndx ?? mtmp.mnum) === PM_RUST_MONSTER;
+
+    for (let otmp = objects_at(mtmp.mx, mtmp.my); otmp; otmp = otmp.nexthere) {
+        if ((rustmon && !is_rustprone(otmp))
+            || ((otmp.otyp | 0) === AMULET_OF_STRANGULATION
+                || (otmp.otyp | 0) === RIN_SLOW_DIGESTION)
+            || (otmp.opoisoned && !resists_poison(mtmp))) {
+            continue;
+        }
+        if (is_metallic(otmp) && !obj_resists(otmp, 5, 95)
+            && touch_artifact(otmp, mtmp)) {
+            if (rustmon && otmp.oerodeproof) {
+                if (vis) {
+                    const otmpname = distant_name(otmp, doname);
+                    if (verbose) {
+                        await pline_mon(
+                            mtmp,
+                            `${Monnam(mtmp)} eats ${otmpname}!`,
+                        );
+                    }
+                }
+                otmp.oerodeproof = 0;
+                mtmp.mstun = 1;
+                if (vis) {
+                    const otmpname = distant_name(otmp, doname);
+                    if (verbose) {
+                        await pline_mon(
+                            mtmp,
+                            `${Monnam(mtmp)} spits ${otmpname} out in disgust!`,
+                        );
+                    }
+                }
+            } else {
+                if (cansee(mtmp.mx, mtmp.my)) {
+                    const otmpname = distant_name(otmp, doname);
+                    if (verbose) {
+                        await pline_mon(
+                            mtmp,
+                            `${Monnam(mtmp)} eats ${otmpname}!`,
+                        );
+                    }
+                } else if (verbose) {
+                    // C Soundeffect(se_crunching_sound) empty without SND_LIB
+                    await You_hear_meat('a crunching sound.');
+                }
+                mtmp.meating = ((otmp.owt | 0) / 2 | 0) + 1;
+                m_consume_obj(mtmp, otmp);
+                if ((mtmp.mhp | 0) < 1) return 2;
+                if (rnd(25) < 3) {
+                    mksobj_at(ROCK, mtmp.mx, mtmp.my, true, false);
+                }
+                newsym(mtmp.mx, mtmp.my);
+                return 1;
+            }
+        }
+    }
+    return 0;
 }
 
 /** C ref: prop.h res_to_mr — FIRE_RES..STONE_RES → MR_* bit. */

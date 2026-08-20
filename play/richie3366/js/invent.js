@@ -65,7 +65,7 @@ import {
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
-    acurr, acurrstr, get_strength_str, exercise,
+    acurr, acurrstr, get_strength_str, exercise, Fumbling,
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
 import { depth } from './hacklib.js';
@@ -709,6 +709,7 @@ const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 const EGG = objectNames.indexOf('EGG');
 const STATUE = objectNames.indexOf('STATUE');
 const FIGURINE = objectNames.indexOf('FIGURINE');
+const LOADSTONE = objectNames.indexOf('LOADSTONE');
 
 /** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
 function is_weptool_obj(obj) {
@@ -3195,17 +3196,31 @@ export async function dolook() {
 }
 
 /**
- * C ref: invent.c hold_another_object — wish/pickup into invent.
- * Branch envelope: Blind observe; artifact touch; addinv + prinv;
- * encumber_msg after stay-in-invent (D-0863 — triggers --More-- via
- * pline NEED_MORE before makewish ublesscnt).
- * Named omissions: Fumbling/encumbrance-drop/autoquiver/fatal-corpse;
- * update_inventory / perm_invent redraw.
+ * C invent.c hold_another_object — pickup_burden default MOD_ENCUMBER.
+ * flags.pickup_burden may be the option string "stressed".
+ */
+function flags_pickup_burden_hold() {
+    const v = game.flags?.pickup_burden;
+    if (typeof v === 'number' && v >= 0) return v | 0;
+    return MOD_ENCUMBER;
+}
+
+/**
+ * C ref: invent.c hold_another_object — wish/catch/horn into invent.
+ * Stay: addinv + optional autoquiver + prinv + update_inventory +
+ * encumber_msg (D-0863).
+ * drop_it (Fumbling / inv_cnt(FALSE)>invlet_basic / near_capacity
+ * above pickup_burden, except cursed LOADSTONE): drop_fmt then
+ * can_reach_floor(TRUE)||uswallow → dropx; else freeinv +
+ * hitfloor(FALSE) (D-1272).
+ * Named omissions: fatal wished corpse; artifact fail dropy /
+ * wasUpolyd / crysknife restore; perm_invent WIN_INVEN body.
+ * Pickup highdrop hitfloor is D-1273.
  */
 export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     const { addinv } = await import('./u_init.js');
     const {
-        place_object, obj_extract_self,
+        place_object, obj_extract_self, splitobj,
     } = await import('./mkobj.js');
     const {
         touch_artifact, youmonst,
@@ -3214,34 +3229,103 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     if (!obj) return obj;
     // C invent.c hold_another_object: if (!Blind) observe_object(obj)
     if (!Blind()) observe_object(obj);
+    // C: addinv may clobber doname() obuf that drop_arg aliases.
+    const drop_arg_buf = drop_arg;
+
+    async function hold_drop_msg() {
+        if (!drop_fmt) return;
+        const msg = drop_fmt.includes('%s')
+            ? drop_fmt.replace('%s', drop_arg_buf || 'it')
+            : drop_fmt;
+        await pline(msg);
+    }
+
+    async function drop_it(otmp) {
+        await hold_drop_msg();
+        otmp.nomerge = 0;
+        const { can_reach_floor } = await import('./engrave.js');
+        const u = game.u || {};
+        // C invent.c:1299–1304 — dropx when floor-reachable or swallowed;
+        // else freeinv then hitfloor(obj, FALSE) (not verbose drop).
+        if (can_reach_floor(true) || u.uswallow) {
+            const { dropx } = await import('./do.js');
+            await dropx(otmp);
+        } else {
+            extract_invent(otmp);
+            otmp.pickup_prev = 0;
+            otmp.owornmask = 0;
+            otmp.nobj = null;
+            freeinv_core(otmp);
+            if (otmp.oclass === COIN_CLASS) {
+                game._goldCount = Math.max(0, (game._goldCount || 0)
+                    - (otmp.quan || 0));
+                if (!game.flags) game.flags = {};
+                game.flags.botl = true;
+            }
+            update_inventory();
+            const { hitfloor } = await import('./dothrow.js');
+            await hitfloor(otmp, false);
+        }
+        return null;
+    }
 
     if (obj.oartifact) {
         const u = game.u || {};
         place_object(obj, u.ux, u.uy);
         if (!touch_artifact(obj, youmonst)) {
             obj_extract_self(obj);
-            // dropy deferred — leave on floor
-            if (drop_fmt) {
-                const msg = drop_fmt.includes('%s')
-                    ? drop_fmt.replace('%s', drop_arg || 'it')
-                    : drop_fmt;
-                await pline(msg);
-            }
+            // dropy deferred — leave on floor (C dropy after extract)
+            await hold_drop_msg();
             return obj;
         }
         obj_extract_self(obj);
     }
 
+    if (Fumbling()) {
+        obj.nomerge = 1;
+        obj = await addinv(obj);
+        return await drop_it(obj);
+    }
+
     const oquan = obj.quan || 1;
-    const held = await addinv(obj);
+    let prev_encumbr = near_capacity();
+    const pickup_burden = flags_pickup_burden_hold();
+    if (prev_encumbr < pickup_burden) prev_encumbr = pickup_burden;
+
+    obj = await addinv(obj);
+    let n_nongold = 0;
+    for (const otmp of game.invent || []) {
+        if (otmp.oclass === COIN_CLASS) continue;
+        n_nongold++;
+    }
+    const not_cursed_loadstone = (obj.otyp | 0) !== LOADSTONE || !obj.cursed;
+    if (n_nongold > INVLET_BASIC
+        || (not_cursed_loadstone && near_capacity() > prev_encumbr)) {
+        if ((obj.quan || 1) > oquan) {
+            const split = splitobj(obj, oquan);
+            if (split) obj = split;
+        }
+        return await drop_it(obj);
+    }
+
+    const u = game.u || {};
+    if (game.flags?.autoquiver && !u.uquiver && !(obj.owornmask | 0)) {
+        const {
+            is_missile, ammo_and_launcher, setuqwep,
+        } = await import('./wield.js');
+        if (is_missile(obj)
+            || ammo_and_launcher(obj, u.uwep)
+            || ammo_and_launcher(obj, u.uswapwep)) {
+            setuqwep(obj);
+        }
+    }
     if (hold_msg || drop_fmt) {
         // C: prinv(hold_msg, obj, oquan) — oquan before merge
-        await prinv(hold_msg || null, held, oquan);
+        await prinv(hold_msg || null, obj, oquan);
     }
-    // C: update_inventory(); encumber_msg(); — invent redraw deferred;
-    // encumber_msg pline flushes prior prinv --More-- (xwaitforspace).
+    update_inventory();
     await encumber_msg();
-    return held;
+    return obj;
 }
 
 /**

@@ -37,7 +37,7 @@ import {
     Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
     P_DART, P_BOOMERANG,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
-    ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum,
+    ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum, MV_KNOWS_EGG,
     ONAME, has_oname,
     CXN_NORMAL, CXN_SINGULAR, CXN_NO_PFX, CXN_PFX_THE, CXN_ARTICLE,
     CXN_NOCORPSE,
@@ -822,7 +822,7 @@ function obj_pmname_corpse(obj) {
  * C ref: objnam.c corpse_xname — unique/pname possessive + adjective
  * placement (D-1234); glob OBJ_NAME (D-1255). CXN_SINGULAR / NO_PFX /
  * PFX_THE / ARTICLE / NOCORPSE.
- * Named omit: doname EGG / MEAT_RING / candle partly used.
+ * Named omit: doname MEAT_RING / candle partly used.
  */
 export function corpse_xname(obj, adjective, cxn_flags) {
     const flags = cxn_flags | 0;
@@ -1618,14 +1618,25 @@ export function doname(obj) {
 
     // C: FOOD_CLASS — oeaten → "partly eaten " (before just_an redo).
     // CORPSE → corpse_xname(prefix, CXN_ARTICLE|CXN_NOCORPSE) so unique/
-    // pname adjectives sit after the possessive (D-1255). EGG / MEAT_RING
+    // pname adjectives sit after the possessive (D-1255). EGG →
+    // pmnames[NEUTRAL] + optional "(laid by you)" (D-1276). MEAT_RING
     // still deferred.
+    let eggLaidByYou = false;
     if (donameClass === FOOD_CLASS && obj.oeaten) {
         prefix += 'partly eaten ';
     }
     if (donameClass === FOOD_CLASS && oname === 'CORPSE') {
         const cxarg = ((quan !== 1 ? 0 : CXN_ARTICLE) | CXN_NOCORPSE);
         prefix = `${corpse_xname(obj, prefix, cxarg)} `;
+    } else if (donameClass === FOOD_CLASS && oname === 'EGG') {
+        // C doname_base FOOD EGG — stale_egg is #if 0 (corpses don't tell).
+        const omndx = obj.corpsenm;
+        const knowsEgg = !!((game.mvitals?.[omndx]?.mvflags | 0) & MV_KNOWS_EGG);
+        if (ismnum(omndx) && (known || knowsEgg)) {
+            const mnam = pmnames[omndx]?.[NEUTRAL] || '';
+            prefix += `${mnam} `;
+            if ((obj.spe | 0) === 1) eggLaidByYou = true;
+        }
     }
 
     // C ref: objnam.c — redo article based on text after "a "
@@ -1641,6 +1652,9 @@ export function doname(obj) {
     if (onameStr && obj.dknown) {
         bp += ` named ${onameStr}`;
     }
+    // C doname_base FOOD EGG Concat(bp, " (laid by you)") after xname
+    // (xname already includes " named ").
+    if (eggLaidByYou) bp += ' (laid by you)';
 
     // C: doname_base — cknown && Has_contents → " containing %ld item%s"
     // invent.c count_contents(obj, FALSE, FALSE, TRUE, FALSE): separate

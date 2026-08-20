@@ -30,7 +30,7 @@ import {
 } from './mkobj.js';
 import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
-    confdir, losehp, maybe_half_phys, nomul,
+    confdir, losehp, maybe_half_phys, nomul, switch_terrain,
 } from './hack.js';
 import { objectNames } from './generated/objects_data.js';
 import { WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS, COIN_CLASS } from './objects.js';
@@ -592,8 +592,11 @@ export async function liquid_flow(x, y, typ, ttmp, fillmsg) {
  * shop add_damage / pay ruin; PIT at_u set_utrap + wake_nearby; HOLE hero
  * fall goto_level + shopdig(1) pack snatch; mon teleport_pet migrate;
  * impact_drop floor objs through hole.
- * Named omit: switch_terrain; buried_ball_to_punishment;
- * make_angry_shk; ship_object callers.
+ * PIT after wake_nearby and HOLE at_u await switch_terrain then
+ * re-read Lev/Fly (D-1269; C dig.c:733 / :757). maketrap PIT/HOLE
+ * set_levltyp STONE/SCORR→CORR / wall|SDOOR (D-1280). Named omit:
+ * buried_ball_to_punishment; make_angry_shk; ship_object;
+ * DRAWBRIDGE_UP ice morph; shop add_damage; liquid_flow.
  */
 export async function digactualhole(x, y, madeby, ttyp) {
     const lev = game.level?.at(x, y);
@@ -603,7 +606,8 @@ export async function digactualhole(x, y, madeby, ttyp) {
     const madeby_obj = madeby === BY_OBJECT;
     const heros_fault = madeby_u || madeby_obj;
     const atHero = u_at(x, y);
-    let wont_fall = !!(u.Levitation || u.Flying);
+    /* C: wont_fall = Levitation || Flying (youprop.h macros). */
+    let wont_fall = !!(Levitation() || Flying());
     const mtmp0 = m_at(x, y);
 
     if (atHero && u.utrap) {
@@ -685,8 +689,11 @@ export async function digactualhole(x, y, madeby, ttyp) {
             add_damage(x, y, heros_fault ? SHOP_PIT_COST : 0);
         }
         if (madeby_u) wake_nearby(false);
-        // switch_terrain deferred
-        if (u.Levitation || u.Flying) wont_fall = true;
+        /* C dig.c:731–735 — digging down while encased in solid rock
+         * which is blocking levitation or flight. Unconditional on PIT
+         * (hero cell, not the hole coords). */
+        await switch_terrain();
+        if (Levitation() || Flying()) wont_fall = true;
 
         if (atHero) {
             if (!wont_fall) {
@@ -718,8 +725,9 @@ export async function digactualhole(x, y, madeby, ttyp) {
     } else {
         // HOLE
         if (atHero) {
-            // switch_terrain deferred
-            if (u.Levitation || u.Flying) wont_fall = true;
+            /* C dig.c:754–759 — same encased-rock unblock; HOLE only at_u. */
+            await switch_terrain();
+            if (Levitation() || Flying()) wont_fall = true;
             // next_to_u leash gate — pet may jerk hero back (D-1005)
             if (!u.ustuck && !wont_fall) {
                 const { next_to_u } = await import('./apply.js');

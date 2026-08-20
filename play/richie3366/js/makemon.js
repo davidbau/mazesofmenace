@@ -1064,6 +1064,9 @@ export function add_to_minv(mtmp, obj) {
 // C ref: steal.c mpickobj — carry_obj_effects then add_to_minv
 export function mpickobj(mtmp, otmp) {
     if (!otmp) return 1;
+    // C steal.c: thrown/kicked tracker must not place after minvent take
+    if (otmp === game.thrownobj) game.thrownobj = null;
+    else if (otmp === game.kickedobj) game.kickedobj = null;
     // C steal.c mpickobj — carry_obj_effects before add_to_minv
     carry_obj_effects(otmp);
     return add_to_minv(mtmp, otmp);

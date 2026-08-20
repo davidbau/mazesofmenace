@@ -80,6 +80,7 @@ import {
     hero_tread_disturb_buried_zombies, hero_hideunder_after_move,
     hero_mimic_unhide_after_move,
     test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
+    test_move_hero_passes_bars, test_move_hero_chews_bars, still_chewing,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -376,12 +377,14 @@ function rushDirFromCtrl(key) {
 }
 
 // C ref: hack.c — check if a cell blocks movement
-// C test_move: IS_OBSTRUCTED(typ) || typ == IRONBARS (plus closed doors).
+// C test_move: IS_OBSTRUCTED(typ) || typ == IRONBARS (plus closed doors),
+// except IRONBARS when Passes_walls || passes_bars(youmonst.data) (D-1270).
 // IS_OBSTRUCTED covers STONE..SCORR including TREE/SDOOR/SCORR (typ < POOL).
 function blocksMove(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
-    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) return true;
+    if (IS_OBSTRUCTED(loc.typ)) return true;
+    if (loc.typ === IRONBARS && !test_move_hero_passes_bars()) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
     return false;
 }
@@ -464,9 +467,10 @@ function end_running() {
  * C ref: hack.c test_move DO_MOVE + flags.mention_walls on IS_OBSTRUCTED.
  * Uses defsyms[].explanation via an(); S_stone → "solid stone".
  * C: pline_dir(xytodir(dx,dy), "It's %s.", buf) (D-1216).
- * Deferred: Blind feel_location, Passes_walls/may_passwall, Underwater,
- * IRONBARS chew, tunnels/still_chewing, autodig, is_db_wall, Sokoban
+ * Deferred: Blind feel_location, Passes_walls/may_passwall on rock,
+ * Underwater, tunnels/still_chewing rock, autodig, is_db_wall, Sokoban
  * resist, full back_to_glyph/wall_angle→S_stone edge cases.
+ * IRONBARS pass/chew is D-1270 (blocksMove / still_chewing, not here).
  * run>=2 boulder pline_dir is D-1226 (test_move, not this bump).
  */
 async function mention_walls_obstructed(x, y) {
@@ -2105,6 +2109,19 @@ async function domove(dx, dy) {
         game.context.move = 0;
         nomul(0);
         return;
+    }
+
+    // C ref: hack.c test_move :1024–1036 — IRONBARS DO_MOVE chew for
+    // rust/corr/metallivore before the Passes_walls || passes_bars
+    // allow (D-1270). TEST_MOVE/TRAV skip chew via blocksMove.
+    const destTyp = game.level?.at(newx, newy)?.typ;
+    if (destTyp === IRONBARS && test_move_hero_chews_bars()) {
+        if (await still_chewing(newx, newy)) {
+            // C hack.c:2843–2848 — !test_move && !door_opened
+            if (game.context) game.context.move = 0;
+            nomul(0);
+            return;
+        }
     }
 
     // C ref: hack.c test_move testdiag — no diagonal into intact doorway

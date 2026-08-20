@@ -12,7 +12,7 @@ import {
     let_to_name, DEF_INV_ORDER, prinv, near_capacity, calc_capacity,
     max_capacity,
 } from './invent.js';
-import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT } from './hack.js';
+import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT, switch_terrain } from './hack.js';
 import {
     flush_screen, pline, newsym, docrt, bot, flush_topl_more, canseemon,
     clear_nhwindow_message,
@@ -25,8 +25,8 @@ import {
 import { can_reach_floor } from './engrave.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
-    is_pit,
-    STONE, ICE,
+    is_pit, LOST_DROPPED,
+    STONE, ICE, MAX_TYPE,
     IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL, IS_SINK,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE,
     Has_contents, Is_container,
@@ -927,7 +927,7 @@ export async function dopickup() {
 /**
  * C ref: hack.c pooleffects(newspot).
  * Branch envelope: enter pool/lava → drown/lava_effects; leave-water /
- * steed / ceiling_hider / Wwalking arms deferred.
+ * set_uinwater / steed / ceiling_hider / Wwalking arms deferred.
  * @returns {Promise<boolean>} true → skip rest of spoteffects
  */
 export async function pooleffects(newspot) {
@@ -955,18 +955,34 @@ export async function pooleffects(newspot) {
 
 /**
  * C ref: hack.c spoteffects(pick).
- * Ported envelope: pooleffects; check_special_room; IS_SINK+Levitation
- * dosinkfall (D-0976); when !in_steed_dismounting — non-pit pickup then
- * dotrap then pit pickup.
+ * Ported envelope: dest-typ / MAX_TYPE switch_terrain (D-1268) before
+ * pooleffects; check_special_room; IS_SINK+Levitation dosinkfall
+ * (D-0976); when !in_steed_dismounting — non-pit pickup then dotrap
+ * then pit pickup.
  * Deferred: recursion guards, levitation timeout adjust, Warning ice,
- * hidden monster surprise, switch_terrain.
+ * hidden monster surprise. digactualhole PIT/HOLE is D-1269.
+ * **maketrap PIT/HOLE set_levltyp D-1280**.
+ * dothrow hurtle / u_on_rndspot / objnam wish still call
+ * switch_terrain themselves. set_uinwater is D-1267.
  */
 export async function spoteffects(pick) {
+    const u = game.u;
+    if (u) {
+        /* C hack.c:3342–3347 — moving onto different terrain may toggle
+         * Lev/Fly. Level change sets <ux0,uy0> to <ux,uy> so dest==origin
+         * then, but also sets iflags.terrain_typ = MAX_TYPE. */
+        const dest = game.level?.at(u.ux | 0, u.uy | 0);
+        const orig = game.level?.at(u.ux0 | 0, u.uy0 | 0);
+        if ((dest?.typ | 0) !== (orig?.typ | 0)
+            || (game.iflags?.terrain_typ | 0) === MAX_TYPE) {
+            await switch_terrain();
+        }
+    }
+
     if (await pooleffects(true)) return;
 
     await check_special_room(false);
 
-    const u = game.u;
     if (u) {
         const typ = game.level?.at(u.ux | 0, u.uy | 0)?.typ;
         if (IS_SINK(typ) && Levitation_pe()) {
@@ -1942,13 +1958,15 @@ async function able_to_loot(x, y, looting) {
 
 /**
  * C ref: pickup.c tipcontainer — empty box onto floor (no target bag).
+ * highdrop = !can_reach_floor(TRUE); swallowed clears it; then
+ * how_lost LOST_DROPPED + hitfloor(TRUE) (D-1273).
  * Named omissions: tipcontainer_gettarget menu; bag-of-holding explode;
- * ice-box thaw; shop billing; altar/highdrop; cursed mbag item-gone;
- * otrapped chest_trap; invent getobj tip;
- * subfrombill after floor shop BoT/horn.
+ * ice-box thaw; shop billing; altarizing doaltarobj; cursed mbag
+ * item-gone; otrapped chest_trap; invent getobj tip; dropy terse
+ * comma-list; toss_up; subfrombill after floor shop BoT/horn.
  * @param {object} box
  */
-async function tipcontainer(box) {
+export async function tipcontainer(box) {
     if (!box) return;
     const ox = (box.ox | 0) || (game.u?.ux | 0);
     const oy = (box.oy | 0) || (game.u?.uy | 0);
@@ -2007,15 +2025,37 @@ async function tipcontainer(box) {
         return;
     }
     box.cknown = 1;
+    const u = game.u || {};
+    // C pickup.c:3732–3741 — highdrop = !can_reach_floor(TRUE);
+    // swallowed clears highdrop (and altarizing, still named).
+    let highdrop = !can_reach_floor(true);
+    if (u.uswallow) highdrop = false;
     const multi = !!(box.cobj?.nobj);
-    await pline(`${multi ? 'Objects spill' : 'An object spills'} out:`);
+    // C: terse = !(highdrop || altarizing || costly_spot). Altar/shop
+    // named, so highdrop is the live terse-breaker. Non-highdrop keeps
+    // fortress colon + per-item doname (C comma-list still named).
+    await pline(
+        `${multi ? 'Objects spill' : 'An object spills'} out${
+            highdrop ? '.' : ':'
+        }`,
+    );
     let next = box.cobj;
     while (next) {
         const otmp = next;
         next = otmp.nobj;
         obj_extract_self(otmp);
-        place_object(otmp, ox, oy);
-        await pline(`${doname(otmp)}.`);
+        if (highdrop) {
+            // C pickup.c:3807–3810 — might break or fall down stairs;
+            // hitfloor handles altars itself.
+            otmp.ox = (box.ox | 0) || (u.ux | 0);
+            otmp.oy = (box.oy | 0) || (u.uy | 0);
+            otmp.how_lost = LOST_DROPPED;
+            const { hitfloor } = await import('./dothrow.js');
+            await hitfloor(otmp, true);
+        } else {
+            place_object(otmp, ox, oy);
+            await pline(`${doname(otmp)}.`);
+        }
     }
     box.cobj = null;
     if (typeof box.owt === 'number') box.owt = weight(box);

@@ -42,7 +42,8 @@ import {
     ROGUESET,
     DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
     DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
-    M_AP_OBJECT, M_AP_TYPE,
+    M_AP_OBJECT, M_AP_FURNITURE, M_AP_NOTHING,
+    M_AP_TYPE, M_AP_TYPMASK,
     MCORPSENM,
     isok,
     u_at,
@@ -550,13 +551,134 @@ function mimic_object_appearance_glyph(mtmp) {
 }
 
 /**
- * C ref: display.h hero_glyph / maybe_display_usteed.
- * (Upolyd || !showrace) → u.umonnum else urace.mnum; mlet+mcolor.
- * Named omissions: Hallucination random; gender glyph variants.
+ * C ref: display.h cmap_to_glyph(cmap_idx). Walls → cmap_walls_to_glyph
+ * branch colors. S_altar → altar_to_glyph(AM_NEUTRAL) (no
+ * USE_GENERAL_ALTAR_COLORS). DEC remaps match terrain_glyph.
+ * Named: trap/zap/expl cmap; drawbridge cmap 42–45.
  */
-function hero_display_glyph() {
-    const steed = game.u?.usteed;
-    if (steed && mon_visible(steed)) return mon_glyph(steed);
+function cmap_idx_to_glyph(cmap_idx) {
+    const idx = cmap_idx | 0;
+    const dec = use_decgraphics();
+    if (idx >= S_STONE && idx <= S_TRWALL) {
+        const tab = wall_glyph_table();
+        const g = tab[idx] || tab[S_STONE];
+        if (idx === S_STONE) return { ch: g.ch, color: g.color, dec: !!g.dec };
+        return { ch: g.ch, color: wall_cmap_color(), dec: !!g.dec };
+    }
+    switch (idx) {
+    case S_NDOOR:
+        return dec ? { ch: '~', color: NO_COLOR, dec: true }
+            : { ch: '.', color: NO_COLOR, dec: false };
+    case S_VODOOR:
+        return dec ? { ch: 'a', color: CLR_BROWN, dec: true }
+            : { ch: '-', color: CLR_BROWN, dec: false };
+    case S_HODOOR:
+        return dec ? { ch: 'a', color: CLR_BROWN, dec: true }
+            : { ch: '|', color: CLR_BROWN, dec: false };
+    case S_VCDOOR:
+    case S_HCDOOR:
+        return { ch: '+', color: CLR_BROWN, dec: false };
+    case S_BARS:
+        return dec ? { ch: '|', color: HI_METAL, dec: true }
+            : { ch: '#', color: HI_METAL, dec: false };
+    case S_TREE_CMAP:
+        return dec ? { ch: 'g', color: CLR_GREEN, dec: true }
+            : { ch: '#', color: CLR_GREEN, dec: false };
+    case S_ROOM_CMAP:
+        return dec ? { ch: '~', color: NO_COLOR, dec: true }
+            : { ch: '.', color: NO_COLOR, dec: false };
+    case S_DARKROOM:
+        return { ch: '.', color: CLR_BLACK, dec: false };
+    case S_ENGROOM:
+        return { ch: '`', color: CLR_BRIGHT_BLUE, dec: false };
+    case S_CORR:
+        return { ch: '#', color: NO_COLOR, dec: false };
+    case S_LITCORR:
+        return { ch: '#', color: CLR_WHITE, dec: false };
+    case S_ENGRCORR:
+        return { ch: '#', color: CLR_BRIGHT_BLUE, dec: false };
+    case S_UPSTAIR:
+        return { ch: '<', color: CLR_GRAY, dec: false };
+    case S_DNSTAIR:
+        return { ch: '>', color: CLR_GRAY, dec: false };
+    case S_UPLADDER:
+        return { ch: '<', color: CLR_BROWN, dec: false };
+    case S_DNLADDER:
+        return { ch: '>', color: CLR_BROWN, dec: false };
+    case S_BRUPSTAIR:
+        return { ch: '<', color: CLR_YELLOW, dec: false };
+    case S_BRDNSTAIR:
+        return { ch: '>', color: CLR_YELLOW, dec: false };
+    case S_BRUPLADDER:
+        return { ch: '<', color: CLR_YELLOW, dec: false };
+    case S_BRDNLADDER:
+        return { ch: '>', color: CLR_YELLOW, dec: false };
+    case S_ALTAR_CMAP:
+        // C cmap_to_glyph(S_altar) → altar_to_glyph(AM_NEUTRAL) CLR_GRAY
+        return dec ? { ch: '{', color: CLR_GRAY, dec: true }
+            : { ch: '_', color: CLR_GRAY, dec: false };
+    case S_GRAVE_CMAP:
+        return { ch: '|', color: CLR_WHITE, dec: false };
+    case S_THRONE_CMAP:
+        return { ch: '\\', color: HI_GOLD, dec: false };
+    case S_SINK_CMAP:
+        return { ch: '{', color: CLR_WHITE, dec: false };
+    case S_FOUNTAIN_CMAP:
+        return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    case S_POOL_CMAP:
+        return dec ? { ch: '`', color: CLR_BLUE, dec: true }
+            : { ch: '}', color: CLR_BLUE, dec: false };
+    case S_ICE_CMAP:
+        return dec ? { ch: '~', color: CLR_CYAN, dec: true }
+            : { ch: '.', color: CLR_CYAN, dec: false };
+    case S_LAVA_CMAP:
+        return dec ? { ch: '`', color: CLR_RED, dec: true }
+            : { ch: '}', color: CLR_RED, dec: false };
+    case S_LAVAWALL_CMAP:
+        return dec ? { ch: '`', color: CLR_ORANGE, dec: true }
+            : { ch: '}', color: CLR_ORANGE, dec: false };
+    case S_AIR_CMAP:
+        return { ch: ' ', color: CLR_CYAN, dec: false };
+    case S_CLOUD_CMAP:
+        return { ch: '#', color: CLR_GRAY, dec: false };
+    case S_WATER_CMAP:
+        return dec ? { ch: '`', color: CLR_BRIGHT_BLUE, dec: true }
+            : { ch: '}', color: CLR_BRIGHT_BLUE, dec: false };
+    default:
+        return { ch: '?', color: NO_COLOR, dec: false };
+    }
+}
+
+/**
+ * C ref: display.h objnum_to_glyph — otyp + GLYPH_OBJ_OFF. Not Hallu,
+ * not statue_to_glyph / corpse_to_glyph.
+ */
+function objnum_to_display_glyph(onum) {
+    const def = game.objects?.[onum | 0];
+    const oclass = def?.oc_class ?? ILLOBJ_CLASS;
+    let ch = DEF_OC_SYM[oclass] || ']';
+    if (oclass === COIN_CLASS) ch = game._goldsym || ch;
+    const color = def?.oc_color ?? NO_COLOR;
+    return { ch, color, dec: false };
+}
+
+/**
+ * C ref: display.h monnum_to_glyph(mnum, Ugender). Not what_mon / Hallu.
+ * Named: male/fem glyph offsets (same mlet on tty).
+ */
+function monnum_to_display_glyph(mnum) {
+    const n = mnum | 0;
+    const ptr = n >= 0 ? mons(n) : null;
+    const ch = MLET_CH[ptr?.mlet] || '?';
+    const color = n >= 0 ? (mcolors[n] ?? CLR_GRAY) : CLR_GRAY;
+    return { ch, color, dec: false };
+}
+
+/**
+ * C ref: display.h hero_glyph — (Upolyd || !showrace) ? umonnum : urace.mnum.
+ * Named: Hallucination random; gender glyph variants.
+ */
+function hero_glyph() {
     const u = game.u;
     const flags = game.flags || {};
     const mnum = (Upolyd(u) || !flags.showrace)
@@ -565,7 +687,36 @@ function hero_display_glyph() {
     const ptr = mons(mnum);
     const ch = MLET_CH[ptr?.mlet] || '@';
     const color = (mnum >= 0) ? (mcolors[mnum] ?? CLR_GRAY) : CLR_WHITE;
-    return { ch, color };
+    return { ch, color, dec: false };
+}
+
+/**
+ * C ref: display.h display_self / maybe_display_usteed.
+ * maybe_display_usteed first; then U_AP_TYPE (m_ap_type & M_AP_TYPMASK):
+ * NOTHING → hero_glyph; FURNITURE → cmap_to_glyph(mappearance);
+ * OBJECT → objnum_to_glyph(mappearance); else monnum_to_glyph(..., Ugender).
+ */
+function hero_display_glyph() {
+    const steed = game.u?.usteed;
+    if (steed && mon_visible(steed)) return mon_glyph(steed);
+    const you = game.youmonst;
+    const ap = (you?.m_ap_type | 0) & M_AP_TYPMASK;
+    if (ap === M_AP_NOTHING) return hero_glyph();
+    if (ap === M_AP_FURNITURE) return cmap_idx_to_glyph(you.mappearance | 0);
+    if (ap === M_AP_OBJECT) return objnum_to_display_glyph(you.mappearance | 0);
+    // else M_AP_MONSTER
+    return monnum_to_display_glyph(you.mappearance | 0);
+}
+
+/**
+ * C ref: display.h display_self — show_glyph(u.ux, u.uy, …).
+ * Named: find_trap cls wait; muse.c display_self.
+ */
+export function display_self() {
+    const u = game.u;
+    if (!u) return;
+    const hg = hero_display_glyph();
+    show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch, hg.color, !!hg.dec);
 }
 
 // C ref: display.h covers_objects — is_pool && !Underwater, or lava.
@@ -966,6 +1117,40 @@ const S_TUWALL = 8;
 const S_TDWALL = 9;
 const S_TLWALL = 10;
 const S_TRWALL = 11;
+// C defsym.h PCHAR after walls — display_self M_AP_FURNITURE mappearance.
+const S_NDOOR = 12;
+const S_VODOOR = 13;
+const S_HODOOR = 14;
+const S_VCDOOR = 15;
+const S_HCDOOR = 16;
+const S_BARS = 17;
+const S_TREE_CMAP = 18;
+const S_ROOM_CMAP = 19;
+const S_DARKROOM = 20;
+const S_ENGROOM = 21;
+const S_CORR = 22;
+const S_LITCORR = 23;
+const S_ENGRCORR = 24;
+const S_UPSTAIR = 25;
+const S_DNSTAIR = 26;
+const S_UPLADDER = 27;
+const S_DNLADDER = 28;
+const S_BRUPSTAIR = 29;
+const S_BRDNSTAIR = 30;
+const S_BRUPLADDER = 31;
+const S_BRDNLADDER = 32;
+const S_ALTAR_CMAP = 33;
+const S_GRAVE_CMAP = 34;
+const S_THRONE_CMAP = 35;
+const S_SINK_CMAP = 36;
+const S_FOUNTAIN_CMAP = 37;
+const S_POOL_CMAP = 38;
+const S_ICE_CMAP = 39;
+const S_LAVA_CMAP = 40;
+const S_LAVAWALL_CMAP = 41;
+const S_AIR_CMAP = 46;
+const S_CLOUD_CMAP = 47;
+const S_WATER_CMAP = 48;
 
 /** C ref: defsym.h PCHAR Primary (ASCII) wall glyphs. */
 const WALL_GLYPH_ASCII = {
@@ -1251,24 +1436,25 @@ function do_crwall(seenv, row) {
     return row[col];
 }
 
+/** C display.h cmap_walls_to_glyph + display.c wallcolors[] / reset_glyphmap. */
+function wall_cmap_color() {
+    let color = CLR_GRAY;
+    const uz = game.u?.uz;
+    if (In_mines(uz)) color = CLR_BROWN;
+    else if (game.dungeons?.[uz?.dnum | 0]?.flags?.hellish) color = CLR_RED;
+    else if (In_sokoban(uz) && use_decgraphics()) color = CLR_BLUE;
+    return color;
+}
+
 function wall_glyph(loc) {
     // C: idx = ptr->seenv ? wall_angle(ptr) : S_stone
     const idx = (loc.seenv) ? wall_angle(loc) : S_STONE;
     const tab = wall_glyph_table();
     const g = tab[idx] || tab[S_STONE];
     if (idx === S_STONE) return g;
-    // C ref: display.h cmap_walls_to_glyph + display.c wallcolors[] /
-    // reset_glyphmap wall_color(...). Source wallcolors[] default
-    // CLR_GRAY; intended table (comment): main GRAY, mines BROWN,
-    // gehennom RED, knox GRAY, sokoban BRIGHT_BLUE. Recorder matches
-    // mines BROWN (D-0283), Gehennom RED (D-0801), Sokoban blue only
-    // under DECgraphics (D-0729).
-    let color = CLR_GRAY;
-    const uz = game.u?.uz;
-    if (In_mines(uz)) color = CLR_BROWN;
-    else if (game.dungeons?.[uz?.dnum | 0]?.flags?.hellish) color = CLR_RED;
-    else if (In_sokoban(uz) && use_decgraphics()) color = CLR_BLUE;
-    return { ch: g.ch, color, dec: g.dec };
+    // Recorder: mines BROWN (D-0283), Gehennom RED (D-0801), Sokoban blue
+    // only under DECgraphics (D-0729). knox still GRAY.
+    return { ch: g.ch, color: wall_cmap_color(), dec: g.dec };
 }
 
 /**
@@ -2305,10 +2491,7 @@ export function newsym(x, y) {
 
     // C: only permit updating the hero when swallowed
     if (game.u?.uswallow) {
-        if (game.u.ux === x && game.u.uy === y) {
-            const hg = hero_display_glyph();
-            show_glyph_cell(x, y, hg.ch, hg.color, false);
-        }
+        if (game.u.ux === x && game.u.uy === y) display_self();
         return;
     }
 
@@ -2322,17 +2505,11 @@ export function newsym(x, y) {
             const see_self = canspotself();
             // C: _map_location(x, y, !see_self); if (see_self) display_self()
             map_location(x, y, !see_self);
-            if (see_self) {
-                const hg = hero_display_glyph();
-                show_glyph_cell(x, y, hg.ch, hg.color, false);
-            }
+            if (see_self) display_self();
         } else {
             // C: feel_location then display_self if canspotself
             feel_location(x, y);
-            if (canspotself()) {
-                const hg = hero_display_glyph();
-                show_glyph_cell(x, y, hg.ch, hg.color, false);
-            }
+            if (canspotself()) display_self();
         }
         return;
     }
@@ -2576,10 +2753,7 @@ export function swallowed(first = 0) {
         if (rght_ok) swallow_cell(ux + 1, uy - 1, 'tr', swallower);
     }
     if (left_ok) swallow_cell(ux - 1, uy, 'ml', swallower);
-    {
-        const hg = hero_display_glyph();
-        show_glyph_cell(ux, uy, hg.ch, hg.color, false);
-    }
+    display_self();
     if (rght_ok) swallow_cell(ux + 1, uy, 'mr', swallower);
     if (isok(ux, uy + 1)) {
         if (left_ok) swallow_cell(ux - 1, uy + 1, 'bl', swallower);

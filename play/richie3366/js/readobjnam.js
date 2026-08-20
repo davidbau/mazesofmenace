@@ -21,13 +21,23 @@ import {
     TOOL_CLASS,
     FOOD_CLASS,
 } from './objects.js';
-import { mksobj, mkobj, weight, curse, oc_merge_of } from './mkobj.js';
+import { mksobj, mkobj, weight, curse, oc_merge_of, spot_stop_timers } from './mkobj.js';
 import { artifact_name, nartifact_exist } from './artifact.js';
 import { oname } from './do_name.js';
 import { name_to_monplus } from './mondata.js';
-import { makesingular } from './objnam.js';
+import { makesingular, An } from './objnam.js';
 import { NON_PM, LOW_PM, monsterNames } from './monsters.js';
-import { ONAME_WISH, SPE_LIM } from './const.js';
+import {
+    ONAME_WISH, SPE_LIM,
+    FOUNTAIN, THRONE, SINK, ALTAR, TREE, IRONBARS, CLOUD,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, ROOM,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, STAIRS, LADDER, SDOOR,
+    F_LOOTED, T_LOOTED, S_LPUDDING, S_LDWASHER, S_LRING,
+    TREE_LOOTED, TREE_SWARM, ICED_POOL, ICED_MOAT,
+    A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_NONE, Align2amask,
+    IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_WALL, IS_DOOR, IS_FURNITURE,
+    MAGIC_PORTAL, MELT_ICE_AWAY, TT_LAVA, TT_NONE,
+} from './const.js';
 
 const STRANGE_OBJECT = 0;
 const GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
@@ -67,6 +77,46 @@ function Luck() {
 
 function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
+}
+
+/** C objnam.c BSTRCMPI(bp, eos(bp)-n, suff) — case-insensitive suffix. */
+function bstrcmpi_end(bp, suff) {
+    const s = String(bp || '');
+    const t = String(suff);
+    if (s.length < t.length) return false;
+    return s.slice(-t.length).toLowerCase() === t.toLowerCase();
+}
+
+function strncmpi_start(bp, pref) {
+    const s = String(bp || '');
+    const t = String(pref);
+    return s.slice(0, t.length).toLowerCase() === t.toLowerCase();
+}
+
+function upstart(str) {
+    const s = String(str || '');
+    if (!s) return s;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function t_at_local(x, y) {
+    const traps = game.level?.traps;
+    if (!traps) return null;
+    for (const t of traps) {
+        if (t && (t.tx | 0) === (x | 0) && (t.ty | 0) === (y | 0)) return t;
+    }
+    return null;
+}
+
+function deltrap_local(trap) {
+    const traps = game.level?.traps;
+    if (!traps || !trap) return;
+    const i = traps.indexOf(trap);
+    if (i >= 0) traps.splice(i, 1);
+}
+
+function CAN_OVERWRITE_TERRAIN(ttyp) {
+    return ttyp !== LADDER && ttyp !== STAIRS;
 }
 
 function fuzzymatch(u, t) {
@@ -265,10 +315,206 @@ function readobjnam_any(d) {
 }
 
 /**
+ * C ref: objnam.c wizterrainwish — wizard furniture/terrain wish then
+ * madeterrain postamble switch_terrain (D-1279; C :3872–3910).
+ * Trap loop, door/wall/secret corridor, drawbridge under, lava
+ * pooleffects, water/fire_damage_chain, melting ice, set_wallprop_from_str
+ * still named.
+ */
+async function wizterrainwish(d) {
+    const u = game.u;
+    if (!u) return HANDS_OBJ;
+    const x = u.ux | 0;
+    const y = u.uy | 0;
+    const lev = game.level?.at(x, y);
+    if (!lev) return null;
+    const {
+        switch_terrain, set_uinwater, is_pool, is_lava, waterbody_name,
+    } = await import('./hack.js');
+    const { feel_newsym, pline, docrt } = await import('./display.js');
+    const { recalc_block_point } = await import('./vision.js');
+    const bp = d.bp || '';
+    let madeterrain = false;
+    let badterrain = false;
+    const oldtyp = lev.typ | 0;
+    const is_dbridge = oldtyp === DRAWBRIDGE_DOWN || oldtyp === DRAWBRIDGE_UP;
+    const lf = game.level.flags || (game.level.flags = {});
+
+    if (bstrcmpi_end(bp, 'fountain')) {
+        lev.typ = FOUNTAIN;
+        if (oldtyp !== FOUNTAIN) lf.nfountains = (lf.nfountains | 0) + 1;
+        lev.looted = d.looted ? F_LOOTED : 0;
+        lev.blessedftn = !!(d.blessed || strncmpi_start(bp, 'magic '));
+        await pline(`A ${lev.blessedftn ? 'magic ' : ''}fountain.`);
+        madeterrain = true;
+    } else if (bstrcmpi_end(bp, 'throne')) {
+        lev.typ = THRONE;
+        lev.looted = d.looted ? T_LOOTED : 0;
+        await pline('A throne.');
+        madeterrain = true;
+    } else if (bstrcmpi_end(bp, 'sink')) {
+        lev.typ = SINK;
+        if (oldtyp !== SINK) lf.nsinks = (lf.nsinks | 0) + 1;
+        lev.looted = d.looted ? (S_LPUDDING | S_LDWASHER | S_LRING) : 0;
+        await pline('A sink.');
+        madeterrain = true;
+    } else if (!is_dbridge && (bstrcmpi_end(bp, 'pool')
+            || bstrcmpi_end(bp, 'moat')
+            || bstrcmpi_end(bp, 'wall of water'))) {
+        const ltyp = bstrcmpi_end(bp, 'pool') ? POOL
+            : bstrcmpi_end(bp, 'moat') ? MOAT
+            : WATER;
+        lev.typ = ltyp;
+        lev.flags = 0;
+        const { del_engr_at } = await import('./engrave.js');
+        del_engr_at(x, y);
+        const save = u.EHalluc_resistance | 0;
+        u.EHalluc_resistance = 1;
+        const new_water = waterbody_name(x, y);
+        u.EHalluc_resistance = save;
+        await pline(`${An(new_water)}.`);
+        madeterrain = true;
+    } else if (!is_dbridge && (bstrcmpi_end(bp, 'lava')
+            || bstrcmpi_end(bp, 'wall of lava'))) {
+        const ltyp = bstrcmpi_end(bp, 'wall of lava') ? LAVAWALL : LAVAPOOL;
+        lev.typ = ltyp;
+        lev.flags = 0;
+        const { del_engr_at } = await import('./engrave.js');
+        del_engr_at(x, y);
+        await pline(`A ${ltyp === LAVAPOOL ? 'pool' : 'wall'} of molten lava.`);
+        madeterrain = true;
+    } else if (!is_dbridge && bstrcmpi_end(bp, 'ice')) {
+        lev.typ = ICE;
+        lev.icedpool = (oldtyp === ROOM) ? ICED_POOL : ICED_MOAT;
+        const { del_engr_at } = await import('./engrave.js');
+        del_engr_at(x, y);
+        await pline(`${upstart(waterbody_name(x, y))}.`);
+        madeterrain = true;
+    } else if (bstrcmpi_end(bp, 'altar')) {
+        lev.typ = ALTAR;
+        let al;
+        if (strncmpi_start(bp, 'chaotic ')) al = A_CHAOTIC;
+        else if (strncmpi_start(bp, 'neutral ')) al = A_NEUTRAL;
+        else if (strncmpi_start(bp, 'lawful ')) al = A_LAWFUL;
+        else if (strncmpi_start(bp, 'unaligned ')) al = A_NONE;
+        else al = !rn2(6) ? A_NONE : (rn2((A_LAWFUL | 0) + 2) - 1);
+        lev.altarmask = Align2amask(al);
+        const alstr = al === A_NONE ? 'unaligned'
+            : al === A_CHAOTIC ? 'chaotic'
+            : al === A_LAWFUL ? 'lawful'
+            : 'neutral';
+        await pline(`${An(alstr)} altar.`);
+        madeterrain = true;
+    } else if (bstrcmpi_end(bp, 'grave') || bstrcmpi_end(bp, 'headstone')) {
+        const { make_grave } = await import('./engrave.js');
+        make_grave(x, y, null);
+        if (IS_GRAVE(lev.typ)) {
+            lev.looted = 0;
+            lev.disturbed = d.looted ? 1 : 0;
+            lev.horizontal = !!lev.disturbed;
+            await pline(`A ${lev.disturbed ? 'disturbed ' : ''}grave.`);
+            madeterrain = true;
+        } else {
+            await pline("Can't place a grave here.");
+            badterrain = true;
+        }
+    } else if (bstrcmpi_end(bp, 'tree')) {
+        lev.typ = TREE;
+        lev.looted = d.looted ? (TREE_LOOTED | TREE_SWARM) : 0;
+        await pline('A tree.');
+        madeterrain = true;
+    } else if (bstrcmpi_end(bp, 'bars')) {
+        lev.typ = IRONBARS;
+        lev.flags = 0;
+        await pline('Iron bars.');
+        madeterrain = true;
+    } else if (bstrcmpi_end(bp, 'cloud')) {
+        lev.typ = CLOUD;
+        lev.flags = 0;
+        await pline('A cloud.');
+        const { del_engr_at } = await import('./engrave.js');
+        del_engr_at(x, y);
+        madeterrain = true;
+    } else if (!is_dbridge && (bstrcmpi_end(bp, 'room')
+            || bstrcmpi_end(bp, 'floor')
+            || bstrcmpi_end(bp, 'ground'))) {
+        if (oldtyp === ROOM
+            || (IS_FURNITURE(oldtyp) && CAN_OVERWRITE_TERRAIN(oldtyp))
+            || oldtyp === ICE
+            || is_pool(x, y) || is_lava(x, y)) {
+            lev.typ = ROOM;
+            await pline('Room floor.');
+            const t = t_at_local(x, y);
+            if (t && (t.ttyp | 0) !== MAGIC_PORTAL) deltrap_local(t);
+            madeterrain = true;
+        } else {
+            await pline('Room|floor|ground not allowed here.');
+            badterrain = true;
+        }
+    }
+
+    if (madeterrain) {
+        feel_newsym(x, y);
+        if ((u.uinwater | 0) && !is_pool(u.ux | 0, u.uy | 0)) {
+            await set_uinwater(0);
+            await docrt();
+        } else {
+            if ((u.utrap | 0) && (u.utraptype | 0) === TT_LAVA
+                && !is_lava(u.ux | 0, u.uy | 0)) {
+                u.utrap = 0;
+                u.utraptype = TT_NONE;
+            }
+            recalc_block_point(x, y);
+        }
+        if (IS_FOUNTAIN(oldtyp) && !IS_FOUNTAIN(lev.typ)
+            && (lf.nfountains | 0) > 0) {
+            lf.nfountains--;
+        }
+        if (IS_SINK(oldtyp) && !IS_SINK(lev.typ)
+            && (lf.nsinks | 0) > 0) {
+            lf.nsinks--;
+        }
+        if ((lev.typ | 0) !== ICE) spot_stop_timers(x, y, MELT_ICE_AWAY);
+        if (IS_FOUNTAIN(oldtyp) || IS_GRAVE(oldtyp)
+            || IS_WALL(oldtyp) || oldtyp === IRONBARS
+            || IS_DOOR(oldtyp) || oldtyp === SDOOR) {
+            if (!IS_FOUNTAIN(lev.typ) && !IS_GRAVE(lev.typ)
+                && !IS_DOOR(lev.typ) && (lev.typ | 0) !== SDOOR) {
+                lev.horizontal = 0;
+                lev.blessedftn = 0;
+                lev.disturbed = 0;
+            }
+        }
+        /* C :3907–3910 leftover Lev/Fly FROMOUTSIDE after terrain change */
+        await switch_terrain();
+    }
+    if (madeterrain || badterrain) return HANDS_OBJ;
+    return null;
+}
+
+/**
+ * C ref: objnam.c readobjnam wiztrap — wizard && !wizkit_wishing &&
+ * !d.oclass then wizterrainwish (D-1279). Object-only readobjnam stays
+ * sync for wizkit/mklev (C skips terrain when wizkit_wishing).
+ */
+export async function readobjnam_wish(bp, no_wish) {
+    const missOut = {};
+    const otmp = readobjnam(bp, no_wish, missOut);
+    if (otmp) return otmp;
+    if (wizardMode() && !(game.program_state?.wizkit_wishing | 0)
+        && missOut.d && !(missOut.d.oclass | 0) && !(missOut.d.typ | 0)) {
+        const t = await wizterrainwish(missOut.d);
+        if (t) return t;
+    }
+    return otmp;
+}
+
+/**
  * C ref: objnam.c readobjnam — wish subset for artifact / named armor / amulet.
  * Empty/NULL → `any` (D-0559); qualifier-only empty (blessed/rustproof/…) deferred.
+ * Terrain wish is readobjnam_wish (D-1279).
  */
-export function readobjnam(bp, no_wish) {
+export function readobjnam(bp, no_wish, missOut) {
     // C: readobjnam_init + if (!bp) goto any
     if (bp == null) {
         return readobjnam_any({
@@ -304,6 +550,7 @@ export function readobjnam(bp, no_wish) {
         mntmp: NON_PM,
         otmp: null,
         islit: 0,
+        looted: 0,
     };
 
     for (;;) {
@@ -433,7 +680,11 @@ export function readobjnam(bp, no_wish) {
         }
     }
 
-    if (!d.typ && !d.oclass) return null;
+    /* C wiztrap: object miss then wizard terrain. Stash d for readobjnam_wish. */
+    if (!d.typ && !d.oclass) {
+        if (missOut) missOut.d = d;
+        return null;
+    }
 
     if (d.typ) d.oclass = game.objects?.[d.typ]?.oc_class ?? 0;
     d.otmp = mksobj(d.typ, true, false);

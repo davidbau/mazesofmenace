@@ -15,7 +15,7 @@
 // impairment gate + getglyph/show rewrite + Showing pline +
 // browse_map/getpos + docrt;
 // **monster_detect** (fountain case 26) live-fmon + map_monst +
-// browse_map(TER_DETECT|TER_MON) (D-0370);
+// display_self + browse_map(TER_DETECT|TER_MON) (D-0370 / D-1275);
 // **use_crystal_ball** Blind/fail/hallu/uncharged + charged detect
 // via furniture/object/monster/trap/level_distance (D-1010);
 // **openit** / **openone** (apply use_bell / knock) boxes+doors+scorr+
@@ -44,7 +44,7 @@ import { game } from './gstate.js';
 import { rnl, rn2, rnd } from './rng.js';
 import {
     newsym, pline, magic_map_background, terrain_glyph, obj_glyph,
-    show_glyph_cell, map_trap, map_engraving, canspotmon, sensemon,
+    show_glyph_cell, display_self, map_trap, map_engraving, canspotmon, sensemon,
     map_invisible, glyph_is_invisible, warning_of, You_feel,
     feel_location, feel_newsym, unmap_invisible, map_object, Norep,
 } from './display.js';
@@ -82,7 +82,6 @@ import {
     I_SPECIAL, M_AP_TYPE, ARTICLE_A, ROOMOFFSET,
     TIMEOUT, Never_mind, KILLED_BY_AN, TOE, SYM_BOULDER,
 } from './const.js';
-import { CLR_WHITE } from './terminal.js';
 import { room_discovered } from './dungeon.js';
 
 /** C youprop.h Blind — (H||E) && !B; no sticky u.Blind (D-0716). */
@@ -879,6 +878,7 @@ function map_monst(mtmp, mon_glyph, show_glyph_cell) {
  * blessed persistent display_nhwindow; unconstrain underwater/buried/
  * swallow; worm detect_wsegs; pet_to_glyph / detected_mon_to_glyph
  * (plain mon_glyph); Hallucination strange_feeling text.
+ * display_self U_AP_TYPE: D-1275 (was hardcoded '@').
  */
 export async function monster_detect(otmp, mclass) {
     const { cls, pline, mon_glyph, show_glyph_cell, flush_topl_more } =
@@ -913,8 +913,8 @@ export async function monster_detect(otmp, mclass) {
         // cursed otmp helpless wake deferred
     }
     if (!swallowed) {
-        // C: display_self() — hero '@' (usteed deferred)
-        show_glyph_cell(u.ux | 0, u.uy | 0, '@', CLR_WHITE, false);
+        // C detect.c monster_detect — display_self() (U_AP_TYPE glyphs)
+        display_self();
     }
     await pline('You sense the presence of monsters.');
     // C session: sense message --More-- before getpos tip

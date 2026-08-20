@@ -476,10 +476,14 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
 
 // C ref: mkmaze.c place_lregion
 /**
- * C ref: dungeon.c u_on_rndspot — place hero via updest/dndest after goto_level.
- * Named omission: switch_terrain after place; W-tower exclusion path untested.
+ * C ref: dungeon.c u_on_rndspot — place hero via updest/dndest after
+ * goto_level. After place_lregion, switch_terrain (D-1278; C :1636–1637)
+ * so leftover Lev/Fly FROMOUTSIDE from solid rock unblocks. Unconditional
+ * (not dest-typ gated like teleds / hurtle_step). Named: On_W_tower_level
+ * gate; W-tower bit 2 at goto_level (D-1179); stairs.c u_on_sstairs
+ * fallback; cmd.c wiz_level_tele. objnam wish is a separate caller.
  */
-export function u_on_rndspot(upflag) {
+export async function u_on_rndspot(upflag) {
     const up = !!(upflag & 1);
     const was_in_W_tower = !!(upflag & 2);
     const dndest = game.dndest || {};
@@ -503,6 +507,9 @@ export function u_on_rndspot(upflag) {
             LR_DOWNTELE, null,
         );
     }
+    /* C dungeon.c:1636–1637 — might have just left solid rock. */
+    const { switch_terrain } = await import('./hack.js');
+    await switch_terrain();
 }
 
 export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {

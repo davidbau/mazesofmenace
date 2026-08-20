@@ -21,6 +21,7 @@ import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, delobj, mkcorpstat, add_to_container, obj_extract_self,
     objects_at, splitobj, nxtobj, add_to_migration,
+    obj_ice_effects, spot_stop_timers, stop_timer,
 } from './mkobj.js';
 import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone } from './mhitm.js';
 import { mon_explodes, scatter } from './explode.js';
@@ -62,7 +63,9 @@ import {
     STONE_RES, FAILEDUNTRAP,
     NO_TRAP, TRAPNUM, WT_ELF,
     is_hole, is_pit, unhideable_trap, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_POOL, IS_LAVA,
-    IS_ROOM, IS_WALL, IS_AIR, IS_FURNITURE, SDOOR, STAIRS, LADDER, DRAWBRIDGE_UP,
+    IS_ROOM, IS_WALL, IS_AIR, IS_FURNITURE, IS_FOUNTAIN, IS_SINK,
+    STONE, SCORR, CORR, ROOM, DOOR, ICE, MAX_TYPE, SDOOR, STAIRS, LADDER, DRAWBRIDGE_UP,
+    MELT_ICE_AWAY, ROT_ORGANIC,
     MAGIC_PORTAL, LEVEL_TELEP, Is_waterlevel, Is_airlevel,
     D_CLOSED, D_LOCKED, D_BROKEN,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
@@ -99,7 +102,7 @@ import {
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
     maybe_half_phys, nomul, losehp, finish_maybe_wail, stop_occupation,
-    in_rooms,
+    in_rooms, set_uinwater,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level } from './teleport.js';
 import { get_level } from './dungeon.js';
@@ -766,11 +769,74 @@ function mkroll_launch(ttmp, x, y, otyp, ocount) {
     return 1;
 }
 
+/**
+ * C ref: mkmaze.c set_levltyp — analog for maketrap PIT/HOLE morph
+ * (D-1280). CAN_OVERWRITE, ice melt, incremental fountain/sink counts.
+ * Named omit: SDOOR→AIR arboreal; full count_level_features scan;
+ * other callers keep their local analogs.
+ */
+function set_levltyp(x, y, newtyp) {
+    if (!isok(x, y) || newtyp < STONE || newtyp >= MAX_TYPE) return false;
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return false;
+    const oldtyp = lev.typ | 0;
+    if (!CAN_OVERWRITE_TERRAIN(oldtyp)) return false;
+    const was_ice = oldtyp === ICE;
+    lev.typ = newtyp;
+    if (IS_LAVA(newtyp)) lev.lit = 1;
+    if (was_ice && newtyp !== ICE) {
+        obj_ice_effects(x, y, true);
+        spot_stop_timers(x, y, MELT_ICE_AWAY);
+    }
+    if ((IS_FOUNTAIN(oldtyp) !== IS_FOUNTAIN(newtyp))
+        || (IS_SINK(oldtyp) !== IS_SINK(newtyp))) {
+        const lf = game.level?.flags;
+        if (lf) {
+            if (IS_FOUNTAIN(oldtyp) && !IS_FOUNTAIN(newtyp)
+                && (lf.nfountains | 0) > 0) {
+                lf.nfountains--;
+            }
+            if (!IS_FOUNTAIN(oldtyp) && IS_FOUNTAIN(newtyp)) {
+                lf.nfountains = (lf.nfountains | 0) + 1;
+            }
+            if (IS_SINK(oldtyp) && !IS_SINK(newtyp) && (lf.nsinks | 0) > 0) {
+                lf.nsinks--;
+            }
+            if (!IS_SINK(oldtyp) && IS_SINK(newtyp)) {
+                lf.nsinks = (lf.nsinks | 0) + 1;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * C ref: dig.c unearth_objs — buriedobjlist at <x,y> → floor.
+ * Local copy: trap.js cannot import dig.js (cycle). Named omit:
+ * buried_ball_to_punishment arm.
+ */
+function maketrap_unearth_objs(x, y) {
+    let otmp = game.level?.buriedobjlist || null;
+    while (otmp) {
+        const otmp2 = otmp.nobj || null;
+        if ((otmp.ox | 0) === (x | 0) && (otmp.oy | 0) === (y | 0)) {
+            obj_extract_self(otmp);
+            if (otmp.timed) stop_timer(ROT_ORGANIC, otmp);
+            place_object(otmp, x, y);
+            stackobj(otmp);
+        }
+        otmp = otmp2;
+    }
+    del_engr_at(x, y);
+    newsym(x, y);
+}
+
 // C ref: trap.c maketrap — creation + SQKY_BOARD / HOLE|TRAPDOOR /
-// ROLLING_BOULDER_TRAP mkroll_launch / STATUE_TRAP mk_trap_statue.
-// Named omissions: overwrite/furniture/terrain gates, pit conjoined/
-// shop damage/terrain morph, Sokoban finish, drawbridge-under
-// pool/lava in is_pool_or_lava, launch_obj trigger; mongone full body.
+// ROLLING_BOULDER_TRAP mkroll_launch / STATUE_TRAP mk_trap_statue +
+// PIT/HOLE set_levltyp (D-1280).
+// Named omissions: overwrite reset_utrap / Knox LEVEL_TELEP /
+// shop add_damage / DRAWBRIDGE_UP ice→floor morph / Sokoban finish /
+// drawbridge-under pool/lava in is_pool_or_lava; mongone full body.
 // TELEP teledest may be set by caller after create (themerms make_a_trap).
 export function maketrap(x, y, typ) {
     // C ref: trap.c maketrap — reject door/chest map traps; terrain gates.
@@ -833,10 +899,39 @@ export function maketrap(x, y, typ) {
     case ROLLING_BOULDER_TRAP:
         mkroll_launch(ttmp, x, y, BOULDER, 1);
         break;
+    case PIT:
+    case SPIKED_PIT:
+        ttmp.conjoined = 0;
+        /* FALLTHROUGH */
     case HOLE:
-    case TRAPDOOR:
+    case TRAPDOOR: {
         if (is_hole(typ)) hole_destination(ttmp.dst);
+        // C trap.c:514–565 — shop add_damage named; DRAWBRIDGE_UP keeps
+        // drawbridgemask (ice→floor morph named); else set_levltyp
+        // IS_ROOM→ROOM / STONE|SCORR→CORR / wall|SDOOR→maze ROOM /
+        // cavern CORR / DOOR; flags=0; unearth; recalc_block_point.
+        const lev = game.level?.at?.(x, y);
+        if (lev) {
+            let clear_flags = true;
+            if (lev.typ === DRAWBRIDGE_UP) {
+                clear_flags = false;
+            } else if (IS_ROOM(lev.typ)) {
+                set_levltyp(x, y, ROOM);
+            } else if (lev.typ === STONE || lev.typ === SCORR) {
+                set_levltyp(x, y, CORR);
+            } else if (IS_WALL(lev.typ) || lev.typ === SDOOR) {
+                const lf = game.level?.flags || {};
+                const newt = lf.is_maze_lev ? ROOM
+                    : lf.is_cavernous_lev ? CORR
+                    : DOOR;
+                set_levltyp(x, y, newt);
+            }
+            if (clear_flags) lev.flags = 0;
+            maketrap_unearth_objs(x, y);
+            recalc_block_point(x, y);
+        }
         break;
+    }
     default:
         break;
     }
@@ -4588,9 +4683,10 @@ async function teleds_drown(nux, nuy) {
  * C ref: trap.c drown — fall/plunge into pool/waterwall; crawl out.
  * Branch envelope: first-entry fall/plunge + sink; empty water_damage_chain;
  * rnd_nextto_goodpos + emergency_disrobe stub + crawl/Pheew + teleds.
- * Named omissions: uinwater wade; gremlin/iron golem; leash; Amphibious/
- * Breathless/Swimming; Teleportation escape; steed; sleep/faint; waterlevel
- * disrobe; drowning done() loop; Hallucination Titanic.
+ * Fail-crawl set_uinwater(1) is D-1267. Named omissions: Amphibious/
+ * Breathless/Swimming wade set_uinwater; post-rescue set_uinwater(0);
+ * gremlin/iron golem; leash; Teleportation escape; steed; sleep/faint;
+ * waterlevel disrobe; drowning done() loop; Hallucination Titanic.
  * @returns {Promise<boolean>} true if hero relocated
  */
 export async function drown() {
@@ -4625,7 +4721,7 @@ export async function drown() {
         await pline('But in vain.');
     }
 
-    u.uinwater = 1;
+    await set_uinwater(1); /* C trap.c:5170 — u.uinwater = 1 */
     await pline('You drown.');
     return true;
 }

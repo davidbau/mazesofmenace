@@ -91,6 +91,7 @@ import {
     mnexto,
     wakeup,
     m_consume_obj,
+    meatmetal,
 } from './mon.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
@@ -1259,10 +1260,10 @@ export async function m_postmove_effect(mtmp) {
  * (D-0496); maybe_spin_web (D-0595); door/flee/web/itsstuck pline_mon
  * D-1227; IRONBARS eat/Norep (D-1247).
  * Named omissions: vampshift fog; shop add_damage;
- * has_magic_key disarm; metallivorous/cube/corpse_eater meat*;
+ * has_magic_key disarm; gelatinous cube meatobj / corpse_eater meatcorpse;
  * hideunder You_see (ported); check_gear_next_turn; swallowed() display polish.
  * ALLOW_BARS is D-1258; dissolve_bars switch_terrain is D-1259;
- * mon_yells is D-1248.
+ * mon_yells is D-1248; meatmetal is D-1271.
  * (shk/gd/priest via shk.js D-0205)
  */
 export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, can_open) {
@@ -1362,8 +1363,8 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
         // Eat (AD_RUST / AD_CORR / metallivorous) unless W_NONDIGGABLE,
         // then dissolve_bars and return MMOVE_DONE (skips mdig_tunnel
         // rnd(12) and OBJ_AT pickup). Else Norep pass through/between.
-        // Named: meatmetal. ALLOW_BARS rust/corr/metallivore is
-        // D-1258 (mon_allowflags). switch_terrain is D-1259.
+        // meatmetal is D-1271 (OBJ_AT, not bars). ALLOW_BARS rust/corr/
+        // metallivore is D-1258 (mon_allowflags). switch_terrain is D-1259.
         const wi = (loc.wall_info | 0) | (loc.flags | 0);
         if (!(wi & W_NONDIGGABLE)
             && (dmgtype(ptr, AD_RUST) || dmgtype(ptr, AD_CORR)
@@ -1407,7 +1408,11 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
 
     // C: shared MOVED|DONE floor pickup
     if (objects_at(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
-        // metallivorous / gelatinous cube / corpse_eater meat* deferred
+        // C ref: monmove.c postmov :1663–1667 — metallivorous meatmetal
+        if (metallivorous(ptr)) {
+            if ((await meatmetal(mtmp)) === 2) return MMOVE_DIED;
+        }
+        // gelatinous cube meatobj / corpse_eater meatcorpse named
         if (await mpickstuff(mtmp)) {
             mmoved = MMOVE_DONE;
         }
@@ -1916,6 +1921,7 @@ export async function bee_eat_jelly(mon, obj) {
  * C ref: monmove.c gelcube_digests — cube spends a turn digesting the first
  * organic non-artifact non-prize minvent object. 0 ate, -1 nothing.
  * meatobj floor engulf still named. m_consume_obj meatbox/poly/uball named.
+ * meatmetal is D-1271.
  */
 export function gelcube_digests(mtmp) {
     let otmp = mtmp.minvent;

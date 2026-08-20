@@ -33,12 +33,12 @@ import {
 } from './const.js';
 import {
     pline, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
-    set_msg_xy, feel_location,
+    set_msg_xy, feel_location, map_object,
 } from './display.js';
 import { gethungry, morehungry } from './eat.js';
 import { m_at, hideunder } from './mon.js';
 import { recalc_block_point } from './vision.js';
-import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, verysmall } from './monsters.js';
+import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, verysmall, passes_bars, dmgtype } from './monsters.js';
 import {
     objects_at, obj_extract_self, place_object, delobj,
     peek_timer, stop_timer, start_timer,
@@ -158,6 +158,33 @@ function Passes_walls_prop() {
 }
 function Sokoban_here() {
     return !!(game.Sokoban || game.level?.flags?.sokoban_rules);
+}
+
+/* C monattk.h — rust monster / gray ooze·pudding (test_move bars chew). */
+const AD_RUST = 24;
+const AD_CORR = 42;
+
+/**
+ * C hack.c test_move :1032 — Passes_walls || passes_bars(youmonst.data).
+ * On IRONBARS the first obstacle branch (Passes_walls && may_passwall)
+ * is Passes_walls: may_passwall is true because bars are not IS_STWALL.
+ * TEST_MOVE / TEST_TRAV never chew. D-1270.
+ */
+export function test_move_hero_passes_bars() {
+    return !!(Passes_walls_prop() || passes_bars(game.youmonst?.data));
+}
+
+/**
+ * C hack.c test_move :1025–1028 — DO_MOVE rust/corr/metallivore chew
+ * instead of occupying bars. Passes_walls already allowed the cell in
+ * C's first branch, so skip chew. Named: Underwater obstacle; generic
+ * rock Passes_walls / tunnels / autodig.
+ */
+export function test_move_hero_chews_bars() {
+    if (Passes_walls_prop()) return false;
+    const data = game.youmonst?.data;
+    return !!(dmgtype(data, AD_RUST) || dmgtype(data, AD_CORR)
+        || metallivorous(data));
 }
 
 /**
@@ -337,19 +364,30 @@ async function dopush(sx, sy, rx, ry, otmp) {
 
 /**
  * C ref: hack.c moverock_core — push boulder(s) at (sx,sy) along u.dx/u.dy.
- * Branch envelope: nopick m-dir over/against (D-1262) + clear-dest dopush
- * + monster-behind You_hear/canspotmon + closed_door cannot_push_msg
- * (D-0317) + rumbling disturb_buried_zombies (D-1214). Named omissions:
- * Sokoban diagonal, shop costly, trap/teleport/pool arms, Blind unseen
- * start-of-loop feel, Levitation (after nopick), verysmall vain-push,
- * tunneling chew, revive_nasty, next_boulder naming, y_monnam steed
- * wording. Giant pickup/maneuver D-1253.
+ * Branch envelope: Blind unseen start-of-loop feel (D-1281) + nopick
+ * m-dir over/against (D-1262) + clear-dest dopush + monster-behind
+ * You_hear/canspotmon + closed_door cannot_push_msg (D-0317) + rumbling
+ * disturb_buried_zombies (D-1214). Named omissions: Sokoban diagonal,
+ * shop costly, trap/teleport/pool arms, Levitation (after nopick),
+ * verysmall vain-push, tunneling chew, revive_nasty, next_boulder
+ * naming, y_monnam steed wording, dopush/cannot_push_msg Blind
+ * feel_location. Giant pickup/maneuver D-1253.
  * Returns 0 to advance onto vacated cell, -1 to abort the move.
  */
 async function moverock_core(sx, sy) {
     const u = game.u;
     while (sobj_at(BOULDER, sx, sy)) {
         const otmp = sobj_at(BOULDER, sx, sy);
+
+        /* C hack.c moverock_core :358–363 — Blind + glyph_to_obj(glyph_at)
+           != BOULDER before next_boulder / top-of-pile / nopick. D-1281. */
+        if (Blind_im() && !glyph_to_obj_is_boulder(sx, sy)) {
+            await pline('That feels like a boulder.');
+            map_object(otmp, true);
+            await nomul(0);
+            return -1;
+        }
+
         // Ensure boulder is top of pile
         const head = objects_at(sx, sy);
         if (otmp && head && otmp !== head) movobj(otmp, sx, sy);
@@ -485,6 +523,20 @@ function glyph_at_fp(x, y) {
 }
 
 /**
+ * C display.h glyph_to_obj(glyph_at(x,y)) == BOULDER.
+ * C glyph_at is gbuf, not live floor — never use sobj_at here (the
+ * while loop already knows a boulder is present). JS has no integer
+ * glyph IDs; map_object stamps remembered_glyph.boulder (D-1281).
+ */
+function glyph_to_obj_is_boulder(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const rg = loc.remembered_glyph;
+    if (rg?.invisible) return false;
+    return !!rg?.boulder;
+}
+
+/**
  * C ref: obj.h is_flimsy — oc_material ≤ LEATHER or rubber hose.
  */
 function is_flimsy(otmp) {
@@ -569,8 +621,8 @@ export function hero_hideunder_after_move() {
  * Mimics (or whatever) become noticeable if they move while imitating
  * something that doesn't move. U_AP_TYPE is m_ap_type & M_AP_TYPMASK.
  * Assignment is M_AP_NOTHING (not seemimic; mappearance leftover).
- * Named: display_self U_AP_TYPE glyphs; swap-with-pet seemimic;
- * bump_mon stumble_onto_mimic.
+ * Named: swap-with-pet seemimic; bump_mon stumble_onto_mimic.
+ * display_self U_AP_TYPE glyphs: D-1275.
  */
 export function hero_mimic_unhide_after_move() {
     const u = game.u;
@@ -1301,9 +1353,11 @@ function reg_damg(reg) {
 
 /**
  * C ref: hack.c test_move(TEST_MOVE) — silent viability for
- * avoid_trap_andor_region. Named omissions: Passes_walls/ooze/chew/
- * autodig/Underwater/squeeze/worm_cross. C always clears
- * context.door_opened. run>=2 boulder abort is D-1226 (silent here).
+ * avoid_trap_andor_region. IRONBARS allow via Passes_walls ||
+ * passes_bars (D-1270; chew is DO_MOVE only). Named omissions:
+ * Passes_walls/ooze/autodig/Underwater/squeeze/worm_cross. C always
+ * clears context.door_opened. run>=2 boulder abort is D-1226 (silent
+ * here).
  */
 function test_move_viable(dx, dy) {
     const u = game.u;
@@ -1314,7 +1368,8 @@ function test_move_viable(dx, dy) {
     if (!isok(x, y)) return false;
     const loc = game.level?.at(x, y);
     if (!loc) return false;
-    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) return false;
+    if (IS_OBSTRUCTED(loc.typ)) return false;
+    if (loc.typ === IRONBARS && !test_move_hero_passes_bars()) return false;
     if (closed_door(x, y)) return false;
     if (dx && dy) {
         if (IS_DOOR(loc.typ) && !doorless_door(x, y)) return false;
@@ -1386,8 +1441,9 @@ export async function avoid_trap_andor_region(x, y) {
 
 /**
  * C ref: hack.c crawl_destination — orthogonal always; diagonal door/
- * squeeze checks. NODIAG / Passes_walls / bad_rock squeeze deferred →
- * diagonal allowed when goodpos.
+ * squeeze checks. NODIAG / Passes_walls / bad_rock squeeze / IRONBARS
+ * via goodpos deferred → diagonal allowed when goodpos. Hero walk
+ * bars are test_move D-1270, not this helper.
  */
 export function crawl_destination(x, y) {
     const u = game.u;
@@ -1830,8 +1886,11 @@ function Flying_st() {
  * flags.terrainstatus && !context.run. C youprop.h Underwater ≡
  * u.uinwater. Named omit: botl terrain_descr[] paint; options.c
  * toggle; end_running MAX_TYPE reset; dungeon.c u_on_newpos
- * MAX_TYPE; spoteffects / set_uinwater / digactualhole callers.
- * dissolve_bars u_at is D-1259.
+ * MAX_TYPE; **dothrow hurtle_step D-1277**; **u_on_rndspot D-1278**;
+ * **objnam wish D-1279**. **maketrap PIT/HOLE set_levltyp D-1280**.
+ * digactualhole PIT/HOLE is D-1269.
+ * dissolve_bars u_at is D-1259; set_uinwater is D-1267;
+ * spoteffects dest-typ is D-1268.
  */
 export function classify_terrain() {
     const u = game.u;
@@ -1894,6 +1953,13 @@ export function classify_terrain() {
  * or unblock levitation/flight via B* FROMOUTSIDE (solid rock, closed
  * door, waterwall, lavawall). Skip float_down when blocking.
  * flags.terrainstatus → classify_terrain (D-1151).
+ * set_uinwater change-gate is D-1267.
+ * spoteffects dest-typ / MAX_TYPE is D-1268.
+ * digactualhole PIT/HOLE is D-1269.
+ * dothrow hurtle_step dest-typ is D-1277.
+ * dungeon.c u_on_rndspot after place is D-1278.
+ * objnam.c wizterrainwish after madeterrain is D-1279.
+ * **maketrap PIT/HOLE set_levltyp D-1280**.
  */
 export async function switch_terrain() {
     const u = game.u;
@@ -1941,6 +2007,28 @@ export async function switch_terrain() {
         if (game.disp) game.disp.botl = true;
     }
     if (game.flags?.terrainstatus) classify_terrain();
+}
+
+/**
+ * C ref: hack.c set_uinwater — set or clear u.uinwater; when in_out
+ * differs from (int)u.uinwater, write 0/1 then switch_terrain
+ * (D-1267). Same-value is a no-op. Wired: boulder_hits_pool dry-land,
+ * drown fail-crawl, goto_level leave + after getlev. Named:
+ * pooleffects leave-water; drown Amphibious wade / post-rescue;
+ * zap freeze; cmd leave-level; detect/save bypass
+ * (C writes u.uinwater directly). spoteffects dest-typ is D-1268.
+ * digactualhole PIT/HOLE is D-1269. **dothrow hurtle_step D-1277**.
+ * **u_on_rndspot D-1278**. **objnam wish D-1279**.
+ * **maketrap PIT/HOLE set_levltyp D-1280**.
+ */
+export async function set_uinwater(in_out) {
+    const u = game.u;
+    if (!u) return;
+    /* C: if (in_out != (int) u.uinwater) */
+    if (in_out !== (u.uinwater | 0)) {
+        u.uinwater = in_out ? 1 : 0;
+        await switch_terrain();
+    }
 }
 
 /**
@@ -2161,8 +2249,10 @@ export async function invocation_message() {
 
 /**
  * C ref: monmove.c dissolve_bars — replace IRONBARS with DOOR/ROOM/CORR.
- * After newsym, u_at → switch_terrain (D-1259). Named: set_uinwater /
- * spoteffects / digactualhole switch_terrain.
+ * After newsym, u_at → switch_terrain (D-1259). set_uinwater is
+ * D-1267. spoteffects dest-typ is D-1268. digactualhole PIT/HOLE
+ * is D-1269. **dothrow hurtle_step D-1277**. **u_on_rndspot D-1278**.
+ * **objnam wish D-1279**.
  */
 export async function dissolve_bars(x, y) {
     const lev = game.level?.at(x, y);

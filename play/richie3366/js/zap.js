@@ -57,7 +57,7 @@ import {
 } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { nhgetch } from './input.js';
-import { readobjnam, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
+import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { hold_another_object, makeknown, encumber_msg } from './invent.js';
 import { doname, xname, distant_name, vtense, The, an, An } from './objnam.js';
 import { fix_wall_spines } from './mklev.js';
@@ -3805,7 +3805,8 @@ export async function dozap() {
 
 /**
  * C ref: zap.c makewish — prompt + readobjnam + hold_another_object.
- * Help / history / livelog / terrain-wish paths deferred.
+ * Terrain wish via readobjnam_wish → wizterrainwish switch_terrain (D-1279).
+ * Help / history / livelog still named.
  */
 export async function makewish() {
     const nothing = NOTHING_OBJ;
@@ -3836,7 +3837,7 @@ export async function makewish() {
         break;
     }
 
-    let otmp = readobjnam(buf, nothing);
+    let otmp = await readobjnam_wish(buf, nothing);
     if (!otmp) {
         await pline('Nothing fitting that description exists in the game.');
         if (++tries < MAXWISHTRY) {

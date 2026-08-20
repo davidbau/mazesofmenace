@@ -15,7 +15,7 @@ import {
     MIM_REVEAL, engulfing_u, OBJ_FREE, MON_DETACH,
     has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, SUPPRESS_SADDLE,
     SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE,
-    HAND, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT,
+    HAND, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_AMUL,
     MON_EXPLODE, NO_MM_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE,
@@ -33,7 +33,10 @@ import {
     dbon, weapon_dam_bonus, use_skill, weapon_type,
     special_dmgval, silver_sears,
 } from './weapon.js';
-import { ammo_and_launcher } from './wield.js';
+import {
+    ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
+    drop_uswapwep,
+} from './wield.js';
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled,
@@ -48,7 +51,7 @@ import {
     is_golem, is_mplayer, is_rider, is_undead, is_flyer, is_floater,
     is_demon, NON_PM, has_head, mindless, unsolid, breathless, mons,
     flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
-    is_whirly, passes_walls, MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
+    is_whirly, passes_walls, hates_silver, MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import {
     mksobj, mkobj, place_object, stackobj, delobj, relobj_on_death,
@@ -113,6 +116,7 @@ const PM_BALROG = monsterNames.indexOf('PM_BALROG');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const PM_ROPE_GOLEM = monsterNames.indexOf('PM_ROPE_GOLEM');
 const AMULET_OF_MAGICAL_BREATHING = objectNames.indexOf('AMULET_OF_MAGICAL_BREATHING');
+const SILVER = 14; // objclass.h enum obj_material_types
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const TOWEL = objectNames.indexOf('TOWEL');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
@@ -646,6 +650,44 @@ function bimanual(obj) {
     if (!obj) return false;
     if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
     return !!(game.objects?.[obj.otyp]?.oc_big);
+}
+
+/**
+ * C ref: youprop.h Hate_silver — lycanthrope or poly form hates_silver.
+ */
+function Hate_silver() {
+    const u = game.u || {};
+    return ((u.ulycn ?? NON_PM) | 0) >= LOW_PM
+        || hates_silver(game.youmonst?.data);
+}
+
+/**
+ * C ref: uhitm.c hmonas :5494–5513 — toggle altwep so the next AT_WEAP
+ * uses uswapwep (approximate two-weapon). Gates match C: one-handed
+ * primary weapon/weptool, no shield, secondary not artifact / launcher /
+ * ammo / missile / bimanual / silver-while-Hate_silver.
+ */
+function hmonas_toggle_altwep(u) {
+    const uwep = u?.uwep;
+    const uswapwep = u?.uswapwep;
+    if (!uswapwep) return false;
+    if (!uwep || !(uwep.oclass === WEAPON_CLASS || is_weptool(uwep))) {
+        return false;
+    }
+    if (bimanual(uwep)) return false;
+    if (u.uarms || uswapwep.oartifact) return false;
+    if (!(uswapwep.oclass === WEAPON_CLASS || is_weptool(uswapwep))) {
+        return false;
+    }
+    if (is_launcher(uswapwep) || is_ammo(uswapwep) || is_missile(uswapwep)) {
+        return false;
+    }
+    if (bimanual(uswapwep)) return false;
+    if ((game.objects?.[uswapwep.otyp]?.oc_material | 0) === SILVER
+        && Hate_silver()) {
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -1690,7 +1732,7 @@ function end_engulf() {
 /**
  * C ref: uhitm.c gulpum :4958–5194 — poly'd hero engulfs a monster.
  * Instant (not multi-move). d() then engulf_target then stuffed/uswallow
- * gate. Named omit: altwep.
+ * gate. Named omit: visor can_blnd; gulpmu invent snuff.
  */
 export async function gulpum(mdef, mattk) {
     const u = game.u || {};
@@ -1882,8 +1924,9 @@ export async function gulpum(mdef, mattk) {
  * (special_dmgval callee; mon_hates_silver = C hates_silver D-1254).
  * AT_EXPL explum + dhit==-1 rehumanize D-1251.
  * AT_ENGL gulpum D-1264 (rnd(20+i); shade surround; zombie/mummy Sick).
- * fight_empty explum(null) D-1265. Named omit: two-weapon altwep; skipdrin;
- * pit kick.
+ * fight_empty explum(null) D-1265. altwep / uswapwep D-1266 (toggle +
+ * originalweapon re-read + passivedone drop_uswapwep). Named omit:
+ * skipdrin; pit kick.
  */
 export async function hmonas(mon) {
     const u = game.u || {};
@@ -1891,6 +1934,7 @@ export async function hmonas(mon) {
     const sum = new Array(NATTK).fill(M_ATTK_MISS);
     let weapon = null;
     let weapon_used = false;
+    let altwep = false;
     let multi_weap = 0;
     let dhit = 0;
     const attk_count = { v: 0 };
@@ -1909,6 +1953,7 @@ export async function hmonas(mon) {
         }
         const mattk = get_mattk(ym, i, mon);
         weapon = null;
+        let skip_passive = false;
         const aatyp = mattk.aatyp | 0;
         const mlet = ym.data?.mlet;
         const use_wep = aatyp === AT_WEAP
@@ -1923,20 +1968,31 @@ export async function hmonas(mon) {
                 continue;
             }
             weapon_used = true;
-            weapon = u.uwep || null;
+            // C: originalweapon = (altwep && uswapwep) ? &uswapwep : &uwep
+            let origSlot = (altwep && u.uswapwep) ? 'uswapwep' : 'uwep';
+            if (hmonas_toggle_altwep(u)) altwep = !altwep;
+            weapon = u[origSlot] || null;
+            if (!weapon) origSlot = 'uarmg';
             const tmp = find_roll_to_hit(mon, AT_WEAP, weapon, attk_count,
                 role_roll_penalty);
             mon_maybe_unparalyze(mon);
             const dieroll = rnd(20);
-            const dhit = (tmp > dieroll || !!u.uswallow) ? 1 : 0;
+            const wep_dhit = (tmp > dieroll || !!u.uswallow) ? 1 : 0;
             if (multi_weap > 1) gt_twohits++;
-            const survived = await known_hitum(mon, weapon, { v: dhit }, tmp,
+            const survived = await known_hitum(mon, weapon, { v: wep_dhit }, tmp,
                 role_roll_penalty.v, mattk, dieroll);
+            // C: weapon = *originalweapon after known_hitum (destroyed → null)
+            weapon = u[origSlot] || null;
             if (!survived) {
                 sum[i] = M_ATTK_DEF_DIED;
             } else {
-                sum[i] = dhit ? M_ATTK_HIT : M_ATTK_MISS;
-                if (dhit && mattk.adtyp !== AD_SPEL && mattk.adtyp !== AD_PHYS) {
+                sum[i] = wep_dhit ? M_ATTK_HIT : M_ATTK_MISS;
+                // C: worm cut in half → i=NATTK; goto passivedone
+                if (m_at((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))
+                    !== mon) {
+                    skip_passive = true;
+                } else if (wep_dhit && mattk.adtyp !== AD_SPEL
+                    && mattk.adtyp !== AD_PHYS) {
                     sum[i] = await damageum(mon, mattk, 0);
                 }
             }
@@ -2028,16 +2084,26 @@ export async function hmonas(mon) {
             continue;
         }
 
-        if (dhit === -1) {
-            u.mh = -1; /* dead in the current form */
-            await rehumanize();
+        if (!skip_passive) {
+            if (dhit === -1) {
+                u.mh = -1; /* dead in the current form */
+                await rehumanize();
+            }
+            const died = sum[i] === M_ATTK_DEF_DIED || (mon.mhp | 0) < 1;
+            await passive(mon, weapon, sum[i] !== M_ATTK_MISS, !died, aatyp,
+                false);
+            mhitm_knockback(ym, mon, mattk, sum[i], weapon_used);
         }
-        const died = sum[i] === M_ATTK_DEF_DIED || (mon.mhp | 0) < 1;
-        await passive(mon, weapon, sum[i] !== M_ATTK_MISS, !died, aatyp, false);
-        mhitm_knockback(ym, mon, mattk, sum[i], weapon_used);
+        // C passivedone: cursed uswapwep drops instead of welding; then
+        // DEADMONSTER (deferred until after the drop).
+        if (u.uswapwep && weapon === u.uswapwep && weapon.cursed) {
+            await drop_uswapwep();
+            break;
+        }
         if ((mon.mhp | 0) < 1) break;
         if (!Upolyd(u)) break;
         if ((game.multi | 0) < 0) break;
+        if (skip_passive) break;
     }
     gt_twohits = 0;
     return (mon.mhp | 0) >= 1;

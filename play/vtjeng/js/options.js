@@ -31,6 +31,7 @@ import {
     LARGEST_INT,
     MENU_COMBINATION,
     MENU_FULL,
+    MENU_PARTIAL,
     MENU_TRADITIONAL,
     MOD_ENCUMBER,
     NUM_DISCLOSURE_OPTIONS,
@@ -133,7 +134,8 @@ import { reassign, update_inventory } from './invent.js';
 import { ttyPline } from './tty_message.js';
 import { vision_recalc } from './vision.js';
 import { sourceGlyphName } from './glyph_ids.js';
-import { allopt } from './optlist_data.js';
+import { allopt, optionParserMetadata } from './optlist_data.js';
+import { configLineStatements } from './config_statement_data.js';
 import {
     AUTOCOMP_ADJ,
     CMD_PARAM,
@@ -302,17 +304,6 @@ const OPTION_ALIASES = Object.freeze({
 // options.c's exact "male" alias stays distinct so applyBooleanOption() can
 // invert its value rather than treating it as an ordinary spelling of female.
 
-// C ref: allopt[].alias, the column complain_about_duplicate():6801 prints for
-// the row it names rather than for the spelling the statement used.
-// OPTION_ALIASES above is that same column keyed by the alias, and optlist.h
-// gives no row two of them, so inverting it recovers the field.  A row
-// optlist.h spells NoAlias -- a null pointer, optlist.h:57 -- is missing here.
-// The female row's entry lands under "male", the name applyOption() resolves
-// that alias to; no reader of this map reaches that row.
-const OPTION_ROW_ALIASES = Object.freeze(Object.fromEntries(
-    Object.entries(OPTION_ALIASES).map(([alias, name]) => [name, alias]),
-));
-
 const ROLEPLAY_FIELDS = Object.freeze([
     'blind',
     'nudist',
@@ -388,9 +379,9 @@ function defaultResult() {
             // loot but not inventory; display_pickinv() compares against 'f'.
             sortloot: 'l',
             // options.c def_inv_order[], the class order the inventory menu
-            // walks. The trailing 0 terminates the list in C. options.c
-            // change_inv_order() rewrites this from the packorder option,
-            // which is not ported; js/invent.js stops when a session sets it.
+            // walks. The trailing 0 terminates the list in C, so the array
+            // holds only its class bytes. change_inv_order() below is the one
+            // startup path that rewrites it.
             inv_order: [
                 COIN_CLASS, AMULET_CLASS, WEAPON_CLASS, ARMOR_CLASS,
                 FOOD_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS,
@@ -475,9 +466,9 @@ function defaultResult() {
         symbolOperations: [],
         rogueSymbols: {},
         // The configuration statements this parser recognizes but does not
-        // interpret, in the order the file spelled them.  Each one makes
-        // cfgfiles.c append to a list the options menu counts, so the count
-        // has to know the statement was there; see UNPORTED_CONFIG_STATEMENTS.
+        // interpret, in the order the file spelled them. A consumer that would
+        // read state owned by one of their cnf_line_<NAME>() handlers checks
+        // this list and refuses instead of using an invented default.
         unportedConfigStatements: [],
         // C ref: cfgfiles.c config_error_data, the frame rcfile() (1943) opens
         // around the configuration read.  parseNethackrc() feeds it one line
@@ -842,9 +833,9 @@ function stripValueNegation(value) {
     return { token, negated };
 }
 
-// C ref: options.c complain_about_duplicate() (6789-6808).  Its first
-// conversion is "compound" for every caller this parser reaches, because
-// parse_role_opt() is the only one and all four of its rows are CompOpt.
+// C ref: options.c complain_about_duplicate() (6789-6808).  OthrOpt rows use
+// the source's "boolean" fallback too; CompOpt is the only type printed as
+// "compound".
 //
 // `using_alias` is a file static that options.c:503 clears at the top of every
 // parseoptions() call.  The comma recursion at :513-521 runs before the
@@ -855,17 +846,18 @@ function stripValueNegation(value) {
 // left of that one inherits it whether or not it spelled an alias itself.
 //
 // The alias text is allopt[optidx].alias, the complained-about row's own, not
-// the spelling the statement used.  optlist.h gives the race and gender rows
+// the spelling the statement used. optlist.h gives the race and gender rows
 // NoAlias, a null pointer, and the reference build's C library renders a null
 // "%s" as "(null)"; a recorded run of
 // `OPTIONS=race:human,race:!elf,align:!lawful` prints exactly that.
-function complain_about_duplicate(result, optionName, usingAlias) {
+function complain_about_duplicate(result, option, metadata, usingAlias) {
     const alias = usingAlias
-        ? ` (via alias: ${OPTION_ROW_ALIASES[optionName] ?? '(null)'})`
+        ? ` (via alias: ${metadata.alias ?? '(null)'})`
         : '';
+    const type = option.opttyp === 'CompOpt' ? 'compound' : 'boolean';
     configErrorAdd(
         result,
-        `compound option specified multiple times: ${optionName}${alias}`,
+        `${type} option specified multiple times: ${option.name}${alias}`,
     );
 }
 
@@ -882,13 +874,13 @@ function complain_about_duplicate(result, optionName, usingAlias) {
 // parseoptions() turns both into a discarded FALSE for a row whose optlist.h
 // pfx is false, which all four of these are.
 //
-// C's `duplicate` is allopt[optidx].dupdetected, which parseoptions():621 sets
-// for every option; optionState.seen is this port's copy of it for these four
-// names alone.  parseoptions():623 also reports every duplicate before the
-// handler runs, which is unported.
+// C's `duplicate` is the value duplicate_opt_detection() returned before this
+// handler ran. The general parse path owns that counter and passes its answer
+// here, just as parseoptions() leaves the file-static value for optfn_role().
 function setCharacterOption(
-    result, optionState, optionName, statement, negated, usingAlias,
+    result, optionState, option, statement, negated, usingAlias, duplicate,
 ) {
+    const optionName = option.name.toLowerCase();
     // parse_role_opt():7935 reads the value with
     // string_for_env_opt(fullname, opts, FALSE), whose mandatory parameter is
     // what reports a statement that carries none.  `ok` stays FALSE, so the
@@ -898,8 +890,6 @@ function setCharacterOption(
 
     const normalized = mungspaces(op);
     const values = normalized ? normalized.split(' ') : [];
-    const duplicate = optionState.seen.has(optionName);
-    optionState.seen.add(optionName);
     let previousValueNegated = false;
     let filtered = false;
     let selectedValue = '';
@@ -949,7 +939,10 @@ function setCharacterOption(
             filtered = true;
         } else {
             if (duplicate && prior?.startsWith('!')) {
-                complain_about_duplicate(result, optionName, usingAlias);
+                complain_about_duplicate(
+                    result, option, optionParserMetadata[option.name] ?? {},
+                    usingAlias,
+                );
                 return;
             }
             optionState.values[optionName] = token;
@@ -983,12 +976,11 @@ function setCharacterOption(
 // reads the value parseoptions() already found rather than asking for one of
 // its own, so a statement with no value is refused with no message at all.
 //
-// Two of C's three refusals cannot fire from a configuration file.  optlist.h
-// gives playmode negateok No, so parseoptions() answers a negated spelling with
-// bad_negation() before the handler runs; and `duplicate` is
-// allopt[optidx].dupdetected, which no part of this port maintains, so a second
-// playmode statement is applied here where C refuses it and reports.
-function setPlaymode(result, value) {
+// A negated spelling cannot reach this handler because optlist.h gives
+// playmode negateok No. A duplicate does reach it after parseoptions() has
+// reported the repeated row, and this handler silently refuses that value.
+function setPlaymode(result, value, duplicate) {
+    if (duplicate) return;
     if (value == null || value === '') return; /* optn_err, silently */
     const mode = value.toLowerCase();
     let canonical;
@@ -2524,6 +2516,37 @@ function setPickupBurden(result, statement) {
     result.flags.pickup_burden = level;
 }
 
+// C ref: options.c optfn_menustyle() (2320-2376), its do_set arm.  The
+// handler measures the whole negation-stripped statement, not the canonical
+// option name parseoptions() matched: a bare five-byte "menus" abbreviation
+// therefore defaults to Full, while the full name without a value reports a
+// missing parameter.  A negation makes the value optional; when one is
+// present its first byte wins and the negation is otherwise ignored.
+function optfn_menustyle(result, statement, negated) {
+    const valRequired = encodeUtf8ByteString(statement).length > 5 && !negated;
+    const op = string_for_opt(statement, !valRequired, result);
+    let initial;
+    if (op === '') {
+        if (valRequired) return;
+        initial = negated ? 'n' : 'f';
+    } else {
+        initial = lowc(op[0]);
+    }
+
+    const style = {
+        n: MENU_TRADITIONAL,
+        t: MENU_TRADITIONAL,
+        c: MENU_COMBINATION,
+        f: MENU_FULL,
+        p: MENU_PARTIAL,
+    }[initial];
+    if (style === undefined) {
+        configErrorAdd(result, `Unknown menustyle parameter '${op}'`);
+        return;
+    }
+    result.flags.menu_style = style;
+}
+
 // C ref: options.c parsebindings(). Comma-separated bindings recurse into
 // their suffix, so the rightmost alias is appended first and wins collisions.
 function applyMenuBindings(result, bindings) {
@@ -2722,6 +2745,133 @@ function setStatuslines(result, statement, negated) {
     result.iflags.wc2_statuslines = itmp;
 }
 
+// C ref: options.c optfn_msghistory() (2523-2545), its do_set request.
+// A positive statement requires a value, while a negated statement without
+// one stores zero.  The destination is an unsigned int, so atoi() narrows to
+// signed int first and the assignment then wraps that value to 32 bits.  A
+// missing positive value or a negated statement carrying a value reports and
+// leaves the previous value intact.
+function optfn_msghistory(result, statement, negated) {
+    const op = string_for_env_opt(statement, negated, result);
+    if ((negated && op === '') || (!negated && op !== '')) {
+        result.iflags.msg_history = (negated ? 0 : atoi(op)) >>> 0;
+    } else if (negated) {
+        bad_negation(result, 'msghistory');
+    }
+}
+
+// C ref: options.c optfn_paranoid_confirmation() (2816-3042), its do_set
+// request.  flags.paranoia_bits is C unsigned storage, so every bitwise result
+// is converted back to uint32; in particular, paranoia[]'s ~0 "all" row is
+// 0xFFFFFFFF rather than JavaScript's signed -1.
+function optfn_paranoid_confirmation(
+    result, value, negated, usingPrayconfirmAlias,
+) {
+    let op = value ?? '';
+
+    // "prayconfirm" is a full-length alias.  Detect this element itself
+    // rather than reading parseoptions()'s line-wide using_alias static: comma
+    // recursion can leave that static raised for an unrelated element to its
+    // left.  COMPLAIN_ABOUT_PRAYCONFIRM is defined in the recorder build.
+    if (usingPrayconfirmAlias) {
+        if (op !== '') {
+            configErrorAdd(
+                result,
+                `deprecated ${negated ? '!' : ''}prayconfirm option takes no`
+                    + ` parameters (found '${op}')`,
+            );
+            return;
+        }
+        configErrorAdd(
+            result,
+            `${negated ? '!' : ''}prayconfirm option is deprecated; switching`
+                + ` to paranoid_confirmation:${negated ? '-' : '+'}pray`,
+        );
+        op = `${negated ? '-' : '+'}pray`;
+        negated = false;
+    } else if (negated) {
+        if (op === '') {
+            result.flags.paranoia_bits = 0;
+            return;
+        }
+        configErrorAdd(
+            result, '!paranoid_confirmation does not accept a value',
+        );
+        return;
+    } else if (op === '') {
+        configErrorAdd(
+            result,
+            "paranoid_confirmation requires a value; use 'none' to cancel all",
+        );
+        return;
+    }
+
+    op = mungspaces(op);
+    let plusOrMinus = false;
+    let index = 0;
+    if (op[0] !== '+' && op[0] !== '-') {
+        result.flags.paranoia_bits = 0;
+    } else {
+        plusOrMinus = true;
+        negated = op[0] === '-';
+        index = 1;
+        if (op[index] === ' ') ++index;
+    }
+
+    for (;;) {
+        let fieldNegated = op[index] === '!';
+        if (fieldNegated) {
+            ++index;
+            if (op[index] === ' ') ++index;
+        } else {
+            const first = op[index] ?? '\0';
+            const second = op[index + 1] ?? '\0';
+            const third = op[index + 2] ?? '\0';
+            // Preserve options.c:2971-2972 literally.  Its misplaced lowc()
+            // makes the third-byte exclusion case-sensitive: "none" is not
+            // a negation, but "noNone" is.  A space also passes this test, so
+            // "no pray" advances onto the space and reports an empty token.
+            if (lowc(first) === 'n' && lowc(second) === 'o'
+                && third !== 'n' && lowc(third) !== '\0') {
+                fieldNegated = true;
+                index += 2;
+            }
+        }
+
+        const space = op.indexOf(' ', index);
+        const token = op.slice(index, space < 0 ? op.length : space);
+        const matched = paranoia.find(([, argname, argMinLen,
+            synonym, synMinLen]) => (
+            match_optname(token, argname, argMinLen, false)
+                || (synonym
+                    && match_optname(token, synonym, synMinLen, false))
+        ));
+        if (!matched) {
+            configErrorAdd(
+                result,
+                `Unknown paranoid_confirmation parameter '${token}'`,
+            );
+            return;
+        }
+
+        const [mask] = matched;
+        if (mask === 0) {
+            if (!plusOrMinus) result.flags.paranoia_bits = 0;
+        } else if (negated || fieldNegated) {
+            result.flags.paranoia_bits = (
+                result.flags.paranoia_bits & ~mask
+            ) >>> 0;
+        } else {
+            result.flags.paranoia_bits = (
+                result.flags.paranoia_bits | mask
+            ) >>> 0;
+        }
+
+        if (space < 0) break;
+        index = space + 1;
+    }
+}
+
 function sourceOptionMatch(parsedName) {
     return SOURCE_OPTION_MATCHES.find(([canonical, minLength]) => (
         !SOURCE_PREFIX_OPTION_NAMES.includes(canonical)
@@ -2815,6 +2965,91 @@ function pickupTypesFromSymbols(symbols) {
         }
     }
     return { types, badopt };
+}
+
+// C ref: options.c change_inv_order() (7466-7508), reached from
+// optfn_packorder()'s do_set request.  The source walks bytes and diagnoses
+// each bad, disallowed, or non-final repeated symbol, but still installs the
+// good classes.  Gold leads only when omitted; every other omitted class
+// follows in the order that was active before this statement.
+export function change_inv_order(result, op) {
+    const symbols = encodeUtf8ByteString(op);
+    const previous = result.flags.inv_order;
+    const reordered = [];
+    let accepted = true;
+
+    const goldSymbol = DEFAULT_PRIMARY_SYMBOLS[SYM_OFF_O + COIN_CLASS];
+    if (!symbols.includes(goldSymbol)) reordered.push(COIN_CLASS);
+
+    for (let index = 0; index < symbols.length; ++index) {
+        const byte = symbols[index];
+        const symbol = decodeUtf8ByteString([byte]);
+        const objectClass = def_char_to_objclass(symbol);
+        let rejected = false;
+
+        if (objectClass === MAXOCLASSES) {
+            configErrorAdd(result, `Not an object class '${symbol}'`);
+            rejected = true;
+        } else if (!previous.includes(objectClass)) {
+            configErrorAdd(result, `Object class '${symbol}' not allowed`);
+            rejected = true;
+        } else if (symbols.includes(byte, index + 1)) {
+            configErrorAdd(result, `Duplicate object class '${symbol}'`);
+            rejected = true;
+        }
+        if (rejected) accepted = false;
+        else reordered.push(objectClass);
+    }
+
+    for (const objectClass of previous) {
+        if (!reordered.includes(objectClass)) reordered.push(objectClass);
+    }
+    result.flags.inv_order = reordered.slice(0, MAXOCLASSES - 1);
+    return accepted;
+}
+
+// C ref: options.c optfn_packorder() (2670-2691), its startup do_set arm.
+// string_for_opt() supplies empty_optstr both without a separator and after
+// an empty one; either spelling rejects silently and keeps the prior order.
+function optfn_packorder(result, value) {
+    if (value == null || value === '') return;
+    change_inv_order(result, value);
+}
+
+// C ref: options.c optfn_sortdiscoveries() (3863-3903), its startup do_set
+// arm.  The mandatory-value helper runs before the negation test, so a
+// negated spelling without a value reports and then resets to discovery
+// order.  Otherwise the first lowercased byte selects the order; an unknown
+// parameter reports without changing the prior selection.
+function optfn_sortdiscoveries(result, statement, negated) {
+    const op = string_for_env_opt(statement, false, result);
+    if (negated) {
+        result.flags.discosort = 'o';
+    } else if (op !== '') {
+        switch (lowc(op[0])) {
+        case '0':
+        case 'o':
+            result.flags.discosort = 'o';
+            break;
+        case '1':
+        case 's':
+            result.flags.discosort = 's';
+            break;
+        case '2':
+        case 'c':
+            result.flags.discosort = 'c';
+            break;
+        case '3':
+        case 'a':
+            result.flags.discosort = 'a';
+            break;
+        default:
+            configErrorAdd(
+                result, `Unknown sortdiscoveries parameter '${op}'`,
+            );
+            break;
+        }
+    }
 }
 
 // C ref: options.c bad_negation() (6692-6697).  Three of its callers are
@@ -2995,6 +3230,22 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         );
         return;
     }
+    // C refs: options.c reset_duplicate_opt_detection() (6773-6779) and
+    // duplicate_opt_detection() (6782-6787). parseNethackrc() represents one
+    // read_config_file() call, so its new optionState is the reset and this
+    // Set is allopt[].dupdetected. The counter advances before bad_negation()
+    // and before the option handler, even when either one rejects the value.
+    let duplicate;
+    if (matchedRow) {
+        const metadata = optionParserMetadata[matchedRow.name] ?? {};
+        duplicate = optionState.seen.has(matchedRow.name);
+        optionState.seen.add(matchedRow.name);
+        if (duplicate && !metadata.dupeok) {
+            complain_about_duplicate(
+                result, matchedRow, metadata, aliasState.usingAlias,
+            );
+        }
+    }
     if (negated && matchedRow && !matchedRow.negateok) {
         bad_negation(result, matchedRow.name);
         return;
@@ -3016,11 +3267,11 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     } else if (name === 'role' || name === 'race' || name === 'gender'
                || name === 'alignment') {
         setCharacterOption(
-            result, optionState, name, statement, negated,
-            aliasState.usingAlias,
+            result, optionState, matchedRow, statement, negated,
+            aliasState.usingAlias, duplicate,
         );
     } else if (name === 'playmode') {
-        setPlaymode(result, value);
+        setPlaymode(result, value, duplicate);
     } else if (name === 'menu_headings') {
         setMenuHeadings(result, value, negated);
     } else if (name === 'petattr') {
@@ -3041,12 +3292,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
             `menu command option '${parsedName}' requires its full canonical name`,
         );
     } else if (name === 'packorder') {
-        // options.c change_inv_order() rewrites flags.inv_order from this
-        // value. That is not ported, so the value is retained and
-        // invent.c display_pickinv()'s port stops when it is present rather
-        // than listing the inventory in the default order.  optlist.h:541-542
-        // gives the option negateok No, so a negated spelling never arrives.
-        result.flags.packorder = value;
+        // optlist.h gives negateok No, so a negated spelling never arrives.
+        optfn_packorder(result, value);
     } else if (name === 'pettype') {
         setPettype(result, statement, negated);
     } else if (name === 'fruit') {
@@ -3086,6 +3333,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setRunmode(result, value, negated);
     } else if (name === 'pickup_burden') {
         setPickupBurden(result, statement);
+    } else if (name === 'menustyle') {
+        optfn_menustyle(result, statement, negated);
     } else if (name === 'pickup_types') {
         // optfn_pickup_types() clears the restriction before looking for its
         // value.  During startup a missing or empty value still reports the
@@ -3110,6 +3359,13 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setPileLimit(result, statement, negated);
     } else if (name === 'statuslines') {
         setStatuslines(result, statement, negated);
+    } else if (name === 'msghistory') {
+        optfn_msghistory(result, statement, negated);
+    } else if (name === 'paranoid_confirmation') {
+        optfn_paranoid_confirmation(
+            result, value, negated,
+            parsedName === 'prayconfirm',
+        );
     } else if (name === 'msg_window') {
         // C ref: options.c optfn_msg_window()'s do_set arm. PREV_MSGS is 1
         // for this tty build. parseoptions() reads this option's value as
@@ -3158,6 +3414,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
             return;
         }
         result.flags.sortloot = c;
+    } else if (name === 'sortdiscoveries') {
+        optfn_sortdiscoveries(result, statement, negated);
     } else if (name === 'versinfo') {
         // C ref: options.c optfn_versinfo()'s do_set arm.  optlist.h:816 gives
         // it negateok No, so parseoptions() has already answered a negation
@@ -3261,36 +3519,22 @@ function applyDirectOption(result, key, value) {
     }
 }
 
-// C ref: cfgfiles.c config_line_stmt[].  Each row here dispatches to a
-// cnf_line_<NAME>() this port has not ported, and each of those appends to a
-// list the options menu counts.  parse_config_line() matches on the same
-// case-insensitive prefix of at least `minLength` bytes, so these lengths are
-// the C table's: CNFL_N(AUTOPICKUP_EXCEPTION, 5), CNFL_N(AUTOCOMPLETE, 5),
-// CNFL_N(MSGTYPE, 7) and CNFL_N(MENUCOLOR, 9).  Recording the statement lets
-// the readers of the list refuse rather than report a list the port never
-// built.
-const UNPORTED_CONFIG_STATEMENTS = Object.freeze([
-    { name: 'autopickup_exception', minLength: 5, kind: 'unported' },
-    { name: 'autocomplete', minLength: 5, kind: 'unported' },
-    { name: 'msgtype', minLength: 7, kind: 'unported' },
-    { name: 'menucolor', minLength: 9, kind: 'unported' },
-]);
-
-const CONFIG_STATEMENTS = Object.freeze([
-    { name: 'options', minLength: 4, kind: 'options' },
-    { name: 'bindings', minLength: 4, kind: 'bindings' },
-    ...UNPORTED_CONFIG_STATEMENTS,
-    { name: 'roguesymbols', minLength: 4, kind: 'symbols', set: 'rogue' },
-    { name: 'symbols', minLength: 4, kind: 'symbols', set: 'primary' },
-    { name: 'name', minLength: 4, kind: 'direct', directName: 'name' },
-    { name: 'role', minLength: 4, kind: 'direct', directName: 'role' },
-    {
-        name: 'character', minLength: 4,
-        kind: 'direct', directName: 'role',
-    },
-    { name: 'dogname', minLength: 3, kind: 'direct', directName: 'dogname' },
-    { name: 'catname', minLength: 3, kind: 'direct', directName: 'catname' },
-]);
+// C ref: cfgfiles.c config_line_stmt[] and parse_config_line(). The generated
+// table owns every player-reachable name and minimum prefix length. This map
+// owns only handlers that have been ported. A generated row absent here is
+// still recognized, then recorded in unportedConfigStatements so a later
+// consumer can refuse its missing cnf_line_<NAME>() state explicitly.
+const CONFIG_STATEMENT_HANDLERS = Object.freeze({
+    options: Object.freeze({ kind: 'options' }),
+    bindings: Object.freeze({ kind: 'bindings' }),
+    roguesymbols: Object.freeze({ kind: 'symbols', set: 'rogue' }),
+    symbols: Object.freeze({ kind: 'symbols', set: 'primary' }),
+    name: Object.freeze({ kind: 'direct', directName: 'name' }),
+    role: Object.freeze({ kind: 'direct', directName: 'role' }),
+    character: Object.freeze({ kind: 'direct', directName: 'role' }),
+    dogname: Object.freeze({ kind: 'direct', directName: 'dogname' }),
+    catname: Object.freeze({ kind: 'direct', directName: 'catname' }),
+});
 
 function configDelimiter(line) {
     const colon = line.indexOf(':');
@@ -3423,18 +3667,19 @@ export function parseNethackrc(rc, random = rn2) {
             continue;
         }
 
-        const statement = CONFIG_STATEMENTS.find(({ name, minLength }) => (
+        const statementRow = configLineStatements.find(({ name, minLength }) => (
             matchesConfigName(statementName, name, minLength)
         ));
-        // cfgfiles.c parse_config_line():1436-1437 reports "Unknown config
-        // statement" here.  CONFIG_STATEMENTS holds 13 of config_line_stmt[]'s
-        // 31 non-syscnf_only rows, the ones a player's rc can match, so
-        // reporting from this table would flag WIZKIT, HILITE_STATUS, BOULDER,
-        // WARNINGS and the rest, which C accepts.  Completing the table is
-        // deferral options-unknown-config-statement.
-        if (!statement) continue;
-        if (statement.kind === 'unported') {
-            result.unportedConfigStatements.push(statement.name);
+        // cfgfiles.c parse_config_line():1436-1437. The earlier
+        // rcfile_interface_options() pass ignores unmatched rows, but the full
+        // rcfile() read that builds this result reports and keeps reading.
+        if (!statementRow) {
+            configErrorAdd(result, 'Unknown config statement');
+            continue;
+        }
+        const statement = CONFIG_STATEMENT_HANDLERS[statementRow.name];
+        if (!statement) {
+            result.unportedConfigStatements.push(statementRow.name);
             continue;
         }
 
@@ -3779,23 +4024,25 @@ const disclosure_options = 'iavgco';
 const known_handling = Object.freeze([
     'UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8',
 ]);
-// C ref: options.c paranoia[], in the order optfn_paranoid_confirmation()
-// walks when it spells the current bits.  The two config-only trailing rows,
-// "none" and "all", carry no bit of their own and never print.
+// C ref: options.c paranoia[].  The setter walks all fifteen rows, including
+// the two config-only choices at the end.  The value getter stops at "none",
+// the first zero mask, so neither config-only choice is ever printed.
 const paranoia = Object.freeze([
-    [PARANOID_CONFIRM, 'Confirm'],
-    [PARANOID_QUIT, 'quit'],
-    [PARANOID_DIE, 'die'],
-    [PARANOID_BONES, 'bones'],
-    [PARANOID_HIT, 'attack'],
-    [PARANOID_BREAKWAND, 'wand-break'],
-    [PARANOID_EATING, 'eat'],
-    [PARANOID_WERECHANGE, 'Were-change'],
-    [PARANOID_PRAY, 'pray'],
-    [PARANOID_TRAP, 'trap'],
-    [PARANOID_AUTOALL, 'Autoall'],
-    [PARANOID_SWIM, 'swim'],
-    [PARANOID_REMOVE, 'Remove'],
+    [PARANOID_CONFIRM, 'Confirm', 1, 'Paranoia', 2],
+    [PARANOID_QUIT, 'quit', 1, 'explore', 2],
+    [PARANOID_DIE, 'die', 1, 'death', 2],
+    [PARANOID_BONES, 'bones', 1, null, 0],
+    [PARANOID_HIT, 'attack', 1, 'hit', 1],
+    [PARANOID_BREAKWAND, 'wand-break', 2, 'break-wand', 2],
+    [PARANOID_EATING, 'eat', 1, 'continue', 4],
+    [PARANOID_WERECHANGE, 'Were-change', 2, null, 0],
+    [PARANOID_PRAY, 'pray', 1, null, 0],
+    [PARANOID_TRAP, 'trap', 1, 'move-trap', 1],
+    [PARANOID_AUTOALL, 'Autoall', 2, 'autoselect-all', 2],
+    [PARANOID_SWIM, 'swim', 1, null, 0],
+    [PARANOID_REMOVE, 'Remove', 1, 'Takeoff', 1],
+    [0, 'none', 4, null, 0],
+    [0xFFFFFFFF, 'all', 3, null, 0],
 ]);
 // C ref: options.c n_currently_set.
 function n_currently_set(count) {
@@ -3808,14 +4055,65 @@ function petname_optfn(state, option) {
     return petname || none;
 }
 
-// C ref: botl.c count_status_hilites().  Its gather pass walks every status
-// field and every condition; with no rule of either kind configured it
-// counts nothing, and this port has no representation for the line-per-rule
-// count the pass produces once rules exist.
+// C ref: botl.c status_hilite_linestr_gather_conditions().  Condition rules
+// are stored as writes to gc.cond_hilites[], unlike the one-node-per-rule
+// threshold lists for ordinary fields.  Replaying those writes gives each
+// condition its final lowest-numbered color and accumulated attributes.  C
+// then coalesces conditions with the same final pair into one menu line, so
+// this count is the number of distinct non-empty pairs rather than the number
+// of configuration statements.
+function status_hilite_linestr_gather_conditions(rules) {
+    const conditionStyles = new Map();
+    for (const rule of rules) {
+        if (rule.field !== 'condition') continue;
+        for (const condition of rule.conditions) {
+            const style = conditionStyles.get(condition) ?? {
+                colors: new Set(),
+                attrib: HL_UNDEF,
+            };
+            if (rule.style.clearAttributes) style.attrib = HL_UNDEF;
+            style.attrib |= rule.style.attrib;
+            // A null color marks parse_condition() returning after it had
+            // stored attributes but before its final color-array write.
+            if (rule.style.color !== null)
+                style.colors.add(rule.style.color);
+            conditionStyles.set(condition, style);
+        }
+    }
+
+    const gathered = new Set();
+    for (const condition of SOURCE_CONDITION_NAMES) {
+        const style = conditionStyles.get(condition);
+        if (!style) continue;
+        const color = style.colors.size
+            ? Math.min(...style.colors) : NO_COLOR;
+        // gather_conditions() begins with HL_NONE and removes that sentinel
+        // when any real attribute bit is present.
+        const attrib = style.attrib === HL_UNDEF ? HL_NONE
+            : style.attrib & ~HL_NONE;
+        if (color !== NO_COLOR || attrib !== HL_NONE)
+            gathered.add(`${color}:${attrib}`);
+    }
+    return [...gathered];
+}
+
+// C ref: botl.c status_hilite_linestr_gather().  count_status_hilites() only
+// observes the gathered list's length, so its entries can be opaque here:
+// every ordinary field rule contributes one, then the coalesced condition
+// entries follow.  Building a fresh array also preserves C's gather/done
+// idempotence without changing the configured rule list.
+function status_hilite_linestr_gather(state) {
+    const rules = state.iflags?.status_hilites ?? [];
+    return [
+        ...rules.filter((rule) => rule.field !== 'condition'),
+        ...status_hilite_linestr_gather_conditions(rules),
+    ];
+}
+
+// C ref: botl.c count_status_hilites(), used by options.c
+// optfn_hilite_status(get_val) and optfn_o_status_hilites(get_val).
 function count_status_hilites(state) {
-    if (state.iflags?.status_hilites?.length)
-        throw new UnsupportedOptionMenuError('count_status_hilites() rules');
-    return 0;
+    return status_hilite_linestr_gather(state).length;
 }
 
 // C ref: options.c count_cond(), over botl.c condtests[].
@@ -3990,6 +4288,7 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     paranoid_confirmation: (state) => {
         const bits = state.flags.paranoia_bits;
         const names = paranoia
+            .slice(0, paranoia.findIndex(([mask]) => mask === 0))
             // paranoid_confirm:bones is hidden during play outside debug mode.
             .filter(([mask]) => (bits & mask)
                 && (mask !== PARANOID_BONES || state.wizard))
@@ -4109,10 +4408,8 @@ function symsetValue(state, set, withHandling) {
 // Membership is every shown compound option that parseNethackrc() leaves as
 // raw text under flags[<option name>] and whose handler above reads some
 // other field, so the raw text sits beside the value rather than replacing
-// it.  packorder is a member on that rule even though it has its own parse
-// arm, because that arm only retains the raw text: its handler reads
-// flags.inv_order.  Where the raw text lands in the very field the handler
-// reads -- autounlock, suppress_alert and versinfo -- there is nothing left
+// it.  Where the raw text lands in the very field the handler reads --
+// autounlock, suppress_alert and versinfo -- there is nothing left
 // to compare against, so those three are guarded by type inside
 // their handlers instead and are not members.  The other-settings rows need
 // neither guard: each counts live state rather than reading an option field.
@@ -4120,9 +4417,8 @@ function symsetValue(state, set, withHandling) {
 // so the set cannot drift from OPTION_VALUE_HANDLERS unnoticed.
 export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set([
     'boulder', 'crash_email', 'crash_name', 'crash_urlmax',
-    'disclose', 'glyph', 'menu_objsyms', 'menuinvertmode', 'menustyle',
-    'msghistory', 'packorder', 'paranoid_confirmation',
-    'scores', 'sortdiscoveries', 'sortvanquished',
+    'disclose', 'glyph', 'menu_objsyms', 'menuinvertmode',
+    'scores', 'sortvanquished',
     'soundlib', 'whatis_filter', 'windowtype',
 ]));
 

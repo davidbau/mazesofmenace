@@ -48,7 +48,7 @@ const GETOBJ_SUGGEST = 1;
 const GETOBJ_DOWNPLAY = 2;
 const GETOBJ_EXCLUDE = 3;
 /** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
-function is_weptool(obj) {
+export function is_weptool(obj) {
     if (!obj || obj.oclass !== TOOL_CLASS) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill;
     if (sk != null && sk !== P_NONE) return true;
@@ -770,8 +770,10 @@ export function set_twoweap(on_off) {
 /**
  * C ref: wield.c drop_uswapwep — Glib/cursed secondary while dual-wielding.
  * Yobjnam2/otense polish deferred; dropx via dynamic import (do↔wield).
+ * Also called from uhitm.c hmonas passivedone when poly multi-AT_WEAP
+ * simulates twoweap with a cursed uswapwep (D-1266).
  */
-async function drop_uswapwep() {
+export async function drop_uswapwep() {
     const u = game.u;
     const obj = u?.uswapwep;
     if (!obj) return;

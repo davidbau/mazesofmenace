@@ -11,7 +11,8 @@
 // (D-0977).
 // Named omissions: Hero_playnotes audio; onscary wiz/angel/rider; can_blow poly;
 // flooreffects full (boulder→pit thin); maketrap shop-hole/
-// drawbridge-up/wall morph; Soundeffect; count_level_features on
+// DRAWBRIDGE_UP ice morph (D-1280 PIT/HOLE set_levltyp in trap.js);
+// Soundeffect; count_level_features on
 // fountain/sink morph; sleep_monst defended(AD_SLEE)/shieldeff;
 // tamedog givemsg pline; set_entity crush on open/close.
 
@@ -26,8 +27,8 @@ import {
     FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, SCORR, CORR, ROOM, SDOOR, DOOR,
     D_NODOOR, PIT, TT_PIT, TT_BURIEDBALL, AM_SANCTUM, AM_MASK, Amask2align,
     is_pit, u_at, COLNO, ROWNO, SHOPBASE, ARTICLE_THE, ARTICLE_A, SUPPRESS_SADDLE,
-    XKILL_NOMSG, NO_KILLER_PREFIX, Upolyd, has_mgivenname, IS_ROOM,
-    Is_astralevel, In_endgame, In_sokoban, In_V_tower, STONE,
+    XKILL_NOMSG, NO_KILLER_PREFIX, Upolyd, has_mgivenname,
+    Is_astralevel, In_endgame, In_sokoban, In_V_tower,
     BZ_OFS_AD, KILLED_BY, DRAWBRIDGE_DOWN, IS_DRAWBRIDGE, Never_mind,
     Is_stronghold, ACH_TUNE, isok,
 } from './const.js';
@@ -45,14 +46,13 @@ import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch 
 import {
     fillholetyp, liquid_flow,
 } from './dig.js';
-import { obj_extract_self, delobj, objects_at, place_object, stackobj } from './mkobj.js';
+import { obj_extract_self, delobj, objects_at } from './mkobj.js';
 import { losehp, maybe_half_phys, in_rooms } from './hack.js';
 import { xkilled } from './uhitm.js';
 import { makeknown, consume_obj_charge } from './invent.js';
 import { align_str, uhim } from './roles.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { add_damage } from './shk.js';
-import { del_engr_at } from './engrave.js';
 import { PM_ARCHEOLOGIST, monsterNames } from './generated/monsters_data.js';
 import { getdir } from './lock.js';
 import { tamedog } from './dog.js';
@@ -514,35 +514,6 @@ async function do_pit(x, y, tu_pit) {
     const chasm0 = maketrap(x, y, PIT);
     if (!chasm0) return; // no pit if portal etc.
     chasm0.tseen = 1;
-
-    // C trap.c maketrap PIT body (subset): IS_ROOM → ROOM + clear flags +
-    // unearth + recalc. Kept here so shared maketrap stays dig-stable
-    // (D-0972); shop-hole / DRAWBRIDGE_UP / wall morph still deferred.
-    {
-        const lev = game.level?.at?.(x, y);
-        if (lev) {
-            if (IS_ROOM(lev.typ)) {
-                lev.typ = ROOM;
-                lev.flags = 0;
-            } else if (lev.typ === STONE || lev.typ === SCORR) {
-                lev.typ = CORR;
-                lev.flags = 0;
-            }
-            let botmp = game.level?.buriedobjlist || null;
-            while (botmp) {
-                const next = botmp.nobj || null;
-                if ((botmp.ox | 0) === (x | 0) && (botmp.oy | 0) === (y | 0)) {
-                    obj_extract_self(botmp);
-                    place_object(botmp, x, y);
-                    stackobj(botmp);
-                }
-                botmp = next;
-            }
-            del_engr_at(x, y);
-            newsym(x, y);
-            recalc_block_point(x, y);
-        }
-    }
 
     const mtmp = m_at(x, y);
     const otmp = sobj_at(BOULDER, x, y);
