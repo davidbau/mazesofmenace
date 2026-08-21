@@ -19,7 +19,8 @@
 // altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
 // dulling occupation; del_engr/rloc_engr; livelog;
 // allmain DEX timeout D-1372; dokick(2) D-1360;
-// uhitm/dothrow/dig `u_wipe_engr` callers still stubbed;
+// uhitm do_attack(3) D-1373; dothrow throw_obj(2) D-1374;
+// dig.c still stubbed;
 // demon/vampire blood default beyond type; Blind feel path for
 // engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
 // (non-zero) path; invent lookhere / pickup() still pass FALSE/TRUE

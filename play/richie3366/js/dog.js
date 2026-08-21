@@ -131,7 +131,7 @@ function spell_skilltype_familiar(booktype) {
 /**
  * C ref: dog.c pick_familiar_pm — figurine corpsenm (G_EXTINCT + special
  * mbirth_limit → dust) else spell: 1/3 pet_type else rndmonst_adj(0, 3*skill).
- * Named omit: SPE_CREATE_FAMILIAR spell.c dispatch (helper is complete).
+ * Spell dispatch is spell.c SPE_CREATE_FAMILIAR (D-1389).
  */
 async function pick_familiar_pm(otmp, quietly) {
     let pm = null;
@@ -162,8 +162,8 @@ async function pick_familiar_pm(otmp, quietly) {
  * (otmp null). makemon MM_EDOG|MM_IGNOREWATER|NO_MINVENT|MM_NOMSG + gender;
  * figurine shatter / angel free_emin; pool minliquid; rn2(10) then B/U/C
  * 80/10/10 tame·peace·hostile; named christen; initedog; AT_WEAP wield.
- * Named omit: livelog first pet; makemon MM_EDOG newedog alloc (initedog
- * still creates edog).
+ * Spell dispatch is D-1389. Named omit: livelog first pet; makemon
+ * MM_EDOG newedog alloc (initedog still creates edog).
  */
 export async function make_familiar(otmp, x, y, quietly) {
     let mtmp = null;

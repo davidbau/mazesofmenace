@@ -27,7 +27,7 @@ import { run_timers, start_timer, stop_timer, weight,
 import { make_confused, make_slimed } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast } from './attrib.js';
-import { pline, You_feel, newsym, canseemon, verbalize } from './display.js';
+import { pline, You_feel, newsym, canseemon, verbalize, Norep } from './display.js';
 import { inv_weight } from './invent.js';
 import { doname, makeplural, xname, an, The } from './objnam.js';
 import { rn2, rnd, d } from './rng.js';
@@ -46,7 +46,8 @@ import { new_light_source, del_light_source } from './light.js';
 import { cansee } from './vision.js';
 import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
-import { Monnam, x_monnam } from './do_name.js';
+import { Monnam, x_monnam, hcolor } from './do_name.js';
+import { find_ac } from './u_init.js';
 
 /**
  * Props whose TIMEOUT is already decremented by the dedicated arms below
@@ -235,12 +236,13 @@ function incr_itimeout_HFumbling(incr) {
  * DEAF → make_deaf(0) on expiry (D-0911; talk if !Unaware deferred).
  * FAST → timeout decrement + slow-down You_feel when !Very_fast (D-0919).
  * mtimedone → rehumanize / Unchanging rnd refresh (D-0928 #1112).
+ * usptime SPE_PROTECTION dissipate (D-1390; after mtimedone like C).
  * Remaining uprops TIMEOUT (incl. INVULNERABLE from #wizintrinsic) —
  * generic -- like C's for (upp = u.uprops; …) (D-0928 #1168); expiry
  * switch cases for those props still deferred (silent clear).
  * Named omissions: luck baseluck; Stoned/Slimed/Sick/… dialogues;
  * STUNNED/INVIS/SEE_INVIS/HALLUC/SLEEPY/LEVITATION/… expiry messages;
- * GLIB `make_glib(0)` inventory on expiry; ublesscnt (in allmain); usptime; ugallop; delayed
+ * GLIB `make_glib(0)` inventory on expiry; ublesscnt (in allmain); ugallop; delayed
  * killers; defer_decor; full ice/mount slip_or_trip arms;
  * you_unwere callers beyond mtimedone (pray TROUBLE / potion).
  * u.uinvulnerable early-return freezes all TIMEOUT (D-0928 #1171).
@@ -408,6 +410,26 @@ export async function nh_timeout() {
                 await you_unwere(false);
             } else {
                 await rehumanize();
+            }
+        }
+    }
+
+    /* C timeout.c :652–661 — dissipate SPE_PROTECTION (D-1390).
+     * After mtimedone / ucreamed; before ugallop / uprops in C.
+     * JS uprops arms already ran above (pre-existing order). */
+    if (u.usptime) {
+        u.usptime = ((u.usptime | 0) - 1) & 0xff;
+        if (u.usptime === 0 && (u.uspellprot | 0)) {
+            u.usptime = u.uspmtime | 0;
+            u.uspellprot = ((u.uspellprot | 0) - 1) & 0xff;
+            find_ac();
+            if (!Blind()) {
+                const hgolden = hcolor('golden'); /* NH_GOLDEN */
+                await Norep(
+                    `The ${hgolden} haze around you ${
+                        u.uspellprot ? 'becomes less dense' : 'disappears'
+                    }.`,
+                );
             }
         }
     }

@@ -1,7 +1,7 @@
 // makemon.js — Monster creation / random selection.
 // C ref: makemon.c — rndmonst_adj, makemon, clone_mon, newmonhp,
-//   peace_minded, m_initweap / m_initthrow / mongets (ordinary
-//   armed-mlet envelope).
+//   create_critters, peace_minded, m_initweap / m_initthrow / mongets
+//   (ordinary armed-mlet envelope).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -74,8 +74,8 @@ import {
 } from './monsters.js';
 import { big_to_little } from './mondata.js';
 import {
-    NO_MINVENT, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD, MM_EMIN,
-    MM_EPRI, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT, MM_MALE, MM_FEMALE,
+    NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
+    MM_EMIN, MM_EPRI, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT, MM_MALE, MM_FEMALE,
     MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     In_mines, In_sokoban, In_endgame,
@@ -964,6 +964,55 @@ function mbirth_limit(mndx) {
     if (mndx === PM_NAZGUL) return 9;
     if (mndx === PM_ERINYS) return 3;
     return MAXMONNO;
+}
+
+const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
+
+/**
+ * C ref: makemon.c create_critters `:1553–1590` — wand/scroll/spell of
+ * create monster. Returns true iff the hero knows a monster appeared
+ * (`canseemon` + ordinary/monster mimic, or `sensemon`).
+ * Wizard `create_particular` via dynamic import (read.js cycle).
+ * Callers: zapnodir WAN_CREATE_MONSTER (D-1379). Named omit:
+ * read.c seffect_create_monster / spell SPE_CREATE_MONSTER.
+ * @returns {Promise<boolean>}
+ */
+export async function create_critters(cnt, mptr, neverask) {
+    let known = false;
+    const wizard = !!(game.flags?.debug || game.flags?.wizard);
+    let ask = wizard && !neverask;
+    cnt = cnt | 0;
+
+    while (cnt--) {
+        if (ask) {
+            const { create_particular } = await import('./read.js');
+            if (await create_particular()) {
+                known = true;
+                continue;
+            }
+            ask = false;
+        }
+        const u = game.u || {};
+        let x = u.ux | 0;
+        let y = u.uy | 0;
+        // C: !mptr && u.uinwater && enexto(..., &mons[PM_GIANT_EEL])
+        // short-circuits so typed mptr / dry hero skip the eel hunt.
+        const c = { x: 0, y: 0 };
+        if (!mptr && u.uinwater && enexto(c, x, y, mons(PM_GIANT_EEL))) {
+            x = c.x | 0;
+            y = c.y | 0;
+        }
+
+        const mon = makemon(mptr, x, y, NO_MM_FLAGS);
+        if (!mon) continue;
+
+        const ap = M_AP_TYPE(mon);
+        if ((canseemon(mon) && (ap === M_AP_NOTHING || ap === M_AP_MONSTER))
+            || sensemon(mon)) {
+            known = true;
+        }
+    }
+    return known;
 }
 
 /**

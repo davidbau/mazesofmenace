@@ -884,8 +884,9 @@ async function bhit_flashed_light(ddx, ddy, range, obj) {
 
 /**
  * C apply.c do_blinding_ray — FLASHED_LIGHT bhit + flash_hits_mon.
+ * Callers: use_camera; artifact.c invoke_blinding_ray (D-1377).
  */
-async function do_blinding_ray(obj) {
+export async function do_blinding_ray(obj) {
     const mtmp = await bhit_flashed_light(
         game.u.dx | 0, game.u.dy | 0, COLNO, obj,
     );

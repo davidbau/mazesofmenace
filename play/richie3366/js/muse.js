@@ -1,12 +1,13 @@
 // muse.js — Monster item use.
 // C ref: muse.c find_offensive / use_offensive (MUSE_POT_* throw +
-// MUSE_WAN_STRIKING mbhit); find_defensive / find_misc / use_misc.
+// MUSE_WAN_STRIKING mbhit + MUSE_CAMERA lightdamage D-1376);
+// find_defensive / find_misc / use_misc.
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { cansee, couldsee } from './vision.js';
-import { pline, mon_visible, see_with_infrared, pline_mon } from './display.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { pline, mon_visible, see_with_infrared, pline_mon, verbalize } from './display.js';
+import { Monnam, mon_nam, Hallucination } from './do_name.js';
 import { doname, singular, an, xname, the, makeplural } from './objnam.js';
 import { dist2, distmin, m_at, m_carrying } from './mon.js';
 import { lined_up, m_throw } from './mthrowu.js';
@@ -26,11 +27,11 @@ import { bcsign } from './rumors.js';
 import { enexto, migrate_to_level } from './teleport.js';
 import { makemon, mpickobj } from './makemon.js';
 import { place_object } from './mkobj.js';
-import { dropy } from './do.js';
-import { learnwand } from './zap.js';
+import { dropy, make_blinded } from './do.js';
+import { learnwand, lightdamage } from './zap.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
-    D_LOCKED, D_CLOSED, KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR,
+    D_LOCKED, D_CLOSED, KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR, TIMEOUT,
     OBJ_FLOOR, G_GONE, MM_NOMSG,
     W_ARMOR, W_ACCESSORY, W_SADDLE,
     MIGR_RANDOM, In_endgame, In_sokoban,
@@ -81,6 +82,7 @@ const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_DJINNI = monsterNames.indexOf('PM_DJINNI');
 const PM_KI_RIN = monsterNames.indexOf('PM_KI_RIN');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
+const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const AT_GAZE = 15;
 const RAY = 3; // objclass.h oc_dir
 
@@ -96,6 +98,7 @@ const MUSE_POT_BLINDNESS = 10;
 const MUSE_POT_CONFUSION = 11;
 const MUSE_POT_ACID = 14;
 const MUSE_POT_SLEEPING = 16;
+const MUSE_CAMERA = 18; // C muse.c offense; defense FULL_HEALING is also 18
 
 /** C muse.c misc codes used here (muse.c #define MUSE_*). */
 const MUSE_POT_GAIN_LEVEL = 1;
@@ -314,6 +317,43 @@ function Antimagic() {
     return false;
 }
 
+/** C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded. */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C youprop.h BlindedTimeout — HBlinded & TIMEOUT. */
+function BlindedTimeout() {
+    return (game.u?.HBlinded | 0) & TIMEOUT;
+}
+
+/** C youprop.h Unaware — multi < 0 && (unconscious || fainted). */
+function Unaware() {
+    if ((game.multi | 0) >= 0) return false;
+    const u = game.u || {};
+    return !!(u.usleep || u.Unaware);
+}
+
+/**
+ * C ref: mondata.c resists_blnd youmonst :248–272 — Blind / Unaware.
+ * Named omit: expl/gaze AD_BLND (yellow light / Archon);
+ * resists_blnd_by_arti (Sunsword).
+ */
+function resists_blnd_you() {
+    return Blind() || Unaware();
+}
+
+/**
+ * C ref: mondata.h hates_light — youmonst.data == gremlin.
+ * Used so a gremlin hero still gets flashed when already Blind.
+ */
+function hates_light_you() {
+    return (game.youmonst?.data?.mndx | 0) === PM_GREMLIN
+        || (game.u?.umonnum | 0) === PM_GREMLIN;
+}
+
 function museState() {
     if (!game._muse) {
         game._muse = {
@@ -326,8 +366,8 @@ function museState() {
 }
 
 /**
- * C ref: muse.c find_offensive — potion throw + WAN_STRIKING subset.
- * Other wand/horn/scroll/camera offense deferred (C-JS-MAP).
+ * C ref: muse.c find_offensive — potion throw + WAN_STRIKING + MUSE_CAMERA.
+ * Other wand/horn/scroll offense deferred (C-JS-MAP).
  *
  * C `#define nomore(x) if (has_offense == x) continue` — once a type is
  * selected, later invent objects hit that nomore and skip the rest of their
@@ -385,6 +425,18 @@ export function find_offensive(mtmp) {
         if (obj.otyp === POT_ACID) {
             m.offensive = obj;
             m.has_offense = MUSE_POT_ACID;
+        }
+        // C: nomore(MUSE_SCR_EARTH) + earth-scroll body named
+        if (m.has_offense === MUSE_CAMERA) continue;
+        // C muse.c :1566–1574 — last live offense after potions.
+        // Short-circuit: rn2(6) only when sight-vulnerable or gremlin,
+        // dist2(mx,my,mux,muy)<=2, and spe>0.
+        if (obj.otyp === EXPENSIVE_CAMERA
+            && ((!Blind() && !resists_blnd_you()) || hates_light_you())
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux ?? u.ux, mtmp.muy ?? u.uy) <= 2
+            && (obj.spe | 0) > 0 && !rn2(6)) {
+            m.offensive = obj;
+            m.has_offense = MUSE_CAMERA;
         }
     }
     return m.has_offense !== 0;
@@ -496,7 +548,7 @@ async function mbhit(mon, range, obj) {
 
 /**
  * C ref: muse.c use_offensive — potion hurls + WAN_STRIKING mbhit
- * (return 2 = spent turn). Other wand/horn/scroll cases deferred.
+ * + MUSE_CAMERA flash (D-1376). Other wand/horn/scroll cases deferred.
  */
 export async function use_offensive(mtmp) {
     const m = museState();
@@ -539,6 +591,27 @@ export async function use_offensive(mtmp) {
             otmp,
         );
         return (mtmp.mhp | 0) < 1 ? 1 : 2;
+    case MUSE_CAMERA: {
+        // C muse.c :1938–1955 — Hallu verbalize else !Blind picture;
+        // SetVoice named. Then flash + lightdamage + spe--.
+        // C returns 1 even if the monster lives (mhitu treats as died).
+        if (Hallucination()) {
+            await verbalize('Say cheese!');
+        } else if (!Blind()) {
+            await pline(
+                `${Monnam(mtmp)} takes a picture of you with ${an(xname(otmp))}!`,
+            );
+        }
+        game.m_using = true;
+        if (!Blind() && !resists_blnd_you()) {
+            await pline('You are blinded by the flash of light!');
+            await make_blinded(BlindedTimeout() + rnd(1 + 50), false);
+        }
+        await lightdamage(otmp, true, 5);
+        game.m_using = false;
+        otmp.spe = (otmp.spe | 0) - 1;
+        return 1;
+    }
     default:
         return 0;
     }

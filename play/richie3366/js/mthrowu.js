@@ -31,7 +31,7 @@ import {
     MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval, hitval,
     should_mulch_missile,
 } from './weapon.js';
-import { find_mac, mondied, monkilled } from './mhitm.js';
+import { find_mac, mondied, monkilled, shade_miss } from './mhitm.js';
 import { xkilled } from './uhitm.js';
 import { ammo_and_launcher, is_launcher } from './wield.js';
 import { acurr, acurrstr, A_DEX, A_STR, exercise } from './attrib.js';
@@ -644,10 +644,10 @@ async function hit(str, mtmp, force) {
  * C ref: mthrowu.c ohitmon — missile hits another monster.
  * Returns true if missile is done (stop flight); false to keep going.
  *
- * Named omissions: shade_miss (caller); distant_name/mshot_xname;
- * spec_abon; stone_missile/passes_rocks; poison/silver/acid/egg
- * petrify; can_blnd; vampshifter destroy verb;
- * mon_notices unfreeze in omon_adj.
+ * Named omissions: distant_name/mshot_xname; spec_abon;
+ * stone_missile/passes_rocks; poison/silver/acid/egg petrify;
+ * can_blnd; vampshifter destroy verb; mon_notices unfreeze in
+ * omon_adj. Caller `m_throw` shade_miss is D-1382.
  * Rolling boulder (range==-1): after drop_throw, re-extract and return
  * false so launch_obj keeps rolling (D-0700 / mthrowu.c ohitmon).
  */
@@ -900,8 +900,9 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
 /**
  * C ref: mthrowu.c m_throw — flight loop; hero hit / forcehit rn2(5).
  * Tethered AKLYS sets return_flightpath instead of drop_throw, then
- * return_from_mtoss (D-1334). shade_miss / iron bars / sink / gem catch
- * still named. thrwmu always_toss / polearm still named.
+ * return_from_mtoss (D-1334). shade_miss caller D-1382 (`:680–686`).
+ * iron bars / sink / gem catch still named. thrwmu always_toss /
+ * polearm still named.
  */
 export async function m_throw(mon, x, y, dx, dy, range, obj) {
     // C :584–587 — arw / tethered before setmnotwielded
@@ -967,8 +968,11 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         if (cansee(bx, by)) observe_object(singleobj);
 
         const mtmp = m_at(bx, by);
-        if (mtmp) {
-            // C: shade_miss → clear mtmp and keep going (deferred)
+        // C mthrowu.c :680–686 — shade_miss(TRUE,TRUE) skips ohitmon
+        // and keeps flying; else ohitmon; else hero cell.
+        if (mtmp && await shade_miss(mon, mtmp, singleobj, true, true)) {
+            /* pass harmlessly through; mtmp cleared in C, keep going */
+        } else if (mtmp) {
             if (await ohitmon(mtmp, singleobj, range, true)) {
                 break;
             }

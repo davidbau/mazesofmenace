@@ -16,6 +16,8 @@
 // WAN/SPE_MAGIC_MISSILE (D-1364; Antimagic uprops D-1367);
 // SPE_FIREBALL self-explode (D-1365);
 // lightdamage + zapnodir WAN/SPE_LIGHT + zapyourself WAN_LIGHT/CAMERA (D-1366);
+// zapnodir WAN_CREATE_MONSTER create_critters (D-1379);
+// zapnodir WAN_WISHING Luck+rn2(5) / makewish (D-1380);
 // zapyourself WAN_MAKE_INVISIBLE (D-1369);
 // dozap self-zap losehp killer_xname + uhim (D-1345);
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
@@ -23,11 +25,13 @@
 // Reflecting); IMMEDIATE weffects → bhit(rn1(8,6)) + bhito WAN_POLYMORPH
 // / cancel / striking boulder+statue+hero_breaks / tele pile + bhitm
 // strike/cancel/poly/tele/undead(+unturn_dead); RAY WAN_DIGGING/SPE_DIG
-// → zap_dig (dig.c).
+// → zap_dig (dig.c); RAY SPE_MAGIC_MISSILE..SPE_FINGER_OF_DEATH weffects
+// → ubuzz BZ_U_SPELL (D-1386); SPE_FORCE_BOLT IMMEDIATE weffects/bhit
+// + bhitm spell_damage_bonus (D-1388; Knight questart dbldam named).
 // Named omissions: zap_updown/uswallow full; bhitm slow/speed/locking/
-// probing; zap_map; spell ubuzz; mon_reflects;
+// probing; zap_map; mon_reflects;
 // Hallucination hdmgtype rn2; map_invisible/unmap during buzz;
-// backfire body; other NODIR; wrest pline; check_capacity;
+// backfire body; other NODIR (enlighten/stasis); wrest pline; check_capacity;
 // check_unpaid; update_inventory; shieldeff/monstunseesu; setworn
 // EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/dragon
 // D-1353 (shared muse.c clone); mcastu ureflects named; create_polymon after poly_zapped;
@@ -38,14 +42,17 @@
 // acid_damage/erode_armor; death-breath disintegrate_arm;
 // potionbreathe invis flash (D-0741); inventory_resistance_check;
 // ugolemeffects; burn_away_slime;
-// spell_damage_bonus / Knight questart double; Rider/Death specials;
+// spell_damage_bonus zhitm / Knight questart double; Rider/Death specials;
 // disintegrate_mon; fire completelyburns XKILL_NOCORPSE; mon_reflects;
 // flash_hits WAN_LIGHT bhitm (D-0979); openholding/openfalling +
 // Punished/boxlock_invent/SPE_KNOCK hurtle/saddle (D-0981);
 // montraits/omonst/ghost recorporealize (D-0982);
 // trap_ice_effects; Underwater/utrap lava arms.
-// spell.c skilled SPE_FIREBALL scatter;
-// muse MUSE_CAMERA / Sunsword invoke_blinding_ray lightdamage callers.
+// spell.c skilled SPE_FIREBALL scatter is D-1378 (this callee
+// spell_damage_bonus); unskilled FIREBALL/CONE FALLTHROUGH weffects
+// is D-1386 (this callee SPE ubuzz). SPE_FORCE_BOLT IMMEDIATE bhit
+// + bhitm spell_damage_bonus is D-1388. zhitm spell_damage_bonus named.
+// muse MUSE_CAMERA is D-1376; Sunsword invoke_blinding_ray is D-1377.
 // bhitm / zap_updown / zap_steed WAN_MAKE_INVISIBLE; setworn w_blocks.
 // maybe_destroy_item AD_ELEC rings/wands (D-1368); Shock_resistance
 // via uprops[SHOCK_RES] (D-1371); inventory_resistance / full
@@ -75,7 +82,7 @@ import { doname, xname, yname, distant_name, vtense, The, an, An, killer_xname, 
 import { uhim } from './roles.js';
 import { fix_wall_spines } from './mklev.js';
 import {
-    A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise,
+    A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise, acurr,
 } from './attrib.js';
 import { findit } from './detect.js';
 import {
@@ -88,7 +95,7 @@ import {
     G_UNIQ, is_rider, is_swimmer, mindless, MZ_MEDIUM,
 } from './monsters.js';
 import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond } from './mon.js';
-import { find_mac, monkilled } from './mhitm.js';
+import { find_mac, monkilled, shade_miss } from './mhitm.js';
 import { more_experienced } from './exper.js';
 import { obj_resists } from './dogmove.js';
 import { zap_dig, fracture_rock, break_statue, bury_objs, unearth_objs } from './dig.js';
@@ -110,7 +117,7 @@ import { recalc_block_point } from './vision.js';
 import { picking_at, reset_pick, boxlock_invent } from './lock.js';
 import { monflee, sticks } from './monmove.js';
 import { digests, set_ustuck, unstuck, expels, ureflects } from './mhitu.js';
-import { newcham, makemon, monhp_per_lvl, neweshk, add_to_minv } from './makemon.js';
+import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv } from './makemon.js';
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
 import { rehumanize } from './polyself.js';
@@ -181,6 +188,7 @@ const WAN_MAKE_INVISIBLE = objectNames.indexOf('WAN_MAKE_INVISIBLE');
 const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const RIN_SHOCK_RESISTANCE = objectNames.indexOf('RIN_SHOCK_RESISTANCE');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
+const WAN_CREATE_MONSTER = objectNames.indexOf('WAN_CREATE_MONSTER');
 const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
 const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
@@ -465,12 +473,18 @@ function zaptype(type) {
     return Math.abs(t);
 }
 
-/** C ref: hack.h BZ_OFS_WAN / BZ_U_WAND */
+/** C ref: hack.h BZ_OFS_WAN / BZ_U_WAND / BZ_OFS_SPE / BZ_U_SPELL */
 function BZ_OFS_WAN(otyp) {
     return Math.abs((otyp | 0) - WAN_MAGIC_MISSILE) % 10;
 }
 function BZ_U_WAND(bztyp) {
     return 0 + (bztyp | 0);
+}
+function BZ_OFS_SPE(otyp) {
+    return Math.abs((otyp | 0) - SPE_MAGIC_MISSILE) % 10;
+}
+function BZ_U_SPELL(bztyp) {
+    return 10 + (bztyp | 0);
 }
 
 /**
@@ -1439,7 +1453,7 @@ async function resist(mtmp, oclass, damage, tell) {
  * C ref: zap.c zhitm — wand/spell/breath hit on monster.
  * Envelope: ZT_MAGIC_MISSILE..ZT_ACID dice + cold/fire/elec destroy_items
  * + resist halve. Named omissions: defended(); resists_magm body;
- * spell_damage_bonus; burnarmor/ignite; acid_damage/erode; death-breath
+ * zhitm spell_damage_bonus (helper lives D-1378); burnarmor/ignite; acid_damage/erode; death-breath
  * armor strip; Rider/Death; Knight questart double; shieldeff.
  * @returns {Promise<number>} damage applied (MAGIC_COOKIE = disintegrate)
  */
@@ -1458,7 +1472,7 @@ async function zhitm(mon, type, nd, ootmp) {
             break;
         }
         tmp = d(nd, 6);
-        // spell_damage_bonus deferred
+        // zhitm spell_damage_bonus still named (helper D-1378)
         void spellcaster;
         break;
     case ZT_FIRE:
@@ -2185,13 +2199,21 @@ export async function release_hold() {
     }
 }
 
+/** C ref: you.h Luck — u.uluck + u.moreluck. */
+function Luck() {
+    const u = game.u || {};
+    return (u.uluck | 0) + (u.moreluck | 0);
+}
+
 /**
  * C ref: zap.c zapnodir — NODIR wand effects.
  * Branch envelope: WAN_SECRET_DOOR_DETECTION → findit;
- * WAN_LIGHT / SPE_LIGHT → litroom + lightdamage (D-1366).
- * Named omit: create / wish / enlighten / stasis.
+ * WAN_LIGHT / SPE_LIGHT → litroom + lightdamage (D-1366);
+ * WAN_CREATE_MONSTER → create_critters (D-1379);
+ * WAN_WISHING → Luck+rn2(5) then makewish (D-1380).
+ * Named omit: enlighten / stasis.
  */
-async function zapnodir(obj) {
+export async function zapnodir(obj) {
     let known = false;
 
     switch (obj.otyp) {
@@ -2207,8 +2229,27 @@ async function zapnodir(obj) {
         known = !!obj.dknown;
         await findit();
         break;
+    case WAN_CREATE_MONSTER:
+        // C zap.c zapnodir :2569–2574 — rn2(23)?1:rn1(7,2) then
+        // create_critters(..., NULL, FALSE); known iff seen + dknown.
+        if (await create_critters(rn2(23) ? 1 : rn1(7, 2), null, false)) {
+            known = !!obj.dknown;
+        }
+        break;
+    case WAN_WISHING:
+        // C zap.c zapnodir :2575–2585 — Luck + rn2(5) < 0 then
+        // "Unfortunately, nothing happens." (known FALSE); else
+        // known = !!dknown then makewish() (discover unless unseen).
+        if (Luck() + rn2(5) < 0) {
+            await pline('Unfortunately, nothing happens.');
+            known = false;
+        } else {
+            known = !!obj.dknown;
+            await makewish();
+        }
+        break;
     default:
-        // create / wish / enlighten / stasis deferred
+        // enlighten / stasis deferred
         break;
     }
 
@@ -3036,8 +3077,8 @@ async function miss_msg(str, mtmp) {
  * WAN_TELEPORTATION, WAN_LIGHT (flash_hits_mon), WAN_OPENING/SPE_KNOCK
  * (release_hold; openholding/openfalling; SPE_KNOCK mhurtle; saddle).
  * Named omit: slow/speed/locking/probing; long-worm mcorpsenm polish;
- * Knight questart double; spell_damage_bonus; mhurtle petrify/steed;
- * that_is_a_mimic box_or_door.
+ * Knight questart double; mhurtle petrify/steed;
+ * that_is_a_mimic box_or_door. SPE_FORCE_BOLT spell_damage_bonus is D-1388.
  * @returns {Promise<number>} 0 (non-stopping for bhit range)
  */
 export async function bhitm(mtmp, otmp) {
@@ -3067,9 +3108,13 @@ export async function bhitm(mtmp, otmp) {
         } else if (game.u?.uswallow || rnd(20) < 10 + find_mac(mtmp)) {
             if (disguised_mimic) seemimic(mtmp);
             let dmg = d(2, 12);
-            // Knight questart / spell_damage_bonus deferred
+            // Knight questart dbldam named
             void Role_if;
             void PM_KNIGHT;
+            if (otyp === SPE_FORCE_BOLT) {
+                /* C zap.c bhitm :208–209 */
+                dmg = spell_damage_bonus(dmg);
+            }
             await hit_msg(zap_type_text, mtmp, exclam(dmg));
             await resist(mtmp, otmp.oclass, dmg, TELL);
         } else {
@@ -3274,9 +3319,9 @@ function resists_blnd_you() {
  * 10+rnd(amt-10), cap 20; pline; losehp(Maybe_Half_Phys) with
  * zapped/blasted + uhim + ansimpleoname (or "spell of light" /
  * bare_artifactname). SCROLL/SPBOOK force "blasted".
- * Callers this iter: zapnodir WAN/SPE_LIGHT; zapyourself WAN_LIGHT
- * (broken) + EXPENSIVE_CAMERA; read.c seffect_light via import.
- * Named omit: muse MUSE_CAMERA; artifact invoke_blinding_ray.
+ * Callers: zapnodir WAN/SPE_LIGHT; zapyourself WAN_LIGHT
+ * (broken) + EXPENSIVE_CAMERA; read.c seffect_light via import;
+ * muse MUSE_CAMERA (D-1376); artifact invoke_blinding_ray (D-1377).
  * @returns {Promise<number>} possibly reduced dmg
  */
 export async function lightdamage(obj, ordinary, amt) {
@@ -3334,6 +3379,29 @@ export async function flashburn(duration, via_lightning) {
 }
 
 /**
+ * C ref: zap.c spell_damage_bonus :3479–3502 — Int then level.
+ * Punish Int<=9 before low level; never drop combined below 1
+ * (leave 0). First caller: spell.c skilled fireball scatter (D-1378).
+ * bhitm SPE_FORCE_BOLT is D-1388. zhitm / buzz still named.
+ */
+export function spell_damage_bonus(dmgIn) {
+    let dmg = dmgIn | 0;
+    const intell = acurr(A_INT);
+    if (intell <= 9) {
+        if (dmg > 1) dmg = dmg <= 3 ? 1 : dmg - 3;
+    } else if (intell <= 13 || (game.u?.ulevel | 0) < 5) {
+        /* no bonus or penalty */
+    } else if (intell <= 18) {
+        dmg += 1;
+    } else if (intell <= 24 || (game.u?.ulevel | 0) < 14) {
+        dmg += 2;
+    } else {
+        dmg += 3; /* Int 25 */
+    }
+    return dmg;
+}
+
+/**
  * C ref: zap.c zapyourself — self-directed wand/spell effects.
  * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING / WAN_SLEEP /
  * SPE_SLEEP / WAN_DEATH / SPE_FINGER_OF_DEATH / WAN_POLYMORPH /
@@ -3342,7 +3410,7 @@ export async function flashburn(duration, via_lightning) {
  * WAN_FIRE / FIRE_HORN / WAN_COLD / SPE_CONE_OF_COLD / FROST_HORN;
  * WAN_LIGHTNING + flashburn (D-1355);
  * WAN/SPE_MAGIC_MISSILE (D-1364; Antimagic uprops D-1367);
- * SPE_FIREBALL self-explode (D-1365);
+ * SPE_FIREBALL self-explode (D-1365; skilled scatter is spell.c D-1378);
  * lightdamage WAN_LIGHT/CAMERA (D-1366);
  * WAN_MAKE_INVISIBLE (D-1369);
  * other otyps named in C-JS-MAP.
@@ -3515,7 +3583,7 @@ export async function zapyourself(obj, ordinary) {
         // explode(ux, uy, 11 /* ZT_SPELL(ZT_FIRE) */, d(6,6),
         // WAND_CLASS, EXPL_FIERY). No learn_it; damage stays 0
         // (explode handles HP). WAN_FIRE/FIRE_HORN is the next
-        // case (D-0974). spell.c skilled scatter named.
+        // case (D-0974). Skilled scatter is spell.c D-1378.
         await You('explode a fireball on top of yourself!');
         await explode(
             game.u.ux,
@@ -3936,10 +4004,11 @@ export async function bhitpile(wand, fhito, tx, ty, _zz) {
  * + nh_delay_output; pool/lava/sink stop. THROWN_TETHERED remaps to
  * THROWN_WEAPON after opening TETHER and leaves the cord open for the
  * caller (`:3863–3866`, `:4023–4024`, `:4125–4127`; D-1323).
- * Named omit: THROWN_WEAPON fly callers (throwit still inlines those);
- * FLASHED_LIGHT DISP_BEAM / INVIS_BEAM; show_transient_light;
- * shade_miss / M_AP_OBJECT skip; WEB stick rn2; shkcatch pick;
- * map_invisible / unmap_object; zap_map / doorlock.
+ * shade_miss thrown/kicked skip is D-1383 (`:3984–3992`).
+ * Named omit: THROWN_WEAPON fly callers (throwit still inlines those
+ * and still stops on a shade); FLASHED_LIGHT DISP_BEAM / INVIS_BEAM;
+ * show_transient_light; M_AP_OBJECT skip; WEB stick rn2; shkcatch pick;
+ * map_invisible / unmap_object; zap_map / doorlock; skiprange rocks.
  * pobj is `{ obj }` — may set `.obj = null` when destroyed (kicked).
  */
 async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
@@ -4012,7 +4081,13 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
             }
 
             let mtmp = m_at(x, y);
-            // WEB trap stick / shade_miss / mimic-as-object skip deferred
+            // C zap.c bhit :3972–3992 — thrown/kicked shade_miss(TRUE,TRUE)
+            // clears mtmp so the missile keeps flying (callee D-1341).
+            // M_AP_OBJECT / FLASHED_LIGHT mimic skip and WEB stick named.
+            if (mtmp && (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
+                && await shade_miss(game.youmonst, mtmp, obj, true, true)) {
+                mtmp = null;
+            }
 
             if (mtmp) {
                 if (weapon === ZAPPED_WAND) {
@@ -4105,10 +4180,12 @@ export { zapsetup, bhito, bhit };
 
 /**
  * C ref: zap.c weffects — exercise + effect dispatch.
- * NODIR + RAY wand ubuzz; IMMEDIATE bhit WAN_POLYMORPH;
- * WAN_DIGGING/SPE_DIG → zap_dig; spell ubuzz / zap_updown / steed deferred.
+ * NODIR + RAY wand ubuzz; IMMEDIATE bhit WAN_POLYMORPH /
+ * SPE_FORCE_BOLT (D-1388); WAN_DIGGING/SPE_DIG → zap_dig;
+ * RAY SPE_MAGIC_MISSILE..SPE_FINGER_OF_DEATH ubuzz (D-1386).
+ * zap_updown / steed / doorlock deferred.
  */
-async function weffects(obj) {
+export async function weffects(obj) {
     const otyp = obj.otyp;
     const oc = game.objects?.[otyp];
     let disclose = false;
@@ -4138,6 +4215,13 @@ async function weffects(obj) {
         if (otyp === WAN_DIGGING || otyp === SPE_DIG) {
             await zap_dig();
             disclose = true;
+        } else if (otyp >= SPE_MAGIC_MISSILE && otyp <= SPE_FINGER_OF_DEATH) {
+            /* C zap.c :3461–3462 */
+            await ubuzz(
+                BZ_U_SPELL(BZ_OFS_SPE(otyp)),
+                Math.trunc((game.u?.ulevel | 0) / 2) + 1,
+            );
+            disclose = true;
         } else if (otyp >= WAN_MAGIC_MISSILE && otyp <= WAN_LIGHTNING) {
             await ubuzz(
                 BZ_U_WAND(BZ_OFS_WAN(otyp)),
@@ -4145,7 +4229,7 @@ async function weffects(obj) {
             );
             disclose = true;
         }
-        // SPE_* ubuzz deferred
+        /* C impossible("weffects: unexpected spell or wand") named omit */
     }
     // C: fatal zhitu→losehp→done never resumes here for learnwand
     if (game.program_state?.gameover) return;

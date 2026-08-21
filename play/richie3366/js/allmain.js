@@ -902,7 +902,8 @@ export async function moveloop_core() {
 
                 // C allmain.c `:360–361` — after invault / amulet() (named)
                 // if (!rn2(40 + ACURR(A_DEX)*3)) u_wipe_engr(rnd(3)).
-                // Callee D-1051; dokick(2) is D-1360. uhitm/dothrow/dig named.
+                // Callee D-1051; dokick(2) D-1360; uhitm(3) D-1373;
+                // dothrow(2) D-1374. dig.c still named.
                 if (!rn2(40 + (acurr(A_DEX) * 3))) {
                     u_wipe_engr(rnd(3));
                 }

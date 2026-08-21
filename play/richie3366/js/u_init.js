@@ -1800,6 +1800,10 @@ export async function u_init_misc() {
     const pw = newpw();
     g.u.uhp = g.u.uhpmax = g.u.uhppeak = hp;
     g.u.uen = g.u.uenmax = g.u.uenpeak = pw;
+    // C: u.uspellprot = 0; usptime/uspmtime BSS-zero (you.h)
+    g.u.uspellprot = 0;
+    g.u.usptime = 0;
+    g.u.uspmtime = 0;
     await adjabil(0, 1);
     g.u.ulevel = g.u.ulevelmax = 1;
 

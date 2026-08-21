@@ -183,6 +183,7 @@ const AD_DRDX = 30; /* drains dexterity (quasit) — monattk.h */
 const AD_DRCO = 31; /* drains constitution — monattk.h */
 const AD_DRIN = 32; /* drains intelligence (mind flayer) — monattk.h */
 const AD_SSEX = 35; /* Succubus seduction (extended) */
+const AD_CONF = 25; /* confuses (Umber Hulk gaze / Yeenoghu wep) — monattk.h */
 const AD_BLND = 11; /* blinds — monattk.h (Archon gaze) */
 const AD_STUN = 12; /* stuns — monattk.h */
 const AD_HALU = 36; /* hallucinate (black light AT_EXPL) */
@@ -551,7 +552,7 @@ export {
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
     AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
-    AD_STON,
+    AD_STON, AD_CONF,
     could_seduce,
 };
 
@@ -653,6 +654,26 @@ async function mhitm_ad_halu(magr, mattk, mdef, mhm) {
         mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
     }
     if (mhm) mhm.damage = 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_conf mhitm arm :3713–3724.
+ * Confusing another monster has no real duration, so C checks
+ * mspec_used but does not set it. Leftover mdamagem d() is kept
+ * (unlike HALU/BLND, which zero dice).
+ * Named omit: uhitm you-as-agr; mhitu you-as-def (hitmsg + rn2(4)
+ * + make_confused).
+ */
+async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
+    void mattk;
+    void mhm; /* leftover d() stays */
+    if (!(magr.mcan | 0) && !(mdef.mconf | 0) && !(magr.mspec_used | 0)) {
+        if (_mm_vis && canseemon(mdef)) {
+            await pline_mon(mdef, `${Monnam(mdef)} looks confused.`);
+        }
+        mdef.mconf = 1;
+        mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+    }
 }
 
 /**
@@ -2091,6 +2112,34 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
     }
 
+    // C: mhitm_adtyping → mhitm_ad_conf for AD_CONF (D-1385). Sets mconf
+    // when !mcan && !mconf && !mspec_used; leftover d() is kept.
+    if ((mattk.adtyp | 0) === AD_CONF) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_conf(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
     mhitm_knockback(magr, mdef, mattk, hitflags, !!mwep);
 
     if (!damage) return hitflags === M_ATTK_AGR_DIED ? M_ATTK_AGR_DIED : M_ATTK_HIT;
@@ -2129,7 +2178,8 @@ function m_next2u_mm(mtmp) {
 /**
  * C ref: uhitm.c shade_miss :2016–2051 — hero/mon vs shade.
  * dmgval is zero/not-zero (weapon.c shade/`shade_glare` D-1354).
- * Callers mthrowu / zap bhit / hmon / mhitm_ad_phys still named.
+ * Caller mthrowu m_throw is D-1382; zap bhit is D-1383;
+ * hmon is D-1384; mhitm_ad_phys still named.
  */
 export async function shade_miss(magr, mdef, obj, thrown, verbose) {
     const youagr = magr === game.youmonst;
@@ -2471,12 +2521,13 @@ async function gulpmm(magr, mdef, mattk) {
  * C ref: mhitm.c gazemm :736–803 — monster gazes at another monster.
  * Caller mattackm AT_GAZE (strike=0). Archon extra mhitm_ad_blnd + rn2(2)
  * stun then mdamagem leftover. Medusa reflect stones magr.
- * Named omit: mhitm_ad_conf/stun/fire leftover dice;
+ * Named omit: mhitm_ad_stun/fire leftover dice;
  * mon_perma_blind; resists_blnd_by_arti.
- * mdamagem AD_STON leftover is D-1352.
+ * mdamagem AD_STON leftover is D-1352; AD_CONF leftover is D-1385.
  * arti_reflects(MON_WEP) is D-1342.
  * hitmm shade_miss is D-1341; hitmm silver sear is D-1351;
- * other shade_miss callers still named.
+ * zap bhit shade_miss is D-1383; hmon shade_miss is D-1384;
+ * mhitm_ad_phys still named.
  */
 export async function gazemm(magr, mdef, mattk) {
     if (!magr || !mdef || !mattk) return M_ATTK_MISS;
@@ -2552,7 +2603,8 @@ export async function gazemm(magr, mdef, mattk) {
  * mon_explodes and set AGR_DIED unconditionally (lifesave named on
  * mondead). Else mdamagem then mondead. Tame melancholy even if seen.
  * Named omit: mondead→m_unleash object (slack printed here);
- * mdamagem conf/stun/fire leftover. mdamagem AD_STON leftover is D-1352.
+ * mdamagem stun/fire leftover. mdamagem AD_STON leftover is D-1352;
+ * AD_CONF leftover is D-1385.
  * hitmm shade_miss is D-1341;
  * hitmm silver sear is D-1351.
  */

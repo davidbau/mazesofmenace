@@ -40,12 +40,16 @@ import {
     ECMD_CANCEL,
     GETOBJ_EXCLUDE,
     GETOBJ_SUGGEST,
+    LAST_PROP,
     nothing_happens,
+    nothing_seems_to_happen,
+    Never_mind,
 } from './const.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d, rnz } from './rng.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline } from './display.js';
+import { flush_screen, flush_topl_more, pline, You_feel } from './display.js';
 import { compactify_invlets } from './invent.js';
+import { xname, the, vtense } from './objnam.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -76,6 +80,16 @@ export const SPFX_DALIGN = 0x01000000;
 export const SPFX_DBONUS = 0x01F00000;
 export const SPFX_REFLECT = 0x04000000;
 const SILVER = 14; /* objclass.h */
+
+// C artifact.h enum invoke_prop_types — TAMING = LAST_PROP+1 … BLINDING_RAY
+export const BLINDING_RAY = LAST_PROP + 14;
+export const FLING_POISON = LAST_PROP + 11;
+/** C spell.h SPELL_LEV_PW — invoke cost pretends a level-5 spell. */
+function SPELL_LEV_PW(lvl) {
+    return (lvl | 0) * 5;
+}
+
+const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 
 // C ref: monattk.h — used by spec_applies ATTK arms
 const AD_PHYS = 0;
@@ -129,6 +143,8 @@ export function artifacts_globals_init() {
         alignment: raw.alignment | 0,
         role: resolvePm(raw.roleName),
         race: resolvePm(raw.raceName),
+        // C artilist.h A() inv — property or invoke_prop_types (D-1377)
+        inv_prop: raw.inv_prop | 0,
         // C artilist.h A() acolor — glow, not the item's tint (D-1347)
         acolor: raw.acolor | 0,
     }));
@@ -686,11 +702,105 @@ async function getobj_invoke() {
 }
 
 /**
+ * C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (+ roleplay).
+ * Do not trust sticky u.Blind (D-0716).
+ */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+function otense(obj, verb) {
+    if ((obj?.quan | 0) !== 1) return verb;
+    return vtense(null, verb);
+}
+
+/**
+ * C ref: artifact.c arti_invoke_cost_pw :2088–2101 — Pw for invoke while
+ * tired. Negative means the invoke cannot be paid with Pw.
+ */
+function arti_invoke_cost_pw(obj) {
+    const oart = get_artifact(obj);
+    const inv = oart?.inv_prop | 0;
+    if (inv === FLING_POISON || inv === BLINDING_RAY) {
+        return SPELL_LEV_PW(5);
+    }
+    return -1;
+}
+
+/**
+ * C ref: artifact.c arti_invoke_cost :2104–2128 — cooldown or Pw.
+ * age > moves: pay SPELL_LEV_PW(5) or "ignoring you" + d(3,10).
+ * else age = moves + rnz(100).
+ */
+async function arti_invoke_cost(obj) {
+    const moves = game.moves | 0;
+    if ((obj.age | 0) > moves) {
+        const pw_cost = arti_invoke_cost_pw(obj);
+        if (pw_cost < 0 || (game.u?.uen | 0) < pw_cost) {
+            await You_feel(`that ${the(xname(obj))} ${otense(obj, 'are')} ignoring you.`);
+            obj.age = (obj.age | 0) + d(3, 10);
+            return false;
+        }
+        await You_feel('drained...');
+        game.u.uen = (game.u.uen | 0) - pw_cost;
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+    } else {
+        obj.age = moves + rnz(100);
+    }
+    return true;
+}
+
+/**
+ * C ref: artifact.c invoke_blinding_ray :2054–2086 — Sunsword #invoke.
+ * getdir: dx||dy → apply.c do_blinding_ray; dz → litroom(TRUE,obj) then
+ * "It is lit here now." vs nothing_seems_to_happen; else self
+ * lightdamage (gremlin) + flashburn(damg+rnd(damg), FALSE).
+ * Cancel: Never_mind, age=moves, ECMD_CANCEL.
+ * Named omit: other inv_prop specials; transient_light_cleanup;
+ * resists_blnd_by_arti sparkle (flashburn).
+ */
+async function invoke_blinding_ray(obj) {
+    const { getdir } = await import('./lock.js');
+    if (await getdir(null)) {
+        const u = game.u || {};
+        if ((u.dx | 0) || (u.dy | 0)) {
+            const { do_blinding_ray } = await import('./apply.js');
+            await do_blinding_ray(obj);
+        } else if (u.dz) {
+            const { litroom } = await import('./read.js');
+            await litroom(true, obj);
+            const loc = game.level?.at(u.ux | 0, u.uy | 0);
+            await pline((!Blind() && loc?.lit && !loc?.waslit)
+                ? 'It is lit here now.'
+                : nothing_seems_to_happen);
+        } else {
+            const vulnerable = (u.umonnum | 0) === PM_GREMLIN;
+            const damg = obj.blessed ? 15 : !obj.cursed ? 10 : 5;
+            const { lightdamage, flashburn } = await import('./zap.js');
+            if (vulnerable) {
+                await lightdamage(obj, true, 2 * damg);
+            }
+            if (!(await flashburn(damg + rnd(damg), false)) && !vulnerable) {
+                await pline(nothing_seems_to_happen);
+            }
+        }
+    } else {
+        await pline(Never_mind);
+        obj.age = game.moves | 0;
+        return ECMD_CANCEL;
+    }
+    return ECMD_TIME;
+}
+
+/**
  * C ref: artifact.c arti_invoke — special powers / property toggle.
- * Envelope this iteration: !inv_prop → nothing_happens + ECMD_TIME
- * (Mjollnir / most weapons). Crystal-ball apply and inv_prop>LAST_PROP
- * powers (taming/healing/portal/…) deferred; artilist inv_prop not yet
- * extracted into artifacts_data.
+ * Envelope: !inv_prop → crystal ball or nothing_happens + ECMD_TIME.
+ * inv_prop > LAST_PROP: BLINDING_RAY (D-1377) via arti_invoke_cost then
+ * invoke_blinding_ray; other specials (taming/healing/portal/…) named.
+ * Property toggle (INVIS/LEVITATION/CONFLICT) named.
  * @returns {number} ECMD_*
  */
 export async function arti_invoke(obj) {
@@ -711,7 +821,18 @@ export async function arti_invoke(obj) {
         }
         return ECMD_TIME;
     }
-    // inv_prop specials / property toggle deferred
+    if (invProp > LAST_PROP) {
+        if (invProp === BLINDING_RAY) {
+            if (!(await arti_invoke_cost(obj))) return ECMD_TIME;
+            return invoke_blinding_ray(obj);
+        }
+        // TAMING / HEALING / ENERGY_BOOST / UNTRAP / CHARGE_OBJ /
+        // LEV_TELE / CREATE_PORTAL / ENLIGHTENING / CREATE_AMMO /
+        // BANISH / FLING_POISON / FIRESTORM / SNOWSTORM named
+        await pline(nothing_happens);
+        return ECMD_TIME;
+    }
+    // property toggle (INVIS / LEVITATION / CONFLICT) named
     await pline(nothing_happens);
     return ECMD_TIME;
 }

@@ -1,6 +1,7 @@
 // dothrow.js — Throw command (minimal path for Tourist darts).
 // C ref: dothrow.c dothrow / throw_obj / throwit (subset).
 // throwit returning-missile losehp killer_xname (D-1346; C `:1747`).
+// throw_obj u_wipe_engr(2) D-1374 (C `:138`).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -86,6 +87,7 @@ import {
     minstapetrify,
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
+import { u_wipe_engr } from './engrave.js';
 
 const GLASS = 19;
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -943,6 +945,7 @@ export async function throw_gold(obj) {
  * C ref: dothrow.c throw_obj — multishot + split + throwit.
  * getdir is done by caller (dofire/dothrow) matching JS input boundary;
  * C calls getdir inside throw_obj — same one prompt either way.
+ * After self refuse: u_wipe_engr(2) (D-1374; callee D-1051).
  */
 export async function throw_obj(obj, shotlimit) {
     const u = game.u || {};
@@ -957,6 +960,12 @@ export async function throw_obj(obj, shotlimit) {
         await pline('You cannot throw an object at yourself.');
         return 0; // ECMD_OK — no time
     }
+    /* C dothrow.c throw_obj `:138` — after self refuse, before petrify /
+       welded / wet-towel / multishot: u_wipe_engr(2). Callee D-1051;
+       no extra RNG with no engraving / HEADSTONE / BURN-on-stone /
+       Levitation. canletgo / Mjollnir / too-heavy still named (C
+       returns before this wipe). D-1374. */
+    u_wipe_engr(2);
     // C throw_obj :139–148 bare-hand cockatrice instapetrify + killer_xname
     // named omit (throwit returning-missile :1747 is D-1346).
 
@@ -2021,7 +2030,9 @@ export async function boomhit(obj, dx, dy) {
  * thitmonst swallow vanish pline (D-1324).
  * throwit returning-missile losehp killer_xname (D-1346; C `:1747`).
  * Named omit: objsplit unsplit; throw_obj `:139–148` petrify killer_xname;
- * THROWN_WEAPON still uses the JS fly stand-in (not zap.js bhit).
+ * canletgo / Mjollnir / too-heavy / welded / wet-towel before-or-after
+ * the D-1374 wipe; THROWN_WEAPON still uses the JS fly stand-in
+ * (not zap.js bhit).
  */
 
 /**

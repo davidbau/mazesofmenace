@@ -2,7 +2,8 @@
 // C ref: spell.c initialspell, study_book, cursed_book, learn, dovspell,
 //        dospellmenu, percent_success, spellretention, spelltypemnemonic,
 //        spell_skilltype, skill_based_spellbook_id, docast, getspell,
-//        rejectcasting, spelleffects_check, spelleffects, tport_spell.
+//        rejectcasting, spelleffects_check, spelleffects, tport_spell,
+//        throwspell, can_center_spell_location, spell_aim_step.
 //
 // Branch envelope: spl_book init; initialspell from ini_inv_use_obj;
 // study_book blank + known-refresh yn + delay/too_hard + cursed_book
@@ -10,35 +11,56 @@
 // VIEW menu; Wizard skill_based_spellbook_id; Z/#cast → getspell CAST →
 // spelleffects_check + SPE_HEALING self-zap; tport_spell hide/add for
 // dotelecmd m-prefix (D-1209); known_spell + SPE_TELEPORT_AWAY atme
-// zapyourself + check_capacity in spelleffects_check (D-1225).
+// zapyourself + check_capacity in spelleffects_check (D-1225);
+// skilled SPE_FIREBALL/SPE_CONE_OF_COLD throwspell scatter (D-1378);
+// unskilled FIREBALL/CONE FALLTHROUGH weffects (D-1386) + getdir
+// cancel leftover dirs (D-1387);
+// SPE_FORCE_BOLT IMMEDIATE weffects/bhit (D-1388);
+// SPE_CREATE_FAMILIAR make_familiar(NULL,u.ux,u.uy,FALSE) (D-1389);
+// SPE_PROTECTION cast_protection (D-1390; timeout.c usptime tick);
+// SPE_CLAIRVOYANCE do_vicinity_map (D-1391; callee detect.c).
 // Named omissions: novel/tribute; dull sleep; confused_book body;
 // learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
-// swap/sort; other spelleffects otyps; directional weffects;
-// spell_backfire; amulet drain; CQ_REPEAT; cursed_book shieldeff polish;
+// swap/sort; other spelleffects otyps (JUMPING/
+// CURE/CHAIN/seffects/peffects); directional weffects for
+// IMMEDIATE heal/tele; spell_backfire;
+// amulet drain; CQ_REPEAT; cursed_book shieldeff polish;
 // In_W_tower in aggravate. #teleport doextcmd D-1230.
 // Wizard turns column in dospellmenu ported (D-0586).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, You_feel, impossible } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity } from './invent.js';
+import {
+    flush_screen, pline, You_feel, impossible, canspotmon, tmp_at,
+    clear_nhwindow_message,
+} from './display.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
-import { SPBOOK_CLASS } from './objects.js';
+import { SPBOOK_CLASS, NODIR } from './objects.js';
 import { rnd, rn2, rn1, rnl } from './rng.js';
 import { morehungry, poison_strdmg } from './eat.js';
-import { zapyourself } from './zap.js';
+import { zapyourself, spell_damage_bonus, weffects } from './zap.js';
 import { tele } from './teleport.js';
 import { aggravate } from './wizard.js';
 import { make_confused } from './potion.js';
-import { trycall } from './do_name.js';
+import { trycall, hcolor, hliquid } from './do_name.js';
+import { an } from './objnam.js';
+import { is_whirly, is_animal } from './monsters.js';
 import { nomul, losehp, maybe_half_phys } from './hack.js';
 import { uhim } from './roles.js';
 import { erode_obj } from './trap.js';
 import { set_occupation } from './engrave.js';
 import { rndcurse, take_gold } from './sit.js';
+import { explode } from './explode.js';
+import { getdir } from './lock.js';
+import { getpos, getpos_sethilite } from './getpos.js';
+import { cansee } from './vision.js';
+import { m_at } from './mon.js';
+import { walk_path } from './dothrow.js';
+import { distmin } from './hacklib.js';
 import {
     P_NONE,
     P_ATTACK_SPELL,
@@ -65,9 +87,26 @@ import {
     EF_GREASE,
     EF_VERBOSE,
     KILLED_BY_AN,
+    isok,
+    u_at,
+    IS_STWALL,
+    IS_TREE,
+    IS_DOOR,
+    CLOUD,
+    ZAP_POS,
+    D_ISOPEN,
+    STONE,
+    Is_waterlevel,
+    EXPL_FIERY,
+    EXPL_FROSTY,
+    DISP_BEAM,
+    DISP_END,
+    HI_ZAP,
+    HEAD,
+    CLAIRVOYANT,
 } from './const.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
-import { PM_KNIGHT, PM_WIZARD } from './generated/monsters_data.js';
+import { PM_KNIGHT, PM_WIZARD, monsterNames } from './generated/monsters_data.js';
 
 /** C: spell.c explodes[] */
 const EXPLODES = 'radiates explosive energy';
@@ -104,11 +143,24 @@ const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
 const SPE_DETECT_FOOD = objectNames.indexOf('SPE_DETECT_FOOD');
 const SPE_RESTORE_ABILITY = objectNames.indexOf('SPE_RESTORE_ABILITY');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
+const SPE_FORCE_BOLT = objectNames.indexOf('SPE_FORCE_BOLT');
+const SPE_MAGIC_MISSILE = objectNames.indexOf('SPE_MAGIC_MISSILE');
+const SPE_FIREBALL = objectNames.indexOf('SPE_FIREBALL');
+const SPE_CONE_OF_COLD = objectNames.indexOf('SPE_CONE_OF_COLD');
+const SPE_CREATE_FAMILIAR = objectNames.indexOf('SPE_CREATE_FAMILIAR');
+const SPE_PROTECTION = objectNames.indexOf('SPE_PROTECTION');
+const SPE_CLAIRVOYANCE = objectNames.indexOf('SPE_CLAIRVOYANCE');
+const CORNUTHAUM = objectNames.indexOf('CORNUTHAUM');
+const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const QUARTERSTAFF = objectNames.indexOf('QUARTERSTAFF');
 const LENSES = objectNames.indexOf('LENSES');
+
+/** C monattk.h — local for enfolds (do not import mhitm). */
+const AT_ENGL = 11;
+const AD_WRAP = 28;
 
 const IRON = 11;
 const MITHRIL = 17;
@@ -170,6 +222,26 @@ function P_SKILL(type) {
 /** C ref: spell.c spell_skilltype */
 export function spell_skilltype(booktype) {
     return game.objects?.[booktype]?.oc_skill ?? 0;
+}
+
+/** C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded. Sticky first. */
+function Blind() {
+    const u = game.u || {};
+    if (u.Blind || u.ublind) return true;
+    const H = u.HBlinded | 0;
+    const E = u.EBlinded | 0;
+    const B = u.BBlinded | 0;
+    return !!(H || E) && !B;
+}
+
+/** C ref: mondata.h enfolds — AT_ENGL + AD_WRAP. */
+function enfolds(ptr) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (const a of slots) {
+        if ((a.aatyp | 0) === AT_ENGL && (a.adtyp | 0) === AD_WRAP) return true;
+    }
+    return false;
 }
 
 /**
@@ -889,40 +961,6 @@ function use_skill(skill, degree) {
 }
 
 /**
- * C ref: cmd.c getdir for spell cast — '.' is self (success), not cancel.
- * Esc/space/return cancel with dx=dy=dz=0 (C then releases energy at self).
- */
-async function getdir_spell() {
-    const msg = 'In what direction?';
-    game._pending_message = `${msg} `;
-    await flush_screen(1);
-    const disp = game.nhDisplay;
-    if (disp?.setCursor) disp.setCursor(game._pending_message.length, 0);
-    const key = await nhgetch();
-    const ch = String.fromCharCode(key);
-    game._pending_message = '';
-    if (!game.u) game.u = {};
-    if (ch === '.') {
-        game.u.dx = game.u.dy = game.u.dz = 0;
-        return true;
-    }
-    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-        game.u.dx = game.u.dy = game.u.dz = 0;
-        return false;
-    }
-    const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
-    const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
-    if (!(ch in DIR_DX)) {
-        game.u.dx = game.u.dy = game.u.dz = 0;
-        return false;
-    }
-    game.u.dx = DIR_DX[ch];
-    game.u.dy = DIR_DY[ch];
-    game.u.dz = 0;
-    return true;
-}
-
-/**
  * C ref: spell.c dospellmenu — VIEW / CAST (PICK_NONE / PICK_ONE + sort).
  * Returns { ok, splnum }; ok false = cancel.
  * VIEW: swap/sort deferred — letter/`+` treated as cancel.
@@ -1192,10 +1230,220 @@ async function spelleffects_check(spell) {
 }
 
 /**
+ * C ref: defsym.h PCHAR S_goodpos — '$' / HI_ZAP (cmap_to_glyph).
+ */
+function cmap_to_glyph_goodpos() {
+    return { ch: '$', color: HI_ZAP, dec: false };
+}
+
+/**
+ * C ref: spell.c spell_aim_step :1607–1615 — walk_path cell ok.
+ */
+function spell_aim_step(_arg, x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    const typ = loc?.typ ?? STONE;
+    if (!ZAP_POS(typ) && !(IS_DOOR(typ) && ((loc?.doormask | 0) & D_ISOPEN))) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: spell.c can_center_spell_location :1619–1624.
+ */
+function can_center_spell_location(x, y) {
+    const u = game.u || {};
+    if (distmin(u.ux | 0, u.uy | 0, x | 0, y | 0) > 10) return false;
+    const loc = game.level?.at?.(x, y);
+    return isok(x, y) && cansee(x, y) && !IS_STWALL(loc?.typ ?? STONE);
+}
+
+/**
+ * C ref: spell.c display_spell_target_positions :1627–1651.
+ * Hero cell is a valid center but is not highlighted.
+ */
+function display_spell_target_positions(on_off) {
+    if (on_off) {
+        tmp_at(DISP_BEAM, cmap_to_glyph_goodpos());
+        const dist = 10;
+        const u = game.u || {};
+        for (let dx = -dist; dx <= dist; dx++) {
+            for (let dy = -dist; dy <= dist; dy++) {
+                const x = (u.ux | 0) + dx;
+                const y = (u.uy | 0) + dy;
+                if (u_at(x, y)) continue;
+                if (can_center_spell_location(x, y)) tmp_at(x, y);
+            }
+        }
+    } else {
+        tmp_at(DISP_END, 0);
+    }
+}
+
+/**
+ * C ref: spell.c throwspell :1655–1701 — getpos center for skilled
+ * fireball/cone. Returns 1 and sets u.dx/u.dy, or 0 (energy already spent).
+ */
+async function throwspell() {
+    const u = game.u || (game.u = {});
+    if (u.uinwater) {
+        await pline("You're joking!  In this weather?");
+        return 0;
+    } else if (Is_waterlevel(u.uz)) {
+        await pline('You had better wait for the sun to come out.');
+        return 0;
+    }
+
+    await pline('Where do you want to cast the spell?');
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    getpos_sethilite(display_spell_target_positions, can_center_spell_location);
+    if ((await getpos(cc, true, 'the desired position')) < 0) {
+        return 0; /* ESC */
+    }
+    clear_nhwindow_message(); /* discard autodescribe feedback */
+
+    if (distmin(u.ux | 0, u.uy | 0, cc.x | 0, cc.y | 0) > 10) {
+        await pline('The spell dissipates over the distance!');
+        return 0;
+    } else if (u.uswallow) {
+        await pline('The spell is cut short!');
+        exercise(A_WIS, false);
+        u.dx = 0;
+        u.dy = 0;
+        return 1;
+    } else {
+        /* C: ((cc != hero) && !cansee && (!m_at || !canspotmon)) || STWALL */
+        let unseen = false;
+        if ((cc.x !== u.ux || cc.y !== u.uy) && !cansee(cc.x, cc.y)) {
+            const mtmp = m_at(cc.x, cc.y);
+            unseen = !mtmp || !canspotmon(mtmp);
+        }
+        if (unseen
+            || IS_STWALL(game.level?.at?.(cc.x, cc.y)?.typ ?? STONE)) {
+            await pline('Your mind fails to lock onto that location!');
+            return 0;
+        }
+    }
+
+    const uc = { x: u.ux | 0, y: u.uy | 0 };
+    walk_path(uc, cc, spell_aim_step, null);
+    u.dx = cc.x;
+    u.dy = cc.y;
+    return 1;
+}
+
+/**
+ * C ref: spell.c spelleffects :1479–1514 — wand-duplicate getdir +
+ * zapyourself / weffects. `physical_damage` is set by SPE_FORCE_BOLT
+ * FALLTHROUGH (also unskilled FIREBALL/CONE). update_inventory after
+ * the group (C :1513). doorlock / zap_updown / zap_steed named.
+ */
+async function wand_duplicate_weffects(pseudo, atme, physical_damage) {
+    const oc = game.objects?.[pseudo.otyp];
+    if (oc?.oc_dir !== NODIR) {
+        if (atme) {
+            game.u.dx = game.u.dy = game.u.dz = 0;
+        } else if (!(await getdir(null))) {
+            /* C cmd.c getdir quitchars return 0 without
+             * zeroing u.dx/dy/dz; spell.c then reuses them. */
+            await pline('The magical energy is released!');
+        }
+        if (!game.u.dx && !game.u.dy && !game.u.dz) {
+            let damage = await zapyourself(pseudo, true);
+            if (damage) {
+                if (physical_damage) {
+                    damage = maybe_half_phys(damage);
+                }
+                losehp(
+                    damage,
+                    `zapped ${uhim()}self with a spell`,
+                    NO_KILLER_PREFIX,
+                );
+            }
+        } else {
+            await weffects(pseudo);
+        }
+    } else {
+        await weffects(pseudo);
+    }
+    update_inventory();
+}
+
+/**
+ * C ref: spell.c cast_protection :1104–1177
+ * log2(ulevel)+1 minus uspellprot/(4-min(3,natac)); natac is
+ * (10-(u.uac+uspellprot))/10 so find_ac's uspellprot subtract
+ * is factored back out. Expert clerical skill → uspmtime 20
+ * else 10; usptime only armed when it was 0. find_ac via
+ * dynamic import (u_init.js → spell.js).
+ */
+async function cast_protection() {
+    const u = game.u || (game.u = {});
+    let l = u.ulevel | 0;
+    let loglev = 0;
+    let natac = (u.uac | 0) + (u.uspellprot | 0);
+    /* C: while (l) { loglev++; l /= 2; } — int division. */
+    while (l) {
+        loglev++;
+        l = Math.trunc(l / 2);
+    }
+    natac = Math.trunc((10 - natac) / 10);
+    const gain = loglev
+        - Math.trunc((u.uspellprot | 0) / (4 - Math.min(3, natac)));
+
+    if (gain > 0) {
+        if (!Blind()) {
+            const hgolden = hcolor('golden'); /* NH_GOLDEN */
+            if (u.uspellprot) {
+                await pline(
+                    `The ${hgolden} haze around you becomes more dense.`,
+                );
+            } else {
+                const pm = u.ustuck ? u.ustuck.data : null;
+                const rmtyp = game.level?.at?.(u.ux | 0, u.uy | 0)?.typ;
+                const atmosphere = (pm && u.uswallow)
+                    ? (((pm.mndx ?? -1) === PM_FOG_CLOUD) ? 'mist'
+                        : is_whirly(pm) ? 'maelstrom'
+                        : enfolds(pm) ? 'folds'
+                        : is_animal(pm) ? 'maw'
+                        : 'ooze')
+                    : (u.uinwater ? hliquid('water')
+                        : (rmtyp === CLOUD) ? 'cloud'
+                        : IS_TREE(rmtyp) ? 'vegetation'
+                        : IS_STWALL(rmtyp) ? 'stone'
+                        : 'air');
+                await pline(
+                    `The ${atmosphere} around you begins to shimmer with ${an(hgolden)} haze.`,
+                );
+            }
+        }
+        u.uspellprot = ((u.uspellprot | 0) + gain) & 0xff;
+        u.uspmtime = (P_SKILL(spell_skilltype(SPE_PROTECTION)) === P_EXPERT)
+            ? 20 : 10;
+        if (!(u.usptime | 0)) u.usptime = u.uspmtime;
+        /* Dynamic: u_init.js imports spell.js. */
+        const { find_ac } = await import('./u_init.js');
+        find_ac();
+    } else {
+        await pline('Your skin feels warm for a moment.');
+    }
+}
+
+/**
  * C ref: spell.c spelleffects
  * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING / SPE_TELEPORT_AWAY
- * directional self-zap (D-1225 atme ^T). Other otyps named omission
- * (return TIME after energy spent + exercise). Directional weffects named.
+ * directional self-zap (D-1225 atme ^T); skilled SPE_FIREBALL /
+ * SPE_CONE_OF_COLD throwspell scatter (D-1378). Unskilled
+ * FIREBALL/CONE FALLTHROUGH weffects (D-1386) + live getdir
+ * cancel leftover dirs (D-1387). SPE_FORCE_BOLT IMMEDIATE
+ * weffects/bhit (D-1388). SPE_CREATE_FAMILIAR
+ * make_familiar(NULL, u.ux, u.uy, FALSE) (D-1389; callee
+ * dog.c D-1029). SPE_PROTECTION cast_protection (D-1390;
+ * callee find_ac + timeout.c usptime tick). SPE_CLAIRVOYANCE
+ * do_vicinity_map (D-1391; callee detect.c; blocked
+ * cornuthaum hat). Other otyps named omission (return TIME
+ * after energy spent + exercise).
  */
 export async function spelleffects(spell_otyp, atme, force) {
     const spell = force ? spell_otyp : spell_idx(spell_otyp);
@@ -1221,7 +1469,60 @@ export async function spelleffects(spell_otyp, atme, force) {
     const skill = spell_skilltype(otyp);
     const role_skill = P_SKILL(skill);
 
-    if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING
+    if (otyp === SPE_FIREBALL || otyp === SPE_CONE_OF_COLD) {
+        if (role_skill >= P_SKILLED) {
+            if (await throwspell()) {
+                const ccx = game.u.dx | 0;
+                const ccy = game.u.dy | 0;
+                let n = rnd(8) + 1;
+                while (n--) {
+                    if (!game.u.dx && !game.u.dy && !game.u.dz) {
+                        const damage = await zapyourself(pseudo, true);
+                        if (damage) {
+                            losehp(
+                                damage,
+                                `zapped ${uhim()}self with a spell`,
+                                NO_KILLER_PREFIX,
+                            );
+                        }
+                    } else {
+                        await explode(
+                            game.u.dx,
+                            game.u.dy,
+                            otyp - SPE_MAGIC_MISSILE + 10,
+                            spell_damage_bonus(
+                                Math.trunc((game.u.ulevel | 0) / 2) + 1,
+                            ),
+                            0,
+                            otyp === SPE_CONE_OF_COLD
+                                ? EXPL_FROSTY
+                                : EXPL_FIERY,
+                        );
+                    }
+                    game.u.dx = ccx + rnd(3) - 2;
+                    game.u.dy = ccy + rnd(3) - 2;
+                    const loc = isok(game.u.dx, game.u.dy)
+                        ? game.level?.at?.(game.u.dx, game.u.dy)
+                        : null;
+                    if (!isok(game.u.dx, game.u.dy)
+                        || !cansee(game.u.dx, game.u.dy)
+                        || IS_STWALL(loc?.typ ?? STONE)
+                        || game.u.uswallow) {
+                        game.u.dx = ccx;
+                        game.u.dy = ccy;
+                    }
+                }
+            }
+        } else {
+            /* C spell.c :1454 FALLTHROUGH through SPE_FORCE_BOLT
+             * (physical_damage = TRUE) into wand-duplicate weffects. */
+            await wand_duplicate_weffects(pseudo, atme, true);
+        }
+    } else if (otyp === SPE_FORCE_BOLT) {
+        /* C spell.c :1458–1459 physical_damage then FALLTHROUGH
+         * getdir + zapyourself / weffects IMMEDIATE bhit. */
+        await wand_duplicate_weffects(pseudo, atme, true);
+    } else if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING
         || otyp === SPE_TELEPORT_AWAY) {
         if ((otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING)
             && role_skill >= P_SKILLED) {
@@ -1229,7 +1530,7 @@ export async function spelleffects(spell_otyp, atme, force) {
         }
         if (atme) {
             game.u.dx = game.u.dy = game.u.dz = 0;
-        } else if (!(await getdir_spell())) {
+        } else if (!(await getdir(null))) {
             await pline('The magical energy is released!');
         }
         if (!game.u.dx && !game.u.dy && !game.u.dz) {
@@ -1243,6 +1544,31 @@ export async function spelleffects(spell_otyp, atme, force) {
             }
         }
         // else weffects deferred — directional teleport/heal on monster
+    } else if (otyp === SPE_CREATE_FAMILIAR) {
+        /* C spell.c :1569–1571 — (void) make_familiar(NULL, u.ux, u.uy, FALSE).
+         * Dynamic import: dog.js → weapon.js → spell.js. */
+        const { make_familiar } = await import('./dog.js');
+        await make_familiar(null, game.u.ux, game.u.uy, false);
+    } else if (otyp === SPE_PROTECTION) {
+        /* C spell.c :1581–1583 — cast_protection(); */
+        await cast_protection();
+    } else if (otyp === SPE_CLAIRVOYANCE) {
+        /* C spell.c :1572–1580 — !BClairvoyant → skilled bless +
+         * do_vicinity_map(pseudo); else cornuthaum hat. Dynamic
+         * import: detect.js is a callee (no spell import). */
+        const u = game.u;
+        const blocked = (u.BClairvoyant | 0)
+            || (u.uprops?.[CLAIRVOYANT]?.blocked | 0);
+        if (!blocked) {
+            if (role_skill >= P_SKILLED) pseudo.blessed = true;
+            const { do_vicinity_map } = await import('./detect.js');
+            await do_vicinity_map(pseudo);
+        } else if (u.uarmh && (u.uarmh.otyp | 0) === CORNUTHAUM) {
+            const { body_part } = await import('./polyself.js');
+            await pline(
+                `You sense a pointy hat on top of your ${body_part(HEAD)}.`,
+            );
+        }
     } else {
         // Other spell otyps deferred after energy/exercise/mksobj RNG
         await pline('Nothing happens.');

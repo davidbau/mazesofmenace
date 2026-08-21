@@ -107,6 +107,7 @@ import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, is_whirly, unsolid,
 import { makemon, makemon_appear_msg, rndmonst } from './makemon.js';
 import { kill_genocided_monsters, mongone } from './mon.js';
 import { done } from './end.js';
+import { ART_SUNSWORD } from './generated/artifacts_data.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
@@ -323,7 +324,7 @@ function set_lit(x, y, val) {
  * Envelope: ordinary scroll light/dark; Rogue whole-room; swallow/water
  * no_op message; vision_recalc(2) + delayed full recalc.
  * Deferred: snuff_lit / artifact_light / Punished move_bc / gremlin hits /
- * Sunsword spot / Underwater beyond no_op gate.
+ * Underwater beyond no_op gate.
  */
 export async function litroom(on, obj) {
     const u = game.u || {};
@@ -364,8 +365,12 @@ export async function litroom(on, obj) {
             }
             rm.rlit = on ? 1 : 0;
         }
+    } else if (obj && (obj.oartifact | 0) === ART_SUNSWORD) {
+        // C read.c litroom :2596–2599 — Sunsword #invoke up/down lights
+        // the hero cell (do_clear_area rejects radius 0). C always
+        // passes &is_lit (light on), not `on`.
+        set_lit(u.ux | 0, u.uy | 0, 1);
     } else {
-        // Sunsword radius-0 path deferred (scrolls use clear_area)
         do_clear_area(
             u.ux, u.uy,
             blessed_effect ? 9 : 5,

@@ -124,6 +124,7 @@ import {
     truncateByteString,
     visctrl,
 } from './hacklib.js';
+import { read_sym_file } from './files.js';
 // js/display.js, js/invent.js and js/vision.js do not import this file, so
 // these three are plain one-way dependencies; js/tty_message.js reaches
 // js/display.js from the other side, and both use the other's exports only
@@ -467,6 +468,13 @@ function defaultResult() {
         pl_fruit: DEFAULT_FRUIT,
         gameplayBindings: [],
         commandOperations: [],
+        // optfn_boolean() can call pline() before tty_init_nhwindows().  The
+        // game installer replays these through tty_raw_print() in source
+        // order after it has attached the recorder-facing display.
+        startupRawPrints: [],
+        // options.c's file static starts true; unsupported idlecheckpoint is
+        // its only configuration-time writer.
+        give_opt_msg: true,
         symbolOperations: [],
         rogueSymbols: {},
         // The configuration statements this parser recognizes but does not
@@ -1086,13 +1094,6 @@ function setFruit(result, statement) {
         op,
         result.iflags.wc_eight_bit_input,
     );
-}
-
-function setRoleplay(result, field, row, statement, value, negated) {
-    const enabled = booleanValue(result, row, statement, value, negated);
-    if (enabled === null) return;
-    result.uroleplay[field] = enabled;
-    if (field === 'pauper') result.uroleplay.nudist = enabled;
 }
 
 const MENU_HEADING_COLORS = Object.freeze({
@@ -2604,11 +2605,14 @@ function applyMenuBindings(result, bindings) {
 
 function applyBooleanOption(result, name, row, statement, value, negated) {
     const enabled = booleanValue(result, row, statement, value, negated);
-    // Every arm below writes at least one field, and six of them -- female,
-    // color, hilite_pet, tutorial, rest_on_space and mention_decor -- write
-    // more than one, so C's "leave the option alone" has to stop ahead of the
-    // whole dispatch rather than inside the arm that owns the flag.
+    // The female arm and five post-write arms below can change more than the
+    // option's own value, so C's "leave the option alone" has to stop ahead
+    // of the whole dispatch rather than inside one of those arms.
     if (enabled === null) return;
+    // A valid parameter rewrites optfn_boolean()'s local `negated`.  The map
+    // post-write arms below read that effective value, not just the spelling's
+    // leading ! or "no" prefix.
+    const effectiveNegated = !enabled;
     if (name === 'female' || name === 'male') {
         // C ref: options.c optfn_boolean() (5244-5266), `case opt_female:`.
         // Both guards read `opts`, the whole statement, rather than the name
@@ -2627,97 +2631,69 @@ function applyBooleanOption(result, name, row, statement, value, negated) {
         if (equal_ncasechars(statement, 'female', width)) {
             result.flags.female = enabled;
             result.flags.initgend = result.gender = enabled ? 1 : 0;
+            return;
         } else if (equal_ncasechars(statement, 'male', width)) {
             result.flags.female = !enabled;
             result.flags.initgend = result.gender = enabled ? 0 : 1;
-        } else {
-            result.flags.female = enabled;
+            return;
         }
-    } else if (name === 'autopickup') result.flags.pickup = enabled;
-    else if (name === 'color') {
-        result.flags.color = enabled;
-        result.iflags.wc_color = enabled;
-    } else if (name === 'use_inverse') {
-        result.iflags.wc_inverse = enabled;
-    } else if (name === 'use_darkgray') {
-        // Preserve optlist.h's source option state. At the recorder-facing
-        // grid boundary, both the remapped black wire value and the terminal
-        // default sentinel intentionally canonicalize to NO_COLOR.
-        result.iflags.wc2_darkgray = enabled;
-    } else if (name === 'hilite_pet') {
-        result.iflags.wc_hilite_pet = enabled;
+    }
+
+    // options.c:5285 stores every ordinary BoolOpt through the address in its
+    // allopt[] row.  The generated table keeps that lvalue, including names
+    // such as fixinv -> flags.invlet_constant and accessiblemsg ->
+    // a11y.accessiblemsg; no flags.<option-name> mirror exists in C.
+    const { resultKey, field } = booleanOptionStorage(row.addr);
+    result[resultKey][field] = enabled;
+
+    switch (row.name.toLowerCase()) {
+    case 'pauper':
+        // options.c:5288-5291. Pauper implies nudist immediately, so the
+        // right-to-left order of two options on one line remains observable.
+        result.uroleplay.nudist = result.uroleplay.pauper;
+        break;
+    case 'ascii_map':
+        result.iflags.wc_tiled_map = effectiveNegated;
+        break;
+    case 'tiled_map':
+        result.iflags.wc_ascii_map = effectiveNegated;
+        break;
+    case 'hilite_pet':
         if (enabled && result.iflags.wc2_petattr === ATR_NONE) {
             result.iflags.wc2_petattr = ATR_INVERSE;
         }
-    } else if (name === 'hilite_pile') {
-        result.iflags.hilite_pile = enabled;
-    } else if (name === 'wizmgender') {
-        // optlist.h:890-891 binds this to &iflags.wizmgender, which two
-        // ported readers ask: js/display.js print_glyph_attr() for
-        // win/tty/wintty.c tty_print_glyph() (3930), and js/objnam.js
-        // wizmgenderSuffix() for objnam.c doname_base() (1550). It needs an
-        // arm of its own because a debug game can set it from the
-        // configuration file, where optfn_boolean() returns at options.c:5325
-        // before any menu code runs: without one the value lands under
-        // flags.wizmgender, neither reader sees it, every female monster
-        // draws plain, and every statue, corpse and figurine loses its
-        // gender suffix.
-        result.iflags.wizmgender = enabled;
-    } else if (name === 'hitpointbar') {
-        result.iflags.wc2_hitpointbar = enabled;
-    } else if (name === 'legacy') result.flags.legacy = enabled;
-    else if (name === 'tutorial') {
-        result.flags.tutorial = enabled;
+        result.go ??= {};
+        result.go.opt_need_redraw = true;
+        break;
+    case 'idlecheckpoint':
+        // IDLECHECKPOINT is not compiled into the recorder build. pline()
+        // therefore uses raw_print() this early, then the handler clears the
+        // value it just wrote and suppresses later toggle messages.
+        result.startupRawPrints.push(
+            "There is no underlying support for 'idlecheckpoint' compiled in.",
+        );
+        result.iflags.idlecheckpoint = false;
+        result.give_opt_msg = false;
+        break;
+    default:
+        break;
+    }
+
+    // opt_set_in_config[opt_tutorial] is the second value this startup parser
+    // exposes: ask_do_tutorial() distinguishes an explicit true setting from
+    // the same compiled-in default.
+    if (row.name === 'tutorial') {
         result.tutorial_set = true;
-    } else if (name === 'splash_screen') {
-        result.iflags.wc_splash_screen = enabled;
-    } else if (name === 'status_updates') {
-        result.iflags.status_updates = enabled;
-    } else if (name === 'accessiblemsg') {
-        result.a11y.accessiblemsg = enabled;
-    } else if (name === 'mention_map') {
-        result.a11y.glyph_updates = enabled;
-    } else if (name === 'mon_movement') {
-        result.a11y.mon_movement = enabled;
-    } else if (name === 'spot_monsters') {
-        result.a11y.mon_notices = enabled;
-    } else if (name === 'menu_overlay') {
-        result.iflags.menu_overlay = enabled;
-    } else if (name === 'eight_bit_tty') {
-        result.iflags.wc_eight_bit_input = enabled;
-    } else if (name === 'altmeta') {
-        result.iflags.altmeta = enabled;
-    } else if (name === 'cmdassist') {
-        result.iflags.cmdassist = enabled;
-    } else if (name === 'extmenu') {
-        // C ref: options.c. tty_get_ext_cmd() reads this as its first test, so
-        // it has to reach iflags rather than being accepted and dropped;
-        // extcmd_via_menu() is unported and the guard there stops on it.
-        result.iflags.extmenu = enabled;
-    } else if (name === 'customcolors' || name === 'customsymbols') {
-        result.iflags[name] = enabled;
-    } else if (name === 'safe_pet') result.flags.safe_dog = enabled;
-    else if (name === 'safe_wait') result.flags.safe_wait = enabled;
-    else if (name === 'pushweapon') result.flags.pushweapon = enabled;
-    else if (name === 'rest_on_space') {
-        result.flags.rest_on_space = enabled;
+    } else if (row.name === 'rest_on_space') {
         result.commandOperations.push({
             type: 'rest_on_space',
             enabled,
         });
-    } else if (name === 'mention_decor') {
-        result.flags.mention_decor = enabled;
+    } else if (row.name === 'mention_decor') {
         // C ref: options.c opt_mention_decor. A toggle forgets the terrain
         // described under the previous setting.
         result.iflags.prev_decor = STONE;
-    } else if (name === 'showdamage') {
-        // optlist.h:654-655 stores showdamage in iflags, not flags, and
-        // defaults it Off. hack.c showdamage() is its only reader.
-        result.iflags.showdamage = enabled;
-    } else if (name === 'showexp') result.flags.showexp = enabled;
-    else if (name === 'time') result.flags.time = enabled;
-    else if (name === 'verbose') result.flags.verbose = enabled;
-    else result.flags[name] = enabled;
+    }
 }
 
 // C ref: options.c optfn_whatis_coord() (4702-4749), its do_set arm.  The
@@ -2930,24 +2906,18 @@ function sourceOptionMatch(parsedName) {
 
 // C ref: options.c:556-580, the two ways parseoptions()'s match loop reaches a
 // pfx row.  str_start_is() accepts any suffix, and match_optname() accepts a
-// leading substring of the prefix itself down to minmatch, so "cond", "cond_",
-// "cond_bogus" and "fontbogus:value" all land on one.  The row's handler --
-// pfxfn_cond_() or pfxfn_font() -- then decides the suffix, and options.c
-// :675-682 adds "bad option suffix variation" on top of whatever it reported.
-// None of that is ported, so a statement that reaches a pfx row without
-// sourceConditionMatch() recognizing it stops rather than being reported as an
-// unknown option.  The two rows are the last in allopt[], so no ordinary row
-// can match after them.
+// leading substring of the prefix itself down to minmatch. The two rows are
+// last in allopt[], so no ordinary row can match after them.
 const PREFIX_OPTION_MATCHES = Object.freeze(SOURCE_OPTION_MATCHES.filter(
     ([canonical]) => SOURCE_PREFIX_OPTION_NAMES.includes(canonical),
 ));
 
-function matchesPrefixOptionRow(statement, parsedName) {
-    return PREFIX_OPTION_MATCHES.some(([canonical, minLength]) => (
+function matchedPrefixOptionRow(statement, parsedName) {
+    return PREFIX_OPTION_MATCHES.find(([canonical, minLength]) => (
         str_start_is(statement, canonical, true)
             || (parsedName.length >= minLength
                 && canonical.startsWith(parsedName))
-    ));
+    ))?.[0] ?? null;
 }
 
 // C ref: options.c parseoptions()'s allopt[matchidx], the row its two match
@@ -3116,14 +3086,170 @@ function bad_negation(result, optname) {
     );
 }
 
-function sourceConditionMatch(parsedName, value) {
-    if (value != null || !parsedName.startsWith('cond_')) return null;
-    const suffix = parsedName.slice('cond_'.length);
+// C ref: botl.c condopt(), its setting branch. status_conditions is the sole
+// owner of condtests[].enabled: no raw cond_* fields are retained in flags.
+// Its initialization branch is initoptions_init()'s existing default table.
+function condopt(target, canonical, negated) {
+    target.iflags.status_conditions[canonical] = !negated;
+}
+
+// C ref: botl.c parse_cond_option(). `opts` is deliberately the whole
+// post-negation statement, including a colon value, because
+// match_optname(..., FALSE) rejects that suffix.
+function parse_cond_option(target, negated, opts) {
+    if (!opts || opts.length <= 'cond_'.length) return 2;
+    const suffix = opts.slice('cond_'.length).toLowerCase();
     const canonical = SOURCE_CONDITION_NAMES.find((candidate) => (
         suffix.length >= Math.min(candidate.length, 4)
             && candidate.startsWith(suffix)
     ));
-    return canonical ? `cond_${canonical}` : null;
+    if (!canonical) return 1;
+    condopt(target, canonical, negated);
+    return 0;
+}
+
+// C ref: options.c pfxfn_cond_(). A configuration read accumulates the
+// handler's diagnostic and parseoptions() appends its pfx-only diagnostic.
+// The interactive caller has no config-error frame, but shares condopt() and
+// requests the redraw C records after a successful change.
+function pfxfn_cond_(target, negated, opts, result = null) {
+    const reslt = parse_cond_option(target, negated, opts);
+    if (reslt !== 0) {
+        if (result) {
+            configErrorAdd(
+                result, `Unknown condition option ${opts} (${reslt})`,
+            );
+        }
+        return optn_err;
+    }
+    if (target.go) target.go.opt_need_redraw = true;
+    return optn_ok;
+}
+
+// C ref: options.c enum window_option_types.  Keep the source values because
+// wc_set_font_name() and pfxfn_font() exchange one of these rather than a
+// field name.
+const MESSAGE_OPTION = 1;
+const STATUS_OPTION = 2;
+const MAP_OPTION = 3;
+const MENU_OPTION = 4;
+const TEXT_OPTION = 5;
+
+// C ref: options.c wc_set_font_name().  JavaScript strings already own their
+// contents, so assigning the value supplies dupstr()'s independent lifetime.
+function wc_set_font_name(result, opttype, fontname) {
+    if (fontname == null) return;
+    let field;
+    switch (opttype) {
+    case MAP_OPTION:
+        field = 'wc_font_map';
+        break;
+    case MESSAGE_OPTION:
+        field = 'wc_font_message';
+        break;
+    case TEXT_OPTION:
+        field = 'wc_font_text';
+        break;
+    case MENU_OPTION:
+        field = 'wc_font_menu';
+        break;
+    case STATUS_OPTION:
+        field = 'wc_font_status';
+        break;
+    default:
+        return;
+    }
+    result.iflags[field] = fontname;
+}
+
+const FONT_NAME_OPTION_TYPES = Object.freeze({
+    font_map: MAP_OPTION,
+    font_message: MESSAGE_OPTION,
+    font_text: TEXT_OPTION,
+    font_menu: MENU_OPTION,
+    font_status: STATUS_OPTION,
+});
+
+const FONT_SIZE_OPTION_FIELDS = Object.freeze({
+    font_size_map: Object.freeze([MAP_OPTION, 'wc_fontsiz_map']),
+    font_size_message: Object.freeze([
+        MESSAGE_OPTION, 'wc_fontsiz_message',
+    ]),
+    font_size_text: Object.freeze([TEXT_OPTION, 'wc_fontsiz_text']),
+    font_size_menu: Object.freeze([MENU_OPTION, 'wc_fontsiz_menu']),
+    font_size_status: Object.freeze([STATUS_OPTION, 'wc_fontsiz_status']),
+});
+
+// C ref: options.c pfxfn_font().  Font names and sizes deliberately disagree
+// about negation.  A font name carrying a value is stored even when negated;
+// a size carrying a negation is ignored without reading or reporting its
+// value.  Size rows also report duplicates here despite allopt[].dupeok.
+function pfxfn_font(
+    result, row, negated, opts, duplicate, usingAlias,
+) {
+    const name = row.name;
+    const opttype = FONT_NAME_OPTION_TYPES[name];
+    const size = FONT_SIZE_OPTION_FIELDS[name];
+
+    if (size) {
+        if (duplicate) {
+            complain_about_duplicate(
+                result, row, optionParserMetadata[name] ?? {}, usingAlias,
+            );
+        }
+        if (!negated) {
+            const op = string_for_opt(opts, false, result);
+            if (op !== '') result.iflags[size[1]] = atoi(op);
+        }
+        return optn_ok;
+    }
+    if (!opttype) {
+        configErrorAdd(result, `Unknown font parameter '${opts}'`);
+        return optn_err;
+    }
+
+    const op = string_for_opt(opts, false, result);
+    if (op !== '') {
+        wc_set_font_name(result, opttype, op);
+        return optn_ok;
+    }
+    if (negated) {
+        bad_negation(result, name);
+        return optn_err;
+    }
+    return optn_ok;
+}
+
+// C refs: options.c optfn_font_map(), optfn_font_menu(),
+// optfn_font_message(), the five optfn_font_size_*() wrappers,
+// optfn_font_status(), and optfn_font_text().
+function optfn_font_map(...args) { return pfxfn_font(...args); }
+function optfn_font_menu(...args) { return pfxfn_font(...args); }
+function optfn_font_message(...args) { return pfxfn_font(...args); }
+function optfn_font_size_map(...args) { return pfxfn_font(...args); }
+function optfn_font_size_menu(...args) { return pfxfn_font(...args); }
+function optfn_font_size_message(...args) { return pfxfn_font(...args); }
+function optfn_font_size_status(...args) { return pfxfn_font(...args); }
+function optfn_font_size_text(...args) { return pfxfn_font(...args); }
+function optfn_font_status(...args) { return pfxfn_font(...args); }
+function optfn_font_text(...args) { return pfxfn_font(...args); }
+
+const FONT_OPTION_SET_HANDLERS = Object.freeze({
+    font_map: optfn_font_map,
+    font_menu: optfn_font_menu,
+    font_message: optfn_font_message,
+    font_size_map: optfn_font_size_map,
+    font_size_menu: optfn_font_size_menu,
+    font_size_message: optfn_font_size_message,
+    font_size_status: optfn_font_size_status,
+    font_size_text: optfn_font_size_text,
+    font_status: optfn_font_status,
+    font_text: optfn_font_text,
+});
+
+function prefixSuffixText(opts) {
+    const colon = opts.indexOf(':');
+    return colon < 0 ? opts : opts.slice(0, colon);
 }
 
 function isSourceSymbolAssignment(sourceName, value) {
@@ -3324,7 +3450,6 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     const sourceMatch = sourceOptionMatch(parsedName);
     const aliasTarget = optionAliasTarget(parsedName);
     const hasAlias = aliasTarget !== null;
-    const conditionMatch = sourceConditionMatch(parsedName, value);
     // options.c strips negation, then checks this prefix case-sensitively.
     const isSymbolAssignment = isSourceSymbolAssignment(rawName, value);
     let name = sourceMatch?.[0] ?? aliasTarget;
@@ -3332,13 +3457,42 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     // failed, and raises using_alias there and nowhere else, so a name match
     // leaves the flag as the element to the right of this one left it.
     if (!sourceMatch && hasAlias) aliasState.usingAlias = true;
-    if (!name && conditionMatch) name = conditionMatch;
     // options.c:618-629 reads allopt[matchidx], the row its two match loops
     // settled on; a symbol assignment reaches parsesymbols() (663) only with
     // got_match still false, so it has no row and gets no negation check.
     const matchedRow = name ? matchedOptionRow(name) : null;
     if (!name && isSymbolAssignment) name = parsedName;
-    if (!name && matchesPrefixOptionRow(statement, parsedName)) {
+    const prefixRow = !name
+        ? matchedPrefixOptionRow(statement, parsedName) : null;
+    if (prefixRow === 'cond_') {
+        const optresult = pfxfn_cond_(result, negated, statement, result);
+        // options.c:675-682 adds this after the handler only when the pfx
+        // str_start_is() path reached the row. A shorter "cond" reaches the
+        // same handler through match_optname(), without this second report.
+        if (optresult === optn_err && str_start_is(statement, prefixRow, true)) {
+            configErrorAdd(
+                result,
+                `bad option suffix variation '${prefixSuffixText(statement)}'`,
+            );
+        }
+        return;
+    }
+    if (prefixRow === 'font') {
+        const optresult = pfxfn_font(
+            result, matchedOptionRow(prefixRow), negated, statement,
+        );
+        // Unlike cond_, font's minmatch is its complete four-byte name, so
+        // every statement which reaches this prefix arm also satisfies C's
+        // str_start_is() guard.
+        if (optresult === optn_err) {
+            configErrorAdd(
+                result,
+                `bad option suffix variation '${prefixSuffixText(statement)}'`,
+            );
+        }
+        return;
+    }
+    if (!name && prefixRow) {
         optionError(lineNumber, `unported prefix option '${statement}'`);
     }
     if (!name) {
@@ -3366,6 +3520,14 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     }
     if (negated && matchedRow && !matchedRow.negateok) {
         bad_negation(result, matchedRow.name);
+        return;
+    }
+    const fontHandler = FONT_OPTION_SET_HANDLERS[name];
+    if (fontHandler) {
+        fontHandler(
+            result, matchedRow, negated, statement, duplicate,
+            aliasState.usingAlias,
+        );
         return;
     }
     if (matchedRow?.opttyp === 'BoolOpt'
@@ -3400,10 +3562,6 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setStatusHiliteOption(result, value, negated);
     } else if (name === 'statushilites') {
         setStatusHiliteDuration(result, value, negated);
-    } else if (name.startsWith('cond_')) {
-        const enabled = !negated;
-        result.flags[name] = enabled;
-        result.iflags.status_conditions[name.slice('cond_'.length)] = enabled;
     } else if (menuCommand && parsedName === name) {
         setMenuCommandOption(result, menuCommand, statement);
     } else if (menuCommand || isMenuCommandPrefix(parsedName)) {
@@ -3421,9 +3579,6 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     } else if (name === 'catname' || name === 'dogname'
                || name === 'horsename') {
         setPetName(result, name, value);
-    } else if (name === 'blind' || name === 'deaf' || name === 'nudist'
-               || name === 'pauper' || name === 'reroll') {
-        setRoleplay(result, name, matchedRow, statement, value, negated);
     } else if (name === 'decgraphics') {
         result.flags.decgraphics = !negated;
         if (!negated) {
@@ -3596,6 +3751,21 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         if (name === 'symset') {
             if (emptyValue) return;
             result.symset = value;
+            // optfn_symset(do_set) asks files.c read_sym_file() immediately.
+            // A miss clears the attempted name but deliberately leaves earlier
+            // symbol bytes and overrides in place, so retain an ordered cleanup
+            // operation for symbols.c to replay during startup initialization.
+            if (!read_sym_file(value)) {
+                result.symset = undefined;
+                result.symbolOperations.push({
+                    kind: 'clear', set: 'primary', nameToo: true,
+                });
+                configErrorAdd(
+                    result,
+                    `Unable to load symbol set "${value}" from "symbols"`,
+                );
+                return;
+            }
             appendSymbolSelection(result, 'primary', value);
         } else if (name === 'roguesymset') {
             if (emptyValue) return;
@@ -3615,7 +3785,11 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
             result.flags[name] = value;
         }
     } else {
-        applyBooleanOption(result, name, matchedRow, statement, value, negated);
+        // Preserve the pre-existing fail-closed marker for a value-less
+        // compound option whose do_set request is not ported yet.  A BoolOpt
+        // never reaches this arm: both of its statement shapes dispatch by
+        // the generated row type above.
+        result.flags[name] = !negated;
     }
 }
 
@@ -3998,6 +4172,19 @@ function unsupportedWindowOption(name) {
         || (is_wc2_option(name) && !wc2_supported(name));
 }
 
+// C ref: options.c initoptions_finish() (7366-7374).  The configuration file
+// can request either map mode before the selected window port is known.  This
+// port's only interface is TTY, which does not advertise WC_TILED_MAP, so the
+// first source arm always changes a requested tiled map back to ASCII.  The
+// other source arm needs an interface that supports tiles and is outside this
+// runtime boundary.
+export function finishStartupBooleanOptions(state) {
+    if (state.iflags.wc_tiled_map) {
+        state.iflags.wc_tiled_map = false;
+        state.iflags.wc_ascii_map = true;
+    }
+}
+
 // C ref: options.c longest_option_name().  The two passes differ only in
 // which options the first one skips, and both feed the same maximum.
 export function longest_option_name(startpass, endpass) {
@@ -4044,21 +4231,6 @@ function booleanOptionValue(state, option) {
     if (typeof value !== 'boolean') {
         throw new UnsupportedOptionMenuError(
             `a live value for boolean option '${option.name}' (${option.addr})`,
-        );
-    }
-    // options.c optfn_boolean()'s do_set arm writes *allopt[optidx].addr, the
-    // field read just above.  This port's parse writes that field only for the
-    // options applyBooleanOption() has an arm for; everything else lands under
-    // the option's own lowercased name, leaving addr holding the compiled-in
-    // default applyBooleanOptionDefaults() seeded.  When the two fields
-    // disagree the port does not hold the value doset() has to print, so stop
-    // rather than show the default as though it were the session's setting.
-    // The two are the same field whenever addr is `flags.<name>`, which is
-    // why an option the parse does handle never reaches this.
-    const parsed = state.flags?.[option.name.toLowerCase()];
-    if (parsed !== undefined && parsed !== value) {
-        throw new UnsupportedOptionMenuError(
-            `parseoptions() to store '${option.name}' in ${option.addr}`,
         );
     }
     return value;
@@ -4873,15 +5045,9 @@ function preference_update(state, pref) {
 // (5285).  booleanOptionValue() above reads the address this writes, and this
 // is its only writer.
 //
-// C stores a boolean option once, at allopt[].addr.  This port stores it twice
-// whenever applyBooleanOption()'s final arm handled the configuration file's
-// copy: that arm writes flags.<name>, which is a second field for the 43
-// options whose address is something else.  booleanOptionValue() refuses when
-// the two disagree, because before this writer existed the only way they could
-// was a configuration file the parse had misplaced.  Now that the menu writes
-// the address itself, the parse's copy is a stale duplicate rather than an
-// answer, so drop it and leave the address as the value's only owner --
-// otherwise the next menu build refuses a value the port does hold.
+// C stores a boolean option once, at allopt[].addr.  Startup parsing and this
+// interactive writer now share that address.  Delete any legacy flags.<name>
+// copy supplied by a hand-built test state so one C value retains one owner.
 function setBooleanOptionValue(state, option, value) {
     const path = option.addr.split('.');
     let owner = state;
@@ -5166,6 +5332,9 @@ async function optfn_pickup_types(state, optidx, negated, opts, helpers) {
 // name, as OPTION_VALUE_HANDLERS' keys are.
 const OPTION_SET_HANDLERS = Object.freeze({
     boolean: optfn_boolean,
+    cond_: (state, _optidx, negated, opts) => pfxfn_cond_(
+        state, negated, opts,
+    ),
     pickup_types: optfn_pickup_types,
 });
 

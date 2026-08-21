@@ -1,9 +1,9 @@
 // detect.js — Searching / dosearch0 / findit / openit / do_mapping /
 // #terrain / monster_detect / use_crystal_ball.
 // C ref: detect.c — dosearch0, find_trap, cvt_sdoor_to_door, findit,
-// findone, openit, openone, show_map_spot, do_mapping, reveal_terrain, browse_map,
-// monster_detect, object_detect, trap_detect, furniture_detect,
-// level_distance, use_crystal_ball; drawing.c def_char_to_*;
+// findone, openit, openone, show_map_spot, do_mapping, do_vicinity_map,
+// reveal_terrain, browse_map, monster_detect, object_detect, trap_detect,
+// furniture_detect, level_distance, use_crystal_ball; drawing.c def_char_to_*;
 // cmd.c doterrain; vision.c do_clear_area (hero-centered).
 //
 // Branch envelope: 8-neighbour SDOOR/SCORR/trap search with fund
@@ -21,11 +21,15 @@
 // **openit** / **openone** (apply use_bell / knock) boxes+doors+scorr+
 // holding/falling traps + drawbridge (D-1028);
 // **premap_detect** Sokoban premapped levels (D-0567);
-// **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228).
+// **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228);
+// **do_vicinity_map** clairvoyance 9×5 vicinity + skilled observe/detect
+// (D-1391; caller spell.c SPE_CLAIRVOYANCE). allmain seer_turn still named.
 // Named omissions: Hallucination/cls
 // map_trap wait; artifact SPFX_SEARCH;
 // map_trap + map_engraving after furniture (D-0928 #1158); oldglyph
-// trap/object restore deferred; unconstrain underwater-buried-swallow;
+// trap/object restore deferred; unconstrain still named for
+// do_mapping/reveal_terrain/monster_detect (do_vicinity_map D-1391
+// has save/restore);
 // notice_mon_off/on; findone flash_glyph / mimic / hider / invis /
 // chest-trap detect;
 // trapped-door dummytrap; FOUND_FLASH_COUNT==0 tmp_at path;
@@ -47,6 +51,7 @@ import {
     show_glyph_cell, display_self, map_trap, map_engraving, canspotmon, sensemon,
     map_invisible, glyph_is_invisible, warning_of, You_feel,
     feel_location, feel_newsym, unmap_invisible, map_object, Norep,
+    see_monsters, flush_screen, docrt, mon_glyph,
 } from './display.js';
 import { vision_recalc, couldsee, recalc_block_point, cansee } from './vision.js';
 import { visible_region_at } from './region.js';
@@ -69,9 +74,10 @@ import {
     BALL_CLASS, CHAIN_CLASS, VENOM_CLASS, ILLOBJ_CLASS,
 } from './objects.js';
 import { objects_at, weight } from './mkobj.js';
-import { makeknown, consume_obj_charge } from './invent.js';
+import { makeknown, consume_obj_charge, observe_object } from './invent.js';
 import { yn_function } from './getline.js';
-import { nomul, losehp, maybe_half_phys } from './hack.js';
+import { nomul, losehp, maybe_half_phys, is_pool } from './hack.js';
+import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
 import { depth, dist2 } from './hacklib.js';
 import {
     isok, SDOOR, SCORR, DOOR, CORR, D_NODOOR, D_CLOSED, D_LOCKED, D_ISOPEN,
@@ -81,6 +87,7 @@ import {
     TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, ECMD_OK,
     I_SPECIAL, M_AP_TYPE, ARTICLE_A, ROOMOFFSET,
     TIMEOUT, Never_mind, KILLED_BY_AN, TOE, SYM_BOULDER,
+    IN_SIGHT, CLAIRVOYANT, LAVAPOOL, LAVAWALL,
 } from './const.js';
 import { room_discovered } from './dungeon.js';
 
@@ -859,6 +866,198 @@ export function do_mapping() {
     // reconstrain_map no-op when unconstrained was false
 
     exercise(A_WIS, true);
+}
+
+/** C youprop.h Clairvoyant — (H||E) && !B. */
+function Clairvoyant() {
+    const u = game.u || {};
+    const p = u.uprops?.[CLAIRVOYANT];
+    const h = (u.HClairvoyant | 0) || (p?.intrinsic | 0);
+    const e = (u.EClairvoyant | 0) || (p?.extrinsic | 0);
+    const b = (u.BClairvoyant | 0) || (p?.blocked | 0);
+    return !!(h || e) && !b;
+}
+
+/** C youprop.h Confusion ≡ HConfusion (sticky u.Confusion kept). */
+function Confusion_detect() {
+    const u = game.u || {};
+    return !!((u.HConfusion | 0) || u.Confusion);
+}
+
+/**
+ * C display.h covers_objects — pool && !Underwater, or lava.
+ * Underwater ≡ u.uinwater (youprop.h).
+ */
+function covers_objects_detect(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const t = loc.typ | 0;
+    if (t === LAVAPOOL || t === LAVAWALL) return true;
+    if (is_pool(x, y) && !(game.u?.uinwater | 0)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C detect.c unconstrain_map — snapshot/clear uinwater/uburied/uswallow.
+ * Return true iff any of those was set.
+ */
+function unconstrain_map() {
+    const u = game.u || {};
+    if (!game.iflags) game.iflags = {};
+    const res = !!(u.uinwater || u.uburied || u.uswallow);
+    game.iflags.save_uinwater = u.uinwater | 0;
+    u.uinwater = 0;
+    game.iflags.save_uburied = u.uburied | 0;
+    u.uburied = 0;
+    game.iflags.save_uswallow = u.uswallow;
+    u.uswallow = 0;
+    return res;
+}
+
+/** C detect.c reconstrain_map — restore flags saved by unconstrain_map. */
+function reconstrain_map() {
+    const u = game.u || {};
+    if (!game.iflags) game.iflags = {};
+    u.uinwater = game.iflags.save_uinwater | 0;
+    game.iflags.save_uinwater = 0;
+    u.uburied = game.iflags.save_uburied | 0;
+    game.iflags.save_uburied = 0;
+    u.uswallow = game.iflags.save_uswallow;
+    game.iflags.save_uswallow = 0;
+}
+
+/**
+ * JS has no integer glyph ids. Snapshot gbuf-like disp_* for C glyph_at.
+ * C ref: display.c glyph_at / gbuf[y][x].glyph.
+ */
+function glyph_at_disp(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) {
+        return { ch: '', color: null, kind: '', invisible: false };
+    }
+    const invisible = loc.disp_kind === 'invisible'
+        || !!loc.remembered_glyph?.invisible;
+    return {
+        ch: loc.disp_ch ?? '',
+        color: loc.disp_color ?? null,
+        kind: loc.disp_kind ?? '',
+        invisible,
+    };
+}
+
+function glyph_disp_changed(a, b) {
+    return a.ch !== b.ch || a.color !== b.color || a.kind !== b.kind
+        || a.invisible !== b.invisible;
+}
+
+/**
+ * C ref: detect.c do_vicinity_map — clairvoyance snapshot (spell or timed).
+ * Branch envelope: 9×5 rectangle around hero; show_map_spot + top object +
+ * map_monst / map_invisible; skilled/blessed/Clairvoyant observe_object +
+ * mdetected browse; random_farsight quick_farsight skip; post-loop I-replace
+ * + see_monsters; browse_map then docrt.
+ * Named omissions: worm-tail glyph_to_mon skip (heads only via mx==zx);
+ * pet_to_glyph / detected_mon_to_glyph (plain mon_glyph); allmain seer_turn
+ * caller still named.
+ * @param {object|null} sobj fake spellbook (null = random farsight)
+ */
+export async function do_vicinity_map(sobj) {
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const extended = !!(sobj && (sobj.blessed || Clairvoyant()));
+    const random_farsight = !sobj;
+    const lo_y = (uy - 5 < 0) ? 0 : uy - 5;
+    const hi_y = (uy + 6 >= ROWNO) ? ROWNO - 1 : uy + 6;
+    const lo_x = (ux - 9 < 1) ? 1 : ux - 9;
+    const hi_x = (ux + 10 >= COLNO) ? COLNO - 1 : ux + 10;
+    let ter_typ = TER_DETECT | TER_MAP | TER_TRP | TER_OBJ;
+    let mdetected = false;
+    let odetected = false;
+
+    const vizRow = game.viz_array?.[uy];
+    const save_viz_uyux = vizRow ? vizRow[ux] : 0;
+    if (u.uswallow && vizRow) {
+        vizRow[ux] = (vizRow[ux] | 0) | IN_SIGHT;
+    }
+    const save_EDetect_mons = u.EDetect_monsters | 0;
+    u.EDetect_monsters = save_EDetect_mons | I_SPECIAL;
+    const unconstrained = unconstrain_map();
+    const confused = Confusion_detect();
+    const hero_memory = !!game.level?.flags?.hero_memory;
+
+    for (let zx = lo_x; zx <= hi_x; zx++) {
+        for (let zy = lo_y; zy <= hi_y; zy++) {
+            const oldglyph = glyph_at_disp(zx, zy);
+            show_map_spot(zx, zy, confused);
+            const otmp = objects_at(zx, zy);
+            if (otmp) {
+                if (extended) observe_object(otmp);
+                map_object(otmp, true);
+                const newglyph = glyph_at_disp(zx, zy);
+                if (glyph_disp_changed(newglyph, oldglyph)
+                    && covers_objects_detect(zx, zy)) {
+                    odetected = true;
+                }
+            }
+            const mtmp = m_at(zx, zy);
+            if (mtmp && (mtmp.mx | 0) === zx && (mtmp.my | 0) === zy) {
+                if ((unconstrained || !hero_memory)
+                    && !extended && (zx !== ux || zy !== uy)
+                    && oldglyph.kind !== 'monster') {
+                    map_invisible(zx, zy);
+                } else {
+                    map_monst(mtmp, mon_glyph, show_glyph_cell);
+                }
+                const newglyph = glyph_at_disp(zx, zy);
+                if (extended && glyph_disp_changed(newglyph, oldglyph)
+                    && newglyph.kind !== 'invisible' && !newglyph.invisible) {
+                    mdetected = true;
+                }
+            }
+        }
+    }
+
+    if (random_farsight && game.flags?.quick_farsight) {
+        mdetected = false;
+        odetected = false;
+    }
+
+    let refresh = false;
+    if (!hero_memory || unconstrained || mdetected || odetected) {
+        await flush_screen(1);
+        await pline('You sense your surroundings.');
+        const atHero = glyph_at_disp(ux, uy);
+        if (extended || atHero.kind === 'monster') {
+            ter_typ |= TER_MON;
+        }
+        await browse_map(ter_typ, 'anything of interest');
+        refresh = true;
+    }
+    reconstrain_map();
+    u.EDetect_monsters = save_EDetect_mons;
+    if (game.viz_array?.[uy]) {
+        game.viz_array[uy][ux] = save_viz_uyux;
+    }
+
+    for (let zx = lo_x; zx <= hi_x; zx++) {
+        for (let zy = lo_y; zy <= hi_y; zy++) {
+            if (u_at(zx, zy)) continue;
+            const newglyph = glyph_at_disp(zx, zy);
+            if (newglyph.kind !== 'monster') continue;
+            const mtmp = m_at(zx, zy);
+            const mnum = mtmp?.mnum ?? mtmp?.data?.mndx;
+            if (mnum === PM_LONG_WORM_TAIL) continue;
+            if (!mtmp || !canspotmon(mtmp)) {
+                map_invisible(zx, zy);
+            }
+        }
+    }
+    see_monsters();
+
+    if (refresh) await docrt();
 }
 
 /**

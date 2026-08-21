@@ -13,7 +13,8 @@
 //        D-0961 impact_drop / down_gate / drop_to;
 //        D-0962 conjoined_pits / autodig quiet / boulder-fill;
 //        D-0963 desecrate_altar / god_zaps_you;
-//        D-0967 bury/unearth/obj_ice_effects wire)
+//        D-0967 bury/unearth/obj_ice_effects wire;
+//        D-1375 use_pick_axe2 u_wipe_engr(3) axe-scratch)
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -51,7 +52,7 @@ import {
     activate_statue_trap,
 } from './trap.js';
 import { nhgetch } from './input.js';
-import { set_occupation, can_reach_floor, del_engr_at } from './engrave.js';
+import { set_occupation, can_reach_floor, del_engr_at, u_wipe_engr } from './engrave.js';
 import { wield_tool, welded } from './wield.js';
 import {
     Fumbling, adjalign, acurr, A_STR, A_WIS, exercise,
@@ -2151,13 +2152,16 @@ export async function use_pick_axe(obj) {
  * Branch envelope (D-0962): conjoined pit debris join; autodig quiet
  * on repeated rock dig; boulder/statue reach failures.
  * Named omit: Underwater; swallowed attack polish;
- * uteetering/uescaped_shaft; axe down trap-only;
- * cant_reach_floor messaging polish.
+ * uteetering/uescaped_shaft dotrap; cant_reach_floor messaging.
  */
 export async function use_pick_axe2(obj) {
     const u = game.u || {};
     const ispick = is_pick(obj);
     const verbing = ispick ? 'digging' : 'chopping';
+    /* C use_pick_axe2 — trap is function-scoped; assigned in the
+       teetering else-if (named) and reused for axe-down LANDMINE /
+       BEAR_TRAP. */
+    let trap;
     const d_action = [
         'swinging', 'digging', 'chipping the statue', 'hitting the boulder',
         'chopping at the door', 'cutting the tree',
@@ -2308,10 +2312,18 @@ export async function use_pick_axe2(obj) {
         await pline(
             `You cannot stay under${is_pool(u.ux | 0, u.uy | 0) ? 'water' : ' the lava'} long enough.`,
         );
-    } else if (!ispick) {
+    } else if (!ispick
+        /* C dig.c use_pick_axe2 `:1328–1335` — axe only digs down to
+           trigger/disarm LANDMINE/BEAR_TRAP; else scratch +
+           u_wipe_engr(3) (D-1375; callee D-1051). uteetering /
+           uescaped_shaft still named. */
+        && (!(trap = t_at(u.ux | 0, u.uy | 0))
+            || ((trap.ttyp | 0) !== LANDMINE
+                && (trap.ttyp | 0) !== BEAR_TRAP))) {
         await pline(
             `Your ${xname(obj)} merely scratches the ${surface(u.ux | 0, u.uy | 0)}.`,
         );
+        u_wipe_engr(3);
     } else {
         const digging = ensure_digging();
         if ((digging.pos.x | 0) !== (u.ux | 0)
