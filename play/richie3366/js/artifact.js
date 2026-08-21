@@ -34,6 +34,7 @@ import {
     W_SWAPWEP,
     W_WEP,
     HALLUC_RES,
+    REFLECTING,
     ECMD_OK,
     ECMD_TIME,
     ECMD_CANCEL,
@@ -73,6 +74,7 @@ export const SPFX_DFLAG1 = 0x00400000;
 export const SPFX_DFLAG2 = 0x00800000;
 export const SPFX_DALIGN = 0x01000000;
 export const SPFX_DBONUS = 0x01F00000;
+export const SPFX_REFLECT = 0x04000000;
 
 // C ref: monattk.h — used by spec_applies ATTK arms
 const AD_PHYS = 0;
@@ -115,6 +117,8 @@ export function artifacts_globals_init() {
         name: raw.name,
         otyp: objectNames.indexOf(raw.otypName),
         spfx: raw.spfx | 0,
+        // cspfx not extracted (D-1342: no artilist row has cspfx SPFX_REFLECT)
+        cspfx: raw.cspfx | 0,
         mtype: resolveMtype(raw),
         attk: {
             adtyp: raw.attkAdtyp | 0,
@@ -124,6 +128,8 @@ export function artifacts_globals_init() {
         alignment: raw.alignment | 0,
         role: resolvePm(raw.roleName),
         race: resolvePm(raw.raceName),
+        // C artilist.h A() acolor — glow, not the item's tint (D-1347)
+        acolor: raw.acolor | 0,
     }));
     // C: artiexist[NROFARTIFACTS+1]
     game.artiexist = Array.from({ length: NROFARTIFACTS + 1 }, () => ({
@@ -256,6 +262,27 @@ export function confers_luck(obj) {
 }
 
 /**
+ * C ref: artifact.c arti_reflects :537–550 — worn SPFX_REFLECT, else
+ * carried cspfx. Callers: muse.c mon_reflects MON_WEP (:2807).
+ * Hero W_WEP identity is set_artifact_intrinsic EReflecting (:867–872)
+ * then ureflects (EReflecting & W_WEP).
+ * Named omit: cspfx extract (no row in this artilist has cspfx&SPFX_REFLECT).
+ * @param {object|null} obj
+ * @returns {boolean}
+ */
+export function arti_reflects(obj) {
+    const list = artilist();
+    const arti = get_artifact(obj);
+    if (arti !== list[0]) {
+        if (((obj.owornmask | 0) & ~W_ART) && ((arti.spfx | 0) & SPFX_REFLECT)) {
+            return true;
+        }
+        if ((arti.cspfx | 0) & SPFX_REFLECT) return true;
+    }
+    return false;
+}
+
+/**
  * C ref: objnam.c bare_artifactname — artiname with leading "The "→"the ".
  * Non-artifact falls back to xname-like minimal name via artilist miss.
  */
@@ -269,12 +296,63 @@ export function bare_artifactname(obj) {
     return name;
 }
 
+// C coloratt.c colornames[] first match (aliases after the NULL sentinel
+// are skipped). Index == CLR_* / NO_COLOR from color.h.
+const CLR2COLORNAME = [
+    'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+    'no color', 'orange', 'light green', 'yellow', 'light blue',
+    'light magenta', 'light cyan', 'white',
+];
+
+/** C ref: coloratt.c clr2colorname — first matching colornames[].color. */
+export function clr2colorname(clr) {
+    const i = clr | 0;
+    if (i < 0 || i >= CLR2COLORNAME.length) return '';
+    return CLR2COLORNAME[i];
+}
+
+/**
+ * C ref: artifact.c glow_color `:2427–2433` — artilist[arti].acolor then
+ * clr2colorname then hcolor. Hallu hcolor display-rng named omit (identity).
+ * doname inlines the same C functions (objnam cannot import this module:
+ * artifact→invent→shk calls set_doname_shop_suffix during objnam init).
+ */
+export function glow_color(arti_indx) {
+    const list = artilist();
+    const colornum = list[arti_indx | 0]?.acolor | 0;
+    return clr2colorname(colornum);
+}
+
+// C artifact.c glow_verbs[] — [0] is the blind / no-creatures verb.
+const GLOW_VERBS = ['quiver', 'flicker', 'glimmer', 'gleam'];
+
+/**
+ * C ref: artifact.c glow_strength `:2442–2448` — 0..3 from warn_obj_cnt.
+ */
+export function glow_strength(count) {
+    const n = count | 0;
+    return (n > 12) ? 3 : (n > 4) ? 2 : (n > 0 ? 1 : 0);
+}
+
+/**
+ * C ref: artifact.c glow_verb `:2451–2462` — verb then optional "ing".
+ * Bypasses ing_suffix (would double the last consonant).
+ * @param {number} count 0 means blind rather than no applicable creatures
+ * @param {boolean} ingsfx
+ */
+export function glow_verb(count, ingsfx) {
+    let resbuf = GLOW_VERBS[glow_strength(count)];
+    if (ingsfx) resbuf += 'ing';
+    return resbuf;
+}
+
 /**
  * C ref: artifact.c set_artifact_intrinsic — SPFX_HALRES subset.
  * C uses make_hallucinated(xtime=!on, talk, wp_mask) which sets
  * EHalluc_resistance |= mask when conferring (xtime==0).
  * Named omissions: defn resist masks; SPFX_SEARCH/ESP/STLTH/REGEN/TCTRL/
- * WARN/EREGEN/HSPDAM/HPHDAM/REFLECT; see_monsters; message paths.
+ * WARN/EREGEN/HSPDAM/HPHDAM; see_monsters; message paths.
+ * SPFX_REFLECT && W_WEP is D-1342 (not other wp_mask).
  * @param {object} otmp
  * @param {boolean} on
  * @param {number} wp_mask
@@ -304,6 +382,23 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
                 (u.uprops[HALLUC_RES].extrinsic | 0) & ~(wp_mask | 0);
             u.EHalluc_resistance =
                 (u.EHalluc_resistance | 0) & ~(wp_mask | 0);
+        }
+    }
+    // C artifact.c:867–872 — only the wielded-weapon slot sets EReflecting
+    if ((spfx & SPFX_REFLECT) && (wp_mask & W_WEP)) {
+        const u = game.u || (game.u = {});
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[REFLECTING]) {
+            u.uprops[REFLECTING] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        if (on) {
+            u.uprops[REFLECTING].extrinsic =
+                (u.uprops[REFLECTING].extrinsic | 0) | (wp_mask | 0);
+            u.EReflecting = (u.EReflecting | 0) | (wp_mask | 0);
+        } else {
+            u.uprops[REFLECTING].extrinsic =
+                (u.uprops[REFLECTING].extrinsic | 0) & ~(wp_mask | 0);
+            u.EReflecting = (u.EReflecting | 0) & ~(wp_mask | 0);
         }
     }
 }

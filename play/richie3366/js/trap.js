@@ -2961,23 +2961,21 @@ function which_armor(mtmp, mask) {
 }
 
 /**
- * C ref: apply.c splash_lit — extinguish lit object hit by water.
- * Named omission: brass lantern crackle/flicker/dunk age drain; full
- * snuff_lit light-source bookkeeping.
+ * C ref: apply.c splash_lit — live apply.js (D-1337). Dynamic import:
+ * apply.js already static-imports trap.js.
  */
-function splash_lit(obj) {
-    if (!obj?.lamplit) return false;
-    obj.lamplit = 0;
-    return true;
+async function splash_lit(obj) {
+    const { splash_lit: splash } = await import('./apply.js');
+    return splash(obj);
 }
 
 /**
  * C ref: trap.c trapeffect_rust_trap — hero + monster branches.
  * Envelope: seetrap; rn2(5) aim switch; water_damage / splash_lit on
  * targeted slots; iron-golem rust death; gremlin rn2(3)→split_mon
- * (D-1095; potion.c split_mon via sit.js). Named omissions:
- * update_inventory; lantern dunk; mlifesaver "starts to fall";
- * poly body_part table.
+ * (D-1095; potion.c split_mon via sit.js). splash_lit is D-1337
+ * (brass dunk/crackle live). Named omissions: update_inventory;
+ * mlifesaver "starts to fall"; poly body_part table.
  */
 async function trapeffect_rust_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
@@ -3016,7 +3014,7 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
             for (const otmp of game.invent || []) {
                 if (otmp.lamplit && otmp !== u.uwep
                     && (otmp !== u.uswapwep || !u.twoweap)) {
-                    splash_lit(otmp);
+                    await splash_lit(otmp);
                 }
             }
             if (u.uarmc) {
@@ -3097,7 +3095,7 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
         for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
             if (otmp.lamplit
                 && ((otmp.owornmask || 0) & (W_WEP | W_SWAPWEP)) === 0) {
-                splash_lit(otmp);
+                await splash_lit(otmp);
             }
         }
         {
@@ -4510,18 +4508,18 @@ const TOWEL = objectNames.indexOf('TOWEL');
 
 /**
  * C ref: trap.c water_damage
- * Branch envelope: null → ER_NOTHING; splash_lit; CAN_OF_GREASE;
+ * Branch envelope: null → ER_NOTHING; splash_lit (D-1337); CAN_OF_GREASE;
  * TOWEL wet; greased wash rn2(2); Is_container / Waterproof_container
  * before luck rn2(20); potion dilute / scroll fade / spellbook fade;
  * else `erode_obj(..., ERODE_RUST, EF_NONE)` (D-0683 / D-0928 #1101).
  * Named omit: invent plines; pot_acid_damage boom; waterproof makeknown;
- * brass-lantern dunk in splash_lit; SPE_NOVEL blank_novel.
+ * SPE_NOVEL blank_novel.
  */
 export async function water_damage(obj, _ostr, force) {
     if (!obj) return ER_NOTHING;
 
     // C: splash_lit before ostr / luck — extinguish skips further damage RNG
-    if (splash_lit(obj)) return ER_DAMAGED;
+    if (await splash_lit(obj)) return ER_DAMAGED;
 
     if (obj.otyp === CAN_OF_GREASE && (obj.spe | 0) > 0) {
         return ER_NOTHING;

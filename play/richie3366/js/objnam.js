@@ -30,10 +30,12 @@ import {
 import {
     PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
 } from './generated/monsters_data.js';
-import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
+import {
+    ART_ORB_OF_DETECTION, ART_SUNSWORD, artilistRaw, NROFARTIFACTS,
+} from './generated/artifacts_data.js';
 import {
     W_ARMOR, W_AMUL, W_RING, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
-    W_BALL, W_CHAIN, W_TOOL, W_SADDLE,
+    W_ARM, W_BALL, W_CHAIN, W_TOOL, W_SADDLE, WARN_OF_MON,
     Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
     P_DART, P_BOOMERANG,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
@@ -48,7 +50,12 @@ import {
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 const BOULDER = objectNames.indexOf('BOULDER');
 const POT_OIL = objectNames.indexOf('POT_OIL');
+const POT_WATER = objectNames.indexOf('POT_WATER');
+const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+const CORPSE = objectNames.indexOf('CORPSE');
 const AKLYS = objectNames.indexOf('AKLYS');
+const GOLD_DRAGON_SCALE_MAIL = objectNames.indexOf('GOLD_DRAGON_SCALE_MAIL');
+const GOLD_DRAGON_SCALES = objectNames.indexOf('GOLD_DRAGON_SCALES');
 
 /** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky u.Blind). */
 function Blind() {
@@ -946,6 +953,109 @@ export function cxname_singular(obj) {
     return nam;
 }
 
+/** C ref: hacklib.c strstri — case-insensitive substring. */
+function strstri_objnam(hay, needle) {
+    return String(hay ?? '').toLowerCase().includes(String(needle).toLowerCase());
+}
+
+/**
+ * C ref: objnam.c bare_artifactname `:2502–2514` — artiname, "The "→"the ".
+ * Local copy so objnam does not import artifact.js (invent cycle).
+ */
+function bare_artifactname_objnam(obj) {
+    if (obj?.oartifact) {
+        const a = obj.oartifact | 0;
+        const name = (a > 0 && a <= NROFARTIFACTS && artilistRaw[a]?.name) || '';
+        if (name.slice(0, 4) === 'The ') return `the ${name.slice(4)}`;
+        return name || xname(obj);
+    }
+    return xname(obj);
+}
+
+/**
+ * C ref: objnam.c killer_xname `:1942–2005` — fully ID'd death-reason name.
+ * Temporarily sets known/dknown, clears BUC/poison/uname/oname (not artifacts),
+ * formats, applies an()/the(), then restores the object and objects[].
+ * Caller uses KILLED_BY. eat choke wired (D-1344); dozap self-zap (D-1345).
+ * Remaining dothrow/pickup/wield/invent/mthrowu/do_wear callers named.
+ */
+export function killer_xname(obj) {
+    if (!obj) return 'something';
+    // C: bypass object twiddling for artifacts
+    if (obj.oartifact) return bare_artifactname_objnam(obj);
+
+    const save_known = obj.known;
+    const save_dknown = obj.dknown;
+    const save_bknown = obj.bknown;
+    const save_rknown = obj.rknown;
+    const save_greased = obj.greased;
+    const save_blessed = obj.blessed;
+    const save_cursed = obj.cursed;
+    const save_opoisoned = obj.opoisoned;
+    const save_next_boulder = obj.next_boulder;
+    const save_oname = has_oname(obj) ? ONAME(obj) : null;
+
+    obj.known = 1;
+    obj.dknown = 1;
+    obj.bknown = 0;
+    obj.rknown = 0;
+    obj.greased = 0;
+    if ((obj.otyp | 0) !== POT_WATER) {
+        obj.blessed = 0;
+        obj.cursed = 0;
+    } else {
+        obj.bknown = 1; // describe holy/unholy water as such
+    }
+    obj.opoisoned = 0;
+    if (!obj.oartifact && save_oname && obj.oextra) {
+        obj.oextra.oname = null;
+    }
+
+    const ocl = objects()?.[obj.otyp];
+    const save_ocknown = ocl ? ocl.oc_name_known : 0;
+    const save_ocuname = ocl ? (ocl.oc_uname ?? null) : null;
+    if (ocl) {
+        ocl.oc_name_known = 1;
+        ocl.oc_uname = null; // avoid "foo called bar"
+    }
+
+    let buf;
+    try {
+        if ((obj.otyp | 0) === CORPSE) {
+            buf = corpse_xname(obj, null, CXN_NORMAL);
+        } else if ((obj.otyp | 0) === SLIME_MOLD) {
+            buf = `deadly slime mold${(obj.quan | 0) === 1 ? '' : 's'}`;
+        } else {
+            buf = xname(obj);
+        }
+        // C: article iff quan==1 and not already possessive; KILLED_BY caller
+        if ((obj.quan | 0) === 1
+            && !strstri_objnam(buf, "'s ")
+            && !strstri_objnam(buf, "s' ")) {
+            buf = (obj_is_pname(obj) || the_unique_obj(obj)) ? the(buf) : an(buf);
+        }
+    } finally {
+        if (ocl) {
+            ocl.oc_name_known = save_ocknown;
+            ocl.oc_uname = save_ocuname;
+        }
+        obj.known = save_known;
+        obj.dknown = save_dknown;
+        obj.bknown = save_bknown;
+        obj.rknown = save_rknown;
+        obj.greased = save_greased;
+        obj.blessed = save_blessed;
+        obj.cursed = save_cursed;
+        obj.opoisoned = save_opoisoned;
+        obj.next_boulder = save_next_boulder;
+        if (!obj.oartifact && save_oname) {
+            if (!obj.oextra) obj.oextra = {};
+            obj.oextra.oname = save_oname;
+        }
+    }
+    return buf;
+}
+
 /**
  * C ref: objnam.c the() — definite article for non-proper names.
  * Named omissions: CapitalMon, fruit_from_name, artifact "of"/named arms,
@@ -1342,6 +1452,69 @@ export function set_body_part(fn) {
 /** C polyself.c body_part(HAND) via doname_base W_WEP / W_SWAPWEP / RING. */
 function doname_hand() {
     return _body_part ? _body_part(HAND) : 'hand';
+}
+
+/** C youprop.h EWarn_of_mon ≡ u.uprops[WARN_OF_MON].extrinsic. */
+function EWarn_of_mon() {
+    const u = game.u || {};
+    const p = u.uprops?.[WARN_OF_MON];
+    if (p) return p.extrinsic | 0;
+    return u.EWarn_of_mon | 0;
+}
+
+// C coloratt.c colornames[] first match. Local — do not import artifact.js
+// (artifact→invent→shk calls set_doname_shop_suffix during objnam init).
+const DONAME_CLR2COLORNAME = [
+    'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+    'no color', 'orange', 'light green', 'yellow', 'light blue',
+    'light magenta', 'light cyan', 'white',
+];
+const DONAME_GLOW_VERBS = ['quiver', 'flicker', 'glimmer', 'gleam'];
+
+/** C artifact.c glow_verb — inlined; keep in sync with artifact.js. */
+function doname_glow_verb(count, ingsfx) {
+    const n = count | 0;
+    const i = (n > 12) ? 3 : (n > 4) ? 2 : (n > 0 ? 1 : 0);
+    return DONAME_GLOW_VERBS[i] + (ingsfx ? 'ing' : '');
+}
+
+/** C artifact.c glow_color via artilistRaw.acolor; Hallu hcolor named omit. */
+function doname_glow_color(arti_indx) {
+    const colornum = artilistRaw[arti_indx | 0]?.acolor | 0;
+    return DONAME_CLR2COLORNAME[colornum] || '';
+}
+
+/**
+ * C ref: artifact.c artifact_light — Sunsword + worn gold DSM/scales.
+ * Local copy so doname does not import timeout.js (timeout already
+ * imports doname). timeout.js keeps the light-source original.
+ */
+function doname_artifact_light(obj) {
+    if (!obj) return false;
+    const t = obj.otyp | 0;
+    if ((t === GOLD_DRAGON_SCALE_MAIL || t === GOLD_DRAGON_SCALES)
+        && ((obj.owornmask | 0) & W_ARM) !== 0) {
+        return true;
+    }
+    return (obj.oartifact | 0) === ART_SUNSWORD;
+}
+
+/**
+ * C ref: light.c arti_light_radius + arti_light_description `:916–931`.
+ * timeout.js has the radius used by vision; this is the doname adverb.
+ */
+function arti_light_description(obj) {
+    if (!obj?.lamplit || !doname_artifact_light(obj)) return 'strangely';
+    let res = obj.blessed ? 3 : (!obj.cursed ? 2 : 1);
+    if (obj === game.u?.uskin) res = 1;
+    else if ((obj.otyp | 0) === GOLD_DRAGON_SCALE_MAIL) res++;
+    switch (res) {
+    case 4: return 'radiantly';
+    case 3: return 'brilliantly';
+    case 2: return 'brightly';
+    case 1: return 'dimly';
+    default: return 'strangely';
+    }
 }
 
 /**
@@ -1820,12 +1993,14 @@ export function doname(obj) {
     if (obj.owornmask & (W_BALL | W_CHAIN)) {
         bp += ` (${(obj.owornmask & W_BALL) ? 'chained' : 'attached'} to you)`;
     }
-    // C ref: objnam.c doname_base W_WEP (objnam.c:1561–1595) — skip when
+    // C ref: objnam.c doname_base W_WEP (objnam.c:1561–1609) — skip when
     // gm.mrg_to_wielded (pickup.c pickup_prinv merge into uwep). Stack/ammo/
     // missile/non-weptool → "(wielded)"; else ConcatF2 " (%s %s)" how-arm
     // tethered? "tethered to" : twoweap_primary? "wielded in" : "weapon in"
     // + body_part(HAND) (bimanual makeplural; else URIGHTY right/left).
-    // Named omit: warn_obj / artifact_light overwrite closing paren :1599–1609.
+    // Then !Blind overwrite closing paren :1599–1609 (D-1347): warn_obj
+    // glow else lamplit artifact_light. JS strings do not BUFSZ-truncate
+    // so bpspaceleft is always true. ARMOR gloves `:1412` still named.
     if ((obj.owornmask & W_WEP) && !game.mrg_to_wielded) {
         const twoweap_primary = !!(obj === game.u?.uwep && game.u?.twoweap);
         const tethered = (obj.otyp | 0) === AKLYS;
@@ -1848,6 +2023,15 @@ export function doname(obj) {
                 : twoweap_primary ? 'wielded in'
                     : 'weapon in';
             bp += ` (${how} ${hand_s})`;
+            // C: if (!Blind && bpspaceleft && bp_eos[-1] == ')')
+            if (!Blind() && bp.endsWith(')')) {
+                if ((game.warn_obj_cnt | 0) && obj === game.u?.uwep
+                    && (EWarn_of_mon() & W_WEP) !== 0) {
+                    bp = `${bp.slice(0, -1)}, ${doname_glow_verb(game.warn_obj_cnt | 0, true)} ${doname_glow_color(obj.oartifact | 0)})`;
+                } else if (obj.lamplit && doname_artifact_light(obj)) {
+                    bp = `${bp.slice(0, -1)}, ${arti_light_description(obj)} lit)`;
+                }
+            }
         }
     }
     // C: W_SWAPWEP twoweap → "wielded in" opposite URIGHTY + body_part(HAND)

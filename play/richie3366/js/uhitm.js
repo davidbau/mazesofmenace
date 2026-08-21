@@ -15,7 +15,7 @@ import {
     MIM_REVEAL, engulfing_u, OBJ_FREE, MON_DETACH,
     has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, SUPPRESS_SADDLE,
     SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE,
-    HAND, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
+    HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_AMUL,
     MON_EXPLODE, NO_MM_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE,
@@ -51,6 +51,7 @@ import {
     is_golem, is_mplayer, is_rider, is_undead, is_flyer, is_floater,
     is_demon, NON_PM, has_head, mindless, unsolid, breathless, mons,
     flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
+    is_swimmer, slithy,
     is_whirly, passes_walls, hates_silver, humanoid, is_neuter, G_UNIQ,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
@@ -67,7 +68,7 @@ import { monflee } from './monmove.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
-import { rehumanize, body_part } from './polyself.js';
+import { rehumanize, body_part, mbodypart } from './polyself.js';
 import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname } from './do_name.js';
 import { artifact_hit, youmonst, is_art } from './artifact.js';
 import { xname, vtense, The, An, an, singular, makeplural, cxname } from './objnam.js';
@@ -1012,7 +1013,7 @@ function mhis(mtmp) {
  * C ref: uhitm.c m_slips_free `:2053–2093` — greased/oilskin clothing
  * slips a hug or drain. AD_DRIN looks at W_ARMH; other attacks walk
  * cloak then suit then shirt. Assumes the hero is the attacker.
- * AD_WRAP caller (mhitm_ad_wrap) still named.
+ * AD_WRAP caller is mhitm_ad_wrap (D-1348).
  */
 async function m_slips_free(mdef, mattk) {
     let obj;
@@ -1090,9 +1091,68 @@ async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
     if (lifsav && !which_armor(mdef, W_AMUL)) game.skipdrin = true;
 }
 
+/** C ref: mondata.h cant_drown — swimmer || amphibious || breathless. */
+function cant_drown(ptr) {
+    return is_swimmer(ptr) || amphibious(ptr) || breathless(ptr);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_wrap `:3344–3375` — uhitm (hero→mon).
+ * !sticks(pd): tailmiss = !gn.notonhead (C as written). Grab only when
+ * !ustuck && !tailmiss && !rn2(10), then m_slips_free else coil/swing
+ * set_ustuck. Already-held && !tailmiss: pool && !cant_drown drown to
+ * mhp, else AT_HUGS crush (dice kept). Else zero dice + verbose brush
+ * (coil&&!tailmiss whole vs s_suffix tail/LEG). sticks zeros leftover.
+ * mhitu arm is mhitm_ad_wrap_u (D-1331). mhitm brush arm still named.
+ */
+export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
+    if (magr !== game.youmonst) return;
+    const pd = mdef?.data;
+    const pa = magr?.data;
+    const coil = slithy(pa)
+        && (pa?.mlet === 'S_SNAKE' || pa?.mlet === 'S_NAGA');
+    if (!sticks(pd)) {
+        const tailmiss = !game.notonhead;
+        const u = game.u || {};
+        if (!u.ustuck && !tailmiss && !rn2(10)) {
+            if (await m_slips_free(mdef, mattk)) {
+                mhm.damage = 0;
+            } else {
+                await pline(
+                    `You ${coil ? 'coil' : 'swing'} yourself around ${mon_nam(mdef)}!`,
+                );
+                set_ustuck(mdef);
+            }
+        } else if (u.ustuck === mdef && !tailmiss) {
+            if (is_pool(u.ux, u.uy) && !cant_drown(pd)) {
+                await pline(`You drown ${mon_nam(mdef)}...`);
+                mhm.damage = mdef.mhp;
+            } else if ((mattk.aatyp | 0) === AT_HUGS) {
+                await pline(`${Monnam(mdef)} is being crushed.`);
+            }
+        } else {
+            mhm.damage = 0;
+            if (game.flags?.verbose !== false) {
+                if (coil && !tailmiss) {
+                    await pline(`You brush against ${mon_nam(mdef)}.`);
+                } else {
+                    await pline(
+                        `You brush against ${s_suffix(mon_nam(mdef))} ${
+                            tailmiss ? 'tail' : mbodypart(mdef, LEG)
+                        }.`,
+                    );
+                }
+            }
+        }
+    } else {
+        mhm.damage = 0;
+    }
+}
+
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
- * AD_PHYS + AD_POLY + AD_DRIN skipdrin live; remaining mhitm_ad_* named.
+ * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) live;
+ * remaining mhitm_ad_* named. mhitm wrap brush still named.
  */
 async function damageum_adtyping(mattk, mdef, mhm) {
     const adtyp = mattk.adtyp | 0;
@@ -1101,6 +1161,8 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         await mhitm_ad_poly(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_DRIN) {
         await mhitm_ad_drin(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_WRAP) {
+        await mhitm_ad_wrap(game.youmonst, mattk, mdef, mhm);
     }
 }
 
@@ -2082,8 +2144,9 @@ export async function gulpum(mdef, mattk) {
  * AD_DRIN + pit AT_KICK D-1298 (`gs.skipdrin`; `mtrapped_in_pit`).
  * eat_brains D-1306 (uhitm headed). Helmet / m_slips_free / lifsav
  * skipdrin D-1307 (uhitm arm). mattacku AT_TENT melee D-1309.
- * mhitu AD_DRIN D-1329. mhitm AD_DRIN D-1330. Named: AD_WRAP
- * m_slips_free; remaining mhitm_ad_*.
+ * mhitu AD_DRIN D-1329. mhitm AD_DRIN D-1330. mhitu AD_WRAP D-1331.
+ * uhitm AD_WRAP m_slips_free D-1348. Named: mhitm wrap brush;
+ * remaining mhitm_ad_*.
  */
 export async function hmonas(mon) {
     const u = game.u || {};

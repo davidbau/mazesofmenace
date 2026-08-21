@@ -1,6 +1,6 @@
 // mon.js — Monster metabolism / movement allotment.
 // C ref: mon.c — mcalcmove, movemon, seemimic, wakeup, m_respond,
-//         mon_allowflags (partial).
+//         maybe_mnexto (D-1336), mon_allowflags (partial).
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
@@ -1492,6 +1492,32 @@ export async function mnexto(mtmp, rlocflags = 0) {
         }
     }
     await rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
+}
+
+/**
+ * C ref: mon.c maybe_mnexto `:3998–4017` — like mnexto but dest must be
+ * directly accessible (couldsee) and not a grid-bug diagonal.
+ * Up to 20 enexto tries; failed enexto returns without relocating.
+ * Does not honor iflags.montelecontrol (C comment). Caller
+ * dokick.c kick_monster evade (D-1336).
+ */
+export async function maybe_mnexto(mtmp) {
+    if (!mtmp) return;
+    const ptr = mtmp.data;
+    const u = game.u;
+    const diagok = !NODIAG(ptr?.mndx ?? mtmp.mnum ?? -1);
+    let tryct = 20;
+
+    do {
+        const mm = { x: 0, y: 0 };
+        if (!enexto(mm, u.ux, u.uy, ptr)) return;
+        if (couldsee(mm.x, mm.y)
+            /* don't move grid bugs diagonally */
+            && (diagok || mm.x === mtmp.mx || mm.y === mtmp.my)) {
+            await rloc_to(mtmp, mm.x, mm.y);
+            return;
+        }
+    } while (--tryct > 0);
 }
 
 // C ref: mon.c mon_allowflags() — hostile/peaceful + dig/tunnel flags

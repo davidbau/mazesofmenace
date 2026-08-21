@@ -7,6 +7,7 @@ import {
     flush_screen, flush_topl_more, pline, canseemon, canspotmon, newsym,
     map_invisible, unmap_invisible, glyph_is_invisible, You_feel, sensemon,
     verbalize, mon_visible, tp_sensemon, see_with_infrared, tmp_at,
+    set_msg_xy,
 } from './display.js';
 import { vision_recalc, cansee, couldsee } from './vision.js';
 import {
@@ -5871,8 +5872,8 @@ export async function snuff_candle(otmp) {
 
 /**
  * C ref: apply.c snuff_lit — lamps / lantern / POT_OIL, else snuff_candle.
- * gulpmm minvent (D-1242). Named omit: splash_lit; gulpmu invent; gulpum;
- * litroom artifact_light; pickup obj_is_burning.
+ * gulpmm minvent (D-1242). splash_lit is D-1337. Named omit: gulpmu invent;
+ * gulpum; litroom artifact_light; pickup obj_is_burning.
  * throwit_mon_hit / really_kick_object / throwit land / mthrowu notcaught
  * use snuff_candle, not this (D-1313 / D-1325 / D-1333 / D-1334).
  * @returns {Promise<boolean>}
@@ -5893,6 +5894,75 @@ export async function snuff_lit(obj) {
     }
     if (await snuff_candle(obj)) return true;
     return false;
+}
+
+/**
+ * C ref: apply.c splash_lit — water hits a lit object (`:1518–1572`).
+ * Callers: trap.c `water_damage` `:4722`; rust-trap invent walk `:1632–1636`
+ * and minvent walk `:1697–1701`. Brass lantern on rust trap / nymph carry
+ * stays lit (crackle/flicker); dunk/submerge/container/swallow snuffs then
+ * drains age. Live `snuff_lit`/`end_burn` (D-1242). Named omit: gulpmu
+ * invent / gulpum / litroom / pickup (those call `snuff_lit`, not this).
+ * @returns {Promise<boolean>}
+ */
+export async function splash_lit(obj) {
+    if (!obj) return false;
+    let dunk = false;
+
+    /* C: lantern won't be extinguished by a rust trap or rust monster
+       attack but will be if submerged or placed into a container or
+       swallowed. */
+    if (obj.lamplit && (obj.otyp | 0) === BRASS_LANTERN) {
+        let useeit = false;
+        let uhearit = false;
+        let snuff = true;
+        const u = game.u || {};
+
+        if (obj.where === OBJ_INVENT) {
+            useeit = !Blind();
+            uhearit = !((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf);
+            const lev = !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+                && !(u.BLevitation | 0));
+            const fly = !!(((u.HFlying | 0) || (u.EFlying | 0)
+                || (u.usteed && is_flyer(u.usteed.data)))
+                && !(u.BFlying | 0));
+            const wwalk = !Is_waterlevel(u.uz)
+                && !!((u.HWwalking | 0) || (u.EWwalking | 0));
+            dunk = is_pool(u.ux | 0, u.uy | 0)
+                && ((!lev && !fly && !wwalk) || Is_waterlevel(u.uz));
+            snuff = false;
+        } else if (obj.where === OBJ_MINVENT && obj.ocarry
+                   && humanoid(obj.ocarry.data)) {
+            const mtmp = obj.ocarry;
+            const loc = get_obj_location(obj, 0);
+            const x = loc ? loc.x | 0 : 0;
+            const y = loc ? loc.y | 0 : 0;
+            useeit = !!(loc && cansee(x, y));
+            uhearit = couldsee(x, y) && distu_apply(x, y) < 5 * 5;
+            dunk = is_pool(mtmp.mx | 0, mtmp.my | 0)
+                && ((!is_flyer(mtmp.data) && !is_floater(mtmp.data))
+                    || Is_waterlevel(u.uz));
+            snuff = false;
+            if (useeit) set_msg_xy(x, y);
+        }
+
+        if (useeit || uhearit) {
+            await pline(
+                `${Yname2_snuff(obj)} ${uhearit ? 'crackles' : ''}${
+                    (uhearit && useeit) ? ' and ' : ''
+                }${useeit ? 'flickers' : ''}.`,
+            );
+        }
+        if (!dunk && !snuff) return false;
+    }
+
+    const result = await snuff_lit(obj);
+
+    if (dunk) {
+        const age = obj.age | 0;
+        obj.age = age - (age > 200 ? 100 : ((age / 2) | 0));
+    }
+    return result;
 }
 
 /**

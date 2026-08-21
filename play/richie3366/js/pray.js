@@ -19,7 +19,7 @@
 // spelleffects fallback for non-Knight/Cleric; resist TELL pline polish;
 // other livelog paths; poly silent/headless can_chant; Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix; music.c do_earthquake altar
-// desecrate_altar; SetVoice pitch; ureflects non-shield slots; shieldeff;
+// desecrate_altar; SetVoice pitch; ureflects W_AMUL/W_ARM/dragon; shieldeff;
 // poly mlet "creature" vs mortal; BlindedTimeout==1 region polish;
 // stuck_in_wall blocked_boulder Sokoban diagonal polish; update_inventory
 // redraw; Blindfolded cream/itch; attacktype_fordmg swallow Blind gate.
@@ -83,7 +83,7 @@ import {
     LL_CONDUCT,
     LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd, ismnum,
     DIED, KILLED_BY, Is_astralevel, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT,
-    W_ARMS, W_ARMC, W_ARM, W_AMUL, OBJ_FREE, SICK_ALL,
+    W_ARMS, W_ARMC, W_ARM, W_AMUL, W_WEP, OBJ_FREE, SICK_ALL,
     WEAK, HUNGRY, TT_LAVA, TT_BURIEDBALL, TELEDS_NO_FLAGS, DISSOLVED,
     XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, isok, IS_OBSTRUCTED,
@@ -987,7 +987,8 @@ function Is_sanctum(uz) {
 }
 
 /**
- * C ref: muse.c ureflects — shield slot only (other slots deferred).
+ * C ref: muse.c ureflects — shield then W_WEP artifact (D-1342).
+ * W_AMUL/W_ARM/dragon deferred.
  * @returns {Promise<boolean>}
  */
 async function ureflects(fmt, str) {
@@ -995,6 +996,12 @@ async function ureflects(fmt, str) {
         if (fmt && str) {
             await pline(`${str} reflects from your shield.`);
             makeknown(SHIELD_OF_REFLECTION);
+        }
+        return true;
+    }
+    if (((game.u?.EReflecting | 0) & W_WEP) !== 0) {
+        if (fmt && str) {
+            await pline(`${str} reflects from your weapon.`);
         }
         return true;
     }
@@ -1023,7 +1030,7 @@ async function fry_by_god(resp_god, via_disintegration) {
  * Branch envelope: swallow elec/disint on ustuck; Reflecting / Shock /
  * fry; armor strip via disintegrate_arm; Disint bask + godvoice; astral/
  * sanctum 3× summon_minion.
- * Named omissions: shieldeff flash; SetVoice; ureflects non-shield;
+ * Named omissions: shieldeff flash; SetVoice; ureflects W_AMUL/W_ARM/dragon;
  * @param {number} resp_god
  */
 export async function god_zaps_you(resp_god) {

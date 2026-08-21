@@ -12,6 +12,7 @@
 // SPE_FINGER_OF_DEATH / WAN_POLYMORPH / WAN_STRIKING / WAN_CANCELLATION /
 // WAN_TELEPORTATION / WAN_UNDEAD_TURNING / WAN_LIGHT /
 // WAN_FIRE / FIRE_HORN / WAN_COLD / SPE_CONE_OF_COLD / FROST_HORN (D-0974);
+// dozap self-zap losehp killer_xname + uhim (D-1345);
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
 // for WAN_MAGIC_MISSILE..WAN_LIGHTNING (zhitm damage types + bounce +
 // Reflecting); IMMEDIATE weffects → bhit(rn1(8,6)) + bhito WAN_POLYMORPH
@@ -23,7 +24,7 @@
 // Hallucination hdmgtype rn2; map_invisible/unmap during buzz;
 // backfire body; other NODIR; wrest pline; check_capacity;
 // check_unpaid; update_inventory; shieldeff/monstunseesu; setworn
-// EReflecting bits; ureflects W_WEP/W_AMUL/W_ARM/silver-dragon arms
+// EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/silver-dragon arms
 // beyond shield makeknown; create_polymon after poly_zapped;
 // do_osshock shop bill; invent/worn poly_obj arms; floor boxlock;
 // blank_novel / corpse revive→rot timer;
@@ -59,7 +60,8 @@ import { cansee, couldsee } from './vision.js';
 import { nhgetch } from './input.js';
 import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { hold_another_object, makeknown, encumber_msg } from './invent.js';
-import { doname, xname, distant_name, vtense, The, an, An } from './objnam.js';
+import { doname, xname, distant_name, vtense, The, an, An, killer_xname } from './objnam.js';
+import { uhim } from './roles.js';
 import { fix_wall_spines } from './mklev.js';
 import {
     A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise,
@@ -137,7 +139,7 @@ import {
     SHOP_BARS_COST, W_NONDIGGABLE, COST_CANCEL, COST_UNCURS, COST_UNBLSS,
     TIMEOUT, XKILL_GIVEMSG, XKILL_NOCORPSE, Upolyd,
     M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, NON_PM, ismnum,
-    W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE,
+    W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_WEP,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
@@ -868,9 +870,10 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
 }
 
 /**
- * C ref: muse.c ureflects — shield slot only (W_WEP/W_AMUL/W_ARM/dragon
- * deferred). When fmt+str given, makeknown like C so first observed
- * reflection discovers the type and may exercise(A_WIS) (D-0452).
+ * C ref: muse.c ureflects — shield then W_WEP artifact (D-1342).
+ * W_AMUL/W_ARM/dragon deferred. When fmt+str given, makeknown like C so
+ * first observed reflection discovers the type and may exercise(A_WIS)
+ * (D-0452).
  */
 async function ureflects(fmt, str) {
     if (game.u?.uarms?.otyp === SHIELD_OF_REFLECTION) {
@@ -878,6 +881,12 @@ async function ureflects(fmt, str) {
             // C: pline(fmt, str, "shield") with fmt "But %s reflects from your %s!"
             await pline(`But ${str} reflects from your shield!`);
             makeknown(SHIELD_OF_REFLECTION);
+        }
+        return true;
+    }
+    if (((game.u?.EReflecting | 0) & W_WEP) !== 0) {
+        if (fmt && str) {
+            await pline(`But ${str} reflects from your weapon!`);
         }
         return true;
     }
@@ -3061,6 +3070,7 @@ export async function bhitm(mtmp, otmp) {
  * other otyps named in C-JS-MAP.
  * @param {boolean} ordinary wand zap (TRUE) vs broken/spell (FALSE)
  * @returns {number} damage (0 for healing/sleep/death/poly)
+ * Caller dozap formats losehp with killer_xname + uhim (D-1345).
  */
 export async function zapyourself(obj, ordinary) {
     if (!obj) return 0;
@@ -3785,6 +3795,9 @@ async function weffects(obj) {
 
 /**
  * C ref: zap.c dozap / #zap ('z')
+ * Self-zap losehp uses killer_xname + uhim (D-1345; C `:2661–2663`).
+ * Named omit: throwit `:1747` / pickup / wield / invent / mthrowu /
+ * do_wear remaining killer_xname; lightdamage ansimpleoname; backfire body.
  * @returns {Promise<number>} 0 = cancel/no turn, 1 = took time
  */
 export async function dozap() {
@@ -3815,8 +3828,8 @@ export async function dozap() {
     } else if (need_dir && !(game.u.dx || game.u.dy || game.u.dz)) {
         const damage = await zapyourself(obj, true);
         if (damage) {
-            // killer_xname deferred — xname sufficient for early kits
-            const buf = `zapped ${game.u?.female ? 'her' : 'him'}self with ${xname(obj)}`;
+            // C zap.c:2661–2663 uhim() + killer_xname (D-1345; not xname)
+            const buf = `zapped ${uhim()}self with ${killer_xname(obj)}`;
             losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
         }
     } else {

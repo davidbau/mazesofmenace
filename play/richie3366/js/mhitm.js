@@ -1,6 +1,6 @@
 // mhitm.js — Monster vs monster combat (minimal RNG-faithful peel).
-// C ref: mhitm.c — mdisplacem, mattackm, gulpmm, passivemm, mdamagem;
-//         worn.c find_mac (re-export); uhitm.c mhitm_knockback (RNG order only).
+// C ref: mhitm.c — mdisplacem, mattackm, gazemm, explmm, gulpmm, passivemm,
+//         mdamagem; worn.c find_mac (re-export); uhitm.c mhitm_knockback.
 
 import { rn2, rnd, d } from './rng.js';
 import {
@@ -9,11 +9,12 @@ import {
     mtrapped_in_pit,
 } from './mon.js';
 import { game } from './gstate.js';
-import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel, flush_screen, verbalize } from './display.js';
+import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel, flush_screen, verbalize, sensemon } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict, set_mon_data } from './mondata.js';
-import { MON_WEP, mon_wield_item, hitval } from './weapon.js';
+import { MON_WEP, mon_wield_item, hitval, dmgval } from './weapon.js';
+import { arti_reflects } from './artifact.js';
 import { find_mac, which_armor } from './worn.js';
 import { update_monster_region } from './region.js';
 import { remove_worm, place_worm_tail_randomly } from './worm.js';
@@ -68,6 +69,7 @@ import {
     STRAT_WAITMASK,
     STRAT_WAITFORU,
     M_AP_TYPE,
+    M_AP_NOTHING,
     M_AP_MONSTER,
     W_ARM,
     W_ARMC,
@@ -97,8 +99,8 @@ import {
     obj_meld, pudding_merge_message, place_object, add_to_container,
     weight, mksobj, set_corpsenm, obj_stop_timers,
 } from './mkobj.js';
-import { Monnam, mon_nam, oname, pmname, x_monnam, hliquid, y_monnam } from './do_name.js';
-import { an, xname, makeplural } from './objnam.js';
+import { Monnam, mon_nam, Adjmonnam, oname, pmname, x_monnam, hliquid, y_monnam } from './do_name.js';
+import { an, xname, makeplural, cxname, vtense, The } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { newcham, pm_to_cham } from './makemon.js';
 import { polyself } from './polyself.js';
@@ -109,6 +111,11 @@ const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const IRON_CHAIN = objectNames.indexOf('IRON_CHAIN');
+const MIRROR = objectNames.indexOf('MIRROR');
+const CLOVE_OF_GARLIC = objectNames.indexOf('CLOVE_OF_GARLIC');
+const SILVER = 14; /* objclass.h SILVER */
 const GLOB_OF_BLACK_PUDDING = objectNames.indexOf('GLOB_OF_BLACK_PUDDING');
 const PM_GRAY_OOZE = monsterNames.indexOf('PM_GRAY_OOZE');
 const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
@@ -133,6 +140,8 @@ const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
 const PM_QUEEN_BEE = monsterNames.indexOf('PM_QUEEN_BEE');
 const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const PM_CHROMATIC_DRAGON = monsterNames.indexOf('PM_CHROMATIC_DRAGON');
+const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
+const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
 const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
@@ -172,7 +181,9 @@ const AD_DRDX = 30; /* drains dexterity (quasit) — monattk.h */
 const AD_DRCO = 31; /* drains constitution — monattk.h */
 const AD_DRIN = 32; /* drains intelligence (mind flayer) — monattk.h */
 const AD_SSEX = 35; /* Succubus seduction (extended) */
+const AD_BLND = 11; /* blinds — monattk.h (Archon gaze) */
 const AD_STUN = 12; /* stuns — monattk.h */
+const AD_HALU = 36; /* hallucinate (black light AT_EXPL) */
 const AD_PLYS = 14; /* paralyzes — monattk.h */
 const AD_ENCH = 41; /* remove enchantment (disenchanter) — monattk.h */
 const AD_POLY = 43; /* polymorph target (genetic engineer) — monattk.h */
@@ -206,7 +217,7 @@ async function You_hear(line) {
 /**
  * C ref: mhitm.c noises — out-of-sight m-vs-m combat feedback.
  * Rate-limited via gf.far_noise / gn.noisetime (stored on game).
- * Named omission: explmm AT_EXPL path shares this helper when wired.
+ * explmm (D-1339) uses this when !cansee(magr).
  */
 async function noises(magr, mattk) {
     const farq = mdistu(magr) > 15;
@@ -537,7 +548,7 @@ export {
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
-    AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
+    AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
     could_seduce,
 };
 
@@ -553,6 +564,92 @@ function dmgtype(ptr, adtyp) {
         if ((a.adtyp | 0) === (adtyp | 0)) return true;
     }
     return false;
+}
+
+/** C ref: mondata.c dmgtype_fromattack — mattk slot matches adtyp+aatyp. */
+function dmgtype_fromattack(ptr, adtyp, aatyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    const ad = adtyp | 0;
+    const at = aatyp | 0;
+    for (const a of slots) {
+        if ((a.adtyp | 0) === ad && (a.aatyp | 0) === at) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mondata.c resists_blnd monster arm :248–272.
+ * Named omit: resists_blnd_by_arti (Sunsword); youmonst Blind/Unaware.
+ */
+function resists_blnd_mm(mon) {
+    if (!mon) return true;
+    const ptr = mon.data;
+    if ((mon.mblinded | 0) || !(mon.mcansee | 0) || !haseyes(ptr)
+        || (mon.msleeping | 0)) {
+        return true;
+    }
+    return dmgtype_fromattack(ptr, AD_BLND, AT_EXPL)
+        || dmgtype_fromattack(ptr, AD_BLND, AT_GAZE);
+}
+
+/**
+ * C ref: mondata.c can_blnd AT_GAZE/EXPL/BOOM/MAGC/BREA :331–339.
+ * Named omit: mon_perma_blind; raven-vs-raven; visor/cream/engl you arms.
+ */
+function can_blnd_mm(magr, mdef, aatyp) {
+    if (!haseyes(mdef?.data)) return false;
+    const at = aatyp | 0;
+    if (at === AT_EXPL || at === AT_BOOM || at === AT_GAZE
+        || at === AT_MAGC || at === AT_BREA) {
+        if (magr && (magr.mcan | 0)) return false;
+        return !resists_blnd_mm(mdef);
+    }
+    return true;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_blnd mhitm arm :2986–3011.
+ * gazemm Archon extra passes mhm=null; mdamagem leftover zeros dice.
+ */
+async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
+    if (can_blnd_mm(magr, mdef, mattk?.aatyp)) {
+        if (_mm_vis && (mdef.mcansee | 0) && canspotmon(mdef)) {
+            let buf = `${Monnam(mdef)} is blinded`;
+            if ((mdef.data?.mndx | 0) === PM_ARCHON && canseemon(mdef)) {
+                buf += ` by ${s_suffix_mm(mon_nam(magr))} radiance`;
+            }
+            await pline(`${buf}.`);
+        }
+        let rnd_tmp = d(mattk.damn | 0, mattk.damd | 0);
+        rnd_tmp += mdef.mblinded | 0;
+        if (rnd_tmp > 127) rnd_tmp = 127;
+        mdef.mblinded = rnd_tmp;
+        mdef.mcansee = 0;
+        mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+    }
+    if (mhm) mhm.damage = 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_halu mhitm arm :3911–3919.
+ * Black-light AT_EXPL via explmm→mdamagem. uhitm/mhitu arms just
+ * zero dice (named).
+ */
+async function mhitm_ad_halu(magr, mattk, mdef, mhm) {
+    void mattk;
+    const pd = mdef?.data;
+    if (!(magr?.mcan | 0) && haseyes(pd) && (mdef.mcansee | 0)) {
+        if (_mm_vis && canseemon(mdef)) {
+            await pline_mon(
+                mdef,
+                `${Monnam(mdef)} looks ${mdef.mconf ? 'more ' : ''}confused.`,
+            );
+        }
+        mdef.mconf = 1;
+        mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+    }
+    if (mhm) mhm.damage = 0;
 }
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
@@ -836,13 +933,17 @@ async function golemeffects_mm(mon, damtype, dam) {
 }
 
 /**
- * C ref: muse.c mon_reflects — shield / amulet / silver DSM / silver or
- * chromatic dragon. Named omit: arti_reflects(MON_WEP); makeknown.
+ * C ref: muse.c mon_reflects — shield / arti_reflects(MON_WEP) (D-1342) /
+ * amulet / silver DSM / silver or chromatic dragon. Named omit: makeknown.
  */
 async function mon_reflects_mm(mon, fmt) {
     let orefl = which_armor(mon, W_ARMS);
     if (orefl && (orefl.otyp | 0) === SHIELD_OF_REFLECTION) {
         if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'shield'));
+        return true;
+    }
+    if (arti_reflects(MON_WEP(mon))) {
+        if (fmt) await pline(fmt(s_suffix_mm(mon_nam(mon)), 'weapon'));
         return true;
     }
     orefl = which_armor(mon, W_AMUL);
@@ -946,7 +1047,8 @@ async function acid_damage_mm(obj) {
  * monkilled(magr) without gz.zombify (D-1241). Raw mddat.mattk, not
  * get_mattk. AD_ACID goto assess skips mcan/mdead return and rn2(3).
  * Named omit: zap.c drain_item ring/helm ABON (spe-- + obj_resists 10/90
- * still); golem MSLOW; arti_reflects; stagger locomotion table.
+ * still); golem MSLOW; stagger locomotion table.
+ * arti_reflects(MON_WEP) is D-1342.
  */
 async function passivemm(magr, mdef, mhitb, mdead, mwep) {
     const mhit = mhitb ? M_ATTK_HIT : M_ATTK_MISS;
@@ -1858,6 +1960,61 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
     }
 
+    // C: mhitm_adtyping → mhitm_ad_blnd for AD_BLND (D-1338). gazemm Archon
+    // extra already applied with mhm=null; leftover dice zero here.
+    if ((mattk.adtyp | 0) === AD_BLND) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_blnd(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_halu for AD_HALU (D-1339 explmm).
+    if ((mattk.adtyp | 0) === AD_HALU) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_halu(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
     mhitm_knockback(magr, mdef, mattk, hitflags, !!mwep);
 
     if (!damage) return hitflags === M_ATTK_AGR_DIED ? M_ATTK_AGR_DIED : M_ATTK_HIT;
@@ -1874,16 +2031,73 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 }
 
 /**
+ * C ref: uhitm.c shade_aware — boulder/ball/chain/mirror/garlic/silver.
+ * Used only for the shade_miss noun ("attack" vs cxname).
+ */
+function shade_aware(obj) {
+    if (!obj) return false;
+    const otyp = obj.otyp | 0;
+    if (otyp === BOULDER || otyp === HEAVY_IRON_BALL || otyp === IRON_CHAIN
+        || otyp === MIRROR || otyp === CLOVE_OF_GARLIC) {
+        return true;
+    }
+    return (game.objects?.[otyp]?.oc_material | 0) === SILVER;
+}
+
+/** C you.h m_next2u — squared distu ≤ 2. */
+function m_next2u_mm(mtmp) {
+    const u = game.u || {};
+    return dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0) <= 2;
+}
+
+/**
+ * C ref: uhitm.c shade_miss :2016–2051 — hero/mon vs shade.
+ * dmgval is zero/not-zero only (weapon.c shade_glare still named, so a
+ * non-silver mwep currently still "hurts" and this returns false).
+ * Callers mthrowu / zap bhit / hmon / mhitm_ad_phys still named.
+ */
+export async function shade_miss(magr, mdef, obj, thrown, verbose) {
+    const youagr = magr === game.youmonst;
+    const youdef = mdef === game.youmonst;
+    const pd = mdef?.data;
+    if (!pd || (pd.mndx | 0) !== PM_SHADE || (obj && dmgval(obj, mdef))) {
+        return false;
+    }
+
+    if (verbose
+        && (youdef || cansee(mdef.mx, mdef.my) || sensemon(mdef)
+            || (youagr && m_next2u_mm(mdef)))) {
+        const what = (!obj || shade_aware(obj)) ? 'attack' : cxname(obj);
+        const target = youdef ? 'you' : mon_nam(mdef);
+        const thru = ' harmlessly through ';
+        const pass = vtense(what, 'pass');
+        if (!thrown) {
+            const whose = youagr ? 'Your' : s_suffix_mm(Monnam(magr));
+            await pline(`${whose} ${what} ${pass}${thru}${target}.`);
+        } else {
+            await pline(`${The(what)} ${pass}${thru}${target}.`);
+        }
+        if (!youdef && !canspotmon(mdef)) {
+            map_invisible(mdef.mx, mdef.my);
+        }
+    }
+    if (!youdef) mdef.msleeping = 0;
+    return true;
+}
+
+/**
  * C ref: mhitm.c hitmm — hit pline when gv.vis; else noises().
  * Seduce: smiles/talks + engagingly/seductively when could_seduce && !mcan.
- * Named omissions: shade_miss; AT_HUGS verb; silver sear; artifact wep.
+ * shade_miss (D-1341) bypasses mdamagem. Named omit: silver sear; artifact wep.
  */
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     pre_mm_attack(magr, mdef);
 
-    // C: compat = !magr->mcan ? could_seduce(...) : 0; shade_miss if !compat
+    // C: compat = !magr->mcan ? could_seduce(...) : 0;
     const compat = !magr.mcan ? could_seduce(magr, mdef, mattk) : 0;
-    // shade_miss deferred
+    if (!compat && await shade_miss(magr, mdef, mwep, false, _mm_vis)) {
+        return M_ATTK_MISS; /* bypass mdamagem() */
+    }
 
     if (_mm_vis) {
         if (compat) {
@@ -1896,6 +2110,12 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
             /* C `:687–689` — s_suffix(Monnam) tentacles suck */
             await pline(
                 `${s_suffix_mm(Monnam(magr))} tentacles suck ${mon_nam_too(mdef, magr)}.`,
+            );
+        } else if ((mattk.aatyp | 0) === AT_HUGS
+            && magr !== game.u?.ustuck) {
+            /* C `:691–695` — squeezes unless magr already holds the hero */
+            await pline(
+                `${Monnam(magr)} squeezes ${mon_nam_too(mdef, magr)}.`,
             );
         } else {
             let verb = 'hits';
@@ -2143,6 +2363,133 @@ async function gulpmm(magr, mdef, mattk) {
 }
 
 /**
+ * C ref: mhitm.c gazemm :736–803 — monster gazes at another monster.
+ * Caller mattackm AT_GAZE (strike=0). Archon extra mhitm_ad_blnd + rn2(2)
+ * stun then mdamagem leftover. Medusa reflect stones magr.
+ * Named omit: mhitm_ad_ston/conf/stun/fire leftover dice;
+ * mon_perma_blind; resists_blnd_by_arti.
+ * arti_reflects(MON_WEP) is D-1342.
+ * hitmm shade_miss is D-1341; other shade_miss callers still named.
+ */
+export async function gazemm(magr, mdef, mattk) {
+    if (!magr || !mdef || !mattk) return M_ATTK_MISS;
+
+    const magr_mndx = magr.data?.mndx ?? magr.mnum ?? -1;
+    const archon = magr_mndx === PM_ARCHON && (mattk.adtyp | 0) === AD_BLND;
+    const altmesg = !!(archon && !(magr.mcansee | 0));
+
+    if (mdef.data?.mlet === 'S_MIMIC' && M_AP_TYPE(mdef) !== M_AP_NOTHING) {
+        seemimic(mdef);
+    }
+    mdef.mundetected = 0;
+
+    if (_mm_vis) {
+        const who = altmesg ? Adjmonnam(magr, 'blinded') : Monnam(magr);
+        const prep = altmesg ? 'toward' : 'at';
+        const tgt = canspotmon(mdef) ? mon_nam(mdef) : 'something';
+        await pline(`${who} gazes ${prep} ${tgt}...`);
+    }
+
+    if ((magr.mcan | 0) || !(mdef.mcansee | 0)
+        || (archon ? resists_blnd_mm(mdef) : !(magr.mcansee | 0))
+        || (magr.minvis && !perceives(mdef.data)) || (mdef.msleeping | 0)) {
+        if (_mm_vis && canspotmon(mdef)) {
+            await pline('but nothing happens.');
+        }
+        return M_ATTK_MISS;
+    }
+
+    const gazeFmt = (who, what) =>
+        `The gaze is reflected away by ${who} ${what}.`;
+
+    if (magr_mndx === PM_MEDUSA && await mon_reflects_mm(mdef, null)) {
+        if (canseemon(mdef)) {
+            await mon_reflects_mm(mdef, gazeFmt);
+        }
+        if (mdef.mcansee | 0) {
+            if (await mon_reflects_mm(magr, null)) {
+                if (canseemon(magr)) {
+                    await mon_reflects_mm(magr, gazeFmt);
+                }
+                return M_ATTK_MISS;
+            }
+            if (mdef.minvis && !perceives(magr.data)) {
+                if (canseemon(magr)) {
+                    await pline(
+                        `${Monnam(magr)} doesn't seem to notice that ${
+                            mhis_disp(magr)
+                        } gaze was reflected.`,
+                    );
+                }
+                return M_ATTK_MISS;
+            }
+            if (canseemon(magr)) {
+                await pline_mon(magr, `${Monnam(magr)} is turned to stone!`);
+            }
+            await monstone(magr);
+            if (!deadmonster(magr)) return M_ATTK_MISS;
+            return M_ATTK_AGR_DIED;
+        }
+    } else if (archon) {
+        await mhitm_ad_blnd(magr, mattk, mdef, null);
+        if (rn2(2)) mdef.mstun = 1;
+    }
+
+    return mdamagem(magr, mdef, mattk, null, 0);
+}
+
+/**
+ * C ref: mhitm.c explmm :970–1010 — monster explodes at another monster.
+ * Caller mattackm AT_EXPL when distmin<=1 (:497–508). Cancelled is
+ * M_ATTK_MISS (not a strike; skips passivemm). FIRE/COLD/ELEC call
+ * mon_explodes and set AGR_DIED unconditionally (lifesave named on
+ * mondead). Else mdamagem then mondead. Tame melancholy even if seen.
+ * Named omit: mondead→m_unleash object (slack printed here);
+ * mdamagem ston/conf/stun/fire leftover. hitmm shade_miss is D-1341.
+ */
+export async function explmm(magr, mdef, mattk) {
+    if (!magr || !mdef || !mattk) return M_ATTK_MISS;
+    if (magr.mcan) return M_ATTK_MISS;
+
+    if (cansee(magr.mx | 0, magr.my | 0)) {
+        await pline_mon(magr, `${Monnam(magr)} explodes!`);
+    } else {
+        await noises(magr, mattk);
+    }
+
+    let result;
+    const ad = mattk.adtyp | 0;
+    if (ad === AD_FIRE || ad === AD_COLD || ad === AD_ELEC) {
+        await mon_explodes(magr, mattk);
+        result = M_ATTK_AGR_DIED | (deadmonster(mdef) ? M_ATTK_DEF_DIED : 0);
+    } else {
+        result = await mdamagem(magr, mdef, mattk, null, 0);
+    }
+
+    if (!(result & M_ATTK_AGR_DIED)) {
+        const was_leashed = !!(magr.mleashed | 0);
+        mondead(magr);
+        if (!deadmonster(magr)) return result; /* life saved */
+        result |= M_ATTK_AGR_DIED;
+        /* C: mondead→m_detach→m_unleash suppresses slack; print here. */
+        if (was_leashed) {
+            await pline('Your leash falls slack.');
+            magr.mleashed = 0;
+            const mid = magr.m_id | 0;
+            for (const otmp of game.invent || []) {
+                if ((otmp.leashmon | 0) === mid) otmp.leashmon = 0;
+            }
+        }
+    }
+    if (magr.mtame) {
+        await pline(
+            'You have a melancholy feeling for a moment, then it passes.',
+        );
+    }
+    return result;
+}
+
+/**
  * C ref: mhitm.c mattackm()
  * Returns M_ATTK_* bitmask. Async: combat pline may await --More--.
  */
@@ -2230,6 +2577,23 @@ export async function mattackm(magr, mdef) {
                 }
                 break;
             }
+            case AT_HUGS: {
+                // C mhitm.c mattackm `:476–490` — automatic if the previous
+                // two slots were exact M_ATTK_HIT (not a bitmask). No
+                // distmin skip. failed_grab (unsolid / notonhead) then
+                // hitmm with no weapon, dieroll 0. AT_HUGS verb is
+                // hitmm "squeezes" unless magr === u.ustuck.
+                strike = (i >= 2 && res[i - 1] === M_ATTK_HIT
+                    && res[i - 2] === M_ATTK_HIT) ? 1 : 0;
+                if (strike) {
+                    if (await failed_grab(magr, mdef, mattk)) {
+                        strike = 0;
+                    } else {
+                        res[i] = await hitmm(magr, mdef, mattk, null, 0);
+                    }
+                }
+                break;
+            }
             case AT_ENGL: {
                 // C: mhitm.c mattackm AT_ENGL — shade futile; usteed skip;
                 // distmin>1 continue; engulfing_u miss; rnd hit then
@@ -2258,6 +2622,26 @@ export async function mattackm(magr, mdef) {
                     }
                 } else {
                     await missmm(magr, mdef, mattk);
+                }
+                break;
+            }
+            case AT_GAZE: {
+                // C mhitm.c mattackm `:492–495` — gaze is not a strike;
+                // ranged (no distmin skip).
+                strike = 0;
+                res[i] = await gazemm(magr, mdef, mattk);
+                break;
+            }
+            case AT_EXPL: {
+                // C mhitm.c mattackm `:497–508` — adjacent only; cancelled
+                // (M_ATTK_MISS) is not a strike and skips passivemm.
+                if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) continue;
+                res[i] = await explmm(magr, mdef, mattk);
+                if (res[i] === M_ATTK_MISS) {
+                    strike = 0;
+                    attk = 0;
+                } else {
+                    strike = 1;
                 }
                 break;
             }

@@ -27,6 +27,7 @@ import {
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { Monnam, mon_nam, pmname, hliquid, x_monnam, Hallucination } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
+import { arti_reflects } from './artifact.js';
 import { is_pole } from './wield.js';
 import { xname, doname, an } from './objnam.js';
 import { objectNames, ARMOR_CLASS } from './objects.js';
@@ -897,7 +898,7 @@ function defends_ad_drin(_otmp) {
  * slips a hug or wrap. AT_ENGL never slips. AD_DRIN looks at uarmh
  * (mhitu mhitm_ad_drin D-1329); other attacks walk cloak then suit
  * then shirt. mhitu AD_WRAP caller is mhitm_ad_wrap_u (D-1331);
- * uhitm/mhitm arms of mhitm_ad_wrap still named.
+ * uhitm arm is mhitm_ad_wrap (D-1348). mhitm brush still named.
  */
 export async function u_slip_free(mtmp, mattk) {
     if ((mattk?.aatyp | 0) === AT_ENGL) return false;
@@ -1526,7 +1527,7 @@ function Breathless() {
  * (!mcan || ustuck==magr) && !sticks(you): !ustuck && !rn2(10) grab
  * with u_slip_free, else already-held pool drown / AT_HUGS crush,
  * else verbose brush. Cancelled / sticks zeros leftover dice.
- * uhitm (m_slips_free) and mhitm arms still named.
+ * uhitm arm is mhitm_ad_wrap (D-1348). mhitm brush still named.
  */
 export async function mhitm_ad_wrap_u(mtmp, mattk, mhm) {
     const pd = game.youmonst?.data;
@@ -1943,7 +1944,7 @@ function sprintf2(fmt, a, b) {
 
 /**
  * C ref: muse.c ureflects :2836–2866 — outermost to innermost.
- * Named omit: arti_reflects identity of the W_WEP artifact (bit only).
+ * W_WEP identity is EReflecting bit from set_artifact_intrinsic (D-1342).
  */
 async function ureflects(fmt, str) {
     const u = game.u || {};
@@ -1976,7 +1977,7 @@ async function ureflects(fmt, str) {
 
 /**
  * C ref: muse.c mon_reflects :2797–2833.
- * Named omit: arti_reflects(MON_WEP).
+ * arti_reflects(MON_WEP) is D-1342 (between shield and amulet).
  */
 async function mon_reflects(mon, str) {
     let orefl = which_armor(mon, W_ARMS);
@@ -1984,6 +1985,12 @@ async function mon_reflects(mon, str) {
         if (str) {
             await pline(sprintf2(str, s_suffix_hitmsg(mon_nam(mon)), 'shield'));
             makeknown(SHIELD_OF_REFLECTION);
+        }
+        return true;
+    }
+    if (arti_reflects(MON_WEP(mon))) {
+        if (str) {
+            await pline(sprintf2(str, s_suffix_hitmsg(mon_nam(mon)), 'weapon'));
         }
         return true;
     }
@@ -2023,7 +2030,7 @@ const GAZEMU_REACTIONS = [
  * Callers: mattacku AT_GAZE when mdat is not Medusa (:832–837);
  * mon.c m_respond_medusa first AT_GAZE slot.
  * Named omit: #ifdef PM_BEHOLDER AD_SLEE/AD_SLOW (MON is #if 0);
- * impossible() default; arti_reflects W_WEP; gazemm.
+ * impossible() default. gazemm is D-1338. arti_reflects W_WEP is D-1342.
  */
 export async function gazemu(mtmp, mattk) {
     if (!mtmp || !mattk) return M_ATTK_MISS;

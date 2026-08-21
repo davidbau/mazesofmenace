@@ -1,5 +1,6 @@
 // dothrow.js — Throw command (minimal path for Tourist darts).
 // C ref: dothrow.c dothrow / throw_obj / throwit (subset).
+// throwit returning-missile losehp killer_xname (D-1346; C `:1747`).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -64,7 +65,8 @@ import {
     monsterNames,
 } from './generated/monsters_data.js';
 import {
-    xname, singular, an, the, vtense, doname, thesimpleoname, makeplural,
+    xname, killer_xname, singular, an, the, vtense, doname, thesimpleoname,
+    makeplural,
 } from './objnam.js';
 import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond } from './mon.js';
 import { mon_nam, Monnam, hliquid, Hallucination } from './do_name.js';
@@ -955,6 +957,8 @@ export async function throw_obj(obj, shotlimit) {
         await pline('You cannot throw an object at yourself.');
         return 0; // ECMD_OK — no time
     }
+    // C throw_obj :139–148 bare-hand cockatrice instapetrify + killer_xname
+    // named omit (throwit returning-missile :1747 is D-1346).
 
     // C ref: dothrow.c:158–237 Multishot calculations
     let multishot = 1;
@@ -1753,6 +1757,7 @@ export async function sho_obj_return_to_u(obj) {
  * Returns true if the object was handled (do not land).
  * Tethered: tmp_at(DISP_END, BACKTRACK) on success, DISP_END 0 on fail
  * (D-1311). Leader catch finish_quest is D-1312.
+ * Arm-hit losehp uses killer_xname + KILLED_BY (D-1346; C `:1747–1748`).
  */
 async function throwit_returning_missile(
     obj, wep_mask, twoweap, oldslot, x, y, impaired, tethered_weapon,
@@ -1816,7 +1821,8 @@ async function throwit_returning_missile(
             artifact_hit(null, game.youmonst, obj, dmgBox, 0);
             dmg = dmgBox.dmg | 0;
         }
-        losehp(maybe_half_phys(dmg), xname(obj), KILLED_BY);
+        // C dothrow.c:1747–1748 killer_xname + KILLED_BY (D-1346; not xname)
+        losehp(maybe_half_phys(dmg), killer_xname(obj), KILLED_BY);
         const { finish_losehp_done } = await import('./end.js');
         await finish_losehp_done();
         await finish_maybe_wail();
@@ -2013,7 +2019,8 @@ export async function boomhit(obj, dx, dy) {
  * throwit ACURRSTR urange / post-bhit lev hurtle (D-1316).
  * tethered THROWN_TETHERED_WEAPON bhit + isqrt(arw->range) (D-1323).
  * thitmonst swallow vanish pline (D-1324).
- * Named omit: objsplit unsplit; killer_xname polish;
+ * throwit returning-missile losehp killer_xname (D-1346; C `:1747`).
+ * Named omit: objsplit unsplit; throw_obj `:139–148` petrify killer_xname;
  * THROWN_WEAPON still uses the JS fly stand-in (not zap.js bhit).
  */
 

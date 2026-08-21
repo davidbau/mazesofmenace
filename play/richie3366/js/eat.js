@@ -27,6 +27,7 @@
 // D-0956: Ring_gone / float_up / rescham / choke(strangle) /
 // set_mimic_blocking / perceives in eataccessory.
 // D-1204: eatspecial MAIL_STRUCTURES SCR_MAIL + uwepgone artifact_light.
+// D-1344: choke killer_xname (tombstone; not xname).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -48,7 +49,7 @@ import {
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 import {
     singular, xname, doname, the, makeplural, obj_is_pname, thesimpleoname,
-    an,
+    an, killer_xname,
 } from './objnam.js';
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
@@ -2221,9 +2222,10 @@ function bounded_increase(old, inc, typ) {
  * C ref: eat.c choke — satiated stuffing or amulet of strangulation.
  * Branch envelope: non-satiated only AoS; lawful Knight adjalign; exercise CON;
  * Breathless/Hunger/!Strangled&&!rn2(20) → vomit path (AoS composure);
- * else killer + done(CHOKING).
- * Named omissions: killer_xname polish (xname stand-in); multi-turn food choke
- * callers beyond eataccessory.
+ * else killer + done(CHOKING). Non-coin food uses killer_xname (D-1344;
+ * C `:279`; format KILLED_BY because the helper already adds an article).
+ * Named omissions: multi-turn food choke callers beyond eataccessory
+ * (lesshungry/bite); dothrow remaining killer_xname.
  */
 async function choke(food) {
     const u = game.u || (game.u = {});
@@ -2253,8 +2255,9 @@ async function choke(food) {
             if (food.oclass === COIN_CLASS) {
                 game.killer.name = 'very rich meal';
             } else {
+                // C eat.c:278–279 KILLED_BY + killer_xname (article in name)
                 game.killer.format = KILLED_BY;
-                game.killer.name = xname(food);
+                game.killer.name = killer_xname(food);
             }
         } else {
             await pline('You choke over it.');
