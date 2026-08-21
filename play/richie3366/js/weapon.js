@@ -52,9 +52,10 @@ import {
     PM_HEALER, PM_CLERIC, PM_WIZARD,
     monsterNames,
 } from './generated/monsters_data.js';
-import { spec_abon } from './artifact.js';
+import { spec_abon, shade_glare } from './artifact.js';
 
 const PM_PONY = monsterNames.indexOf('PM_PONY');
+const PM_SHADE = monsterNames.indexOf('PM_SHADE');
 
 export { is_missile };
 
@@ -119,7 +120,9 @@ export function hitval(otmp, mon) {
 
 /**
  * C ref: weapon.c dmgval — uses objects[].oc_wsdam / oc_wldam.
- * Large-monster otyp switch, thick-skin/shade/silver/blessed/axe deferred.
+ * Shade zero via shade_glare (D-1354; C `:307–308`). Large-monster
+ * otyp switch, thick-skin / silver / blessed / axe / iron-ball /
+ * artifact_light / spec_dbon / erosion deferred.
  */
 export function dmgval(otmp, mon) {
     if (!otmp) return 0;
@@ -130,7 +133,8 @@ export function dmgval(otmp, mon) {
 
     let tmp = 0;
     // C: bigmonst(mon->data); callers that pass null treat as small (hero).
-    const big = !!(mon?.data && ((mon.data.msize | 0) >= 3 /* MZ_LARGE */));
+    const ptr = mon?.data;
+    const big = !!(ptr && ((ptr.msize | 0) >= 3 /* MZ_LARGE */));
     if (big) {
         const wld = od?.oc_wldam | 0;
         if (wld) tmp = rnd(wld);
@@ -173,6 +177,8 @@ export function dmgval(otmp, mon) {
         tmp += otmp.spe | 0;
         if (tmp < 0) tmp = 0;
     }
+    // C `:304–308` thick_skinned still named; shade after it.
+    if ((ptr?.mndx | 0) === PM_SHADE && !shade_glare(otmp)) tmp = 0;
     return tmp;
 }
 

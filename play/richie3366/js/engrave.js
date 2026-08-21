@@ -18,7 +18,8 @@
 // Named omissions: wand/weapon/marker/towel/gem/ring stylus sfx;
 // altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
 // dulling occupation; del_engr/rloc_engr; livelog;
-// allmain/dokick/uhitm `u_wipe_engr` callers still stubbed;
+// allmain DEX timeout D-1372; dokick(2) D-1360;
+// uhitm/dothrow/dig `u_wipe_engr` callers still stubbed;
 // demon/vampire blood default beyond type; Blind feel path for
 // engrave/burn; full surface()/is_ice nouns; wipeout_text seeded
 // (non-zero) path; invent lookhere / pickup() still pass FALSE/TRUE

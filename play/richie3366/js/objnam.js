@@ -25,8 +25,9 @@ import {
 } from './objects.js';
 import {
     monsterNames, mons, vegetarian, is_rider, M2_PNAME, G_UNIQ,
-    pmnames, MALE, FEMALE, NEUTRAL, NON_PM,
+    pmnames, MALE, FEMALE, NEUTRAL, NON_PM, NUMMONS, LOW_PM, NUM_MGENDERS,
 } from './monsters.js';
+import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 import {
     PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
 } from './generated/monsters_data.js';
@@ -1057,37 +1058,136 @@ export function killer_xname(obj) {
 }
 
 /**
+ * C ref: rumors.c CapitalMon / init_CapMons — capitalized type/title names
+ * that take "the" (Archon, Oracle, Green-elf) vs pname uniques (Medusa).
+ * Named omit: fruit_from_name + artifact_name fruit carve in the() (objnam
+ * cannot import artifact.js — invent cycle).
+ */
+const BOGON_CODES = '-_+|=';
+let CapMons = null;
+
+/** C ref: hacklib.c xcrypt — involution; same as rumors.js. */
+function xcrypt_objnam(s) {
+    let bitmask = 1;
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+        let c = s.charCodeAt(i);
+        if (c & (32 | 64)) c ^= bitmask;
+        out += String.fromCharCode(c);
+        bitmask <<= 1;
+        if (bitmask >= 32) bitmask = 1;
+    }
+    return out;
+}
+
+/** C ref: rumors.c unpadline. */
+function unpadline_objnam(line) {
+    return String(line ?? '').replace(/_+$/, '');
+}
+
+/** C ref: do_name.c bogon_is_pname — "-+=" personal; "_|" type. */
+function bogon_is_pname_objnam(code) {
+    return !!code && '-+='.includes(code);
+}
+
+/** C ref: rumors.c init_CapMons. */
+function init_CapMons() {
+    const list = [];
+    for (let mndx = LOW_PM; mndx < NUMMONS; mndx++) {
+        const mptr = mons(mndx);
+        if (!mptr) continue;
+        if ((mptr.geno & G_UNIQ) !== 0 && !the_unique_pm(mptr)) continue;
+        const names = pmnames[mndx];
+        if (!names) continue;
+        for (let mgend = MALE; mgend < NUM_MGENDERS; mgend++) {
+            const nam = names[mgend];
+            if (nam && nam[0] && nam[0] !== nam[0].toLowerCase()) list.push(nam);
+        }
+    }
+    // C skips the plaintext don't-edit header; JS BOGUSMON_BUF already omits it.
+    const lines = String(BOGUSMON_BUF || '').split('\n');
+    for (const enc of lines) {
+        if (!enc) continue;
+        const xbuf = unpadline_objnam(xcrypt_objnam(enc));
+        if (!xbuf) continue;
+        let code = '';
+        let startp = xbuf;
+        if (BOGON_CODES.includes(xbuf[0])) {
+            code = xbuf[0];
+            startp = xbuf.slice(1);
+        }
+        if (startp && startp[0] !== startp[0].toLowerCase()
+            && !bogon_is_pname_objnam(code)) {
+            list.push(startp);
+        }
+    }
+    CapMons = list;
+}
+
+/**
+ * C ref: rumors.c CapitalMon — prefix match with space/apostrophe/end boundary.
+ */
+export function CapitalMon(word) {
+    if (!word || word[0] === word[0].toLowerCase()) return false;
+    if (!CapMons) init_CapMons();
+    const wln = word.length;
+    for (const nam of CapMons) {
+        const nln = nam.length;
+        if (wln < nln) continue;
+        if (word.slice(0, nln) !== nam) continue;
+        const next = word[nln];
+        if (!next || next === ' ' || next === "'") return true;
+    }
+    return false;
+}
+
+/**
  * C ref: objnam.c the() — definite article for non-proper names.
- * Named omissions: CapitalMon, fruit_from_name, artifact "of"/named arms,
- * Platinum Yendorian Express Card special-case.
+ * Named omit: fruit_from_name + artifact_name (invent cycle).
  */
 export function the(str) {
     if (!str) return 'the []';
-    if (/^the /i.test(str)) {
-        return `the${str.slice(3)}`;
+    if (str.length >= 4 && str.slice(0, 4).toLowerCase() === 'the ') {
+        const c0 = str.charAt(0);
+        const low = (c0 >= 'A' && c0 <= 'Z')
+            ? String.fromCharCode(c0.charCodeAt(0) + 32) : c0;
+        return low + str.slice(1);
     }
+    let insert_the = false;
     const c0 = str.charCodeAt(0);
-    // lowercase / non-A–Z → always "the "
-    if (c0 < 65 || c0 > 90) return `the ${str}`;
-    // Capitalized: insert "the" when last word/hyphen segment is lowercase
-    // (Unique's corpse apostrophe → no article). Full CapitalMon deferred.
-    const sp = str.lastIndexOf(' ');
-    const hy = str.lastIndexOf('-');
-    const tmp = Math.max(sp, hy);
-    if (tmp >= 0) {
-        const next = str.charCodeAt(tmp + 1);
-        if (next < 65 || next > 90) {
-            if (!str.includes("'")) return `the ${str}`;
-        } else if (sp >= 0 && sp < tmp) {
-            const of = str.toLowerCase().indexOf(' of ');
-            const named = str.toLowerCase().indexOf(' named ');
-            const called = str.toLowerCase().indexOf(' called ');
-            let namedAt = named >= 0 ? named : -1;
-            if (called >= 0 && (namedAt < 0 || called < namedAt)) namedAt = called;
-            if (of >= 0 && (namedAt < 0 || of < namedAt)) return `the ${str}`;
+    if (c0 < 65 || c0 > 90
+        || CapitalMon(str)
+        /* fruit_from_name(str, TRUE) && artifact_name named omit */) {
+        insert_the = true;
+    } else {
+        let tmp = str.lastIndexOf(' ');
+        if (tmp < 0) tmp = str.lastIndexOf('-');
+        if (tmp >= 0) {
+            const next = str.charCodeAt(tmp + 1);
+            if (next < 65 || next > 90) {
+                insert_the = !str.includes("'");
+            } else {
+                const firstSp = str.indexOf(' ');
+                if (firstSp >= 0 && firstSp < tmp) {
+                    const low = str.toLowerCase();
+                    const of = low.indexOf(' of ');
+                    let namedAt = low.indexOf(' named ');
+                    const called = low.indexOf(' called ');
+                    if (called >= 0 && (namedAt < 0 || called < namedAt)) {
+                        namedAt = called;
+                    }
+                    if (of >= 0 && (namedAt < 0 || of < namedAt)) {
+                        insert_the = true;
+                    } else if (namedAt < 0 && str.length >= 31
+                        && str.slice(str.length - 31)
+                            === 'Platinum Yendorian Express Card') {
+                        insert_the = true;
+                    }
+                }
+            }
         }
     }
-    return str;
+    return insert_the ? `the ${str}` : str;
 }
 
 /** C ref: objnam.c The — the() with leading capital. */

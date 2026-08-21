@@ -1,7 +1,7 @@
 // steed.js — Saddle / riding.
 // C ref: steed.c — rider_cant_reach, can_saddle, use_saddle,
 // put_saddle_on_mon, can_ride, doride, mount_steed, landing_spot,
-// dismount_steed (BYCHOICE subset).
+// dismount_steed (BYCHOICE subset), kick_steed (D-1362).
 
 import { game } from './gstate.js';
 import { mksobj, objects_at } from './mkobj.js';
@@ -9,7 +9,7 @@ import { makeknown, near_capacity } from './invent.js';
 import {
     humanoid, noncorporeal, verysmall, bigmonst, nohands,
     amorphous, is_whirly, unsolid, touch_petrifies,
-    is_flyer, is_floater, M1_HUMANOID, MZ_MEDIUM,
+    is_flyer, is_floater, is_neuter, M1_HUMANOID, MZ_MEDIUM, G_UNIQ,
 } from './monsters.js';
 import {
     W_SADDLE, W_WEP, W_SWAPWEP, W_QUIVER,
@@ -32,7 +32,7 @@ import { pline, newsym, canspotmon } from './display.js';
 import { getdir } from './lock.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
-import { Monnam, mon_nam, pmname, y_monnam } from './do_name.js';
+import { Monnam, mon_nam, pmname, y_monnam, Hallucination, type_is_pname } from './do_name.js';
 import { losehp, maybe_half_phys } from './hack.js';
 import { finish_meating } from './dogmove.js';
 import { an } from './objnam.js';
@@ -726,6 +726,86 @@ export async function dismount_steed(reason) {
         game.flags.botl = true;
         vision_recalc(1);
     }
+}
+
+/**
+ * C you.h mhe / mondata.c pronoun_gender(PRONOUN_HALLU).
+ * Hallu uses core rn2(4). type_is_pname via do_name (M2_PNAME).
+ */
+function pronoun_gender(mtmp) {
+    if (Hallucination()) return rn2(4);
+    if (!canspotmon(mtmp)) return 2;
+    const ptr = mtmp?.data;
+    if (!ptr || is_neuter(ptr)) return 2;
+    if (humanoid(ptr)
+        || ((ptr.geno | 0) & G_UNIQ)
+        || type_is_pname(ptr)) {
+        return mtmp.female ? 1 : 0;
+    }
+    return 2;
+}
+
+function mhe(mtmp) {
+    return ['he', 'she', 'it', 'they'][pronoun_gender(mtmp)];
+}
+
+/** C hack.h helpless — msleeping || !mcanmove. */
+function helpless_steed(mtmp) {
+    return !!(mtmp.msleeping || !mtmp.mcanmove);
+}
+
+/**
+ * C ref: steed.c kick_steed `:402–449` — whip/kick riding (D-1362).
+ * Named omit: full `do_name.c` `monverbself` vtense/makeplural
+ * (Hallu they/themselves uses a thin stand-in).
+ */
+export async function kick_steed() {
+    const u = game.u || {};
+    const steed = u.usteed;
+    if (!steed) return;
+
+    if (helpless_steed(steed)) {
+        let He = mhe(steed);
+        He = He ? He.charAt(0).toUpperCase() + He.slice(1) : 'It';
+        if ((steed.mcanmove || steed.mfrozen) && !rn2(2)) {
+            if (steed.mcanmove) steed.msleeping = 0;
+            else if ((steed.mfrozen | 0) > 2) steed.mfrozen -= 2;
+            else {
+                steed.mfrozen = 0;
+                steed.mcanmove = 1;
+            }
+            if (helpless_steed(steed)) await pline(`${He} stirs.`);
+            else {
+                const self = ['himself', 'herself', 'itself', 'themselves'][
+                    pronoun_gender(steed)
+                ];
+                const verb = self === 'themselves' ? 'rouse' : 'rouses';
+                let subj = He;
+                if (self === 'themselves') {
+                    subj = He.charAt(0) === He.charAt(0).toUpperCase()
+                        ? 'They' : 'they';
+                }
+                await pline(`${subj} ${verb} ${self}!`);
+            }
+        } else {
+            await pline(`${He} does not respond.`);
+        }
+        return;
+    }
+
+    if (steed.mtame) steed.mtame--;
+    if (!steed.mtame && steed.mleashed) {
+        const { m_unleash } = await import('./apply.js');
+        await m_unleash(steed, true);
+    }
+    if (!steed.mtame
+        || ((u.ulevel | 0) + (steed.mtame | 0) < rnd((MAXULEV / 2 + 5) | 0))) {
+        newsym(steed.mx, steed.my);
+        await dismount_steed(DISMOUNT_THROWN);
+        return;
+    }
+    await pline(`${Monnam(steed)} gallops!`);
+    u.ugallop = (u.ugallop | 0) + rn1(20, 30);
 }
 
 /**

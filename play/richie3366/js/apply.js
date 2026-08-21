@@ -28,7 +28,7 @@ import {
     IS_AIR, AIR, CLOUD,
     TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, INTRINSIC, STONE, LAVAWALL, TT_PIT,
     EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, HEAD, HAND, NOSE, NON_PM,
-    KILLED_BY, NO_KILLER_PREFIX, W_WEP, DISMOUNT_THROWN, STATUE_TRAP,
+    KILLED_BY, NO_KILLER_PREFIX, W_WEP, STATUE_TRAP,
     EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, PARANOID_BREAKWAND,
     RLOC_NOMSG, RLOC_MSG, RLOC_NONE, XKILL_NOMSG, ARTICLE_NONE,
     SUPPRESS_SADDLE, has_mgivenname,
@@ -3418,10 +3418,6 @@ function Deaf_apply() {
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
 }
 
-function helpless_apply(mtmp) {
-    return !!(mtmp?.msleeping || mtmp?.mcanmove === 0);
-}
-
 function is_pool_or_lava_apply(x, y) {
     return is_pool(x, y) || is_lava(x, y);
 }
@@ -3525,41 +3521,11 @@ function u_wield_art(art) {
 }
 
 /**
- * C ref: steed.c kick_steed — whip/kick riding. monverbself polish deferred.
+ * C ref: steed.c kick_steed — whip/kick riding (shared with dokick D-1362).
  */
 async function kick_steed_apply() {
-    const u = game.u || {};
-    const steed = u.usteed;
-    if (!steed) return;
-    if (helpless_apply(steed)) {
-        const He = 'It';
-        if ((steed.mcanmove || steed.mfrozen) && !rn2(2)) {
-            if (steed.mcanmove) steed.msleeping = 0;
-            else if ((steed.mfrozen | 0) > 2) steed.mfrozen -= 2;
-            else {
-                steed.mfrozen = 0;
-                steed.mcanmove = 1;
-            }
-            if (helpless_apply(steed)) await pline(`${He} stirs.`);
-            else await pline(`${He} rouses!`);
-        } else {
-            await pline(`${He} does not respond.`);
-        }
-        return;
-    }
-    if (steed.mtame) steed.mtame--;
-    if (!steed.mtame && steed.mleashed) {
-        await m_unleash(steed, true);
-    }
-    if (!steed.mtame
-        || ((u.ulevel | 0) + (steed.mtame | 0) < rnd((MAXULEV / 2 + 5) | 0))) {
-        newsym(steed.mx, steed.my);
-        const { dismount_steed } = await import('./steed.js');
-        await dismount_steed(DISMOUNT_THROWN);
-        return;
-    }
-    await pline(`${Monnam(steed)} gallops!`);
-    u.ugallop = (u.ugallop | 0) + rn1(20, 30);
+    const { kick_steed } = await import('./steed.js');
+    await kick_steed();
 }
 
 /**

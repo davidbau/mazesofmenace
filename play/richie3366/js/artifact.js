@@ -7,7 +7,7 @@ import {
     artilistRaw,
 } from './generated/artifacts_data.js';
 import { objectNames } from './objects.js';
-import { monsterNames, NON_PM } from './monsters.js';
+import { monsterNames, NON_PM, M2_UNDEAD } from './monsters.js';
 import {
     A_NONE,
     ONAME_WISH,
@@ -75,6 +75,7 @@ export const SPFX_DFLAG2 = 0x00800000;
 export const SPFX_DALIGN = 0x01000000;
 export const SPFX_DBONUS = 0x01F00000;
 export const SPFX_REFLECT = 0x04000000;
+const SILVER = 14; /* objclass.h */
 
 // C ref: monattk.h — used by spec_applies ATTK arms
 const AD_PHYS = 0;
@@ -278,6 +279,26 @@ export function arti_reflects(obj) {
             return true;
         }
         if ((arti.cspfx | 0) & SPFX_REFLECT) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: artifact.c shade_glare :555–571 — silver, or non-silver
+ * artifact with SPFX_DFLAG2 vs M2_UNDEAD. Does not consider blessed
+ * vs undead (that bonus is dmgval after the shade zero).
+ * Caller: weapon.c dmgval (D-1354). hmon ranged shade_glare named.
+ */
+export function shade_glare(obj) {
+    if ((game.objects?.[obj.otyp]?.oc_material | 0) === SILVER) {
+        return true;
+    }
+    const list = artilist();
+    const arti = get_artifact(obj);
+    if (arti !== list[ART_NONARTIFACT]
+            && ((arti.spfx | 0) & SPFX_DFLAG2)
+            && (arti.mtype | 0) === M2_UNDEAD) {
+        return true;
     }
     return false;
 }

@@ -1,6 +1,6 @@
 // zap.js — Zap command / wish helpers (partial).
 // C ref: zap.c dozap, zappable, weffects, zapnodir, learnwand, makewish,
-//        zapyourself, ubreatheu, ubuzz, dobuzz, zhitm, destroy_items, resist,
+//        zapyourself, flashburn, lightdamage, ubreatheu, ubuzz, dobuzz, zhitm, destroy_items, resist,
 //        bhit, bhito, bhitm, bhitpile, poly_obj, obj_shudders,
 //        cancel_item, cancel_monst, revive, revive_egg, unturn_dead,
 //        unturn_you
@@ -12,6 +12,11 @@
 // SPE_FINGER_OF_DEATH / WAN_POLYMORPH / WAN_STRIKING / WAN_CANCELLATION /
 // WAN_TELEPORTATION / WAN_UNDEAD_TURNING / WAN_LIGHT /
 // WAN_FIRE / FIRE_HORN / WAN_COLD / SPE_CONE_OF_COLD / FROST_HORN (D-0974);
+// WAN_LIGHTNING + flashburn (D-1355);
+// WAN/SPE_MAGIC_MISSILE (D-1364; Antimagic uprops D-1367);
+// SPE_FIREBALL self-explode (D-1365);
+// lightdamage + zapnodir WAN/SPE_LIGHT + zapyourself WAN_LIGHT/CAMERA (D-1366);
+// zapyourself WAN_MAKE_INVISIBLE (D-1369);
 // dozap self-zap losehp killer_xname + uhim (D-1345);
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
 // for WAN_MAGIC_MISSILE..WAN_LIGHTNING (zhitm damage types + bounce +
@@ -24,21 +29,27 @@
 // Hallucination hdmgtype rn2; map_invisible/unmap during buzz;
 // backfire body; other NODIR; wrest pline; check_capacity;
 // check_unpaid; update_inventory; shieldeff/monstunseesu; setworn
-// EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/silver-dragon arms
-// beyond shield makeknown; create_polymon after poly_zapped;
+// EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/dragon
+// D-1353 (shared muse.c clone); mcastu ureflects named; create_polymon after poly_zapped;
 // do_osshock shop bill; invent/worn poly_obj arms; floor boxlock;
 // blank_novel / corpse revive→rot timer;
 // cant_finish_meal; animate_statue montraits wire; defended(); resists_magm
 // body; ignite_items body; burnarmor worn erode ported (D-0741);
 // acid_damage/erode_armor; death-breath disintegrate_arm;
 // potionbreathe invis flash (D-0741); inventory_resistance_check;
-// destroy_items elec body; ugolemeffects; burn_away_slime;
+// ugolemeffects; burn_away_slime;
 // spell_damage_bonus / Knight questart double; Rider/Death specials;
 // disintegrate_mon; fire completelyburns XKILL_NOCORPSE; mon_reflects;
 // flash_hits WAN_LIGHT bhitm (D-0979); openholding/openfalling +
 // Punished/boxlock_invent/SPE_KNOCK hurtle/saddle (D-0981);
 // montraits/omonst/ghost recorporealize (D-0982);
 // trap_ice_effects; Underwater/utrap lava arms.
+// spell.c skilled SPE_FIREBALL scatter;
+// muse MUSE_CAMERA / Sunsword invoke_blinding_ray lightdamage callers.
+// bhitm / zap_updown / zap_steed WAN_MAKE_INVISIBLE; setworn w_blocks.
+// maybe_destroy_item AD_ELEC rings/wands (D-1368); Shock_resistance
+// via uprops[SHOCK_RES] (D-1371); inventory_resistance / full
+// read.c recharge wand·tool·blessed still named.
 // explode AD_FIRE mon/hero combat: D-0968 (explode.js).
 // explode AD_COLD/ELEC mon/hero combat: D-0971 (explode.js).
 // explode AD_MAGM/DISN/DRST/ACID mon/hero combat: D-0973 (explode.js).
@@ -60,7 +71,7 @@ import { cansee, couldsee } from './vision.js';
 import { nhgetch } from './input.js';
 import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import { hold_another_object, makeknown, encumber_msg } from './invent.js';
-import { doname, xname, distant_name, vtense, The, an, An, killer_xname } from './objnam.js';
+import { doname, xname, yname, distant_name, vtense, The, an, An, killer_xname, ansimpleoname, otyp_is_charged } from './objnam.js';
 import { uhim } from './roles.js';
 import { fix_wall_spines } from './mklev.js';
 import {
@@ -89,6 +100,7 @@ import { finish_losehp_done } from './end.js';
 import {
     burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap,
     NO_TRAP_FLAGS, ignite_items, openholdingtrap, openfallingtrap,
+    self_invis_message,
 } from './trap.js';
 import { potionbreathe, make_stunned } from './potion.js';
 import { burn_away_slime } from './timeout.js';
@@ -97,7 +109,7 @@ import { cvt_sdoor_to_door } from './detect.js';
 import { recalc_block_point } from './vision.js';
 import { picking_at, reset_pick, boxlock_invent } from './lock.js';
 import { monflee, sticks } from './monmove.js';
-import { digests, set_ustuck, unstuck, expels } from './mhitu.js';
+import { digests, set_ustuck, unstuck, expels, ureflects } from './mhitu.js';
 import { newcham, makemon, monhp_per_lvl, neweshk, add_to_minv } from './makemon.js';
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
@@ -105,7 +117,9 @@ import { rehumanize } from './polyself.js';
 import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit } from './shk.js';
 import { dryup } from './fountain.js';
 import { explode } from './explode.js';
-import { unpunish } from './read.js';
+import { unpunish, litroom } from './read.js';
+import { bare_artifactname } from './artifact.js';
+import { Ring_gone, Ring_off, Ring_on, setworn } from './do_wear.js';
 import { which_armor } from './worn.js';
 import { mhurtle, hero_breaks, breaks } from './dothrow.js';
 import { abuse_dog, wary_dog, tamedog } from './dog.js';
@@ -114,7 +128,7 @@ import {
     oc_merge_of, uncurse, attach_egg_hatch_timeout, obj_extract_self,
     eaten_stat, start_timer, spot_stop_timers, spot_time_left,
     obj_ice_effects, place_object, stackobj,
-    get_mtraits, free_omonst, free_omid,
+    get_mtraits, free_omonst, free_omid, is_metallic,
 } from './mkobj.js';
 import {
     WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, POTION_CLASS,
@@ -137,9 +151,11 @@ import {
     PLNMSG_ENVELOPED_IN_GAS, PLNMSG_OBJ_GLOWS, IRONBARS, SDOOR, SHOPBASE,
     SHOP_DOOR_COST,
     SHOP_BARS_COST, W_NONDIGGABLE, COST_CANCEL, COST_UNCURS, COST_UNBLSS,
-    TIMEOUT, XKILL_GIVEMSG, XKILL_NOCORPSE, Upolyd,
+    TIMEOUT, XKILL_GIVEMSG, XKILL_NOCORPSE, Upolyd, INVIS,
+    LEFT_RING, RIGHT_RING,
     M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, NON_PM, ismnum,
-    W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_WEP,
+    W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE,
+    REFLECTING, ANTIMAGIC, SHOCK_RES,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
@@ -155,9 +171,15 @@ const MZ_HUMAN = MZ_MEDIUM;
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
 const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
 const WAN_MAGIC_MISSILE = objectNames.indexOf('WAN_MAGIC_MISSILE');
+const SPE_MAGIC_MISSILE = objectNames.indexOf('SPE_MAGIC_MISSILE');
 const WAN_SLEEP = objectNames.indexOf('WAN_SLEEP');
 const WAN_LIGHT = objectNames.indexOf('WAN_LIGHT');
+const SPE_LIGHT = objectNames.indexOf('SPE_LIGHT');
+const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const WAN_LIGHTNING = objectNames.indexOf('WAN_LIGHTNING');
+const WAN_MAKE_INVISIBLE = objectNames.indexOf('WAN_MAKE_INVISIBLE');
+const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
+const RIN_SHOCK_RESISTANCE = objectNames.indexOf('RIN_SHOCK_RESISTANCE');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
 const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
 const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
@@ -171,6 +193,9 @@ const AMULET_OF_UNCHANGING = objectNames.indexOf('AMULET_OF_UNCHANGING');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const SPE_SLEEP = objectNames.indexOf('SPE_SLEEP');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
+const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
+const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
+const SILVER_DRAGON_SCALE_MAIL = objectNames.indexOf('SILVER_DRAGON_SCALE_MAIL');
 const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
 const SPE_DIG = objectNames.indexOf('SPE_DIG');
 const WAN_DEATH = objectNames.indexOf('WAN_DEATH');
@@ -223,8 +248,10 @@ const RIN_INCREASE_DAMAGE = objectNames.indexOf('RIN_INCREASE_DAMAGE');
 const RIN_PROTECTION = objectNames.indexOf('RIN_PROTECTION');
 const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
 const HELM_OF_BRILLIANCE = objectNames.indexOf('HELM_OF_BRILLIANCE');
+const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const PM_CLAY_GOLEM = monsterNames.indexOf('PM_CLAY_GOLEM');
 const PM_KNIGHT = monsterNames.indexOf('PM_KNIGHT');
+const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const NC_VIA_WAND_OR_SPELL = 0x02;
 const NC_SHOW_MSG = 0x01;
 
@@ -267,10 +294,20 @@ function Cold_resistance() {
     return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance);
 }
 
-/** C ref: youprop.h Shock_resistance */
+/**
+ * C youprop.h Shock_resistance — HShock_resistance || EShock_resistance
+ * ≡ uprops[SHOCK_RES].intrinsic || uprops[SHOCK_RES].extrinsic.
+ * confer_oc_oprop writes SHOCK_RES only to uprops (EShock_resistance
+ * unmirrored). Keep H/E/sticky flats for eat/poly (invent.js
+ * hero_Shock_resistance / D-1089). Worn RIN_SHOCK_RESISTANCE must
+ * skip exploding-wand HP ("You aren't hurt!") and WAN_LIGHTNING
+ * self-zap (D-1371 / review 328).
+ */
 function Shock_resistance() {
     const u = game.u || {};
-    return !!(u.Shock_resistance || u.HShock_resistance || u.EShock_resistance);
+    const e = u.uprops?.[SHOCK_RES];
+    return !!((u.Shock_resistance || u.HShock_resistance || u.EShock_resistance)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /** C ref: youprop.h Acid_resistance */
@@ -279,10 +316,19 @@ function Acid_resistance() {
     return !!(u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance);
 }
 
-/** C ref: youprop.h Antimagic */
+/**
+ * C youprop.h Antimagic — HAntimagic || EAntimagic
+ * ≡ uprops[ANTIMAGIC].intrinsic || uprops[ANTIMAGIC].extrinsic.
+ * confer_oc_oprop writes ANTIMAGIC only to uprops (EAntimagic
+ * unmirrored). Keep H/E/sticky flats for eat/poly (invent.js
+ * hero_Antimagic / sit.js D-1089). Worn CLOAK_OF_MAGIC_RESISTANCE
+ * / gray DSM must bounce MAGIC_MISSILE and WAN_STRIKING (D-1367).
+ */
 function Antimagic() {
     const u = game.u || {};
-    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    const e = u.uprops?.[ANTIMAGIC];
+    return !!((u.Antimagic || u.HAntimagic || u.EAntimagic)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
 /** C ref: youprop.h Half_spell_damage */
@@ -297,17 +343,87 @@ function Half_spell_damage() {
  */
 
 /**
- * C ref: youprop.h Reflecting — setworn EReflecting deferred; worn
- * SHIELD_OF_REFLECTION matches Healer starter kit (D-0450).
+ * C ref: youprop.h Reflecting — HReflecting || EReflecting
+ * (uprops[REFLECTING] + W_WEP flat). Worn otyp / silver-dragon form
+ * stand in while confer_oc_oprop does not mirror EReflecting (D-1353).
  */
-function Reflecting() {
+export function Reflecting() {
     const u = game.u || {};
-    if (u.HReflecting || u.EReflecting) return true;
-    return u.uarms?.otyp === SHIELD_OF_REFLECTION;
+    if (u.HReflecting || u.EReflecting || u.Reflecting) return true;
+    const e = u.uprops?.[REFLECTING];
+    if ((e?.intrinsic | 0) || (e?.extrinsic | 0)) return true;
+    if (u.uarms?.otyp === SHIELD_OF_REFLECTION) return true;
+    if (u.uamul?.otyp === AMULET_OF_REFLECTION) return true;
+    const arm = u.uarm?.otyp | 0;
+    if (arm === SILVER_DRAGON_SCALES || arm === SILVER_DRAGON_SCALE_MAIL) {
+        return true;
+    }
+    return (game.youmonst?.data?.mndx | 0) === PM_SILVER_DRAGON;
 }
 
 function Blind() {
     return !!(game.u?.Blind || game.u?.ublind);
+}
+
+/**
+ * C youprop.h Blind for zapyourself WAN_MAKE_INVISIBLE msg —
+ * (HBlinded || EBlinded) && !BBlinded. Sticky Blind() first.
+ */
+function Blinded_for_invis() {
+    const u = game.u || {};
+    if (Blind()) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/**
+ * C youprop.h BInvis — uprops[INVIS].blocked.
+ * JS setworn named-omits w_blocks; worn MUMMY_WRAPPING on uarmc
+ * stands in (C worn.c setworn `:126–127`).
+ */
+function BInvis() {
+    const u = game.u || {};
+    const p = u.uprops?.[INVIS];
+    if ((u.BInvis | 0) || (p?.blocked | 0)) return true;
+    const cloak = u.uarmc;
+    return !!(cloak && (cloak.otyp | 0) === MUMMY_WRAPPING);
+}
+
+/**
+ * C youprop.h Invis — (HInvis || EInvis) && !BInvis
+ * via flats + uprops[INVIS] (cloak-of-invis confer writes
+ * extrinsic only).
+ */
+function Invis() {
+    const u = game.u || {};
+    const p = u.uprops?.[INVIS];
+    const H = (u.HInvis | 0) || (p?.intrinsic | 0);
+    const E = (u.EInvis | 0) || (p?.extrinsic | 0);
+    return !!(H || E) && !BInvis();
+}
+
+/** C potion.c itimeout — clamp into TIMEOUT field. */
+function itimeout(val) {
+    val = val | 0;
+    if (val >= TIMEOUT) return TIMEOUT;
+    if (val < 1) return 0;
+    return val;
+}
+
+/**
+ * C potion.c incr_itimeout(&HInvis, n) — TIMEOUT bits only.
+ * Write HInvis and uprops[INVIS].intrinsic (C single storage;
+ * timeout.js decrements uprops then syncs the flat).
+ */
+function incr_itimeout_HInvis(incr) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[INVIS]) {
+        u.uprops[INVIS] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    const cur = (u.HInvis | 0) | (u.uprops[INVIS].intrinsic | 0);
+    const next = (cur & ~TIMEOUT) | itimeout((cur & TIMEOUT) + (incr | 0));
+    u.HInvis = next;
+    u.uprops[INVIS].intrinsic = next;
 }
 
 /** C ref: do_name.c Amonnam — highc(a_monnam). */
@@ -870,30 +986,6 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
 }
 
 /**
- * C ref: muse.c ureflects — shield then W_WEP artifact (D-1342).
- * W_AMUL/W_ARM/dragon deferred. When fmt+str given, makeknown like C so
- * first observed reflection discovers the type and may exercise(A_WIS)
- * (D-0452).
- */
-async function ureflects(fmt, str) {
-    if (game.u?.uarms?.otyp === SHIELD_OF_REFLECTION) {
-        if (fmt && str) {
-            // C: pline(fmt, str, "shield") with fmt "But %s reflects from your %s!"
-            await pline(`But ${str} reflects from your shield!`);
-            makeknown(SHIELD_OF_REFLECTION);
-        }
-        return true;
-    }
-    if (((game.u?.EReflecting | 0) & W_WEP) !== 0) {
-        if (fmt && str) {
-            await pline(`But ${str} reflects from your weapon!`);
-        }
-        return true;
-    }
-    return false;
-}
-
-/**
  * C ref: zap.c zap_hit — rn2(20) vs AC_VALUE(ac).
  * spell_hit_bonus deferred (type always 0 for wand rays here).
  */
@@ -1066,8 +1158,9 @@ function destroyable(obj, adtyp) {
     }
     if (adtyp === AD_ELEC) {
         if (obj.oclass !== RING_CLASS && obj.oclass !== WAND_CLASS) return false;
-        // RIN_SHOCK / WAN_LIGHTNING immune deferred → treat as destroyable
-        return true;
+        // C zap.c destroyable :5641–5644 — RIN_SHOCK / WAN_LIGHTNING immune
+        return (obj.otyp | 0) !== RIN_SHOCK_RESISTANCE
+            && (obj.otyp | 0) !== WAN_LIGHTNING;
     }
     return false;
 }
@@ -1082,10 +1175,59 @@ const DESTROY_STRINGS = [
     ['breaks apart and explodes', '', 'exploding wand'],
 ];
 
+/** C ref: objnam.c Yname2 — capitalized yname. */
+function Yname2_destroy(obj) {
+    const s = yname(obj);
+    if (!s) return s;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** C ref: objnam.c Yobjnam2 — "Your <xname> <otense verb>". */
+function Yobjnam2_destroy(obj, verb) {
+    const nam = xname(obj);
+    if (!verb) return `Your ${nam}`;
+    return `Your ${nam} ${vtense(nam, verb)}`;
+}
+
+/**
+ * C ref: read.c recharge RING_CLASS curse_bless==0 — maybe_destroy_item
+ * chargeit callee. Wand/tool/blessed/cursed recharge named omit.
+ */
+async function recharge_elec_ring(obj) {
+    if (!obj) return;
+    const u = game.u || {};
+    const is_on = obj === u.uleft || obj === u.uright;
+    // curse_bless == 0 → s = 1
+    if ((obj.spe | 0) > rn2(7) || (obj.spe | 0) <= -5) {
+        await pline(
+            `${Yobjnam2_destroy(obj, 'pulsate')} momentarily, then ${vtense(xname(obj), 'explode')}!`,
+        );
+        if (is_on) await Ring_gone(obj);
+        const s = rnd(3 * Math.abs(obj.spe | 0));
+        useup_invent(obj);
+        losehp(maybe_half_phys(s), 'exploding ring', KILLED_BY_AN);
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            await finish_losehp_done();
+        }
+    } else {
+        await pline(`${Yname2_destroy(obj)} spins clockwise for a moment.`);
+        const mask = is_on ? (obj === u.uleft ? LEFT_RING : RIGHT_RING) : 0;
+        if (is_on) await Ring_off(obj);
+        obj.spe = (obj.spe | 0) + 1;
+        if (is_on) {
+            setworn(obj, mask);
+            await Ring_on(obj);
+        }
+        // unpaid alter_cost named omit
+    }
+}
+
 /**
  * C ref: zap.c maybe_destroy_item — AD_COLD potions + AD_FIRE potion/scroll/
- * spbook. Named omissions: inventory_resistance_check; worn Ring_gone;
- * Book-of-Dead glow; AD_ELEC body; chargeit; mult forms beyond 1-of-1.
+ * spbook + AD_ELEC ring/wand (D-1368). Shock_resistance via
+ * uprops[SHOCK_RES] (D-1371). Named omissions:
+ * inventory_resistance_check; Book-of-Dead glow; read.c recharge
+ * wand/tool/blessed; mult forms beyond 1-of-1.
  */
 async function maybe_destroy_item(carrier, obj, dmgtyp) {
     if (!obj) return 0;
@@ -1097,6 +1239,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
     let dindx = 0;
     let xresist = false;
     let skip = false;
+    let chargeit = false;
 
     if (dmgtyp === AD_COLD) {
         quan = obj.quan | 0;
@@ -1126,62 +1269,90 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
         } else {
             return 0;
         }
-    } else {
-        // AD_ELEC body deferred
-        return 0;
-    }
-
-    if (skip) return 0;
-
-    const osym = obj.oclass;
-    if (obj.in_use) quan -= 1;
-    let cnt = 0;
-    for (let i = 0; i < quan; i++) {
-        if (!rn2(3)) cnt++;
-    }
-    if (!cnt) return 0;
-
-    // C: pline("%s%s %s!", mult, Yname2/yname, destroy_strings[dindx][cnt>1])
-    const vis = !u_carry && canseemon(carrier);
-    if (u_carry || vis) {
-        const mult = (cnt === 1)
-            ? ((quan === 1) ? '' : 'One of ')
-            : ((cnt < quan) ? 'Some of '
-                : (quan === 2) ? 'Both of ' : 'All of ');
-        const verb = DESTROY_STRINGS[dindx]?.[cnt > 1 ? 1 : 0] || 'destroyed';
-        // Yname2 ≈ "Your " + xname for 1-of-1 carried
-        const nam = (cnt === 1 && quan === 1 && u_carry)
-            ? `Your ${xname(obj)}`
-            : (u_carry ? `your ${xname(obj)}` : xname(obj));
-        await pline(`${mult}${nam} ${verb}!`);
-    }
-
-    if (u_carry) {
-        // C: potionbreathe before useup (fire/elec potions, not cold)
-        if (osym === POTION_CLASS && dmgtyp !== AD_COLD) {
-            // breathless/haseyes deferred — wizard/human always qualifies
-            await potionbreathe(obj);
+    } else if (dmgtyp === AD_ELEC) {
+        // C zap.c maybe_destroy_item :5858–5879
+        xresist = obj.oclass !== RING_CLASS
+            && (u_carry ? Shock_resistance() : resists_elec(carrier));
+        quan = obj.quan | 0;
+        if (obj.oclass === RING_CLASS) {
+            const uarmg = game.u?.uarmg;
+            if ((((obj.owornmask | 0) & W_RING) && uarmg && !is_metallic(uarmg))
+                || (obj.otyp | 0) === RIN_SHOCK_RESISTANCE) {
+                skip = true;
+            } else if (otyp_is_charged(obj.otyp) && rn2(3)) {
+                chargeit = true;
+            } else {
+                dindx = 5;
+                dmg = 0;
+            }
+        } else if (obj.oclass === WAND_CLASS) {
+            dindx = 6;
+            dmg = rnd(10);
         }
-        // Ring_gone / setnotworn deferred for worn rings
-        if (obj === game.current_wand) game.current_wand = null;
+    } else {
+        skip = true;
     }
 
-    for (let i = 0; i < cnt; i++) {
-        if (u_carry) useup_invent(obj);
-        else m_useup(carrier, obj);
-    }
-    if (dmg) {
-        if (!u_carry) return xresist ? 0 : dmg;
-        if (xresist) {
-            await pline("You aren't hurt!");
-        } else {
-            const how = DESTROY_STRINGS[dindx]?.[2] || 'destroyed item';
-            const one = cnt === 1;
-            losehp(dmg, one ? how : `${how}s`, one ? KILLED_BY_AN : KILLED_BY);
-            exercise(A_STR, false);
-            // C losehp → urgent_pline + done noreturn
-            if (game._losehp_needs_done || game.program_state?.gameover) {
-                await finish_losehp_done();
+    if (chargeit) {
+        // C: recharge only handles hero inventory
+        if (u_carry) await recharge_elec_ring(obj);
+    } else if (!skip) {
+        const osym = obj.oclass;
+        if (obj.in_use) quan -= 1;
+        let cnt = 0;
+        for (let i = 0; i < quan; i++) {
+            if (!rn2(3)) cnt++;
+        }
+        if (!cnt) return 0;
+
+        // C: pline("%s%s %s!", mult, Yname2/yname, destroy_strings[dindx][cnt>1])
+        const vis = !u_carry && canseemon(carrier);
+        if (u_carry || vis) {
+            const mult = (cnt === 1)
+                ? ((quan === 1) ? '' : 'One of ')
+                : ((cnt < quan) ? 'Some of '
+                    : (quan === 2) ? 'Both of ' : 'All of ');
+            const verb = DESTROY_STRINGS[dindx]?.[cnt > 1 ? 1 : 0] || 'destroyed';
+            // Yname2 ≈ "Your " + xname for 1-of-1 carried
+            const nam = (cnt === 1 && quan === 1 && u_carry)
+                ? `Your ${xname(obj)}`
+                : (u_carry ? `your ${xname(obj)}` : xname(obj));
+            await pline(`${mult}${nam} ${verb}!`);
+        }
+
+        if (u_carry) {
+            // C: potionbreathe before useup (fire/elec potions, not cold)
+            if (osym === POTION_CLASS && dmgtyp !== AD_COLD) {
+                // breathless/haseyes deferred — wizard/human always qualifies
+                await potionbreathe(obj);
+            }
+            if (obj.owornmask) {
+                if ((obj.owornmask | 0) & W_RING) await Ring_gone(obj);
+                else {
+                    const { setnotworn } = await import('./do.js');
+                    setnotworn(obj);
+                }
+            }
+            if (obj === game.current_wand) game.current_wand = null;
+        }
+
+        for (let i = 0; i < cnt; i++) {
+            if (u_carry) useup_invent(obj);
+            else m_useup(carrier, obj);
+        }
+        if (dmg) {
+            if (!u_carry) return xresist ? 0 : dmg;
+            if (xresist) {
+                await pline("You aren't hurt!");
+            } else {
+                const how = DESTROY_STRINGS[dindx]?.[2] || 'destroyed item';
+                const one = cnt === 1;
+                losehp(dmg, one ? how : `${how}s`, one ? KILLED_BY_AN : KILLED_BY);
+                exercise(A_STR, false);
+                // C losehp → urgent_pline + done noreturn
+                if (game._losehp_needs_done || game.program_state?.gameover) {
+                    await finish_losehp_done();
+                }
             }
         }
     }
@@ -1191,7 +1362,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
 /**
  * C ref: zap.c destroy_items — limit rn2 + invent/minvent scan.
  * Hero uses game.invent array; monsters use minvent nobj chain.
- * Named omissions: bypass_objlist; defer levitation/were; elec body.
+ * Named omissions: bypass_objlist; defer levitation/were.
  */
 export async function destroy_items(mon, dmgtyp, dmg_in) {
     let limit = Math.trunc((dmg_in | 0) / DMG_DESTROY_SCALE);
@@ -2016,18 +2187,28 @@ export async function release_hold() {
 
 /**
  * C ref: zap.c zapnodir — NODIR wand effects.
- * Branch envelope: WAN_SECRET_DOOR_DETECTION → findit only.
+ * Branch envelope: WAN_SECRET_DOOR_DETECTION → findit;
+ * WAN_LIGHT / SPE_LIGHT → litroom + lightdamage (D-1366).
+ * Named omit: create / wish / enlighten / stasis.
  */
 async function zapnodir(obj) {
     let known = false;
 
     switch (obj.otyp) {
+    case WAN_LIGHT:
+    case SPE_LIGHT:
+        // C zap.c zapnodir :2544–2550 — known if dknown && !Blind;
+        // litroom(TRUE) then lightdamage(obj, TRUE, 5) (void).
+        known = !!(obj.dknown && !Blind());
+        await litroom(true, obj);
+        await lightdamage(obj, true, 5);
+        break;
     case WAN_SECRET_DOOR_DETECTION:
         known = !!obj.dknown;
         await findit();
         break;
     default:
-        // light / create / wish / enlighten / stasis deferred
+        // create / wish / enlighten / stasis deferred
         break;
     }
 
@@ -3060,13 +3241,110 @@ export async function bhitm(mtmp, otmp) {
     return 0;
 }
 
+/** C youprop.h Unaware — multi < 0 && (unconscious || fainted). */
+function Unaware() {
+    if ((game.multi | 0) >= 0) return false;
+    const u = game.u || {};
+    return !!(u.usleep || u.Unaware);
+}
+
+/**
+ * C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded.
+ * Sticky u.Blind / ublind / roleplay stand in for unsynced mirrors.
+ */
+function Blind_props() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    if (u.Blind || u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/**
+ * C ref: mondata.c resists_blnd youmonst :248–272 — Blind / Unaware.
+ * Named omit: expl/gaze AD_BLND (yellow light / Archon);
+ * resists_blnd_by_arti (Sunsword).
+ */
+function resists_blnd_you() {
+    return Blind_props() || Unaware();
+}
+
+/**
+ * C ref: zap.c lightdamage :3024–3056 — light damages hero in gremlin form.
+ * Non-gremlin returns amt with no RNG. Gremlin: rnd(amt), if >10 then
+ * 10+rnd(amt-10), cap 20; pline; losehp(Maybe_Half_Phys) with
+ * zapped/blasted + uhim + ansimpleoname (or "spell of light" /
+ * bare_artifactname). SCROLL/SPBOOK force "blasted".
+ * Callers this iter: zapnodir WAN/SPE_LIGHT; zapyourself WAN_LIGHT
+ * (broken) + EXPENSIVE_CAMERA; read.c seffect_light via import.
+ * Named omit: muse MUSE_CAMERA; artifact invoke_blinding_ray.
+ * @returns {Promise<number>} possibly reduced dmg
+ */
+export async function lightdamage(obj, ordinary, amt) {
+    let dmg = amt | 0;
+    const u = game.u || {};
+    // C: youmonst.data == &mons[PM_GREMLIN] — JS mons() is a new
+    // object each call, so compare stored mndx (set_uasmon).
+    const isGremlin = (game.youmonst?.data?.mndx | 0) === PM_GREMLIN
+        || (u.umonnum | 0) === PM_GREMLIN;
+    if (dmg && isGremlin) {
+        dmg = rnd(dmg);
+        if (dmg > 10) dmg = 10 + rnd(dmg - 10);
+        if (dmg > 20) dmg = 20;
+        await pline(
+            `Ow, that light hurts${(dmg > 2 || (u.mh | 0) <= 5) ? '!' : '.'}`,
+        );
+        let ord = ordinary;
+        if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS) {
+            ord = false; // say blasted rather than zapped
+        }
+        const how = obj.oclass === SPBOOK_CLASS
+            ? 'spell of light'
+            : !obj.oartifact
+                ? ansimpleoname(obj)
+                : bare_artifactname(obj);
+        const buf = `${ord ? 'zapped' : 'blasted'} ${uhim()}self with ${how}`;
+        // C: might rehumanize(); fatal only for Unchanging — losehp
+        // poly-death still named (hack.c rehumanize deferred).
+        losehp(maybe_half_phys(dmg), buf, NO_KILLER_PREFIX);
+    }
+    return dmg;
+}
+
+/**
+ * C ref: zap.c flashburn :3059–3079 — light[ning] blinds the hero.
+ * Caller always burns duration RNG (zapyourself WAN_LIGHTNING rnd(100)).
+ * via_lightning skips arti shieldeff even if resists_blnd_by_arti.
+ * @returns {Promise<boolean>} TRUE if an observable flash occurred
+ */
+export async function flashburn(duration, via_lightning) {
+    if (!resists_blnd_you()) {
+        await You('are blinded by the flash!');
+        const { make_blinded } = await import('./do.js');
+        await make_blinded(duration | 0, false);
+        if (!Blind_props()) {
+            await pline('Your vision clears.');
+        }
+        return true;
+    }
+    // C: !via_lightning && resists_blnd_by_arti → shieldeff (named)
+    if (!via_lightning) {
+        /* shieldeff deferred */
+    }
+    return false;
+}
+
 /**
  * C ref: zap.c zapyourself — self-directed wand/spell effects.
  * Branch envelope: SPE_HEALING / SPE_EXTRA_HEALING / WAN_SLEEP /
  * SPE_SLEEP / WAN_DEATH / SPE_FINGER_OF_DEATH / WAN_POLYMORPH /
  * SPE_POLYMORPH / WAN_STRIKING / WAN_CANCELLATION / WAN_TELEPORTATION /
- * WAN_UNDEAD_TURNING / WAN_LIGHT / WAN_OPENING / SPE_KNOCK;
+ * WAN_UNDEAD_TURNING / WAN_LIGHT / EXPENSIVE_CAMERA / WAN_OPENING / SPE_KNOCK;
  * WAN_FIRE / FIRE_HORN / WAN_COLD / SPE_CONE_OF_COLD / FROST_HORN;
+ * WAN_LIGHTNING + flashburn (D-1355);
+ * WAN/SPE_MAGIC_MISSILE (D-1364; Antimagic uprops D-1367);
+ * SPE_FIREBALL self-explode (D-1365);
+ * lightdamage WAN_LIGHT/CAMERA (D-1366);
+ * WAN_MAKE_INVISIBLE (D-1369);
  * other otyps named in C-JS-MAP.
  * @param {boolean} ordinary wand zap (TRUE) vs broken/spell (FALSE)
  * @returns {number} damage (0 for healing/sleep/death/poly)
@@ -3191,7 +3469,17 @@ export async function zapyourself(obj, ordinary) {
     }
 
     case WAN_LIGHT:
-        // broken wand: lightdamage + flashburn deferred → no hero dmg
+        // C zap.c zapyourself :2915–2918 — broken wand: d(spe,25)
+        // then FALLTHROUGH into EXPENSIVE_CAMERA.
+        damage = d(obj.spe | 0, 25);
+        // FALLTHROUGH
+    case EXPENSIVE_CAMERA:
+        // C :2920–2928 — if !damage then 5; lightdamage; +rnd(25)
+        // flashburn(FALSE); damage reset (explode/losehp not here).
+        if (!damage) damage = 5;
+        damage = await lightdamage(obj, ordinary, damage);
+        damage += rnd(25);
+        if (await flashburn(damage, false)) learn_it = true;
         damage = 0;
         break;
 
@@ -3221,6 +3509,23 @@ export async function zapyourself(obj, ordinary) {
         }
         break;
     }
+
+    case SPE_FIREBALL:
+        // C zap.c zapyourself :2748–2751 — You explode on self;
+        // explode(ux, uy, 11 /* ZT_SPELL(ZT_FIRE) */, d(6,6),
+        // WAND_CLASS, EXPL_FIERY). No learn_it; damage stays 0
+        // (explode handles HP). WAN_FIRE/FIRE_HORN is the next
+        // case (D-0974). spell.c skilled scatter named.
+        await You('explode a fireball on top of yourself!');
+        await explode(
+            game.u.ux,
+            game.u.uy,
+            ZT_SPELL_0 + ZT_FIRE,
+            d(6, 6),
+            WAND_CLASS,
+            EXPL_FIERY,
+        );
+        break;
 
     case WAN_FIRE:
     case FIRE_HORN: {
@@ -3253,6 +3558,66 @@ export async function zapyourself(obj, ordinary) {
             damage = orig_dmg;
         }
         await destroy_items(game.youmonst || { _youmonst: true }, AD_COLD, orig_dmg);
+        break;
+    }
+
+    case WAN_LIGHTNING: {
+        // C zap.c zapyourself :2730–2746 — always learn; d(12,6);
+        // !Shock → shock pline + damage + exercise(A_CON); else unharmed;
+        // destroy_items AD_ELEC; flashburn(rnd(100), TRUE).
+        learn_it = true;
+        const orig_dmg = d(12, 6);
+        if (!Shock_resistance()) {
+            await You('shock yourself!');
+            damage = orig_dmg;
+            exercise(A_CON, false);
+            // monstunseesu deferred
+        } else {
+            // shieldeff / monstseesu / ugolemeffects deferred
+            await You('zap yourself, but seem unharmed.');
+        }
+        await destroy_items(
+            game.youmonst || { _youmonst: true },
+            AD_ELEC,
+            orig_dmg,
+        );
+        await flashburn(rnd(100), true);
+        break;
+    }
+
+    case WAN_MAGIC_MISSILE:
+    case SPE_MAGIC_MISSILE:
+        // C zap.c zapyourself :2790–2802 — always learn;
+        // Antimagic (youprop.h uprops, D-1367) → pline_The bounce
+        // (no d()); else d(4,6)+Idiot. shieldeff / monstseesu named.
+        learn_it = true;
+        if (Antimagic()) {
+            await pline('The missiles bounce!');
+        } else {
+            damage = d(4, 6);
+            await pline("Idiot!  You've shot yourself!");
+        }
+        break;
+
+    case WAN_MAKE_INVISIBLE: {
+        // C zap.c zapyourself :2825–2842 — snapshot msg before
+        // changing HInvis; mummy wrapping absorbs (BInvis +
+        // uarmc MUMMY_WRAPPING); else incr_itimeout rn1(15,31);
+        // if msg: learn + newsym then self_invis_message.
+        // bhitm / zap_updown / zap_steed still named.
+        const u = game.u || {};
+        const msg = !Invis() && !Blinded_for_invis() && !BInvis();
+        const uarmc = u.uarmc;
+        if (BInvis() && uarmc && (uarmc.otyp | 0) === MUMMY_WRAPPING) {
+            await You_feel(`rather itchy under ${yname(uarmc)}.`);
+            break;
+        }
+        incr_itimeout_HInvis(rn1(15, 31));
+        if (msg) {
+            learn_it = true;
+            newsym(u.ux | 0, u.uy | 0);
+            await self_invis_message();
+        }
         break;
     }
 
@@ -3797,7 +4162,7 @@ async function weffects(obj) {
  * C ref: zap.c dozap / #zap ('z')
  * Self-zap losehp uses killer_xname + uhim (D-1345; C `:2661–2663`).
  * Named omit: throwit `:1747` / pickup / wield / invent / mthrowu /
- * do_wear remaining killer_xname; lightdamage ansimpleoname; backfire body.
+ * do_wear remaining killer_xname; backfire body.
  * @returns {Promise<number>} 0 = cancel/no turn, 1 = took time
  */
 export async function dozap() {

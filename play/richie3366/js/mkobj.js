@@ -48,7 +48,7 @@ import {
     MELT_ICE_AWAY, HATCH_EGG, FIG_TRANSFORM, BURN_OBJECT, SHRINK_GLOB,
     MAX_EGG_HATCH_TIME,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
-    OBJ_MIGRATING, W_WEP,
+    OBJ_MIGRATING, MIGR_TO_SPECIES, W_WEP,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
@@ -1575,6 +1575,21 @@ export function mksobj(otyp, init, artif) {
 export function mksobj_at(otyp, x, y, init, artif) {
     const otmp = mksobj(otyp, init, artif);
     if (otmp) place_object(otmp, x, y);
+    return otmp;
+}
+
+/**
+ * C ref: mkobj.c mksobj_migr_to_species — extra orctown loot onto
+ * migrating_objs. owornmask = MIGR_TO_SPECIES; migr_species overlays
+ * corpsenm (obj.h). Caller: mkmaze.c migr_booty_item / stolen_booty.
+ */
+export function mksobj_migr_to_species(otyp, mflags2, init, artif) {
+    const otmp = mksobj(otyp, init, artif);
+    add_to_migration(otmp);
+    otmp.owornmask = MIGR_TO_SPECIES;
+    const spec = mflags2 >>> 0;
+    otmp.migr_species = spec;
+    otmp.corpsenm = spec | 0;
     return otmp;
 }
 

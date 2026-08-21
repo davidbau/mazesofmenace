@@ -18,7 +18,7 @@
 // eatmupdate hallu toggle);
 // tainted Sick; make_blinded body / Hear_again afternmv;
 // sellobj_state on invent-full dropy; costly_alteration COST_BITE;
-// ?/* menu; multi-turn choke/newuhs messages; gethungry ring/amulet
+// ?/* menu; newuhs hunger messages; gethungry ring/amulet
 // accessorytime + newuhs; losestr setuhpmax / terminal-frailty full
 // death path; timeout.c vomiting_dialog cantvomit/Hallu texts;
 // Fixed_abil Popeye Olive/Bluto;
@@ -28,6 +28,7 @@
 // set_mimic_blocking / perceives in eataccessory.
 // D-1204: eatspecial MAIL_STRUCTURES SCR_MAIL + uwepgone artifact_light.
 // D-1344: choke killer_xname (tombstone; not xname).
+// D-1356: lesshungry/bite choke callers + fullwarn (canchoke SATIATED).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -35,7 +36,7 @@ import {
     flush_topl_more, pline, You_feel, newsym, see_monsters, more,
     canspotmon, canseemon,
 } from './display.js';
-import { yn_function } from './getline.js';
+import { yn_function, paranoid_query } from './getline.js';
 import {
     FOOD_CLASS, COIN_CLASS, WEAPON_CLASS, BALL_CLASS, CHAIN_CLASS,
     SCROLL_CLASS, POTION_CLASS, RING_CLASS, AMULET_CLASS,
@@ -87,13 +88,13 @@ import {
     SEE_INVIS, INVIS, PROT_FROM_SHAPE_CHANGERS, LEVITATION, SLEEPY,
     M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL,
     WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
-    CHOKING, A_LAWFUL, STRANGLED,
+    CHOKING, A_LAWFUL, STRANGLED, PARANOID_EATING,
 } from './const.js';
 import {
     adjattrib, gainstr, acurr, acurrstr, change_luck, exercise, adjalign,
     A_STR, A_DEX, A_CHA, A_WIS, A_INT, A_CON,
 } from './attrib.js';
-import { nomul, losehp, still_chewing, is_pool, is_lava } from './hack.js';
+import { nomul, losehp, still_chewing, is_pool, is_lava, stop_occupation } from './hack.js';
 import { near_capacity, observe_object, makeknown, compactify_invlets,
     freeinv_core, encumber_msg, update_inventory } from './invent.js';
 import {
@@ -636,12 +637,85 @@ export async function vomit() {
 }
 
 /**
- * C ref: eat.c lesshungry — uhunger += num; choke/fullwarn deferred;
- * field-only newuhs(FALSE).
+ * C ref: eat.c reset_eat — flag only; do_reset_eat runs on the next bite.
  */
-export function lesshungry(num) {
+function reset_eat() {
+    const v = game.context?.victual;
+    if (v?.eating && !v.doreset) v.doreset = 1;
+}
+
+/**
+ * C ref: eat.c recalc_wt — piece->owt = weight(piece) after a bite.
+ */
+function recalc_wt() {
+    const piece = game.context?.victual?.piece;
+    if (!piece) return;
+    piece.owt = weight(piece);
+}
+
+/**
+ * C ref: eat.c do_reset_eat — clear eating flags, stop occupation, newuhs.
+ * Named omit: touchfood + o_id rewrite (leftover weight on interrupt).
+ */
+async function do_reset_eat() {
+    const v = game.context?.victual;
+    if (v) {
+        v.fullwarn = 0;
+        v.eating = 0;
+        v.doreset = 0;
+    }
+    await stop_occupation();
+    newuhs(false);
+}
+
+/**
+ * C ref: eat.c lesshungry `:3289–3333` — uhunger += num; choke at 2000;
+ * fullwarn at 1500; newuhs(FALSE).
+ * Branch envelope: iseating = occupation==eatfood || force_save_hs;
+ * ≥2000: if !iseating || canchoke then choke(piece)+reset_eat (eating)
+ * else choke(opentin?tin:0); else ≥1500 && !Hunger && (!eating ||
+ * !fullwarn) pline + nomovemsg; !eating multi=-2 else fullwarn +
+ * paranoid Continue when canchoke && bites remain.
+ * Named omissions: adj_victual_nutrition (lembas/cram race); do_reset_eat
+ * touchfood/recalc_wt; newuhs occupation messages.
+ */
+export async function lesshungry(num) {
     if (!game.u) return;
+    // C: iseating = (go.occupation == eatfood) || gf.force_save_hs
+    const iseating = (game.occupation === eatfood) || !!game.force_save_hs;
     game.u.uhunger = (game.u.uhunger ?? 900) + (num | 0);
+    const v = game.context?.victual;
+    if ((game.u.uhunger | 0) >= 2000) {
+        if (!iseating || (v?.canchoke | 0)) {
+            if (iseating) {
+                await choke(v?.piece);
+                reset_eat();
+            } else {
+                // C: choke((occupation == opentin) ? tin.tin : 0)
+                await choke(game.occupation === opentin
+                    ? game.context?.tin?.tin
+                    : null);
+            }
+        }
+    } else if ((game.u.uhunger | 0) >= 1500 && !Hunger()
+        && (!v?.eating || (v.eating && !v.fullwarn))) {
+        await pline("You're having a hard time getting all of it down.");
+        game.nomovemsg = "You're finally finished.";
+        if (!v?.eating) {
+            game.multi = -2;
+        } else {
+            v.fullwarn = 1;
+            if ((v.canchoke | 0)
+                && ((v.reqtime | 0) - (v.usedtime | 0)) > 1) {
+                const ParanoidEating =
+                    ((game.flags?.paranoia_bits | 0) & PARANOID_EATING) !== 0;
+                if (!(await paranoid_query(ParanoidEating, 'Continue eating?'))) {
+                    reset_eat();
+                    game.nomovemsg = null;
+                }
+            }
+        }
+    }
     newuhs(false);
 }
 
@@ -1191,25 +1265,36 @@ async function fprefx(otmp) {
 }
 
 /**
- * C ref: eat.c bite — nutrition per turn; choke deferred (canchoke always 0).
+ * C ref: eat.c bite `:3133–3158` — choke if canchoke && uhunger>=2000;
+ * else force_save_hs around lesshungry so start_eating's first bite
+ * counts as iseating before occupation is set.
+ * Named omit: adj_victual_nutrition (lembas/cram race vs -nmod).
  * @returns {number} 1 if choked (abort), else 0
  */
-function bite() {
+async function bite() {
     const v = game.context?.victual;
-    if (!v?.piece) return 0;
+    if (!v) return 0;
+    if ((v.canchoke | 0) && (game.u?.uhunger | 0) >= 2000) {
+        await choke(v.piece);
+        return 1;
+    }
     if (v.doreset) {
-        game.context.victual = {};
+        await do_reset_eat();
         return 0;
     }
+    if (!v.piece) return 0;
+    game.force_save_hs = true;
     if ((v.nmod | 0) < 0) {
         let nut = -(v.nmod | 0);
         if (nut < 1) nut = 1;
-        lesshungry(nut);
+        await lesshungry(nut);
         consume_oeaten(v.piece, v.nmod | 0);
     } else if ((v.nmod | 0) > 0 && ((v.usedtime | 0) % (v.nmod | 0))) {
-        lesshungry(1);
+        await lesshungry(1);
         consume_oeaten(v.piece, -1);
     }
+    game.force_save_hs = false;
+    recalc_wt();
     return 0;
 }
 
@@ -1574,7 +1659,7 @@ async function cpostfx(pm) {
         } else {
             if (game.context?.tin?.tin) {
                 use_up_tin(game.context.tin.tin);
-                lesshungry(200 + (metallivorous(hero_form_data()) ? 5 : 0));
+                await lesshungry(200 + (metallivorous(hero_form_data()) ? 5 : 0));
             }
             if ((pm | 0) === PM_GENETIC_ENGINEER) {
                 await pline('You undergo a freakish metamorphosis.');
@@ -1698,7 +1783,7 @@ async function eatfood() {
     game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1;
     if ((game.context.victual.usedtime | 0)
         <= (game.context.victual.reqtime | 0)) {
-        if (bite()) return 0;
+        if (await bite()) return 0;
         return 1;
     }
     await done_eating(true);
@@ -1722,7 +1807,7 @@ async function start_eating(otmp, already_partly_eaten) {
         }
     }
 
-    if (bite()) {
+    if (await bite()) {
         game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1;
         if ((game.context.victual.usedtime | 0)
             >= (game.context.victual.reqtime | 0)) {
@@ -2224,8 +2309,7 @@ function bounded_increase(old, inc, typ) {
  * Breathless/Hunger/!Strangled&&!rn2(20) → vomit path (AoS composure);
  * else killer + done(CHOKING). Non-coin food uses killer_xname (D-1344;
  * C `:279`; format KILLED_BY because the helper already adds an article).
- * Named omissions: multi-turn food choke callers beyond eataccessory
- * (lesshungry/bite); dothrow remaining killer_xname.
+ * Named omissions: dothrow remaining killer_xname; throw_obj petrify.
  */
 async function choke(food) {
     const u = game.u || (game.u = {});
@@ -2469,8 +2553,8 @@ async function eataccessory(otmp) {
  * PAPER messages (MAIL_STRUCTURES SCR_MAIL D-1204); dopotion; eataccessory;
  * leash o_unleash; trident/flint exercise; uwep/uqwep/uswapwep gone;
  * unpunish ball/chain; carried useup else useupf.
- * Named omissions: lesshungry choke/fullwarn (occupation set for C
- * iseating); float_down→spoteffects sink polish beyond Ring_gone uhp-return.
+ * Named omissions: float_down→spoteffects sink polish beyond
+ * Ring_gone uhp-return.
  */
 async function eatspecial() {
     const otmp = game.context?.victual?.piece;
@@ -2478,7 +2562,7 @@ async function eatspecial() {
     const nmod = game.context.victual.nmod | 0;
     // C: set_occupation(eatfood,…) so lesshungry choke msgs see occupation
     set_occupation(eatfood, 'eating non-food');
-    lesshungry(nmod);
+    await lesshungry(nmod);
     game.occupation = null;
     if (game.context) game.context.victual = {};
 
@@ -2990,7 +3074,7 @@ async function consume_tin(mesg) {
             tin.known = 1;
             tin = await costly_tin(COST_OPEN);
             use_up_tin(tin);
-            if (always_eat) lesshungry(5);
+            if (always_eat) await lesshungry(5);
             return;
         }
 
@@ -3055,7 +3139,7 @@ async function consume_tin(mesg) {
             if (always_eat) nutamt += 5;
             use_up_tin(tin);
             tin = null;
-            lesshungry(nutamt);
+            await lesshungry(nutamt);
         }
 
         if (tintxts[r].greasy) {
@@ -3112,7 +3196,7 @@ async function consume_tin(mesg) {
         if (always_eat) nutamt += 5;
         use_up_tin(tin);
         tin = null;
-        lesshungry(nutamt);
+        await lesshungry(nutamt);
     }
     if (tin) use_up_tin(tin);
 }
@@ -3604,7 +3688,8 @@ export async function doeat() {
     } else {
         game.context.victual.nmod = reqtime % oeaten;
     }
-    game.context.victual.canchoke = 0; // u.uhs == SATIATED deferred
+    // C eat.c:3077 — snapshot at meal start, not live SATIATED
+    game.context.victual.canchoke = (game.u?.uhs | 0) === SATIATED ? 1 : 0;
 
     if (dont_start) {
         otmp.owt = weight(otmp);

@@ -3,6 +3,9 @@
 // kick_monster, kickdmg (partial; poly AT_KICK D-1310; special_dmgval D-1332;
 // maybe_mnexto evade D-1336; abuse_dog/monflee D-1349;
 // martial knockback D-1350);
+// dokick wake_nearby(FALSE) D-1358;
+// dokick u_wipe_engr(2) D-1360);
+// dokick no_kick poly/steed/lizard/uinwater/utrap/boulder D-1362;
 // down_gate / drop_to / impact_drop (D-0961);
 // ship_object / otransit_msg (D-0984); obj_delivery (D-1177);
 // deliver_obj_to_mon (D-1193);
@@ -11,6 +14,8 @@
 // kick_object + bhit KICKED_WEAPON (D-0988);
 // kick_object/instapetrify killer_xname (D-1335);
 // kickstr (D-1343);
+// kick_ouch drawbridge find_drawbridge remap (D-1361);
+// kick_ouch/kick_dumb airlevel/Levitation hurtle (D-1370);
 // Is_box container_impact/lock/lid/chest_trap + ghitm (D-0989).
 
 import { game } from './gstate.js';
@@ -25,6 +30,8 @@ import {
 } from './display.js';
 import { vision_recalc, recalc_block_point, couldsee, cansee } from './vision.js';
 import { getdir, breakchestlock } from './lock.js';
+import { yn_function } from './getline.js';
+import { kick_steed } from './steed.js';
 import { near_capacity, inv_weight, weight_cap } from './invent.js';
 import {
     objects_at, obj_extract_self, add_to_migration, mksobj_at, mksobj, mkgold,
@@ -46,7 +53,8 @@ import {
     mintrap, Trap_Killed_Mon, NO_TRAP_FLAGS,
 } from './trap.js';
 import {
-    setmangry, seemimic, angry_guards, wakeup, wake_nearto, maybe_mnexto,
+    setmangry, seemimic, angry_guards, wakeup, wake_nearto, wake_nearby,
+    maybe_mnexto,
 } from './mon.js';
 import { abuse_dog } from './dog.js';
 import { monflee, set_apparxy } from './monmove.js';
@@ -81,6 +89,7 @@ import {
     NATTK, M_ATTK_MISS, M_ATTK_DEF_DIED, W_ARMF,
     P_MARTIAL_ARTS, MON_FLOOR, MON_OFFMAP,
     RIGHT_SIDE, TIMEOUT, FOOT, LEG, SHOPBASE, SHOP_DOOR_COST,
+    TT_PIT, TT_WEB, TT_BEARTRAP,
     MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP, MIGR_SSTAIRS,
     MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES,
     DF_RANDOM, DF_ALL, In_mines, NON_PM, has_oname, has_mgivenname,
@@ -100,15 +109,16 @@ import {
 } from './shk.js';
 import { shkname, Shknam } from './shknam.js';
 import { cvt_sdoor_to_door } from './detect.js';
+import { find_drawbridge, is_drawbridge_wall } from './dbridge.js';
 import { altar_wrath } from './pray.js';
-import { del_engr_at, disturb_grave } from './engrave.js';
+import { del_engr_at, disturb_grave, u_wipe_engr } from './engrave.js';
 import { sink_backs_up } from './fountain.js';
 import { makemon, mpickobj, add_to_minv } from './makemon.js';
 import { scatter } from './explode.js';
 import { enexto, rloco, noteleport_level, goodpos } from './teleport.js';
 import { is_art } from './artifact.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
-import { hero_breaks, thitmonst, breaks, breaktest } from './dothrow.js';
+import { hero_breaks, thitmonst, breaks, breaktest, hurtle } from './dothrow.js';
 import { finish_meating, obj_resists } from './dogmove.js';
 import { polymon } from './polyself.js';
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -187,6 +197,16 @@ function Blind() {
     return !!(game.u?.Blind || game.u?.ublind);
 }
 
+/**
+ * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
+ * Sticky u.Levitation is not a C field (D-1070).
+ */
+function Levitation() {
+    const u = game.u || {};
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+
 function Role_if(pm) {
     return (game.urole?.mnum | 0) === (pm | 0);
 }
@@ -214,6 +234,14 @@ function is_ice(x, y) {
 function Passes_walls() {
     const u = game.u || {};
     return !!(u.Passes_walls || u.HPasses_walls || u.EPasses_walls);
+}
+
+/** C hack.c / mkobj.c sobj_at — first floor object of otyp at x,y. */
+function sobj_at(otyp, x, y) {
+    for (let o = objects_at(x, y); o; o = o.nexthere) {
+        if ((o.otyp | 0) === otyp) return o;
+    }
+    return null;
 }
 
 /** C ref: hack.c closed_door. */
@@ -257,6 +285,8 @@ function martial() {
  * C ref: dokick.c kick_dumb — empty space / open doorway.
  * RNG: exercise(A_DEX, FALSE) always; low-DEX strain path adds rn2(3),
  * exercise(A_STR, FALSE), and set_wounded_legs(RIGHT_SIDE, 5+rnd(5)).
+ * Air/Lev recoil: (Is_airlevel || Levitation) && rn2(2) then
+ * hurtle(-dx,-dy,1,TRUE) (D-1370).
  */
 async function kick_dumb(x, y) {
     exercise(A_DEX, false);
@@ -269,17 +299,20 @@ async function kick_dumb(x, y) {
         // C: set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) — ATEMP(DEX)-- (D-0785)
         await set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
     }
-    // Airlevel / Levitation hurtle deferred
-    void x;
-    void y;
+    /* C dokick.c:876–877 — short-circuit: airlevel first, then
+     * Levitation macro, then rn2(2); range 1 (light). */
+    if ((Is_airlevel(game.u?.uz) || Levitation()) && rn2(2)) {
+        const u = game.u || {};
+        await hurtle(-(u.dx || 0), -(u.dy || 0), 1, true);
+    }
 }
 
 /**
  * C ref: dokick.c kickstr `:794–830` — cause of death if kicking kills
  * the kicker. Prefix `"kicking "` onto kickobjnam, else terrain from
  * gm.maploc (nowhere sentinel → `"nothing"`). Caller kick_ouch `:903`.
- * Named omit: kick_ouch drawbridge find_drawbridge remap of maploc
- * before this (DBWALL still `"a wall"`).
+ * Drawbridge walls: kick_ouch remaps maploc via find_drawbridge first
+ * (D-1361) so this reports `"a drawbridge"` not IS_STWALL `"a wall"`.
  */
 export function kickstr(kickobjnam) {
     let what;
@@ -310,18 +343,27 @@ export function kickstr(kickobjnam) {
 
 /**
  * C ref: dokick.c kick_ouch — solid terrain / failed impact (partial).
- * wake_nearto wired; drawbridge remap / airlevel hurtle deferred.
+ * wake_nearto wired; drawbridge wall remap D-1361; air/Lev hurtle D-1370.
  * losehp applies the damage roll (regen_hp needs uhp < uhpmax).
  * set_wounded_legs on !rn2(3) → ATEMP(DEX)-- (D-0785).
- * killer string via kickstr (D-1343).
+ * killer string via kickstr (D-1343) after maploc remap.
  */
-async function kick_ouch(x, y, kickobjnam = '') {
+export async function kick_ouch(x, y, kickobjnam = '') {
     await pline('Ouch!  That hurts!');
     exercise(A_DEX, false);
     exercise(A_STR, false);
     if (isok(x, y)) {
         if (Blind()) feel_location(x, y); /* we know we hit it */
-        // drawbridge wall unaffected + maploc remap deferred
+        /* C dokick.c:892–897 — portcullis: pline_The + find_drawbridge
+         * remaps gm.maploc (and x,y for wake_nearto) to the span. */
+        if (is_drawbridge_wall(x, y) >= 0) {
+            await pline('The drawbridge is unaffected.');
+            const xy = { x, y };
+            find_drawbridge(xy);
+            x = xy.x;
+            y = xy.y;
+            game.maploc = game.level?.at(x, y) || null;
+        }
         await wake_nearto(x, y, 5 * 5);
     }
     if (!rn2(3)) {
@@ -332,9 +374,14 @@ async function kick_ouch(x, y, kickobjnam = '') {
     //     losehp(Maybe_Half_Phys(dmg), kickstr(buf, kickobjnam), KILLED_BY);
     const dmg = rnd(acurr(A_CON) > 15 ? 3 : 5);
     await losehp(maybe_half_phys(dmg), kickstr(kickobjnam), KILLED_BY);
-    // Is_airlevel / Levitation hurtle deferred
-    void x;
-    void y;
+    /* C dokick.c:903–905 — losehp is noreturn on death. Else
+     * if (Is_airlevel || Levitation) hurtle(-dx,-dy,rn1(2,4),TRUE).
+     * rn1 is an argument so it burns only when the if is true. */
+    if (game._losehp_needs_done || game.program_state?.gameover) return;
+    if (Is_airlevel(game.u?.uz) || Levitation()) {
+        const u = game.u || {};
+        await hurtle(-(u.dx || 0), -(u.dy || 0), rn1(2, 4), true);
+    }
 }
 
 /**
@@ -879,6 +926,8 @@ async function kickdmg(mon, clumsy) {
  * Poly AT_KICK loop D-1310 (`Upolyd && attacktype(AT_KICK)` then return).
  * maybe_mnexto evade D-1336 (`:267–285` else of block).
  * kickdmg abuse_dog D-1349. martial knockback D-1350.
+ * dokick() wake_nearby(FALSE) D-1358 then u_wipe_engr(2) D-1360 run
+ * before this (clears msleeping; smudges hero-cell dust).
  */
 export async function kick_monster(mon, x, y) {
     let clumsy = false;
@@ -1523,21 +1572,60 @@ async function really_kick_object(x, y) {
 export async function dokick() {
     const u = game.u || (game.u = {});
     let no_kick = false;
-
-    // C order: poly/steed deferred; Wounded_legs before encumbrance/utrap.
-    // lizard / uinwater / boulder no_kick arms still deferred.
+    const youdata = game.youmonst?.data;
     const wounded = !!(u.Wounded_legs
         || ((u.HWounded_legs | 0) & TIMEOUT)
         || (u.EWounded_legs | 0));
-    if (wounded) {
-        // C: legs_in_no_shape("kicking", FALSE) then no_kick (D-0786)
+
+    /* C dokick.c dokick `:1265–1310` — no_kick chain (D-1362).
+     * Poly/steed before wounded (D-0786). Encumber before lizard /
+     * uinwater / utrap / boulder. Steed yn returns before More.
+     * Swallow / pit-brace / Levitation after getdir still named. */
+    if (nolimbs(youdata) || slithy(youdata)) {
+        await pline('You have no legs to kick with.');
+        no_kick = true;
+    } else if (verysmall(youdata)) {
+        await pline('You are too small to do any kicking.');
+        no_kick = true;
+    } else if (u.usteed) {
+        // C: yn_function("Kick your steed?", ynchars, 'y', TRUE)
+        if ((await yn_function('Kick your steed?', 'yn', 'y')) === 'y') {
+            await pline(`You kick ${mon_nam(u.usteed)}.`);
+            await kick_steed();
+            return true;
+        }
+        return false;
+    } else if (wounded) {
         await legs_in_no_shape('kicking', false);
+        no_kick = true;
+    } else if (near_capacity() > SLT_ENCUMBER) {
+        await pline('Your load is too heavy to balance yourself for a kick.');
+        no_kick = true;
+    } else if (youdata?.mlet === 'S_LIZARD') {
+        await pline('Your legs cannot kick effectively.');
+        no_kick = true;
+    } else if (u.uinwater && !rn2(2)) {
+        await pline("Your slow motion kick doesn't hit anything.");
         no_kick = true;
     } else if ((u.utrap | 0) !== 0) {
         no_kick = true;
-        await pline("There's not enough room to kick down here.");
-    } else if (near_capacity() > SLT_ENCUMBER) {
-        await pline('Your load is too heavy to balance yourself for a kick.');
+        switch (u.utraptype | 0) {
+        case TT_PIT:
+            if (!Passes_walls()) {
+                await pline("There's not enough room to kick down here.");
+            } else {
+                no_kick = false;
+            }
+            break;
+        case TT_WEB:
+        case TT_BEARTRAP:
+            await pline(`You can't move your ${body_part(LEG)}!`);
+            break;
+        default:
+            break;
+        }
+    } else if (sobj_at(BOULDER, u.ux | 0, u.uy | 0) && !Passes_walls()) {
+        await pline("There's not enough room to kick in here.");
         no_kick = true;
     }
 
@@ -1569,8 +1657,12 @@ export async function dokick() {
         }
     }
 
-    // wake_nearby(FALSE) / u_wipe_engr(2) — no RNG when no engraving;
-    // wake/engraving side effects deferred
+    /* C dokick.c `:1383–1384` — wake_nearby(FALSE) then u_wipe_engr(2)
+     * after maybe_kick, before isok / kick_monster. Callees live
+     * (mon.js D-1007; engrave.js D-1051). Declined peaceful returns
+     * first and skips both. */
+    await wake_nearby(false);
+    u_wipe_engr(2);
 
     if (!isok(x, y)) {
         // C dokick.c:1387 gm.maploc = &gn.nowhere then kick_ouch
@@ -2034,7 +2126,8 @@ export async function impact_drop(missile, x, y, dlev) {
  * trap-door with the hero), TRUE after check_special_room (stairs /
  * random). C XOR: skip when (!near_hero) != (where == MIGR_WITH_HERO).
  * nx/ny persist across the loop like C (only RANDOM/default zeros).
- * Named omit: mkmaze stolen_booty producer. wizkit FALSE is D-1192.
+ * Named omit: none for species cargo skip (producer is D-1363).
+ * wizkit FALSE is D-1192.
  */
 export async function obj_delivery(near_hero) {
     const u = game.u || {};
@@ -2151,9 +2244,8 @@ function migr_species_of(otmp) {
  * migrating_objs whose migr_species equals
  * (mtmp->data->mflags2 & DELIVER_PM). No dest-level filter (unlike
  * obj_delivery). Callers: makemon.c after allow_minvent (DF_NONE,
- * cnt=1). dog.c mon_arrive MIGR_LEFTOVERS (DF_ALL) still named.
- * Named omit: mkobj.c mksobj_migr_to_species / mkmaze stolen_booty;
- * add_to_minv merge.
+ * cnt=1). Producer: mkobj.c mksobj_migr_to_species / mkmaze stolen_booty
+ * (D-1363). Named omit: dog.c mon_arrive leftovers DF_ALL; add_to_minv merge.
  */
 export function deliver_obj_to_mon(mtmp, cnt, deliverflags) {
     if (!mtmp) return;

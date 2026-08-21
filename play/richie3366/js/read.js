@@ -4,7 +4,7 @@
 // seffect_enchant_weapon, seffect_punishment / punish, seffect_genocide,
 // do_class_genocide, do_genocide; mondata.c name_to_monclass;
 // invent.c getobj; detect.c do_mapping; spell.c study_book (via spell.js);
-// teleport.c scrolltele/safe_teleds; zap.c lightdamage (non-gremlin stub);
+// teleport.c scrolltele/safe_teleds; zap.c lightdamage (D-1366);
 // do_name.c trycall; mkobj.c uncurse/blessorcurse; wield.c chwepon;
 // ball.c placebc.
 //
@@ -319,14 +319,6 @@ function set_lit(x, y, val) {
 }
 
 /**
- * C ref: zap.c lightdamage — non-gremlin returns amt (no RNG).
- * Gremlin rnd/losehp path deferred.
- */
-function lightdamage(_obj, _ordinary, amt) {
-    return amt;
-}
-
-/**
  * C ref: read.c litroom — light/darken nearby terrain + message.
  * Envelope: ordinary scroll light/dark; Rogue whole-room; swallow/water
  * no_op message; vision_recalc(2) + delayed full recalc.
@@ -392,7 +384,7 @@ export async function litroom(on, obj) {
 
 /**
  * C ref: read.c seffect_light
- * Unconfused: litroom(!cursed) + lightdamage when !cursed.
+ * Unconfused: litroom(!cursed) + lightdamage when !cursed (D-1366).
  * Confused yellow/black-light pets deferred (named omission).
  */
 async function seffect_light(sobj) {
@@ -404,7 +396,9 @@ async function seffect_light(sobj) {
         if (!Blind) known = true;
         await litroom(!scursed, sobj);
         if (!scursed) {
-            if (lightdamage(sobj, true, 5)) known = true;
+            // C zap.c lightdamage — dynamic import avoids zap↔read cycle
+            const { lightdamage } = await import('./zap.js');
+            if (await lightdamage(sobj, true, 5)) known = true;
         }
     } else {
         // confused PM_YELLOW_LIGHT / PM_BLACK_LIGHT swarm deferred

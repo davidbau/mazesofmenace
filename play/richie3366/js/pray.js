@@ -19,7 +19,8 @@
 // spelleffects fallback for non-Knight/Cleric; resist TELL pline polish;
 // other livelog paths; poly silent/headless can_chant; Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix; music.c do_earthquake altar
-// desecrate_altar; SetVoice pitch; ureflects W_AMUL/W_ARM/dragon; shieldeff;
+// desecrate_altar; SetVoice pitch; ureflects W_AMUL/W_ARM/dragon D-1353;
+// mcastu ureflects named; shieldeff;
 // poly mlet "creature" vs mortal; BlindedTimeout==1 region polish;
 // stuck_in_wall blocked_boulder Sokoban diagonal polish; update_inventory
 // redraw; Blindfolded cream/itch; attacktype_fordmg swallow Blind gate.
@@ -38,6 +39,7 @@ import { couldsee } from './vision.js';
 import { monflee } from './monmove.js';
 import { set_malign } from './makemon.js';
 import { killed, xkilled } from './uhitm.js';
+import { ureflects } from './mhitu.js';
 import { aggravate } from './wizard.js';
 import { setuhpmax } from './exper.js';
 import { done } from './end.js';
@@ -45,7 +47,7 @@ import { monstseesu, monstunseesu } from './mondata.js';
 import { mon_nam, Monnam } from './do_name.js';
 import { disintegrate_arm, setworn, stuck_ring, unchanger } from './do_wear.js';
 import { summon_minion } from './minion.js';
-import { makeknown, near_capacity, encumber_msg } from './invent.js';
+import { near_capacity, encumber_msg } from './invent.js';
 import { punish, unpunish } from './read.js';
 import { attrcurse, rndcurse } from './sit.js';
 import { An, xname, makeplural, vtense } from './objnam.js';
@@ -56,6 +58,7 @@ import {
     is_vampshifter,
     nohands, throws_rocks,
     MR_ELEC, MR_DISINT,
+    monsterNames,
 } from './monsters.js';
 import {
     PM_KNIGHT,
@@ -83,7 +86,8 @@ import {
     LL_CONDUCT,
     LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd, ismnum,
     DIED, KILLED_BY, Is_astralevel, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT,
-    W_ARMS, W_ARMC, W_ARM, W_AMUL, W_WEP, OBJ_FREE, SICK_ALL,
+    W_ARMS, W_ARMC, W_ARM, W_AMUL, OBJ_FREE, SICK_ALL,
+    REFLECTING,
     WEAK, HUNGRY, TT_LAVA, TT_BURIEDBALL, TELEDS_NO_FLAGS, DISSOLVED,
     XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, isok, IS_OBSTRUCTED,
@@ -92,6 +96,9 @@ import {
 
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
+const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
+const SILVER_DRAGON_SCALE_MAIL = objectNames.indexOf('SILVER_DRAGON_SCALE_MAIL');
+const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
 const LEVITATION_BOOTS = objectNames.indexOf('LEVITATION_BOOTS');
 const RIN_LEVITATION = objectNames.indexOf('RIN_LEVITATION');
@@ -943,13 +950,19 @@ function losexp_divine() {
     game.flags.botl = true;
 }
 
-/** C ref: youprop.h Reflecting — H/E + worn SoR/AoR subset. */
+/** C ref: youprop.h Reflecting — H/E + worn SoR/AoR/silver DSM / form. */
 function Reflecting() {
     const u = game.u || {};
     if ((u.HReflecting | 0) || (u.EReflecting | 0) || u.Reflecting) return true;
+    const e = u.uprops?.[REFLECTING];
+    if ((e?.intrinsic | 0) || (e?.extrinsic | 0)) return true;
     if (u.uarms?.otyp === SHIELD_OF_REFLECTION) return true;
     if (u.uamul?.otyp === AMULET_OF_REFLECTION) return true;
-    return false;
+    const arm = u.uarm?.otyp | 0;
+    if (arm === SILVER_DRAGON_SCALES || arm === SILVER_DRAGON_SCALE_MAIL) {
+        return true;
+    }
+    return (game.youmonst?.data?.mndx | 0) === PM_SILVER_DRAGON;
 }
 
 /** C ref: youprop.h Shock_resistance */
@@ -987,28 +1000,6 @@ function Is_sanctum(uz) {
 }
 
 /**
- * C ref: muse.c ureflects — shield then W_WEP artifact (D-1342).
- * W_AMUL/W_ARM/dragon deferred.
- * @returns {Promise<boolean>}
- */
-async function ureflects(fmt, str) {
-    if (game.u?.uarms?.otyp === SHIELD_OF_REFLECTION) {
-        if (fmt && str) {
-            await pline(`${str} reflects from your shield.`);
-            makeknown(SHIELD_OF_REFLECTION);
-        }
-        return true;
-    }
-    if (((game.u?.EReflecting | 0) & W_WEP) !== 0) {
-        if (fmt && str) {
-            await pline(`${str} reflects from your weapon.`);
-        }
-        return true;
-    }
-    return false;
-}
-
-/**
  * C ref: pray.c fry_by_god — lightning or disintegration death.
  * @param {number} resp_god
  * @param {boolean} via_disintegration
@@ -1030,7 +1021,7 @@ async function fry_by_god(resp_god, via_disintegration) {
  * Branch envelope: swallow elec/disint on ustuck; Reflecting / Shock /
  * fry; armor strip via disintegrate_arm; Disint bask + godvoice; astral/
  * sanctum 3× summon_minion.
- * Named omissions: shieldeff flash; SetVoice; ureflects W_AMUL/W_ARM/dragon;
+ * Named omissions: shieldeff flash; SetVoice; mcastu ureflects;
  * @param {number} resp_god
  */
 export async function god_zaps_you(resp_god) {

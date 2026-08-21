@@ -13,6 +13,7 @@ import {
     LEFT_SIDE, RIGHT_SIDE, LEG, POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
     W_ARMS, W_WEP, W_AMUL, W_ARM, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
+    REFLECTING,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -1909,12 +1910,15 @@ async function summonmu(mtmp, youseeit) {
 }
 
 /**
- * C ref: youprop.h Reflecting — H||E plus worn shield/amulet/silver DSM
- * (setworn EReflecting bits still named).
+ * C ref: youprop.h Reflecting — HReflecting || EReflecting
+ * (uprops[REFLECTING] + W_WEP flat). Worn otyp / silver-dragon form
+ * stand in while confer_oc_oprop does not mirror EReflecting.
  */
 function Reflecting() {
     const u = game.u || {};
     if (u.HReflecting || u.EReflecting || u.Reflecting) return true;
+    const e = u.uprops?.[REFLECTING];
+    if ((e?.intrinsic | 0) || (e?.extrinsic | 0)) return true;
     if (u.uarms?.otyp === SHIELD_OF_REFLECTION) return true;
     if (u.uamul?.otyp === AMULET_OF_REFLECTION) return true;
     const arm = u.uarm?.otyp | 0;
@@ -1944,11 +1948,14 @@ function sprintf2(fmt, a, b) {
 
 /**
  * C ref: muse.c ureflects :2836–2866 — outermost to innermost.
- * W_WEP identity is EReflecting bit from set_artifact_intrinsic (D-1342).
+ * EReflecting is youprop.h uprops[REFLECTING].extrinsic; JS ORs the
+ * W_WEP artifact flat (D-1342) and worn otyp fallbacks while
+ * confer_oc_oprop does not mirror EReflecting. Chromatic dragon is
+ * mon_reflects only (C ureflects is silver). mcastu caller named.
  */
-async function ureflects(fmt, str) {
+export async function ureflects(fmt, str) {
     const u = game.u || {};
-    const er = u.EReflecting | 0;
+    const er = (u.EReflecting | 0) | (u.uprops?.[REFLECTING]?.extrinsic | 0);
     let what = null;
     let known = -1;
     if ((er & W_ARMS) || u.uarms?.otyp === SHIELD_OF_REFLECTION) {

@@ -36,6 +36,7 @@ import {
     AM_CHAOTIC, AM_SHRINE, AM_SANCTUM, MM_EPRI, MM_EMIN, MM_ADJACENTOK,
     N_DIRS, W_ARMC, RLOC_NOMSG,
     FILL_LVFLAGS, STRAT_WAITFORU, NON_PM, ONAME_LEVEL_DEF,
+    MM_NONAME, MIGR_LEFTOVERS, MIGR_RANDOM, has_mgivenname,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH,
     LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN,
     BR_PORTAL, BR_NO_END1, BR_NO_END2,
@@ -78,29 +79,31 @@ import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
     FOOD_CLASS, SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS,
     SPBOOK_CLASS, WAND_CLASS, AMULET_CLASS, ROCK_CLASS,
-    objectNames,
+    objectNames, objects,
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
 import { maketrap, t_at } from './trap.js';
 import {
-    mkobj, mksobj, mksobj_at, mkobj_at, mkgold, mkcorpstat, next_ident,
+    mkobj, mksobj, mksobj_at, mksobj_migr_to_species, mkobj_at, mkgold,
+    mkcorpstat, next_ident,
     curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, obj_extract_self,
     add_to_container, objects_at, stackobj,
 } from './mkobj.js';
 import {
-    makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, newcham,
+    makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, add_to_minv, newcham,
     mongets, set_malign, rndmonnum,
 } from './makemon.js';
 import { m_at } from './mon.js';
-import { enexto, rloc, goodpos } from './teleport.js';
+import { enexto, rloc, goodpos, migrate_to_level } from './teleport.js';
 import { clear_wormdata } from './worm.js';
 import { obj_resists } from './dogmove.js';
 import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
     PM_ARCHEOLOGIST, PM_WIZARD, PM_GIANT_SPIDER, PM_MONK, PM_LICHEN,
-    is_male, is_female, mons, G_NOGEN, G_UNIQ, G_IGNORE, monsterNames,
+    is_male, is_female, is_orc, M2_ORC, mons, G_NOGEN, G_UNIQ, G_IGNORE,
+    monsterNames,
     LOW_PM, pmnames,
     MALE, FEMALE, NEUTRAL,
     is_flyer, is_floater, is_swimmer, amphibious,
@@ -109,12 +112,12 @@ import {
     resists_ston, poly_when_stoned,
 } from './monsters.js';
 import { name_to_monplus, name_to_mon } from './mondata.js';
-import { christen_monst, oname } from './do_name.js';
+import { christen_monst, christen_orc, rndorcname, new_oname, oname } from './do_name.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
 import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
 import { cmd_from_ecname } from './dokeylist.js';
 import {
-    find_level, dungeon_branch, at_dgn_entrance, insert_branch,
+    find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -123,7 +126,7 @@ import {
 } from './region.js';
 import { Norep } from './display.js';
 import { ndemon } from './minion.js';
-import { readobjnam } from './readobjnam.js';
+import { readobjnam, rnd_otyp_by_namedesc } from './readobjnam.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -239,6 +242,17 @@ const SPE_CHARM_MONSTER = objectNames.indexOf('SPE_CHARM_MONSTER');
 const SPE_STONE_TO_FLESH = objectNames.indexOf('SPE_STONE_TO_FLESH');
 const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
+const SILVER_SABER = objectNames.indexOf('SILVER_SABER');
+const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
+const LEATHER_GLOVES = objectNames.indexOf('LEATHER_GLOVES');
+const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
+const TRIPE_RATION = objectNames.indexOf('TRIPE_RATION');
+const C_RATION = objectNames.indexOf('C_RATION');
+const K_RATION = objectNames.indexOf('K_RATION');
+const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+const PM_ORC_CAPTAIN = monsterNames.indexOf('PM_ORC_CAPTAIN');
+const PM_ORC_SHAMAN = monsterNames.indexOf('PM_ORC_SHAMAN');
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const ELVEN_CLOAK = objectNames.indexOf('ELVEN_CLOAK');
 const BLINDFOLD = objectNames.indexOf('BLINDFOLD');
@@ -805,6 +819,196 @@ function free_exclusions() {
     game.exclusion_zones = null;
 }
 
+/* C mkmaze.c ORC_LEADER — migrate_orc leader dest = dungeon bottom. */
+const ORC_LEADER = 1;
+const orcfruit = ['paddle cactus', 'dwarven root'];
+
+/** C dungeon.c dunlevs_in_dungeon — local (avoid extra import). */
+function dunlevs_in_dungeon_maz(lev) {
+    return game.dungeons?.[lev?.dnum | 0]?.num_dunlevs ?? 1;
+}
+
+/** C dungeon.c ledger_no — local. */
+function ledger_no_maz(lev) {
+    const dun = game.dungeons?.[lev?.dnum | 0];
+    return ((dun?.ledger_start | 0) + (lev?.dlevel | 0)) | 0;
+}
+
+/** C hacklib.c upstart — capitalize first letter. */
+function upstart_maz(str) {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * C ref: options.c fruitadd else (not user_specified) — bones/orctown.
+ * User-specified doset path stays in options.js (mklev↔options cycle).
+ */
+function fruitadd_orc(str) {
+    let altname = '';
+    const raw = String(str || '');
+    const n = raw.length > 31 ? raw.slice(0, 31) : raw;
+    for (let i = 0; i < n.length; i++) {
+        const c = n.charCodeAt(i) & 0x7f;
+        altname += (c < 0x20 || c === 0x7f) ? '.' : String.fromCharCode(c);
+    }
+    if (!game.flags) game.flags = {};
+    game.flags.made_fruit = true;
+    const look = altname || str;
+    let highest = 0;
+    let found = null;
+    for (let f = game.ffruit; f; f = f.nextf) {
+        if ((f.fid | 0) > highest) highest = f.fid | 0;
+        if (!found && f.fname === look) found = f;
+    }
+    if (found) return found.fid | 0;
+    if (highest >= 127) return rnd(127);
+    const f = {
+        fname: String(look).slice(0, 31),
+        fid: highest + 1,
+        nextf: game.ffruit || null,
+    };
+    game.ffruit = f;
+    return f.fid;
+}
+
+/** C objnam.c shiny_obj — rnd_otyp_by_namedesc("shiny", oclass, 0). */
+function shiny_obj(oclass) {
+    return rnd_otyp_by_namedesc('shiny', oclass, 0);
+}
+
+/**
+ * C ref: mkmaze.c migrate_orc — send orc to a deeper mines level.
+ * Leader: bottom (rarely −1) + MIGR_LEFTOVERS. Else random deeper.
+ */
+function migrate_orc(mtmp, mflags) {
+    const uz = game.u?.uz || { dnum: 0, dlevel: 1 };
+    const cur_depth = depth_of_level(uz) | 0;
+    const max_depth = dunlevs_in_dungeon_maz(uz)
+        + ((game.dungeons?.[uz.dnum | 0]?.depth_start | 0) - 1);
+    let nlev;
+    if (mflags === ORC_LEADER) {
+        nlev = max_depth;
+        if (!rn2(40)) nlev--;
+        mtmp.migflags = (mtmp.migflags | 0) | MIGR_LEFTOVERS;
+    } else {
+        nlev = rn2((max_depth - cur_depth) + 1) + cur_depth;
+        if (nlev === cur_depth) nlev++;
+        if (nlev > max_depth) nlev = max_depth;
+        mtmp.migflags = (mtmp.migflags | 0) & ~MIGR_LEFTOVERS;
+    }
+    const dest = { dnum: 0, dlevel: 0 };
+    get_level(dest, nlev);
+    migrate_to_level(mtmp, ledger_no_maz(dest), MIGR_RANDOM, null);
+}
+
+/**
+ * C ref: mkmaze.c shiny_orc_stuff — gold/gem/shiny ring into minvent.
+ */
+function shiny_orc_stuff(mtmp) {
+    const is_captain = (mtmp.data?.mndx | 0) === PM_ORC_CAPTAIN;
+    const goldprob = is_captain ? 600 : 300;
+    const gemprob = (goldprob / 4) | 0;
+    if (rn2(1000) < goldprob) {
+        const otmp = mksobj(GOLD_PIECE, true, false);
+        if (otmp) {
+            otmp.quan = 1 + rnd(goldprob);
+            otmp.owt = weight(otmp);
+            add_to_minv(mtmp, otmp);
+        }
+    }
+    if (rn2(1000) < gemprob) {
+        const otmp = mkobj(GEM_CLASS, false);
+        if (otmp) {
+            if (otmp.otyp === ROCK) dealloc_obj(otmp);
+            else add_to_minv(mtmp, otmp);
+        }
+    }
+    if (is_captain || !rn2(8)) {
+        const otyp = shiny_obj(RING_CLASS);
+        if (otyp !== STRANGE_OBJECT) {
+            const otmp = mksobj(otyp, true, false);
+            if (otmp) add_to_minv(mtmp, otmp);
+        }
+    }
+}
+
+/**
+ * C ref: mkmaze.c migr_booty_item — mksobj_migr_to_species(M2_ORC) + gang
+ * oname. Food: slime-mold fruitadd + quan += rn2(3).
+ */
+function migr_booty_item(otyp, gang) {
+    const otmp = mksobj_migr_to_species(otyp, M2_ORC >>> 0, true, false);
+    if (otmp && gang) {
+        new_oname(otmp, gang.length + 1);
+        if (!otmp.oextra) otmp.oextra = {};
+        otmp.oextra.oname = gang;
+        const oc = objects()?.[otyp];
+        if ((oc?.oc_class | 0) === FOOD_CLASS) {
+            if (otyp === SLIME_MOLD)
+                otmp.spe = fruitadd_orc(orcfruit[rn2(orcfruit.length)]);
+            otmp.quan += rn2(3);
+            otmp.owt = weight(otmp);
+        }
+    }
+}
+
+/**
+ * C ref: mkmaze.c stolen_booty — orctown loot onto migrating_objs and
+ * fleeing orcs. Caller: fixup_special when mines && ransacked.
+ * Named omit: minetn-1 loader (public-unhit until that proto exists);
+ * dog.c mon_arrive MIGR_LEFTOVERS DF_ALL.
+ */
+export function stolen_booty() {
+    const gang = rndorcname();
+    const gangCap = upstart_maz(gang);
+    let cnt = rnd(4);
+    for (let i = 0; i < cnt; ++i)
+        migr_booty_item(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, gang);
+    cnt = rnd(3);
+    for (let i = 0; i < cnt; ++i)
+        migr_booty_item(SKELETON_KEY, gang);
+    const glove = rn1(
+        (GAUNTLETS_OF_DEXTERITY - LEATHER_GLOVES) + 1, LEATHER_GLOVES,
+    );
+    migr_booty_item(glove, gang);
+    cnt = rnd(10);
+    for (let i = 0; i < cnt; ++i) {
+        const otyp = rn1(TIN - TRIPE_RATION + 1, TRIPE_RATION);
+        if (otyp !== LEMBAS_WAFER
+            && ((objects()?.[otyp]?.oc_prob | 0) !== 0
+                || otyp === C_RATION || otyp === K_RATION)
+            && otyp !== CORPSE && otyp !== EGG && otyp !== TIN)
+            migr_booty_item(otyp, gang);
+    }
+    migr_booty_item(rn2(2) ? LONG_SWORD : SILVER_SABER, gang);
+    let mtmp = makemon(mons(PM_ORC_CAPTAIN), 0, 0, MM_NONAME);
+    if (mtmp) {
+        mtmp = christen_monst(mtmp, gangCap);
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        shiny_orc_stuff(mtmp);
+        migrate_orc(mtmp, ORC_LEADER);
+    }
+    for (const mon of game.fmon || []) {
+        if ((mon.mhp | 0) < 1) continue;
+        if (is_orc(mon.data) && !has_mgivenname(mon) && rn2(10)) {
+            if ((mon.data?.mndx | 0) !== PM_ORC_CAPTAIN)
+                christen_orc(mon, gangCap, '');
+        }
+    }
+    cnt = rn2(10) + 5;
+    for (let i = 0; i < cnt; ++i) {
+        const mtyp = rn2((PM_ORC_SHAMAN - PM_ORC) + 1) + PM_ORC;
+        mtmp = makemon(mons(mtyp), 0, 0, MM_NONAME);
+        if (mtmp) {
+            shiny_orc_stuff(mtmp);
+            migrate_orc(mtmp, 0);
+        }
+    }
+    game.ransacked = 0;
+}
+
 // C ref: mkmaze.c fixup_special — post-special-level branch/lregion placement
 function fixup_special() {
     // C: leftover gl.lregions. Other load_* still consume inline after
@@ -903,6 +1107,10 @@ function fixup_special() {
     // C ref: mkmaze.c fixup_special on_level(baalzebub_level) → baalz_fixup
     if (Is_baal_level(game.u?.uz))
         baalz_fixup();
+
+    // C mkmaze.c:694–695 — mines + ransacked → stolen_booty (orctown)
+    if ((game.u?.uz?.dnum | 0) === (game.mines_dnum | 0) && game.ransacked)
+        stolen_booty();
 
     // C ref: mkmaze.c fixup_special — Is_special && sp->flags.town → has_town
     {
@@ -1155,7 +1363,7 @@ function reset_xystart_size() {
  * protos (Bar-goal; Wiz-goal; Kni-strt/loca/fila/filb);
  * minetn-1/6/7; minend-3; medusa-2/4; water/astral; fakewiz;
  * create_maze makemaz("") fallback; hellfill rnd_hell_prefab;
- * check_ransacked side effects beyond ransacked flag; dmonsfree.
+ * stolen_booty (D-1363) waits on minetn-1 loader; dmonsfree.
  */
 async function makemaz(s) {
     const g = game;

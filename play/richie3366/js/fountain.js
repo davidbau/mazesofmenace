@@ -10,6 +10,7 @@
 // case 30 dogushforth(TRUE);
 // drinkfountain case 19 MAGICENLIGHTENMENT body (D-1116).
 // drinkfountain case 24 buc_changed → update_inventory (D-1126).
+// drinkfountain fate<10 uhunger += rnd(10) + newuhs(FALSE) (D-1359).
 // gush m_at → minliquid else newsym (D-1117).
 // Deferred: set_levltyp side effects beyond typ/flags.
 // mongrantswish tmp_at(DISP_ALWAYS, glyph_at) hide (D-1136).
@@ -80,7 +81,7 @@ import {
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, A_DEX, adjattrib, exercise, acurr } from './attrib.js';
-import { lesshungry, morehungry, poison_strdmg, vomit, useup } from './eat.js';
+import { morehungry, poison_strdmg, vomit, useup, newuhs } from './eat.js';
 import { losehp, in_town } from './hack.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
 import { monster_detect } from './detect.js';
@@ -856,7 +857,9 @@ export async function drinkfountain() {
 
     if (fate < 10) {
         await pline('The cool draught refreshes you.');
-        lesshungry(rnd(10)); // u.uhunger += rnd(10); newuhs deferred
+        // C fountain.c:281–282 — raw add, not lesshungry; don't choke on water
+        u.uhunger = (u.uhunger ?? 900) + rnd(10);
+        newuhs(false);
         if (mgkftn) return;
     } else {
         switch (fate) {

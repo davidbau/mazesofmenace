@@ -49,6 +49,7 @@ import { phase_of_the_moon, friday_13th, night, FULL_MOON, NEW_MOON } from './ca
 import { ATR_INVERSE } from './terminal.js';
 import { dosounds } from './sounds.js';
 import { invault } from './vault.js';
+import { u_wipe_engr } from './engrave.js';
 import { nh_timeout } from './timeout.js';
 import { run_regions } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
@@ -899,9 +900,11 @@ export async function moveloop_core() {
                 // C: invault() before wipe_engr / amulet
                 await invault();
 
-                // C: if (!rn2(40 + ACURR(A_DEX)*3)) u_wipe_engr(rnd(3));
+                // C allmain.c `:360–361` — after invault / amulet() (named)
+                // if (!rn2(40 + ACURR(A_DEX)*3)) u_wipe_engr(rnd(3)).
+                // Callee D-1051; dokick(2) is D-1360. uhitm/dothrow/dig named.
                 if (!rn2(40 + (acurr(A_DEX) * 3))) {
-                    rnd(3);
+                    u_wipe_engr(rnd(3));
                 }
 
                 // C allmain.c:370–377 — after udemigod intervene (named)

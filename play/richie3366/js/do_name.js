@@ -1,6 +1,7 @@
 // do_name.js — Object naming helpers (partial).
 // C ref: do_name.c oname / artifact naming / docallcmd;
-//        christen_orc / rndorcname / free_oname (D-1193).
+//        christen_orc / rndorcname / free_oname (D-1193);
+//        new_oname (D-1363).
 
 import { artifact_exists, exist_artifact } from './artifact.js';
 import { game } from './gstate.js';
@@ -697,6 +698,21 @@ export function safe_oname(obj) {
 /** C ref: do_name.c free_oname — drop oname; keep oextra. */
 export function free_oname(obj) {
     if (has_oname(obj)) delete obj.oextra.oname;
+}
+
+/**
+ * C ref: do_name.c new_oname — alloc oname (lth includes NUL in C);
+ * removes the old name if present. Caller strcpy's into ONAME.
+ */
+export function new_oname(obj, lth) {
+    if (!obj) return;
+    if (lth) {
+        if (!obj.oextra) obj.oextra = {};
+        else free_oname(obj);
+        obj.oextra.oname = '';
+    } else if (has_oname(obj)) {
+        free_oname(obj);
+    }
 }
 
 /** C ref: hacklib.c upstart — capitalize first letter. */

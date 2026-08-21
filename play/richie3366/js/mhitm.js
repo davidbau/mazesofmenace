@@ -90,7 +90,8 @@ import {
     is_flyer, MR_STONE, MALE, FEMALE, NEUTRAL, can_teleport,
     touch_petrifies, poly_when_stoned, resists_ston, humanoid,
     unsolid, is_whirly, passes_walls, haseyes, flaming, slimeproof,
-    is_male, is_female, is_shapeshifter, has_head,
+    is_male, is_female, is_shapeshifter, has_head, mon_hates_silver,
+    noncorporeal,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import { ART_TROLLSBANE } from './generated/artifacts_data.js';
@@ -100,7 +101,7 @@ import {
     weight, mksobj, set_corpsenm, obj_stop_timers,
 } from './mkobj.js';
 import { Monnam, mon_nam, Adjmonnam, oname, pmname, x_monnam, hliquid, y_monnam } from './do_name.js';
-import { an, xname, makeplural, cxname, vtense, The } from './objnam.js';
+import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { newcham, pm_to_cham } from './makemon.js';
 import { polyself } from './polyself.js';
@@ -172,6 +173,7 @@ const AD_COLD = 3;
 const AD_ELEC = 6;
 const AD_DRST = 7; /* drains str (poison) — monattk.h */
 const AD_ACID = 8; /* acid damage — monattk.h (was wrongly AD_DRDX=8) */
+const AD_STON = 18; /* petrifies (cockatrice touch / Medusa gaze) — monattk.h */
 const AD_STCK = 19;
 const AD_SITM = 21; /* steals item (nymphs) — monattk.h */
 const AD_SEDU = 22; /* seduces & steals multiple items */
@@ -549,6 +551,7 @@ export {
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
     AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
+    AD_STON,
     could_seduce,
 };
 
@@ -650,6 +653,51 @@ async function mhitm_ad_halu(magr, mattk, mdef, mhm) {
         mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
     }
     if (mhm) mhm.damage = 0;
+}
+
+/**
+ * C ref: uhitm.c do_stone_mon :3944–3978.
+ * Named omit: munstone (muse.c lizard/acid tin eat; treat as false).
+ * mhitm_ad_phys cockatrice-corpse wep caller still named.
+ */
+async function do_stone_mon(magr, mattk, mdef, mhm) {
+    const pd = mdef?.data;
+    if (poly_when_stoned(pd, game.mvitals)) {
+        await mon_to_stone(mdef);
+        mhm.damage = 0;
+        return;
+    }
+    if (!resists_ston(mdef)) {
+        if (_mm_vis && canseemon(mdef)) {
+            await pline_mon(mdef, `${Monnam(mdef)} turns to stone!`);
+        }
+        await monstone(mdef);
+        if (!deadmonster(mdef)) {
+            mhm.hitflags = M_ATTK_MISS;
+            mhm.done = true;
+            return;
+        } else if (mdef.mtame && !_mm_vis) {
+            await pline(
+                'You have a peculiarly sad feeling for a moment, then it passes.',
+            );
+        }
+        const grew = await grow_up(magr, mdef);
+        mhm.hitflags = M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        mhm.done = true;
+        return;
+    }
+    mhm.damage = ((mattk.adtyp | 0) === AD_STON) ? 0 : 1;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_ston mhitm arm :4254–4261.
+ * Cancelled keeps leftover d() from mdamagem. Else do_stone_mon.
+ * uhitm munstone+minstapetrify and mhitu mhitm_ad_ston_u named.
+ */
+async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
+    if (magr.mcan) return;
+    await do_stone_mon(magr, mattk, mdef, mhm);
+    if (mhm.done) return;
 }
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
@@ -2015,6 +2063,34 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
     }
 
+    // C: mhitm_adtyping → mhitm_ad_ston for AD_STON (D-1352). Cancelled
+    // keeps the opening d(); else do_stone_mon zeros leftover or stones.
+    if ((mattk.adtyp | 0) === AD_STON) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_ston(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
     mhitm_knockback(magr, mdef, mattk, hitflags, !!mwep);
 
     if (!damage) return hitflags === M_ATTK_AGR_DIED ? M_ATTK_AGR_DIED : M_ATTK_HIT;
@@ -2052,8 +2128,7 @@ function m_next2u_mm(mtmp) {
 
 /**
  * C ref: uhitm.c shade_miss :2016–2051 — hero/mon vs shade.
- * dmgval is zero/not-zero only (weapon.c shade_glare still named, so a
- * non-silver mwep currently still "hurts" and this returns false).
+ * dmgval is zero/not-zero (weapon.c shade/`shade_glare` D-1354).
  * Callers mthrowu / zap bhit / hmon / mhitm_ad_phys still named.
  */
 export async function shade_miss(magr, mdef, obj, thrown, verbose) {
@@ -2088,9 +2163,16 @@ export async function shade_miss(magr, mdef, obj, thrown, verbose) {
 /**
  * C ref: mhitm.c hitmm — hit pline when gv.vis; else noises().
  * Seduce: smiles/talks + engagingly/seductively when could_seduce && !mcan.
- * shade_miss (D-1341) bypasses mdamagem. Named omit: silver sear; artifact wep.
+ * shade_miss (D-1341) bypasses mdamagem. Silver sear D-1351 (`:706–726`).
+ * Named omit: artifact wep skips the default "hits" buf.
  */
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
+    /* C `:652–655` — AT_WEAP, or claw while already holding mwep. */
+    const weaponhit = (mattk.aatyp | 0) === AT_WEAP
+        || ((mattk.aatyp | 0) === AT_CLAW && !!mwep);
+    const silverhit = !!(weaponhit && mwep
+        && (game.objects?.[mwep.otyp]?.oc_material | 0) === SILVER);
+
     pre_mm_attack(magr, mdef);
 
     // C: compat = !magr->mcan ? could_seduce(...) : 0;
@@ -2100,32 +2182,55 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     }
 
     if (_mm_vis) {
+        /* C copies Monnam once; sear then s_suffix's that same buffer. */
+        let magr_name = Monnam(magr);
         if (compat) {
             const smile = mdef.mcansee ? 'smiles at' : 'talks to';
             const how = (compat === 2) ? 'engagingly' : 'seductively';
             await pline(
-                `${Monnam(magr)} ${smile} ${mon_nam(mdef)} ${how}.`,
-            );
-        } else if ((mattk.aatyp | 0) === AT_TENT) {
-            /* C `:687–689` — s_suffix(Monnam) tentacles suck */
-            await pline(
-                `${s_suffix_mm(Monnam(magr))} tentacles suck ${mon_nam_too(mdef, magr)}.`,
-            );
-        } else if ((mattk.aatyp | 0) === AT_HUGS
-            && magr !== game.u?.ustuck) {
-            /* C `:691–695` — squeezes unless magr already holds the hero */
-            await pline(
-                `${Monnam(magr)} squeezes ${mon_nam_too(mdef, magr)}.`,
+                `${magr_name} ${smile} ${mon_nam(mdef)} ${how}.`,
             );
         } else {
-            let verb = 'hits';
-            if (mattk.aatyp === AT_BITE) verb = 'bites';
-            else if (mattk.aatyp === AT_STNG) verb = 'stings';
-            else if (mattk.aatyp === AT_BUTT) verb = 'butts';
-            else if (mattk.aatyp === AT_TUCH) verb = 'touches';
-            await pline(
-                `${Monnam(magr)} ${verb} ${mon_nam_too(mdef, magr)}.`,
-            );
+            if ((mattk.aatyp | 0) === AT_TENT) {
+                /* C `:687–689` — s_suffix(Monnam) tentacles suck */
+                await pline(
+                    `${s_suffix_mm(magr_name)} tentacles suck ${mon_nam_too(mdef, magr)}.`,
+                );
+            } else if ((mattk.aatyp | 0) === AT_HUGS
+                && magr !== game.u?.ustuck) {
+                /* C `:691–695` — squeezes unless magr already holds the hero */
+                await pline(
+                    `${magr_name} squeezes ${mon_nam_too(mdef, magr)}.`,
+                );
+            } else {
+                let verb = 'hits';
+                if (mattk.aatyp === AT_BITE) verb = 'bites';
+                else if (mattk.aatyp === AT_STNG) verb = 'stings';
+                else if (mattk.aatyp === AT_BUTT) verb = 'butts';
+                else if (mattk.aatyp === AT_TUCH) verb = 'touches';
+                await pline(
+                    `${magr_name} ${verb} ${mon_nam_too(mdef, magr)}.`,
+                );
+            }
+            /* C `:706–726` — vis, !compat, after the hit pline. */
+            if (mon_hates_silver(mdef) && silverhit) {
+                let mdef_name = mon_nam_too(mdef, magr);
+                magr_name = s_suffix_mm(magr_name);
+                if (!noncorporeal(mdef.data) && !amorphous(mdef.data)) {
+                    if (mdef !== magr) {
+                        mdef_name = s_suffix_mm(mdef_name);
+                    } else {
+                        /* C strsubst first occurrence: himself/herself/itself. */
+                        mdef_name = mdef_name.replace('himself', 'his own');
+                        mdef_name = mdef_name.replace('herself', 'her own');
+                        mdef_name = mdef_name.replace('itself', 'its own');
+                    }
+                    mdef_name += ' flesh';
+                }
+                await pline(
+                    `${magr_name} ${simpleonames(mwep)} sears ${mdef_name}!`,
+                );
+            }
         }
     } else {
         await noises(magr, mattk);
@@ -2366,10 +2471,12 @@ async function gulpmm(magr, mdef, mattk) {
  * C ref: mhitm.c gazemm :736–803 — monster gazes at another monster.
  * Caller mattackm AT_GAZE (strike=0). Archon extra mhitm_ad_blnd + rn2(2)
  * stun then mdamagem leftover. Medusa reflect stones magr.
- * Named omit: mhitm_ad_ston/conf/stun/fire leftover dice;
+ * Named omit: mhitm_ad_conf/stun/fire leftover dice;
  * mon_perma_blind; resists_blnd_by_arti.
+ * mdamagem AD_STON leftover is D-1352.
  * arti_reflects(MON_WEP) is D-1342.
- * hitmm shade_miss is D-1341; other shade_miss callers still named.
+ * hitmm shade_miss is D-1341; hitmm silver sear is D-1351;
+ * other shade_miss callers still named.
  */
 export async function gazemm(magr, mdef, mattk) {
     if (!magr || !mdef || !mattk) return M_ATTK_MISS;
@@ -2445,7 +2552,9 @@ export async function gazemm(magr, mdef, mattk) {
  * mon_explodes and set AGR_DIED unconditionally (lifesave named on
  * mondead). Else mdamagem then mondead. Tame melancholy even if seen.
  * Named omit: mondead→m_unleash object (slack printed here);
- * mdamagem ston/conf/stun/fire leftover. hitmm shade_miss is D-1341.
+ * mdamagem conf/stun/fire leftover. mdamagem AD_STON leftover is D-1352.
+ * hitmm shade_miss is D-1341;
+ * hitmm silver sear is D-1351.
  */
 export async function explmm(magr, mdef, mattk) {
     if (!magr || !mdef || !mattk) return M_ATTK_MISS;
