@@ -1987,10 +1987,60 @@ export function reveal_terrain_show_map(which_subset, swallowed) {
 }
 
 // C ref: display.c tmp_at — transient missile/beam glyphs.
-// Nested alloc polish, DISP_TETHER BACKTRACK, DISP_ALWAYS edge cases deferred.
+// Nested alloc polish, DISP_ALWAYS edge cases deferred.
 const TMP_AT_MAX_GLYPHS = COLNO * 2;
 const _tgfirst = { saved: [], sidx: 0, style: 0, glyph: null, prev: null };
 let _tglyph = null;
+
+/** C hacklib.c sgn — used by tether_glyph toward the hero. */
+function sgn_tether(n) {
+    n = n | 0;
+    return n < 0 ? -1 : n > 0 ? 1 : 0;
+}
+
+/**
+ * C display.c tether_glyph — zap type 2 (white) from cell toward @.
+ * DISP_TETHER paints this on the previous cell when the object advances.
+ */
+function tether_glyph(x, y) {
+    const tdx = (game.u?.ux | 0) - (x | 0);
+    const tdy = (game.u?.uy | 0) - (y | 0);
+    return zapdir_to_glyph(sgn_tether(tdx), sgn_tether(tdy), 2);
+}
+
+function tmp_at_show_glyph(x, y, g) {
+    if (g && typeof g === 'object') {
+        show_glyph_cell(x, y, g.ch, g.color ?? NO_COLOR, !!g.dec);
+    }
+}
+
+/**
+ * C display.c tmp_at DISP_END BACKTRACK — walk the object glyph back
+ * along saved[] with nh_delay_output, then newsym the remainder.
+ * Caller await-s the Promise. C delays inside tmp_at itself.
+ */
+async function tmp_at_tether_backtrack(tglyph) {
+    const g = tglyph.glyph;
+    try {
+        if (tglyph.sidx > 1) {
+            for (let i = tglyph.sidx - 1; i > 0; i--) {
+                const cur = tglyph.saved[i];
+                const prev = tglyph.saved[i - 1];
+                if (cur) newsym(cur.x, cur.y);
+                if (prev) tmp_at_show_glyph(prev.x, prev.y, g);
+                void flush_screen(0);
+                await nh_delay_output();
+            }
+            tglyph.sidx = 1;
+        }
+        for (let i = 0; i < tglyph.sidx; i++) {
+            const p = tglyph.saved[i];
+            if (p) newsym(p.x, p.y);
+        }
+    } finally {
+        if (_tglyph === tglyph) _tglyph = tglyph.prev;
+    }
+}
 
 /**
  * C ref: display.c zapdir_to_glyph — beam glyph for tmp_at DISP_BEAM.
@@ -2028,9 +2078,12 @@ export function zapdir_to_glyph(dx0, dy0, beam_type) {
 
 /**
  * C ref: display.c tmp_at(x, y)
- * Open: tmp_at(DISP_FLASH|DISP_BEAM|…, glyphObj) — glyphObj is {ch,color,dec}.
- * Step: tmp_at(map_x, map_y) — paint; BEAM accumulates, FLASH replaces.
- * Close: tmp_at(DISP_END, 0); DISP_CHANGE updates glyph mid-beam.
+ * Open: tmp_at(DISP_FLASH|DISP_BEAM|DISP_TETHER|…, glyphObj).
+ * Step: tmp_at(map_x, map_y) — paint; BEAM accumulates, FLASH replaces,
+ * TETHER leaves a zap-dir cord on prior cells (tether_glyph).
+ * Close: tmp_at(DISP_END, 0); TETHER + BACKTRACK returns a Promise the
+ * caller must await (C nh_delay_output inside tmp_at). DISP_CHANGE
+ * updates glyph mid-beam.
  */
 export function tmp_at(x, y) {
     switch (x) {
@@ -2075,8 +2128,10 @@ export function tmp_at(x, y) {
                 if (p) newsym(p.x, p.y);
             }
         } else if (_tglyph.style === DISP_TETHER) {
-            // BACKTRACK tether return deferred
-            void BACKTRACK;
+            // C :1225–1240 — BACKTRACK walks object glyph home then erase
+            if (y === BACKTRACK && _tglyph.sidx > 1) {
+                return tmp_at_tether_backtrack(_tglyph);
+            }
             for (let i = 0; i < _tglyph.sidx; i++) {
                 const p = _tglyph.saved[i];
                 if (p) newsym(p.x, p.y);
@@ -2097,8 +2152,13 @@ export function tmp_at(x, y) {
             _tglyph.saved[_tglyph.sidx] = { x, y };
             _tglyph.sidx += 1;
         } else if (_tglyph.style === DISP_TETHER) {
-            // tether trail deferred — still record + show object glyph
+            // C :1264–1277 — cord on previous cell, object glyph at the tip
             if (_tglyph.sidx >= TMP_AT_MAX_GLYPHS) break;
+            if (_tglyph.sidx) {
+                const px = _tglyph.saved[_tglyph.sidx - 1].x;
+                const py = _tglyph.saved[_tglyph.sidx - 1].y;
+                tmp_at_show_glyph(px, py, tether_glyph(px, py));
+            }
             _tglyph.saved[_tglyph.sidx] = { x, y };
             _tglyph.sidx += 1;
         } else {

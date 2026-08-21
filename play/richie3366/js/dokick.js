@@ -1,6 +1,7 @@
 // dokick.js — #kick command + object fall-through (impact_drop / ship_object).
 // C ref: dokick.c — dokick, kick_dumb, kick_door, kick_nondoor, maybe_kick_monster,
-// kick_monster, kickdmg (partial); down_gate / drop_to / impact_drop (D-0961);
+// kick_monster, kickdmg (partial; poly AT_KICK D-1310; special_dmgval D-1332);
+// down_gate / drop_to / impact_drop (D-0961);
 // ship_object / otransit_msg (D-0984); obj_delivery (D-1177);
 // deliver_obj_to_mon (D-1193);
 // kick_nondoor SDOOR/furniture (D-0985);
@@ -27,6 +28,8 @@ import {
 } from './mkobj.js';
 import {
     mon_at, attack_checks, passive, killed, check_caitiff,
+    damageum, find_roll_to_hit, missum, mon_maybe_unparalyze,
+    attacktype_fordmg,
 } from './uhitm.js';
 import { AT_KICK } from './mhitm.js';
 import {
@@ -39,7 +42,7 @@ import {
 } from './trap.js';
 import { setmangry, seemimic, angry_guards, wakeup, wake_nearto } from './mon.js';
 import { mon_nam, Monnam, christen_orc, free_oname } from './do_name.js';
-import { martial_bonus, use_skill } from './weapon.js';
+import { martial_bonus, use_skill, special_dmgval } from './weapon.js';
 import {
     verysmall, bigmonst, thick_skinned, nohands, haseyes,
     is_flyer, is_floater, can_teleport, M1_SLITHY, is_watch, mons,
@@ -64,6 +67,7 @@ import {
     IS_DOOR, IS_STWALL, IS_POOL, IS_THRONE, IS_FOUNTAIN, IS_SINK, IS_GRAVE,
     IS_TREE, IS_ALTAR, IS_OBSTRUCTED, IS_ROOM, Is_earthlevel,
     KILLED_BY, Upolyd, M_AP_TYPE, M_AP_MONSTER, P_NONE,
+    NATTK, M_ATTK_MISS, M_ATTK_DEF_DIED, W_ARMF,
     P_MARTIAL_ARTS,
     RIGHT_SIDE, TIMEOUT, FOOT, LEG, SHOPBASE, SHOP_DOOR_COST,
     MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP, MIGR_SSTAIRS,
@@ -742,7 +746,8 @@ async function maybe_kick_monster(mon, x, y) {
 
 /**
  * C ref: dokick.c kickdmg — non-poly kick damage + passive.
- * special_dmgval / abuse_dog / monflee / hurtle deferred.
+ * special_dmgval(W_ARMF) D-1332 (`:56` before shade return, `:90` add).
+ * abuse_dog / monflee / martial knockback still named.
  */
 async function kickdmg(mon, clumsy) {
     let dmg = Math.trunc((acurrstr() + acurr(A_DEX) + acurr(A_CON)) / 15);
@@ -755,8 +760,8 @@ async function kickdmg(mon, clumsy) {
     if (thick_skinned(mon.data)) dmg = 0;
     if ((mon.data?.mndx ?? -1) === PM_SHADE) dmg = 0;
 
-    // special_dmgval deferred (0 when no blessed/silver boots wired)
-    const specialdmg = 0;
+    /* C dokick.c `:56` — blessed (or hypothetically silver) boots */
+    const specialdmg = special_dmgval(game.youmonst, mon, W_ARMF, null);
     if ((mon.data?.mndx ?? -1) === PM_SHADE && !specialdmg) {
         await pline(`The ${kick_passes_thru}.`);
         return;
@@ -792,10 +797,10 @@ async function kickdmg(mon, clumsy) {
 
 /**
  * C ref: dokick.c kick_monster — anger, encumbrance clumsiness, evade, kickdmg.
- * Poly AT_KICK loop / maybe_mnexto evade body / Levitation wild-miss named
- * omissions when those arms fire.
+ * Poly AT_KICK loop D-1310 (`Upolyd && attacktype(AT_KICK)` then return).
+ * maybe_mnexto evade body / Levitation wild-miss named when those arms fire.
  */
-async function kick_monster(mon, x, y) {
+export async function kick_monster(mon, x, y) {
     let clumsy = false;
     let goto_doit = false;
 
@@ -810,6 +815,8 @@ async function kick_monster(mon, x, y) {
         return;
     }
 
+    /* reveal hidden target even if kick ends up missing (note: being
+       hidden doesn't affect chance to hit so neither does this reveal) */
     if (mon.mundetected
         || (M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP_MONSTER)) {
         if (M_AP_TYPE(mon)) seemimic(mon);
@@ -820,7 +827,38 @@ async function kick_monster(mon, x, y) {
         await pline(`There is ${who} here.`);
     }
 
-    // Upolyd AT_KICK attacktype loop deferred — fall through to normal kick
+    // C dokick.c kick_monster `:183–223` — Upolyd AT_KICK then return
+    if (Upolyd(u) && attacktype_fordmg(game.youmonst?.data, AT_KICK, -1)) {
+        const attknum = { v: 0 };
+        const armorpenalty = { v: 0 };
+        const tmp = find_roll_to_hit(mon, AT_KICK, null, attknum, armorpenalty);
+        mon_maybe_unparalyze(mon);
+        const slots = game.youmonst?.data?.mattk;
+        for (let i = 0; i < NATTK; i++) {
+            /* first of two kicks might have provoked counterattack
+               that has incapacitated the hero (ie, floating eye) */
+            if ((game.multi | 0) < 0) break;
+            const uattk = slots?.[i];
+            if (!uattk || (uattk.aatyp | 0) !== AT_KICK) continue;
+
+            const kickdieroll = rnd(20);
+            const specialdmg = special_dmgval(game.youmonst, mon, W_ARMF, null);
+            if ((mon.data?.mndx ?? mon.mnum ?? -1) === PM_SHADE && !specialdmg) {
+                await pline(`Your ${kick_passes_thru} ${mon_nam(mon)}.`);
+                break; /* skip any additional kicks */
+            } else if (tmp > kickdieroll) {
+                await pline(`You kick ${mon_nam(mon)}.`);
+                const sum = await damageum(mon, uattk, specialdmg);
+                await passive(mon, u.uarmf, sum !== M_ATTK_MISS,
+                    !(sum & M_ATTK_DEF_DIED), AT_KICK, false);
+                if (sum & M_ATTK_DEF_DIED) break; /* Defender died */
+            } else {
+                await missum(mon, uattk, (tmp + armorpenalty.v > kickdieroll));
+                await passive(mon, u.uarmf, false, 1, AT_KICK, false);
+            }
+        }
+        return;
+    }
 
     const i = -inv_weight();
     const j = weight_cap();
@@ -1101,7 +1139,8 @@ async function kick_object(x, y, kickobjnam) {
  * grease/Mjollnir/blocker; Norep; obstructed-loose; Is_box impact/lock/lid;
  * hero_breaks; thump; split; slide; bhit KICKED_WEAPON; mon thitmonst/
  * ghitm; shop stolen_value; flooreffects; place+stack.
- * Named omit: snuff_candle; killer_xname polish (xname stand-in).
+ * Named omit: killer_xname polish (xname stand-in). Throwit land
+ * snuff is D-1333; mthrowu `:942` is D-1334.
  */
 async function really_kick_object(x, y) {
     const u = game.u || {};
@@ -1311,7 +1350,11 @@ async function really_kick_object(x, y) {
     }
 
     obj_extract_self(kicked);
-    // snuff_candle deferred
+    // C dokick.c really_kick_object :734 — candles/candelabrum, not snuff_lit
+    {
+        const { snuff_candle } = await import('./apply.js');
+        await snuff_candle(kicked);
+    }
     newsym(x, y);
 
     const { bhit } = await import('./zap.js');

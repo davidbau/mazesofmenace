@@ -27,7 +27,7 @@ import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
 import { SPBOOK_CLASS } from './objects.js';
-import { rnd, rn2, rn1 } from './rng.js';
+import { rnd, rn2, rn1, rnl } from './rng.js';
 import { morehungry, poison_strdmg } from './eat.js';
 import { zapyourself } from './zap.js';
 import { tele } from './teleport.js';
@@ -1019,6 +1019,37 @@ async function dospellmenu(prompt, splaction) {
             return { ok: false, splnum: hit.splnum };
         }
         // invalid → re-prompt
+    }
+}
+
+/**
+ * C ref: spell.c losespells `:1763–1827` — forget nzap known spells
+ * (memory 0, not unlist). Caller mhitu AD_DRIN (D-1329).
+ * nzap = rn2(n+1); Confusion takes the worse of two rolls; Luck
+ * `nzap>1 && !rnl(7)` then `rnd(nzap)`. Named: `#if 0` forget book.
+ */
+export function losespells() {
+    if (!game.context) game.context = {};
+    if (!game.context.spbook) game.context.spbook = {};
+    game.context.spbook.book = 0;
+    game.context.spbook.o_id = 0;
+    let n = 0;
+    for (; n < MAXSPELL; n++) {
+        if (spellid(n) === NO_SPELL) break;
+    }
+    let nzap = rn2(n + 1);
+    /* C youprop.h Confusion ≡ HConfusion */
+    if (game.u?.HConfusion) {
+        const i = rn2(n + 1);
+        if (i > nzap) nzap = i;
+    }
+    if (nzap > 1 && !rnl(7)) nzap = rnd(nzap);
+    for (let i = 0; nzap > 0; i++) {
+        if (rn2(n - i) < nzap) {
+            if (game.spl_book?.[i]) game.spl_book[i].sp_know = 0;
+            exercise(A_WIS, false);
+            nzap--;
+        }
     }
 }
 

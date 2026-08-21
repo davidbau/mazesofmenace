@@ -338,7 +338,9 @@ function helpless(mtmp) {
 /**
  * C ref: uhitm.c check_caitiff — knight chivalry / samurai giri.
  * Called once per multi-attack from find_roll_to_hit (!attk_count++).
- * Named omissions: dokick/apply callers (wired separately when needed).
+ * Named omissions: apply callers (wired separately when needed).
+ * dokick poly AT_KICK uses this via find_roll_to_hit (D-1310);
+ * kickdmg still calls check_caitiff itself.
  */
 export function check_caitiff(mtmp) {
     if (!mtmp) return;
@@ -357,11 +359,13 @@ export function check_caitiff(mtmp) {
 
 /**
  * C ref: uhitm.c find_roll_to_hit — to-hit threshold before rnd(20).
- * monk armor / encumbrance / trap penalties deferred when they do not
- * change RNG order for ordinary L1 melee.
- * weapon_hit_bonus from weapon.c (bare-hand unskilled = +1).
+ * dokick poly AT_KICK loop is a caller (D-1310).
+ * monk armor / encumbrance / trap / maybe_polyd(mlevel) deferred when
+ * they do not change RNG order for ordinary L1 melee.
+ * weapon_hit_bonus from weapon.c (bare-hand unskilled = +1; AT_KICK
+ * martial_bonus uses NULL weapon like C).
  */
-function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
+export function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
     role_roll_penalty.v = 0;
     const u = game.u || {};
     const luck = Luck();
@@ -379,9 +383,11 @@ function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
     if (mtmp.mflee) tmp += 2;
     if (mtmp.msleeping) tmp += 2;
     if (!mtmp.mcanmove) tmp += 4;
-    if (aatyp === AT_WEAP || aatyp === /* AT_CLAW */ 1) {
+    if (aatyp === AT_WEAP || aatyp === AT_CLAW) {
         if (weapon) tmp += hitval(weapon, mtmp);
         tmp += weapon_hit_bonus(weapon);
+    } else if (aatyp === AT_KICK && martial_bonus()) {
+        tmp += weapon_hit_bonus(null);
     }
     return tmp;
 }
@@ -909,8 +915,9 @@ export { hmon, passive_obj };
 
 /**
  * C ref: uhitm.c missum — near-miss armor pline, seduce pretend, miss/wakeup.
+ * dokick poly AT_KICK miss arm (D-1310).
  */
-async function missum(mdef, mattk, wouldhavehit) {
+export async function missum(mdef, mattk, wouldhavehit) {
     if (wouldhavehit) await pline('Your armor is rather cumbersome...');
     if (could_seduce(game.youmonst, mdef, mattk)) {
         await pline(`You pretend to be friendly to ${mon_nam(mdef)}.`);
@@ -1045,7 +1052,7 @@ async function m_slips_free(mdef, mattk) {
  * (D-1298). Headed: m_slips_free then helmet which_armor(W_ARMH)&&rn2(8)
  * then eat_brains (D-1306) then lifsav skipdrin if the amulet vanished.
  * Helmet/slip return without zeroing dice and without skipdrin.
- * mhitu (u_slip_free / uarmh) + mhitm arms named.
+ * mhitu u_slip_free/uarmh D-1329; mhitm arm D-1330 in mhitm.js.
  */
 async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
     const pd = mdef?.data;
@@ -1454,8 +1461,9 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
 
 /**
  * C ref: uhitm.c mon_maybe_unparalyze — rn2(10) thaw when !mcanmove.
+ * dokick poly AT_KICK loop calls this once before the NATTK walk (D-1310).
  */
-function mon_maybe_unparalyze(mtmp) {
+export function mon_maybe_unparalyze(mtmp) {
     if (!mtmp?.mcanmove) {
         if (!rn2(10)) {
             mtmp.mcanmove = 1;
@@ -2073,8 +2081,9 @@ export async function gulpum(mdef, mattk) {
  * originalweapon re-read + passivedone drop_uswapwep). skipdrin AT_TENT
  * AD_DRIN + pit AT_KICK D-1298 (`gs.skipdrin`; `mtrapped_in_pit`).
  * eat_brains D-1306 (uhitm headed). Helmet / m_slips_free / lifsav
- * skipdrin D-1307 (uhitm arm). Named: mhitu+mhitm AD_DRIN callers;
- * AD_WRAP m_slips_free; remaining mhitm_ad_*; mattacku AT_TENT melee.
+ * skipdrin D-1307 (uhitm arm). mattacku AT_TENT melee D-1309.
+ * mhitu AD_DRIN D-1329. mhitm AD_DRIN D-1330. Named: AD_WRAP
+ * m_slips_free; remaining mhitm_ad_*.
  */
 export async function hmonas(mon) {
     const u = game.u || {};

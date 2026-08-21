@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
 import { pline, urgent_pline, newsym, see_monsters } from './display.js';
 import { getlin } from './getline.js';
-import { an } from './objnam.js';
+import { an, set_body_part } from './objnam.js';
 import { pmname } from './do_name.js';
 import { name_to_mon, set_mon_data } from './mondata.js';
 import {
@@ -352,6 +352,7 @@ export function mbodypart(mon, part) {
 export function body_part(part) {
     return mbodypart(game.youmonst || {}, part);
 }
+set_body_part(body_part);
 
 /**
  * C ref: role.c character_race — races[] entry whose mnum matches.

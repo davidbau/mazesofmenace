@@ -398,15 +398,30 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
     await encumber_msg();
 }
 
+/** C youprop.h Fixed_abil — H || E FIXED_ABIL. */
+function Fixed_abil() {
+    const u = game.u || {};
+    return !!((u.HFixed_abil | 0) || (u.EFixed_abil | 0) || u.Fixed_abil);
+}
+
 /**
  * C ref: attrib.c adjattrib() — mutate ABASE/AMAX; You_feel when msgflg <= 0.
- * Fixed_abil / Dunce cap / verbose "already" messages deferred.
+ * Dunce cap INT/WIS abort (msgflg==0 constricts pline) live for mhitu
+ * AD_DRIN (D-1329). Verbose "already" messages still named.
  * @param {number} ndx
  * @param {number} incr
- * @param {number|boolean} [msgflg=1] positive => silent; <=0 => You_feel
+ * @param {number|boolean} [msgflg=1] positive => silent; zero => message
  */
 export async function adjattrib(ndx, incr, msgflg = 1) {
-    if (!incr) return false;
+    if (Fixed_abil() || !incr) return false;
+    const u = game.u || {};
+    if (((ndx | 0) === A_INT || (ndx | 0) === A_WIS)
+        && u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP) {
+        if ((msgflg | 0) === 0) {
+            await pline('Your cap constricts briefly, then relaxes again.');
+        }
+        return false;
+    }
     const old_acurr = acurr(ndx);
     const old = abase(ndx);
     setAbase(ndx, old + incr);

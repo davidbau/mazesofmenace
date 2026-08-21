@@ -74,7 +74,7 @@ import {
     MR_POISON, MR_ACID, is_undead, is_vampshifter, monsterNames, mons,
     G_UNIQ, is_rider, is_swimmer, mindless, MZ_MEDIUM,
 } from './monsters.js';
-import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham } from './mon.js';
+import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond } from './mon.js';
 import { find_mac, monkilled } from './mhitm.js';
 import { more_experienced } from './exper.js';
 import { obj_resists } from './dogmove.js';
@@ -100,7 +100,7 @@ import { newcham, makemon, monhp_per_lvl, neweshk, add_to_minv } from './makemon
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
 import { rehumanize } from './polyself.js';
-import { costly_alteration, stolen_value, costly_spot, shop_keeper } from './shk.js';
+import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit } from './shk.js';
 import { dryup } from './fountain.js';
 import { explode } from './explode.js';
 import { unpunish } from './read.js';
@@ -123,9 +123,10 @@ import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
     NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
     IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
-    DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH,
+    DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, DISP_TETHER,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
-    Has_contents, ZAPPED_WAND, THROWN_WEAPON, KICKED_WEAPON,
+    Has_contents, ZAPPED_WAND, THROWN_WEAPON, THROWN_TETHERED_WEAPON,
+    KICKED_WEAPON,
     FLASHED_LIGHT, INVIS_BEAM, NOTELL, TELL,
     STRAT_WAITMASK,
     POOL, MOAT, WATER, ICE, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP,
@@ -3039,6 +3040,11 @@ export async function bhitm(mtmp, otmp) {
 
     if (wake && (mtmp.mhp | 0) > 0) {
         await wakeup(mtmp, helpful_gesture ? false : true);
+        await m_respond(mtmp);
+        // C zap.c bhitm: isshk && !*u.ushops → hot_pursuit
+        if (mtmp.isshk && !((game.u?.ushops || '')[0])) {
+            hot_pursuit(mtmp);
+        }
     }
     void reveal_invis;
     if (learn_it) learnwand(otmp);
@@ -3549,14 +3555,16 @@ export async function bhitpile(wand, fhito, tx, ty, _zz) {
 }
 
 /**
- * C ref: zap.c bhit — ZAPPED_WAND + KICKED_WEAPON lateral paths.
+ * C ref: zap.c bhit — ZAPPED_WAND + KICKED_WEAPON + THROWN_TETHERED_WEAPON.
  * Branch envelope: kicked start+range--; WATERWALL/LAVAWALL stop;
- * hits_bars; mon stop; coin/ship_object; DISP_FLASH tmp_at +
- * nh_delay_output; pool/lava/sink stop.
- * Named omit: THROWN_WEAPON / FLASHED_LIGHT / INVIS_BEAM callers;
- * show_transient_light; shade_miss / M_AP_OBJECT skip; WEB stick rn2;
- * shkcatch pick; map_invisible / unmap_object; zap_map / doorlock;
- * returning_missile / tethered weapon; Hallucination rn2_on_display_rng.
+ * hits_bars; mon stop; coin/ship_object; DISP_FLASH / DISP_TETHER tmp_at
+ * + nh_delay_output; pool/lava/sink stop. THROWN_TETHERED remaps to
+ * THROWN_WEAPON after opening TETHER and leaves the cord open for the
+ * caller (`:3863–3866`, `:4023–4024`, `:4125–4127`; D-1323).
+ * Named omit: THROWN_WEAPON fly callers (throwit still inlines those);
+ * FLASHED_LIGHT DISP_BEAM / INVIS_BEAM; show_transient_light;
+ * shade_miss / M_AP_OBJECT skip; WEB stick rn2; shkcatch pick;
+ * map_invisible / unmap_object; zap_map / doorlock.
  * pobj is `{ obj }` — may set `.obj = null` when destroyed (kicked).
  */
 async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
@@ -3566,7 +3574,9 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
     let r = range | 0;
     let result = null;
     let point_blank = true;
-    const do_flash = weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM && !!obj;
+    let tethered_weapon = false;
+    let bhit_done = false;
+    const was_returning = (game.iflags?.returning_missile === obj) ? obj : null;
 
     // C: kicked object starts one square ahead; range--
     if (weapon === KICKED_WEAPON) {
@@ -3578,8 +3588,16 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
         bhitpos.y = game.u?.uy | 0;
     }
 
-    // C: tmp_at(DISP_FLASH, obj_to_glyph(...)) for thrown/kicked/flash
-    if (do_flash) tmp_at(DISP_FLASH, obj_glyph(obj));
+    // C zap.c bhit :3861–3868 — FLASHED_LIGHT DISP_BEAM named; tethered
+    // opens DISP_TETHER then weapon=THROWN_WEAPON so later ifs match.
+    if (weapon === THROWN_TETHERED_WEAPON && obj) {
+        tethered_weapon = true;
+        weapon = THROWN_WEAPON;
+        tmp_at(DISP_TETHER, obj_glyph(obj));
+    } else if (weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM && obj) {
+        tmp_at(DISP_FLASH, obj_glyph(obj));
+    }
+    const do_flash = weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM && !!obj;
 
     try {
         while (r-- > 0) {
@@ -3628,9 +3646,12 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
                     r -= 3;
                 } else if (weapon !== FLASHED_LIGHT && weapon !== INVIS_BEAM) {
                     // THROWN_WEAPON / KICKED_WEAPON — stop on monster
+                    // C :4023–4024 — tethered leaves DISP_TETHER open
+                    if (!tethered_weapon) tmp_at(DISP_END, 0);
                     game.notonhead = ((x | 0) !== (mtmp.mx | 0)
                         || (y | 0) !== (mtmp.my | 0));
                     result = mtmp;
+                    bhit_done = true;
                     break;
                 }
             }
@@ -3678,7 +3699,15 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
             point_blank = false;
         }
     } finally {
-        if (do_flash) tmp_at(DISP_END, 0);
+        // C :4125–4127 — skip END when tethered unless returning_missile
+        // was cleared mid-flight (WEB stick named). Monster hit already
+        // ENDed non-tethered via goto bhit_done. Gate on do_flash so a
+        // ZAPPED_WAND / empty FLASHED_LIGHT does not close a leftover tmp.
+        if (!bhit_done && do_flash) {
+            const returning_cleared = !!(was_returning
+                && was_returning !== game.iflags?.returning_missile);
+            if (!tethered_weapon || returning_cleared) tmp_at(DISP_END, 0);
+        }
     }
     return result;
 }

@@ -1,5 +1,6 @@
 // mon.js — Monster metabolism / movement allotment.
-// C ref: mon.c — mcalcmove, movemon, seemimic, wakeup, mon_allowflags (partial).
+// C ref: mon.c — mcalcmove, movemon, seemimic, wakeup, m_respond,
+//         mon_allowflags (partial).
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
@@ -21,6 +22,7 @@ import {
     MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
     has_emin, has_epri, has_eshk,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
+    NO_MM_FLAGS, NATTK,
 } from './const.js';
 import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain } from './trap.js';
 import {
@@ -35,6 +37,7 @@ import {
     is_elf, is_dwarf, is_undead, amphibious, can_teleport, MR_FIRE,
     MR_POISON, mindless, G_UNIQ, is_watch,
     touch_petrifies, flesh_petrifies, slimeproof, resists_ston, vegan,
+    montoostrong, monmax_difficulty,
 } from './monsters.js';
 import {
     little_to_big, big_to_little, hero_conflict, resist_conflict,
@@ -52,7 +55,7 @@ import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele } from './teleport.js';
 import { may_dig } from './dig.js';
 import { newsym, pline, pline_mon, You_feel, sensemon, canseemon, canspotmon } from './display.js';
-import { online2 } from './hacklib.js';
+import { online2, level_difficulty } from './hacklib.js';
 import { worm_cross } from './worm.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { cansee, couldsee } from './vision.js';
@@ -60,9 +63,12 @@ import { fightm, mondead, mondied } from './mhitm.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
-import { set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd, newemin, newepri, mpickobj } from './makemon.js';
+import {
+    set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd,
+    newemin, newepri, mpickobj, makemon, makemon_appear_msg,
+} from './makemon.js';
 import { in_your_sanctuary, p_coaligned } from './priest.js';
-import { in_rooms, is_pool, is_lava, disturb_buried_zombies } from './hack.js';
+import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special } from './worn.js';
 import { adjalign } from './attrib.js';
@@ -78,6 +84,14 @@ const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
+const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
+const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
+const PM_PURPLE_WORM = monsterNames.indexOf('PM_PURPLE_WORM');
+const PM_BABY_PURPLE_WORM = monsterNames.indexOf('PM_BABY_PURPLE_WORM');
+/** C monflag.h MS_SHRIEK — wakes up others. */
+const MS_SHRIEK = 18;
+/** C monattk.h AT_GAZE. */
+const AT_GAZE = 15;
 const PM_AIR_ELEMENTAL = monsterNames.indexOf('PM_AIR_ELEMENTAL');
 const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
 const PM_EARTH_ELEMENTAL = monsterNames.indexOf('PM_EARTH_ELEMENTAL');
@@ -951,6 +965,89 @@ export function setmangry(mtmp, via_attack) {
         pline(`${Monnam(mtmp)} gets angry!`);
     }
     // growl / qst_guardians_respond / peacefuls_respond deferred
+}
+
+/** C youprop.h Deaf — H||E||uroleplay.deaf (plus u.Deaf flag). */
+function Deaf_respond() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+}
+
+/** C apply.c um_dist — TRUE when Chebyshev dist to hero > n. */
+function um_dist(x, y, n) {
+    const u = game.u || {};
+    return Math.abs((u.ux | 0) - (x | 0)) > (n | 0)
+        || Math.abs((u.uy | 0) - (y | 0)) > (n | 0);
+}
+
+/** C monst.h: monmax_difficulty(level_difficulty()) — u.ulevel is inside. */
+function monmax_difficulty_lev() {
+    return monmax_difficulty(level_difficulty(), game.u?.ulevel | 0);
+}
+
+/**
+ * C mon.c m_respond_shrieker — pline/stop_occupation if !Deaf; 1/10
+ * makemon (1/13 purple worm vs random); always aggravate.
+ */
+async function m_respond_shrieker(mtmp) {
+    if (!Deaf_respond()) {
+        await pline(`${Monnam(mtmp)} shrieks.`);
+        await stop_occupation();
+    }
+    if (!rn2(10)) {
+        // C: rn2(13) ? NULL : purple/baby via montoostrong(monmax_difficulty_lev)
+        const mdat = rn2(13)
+            ? null
+            : mons(montoostrong(PM_PURPLE_WORM, monmax_difficulty_lev())
+                ? PM_BABY_PURPLE_WORM : PM_PURPLE_WORM);
+        const summoned = makemon(mdat, 0, 0, NO_MM_FLAGS);
+        if (summoned) {
+            await makemon_appear_msg(
+                summoned, summoned.mx | 0, summoned.my | 0, NO_MM_FLAGS,
+            );
+        }
+    }
+    // wizard.js imports mnexto from this file — dynamic to avoid a cycle
+    const { aggravate } = await import('./wizard.js');
+    aggravate();
+}
+
+/**
+ * C mon.c m_respond_medusa — first AT_GAZE slot → gazemu (D-1328).
+ */
+async function m_respond_medusa(mtmp) {
+    const atks = mtmp.data?.mattk || [];
+    for (let i = 0; i < NATTK; i++) {
+        if ((atks[i]?.aatyp | 0) === AT_GAZE) {
+            const { gazemu } = await import('./mhitu.js');
+            await gazemu(mtmp, atks[i]);
+            break;
+        }
+    }
+}
+
+/**
+ * C mon.c m_respond — monster responds to player action (not passive).
+ * Callers: monmove.c dochug; zap.c boomhit / bhitm.
+ * Named omit: qst_guardians_respond / peacefuls_respond (setmangry).
+ * Compare mndx, not mons() identity (D-0928).
+ */
+export async function m_respond(mtmp) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    if ((mtmp.data?.msound | 0) === MS_SHRIEK
+        && !um_dist(mtmp.mx, mtmp.my, 1)) {
+        await m_respond_shrieker(mtmp);
+    }
+    if ((mtmp.data?.mndx | 0) === PM_MEDUSA
+        && couldsee(mtmp.mx, mtmp.my)) {
+        await m_respond_medusa(mtmp);
+    }
+    // Erinyes will inform surrounding monsters of your crimes
+    if ((mtmp.data?.mndx | 0) === PM_ERINYS
+        && !mtmp.mpeaceful && m_canseeu(mtmp)) {
+        const { aggravate } = await import('./wizard.js');
+        aggravate();
+    }
 }
 
 /**

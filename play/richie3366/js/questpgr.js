@@ -493,6 +493,8 @@ Look for a ...ic transporter.
 You couldn't quite make out that last message.`,
     quest_portal_again: 'You again sense %l pleading for help.',
     quest_portal_demand: 'You again sense %l demanding your attendance.',
+    quest_complete_no_bell: `"The silver bell which was hoarded by %n will be
+essential in locating the Amulet of Yendor."`,
 };
 
 /**
@@ -528,7 +530,8 @@ async function deliver_quest_text(raw) {
 /**
  * C ref: questpgr.c com_pager(msgid) → com_pager_core("common", …).
  * nhl_init shuffle then common questtext (quest_portal*).
- * Named omissions: other common msgids; menu output; array rn2 picks.
+ * Named omissions: other common msgids (portal again/demand live;
+ * quest_complete_no_bell D-1312); menu output; array rn2 picks.
  */
 export async function com_pager(msgid) {
     nhl_nhlib_align_shuffle();

@@ -29,7 +29,7 @@ import {
     LOW_PM, SPECIAL_PM,
 } from './monsters.js';
 import { getlin } from './getline.js';
-import { an, xname, simpleonames, set_y_monnam } from './objnam.js';
+import { an, xname, simpleonames, set_y_monnam, set_noit_mon_nam } from './objnam.js';
 import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
@@ -663,6 +663,8 @@ export function noit_mon_nam(mtmp) {
     const sad = saddle_adj(mtmp);
     return `${article_the_prefix(mtmp, !!sad)}${sad}${mon_plain_name(mtmp)}`;
 }
+
+set_noit_mon_nam(noit_mon_nam);
 
 /**
  * C ref: do_name.c oname — assign name; may create artifact via artifact_exists.

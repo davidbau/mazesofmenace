@@ -33,7 +33,7 @@ import {
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import {
     W_ARMOR, W_AMUL, W_RING, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
-    W_BALL, W_CHAIN,
+    W_BALL, W_CHAIN, W_TOOL, W_SADDLE,
     Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
     P_DART, P_BOOMERANG,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
@@ -42,10 +42,13 @@ import {
     CXN_NORMAL, CXN_SINGULAR, CXN_NO_PFX, CXN_PFX_THE, CXN_ARTICLE,
     CXN_NOCORPSE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
+    BURN_OBJECT, HAND, RIGHT_HANDED,
 } from './const.js';
 
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 const BOULDER = objectNames.indexOf('BOULDER');
+const POT_OIL = objectNames.indexOf('POT_OIL');
+const AKLYS = objectNames.indexOf('AKLYS');
 
 /** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky u.Blind). */
 function Blind() {
@@ -160,6 +163,26 @@ const MAT_GLASS = 19;
 /** C ref: objclass.h is_rustprone — iron material. */
 function is_rustprone_obj(obj) {
     return (game.objects?.[obj.otyp]?.oc_material ?? 0) === MAT_IRON;
+}
+
+/** C ref: obj.h Is_candle — local copy (objnam↔timeout cycle). */
+function Is_candle_obj(obj) {
+    const n = objectNames[obj?.otyp];
+    return n === 'TALLOW_CANDLE' || n === 'WAX_CANDLE';
+}
+
+/**
+ * C ref: timeout.c peek_timer(BURN_OBJECT) — absolute timeout, or 0.
+ * Local walk of game._timer_base (objnam↔mkobj cycle).
+ */
+function peek_burn_object(obj) {
+    if (!obj) return 0;
+    for (let curr = game._timer_base; curr; curr = curr.next) {
+        if ((curr.action | 0) === BURN_OBJECT && curr.obj === obj) {
+            return curr.timeout | 0;
+        }
+    }
+    return 0;
 }
 
 /** C ref: mkobj.c is_flammable — local copy (objnam↔mkobj cycle). */
@@ -830,7 +853,6 @@ function obj_pmname_corpse(obj) {
  * C ref: objnam.c corpse_xname — unique/pname possessive + adjective
  * placement (D-1234); glob OBJ_NAME (D-1255). CXN_SINGULAR / NO_PFX /
  * PFX_THE / ARTICLE / NOCORPSE.
- * Named omit: doname candle partly used.
  */
 export function corpse_xname(obj, adjective, cxn_flags) {
     const flags = cxn_flags | 0;
@@ -1299,6 +1321,30 @@ export function set_y_monnam(fn) {
 }
 
 /**
+ * Late-bound from do_name.js — C objnam.c doname LEASH uses noit_mon_nam.
+ * Same cycle as y_monnam.
+ */
+let _noit_mon_nam = null;
+export function set_noit_mon_nam(fn) {
+    _noit_mon_nam = fn;
+}
+
+/**
+ * Late-bound from polyself.js — C objnam.c doname_base body_part(HAND).
+ * Avoids static objnam↔polyself cycle (polyself already imports an).
+ * Unset → C mbodypart null-data humanoid "hand".
+ */
+let _body_part = null;
+export function set_body_part(fn) {
+    _body_part = fn;
+}
+
+/** C polyself.c body_part(HAND) via doname_base W_WEP / W_SWAPWEP / RING. */
+function doname_hand() {
+    return _body_part ? _body_part(HAND) : 'hand';
+}
+
+/**
  * C ref: objnam.c the_unique_obj — "the unique_item" vs "a unique_item".
  * Named omissions: iflags.override_ID ID-reveal paths.
  */
@@ -1628,8 +1674,15 @@ export function doname(obj) {
     // CORPSE → corpse_xname(prefix, CXN_ARTICLE|CXN_NOCORPSE) so unique/
     // pname adjectives sit after the possessive (D-1255). EGG →
     // pmnames[NEUTRAL] + optional "(laid by you)" (D-1276). MEAT_RING
-    // goto ring worn/+spe (D-1295). Candle partly used still named.
+    // goto ring worn/+spe (D-1295). TOOL candle partly used / lamp (lit)
+    // (D-1308). Candelabrum (n of 7) D-1317. W_TOOL|W_SADDLE worn D-1318.
+    // LEASH attached D-1319. POT_OIL (lit) D-1320.
     const isMeatRing = oname === 'MEAT_RING';
+    const isCandelabrum = donameClass === TOOL_CLASS
+        && oname === 'CANDELABRUM_OF_INVOCATION';
+    const isLampOrCandle = donameClass === TOOL_CLASS
+        && (oname === 'OIL_LAMP' || oname === 'MAGIC_LAMP'
+            || oname === 'BRASS_LANTERN' || Is_candle_obj(obj));
     let eggLaidByYou = false;
     if (donameClass === FOOD_CLASS && obj.oeaten) {
         prefix += 'partly eaten ';
@@ -1654,6 +1707,21 @@ export function doname(obj) {
             const spe = obj.spe | 0;
             prefix += (spe >= 0 ? `+${spe} ` : `${spe} `);
         }
+    }
+    // C doname_base TOOL_CLASS OIL_LAMP/MAGIC_LAMP/BRASS_LANTERN/Is_candle
+    // (objnam.c:1455–1478): candle turns_left = age, lit → += peek_timer
+    // (BURN_OBJECT) − moves; turns_left < 20*oc_cost → "partly used ".
+    // Then (lit) on bp after prefix+base. Candelabrum is the prior if
+    // (objnam.c:1447–1454) and breaks before this arm. Worn W_TOOL|W_SADDLE
+    // then LEASH leashmon (D-1319) break before candelabrum/lamp/charges.
+    // POTION POT_OIL (lit) is a later class arm (D-1320).
+    if (Is_candle_obj(obj) && donameClass === TOOL_CLASS) {
+        const full_burn_time = 20 * (game.objects?.[otyp]?.oc_cost | 0);
+        let turns_left = obj.age | 0;
+        if (obj.lamplit) {
+            turns_left += peek_burn_object(obj) - (game.moves | 0);
+        }
+        if (turns_left < full_burn_time) prefix += 'partly used ';
     }
 
     // C ref: objnam.c — redo article based on text after "a "
@@ -1681,33 +1749,86 @@ export function doname(obj) {
         for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) itemcount += 1;
         bp += ` containing ${itemcount} item${itemcount !== 1 ? 's' : ''}`;
     }
+    // C doname_base TOOL_CLASS W_TOOL|W_SADDLE (objnam.c:1427–1429):
+    // Concat " (being worn)" then break — skips leash, candelabrum,
+    // lamp/candle, and charges. ublindf (blindfold/towel/lenses) and
+    // monster saddle share this mask. Weptools remap to WEAPON_CLASS.
+    const toolWorn = donameClass === TOOL_CLASS
+        && ((obj.owornmask | 0) & (W_TOOL | W_SADDLE)) !== 0;
+    if (toolWorn) bp += ' (being worn)';
+    // C doname_base TOOL LEASH (objnam.c:1431–1445): after worn, before
+    // candelabrum. find_mid(leashmon, FM_FMON) skips DEADMONSTER
+    // (light.c); live → Concat " (attached to %s)" noit_mon_nam;
+    // else impossible + leashmon=0. Always break (skips candelabrum /
+    // lamp / charges). doname is sync so impossible() pline is named.
+    const leashArm = donameClass === TOOL_CLASS
+        && oname === 'LEASH'
+        && (obj.leashmon | 0) !== 0
+        && !toolWorn;
+    if (leashArm) {
+        const nid = obj.leashmon | 0;
+        let mlsh = null;
+        for (const m of game.fmon || []) {
+            if ((m.mhp | 0) < 1) continue; // C find_mid FM_FMON
+            if ((m.m_id | 0) === nid) {
+                mlsh = m;
+                break;
+            }
+        }
+        if (mlsh && (mlsh.mhp | 0) >= 1) {
+            const nam = _noit_mon_nam ? _noit_mon_nam(mlsh) : 'it';
+            bp += ` (attached to ${nam})`;
+        } else {
+            obj.leashmon = 0;
+        }
+    }
+    // C doname_base TOOL CANDELABRUM_OF_INVOCATION (objnam.c:1447–1454):
+    // suffix = plur(spe) + (!lamplit ? " attached" : ", lit"); then
+    // Concat " (%d of 7 candle%s)" and break (no lamp (lit), no charges).
+    if (isCandelabrum && !toolWorn && !leashArm) {
+        const spe = obj.spe | 0;
+        const plurS = spe === 1 ? '' : 's';
+        const litOrAtt = obj.lamplit ? ', lit' : ' attached';
+        bp += ` (${spe} of 7 candle${plurS}${litOrAtt})`;
+    }
+    // C doname_base TOOL lamp/candle Concat " (lit)" (objnam.c:1476–1477).
+    if (isLampOrCandle && obj.lamplit && !toolWorn && !leashArm) bp += ' (lit)';
+    // C doname_base POTION_CLASS (objnam.c:1488–1491): otyp==POT_OIL &&
+    // lamplit → Concat " (lit)". No known/dknown gate. xname stays bare.
+    // Post-switch W_WEP/W_QUIVER suffixes still follow (C after the switch).
+    if (donameClass === POTION_CLASS && (obj.otyp | 0) === POT_OIL
+        && obj.lamplit) {
+        bp += ' (lit)';
+    }
 
     if (oclass === ARMOR_CLASS && (obj.owornmask & W_ARMOR))
         bp += ' (being worn)';
     if (obj.owornmask & W_AMUL)
         bp += ' (being worn)';
     // C doname_base RING_CLASS ring: + FOOD MEAT_RING goto ring —
-    // " (on right " / " (on left " then body_part(HAND) + ")".
-    // Humanoid default is "hand"; full mbodypart poly variants named
-    // (same as W_WEP hardcoded hands).
+    // " (on right " / " (on left " then body_part(HAND) + ")" (objnam.c:1492–1499).
     if (donameClass === RING_CLASS || isMeatRing) {
         if (obj.owornmask & W_RINGR)
             bp += ' (on right ';
         if (obj.owornmask & W_RINGL)
             bp += ' (on left ';
         if (obj.owornmask & W_RING)
-            bp += 'hand)';
+            bp += `${doname_hand()})`;
     }
     // C ref: objnam.c doname_base BALL_CLASS/CHAIN_CLASS —
     // W_BALL → "(chained to you)"; W_CHAIN → "(attached to you)".
     if (obj.owornmask & (W_BALL | W_CHAIN)) {
         bp += ` (${(obj.owornmask & W_BALL) ? 'chained' : 'attached'} to you)`;
     }
-    // C ref: objnam.c doname_base W_WEP — stack/ammo/missile/non-weptool →
-    // "(wielded)"; else "weapon in"/"wielded in" hand(s). mrg_to_wielded,
-    // AKLYS tethered, warn_obj/artifact_light paren rewrite deferred.
-    if (obj.owornmask & W_WEP) {
+    // C ref: objnam.c doname_base W_WEP (objnam.c:1561–1595) — skip when
+    // gm.mrg_to_wielded (pickup.c pickup_prinv merge into uwep). Stack/ammo/
+    // missile/non-weptool → "(wielded)"; else ConcatF2 " (%s %s)" how-arm
+    // tethered? "tethered to" : twoweap_primary? "wielded in" : "weapon in"
+    // + body_part(HAND) (bimanual makeplural; else URIGHTY right/left).
+    // Named omit: warn_obj / artifact_light overwrite closing paren :1599–1609.
+    if ((obj.owornmask & W_WEP) && !game.mrg_to_wielded) {
         const twoweap_primary = !!(obj === game.u?.uwep && game.u?.twoweap);
+        const tethered = (obj.otyp | 0) === AKLYS;
         const alt_wielded = (quan !== 1
             || ((oclass === WEAPON_CLASS)
                 ? (is_ammo_obj(obj) || is_missile_obj(obj))
@@ -1716,21 +1837,25 @@ export function doname(obj) {
         if (alt_wielded) {
             bp += ' (wielded)';
         } else {
-            const right = (game.u?.uhandedness !== 1); // LEFT_HANDED=1
+            let hand_s = doname_hand();
             if (bimanual(obj)) {
-                bp += ' (weapon in hands)';
-            } else if (twoweap_primary) {
-                bp += ` (wielded in ${right ? 'right' : 'left'} hand)`;
+                hand_s = makeplural(hand_s);
             } else {
-                bp += ` (weapon in ${right ? 'right' : 'left'} hand)`;
+                const urighty = ((game.u?.uhandedness | 0) === RIGHT_HANDED);
+                hand_s = `${urighty ? 'right' : 'left'} ${hand_s}`;
             }
+            const how = tethered ? 'tethered to'
+                : twoweap_primary ? 'wielded in'
+                    : 'weapon in';
+            bp += ` (${how} ${hand_s})`;
         }
     }
-    // C: W_SWAPWEP, !twoweap → "(alternate weapon(s); not wielded)"
+    // C: W_SWAPWEP twoweap → "wielded in" opposite URIGHTY + body_part(HAND)
+    // (objnam.c:1613–1616); else "(alternate weapon(s); not wielded)".
     if (obj.owornmask & W_SWAPWEP) {
         if (game.u?.twoweap) {
-            const right = (game.u?.uhandedness !== 1);
-            bp += ` (wielded in ${right ? 'left' : 'right'} hand)`;
+            const urighty = ((game.u?.uhandedness | 0) === RIGHT_HANDED);
+            bp += ` (wielded in ${urighty ? 'left' : 'right'} ${doname_hand()})`;
         } else {
             bp += ` (alternate weapon${quan === 1 ? '' : 's'}; not wielded)`;
         }
@@ -1754,8 +1879,11 @@ export function doname(obj) {
                 : 'at the ready'})`;
     }
 
-    // C TOOL_CLASS charges — weptools remapped to WEAPON so they get +spe
-    if (known && is_charged_otyp(otyp) && donameClass === TOOL_CLASS)
+    // C TOOL_CLASS charges — weptools remapped to WEAPON so they get +spe.
+    // Worn / leash / lamp/candle / candelabrum arms break before charges
+    // (objnam.c:1429/1445/1454/1478).
+    if (known && is_charged_otyp(otyp) && donameClass === TOOL_CLASS
+        && !isLampOrCandle && !isCandelabrum && !toolWorn && !leashArm)
         bp += ` (${obj.recharged | 0}:${obj.spe | 0})`;
     // C ref: objnam.c WAND_CLASS → charges
     if (known && donameClass === WAND_CLASS)

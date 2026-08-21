@@ -2,23 +2,32 @@
 // C ref: quest.c onquest / on_start / on_locate / on_goal /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
 // Named omissions: locate_next beyond Bar/Arc/Pri/Wiz; chat_with_nemesis/guardian;
-// prisoner_speaks; finish_quest; got_thanks/questart arms; banished
+// prisoner_speaks; chat_with_leader got_thanks/questart/banished arms;
 // com_pager; livelog; exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
 // nexttime/othertime: Arc+Bar+Pri; goal_first/next: Arc+Bar+Pri+Kni
 // (other-role goal_* still burn nhl shuffle only when text missing).
+// finish_quest throw/kick catch is D-1312; offeredit/hasamulet/offeredit2
+// qt_pager bodies still named (shuffle live).
 
 import { game } from './gstate.js';
 import {
     In_quest, MIN_QUEST_ALIGN, MIN_QUEST_LEVEL,
     UTOTYPE_NONE, UTOTYPE_PORTAL, STRAT_WAITMASK,
-    OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED,
+    OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, DEAF,
 } from './const.js';
-import { qt_pager } from './questpgr.js';
-import { pline } from './display.js';
+import { qt_pager, com_pager } from './questpgr.js';
+import { pline, verbalize } from './display.js';
 import { yn_function } from './getline.js';
 import { nomul } from './hack.js';
 import { exercise, A_WIS } from './attrib.js';
+import { fully_identify_obj, update_inventory } from './invent.js';
+import { the, xname } from './objnam.js';
+import { objectNames } from './objects.js';
+
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 
 /** C ref: dungeon.c on_level */
 function on_level(a, b) {
@@ -250,6 +259,77 @@ async function expulsion(seal) {
     // Lazy import — avoid quest.js ↔ do.js cycle (do.js imports onquest)
     const { schedule_goto } = await import('./do.js');
     schedule_goto(dest, portal_flag, null, null);
+}
+
+/** C ref: questpgr.c is_quest_artifact — oartifact == urole.questarti. */
+function is_quest_artifact(obj) {
+    const want = game.urole?.questarti | 0;
+    return want !== 0 && (obj?.oartifact | 0) === want;
+}
+
+/** C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf. */
+function Deaf() {
+    const u = game.u || {};
+    const prop = u.uprops?.[DEAF];
+    return !!((prop?.intrinsic | 0) || (prop?.extrinsic | 0)
+        || u.uroleplay?.deaf);
+}
+
+/** C invent.c carrying — first matching otyp in invent. */
+function carrying(otyp) {
+    if (otyp < 0) return null;
+    for (const otmp of game.invent || []) {
+        if ((otmp.otyp | 0) === otyp) return otmp;
+    }
+    return null;
+}
+
+/**
+ * C ref: quest.c finish_quest — throw/kick catch or walk-up with the
+ * quest artifact / unique / fake AoY. offeredit/hasamulet/offeredit2
+ * qt_pager bodies still named (nhl shuffle live). chat_with_leader
+ * got_thanks/questart callers still named.
+ */
+export async function finish_quest(obj) {
+    const u = game.u || {};
+    const qs = game.quest_status || (game.quest_status = {});
+
+    if (obj && !is_quest_artifact(obj)) {
+        if (Deaf()) return;
+        fully_identify_obj(obj);
+        if ((obj.otyp | 0) === AMULET_OF_YENDOR) {
+            await qt_pager('hasamulet');
+        } else if ((obj.otyp | 0) === FAKE_AMULET_OF_YENDOR) {
+            await verbalize(
+                'Sorry to say, this is a mere imitation of the true Amulet of Yendor.',
+            );
+        } else {
+            await verbalize(`Ah, I see you've found ${the(xname(obj))}.`);
+        }
+        return;
+    }
+
+    if (u.uhave?.amulet || u.uhave_amulet) {
+        await qt_pager('hasamulet');
+        const otmp = carrying(AMULET_OF_YENDOR);
+        if (otmp) {
+            fully_identify_obj(otmp);
+            update_inventory();
+        }
+    } else {
+        await qt_pager(!qs.got_thanks ? 'offeredit' : 'offeredit2');
+        if (!carrying(BELL_OF_OPENING)) {
+            await com_pager('quest_complete_no_bell');
+        }
+    }
+    qs.got_thanks = true;
+
+    if (obj) {
+        if (!u.uevent) u.uevent = {};
+        u.uevent.qcompleted = 1;
+        fully_identify_obj(obj);
+        update_inventory();
+    }
 }
 
 /**

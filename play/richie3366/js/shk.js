@@ -510,7 +510,7 @@ function IS_SHOP(roomIdx) {
  * C ref: shk.c inside_shop — roomno char, or NO_ROOM if not in shop proper.
  * Truthy when in a shop (callers use as boolean or shop_keeper arg).
  */
-function inside_shop(x, y) {
+export function inside_shop(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return NO_ROOM;
     let rno = loc.roomno | 0;

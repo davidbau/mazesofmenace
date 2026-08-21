@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, newsym, mark_topline_seen,
-    canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph,
+    canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -14,7 +14,7 @@ import {
 } from './mkobj.js';
 import {
     losehp, maybe_half_phys, nomul, impact_disturbs_zombies, finish_maybe_wail,
-    switch_terrain,
+    switch_terrain, in_rooms,
 } from './hack.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
@@ -36,8 +36,10 @@ import {
     HURTLING, FORCEBUNGLE, IRONBARS, Upolyd, FACE, HEAD, ARM, FOOT, STONING,
     TIMEOUT, WT_TO_DMG, POTHIT_HERO_THROW, Has_contents, NON_PM, LOW_PM,
     W_WEP, W_SWAPWEP, W_QUIVER, STR19, LOST_NONE, SLT_ENCUMBER, Is_airlevel,
+    BOLT_LIM, AKLYS_LIM, HAND, THROWN_TETHERED_WEAPON,
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
-    DISP_FLASH, DISP_CHANGE, DISP_END, ECMD_TIME,
+    DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK, ECMD_TIME,
+    DEAF, SHOPBASE,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
@@ -45,9 +47,11 @@ import {
     ammo_and_launcher, is_ammo, is_missile, doswapweapon, doquiver_core, welded,
     setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
-import { acurr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
-import { calc_capacity } from './invent.js';
-import { add_to_minv } from './makemon.js';
+import { acurr, acurrstr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
+import { calc_capacity, fully_identify_obj, encumber_msg } from './invent.js';
+import { add_to_minv, mpickobj } from './makemon.js';
+import { finish_quest } from './quest.js';
+import { align_gname } from './roles.js';
 import { find_mac } from './mhitm.js';
 import { digests } from './mhitu.js';
 import { hitval, weapon_hit_bonus, should_mulch_missile, dmgval } from './weapon.js';
@@ -62,11 +66,11 @@ import {
 import {
     xname, singular, an, the, vtense, doname, thesimpleoname, makeplural,
 } from './objnam.js';
-import { m_at, wakeup, seemimic, wake_nearto, distmin } from './mon.js';
+import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond } from './mon.js';
 import { mon_nam, Monnam, hliquid, Hallucination } from './do_name.js';
 import {
     is_domestic, nohands, M1_NOTAKE, MZ_HUGE, MZ_MEDIUM,
-    is_unicorn, is_orc, is_elf, your_race,
+    is_unicorn, is_orc, is_elf, your_race, is_animal, is_whirly,
     touch_petrifies, poly_when_stoned, hates_silver, mon_hates_blessings,
     haseyes, passes_walls, unsolid, mons,
 } from './monsters.js';
@@ -77,6 +81,7 @@ import { body_part, polymon } from './polyself.js';
 import { goodpos, rloc_to } from './teleport.js';
 import {
     mintrap, t_at, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
+    minstapetrify,
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
 
@@ -106,6 +111,7 @@ const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
 const LEATHER_GLOVES = objectNames.indexOf('LEATHER_GLOVES');
 const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const CORPSE = objectNames.indexOf('CORPSE');
 const SLING = objectNames.indexOf('SLING');
 const EUCALYPTUS_LEAF = objectNames.indexOf('EUCALYPTUS_LEAF');
@@ -216,11 +222,40 @@ function AutoReturn(o, wmsk) {
 
 /**
  * C weapon.c autoreturn_weapon — AKLYS only (boomerang row commented out).
- * throwit uses arw->tethered && W_WEP; range/isqrt named with DISP_TETHER.
+ * throwit uses arw->tethered && W_WEP (D-1311 DISP_TETHER/BACKTRACK).
+ * arw->range is AKLYS_LIM²; throwit min(range, isqrt(arw->range)) D-1323.
  */
 function autoreturn_weapon(otmp) {
     if (!otmp || (otmp.otyp | 0) !== AKLYS) return null;
-    return { otyp: AKLYS, tethered: 1 };
+    return { otyp: AKLYS, range: AKLYS_LIM * AKLYS_LIM, tethered: 1 };
+}
+
+/** C hacklib.c isqrt — integer square root (odd-subtraction). */
+function isqrt(val) {
+    let rt = 0;
+    let odd = 1;
+    let v = val | 0;
+    while (v >= odd) {
+        v -= odd;
+        odd += 2;
+        rt++;
+    }
+    return rt;
+}
+
+/** C dothrow.c throwit :1523 — arw->tethered && (wep_mask & W_WEP). */
+function throwit_tethered_weapon(obj, wep_mask) {
+    const arw = autoreturn_weapon(obj);
+    return !!(arw && arw.tethered && ((wep_mask | 0) & W_WEP) !== 0);
+}
+
+/**
+ * C dothrow.c throwit tmp_at(DISP_END, BACKTRACK|0) when tethered.
+ * BACKTRACK returns a Promise (display.c delays inside tmp_at).
+ */
+async function throwit_tether_end(tethered_weapon, backtrack) {
+    if (!tethered_weapon) return;
+    await tmp_at(DISP_END, backtrack ? BACKTRACK : 0);
 }
 
 /**
@@ -525,7 +560,7 @@ function is_quest_artifact(obj) {
 
 /**
  * C ref: dothrow.c special_obj_hits_leader — quest artifact / unique /
- * unknown fake Amulet vs quest leader. Body (catch / finish_quest) deferred.
+ * unknown fake Amulet vs quest leader. Catch / finish_quest is D-1312.
  */
 export function special_obj_hits_leader(obj, mon) {
     const unique = !!(game.objects?.[obj.otyp]?.oc_unique);
@@ -535,14 +570,32 @@ export function special_obj_hits_leader(obj, mon) {
     return !!lid && (mon.m_id | 0) === lid;
 }
 
+/** C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf. */
+function Deaf_youprop() {
+    const u = game.u || {};
+    const prop = u.uprops?.[DEAF];
+    return !!((prop?.intrinsic | 0) || (prop?.extrinsic | 0)
+        || u.uroleplay?.deaf);
+}
+
+/**
+ * C do_name.c Some_Monnam — highc(some_mon_nam). AUGMENT_IT in x_monnam
+ * is still named; visible → Monnam, else Someone/Something.
+ */
+function Some_Monnam(mtmp) {
+    if (canspotmon(mtmp)) return Monnam(mtmp);
+    return is_animal(mtmp?.data) ? 'Something' : 'Someone';
+}
+
 /**
  * C ref: dothrow.c thitmonst — mon-hit after bhit / use_pole / kick.
  * Ported: tmp (Luck/DEX/distmin/bow-gloves/omon_adj/elf-orc);
  * WEAPON/weptool/GEM hit-vs-miss (kicked/ammo/thrown/applied) → hmon /
- * tmiss; APPLIED miss wakeup; pie/egg/venom DEX; food tamedog.
- * Deferred: gem_accept luck/mpickobj; leader catch/return; iron ball /
- * boulder hit; potionhit; swallow vanish pline (swallowit D-1283);
- * cutworm; check_shop_obj on mulch; mshot_xname.
+ * tmiss; APPLIED miss wakeup; pie/egg/venom DEX; food tamedog;
+ * leader catch / finish_quest (D-1312); swallow vanish pline
+ * (D-1324; entrails/currents + cockatrice minstapetrify/delobj).
+ * Deferred: gem_accept luck/mpickobj; iron ball / boulder hit;
+ * potionhit; cutworm; check_shop_obj on mulch; mshot_xname.
  * @returns {boolean} true if obj was consumed / taken care of
  */
 export async function thitmonst(mon, obj) {
@@ -609,10 +662,44 @@ export async function thitmonst(mon, obj) {
         }
     }
 
+    // C dothrow.c:2104–2149 — thrown/kicked quest artifact / unique / fake
+    // AoY at the leader: catch, then keep or finish_quest+hand back.
     if (hmode !== HMON_APPLIED && special_obj_hits_leader(obj, mon)) {
         mon.msleeping = 0;
         if (mon.mstrategy != null) mon.mstrategy &= ~STRAT_WAITMASK;
-        // catch / finish_quest / addinv deferred
+
+        if (mon.mcanmove) {
+            await pline(`${Some_Monnam(mon)} catches ${the(xname(obj))}.`);
+            const unique = !!(game.objects?.[obj.otyp]?.oc_unique);
+            if ((u.uevent?.invoked && unique
+                    && (obj.otyp | 0) !== AMULET_OF_YENDOR)
+                || !mon.mpeaceful) {
+                if (mon.mpeaceful && !Deaf_youprop()) {
+                    fully_identify_obj(obj);
+                    await verbalize(
+                        `${s_suffix_throw_gold(The(xname(obj)))} part in this is finished.`,
+                    );
+                    const aOrig = u.ualignbase?.original ?? u.ualign?.type ?? 0;
+                    await verbalize(
+                        `We will guard it in case it is ever needed again, ${align_gname(game.urole, aOrig)} forbid.`,
+                    );
+                }
+                if ((u.ushops && u.ushops[0]) || obj.unpaid) {
+                    const { check_shop_obj } = await import('./shk.js');
+                    await check_shop_obj(obj, mon.mx | 0, mon.my | 0, false);
+                }
+                mpickobj(mon, obj);
+            } else {
+                const next2u = monnear(mon, u.ux | 0, u.uy | 0);
+                await finish_quest(obj);
+                await pline(`${Some_Monnam(mon)} ${next2u ? 'hands' : 'tosses'} ${the(xname(obj))} back to you.`);
+                if (!next2u) await sho_obj_return_to_u(obj);
+                const { addinv } = await import('./u_init.js');
+                obj = await addinv(obj);
+                await encumber_msg();
+            }
+            return true;
+        }
         return false;
     }
 
@@ -696,8 +783,24 @@ export async function thitmonst(mon, obj) {
     }
 
     if (guaranteed_hit) {
-        // C swallow vanish arm deferred — still wake like C before body
+        // C dothrow.c:2276–2298 — swallow vanish; md is ustuck->data.
+        const md = game.u?.ustuck?.data;
         await wakeup(mon, true);
+        if ((obj.otyp | 0) === CORPSE && touch_petrifies(mons(obj.corpsenm))) {
+            if (is_animal(md)) {
+                await minstapetrify(game.u.ustuck, true);
+                // Don't leave a cockatrice corpse available in a statue
+                if (!game.u?.uswallow) {
+                    delobj(obj);
+                    return true;
+                }
+            }
+        }
+        const trail = digests(md) ? ' entrails'
+            : is_whirly(md) ? ' currents' : '';
+        let monname = mon_nam(mon);
+        if (trail) monname = s_suffix_throw_gold(monname);
+        await pline(`${Tobjnam(obj, 'vanish')} into ${monname}${trail}.`);
         return false;
     }
 
@@ -1621,8 +1724,8 @@ async function swallowit(obj) {
  * C dothrow.c sho_obj_return_to_u — flash the missile back along the
  * throw vector (not boomerangs). Display RNG via obj_to_glyph(...,
  * rn2_on_display_rng). Wielded aklys uses tmp_at(DISP_END, BACKTRACK)
- * instead (outbound DISP_TETHER named). Leader !next2u caller named
- * (thitmonst catch / finish_quest).
+ * (D-1311) instead of this FLASH walk. Leader !next2u is the
+ * thitmonst catch caller (D-1312).
  */
 export async function sho_obj_return_to_u(obj) {
     const u = game.u || {};
@@ -1648,10 +1751,11 @@ export async function sho_obj_return_to_u(obj) {
 /**
  * C dothrow.c throwit returning_missile after bhit (Mjollnir or aklys).
  * Returns true if the object was handled (do not land).
- * Named omit: tethered tmp_at BACKTRACK / outbound DISP_TETHER.
+ * Tethered: tmp_at(DISP_END, BACKTRACK) on success, DISP_END 0 on fail
+ * (D-1311). Leader catch finish_quest is D-1312.
  */
 async function throwit_returning_missile(
-    obj, wep_mask, twoweap, oldslot, x, y, impaired,
+    obj, wep_mask, twoweap, oldslot, x, y, impaired, tethered_weapon,
 ) {
     if (!game.iflags?.returning_missile) return false;
     // C bhit left gb.bhitpos at the stop cell; JS fly uses locals.
@@ -1659,6 +1763,8 @@ async function throwit_returning_missile(
     game.bhitpos.x = x | 0;
     game.bhitpos.y = y | 0;
     if (!rn2(100)) {
+        // C :1760–1762 — fail-to-return closes tether without BACKTRACK
+        await throwit_tether_end(tethered_weapon, false);
         await pline(`${Tobjnam(obj, 'fail')} to return!`);
         // C :1772 — fail-to-return while swallowed → swallowit, do not land
         if (game.u?.uswallow) {
@@ -1668,10 +1774,8 @@ async function throwit_returning_missile(
         return false;
     }
     // C :1712–1715 — tethered BACKTRACK else sho_obj_return_to_u
-    const tethered_weapon = !!(autoreturn_weapon(obj)?.tethered
-        && ((wep_mask | 0) & W_WEP) !== 0);
     if (tethered_weapon) {
-        // tmp_at(DISP_END, BACKTRACK) needs outbound DISP_TETHER
+        await throwit_tether_end(true, true);
     } else {
         await sho_obj_return_to_u(obj);
     }
@@ -1777,24 +1881,44 @@ function closed_door_boom(x, y) {
 }
 
 /**
- * C dothrow.c throwit_mon_hit — thitmonst; clear thrownobj if consumed.
- * Named omit: snuff_candle; shk hot_pursuit.
+ * C dothrow.c throwit_mon_hit — snuff_candle, thitmonst, shk hot_pursuit.
+ * Callers: throwit (D-1315), boomhit (D-1301). boomhit m_respond is D-1314.
+ * apply.js imports thitmonst — snuff_candle is a dynamic import.
+ * dokick really_kick_object snuff is D-1325; throwit land :1818 is
+ * D-1333 (not this helper).
  */
-async function throwit_mon_hit(obj, mon) {
+export async function throwit_mon_hit(obj, mon) {
     if (!mon) return false;
     if (mon.isshk && (obj.where | 0) === OBJ_MINVENT && obj.ocarry === mon) {
         return true;
     }
+    // C apply.c snuff_candle — candles / candelabrum only, not snuff_lit
+    const { snuff_candle } = await import('./apply.js');
+    await snuff_candle(obj);
     const bp = game.bhitpos || {};
     game.notonhead = ((bp.x | 0) !== (mon.mx | 0) || (bp.y | 0) !== (mon.my | 0));
     const obj_gone = await thitmonst(mon, obj);
+    // C: Monster may have been tamed; this frees old mon [obsolete]
+    const hitpos = game.bhitpos || bp;
+    mon = m_at(hitpos.x | 0, hitpos.y | 0);
+    if (mon && mon.isshk) {
+        const { hot_pursuit, inside_shop } = await import('./shk.js');
+        const u = game.u || {};
+        const ushop0 = (u.ushops || '')[0] || '';
+        const rooms = in_rooms(mon.mx | 0, mon.my | 0, SHOPBASE) || '';
+        // C strchr(in_rooms(...), *u.ushops): NUL matches the terminator
+        const strchrHit = ushop0 === '' || rooms.includes(ushop0);
+        if (!inside_shop(u.ux | 0, u.uy | 0) || !strchrHit) {
+            hot_pursuit(mon);
+        }
+    }
     if (obj_gone) game.thrownobj = null;
     return false;
 }
 
 /**
  * C zap.c boomhit — thrown boomerang 10-step curve (not linear bhit).
- * m_respond shrieker/Medusa/Erinys named omit. Soundeffect named.
+ * m_respond D-1314. Soundeffect named.
  */
 export async function boomhit(obj, dx, dy) {
     const u = game.u || {};
@@ -1821,7 +1945,7 @@ export async function boomhit(obj, dx, dy) {
         }
         const mtmp = m_at(game.bhitpos.x, game.bhitpos.y);
         if (mtmp) {
-            // C mon.c m_respond — shrieker / Medusa / Erinys named omit
+            await m_respond(mtmp);
             const oldHits = nhits;
             nhits = oldHits - 1;
             if (oldHits < 0) {
@@ -1870,8 +1994,8 @@ export async function boomhit(obj, dx, dy) {
 /**
  * C ref: zap.c bhit + dothrow.c throwit — fly along dx/dy; stop before
  * !ZAP_POS / closed door (bhit backs up one step), then place / breaktest.
- * Monster hit → thitmonst (D-0415 food; D-0693 pie/egg DEX;
- * D-1041 weapon/weptool/gem hit-vs-miss). After place, !IS_SOFT
+ * Monster hit → throwit_mon_hit (D-1315) → thitmonst (D-0415 food;
+ * D-0693 pie/egg DEX; D-1041 weapon/weptool/gem hit-vs-miss). After place, !IS_SOFT
  * container_impact_dmg(obj, u.ux, u.uy) then impact_disturbs TRUE
  * (D-1249 / D-1229). hitfloor dropz(TRUE) is D-1263 (drop/horn);
  * invent hold_another_object hitfloor(FALSE) is D-1272;
@@ -1883,13 +2007,112 @@ export async function boomhit(obj, dx, dy) {
  * low-HP encumbered stamina drop is D-1293.
  * throwit steed potionhit rn2(6) is D-1297.
  * boomhit curve (D-1301). throw_gold swallow (D-1302).
- * sho_obj_return_to_u (D-1303). Named omit: tethered tmp_at
- * DISP_TETHER/BACKTRACK; leader catch finish_quest; thitmonst vanish
- * pline; objsplit unsplit; killer_xname polish; m_respond.
+ * sho_obj_return_to_u (D-1303). tethered DISP_TETHER/BACKTRACK (D-1311).
+ * thitmonst leader catch / finish_quest (D-1312).
+ * throwit_mon_hit snuff / hot_pursuit (D-1313); throwit caller (D-1315).
+ * throwit ACURRSTR urange / post-bhit lev hurtle (D-1316).
+ * tethered THROWN_TETHERED_WEAPON bhit + isqrt(arw->range) (D-1323).
+ * thitmonst swallow vanish pline (D-1324).
+ * Named omit: objsplit unsplit; killer_xname polish;
+ * THROWN_WEAPON still uses the JS fly stand-in (not zap.js bhit).
  */
+
+/**
+ * C weapon.c skill_name / P_NAME — ammo category for throwit's hand-throw
+ * pline (`an(skill_name(weapon_type(obj)))`).
+ */
+function throwit_skill_name(skill) {
+    const map = {
+        [P_CROSSBOW]: 'CROSSBOW',
+        [P_DART]: 'DART',
+        [P_BOOMERANG]: 'BOOMERANG',
+        [P_BOW]: 'BOW',
+        [P_SLING]: 'SLING',
+        [P_SHURIKEN]: 'SHURIKEN',
+    };
+    const on = map[skill | 0];
+    if (on) {
+        const otyp = objectNames.indexOf(on);
+        if (otyp >= 0 && objectNameStrs[otyp]) return objectNameStrs[otyp];
+        return on.toLowerCase().replace(/_/g, ' ');
+    }
+    return 'weapon';
+}
+
+/**
+ * C weapon.c weapon_descr — P_BOW/P_CROSSBOW ammo → arrow/bolt; else
+ * P_NAME. throwit hand-throw only (gems skip that pline).
+ */
+function throwit_weapon_descr(obj) {
+    const skill = weapon_type(obj);
+    if (skill === P_BOW && is_ammo(obj)) return 'arrow';
+    if (skill === P_CROSSBOW && is_ammo(obj)) return 'bolt';
+    return throwit_skill_name(skill);
+}
+
+/**
+ * C dothrow.c throwit :1613–1672 — urange from ACURRSTR (crossbow 18),
+ * then range from weight / uball / ammo / air-lev / boulder / Mjollnir
+ * / tethered isqrt / underwater. Recoil leftover is `urange` after the
+ * air-lev shuffle (`:1681–1682` hurtle). Tethered aklys
+ * `min(range, isqrt(arw->range))` is D-1323.
+ * @returns {{ range: number, urange: number, hand_throw: boolean }}
+ */
+export function throwit_calc_range(obj, tethered_weapon = false) {
+    const u = game.u || {};
+    const uwep = u.uwep || null;
+    const owt = obj.owt | 0;
+    const crossbowing = ammo_and_launcher(obj, uwep)
+        && weapon_type(uwep) === P_CROSSBOW;
+    let urange = Math.trunc((crossbowing ? 18 : (acurrstr() | 0)) / 2);
+    let range = ((obj.otyp | 0) === HEAVY_IRON_BALL)
+        ? urange - Math.trunc(owt / 100)
+        : urange - Math.trunc(owt / 40);
+    if (obj === u.uball) {
+        if (u.ustuck) range = 1;
+        else if (range >= 5) range = 5;
+    }
+    if (range < 1) range = 1;
+
+    let hand_throw = false;
+    if (is_ammo(obj)) {
+        if (ammo_and_launcher(obj, uwep)) {
+            if (crossbowing) range = BOLT_LIM;
+            else range++;
+        } else if ((obj.oclass | 0) !== GEM_CLASS) {
+            range = Math.trunc(range / 2);
+            hand_throw = true;
+        }
+    }
+
+    if (Is_airlevel(u.uz) || Levitation_boom()) {
+        urange -= range;
+        if (urange < 1) urange = 1;
+        range -= urange;
+        if (range < 1) range = 1;
+    }
+
+    if ((obj.otyp | 0) === BOULDER) {
+        range = 20;
+    } else if (is_art(obj, ART_MJOLLNIR)) {
+        range = Math.trunc((range + 1) / 2);
+    } else if (tethered_weapon) {
+        // C :1664–1667 — cord length isqrt(arw->range); AKLYS_LIM² → 4
+        const arw = autoreturn_weapon(obj);
+        range = Math.min(range | 0, isqrt(arw ? (arw.range | 0) : 0));
+    } else if (obj === u.uball && u.utrap && (u.utraptype | 0) === TT_INFLOOR) {
+        range = 1;
+    }
+
+    if (u.uinwater) range = 1;
+    return { range, urange, hand_throw };
+}
+
 export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null) {
     const u = game.u;
     let impaired = throw_impaired();
+    // C throwit :1523 — wielded AKLYS cord
+    const tethered_weapon = throwit_tethered_weapon(obj, wep_mask);
     // C throwit :1525 — reset stale gn.notonhead before slip / stamina / thrownobj
     game.notonhead = false;
     // C throwit :1526–1547 — cursed/greased && (dx||dy) && !rn2(7)
@@ -1953,8 +2176,13 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
         if (hitmon) {
             x = hitmon.mx | 0;
             y = hitmon.my | 0;
+            // C throwit :1575–1576 — bhitpos = engulfer before throwit_mon_hit
+            if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+            game.bhitpos.x = x;
+            game.bhitpos.y = y;
         }
-        // tethered tmp_at named omit (display RNG)
+        // C throwit :1577–1578 — swallowed tether starts with no flight steps
+        if (tethered_weapon) tmp_at(DISP_TETHER, obj_glyph(obj));
     } else if (u.dz) {
         if ((u.dz | 0) < 0
             && game.iflags.returning_missile
@@ -1995,37 +2223,28 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
     } else {
     const dx = u.dx || 0;
     const dy = u.dy || 0;
-    // C: urange = ACURRSTR/2, then range capped; adjacent wall needs ≥1
-    let range = 5;
-    // C: ammo without matching launcher → half range + hand-throw pline
-    if (is_ammo(obj) && !ammo_and_launcher(obj, u.uwep)
-        && obj.oclass !== GEM_CLASS) {
-        range = Math.max(1, Math.trunc(range / 2));
-        // C: an(skill_name(weapon_type)) + weapon_descr (P_BOW ammo → "arrow")
-        const skill = Math.abs(game.objects?.[obj.otyp]?.oc_skill ?? 0);
-        let skillName = 'bow';
-        let descr = 'arrow';
-        if (skill === P_CROSSBOW) {
-            skillName = 'crossbow';
-            descr = 'bolt';
-        } else if (skill === P_DART) {
-            skillName = 'dart';
-            descr = 'dart';
-        } else if (skill === P_BOOMERANG) {
-            skillName = 'boomerang';
-            descr = 'boomerang';
-        } else if (skill === P_BOW) {
-            skillName = 'bow';
-            descr = 'arrow';
-        } else {
-            const otyp = objectNames.indexOf('BOW');
-            if (otyp >= 0 && objectNameStrs[otyp]) skillName = objectNameStrs[otyp];
-            descr = skillName;
-        }
+    // C throwit :1613–1672 — ACURRSTR urange then range (D-1316 / D-1323)
+    const calc = throwit_calc_range(obj, tethered_weapon);
+    let range = calc.range | 0;
+    const urange = calc.urange | 0;
+    if (calc.hand_throw) {
+        // C :1643–1646 — an(skill_name) + weapon_descr + body_part(HAND)
         await pline(
-            `You aren't wielding ${an(skillName)}, so you throw your ${descr} by hand.`,
+            `You aren't wielding ${an(throwit_skill_name(weapon_type(obj)))}, so you throw your ${throwit_weapon_descr(obj)} by ${body_part(HAND)}.`,
         );
     }
+    if (tethered_weapon) {
+        // C :1674–1677 — bhit(THROWN_TETHERED_WEAPON) opens DISP_TETHER
+        const pobj = { obj };
+        const { bhit } = await import('./zap.js');
+        hitmon = await bhit(
+            dx, dy, range, THROWN_TETHERED_WEAPON, null, null, pobj,
+        );
+        obj = pobj.obj;
+        game.thrownobj = obj;
+        x = game.bhitpos?.x | 0;
+        y = game.bhitpos?.y | 0;
+    } else {
     let point_blank = true;
     while (range-- > 0) {
         const nx = x + dx;
@@ -2057,27 +2276,43 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
         x = nx;
         y = ny;
         point_blank = false;
-        // C bhit THROWN_WEAPON: stop on monster
+        // C bhit THROWN_WEAPON: stop on monster before tmp_at of that cell
         const mon = m_at(x, y);
         if (mon) {
             hitmon = mon;
             break;
         }
     }
+    }
+    // C throwit :1680–1682 — after bhit so ux,uy are correct
+    if (Is_airlevel(u.uz) || Levitation_boom()) {
+        await hurtle(-(u.dx || 0), -(u.dy || 0), urange, true);
+    }
+    // C :1684–1691 — bhit may have destroyed obj; tether still open
+    if (tethered_weapon && !obj) {
+        await throwit_tether_end(true, false);
+        throwit_return(false);
+        return;
+    }
     } // else bhit
     } // !uswallow: boomhit else bhit
+    // C throwit :1695 — swallow / bhit / boomhit all call throwit_mon_hit
+    // (mon may be NULL). JS fly uses locals; C bhit already left gb.bhitpos.
+    if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+    game.bhitpos.x = x | 0;
+    game.bhitpos.y = y | 0;
+    if (await throwit_mon_hit(obj, hitmon)) {
+        throwit_return(true); /* alert shk caught it */
+        return;
+    }
     if (hitmon) {
-        if (await thitmonst(hitmon, obj)) {
-            // C throwit_mon_hit: obj_gone clears gt.thrownobj
-            game.thrownobj = null;
-            throwit_return(false);
-            return;
-        }
         // miss / not consumed — fall through to place at mon cell
         x = hitmon.mx | 0;
         y = hitmon.my | 0;
     }
     if (!game.thrownobj) {
+        // C :1700–1703 — missile already handled; tether DISP_END 0
+        await throwit_tether_end(tethered_weapon, false);
         throwit_return(false);
         return;
     }
@@ -2087,7 +2322,7 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
         return;
     }
     if (await throwit_returning_missile(
-        obj, wep_mask, twoweap, oldslot, x, y, impaired,
+        obj, wep_mask, twoweap, oldslot, x, y, impaired, tethered_weapon,
     )) {
         return;
     }
@@ -2122,6 +2357,14 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
             throwit_return(true);
             return;
         }
+    }
+    // C dothrow.c throwit :1818 — land snuff after flooreffects (and
+    // pick-snatch, named) before ship_object. Candles / candelabrum
+    // only, not snuff_lit. throwit_mon_hit snuffs only when mon!=NULL
+    // (D-1313); miss-land never hits that helper. mthrowu :942 is D-1334.
+    {
+        const { snuff_candle } = await import('./apply.js');
+        await snuff_candle(obj);
     }
     // C: !mon && ship_object(obj, bhitpos, FALSE) before place
     {

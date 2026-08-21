@@ -626,6 +626,46 @@ async function skill_advance(skill) {
 }
 
 /**
+ * C ref: weapon.c drain_weapon_skill `:1476–1514` — drop n advanced
+ * skills (mhitu AD_DRIN D-1329). Each pick `rn2(skills_advanced)` then
+ * shift skill_record, P_SKILL--, refund slots_required at the new
+ * rank, maybe rn2-clip P_ADVANCE. C panics if rank was already
+ * Unskilled; JS skips the decrement.
+ */
+export async function drain_weapon_skill(n) {
+    const u = game.u || {};
+    const tmpskills = new Array(P_NUM_SKILLS).fill(0);
+    n = n | 0;
+    while (--n >= 0) {
+        if (u.skills_advanced) {
+            const i = rn2(u.skills_advanced);
+            const skill = u.skill_record[i];
+            tmpskills[skill] = 1;
+            for (let j = i; j < (u.skills_advanced | 0) - 1; j++) {
+                u.skill_record[j] = u.skill_record[j + 1];
+            }
+            u.skills_advanced--;
+            if (P_SKILL(skill) <= P_UNSKILLED) continue;
+            set_P_SKILL(skill, P_SKILL(skill) - 1);
+            u.weapon_slots = (u.weapon_slots | 0) + slots_required(skill);
+            const curradv = practice_needed_to_advance(P_SKILL(skill));
+            const prevadv = practice_needed_to_advance(P_SKILL(skill) - 1);
+            if ((P_ADVANCE(skill) | 0) >= curradv) {
+                set_P_ADVANCE(skill, prevadv + rn2(curradv - prevadv));
+            }
+        }
+    }
+    for (let skill = 0; skill < P_NUM_SKILLS; skill++) {
+        if (tmpskills[skill]) {
+            const some = P_SKILL(skill) >= P_BASIC ? 'some of ' : '';
+            await pline(
+                `You forget ${some}your training in ${P_NAME(skill)}.`,
+            );
+        }
+    }
+}
+
+/**
  * C ref: weapon.c enhance_weapon_skill (#enhance) + add_skills_to_menu.
  * Branch envelope: wizard y_n + speedy PICK_ONE loop + skill_advance;
  * non-wizard / no-advance PICK_NONE; * / # legend. add_weapon_skill /

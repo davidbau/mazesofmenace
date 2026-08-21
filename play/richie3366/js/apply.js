@@ -5845,7 +5845,8 @@ function otense_snuff(obj, verb) {
 
 /**
  * C ref: apply.c snuff_candle — lit candles / candelabrum; end_burn TRUE.
- * Callers: snuff_lit; dokick still named.
+ * Callers: snuff_lit; throwit_mon_hit (D-1313); really_kick_object (D-1325);
+ * throwit land `:1818` (D-1333); mthrowu return_from_mtoss `:942` (D-1334).
  * @returns {Promise<boolean>}
  */
 export async function snuff_candle(otmp) {
@@ -5871,7 +5872,9 @@ export async function snuff_candle(otmp) {
 /**
  * C ref: apply.c snuff_lit — lamps / lantern / POT_OIL, else snuff_candle.
  * gulpmm minvent (D-1242). Named omit: splash_lit; gulpmu invent; gulpum;
- * litroom artifact_light; pickup obj_is_burning; dokick snuff_candle.
+ * litroom artifact_light; pickup obj_is_burning.
+ * throwit_mon_hit / really_kick_object / throwit land / mthrowu notcaught
+ * use snuff_candle, not this (D-1313 / D-1325 / D-1333 / D-1334).
  * @returns {Promise<boolean>}
  */
 export async function snuff_lit(obj) {

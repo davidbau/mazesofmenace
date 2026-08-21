@@ -88,7 +88,7 @@ import {
     is_flyer, MR_STONE, MALE, FEMALE, NEUTRAL, can_teleport,
     touch_petrifies, poly_when_stoned, resists_ston, humanoid,
     unsolid, is_whirly, passes_walls, haseyes, flaming, slimeproof,
-    is_male, is_female, is_shapeshifter,
+    is_male, is_female, is_shapeshifter, has_head,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import { ART_TROLLSBANE } from './generated/artifacts_data.js';
@@ -496,6 +496,41 @@ export async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
             mhm.done = true;
         }
     }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_drin `:3272–3301` — mhitm (mon→mon).
+ * Headless / notonhead: vis&&canspotmon pline_mon, zero dice, skipdrin
+ * (no green-slime). Helm: (misc_worn_check&W_ARMH)&&rn2(8) return
+ * (dice kept, no skipdrin; always "helmet", not helm_simple_name).
+ * Then eat_brains(gv.vis, &damage); lifsav skipdrin if amulet vanished.
+ * No m_slips_free (uhitm-only). mhitu arm is mhitm_ad_drin_u (D-1329).
+ */
+export async function mhitm_ad_drin(magr, mattk, mdef, mhm) {
+    void mattk;
+    const pd = mdef?.data;
+    if (game.notonhead || !has_head(pd)) {
+        if (_mm_vis && canspotmon(mdef)) {
+            await pline_mon(mdef, `${Monnam(mdef)} doesn't seem harmed.`);
+        }
+        /* Not clear what to do for green slimes — C `:3279` */
+        mhm.damage = 0;
+        game.skipdrin = true; /* mattackm AT_TENT+AD_DRIN continue */
+        return;
+    }
+    if (((mdef.misc_worn_check | 0) & W_ARMH) && rn2(8)) {
+        if (_mm_vis && canspotmon(magr) && canseemon(mdef)) {
+            await pline(
+                `${s_suffix_mm(Monnam(mdef))} helmet blocks ${s_suffix_mm(mon_nam(magr))} attack to ${mhis_disp(mdef)} head.`,
+            );
+        }
+        return;
+    }
+    const amu = which_armor(mdef, W_AMUL);
+    const lifsav = !!(amu && (amu.otyp | 0) === AMULET_OF_LIFE_SAVING);
+    const { eat_brains } = await import('./eat.js');
+    mhm.hitflags = await eat_brains(magr, mdef, _mm_vis, mhm);
+    if (lifsav && !which_armor(mdef, W_AMUL)) game.skipdrin = true;
 }
 
 export {
@@ -1796,6 +1831,33 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         return hitflags || M_ATTK_HIT;
     }
 
+    // C: mhitm_adtyping → mhitm_ad_drin for AD_DRIN (D-1330)
+    if ((mattk.adtyp | 0) === AD_DRIN) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_drin(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
     mhitm_knockback(magr, mdef, mattk, hitflags, !!mwep);
 
     if (!damage) return hitflags === M_ATTK_AGR_DIED ? M_ATTK_AGR_DIED : M_ATTK_HIT;
@@ -1814,7 +1876,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 /**
  * C ref: mhitm.c hitmm — hit pline when gv.vis; else noises().
  * Seduce: smiles/talks + engagingly/seductively when could_seduce && !mcan.
- * Named omissions: shade_miss; AT_TENT/HUGS verbs; silver sear; artifact wep.
+ * Named omissions: shade_miss; AT_HUGS verb; silver sear; artifact wep.
  */
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     pre_mm_attack(magr, mdef);
@@ -1829,6 +1891,11 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
             const how = (compat === 2) ? 'engagingly' : 'seductively';
             await pline(
                 `${Monnam(magr)} ${smile} ${mon_nam(mdef)} ${how}.`,
+            );
+        } else if ((mattk.aatyp | 0) === AT_TENT) {
+            /* C `:687–689` — s_suffix(Monnam) tentacles suck */
+            await pline(
+                `${s_suffix_mm(Monnam(magr))} tentacles suck ${mon_nam_too(mdef, magr)}.`,
             );
         } else {
             let verb = 'hits';
@@ -2145,8 +2212,10 @@ export async function mattackm(magr, mdef) {
             case AT_BITE:
             case AT_STNG:
             case AT_TUCH:
-            case AT_BUTT: {
-                // C mhitm.c mattackm `:426` — pit-trapped kicker skips AT_KICK
+            case AT_BUTT:
+            case AT_TENT: {
+                // C mhitm.c mattackm `:425` — AT_TENT with claw/kick/bite
+                // (D-1330). Pit-trapped kicker skips AT_KICK (`:426`).
                 if ((mattk.aatyp | 0) === AT_KICK && mtrapped_in_pit(magr)) {
                     continue;
                 }

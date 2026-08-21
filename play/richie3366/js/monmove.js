@@ -95,6 +95,7 @@ import {
     meatmetal,
     meatobj,
     meatcorpse,
+    m_respond,
 } from './mon.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
@@ -2080,7 +2081,10 @@ export async function dochug(mtmp) {
         }
     }
 
-    // C: m_respond deferred (gaze / nymph / etc.)
+    // C mon.c m_respond — shrieker / Medusa / Erinys
+    await m_respond(mtmp);
+    if ((mtmp.mhp | 0) < 1) return 1; /* m_respond gaze can kill medusa */
+
     // C: courage — mflee && !mfleetim && full HP && !rn2(25)
     if (mtmp.mflee && !(mtmp.mfleetim | 0)
         && (mtmp.mhp | 0) === (mtmp.mhpmax | 0) && !rn2(25)) {
