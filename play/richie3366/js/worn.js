@@ -1,8 +1,10 @@
 // worn.js — Monster armor don/doff helpers.
-// C ref: worn.c — which_armor, m_dowear, m_dowear_type, update_mon_extrinsics,
-//   extra_pref, racial_exception; mon.c check_gear_next_turn.
+// C ref: worn.c — which_armor, mon_set_minvis, m_dowear, m_dowear_type,
+//   update_mon_extrinsics, extra_pref, racial_exception;
+//   mon.c check_gear_next_turn.
 // Named omissions: wear plines when !creation (freeze still applied);
 //   artifact_light begin_burn/end_burn; full w_blocks Clairvoyance/Eyes;
+//   worm see_wsegs after mon_set_minvis;
 //   dragon-scale altprop beyond alchemy smock;
 //   extract_from_minvent artifact_light/obj_no_longer_held;
 //   youmonst which_armor slot table (hero uses uarm*).
@@ -226,6 +228,21 @@ export function which_armor(mon, flag) {
         if ((obj.owornmask || 0) & flag) return obj;
     }
     return null;
+}
+
+/**
+ * C ref: worn.c mon_set_minvis :474–484 — permanent invis from
+ * potion/wand. FALSE = not a cursed potion → perminvis 1.
+ * Caller zap.c bhitm WAN_MAKE_INVISIBLE (D-1414). Named omit:
+ * worm see_wsegs (tail newsym).
+ */
+export function mon_set_minvis(mon, cursed_potion) {
+    if (!mon) return;
+    mon.perminvis = cursed_potion ? 0 : 1;
+    if (!mon.invis_blkd) {
+        mon.minvis = mon.perminvis;
+        newsym(mon.mx | 0, mon.my | 0);
+    }
 }
 
 /**

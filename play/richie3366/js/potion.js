@@ -4,6 +4,8 @@
 //         peffect_extra_healing, peffect_full_healing (D-1411),
 //         peffect_enlightenment (D-1413),
 //         peffect_speed (D-1408), peffect_water,
+//         peffect_object_detection (D-1417),
+//         peffect_monster_detection (D-1418),
 //         make_confused, dodip, speed_up, djinni_from_bottle (D-1144);
 //         invent.c getobj; fountain.c drinkfountain / dipfountain / dipsink.
 // Branch envelope: POT_WATER peffect + potionbreathe lycan vapor (D-1004).
@@ -11,6 +13,11 @@
 // djinni_from_bottle chance remap + mongrantswish (D-1144).
 // throwit steed potionhit crash/saddle/H2Opotion_dip/POT_WATER (D-1297).
 // SPE_HASTE_SELF / POT_SPEED peffect_speed + speed_up (D-1408).
+// SPE_DETECT_TREASURE / POT_OBJECT_DETECTION peffect_object_detection
+// (D-1417; callee detect.c object_detect).
+// SPE_DETECT_MONSTERS / POT_MONSTER_DETECTION peffect_monster_detection
+// (D-1418; callee detect.c monster_detect when unblessed / swallow /
+// underwater).
 // POT_FULL_HEALING peffect_full_healing (D-1411).
 // POT_ENLIGHTENMENT peffect_enlightenment (D-1413).
 
@@ -18,9 +25,9 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, You_feel, verbalize, canspotmon,
-    canseemon,
+    canseemon, see_monsters, unmap_object, glyph_is_invisible, newsym,
 } from './display.js';
-import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
+import { POTION_CLASS, SPBOOK_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import {
     weight, obj_extract_self, bless, curse, unbless, uncurse,
 } from './mkobj.js';
@@ -43,6 +50,7 @@ import {
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_HERO_THROW, POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     TIMEOUT, HALLUC_RES, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
+    DETECT_MONSTERS, COLNO, ROWNO,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
@@ -59,7 +67,7 @@ import {
 import { rider_cant_reach } from './steed.js';
 import { PM_HUMAN, PM_HEALER } from './generated/monsters_data.js';
 import { makemon, set_malign } from './makemon.js';
-import { mongone, wakeup, healmon, wake_nearto, dist2 } from './mon.js';
+import { mongone, wakeup, healmon, wake_nearto, dist2, m_at } from './mon.js';
 import { tamedog } from './dog.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
@@ -92,6 +100,10 @@ const POT_FULL_HEALING = objectNames.indexOf('POT_FULL_HEALING');
 const POT_ENLIGHTENMENT = objectNames.indexOf('POT_ENLIGHTENMENT');
 const POT_SPEED = objectNames.indexOf('POT_SPEED');
 const SPE_HASTE_SELF = objectNames.indexOf('SPE_HASTE_SELF');
+const POT_OBJECT_DETECTION = objectNames.indexOf('POT_OBJECT_DETECTION');
+const SPE_DETECT_TREASURE = objectNames.indexOf('SPE_DETECT_TREASURE');
+const POT_MONSTER_DETECTION = objectNames.indexOf('POT_MONSTER_DETECTION');
+const SPE_DETECT_MONSTERS = objectNames.indexOf('SPE_DETECT_MONSTERS');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 const POT_WATER = objectNames.indexOf('POT_WATER');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
@@ -463,6 +475,38 @@ function incr_itimeout_HFast(incr) {
     const u = game.u || (game.u = {});
     const cur = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
     set_HFast((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
+}
+
+/** Sync flat HDetect_monsters with uprops[DETECT_MONSTERS].intrinsic. */
+function set_HDetect_monsters(val) {
+    const u = game.u || (game.u = {});
+    u.HDetect_monsters = val | 0;
+    if (!u.uprops) u.uprops = {};
+    const prop = u.uprops[DETECT_MONSTERS] || (u.uprops[DETECT_MONSTERS] = {
+        intrinsic: 0, extrinsic: 0, blocked: 0,
+    });
+    prop.intrinsic = u.HDetect_monsters;
+}
+
+/**
+ * C ref: potion.c incr_itimeout(&HDetect_monsters, i) — TIMEOUT bits only.
+ */
+function incr_itimeout_HDetect_monsters(incr) {
+    const u = game.u || (game.u = {});
+    const cur = (u.HDetect_monsters | 0)
+        | (u.uprops?.[DETECT_MONSTERS]?.intrinsic | 0);
+    set_HDetect_monsters((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
+}
+
+/** C youprop.h Detect_monsters — HDetect_monsters || EDetect_monsters. */
+function Detect_monsters() {
+    const u = game.u || {};
+    const p = u.uprops?.[DETECT_MONSTERS];
+    return !!(u.Detect_monsters
+        || (u.HDetect_monsters | 0)
+        || (u.EDetect_monsters | 0)
+        || (p?.intrinsic | 0)
+        || (p?.extrinsic | 0));
 }
 
 /**
@@ -920,6 +964,61 @@ async function peffect_speed(otmp) {
 }
 
 /**
+ * C ref: potion.c peffect_object_detection
+ * object_detect(otmp, 0); return 1 if nothing detected (caller
+ * skips a second useup — strange_feeling already consumed it).
+ * Else exercise(A_WIS, TRUE) and return 0 → peffects -1.
+ */
+async function peffect_object_detection(otmp) {
+    const { object_detect } = await import('./detect.js');
+    if (await object_detect(otmp, 0)) return 1;
+    exercise(A_WIS, true);
+    return 0;
+}
+
+/**
+ * C ref: potion.c peffect_monster_detection
+ * Blessed: incr_itimeout HDetect_monsters (rn1(40,21) spellbook else
+ * rn2(100)+100; 1 if TIMEOUT already >=300); unmap GLYPH_INVISIBLE;
+ * MON_AT clears potion_unkn; !uswallow && !Underwater → see_monsters
+ * + lonely if still unkn, return 0. Else / unblessed: monster_detect
+ * then exercise WIS; return 1 if nothing detected.
+ */
+async function peffect_monster_detection(otmp) {
+    const u = game.u || (game.u = {});
+    if (otmp.blessed) {
+        if (Detect_monsters()) potion_nothing++;
+        potion_unkn++;
+        const hdet = (u.HDetect_monsters | 0)
+            | (u.uprops?.[DETECT_MONSTERS]?.intrinsic | 0);
+        let i;
+        if ((hdet & TIMEOUT) >= 300) i = 1;
+        else if ((otmp.oclass | 0) === SPBOOK_CLASS) i = rn1(40, 21);
+        else i = rn2(100) + 100;
+        incr_itimeout_HDetect_monsters(i);
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = game.level?.at?.(x, y);
+                if (glyph_is_invisible(loc)) {
+                    unmap_object(x, y);
+                    newsym(x, y);
+                }
+                if (m_at(x, y)) potion_unkn = 0;
+            }
+        }
+        if (!u.uswallow && !(u.uinwater | 0)) {
+            see_monsters();
+            if (potion_unkn) await You_feel('lonely.');
+            return 0;
+        }
+    }
+    const { monster_detect } = await import('./detect.js');
+    if (await monster_detect(otmp, 0)) return 1;
+    exercise(A_WIS, true);
+    return 0;
+}
+
+/**
  * C ref: potion.c peffect_booze
  * potion_unkn + taste pline; !blessed → make_confused(d(2+uhs,8));
  * !odiluted → healup(1); hunger + newuhs; exercise WIS; cursed pass-out.
@@ -1019,7 +1118,9 @@ async function peffect_water(otmp) {
  * C ref: potion.c peffects() — POT_OIL + fruit juice / see invisible /
  * paralysis / confusion / booze / healing / extra healing /
  * full healing (D-1411) / enlightenment (D-1413) / sickness / water;
- * POT_SPEED / SPE_HASTE_SELF (D-1408); other otyps in map.
+ * POT_SPEED / SPE_HASTE_SELF (D-1408);
+ * POT_OBJECT_DETECTION / SPE_DETECT_TREASURE (D-1417);
+ * POT_MONSTER_DETECTION / SPE_DETECT_MONSTERS (D-1418); other otyps in map.
  */
 export async function peffects(otmp) {
     switch (otmp.otyp) {
@@ -1054,6 +1155,14 @@ export async function peffects(otmp) {
     case POT_SPEED:
     case SPE_HASTE_SELF:
         await peffect_speed(otmp);
+        return -1;
+    case POT_OBJECT_DETECTION:
+    case SPE_DETECT_TREASURE:
+        if (await peffect_object_detection(otmp)) return 1;
+        return -1;
+    case POT_MONSTER_DETECTION:
+    case SPE_DETECT_MONSTERS:
+        if (await peffect_monster_detection(otmp)) return 1;
         return -1;
     case POT_SICKNESS:
         await peffect_sickness(otmp);

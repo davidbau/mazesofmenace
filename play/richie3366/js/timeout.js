@@ -7,7 +7,7 @@ import {
     UNCHANGING, LAST_PROP, WOUNDED_LEGS, CONFUSION, BLINDED, DEAF,
     GLIB,
     STUNNED, HALLUC, LEVITATION, INVIS, SEE_INVIS, CLAIRVOYANT,
-    TELEPORT, REGENERATION,
+    TELEPORT, REGENERATION, DETECT_MONSTERS,
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_FREE,
     OBJ_CONTAINED, OBJ_BURIED,
     CONTAINED_TOO, BURIED_TOO, TIMER_OBJECT, BURN_OBJECT, LS_OBJECT,
@@ -27,7 +27,7 @@ import { run_timers, start_timer, stop_timer, weight,
 import { make_confused, make_slimed } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast } from './attrib.js';
-import { pline, You_feel, newsym, canseemon, verbalize, Norep } from './display.js';
+import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters } from './display.js';
 import { inv_weight } from './invent.js';
 import { doname, makeplural, xname, an, The } from './objnam.js';
 import { rn2, rnd, d } from './rng.js';
@@ -75,6 +75,7 @@ const TIMEOUT_FLAT = {
     [REGENERATION]: 'HRegeneration',
     [FAST]: 'HFast',
     [GLIB]: 'Glib',
+    [DETECT_MONSTERS]: 'HDetect_monsters',
 };
 
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
@@ -235,6 +236,8 @@ function incr_itimeout_HFumbling(incr) {
  * FUMBLING → slip_or_trip + nomul(-2) + incr_itimeout rnd(20) (D-0692);
  * DEAF → make_deaf(0) on expiry (D-0911; talk if !Unaware deferred).
  * FAST → timeout decrement + slow-down You_feel when !Very_fast (D-0919).
+ * DETECT_MONSTERS TIMEOUT → see_monsters on expiry (D-1418; C timeout.c
+ * `:932–934`; remaining expiry switch still silent).
  * mtimedone → rehumanize / Unchanging rnd refresh (D-0928 #1112).
  * usptime SPE_PROTECTION dissipate (D-1390; after mtimedone like C).
  * Remaining uprops TIMEOUT (incl. INVULNERABLE from #wizintrinsic) —
@@ -395,7 +398,11 @@ export async function nh_timeout() {
             if (p === STUNNED) u.Stunned = u.HStun;
             if (p === GLIB) u.HGlib = next;
         }
-        // Expiry switch (STONED/HALLUC/INVIS/…) deferred — silent clear.
+        // Expiry switch (STONED/HALLUC/INVIS/…) deferred — silent clear
+        // except DETECT_MONSTERS → see_monsters (D-1418).
+        if (!(next & TIMEOUT) && p === DETECT_MONSTERS) {
+            see_monsters();
+        }
     }
 
     // C: u.mtimedone && !--u.mtimedone → Unchanging refresh / were / rehumanize

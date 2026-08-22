@@ -127,6 +127,12 @@ import {
     visctrl,
 } from './hacklib.js';
 import { read_sym_file } from './files.js';
+import {
+    assign_soundlib,
+    get_soundlib_name,
+    soundlib_id_from_opt,
+    soundlib_nosound,
+} from './sounds.js';
 // js/display.js, js/invent.js and js/vision.js do not import this file, so
 // these three are plain one-way dependencies; js/tty_message.js reaches
 // js/display.js from the other side, and both use the other's exports only
@@ -459,6 +465,14 @@ function defaultResult() {
                 color: NO_COLOR,
             },
             msg_history: 20,
+            // options.c optfn_scroll_amount() and optfn_scroll_margin()
+            // leave the zeroed instance-flags fields alone during do_init.
+            wc_scroll_amount: 0,
+            wc_scroll_margin: 0,
+            // options.c optfn_tile_height() and optfn_tile_width() likewise
+            // leave their zeroed instance-flags fields alone during do_init.
+            wc_tile_height: 0,
+            wc_tile_width: 0,
             // initoptions_init()'s TTY_GRAPHICS arm; this build is tty.
             prevmsg_window: 's',
             menuinvertmode: 1,
@@ -466,6 +480,22 @@ function defaultResult() {
         },
         a11y: {
             mon_notices_blocked: 0,
+        },
+        // decl.c instance_globals_c initializes the two report identities to
+        // NULL and the URL limit to -1.  The three CRASHREPORT handlers below
+        // are their configuration-time writers, and #optionsfull reads the
+        // same fields through OPTION_VALUE_HANDLERS.
+        gc: {
+            crash_email: null,
+            crash_name: null,
+            crash_urlmax: -1,
+            // sounds.c assign_soundlib() writes the requested interface here;
+            // allmain.c activates it after configuration and name parsing.
+            chosen_soundlib: soundlib_nosound,
+        },
+        ga: {
+            // decl.c instance_globals_a starts on the built-in interface.
+            active_soundlib: soundlib_nosound,
         },
         roleFilter: defaultRoleFilter(),
         uroleplay: defaultRoleplay(),
@@ -1140,6 +1170,43 @@ function optfn_boulder(result, statement) {
         return;
     }
     result.symbolOperations.push({ kind: 'boulder', byte });
+}
+
+// C ref: options.c optfn_crash_email() (1259-1282), its startup do_set arm.
+// The value is mandatory.  Unlike the PL_NSIZ-sized option-menu input buffer,
+// configuration parsing hands the handler a pointer into parseoptions()'s
+// complete element, and dupstr() stores every remaining byte.
+function optfn_crash_email(result, statement) {
+    const op = string_for_opt(statement, false, result);
+    if (op === '') return;
+    result.gc.crash_email = op;
+}
+
+// C ref: options.c optfn_crash_name() (1285-1308), its startup do_set arm.
+// Its allopt row owns a duplicate counter separate from crash_email's, while
+// the handler otherwise applies the same mandatory-value rule.
+function optfn_crash_name(result, statement) {
+    const op = string_for_opt(statement, false, result);
+    if (op === '') return;
+    result.gc.crash_name = op;
+}
+
+// C ref: options.c optfn_crash_urlmax() (1311-1339), its startup do_set arm.
+// The value is mandatory, then the recorder platform's atoi() conversion is
+// checked against the sole lower bound.  A rejected value leaves the decl.c
+// default or the value installed by an earlier handler call untouched.
+function optfn_crash_urlmax(result, statement) {
+    const op = string_for_opt(statement, false, result);
+    if (op === '') return;
+    const limit = atoi(op);
+    if (limit < 75) {
+        configErrorAdd(
+            result,
+            `Invalid value ${limit} for crash_urlmax.  Minimum value is 75.`,
+        );
+        return;
+    }
+    result.gc.crash_urlmax = limit;
 }
 
 const MENU_HEADING_COLORS = Object.freeze({
@@ -2698,6 +2765,73 @@ function optfn_scores(result, statement) {
     }
 }
 
+// C ref: options.c optfn_scroll_amount() and optfn_scroll_margin()
+// (3763-3821), their do_set arms.  Both accept any atoi() result without a
+// range check.  A bare negation supplies the source's nonzero fallback; a
+// negation carrying a value reports and preserves the previous field.
+function setScrollOption(
+    result, statement, negated, name, field, negatedDefault,
+) {
+    const op = string_for_opt(statement, negated, result);
+    if ((negated && op === '') || (!negated && op !== '')) {
+        result.iflags[field] = negated ? negatedDefault : atoi(op);
+    } else if (negated) {
+        bad_negation(result, name);
+    }
+}
+
+function optfn_scroll_amount(result, statement, negated) {
+    setScrollOption(
+        result, statement, negated,
+        'scroll_amount', 'wc_scroll_amount', 1,
+    );
+}
+
+function optfn_scroll_margin(result, statement, negated) {
+    setScrollOption(
+        result, statement, negated,
+        'scroll_margin', 'wc_scroll_margin', 5,
+    );
+}
+
+// C ref: options.c optfn_soundlib() (3824-3860), its startup do_set arm.
+// string_for_env_opt() requires a value.  Every nonempty spelling reaches
+// sounds.c soundlib_id_from_opt(), whose exact match silently falls back to
+// nosound in this build's one-entry soundlib_choices[] table.
+function optfn_soundlib(result, statement) {
+    const op = string_for_env_opt(statement, false, result);
+    if (op === '') return;
+    const optionId = soundlib_id_from_opt(op);
+    result.gc.chosen_soundlib = optionId;
+    assign_soundlib(result, result.gc.chosen_soundlib);
+}
+
+// C ref: options.c optfn_tile_height() and optfn_tile_width() (4354-4415),
+// their do_set arms.  A non-negated value stores unrestricted atoi() output,
+// while a bare negation resets the dimension to zero.  Missing positive
+// values and valued negations report their source diagnostics and preserve
+// the previous field.
+function setTileDimension(result, statement, negated, name, field) {
+    const op = string_for_opt(statement, negated, result);
+    if ((negated && op === '') || (!negated && op !== '')) {
+        result.iflags[field] = negated ? 0 : atoi(op);
+    } else if (negated) {
+        bad_negation(result, name);
+    }
+}
+
+function optfn_tile_height(result, statement, negated) {
+    setTileDimension(
+        result, statement, negated, 'tile_height', 'wc_tile_height',
+    );
+}
+
+function optfn_tile_width(result, statement, negated) {
+    setTileDimension(
+        result, statement, negated, 'tile_width', 'wc_tile_width',
+    );
+}
+
 // C ref: options.c optfn_pickup_burden() (3266-3291), the switch its do_set
 // arm runs. It reads one byte -- lowc(*op) -- so the value's remaining
 // characters are never examined and "burdened" and "banana" both select
@@ -3764,6 +3898,12 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setFruit(result, statement);
     } else if (name === 'boulder') {
         optfn_boulder(result, statement);
+    } else if (name === 'crash_email') {
+        optfn_crash_email(result, statement);
+    } else if (name === 'crash_name') {
+        optfn_crash_name(result, statement);
+    } else if (name === 'crash_urlmax') {
+        optfn_crash_urlmax(result, statement);
     } else if (name === 'catname' || name === 'dogname'
                || name === 'horsename') {
         setPetName(result, name, value);
@@ -3796,6 +3936,16 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setRunmode(result, value, negated);
     } else if (name === 'scores') {
         optfn_scores(result, statement);
+    } else if (name === 'scroll_amount') {
+        optfn_scroll_amount(result, statement, negated);
+    } else if (name === 'scroll_margin') {
+        optfn_scroll_margin(result, statement, negated);
+    } else if (name === 'soundlib') {
+        optfn_soundlib(result, statement);
+    } else if (name === 'tile_height') {
+        optfn_tile_height(result, statement, negated);
+    } else if (name === 'tile_width') {
+        optfn_tile_width(result, statement, negated);
     } else if (name === 'pickup_burden') {
         setPickupBurden(result, statement);
     } else if (name === 'menustyle') {
@@ -4739,10 +4889,7 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
                 : preferred === 'h' ? 'horse'
                     : preferred === 'n' ? 'none' : 'random';
     },
-    // sounds.c get_soundlib_name() over ga.active_soundlib.  SND_LIB_INTEGRATED
-    // is undefined for this build, so soundlib_choices[] holds only
-    // nosound_procs and no configuration can select another.
-    soundlib: () => 'nosound',
+    soundlib: (state) => get_soundlib_name(state),
     autounlock: (state, option) => {
         const bits = requireParsedNumber(state, option);
         if (!bits) return 'none';
@@ -4757,7 +4904,8 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
         || state.gs.showsyms[SYM_OFF_O + ROCK_CLASS],
     ]),
     // gc.crash_email and gc.crash_name are null until a configuration file
-    // sets them, and C then leaves the buffer empty.
+    // sets them, and C then leaves the buffer empty.  decl.c initializes
+    // crash_urlmax to -1 and its handler always prints the signed decimal.
     crash_email: (state) => state.gc?.crash_email ?? '',
     crash_name: (state) => state.gc?.crash_name ?? '',
     crash_urlmax: (state) => `${state.gc?.crash_urlmax ?? -1}`,
@@ -4836,6 +4984,14 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
         }
         return opts || 'none';
     },
+    scroll_amount: (state) => (state.iflags.wc_scroll_amount
+        ? `${state.iflags.wc_scroll_amount}` : 'default'),
+    scroll_margin: (state) => (state.iflags.wc_scroll_margin
+        ? `${state.iflags.wc_scroll_margin}` : 'default'),
+    tile_height: (state) => (state.iflags.wc_tile_height
+        ? `${state.iflags.wc_tile_height}` : 'default'),
+    tile_width: (state) => (state.iflags.wc_tile_width
+        ? `${state.iflags.wc_tile_width}` : 'default'),
     // o_init.c get_sortdisco() with cnf FALSE.
     sortdiscoveries: (state) => {
         const index = disco_order_let.indexOf(state.flags.discosort);
@@ -4931,15 +5087,14 @@ function symsetValue(state, set, withHandling) {
 // scripts/options-menu.test.mjs derives the whole rule from parseNethackrc(),
 // so the set cannot drift from OPTION_VALUE_HANDLERS unnoticed.
 export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set([
-    'crash_email', 'crash_name', 'crash_urlmax',
     'glyph',
     'sortvanquished',
-    'soundlib', 'whatis_filter', 'windowtype',
+    'whatis_filter', 'windowtype',
 ]));
 
 // C ref: options.c doset_add_menu()'s optfn call, plus the "unknown" default
 // it keeps when the handler writes nothing.
-function optionValue(state, option, helpers) {
+export function optionValue(state, option, helpers) {
     if (UNPARSED_COMPOUND_OPTIONS.has(option.name)
         && state.flags?.[option.name] !== undefined) {
         throw new UnsupportedOptionMenuError(

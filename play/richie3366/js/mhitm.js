@@ -14,7 +14,7 @@ import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval } from './weapon.js';
-import { arti_reflects } from './artifact.js';
+import { arti_reflects, artifact_hit } from './artifact.js';
 import { find_mac, which_armor } from './worn.js';
 import { update_monster_region } from './region.js';
 import { remove_worm, place_worm_tail_randomly } from './worm.js';
@@ -866,13 +866,13 @@ async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_ad_phys mhitm arm :4128–4198 (D-1394 shade;
- * D-1402 mwep dmgval; D-1403 AT_KICK thick_skinned).
+ * D-1402 mwep dmgval; D-1403 AT_KICK thick_skinned; D-1415 artifact_hit).
  * Re-reads MON_WEP then zeros it unless AT_WEAP/AT_CLAW (so a bite
  * while holding silver still shade_misses). vis is canseemon both,
- * not gv.vis. shade_miss callee is D-1341.
+ * not gv.vis. Delayed artifact hit-pline uses gv.vis (`_mm_vis`).
+ * shade_miss callee is D-1341. artifact_hit callee is D-0613.
  * Named omit: youmonst is damageum_ad_phys; mhitu is mhitm_ad_phys_u;
- * artifact_hit / rustm / mhitm_really_poison;
- * purple worm vs shrieker cap.
+ * rustm / mhitm_really_poison; purple worm vs shrieker cap.
  */
 async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     let mwep = MON_WEP(magr);
@@ -888,8 +888,8 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
            cannot wear boots. Zeros leftover d() (mwep already nulled). */
         mhm.damage = 0;
     } else if (mwep) {
-        /* C `:4142–4157` — corpse stone then dmgval + gauntlets + min 1.
-           artifact_hit / rustm / poison still named. */
+        /* C `:4142–4180` — corpse stone then dmgval + gauntlets + min 1
+           then artifact_hit. rustm / poison still named. */
         if ((mwep.otyp | 0) === CORPSE
             && touch_petrifies(mons(mwep.corpsenm))) {
             await do_stone_mon(magr, mattk, mdef, mhm);
@@ -901,6 +901,29 @@ async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
             mhm.damage += rn1(4, 3); /* 3..6 */
         }
         if ((mhm.damage | 0) < 1) mhm.damage = 1;
+        if (mwep.oartifact) {
+            /* C `:4158–4180` — hitmm skipped default "hits" so
+               artifact_hit can speak; if it didn't, gv.vis delayed
+               hit then M_ATTK_HIT. destroy_items may already have
+               killed mdef. */
+            const dmgBox = { dmg: mhm.damage | 0 };
+            if (!artifact_hit(magr, mdef, mwep, dmgBox, mhm.dieroll | 0)) {
+                if (_mm_vis) {
+                    await pline_mon(
+                        magr,
+                        `${Monnam(magr)} hits ${mon_nam_too(mdef, magr)}.`,
+                    );
+                }
+                mhm.hitflags |= M_ATTK_HIT;
+            }
+            mhm.damage = dmgBox.dmg | 0;
+            if (deadmonster(mdef)) {
+                const grew = await grow_up(magr, mdef);
+                mhm.hitflags = M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+                mhm.done = true;
+                return;
+            }
+        }
     }
 }
 
@@ -2146,7 +2169,6 @@ async function mdamagem_monkilled(magr, mdef, mattk, mwep) {
 async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     let damage = d(mattk.damn || 0, mattk.damd || 0);
     let hitflags = M_ATTK_MISS;
-    void dieroll;
 
     if (mattk.adtyp === AD_STCK) {
         damage = 0;
@@ -2428,15 +2450,17 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     }
 
     // C: mhitm_adtyping → mhitm_ad_phys for AD_PHYS (D-1394 shade;
-    // D-1402 mwep dmgval; D-1403 AT_KICK thick_skinned). shade_miss
-    // zeros leftover. AT_KICK vs thick hide zeros leftover (mwep
-    // already nulled). AT_WEAP/AT_CLAW mwep adds dmgval. Non-zero
-    // dice fall through to shared knockback + HP.
+    // D-1402 mwep dmgval; D-1403 AT_KICK thick_skinned; D-1415
+    // artifact_hit). shade_miss zeros leftover. AT_KICK vs thick hide
+    // zeros leftover (mwep already nulled). AT_WEAP/AT_CLAW mwep adds
+    // dmgval then artifact_hit. Non-zero dice fall through to shared
+    // knockback + HP.
     if ((mattk.adtyp | 0) === AD_PHYS) {
         const mhm = {
             damage,
             hitflags: M_ATTK_MISS,
             done: false,
+            dieroll: dieroll | 0,
         };
         await mhitm_ad_phys(magr, mattk, mdef, mhm);
         damage = mhm.damage | 0;
@@ -2521,7 +2545,8 @@ export async function shade_miss(magr, mdef, obj, thrown, verbose) {
  * C ref: mhitm.c hitmm — hit pline when gv.vis; else noises().
  * Seduce: smiles/talks + engagingly/seductively when could_seduce && !mcan.
  * shade_miss (D-1341) bypasses mdamagem. Silver sear D-1351 (`:706–726`).
- * Named omit: artifact wep skips the default "hits" buf.
+ * Default "hits" skipped when artifact wep (D-1415); mhitm_ad_phys may
+ * deliver it after artifact_hit.
  */
 async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     /* C `:652–655` — AT_WEAP, or claw while already holding mwep. */
@@ -2565,9 +2590,15 @@ async function hitmm(magr, mdef, mattk, mwep, dieroll) {
                 else if (mattk.aatyp === AT_STNG) verb = 'stings';
                 else if (mattk.aatyp === AT_BUTT) verb = 'butts';
                 else if (mattk.aatyp === AT_TUCH) verb = 'touches';
-                await pline(
-                    `${magr_name} ${verb} ${mon_nam_too(mdef, magr)}.`,
-                );
+                /* C `:698–701` — default "hits" skipped when artifact
+                   wep; mhitm_ad_phys may print it after artifact_hit. */
+                const skipHits = verb === 'hits' && weaponhit && mwep
+                    && mwep.oartifact;
+                if (!skipHits) {
+                    await pline(
+                        `${magr_name} ${verb} ${mon_nam_too(mdef, magr)}.`,
+                    );
+                }
             }
             /* C `:706–726` — vis, !compat, after the hit pline. */
             if (mon_hates_silver(mdef) && silverhit) {
