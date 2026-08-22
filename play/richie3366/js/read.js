@@ -2,7 +2,7 @@
 // C ref: read.c doread, seffects, seffect_magic_mapping, seffect_teleportation,
 // seffect_light / litroom / set_lit, seffect_remove_curse,
 // seffect_enchant_weapon, seffect_punishment / punish, seffect_genocide,
-// do_class_genocide, do_genocide; mondata.c name_to_monclass;
+// seffect_create_monster, do_class_genocide, do_genocide; mondata.c name_to_monclass;
 // invent.c getobj; detect.c do_mapping; spell.c study_book (via spell.js);
 // teleport.c scrolltele/safe_teleds; zap.c lightdamage (D-1366);
 // do_name.c trycall; mkobj.c uncurse/blessorcurse; wield.c chwepon;
@@ -15,15 +15,17 @@
 // SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
 // named-monster path for #wizgenesis + do_genocide REALLY|ONTHRONE getlin
 // (throne sit case 8, D-1034) + seffects SCR_GENOCIDE / do_class_genocide
-// (D-1098).
+// (D-1098) + seffect_create_monster SCR/SPE_CREATE_MONSTER (D-1401) +
+// SPE_MAGIC_MAPPING seffects (D-1407; callee seffect_magic_mapping).
 // Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
 // Blind gates; study_book novel / dull sleep (occupation learn D-0907);
 // other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
-// blessed getobj choice / disintegrate_cursed_armor; nommap/Hallucination/
-// blessed-SDOOR convert body; notice_mon_off/on; can_chant poly silent/
-// headless/buzz/burble; SPE_MAGIC_MAPPING cast; SPE_REMOVE_CURSE seffects
+// blessed getobj choice / disintegrate_cursed_armor; Rogue unblock_point
+// vs vision_recalc on blessed SDOOR; can_chant poly silent/
+// headless/buzz/burble;
+// SPE_REMOVE_CURSE seffects
 // arm (throne fake book D-1033; #cast still deferred);
 // Teleport_control getpos; confused light yellow/black-light pets;
 // snuff_lit / impact_arti_light / Punished ball; gremlin light-hit list;
@@ -50,9 +52,10 @@
 // other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
-// blessed getobj choice / disintegrate_cursed_armor; nommap/Hallucination/
-// blessed-SDOOR convert body; notice_mon_off/on; can_chant poly silent/
-// headless/buzz/burble; SPE_MAGIC_MAPPING cast; SPE_REMOVE_CURSE seffects
+// blessed getobj choice / disintegrate_cursed_armor; Rogue unblock_point
+// vs vision_recalc on blessed SDOOR; can_chant poly silent/
+// headless/buzz/burble;
+// SPE_REMOVE_CURSE seffects
 // arm (throne fake book D-1033; #cast still deferred);
 // Teleport_control getpos; confused light yellow/black-light pets;
 // snuff_lit / impact_arti_light / Punished ball; gremlin light-hit list;
@@ -92,6 +95,7 @@ import { placebc } from './ball.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
+    HEAD,
     W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM,
     NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
     GENOCIDED, KILLED_BY, KILLED_BY_AN, NO_MINVENT, MM_NOMSG, Upolyd,
@@ -102,14 +106,15 @@ import { getlin } from './getline.js';
 import { name_to_mon, name_to_monclass } from './mondata.js';
 import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, is_whirly, unsolid,
     G_GENO, G_UNIQ, G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL,
-    M2_PNAME, monsterNames, nonliving, weirdnonliving,
+    M2_PNAME, monsterNames, nonliving, weirdnonliving, PM_ACID_BLOB,
 } from './monsters.js';
-import { makemon, makemon_appear_msg, rndmonst } from './makemon.js';
+import { makemon, makemon_appear_msg, rndmonst, create_critters } from './makemon.js';
 import { kill_genocided_monsters, mongone } from './mon.js';
 import { done } from './end.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
+const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
 const SCR_TELEPORTATION = objectNames.indexOf('SCR_TELEPORTATION');
 const SCR_LIGHT = objectNames.indexOf('SCR_LIGHT');
 const SCR_REMOVE_CURSE = objectNames.indexOf('SCR_REMOVE_CURSE');
@@ -119,6 +124,8 @@ const SCR_DESTROY_ARMOR = objectNames.indexOf('SCR_DESTROY_ARMOR');
 const SCR_IDENTIFY = objectNames.indexOf('SCR_IDENTIFY');
 const SCR_PUNISHMENT = objectNames.indexOf('SCR_PUNISHMENT');
 const SCR_GENOCIDE = objectNames.indexOf('SCR_GENOCIDE');
+const SCR_CREATE_MONSTER = objectNames.indexOf('SCR_CREATE_MONSTER');
+const SPE_CREATE_MONSTER = objectNames.indexOf('SPE_CREATE_MONSTER');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
@@ -234,23 +241,34 @@ function learnscroll(scroll) {
 }
 
 /**
- * C ref: read.c seffect_magic_mapping
- * nommap / Hallucination / blessed full SDOOR convert / confused-cursed
- * map-screw path included for call order; notice_mon deferred.
+ * C ref: read.c seffect_magic_mapping `:2102–2153`.
+ * Scroll nommap: crazy-lines + Hallu modern-art else body_part(HEAD)
+ * bewilderment then make_confused(HConfusion+rnd(30), FALSE).
+ * Blessed scroll converts SDOOR (Rogue unblock_point named —
+ * JS vision_recalc+newsym). Spell nommap: body_part(HEAD) + something
+ * blocks then same make_confused. Else "A map coalesces", cursed
+ * unconfused HConfusion=1 screw (JS u.Confusion for do_mapping),
+ * notice_mon_off / do_mapping / notice_mon_on. Callers: seffects
+ * SCR_MAGIC_MAPPING (D-0075) / SPE_MAGIC_MAPPING (spell.c
+ * spelleffects D-1407). Dynamic import: potion.js / polyself.js /
+ * hack.js cycle through eat.js.
  */
 async function seffect_magic_mapping(sobj) {
     const is_scroll = sobj.oclass === SCROLL_CLASS;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!(game.u?.Confusion);
+    const u = game.u || (game.u = {});
+    const confused = !!(u.Confusion);
     const lf = game.level?.flags;
 
     if (is_scroll) {
         if (lf?.nommap) {
+            const { body_part } = await import('./polyself.js');
+            const { make_confused } = await import('./potion.js');
             await pline('Your mind is filled with crazy lines!');
-            if (game.u?.Hallucination) await pline('Wow!  Modern art.');
-            else await pline('Your head spins in bewilderment.');
-            // make_confused deferred
+            if (u.Hallucination) await pline('Wow!  Modern art.');
+            else await pline(`Your ${body_part(HEAD)} spins in bewilderment.`);
+            await make_confused((u.HConfusion | 0) + rnd(30), false);
             return;
         }
         if (sblessed) {
@@ -259,7 +277,7 @@ async function seffect_magic_mapping(sobj) {
                     const lev = game.level?.at(x, y);
                     if (!lev || lev.typ !== SDOOR) continue;
                     cvt_sdoor_to_door(lev);
-                    if (Is_rogue_level(game.u?.uz)) vision_recalc(1);
+                    if (Is_rogue_level(u.uz)) vision_recalc(1);
                     newsym(x, y);
                 }
             }
@@ -268,17 +286,21 @@ async function seffect_magic_mapping(sobj) {
     }
 
     if (lf?.nommap) {
-        await pline('Your head spins as something blocks the spell!');
-        // make_confused deferred
+        const { body_part } = await import('./polyself.js');
+        const { make_confused } = await import('./potion.js');
+        await pline(
+            `Your ${body_part(HEAD)} spins as something blocks the spell!`,
+        );
+        await make_confused((u.HConfusion | 0) + rnd(30), false);
         return;
     }
     await pline('A map coalesces in your mind!');
     const cval = scursed && !confused;
-    const u = game.u || (game.u = {});
-    if (cval) u.Confusion = 1; // screw up map
-    // notice_mon_off deferred
+    if (cval) u.Confusion = 1; // C: HConfusion = 1 to screw up map
+    const { notice_mon_off, notice_mon_on } = await import('./hack.js');
+    notice_mon_off();
     do_mapping();
-    // notice_mon_on deferred
+    notice_mon_on();
     if (cval) {
         u.Confusion = 0;
         await pline("Unfortunately, you can't grasp the details.");
@@ -858,6 +880,29 @@ async function seffect_genocide(sobj) {
 }
 
 /**
+ * C ref: read.c seffect_create_monster `:1608–1624`.
+ * create_critters(1 + ((confused||scursed)?12:0)
+ *   + ((sblessed||rn2(73))?0:rnd(4)),
+ *   confused ? &mons[PM_ACID_BLOB] : NULL, FALSE)
+ * then gk.known iff a spawned monster is seen.
+ * Callers: seffects SCR_CREATE_MONSTER / SPE_CREATE_MONSTER
+ * (spell.c spelleffects D-1401). Confusion ≡ HConfusion (D-1048).
+ */
+async function seffect_create_monster(sobj) {
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const u = game.u || {};
+    const confused = !!(u.HConfusion | 0);
+    const cnt = 1
+        + ((confused || scursed) ? 12 : 0)
+        + ((sblessed || rn2(73)) ? 0 : rnd(4));
+    const mptr = confused ? mons(PM_ACID_BLOB) : null;
+    if (await create_critters(cnt, mptr, false)) {
+        known = true;
+    }
+}
+
+/**
  * C ref: read.c seffects — oc_magic exercise + otyp dispatch.
  * @returns {number} 0 = caller useup/learn; 1 = already used up;
  *   -1 = unimplemented (caller must not useup)
@@ -871,6 +916,7 @@ export async function seffects(sobj) {
 
     switch (otyp) {
     case SCR_MAGIC_MAPPING:
+    case SPE_MAGIC_MAPPING:
         await seffect_magic_mapping(sobj);
         break;
     case SCR_TELEPORTATION:
@@ -903,6 +949,10 @@ export async function seffects(sobj) {
         break;
     case SCR_GENOCIDE:
         await seffect_genocide(sobj);
+        break;
+    case SCR_CREATE_MONSTER:
+    case SPE_CREATE_MONSTER:
+        await seffect_create_monster(sobj);
         break;
     default:
         // Other seffect_* deferred — do not useup
@@ -957,7 +1007,8 @@ export async function doread() {
         && otyp !== SCR_TELEPORTATION && otyp !== SCR_LIGHT
         && otyp !== SCR_REMOVE_CURSE && otyp !== SCR_ENCHANT_WEAPON
         && otyp !== SCR_DESTROY_ARMOR && otyp !== SCR_IDENTIFY
-        && otyp !== SCR_PUNISHMENT && otyp !== SCR_GENOCIDE) {
+        && otyp !== SCR_PUNISHMENT && otyp !== SCR_GENOCIDE
+        && otyp !== SCR_CREATE_MONSTER) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }

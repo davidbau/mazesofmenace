@@ -107,6 +107,7 @@ import {
     NO_COLOR,
 } from './terminal.js';
 import {
+    cnf_line_BOULDER,
     config_error_add,
     config_error_init,
     config_error_nextline,
@@ -180,7 +181,12 @@ import {
     WEAPON_CLASS,
 } from './objects.js';
 import { rn2 } from './rng.js';
-import { def_char_to_objclass } from './drawing.js';
+import {
+    def_char_to_monclass,
+    def_char_to_objclass,
+} from './drawing.js';
+import { escapes } from './options_escapes.js';
+import { MAXMCLASSES } from './symbols.js';
 import { choose_classes_menu } from './windows.js';
 
 const PET_NAME_BYTE_LIMIT = 62; // PL_PSIZ - 1
@@ -362,6 +368,7 @@ function applyBooleanOptionDefaults(result) {
 }
 
 function defaultResult() {
+    const startupEvents = [];
     const result = {
         name: '',
         role: ROLE_NONE,
@@ -449,9 +456,6 @@ function defaultResult() {
             msg_history: 20,
             // initoptions_init()'s TTY_GRAPHICS arm; this build is tty.
             prevmsg_window: 's',
-            // optfn_menu_objsyms()'s do_init arm calls
-            // set_menuobjsyms_flags(4), "conditional".
-            menuobjsyms: 4,
             menuinvertmode: 1,
             getloc_filter: GFILTER_NONE,
         },
@@ -468,10 +472,11 @@ function defaultResult() {
         pl_fruit: DEFAULT_FRUIT,
         gameplayBindings: [],
         commandOperations: [],
-        // optfn_boolean() can call pline() before tty_init_nhwindows().  The
-        // game installer replays these through tty_raw_print() in source
-        // order after it has attached the recorder-facing display.
-        startupRawPrints: [],
+        // Raw output produced while the rc file is being parsed, in source
+        // order. optfn_boolean() and config_error_add() emit print-only
+        // events. A wait marks cfgfiles.c get_uchars()'s immediate
+        // wait_synch(); config_error_done() supplies the final wait separately.
+        startupEvents,
         // options.c's file static starts true; unsupported idlecheckpoint is
         // its only configuration-time writer.
         give_opt_msg: true,
@@ -486,9 +491,12 @@ function defaultResult() {
         // around the configuration read.  parseNethackrc() feeds it one line
         // at a time; js/jsmain.js closes it with config_error_done() and
         // prints what it holds.
-        configErrorFrame: config_error_init(),
+        configErrorFrame: config_error_init(startupEvents),
     };
     applyBooleanOptionDefaults(result);
+    // allopt_array_init() invokes this compound handler's do_init arm after
+    // the instance-flags struct has been zeroed.
+    set_menuobjsyms_flags(result, 4);
     return result;
 }
 
@@ -1094,6 +1102,36 @@ function setFruit(result, statement) {
         op,
         result.iflags.wc_eight_bit_input,
     );
+}
+
+// C ref: options.c optfn_boulder() (1171-1244), its startup do_set arm.
+// The reference build's plain `char` is signed.  Fresh patched-C recordings
+// pin bytes 0x80 and above to the same control-character diagnostic as NUL;
+// they also settle the adjacent source comment about NUL reset as stale.
+function optfn_boulder(result, statement) {
+    const op = string_for_opt(statement, false, result);
+    if (op === '') return;
+    const byte = escapes(op)[0] ?? 0;
+    const monsterClass = def_char_to_monclass(byte);
+    const clash = monsterClass !== MAXMCLASSES && byte !== 0
+        ? 'monster'
+        : byte >= 0x31 && byte < 0x30 + 6 ? 'warning' : null;
+    const signedByte = byte >= 0x80 ? byte - 0x100 : byte;
+    if (signedByte < 0x20) {
+        configErrorAdd(
+            result, 'boulder symbol cannot be a control character',
+        );
+        return;
+    }
+    if (clash) {
+        configErrorAdd(
+            result,
+            `Badoption - boulder symbol '${visctrl(byte)}' would conflict`
+                + ` with a ${clash} symbol`,
+        );
+        return;
+    }
+    result.symbolOperations.push({ kind: 'boulder', byte });
 }
 
 const MENU_HEADING_COLORS = Object.freeze({
@@ -2031,6 +2069,55 @@ function setMenuHeadings(result, value, negated) {
     result.iflags.menu_headings = ca;
 }
 
+// C ref: options.c set_menuobjsyms_flags() (7446-7451).  The numeric mode is
+// the sole stored option value; the other two fields are its execution flags.
+function set_menuobjsyms_flags(result, newobjsyms) {
+    result.iflags.menuobjsyms = newobjsyms;
+    result.iflags.menu_head_objsym = (newobjsyms & 1) !== 0;
+    result.iflags.use_menu_glyphs = (newobjsyms & (2 | 4)) !== 0;
+}
+
+// C ref: options.c optfn_menu_objsyms() (2225-2287), its startup do_set arm.
+// The interactive handler remains outside this startup slice; get_val reads
+// the numeric field through OPTION_VALUE_HANDLERS below.
+function optfn_menu_objsyms(result, statement, value, negated) {
+    let osyms;
+    if (negated) {
+        osyms = 0;
+    } else if (value == null || value === '') {
+        // C checks the original spelling case-sensitively after its
+        // case-insensitive alias match.  Preserve that quirk for the obsolete
+        // alias instead of checking the canonical name chosen by the parser.
+        osyms = statement.startsWith('use_menu_glyphs') ? 2 : 1;
+    } else if (/^[0-9]/u.test(value)) {
+        const parsed = atoi(value);
+        if (parsed >= objsymvals.length) {
+            configErrorAdd(
+                result, `Illegal menu_objsyms parameter '${value}'`,
+            );
+            return;
+        }
+        osyms = parsed;
+    } else {
+        const alternate = 'one-or-the-other';
+        osyms = 0;
+        for (let index = 0; index < objsymvals.length; ++index) {
+            const canonical = objsymvals[index];
+            const width = value.length >= 4
+                ? value.length : canonical.length;
+            if (equal_ncasechars(canonical, value, width)
+                || (index === 5
+                    && equal_ncasechars(
+                        alternate, value, alternate.length,
+                    ))) {
+                osyms = index;
+                break;
+            }
+        }
+    }
+    set_menuobjsyms_flags(result, osyms);
+}
+
 // C ref: options.c optfn_petattr() (3137-3175), its do_set arm.  The tty port
 // accepts one text attribute and keeps the chosen style when hilite_pet is
 // later disabled.  optlist.h:568-569 gives petattr negateok No, so
@@ -2669,9 +2756,11 @@ function applyBooleanOption(result, name, row, statement, value, negated) {
         // IDLECHECKPOINT is not compiled into the recorder build. pline()
         // therefore uses raw_print() this early, then the handler clears the
         // value it just wrote and suppresses later toggle messages.
-        result.startupRawPrints.push(
-            "There is no underlying support for 'idlecheckpoint' compiled in.",
-        );
+        {
+            const text = "There is no underlying support for"
+                + " 'idlecheckpoint' compiled in.";
+            result.startupEvents.push({ kind: 'print', text });
+        }
         result.iflags.idlecheckpoint = false;
         result.give_opt_msg = false;
         break;
@@ -3554,6 +3643,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         );
     } else if (name === 'playmode') {
         setPlaymode(result, value, duplicate);
+    } else if (name === 'menu_objsyms') {
+        optfn_menu_objsyms(result, statement, value, negated);
     } else if (name === 'menu_headings') {
         setMenuHeadings(result, value, negated);
     } else if (name === 'petattr') {
@@ -3576,6 +3667,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setPettype(result, statement, negated);
     } else if (name === 'fruit') {
         setFruit(result, statement);
+    } else if (name === 'boulder') {
+        optfn_boulder(result, statement);
     } else if (name === 'catname' || name === 'dogname'
                || name === 'horsename') {
         setPetName(result, name, value);
@@ -3829,6 +3922,7 @@ const CONFIG_STATEMENT_HANDLERS = Object.freeze({
     character: Object.freeze({ kind: 'direct', directName: 'role' }),
     dogname: Object.freeze({ kind: 'direct', directName: 'dogname' }),
     catname: Object.freeze({ kind: 'direct', directName: 'catname' }),
+    boulder: Object.freeze({ kind: 'legacy-boulder' }),
 });
 
 function configDelimiter(line) {
@@ -4044,6 +4138,10 @@ export function parseNethackrc(rc, random = rn2) {
             // semantics; unlike that option handler, an empty direct value is
             // accepted and enables the default duration.
             parse_status_hl1(result, normalizedValue);
+            continue;
+        }
+        if (statement.kind === 'legacy-boulder') {
+            cnf_line_BOULDER(result, normalizedValue);
             continue;
         }
 
@@ -4719,8 +4817,8 @@ function symsetValue(state, set, withHandling) {
 // scripts/options-menu.test.mjs derives the whole rule from parseNethackrc(),
 // so the set cannot drift from OPTION_VALUE_HANDLERS unnoticed.
 export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set([
-    'boulder', 'crash_email', 'crash_name', 'crash_urlmax',
-    'glyph', 'menu_objsyms', 'menuinvertmode',
+    'crash_email', 'crash_name', 'crash_urlmax',
+    'glyph', 'menuinvertmode',
     'scores', 'sortvanquished',
     'soundlib', 'whatis_filter', 'windowtype',
 ]));

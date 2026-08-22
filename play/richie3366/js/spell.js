@@ -18,11 +18,26 @@
 // SPE_FORCE_BOLT IMMEDIATE weffects/bhit (D-1388);
 // SPE_CREATE_FAMILIAR make_familiar(NULL,u.ux,u.uy,FALSE) (D-1389);
 // SPE_PROTECTION cast_protection (D-1390; timeout.c usptime tick);
-// SPE_CLAIRVOYANCE do_vicinity_map (D-1391; callee detect.c).
+// SPE_CLAIRVOYANCE do_vicinity_map (D-1391; callee detect.c);
+// SPE_JUMPING jump(max(role_skill,1)) (D-1397; callee apply.c);
+// SPE_CURE_SICKNESS healup+ill/slime (D-1398; callee potion.c);
+// SPE_CURE_BLINDNESS healup(0,0,FALSE,TRUE) (D-1399; callee potion.c
+// healup cream + make_blinded + make_deaf);
+// SPE_CHAIN_LIGHTNING cast_chain_lightning (D-1400; callee zap.c
+// zhitm BZ_U_SPELL(AD_ELEC-1) nd=2);
+// SPE_CREATE_MONSTER seffects (D-1401; callee read.c
+// seffect_create_monster → makemon.c create_critters);
+// SPE_MAGIC_MAPPING seffects (D-1407; same C `:1528–1531` arm, no
+// skilled bless; callee read.c seffect_magic_mapping — SCR live
+// D-0075).
+// SPE_HASTE_SELF peffects (D-1408; C `:1534–1546` skilled bless then
+// peffects(pseudo); callee potion.c peffect_speed / speed_up).
 // Named omissions: novel/tribute; dull sleep; confused_book body;
 // learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
-// swap/sort; other spelleffects otyps (JUMPING/
-// CURE/CHAIN/seffects/peffects); directional weffects for
+// swap/sort; other spelleffects otyps (remaining peffects:
+// DETECT_TREASURE / DETECT_MONSTERS / LEVITATION / RESTORE_ABILITY /
+// INVISIBILITY);
+// #jump known_spell fallback; directional weffects for
 // IMMEDIATE heal/tele; spell_backfire;
 // amulet drain; CQ_REPEAT; cursed_book shieldeff polish;
 // In_W_tower in aggravate. #teleport doextcmd D-1230.
@@ -32,7 +47,8 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, pline, You_feel, impossible, canspotmon, tmp_at,
-    clear_nhwindow_message,
+    clear_nhwindow_message, canseemon, map_invisible, zapdir_to_glyph,
+    nh_delay_output,
 } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory } from './invent.js';
 import { yn_function } from './getline.js';
@@ -40,13 +56,13 @@ import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
 import { SPBOOK_CLASS, NODIR } from './objects.js';
-import { rnd, rn2, rn1, rnl } from './rng.js';
+import { rnd, rn2, rn1, rnl, rn2_on_display_rng } from './rng.js';
 import { morehungry, poison_strdmg } from './eat.js';
-import { zapyourself, spell_damage_bonus, weffects } from './zap.js';
+import { zapyourself, spell_damage_bonus, weffects, zhitm, resists_elec } from './zap.js';
 import { tele } from './teleport.js';
 import { aggravate } from './wizard.js';
-import { make_confused } from './potion.js';
-import { trycall, hcolor, hliquid } from './do_name.js';
+import { make_confused, healup, make_slimed, peffects } from './potion.js';
+import { trycall, hcolor, hliquid, Hallucination, mon_nam, Monnam } from './do_name.js';
 import { an } from './objnam.js';
 import { is_whirly, is_animal } from './monsters.js';
 import { nomul, losehp, maybe_half_phys } from './hack.js';
@@ -58,7 +74,7 @@ import { explode } from './explode.js';
 import { getdir } from './lock.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { cansee } from './vision.js';
-import { m_at } from './mon.js';
+import { m_at, wakeup } from './mon.js';
 import { walk_path } from './dothrow.js';
 import { distmin } from './hacklib.js';
 import {
@@ -80,6 +96,7 @@ import {
     ECMD_OK,
     ECMD_TIME,
     ECMD_FAIL,
+    nothing_happens,
     EXT_ENCUMBER,
     NO_KILLER_PREFIX,
     TIMEOUT,
@@ -100,7 +117,19 @@ import {
     EXPL_FIERY,
     EXPL_FROSTY,
     DISP_BEAM,
+    DISP_CHANGE,
     DISP_END,
+    N_DIRS,
+    xdir,
+    ydir,
+    POOL,
+    MOAT,
+    DRAWBRIDGE_UP,
+    LAVAPOOL,
+    D_CLOSED,
+    D_LOCKED,
+    SPACE_POS,
+    XKILL_GIVEMSG,
     HI_ZAP,
     HEAD,
     CLAIRVOYANT,
@@ -150,6 +179,13 @@ const SPE_CONE_OF_COLD = objectNames.indexOf('SPE_CONE_OF_COLD');
 const SPE_CREATE_FAMILIAR = objectNames.indexOf('SPE_CREATE_FAMILIAR');
 const SPE_PROTECTION = objectNames.indexOf('SPE_PROTECTION');
 const SPE_CLAIRVOYANCE = objectNames.indexOf('SPE_CLAIRVOYANCE');
+const SPE_CURE_SICKNESS = objectNames.indexOf('SPE_CURE_SICKNESS');
+const SPE_CURE_BLINDNESS = objectNames.indexOf('SPE_CURE_BLINDNESS');
+const SPE_JUMPING = objectNames.indexOf('SPE_JUMPING');
+const SPE_CHAIN_LIGHTNING = objectNames.indexOf('SPE_CHAIN_LIGHTNING');
+const SPE_CREATE_MONSTER = objectNames.indexOf('SPE_CREATE_MONSTER');
+const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
+const SPE_HASTE_SELF = objectNames.indexOf('SPE_HASTE_SELF');
 const CORNUTHAUM = objectNames.indexOf('CORNUTHAUM');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
@@ -161,6 +197,8 @@ const LENSES = objectNames.indexOf('LENSES');
 /** C monattk.h — local for enfolds (do not import mhitm). */
 const AT_ENGL = 11;
 const AD_WRAP = 28;
+/** C monattk.h AD_ELEC — chain lightning beam / zhitm type. */
+const AD_ELEC = 6;
 
 const IRON = 11;
 const MITHRIL = 17;
@@ -1334,6 +1372,190 @@ async function throwspell() {
 }
 
 /**
+ * C ref: spell.c CHAIN_LIGHTNING_LIMIT — smaller than TMP_AT_MAX_GLYPHS.
+ */
+const CHAIN_LIGHTNING_LIMIT = 100;
+
+/** C ref: hack.h DIR_LEFT / DIR_RIGHT2 — 8-dir wrap. */
+function DIR_LEFT(dir) {
+    return ((dir | 0) + 7) % N_DIRS;
+}
+function DIR_RIGHT2(dir) {
+    return ((dir | 0) + 2) % N_DIRS;
+}
+
+/** C ref: hack.h BZ_U_SPELL — hero-spell buzz type 10..19. */
+function BZ_U_SPELL(bztyp) {
+    return 10 + (bztyp | 0);
+}
+
+/**
+ * C ref: zap.c exclam — punctuation for "You shock %s%s".
+ * Local copy (zap.js helper is not exported).
+ */
+function exclam_chain(force) {
+    if (force < 0) return '?';
+    if (force <= 4) return '.';
+    return '!';
+}
+
+/**
+ * C ref: spell.c CHAIN_LIGHTNING_TYP — open space / pool / moat /
+ * drawbridge-up / lavapool; not WATER or LAVAWALL.
+ */
+function CHAIN_LIGHTNING_TYP(typ) {
+    const t = typ | 0;
+    return SPACE_POS(t) || t === POOL || t === MOAT
+        || t === DRAWBRIDGE_UP || t === LAVAPOOL;
+}
+
+/**
+ * C ref: spell.c CHAIN_LIGHTNING_POS — isok + TYP or an unlocked door.
+ */
+function CHAIN_LIGHTNING_POS(x, y) {
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at?.(x, y);
+    const typ = loc?.typ | 0;
+    if (CHAIN_LIGHTNING_TYP(typ)) return true;
+    return IS_DOOR(typ) && !((loc?.doormask | 0) & (D_CLOSED | D_LOCKED));
+}
+
+/**
+ * C ref: spell.c propagate_chain_lightning :951–1000.
+ * zap is copied (C pass-by-value); mutates the copy then maybe enqueue.
+ * defended(mon, AD_ELEC) named omit (same as zap.js zhitm).
+ */
+function propagate_chain_lightning(clq, zapIn) {
+    const zap = {
+        dir: zapIn.dir | 0,
+        x: (zapIn.x | 0) + (xdir[zapIn.dir | 0] | 0),
+        y: (zapIn.y | 0) + (ydir[zapIn.dir | 0] | 0),
+        strength: zapIn.strength | 0,
+    };
+
+    if (clq.tail >= CHAIN_LIGHTNING_LIMIT) return;
+    if (!CHAIN_LIGHTNING_POS(zap.x, zap.y)) return;
+
+    const mon = m_at(zap.x, zap.y);
+    if (mon && mon.mpeaceful) return;
+
+    if (mon && !resists_elec(mon) /* && !defended(mon, AD_ELEC) */) {
+        zap.strength = 3;
+    } else if (mon) {
+        zap.strength = 0;
+    }
+
+    if (!mon && !zap.strength) return;
+
+    for (let i = 0; i < clq.tail; i++) {
+        if (clq.q[i].x === zap.x && clq.q[i].y === zap.y) return;
+    }
+
+    clq.q[clq.tail++] = zap;
+
+    tmp_at(DISP_CHANGE, zapdir_to_glyph(
+        xdir[zap.dir], ydir[zap.dir], clq.displayed_beam,
+    ));
+    tmp_at(zap.x, zap.y);
+}
+
+/**
+ * C ref: spell.c cast_chain_lightning :1002–1100.
+ * Display-rng beam when Hallucination (even if swallowed — C inits
+ * clq first). Swallow TODO matches C (no engulfer damage).
+ * Callee zap.c zhitm(BZ_U_SPELL(AD_ELEC-1), 2); xkilled dynamic
+ * (uhitm ← dog ← weapon ← spell).
+ */
+async function cast_chain_lightning() {
+    const clq = {
+        q: [],
+        head: 0,
+        tail: 0,
+        displayed_beam: Hallucination()
+            ? rn2_on_display_rng(6)
+            : (AD_ELEC - 1),
+    };
+
+    if (game.u?.uswallow) {
+        /* C :1009–1011 — TODO: damage the engulfer */
+        return;
+    }
+
+    tmp_at(DISP_BEAM, zapdir_to_glyph(0, 1, clq.displayed_beam));
+
+    for (let dir = 0; dir < N_DIRS; dir++) {
+        propagate_chain_lightning(clq, {
+            dir,
+            x: game.u.ux | 0,
+            y: game.u.uy | 0,
+            strength: 2,
+        });
+    }
+    await nh_delay_output();
+
+    while (clq.head < clq.tail) {
+        const delay_tail = clq.tail;
+        while (clq.head < delay_tail) {
+            const zap = { ...clq.q[clq.head++] };
+            const mon = m_at(zap.x, zap.y);
+
+            if (mon) {
+                const unused = { otmp: null };
+                const bp = game.bhitpos || {};
+                game.notonhead = ((mon.mx | 0) !== (bp.x | 0)
+                    || (mon.my | 0) !== (bp.y | 0));
+                const dmg = await zhitm(
+                    mon, BZ_U_SPELL(AD_ELEC - 1), 2, unused,
+                );
+
+                if (dmg) {
+                    if ((mon.mhp | 0) < 1) {
+                        const { xkilled } = await import('./uhitm.js');
+                        await xkilled(mon, XKILL_GIVEMSG);
+                    } else {
+                        await pline(
+                            `You shock ${mon_nam(mon)}${exclam_chain(dmg)}`,
+                        );
+                        if (!canseemon(mon) && !game.notonhead) {
+                            map_invisible(zap.x, zap.y);
+                        }
+                    }
+                } else if (canseemon(mon)) {
+                    await pline(`${Monnam(mon)} resists.`);
+                }
+                if ((mon.mhp | 0) >= 1) {
+                    if (!game.context) game.context = {};
+                    game.context.forcefight = (game.context.forcefight | 0) + 1;
+                    await wakeup(mon, false);
+                    game.context.forcefight = (game.context.forcefight | 0) - 1;
+                }
+            }
+
+            if (!zap.strength) continue;
+            zap.strength--;
+
+            propagate_chain_lightning(clq, zap);
+
+            if (zap.strength < 2) {
+                zap.strength = 0;
+            } else if ((game.u.uen | 0) > 0) {
+                game.u.uen--;
+            }
+            zap.dir = DIR_LEFT(zap.dir);
+            propagate_chain_lightning(clq, zap);
+
+            zap.dir = DIR_RIGHT2(zap.dir);
+            propagate_chain_lightning(clq, zap);
+        }
+        await nh_delay_output();
+    }
+    await nh_delay_output();
+    await nh_delay_output();
+
+    tmp_at(DISP_END, 0);
+}
+
+/**
  * C ref: spell.c spelleffects :1479–1514 — wand-duplicate getdir +
  * zapyourself / weffects. `physical_damage` is set by SPE_FORCE_BOLT
  * FALLTHROUGH (also unskilled FIREBALL/CONE). update_inventory after
@@ -1442,8 +1664,24 @@ async function cast_protection() {
  * dog.c D-1029). SPE_PROTECTION cast_protection (D-1390;
  * callee find_ac + timeout.c usptime tick). SPE_CLAIRVOYANCE
  * do_vicinity_map (D-1391; callee detect.c; blocked
- * cornuthaum hat). Other otyps named omission (return TIME
- * after energy spent + exercise).
+ * cornuthaum hat). SPE_JUMPING jump(max(role_skill, 1))
+ * (D-1397; callee apply.c jump; !TIME → nothing_happens).
+ * SPE_CURE_SICKNESS healup(0,0,TRUE,FALSE) then ill/slime
+ * (D-1398; callee potion.c healup/make_slimed).
+ * SPE_CURE_BLINDNESS healup(0,0,FALSE,TRUE)
+ * (D-1399; callee potion.c cream + make_blinded + make_deaf).
+ * SPE_CHAIN_LIGHTNING cast_chain_lightning
+ * (D-1400; callee zap.c zhitm BZ_U_SPELL(AD_ELEC-1) nd=2).
+ * SPE_CREATE_MONSTER seffects(pseudo) (D-1401; C `:1528–1531`;
+ * no skilled bless — that is REMOVE_CURSE..CHARM_MONSTER only;
+ * callee read.c seffect_create_monster).
+ * SPE_MAGIC_MAPPING seffects(pseudo) (D-1407; same C case;
+ * callee read.c seffect_magic_mapping — scroll path D-0075).
+ * SPE_HASTE_SELF peffects(pseudo) (D-1408; C `:1534–1546`
+ * skilled bless then peffects; callee potion.c peffect_speed /
+ * speed_up). Sibling potion-like otyps still named.
+ * Other otyps named omission (return TIME after energy
+ * spent + exercise).
  */
 export async function spelleffects(spell_otyp, atme, force) {
     const spell = force ? spell_otyp : spell_idx(spell_otyp);
@@ -1569,6 +1807,51 @@ export async function spelleffects(spell_otyp, atme, force) {
                 `You sense a pointy hat on top of your ${body_part(HEAD)}.`,
             );
         }
+    } else if (otyp === SPE_CURE_BLINDNESS) {
+        /* C spell.c :1549–1551 — healup(0, 0, FALSE, TRUE)
+         * (ucreamed=0, make_blinded(0,TRUE), make_deaf(0,TRUE)). */
+        await healup(0, 0, false, true);
+    } else if (otyp === SPE_CURE_SICKNESS) {
+        /* C spell.c :1552–1567 — capture Sick/Slimed, then
+         * healup(0, 0, TRUE, FALSE) (make_vomiting + make_sick),
+         * then You("are %s ill.") unless only-slimed, then
+         * make_slimed(0, "The slime disappears!"). */
+        const u = game.u;
+        const was_sick = !!(u.Sick | 0);
+        const was_slimed = !!(u.Slimed | 0);
+        await healup(0, 0, true, false);
+        if (was_sick || !was_slimed) {
+            await pline(`You are ${was_sick ? 'no longer' : 'not'} ill.`);
+        }
+        if (was_slimed) {
+            await make_slimed(0, 'The slime disappears!');
+        }
+    } else if (otyp === SPE_JUMPING) {
+        /* C spell.c :1584–1587 — jump(max(role_skill, 1)); if that
+         * does not take TIME, pline1(nothing_happens). Dynamic
+         * import: apply.js → weapon.js → spell.js. */
+        const { jump } = await import('./apply.js');
+        const magiclevel = Math.max(role_skill | 0, 1);
+        const jres = await jump(magiclevel);
+        if (!((jres | 0) & ECMD_TIME)) {
+            await pline(nothing_happens);
+        }
+    } else if (otyp === SPE_CHAIN_LIGHTNING) {
+        /* C spell.c :1588–1590 — cast_chain_lightning(); */
+        await cast_chain_lightning();
+    } else if (otyp === SPE_MAGIC_MAPPING || otyp === SPE_CREATE_MONSTER) {
+        /* C spell.c :1528–1531 — MAGIC_MAPPING/CREATE_MONSTER
+         * (void) seffects(pseudo); neither takes the skilled-bless
+         * FALLTHROUGH (that is REMOVE_CURSE through CHARM_MONSTER).
+         * Dynamic import: read.js → spell.js. */
+        const { seffects } = await import('./read.js');
+        await seffects(pseudo);
+    } else if (otyp === SPE_HASTE_SELF) {
+        /* C spell.c :1534–1546 — skilled bless then peffects(pseudo).
+         * Sibling DETECT_TREASURE / DETECT_MONSTERS / LEVITATION /
+         * RESTORE_ABILITY FALLTHROUGH + SPE_INVISIBILITY still named. */
+        if (role_skill >= P_SKILLED) pseudo.blessed = true;
+        await peffects(pseudo);
     } else {
         // Other spell otyps deferred after energy/exercise/mksobj RNG
         await pline('Nothing happens.');

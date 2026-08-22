@@ -57,7 +57,7 @@ import {
     PM_ARCHEOLOGIST, PM_GNOME, bigmonst, verysmall, strongmonst,
     touch_petrifies, poly_when_stoned, is_rider,
 } from './monsters.js';
-import { can_blow, little_to_big, big_to_little } from './mondata.js';
+import { can_blow, little_to_big, big_to_little, hero_conflict } from './mondata.js';
 import { wield_tool, welded, is_pole } from './wield.js';
 import {
     splitobj, delobj, objects_at, unbless, attach_egg_hatch_timeout, kill_egg,
@@ -94,7 +94,7 @@ import {
     flash_hits_mon, xkilled, attack_checks, check_caitiff,
     force_attack, stumble_onto_mimic,
 } from './uhitm.js';
-import { digests } from './mhitu.js';
+import { digests, set_ustuck } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
 import { vault_summon_gd } from './vault.js';
 import { fill_pit, buried_ball_to_freedom } from './dig.js';
@@ -5714,16 +5714,15 @@ export async function dojump() {
 }
 
 /**
- * C ref: apply.c jump(magic)
- * Named omissions: SPE_JUMPING fallback; steed stuck; swallow/water/ustuck/
- * levitation/encumbrance/hunger/wounded-legs trap-escape arms; hurtle_step
- * body (monster bump) — success path uses teleds after walk_path always-true
- * hurtle stub.
+ * C ref: apply.c jump(magic) — 0=physical, else spell skill (D-0899 /
+ * D-1397). Named omissions: #jump known_spell fallback; nolimbs/slithy;
+ * stucksteed; encumbrance/hunger/wounded-legs; steed utrap; trap-escape
+ * arms; hurtle_jump body (success still teleds after walk_path always-true
+ * stub).
  */
 export async function jump(magic) {
     const u = game.u || {};
 
-    // Spell fallback deferred — knights have Jumping.
     if (!magic && !Jumping()) {
         await pline("You can't jump very far.");
         return ECMD_OK;
@@ -5745,10 +5744,24 @@ export async function jump(magic) {
         return ECMD_OK;
     }
     if (u.ustuck) {
+        /* C apply.c :2023–2036 — tame pull-free then magic writhe. */
+        if (u.ustuck.mtame && !hero_conflict() && !u.ustuck.mconf) {
+            const mtmp = u.ustuck;
+            set_ustuck(null);
+            await pline(`You pull free from ${mon_nam(mtmp)}.`);
+            return ECMD_TIME;
+        }
+        if (magic) {
+            await pline(
+                `You writhe a little in the grasp of ${mon_nam(u.ustuck)}!`,
+            );
+            return ECMD_TIME;
+        }
         await pline(`You cannot escape from ${mon_nam(u.ustuck)}!`);
         return ECMD_OK;
     }
-    if (u.Levitation || u.HLevitation || u.ELevitation) {
+    if (u.Levitation || u.HLevitation || u.ELevitation
+        || Is_airlevel(u.uz) || Is_waterlevel(u.uz)) {
         if (magic) {
             await pline('You flail around a little.');
             return ECMD_TIME;

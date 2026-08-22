@@ -843,7 +843,9 @@ export function show_map_spot(x, y, cnf) {
 
 /**
  * C ref: detect.c do_mapping — full-level magic mapping.
- * hero_memory path (default): no browse_map. notice_mon_off/on deferred.
+ * hero_memory path (default): no browse_map. notice_mon_off/on live
+ * in caller seffect_magic_mapping (D-1407), not here (C do_mapping
+ * does not wrap them).
  */
 export function do_mapping() {
     const u = game.u || {};

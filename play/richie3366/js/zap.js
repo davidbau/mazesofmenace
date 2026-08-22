@@ -18,6 +18,8 @@
 // lightdamage + zapnodir WAN/SPE_LIGHT + zapyourself WAN_LIGHT/CAMERA (D-1366);
 // zapnodir WAN_CREATE_MONSTER create_critters (D-1379);
 // zapnodir WAN_WISHING Luck+rn2(5) / makewish (D-1380);
+// zapnodir WAN_ENLIGHTENMENT do_enlightenment_effect (D-1395);
+// zapnodir WAN_STASIS stasis_until max moves+rn1(21,10) (D-1404);
 // zapyourself WAN_MAKE_INVISIBLE (D-1369);
 // dozap self-zap losehp killer_xname + uhim (D-1345);
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
@@ -31,7 +33,8 @@
 // Named omissions: zap_updown/uswallow full; bhitm slow/speed/locking/
 // probing; zap_map; mon_reflects;
 // Hallucination hdmgtype rn2; map_invisible/unmap during buzz;
-// backfire body; other NODIR (enlighten/stasis); wrest pline; check_capacity;
+// backfire body; other NODIR (SPE_DETECT_UNSEEN); potion peffect_enlightenment;
+// wrest pline; check_capacity;
 // check_unpaid; update_inventory; shieldeff/monstunseesu; setworn
 // EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/dragon
 // D-1353 (shared muse.c clone); mcastu ureflects named; create_polymon after poly_zapped;
@@ -53,6 +56,7 @@
 // is D-1386 (this callee SPE ubuzz). SPE_FORCE_BOLT IMMEDIATE bhit
 // + bhitm spell_damage_bonus is D-1388. zhitm spell_damage_bonus named.
 // muse MUSE_CAMERA is D-1376; Sunsword invoke_blinding_ray is D-1377.
+// bhit WEB stick D-1393; throwit fly / skiprange named.
 // bhitm / zap_updown / zap_steed WAN_MAKE_INVISIBLE; setworn w_blocks.
 // maybe_destroy_item AD_ELEC rings/wands (D-1368); Shock_resistance
 // via uprops[SHOCK_RES] (D-1371); inventory_resistance / full
@@ -72,12 +76,12 @@ import { getlin } from './getline.js';
 import {
     flush_screen, flush_topl_more, pline, pline_dir, Norep, You_feel, newsym,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon, canspotmon,
-    obj_glyph,
+    obj_glyph, glyph_is_invisible,
 } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { nhgetch } from './input.js';
 import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
-import { hold_another_object, makeknown, encumber_msg } from './invent.js';
+import { hold_another_object, makeknown, encumber_msg, enlightenment } from './invent.js';
 import { doname, xname, yname, distant_name, vtense, The, an, An, killer_xname, ansimpleoname, otyp_is_charged } from './objnam.js';
 import { uhim } from './roles.js';
 import { fix_wall_spines } from './mklev.js';
@@ -160,7 +164,8 @@ import {
     SHOP_BARS_COST, W_NONDIGGABLE, COST_CANCEL, COST_UNCURS, COST_UNBLSS,
     TIMEOUT, XKILL_GIVEMSG, XKILL_NOCORPSE, Upolyd, INVIS,
     LEFT_RING, RIGHT_RING,
-    M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, NON_PM, ismnum,
+    M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, M_AP_OBJECT, NON_PM, ismnum,
+    def_warnsyms,
     W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE,
     REFLECTING, ANTIMAGIC, SHOCK_RES,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
@@ -172,6 +177,7 @@ import {
     xytodir,
     IS_ALTAR, IS_STWALL, Is_earthlevel, IS_AIR, CLOUD, IS_SINK,
     MM_NOTAIL, MM_ADJACENTOK, NATTK,
+    MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
 } from './const.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
@@ -189,6 +195,8 @@ const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const RIN_SHOCK_RESISTANCE = objectNames.indexOf('RIN_SHOCK_RESISTANCE');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
 const WAN_CREATE_MONSTER = objectNames.indexOf('WAN_CREATE_MONSTER');
+const WAN_ENLIGHTENMENT = objectNames.indexOf('WAN_ENLIGHTENMENT');
+const WAN_STASIS = objectNames.indexOf('WAN_STASIS');
 const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
 const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
@@ -1083,7 +1091,7 @@ function mon_resists_bit(mon, mrBit) {
 }
 function resists_fire(mon) { return mon_resists_bit(mon, MR_FIRE); }
 function resists_cold(mon) { return mon_resists_bit(mon, MR_COLD); }
-function resists_elec(mon) { return mon_resists_bit(mon, MR_ELEC); }
+export function resists_elec(mon) { return mon_resists_bit(mon, MR_ELEC); }
 function resists_poison(mon) { return mon_resists_bit(mon, MR_POISON); }
 function resists_acid(mon) { return mon_resists_bit(mon, MR_ACID); }
 function resists_disint(mon) { return mon_resists_bit(mon, MR_DISINT); }
@@ -1457,7 +1465,7 @@ async function resist(mtmp, oclass, damage, tell) {
  * armor strip; Rider/Death; Knight questart double; shieldeff.
  * @returns {Promise<number>} damage applied (MAGIC_COOKIE = disintegrate)
  */
-async function zhitm(mon, type, nd, ootmp) {
+export async function zhitm(mon, type, nd, ootmp) {
     let tmp = 0;
     let orig_dmg = 0;
     const damgtype = zaptype(type) % 10;
@@ -2206,12 +2214,27 @@ function Luck() {
 }
 
 /**
+ * C ref: zap.c do_enlightenment_effect :2525–2532.
+ * Callers: zapnodir WAN_ENLIGHTENMENT (D-1395). Named omit:
+ * potion.c peffect_enlightenment; artifact.c invoke enlightenment.
+ */
+export async function do_enlightenment_effect() {
+    await You_feel('self-knowledgeable...');
+    await flush_topl_more(); // display_nhwindow(WIN_MESSAGE, FALSE)
+    await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
+    await pline('The feeling subsides.'); // C pline_The
+    exercise(A_WIS, true);
+}
+
+/**
  * C ref: zap.c zapnodir — NODIR wand effects.
  * Branch envelope: WAN_SECRET_DOOR_DETECTION → findit;
  * WAN_LIGHT / SPE_LIGHT → litroom + lightdamage (D-1366);
  * WAN_CREATE_MONSTER → create_critters (D-1379);
- * WAN_WISHING → Luck+rn2(5) then makewish (D-1380).
- * Named omit: enlighten / stasis.
+ * WAN_WISHING → Luck+rn2(5) then makewish (D-1380);
+ * WAN_ENLIGHTENMENT → do_enlightenment_effect (D-1395);
+ * WAN_STASIS → stasis_until max moves+rn1(21,10) (D-1404).
+ * Named omit: SPE_DETECT_UNSEEN (C shares SECRET_DOOR findit).
  */
 export async function zapnodir(obj) {
     let known = false;
@@ -2248,8 +2271,25 @@ export async function zapnodir(obj) {
             await makewish();
         }
         break;
+    case WAN_ENLIGHTENMENT:
+        // C zap.c zapnodir :2586–2590 — known = !!dknown then
+        // do_enlightenment_effect (always describes enlightenment).
+        known = !!obj.dknown;
+        await do_enlightenment_effect();
+        break;
+    case WAN_STASIS: {
+        // C zap.c zapnodir :2559–2568 — no message, known stays
+        // FALSE (not distinguishable from other silent NODIR);
+        // tmp_until = moves + rn1(21, 10); keep the longest.
+        const tmp_until = (game.moves | 0) + rn1(21, 10);
+        const lf = game.level.flags;
+        if (tmp_until > (lf.stasis_until | 0)) {
+            lf.stasis_until = tmp_until;
+        }
+        break;
+    }
     default:
-        // enlighten / stasis deferred
+        // SPE_DETECT_UNSEEN named (C shares SECRET_DOOR findit)
         break;
     }
 
@@ -3998,16 +4038,39 @@ export async function bhitpile(wand, fhito, tx, ty, _zz) {
 }
 
 /**
+ * C zap.c bhit :3983 + display.h glyph_is_monster / glyph_is_warning /
+ * glyph_is_invisible on glyph_at (gbuf). JS has no integer glyph ids;
+ * classify loc.disp_kind + remembered I + def_warnsyms.
+ */
+function bhit_xyglyph_known_monster(loc) {
+    if (!loc) return false;
+    if (loc.disp_kind === 'monster') return true;
+    if (loc.disp_kind === 'invisible' || glyph_is_invisible(loc)) return true;
+    if (loc.disp_kind === 'object' || loc.disp_kind === 'terrain'
+        || loc.disp_kind === 'trap') {
+        return false;
+    }
+    const ch = loc.disp_ch;
+    if (ch == null) return false;
+    for (let i = 0; i < def_warnsyms.length; i++) {
+        if (def_warnsyms[i]?.ch === ch) return true;
+    }
+    return false;
+}
+
+/**
  * C ref: zap.c bhit — ZAPPED_WAND + KICKED_WEAPON + THROWN_TETHERED_WEAPON.
  * Branch envelope: kicked start+range--; WATERWALL/LAVAWALL stop;
  * hits_bars; mon stop; coin/ship_object; DISP_FLASH / DISP_TETHER tmp_at
  * + nh_delay_output; pool/lava/sink stop. THROWN_TETHERED remaps to
  * THROWN_WEAPON after opening TETHER and leaves the cord open for the
  * caller (`:3863–3866`, `:4023–4024`, `:4125–4127`; D-1323).
- * shade_miss thrown/kicked skip is D-1383 (`:3984–3992`).
+ * shade_miss thrown/kicked skip is D-1383 (`:3984–3986`).
+ * M_AP_OBJECT skip is D-1392 (`:3986–3992`).
+ * WEB stick is D-1393 (`:3926–3938`) — after m_at/t_at, before shade.
  * Named omit: THROWN_WEAPON fly callers (throwit still inlines those
- * and still stops on a shade); FLASHED_LIGHT DISP_BEAM / INVIS_BEAM;
- * show_transient_light; M_AP_OBJECT skip; WEB stick rn2; shkcatch pick;
+ * and still skips WEB / shade / mimic-object); FLASHED_LIGHT DISP_BEAM /
+ * INVIS_BEAM stop; show_transient_light; shkcatch pick;
  * map_invisible / unmap_object; zap_map / doorlock; skiprange rocks.
  * pobj is `{ obj }` — may set `.obj = null` when destroyed (kicked).
  */
@@ -4081,11 +4144,34 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
             }
 
             let mtmp = m_at(x, y);
-            // C zap.c bhit :3972–3992 — thrown/kicked shade_miss(TRUE,TRUE)
-            // clears mtmp so the missile keeps flying (callee D-1341).
-            // M_AP_OBJECT / FLASHED_LIGHT mimic skip and WEB stick named.
-            if (mtmp && (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
-                && await shade_miss(game.youmonst, mtmp, obj, true, true)) {
+            const ttmp = t_at(x, y);
+            // C zap.c bhit :3926–3938 — empty WEB + thrown/kicked
+            // !rn2(3) sticks (D-1393). Monster on the web skips this
+            // (shade/M_AP_OBJECT come later). ZAPPED_WAND/FLASHED_LIGHT
+            // do not roll. throwit THROWN_WEAPON fly still named.
+            if (!mtmp && ttmp && (ttmp.ttyp | 0) === WEB
+                && (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
+                && !rn2(3)) {
+                if (cansee(x, y)) {
+                    await pline(`${Yname2_destroy(obj)} gets stuck in a web!`);
+                    ttmp.tseen = true;
+                    newsym(x, y);
+                }
+                if (was_returning) game.iflags.returning_missile = null;
+                break;
+            }
+            // C zap.c bhit :3983–3992 — glyph_at then thrown/kicked
+            // shade_miss(TRUE,TRUE) (D-1383) OR (M_AP_OBJECT &&
+            // !glyph_is_monster && !glyph_is_warning &&
+            // !glyph_is_invisible); FLASHED_LIGHT skips M_AP_OBJECT
+            // with no glyph gate (D-1392).
+            const known_mon = bhit_xyglyph_known_monster(loc);
+            if (mtmp
+                && (((weapon === THROWN_WEAPON || weapon === KICKED_WEAPON)
+                    && (await shade_miss(game.youmonst, mtmp, obj, true, true)
+                        || (M_AP_TYPE(mtmp) === M_AP_OBJECT && !known_mon)))
+                    || (weapon === FLASHED_LIGHT
+                        && M_AP_TYPE(mtmp) === M_AP_OBJECT))) {
                 mtmp = null;
             }
 
@@ -4150,7 +4236,7 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
         }
     } finally {
         // C :4125–4127 — skip END when tethered unless returning_missile
-        // was cleared mid-flight (WEB stick named). Monster hit already
+        // was cleared mid-flight (WEB stick D-1393). Monster hit already
         // ENDed non-tethered via goto bhit_done. Gate on do_flash so a
         // ZAPPED_WAND / empty FLASHED_LIGHT does not close a leftover tmp.
         if (!bhit_done && do_flash) {

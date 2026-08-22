@@ -1,13 +1,14 @@
 // potion.js — Quaff / #dip commands (dodrink / dodip subset).
 // C ref: potion.c dodrink, dopotion, peffects, peffect_oil,
 //         peffect_confusion, peffect_booze, peffect_healing,
-//         peffect_extra_healing, peffect_water, make_confused, dodip,
-//         djinni_from_bottle (D-1144);
+//         peffect_extra_healing, peffect_speed (D-1408), peffect_water,
+//         make_confused, dodip, speed_up, djinni_from_bottle (D-1144);
 //         invent.c getobj; fountain.c drinkfountain / dipfountain / dipsink.
 // Branch envelope: POT_WATER peffect + potionbreathe lycan vapor (D-1004).
 // dodip pool yn wash_hands / water_damage (D-1128).
 // djinni_from_bottle chance remap + mongrantswish (D-1144).
 // throwit steed potionhit crash/saddle/H2Opotion_dip/POT_WATER (D-1297).
+// SPE_HASTE_SELF / POT_SPEED peffect_speed + speed_up (D-1408).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -19,7 +20,10 @@ import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import {
     weight, obj_extract_self, bless, curse, unbless, uncurse,
 } from './mkobj.js';
-import { A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise, acurr } from './attrib.js';
+import {
+    A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise, acurr,
+    Fast, Very_fast,
+} from './attrib.js';
 import { makeknown, compactify_invlets } from './invent.js';
 import { yn_function } from './getline.js';
 import {
@@ -34,7 +38,7 @@ import {
     IS_FOUNTAIN, IS_SINK,
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_HERO_THROW, POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
-    TIMEOUT, HALLUC_RES, GLIB,
+    TIMEOUT, HALLUC_RES, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
@@ -80,6 +84,8 @@ const POT_SEE_INVISIBLE = objectNames.indexOf('POT_SEE_INVISIBLE');
 const POT_INVISIBILITY = objectNames.indexOf('POT_INVISIBILITY');
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
+const POT_SPEED = objectNames.indexOf('POT_SPEED');
+const SPE_HASTE_SELF = objectNames.indexOf('SPE_HASTE_SELF');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 const POT_WATER = objectNames.indexOf('POT_WATER');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
@@ -431,6 +437,44 @@ function itimeout(val) {
 /** C ref: potion.c itimeout_incr */
 function itimeout_incr(old, incr) {
     return itimeout((old & TIMEOUT) + (incr | 0));
+}
+
+/** Sync flat HFast with uprops[FAST].intrinsic (HFast ≡ that slot). */
+function set_HFast(val) {
+    const u = game.u || (game.u = {});
+    u.HFast = val | 0;
+    if (!u.uprops) u.uprops = {};
+    const prop = u.uprops[FAST] || (u.uprops[FAST] = {
+        intrinsic: 0, extrinsic: 0, blocked: 0,
+    });
+    prop.intrinsic = u.HFast;
+}
+
+/**
+ * C ref: potion.c incr_itimeout(&HFast, duration) — TIMEOUT bits only.
+ */
+function incr_itimeout_HFast(incr) {
+    const u = game.u || (game.u = {});
+    const cur = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
+    set_HFast((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
+}
+
+/**
+ * C ref: potion.c speed_up
+ * !Very_fast → "suddenly moving %sfaster" (Fast ? "" : "much ");
+ * else body_part(LEG) plural "get new energy."; exercise DEX;
+ * incr_itimeout(&HFast, duration). zap.c zapyourself WAN_SPEED_MONSTER
+ * still named (queue).
+ */
+export async function speed_up(duration) {
+    if (!Very_fast()) {
+        await pline(`You are suddenly moving ${Fast() ? '' : 'much '}faster.`);
+    } else {
+        const { body_part } = await import('./polyself.js');
+        await pline(`Your ${makeplural(body_part(LEG))} get new energy.`);
+    }
+    exercise(A_DEX, true);
+    incr_itimeout_HFast(duration);
 }
 
 /**
@@ -790,6 +834,34 @@ async function peffect_extra_healing(otmp) {
 }
 
 /**
+ * C ref: potion.c peffect_speed
+ * is_speed ≡ POT_SPEED (not SPE_HASTE_SELF). Wounded + !cursed + !usteed
+ * → heal_legs(0) + potion_unkn (no speed_up). Else
+ * speed_up(rn1(10, 100+60*bcsign)). Non-cursed potion without INTRINSIC
+ * Fast → "quickness feels very natural" + HFast |= FROMOUTSIDE.
+ */
+async function peffect_speed(otmp) {
+    const is_speed = (otmp.otyp | 0) === POT_SPEED;
+    const u = game.u || (game.u = {});
+    const wounded = !!(
+        u.Wounded_legs
+        || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0)
+    );
+    if (is_speed && wounded && !otmp.cursed && !u.usteed) {
+        await heal_legs(0);
+        potion_unkn++;
+        return;
+    }
+    await speed_up(rn1(10, 100 + 60 * bcsign(otmp)));
+    const hfast = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
+    if (is_speed && !otmp.cursed && !(hfast & INTRINSIC)) {
+        await pline('Your quickness feels very natural.');
+        set_HFast(hfast | FROMOUTSIDE);
+    }
+}
+
+/**
  * C ref: potion.c peffect_booze
  * potion_unkn + taste pline; !blessed → make_confused(d(2+uhs,8));
  * !odiluted → healup(1); hunger + newuhs; exercise WIS; cursed pass-out.
@@ -888,9 +960,9 @@ async function peffect_water(otmp) {
 /**
  * C ref: potion.c peffects() — POT_OIL + fruit juice / see invisible /
  * paralysis / confusion / booze / healing / extra healing / sickness /
- * water; other otyps in map.
+ * water; POT_SPEED / SPE_HASTE_SELF (D-1408); other otyps in map.
  */
-async function peffects(otmp) {
+export async function peffects(otmp) {
     switch (otmp.otyp) {
     case POT_OIL:
         await peffect_oil(otmp);
@@ -913,6 +985,10 @@ async function peffects(otmp) {
         return -1;
     case POT_EXTRA_HEALING:
         await peffect_extra_healing(otmp);
+        return -1;
+    case POT_SPEED:
+    case SPE_HASTE_SELF:
+        await peffect_speed(otmp);
         return -1;
     case POT_SICKNESS:
         await peffect_sickness(otmp);
@@ -1031,9 +1107,11 @@ export async function djinni_from_bottle(obj) {
 
 /**
  * C ref: potion.c healup — add HP; optional sick/blind cure.
- * cureblind → make_blinded(0,TRUE) (learn_unseen_invent via toggle).
- * make_deaf / make_sick bodies deferred (TIMEOUT clear only for deaf).
- * Also available via zap.js for SPE_HEALING zapyourself (avoids import cycle).
+ * cureblind → make_blinded(0,TRUE) (learn_unseen_invent via toggle)
+ * then make_deaf(0,TRUE) (D-1399; SPE_CURE_BLINDNESS).
+ * curesick → make_vomiting(0,TRUE) + make_sick(0,NULL,TRUE,SICK_ALL)
+ * (D-1398; SPE_CURE_SICKNESS). zap.js keeps a local copy for SPE_HEALING
+ * zapyourself (avoids import cycle).
  */
 export async function healup(nhp, nxtra, curesick, cureblind) {
     const u = game.u;
@@ -1055,16 +1133,16 @@ export async function healup(nhp, nxtra, curesick, cureblind) {
         }
     }
     if (cureblind) {
+        /* C potion.c :1444–1450 — cream then make_blinded then make_deaf. */
         u.ucreamed = 0;
-        // C: make_blinded(0L, TRUE) → toggle_blindness → learn_unseen_invent
         const { make_blinded } = await import('./do.js');
         await make_blinded(0, true);
-        // C: make_deaf(0L, TRUE) — talk deferred
-        u.HDeaf = (u.HDeaf | 0) & ~TIMEOUT;
+        await make_deaf(0, true);
     }
     if (curesick) {
-        // make_vomiting / make_sick deferred
-        u.Sick = 0;
+        /* C potion.c :1452–1455 */
+        await make_vomiting(0, true);
+        await make_sick(0, null, true, SICK_ALL);
     }
     // C: disp.botl = TRUE
     if (game.flags) game.flags.botl = true;

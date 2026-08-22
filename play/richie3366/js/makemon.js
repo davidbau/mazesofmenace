@@ -973,8 +973,8 @@ const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
  * create monster. Returns true iff the hero knows a monster appeared
  * (`canseemon` + ordinary/monster mimic, or `sensemon`).
  * Wizard `create_particular` via dynamic import (read.js cycle).
- * Callers: zapnodir WAN_CREATE_MONSTER (D-1379). Named omit:
- * read.c seffect_create_monster / spell SPE_CREATE_MONSTER.
+ * Callers: zapnodir WAN_CREATE_MONSTER (D-1379);
+ * read.c seffect_create_monster / spell SPE_CREATE_MONSTER (D-1401).
  * @returns {Promise<boolean>}
  */
 export async function create_critters(cnt, mptr, neverask) {

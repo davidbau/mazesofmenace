@@ -1125,7 +1125,7 @@ function cant_drown(ptr) {
  * set_ustuck. Already-held && !tailmiss: pool && !cant_drown drown to
  * mhp, else AT_HUGS crush (dice kept). Else zero dice + verbose brush
  * (coil&&!tailmiss whole vs s_suffix tail/LEG). sticks zeros leftover.
- * mhitu arm is mhitm_ad_wrap_u (D-1331). mhitm brush arm still named.
+ * mhitu arm is mhitm_ad_wrap_u (D-1331). mhitm brush is D-1406.
  */
 export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
     if (magr !== game.youmonst) return;
@@ -1174,7 +1174,7 @@ export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
  * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) live;
- * remaining mhitm_ad_* named. mhitm wrap brush still named.
+ * remaining mhitm_ad_* named. mhitm wrap brush is D-1406.
  */
 async function damageum_adtyping(mattk, mdef, mhm) {
     const adtyp = mattk.adtyp | 0;
@@ -2167,8 +2167,8 @@ export async function gulpum(mdef, mattk) {
  * eat_brains D-1306 (uhitm headed). Helmet / m_slips_free / lifsav
  * skipdrin D-1307 (uhitm arm). mattacku AT_TENT melee D-1309.
  * mhitu AD_DRIN D-1329. mhitm AD_DRIN D-1330. mhitu AD_WRAP D-1331.
- * uhitm AD_WRAP m_slips_free D-1348. Named: mhitm wrap brush;
- * remaining mhitm_ad_*.
+ * uhitm AD_WRAP m_slips_free D-1348. mhitm wrap brush D-1406.
+ * Named: remaining mhitm_ad_*.
  */
 export async function hmonas(mon) {
     const u = game.u || {};
