@@ -20,7 +20,9 @@
 // zapnodir WAN_WISHING Luck+rn2(5) / makewish (D-1380);
 // zapnodir WAN_ENLIGHTENMENT do_enlightenment_effect (D-1395);
 // zapnodir WAN_STASIS stasis_until max moves+rn1(21,10) (D-1404);
+// zapnodir SPE_DETECT_UNSEEN shares SECRET_DOOR findit (D-1412);
 // zapyourself WAN_MAKE_INVISIBLE (D-1369);
+// zapyourself WAN_SPEED_MONSTER speed_up(rn1(25,50)) (D-1410);
 // dozap self-zap losehp killer_xname + uhim (D-1345);
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
 // for WAN_MAGIC_MISSILE..WAN_LIGHTNING (zhitm damage types + bounce +
@@ -31,9 +33,11 @@
 // → ubuzz BZ_U_SPELL (D-1386); SPE_FORCE_BOLT IMMEDIATE weffects/bhit
 // + bhitm spell_damage_bonus (D-1388; Knight questart dbldam named).
 // Named omissions: zap_updown/uswallow full; bhitm slow/speed/locking/
-// probing; zap_map; mon_reflects;
+// probing (zapyourself WAN_SPEED is D-1410; bhitm speed still named);
+// zap_map; mon_reflects;
 // Hallucination hdmgtype rn2; map_invisible/unmap during buzz;
-// backfire body; other NODIR (SPE_DETECT_UNSEEN); potion peffect_enlightenment;
+// backfire body; remaining NODIR wand-duplicate SPE_LIGHT cast
+// dispatch; potion peffect_enlightenment is D-1413;
 // wrest pline; check_capacity;
 // check_unpaid; update_inventory; shieldeff/monstunseesu; setworn
 // EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/dragon
@@ -113,7 +117,7 @@ import {
     NO_TRAP_FLAGS, ignite_items, openholdingtrap, openfallingtrap,
     self_invis_message,
 } from './trap.js';
-import { potionbreathe, make_stunned } from './potion.js';
+import { potionbreathe, make_stunned, speed_up } from './potion.js';
 import { burn_away_slime } from './timeout.js';
 import { create_gas_cloud } from './region.js';
 import { cvt_sdoor_to_door } from './detect.js';
@@ -191,6 +195,7 @@ const SPE_LIGHT = objectNames.indexOf('SPE_LIGHT');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const WAN_LIGHTNING = objectNames.indexOf('WAN_LIGHTNING');
 const WAN_MAKE_INVISIBLE = objectNames.indexOf('WAN_MAKE_INVISIBLE');
+const WAN_SPEED_MONSTER = objectNames.indexOf('WAN_SPEED_MONSTER');
 const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const RIN_SHOCK_RESISTANCE = objectNames.indexOf('RIN_SHOCK_RESISTANCE');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
@@ -1998,6 +2003,7 @@ function healup(nhp, nxtra, curesick, cureblind) {
 const MAXWISHTRY = 5;
 const WAN_SECRET_DOOR_DETECTION =
     objectNames.indexOf('WAN_SECRET_DOOR_DETECTION');
+const SPE_DETECT_UNSEEN = objectNames.indexOf('SPE_DETECT_UNSEEN');
 
 /** Invent letters of zappable wands (C zap_ok → GETOBJ_SUGGEST). */
 function zap_lets() {
@@ -2215,8 +2221,9 @@ function Luck() {
 
 /**
  * C ref: zap.c do_enlightenment_effect :2525–2532.
- * Callers: zapnodir WAN_ENLIGHTENMENT (D-1395). Named omit:
- * potion.c peffect_enlightenment; artifact.c invoke enlightenment.
+ * Callers: zapnodir WAN_ENLIGHTENMENT (D-1395);
+ * potion.c peffect_enlightenment (D-1413). Named omit:
+ * artifact.c invoke enlightenment.
  */
 export async function do_enlightenment_effect() {
     await You_feel('self-knowledgeable...');
@@ -2233,8 +2240,10 @@ export async function do_enlightenment_effect() {
  * WAN_CREATE_MONSTER → create_critters (D-1379);
  * WAN_WISHING → Luck+rn2(5) then makewish (D-1380);
  * WAN_ENLIGHTENMENT → do_enlightenment_effect (D-1395);
- * WAN_STASIS → stasis_until max moves+rn1(21,10) (D-1404).
- * Named omit: SPE_DETECT_UNSEEN (C shares SECRET_DOOR findit).
+ * WAN_STASIS → stasis_until max moves+rn1(21,10) (D-1404);
+ * SPE_DETECT_UNSEEN shares SECRET_DOOR findit (D-1412).
+ * Named omit: remaining NODIR wand-duplicate SPE_LIGHT cast
+ * dispatch (zapnodir SPE_LIGHT already live D-1366).
  */
 export async function zapnodir(obj) {
     let known = false;
@@ -2249,6 +2258,10 @@ export async function zapnodir(obj) {
         await lightdamage(obj, true, 5);
         break;
     case WAN_SECRET_DOOR_DETECTION:
+    case SPE_DETECT_UNSEEN:
+        // C zap.c zapnodir :2552–2558 — findit() feedback discovers
+        // the type even when Blind or when it finds nothing;
+        // known = !!dknown. Spellbooks skip learnwand (SPBOOK_CLASS).
         known = !!obj.dknown;
         await findit();
         break;
@@ -2289,7 +2302,6 @@ export async function zapnodir(obj) {
         break;
     }
     default:
-        // SPE_DETECT_UNSEEN named (C shares SECRET_DOOR findit)
         break;
     }
 
@@ -3453,6 +3465,7 @@ export function spell_damage_bonus(dmgIn) {
  * SPE_FIREBALL self-explode (D-1365; skilled scatter is spell.c D-1378);
  * lightdamage WAN_LIGHT/CAMERA (D-1366);
  * WAN_MAKE_INVISIBLE (D-1369);
+ * WAN_SPEED_MONSTER speed_up (D-1410);
  * other otyps named in C-JS-MAP.
  * @param {boolean} ordinary wand zap (TRUE) vs broken/spell (FALSE)
  * @returns {number} damage (0 for healing/sleep/death/poly)
@@ -3728,6 +3741,15 @@ export async function zapyourself(obj, ordinary) {
         }
         break;
     }
+
+    case WAN_SPEED_MONSTER:
+        // C zap.c zapyourself :2845–2849 — no longer intrinsic;
+        // speed_up(rn1(25, 50)) then always learn. Callee
+        // potion.c speed_up :2918–2928 (D-1408). bhitm /
+        // zap_steed / WAN_SLOW still named.
+        await speed_up(rn1(25, 50));
+        learn_it = true;
+        break;
 
     default:
         // Other zapyourself cases deferred

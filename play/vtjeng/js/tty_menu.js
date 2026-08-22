@@ -615,13 +615,21 @@ export function renderTtyMenu(state = game, spec, pageIndex = 0,
         // marker wins at that same offset, and a missing glyph leaves '-'.
         const glyphInfo = line.item?.glyphInfo;
         if (showObjectSymbols && !line.item?.selected && glyphInfo
-            && glyphInfo.ch != null) {
-            writeStyledText(
-                display,
+            && Number.isInteger(glyphInfo.ttychar)) {
+            // wintty.c passes glyph_info.ttychar as an unsigned byte to the
+            // recorder hook. The ordinary line writer treats high bytes as
+            // signed chars and drops them, so this substitution must bypass
+            // writeStyledText() just as C bypasses its `*cp` arm. A lone high
+            // byte reaches the session screen through its UTF-8 decoder as
+            // U+FFFD; the raw byte itself remains on glyphInfo.ttychar.
+            const ttychar = glyphInfo.ttychar & 0xFF;
+            const printable = ttychar >= 32;
+            display.setCell(
                 layout.startColumn + 2,
                 row,
-                glyphInfo.ch,
-                glyphInfo.color ?? NO_COLOR,
+                !printable ? ' '
+                    : ttychar < 0x80 ? String.fromCharCode(ttychar) : '\uFFFD',
+                printable ? glyphInfo.color ?? NO_COLOR : NO_COLOR,
                 0,
             );
         }

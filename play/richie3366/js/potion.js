@@ -1,7 +1,9 @@
 // potion.js — Quaff / #dip commands (dodrink / dodip subset).
 // C ref: potion.c dodrink, dopotion, peffects, peffect_oil,
 //         peffect_confusion, peffect_booze, peffect_healing,
-//         peffect_extra_healing, peffect_speed (D-1408), peffect_water,
+//         peffect_extra_healing, peffect_full_healing (D-1411),
+//         peffect_enlightenment (D-1413),
+//         peffect_speed (D-1408), peffect_water,
 //         make_confused, dodip, speed_up, djinni_from_bottle (D-1144);
 //         invent.c getobj; fountain.c drinkfountain / dipfountain / dipsink.
 // Branch envelope: POT_WATER peffect + potionbreathe lycan vapor (D-1004).
@@ -9,6 +11,8 @@
 // djinni_from_bottle chance remap + mongrantswish (D-1144).
 // throwit steed potionhit crash/saddle/H2Opotion_dip/POT_WATER (D-1297).
 // SPE_HASTE_SELF / POT_SPEED peffect_speed + speed_up (D-1408).
+// POT_FULL_HEALING peffect_full_healing (D-1411).
+// POT_ENLIGHTENMENT peffect_enlightenment (D-1413).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -21,7 +25,7 @@ import {
     weight, obj_extract_self, bless, curse, unbless, uncurse,
 } from './mkobj.js';
 import {
-    A_WIS, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise, acurr,
+    A_WIS, A_INT, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise, acurr,
     Fast, Very_fast,
 } from './attrib.js';
 import { makeknown, compactify_invlets } from './invent.js';
@@ -59,7 +63,7 @@ import { mongone, wakeup, healmon, wake_nearto, dist2 } from './mon.js';
 import { tamedog } from './dog.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
-import { more_experienced } from './exper.js';
+import { more_experienced, pluslvl } from './exper.js';
 import {
     trycall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
     Hallucination,
@@ -84,6 +88,8 @@ const POT_SEE_INVISIBLE = objectNames.indexOf('POT_SEE_INVISIBLE');
 const POT_INVISIBILITY = objectNames.indexOf('POT_INVISIBILITY');
 const POT_HEALING = objectNames.indexOf('POT_HEALING');
 const POT_EXTRA_HEALING = objectNames.indexOf('POT_EXTRA_HEALING');
+const POT_FULL_HEALING = objectNames.indexOf('POT_FULL_HEALING');
+const POT_ENLIGHTENMENT = objectNames.indexOf('POT_ENLIGHTENMENT');
 const POT_SPEED = objectNames.indexOf('POT_SPEED');
 const SPE_HASTE_SELF = objectNames.indexOf('SPE_HASTE_SELF');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
@@ -464,7 +470,7 @@ function incr_itimeout_HFast(incr) {
  * !Very_fast → "suddenly moving %sfaster" (Fast ? "" : "much ");
  * else body_part(LEG) plural "get new energy."; exercise DEX;
  * incr_itimeout(&HFast, duration). zap.c zapyourself WAN_SPEED_MONSTER
- * still named (queue).
+ * is D-1410 (this callee).
  */
 export async function speed_up(duration) {
     if (!Very_fast()) {
@@ -792,7 +798,7 @@ async function peffect_confusion(otmp) {
 /**
  * C ref: potion.c peffect_healing
  * You_feel better; healup(8+d(4+2*bcsign,4), !cursed?1:0, !!blessed, !cursed);
- * exercise CON. peffect_full_healing deferred.
+ * exercise CON.
  */
 async function peffect_healing(otmp) {
     await You_feel('better.');
@@ -830,6 +836,58 @@ async function peffect_extra_healing(otmp) {
     );
     if (wounded && otmp.blessed && !u.usteed) {
         await heal_legs(0);
+    }
+}
+
+/**
+ * C ref: potion.c peffect_full_healing
+ * You_feel completely healed; healup(400, 4+4*bcsign, !cursed, TRUE);
+ * blessed + ulevel < ulevelmax → ulevelmax-- then pluslvl(FALSE);
+ * clear hallu; exercise STR then CON; wounded legs: blessed always
+ * (steed too), uncursed iff !usteed. potionhit / potionbreathe /
+ * mix / dip poison-coat still named.
+ */
+async function peffect_full_healing(otmp) {
+    await You_feel('completely healed.');
+    await healup(400, 4 + 4 * bcsign(otmp), !otmp.cursed, true);
+    const u = game.u || (game.u = {});
+    if (otmp.blessed && (u.ulevel | 0) < (u.ulevelmax | 0)) {
+        /* C: multiple lost levels come back at half rate. */
+        u.ulevelmax = (u.ulevelmax | 0) - 1;
+        await pluslvl(false);
+    }
+    await make_hallucinated(0, true, 0);
+    exercise(A_STR, true);
+    exercise(A_CON, true);
+    const wounded = !!(
+        u.Wounded_legs
+        || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0)
+    );
+    if (wounded && (otmp.blessed || (!otmp.cursed && !u.usteed))) {
+        await heal_legs(0);
+    }
+}
+
+/**
+ * C ref: potion.c peffect_enlightenment :794–808.
+ * cursed → potion_unkn + You uneasy + exercise(WIS, FALSE).
+ * else blessed adjattrib(A_INT,1,FALSE) then adjattrib(A_WIS,1,FALSE)
+ * then do_enlightenment_effect (zap.c :2525–2532, D-1395).
+ * artifact.c invoke / mix alchemy still named.
+ */
+async function peffect_enlightenment(otmp) {
+    if (otmp.cursed) {
+        potion_unkn++;
+        await pline('You have an uneasy feeling...');
+        exercise(A_WIS, false);
+    } else {
+        if (otmp.blessed) {
+            await adjattrib(A_INT, 1, false);
+            await adjattrib(A_WIS, 1, false);
+        }
+        const { do_enlightenment_effect } = await import('./zap.js');
+        await do_enlightenment_effect();
     }
 }
 
@@ -959,8 +1017,9 @@ async function peffect_water(otmp) {
 
 /**
  * C ref: potion.c peffects() — POT_OIL + fruit juice / see invisible /
- * paralysis / confusion / booze / healing / extra healing / sickness /
- * water; POT_SPEED / SPE_HASTE_SELF (D-1408); other otyps in map.
+ * paralysis / confusion / booze / healing / extra healing /
+ * full healing (D-1411) / enlightenment (D-1413) / sickness / water;
+ * POT_SPEED / SPE_HASTE_SELF (D-1408); other otyps in map.
  */
 export async function peffects(otmp) {
     switch (otmp.otyp) {
@@ -985,6 +1044,12 @@ export async function peffects(otmp) {
         return -1;
     case POT_EXTRA_HEALING:
         await peffect_extra_healing(otmp);
+        return -1;
+    case POT_FULL_HEALING:
+        await peffect_full_healing(otmp);
+        return -1;
+    case POT_ENLIGHTENMENT:
+        await peffect_enlightenment(otmp);
         return -1;
     case POT_SPEED:
     case SPE_HASTE_SELF:

@@ -114,6 +114,7 @@ import {
 } from './cfgfiles.js';
 import {
     DEFAULT_FRUIT,
+    finish_fruit_option,
     normalize_initial_fruit,
 } from './fruit.js';
 import {
@@ -144,12 +145,16 @@ import { sourceGlyphName } from './glyph_ids.js';
 import { allopt, optionParserMetadata } from './optlist_data.js';
 import { configLineStatements } from './config_statement_data.js';
 import {
-    AUTOCOMP_ADJ,
     CMD_PARAM,
     INTERNALCMD,
     MOUSECMD,
     extcmdlist,
 } from './extcmdlist_data.js';
+import {
+    count_autocompletions,
+    initialExtcmdFlags,
+    parseautocomplete,
+} from './cmd_autocomplete.js';
 import {
     DEFAULT_PRIMARY_SYMBOLS,
     SYM_OFF_O,
@@ -186,7 +191,7 @@ import {
     def_char_to_objclass,
 } from './drawing.js';
 import { escapes } from './options_escapes.js';
-import { MAXMCLASSES } from './symbols.js';
+import { finish_boulder_symbol, MAXMCLASSES } from './symbols.js';
 import { choose_classes_menu } from './windows.js';
 
 const PET_NAME_BYTE_LIMIT = 62; // PL_PSIZ - 1
@@ -472,6 +477,9 @@ function defaultResult() {
         pl_fruit: DEFAULT_FRUIT,
         gameplayBindings: [],
         commandOperations: [],
+        // cmd.c extcmdlist[] is mutable in C. Keep its flags per game so one
+        // runSegment() cannot carry configuration into the next one.
+        extcmdFlags: initialExtcmdFlags(),
         // Raw output produced while the rc file is being parsed, in source
         // order. optfn_boolean() and config_error_add() emit print-only
         // events. A wait marks cfgfiles.c get_uchars()'s immediate
@@ -2118,6 +2126,24 @@ function optfn_menu_objsyms(result, statement, value, negated) {
     set_menuobjsyms_flags(result, osyms);
 }
 
+// C ref: options.c optfn_menuinvertmode() (2290-2317), its startup do_set
+// arm.  The do_init request is a no-op; initoptions_init() has already stored
+// the default 1 in defaultResult().  string_for_opt(opts, TRUE) makes a bare
+// statement and an empty value the same empty_optstr, so both leave that value
+// unchanged.  optlist.h gives this row negateok No, which means parseoptions()
+// rejects negation before this function runs.
+function optfn_menuinvertmode(result, value) {
+    if (value == null || value === '') return;
+    const mode = atoi(value);
+    if (mode < 0 || mode > 2) {
+        configErrorAdd(
+            result, `Illegal menuinvertmode parameter '${value}'`,
+        );
+        return;
+    }
+    result.iflags.menuinvertmode = mode;
+}
+
 // C ref: options.c optfn_petattr() (3137-3175), its do_set arm.  The tty port
 // accepts one text attribute and keeps the chosen style when hilite_pet is
 // later disabled.  optlist.h:568-569 gives petattr negateok No, so
@@ -2611,6 +2637,67 @@ function setRunmode(result, value, negated) {
     result.flags.runmode = match[1];
 }
 
+// C ref: options.c optfn_scores() (3669-3760), its complete do_set arm.
+// string_for_opt(opts, FALSE) makes the value mandatory and leaves all three
+// fields alone when it is absent. Every entered handler resets the fields,
+// then walks its tokens left to right. A token accepts one optional inner
+// negation, a decimal count that defaults to 1, and any alphabetic suffix
+// after the significant t, a, o, or n initial.
+function optfn_scores(result, statement) {
+    const op = string_for_opt(statement, false, result);
+    if (op === '') return;
+
+    result.flags.end_top = 0;
+    result.flags.end_around = 0;
+    result.flags.end_own = false;
+
+    let index = 0;
+    while (index < op.length) {
+        let inum = 1;
+        const negated = op[index] === '!'
+            || equal_ncasechars(op.slice(index), 'no', 2);
+        if (negated) {
+            index += op[index] === '!'
+                ? 1 : (op[index + 2] !== '-' ? 2 : 3);
+        }
+
+        if (/^[0-9]$/u.test(op[index] ?? '')) {
+            inum = atoi(op.slice(index));
+            while (/^[0-9]$/u.test(op[index] ?? '')) ++index;
+        }
+        while (op[index] === ' ') ++index;
+
+        const initial = lowc(op[index] ?? '');
+        if (initial === 't') {
+            result.flags.end_top = negated ? 0 : inum;
+        } else if (initial === 'a') {
+            result.flags.end_around = negated ? 0 : inum;
+        } else if (initial === 'o') {
+            result.flags.end_own = !(negated || inum === 0);
+        } else if (initial === 'n') {
+            result.flags.end_top = 0;
+            result.flags.end_around = 0;
+            result.flags.end_own = false;
+        } else if (initial === '-'
+                   && /^[0-9]$/u.test(op[index + 1] ?? '')) {
+            configErrorAdd(
+                result,
+                'Values for scores:top and scores:around must not be negative',
+            );
+            return;
+        } else {
+            configErrorAdd(
+                result, `Unknown scores parameter '${op.slice(index)}'`,
+            );
+            return;
+        }
+
+        while (/^[A-Za-z]$/u.test(op[index] ?? '')) ++index;
+        while (op[index] === ' ') ++index;
+        if (op[index] === '/') ++index;
+    }
+}
+
 // C ref: options.c optfn_pickup_burden() (3266-3291), the switch its do_set
 // arm runs. It reads one byte -- lowc(*op) -- so the value's remaining
 // characters are never examined and "burdened" and "banana" both select
@@ -2759,7 +2846,7 @@ function applyBooleanOption(result, name, row, statement, value, negated) {
         {
             const text = "There is no underlying support for"
                 + " 'idlecheckpoint' compiled in.";
-            result.startupEvents.push({ kind: 'print', text });
+            result.startupEvents.push({ text });
         }
         result.iflags.idlecheckpoint = false;
         result.give_opt_msg = false;
@@ -3467,8 +3554,11 @@ function optfn_disclose(result, statement, negated) {
         return;
     }
 
-    const isAll = op.length === 3 && equal_ncasechars(op, 'all', 3);
-    const isNone = op.length === 4 && equal_ncasechars(op, 'none', 4);
+    const opBytes = encodeUtf8ByteString(op);
+    const isAll = opBytes.length === 3
+        && equal_ncasechars(decodeUtf8ByteString(opBytes), 'all', 3);
+    const isNone = opBytes.length === 4
+        && equal_ncasechars(decodeUtf8ByteString(opBytes), 'none', 4);
     // A bare disclose asks each question with Yes preselected; a bare
     // negation, or "none", suppresses every question without asking.
     if (op === '' || isAll || isNone) {
@@ -3493,9 +3583,9 @@ function optfn_disclose(result, statement, negated) {
     // C's source declares `num` for this bound but never increments it.  Keep
     // that exact fixed-array condition: every byte before the terminating NUL
     // is parsed, including one beyond the six disclosure categories.
-    for (let index = 0; index < op.length
+    for (let index = 0; index < opBytes.length
         && num < NUM_DISCLOSURE_OPTIONS; ++index) {
-        let c = lowc(op[index]);
+        let c = lowc(String.fromCharCode(opBytes[index]));
         if (c === 'k') c = 'v'; // killed -> vanquished
         if (c === 'd') c = 'o'; // dungeon -> overview
         const disclosureIndex = disclosure_options.indexOf(c);
@@ -3518,7 +3608,10 @@ function optfn_disclose(result, statement, negated) {
             prefixVal = c;
         } else if (c !== ' ') {
             configErrorAdd(
-                result, `Unknown disclose parameter '${op[index]}'`,
+                result,
+                `Unknown disclose parameter '${decodeUtf8ByteString(
+                    [opBytes[index]],
+                )}'`,
             );
             return;
         }
@@ -3645,6 +3738,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setPlaymode(result, value, duplicate);
     } else if (name === 'menu_objsyms') {
         optfn_menu_objsyms(result, statement, value, negated);
+    } else if (name === 'menuinvertmode') {
+        optfn_menuinvertmode(result, value);
     } else if (name === 'menu_headings') {
         setMenuHeadings(result, value, negated);
     } else if (name === 'petattr') {
@@ -3699,6 +3794,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setWhatisCoord(result, statement, negated);
     } else if (name === 'runmode') {
         setRunmode(result, value, negated);
+    } else if (name === 'scores') {
+        optfn_scores(result, statement);
     } else if (name === 'pickup_burden') {
         setPickupBurden(result, statement);
     } else if (name === 'menustyle') {
@@ -3914,6 +4011,7 @@ function applyDirectOption(result, key, value) {
 const CONFIG_STATEMENT_HANDLERS = Object.freeze({
     options: Object.freeze({ kind: 'options' }),
     bindings: Object.freeze({ kind: 'bindings' }),
+    autocomplete: Object.freeze({ kind: 'autocomplete' }),
     roguesymbols: Object.freeze({ kind: 'symbols', set: 'rogue' }),
     symbols: Object.freeze({ kind: 'symbols', set: 'primary' }),
     hilite_status: Object.freeze({ kind: 'status-hilite' }),
@@ -4144,6 +4242,15 @@ export function parseNethackrc(rc, random = rn2) {
             cnf_line_BOULDER(result, normalizedValue);
             continue;
         }
+        if (statement.kind === 'autocomplete') {
+            parseautocomplete(
+                normalizedValue,
+                true,
+                result,
+                (text) => result.startupEvents.push({ text, wait: true }),
+            );
+            continue;
+        }
 
         applyDirectOption(result, statement.directName, normalizedValue);
     }
@@ -4281,6 +4388,22 @@ export function finishStartupBooleanOptions(state) {
         state.iflags.wc_tiled_map = false;
         state.iflags.wc_ascii_map = true;
     }
+}
+
+// C ref: options.c initoptions_finish() (7324-7383), after rcfile() has
+// returned.  Keep the source-owned startup sequence together here: install
+// fruit state, activate the final primary boulder override, reconcile the
+// dark-room symbol, then apply the selected TTY map-mode fallback.
+//
+// reset_glyphmap(gm_optionchange) follows reglyph_darkroom() in C.  This port
+// resolves glyph presentation on demand and has no stored glyphmap to reset.
+// update_rest_on_space() follows that reset; command binding initialization
+// consumes the already-recorded rest_on_space operation later in start().
+export function initoptions_finish(parsedOptions = {}, state = game, env = {}) {
+    finish_fruit_option(parsedOptions, state, env);
+    finish_boulder_symbol(state);
+    reglyph_darkroom(state);
+    finishStartupBooleanOptions(state);
 }
 
 // C ref: options.c longest_option_name().  The two passes differ only in
@@ -4565,15 +4688,6 @@ function msgtype_count(state) {
     return 0;
 }
 
-// C ref: cmd.c count_autocompletions(), over the AUTOCOMP_ADJ flag that
-// cmd.c's AUTOCOMPLETE handler sets on an extcmdlist[] row.  The generated
-// table carries the compiled-in flags, which is the whole answer once the one
-// statement that changes them stops above.
-function count_autocompletions(state) {
-    refuseUnportedConfigStatement(state, 'autocomplete');
-    return extcmdlist.filter((entry) => entry.flags & AUTOCOMP_ADJ).length;
-}
-
 // parseNethackrc() gives source semantics to the options its own arms parse
 // and falls back to keeping an unported option's raw text under
 // flags[<option name>].  For an option whose parsed home is that same field,
@@ -4638,10 +4752,10 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     },
     // go.ov_primary_syms holds an explicit S_boulder override; without one
     // the value falls back to the active rock-class symbol.
-    boulder: (state) => String.fromCharCode(
+    boulder: (state) => decodeUtf8ByteString([
         state.go?.ov_primary_syms?.[SYM_OFF_X + SYM_BOULDER]
         || state.gs.showsyms[SYM_OFF_O + ROCK_CLASS],
-    ),
+    ]),
     // gc.crash_email and gc.crash_name are null until a configuration file
     // sets them, and C then leaves the buffer empty.
     crash_email: (state) => state.gc?.crash_email ?? '',
@@ -4818,8 +4932,8 @@ function symsetValue(state, set, withHandling) {
 // so the set cannot drift from OPTION_VALUE_HANDLERS unnoticed.
 export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set([
     'crash_email', 'crash_name', 'crash_urlmax',
-    'glyph', 'menuinvertmode',
-    'scores', 'sortvanquished',
+    'glyph',
+    'sortvanquished',
     'soundlib', 'whatis_filter', 'windowtype',
 ]));
 
@@ -5140,11 +5254,9 @@ function preference_update(state, pref) {
 }
 
 // C ref: options.c optfn_boolean()'s `*(allopt[optidx].addr) = !negated`
-// (5285).  booleanOptionValue() above reads the address this writes, and this
-// is its only writer.
-//
-// C stores a boolean option once, at allopt[].addr.  Startup parsing and this
-// interactive writer now share that address.  Delete any legacy flags.<name>
+// (5285). C stores a boolean option once, at allopt[].addr. Startup parsing
+// writes that address through applyBooleanOption(), and this interactive path
+// writes it through setBooleanOptionValue(). Delete any legacy flags.<name>
 // copy supplied by a hand-built test state so one C value retains one owner.
 function setBooleanOptionValue(state, option, value) {
     const path = option.addr.split('.');
