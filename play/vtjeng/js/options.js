@@ -68,6 +68,8 @@ import {
     STONE,
     SYM_BOULDER,
     UNENCUMBERED,
+    WARNCOUNT,
+    def_warnsyms,
 } from './const.js';
 import {
     ROLE_ALIGNMASK,
@@ -108,6 +110,7 @@ import {
 } from './terminal.js';
 import {
     cnf_line_BOULDER,
+    cnf_line_WARNINGS,
     config_error_add,
     config_error_init,
     config_error_nextline,
@@ -121,6 +124,8 @@ import {
     decodeUtf8ByteString,
     encodeUtf8ByteString,
     encodeUtf8Text,
+    fuzzymatch,
+    letter,
     lowc,
     str_start_is,
     truncateByteString,
@@ -167,6 +172,13 @@ import {
     SYM_OFF_X,
 } from './symbol_data.js';
 import {
+    regex_compile,
+    regex_error_desc,
+    regex_init,
+} from './posixregex.js';
+import {
+    get_current_feature_ver,
+    get_feature_notice_ver,
     status_version,
     VI_BRANCH,
     VI_NAME,
@@ -450,6 +462,9 @@ function defaultResult() {
             prev_decor: STONE,
             wc2_statuslines: 2,
             wc2_petattr: ATR_INVERSE,
+            // options.c initoptions_init() sets the curses-only window-border
+            // mode after the instance-flags struct starts zeroed.
+            wc2_windowborders: 2,
             hilite_delta: 0,
             status_hilites: [],
             status_conditions: { ...DEFAULT_STATUS_CONDITIONS },
@@ -473,6 +488,9 @@ function defaultResult() {
             // leave their zeroed instance-flags fields alone during do_init.
             wc_tile_height: 0,
             wc_tile_width: 0,
+            // options.c optfn_vary_msgcount() also leaves its zeroed
+            // instance-flags field alone during do_init.
+            wc_vary_msgcount: 0,
             // initoptions_init()'s TTY_GRAPHICS arm; this build is tty.
             prevmsg_window: 's',
             menuinvertmode: 1,
@@ -496,6 +514,12 @@ function defaultResult() {
         ga: {
             // decl.c instance_globals_a starts on the built-in interface.
             active_soundlib: soundlib_nosound,
+        },
+        // options.c initoptions_init() initializes the sole symbols.c-owned
+        // warning array before reading either OPTIONS=warnings or the legacy
+        // direct WARNINGS statement. jsmain.js installs this object at gw.
+        gw: {
+            warnsyms: def_warnsyms.map(({ ch }) => ch.charCodeAt(0)),
         },
         roleFilter: defaultRoleFilter(),
         uroleplay: defaultRoleplay(),
@@ -1142,6 +1166,70 @@ function setFruit(result, statement) {
     );
 }
 
+// C ref: options.c optfn_autounlock() (1066-1168), its startup do_set arm.
+// A missing or empty value selects the source default (apply-key), or none
+// when negated. Nonempty lists choose plus when the text contains any plus;
+// otherwise they split on spaces. trimspaces() handles the edge of each token,
+// while fuzzymatch() permits separators inside apply-key only when plus already
+// separates the list.
+function optfn_autounlock(result, statement, negated) {
+    const op = string_for_opt(statement, true);
+    if (op === '') {
+        result.flags.autounlock = negated ? 0 : AUTOUNLOCK_APPLY_KEY;
+        return;
+    }
+
+    let newflags = 0;
+    const separator = op.includes('+') ? '+' : ' ';
+    let remainder = op;
+    for (;;) {
+        const current = trimspaces(remainder);
+        const split = current.indexOf(separator);
+        const token = trimspaces(
+            split < 0 ? current : current.slice(0, split),
+        );
+        let matched = false;
+        if (str_start_is('none', token, true)) {
+            negated = true;
+            matched = true;
+        }
+        for (let index = 0; index < unlocktypes.length && !matched; ++index) {
+            const candidate = unlocktypes[index];
+            if (str_start_is(candidate, token, true)
+                || fuzzymatch(token, candidate, ' -_', true)) {
+                matched = true;
+                // Preserve the source's case-sensitive dispatch after its
+                // case-insensitive match. An uppercase token matches above but
+                // reaches the default arm and is therefore invalid.
+                switch (token[0]) {
+                case 'u': newflags |= AUTOUNLOCK_UNTRAP; break;
+                case 'a': newflags |= AUTOUNLOCK_APPLY_KEY; break;
+                case 'k': newflags |= AUTOUNLOCK_KICK; break;
+                case 'f': newflags |= AUTOUNLOCK_FORCE; break;
+                default: matched = false; break;
+                }
+            }
+        }
+        if (!matched) {
+            configErrorAdd(
+                result, `Invalid value for "autounlock": "${token}"`,
+            );
+            return;
+        }
+        if (split < 0) break;
+        remainder = current.slice(split + 1);
+    }
+
+    if (negated && newflags !== 0) {
+        configErrorAdd(
+            result,
+            'Invalid value combination for "autounlock": \'none\' with some',
+        );
+        return;
+    }
+    result.flags.autounlock = newflags;
+}
+
 // C ref: options.c optfn_boulder() (1171-1244), its startup do_set arm.
 // The reference build's plain `char` is signed.  Fresh patched-C recordings
 // pin bytes 0x80 and above to the same control-character diagnostic as NUL;
@@ -1170,6 +1258,33 @@ function optfn_boulder(result, statement) {
         return;
     }
     result.symbolOperations.push({ kind: 'boulder', byte });
+}
+
+// C refs: options.c optfn_warnings(), warning_opts(), and assign_warnings().
+// The option value is mandatory, then escapes() rewrites its bytes in place.
+// strlen() stops at the first expanded NUL; a short value changes its prefix
+// and leaves the remaining slots alone, while bytes after the sixth are
+// ignored by assign_warnings().
+function optfn_warnings(result, statement) {
+    const op = string_for_env_opt(statement, false, result);
+    if (op === '') return;
+    const expanded = escapes(op);
+    const nul = expanded.indexOf(0);
+    const length = nul < 0 ? expanded.length : nul;
+    const translate = Array.from(
+        { length: WARNCOUNT },
+        (_, index) => index < length ? expanded[index] : 0,
+    );
+    assign_warnings(result, translate);
+}
+
+// C ref: options.c assign_warnings(). gw.warnsyms is the sole installed
+// warning-symbol state; zero entries mean that the corresponding slot is not
+// changed.
+export function assign_warnings(result, graphChars) {
+    for (let index = 0; index < WARNCOUNT; ++index) {
+        if (graphChars[index]) result.gw.warnsyms[index] = graphChars[index];
+    }
 }
 
 // C ref: options.c optfn_crash_email() (1259-1282), its startup do_set arm.
@@ -2759,7 +2874,7 @@ function optfn_scores(result, statement) {
             return;
         }
 
-        while (/^[A-Za-z]$/u.test(op[index] ?? '')) ++index;
+        while (letter(op[index] ?? '')) ++index;
         while (op[index] === ' ') ++index;
         if (op[index] === '/') ++index;
     }
@@ -2830,6 +2945,19 @@ function optfn_tile_width(result, statement, negated) {
     setTileDimension(
         result, statement, negated, 'tile_width', 'wc_tile_width',
     );
+}
+
+// C ref: options.c optfn_vary_msgcount() (4440-4467), its do_set arm.
+// optlist.h rejects negation before this handler, so the live startup path
+// requires a value and stores its unrestricted atoi() result.  Keep the
+// source's unreachable negation arms here with the function they belong to.
+function optfn_vary_msgcount(result, statement, negated) {
+    const op = string_for_opt(statement, negated, result);
+    if ((negated && op === '') || (!negated && op !== '')) {
+        result.iflags.wc_vary_msgcount = negated ? 0 : atoi(op);
+    } else if (negated) {
+        bad_negation(result, 'vary_msgcount');
+    }
 }
 
 // C ref: options.c optfn_pickup_burden() (3266-3291), the switch its do_set
@@ -3026,6 +3154,57 @@ function setWhatisCoord(result, statement, negated) {
         return;
     }
     result.iflags.getpos_coords = mode;
+}
+
+// C ref: options.c optfn_whatis_filter() (4748-4795), its do_set arm. The
+// negation returns before string_for_env_opt(), so a parameter on a negated
+// statement is ignored and clears the filter without a diagnostic. Positive
+// statements require a value and select from its first byte alone.
+function optfn_whatis_filter(result, statement, negated) {
+    if (negated) {
+        result.iflags.getloc_filter = GFILTER_NONE;
+        return;
+    }
+    const op = string_for_env_opt(statement, false, result);
+    if (op === '') return;
+    switch (lowc(op[0])) {
+    case 'n':
+        result.iflags.getloc_filter = GFILTER_NONE;
+        break;
+    case 'v':
+        result.iflags.getloc_filter = GFILTER_VIEW;
+        break;
+    case 'a':
+        result.iflags.getloc_filter = GFILTER_AREA;
+        break;
+    default:
+        configErrorAdd(result, `Unknown whatis_filter parameter '${op}'`);
+        break;
+    }
+}
+
+// C ref: options.c optfn_windowborders() (4797-4854), its startup do_set
+// arm.  string_for_opt() treats a missing or empty positive value as absent:
+// it reports the missing parameter, then this handler still installs mode 1.
+// A bare or empty-valued negation installs mode 0; only a negation carrying a
+// nonempty value is rejected.  Values use C atoi() before the 0..4 range
+// check, and an invalid value leaves the previous mode unchanged.
+function optfn_windowborders(result, statement, negated) {
+    const op = string_for_opt(statement, negated, result);
+    if (negated && op !== '') {
+        bad_negation(result, 'windowborders');
+        return;
+    }
+
+    const mode = negated ? 0 : (op === '' ? 1 : atoi(op));
+    if (mode < 0 || mode > 4) {
+        configErrorAdd(
+            result,
+            `Invalid windowborders (should be within 0 to 4): ${statement}`,
+        );
+        return;
+    }
+    result.iflags.wc2_windowborders = mode;
 }
 
 // C ref: options.c:71.
@@ -3378,6 +3557,56 @@ function optfn_sortdiscoveries(result, statement, negated) {
             break;
         }
     }
+}
+
+// C ref: options.c optfn_sortvanquished() (3958-4009), its startup do_set
+// arm.  The mandatory-value helper runs before negation is considered, so a
+// negated spelling without a value reports and then restores traditional
+// order.  Positive values select from the first byte alone; the two uppercase
+// letters deliberately name modes distinct from their lowercase partners.
+function optfn_sortvanquished(result, statement, negated) {
+    const op = string_for_env_opt(statement, false, result);
+    if (negated) {
+        result.flags.vanq_sortmode = 0;
+    } else if (op !== '') {
+        const mode = 'tdaACcnz'.indexOf(op[0]);
+        const numeric = '01234567'.indexOf(op[0]);
+        if (mode >= 0) {
+            result.flags.vanq_sortmode = mode;
+        } else if (numeric >= 0) {
+            result.flags.vanq_sortmode = numeric;
+        } else {
+            configErrorAdd(
+                result, `Unknown sortvanquished parameter '${op}'`,
+            );
+        }
+    }
+}
+
+// C ref: options.c feature_alert_opts(), startup branch. The parsed
+// unsigned-long value remains exact until it is compared with this build's
+// version. Only an accepted value is stored, and every accepted value fits in
+// JavaScript's exact integer range because the current version is 5.0.0.
+function feature_alert_opts(result, op, optn) {
+    const fnv = get_feature_notice_ver(op);
+    if (fnv === 0n) return 0;
+    if (fnv > get_current_feature_ver()) {
+        configErrorAdd(
+            result,
+            `${optn}=${op} Invalid reference to a future version ignored`,
+        );
+        return 0;
+    }
+    result.flags.suppress_alert = Number(fnv);
+    return 1;
+}
+
+// C ref: options.c optfn_suppress_alert(), startup do_set arm. optlist.h
+// rejects negation before this handler, and an absent or empty value is the
+// empty_optstr sentinel, which leaves the existing setting alone.
+function optfn_suppress_alert(result, value) {
+    if (value == null || value === '') return;
+    feature_alert_opts(result, value, 'suppress_alert');
 }
 
 // C ref: options.c bad_negation() (6692-6697).  Three of its callers are
@@ -3896,8 +4125,12 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setPettype(result, statement, negated);
     } else if (name === 'fruit') {
         setFruit(result, statement);
+    } else if (name === 'autounlock') {
+        optfn_autounlock(result, statement, negated);
     } else if (name === 'boulder') {
         optfn_boulder(result, statement);
+    } else if (name === 'warnings') {
+        optfn_warnings(result, statement);
     } else if (name === 'crash_email') {
         optfn_crash_email(result, statement);
     } else if (name === 'crash_name') {
@@ -3932,6 +4165,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         setNumberPadOption(result, statement);
     } else if (name === 'whatis_coord') {
         setWhatisCoord(result, statement, negated);
+    } else if (name === 'whatis_filter') {
+        optfn_whatis_filter(result, statement, negated);
     } else if (name === 'runmode') {
         setRunmode(result, value, negated);
     } else if (name === 'scores') {
@@ -3946,6 +4181,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         optfn_tile_height(result, statement, negated);
     } else if (name === 'tile_width') {
         optfn_tile_width(result, statement, negated);
+    } else if (name === 'vary_msgcount') {
+        optfn_vary_msgcount(result, statement, negated);
     } else if (name === 'pickup_burden') {
         setPickupBurden(result, statement);
     } else if (name === 'menustyle') {
@@ -4031,6 +4268,12 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         result.flags.sortloot = c;
     } else if (name === 'sortdiscoveries') {
         optfn_sortdiscoveries(result, statement, negated);
+    } else if (name === 'sortvanquished') {
+        optfn_sortvanquished(result, statement, negated);
+    } else if (name === 'suppress_alert') {
+        optfn_suppress_alert(result, value);
+    } else if (name === 'windowborders') {
+        optfn_windowborders(result, statement, negated);
     } else if (name === 'versinfo') {
         // C ref: options.c optfn_versinfo()'s do_set arm.  optlist.h:816 gives
         // it negateok No, so parseoptions() has already answered a negation
@@ -4081,12 +4324,11 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
                 `negated compound option '${name}' is not supported`,
             );
         }
-        // C refs: options.c optfn_symset() (4166-4201), optfn_roguesymset()
-        // (3543-3572) and optfn_suppress_alert() (4134-4149).  Each opens on
+        // C refs: options.c optfn_symset() (4166-4201) and
+        // optfn_roguesymset() (3543-3572). Each opens on
         // `op != empty_optstr` and does nothing at all when that fails, so a
-        // statement whose separator ends it selects no symbol set and
-        // suppresses no alert; the first two then answer optn_err and the
-        // third optn_ok, which parseoptions() cannot tell apart here.
+        // statement whose separator ends it selects no symbol set; each then
+        // answers optn_err, which parseoptions() cannot tell apart here.
         const emptyValue = value === '';
         if (name === 'symset') {
             if (emptyValue) return;
@@ -4112,10 +4354,7 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
             result.roguesymset = value;
             appendSymbolSelection(result, 'rogue', value);
         }
-        else if (name === 'suppress_alert') {
-            if (emptyValue) return;
-            result.flags.suppress_alert = value;
-        } else {
+        else {
             // This parser currently gives source semantics to the startup
             // subset above. Preserve other valid options for later subsystem
             // ports instead of pretending to interpret their values here.
@@ -4160,6 +4399,7 @@ function applyDirectOption(result, key, value) {
 // consumer can refuse its missing cnf_line_<NAME>() state explicitly.
 const CONFIG_STATEMENT_HANDLERS = Object.freeze({
     options: Object.freeze({ kind: 'options' }),
+    autopickup_exception: Object.freeze({ kind: 'autopickup-exception' }),
     bindings: Object.freeze({ kind: 'bindings' }),
     autocomplete: Object.freeze({ kind: 'autocomplete' }),
     roguesymbols: Object.freeze({ kind: 'symbols', set: 'rogue' }),
@@ -4171,6 +4411,7 @@ const CONFIG_STATEMENT_HANDLERS = Object.freeze({
     dogname: Object.freeze({ kind: 'direct', directName: 'dogname' }),
     catname: Object.freeze({ kind: 'direct', directName: 'catname' }),
     boulder: Object.freeze({ kind: 'legacy-boulder' }),
+    warnings: Object.freeze({ kind: 'warnings' }),
 });
 
 function configDelimiter(line) {
@@ -4182,6 +4423,69 @@ function configDelimiter(line) {
 
 function matchesConfigName(name, canonical, minLength) {
     return name.length >= minLength && canonical.startsWith(name);
+}
+
+function scanfAutopickupMapping(mapping, prefix) {
+    const bytes = encodeUtf8ByteString(mapping);
+    let index = 0;
+    if (bytes[index++] !== 0x22) return { n: 0 }; // opening '"'
+    if (prefix != null && bytes[index++] !== prefix) return { n: 0 };
+
+    const text = [];
+    while (index < bytes.length && bytes[index] !== 0x00
+           && bytes[index] !== 0x22 && text.length < 253) {
+        text.push(bytes[index++]);
+    }
+    if (!text.length) return { n: 0 };
+    const decoded = decodeUtf8ByteString(text);
+    // scanf() keeps prior assignments when a later literal does not match.
+    // That makes an unclosed quote, and a quote beyond the field width, n=1.
+    if (bytes[index] !== 0x22) return { n: 1, text: decoded };
+    ++index;
+    while ([0x20, 0x09, 0x0A, 0x0B, 0x0C, 0x0D].includes(bytes[index])) {
+        ++index;
+    }
+    if (index >= bytes.length || bytes[index] === 0x00) {
+        return { n: 1, text: decoded };
+    }
+    return { n: 2, text: decoded, end: bytes[index] };
+}
+
+// C ref: options.c add_autopickup_exception(). cfgfiles.c passes the munged
+// post-delimiter value, and the three sscanf() calls retain their assignment
+// counts even when a closing quote or the byte after field width 253 fails.
+export function add_autopickup_exception(result, mapping) {
+    let scanned = scanfAutopickupMapping(mapping, 0x3C); // '<'
+    let grab = false;
+    if (scanned.n === 1 || (scanned.n === 2 && scanned.end === 0x23)) {
+        grab = true;
+    } else {
+        scanned = scanfAutopickupMapping(mapping, 0x3E); // '>'
+        if (scanned.n !== 1) {
+            scanned = scanfAutopickupMapping(mapping, null);
+        }
+        if (!(scanned.n === 1
+              || (scanned.n === 2 && scanned.end === 0x23))) {
+            configErrorAdd(result, 'syntax error in AUTOPICKUP_EXCEPTION');
+            return 0;
+        }
+    }
+
+    const regex = regex_init();
+    if (!regex_compile(scanned.text, regex)) {
+        configErrorAdd(
+            result,
+            'regex error in AUTOPICKUP_EXCEPTION: '
+                + regex_error_desc(regex),
+        );
+        return 0;
+    }
+    result.ga.apelist = {
+        pattern: scanned.text,
+        grab,
+        next: result.ga.apelist ?? null,
+    };
+    return 1;
 }
 
 function configSection(line) {
@@ -4366,6 +4670,10 @@ export function parseNethackrc(rc, random = rn2) {
         }
 
         const normalizedValue = mungspaces(rawValue);
+        if (statement.kind === 'autopickup-exception') {
+            add_autopickup_exception(result, normalizedValue);
+            continue;
+        }
         if (statement.kind === 'bindings') {
             applyMenuBindings(result, normalizedValue);
             continue;
@@ -4390,6 +4698,10 @@ export function parseNethackrc(rc, random = rn2) {
         }
         if (statement.kind === 'legacy-boulder') {
             cnf_line_BOULDER(result, normalizedValue);
+            continue;
+        }
+        if (statement.kind === 'warnings') {
+            cnf_line_WARNINGS(result, normalizedValue, assign_warnings);
             continue;
         }
         if (statement.kind === 'autocomplete') {
@@ -4796,13 +5108,8 @@ function count_cond(state) {
         .filter(Boolean).length;
 }
 
-// C ref: options.c count_apes(), over ga.apelist.  cfgfiles.c
-// cnf_line_AUTOPICKUP_EXCEPTION() is the only thing that appends to that list
-// in reach -- no ported command adds one -- and parseNethackrc() records the
-// statement without interpreting it, so the count stops rather than report an
-// empty list as the session's.
+// C ref: options.c count_apes(), over ga.apelist.
 function count_apes(state) {
-    refuseUnportedConfigStatement(state, 'autopickup_exception');
     let numapes = 0;
     for (let ape = state.ga?.apelist; ape; ape = ape.next) numapes++;
     return numapes;
@@ -4992,6 +5299,8 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
         ? `${state.iflags.wc_tile_height}` : 'default'),
     tile_width: (state) => (state.iflags.wc_tile_width
         ? `${state.iflags.wc_tile_width}` : 'default'),
+    vary_msgcount: (state) => (state.iflags.wc_vary_msgcount
+        ? `${state.iflags.wc_vary_msgcount}` : 'default'),
     // o_init.c get_sortdisco() with cnf FALSE.
     sortdiscoveries: (state) => {
         const index = disco_order_let.indexOf(state.flags.discosort);
@@ -5011,14 +5320,16 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     statuslines: (state) => (wc2_supported('statuslines')
         ? (state.iflags.wc2_statuslines < 3 ? '2' : '3') : 'unknown'),
     suppress_alert: (state, option) => {
-        // feature_alert_opts(), which packs the option's version number into
-        // this field, is not ported, so zero is the only value it can hold.
-        if (requireParsedNumber(state, option) !== 0) {
-            throw new UnsupportedOptionMenuError(
-                'a packed suppress_alert version',
-            );
-        }
-        return none;
+        // C ref: optfn_suppress_alert(get_val), including the macros whose
+        // major field is deliberately unmasked while minor and patch retain
+        // one byte each. Arithmetic avoids JavaScript's signed 32-bit
+        // bitwise conversion.
+        const packed = requireParsedNumber(state, option);
+        if (packed === 0) return none;
+        const major = Math.floor(packed / 0x01000000);
+        const minor = Math.floor(packed / 0x00010000) % 0x100;
+        const patch = Math.floor(packed / 0x00000100) % 0x100;
+        return `${major}.${minor}.${patch}`;
     },
     symset: (state) => symsetValue(state, PRIMARYSET, true),
     // A fifth option whose parsed home is its own name: the parse arm sits
@@ -5079,17 +5390,16 @@ function symsetValue(state, set, withHandling) {
 // Membership is every shown compound option that parseNethackrc() leaves as
 // raw text under flags[<option name>] and whose handler above reads some
 // other field, so the raw text sits beside the value rather than replacing
-// it.  Where the raw text lands in the very field the handler reads --
-// autounlock, suppress_alert and versinfo -- there is nothing left
-// to compare against, so those three are guarded by type inside
-// their handlers instead and are not members.  The other-settings rows need
-// neither guard: each counts live state rather than reading an option field.
+// it. Where the raw text lands in the very field the handler reads --
+// versinfo -- there is nothing left to compare against, so it is guarded by
+// type inside its handler instead and is not a member. The other-settings
+// rows need neither guard: each counts live state rather than reading an
+// option field.
 // scripts/options-menu.test.mjs derives the whole rule from parseNethackrc(),
 // so the set cannot drift from OPTION_VALUE_HANDLERS unnoticed.
 export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set([
     'glyph',
-    'sortvanquished',
-    'whatis_filter', 'windowtype',
+    'windowtype',
 ]));
 
 // C ref: options.c doset_add_menu()'s optfn call, plus the "unknown" default
