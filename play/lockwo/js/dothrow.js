@@ -15,13 +15,21 @@ import { rn2, rnd, rnl } from './rng.js';
 import { m_at, newsym, update_topl } from './display.js';
 import { cansee } from './vision.js';
 import { isok, IS_FURNITURE, IS_SINK, LAVAWALL, WATER, POOL, MOAT,
-         LAVAPOOL, TT_PIT, P_DAGGER, A_DEX, MM_NOMSG, EYE } from './const.js';
-import { mflags1_of, M1_BREATHLESS, M1_NOEYES } from './monflags_data.js';
+         LAVAPOOL, TT_PIT, P_DAGGER, A_DEX, A_CHA, NEED_HTH_WEAPON,
+         MM_NOMSG, EYE } from './const.js';
+import { mflags1_of, mflags2_of, mflags3_of, msound_of, M1_BREATHLESS,
+         M1_NOEYES, M2_DOMESTIC, M3_WANTSARTI, MS_LEADER,
+         is_human_flag, is_demon_flag } from './monflags_data.js';
+import { attacktype, dmgtype, AT_WEAP, AT_ENGL, AT_HUGS,
+         AD_STCK, AD_WRAP } from './monattk_data.js';
 import { objects, BOULDER, CORPSE, POTION_CLASS, GEM_CLASS, WEAPON_CLASS,
-         ARMOR_CLASS, EGG, STATUE, place_object } from './mkobj.js';
+         ARMOR_CLASS, EGG, STATUE, FOOD_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+         place_object } from './mkobj.js';
 import { surface } from './dungeon.js';
 import { acurr_eff } from './attrib.js';
-import { name_to_pmidx, monster_by_pmidx, makemon } from './makemon.js';
+import { night, phase_of_the_moon, FULL_MOON } from './calendar.js';
+import { name_to_pmidx, monster_by_pmidx, makemon, set_malign,
+         is_covetous } from './makemon.js';
 import * as I from './invent.js';
 
 // C ref: hack.h ECMD_* result codes.
@@ -38,10 +46,10 @@ export const BULLWHIP = 82;
 const AKLYS = 80, FLINT = 473, ROCK = 474,
     MIRROR = 230, EXPENSIVE_CAMERA = 229, CRYSTAL_BALL = 231, LENSES = 232,
     MELON = 280, CREAM_PIE = 287, POT_OIL = 321, POT_WATER = 322,
-    BLINDING_VENOM = 479, ACID_VENOM = 480;
+    BLINDING_VENOM = 479, ACID_VENOM = 480, BANANA = 281;
 
 // C ref: objclass.h obj_material_types.
-const GLASS = 19, GEMSTONE = 20;
+const VEGGY = 3, GLASS = 19, GEMSTONE = 20;
 // C ref: body_part() indices as js/invent.js's HUMANOID_PARTS numbers them.
 const FOOT = 5, HAND = 6, HEAD = 8;
 
@@ -103,6 +111,11 @@ function Doname2(obj) {
 // C ref: objnam.c an(s) / the(s) / s_suffix(s).
 function an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
 function the_str(s) { return /^[A-Z]/.test(s) ? s : `the ${s}`; }
+// C ref: objnam.c Tobjnam(obj, verb) — "The food ration stops".
+function Tobjnam(obj, verb) {
+    const nm = the_str(I.xname(obj));
+    return `${nm.charAt(0).toUpperCase()}${nm.slice(1)} ${I.otense(obj, verb)}`;
+}
 // C ref: objnam.c helm_simple_name(helmet) — "helm" for a hard hat, else "hat".
 function helm_simple_name(o) {
     const mat = objects[o?.otyp]?.material | 0;
@@ -495,6 +508,234 @@ export async function gem_accept(mon, obj) {
     const T = await import('./teleport.js');
     if (T.rloc) await T.rloc(mon, true);
     return ret;
+}
+
+// ── tamedog (C ref: dog.c:1143) ──────────────────────────────────────────────
+//
+// thitmonst()'s pet-food arm (dothrow.c:2267) sits between the potion arm and
+// the engulfer arm and was missing entirely, so every throw at a pet fell
+// through to `tmiss(obj, mon, TRUE)`.  That cost the arm's dogfood()
+// obj_resists() rn2(100) AND emitted tmiss's `maybe_wakeup && !rn2(3)` wakeup
+// roll that C's `tmiss(obj, mon, FALSE)` short-circuits away: two wrong draws
+// where C makes one.  tamedog() lives here beside its caller for the same
+// reason use_whip() does — js/dog.js is a separate write-lease.
+
+// C ref: mextra.h dogfood enum — lower is more desirable.
+const DOGFOOD = 0, ACCFOOD = 2, MANFOOD = 3;
+// C ref: monsym.h S_DOG / S_UNICORN (mons[].mlet, this port's data.mcls).
+const S_DOG = 4, S_UNICORN = 21;
+
+// C ref: mons[].mlet.  js/dog.js builds a STARTING pet's `data` by hand and
+// leaves mcls off it, so read the flag off the mons[] row when the synthetic
+// row has none — otherwise a starting pony answers "not S_UNICORN".
+function mcls_of(ptr) {
+    return ptr?.mcls ?? monster_by_pmidx(ptr?.pmidx)?.mcls;
+}
+// C ref: mondata.h is_domestic(ptr) == (mflags2 & M2_DOMESTIC).
+function is_domestic(ptr) { return (mflags2_of(ptr) & M2_DOMESTIC) !== 0; }
+// C ref: mondata.c sticks(ptr) — whether the hero's own form holds a victim.
+function sticks(ptr) {
+    return dmgtype(ptr, AD_STCK)
+        || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
+        || attacktype(ptr, AT_HUGS);
+}
+function Upolyd() { return !!game.u?.Upolyd; }
+function Hallucination() {
+    return ((game.u?.uprops?.Hallucination || 0) > 0) || !!game.u?.HHallucination;
+}
+
+// C ref: mondata.h befriend_with_obj(ptr, obj) — thrown food that a monster
+// will accept: bananas for monkeys and apes; any food for a domestic animal,
+// except that horses (the non-unicorn half of S_UNICORN) take only always-veggy
+// food or a lichen corpse.
+export function befriend_with_obj(ptr, obj) {
+    const pm = ptr?.pmidx;
+    if (pm != null && (pm === name_to_pmidx('monkey') || pm === name_to_pmidx('ape')))
+        return obj.otyp === BANANA;
+    return is_domestic(ptr) && obj.oclass === FOOD_CLASS
+        && (mcls_of(ptr) !== S_UNICORN
+            || objects[obj.otyp]?.material === VEGGY
+            || (obj.otyp === CORPSE && obj.corpsenm === name_to_pmidx('lichen')));
+}
+
+// C ref: dog.c initedog(mtmp, everything) — consumes no RNG.  u.uconduct.pets++
+// and the livelog line are the only side effects outside the edog struct.
+function initedog(mtmp, everything) {
+    const edogp = mtmp.edog;
+    const minhungry = (game.moves || 0) + 1000;
+    const minimumtame = is_domestic(mtmp.data) ? 10 : 5;
+
+    mtmp.mtame = Math.max(minimumtame, mtmp.mtame | 0);
+    mtmp.mpeaceful = 1;
+    mtmp.mavenge = 0;
+    set_malign(mtmp);                   /* recalc alignment now that it's tamed */
+    if (everything) {
+        mtmp.mleashed = 0;
+        mtmp.meating = 0;
+        edogp.droptime = 0;
+        edogp.dropdist = 10000;
+        edogp.apport = acurr_eff(A_CHA);
+        edogp.whistletime = 0;
+        edogp.ogoal = { x: -1, y: -1 };  /* force error if used before set */
+        edogp.abuse = 0;
+        edogp.revivals = 0;
+        edogp.mhpmax_penalty = 0;
+        edogp.killed_by_u = 0;
+    } else if (!(edogp.apport > 0)) {
+        edogp.apport = 1;
+    }
+    if (!((edogp.hungrytime | 0) >= minhungry)) edogp.hungrytime = minhungry;
+    const u = game.u;
+    if (u) { u.uconduct = u.uconduct || {}; u.uconduct.pets = (u.uconduct.pets | 0) + 1; }
+}
+
+// C ref: dog.c tamedog(mtmp, obj, givemsg) — TRUE means the monster became tame
+// (or ate the thrown food), which tells thitmonst() the object is gone.
+export async function tamedog(mtmp, obj, givemsg) {
+    const u = game.u;
+    const DM = await import('./dogmove.js');
+    const U = await import('./uhitm.js');
+    let blessed_scroll = false;
+
+    if (obj && (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS)) {
+        blessed_scroll = !!obj.blessed;
+        obj = null;                     /* the rest assumes 'obj' is food */
+    }
+    /* reduce timed sleep or paralysis, leaving mcanmove as-is */
+    if (mtmp.mfrozen) mtmp.mfrozen = Math.floor((mtmp.mfrozen + 1) / 2);
+    /* end indefinite sleep; distance==1 limits the waking to mtmp */
+    if (mtmp.msleeping) {
+        const { wake_nearto } = await import('./cmd.js');
+        await wake_nearto(mtmp.mx, mtmp.my, 1);
+    }
+    /* the Wiz, Medusa and the quest nemeses aren't even made peaceful */
+    if (mtmp.iswiz || mtmp.data?.pmidx === name_to_pmidx('Medusa')
+        || (mflags3_of(mtmp.data) & M3_WANTSARTI))
+        return false;
+
+    if (givemsg && !mtmp.mpeaceful && U.canspotmon(mtmp)) {
+        await update_topl(`${U.Monnam(mtmp)} seems ${
+            Hallucination() ? 'really chill' : 'more amiable'}.`);
+        givemsg = false;                /* don't give another message below */
+    }
+    mtmp.mpeaceful = 1;
+    set_malign(mtmp);
+    // C reads flags.moonphase, which newgame() latches once (allmain.c:57);
+    // nothing in this port stores it yet, so recompute when it is absent.
+    const moonphase = game.flags?.moonphase ?? phase_of_the_moon();
+    if (moonphase === FULL_MOON && night() && rn2(6) && obj
+        && mcls_of(mtmp.data) === S_DOG)
+        return false;
+
+    /* if we cannot tame it, at least it's no longer afraid */
+    mtmp.mflee = 0;
+    mtmp.mfleetim = 0;
+
+    /* make a grabber let go now, whether it becomes tame or not */
+    if (mtmp === u.ustuck) {
+        if (u.uswallow) {
+            const MH = await import('./mhitu.js');
+            await MH.expels(mtmp, mtmp.data, true);
+        } else if (!(Upolyd() && sticks(I.youmonst_data_pub()))) {
+            /* C ref: mon.c unstuck(mtmp) */
+            u.ustuck = null;
+            u.uswallow = 0;
+            U.unstuck_mspec_used(mtmp);
+        }
+    }
+
+    /* feeding it treats makes it tamer */
+    if (mtmp.mtame && obj) {
+        // C reads EDOG(mtmp)->hungrytime unconditionally; this port can hold a
+        // tame monster with no edog (read.js's MM_EDOG lights), so treat a
+        // missing hunger clock as "not hungry" (C's initedog always leaves it
+        // above svm.moves) rather than dereferencing it.  The guard sits AFTER
+        // dogfood() so the obj_resists rn2(100) still fires where C fires it.
+        let tasty;
+        if (mtmp.mcanmove && !mtmp.mconf && !mtmp.meating
+            && ((tasty = DM.dogfood(mtmp, obj)) === DOGFOOD
+                || (tasty <= ACCFOOD
+                    && (mtmp.edog?.hungrytime ?? Infinity) <= (game.moves || 0)))
+            && mtmp.edog) {
+            /* pet will "catch" and eat this thrown food */
+            if (U.canseemon(mtmp)) {
+                const csz = monster_by_pmidx(obj.corpsenm)?.msize;
+                const big_corpse = obj.otyp === CORPSE && csz != null
+                    && csz > (monster_by_pmidx(mtmp.data?.pmidx)?.msize ?? 0);
+                await update_topl(`${U.Monnam(mtmp)} catches ${the_str(I.xname(obj))}${
+                    !big_corpse ? '.' : ', or vice versa!'}`);
+            } else if (cansee(mtmp.mx, mtmp.my)) {
+                await update_topl(`${Tobjnam(obj, 'stop')}.`);
+            }
+            place_object(obj, mtmp.mx, mtmp.my); /* dog_eat expects a floor object */
+            await DM.dog_eat(mtmp, mtmp.edog, obj, mtmp.mx, mtmp.my);
+            /* a non-null result suppresses tmiss()'s "miss" message and
+               implies the object has been deleted */
+            return true;
+        }
+        return false;
+    }
+
+    /* maximum tameness is 20, only reachable via eating; taming magic may raise
+       an already-tame monster below 10 */
+    if (mtmp.mtame && mtmp.mtame < 10) {
+        if (mtmp.mtame < rnd(10)) mtmp.mtame++;
+        if (blessed_scroll) {
+            mtmp.mtame += 2;
+            if (mtmp.mtame > 10) mtmp.mtame = 10;
+        }
+        return false;                   /* didn't just get tamed */
+    }
+    /* pacify an angry shopkeeper but don't tame them */
+    if (mtmp.isshk) {
+        const S = await import('./shk.js');
+        await S.make_happy_shk(mtmp, false);
+        return false;
+    }
+
+    if (!mtmp.mcanmove
+        || mtmp.isshk || mtmp.isgd || mtmp.ispriest || mtmp.isminion
+        || is_covetous(mtmp.data) || is_human_flag(mtmp.data)
+        || (is_demon_flag(mtmp.data) && !is_demon_flag(I.youmonst_data_pub()))
+        || (obj && DM.dogfood(mtmp, obj) >= MANFOOD))
+        return false;
+
+    // C: `mtmp->m_id == svq.quest_status.leader_m_id`.  This port carries no
+    // leader_m_id; monsters.h marks every quest-leader species MS_LEADER, which
+    // js/questpgr.js already uses as the leader identity (no RNG either way).
+    if (msound_of(mtmp.data) === MS_LEADER)
+        return false;
+
+    /* add the pet extension */
+    if (!mtmp.edog) {
+        mtmp.edog = {};                 /* newedog(mtmp) */
+        initedog(mtmp, true);
+    } else {
+        initedog(mtmp, false);
+    }
+
+    if (obj) {                          /* thrown food */
+        /* defer eating until the edog extension has been set up */
+        place_object(obj, mtmp.mx, mtmp.my);
+        // C passes devour=TRUE here (it halves dog_nutrition()'s hungrytime
+        // bump); js/dogmove.js's dog_eat has no devour parameter yet.
+        if (await DM.dog_eat(mtmp, mtmp.edog, obj, mtmp.mx, mtmp.my) === 2)
+            return true;                /* oops, it died... */
+    }
+
+    if (givemsg && U.canspotmon(mtmp))
+        await update_topl(`${U.Monnam(mtmp)} seems quite ${
+            Hallucination() ? 'approachable' : 'friendly'}.`);
+
+    newsym(mtmp.mx, mtmp.my);
+    // C's redraw_worm(mtmp) follows for a long worm; no tamable-by-food species
+    // has a wormno.
+    if (attacktype(mtmp.data, AT_WEAP)) {
+        mtmp.weapon_check = NEED_HTH_WEAPON;
+        const M = await import('./monmove.js');
+        await M.mon_wield_item(mtmp);
+    }
+    return true;
 }
 
 // ── throw_gold (C ref: dothrow.c:2655) ───────────────────────────────────────

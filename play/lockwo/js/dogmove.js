@@ -27,7 +27,7 @@ import { obj_resists } from './zap.js';
 import { newsym, vobj_at, object_glyph, see_with_infrared } from './display.js';
 import { couldsee as visCouldsee, clear_path, cansee, view_from } from './vision.js';
 import { Monnam, x_monnam, canspotmon } from './uhitm.js';
-import { floor_object_name, doname_invent, sobj_at } from './invent.js';
+import { floor_object_name, doname_invent, sobj_at, stackobj } from './invent.js';
 import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, m_avoid_kicked_loc,
     mon_allowflags, set_apparxy, onscary, mon_wield_item,
     Conflict, resist_conflict, mattacku } from './monmove.js';
@@ -39,6 +39,7 @@ import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_MISS } from './con
 import {
     FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, CORPSE, TIN, next_ident,
     GOLD_PIECE, COIN_CLASS, BOULDER, objects as OBJECTS, is_rider_pm, weight,
+    place_object,
 } from './mkobj.js';
 import { may_dig } from './dig.js';
 import { mflags1_of, msound_of, perceives_flag, M1_NOEYES,
@@ -270,12 +271,22 @@ function fobj() {
     return out;
 }
 
-// Objects at a specific square.  Preserve the level.objects append order here
-// (the per-tile `nexthere` scan in dog_move/dog_invent already matched C at
-// the tiles these sessions exercise); only dog_goal's whole-level fobj scan
-// needs the newest-first traversal.
+// Objects at a specific square, in level.objects append order (deepest first).
 function objectsAt(x, y) {
     return (game.level?.objects || []).filter((o) => o.ox === x && o.oy === y);
+}
+
+// C ref: mkobj.c place_object() pushes onto svl.level.objects[x][y]
+// (`otmp->nexthere = svl.level.objects[x][y]`), so a tile's nexthere chain runs
+// TOPMOST-FIRST while our flat level.objects array is in placement order.
+// Every C `for (obj = svl.level.objects[x][y]; obj; obj = obj->nexthere)` walk
+// must therefore read the pile reversed: the order decides which object the
+// walk stops on, and a walk that stops early makes fewer dogfood()
+// obj_resists rn2(100) draws than one that runs to the end.
+function objectsAtNexthere(x, y) {
+    const pile = objectsAt(x, y);
+    pile.reverse();
+    return pile;
 }
 
 // C ref: hack.h distu(x,y) — squared distance from hero.
@@ -290,7 +301,7 @@ function distmin(x0, y0, x1, y1) {
 // non-poisoned object, and (b) a faithful-enough quality so goal selection
 // (and thus the downstream rn2 ordering) matches for the common objects the
 // starting level places.
-function dogfood(mon, obj) {
+export function dogfood(mon, obj) {
     const mdat = mon.data || {};
     const carni = carnivorous(mdat);
     const herbi = herbivorous(mdat);
@@ -914,29 +925,44 @@ async function dog_invent(mtmp, edog, udist) {
 // relobj() call on dismount.  Placement of what IS dropped is deterministic
 // (no RNG); we just move it from minvent back into level.objects at (x,y).
 async function relobj(mtmp, x, y) {
-    const arr = game.level?.objects;
     // C ref: steal.c relobj(is_pet=TRUE) -> mdrop_obj(mon,obj,is_pet&&verbose).
-    // For each droppable, when verbose and the hero can see the pet's tile,
-    // announce "<Mon> drops <obj>." (doname evaluated before the floor drop) via
-    // pline_mon -> vpline -> update_topl.  Routing through update_topl (not a raw
-    // _pending_message assignment) lets each drop APPEND after an unacknowledged
-    // prior message on the same top line (and page a --More-- when it won't fit),
-    // exactly as C's topl buffer does.
     const verbose = game.flags?.verbose !== false;
-    const announce = verbose && cansee(x, y);
     let obj;
-    while ((obj = droppables(mtmp))) {
-        if (announce)
-            await emit_pet_msg(`${Monnam(mtmp)} drops ${pet_doname(obj)}.`);
-        const ix = mtmp.minvent.indexOf(obj);
-        if (ix >= 0) mtmp.minvent.splice(ix, 1);
-        obj.ox = x; obj.oy = y;
-        // C ref: mdrop_obj -> place_object: the object goes back on the floor.
-        // Use the same 'floor' marker place_object sets so vobj_at/the display
-        // (display.c map_object) renders the dropped glyph.
-        obj.where = 'floor';
-        if (arr && !arr.includes(obj)) arr.push(obj);
-    }
+    while ((obj = droppables(mtmp))) await mdrop_obj(mtmp, obj, verbose);
+    // C ref: steal.c:896 — `if (show && cansee(omx,omy)) newsym(omx,omy)`, and
+    // dog_invent's call site passes show = mtmp->minvis, so a VISIBLE pet gets
+    // no refresh here (its own glyph already covers the square).
+    if (mtmp.minvis && cansee(x, y)) newsym(x, y);
+}
+
+// C ref: steal.c mdrop_obj(mon, obj, verbosely) — drop ONE item out of a
+// monster's inventory onto the square the monster stands on.
+async function mdrop_obj(mtmp, obj, verbosely) {
+    const omx = mtmp.mx, omy = mtmp.my;
+    // C ref: steal.c:823 — distant_name(obj, doname) is called for its possible
+    // side-effects even when the message won't be printed, and BEFORE the
+    // extract (doname() -> xname() -> find_artifact() wants obj still held).
+    const obj_name = pet_doname(obj);
+    // C ref: steal.c:825 extract_from_minvent(mon, obj, FALSE, TRUE).
+    const ix = mtmp.minvent ? mtmp.minvent.indexOf(obj) : -1;
+    if (ix >= 0) mtmp.minvent.splice(ix, 1);
+    // C ref: steal.c:835 — the pline fires AFTER the extract and BEFORE the
+    // floor placement, so a --More-- here shows the square without the glyph.
+    // Routing through update_topl (not a raw _pending_message assignment) lets
+    // each drop APPEND after an unacknowledged prior message on the same top
+    // line, exactly as C's topl buffer does.
+    if (verbosely && cansee(omx, omy))
+        await emit_pet_msg(`${Monnam(mtmp)} drops ${obj_name}.`);
+    // C ref: steal.c:837-840 — `if (!flooreffects(obj, omx, omy, "fall")) {
+    // place_object(obj, omx, omy); stackobj(obj); }`.  The stackobj() was
+    // missing: a dropped item that duplicates a stack already on the tile MERGES
+    // in C, so the tile (and fobj) hold ONE object, not two.  Without it every
+    // later fobj scan that reaches the tile — dog_goal's SQSRCHRADIUS walk above
+    // — made one extra dogfood() obj_resists rn2(100), shifting every roll from
+    // there on.  (flooreffects() — water/lava/hole destruction — is not ported
+    // anywhere in this port, so the object always survives the drop.)
+    place_object(obj, omx, omy);
+    stackobj(obj);
 }
 
 // C ref: monmove.c weapon_check states (mon.h NEED_WEAPON / NEED_HTH_WEAPON).
@@ -1633,9 +1659,19 @@ export async function dog_move(mtmp, after) {
         }
 
         // dog eschews cursed objects, likes dog food: scan objects at <nx,ny>.
+        // C ref: dogmove.c:1215 — `can_reach_food` is computed ONCE per
+        // candidate square and short-circuits the dogfood() call itself
+        // (`can_reach_food && (otyp = dogfood(...)) < MANFOOD`).  Without it a
+        // square the pet cannot physically reach — a pool/lava square it can't
+        // swim in, or one holding a boulder it can't throw — still burned one
+        // obj_resists rn2(100) per object lying there, so every roll from that
+        // candidate onward (the rn2(++chcnt) tie-break included) read one slot
+        // late.
+        const can_reach_food = could_reach_item(mtmp, nx, ny);
         let ate = false;
-        for (const obj of objectsAt(nx, ny)) {
+        for (const obj of objectsAtNexthere(nx, ny)) {
             if (obj.cursed) { cursemsg[i] = true; continue; }
+            if (!can_reach_food) continue;
             const otyp = dogfood(mtmp, obj); // -> obj_resists rn2(100)
             if (otyp < MANFOOD
                 && (otyp < ACCFOOD || edog.hungrytime <= (game.moves || 1))) {
@@ -1813,7 +1849,7 @@ export async function dog_move(mtmp, after) {
 // the rust monster's oerodeproof "spits it out in disgust" branch, and the
 // unpaid-item shop billing (suppress_price / unpaid_cost / costly_alteration).
 // Returns 2 if the pet died, else 1.
-async function dog_eat(mtmp, edog, obj, x, y) {
+export async function dog_eat(mtmp, edog, obj, x, y) {
     const moves = game.moves || 1;
     if (edog.hungrytime < moves) edog.hungrytime = moves;
     // dog_nutrition(): nutrit drives hungrytime; corpses use the species cnutrit

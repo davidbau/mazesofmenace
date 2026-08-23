@@ -188,7 +188,11 @@ export async function newgame() {
             if (g.u.ualign.record === undefined)
                 g.u.ualign.record = roles[game.initrole]?.initrecord ?? 0;
         }
-        if (!g.urace) g.urace = { adj: races[game.initrace]?.adj || 'human' };
+        // C ref: role.c `gu.urace = races[flags.initrace]` — the WHOLE entry.
+        // Assigning only `adj` left urace.mnum/selfmask/filecode/noun undefined
+        // for every reader in js/ (eat.js your_race, bones.js filecode,
+        // invent.js, end.js, display.js showrace).
+        if (!g.urace) g.urace = { ...(races[game.initrace] || races[0]) };
     }
 
     // Real mklev generates the level with correct room positions
@@ -270,7 +274,7 @@ async function newgame_real() {
                 // C ref: role.c roles[] spell-statistics block; drives
                 // spell.c percent_success().
                 spel: role?.spel };
-    g.urace = { adj: races[game.initrace]?.adj || 'human' };
+    g.urace = { ...(races[game.initrace] || races[0]) };
     const alignType = aligns[game.initalign]?.value ?? 0;
     // C ref: attrib.c init_align — u.ualign.record = gu.urole.initrecord; and
     // u_init.c u_init_misc — u.ublesscnt = 300 (no prayers just yet), u.uluck =

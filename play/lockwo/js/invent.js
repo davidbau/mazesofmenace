@@ -101,7 +101,7 @@ import {
     DUST, ENGRAVE, HEADSTONE, BURN, MARK, ENGR_BLOOD,
     PLNMSG_MON_TAKES_OFF_ITEM,
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
-    TIMEOUT, isok,
+    TIMEOUT, isok, STRAT_WAITMASK,
 } from './const.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
 import { costly_spot, addtobill, shkname } from './shkroom.js';
@@ -5741,6 +5741,23 @@ async function thitmonst(mon, obj, skillsnap) {
         return true;                            /* hmon used it up */
     }
 
+    // C ref: dothrow.c:2267 — thrown food a monster will accept, or any food a
+    // tame pet rates ACCFOOD or better.  tamedog() runs dogfood() (an
+    // obj_resists rn2(100)) and the miss it falls back to passes maybe_wakeup
+    // FALSE, so C never rolls tmiss's rn2(3) here.  C's POTION_CLASS arm sits
+    // just above this one and is still missing (potionhit() for a monster
+    // target is not ported), so a thrown potion still reaches this test.
+    const { dogfood } = await import('./dogmove.js');
+    if (DT.befriend_with_obj(mon.data, obj)
+        || (mon.mtame && dogfood(mon, obj) <= ACCFOOD)) {
+        if (await DT.tamedog(mon, obj, true))
+            return true;                        /* obj is gone */
+        await tmiss(obj, mon, false);
+        mon.msleeping = 0;
+        mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_WAITMASK;
+        return false;
+    }
+
     // C ref: dothrow.c:2276 — an engulfed hero's throw simply vanishes into the
     // engulfer; there is no miss roll and no wakeup rn2(3).
     if (guaranteed_hit) {
@@ -6002,6 +6019,8 @@ function the_str(s) { return /^[A-Z]/.test(s) ? s : `the ${s}`; }
 function the_name_of(obj) { return the_str(xname(obj)); }
 // C ref: onames.h HEAVY_IRON_BALL (js/mkobj.js OBJECT_DATA otyp).
 const HEAVY_IRON_BALL_OTYP = 484;
+// C ref: mextra.h dogfood enum — thitmonst()'s pet arm accepts ACCFOOD or better.
+const ACCFOOD = 2;
 
 // C ref: dothrow.c return_throw_to_inv(obj, wep_mask, twoweap, oldslot) — a
 // throw-and-return weapon coming back into the pack, re-wielded (or re-quivered)

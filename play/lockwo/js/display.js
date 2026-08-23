@@ -1801,7 +1801,12 @@ function hero_glyph() {
     // so a dwarf shows 'h' and a gnome 'G'.  display.c map_glyphinfo() then
     // puts the color back to HI_DOMESTIC, i.e. the same white as the '@'.
     if (game.flags?.showrace) {
-        const rd = monster_by_pmidx(RACE_PM[game.urace?.mnum | 0]);
+        // RACE_PM is indexed by RACE NUMBER, and game.urace carries only
+        // `adj` -- allmain.c's `g.urace = { adj: ... }` never sets mnum, so
+        // `urace.mnum | 0` was always 0 and every race rendered as human '@'.
+        // game.initrace is the race index (0 human, 1 elf, 2 dwarf, 3 gnome,
+        // 4 orc).
+        const rd = monster_by_pmidx(RACE_PM[game.initrace | 0]);
         if (rd) return { ch: rd.mlet || '@', color: CLR_WHITE };
     }
     return { ch: '@', color: CLR_WHITE };

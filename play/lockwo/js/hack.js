@@ -991,8 +991,19 @@ async function travel_walk() {
         // one's own square), and test_move(DO_MOVE) refusing a boulder while
         // run == 8 zeroes context.move.  Later steps come from moveloop_core()'s
         // context.mv continuation, which has no such override.
-        if (!u.dx && !u.dy) {        // no path and no guess: nomul(0) already ran
-            if (first) { first = false; c.move = 1; await moveloop_turn(); }
+        if (!u.dx && !u.dy) {
+            // C ref: hack.c domove() — findtravelpath() failing BOTH modes still
+            // leaves a domove() that moves onto the hero's own square, and
+            // moveloop_core() spends the turn for it because context.move is
+            // still set.  Charging it only on the FIRST iteration left travel
+            // one turn short of C whenever a guess-step ran before the path
+            // gave out: lp-priest-dwarf key 121 travels (70,7)->(70,6) then
+            // fails, so C reads T:25 where we read T:24 -- and row 23 is on
+            // every screen, so the whole rest of the session mismatched on that
+            // one cell.
+            first = false;
+            c.move = 1;
+            await moveloop_turn();
             break;
         }
 

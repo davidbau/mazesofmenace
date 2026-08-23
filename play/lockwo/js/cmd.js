@@ -57,7 +57,8 @@ import { noattacks, attacktype, AT_ENGL } from './monattk_data.js';
 // (cmd -> monmove -> uhitm -> allmain -> cmd) resolves through hoisting the
 // same way muse.js's import of it does.
 import { onscary } from './monmove.js';
-import { engr_at, wipe_engr_at, doengrave } from './engrave.js';
+import { engr_at, wipe_engr_at, doengrave, can_reach_floor,
+         read_engr_at as engrave_read_engr_at } from './engrave.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { builds_up, level_difficulty_c } from './dungeon.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
@@ -75,10 +76,11 @@ import { dokick } from './dokick.js';
 // one), so it advances the PRNG exactly as C does on every move over engraved
 // terrain (the tut-1 level is covered in engravings).
 function maybe_smudge_engr(x1, y1, x2, y2) {
-    const u = game.u;
-    // can_reach_floor(TRUE): false only while Levitating/Flying without a way
-    // down.  The recorded movers are all walking on the floor here.
-    if (u?.uprops?.Levitation || u?.uprops?.Flying) return;
+    // C ref: engrave.c can_reach_floor(TRUE) — js/engrave.js already ports it
+    // (swallowed, Levitating, teetering over a seen pit/hole).  The local
+    // `Levitation || Flying` stand-in that used to be here had Flying BACKWARDS:
+    // C returns TRUE for a flying hero, so flying over an engraving smudges it.
+    if (!can_reach_floor(true)) return;
     let ep = engr_at(x1, y1);
     if (ep && ep.engr_type !== HEADSTONE) wipe_engr_at(x1, y1, rnd(5), false);
     if ((x2 !== x1 || y2 !== y1)) {
@@ -1977,11 +1979,10 @@ function digests_cmd(ptr) { return attacktype(ptr, AT_ENGL); }
 // C ref: engrave.c u_wipe_engr(cnt) — scuff the engraving under the hero.
 // wipe_engr_at() draws rn2(1 + 50 / (cnt + 1)) for every engraving type except
 // DUST and blood, so this is an RNG call site whenever the hero stands on an
-// engraved square.  can_reach_floor(TRUE) is approximated the same way
-// maybe_smudge_engr() above approximates it.
+// engraved square.
 function u_wipe_engr_cmd(cnt) {
     const u = game.u;
-    if (u?.uprops?.Levitation || u?.uprops?.Flying) return;
+    if (!can_reach_floor(true)) return;
     wipe_engr_at(u.ux, u.uy, cnt, false);
 }
 
@@ -2942,8 +2943,17 @@ export async function domove(dx, dy) {
         // spoteffects(TRUE) -> pickup(1) on the hero's new square, so a swap onto
         // a floor object announces it (autopickup off) or lifts it (autopickup
         // on).  Only when the hero actually relocated (the swap succeeded).
-        if (u.umoved)
+        if (u.umoved) {
             await pickup_after_move(u.ux, u.uy);
+            // C ref: hack.c domove() — a pet swap leaves domove_core() through
+            // the same tail as any other successful step (u.ux0 != u.ux sets
+            // DOMOVE_WALK in gd.domove_succeeded), so domove() still smudges the
+            // engravings on the squares left and entered.  Returning early here
+            // skipped the rnd(5)/rn2(1+50/(cnt+1)) pair on every displace-a-pet
+            // move over an engraving.
+            maybe_smudge_engr(u.ux0, u.uy0, u.ux, u.uy);
+            maybe_adjust_hero_bubble();
+        }
         return;
     }
 
@@ -3938,66 +3948,11 @@ function engr_read_enabled() {
     return true;
 }
 
-// C ref: engrave.c read_engr_at() — sense and read aloud the engraving at
-// (x,y).  Prints the type-specific "is engraved/burned/written here" line, then
-// "You read: \"<text>\"<punct>" (no end '.' if the text already ends in .!?),
-// and — crucially for the tutorial run paths — stops a run/travel (nomul(0))
-// since the hero just stepped onto a feature worth noticing.  Only the
-// not-Blind sensing cases the tut-1 level uses (ENGRAVE / BURN) are exercised;
-// DUST / MARK / blood are handled structurally for faithfulness.
+// C ref: engrave.c read_engr_at(x, y) — ported in js/engrave.js, next to the
+// engr_at()/wipe_engr_at() state it reads.
 async function read_engr_at(x, y) {
     if (!engr_read_enabled()) return;
-    const ep = engr_at(x, y);
-    if (!ep) return;
-    const text = ep.actualText || '';
-    if (!text) return;
-    let sensed = false;
-    let intro = '';
-    switch (ep.engr_type) {
-    case 1 /*DUST*/:        intro = 'Something is written here in the dust.'; sensed = true; break;
-    case 2 /*ENGRAVE*/:
-    case 6 /*HEADSTONE*/:   intro = 'Something is engraved here on the floor.'; sensed = true; break;
-    case 3 /*BURN*/:        intro = 'Some text has been burned into the floor here.'; sensed = true; break;
-    case 4 /*MARK*/:        intro = "There's some graffiti on the floor here."; sensed = true; break;
-    case 5 /*ENGR_BLOOD*/:  intro = 'You see a message scrawled in blood here.'; sensed = true; break;
-    default: return;
-    }
-    if (!sensed) return;
-    // C: endpunct = "." unless the (original) text already ends in . ! or ?.
-    const last = text.charAt(text.length - 1);
-    const endpunct = (text.length >= 2 && '.!?'.includes(last)) ? '' : '.';
-    const readLine = `You read: "${text}"${endpunct}`;
-    await pline(intro);
-    // C ref: win/tty/topl.c update_topl() — the "You read" pline is a second
-    // update_topl() call in the same turn: when there's room for it plus
-    // "--More--" on the intro's line (len(bp)+len(toplines)+3 < CO-8) it's
-    // appended after two spaces with no paging; otherwise the intro pages with
-    // --More-- first before "You read" starts a fresh line.
-    if (readLine.length + intro.length + 3 < 80 - 8) {
-        game._pending_message = `${intro}  ${readLine}`;
-        game._toplines = game._pending_message;
-    } else {
-        await topl_more();
-        await pline(readLine);
-        // C ref: win/tty/topl.c redotoplin():139 — a topline that wrapped onto a
-        // second row (cury > 0) auto-fires more().  So only the "You read" line
-        // that overflows 80 columns (e.g. long degraded graffiti) gets paged
-        // with --More--; a short one stays without one.  After the page is
-        // acknowledged the topline clears for the next command's frame.
-        if (wrap_topl(readLine).length > 1) {
-            await topl_more();
-            game._pending_message = '';
-        }
-    }
-    ep.eread = 1;
-    ep.erevealed = 1;
-    // C ref: engrave.c:401 — `if (svc.context.run > 0) nomul(0);`
-    if ((game.context?.run || 0) > 0) {
-        game.multi = 0;
-        if (game.context) {
-            game.context.travel = game.context.travel1 = game.context.mv = 0;
-        }
-    }
+    await engrave_read_engr_at(x, y);
 }
 
 // C ref: pickup.c pickup(1) with flags.pickup set -> autopick() picks every

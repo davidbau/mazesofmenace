@@ -39,6 +39,10 @@ import {
     MENU_PARTIAL,
     MENU_TRADITIONAL,
     MOD_ENCUMBER,
+    MSGTYP_NOREP,
+    MSGTYP_NORMAL,
+    MSGTYP_NOSHOW,
+    MSGTYP_STOP,
     NUM_DISCLOSURE_OPTIONS,
     OVERLOADED,
     PARANOID_AUTOALL,
@@ -175,6 +179,7 @@ import {
     regex_compile,
     regex_error_desc,
     regex_init,
+    regex_match,
 } from './posixregex.js';
 import {
     get_current_feature_ver,
@@ -514,6 +519,12 @@ function defaultResult() {
         ga: {
             // decl.c instance_globals_a starts on the built-in interface.
             active_soundlib: soundlib_nosound,
+        },
+        gp: {
+            // decl.c instance_globals_p starts this list at NULL. Each valid
+            // direct MSGTYPE row prepends one compiled rule; jsmain.js moves
+            // the resulting per-parse list into the new game's gp owner.
+            plinemsg_types: null,
         },
         // options.c initoptions_init() initializes the sole symbols.c-owned
         // warning array before reading either OPTIONS=warnings or the legacy
@@ -4400,6 +4411,7 @@ function applyDirectOption(result, key, value) {
 const CONFIG_STATEMENT_HANDLERS = Object.freeze({
     options: Object.freeze({ kind: 'options' }),
     autopickup_exception: Object.freeze({ kind: 'autopickup-exception' }),
+    msgtype: Object.freeze({ kind: 'msgtype' }),
     bindings: Object.freeze({ kind: 'bindings' }),
     autocomplete: Object.freeze({ kind: 'autocomplete' }),
     roguesymbols: Object.freeze({ kind: 'symbols', set: 'rogue' }),
@@ -4483,9 +4495,108 @@ export function add_autopickup_exception(result, mapping) {
     result.ga.apelist = {
         pattern: scanned.text,
         grab,
+        regex,
         next: result.ga.apelist ?? null,
     };
     return 1;
+}
+
+const MSGTYPE_NAMES = Object.freeze([
+    // msgtype_parse_add() accepts the first source-table name with this
+    // prefix. Keep show before stop (`s`) and noshow before norep (`n`).
+    Object.freeze({ name: 'show', msgtype: MSGTYP_NORMAL }),
+    Object.freeze({ name: 'hide', msgtype: MSGTYP_NOSHOW }),
+    Object.freeze({ name: 'noshow', msgtype: MSGTYP_NOSHOW }),
+    Object.freeze({ name: 'stop', msgtype: MSGTYP_STOP }),
+    Object.freeze({ name: 'more', msgtype: MSGTYP_STOP }),
+    Object.freeze({ name: 'norep', msgtype: MSGTYP_NOREP }),
+]);
+
+function scanfMsgtypeRule(value) {
+    const bytes = encodeUtf8ByteString(value);
+    let index = 0;
+    const whitespace = (byte) => (
+        byte === 0x20 || (byte >= 0x09 && byte <= 0x0D)
+    );
+    while (whitespace(bytes[index])) ++index;
+
+    const action = [];
+    while (index < bytes.length && !whitespace(bytes[index])
+           && action.length < 10) {
+        action.push(bytes[index++]);
+    }
+    if (!action.length) return { assignments: 0 };
+    while (whitespace(bytes[index])) ++index;
+    if (bytes[index++] !== 0x22) {
+        return {
+            assignments: 1,
+            action: decodeUtf8ByteString(action),
+        };
+    }
+
+    const pattern = [];
+    while (index < bytes.length && bytes[index] !== 0x22
+           && pattern.length < 255) {
+        pattern.push(bytes[index++]);
+    }
+    if (!pattern.length) {
+        return {
+            assignments: 1,
+            action: decodeUtf8ByteString(action),
+        };
+    }
+    // The closing quote is a literal after both conversions. sscanf() keeps
+    // two assignments when that literal is missing or lies beyond width 255.
+    return {
+        assignments: 2,
+        action: decodeUtf8ByteString(action),
+        pattern: decodeUtf8ByteString(pattern),
+    };
+}
+
+// C ref: options.c msgtype_add(). The list is prepended, so a later rc line
+// has precedence when msgtype_type() walks from its head.
+function msgtype_add(result, msgtype, pattern) {
+    const regex = regex_init();
+    if (!regex_compile(pattern, regex)) {
+        configErrorAdd(
+            result,
+            `MSGTYPE regex error: ${regex_error_desc(regex)}`,
+        );
+        return false;
+    }
+    result.gp.plinemsg_types = {
+        msgtype,
+        regex,
+        pattern,
+        next: result.gp.plinemsg_types,
+    };
+    return true;
+}
+
+// C ref: options.c msgtype_parse_add(). The scanf widths count bytes, and the
+// action lookup asks whether each table name starts with the supplied token.
+export function msgtype_parse_add(result, value) {
+    const scanned = scanfMsgtypeRule(value);
+    if (scanned.assignments === 2) {
+        const row = MSGTYPE_NAMES.find(({ name }) => (
+            str_start_is(name, scanned.action, true)
+        ));
+        if (row) return msgtype_add(result, row.msgtype, scanned.pattern);
+        configErrorAdd(result, `Unknown message type '${scanned.action}'`);
+    } else {
+        configErrorAdd(result, 'Malformed MSGTYPE');
+    }
+    return false;
+}
+
+// C ref: options.c msgtype_type(). The caller-supplied Norep default applies
+// only after every configured rule has failed to match.
+export function msgtype_type(message, norepeat, state = game) {
+    for (let rule = state.gp?.plinemsg_types; rule; rule = rule.next) {
+        if (regex_match(String(message), rule.regex)) return rule.msgtype;
+    }
+    return norepeat ? MSGTYP_NOREP : MSGTYP_NORMAL;
 }
 
 function configSection(line) {
@@ -4672,6 +4783,10 @@ export function parseNethackrc(rc, random = rn2) {
         const normalizedValue = mungspaces(rawValue);
         if (statement.kind === 'autopickup-exception') {
             add_autopickup_exception(result, normalizedValue);
+            continue;
+        }
+        if (statement.kind === 'msgtype') {
+            msgtype_parse_add(result, normalizedValue);
             continue;
         }
         if (statement.kind === 'bindings') {
@@ -4976,6 +5091,8 @@ function rolestring(val, array, field) {
 // menutype[]; insight.c vanqorders[]; o_init.c disco_order_let and
 // disco_orders_descr[]; decl.c disclosure_options; symbols.c
 // known_handling[].  Only the columns the value column shows are kept.
+// optfn_autounlock() maps each source-table index to 1U << index; this order
+// therefore owns the UNTRAP/APPLY_KEY/KICK/FORCE bits 1/2/4/8.
 const unlocktypes = Object.freeze(['untrap', 'apply-key', 'kick', 'force']);
 const burdentype = Object.freeze([
     'unencumbered', 'burdened', 'stressed',
@@ -5130,19 +5247,17 @@ function refuseUnportedConfigStatement(state, name) {
     }
 }
 
-// C ref: coloratt.c count_menucolors() over gm.menu_colorings, and options.c
-// msgtype_count() over gp.plinemsg_types.  cfgfiles.c cnf_line_MENUCOLOR()
-// and cnf_line_MSGTYPE() are what append to those lists at startup, and both
-// stop this port above.  Nothing else in reach adds an entry: no js/ module
-// writes gm.menu_colorings or gp.plinemsg_types, and the commands that would
-// (doset()'s pick loop for either row) are unported.
+// C ref: coloratt.c count_menucolors(). cnf_line_MENUCOLOR() remains unported,
+// and the interactive menu command that would add entries is outside this
+// startup slice.
 function count_menucolors(state) {
     refuseUnportedConfigStatement(state, 'menucolor');
     return 0;
 }
 function msgtype_count(state) {
-    refuseUnportedConfigStatement(state, 'msgtype');
-    return 0;
+    let count = 0;
+    for (let rule = state.gp?.plinemsg_types; rule; rule = rule.next) ++count;
+    return count;
 }
 
 // parseNethackrc() gives source semantics to the options its own arms parse
@@ -5332,10 +5447,10 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
         return `${major}.${minor}.${patch}`;
     },
     symset: (state) => symsetValue(state, PRIMARYSET, true),
-    // A fifth option whose parsed home is its own name: the parse arm sits
-    // inside the branch that needs a value, so `OPTIONS=versinfo`, which C
-    // answers with a config error that leaves flags.versinfo alone, reaches
-    // applyBooleanOption()'s fallback and leaves a boolean in this field.
+    // versinfo is the remaining option whose parsed home is its own field and
+    // whose parse arm requires a value. `OPTIONS=versinfo` therefore reaches
+    // applyBooleanOption()'s fallback after C reports the missing value, so
+    // this handler retains requireParsedNumber() as the same-field guard.
     versinfo: (state, option) => {
         const vi = requireParsedNumber(state, option);
         const g = (vi & VI_NAME) !== 0;

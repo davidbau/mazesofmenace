@@ -434,6 +434,92 @@ export function engr_at(x, y) {
     return engravings.find((ep) => ep.engr_x === x && ep.engr_y === y) ?? null;
 }
 
+// C ref: engrave.c read_engr_at(x, y) — sense the engraving at (x,y) and read
+// it out.  Both lines are plain pline()/You() in C, i.e. vpline() ->
+// update_topl(), so "does this fit on the current topline or does the pending
+// line page with --More-- first" is update_topl()'s decision.  The copy this
+// replaced printed the intro with pline() and re-derived that rule locally, so
+// it missed the case where a message from earlier in the same command was still
+// unacknowledged (wave9 lp-wizard-elf 185: C pages the pet-swap line first).
+// It also hardcoded "floor" where C uses surface(x,y) and printed the DUST /
+// MARK / blood lines for a BLIND hero, whom C tells nothing at all.
+export async function read_engr_at(x, y) {
+    const ep = engr_at(x, y);
+    if (!ep || !(ep.actualText || '')) return;
+    const { update_topl, impossible } = await import('./display.js');
+    const { surface } = await import('./dungeon.js');
+    const eloc = surface(x, y);
+    const on_ice = game.level?.at(x, y)?.typ === ICE;
+    const Blind = isBlind();
+    let sensed = 0;
+
+    // C ref: decl.c:46 — Something is the literal "Something".
+    switch (ep.engr_type) {
+    case DUST:
+        if (!Blind) {
+            sensed = 1;
+            await update_topl(`Something is written here in the ${on_ice ? 'frost' : 'dust'}.`);
+        }
+        break;
+    case ENGRAVE:
+    case HEADSTONE:
+        if (!Blind || can_reach_floor(true)) {
+            sensed = 1;
+            await update_topl(`Something is engraved here on the ${eloc}.`);
+        }
+        break;
+    case BURN:
+        if (!Blind || can_reach_floor(true)) {
+            sensed = 1;
+            await update_topl(`Some text has been ${on_ice ? 'melted' : 'burned'} into the ${eloc} here.`);
+        }
+        break;
+    case MARK:
+        if (!Blind) {
+            sensed = 1;
+            await update_topl(`There's some graffiti on the ${eloc} here.`);
+        }
+        break;
+    case ENGR_BLOOD:
+        if (!Blind) {
+            sensed = 1;
+            // C: You_see() -> "You see " + line (pline.c:466).
+            await update_topl('You see a message scrawled in blood here.');
+        }
+        break;
+    default:
+        await impossible('Something is written in a very strange way.');
+        sensed = 1;
+        break;
+    }
+    if (!sensed) return;
+
+    // C: maxelen = sizeof buf - sizeof "You feel the words: \"\"." — sizeof
+    // counts the terminating NUL that strlen does not.
+    const maxelen = BUFSZ - 'You feel the words: "".'.length - 1;
+    let et = ep.actualText;
+    let elen = et.length;
+    if (elen > maxelen) { et = et.slice(0, maxelen); elen = maxelen; }
+    // C ref: engrave.c:389 — the trailing '.' is skipped only when the last
+    // character is punctuation AND is ORIGINAL; a '.' that wipeout_text()
+    // degraded into place (rubouts maps ':' and ',' onto '.') still gets one.
+    const pristine = ep.pristineText || '';
+    const off = ep.engr_off || 0;
+    const endpunct = (elen >= 2
+                      && pristine[off + elen - 1] === et[elen - 1]
+                      && '.!?'.includes(et[elen - 1])) ? '' : '.';
+    await update_topl(`You ${Blind ? 'feel the words' : 'read'}: "${et}"${endpunct}`);
+    // C ref: engrave.c:398 Strcpy(engr_txt[remembered_text], engr_txt[actual_text]).
+    ep.rememberedText = ep.actualText;
+    ep.eread = 1;
+    ep.erevealed = 1;
+    // C ref: engrave.c:401 `if (svc.context.run > 0) nomul(0);`
+    if ((game.context?.run || 0) > 0) {
+        const { nomul } = await import('./hack.js');
+        nomul(0);
+    }
+}
+
 export function make_engr_at(x, y, text, pristine, epoch, engr_type) {
     if (!game.level) return null;
     if (!game.level.engravings) game.level.engravings = [];
@@ -449,6 +535,7 @@ export function make_engr_at(x, y, text, pristine, epoch, engr_type) {
         actualText: text,
         rememberedText: text,
         pristineText: pristine ?? text,
+        engr_off: 0,
     };
     // C ref: engrave.c make_engr_at() — engraving exactly "Elbereth" by the
     // player (not during level creation) exercises wisdom (rn2(19) inside
@@ -1416,7 +1503,15 @@ export function wipe_engr_at(x, y, cnt, magical = false) {
     if (ep.engr_type !== BURN || on_ice || (magical && !rn2(2))) {
         if (ep.engr_type !== DUST && ep.engr_type !== ENGR_BLOOD)
             cnt = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
-        ep.actualText = wipeout_text(ep.actualText, cnt, 0).replace(/^ +/, '');
+        const wiped = wipeout_text(ep.actualText, cnt, 0);
+        const trimmed = wiped.replace(/^ +/, '');
+        // C ref: engrave.c:284 `while (ep->engr_txt[actual_text][0] == ' ')
+        // ep->engr_txt[actual_text]++;` — the ACTUAL text pointer walks forward
+        // inside the buffer while pristine_text stays put, and read_engr_at()
+        // indexes pristine_text by that offset.  Track it, or the "is the
+        // trailing punctuation original?" test reads the wrong pristine char.
+        ep.engr_off = (ep.engr_off || 0) + (wiped.length - trimmed.length);
+        ep.actualText = trimmed;
         if (!ep.actualText && game.level?.engravings) {
             game.level.engravings = game.level.engravings.filter((e) => e !== ep);
         }
