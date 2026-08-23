@@ -3966,3 +3966,17 @@ export function parseNethackrc(rc) {
     if (result.rfilter) game.rfilter = result.rfilter;
     return result;
 }
+
+// ---------------------------------------------------------------------------
+// Re-exports for js/cfgfiles.js, which continues this file's port of
+// cfgfiles.c (the syscnf-only statements, the C-shaped parser, rcfile()).
+// Declaration-only: adding names to a module's export list has no effect on
+// anything already running here.
+export {
+    raw_print, wait_synch,
+    config_error_init, config_error_add, config_error_done,
+    config_error_nextline,
+    find_optparam, match_optname, handle_config_section, parse_config_line,
+    parseoptions, reset_duplicate_opt_detection,
+    CONFIG_LINE_STMT,
+};

@@ -3,6 +3,10 @@
 // nmcpy(); hacklib.c mungspaces(); bones.c sanitize_name(); role.c str2*().
 
 import {
+    ALIGN_BOTTOM,
+    ALIGN_LEFT,
+    ALIGN_RIGHT,
+    ALIGN_TOP,
     AUTOUNLOCK_APPLY_KEY,
     AUTOUNLOCK_FORCE,
     AUTOUNLOCK_KICK,
@@ -38,6 +42,18 @@ import {
     MENU_FULL,
     MENU_PARTIAL,
     MENU_TRADITIONAL,
+    MAP_MODE_ASCII4x6,
+    MAP_MODE_ASCII6x8,
+    MAP_MODE_ASCII8x8,
+    MAP_MODE_ASCII16x8,
+    MAP_MODE_ASCII7x12,
+    MAP_MODE_ASCII8x12,
+    MAP_MODE_ASCII16x12,
+    MAP_MODE_ASCII12x16,
+    MAP_MODE_ASCII10x18,
+    MAP_MODE_ASCII_FIT_TO_SCREEN,
+    MAP_MODE_TILES,
+    MAP_MODE_TILES_FIT_TO_SCREEN,
     MOD_ENCUMBER,
     MSGTYP_NOREP,
     MSGTYP_NORMAL,
@@ -72,7 +88,10 @@ import {
     STONE,
     SYM_BOULDER,
     UNENCUMBERED,
+    VIA_DIALOG,
+    VIA_PROMPTS,
     WARNCOUNT,
+    WINTYPELEN,
     def_warnsyms,
 } from './const.js';
 import {
@@ -135,7 +154,7 @@ import {
     truncateByteString,
     visctrl,
 } from './hacklib.js';
-import { read_sym_file } from './files.js';
+import { isDefaultSymsetName, read_sym_file } from './files.js';
 import {
     assign_soundlib,
     get_soundlib_name,
@@ -181,6 +200,7 @@ import {
     regex_init,
     regex_match,
 } from './posixregex.js';
+import { check_enhanced_colors, wc_color_name } from './coloratt.js';
 import {
     get_current_feature_ver,
     get_feature_notice_ver,
@@ -465,6 +485,9 @@ function defaultResult() {
             // options.c initializes instance_flags to zero, which is STONE.
             // Its boolean handler restores this value on every toggle.
             prev_decor: STONE,
+            // options.c initoptions_init() sets these after zeroing iflags.
+            wc_align_message: ALIGN_TOP,
+            wc_align_status: ALIGN_BOTTOM,
             wc2_statuslines: 2,
             wc2_petattr: ATR_INVERSE,
             // options.c initoptions_init() sets the curses-only window-border
@@ -491,11 +514,31 @@ function defaultResult() {
             wc_scroll_margin: 0,
             // options.c optfn_tile_height() and optfn_tile_width() likewise
             // leave their zeroed instance-flags fields alone during do_init.
+            wc_tile_file: null,
             wc_tile_height: 0,
             wc_tile_width: 0,
+            // options.c optfn_windowcolors() leaves the zeroed four-entry
+            // iflags array alone during do_init; wc_set_window_colors() owns
+            // each nullable foreground/background pair after that.
+            wcolors: Array.from(
+                { length: 4 }, () => ({ fg: null, bg: null }),
+            ),
             // options.c optfn_vary_msgcount() also leaves its zeroed
             // instance-flags field alone during do_init.
             wc_vary_msgcount: 0,
+            // options.c optfn_mouse_support() leaves this zeroed
+            // instance-flags field alone during do_init.
+            wc_mouse_support: 0,
+            // options.c optfn_map_mode() also leaves this zeroed field alone;
+            // zero is MAP_MODE_TILES.
+            wc_map_mode: MAP_MODE_TILES,
+            // options.c optfn_player_selection() leaves this zeroed field
+            // alone during do_init; zero is VIA_DIALOG.
+            wc_player_selection: VIA_DIALOG,
+            // options.c optfn_term_cols() and optfn_term_rows() leave these
+            // zeroed instance-flags fields alone during do_init.
+            wc2_term_cols: 0,
+            wc2_term_rows: 0,
             // initoptions_init()'s TTY_GRAPHICS arm; this build is tty.
             prevmsg_window: 's',
             menuinvertmode: 1,
@@ -512,6 +555,10 @@ function defaultResult() {
             crash_email: null,
             crash_name: null,
             crash_urlmax: -1,
+            // decl.c instance_globals_c zeroes this fixed buffer. During the
+            // Unix startup configuration pass, optfn_windowtype() is its sole
+            // writer and jsmain.js installs this same value on the game.
+            chosen_windowtype: '',
             // sounds.c assign_soundlib() writes the requested interface here;
             // allmain.c activates it after configuration and name parsing.
             chosen_soundlib: soundlib_nosound,
@@ -542,6 +589,17 @@ function defaultResult() {
         pl_fruit: DEFAULT_FRUIT,
         gameplayBindings: [],
         commandOperations: [],
+        // options.c's file-scope duplicate counters are reset by
+        // optfn_windowcolors(do_init), once per configuration-file pass.
+        wcolors_opt: [0, 0, 0, 0],
+        options_set_window_colors_flag: false,
+        // decl.c zeros these option-transition flags. Symbol-set handlers set
+        // all three during the configuration pass, before the first input.
+        go: {
+            opt_need_redraw: false,
+            opt_need_glyph_reset: false,
+            opt_symset_changed: false,
+        },
         // cmd.c extcmdlist[] is mutable in C. Keep its flags per game so one
         // runSegment() cannot carry configuration into the next one.
         extcmdFlags: initialExtcmdFlags(),
@@ -2754,6 +2812,19 @@ function atoi(str) {
     return Number(BigInt.asIntN(32, wide));
 }
 
+// C ref: the recorder's LP64 glibc atol().  Unlike atoi(), the option handlers
+// print the long result before narrowing an accepted value to int.  Keep the
+// result as BigInt so overflow diagnostics retain LONG_MIN or LONG_MAX exactly.
+function atol(str) {
+    const digits = String(str).match(/^[\t\n\v\f\r ]*[+-]?\d+/u);
+    let value = digits ? BigInt(digits[0].trim().replace(/^\+/u, '')) : 0n;
+    const longMax = (1n << 63n) - 1n;
+    const longMin = -(1n << 63n);
+    if (value > longMax) value = longMax;
+    else if (value < longMin) value = longMin;
+    return value;
+}
+
 // C ref: options.c optfn_number_pad() (2573-2645), its do_set arm.  These
 // fields affect cmd_from_ecname() during tutorial generation and the same
 // source-ordered runtime bindings.  optlist.h:535-536 gives the option
@@ -2932,6 +3003,23 @@ function optfn_soundlib(result, statement) {
     assign_soundlib(result, result.gc.chosen_soundlib);
 }
 
+// C ref: options.c optfn_tile_file() (4321-4351).  parseoptions() supplies
+// string_for_opt(..., TRUE), so a missing or empty value is a silent optn_err
+// that preserves the previous pointer.  A nonempty value frees and replaces
+// that pointer; one nullable string in iflags is the port's sole owner too.
+function optfn_tile_file(result, statement) {
+    const op = string_for_opt(statement, true);
+    if (op !== '') result.iflags.wc_tile_file = op;
+}
+
+// optfn_tile_file(get_cnf_val) differs from get_val only for the null default:
+// saved configuration receives an empty buffer while an options display says
+// "default".  #saveoptions is outside this runtime boundary, so this pure
+// formatter pins the source contract without claiming that command is ported.
+export function tileFileConfigValue(state) {
+    return state.iflags.wc_tile_file ?? '';
+}
+
 // C ref: options.c optfn_tile_height() and optfn_tile_width() (4354-4415),
 // their do_set arms.  A non-negated value stores unrestricted atoi() output,
 // while a bare negation resets the dimension to zero.  Missing positive
@@ -2958,6 +3046,136 @@ function optfn_tile_width(result, statement, negated) {
     );
 }
 
+// C refs: options.c optfn_windowtype() (4943-4988) and windows.c
+// choose_windows() (267-336), restricted to the recorder's Unix TTY startup
+// path. unixmain.c has already installed tty, while window_inited,
+// windowtype_locked, and windowtype_deferred are all false. The requested
+// spelling therefore always replaces gc.chosen_windowtype, but an unknown
+// name reports the sole compiled choice and leaves the active port as tty.
+const ACTIVE_WINDOWPROCS_NAME = 'tty';
+
+function choose_windows(result, requested) {
+    if (requested.length === ACTIVE_WINDOWPROCS_NAME.length
+        && equal_ncasechars(
+            requested, ACTIVE_WINDOWPROCS_NAME, requested.length,
+        )) return;
+
+    configErrorAdd(
+        result,
+        `Window type ${requested} not recognized.  The only choice is:`
+            + ` ${ACTIVE_WINDOWPROCS_NAME}`,
+    );
+}
+
+function optfn_windowtype(result, statement) {
+    const op = string_for_env_opt(statement, false, result);
+    if (op === '') return;
+    result.gc.chosen_windowtype = truncateByteString(op, WINTYPELEN - 1);
+    choose_windows(result, result.gc.chosen_windowtype);
+}
+
+// C refs: options.c optfn_windowcolors() and wc_set_window_colors()
+// (4894-4939, 10023-10113).  The parser consumes a mungspaces()-normalized
+// list of window-name and foreground/background groups.  It deliberately
+// keeps writes from complete leading groups when a malformed tail makes the
+// whole handler answer optn_err.
+const WINDOW_COLOR_NAMES = Object.freeze(['menu', 'message', 'status', 'text']);
+const WINDOW_COLOR_SHORT_NAMES = Object.freeze(['mnu', 'msg', 'sts', 'txt']);
+
+function windowColorIndex(name) {
+    return WINDOW_COLOR_NAMES.findIndex((longName, index) => (
+        (name.length === longName.length
+            && equal_ncasechars(name, longName, name.length))
+        || (name.length === WINDOW_COLOR_SHORT_NAMES[index].length
+            && equal_ncasechars(
+                name, WINDOW_COLOR_SHORT_NAMES[index], name.length,
+            ))
+    ));
+}
+
+function wc_set_window_colors(result, op) {
+    let remaining = mungspaces(op);
+    while (remaining) {
+        if (remaining[0] === ' ') remaining = remaining.slice(1);
+        if (!remaining) return false;
+
+        const windowEnd = remaining.indexOf(' ');
+        if (windowEnd < 0) return false;
+        const windowName = remaining.slice(0, windowEnd);
+        remaining = remaining.slice(windowEnd + 1);
+
+        if (remaining[0] === ' ') remaining = remaining.slice(1);
+        if (!remaining) return false;
+        const slash = remaining.indexOf('/');
+        if (slash < 0) return false;
+        const foreground = remaining.slice(0, slash);
+        remaining = remaining.slice(slash + 1);
+
+        if (remaining[0] === ' ') remaining = remaining.slice(1);
+        if (!remaining) return false;
+        const backgroundEnd = remaining.indexOf(' ');
+        const background = backgroundEnd < 0
+            ? remaining : remaining.slice(0, backgroundEnd);
+        remaining = backgroundEnd < 0 ? '' : remaining.slice(backgroundEnd + 1);
+
+        const index = windowColorIndex(windowName);
+        if (index < 0) {
+            configErrorAdd(
+                result,
+                'windowcolors for unrecognized window type: '
+                    + `${windowName}`,
+            );
+            continue;
+        }
+
+        if (!foreground.includes(' ')) {
+            const color = check_enhanced_colors(foreground);
+            result.iflags.wcolors[index].fg = color >= 0
+                ? wc_color_name(color) : foreground;
+        }
+        if (!background.includes(' ')) {
+            const color = check_enhanced_colors(background);
+            result.iflags.wcolors[index].bg = color >= 0
+                ? wc_color_name(color) : background;
+        }
+        if (result.wcolors_opt[index] !== 0) {
+            configErrorAdd(
+                result,
+                `windowcolors for ${WINDOW_COLOR_NAMES[index]} windows `
+                    + 'specified multiple times',
+            );
+        }
+        result.wcolors_opt[index] += 1;
+    }
+    result.options_set_window_colors_flag = true;
+    return true;
+}
+
+function optfn_windowcolors(result, statement) {
+    const op = string_for_opt(statement, false, result);
+    if (op !== '' && !wc_set_window_colors(result, op)) {
+        configErrorAdd(result, `Could not set windowcolors '${op}'`);
+    }
+}
+
+function windowColorsValue(state) {
+    return WINDOW_COLOR_NAMES.map((name, index) => {
+        const pair = state.iflags?.wcolors?.[index] ?? {};
+        const fg = pair.fg && pair.fg !== 'def' ? pair.fg : null;
+        const bg = pair.bg && pair.bg !== 'def' ? pair.bg : null;
+        return `${(fg || bg) ? name : WINDOW_COLOR_SHORT_NAMES[index]}`
+            + ` ${fg ?? 'def'}/${bg ?? 'def'}`;
+    }).join(' ');
+}
+
+// optfn_windowcolors() formats get_val and get_cnf_val identically. TTY
+// capability filtering excludes the live options-menu row; direct optionValue
+// tests pin get_val, and this formatter pins get_cnf_val without claiming the
+// still-unported #saveoptions runtime path.
+export function windowColorsConfigValue(state) {
+    return windowColorsValue(state);
+}
+
 // C ref: options.c optfn_vary_msgcount() (4440-4467), its do_set arm.
 // optlist.h rejects negation before this handler, so the live startup path
 // requires a value and stores its unrestricted atoi() result.  Keep the
@@ -2969,6 +3187,72 @@ function optfn_vary_msgcount(result, statement, negated) {
     } else if (negated) {
         bad_negation(result, 'vary_msgcount');
     }
+}
+
+// C ref: options.c optfn_term_cols() and optfn_term_rows() (4239-4329),
+// their startup do_set arms.  optlist.h rejects negation before either
+// handler.  A positive value is mandatory, parsed by LP64 atol(), and valid
+// only below LARGEST_INT; rejected values preserve the installed dimension.
+function setTermSize(result, statement, name, field) {
+    const op = string_for_opt(statement, false, result);
+    if (op === '') return;
+    const value = atol(op);
+    if (value <= 0n || value >= BigInt(LARGEST_INT)) {
+        configErrorAdd(result, `Invalid ${name}: ${value}`);
+        return;
+    }
+    result.iflags[field] = Number(value);
+}
+
+function optfn_term_cols(result, statement) {
+    setTermSize(result, statement, 'term_cols', 'wc2_term_cols');
+}
+
+function optfn_term_rows(result, statement) {
+    setTermSize(result, statement, 'term_rows', 'wc2_term_rows');
+}
+
+// C ref: options.c optfn_align_message() and optfn_align_status()
+// (923-1020), their startup do_set arms.  Each value must begin with one
+// complete alignment word, compared without case, and may carry any suffix.
+// Missing or rejected values preserve the preceding iflags field.  The
+// align_message row admits negation through parseoptions() and rejects it
+// here; align_status has negateok No, so applyOption() rejects it first.
+const WINDOW_ALIGNMENTS = Object.freeze([
+    ['left', ALIGN_LEFT],
+    ['top', ALIGN_TOP],
+    ['right', ALIGN_RIGHT],
+    ['bottom', ALIGN_BOTTOM],
+]);
+
+function setWindowAlignment(result, statement, negated, name, field) {
+    const op = string_for_opt(statement, negated, result);
+    if (op !== '' && !negated) {
+        const matched = WINDOW_ALIGNMENTS.find(([token]) => (
+            equal_ncasechars(op, token, token.length)
+        ));
+        if (matched) {
+            result.iflags[field] = matched[1];
+        } else {
+            configErrorAdd(result, `Unknown ${name} parameter '${op}'`);
+        }
+    } else if (negated) {
+        bad_negation(result, name);
+    }
+}
+
+function optfn_align_message(result, statement, negated) {
+    setWindowAlignment(
+        result, statement, negated,
+        'align_message', 'wc_align_message',
+    );
+}
+
+function optfn_align_status(result, statement, negated) {
+    setWindowAlignment(
+        result, statement, negated,
+        'align_status', 'wc_align_status',
+    );
 }
 
 // C ref: options.c optfn_pickup_burden() (3266-3291), the switch its do_set
@@ -3036,6 +3320,71 @@ function optfn_menustyle(result, statement, negated) {
         return;
     }
     result.flags.menu_style = style;
+}
+
+// C ref: options.c optfn_mouse_support() (2396-2452), its startup do_set
+// arm.  The handler measures the whole negation-stripped statement rather
+// than the canonical option name parseoptions() matched.  At most thirteen
+// bytes keeps the missing value optional for backward compatibility; longer
+// spellings report through string_for_opt(), then startup parsing still treats
+// the empty answer as mode 1.  optlist.h rejects negation before this handler.
+function optfn_mouse_support(result, statement) {
+    const compat = encodeUtf8ByteString(statement).length <= 13;
+    const op = string_for_opt(statement, compat, result);
+    if (op === '') {
+        result.iflags.wc_mouse_support = 1;
+        return;
+    }
+
+    const mode = atoi(op);
+    if (mode < 0 || mode > 2 || (mode === 0 && op[0] !== '0')) {
+        configErrorAdd(
+            result, `Illegal mouse_support parameter '${op}'`,
+        );
+        return;
+    }
+    result.iflags.wc_mouse_support = mode;
+}
+
+// C ref: options.c optfn_map_mode() (1963-2047), its startup do_set arm.
+// The tiles spelling is an exact case-insensitive match.  Every other token
+// is a fixed-length prefix comparison, so trailing bytes remain accepted.
+// TTY does not advertise WC_MAP_MODE; startup still stores the selected mode,
+// but preference_update() and the options-menu row are both unreachable.
+const MAP_MODE_PREFIXES = Object.freeze([
+    ['ascii4x6', MAP_MODE_ASCII4x6],
+    ['ascii6x8', MAP_MODE_ASCII6x8],
+    ['ascii8x8', MAP_MODE_ASCII8x8],
+    ['ascii16x8', MAP_MODE_ASCII16x8],
+    ['ascii7x12', MAP_MODE_ASCII7x12],
+    ['ascii8x12', MAP_MODE_ASCII8x12],
+    ['ascii16x12', MAP_MODE_ASCII16x12],
+    ['ascii12x16', MAP_MODE_ASCII12x16],
+    ['ascii10x18', MAP_MODE_ASCII10x18],
+    ['fit_to_screen', MAP_MODE_ASCII_FIT_TO_SCREEN],
+    ['ascii_fit_to_screen', MAP_MODE_ASCII_FIT_TO_SCREEN],
+    ['tiles_fit_to_screen', MAP_MODE_TILES_FIT_TO_SCREEN],
+]);
+
+function optfn_map_mode(result, statement, negated) {
+    const op = string_for_opt(statement, negated, result);
+    if (op !== '' && !negated) {
+        let mode;
+        if (op.length === 5 && equal_ncasechars(op, 'tiles', 5)) {
+            mode = MAP_MODE_TILES;
+        } else {
+            mode = MAP_MODE_PREFIXES.find(([name]) => (
+                equal_ncasechars(op, name, name.length)
+            ))?.[1];
+        }
+        if (mode === undefined) {
+            configErrorAdd(result, `Unknown map_mode parameter '${op}'`);
+            return;
+        }
+        result.iflags.wc_map_mode = mode;
+    } else if (negated) {
+        bad_negation(result, 'map_mode');
+    }
 }
 
 // C ref: options.c parsebindings(). Comma-separated bindings recurse into
@@ -3241,6 +3590,27 @@ function setPileLimit(result, statement, negated) {
     /* sanity check */
     if (result.flags.pile_limit < 0) {
         result.flags.pile_limit = PILE_LIMIT_DFLT;
+    }
+}
+
+// C ref: options.c optfn_player_selection() (3438-3468), its do_set arm.
+// optlist.h rejects negation before this handler.  Each accepted word is a
+// six-byte case-insensitive prefix: "dialog" selects VIA_DIALOG, while
+// "prompt", "prompts", "prompting", and longer prompt-prefixed values all
+// select VIA_PROMPTS.  Missing and unknown values leave the previous field
+// untouched after reporting their configuration error.
+function optfn_player_selection(result, statement, negated) {
+    const op = string_for_opt(statement, negated, result);
+    if (op === '' || negated) return;
+
+    if (equal_ncasechars(op, 'dialog', 6)) {
+        result.iflags.wc_player_selection = VIA_DIALOG;
+    } else if (equal_ncasechars(op, 'prompt', 6)) {
+        result.iflags.wc_player_selection = VIA_PROMPTS;
+    } else {
+        configErrorAdd(
+            result, `Unknown player_selection parameter '${op}'`,
+        );
     }
 }
 
@@ -4093,7 +4463,9 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
 
     const menuCommand = menuCommandOption(name);
 
-    if (name === 'name') {
+    if (name === 'windowtype') {
+        optfn_windowtype(result, statement);
+    } else if (name === 'name') {
         // C ref: options.c optfn_name() (2548-2570), its do_set arm.  The
         // value is mandatory, so a statement without one is reported by
         // string_for_env_opt() and leaves svp.plname alone.
@@ -4188,16 +4560,32 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         optfn_scroll_margin(result, statement, negated);
     } else if (name === 'soundlib') {
         optfn_soundlib(result, statement);
+    } else if (name === 'tile_file') {
+        optfn_tile_file(result, statement);
     } else if (name === 'tile_height') {
         optfn_tile_height(result, statement, negated);
     } else if (name === 'tile_width') {
         optfn_tile_width(result, statement, negated);
     } else if (name === 'vary_msgcount') {
         optfn_vary_msgcount(result, statement, negated);
+    } else if (name === 'term_cols') {
+        optfn_term_cols(result, statement);
+    } else if (name === 'term_rows') {
+        optfn_term_rows(result, statement);
+    } else if (name === 'align_message') {
+        optfn_align_message(result, statement, negated);
+    } else if (name === 'align_status') {
+        optfn_align_status(result, statement, negated);
     } else if (name === 'pickup_burden') {
         setPickupBurden(result, statement);
     } else if (name === 'menustyle') {
         optfn_menustyle(result, statement, negated);
+    } else if (name === 'mouse_support') {
+        optfn_mouse_support(result, statement);
+    } else if (name === 'map_mode') {
+        optfn_map_mode(result, statement, negated);
+    } else if (name === 'windowcolors') {
+        optfn_windowcolors(result, statement);
     } else if (name === 'pickup_types') {
         // optfn_pickup_types() clears the restriction before looking for its
         // value.  During startup a missing or empty value still reports the
@@ -4220,6 +4608,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         }
     } else if (name === 'pile_limit') {
         setPileLimit(result, statement, negated);
+    } else if (name === 'player_selection') {
+        optfn_player_selection(result, statement, negated);
     } else if (name === 'statuslines') {
         setStatuslines(result, statement, negated);
     } else if (name === 'msghistory') {
@@ -4324,6 +4714,35 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         // negation stop, and a value C cannot read reached no handler to
         // report it.
         applyBooleanOption(result, name, matchedRow, statement, value, negated);
+    } else if (name === 'symset' || name === 'roguesymset') {
+        // C refs: options.c optfn_symset() (4166-4201) and
+        // optfn_roguesymset() (3543-3585). parseoptions() passes each handler
+        // string_for_opt(..., TRUE), so a missing or empty value is a silent
+        // optn_err: it neither selects a set nor leaves parser residue.
+        if (value == null || value === '') return;
+        const set = name === 'roguesymset' ? 'rogue' : 'primary';
+        result[name] = value;
+        // files.c read_sym_file() selects by name without applying the
+        // Restrictions field used by the interactive picker. A miss clears
+        // the attempted name and metadata but deliberately leaves bytes from
+        // an earlier successful selection in place, so retain that cleanup
+        // in the ordered symbols.c operation stream.
+        if (!read_sym_file(value)) {
+            result[name] = undefined;
+            result.symbolOperations.push({
+                kind: 'clear', set, nameToo: true,
+            });
+            configErrorAdd(
+                result,
+                `Unable to load symbol set "${value}" from "symbols"`,
+            );
+            return;
+        }
+        appendSymbolSelection(result, set, value);
+        result.go.opt_need_redraw = true;
+        result.go.opt_need_glyph_reset = true;
+        result.go.opt_symset_changed = true;
+        if (isDefaultSymsetName(value)) result[name] = undefined;
     } else if (value != null) {
         // Only a negated option whose optlist.h negateok is Yes reaches the
         // stop below: a negated spelling of any other one is bad_negation()'s
@@ -4335,45 +4754,12 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
                 `negated compound option '${name}' is not supported`,
             );
         }
-        // C refs: options.c optfn_symset() (4166-4201) and
-        // optfn_roguesymset() (3543-3572). Each opens on
-        // `op != empty_optstr` and does nothing at all when that fails, so a
-        // statement whose separator ends it selects no symbol set; each then
-        // answers optn_err, which parseoptions() cannot tell apart here.
-        const emptyValue = value === '';
-        if (name === 'symset') {
-            if (emptyValue) return;
-            result.symset = value;
-            // optfn_symset(do_set) asks files.c read_sym_file() immediately.
-            // A miss clears the attempted name but deliberately leaves earlier
-            // symbol bytes and overrides in place, so retain an ordered cleanup
-            // operation for symbols.c to replay during startup initialization.
-            if (!read_sym_file(value)) {
-                result.symset = undefined;
-                result.symbolOperations.push({
-                    kind: 'clear', set: 'primary', nameToo: true,
-                });
-                configErrorAdd(
-                    result,
-                    `Unable to load symbol set "${value}" from "symbols"`,
-                );
-                return;
-            }
-            appendSymbolSelection(result, 'primary', value);
-        } else if (name === 'roguesymset') {
-            if (emptyValue) return;
-            result.roguesymset = value;
-            appendSymbolSelection(result, 'rogue', value);
-        }
-        else {
-            // This parser currently gives source semantics to the startup
-            // subset above. Preserve other valid options for later subsystem
-            // ports instead of pretending to interpret their values here.
-            // Nothing reads what this stores, and the empty value each handler
-            // above turns away is read differently by each of the remaining
-            // rows, so no guard here would be right for all of them.
-            result.flags[name] = value;
-        }
+        // This parser currently gives source semantics to the startup subset
+        // above. Preserve other valid options for later subsystem ports
+        // instead of pretending to interpret their values here. Nothing reads
+        // what this stores, and each remaining handler reads an empty value
+        // differently, so no common guard here would be source-faithful.
+        result.flags[name] = value;
     } else {
         // Preserve the pre-existing fail-closed marker for a value-less
         // compound option whose do_set request is not ported yet.  A BoolOpt
@@ -5276,6 +5662,13 @@ function requireParsedNumber(state, option) {
     return value;
 }
 
+// The get_val and get_cnf_val arms of both alignment handlers use the same
+// four names and print "default" for a value outside the ALIGN_* constants.
+function windowAlignmentValue(value) {
+    return WINDOW_ALIGNMENTS.find(([, alignment]) => alignment === value)?.[0]
+        ?? 'default';
+}
+
 // The value column each compound and other option shows.  Every entry ports
 // its options.c optfn_<name>() get_val arm; the key is allopt[].optfn, which
 // is that function's name.  A handler returns the C buffer's contents, so an
@@ -5283,7 +5676,7 @@ function requireParsedNumber(state, option) {
 // as "unknown".
 const OPTION_VALUE_HANDLERS = Object.freeze({
     // windowprocs.name, which is WPID(tty) for this build's only interface.
-    windowtype: () => 'tty',
+    windowtype: () => ACTIVE_WINDOWPROCS_NAME,
     playmode: (state) => (state.flags.debug ? 'debug'
         : state.flags.explore ? 'explore' : 'normal'),
     // svp.plname; jsmain.js installs the same value as state.plname.
@@ -5299,6 +5692,12 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     ),
     alignment: (state) => rolestring(
         state.flags.initalign, aligns, (entry) => entry.adj,
+    ),
+    align_message: (state) => windowAlignmentValue(
+        state.iflags.wc_align_message,
+    ),
+    align_status: (state) => windowAlignmentValue(
+        state.iflags.wc_align_status,
     ),
     catname: petname_optfn,
     dogname: petname_optfn,
@@ -5353,6 +5752,25 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
             : tmp === 'c' ? 'combination'
                 : tmp === 'f' ? 'full' : 'reversed';
     },
+    // The non-WIN32 get_val arm.  TTY does not advertise WC_MOUSE_SUPPORT,
+    // so its option menus exclude this row before asking for the value.
+    mouse_support: (state) => {
+        const modes = [
+            '0=off', '1=on, O/S adjusted', '2=on, O/S unchanged',
+        ];
+        return modes[state.iflags.wc_mouse_support] ?? '';
+    },
+    // optfn_map_mode()'s source getter omits mode 11 even though its setter
+    // accepts tiles_fit_to_screen, so that stored value reports "default".
+    map_mode: (state) => {
+        const names = [
+            'tiles', 'ascii4x6', 'ascii6x8', 'ascii8x8', 'ascii16x8',
+            'ascii7x12', 'ascii8x12', 'ascii16x12', 'ascii12x16',
+            'ascii10x18', 'fit_to_screen',
+        ];
+        return names[state.iflags.wc_map_mode] ?? 'default';
+    },
+    windowcolors: (state) => windowColorsValue(state),
     number_pad: (state) => {
         const numpadmodes = [
             '0=off', '1=on', '2=on, MSDOS compatible',
@@ -5410,6 +5828,11 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
         ? `${state.iflags.wc_scroll_amount}` : 'default'),
     scroll_margin: (state) => (state.iflags.wc_scroll_margin
         ? `${state.iflags.wc_scroll_margin}` : 'default'),
+    term_cols: (state) => (state.iflags.wc2_term_cols
+        ? `${state.iflags.wc2_term_cols}` : 'default'),
+    term_rows: (state) => (state.iflags.wc2_term_rows
+        ? `${state.iflags.wc2_term_rows}` : 'default'),
+    tile_file: (state) => state.iflags.wc_tile_file ?? 'default',
     tile_height: (state) => (state.iflags.wc_tile_height
         ? `${state.iflags.wc_tile_height}` : 'default'),
     tile_width: (state) => (state.iflags.wc_tile_width
@@ -5514,7 +5937,6 @@ function symsetValue(state, set, withHandling) {
 // so the set cannot drift from OPTION_VALUE_HANDLERS unnoticed.
 export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set([
     'glyph',
-    'windowtype',
 ]));
 
 // C ref: options.c doset_add_menu()'s optfn call, plus the "unknown" default

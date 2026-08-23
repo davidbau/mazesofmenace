@@ -14,6 +14,7 @@ import {
     SYM_BOULDER,
 } from './const.js';
 import { game } from './gstate.js';
+import { isDefaultSymsetName } from './files.js';
 import { encodeUtf8ByteString } from './hacklib.js';
 import { escapes } from './options_escapes.js';
 import {
@@ -195,10 +196,14 @@ function resetSymbolSlot(set, state) {
     }
     state.gs.symset[set] = {
         name: null,
+        explicitly: false,
+        desc: null,
         handling: H_UNK,
         // init_rogue_symbols() makes this table colorless after clearing the
         // symset metadata. Named Rogue sets start through that same path.
         nocolor: rogue ? 1 : 0,
+        primary: 0,
+        rogue: 0,
         glyphs: Object.freeze({}),
     };
 }
@@ -219,11 +224,6 @@ export function clear_symsetentry(set, nameToo, state = game) {
     if (nameToo) entry.name = null;
 }
 
-function isDefaultSymset(name) {
-    const folded = String(name ?? '').toLowerCase().replace(/[ _-]/gu, '');
-    return folded === 'default' || folded === 'defaultsymbols';
-}
-
 function symbolSetDefinition(name) {
     const folded = String(name).toLowerCase();
     return SYMBOL_SET_DEFINITIONS.find((definition) => (
@@ -232,7 +232,7 @@ function symbolSetDefinition(name) {
 }
 
 function loadSymbolSet(name, set, state) {
-    if (set === ROGUESET && isDefaultSymset(name)) {
+    if (set === ROGUESET && isDefaultSymsetName(name)) {
         const arrays = slotArrays(set, state);
         // optfn_roguesymset() asks read_sym_file() for "default"; no Start
         // record matches, so clear_symsetentry() clears metadata and UTF-8
@@ -242,8 +242,12 @@ function loadSymbolSet(name, set, state) {
         arrays.overrideUtf8.fill(null);
         state.gs.symset[set] = {
             name: null,
+            explicitly: true,
+            desc: null,
             handling: H_UNK,
             nocolor: 0,
+            primary: 0,
+            rogue: 0,
             glyphs: Object.freeze({}),
         };
         return;
@@ -253,7 +257,10 @@ function loadSymbolSet(name, set, state) {
     // clear_symsetentry() purges UTF-8 glyph customizations associated with
     // the previous set. Byte overrides live in separate ov_* arrays.
     slotArrays(set, state).overrideUtf8.fill(null);
-    if (isDefaultSymset(name)) return;
+    if (isDefaultSymsetName(name)) {
+        state.gs.symset[set].explicitly = true;
+        return;
+    }
 
     const definition = symbolSetDefinition(name);
     if (!definition) throw new Error(`unknown symbol set '${name}'`);
@@ -265,8 +272,14 @@ function loadSymbolSet(name, set, state) {
         arrays.baseUtf8[Number(index)] = symbol;
     }
     const entry = state.gs.symset[set];
+    entry.explicitly = true;
     entry.name = String(name);
     entry.handling = HANDLING_BY_NAME[definition.handling] ?? H_UNK;
+    // parse_sym_line() records Restrictions metadata for a selected set, but
+    // read_sym_file() does not consult it. The interactive picker is the only
+    // source path that filters by primary/rogue compatibility.
+    entry.primary = definition.restrictions.includes('primary') ? 1 : 0;
+    entry.rogue = definition.restrictions.includes('rogue') ? 1 : 0;
     // Concrete G_* customizations come only from the selected symbols file.
     // symbols.c:parsesymbols() validates and saves standalone G_* entries but
     // deliberately does not pass them to glyphrep_to_custom_map_entries().
@@ -380,7 +393,7 @@ function selectSymbolSet(operation, state) {
     if (operation.legacyIfUnset && state.gs.symset[set].name) return;
     loadSymbolSet(operation.name, set, state);
     if (set === PRIMARYSET) {
-        switch_symbols(state, !isDefaultSymset(operation.name));
+        switch_symbols(state, !isDefaultSymsetName(operation.name));
     }
 }
 
@@ -453,6 +466,10 @@ export function initialize_symbols_from_options(options, state = game) {
         case 'clear': {
             const set = operation.set === 'rogue' ? ROGUESET : PRIMARYSET;
             clear_symsetentry(set, operation.nameToo, state);
+            // files.c read_sym_file() restores explicitly to false before it
+            // reports a failed named selection; clear_symsetentry() itself
+            // deliberately leaves the field alone.
+            state.gs.symset[set].explicitly = false;
             break;
         }
         case 'override':
