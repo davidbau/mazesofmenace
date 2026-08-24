@@ -608,19 +608,24 @@ async function dospellmenu(prompt, splaction) {
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
 
     /* iflags.menu_tab_sep is off on tty */
-    const header = (splaction === SPELLMENU_DUMP ? '' : '    ')
+    let header = (splaction === SPELLMENU_DUMP ? '' : '    ')
         + 'Name'.padEnd(20) + ' Level ' + 'Category'.padEnd(12)
         + ' Fail Retention';
+    /* src/spell.c:2115 — wizard mode appends the exact turn counts */
+    if (game.wizard)
+        header += ' ' + 'turns'.padStart(6);
     /* C add_menu_heading() stamps iflags.menu_headings — ATR_INVERSE with
        NO_COLOR (src/options.c:7188) — on the whole line. */
     tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR, header,
                  MENU_ITEMFLAGS_NONE);
     for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
-        const buf = spellname(i).padEnd(20)
+        let buf = spellname(i).padEnd(20)
             + '  ' + String(spellev(i)).padStart(2)
             + '   ' + spelltypemnemonic(spell_skilltype(spellid(i))).padEnd(12)
             + ' ' + String(100 - percent_success(i)).padStart(3) + '%'
             + ' ' + spellretention(i).padStart(9);
+        if (game.wizard)
+            buf += ' ' + String(spellknow(i)).padStart(6);
         tty_add_menu(win, null, i + 1, spellet(i), 0, ATR_NONE, NO_COLOR,
                      buf, (i === splaction) ? MENU_ITEMFLAGS_SELECTED
                                             : MENU_ITEMFLAGS_NONE);

@@ -333,6 +333,15 @@ export const weirdnonliving = (d) =>
 export const nonliving = (d) =>
     is_undead(d) || d.pmidx === PMNAMES.PM_MANES || weirdnonliving(d);
 
+// src/mondata.c:80 poly_when_stoned() — non-stone golems turn into stone
+// golems unless the latter is genocided (G_EXTINCT is allowed).
+export function poly_when_stoned(ptr) {
+    return (ptr.mlet === MONSYMS.S_GOLEM
+            && ptr.pmidx !== PMNAMES.PM_STONE_GOLEM
+            && !((game.mvitals?.[PMNAMES.PM_STONE_GOLEM]?.mvflags ?? 0)
+                 & MFLAGS.G_GENOD));
+}
+
 // src/mondata.c:41 attacktype_fordmg() — the monster's attack of a given type,
 // or null. AD_ANY matches any damage type.
 export function attacktype_fordmg(ptr, atyp, dtyp) {

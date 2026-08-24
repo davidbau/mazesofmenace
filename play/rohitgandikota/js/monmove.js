@@ -50,6 +50,7 @@ import {
 import { MONSYMS, MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
 import { M_AP_TYPE, M_AP_NOTHING } from './const.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
+import { is_pit } from './const.js';
 import { couldsee, cansee, clear_path, recalc_block_point,
          vision_recalc } from './vision.js';
 import { gettrack } from './track.js';
@@ -709,7 +710,7 @@ export function m_avoid_soko_push_loc(mtmp, nx, ny) {
 const next2u = (px, py) => distu(px, py) <= 2;
 
 // include/rm.h:538 Sokoban — the level flag.
-const Sokoban = () => game.level?.flags?.sokoban_rules === true;
+const Sokoban = () => !!game.level?.flags?.sokoban_rules;
 
 // include/youprop.h:218 Conflict — (HConflict || EConflict), the intrinsic or
 // the extrinsic. The port keeps the hero's properties on u.uprops, so this
@@ -1660,6 +1661,39 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
 const MTSZ = 4;
 /* include/hack.h:1322 — these were declared here with MMOVE_DIED and
    MMOVE_MOVED SWAPPED against the header. js/const.js has them right. */
+
+
+// src/monmove.c:2121 can_hide_under_obj() — TRUE if a mon can hide under obj.
+export function can_hide_under_obj(obj) {
+    if (!obj || (obj.where !== undefined && obj.where !== 1 /* OBJ_FLOOR */))
+        return false;
+    /* can't hide in/on/under traps (except pits) even when there is an
+       object here; since obj is on floor, its <ox,oy> are up to date */
+    const t = t_at(obj.ox, obj.oy);
+    if (t && !is_pit(t.ttyp))
+        return false;
+    /* can't hide under small amount of coins unless non-coins are also
+       present; we expect coins to be a single stack but don't assume that */
+    if (obj.oclass === OCLASSES.COIN_CLASS) {
+        let coinquan = 0;
+        const chain = (game.level?.objects || []).filter(
+            (o) => o.ox === obj.ox && o.oy === obj.oy
+                && (o.where === undefined || o.where === 1));
+        let i = chain.indexOf(obj);
+        if (i < 0) i = 0;
+        for (;;) {
+            /* 10 coins is arbitrary amount considered enough to hide under */
+            if ((coinquan += chain[i].quan) >= 10)
+                break; /* fall through to other checks */
+            i++;
+            if (i >= chain.length)
+                return false; /* whole pile was less than 10 coins */
+            if (chain[i].oclass !== OCLASSES.COIN_CLASS)
+                break;
+        }
+    }
+    return true;
+}
 
 /* include/mondata.h hides_under() */
 function hides_under(ptr) {

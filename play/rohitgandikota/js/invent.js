@@ -7,7 +7,8 @@ import { stairway_at, stairs_description } from './stairs.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { delobj, t_at, is_pool, is_lava } from './mon.js';
 import { costly_spot } from './shk.js';
-import { u_at, CMDQ_INT, CQ_CANNED, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN } from './const.js';
+import { u_at, CMDQ_INT, CQ_CANNED, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
+         ICE, DRAWBRIDGE_DOWN, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN } from './const.js';
 import { hides_under } from './mondata.js';
 import { worn } from './do_wear.js';
 import { empty_handed } from './wield.js';
@@ -146,26 +147,45 @@ export async function look_here(obj_cnt, lhflags) {
             note_unported_invent('look_here:trap_here');
     }
 
-    /* src/invent.c:4037 — dfeature_at(). The door and stairway arms are
-       ported; fountain/throne/sink/grave/altar/tree still record when that
-       terrain is underfoot. */
+    /* src/invent.c:4037 — dfeature_at(), in C's arm order: door, fountain,
+       throne, lava, ice, pool, sink, altar, STAIRS (after altar), the
+       drawbridges, grave, tree, iron bars. */
     let dfeature = null;
     const stway = stairway_at(game.u.ux, game.u.uy);
     const loc0 = game.level?.at(game.u.ux, game.u.uy);
-    if (loc0 && IS_DOOR(loc0.typ)) {
+    const ltyp = loc0?.typ;
+    if (loc0 && IS_DOOR(ltyp)) {
         switch (loc0.doormask) {
         case D_NODOOR: dfeature = 'doorway'; break;
         case D_ISOPEN: dfeature = 'open door'; break;
         case D_BROKEN: dfeature = 'broken door'; break;
         default:       dfeature = 'closed door'; break;
         }
+        /* open-drawbridge portcullis override needs drawbridge walls */
+    } else if (ltyp === FOUNTAIN) {
+        dfeature = 'fountain';
+    } else if (ltyp === THRONE) {
+        dfeature = 'opulent throne';
+    } else if (is_lava(game.u.ux, game.u.uy)) {
+        dfeature = 'molten lava';
+    } else if (ltyp === ICE) {
+        dfeature = 'ice';           /* ice_descr's age arms are not seen */
+    } else if (is_pool(game.u.ux, game.u.uy)) {
+        dfeature = 'pool of water';
+    } else if (ltyp === SINK) {
+        dfeature = 'sink';
+    } else if (ltyp === ALTAR) {
+        note_unported_invent('look_here:altar_dfeature');
     } else if (stway) {
         dfeature = stairs_description(stway, true);
-    } else {
-        const typ = loc0?.typ;
-        if (typ === FOUNTAIN || typ === THRONE || typ === SINK
-            || typ === GRAVE || typ === ALTAR || typ === TREE)
-            note_unported_invent('look_here:dfeature');
+    } else if (ltyp === DRAWBRIDGE_DOWN) {
+        dfeature = 'lowered drawbridge';
+    } else if (ltyp === GRAVE) {
+        dfeature = 'grave';
+    } else if (ltyp === TREE) {
+        dfeature = 'tree';
+    } else if (ltyp === IRONBARS) {
+        dfeature = 'set of iron bars';
     }
     if (Blind && dfeature)
         note_unported_invent('look_here:blind_feel');
@@ -1419,4 +1439,71 @@ import { welded } from './wield.js';
 export function splittable(obj) {
     return !((obj.otyp === ONAMES.LOADSTONE && obj.cursed)
              || (obj === game.u.uwep && welded(game.u.uwep)));
+}
+
+
+// src/invent.c:5060 doorganize()/doorganize_core() — the #adjust command.
+// The splitting (count-prefix) and gold arms are not reachable yet.
+export async function doorganize() {
+    const { tty_yn_function } = await import('./tty/topl.js');
+    const obj = await getobj('adjust', (o) => o ? GETOBJ_SUGGEST
+                                               : GETOBJ_EXCLUDE, 0);
+    if (!obj)
+        return ECMD_OK;
+
+    /* initialize with every letter, then blank the ones in use by
+       other (non-mergable) stacks */
+    let lets = '';
+    const used = new Set((game.invent || [])
+        .filter((o) => o !== obj && !merged_test(o, obj))
+        .map((o) => o.invlet));
+    for (let c = 97; c <= 122; c++) {
+        const ch = String.fromCharCode(c);
+        if (!used.has(ch) || ch === obj.invlet)
+            lets += ch;
+    }
+    for (let c = 65; c <= 90; c++) {
+        const ch = String.fromCharCode(c);
+        if (!used.has(ch))
+            lets += ch;
+    }
+    if (lets.length > 5)
+        lets = compactify(lets);
+
+    const qbuf = `Adjust letter to what [${lets}]${
+        (game.invent || []).length ? ' (? see used letters)' : ''}?`;
+    for (let trycnt = 1; ; ++trycnt) {
+        const let_ = await tty_yn_function(qbuf, null, '\0');
+        if (let_ === '?' || let_ === '*') {
+            note_unported_invent('doorganize:display_used_invlets');
+            continue;
+        }
+        if (' \r\n\x1b'.includes(let_)) {
+            await pline('Never mind.');
+            return ECMD_OK;
+        }
+        if (!/[a-zA-Z]/.test(let_)) {
+            if (trycnt === 5) {
+                await pline('Never mind.');
+                return ECMD_OK;
+            }
+            continue;
+        }
+        /* the adjust itself: collect mergable stacks along the way, then
+           swap letters with whatever sits in the destination */
+        const other = (game.invent || []).find((o) => o.invlet === let_);
+        if (other && other !== obj)
+            other.invlet = obj.invlet;
+        obj.invlet = let_;
+        reorder_invent();
+        await prinv(null, obj, 0);
+        return ECMD_OK;
+    }
+}
+
+/* mergable-with test used only by doorganize's letter blanking */
+function merged_test(a, b) {
+    return a.otyp === b.otyp && (game.objects[a.otyp]?.oc_merge ?? 0)
+        && a.cursed === b.cursed && a.blessed === b.blessed
+        && (a.spe | 0) === (b.spe | 0);
 }

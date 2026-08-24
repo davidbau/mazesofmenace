@@ -28,9 +28,43 @@ import { barfilb_level } from './bar-filb.js';
 import { barloca_level } from './bar-loca.js';
 import { bargoal_level } from './bar-goal.js';
 import { minefill_level } from './minefill.js';
+import { QUEST_LEVELS } from './quest-levels.js';
 import { tower1_level } from './tower1.js';
 import { tower2_level } from './tower2.js';
 import { tower3_level } from './tower3.js';
+import { orcus_level } from './orcus.js';
+import { sanctum_level } from './sanctum.js';
+import { medusa1_level } from './medusa-1.js';
+import { medusa2_level } from './medusa-2.js';
+import { medusa3_level } from './medusa-3.js';
+import { medusa4_level } from './medusa-4.js';
+import { minetn1_level } from './minetn-1.js';
+import { minetn2_level } from './minetn-2.js';
+import { minetn3_level } from './minetn-3.js';
+import { minetn4_level } from './minetn-4.js';
+import { minetn5_level } from './minetn-5.js';
+import { minetn6_level } from './minetn-6.js';
+import { minetn7_level } from './minetn-7.js';
+import { minend1_level } from './minend-1.js';
+import { minend2_level } from './minend-2.js';
+import { minend3_level } from './minend-3.js';
+import { soko11_level } from './soko1-1.js';
+import { soko12_level } from './soko1-2.js';
+import { soko21_level } from './soko2-1.js';
+import { soko22_level } from './soko2-2.js';
+import { soko31_level } from './soko3-1.js';
+import { soko32_level } from './soko3-2.js';
+import { soko41_level } from './soko4-1.js';
+import { soko42_level } from './soko4-2.js';
+import { juiblex_level } from './juiblex.js';
+import { asmodeus_level } from './asmodeus.js';
+import { baalz_level } from './baalz.js';
+import { knox_level } from './knox.js';
+import { fakewiz1_level } from './fakewiz1.js';
+import { fakewiz2_level } from './fakewiz2.js';
+import { wizard1_level } from './wizard1.js';
+import { wizard2_level } from './wizard2.js';
+import { wizard3_level } from './wizard3.js';
 
 export const SPECIAL_LEVELS = {
     'bigrm-1': bigrm1_level,
@@ -57,8 +91,42 @@ export const SPECIAL_LEVELS = {
     'Bar-filb': barfilb_level,
     'Bar-loca': barloca_level,
     'Bar-goal': bargoal_level,
+    ...QUEST_LEVELS,
     minefill: minefill_level,
     tower1: tower1_level,
     tower2: tower2_level,
     tower3: tower3_level,
+    orcus: orcus_level,
+    sanctum: sanctum_level,
+    'medusa-1': medusa1_level,
+    'medusa-2': medusa2_level,
+    'medusa-3': medusa3_level,
+    'medusa-4': medusa4_level,
+    'minetn-1': minetn1_level,
+    'minetn-2': minetn2_level,
+    'minetn-3': minetn3_level,
+    'minetn-4': minetn4_level,
+    'minetn-5': minetn5_level,
+    'minetn-6': minetn6_level,
+    'minetn-7': minetn7_level,
+    'minend-1': minend1_level,
+    'minend-2': minend2_level,
+    'minend-3': minend3_level,
+    'soko1-1': soko11_level,
+    'soko1-2': soko12_level,
+    'soko2-1': soko21_level,
+    'soko2-2': soko22_level,
+    'soko3-1': soko31_level,
+    'soko3-2': soko32_level,
+    'soko4-1': soko41_level,
+    'soko4-2': soko42_level,
+    juiblex: juiblex_level,
+    asmodeus: asmodeus_level,
+    baalz: baalz_level,
+    knox: knox_level,
+    fakewiz1: fakewiz1_level,
+    fakewiz2: fakewiz2_level,
+    wizard1: wizard1_level,
+    wizard2: wizard2_level,
+    wizard3: wizard3_level,
 };

@@ -11,8 +11,12 @@ import { game } from './gstate.js';
 import { ARM_BONUS } from './do_wear.js';
 import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire } from './worm.js';
 import { newcham, mon_wire_cham } from './mon.js';
-import { weight as weight_fn } from './invent.js';
+import { weight as weight_fn, sobj_at } from './invent.js';
 import { In_mines } from './const.js';
+import { Levitation, Flying } from './youprop.js';
+import { closed_door } from './cmd.js';
+import { may_passwall } from './hack.js';
+import { sengr_at } from './engrave.js';
 import { rndghostname, christen_monst } from './do_name.js';
 import { m_dowear } from './worn.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -28,19 +32,23 @@ import { get_shop_item } from './shknam.js';
 import { canspotmon, newsym } from './display.js';
 import { cansee, does_block, block_point } from './vision.js';
 import { COLNO, ROWNO } from './const.js';
-import { attacktype, is_neuter, is_floater, emits_light } from './mondata.js';
+import { attacktype, is_neuter, is_floater, emits_light, likes_lava,
+         amorphous, throws_rocks, haseyes } from './mondata.js';
 import { is_vampshifter } from './monst.js';
-import { t_at } from './mon.js';
+import { t_at, is_pool, is_lava, m_in_air, resists_ston } from './mon.js';
+import { touch_petrifies } from './mondata.js';
+import { can_hide_under_obj } from './monmove.js';
+import { couldsee } from './vision.js';
+import { is_pit, OBJ_FLOOR } from './const.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
-    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
+    BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U, GP_CHECKSCARY, GP_AVOID_MONPOS, MM_IGNORELAVA,
+    IS_WATERWALL, IS_ALTAR, Is_waterlevel } from './const.js';
 import { enexto_core, enexto, noteleport_level } from './teleport.js';
-import { mon_track_clear } from './monmove.js';
+import { mon_track_clear, onscary } from './monmove.js';
 /* questpgr.js has no imports back into makemon.js at module level except
    through the mkclass wire below (set at this module's top level). */
 import { qt_montype, questpgr_wire_mkclass } from './questpgr.js';
 
-// include/hack.h:1174-1175
-const GP_CHECKSCARY = 0x00800000, GP_AVOID_MONPOS = 0x01000000;
 
 // include/permonst.h:15,23
 const NON_PM = -1;
@@ -599,6 +607,7 @@ export function mongets(mtmp, otyp) {
 /* mpickobj() moved to js/steal.js, its src/steal.c home, with add_to_minv
    merging; this file re-imports it for mongets. */
 import { mpickobj } from './steal.js';
+import { in_town } from './hack.js';
 export { mpickobj };
 
 // src/makemon.c:589 m_initinv() — species-specific starting inventory.
@@ -768,8 +777,14 @@ function m_initinv(mtmp) {
             note_unported('m_initinv:schroedingers_box');
         break;
     case S_DEMON:
-        /* src/makemon.c:786 — devil weapons */
-        note_unported(`m_initinv mlet=${ptr.mlet}`);
+        /* src/makemon.c:800 — moved here from m_initweap() because these
+           don't have AT_WEAP so m_initweap() is not called for them */
+        if (ptr.pmidx === PMNAMES.PM_ICE_DEVIL && !rn2(4)) {
+            mongets(mtmp, ONAMES.SPEAR);
+        } else if (ptr.pmidx === PMNAMES.PM_ASMODEUS) {
+            mongets(mtmp, ONAMES.WAN_COLD);
+            mongets(mtmp, ONAMES.WAN_FIRE);
+        }
         break;
     case S_GNOME:
         /* src/makemon.c:809 — a gnome sometimes carries a lit candle; in the
@@ -813,7 +828,7 @@ function rnd_item_ineligible(mtmp) {
 
 // src/muse.c:1222 rnd_defensive_item() — the escape/heal item a monster is
 // born carrying.
-function rnd_defensive_item(mtmp) {
+export function rnd_defensive_item(mtmp) {
     const O = ONAMES;
     const difficulty = game.mons[monsndx(mtmp.data)].difficulty;
     let trycnt = 0;
@@ -863,7 +878,7 @@ function rnd_defensive_item(mtmp) {
 }
 
 // src/muse.c:2654 rnd_misc_item()
-function rnd_misc_item(mtmp) {
+export function rnd_misc_item(mtmp) {
     const O = ONAMES;
     const difficulty = game.mons[monsndx(mtmp.data)].difficulty;
 
@@ -943,6 +958,33 @@ export function place_monster(mtmp, x, y) {
 export function remove_monster(x, y) {
     game.level.monAt?.delete(`${x},${y}`);
 }
+// src/teleport.c:53 goodpos_onscary() — onscary() without monst fields,
+// for fake monsters during creation and teleport destination checks.
+function goodpos_onscary(x, y, mptr) {
+    /* onscary() checks Angels and lawful minions; this oversimplifies */
+    if (mptr.mlet === MONSYMS.S_HUMAN || mptr.mlet === MONSYMS.S_ANGEL
+        || is_rider(mptr) || (mptr.geno & G_UNIQ) !== 0 /* unique_corpstat */)
+        return false;
+    /* onscary() checks for vampshifted vampire bats/fog clouds/wolves too */
+    const loc = game.level?.at(x, y);
+    if (loc && IS_ALTAR(loc.typ) && mptr.mlet === MONSYMS.S_VAMPIRE)
+        return true;
+    /* scare monster scroll doesn't have any of the below restrictions,
+       being its own source of power */
+    if (sobj_at(ONAMES.SCR_SCARE_MONSTER, x, y))
+        return true;
+    /* engraved Elbereth doesn't work in Gehennom or the end-game */
+    /* include/dungeon.h:139 In_hell — the dungeon's hellish flag */
+    if (game.dungeons?.[game.u.uz?.dnum]?.flags?.hellish
+        || In_endgame(game.u.uz))
+        return false;
+    /* creatures who don't (or can't) fear a written Elbereth and weren't
+       caught by the minions check */
+    if (mptr.pmidx === PMNAMES.PM_MINOTAUR || !haseyes(mptr))
+        return false;
+    return !!sengr_at('Elbereth', x, y, true);
+}
+
 
 // src/teleport.c goodpos() — can this monster stand here?
 //
@@ -995,36 +1037,71 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
         if (mtmp2 && (mtmp2 !== mtmp || mtmp.wormno))
             return false;
 
-        if (loc.typ === POOL && !ignorewater) {
-            return is_swimmer(ptr);
+        if (is_pool(x, y) && !ignorewater) {
+            /* src/teleport.c:135 — MOAT and WATER count, not just POOL, and
+               a flyer/floater over ordinary water is a good position. */
+            if (mtmp === game.youmonst)
+                return !!(game.u.uprops?.SWIMMING || game.u.uprops?.AMPHIBIOUS
+                          || (!Is_waterlevel(game.u.uz)
+                              && !(IS_WATERWALL(loc.typ))
+                              && (Levitation() || Flying()
+                                  || game.u.uprops?.WWALKING)));
+            else
+                return (is_swimmer(ptr)
+                        || (!Is_waterlevel(game.u.uz)
+                            && !(IS_WATERWALL(loc.typ))
+                            && m_in_air(mtmp)));
         } else if (ptr.mlet === S_EEL && rn2(13) && !ignorewater) {
             return false;
-        } else if (loc.typ === LAVAPOOL) {
-            return false;
+        } else if (is_lava(x, y) && !(gpflags & MM_IGNORELAVA)) {
+            /* 3.6.3: floating eye can levitate over lava but it avoids
+               that due the effect of the heat causing it to dry out */
+            if (ptr.pmidx === PMNAMES.PM_FLOATING_EYE)
+                return false;
+            else if (mtmp === game.youmonst)
+                return !!(Levitation() || Flying()
+                          || (game.u.uprops?.FIRE_RES && game.u.uprops?.WWALKING
+                              && game.uarmf?.oerodeproof));
+            else
+                return (m_in_air(mtmp) || likes_lava(ptr));
         }
         if (passes_walls(ptr) && may_passwall(x, y))
             return true;
+        if (amorphous(ptr) && closed_door(x, y))
+            return true;
+        /* avoid onscary() if caller has specified that restriction */
+        if ((gpflags & GP_CHECKSCARY) && (mtmp.m_id ? onscary(x, y, mtmp)
+                                                    : goodpos_onscary(x, y, ptr)))
+            return false;
     }
-    if (!ACCESSIBLE(loc.typ))
+    if (!ACCESSIBLE(loc.typ)) {
+        if (!(is_pool(x, y) && ignorewater)
+            && !(is_lava(x, y) && (gpflags & MM_IGNORELAVA)))
+            return false;
+    }
+    /* skip boulder locations for most creatures */
+    if (sobj_at(ONAMES.BOULDER, x, y) && (!ptr || !throws_rocks(ptr)))
         return false;
-    /* src/teleport.c also rejects boulder squares for non-rock-throwers;
-       sobj_at() is not ported, so that rejection cannot be evaluated yet. */
     return true;
 }
 
 const is_swimmer = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
 const passes_walls = (ptr) => (ptr.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
-const may_passwall = () => false;   /* needs level.flags.noteleport wall data */
 
 // src/quest.c quest_info() — the quest leader/nemesis for the hero's role.
 // Both are G_NOGEN, so neither can appear from rndmonst(); the lookups exist so
 // the gender branches read as C does.
 /* src/makemon.c:11 quest_mon_represents_role() — this game's quest leader
-   or nemesis standing in for a role's class monster. Role_if follows the
-   urole.name.m convention established in js/invent.js. */
-const quest_mon_represents_role = (mptr, roleName) =>
-    mptr.mlet === MONSYMS.S_HUMAN && game.urole?.name?.m === roleName
-    && (mptr.msound === MS_LEADER || mptr.msound === MS_NEMESIS);
+   or nemesis standing in for a role's class monster. C's second argument is
+   a PM_ role index for Role_if(); callers here pass either that index or
+   the role's name string, so accept both. */
+const quest_mon_represents_role = (mptr, role) => {
+    const role_ok = (typeof role === 'number')
+        ? pmIndexOf(game.urole?.mnum) === role          /* Role_if(role_pm) */
+        : game.urole?.name?.m === role;
+    return mptr.mlet === MONSYMS.S_HUMAN && role_ok
+        && (mptr.msound === MS_LEADER || mptr.msound === MS_NEMESIS);
+};
 
 const quest_info_leader = () => pmIndexOf(game.urole?.ldrnum);
 const quest_info_nemesis = () => pmIndexOf(game.urole?.neminum);
@@ -1060,9 +1137,57 @@ function mkobj_at(oclass, x, y, artif) {
     return otmp;
 }
 
-// src/mon.c hideunder() — positional only during mklev (seeit is 0), no draw.
+// src/mon.c:4726 hideunder() — try to hide the monster at its own spot.
+// No draws; the messages need seeit, which is 0 during mklev. This was a
+// stub that always set mundetected = 0, so a swamp snake created over its
+// starter object stood in plain sight where C's is hidden.
 export function hideunder(mtmp) {
-    mtmp.mundetected = 0;
+    let undetected = false;
+    const x = mtmp.mx, y = mtmp.my;
+    const ptr = game.mons[mtmp.mnum];
+    let t2;
+
+    if (mtmp === game.u.ustuck) {
+        /* undetected==FALSE; can't hide if holding you or held by you */
+    } else if (mtmp.mtrapped
+               || ((t2 = t_at(x, y)) != null && !is_pit(t2.ttyp))) {
+        /* undetected==FALSE; can't hide while trapped or on/in/under
+           any non-pit trap when not trapped */
+    } else if (ptr.mlet === MONSYMS.S_EEL) {
+        /* aquatic creatures only hide under water, not under objects */
+        undetected = (is_pool(x, y) && !Is_waterlevel(game.u.uz)
+                      && (!game.u.uprops?.UNDERWATER || !couldsee(x, y)));
+    } else if ((ptr.mflags1 & MFLAGS.M1_CONCEAL) !== 0 /* hides_under */) {
+        /* hider-underers only hide under objects */
+        const chain = (game.level?.objects || []).filter(
+            (o) => o.ox === x && o.oy === y
+                && (o.where === undefined || o.where === OBJ_FLOOR));
+        let oi = 0;
+        if (chain.length
+            && can_hide_under_obj(chain[0])
+            /* pets won't hide under a cursed item or an item of any BUC
+               state that shares a pile with one or more cursed items */
+            && (!mtmp.mtame || !chain.some((o) => o.cursed))
+            /* aquatic creatures don't reach here; other swimmers
+               shouldn't hide beneath underwater objects */
+            && !(is_pool(x, y) || is_lava(x, y))) {
+            /* most monsters won't hide under a cockatrice corpse but they
+               can hide under a pile containing more than just such corpses */
+            if (!resists_ston(mtmp))
+                while (oi < chain.length
+                       && chain[oi].otyp === ONAMES.CORPSE
+                       && touch_petrifies(game.mons[chain[oi].corpsenm]))
+                    oi++;
+            if (oi < chain.length)
+                undetected = true;
+        }
+    }
+
+    const oldundetctd = !!mtmp.mundetected;
+    mtmp.mundetected = undetected ? 1 : 0;
+    if (undetected !== oldundetctd)
+        newsym(x, y);
+    return undetected;
 }
 
 // The remaining makemon() callees all draw, and none can be reached by a
@@ -1113,10 +1238,11 @@ export function set_mimic_sym(mtmp) {
         appear = connects ? MONSYMS.S_hcdoor : MONSYMS.S_vcdoor;
     } else if (game.level.flags.is_maze_lev
                && !(game.u?.uz?.dnum === game.mines_dnum
-                    && game.level.flags?.town)
+                    && in_town(game.u.ux, game.u.uy))
                && game.u?.uz?.dnum !== game.sokoban_dnum
                && rn2(2)) {
-        /* src/makemon.c:2441 — maze levels favor statue mimics */
+        /* src/makemon.c:2441 — maze levels favor statue mimics; a mine-town
+           square (in_town is positional, hack.c:3564) is exempt */
         ap_type = M_AP_OBJECT;
         appear = ONAMES.STATUE;
     } else if (roomno < 0 && !t_at(mx, my)) {
@@ -1286,7 +1412,7 @@ function m_initthrow(mtmp, otyp, oquan) {
 }
 
 // src/muse.c:2035 rnd_offensive_item()
-function rnd_offensive_item(mtmp) {
+export function rnd_offensive_item(mtmp) {
     const O = ONAMES;
     const pm = mtmp.data;
     const difficulty = game.mons[monsndx(pm)].difficulty;

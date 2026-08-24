@@ -6,7 +6,9 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
-import { makemon, remove_monster, place_monster } from './makemon.js';
+import { makemon, remove_monster, place_monster,
+         set_malign, mongets } from './makemon.js';
+import { ONAMES } from './objects_data.js';
 import { mpickobj } from './steal.js';
 import { mkobj, curse, SPBOOK_no_NOVEL } from './mkobj.js';
 import { pm_good_location } from './sp_lev.js';
@@ -62,9 +64,16 @@ export function priestini(lvl, sroom, sx, sy, sanctum) {
         priest.msleeping = 0;
         /* mon_learns_traps, set_malign: state only */
 
-        /* now his goodies: sanctum amulet only on the sanctum level */
-        if (sanctum && priest.epri.shralign === 0)
-            note_unported_priest('priestini:sanctum amulet');
+        /* now his/her goodies... src/priest.c:260 — the high priest of
+           Moloch carries the real Amulet, but only on the sanctum level
+           itself (fake towers pass sanctum=FALSE) */
+        {
+            const sl = game.special_levels?.sanctum_level;
+            if (sanctum && priest.epri.shralign === 0
+                && sl && game.u.uz.dnum === sl.dnum
+                && game.u.uz.dlevel === sl.dlevel)
+                mongets(priest, ONAMES.AMULET_OF_YENDOR);
+        }
         /* 2 to 4 spellbooks */
         for (let cnt = rn1(3, 2); cnt > 0; --cnt)
             mpickobj(priest, mkobj(SPBOOK_no_NOVEL, false));
@@ -219,4 +228,30 @@ export async function pri_move(priest) {
     }
 
     return move_special(priest, false, 1, false, avoid, omx, omy, ggx, ggy);
+}
+
+// src/priest.c:724 mk_roamer() — an aligned wandering minion (aligned
+// cleric, angel) made by des.monster() with an explicit alignment.
+export function mk_roamer(ptr, alignment, x, y, peaceful) {
+    const coaligned = (game.u.ualign.type === alignment);
+
+    if (m_at(x, y))
+        note_unported_priest('mk_roamer:rloc squatter');
+
+    const roamer = makemon(ptr, x, y, MMFLAGS.MM_ADJACENTOK
+                                      | MMFLAGS.MM_EMIN | MMFLAGS.MM_NOMSG);
+    if (!roamer)
+        return null;
+
+    roamer.emin = { min_align: alignment,
+                    renegade: !!(coaligned && !peaceful) };
+    roamer.ispriest = 0;
+    roamer.isminion = 1;
+    /* mon_learns_traps(roamer, ALL_TRAPS) — mtrapseen = ~0L, state only */
+    roamer.mtrapseen = ~0;
+    roamer.mpeaceful = peaceful ? 1 : 0;
+    roamer.msleeping = 0;
+    set_malign(roamer); /* peaceful may have changed */
+
+    return roamer;
 }

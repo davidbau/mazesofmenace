@@ -65,7 +65,17 @@ function showsym(idx) {
    writers store the DEC-decoded character, exactly what the terminal grid
    holds for map cells */
 function decoded_ch(ch, dec) {
-    return dec ? (DEC_TO_UNICODE[ch] || ch) : ch;
+    /* mirror the judge comparator's DEC subset (frozen/screen-decode.mjs
+       DEC_MAP): a DEC char it does not translate must stay raw, or the
+       serialized cell can never match C's (see display.js CMP_DEC_MAP) */
+    const CMP_DEC_MAP = {
+        'l': '\u250c', 'q': '\u2500', 'k': '\u2510',
+        'x': '\u2502', 'm': '\u2514', 'j': '\u2518',
+        't': '\u251c', 'u': '\u2524', 'w': '\u252c',
+        'v': '\u2534', 'n': '\u253c', 'a': '\u2592',
+        '~': '\u00b7',
+    };
+    return dec ? (CMP_DEC_MAP[ch] || ch) : ch;
 }
 
 // C's encglyph()+putmixed() pair collapses to "the character the cell

@@ -1258,3 +1258,791 @@ export async function done_in_by(mtmp, how = DIED) {
 }
 
 export { done, savelife, DIED, ESCAPED };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// INERT TRANSLATIONS of src/end.c — functions this file had no counterpart for.
+//
+// Nothing below is called from existing code.  They exist so a later, MEASURED
+// pass can wire them up one call site at a time: reordering RNG draws forfeits
+// every screen after the reorder, so translation and wiring are separate waves.
+// Each keeps the C name, C control flow, and C order of operations (which is
+// what fixes the draw order for whoever wires it up).
+//
+// TWO end.c symbols are NOT here because they are already ported under other
+// names — a second copy would be the duplicate-reimplementation trap:
+//   done2()      -> doquit() above (same body: paranoid_query "Really quit
+//                   without saving?", wizard ynq "Dump core?", done(QUIT)).
+//   really_done() -> folded into done()'s `if (!survive)` block above, plus
+//                   real_death_epilogue() / outrip_and_score().
+// ═════════════════════════════════════════════════════════════════════════════
+
+// C ref: const.js has these but end.js only imports the two mvflags bits; pull
+// in the rest separately rather than editing the existing import line.
+import { ismnum as ismnum_, TIMEOUT as TIMEOUT_ } from './const.js';
+import { rn2 as rn2_ } from './rng.js';
+import {
+    objects as objects_, AMULET_CLASS as AMULET_CLASS_, GEM_CLASS as GEM_CLASS_,
+    FIRST_REAL_GEM as FIRST_REAL_GEM_, LAST_REAL_GEM as LAST_REAL_GEM_,
+    STATUE as STATUE_, BAG_OF_TRICKS as BAG_OF_TRICKS_, POT_WATER as POT_WATER_,
+    AMULET_OF_YENDOR as AMULET_OF_YENDOR_,
+} from './mkobj.js';
+
+// hack.h:484-495 death codes end.js did not already name.
+const CHOKING = 1, POISONING = 2, STARVING = 3, DROWNING = 4;
+const STONING = 8, TURNED_SLIME = 9, TRICKED = 12;
+// hack.h:602-604 killer.format.
+const KILLED_BY_AN = 0, KILLED_BY = 1, NO_KILLER_PREFIX = 2;
+// objects.h markers: MARKER(FIRST_AMULET, AMULET_OF_ESP) = 201,
+// MARKER(LAST_AMULET, AMULET_OF_YENDOR) = 213,
+// MARKER(LAST_GLASS_GEM, WORTHLESS_VIOLET_GLASS) = 469.
+const FIRST_AMULET = 201, LAST_AMULET = AMULET_OF_YENDOR_, LAST_GLASS_GEM = 469;
+// objects.h otyps artifact_score() scores alongside the real artifacts.
+const BELL_OF_OPENING = 263, CANDELABRUM_OF_INVOCATION = 262,
+      SPE_BOOK_OF_THE_DEAD = 409;
+// potion otyp used by fuzzer_savelife()'s restore-ability remedy.
+const POT_RESTORE_ABILITY = 298;
+// objclass.h F_UNIQUE (mirrors the non-exported js/mkobj.js:173).
+const F_UNIQUE = 64;
+// flag.h:240 `fuzzer_off` — first value of the debug_fuzzer enum.
+const fuzzer_off = 0;
+// config.h:737 DUMPLOG_MSG_COUNT, and the build flag itself: the recorder's
+// config.h leaves `#define DUMPLOG` commented out (line 669), so dumplog is
+// compiled OUT and dump_everything() reduces to nhUse(how); nhUse(when).
+const DUMPLOG = false;
+const DUMPLOG_MSG_COUNT = 50;
+
+// ── local stand-ins for helpers this port keeps private in other files ──
+
+// C ref: hack.h isspace() as used by wordcount()/bel_copy1().
+function isspace_(ch) { return ch === ' ' || ch === '\t' || ch === '\n'
+                             || ch === '\v' || ch === '\f' || ch === '\r'; }
+
+// C ref: hacklib.c nowrap_add(a, i) — saturating add used for u.urexp so a
+// huge score cannot wrap negative.
+function nowrap_add(a, i) {
+    a = a | 0 ? a : (a || 0);
+    return (a + i < 0) ? Number.MAX_SAFE_INTEGER : a + i;
+}
+
+// C ref: potion.c:75 set_itimeout(&which, val) — `*which &= ~TIMEOUT;
+// *which |= itimeout(val)`.  js/ has no set_itimeout(); the pattern is inlined
+// at its call sites (js/invent.js:3809).  Named with the trailing underscore so
+// this end.c lane does not claim potion.c coverage for a private helper.
+function set_itimeout_(cur, val) {
+    return ((cur | 0) & ~TIMEOUT_) | Math.min(val, TIMEOUT_);
+}
+
+// C ref: objnam.c the_unique_obj(obj).  js/invent.js:8468 holds the same
+// predicate but does not export it; oc_unique is `flags & F_UNIQUE` here
+// (js/mkobj.js:1190), and this port populates F_UNIQUE for only a few otyps.
+function the_unique_obj(obj) {
+    if (!obj) return false;
+    if (obj.dknown != null && !obj.dknown) return false;
+    return !!(objects_[obj.otyp]?.flags & F_UNIQUE)
+        && (!!obj.known || obj.otyp === AMULET_OF_YENDOR_);
+}
+
+// C ref: objects.h OBJ_NAME(objects[otyp]).
+function OBJ_NAME(o) { return o?.name || ''; }
+
+// C ref: obj.h Has_contents / Is_container / SchroedingersBox.  js/invent.js
+// (372/378) and js/pickup.js:154 keep private copies of these; end.js has none.
+function Has_contents(obj) { return !!(obj?.cobj && obj.cobj.length); }
+function Is_container(obj) {
+    const oc = objects_[obj?.otyp]?.oclass;
+    return oc === 6 /* TOOL_CLASS */ && CONTAINER_OTYPS.has(obj.otyp);
+}
+// obj.h: BAG_OF_HOLDING..ICE_BOX plus the two chests/boxes and the sack family.
+const CONTAINER_OTYPS = new Set([
+    216 /* large box */, 217 /* chest */, 218 /* ice box */, 219 /* sack */,
+    BAG_OF_TRICKS_, 221 /* bag of holding */, 222 /* oilskin sack */,
+]);
+// C ref: obj.h SchroedingersBox(o) — a large box with spe==1 made by the
+// bones/quantum-mechanic path; mirrors js/pickup.js:154.
+function SchroedingersBox(obj) { return !!obj && obj.otyp === 216 && obj.spe === 1; }
+
+// C ref: objnam.c the()/upstart()/thesimpleoname() — private in js/pickup.js
+// (189/202) and js/do_name.js:411.
+function the_(s) { return /^[A-Z]/.test(s || '') ? s : `the ${s}`; }
+function upstart(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+// C ref: win/tty/wintty.c create_nhwindow/putstr/display_nhwindow/
+// destroy_nhwindow.  frozen/terminal.js owns the real grid and coverage.mjs
+// marks windows.c/wintty.c N/A, so these are text sinks: the translated
+// functions accumulate their lines, and the wiring pass hands them to the
+// existing renderer (js/extcmd-handlers.js render_container_contents() already
+// does exactly that for container_contents(box, FALSE, FALSE, TRUE)).
+function create_nhwindow(type) { return { type, lines: [] }; }
+function putstr(win, _attr, str) {
+    if (win && Array.isArray(win.lines)) win.lines.push(str);
+}
+function display_nhwindow(_win, _blocking) { /* wiring pass renders win.lines */ }
+function destroy_nhwindow(_win) { }
+
+// C ref: allmain.c gh.hero_seq == (svm.moves << 3) + hero moves this turn;
+// mirrors the private js/apply.js:213.  gd.done_seq lives on the game state.
+function hero_seq() { return ((game.moves | 0) << 3); }
+
+// ── done1 / done_intr / done_hangup: the signal entry points ────────────────
+
+// C ref: end.c:68 done1(sig) — the SIGINT handler and the keyboard-interrupt
+// route into done2().  There are no POSIX signals in the replay harness, so the
+// signal() calls have no counterpart; everything else translates.
+export async function done1(_sig_unused) {
+    // (void) signal(SIGINT, SIG_IGN);
+    const iflags = game.iflags || (game.iflags = {});
+    iflags.debug_fuzzer = fuzzer_off;
+    if (game.flags?.ignintr) {
+        // (void) signal(SIGINT, done1);
+        const d = await deps();
+        // clear_nhwindow(WIN_MESSAGE) — same mapping doquit()'s declined arm uses.
+        game._pending_message = '';
+        game._toplin = 0;
+        // curs_on_u(); wait_synch();
+        if (d.flush_screen) await d.flush_screen(1);
+        if ((game.multi | 0) > 0) {
+            const { nomul } = await import('./hack.js');
+            nomul(0);
+        }
+    } else {
+        await doquit(); // C: (void) done2()
+    }
+}
+
+// C ref: end.c:154 done_intr(sig) — SIGINT during the endgame teardown: stop
+// printing the rest of it, then ignore further SIGINT/SIGQUIT.
+export function done_intr(_sig_unused) {
+    game._done_stopprint = (game._done_stopprint || 0) + 1; // done_stopprint++
+    // (void) signal(SIGINT, SIG_IGN); (void) signal(SIGQUIT, SIG_IGN);
+}
+
+// C ref: end.c:169 done_hangup(sig) — SIGHUP: note the hangup, disarm the
+// handler, then fall into done_intr().
+export function done_hangup(sig) {
+    const ps = game.program_state || (game.program_state = {});
+    ps.done_hup = (ps.done_hup || 0) + 1;
+    // sethanguphandler(SIG_IGN);
+    done_intr(sig);
+}
+
+// ── fixup_death ─────────────────────────────────────────────────────────────
+
+// C ref: end.c:349 death_fixups[] — "some special cases for overriding
+// while-helpless reason".
+const death_fixups = [
+    { why: STONING, unmulti: 1, exclude: 'getting stoned', include: null },
+    { why: STARVING, unmulti: 0, exclude: 'fainted from lack of food',
+      include: 'fainted' },
+];
+
+// C ref: end.c:366 fixup_death(how) — clear away while-helpless when the cause
+// of death caused the helplessness ("petrified by <foo> while getting stoned").
+export function fixup_death(how) {
+    if (game.multi_reason) {
+        for (let i = 0; i < death_fixups.length; ++i)
+            if (death_fixups[i].why === how
+                && death_fixups[i].exclude === game.multi_reason) {
+                if (death_fixups[i].include) /* substitute alternate reason */
+                    game.multi_reason = death_fixups[i].include;
+                else /* remove the helplessness reason */
+                    game.multi_reason = null;
+                game.multireasonbuf = ''; /* dynamic buf stale either way */
+                if (death_fixups[i].unmulti) /* possibly hide helplessness */
+                    game.multi = 0;
+                break;
+            }
+    }
+}
+
+// ── the dumplog pair (compiled out of the recorder build) ───────────────────
+
+// C ref: windows.c:1366 dump_redirect(onoff) — swaps windowprocs for the
+// dump_* set, but only when a dumplog file was opened; with none, in_dumplog
+// is forced FALSE, which is what makes dump_everything()'s body unreachable
+// here even if DUMPLOG were defined.
+function dump_redirect(onoff_flag) {
+    const iflags = game.iflags || (game.iflags = {});
+    iflags.in_dumplog = game.dumplog_file ? onoff_flag : false;
+}
+
+// C ref: end.c:519 dump_plines() — the ^P message ring, oldest first, one space
+// of indentation.  gs.saved_plines[] is a DUMPLOG_MSG_COUNT-entry circular
+// buffer that this port does not keep (no saved_pline_index either), so the
+// loop reads whatever ring the wiring pass installs.
+export function dump_plines() {
+    let buf = ' '; /* one space for indentation */
+    putstr(0, 0, 'Latest messages:');
+    const saved_plines = game.saved_plines || [];
+    for (let i = 0, j = (game.saved_pline_index | 0); i < DUMPLOG_MSG_COUNT;
+         ++i, j = (j + 1) % DUMPLOG_MSG_COUNT) {
+        const strp = saved_plines[j];
+        if (strp) {
+            // copynchars(&buf[1], *strp, BUFSZ - 1 - 1)
+            buf = ' ' + String(strp).slice(0, 254);
+            putstr(0, 0, buf);
+        }
+    }
+}
+
+// C ref: end.c:542 dump_everything(how, when) — the whole end-of-game dump.
+// Guarded exactly as C is: without DUMPLOG the function is `nhUse(how);
+// nhUse(when);`, and even with it, dump_redirect() leaves in_dumplog FALSE
+// unless a dumplog file was opened.  Statement order preserved; the parts with
+// no js/ counterpart are named in comments rather than silently dropped.
+export async function dump_everything(how, when) {
+    if (!DUMPLOG) return; // C: #else nhUse(how); nhUse(when);
+    dump_redirect(true);
+    if (!game.iflags?.in_dumplog)
+        return;
+
+    // unported: init_symbols() — revert to the default symbol set.
+
+    // unported: putstr(0, 0, getversionstring(pbuf, sizeof pbuf)); one-line
+    // version ID including build date+time.
+    putstr(0, 0, '');
+
+    // game start and end date+time to disambiguate version date+time.
+    // unported: yyyymmddhhmmss(ubirthday) / yyyymmddhhmmss(when).
+    putstr(0, 0, '');
+
+    // character name and basic role info.
+    const female = !!game.flags?.female;
+    putstr(0, 0, `${game.plname || ''}, ${game.u?.ualign?.adj || ''}`
+        + ` ${female ? 'female' : 'male'} ${game.urace?.adj || ''}`
+        + ` ${(female && game.urole?.name?.f) ? game.urole.name.f
+                                              : (game.urole?.name?.m || '')}`);
+    putstr(0, 0, '');
+
+    // info about current game state.
+    // unported: dump_map(); do_statusline1(); do_statusline2().
+    putstr(0, 0, '');
+
+    dump_plines();
+    putstr(0, 0, '');
+    putstr(0, 0, 'Inventory:');
+    const I = await import('./invent.js');
+    I.display_inventory(null, true);
+    const inv = Array.isArray(game.invent) ? game.invent : [];
+    await container_contents(inv, true, true, false);
+    // enlightenment(BASICENLIGHTENMENT | MAGICENLIGHTENMENT, final)
+    const final = (how >= PANICKED) ? 1 : 2; // ENL_GAMEOVERALIVE : ENL_GAMEOVERDEAD
+    const insight = await import('./insight.js');
+    for (const ln of insight.enlightenment_lines(final)) putstr(0, 0, ln);
+    putstr(0, 0, '');
+
+    // overview of the game up to this point.
+    // unported: show_gamelog(final) — js/insight.js:860 keeps it private.
+    putstr(0, 0, '');
+    // unported: show_spells() — ends with a blank line.
+    const { show_skills } = await import('./weapon.js');
+    await show_skills(); /* ends with a blank line */
+    await insight.show_conduct_disclosure(final); // show_conduct(final)
+    putstr(0, 0, '');
+    const { show_overview_disclosure } = await import('./extcmd-handlers.js');
+    await show_overview_disclosure(final, how); // show_overview(final, how)
+    putstr(0, 0, '');
+    await insight.list_vanquished_screen(); // list_vanquished('d', FALSE)
+    putstr(0, 0, '');
+    // unported: list_genocided('d', FALSE) — the "Genocided species:" window.
+    putstr(0, 0, '');
+    dump_redirect(false);
+}
+
+// ── the valuables machinery (really_done's ESCAPED/ASCENDED branch) ─────────
+
+// C ref: decl.h:155 `struct valuable_data amulets[LAST_AMULET + 1 -
+// FIRST_AMULET]` and decl.h:417 `gems[LAST_REAL_GEM + 1 - FIRST_REAL_GEM + 1]`
+// (the extra slot collects every glass gem), wired up by decl.c:1132-1137 as
+// gv.valuables = {gems, amulets, NULL} — GEMS FIRST, which is the order
+// really_done() lists them in.
+const N_AMULETS = LAST_AMULET + 1 - FIRST_AMULET;
+const N_GEMS = LAST_REAL_GEM_ + 1 - FIRST_REAL_GEM_ + 1;
+const ga = { amulets: Array.from({ length: N_AMULETS },
+                                 () => ({ count: 0, typ: 0 })) };
+const gg = { gems: Array.from({ length: N_GEMS },
+                              () => ({ count: 0, typ: 0 })) };
+export const gv = {
+    valuables: [
+        { list: gg.gems, size: N_GEMS },
+        { list: ga.amulets, size: N_AMULETS },
+        { list: null, size: 0 },
+    ],
+};
+
+// C ref: end.c:763 get_valuables(list) — collect amulets and gems from an
+// inventory or container list, ignoring all artifacts.  "The list always
+// remains intact."  No RNG.
+export function get_valuables(list) {
+    let i;
+    for (const obj of (list || [])) {
+        if (Has_contents(obj)) {
+            get_valuables(obj.cobj);
+        } else if (obj.oartifact) {
+            continue;
+        } else if (obj.oclass === AMULET_CLASS_) {
+            i = obj.otyp - FIRST_AMULET;
+            if (!ga.amulets[i].count) {
+                ga.amulets[i].count = obj.quan;
+                ga.amulets[i].typ = obj.otyp;
+            } else
+                ga.amulets[i].count += obj.quan; /* always adds one */
+        } else if (obj.oclass === GEM_CLASS_ && obj.otyp <= LAST_GLASS_GEM) {
+            /* last+1: combine all glass gems into one slot */
+            i = Math.min(obj.otyp, LAST_REAL_GEM_ + 1) - FIRST_REAL_GEM_;
+            if (!gg.gems[i].count) {
+                gg.gems[i].count = obj.quan;
+                gg.gems[i].typ = obj.otyp;
+            } else
+                gg.gems[i].count += obj.quan;
+        }
+    }
+}
+
+// C ref: end.c:798 sort_valuables(list, size) — insertion sort, greatest count
+// to the front; empty slots are left where they are.  No RNG.
+export function sort_valuables(list, size) {
+    let j;
+    /* move greater quantities to the front of the list */
+    for (let i = 1; i < size; i++) {
+        if (list[i].count === 0)
+            continue;              /* empty slot */
+        const ltmp = { ...list[i] }; /* structure copy */
+        for (j = i; j > 0; --j) {
+            if (list[j - 1].count >= ltmp.count)
+                break;
+            list[j] = list[j - 1];
+        }
+        list[j] = ltmp;
+    }
+}
+
+// C ref: end.c:825-846 — odds_and_ends() sits inside a `#if 0` block: it was
+// used for 3.6.0/3.6.1 and Schroedinger's cat is handled in really_done() as of
+// 3.6.2.  Translated for completeness; note the rn2(2) it draws, which is what
+// moved into really_done()'s observe_quantum_cat() call.
+const CAT_CHECK = 2;
+export function odds_and_ends(list, what) {
+    for (const otmp of (list || [])) {
+        switch (what) {
+        case CAT_CHECK: /* Schroedinger's Cat */
+            /* Ascending is deterministic */
+            if (SchroedingersBox(otmp))
+                return !!rn2_(2);
+            break;
+        }
+        if (Has_contents(otmp))
+            return odds_and_ends(otmp.cobj, what);
+    }
+    return false;
+}
+
+// C ref: end.c:907 artifact_score(list, counting, endwin) — "called twice;
+// first to calculate total, then to list relevant items".  No RNG.  C is void
+// and synchronous; async here only because arti_cost/discover_object/currency
+// live behind dynamic imports in this file.
+export async function artifact_score(list, counting, endwin) {
+    const { arti_cost, artiname } = await import('./artifact.js');
+    const { discover_object } = await import('./o_init.js');
+    const { currency } = await import('./invent.js');
+    for (const otmp of (list || [])) {
+        if (otmp.oartifact || otmp.otyp === BELL_OF_OPENING
+            || otmp.otyp === SPE_BOOK_OF_THE_DEAD
+            || otmp.otyp === CANDELABRUM_OF_INVOCATION) {
+            const value = arti_cost(otmp);            /* zorkmid value */
+            const points = Math.trunc(value * 5 / 2); /* score value */
+            if (counting) {
+                game.u.urexp = nowrap_add(game.u.urexp, points);
+            } else {
+                discover_object(otmp.otyp, true, true, false);
+                /* not observe_object; dead characters don't observe */
+                otmp.known = otmp.dknown = otmp.bknown = otmp.rknown = 1;
+                /* assumes artifacts don't have quan > 1 */
+                putstr(endwin, 0,
+                    `${the_unique_obj(otmp) ? 'The ' : ''}`
+                    + `${otmp.oartifact ? artiname(otmp.oartifact)
+                                        : OBJ_NAME(objects_[otmp.otyp])}`
+                    + ` (worth ${value} ${currency(value)}`
+                    + ` and ${points} points)`);
+            }
+        }
+        if (Has_contents(otmp))
+            await artifact_score(otmp.cobj, counting, endwin);
+    }
+}
+
+// ── fuzzer_savelife ─────────────────────────────────────────────────────────
+
+// C ref: end.c:945 fuzzer_savelife(how) — "when dying while running the debug
+// fuzzer, [almost] always keep going".  Reached only from done() when
+// iflags.debug_fuzzer is set, which no recorded session does.
+//
+// DRAW ORDER (this is the part that matters when it gets wired):
+//   rn2(done_seq > hero_seq + 2 ? 2 : 10)      gate
+//   rn2(3)                                     ONLY if ismnum(u.ulycn)
+//   [POT_WATER remedy: mksobj + peffects draws]
+//   rn2(3)                                     ONLY if remedies != 0
+//   [POT_RESTORE_ABILITY remedy: mksobj + peffects draws]
+//   rn2(3 + 3 * remedies)
+//   rn2(3) x8                                  per eligible property, in
+//                                              prop.h index order 1..8
+//   rn2(5 + 5 * remedies)                      drawn even though C's body is
+//                                              empty ("might confer ...")
+export async function fuzzer_savelife(how) {
+    const ps = game.program_state || (game.program_state = {});
+    /*
+     * Some debugging code pulled out of done() to unclutter it.
+     * 'done_seq' is maintained in done().
+     */
+    if (!ps.panicking && how !== PANICKED && how !== TRICKED) {
+        savelife(how);
+
+        /* periodically restore characteristics plus lost experience levels or
+           cure lycanthropy or both */
+        if (!rn2_(((game.done_seq | 0) > hero_seq() + 2) ? 2 : 10)) {
+            const { mksobj, bless } = await import('./mkobj.js');
+            const { obfree } = await import('./invent.js');
+            const { peffects } = await import('./potion.js');
+            const u = game.u;
+            let potion, proptim, remedies = 0;
+
+            /* get rid of temporary potion with obfree() rather than useup()
+               because it doesn't get entered into inventory */
+            if (ismnum_(u.ulycn ?? -1) && !rn2_(3)) {
+                potion = mksobj(POT_WATER_, true, false);
+                bless(potion);
+                await peffects(potion);
+                obfree(potion, null);
+                ++remedies;
+            }
+            if (!remedies || rn2_(3)) {
+                potion = mksobj(POT_RESTORE_ABILITY, true, false);
+                bless(potion);
+                await peffects(potion);
+                obfree(potion, null);
+                ++remedies;
+            }
+            if (!rn2_(3 + 3 * remedies)) {
+                /* confer temporary resistances for first 8 properties:
+                   fire, cold, sleep, disint, shock, poison, acid, stone.
+                   C indexes u.uprops[propidx].intrinsic/.extrinsic; this port
+                   splits those into u.H<name> / u.E<name> (js/attrib.js:247),
+                   so index -> name via prop.h's enum order. */
+                for (let propidx = 1; propidx <= 8; ++propidx) {
+                    const nm = PROP_NAMES_1_8[propidx];
+                    if (!u[`H${nm}`] && !u[`E${nm}`]
+                        && (proptim = rn2_(3)) > 0) /* 0..2 */
+                        u[`H${nm}`] = set_itimeout_(u[`H${nm}`],
+                                                    2 * proptim + 1); /* 3 or 5 */
+                }
+                ++remedies;
+            }
+            if (!rn2_(5 + 5 * remedies)) {
+                /* might confer temporary Antimagic (magic resistance)
+                 * or even Invulnerable */
+            }
+        }
+        /* clear stale cause of death info after life-saving */
+        const killer = svk_killer();
+        killer.name = '';
+        killer.format = 0;
+        game._killer_name = ''; /* this port's parallel killer string */
+
+        /*
+         * Guard against getting stuck in a loop if we die in one of the few
+         * ways where life-saving isn't effective.
+         */
+        const seq = game.done_seq | 0; /* C: gd.done_seq++ > ... (post-incr) */
+        game.done_seq = seq + 1;
+        if (seq > hero_seq() + 100) {
+            if (!is_wizard())
+                return false; /* can't deal with it */
+            // unported: cmdq_add_ec(CQ_CANNED, wiz_makemap) — js/ has no cmdq.
+        }
+
+        return true;
+    }
+    return false; /* panic or too many consecutive deaths */
+}
+
+// C ref: prop.h:1-8 FIRE_RES..STONE_RES, as the H*/E* field names this port
+// uses for intrinsic/extrinsic (js/artifact.js:546-551).
+const PROP_NAMES_1_8 = [
+    null, 'Fire_resistance', 'Cold_resistance', 'Sleep_resistance',
+    'Disint_resistance', 'Shock_resistance', 'Poison_resistance',
+    'Acid_resistance', 'Stone_resistance',
+];
+
+// ── container_contents ──────────────────────────────────────────────────────
+
+// C ref: end.c:1594 container_contents(list, identified, all_containers,
+// reportempty) — "used for disclosure and for the ':' choice when looting a
+// container".  No RNG.
+//
+// The (box, FALSE, FALSE, TRUE) flavour is ALREADY LIVE, folded into
+// js/extcmd-handlers.js render_container_contents() with the tty corner-window
+// renderer inlined.  Do not wire this over that call site without replacing it
+// — two copies of the same window is the duplicate-reimplementation trap.  The
+// missing flavour is disclose()'s (gi.invent, TRUE, TRUE, FALSE) recursion
+// (end.c:641), which end.js's disclose() currently notes as unported.
+export async function container_contents(list, identified, all_containers,
+                                         reportempty) {
+    const dumping = !!game.iflags?.in_dumplog;
+    const I = await import('./invent.js');
+    const { discover_object } = await import('./o_init.js');
+    const d = await deps();
+
+    for (const box of (list || [])) {
+        if (Is_container(box) || box.otyp === STATUE_) {
+            if (!box.cknown || (identified && !box.lknown)) {
+                box.cknown = 1; /* we're looking at the contents now */
+                if (identified)
+                    box.lknown = 1;
+                I.update_inventory();
+            }
+            if (box.otyp === BAG_OF_TRICKS_) {
+                continue; /* wrong type of container */
+            } else if (box.cobj && box.cobj.length) {
+                const tmpwin = create_nhwindow(4 /* NHW_MENU */);
+
+                /* at this stage, the SchroedingerBox() flag is only set if the
+                   cat inside the box is alive */
+                const cat = SchroedingersBox(box);
+
+                putstr(tmpwin, 0, `Contents of ${the_(I.xname(box))}:`);
+                if (!dumping)
+                    putstr(tmpwin, 0, '');
+                /* C: buf[0] = buf[1] = ' ' — two leading spaces per item */
+                if (box.cobj.length && !cat) {
+                    const sortloot_opt = game.flags?.sortloot;
+                    const sortflags =
+                        ((sortloot_opt === 'l' || sortloot_opt === 'f')
+                             ? I.SORTLOOT_LOOT : 0)
+                        | (game.flags?.sortpack ? I.SORTLOOT_PACK : 0);
+                    const sortedcobj = I.sortloot(box.cobj, sortflags, false,
+                                                  null);
+                    for (const srtc of sortedcobj) {
+                        const obj = srtc.obj;
+                        if (!obj) break;
+                        if (identified) {
+                            discover_object(obj.otyp, true, true, false);
+                            obj.dknown = 1; /* observe_object unnecessary */
+                            obj.known = obj.bknown = obj.rknown = 1;
+                            if (Is_container(obj) || obj.otyp === STATUE_)
+                                obj.cknown = obj.lknown = 1;
+                        }
+                        // doname_with_price() is private to js/invent.js;
+                        // floor_object_name() is its exported wrapper (:545).
+                        putstr(tmpwin, 0, '  ' + I.floor_object_name(obj));
+                    }
+                    I.unsortloot(sortedcobj);
+                } else if (cat) {
+                    putstr(tmpwin, 0, "  Schroedinger's cat!");
+                }
+                if (dumping)
+                    putstr(0, 0, '');
+                display_nhwindow(tmpwin, true);
+                destroy_nhwindow(tmpwin);
+                if (all_containers)
+                    await container_contents(box.cobj, identified, true,
+                                             reportempty);
+            } else if (reportempty) {
+                // thesimpleoname(box) == the(xname(box)) (js/pickup.js:202)
+                await d.pline(`${upstart(the_(I.xname(box)))} is empty.`);
+                // display_nhwindow(WIN_MESSAGE, FALSE)
+            }
+        }
+        if (!all_containers)
+            break;
+    }
+}
+
+// ── the delayed-killer list ─────────────────────────────────────────────────
+
+// C ref: decl.h svk.killer is `struct kinfo { name[]; format; id; next }` and
+// the delayed killers hang off its .next chain.  This port keeps game.killer =
+// {name, format} (js/explode.js:456, js/pickup.js:518); give it the id/next
+// fields C's list walk needs.
+//
+// NOTE js/eat.js:1316 and js/monmove.js:7378 use a separate
+// game._delayed_killer STRING for the two delayed killers they need.  A wiring
+// pass must REPLACE those, not shadow them.
+function svk_killer() {
+    if (!game.killer)
+        game.killer = { name: '', format: KILLED_BY_AN, id: 0, next: null };
+    if (game.killer.next === undefined)
+        game.killer.next = null;
+    return game.killer;
+}
+
+// C ref: end.c:1707 delayed_killer(id, format, killername) — "set a delayed
+// killer, ensure non-delayed killer is cleared out".
+export function delayed_killer(id, format, killername) {
+    const killer = svk_killer();
+    let k = find_delayed_killer(id);
+
+    if (!k) {
+        /* no match, add a new delayed killer to the list */
+        k = { id, format: 0, name: '', next: killer.next };
+        killer.next = k;
+    }
+
+    k.format = format;
+    k.name = killername ? killername : '';
+    killer.name = '';
+}
+
+// C ref: end.c:1726 find_delayed_killer(id).
+export function find_delayed_killer(id) {
+    let k;
+    for (k = svk_killer().next; k !== null && k !== undefined; k = k.next) {
+        if (k.id === id)
+            break;
+    }
+    return k || null;
+}
+
+// C ref: end.c:1738 dealloc_killer(kptr) — unlink and free one delayed killer.
+export function dealloc_killer(kptr) {
+    const killer = svk_killer();
+    let prev = killer, k;
+
+    if (!kptr)
+        return;
+    for (k = killer.next; k !== null && k !== undefined; k = k.next) {
+        if (k === kptr)
+            break;
+        prev = k;
+    }
+
+    if (!k) {
+        // impossible("dealloc_killer (#%d) not on list", kptr->id)
+        const { impossible } = _display || {};
+        if (impossible) impossible(`dealloc_killer (#${kptr.id}) not on list`);
+    } else {
+        prev.next = k.next;
+        /* free(k); debugpline1("freed delayed killer #%d", kptr->id); */
+    }
+}
+
+// C ref: end.c:1760 save_killers(nhfp) — write svk.killer plus every delayed
+// killer, then (when freeing) drop the chain.  hack.h:971-972:
+// update_file(nhfp) == mode & (COUNTING | WRITING), release_data == mode &
+// FREEING.  js/storage.js is frozen and owns its own format, so Sfo_kinfo()
+// here just appends the record to whatever sink nhfp carries.
+export function save_killers(nhfp) {
+    if (update_file(nhfp)) {
+        for (let kptr = svk_killer(); kptr; kptr = kptr.next)
+            Sfo_kinfo(nhfp, kptr, 'kinfo');
+    }
+    if (release_data(nhfp)) {
+        const killer = svk_killer();
+        while (killer.next) {
+            const kptr = killer.next.next;
+            /* free(svk.killer.next) */
+            killer.next = kptr;
+        }
+    }
+}
+
+// C ref: end.c:1780 restore_killers(nhfp) — read svk.killer and re-allocate
+// one successor per non-null .next as it comes back off the file.
+export function restore_killers(nhfp) {
+    for (let kptr = svk_killer(); kptr !== null && kptr !== undefined;
+         kptr = kptr.next) {
+        Sfi_kinfo(nhfp, kptr, 'kinfo');
+        if (kptr.next) {
+            kptr.next = { name: '', format: 0, id: 0, next: null };
+        }
+    }
+}
+
+// hack.h:964-972 mode bits; sfbase.c Sfo_/Sfi_ marshalling (coverage N/A).
+const COUNTING = 1, WRITING = 2, FREEING = 8;
+function update_file(nhfp) { return ((nhfp?.mode | 0) & (COUNTING | WRITING)); }
+function release_data(nhfp) { return ((nhfp?.mode | 0) & FREEING); }
+function Sfo_kinfo(nhfp, kptr, _tag) {
+    if (nhfp && Array.isArray(nhfp.records))
+        nhfp.records.push({ name: kptr.name, format: kptr.format, id: kptr.id,
+                            next: !!kptr.next });
+}
+function Sfi_kinfo(nhfp, kptr, _tag) {
+    if (!nhfp || !Array.isArray(nhfp.records)) return;
+    const rec = nhfp.records.shift();
+    if (!rec) return;
+    kptr.name = rec.name;
+    kptr.format = rec.format;
+    kptr.id = rec.id;
+    kptr.next = rec.next ? kptr.next || {} : null;
+}
+
+// ── wordcount / bel_copy1 / build_english_list ──────────────────────────────
+
+// C ref: end.c:1793 wordcount(p) — number of whitespace-separated words.
+export function wordcount(p) {
+    const s = String(p ?? '');
+    let words = 0, i = 0;
+
+    while (i < s.length) {
+        while (i < s.length && isspace_(s[i]))
+            i++;
+        if (i < s.length)
+            words++;
+        while (i < s.length && !isspace_(s[i]))
+            i++;
+    }
+    return words;
+}
+
+// C ref: end.c:1809 bel_copy1(inp, out) — copy ONE word from *inp, APPENDING at
+// eos(out), and advance *inp past it.  C's char** / char* become a cursor
+// object { s, i } and a buffer object { s }: `out += strlen(out)` is why out
+// must be a mutable holder rather than a returned string.
+export function bel_copy1(inp, out) {
+    const s = String(inp.s ?? '');
+    let i = inp.i | 0;
+    /* out += strlen(out); -- eos() */
+    while (i < s.length && isspace_(s[i]))
+        i++;
+    let word = '';
+    while (i < s.length && !isspace_(s[i]))
+        word += s[i++];
+    out.s = (out.s || '') + word; /* *out++ = *in++; *out = '\0' */
+    inp.i = i;
+}
+
+// C ref: end.c:1823 build_english_list(in) — "a b c" -> "a, b, or c".  Called
+// from options.c for the autounlock/paranoid_confirmation value lists
+// (js/cfgfiles.js:414 records it as not ported).
+export function build_english_list(inp) {
+    const p = { s: String(inp ?? ''), i: 0 };
+    let words = wordcount(p.s);
+    /* C allocs len + (words > 1 ? 3 + (words - 1) : 0) + 1 and starts the
+       buffer empty because bel_copy1() appends. */
+    const out = { s: '' };
+
+    switch (words) {
+    case 0:
+        // impossible("no words in list")
+        break;
+    case 1:
+        /* "single" */
+        bel_copy1(p, out);
+        break;
+    default:
+        if (words === 2) {
+            /* "first or second" */
+            bel_copy1(p, out);
+            out.s += ' ';
+        } else {
+            /* "first, second, or third" */
+            do {
+                bel_copy1(p, out);
+                out.s += ', ';
+            } while (--words > 1);
+        }
+        out.s += 'or ';
+        bel_copy1(p, out);
+        break;
+    }
+    return out.s;
+}

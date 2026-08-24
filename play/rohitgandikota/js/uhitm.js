@@ -461,6 +461,17 @@ export async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty,
         if (weapon && (weapon.oclass === OCLASSES.WEAPON_CLASS
                        || is_weptool(weapon, game.objects))) {
             game.u.uconduct = game.u.uconduct || {};
+            if (!oldweaphit) {
+                /* src/uhitm.c:1962 first_weapon_hit() — log before the
+                   monster possibly dies; buf is [cursed ]simpleonames */
+                const { livelog_add } = await import('./pline.js');
+                const { xname } = await import('./objnam.js');
+                let wnam = xname(weapon);
+                if (weapon.cursed && weapon.bknown)
+                    wnam = `cursed ${wnam}`;
+                livelog_add(
+                    `hit with a wielded weapon (${wnam}) for the first time`);
+            }
             game.u.uconduct.weaphit = oldweaphit + 1;
         }
 

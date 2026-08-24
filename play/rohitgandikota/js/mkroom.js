@@ -25,9 +25,9 @@ import { OROOM, SHOPBASE, FILL_NORMAL, COURT, ZOO, BEEHIVE, MORGUE,
          ROOMOFFSET, POOL, SDOOR, ROOM, IS_ROOM, IS_DOOR, isok, G_GONE,
          In_endgame, SPACE_POS, IS_THRONE, THRONE, ALTAR, AM_SHRINE,
          OBJ_AT } from './const.js';
-import { makemon, mkclass } from './makemon.js';
+import { makemon, mkclass, mkclass_aligned } from './makemon.js';
 import { m_at, t_at } from './mon.js';
-import { PMNAMES, MONSYMS } from './monst_data.js';
+import { PMNAMES, MONSYMS, MFLAGS } from './monst_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { inside_room } from './sp_lev.js';
 import { shtypes } from './shknam.js';
@@ -299,7 +299,10 @@ export function fill_zoo(sroom) {
                 : (type === ANTHOLE)   ? antholemon()
                 : null;
 
-            const mon = ptr ? makemon(ptr, sx, sy, MM_ASLEEP | MM_NOGRP) : null;
+            /* src/mkroom.c:383 — the makemon call is UNCONDITIONAL: a null
+               permonst (the ZOO arm) asks for a random monster. Guarding on
+               ptr left zoos empty. */
+            const mon = makemon(ptr, sx, sy, MM_ASLEEP | MM_NOGRP);
             if (mon) {
                 mon.msleeping = 1;
                 if (type === COURT && mon.mpeaceful) {
@@ -430,11 +433,20 @@ export function morguemon() {
 
 
     if (hd > 10 && i < 10) {
-        if (Inhell() || In_endgame(game.u.uz))
+        if (Inhell() || In_endgame(game.u.uz)) {
             return mkclass(MONSYMS.S_DEMON, 0);
-        /* ndemon() is not ported; C falls through to ghost/wraith/zombie
-           when it returns NON_PM, which is the arm taken here. */
-        note_unported_mkroom('morguemon:ndemon');
+        } else {
+            /* src/minion.c:444 ndemon(A_NONE) — one aligned-class pick;
+               a lord/prince result reads as NON_PM and C falls through
+               to the ghost/wraith/zombie tail. */
+            const ptr = mkclass_aligned(MONSYMS.S_DEMON, 0, -128 /* A_NONE */);
+            const is_ndemon = ptr
+                && (ptr.mflags2 & MFLAGS.M2_DEMON) !== 0
+                && (ptr.mflags2 & (MFLAGS.M2_LORD | MFLAGS.M2_PRINCE)) === 0;
+            if (is_ndemon)
+                return ptr;
+            /* else drop to ghost/wraith/zombie */
+        }
     }
 
     if (hd > 8 && i > 85)

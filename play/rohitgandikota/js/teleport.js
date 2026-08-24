@@ -36,6 +36,7 @@ import { morehungry } from './eat.js';
 import { getpos } from './getpos.js';
 
 import { isok, ECMD_OK, ECMD_TIME, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
+import { ONAMES } from './objects_data.js';
 
 // include/hack.h:1204-1210
 
@@ -229,8 +230,21 @@ export async function level_tele() {
 
                 newlevel.dnum = dest.dnum;
                 newlevel.dlevel = dest.lev;
-                if (In_endgame(newlevel) && !In_endgame(game.u.uz))
-                    note_unported_tele('level_tele:endgame_amulet');
+                if (In_endgame(newlevel) && !In_endgame(game.u.uz)) {
+                    /* src/teleport.c:1235 — "Endgame prerequisite:" the
+                       Amulet is conjured straight into the pack (no
+                       hold_another_object, no fumbling) */
+                    if (!game.u.uhave?.amulet) {
+                        const { mksobj } = await import('./mkobj.js');
+                        const { addinv, prinv } = await import('./invent.js');
+                        let amu = mksobj(ONAMES.AMULET_OF_YENDOR, true, false);
+                        if (amu) {
+                            amu = addinv(amu);
+                            (game.u.uhave ||= {}).amulet = 1;
+                            await prinv('Endgame prerequisite:', amu, 0);
+                        }
+                    }
+                }
                 force_dest = true;
             } else {
                 newlev = lev_by_name(buf);

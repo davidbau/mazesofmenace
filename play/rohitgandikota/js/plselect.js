@@ -22,7 +22,7 @@ import {
     ROLE_NONE, ROLE_RANDOM, rigid_role_checks, ok_role, ok_race, ok_gend,
     ok_align, pick_role, pick_race, pick_gend, pick_align,
     randrole, PICK_RANDOM, rfilter, setrolefilter, clearrolefilter,
-    gotrolefilter,
+    gotrolefilter, str2role, str2race, str2gend, str2align,
 } from './role.js';
 import { roles, races, genders, aligns } from './role_data.js';
 import { COPYRIGHT_BANNER } from './banner_data.js';
@@ -105,6 +105,48 @@ async function tty_askname() {
        whose rc pins `name:` never runs this and gets "Is this ok? [ynq]". */
     game.renameallowed = true;
     return name;
+}
+
+// src/role.c:1665 plnamesuffix() — askname() when plname[] is empty, then
+// strip any "-role-race-gender-alignment" suffix into flags.init*.
+//
+// sys/unix/unixmain.c:198 runs this AFTER set_playmode(), so a wizard-mode
+// game is already renamed to "wizard" and never prompts; a session whose rc
+// pins every facet but no name still gets the "Who are you?" screen, which
+// is where its first recorded frames come from.
+export async function plnamesuffix() {
+    /* sys/conf GENERIC_USERNAMES default (sys/unix/sysconf:GENERICUSERS,
+       sys.c initialization): these login-ish names trigger a prompt */
+    const genericusers = 'player games';
+    if (game.plname) {
+        const base = game.plname.split('-', 1)[0];
+        if (genericusers.split(' ').some(
+                (w) => w.toLowerCase() === base.toLowerCase()))
+            game.plname = '';
+    }
+
+    do {
+        if (!game.plname)
+            game.plname = await tty_askname();
+
+        /* Look for tokens delimited by '-' */
+        const parts = game.plname.split('-');
+        game.plname = parts[0];
+        for (const sptr of parts.slice(1)) {
+            let i;
+            if ((i = str2role(sptr)) !== ROLE_NONE)
+                game.flags.initrole = i;
+            else if ((i = str2race(sptr)) !== ROLE_NONE)
+                game.flags.initrace = i;
+            else if ((i = str2gend(sptr)) !== ROLE_NONE)
+                game.flags.initgend = i;
+            else if ((i = str2align(sptr)) !== ROLE_NONE)
+                game.flags.initalign = i;
+        }
+    } while (!game.plname);
+
+    /* commas in the plname confuse the record file, convert to spaces */
+    game.plname = game.plname.replace(/,/g, ' ');
 }
 
 // src/role.c:2776 maybe_skip_seps() — the role menu needs 25 lines on a 24-line

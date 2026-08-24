@@ -38,7 +38,8 @@ import { W_ARMS, W_ARMG, W_WEP, NO_WEAPON_WANTED, NEED_WEAPON,
          NEED_PICK_OR_AXE } from './const.js';
 import { ACURR } from './attrib.js';
 import { You_feel } from './pline.js';
-import { P_LAST_SPELL } from './const.js';
+import { P_LAST_SPELL, P_FIRST_H_TO_H, P_LAST_H_TO_H, P_FIRST_WEAPON,
+         P_FIRST_SPELL } from './const.js';
 import { A_STR, A_DEX } from './const.js';
 import { AKLYS_LIM } from './const.js';
 import { ONAMES, OCLASSES, MATERIALS, SKILLS } from './objects_data.js';
@@ -1162,3 +1163,177 @@ export async function use_skill(skill, degree) {
 }
 
 export { uwep_skill_type };
+
+// src/weapon.c:1173 could_advance() — advanceable if more slots existed.
+function could_advance(skill) {
+    const sk = game.u.weapon_skills?.[skill];
+    if (!sk || sk.skill === P_ISRESTRICTED
+        || sk.skill >= sk.max
+        || (game.u.skills_advanced | 0) >= P_SKILL_LIMIT)
+        return false;
+    return (sk.advance | 0) >= practice_needed_to_advance(sk.skill);
+}
+
+// src/weapon.c:1187 peaked_skill() — maxed out with surplus practice.
+function peaked_skill(skill) {
+    const sk = game.u.weapon_skills?.[skill];
+    if (!sk || sk.skill === P_ISRESTRICTED)
+        return false;
+    return sk.skill >= sk.max
+           && (sk.advance | 0) >= practice_needed_to_advance(sk.skill);
+}
+
+// src/weapon.c:1198 skill_advance()
+async function skill_advance(skill) {
+    const { You } = await import('./pline.js');
+    const u = game.u;
+    u.weapon_slots -= slots_required(skill);
+    game.u.weapon_skills[skill].skill++;
+    (u.skill_record ||= [])[u.skills_advanced = (u.skills_advanced | 0)] = skill;
+    u.skills_advanced++;
+    /* subtly change the advance message to indicate no more advancement */
+    await You(`are now ${
+        P_SKILL(skill) >= game.u.weapon_skills[skill].max ? 'most' : 'more'
+        } skilled in ${P_NAME(skill)}.`);
+    /* skill_based_spellbook_id() for spell schools: no unknown books yet */
+}
+
+// src/weapon.c:1217 skill_ranges[]
+const skill_ranges = [
+    { first: P_FIRST_H_TO_H, last: P_LAST_H_TO_H, name: 'Fighting Skills' },
+    { first: P_FIRST_WEAPON, last: P_LAST_WEAPON, name: 'Weapon Skills' },
+    { first: P_FIRST_SPELL, last: P_LAST_SPELL, name: 'Spellcasting Skills' },
+];
+
+// src/weapon.c:1229 add_skills_to_menu()
+function add_skills_to_menu(win, selectable, speedy, ttyfns) {
+    const { tty_add_menu, tty_add_menu_str, ATR_NONE_T, NO_COLOR_T } = ttyfns;
+
+    /* Find the longest skill name. */
+    let longest = 0;
+    for (let i = 0; i < P_NUM_SKILLS; i++) {
+        if (P_SKILL(i) === P_ISRESTRICTED)
+            continue;
+        const len = P_NAME(i).length;
+        if (len > longest)
+            longest = len;
+    }
+
+    for (const range of skill_ranges)
+        for (let i = range.first; i <= range.last; i++) {
+            if (i === range.first) {
+                /* add_menu_heading: menu_headings attr (ATR_INVERSE) */
+                tty_add_menu(win, null, 0, 0, 0, 7 /* NH ATR_INVERSE */,
+                             NO_COLOR_T, range.name, 0);
+            }
+            if (P_SKILL(i) === P_ISRESTRICTED)
+                continue;
+            let prefix;
+            if (!selectable)
+                prefix = '';
+            else if (can_advance(i, speedy))
+                prefix = ''; /* will be preceded by menu choice */
+            else if (could_advance(i))
+                prefix = '  * ';
+            else if (peaked_skill(i))
+                prefix = '  # ';
+            else
+                prefix = '    ';
+            const sklnam = skill_level_name(i);
+            let buf;
+            if (game.wizard) {
+                buf = ` ${prefix}${P_NAME(i).padEnd(longest)} ${
+                    sklnam.padEnd(12)} ${
+                    String(game.u.weapon_skills[i].advance | 0).padStart(5)}(${
+                    String(practice_needed_to_advance(P_SKILL(i))).padStart(4)})`;
+            } else {
+                buf = ` ${prefix} ${P_NAME(i).padEnd(longest)} [${sklnam}]`;
+            }
+            const id = (selectable && can_advance(i, speedy)) ? i + 1 : 0;
+            tty_add_menu(win, null, id, 0, 0, 0 /* ATR_NONE */, NO_COLOR_T,
+                         buf, 0);
+        }
+}
+
+// src/weapon.c:1329 enhance_weapon_skill() — the #enhance command.
+export async function enhance_weapon_skill() {
+    const {
+        tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu,
+        tty_add_menu, tty_add_menu_str, tty_end_menu, tty_select_menu,
+        NHW_MENU,
+    } = await import('./tty/wintty.js');
+    const { NO_COLOR } = await import('./terminal.js');
+    const { tty_yn_function } = await import('./tty/topl.js');
+    const plur = (n) => (n === 1 ? '' : 's');
+    let speedy = false;
+
+    if (game.wizard
+        && (await tty_yn_function('Advance skills without practice?',
+                                  'yn', 'n')) === 'y')
+        speedy = true;
+
+    for (;;) {
+        /* count advanceable skills */
+        let to_advance = 0, eventually_advance = 0, maxxed_cnt = 0;
+        for (let i = 0; i < P_NUM_SKILLS; i++) {
+            if (P_SKILL(i) === P_ISRESTRICTED)
+                continue;
+            if (can_advance(i, speedy))
+                to_advance++;
+            else if (could_advance(i))
+                eventually_advance++;
+            else if (peaked_skill(i))
+                maxxed_cnt++;
+        }
+
+        const win = tty_create_nhwindow(NHW_MENU);
+        tty_start_menu(win, 0);
+
+        if (eventually_advance > 0 || maxxed_cnt > 0) {
+            if (eventually_advance > 0)
+                tty_add_menu_str(win,
+                    `(Skill${plur(eventually_advance)} flagged by "*" may be `
+                    + `enhanced ${(game.u.ulevel < 30)
+                        ? "when you're more experienced"
+                        : 'if skill slots become available'}.)`);
+            if (maxxed_cnt > 0)
+                tty_add_menu_str(win,
+                    `(Skill${plur(maxxed_cnt)} flagged by "#" cannot be `
+                    + 'enhanced any further.)');
+            tty_add_menu_str(win, '');
+        }
+
+        add_skills_to_menu(win,
+            to_advance + eventually_advance + maxxed_cnt > 0, speedy,
+            { tty_add_menu, tty_add_menu_str, NO_COLOR_T: NO_COLOR });
+
+        let buf = (to_advance > 0) ? 'Pick a skill to advance:'
+                                   : 'Current skills:';
+        if (game.wizard && !speedy)
+            buf += `  (${game.u.weapon_slots | 0} slot${
+                plur(game.u.weapon_slots | 0)} available)`;
+        tty_end_menu(win, buf);
+        const picks = await tty_select_menu(
+            win, to_advance ? 1 /* PICK_ONE */ : 0 /* PICK_NONE */);
+        tty_destroy_nhwindow(win);
+        if (picks && picks.length > 0) {
+            const n = picks[0] - 1; /* get item selected */
+            await skill_advance(n);
+            /* check for more skills able to advance; if so, loop */
+            let more = 0;
+            for (let i = 0; i < P_NUM_SKILLS; i++) {
+                if (can_advance(i, speedy)) {
+                    if (!speedy) {
+                        const { You_feel } = await import('./pline.js');
+                        await You_feel('you could be more dangerous!');
+                    }
+                    more++;
+                }
+            }
+            if (more)
+                continue;
+        }
+        break;
+    }
+    return 0; /* ECMD_OK */
+}

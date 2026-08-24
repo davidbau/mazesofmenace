@@ -9,11 +9,13 @@
 // itself.
 
 import { game } from './gstate.js';
+import { mk_mplayer } from './mplayer.js';
 import { get_level_extends, fix_wall_spines, stairway_add } from './mklev.js';
 import { selection_iterate, selection_new, selection_clone,
          selection_getpoint, selection_setpoint, selection_getbounds,
          selection_floodfill, set_selection_floodfillchk,
-         selection_do_randline } from './selvar.js';
+         selection_do_randline, selection_clear,
+         selection_not, selection_rndcoord } from './selvar.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { isok } from './hacklib.js';
 import { sobj_at, weight, obj_extract_self } from './invent.js';
@@ -29,7 +31,7 @@ import { make_engr_at, engr_at } from './engrave.js';
 import { oname, christen_monst } from './do_name.js';
 import { ONAME_LEVEL_DEF } from './const.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, STRAT_WAITFORU,
-         MM_NOCOUNTBIRTH } from './const.js';
+         MM_NOCOUNTBIRTH, MM_NOMSG } from './const.js';
 
 /* is_pool/is_lava/m_at live in js/mon.js, which reaches this file back through
    invent.js -> mkobj.js. A direct import leaves them in TDZ the second time a
@@ -43,10 +45,11 @@ import { NON_PM, SPACE_POS, ALTAR, STAIRS, LADDER, W_RANDOM, W_ANY, W_NORTH, W_S
          W_EAST, W_WEST, D_LOCKED, D_TRAPPED, LA_UP, LA_DOWN } from './const.js';
 import { MONSYMS, PMNAMES, NUMMONS } from './monst_data.js';
 import { amphibious, is_swimmer, is_flyer, is_floater, passes_walls,
-         noncorporeal, likes_fire } from './mondata.js';
+         noncorporeal, likes_fire, poly_when_stoned } from './mondata.js';
 import { def_oc_syms } from './drawing_data.js';
 import { ANY_LOC, SOLID, DRY, SPACELOC, WET, HOT,
          NO_LOC_WARN } from './const.js';
+import { ACCESSIBLE } from './const.js';
 import { NO_TRAP, VIBRATING_SQUARE,
          MKTRAP_MAZEFLAG, MKTRAP_SEEN, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
          ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
@@ -54,20 +57,25 @@ import { NO_TRAP, VIBRATING_SQUARE,
          SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP } from './const.js';
 import { litstate_rnd, flood_fill_rm, mkmap } from './mkmap.js';
-import { depth, induced_align } from './dungeon.js';
+import { depth, induced_align, Can_fall_thru } from './dungeon.js';
 import { mkgold } from './mkobj.js';
-import { mkclass, makemon, is_male, is_female, mpickobj } from './makemon.js';
+import { mkclass, makemon, is_male, is_female, mpickobj, rndmonnum,
+         propagate } from './makemon.js';
 import { m_dowear } from './worn.js';
 import { mdrop_special_objs } from './steal.js';
 import { discard_minvent } from './mkobj.js';
 import { MFLAGS as MFLAGS_SP } from './monst_data.js';
 const G_IGNORE_SP = MFLAGS_SP.G_IGNORE;
 import { def_monsyms } from './drawing_data.js';
-import { CORPSTAT_HISTORIC } from './const.js';
+import { CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE } from './const.js';
 import { In_mines } from './const.js';
+import { Align2amask as Align2amask_sp, Amask2align as Amask2align_sp,
+         A_ORIGINAL } from './const.js';
 import {
     OROOM, THEMEROOM, VAULT, COURT, ZOO, BEEHIVE, ANTHOLE, COCKNEST,
     LEPREHALL, MORGUE, BARRACKS, TEMPLE, SWAMP, SHOPBASE, DELPHI,
+    ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP,
+    WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
     FILL_NONE, FILL_NORMAL,
     COLNO, ROWNO, STONE, CORR, ROOM, HWALL, VWALL, DOOR, SDOOR, SCORR,
     TLCORNER, TRCORNER, BLCORNER, BRCORNER, CROSSWALL, TUWALL, TDWALL,
@@ -919,6 +927,21 @@ export function create_object(o, croom) {
     if (named)
         otmp = oname(otmp, o.name, ONAME_LEVEL_DEF);
 
+    /* src/sp_lev.c:2273 — erosion; negative means erodeproof. The else arm
+       is load-bearing: a des.object with no eroded option WIPES whatever
+       erosion mksobj rolled. */
+    if (o.eroded) {
+        if (o.eroded < 0) {
+            otmp.oerodeproof = 1;
+        } else {
+            otmp.oeroded = (o.eroded % 4);
+            otmp.oeroded2 = ((o.eroded >> 2) % 4);
+        }
+    } else {
+        otmp.oeroded = otmp.oeroded2 = 0;
+        otmp.oerodeproof = 0;
+    }
+
     /* src/sp_lev.c:2298 — explicit quantity for mergeable object types */
     if (o.quan > 0 && game.objects[otmp.otyp]?.oc_merge) {
         otmp.quan = o.quan;
@@ -979,6 +1002,73 @@ export function create_object(o, croom) {
     if (o.corpsenm !== undefined && o.corpsenm !== NON_PM)
         set_corpsenm(otmp, o.corpsenm);
 
+    /* src/sp_lev.c:2311 — Medusa level special case: statues are petrified
+       monsters, so they are not stone-resistant and have monster inventory.
+       They also lack other contents, but that can be specified as an empty
+       container. include/dungeon.h Is_medusa_level(). */
+    {
+        const ml = game.special_levels?.medusa_level;
+        if (o.id === ONAMES.STATUE
+            && ml && game.u.uz.dnum === ml.dnum
+            && game.u.uz.dlevel === ml.dlevel
+            && (o.corpsenm === undefined || o.corpsenm === NON_PM)) {
+            let was = null;
+            let wastyp = otmp.corpsenm;
+
+            /* Named random statues are of player types, and aren't stone-
+               resistant. */
+            for (let i = 0; i < 1000; i++, wastyp = rndmonnum()) {
+                /* makemon without rndmonst() might create a group */
+                was = makemon(game.mons[wastyp], 0, 0,
+                              MM_NOCOUNTBIRTH | MM_NOMSG);
+                if (was) {
+                    if (!mon_fns.resists_ston(was)
+                        && !poly_when_stoned(game.mons[wastyp])) {
+                        propagate(wastyp, true, false);
+                        break;
+                    }
+                    mon_fns.mongone(was);
+                    was = null;
+                }
+            }
+            if (was) {
+                set_corpsenm(otmp, wastyp);
+                while (was.minvent && was.minvent.length) {
+                    const obj = was.minvent[0];
+                    obj.owornmask = 0;
+                    obj_extract_self(obj);
+                    add_to_container(otmp, obj);
+                }
+                otmp.owt = weight(otmp);
+                mon_fns.mongone(was);
+            }
+        }
+    }
+
+    /* src/sp_lev.c:2354 — the achievement prize markers */
+    if (o.achievement) {
+        const mel = game.special_levels?.mineend_level;
+        const sel = game.special_levels?.sokoend_level;
+        if (mel && game.u.uz.dnum === mel.dnum
+            && game.u.uz.dlevel === mel.dlevel) {
+            const a = ((game.context ||= {}).achieveo ||= {});
+            if (!a.mines_prize_oid) {
+                a.mines_prize_oid = otmp.o_id;
+                a.mines_prize_otyp = otmp.otyp;
+                /* prevent stacking; cleared when achievement is recorded */
+                otmp.nomerge = 1;
+            }
+        } else if (sel && game.u.uz.dnum === sel.dnum
+                   && game.u.uz.dlevel === sel.dlevel) {
+            const a = ((game.context ||= {}).achieveo ||= {});
+            if (!a.soko_prize_oid) {
+                a.soko_prize_oid = otmp.o_id;
+                a.soko_prize_otyp = otmp.otyp;
+                otmp.nomerge = 1; /* redundant; Sokoban prizes don't stack */
+            }
+        }
+    }
+
     if (!(o.containment & SP_OBJ_CONTENT)) {
         if (o.buried) {
             const dealloced = { v: false };
@@ -1015,6 +1105,7 @@ export function lspo_object(idOrClass, x, y, opts) {
         class: -1, id: STRANGE_OBJECT, spe: -127, curse_state: 0,
         containment: 0,
         quan: opts?.quantity ?? -1, buried: 0, lit: 0,
+        eroded: opts?.eroded ?? 0,      /* src/sp_lev.c:3592 */
         name: opts?.name ?? null,
         contents: opts?.contents ?? null,
         coord: 0,
@@ -1048,27 +1139,50 @@ export function lspo_object(idOrClass, x, y, opts) {
        figurine or egg came from. A single-character string is a monster
        CLASS and picks a random member via mkclass(cls, G_NOGEN|G_IGNORE),
        which draws; a full name resolves without any draw. */
+    let nonpmobj = false;
     if (opts?.montype !== undefined && opts.montype !== null) {
-        if (typeof opts.montype === 'number') {
-            o.corpsenm = opts.montype;
-        } else if (opts.montype.length === 1
-                   && def_monsyms.indexOf(opts.montype) > 0) {
-            const pm = mkclass(def_monsyms.indexOf(opts.montype),
+        const mt = opts.montype;
+        if (typeof mt === 'string'
+            && ((o.id === ONAMES.TIN && (mt.toLowerCase() === 'spinach'
+                                         || mt.toLowerCase() === 'empty'))
+                || (o.id === ONAMES.EGG && mt.toLowerCase() === 'empty'))) {
+            /* src/sp_lev.c:3676 — spinach or empty tin, unhatchable egg:
+               corpsenm NON_PM and the spe is fixed here (1 = spinach) */
+            o.corpsenm = NON_PM;
+            o.spe = (mt.toLowerCase() === 'spinach') ? 1 : 0;
+            nonpmobj = true;
+        } else if (typeof mt === 'number') {
+            o.corpsenm = mt;
+        } else if (mt.length === 1
+                   && def_monsyms.indexOf(mt) > 0) {
+            const pm = mkclass(def_monsyms.indexOf(mt),
                                G_NOGEN | G_IGNORE_SP);
             o.corpsenm = pm ? pm.pmidx ?? game.mons.indexOf(pm) : -1;
         } else {
-            o.corpsenm = name_to_mon(opts.montype);
+            o.corpsenm = name_to_mon(mt);
         }
     }
 
     /* src/sp_lev.c:3634 — `spe`; -127 stays "not random", i.e. keep what
-       mksobj rolled. */
-    if (opts?.spe !== undefined)
+       mksobj rolled. src/sp_lev.c:3718 — skipped for the nonpmobj arm,
+       whose spe was fixed above. */
+    if (opts?.spe !== undefined && !nonpmobj)
         o.spe = opts.spe;
 
-    /* src/sp_lev.c:3707 — statues and corpses carry CORPSTAT flags in spe */
-    if (opts?.historic)
+    /* src/sp_lev.c:3706 — statues and corpses carry CORPSTAT flags in spe;
+       the flags REPLACE any spe option, so a plain statue gets spe 0 */
+    if (o.id === ONAMES.STATUE || o.id === ONAMES.CORPSE) {
+        let lflags = 0;
+        if (opts?.historic) lflags |= CORPSTAT_HISTORIC;
+        if (opts?.male)     lflags |= CORPSTAT_MALE;
+        if (opts?.female)   lflags |= CORPSTAT_FEMALE;
+        o.spe = lflags;
+    } else if (opts?.historic) {
         o.spe = CORPSTAT_HISTORIC;
+    }
+
+    /* src/sp_lev.c:3648 — the mines/soko prize marker */
+    if (opts?.achievement) o.achievement = 1;
 
     if (opts?.buried) o.buried = 1;
     if (opts?.lit)    o.lit = 1;
@@ -1078,7 +1192,10 @@ export function lspo_object(idOrClass, x, y, opts) {
     if (container_obj.length)
         o.containment |= SP_OBJ_CONTENT;
 
-    if (opts?.contents) o.containment |= SP_OBJ_CONTAINER;
+    /* src/sp_lev.c:3729 — ANY non-nil `contents` marks a container; the
+       integer 0 form forces an empty one (delete_contents, no closure) */
+    if (opts?.contents !== undefined && opts?.contents !== null)
+        o.containment |= SP_OBJ_CONTAINER;
     if (opts?.inContainer) o.containment |= SP_OBJ_CONTENT;
 
     lspo_object_fixup(o);
@@ -1088,10 +1205,12 @@ export function lspo_object(idOrClass, x, y, opts) {
        the stack is popped. C runs the closure even when create_object returned
        NULL (nhl_push_obj pushes nil), and pops on the CONTAINER flag rather
        than on otmp, so a failed container still balances the stack. */
-    if (opts?.contents) {
+    if (typeof opts?.contents === 'function')
         opts.contents(otmp);
+    /* src/sp_lev.c:3748 — pop on the CONTAINER flag, not on the closure:
+       `contents = 0` opened (and emptied) the container too */
+    if (o.containment & SP_OBJ_CONTAINER)
         spo_pop_container();
-    }
     return otmp;
 }
 
@@ -1455,16 +1574,21 @@ export function create_monster(m, croom) {
     if (croom && !inside_room(croom, x, y))
         return null;
 
+    /* src/sp_lev.c:1983 — a named alignment routes to mk_roamer; the C
+       passes m->peaceful (still -1 when unset) through a boolean. */
+    let mtmp;
     if (m.sp_amask !== AM_SPLEV_RANDOM) {
-        note_unported('create_monster:mk_roamer');
-        return null;
+        if (!mk_roamer_fn) {
+            note_unported('create_monster:mk_roamer');
+            return null;
+        }
+        mtmp = mk_roamer_fn(pm, Amask2align_sp(amask), x, y, m.peaceful !== 0);
+    } else if (m.id >= PMNAMES.PM_ARCHEOLOGIST && m.id <= PMNAMES.PM_WIZARD) {
+        /* src/sp_lev.c:1986 — player-class monsters take the mplayer path */
+        mtmp = mk_mplayer(pm, x, y, false);
+    } else {
+        mtmp = makemon(pm, x, y, m.mm_flags);
     }
-    if (m.id >= PMNAMES.PM_ARCHEOLOGIST && m.id <= PMNAMES.PM_WIZARD) {
-        note_unported('create_monster:mk_mplayer');
-        return null;
-    }
-
-    const mtmp = makemon(pm, x, y, m.mm_flags);
 
     if (mtmp) {
         /* src/sp_lev.c:2125 — the gender find_montype settled (its rn2(2)
@@ -1502,6 +1626,15 @@ export function create_monster(m, croom) {
                 && m.appear !== 3 /* M_AP_MONSTER, monst.h:55 */)
                 mon_fns.newcham?.(mtmp, game.mons[mtmp.cham], 0);
         }
+        /* src/sp_lev.c:2168 — m_lev_adj clamps into 0..49. No draws. */
+        if (m.m_lev_adj) {
+            if (mtmp.m_lev + m.m_lev_adj > 49)
+                mtmp.m_lev = 49;
+            else if (mtmp.m_lev + m.m_lev_adj < 0)
+                mtmp.m_lev = 0;
+            else
+                mtmp.m_lev += m.m_lev_adj;
+        }
 
         if (m.appear_as) {
             /* "obj:chest" -> M_AP_OBJECT with the object's index */
@@ -1515,6 +1648,14 @@ export function create_monster(m, croom) {
                     mtmp.m_ap_type = M_AP_OBJECT;
                     mtmp.mappearance = i;
                 } /* else impossible("can't find object") */
+            } else if (kind === 'ter') {
+                /* src/sp_lev.c:2016 M_AP_FURNITURE — scan defsyms for the
+                   explanation string ("staircase down"). No draws. */
+                const i = defsyms_sp.findIndex(ds => ds.explain === what);
+                if (i >= 0) {
+                    mtmp.m_ap_type = M_AP_FURNITURE;
+                    mtmp.mappearance = i;
+                } /* else impossible("can't find feature") */
             } else {
                 note_unported(`create_monster:appear_as:${kind}`);
             }
@@ -1536,8 +1677,9 @@ export function create_monster(m, croom) {
     return mtmp;
 }
 
-// include/global.h:103 BOOL_RANDOM, include/monst.h:54 M_AP_OBJECT.
-const BOOL_RANDOM = -1, M_AP_OBJECT = 2;
+// include/global.h:103 BOOL_RANDOM, include/monst.h:54 M_AP_FURNITURE/OBJECT.
+const BOOL_RANDOM = -1, M_AP_FURNITURE = 1, M_AP_OBJECT = 2;
+import { defsyms as defsyms_sp } from './drawing_data.js';
 
 // include/monflag.h:214 enum mgender
 const MALE = 0, FEMALE = 1, NEUTRAL = 2, NUM_MGENDERS = 3;
@@ -1632,9 +1774,16 @@ export function lspo_monster(idOrClass, x, y, opts) {
               ? SP_COORD_PACK_RANDOM(0)
               : SP_COORD_PACK(x, y);
 
+    /* src/sp_lev.c:3298 — get_table_align, default "random" */
+    if (opts?.align !== undefined)
+        m.sp_amask = (typeof opts.align === 'string')
+                     ? (GTALIGNS[opts.align] ?? AM_SPLEV_RANDOM) : opts.align;
+
     m.asleep = (opts?.asleep === undefined) ? BOOL_RANDOM : (opts.asleep ? 1 : 0);
     m.appear_as = opts?.appear_as ?? null;
     m.waiting = !!opts?.waiting;
+    /* src/sp_lev.c:3324 get_table_int_opt("m_lev_adj") */
+    m.m_lev_adj = opts?.m_lev_adj ?? 0;
     m.name = opts?.name ?? null;
     if (opts?.peaceful !== undefined)
         m.peaceful = opts.peaceful ? 1 : 0;
@@ -1809,31 +1958,58 @@ export function create_altar(a, croom) {
 let priestini_fn = null;
 export function sp_lev_wire_priest(fn) { priestini_fn = fn; }
 
+/* mk_roamer (src/priest.c:724) too — same cycle, same wire. */
+let mk_roamer_fn = null;
+export function sp_lev_wire_roamer(fn) { mk_roamer_fn = fn; }
+
 // src/sp_lev.c sp_amask_to_amask() — the three SPLEV pseudo-alignments resolve
 // against the HERO's original alignment, not the level's.
 // src/sp_lev.c:1907 sp_amask_to_amask() — the random case asks the level
 // (80% chance of the level's own alignment) and DRAWS via induced_align.
 function sp_amask_to_amask(sp_amask) {
-    if (sp_amask === AM_SPLEV_CO || sp_amask === AM_SPLEV_NONCO) {
-        note_unported('sp_amask_to_amask:hero_alignment');
-        return 0;
-    }
+    if (sp_amask === AM_SPLEV_CO)
+        return Align2amask_sp(game.u.ualignbase[A_ORIGINAL]);
+    if (sp_amask === AM_SPLEV_NONCO)
+        return Align2amask_sp(noncoalignment(game.u.ualignbase[A_ORIGINAL]));
     if (sp_amask === AM_SPLEV_RANDOM)
         return induced_align(80);
     return sp_amask & AM_MASK;
 }
 
+// src/sp_lev.c:1852 noncoalignment() — an alignment other than the hero's.
+function noncoalignment(alignment) {
+    const k = rn2(2);
+    if (!alignment)
+        return k ? -1 : 1;
+    return k ? -alignment : 0;
+}
+
+// src/sp_lev.c:3114 get_table_align() — the "align" option strings, keyed
+// exactly as gtaligns[]/aligns2i[]; anything else falls to the default
+// "random" (which is also how the C treats a misspelled option key).
+const GTALIGNS = { noalign: 0 /* AM_NONE */, law: 4 /* AM_LAWFUL */,
+                   neutral: 2 /* AM_NEUTRAL */, chaos: 1 /* AM_CHAOTIC */,
+                   coaligned: 0x20 /* AM_SPLEV_CO */,
+                   noncoaligned: 0x40 /* AM_SPLEV_NONCO */,
+                   random: 0x80 /* AM_SPLEV_RANDOM */ };
+
 // src/sp_lev.c:4029 lspo_altar() — the des.altar() verb.
 export function lspo_altar(opts) {
     const SHRINES = ['altar', 'shrine', 'sanctum'];
+    const rawalign = opts?.align ?? 'random';
     const a = {
         coord: SP_COORD_PACK_RANDOM(0),
-        sp_amask: opts?.align ?? AM_SPLEV_RANDOM,
+        sp_amask: (typeof rawalign === 'string')
+                  ? (GTALIGNS[rawalign] ?? AM_SPLEV_RANDOM) : rawalign,
         shrine: Math.max(0, SHRINES.indexOf(opts?.type ?? 'altar')),
     };
 
     if (opts?.x !== undefined && opts?.y !== undefined)
         a.coord = SP_COORD_PACK(opts.x, opts.y);
+    else if (opts?.coord)
+        a.coord = Array.isArray(opts.coord)
+                  ? SP_COORD_PACK(opts.coord[0], opts.coord[1])
+                  : SP_COORD_PACK(opts.coord.x, opts.coord.y);
 
     return create_altar(a, game.coder?.croom ?? null);
 }
@@ -1867,7 +2043,19 @@ const T_OR_B = { top: SPLEV_TOP, center: SPLEV_CENTER, bottom: SPLEV_BOTTOM,
                  none: -1, random: -1 };
 
 /* src/sp_lev.c get_table_roomtype_opt() — name to rtype. */
-const ROOMTYPES = { ordinary: OROOM, themed: THEMEROOM, delphi: DELPHI };
+/* src/sp_lev.c:3960 room_types[] */
+const ROOMTYPES = { ordinary: OROOM, themed: THEMEROOM, delphi: DELPHI,
+                    throne: COURT, swamp: SWAMP, vault: VAULT,
+                    beehive: BEEHIVE, morgue: MORGUE, barracks: BARRACKS,
+                    zoo: ZOO, temple: TEMPLE, anthole: ANTHOLE,
+                    cocknest: COCKNEST, leprehall: LEPREHALL,
+                    shop: SHOPBASE, 'armor shop': ARMORSHOP,
+                    'scroll shop': SCROLLSHOP, 'potion shop': POTIONSHOP,
+                    'weapon shop': WEAPONSHOP, 'food shop': FOODSHOP,
+                    'ring shop': RINGSHOP, 'wand shop': WANDSHOP,
+                    'tool shop': TOOLSHOP, 'book shop': BOOKSHOP,
+                    'health food shop': FODDERSHOP,
+                    'candle shop': CANDLESHOP };
 
 export function lspo_room(opts, create_room_fn, topologize_fn) {
     /* level scripts omit the fns; the wire from mklev.js supplies them */
@@ -2597,13 +2785,16 @@ export async function load_special(name) {
     game.level.flags.rndmongen = 1;
     game.level.flags.deathdrops = 1;
 
-    /* load_lua(): each level file load re-runs nhlib.lua's align shuffle */
+    /* load_lua(): each level file load re-runs nhlib.lua's align shuffle.
+       dat/nhlib.lua:24 keeps the result in the global `align`, which the
+       quest locate levels read (align[1..3]); published on game for them. */
     {
         const themedAlign = ['law', 'neutral', 'chaos'];
         for (let i = themedAlign.length; i > 1; i--) {
             const j = rn2(i);
             [themedAlign[i - 1], themedAlign[j]] = [themedAlign[j], themedAlign[i - 1]];
         }
+        game.nhlib_align = themedAlign;
     }
 
     await script();
@@ -2611,8 +2802,10 @@ export async function load_special(name) {
     link_doors_rooms();
     remove_boundary_syms();
 
+    /* src/sp_lev.c:6468 — TODO in C too: "ensure_way_out() needs
+       rewrite", but it runs as-is for levels with the inaccessibles flag */
     if (game.coder?.check_inaccessibles)
-        note_unported('load_special:ensure_way_out');
+        ensure_way_out();
 
     map_cleanup();
 
@@ -2628,16 +2821,20 @@ export async function load_special(name) {
     if (mklev_fns.count_level_features)
         mklev_fns.count_level_features();
 
+    /* sp_lev.c:6046 — the "solidify" level flag */
     if (game.coder?.solidify)
-        note_unported('load_special:solidify');
+        solidify_map();
 
     {
         const { fixup_special } = await import('./mkmaze.js');
         fixup_special();
     }
 
-    if (game.coder?.premapped)
-        note_unported('load_special:premap_detect');
+    /* sp_lev.c:6054 — the "premapped" level flag (sokoban) */
+    if (game.coder?.premapped) {
+        const { premap_detect } = await import('./detect.js');
+        premap_detect();
+    }
 
     game.coder = null;
     return true;
@@ -2646,7 +2843,7 @@ export async function load_special(name) {
 /* ==== the map-based special-level verbs the castle needs ==== */
 
 import { W_NONDIGGABLE, W_NONPASSWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
-         DB_NORTH, DB_SOUTH, DB_WEST, DB_EAST, DB_MOAT,
+         DB_NORTH, DB_SOUTH, DB_WEST, DB_EAST, DB_MOAT, DB_LAVA,
          IS_DOOR as C_IS_DOOR, IS_WALL as C_IS_WALL,
          IS_TREE } from './const.js';
 const C_STONE = STONE, C_HWALL = HWALL, C_ROOM = ROOM, C_CORR = CORR,
@@ -2678,6 +2875,38 @@ function lvlfill_solid(filling, lit) {
             loc.typ = filling; loc.lit = !!lit;
             loc.flags = 0; loc.horizontal = false;
             loc.roomno = 0; loc.edge = 0;
+        }
+}
+
+// src/sp_lev.c:391 lvlfill_swamp() — "relaxed blockwise maze" (Jamis Buck):
+// solid bg fill, then every other cell becomes fg, spending one rn2(3) for
+// each 2x2 block whose other three squares are still bg.
+function lvlfill_swamp(fg, bg, lit) {
+    lvlfill_solid(bg, lit);
+
+    const setl = (x, y) => {              /* set_levltyp_lit() */
+        const loc = game.level.at(x, y);
+        if (loc) { loc.typ = fg; loc.lit = !!lit; }
+    };
+    for (let x = 2; x <= Math.min(x_maze_max, COLNO - 2); x += 2)
+        for (let y = 0; y <= Math.min(y_maze_max, ROWNO - 2); y += 2) {
+            let c = 0;
+
+            setl(x, y);
+            if (game.level.at(x + 1, y).typ === bg)
+                ++c;
+            if (game.level.at(x, y + 1).typ === bg)
+                ++c;
+            if (game.level.at(x + 1, y + 1).typ === bg)
+                ++c;
+            if (c === 3) {
+                switch (rn2(3)) {
+                case 0: setl(x + 1, y); break;
+                case 1: setl(x, y + 1); break;
+                case 2: setl(x + 1, y + 1); break;
+                default: break;
+                }
+            }
         }
 }
 
@@ -2745,8 +2974,14 @@ function splev_initlev(linit) {
         linit.icedpools = !!game.splev_icedpools;
         mkmap(linit);
         break;
+    case 'swamp':
+        /* src/sp_lev.c:3012 LVLINIT_SWAMP */
+        if (linit.lit === BOOL_RANDOM)
+            linit.lit = rn2(2);
+        lvlfill_swamp(linit.fg, linit.bg, linit.lit);
+        break;
     default:
-        /* rogue, swamp styles have no ported caller yet */
+        /* the rogue style has no ported caller yet */
         note_unported(`splev_initlev:${linit.init_style}`);
         break;
     }
@@ -2827,6 +3062,8 @@ export function lspo_map_full(mapstr, contents) {
         if (ystart < 0 || ystart + hei > 21) ystart = 0;
     }
 
+    /* sp_lev.c:6183 — the selection of stamped squares the C returns */
+    const mapsel = selection_new();
     for (let y = ystart; y < Math.min(21, ystart + hei); y++)
         for (let x = xstart; x < Math.min(80, xstart + wid); x++) {
             const ch = lines[y - ystart][x - xstart] ?? ' ';
@@ -2838,13 +3075,21 @@ export function lspo_map_full(mapstr, contents) {
             loc.ladder = 0; loc.drawbridgemask = 0; loc.altarmask = 0;
             loc.horizontal = false; loc.roomno = 0; loc.edge = 0;
             SpLev_Map_set(x, y);
+            selection_setpoint(x, y, mapsel, 1);
             sel_set_ter(x, y, mptyp);
         }
 
     game.xstart = xstart; game.ystart = ystart;
     game.xsize = wid; game.ysize = hei;
 
-    if (contents) contents({ width: wid, height: hei });
+    if (contents) {
+        contents({ width: wid, height: hei });
+        /* sp_lev.c:6310 — only a map WITH a contents closure resets the
+           frame; without one the later script coords stay map-relative */
+        reset_xystart_size();
+    }
+    /* sp_lev.c:6317 — return selection where map locations were put */
+    return mapsel;
 }
 
 // src/sp_lev.c:5405 lspo_teleport_region() / :5449 lspo_levregion() share
@@ -2913,8 +3158,15 @@ export function lspo_drawbridge(opts) {
     else if (dir === DB_WEST) x2--;
     else x2++;
 
+    /* src/dbridge.c:394 create_drawbridge() — both squares take horizontal;
+       the wall square of a raised bridge is non-diggable; a span over lava
+       records DB_LAVA in the mask (DB_MOAT is 0). */
     const span = game.level.at(x, y), gate = game.level.at(x2, y2);
     if (!span || !gate) return;
+    const horiz = (dir === DB_NORTH || dir === DB_SOUTH);
+    const lava = span.typ === LAVAPOOL;   /* assume initialized map */
+    if (!C_IS_WALL(gate.typ))
+        return;                           /* create_drawbridge() FALSE */
     if (db_open) {
         span.typ = DRAWBRIDGE_DOWN;
         gate.typ = DOOR;
@@ -2922,9 +3174,12 @@ export function lspo_drawbridge(opts) {
     } else {
         span.typ = DRAWBRIDGE_UP;
         gate.typ = DBWALL;
-        gate.horizontal = (dir === DB_NORTH || dir === DB_SOUTH);
+        /* Drawbridges are non-diggable. */
+        gate.wall_info = W_NONDIGGABLE;
     }
-    span.drawbridgemask = (dir | (db_open ? 0 : 0)) | DB_MOAT;
+    span.horizontal = !horiz;
+    gate.horizontal = horiz;
+    span.drawbridgemask = dir | (lava ? DB_LAVA : DB_MOAT);
     SpLev_Map_set(x, y);
 }
 
@@ -2932,7 +3187,23 @@ export function lspo_drawbridge(opts) {
 export function lspo_mazewalk(mx, my, dirname) {
     const mwdirs2i = { north: W_NORTH, south: W_SOUTH,
                        east: W_EAST, west: W_WEST };
-    let ftyp = game.level.flags?.corrmaze ? C_CORR : C_ROOM;
+    /* sp_lev.c:3013 — ftyp starts as ROOM in BOTH forms; the corrmaze
+       fallback only fires when an explicit typ resolves below 1 (stone),
+       so even a corrmaze level's mazewalk carves ROOM squares */
+    let ftyp = C_ROOM;
+    let fstocked = 1;
+    /* table form: des.mazewalk({ x=N, y=N, dir=..., stocked=BOOL }) */
+    if (mx && typeof mx === 'object') {
+        const opts = mx;
+        my = opts.y ?? (Array.isArray(opts.coord) ? opts.coord[1] : -1);
+        dirname = opts.dir ?? 'random';
+        if (opts.typ !== undefined)
+            ftyp = CHAR2TYP[opts.typ] ?? C_ROOM;
+        fstocked = (opts.stocked === undefined) ? 1 : (opts.stocked ? 1 : 0);
+        mx = opts.x ?? (Array.isArray(opts.coord) ? opts.coord[0] : -1);
+    }
+    if (ftyp < 1)
+        ftyp = game.level.flags?.corrmaze ? C_CORR : C_ROOM;
     let dir = mwdirs2i[dirname];
     let x = mx + game.xstart, y = my + game.ystart;
 
@@ -2965,7 +3236,9 @@ export function lspo_mazewalk(mx, my, dirname) {
     }
 
     walkfrom_fn(x, y, ftyp);
-    fill_empty_maze();
+    /* sp_lev.c:3095 — `stocked = false` skips the maze filler entirely */
+    if (fstocked)
+        fill_empty_maze();
 }
 
 /* var, not let: wired from mklev.js's top level (see the add_room_fn note). */
@@ -3153,10 +3426,22 @@ export function lspo_region_full(opts) {
     }
 
     /* region({ region={x1,y1,x2,y2}, lit=1, type=..., filled=N }) */
-    const [rx1, ry1, rx2, ry2] = opts.region;
+    /* get_table_coords_or_region(): region={...} or x1/y1/x2/y2 fields */
+    const [rx1, ry1, rx2, ry2] = opts.region
+        ?? [opts.x1, opts.y1, opts.x2, opts.y2];
+    /* src/sp_lev.c:3960 room_types[] — the full name-to-rtype table */
     const rtypeMap = { ordinary: 0, throne: COURT, barracks: BARRACKS,
                        swamp: SWAMP, court: COURT, morgue: MORGUE,
-                       beehive: BEEHIVE, zoo: ZOO, temple: TEMPLE };
+                       beehive: BEEHIVE, zoo: ZOO, temple: TEMPLE,
+                       themed: THEMEROOM, vault: VAULT, delphi: DELPHI,
+                       anthole: ANTHOLE, cocknest: COCKNEST,
+                       leprehall: LEPREHALL, shop: SHOPBASE,
+                       'armor shop': ARMORSHOP, 'scroll shop': SCROLLSHOP,
+                       'potion shop': POTIONSHOP, 'weapon shop': WEAPONSHOP,
+                       'food shop': FOODSHOP, 'ring shop': RINGSHOP,
+                       'wand shop': WANDSHOP, 'tool shop': TOOLSHOP,
+                       'book shop': BOOKSHOP, 'health food shop': FODDERSHOP,
+                       'candle shop': CANDLESHOP };
     const rtype = rtypeMap[opts.type ?? 'ordinary'] ?? 0;
     const needfill = opts.filled ?? 0;
     let rlit = opts.lit ?? -1;
@@ -3165,8 +3450,10 @@ export function lspo_region_full(opts) {
     const dx1 = rx1 + game.xstart, dy1 = ry1 + game.ystart;
     const dx2 = rx2 + game.xstart, dy2 = ry2 + game.ystart;
 
-    /* room_not_needed shortcut: a plain lit rectangle */
-    if (rtype === 0) {
+    /* src/sp_lev.c:5652 — room_not_needed: a plain rectangle only needs its
+       lighting set, but special rooms, irregular regions, and arrival rooms
+       all get a real room record */
+    if (rtype === 0 && !opts.irregular && !opts.arrival_room) {
         /* light_region() */
         let lowx = dx1, hix = dx2, lowy = dy1, hiy = dy2;
         if (rlit) {
@@ -3203,10 +3490,23 @@ export function lspo_region_full(opts) {
     } else {
         troom = mklev_fns?.add_room_return?.(dx1, dy1, dx2, dy2,
                                              !!rlit, rtype, true);
+        /* src/sp_lev.c:5702 — the rectangular arm topologizes to paint
+           roomno; the irregular arm's flood fill already did */
+        if (troom)
+            mklev_fns?.topologize?.(troom);
     }
     if (troom) {
         troom.needfill = needfill;
+        /* src/sp_lev.c:5674 — needjoining defaults TRUE */
+        troom.needjoining = opts.joined ?? true;
         game.level.flags.is_maze_lev = true;
+        /* src/sp_lev.c:5697 — the room goes on the coder stack while its
+           contents closure runs, exactly like lspo_room */
+        if (opts.contents) {
+            spo_push_room(troom);
+            opts.contents(mkroom_table(troom));
+            spo_endroom();
+        }
         /* src/sp_lev.c:5710 — a region's room record collects the doors
            bordering it; fill_zoo's irregular arm skips squares within one
            step of svd.doors[fdoor], so an unlinked room fills too many. */
@@ -3325,7 +3625,8 @@ export function selection_area_obj(x1, y1, x2, y2) {
 /* ==== the selection primitives the big rooms and towers need ==== */
 
 import { selection_do_line, selection_do_grow,
-         selection_recalc_bounds, match_maptyps } from './selvar.js';
+         selection_recalc_bounds, match_maptyps,
+         selection_filter_mapchar } from './selvar.js';
 import { IS_LAVA, SET_LIT_NOCHANGE, SET_LIT_RANDOM } from './const.js';
 
 // src/sp_lev.c:4578 random_wdir() — one rn2(4). Only reached by
@@ -3467,6 +3768,65 @@ export function l_selection_grow(sel, dirname) {
     return ret;
 }
 
+// src/nhlsel.c:836 l_selection_sub() — the Lua `-` operator: keep the
+// points of A that are not in B ((a ^ b) & a), bounds recalced. No draws.
+export function l_selection_sub(sela, selb) {
+    const selr = selection_new();
+    const recta = { lx: 0, ly: 0, hx: 0, hy: 0 };
+    const rectb = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    selection_getbounds(sela, recta);
+    selection_getbounds(selb, rectb);
+    /* src/rect.c:134 rect_bounds() — the union of the two rects */
+    const lx = Math.min(recta.lx, rectb.lx),
+          ly = Math.min(recta.ly, rectb.ly),
+          hx = Math.max(recta.hx, rectb.hx),
+          hy = Math.max(recta.hy, rectb.hy);
+
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++) {
+            const a_pt = selection_getpoint(x, y, sela);
+            const b_pt = selection_getpoint(x, y, selb);
+            selection_setpoint(x, y, selr, (a_pt ^ b_pt) & a_pt);
+        }
+    selection_recalc_bounds(selr);
+    return selr;
+}
+
+// src/nhlsel.c:650 l_selection_filter_mapchar() — sel:filter_mapchar(chr):
+// the map CHARACTER resolves through splev_chr2typ, and the lit argument
+// defaults to -2 (keep every match, no draw; -1 would draw per match).
+export function l_selection_filter_mapchar(sel, mapchr, lit) {
+    return selection_filter_mapchar(sel, splev_chr2typ(mapchr), lit ?? -2);
+}
+
+// src/nhlsel.c:260 l_selection_not() — selection.negate(): with no
+// argument, a fresh selection with EVERY point set; with one, a negated
+// clone. No draws.
+export function l_selection_negate(sel) {
+    if (sel === undefined) {
+        const ret = selection_new();
+        selection_clear(ret, 1);
+        return ret;
+    }
+    const ret = selection_clone(sel);
+    selection_not(ret);
+    return ret;
+}
+
+// src/nhlsel.c:159 l_selection_setpoint() — sel:set()/selection.set(sel):
+// with no coordinates the point is RANDOM via get_location_coord(ANY_LOC),
+// which draws. Mutates and returns the passed selection, as the C does.
+export function l_selection_set(sel, x, y, val) {
+    const crd = (x === undefined || x === -1) && (y === undefined || y === -1)
+                ? SP_COORD_PACK_RANDOM(0)
+                : SP_COORD_PACK(x, y);
+    const r = get_location_coord(-1, -1, ANY_LOC,
+                                 game.coder?.croom ?? null, crd);
+    selection_setpoint(r.x, r.y, sel, val ?? 1);
+    return sel;
+}
+
 // src/nhlsel.c:681 l_selection_match() — selection.match(pattern): every
 // map square where the pattern overlay matches. The C loop runs y to
 // sel->hei INCLUSIVE and x from 1; the out-of-range writes fall off the
@@ -3566,4 +3926,185 @@ export function lspo_map_coord(opts) {
         contents({ width: game.xsize, height: game.ysize });
         reset_xystart_size();
     }
+}
+
+// src/sp_lev.c:4480 lspo_gold() — des.gold({ amount=N, x=X, y=Y }). A
+// missing coordinate goes random through get_location_coord (DRY), and a
+// missing amount draws rnd(200).
+export function lspo_gold(opts) {
+    create_des_coder();
+    let amount = opts?.amount ?? -1;
+    let x = -1, y = -1;
+    if (opts?.coord) {
+        x = Array.isArray(opts.coord) ? opts.coord[0] : opts.coord.x;
+        y = Array.isArray(opts.coord) ? opts.coord[1] : opts.coord.y;
+    } else if (opts?.x !== undefined || opts?.y !== undefined) {
+        x = opts.x; y = opts.y;
+    }
+    const gcoord = (x === -1 && y === -1) ? SP_COORD_PACK_RANDOM(0)
+                                          : SP_COORD_PACK(x, y);
+    const c = get_location_coord(-1, -1, DRY, game.coder?.croom ?? null,
+                                 gcoord);
+    if (amount < 0)
+        amount = rnd(200);
+    mkgold(amount, c.x, c.y);
+}
+
+// src/nhlsel.c:159 l_selection_setpoint() — sel:set([x, y]): the coordinate
+// runs through get_location_coord (map frame / current room); with no
+// coordinate the location is RANDOM, which draws. Mutates sel in place like
+// the C (the Lua-visible copy semantics don't matter to the level scripts).
+export function l_selection_setpoint(sel, x, y, val) {
+    const crd = (x === undefined || (x === -1 && y === -1))
+                ? SP_COORD_PACK_RANDOM(0) : SP_COORD_PACK(x, y);
+    const c = get_location_coord(-1, -1, ANY_LOC, game.coder?.croom ?? null,
+                                 crd);
+    selection_setpoint(c.x, c.y, sel, val === undefined ? 1 : val);
+    return sel;
+}
+
+// src/sp_lev.c:4600 floodfillchk_match_accessible() — the membership test
+// ensure_way_out()'s floodfills run on.
+function floodfillchk_match_accessible(x, y) {
+    const typ = game.level.at(x, y)?.typ;
+    return ACCESSIBLE(typ) || typ === SDOOR || typ === SCORR;
+}
+
+// include/trap.h:114-117 — trap-kind tests ensure_way_out needs.
+const eow_is_hole = (ttyp) => ttyp === HOLE || ttyp === TRAPDOOR;
+const eow_undestroyable = (ttyp) =>
+    ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+
+// src/sp_lev.c:4834 generate_way_out_method() — connect one inaccessible
+// pocket: a secret door through a one-thick wall, else a hole/trapdoor
+// (rn2(2) each try), else one of six escape items (ROLL_FROM = rn2(6)).
+// selection_rndcoord (selvar.js) hands back RELATIVE coords, so each pick
+// goes through cvt_to_abscoord to recover the C's raw map coordinates.
+function generate_way_out_method(nx, ny, ov) {
+    const escapeitems = [ONAMES.PICK_AXE, ONAMES.DWARVISH_MATTOCK,
+                         ONAMES.WAN_DIGGING, ONAMES.WAN_TELEPORTATION,
+                         ONAMES.SCR_TELEPORTATION, ONAMES.RIN_TELEPORTATION];
+    const ov2 = selection_new();
+    let ov3;
+
+    selection_floodfill(ov2, nx, ny, true);
+    ov3 = selection_clone(ov2);
+
+    const rndc = (sel, removeit) => {
+        const c = selection_rndcoord(sel, removeit ? 1 : 0);
+        if (c.x === -1 && c.y === -1)
+            return null;
+        cvt_to_abscoord(c);
+        return c;
+    };
+    const wallAt = (x, y) => {
+        const loc = isok(x, y) ? game.level.at(x, y) : null;
+        return loc && C_IS_WALL(loc.typ);
+    };
+    const accAt = (x, y) => {
+        const loc = isok(x, y) ? game.level.at(x, y) : null;
+        return loc && ACCESSIBLE(loc.typ);
+    };
+
+    /* try to make a secret door */
+    let c;
+    while ((c = rndc(ov3, true)) !== null) {
+        const { x, y } = c;
+        if (isok(x + 1, y) && !selection_getpoint(x + 1, y, ov)
+            && wallAt(x + 1, y)
+            && isok(x + 2, y) && selection_getpoint(x + 2, y, ov)
+            && accAt(x + 2, y)) {
+            game.level.at(x + 1, y).typ = SDOOR;
+            return true;
+        }
+        if (isok(x - 1, y) && !selection_getpoint(x - 1, y, ov)
+            && wallAt(x - 1, y)
+            && isok(x - 2, y) && selection_getpoint(x - 2, y, ov)
+            && accAt(x - 2, y)) {
+            game.level.at(x - 1, y).typ = SDOOR;
+            return true;
+        }
+        if (isok(x, y + 1) && !selection_getpoint(x, y + 1, ov)
+            && wallAt(x, y + 1)
+            && isok(x, y + 2) && selection_getpoint(x, y + 2, ov)
+            && accAt(x, y + 2)) {
+            game.level.at(x, y + 1).typ = SDOOR;
+            return true;
+        }
+        if (isok(x, y - 1) && !selection_getpoint(x, y - 1, ov)
+            && wallAt(x, y - 1)
+            && isok(x, y - 2) && selection_getpoint(x, y - 2, ov)
+            && accAt(x, y - 2)) {
+            game.level.at(x, y - 1).typ = SDOOR;
+            return true;
+        }
+    }
+
+    /* try to make a hole or a trapdoor */
+    if (Can_fall_thru(game.u.uz)) {
+        ov3 = selection_clone(ov2);
+        while ((c = rndc(ov3, true)) !== null) {
+            if (mklev_fns.maketrap(c.x, c.y,
+                                   rn2(2) ? HOLE : TRAPDOOR))
+                return true;
+        }
+    }
+
+    /* generate one of the escape items */
+    if ((c = rndc(ov2, false)) !== null) {
+        mksobj_at(escapeitems[rn2(escapeitems.length)], c.x, c.y,
+                  true, false);
+        return true;
+    }
+
+    return false;
+}
+
+// src/sp_lev.c:4906 ensure_way_out() — floodfill accessibility from every
+// stair on this dungeon and every undestroyable trap or hole, then keep
+// patching pockets until every ACCESSIBLE square is reached. Draws only
+// when a pocket exists.
+export function ensure_way_out() {
+    const ov = selection_new();
+
+    set_selection_floodfillchk(floodfillchk_match_accessible);
+
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        if (stway.tolev.dnum === game.u.uz.dnum)
+            selection_floodfill(ov, stway.sx, stway.sy, true);
+    }
+
+    for (const ttmp of game.level.traps || []) {
+        if ((eow_undestroyable(ttmp.ttyp) || eow_is_hole(ttmp.ttyp))
+            && !selection_getpoint(ttmp.tx, ttmp.ty, ov))
+            selection_floodfill(ov, ttmp.tx, ttmp.ty, true);
+    }
+
+    let ret;
+    do {
+        ret = true;
+        outhere:
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++)
+                if (ACCESSIBLE(game.level.at(x, y)?.typ)
+                    && !selection_getpoint(x, y, ov)) {
+                    if (generate_way_out_method(x, y, ov))
+                        selection_floodfill(ov, x, y, true);
+                    ret = false;
+                    break outhere;
+                }
+    } while (!ret);
+}
+
+// src/sp_lev.c:2851 solidify_map() — every stone wall square the level
+// script did not stamp becomes both nondiggable and nonpasswall, sealing
+// the map against outside tunneling. No draws.
+export function solidify_map() {
+    for (let x = 0; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level.at(x, y);
+            if (loc && IS_STWALL(loc.typ) && !SpLev_Map_get(x, y))
+                loc.wall_info = (loc.wall_info | 0)
+                                | (W_NONDIGGABLE | W_NONPASSWALL);
+        }
 }

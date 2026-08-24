@@ -32,12 +32,14 @@ import { rn1, rn2, rnd } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster, place_monster, goodpos } from './makemon.js';
 import { enexto_core } from './teleport.js';
-import { GP_CHECKSCARY } from './const.js';
+import { GP_CHECKSCARY, STRAT_WAITFORU, BOLT_LIM, NC_SHOW_MSG, ismnum,
+         G_GENOD } from './const.js';
 import { G_UNIQ } from './const.js';
 import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG,
          M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL,
          XKILL_NOMSG, XKILL_NOCORPSE } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS, MSOUND } from './monst_data.js';
+import { def_monsyms } from './drawing_data.js';
 
 import { has_ceiling } from './dungeon.js';
 import { in_rooms } from './hack.js';
@@ -61,9 +63,9 @@ import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { You, You_feel } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { touch_petrifies, acidic, mon_hates_silver, could_reach_item } from './dog.js';
-import { is_rider, set_mimic_sym, hideunder } from './makemon.js';
+import { is_rider, set_mimic_sym, hideunder, is_male, is_female } from './makemon.js';
 import { mpickobj } from './steal.js';
-import { nonliving, is_neuter } from './mondata.js';
+import { nonliving, is_neuter, is_animal, is_mplayer, has_head } from './mondata.js';
 import { mkcorpstat } from './mklev.js';
 import { CORPSTAT_NONE, CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, ACCESSIBLE } from './const.js';
 import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
@@ -136,7 +138,7 @@ async function m_calcdistress(mtmp) {
 
     /* possibly polymorph shapechangers and lycanthropes */
     if (mtmp.cham != null && mtmp.cham >= 0)
-        note_unported_mon('m_calcdistress:decide_to_shapeshift');
+        await decide_to_shapeshift(mtmp);
     {
         const { were_change } = await import('./were.js');
         await were_change(mtmp);
@@ -1346,6 +1348,16 @@ export async function xkilled(mtmp, xkill_flags) {
 
     mtmp.mhp = 0; /* caller will usually have already done this */
 
+    /* src/mon.c:3499 — KMH, conduct: the first kill is chronicled */
+    if (!(xkill_flags & 0x4 /* XKILL_NOCONDUCT */)) {
+        game.u.uconduct ||= {};
+        if (!game.u.uconduct.killer) {
+            const { livelog_add } = await import('./pline.js');
+            livelog_add('killed for the first time');
+        }
+        game.u.uconduct.killer = (game.u.uconduct.killer | 0) + 1;
+    }
+
     if (engulfing_u(mtmp))
         note_unported_mon('xkilled:wasinside');
 
@@ -1668,6 +1680,13 @@ export async function mondead(mdef) {
     const mx = mdef.mx, my = mdef.my;
 
     mdef.mhp = 0;
+    /* src/mon.c:3134 — mvitals[].died doubles as the total-dead count and
+       the experience factor; #vanquished reads it */
+    {
+        const mv = (game.mvitals ||= [])[mdef.mnum] ||= {};
+        if ((mv.died | 0) < 255)
+            mv.died = (mv.died | 0) + 1;
+    }
     remove_monster(mx, my);
     const idx = (game.level?.monsters || []).indexOf(mdef);
     if (idx >= 0)
@@ -1743,22 +1762,104 @@ export function mnexto(mtmp, rlocflags) {
 
 /* ==== shapechanger creation (src/mon.c) ==== */
 
-/* animal_list for pick_animal(): every is_animal permonst, built once */
+/* animal_list for pick_animal(): every is_animal permonst, built once.
+   src/mon.c:4837 — LOW_PM to SPECIAL_PM (330), is_animal is M1_ANIMAL
+   (0x40000); this list held 62 entries instead of C's 98 because it used a
+   wrong bit and a wrong bound, so every chameleon form re-roll drew a
+   different modulus. */
 let _animal_list = null;
 function mon_animal_list() {
     _animal_list = [];
-    for (let i = 0; i < SPECIAL_PM_MON; i++)
-        if (game.mons[i] && (game.mons[i].mflags1 & M1_ANIMAL_MON))
+    for (let i = 0; i < PMNAMES.SPECIAL_PM; i++)
+        if (game.mons[i] && is_animal(game.mons[i]))
             _animal_list.push(i);
 }
-const SPECIAL_PM_MON = 381;   /* PM_LONG_WORM_TAIL */
-const M1_ANIMAL_MON = 0x10000;  /* include/monflag.h M1_ANIMAL */
+const SPECIAL_PM_MON = PMNAMES?.SPECIAL_PM ?? 330;
 
 // src/mon.c:4855 pick_animal()
 function pick_animal() {
     if (!_animal_list)
         mon_animal_list();
     return _animal_list[rn2(_animal_list.length)];
+}
+
+// src/mon.c:4872 decide_to_shapeshift() — once per turn from m_calcdistress:
+// a regular shapeshifter re-rolls its form when mspec_used is spent; a
+// vampshifter manages the vampire/bat/fog/wolf cycle by health.
+export async function decide_to_shapeshift(mon) {
+    let ptr = null;
+    let mndx;
+    const was_female = mon.female;
+    let dochng = false;
+
+    if (!is_vampshifter_mon(mon)) {
+        /* regular shapeshifter; 'ptr' is Null */
+        if (!mon.mspec_used && !rn2(6)) {
+            dochng = true;
+            mon.mspec_used = 3 + rn2(10);
+        }
+    } else if (!(mon.mstrategy & STRAT_WAITFORU)) {
+        /* The vampire has to be in good health (mhp) to maintain
+         * its shifted form.
+         *
+         * If we're shifted and getting low on hp, maybe shift back, or
+         * if we're a fog cloud at full hp, maybe pick a different shape.
+         * If we're not already shifted and in good health, maybe shift.
+         */
+        if (game.mons[mon.mnum].mlet !== MONSYMS.S_VAMPIRE) {
+            if ((mon.mhp <= Math.trunc((mon.mhpmax + 5) / 6)) && rn2(4)
+                && ismnum(mon.cham)) {
+                ptr = game.mons[mon.cham];
+                dochng = true;
+            } else if (mon.mnum === PMNAMES.PM_FOG_CLOUD
+                       && mon.mhp === mon.mhpmax && !rn2(4)
+                       && (!canseemon(mon)
+                           || mdistu(mon) > BOLT_LIM * BOLT_LIM)) {
+                /* if a fog cloud, maybe change to wolf or vampire bat;
+                   those are more likely to take damage--at least when
+                   tame--and then switch back to vampire; they'll also
+                   switch to fog cloud if they encounter a closed door */
+                mndx = pickvampshape(mon);
+                if (ismnum(mndx)) {
+                    ptr = game.mons[mndx];
+                    dochng = (mndx !== mon.mnum);
+                }
+            }
+            const { closed_door } = await import('./cmd.js');
+            if (dochng && amorphous(game.mons[mon.mnum])
+                && closed_door(mon.mx, mon.my)) {
+                /* mon.c:4917 — an amorphous form re-solidifying inside a
+                   closed doorway is teleported off it first: enexto()'s
+                   collect_coords shuffles draw, then rloc_to(). */
+                const new_xy = { x: 0, y: 0 };
+                const { enexto } = await import('./teleport.js');
+                if (enexto(new_xy, mon.mx, mon.my, ptr)) {
+                    /* rloc_to(mon, new_xy.x, new_xy.y) */
+                    remove_monster(mon.mx, mon.my);
+                    const oldx = mon.mx, oldy = mon.my;
+                    place_monster(mon, new_xy.x, new_xy.y);
+                    newsym(oldx, oldy);
+                    newsym(mon.mx, mon.my);
+                }
+            }
+        } else {
+            if (mon.mhp >= Math.trunc(9 * mon.mhpmax / 10) && !rn2(6)
+                && (!canseemon(mon)
+                    || mdistu(mon) > BOLT_LIM * BOLT_LIM))
+                dochng = true; /* 'ptr' stays Null */
+        }
+    }
+    if (dochng) {
+        if (newcham(mon, ptr, NC_SHOW_MSG)) {
+            /* for vampshift, override the 10% chance for sex change
+               (by forcing original gender in case that occurred) */
+            if (is_vampshifter_mon(mon)) {
+                ptr = game.mons[mon.mnum];
+                if (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr))
+                    mon.female = was_female;
+            }
+        }
+    }
 }
 
 // src/mon.c:4941 pickvampshape()
@@ -1841,13 +1942,71 @@ function select_newcham_form(mon) {
         break;
     }
     /* the NON_PM dragon-armor arm needs worn dragon scales */
+
+    /* src/mon.c:5213 — "if no form was specified above, pick one at random
+       now". The modulus is the whole non-special monster table; the loop
+       repeats only while the rogue-level uppercase clause holds, so off
+       that level a single draw stands even when validspecmon rejects it
+       (newcham's own accept loop re-rolls). */
     if (mndx === -1) {
-        /* "if no form was specified above, pick one at random now" —
-           rndmonst via the makemon wire */
-        const pm = mon_fns_cham?.rndmonst?.();
-        mndx = pm ? game.mons.indexOf(pm) : -1;
+        let tryct = 50;
+        do {
+            mndx = rn1(SPECIAL_PM_MON - 0 /* LOW_PM */, 0);
+        } while (--tryct > 0 && !validspecmon(mon, mndx)
+                 && (tryct > 40 && Is_rogue_level(game.u.uz)
+                     && !/[A-Z]/.test(def_monsyms[game.mons[mndx].mlet] ?? '')));
     }
     return mndx;
+}
+
+// src/mon.c:5015 isspecmon() — nonshapechangers who warrant special
+// polymorph handling.
+function isspecmon(mon) {
+    return (mon.isshk || mon.ispriest || mon.isgd
+            || mon.m_id === game.quest_status?.leader_m_id);
+}
+
+// src/mon.c:5024 validspecmon()
+function validspecmon(mon, mndx) {
+    if (mndx === NON_PM)
+        return true; /* caller wants random */
+
+    if (!accept_newcham_form(mon, mndx))
+        return false; /* geno'd or !polyok */
+
+    if (isspecmon(mon)) {
+        const ptr = game.mons[mndx];
+
+        /* reject notake because object manipulation is expected
+           and nohead because speech capability is expected */
+        if (notake(ptr) || !has_head(ptr))
+            return false;
+    }
+    return true; /* potential new form is ok */
+}
+
+// src/mon.c:5228 accept_newcham_form() — mdat or null.
+function accept_newcham_form(mon, mndx) {
+    if (mndx === NON_PM || mndx < 0)
+        return null;
+    const mdat = game.mons[mndx];
+    if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) !== 0)
+        return null;
+    if (mndx === PMNAMES.PM_ORC || mndx === PMNAMES.PM_GIANT
+        || mndx === PMNAMES.PM_ELF || mndx === PMNAMES.PM_HUMAN)
+        return null; /* is_placeholder */
+    /* select_newcham_form() might deliberately pick a player
+       character type (random selection never does) which
+       polyok() rejects, so we need a special case here */
+    if (is_mplayer(mdat))
+        return mdat;
+    /* shapeshifters are rejected by polyok() but allow a shapeshifter
+       to take on its 'natural' form */
+    if ((mdat.mflags2 & MFLAGS.M2_SHAPESHIFTER) !== 0
+        && (mon.cham ?? NON_PM) >= 0 && mndx === mon.cham)
+        return mdat;
+    /* polyok() rules out M2_NOPOLY */
+    return polyok(mdat) ? mdat : null;
 }
 
 // src/mon.c:5255 mgender_from_permonst()
@@ -1880,13 +2039,9 @@ export function newcham(mtmp, mdat, ncflags) {
         let tryct = 20;
         do {
             mndx = select_newcham_form(mtmp);
-            /* accept_newcham_form: genocided or !polyok rejects */
-            if (mndx >= 0
-                && !((game.mvitals?.[mndx]?.mvflags ?? 0) & 0x02)) {
-                mdat = game.mons[mndx];
+            mdat = accept_newcham_form(mtmp, mndx);
+            if (mdat)
                 break;
-            }
-            mdat = null;
         } while (--tryct > 0);
         if (!mdat)
             return 0;

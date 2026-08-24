@@ -99,7 +99,7 @@ export async function doride() {
     const { getdir } = await import('./cmd.js');
 
     if (game.u.usteed) {
-        await dismount_steed(0 /* DISMOUNT_BYCHOICE */);
+        await dismount_steed(DISMOUNT_BYCHOICE);
     } else if (await getdir(null)
                && isok(game.u.ux + game.u.dx, game.u.uy + game.u.dy)) {
         return (await mount_steed(

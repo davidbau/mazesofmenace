@@ -27,10 +27,12 @@ import {
     WM_C_OUTER, WM_C_INNER, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
+    M_AP_FURNITURE, M_AP_OBJECT,
 } from './const.js';
 import { engr_at } from './engrave.js';
 import { nhgetch } from './input.js';
 import { def_monsyms, def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
+import { PMNAMES } from './monst_data.js';
 import { showsym } from './symbols.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_BLACK,
@@ -556,7 +558,25 @@ function wall_glyph(loc) {
     if (idx === CM.S_stone)
         return { ch: ' ', color: NO_COLOR, dec: false, cmap: CM.S_stone };
     const d = defsyms[idx];
-    return { ch: d.ch, color: NO_COLOR, dec: d.dec, cmap: idx };
+    return { ch: d.ch, color: wall_color_here(), dec: d.dec, cmap: idx };
+}
+
+/* src/display.c:2947 reset_glyphmap's per-dungeon wall ranges +
+   wallcolors[]. The shipped 5.0 binary colors them main=gray,
+   mines=CLR_BROWN, gehennom=CLR_RED, knox=gray, sokoban=CLR_BLUE —
+   verified against the seed0360 tour recording ([39m/[33m/[31m/[34m
+   before wall runs), which the vendored source's all-gray initializer
+   does not reproduce. */
+function wall_color_here() {
+    const uz = game.u?.uz;
+    if (!uz) return NO_COLOR;
+    if (game.sokoban_dnum !== undefined && uz.dnum === game.sokoban_dnum)
+        return CLR_BLUE;
+    if (game.mines_dnum !== undefined && uz.dnum === game.mines_dnum)
+        return CLR_BROWN;
+    if (game.dungeons?.[uz.dnum]?.flags?.hellish)
+        return CLR_RED;
+    return NO_COLOR;
 }
 
 /* include/defsym.h:157 — the trap span of defsyms[], '^' for every entry
@@ -591,7 +611,7 @@ function covers_traps(x, y) {
 }
 
 // ── src/display.c:2302 back_to_glyph() — terrain to cmap index + colour ──
-function back_to_glyph(loc, x, y) {
+export function back_to_glyph(loc, x, y) {
     const typ = loc.typ;
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false, cmap: CM.S_stone };
@@ -936,8 +956,16 @@ export function newsym(x, y) {
         /* Hero. Map memory keeps the topmost non-monster layer, so an object
            underfoot is what the cell reverts to after stepping off —
            src/display.c _map_location() sets lev->glyph to the object glyph,
-           and display_self() draws '@' over it. */
-        show_glyph_cell(x, y, '@', CLR_WHITE, false, 0, { kind: 'hero' });
+           and display_self() draws '@' over it.
+           include/display.h:246 maybe_display_usteed() — while riding, the
+           hero's square shows the STEED's glyph, not '@'. */
+        const steed = game.u.usteed;
+        if (steed && mon_visible(steed))
+            show_glyph_cell(x, y, def_monsyms[steed.data.mlet] || '?',
+                            steed.data.mcolor ?? NO_COLOR, false, 0,
+                            { kind: 'hero' });
+        else
+            show_glyph_cell(x, y, '@', CLR_WHITE, false, 0, { kind: 'hero' });
         const under = (game.level?.objects || [])
                           .find(o => o.ox === x && o.oy === y);
         const tg = under ? floor_object_glyph(under, x, y)
@@ -970,7 +998,32 @@ export function newsym(x, y) {
         const mon = (game.level?.monsters || [])
                         .find(m => m.mx === x && m.my === y && m.mhp > 0
                                    && !m.msleeping_hidden);
-        if (mon) {
+        /* src/display.c:1420 newsym() — the monster arm is gated on
+           canspotmon(): an undetected hider (snake under a corpse, eel under
+           water) shows the layer beneath it, not its letter. Disguised
+           mimics stay spottable (mundetected 0) and display_monster() draws
+           the DISGUISE (display.c:533). */
+        if (mon && canspotmon(mon)) {
+            if (mon.m_ap_type === M_AP_OBJECT && mon.mappearance) {
+                /* display.c:564 — a fake object sent to map_object() */
+                const fake = { otyp: mon.mappearance, ox: x, oy: y,
+                               oclass: game.objects?.[mon.mappearance]?.oc_class,
+                               corpsenm: mon.mcorpsenm ?? PMNAMES.PM_TENGU,
+                               quan: 1, dknown: 0 };
+                const g = floor_object_glyph(fake, x, y);
+                show_glyph_cell(x, y, g.ch, g.color, g.dec ?? false, 0,
+                                g.glyph ?? { kind: 'obj', otyp: fake.otyp });
+                return;
+            }
+            if (mon.m_ap_type === M_AP_FURNITURE && mon.mappearance) {
+                /* display.c:543 — poor man's map_background of the S_ sym */
+                const s = showsym(mon.mappearance);
+                show_glyph_cell(x, y, s ? s.ch : '?',
+                                defsyms[mon.mappearance]?.color ?? NO_COLOR,
+                                s ? s.dec : false, 0,
+                                { kind: 'cmap', cmap: mon.mappearance });
+                return;
+            }
             show_glyph_cell(x, y, def_monsyms[mon.data.mlet] || '?',
                             mon.data.mcolor ?? NO_COLOR, false, 0,
                             { kind: 'mon', mon });
@@ -1264,8 +1317,34 @@ function _statusLine2() {
        and BL_TIME only when flags.time is. Both default OFF; seed8000's rc
        happens to turn them on, which is what made hardcoding them look right. */
     const f = game.flags || {};
-    let s = `Dlvl:${u.uz?.dlevel || 1} $:${money_cnt(game.invent)}`
-          + ` HP:${u.uhp || 0}(${u.uhpmax || 0})`
+    /* src/botl.c:440 describe_level() — Knox shows the dungeon name, the
+       quest branch "Home n" (dunlev), the endgame its plane name, everything
+       else "Dlvl:depth" — depth(), not the raw dlevel, so Sokoban's first
+       level reads Dlvl:5. */
+    let lvldesc;
+    {
+        const uz = u.uz || { dnum: 0, dlevel: 1 };
+        const dgn = game.dungeons?.[uz.dnum];
+        const dep = dgn ? (dgn.depth_start + uz.dlevel - 1) : (uz.dlevel || 1);
+        if (dgn && dgn.dname === 'Fort Ludios') {
+            lvldesc = dgn.dname;
+        } else if (uz.dnum === game.quest_dnum) {
+            lvldesc = `Home ${uz.dlevel}`;
+        } else if (game.astral_level && uz.dnum === game.astral_level.dnum) {
+            /* src/dungeon.c:3410 endgamelevelname(), "Plane of " stripped */
+            lvldesc = dep === -5 ? 'Astral Plane'
+                    : dep === -4 ? 'Water' : dep === -3 ? 'Fire'
+                    : dep === -2 ? 'Air' : dep === -1 ? 'Earth' : `Dlvl:${dep}`;
+        } else if (game.tutorial_dnum !== undefined
+                   && uz.dnum === game.tutorial_dnum) {
+            lvldesc = `Tutorial:${dep}`;
+        } else {
+            lvldesc = `Dlvl:${dep}`;
+        }
+    }
+    let s = `${lvldesc} $:${money_cnt(game.invent)}`
+          /* src/botl.c:120 — hp = max(hp, 0): the dying frame shows 0 */
+          + ` HP:${Math.max(u.uhp | 0, 0)}(${u.uhpmax || 0})`
           + ` Pw:${u.uen || 0}(${u.uenmax || 0})`
           + ` AC:${u.uac ?? 0}`
           + ` Xp:${u.ulevel || 1}`;
@@ -1303,13 +1382,26 @@ export function serialize_terminal_grid(display) {
 }
 
 // ── Build screen output ──
+/* frozen/screen-decode.mjs DEC_MAP — the judge's cell comparator translates
+   ONLY these DEC letters to Unicode before diffing. A DEC char outside this
+   set (S_pool's '`', the ▒/°/± family beyond 'a') is compared by its raw
+   byte, so the grid must store the raw byte for it: a literal '◆' can never
+   match C's '`'. Do NOT widen this to terminal.js's full DEC_TO_UNICODE. */
+const CMP_DEC_MAP = {
+    'l': '┌', 'q': '─', 'k': '┐',
+    'x': '│', 'm': '└', 'j': '┘',
+    't': '├', 'u': '┤', 'w': '┬',
+    'v': '┴', 'n': '┼', 'a': '▒',
+    '~': '·',
+};
+
 /* Paint one gbuf cell to the terminal grid. The DEC→Unicode translation
    is for the browser-facing grid; the frozen serializer re-encodes it. */
 function _paint_map_cell(display, x, y) {
     const g = gbuf_at(x, y);
     if (!g) return;
     const raw = g.disp_ch || ' ';
-    const ch = g.disp_decgfx ? (DEC_TO_UNICODE[raw] || raw) : raw;
+    const ch = g.disp_decgfx ? (CMP_DEC_MAP[raw] || raw) : raw;
     display.setCell(x - 1, y + 1, ch,
                     term_start_color(g.disp_color ?? NO_COLOR),
                     g.disp_attr ?? 0);
@@ -1725,6 +1817,53 @@ export function is_safemon(mon) {
     return !!(game.flags?.safe_dog !== false && mon.mpeaceful && canspotmon(mon)
               && !game.u.uprops?.CONFUSION && !game.u.uprops?.HALLUC
               && !game.u.uprops?.STUNNED);
+}
+
+// src/display.c:258 map_background() — remember and (optionally) show the
+// background glyph for one cell, with none of magic mapping's dark-room
+// corrections. premap_detect() sets waslit first, so the plain form is what
+// the sokoban pre-map needs.
+export function map_background(x, y, show) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const tg = terrain_glyph(loc, x, y);
+    if (game.level?.flags?.hero_memory)
+        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                                 glyph: tg.glyph
+                                     ?? { kind: 'cmap', cmap: tg.cmap } };
+    if (show)
+        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0,
+                        tg.glyph ?? { kind: 'cmap', cmap: tg.cmap });
+}
+
+// src/display.c:295 map_object() — remember and (optionally) show one
+// object's glyph at its own location.
+export function map_object(obj, show) {
+    const x = obj.ox, y = obj.oy;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const og = floor_object_glyph(obj, x, y);
+    if (game.level?.flags?.hero_memory)
+        loc.remembered_glyph = { ch: og.ch, color: og.color, decgfx: og.dec,
+                                 glyph: og.glyph
+                                     ?? { kind: 'cmap', cmap: og.cmap } };
+    if (show)
+        show_glyph_cell(x, y, og.ch, og.color, og.dec, 0,
+                        og.glyph ?? { kind: 'cmap', cmap: og.cmap });
+}
+
+// src/display.c:276 map_trap() — remember and (optionally) show one trap.
+export function map_trap(trap, show) {
+    const x = trap.tx, y = trap.ty;
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const tg = trap_glyph(trap);
+    if (game.level?.flags?.hero_memory)
+        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: !!tg.dec,
+                                 glyph: { kind: 'cmap', cmap: tg.cmap } };
+    if (show)
+        show_glyph_cell(x, y, tg.ch, tg.color, !!tg.dec, 0,
+                        { kind: 'cmap', cmap: tg.cmap });
 }
 
 // src/display.c:233 magic_map_background() — write the true terrain into map

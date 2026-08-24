@@ -14,7 +14,8 @@
 // spurious line shifts every row below it and costs the whole frame.
 
 import { game } from './gstate.js';
-import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK } from './const.js';
+import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK,
+         P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE } from './const.js';
 import { makeplural } from './objnam.js';
 import { weapon_descr, weapon_type, skill_name, skill_level_name, P_SKILL, can_advance } from './weapon.js';
 import { empty_handed, is_ammo } from './wield.js';
@@ -28,6 +29,11 @@ import { aligns } from './role_data.js';
 import { A_MAX } from './attrib.js';
 import { rank_of } from './botl.js';
 import { money_cnt } from './invent.js';
+import { costly_spot } from './shk.js';
+import { newuexp } from './exper.js';
+import { type_is_pname } from './mondata.js';
+import { inv_weight } from './attrib.js';
+import { ONAMES } from './objects_data.js';
 import { pline } from './display.js';
 import { Fast, Very_fast } from './attrib.js';
 
@@ -103,8 +109,13 @@ function background_enlightenment() {
     out('Background:');
 
     /* "%s, a level %d %s%s %s" — an(rank), level, gender adj, race adj, role */
+    /* src/insight.c:512 — the gender word only when the role name has no
+       female variant AND the role allows both genders (or the current gender
+       differs from chargen's); a Valkyrie gets neither. */
     let tmpbuf = '';
-    if (!game.urole.name.f)
+    if (!game.urole.name.f
+        && ((game.urole.allow & ROLE_GENDMASK) === (ROLE_MALE | ROLE_FEMALE)
+            || (female ? 1 : 0) !== (game.flags.initgend ?? (female ? 1 : 0))))
         tmpbuf = (female ? 'female' : 'male') + ' ';
     let buf;
     if (rank_titl.toLowerCase() === role_titl.toLowerCase())
@@ -156,7 +167,18 @@ function background_enlightenment() {
     if (game.flags.friday13)
         out(' Bad things can happen on Friday the 13th.');
 
-    you_have(`${u.uexp | 0} experience point${plur(u.uexp | 0)}`);
+    {
+        let buf = `${u.uexp | 0} experience point${plur(u.uexp | 0)}`;
+        /* src/insight.c:702 — wizard mode (or final disclosure) appends the
+           delta to the next level; "to attain" below 18, "for" above */
+        const ulvl = u.ulevel | 0;
+        if (ulvl < 30 && game.wizard) {
+            const nxtlvl = newuexp(ulvl), delta = nxtlvl - (u.uexp | 0);
+            buf += `, ${delta} ${(u.uexp > 0) ? 'more ' : ''}needed ${
+                (ulvl < 18) ? 'to attain' : 'for'} level ${ulvl + 1}`;
+        }
+        you_have(buf);
+    }
 }
 
 // src/insight.c:600 basics_enlightenment()
@@ -189,8 +211,26 @@ function basics_enlightenment() {
     /* C terminates that line here when nothing follows it */
     lines[lines.length - 1] += '.';
 
-    enl_msg('Autopickup ', 'is ', 'was ',
-            game.flags.autopickup ? 'on' : 'off', '');
+    /* src/insight.c:804 — the "on" arm reports scope: shop suspension, the
+       pickup_types symbols (or "all types"), pickup_thrown, exceptions. */
+    let buf;
+    if (game.flags.autopickup) {
+        buf = 'on';
+        if (costly_spot(u.ux, u.uy)) {
+            /* being in a shop inhibits autopickup, even 'pickup_thrown' */
+            buf += ', but temporarily disabled while inside the shop';
+        } else {
+            const ocl = game.flags.pickup_types || '';
+            buf += ` for ${ocl ? `'${ocl}'` : 'all types'}`;
+            if (game.flags.pickup_thrown && ocl)
+                buf += ' plus thrown'; /* show when not 'all types' */
+            if (game.apelist?.length)
+                buf += ', with exceptions';
+        }
+    } else {
+        buf = 'off';
+    }
+    enl_msg('Autopickup ', 'is ', 'was ', buf, '');
 }
 
 // src/insight.c:770 one_characteristic()
@@ -246,11 +286,13 @@ function status_enlightenment() {
     out('Status:');
 
     /* hunger: hu_stat[] is empty for the normal state, and C substitutes
-       "not hungry", which the contraction turns into "aren't hungry" */
-    you_are('not hungry');
+       "not hungry", which the contraction turns into "aren't hungry";
+       wizard mode reveals u.uhunger (insight.c:1208) */
+    you_are('not hungry' + (game.wizard ? ` <${game.u.uhunger}>` : ''));
 
-    /* encumbrance: near_capacity() is UNENCUMBERED with a starting pack */
-    you_are('unencumbered');
+    /* encumbrance: near_capacity() is UNENCUMBERED with a starting pack;
+       wizard mode reveals inv_weight() (insight.c:1245) */
+    you_are('unencumbered' + (game.wizard ? ` <${inv_weight()}>` : ''));
 
     /* src/insight.c:1270 weapon_insight() — the reachable arms: weaponless
        (empty_handed) or wielding a plain weapon described by its skill
@@ -291,7 +333,99 @@ function status_enlightenment() {
                 else
                     you_are(buf);
             } else {
-                note_unported_insight('weapon_insight:twoweap_skill');
+                /* src/insight.c:1334 — the two-weapon comparisons: each of
+                   primary and secondary against the two-weapon skill */
+                const also_ = 'also ';
+                const wtype2 = weapon_type(game.u.uswapwep);
+                const sklvl2 = P_SKILL(wtype2);
+                const hav2 = (sklvl2 !== P_UNSKILLED && sklvl2 !== P_SKILLED);
+                let twoskl = P_SKILL(P_TWO_WEAPON_COMBAT);
+                let twobuf;
+                if (twoskl === P_ISRESTRICTED) {
+                    twoskl = P_UNSKILLED;
+                    twobuf = 'restricted';
+                } else {
+                    twobuf = skill_level_name(P_TWO_WEAPON_COMBAT)
+                                 .toLowerCase();
+                }
+
+                let pfx = '', sfx = '', also = '', also2 = '', also3 = null;
+                if (twoskl < sklvl) {
+                    pfx = `Your skill in ${skill_name(wtype)} `;
+                    sfx = ` limited by being ${twobuf} with two weapons`;
+                    also = also_;
+                } else if (twoskl > sklvl) {
+                    pfx = 'Your two weapon skill ';
+                    sfx = ' limited by '
+                        + ((sklvl > P_ISRESTRICTED)
+                           ? `being ${sklvlbuf}` : 'having no skill')
+                        + ` with ${skill_name(wtype)}`;
+                    also2 = also_;
+                } else {
+                    buf += ' and two weapons';
+                    also3 = also_;
+                }
+                if (pfx)
+                    enl_msg(pfx, 'is', 'was', sfx, '');
+                else if (hav)
+                    you_have(buf);
+                else
+                    you_are(buf);
+
+                /* skip the secondary comparison if identical to primary's */
+                if (wtype2 !== wtype) {
+                    const sknambuf2 = skill_name(wtype2);
+                    const sklvlbuf2 = skill_level_name(wtype2).toLowerCase();
+                    let verb_present = 'is', verb_past = 'was';
+                    pfx = ''; sfx = ''; buf = '';
+                    if (twoskl < sklvl2) {
+                        pfx = `Your skill in ${sknambuf2} `;
+                        sfx = ` ${also}limited by being ${twobuf}`
+                            + ' with two weapons';
+                    } else if (twoskl > sklvl2) {
+                        pfx = 'Your two weapon skill ';
+                        sfx = ` ${also2}limited by `
+                            + ((sklvl2 > P_ISRESTRICTED)
+                               ? `being ${sklvlbuf2}` : 'having no skill')
+                            + ` with ${sknambuf2}`;
+                    } else {
+                        buf = `${sklvlbuf2} ${hav2 ? 'skill with' : 'in'} `
+                            + `${sknambuf2} and two weapons`;
+                        if (also3) {
+                            pfx = 'You also ';
+                            sfx = ` ${buf}`; buf = '';
+                            verb_present = hav2 ? 'have' : 'are';
+                            verb_past = hav2 ? 'had' : 'were';
+                        }
+                    }
+                    if (pfx)
+                        enl_msg(pfx, verb_present, verb_past, sfx, '');
+                    else if (hav2)
+                        you_have(buf);
+                    else
+                        you_are(buf);
+                }
+
+                /* src/insight.c:1436 — the "You can enhance skill(s) with
+                   ..." hint when any of the three is advanceable */
+                const a1 = can_advance(wtype, false);
+                const a2 = (wtype2 !== wtype) ? can_advance(wtype2, false)
+                                              : false;
+                const ab = can_advance(P_TWO_WEAPON_COMBAT, false);
+                if (a1 || a2 || ab) {
+                    const also_wik_ = ' and also with ';
+                    const n = (a1 ? 1 : 0) + (a2 ? 1 : 0) + (ab ? 1 : 0);
+                    const hint = ` skill${n > 1 ? 's' : ''} with `
+                        + `${a1 ? skill_name(wtype) : ''}`
+                        + `${(a1 && a2 && ab) ? ', '
+                             : (a1 && (a2 || ab)) ? also_wik_ : ''}`
+                        + `${a2 ? skill_name(wtype2) : ''}`
+                        + `${(a1 && a2 && ab) ? ', and '
+                             : (a2 && ab) ? also_wik_ : ''}`
+                        + `${ab ? 'two weapons' : ''}`;
+                    enl_msg('You ', 'can enhance', 'could have enhanced',
+                            hint, '');
+                }
             }
         }
     }
@@ -377,12 +511,32 @@ function attributes_enlightenment() {
         if (u.uprops[k] && (u.uprops[k].intrinsic || u.uprops[k].extrinsic))
             note_unported_insight(`attributes:prop:${k}`);
 
+    /* src/insight.c:1524 — Antimagic, with from_what() naming the source in
+       wizard mode; the one source a recorded hero has is the worn cloak */
+    if (game.u.uarmc?.otyp === ONAMES.CLOAK_OF_MAGIC_RESISTANCE)
+        you_are('magic-protected',
+                game.wizard ? ' because of your cloak of magic resistance'
+                            : '');
+
     /* src/insight.c:1799 — the magic cancellation factor from worn armor:
        "warded" / "guarded" / "protected" for mc 1..3 */
     const armpro = magic_negation(null);
     if (armpro > 0) {
         const mc_types = ['', 'warded', 'guarded', 'protected'];
         you_are(mc_types[Math.min(armpro, 3)]);
+    }
+
+    /* src/insight.c:1909 — Luck; the zero line is wizard-mode only */
+    const luck = (game.u.uluck ?? 0) + (game.u.moreluck ?? 0);
+    if (luck) {
+        const ltmp = Math.abs(luck);
+        let lbuf = `${ltmp >= 10 ? 'extremely ' : ltmp >= 5 ? 'very ' : ''}${
+            luck < 0 ? 'un' : ''}lucky`;
+        if (game.wizard)
+            lbuf += ` (${luck})`;
+        you_are(lbuf);
+    } else if (game.wizard) {
+        enl_msg('Your luck ', 'is', 'was', ' zero', '');
     }
 
     if (u.ugangr) {
@@ -485,4 +639,185 @@ export async function ustatusline() {
         note_unported_insight('ustatusline:ustuck');
 
     await pline(`Status of ${game.plname} (${piousness(false, align_str(game.u.ualign?.type ?? 0))}):  Level ${game.u.ulevel}  HP ${game.u.uhp}(${game.u.uhpmax})  AC ${game.u.uac}${info}.`);
+}
+
+
+// src/insight.c:2560 show_gamelog() / :2532 do_gamelog() — the #chronicle
+// window.
+export async function do_gamelog() {
+    if ((game.gamelog || []).length) {
+        const {
+            tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
+            tty_display_nhwindow, tty_next_page, NHW_TEXT,
+        } = await import('./tty/wintty.js');
+        const { nhgetch } = await import('./input.js');
+        const { docrt } = await import('./display.js');
+        const win = tty_create_nhwindow(NHW_TEXT);
+        tty_putstr(win, 0, 'Logged events:');
+        let eventcnt = 0;
+        for (const e of game.gamelog) {
+            if (!eventcnt++)
+                tty_putstr(win, 0, ' Turn');
+            tty_putstr(win, 0, `${String(e.turn).padStart(5)}: ${e.text}`);
+        }
+        await tty_display_nhwindow(win);
+        await nhgetch();
+        while (tty_next_page(win))
+            await nhgetch();
+        tty_destroy_nhwindow(win);
+        await docrt();
+    } else {
+        await pline('No chronicled events.');
+    }
+    return 0; /* ECMD_OK */
+}
+
+
+// src/insight.c:2089 show_conduct() — the #conduct window. The arms whose
+// state no session reaches (blind/deaf/pauper/nudist rolls, wish details)
+// stay silent exactly as C's would with zeroed fields.
+export async function show_conduct() {
+    const {
+        tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
+        tty_display_nhwindow, tty_next_page, NHW_MENU,
+    } = await import('./tty/wintty.js');
+    const { nhgetch } = await import('./input.js');
+    const { docrt } = await import('./display.js');
+    const { xwaitforspace } = await import('./tty/getline.js');
+    const c = game.u.uconduct || {};
+    const win = tty_create_nhwindow(NHW_MENU);
+    const put = (s) => tty_putstr(win, 0, s);
+
+    put('Voluntary challenges:');
+    /* u.uroleplay.reroll is never enabled in a recorded rc */
+    put(' Character rerolling was not enabled.');
+
+    if (!c.food)
+        put(' You have gone without food.');
+    else if (!c.unvegan)
+        put(' You have followed a strict vegan diet.');
+    else if (!c.unvegetarian)
+        put(' You have been vegetarian.');
+
+    if (!c.gnostic)
+        put(' You have been an atheist.');
+
+    if (!c.weaphit)
+        put(' You have never hit with a wielded weapon.');
+    else if (game.wizard)
+        put(` You have hit with a wielded weapon ${c.weaphit} time${
+            c.weaphit === 1 ? '' : 's'}.`);
+    if (!c.killer)
+        put(' You have been a pacifist.');
+
+    if (!c.literate)
+        put(' You have been illiterate.');
+    else if (game.wizard)
+        put(` You have read items or engraved ${c.literate} time${
+            c.literate === 1 ? '' : 's'}.`);
+
+    if (!c.pets)
+        put(' You have never had a pet.');
+
+    /* num_genocides() is always 0 so far */
+    put(' You have never genocided any monsters.');
+
+    if (!c.polypiles)
+        put(' You have never polymorphed an object.');
+    else if (game.wizard)
+        put(` You have polymorphed ${c.polypiles} item${
+            c.polypiles === 1 ? '' : 's'}.`);
+
+    if (!c.polyselfs)
+        put(' You have never changed form.');
+    else if (game.wizard)
+        put(` You have changed form ${c.polyselfs} time${
+            c.polyselfs === 1 ? '' : 's'}.`);
+
+    if (!c.wishes)
+        put(' You have used no wishes.');
+    else
+        put(` You have used ${c.wishes} wish${c.wishes > 1 ? 'es' : ''}.`);
+
+    await tty_display_nhwindow(win);
+    await xwaitforspace(' \r\n\x1b');
+    while (tty_next_page(win))
+        await xwaitforspace(' \r\n\x1b');
+    tty_destroy_nhwindow(win);
+    await docrt();
+    return 0;
+}
+
+
+// src/insight.c:2784 list_vanquished() — the #vanquished window; default
+// sort is by monster level high-to-low with index tiebreak (VANQ_MLVL_MNDX).
+export async function list_vanquished(defquery, ask) {
+    const mindx = [];
+    let total_killed = 0;
+    for (let i = 0; i < (game.mvitals || []).length; i++) {
+        const nk = game.mvitals[i]?.died | 0;
+        if (!nk)
+            continue;
+        mindx.push(i);
+        total_killed += nk;
+    }
+    const ntypes = mindx.length;
+
+    if (ntypes) {
+        let c = defquery;
+        if (ask) {
+            const { tty_yn_function } = await import('./tty/topl.js');
+            c = await tty_yn_function(
+                'Do you want an account of creatures vanquished?',
+                'ynq', defquery || 'n');
+        }
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+        if (c !== 'y')
+            return;
+        const {
+            tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
+            tty_display_nhwindow, tty_next_page, NHW_MENU,
+        } = await import('./tty/wintty.js');
+        const { xwaitforspace } = await import('./tty/getline.js');
+        const { docrt } = await import('./display.js');
+        const { makeplural } = await import('./objnam.js');
+        const win = tty_create_nhwindow(NHW_MENU);
+        tty_putstr(win, 0, 'Vanquished creatures:');
+        tty_putstr(win, 0, '');
+
+        mindx.sort((a, b) =>
+            (game.mons[b].mlevel - game.mons[a].mlevel) || (a - b));
+        for (const i of mindx) {
+            const nk = game.mvitals[i].died | 0;
+            const nam = game.mons[i].pmnames?.filter(Boolean)[0]
+                        ?? game.mons[i].pmnames?.[0];
+            let buf;
+            if ((game.mons[i].geno ?? 0) & 0x1000 /* G_UNIQ */) {
+                buf = `${!type_is_pname(game.mons[i]) ? 'the ' : ''}${nam}`;
+            } else if (nk === 1) {
+                buf = an(nam);
+            } else {
+                buf = `${String(nk).padStart(3)} ${makeplural(nam)}`;
+            }
+            /* leading spaces to match a 3-digit prefix */
+            const pfx = buf.startsWith('the ') ? 0
+                      : buf.startsWith('an ') ? 1
+                        : buf.startsWith('a ') ? 2
+                          : !/[0-9]/.test(buf[2] ?? '') ? 4 : 0;
+            tty_putstr(win, 0, `${' '.repeat(pfx)}${buf}`);
+        }
+        if (ntypes > 1) {
+            tty_putstr(win, 0, '');
+            tty_putstr(win, 0, `${total_killed} creatures vanquished.`);
+        }
+        await tty_display_nhwindow(win);
+        await xwaitforspace(' \r\n\x1b');
+        while (tty_next_page(win))
+            await xwaitforspace(' \r\n\x1b');
+        tty_destroy_nhwindow(win);
+        await docrt();
+    } else if (ask) {
+        await pline('No creatures have been vanquished.');
+    }
 }

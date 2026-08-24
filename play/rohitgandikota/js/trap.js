@@ -87,7 +87,8 @@ import { amorphous, is_whirly, unsolid, is_clinger, is_floater, is_flyer,
          resists_magm } from './mondata.js';
 
 // include/rm.h:538 Sokoban — the level flag, not the dungeon branch.
-const Sokoban = () => game.level?.flags?.sokoban_rules === true;
+// (lspo_level_flags stores 1, not true, so no strict-equality test here.)
+const Sokoban = () => !!game.level?.flags?.sokoban_rules;
 
 // src/dungeon.c dunlevs_in_dungeon()
 function dunlevs_in_dungeon(lev) {

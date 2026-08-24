@@ -1687,6 +1687,20 @@ export async function rhack(key) {
         await pline(`Unknown command '${ch}'.`);
     }
 
+    // C ref: cmd.c rhack():3813-3816 — reset_cmd_vars() (which clears
+    // svc.context.run) is called ONLY when the command returned
+    // ECMD_CANCEL/ECMD_FAIL, or ECMD_OK with no ECMD_TIME.  A command that took
+    // game time leaves svc.context.run ARMED, so a pending g/G rush prefix
+    // survives it.  Our ECMD_TIME analogue is context.move.
+    //
+    // Found on heldout-wave9/lp-valk-human step 273 with the NHOBJDUMP monster
+    // oracle: the stream is `g <space> w b <ESC> <space><space><space> h` and
+    // C's hero RUSHES THREE SQUARES on that h (hero (56,4)->(53,4)) while ours
+    // stepped one.  The old comment here claimed "every other command path ends
+    // in reset_cmd_vars()", which is what let the residue die at the `w`.
+    if (!badCommand && game.context.move && staleRun)
+        game.context.stale_run = staleRun;
+
     // C ref: cmd.c rhack() — every command that isn't a PREFIXCMD ends in
     // reset_cmd_vars(), which clears iflags.menu_requested; only bad_command
     // skips it.  Without this an 'm' whose follow-up key was some unrelated
@@ -2918,6 +2932,23 @@ export async function domove(dx, dy) {
             return;
         }
         // Monster evaded.  If we can't actually move there, stop.
+        // C ref: hack.c domove_core() — do_attack() returning FALSE falls
+        // through to test_move(DO_MOVE), which includes the testdiag /
+        // out-of-doorway rules (hack.c:1140-1150, 1208-1214).  We only ran the
+        // weak blocksMove() here, so blocksDiagonalDoor() below (cmd.js:3126)
+        // was UNREACHABLE whenever a monster stood on the target square: a
+        // diagonal step out of an intact doorway swapped with the pet instead
+        // of being refused.
+        //
+        // Found on heldout-wave9/lp-rogue-orc step 328 with the NHOBJDUMP +
+        // NHMAPDUMP oracle: hero on a DOOR at (43,7), key `u` (diagonal), C's
+        // hero does NOT move and no turn elapses; ours swapped to (44,6). The
+        // ground-truth dump also disproved the earlier guess that C's kitten was
+        // asleep -- it reports msleep=0, mcanmove=1, mfrozen=0.
+        if (blocksDiagonalDoor(u.ux, u.uy, newx, newy, u.dx, u.dy)) {
+            game.context.move = 0;
+            return;
+        }
         if (blocksMove(newx, newy)) {
             game.context.move = 0;
             return;

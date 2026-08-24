@@ -488,3 +488,33 @@ export function hliquid(liquidpref) {
     }
     return liquidpref;
 }
+
+// src/do_name.c:1591 — Discworld novel titles, in publication order.
+const sir_Terry_novels = [
+    "The Colour of Magic", "The Light Fantastic", "Equal Rites", "Mort",
+    "Sourcery", "Wyrd Sisters", "Pyramids", "Guards! Guards!", "Eric",
+    "Moving Pictures", "Reaper Man", "Witches Abroad", "Small Gods",
+    "Lords and Ladies", "Men at Arms", "Soul Music", "Interesting Times",
+    "Maskerade", "Feet of Clay", "Hogfather", "Jingo", "The Last Continent",
+    "Carpe Jugulum", "The Fifth Elephant", "The Truth", "Thief of Time",
+    "The Last Hero", "The Amazing Maurice and His Educated Rodents",
+    "Night Watch", "The Wee Free Men", "Monstrous Regiment",
+    "A Hat Full of Sky", "Going Postal", "Thud!", "Wintersmith",
+    "Making Money", "Unseen Academicals", "I Shall Wear Midnight", "Snuff",
+    "Raising Steam", "The Shepherd's Crown",
+];
+
+// src/do_name.c:1611 noveltitle() — the rn2 over the title table fires even
+// when a fixed novidx overrides the pick. `box` stands in for C's int*: pass
+// { idx } and read the possibly-updated idx back.
+export function noveltitle(box) {
+    const k = sir_Terry_novels.length;
+    let j = rn2(k);
+    if (box) {
+        if (box.idx === -1)
+            box.idx = j;
+        else if (box.idx >= 0 && box.idx < k)
+            j = box.idx;
+    }
+    return sir_Terry_novels[j];
+}

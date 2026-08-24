@@ -286,8 +286,14 @@ export function xname(obj) {
         if (obj.odiluted && dknown) buf = 'diluted ';
         buf += 'potion';
         if (dknown) {
-            if (nn) buf += ` of ${actualn}`;
-            else if (un) buf += ` called ${un}`;
+            if (nn) {
+                /* src/objnam.c:841 — known blessed/cursed water reads
+                   "potion of holy/unholy water" */
+                const holy = (obj.otyp === ONAMES.POT_WATER && obj.bknown
+                              && (obj.blessed || obj.cursed))
+                    ? (obj.blessed ? 'holy ' : 'unholy ') : '';
+                buf += ` of ${holy}${actualn}`;
+            } else if (un) buf += ` called ${un}`;
             else buf = `${dn} potion`;
         }
         break;
@@ -800,7 +806,12 @@ export function doname(obj) {
                && !(obj.cobj && obj.cobj.length))))
         prefix += 'empty ';
 
-    if (bknown && obj.oclass !== COIN_CLASS) {
+    if (bknown && obj.oclass !== COIN_CLASS
+        /* src/objnam.c:1319 — known holy/unholy water carries the state in
+           its NAME, so the blessed/cursed prefix is suppressed */
+        && (obj.otyp !== ONAMES.POT_WATER
+            || !game.objects[ONAMES.POT_WATER].oc_name_known
+            || (!obj.cursed && !obj.blessed))) {
         if (obj.cursed) prefix += 'cursed ';
         else if (obj.blessed) prefix += 'blessed ';
         else if (!game.flags.implicit_uncursed
@@ -905,11 +916,19 @@ export function doname(obj) {
         } else {
             const hand_s = bimanual(obj) ? 'hands'
                 : `${((game.u.uhandedness ?? 0) === 0) ? 'right' : 'left'} hand`; /* URIGHTY; RIGHT_HANDED == 0 */
-            bp += ` (weapon in ${hand_s})`;
+            /* src/objnam.c:1593 — while twoweaponing the primary reads
+               "wielded in", matching the secondary's phrasing */
+            const twoweap_primary = !!game.u.twoweap;
+            bp += ` (${twoweap_primary ? 'wielded in' : 'weapon in'} ${hand_s})`;
         }
     }
     if (obj.owornmask & W_SWAPWEP) {
-        bp += ` (alternate weapon${plur(obj.quan)}; not wielded)`;
+        /* src/objnam.c:1615 — the off hand while twoweaponing */
+        if (game.u.twoweap)
+            bp += ` (wielded in ${
+                ((game.u.uhandedness ?? 0) === 0) ? 'left' : 'right'} hand)`;
+        else
+            bp += ` (alternate weapon${plur(obj.quan)}; not wielded)`;
     }
     if (obj.owornmask & W_QUIVER) {
         let Qtyp;

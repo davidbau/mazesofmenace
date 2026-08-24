@@ -402,7 +402,7 @@ function txt2key(txtIn) {
 
 // C ref: options.c sym_val() — reduce a SYMBOLS= value string to the single
 // display character it names.  Returns '' for C's 0 ("nothing named").
-function sym_val(strval) {
+export function sym_val(strval) {
     let buf = '';
     if (!strval || strval.length < 2) {
         /* empty, or single character; a lone space or tab names nothing */
@@ -488,7 +488,7 @@ const SYM_ALTERNATES = [
 // at most one space can sit in front of the separator.  `len >= strlen(name)`
 // combined with strncmpi over len characters is exact case-insensitive
 // equality once C's NUL terminator is accounted for.
-function match_sym(buf) {
+export function match_sym(buf) {
     if ((buf[0] === 'G' || buf[0] === 'g') && buf[1] === '_') return null;
     let p = buf.indexOf(':');
     const q = buf.indexOf('=');
@@ -3979,4 +3979,7 @@ export {
     find_optparam, match_optname, handle_config_section, parse_config_line,
     parseoptions, reset_duplicate_opt_detection,
     CONFIG_LINE_STMT,
+    // The coloratt.c helpers that landed here first, for js/coloratt.js (which
+    // continues that file's port and must not grow a second copy).
+    match_str2clr, match_str2attr, add_menu_coloring_parsed,
 };

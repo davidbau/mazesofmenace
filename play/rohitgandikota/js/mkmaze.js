@@ -12,10 +12,17 @@ import { rn2, rnd, rn1 } from './rng.js';
 import { Is_special, depth } from './dungeon.js';
 import { load_special, sp_lev_wire_create_maze } from './sp_lev.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, STONE, HWALL, IS_DOOR,
-         ACCESSIBLE } from './const.js';
+         ACCESSIBLE, W_NONDIGGABLE, POOL, IRONBARS, TLWALL, TRWALL,
+         TUWALL, TDWALL, BLCORNER, BRCORNER, TLCORNER,
+         TRCORNER } from './const.js';
 import { isok } from './hacklib.js';
-import { occupied } from './mklev.js';
+import { occupied, somex, somey } from './mklev.js';
 import { t_at, m_at } from './mon.js';
+import { goodpos, rndmonnum } from './makemon.js';
+import { mk_tt_object, mkcorpstat, set_corpsenm } from './mkobj.js';
+import { poly_when_stoned } from './mondata.js';
+import { PMNAMES, MFLAGS } from './monst_data.js';
+import { ONAMES } from './objects_data.js';
 
 function note_unported_mkmaze(what) {
     (game.unported ||= new Set()).add(what);
@@ -55,9 +62,11 @@ export async function makemaz(s) {
     /* SPLEVTYPE is a debugging env override; not carried over */
 
     if (protofile) {
-        /* check_ransacked() matters only for the mines with orc themes */
-        if (game.u.uz.dnum === game.mines_dnum)
-            note_unported_mkmaze('makemaz:check_ransacked');
+        /* src/mkmaze.c:707 check_ransacked() — "this kludge only works as
+           long as orctown is minetn-1": the Orcish Town variant flags the
+           whole mines branch as ransacked for stolen_booty() below it */
+        game.ransacked = (game.u.uz.dnum === game.mines_dnum
+                          && protofile === 'minetn-1');
         if (await load_special(protofile))
             return true;
         note_unported_mkmaze(`makemaz:${protofile}`);
@@ -223,10 +232,175 @@ export function fixup_special() {
     if (!added_branch && Is_branchlev_here())
         place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
 
+    /* src/mkmaze.c:649 — still need to add some stuff to level file */
+    const on_lev = (key) => {
+        const sl = game.special_levels?.[key];
+        return sl && game.u.uz.dnum === sl.dnum
+               && game.u.uz.dlevel === sl.dlevel;
+    };
+    if (on_lev('medusa_level')) {
+        /* the first room defined on the medusa level gets 1..4 petrified
+           adventurers from the scoreboard, plus one more that skips the
+           goodpos test; each re-rolls while the species resists stoning */
+        let otmp;
+        const croom = game.level.rooms[0];
+
+        for (let tryct = rnd(4); tryct; tryct--) {
+            const x = somex(croom);
+            const y = somey(croom);
+            if (goodpos(x, y, null, 0)) {
+                let tryct2 = 0;
+
+                otmp = mk_tt_object(ONAMES.STATUE, x, y);
+                while (++tryct2 < 100 && otmp
+                       && (poly_when_stoned(game.mons[otmp.corpsenm])
+                           || ((game.mons[otmp.corpsenm].mresists ?? 0)
+                               & MFLAGS.MR_STONE))) {
+                    /* set_corpsenm() handles weight too */
+                    set_corpsenm(otmp, rndmonnum());
+                }
+            }
+        }
+
+        if (rn2(2))
+            otmp = mk_tt_object(ONAMES.STATUE, somex(croom), somey(croom));
+        else /* Medusa statues don't contain books */
+            otmp = mkcorpstat(ONAMES.STATUE, null, null,
+                              somex(croom), somey(croom), 0 /* NONE */);
+        if (otmp) {
+            let tryct = 0;
+            while (++tryct < 100
+                   && (((game.mons[otmp.corpsenm].mresists ?? 0)
+                        & MFLAGS.MR_STONE)
+                       || poly_when_stoned(game.mons[otmp.corpsenm]))) {
+                /* set_corpsenm() handles weight too */
+                set_corpsenm(otmp, rndmonnum());
+            }
+        }
+    } else if (game.urole?.mnum === PMNAMES.PM_CLERIC
+               && game.u.uz.dnum === game.quest_dnum) {
+        /* less chance for undead corpses (lured from lower morgues) */
+        game.level.flags.graveyard = 1;
+    } else if (on_lev('stronghold_level')) {
+        game.level.flags.graveyard = 1;
+    } else if (on_lev('baalzebub_level')) {
+        /* custom wallify the "beetle" portion of the level */
+        baalz_fixup();
+    } else if (game.u.uz.dnum === game.mines_dnum && game.ransacked) {
+        note_unported_mkmaze('fixup_special:stolen_booty');
+    }
+
     if (Is_special(game.u.uz)?.flags?.town)
         game.level.flags.has_town = 1;
 
     game.lregions = [];
+}
+
+// src/mkmaze.c:475 baalz_fixup() — fix up Baalzebub's lair, which depicts a
+// level-sized beetle; its legs are walls within solid rock that regular
+// wallification would classify as superfluous. The two POOL squares mark
+// spots needing the post-wallify corner fixes, and the iron-bar "eyes" get
+// diggable columns in front of them. Draws only if a monster stands on a
+// pool spot (rloc).
+function baalz_fixup() {
+    const g = game;
+    let x, y, lastx, lasty;
+
+    const bughack = { inarea: { x1: 0, y1: 0, x2: 0, y2: 0 },
+                      delarea: { x1: COLNO, y1: ROWNO,
+                                 x2: COLNO, y2: ROWNO } };
+
+    /* find low and high x for to-be-wallified portion of level */
+    y = (ROWNO / 2) | 0;
+    lastx = 0;
+    for (x = 0; x < COLNO; ++x)
+        if (((g.level.at(x, y)?.wall_info ?? 0) & W_NONDIGGABLE) !== 0) {
+            if (!lastx)
+                bughack.inarea.x1 = x + 1;
+            lastx = x;
+        }
+    bughack.inarea.x2 = ((lastx > bughack.inarea.x1) ? lastx : x) - 1;
+    /* find low and high y for to-be-wallified portion of level */
+    x = bughack.inarea.x1;
+    lasty = 0;
+    for (y = 0; y < ROWNO; ++y)
+        if (((g.level.at(x, y)?.wall_info ?? 0) & W_NONDIGGABLE) !== 0) {
+            if (!lasty)
+                bughack.inarea.y1 = y + 1;
+            lasty = y;
+        }
+    bughack.inarea.y2 = ((lasty > bughack.inarea.y1) ? lasty : y) - 1;
+    /* two pools mark where special post-wallify fix-ups are needed */
+    for (x = bughack.inarea.x1; x <= bughack.inarea.x2; ++x)
+        for (y = bughack.inarea.y1; y <= bughack.inarea.y2; ++y) {
+            const loc = g.level.at(x, y);
+            if (loc.typ === POOL) {
+                loc.typ = HWALL;
+                if (bughack.delarea.x1 === COLNO) {
+                    bughack.delarea.x1 = x; bughack.delarea.y1 = y;
+                } else {
+                    bughack.delarea.x2 = x; bughack.delarea.y2 = y;
+                }
+            } else if (loc.typ === IRONBARS) {
+                /* novelty effect; allowing digging in front of 'eyes' */
+                if (isok(x - 1, y)
+                    && ((g.level.at(x - 1, y).wall_info ?? 0)
+                        & W_NONDIGGABLE) !== 0) {
+                    g.level.at(x - 1, y).wall_info &= ~W_NONDIGGABLE;
+                    if (isok(x - 2, y))
+                        g.level.at(x - 2, y).wall_info &= ~W_NONDIGGABLE;
+                } else if (isok(x + 1, y)
+                           && ((g.level.at(x + 1, y).wall_info ?? 0)
+                               & W_NONDIGGABLE) !== 0) {
+                    g.level.at(x + 1, y).wall_info &= ~W_NONDIGGABLE;
+                    if (isok(x + 2, y))
+                        g.level.at(x + 2, y).wall_info &= ~W_NONDIGGABLE;
+                }
+            }
+        }
+
+    /* the wallify pass sees the bughack region via game.bughack, which
+       fix_wall_spines consults (mkmaze.c:212) */
+    g.bughack = bughack;
+    mkmaze_mklev_fns?.wallification?.(
+        Math.max(bughack.inarea.x1 - 2, 1),
+        Math.max(bughack.inarea.y1 - 2, 0),
+        Math.min(bughack.inarea.x2 + 2, COLNO - 1),
+        Math.min(bughack.inarea.y2 + 2, ROWNO - 1));
+
+    /* bughack hack for rear-most legs on baalz level; first joint on both
+       top and bottom gets a bogus extra connection to room area, producing
+       unwanted rectangles; change back to separated legs */
+    x = bughack.delarea.x1; y = bughack.delarea.y1;
+    if (isok(x, y)
+        && (g.level.at(x, y).typ === TLWALL
+            || g.level.at(x, y).typ === TRWALL)
+        && isok(x, y + 1) && g.level.at(x, y + 1).typ === TUWALL) {
+        g.level.at(x, y).typ = (g.level.at(x, y).typ === TLWALL)
+                               ? BRCORNER : BLCORNER;
+        g.level.at(x, y + 1).typ = HWALL;
+        const mtmp = m_at(x, y);
+        if (mtmp) /* something at temporary pool... rloc(RLOC_ERR|NOMSG) */
+            note_unported_mkmaze('baalz_fixup:rloc');
+    }
+
+    x = bughack.delarea.x2; y = bughack.delarea.y2;
+    if (isok(x, y)
+        && (g.level.at(x, y).typ === TLWALL
+            || g.level.at(x, y).typ === TRWALL)
+        && isok(x, y - 1) && g.level.at(x, y - 1).typ === TDWALL) {
+        g.level.at(x, y).typ = (g.level.at(x, y).typ === TLWALL)
+                               ? TRCORNER : TLCORNER;
+        g.level.at(x, y - 1).typ = HWALL;
+        const mtmp = m_at(x, y);
+        if (mtmp) /* something at temporary pool... rloc(RLOC_ERR|NOMSG) */
+            note_unported_mkmaze('baalz_fixup:rloc');
+    }
+
+    /* reset bughack region; set low end to <COLNO,ROWNO> so that
+       within_bounded_area() in fix_wall_spines() will fail */
+    g.bughack = { inarea: { x1: COLNO, y1: ROWNO, x2: COLNO, y2: ROWNO },
+                  delarea: { x1: COLNO, y1: ROWNO, x2: COLNO, y2: ROWNO } };
 }
 
 /* src/dungeon.c Is_branchlev() — a branch has an end on this level. */

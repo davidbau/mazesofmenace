@@ -118,6 +118,12 @@ export async function done(how) {
             game.disp.botl = true;
         }
     }
+    /* src/end.c:1045 — force a full status update before anything else the
+       death sequence shows (skipped for 'q' to "Really quit?") */
+    if (!(how === QUIT && game.done_stopprint)) {
+        const { bot } = await import('./display.js');
+        await bot();
+    }
     /* Lifesaved (amulet of life saving): no session wears one yet */
     if (u.uprops?.LIFESAVED && how <= GENOCIDED)
         note_unported_end('done:lifesaved');
@@ -341,14 +347,61 @@ async function really_done(how) {
 // src/end.c:2010 disclose() — end of game disclosure. Every category in the
 // tourist rc is '-' (never); prompted categories would need the i/a/v/g/c/o
 // menus, which are recorded until a session actually reaches one.
-async function disclose(how) {
-    const spec = game.rc?.opts?.disclose ?? '';
-    /* C default is "ni na nv ng nc no" (prompt with default no); an rc of
-       "-i -a ..." disables every category outright */
-    const wants_prompt = !/^\s*(-[iavgco]\s*)+$/.test(spec) && spec !== null;
-    if (spec === '' || wants_prompt) {
-        /* defaults would prompt "Do you want ..." for each category */
-        note_unported_end(`disclose:spec="${spec}"`);
+async function disclose(how, taken) {
+    /* src/end.c:557 should_query_disclose_option() — the default spec is
+       DISCLOSE_PROMPT_DEFAULT_NO for every category: ask, defaulting 'n'.
+       No public rc sets disclose:, so the ask path is the ported one. */
+    const { tty_yn_function } = await import('./tty/topl.js');
+    let c;
+
+    if ((game.invent || []).length && !game.done_stopprint) {
+        const qbuf = taken
+            ? `Do you want to see what you had when you ${
+                  how === QUIT ? 'quit' : 'died'}?`
+            : 'Do you want your possessions identified?';
+        c = await tty_yn_function(qbuf, 'ynq', 'n');
+        if (c === 'y') {
+            const { display_inventory } = await import('./invent.js');
+            await display_inventory(null, true);
+            /* container_contents: no dead hero carries a container yet */
+        }
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+
+    if (!game.done_stopprint) {
+        c = await tty_yn_function('Do you want to see your attributes?',
+                                  'ynq', 'n');
+        if (c === 'y')
+            note_unported_end('disclose:enlightenment_view');
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+
+    if (!game.done_stopprint) {
+        /* list_vanquished(defquery, ask) prompts only when something died */
+        if ((game.u.nkilled_total | 0) > 0)
+            note_unported_end('disclose:list_vanquished');
+    }
+
+    /* list_genocided: nothing is ever genocided in a recorded session */
+
+    if (!game.done_stopprint) {
+        c = await tty_yn_function('Do you want to see your conduct?',
+                                  'ynq', 'n');
+        if (c === 'y')
+            note_unported_end('disclose:show_conduct');
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+
+    if (!game.done_stopprint) {
+        c = await tty_yn_function('Do you want to see the dungeon overview?',
+                                  'ynq', 'n');
+        if (c === 'y')
+            note_unported_end('disclose:show_overview');
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
     }
 }
 

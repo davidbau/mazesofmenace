@@ -1,4 +1,4 @@
-import { exercise, near_capacity } from './attrib.js';
+import { exercise, near_capacity, adjalign } from './attrib.js';
 import { A_CON, SLT_ENCUMBER, W_RINGL, W_RINGR } from './const.js';
 // eat.js — nutrition.
 // C ref: src/eat.c
@@ -357,6 +357,17 @@ function food_xname(food, the_pfx) {
 // acidic, poisonous and mildly-ill arms each draw only on their own branch,
 // then the rn2(7) rotten gate, and finally the palatability pair. Returns 2
 // when the corpse is used up, 1 when a message already landed, 0 otherwise.
+// src/eat.c:1375 violated_vegetarian() — a monk feels guilty and loses
+// alignment; everyone's conduct counter ticks.
+async function violated_vegetarian() {
+    (game.u.uconduct ||= {}).unvegetarian =
+        (game.u.uconduct.unvegetarian | 0) + 1;
+    if (game.urole?.name?.m === 'Monk') {
+        await You_feel('guilty.');
+        adjalign(-1);
+    }
+}
+
 async function eatcorpse(otmp) {
     let retcode = 0, tp = 0;
     const mnum = otmp.corpsenm;
@@ -366,6 +377,13 @@ async function eatcorpse(otmp) {
 
     if (flesh_petrifies(mdat) || mnum === PMNAMES.PM_GREEN_SLIME)
         note_unported_eat('eatcorpse:stoneable_or_slimeable');
+
+    /* src/eat.c:1869 — KMH, conduct; the monk's guilt message rides on
+       violated_vegetarian() */
+    if (!vegan(mdat))
+        (game.u.uconduct ||= {}).unvegan = (game.u.uconduct.unvegan | 0) + 1;
+    if (!vegetarian(mdat))
+        await violated_vegetarian();
 
     if (!nonrotting_corpse(mnum)) {
         /* peek_at_iced_corpse_age(otmp) — plain age unless the corpse is on
@@ -828,6 +846,14 @@ export async function bite() {
 // than < , so the last turn of a meal still takes a bite. Writing it as < , or
 // biting before incrementing, drops that final bite -- and for a Satiated hero
 // that final bite is the one that chokes.
+/* src/eat.c:1571 opentin() — the tin-opening occupation. Not ported yet;
+   newhungry() compares occupation pointers against it, so the symbol must
+   exist for that test even while nothing can ever set it. */
+function opentin() {
+    (game.unported ||= new Set()).add('eat:opentin');
+    return 0;
+}
+
 export async function eatfood() {
     const v = game.context.victual;
     let food = v?.piece;

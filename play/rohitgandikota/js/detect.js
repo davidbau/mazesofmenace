@@ -9,14 +9,17 @@ import { newsym, cls, docrt, canspotmon, sensemon, map_invisible,
 import { cmap_names, defsyms } from './drawing_data.js';
 import { You, You_feel } from './pline.js';
 import { m_at, t_at, seemimic } from './mon.js';
-import { Is_rogue_level, WM_MASK, D_LOCKED, D_CLOSED, ROWNO, COLNO } from './const.js';
+import { Is_rogue_level, WM_MASK, D_LOCKED, D_CLOSED, ROWNO, COLNO,
+         STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
 import { SDOOR, SCORR, DOOR, CORR, D_NODOOR, SVALL, IS_FURNITURE, A_WIS,
          STATUE_TRAP } from './const.js';
 import { rn2 } from './rng.js';
-import { magic_map_background } from './display.js';
+import { magic_map_background, map_background, map_object,
+         map_trap } from './display.js';
 import { exercise } from './attrib.js';
 import { Hallucination } from './youprop.js';
 import { an } from './objnam.js';
+import { ONAMES } from './objects_data.js';
 import { y_monnam, a_monnam } from './do_name.js';
 import { is_hider, hides_under } from './mondata.js';
 import { MONSYMS } from './monst_data.js';
@@ -366,6 +369,42 @@ export function show_map_spot(x, y, cnf) {
         /* the remembered-object re-show is already handled: memory keeps
            object glyphs (magic_map_background skips them) and newsym shows
            remembered glyphs for unseen cells */
+    }
+}
+
+// src/detect.c:2124 skip_premap_detect() — areas outside the Sokoban map:
+// solid stone that solidify_map() marked nondiggable/nonpasswall.
+function skip_premap_detect(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!loc && loc.typ === STONE
+           && ((loc.wall_info ?? 0) & (W_NONDIGGABLE | W_NONPASSWALL)) !== 0;
+}
+
+// src/detect.c:2134 premap_detect() — pre-map (the sokoban) levels: every
+// square inside the map gets full seenv and waslit, the background and any
+// boulder are written into map memory, and every trap is marked seen.
+export function premap_detect() {
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            if (skip_premap_detect(x, y))
+                continue;
+            const loc = game.level.at(x, y);
+            loc.seenv = SVALL;
+            loc.waslit = true;
+            if (loc.typ === SDOOR)
+                loc.wall_info = 0; /* see rm.h for explanation */
+            map_background(x, y, 1);
+            const obj = (game.level?.objects || []).find(
+                (o) => o.ox === x && o.oy === y
+                       && o.otyp === ONAMES.BOULDER);
+            if (obj)
+                map_object(obj, 1);
+        }
+
+    /* Map the traps */
+    for (const ttmp of game.level?.traps || []) {
+        ttmp.tseen = 1;
+        map_trap(ttmp, 1);
     }
 }
 

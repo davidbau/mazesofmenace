@@ -184,6 +184,9 @@ export async function losexp(drainer) {
             await done(DIED);
         }
         u.uexp = 0;
+        /* src/exper.c:245 */
+        const { livelog_add } = await import('./pline.js');
+        livelog_add('lost all experience');
     }
 
     const olduhpmax = u.uhpmax;

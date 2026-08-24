@@ -28,6 +28,8 @@ import { is_pool } from './mon.js';
 import { OCLASSES } from './objects_data.js';
 import { tty_yn_function } from './tty/topl.js';
 import { GETOBJ_NOFLAGS } from './const.js';
+import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE } from './invent.js';
+import { doname } from './objnam.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
 function note_unported_potion(what) {
@@ -272,11 +274,15 @@ export async function strange_feeling(obj, txt) {
 // src/potion.c:2254 dip_ok() — candidates for dipping: everything except
 // gold (and the hands pseudo-object, which the port does not offer yet).
 function dip_ok(obj) {
+    /* the numeric returns were swapped against invent.js's constants:
+       1 is DOWNPLAY there (kept out of the prompt's letter range), so
+       every candidate vanished from "What do you want to dip? [...]" */
     if (!obj)
-        return 2 /* GETOBJ_EXCLUDE */;
+        return GETOBJ_DOWNPLAY;
+    /* dipping gold isn't currently implemented */
     if (obj.oclass === OCLASSES.COIN_CLASS)
-        return 2;
-    return 1 /* GETOBJ_SUGGEST */;
+        return GETOBJ_EXCLUDE;
+    return GETOBJ_SUGGEST;
 }
 
 // src/potion.c:2267 dodip() — the #dip command. The fountain/sink arms
@@ -299,8 +305,10 @@ export async function dodip() {
     if (at_fountain || at_pool || at_sink) {
         /* can_reach_floor is true for an unimpaired hero */
         if (at_fountain) {
+            /* src/potion.c:2301 — obuf is short_oname(obj, doname, ...):
+               the full name when verbose, the pronoun otherwise */
             const q = `Dip ${game.flags?.verbose === false ? shortestname
-                             : shortestname} into the fountain?`;
+                             : doname(obj)} into the fountain?`;
             const ans = await tty_yn_function(q, 'yn', 'n');
             if (ans === 'y') {
                 obj.pickup_prev = 0;

@@ -50,7 +50,9 @@ import {
     IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     W_NONDIGGABLE, W_NONPASSWALL,
 
-    ROOMOFFSET, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
+    ROOMOFFSET, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR,
+    THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, D_ISOPEN, ACCESSIBLE, IS_SDOOR,
+    M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
     IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, WT_SQUEEZABLE_INV,
     WT_TOOMUCH_DIAGONAL, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP } from './const.js';
 import { sobj_at } from './invent.js';
@@ -58,6 +60,7 @@ import { done } from './end.js';
 import { DIED } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { In_sokoban } from './dungeon.js';
+import { inside_room } from './sp_lev.js';
 import { tunnels, needspick, passes_walls, passes_bars, dmgtype,
          metallivorous, throws_rocks, verysmall, bigmonst, amorphous,
          is_whirly, noncorporeal, slithy } from './mondata.js';
@@ -410,6 +413,16 @@ export async function losehp(n, knam, k_format) {
 
     if (game.u.uhp < 1) {
         game.killer = { format: k_format, name: knam };
+        /* src/hack.c:4287 — urgent_pline("You die...") BEFORE done().
+           urgent_pline FLUSHES: the status repaint (bot, HP clamped to 0)
+           lands before the pending-message More blocks, which is why the
+           "You slip...--More--" frame already reads HP:0. Plain pline/more
+           do NOT flush -- see the descend More keeping the old Dlvl. */
+        {
+            const { bot } = await import('./display.js');
+            await bot();
+        }
+        await pline('You die...');
         await done(DIED);
     }
 }
@@ -485,6 +498,70 @@ export function in_rooms(x, y, typewanted) {
    (see STATUS). Publishing on the shared game object avoids both. */
 game.in_rooms = in_rooms;
 
+// src/hack.c:3564 in_town() — is (x,y) in a town? A room with subrooms is
+// assumed to be the town; with no subrooms anywhere the whole level is.
+export function in_town(x, y) {
+    let has_subrooms = false;
+
+    if (!game.level?.flags?.has_town)
+        return false;
+
+    for (const sroom of (game.level.rooms || [])) {
+        if (sroom.hx <= 0)
+            break;
+        if ((sroom.nsubrooms ?? 0) > 0) {
+            has_subrooms = true;
+            if (inside_room(sroom, x, y))
+                return true;
+        }
+    }
+
+    return !has_subrooms;
+}
+
+
+// src/hack.c:2228 domove_fight_empty() — force-fight a square with nothing
+// to fight. Wastes the turn with the "harmlessly attack" line.
+export async function domove_fight_empty(x, y) {
+    const off_edge = !isok(x, y);
+    let buf;
+
+    if (off_edge) {
+        /* treat as if solid rock, even on planes' levels */
+        buf = 'an unknown obstacle';
+    } else {
+        const loc = game.level.at(x, y);
+        const solid = (!ACCESSIBLE(loc?.typ ?? 0) || IS_FURNITURE(loc?.typ));
+        const boulder = sobj_at(ONAMES.BOULDER, x, y);
+        /* the statue-attack, underwater and pick-digging arms are recorded */
+        if (boulder) {
+            const { xname } = await import('./objnam.js');
+            const nm = await xname(boulder);
+            buf = ('aeiouAEIOU'.includes(nm[0]) ? 'an ' : 'a ') + nm;
+        } else if (solid) {
+            if (loc?.seenv || IS_STWALL(loc?.typ)
+                || loc?.typ === SCORR || IS_SDOOR(loc?.typ)) {
+                const { back_to_glyph } = await import('./display.js');
+                const { defsyms } = await import('./drawing_data.js');
+                const g = back_to_glyph(loc, x, y);
+                const expl = defsyms[g.cmap]?.explain || 'wall';
+                buf = `the ${expl}`;
+            } else {
+                buf = 'an unknown obstacle';
+            }
+        } else {
+            buf = 'thin air';
+        }
+        const solid_or_boulder = !!(boulder || solid);
+        await You(`${solid_or_boulder ? 'harmlessly ' : ''}attack ${buf}.`);
+        nomul(0);
+        return true;
+    }
+    await You(`harmlessly attack ${buf}.`);
+    nomul(0);
+    return true;
+}
+
 // src/hack.c domove_attackmon_at() — the gate between walking into a square
 // and attacking what is standing on it.
 //
@@ -543,17 +620,23 @@ export async function spoteffects(pick) {
     if (inspecial)
         note_unported_hack('spoteffects:check_special_room');
 
-    /*
-     * If not a pit, pickup before triggering trap.
-     * If pit, trigger trap before pickup.
-     */
-    const pit = !!(trap && is_pit(trap.ttyp));
-    if (pick && !pit)
-        await pickup(1);
-    if (trap)
-        await dotrap(trap, 0);
-    if (pick && pit)
-        await pickup(1);
+    /* src/hack.c:3355 — "if dismounting, check again later": the whole
+       pickup/trap block is skipped so that only float_down()'s pickup runs;
+       without the gate a dismount onto a pile shows the pile window TWICE
+       and eats an extra dismissal key. */
+    if (!game.in_steed_dismounting) {
+        /*
+         * If not a pit, pickup before triggering trap.
+         * If pit, trigger trap before pickup.
+         */
+        const pit = !!(trap && is_pit(trap.ttyp));
+        if (pick && !pit)
+            await pickup(1);
+        if (trap)
+            await dotrap(trap, 0);
+        if (pick && pit)
+            await pickup(1);
+    }
 
     /* hidden monster at the same spot (hides_under, piercers) */
     const mtmp = m_at(game.u.ux, game.u.uy);
@@ -1058,7 +1141,7 @@ export async function overexertion() {
 // engulfer's inventory, and -1 for "go ahead and pick up".
 //
 // Draws nothing; every arm is a message.
-function pickup_checks() {
+async function pickup_checks() {
     if (game.u.uswallow) {
         note_unported_hack('pickup_checks:uswallow');
         return 1;
@@ -1069,12 +1152,26 @@ function pickup_checks() {
     }
     if (!OBJ_AT(game.u.ux, game.u.uy)) {
         const lev = game.level?.at(game.u.ux, game.u.uy);
-        /* the furniture arms each have their own line; only the plain case
-           is reachable without those subsystems */
-        if (lev && (IS_FURNITURE(lev.typ) || lev.typ === STAIRS))
-            note_unported_hack('pickup_checks:furniture_message');
+        /* src/hack.c:3830 — one line per furniture kind, else the plain
+           "nothing here". These return a PROMISE the async caller awaits. */
+        if (!lev)
+            return 0;
+        if (lev.typ === THRONE)
+            await pline(`It must weigh${lev.looted ? ' almost' : ''} a ton!`);
+        else if (lev.typ === SINK)
+            await pline_The('plumbing connects it to the floor.');
+        else if (lev.typ === GRAVE)
+            await You("don't need a gravestone.  Yet.");
+        else if (lev.typ === FOUNTAIN)
+            await You('could drink the water...');
+        else if (IS_DOOR(lev.typ) && (lev.doormask & D_ISOPEN))
+            await pline("It won't come off the hinges.");
+        else if (lev.typ === ALTAR)
+            await pline('Moving the altar would be a very bad idea.');
+        else if (lev.typ === STAIRS)
+            await pline_The('stairs are solidly affixed.');
         else
-            note_unported_hack('pickup_checks:nothing_here');
+            await There('is nothing here to pick up.');
         return 0;
     }
     const traphere = t_at(game.u.ux, game.u.uy);
@@ -1090,7 +1187,7 @@ export async function dopickup() {
     const count = game.command_count | 0;
     game.multi = 0; /* always reset */
 
-    const ret = pickup_checks();
+    const ret = await pickup_checks();
     if (ret >= 0)
         return ret ? ECMD_TIME : ECMD_OK;
     if (ret === -2) {

@@ -536,9 +536,19 @@ export function u_init_race() {
     if (race === PMNAMES.PM_ORC) {
         if (roleMnum() !== PMNAMES.PM_WIZARD)
             ini_inv(TROBJ.Xtra_food);
+        /* src/u_init.c:847 — Orcs can recognize ALL orcish objects; the
+           first three alone left the discoveries list short */
         knows_object(ONAMES.ORCISH_SHORT_SWORD);
         knows_object(ONAMES.ORCISH_ARROW);
         knows_object(ONAMES.ORCISH_BOW);
+        knows_object(ONAMES.ORCISH_SPEAR);
+        knows_object(ONAMES.ORCISH_DAGGER);
+        knows_object(ONAMES.ORCISH_CHAIN_MAIL);
+        knows_object(ONAMES.ORCISH_RING_MAIL);
+        knows_object(ONAMES.ORCISH_HELM);
+        knows_object(ONAMES.ORCISH_SHIELD);
+        knows_object(ONAMES.URUK_HAI_SHIELD);
+        knows_object(ONAMES.ORCISH_CLOAK);
     }
 }
 

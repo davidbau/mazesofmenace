@@ -11,7 +11,10 @@
 // docs/plan/04-level-generation.md §4.0.
 
 import { game } from './gstate.js';
-import { In_endgame, Is_earthlevel, ROOM, CORR } from './const.js';
+import { In_endgame, Is_earthlevel, ROOM, CORR, ICE, SDOOR, ALTAR, GRAVE,
+         FOUNTAIN, SINK, IRONBARS, DRAWBRIDGE_DOWN, IS_WALL,
+         IS_DOOR } from './const.js';
+import { is_pool, is_lava } from './mon.js';
 import { rn2, rn1 } from './rng.js';
 import { A_NONE, AM_NONE, A_LAWFUL, AM_LAWFUL, PICK_ONE,
          MENU_BEHAVE_STANDARD } from './const.js';
@@ -560,6 +563,12 @@ export function init_dungeons() {
         const x = find_level(name);
         if (x) {
             game.special_levels[key] = { ...x.dlevel };
+            /* C's file-scope d_level globals (astral_level, water_level,
+               valley_level, ...): In_endgame/Is_waterlevel and friends read
+               game.<key> directly, which stayed undefined and made every
+               such test false — level_tele never conjured the endgame
+               Amulet, the status line never named a Plane. */
+            game[key] = game.special_levels[key];
             /* src/dungeon.c:1136 — the quest levels' proto names get the
                role's filecode: "x-strt" becomes "Bar-strt". C reads
                gu.urole, set by role_init(); this port assigns game.urole
@@ -594,6 +603,20 @@ export function init_dungeons() {
     game.mines_dnum = dname_to_dnum('The Gnomish Mines');
     game.tower_dnum = dname_to_dnum("Vlad's Tower");
     game.tutorial_dnum = dname_to_dnum('The Tutorial');
+
+    /* src/dungeon.c:1171 — one special fixup for the dummy surface level:
+       the whole reason for having it is to make the Plane of Earth sit at
+       depth -1 instead of 0, so shift the endgame dungeon up one. Without
+       this the ^V overview lists the Planes one level too deep. */
+    {
+        const x = find_level('dummy');
+        if (x) {
+            const i = x.dlevel.dnum;
+            const dgn = game.dungeons[i];
+            if (dgn.num_dunlevs > 1 - dgn.depth_start)
+                dgn.depth_start -= 1;
+        }
+    }
 
     init_castle_tune();
 
@@ -1024,11 +1047,155 @@ export function surface(x, y) {
     const lev = game.level?.at(x, y);
     if (!lev)
         return 'floor';
-    /* pools, ice, lava, altars, graves, fountains and stairs each have their
-       own word; none is reached by anything ported, so they record. */
-    if (lev.typ !== ROOM && lev.typ !== CORR) {
-        note_unported_dungeon(`surface:typ=${lev.typ}`);
+    const levtyp = lev.typ;
+    /* src/dungeon.c:1750 — the engulfed maw/husk arm and the air levels
+       are unreachable states here so far */
+    if (game.u?.uswallow && game.u.ux === x && game.u.uy === y)
+        return 'maw';
+    if (is_pool(x, y))
+        return game.u?.uinwater ? 'bottom' : 'water';
+    if (levtyp === ICE)
+        return 'ice';
+    if (is_lava(x, y))
+        return 'lava';
+    if (levtyp === DRAWBRIDGE_DOWN)
+        return 'bridge';
+    if (levtyp === ALTAR)
+        return 'altar';
+    if (levtyp === GRAVE)
+        return 'headstone';
+    if (levtyp === FOUNTAIN)
+        return 'fountain';
+    if (stairway_at_fn && stairway_at_fn(x, y))
+        return 'stairs';
+    if (IS_WALL(levtyp) || levtyp === SDOOR)
+        return 'wall'; /* 'surface' during Passes_walls */
+    if (IS_DOOR(levtyp))
+        return 'doorway'; /* even for closed door */
+    if (levtyp === ROOM || levtyp === CORR || levtyp === ICE)
         return 'floor';
+    return 'ground';
+}
+
+/* js/do.js stairway_at, wired to break the import cycle */
+var stairway_at_fn = null;
+export function dungeon_wire_stairway_at(fn) { stairway_at_fn = fn; }
+
+
+/* ==== mapseen — the #overview database (src/dungeon.c:2755+) ==== */
+
+// src/dungeon.c:2831 init_mapseen() — start a mapseen entry for a level.
+export function init_mapseen(uz) {
+    const key = `${uz.dnum}:${uz.dlevel}`;
+    (game.mapseen ||= {});
+    if (!game.mapseen[key])
+        game.mapseen[key] = { dnum: uz.dnum, dlevel: uz.dlevel, feat: {} };
+}
+
+// src/dungeon.c:3050 recalc_mapseen() — recount the current level's seen
+// features. C gates each square on lastseentyp (the hero must have SEEN it).
+export function recalc_mapseen() {
+    const uz = game.u?.uz;
+    if (!uz || !game.level)
+        return;
+    init_mapseen(uz);
+    const m = game.mapseen[`${uz.dnum}:${uz.dlevel}`];
+    const feat = { nfount: 0, nsink: 0, naltar: 0, nthrone: 0,
+                   ngrave: 0, ntree: 0, nshop: 0, ntemple: 0 };
+    for (let x = 1; x < 80; x++)
+        for (let y = 0; y < 21; y++) {
+            const loc = game.level.at(x, y);
+            if (!loc || !loc.seenv)
+                continue;
+            switch (loc.typ) {
+            case FOUNTAIN: feat.nfount++; break;
+            case SINK: feat.nsink++; break;
+            case ALTAR: feat.naltar++; break;
+            case 29 /* THRONE */: feat.nthrone++; break;
+            case GRAVE: feat.ngrave++; break;
+            case 18 /* TREE */: feat.ntree++; break;
+            default: break;
+            }
+        }
+    m.feat = feat;
+    m.custom = game.level_annotations?.[`${uz.dnum}:${uz.dlevel}`] ?? null;
+}
+
+// src/dungeon.c:3368 seen_string() — "players are computer scientists:
+// 0, 1, 2, n"
+function seen_string(x, obj) {
+    switch (x) {
+    case 0: return 'no';
+    case 1: return 'aeiou'.includes(obj[0]) ? 'an' : 'a';
+    case 2: return 'some';
+    case 3: return 'many';
     }
-    return 'floor';
+    return 'many';
+}
+
+// src/dungeon.c:3339 show_overview() + :3516 print_mapseen — the ^O/#overview
+// window. Only the branch-annotation and endgame arms are unported.
+export async function show_overview() {
+    recalc_mapseen();
+    const {
+        tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu,
+        tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU,
+    } = await import('./tty/wintty.js');
+    const { NO_COLOR } = await import('./terminal.js');
+    const TAB = '   ', PREFIX = '      ';
+    const plur = (n) => (n === 1 ? '' : 's');
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, 0);
+    const entries = Object.values(game.mapseen || {})
+        .sort((a, b) => (a.dnum - b.dnum) || (a.dlevel - b.dlevel));
+    let lastdnum = -1;
+    for (const m of entries) {
+        if (m.dnum !== lastdnum) {
+            lastdnum = m.dnum;
+            /* the dungeon-name line is an add_menu_heading: ATR_INVERSE */
+            tty_add_menu(win, null, 0, 0, 0, 7 /* NH ATR_INVERSE */, NO_COLOR,
+                         `${game.dungeons[m.dnum].dname}:`, 0);
+        }
+        const dep = game.dungeons[m.dnum].depth_start + m.dlevel - 1;
+        let buf = `${TAB}Level ${dep}:`;
+        if (game.wizard) {
+            const slev = Is_special({ dnum: m.dnum, dlevel: m.dlevel });
+            if (slev)
+                buf += ` [${slev.proto}]`;
+        }
+        if (m.custom)
+            buf += ` "${m.custom}"`;
+        if (game.u.uz.dnum === m.dnum && game.u.uz.dlevel === m.dlevel)
+            buf += ' <- You are here.';
+        tty_add_menu(win, null, 0, 0, 0, 0, NO_COLOR, buf, 0);
+
+        const f = m.feat || {};
+        let i = 0;
+        const COMMA = () => (i++ > 0 ? ', ' : PREFIX);
+        let fbuf = '';
+        const ADDN = (nam, v) => {
+            if (v)
+                fbuf += `${COMMA()}${seen_string(v, nam)} ${nam}${plur(v)}`;
+        };
+        /* shop/temple/altar arms come first in C; none is seen yet */
+        if (f.naltar > 0)
+            ADDN('altar', f.naltar);
+        ADDN('throne', f.nthrone);
+        ADDN('fountain', f.nfount);
+        ADDN('sink', f.nsink);
+        ADDN('grave', f.ngrave);
+        ADDN('tree', f.ntree);
+        if (fbuf) {
+            /* capitalize afterwards; terminate with '.' */
+            const k = PREFIX.length;
+            fbuf = fbuf.slice(0, k) + fbuf[k].toUpperCase() + fbuf.slice(k + 1)
+                   + '.';
+            tty_add_menu(win, null, 0, 0, 0, 0, NO_COLOR, fbuf, 0);
+        }
+    }
+    tty_end_menu(win, '');
+    await tty_select_menu(win, 0 /* PICK_NONE */);
+    tty_destroy_nhwindow(win);
+    return 0;
 }

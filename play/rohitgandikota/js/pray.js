@@ -344,6 +344,11 @@ export async function dopray() {
         return ECMD_OK;
 
     game.u.uconduct ||= {};
+    /* src/pray.c:2227 — first prayer logs the broken conduct */
+    if (!game.u.uconduct.gnostic) {
+        const { livelog_add } = await import('./pline.js');
+        livelog_add('rejected atheism with a prayer');
+    }
     game.u.uconduct.gnostic = (game.u.uconduct.gnostic || 0) + 1;
 
     /* set up p_type and p_alignment */

@@ -63,6 +63,9 @@ export function rn2(x) {
         && _rngLog.length - 1 === globalThis.__rng_stack_at)
         console.error('RNGSTACK', _rngLog.length - 1,
                       new Error('x').stack.split('\n').slice(2, 8).join('\n'));
+    if (globalThis.__rng_probe_at !== undefined
+        && _rngLog.length - 1 === globalThis.__rng_probe_at.at)
+        globalThis.__rng_probe_at.cb(_rngLog.length - 1);
     return val;
 }
 

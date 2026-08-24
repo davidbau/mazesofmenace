@@ -201,6 +201,14 @@ export async function tty_yn_function(query, resp, def) {
         return q;
     };
 
+    /* src/botl.c — a status field dirtied this turn (Pw after a cast's
+       energy deduction) repaints before the prompt blocks for input; C gets
+       this from the pre-input flush's `if (disp.botl) bot()`. */
+    {
+        const { bot } = await import('../display.js');
+        await bot();
+    }
+
     /* with a resp string, only the listed characters (plus the quitchars) are
        accepted; anything else re-reads. */
     for (;;) {

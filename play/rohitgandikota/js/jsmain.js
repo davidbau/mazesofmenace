@@ -107,6 +107,23 @@ export class NethackGame {
 
         const rc = parseNethackrc(this._nethackrc);
         g.rc = rc;
+        /* src/options.c:7596 parsebindings() — BIND=key:command lines rebind
+           a command key. txt2key handles the '^X' control form; the map is
+           consulted by rhack() before its default dispatch. */
+        g.rc_key_bindings = {};
+        for (const b of rc.bindings) {
+            for (const one of b.split(',')) {
+                const ci = one.indexOf(':');
+                if (ci < 0) continue;
+                const keytxt = one.slice(0, ci).trim();
+                const cmdname = one.slice(ci + 1).trim();
+                const key = (keytxt.length === 2 && keytxt[0] === '^')
+                    ? String.fromCharCode(keytxt.charCodeAt(1) & 0x1f)
+                    : (keytxt.length === 1 ? keytxt : null);
+                if (key !== null)
+                    g.rc_key_bindings[key] = cmdname;
+            }
+        }
         /* src/symbols.c init_symbols() then assign_graphics(PRIMARYSET).
            Without OPTIONS=symset:<name> the built-in ASCII defaults stand;
            DECgraphics is the only alternate set any recorded configuration
@@ -125,7 +142,10 @@ export class NethackGame {
         /* src/optlist.h — both are opt_out with initval On, so they are set
            unless the rc negates them. implicit_uncursed decides whether
            doname() prints "uncursed" on a charged, identified item. */
+        /* pickup_thrown is opt_out initval On (optlist.h:579), like the
+           other two defaults */
         g.flags = { verbose: true, implicit_uncursed: true, legacy: true,
+                    pickup_thrown: true,
                     ...rc.opts };
         g.iflags = {};
         const pettype = optValue(rc, 'pettype');

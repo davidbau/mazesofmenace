@@ -80,7 +80,7 @@ import { u_init_inventory, u_init_skills_discoveries } from './u_init.js';
 import { makedog } from './dog.js';
 import { init_attr, vary_init_attr, adjabil, Fast, Very_fast } from './attrib.js';
 import { com_pager } from './questpgr.js';
-import { player_selection, tty_init_nhwindows } from './plselect.js';
+import { player_selection, plnamesuffix, tty_init_nhwindows } from './plselect.js';
 import { adjust_menu_promptstyle, ATR_INVERSE } from './tty/wintty.js';
 import { NO_COLOR } from './terminal.js';
 
@@ -133,19 +133,27 @@ export async function newgame() {
         g.flags.initrace = ira;
         g.flags.initgend = ig;
         g.flags.initalign = ia;
-        if (ir < 0 || ira < 0 || ig < 0 || ia < 0)
+
+        /* sys/unix/unixmain.c:193 — "wizard mode access is deferred until
+           here": set_playmode() renames the hero to "wizard" BEFORE the name
+           is examined, so a debug-mode session never prompts for one.
+           (src/options.c:3471 optfn_playmode() reads the rc's playmode:
+           option into the wizard/discover globals first.) */
+        optfn_playmode();
+        set_playmode();
+
+        /* sys/unix/unixmain.c:198 — plnamesuffix() calls askname() when
+           plname[] is empty. Independent of role selection: a session that
+           pins all four facets but no name still types its name at the
+           "Who are you?" screen, which is where its first recorded frames
+           come from. It can also fill flags.init* from a -role-race suffix,
+           so the menu gate below rereads the flags. */
+        await plnamesuffix();
+
+        if (g.flags.initrole < 0 || g.flags.initrace < 0
+            || g.flags.initgend < 0 || g.flags.initalign < 0)
             await player_selection();
     }
-
-    /* src/options.c:3471 optfn_playmode() — the rc's playmode: option sets
-       the wizard and discover globals. Both were being read and neither was
-       ever assigned. */
-    optfn_playmode();
-
-    /* src/options.c set_playmode() — called from the port's startup code
-       before the game proper. It renames the hero in wizard mode, so it has to
-       run before anything prints plname. */
-    set_playmode();
 
     /* sys/unix/unixmain.c — after the name is final, try to restore a
        saved game. A successful recover reinstalls the whole game state;
@@ -433,6 +441,9 @@ export async function newgame() {
                                                 : g.urole.name.m);
         await pline(`${Hello(null)} ${g.plname}, welcome to NetHack! `
                     + ` You are a${buf}.`);
+        /* src/allmain.c:920 — guarantee the 'major' log is never empty */
+        const { livelog_add } = await import('./pline.js');
+        livelog_add(`${g.plname} the${buf} entered the dungeon`);
     }
 
     // src/allmain.c:56 moveloop_preamble() — "side-effects from the real

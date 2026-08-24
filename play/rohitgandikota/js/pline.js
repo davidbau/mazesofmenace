@@ -97,3 +97,10 @@ export async function Norep(line) {
     if ((game._toplines || '') !== line)
         await pline(line);
 }
+
+
+// src/pline.c:531 gamelog_add() / :509 livelog_printf() — the #chronicle
+// event list. Turn stamps come from svm.moves.
+export function livelog_add(text) {
+    (game.gamelog ||= []).push({ turn: game.moves | 0, text });
+}
