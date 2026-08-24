@@ -34,6 +34,7 @@ import {
     initoptions_finish,
     parseNethackrc,
 } from './options.js';
+import { UnsupportedPosixDuplicatedCaptureError } from './posixregex.js';
 import { config_error_done } from './cfgfiles.js';
 import {
     nomux_get_cursor,
@@ -302,6 +303,9 @@ export class NethackGame {
         g.plname = opts.name ?? '';
         g.flags = { ...opts.flags };
         g.iflags = { ...opts.iflags };
+        // cfgfiles.c cnf_line_MENUCOLOR() has finished prepending the
+        // per-game coloratt.c list before any menu can be built.
+        g.gm = { ...opts.gm };
         g.options_set_window_colors_flag
             = opts.options_set_window_colors_flag;
         g.wcolors_opt = [...opts.wcolors_opt];
@@ -452,7 +456,9 @@ export class NethackGame {
         // RNG effects precede the optional tutorial query.  The wrapper turns
         // a refusal raised inside it into the boundary runSegment() below ends
         // the segment on.
-        await runMoveloopPreambleAtStartupBoundary(false, g);
+        await runMoveloopPreambleAtStartupBoundary(false, g, {
+            hooks: TTY_WINDOW_HOOKS,
+        });
         const tutorial = await maybe_do_tutorial(g);
         if (tutorial.action === 'enter') await enter_tutorial(tutorial, g);
         return true;
@@ -535,6 +541,13 @@ function createThemeroomSelectionCollector() {
     });
 }
 
+// win/tty/wintty.c tty_update_inventory().  The recorder build lacks
+// TTY_PERM_INVENT, so the window-proc function installed in tty_procs is a
+// no-op even when startup options set iflags.perm_invent.
+const TTY_WINDOW_HOOKS = Object.freeze({
+    updateInventory() {},
+});
+
 export function segmentIterationLimit(movesLength) {
     return Math.max(
         movesLength * (MAX_COMMAND_COUNT + 1) + 1,
@@ -605,7 +618,8 @@ export async function runSegment(
         // fail-closed boundary raised there arrives here rather than at the
         // catch inside that loop. Ending the segment on it preserves every
         // screen start() captured, which rethrowing would discard.
-        if (error instanceof UnsupportedStartupBoundaryError) {
+        if (error instanceof UnsupportedStartupBoundaryError
+            || error instanceof UnsupportedPosixDuplicatedCaptureError) {
             onBoundary?.(error);
             return nhGame;
         }
@@ -646,7 +660,8 @@ export async function runSegment(
                 // sounds.c dosounds() runs every turn under this loop, so the
                 // first turn on a level holding an unported special room ends
                 // the segment here.
-                || e instanceof UnsupportedAmbientSoundError) {
+                || e instanceof UnsupportedAmbientSoundError
+                || e instanceof UnsupportedPosixDuplicatedCaptureError) {
                 onBoundary?.(e);
                 break;
             }

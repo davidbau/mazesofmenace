@@ -37,6 +37,9 @@ import {
     HL_UNDEF,
     HVY_ENCUMBER,
     Is_rogue_level,
+    INVOPT_IN_USE,
+    INVOPT_NONE,
+    INV_SPARSE,
     LARGEST_INT,
     MENU_COMBINATION,
     MENU_FULL,
@@ -133,11 +136,13 @@ import {
 } from './terminal.js';
 import {
     cnf_line_BOULDER,
+    cnf_line_MENUCOLOR,
     cnf_line_WARNINGS,
     config_error_add,
     config_error_init,
     config_error_nextline,
 } from './cfgfiles.js';
+import { count_menucolors } from './coloratt.js';
 import {
     DEFAULT_FRUIT,
     finish_fruit_option,
@@ -234,7 +239,12 @@ import {
     def_char_to_objclass,
 } from './drawing.js';
 import { escapes } from './options_escapes.js';
-import { finish_boulder_symbol, MAXMCLASSES } from './symbols.js';
+import {
+    finish_boulder_symbol,
+    finish_glyph_customizations,
+    MAXMCLASSES,
+} from './symbols.js';
+import { inspect_glyphrep } from './glyphs.js';
 import { choose_classes_menu } from './windows.js';
 
 const PET_NAME_BYTE_LIMIT = 62; // PL_PSIZ - 1
@@ -535,6 +545,9 @@ function defaultResult() {
             // options.c optfn_player_selection() leaves this zeroed field
             // alone during do_init; zero is VIA_DIALOG.
             wc_player_selection: VIA_DIALOG,
+            // options.c optfn_perminv_mode() leaves this zeroed field alone
+            // during do_init; zero is InvOptNone.
+            perminv_mode: INVOPT_NONE,
             // options.c optfn_term_cols() and optfn_term_rows() leave these
             // zeroed instance-flags fields alone during do_init.
             wc2_term_cols: 0,
@@ -572,6 +585,11 @@ function defaultResult() {
             // direct MSGTYPE row prepends one compiled rule; jsmain.js moves
             // the resulting per-parse list into the new game's gp owner.
             plinemsg_types: null,
+        },
+        gm: {
+            // decl.c instance_globals_m starts this list at NULL. Each valid
+            // direct MENUCOLOR row prepends one compiled coloratt.c rule.
+            menu_colorings: null,
         },
         // options.c initoptions_init() initializes the sole symbols.c-owned
         // warning array before reading either OPTIONS=warnings or the legacy
@@ -612,6 +630,15 @@ function defaultResult() {
         // its only configuration-time writer.
         give_opt_msg: true,
         symbolOperations: [],
+        // files.c read_sym_file() owns the association of a following G_/S_
+        // glyph record. It is the last selected slot, not necessarily the
+        // currently displayed slot.
+        glyphSetContext: {
+            set: 'primary',
+            names: { primary: null, rogue: null },
+            unicodeNagged: false,
+            colorNagged: false,
+        },
         rogueSymbols: {},
         // The configuration statements this parser recognizes but does not
         // interpret, in the order the file spelled them. A consumer that would
@@ -3387,6 +3414,65 @@ function optfn_map_mode(result, statement, negated) {
     }
 }
 
+// C ref: options.c perminv_modes[] and optfn_perminv_mode() (3046-3133),
+// its startup do_set arm.  The table has nine numeric slots because its index
+// is the stored mode.  TTY_PERM_INVENT is absent from this recorder build, so
+// slots 5 and 6 are null alongside the unused bit combinations 3, 4 and 7.
+const PERMINV_MODES = Object.freeze([
+    Object.freeze({
+        name: 'none', alias: 'off',
+        description: 'no permanent inventory window',
+    }),
+    Object.freeze({
+        name: 'all', alias: 'on',
+        description: 'all inventory except for gold',
+    }),
+    Object.freeze({
+        name: 'full', alias: 'gold',
+        description: 'full inventory including gold',
+    }),
+    null,
+    null,
+    null,
+    null,
+    null,
+    Object.freeze({
+        name: 'in-use', alias: 'inuse-only',
+        description: 'subset: items currently in use',
+    }),
+]);
+
+function optfn_perminv_mode(result, statement, negated) {
+    // Unlike most mandatory-value handlers, this one makes its value optional
+    // under negation so that bare !perminv_mode can turn both fields off.
+    const op = string_for_opt(statement, negated, result);
+    if (op !== '' && negated) {
+        bad_negation(result, 'perminv_mode');
+        return;
+    }
+    if (op !== '') {
+        const mode = PERMINV_MODES.findIndex((entry, index) => entry !== null
+            && (equal_ncasechars(op, entry.name, op.length)
+                || equal_ncasechars(op, entry.alias, op.length)
+                // C checks only op[0], after skipping null table slots.
+                || op.charCodeAt(0) === index + '0'.charCodeAt(0)));
+        if (mode < 0) {
+            configErrorAdd(
+                result, `Unknown perminv_mode parameter '${op}'`,
+            );
+            result.iflags.perminv_mode = INVOPT_NONE;
+            result.iflags.perm_invent = false;
+            return;
+        }
+        result.iflags.perminv_mode = mode;
+        // The C loop performs this write even for mode none/off.
+        result.iflags.perm_invent = true;
+    } else if (negated) {
+        result.iflags.perminv_mode = INVOPT_NONE;
+        result.iflags.perm_invent = false;
+    }
+}
+
 // C ref: options.c parsebindings(). Comma-separated bindings recurse into
 // their suffix, so the rightmost alias is appended first and wins collisions.
 function applyMenuBindings(result, bindings) {
@@ -4529,6 +4615,15 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
             appendSymbolSelection(result, 'primary', 'DECgraphics', {
                 legacyIfUnset: true,
             });
+            // BACKWARD_COMPAT's handler calls read_sym_file(PRIMARYSET) only
+            // when that slot has no name.  read_sym_file() is what changes
+            // symset_which_set, so a failed legacy selection leaves the prior
+            // glyph association alone.
+            const context = result.glyphSetContext;
+            if (!context.names.primary) {
+                context.set = 'primary';
+                context.names.primary = 'DECgraphics';
+            }
         }
     } else if (name === 'ibmgraphics') {
         result.flags.ibmgraphics = !negated;
@@ -4537,6 +4632,18 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
                 legacyIfUnset: true,
                 legacyIBM: true,
             });
+            // IBMgraphics loops through primary and rogue in that order.  A
+            // successful load owns subsequent glyph rows; encountering an
+            // already named slot stops the loop without selecting it.
+            const context = result.glyphSetContext;
+            if (!context.names.primary) {
+                context.set = 'primary';
+                context.names.primary = 'IBMgraphics';
+                if (!context.names.rogue) {
+                    context.set = 'rogue';
+                    context.names.rogue = 'RogueIBM';
+                }
+            }
         }
     } else if (isSymbolAssignment) {
         // parsesymbols() does not receive parseoptions()'s negation flag.
@@ -4584,6 +4691,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         optfn_mouse_support(result, statement);
     } else if (name === 'map_mode') {
         optfn_map_mode(result, statement, negated);
+    } else if (name === 'perminv_mode') {
+        optfn_perminv_mode(result, statement, negated);
     } else if (name === 'windowcolors') {
         optfn_windowcolors(result, statement);
     } else if (name === 'pickup_types') {
@@ -4714,6 +4823,39 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         // negation stop, and a value C cannot read reached no handler to
         // report it.
         applyBooleanOption(result, name, matchedRow, statement, value, negated);
+    } else if (name === 'glyph') {
+        // C ref: options.c optfn_glyph(). Empty spellings fail silently. A
+        // valid ID succeeds even when an invalid payload contributes no
+        // Unicode or color detail.
+        if (value == null || value === '') return;
+        if (negated) {
+            bad_negation(result, name);
+            return;
+        }
+        const inspected = inspect_glyphrep(value);
+        if (!inspected.valid) return;
+        const context = result.glyphSetContext;
+        result.symbolOperations.push({
+            kind: 'glyph-customization',
+            set: context.set,
+            raw: value,
+        });
+        if (!context.names[context.set]) {
+            if (inspected.hasUnicode && !context.unicodeNagged) {
+                context.unicodeNagged = true;
+                configErrorAdd(
+                    result,
+                    'Unimplemented customization feature, ignoring for now',
+                );
+            }
+            if (inspected.hasColor && !context.colorNagged) {
+                context.colorNagged = true;
+                configErrorAdd(
+                    result,
+                    'Unimplemented customization feature, ignoring for now',
+                );
+            }
+        }
     } else if (name === 'symset' || name === 'roguesymset') {
         // C refs: options.c optfn_symset() (4166-4201) and
         // optfn_roguesymset() (3543-3585). parseoptions() passes each handler
@@ -4721,6 +4863,7 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         // optn_err: it neither selects a set nor leaves parser residue.
         if (value == null || value === '') return;
         const set = name === 'roguesymset' ? 'rogue' : 'primary';
+        result.glyphSetContext.set = set;
         result[name] = value;
         // files.c read_sym_file() selects by name without applying the
         // Restrictions field used by the interactive picker. A miss clears
@@ -4728,6 +4871,7 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         // an earlier successful selection in place, so retain that cleanup
         // in the ordered symbols.c operation stream.
         if (!read_sym_file(value)) {
+            result.glyphSetContext.names[set] = null;
             result[name] = undefined;
             result.symbolOperations.push({
                 kind: 'clear', set, nameToo: true,
@@ -4738,6 +4882,8 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
             );
             return;
         }
+        result.glyphSetContext.names[set] = isDefaultSymsetName(value)
+            ? null : value;
         appendSymbolSelection(result, set, value);
         result.go.opt_need_redraw = true;
         result.go.opt_need_glyph_reset = true;
@@ -4809,6 +4955,7 @@ const CONFIG_STATEMENT_HANDLERS = Object.freeze({
     dogname: Object.freeze({ kind: 'direct', directName: 'dogname' }),
     catname: Object.freeze({ kind: 'direct', directName: 'catname' }),
     boulder: Object.freeze({ kind: 'legacy-boulder' }),
+    menucolor: Object.freeze({ kind: 'menucolor' }),
     warnings: Object.freeze({ kind: 'warnings' }),
 });
 
@@ -5201,6 +5348,10 @@ export function parseNethackrc(rc, random = rn2) {
             cnf_line_BOULDER(result, normalizedValue);
             continue;
         }
+        if (statement.kind === 'menucolor') {
+            cnf_line_MENUCOLOR(result, normalizedValue);
+            continue;
+        }
         if (statement.kind === 'warnings') {
             cnf_line_WARNINGS(result, normalizedValue, assign_warnings);
             continue;
@@ -5365,6 +5516,7 @@ export function finishStartupBooleanOptions(state) {
 export function initoptions_finish(parsedOptions = {}, state = game, env = {}) {
     finish_fruit_option(parsedOptions, state, env);
     finish_boulder_symbol(state);
+    finish_glyph_customizations(state);
     reglyph_darkroom(state);
     finishStartupBooleanOptions(state);
 }
@@ -5633,13 +5785,6 @@ function refuseUnportedConfigStatement(state, name) {
     }
 }
 
-// C ref: coloratt.c count_menucolors(). cnf_line_MENUCOLOR() remains unported,
-// and the interactive menu command that would add entries is outside this
-// startup slice.
-function count_menucolors(state) {
-    refuseUnportedConfigStatement(state, 'menucolor');
-    return 0;
-}
 function msgtype_count(state) {
     let count = 0;
     for (let rule = state.gp?.plinemsg_types; rule; rule = rule.next) ++count;
@@ -5769,6 +5914,20 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
             'ascii10x18', 'fit_to_screen',
         ];
         return names[state.iflags.wc_map_mode] ?? 'default';
+    },
+    perminv_mode: (state) => {
+        const mode = state.iflags.perminv_mode;
+        const entry = PERMINV_MODES[mode];
+        if (!entry) return '';
+        let description = entry.description;
+        if (mode !== INVOPT_NONE && !state.iflags.perm_invent) {
+            description = mode === INVOPT_IN_USE
+                ? description.replace(' currently', '')
+                : description.replace(' inventory', ' invent');
+            description += (mode & INV_SPARSE) !== 0
+                ? ' (Off)' : " ('perm_invent' is Off)";
+        }
+        return description;
     },
     windowcolors: (state) => windowColorsValue(state),
     number_pad: (state) => {
@@ -5935,9 +6094,7 @@ function symsetValue(state, set, withHandling) {
 // option field.
 // scripts/options-menu.test.mjs derives the whole rule from parseNethackrc(),
 // so the set cannot drift from OPTION_VALUE_HANDLERS unnoticed.
-export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set([
-    'glyph',
-]));
+export const UNPARSED_COMPOUND_OPTIONS = Object.freeze(new Set());
 
 // C ref: options.c doset_add_menu()'s optfn call, plus the "unknown" default
 // it keeps when the handler writes nothing.

@@ -21,7 +21,8 @@ import { touch_petrifies, abuse_dog } from './dog.js';
 import { which_armor } from './worn.js';
 import { hitmsg, magic_negation } from './mhitu.js';
 import { You, Your } from './pline.js';
-import { mon_nam, Monnam } from './do_name.js';
+import { end_running } from './hack.js';
+import { mon_nam, Monnam, y_monnam, upstart } from './do_name.js';
 import { exclam } from './zap.js';
 import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline } from './display.js';
 import { wakeup, killed, xkilled, seemimic } from './mon.js';
@@ -120,11 +121,17 @@ export async function do_attack(mtmp) {
                 note_unported_uhitm('do_attack:dopay');
             if (mtmp.mtame)     /* see 'additional considerations' in the C */
                 monflee(mtmp, rnd(6), false, false);
-            note_unported_uhitm('do_attack:in_the_way_message');
+            /* You("stop.  %s is in the way!", highc(y_monnam(mtmp))) */
+            {
+                const buf = upstart(y_monnam(mtmp));
+                await You(`stop.  ${buf} is in the way!`);
+            }
+            end_running(true);
             return true;
         } else if (mtmp.mfrozen || helpless(mtmp)
                    || (mdat.mmove === 0 && rn2(6))) {
-            note_unported_uhitm('do_attack:doesnt_seem_to_move');
+            await pline(`${Monnam(mtmp)} doesn't seem to move!`);
+            end_running(true);
             return true;
         } else {
             return false;       /* caller swaps places with it */

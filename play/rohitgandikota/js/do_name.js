@@ -24,6 +24,10 @@ import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          W_SADDLE } from './const.js';
 import { humanoid, is_animal, mindless, pronoun_gender, type_is_pname } from './mondata.js';
 import { canspotmon } from './display.js';
+import { ONAME_SKIP_INVUPD } from './const.js';
+import { exist_artifact, artifact_exists } from './artifact.js';
+import { carried } from './obj.js';
+import { update_inventory } from './invent.js';
 
 // src/do_name.c:759 ghostnames[] — 34 entries.
 const ghostnames = [
@@ -242,6 +246,62 @@ function note_do_name_unported(what) {
 
 function note_unported_do_name(what) {
     (game.unported ||= new Set()).add('do_name:' + what);
+}
+
+// src/do_name.c:61 new_oname() — allocate space for an object's name;
+// removes old name if there is one. JS keeps the name as obj.oname, so
+// allocation reduces to clearing the old value.
+export function new_oname(obj, lth) {
+    if (lth) {
+        ;   /* ONAME(obj) storage; assigned by the caller */
+    } else {
+        /* zero length: the new name is empty; get rid of the old name */
+        if (obj.oname != null)
+            delete obj.oname;
+    }
+}
+
+// include/global.h:404 PL_PSIZ
+const PL_PSIZ = 63;
+
+// src/do_name.c:372 oname() — assign a name to an object, creating the
+// artifact when the name matches one whose base type fits.
+export function oname(obj, name, oflgs) {
+    const skip_inv_update = (oflgs & ONAME_SKIP_INVUPD) !== 0;
+
+    let lth = name ? name.length + 1 : 0;
+    if (lth > PL_PSIZ) {
+        lth = PL_PSIZ;
+        name = name.slice(0, PL_PSIZ - 1);
+    }
+    /* If named artifact exists in the game, do not create another.
+       Also trying to create an artifact shouldn't de-artifact
+       it (e.g. Excalibur from prayer). In this case the object
+       will retain its current name. */
+    if (obj.oartifact || (lth && exist_artifact(obj.otyp, name)))
+        return obj;
+
+    new_oname(obj, lth); /* removes old name if one is present */
+    if (lth)
+        obj.oname = name;
+
+    if (lth)
+        artifact_exists(obj, name, true, oflgs);
+    if (obj.oartifact) {
+        /* can't dual-wield with artifact as secondary weapon */
+        if (obj === game.uswapwep)
+            note_unported_do_name('oname:untwoweapon');
+        /* activate warning if you've just named your weapon "Sting" */
+        if (obj === game.uwep)
+            note_unported_do_name('oname:set_artifact_intrinsic');
+        /* if obj is owned by a shop, increase your bill */
+        if (obj.unpaid)
+            note_unported_do_name('oname:alter_cost');
+        /* ONAME_VIA_NAMING literacy conduct + livelog are out-of-band */
+    }
+    if (carried(obj) && !skip_inv_update)
+        update_inventory();
+    return obj;
 }
 
 // src/do_name.c:499 docallcmd() — the #call / #name command: player can name a

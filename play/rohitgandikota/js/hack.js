@@ -1,3 +1,13 @@
+import { obj_extract_self } from './invent.js';
+import { place_object } from './mkobj.js';
+import { exercise } from './attrib.js';
+import { A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
+         LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
+import { the, xname } from './objnam.js';
+import { costly_spot } from './shk.js';
+import { You_hear, There } from './pline.js';
+import { newsym } from './display.js';
+import { YMonnam } from './do_name.js';
 import { is_flimsy } from './obj.js';
 import { You, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { feel_location } from './display.js';
@@ -998,7 +1008,8 @@ export function monster_nearby() {
             if (mtmp
                 && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
                 && M_AP_TYPE(mtmp) !== M_AP_OBJECT
-                && !mtmp.mpeaceful && !noattacks(game.mons[mtmp.mnum])
+                && (Hallucination()
+                    || (!mtmp.mpeaceful && !noattacks(game.mons[mtmp.mnum])))
                 && (!is_hider(game.mons[mtmp.mnum]) || !mtmp.mundetected)
                 && !helpless(mtmp)
                 && !onscary(u.ux, u.uy, mtmp) && canspotmon(mtmp))
@@ -1168,4 +1179,218 @@ export async function trapmove(x, y, desttrap) {
         break;
     }
     return false;
+}
+
+/* ---- boulder pushing: src/hack.c:166-645 ---- */
+
+const The = (s) => upstart(the(s));
+
+// src/hack.c:166 dopush() — the boulder actually moves.
+async function dopush(sx, sy, rx, ry, otmp, costly) {
+    /* give boulder pushing feedback if this is a different boulder than
+       the last one pushed or if it's been at least 2 turns since we last
+       pushed this boulder */
+    if (otmp.o_id !== game.bldrpush_oid) {
+        game.bldrpushtime = (game.moves | 0) + 1;
+        game.bldrpush_oid = otmp.o_id;
+    }
+    const givemesg = (game.moves > game.bldrpushtime + 2
+                      || game.moves < game.bldrpushtime);
+    const what = givemesg ? the(xname(otmp)) : null;
+    if (!game.u.usteed) {
+        const easypush = throws_rocks(game.youmonst.data);
+        if (givemesg)
+            await pline(`With ${easypush ? 'little' : 'great'} effort you move ${what}.`);
+        if (!easypush)
+            exercise(A_STR, true);
+    } else {
+        if (givemesg)
+            await pline(`${YMonnam(game.u.usteed)} moves ${what}.`);
+    }
+    game.bldrpushtime = game.moves | 0;
+
+    /* Move the boulder *after* the message. */
+    otmp.next_boulder = 0;
+    /* movobj(): remove + place + newsym both squares. place_object() is
+       what re-blocks vision at the boulder's new square; skipping it let
+       the hero see straight into the room the boulder was pushed toward. */
+    const osx = otmp.ox, osy = otmp.oy;
+    obj_extract_self(otmp);
+    newsym(osx, osy);
+    place_object(otmp, rx, ry);
+    newsym(rx, ry);
+    /* the shop-bill adjustments need billing; costly is false until then */
+    if (costly)
+        note_unported_hack('dopush:shop_bill');
+}
+
+// src/hack.c:247 cannot_push_msg()
+async function cannot_push_msg(otmp, sx, sy) {
+    const what = the(xname(otmp));
+    if (game.u.usteed)
+        await pline(`${YMonnam(game.u.usteed)} tries to move ${what}, but cannot.`);
+    else
+        await You(`try to move ${what}, but in vain.`);
+    if (game.u.ublind)
+        await feel_location(sx, sy);
+}
+
+// src/hack.c:262 cannot_push() — climbing over is a polyd-giant option;
+// an ordinary hero just fails.
+async function cannot_push(otmp, sx, sy) {
+    if (throws_rocks(game.youmonst.data)) {
+        note_unported_hack('cannot_push:giant_climb');
+        return 0;
+    }
+    return -1;
+}
+
+// src/hack.c:327 moverock_done()
+function moverock_done(sx, sy) {
+    for (const otmp of (game.level?.objects || []))
+        if (otmp.ox === sx && otmp.oy === sy && otmp.otyp === ONAMES.BOULDER)
+            otmp.next_boulder = 0; /* resume normal xname() */
+}
+
+// src/hack.c:336 moverock()
+export async function moverock() {
+    const sx = game.u.ux + game.u.dx, sy = game.u.uy + game.u.dy;
+    const ret = await moverock_core(sx, sy);
+    moverock_done(sx, sy);
+    return ret;
+}
+
+// src/hack.c:348 moverock_core() — push every boulder on <sx,sy>.
+async function moverock_core(sx, sy) {
+    let firstboulder = true;
+    let otmp;
+
+    while ((otmp = sobj_at(ONAMES.BOULDER, sx, sy)) != null) {
+        /* Blind "That feels like a boulder." arm needs remembered-glyph
+           bookkeeping; recorded until a blind hero pushes one */
+        if (game.u.ublind)
+            note_unported_hack('moverock:blind_feel');
+
+        otmp.next_boulder = firstboulder ? 0 : 1;
+        firstboulder = false;
+
+        /* make sure that this boulder is visible as the top object */
+        if (game.level.objects[0] !== otmp) {
+            const i = game.level.objects.indexOf(otmp);
+            if (i > 0) {
+                game.level.objects.splice(i, 1);
+                game.level.objects.unshift(otmp);
+            }
+            newsym(sx, sy);
+        }
+
+        const rx = game.u.ux + 2 * game.u.dx; /* boulder destination */
+        const ry = game.u.uy + 2 * game.u.dy;
+        nomul(0);
+
+        /* m<dir> toward an adjacent boulder: squeeze or refuse */
+        if (game.context.nopick) {
+            await feel_location(sx, sy);
+            if (throws_rocks(game.youmonst.data)) {
+                note_unported_hack('moverock:nopick_giant');
+                return 0;
+            } else if (could_move_onto_boulder(sx, sy)) {
+                await You(`squeeze yourself ${
+                    game.u.uprops?.FLYING ? 'over' : 'against'} the boulder.`);
+                return 0;
+            } else {
+                await There('is a boulder in your way.');
+                return -1;
+            }
+        }
+        if (game.u.uprops?.LEVITATION) {
+            await You(`don't have enough leverage to push ${the(xname(otmp))}.`);
+            /* Give them a chance to climb over it? */
+            return -1;
+        }
+        /* verysmall(youmonst.data) cannot fire un-polymorphed */
+
+        const dest = isok(rx, ry) ? game.level.at(rx, ry) : null;
+        if (dest && !IS_OBSTRUCTED(dest.typ)
+            && dest.typ !== IRONBARS
+            && (!IS_DOOR(dest.typ) || !(game.u.dx && game.u.dy)
+                || doorless_door(rx, ry))
+            && !sobj_at(ONAMES.BOULDER, rx, ry)) {
+            const ttmp = t_at(rx, ry);
+            const mtmp = m_at(rx, ry);
+            const costly = costly_spot(sx, sy); /* shop_keeper gate inside */
+
+            /* KMH -- Sokoban doesn't let you push boulders diagonally */
+            if (In_sokoban(game.u.uz) && game.u.dx && game.u.dy) {
+                await pline(`${The(xname(otmp))} won't roll diagonally on this floor.`);
+                return cannot_push(otmp, sx, sy);
+            }
+
+            /* revive_nasty: buried Rider corpses only; nothing buries them */
+
+            if (mtmp && !noncorporeal(game.mons[mtmp.mnum])
+                && (!mtmp.mtrapped
+                    || !(ttmp && is_pit(ttmp.ttyp)))) {
+                let deliver_part1 = false;
+                if (canspotmon(mtmp)) {
+                    await pline(`There's ${a_monnam(mtmp)} on the other side.`);
+                    deliver_part1 = true;
+                } else {
+                    await You_hear(`a monster behind ${the(xname(otmp))}.`);
+                    note_unported_hack('moverock:map_invisible');
+                }
+                if (game.flags?.verbose !== false) {
+                    const you_or_steed = game.u.usteed
+                        ? 'it' /* y_monnam(usteed): no steed here yet */
+                        : 'you';
+                    await pline(`${deliver_part1 ? "Perhaps that's why " : ''}${
+                        deliver_part1 ? you_or_steed
+                                      : upstart(you_or_steed)} cannot move ${
+                        deliver_part1 ? 'it' : the(xname(otmp))}.`);
+                }
+                return cannot_push(otmp, sx, sy);
+            }
+
+            if (closed_door(rx, ry)) {
+                await cannot_push_msg(otmp, sx, sy);
+                return cannot_push(otmp, sx, sy);
+            }
+
+            /* disturb_buried_zombies(sx, sy): no buried zombies yet */
+
+            if (ttmp) {
+                switch (ttmp.ttyp) {
+                case LANDMINE:
+                case SPIKED_PIT:
+                case PIT:
+                case HOLE:
+                case TRAPDOOR:
+                case LEVEL_TELEP:
+                case TELEP_TRAP:
+                case ROLLING_BOULDER_TRAP:
+                    /* the trap-operates-on-boulder arms (landmine rn2(10),
+                       pit fill, hole plug, teleport) sit on machinery that
+                       has its own draws; record which trap so the gap is
+                       visible per type */
+                    note_unported_hack(`moverock:trap=${ttmp.ttyp}`);
+                    return -1;
+                default:
+                    break; /* boulder not affected by this trap */
+                }
+            }
+
+            if (is_pool_or_lava(rx, ry)) {
+                /* boulder_hits_pool(otmp, rx, ry, TRUE) — rn2(10) fill
+                   roll plus the plunk/fill messages */
+                note_unported_hack('moverock:boulder_hits_pool');
+                return -1;
+            }
+
+            await dopush(sx, sy, rx, ry, otmp, costly);
+        } else {
+            await cannot_push_msg(otmp, sx, sy);
+            return cannot_push(otmp, sx, sy);
+        }
+    }
+    return 0;
 }

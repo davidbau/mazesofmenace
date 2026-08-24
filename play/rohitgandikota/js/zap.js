@@ -14,7 +14,15 @@ import { closed_door } from './cmd.js';
 
 import { STONE, WATER, LAVAWALL, IRONBARS, IS_SINK, POOL, WEB,
          THROWN_WEAPON, KICKED_WEAPON, ZAPPED_WAND, M_AP_TYPE,
-         M_AP_OBJECT } from './const.js';
+         M_AP_OBJECT, ICE, Is_airlevel, Is_waterlevel, st_all, plur,
+         ONAME_WISH, ONAME_KNOW_ARTI } from './const.js';
+import { mungspaces } from './hacklib.js';
+import { hands_obj, hold_another_object } from './invent.js';
+import { u_safe_from_fatal_corpse } from './pickup.js';
+import { aobjnam } from './objnam.js';
+import { artifact_origin } from './artifact.js';
+import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
+         tty_destroy_nhwindow, NHW_TEXT } from './tty/wintty.js';
 import { OCLASSES } from './objects_data.js';
 import { DEADMONSTER } from './monst.js';
 import { killed, shieldeff_mon } from './mon.js';
@@ -300,33 +308,170 @@ export async function zapnodir(obj) {
     }
 }
 
+// src/zap.c:6160 MAXWISHTRY
+const MAXWISHTRY = 5;
+
+// src/zap.c:6165 wishcmdassist() — details shown when the player answers
+// the wish prompt with "help".
+async function wishcmdassist(triesleft) {
+    const wishinfo = [
+  'Wish details:',
+  '',
+  'Enter the name of an object, such as "potion of monster detection",',
+  '"scroll labeled README", "elven mithril-coat", or "Grimtooth"',
+  '(without the quotes).',
+  '',
+  'For object types which come in stacks, you may specify a plural name',
+  'such as "potions of healing", or specify a count, such as "1000 gold',
+  'pieces", although that aspect of your wish might not be granted.',
+  '',
+  'You may also specify various prefix values which might be used to',
+  'modify the item, such as "uncursed" or "rustproof" or "+1".',
+  'Most modifiers shown when viewing your inventory can be specified.',
+  '',
+  "You may specify 'nothing' to explicitly decline this wish.",
+    ],
+        preserve_wishless = "Doing so will preserve 'wishless' conduct.",
+        retry_too = 'a randomly chosen item will be granted.',
+        suppress_cmdassist =
+            '(Suppress this assistance with !cmdassist in your config file.)',
+        cardinals = ['zero', 'one', 'two', 'three', 'four', 'five'],
+        too_many = 'too many';
+
+    const win = tty_create_nhwindow(NHW_TEXT);
+    if (!win)
+        return;
+    for (let i = 0; i < wishinfo.length; ++i)
+        tty_putstr(win, 0, wishinfo[i]);
+    if (!(game.u.uconduct?.wishes))
+        tty_putstr(win, 0, preserve_wishless);
+    tty_putstr(win, 0, '');
+    tty_putstr(win, 0,
+               `If you specify an unrecognized object name ${
+                   (triesleft >= 0 && triesleft < cardinals.length)
+                       ? cardinals[triesleft] : too_many
+               }${(triesleft < MAXWISHTRY) ? ' more' : ''} time${
+                   plur(triesleft)},`);
+    tty_putstr(win, 0, retry_too);
+    tty_putstr(win, 0, '');
+    if (game.iflags?.cmdassist ?? true)
+        tty_putstr(win, 0, suppress_cmdassist);
+    await tty_display_nhwindow(win);
+    tty_destroy_nhwindow(win);
+}
+
+/* src/zap.c:6221 MAX_WISH_HISTORY / wish_history[] — the wish history is
+   DEBUG-only and the contest build does not define DEBUG, so the list
+   stays empty and the add/menu bodies compile away. */
+const MAX_WISH_HISTORY = 20;
+const wish_history = new Array(MAX_WISH_HISTORY).fill(null);
+
+// src/zap.c:6227 wish_history_add() — body is #ifdef DEBUG; no-op here.
+function wish_history_add(buf) {
+}
+
 // src/zap.c:6314 makewish() — grant one wish.
 export async function makewish() {
+    let buf = '';
+    let bufcpy = '', promptbuf;
+    let otmp;
+    const nothing = {}; /* cg.zeroobj; only its address matters */
+    let tries = 0;
+    game.u.uconduct ||= {};
+
+    (game.context ||= {}).resume_wish = 0;
     if (game.flags?.verbose !== false)
         await You('may wish for an object.');
+    /* retry: */
+    for (;;) {
+        promptbuf = 'For what do you wish';
+        if ((game.iflags?.cmdassist ?? true) && tries > 0)
+            promptbuf += " (enter 'help' for assistance)";
+        promptbuf += '?';
 
-    const raw = await getlin('For what do you wish?', null);
-    const wishtext = (raw === '\x1b' || raw === '\u001b') ? ''
-                     : String(raw).replace(/\s+/g, ' ').trim();
-    let otmp = readobjnam(wishtext);
-    if (otmp === 'nothing')
-        return;                         /* declined; keeps wishless conduct */
-    if (!otmp) {
-        /* C allows MAXWISHTRY retries then falls back to a random object;
-           the retry loop re-reads a line, so record rather than guess */
-        await pline('Nothing fitting that description exists in the game.');
-        note_unported_zap('makewish:retry');
-        return;
+        /* iflags.menu_requested && wish_history[0]: the DEBUG-only history
+           menu; the list is always empty here so getlin always runs */
+        if (game.iflags?.menu_requested && wish_history[0] && (tries === 0))
+            note_unported_zap('makewish:wish_history_menu');
+        else
+            buf = await getlin(promptbuf, null);
+
+        if (game.iflags?.term_gone) {
+            if (!game.iflags?.debug_fuzzer)
+                game.context.resume_wish = 1;
+            return;
+        }
+
+        buf = mungspaces(buf);
+        if (buf[0] === '\x1b') {
+            buf = '';
+        } else if (buf.toLowerCase() === 'help') { /* !strcmpi(buf, "help") */
+            await wishcmdassist(MAXWISHTRY - tries);
+            buf = ''; /* for EDIT_GETLIN */
+            continue; /* goto retry */
+        }
+        /*
+         *  Note: if they wished for and got a non-object successfully,
+         *  otmp == &hands_obj.  That includes an artifact which has been
+         *  denied. Wishing for "nothing" requires a separate value to
+         *  remain distinct.
+         */
+        bufcpy = buf;
+        otmp = await readobjnam(buf, nothing);
+        if (!otmp) {
+            await pline(
+                'Nothing fitting that description exists in the game.');
+            if (++tries < MAXWISHTRY)
+                continue; /* goto retry */
+            await pline("That's enough tries!"); /* thats_enough_tries */
+            otmp = await readobjnam(null, null);
+            if (!otmp)
+                return; /* for safety; should never happen */
+        } else if (otmp === nothing) {
+            /* explicitly wished for "nothing", presumably attempting
+               to retain wishless conduct; the livelog is out-of-band */
+            return;
+        } else if (otmp === hands_obj) {
+            wish_history_add(bufcpy);
+            /* wizard mode terrain wish: skip livelogging, etc */
+            return;
+        }
+        break;
+    }
+    wish_history_add(bufcpy);
+
+    if (otmp.oartifact) {
+        /* update artifact bookkeeping; doesn't produce a livelog event */
+        artifact_origin(otmp, ONAME_WISH | ONAME_KNOW_ARTI);
     }
 
-    /* wish history and livelog carry no draws */
+    /* wisharti conduct handled in readobjnam(); the livelog_printf events
+       (first wish / first artifact wish / wished for ...) are out-of-band */
+    game.u.uconduct.wishes = (game.u.uconduct.wishes || 0) + 1; /* KMH */
 
-    /* hold_another_object(): into inventory with the new letter shown */
-    otmp = addinv(otmp);
-    update_inventory();
-    await prinv(null, otmp, 0);
+    if (otmp.otyp === ONAMES.CORPSE
+        && !u_safe_from_fatal_corpse(otmp, st_all))
+        otmp.wishedfor = 1;
 
+    const verb = ((Is_airlevel(game.u.uz) || game.u.uinwater)
+                  ? 'slip'
+                  : (otmp.otyp === ONAMES.CORPSE && otmp.wishedfor)
+                    ? 'materialize' : 'drop'),
+          oops_msg = (game.u.uswallow
+                      ? 'Oops!  %s out of your reach!'
+                      : (Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz)
+                         || game.level.at(game.u.ux, game.u.uy).typ < IRONBARS
+                         || game.level.at(game.u.ux, game.u.uy).typ >= ICE)
+                        ? 'Oops!  %s away from you!'
+                        : !(otmp.otyp === ONAMES.CORPSE && otmp.wishedfor)
+                          ? 'Oops!  %s to the floor!'
+                          : 'Careful! %s on the floor!');
+
+    /* The(aobjnam()) is safe since otmp is unidentified -dlc */
+    await hold_another_object(otmp, oops_msg, The(aobjnam(otmp, verb)),
+                              null);
     game.u.ublesscnt = (game.u.ublesscnt || 0) + rn1(100, 50);
+                                        /* the gods take notice */
 }
 
 // src/zap.c:123 learnwand() — the zap's observable effect identifies the

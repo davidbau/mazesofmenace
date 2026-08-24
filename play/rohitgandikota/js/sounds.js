@@ -13,7 +13,10 @@ import { canseemon } from './display.js';
 import { helpless, DEADMONSTER } from './monst.js';
 import { rn2 } from './rng.js';
 import { ECMD_OK, ECMD_TIME, IS_WALL, SDOOR, isok, M_AP_TYPE,
-         M_AP_FURNITURE, M_AP_OBJECT, STRAT_WAITMASK } from './const.js';
+         M_AP_FURNITURE, M_AP_OBJECT, STRAT_WAITMASK,
+         ANY_SHOP, ROOMOFFSET } from './const.js';
+import { search_special } from './mkroom.js';
+import { tended_shop, noisy_shop } from './shk.js';
 import { MSOUND } from './monst_data.js';
 import { canspotmon } from './display.js';
 import { getdir } from './cmd.js';
@@ -35,13 +38,20 @@ export async function dosounds() {
         return;
 
     const f = game.level?.flags || {};
+    const hallu = Hallucination() ? 1 : 0;
 
     if (f.nfountains && !rn2(400)) {
-        /* You_hear1(fountain_msg[rn2(3) + hallu]) */
-        rn2(3);
+        const fountain_msg = [
+            'bubbling water.', 'water falling on coins.',
+            'the splashing of a naiad.', 'a soda fountain!',
+        ];
+        await You_hear(fountain_msg[rn2(3) + hallu]);
     }
     if (f.nsinks && !rn2(300)) {
-        rn2(2);
+        const sink_msg = [
+            'a slow drip.', 'a gurgling noise.', 'dishes being washed!',
+        ];
+        await You_hear(sink_msg[rn2(2) + hallu]);
     }
     if (f.has_court && !rn2(200)) {
         note_unported('dosounds throne room');
@@ -65,7 +75,24 @@ export async function dosounds() {
         note_unported('dosounds zoo');
     }
     if (f.has_shop && !rn2(200)) {
-        note_unported('dosounds shop');
+        const sroom = search_special(ANY_SHOP);
+        if (!sroom) {
+            /* strange... */
+            f.has_shop = 0;
+            return;
+        }
+        if (tended_shop(sroom)
+            && !(game.u.ushops || '')
+                .includes(String.fromCharCode(
+                    game.level.rooms.indexOf(sroom) + ROOMOFFSET))) {
+            const shop_msg = [
+                'someone cursing shoplifters.',
+                'the chime of a cash register.', 'Neiman and Marcus arguing!',
+            ];
+            await You_hear(shop_msg[rn2(2) + hallu]);
+            noisy_shop(sroom);
+        }
+        return;
     }
     if (f.has_temple && !rn2(200)) {
         /* temple_priest_sound needs the priest records (EPRI shrine

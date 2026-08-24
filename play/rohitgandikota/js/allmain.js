@@ -15,26 +15,36 @@ import { maybe_finished_meal } from './eat.js';
 // run loop uses, so porting it unblocks both.
 export function set_occupation(fn, txt, xtime) {
     if (xtime) {
-        /* timed_occupation wraps fn and counts down xtime */
-        game.occupation = null;
-        (game.unported ||= new Set()).add('set_occupation:timed_occupation');
-        return;
+        /* src/cmd.c:172 timed_occupation() — wraps fn and counts down
+           gm.multi; a counted command with f_text ("20s") repeats through
+           the occupation slot so monster_nearby() can interrupt it with
+           "You stop searching." */
+        game._timed_occ_fn = fn;
+        game.occupation = async function timed_occupation() {
+            await game._timed_occ_fn();
+            if (game.multi > 0)
+                game.multi--;
+            return game.multi > 0 ? 1 : 0;
+        };
+    } else {
+        game.occupation = fn;
     }
-    game.occupation = fn;
     game.occtxt = txt;
     game.occtime = 0;
 }
 
-// src/allmain.c stop_occupation()
+// src/allmain.c:684 stop_occupation()
 export async function stop_occupation() {
     if (game.occupation) {
-        /* src/allmain.c:684 — maybe_finished_meal runs FIRST, and the
-           "You stop <occtxt>." message only prints when it returns FALSE. */
-        if (!await maybe_finished_meal(true))
-            note_unported_main(`stop_occupation:message:${game.occtxt}`);
+        /* maybe_finished_meal runs FIRST, and the "You stop <occtxt>."
+           message only prints when it returns FALSE. */
+        if (!await maybe_finished_meal(true)) {
+            const { You } = await import('./pline.js');
+            await You(`stop ${game.occtxt}.`);
+        }
         game.occupation = null;
         game.occtxt = null;
-        /* nomul(0) */
+        (game.disp ||= {}).botl = true; /* in case u.uhs changed */
     }
     game.multi = 0;
 }
@@ -46,12 +56,13 @@ import { settrack, initrack } from './track.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
 import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
-         FULL_MOON, NEW_MOON, COLNO, A_CON, MOD_ENCUMBER,
+         FULL_MOON, NEW_MOON, COLNO, A_CON, A_WIS, A_INT, MOD_ENCUMBER,
          UNENCUMBERED, SLT_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, A_DEX,
          Upolyd } from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, domove } from './cmd.js';
-import { lookaround, end_running, unmul, nomul } from './hack.js';
+import { lookaround, end_running, unmul, nomul,
+         monster_nearby, in_rooms } from './hack.js';
 import { deferred_goto } from './do.js';
 import { You } from './pline.js';
 import {
@@ -86,6 +97,8 @@ const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
 import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
 import { u_wipe_engr } from './engrave.js';
 import { dosounds } from './sounds.js';
+import { dosearch0 } from './detect.js';
+import { run_regions } from './region.js';
 import { nh_timeout } from './timeout.js';
 import { age_spells } from './spell.js';
 import { gethungry } from './eat.js';
@@ -133,6 +146,31 @@ export async function newgame() {
        before the game proper. It renames the hero in wizard mode, so it has to
        run before anything prints plname. */
     set_playmode();
+
+    /* sys/unix/unixmain.c — after the name is final, try to restore a
+       saved game. A successful recover reinstalls the whole game state;
+       the only draws are nhlib.lua's align shuffle from the fresh Lua
+       core, and play continues where the save left off. */
+    {
+        const { dorecover } = await import('./save.js');
+        if (dorecover()) {
+            l_nhcore_init();
+            await docrt();
+            return;
+        }
+    }
+
+    /* src/allmain.c:776 — "turn on 3.6 tributes". stock_room's
+       specialspot = rnd(stockcount) draw for the novel is gated on this,
+       so it is load-bearing for every level with a bookstore-eligible
+       shop. */
+    game.context.tribute = { enabled: true, bookstock: false };
+
+    /* js/hack.js publishes in_rooms on the game object for js/monmove.js
+       (a cycle-breaking seam), but resetGame() REPLACES the game object at
+       the start of every segment, so the module-load assignment only ever
+       reached the first object. Republish on the live one. */
+    game.in_rooms = in_rooms;
 
     // src/allmain.c:780 — seed mvitals from each species' G_NOCORPSE bit,
     // before init_objects(). propagate() and uncommon() both read this.
@@ -209,6 +247,15 @@ export async function newgame() {
         // functions that take a real monster (dmgval, mhitm_ad_phys,
         // could_seduce), which read .data and .mnum.
         g.youmonst = { data: g.mons[g.u.umonnum], mnum: g.u.umonnum };
+        /* set_uasmon()'s PROPSET(INFRAVISION) — infravision is a property
+           of the hero's physical race (mondata.c:838): orcs, elves,
+           dwarves and gnomes see warm monsters in the dark */
+        {
+            const racemon = g.mons[g.urace?.mnum];
+            (g.u.intrinsic ||= {}).HInfravision =
+                !!(racemon
+                   && (racemon.mflags3 & 256 /* M3_INFRAVISION */));
+        }
         g.u.ulevel = g.u.ulevelmax = 1;
         /* type and record were filled by newhp() above, where C sets them. */
         // src/u_init.c:1006 — ualignbase[A_CURRENT] and [A_ORIGINAL] track the
@@ -236,6 +283,9 @@ export async function newgame() {
     // seed-specific topology.
     g.u = g.u || {};
     g.u.uz = { dnum: 0, dlevel: 1 };
+    /* src/u_init.c:979/984 + src/allmain.c:97 — u.uz0 starts on the same
+       level; onquest()'s Not_firsttime reads it. */
+    g.u.uz0 = { dnum: 0, dlevel: 1 };
     g.flags = g.flags || {};
 
     // Real mklev generates the level with correct room positions
@@ -458,6 +508,33 @@ function u_calc_moveamt(wtcap) {
     if (game.u.umovement < 0) game.u.umovement = 0;
 }
 
+// src/allmain.c:599 regen_pw() — maybe regenerate some magical energy.
+// The rn1(upper, 1) draws only when uen is below max and the level-scaled
+// move gate passes, so the stream changes shape once the hero first loses
+// Pw (an anti-magic field, casting).
+async function regen_pw(wtcap) {
+    const u = game.u;
+    const MAXULEV = 30;
+    const wizard_role = game.urole?.mnum === 'PM_WIZARD'
+                        || game.urole?.name?.m === 'Wizard';
+    if (u.uen < u.uenmax
+        && ((wtcap < MOD_ENCUMBER
+             && (!(game.moves % Math.trunc((MAXULEV + 8 - u.ulevel)
+                                           * (wizard_role ? 3 : 4) / 6))))
+            || u.uprops?.ENERGY_REGENERATION)) {
+        let upper = Math.trunc((ACURR(A_WIS) + ACURR(A_INT)) / 15) + 1;
+
+        /* EMagical_breathing: amulet of magical breathing worn — absent */
+
+        u.uen += rn1(upper, 1);
+        if (u.uen > u.uenmax)
+            u.uen = u.uenmax;
+        (game.disp ||= {}).botl = true;
+        if (u.uen === u.uenmax)
+            await interrupt_multi('You feel full of energy.');
+    }
+}
+
 // src/allmain.c:625 regen_hp() — the hero's per-turn heal check. The
 // !Upolyd arm draws rn2(100) every turn the hero is below max HP, so the
 // stream changes shape the moment the hero first takes damage. The Upolyd
@@ -584,6 +661,7 @@ export async function moveloop_core() {
                 /* src/allmain.c:275 — nh_timeout() then the prayer
                    timeout, every turn. */
                 await nh_timeout();
+                run_regions();      /* src/allmain.c:274 */
                 if (g.u.ublesscnt)
                     g.u.ublesscnt--;
 
@@ -594,6 +672,18 @@ export async function moveloop_core() {
                     && (!Upolyd(g.u) ? (g.u.uhp < g.u.uhpmax)
                                      : (g.u.mh < g.u.mhmax)))
                     await regen_hp(near_capacity());
+
+                /* src/allmain.c:298 — overexert_hp when heavily encumbered
+                   and moving; no session gets that loaded yet */
+
+                /* src/allmain.c:305 — regen_pw runs unconditionally */
+                await regen_pw(near_capacity());
+
+                /* src/allmain.c:342 — intrinsic Searching autosearches
+                   every turn (Archeologists have it from level 1) */
+                if ((g.u.intrinsic?.HSearching || g.u.uprops?.SEARCHING)
+                    && !g.level?.flags?.noautosearch && (g.multi ?? 0) >= 0)
+                    await dosearch0(1);
 
                 await dosounds();
                 await gethungry();
@@ -674,9 +764,7 @@ export async function moveloop_core() {
      *         if ((*go.occupation)() == 0) go.occupation = 0;
      *         if (monster_nearby()) stop_occupation();
      *     }
-     *
-     * monster_nearby() needs the interrupt checks; without it an occupation
-     * runs to completion where C would break it off, so it records. */
+     */
     /* a helpless hero (multi < 0) takes no command; the turn machinery above
        advanced the count, and context.move stays set so the next core call
        burns the next helpless turn, exactly like an occupation. */
@@ -688,7 +776,14 @@ export async function moveloop_core() {
     if ((g.multi ?? 0) >= 0 && g.occupation) {
         if ((await g.occupation()) === 0)
             g.occupation = null;
-        note_unported_main('moveloop:monster_nearby');
+        if (monster_nearby()) {
+            await stop_occupation();
+            /* reset_eat(): only matters when the occupation was eating,
+               which sets its own context; noted until eating occupations
+               are ported */
+            if (g.context?.victual?.piece)
+                note_unported_main('moveloop:reset_eat');
+        }
         g.context.move = 1;             /* the occupation took this turn */
         return;
     }
@@ -779,10 +874,23 @@ function note_unported_main(what) {
 
 // src/allmain.c maybe_do_tutorial()
 export async function maybe_do_tutorial() {
+    const g = game;
+    /* src/allmain.c:569 find_level("tut-1") */
+    const sp = (g.sp_levchn || []).find(s => s.proto === 'tut-1');
+    if (!sp)
+        return;
+
     if (await ask_do_tutorial()) {
-        /* schedule_goto(tut-1) + deferred_goto() builds the tutorial level.
-           Not ported: the special-level loader for tut-1, and goto_level's
-           save/restore of the level being left. */
-        note_unported_main('tutorial level (tut-1)');
+        g.u.ucamefrom = { dnum: g.u.uz.dnum, dlevel: g.u.uz.dlevel };
+        g.iflags.nofollowers = true;
+        const { schedule_goto, deferred_goto, UTOTYPE_NONE } =
+            await import('./do.js');
+        schedule_goto(sp.dlevel, UTOTYPE_NONE,
+                      'Entering the tutorial.', null);
+        await deferred_goto();
+        const { vision_recalc } = await import('./vision.js');
+        vision_recalc(0);
+        await docrt();
+        g.iflags.nofollowers = false;
     }
 }

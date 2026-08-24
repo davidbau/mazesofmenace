@@ -572,7 +572,7 @@ const NAME_TO_MON_ALTS = [
     ['mumakil', 'PM_MUMAK'], ['erinyes', 'PM_ERINYS'],
 ];
 
-export function name_to_monplus(in_str, rest_box) {
+export function name_to_monplus(in_str, rest_box, gender_name_var) {
     const NON_PM = -1, LOW_PM = 0;
     let str = String(in_str);
     let skipped = 0;
@@ -605,12 +605,14 @@ export function name_to_monplus(in_str, rest_box) {
             && (!str[nm.length] || str[nm.length] === ' '
                 || str[nm.length] === "'")) {
             if (rest_box) rest_box.at = skipped + nm.length;
+            /* C's names[] rows carry a genderhint the generated ALTS table
+               does not; gendered alt spellings keep the caller's value */
             const v = PMNAMES[pm];
             if (v !== undefined) return v;
         }
     }
 
-    let mntmp = NON_PM, len = 0, exact_match = false;
+    let mntmp = NON_PM, len = 0, matchgend = -1, exact_match = false;
     for (let i = LOW_PM; i < (game.mons?.length || 0); i++) {
         for (let mgend = 0; mgend < 3; mgend++) {
             const nm = game.mons[i]?.pmnames?.[mgend];
@@ -618,14 +620,15 @@ export function name_to_monplus(in_str, rest_box) {
             const m_i_len = nm.length;
             if (m_i_len > len && low.startsWith(nm.toLowerCase())) {
                 if (m_i_len === slen) {
-                    mntmp = i; len = m_i_len; exact_match = true;
+                    mntmp = i; len = m_i_len; matchgend = mgend;
+                    exact_match = true;
                     break;
                 } else if (slen > m_i_len) {
                     const rest = str.slice(m_i_len);
                     if (rest[0] === ' '
                         || /^s($| )/i.test(rest) || /^es($| )/i.test(rest)
                         || /^'($| )/.test(rest) || /^'s($| )/i.test(rest)) {
-                        mntmp = i; len = m_i_len;
+                        mntmp = i; len = m_i_len; matchgend = mgend;
                     }
                 }
             }
@@ -639,6 +642,12 @@ export function name_to_monplus(in_str, rest_box) {
         return NON_PM;
     }
     if (rest_box) rest_box.at = skipped + len;
+    if (gender_name_var && matchgend !== -1) {
+        /* don't override with neuter if caller has already specified male
+           or female and we've matched the neuter name */
+        if (gender_name_var.v === -1 || matchgend !== 2 /* NEUTRAL */)
+            gender_name_var.v = matchgend;
+    }
     return mntmp;
 }
 
@@ -697,3 +706,7 @@ export function mhim(mtmp) {
     return genders_tbl[pronoun_gender(mtmp, PRONOUN_HALLU)].him;
 }
 import { genders as genders_tbl } from './role_data.js';
+
+// include/mondata.h:71 digests() — swallow-and-digest engulfer (purple worm).
+export const digests = (ptr) =>
+    dmgtype_fromattack(ptr, ATTKS.AD_DGST, ATTKS.AT_ENGL) != null;

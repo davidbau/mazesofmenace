@@ -99,6 +99,7 @@ function mk_knox_portal(x, y) {
 }
 import { random_engraving, wipeout_text } from './engrave.js';
 import { merged, weight, sobj_at } from './invent.js';
+import { mkroll_launch } from './trap.js';
 import { themeroom_fill_contents, post_level_generate } from './themerms.js';
 import { mkroom_table, create_des_coder, spo_push_room,
          spo_endroom } from './sp_lev.js';
@@ -230,7 +231,7 @@ function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
 
 // Stairway list management
-function stairway_add(x, y, up, isladder, dest) {
+export function stairway_add(x, y, up, isladder, dest) {
     const node = { sx: x, sy: y, up, isladder, u_traversed: false,
                    tolev: { ...dest }, next: game.stairs };
     game.stairs = node;
@@ -437,8 +438,9 @@ function maketrap(x, y, typ) {
     case STATUE_TRAP:
         mk_trap_statue(x, y);
         break;
-    case ROLLING_BOULDER_TRAP:
-        note_unported_lev('mkroll_launch');
+    case ROLLING_BOULDER_TRAP: /* boulder will roll towards trigger */
+        /* src/trap.c:512 — (void) mkroll_launch(ttmp, x, y, BOULDER, 1L) */
+        mkroll_launch(trap, x, y, BOULDER, 1);
         break;
     case PIT:
     case SPIKED_PIT:
@@ -495,13 +497,16 @@ export function make_grave(x, y, str) {
 // Core mklev functions (ported from main project's mklev.js)
 // ============================================================
 
-// C ref: bones.c getbones()
-function getbones() {
-    const flags = game.flags || {};
+// C ref: bones.c:626 getbones() — the gate half; the load lives in
+// js/bones.js getbones_load(). The rn2(3) draws for wizard too (C's
+// `rn2(3) && !wizard` evaluates the roll first).
+async function getbones() {
     if (game.discover) return false;      /* src/bones.c:639 */
-    if (flags.bones === false) return false;
-    if (rn2(3) && !game.flags?.debug) return false;
-    return false;
+    if ((game.flags || {}).bones === false) return false;
+    if (rn2(3) && !game.wizard) return false;
+    /* no_bones_level: the early levels the sessions reach all allow them */
+    const { getbones_load } = await import('./bones.js');
+    return await getbones_load();
 }
 
 // C ref: allmain.c l_nhcore_init()
@@ -512,7 +517,7 @@ export { l_nhcore_init } from './nhlua.js';
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
-    if (getbones()) return;
+    if (await getbones()) return;
     g.in_mklev = true;
     await makelevel();
     recount_level_features();
@@ -615,7 +620,15 @@ async function makelevel() {
     } else if (dgn?.fill_lvl) {
         special_done = await makemaz(dgn.fill_lvl);
     } else if (g.u.uz.dnum === g.quest_dnum) {
-        note_unported_lev('makelevel:quest_fill');
+        /* src/mklev.c:1275 — quest filler: <filecode>-fila above the locate
+           level, <filecode>-filb at it and below */
+        const { find_level } = await import('./dungeon.js');
+        const filecode = g.urole?.filecode
+                         ?? (await import('./role_data.js')).roles?.[g.flags?.initrole]?.filecode;
+        const loc_lev = find_level(`${filecode}-loca`);
+        const fillname = `${filecode}-fil`
+            + ((g.u.uz.dlevel < loc_lev?.dlevel?.dlevel) ? 'a' : 'b');
+        special_done = await makemaz(fillname);
     } else if (dgn?.flags?.hellish
                || (rn2(5) && g.u?.uz?.dnum === medusa?.dnum
                    && depth_of_level(g.u.uz) > depth_of_level(medusa))) {
@@ -1593,7 +1606,7 @@ function maybe_sdoor(chance) {
 }
 
 // C ref: sp_lev.c dig_corridor()
-function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
+export function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
     const map = game.level;
     let dx = 0, dy = 0;
     let xx = org.x, yy = org.y;
@@ -2226,8 +2239,11 @@ function wallification(x1, y1, x2, y2) {
 // Fill ordinary room
 // ============================================================
 
-function traptype_rnd() {
-    const lvl = game.u?.uz?.dlevel ?? 1;
+function traptype_rnd(mktrapflags) {
+    /* C uses level_difficulty(), NOT dlevel: quest and tower levels are
+       shallow in their own dungeon but deep in difficulty, which is what
+       lets spiked pits and poly traps generate there. */
+    const lvl = level_difficulty();
     let kind = rnd(TRAPNUM - 1);
     switch (kind) {
     case TRAPPED_DOOR: case TRAPPED_CHEST: case MAGIC_PORTAL: case VIBRATING_SQUARE:
@@ -2235,17 +2251,23 @@ function traptype_rnd() {
     case ROLLING_BOULDER_TRAP: case SLP_GAS_TRAP:
         if (lvl < 2) kind = NO_TRAP; break;
     case LEVEL_TELEP:
-        if (lvl < 5 || game.level?.flags?.noteleport) kind = NO_TRAP; break;
+        /* single_level_branch(): a one-level dungeon (Fort Ludios) */
+        if (lvl < 5 || game.level?.flags?.noteleport
+            || game.u?.uz?.dnum === game.special_levels?.knox_level?.dnum)
+            kind = NO_TRAP;
+        break;
     case SPIKED_PIT:
         if (lvl < 5) kind = NO_TRAP; break;
     case LANDMINE:
         if (lvl < 6) kind = NO_TRAP; break;
     case WEB:
-        if (lvl < 7) kind = NO_TRAP; break;
+        if (lvl < 7 && !(mktrapflags & MKTRAP_NOSPIDERONWEB))
+            kind = NO_TRAP;
+        break;
     case STATUE_TRAP: case POLY_TRAP:
         if (lvl < 8) kind = NO_TRAP; break;
     case FIRE_TRAP:
-        kind = NO_TRAP; break; // not hellish
+        if (!Inhell()) kind = NO_TRAP; break;
     case TELEP_TRAP:
         if (game.level?.flags?.noteleport) kind = NO_TRAP; break;
     case HOLE:
@@ -2668,6 +2690,16 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const dunLevel = game.u?.uz?.dlevel ?? 1;
     if (goldprob < 0) goldprob = 20 + Math.trunc(absDepth / 3);
     if (gemprob < 0) gemprob = Math.trunc(goldprob / 4);
+    /* src/mklev.c:1486 — mines have MORE goodies, the quest fewer */
+    if (!skip_lvl_checks) {
+        if (In_mines(game.u?.uz)) {
+            goldprob *= 2;
+            gemprob *= 3;
+        } else if (game.u?.uz?.dnum === game.quest_dnum) {
+            goldprob = Math.trunc(goldprob / 4);
+            gemprob = Math.trunc(gemprob / 6);
+        }
+    }
     for (let x = 2; x < COLNO - 2; x++) {
         for (let y = 1; y < ROWNO - 1; y++) {
             const loc = map.at(x, y);

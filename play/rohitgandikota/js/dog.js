@@ -21,15 +21,15 @@ import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          NEED_WEAPON, NEED_HTH_WEAPON } from './const.js';
 import { acurr } from './attrib.js';
 import { put_saddle_on_mon } from './steed.js';
-import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless, attacktype, resists_ston, resists_acid, max_passive_dmg, is_flyer, is_floater } from './mondata.js';
+import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless, attacktype, resists_ston, resists_acid, max_passive_dmg, is_flyer, is_floater, regenerates } from './mondata.js';
 import { sobj_at, eaten_stat, obj_extract_self } from './invent.js';
 import { may_dig } from './hack.js';
-import { is_metallic } from './obj.js';
+import { is_metallic, OBJ_FLOOR } from './obj.js';
 import { obj_resists } from './zap.js';
 import { newsym, canspotmon, mon_visible, pline, canseemon } from './display.js';
 import { splitobj, peek_at_iced_corpse_age } from './mkobj.js';
 import { yelp, growl } from './sounds.js';
-import { m_consume_obj, is_pick, check_gear_next_turn } from './mon.js';
+import { m_consume_obj, is_pick, check_gear_next_turn, healmon } from './mon.js';
 import {
     mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at, t_at,
 } from './mon.js';
@@ -695,6 +695,11 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
     const dog_has_minvent = !!droppables(mtmp);
 
     for (const obj of (game.level.objects || [])) {
+        /* C walks fobj, the FLOOR chain: an object the hero picked up
+           (where OBJ_INVENT, ox/oy stale) or a contained one must not be
+           scanned — dogfood() draws, so a phantom entry desyncs the pet. */
+        if (obj.where !== undefined && obj.where !== OBJ_FLOOR)
+            continue;
         const nx = obj.ox, ny = obj.oy;
         if (nx >= min_x && nx <= max_x && ny >= min_y && ny <= max_y) {
             const otyp = dogfood(mtmp, obj);
@@ -1491,7 +1496,12 @@ function cursed_object_at(x, y) {
    order gives newest-first, which is the order the chain has. Every caller
    that draws per object depends on that order. */
 function objects_at(x, y) {
-    return (game.level?.objects || []).filter(o => o.ox === x && o.oy === y);
+    /* C's svl.level.objects[x][y] nexthere chain holds FLOOR objects only;
+       a contained/buried object at the same coords must not be scanned.
+       (Retried per NOTES now that place_object stamps where=OBJ_FLOOR.) */
+    return (game.level?.objects || [])
+        .filter(o => o.ox === x && o.oy === y
+                     && (o.where === undefined || o.where === OBJ_FLOOR));
 }
 
 // src/dogmove.c:410 dog_invent() — the pet drops what it carries, or picks up
@@ -1805,4 +1815,79 @@ export async function abuse_dog(mtmp) {
                 note_unported('abuse_dog:redraw_worm');
         }
     }
+}
+
+// src/dog.c:627 mon_catchup_elapsed_time() — a monster restored after the
+// hero was away for nmv moves catches up on timers, tameness and healing.
+export async function mon_catchup_elapsed_time(mtmp, nmv) {
+    const imv = Math.min(nmv, 2147483646);   /* LARGEST_INT paranoia */
+
+    /* might stop being afraid, blind or frozen */
+    /* set to 1 and allow final decrement in movemon() */
+    if (mtmp.mblinded) {
+        if (imv >= mtmp.mblinded) mtmp.mblinded = 1;
+        else mtmp.mblinded -= imv;
+    }
+    if (mtmp.mfrozen) {
+        if (imv >= mtmp.mfrozen) mtmp.mfrozen = 1;
+        else mtmp.mfrozen -= imv;
+    }
+    if (mtmp.mfleetim) {
+        if (imv >= mtmp.mfleetim) mtmp.mfleetim = 1;
+        else mtmp.mfleetim -= imv;
+    }
+
+    /* might recover from temporary trouble */
+    if (mtmp.mtrapped && rn2(imv + 1) > 40 / 2)
+        mtmp.mtrapped = 0;
+    if (mtmp.mconf && rn2(imv + 1) > 50 / 2)
+        mtmp.mconf = 0;
+    if (mtmp.mstun && rn2(imv + 1) > 10 / 2)
+        mtmp.mstun = 0;
+
+    /* might finish eating or be able to use special ability again */
+    if (mtmp.meating) {
+        if (imv > mtmp.meating) {
+            const { finish_meating } = await import('./dogmove.js');
+            finish_meating(mtmp);
+        } else
+            mtmp.meating -= imv;
+    }
+    if (imv > (mtmp.mspec_used | 0))
+        mtmp.mspec_used = 0;
+    else
+        mtmp.mspec_used -= imv;
+
+    /* reduce tameness for every 150 moves you are separated */
+    if (mtmp.mtame) {
+        const wilder = Math.trunc((imv + 75) / 150);
+        if (mtmp.mtame > wilder)
+            mtmp.mtame -= wilder; /* less tame */
+        else if (mtmp.mtame > rn2(wilder))
+            mtmp.mtame = 0; /* untame */
+        else
+            mtmp.mtame = mtmp.mpeaceful = 0; /* hostile! */
+    }
+    /* check to see if it would have died as a pet; if so, go wild instead
+     * of dying the next time we call dog_move()
+     */
+    if (mtmp.mtame && !mtmp.isminion
+        && (carnivorous(game.mons[mtmp.mnum])
+            || herbivorous(game.mons[mtmp.mnum]))) {
+        const edog = mtmp.edog;
+        if (edog
+            && ((game.moves > edog.hungrytime + 500 && mtmp.mhp < 3)
+                || (game.moves > edog.hungrytime + 750)))
+            mtmp.mtame = mtmp.mpeaceful = 0;
+    }
+
+    /* leashed monsters travel with the hero, so never catch up */
+
+    /* recover lost hit points */
+    let heal = imv;
+    if (!regenerates(game.mons[mtmp.mnum]))
+        heal = Math.trunc(imv / 20);
+    healmon(mtmp, heal, 0);
+
+    mtmp.mlstmv = game.moves;               /* set_mon_lastmove() */
 }

@@ -130,8 +130,35 @@ export async function doup() {
         note_unported_do('doup:load_too_heavy');
         return ECMD_TIME;
     }
-    note_unported_do('doup:prev_level');
+    await prev_level(true);
     return ECMD_TIME;
+}
+
+// src/dungeon.c:1518 prev_level() — one level up (or an up branch).
+async function prev_level(at_stairs) {
+    const stway = stairway_at(game.u.ux, game.u.uy);
+
+    if (at_stairs && stway)
+        stway.u_traversed = true;
+
+    if (at_stairs && stway && stway.tolev
+        && stway.tolev.dnum !== game.u.uz.dnum) {
+        /* Taking an up dungeon branch. */
+        if (!game.u.uz.dnum && game.u.uz.dlevel === 1
+            && !game.u.uhave?.amulet) {
+            const { done } = await import('./end.js');
+            await done(3 /* ESCAPED */);
+        } else {
+            await goto_level({ dnum: stway.tolev.dnum,
+                               dlevel: stway.tolev.dlevel },
+                             at_stairs, false, false);
+        }
+    } else {
+        /* Going up a stairs or rising through the ceiling. */
+        await goto_level({ dnum: game.u.uz.dnum,
+                           dlevel: game.u.uz.dlevel - 1 },
+                         at_stairs, false, false);
+    }
 }
 
 export async function dodown() {
@@ -210,8 +237,38 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1585 keepdogs() — adjacent followers leave the map with the
        hero BEFORE the old level is left */
     const { keepdogs, losedogs } = await import('./dog.js');
-    keepdogs(false);
+    /* src/do.c:1623 — the tutorial transition sets iflags.nofollowers so
+       the pet stays behind */
+    if (!game.iflags?.nofollowers)
+        keepdogs(false);
 
+    /* src/do.c:1660 savelev() — keep the outgoing level so a return
+       restores it instead of regenerating. update_mlstmv() (dog.c:294)
+       stamps every monster's last-move time first; getlev()'s catchup
+       below draws against it. */
+    if (game.level) {
+        for (const mtmp of game.level.monsters || [])
+            mtmp.mlstmv = game.moves;
+        /* src/save.c:553 save_track() — the hero's track is saved WITH
+           the level and cleared (track.c:88); getlev's rest_track()
+           restores it on a return visit. Trackers (jackals, pets) read
+           it via gettrack(), so both halves matter: leaving must blank
+           it, returning must bring the old points back. */
+        game.level._saved_track = {
+            utcnt: game.utcnt | 0,
+            utpnt: game.utpnt | 0,
+            utrack: (game.utrack || []).map(p => ({ x: p.x, y: p.y })),
+        };
+        (game.saved_levels ||= new Map())
+            .set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, game.level);
+        const { initrack } = await import('./track.js');
+        initrack();
+    }
+
+    /* src/do.c:1674 — u.uz0 holds the level being left until the tail's
+       "reset u.uz0" catches it up; onquest() and the arrival messages
+       read it to tell a fresh arrival from a revisit. */
+    game.u.uz0 = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
     game.u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
     (game.visited_ledgers ||= new Set());
 
@@ -239,16 +296,47 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                     nlx: 0, nly: 0, nhx: 0, nhy: 0 };
 
     const ledger = `${newlevel.dnum}:${newlevel.dlevel}`;
-    if (game.visited_ledgers.has(ledger)) {
-        /* returning to a previously visited level; C reloads it from its
-           level file, which needs the save/restore code */
-        note_unported_do('goto_level:reload_level_file');
-        return;
-    }
-    game.visited_ledgers.add(ledger);
+    /* C's test is "does the level file exist" (do.c:1706); the in-memory
+       map is that file store. (visited_ledgers alone is wrong for the
+       FIRST level, which newgame's mklev creates without registering.) */
+    if (game.saved_levels?.has(ledger)) {
+        /* src/do.c:1706 — returning to a previously visited level: C
+           getlev()s it back from its level file. The in-memory swap is
+           the same state; the visible cost is restore.c:1190's monster
+           catchup against the time spent away. */
+        game.level = game.saved_levels.get(ledger);
+        const { DEADMONSTER } = await import('./monst.js');
+        const { mon_catchup_elapsed_time } = await import('./dog.js');
+        const { restore_cham, hide_monst } = await import('./mon.js');
+        for (const mtmp of game.level.monsters || []) {
+            if (DEADMONSTER(mtmp))
+                continue;
+            const elapsed = game.moves - (mtmp.mlstmv ?? game.moves);
+            /* ghostly (bones) monsters go through the peacefulness reset
+               instead; a reloaded live level takes the elapsed arm */
+            if (elapsed > 0)
+                await mon_catchup_elapsed_time(mtmp, elapsed);
+            /* update shape-changers in case protection against them is
+               different now than when the level was saved */
+            restore_cham(mtmp);
+            /* give hiders a chance to hide before their next move */
+            if (elapsed > 0 && elapsed > rnd(10))
+                hide_monst(mtmp);
+        }
+        /* restore.c:1228 rest_track() — bring back the track saved with
+           this level */
+        const st = game.level._saved_track;
+        if (st) {
+            game.utcnt = st.utcnt;
+            game.utpnt = st.utpnt;
+            game.utrack = st.utrack.map(p => ({ x: p.x, y: p.y }));
+        }
+    } else {
+        game.visited_ledgers.add(ledger);
 
-    /* entering this level for the first time; make it now */
-    await mklev_fn();
+        /* entering this level for the first time; make it now */
+        await mklev_fn();
+    }
 
     /* src/do.c:1716-1720 — do this prior to level-change pline messages:
        clear the old level's line-of-sight and POSTPONE all map flushes.
@@ -264,7 +352,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     if (at_stairs) {
-        u_on_dnstairs();
+        if (up) {
+            /* src/do.c — arriving from below lands on the DOWN staircase
+               of the upper level (C u_on_dnstairs()) */
+            const dn = game.level?.dnstair;
+            if (dn) {
+                game.u.ux = dn.x;
+                game.u.uy = dn.y;
+            } else
+                note_unported_do('goto_level:up_arrival_no_dnstair');
+        } else {
+            u_on_dnstairs();
+        }
 
         /* src/do.c:1774 — the arrival message. Levitation, Flying and the
            encumbered/Punished/Fumbling fall are all recorded; the ordinary
@@ -298,6 +397,25 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (collider)
         await u_collide_m(collider, m_at, mnexto);
 
+    /* src/do.c:1879 — arriving on a bones level a same-named hero died
+       on gives the deja-vu message; rn2(4) picks it (index 3 is silent). */
+    {
+        const { bones_include_name } = await import('./bones.js');
+        if (game.level?.bonesinfo && bones_include_name(game.plname)) {
+            const fam_msgs = [
+                'You have a sense of deja vu.',
+                "You feel like you've been here before.",
+                'This place %s familiar...', null ];
+            /* halu variants recorded with the rest of Hallucination */
+            let mesg = fam_msgs[rn2(4)];
+            if (mesg && mesg.includes('%s'))
+                mesg = mesg.replace('%s',
+                                    !game.u.ublind ? 'looks' : 'seems');
+            if (mesg)
+                await pline(mesg);
+        }
+    }
+
     /* src/do.c:1837 — reset the screen: vision blockages for the new
        map, then a full redraw with vision recalc */
     const { vision_reset, vision_recalc } = await import('./vision.js');
@@ -307,6 +425,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     vision_recalc(0);
     await docrt();
     await flush_screen(-1);
+
+    /* src/do.c:1879 — special location arrival messages/events. Only the
+       quest arm is wired; the endgame, Knox, Mines and Sokoban arms are
+       achievements and alarms that no ported session reaches yet, and the
+       quest-portal call from the leader needs at_dgn_entrance(). */
+    if (game.u.uz.dnum === game.quest_dnum) {   /* In_quest(&u.uz) */
+        const { onquest } = await import('./quest.js');
+        await onquest();
+    }
+
+    /* src/do.c:1967 — reset u.uz0 */
+    game.u.uz0 = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
 }
 
 // src/do.c:1411 u_collide_m() — the hero and a monster landed on the same

@@ -155,7 +155,7 @@ export async function valley_level() {
         des.object(cls);
     des.object('ruby');
     for (const cls of ['*', '*', '!', '!', '!', '?', '?', '?', '/', '/',
-                       '=', '=', '+', '(', '(', '('])
+                       '=', '=', '+', '+', '(', '(', '('])
         des.object(cls);
 
     /* (Not so) Random traps. */

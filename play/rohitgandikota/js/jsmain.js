@@ -161,6 +161,10 @@ export class NethackGame {
         if (this._display)
             g.nhDisplay = this._display;
 
+        /* cross-segment persistence: bones, save files, the record file.
+           Web-Storage-shaped (getItem/setItem/removeItem). */
+        g.storage = this._storage;
+
         // Install capture hook
         this._installCaptureHook();
 

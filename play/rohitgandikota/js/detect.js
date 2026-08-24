@@ -4,15 +4,26 @@
 import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { isok } from './hacklib.js';
-import { newsym } from './display.js';
-import { cmap_names } from './drawing_data.js';
-import { You } from './pline.js';
-import { m_at, t_at } from './mon.js';
+import { newsym, cls, docrt, canspotmon, sensemon, map_invisible,
+         glyph_is_invisible_at, unmap_invisible } from './display.js';
+import { cmap_names, defsyms } from './drawing_data.js';
+import { You, You_feel } from './pline.js';
+import { m_at, t_at, seemimic } from './mon.js';
 import { Is_rogue_level, WM_MASK, D_LOCKED, D_CLOSED, ROWNO, COLNO } from './const.js';
-import { SDOOR, SCORR, DOOR, CORR, D_NODOOR, SVALL, IS_FURNITURE, A_WIS } from './const.js';
+import { SDOOR, SCORR, DOOR, CORR, D_NODOOR, SVALL, IS_FURNITURE, A_WIS,
+         STATUE_TRAP } from './const.js';
 import { rn2 } from './rng.js';
 import { magic_map_background } from './display.js';
 import { exercise } from './attrib.js';
+import { Hallucination } from './youprop.js';
+import { an } from './objnam.js';
+import { y_monnam, a_monnam } from './do_name.js';
+import { is_hider, hides_under } from './mondata.js';
+import { MONSYMS } from './monst_data.js';
+import { M_AP_TYPE } from './const.js';
+import { recalc_block_point, unblock_point } from './vision.js';
+import { nomul } from './hack.js';
+const CM = cmap_names;
 
 // src/detect.c:1893 dosearch0() — intrinsic autosearch vs explicit searching.
 //
@@ -22,7 +33,83 @@ import { exercise } from './attrib.js';
 // The only randomness is rnl(7 - fund) per adjacent secret door or corridor,
 // so a search with nothing hidden nearby draws nothing at all — which is what
 // the recordings show for seed8000's two 's' keys.
-export function dosearch0(aflag) {
+// src/detect.c:1934 find_trap() — reveal a trap found by searching.
+export async function find_trap(trap) {
+    let cleared = false;
+
+    trap.tseen = 1;
+    exercise(A_WIS, true);
+    newsym(trap.tx, trap.ty);   /* feel_newsym */
+
+    /* src/detect.c:1946 — if the remembered glyph at the spot is not this
+       trap (an object or monster memory covers it), clear the screen, show
+       just the trap, and redraw everything after the message */
+    const loc = game.level?.at(trap.tx, trap.ty);
+    const trapcmap = CM.S_arrow_trap + trap.ttyp - 1;
+    if (Hallucination() || loc?.remembered_glyph?.glyph?.cmap !== trapcmap) {
+        await cls();
+        newsym(trap.tx, trap.ty);   /* map_trap(trap, 1) */
+        newsym(game.u.ux, game.u.uy);   /* display_self() */
+        cleared = true;
+    }
+
+    await You(`find ${an(trapname(trap.ttyp))}.`);
+
+    if (cleared) {
+        /* display_nhwindow(WIN_MAP, TRUE): tty flushes the map; our writes
+           flush per cell, so only the redraw remains */
+        await docrt();
+    }
+}
+
+/* src/drawing.c trapname() — defsyms explanation for the trap's cmap */
+function trapname(ttyp) {
+    const base = defsyms.findIndex(d => d.name === 'S_arrow_trap');
+    return defsyms[base + ttyp - 1]?.explain ?? 'trap';
+}
+
+// src/detect.c:1964 mfind0() — reveal a hidden/mimicking/unseen monster
+// found by searching. Returns -1 skip, 0 nothing, 1 found (uses the turn).
+async function mfind0(mtmp, via_warning) {
+    const x = mtmp.mx, y = mtmp.my;
+    let found_something = false;
+
+    if (via_warning)
+        return -1;      /* warning_of() is not ported; dosearch0 passes 0 */
+
+    if (M_AP_TYPE(mtmp)) {
+        seemimic(mtmp);
+        found_something = true;
+    } else {
+        /* this used to only be executed if a !canspotmon() test passed
+           but that failed to bring sensed monsters out of hiding */
+        found_something = !canspotmon(mtmp);
+        if (mtmp.mundetected && (is_hider(mtmp.data)
+                                 || hides_under(mtmp.data)
+                                 || mtmp.data.mlet === MONSYMS.S_EEL)) {
+            mtmp.mundetected = 0;
+            found_something = true;
+        }
+        newsym(x, y);
+    }
+
+    if (found_something) {
+        if (!canspotmon(mtmp) && glyph_is_invisible_at(x, y))
+            return -1; /* already has 'I' here; avoid re-finding each turn */
+        exercise(A_WIS, true);
+        if (!canspotmon(mtmp)) {
+            map_invisible(x, y);
+            await You_feel('an unseen monster!');
+        } else if (!sensemon(mtmp)) {
+            await You(`find ${mtmp.mtame ? y_monnam(mtmp)
+                                         : a_monnam(mtmp)}.`);
+        }
+        return 1;
+    }
+    return 0;
+}
+
+export async function dosearch0(aflag) {
     const u = game.u;
     let x, y;
 
@@ -59,22 +146,53 @@ export function dosearch0(aflag) {
                    handed every monster on the level an extra candidate square
                    and shifted its rn2(4 * (cnt - j)) backtrack draw. */
                 cvt_sdoor_to_door(loc);
-                newsym(x, y);
+                recalc_block_point(x, y);
+                exercise(A_WIS, true);
+                nomul(0);
+                newsym(x, y);   /* feel_location: make sure it shows up */
+                await You('find a hidden door.');
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund))
                     continue;
                 loc.typ = CORR;
-                newsym(x, y);
+                unblock_point(x, y);    /* vision */
+                exercise(A_WIS, true);
+                nomul(0);
+                newsym(x, y);   /* feel_newsym: make sure it shows up */
+                await You('find a hidden passage.');
+            } else {
+                /* Be careful not to find anything in an SCORR or SDOOR */
+                let mtmp = m_at(x, y);
+                if (mtmp && !aflag) {
+                    const mfres = await mfind0(mtmp, 0);
+                    if (mfres === -1)
+                        continue;
+                    else if (mfres > 0)
+                        return mfres;
+                }
+
+                /* see if an invisible monster has moved--if Blind,
+                   feel_location() already did it */
+                if (!aflag && !mtmp && !game.u.ublind)
+                    unmap_invisible(x, y);
+
+                const trap = t_at(x, y);
+                if (trap && !trap.tseen && !rnl(8)) {
+                    nomul(0);
+                    if (trap.ttyp === STATUE_TRAP) {
+                        note_unported_detect('dosearch0:activate_statue_trap');
+                        return 1;
+                    } else {
+                        await find_trap(trap);
+                    }
+                }
             }
-            /* The monster-finding and trap-finding branches of the C live
-               here. They are not ported yet because monsters and traps are
-               not; when they land, they go in this else-branch. */
         }
     return 1;
 }
 
 // src/detect.c dosearch()
-export function dosearch() {
+export async function dosearch() {
     return dosearch0(0);
 }
 

@@ -14,7 +14,7 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { percent, lua_shuffle, lua_d, nh_random } from './nhlua.js';
 import { level_difficulty } from './makemon.js';
-import { selection_from_mkroom, selection_iterate, selection_rndcoord,
+import { selection_from_mkroom, l_selection_iterate, selection_rndcoord,
          selection_filter_percent, selection_numpoints,
          selection_filter_mapchar, selection_not,
          selection_new, selection_clear } from './selvar.js';
@@ -47,7 +47,7 @@ export function fill_ice_room(rm) {
     if (percent(25)) {
         const mintime = 1000 - (level_difficulty() * 100);
 
-        selection_iterate(ice, (x, y) => {
+        l_selection_iterate(ice, (x, y) => {
             /* nh.start_timer_at(x, y, "melt-ice", mintime + nh.rn2(1000)) —
                the draw is real and ordered; the timer itself needs the timeout
                queue, which is not ported. */
@@ -73,7 +73,7 @@ export function fill_ice_room(rm) {
 export function fill_boulder_room(rm) {
     const locs = selection_filter_percent(selection_from_mkroom(rm._mkroom || rm), 30);
 
-    selection_iterate(locs, (x, y) => {
+    l_selection_iterate(locs, (x, y) => {
         if (percent(50))
             lspo_object('boulder', x, y);
         else
@@ -100,7 +100,7 @@ export function fill_trap_room(rm) {
 
     const locs = selection_filter_percent(selection_from_mkroom(rm._mkroom || rm), 30);
 
-    selection_iterate(locs, (x, y) => {
+    l_selection_iterate(locs, (x, y) => {
         lspo_trap(get_traptype_byname(traps[0]), x, y);
     });
 }
@@ -184,7 +184,7 @@ export function fill_spider_nest(rm) {
     const spooders = level_difficulty() > 8;
     const locs = selection_filter_percent(selection_from_mkroom(rm._mkroom || rm), 30);
 
-    selection_iterate(locs, (x, y) => {
+    l_selection_iterate(locs, (x, y) => {
         const spider_on_web = spooders && percent(80);
         lspo_trap(get_traptype_byname('web'), x, y, { spider_on_web });
     });
@@ -200,7 +200,7 @@ export function fill_spider_nest(rm) {
 export function fill_storeroom(rm) {
     const locs = selection_filter_percent(selection_from_mkroom(rm._mkroom || rm), 30);
 
-    selection_iterate(locs, (x, y) => {
+    l_selection_iterate(locs, (x, y) => {
         if (percent(25))
             lspo_object('chest');
         else

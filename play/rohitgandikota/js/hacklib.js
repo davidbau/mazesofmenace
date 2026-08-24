@@ -123,6 +123,46 @@ export function mungspaces(bp) {
     return out;
 }
 
+// src/hacklib.c:740 strstri() — case-insensitive substring search.
+// Returns the index of the match, or -1 (C returns a pointer or NULL).
+export function strstri(str, sub) {
+    /* special case: empty substring */
+    if (!sub)
+        return 0;
+    const ls = str ? str.length : undefined;
+    const k = ls - sub.length;
+    /* C returns NULL when sub is longer than str; a null str makes k NaN
+       and the loop below simply never runs (see NOTES on the C NULL deref) */
+    if (k < 0)
+        return -1;
+    const lstr = String(str).toLowerCase(), lsub = String(sub).toLowerCase();
+    for (let i = 0; i <= k; i++)
+        if (lstr.startsWith(lsub, i))
+            return i;
+    return -1;
+}
+
+// src/hacklib.c:783 fuzzymatch() — compare two strings for equality,
+// ignoring the presence of specified characters and possibly ignoring case.
+export function fuzzymatch(s1, s2, ignore_chars, caseblind) {
+    const strip = (s) => {
+        let out = '';
+        for (const ch of String(s))
+            if (!ignore_chars.includes(ch)) out += ch;
+        return caseblind ? out.toLowerCase() : out;
+    };
+    return strip(s1) === strip(s2);
+}
+
+// src/hacklib.c:536 strsubst() — substitute the first occurrence (only) of
+// orig within bp; the C search is case-sensitive strstr().
+export function strsubst(bp, orig, replacement) {
+    const found = bp.indexOf(orig);
+    if (found >= 0)
+        bp = bp.slice(0, found) + replacement + bp.slice(found + orig.length);
+    return bp;
+}
+
 // src/hacklib.c ordin() — ordinal suffix; n should be non-negative.
 export function ordin(n) {
     const dd = n % 10;

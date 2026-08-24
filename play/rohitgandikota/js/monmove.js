@@ -15,13 +15,21 @@ import { ammo_and_launcher } from './wield.js';
 import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
     IS_OBSTRUCTED, LAVAWALL,
     P_DAGGER, P_KNIFE,
-    AM_SHRINE, Amask2align, ROOMOFFSET, ALLOW_MDISP, ALLOW_M
-} from './const.js';
+    AM_SHRINE, Amask2align, ROOMOFFSET, ALLOW_MDISP, ALLOW_M, SHOPBASE,
+    TEMPLE
+, STRAT_WAITFORU, STRAT_WAITMASK } from './const.js';
 import { amorphous, passes_walls, is_floater, nonliving,
-         attacktype, can_blow, needspick, flaming, noncorporeal } from './mondata.js';
-import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, In_endgame } from './const.js';
+         attacktype, can_blow, needspick, flaming, noncorporeal,
+         tunnels, nohands as nohands_mm,
+         verysmall as verysmall_mm } from './mondata.js';
+import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, In_endgame, NOTONL } from './const.js';
 import { is_vampshifter } from './monst.js';
-import { newsym } from './display.js';
+import { newsym, canseemon, canspotmon, pline } from './display.js';
+import { You_see, You_hear } from './pline.js';
+import { create_gas_cloud, visible_region_at } from './region.js';
+import { Monnam } from './do_name.js';
+import { Deaf } from './youprop.js';
+import { Is_rogue_level as IRL_const, D_TRAPPED } from './const.js';
 import { sobj_at, money_cnt } from './invent.js';
 import { m_carrying, meatmetal, resists_ston } from './mon.js';
 import { acidic, slimeproof } from './dog.js';
@@ -29,6 +37,7 @@ import { Is_mbag } from './mkobj.js';
 import { Is_container } from './obj.js';
 import { is_weptool } from './mkobj.js';
 import { metallivorous, corpse_eater } from './mondata.js';
+import { may_dig } from './hack.js';
 import { place_monster, remove_monster } from './makemon.js';
 import { rn2, rnd } from './rng.js';
 import {
@@ -41,7 +50,8 @@ import {
 import { MONSYMS, MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
 import { M_AP_TYPE, M_AP_NOTHING } from './const.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
-import { couldsee, cansee, clear_path } from './vision.js';
+import { couldsee, cansee, clear_path, recalc_block_point,
+         vision_recalc } from './vision.js';
 import { gettrack } from './track.js';
 import { distmin , isok, sgn, distu, dist2} from './hacklib.js';
 import { acurrstr } from './attrib.js';
@@ -146,7 +156,7 @@ function temple_occupied(array) {
 }
 
 // src/priest.c histemple_at()
-function histemple_at(priest, x, y) {
+export function histemple_at(priest, x, y) {
     const r = _in_rooms(x, y, TEMPLE);
     return !!(priest && priest.ispriest && r
               && priest.epri?.shroom === r.charCodeAt(0)
@@ -183,18 +193,35 @@ function has_shrine(pri) {
    publishes in_rooms. */
 const p_coaligned = (priest) => game.p_coaligned?.(priest) ?? false;
 
-/* src/shk.c inhishop() / src/priest.c inhistemple() — both need the shop and
-   temple bookkeeping. No shopkeeper or priest is created on an ordinary level
-   before either subsystem lands, so the flags they guard are never set. */
+// src/shk.c:1039 inhishop() — shopkeeper currently in her shop or its
+// boundary? (Kept next to its priest twin rather than in js/shk.js
+// because both are read inside this file's movement gates.)
 export function inhishop(mtmp) {
-    note_unported('inhishop');
-    return false;
+    const eshkp = mtmp.eshk;
+    if (!eshkp)
+        return false;
+    if (eshkp.shoplevel
+        && (eshkp.shoplevel.dnum !== game.u.uz.dnum
+            || eshkp.shoplevel.dlevel !== game.u.uz.dlevel))
+        return false;
+    const shkrooms = _in_rooms(mtmp.mx, mtmp.my, SHOPBASE);
+    return shkrooms.includes(String.fromCharCode(eshkp.shoproom));
 }
 
+// src/priest.c:161 inhistemple()
 function inhistemple(mtmp) {
-    note_unported('inhistemple');
-    return false;
+    /* make sure we have a priest */
+    if (!mtmp || !mtmp.ispriest)
+        return false;
+    /* priest must be on right level and in right room */
+    if (!histemple_at(mtmp, mtmp.mx, mtmp.my))
+        return false;
+    /* temple room must still contain properly aligned altar */
+    return has_shrine(mtmp);
 }
+
+// include/mondata.h:82 can_teleport()
+const can_teleport = (ptr) => (ptr.mflags1 & MFLAGS.M1_TPORT) !== 0;
 
 // include/mondata.h:115 is_wanderer()
 const is_wanderer = (ptr) => (ptr.mflags2 & MFLAGS.M2_WANDER) !== 0;
@@ -307,11 +334,11 @@ function m_search_items(mtmp, goal, st) {
     if (!mtmp.mpeaceful && is_mercenary(ptr))
         minr = 1;
 
-    /* in shop, usually skip. in_rooms(SHOPBASE) needs the shop subsystem; no
-       shop exists on a level before it lands, so the rn2(25) is not reachable
-       yet and recording it keeps the gap visible. */
-    if (in_shop(omx, omy)) {
-        note_unported('m_search_items:shop');
+    /* in shop, usually skip (monmove.c:1355): the rn2(25) draws for every
+       monster standing in a shop, and only a 0 lets a non-shk keep looking */
+    if (_in_rooms(omx, omy, SHOPBASE).length
+        && (rn2(25) || mtmp.isshk)) {
+        ; /* goto finish_search */
     } else {
         /* distmin() gives a rectangular area */
         const hmx = Math.min(COLNO - 1, omx + minr);
@@ -794,6 +821,13 @@ export function monflee(mtmp, fleetime, first, fleemsg) {
         }
         if (!mtmp.mflee && fleemsg)
             note_unported('monflee:fleemsg');
+
+        /* src/monmove.c:521 — a vrock covers its escape in a stench cloud */
+        if (mtmp.mnum === PMNAMES.PM_VROCK && !mtmp.mspec_used) {
+            mtmp.mspec_used = 75 + rn2(25);
+            create_gas_cloud(mtmp.mx, mtmp.my, 5, 8);
+        }
+
         mtmp.mflee = 1;
     }
     /* ignore recently-stepped spaces when made to flee */
@@ -950,11 +984,53 @@ export function distfleeck(mtmp) {
 
 // src/monmove.c:700 dochug() — one monster's turn.
 export async function dochug(mtmp) {
+    /* src/monmove.c:711 — a waiting monster stops waiting once it can see
+       the hero or has been hurt. */
+    if ((mtmp.mstrategy & STRAT_WAITFORU)
+        && (m_canseeu(mtmp) || mtmp.mhp < mtmp.mhpmax))
+        mtmp.mstrategy &= ~STRAT_WAITFORU;
+
+    /* src/monmove.c:717 — frozen or strategically waiting monsters do
+       nothing at all this turn (BEFORE the sleep/disturb check). */
+    if (!(mtmp.mcanmove ?? 1) || (mtmp.mstrategy & STRAT_WAITMASK)) {
+        /* STRAT_CLOSE pop-out arm needs the covetous machinery */
+        return 0;
+    }
+
     /* src/monmove.c:727 — a sleeping monster still gets a chance to be woken,
        and disturb() DRAWS on the way. Returning early here skipped both the
        draws and the monster's whole turn when it did wake. */
     if (mtmp.msleeping && !disturb(mtmp))
         return 0;
+
+    /* src/monmove.c:735 — confused monsters get unconfused with small
+       probability */
+    if (mtmp.mconf && !rn2(50))
+        mtmp.mconf = 0;
+
+    /* stunned monsters get un-stunned with larger probability */
+    if (mtmp.mstun && !rn2(10))
+        mtmp.mstun = 0;
+
+    /* src/monmove.c:744 — some monsters teleport. Teleportation costs a
+       turn. The rn2(40) is spent by EVERY fleeing monster; only one that
+       can actually teleport then rloc()s. */
+    if (mtmp.mflee && !rn2(40) && can_teleport(game.mons[mtmp.mnum])
+        && !mtmp.iswiz
+        && !(game.level?.flags?.noteleport)) {
+        /* rloc(mtmp, RLOC_MSG) + leppie_stash */
+        note_unported('dochug:flee_teleport_rloc');
+        return 0;
+    }
+
+    /* m_respond(): the shrieker/medusa special responses are recorded */
+
+    /* src/monmove.c:757 — fleeing monsters might regain courage */
+    if (mtmp.mflee && !mtmp.mfleetim
+        && mtmp.mhp === mtmp.mhpmax && !rn2(25))
+        mtmp.mflee = 0;
+
+    /* release_hero(): conflict-induced swallow/grab needs engulfing */
 
     /* src/monmove.c:778 — must run after the hero moves and before the monster
        does, because inrange/nearby in distfleeck() are measured against the
@@ -1179,6 +1255,36 @@ export async function m_move(mtmp, after) {
     if (mtmp.mtame)
         return await postmov(mtmp, ptr, omx, omy, await dog_move(mtmp, after));
 
+    /* the covetous warp arm (monmove.c:1778) sits here in C; no covetous
+       monster is generated by a ported path yet */
+
+    /* src/monmove.c:1806 — likewise for shopkeeper, guard, or priest */
+    if (mtmp.isshk || mtmp.isgd || mtmp.ispriest) {
+        let xm;
+        if (mtmp.isshk) {
+            const { shk_move } = await import('./shk.js');
+            xm = await shk_move(mtmp);
+        } else if (mtmp.isgd) {
+            /* gd_move(): the vault guard walk is not ported yet */
+            note_unported_monmove('m_move:gd_move');
+            xm = 0;
+        } else {
+            const { pri_move } = await import('./priest.js');
+            xm = await pri_move(mtmp);
+        }
+        switch (xm) {
+        case -2:
+            return MMOVE_DIED;
+        case -1:
+            break;      /* shk follows hero outside shop: normal AI */
+        default:
+        case 0:
+        case 1:
+            return await postmov(mtmp, ptr, omx, omy,
+                                 (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED);
+        }
+    }
+
     let ggx = mtmp.mux, ggy = mtmp.muy;
     const prange = { min: 0, max: 0 };
     let appr = mtmp.mflee ? -1 : 1;
@@ -1280,12 +1386,24 @@ export async function m_move(mtmp, after) {
 
     let mmoved = MMOVE_NOTHING;
 
+    /* src/monmove.c:1939 — on noteleport levels a unicorn perhaps cannot
+       avoid the hero: when any candidate is off the hero's line, skip the
+       on-line ones. */
+    let avoid = false;
+    if (is_unicorn(ptr) && game.level?.flags?.noteleport) {
+        for (let i = 0; i < cnt; i++)
+            if (!(mfp.info[i] & NOTONL))
+                avoid = true;
+    }
+
     /* src/monmove.c:1945 should_displace() — displacing another monster is
        only worth it when every non-displacing path is longer. Vacuous until
        mfndpos sets ALLOW_MDISP, but the loop below tests it as C does. */
     const better_with_displacing = should_displace(mtmp, mfp, ggx, ggy, cnt);
 
     for (let i = 0; i < cnt; i++) {
+        if (avoid && (mfp.info[i] & NOTONL))
+            continue;
         const nx = mfp.poss[i].x, ny = mfp.poss[i].y;
 
         /* src/monmove.c:1953 — a peaceful or tame monster avoids the square
@@ -1304,7 +1422,7 @@ export async function m_move(mtmp, after) {
                 if (track[j] && nx === track[j].x && ny === track[j].y) {
                     if (globalThis.__mm_probe) {
                         const { rngLogLength } = globalThis.__rng_mod || {};
-                        console.error('MMPROBE', JSON.stringify({ idx: rngLogLength ? rngLogLength() : -1, mon: mtmp.mnum, at: [mtmp.mx, mtmp.my], appr, gg: [ggx, ggy], mux: [mtmp.mux, mtmp.muy], flee: mtmp.mflee || 0, cnt, j, nx, ny }));
+                        console.error('MMPROBE', JSON.stringify({ idx: rngLogLength ? rngLogLength() : -1, mon: mtmp.mnum, at: [mtmp.mx, mtmp.my], appr, gg: [ggx, ggy], cnt, j, nx, ny, poss: (mfp.poss||[]).slice(0, cnt) }));
                     }
                     if (rn2(4 * (cnt - j))) { skip = true; break; }
                 }
@@ -1346,6 +1464,9 @@ export async function m_move(mtmp, after) {
             mtmp.muy = game.u.uy;
             return MMOVE_NOTHING;
         }
+        /* src/monmove.c:2047 — postmove effects run BEFORE the location
+           changes (monsters have no "previous location" field) */
+        m_postmove_effect(mtmp);
         /* src/monmove.c:2051 — remove then place, so level.monsters[][] tracks
            the move. Writing mx/my alone leaves m_at() answering with the old
            square. */
@@ -1420,6 +1541,97 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
             if (mtmp.mx)
                 newsym(mtmp.mx, mtmp.my);
             return MMOVE_DIED;
+        }
+
+        /* src/monmove.c:1520 — open a door, or crash through it, if 'mtmp'
+           can. C computes can_tunnel/can_open/can_unlock in m_move() and
+           passes them in; they are pure predicates of the monster, so
+           computing them here keeps our postmov signature unchanged. */
+        const here = game.level.at(mtmp.mx, mtmp.my);
+        const can_tunnel = !IRL_const(game.u.uz) && tunnels(ptr);
+        const can_open = !(nohands_mm(ptr) || verysmall_mm(ptr));
+        /* monhaskey(mtmp, TRUE): credit card ok for unlocking */
+        const can_unlock = ((can_open
+                             && (m_carrying(mtmp, ONAMES.CREDIT_CARD)
+                                 || m_carrying(mtmp, ONAMES.SKELETON_KEY)
+                                 || m_carrying(mtmp, ONAMES.LOCK_PICK)))
+                            || mtmp.iswiz);
+        if (here && DOOR === here.typ /* IS_DOOR */
+            && !passes_walls(ptr) && !can_tunnel) {
+            const btrapped = (here.doormask & D_TRAPPED) !== 0;
+            const canseeit = cansee(mtmp.mx, mtmp.my);
+
+            /* magic-key disarm: no monster carries the Key yet */
+            const openit = async (what) => {
+                here.doormask = what;
+                newsym(mtmp.mx, mtmp.my);
+                recalc_block_point(mtmp.mx, mtmp.my);
+                vision_recalc(0);
+            };
+            if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0
+                && amorphous(ptr)) {
+                if (game.flags?.verbose && canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} ${
+                        ptr.mlet === MONSYMS.S_LIGHT ? 'flows'
+                                                     : 'oozes'} under the door.`);
+            } else if ((here.doormask & D_LOCKED) !== 0 && can_unlock) {
+                if (btrapped) {
+                    note_unported('postmov:mb_trapped');
+                } else {
+                    await openit(4 /* D_ISOPEN */);
+                    if (game.flags?.verbose) {
+                        if (canseeit && canspotmon(mtmp))
+                            await pline(`${Monnam(mtmp)} unlocks and opens a door.`);
+                        else if (canseeit)
+                            await You_see('a door unlock and open.');
+                        else if (!Deaf())
+                            await You_hear('a door unlock and open.');
+                    }
+                }
+            } else if (here.doormask === D_CLOSED && can_open) {
+                if (btrapped) {
+                    note_unported('postmov:mb_trapped');
+                } else {
+                    await openit(4 /* D_ISOPEN */);
+                    if (game.flags?.verbose) {
+                        if (canseeit && canspotmon(mtmp))
+                            await pline(`${Monnam(mtmp)} opens a door.`);
+                        else if (canseeit)
+                            await You_see('a door open.');
+                        else if (!Deaf())
+                            await You_hear('a door open.');
+                    }
+                }
+            } else if ((here.doormask & (D_LOCKED | D_CLOSED)) !== 0) {
+                /* mfndpos guarantees this must be a doorbuster */
+                const mask = (btrapped
+                              || ((here.doormask & D_LOCKED) !== 0
+                                  && !rn2(2)))
+                             ? 1 /* D_NODOOR */ : 2 /* D_BROKEN */;
+                if (btrapped) {
+                    note_unported('postmov:mb_trapped');
+                } else {
+                    await openit(mask);
+                    if (game.flags?.verbose) {
+                        if (canseeit && canspotmon(mtmp))
+                            await pline(`${Monnam(mtmp)} smashes down a door.`);
+                        else if (canseeit)
+                            await You_see('a door crash open.');
+                        else if (!Deaf())
+                            await You_hear('a door crash open.');
+                    }
+                    /* if it's a shop door, schedule repair */
+                    if (mask === 1)
+                        note_unported('postmov:doorbuster_shop_damage');
+                }
+            }
+        }
+
+        /* src/monmove.c:1644 — possibly dig */
+        if (can_tunnel && may_dig(mtmp.mx, mtmp.my)) {
+            const { mdig_tunnel } = await import('./dig.js');
+            if (await mdig_tunnel(mtmp))
+                return MMOVE_DIED; /* mon died */
         }
     }
 
@@ -1542,7 +1754,7 @@ function m_balks_at_approaching(oldappr, mtmp, prange) {
 
 // include/vision.h:50 m_canseeu() — Invis and Underwater are hero states the
 // port does not have yet, so this reduces to line of sight.
-function m_canseeu(mtmp) {
+export function m_canseeu(mtmp) {
     return couldsee(mtmp.mx, mtmp.my);
 }
 
@@ -1656,4 +1868,31 @@ function finish_meating(mtmp) {
         mtmp.mappearance = 0;
         newsym(mtmp.mx, mtmp.my);
     }
+}
+
+// src/monmove.c:650 m_everyturn_effect() — called every turn for each
+// living monster (and the hero): a fog cloud sheds a harmless vapor trail
+// where it stands (this is what fills the Valley with drifting mist).
+export function m_everyturn_effect(mtmp) {
+    const is_u = (mtmp === game.youmonst);
+    const x = is_u ? game.u.ux : mtmp.mx,
+          y = is_u ? game.u.uy : mtmp.my;
+
+    if (mtmp.mnum === PMNAMES.PM_FOG_CLOUD || (is_u && false /* Upolyd fog */)) {
+        /* don't leave a vapor cloud if some other gas cloud is already
+           present, or when flowing under closed doors */
+        if (!closed_door_mm(x, y) && !visible_region_at(x, y))
+            create_gas_cloud(x, y, 1, 0);       /* harmless vapor */
+    }
+}
+
+// src/monmove.c:672 m_postmove_effect() — effects a monster leaves at the
+// square it is ABOUT to vacate: hezrou stench and steam-vortex vapor.
+export function m_postmove_effect(mtmp) {
+    const x = mtmp.mx, y = mtmp.my;
+
+    if (mtmp.mnum === PMNAMES.PM_HEZROU)        /* stench */
+        create_gas_cloud(x, y, 1, 8);
+    else if (mtmp.mnum === PMNAMES.PM_STEAM_VORTEX && !mtmp.mcan)
+        create_gas_cloud(x, y, 1, 0);           /* harmless vapor */
 }

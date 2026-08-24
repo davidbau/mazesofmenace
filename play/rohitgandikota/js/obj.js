@@ -12,6 +12,7 @@ import { game } from './gstate.js';
 import { OCLASSES, ONAMES, MATERIALS, SKILLS, objects } from './objects_data.js';
 import { MFLAGS, PMNAMES, MONSYMS } from './monst_data.js';
 import { humanoid, noncorporeal } from './mondata.js';
+import { permapoisoned } from './artifact.js';
 
 // include/objclass.h:36 enum obj_armor_types
 export const ARM_SUIT = 0, ARM_SHIELD = 1, ARM_HELM = 2, ARM_GLOVES = 3,
@@ -139,10 +140,10 @@ export const stone_missile = (o) =>
      || objects[o.otyp].oc_material === MATERIALS.MINERAL)
     && o.oclass !== OCLASSES.RING_CLASS;
 
-// include/obj.h:264 is_poisonable() — launcher ammo classes only.
-// permapoisoned() reads an artifact property table that is not ported; it
-// is false for every ordinary object, so the || term is vacuous for now.
+// include/obj.h:264 is_poisonable() — launcher ammo, plus the permanently
+// poisoned artifact (Grimtooth).
 export const is_poisonable = (otmp) =>
-    otmp.oclass === OCLASSES.WEAPON_CLASS
-    && objects[otmp.otyp].oc_skill >= -SKILLS.P_SHURIKEN
-    && objects[otmp.otyp].oc_skill <= -SKILLS.P_BOW;
+    (otmp.oclass === OCLASSES.WEAPON_CLASS
+     && objects[otmp.otyp].oc_skill >= -SKILLS.P_SHURIKEN
+     && objects[otmp.otyp].oc_skill <= -SKILLS.P_BOW)
+    || permapoisoned(otmp);

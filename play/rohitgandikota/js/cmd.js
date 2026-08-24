@@ -14,14 +14,17 @@ import { dodown, doup, do_wire_mklev, do_wire_dokick, stairway_at } from './do.j
 import { dokick_wire, ship_object, dokick } from './dokick.js';
 import { mklev, mklev_wire_mon } from './mklev.js';
 import { sp_lev_wire_mon } from './sp_lev.js';
-import { is_pool, is_lava, m_at, t_at } from './mon.js';
+import { is_pool, is_lava, m_at, t_at, newcham, resists_ston,
+         mongone } from './mon.js';
 import { do_attack } from './uhitm.js';
 import { is_safemon } from './display.js';
 import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
-import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup, trapmove, doorless_door } from './hack.js';
+import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup, trapmove, doorless_door, could_move_onto_boulder } from './hack.js';
+import { In_sokoban } from './dungeon.js';
+import { Hallucination } from './youprop.js';
 import { u_on_newpos } from './teleport.js';
 import { doloot } from './pickup.js';
 import { curr_mon_load } from './mon.js';
@@ -36,7 +39,7 @@ import { You } from './pline.js';
    are cycles when imported directly, so cmd.js -- which already pulls in every
    one of them -- does the wiring. */
 do_wire_mklev(mklev);
-sp_lev_wire_mon({ is_pool, is_lava, m_at });
+sp_lev_wire_mon({ is_pool, is_lava, m_at, newcham, resists_ston, mongone });
 mklev_wire_mon({ is_pool, is_lava });
 dokick_wire({ stairway_at, t_at });
 do_wire_dokick(ship_object);
@@ -637,6 +640,10 @@ export async function doextcmd() {
     /* src/cmd.c extcmdlist — the command's own function runs here. Only the
        ones that consume further input are wired up so far, because those are
        the ones whose absence puts the whole session out of step. */
+    if (name === 'quit') {
+        const { done2 } = await import('./end.js');
+        return await done2();
+    }
     if (name === 'loot')
         return await doloot();
     if (name === 'force') {
@@ -812,25 +819,18 @@ export async function rhack(key) {
         }
     }
     let live_input = false;
+    let clear_before_dispatch = false;
     if (key === 0) {
         // Read key from input
         live_input = true;
         await flush_screen(1);
         key = await nhgetch();
-        // The boundary frame has now been captured with the previous
-        // command's message on it, so it is safe to clear for this command.
-        //
-        // win/tty/wintty.c tty_clear_nhwindow(), NHW_MESSAGE, clears the FLAG
-        // as well as the text. Dropping the text alone left toplin at
-        // TOPLINE_NEED_MORE with nothing behind it, and update_topl's joining
-        // branch then glued the next message onto an empty string, indenting
-        // it by the two spaces the join inserts.
-        /* js/display.js:606 records this same defect on seed0360: clearing
-           the text without erasing the cells leaves the old prompt painted
-           in the grid for whatever draws next to land on top of. */
-        tty_clear_nhwindow_message(game._topl_cury || 0);
-        game._pending_message = '';
-        game._toplin = TOPLINE_EMPTY;
+        /* NOTE: the pre-dispatch topline clear happens BELOW, after the
+           count-prefix digits are collected — a digit key leaves the
+           previous message visible (seed0007 step 231: "You swap places
+           with your kitten." survives the '9' of "9s"), and only the
+           actual command dispatch clears it. */
+        clear_before_dispatch = true;
     }
 
     let ch0 = String.fromCharCode(key);
@@ -880,6 +880,16 @@ export async function rhack(key) {
         /* the count text stays on the topline in C until the command's own
            output replaces it; rhack's pre-dispatch clear already ran */
     }
+    /* the deferred pre-dispatch clear (see the note at the key read):
+       win/tty/wintty.c tty_clear_nhwindow(), NHW_MESSAGE, clears the FLAG
+       as well as the text; dropping the text alone left toplin at
+       TOPLINE_NEED_MORE with nothing behind it. */
+    if (clear_before_dispatch) {
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+        game._pending_message = '';
+        game._toplin = TOPLINE_EMPTY;
+    }
+
     game.cmd_key = ch0;
 
     /* src/cmd.c:1518 do_run_west() and friends — a SHIFTED direction letter
@@ -993,7 +1003,15 @@ export async function rhack(key) {
         game.context.move = ((await dotravel()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 's') {
         // src/cmd.c cmdlist — 's' is dosearch, which returns ECMD_TIME.
-        game.context.move = (dosearch() ? 1 : 0);
+        /* src/cmd.c:3728 — a counted command whose cmdlist entry carries
+           f_text ("searching") becomes a TIMED OCCUPATION, so a nearby
+           monster interrupts it with "You stop searching." */
+        if (game.multi && !game.occupation) {
+            const { set_occupation } = await import('./allmain.js');
+            set_occupation(async () => { await dosearch(); }, 'searching',
+                           game.multi);
+        }
+        game.context.move = ((await dosearch()) ? 1 : 0);
     } else if (ch === '+') {
         // src/cmd.c cmdlist — '+' is dovspell.
         game.context.move = ((await dovspell()) === ECMD_TIME ? 1 : 0);
@@ -1096,6 +1114,13 @@ export async function rhack(key) {
         // (flags.safe_wait, default On) refuses the rest next to a spottable
         // hostile with "Are you waiting to get hit?" and NO time passes.
         const { donull } = await import('./do.js');
+        /* src/cmd.c:3728 — counted '.' becomes the "waiting" timed
+           occupation, same as counted 's' */
+        if (game.multi && !game.occupation) {
+            const { set_occupation } = await import('./allmain.js');
+            set_occupation(async () => { await donull(); }, 'waiting',
+                           game.multi);
+        }
         game.context.move = ((await donull()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'f') {
         // src/cmd.c cmdlist — 'f' is dofire, which reaches throw_obj() and
@@ -1108,6 +1133,11 @@ export async function rhack(key) {
         // src/cmd.c cmdlist — '#' is doextcmd, which reads the command name
         // off the input before doing anything.
         game.context.move = (await doextcmd() === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'S') {
+        // src/cmd.c cmdlist — 'S' is dosave: "Really save?", write the
+        // state to storage, and exit the process like C's nh_terminate.
+        const { dosave } = await import('./save.js');
+        game.context.move = (await dosave() === ECMD_TIME ? 1 : 0);
     } else if (ch === 'o') {
         // src/cmd.c cmdlist — 'o' is doopen. It reads a direction key of its
         // own, so skipping it would put the whole session out of step.
@@ -1373,6 +1403,35 @@ async function domove_core() {
             nomul(0);
         }
         return;
+    }
+
+    /* src/hack.c:1230 — test_move()'s boulder arm, the DO_MOVE slice:
+       walking into a boulder tries to push it (moverock, hack.c:336), and
+       a failed push blocks the move exactly like terrain. */
+    if (sobj_at(ONAMES.BOULDER, newx, newy)
+        && (In_sokoban(game.u.uz) || !game.u.uprops?.PASSES_WALLS)) {
+        if (!(u.ublind || Hallucination()) && (game.context.run | 0) >= 2
+            && !could_move_onto_boulder(newx, newy)) {
+            if (game.flags?.mention_walls)
+                await pline('A boulder blocks your path.');
+            game.context.move = 0;
+            nomul(0);
+            return;
+        }
+        /* tunneling monsters chew before pushing; the un-polymorphed hero
+           never tunnels */
+        const { moverock } = await import('./hack.js');
+        if ((await moverock()) < 0) {
+            if (!game.context.door_opened) {
+                game.context.move = 0;
+                nomul(0);
+            }
+            return;
+        }
+        /* push succeeded (or squeezed): if a boulder still remains on the
+           target square after moverock() returned 0, C's test_move lets
+           the move proceed only for could_move_onto_boulder cases; the
+           vacated-square case just walks on */
     }
 
     // Move the hero

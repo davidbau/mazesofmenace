@@ -238,53 +238,59 @@ async function really_done(how) {
 
     game.done_money = umoney;
 
-    /* window teardown, then the tombstone text window */
+    /* window teardown, then the tombstone text window. C threads
+       done_stopprint through dump_forward_putstr and the final
+       display_nhwindow gate, so a 'q' at the wizard Dump-core prompt
+       suppresses the whole goodbye summary. */
     const endwin = tty_create_nhwindow(NHW_TEXT);
-    if (how < GENOCIDED && (game.flags?.tombstone ?? true)) {
+    if (!game.done_stopprint
+        && how < GENOCIDED && (game.flags?.tombstone ?? true)) {
         const { genl_outrip } = await import('./rip.js');
         genl_outrip(endwin, how);
     }
 
-    if (u.uhave?.amulet)
-        game.killer.name += ' (with the Amulet)';
+    if (!game.done_stopprint) {
+        if (u.uhave?.amulet)
+            game.killer.name += ' (with the Amulet)';
 
-    const female = !!game.flags?.female;
-    const rolename = (female && game.urole?.name?.f)
-        ? game.urole.name.f : (game.urole?.name?.m || 'Adventurer');
-    tty_putstr(endwin, 0,
-               `${Goodbye()} ${game.plname} the ${how !== ASCENDED
-                   ? rolename : (female ? 'Demigoddess' : 'Demigod')}...`);
-    tty_putstr(endwin, 0, '');
+        const female = !!game.flags?.female;
+        const rolename = (female && game.urole?.name?.f)
+            ? game.urole.name.f : (game.urole?.name?.m || 'Adventurer');
+        tty_putstr(endwin, 0,
+                   `${Goodbye()} ${game.plname} the ${how !== ASCENDED
+                       ? rolename : (female ? 'Demigoddess' : 'Demigod')}...`);
+        tty_putstr(endwin, 0, '');
 
-    if (how === ESCAPED || how === ASCENDED) {
-        note_unported_end('really_done:escape/ascension summary');
-    } else {
-        /* did not escape or ascend */
-        let pbuf;
-        if (u.uz.dnum === 0 && u.uz.dlevel <= 0) {
-            pbuf = `You ${u.uz.dlevel < 0 ? 'passed away' : ends[how]}`
-                   + ' beyond the confines of the dungeon';
+        if (how === ESCAPED || how === ASCENDED) {
+            note_unported_end('really_done:escape/ascension summary');
         } else {
-            const where = game.dungeons?.[u.uz.dnum]?.dname
-                          || 'The Dungeons of Doom';
-            pbuf = `You ${ends[how]} in ${where}`;
-            if (!In_endgame(u.uz))
-                pbuf += ` on dungeon level ${
-                    In_quest(u.uz) ? u.uz.dlevel : depth(u.uz)}`;
+            /* did not escape or ascend */
+            let pbuf;
+            if (u.uz.dnum === 0 && u.uz.dlevel <= 0) {
+                pbuf = `You ${u.uz.dlevel < 0 ? 'passed away' : ends[how]}`
+                       + ' beyond the confines of the dungeon';
+            } else {
+                const where = game.dungeons?.[u.uz.dnum]?.dname
+                              || 'The Dungeons of Doom';
+                pbuf = `You ${ends[how]} in ${where}`;
+                if (!In_endgame(u.uz))
+                    pbuf += ` on dungeon level ${
+                        In_quest(u.uz) ? u.uz.dlevel : depth(u.uz)}`;
+            }
+            pbuf += ` with ${u.urexp} point${u.urexp === 1 ? '' : 's'},`;
+            tty_putstr(endwin, 0, pbuf);
         }
-        pbuf += ` with ${u.urexp} point${u.urexp === 1 ? '' : 's'},`;
-        tty_putstr(endwin, 0, pbuf);
-    }
 
-    tty_putstr(endwin, 0,
-               `and ${umoney} piece${umoney === 1 ? '' : 's'} of gold, after `
-               + `${game.moves} move${game.moves === 1 ? '' : 's'}.`);
-    tty_putstr(endwin, 0,
-               `You were level ${u.ulevel} with a maximum of ${u.uhpmax} hit `
-               + `point${u.uhpmax === 1 ? '' : 's'} when you ${ends[how]}.`);
-    tty_putstr(endwin, 0, '');
-    await tty_display_nhwindow(endwin, true);
-    {
+        tty_putstr(endwin, 0,
+                   `and ${umoney} piece${umoney === 1 ? '' : 's'} of gold, after `
+                   + `${game.moves} move${game.moves === 1 ? '' : 's'}.`);
+        tty_putstr(endwin, 0,
+                   `You were level ${u.ulevel} with a maximum of ${u.uhpmax} hit `
+                   + `point${u.uhpmax === 1 ? '' : 's'} when you ${ends[how]}.`);
+        tty_putstr(endwin, 0, '');
+        await tty_display_nhwindow(endwin, true);
+    }
+    if (!game.done_stopprint) {
         /* the text window's --More-- accepts only space/return/ESC */
         const { xwaitforspace } = await import('./tty/getline.js');
         const { tty_next_page } = await import('./tty/wintty.js');
@@ -294,8 +300,30 @@ async function really_done(how) {
     }
     tty_destroy_nhwindow(endwin);
 
+    /* end.c:1579 — exit_nhwindows() runs before topten() (settty ->
+       end_screen clears the terminal). The visible effect only differs
+       when the summary was suppressed; the endwin fullscreen display
+       covers it otherwise, so clear only on the stopprint path to keep
+       the died-session frames byte-stable. */
+    if (game.done_stopprint) {
+        const { cls } = await import('./display.js');
+        await cls();
+        /* end_screen homes the cursor; the raw prints start from the top */
+        const { tty_curs_base } = await import('./tty/wintty.js');
+        tty_curs_base(0, 0);
+    }
     const { topten } = await import('./topten.js');
     await topten(how);
+
+    /* end.c:1585 — the stopprint path pads two blank raw lines, which is
+       where the recorded cursor parks */
+    if (game.done_stopprint) {
+        const { tty_raw_print, tty_base_cursor } =
+            await import('./tty/wintty.js');
+        tty_raw_print('');
+        tty_raw_print('');
+        tty_base_cursor();
+    }
 
     /* nh_terminate(): the process exits here and the session wrapper
        relaunches the game on the same pty and recorder stream. The driver
@@ -333,4 +361,35 @@ function Goodbye() {
     case PMNAMES.PM_VALKYRIE: return 'Farvel';
     default: return 'Goodbye';
     }
+}
+
+// src/end.c:89 done2() — the #quit command.
+export async function done2() {
+    const { tty_yn_function } = await import('./tty/topl.js');
+    /* In_tutorial arm: the tutorial switch-back question */
+    /* ParanoidQuit is not in the default paranoid_confirmation set, so
+       this is a plain single-key yn with default 'n' */
+    const c0 = await tty_yn_function('Really quit without saving?', 'yn', 'n');
+    if (c0 !== 'y') {
+        /* clear_nhwindow(WIN_MESSAGE); nomul(0) */
+        const { nomul } = await import('./hack.js');
+        if ((game.multi ?? 0) > 0)
+            nomul(0);
+        return 0; /* ECMD_OK */
+    }
+
+    if (game.wizard) {
+        /* src/end.c:129 — UNIX wizard mode offers a core dump; 'q' (the
+           default, ESC included) suppresses the end-of-game printout */
+        const c = await tty_yn_function('Dump core?', 'ynq', 'q');
+        if (c === 'y') {
+            /* exit_nhwindows + abort: the session ends here */
+            game.program_state = game.program_state || {};
+            game.program_state.done = true;
+            return 0;
+        } else if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+    }
+    await done(QUIT);
+    return 0;
 }

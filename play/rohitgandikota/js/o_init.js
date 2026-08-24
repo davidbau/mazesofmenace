@@ -328,7 +328,12 @@ const disco_orders_descr = [
 // starting kit ends up '  listed' rather than '* listed' in discoveries.
 export function observe_object(obj) {
     const oindx = obj.otyp;
-    if (oindx >= 1 && !game.u?.uprops?.HALLUC) {
+    /* skip for generic objects and for STRANGE_OBJECT; FIRST_OBJECT is the
+       first real otyp after the per-class generic dummies.  Hallucination
+       test inlined (uprops.HALLUC && !HALLUC_RES, youprop.h:120) to keep
+       o_init free of higher-level imports. */
+    if (oindx >= 18 /* FIRST_OBJECT */
+        && !(game.u?.uprops?.HALLUC && !game.u?.uprops?.HALLUC_RES)) {
         obj.dknown = 1;
         discover_object(oindx, false, true, false);
     }

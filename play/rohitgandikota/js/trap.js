@@ -69,7 +69,13 @@ import { In_quest, TOOKPLUNGE, VIASITTING, HURTLING,
          ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
          SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP,
-         VIBRATING_SQUARE } from './const.js';
+         VIBRATING_SQUARE, BOLT_LIM } from './const.js';
+import { just_an } from './objnam.js';
+import { Deaf, Levitation, Flying, Hallucination } from './youprop.js';
+import { mindless } from './mondata.js';
+import { couldsee } from './vision.js';
+import { mdistu } from './monmove.js';
+import { wake_nearby, wake_nearto } from './mon.js';
 import { MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
 import { is_pit, is_hole, TT_BEARTRAP, Upolyd, LEFT_SIDE,
          RIGHT_SIDE } from './const.js';
@@ -443,15 +449,153 @@ export async function dotrap(trap, trflags) {
         return await trapeffect_arrow_trap(game.youmonst, trap, trflags);
     if (ttype === DART_TRAP)
         return await trapeffect_dart_trap(game.youmonst, trap, trflags);
+    if (ttype === SQKY_BOARD)
+        return await trapeffect_sqky_board(game.youmonst, trap, trflags);
     if (ttype === MAGIC_TRAP)
         return await trapeffect_magic_trap(game.youmonst, trap, trflags);
     if (ttype === BEAR_TRAP)
         return await trapeffect_bear_trap(game.youmonst, trap, trflags);
     if (ttype === RUST_TRAP)
         return await trapeffect_rust_trap(game.youmonst, trap, trflags);
+    if (ttype === HOLE || ttype === TRAPDOOR)
+        return await trapeffect_hole(game.youmonst, trap, trflags);
+    if (ttype === ANTI_MAGIC)
+        return await trapeffect_anti_magic(game.youmonst, trap, trflags);
 
     note_unported_trap(`dotrap:ttyp=${ttype}`);
     return Trap_Effect_Finished;
+}
+
+// src/trap.c:3063 trapnote() — the name of the note a squeaky board plays,
+// optionally with "a"/"an" prefixed.
+function trapnote(trap, noprefix) {
+    const tnnames = [
+        'C note',  'D flat', 'D note',  'E flat',
+        'E note',  'F note', 'F sharp', 'G note',
+        'G sharp', 'A note', 'B flat',  'B note',
+    ];
+    const tn = tnnames[trap.tnote];
+    return noprefix ? tn : just_an(tn) + tn;
+}
+
+// src/trap.c:1403 trapeffect_sqky_board() — a squeaky board plays its note.
+// No draws in either arm; Soundeffect() is audio-only.
+async function trapeffect_sqky_board(mtmp, trap, trflags) {
+    const forcetrap = ((trflags & FORCETRAP) !== 0
+                       || (trflags & FAILEDUNTRAP) !== 0
+                       || (Flying() && (trflags & VIASITTING) !== 0));
+
+    if (mtmp === game.youmonst) {
+        if ((Levitation() || Flying()) && !forcetrap) {
+            if (!game.u.ublind) {
+                seetrap(trap);
+                if (Hallucination())
+                    await You('notice a crease in the linoleum.');
+                else
+                    await You('notice a loose board below you.');
+            }
+        } else {
+            seetrap(trap);
+            await pline(`A board beneath you ${
+                Deaf() ? 'vibrates' : 'squeaks '}${
+                Deaf() ? '' : trapnote(trap, false)}${
+                Deaf() ? '' : ' loudly'}.`);
+            wake_nearby(false);
+        }
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+
+        if (m_in_air(mtmp))
+            return Trap_Effect_Finished;
+        /* stepped on a squeaky board */
+        if (in_sight) {
+            if (!Deaf()) {
+                await pline(`A board beneath ${mon_nam(mtmp)} squeaks ${
+                    trapnote(trap, false)} loudly.`);
+                seetrap(trap);
+            } else if (!mindless(mtmp.data)) {
+                await pline(
+                    `${Monnam(mtmp)} stops momentarily and appears to cringe.`);
+            }
+        } else {
+            /* same near/far threshold as mzapmsg() */
+            const range = couldsee(mtmp.mx, mtmp.my) /* 9 or 5 */
+                ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+
+            await You_hear(`${trapnote(trap, false)} squeak ${
+                (mdistu(mtmp) <= range * range)
+                    ? 'nearby' : 'in the distance'}.`);
+        }
+        /* wake up nearby monsters */
+        wake_nearto(mtmp.mx, mtmp.my, 40);
+    }
+    return Trap_Effect_Finished;
+}
+
+// src/trap.c:2323 trapeffect_anti_magic() — the hero's arm: drain 2d6 Pw,
+// with half (rounded down) coming from max when max exceeds the drain.
+// The iron-shoes and Antimagic-implosion arms need states not yet
+// reachable; the monster arm records.
+async function trapeffect_anti_magic(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        const u = game.u;
+        let exclaim_it = false;
+
+        seetrap(trap);
+        if (u.uprops?.ANTIMAGIC || u.uprops?.MAGIC_RES) {
+            /* the rnd(4)-per-source implosion damage + losehp */
+            note_unported_trap('trapeffect_anti_magic:antimagic_implosion');
+            return Trap_Effect_Finished;
+        }
+
+        let drain = d(2, 6); /* 2d6 => 2..12 */
+        const halfd = rnd(Math.trunc(drain / 2)); /* 1..drain/2 */
+        if (u.uenmax > drain) {
+            u.uenmax -= halfd; /* drain_en() will set context.botl */
+            drain -= halfd;
+            exclaim_it = true;
+        }
+        await drain_en(drain, exclaim_it);
+    } else {
+        note_unported_trap('trapeffect_anti_magic:monster');
+    }
+    return Trap_Effect_Finished;
+}
+
+// src/trap.c:5202 drain_en() — reduce current magical energy.
+async function drain_en(n, max_already_drained) {
+    const u = game.u;
+    let mesg;
+    let punct = max_already_drained ? '!' : '.';
+
+    if (u.uenmax < 1) {
+        /* energy is completely gone */
+        if (u.uen || u.uenmax) { /* paranoia */
+            u.uen = u.uenmax = 0;
+            (game.disp ||= {}).botl = true;
+        }
+        mesg = 'momentarily lethargic';
+    } else {
+        /* throttle further loss a bit when there's not much left to lose */
+        if (n > Math.trunc((u.uen + u.uenmax) / 3))
+            n = rnd(n);
+
+        mesg = 'your magical energy drain away';
+        if (n > u.uen)
+            punct = '!';
+
+        u.uen -= n;
+        if (u.uen < 0) {
+            u.uenmax -= rnd(-u.uen);
+            if (u.uenmax < 0)
+                u.uenmax = 0;
+            u.uen = 0;
+        } else if (u.uen > u.uenmax) {
+            u.uen = u.uenmax;
+        }
+        (game.disp ||= {}).botl = true;
+    }
+    await You_feel(`${mesg}${punct}`);
 }
 
 
@@ -749,6 +893,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return await trapeffect_arrow_trap(mtmp, trap, trflags);
     case DART_TRAP:
         return await trapeffect_dart_trap(mtmp, trap, trflags);
+    case SQKY_BOARD:
+        return await trapeffect_sqky_board(mtmp, trap, trflags);
     case MAGIC_TRAP:
         return await trapeffect_magic_trap(mtmp, trap, trflags);
     case BEAR_TRAP:
@@ -917,15 +1063,18 @@ export function is_rottable(otmp) {
 }
 
 /* include/objclass.h:200 is_rustprone(), :201 is_crackable(),
-   :204 is_corrodeable() */
-const is_rustprone = (otmp) =>
+   :204 is_corrodeable(), :206 is_damageable() */
+export const is_rustprone = (otmp) =>
     game.objects[otmp.otyp].oc_material === MATERIALS.IRON;
-const is_crackable = (otmp) =>
+export const is_crackable = (otmp) =>
     game.objects[otmp.otyp].oc_material === MATERIALS.GLASS
     && otmp.oclass === OCLASSES.ARMOR_CLASS;
-const is_corrodeable = (otmp) =>
+export const is_corrodeable = (otmp) =>
     game.objects[otmp.otyp].oc_material === MATERIALS.COPPER
     || game.objects[otmp.otyp].oc_material === MATERIALS.IRON;
+export const is_damageable = (otmp) =>
+    is_rustprone(otmp) || is_flammable(otmp) || is_rottable(otmp)
+    || is_corrodeable(otmp) || is_crackable(otmp);
 
 // src/trap.c:171 erode_obj() — generic erode-item function. Draws only the
 // rnl(4) blessed-protection roll. The shop-billing (EF_PAY) and destroy-arm
@@ -1284,6 +1433,75 @@ function bimanual_tr(obj) {
     return !!game.objects[obj.otyp]?.oc_bimanual;
 }
 
+// src/trap.c:602 fall_through() — the hero falls through a trap door or
+// hole. The Sokoban, levitation, huge-form and pet-jerk refusal arms read
+// real state; impact_drop and shop digging record. Ends with
+// schedule_goto, so the level change happens at the moveloop seam exactly
+// as C defers it.
+export async function fall_through(td, ftflags) {
+    let dont_fall = null;
+    let t = null;
+
+    if (game.u.ublind && game.u.uprops?.LEVITATION)
+        return;
+
+    let newlevel = game.u.uz.dlevel + 1;
+
+    if (td) {
+        t = t_at_mon(game.u.ux, game.u.uy);
+        feeltrap(t);
+        if (!(ftflags & TOOKPLUNGE)) {
+            if (t.ttyp === TRAPDOOR)
+                await pline('A trap door opens up under you!');
+            else
+                await pline("There's a gaping hole under you!");
+        }
+    } else {
+        const { surface } = await import('./dungeon.js');
+        await pline_The(`${surface(game.u.ux, game.u.uy)} opens up under you!`);
+    }
+
+    /* Sokoban / Can_fall_thru: ordinary dungeon levels can */
+    if (game.u.uprops?.LEVITATION || game.u.ustuck) {
+        dont_fall = "don't fall in.";
+    } else if (game.mons[game.u.umonnum]?.msize >= MFLAGS.MZ_HUGE) {
+        dont_fall = "don't fit through.";
+    }
+    /* next_to_u() pet-jerk arm — pets always count adjacent for now, the
+       same simplification js/teleport.js documents */
+    if (dont_fall) {
+        await You(dont_fall);
+        note_unported_trap('fall_through:impact_drop');
+        return;
+    }
+
+    /* shopdig / Is_stronghold(find_hell): no shops or castle here yet */
+    const dtmp = { dnum: game.u.uz.dnum, dlevel: newlevel };
+    if (t && t.dst && t.dst.dnum >= 0) {
+        dtmp.dnum = t.dst.dnum;
+        dtmp.dlevel = t.dst.dlevel;
+    }
+    const dist = dtmp.dlevel - game.u.uz.dlevel;
+    if (dist > 1)
+        await You(`fall down a ${dist > 3 ? 'very ' : ''}${dist > 2 ? 'deep ' : ''}shaft!`);
+
+    const { schedule_goto, UTOTYPE_FALLING, UTOTYPE_NONE } =
+        await import('./do.js');
+    schedule_goto(dtmp,
+                  !game.u.uprops?.FLYING ? UTOTYPE_FALLING : UTOTYPE_NONE,
+                  null, null);
+}
+
+// src/trap.c:2013 trapeffect_hole() — hero falls; the monster arm records.
+async function trapeffect_hole(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        await fall_through(true, trflags & TOOKPLUNGE);
+        return Trap_Effect_Finished;
+    }
+    note_unported_trap('trapeffect_hole:monster');
+    return Trap_Effect_Finished;
+}
+
 // src/trap.c:4024 float_down() — return the hero to the surface when
 // levitation ends (or, with emask W_SADDLE, when dismounting). The
 // levitation-specific arms (BLevitation, BFlying, Punished ball-drag,
@@ -1410,4 +1628,120 @@ export async function climb_pit() {
     } else if (game.u.dz || game.flags?.verbose !== false) {
         await Norep('You are still in a pit.');
     }
+}
+
+/* ==== the rolling-boulder launch machinery (maketrap's last gap) ==== */
+
+import { xdir, ydir, ZAP_POS, is_xport } from './const.js';
+import { closed_door } from './cmd.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { stackobj } from './invent.js';
+import { isok } from './hacklib.js';
+
+// src/trap.c:3695 isclearpath() — may a boulder roll `distance` squares
+// from cc along (dx,dy)? Walks the squares; on success cc is advanced to
+// the far end. No draws.
+function isclearpath(cc, distance, dx, dy) {
+    let x = cc.x, y = cc.y;
+
+    while (distance-- > 0) {
+        x += dx;
+        y += dy;
+        if (!isok(x, y))
+            return false;
+        const typ = game.level.at(x, y).typ;
+        if (!ZAP_POS(typ) || closed_door(x, y))
+            return false;
+        const t = t_at_mon(x, y);
+        if (t && (is_pit(t.ttyp) || is_hole(t.ttyp) || is_xport(t.ttyp)))
+            return false;
+    }
+    cc.x = x;
+    cc.y = y;
+    return true;
+}
+
+// src/trap.c:3599 find_random_launch_coord() — pick where the boulder
+// waits. Exactly two draws when reached: rn1(5,4) for the distance and
+// rn2(8) for the first direction tried; the retry loop itself spends
+// nothing. A rolling-boulder trap needs the path clear BOTH ways.
+function find_random_launch_coord(ttmp, cc) {
+    let success = false;
+    const bcc = { x: 0, y: 0 };
+    let mindist = 4;
+    let trycount = 0;
+
+    if (!ttmp || !cc || Sokoban())
+        return false;
+
+    const x = ttmp.tx;
+    const y = ttmp.ty;
+
+    /* gl.launchplace is nonzero only for a des file's launchfrom= option,
+       which no registered level uses; with (0,0) bcc is the trap's own
+       square and linedup(x,y,x,y,1) is FALSE (mthrowu.c: !tbx && !tby). */
+    const lp = game.launchplace ?? { x: 0, y: 0 };
+    if (lp.x || lp.y)
+        note_unported_trap('find_random_launch_coord:launchplace');
+
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP)
+        mindist = 2;
+    let distance = rn1(5, 4); /* 4..8 away */
+    let tmp = rn2(8);         /* randomly pick a direction to try first */
+    while (distance >= mindist) {
+        const dx = xdir[tmp];
+        const dy = ydir[tmp];
+        cc.x = x;
+        cc.y = y;
+        /* Prevent boulder from being placed on water */
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP
+            && is_pool_or_lava(x + distance * dx, y + distance * dy))
+            success = false;
+        else
+            success = isclearpath(cc, distance, dx, dy);
+        if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+            bcc.x = x;
+            bcc.y = y;
+            const success_otherway = isclearpath(bcc, distance, -dx, -dy);
+            if (!success_otherway)
+                success = false;
+        }
+        if (success)
+            break;
+        if (++tmp > 7)
+            tmp = 0;
+        if ((++trycount % 8) === 0)
+            --distance;
+    }
+    return success;
+}
+
+// src/trap.c:3659 mkroll_launch() — set the trap's launch point(s) and, if
+// a spot was found, create the waiting boulder there (mksobj draws). On
+// failure the launch point IS the trap square, which is also what tells
+// mktrap's victim roll to skip this trap.
+export function mkroll_launch(ttmp, x, y, otyp, ocount) {
+    const cc = { x: 0, y: 0 };
+
+    const success = find_random_launch_coord(ttmp, cc);
+
+    if (!success) {
+        /* create the trap without any ammo, launch pt at trap location */
+        cc.x = x;
+        cc.y = y;
+    } else {
+        const otmp = mksobj(otyp, true, false);
+        otmp.quan = ocount;
+        otmp.owt = weight(otmp);
+        place_object(otmp, cc.x, cc.y);
+        stackobj(otmp);
+    }
+    ttmp.launch = { x: cc.x, y: cc.y };
+    if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+        ttmp.launch2 = { x: x - (cc.x - x), y: y - (cc.y - y) };
+    } else {
+        ttmp.launch_otyp = otyp;
+    }
+    newsym(ttmp.launch.x, ttmp.launch.y);
+    return 1;
 }

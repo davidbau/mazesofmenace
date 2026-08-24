@@ -1,4 +1,5 @@
 import { is_neuter } from './mondata.js';
+import { nartifact_exist } from './artifact.js';
 // mkobj.js — object creation.
 // C ref: src/mkobj.c
 //
@@ -36,7 +37,7 @@ import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 /* invent.js imports erosion_matters() from here, so this edge closes a cycle.
    Both sides export function DECLARATIONS, which hoist, so each module sees the
    other's bindings by the time anything is called. */
-import { merged, weight, update_inventory } from './invent.js';
+import { merged, weight, update_inventory, obj_extract_self } from './invent.js';
 import { OBJ_CONTAINED, Is_pudding, Is_candle } from './obj.js';
 import { depth } from './dungeon.js';
 import { block_point } from './vision.js';
@@ -298,8 +299,8 @@ export function blessorcurse(otmp, chance) {
     }
 }
 
-// No artifacts are generated yet, so none exist.
-function nartifact_exist() { return 0; }
+/* src/artifact.c nartifact_exist() — imported so mksobj_init's
+   `rn2(20 + 10 * nartifact_exist())` shifts once a wish creates one. */
 
 // src/mkobj.c:869 mksobj_init() — per-class initialisation.
 //
@@ -800,7 +801,7 @@ const lays_eggs = (ptr) => (ptr.mflags1 & MFLAGS.M1_OVIPAROUS) !== 0;
 const BREEDER_EGG = () => !rn2(77);
 
 // src/mkobj.c can_be_hatched()
-function can_be_hatched(mnum) {
+export function can_be_hatched(mnum) {
     if (mnum === PMNAMES.PM_SCORPIUS)
         mnum = PMNAMES.PM_SCORPION;
 
@@ -818,7 +819,7 @@ function can_be_hatched(mnum) {
 
 // src/mon.c dead_species() — genociding either the baby or the adult form
 // kills the eggs of both. Extinction by overpopulation does not.
-function dead_species(m_idx, egg) {
+export function dead_species(m_idx, egg) {
     if (m_idx < 0)
         return true;
     const alt_idx = egg ? big_to_little(m_idx) : m_idx;
@@ -835,7 +836,7 @@ const N_CANDY_WRAPPERS = 13;
 
 // src/eat.c set_tin_variety() — only the SPINACH_TIN and RANDOM_TIN paths are
 // reachable from mksobj_init(); HEALTHY_TIN comes from eating code.
-function set_tin_variety(obj, forcetype) {
+export function set_tin_variety(obj, forcetype) {
     let r;
     const mnum = obj.corpsenm;
 
@@ -961,8 +962,12 @@ export function mkbox_cnts(box) {
                 }
             }
         }
-        box.cobj.push(otmp);
+        /* C add_to_container() — merging matters: two gold stacks rolled
+           for the same box must become one, or the take-out menu lists
+           "70 gold pieces" and "48 gold pieces" where C shows 118 */
+        add_to_container(box, otmp);
     }
+    /* caller will update box->owt */
 }
 
 // src/mon.c:417 undead_to_corpse() — a zombie or mummy leaves its living
@@ -990,12 +995,34 @@ function undead_to_corpse(mndx) {
     return UNDEAD_TO_CORPSE.get(mndx) ?? mndx;
 }
 
+// src/mkobj.c:828 dknowns[] — the classes whose appearance is not fully
+// obvious at a glance, so a new object starts with dknown 0.
+const dknowns = [
+    OCLASSES.WAND_CLASS, OCLASSES.RING_CLASS, OCLASSES.POTION_CLASS,
+    OCLASSES.SCROLL_CLASS, OCLASSES.GEM_CLASS, OCLASSES.SPBOOK_CLASS,
+    OCLASSES.WEAPON_CLASS, OCLASSES.TOOL_CLASS, OCLASSES.VENOM_CLASS,
+];
+
+// src/mkobj.c:835 clear_dknown() — set obj->dknown to 0 for most types of
+// objects, to 1 otherwise.  Deliberately not observe_object(): this is an
+// unobserving.
+function clear_dknown(obj) {
+    obj.dknown = dknowns.includes(obj.oclass) ? 0 : 1;
+    if ((obj.otyp >= ONAMES.ELVEN_SHIELD && obj.otyp <= ONAMES.ORCISH_SHIELD)
+        || obj.otyp === ONAMES.SHIELD_OF_REFLECTION
+        || game.objects[obj.otyp].oc_merge)
+        obj.dknown = 0;
+    /* globs always have dknown flag set (to maximize merging) */
+    if (Is_pudding(obj))
+        obj.dknown = 1;
+}
+
 // src/mkobj.c:1090 unknow_object() — "set up dknown and known: non-0 for some
 // things". The last line is the one that matters here: object types that do NOT
 // use the known flag get it set TRUE, which is what makes a starting scroll or
 // potion eligible for discovery in ini_inv_use_obj().
-function unknow_object(obj) {
-    obj.dknown = 0;
+export function unknow_object(obj) {
+    clear_dknown(obj);
     obj.bknown = obj.rknown = 0;
     obj.cknown = obj.lknown = 0;
     obj.tknown = 0;
@@ -1198,6 +1225,25 @@ function note_unported_obj(what) {
    question and a flag nothing sets. */
 function Inhell() {
     return game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish === true;
+}
+
+// src/mkobj.c:2525 discard_minvent() — the monster's whole pack leaves the
+// game. C loops extract_from_minvent + obfree; the unlink is obj_extract_self
+// on the OBJ_MINVENT chain, and dropping the last reference is JS's obfree.
+// No draws. A random ARTIFACT cannot be in a freshly made monster's pack
+// (m_initinv/m_initweap create with artif=FALSE), so uncreating one is
+// recorded rather than modelled.
+export function discard_minvent(mtmp, uncreate_artifacts) {
+    let otmp;
+
+    while ((otmp = (mtmp.minvent || [])[0]) !== undefined) {
+        /* extract_from_minvent(mtmp, otmp, TRUE, TRUE) */
+        otmp.owornmask = 0;
+        obj_extract_self(otmp);
+        if (uncreate_artifacts && otmp.oartifact)
+            note_unported_obj('discard_minvent:artifact_exists');
+        /* obfree(otmp, NULL) — no other reference remains */
+    }
 }
 
 // src/mkobj.c:2676 add_to_container() — link an object into a container's cobj

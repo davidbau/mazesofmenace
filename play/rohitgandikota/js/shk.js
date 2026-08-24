@@ -9,6 +9,14 @@
 import { game } from './gstate.js';
 import { ESHK, SHOPBASE, IS_DOOR } from './const.js';
 import { in_rooms } from './hack.js';
+import { distu, dist2, online2 } from './hacklib.js';
+import { m_canseeu } from './monmove.js';
+import { move_special } from './priest.js';
+import { carrying, sobj_at } from './invent.js';
+import { wake_nearto } from './mon.js';
+import { Invis } from './youprop.js';
+import { Fast } from './attrib.js';
+import { ONAMES } from './objects_data.js';
 
 // src/shk.c:1449 hot_pursuit() — the shopkeeper starts following you.
 //
@@ -111,4 +119,137 @@ export function block_entry(x, y) {
 
     note_unported_shk('block_entry:shk_on_post');
     return false;
+}
+
+// src/monmove.c:189 (shared predicate lives with the C's users): is the
+// shopkeeper inside his own shop? js/monmove.js holds the test.
+import { inhishop } from './monmove.js';
+export { inhishop };
+
+// src/shk.c:4556 shk_fixes_damage() — repair one pending damage-list
+// entry. The level damage list only gains entries from digging and door
+// breakage, neither of which a ported path creates near a shop yet, so
+// this stays a pure guard.
+function shk_fixes_damage(shkp) {
+    const dam = (game.level?.damagelist || []).length;
+    if (!dam)
+        return;
+    note_unported_shk('shk_fixes_damage:repair_damage');
+}
+
+// src/dig.c:597 holetime() — countdown until the hero's dig breaks
+// through, or -1 when the hero isn't digging in a shop. The digging
+// occupation is not ported, so the occupation test is by its label.
+function holetime() {
+    if (game.occtxt !== 'digging' || !(game.u.ushops || '').length)
+        return -1;
+    return Math.trunc((250 - (game.context?.digging?.effort ?? 0)) / 20);
+}
+
+// src/shk.c:4880 shk_move() — the shopkeeper's turn. Return values match
+// C: -2 died, -1 "let m_move handle it", 0 stayed, 1 moved.
+export async function shk_move(shkp) {
+    let uondoor = false, avoid = false, badinv;
+
+    const u = game.u;
+    const eshkp = shkp.eshk;   /* extras live directly on the monster */
+    const omx = shkp.mx;
+    const omy = shkp.my;
+
+    if (inhishop(shkp))
+        shk_fixes_damage(shkp);
+
+    const udist = distu(omx, omy);
+    if (udist < 3 /* grid bug shk: PM_GRID_BUG can't be a shk */) {
+        if (!shkp.mpeaceful /* ANGRY(shkp); Conflict unreached */) {
+            const { mattacku } = await import('./mhitu.js');
+            await mattacku(shkp);
+            return 0;
+        }
+        if (eshkp.following) {
+            /* the "didn't you forget to pay?" nag and the rn2(9)
+               rile_shk roll */
+            note_unported_shk('shk_move:following_nag');
+            if (udist < 2)
+                return 0;
+        }
+    }
+
+    let appr = 1;
+    let gtx = eshkp.shk.x;
+    let gty = eshkp.shk.y;
+    const satdoor = (gtx === omx && gty === omy);
+    let z;
+    if (eshkp.following || ((z = holetime()) >= 0 && z * z <= udist)) {
+        if (udist > 4 && eshkp.following && !eshkp.billct)
+            return -1; /* leave it to m_move */
+        gtx = u.ux;
+        gty = u.uy;
+    } else if (!shkp.mpeaceful) {
+        /* Move towards the hero if the shopkeeper can see him. */
+        if ((shkp.mcansee ?? 1) && m_canseeu(shkp)) {
+            gtx = u.ux;
+            gty = u.uy;
+        }
+        avoid = false;
+    } else {
+        const GDIST = (x, y) => dist2(x, y, gtx, gty);
+        if (Invis() || u.usteed) {
+            avoid = false;
+        } else {
+            uondoor = (u.ux === eshkp.shd.x && u.uy === eshkp.shd.y);
+            if (uondoor) {
+                badinv = (carrying(ONAMES.PICK_AXE)
+                          || carrying(ONAMES.DWARVISH_MATTOCK)
+                          || (Fast() && (sobj_at(ONAMES.PICK_AXE, u.ux, u.uy)
+                                         || sobj_at(ONAMES.DWARVISH_MATTOCK,
+                                                    u.ux, u.uy))));
+                if (satdoor && badinv)
+                    return 0;
+                avoid = !badinv;
+            } else {
+                avoid = ((u.ushops || '').length > 0 && distu(gtx, gty) > 8);
+                badinv = false;
+            }
+
+            if ((((eshkp.robbed | 0) === 0 && !eshkp.billct && !eshkp.debit)
+                 || avoid) && GDIST(omx, omy) < 3) {
+                if (!badinv && !online2(omx, omy, u.ux, u.uy))
+                    return 0;
+                if (satdoor) {
+                    appr = 0;
+                    gtx = gty = 0;
+                }
+            }
+        }
+    }
+
+    z = await move_special(shkp, inhishop(shkp), appr, uondoor, avoid,
+                           omx, omy, gtx, gty);
+    if (z > 0)
+        after_shk_move(shkp);
+
+    return z;
+}
+
+// src/shk.c:4998 after_shk_move() — re-entry bookkeeping after a move.
+export function after_shk_move(shkp) {
+    const eshkp = shkp.eshk;
+    if (eshkp.bill_p === -1000 && inhishop(shkp)) {
+        /* reset bill_p, re-check occupancy: billing is not ported yet */
+        note_unported_shk('after_shk_move:bill_p_reset');
+    }
+}
+
+// src/shk.c:1118 tended_shop() — shop room has its shopkeeper inside.
+export function tended_shop(sroom) {
+    const mtmp = sroom.resident;
+    return !mtmp ? false : !!inhishop(mtmp);
+}
+
+// src/shk.c:1126 noisy_shop() — shop sounds wake the neighborhood.
+export function noisy_shop(sroom) {
+    const mtmp = sroom.resident;
+    if (mtmp && inhishop(mtmp))
+        wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
 }

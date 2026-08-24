@@ -37,6 +37,13 @@ export const Hallucination = () => HHallucination() && !Halluc_resistance();
 // into one read. u.uroleplay.deaf is the deaf conduct, chosen at startup.
 export const Deaf = () => !!game.u?.uprops?.DEAF || !!game.u?.uroleplay?.deaf;
 
+// include/youprop.h:65 Stone_resistance — flat uprops map collapses the
+// intrinsic and extrinsic halves into one read.
+export const Stone_resistance = () => !!game.u?.uprops?.STONE_RES;
+
+// include/youprop.h:129 Fumbling
+export const Fumbling = () => !!game.u?.uprops?.FUMBLING;
+
 // include/youprop.h:279 Underwater()
 export const Underwater = () => !!game.u?.uinwater;
 
@@ -72,3 +79,8 @@ export const Flying = () =>
 
 // include/youprop.h Fire_resistance — (HFire_resistance || EFire_resistance).
 export const Fire_resistance = () => !!game.u?.uprops?.FIRE_RES;
+
+// include/youprop.h:186 Infravision — HInfravision || EInfravision.
+// The intrinsic half comes from the hero's race via set_uasmon().
+export const Infravision = () => !!(game.u?.intrinsic?.HInfravision
+                                    || game.u?.uprops?.INFRAVISION);

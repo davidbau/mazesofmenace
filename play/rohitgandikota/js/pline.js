@@ -59,6 +59,11 @@ export async function You_hear(line) {
         await pline('You hear ' + line);
 }
 
+// include/hack.h You_see() — "You see <line>".
+export async function You_see(line) {
+    await pline('You see ' + line);
+}
+
 // src/pline.c:93 set_msg_xy() — where the NEXT message is considered to happen.
 //
 // This feeds a11y.msg_loc, which only the accessibility message-location

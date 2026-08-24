@@ -17,7 +17,9 @@ import { rn2 } from './rng.js';
 import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
          NO_MM_FLAGS } from './const.js';
 import { rnl } from './rng.js';
-import { pline } from './display.js';
+import { pline, see_nearby_objects } from './display.js';
+import { Hallucination } from './youprop.js';
+import { is_demon, is_lord, is_prince, is_covetous } from './mondata.js';
 import { You, You_feel, You_cant } from './pline.js';
 import { getlin } from './cmd.js';
 import { get_level, depth, print_dungeon, dunlevs_in_dungeon } from './dungeon.js';
@@ -395,6 +397,43 @@ export function u_on_newpos(x, y) {
         game.u.usteed.mx = game.u.ux;
         game.u.usteed.my = game.u.uy;
     }
+    /* src/dungeon.c:1594 — still on same level; might have come close
+       enough to generic object(s) to redisplay them as specific objects
+       (level changes take the map_location() arm instead) */
+    if (!game.u.ublind && !Hallucination() && !game.u.uswallow)
+        see_nearby_objects();
+}
+
+/* include/mondata.h:140 is_dlord/is_dprince, include/dungeon.h In_hell */
+const is_dlord = (ptr) => is_demon(ptr) && is_lord(ptr);
+const is_dprince = (ptr) => is_demon(ptr) && is_prince(ptr);
+const In_hell = (lev) => (lev ?? game.u?.uz)?.dnum === game.hell_dnum;
+
+// src/teleport.c:21 m_blocks_teleporting() — a demon lord or prince in
+// residence blocks others' teleports in Gehennom.
+function m_blocks_teleporting(mtmp) {
+    return is_dlord(mtmp.data) || is_dprince(mtmp.data);
+}
+
+// src/teleport.c:30 noteleport_level() — teleporting is prevented on this
+// level for this monster?
+export function noteleport_level(mon) {
+    /* demon court in Gehennom prevent others from teleporting */
+    if (In_hell(game.u.uz) && !(is_dlord(mon.data) || is_dprince(mon.data)))
+        if ((game.level?.monsters || []).some(
+                m => m.mhp > 0 && m_blocks_teleporting(m)))
+            return true;
+
+    /* natural no-teleport level; covetous monsters can bypass these */
+    if (game.level?.flags?.noteleport && !is_covetous(mon.data))
+        return true;
+
+    /* wand of stasis prevents teleportation while the effect is active
+       (even for covetous monsters) */
+    if ((game.level?.flags?.stasis_until ?? 0) >= game.moves)
+        return true;
+
+    return false;
 }
 
 // src/teleport.c teleok() — may the hero teleport onto <x,y>?
@@ -442,7 +481,9 @@ export async function teleds(nux, nuy, teleds_flags) {
     vision_recalc(0);           /* vision before effects */
 
     if (is_teleport && game.flags?.verbose)
-        await You('materialize in %s different place.', 'a');
+        await You(`materialize in ${
+            (nux === ux0 && nuy === uy0) ? 'the same'
+                                         : 'a different'} location!`);
 
     await spoteffects(true);
 }
@@ -495,6 +536,48 @@ async function scrolltele(scroll) {
         return;
     }
     await pline('Sorry...');
+
+    /* src/teleport.c:914 — an unusable choice falls through to a random
+       destination */
+    await safe_teleds(TELEDS_TELEPORT);
+}
+
+// src/teleport.c:713 safe_teleds() — 40 fully random tries (rnd(COLNO-1),
+// rn2(ROWNO)), then the shuffled ring-pair candidate list near the hero.
+export async function safe_teleds(teleds_flags) {
+    let nux, nuy;
+
+    for (let tcnt = 0; tcnt < 40; ++tcnt) {
+        nux = rnd(COLNO - 1);
+        nuy = rn2(ROWNO);
+        if (teleok(nux, nuy, false)) {
+            await teleds(nux, nuy, teleds_flags);
+            return true;
+        }
+    }
+
+    /* get a shuffled list of candidate locations, starting with spots
+       1 or 2 steps from hero, then 3 or 4, on up */
+    let cc_flags = CC_RING_PAIRS | CC_SKIP_MONS;
+    if (!game.u.uprops?.PASSES_WALLS)
+        cc_flags |= CC_SKIP_INACCS;
+    const candy = collect_coords(game.u.ux, game.u.uy, 0, cc_flags, null);
+    let backupspot = null;
+    /* skip trap locations but remember the first acceptable trap spot */
+    for (let tcnt = 0; tcnt < candy.length; ++tcnt) {
+        nux = candy[tcnt].x; nuy = candy[tcnt].y;
+        if (teleok(nux, nuy, false)) {
+            await teleds(nux, nuy, teleds_flags);
+            return true;
+        }
+        if (!backupspot && teleok(nux, nuy, true))
+            backupspot = { x: nux, y: nuy };
+    }
+    if (backupspot) {
+        await teleds(backupspot.x, backupspot.y, teleds_flags);
+        return true;
+    }
+    return false;
 }
 
 // src/teleport.c:842 tele()

@@ -12,6 +12,7 @@
 
 import { game } from './gstate.js';
 import { You, Your } from './pline.js';
+import { pline } from './display.js';
 import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { rn2 } from './rng.js';
@@ -158,6 +159,9 @@ const setABASE = (i, v) => { game.u.acurr.a[i] = v; };
 const AMAX = (i) => game.u.amax.a[i];
 const setAMAX = (i, v) => { game.u.amax.a[i] = v; };
 const ATTRMIN = (i) => game.urace.attrmin[i];
+/* include/attrib.h ABON — u.abon.a[i], the item/divine bonuses; nothing
+   sets them yet so the accessor answers 0 */
+const ABON = (i) => game.u.abon?.a?.[i] ?? 0;
 const ATTRMAX = (i) => game.urace.attrmax[i];
 
 // src/attrib.c:679 rnd_attr() — pick a characteristic by the role's attrdist
@@ -230,10 +234,22 @@ export function vary_init_attr() {
 // src/attrib.c:31 adjattrib() — the only draw is the rn2() that decides how
 // much of the excess to take off AMAX when a decrease would go below the
 // racial minimum.
-export function adjattrib(ndx, incr, msgflg) {
-    if (!incr)
+export async function adjattrib(ndx, incr, msgflg) {
+    /* src/attrib.c:11 — the "You feel <adj>!" adjective tables */
+    const plusattr = ['strong', 'smart', 'wise',
+                      'agile', 'tough', 'charismatic'];
+    const minusattr = ['weak', 'stupid', 'foolish',
+                       'clumsy', 'fragile', 'repulsive'];
+
+    if (/* Fixed_abil: no source yet || */ !incr)
         return false;
 
+    /* dunce cap constriction needs uarmh; no hero wears one yet */
+
+    const old_acurr = ACURR(ndx);
+    const old_abase = ABASE(ndx);
+    const old_amax = AMAX(ndx);
+    let attrstr, abonflg;
     setABASE(ndx, ABASE(ndx) + incr);
     if (incr > 0) {
         if (ABASE(ndx) > AMAX(ndx)) {
@@ -243,6 +259,8 @@ export function adjattrib(ndx, incr, msgflg) {
                 setAMAX(ndx, ATTRMAX(ndx));
             }
         }
+        attrstr = plusattr[ndx];
+        abonflg = (ABON(ndx) < 0);
     } else {
         if (ABASE(ndx) < ATTRMIN(ndx)) {
             const decr = rn2(ATTRMIN(ndx) - ABASE(ndx) + 1);
@@ -251,7 +269,32 @@ export function adjattrib(ndx, incr, msgflg) {
             if (AMAX(ndx) < ATTRMIN(ndx))
                 setAMAX(ndx, ATTRMIN(ndx));
         }
+        attrstr = minusattr[ndx];
+        abonflg = (ABON(ndx) > 0);
     }
+    if (ACURR(ndx) === old_acurr) {
+        if (msgflg === 0 && game.flags?.verbose !== false) {
+            if (ABASE(ndx) === old_abase && AMAX(ndx) === old_amax) {
+                await pline(`You're ${abonflg ? 'currently' : 'already'} as ${
+                    attrstr} as you can get.`);
+            } else {
+                const attrname = ['strength', 'intelligence', 'wisdom',
+                                  'dexterity', 'constitution', 'charisma'];
+                await Your(`innate ${attrname[ndx]} has ${
+                    (incr > 0) ? 'improved' : 'declined'}.`);
+            }
+        }
+        return false;
+    }
+
+    /* Any successful change also resets abuse / exercise level */
+    if (game.u.aexe?.a) game.u.aexe.a[ndx] = 0;   /* AEXE(ndx) = 0 */
+
+    (game.disp ||= {}).botl = true;
+    if (msgflg <= 0)
+        await You_feel(`${(incr > 1 || incr < -1) ? 'very ' : ''}${attrstr}!`);
+    /* encumber_msg() for STR/CON changes needs the encumbrance message
+       machinery; noted where it lands */
     return true;
 }
 

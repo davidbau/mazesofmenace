@@ -632,12 +632,44 @@ function invert_all(window, page, acc, count) {
     }
 }
 
-// win/tty/wintty.c:1214 menuitem_invert_test() — MENU_ITEMFLAGS_SKIPINVERT
+// src/windows.c:1562 menuitem_invert_test() — MENU_ITEMFLAGS_SKIPINVERT
 // entries sit out bulk toggling but can still be picked by their own letter.
+// mode 0: invert; 1: select; 2: deselect. menuinvertmode defaults to 1:
+// bulk changes never turn a skipinvert entry ON, but may turn it OFF.
 function menuitem_invert_test(mode, itemflags, is_selected) {
     if ((itemflags & MENU_ITEMFLAGS_SKIPINVERT) === 0)
-        return true;
-    return (mode === 0) ? false : !is_selected;
+        return true; /* if not flagged SKIPINVERT, always pass test */
+    const mim = game.iflags?.menuinvertmode ?? 1;
+    if (mim === 2)
+        return false;
+    else if (mim === 1)
+        return is_selected ? true : false;
+    return true;
+}
+
+// win/tty/wintty.c:1198 set_all_on_page()
+function set_all_on_page(window, page) {
+    const items = menu_page_items(window, page);
+    items.forEach((curr, n) => {
+        if (!curr.identifier || curr.selected
+            || !menuitem_invert_test(1, curr.itemflags, false))
+            return;
+        curr.selected = true;
+        set_item_state(window, n, curr);
+    });
+}
+
+// win/tty/wintty.c:1217 unset_all_on_page()
+function unset_all_on_page(window, page) {
+    const items = menu_page_items(window, page);
+    items.forEach((curr, n) => {
+        if (!curr.identifier || !curr.selected
+            || !menuitem_invert_test(2, curr.itemflags, true))
+            return;
+        curr.selected = false;
+        curr.count = -1;
+        set_item_state(window, n, curr);
+    });
 }
 
 // win/tty/wintty.c:1329 process_menu_window() — display the menu and run the
@@ -695,6 +727,46 @@ export async function tty_select_menu(window, how) {
         } else if (morc === MENU_PREVIOUS_PAGE) {
             if (cw.npages > 0 && cw.curr_page !== 0)
                 tty_prev_page(window);
+        } else if (morc === '^') {              /* MENU_FIRST_PAGE */
+            if (cw.npages > 0 && cw.curr_page !== 0) {
+                cw.curr_page = 0;
+                process_menu_window(cw, 0, game?.nhDisplay);
+            }
+        } else if (morc === '|') {              /* MENU_LAST_PAGE */
+            if (cw.npages > 0 && cw.curr_page !== cw.npages - 1) {
+                cw.curr_page = cw.npages - 1;
+                process_menu_window(cw, cw.curr_page, game?.nhDisplay);
+            }
+        } else if (morc === ',') {              /* MENU_SELECT_PAGE */
+            if (cw.how === PICK_ANY)
+                set_all_on_page(window, cw.curr_page);
+        } else if (morc === '\\') {             /* MENU_UNSELECT_PAGE */
+            unset_all_on_page(window, cw.curr_page);
+        } else if (morc === '~') {              /* MENU_INVERT_PAGE */
+            if (cw.how === PICK_ANY)
+                invert_all_on_page(window, cw.curr_page, 0, -1);
+        } else if (morc === '.') {              /* MENU_SELECT_ALL */
+            if (cw.how === PICK_ANY) {
+                set_all_on_page(window, cw.curr_page);
+                for (let curr = cw.mlist; curr; curr = curr.next) {
+                    if (!curr.identifier || curr.selected
+                        || !menuitem_invert_test(1, curr.itemflags, false))
+                        continue;
+                    curr.selected = true;
+                }
+            }
+        } else if (morc === '-') {              /* MENU_UNSELECT_ALL */
+            unset_all_on_page(window, cw.curr_page);
+            for (let curr = cw.mlist; curr; curr = curr.next) {
+                if (!curr.identifier || !curr.selected
+                    || !menuitem_invert_test(2, curr.itemflags, true))
+                    continue;
+                curr.selected = false;
+                curr.count = -1;
+            }
+        } else if (morc === '@') {              /* MENU_INVERT_ALL */
+            if (cw.how === PICK_ANY)
+                invert_all(window, cw.curr_page, 0, -1);
         } else if (gacc.includes(morc)) {
             /* group accelerator; for the PICK_ONE case, we know that it
                matches exactly one item in order to be in gacc[] */

@@ -20,6 +20,14 @@ import { welded, is_sword } from './wield.js';
 import { bimanual } from './obj.js';
 import { Is_dragon_armor } from './mondata.js';
 import { sgn } from './hacklib.js';
+import { erode_obj, is_flammable, is_rustprone, is_crackable, is_rottable,
+         is_corrodeable, is_damageable } from './trap.js';
+import { erosion_matters } from './mkobj.js';
+import { rn2 } from './rng.js';
+import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
+         ERODE_NONE, EF_PAY, EF_DESTROY, ER_NOTHING,
+         ER_DESTROYED } from './const.js';
+import { stop_occupation } from './allmain.js';
 import { pline } from './display.js';
 import { You, You_feel, You_cant, Your } from './pline.js';
 import { an, xname, doname, the, gloves_simple_name } from './objnam.js';
@@ -910,4 +918,60 @@ export async function doputon() {
     const { puton_ok } = await import('./cmd.js');
     const otmp = await getobj('put on', puton_ok, 0);
     return otmp ? await accessory_or_armor_on(otmp) : ECMD_OK;
+}
+
+// src/do_wear.c:3259 obj_erode_type() — which erosion applies to obj.
+export function obj_erode_type(otmp) {
+    if (is_flammable(otmp))
+        return ERODE_BURN;
+    else if (is_rustprone(otmp))
+        return ERODE_RUST;
+    else if (is_crackable(otmp))
+        return ERODE_CRACK;
+    else if (is_rottable(otmp))
+        return ERODE_ROT;
+    else if (is_corrodeable(otmp))
+        return ERODE_CORRODE;
+    return ERODE_NONE;
+}
+
+// src/do_wear.c:3277 destroy_arm() — erode rn2(4)+1 random worn armor
+// pieces; a piece hit at max erosion is destroyed.
+export async function destroy_arm() {
+    const armors = [];
+    const hits = rn2(4) + 1;
+    let ret = 0;
+
+    /* gather worn armor in C's uarm..uarmu order; include non-erodeable */
+    for (const mask of [W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF,
+                        W_ARMU]) {
+        const otmp = (game.invent || [])
+            .find(o => ((o.owornmask ?? 0) & mask) !== 0);
+        if (otmp)
+            armors.push(otmp);
+    }
+    if (!armors.length)
+        return 0;
+
+    for (let i = 0; i < hits; i++) {
+        const otmp = armors[rn2(armors.length)];
+
+        if (erosion_matters(otmp, game.objects) && is_damageable(otmp)
+            && !otmp.oerodeproof) {
+            const erosion = obj_erode_type(otmp);
+
+            if (erosion !== ERODE_NONE) {
+                const r = await erode_obj(otmp, xname(otmp), erosion,
+                                          EF_PAY | EF_DESTROY);
+                if (r !== ER_NOTHING)
+                    ret = 1;
+                if (r === ER_DESTROYED)
+                    break;
+            }
+        }
+    }
+
+    if (ret)
+        await stop_occupation();
+    return ret;
 }

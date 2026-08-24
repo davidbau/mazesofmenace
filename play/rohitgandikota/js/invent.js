@@ -16,13 +16,23 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
 import { Hallucination } from './youprop.js';
 import { doname, an } from './objnam.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
-import { MONSYMS, NUMMONS } from './monst_data.js';
+import { MONSYMS, NUMMONS, PMNAMES } from './monst_data.js';
 import { erosion_matters, curse, splitobj } from './mkobj.js';
 import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, Is_container, Is_candle, Is_pudding } from './obj.js';
 import { setnotworn } from './worn.js';
 import { is_rider, hideunder } from './makemon.js';
+import { Fumbling } from './youprop.js';
+import { st_all, MOD_ENCUMBER, invlet_basic } from './const.js';
+import { u_safe_from_fatal_corpse, can_reach_floor } from './pickup.js';
+import { near_capacity, encumber_msg } from './attrib.js';
+import { inv_cnt } from './hack.js';
+import { place_object } from './mkobj.js';
+import { touch_artifact } from './mon.js';
+import { dropy, dropx } from './do.js';
+import { is_missile, ammo_and_launcher, setuqwep } from './wield.js';
 import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
+import { xwaitforspace } from './tty/getline.js';
 import { pline, docrt } from './display.js';
 import { observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -83,8 +93,13 @@ export function addinv(obj) {
        merged stack carrying a single item's weight, which under-read
        inv_weight() and hid encumbrance transitions. */
     for (const otmp of game.invent) {
-        if (merged({ o: otmp }, { o: obj }))
-            return otmp;
+        const r = merged({ o: otmp }, { o: obj });
+        if (r)
+            /* merged() hands back a promise when its discovery pline must
+               be awaited; addinv's async callers await the result either
+               way, and the sync init-time path never merges stacks whose
+               identification states differ */
+            return (r instanceof Promise) ? r.then(() => otmp) : otmp;
     }
     return addinv_nomerge(obj);
 }
@@ -214,9 +229,12 @@ export async function look_here(obj_cnt, lhflags) {
             tty_putstr(tmpwin, 0, doname(otmp));
         }
         await tty_display_nhwindow(tmpwin);
-        await nhgetch();
+        /* win/tty dmore(): the window waits for quitchars (space, enter,
+           ESC); any other key is ignored, which is why a ':' typed while
+           the pile overlay shows does not dismiss it */
+        await xwaitforspace(' \r\n\x1b');
         while (tty_next_page(tmpwin))
-            await nhgetch();
+            await xwaitforspace(' \r\n\x1b');
         tty_destroy_nhwindow(tmpwin);
         await docrt();
     }
@@ -853,13 +871,28 @@ export function merged(potmp, pobj) {
         if (obj.lamplit || obj.timed)
             note_unported_invent('merged:light_sources_and_timers');
 
-        /* objects can be identified by comparing them */
-        if (!!obj.known !== !!otmp.known)
+        /* objects can be identified by comparing them (unless Blind,
+           but that is handled in mergable()); the object becomes
+           identified in a particular dimension if either object was
+           previously identified in that dimension, and if the
+           identification states don't match, one of them must have
+           previously been identified */
+        let discovered = false;
+        if (!!obj.known !== !!otmp.known) {
             otmp.known = 1;
-        if (!!obj.rknown !== !!otmp.rknown)
+            discovered = true;
+        }
+        if (!!obj.rknown !== !!otmp.rknown) {
             otmp.rknown = 1;
-        if (!!obj.bknown !== !!otmp.bknown)
+            if (otmp.oerodeproof)
+                discovered = true;
+        }
+        if (!!obj.bknown !== !!otmp.bknown) {
             otmp.bknown = 1;
+            if (!(game.urole?.mnum === 'PM_CLERIC'   /* Role_if(PM_CLERIC) */
+                  || game.urole?.mnum === PMNAMES.PM_CLERIC))
+                discovered = true;
+        }
 
         if (obj.owornmask && carried(otmp))
             note_unported_invent('merged:worn_stack');
@@ -872,8 +905,24 @@ export function merged(potmp, pobj) {
             return 1;
         }
 
-        /* "You learn more about your items by comparing them." needs the
-           discovery messages; the identification above already happened. */
+        /* Print a message if item comparison discovers more
+           information about the items (with the exception of thrown
+           items, where this would be too spammy as such items get
+           unidentified by monsters very frequently). */
+        if (discovered && otmp.where === OBJ_INVENT
+            && obj.how_lost !== LOST_THROWN
+            && otmp.how_lost !== LOST_THROWN) {
+            /* pline() must be awaited but merged() has sync callers on
+               floor/minvent stacks that can never reach this arm (the
+               OBJ_INVENT test); hand those callers a plain 1 and hand the
+               inventory-side callers (addinv) a promise to await. */
+            return (async () => {
+                await pline(
+                    'You learn more about your items by comparing them.');
+                return 1;
+            })();
+        }
+
         return 1;
     }
     return 0;
@@ -960,15 +1009,29 @@ function note_unported_invent(what) {
 // C's format is "%c - %.*s%s": the letter, " - ", the object's name, and a
 // suffix that is "." when the caller asked for a sentence.
 export function xprname(obj, txt, let_, dot, cost, quan) {
+    /* if quan is non-0, print that quantity rather than obj->quan */
+    let savequan = 0;
+    if (quan && obj) {
+        savequan = obj.quan;
+        obj.quan = quan;
+    }
     const name = txt || doname(obj);
+    if (savequan)
+        obj.quan = savequan;
     return `${let_} - ${name}${dot ? '.' : ''}`;
 }
 
 // src/invent.c prinv() — print one inventory line, optionally prefixed.
+// A partial-stack quantity (a merge added quan to a bigger stack) drops the
+// period and, when flags.verbose, appends " (N in total).".
 export async function prinv(prefix, obj, quan) {
+    const total_of = !!(quan && (quan < obj.quan));
+
     if (!prefix) prefix = '';
+    const totalbuf = total_of ? ` (${obj.quan} in total).` : '';
     await pline(`${prefix}${prefix ? ' ' : ''}`
-                + xprname(obj, null, obj.invlet, true, 0, quan));
+                + xprname(obj, null, obj.invlet, !total_of, 0, quan)
+                + (game.flags?.verbose !== false ? totalbuf : ''));
 }
 
 // src/invent.c freeinv_core() — the bookkeeping an object needs on its way
@@ -1054,6 +1117,96 @@ export function freeinv(obj) {
     obj.pickup_prev = 0;
     freeinv_core(obj);
     update_inventory();
+}
+
+// src/invent.c:1208 hold_another_object() — add an item to the inventory
+// unless we're fumbling or it refuses to be held (via touch_artifact), and
+// give a message.  If there aren't any free inventory slots, drop it
+// instead.  If both success and failure messages are NULL, then we're just
+// doing the fumbling/slot-limit checking for a silent grab.
+export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
+    let drop_it = false;
+
+    if (!game.u.ublind)
+        observe_object(obj); /* maximize mergeability */
+    if (obj.oartifact) {
+        /* place_object may change these */
+        const crysknife = (obj.otyp === ONAMES.CRYSKNIFE);
+        const oerode = obj.oerodeproof;
+        /* wasUpolyd: hero polymorph is not modeled; touch_artifact
+           (js/mon.js) records itself and allows every touch, so the
+           lose-your-grip arm cannot trigger yet */
+
+        /* in case touching this object turns out to be fatal */
+        place_object(obj, game.u.ux, game.u.uy);
+
+        if (!touch_artifact(obj, game.youmonst)) {
+            obj_extract_self(obj); /* remove it from the floor */
+            await dropy(obj);      /* now put it back again :-) */
+            return obj;
+        }
+        obj_extract_self(obj);
+        if (crysknife) {
+            obj.otyp = ONAMES.CRYSKNIFE;
+            obj.oerodeproof = oerode;
+        }
+    }
+    if (Fumbling()) {
+        obj.nomerge = 1;
+        /* addinv_core0(obj, NULL, FALSE) — perminv update suppressed */
+        obj = await addinv(obj);
+        drop_it = true;
+    } else if (obj.otyp === ONAMES.CORPSE
+               && !u_safe_from_fatal_corpse(obj, st_all)
+               && obj.wishedfor) {
+        obj.wishedfor = 0;
+        obj = await addinv(obj);
+        drop_it = true;
+    } else {
+        const oquan = obj.quan;
+        let prev_encumbr = near_capacity(); /* before addinv() */
+
+        /* encumbrance limit is max( current_state, pickup_burden );
+           this used to use hardcoded MOD_ENCUMBER (stressed) instead
+           of the 'pickup_burden' option (which defaults to stressed) */
+        if (prev_encumbr < (game.flags?.pickup_burden ?? MOD_ENCUMBER))
+            prev_encumbr = (game.flags?.pickup_burden ?? MOD_ENCUMBER);
+
+        obj = await addinv(obj); /* addinv_core0(obj, NULL, FALSE) */
+        if (inv_cnt(false) > invlet_basic
+            || ((obj.otyp !== ONAMES.LOADSTONE || !obj.cursed)
+                && near_capacity() > prev_encumbr)) {
+            /* undo any merge which took place */
+            if (obj.quan > oquan)
+                obj = splitobj(obj, oquan);
+            drop_it = true;
+        } else {
+            if (game.flags?.autoquiver && !game.uquiver && !obj.owornmask
+                && (is_missile(obj) || ammo_and_launcher(obj, game.uwep)
+                    || ammo_and_launcher(obj, game.uswapwep)))
+                setuqwep(obj);
+            if (hold_msg || drop_fmt)
+                await prinv(hold_msg, obj, oquan);
+            /* obj made it into inventory and is staying there */
+            update_inventory();
+            await encumber_msg();
+        }
+    }
+    if (!drop_it)
+        return obj;
+
+    /* drop_it: */
+    if (drop_fmt)
+        await pline(drop_fmt.replace('%s', drop_arg));
+    obj.nomerge = 0;
+    if (can_reach_floor(true) || game.u.uswallow) {
+        await dropx(obj);
+    } else {
+        freeinv(obj);
+        /* hitfloor() (levitation/riding drop) is not ported */
+        note_unported_invent('hold_another_object:hitfloor');
+    }
+    return null; /* might be gone */
 }
 
 // src/invent.c useupall() — the whole stack goes.

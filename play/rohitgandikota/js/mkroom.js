@@ -21,6 +21,7 @@ import { dist2, distmin } from './hacklib.js';
 import { somexyspace, occupied, make_grave } from './mklev.js';
 import { OROOM, SHOPBASE, FILL_NORMAL, COURT, ZOO, BEEHIVE, MORGUE,
          BARRACKS, SWAMP, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
+         ANY_TYPE, ANY_SHOP,
          ROOMOFFSET, POOL, SDOOR, ROOM, IS_ROOM, IS_DOOR, isok, G_GONE,
          In_endgame, SPACE_POS, IS_THRONE, THRONE, ALTAR, AM_SHRINE,
          OBJ_AT } from './const.js';
@@ -644,4 +645,22 @@ export function mkroom_wire(fns) { _topologize = fns.topologize; }
 function topologize_wire(croom) {
     if (_topologize) _topologize(croom);
     else note_unported_mkroom('topologize:unwired');
+}
+
+// src/mkroom.c:765 search_special() — find a room of the given type
+// (ANY_TYPE / ANY_SHOP / specific rtype); rooms first, then subrooms.
+export function search_special(type) {
+    for (const croom of game.level?.rooms || []) {
+        if ((type === ANY_TYPE && croom.rtype !== OROOM)
+            || (type === ANY_SHOP && croom.rtype >= SHOPBASE)
+            || croom.rtype === type)
+            return croom;
+    }
+    for (const croom of game.level?.subrooms || []) {
+        if ((type === ANY_TYPE && croom.rtype !== OROOM)
+            || (type === ANY_SHOP && croom.rtype >= SHOPBASE)
+            || croom.rtype === type)
+            return croom;
+    }
+    return null;
 }

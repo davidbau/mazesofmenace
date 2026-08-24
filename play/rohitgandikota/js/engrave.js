@@ -6,6 +6,7 @@
 // heavy PRNG consumers and were previously a single invented rn2(48).
 
 import { game } from './gstate.js';
+import { is_ice } from './dbridge.js';
 import { rn2, rnd } from './rng.js';
 import { can_reach_floor } from './pickup.js';
 import { getrumor, get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
@@ -278,7 +279,10 @@ export function u_wipe_engr(cnt) {
 export function wipe_engr_at(x, y, cnt, magical) {
     const ep = engr_at(x, y);
     if (!ep || ep.engr_type === HEADSTONE || ep.nowipeout) return;
-    if (ep.engr_type === BURN && !(magical && !rn2(2))) return;
+    /* engrave.c:278 — burned text resists wiping unless it sits on ice
+       or the magical half-chance fires */
+    if (ep.engr_type === BURN && !is_ice(x, y)
+        && !(magical && !rn2(2))) return;
 
     if (ep.engr_type !== DUST && ep.engr_type !== ENGR_BLOOD)
         cnt = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;

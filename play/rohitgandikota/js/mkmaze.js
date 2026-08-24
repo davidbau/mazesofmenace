@@ -10,8 +10,10 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { Is_special, depth } from './dungeon.js';
-import { load_special } from './sp_lev.js';
-import { COLNO, ROWNO, ROOM, CORR, AIR, STONE, IS_DOOR } from './const.js';
+import { load_special, sp_lev_wire_create_maze } from './sp_lev.js';
+import { COLNO, ROWNO, ROOM, CORR, AIR, STONE, HWALL, IS_DOOR,
+         ACCESSIBLE } from './const.js';
+import { isok } from './hacklib.js';
 import { occupied } from './mklev.js';
 import { t_at, m_at } from './mon.js';
 
@@ -250,16 +252,171 @@ function mz_move(c, dir) {
 }
 
 // src/mkmaze.c:297 okay() — can the maze walk step two cells this way?
+//
+// The bounds are gx.x_maze_max/gy.y_maze_max, normally (COLNO-1)&~1 = 78
+// and (ROWNO-1)&~1 = 20 (decl.c:827) but TEMPORARILY REDUCED by
+// create_maze() while it carves the small pre-scale maze.
 function okay(x, y, dir) {
     const c = { x, y };
     mz_move(c, dir);
     mz_move(c, dir);
-    if (c.x < 3 || c.y < 3 || c.x > 78 /* x_maze_max */
-        || c.y > 20 /* y_maze_max */
+    if (c.x < 3 || c.y < 3 || c.x > (game.x_maze_max ?? 78)
+        || c.y > (game.y_maze_max ?? 20)
         || game.level.at(c.x, c.y)?.typ !== STONE)
         return false;
     return true;
 }
+
+// src/mkmaze.c:309 maze0xy() — a random odd cell inside the maze bounds.
+// Two draws, x then y, against the CURRENT (possibly reduced) bounds.
+function maze0xy(cc) {
+    cc.x = 3 + 2 * rn2(((game.x_maze_max ?? 78) >> 1) - 1);
+    cc.y = 3 + 2 * rn2(((game.y_maze_max ?? 20) >> 1) - 1);
+}
+
+// src/mkmaze.c:892 maze_inbounds()
+function maze_inbounds(x, y) {
+    return (x >= 2 && y >= 2
+            && x < (game.x_maze_max ?? 78) && y < (game.y_maze_max ?? 20)
+            && isok(x, y));
+}
+
+// src/mkmaze.c:904 maze_remove_deadends() — knock one wall out of each
+// dead-end cell. DRAWS one rn2(idx) per qualifying cell, x-outer scan, and
+// cells opened earlier in the scan change what later cells see.
+function maze_remove_deadends(typ) {
+    const dirok = [0, 0, 0, 0];
+    let idx, idx2;
+
+    for (let x = 2; x < (game.x_maze_max ?? 78); x++)
+        for (let y = 2; y < (game.y_maze_max ?? 20); y++)
+            if (ACCESSIBLE(game.level.at(x, y).typ) && (x % 2) && (y % 2)) {
+                idx = idx2 = 0;
+                for (let dir = 0; dir < 4; dir++) {
+                    /* note: mz_move() is a macro which modifies
+                       one of its first two parameters */
+                    const c = { x, y };
+                    const c2 = { x, y };
+                    mz_move(c, dir);
+                    if (!maze_inbounds(c.x, c.y)) {
+                        idx2++;
+                        continue;
+                    }
+                    mz_move(c2, dir);
+                    mz_move(c2, dir);
+                    if (!maze_inbounds(c2.x, c2.y)) {
+                        idx2++;
+                        continue;
+                    }
+                    if (!ACCESSIBLE(game.level.at(c.x, c.y).typ)
+                        && ACCESSIBLE(game.level.at(c2.x, c2.y).typ)) {
+                        dirok[idx++] = dir;
+                        idx2++;
+                    }
+                }
+                if (idx2 >= 3 && idx > 0) {
+                    const c = { x, y };
+                    mz_move(c, dirok[rn2(idx)]);
+                    game.level.at(c.x, c.y).typ = typ;
+                }
+            }
+}
+
+// src/mkmaze.c:950 create_maze() — a maze with the given corridor width and
+// wall thickness: fill a grid, shrink the maze bounds, walk a unit maze,
+// optionally remove dead ends, restore the bounds and scale the result up.
+//
+// Draws: rnd(4) for each of corrwid/wallthick when passed as -1, then
+// maze0xy's pair, walkfrom's rn2 chain, and maze_remove_deadends when asked.
+export function create_maze(corrwid, wallthick, rmdeadends) {
+    const mm = { x: 0, y: 0 };
+    const tmp_xmax = game.x_maze_max;
+    const tmp_ymax = game.y_maze_max;
+
+    if (corrwid === -1)
+        corrwid = rnd(4);
+
+    if (wallthick === -1)
+        wallthick = rnd(4) - corrwid;
+
+    if (wallthick < 1)
+        wallthick = 1;
+    else if (wallthick > 5)
+        wallthick = 5;
+
+    if (corrwid < 1)
+        corrwid = 1;
+    else if (corrwid > 5)
+        corrwid = 5;
+
+    const scale = corrwid + wallthick;
+    const rdx = (((tmp_xmax ?? 78) / scale) | 0);
+    const rdy = (((tmp_ymax ?? 20) / scale) | 0);
+
+    if (game.level.flags?.corrmaze) {
+        for (let x = 2; x < (rdx * 2); x++)
+            for (let y = 2; y < (rdy * 2); y++)
+                game.level.at(x, y).typ = STONE;
+    } else {
+        for (let x = 2; x <= (rdx * 2); x++)
+            for (let y = 2; y <= (rdy * 2); y++)
+                game.level.at(x, y).typ = ((x % 2) && (y % 2)) ? STONE : HWALL;
+    }
+
+    /* set upper bounds for maze0xy and walkfrom */
+    game.x_maze_max = (rdx * 2);
+    game.y_maze_max = (rdy * 2);
+
+    /* create maze */
+    maze0xy(mm);
+    walkfrom(mm.x, mm.y, 0);
+
+    if (rmdeadends)
+        maze_remove_deadends(game.level.flags?.corrmaze ? CORR : ROOM);
+
+    /* restore bounds */
+    game.x_maze_max = tmp_xmax;
+    game.y_maze_max = tmp_ymax;
+
+    /* scale maze up if needed */
+    if (scale > 2) {
+        const x_maze_max = game.x_maze_max ?? 78;
+        const y_maze_max = game.y_maze_max ?? 20;
+        const tmpmap = [];
+
+        /* back up the existing smaller maze */
+        for (let x = 1; x < x_maze_max; x++) {
+            tmpmap[x] = [];
+            for (let y = 1; y < y_maze_max; y++)
+                tmpmap[x][y] = game.level.at(x, y).typ;
+        }
+
+        /* do the scaling */
+        let x = 2, rx = 2;
+        while (rx < x_maze_max) {
+            const mx = (x % 2) ? corrwid
+                       : (x === 2 || x === rdx * 2) ? 1
+                         : wallthick;
+            let y = 2, ry = 2;
+            while (ry < y_maze_max) {
+                const my = (y % 2) ? corrwid
+                           : (y === 2 || y === rdy * 2) ? 1
+                             : wallthick;
+                for (let dx = 0; dx < mx; dx++)
+                    for (let dy = 0; dy < my; dy++) {
+                        if (rx + dx >= x_maze_max || ry + dy >= y_maze_max)
+                            break;      /* C: breaks the dy loop only */
+                        game.level.at(rx + dx, ry + dy).typ = tmpmap[x][y];
+                    }
+                ry += my;
+                y++;
+            }
+            rx += mx;
+            x++;
+        }
+    }
+}
+sp_lev_wire_create_maze(create_maze);
 
 // src/mkmaze.c:1279 walkfrom() — the recursive maze carver (the non-MICRO
 // build); the draw order of its rn2(q) picks depends on this exact shape.

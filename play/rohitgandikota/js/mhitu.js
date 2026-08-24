@@ -12,7 +12,7 @@ import { thrwmu } from './mthrowu.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_animal, perceives, dmgtype, gender, pronoun_gender,
          is_swimmer, thick_skinned, unsolid, hides_under, is_hider, is_demon,
-         nolimbs, is_undead, is_orc } from './mondata.js';
+         nolimbs, is_undead, is_orc, is_whirly, digests } from './mondata.js';
 import { is_vampshifter, DEADMONSTER, MON_WEP } from './monst.js';
 import { poly_gender } from './polyself.js';
 import { Invis, See_invisible, Underwater, Deaf } from './youprop.js';
@@ -28,6 +28,15 @@ import { pline, canspotmon, canseemon, mon_visible, sensemon, bot,
          newsym } from './display.js';
 import { cansee } from './vision.js';
 import { Monnam } from './do_name.js';
+import { You_hear } from './pline.js';
+import { attacktype_fordmg, dmgtype_fromattack } from './mondata.js';
+import { mon_nam } from './do_name.js';
+import { remove_monster, place_monster } from './makemon.js';
+import { swallowed } from './display.js';
+import { vision_recalc } from './vision.js';
+import { ACURR, exercise } from './attrib.js';
+import { A_CON, A_STR } from './const.js';
+import { sobj_at } from './invent.js';
 import { s_suffix } from './hacklib.js';
 import { xname } from './objnam.js';
 import { nomul } from './hack.js';
@@ -356,8 +365,14 @@ export async function mattacku(mtmp) {
 
     /* If swallowed, can only be affected by u.ustuck */
     if (game.u.uswallow) {
-        note_unported_mhitu('mattacku:uswallow');
-        return 0;
+        if (mtmp !== game.u.ustuck)
+            return 0;
+        game.u.ustuck.mux = game.u.ux;
+        game.u.ustuck.muy = game.u.uy;
+        if (game.u.uinvulnerable)
+            return 0; /* stomachs can't hurt you! */
+        v.range2 = 0;
+        v.foundyou = 1;
     } else if (game.u.usteed) {
         if (mtmp === game.u.usteed)
             /* Your steed won't attack you */
@@ -538,8 +553,27 @@ export async function mattacku(mtmp) {
             break;
 
         case A.AT_ENGL:
-            if (!v.range2)
-                note_unported_mhitu('mattacku:gulpmu');
+            if (!v.range2) {
+                if (v.foundyou) {
+                    /* src/mhitu.c:848 — the engulf to-hit roll fires
+                       before the swallow */
+                    if (game.u.uswallow
+                        || (!mtmp.mspec_used && tmp > (j = rnd(20 + i)))) {
+                        /* flush_screen(1): our writes flush per cell */
+                        sum[i] = await gulpmu(mtmp, mattk);
+                    } else {
+                        await missmu(mtmp, (tmp === j), mattk);
+                    }
+                } else if (digests(mdat)) {
+                    await pline(`${Monnam(mtmp)} gulps some air!`);
+                } else {
+                    if (v.youseeit)
+                        await pline(`${Monnam(mtmp)} lunges forward and recoils!`);
+                    else
+                        await You_hear(`a ${is_whirly(mdat)
+                            ? 'rushing noise' : 'splat'} nearby.`);
+                }
+            }
             break;
         case A.AT_BREA:
             if (v.range2)
@@ -901,4 +935,255 @@ function passiveum(olduasmon, mtmp, mattk) {
             note_unported_mhitu(`passiveum:adtyp=${oldu_mattk[1]}`);
     }
     return M_ATTK_HIT;
+}
+
+// src/mhitu.c:264 expels() — release the hero from an engulfer.
+export async function expels(mtmp, mdat, message) {
+    (game.disp ||= {}).botl = true;
+    if (message) {
+        if (digests(mdat)) {
+            await pline('You get regurgitated!');
+        } else if (enfolds(mdat)) {
+            await pline(`${Monnam(mtmp)} unfolds and you are released!`);
+        } else {
+            const attk = attacktype_fordmg(mdat, ATTKS.AT_ENGL, -1);
+            let blast = '';
+            if (attk) {
+                if (is_whirly(mdat)) {
+                    if (attk[1] === ATTKS.AD_ELEC)
+                        blast = ' in a shower of sparks';
+                    else if (attk[1] === ATTKS.AD_COLD)
+                        blast = ' in a blast of frost';
+                } else
+                    blast = ' with a squelch';
+                await pline(`You get expelled from ${mon_nam(mtmp)}${blast}!`);
+            }
+        }
+    }
+    const { unstuck, mnexto } = await import('./mon.js');
+    await unstuck(mtmp);    /* clears uswallow, moves hero, docrt */
+    mnexto(mtmp, 0 /* RLOC_NOMSG */);
+    newsym(game.u.ux, game.u.uy);
+    if (Math.max(Math.abs(mtmp.mx - game.u.ux),
+                 Math.abs(mtmp.my - game.u.uy)) > 1)
+        await pline('Brrooaa...  You land hard at some distance.');
+    const { spoteffects } = await import('./hack.js');
+    await spoteffects(true);
+}
+
+/* include/mondata.h:73 enfolds() — trapper/lurker-above fold-around */
+const enfolds = (ptr) =>
+    dmgtype_fromattack(ptr, ATTKS.AD_WRAP, ATTKS.AT_ENGL) != null;
+
+// src/mhitu.c:1289 gulpmu() — monster swallows you, or damages you when
+// already swallowed.
+async function gulpmu(mtmp, mattk) {
+    const u = game.u;
+    const mdat = game.mons[mtmp.mnum];
+    let tmp = d(mattk[2], mattk[3]);
+    let tim_tmp;
+    let physical_damage = false;
+
+    if (!u.uswallow) { /* swallows you */
+        const omx = mtmp.mx, omy = mtmp.my;
+
+        if (!engulf_target_u(mtmp))
+            return M_ATTK_MISS;
+        const t = t_at(u.ux, u.uy);
+        if (t && is_pit(t.ttyp) && sobj_at(ONAMES.BOULDER, u.ux, u.uy))
+            return M_ATTK_MISS;
+        /* failed_grab: hero is solid, never passes */
+
+        /* Punished unplacebc: no session is punished */
+        remove_monster(omx, omy);
+        mtmp.mtrapped = 0; /* no longer on old trap */
+        place_monster(mtmp, u.ux, u.uy);
+        set_ustuck_mh(mtmp);
+        newsym(mtmp.mx, mtmp.my);
+        /* steed dismount arm: no session rides into an engulfer */
+        await pline(`${Monnam(mtmp)} ${
+            digests(mdat) ? 'swallows you whole'
+            : enfolds(mdat) ? 'folds itself around you'
+              : 'engulfs you'}!`);
+        await stop_occupation();
+        /* reset_occupations(): behave as if you had moved */
+
+        if (u.utrap) {
+            await pline(`You are released from the ${
+                u.utraptype === 1 /* TT_WEB */ ? 'web' : 'trap'}!`);
+            u.utrap = 0;
+            u.utraptype = 0;
+        }
+        /* leashes snap: no session leashes a pet */
+
+        /* touch_petrifies hero form: not reachable unpolymorphed */
+
+        vision_recalc(2); /* hero can't see anything */
+        u.uswallow = 1;
+        if (mattk[1] === ATTKS.AD_DGST) {
+            /* good armor & high Con make digestion take longer */
+            tim_tmp = ACURR(A_CON) + 10 - u.uac + rn2(20);
+            if (tim_tmp < 0)
+                tim_tmp = 0;
+            tim_tmp = Math.trunc(tim_tmp / mtmp.m_lev);
+            tim_tmp += 3;
+        } else {
+            /* higher level attacker takes longer to eject hero;
+               C's expression is m_lev + (10 / 2) by precedence */
+            tim_tmp = rnd(mtmp.m_lev + 5);
+        }
+        u.uswldtim = (tim_tmp < 2) ? 2 : tim_tmp;
+        await swallowed(1); /* the engulf interior display */
+        if (!(mdat.mflags2 & 0 /* flaming() */)) {
+            /* snuff_lit over invent: lit lamps go out; recorded when a
+               session carries one into an engulfer */
+            if ((game.invent || []).some(o => o.lamplit))
+                note_unported_mhitu('gulpmu:snuff_lit');
+        }
+    }
+
+    if (mtmp !== u.ustuck)
+        return M_ATTK_MISS;
+    if (u.uswldtim > 0)
+        u.uswldtim -= 1;
+
+    switch (mattk[1]) {
+    case ATTKS.AD_DGST:
+        physical_damage = true;
+        if (game.u.uprops?.SLOW_DIGESTION) {
+            u.uswldtim = 0;
+            tmp = 0;
+        } else if (u.uswldtim === 0) {
+            await pline(`${Monnam(mtmp)} totally digests you!`);
+            tmp = u.uhp;
+        } else {
+            await pline(`${Monnam(mtmp)}${
+                u.uswldtim === 2 ? ' thoroughly'
+                : u.uswldtim === 1 ? ' utterly' : ''} digests you!`);
+            exercise(A_STR, false);
+        }
+        break;
+    case ATTKS.AD_PHYS:
+        physical_damage = true;
+        if (mtmp.mnum === PMNAMES.PM_FOG_CLOUD) {
+            await pline('You are laden with moisture and can barely breathe!');
+            /* flaming/Breathless/amphibious hero forms not reachable */
+        } else {
+            await pline(`You are ${enfolds(mdat) ? 'being squashed'
+                                                 : 'pummeled with debris'}!`);
+            exercise(A_STR, false);
+        }
+        break;
+    case ATTKS.AD_ACID:
+        if (game.u.uprops?.ACID_RES) {
+            await pline('You are covered with a seemingly harmless goo.');
+            tmp = 0;
+        } else {
+            if (game.u.uprops?.HALLUC && !game.u.uprops?.HALLUC_RES)
+                await pline("Ouch!  You've been slimed!");
+            else
+                await pline('You are covered in slime!  It burns!');
+            exercise(A_STR, false);
+        }
+        break;
+    case ATTKS.AD_BLND:
+        note_unported_mhitu('gulpmu:AD_BLND');
+        tmp = 0;
+        break;
+    case ATTKS.AD_ELEC:
+        if (!mtmp.mcan && rn2(2)) {
+            await pline('The air around you crackles with electricity.');
+            if (game.u.uprops?.SHOCK_RES) {
+                note_unported_mhitu('gulpmu:shieldeff');
+                tmp = 0;
+            }
+        } else
+            tmp = 0;
+        break;
+    case ATTKS.AD_COLD:
+        if (!mtmp.mcan && rn2(2)) {
+            if (game.u.uprops?.COLD_RES) {
+                note_unported_mhitu('gulpmu:shieldeff');
+                tmp = 0;
+            } else {
+                await pline('You are freezing to death!');
+            }
+        } else
+            tmp = 0;
+        break;
+    case ATTKS.AD_FIRE:
+        if (!mtmp.mcan && rn2(2)) {
+            if (game.u.uprops?.FIRE_RES) {
+                note_unported_mhitu('gulpmu:shieldeff');
+                tmp = 0;
+            } else {
+                await pline('You are burning to a crisp!');
+            }
+        } else
+            tmp = 0;
+        break;
+    case ATTKS.AD_DREN:
+        if (!mtmp.mcan && rn2(4)) {
+            const { drain_en } = await import('./trap.js');
+            await drain_en(tmp, false);
+        }
+        tmp = 0;
+        break;
+    default:
+        physical_damage = true;
+        tmp = 0;
+        break;
+    }
+
+    if (physical_damage) {
+        /* same damage reduction for AC as in hitmu */
+        if (u.uac < 0)
+            tmp -= rnd(-u.uac);
+        if (tmp < 0)
+            tmp = 1;
+        /* Maybe_Half_Phys: no half-damage sources reachable */
+    }
+
+    game.mswallower = mtmp;
+    mdamageu(mtmp, tmp);
+    game.mswallower = null;
+    if (tmp)
+        await stop_occupation();
+
+    if (!u.uswallow) {
+        ; /* life-saving has already expelled swallowed hero */
+    } else if (!u.uswldtim || game.mons[game.u.umonnum ?? -1]?.msize >= 6) {
+        await pline(`You get ${digests(mdat) ? 'regurgitated'
+                    : enfolds(mdat) ? 'released' : 'expelled'}!`);
+        if (game.flags?.verbose
+            && digests(mdat) && game.u.uprops?.SLOW_DIGESTION)
+            await pline(`Obviously ${mon_nam(mtmp)} doesn't like your taste.`);
+        await expels(mtmp, mdat, false);
+    }
+    return M_ATTK_HIT;
+}
+
+// src/mhitm.c:807 engulf_target(), the hero-defender slice.
+function engulf_target_u(magr) {
+    const u = game.u;
+    const herodata = game.youmonst?.data ?? game.mons[game.urole?.mnum] ?? {};
+
+    /* can't swallow something that's too big; the unpolymorphed hero is
+       human-sized (MZ_HUMAN 2 < MZ_HUGE 4) */
+    if ((herodata.msize ?? 2) >= 4 /* MZ_HUGE */
+        || ((game.mons[magr.mnum].msize ?? 0) < (herodata.msize ?? 2)
+            && !is_whirly(game.mons[magr.mnum])))
+        return false;
+
+    if (u.utrap || magr.mtrapped)
+        return false;
+
+    /* phasing-in-rock placement guards: no session phases */
+    return true;
+}
+
+function set_ustuck_mh(mtmp) {
+    /* routed through mon.js at call time to avoid deepening the cycle */
+    (game.disp ||= {}).botl = true;
+    game.u.ustuck = mtmp;
 }

@@ -10,7 +10,8 @@ import { A_CON, SLT_ENCUMBER, W_RINGL, W_RINGR } from './const.js';
 import { game } from './gstate.js';
 import { Race_if } from './u_init.js';
 import { carnivorous, herbivorous, metallivorous, acidic, poisonous,
-         flesh_petrifies, vegan, vegetarian, type_is_pname } from './mondata.js';
+         flesh_petrifies, vegan, vegetarian, type_is_pname, dmgtype,
+         attacktype } from './mondata.js';
 import { can_reach_floor } from './pickup.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -20,16 +21,18 @@ import { more_experienced, newexplevel } from './exper.js';
 import { You, You_cant } from './pline.js';
 import { outrumor } from './rumors.js';
 import { BY_COOKIE } from './const.js';
-import { PMNAMES } from './monst_data.js';
+import { PMNAMES, MFLAGS as MFLAGS_EAT, ATTKS } from './monst_data.js';
 import { done } from './end.js';
-import { end_running } from './hack.js';
+import { end_running, nomul } from './hack.js';
 import { sgn } from './hacklib.js';
 import { ACURR } from './attrib.js';
 import { bot } from './display.js';
-import { A_STR, STARVING } from './const.js';
-import { set_occupation } from './allmain.js';
+import { A_STR, STARVING, STARVED, FIRE_RES, SLEEP_RES, COLD_RES,
+         DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, TELEPORT,
+         TELEPORT_CONTROL, TELEPAT, LAST_PROP, FROMOUTSIDE } from './const.js';
+import { set_occupation, stop_occupation } from './allmain.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { You_feel } from './pline.js';
+import { You_feel, Your } from './pline.js';
 import { losehp } from './hack.js';
 import { SICK_RES, KILLED_BY_AN } from './const.js';
 import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK, HUNGRY, FAINTING, FAINTED, A_LAWFUL, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE } from './const.js';
@@ -239,10 +242,50 @@ export function eat_ok(obj) {
 }
 
 // src/eat.c:325 obj_nutrition()
-function obj_nutrition(otmp) {
+export function obj_nutrition(otmp) {
     return (otmp.otyp === ONAMES.CORPSE) ? game.mons[otmp.corpsenm].cnutrit
            : otmp.globby ? otmp.owt
              : game.objects[otmp.otyp].oc_nutrition;
+}
+
+/* src/eat.c:137 tintxts[] — tin types
+   [SPINACH_TIN = -1, overrides corpsenm, nut==600] */
+const tintxts = [
+    { txt: 'rotten', nut: -50, fodder: 0, greasy: 0 },  /* ROTTEN_TIN = 0 */
+    { txt: 'homemade', nut: 50, fodder: 1, greasy: 0 }, /* HOMEMADE_TIN = 1 */
+    { txt: 'soup made from', nut: 20, fodder: 1, greasy: 0 },
+    { txt: 'french fried', nut: 40, fodder: 0, greasy: 1 },
+    { txt: 'pickled', nut: 40, fodder: 1, greasy: 0 },
+    { txt: 'boiled', nut: 50, fodder: 1, greasy: 0 },
+    { txt: 'smoked', nut: 50, fodder: 1, greasy: 0 },
+    { txt: 'dried', nut: 55, fodder: 1, greasy: 0 },
+    { txt: 'deep fried', nut: 60, fodder: 0, greasy: 1 },
+    { txt: 'szechuan', nut: 70, fodder: 1, greasy: 0 },
+    { txt: 'broiled', nut: 80, fodder: 0, greasy: 0 },
+    { txt: 'stir fried', nut: 80, fodder: 0, greasy: 1 },
+    { txt: 'sauteed', nut: 95, fodder: 0, greasy: 0 },
+    { txt: 'candied', nut: 100, fodder: 1, greasy: 0 },
+    { txt: 'pureed', nut: 500, fodder: 1, greasy: 0 },
+    { txt: '', nut: 0, fodder: 0, greasy: 0 },
+];
+const TTSZ = tintxts.length;
+
+// src/eat.c:1405 tin_variety_txt() — does 's' begin with a tin variety
+// word ("pickled ", "boiled ", ...)? Returns the number of characters to
+// skip past it (0 for no match); tinvariety is a {v} out-box.
+export function tin_variety_txt(s, tinvariety) {
+    if (s && tinvariety) {
+        tinvariety.v = -1;
+        for (let k = 0; k < TTSZ - 1; ++k) {
+            const l = tintxts[k].txt.length;
+            if (s.toLowerCase().startsWith(tintxts[k].txt.toLowerCase())
+                && s.length > l && s[l] === ' ') {
+                tinvariety.v = k;
+                return l + 1;
+            }
+        }
+    }
+    return 0;
 }
 
 // src/eat.c:360 touchfood() — split one item off a stack before eating it and
@@ -290,10 +333,12 @@ function food_xname(food, the_pfx) {
     let result;
 
     if (food.otyp === ONAMES.CORPSE) {
-        /* corpse_xname(food, NULL, CXN_SINGULAR) */
-        const mnam = game.mons[food.corpsenm]?.pmnames?.[0]
-                     ?? game.mons[food.corpsenm]?.mname
-                     ?? 'monster';
+        /* corpse_xname(food, NULL, CXN_SINGULAR); pmname() prefers the
+           NEUTRAL spelling and falls back to MALE — pmnames is
+           [male, female, neutral] and species like the jackal only fill
+           the neutral slot */
+        const pmn = game.mons[food.corpsenm]?.pmnames || [];
+        const mnam = pmn[2] ?? pmn[0] ?? pmn[1] ?? 'monster';
         result = `${mnam} corpse`;
         if (type_is_pname(game.mons[food.corpsenm]))
             the_pfx = false;
@@ -829,13 +874,12 @@ export async function done_eating(message) {
             await pline(game.nomovemsg);
         game.nomovemsg = null;
     } else if (message) {
-        /* food_xname reduces to doname for everything this port serves */
-        await You(`finish eating ${doname(piece)}.`);
+        /* You("finish eating %s.", food_xname(piece, TRUE)) */
+        await You(`finish eating ${food_xname(piece, true)}.`);
     }
 
-    /* cpostfx (199 lines) is the corpse table; still recorded. */
     if (piece && (piece.otyp === ONAMES.CORPSE || piece.globby))
-        note_unported_eat('done_eating:cpostfx');
+        await cpostfx(piece.corpsenm);
     else if (piece)
         await fpostfx(piece);
 
@@ -1168,5 +1212,257 @@ export function consume_oeaten(obj, amt) {
         if (obj === game.context.victual?.piece)  /* true unless wishing */
             game.context.victual.reqtime = game.context.victual.usedtime;
         obj.oeaten = 1;         /* smallest possible positive value */
+    }
+}
+
+/* ---- corpse after-effects: src/eat.c:881-1330 ---- */
+
+/* include/monflag.h:62 MR_* conveyance bits */
+const MR_FIRE = 0x01, MR_COLD = 0x02, MR_SLEEP = 0x04, MR_DISINT = 0x08,
+      MR_ELEC = 0x10, MR_POISON = 0x20, MR_ACID = 0x40, MR_STONE = 0x80;
+
+// src/eat.c:890 intrinsic_possible() — can this species convey `type`?
+export function intrinsic_possible(type, ptr) {
+    switch (type) {
+    case FIRE_RES:   return (ptr.mconveys & MR_FIRE) !== 0;
+    case SLEEP_RES:  return (ptr.mconveys & MR_SLEEP) !== 0;
+    case COLD_RES:   return (ptr.mconveys & MR_COLD) !== 0;
+    case DISINT_RES: return (ptr.mconveys & MR_DISINT) !== 0;
+    case SHOCK_RES:  return (ptr.mconveys & MR_ELEC) !== 0;
+    case POISON_RES: return (ptr.mconveys & MR_POISON) !== 0;
+    case ACID_RES:   return (ptr.mconveys & MR_ACID) !== 0;
+    case STONE_RES:  return (ptr.mconveys & MR_STONE) !== 0;
+    case TELEPORT:   return (ptr.mflags1 & MFLAGS_EAT.M1_TPORT) !== 0;
+    case TELEPORT_CONTROL:
+        return (ptr.mflags1 & MFLAGS_EAT.M1_TPORT_CNTRL) !== 0;
+    case TELEPAT:
+        /* include/mondata.h:84 telepathic(): three specific species */
+        return ptr === game.mons[PMNAMES.PM_FLOATING_EYE]
+               || ptr === game.mons[PMNAMES.PM_MIND_FLAYER]
+               || ptr === game.mons[PMNAMES.PM_MASTER_MIND_FLAYER];
+    default:         return false;
+    }
+}
+
+// src/eat.c:960 should_givit() — level check against per-type chance.
+function should_givit(type, ptr) {
+    let chance;
+    switch (type) {
+    case POISON_RES:
+        if ((ptr === game.mons[PMNAMES.PM_KILLER_BEE]
+             || ptr === game.mons[PMNAMES.PM_SCORPION]) && !rn2(4))
+            chance = 1;
+        else
+            chance = 15;
+        break;
+    case TELEPORT:         chance = 10; break;
+    case TELEPORT_CONTROL: chance = 12; break;
+    case TELEPAT:          chance = 1;  break;
+    default:               chance = 15; break;
+    }
+    return ptr.mlevel > rn2(chance);
+}
+
+// src/eat.c:996 temp_givit() — stoning/acid resistance is only temporary.
+function temp_givit(type, ptr) {
+    const chance = (type === STONE_RES) ? 6 : (type === ACID_RES) ? 3 : 0;
+    return chance ? (ptr.mlevel > rn2(chance)) : false;
+}
+
+// src/eat.c:1005 givit() — try to give an intrinsic.
+async function givit(type, ptr) {
+    if (!should_givit(type, ptr) && !temp_givit(type, ptr))
+        return;
+
+    const intr = (game.u.intrinsic ||= {});
+    switch (type) {
+    case FIRE_RES:
+        if (!((intr.HFire_resistance | 0) & FROMOUTSIDE)) {
+            await You(Hallucination() ? 'be chillin\'.'
+                                      : 'feel a momentary chill.');
+            intr.HFire_resistance = (intr.HFire_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case SLEEP_RES:
+        if (!((intr.HSleep_resistance | 0) & FROMOUTSIDE)) {
+            await You_feel('wide awake.');
+            intr.HSleep_resistance = (intr.HSleep_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case COLD_RES:
+        if (!((intr.HCold_resistance | 0) & FROMOUTSIDE)) {
+            await You_feel('full of hot air.');
+            intr.HCold_resistance = (intr.HCold_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case DISINT_RES:
+        if (!((intr.HDisint_resistance | 0) & FROMOUTSIDE)) {
+            await You_feel(Hallucination() ? 'totally together, man.'
+                                           : 'very firm.');
+            intr.HDisint_resistance = (intr.HDisint_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case SHOCK_RES:
+        if (!((intr.HShock_resistance | 0) & FROMOUTSIDE)) {
+            if (Hallucination())
+                await You_feel('grounded in reality.');
+            else
+                await Your('health currently feels amplified!');
+            intr.HShock_resistance = (intr.HShock_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case POISON_RES:
+        if (!((intr.HPoison_resistance | 0) & FROMOUTSIDE)) {
+            await You_feel(game.u.uprops?.POISON_RES
+                           ? 'especially healthy.' : 'healthy.');
+            intr.HPoison_resistance = (intr.HPoison_resistance | 0) | FROMOUTSIDE;
+        }
+        break;
+    case TELEPORT:
+        if (!((intr.HTeleportation | 0) & FROMOUTSIDE)) {
+            await You_feel(Hallucination() ? 'diffuse.' : 'very jumpy.');
+            intr.HTeleportation = (intr.HTeleportation | 0) | FROMOUTSIDE;
+        }
+        break;
+    case TELEPORT_CONTROL:
+        if (!((intr.HTeleport_control | 0) & FROMOUTSIDE)) {
+            await You_feel(Hallucination() ? 'centered in your personal space.'
+                                           : 'in control of yourself.');
+            intr.HTeleport_control = (intr.HTeleport_control | 0) | FROMOUTSIDE;
+        }
+        break;
+    case TELEPAT:
+        if (!((intr.HTelepat | 0) & FROMOUTSIDE)) {
+            await You_feel(Hallucination()
+                           ? 'in touch with the cosmos.'
+                           : 'a strange mental acuity.');
+            intr.HTelepat = (intr.HTelepat | 0) | FROMOUTSIDE;
+            /* update screen to reflect new status */
+            note_unported_eat('givit:telepat_see_monsters');
+        }
+        break;
+    case STONE_RES:
+        if (!game.u.uprops?.STONE_RES) {
+            await You_feel(Hallucination() ? 'unusually limber'
+                           : 'less concerned about becoming petrified');
+            note_unported_eat('givit:timed_stone_res');
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+// src/eat.c:1103 eye_of_newt_buzz() — small magical energy boost.
+async function eye_of_newt_buzz() {
+    const u = game.u;
+    if (rn2(3) || 3 * u.uen <= 2 * u.uenmax) {
+        const old_uen = u.uen;
+        u.uen += rnd(3);
+        if (u.uen > u.uenmax) {
+            if (!rn2(3)) {
+                u.uenmax++;
+                if (u.uenmax > (u.uenpeak | 0))
+                    u.uenpeak = u.uenmax;
+            }
+            u.uen = u.uenmax;
+        }
+        if (old_uen !== u.uen) {
+            await You_feel('a mild buzz.');
+            (game.disp ||= {}).botl = true;
+        }
+    }
+}
+
+// src/eat.c:1339 corpse_intrinsic() — reservoir-pick one conveyable
+// intrinsic; -1 is the fake index for giant strength.
+function corpse_intrinsic(ptr) {
+    const conveys_STR = (ptr.mflags2 & MFLAGS_EAT.M2_GIANT) !== 0;
+    let count = 0;
+    let prop = 0;
+
+    if (conveys_STR) {
+        count = 1;
+        prop = -1; /* use -1 as fake prop index for STR */
+    }
+    for (let i = 1; i <= LAST_PROP; i++) {
+        if (!intrinsic_possible(i, ptr))
+            continue;
+        ++count;
+        if (!rn2(count))
+            prop = i;
+    }
+    /* if strength is the only candidate, give it 50% chance */
+    if (conveys_STR && count === 1 && !rn2(2))
+        prop = 0;
+
+    return prop;
+}
+
+// src/eat.c:1129 cpostfx() — called after completely consuming a corpse.
+async function cpostfx(pm) {
+    let check_intrinsics = false;
+    const ptr = game.mons[pm];
+    if (!ptr)
+        return;
+
+    switch (pm) {
+    case PMNAMES.PM_WRAITH:
+    case PMNAMES.PM_HUMAN_WERERAT:
+    case PMNAMES.PM_HUMAN_WEREJACKAL:
+    case PMNAMES.PM_HUMAN_WEREWOLF:
+    case PMNAMES.PM_NURSE:
+    case PMNAMES.PM_STALKER:
+    case PMNAMES.PM_YELLOW_LIGHT:
+    case PMNAMES.PM_GIANT_BAT:
+    case PMNAMES.PM_BAT:
+    case PMNAMES.PM_GIANT_MIMIC:
+    case PMNAMES.PM_LARGE_MIMIC:
+    case PMNAMES.PM_SMALL_MIMIC:
+    case PMNAMES.PM_QUANTUM_MECHANIC:
+    case PMNAMES.PM_LIZARD:
+    case PMNAMES.PM_CHAMELEON:
+    case PMNAMES.PM_DOPPELGANGER:
+    case PMNAMES.PM_GENETIC_ENGINEER:
+    case PMNAMES.PM_DISPLACER_BEAST:
+    case PMNAMES.PM_DISENCHANTER:
+    case PMNAMES.PM_MIND_FLAYER:
+    case PMNAMES.PM_MASTER_MIND_FLAYER:
+        /* the named special arms carry their own machinery (pluslvl,
+           lycanthropy, polyself, stun timers); each records until its
+           subsystem lands */
+        note_unported_eat(`cpostfx:pm=${pm}`);
+        return;
+    case PMNAMES.PM_DEATH:
+    case PMNAMES.PM_PESTILENCE:
+    case PMNAMES.PM_FAMINE:
+        /* life-saved; don't attempt to confer any intrinsics */
+        return;
+    default:
+        check_intrinsics = true;
+        break;
+    }
+
+    /* possibly convey an intrinsic */
+    if (check_intrinsics) {
+        if (dmgtype(ptr, ATTKS.AD_STUN) || dmgtype(ptr, ATTKS.AD_HALU)
+            || pm === PMNAMES.PM_VIOLET_FUNGUS) {
+            await pline('Oh wow!  Great stuff!');
+            /* make_hallucinated((HHallucination & TIMEOUT) + 200) */
+            note_unported_eat('cpostfx:hallu_timer');
+        }
+
+        /* Eating magical monsters can give you some magical energy. */
+        if (attacktype(ptr, ATTKS.AT_MAGC) || pm === PMNAMES.PM_NEWT)
+            await eye_of_newt_buzz();
+
+        const tmp = corpse_intrinsic(ptr);
+
+        if (tmp === -1) {
+            /* gainstr(NULL, 0, TRUE): giant strength */
+            note_unported_eat('cpostfx:gainstr');
+        } else if (tmp > 0) {
+            await givit(tmp, ptr);
+        }
     }
 }

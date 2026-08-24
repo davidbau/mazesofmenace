@@ -335,7 +335,6 @@ function translateBracketExpression(pattern, start) {
 // regex_match() owns finite sets of input positions and referenced values.
 function parseAsciiExtendedRegexp(pattern) {
     let groupCount = 0;
-    const referencedGroups = new Set();
 
     function parsePart(start, stopAtClose) {
         let index = start;
@@ -364,7 +363,6 @@ function parseAsciiExtendedRegexp(pattern) {
                 const escaped = pattern[index + 1];
                 if (escaped >= '1' && escaped <= '9') {
                     const group = Number(escaped);
-                    referencedGroups.add(group);
                     atom = { type: 'reference', group };
                 } else if (escaped === 'b' || escaped === 'B') {
                     atom = { type: 'word-boundary', invert: escaped === 'B' };
@@ -452,7 +450,12 @@ function parseAsciiExtendedRegexp(pattern) {
                 } else {
                     break;
                 }
-                atom = { type: 'repeat', child: atom, minimum, maximum };
+                atom = {
+                    type: 'repeat',
+                    child: atom,
+                    minimum,
+                    maximum,
+                };
             }
             sequence.push(atom);
         }
@@ -467,11 +470,25 @@ function parseAsciiExtendedRegexp(pattern) {
 
     const root = parsePart(0, false).node;
 
+    // regcomp.c parse_dup_op() removes a {0} subtree. References inside it
+    // therefore do not create backreference work, and captures or duplicated
+    // repeats inside it cannot affect the compiled matcher either.
+    const referencedGroups = new Set();
+    function collectReferencedGroups(node) {
+        if (node.type === 'repeat' && node.maximum === 0) return;
+        if (node.type === 'reference') referencedGroups.add(node.group);
+        const children = node.type === 'sequence' || node.type === 'alternative'
+            ? node.nodes : node.child ? [node.child] : [];
+        for (const child of children) collectReferencedGroups(child);
+    }
+    collectReferencedGroups(root);
+
     let nextNodeId = 0;
     function annotate(node) {
         node.nodeId = nextNodeId++;
         let groups = new Set();
         let containsRepeat = node.type === 'repeat';
+        let hasDuplicatedReferencedCapture = false;
         let dependsOnMatchStart = node.type === 'anchor'
             && node.edge === 'start' && !node.absolute;
         let referenceIndependent = node.type !== 'reference'
@@ -483,11 +500,31 @@ function parseAsciiExtendedRegexp(pattern) {
             annotate(child);
             groups = new Set([...groups, ...child.captureGroups]);
             containsRepeat ||= child.containsRepeat;
+            hasDuplicatedReferencedCapture ||=
+                child.hasDuplicatedReferencedCapture;
             dependsOnMatchStart ||= child.dependsOnMatchStart;
             referenceIndependent &&= child.referenceIndependent;
         }
+        if (node.type === 'repeat' && node.maximum === 0) {
+            groups = new Set();
+            hasDuplicatedReferencedCapture = false;
+            dependsOnMatchStart = false;
+            referenceIndependent = true;
+        }
         node.captureGroups = groups;
         node.containsRepeat = containsRepeat;
+        // glibc regcomp.c parse_dup_op() reuses one OPEN/CLOSE occurrence for
+        // `*`, `?`, {0}, {1}, {0,1}, and {0,}. Every other repeat with a
+        // maximum above one duplicates the subtree. If that subtree owns a
+        // capture consumed by a backreference, matching needs the compiled
+        // occurrence provenance tracked by the named boundary below.
+        const duplicatesSubtree = node.type === 'repeat' && node.maximum > 1
+            && (node.minimum > 0 || Number.isFinite(node.maximum));
+        if (duplicatesSubtree
+            && [...groups].some((id) => referencedGroups.has(id))) {
+            hasDuplicatedReferencedCapture = true;
+        }
+        node.hasDuplicatedReferencedCapture = hasDuplicatedReferencedCapture;
         node.dependsOnMatchStart = dependsOnMatchStart;
         node.referenceIndependent = referenceIndependent;
         if (node.type === 'literal') node.alwaysZeroWidth = node.value === '';
@@ -525,6 +562,7 @@ function parseAsciiExtendedRegexp(pattern) {
         root,
         groupCount,
         referencedGroups,
+        hasDuplicatedReferencedCapture: root.hasDuplicatedReferencedCapture,
         requiredAbsoluteEndSuffix: requiredAbsoluteEndSuffix(root),
     };
 }
@@ -568,10 +606,20 @@ function repeatFrontierStateKey(state) {
     );
 }
 
+function sameRepeatFrontier(left, right) {
+    if (left.length !== right.length) return false;
+    const leftKeys = new Set(left.map(repeatFrontierStateKey));
+    return right.every((state) => leftKeys.has(repeatFrontierStateKey(state)));
+}
+
 function uniqueCaptureStates(states) {
     const unique = new Map();
     for (const state of states) unique.set(captureStateKey(state), state);
     return [...unique.values()];
+}
+
+function isStrictMaskSubset(left, right) {
+    return left !== right && (left & ~right) === 0;
 }
 
 function isAsciiWord(character) {
@@ -685,6 +733,12 @@ function evaluateDirectNode(node, input, position, matchStart, memo) {
 }
 
 function selectsFirstNestedCaptureEndpoint(node, evaluator) {
+    // regex_compile() excludes repeats for which glibc duplicates a captured
+    // subtree later consumed by a backreference. The machinery below remains
+    // reachable for `*`, `?`, their single-occurrence brace equivalents,
+    // unrelated finite repeats inside a reference-aware ERE, and unbounded
+    // repeats whose subtree owns no referenced capture. Its capture-selection
+    // comments do not claim the deferred duplicated-occurrence provenance.
     // glibc regexec.c get_subexp() keeps the first viable endpoint for a
     // positive-minimum unbounded repetition of a referenced group whose
     // nonempty body is itself quantified. A zero-minimum outer repetition
@@ -710,32 +764,36 @@ function acceptedRepeatEndpointStates(node, count, frontier,
         const {
             lastIterationCaptures: _last,
             lastIterationConsumed: _consumed,
+            lastIterationChangedCaptures: _changed,
             ...accepted
         } = candidate;
         return accepted;
     };
-    // glibc does not select an extra empty match of a repeated subtree after
-    // an earlier iteration has advanced. Such a path remains useful as a
-    // continuation frontier, but is not an accepted repeat endpoint.
-    const selectable = frontier.filter((candidate) => (
-        candidate.lastIterationConsumed !== false
-        || candidate.position === repeatStartPosition
-    ));
-    if (!isIntermediateFiniteEndpoint(node, count)
-        || !node.child.captureGroups.size) return selectable.map(stripIteration);
+    const intermediate = isIntermediateFiniteEndpoint(node, count);
+    if (!node.child.captureGroups.size) return frontier.map(stripIteration);
     // A zero-minimum interval can accept before the repeated subtree has
     // participated, so glibc clears every capture owned by that subtree at an
     // intermediate endpoint. With a positive minimum, the directly repeated
     // group is cleared, as is any descendant that participated in the final
     // iteration; a skipped descendant retains its earlier value.
-    return selectable.map((candidate) => {
+    return frontier.map((candidate) => {
         const captures = [...candidate.captures];
-        if (node.minimum === 0) {
+        if (intermediate && node.minimum === 0) {
             for (const id of node.child.captureGroups)
                 captures[id] = undefined;
-        } else {
+        } else if (intermediate) {
             if (node.child.type === 'group')
                 captures[node.child.id] = undefined;
+            const participated = candidate.lastIterationCaptures ?? 0;
+            for (let id = 1; id <= 9; ++id) {
+                if ((participated & (1 << id)) !== 0)
+                    captures[id] = undefined;
+            }
+        } else if (candidate.lastIterationConsumed === false
+            && candidate.position !== repeatStartPosition) {
+            // At a finite maximum, glibc clears every capture which
+            // participated in an empty final iteration. Descendants skipped
+            // by that iteration retain their earlier value.
             const participated = candidate.lastIterationCaptures ?? 0;
             for (let id = 1; id <= 9; ++id) {
                 if ((participated & (1 << id)) !== 0)
@@ -747,16 +805,17 @@ function acceptedRepeatEndpointStates(node, count, frontier,
 }
 
 function nextReferenceRepeatFrontier(node, input, frontier, evaluator,
-    maximumPosition) {
+    maximumPosition, projectCandidate = null, admitCandidate = null) {
     const unique = new Map();
     const trackParticipation = Number.isFinite(node.maximum)
-        && node.minimum > 0 && node.maximum > node.minimum + 1
+        && node.maximum > 1
         && node.child.captureGroups.size > 0;
     const trackConsumption = Number.isFinite(node.maximum);
     for (const current of frontier) {
         const {
             lastIterationCaptures: _last,
             lastIterationConsumed: _consumed,
+            lastIterationChangedCaptures: _changed,
             participationStack: activeStack = [],
             ...baseState
         } = current;
@@ -777,13 +836,57 @@ function nextReferenceRepeatFrontier(node, input, frontier, evaluator,
             if (trackConsumption) {
                 next.lastIterationConsumed = candidate.position
                     !== current.position;
+                let changed = 0;
+                for (const id of evaluator.referencedGroups) {
+                    if (candidate.captures[id] !== current.captures[id])
+                        changed |= 1 << id;
+                }
+                next.lastIterationChangedCaptures = changed;
             }
             if (next.participationStack?.length === 0)
                 delete next.participationStack;
-            unique.set(repeatFrontierStateKey(next), next);
+            if (admitCandidate && !admitCandidate(next)) continue;
+            const key = captureStateKey(next);
+            const prior = unique.get(key);
+            if (projectCandidate && prior
+                && isStrictMaskSubset(
+                    prior.lastIterationChangedCaptures,
+                    next.lastIterationChangedCaptures,
+                )) {
+                // When equivalent maximum-count states came from different
+                // duplicated source paths, glibc keeps the path whose final
+                // iteration changed fewer referenced captures. Source order
+                // breaks ties. This distinguishes retaining an earlier empty
+                // capture from creating that same empty capture at the end.
+                continue;
+            }
+            if (projectCandidate && prior
+                && prior.lastIterationChangedCaptures
+                    === next.lastIterationChangedCaptures
+                && isStrictMaskSubset(
+                    next.lastIterationCaptures,
+                    prior.lastIterationCaptures,
+                )) {
+                // An empty participating subexpression has priority over an
+                // equivalent path which skipped it. This is observable after
+                // maximum-count endpoint clearing even though the raw capture
+                // values are equal.
+                continue;
+            }
+            // For a finite maximum, recorder glibc selects one source path
+            // for equivalent raw captures before applying endpoint clearing.
+            // Map replacement retains the last source-ordered path, including
+            // whether its final empty iteration participated in descendants.
+            unique.set(key, next);
         }
     }
-    return [...unique.values()];
+    if (!projectCandidate) return [...unique.values()];
+    const projected = new Map();
+    for (const candidate of unique.values()) {
+        const future = projectCandidate(candidate);
+        projected.set(captureStateKey(future), future);
+    }
+    return [...projected.values()];
 }
 
 function traverseReferenceRepeatEndpoints(node, input, state, evaluator,
@@ -800,9 +903,12 @@ function traverseReferenceRepeatEndpoints(node, input, state, evaluator,
     // that succeeds; the eager nested evaluator records every endpoint.
     while (frontier.length && count <= node.maximum) {
         if (count >= node.minimum) {
-            for (const candidate of acceptedRepeatEndpointStates(
-                node, count, frontier, state.position,
-            )) {
+            const accepted = uniqueCaptureStates(
+                acceptedRepeatEndpointStates(
+                    node, count, frontier, state.position,
+                ),
+            );
+            for (const candidate of accepted) {
                 if (acceptEndpoint(candidate)) return true;
             }
             // Only an unbounded interval needs a cross-count fixed point.
@@ -815,10 +921,28 @@ function traverseReferenceRepeatEndpoints(node, input, state, evaluator,
         }
         if (count === node.maximum || (firstNestedCapture && count === 1))
             break;
+        const nextCount = count + 1;
+        const projectMaximum = !unbounded && nextCount === node.maximum;
+        const projectCandidate = projectMaximum ? (candidate) => (
+            acceptedRepeatEndpointStates(
+                node, nextCount, [candidate], state.position,
+            )[0]
+        ) : null;
+        const admitCandidate = projectMaximum ? (candidate) => (
+            !seenContinuationKeys.has(captureStateKey(candidate))
+            || candidate.lastIterationConsumed === false
+        ) : null;
         let next = nextReferenceRepeatFrontier(
             node, input, frontier, evaluator, maximumPosition,
+            projectCandidate, admitCandidate,
         );
-        ++count;
+        count = nextCount;
+        if (projectMaximum) {
+            for (const candidate of next) {
+                if (acceptEndpoint(candidate)) return true;
+            }
+            return false;
+        }
         // get_subexp() caches the first viable open/close path for a quantified
         // referenced group at one backreference node. When that group's
         // nonempty body is itself quantified, later decompositions do not
@@ -827,16 +951,25 @@ function traverseReferenceRepeatEndpoints(node, input, state, evaluator,
             next = [next[0]];
         if ((unbounded || !node.child.alwaysZeroWidth)
             && count >= node.minimum) {
+            // A zero-minimum finite interval may revisit the same captures at
+            // a later count by skipping its child, then select that distinct
+            // path at the maximum. Positive-minimum intervals retain only the
+            // equivalent empty path which has never advanced from the start.
             next = next.filter((candidate) => (
                 !seenContinuationKeys.has(captureStateKey(candidate))
-                // At a finite maximum, an entirely zero-width repetition can
-                // select a different glibc capture endpoint even when its raw
-                // state equals an earlier count.  Once any iteration has
-                // advanced, an empty final iteration does not make the count
-                // source-distinct and the state remains mergeable.
                 || (!unbounded && !candidate.lastIterationConsumed
-                    && candidate.position === state.position)
+                    && (node.minimum === 0
+                        || candidate.position === state.position))
             ));
+        }
+        if (!unbounded && node.child.alwaysZeroWidth
+            && count >= node.minimum && count < node.maximum
+            && sameRepeatFrontier(frontier, next)) {
+            // A zero-width finite repeat can stabilize thousands of counts
+            // before its maximum. Once its complete raw frontier (including
+            // final-iteration metadata) is fixed, every skipped intermediate
+            // endpoint is identical; jump to the distinct maximum projection.
+            count = node.maximum;
         }
         frontier = next;
     }
@@ -1047,6 +1180,8 @@ export function regex_compile(pattern, regex) {
         regex.evaluator = parseAsciiExtendedRegexp(text);
         if (!regex.evaluator.referencedGroups.size) {
             regex.kind = 'direct';
+        } else if (regex.evaluator.hasDuplicatedReferencedCapture) {
+            regex.kind = 'duplicated-capture-boundary';
         } else {
             regex.kind = 'reference-aware';
         }
@@ -1067,12 +1202,23 @@ export class UnsupportedPosixLocaleMatchError extends Error {
     }
 }
 
+export class UnsupportedPosixDuplicatedCaptureError extends Error {
+    constructor() {
+        super('posixregex.c regex_match() with a duplicated repeated capture '
+            + 'used by a backreference');
+        this.name = 'UnsupportedPosixDuplicatedCaptureError';
+    }
+}
+
 export function regex_match(value, regex) {
     if (!regex || regex.kind === 'uncompiled' || regex.kind === 'rejected')
         return false;
     const text = String(value);
     if (regex.kind === 'locale-boundary' || /[^\x00-\x7F]/u.test(text)) {
         throw new UnsupportedPosixLocaleMatchError();
+    }
+    if (regex.kind === 'duplicated-capture-boundary') {
+        throw new UnsupportedPosixDuplicatedCaptureError();
     }
     if (regex.kind === 'direct') {
         return matchDirectExtendedRegexp(text, regex.evaluator);

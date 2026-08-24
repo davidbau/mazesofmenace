@@ -22,7 +22,7 @@ import {
 } from './monst_data.js';
 import { ONAMES, OCLASSES, SKILLS, MATERIALS } from './objects_data.js';
 import { depth } from './dungeon.js';
-import { next_ident, mksobj, mkobj, place_object, curse, rnd_class } from './mkobj.js';
+import { next_ident, mksobj, mkobj, place_object, curse, rnd_class, can_be_hatched } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { canspotmon, newsym } from './display.js';
@@ -33,8 +33,11 @@ import { is_vampshifter } from './monst.js';
 import { t_at } from './mon.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U } from './const.js';
-import { enexto_core, enexto } from './teleport.js';
+import { enexto_core, enexto, noteleport_level } from './teleport.js';
 import { mon_track_clear } from './monmove.js';
+/* questpgr.js has no imports back into makemon.js at module level except
+   through the mkclass wire below (set at this module's top level). */
+import { qt_montype, questpgr_wire_mkclass } from './questpgr.js';
 
 // include/hack.h:1174-1175
 const GP_CHECKSCARY = 0x00800000, GP_AVOID_MONPOS = 0x01000000;
@@ -177,13 +180,14 @@ function align_shift(ptr) {
     return alshift;
 }
 
-// src/makemon.c:1640 temperature_shift()
+// src/makemon.c:1640 temperature_shift() — larger value if the monster
+// prefers the level temperature. pm_resistance is mondata.h:14
+// ((ptr)->mresists & (typ)).
 function temperature_shift(ptr) {
-    /* level.flags.temperature is 0 on ordinary levels, so this contributes
-       nothing there; the branch is kept so hot/cold levels behave as C does
-       once pm_resistance lands. */
-    if (!game.level?.flags?.temperature)
-        return 0;
+    const temp = game.level?.flags?.temperature | 0;
+    if (temp && ((ptr.mresists ?? 0)
+                 & (temp > 0 ? MFLAGS.MR_FIRE : MFLAGS.MR_COLD)))
+        return 3;
     return 0;
 }
 
@@ -195,6 +199,12 @@ function temperature_shift(ptr) {
 export function rndmonst_adj(minadj, maxadj) {
     let ptr;
     let weight, totalweight, selected_mndx, zlevel, minmlev, maxmlev;
+
+    /* makemon.c:1666 — in the quest branch, usually pick one of the
+       role's signature enemies instead of the weighted table */
+    if (game.u?.uz?.dnum === game.quest_dnum && rn2(7)
+        && (ptr = qt_montype()) != null)
+        return ptr;
 
     zlevel = level_difficulty();
     minmlev = monmin_difficulty(zlevel) + minadj;
@@ -417,7 +427,7 @@ function mbirth_limit(mndx) {
 // what eventually sets G_EXTINCT, and G_EXTINCT is what removes a species from
 // rndmonst_adj()'s eligible set. Skipping it keeps uniques eligible forever and
 // silently changes the draw count of every later rndmonst_adj().
-function propagate(mndx, tally, ghostly) {
+export function propagate(mndx, tally, ghostly) {
     const mv = game.mvitals[mndx];
     const lim = mbirth_limit(mndx);
     const gone = (mv.mvflags & G_GONE) !== 0;
@@ -815,7 +825,9 @@ function rnd_defensive_item(mtmp) {
                     + (difficulty > 8 ? 1 : 0))) {
         case 6:
         case 9:
-            if (game.level?.flags?.noteleport && ++trycnt < 2)
+            /* muse.c:1236 noteleport_level(mtmp) — covetous monsters
+               (Vlad) bypass a natural noteleport level */
+            if (noteleport_level(mtmp) && ++trycnt < 2)
                 continue; /* try_again */
             if (!rn2(3))
                 return O.WAN_TELEPORTATION;
@@ -1099,9 +1111,14 @@ export function set_mimic_sym(mtmp) {
                       || w === BLCORNER || w === TDWALL || w === CROSSWALL
                       || w === TUWALL;
         appear = connects ? MONSYMS.S_hcdoor : MONSYMS.S_vcdoor;
-    } else if (game.level.flags.is_maze_lev) {
-        note_unported('set_mimic_sym:maze');
-        return;
+    } else if (game.level.flags.is_maze_lev
+               && !(game.u?.uz?.dnum === game.mines_dnum
+                    && game.level.flags?.town)
+               && game.u?.uz?.dnum !== game.sokoban_dnum
+               && rn2(2)) {
+        /* src/makemon.c:2441 — maze levels favor statue mimics */
+        ap_type = M_AP_OBJECT;
+        appear = ONAMES.STATUE;
     } else if (roomno < 0 && !t_at(mx, my)) {
         ap_type = M_AP_OBJECT;
         appear = ONAMES.BOULDER;
@@ -1109,8 +1126,13 @@ export function set_mimic_sym(mtmp) {
         ap_type = M_AP_OBJECT;
         appear = ONAMES.GOLD_PIECE;
     } else if (rt === DELPHI) {
-        note_unported('set_mimic_sym:delphi');
-        return;
+        if (rn2(2)) {
+            ap_type = M_AP_OBJECT;
+            appear = ONAMES.STATUE;
+        } else {
+            ap_type = M_AP_FURNITURE;
+            appear = MONSYMS.S_fountain;
+        }
     } else if (rt === TEMPLE) {
         ap_type = M_AP_FURNITURE;
         appear = MONSYMS.S_altar;
@@ -1174,14 +1196,21 @@ export function set_mimic_sym(mtmp) {
         if (appear === ONAMES.CORPSE && nocorpse)
             mndx = rn1(PMNAMES.PM_WIZARD - PMNAMES.PM_ARCHEOLOGIST + 1,
                        PMNAMES.PM_ARCHEOLOGIST);
-        else if (appear === ONAMES.EGG || (appear === ONAMES.TIN && nocorpse))
-            note_unported('set_mimic_sym:can_be_hatched');
+        else if ((appear === ONAMES.EGG && !can_be_hatched(mndx))
+                 || (appear === ONAMES.TIN && nocorpse))
+            mndx = NON_PM; /* revert to generic egg or empty tin */
         mtmp.mcorpsenm = mndx;
     } else if (ap_type === M_AP_OBJECT && appear === ONAMES.SLIME_MOLD) {
         mtmp.mcorpsenm = game.context.current_fruit;
     } else if (ap_type === M_AP_FURNITURE && appear === MONSYMS.S_altar) {
-        note_unported('set_mimic_sym:altar_align');
-        rn2(3);                 /* algn = rn2(3) - 1; the draw is spent */
+        const algn = rn2(3) - 1; /* -1 chaos, 0 neutral, +1 law */
+        const inhell = game.u?.uz?.dnum === game.hell_dnum;
+        /* include/align.h:50 Align2amask */
+        mtmp.mcorpsenm = (inhell && rn2(3)) ? 0 /* AM_NONE */
+            : (algn === 1) ? 4 /* AM_LAWFUL */ : algn + 2;
+    } else if (mtmp.mcorpsenm !== undefined) {
+        /* don't retain stale value from a previously mimicked shape */
+        mtmp.mcorpsenm = NON_PM;
     }
 
     /* src/makemon.c:2548 — a mimic that now looks like a wall, door,
@@ -2171,3 +2200,6 @@ export function clone_mon(mon, x, y) {
 
     return m2;
 }
+
+/* wire mkclass into questpgr's qt_montype (cycle avoidance) */
+questpgr_wire_mkclass(mkclass);

@@ -16,6 +16,7 @@ import { rn2, rn1 } from './rng.js';
 import { A_NONE, AM_NONE, A_LAWFUL, AM_LAWFUL, PICK_ONE,
          MENU_BEHAVE_STANDARD } from './const.js';
 import { dungeon as DUNGEON_DATA } from './dungeon_data.js';
+import { roles } from './role_data.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow, tty_putstr, NHW_MENU,
          ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
@@ -483,7 +484,12 @@ function init_dungeon_dungeons(entry, pd, dngidx) {
     }
 
     dgn.flags.rogue_like = !!(dgn_flags & ROGUELIKE);
-    dgn.flags.align = dgn_align;
+    /* src/dungeon.c:1092 assigns dgn_align (the D_ALIGN_* value, which is
+       AM_* << 4) into d_flags.align, a THREE-BIT bitfield — so 0x10/0x20/
+       0x40 all truncate to 0 and every dungeon's align flag ends up unset.
+       Faithful bug: induced_align()'s dungeon gate never fires. Only the
+       s_level path (dungeon.c:588) shifts the value down before storing. */
+    dgn.flags.align = dgn_align & 7;
     dgn.flags.unconnected = !!(dgn_flags & UNCONNECTED);
 
     init_dungeon_set_entry(pd, dngidx);
@@ -552,7 +558,19 @@ export function init_dungeons() {
     game.special_levels = {};
     for (const [name, key] of LEVEL_MAP) {
         const x = find_level(name);
-        if (x) game.special_levels[key] = { ...x.dlevel };
+        if (x) {
+            game.special_levels[key] = { ...x.dlevel };
+            /* src/dungeon.c:1136 — the quest levels' proto names get the
+               role's filecode: "x-strt" becomes "Bar-strt". C reads
+               gu.urole, set by role_init(); this port assigns game.urole
+               only later (and jsmain seeds a stub without filecode), so
+               read the same roles[] record it will copy. */
+            if (name.startsWith('x-')) {
+                const filecode = roles[game.flags.initrole]?.filecode
+                                 ?? game.urole?.filecode;
+                x.proto = `${filecode}${name.slice(1)}`;
+            }
+        }
     }
     game.oracle_level = game.special_levels.oracle_level ?? null;
 
@@ -597,6 +615,9 @@ const LEVEL_MAP = [
     ['wizard1', 'wiz1_level'], ['wizard2', 'wiz2_level'],
     ['wizard3', 'wiz3_level'], ['minend', 'mineend_level'],
     ['soko1', 'sokoend_level'],
+    /* dungeon.c:12-14 X_START/X_LOCATE/X_GOAL — the quest's three levels */
+    ['x-strt', 'qstart_level'], ['x-loca', 'qlocate_level'],
+    ['x-goal', 'nemesis_level'],
 ];
 
 // src/dungeon.c Is_special() — the s_level entry for this level, or null.
@@ -607,7 +628,7 @@ export function Is_special(lev) {
 }
 
 // src/dungeon.c:566 find_level() — locate a special level by its proto name.
-function find_level(nam) {
+export function find_level(nam) {
     return game.sp_levchn.find(
         lev => (lev.proto ?? lev.name ?? '').toLowerCase() === nam.toLowerCase())
         ?? null;

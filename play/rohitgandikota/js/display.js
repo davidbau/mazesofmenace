@@ -3,12 +3,15 @@
 
 import { game } from './gstate.js';
 import { money_cnt } from './invent.js';
-import { ONAMES } from './objects_data.js';
+import { ONAMES, OCLASSES } from './objects_data.js';
 import { update_topl } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
 import { term_start_color } from './tty/termcap.js';
 import { rank, bot_conditions } from './botl.js';
-import { cansee, vision_recalc } from './vision.js';
+import { cansee, couldsee, vision_recalc } from './vision.js';
+import { Infravision, Hallucination } from './youprop.js';
+import { observe_object } from './o_init.js';
+import { distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
 import { t_at } from './mon.js';
 import {
@@ -765,7 +768,29 @@ export function glyph_at(x, y) {
 
    The symbol is unchanged, because def_oc_syms[FOOD_CLASS] and the body
    glyph's symbol are both '%'. */
-function floor_object_glyph(obj) {
+// include/display.h:806 obj_is_generic() — an undetailed (!dknown) potion,
+// real/glass gem, or spellbook displays as its CLASS's generic glyph.
+function obj_is_generic(obj) {
+    return !obj.dknown
+           && (obj.oclass === OCLASSES.POTION_CLASS
+               || (obj.otyp >= ONAMES.FIRST_REAL_GEM
+                   && obj.otyp <= ONAMES.LAST_GLASS_GEM)
+               || (obj.otyp >= ONAMES.FIRST_SPELL
+                   && obj.otyp <= ONAMES.LAST_SPELL));
+}
+
+function floor_object_glyph(obj, x, y) {
+    /* src/display.c:340 _map_location() — if the object would display as
+       generic but the hero can see the spot from nearby (same radius as
+       distant_name(): r = max(u.xray_range, 2), neardist = 2r²−r), mark
+       it as seen up close first; it is then drawn as the specific object. */
+    if (x !== undefined && obj_is_generic(obj) && cansee(x, y)
+        && !Hallucination()) {
+        const r = ((game.u?.xray_range ?? -1) > 2) ? game.u.xray_range : 2;
+        const neardist = r * r * 2 - r;
+        if (distu(x, y) <= neardist)
+            observe_object(obj);
+    }
     const oc = game.objects?.[obj.otyp];
     let color = oc?.oc_color ?? NO_COLOR;
     let sym = def_oc_syms[obj.oclass] || '?';
@@ -795,8 +820,101 @@ function floor_object_glyph(obj) {
         color = game.objects?.[ONAMES.STATUE]?.oc_color ?? color;
     } else if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0) {
         color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
+    } else if (obj_is_generic(obj)) {
+        /* include/display.h:940 generic_obj_to_glyph() — the generic glyph
+           is oclass + GLYPH_OBJ_OFF, whose colour comes from the dummy
+           class entry objects[oclass] (grey), not from the shuffled
+           description of the specific otyp. */
+        color = game.objects?.[obj.oclass]?.oc_color ?? color;
+        gdesc.generic = true;
     }
     return { ch: sym, color, dec: false, glyph: gdesc };
+}
+
+/* swallowed() state: last drawn position (C statics) */
+let swallowed_lastx = 0, swallowed_lasty = 0;
+
+// src/display.c:1332 swallowed() — display the hero surrounded by the
+// engulfer's interior. first=1 clears the screen and redraws the status
+// line; later calls just erase the old 3x3 patch.
+export async function swallowed(first) {
+    const u = game.u;
+
+    if (first) {
+        await cls();
+        bot();
+    } else {
+        for (let y = swallowed_lasty - 1; y <= swallowed_lasty + 1; y++)
+            for (let x = swallowed_lastx - 1; x <= swallowed_lastx + 1; x++)
+                if (isok(x, y))
+                    show_glyph_cell(x, y, ' ', NO_COLOR, false, 0,
+                                    { kind: 'unexplored' });
+    }
+
+    const swallower = u.ustuck ? game.mons[u.ustuck.mnum] : null;
+    const swcolor = swallower?.mcolor ?? NO_COLOR;
+    const sw = (name) => {
+        const idx = defsyms.findIndex(d => d.name === name);
+        const s = showsym(idx);
+        return { ch: s ? s.ch : '?', dec: s ? s.dec : false, cmap: idx };
+    };
+    const put = (x, y, name) => {
+        const g = sw(name);
+        show_glyph_cell(x, y, g.ch, swcolor, g.dec, 0,
+                        { kind: 'swallow', cmap: g.cmap });
+    };
+    const left_ok = isok(u.ux - 1, u.uy);
+    const rght_ok = isok(u.ux + 1, u.uy);
+
+    if (isok(u.ux, u.uy - 1)) {
+        if (left_ok) put(u.ux - 1, u.uy - 1, 'S_sw_tl');
+        put(u.ux, u.uy - 1, 'S_sw_tc');
+        if (rght_ok) put(u.ux + 1, u.uy - 1, 'S_sw_tr');
+    }
+    if (left_ok) put(u.ux - 1, u.uy, 'S_sw_ml');
+    show_glyph_cell(u.ux, u.uy, '@', CLR_WHITE, false, 0, { kind: 'hero' });
+    if (rght_ok) put(u.ux + 1, u.uy, 'S_sw_mr');
+    if (isok(u.ux, u.uy + 1)) {
+        if (left_ok) put(u.ux - 1, u.uy + 1, 'S_sw_bl');
+        put(u.ux, u.uy + 1, 'S_sw_bc');
+        if (rght_ok) put(u.ux + 1, u.uy + 1, 'S_sw_br');
+    }
+
+    swallowed_lastx = u.ux;
+    swallowed_lasty = u.uy;
+}
+
+// src/display.c:1574 see_nearby_objects() — mark the top object of nearby
+// stacks as having been seen, and if that object was being displayed as
+// generic, redisplay it as specific.  Called from u_on_newpos() whenever the
+// hero moves on the same level.
+export function see_nearby_objects() {
+    const x = game.u.ux, y = game.u.uy;
+    /* these 'r' and 'neardist' calculations match distant_name(objnam.c) */
+    const r = ((game.u?.xray_range ?? -1) > 2) ? game.u.xray_range : 2;
+    const neardist = r * r * 2 - r;
+
+    for (let iy = y - r; iy <= y + r; ++iy)
+        for (let ix = x - r; ix <= x + r; ++ix) {
+            if (!isok(ix, iy))
+                continue;
+            /* skip if no object or the object has already been marked as
+               having been seen up close */
+            const obj = (game.level?.objects || [])
+                            .find(o => o.ox === ix && o.oy === iy);
+            if (!obj || obj.dknown)
+                continue;
+            /* skip if the spot can't be seen or is too far (diagonal) */
+            if (!cansee(ix, iy) || distu(ix, iy) > neardist)
+                continue;
+
+            const was_generic = obj_is_generic(obj);
+            observe_object(obj);
+            /* C tests the remembered glyph: only a generic-displayed
+               object needs a redisplay after being observed */
+            if (was_generic)
+                newsym(ix, iy);
+        }
 }
 
 export function newsym(x, y) {
@@ -822,7 +940,8 @@ export function newsym(x, y) {
         show_glyph_cell(x, y, '@', CLR_WHITE, false, 0, { kind: 'hero' });
         const under = (game.level?.objects || [])
                           .find(o => o.ox === x && o.oy === y);
-        const tg = under ? floor_object_glyph(under) : terrain_glyph(loc, x, y);
+        const tg = under ? floor_object_glyph(under, x, y)
+                         : terrain_glyph(loc, x, y);
         loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
                                  glyph: tg.glyph
                                      ?? { kind: 'cmap', cmap: tg.cmap } };
@@ -839,7 +958,7 @@ export function newsym(x, y) {
            (place_object prepends), so the first match is the top. */
         const obj = (game.level?.objects || [])
                         .find(o => o.ox === x && o.oy === y);
-        const memg = obj ? floor_object_glyph(obj)
+        const memg = obj ? floor_object_glyph(obj, x, y)
                          : (engraving_glyph(loc, x, y)
                             || terrain_glyph(loc, x, y));
         if (game.level?.flags?.hero_memory)
@@ -860,6 +979,19 @@ export function newsym(x, y) {
 
         if (obj) {
             show_glyph_cell(x, y, memg.ch, memg.color, memg.dec, 0, memg.glyph);
+            return;
+        }
+    } else {
+        /* src/display.c newsym(), the can't-see branch: a monster the hero
+           senses, or sees with infravision, is still displayed */
+        const mon = (game.level?.monsters || [])
+                        .find(m => m.mx === x && m.my === y && m.mhp > 0
+                                   && !m.msleeping_hidden);
+        if (mon && (sensemon(mon)
+                    || (see_with_infrared(mon) && mon_visible(mon)))) {
+            show_glyph_cell(x, y, def_monsyms[mon.data.mlet] || '?',
+                            mon.data.mcolor ?? NO_COLOR, false, 0,
+                            { kind: 'mon', mon });
             return;
         }
     }
@@ -940,6 +1072,13 @@ export function newsym(x, y) {
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx, 0,
             loc.remembered_glyph.glyph);
+    } else {
+        /* src/display.c map_location(): out of sight with NO memory is
+           GLYPH_UNEXPLORED — painted blank. Without this, a glyph drawn
+           here by the sensed/infravision arm above survives after the
+           monster leaves. */
+        show_glyph_cell(x, y, ' ', NO_COLOR, false, 0,
+                        { kind: 'unexplored' });
     }
 }
 
@@ -1209,7 +1348,7 @@ export function feel_location(x, y) {
     const obj = (game.level?.objects || [])
                     .find(o => o.ox === x && o.oy === y);
     const trap = t_at(x, y);
-    const memg = obj ? floor_object_glyph(obj)
+    const memg = obj ? floor_object_glyph(obj, x, y)
         : (trap && trap.tseen) ? trap_glyph(trap)
         : (engraving_glyph(loc, x, y) || terrain_glyph(loc, x, y));
     if (game.level?.flags?.hero_memory)
@@ -1519,18 +1658,59 @@ export function sensemon(mon) {
     return false;
 }
 
+// include/display.h:106 _see_with_infrared() — caller must check
+// invisibility; infravision doesn't see invisible monsters.
+export function see_with_infrared(mon) {
+    return !game.u.ublind && Infravision()
+           && infravisible(game.mons[mon.mnum])
+           && couldsee(mon.mx, mon.my);
+}
+
+/* include/mondata.h:155 infravisible() */
+const infravisible = (ptr) => !!(ptr
+                                 && (ptr.mflags3 & 512 /* M3_INFRAVISIBLE */));
+
 // include/display.h:117 _canseemon()
 export function canseemon(mon) {
     if (mon.wormno)
         (game.unported ||= new Set()).add('display:canseemon:worm_known');
-    if (game.u.uprops?.INFRAVISION)
-        (game.unported ||= new Set()).add('display:canseemon:see_with_infrared');
-    return cansee(mon.mx, mon.my) && mon_visible(mon);
+    return (cansee(mon.mx, mon.my) || see_with_infrared(mon))
+           && mon_visible(mon);
 }
 
 // include/display.h:129 canspotmon()
 export function canspotmon(mon) {
     return canseemon(mon) || sensemon(mon);
+}
+
+// src/display.c map_invisible() — remember an 'I' marker for an unseen
+// monster the hero bumped into or found by searching.
+export function map_invisible(x, y) {
+    if (x !== game.u.ux || y !== game.u.uy) {
+        const loc = game.level?.at(x, y);
+        if (game.level?.flags?.hero_memory && loc)
+            loc.remembered_glyph = { ch: 'I', color: NO_COLOR, decgfx: false,
+                                     glyph: { kind: 'invis' } };
+        show_glyph_cell(x, y, 'I', NO_COLOR, false, 0, { kind: 'invis' });
+    }
+}
+
+/* include/display.h glyph_is_invisible(levl[x][y].glyph) on the REMEMBERED
+   glyph */
+export function glyph_is_invisible_at(x, y) {
+    return game.level?.at(x, y)?.remembered_glyph?.glyph?.kind === 'invis';
+}
+
+// src/display.c unmap_invisible() — clear a stale 'I' marker.
+export function unmap_invisible(x, y) {
+    if (isok(x, y) && glyph_is_invisible_at(x, y)) {
+        const loc = game.level.at(x, y);
+        /* unmap_object(): memory reverts to the background */
+        const tg = terrain_glyph(loc, x, y);
+        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                                 glyph: { kind: 'cmap', cmap: tg.cmap } };
+        newsym(x, y);
+    }
 }
 
 // src/display.c:215 is_safemon() / include/display.h:159 _is_safemon()
