@@ -38,18 +38,23 @@ import { cansee } from './vision.js';
 import { update_topl } from './display.js';
 import { make_corpse, dmgval } from './uhitm.js';
 import { DOOR, POOL, DRAWBRIDGE_UP, STRAT_WAITFORU } from './const.js';
+// used only by the appended mhitm.c translations at the bottom of this file
+import { IS_OBSTRUCTED, IS_TREE, IRONBARS, D_CLOSED, D_LOCKED } from './const.js';
 import { is_animal, is_neuter_flag, perceives_flag, is_elf_flag, is_orc_flag,
          is_undead_flag, is_demon_flag, unsolid_flag, mflags1_of, M1_NOEYES,
-         M1_THICK_HIDE,
+         M1_THICK_HIDE, M1_WALLWALK, M1_TPORT,
 } from './monflags_data.js';
 import { WEP_HITBON } from './weapondmg_data.js';
 import { xname } from './invent.js';
 import { MATTK } from './monattk_data.js';
 import { name_to_pmidx, monster_by_pmidx, is_home_elemental } from './makemon.js';
+// newcham/pm_to_cham: used only by the appended gulpmm()/mon_poly() below
+import { newcham, pm_to_cham } from './makemon.js';
 import { mhitm_adtyping } from './mhitm_ad.js';
 // mhitu.c owns these four (mhitm.c:383/426/85/659 call them across the file
 // boundary); js/mhitu.js is the single faithful copy.
 import { getmattk, could_seduce, mtrapped_in_pit } from './mhitu.js';
+import { find_mac as worn_find_mac } from './worn.js';
 
 // C ref: mhitm.c:358 gv.vis — latched ONCE per mattackm() call, before the
 // attack loop.  Several mhitm_ad_* handlers rloc() a combatant and then still
@@ -350,16 +355,8 @@ function monLev(mon) {
     return permonst(mon)?.mlevel ?? 0;
 }
 
-// C ref: worn.c find_mac(mdef) — mons[].ac reduced by every worn armour piece's
-// ARM_BONUS, then clamped to +-AC_MAX.  Monsters in this port carry no body
-// armour (m_initinv gives none), so only the base + clamp are modelled.
-const AC_MAX = 127;
-function find_mac(mdef) {
-    let base = permonst(mdef)?.ac;
-    base = (base != null) ? base : 10;
-    if (Math.abs(base) > AC_MAX) base = Math.sign(base) * AC_MAX;
-    return base;
-}
+// C ref: worn.c find_mac(mdef).
+function find_mac(mdef) { return worn_find_mac(mdef); }
 
 // getmattk() now lives in js/mhitu.js (its C home, mhitu.c:310).  The copy that
 // used to be here dropped the is_home_elemental() tail — an elemental on its own
@@ -1207,3 +1204,502 @@ export async function mattackm(magr, mdef) {
 
     return struck ? M_ATTK_HIT : M_ATTK_MISS;
 }
+
+// ===========================================================================
+// mhitm.c: the remaining top-level functions, translated.  APPEND-ONLY —
+// nothing above this line calls anything below it.
+//
+// Two model gaps that these translations run into and do NOT paper over:
+//   * remove_monster()/place_monster() are C's svl.level.monsters[x][y] GRID
+//     ops.  This port has no grid: js/display.js:327 m_at() scans the fmon
+//     chain (game.level.monsters) and skips only mridden steeds.  So gulpmm's
+//     "leave the defender in the chain but off the screen" state cannot be
+//     represented; the local helpers below carry the coordinate half and the
+//     comment names what is missing.
+//   * js/mhitm_ad.js mhitm_ad_blnd() writes mhm.damage unconditionally, but
+//     uhitm.c:3009 guards it (`if (mhm) mhm->damage = 0;`) precisely because
+//     gazemm() passes 0.  gazemm() below therefore hands it a scratch mhm; the
+//     real fix is the missing null guard in js/mhitm_ad.js.
+// ===========================================================================
+
+// C ref: monattk.h:53 AD_BLND (11) — the Archon / yellow-light blinding gaze.
+const AD_BLND = 11;
+// C ref: monattk.h:24 AD_MAGM, :66 AD_RUST, :84 AD_CORR, :89 AD_RBRE.
+const AD_MAGM = 1, AD_RUST = 24, AD_CORR = 42, AD_RBRE = 242;
+// C ref: defsym.h:309 MONSYM(13, 'm', MIMIC, S_MIMIC).
+const S_MIMIC = 13;
+// C ref: monst.h:52 M_AP_NOTHING.
+const M_AP_NOTHING = 0;
+// C ref: monflag.h:182 MZ_HUGE.
+const MZ_HUGE = 4;
+
+// C ref: mondata.h:57 is_whirly(ptr) — a vortex, or the air elemental.
+function is_whirly_mm(ptr) {
+    return ptr?.mcls === S_VORTEX || ptr?.name === 'air elemental';
+}
+// C ref: mondata.h:59 flaming(ptr) — fire vortex / flaming sphere /
+// fire elemental / salamander.
+const FLAMING_NAMES = new Set(['fire vortex', 'flaming sphere',
+                               'fire elemental', 'salamander']);
+function flaming_mm(ptr) { return !!ptr && FLAMING_NAMES.has(ptr.name); }
+// C ref: mondata.h:71/73 digests(ptr) / enfolds(ptr) — an AT_ENGL slot whose
+// damage type is AD_DGST (purple worm) or AD_WRAP (trapper/lurker above).
+function digests_mm(mon) {
+    return mattk_list(mon).some((a) => a[0] === AT_ENGL && a[1] === AD_DGST);
+}
+function enfolds_mm(mon) {
+    return mattk_list(mon).some((a) => a[0] === AT_ENGL && a[1] === AD_WRAP);
+}
+// C ref: mondata.h:29 passes_walls(ptr) — M1_WALLWALK.
+function passes_walls_mm(ptr) { return (mflags1_of(ptr) & M1_WALLWALK) !== 0; }
+
+// C ref: mondata.c:248 resists_blnd(mon).  The resists_blnd_by_arti() (Sunsword
+// wielder) arm is absent: js/artifact.js exports no defends() predicate.
+function resists_blnd_mm(mon) {
+    const ptr = permonst(mon);
+    if (mon?.mblinded || !mon?.mcansee || !haseyes(ptr) || mon?.msleeping)
+        return true;
+    return mattk_list(mon).some((a) => (a[0] === AT_EXPL || a[0] === AT_GAZE)
+                                        && a[1] === AD_BLND);
+}
+
+// C ref: mondata.c:215 resists_magm(mon) — gray dragons, Angels, the Oracle,
+// Yeenoghu, plus a wielded/worn ANTIMAGIC source.  The item half needs
+// objects[].oc_oprop and defends_when_carried(); only the species half is
+// modelled, so a monster carrying a cloak of magic resistance answers FALSE.
+function resists_magm_mm(mon) {
+    const ptr = permonst(mon);
+    return attacktype_ad(mon, AD_MAGM) || ptr?.name === 'baby gray dragon'
+        || attacktype_ad(mon, AD_RBRE);
+}
+
+// C ref: rm.h remove_monster(x,y) — clears svl.level.monsters[x][y].  See the
+// header note: this port has no such grid, so there is nothing to clear.
+function mm_remove_monster(x, y) { void x; void y; }
+// C ref: steed.c:898 place_monster(mon, x, y) — the grid write plus the
+// coordinate write.  Only the coordinates exist here.
+function mm_place_monster(mon, x, y) { mon.mx = x; mon.my = y; mon.mstate = 0; }
+
+// C ref: mon.c minliquid(mtmp) / trap.c mintrap(mtmp, flags) — both can kill
+// the monster that just moved and both draw RNG.  Neither has an exported port
+// (js/mon.js:591 and js/dig.js:900 hold private partial copies), so gulpmm's
+// "aggressor moves onto the defender's square and dies there" tail can't fire.
+function minliquid_mm(_mon) { return false; }        /* mon.c */
+function mintrap_mm(_mon, _flags) { return 0; }      /* trap.c; Trap_Killed_Mon == 2 */
+const Trap_Killed_Mon = 2;
+
+// C ref: mhitm.c:736 gazemm(magr, mdef, mattk) — an AT_GAZE attack against
+// another monster.  Returns the same values as mdamagem().
+export async function gazemm(magr, mdef, mattk) {
+    let buf;
+    /* an Archon's gaze affects target even if Archon itself is blinded */
+    const archon = (permonst(magr)?.name === 'Archon'
+                    && mattk.adtyp === AD_BLND),
+          altmesg = (archon && !magr.mcansee);
+
+    /* bring target out of hiding even if hero doesn't see it happen (this
+       is already done in pre_mm_attack() and shouldn't be needed here) */
+    if (permonst(mdef)?.mcls === S_MIMIC && (mdef.m_ap_type | 0) !== M_AP_NOTHING) {
+        const { seemimicLocal } = await import('./uhitm.js');
+        seemimicLocal(mdef);
+    }
+    mdef.mundetected = 0;
+
+    if (gv_vis) {
+        const { Adjmonnam } = await import('./do_name.js');
+        buf = `${altmesg ? Adjmonnam(magr, 'blinded') : Monnam(magr)} gazes ${
+            altmesg ? 'toward' : 'at'}`;
+        await emitMMmsg(`${buf} ${mm_can_see_mon(mdef) ? the_monnam(mdef)
+                                                       : 'something'}...`);
+    }
+
+    if (magr.mcan || !mdef.mcansee
+        || (archon ? resists_blnd_mm(mdef) : !magr.mcansee)
+        || (magr.minvis && !perceives_flag(permonst(mdef))) || mdef.msleeping) {
+        if (gv_vis && mm_can_see_mon(mdef))
+            await emitMMmsg('but nothing happens.');
+        return M_ATTK_MISS;
+    }
+    const { mon_reflects } = await import('./muse.js');
+    /* call mon_reflects 2x, first test, then, if visible, print message */
+    if (permonst(magr)?.name === 'Medusa' && await mon_reflects(mdef, null)) {
+        if (mm_can_see_mon(mdef))
+            await mon_reflects(mdef, 'The gaze is reflected away by %s %s.');
+        if (mdef.mcansee) {
+            if (await mon_reflects(magr, null)) {
+                if (mm_can_see_mon(magr))
+                    await mon_reflects(magr,
+                                       'The gaze is reflected away by %s %s.');
+                return M_ATTK_MISS;
+            }
+            if (magr.minvis && !perceives_flag(permonst(magr))) {
+                if (mm_can_see_mon(magr)) {
+                    await emitMMmsg(`${Monnam(magr)} doesn't seem to notice that ${
+                        mhis_mm(magr)} gaze was reflected.`);
+                }
+                return M_ATTK_MISS;
+            }
+            if (mm_can_see_mon(magr))
+                await emitMMmsg(`${Monnam(magr)} is turned to stone!`);
+            await monstone_mm(magr);
+            if (!DEADMONSTER(magr))
+                return M_ATTK_MISS;
+            return M_ATTK_AGR_DIED;
+        }
+    } else if (archon) {
+        /* C passes (struct mhitm_data *) 0; see the header note — the JS
+           handler has no null guard, so it gets a scratch struct whose
+           damage field nothing reads back. */
+        const { mhitm_ad_blnd } = await import('./mhitm_ad.js');
+        await mhitm_ad_blnd(magr, mattk, mdef,
+                            { damage: 0, hitflags: M_ATTK_MISS, permdmg: 0,
+                              specialdmg: 0, dieroll: 0, done: false },
+                            mm_ops());
+        /* an Archon's blinding radiance also stuns;
+           this is different from the way the hero gets stunned because
+           a stunned monster recovers randomly instead of via countdown;
+           both cases make an effort to prevent the target from being
+           continuously stunned due to repeated gaze attacks */
+        if (rn2(2))
+            mdef.mstun = 1;
+    }
+
+    return await mdamagem(magr, mdef, mattk, null, 0);
+}
+
+// C ref: do_name.c mhis(mon) — the possessive pronoun.  js/mhitm.js already
+// carries is_neuter_flag for exactly this decision elsewhere.
+function mhis_mm(mtmp) {
+    const ptr = permonst(mtmp);
+    if (is_neuter_flag(ptr)) return 'its';
+    return mtmp?.female ? 'her' : 'his';
+}
+
+// C ref: mhitm.c:807 engulf_target(magr, mdef) — may magr swallow mdef?
+export function engulf_target(magr, mdef) {
+    const uatk = is_youmonst_mm(magr), udef = is_youmonst_mm(mdef);
+    const pa = permonst(magr), pd = permonst(mdef);
+
+    /* can't swallow something that's too big */
+    if ((pd?.msize ?? MZ_MEDIUM) >= MZ_HUGE
+        || ((pa?.msize ?? MZ_MEDIUM) < (pd?.msize ?? MZ_MEDIUM)
+            && !is_whirly_mm(pa)))
+        return false;
+
+    /* can't (move to) swallow if trapped. TODO: could do some? */
+    if (mdef.mtrapped || magr.mtrapped)
+        return false;
+
+    /* if attacker is phasing in solid rock and defender can't move there,
+       or vice versa, don't allow engulf to succeed; otherwise expelling
+       might not be able to place attacker and defender both back on map */
+    const dx = udef ? game.u.ux : mdef.mx, dy = udef ? game.u.uy : mdef.my;
+    let lev = game.level?.at(dx, dy);
+    if (!(udef ? Passes_walls_u() : passes_walls_mm(pd))
+        && (IS_OBSTRUCTED(lev?.typ) || closed_door_mm(dx, dy)
+            || IS_TREE(lev?.typ)
+            /* not passes_bars(); engulfer isn't squeezing through */
+            || (lev?.typ === IRONBARS && !is_whirly_mm(pa))))
+        return false;
+    const ax = uatk ? game.u.ux : magr.mx, ay = uatk ? game.u.uy : magr.my;
+    lev = game.level?.at(ax, ay);
+    if (!(uatk ? Passes_walls_u() : passes_walls_mm(pa))
+        && (IS_OBSTRUCTED(lev?.typ) || closed_door_mm(ax, ay)
+            || IS_TREE(lev?.typ)
+            || (lev?.typ === IRONBARS && !is_whirly_mm(pd))))
+        return false;
+
+    return true;
+}
+
+// C ref: mhitm.c:811 `magr == &gy.youmonst` — mhitm.js never dispatches with a
+// hero combatant (mattackm() is monster-vs-monster only), so the youmonst arms
+// are reachable only through engulf_target()'s other callers (uhitm.c/mhitu.c).
+function is_youmonst_mm(mon) { return mon === game.youmonst || mon?.isyou === true; }
+// C ref: you.h Passes_walls — the hero's intrinsic/extrinsic wall-walking.
+function Passes_walls_u() { return !!game.u?.uprops?.Passes_walls; }
+// C ref: rm.h closed_door(x, y) — IS_DOOR && (D_CLOSED | D_LOCKED).
+function closed_door_mm(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!loc && loc.typ === DOOR && ((loc.doormask | 0) & (D_CLOSED | D_LOCKED)) !== 0;
+}
+
+// C ref: mhitm.c:849 gulpmm(magr, mdef, mattk) — an AT_ENGL attack.  Returns
+// the same values as mattackm().
+export async function gulpmm(magr, mdef, mattk) {
+    if (!engulf_target(magr, mdef))
+        return M_ATTK_MISS;
+
+    if (gv_vis) {
+        await emitMMmsg(`${Monnam(magr)} ${
+            digests_mm(magr) ? 'swallows'
+            : enfolds_mm(magr) ? 'encloses'
+              : 'engulfs'} ${the_monnam(mdef)}.`);
+    }
+    if (!flaming_mm(permonst(magr))) {
+        const { snuff_lit } = await import('./apply.js');
+        for (const obj of (mdef.minvent || []))
+            await snuff_lit(obj);
+    }
+
+    if (is_vampshifter_mm(mdef)
+        && newcham(mdef, monster_by_pmidx(mdef.cham))) {
+        if (gv_vis) {
+            /* 'it' -- previous form is no longer available and
+               using that would be excessively verbose */
+            await emitMMmsg(`${Monnam(magr)} expels ${
+                mm_can_see_mon(mdef) ? 'it' : 'something'}.`);
+            if (mm_can_see_mon(mdef)) {
+                const { x_monnam } = await import('./uhitm.js');
+                await emitMMmsg(`It turns into ${
+                    x_monnam(mdef, /*ARTICLE_A*/ 2, null,
+                             SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE,
+                             false)}.`);
+            }
+        }
+        return M_ATTK_HIT; /* bypass mdamagem() */
+    }
+
+    /*
+     *  All of this manipulation is needed to keep the display correct.
+     *  There is a flush at the next pline().
+     */
+    const ax = magr.mx, ay = magr.my;
+    let dx = mdef.mx, dy = mdef.my;
+    /*
+     *  Leave the defender in the monster chain at its current position,
+     *  but don't leave it on the screen.  Move the aggressor to the
+     *  defender's position.
+     */
+    mm_remove_monster(dx, dy);
+    mm_remove_monster(ax, ay);
+    mm_place_monster(magr, dx, dy);
+    newsym(ax, ay); /* erase old position */
+    newsym(dx, dy); /* update new position */
+
+    game.mswallower = magr; /* corpse_chance() wants this */
+    let status = await mdamagem(magr, mdef, mattk, null, 0);
+    game.mswallower = null;  /* reset */
+
+    if ((status & (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED))
+        === (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED)) {
+        /* both died -- do nothing  */
+    } else if (status & M_ATTK_DEF_DIED) { /* defender died */
+        /* [5.0] relmon() only removes the dying monster from the grid when it
+           is the one standing there, so magr is still at mdef's former spot.
+           One fixup remains: an inhospitable spot sends magr back. */
+        const { goodpos } = await import('./teleport.js');
+        if (!goodpos(dx, dy, magr, MM_IGNOREWATER)) {
+            if (m_at(dx, dy) === magr) {
+                mm_remove_monster(dx, dy);
+                newsym(dx, dy);
+            }
+            dx = ax; dy = ay; /* magr's spot at start of the attack */
+        }
+        if (m_at(dx, dy) !== magr) {
+            mm_place_monster(magr, dx, dy);
+            newsym(dx, dy);
+        }
+        /* aggressor moves to <dx,dy> and might encounter trouble there */
+        const { t_at } = await import('./trap.js');
+        if (minliquid_mm(magr)
+            || (t_at(dx, dy)
+                && mintrap_mm(magr, 0 /*NO_TRAP_FLAGS*/) === Trap_Killed_Mon))
+            status |= M_ATTK_AGR_DIED;
+    } else if (status & M_ATTK_AGR_DIED) { /* aggressor died */
+        mm_place_monster(mdef, dx, dy);
+        newsym(dx, dy);
+    } else {                              /* both alive, put them back */
+        if (cansee(dx, dy)) {
+            await emitMMmsg(`${Monnam(mdef)} is ${
+                digests_mm(magr) ? 'regurgitated'
+                : enfolds_mm(magr) ? 'released'
+                  : 'expelled'}!`);
+        }
+
+        mm_remove_monster(dx, dy);
+        mm_place_monster(magr, ax, ay);
+        mm_place_monster(mdef, dx, dy);
+        newsym(ax, ay);
+        newsym(dx, dy);
+    }
+
+    return status;
+}
+
+// C ref: hack.h:1016-1022 SUPPRESS_* flags used by gulpmm's x_monnam() call.
+const SUPPRESS_IT = 0x01, SUPPRESS_INVISIBLE = 0x02, SUPPRESS_NAME = 0x20;
+// C ref: mkobj.h MM_IGNOREWATER — goodpos() flag.
+const MM_IGNOREWATER = 0x2000;
+// C ref: mondata.h is_vampshifter(mon) — a vampire in another form (its cham
+// index names a vampire).  mdef.cham is the shapeshifter's base pmidx.
+function is_vampshifter_mm(mon) {
+    if (mon?.cham == null || mon.cham < 0) return false;
+    const base = monster_by_pmidx(mon.cham);
+    return !!base && /vampire|Vlad/.test(base.name || '');
+}
+
+// C ref: mhitm.c:1122 mon_poly(magr, mdef, dmg) — an AD_POLY hit landed;
+// returns the damage that still applies (0 when the target changed shape).
+export async function mon_poly(magr, mdef, dmg) {
+    const freaky = ' undergoes a freakish metamorphosis';
+    const oldform = mdef.data;
+
+    if (is_youmonst_mm(mdef)) {
+        /* hero defender: mhitm.js never dispatches this way, so the arm is
+           here for mon_poly()'s other callers (uhitm.c/mhitu.c/zap.c). */
+        if (Antimagic_u()) {
+            await shieldeff_mm(game.u.ux, game.u.uy);
+        } else if (Unchanging_u()) {
+            /* just take a little damage */
+        } else {
+            const u = game.u;
+            /* system shock might take place in polyself() */
+            if ((u.ulycn ?? NON_PM) === NON_PM) {
+                await emitMMmsg('You are subjected to a freakish metamorphosis.');
+                const { polyself } = await import('./polyself.js');
+                await polyself(0 /*POLY_NOFLAGS*/);
+            } else if (u.umonnum !== u.ulycn) {
+                await emitMMmsg('You feel an unnatural urge coming on.');
+                await you_were_mm();
+            } else {
+                await emitMMmsg('You feel a natural urge coming on.');
+                await you_unwere_mm(false);
+            }
+            dmg = 0;
+        }
+    } else {
+        const Before = Monnam(mdef);
+        const { resist } = await import('./zap.js');
+
+        if (resists_magm_mm(mdef)) {
+            /* Magic resistance */
+            if (gv_vis) await shieldeff_mon_mm(mdef);
+        } else if (resist(mdef, WAND_CLASS_MM, 0, /*TELL*/ 1)) {
+            /* general resistance to magic... */
+        } else if (!rn2(25) && (mdef.cham ?? NON_PM) === NON_PM
+                   && (mdef.mcan
+                       || pm_to_cham_mm(mdef) !== NON_PM)) {
+            /* system shock; this variation takes away half of mon's HP
+               rather than kill outright */
+            if (gv_vis)
+                await emitMMmsg(`${Before} shudders!`);
+
+            dmg += Math.trunc(((mdef.mhpmax | 0) + 1) / 2);
+            mdef.mhp -= dmg;
+            dmg = 0;
+            if (DEADMONSTER(mdef)) {
+                if (is_youmonst_mm(magr))
+                    await xkilled_mm(mdef);
+                else
+                    await monkilled_mm(mdef, AD_RBRE);
+            }
+        } else if (newcham(mdef, null)) {
+            if (gv_vis) { /* either seen or adjacent */
+                const was_seen = Before.toLowerCase() !== 'it',
+                      verbosely = !!game.flags?.verbose || !was_seen;
+
+                if (mm_can_see_mon(mdef)) {
+                    const { x_monnam } = await import('./uhitm.js');
+                    await emitMMmsg(`${Before}${verbosely ? freaky : ''}${
+                        verbosely ? ' and' : ''} turns into ${
+                        x_monnam(mdef, /*ARTICLE_A*/ 2, null,
+                                 SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE,
+                                 false)}.`);
+                } else if (was_seen || is_youmonst_mm(magr)) {
+                    await emitMMmsg(`${Before}${freaky}${
+                        !was_seen ? '' : ' and disappears'}.`);
+                }
+            }
+            dmg = 0;
+            if (can_teleport_mm(permonst(magr))) {
+                const { rloc, tele_restrict } = await import('./teleport.js');
+                if (is_youmonst_mm(magr))
+                    await tele_mm();
+                else if (!tele_restrict(magr))
+                    await rloc(magr, /*RLOC_MSG*/ 1);
+            }
+        } else {
+            if (gv_vis && game.flags?.verbose)
+                await emitMMmsg('Nothing seems to happen.'); /* nothing_happens */
+        }
+    }
+    /* when a transformation has happened, can't attack again for poly
+       effect during next turn or two; not enforced for poly'd hero */
+    if (mdef.data !== oldform && !is_youmonst_mm(magr))
+        magr.mspec_used = (magr.mspec_used | 0) + rnd(2);
+
+    return dmg;
+}
+
+// C ref: hack.h NON_PM (-1) and objclass.h WAND_CLASS.
+const NON_PM = -1, WAND_CLASS_MM = 8;
+// C ref: makemon.c pm_to_cham(mndx) — js/makemon.js:2799 keys off the pmidx, so
+// route through permonst() for a pet's non-makemon index.
+function pm_to_cham_mm(mon) {
+    const p = permonst(mon);
+    return (p?.pmidx != null) ? pm_to_cham(p.pmidx) : NON_PM;
+}
+// C ref: you.h Antimagic / Unchanging.  polyself.c you_were()/you_unwere() and
+// teleport.c tele() have no export; mon.c xkilled() likewise (js/uhitm.js keeps
+// a private killed()).  The hero-defender arms are unreachable from mhitm.js.
+function Antimagic_u() { return !!game.u?.uprops?.Antimagic; }
+function Unchanging_u() { return !!game.u?.uprops?.Unchanging; }
+async function you_were_mm() { /* polyself.c you_were() */ }
+async function you_unwere_mm(_upgrade) { /* polyself.c you_unwere() */ }
+async function tele_mm() { /* teleport.c tele() */ }
+async function xkilled_mm(mdef) { return await killMonster(mdef); }
+// C ref: display.c shieldeff(x, y) / shieldeff_mon(mon) — the reflective flash.
+async function shieldeff_mm(x, y) {
+    const { shieldeff } = await import('./display.js');
+    await shieldeff(x, y);
+}
+async function shieldeff_mon_mm(mon) { await shieldeff_mm(mon.mx, mon.my); }
+// C ref: mondata.h:82 can_teleport(ptr) — M1_TPORT.
+function can_teleport_mm(ptr) { return (mflags1_of(ptr) & M1_TPORT) !== 0; }
+
+// C ref: mhitm.c:1260 rustm(mdef, obj) — the defender's passive erosion attack
+// applied to the attacker's weapon (or bare hand's glove).  AD_ACID and AD_ENCH
+// are handled in passivemm()/passiveum() instead.
+export async function rustm(mdef, obj) {
+    let dmgtyp = ERODE_NONE_MM, chance = 1;
+
+    if (!mdef || !obj)
+        return; /* just in case */
+    if (attacktype_ad(mdef, AD_CORR)) {
+        dmgtyp = ERODE_CORRODE_MM;
+    } else if (attacktype_ad(mdef, AD_RUST)) {
+        dmgtyp = ERODE_RUST_MM;
+    } else if (attacktype_ad(mdef, AD_FIRE)
+               /* steam vortex: fire resist applies, fire damage doesn't */
+               && permonst(mdef)?.name !== 'steam vortex') {
+        dmgtyp = ERODE_BURN_MM;
+        chance = 6;
+    }
+
+    if (dmgtyp !== ERODE_NONE_MM && !rn2(chance)) {
+        const { erode_obj } = await import('./trap.js');
+        await erode_obj(obj, null, dmgtyp, EF_GREASE_MM | EF_VERBOSE_MM);
+    }
+}
+
+// C ref: obj.h:454 ERODE_NONE(-1)/ERODE_BURN(0)/ERODE_RUST(1)/ERODE_CORRODE(3)
+// and the EF_* erode_obj() flags (js/const.js:1120/2244/2254 hold the same).
+const ERODE_NONE_MM = -1, ERODE_BURN_MM = 0, ERODE_RUST_MM = 1,
+      ERODE_CORRODE_MM = 3, EF_GREASE_MM = 0x01, EF_VERBOSE_MM = 0x04;
+
+// C ref: mhitm.c:1461 xdrainenergym(mon, givemsg) — a landed drain-energy
+// attack uses up the target's spell/breath reserve.
+export async function xdrainenergym(mon, givemsg) {
+    if ((mon.mspec_used | 0) < 20 /* limit draining */
+        && (attacktype_at(mon, AT_MAGC) || attacktype_at(mon, AT_BREA))) {
+        mon.mspec_used = (mon.mspec_used | 0) + d(2, 2);
+        if (givemsg)
+            await emitMMmsg(`${Monnam(mon)} seems lethargic.`);
+    }
+}
+
+// C ref: mhitm.c:1475 attk_protection(aatyp).  The faithful port already lives
+// in this file as attk_protection_mm() (mhitm.js:577) — its ~0L case returns -1,
+// which IS C's value — so this is an alias, not a second copy.
+export const attk_protection = attk_protection_mm;

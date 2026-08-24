@@ -442,3 +442,573 @@ function nomul0() {
     g.multi = 0;
     g.multi_reason = null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The rest of src/ball.c — INERT.
+//
+// Nothing above this banner calls anything below it and no other module
+// imports these names yet.
+//
+// OVERLAP WITH THE LIVE COPIES ABOVE.  placebc() at ball.js:94 and unplacebc()
+// at ball.js:118 are REDUCED inlinings of placebc_core()/unplacebc_core():
+// they skip the bcrestriction gate, both flooreffects() calls, the Blind
+// bc_felt glyph drop, maybe_unhide_at() and the u.uswallow/waterlevel arm, and
+// placebc() there does not pick up levl[u.ux][u.uy].glyph into u.bglyph/cglyph.
+// The full versions are translated here.  A wiring pass must REPLACE the two
+// reduced ones, never add a second caller
+// ([[duplicate-reimplementation-shadows-faithful-port]]).
+//
+// New top-level imports are avoided on purpose: ball.js IS imported by other
+// modules, so an added import edge can flip ESM evaluation order and take the
+// whole program down ([[_mktrap_victim TDZ is real]]).  Everything below pulls
+// its helpers in with a dynamic import at the call site.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// C ref: include/hack.h:110 `enum bcargs {override_restriction = -1}`.
+export const override_restriction = -1;
+
+// C ref: ball.c:17 `static int bcrestriction = 0`.  BREADCRUMBS is off in this
+// build, so the Placebc()/Unplacebc() macro variants and the two
+// struct breadcrumbs are absent.
+let bcrestriction = 0;
+
+// C ref: include/onames.h HEAVY_IRON_BALL / IRON_CHAIN (js/apply.js:290).
+const HEAVY_IRON_BALL = 477, IRON_CHAIN = 478;
+// C ref: include/hack.h KILLED_BY_AN / KILLED_BY / NO_KILLER_PREFIX
+// (js/const.js:330-332).
+const KILLED_BY_AN = 0, KILLED_BY = 1, NO_KILLER_PREFIX = 2;
+// C ref: include/obj.h body_part indices (js/const.js:378-379).
+const HEAD = 8, LEG = 9;
+// C ref: include/attrib.h A_STR (js/const.js:237).
+const A_STR = 0;
+// W_BALL / W_CHAIN / W_WEAPONS and LEFT_SIDE / RIGHT_SIDE are pulled from
+// js/const.js at the call site rather than duplicated: this port DELIBERATELY
+// remaps prop.h's W_* bits ([[worn-mask-remap-collision]]), so a transcribed
+// literal here would silently disagree with invent.js.
+// C ref: include/trap.h u.utraptype values.
+const TT_BEARTRAP = 1, TT_PIT = 2, TT_WEB = 3, TT_LAVA = 4, TT_INFLOOR = 5,
+      TT_BURIEDBALL = 6;
+
+// C ref: include/youprop.h Punished — u.uball is set only while punished.
+function Punished() { return !!game.u?.uball; }
+// C ref: include/youprop.h Levitation.
+function Levitation() { return !!game.u?.uprops?.Levitation; }
+
+// C ref: mkobj.c flooreffects(obj, x, y, verb) — "the chain/ball might rust".
+// UNPORTED in js/ (no flooreffects anywhere); it can only bite over water, lava
+// or a pit and every recorded placebc() lands on room floor.  Named rather than
+// silently dropped so a wiring pass knows what is missing.
+function flooreffects(_obj, _x, _y, _verb) { return false; }
+
+// C ref: mon.c maybe_unhide_at(x, y) — the faithful port is module-private at
+// js/monmove.js:1910 (js/invent.js:1170 is a stub); export that one when wiring.
+async function maybe_unhide_at_bc(x, y) {
+    const MM = await import('./monmove.js');
+    if (typeof MM.maybe_unhide_at === 'function')
+        return MM.maybe_unhide_at(x, y);
+    return undefined;   /* GAP: monmove.js does not export it */
+}
+
+// C ref: hack.c losehp(n, knam, k_format) — HP subtraction plus the death
+// path.  There is no exported losehp() in js/: private copies live at
+// js/zap.js:2490, js/attrib.js:75, js/dig.js:161, js/artifact.js:1507,
+// js/music.js:71, js/fountain.js:795 and js/do.js:503.  Subtract here and name
+// the gap; wiring this up means exporting one of those, not adding an eighth.
+async function losehp_bc(n, _knam, _kformat) {
+    const u = game.u;
+    if (!u) return;
+    u.uhp = (u.uhp ?? 0) - n;
+    if (game.disp) game.disp.botl = 1;
+}
+
+// C ref: attrib.c Maybe_Half_Phys(dmg) — halved by Half_physical_damage.
+// Module-private at js/zap.js:226 and js/spell.js:544.
+function Maybe_Half_Phys(dmg) {
+    if (!game.u?.uprops?.Half_physical_damage) return dmg;
+    return Math.trunc((dmg + 1) / 2);
+}
+
+// C ref: ball.c:22 ballrelease(showmsg) — drop the carried ball out of
+// inventory without placing it on the floor.  No RNG.
+export async function ballrelease(showmsg) {
+    const u = game.u;
+    const { welded, freeinv, encumber_msg, setuwep_slot, setuswapwep, setuqwep }
+        = await import('./invent.js');
+    const { pline } = await import('./display.js');
+
+    if (carried(u.uball) && !welded(u.uball)) {
+        if (showmsg)
+            await pline('Startled, you drop the iron ball.');
+        if (game.uwep === u.uball)
+            setuwep_slot(null);            /* setuwep((struct obj *) 0) */
+        if (game.uswapwep === u.uball)
+            setuswapwep(null);
+        if (game.uquiver === u.uball)
+            setuqwep(null);
+        /* [this used to test 'if (uwep != uball)' but that always passes
+           after the setuwep() above] */
+        freeinv(u.uball); /* remove from inventory but don't place on floor */
+        await encumber_msg();
+    }
+}
+
+// C ref: ball.c:42 ballfall() — ball&chain might hit hero when falling through
+// a trap door.  RNG: rn2(5) for the hit, then rn1(7, 25) for the damage.
+export async function ballfall() {
+    const u = game.u;
+    let gets_hit;
+    const { welded, yname, body_part } = await import('./invent.js');
+    const { pline } = await import('./display.js');
+    const { rn1 } = await import('./rng.js');
+
+    if (!u.uball || (u.uball && carried(u.uball) && welded(u.uball)))
+        return;
+
+    gets_hit = (((u.uball.ox !== u.ux) || (u.uball.oy !== u.uy))
+                && ((game.uwep === u.uball) ? false : !!rn2(5)));
+    await ballrelease(true);
+    if (gets_hit) {
+        let dmg = rn1(7, 25);
+
+        await pline(`The iron ball falls on your ${body_part(HEAD)}.`);
+        if (game.uarmh) {
+            const { hard_helmet } = await import('./do_wear.js');
+            if (hard_helmet(game.uarmh)) {
+                await pline('Fortunately, you are wearing a hard helmet.');
+                dmg = 3;
+            } else if (game.flags?.verbose) {
+                /* C ref: objnam.c Yname2(obj) — "Your <xname>" capitalised, or
+                   "<Monster>'s <xname>"; not ported, and a worn helmet is
+                   always the hero's. */
+                const yn = yname(game.uarmh);
+                await pline(`${yn.charAt(0).toUpperCase()}${yn.slice(1)}`
+                            + ' does not protect you.');
+            }
+        }
+        await losehp_bc(Maybe_Half_Phys(dmg),
+                        'crunched in the head by an iron ball',
+                        NO_KILLER_PREFIX);
+    }
+}
+
+// C ref: ball.c:119 placebc_core() — put the ball & chain under the hero and
+// set the ball&chain variables (only needed when blind, "but what the heck").
+// Assumes the pair is NOT attached to the object list.  Should not be called
+// while swallowed except on the water level.  No RNG.
+export async function placebc_core() {
+    const u = game.u;
+
+    if (!u.uchain || !u.uball) {
+        const { impossible } = await import('./display.js');
+        await impossible('Where are your ball and chain?');
+        return;
+    }
+
+    flooreffects(u.uchain, u.ux, u.uy, ''); /* chain might rust */
+
+    if (carried(u.uball)) { /* the ball is carried */
+        u.bc_order = BCPOS_DIFFER;
+    } else {
+        /* ball might rust -- already checked when carried */
+        flooreffects(u.uball, u.ux, u.uy, '');
+        place_object(u.uball, u.ux, u.uy);
+        u.bc_order = BCPOS_CHAIN;
+    }
+
+    place_object(u.uchain, u.ux, u.uy);
+
+    u.bglyph = u.cglyph = memGlyph(u.ux, u.uy); /* pick up glyph */
+
+    newsym(u.ux, u.uy);
+    bcrestriction = 0;
+}
+
+// C ref: ball.c:146 unplacebc_core() — lift the pair off the map.  No RNG.
+export async function unplacebc_core() {
+    const u = game.u;
+    const { obj_extract_self } = await import('./invent.js');
+    const { Is_waterlevel } = await import('./const.js');
+
+    if (u.uswallow) {
+        if (Is_waterlevel(u.uz)) {
+            /* proceed with the removal from the floor so that movebubbles()
+               processing will disregard it as intended; ignore vision */
+            if (!carried(u.uball))
+                obj_extract_self(u.uball);
+            obj_extract_self(u.uchain);
+        }
+        /* ball&chain not unplaced while swallowed */
+        return;
+    }
+
+    if (!carried(u.uball)) {
+        obj_extract_self(u.uball);
+        if (Blind() && (u.bc_felt & BC_BALL)) /* drop glyph */
+            setMemGlyph(u.uball.ox, u.uball.oy, u.bglyph);
+        await maybe_unhide_at_bc(u.uball.ox, u.uball.oy);
+        newsym(u.uball.ox, u.uball.oy);
+    }
+    obj_extract_self(u.uchain);
+    if (Blind() && (u.bc_felt & BC_CHAIN)) /* drop glyph */
+        setMemGlyph(u.uchain.ox, u.uchain.oy, u.cglyph);
+    await maybe_unhide_at_bc(u.uchain.ox, u.uchain.oy);
+
+    newsym(u.uchain.ox, u.uchain.oy);
+    u.bc_felt = 0; /* feel nothing */
+}
+
+// C ref: ball.c:179 check_restriction(restriction).
+export function check_restriction(restriction) {
+    let ret = false;
+
+    if (!bcrestriction || (restriction === override_restriction))
+        ret = true;
+    else
+        ret = (bcrestriction === restriction) ? true : false;
+    return ret;
+}
+
+// C ref: ball.c:221 unplacebc_and_covet_placebc() — lift the pair and hand the
+// caller a pin that the matching lift_covet_and_placebc() must present.
+// RNG: rnd(400) for the pin, drawn whenever no restriction is already in place
+// (js/mkmaze.js:671 already accounts for this draw).
+export async function unplacebc_and_covet_placebc() {
+    let restriction = 0;
+
+    if (bcrestriction) {
+        const { impossible } = await import('./display.js');
+        await impossible('unplacebc_and_covet_placebc denied, already restricted');
+    } else {
+        const { rnd } = await import('./rng.js');
+        restriction = bcrestriction = rnd(400);
+        await unplacebc_core();
+    }
+    return restriction;
+}
+
+// C ref: ball.c:235 lift_covet_and_placebc(pin) — the matching put-back.  The
+// NH_DEVEL_STATUS paniclog() calls are debug-build only.  No RNG.
+export async function lift_covet_and_placebc(pin) {
+    const u = game.u;
+
+    if (!check_restriction(pin)) {
+        /* paniclog("placebc", "lift_covet_and_placebc denied, <pin mismatch |
+           restriction in effect>") */
+        return;
+    }
+    if (u.uchain && u.uchain.where !== 'free') {
+        const { impossible } = await import('./display.js');
+        await impossible('bc already placed?');
+        return;
+    }
+    await placebc_core();
+}
+
+// C ref: ball.c:379 set_bc(already_blind) — the hero is either about to go
+// blind or already blind and just punished; set up the ball and chain variables
+// so that the pair is "felt".  No RNG.
+export function set_bc(already_blind) {
+    const u = game.u;
+    const ball_on_floor = !carried(u.uball);
+
+    u.bc_order = bc_order(); /* get the order */
+    u.bc_felt = ball_on_floor ? (BC_BALL | BC_CHAIN) : BC_CHAIN; /* felt */
+
+    if (already_blind || u.uswallow) {
+        u.cglyph = u.bglyph = memGlyph(u.ux, u.uy);
+        return;
+    }
+
+    /*
+     *  Since we can still see, remove the ball&chain and get the glyph that
+     *  would be beneath them.  Then put the ball&chain back.  This is pretty
+     *  disgusting, but it will work.
+     */
+    remove_object(u.uchain);
+    if (ball_on_floor)
+        remove_object(u.uball);
+
+    newsym(u.uchain.ox, u.uchain.oy);
+    u.cglyph = memGlyph(u.uchain.ox, u.uchain.oy);
+
+    if (u.bc_order === BCPOS_DIFFER) { /* different locations */
+        place_object(u.uchain, u.uchain.ox, u.uchain.oy);
+        newsym(u.uchain.ox, u.uchain.oy);
+        if (ball_on_floor) {
+            newsym(u.uball.ox, u.uball.oy); /* see under ball */
+            u.bglyph = memGlyph(u.uball.ox, u.uball.oy);
+            place_object(u.uball, u.uball.ox, u.uball.oy);
+            newsym(u.uball.ox, u.uball.oy); /* restore ball */
+        }
+    } else {
+        u.bglyph = u.cglyph;
+        if (u.bc_order === BCPOS_CHAIN) {
+            place_object(u.uball, u.uball.ox, u.uball.oy);
+            place_object(u.uchain, u.uchain.ox, u.uchain.oy);
+        } else {
+            place_object(u.uchain, u.uchain.ox, u.uchain.oy);
+            place_object(u.uball, u.uball.ox, u.uball.oy);
+        }
+        newsym(u.uball.ox, u.uball.oy);
+    }
+}
+
+// C ref: ball.c:881 drop_ball(x, y) — the punished hero drops or throws the
+// iron ball.  Expects the ball to be already placed; should not be called while
+// swallowed.  RNG: only the bear-trap arm's rn2(3) and rn1(1000, 500).
+export async function drop_ball(x, y) {
+    const u = game.u;
+    const { pline } = await import('./display.js');
+    const { m_at } = await import('./display.js');
+    const { rn1 } = await import('./rng.js');
+
+    if (Blind()) {
+        /* get the order */
+        u.bc_order = bc_order();
+        /* pick up glyph */
+        u.bglyph = (u.bc_order) ? u.cglyph : memGlyph(x, y);
+    }
+
+    if (x !== u.ux || y !== u.uy) {
+        const pullmsg = 'The ball pulls you out of the ';
+        let t;
+        let side;
+
+        if (u.utrap
+            && u.utraptype !== TT_INFLOOR && u.utraptype !== TT_BURIEDBALL) {
+            const { deltrap, fill_pit, set_wounded_legs }
+                = await import('./trap.js');
+            switch (u.utraptype) {
+            case TT_PIT:
+                await pline(`${pullmsg}pit!`);
+                break;
+            case TT_WEB:
+                await pline(`${pullmsg}web!`);
+                /* Soundeffect(se_destroy_web, 30) — sound.c is not ported */
+                await pline('The web is destroyed!');
+                deltrap(t_at(u.ux, u.uy));
+                break;
+            case TT_LAVA:
+                /* C: hliquid("lava") — Hallucination renames it */
+                await pline(`${pullmsg}lava!`);
+                break;
+            case TT_BEARTRAP: {
+                const { LEFT_SIDE, RIGHT_SIDE } = await import('./const.js');
+                side = rn2(3) ? LEFT_SIDE : RIGHT_SIDE;
+                await pline(`${pullmsg}bear trap!`);
+                await set_wounded_legs(side, rn1(1000, 500));
+                if (!u.usteed) {
+                    const { body_part } = await import('./invent.js');
+                    await pline(`Your ${(side === LEFT_SIDE) ? 'left' : 'right'}`
+                                + ` ${body_part(LEG)} is severely damaged.`);
+                    await losehp_bc(Maybe_Half_Phys(2),
+                        'leg damage from being pulled out of a bear trap',
+                        KILLED_BY);
+                }
+                break;
+            }
+            default:
+                break;
+            }
+            /* C ref: trap.c reset_utrap(TRUE) — module-private at
+               js/dothrow.js:166 and js/read.js:1074; clear the fields here. */
+            u.utrap = 0;
+            u.utraptype = 0;
+            fill_pit(u.ux, u.uy);
+        }
+
+        u.ux0 = u.ux;
+        u.uy0 = u.uy;
+        if (!Levitation() && !m_at(x, y) && !u.utrap
+            && (IS_POOL_AT(x, y)
+                || ((t = t_at(x, y))
+                    && (is_pit(t.ttyp)
+                        || is_hole(t.ttyp))))) {
+            u.ux = x;
+            u.uy = y;
+        } else {
+            u.ux = x - u.dx;
+            u.uy = y - u.dy;
+        }
+        game.vision_full_recalc = 1; /* hero has moved, recalc vision later */
+
+        if (Blind()) {
+            /* drop glyph under the chain */
+            if (u.bc_felt & BC_CHAIN)
+                setMemGlyph(u.uchain.ox, u.uchain.oy, u.cglyph);
+            u.bc_felt = 0; /* feel nothing */
+            /* pick up new glyph */
+            u.cglyph = (u.bc_order) ? u.bglyph : memGlyph(u.ux, u.uy);
+        }
+        movobj(u.uchain, u.ux, u.uy); /* has a newsym */
+        if (Blind()) {
+            u.bc_order = bc_order();
+        }
+        newsym(u.ux0, u.uy0); /* clean up old position */
+        if (u.ux0 !== u.ux || u.uy0 !== u.uy) {
+            const { spoteffects } = await import('./trap.js');
+            await spoteffects(true);
+        }
+    }
+}
+
+// C ref: ball.c:964 litter() — ball&chain cause hero to randomly lose stuff
+// from inventory on the way downstairs.  RNG: one rnd(capacity) per carried
+// item that isn't the ball.
+export async function litter() {
+    const { weight_cap, canletgo, setnotworn, hitfloor, yname, otense,
+            freeinv, inventoryArray } = await import('./invent.js');
+    const { pline } = await import('./display.js');
+    const { rnd } = await import('./rng.js');
+    const capacity = weight_cap();
+    const u = game.u;
+
+    /* C walks gi.invent through ->nobj, capturing nextobj first because the
+       body can unlink otmp; a copy of the array is the same thing here. */
+    for (const otmp of inventoryArray().slice()) {
+        if (otmp !== u.uball && rnd(capacity) <= (otmp.owt | 0)) {
+            if (await canletgo(otmp, '')) {
+                await pline(`You drop ${yname(otmp)} and`
+                    + ` ${(otmp.quan === 1) ? 'it' : 'they'}`
+                    + ` ${otense(otmp, 'fall')} down the stairs with you.`);
+                if (typeof setnotworn === 'function') setnotworn(otmp);
+                freeinv(otmp);
+                if (typeof hitfloor === 'function') await hitfloor(otmp, false);
+            }
+        }
+    }
+}
+
+// C ref: ball.c:985 drag_down() — the punished hero goes downstairs.
+// RNG order: rn2(3) only when uwep is neither the ball nor NULL, then either
+// rn2(6) (forward) or rn2(2) followed by rnd(6) (backward), with each surviving
+// branch drawing its own damage roll and then litter()'s per-item rnd().
+export async function drag_down() {
+    const u = game.u;
+    let forward;
+    let dragchance = 3;
+    const { pline } = await import('./display.js');
+    const { rnd } = await import('./rng.js');
+    const { welded } = await import('./invent.js');
+
+    /*
+     *  Assume that the ball falls forward if:
+     *  a) the character is wielding it, or
+     *  b) the character has both hands available to hold it (i.e. is not
+     *     wielding any weapon), or
+     *  c) (perhaps) it falls forward out of his non-weapon hand
+     */
+    forward = carried(u.uball)
+        && (game.uwep === u.uball || !game.uwep || !rn2(3));
+
+    if (carried(u.uball) && !welded(u.uball))
+        await pline('You lose your grip on the iron ball.');
+
+    {   /* previous level is still displayed although you went down the
+           stairs.  Avoids bug C343-20 */
+        const { cls } = await import('./display.js');
+        await cls();
+    }
+
+    if (forward) {
+        if (rn2(6)) {
+            await pline('The iron ball drags you downstairs!');
+            await losehp_bc(Maybe_Half_Phys(rnd(6)),
+                            'dragged downstairs by an iron ball',
+                            NO_KILLER_PREFIX);
+            await litter();
+        }
+    } else {
+        if (rn2(2)) {
+            /* Soundeffect(se_iron_ball_hits_you, 25) */
+            await pline('The iron ball smacks into you!');
+            await losehp_bc(Maybe_Half_Phys(rnd(20)), 'iron ball collision',
+                            KILLED_BY_AN);
+            const { exercise } = await import('./attrib.js');
+            exercise(A_STR, false);
+            dragchance -= 2;
+        }
+        if (dragchance >= rnd(6)) {
+            await pline('The iron ball drags you downstairs!');
+            await losehp_bc(Maybe_Half_Phys(rnd(3)),
+                            'dragged downstairs by an iron ball',
+                            NO_KILLER_PREFIX);
+            const { exercise } = await import('./attrib.js');
+            exercise(A_STR, false);
+            await litter();
+        }
+    }
+}
+
+// C ref: ball.c:1033 bc_sanity_check() — #sanity's ball&chain audit.  No RNG.
+export async function bc_sanity_check() {
+    const u = game.u;
+    const { impossible } = await import('./display.js');
+    const { W_BALL, W_CHAIN, W_WEAPONS } = await import('./const.js');
+    let otyp, freeball, freechain;
+    let onam;
+
+    if (Punished() && (!u.uball || !u.uchain)) {
+        await impossible(`Punished without ${!u.uball ? 'iron ball' : ''}`
+            + `${(!u.uball && !u.uchain) ? ' and ' : ''}`
+            + `${!u.uchain ? 'attached chain' : ''}?`);
+    } else if (!Punished() && (u.uball || u.uchain)) {
+        await impossible(`Attached ${u.uchain ? 'chain' : ''}`
+            + `${(u.uchain && u.uball) ? ' and ' : ''}`
+            + `${u.uball ? 'iron ball' : ''} without being Punished?`);
+    }
+    /* ball is free when swallowed, when changing levels or during air bubble
+       management on Plane of Water, other times? */
+    freechain = (!u.uchain || u.uchain.where === 'free');
+    freeball = (!u.uball || u.uball.where === 'free'
+                /* lie to simplify the testing logic */
+                || (freechain && u.uball.where === 'invent'));
+    if (u.uball && (u.uball.otyp !== HEAVY_IRON_BALL
+                    || (u.uball.where !== 'floor'
+                        && u.uball.where !== 'invent'
+                        && u.uball.where !== 'free')
+                    || (!!freeball !== !!freechain)      /* freeball ^ freechain */
+                    || ((u.uball.owornmask & W_BALL) === 0)
+                    || ((u.uball.owornmask & ~(W_BALL | W_WEAPONS)) !== 0))) {
+        otyp = u.uball.otyp;
+        /* C ref: objnam.c safe_typename(otyp) — UNPORTED; the otyp alone is
+           enough to identify the row. */
+        onam = `otyp ${otyp}`;
+        await impossible(`uball: type ${otyp} (${onam}), where`
+            + ` ${u.uball.where}, wornmask=0x`
+            + `${(u.uball.owornmask >>> 0).toString(16).padStart(8, '0')}`);
+    }
+    /* similar check to ball except can't be in inventory */
+    if (u.uchain && (u.uchain.otyp !== IRON_CHAIN
+                     || (u.uchain.where !== 'floor'
+                         && u.uchain.where !== 'free')
+                     || (!!freechain !== !!freeball)
+                     /* [could simplify this to owornmask != W_CHAIN] */
+                     || ((u.uchain.owornmask & W_CHAIN) === 0)
+                     || ((u.uchain.owornmask & ~W_CHAIN) !== 0))) {
+        otyp = u.uchain.otyp;
+        onam = `otyp ${otyp}`;
+        await impossible(`uchain: type ${otyp} (${onam}), where`
+            + ` ${u.uchain.where}, wornmask=0x`
+            + `${(u.uchain.owornmask >>> 0).toString(16).padStart(8, '0')}`);
+    }
+    if (u.uball && u.uchain && !(freeball && freechain)) {
+        let bx, by, cx, cy, bdx, bdy, cdx, cdy;
+
+        /* non-free chain should be under or next to the hero; non-free ball
+           should be on or next to the chain or else carried */
+        cx = u.uchain.ox; cy = u.uchain.oy;
+        cdx = cx - u.ux; cdy = cy - u.uy;
+        cdx = Math.abs(cdx); cdy = Math.abs(cdy);
+        if (u.uball.where === 'invent') /* carried(uball) */
+            { bx = u.ux; by = u.uy; }   /* get_obj_location() */
+        else
+            { bx = u.uball.ox; by = u.uball.oy; }
+        bdx = bx - cx; bdy = by - cy;
+        bdx = Math.abs(bdx); bdy = Math.abs(bdy);
+        if (cdx > 1 || cdy > 1 || bdx > 1 || bdy > 1)
+            await impossible(`b&c distance: you@<${u.ux},${u.uy}>,`
+                + ` chain@<${cx},${cy}>, ball@<${bx},${by}>`);
+    }
+    /* [check bc_order too?] */
+}

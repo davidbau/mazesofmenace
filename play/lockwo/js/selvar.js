@@ -10,7 +10,10 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { COLNO, ROWNO, MAX_TYPE, MATCH_WALL, IS_STWALL, isok } from './const.js';
+import { COLNO, ROWNO, MAX_TYPE, MATCH_WALL, IS_STWALL, isok,
+         ROOMOFFSET } from './const.js';
+// Used only by the selvar.c block at the bottom of this file (line_dist_coord).
+import { dist2 } from './hacklib.js';
 
 // C ref: sp_lev.h — direction bitmask used by selection_do_grow / mazewalk.
 export const W_RANDOM = -1;
@@ -419,4 +422,352 @@ export function l_selection_rect(sel, x1, y1, x2, y2) {
     selection_do_line(x2, y1, x2, y2, out);
     selection_do_line(x1, y2, x2, y2, out);
     return out;
+}
+
+// ===========================================================================
+// selvar.c functions with no caller in js/ yet.  Nothing above this line calls
+// into this block: it is additive only.  nhlsel.c/nhlobj.c are somebody else's
+// file, so nothing here registers itself into a Lua binding table.
+// ===========================================================================
+
+// C ref: sp_lev.h:63/64.
+export const SEL_GRADIENT_RADIAL = 0;
+export const SEL_GRADIENT_SQUARE = 1;
+
+// C ref: selvar.c:33 selection_free(sel, freesel).  JS is garbage-collected, so
+// the free()s are no-ops; the OBSERVABLE half is the `else` branch, which
+// memsets the struct to zero — wid/hei become 0, so every subsequent
+// selection_getpoint()/setpoint() on that struct is a no-op and getbounds()
+// reports the whole map (lx >= wid).  Callers that reuse a selection after
+// freeing it depend on exactly that.
+export function selection_free(sel, freesel) {
+    if (sel) {
+        sel.map = null;
+        if (freesel) {
+            /* C free()s the struct; nothing to do here. */
+        } else {
+            sel.wid = 0;
+            sel.hei = 0;
+            sel.bounds = { lx: 0, ly: 0, hx: 0, hy: 0 };
+            sel.bounds_dirty = false;
+        }
+    }
+}
+
+// C ref: selvar.c:369 the file-static selection_flood_check_func.
+let selection_flood_check_func = null;
+
+// C ref: selvar.c:372 set_selection_floodfillchk(f).
+export function set_selection_floodfillchk(f) {
+    selection_flood_check_func = f;
+}
+
+// C ref: selvar.c:379 sel_flood_havepoint(x, y, xs, ys, n) — "check whether
+// <x,y> is already in xs[],ys[]".  Walks the pending stack BACKWARDS from n-1;
+// the order is irrelevant to the answer but the linear scan is what bounds the
+// flood's cost, so it is kept as-is rather than replaced with a Set.
+function sel_flood_havepoint(x, y, xs, ys, n) {
+    const xx = x, yy = y;
+
+    while (n > 0) {
+        --n;
+        if (xs[n] === xx && ys[n] === yy)
+            return true;
+    }
+    return false;
+}
+
+// C ref: selvar.c:395 selection_floodfill(ov, x, y, diagonals).
+// No RNG, but the ORDER the four (or eight) neighbours are pushed decides the
+// order cells are visited, which is visible through any callback the caller
+// hangs off set_selection_floodfillchk().  C pushes +x, -x, +y, -y (then the
+// four diagonals) and pops from the TOP, so the last one pushed is explored
+// first.  `tmp` is the visited set; `ov` accumulates the result.
+export function selection_floodfill(ov, x, y, diagonals) {
+    const tmp = selection_new();
+    const SEL_FLOOD_STACK = COLNO * ROWNO;
+    let idx = 0;
+    const dx = new Int16Array(SEL_FLOOD_STACK);
+    const dy = new Int16Array(SEL_FLOOD_STACK);
+
+    const SEL_FLOOD = (nx, ny) => {
+        if (idx < SEL_FLOOD_STACK) {
+            dx[idx] = nx;
+            dy[idx] = ny;
+            idx++;
+        } else {
+            throw new Error('floodfill stack overrun');   /* C: panic() */
+        }
+    };
+    const SEL_FLOOD_CHKDIR = (mx, my, sel) => {
+        if (isok(mx, my)
+            && selection_flood_check_func(mx, my)
+            && !selection_getpoint(mx, my, sel)
+            && !sel_flood_havepoint(mx, my, dx, dy, idx))
+            SEL_FLOOD(mx, my);
+    };
+
+    if (selection_flood_check_func === null) {
+        selection_free(tmp, true);
+        return;
+    }
+    SEL_FLOOD(x, y);
+    do {
+        idx--;
+        x = dx[idx];
+        y = dy[idx];
+        if (isok(x, y)) {
+            selection_setpoint(x, y, ov, 1);
+            selection_setpoint(x, y, tmp, 1);
+        }
+        SEL_FLOOD_CHKDIR(x + 1, y, tmp);
+        SEL_FLOOD_CHKDIR(x - 1, y, tmp);
+        SEL_FLOOD_CHKDIR(x, y + 1, tmp);
+        SEL_FLOOD_CHKDIR(x, y - 1, tmp);
+        if (diagonals) {
+            SEL_FLOOD_CHKDIR(x + 1, y + 1, tmp);
+            SEL_FLOOD_CHKDIR(x - 1, y - 1, tmp);
+            SEL_FLOOD_CHKDIR(x - 1, y + 1, tmp);
+            SEL_FLOOD_CHKDIR(x + 1, y - 1, tmp);
+        }
+    } while (idx > 0);
+    selection_free(tmp, true);
+}
+
+// C ref: selvar.c:456 selection_do_ellipse() — McIlroy's Ellipse Algorithm,
+// e(x,y) = b^2*x^2 + a^2*y^2 - a^2*b^2.  No RNG.  Note C's `filled = !filled`
+// inversion up front: the `!filled` branch below draws the OUTLINE.
+// The integer division and `%` are C semantics (a, b are non-negative here, so
+// Math.trunc matches).
+export function selection_do_ellipse(ov, xc, yc, a, b, filled) {
+    let x = 0, y = b;
+    const a2 = a * a, b2 = b * b;
+    const crit1 = -(Math.trunc(a2 / 4) + (a % 2) + b2);
+    const crit2 = -(Math.trunc(b2 / 4) + (b % 2) + a2);
+    const crit3 = -(Math.trunc(b2 / 4) + (b % 2));
+    let t = -a2 * y; /* e(x+1/2,y-1/2) - (a^2+b^2)/4 */
+    let dxt = 2 * b2 * x, dyt = -2 * a2 * y;
+    const d2xt = 2 * b2, d2yt = 2 * a2;
+    let width = 1;
+    let i;
+
+    if (!ov)
+        return;
+
+    filled = !filled;
+
+    if (!filled) {
+        while (y >= 0 && x <= a) {
+            selection_setpoint(xc + x, yc + y, ov, 1);
+            if (x !== 0 || y !== 0)
+                selection_setpoint(xc - x, yc - y, ov, 1);
+            if (x !== 0 && y !== 0) {
+                selection_setpoint(xc + x, yc - y, ov, 1);
+                selection_setpoint(xc - x, yc + y, ov, 1);
+            }
+            if (t + b2 * x <= crit1       /* e(x+1,y-1/2) <= 0 */
+                || t + a2 * y <= crit3) { /* e(x+1/2,y) <= 0 */
+                x++;
+                dxt += d2xt;
+                t += dxt;
+            } else if (t - a2 * y > crit2) { /* e(x+1/2,y-1) > 0 */
+                y--;
+                dyt += d2yt;
+                t += dyt;
+            } else {
+                x++;
+                dxt += d2xt;
+                t += dxt;
+                y--;
+                dyt += d2yt;
+                t += dyt;
+            }
+        }
+    } else {
+        while (y >= 0 && x <= a) {
+            if (t + b2 * x <= crit1       /* e(x+1,y-1/2) <= 0 */
+                || t + a2 * y <= crit3) { /* e(x+1/2,y) <= 0 */
+                x++;
+                dxt += d2xt;
+                t += dxt;
+                width += 2;
+            } else if (t - a2 * y > crit2) { /* e(x+1/2,y-1) > 0 */
+                for (i = 0; i < width; i++)
+                    selection_setpoint(xc - x + i, yc - y, ov, 1);
+                if (y !== 0)
+                    for (i = 0; i < width; i++)
+                        selection_setpoint(xc - x + i, yc + y, ov, 1);
+                y--;
+                dyt += d2yt;
+                t += dyt;
+            } else {
+                for (i = 0; i < width; i++)
+                    selection_setpoint(xc - x + i, yc - y, ov, 1);
+                if (y !== 0)
+                    for (i = 0; i < width; i++)
+                        selection_setpoint(xc - x + i, yc + y, ov, 1);
+                x++;
+                dxt += d2xt;
+                t += dxt;
+                y--;
+                dyt += d2yt;
+                t += dyt;
+                width += 2;
+            }
+        }
+    }
+}
+
+// C ref: selvar.c:542 line_dist_coord() — "square of distance from line segment
+// (x1,y1, x2,y2) to point (x3,y3)".
+// C computes `lu` in single precision (`/ (float) s`) and then TRUNCATES
+// `x1 + lu * px` into a long, so the float width is observable: a double would
+// land on the other side of an integer boundary for some inputs and shift the
+// result by 1.  Math.fround() reproduces the float32 rounding at each step.
+function line_dist_coord(x1, y1, x2, y2, x3, y3) {
+    const px = x2 - x1;
+    const py = y2 - y1;
+    const s = px * px + py * py;
+    let x, y, dx, dy, distsq = 0;
+    let lu = 0;
+
+    if (x1 === x2 && y1 === y2)
+        return dist2(x1, y1, x3, y3);
+
+    lu = Math.fround(Math.fround((x3 - x1) * px + (y3 - y1) * py) / Math.fround(s));
+    if (lu > 1)
+        lu = 1;
+    else if (lu < 0)
+        lu = 0;
+
+    x = Math.trunc(Math.fround(x1 + Math.fround(lu * px)));
+    y = Math.trunc(Math.fround(y1 + Math.fround(lu * py)));
+    dx = x - x3;
+    dy = y - y3;
+    distsq = dx * dx + dy * dy;
+
+    return distsq;
+}
+
+// C ref: selvar.c:570 selection_do_gradient() — "guts of l_selection_gradient".
+// RNG: rn2(dofs) is drawn ONCE per cell, and only when the cell is outside the
+// mind radius but inside the maxd radius (C's `||` and `&&` short-circuit).
+// Getting that gate wrong changes the draw COUNT for the whole map.
+export async function selection_do_gradient(ov, x, y, x2, y2, gtyp, mind, maxd) {
+    let dx, dy, dofs;
+
+    if (mind > maxd) {
+        const tmp = mind;
+        mind = maxd;
+        maxd = tmp;
+    }
+
+    dofs = maxd * maxd - mind * mind;
+    if (dofs < 1)
+        dofs = 1;
+
+    if (gtyp !== SEL_GRADIENT_RADIAL && gtyp !== SEL_GRADIENT_SQUARE) {
+        const { impossible } = await import('./display.js');
+        await impossible('Unrecognized gradient type! Defaulting to radial...');
+        gtyp = SEL_GRADIENT_RADIAL;   /* C: FALLTHROUGH into the radial case */
+    }
+
+    switch (gtyp) {
+    default:
+    case SEL_GRADIENT_RADIAL: {
+        for (dx = 0; dx < COLNO; dx++)
+            for (dy = 0; dy < ROWNO; dy++) {
+                const d0 = line_dist_coord(x, y, x2, y2, dx, dy);
+
+                if (d0 <= mind * mind
+                    || (d0 <= maxd * maxd && d0 - mind * mind < rn2(dofs)))
+                    selection_setpoint(dx, dy, ov, 1);
+            }
+        break;
+    }
+    case SEL_GRADIENT_SQUARE: {
+        for (dx = 0; dx < COLNO; dx++)
+            for (dy = 0; dy < ROWNO; dy++) {
+                const d1 = line_dist_coord(x, y, x2, y2, x, dy);
+                const d2 = line_dist_coord(x, y, x2, y2, dx, y);
+                const d3 = line_dist_coord(x, y, x2, y2, x2, dy);
+                const d4 = line_dist_coord(x, y, x2, y2, dx, y2);
+                const d5 = line_dist_coord(x, y, x2, y2, dx, dy);
+                const d0 = Math.min(d5, Math.min(Math.max(d1, d2),
+                                                 Math.max(d3, d4)));
+
+                if (d0 <= mind * mind
+                    || (d0 <= maxd * maxd && d0 - mind * mind < rn2(dofs)))
+                    selection_setpoint(dx, dy, ov, 1);
+            }
+        break;
+    } /*case*/
+    } /*switch*/
+}
+
+// C ref: selvar.c:747 selection_is_irregular(sel) — "selection is not
+// rectangular, or has holes in it".  The isok() test is why a selection whose
+// bounds include column 0 can still be "regular": column 0 is never ok.
+export function selection_is_irregular(sel) {
+    const rect = selection_getbounds(sel);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++)
+            if (isok(x, y) && !selection_getpoint(x, y, sel))
+                return true;
+
+    return false;
+}
+
+// C ref: selvar.c:764 selection_size_description(sel, buf) — "return a
+// description of the selection size".  C's out-buffer becomes the return value.
+export function selection_size_description(sel) {
+    const rect = selection_getbounds(sel);
+    const dx = rect.hx - rect.lx + 1;
+    const dy = rect.hy - rect.ly + 1;
+    return `${selection_is_irregular(sel) ? 'irregularly shaped'
+             : (dx === dy) ? 'square' : 'rectangular'} ${dx} by ${dy}`;
+}
+
+// C ref: selvar.c:781 selection_from_mkroom(croom) — the cells that belong to
+// one room, by roomno rather than by rectangle, so an irregular room comes back
+// with its real shape.  sp_lev.js is imported lazily: it imports THIS file, so a
+// static edge would be a cycle.
+export async function selection_from_mkroom(croom) {
+    const sel = selection_new();
+
+    if (!croom) {
+        const { sp_lev_state } = await import('./sp_lev.js');
+        const coder = sp_lev_state().coder;
+        if (coder && coder.croom)
+            croom = coder.croom;
+    }
+    if (!croom)
+        return sel;
+
+    // C: `rmno = (croom - svr.rooms) + ROOMOFFSET`.  A SUBROOM lives past
+    // MAXNROFROOMS in svr.rooms[], so indexOf() over level.rooms answers -1 for
+    // it — js/mkroom.js:92 hit exactly that and records the index on the room as
+    // `roomnoidx`.
+    const idx = (croom.roomnoidx ?? (game.level?.rooms?.indexOf(croom) ?? -1));
+    const rmno = idx + ROOMOFFSET;
+    for (let y = croom.ly; y <= croom.hy; y++)
+        for (let x = croom.lx; x <= croom.hx; x++) {
+            const loc = game.level?.at(x, y);
+            if (isok(x, y) && loc && !loc.edge && loc.roomno === rmno)
+                selection_setpoint(x, y, sel, 1);
+        }
+    return sel;
+}
+
+// C ref: selvar.c:802 selection_force_newsyms(sel) — note it starts at x == 1,
+// not 0.  newsym_force() is a display.c function that this port keeps in
+// js/invent.js:8065, hence the lazy import (and it belongs in display.js).
+export async function selection_force_newsyms(sel) {
+    const { newsym_force } = await import('./invent.js');
+
+    for (let x = 1; x < sel.wid; x++)
+        for (let y = 0; y < sel.hei; y++)
+            if (selection_getpoint(x, y, sel))
+                newsym_force(x, y);
 }

@@ -44,6 +44,7 @@ import { attacktype, dmgtype, AT_GAZE, AT_EXPL, AT_BREA, AT_ENGL, AD_FIRE,
 import { POT_SPEED, LARGE_BOX, BAG_OF_TRICKS, BOULDER, STRANGE_OBJECT,
     objects as OBJECTS, place_object } from './mkobj.js';
 import { monster_by_pmidx, makemon } from './makemon.js';
+import { find_mac as worn_find_mac } from './worn.js';
 // onscary() is an `export function` declaration in monmove.js, so the
 // monmove -> muse -> monmove import cycle resolves through a hoisted binding
 // (unlike a `const` arrow, which would be in its temporal dead zone here).
@@ -1801,19 +1802,8 @@ function monstseesu_muse(seenres, clear) {
     }
 }
 
-// C ref: worn.c find_mac(mon) — base AC plus worn/carried adjustments.
-function find_mac_muse(mon) {
-    let base = mon?.data?.ac;
-    if (base == null) base = 10;
-    const AMULET_OF_GUARDING = 205, AC_MAX = 127;
-    const mwflags = mon?.misc_worn_check | 0;
-    for (const obj of (Array.isArray(mon?.minvent) ? mon.minvent : [])) {
-        if (!((obj.owornmask | 0) & mwflags)) continue;
-        if (obj.otyp === AMULET_OF_GUARDING) base -= 2;
-    }
-    if (Math.abs(base) > AC_MAX) base = Math.sign(base) * AC_MAX;
-    return base;
-}
+// C ref: worn.c find_mac(mon).
+function find_mac_muse(mon) { return worn_find_mac(mon); }
 
 // C ref: muse.c mbhitm(mtmp, otmp) — what the monster's beam does to whatever
 // it strikes.  WAN_UNDEAD_TURNING's unturn_dead() still needs zap.c machinery

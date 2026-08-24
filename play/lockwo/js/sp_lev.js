@@ -35,6 +35,27 @@ import {
     TRAPNUM, TRAPPED_DOOR, TRAPPED_CHEST, MAGIC_PORTAL, VIBRATING_SQUARE,
     LEVEL_TELEP, WEB, STATUE_TRAP, POLY_TRAP, TRAPDOOR,
     LA_UP, LA_DOWN,
+    // used only by the sp_lev.c translations at the end of this file
+    IS_POOL, ACCESSIBLE, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST,
+    DB_WEST, SVALL, GRAVE, SP_COORD_IS_RANDOM, DRY, WET, HOT, ANY_LOC,
+    NO_LOC_WARN, MAX_NESTED_ROOMS, SP_OBJ_CONTENT, SP_OBJ_CONTAINER,
+    NO_INVENT, CUSTOM_INVENT, DEFAULT_INVENT, BOOL_RANDOM,
+    LVLINIT_NONE, LVLINIT_SOLIDFILL, LVLINIT_MAZEGRID, LVLINIT_MAZE,
+    LVLINIT_MINES, LVLINIT_ROGUE, LVLINIT_SWAMP,
+    AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, AM_MASK,
+    AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, A_ORIGINAL, Amask2align,
+    M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
+    NEUTRAL, MALE, FEMALE, NON_PM, LOW_PM, NO_NC_FLAGS,
+    MM_NOTAIL, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOMSG,
+    DUST, ENGRAVE, MARK, ENGR_BLOOD,
+    F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED,
+    TREE_LOOTED, TREE_SWARM,
+    LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_TELE, LR_UPTELE, LR_DOWNTELE,
+    LR_MONGEN, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE,
+    G_EXTINCT, G_GONE, Is_waterlevel, Is_medusa_level, is_hole,
+    W_NORTH, W_SOUTH, W_EAST, W_WEST, AM_NONE,
+    ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP, FOODSHOP, RINGSHOP,
+    WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
 } from './const.js';
 // readobjnam() is how C's obj.new(<name>) resolves an item name (via the same
 // rnd_otyp_by_namedesc path a wish uses).  readobjnam.js does not import sp_lev,
@@ -44,17 +65,24 @@ import { objects as OBJDATA } from './mkobj.js';
 import { mkgold, next_ident, mksobj, mksobj_at, set_corpsenm, obj_resists_rng,
          CORPSE, CHEST, LARGE_BOX, STATUE, mk_tt_object, mkobj_at, BOULDER,
          FOOD_CLASS, GOLD_PIECE, add_to_container, weight, mkobj, RANDOM_CLASS,
-         OIL_LAMP } from './mkobj.js';
+         OIL_LAMP,
+         bless, unbless, curse, uncurse, blessorcurse, discard_minvent,
+         GEM_CLASS, COIN_CLASS } from './mkobj.js';
 import { monster_by_pmidx, name_to_pmidx, level_difficulty_ext, makemon,
          mkclass, mkclass_aligned, mm_mon_at, enexto_spawn, mongets_pub,
-         name_gender_hint, MGEND_NEUTRAL, MM_ASLEEP, MM_NOGRP } from './makemon.js';
+         name_gender_hint, MGEND_NEUTRAL, MM_ASLEEP, MM_NOGRP,
+         set_mimic_sym, propagate, mpickobj, set_malign,
+         newcham } from './makemon.js';
 import { somexy, inside_room, occupied } from './mkroom.js';
-import { create_gas_cloud_selection } from './region.js';
+import { create_gas_cloud_selection, create_gas_cloud } from './region.js';
 import { is_flyer_flag, is_swimmer_flag, passes_walls_flag,
-         mflags1_of, mflags2_of, M1_AMPHIBIOUS } from './monflags_data.js';
-import { maketrap, Can_fall_thru } from './trap.js';
-import { is_pool_or_lava } from './dbridge.js';
-import { new_light_source, LS_OBJECT } from './light.js';
+         mflags1_of, mflags2_of, M1_AMPHIBIOUS,
+         is_male_flag, is_female_flag } from './monflags_data.js';
+import { maketrap, Can_fall_thru, t_at, deltrap, undestroyable_trap,
+         Can_dig_down } from './trap.js';
+import { is_pool_or_lava, create_drawbridge } from './dbridge.js';
+import { new_light_source, LS_OBJECT, del_light_source, LS_MONSTER,
+         emits_light } from './light.js';
 import { stock_room } from './shknam.js';
 import { In_hell } from './dungeon.js';
 // Unreferenced here since the soko builders moved to js/levels/ (which import
@@ -62,7 +90,7 @@ import { In_hell } from './dungeon.js';
 // detect.js sits in the module evaluation order, which this refactor does not
 // touch.  Delete it in a change that is separately gated.
 import { premap_detect } from './detect.js';
-import { make_engr_at, make_grave } from './engrave.js';
+import { make_engr_at, make_grave, engr_at, del_engr } from './engrave.js';
 import { priestini } from './priest.js';
 import { races } from './roles.js';
 import { match_maptyps,
@@ -71,7 +99,9 @@ import { match_maptyps,
          selection_clear as selection_clear_var,
          selection_getpoint as selection_getpoint_var,
          selection_getbounds as selection_getbounds_var,
-         selection_recalc_bounds } from './selvar.js';
+         selection_recalc_bounds,
+         selection_clone, selection_iterate, random_wdir,
+         selection_rndcoord as selection_rndcoord_var } from './selvar.js';
 
 // Special-level builders live one-per-file under js/levels/; re-exported here so
 // every existing `import { makemaz_* } from './sp_lev.js'` keeps working. The
@@ -131,6 +161,25 @@ export { makemaz_sam_strt } from './levels/sam_strt.js';
 export { makemaz_tou_strt } from './levels/tou_strt.js';
 export { makemaz_val_strt } from './levels/val_strt.js';
 export { makemaz_wiz_strt } from './levels/wiz_strt.js';
+
+// These seven imports belong to the sp_lev.c translations at the end of this
+// file, and they are HERE rather than with the imports at the top on purpose.
+// ESM evaluates modules in post-order DFS of the import graph, so an import
+// placed after every edge this file already has can only name a module that is
+// already fully evaluated, and cannot move anything (each of these finishes
+// well before sp_lev.js does).  The same import at the top could reorder a
+// module that is currently reached through one of the levels/ files.
+// js/mklev.js is excluded at either position: it imports THIS file and calls
+// set_mktrap_victim() while its own body runs, so the edge would make mklev's
+// body evaluate first and assign to `_mktrap_victim` inside its TDZ.
+import { sobj_at, stackobj, obj_extract_self, obfree } from './invent.js';
+import { does_block, block_point } from './vision.js';
+import { walkfrom, create_maze } from './mkmaze.js';
+import { m_dowear, resists_ston,
+         Protection_from_shape_changers } from './mon.js';
+import { christen_monst, lookup_novel } from './do_name.js';
+import { in_rooms } from './shkroom.js';
+import { DESCR_BY_OTYP } from './o_descr_data.js';
 
 export const gx = { xstart: 1, xsize: COLNO - 1, x_maze_max: COLNO - 1 };
 export const gy = { ystart: 0, ysize: ROWNO, y_maze_max: ROWNO - 1 };
@@ -3939,4 +3988,3712 @@ function single_level_branch() {
     const uz = game.u?.uz;
     const dgn = uz ? game.dungeons?.[uz.dnum] : null;
     return !!(dgn && (dgn.num_dunlevs ?? 0) === 1);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The rest of sp_lev.c, translated.
+//
+// Everything from here to the end of the file is INERT: no code above this
+// line, and nothing outside this file, calls any of it.  It exists so the
+// special-level coder (des.* / lspo_*) is present and faithful for whoever
+// wires it up; that wiring is a separate, separately-gated change.
+//
+// Two rules shaped how the dependencies below are resolved:
+//
+//  * The import statements this block needs sit AFTER the levels/ re-export
+//    block above, not with the imports at the top of the file.  ESM evaluates
+//    modules in post-order DFS of the import graph, so an import placed after
+//    every edge this file already has can only name a module that is already
+//    fully evaluated -- it cannot move anything.  Adding the same import at the
+//    top could.
+//
+//  * js/mklev.js is deliberately NOT imported, at either position.  mklev.js
+//    imports THIS file and calls set_mktrap_victim() while its own body runs;
+//    an sp_lev -> mklev edge makes mklev's body evaluate first, so that call
+//    assigns to `_mktrap_victim` (an `export let`) inside its TDZ and the whole
+//    program fails to load.  add_room()/add_door()/mkstairs()/... therefore
+//    arrive through `EXT` below, as do the callees js/ has not ported at all.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// C ref: the sp_lev.c callees that this file cannot reach (see the header
+// above).  Keeping them behind one table means the translations below preserve
+// C's control flow and RNG-call order exactly, instead of being reshaped
+// around what happens to be importable today.  Whoever wires the coder up
+// supplies the real functions with bind_sp_lev_externs().
+const ext_nyi = (name) => () => {
+    throw new Error(`sp_lev.c port: ${name}() is not wired up yet`);
+};
+const EXT_NAMES = [
+    // js/mklev.js (cannot be imported here -- see the header comment)
+    'topologize', 'makecorridors', 'mkstairs', 'level_finalize_topology',
+    'makeroguerooms', 'induced_align', 'stairway_add', 'wallification',
+    'mineralize', 'create_room', 'create_subroom', 'dig_corridor',
+    'maybe_add_door', 'mktrap', 'pick_vibrasquare_location',
+    // not ported anywhere in js/ yet
+    'mkmap', 'mk_roamer', 'mk_mplayer', 'mdrop_special_objs',
+    'remove_monster', 'place_monster', 'mongone', 'poly_when_stoned',
+    'rndmonnum', 'name_to_mon', 'def_char_to_monclass',
+    'select_newcham_form', 'is_vampshifter', 'validvamp',
+    'mgender_from_permonst', 'set_mon_data', 'pm_invisible', 'vampshifted',
+    'monst_to_any', 'oname', 'bury_an_obj', 'delete_contents', 'begin_burn',
+    'artifact_exists', 'safe_oname', 'can_saddle', 'put_saddle_on_mon',
+    'selection_floodfill', 'set_selection_floodfillchk',
+    'back_to_glyph', 'glyph_is_cmap', 'count_level_features', 'fixup_special',
+    'makemap_prepost', 'oinit', 'clear_level_structures', 'load_lua',
+    'Is_mineend_level', 'Is_sokoend_level', 'In_W_tower',
+    'defsyms_explanation',
+];
+const EXT = {};
+for (const nm of EXT_NAMES) EXT[nm] = ext_nyi(nm);
+export function bind_sp_lev_externs(impls) { Object.assign(EXT, impls); }
+
+// C ref: sp_lev.c:166-173 SPLEV_LEFT..SPLEV_RIGHT and TOP/BOTTOM.  The
+// SPLEV_* consts already in this file are lspo_map's own 0-based recoding, so
+// the real 1-based macro values need distinct names here.
+const C_SPLEV_LEFT = 1, C_SPLEV_H_LEFT = 2, C_SPLEV_CENTER = 3,
+      C_SPLEV_H_RIGHT = 4, C_SPLEV_RIGHT = 5, C_TOP = 1, C_BOTTOM = 5;
+
+// C ref: onames.h STRANGE_OBJECT / objclass.h Bitfield(oc_merge), which
+// js/mkobj.js packs as bit 5 of the row's `flags` word.
+const STRANGE_OBJECT_OTYP = 0;
+const F_MERGE = 32;
+const oc_merge = (otyp) => !!(OBJDATA[otyp]?.flags & F_MERGE);
+
+// C ref: sp_lev.h:82-85 SP_COORD_X/SP_COORD_Y/SP_COORD_PACK.
+const SP_COORD_X = (l) => (l & 0xff);
+const SP_COORD_Y = (l) => ((l >> 16) & 0xff);
+const SP_COORD_PACK = (x, y) => ((x & 0xff) + ((y & 0xff) << 16));
+const SP_COORD_PACK_RANDOM = (f) => (SP_COORD_IS_RANDOM | f);
+
+// C ref: sp_lev.c:203 TYP_CANNOT_MATCH.
+const TYP_CANNOT_MATCH = (typ) => (typ === MAX_TYPE || typ === INVALID_TYPE);
+
+// C ref: hacklib.c swapbits(oldval, bita, bitb) -- exchange two bits.
+function swapbits(oldval, bita, bitb) {
+    let ret = oldval & ~((1 << bita) | (1 << bitb));
+    if (oldval & (1 << bita)) ret |= (1 << bitb);
+    if (oldval & (1 << bitb)) ret |= (1 << bita);
+    return ret;
+}
+
+// C ref: monflag.h:205 G_IGNORE -- mkclass() flag: ignore G_GENOD|G_EXTINCT.
+const G_IGNORE = 0x8000;
+
+// C ref: rm.h:122 IS_DOORJOIN(typ).
+const IS_DOORJOIN = (typ) => (IS_OBSTRUCTED(typ) || typ === IRONBARS);
+
+// C ref: sp_lev.c:192-198 -- the file-static coder state that
+// sp_level_coder_init() re-initialises before every level.  `coder` is
+// gc.coder (sp_lev.h struct sp_coder).
+const spl = {
+    coder: null,
+    splev_init_present: false,
+    icedpools: false,
+    container_idx: 0,
+    container_obj: [],
+    invent_carrying_monster: null,
+    is_ok_location_func: null,           // sp_lev.c:1271
+    floodfillchk_match_under_typ: 0,     // sp_lev.c:4584
+};
+export function sp_lev_state() { return spl; }
+
+const levl_at = (x, y) => game.level?.at(x, y);
+const levl_typ = (x, y) => (levl_at(x, y)?.typ ?? STONE);
+const svr_rooms = () => (game.level?.rooms || []);
+const svn_nroom = () => (game.level?.nroom || 0);
+
+// C ref: sp_lev.c is_ok_location():1279.  The is_ok_location() already in this
+// file starts at C's `humidity & ANY_LOC`; the two clauses AHEAD of it (the
+// Is_waterlevel shortcut and the set_ok_location_func hook) live here, in the
+// wrapper the get_location() family uses, so that good_stair_loc() actually
+// takes effect without touching the existing function.
+function sp_is_ok_location(x, y, humidity) {
+    if (Is_waterlevel(game.u?.uz)) return true;
+    if (spl.is_ok_location_func) return !!spl.is_ok_location_func(x, y);
+    return is_ok_location(x, y, humidity);
+}
+
+// ── nhlua.c table accessors ────────────────────────────────────────────────
+// C ref: nhlua.c:1017-1146.  A Lua table is a plain JS object here (the
+// convention lspo_map/lspo_region already use), so "get field `name` of the
+// table at stack index 1" is a property read.  Module-local: they are nhlua.c's
+// functions, not sp_lev.c's.
+function nhl_error(msg) { throw new Error(String(msg)); }
+
+function lcheck_param_table(t) {
+    // C creates an empty table when called with no args and rejects non-tables.
+    if (t == null) return {};
+    if (typeof t !== 'object') nhl_error('expected a table');
+    return t;
+}
+
+function get_table_int(t, name) {
+    const v = t?.[name];
+    if (v == null) nhl_error(`bad argument '${name}' (number expected)`);
+    return Math.trunc(Number(v));
+}
+
+function get_table_int_opt(t, name, defval) {
+    const v = t?.[name];
+    return (v == null) ? defval : Math.trunc(Number(v));
+}
+
+function get_table_str(t, name) {
+    const v = t?.[name];
+    if (v == null) nhl_error(`bad argument '${name}' (string expected)`);
+    return String(v);
+}
+
+function get_table_str_opt(t, name, defval) {
+    const v = t?.[name];
+    if (v == null) return defval;
+    /* C runs a function-valued field through nhl_pcall_handle() and takes its
+       string result. */
+    if (typeof v === 'function') { const r = v(); return (r == null) ? defval : String(r); }
+    return String(v);
+}
+
+// C ref: nhlua.c get_table_boolean():1079 -- "true"/"false"/"yes"/"no" map to
+// the luaL_checkoption INDEX, i.e. 0/1/2/3, not to TRUE/FALSE.  The commented
+// out boolstr2i[] in C is the tell: `ret` really is the option index, so
+// "yes" reads as 2.  Faithfully reproduced.
+const BOOLSTR = ['true', 'false', 'yes', 'no'];
+function get_table_boolean(t, name) {
+    const v = t?.[name];
+    let ret = -1;
+    if (typeof v === 'string') {
+        ret = BOOLSTR.indexOf(v);
+        if (ret < 0) nhl_error(`invalid option '${v}'`);
+    } else if (typeof v === 'boolean') {
+        ret = v ? 1 : 0;
+    } else if (typeof v === 'number') {
+        ret = Math.trunc(v);
+        if (ret < 0 || ret > 1) ret = -1;
+    }
+    if (ret === -1) nhl_error('Expected a boolean');
+    return ret;
+}
+
+function get_table_boolean_opt(t, name, defval) {
+    if (t?.[name] == null) return defval;
+    return get_table_boolean(t, name);
+}
+
+// C ref: nhlua.c get_table_option():1122 -> luaL_checkoption: returns the
+// INDEX into opts[], and errors when the value is not in the list.
+function get_table_option(t, name, defval, opts) {
+    const v = t?.[name] == null ? defval : String(t[name]);
+    if (v == null) nhl_error(`bad argument '${name}' (string expected)`);
+    const i = opts.indexOf(v);
+    if (i < 0) nhl_error(`invalid option '${v}'`);
+    return i;
+}
+
+// C ref: nhlua.c check_mapchr():393 / get_table_mapchr():241.
+function check_mapchr(s) {
+    if (s && String(s).length === 1) return splev_chr2typ(String(s));
+    return INVALID_TYPE;
+}
+
+function get_table_mapchr(t, name) {
+    const typ = check_mapchr(get_table_str(t, name));
+    if (typ === INVALID_TYPE) nhl_error('Erroneous map char');
+    return typ;
+}
+
+function get_table_mapchr_opt(t, name, defval) {
+    const ter = get_table_str_opt(t, name, '');
+    if (ter && ter.length) {
+        const typ = check_mapchr(ter);
+        if (typ === INVALID_TYPE) nhl_error('Erroneous map char');
+        return typ;
+    }
+    return defval;
+}
+
+// ── sp_lev.c ──────────────────────────────────────────────────────────────
+
+// C ref: sp_lev.c:255 mapfrag_free(struct mapfragment **mf) -- frees the
+// fragment and NULLs the caller's pointer.  JS is garbage-collected, so only
+// the second half is observable: pass the holder whose field should be
+// cleared, e.g. mapfrag_free(box) with box = { mf }.
+export function mapfrag_free(box) {
+    if (box && box.mf) box.mf = null;
+}
+
+// C ref: sp_lev.c:274 -- a fragment can only be centred on a cell if both of
+// its dimensions are odd.
+export function mapfrag_canmatch(mf) {
+    return !!((mf.wid % 2) && (mf.hei % 2));
+}
+
+// C ref: sp_lev.c:280 -- NULL when the fragment is usable, else the message
+// des.replace_terrain()/selection.match() reports.  C frees the fragment on
+// each error path; see mapfrag_free() above for why that is a no-op here.
+export function mapfrag_error(mf) {
+    let res = null;
+    if (!mf) {
+        res = 'mapfragment error';
+    } else if (!mapfrag_canmatch(mf)) {
+        res = 'mapfragment needs to have odd height and width';
+    } else if (TYP_CANNOT_MATCH(mapfrag_get(mf, Math.trunc(mf.wid / 2),
+                                            Math.trunc(mf.hei / 2)))) {
+        res = 'mapfragment center must be valid terrain';
+    }
+    return res;
+}
+
+// C ref: sp_lev.c:314 -- des.level_flags("solidify"): every stone wall the
+// level file did not itself place becomes undiggable and unpasswall-able.
+export function solidify_map() {
+    for (let x = 0; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = levl_at(x, y);
+            if (loc && IS_STWALL(loc.typ) && !splev_map_at(x, y))
+                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE | W_NONPASSWALL;
+        }
+}
+
+// C ref: sp_lev.c:327 -- post-creation cleanup: boulders, destroyable traps
+// and engravings cannot survive on lava or water.
+export function map_cleanup() {
+    for (let x = 0; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const typ = levl_typ(x, y);
+            if (IS_LAVA(typ) || IS_POOL(typ)) {
+                let otmp;
+                while ((otmp = sobj_at(BOULDER, x, y)) != null) {
+                    obj_extract_self(otmp);
+                    obfree(otmp, null);
+                }
+                const ttmp = t_at(x, y);
+                if (ttmp && !undestroyable_trap(ttmp.ttyp)) deltrap(ttmp);
+                const etmp = engr_at(x, y);
+                if (etmp) del_engr(etmp);
+            }
+        }
+}
+
+// C ref: sp_lev.c:358 -- des.level_init({ style = "mazegrid" }).  No RNG.
+export function lvlfill_maze_grid(x1, y1, x2, y2, filling) {
+    for (let x = x1; x <= x2; x++)
+        for (let y = y1; y <= y2; y++) {
+            const loc = levl_at(x, y);
+            if (!loc) continue;
+            if (game.level?.flags?.corrmaze) loc.typ = STONE;
+            else loc.typ = (y < 2 || ((x % 2) && (y % 2))) ? STONE : filling;
+        }
+}
+
+// C ref: sp_lev.c:373 -- des.level_init({ style = "solidfill" }).  The four
+// field resets only happen for squares set_levltyp_lit() accepted.
+export function lvlfill_solid(filling, lit) {
+    for (let x = 2; x <= gx.x_maze_max; x++)
+        for (let y = 0; y <= gy.y_maze_max; y++) {
+            if (!set_levltyp_lit(x, y, filling, lit)) continue;
+            const loc = levl_at(x, y);
+            if (!loc) continue;
+            loc.flags = 0;
+            loc.horizontal = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+        }
+}
+
+// C ref: sp_lev.c:390 -- des.level_init({ style = "swamp" }).  "Relaxed
+// blockwise maze" (Jamis Buck): one rn2(3) per 2x2 block whose other three
+// squares are all still background.
+export function lvlfill_swamp(fg, bg, lit) {
+    lvlfill_solid(bg, lit);
+
+    for (let x = 2; x <= Math.min(gx.x_maze_max, COLNO - 2); x += 2)
+        for (let y = 0; y <= Math.min(gy.y_maze_max, ROWNO - 2); y += 2) {
+            let c = 0;
+
+            set_levltyp_lit(x, y, fg, lit);
+            if (levl_typ(x + 1, y) === bg) ++c;
+            if (levl_typ(x, y + 1) === bg) ++c;
+            if (levl_typ(x + 1, y + 1) === bg) ++c;
+            if (c === 3) {
+                switch (rn2(3)) {                          // sp_lev.c:410
+                case 0: set_levltyp_lit(x + 1, y, fg, lit); break;
+                case 1: set_levltyp_lit(x, y + 1, fg, lit); break;
+                case 2: set_levltyp_lit(x + 1, y + 1, fg, lit); break;
+                default: break;
+                }
+            }
+        }
+}
+
+// C ref: sp_lev.c:427 / :441 -- a flipped drawbridge points the other way.
+export function flip_dbridge_horizontal(lev) {
+    if (IS_DRAWBRIDGE(lev.typ)) {
+        const mask = lev.drawbridgemask || 0;
+        if ((mask & DB_DIR) === DB_WEST)
+            lev.drawbridgemask = (mask & ~DB_WEST) | DB_EAST;
+        else if ((mask & DB_DIR) === DB_EAST)
+            lev.drawbridgemask = (mask & ~DB_EAST) | DB_WEST;
+    }
+}
+
+export function flip_dbridge_vertical(lev) {
+    if (IS_DRAWBRIDGE(lev.typ)) {
+        const mask = lev.drawbridgemask || 0;
+        if ((mask & DB_DIR) === DB_NORTH)
+            lev.drawbridgemask = (mask & ~DB_NORTH) | DB_SOUTH;
+        else if ((mask & DB_DIR) === DB_SOUTH)
+            lev.drawbridgemask = (mask & ~DB_SOUTH) | DB_NORTH;
+    }
+}
+
+// C ref: sp_lev.c:457 -- #wizfliplevel only: re-aim each remembered square's
+// seen vector and re-derive the glyph of every remembered wall.  Not needed
+// when flipping during level creation (flip_level(flp, FALSE)).
+export function flip_visuals(flp, minx, miny, maxx, maxy) {
+    for (let y = miny; y <= maxy; ++y) {
+        for (let x = minx; x <= maxx; ++x) {
+            const lev = levl_at(x, y);
+            if (!lev) continue;
+            let seenv = (lev.seenv || 0) & 0xff;
+            if (seenv === 0) continue;
+            if (seenv !== SVALL) {
+                //  SV2 SV1 SV0 / SV3 -+- SV7 / SV4 SV5 SV6
+                if (flp & 1) {                 // swap top and bottom
+                    seenv = swapbits(seenv, 2, 4);
+                    seenv = swapbits(seenv, 1, 5);
+                    seenv = swapbits(seenv, 0, 6);
+                }
+                if (flp & 2) {                 // swap left and right
+                    seenv = swapbits(seenv, 2, 0);
+                    seenv = swapbits(seenv, 3, 7);
+                    seenv = swapbits(seenv, 4, 6);
+                }
+                lev.seenv = seenv & 0xff;
+            }
+            if ((IS_WALL(lev.typ) || lev.typ === SDOOR)
+                && EXT.glyph_is_cmap(lev.glyph))
+                lev.glyph = EXT.back_to_glyph(x, y);
+        }
+    }
+}
+
+// C ref: sp_lev.c:498 -- transpose an encoded direction.  The bit numbers
+// depend on xdir[]/ydir[] order.
+export function flip_encoded_dir_bits(flp, val) {
+    if (flp & 1) {
+        val = swapbits(val, 1, 7);
+        val = swapbits(val, 2, 6);
+        val = swapbits(val, 3, 5);
+    }
+    if (flp & 2) {
+        val = swapbits(val, 1, 3);
+        val = swapbits(val, 0, 4);
+        val = swapbits(val, 7, 5);
+    }
+    return val;
+}
+
+// C ref: sp_lev.c:925 -- #wizfliplevel only: flip the vault guard's egd data
+// (its post, its remembered old position, and every fake corridor it dug).
+export function flip_vault_guard(flp, grd, minx, miny, maxx, maxy) {
+    const egd = grd?.egd;
+    if (!egd) return;
+    const FlipX = (v) => ((maxx - v) + minx);
+    const FlipY = (v) => ((maxy - v) + miny);
+    const inFlipArea = (x, y) => (x >= minx && x <= maxx && y >= miny && y <= maxy);
+
+    if (inFlipArea(egd.gdx, egd.gdy)) {
+        if (flp & 1) egd.gdy = FlipY(egd.gdy);
+        if (flp & 2) egd.gdx = FlipX(egd.gdx);
+    }
+    if (inFlipArea(egd.ogx, egd.ogy)) {
+        if (flp & 1) egd.ogy = FlipY(egd.ogy);
+        if (flp & 2) egd.ogx = FlipX(egd.ogx);
+    }
+    for (let i = egd.fcbeg; i < egd.fcend; ++i) {
+        const fc = egd.fakecorr?.[i];
+        if (!fc) continue;
+        const fx = fc.fx, fy = fc.fy;
+        if (inFlipArea(fx, fy)) {
+            if (flp & 1) fc.fy = FlipY(fy);
+            if (flp & 2) fc.fx = FlipX(fx);
+        }
+    }
+}
+
+// C ref: sp_lev.c:966 -- one rn2(2) per allowed axis, and only for the axes
+// the caller allowed: `(flp & 1) && rn2(2)` short-circuits, so a level with
+// des.level_flags("noflipy") draws once, not twice.
+// The flip_level() in this file takes only `flp` (level-creation form, which
+// is what every caller of flip_level_rnd passes: extras is always FALSE here).
+export function flip_level_rnd(flp, extras) {
+    let c = 0;
+
+    if ((flp & 1) && rn2(2)) c |= 1;                       // sp_lev.c:975
+    if ((flp & 2) && rn2(2)) c |= 2;                       // sp_lev.c:977
+
+    if (c) flip_level(c, extras);
+}
+
+// C ref: sp_lev.c:985 -- selection_iterate() callback for des.non_diggable()
+// and friends.  Iron bars became eligible in 3.6.2.
+export function sel_set_wall_property(x, y, prop) {
+    const loc = levl_at(x, y);
+    if (!loc) return;
+    if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)
+        loc.wall_info = (loc.wall_info || 0) | prop;
+}
+
+// C ref: sp_lev.c:1000 -- clamp the rectangle to the map, then flag it.
+export function set_wall_property(x1, y1, x2, y2, prop) {
+    x1 = Math.max(x1, 1);
+    x2 = Math.min(x2, COLNO - 1);
+    y1 = Math.max(y1, 0);
+    y2 = Math.min(y2, ROWNO - 1);
+    for (let y = y1; y <= y2; y++)
+        for (let x = x1; x <= x2; x++)
+            sel_set_wall_property(x, y, prop);
+}
+
+// C ref: sp_lev.c:1088 -- is x,y immediately next to room droom?  The first
+// test is a rejection: a square that is squarely inside droom and not on its
+// edge is not "shared with" it.
+export function shared_with_room(x, y, droom) {
+    const rmno = droom.roomnoidx + ROOMOFFSET;
+
+    if (!isok(x, y)) return false;
+    if (levl_at(x, y)?.roomno === rmno && !levl_at(x, y)?.edge) return false;
+    if (isok(x - 1, y) && levl_at(x - 1, y)?.roomno === rmno && x - 1 <= droom.hx)
+        return true;
+    if (isok(x + 1, y) && levl_at(x + 1, y)?.roomno === rmno && x + 1 >= droom.lx)
+        return true;
+    if (isok(x, y - 1) && levl_at(x, y - 1)?.roomno === rmno && y - 1 <= droom.hy)
+        return true;
+    if (isok(x, y + 1) && levl_at(x, y + 1)?.roomno === rmno && y + 1 >= droom.ly)
+        return true;
+    return false;
+}
+
+// C ref: sp_lev.c:1121 -- every DOOR/SDOOR on the map is re-oriented and then
+// offered to every room and subroom in index order.  No RNG.
+export function link_doors_rooms() {
+    for (let y = 0; y < ROWNO; y++)
+        for (let x = 0; x < COLNO; x++) {
+            const typ = levl_typ(x, y);
+            if (IS_DOOR(typ) || typ === SDOOR) {
+                set_door_orientation(x, y);
+
+                for (let tmpi = 0; tmpi < svn_nroom(); tmpi++) {
+                    const rm = svr_rooms()[tmpi];
+                    if (!rm) continue;
+                    EXT.maybe_add_door(x, y, rm);
+                    for (let m = 0; m < (rm.nsubrooms || 0); m++)
+                        EXT.maybe_add_door(x, y, rm.sbrooms[m]);
+                }
+            }
+        }
+}
+
+// C ref: sp_lev.c:1147 -- ROLL_FROM(state) over five states, i.e. one rn2(5).
+export function rnddoor() {
+    const state = [D_NODOOR, 0x01 /* D_BROKEN */, D_ISOPEN, D_CLOSED, D_LOCKED];
+    return state[rn2(state.length)];
+}
+
+// C ref: sp_lev.c:1158 -- rnd(TRAPNUM-1) until the roll is legal here.  Note
+// this is NOT mklev.c's traptype_rnd(): no difficulty gating, but holes,
+// vibrating squares and magic portals are never random on a special level.
+export function rndtrap() {
+    let rtrap;
+
+    do {
+        rtrap = rnd(TRAPNUM - 1);                          // sp_lev.c:1164
+        switch (rtrap) {
+        case HOLE:                  /* no random holes on special levels */
+        case VIBRATING_SQUARE:
+        case MAGIC_PORTAL:
+            rtrap = NO_TRAP;
+            break;
+        case TRAPDOOR:
+            if (!Can_dig_down(game.u?.uz)) rtrap = NO_TRAP;
+            break;
+        case LEVEL_TELEP:
+        case TELEP_TRAP:
+            if (game.level?.flags?.noteleport) rtrap = NO_TRAP;
+            break;
+        case ROLLING_BOULDER_TRAP:
+        case ROCKTRAP:
+            if (In_endgame(game.u?.uz)) rtrap = NO_TRAP;
+            break;
+        default:
+            break;
+        }
+    } while (rtrap === NO_TRAP);
+    return rtrap;
+}
+
+// C ref: sp_lev.c:1201 get_location(coordxy *x, coordxy *y, humidity, croom).
+// `c` is the in/out coordinate pair C passes by pointer: c.x < 0 asks for a
+// random square, otherwise c is map- or room-relative and comes back absolute.
+export function get_location(c, humidity, croom) {
+    let cpt = 0;
+    let mx, my, sx, sy;
+
+    if (croom) {
+        mx = croom.lx;
+        my = croom.ly;
+        sx = croom.hx - mx + 1;
+        sy = croom.hy - my + 1;
+    } else {
+        mx = gx.xstart;
+        my = gy.ystart;
+        sx = gx.xsize;
+        sy = gy.ysize;
+    }
+
+    let found_it = false;
+    if (c.x >= 0) {                          /* normal locations */
+        c.x += mx;
+        c.y += my;
+    } else {                                 /* random location */
+        do {
+            if (croom) {                     /* handle irregular areas */
+                const tmpc = { x: -1, y: -1 };
+                somexy(croom, tmpc);
+                c.x = tmpc.x;
+                c.y = tmpc.y;
+            } else {
+                c.x = mx + rn2(sx);                        // sp_lev.c:1233
+                c.y = my + rn2(sy);                        // sp_lev.c:1234
+            }
+            if (sp_is_ok_location(c.x, c.y, humidity)) { found_it = true; break; }
+        } while (++cpt < 100);
+        if (!found_it && cpt >= 100) {
+            /* last try -- a deterministic scan of the whole footprint */
+            for (let xx = 0; xx < sx && !found_it; xx++)
+                for (let yy = 0; yy < sy; yy++) {
+                    c.x = mx + xx;
+                    c.y = my + yy;
+                    if (sp_is_ok_location(c.x, c.y, humidity)) { found_it = true; break; }
+                }
+            if (!found_it) {
+                if (!(humidity & NO_LOC_WARN)) {
+                    /* C: impossible("get_location: can't find a place!") --
+                       x,y keep the last scanned square */
+                } else {
+                    c.x = c.y = -1;
+                }
+            }
+        }
+    }
+
+    if (!(humidity & ANY_LOC) && !isok(c.x, c.y)) {
+        if (!(humidity & NO_LOC_WARN)) {
+            c.x = gx.x_maze_max;
+            c.y = gy.y_maze_max;
+        } else {
+            c.x = c.y = -1;
+        }
+    }
+}
+
+// C ref: sp_lev.c:1273 -- install the extra location filter l_create_stairway()
+// uses (good_stair_loc), and clear it again straight after.
+export function set_ok_location_func(func) {
+    spl.is_ok_location_func = func || null;
+}
+
+// C ref: sp_lev.c:1316 -- unpack a packed_coord.  SP_COORD_IS_RANDOM carries
+// the humidity flags in its low bits; zero there means "use the caller's".
+export function get_unpacked_coord(loc, defhumidity) {
+    const c = { x: 0, y: 0, is_random: 0, getloc_flags: 0 };
+    if (loc & SP_COORD_IS_RANDOM) {
+        c.x = c.y = -1;
+        c.is_random = 1;
+        c.getloc_flags = (loc & ~SP_COORD_IS_RANDOM);
+        if (!c.getloc_flags) c.getloc_flags = defhumidity;
+    } else {
+        c.is_random = 0;
+        c.getloc_flags = defhumidity;
+        c.x = SP_COORD_X(loc);
+        c.y = SP_COORD_Y(loc);
+    }
+    return c;
+}
+
+// C ref: sp_lev.c:1336 -- a RANDOM coord reaches get_location() TWICE: first
+// with NO_LOC_WARN forced on, then (only if that came back -1,-1) again with
+// the caller's own flags.  Each call is its own 100-draw loop, so collapsing
+// them loses 100 draws.
+export function get_location_coord(c, humidity, croom, crd) {
+    const u = get_unpacked_coord(crd, humidity);
+    c.x = u.x;
+    c.y = u.y;
+    get_location(c, u.getloc_flags | (u.is_random ? NO_LOC_WARN : 0), croom);
+
+    if (c.x === -1 && c.y === -1 && u.is_random)
+        get_location(c, humidity, croom);
+}
+
+// C ref: sp_lev.c:1359 -- a relative position inside a room; negative means
+// random.  Note the asymmetry: BOTH negative goes through somexy() (which
+// handles irregular rooms), one negative draws a plain rn2 over that axis.
+export function get_room_loc(c, croom) {
+    if (c.x < 0 && c.y < 0) {
+        const tmpc = { x: -1, y: -1 };
+        if (somexy(croom, tmpc)) {
+            c.x = tmpc.x;
+            c.y = tmpc.y;
+        }
+        /* else C panics */
+    } else {
+        if (c.x < 0) c.x = rn2(croom.hx - croom.lx + 1);
+        if (c.y < 0) c.y = rn2(croom.hy - croom.ly + 1);
+        c.x += croom.lx;
+        c.y += croom.ly;
+    }
+}
+
+// C ref: sp_lev.c:1384 -- like get_room_loc(), but keeps re-rolling until the
+// square is plain ROOM.  The retry loop restarts from the CALLER's *x,*y (so
+// normally -1,-1 -> a fresh somexy each time), not from the last try.
+export function get_free_room_loc(c, croom, pos) {
+    const t = { x: -1, y: -1 };
+    let trycnt = 0;
+
+    get_location_coord(t, DRY, croom, pos);
+    if (levl_typ(t.x, t.y) !== ROOM) {
+        do {
+            t.x = c.x; t.y = c.y;
+            get_room_loc(t, croom);
+        } while (levl_typ(t.x, t.y) !== ROOM && ++trycnt <= 100);
+        /* trycnt > 100: C panics */
+    }
+    c.x = t.x; c.y = t.y;
+}
+
+// C ref: sp_lev.c:1811 create_trap(spltrap *t, struct mkroom *croom).
+// t: { type, coord, spider_on_web, seen, novictim }.
+export function create_trap(t, croom) {
+    const c = { x: -1, y: -1 };
+    let mktrap_flags = MKTRAP_MAZEFLAG;
+
+    if (t.type === VIBRATING_SQUARE) {
+        EXT.pick_vibrasquare_location();
+        maketrap(game.inv_pos?.x, game.inv_pos?.y, VIBRATING_SQUARE);
+        return;
+    } else if (croom) {
+        get_free_room_loc(c, croom, t.coord);
+    } else {
+        let trycnt = 0;
+
+        do {
+            get_location_coord(c, DRY, croom, t.coord);
+        } while ((levl_typ(c.x, c.y) === STAIRS || levl_typ(c.x, c.y) === LADDER)
+                 && ++trycnt <= 100);
+        if (trycnt > 100) return;
+    }
+
+    if (!t.spider_on_web) mktrap_flags |= MKTRAP_NOSPIDERONWEB;
+    if (t.seen) mktrap_flags |= MKTRAP_SEEN;
+    if (t.novictim) mktrap_flags |= MKTRAP_NOVICTIM;
+
+    EXT.mktrap(t.type, mktrap_flags, null, { x: c.x, y: c.y });
+}
+
+// C ref: sp_lev.c:1851 -- one rn2(2).  For a neutral hero (alignment 0) it
+// returns law or chaos; otherwise the opposite alignment or neutral.
+export function noncoalignment(alignment) {
+    const k = rn2(2);
+    if (!alignment) return (k ? -1 : 1);
+    return (k ? -alignment : 0);
+}
+
+// C ref: sp_lev.c:1863 -- screen out squares a mimic-as-boulder should avoid.
+export function m_bad_boulder_spot(x, y) {
+    if (t_at(x, y)) return true;
+    if (sobj_at(BOULDER, x, y)) return true;
+    const lev = levl_at(x, y);
+    if (lev && IS_DOOR(lev.typ) && ((lev.doormask || 0) & (D_CLOSED | D_LOCKED)) !== 0)
+        return true;
+    return false;
+}
+
+// C ref: sp_lev.c:1907 -- a special-level alignment mask becomes a real one.
+// AM_SPLEV_NONCO costs one rn2(2) (noncoalignment) and AM_SPLEV_RANDOM one
+// rn2(3) (induced_align's 80% co-aligned roll); a literal alignment costs none.
+export function sp_amask_to_amask(sp_amask) {
+    let amask;
+
+    if (sp_amask === AM_SPLEV_CO)
+        amask = Align2amask(game.u?.ualignbase?.[A_ORIGINAL] ?? 0);
+    else if (sp_amask === AM_SPLEV_NONCO)
+        amask = Align2amask(noncoalignment(game.u?.ualignbase?.[A_ORIGINAL] ?? 0));
+    else if (sp_amask === AM_SPLEV_RANDOM)
+        amask = EXT.induced_align(80);
+    else
+        amask = sp_amask & AM_MASK;
+
+    return amask;
+}
+
+// C ref: sym.h:24 MAXMCLASSES / objclass.h:141 MAXOCLASSES / rm.h MAXPCHARS --
+// the "no such class/feature" sentinels def_char_to_monclass(),
+// def_char_to_objclass() and the defsyms[] scan compare against.
+const MAXMCLASSES = 61, MAXOCLASSES = 18, MAXPCHARS = 105;
+
+// C ref: sp_lev.c:1924 create_monster(monster *m, struct mkroom *croom).
+// Draw order (all before makemon):
+//   1. sp_amask_to_amask() -- rn2(2) for "noncoaligned", rn2(3) for "random".
+//   2. mkclass(class, G_NOGEN) when only a class letter was given.
+//   3. the In_mines your_race rn2(3) at :1959.
+//   4. the location: get_location_coord() twice for a wet/hot species (the
+//      first pass carries NO_LOC_WARN), once otherwise.
+//   5. enexto() when the square is taken.
+// find_montype()'s own rn2(2) for the gender happens earlier, in lspo_monster.
+export function create_monster(m, croom) {
+    let mtmp;
+    let cls;
+
+    if (m.class >= 0) cls = EXT.def_char_to_monclass(m.class);
+    else cls = 0;
+
+    if (cls === MAXMCLASSES) return; /* C panics: unknown monster class */
+
+    const amask = sp_amask_to_amask(m.sp_amask);
+
+    let pm;
+    if (!cls) {
+        pm = null;
+    } else if (m.id !== NON_PM) {
+        pm = monster_by_pmidx(m.id);
+        const g_mvflags = (game.mvitals?.[pm?.pmidx ?? m.id]?.mvflags) || 0;
+        if (((pm?.geno || 0) & 0x1000 /* G_UNIQ */) && (g_mvflags & G_EXTINCT))
+            return;
+        if (g_mvflags & G_GONE)      /* genocided or extinct */
+            pm = null;               /* make random monster */
+    } else {
+        pm = mkclass(cls, G_NOGEN_FLAG);
+        /* pm == 0 means the class was genocided: settle for a random monster */
+    }
+    if (splev_In_mines() && pm && splev_your_race(pm)
+        && (splev_race_is('dwarf') || splev_race_is('gnome')) && rn2(3))
+        pm = null;                                         // sp_lev.c:1960
+
+    const c = { x: -1, y: -1 };
+    if (pm) {
+        let loc = pm_to_humidity(pm);
+
+        /* If water-liking monster, first try is without DRY */
+        get_location_coord(c, loc | NO_LOC_WARN, croom, m.coord);
+        if (c.x === -1 && c.y === -1) {
+            loc |= DRY;
+            get_location_coord(c, loc, croom, m.coord);
+        }
+    } else {
+        get_location_coord(c, DRY, croom, m.coord);
+    }
+    let x = c.x, y = c.y;
+
+    /* try to find a close place if someone else is already there.
+       C: `MON_AT(x,y) && enexto(&cc, x, y, pm)`; this port's enexto_spawn()
+       is that call, returning the coord or null. */
+    if (mm_mon_at(x, y)) {
+        const cc = enexto_spawn(x, y, pm);
+        if (cc) { x = cc.x; y = cc.y; }
+    }
+
+    if (croom && !inside_room(croom, x, y)) return;
+
+    if (m.sp_amask !== AM_SPLEV_RANDOM)
+        mtmp = EXT.mk_roamer(pm, Amask2align(amask), x, y, m.peaceful);
+    else if (name_to_pmidx('archeologist') <= m.id && m.id <= name_to_pmidx('wizard'))
+        mtmp = EXT.mk_mplayer(pm, x, y, false);
+    else
+        mtmp = makemon(pm, x, y, m.mm_flags);
+
+    if (mtmp) {
+        x = mtmp.mx; y = mtmp.my;      /* sanity precaution */
+        m.x = x; m.y = y;
+        if (m.name?.str) mtmp = christen_monst(mtmp, m.name.str);
+
+        /*
+         * This doesn't complain if an attempt is made to give a
+         * non-mimic/non-shapechanger an appearance or to give a
+         * shapechanger a non-monster shape, it just refuses to comply.
+         */
+        if (m.appear_as?.str
+            && ((mtmp.data?.mcls === S_MIMIC_CLASS)
+                || (mtmp.cham != null && mtmp.cham >= LOW_PM
+                    && m.appear === M_AP_MONSTER))
+            && !Protection_from_shape_changers()) {
+            let i;
+
+            switch (m.appear) {
+            case M_AP_NOTHING:
+                /* C: impossible("mon has an appearance but no type") */
+                break;
+
+            case M_AP_FURNITURE:
+                for (i = 0; i < MAXPCHARS; i++)
+                    if (EXT.defsyms_explanation(i) === m.appear_as.str) break;
+                if (i === MAXPCHARS) {
+                    /* C: impossible("can't find feature") */
+                } else {
+                    mtmp.m_ap_type = M_AP_FURNITURE;
+                    mtmp.mappearance = i;
+                }
+                break;
+
+            case M_AP_OBJECT:
+                for (i = 0; i < OBJDATA.length; i++)
+                    if (OBJDATA[i]?.name && OBJDATA[i].name === m.appear_as.str)
+                        break;
+                if (i === OBJDATA.length) {
+                    /* C: impossible("can't find object") */
+                } else {
+                    mtmp.m_ap_type = M_AP_OBJECT;
+                    mtmp.mappearance = i;
+                    /* try to avoid placing mimic boulder on a trap */
+                    if (i === BOULDER && m.x < 0 && m_bad_boulder_spot(x, y)) {
+                        let retrylimit = 10;
+
+                        EXT.remove_monster(x, y);
+                        do {
+                            const rc = { x: m.x, y: m.y };
+                            get_location(rc, DRY, croom);
+                            x = rc.x; y = rc.y;
+                            if (mm_mon_at(x, y)) {
+                                const cc = enexto_spawn(x, y, pm);
+                                if (cc) { x = cc.x; y = cc.y; }
+                            }
+                        } while (m_bad_boulder_spot(x, y) && --retrylimit > 0);
+                        EXT.place_monster(mtmp, x, y);
+                        /* if we didn't find a good spot then mimic something else */
+                        if (!retrylimit) set_mimic_sym(mtmp);
+                    }
+                }
+                break;
+
+            case M_AP_MONSTER: {
+                let mndx;
+                const gender = { v: NEUTRAL };
+
+                if (String(m.appear_as.str).toLowerCase() === 'random')
+                    mndx = EXT.select_newcham_form(mtmp);
+                else
+                    mndx = EXT.name_to_mon(m.appear_as.str, gender);
+
+                if (mndx === NON_PM
+                    || (EXT.is_vampshifter(mtmp)
+                        && !EXT.validvamp(mtmp, { v: mndx }, S_HUMANOID))) {
+                    /* C: impossible("invalid <mimic appearance|chameleon shape|...>") */
+                } else if (monster_by_pmidx(mndx) === mtmp.data) {
+                    /* explicitly forcing a mimic to appear as itself */
+                    mtmp.m_ap_type = M_AP_NOTHING;
+                    mtmp.mappearance = 0;
+                } else if (mtmp.data?.mcls === S_MIMIC_CLASS
+                           || mtmp.data === monster_by_pmidx(name_to_pmidx('Wizard of Yendor'))) {
+                    /* ordinarily only used for Wizard clones */
+                    mtmp.m_ap_type = M_AP_MONSTER;
+                    mtmp.mappearance = mndx;
+                } else { /* chameleon or vampire */
+                    const mdat = monster_by_pmidx(mndx);
+                    const olddata = mtmp.data;
+
+                    EXT.mgender_from_permonst(mtmp, mdat);
+                    if (gender.v !== NEUTRAL) mtmp.female = gender.v;
+                    EXT.set_mon_data(mtmp, mdat);
+                    if (emits_light(olddata) !== emits_light(mtmp.data)) {
+                        if (emits_light(olddata))
+                            del_light_source(LS_MONSTER, EXT.monst_to_any(mtmp));
+                        if (emits_light(mtmp.data))
+                            new_light_source(mtmp.mx, mtmp.my,
+                                             emits_light(mtmp.data),
+                                             LS_MONSTER, EXT.monst_to_any(mtmp));
+                    }
+                    if (!mtmp.perminvis || EXT.pm_invisible(olddata))
+                        mtmp.perminvis = EXT.pm_invisible(mdat);
+                }
+                break;
+            }
+            default:
+                /* C: impossible("unimplemented mon appear type") */
+                break;
+            }
+            /* C: does_block(x, y, &levl[x][y]); this port's does_block()
+               reads the location itself. */
+            if (does_block(x, y)) block_point(x, y);
+        }
+
+        mtmp.female = m.female;
+        if (m.peaceful > BOOL_RANDOM) {
+            mtmp.mpeaceful = m.peaceful;
+            /* changed mpeaceful again; have to reset malign */
+            set_malign(mtmp);
+        }
+        if (m.asleep > BOOL_RANDOM) mtmp.msleeping = m.asleep;
+        if (m.seentraps) mtmp.mtrapseen = m.seentraps;
+        if (m.cancelled) mtmp.mcan = 1;
+        if (m.revived) mtmp.mrevived = 1;
+        if (m.avenge) mtmp.mavenge = 1;
+        if (m.stunned) mtmp.mstun = 1;
+        if (m.confused) mtmp.mconf = 1;
+        if (m.invis) { mtmp.minvis = mtmp.perminvis = 1; }
+        if (m.blinded) {
+            mtmp.mcansee = 0;
+            mtmp.mblinded = (m.blinded % 127);
+        }
+        if (m.paralyzed) {
+            mtmp.mcanmove = 0;
+            mtmp.mfrozen = (m.paralyzed % 127);
+        }
+        if (m.fleeing) {
+            mtmp.mflee = 1;
+            mtmp.mfleetim = (m.fleeing % 127);
+        }
+        if (m.waiting) {
+            mtmp.mstrategy = (mtmp.mstrategy || 0) | STRAT_WAITFORU;
+            /* a vampire created already shifted into bat/fog/wolf form that the
+               level didn't ask for shifts back to vampire */
+            if (EXT.vampshifted(mtmp) && m.appear !== M_AP_MONSTER)
+                newcham(mtmp, monster_by_pmidx(mtmp.cham), NO_NC_FLAGS);
+        }
+        if (m.m_lev_adj) {
+            if (mtmp.m_lev + m.m_lev_adj > 49) mtmp.m_lev = 49;
+            else if (mtmp.m_lev + m.m_lev_adj < 0) mtmp.m_lev = 0;
+            else mtmp.m_lev += m.m_lev_adj;
+        }
+        if (!(m.has_invent & DEFAULT_INVENT)) {
+            /* guard against e.g. a quest nemesis with custom inventory that
+               lacks the Bell but was not flagged as keeping its default */
+            EXT.mdrop_special_objs(mtmp);
+            discard_minvent(mtmp, true);
+        }
+        if (m.has_invent & CUSTOM_INVENT) spl.invent_carrying_monster = mtmp;
+    }
+}
+
+// C ref: sp_lev.c:2192 create_object(object *o, struct mkroom *croom).
+// The location is resolved FIRST (so its draws precede the object's own), then
+// mkobj_at/mksobj_at/mkgold, then every explicit override in file order.
+export function create_object(o, croom) {
+    let otmp;
+    const named = o.name?.str ? true : false;
+
+    const c = { x: -1, y: -1 };
+    get_location_coord(c, DRY, croom, o.coord);
+    const x = c.x, y = c.y;
+
+    const cc = (o.class >= 0) ? o.class : 0;
+
+    if (!cc) {
+        otmp = mkobj_at(RANDOM_CLASS, x, y, !named);
+    } else if (o.id !== -1) {
+        otmp = mksobj_at(o.id, x, y, true, !named);
+    } else {
+        /* special levels use the default "text" object class chars */
+        const oclass = def_char_to_objclass(cc);
+
+        if (oclass === MAXOCLASSES) return null; /* C panics */
+
+        /* KMH -- Create piles of gold properly */
+        if (oclass === COIN_CLASS) otmp = mkgold(0, x, y);
+        else otmp = mkobj_at(oclass, x, y, !named);
+    }
+    if (!otmp) return null;
+
+    if (o.spe !== -127) otmp.spe = o.spe;   /* that means NOT RANDOM! */
+
+    switch (o.curse_state) {
+    case 1: bless(otmp); break;                            /* blessed */
+    case 2: unbless(otmp); uncurse(otmp); break;           /* uncursed */
+    case 3: curse(otmp); break;                            /* cursed */
+    case 4: uncurse(otmp); break;                          /* not cursed */
+    case 5: blessorcurse(otmp, 1); break;                  /* not uncursed */
+    case 6: unbless(otmp); break;                          /* not blessed */
+    default: break;                          /* random: keep what mkobj gave */
+    }
+
+    /* corpsenm is "empty" if -1, random if -2, otherwise specific */
+    if (o.corpsenm !== NON_PM) {
+        if (o.corpsenm === NON_PM - 1) set_corpsenm(otmp, EXT.rndmonnum());
+        else set_corpsenm(otmp, o.corpsenm);
+    }
+    /* set_corpsenm() took care of egg hatch and corpse timers */
+
+    if (named) {
+        otmp = EXT.oname(otmp, o.name.str, ONAME_LEVEL_DEF);
+        if (otmp.otyp === otyp_by_name('novel')) {   /* SPE_NOVEL */
+            /* needs to be an existing title.  C: lookup_novel(name,
+               &otmp->novelidx); this port's takes an out-box. */
+            const box = { idx: otmp.novelidx };
+            lookup_novel(o.name.str, box);
+            otmp.novelidx = box.idx;
+        }
+    }
+    if (o.eroded) {
+        if (o.eroded < 0) {
+            otmp.oerodeproof = 1;
+        } else {
+            otmp.oeroded = (o.eroded % 4);
+            otmp.oeroded2 = ((o.eroded >> 2) % 4);
+        }
+    } else {
+        otmp.oeroded = otmp.oeroded2 = 0;
+        otmp.oerodeproof = 0;
+    }
+    if (o.recharged) otmp.recharged = (o.recharged % 8);
+    if (o.locked === 0 || o.locked === 1) {
+        otmp.olocked = o.locked;
+    } else if (o.broken) {
+        otmp.obroken = 1;
+        otmp.olocked = 0;                  /* obj generation may set */
+    }
+    if (o.trapped === 0 || o.trapped === 1) otmp.otrapped = o.trapped;
+    if (o.trapped && (o.tknown === 0 || o.tknown === 1)) otmp.tknown = o.tknown;
+    otmp.greased = o.greased ? 1 : 0;
+
+    if (o.quan > 0 && oc_merge(otmp.otyp)) {
+        otmp.quan = o.quan;
+        otmp.owt = weight(otmp);
+    }
+
+    /* contents (of a container or monster's inventory) */
+    if ((o.containment & SP_OBJ_CONTENT) || spl.invent_carrying_monster) {
+        if (!spl.container_idx) {
+            if (!spl.invent_carrying_monster) {
+                /* the monster may be legitimately gone (eg. a unique demon
+                   already generated): leave 'otmp' on the floor */
+            } else {
+                obj_extract_self(otmp);    /* C: remove_object(otmp) */
+                if (otmp.otyp === otyp_by_name('saddle')
+                    && EXT.can_saddle(spl.invent_carrying_monster))
+                    EXT.put_saddle_on_mon(otmp, spl.invent_carrying_monster);
+                else
+                    mpickobj(spl.invent_carrying_monster, otmp);
+            }
+        } else {
+            const cobj = spl.container_obj[spl.container_idx - 1];
+
+            obj_extract_self(otmp);
+            if (cobj) {
+                otmp = add_to_container(cobj, otmp);
+                cobj.owt = weight(cobj);
+            } else {
+                obj_extract_self(otmp);
+                /* uncreate a random artifact created in a container */
+                if (otmp.oartifact)
+                    EXT.artifact_exists(otmp, EXT.safe_oname(otmp), false, 0);
+                obfree(otmp, null);
+                return null;
+            }
+        }
+    }
+    /* container */
+    if (o.containment & SP_OBJ_CONTAINER) {
+        EXT.delete_contents(otmp);
+        if (spl.container_idx < MAX_CONTAINMENT) {
+            spl.container_obj[spl.container_idx] = otmp;
+            spl.container_idx++;
+        }
+        /* else C: impossible("too deeply nested containers") */
+    }
+
+    /* Medusa level special case: statues are petrified monsters, so they are
+     * not stone-resistant and have monster inventory. */
+    if (o.id === STATUE && Is_medusa_level(game.u?.uz) && o.corpsenm === NON_PM) {
+        let was = null;
+        let wastyp;
+        let i = 0;              /* prevent endless loop if makemon always fails */
+
+        for (wastyp = otmp.corpsenm; i < 1000; i++, wastyp = EXT.rndmonnum()) {
+            /* makemon without rndmonst() might create a group */
+            was = makemon(monster_by_pmidx(wastyp), 0, 0,
+                          MM_NOCOUNTBIRTH | MM_NOMSG);
+            if (was) {
+                if (!resists_ston(was)
+                    && !EXT.poly_when_stoned(monster_by_pmidx(wastyp))) {
+                    propagate(wastyp, true, false);
+                    break;
+                }
+                EXT.mongone(was);
+                was = null;
+            }
+        }
+        if (was) {
+            set_corpsenm(otmp, wastyp);
+            while (was.minvent && was.minvent.length) {
+                const obj = was.minvent[0];
+                obj.owornmask = 0;
+                obj_extract_self(obj);
+                add_to_container(otmp, obj);
+            }
+            otmp.owt = weight(otmp);
+            EXT.mongone(was);
+        }
+    }
+
+    if (o.achievement) {
+        const ach = game.context?.achieveo;
+        if (EXT.Is_mineend_level(game.u?.uz)) {
+            if (ach && !ach.mines_prize_oid) {
+                ach.mines_prize_oid = otmp.o_id;
+                ach.mines_prize_otyp = otmp.otyp;
+                /* prevent stacking; cleared when the achievement is recorded */
+                otmp.nomerge = 1;
+            }
+            /* else C: impossible("multiple prizes on mines end level") */
+        } else if (EXT.Is_sokoend_level(game.u?.uz)) {
+            if (ach && !ach.soko_prize_oid) {
+                ach.soko_prize_oid = otmp.o_id;
+                ach.soko_prize_otyp = otmp.otyp;
+                otmp.nomerge = 1;   /* redundant; Sokoban prizes don't stack */
+            }
+        }
+        /* else C: impossible("unknown achievement") unless iflags.lua_testing */
+    }
+
+    if (!(o.containment & SP_OBJ_CONTENT)) {
+        stackobj(otmp);
+
+        if (o.lit) EXT.begin_burn(otmp, false);
+
+        if (o.buried) {
+            const box = { dealloced: false };
+            EXT.bury_an_obj(otmp, box);
+            if (box.dealloced) {
+                if (spl.container_idx)
+                    spl.container_obj[spl.container_idx - 1] = null;
+                otmp = null;
+            }
+        }
+    }
+    return otmp;
+}
+
+// C ref: sp_lev.c:195 MAX_CONTAINMENT.
+const MAX_CONTAINMENT = 10;
+
+// C ref: obj.h ONAME_LEVEL_DEF -- oname() flag for a level-file-supplied name.
+const ONAME_LEVEL_DEF = 0x04;
+
+// C ref: mon.h STRAT_WAITFORU.
+const STRAT_WAITFORU = 0x08000000;
+
+// Resolve an otyp from its objects.h name rather than hardcoding the index:
+// objects[] index drift is this port's most expensive bug class
+// ([[wrong-constant-sweep]]).  Memoised; no RNG.
+const _otyp_by_name = new Map();
+function otyp_by_name(nm) {
+    if (_otyp_by_name.has(nm)) return _otyp_by_name.get(nm);
+    let found = STRANGE_OBJECT_OTYP;
+    for (let i = 0; i < OBJDATA.length; i++)
+        if (OBJDATA[i]?.name === nm) { found = i; break; }
+    _otyp_by_name.set(nm, found);
+    return found;
+}
+
+// C ref: sp_lev.c:2445 create_altar(altar *a, struct mkroom *croom).
+// a: { coord, sp_amask, shrine }.  The `shrine < 0` rn2(2) happens AFTER
+// sp_amask_to_amask()'s own draw and after set_levltyp's bail-out, so an altar
+// that lands on existing furniture costs the alignment draw but not the shrine
+// one.
+export function create_altar(a, croom) {
+    const c = { x: -1, y: -1 };
+    let croom_is_temple = true;
+
+    if (croom) {
+        get_free_room_loc(c, croom, a.coord);
+        if (croom.rtype !== TEMPLE) croom_is_temple = false;
+    } else {
+        get_location_coord(c, DRY, croom, a.coord);
+        /* C: `(sproom = *in_rooms(x, y, TEMPLE)) != 0` -- in_rooms() returns a
+           list of roomno values (index + ROOMOFFSET); take the first. */
+        const rl = in_rooms(c.x, c.y, TEMPLE);
+        const sproom = rl.length ? rl[0] : 0;
+        if (sproom) croom = svr_rooms()[sproom - ROOMOFFSET];
+        else croom_is_temple = false;
+    }
+    const x = c.x, y = c.y;
+
+    /* check for existing features */
+    if (!set_levltyp_lit(x, y, ALTAR, SET_LIT_NOCHANGE)) return;  /* set_levltyp */
+    const loc = levl_at(x, y);
+    if (!loc) return;
+
+    const amask = sp_amask_to_amask(a.sp_amask);
+
+    loc.altarmask = amask;
+
+    if (a.shrine < 0) a.shrine = rn2(2);     /* handle random case */
+
+    if (!croom_is_temple || !a.shrine) return;
+
+    if (a.shrine) {                          /* Is it a shrine or sanctum? */
+        priestini(game.u?.uz, croom, x, y, (a.shrine > 1));
+        loc.altarmask |= AM_SHRINE;
+        if (a.shrine === 2) loc.altarmask |= AM_SANCTUM; /* high altar */
+        if (game.level?.flags) game.level.flags.has_temple = true;
+    }
+}
+
+// C ref: sp_lev.c:2491 search_door(croom, &x, &y, wall, cnt) -- walk one wall
+// of croom and hand back the (cnt+1)'th door on it.  No RNG.
+export function search_door(croom, c, wall, cnt) {
+    let dx, dy, xx, yy;
+
+    switch (wall) {
+    case W_SOUTH: dy = 0; dx = 1; xx = croom.lx;     yy = croom.hy + 1; break;
+    case W_NORTH: dy = 0; dx = 1; xx = croom.lx;     yy = croom.ly - 1; break;
+    case W_EAST:  dy = 1; dx = 0; xx = croom.hx + 1; yy = croom.ly;     break;
+    case W_WEST:  dy = 1; dx = 0; xx = croom.lx - 1; yy = croom.ly;     break;
+    default: return false;               /* C panics: "search_door: Bad wall!" */
+    }
+    while (xx <= croom.hx + 1 && yy <= croom.hy + 1) {
+        const typ = levl_typ(xx, yy);
+        if (IS_DOOR(typ) || typ === SDOOR) {
+            c.x = xx;
+            c.y = yy;
+            if (cnt-- <= 0) return true;
+        }
+        xx += dx;
+        yy += dy;
+    }
+    return false;
+}
+
+// C ref: sp_lev.c:2670 create_corridor(corridor *c).  src.room == -1 means
+// des.random_corridors(); anything else digs one explicit door-to-door run.
+export function create_corridor(c) {
+    const org = { x: 0, y: 0 }, dest = { x: 0, y: 0 };
+
+    if (c.src.room === -1) {
+        EXT.makecorridors();               /* makecorridors(c->src.door) */
+        return;
+    }
+
+    /* Safety railings: search_door() cannot handle a random wall. */
+    if (c.src.wall === W_ANY || c.src.wall === W_RANDOM
+        || c.dest.wall === W_ANY || c.dest.wall === W_RANDOM)
+        return;                            /* C: impossible() */
+
+    if (!search_door(svr_rooms()[c.src.room], org, c.src.wall, c.src.door))
+        return;
+    if (c.dest.room !== -1) {
+        if (!search_door(svr_rooms()[c.dest.room], dest, c.dest.wall,
+                         c.dest.door))
+            return;
+        switch (c.src.wall) {
+        case W_NORTH: org.y--; break;
+        case W_SOUTH: org.y++; break;
+        case W_WEST:  org.x--; break;
+        case W_EAST:  org.x++; break;
+        }
+        switch (c.dest.wall) {
+        case W_NORTH: dest.y--; break;
+        case W_SOUTH: dest.y++; break;
+        case W_WEST:  dest.x--; break;
+        case W_EAST:  dest.x++; break;
+        }
+        EXT.dig_corridor(org, dest, null, false, CORR, STONE);
+    }
+}
+
+// C ref: sp_lev.c:2806 build_room(room *r, struct mkroom *mkr).  The rtype
+// rn2(100) is drawn FIRST and only when r->chance is nonzero, ahead of
+// create_room()/create_subroom()'s own draws.
+export function build_room(r, mkr) {
+    let okroom, aroom;
+    const rtype = (!r.chance || rn2(100) < r.chance) ? r.rtype : OROOM;
+
+    if (mkr) {
+        aroom = game.level?.subrooms?.[game.level?.nsubroom || 0];
+        okroom = EXT.create_subroom(mkr, r.x, r.y, r.w, r.h, rtype, r.rlit);
+    } else {
+        aroom = svr_rooms()[svn_nroom()];
+        okroom = EXT.create_room(r.x, r.y, r.w, r.h, r.xalign, r.yalign,
+                                 rtype, r.rlit);
+    }
+
+    if (okroom) {
+        EXT.topologize(aroom);             /* set roomno */
+        aroom.needfill = r.needfill;
+        aroom.needjoining = r.joined;
+        return aroom;
+    }
+    return null;
+}
+
+// C ref: sp_lev.c:2838 light_region(region *tmpregion) -- lighting for an area
+// that will NOT become a room.  A LIT region grows by one square first (so its
+// walls light up too); an unlit one does not.  No RNG.
+export function light_region(tmpregion) {
+    const litstate = tmpregion.rlit ? 1 : 0;
+    let hiy = tmpregion.y2;
+    let lowy = tmpregion.y1;
+    let lowx = tmpregion.x1, hix = tmpregion.x2;
+
+    if (litstate) {
+        lowx = Math.max(lowx - 1, 1);
+        hix = Math.min(hix + 1, COLNO - 1);
+        lowy = Math.max(lowy - 1, 0);
+        hiy = Math.min(hiy + 1, ROWNO - 1);
+    }
+    for (let x = lowx; x <= hix; x++)
+        for (let y = lowy; y <= hiy; y++) {
+            const lev = levl_at(x, y);
+            if (!lev) continue;
+            lev.lit = IS_LAVA(lev.typ) ? 1 : litstate;
+        }
+}
+
+// C ref: sp_lev.c:2864 wallify_map(x1, y1, x2, y2) -- every STONE square next
+// to a room square (or a CROSSWALL) becomes a wall; HWALL when the neighbour
+// found was on a different row, VWALL otherwise.  No RNG.
+export function wallify_map(x1, y1, x2, y2) {
+    y1 = Math.max(y1, 0);
+    x1 = Math.max(x1, 1);
+    y2 = Math.min(y2, ROWNO - 1);
+    x2 = Math.min(x2, COLNO - 1);
+    for (let y = y1; y <= y2; y++) {
+        const lo_yy = (y > 0) ? y - 1 : 0;
+        const hi_yy = (y < y2) ? y + 1 : y2;
+        for (let x = x1; x <= x2; x++) {
+            const loc = levl_at(x, y);
+            if (!loc || loc.typ !== STONE) continue;
+            const lo_xx = (x > 1) ? x - 1 : 1;
+            const hi_xx = (x < x2) ? x + 1 : x2;
+            let done = false;
+            for (let yy = lo_yy; yy <= hi_yy && !done; yy++)
+                for (let xx = lo_xx; xx <= hi_xx; xx++) {
+                    const t = levl_typ(xx, yy);
+                    if (IS_ROOM(t) || t === CROSSWALL) {
+                        loc.typ = (yy !== y) ? HWALL : VWALL;
+                        done = true;        /* C: end both loops */
+                        break;
+                    }
+                }
+        }
+    }
+}
+
+// C ref: sp_lev.c:2899 maze1xy(coord *m, humidity) -- a random maze square the
+// special level did not claim.  Two draws per attempt, up to 2000 attempts;
+// the odd-parity and SpLev_Map tests are part of the loop condition so a
+// rejected square still costs both.
+export function maze1xy(m, humidity) {
+    let x, y, tryct = 2000;
+
+    do {
+        x = rn1(gx.x_maze_max - 3, 3);                      // sp_lev.c:2908
+        y = rn1(gy.y_maze_max - 3, 3);                      // sp_lev.c:2909
+        if (--tryct < 0) break;          /* give up */
+    } while (!(x % 2) || !(y % 2) || splev_map_at(x, y)
+             || !sp_is_ok_location(x, y, humidity));
+
+    m.x = x; m.y = y;
+}
+
+// C ref: sp_lev.c:2925 fill_empty_maze() -- stock the part of the maze the
+// special level left alone, in proportion to how much of it is unused.  Six
+// loops, each with its own count draw, in this order: gems/random objects,
+// boulders, minotaurs, random monsters, gold, traps.
+export function fill_empty_maze() {
+    let mapcountmax, mapcount, mapfact;
+    const mm = { x: 0, y: 0 };
+
+    mapcountmax = mapcount = (gx.x_maze_max - 2) * (gy.y_maze_max - 2);
+    mapcountmax = Math.trunc(mapcountmax / 2);
+
+    for (let x = 2; x < gx.x_maze_max; x++)
+        for (let y = 0; y < gy.y_maze_max; y++)
+            if (splev_map_at(x, y)) mapcount--;
+
+    if (mapcount > Math.trunc(mapcountmax / 10)) {
+        mapfact = Math.trunc((mapcount * 100) / mapcountmax);
+        for (let x = rnd(Math.trunc((20 * mapfact) / 100)); x; x--) {
+            maze1xy(mm, DRY);
+            mkobj_at(rn2(2) ? GEM_CLASS : RANDOM_CLASS, mm.x, mm.y, true);
+        }
+        for (let x = rnd(Math.trunc((12 * mapfact) / 100)); x; x--) {
+            maze1xy(mm, DRY);
+            const ttmp = t_at(mm.x, mm.y);
+            if (ttmp && (is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp))) continue;
+            mksobj_at(BOULDER, mm.x, mm.y, true, false);
+        }
+        for (let x = rn2(2); x; x--) {
+            maze1xy(mm, DRY);
+            makemon(monster_by_pmidx(name_to_pmidx('minotaur')), mm.x, mm.y, 0);
+        }
+        for (let x = rnd(Math.trunc((12 * mapfact) / 100)); x; x--) {
+            maze1xy(mm, DRY);
+            makemon(null, mm.x, mm.y, 0);
+        }
+        for (let x = rn2(Math.trunc((15 * mapfact) / 100)); x; x--) {
+            maze1xy(mm, DRY);
+            mkgold(0, mm.x, mm.y);
+        }
+        for (let x = rn2(Math.trunc((15 * mapfact) / 100)); x; x--) {
+            maze1xy(mm, DRY);
+            let trytrap = rndtrap();
+            if (sobj_at(BOULDER, mm.x, mm.y))
+                while (is_pit(trytrap) || is_hole(trytrap)) trytrap = rndtrap();
+            maketrap(mm.x, mm.y, trytrap);
+        }
+    }
+}
+
+// C ref: sp_lev.c:2981 splev_initlev(lev_init *linit) -- des.level_init().
+// The `lit == BOOL_RANDOM` rn2(2) belongs to the style, so only solidfill,
+// mines and swamp draw it.
+export function splev_initlev(linit) {
+    switch (linit.init_style) {
+    default:
+        break;                             /* C: impossible() */
+    case LVLINIT_NONE:
+        break;
+    case LVLINIT_SOLIDFILL:
+        if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
+        lvlfill_solid(linit.filling, linit.lit);
+        break;
+    case LVLINIT_MAZEGRID:
+        lvlfill_maze_grid(2, 0, gx.x_maze_max, gy.y_maze_max, linit.bg);
+        break;
+    case LVLINIT_MAZE:
+        create_maze(linit.corrwid, linit.wallthick, linit.rm_deadends);
+        break;
+    case LVLINIT_ROGUE:
+        EXT.makeroguerooms();
+        break;
+    case LVLINIT_MINES:
+        if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
+        if (linit.filling > -1) lvlfill_solid(linit.filling, 0);
+        linit.icedpools = spl.icedpools;
+        EXT.mkmap(linit);
+        break;
+    case LVLINIT_SWAMP:
+        if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
+        lvlfill_swamp(linit.fg, linit.bg, linit.lit);
+        break;
+    }
+}
+
+// C ref: sp_lev.c:3021 -- #if 0'd in C (macosx unused warning), kept for parity.
+export function sp_code_jmpaddr(curpos, jmpaddr) {
+    return (curpos + jmpaddr);
+}
+
+// C ref: sp_lev.c:3030 -- close out a des.monster() inventory block.
+export function spo_end_moninvent() {
+    if (spl.invent_carrying_monster) m_dowear(spl.invent_carrying_monster, true);
+    spl.invent_carrying_monster = null;
+}
+
+// C ref: sp_lev.c:3039 -- close out a des.object() contents block.
+export function spo_pop_container() {
+    if (spl.container_idx > 0) {
+        spl.container_idx--;
+        spl.container_obj[spl.container_idx] = null;
+    }
+}
+
+// C ref: sp_lev.c:3049 -- the table lspo_map() hands its contents() callback.
+export function l_push_wid_hei_table(L, wid, hei) {
+    return { width: wid, height: hei };
+}
+
+// C ref: sp_lev.c:3058 -- the table lspo_room()/lspo_region() hand their
+// contents() callback.
+export function l_push_mkroom_table(L, tmpr) {
+    return {
+        width: 1 + (tmpr.hx - tmpr.lx),
+        height: 1 + (tmpr.hy - tmpr.ly),
+        region: [tmpr.lx, tmpr.ly, tmpr.hx, tmpr.hy],
+        lit: !!tmpr.rlit,
+        irregular: !!tmpr.irregular,
+        needjoining: !!tmpr.needjoining,
+        type: get_mkroom_name(tmpr.rtype),
+    };
+}
+
+// C ref: sp_lev.c:3075 -- des.message("..."), appended to gl.lev_message with
+// '\n' between entries.  No RNG.
+export function lspo_message(...args) {
+    if (args.length < 1) nhl_error('Wrong parameters');
+
+    create_des_coder();
+
+    const msg = String(args[0]);
+
+    game.lev_message = game.lev_message ? (game.lev_message + '\n' + msg) : msg;
+
+    return 0;
+}
+
+// C ref: sp_lev.c:3113 -- des.* `align = ...`.  Defaults to "random", which is
+// AM_SPLEV_RANDOM (an induced_align(80) draw later, in sp_amask_to_amask).
+const GTALIGNS = ['noalign', 'law', 'neutral', 'chaos',
+                  'coaligned', 'noncoaligned', 'random'];
+export function get_table_align(t) {
+    const aligns2i = [AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC,
+                      AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM, 0];
+
+    return aligns2i[get_table_option(t, 'align', 'random', GTALIGNS)];
+}
+
+// C ref: sp_lev.c:3130 -- `class = "D"`: only a single character counts.
+export function get_table_monclass(t) {
+    const s = get_table_str_opt(t, 'class', null);
+    let ret = -1;
+
+    if (s && s.length === 1) ret = s.charCodeAt(0);
+    return ret;
+}
+
+// C ref: sp_lev.c:3142 find_montype(L, s, &mgender).  The lua_State is UNUSED
+// in C.  One rn2(2) -- but ONLY for a species that is neither all-male nor
+// all-female AND whose name was not itself a gendered form ("gnome lord" is
+// the male name, so it never rolls).
+// C's name_to_monplus(s, NULL, &mgend) is split in this port into
+// name_to_pmidx() (the index) + name_gender_hint() (the gender the NAME
+// implies); MGEND_MALE/FEMALE/NEUTRAL are C's MALE/FEMALE/NEUTRAL values.
+export function find_montype(s, mgender) {
+    let mgend = NEUTRAL;
+
+    const i = name_to_pmidx(s);
+    mgend = name_gender_hint(s);
+    const ptr = (i >= LOW_PM) ? monster_by_pmidx(i) : null;
+    if (ptr) {
+        if (is_male_flag(ptr) || is_female_flag(ptr))
+            mgend = is_female_flag(ptr) ? FEMALE : MALE;
+        else
+            mgend = (mgend === FEMALE) ? FEMALE
+                        : (mgend === MALE) ? MALE : rn2(2);   // sp_lev.c:3156
+        if (mgender) mgender.v = mgend;
+        return i;
+    }
+    if (mgender) mgender.v = NEUTRAL;
+    return NON_PM;
+}
+
+// C ref: sp_lev.c:3166 -- `id = "giant eel"`.  Absent id costs no draw.
+export function get_table_montype(t, mgender) {
+    const s = get_table_str_opt(t, 'id', null);
+    let ret = NON_PM;
+
+    if (s) {
+        ret = find_montype(s, mgender);
+        if (ret === NON_PM) nhl_error('Unknown monster id');
+    }
+    return ret;
+}
+
+// C ref: sp_lev.c:3187 -- accept either `x=,y=` or `coord={x,y}`.  Absolute
+// (not map-relative) coordinates come back; the caller decides.
+export function get_table_xy_or_coord(t, out) {
+    let mx = get_table_int_opt(t, 'x', -1);
+    let my = get_table_int_opt(t, 'y', -1);
+
+    if (mx === -1 && my === -1) {
+        const c = { x: mx, y: my };
+        get_coord(t?.coord, c);
+        mx = c.x; my = c.y;
+    }
+
+    out.x = mx;
+    out.y = my;
+}
+
+// C ref: sp_lev.c:3213 lspo_monster() -- des.monster().  Accepted shapes:
+//   des.monster()                       -> everything random
+//   des.monster("wood nymph")           -> by name (or a single class letter)
+//   des.monster("hill giant", {08,06})  -> name + coord table
+//   des.monster("giant eel", 11, 6)     -> name + x + y
+//   des.monster({ ... })                -> the full table form
+// Draw order: the name's find_montype rn2(2) (parse time) precedes everything
+// create_monster() does, including induced_align.
+export function lspo_monster(...args) {
+    const argc = args.length;
+    const tmpmons = {};
+    const xy = { x: -1, y: -1 };
+    const mgend = { v: NEUTRAL };
+
+    create_des_coder();
+
+    tmpmons.peaceful = -1;
+    tmpmons.asleep = -1;
+    tmpmons.name = { str: null };
+    tmpmons.appear = 0;
+    tmpmons.appear_as = { str: null };
+    tmpmons.sp_amask = AM_SPLEV_RANDOM;
+    tmpmons.female = 0;
+    tmpmons.invis = 0;
+    tmpmons.cancelled = 0;
+    tmpmons.revived = 0;
+    tmpmons.avenge = 0;
+    tmpmons.fleeing = 0;
+    tmpmons.blinded = 0;
+    tmpmons.paralyzed = 0;
+    tmpmons.stunned = 0;
+    tmpmons.confused = 0;
+    tmpmons.seentraps = 0;
+    tmpmons.has_invent = DEFAULT_INVENT;
+    tmpmons.waiting = 0;
+    tmpmons.mm_flags = 0;                  /* NO_MM_FLAGS */
+    tmpmons.m_lev_adj = 0;
+
+    let t = null;
+    if (argc === 1 && typeof args[0] === 'string') {
+        const paramstr = args[0];
+
+        if (paramstr.length === 1) {
+            tmpmons.class = paramstr.charCodeAt(0);
+            tmpmons.id = NON_PM;
+        } else {
+            tmpmons.class = -1;
+            tmpmons.id = find_montype(paramstr, mgend);
+            tmpmons.female = (mgend.v === FEMALE) ? FEMALE
+                                : (mgend.v === MALE) ? MALE : rn2(2);
+        }
+    } else if (argc === 2 && typeof args[0] === 'string'
+               && typeof args[1] === 'object') {
+        const paramstr = args[0];
+
+        get_coord(args[1], xy);
+
+        if (paramstr.length === 1) {
+            tmpmons.class = paramstr.charCodeAt(0);
+            tmpmons.id = NON_PM;
+        } else {
+            tmpmons.class = -1;
+            tmpmons.id = find_montype(paramstr, mgend);
+            tmpmons.female = (mgend.v === FEMALE) ? FEMALE
+                                : (mgend.v === MALE) ? MALE : rn2(2);
+        }
+    } else if (argc === 3) {
+        const paramstr = args[0];
+
+        xy.x = Math.trunc(args[1]);
+        xy.y = Math.trunc(args[2]);
+
+        if (paramstr.length === 1) {
+            tmpmons.class = paramstr.charCodeAt(0);
+            tmpmons.id = NON_PM;
+        } else {
+            tmpmons.class = -1;
+            tmpmons.id = find_montype(paramstr, mgend);
+            tmpmons.female = (mgend.v === FEMALE) ? FEMALE
+                                : (mgend.v === MALE) ? MALE : rn2(2);
+        }
+    } else {
+        let keep_default_invent = -1;      /* -1 = unspecified */
+        t = lcheck_param_table(args[0]);
+
+        tmpmons.peaceful = get_table_boolean_opt(t, 'peaceful', BOOL_RANDOM);
+        tmpmons.asleep = get_table_boolean_opt(t, 'asleep', BOOL_RANDOM);
+        tmpmons.name.str = get_table_str_opt(t, 'name', null);
+        tmpmons.appear = 0;
+        tmpmons.appear_as.str = null;
+        tmpmons.sp_amask = get_table_align(t);
+        tmpmons.female = get_table_boolean_opt(t, 'female', BOOL_RANDOM);
+        tmpmons.invis = get_table_boolean_opt(t, 'invisible', false);
+        tmpmons.cancelled = get_table_boolean_opt(t, 'cancelled', false);
+        tmpmons.revived = get_table_boolean_opt(t, 'revived', false);
+        tmpmons.avenge = get_table_boolean_opt(t, 'avenge', false);
+        tmpmons.fleeing = get_table_int_opt(t, 'fleeing', 0);
+        tmpmons.blinded = get_table_int_opt(t, 'blinded', 0);
+        tmpmons.paralyzed = get_table_int_opt(t, 'paralyzed', 0);
+        tmpmons.stunned = get_table_boolean_opt(t, 'stunned', false);
+        tmpmons.confused = get_table_boolean_opt(t, 'confused', false);
+        tmpmons.waiting = get_table_boolean_opt(t, 'waiting', false);
+        tmpmons.m_lev_adj = get_table_int_opt(t, 'm_lev_adj', 0);
+        tmpmons.seentraps = 0;   /* TODO (C): list of trap names to bitfield */
+        keep_default_invent = get_table_boolean_opt(t, 'keep_default_invent', -1);
+
+        if (!get_table_boolean_opt(t, 'tail', true))
+            tmpmons.mm_flags |= MM_NOTAIL;
+        if (!get_table_boolean_opt(t, 'group', true))
+            tmpmons.mm_flags |= MM_NOGRP;
+        if (get_table_boolean_opt(t, 'adjacentok', false))
+            tmpmons.mm_flags |= MM_ADJACENTOK;
+        if (get_table_boolean_opt(t, 'ignorewater', false))
+            tmpmons.mm_flags |= MM_IGNOREWATER;
+        if (!get_table_boolean_opt(t, 'countbirth', true))
+            tmpmons.mm_flags |= MM_NOCOUNTBIRTH;
+
+        const mappear = get_table_str_opt(t, 'appear_as', null);
+        if (mappear) {
+            if (mappear.startsWith('obj:')) tmpmons.appear = M_AP_OBJECT;
+            else if (mappear.startsWith('mon:')) tmpmons.appear = M_AP_MONSTER;
+            else if (mappear.startsWith('ter:')) tmpmons.appear = M_AP_FURNITURE;
+            else nhl_error('Unknown appear_as type');
+            tmpmons.appear_as.str = mappear.slice(4);
+        }
+
+        get_table_xy_or_coord(t, xy);
+
+        tmpmons.id = get_table_montype(t, mgend);
+        /* get_table_montype returns a random gender for a species that is not
+           all-male or all-female; an explicit `female =` overrides that random
+           one, but never overrides a one-gender species (no male nymphs). */
+        const idptr = (tmpmons.id >= LOW_PM) ? monster_by_pmidx(tmpmons.id) : null;
+        if (mgend.v !== NEUTRAL
+            && (tmpmons.female === BOOL_RANDOM
+                || (idptr && (is_female_flag(idptr) || is_male_flag(idptr)))))
+            tmpmons.female = mgend.v;
+        /* safety net when find_montype found no gender */
+        if (tmpmons.female === BOOL_RANDOM) tmpmons.female = 0;
+
+        tmpmons.class = get_table_monclass(t);
+
+        if (t.inventory != null) {
+            /* most times inventory is specified the monster should NOT also get
+               its species' default inventory */
+            tmpmons.has_invent = CUSTOM_INVENT;
+            if (keep_default_invent === 1) tmpmons.has_invent |= DEFAULT_INVENT;
+        } else {
+            if (keep_default_invent === 0) tmpmons.has_invent = NO_INVENT;
+        }
+    }
+
+    if (xy.x === -1 && xy.y === -1) tmpmons.coord = SP_COORD_PACK_RANDOM(0);
+    else tmpmons.coord = SP_COORD_PACK(xy.x, xy.y);
+
+    if (tmpmons.id !== NON_PM && tmpmons.class === -1) {
+        const ptr = monster_by_pmidx(tmpmons.id);
+        tmpmons.class = ptr ? ptr.sym : -1;   /* C: monsym(&mons[id]) */
+    }
+
+    create_monster(tmpmons, spl.coder?.croom);
+
+    if ((tmpmons.has_invent & CUSTOM_INVENT) && typeof t?.inventory === 'function') {
+        t.inventory();
+        spo_end_moninvent();
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c:3406 -- `spe = 4` / `spe = "random"` / absent all mean
+// something different; "random" and absent both give rndval.  No RNG here.
+export function get_table_int_or_random(t, name, rndval) {
+    const v = t?.[name];
+
+    if (v == null) return rndval;
+    if (typeof v !== 'number') {
+        const tmp = (v == null) ? null : String(v);
+        if (tmp && tmp.toLowerCase() === 'random') return rndval;
+        nhl_error(`Expected integer or "random" for "${name}", got `
+                  + (tmp ? `"${tmp}"` : '<Null>'));
+        return 0;
+    }
+    return Math.trunc(v);
+}
+
+// C ref: sp_lev.c:3441 -- `buc = "cursed"` -> create_object's curse_state.
+const BUCS = ['random', 'blessed', 'uncursed', 'cursed',
+              'not-cursed', 'not-uncursed', 'not-blessed'];
+export function get_table_buc(t) {
+    const bucs2i = [0, 1, 2, 3, 4, 5, 6, 0];
+    return bucs2i[get_table_option(t, 'buc', 'random', BUCS)];
+}
+
+// C ref: sp_lev.c:3454 -- `class = "%"`.
+export function get_table_objclass(t) {
+    const s = get_table_str_opt(t, 'class', null);
+    let ret = -1;
+
+    if (s && s.length === 1) ret = s.charCodeAt(0);
+    return ret;
+}
+
+// C ref: sp_lev.c:3467 find_objtype(L, s, oclass) -- resolve an object by
+// objects.h name, then by appearance description.  The " of " prefix table
+// exists because several classes are defined without their prefix, which makes
+// bare names like "teleportation" ambiguous.  No RNG.
+// C's table stores the class CONSTANT (RING_CLASS, ...); the class symbol
+// stored here is the same value one def_char_to_objclass() away, which avoids
+// naming the enum indices (see [[wrong-constant-sweep]]).
+const CLASS_PREFIXES = [
+    ['ring of ', '='], ['potion of ', '!'], ['scroll of ', '?'],
+    ['spellbook of ', '+'], ['wand of ', '/'],
+];
+export function find_objtype(s, oclass) {
+    if (s && String(s).length) {
+        let str = String(s);
+        let cls = def_char_to_objclass(oclass);
+
+        if (cls === MAXOCLASSES) cls = 0;
+
+        if (str.toLowerCase().includes(' of ')) {
+            for (const [p, csym] of CLASS_PREFIXES) {
+                if (str.slice(0, p.length).toLowerCase() === p) {
+                    cls = def_char_to_objclass(csym);
+                    str = str.slice(p.length);
+                    break;
+                }
+            }
+        }
+
+        /* find by object name */
+        for (let i = 0; i < OBJDATA.length; i++) {
+            const objname = OBJDATA[i]?.name;
+            if ((!cls || cls === OBJDATA[i].oc_class)
+                && objname && objname.toLowerCase() === str.toLowerCase())
+                return i;
+        }
+
+        /*
+         * C FIXME kept verbatim: "orange potion" cannot match, because the
+         * description is just "orange"; and "gray stone" would always pick
+         * the first one.
+         */
+
+        /* find by object description */
+        for (let i = 0; i < OBJDATA.length; i++) {
+            const objname = DESCR_BY_OTYP[OBJDATA[i]?.oc_descr_idx ?? i];
+            if (objname && objname.toLowerCase() === str.toLowerCase()) return i;
+        }
+
+        nhl_error('Unknown object id');
+    }
+    return STRANGE_OBJECT_OTYP;
+}
+
+// C ref: sp_lev.c:3538 -- `id = "sack"` plus the optional `class =`.
+export function get_table_objtype(t) {
+    const s = get_table_str_opt(t, 'id', null);
+    const oclass = get_table_objclass(t);
+    return find_objtype(s, oclass);
+}
+
+// C ref: sp_lev.c:3556 lspo_object() -- des.object().  Shapes mirror
+// des.monster().  The `quancnt` do/while at :3734 is what makes
+// `quantity = N` of a non-merging type create N separate objects.
+export function lspo_object(...args) {
+    const argc = args.length;
+    const tmpobj = {
+        name: { str: null }, corpsenm: NON_PM, id: 0, spe: -127, coord: 0,
+        x: 0, y: 0, class: 0, containment: 0, curse_state: 0, quan: -1,
+        buried: 0, lit: 0, eroded: 0, locked: -1, trapped: -1, tknown: -1,
+        recharged: 0, invis: 0, greased: 0, broken: 0, achievement: 0,
+    };
+    const xy = { x: -1, y: -1 };
+    let maybe_contents = 0;
+    let otmp = null;
+
+    create_des_coder();
+
+    let t = null;
+    if (argc === 1 && typeof args[0] === 'string') {
+        const paramstr = args[0];
+
+        if (paramstr.length === 1) {
+            tmpobj.class = paramstr.charCodeAt(0);
+            tmpobj.id = STRANGE_OBJECT_OTYP;
+        } else {
+            tmpobj.class = -1;
+            tmpobj.id = find_objtype(paramstr, -1);
+        }
+    } else if (argc === 2 && typeof args[0] === 'string'
+               && typeof args[1] === 'object') {
+        const paramstr = args[0];
+
+        get_coord(args[1], xy);
+
+        if (paramstr.length === 1) {
+            tmpobj.class = paramstr.charCodeAt(0);
+            tmpobj.id = STRANGE_OBJECT_OTYP;
+        } else {
+            tmpobj.class = -1;
+            tmpobj.id = find_objtype(paramstr, -1);
+        }
+    } else if (argc === 3 && typeof args[1] === 'number'
+               && typeof args[2] === 'number') {
+        const paramstr = args[0];
+
+        xy.x = Math.trunc(args[1]);
+        xy.y = Math.trunc(args[2]);
+
+        if (paramstr.length === 1) {
+            tmpobj.class = paramstr.charCodeAt(0);
+            tmpobj.id = STRANGE_OBJECT_OTYP;
+        } else {
+            tmpobj.class = -1;
+            tmpobj.id = find_objtype(paramstr, -1);
+        }
+    } else {
+        t = lcheck_param_table(args[0]);
+
+        tmpobj.spe = get_table_int_or_random(t, 'spe', -127);
+        tmpobj.curse_state = get_table_buc(t);
+        tmpobj.corpsenm = NON_PM;
+        tmpobj.name.str = get_table_str_opt(t, 'name', null);
+        tmpobj.quan = get_table_int_or_random(t, 'quantity', -1);
+        tmpobj.buried = get_table_boolean_opt(t, 'buried', 0);
+        tmpobj.lit = get_table_boolean_opt(t, 'lit', 0);
+        tmpobj.eroded = get_table_int_opt(t, 'eroded', 0);
+        tmpobj.locked = get_table_boolean_opt(t, 'locked', -1);
+        tmpobj.trapped = get_table_boolean_opt(t, 'trapped', -1);
+        tmpobj.tknown = get_table_boolean_opt(t, 'trap_known', -1);
+        tmpobj.recharged = get_table_int_opt(t, 'recharged', 0);
+        tmpobj.greased = get_table_boolean_opt(t, 'greased', 0);
+        tmpobj.broken = get_table_boolean_opt(t, 'broken', 0);
+        tmpobj.achievement = get_table_boolean_opt(t, 'achievement', 0);
+
+        get_table_xy_or_coord(t, xy);
+
+        tmpobj.id = get_table_objtype(t);
+        tmpobj.class = get_table_objclass(t);
+        maybe_contents = 1;
+    }
+
+    if (xy.x === -1 && xy.y === -1) tmpobj.coord = SP_COORD_PACK_RANDOM(0);
+    else tmpobj.coord = SP_COORD_PACK(xy.x, xy.y);
+
+    if (tmpobj.class === -1 && tmpobj.id > STRANGE_OBJECT_OTYP)
+        tmpobj.class = OBJDATA[tmpobj.id].oc_class;
+    else if (tmpobj.class > -1 && tmpobj.id === STRANGE_OBJECT_OTYP)
+        tmpobj.id = -1;
+
+    const O_STATUE = STATUE, O_EGG = otyp_by_name('egg'),
+          O_CORPSE = CORPSE, O_TIN = otyp_by_name('tin'),
+          O_FIGURINE = otyp_by_name('figurine');
+    if (tmpobj.id === O_STATUE || tmpobj.id === O_EGG
+        || tmpobj.id === O_CORPSE || tmpobj.id === O_TIN
+        || tmpobj.id === O_FIGURINE) {
+        let pm = null;
+        let nonpmobj = false;
+        const montype = get_table_str_opt(t, 'montype', null);
+
+        if (montype) {
+            const ml = montype.toLowerCase();
+            if ((tmpobj.id === O_TIN && (ml === 'spinach' || ml === 'empty'))
+                || (tmpobj.id === O_EGG && ml === 'empty')) {
+                tmpobj.corpsenm = NON_PM;
+                tmpobj.spe = (ml === 'spinach') ? 1 : 0;
+                nonpmobj = true;
+            } else if (montype.length === 1
+                       && EXT.def_char_to_monclass(montype.charCodeAt(0)) !== MAXMCLASSES) {
+                pm = mkclass(EXT.def_char_to_monclass(montype.charCodeAt(0)),
+                             G_NOGEN_FLAG | G_IGNORE);
+            } else {
+                for (let i = LOW_PM; ; i++) {
+                    /* C loops to NUMMONS; monster_by_pmidx() returning null is
+                       the end of this port's mons[] (never hardcode the count
+                       -- see [[mons-table-missing-mail-daemon]]). */
+                    const p = monster_by_pmidx(i);
+                    if (!p) break;
+                    if (p.name?.toLowerCase() === ml
+                        || (p.mname_male && p.mname_male.toLowerCase() === ml)
+                        || (p.mname_female && p.mname_female.toLowerCase() === ml)) {
+                        pm = p;
+                        break;
+                    }
+                }
+            }
+            if (pm) tmpobj.corpsenm = pm.pmidx;
+            else if (!nonpmobj) nhl_error('Unknown montype');
+        }
+        if (tmpobj.id === O_STATUE || tmpobj.id === O_CORPSE) {
+            let lflags = 0;
+
+            if (get_table_boolean_opt(t, 'historic', 0)) lflags |= CORPSTAT_HISTORIC;
+            if (get_table_boolean_opt(t, 'male', 0)) lflags |= CORPSTAT_MALE;
+            if (get_table_boolean_opt(t, 'female', 0)) lflags |= CORPSTAT_FEMALE;
+            tmpobj.spe = lflags;
+        } else if (tmpobj.id === O_EGG) {
+            tmpobj.spe = get_table_boolean_opt(t, 'laid_by_you', 0) ? 1 : 0;
+        } else if (!nonpmobj) {   /* spe is already set for nonpmobj */
+            tmpobj.spe = 0;
+        }
+    }
+
+    let quancnt = (tmpobj.id > STRANGE_OBJECT_OTYP) ? tmpobj.quan : 0;
+
+    if (spl.container_idx) tmpobj.containment |= SP_OBJ_CONTENT;
+
+    if (maybe_contents && t?.contents != null)
+        tmpobj.containment |= SP_OBJ_CONTAINER;
+
+    do {
+        otmp = create_object(tmpobj, spl.coder?.croom);
+        quancnt--;
+    } while ((quancnt > 0) && ((tmpobj.id > STRANGE_OBJECT_OTYP)
+                               && !oc_merge(tmpobj.id)));
+
+    if (typeof t?.contents === 'function') t.contents(otmp);
+
+    if ((tmpobj.containment & SP_OBJ_CONTAINER) !== 0) spo_pop_container();
+
+    return otmp;
+}
+
+// C ref: sp_lev.c:3758 lspo_level_flags(...) -- des.level_flags("noteleport",
+// "mazelevel", ...).  No RNG.
+export function lspo_level_flags(...args) {
+    create_des_coder();
+
+    if (args.length < 1) nhl_error('expected string params');
+
+    const flags = game.level?.flags || {};
+    const coder = spl.coder;
+    for (let i = 0; i < args.length; i++) {
+        const s = String(args[i]).toLowerCase();
+
+        if (s === 'noteleport') flags.noteleport = 1;
+        else if (s === 'hardfloor') flags.hardfloor = 1;
+        else if (s === 'nommap') flags.nommap = 1;
+        else if (s === 'shortsighted') flags.shortsighted = 1;
+        else if (s === 'arboreal') flags.arboreal = 1;
+        else if (s === 'mazelevel') flags.is_maze_lev = 1;
+        else if (s === 'shroud') flags.hero_memory = 1;
+        else if (s === 'graveyard') flags.graveyard = 1;
+        else if (s === 'icedpools') spl.icedpools = 1;
+        else if (s === 'corrmaze') flags.corrmaze = 1;
+        else if (s === 'premapped') coder.premapped = 1;
+        else if (s === 'solidify') coder.solidify = 1;
+        else if (s === 'sokoban') flags.sokoban_rules = 1;
+        else if (s === 'inaccessibles') coder.check_inaccessibles = 1;
+        else if (s === 'noflipx') coder.allow_flips &= ~2;
+        else if (s === 'noflipy') coder.allow_flips &= ~1;
+        else if (s === 'noflip') coder.allow_flips = 0;
+        else if (s === 'temperate') flags.temperature = 0;
+        else if (s === 'hot') flags.temperature = 1;
+        else if (s === 'cold') flags.temperature = -1;
+        else if (s === 'nomongen') flags.rndmongen = 0;
+        else if (s === 'nodeathdrops') flags.deathdrops = 0;
+        else if (s === 'noautosearch') flags.noautosearch = 1;
+        else if (s === 'fumaroles') flags.fumaroles = 1;
+        else if (s === 'stormy') flags.stormy = 1;
+        else nhl_error(`Unknown level flag ${args[i]}`);
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c:3836 lspo_level_init() -- des.level_init({ style = ... }).
+// Every get_table_* here is RNG-free; splev_initlev() does the drawing.
+const INITSTYLES = ['solidfill', 'mazegrid', 'maze', 'rogue', 'mines', 'swamp'];
+export function lspo_level_init(t) {
+    const initstyles2i = [LVLINIT_SOLIDFILL, LVLINIT_MAZEGRID, LVLINIT_MAZE,
+                          LVLINIT_ROGUE, LVLINIT_MINES, LVLINIT_SWAMP, 0];
+    const init_lev = {};
+
+    create_des_coder();
+
+    t = lcheck_param_table(t);
+
+    spl.splev_init_present = true;
+
+    init_lev.init_style
+        = initstyles2i[get_table_option(t, 'style', 'solidfill', INITSTYLES)];
+    init_lev.fg = get_table_mapchr_opt(t, 'fg', ROOM);
+    init_lev.bg = get_table_mapchr_opt(t, 'bg', INVALID_TYPE);
+    init_lev.smoothed = get_table_boolean_opt(t, 'smoothed', false);
+    init_lev.joined = get_table_boolean_opt(t, 'joined', false);
+    init_lev.lit = get_table_boolean_opt(t, 'lit', BOOL_RANDOM);
+    init_lev.walled = get_table_boolean_opt(t, 'walled', false);
+    init_lev.filling = get_table_mapchr_opt(t, 'filling', init_lev.fg);
+    init_lev.corrwid = get_table_int_opt(t, 'corrwid', -1);
+    init_lev.wallthick = get_table_int_opt(t, 'wallthick', -1);
+    init_lev.rm_deadends = !get_table_boolean_opt(t, 'deadends', true);
+
+    spl.coder.lvl_is_joined = init_lev.joined;
+
+    if (init_lev.bg === INVALID_TYPE)
+        init_lev.bg = (init_lev.init_style === LVLINIT_SWAMP) ? MOAT : STONE;
+
+    splev_initlev(init_lev);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:3880 lspo_engraving() -- des.engraving().  The only draws
+// come from get_location_coord() for a random position.
+const ENGRTYPES = ['dust', 'engrave', 'burn', 'mark', 'blood'];
+export function lspo_engraving(...args) {
+    const engrtypes2i = [DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, 0];
+    let etyp = DUST;
+    let txt = null;
+    let ecoord;
+    const xy = { x: -1, y: -1 };
+    const argc = args.length;
+    let guardobjs = false;
+    let wipeout = true;
+
+    create_des_coder();
+
+    if (argc === 1) {
+        const t = lcheck_param_table(args[0]);
+
+        get_table_xy_or_coord(t, xy);
+        etyp = engrtypes2i[get_table_option(t, 'type', 'engrave', ENGRTYPES)];
+        txt = get_table_str(t, 'text');
+        wipeout = get_table_boolean_opt(t, 'degrade', true);
+        guardobjs = get_table_boolean_opt(t, 'guardobjects', false);
+    } else if (argc === 3) {
+        get_coord(args[0], xy);
+        const i = ENGRTYPES.indexOf(String(args[1]));
+        if (i < 0) nhl_error(`invalid option '${args[1]}'`);
+        etyp = engrtypes2i[i];
+        txt = String(args[2]);
+    } else {
+        nhl_error('Wrong parameters');
+    }
+
+    if (xy.x === -1 && xy.y === -1) ecoord = SP_COORD_PACK_RANDOM(0);
+    else ecoord = SP_COORD_PACK(xy.x, xy.y);
+
+    get_location_coord(xy, DRY, spl.coder?.croom, ecoord);
+    make_engr_at(xy.x, xy.y, txt, null, 0, etyp);
+    const ep = engr_at(xy.x, xy.y);
+    if (ep) {
+        ep.guardobjects = guardobjs;
+        ep.nowipeout = !wipeout;
+    }
+    return 0;
+}
+
+// C ref: sp_lev.c:3938 -- des.mineralize(); -1 in any field keeps the default.
+export function lspo_mineralize(t) {
+    create_des_coder();
+
+    t = lcheck_param_table(t);
+    const gem_prob = get_table_int_opt(t, 'gem_prob', -1);
+    const gold_prob = get_table_int_opt(t, 'gold_prob', -1);
+    const kelp_moat = get_table_int_opt(t, 'kelp_moat', -1);
+    const kelp_pool = get_table_int_opt(t, 'kelp_pool', -1);
+
+    EXT.mineralize(kelp_pool, kelp_moat, gold_prob, gem_prob, true);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:3957 room_types[] -- the des.room()/des.region() `type =`
+// names.  Order matters: get_table_roomtype_opt() takes the first match.
+const room_types = [
+    ['ordinary', OROOM], ['themed', THEMEROOM], ['throne', COURT],
+    ['swamp', SWAMP], ['vault', VAULT], ['beehive', BEEHIVE],
+    ['morgue', MORGUE], ['barracks', BARRACKS], ['zoo', ZOO],
+    ['delphi', DELPHI], ['temple', TEMPLE], ['anthole', ANTHOLE],
+    ['cocknest', COCKNEST], ['leprehall', LEPREHALL], ['shop', SHOPBASE],
+    ['armor shop', ARMORSHOP], ['scroll shop', SCROLLSHOP],
+    ['potion shop', POTIONSHOP], ['weapon shop', WEAPONSHOP],
+    ['food shop', FOODSHOP], ['ring shop', RINGSHOP], ['wand shop', WANDSHOP],
+    ['tool shop', TOOLSHOP], ['book shop', BOOKSHOP],
+    ['health food shop', FODDERSHOP], ['candle shop', CANDLESHOP],
+];
+
+// C ref: sp_lev.c:3990 -- rtype -> name, for the room table handed to a
+// contents() callback.  Returns "unknown" (never NULL) for an unlisted rtype.
+export function get_mkroom_name(rtype) {
+    for (const [name, type] of room_types) if (type === rtype) return name;
+    return 'unknown';                      /* C: impossible() first */
+}
+
+// C ref: sp_lev.c:4003 -- `type = "beehive"`.  An unknown name keeps defval.
+export function get_table_roomtype_opt(t, name, defval) {
+    const roomstr = get_table_str_opt(t, name, '');
+    let res = defval;
+
+    if (roomstr && roomstr.length) {
+        let found = false;
+        for (const [rn, type] of room_types)
+            if (rn.toLowerCase() === roomstr.toLowerCase()) {
+                res = type;
+                found = true;
+                break;
+            }
+        if (!found) { /* C: impossible("Unknown room type '%s'") */ }
+    }
+    return res;
+}
+
+// C ref: sp_lev.c:4027 lspo_room() -- des.room().  build_room() does the
+// drawing; note the rn2(100) `chance` roll happens inside build_room, AFTER
+// every get_table_* here.
+const L_OR_R = ['left', 'half-left', 'center', 'half-right', 'right',
+                'none', 'random'];
+const T_OR_B = ['top', 'center', 'bottom', 'none', 'random'];
+export function lspo_room(t) {
+    create_des_coder();
+
+    if (game.in_mk_themerooms && game.themeroom_failed) return 0;
+
+    t = lcheck_param_table(t);
+
+    const coder = spl.coder;
+    if (coder.n_subroom > MAX_NESTED_ROOMS) {
+        return 0;                          /* C: panic("Too deeply nested") */
+    } else {
+        const l_or_r2i = [C_SPLEV_LEFT, C_SPLEV_H_LEFT, C_SPLEV_CENTER,
+                          C_SPLEV_H_RIGHT, C_SPLEV_RIGHT, -1, -1, -1];
+        const t_or_b2i = [C_TOP, C_SPLEV_CENTER, C_BOTTOM, -1, -1, -1];
+        const tmproom = {};
+        const xy = { x: -1, y: -1 };
+
+        get_table_xy_or_coord(t, xy);
+        tmproom.x = xy.x; tmproom.y = xy.y;
+        if ((tmproom.x === -1 || tmproom.y === -1) && tmproom.x !== tmproom.y)
+            nhl_error('Room must have both x and y');
+
+        tmproom.w = get_table_int_opt(t, 'w', -1);
+        tmproom.h = get_table_int_opt(t, 'h', -1);
+
+        if ((tmproom.w === -1 || tmproom.h === -1) && tmproom.w !== tmproom.h)
+            nhl_error('Room must have both w and h');
+
+        tmproom.xalign = l_or_r2i[get_table_option(t, 'xalign', 'random', L_OR_R)];
+        tmproom.yalign = t_or_b2i[get_table_option(t, 'yalign', 'random', T_OR_B)];
+        tmproom.rtype = get_table_roomtype_opt(t, 'type', OROOM);
+        tmproom.chance = get_table_int_opt(t, 'chance', 100);
+        tmproom.rlit = get_table_int_opt(t, 'lit', -1);
+        /* theme rooms default to unfilled */
+        tmproom.needfill = get_table_int_opt(t, 'filled',
+                                             game.in_mk_themerooms ? 0 : 1);
+        tmproom.joined = get_table_boolean_opt(t, 'joined', true);
+
+        if (!coder.failed_room[coder.n_subroom - 1]) {
+            const tmpcr = build_room(tmproom, coder.croom);
+            if (tmpcr) {
+                const n = coder.n_subroom;
+
+                coder.tmproomlist[n] = tmpcr;
+                coder.failed_room[n] = false;
+                /* added a subroom, make the parent room irregular */
+                if (coder.tmproomlist[n - 1]) coder.tmproomlist[n - 1].irregular = true;
+                coder.n_subroom++;
+                update_croom();
+                if (typeof t.contents === 'function')
+                    t.contents(l_push_mkroom_table(null, tmpcr));
+                spo_endroom(coder);
+                add_doors_to_room(tmpcr);
+                return 0;
+            }
+            if (game.in_mk_themerooms) game.themeroom_failed = true;
+        } /* failed to create the parent room, so fail this too */
+    }
+    coder.tmproomlist[coder.n_subroom] = null;
+    coder.failed_room[coder.n_subroom] = true;
+    coder.n_subroom++;
+    update_croom();
+    spo_endroom(coder);
+    if (game.in_mk_themerooms) game.themeroom_failed = true;
+
+    return 0;
+}
+
+// C ref: sp_lev.c:4118 -- pop one nesting level; at the top level, make sure
+// xstart/ystart/xsize/ysize are sane for anything created outside a MAP.
+export function spo_endroom(coder) {
+    const c = spl.coder;
+    if (c.n_subroom > 1) {
+        c.n_subroom--;
+        c.tmproomlist[c.n_subroom] = null;
+        c.failed_room[c.n_subroom] = true;
+    } else {
+        if (gx.xsize <= 1 && gy.ysize <= 1) reset_xystart_size();
+    }
+    update_croom();
+}
+
+// C ref: sp_lev.c:4138 -- is_ok_location callback: a randomly placed stairway
+// must not overwrite special terrain.
+export function good_stair_loc(x, y) {
+    const typ = levl_typ(x, y);
+
+    return (typ === ROOM || typ === CORR || typ === ICE);
+}
+
+// C ref: sp_lev.c:4146 l_create_stairway(L, using_ladder) -- the shared guts of
+// des.stair() and des.ladder().  set_ok_location_func(good_stair_loc) is
+// installed only for a RANDOM position, and cleared straight after; it changes
+// which squares get_location() accepts, so it changes how many draws the
+// search costs.
+const STAIRDIRS = ['down', 'up'];
+export function l_create_stairway(args, using_ladder) {
+    const stairdirs2i = [0, 1];
+    const argc = args.length;
+    const xy = { x: -1, y: -1 };
+    let scoord;
+    let up = 0;                            /* default is down */
+
+    create_des_coder();
+
+    if (argc === 1 && typeof args[0] === 'object' && args[0] !== null) {
+        const t = lcheck_param_table(args[0]);
+        get_table_xy_or_coord(t, xy);
+        up = stairdirs2i[get_table_option(t, 'dir', 'down', STAIRDIRS)];
+    } else {
+        let rest = args;
+        if (argc > 0 && typeof args[0] === 'string') {
+            const i = STAIRDIRS.indexOf(args[0]);
+            if (i < 0) nhl_error(`invalid option '${args[0]}'`);
+            up = stairdirs2i[i];
+            rest = args.slice(1);
+        }
+        /* C: nhl_get_xy_params() -- (x,y) or ({x,y}) or nothing */
+        if (rest.length >= 2) { xy.x = Math.trunc(rest[0]); xy.y = Math.trunc(rest[1]); }
+        else if (rest.length === 1) get_coord(rest[0], xy);
+    }
+
+    if (xy.x === -1 && xy.y === -1) {
+        set_ok_location_func(good_stair_loc);
+        scoord = SP_COORD_PACK_RANDOM(0);
+    } else {
+        scoord = SP_COORD_PACK(xy.x, xy.y);
+    }
+
+    get_location_coord(xy, DRY, spl.coder?.croom, scoord);
+    set_ok_location_func(null);
+    const badtrap = t_at(xy.x, xy.y);
+    if (badtrap) deltrap(badtrap);
+    splev_map_mark(xy.x, xy.y);
+
+    const loc = levl_at(xy.x, xy.y);
+    if (using_ladder) {
+        if (loc) loc.typ = LADDER;
+        const uz = game.u?.uz;
+        if (up) {
+            const dest = { dnum: uz?.dnum, dlevel: (uz?.dlevel ?? 0) - 1 };
+            EXT.stairway_add(xy.x, xy.y, true, true, dest);
+            if (loc) loc.ladder = LA_UP;
+        } else {
+            const dest = { dnum: uz?.dnum, dlevel: (uz?.dlevel ?? 0) + 1 };
+            EXT.stairway_add(xy.x, xy.y, false, true, dest);
+            if (loc) loc.ladder = LA_DOWN;
+        }
+    } else {
+        EXT.mkstairs(xy.x, xy.y, up, spl.coder?.croom,
+                     !(scoord & SP_COORD_IS_RANDOM));
+    }
+    return 0;
+}
+
+// C ref: sp_lev.c:4222 / :4231 -- des.stair() / des.ladder().
+export function lspo_stair(...args) { return l_create_stairway(args, false); }
+export function lspo_ladder(...args) { return l_create_stairway(args, true); }
+
+// C ref: sp_lev.c:4242 lspo_grave() -- des.grave().  A grave is skipped
+// entirely when the square already holds a trap, but the location draw has
+// already happened by then.
+export function lspo_grave(...args) {
+    const argc = args.length;
+    const xy = { x: -1, y: -1 };
+    let scoord;
+    let txt;
+
+    create_des_coder();
+
+    if (argc === 3) {
+        xy.x = Math.trunc(args[0]);
+        xy.y = Math.trunc(args[1]);
+        txt = String(args[2]);
+    } else {
+        const t = lcheck_param_table(args[0]);
+
+        get_table_xy_or_coord(t, xy);
+        txt = get_table_str_opt(t, 'text', null);
+    }
+
+    if (xy.x === -1 && xy.y === -1) scoord = SP_COORD_PACK_RANDOM(0);
+    else scoord = SP_COORD_PACK(xy.x, xy.y);
+
+    get_location_coord(xy, DRY, spl.coder?.croom, scoord);
+
+    if (isok(xy.x, xy.y) && !t_at(xy.x, xy.y)) {
+        const loc = levl_at(xy.x, xy.y);
+        if (loc) loc.typ = GRAVE;
+        make_grave(xy.x, xy.y, txt);       /* note: 'txt' might be Null */
+    }
+    return 0;
+}
+
+// C ref: sp_lev.c:4282 lspo_altar() -- des.altar().
+const SHRINES = ['altar', 'shrine', 'sanctum'];
+export function lspo_altar(t) {
+    const shrines2i = [0, 1, 2, 0];
+    const tmpaltar = {};
+    const xy = { x: -1, y: -1 };
+    let acoord;
+
+    create_des_coder();
+
+    t = lcheck_param_table(t);
+
+    get_table_xy_or_coord(t, xy);
+
+    const al = get_table_align(t);
+    const shrine = shrines2i[get_table_option(t, 'type', 'altar', SHRINES)];
+
+    if (xy.x === -1 && xy.y === -1) acoord = SP_COORD_PACK_RANDOM(0);
+    else acoord = SP_COORD_PACK(xy.x, xy.y);
+
+    tmpaltar.coord = acoord;
+    tmpaltar.sp_amask = al;
+    tmpaltar.shrine = shrine;
+
+    create_altar(tmpaltar, spl.coder?.croom);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:4320 trap_types[] -- des.trap() names.  "random" is -1,
+// which create_trap passes straight to mktrap().
+const trap_types = [
+    ['arrow', ARROW_TRAP], ['dart', DART_TRAP], ['falling rock', ROCKTRAP],
+    ['board', SQKY_BOARD], ['bear', BEAR_TRAP], ['land mine', LANDMINE],
+    ['rolling boulder', ROLLING_BOULDER_TRAP], ['sleep gas', SLP_GAS_TRAP],
+    ['rust', RUST_TRAP], ['fire', FIRE_TRAP], ['pit', PIT],
+    ['spiked pit', SPIKED_PIT], ['hole', HOLE], ['trap door', TRAPDOOR],
+    ['teleport', TELEP_TRAP], ['level teleport', LEVEL_TELEP],
+    ['magic portal', MAGIC_PORTAL], ['web', WEB], ['statue', STATUE_TRAP],
+    ['magic', MAGIC_TRAP], ['anti magic', ANTI_MAGIC], ['polymorph', POLY_TRAP],
+    ['vibrating square', VIBRATING_SQUARE], ['random', -1],
+];
+
+// C ref: sp_lev.c:4349 -- `type = "web"`.  An unknown name keeps defval (which
+// lspo_trap passes as -1, i.e. random), it does NOT error.
+export function get_table_traptype_opt(t, name, defval) {
+    const trapstr = get_table_str_opt(t, name, '');
+    let res = defval;
+
+    if (trapstr && trapstr.length)
+        for (const [tn, type] of trap_types)
+            if (tn.toLowerCase() === trapstr.toLowerCase()) { res = type; break; }
+    return res;
+}
+
+// C ref: sp_lev.c:4366 -- ttyp -> des.trap() name, or NULL.
+export function get_trapname_bytype(ttyp) {
+    for (const [tn, type] of trap_types) if (ttyp === type) return tn;
+    return null;
+}
+
+// C ref: sp_lev.c:4378 -- des.trap() name -> ttyp, NO_TRAP when unknown.
+export function get_traptype_byname(trapname) {
+    for (const [tn, type] of trap_types)
+        if (tn.toLowerCase() === String(trapname).toLowerCase()) return type;
+    return NO_TRAP;
+}
+
+// C ref: sp_lev.c:4396 lspo_trap() -- des.trap().  Note the C bug kept
+// verbatim: the "teledest" table writes gl.launchplace, same as "launchfrom".
+export function lspo_trap(...args) {
+    const tmptrap = {};
+    const xy = { x: -1, y: -1 };
+    const argc = args.length;
+
+    create_des_coder();
+
+    tmptrap.spider_on_web = true;
+    tmptrap.seen = false;
+    tmptrap.novictim = false;
+
+    if (argc === 1 && typeof args[0] === 'string') {
+        tmptrap.type = get_traptype_byname(args[0]);
+        xy.x = xy.y = -1;
+    } else if (argc === 2 && typeof args[0] === 'string'
+               && typeof args[1] === 'object') {
+        tmptrap.type = get_traptype_byname(args[0]);
+        get_coord(args[1], xy);
+    } else if (argc === 3) {
+        tmptrap.type = get_traptype_byname(args[0]);
+        xy.x = Math.trunc(args[1]);
+        xy.y = Math.trunc(args[2]);
+    } else {
+        const t = lcheck_param_table(args[0]);
+
+        get_table_xy_or_coord(t, xy);
+        tmptrap.type = get_table_traptype_opt(t, 'type', -1);
+        tmptrap.spider_on_web = get_table_boolean_opt(t, 'spider_on_web', 1);
+        tmptrap.seen = get_table_boolean_opt(t, 'seen', false);
+        tmptrap.novictim = !get_table_boolean_opt(t, 'victim', true);
+
+        if (t.launchfrom != null && typeof t.launchfrom === 'object') {
+            const lc = { x: -1, y: -1 };
+            get_coord(t.launchfrom, lc);
+            game.launchplace = { x: lc.x, y: lc.y };
+        }
+        if (t.teledest != null && typeof t.teledest === 'object') {
+            const lc = { x: -1, y: -1 };
+            get_coord(t.teledest, lc);
+            game.launchplace = { x: lc.x, y: lc.y };
+        }
+    }
+
+    if (tmptrap.type === NO_TRAP) nhl_error('Unknown trap type');
+
+    if (xy.x === -1 && xy.y === -1) tmptrap.coord = SP_COORD_PACK_RANDOM(0);
+    else tmptrap.coord = SP_COORD_PACK(xy.x, xy.y);
+
+    create_trap(tmptrap, spl.coder?.croom);
+    game.launchplace = { x: 0, y: 0 };
+
+    return 0;
+}
+
+// C ref: sp_lev.c:4479 lspo_gold() -- des.gold().  `amount < 0` costs an
+// rnd(200), and it is drawn AFTER the location.
+export function lspo_gold(...args) {
+    const argc = args.length;
+    const xy = { x: -1, y: -1 };
+    let amount;
+    let gcoord;
+
+    create_des_coder();
+
+    if (argc === 3) {
+        amount = Math.trunc(args[0]);
+        xy.x = Math.trunc(args[1]);
+        xy.y = Math.trunc(args[2]);
+    } else if (argc === 2 && typeof args[1] === 'object') {
+        amount = Math.trunc(args[0]);
+        get_coord(args[1], xy);
+    } else if (argc === 0 || (argc === 1 && typeof args[0] === 'object')) {
+        const t = lcheck_param_table(args[0]);
+
+        amount = get_table_int_opt(t, 'amount', -1);
+        get_table_xy_or_coord(t, xy);
+    } else {
+        nhl_error('Wrong parameters');
+        return 0;
+    }
+
+    if (xy.x === -1 && xy.y === -1) gcoord = SP_COORD_PACK_RANDOM(0);
+    else gcoord = SP_COORD_PACK(xy.x, xy.y);
+
+    get_location_coord(xy, DRY, spl.coder?.croom, gcoord);
+    if (amount < 0) amount = rnd(200);
+    mkgold(amount, xy.x, xy.y);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:4528 lspo_corridor() -- des.corridor().
+const WALLDIRS_TBL = ['all', 'random', 'north', 'west', 'east', 'south'];
+export function lspo_corridor(t) {
+    const walldirs2i = [W_ANY, W_RANDOM, W_NORTH, W_WEST, W_EAST, W_SOUTH, 0];
+    const tc = { src: {}, dest: {} };
+
+    create_des_coder();
+
+    t = lcheck_param_table(t);
+
+    tc.src.room = get_table_int(t, 'srcroom');
+    tc.src.door = get_table_int(t, 'srcdoor');
+    tc.src.wall = walldirs2i[get_table_option(t, 'srcwall', 'all', WALLDIRS_TBL)];
+    tc.dest.room = get_table_int(t, 'destroom');
+    tc.dest.door = get_table_int(t, 'destdoor');
+    tc.dest.wall = walldirs2i[get_table_option(t, 'destwall', 'all', WALLDIRS_TBL)];
+
+    create_corridor(tc);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:4557 -- des.random_corridors(): all -1, which makes
+// create_corridor() fall through to makecorridors().
+export function lspo_random_corridors() {
+    const tc = { src: {}, dest: {} };
+
+    create_des_coder();
+
+    tc.src.room = -1;
+    tc.src.door = -1;
+    tc.src.wall = -1;
+    tc.dest.room = -1;
+    tc.dest.door = -1;
+    tc.dest.wall = -1;
+
+    create_corridor(tc);
+
+    return 0;
+}
+
+// C ref: drawing.c def_oc_syms[] / def_char_to_objclass().  js/readobjnam.js
+// and js/invent.js each already carry a module-local copy of this three-line
+// reverse lookup and neither exports it; this is the third, kept local for the
+// same reason.  Accepts a char or a char code (sp_lev.c stores object classes
+// as `char`s in an int field).
+const DEF_OC_SYMS = ['\0', ']', ')', '[', '=', '"', '(', '%', '!', '?', '+',
+                     '/', '$', '*', '`', '0', '_', '.'];
+function def_char_to_objclass(ch) {
+    const c = (typeof ch === 'number') ? String.fromCharCode(ch) : String(ch);
+    const i = DEF_OC_SYMS.indexOf(c);
+    return i < 0 ? MAXOCLASSES : i;
+}
+
+// C ref: sp_lev.c:4586 / :4592 / :4599 -- the selection flood-fill predicates.
+// set_floodfillchk_match_under() latches the terrain to match, then installs
+// the checker, so the two must not be reordered.
+export function floodfillchk_match_under(x, y) {
+    return (spl.floodfillchk_match_under_typ === levl_typ(x, y)) ? 1 : 0;
+}
+
+export function set_floodfillchk_match_under(typ) {
+    spl.floodfillchk_match_under_typ = typ;
+    EXT.set_selection_floodfillchk(floodfillchk_match_under);
+}
+
+export function floodfillchk_match_accessible(x, y) {
+    const typ = levl_typ(x, y);
+    return (ACCESSIBLE(typ) || typ === SDOOR || typ === SCORR) ? 1 : 0;
+}
+
+// C ref: sp_lev.c:4632 -- des.feature() setter.  Existing furniture wins.
+export function sel_set_feature(x, y, typ) {
+    if (!isok(x, y)) return;
+    const loc = levl_at(x, y);
+    if (!loc) return;
+    if (IS_FURNITURE(loc.typ)) return;
+    loc.typ = typ;
+}
+
+// C ref: sp_lev.c:4646 -- des.door() setter for an explicit coordinate.  Note
+// D_SECRET is stripped from the doormask after choosing SDOOR, and a secret
+// door is never left "no door".
+export function sel_set_door(dx, dy, typ) {
+    const x = dx, y = dy;
+    const loc = levl_at(x, y);
+    if (!loc) return;
+
+    if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR)
+        loc.typ = (typ & D_SECRET) ? SDOOR : DOOR;
+    if (typ & D_SECRET) {
+        typ &= ~D_SECRET;
+        if (typ < D_CLOSED) typ = D_CLOSED;
+    }
+    set_door_orientation(x, y);       /* set/clear levl[x][y].horizontal */
+    loc.doormask = typ;
+    splev_map_mark(x, y);
+}
+
+// C ref: sp_lev.c:4670 lspo_door() -- des.door().  The rnddoor() rn2(5) for
+// state="random" is drawn BEFORE the wall/pos lookup, and it is drawn even on
+// the x/y branch where only its D_SECRET bit is used.
+const DOORSTATES_TBL = ['random', 'open', 'closed', 'locked', 'nodoor',
+                        'broken', 'secret'];
+export function lspo_door(...args) {
+    const doorstates2i = [-1, D_ISOPEN, D_CLOSED, D_LOCKED, D_NODOOR,
+                          0x01 /* D_BROKEN */, D_SECRET];
+    let msk;
+    const xy = { x: -1, y: -1 };
+    let t = null;
+    const argc = args.length;
+
+    create_des_coder();
+
+    if (argc === 3) {
+        const i = DOORSTATES_TBL.indexOf(String(args[0]));
+        if (i < 0) nhl_error(`invalid option '${args[0]}'`);
+        msk = doorstates2i[i];
+        xy.x = Math.trunc(args[1]);
+        xy.y = Math.trunc(args[2]);
+    } else {
+        t = lcheck_param_table(args[0]);
+
+        get_table_xy_or_coord(t, xy);
+        msk = doorstates2i[get_table_option(t, 'state', 'random', DOORSTATES_TBL)];
+    }
+
+    const typ = (msk === -1) ? rnddoor() : msk;
+
+    if (xy.x === -1 && xy.y === -1) {
+        /* Note that "random" is also W_ANY: create_door just wants a mask of
+           acceptable walls. */
+        const walldirs2i = [W_ANY, W_ANY, W_NORTH, W_WEST, W_EAST, W_SOUTH, 0];
+        const tmpd = {};
+
+        tmpd.secret = (typ === D_SECRET) ? 1 : 0;
+        tmpd.mask = msk;
+        tmpd.pos = get_table_int_opt(t, 'pos', -1);
+        tmpd.wall = walldirs2i[get_table_option(t, 'wall', 'all', WALLDIRS_TBL)];
+
+        create_door(tmpd, spl.coder?.croom);
+    } else {
+        get_location_coord(xy, ANY_LOC, spl.coder?.croom,
+                           SP_COORD_PACK(xy.x, xy.y));
+        if (!isok(xy.x, xy.y)) {
+            nhl_error('door coord not ok');
+            return 0;
+        }
+        sel_set_door(xy.x, xy.y, typ);
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c:4738 -- des.feature()'s optional boolean flags.  -2 means
+// "the table did not mention it"; -1 ("random") costs one rn2(2).
+export function l_table_getset_feature_flag(t, x, y, name, flag) {
+    const val0 = get_table_boolean_opt(t, name, -2);
+
+    if (val0 !== -2) {
+        let val = val0;
+        if (val === -1) val = rn2(2);
+        const loc = levl_at(x, y);
+        if (!loc) return;
+        if (val) loc.flags = (loc.flags || 0) | flag;
+        else loc.flags = (loc.flags || 0) & ~flag;
+    }
+}
+
+// C ref: sp_lev.c:4771 / :4792 -- map- or room-relative <-> absolute.  `c` is
+// the {x,y} pair C passes by pointer.  NOT for coordinates headed into the
+// get_location() family: those add the origin themselves.
+export function cvt_to_abscoord(c) {
+    if (spl.coder && spl.coder.croom) {
+        c.x += spl.coder.croom.lx;
+        c.y += spl.coder.croom.ly;
+    } else {
+        c.x += gx.xstart;
+        c.y += gy.ystart;
+    }
+}
+
+export function cvt_to_relcoord(c) {
+    if (spl.coder && spl.coder.croom) {
+        c.x -= spl.coder.croom.lx;
+        c.y -= spl.coder.croom.ly;
+    } else {
+        c.x -= gx.xstart;
+        c.y -= gy.ystart;
+    }
+}
+
+// C ref: sp_lev.c:4810 -- nh.abscoord(rx, ry) or nh.abscoord({x=,y=}).
+export function nhl_abs_coord(...args) {
+    const argc = args.length;
+    const c = { x: -1, y: -1 };
+
+    if (argc === 2) {
+        c.x = Math.trunc(args[0]);
+        c.y = Math.trunc(args[1]);
+        cvt_to_abscoord(c);
+        return [c.x, c.y];
+    } else if (argc === 1 && typeof args[0] === 'object' && args[0] !== null) {
+        c.x = get_table_int(args[0], 'x');
+        c.y = get_table_int(args[0], 'y');
+        cvt_to_abscoord(c);
+        return { x: c.x, y: c.y };
+    }
+    nhl_error('nhl_abs_coord: Wrong args');
+    return 0;
+}
+
+// C ref: sp_lev.c:4843 lspo_feature() -- des.feature().  A feature with no
+// coordinate uses DRY (a plain floor square); an explicit one uses ANY_LOC
+// ("assume the author knows what they're doing"), so the two forms cost
+// different numbers of draws.
+const FEATURES = ['fountain', 'sink', 'pool', 'throne', 'tree'];
+export function lspo_feature(...args) {
+    const features2i = [FOUNTAIN, SINK, POOL, THRONE, TREE, STONE];
+    const xy = { x: -1, y: -1 };
+    let typ;
+    const argc = args.length;
+    let can_have_flags = false;
+    let fcoord, humidity;
+    let t = null;
+
+    create_des_coder();
+
+    if (argc === 1 && typeof args[0] === 'string') {
+        const i = FEATURES.indexOf(args[0]);
+        if (i < 0) nhl_error(`invalid option '${args[0]}'`);
+        typ = features2i[i];
+        xy.x = xy.y = -1;
+    } else if (argc === 2 && typeof args[0] === 'string'
+               && typeof args[1] === 'object') {
+        const i = FEATURES.indexOf(args[0]);
+        if (i < 0) nhl_error(`invalid option '${args[0]}'`);
+        typ = features2i[i];
+        get_coord(args[1], xy);
+    } else if (argc === 3) {
+        const i = FEATURES.indexOf(args[0]);
+        if (i < 0) nhl_error(`invalid option '${args[0]}'`);
+        typ = features2i[i];
+        xy.x = Math.trunc(args[1]);
+        xy.y = Math.trunc(args[2]);
+    } else {
+        t = lcheck_param_table(args[0]);
+
+        get_table_xy_or_coord(t, xy);
+        typ = features2i[get_table_option(t, 'type', null, FEATURES)];
+        can_have_flags = true;
+    }
+
+    if (xy.x === -1 && xy.y === -1) {
+        fcoord = SP_COORD_PACK_RANDOM(0);
+        humidity = DRY;   /* a regular space, no rock or other furniture */
+    } else {
+        fcoord = SP_COORD_PACK(xy.x, xy.y);
+        humidity = ANY_LOC;
+    }
+    get_location_coord(xy, humidity, spl.coder?.croom, fcoord);
+
+    if (typ === STONE) {
+        /* C: impossible("feature has unknown type param.") */
+    } else {
+        sel_set_feature(xy.x, xy.y, typ);
+    }
+
+    if (levl_typ(xy.x, xy.y) !== typ || !can_have_flags) return 0;
+
+    switch (typ) {
+    default:
+        break;
+    case FOUNTAIN:
+        l_table_getset_feature_flag(t, xy.x, xy.y, 'looted', F_LOOTED);
+        l_table_getset_feature_flag(t, xy.x, xy.y, 'warned', F_WARNED);
+        break;
+    case SINK:
+        l_table_getset_feature_flag(t, xy.x, xy.y, 'pudding', S_LPUDDING);
+        l_table_getset_feature_flag(t, xy.x, xy.y, 'dishwasher', S_LDWASHER);
+        l_table_getset_feature_flag(t, xy.x, xy.y, 'ring', S_LRING);
+        break;
+    case THRONE:
+        l_table_getset_feature_flag(t, xy.x, xy.y, 'looted', T_LOOTED);
+        break;
+    case TREE:
+        l_table_getset_feature_flag(t, xy.x, xy.y, 'looted', TREE_LOOTED);
+        l_table_getset_feature_flag(t, xy.x, xy.y, 'swarm', TREE_SWARM);
+        break;
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c:4928 lspo_gas_cloud() -- des.gas_cloud().  Where C unwraps a
+// Lua selection userdata with l_selection_check(), the JS caller passes the
+// selectionvar itself.  js/region.js create_gas_cloud() is async in this port
+// (it drives the display), so the ttl override is sequenced behind it; the
+// selection form is synchronous.
+export function lspo_gas_cloud(t) {
+    let x = 0, y = 0;
+    let sel = null;
+    let damage = 0;
+    let ttl = -2;
+
+    create_des_coder();
+
+    if (t != null && typeof t === 'object') {
+        const xy = { x: -1, y: -1 };
+        let reg;
+
+        t = lcheck_param_table(t);
+
+        get_table_xy_or_coord(t, xy);
+        x = xy.x; y = xy.y;
+        if (xy.x === -1 && xy.y === -1) sel = t.selection || null;
+        damage = get_table_int_opt(t, 'damage', 0);
+        ttl = get_table_int_opt(t, 'ttl', -2);
+        if (!sel) reg = create_gas_cloud(x, y, 1, damage);
+        else reg = create_gas_cloud_selection(sel, damage);
+        if (ttl > -2 && reg) {
+            if (typeof reg.then === 'function') reg.then((r) => { if (r) r.ttl = ttl; });
+            else reg.ttl = ttl;
+        }
+    } else {
+        nhl_error('wrong parameters');
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c:4977 lspo_terrain() -- des.terrain().  The existing
+// sel_set_ter() in this file implements set_levltyp_lit() only; C additionally
+// closes a new SDOOR, orients a door against its left neighbour, sets
+// icedpool on ICE and wipes engravings under a CLOUD.  Left as-is here rather
+// than duplicated: fixing it belongs in that function, in its own change.
+export function lspo_terrain(...args) {
+    const tmpterrain = { tlit: SET_LIT_NOCHANGE, ter: INVALID_TYPE };
+    const xy = { x: 0, y: 0 };
+    let sel = null;
+    const argc = args.length;
+
+    create_des_coder();
+
+    if (argc === 1) {
+        const t = lcheck_param_table(args[0]);
+        const c = { x: -1, y: -1 };
+
+        get_table_xy_or_coord(t, c);
+        xy.x = c.x; xy.y = c.y;
+        if (c.x === -1 && c.y === -1) sel = t.selection || null;
+        tmpterrain.ter = get_table_mapchr(t, 'typ');
+        tmpterrain.tlit = get_table_int_opt(t, 'lit', SET_LIT_NOCHANGE);
+    } else if (argc === 2 && typeof args[0] === 'object'
+               && typeof args[1] === 'string') {
+        const c = { x: -1, y: -1 };
+        tmpterrain.ter = check_mapchr(args[1]);
+        get_coord(args[0], c);
+        xy.x = c.x; xy.y = c.y;
+    } else if (argc === 2) {
+        sel = args[0];
+        tmpterrain.ter = check_mapchr(args[1]);
+    } else if (argc === 3) {
+        xy.x = Math.trunc(args[0]);
+        xy.y = Math.trunc(args[1]);
+        tmpterrain.ter = check_mapchr(args[2]);
+    } else {
+        nhl_error('wrong parameters');
+    }
+
+    if (tmpterrain.ter === INVALID_TYPE) nhl_error('Erroneous map char');
+
+    if (sel) {
+        selection_iterate(sel, (sx, sy) => sel_set_ter(sx, sy, tmpterrain));
+    } else {
+        get_location_coord(xy, ANY_LOC, spl.coder?.croom,
+                           SP_COORD_PACK(xy.x, xy.y));
+        if (!isok(xy.x, xy.y)) {
+            nhl_error('terrain coord not ok');
+            return 0;
+        }
+        sel_set_ter(xy.x, xy.y, tmpterrain);
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c:5145 generate_way_out_method(nx, ny, ov) -- make a walled-off
+// pocket reachable.  Three escalating attempts, in this order: a secret door
+// (one selection_rndcoord draw per candidate square, consumed destructively), a
+// hole/trapdoor (only where the level allows falling), then one of six escape
+// items via ROLL_FROM (a single rn2(6)).
+const ESCAPEITEM_NAMES = ['pick-axe', 'dwarvish mattock', 'wand of digging',
+                          'wand of teleportation', 'scroll of teleportation',
+                          'ring of teleportation'];
+export function generate_way_out_method(nx, ny, ov) {
+    const escapeitems = ESCAPEITEM_NAMES.map((nm) => find_objtype(nm, -1));
+    const ov2 = selection_new_var();
+    let ov3;
+    let res = true;
+    let c;
+
+    EXT.selection_floodfill(ov2, nx, ny, true);
+    ov3 = selection_clone(ov2);
+
+    /* try to make a secret door */
+    while ((c = selection_rndcoord_var(ov3, true)) && c.x !== -1) {
+        const x = c.x, y = c.y;
+        if (isok(x + 1, y) && !selection_getpoint_var(x + 1, y, ov)
+            && IS_WALL(levl_typ(x + 1, y))
+            && isok(x + 2, y) && selection_getpoint_var(x + 2, y, ov)
+            && ACCESSIBLE(levl_typ(x + 2, y))) {
+            levl_at(x + 1, y).typ = SDOOR;
+            return res;
+        }
+        if (isok(x - 1, y) && !selection_getpoint_var(x - 1, y, ov)
+            && IS_WALL(levl_typ(x - 1, y))
+            && isok(x - 2, y) && selection_getpoint_var(x - 2, y, ov)
+            && ACCESSIBLE(levl_typ(x - 2, y))) {
+            levl_at(x - 1, y).typ = SDOOR;
+            return res;
+        }
+        if (isok(x, y + 1) && !selection_getpoint_var(x, y + 1, ov)
+            && IS_WALL(levl_typ(x, y + 1))
+            && isok(x, y + 2) && selection_getpoint_var(x, y + 2, ov)
+            && ACCESSIBLE(levl_typ(x, y + 2))) {
+            levl_at(x, y + 1).typ = SDOOR;
+            return res;
+        }
+        if (isok(x, y - 1) && !selection_getpoint_var(x, y - 1, ov)
+            && IS_WALL(levl_typ(x, y - 1))
+            && isok(x, y - 2) && selection_getpoint_var(x, y - 2, ov)
+            && ACCESSIBLE(levl_typ(x, y - 2))) {
+            levl_at(x, y - 1).typ = SDOOR;
+            return res;
+        }
+    }
+
+    /* try to make a hole or a trapdoor */
+    if (Can_fall_thru(game.u?.uz)) {
+        ov3 = selection_clone(ov2);
+        while ((c = selection_rndcoord_var(ov3, true)) && c.x !== -1) {
+            if (maketrap(c.x, c.y, rn2(2) ? HOLE : TRAPDOOR)) return res;
+        }
+    }
+
+    /* generate one of the escape items */
+    c = selection_rndcoord_var(ov2, false);
+    if (c && c.x !== -1) {
+        mksobj_at(escapeitems[rn2(escapeitems.length)], c.x, c.y, true, false);
+        return res;
+    }
+
+    res = false;
+    return res;
+}
+
+// C ref: sp_lev.c:5216 ensure_way_out() -- des.level_flags("inaccessibles").
+// Flood from every same-dungeon stairway and every undestroyable/hole trap,
+// then repeatedly pick the first ACCESSIBLE square still unreached and open it
+// up.  (C's own comment: "needs rewrite".)
+export function ensure_way_out() {
+    const ov = selection_new_var();
+    let ret = true;
+
+    EXT.set_selection_floodfillchk(floodfillchk_match_accessible);
+
+    for (const stway of (Array.isArray(game.stairs) ? game.stairs : [])) {
+        if (stway.tolev?.dnum === game.u?.uz?.dnum)
+            EXT.selection_floodfill(ov, stway.sx, stway.sy, true);
+    }
+
+    for (const ttmp of (game.level?.traps || [])) {
+        if ((undestroyable_trap(ttmp.ttyp) || is_hole(ttmp.ttyp))
+            && !selection_getpoint_var(ttmp.tx, ttmp.ty, ov))
+            EXT.selection_floodfill(ov, ttmp.tx, ttmp.ty, true);
+    }
+
+    do {
+        ret = true;
+        let done = false;
+        for (let x = 1; x < COLNO && !done; x++)
+            for (let y = 0; y < ROWNO; y++)
+                if (ACCESSIBLE(levl_typ(x, y))
+                    && !selection_getpoint_var(x, y, ov)) {
+                    if (generate_way_out_method(x, y, ov))
+                        EXT.selection_floodfill(ov, x, y, true);
+                    ret = false;
+                    done = true;            /* C: goto outhere */
+                    break;
+                }
+    } while (!ret);
+}
+
+// C ref: sp_lev.c:5259 -- read entry #n (1-based) of a Lua integer array.
+export function get_table_intarray_entry(t, tableidx, entrynum) {
+    const arr = t;
+    const v = Array.isArray(arr) ? arr[entrynum - 1] : arr?.[entrynum];
+    if (typeof v !== 'number')
+        nhl_error(`Array entry #1 is ${typeof v}, expected number`);
+    return Math.trunc(v);
+}
+
+// C ref: sp_lev.c:5281 -- `region = {x1,y1, x2,y2}`.  Exactly four entries.
+// `out` is the {x1,y1,x2,y2} C fills through four pointers.
+export function get_table_region(t, name, out, optional) {
+    const reg = t?.[name];
+
+    if (optional && reg == null) return 1;
+
+    if (reg == null || typeof reg !== 'object') nhl_error('Not a region');
+
+    const arrlen = Array.isArray(reg) ? reg.length : 0;
+    if (arrlen !== 4) {
+        nhl_error('Not a region');
+        return 0;
+    }
+
+    out.x1 = get_table_intarray_entry(reg, -1, 1);
+    out.y1 = get_table_intarray_entry(reg, -1, 2);
+    out.x2 = get_table_intarray_entry(reg, -1, 3);
+    out.y2 = get_table_intarray_entry(reg, -1, 4);
+
+    return 1;
+}
+
+// C ref: sp_lev.c:5318 get_coord(L, i, &x, &y) -- accept {x=,y=} or a 2-entry
+// array.  A nil value is fine (leaves *x,*y alone and returns FALSE); a
+// non-table is an error.
+export function get_coord(v, out) {
+    let ret = false;
+
+    if (v != null && typeof v === 'object') {
+        let gotx = false;
+
+        if (v.x != null) {
+            out.x = Math.trunc(v.x);
+            gotx = true;
+        }
+
+        if (gotx) {
+            if (v.y != null) {
+                out.y = Math.trunc(v.y);
+                ret = true;
+            } else {
+                nhl_error('Not a coordinate');
+                return false;
+            }
+        } else {
+            const arrlen = Array.isArray(v) ? v.length : 0;
+            if (arrlen !== 2) {
+                nhl_error('Not a coordinate');
+                return false;
+            }
+            out.x = get_table_intarray_entry(v, 0, 1);
+            out.y = get_table_intarray_entry(v, 0, 2);
+            return true;
+        }
+    } else if (v != null) {
+        /* non-existent coord is ok; anything else is not */
+        nhl_error('non-table coord specified');
+    }
+    return ret;
+}
+
+// C ref: sp_lev.c:5370 levregion_add(lev_region *lregion) -- register a
+// teleport/stair/portal/branch region.  Coordinates that are not already
+// level-absolute go through get_location(ANY_LOC), which is what adds the
+// des.map() origin.
+// NOTE for whoever wires this up: mklev.js's place_lregions() consumer reads a
+// FLATTENED record ({rtype, lx..hy, nlx..nhy}); this is C's nested lev_region.
+// The two shapes have to be reconciled at that point.
+export function levregion_add(lregion) {
+    if (!lregion.in_islev) {
+        const a = { x: lregion.inarea.x1, y: lregion.inarea.y1 };
+        get_location(a, ANY_LOC, null);
+        lregion.inarea.x1 = a.x; lregion.inarea.y1 = a.y;
+        const b = { x: lregion.inarea.x2, y: lregion.inarea.y2 };
+        get_location(b, ANY_LOC, null);
+        lregion.inarea.x2 = b.x; lregion.inarea.y2 = b.y;
+    }
+
+    if (!lregion.del_islev) {
+        const a = { x: lregion.delarea.x1, y: lregion.delarea.y1 };
+        get_location(a, ANY_LOC, null);
+        lregion.delarea.x1 = a.x; lregion.delarea.y1 = a.y;
+        const b = { x: lregion.delarea.x2, y: lregion.delarea.y2 };
+        get_location(b, ANY_LOC, null);
+        lregion.delarea.x2 = b.x; lregion.delarea.y2 = b.y;
+    }
+    if (!game.lregions) game.lregions = [];
+    game.lregions.push(lregion);
+    game.num_lregions = game.lregions.length;
+}
+
+// C ref: sp_lev.c:5409 -- read region, exclude and the two _islev flags out
+// of the table.  A
+// missing `exclude` forces exclude_islev TRUE so the -1,-1,-1,-1 rectangle
+// stays safely off the map.
+export function l_get_lregion(t, tmplregion) {
+    const r = { x1: -1, y1: -1, x2: -1, y2: -1 };
+
+    get_table_region(t, 'region', r, false);
+    tmplregion.inarea = { x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2 };
+
+    const e = { x1: -1, y1: -1, x2: -1, y2: -1 };
+    get_table_region(t, 'exclude', e, true);
+    tmplregion.delarea = { x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2 };
+
+    tmplregion.in_islev = get_table_boolean_opt(t, 'region_islev', 0);
+    tmplregion.del_islev = get_table_boolean_opt(t, 'exclude_islev', 0);
+
+    if (e.x1 < 0) tmplregion.del_islev = true;
+}
+
+// C ref: sp_lev.c:5442 -- des.teleport_region().
+const TELEDIRS = ['both', 'down', 'up'];
+export function lspo_teleport_region(t) {
+    const teledirs2i = [LR_TELE, LR_DOWNTELE, LR_UPTELE, -1];
+    const tmplregion = {};
+
+    create_des_coder();
+    t = lcheck_param_table(t);
+    l_get_lregion(t, tmplregion);
+    tmplregion.rtype = teledirs2i[get_table_option(t, 'dir', 'both', TELEDIRS)];
+    tmplregion.padding = 0;
+    tmplregion.rname = { str: null };
+
+    levregion_add(tmplregion);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:5471 -- des.levregion().
+const REGIONTYPES = ['stair-down', 'stair-up', 'portal', 'branch',
+                     'teleport', 'teleport-up', 'teleport-down'];
+export function lspo_levregion(t) {
+    const regiontypes2i = [LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH,
+                           LR_TELE, LR_UPTELE, LR_DOWNTELE, 0];
+    const tmplregion = {};
+
+    create_des_coder();
+    t = lcheck_param_table(t);
+    l_get_lregion(t, tmplregion);
+    tmplregion.rtype = regiontypes2i[get_table_option(t, 'type', 'stair-down',
+                                                      REGIONTYPES)];
+    tmplregion.padding = get_table_int_opt(t, 'padding', 0);
+    tmplregion.rname = { str: get_table_str_opt(t, 'name', null) };
+
+    levregion_add(tmplregion);
+    return 0;
+}
+
+// C ref: sp_lev.c:5497 -- des.exclusion().  Both corners go through
+// get_location_coord(ANY_LOC|NO_LOC_WARN), so an off-map corner becomes -1.
+const EZ_TYPES = ['teleport', 'teleport-up', 'teleport-down',
+                  'monster-generation'];
+export function lspo_exclusion(t) {
+    const ez_types2i = [LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, 0];
+    const ez = {};
+    const r = { x1: -1, y1: -1, x2: -1, y2: -1 };
+
+    create_des_coder();
+    t = lcheck_param_table(t);
+    ez.zonetype = ez_types2i[get_table_option(t, 'type', 'teleport', EZ_TYPES)];
+    get_table_region(t, 'region', r, false);
+
+    const a = { x: r.x1, y: r.y1 };
+    const b = { x: r.x2, y: r.y2 };
+
+    get_location_coord(a, ANY_LOC | NO_LOC_WARN, spl.coder?.croom,
+                       SP_COORD_PACK(a.x, a.y));
+    get_location_coord(b, ANY_LOC | NO_LOC_WARN, spl.coder?.croom,
+                       SP_COORD_PACK(b.x, b.y));
+
+    ez.lx = a.x;
+    ez.ly = a.y;
+    ez.hx = b.x;
+    ez.hy = b.y;
+
+    if (!game.exclusion_zones) game.exclusion_zones = [];
+    game.exclusion_zones.unshift(ez);        /* C: ez->next = ...; head = ez */
+    return 0;
+}
+
+// C ref: sp_lev.c:5534 -- des.region(selection, "lit") setter.  Lava is always
+// lit regardless.
+export function sel_set_lit(x, y, lit) {
+    const loc = levl_at(x, y);
+    if (!loc) return;
+    loc.lit = (IS_LAVA(loc.typ) || lit) ? 1 : 0;
+}
+
+// C ref: sp_lev.c:5560 -- accept `x1=,y1=,x2=,y2=` or `region = {...}`.
+export function get_table_coords_or_region(t, out) {
+    out.x1 = get_table_int_opt(t, 'x1', -1);
+    out.y1 = get_table_int_opt(t, 'y1', -1);
+    out.x2 = get_table_int_opt(t, 'x2', -1);
+    out.y2 = get_table_int_opt(t, 'y2', -1);
+
+    if (out.x1 === -1 && out.y1 === -1 && out.x2 === -1 && out.y2 === -1) {
+        const r = { x1: -1, y1: -1, x2: -1, y2: -1 };
+
+        get_table_region(t, 'region', r, false);
+        out.x1 = r.x1; out.y1 = r.y1;
+        out.x2 = r.x2; out.y2 = r.y2;
+    }
+}
+
+// C ref: sp_lev.c:5719 lspo_drawbridge() -- des.drawbridge().  state="random"
+// costs one !rn2(2), drawn AFTER the location.
+const MWDIRS_DB = ['north', 'south', 'west', 'east', 'random'];
+const DBOPENS = ['open', 'closed', 'random'];
+export function lspo_drawbridge(t) {
+    const mwdirs2i = [DB_NORTH, DB_SOUTH, DB_WEST, DB_EAST, -1, -2];
+    const dbopens2i = [1, 0, -1, -2];
+    const m = { x: -1, y: -1 };
+
+    create_des_coder();
+
+    t = lcheck_param_table(t);
+
+    get_table_xy_or_coord(t, m);
+
+    const dir = mwdirs2i[get_table_option(t, 'dir', 'random', MWDIRS_DB)];
+    const dcoord = SP_COORD_PACK(m.x, m.y);
+    let db_open = dbopens2i[get_table_option(t, 'state', 'random', DBOPENS)];
+    const c = { x: m.x, y: m.y };
+
+    get_location_coord(c, DRY | WET | HOT, spl.coder?.croom, dcoord);
+    if (!isok(m.x, m.y)) {
+        nhl_error('drawbridge coord not ok');
+        return 0;
+    }
+    if (db_open === -1) db_open = !rn2(2) ? 1 : 0;
+    create_drawbridge(c.x, c.y, dir, !!db_open);
+    splev_map_mark(c.x, c.y);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:5768 lspo_mazewalk() -- des.mazewalk().  dir="random" costs
+// one random_wdir() rn2(4); walkfrom() then does the real work, and
+// stocked (the default) adds fill_empty_maze()'s six count draws.
+const MWDIRS_MW = ['north', 'south', 'east', 'west', 'random'];
+export function lspo_mazewalk(...args) {
+    const mwdirs2i = [W_NORTH, W_SOUTH, W_EAST, W_WEST, W_RANDOM, -2];
+    const m = { x: -1, y: -1 };
+    let ftyp = ROOM;
+    let fstocked = 1, dir = -1;
+    const argc = args.length;
+
+    create_des_coder();
+
+    if (argc === 3) {
+        m.x = Math.trunc(args[0]);
+        m.y = Math.trunc(args[1]);
+        const i = MWDIRS_MW.indexOf(String(args[2]));
+        if (i < 0) nhl_error(`invalid option '${args[2]}'`);
+        dir = mwdirs2i[i];
+    } else {
+        const t = lcheck_param_table(args[0]);
+
+        get_table_xy_or_coord(t, m);
+        ftyp = get_table_mapchr_opt(t, 'typ', ROOM);
+        fstocked = get_table_boolean_opt(t, 'stocked', 1);
+        dir = mwdirs2i[get_table_option(t, 'dir', 'random', MWDIRS_MW)];
+    }
+
+    const mcoord = SP_COORD_PACK(m.x, m.y);
+    const c = { x: m.x, y: m.y };
+
+    get_location_coord(c, ANY_LOC, spl.coder?.croom, mcoord);
+
+    if (!isok(c.x, c.y)) {
+        nhl_error('mazewalk coord not ok');
+        return 0;
+    }
+
+    if (ftyp < 1) ftyp = game.level?.flags?.corrmaze ? CORR : ROOM;
+
+    if (dir === W_RANDOM) dir = random_wdir();
+
+    /* don't use move() -- it doesn't use W_NORTH, etc. */
+    switch (dir) {
+    case W_NORTH: --c.y; break;
+    case W_SOUTH: c.y++; break;
+    case W_EAST:  c.x++; break;
+    case W_WEST:  --c.x; break;
+    default: break;                        /* C: impossible("Bad direction") */
+    }
+
+    let loc = levl_at(c.x, c.y);
+    if (loc && !IS_DOOR(loc.typ)) {
+        loc.typ = ftyp;
+        loc.flags = 0;
+    }
+
+    /*
+     * The parity of the coordinates handed to walkfrom() must be odd, but
+     * which way we step depends on the direction that was chosen.
+     */
+    if (!(c.x % 2)) {
+        if (dir === W_EAST) c.x++;
+        else c.x--;
+
+        /* no need for an IS_DOOR check; out of map bounds */
+        loc = levl_at(c.x, c.y);
+        if (loc) {
+            loc.typ = ftyp;
+            loc.flags = 0;
+        }
+    }
+
+    if (!(c.y % 2)) {
+        if (dir === W_SOUTH) c.y++;
+        else c.y--;
+    }
+
+    walkfrom(c.x, c.y, ftyp);
+    if (fstocked) fill_empty_maze();
+
+    return 0;
+}
+
+// C ref: sp_lev.c:5875 lspo_wall_property() -- des.wall_property().  An
+// unspecified edge defaults to one square outside the current map footprint.
+const WPROPS = ['nondiggable', 'nonpasswall'];
+export function lspo_wall_property(t) {
+    const wprop2i = [W_NONDIGGABLE, W_NONPASSWALL, -1];
+    const r = { x1: -1, y1: -1, x2: -1, y2: -1 };
+
+    create_des_coder();
+
+    t = lcheck_param_table(t);
+
+    get_table_coords_or_region(t, r);
+
+    const wprop = wprop2i[get_table_option(t, 'property', 'nondiggable', WPROPS)];
+
+    if (r.x1 === -1) r.x1 = gx.xstart - 1;
+    if (r.y1 === -1) r.y1 = gy.ystart - 1;
+    if (r.x2 === -1) r.x2 = gx.xstart + gx.xsize + 1;
+    if (r.y2 === -1) r.y2 = gy.ystart + gy.ysize + 1;
+
+    const a = { x: r.x1, y: r.y1 };
+    const b = { x: r.x2, y: r.y2 };
+    get_location(a, ANY_LOC, null);
+    get_location(b, ANY_LOC, null);
+
+    set_wall_property(a.x, a.y, b.x, b.y, wprop);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:5910 -- des.non_diggable()/non_passwall() with no selection
+// flag the WHOLE level (selection_clear(sel, 1)).
+export function set_wallprop_in_selection(sel_arg, prop) {
+    let freesel = false;
+    let sel = null;
+
+    create_des_coder();
+
+    if (sel_arg != null) {
+        sel = sel_arg;
+    } else {
+        freesel = true;
+        sel = selection_new_var();
+        selection_clear_var(sel, 1);
+    }
+
+    if (sel) {
+        selection_iterate(sel, (x, y) => sel_set_wall_property(x, y, prop));
+        if (freesel) { /* C: selection_free(sel, TRUE) */ }
+    }
+}
+
+// C ref: sp_lev.c:5936 / :5945.
+export function lspo_non_diggable(sel) {
+    set_wallprop_in_selection(sel, W_NONDIGGABLE);
+    return 0;
+}
+
+export function lspo_non_passwall(sel) {
+    set_wallprop_in_selection(sel, W_NONPASSWALL);
+    return 0;
+}
+
+// C ref: sp_lev.c:5954 -- #if 0'd in C (the TODO wallify(selection) form);
+// kept for parity with the C source.
+export function sel_set_wallify(x, y) {
+    wallify_map(x, y, x, y);
+}
+
+// C ref: sp_lev.c:5964 lspo_wallify() -- des.wallify().  With no table it
+// wallifies one square beyond the current map footprint.  No RNG.
+export function lspo_wallify(t) {
+    let dx1 = -1, dy1 = -1, dx2 = -1, dy2 = -1;
+
+    create_des_coder();
+
+    if (t != null) {
+        dx1 = get_table_int(t, 'x1');
+        dy1 = get_table_int(t, 'y1');
+        dx2 = get_table_int(t, 'x2');
+        dy2 = get_table_int(t, 'y2');
+    }
+
+    wallify_map(dx1 < 0 ? (gx.xstart - 1) : dx1,
+                dy1 < 0 ? (gy.ystart - 1) : dy1,
+                dx2 < 0 ? (gx.xstart + gx.xsize + 1) : dx2,
+                dy2 < 0 ? (gy.ystart + gy.ysize + 1) : dy2);
+
+    return 0;
+}
+
+// C ref: sp_lev.c:5992 -- des.reset_level(), a lua_testing-only entry point.
+export function lspo_reset_level(L) {
+    const wtower = EXT.In_W_tower(game.u?.ux, game.u?.uy, game.u?.uz);
+
+    if (game.iflags) game.iflags.lua_testing = true;
+    if (L) {
+        spl.coder = null;
+        create_des_coder();
+    }
+    EXT.makemap_prepost(true, wtower);
+    game.in_mklev = true;
+    EXT.oinit();                 /* assign level dependent obj probabilities */
+    EXT.clear_level_structures();
+    return 0;
+}
+
+// C ref: sp_lev.c:6013 -- des.finalize_level(), a lua_testing-only entry point,
+// and the same tail load_special() runs.  Order is load-bearing: the flip comes
+// after wallification and before count_level_features, and fixup_special()
+// must precede premap_detect() or branch stairs are not premapped.
+export function lspo_finalize_level(L) {
+    const wtower = EXT.In_W_tower(game.u?.ux, game.u?.uy, game.u?.uz);
+
+    if (L) create_des_coder();
+
+    link_doors_rooms();
+    remove_boundary_syms();
+
+    /* TODO (C): ensure_way_out() needs rewrite */
+    if (L && spl.coder.check_inaccessibles) ensure_way_out();
+
+    map_cleanup();
+
+    /*
+     * C FIXME kept verbatim: ideally this would only cover areas the level
+     * file did not insert directly (Baalzebub's insect legs); since that is
+     * not possible, the corrmaze flag is overloaded for the purpose.
+     */
+    if (!game.level?.flags?.corrmaze)
+        EXT.wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+    if (L) flip_level_rnd(spl.coder.allow_flips, false);
+
+    EXT.count_level_features();
+
+    if (L && spl.coder.solidify) solidify_map();
+
+    /* must precede premap_detect() or branch stairs won't be premapped */
+    EXT.fixup_special();
+
+    if (L && spl.coder.premapped) premap_detect();
+
+    EXT.level_finalize_topology();
+
+    for (let i = 0; i < svn_nroom(); ++i) fill_special_room(svr_rooms()[i]);
+
+    EXT.makemap_prepost(false, wtower);
+    if (game.iflags) game.iflags.lua_testing = false;
+    return 0;
+}
+
+// C ref: sp_lev.c:6323 -- croom follows the innermost open room.
+export function update_croom() {
+    if (!spl.coder) return;
+
+    if (spl.coder.n_subroom)
+        spl.coder.croom = spl.coder.tmproomlist[spl.coder.n_subroom - 1];
+    else
+        spl.coder.croom = null;
+}
+
+// C ref: sp_lev.c:6335 -- fresh coder state for one level file.  allow_flips
+// starts at 3 (both axes), which is what flip_level_rnd() spends at the end.
+export function sp_level_coder_init() {
+    const coder = {
+        premapped: false,
+        solidify: false,
+        check_inaccessibles: false,
+        allow_flips: 3,            /* allow flipping level horiz/vert */
+        croom: null,
+        n_subroom: 1,
+        lvl_is_joined: false,
+        room_stack: 0,
+        tmproomlist: [],
+        failed_room: [],
+    };
+
+    spl.splev_init_present = false;
+    spl.icedpools = false;
+
+    for (let tmpi = 0; tmpi <= MAX_NESTED_ROOMS; tmpi++) {
+        coder.tmproomlist[tmpi] = null;
+        coder.failed_room[tmpi] = false;
+    }
+
+    spl.coder = coder;
+    update_croom();
+
+    for (let tmpi = 0; tmpi < MAX_CONTAINMENT; tmpi++)
+        spl.container_obj[tmpi] = null;
+    spl.container_idx = 0;
+
+    spl.invent_carrying_monster = null;
+
+    splev_map_reset();                     /* memset(SpLev_Map, 0, ...) */
+
+    const flags = game.level?.flags;
+    if (flags) {
+        flags.is_maze_lev = 0;
+        flags.temperature = In_hell(game.u?.uz) ? 1 : 0;
+        flags.rndmongen = 1;
+        flags.deathdrops = 1;
+    }
+
+    reset_xystart_size();
+
+    return coder;
+}
+
+// C ref: sp_lev.c:6379 nhl_functions[] + :6434 l_register_des() -- the `des`
+// table the .lua level files call into.  In C this is registered on the Lua
+// state; here it is the plain object of the same name/function pairs.
+export function l_register_des() {
+    const des = {
+        message: lspo_message,
+        monster: lspo_monster,
+        object: lspo_object,
+        level_flags: lspo_level_flags,
+        level_init: lspo_level_init,
+        engraving: lspo_engraving,
+        mineralize: lspo_mineralize,
+        door: lspo_door,
+        stair: lspo_stair,
+        ladder: lspo_ladder,
+        grave: lspo_grave,
+        altar: lspo_altar,
+        map: lspo_map,
+        feature: lspo_feature,
+        terrain: lspo_terrain,
+        replace_terrain: lspo_replace_terrain,
+        room: lspo_room,
+        corridor: lspo_corridor,
+        random_corridors: lspo_random_corridors,
+        gold: lspo_gold,
+        trap: lspo_trap,
+        mazewalk: lspo_mazewalk,
+        drawbridge: lspo_drawbridge,
+        region: lspo_region,
+        levregion: lspo_levregion,
+        exclusion: lspo_exclusion,
+        wallify: lspo_wallify,
+        wall_property: lspo_wall_property,
+        non_diggable: lspo_non_diggable,
+        non_passwall: lspo_non_passwall,
+        teleport_region: lspo_teleport_region,
+        reset_level: lspo_reset_level,
+        finalize_level: lspo_finalize_level,
+        gas_cloud: lspo_gas_cloud,
+        /* TODO (C): branch, portal */
+    };
+    game.des = des;
+    return des;
+}
+
+// C ref: sp_lev.c:6443 -- every lspo_* entry point starts with this.
+export function create_des_coder() {
+    if (!spl.coder) spl.coder = sp_level_coder_init();
+}
+
+// C ref: sp_lev.c:6453 load_special(name) -- the general special-level loader.
+// The tail (link_doors_rooms .. premap_detect) is the same sequence
+// lspo_finalize_level() runs, minus level_finalize_topology/fill_special_room.
+export function load_special(name) {
+    let result = false;
+
+    create_des_coder();
+
+    if (EXT.load_lua(name, { mode: 0, memlimit: 1024 * 1024, steps: 0,
+                             stackdepth: 1024 * 1024 })) {
+        link_doors_rooms();
+        remove_boundary_syms();
+
+        /* TODO (C): ensure_way_out() needs rewrite */
+        if (spl.coder.check_inaccessibles) ensure_way_out();
+
+        map_cleanup();
+
+        /* C FIXME kept verbatim -- see lspo_finalize_level(). */
+        if (!game.level?.flags?.corrmaze)
+            EXT.wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+        flip_level_rnd(spl.coder.allow_flips, false);
+
+        EXT.count_level_features();
+
+        if (spl.coder.solidify) solidify_map();
+
+        /* must precede premap_detect() or branch stairs won't be premapped */
+        EXT.fixup_special();
+
+        if (spl.coder.premapped) premap_detect();
+
+        result = true;
+    }
+
+    spl.coder = null;
+
+    return result;
 }

@@ -15,20 +15,35 @@
 // dumped from the recorder's own objects.o) via mkobj.js base_oc_cost().
 
 import { game } from './gstate.js';
-import { objects, base_oc_cost, base_oc_weight, weight, next_ident } from './mkobj.js';
-import { acurr_eff, adjalign } from './attrib.js';
-import { monster_by_pmidx } from './makemon.js';
+import { objects, base_oc_cost, base_oc_weight, weight, next_ident,
+         mksobj, place_object, remove_object, dealloc_obj, bill_dummy_object,
+         newomid, MAGIC_LAMP, OIL_LAMP, BRASS_LANTERN, MAGIC_MARKER,
+         BAG_OF_TRICKS, HORN_OF_PLENTY, CRYSTAL_BALL, MAGIC_FLUTE,
+         DRUM_OF_EARTHQUAKE, CAN_OF_GREASE, TINNING_KIT, EXPENSIVE_CAMERA,
+         POT_OIL, ROCK, BOULDER, LEASH,
+         CANDELABRUM_OF_INVOCATION } from './mkobj.js';
+import { acurr_eff, adjalign, exercise } from './attrib.js';
+import { monster_by_pmidx, mpickobj } from './makemon.js';
 import { rn2 } from './rng.js';
-import { update_topl } from './display.js';
-import { MFLAGS1, M1_TPORT, M1_TPORT_CNTRL, msound_of } from './monflags_data.js';
+import { update_topl, newsym, m_at, map_invisible } from './display.js';
+import { MFLAGS1, MFLAGS2, M1_TPORT, M1_TPORT_CNTRL, M1_HUMANOID, M2_DEMON,
+         M2_NEUTER, msound_of, passes_walls_flag } from './monflags_data.js';
 import { in_rooms, shop_keeper, shkname } from './shkroom.js';
 import { shtypes, VEGETARIAN_CLASS } from './shtypes.js';
 import { observe_object, discover_object, record_price_quote } from './o_init.js';
 // currency() is NOT re-implemented here: C's currency() rolls
 // ROLL_FROM(currencies) while hallucinating, so a local copy would silently
 // drop an rn2() draw from every "(unpaid, N ...)" render.
-import { currency } from './invent.js';
-import { A_CHA, HUNGRY, SHOPBASE, ROOMOFFSET, NO_ROOM } from './const.js';
+import { currency, objects_at, count_contents, obj_extract_self, obfree,
+         xname, doname_invent, ansimpleoname, is_pick, carrying,
+         update_inventory, xprname, body_part } from './invent.js';
+import { A_CHA, A_WIS, HUNGRY, SHOPBASE, ROOMOFFSET, NO_ROOM,
+         isok, IS_DOOR, IS_ROOM, IS_WALL, ZAP_POS, REPAIR_DELAY, BOLT_LIM,
+         SVALL, D_CLOSED, D_BROKEN, PL_NSIZ, ANY_TYPE, ANY_SHOP, OROOM,
+         CANDLESHOP, LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT,
+         SELL_NORMAL, SELL_DONTSELL, M_AP_NOTHING, M_AP_MONSTER,
+         ARM, HAND, HEAD, NECK, COLNO, ROWNO, D_LOCKED, TT_PIT,
+         W_SWAPWEP, W_QUIVER } from './const.js';
 
 // ── constants ────────────────────────────────────────────────────────────────
 // objclass.h object classes.
@@ -1261,3 +1276,2501 @@ export const not_enough_money = (shkp) =>
     `Besides, you don't have enough to interest ${noit_mhim(shkp)}.`;
 
 export { helpless, muteshk, Deaf, verbalize, plur, noit_mhe, noit_mhim, noit_mhis };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE REST OF shk.c — INERT
+//
+// Every function below is a faithful translation of a shk.c function that had
+// no same-named JS definition.  None of it is reachable: nothing above this
+// line changed and no other module imports any of it.
+//
+// SHARED-HELPER NOTE.  shk.c's setpaid(), addupbill(), hot_pursuit(),
+// rob_shop(), call_kops(), makekops() and add_one_tobill() ARE already ported
+// — module-PRIVATELY, in js/shkroom.js — and this file may not edit that file
+// to export them.  find_oid() is likewise private in js/light.js and
+// money_cnt()/doname() in js/invent.js.  The file-local copies below exist
+// only so these translations are executable and their control flow reads
+// true.  When this code is made live, export the originals and delete these.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// C ref: shk.c:139 angrytexts[] and :5508 Izchak_speaks[].  ROLL_FROM(arr) is
+// rn2(SIZE(arr)), so these arrays' LENGTHS are load-bearing for the PRNG.
+const angrytexts = ['quite upset', 'ticked off', 'furious'];
+const Izchak_speaks = [
+    "%s says: 'These shopping malls give me a headache.'",
+    "%s says: 'Slow down.  Think clearly.'",
+    "%s says: 'You need to take things one at a time.'",
+    "%s says: 'I don't like poofy coffee... give me Colombian Supremo.'",
+    '%s says that getting the devteam’s agreement on anything is difficult.',
+    '%s says that he has noticed those who serve their deity will prosper.',
+    "%s says: 'Don't try to steal from me - I have friends in high places!'",
+    "%s says: 'You may well need something from this shop in the future.'",
+    '%s comments about the Valley of the Dead as being a gateway.',
+];
+const ROLL_FROM = (arr) => arr[rn2(arr.length)];
+// C ref: shk.c:62-63.
+const and_its_contents = ' and its contents';
+const the_contents_of = 'the contents of ';
+// objclass.h GOLD_SYM.
+const GOLD_SYM = '$';
+// obj.h obj->where.  place_object()/add_to_container() write these strings;
+// mkobj.js's bury/migrate/billobjs paths write the const.js INTEGERS instead,
+// so both spellings have to be accepted for those three.
+const OBJ_BURIED_STR = 'buried';
+const is_buried = (o) => o.where === OBJ_BURIED_STR || o.where === 6;
+
+// ── C chain / string / misc primitives ──────────────────────────────────────
+
+// C ref: decl.h fmon, monst.h nmon.  This port keeps the monster chain as an
+// ARRAY, so `for (m = fmon; m; m = m->nmon)` becomes a scan from an index.
+const fmon = () => (game.level?.monsters || []);
+function nmon(mon) {
+    const list = fmon();
+    const i = list.indexOf(mon);
+    return (i >= 0 && i + 1 < list.length) ? list[i + 1] : null;
+}
+
+// C ref: shk.c:56 IS_SHOP(x) — x is a rooms[] INDEX (roomno - ROOMOFFSET).
+const IS_SHOP = (i) => ((game.level?.rooms?.[i]?.rtype ?? 0) >= SHOPBASE);
+
+// C ref: dungeon.c on_level(&ESHK(shkp)->shoplevel, &u.uz).  eshk.shoplevel is
+// never populated by this port's shkinit, so a missing one reads as "same
+// level" — the convention inhishop() above already uses.
+function on_shoplevel(eshkp) {
+    const lv = eshkp?.shoplevel, uz = game.u?.uz;
+    if (!lv || !uz) return true;
+    return lv.dnum === uz.dnum && lv.dlevel === uz.dlevel;
+}
+
+// C ref: mkroom.c search_special(type) — ANY_SHOP means "rtype >= SHOPBASE",
+// NOT "rtype == ANY_SHOP" (js/trap.js's private copy tests plain equality).
+function search_special(type) {
+    for (const list of [game.level?.rooms, game.level?.subrooms])
+        for (const croom of (list || [])) {
+            if (!croom || (croom.hx ?? -1) < 0) break;
+            if ((type === ANY_TYPE && croom.rtype !== OROOM)
+                || (type === ANY_SHOP && croom.rtype >= SHOPBASE)
+                || croom.rtype === type) return croom;
+        }
+    return null;
+}
+
+const strncmp = (a, b, n) => ((a || '').slice(0, n) === (b || '').slice(0, n) ? 0 : 1);
+const strncmpi = (a, b, n) => (strncmp((a || '').toLowerCase(), (b || '').toLowerCase(), n));
+const the = (s) => (/^[A-Z]/.test(s) ? s : `the ${s}`);
+const upstart = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const sgn = (x) => Math.sign(x || 0);
+const distu = (x, y) => {
+    const u = game.u;
+    return (x - (u?.ux ?? 0)) ** 2 + (y - (u?.uy ?? 0)) ** 2;
+};
+const mdistu = (mon) => distu(mon.mx, mon.my);
+// C ref: hack.h um_dist(x, y, n).
+const um_dist = (x, y, n) =>
+    (Math.abs(x - (game.u?.ux ?? 0)) > n || Math.abs(y - (game.u?.uy ?? 0)) > n);
+const u_at = (x, y) => (x === game.u?.ux && y === game.u?.uy);
+// C ref: mon.c m_next2u(mtmp) — distmin(mx, my, ux, uy) <= 1.
+const m_next2u = (mon) =>
+    Math.max(Math.abs(mon.mx - (game.u?.ux ?? 0)),
+             Math.abs(mon.my - (game.u?.uy ?? 0))) <= 1;
+// C ref: mondata.h nolimbs/has_head/haseyes/is_silent/humanoid/is_neuter.
+// monflag.h: M1_NOEYES 0x1000 M1_NOLIMBS 0x6000 M1_NOHEAD 0x8000.
+const M1_NOEYES_ = 0x1000, M1_NOLIMBS_ = 0x6000, M1_NOHEAD_ = 0x8000;
+const MS_SILENT_ = 0;
+const mf1 = (ptr) => (ptr?.pmidx != null ? (MFLAGS1[ptr.pmidx] || 0) : 0);
+const mf2 = (ptr) => (ptr?.pmidx != null ? (MFLAGS2[ptr.pmidx] || 0) : 0);
+const haseyes = (ptr) => (mf1(ptr) & M1_NOEYES_) === 0;
+const has_head = (ptr) => (mf1(ptr) & M1_NOHEAD_) === 0;
+const nolimbs = (ptr) => (mf1(ptr) & M1_NOLIMBS_) === M1_NOLIMBS_;
+const is_silent = (ptr) => (msound_of(ptr) ?? MS_SILENT_) === MS_SILENT_;
+const is_demon = (ptr) => (mf2(ptr) & M2_DEMON) !== 0;
+const humanoid = (ptr) => (mf1(ptr) & M1_HUMANOID) !== 0;
+const is_neuter = (ptr) => (mf2(ptr) & M2_NEUTER) !== 0;
+// C ref: polyself.c poly_gender() — 0/1 as flags.female, 2 = none.
+function poly_gender() {
+    const ptr = game.u?.Upolyd ? game.u.data : null;
+    if (ptr && (is_neuter(ptr) || !humanoid(ptr))) return 2;
+    return game.flags?.female ? 1 : 0;
+}
+
+// C ref: shk.c addupbill(shkp):496.  (Real port: js/shkroom.js, private.)
+function addupbill(shkp) {
+    const eshk = shkp.eshk;
+    let total = 0;
+    for (let ct = 0; ct < (eshk.billct || 0); ct++)
+        total += (eshk.bill[ct].price || 0) * (eshk.bill[ct].bquan || 0);
+    return total;
+}
+
+// C ref: hack.c money_cnt(otmp) over an arbitrary chain.  money_cnt_invent()
+// above is the same walk hard-wired to game.invent.
+function money_cnt(list) {
+    for (const o of (list || []))
+        if (o?.oclass === COIN_CLASS) return o.quan || 0;
+    return 0;
+}
+
+// C ref: shk.c find_oid(id):2777 — every obj list except gb.billobjs.
+// (Real port: js/light.js, private.)
+function find_oid(id) {
+    let obj = oid_scan(game.invent, id, 0);
+    if (obj) return obj;
+    obj = oid_scan(game.level?.objects, id, 0);
+    if (obj) return obj;
+    obj = oid_scan(game.level?.buriedobjlist, id, 0);
+    if (obj) return obj;
+    obj = oid_scan(game.migrating_objs, id, 0);
+    if (obj) return obj;
+    for (const list of [fmon(), game.migrating_mons, game.mydogs])
+        for (const mon of (list || [])) {
+            obj = oid_scan(mon?.minvent, id, 0);
+            if (obj) return obj;
+        }
+    return null;
+}
+
+// C ref: shk.c setpaid(shkp):400.  gb.billobjs is an ARRAY in this port, so
+// C's "extract and dealloc each" is a truncation.
+// (Real port: js/shkroom.js, private.)
+function setpaid(shkp) {
+    clear_unpaid(shkp, game.invent);
+    clear_unpaid(shkp, game.level?.objects);
+    if (game.level?.buriedobjlist) clear_unpaid(shkp, game.level.buriedobjlist);
+    if (game.thrownobj) clear_unpaid_obj(shkp, game.thrownobj);
+    if (game.kickedobj) clear_unpaid_obj(shkp, game.kickedobj);
+    for (const mtmp of fmon()) if (mtmp.minvent) clear_unpaid(shkp, mtmp.minvent);
+    for (const mtmp of (game.migrating_mons || []))
+        if (mtmp.minvent) clear_unpaid(shkp, mtmp.minvent);
+
+    clear_no_charge(shkp, game.level?.objects);
+    clear_no_charge(shkp, game.level?.buriedobjlist);
+
+    while (Array.isArray(game.billobjs) && game.billobjs.length) {
+        const obj = game.billobjs.pop();
+        obj_extract_self(obj);
+        dealloc_obj(obj);
+    }
+    if (shkp) {
+        shkp.eshk.billct = 0;
+        shkp.eshk.credit = 0;
+        shkp.eshk.debit = 0;
+        shkp.eshk.loan = 0;
+    }
+}
+
+// C ref: shk.c hot_pursuit(shkp):1449.  (Real port: js/shkroom.js, private.)
+function hot_pursuit(shkp) {
+    if (!shkp.isshk) return;
+    rile_shk(shkp);
+    shkp.eshk.customer = game.plname;
+    shkp.eshk.following = 1;
+    /* shopkeeper networking: every floor item on the level loses no_charge */
+    clear_no_charge(null, game.level?.objects);
+    clear_no_charge_pets(shkp);
+}
+
+// C ref: display.h canseemon(mon).  js/uhitm.js's canseemon_shared() is
+// module-private; this matches js/dogmove.js's local port (the infravision
+// half is omitted — a shopkeeper is always on a lit shop square).
+async function canseemon(mtmp) {
+    if (!mtmp) return false;
+    if (game.u?.uswallow) return true;
+    if (mtmp.minvis && !game.u?.see_invis) return false;
+    if (mtmp.mundetected) return false;
+    const { cansee } = await import('./vision.js');
+    return !!cansee(mtmp.mx, mtmp.my);
+}
+
+// C ref: polyself.c mbodypart(mon, part).  js/polyself.js is not statically
+// imported here (cycle risk), so this is the awaited wrapper.
+async function mbodypart_(mon, part) {
+    const { mbodypart } = await import('./polyself.js');
+    return mbodypart(mon, part);
+}
+
+// C ref: shknam.c is_izchak(shkp, override_hallucination):908.
+async function is_izchak(shkp, override_hallucination) {
+    if ((game.u?.uprops?.Hallucination || 0) > 0 && !override_hallucination)
+        return false;
+    if (!shkp.isshk) return false;
+    const { in_town } = await import('./dig.js');
+    if (!in_town(shkp.mx, shkp.my)) return false;
+    let shknm = shkp.eshk?.shknam || '';
+    if (!/^[A-Za-z]/.test(shknm)) shknm = shknm.slice(1); /* skip "+" prefix */
+    return shknm === 'Izchak';
+}
+
+// C ref: shk.c rob_shop(shkp):687 — settle-or-steal when the hero leaves with
+// unpaid goods; TRUE means an actual robbery, which is what calls the Kops.
+// livelog_printf() has no effect on the screen.  No RNG.
+// (Real port: js/shkroom.js, private.)
+async function rob_shop(shkp) {
+    const eshkp = shkp.eshk;
+    await rouse_shk(shkp, true);
+    let total = addupbill(shkp) + (eshkp.debit || 0);
+    if ((eshkp.credit || 0) >= total) {
+        await update_topl(`Your credit of ${eshkp.credit} ${
+            currency(eshkp.credit)} is used to cover your shopping bill.`);
+        total = 0; /* credit gets cleared by setpaid() */
+    } else {
+        await update_topl('You escaped the shop without paying!');
+        total -= (eshkp.credit || 0);
+    }
+    setpaid(shkp);
+    if (!total) return false;
+
+    eshkp.robbed = (eshkp.robbed || 0) + total;
+    await update_topl(`You stole ${total} ${currency(total)} worth of merchandise.`);
+    if ((game.urole?.mnum ?? -1) !== PM_ROGUE) /* stealing is unlawful */
+        adjalign(-sgn(game.u?.ualign?.type || 0));
+    hot_pursuit(shkp);
+    return true;
+}
+
+// C ref: shk.c call_kops(shkp, nearshop):510.  GAP: the Keystone Kop spawn is
+// makekops(), which is module-private in js/shkroom.js; duplicating it here
+// would duplicate its rnd(5)/enexto()/makemon() draws, so this stops at the
+// alarm.  mvitals[] (the G_GONE test that decides whether any Kop can appear
+// at all) is not modelled by this port either.
+async function call_kops(shkp, _nearshop) {
+    if (!shkp) return;
+    if (!Deaf()) await update_topl('An alarm sounds!');
+    /* GAP: nokops / angry_guards() / makekops() — see js/shkroom.js. */
+}
+
+// ── shk.c:214 .. :1200 ──────────────────────────────────────────────────────
+
+// C ref: shk.c next_shkp(shkp, withbill):215.  Side effect: merely enumerating
+// an angry shk whose surcharge has not been applied riles her, which rewrites
+// every price on her bill.  shk_scan() above is the same walk done eagerly.
+// C passes the chain head (fmon) or a successor (shkp->nmon); here that is
+// fmon()[0] / nmon(shkp).  A monster not on the chain reads as end-of-chain.
+export function next_shkp(shkp, withbill) {
+    const list = fmon();
+    let found = null;
+    for (let i = shkp ? list.indexOf(shkp) : -1; i >= 0 && i < list.length; i++) {
+        const m = list[i];
+        if (DEADMONSTER(m)) continue;
+        if (m.isshk && ((m.eshk?.billct || 0) || !withbill)) { found = m; break; }
+    }
+    if (found && ANGRY(found) && !found.eshk.surcharge) rile_shk(found);
+    return found;
+}
+
+// C ref: shk.c shkgone(mtmp):235 — the shk died; her shop reverts to ordinary
+// rooms and ordinary objects.  Called from mon.c.
+export function shkgone(mtmp) {
+    const eshk = mtmp.eshk;
+    const sroom = game.level?.rooms?.[eshk.shoproom - ROOMOFFSET];
+    if (!on_shoplevel(eshk)) return;
+
+    discard_damage_owned_by(mtmp);
+    if (sroom) sroom.resident = null;
+    if (!search_special(ANY_SHOP) && game.level?.flags)
+        game.level.flags.has_shop = 0;
+
+    /* items on shop floor revert to ordinary objects */
+    if (sroom)
+        for (let sx = sroom.lx; sx <= sroom.hx; sx++)
+            for (let sy = sroom.ly; sy <= sroom.hy; sy++)
+                for (const otmp of objects_at(sx, sy)) otmp.no_charge = 0;
+
+    /* set the bill only when the dead shk is the resident shk */
+    const p = (game.u?.ushops || []).indexOf(eshk.shoproom);
+    if (p >= 0) {
+        setpaid(mtmp);
+        eshk.bill_p = null;
+        game.u.ushops.splice(p, 1); /* remove shoproom from u.ushops */
+    }
+}
+
+// C ref: shk.c set_residency(shkp, zero_out):272.
+export function set_residency(shkp, zero_out) {
+    if (!on_shoplevel(shkp.eshk)) return;
+    const room = game.level?.rooms?.[shkp.eshk.shoproom - ROOMOFFSET];
+    if (room) room.resident = zero_out ? null : shkp;
+}
+
+// C ref: shk.c replshk(mtmp, mtmp2):280 — mtmp2 replaces mtmp (relocation to a
+// new monst struct).  eshk.bill_p is not modelled separately by this port
+// (onbill() reads eshk.bill directly), so the assignment is nominal.
+export function replshk(mtmp, mtmp2) {
+    const room = game.level?.rooms?.[mtmp2.eshk.shoproom - ROOMOFFSET];
+    if (room) room.resident = mtmp2;
+    if (inhishop(mtmp) && (game.u?.ushops || [])[0] === mtmp.eshk.shoproom)
+        mtmp2.eshk.bill_p = mtmp2.eshk.bill;
+}
+
+// C ref: shk.c restshk(shkp, ghostly):290 — bones/save fixups.  The -1000
+// sentinel bill_p (u_entered_shop's "dump core when referenced") survives.
+export function restshk(shkp, ghostly) {
+    if (!game.u?.uz?.dlevel) return;
+    const eshkp = shkp.eshk;
+    if (eshkp.bill_p !== -1000) eshkp.bill_p = eshkp.bill;
+    /* shoplevel can change as dungeons move around */
+    if (ghostly) {
+        eshkp.shoplevel = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
+        if (ANGRY(shkp) && strncmpi(eshkp.customer, game.plname, PL_NSIZ))
+            pacify_shk(shkp, true);
+    }
+}
+
+// C ref: shk.c clear_unpaid_obj(shkp, otmp):309.
+export function clear_unpaid_obj(shkp, otmp) {
+    if (Has_contents(otmp)) clear_unpaid(shkp, otmp.cobj);
+    if (onbill(otmp, shkp)) otmp.unpaid = 0;
+}
+
+// C ref: shk.c clear_unpaid(shkp, list):319 — C walks an obj->nobj chain; this
+// port's equivalent of every such list is a JS array.
+export function clear_unpaid(shkp, list) {
+    for (const otmp of (list || [])) if (otmp) clear_unpaid_obj(shkp, otmp);
+}
+
+// C ref: shk.c clear_no_charge_obj(shkp, otmp):329.  shkp == null clears every
+// item on the list regardless of shop (hot_pursuit's shopkeeper networking).
+// GAP: obj_location() cannot resolve an OBJ_BURIED item, so a buried no_charge
+// item takes the !get_obj_location arm and is cleared unconditionally.
+export function clear_no_charge_obj(shkp, otmp) {
+    if (Has_contents(otmp)) clear_no_charge(shkp, otmp.cobj);
+    if (!otmp.no_charge) return;
+
+    const loc = obj_location(otmp);
+    const rno = game.level?.at(loc.x, loc.y)?.roomno ?? NO_ROOM;
+    let rm_shkp = null;
+    if (!shkp
+        || (otmp.where !== OBJ_FLOOR && otmp.where !== OBJ_CONTAINED
+            && !is_buried(otmp))
+        || !loc.ok
+        || !isok(loc.x, loc.y)
+        || rno < ROOMOFFSET
+        || !IS_SHOP(rno - ROOMOFFSET)
+        || !(rm_shkp = game.level?.rooms?.[rno - ROOMOFFSET]?.resident)
+        || rm_shkp === shkp)
+        otmp.no_charge = 0;
+}
+
+// C ref: shk.c clear_no_charge(shkp, list):377.
+export function clear_no_charge(shkp, list) {
+    for (const otmp of (list || [])) if (otmp) clear_no_charge_obj(shkp, otmp);
+}
+
+// C ref: shk.c clear_no_charge_pets(shkp):389.
+export function clear_no_charge_pets(shkp) {
+    for (const mtmp of fmon())
+        if (mtmp.mtame && mtmp.minvent?.length) clear_no_charge(shkp, mtmp.minvent);
+}
+
+// C ref: shk.c credit_report(shkp, idx, silent):628 — the before/after snapshot
+// that reports "Your debt has increased by N zorkmids." after a shop action.
+// The snapshot is a C `static`, hence a module-level array here.
+const BEFORE = 0, NOW = 1;
+const credit_snap = [[0, 0, 0], [0, 0, 0]];
+export async function credit_report(shkp, idx, silent) {
+    const eshkp = shkp.eshk;
+
+    if (!idx) {
+        credit_snap[BEFORE][0] = credit_snap[NOW][0] = 0;
+        credit_snap[BEFORE][1] = credit_snap[NOW][1] = 0;
+        credit_snap[BEFORE][2] = credit_snap[NOW][2] = 0;
+    } else {
+        idx = 1;
+    }
+
+    credit_snap[idx][0] = eshkp.credit || 0;
+    credit_snap[idx][1] = eshkp.debit || 0;
+    credit_snap[idx][2] = eshkp.loan || 0;
+
+    if (idx && !silent) {
+        let amt = 0;
+        let msg = 'debt has increased';
+
+        if (credit_snap[NOW][0] < credit_snap[BEFORE][0]) {
+            amt = credit_snap[BEFORE][0] - credit_snap[NOW][0];
+            msg = 'credit has been reduced';
+        } else if (credit_snap[NOW][1] > credit_snap[BEFORE][1]) {
+            amt = credit_snap[NOW][1] - credit_snap[BEFORE][1];
+        } else if (credit_snap[NOW][2] > credit_snap[BEFORE][2]) {
+            amt = credit_snap[NOW][2] - credit_snap[BEFORE][2];
+        }
+        if (amt) await update_topl(`Your ${msg} by ${amt} ${currency(amt)}.`);
+    }
+}
+
+// C ref: shk.c remote_burglary(x, y):665 — robbery from outside the shop via
+// telekinesis or a grappling hook.
+export async function remote_burglary(x, y) {
+    const shkp = shop_keeper(in_rooms(x, y, SHOPBASE)[0]);
+    if (!shkp || !inhishop(shkp)) return; /* shk died, teleported, ... */
+
+    const eshkp = shkp.eshk;
+    if (!eshkp.billct && !eshkp.debit) return; /* bill is settled */
+
+    if (await rob_shop(shkp)) await call_kops(shkp, false);
+}
+
+// C ref: shk.c deserted_shop(enterstring):723 — "This shop is deserted." vs
+// "...seems to be untended.": n counts monsters in the room, m counts the ones
+// the hero can account for.  No RNG.  C's enterstring is a char* whose FIRST
+// CHARACTER is the roomno; this port passes the roomno itself (u.ushops is an
+// array of numbers here, not a string).
+export async function deserted_shop(enterstring) {
+    const r = game.level?.rooms?.[enterstring - ROOMOFFSET];
+    const { sensemon } = await import('./mon.js');
+    let m = 0, n = 0;
+
+    for (let x = r?.lx ?? 0; x <= (r?.hx ?? -1); ++x)
+        for (let y = r?.ly ?? 0; y <= (r?.hy ?? -1); ++y) {
+            if (u_at(x, y)) continue;
+            const mtmp = m_at(x, y);
+            if (mtmp) {
+                ++n;
+                const ap = mtmp.m_ap_type ?? M_AP_NOTHING;
+                if (sensemon(mtmp)
+                    || ((ap === M_AP_NOTHING || ap === M_AP_MONSTER)
+                        && await canseemon(mtmp)))
+                    ++m;
+            }
+        }
+
+    if ((game.u?.uprops?.Blind || 0) > 0
+        && !((game.u?.uprops?.Blind_telepat || 0) > 0
+             || (game.u?.uprops?.Detect_monsters || 0) > 0))
+        ++n; /* force feedback to be less specific */
+
+    await update_topl(`This shop ${(m < n) ? 'seems to be' : 'is'} ${
+        !n ? 'deserted' : 'untended'}.`);
+}
+
+// C ref: shk.c pick_pick(obj):921 — taking a pick-axe out of a container while
+// inside a shop.  pickmovetime is a C `static`, hence module-level here.
+let pickmovetime = 0;
+export async function pick_pick(obj) {
+    if (obj.unpaid || !is_pick(obj)) return;
+    const shkp = shop_keeper((game.u?.ushops || [])[0]);
+    if (shkp && inhishop(shkp)) {
+        /* don't repeat this N times for a sack of N picks */
+        if (game.moves !== pickmovetime) {
+            if (!Deaf() && !muteshk(shkp)) {
+                await verbalize(`You sneaky ${cad(false)}!  Get out of here with that pick!`);
+            } else {
+                await update_topl(`${Shknam(shkp)} ${
+                    haseyes(shkp.data) ? 'glares at' : 'is dismayed because of'
+                } your pick!`);
+            }
+        }
+        pickmovetime = game.moves;
+    }
+}
+
+// C ref: shk.c shop_debt(eshkp):990 — debit plus everything still on the bill.
+// Deliberately ignores eshkp->robbed (see the C comment at :983).
+export function shop_debt(eshkp) {
+    let debt = eshkp.debit || 0;
+    for (let ct = 0; ct < (eshkp.billct || 0); ct++)
+        debt += (eshkp.bill[ct].price || 0) * (eshkp.bill[ct].bquan || 0);
+    return debt;
+}
+
+// C ref: shk.c noisy_shop(sroom):1126.
+export async function noisy_shop(sroom) {
+    const mtmp = sroom?.resident;
+    if (mtmp && inhishop(mtmp)) {
+        const { wake_nearto } = await import('./cmd.js');
+        await wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+    }
+}
+
+// C ref: shk.c onshopbill(obj, shkp, silent):1160 — onbill() without exposing
+// the bill entry.  onbill() above takes no `silent` (it never impossible()s).
+export function onshopbill(obj, shkp, _silent) {
+    return onbill(obj, shkp) ? true : false;
+}
+
+// C ref: shk.c delete_contents(obj):1175.
+export function delete_contents(obj) {
+    while (obj.cobj && obj.cobj.length) {
+        const curr = obj.cobj[0];
+        obj_extract_self(curr);
+        obfree(curr, null);
+        /* obj_extract_self() may not detach from a JS array; guard the loop */
+        if (obj.cobj.length && obj.cobj[0] === curr) obj.cobj.shift();
+    }
+}
+
+// ── shk.c:1316 .. :2760 ─────────────────────────────────────────────────────
+
+// C ref: shk.c home_shk(shkp, killkops):1317 — return the shk to the spot just
+// inside her door.  GAP: mnearto() (the enexto ring search that actually moves
+// her, and its RNG) and pacify_guards() have no port in this tree, so this
+// only re-flags the level and re-checks occupancy.
+export async function home_shk(shkp, killkops) {
+    /* GAP: mnearto(shkp, ESHK(shkp)->shk.x, ESHK(shkp)->shk.y, TRUE,
+       RLOC_NOMSG) — the shk does not actually move here. */
+    if (game.level?.flags) game.level.flags.has_shop = 1;
+    if (killkops) {
+        await kops_gone(true);
+        /* GAP: pacify_guards() */
+    }
+    await after_shk_move(shkp);
+}
+
+// C ref: shk.c angry_shk_exists():1331.
+export function angry_shk_exists() {
+    for (let shkp = next_shkp(fmon()[0], false); shkp;
+         shkp = next_shkp(nmon(shkp), false))
+        if (ANGRY(shkp)) return true;
+    return false;
+}
+
+// C ref: shk.c make_happy_shoppers(silentkops):1440 — also called from
+// losedogs() for a migrating shk.  GAP: pacify_guards() has no port.
+export async function make_happy_shoppers(silentkops) {
+    if (!angry_shk_exists()) {
+        await kops_gone(silentkops);
+        /* GAP: pacify_guards() */
+    }
+}
+
+// C ref: shk.c make_angry_shk(shkp, ox, oy):1470 — the shk was teleported or
+// fell out of her shop, or the hero broke something from outside it.  Every
+// pending transaction becomes "past due" (robbed), then hot pursuit.
+export async function make_angry_shk(shkp, _ox, _oy) {
+    const eshkp = shkp.eshk;
+
+    if (eshkp.billct || eshkp.debit || eshkp.loan || eshkp.credit) {
+        eshkp.robbed = (eshkp.robbed || 0)
+            + (addupbill(shkp) + (eshkp.debit || 0) + (eshkp.loan || 0));
+        eshkp.robbed -= (eshkp.credit || 0);
+        if (eshkp.robbed < 0) eshkp.robbed = 0;
+        /* billct, debit, loan and credit are cleared by setpaid() */
+        setpaid(shkp);
+    }
+
+    await update_topl(`${Shknam(shkp)} ${!ANGRY(shkp) ? 'gets angry' : 'is furious'}!`);
+    hot_pursuit(shkp);
+}
+
+// C ref: decl.h gr.repo — where a dying hero's inventory gets dumped.  This
+// port has no `gr` struct; the object below is local to set_repo_loc() and
+// finish_paybill(), which are the only two readers/writers in C as well.
+const repo = { location: { x: 0, y: 0 }, shopkeeper: null };
+
+// C ref: shk.c inherits(shkp, numsk, croaked, silently):2577 — does this shk
+// take the dead hero's possessions?  RNG: ONE rn2(2) (the head-shake), and
+// only on the numsk > 1 path with the shk in view.
+// js/shkroom.js's exported paybill() carries a reduced inline version of this
+// (single-shk, no rn2(2) arm); this is the full translation.
+export async function inherits(shkp, numsk, croaked, silently) {
+    let loss = 0;
+    const eshkp = shkp.eshk;
+    let take = false, taken = false;
+    const uinshop = (game.u?.ushops || []).includes(eshkp.shoproom);
+    let takes = '';
+    const invent = game.invent || [];
+
+    /* prevents the next player from being ambushed by an invisible shk */
+    shkp.minvis = 0;
+    shkp.perminvis = 0;
+
+    /* first-come already took everything you had */
+    if (numsk > 1) {
+        const { cansee } = await import('./vision.js');
+        if (cansee(shkp.mx, shkp.my) && croaked && !silently) {
+            takes = '';
+            if (has_head(shkp.data) && !rn2(2))
+                takes = `, shakes ${noit_mhis(shkp)} ${await mbodypart_(shkp, HEAD)},`;
+            await update_topl(`${Shknam(shkp)} ${
+                helpless(shkp) ? 'wakes up, ' : ''}looks at your corpse${
+                takes} and ${!inhishop(shkp) ? 'disappears' : 'sighs'}.`);
+        }
+        taken = uinshop;
+        /* C: goto skip */
+        await rouse_shk(shkp, false);
+        if (!inhishop(shkp)) await home_shk(shkp, false);
+        setpaid(shkp);
+        if (taken) set_repo_loc(shkp);
+        return taken;
+    }
+
+    /* you die in the shop, the shk is peaceful, nothing stolen, nothing owed */
+    if (uinshop && inhishop(shkp) && !eshkp.billct && !eshkp.robbed
+        && !eshkp.debit && NOTANGRY(shkp) && !eshkp.following
+        && (game.u?.ugrave_arise ?? -1) < 0 /* LOW_PM */) {
+        taken = invent.length > 0;
+        if (taken && !silently)
+            await update_topl(`${Shknam(shkp)} gratefully inherits all your possessions.`);
+        /* C: goto clear */
+        setpaid(shkp);
+        if (taken) set_repo_loc(shkp);
+        return taken;
+    }
+
+    if (eshkp.billct || eshkp.debit || eshkp.robbed) {
+        if (uinshop && inhishop(shkp)) loss = addupbill(shkp) + (eshkp.debit || 0);
+        if (loss < (eshkp.robbed || 0)) loss = eshkp.robbed || 0;
+        take = true;
+    }
+
+    if (eshkp.following || ANGRY(shkp) || take) {
+        if (!invent.length) {
+            /* C: goto skip */
+            await rouse_shk(shkp, false);
+            if (!inhishop(shkp)) await home_shk(shkp, false);
+            setpaid(shkp);
+            return false;
+        }
+        const umoney = money_cnt(invent);
+        takes = '';
+        if (helpless(shkp)) takes += 'wakes up and ';
+        if (!m_next2u(shkp)) takes += 'comes and ';
+        takes += 'takes';
+
+        if (loss > umoney || !loss || uinshop) {
+            eshkp.robbed = (eshkp.robbed || 0) - umoney;
+            if (eshkp.robbed < 0) eshkp.robbed = 0;
+            if (umoney > 0) await money2mon(shkp, umoney);
+            if (!silently)
+                await update_topl(`${Shknam(shkp)} ${takes} all your possessions.`);
+            taken = true;
+        } else {
+            await money2mon(shkp, loss);
+            if (!silently)
+                await update_topl(`${Shknam(shkp)} ${takes} the ${loss} ${
+                    currency(loss)} ${
+                    strncmp(eshkp.customer, game.plname, PL_NSIZ) ? '' : 'you '
+                }owed ${noit_mhim(shkp)}.`);
+            /* shopkeeper has now been paid in full */
+            pacify_shk(shkp, false);
+            eshkp.following = 0;
+            eshkp.robbed = 0;
+        }
+        /* skip: */
+        await rouse_shk(shkp, false); /* in case we create bones */
+        if (!inhishop(shkp)) await home_shk(shkp, false);
+    }
+    /* clear: */
+    setpaid(shkp); /* clear this shk's bill */
+    if (taken) set_repo_loc(shkp);
+    return taken;
+}
+
+// C ref: shk.c set_repo_loc(shkp):2682 — where the dead hero's gear lands.
+export function set_repo_loc(shkp) {
+    const eshkp = shkp.eshk;
+
+    /* with multiple shopkeepers we may be called more than once */
+    if (repo.shopkeeper) return;
+
+    const u = game.u;
+    let ox = u?.ux ? u.ux : u?.ux0;
+    let oy = u?.ux ? u.uy : u?.uy0; /* testing u.ux when setting oy IS correct */
+
+    /* not in this shk's room, or in its doorway/entry spot/wall: dump the gear
+       all the way inside */
+    if (!(u?.ushops || []).includes(eshkp.shoproom)
+        || costly_adjacent(shkp, ox, oy)) {
+        /* shk.x,shk.y is immediately in front of the door; move in one more */
+        ox = eshkp.shk.x;
+        oy = eshkp.shk.y;
+        ox += sgn(ox - eshkp.shd.x);
+        oy += sgn(oy - eshkp.shd.y);
+    }
+    repo.location.x = ox;
+    repo.location.y = oy;
+    repo.shopkeeper = shkp;
+}
+
+// C ref: shk.c finish_paybill():2723 — after disclosure, before bones.  Issues
+// no messages.  GAP: unleash_all() has no port in this tree.
+export async function finish_paybill() {
+    const shkp = repo.shopkeeper;
+    let ox = repo.location.x, oy = repo.location.y;
+
+    if (!isok(ox, oy)) {
+        const u = game.u;
+        ox = u?.ux ? u.ux : u?.ux0;
+        oy = u?.ux ? u.uy : u?.uy0;
+    }
+    /* GAP: unleash_all() — normally done by savebones(), too late in this case */
+    if (shkp) {
+        const umoney = money_cnt(game.invent);
+        if (umoney) await money2mon(shkp, umoney);
+    }
+    const { drop_upon_death } = await import('./bones.js');
+    await drop_upon_death(null, null, ox, oy);
+}
+
+// ── shk.c:3063 .. :4270 ─────────────────────────────────────────────────────
+
+// objclass.h classes shk.c names below and shk.js's header block does not.
+const RING_CLASS = 4, AMULET_CLASS = 5, CHAIN_CLASS = 16;
+// objects.h otyps and sounds.h/role indices shk.c names below.  PICK_AXE and
+// DWARVISH_MATTOCK match js/invent.js:8464 (js/dogmove.js's PICK_AXE = 66 is a
+// different, unrelated numbering).
+const PICK_AXE = 259, DWARVISH_MATTOCK = 71, LAND_MINE = 243, BEARTRAP = 244;
+const LARGE_BOX = 216;
+const MS_HUMANOID = 25;
+const PM_KNIGHT = 4;                /* roles[].mnum, as PM_TOURIST/PM_ROGUE */
+// C ref: mkobj.c SchroedingersBox(obj) — a LARGE_BOX with spe == 1.
+const SchroedingersBox = (obj) => !!obj && obj.otyp === LARGE_BOX && obj.spe === 1;
+// C ref: mondata.h passes_walls(ptr).
+const passes_walls = (ptr) => passes_walls_flag(ptr);
+// wintype.h NHW_MENU.  js/invent.js and js/end.js each keep a PRIVATE
+// create_nhwindow/putstr/display_nhwindow/destroy_nhwindow shim; neither is
+// exported, so these are the same shim again.  GAP: nothing renders.
+const NHW_MENU = 3;
+function create_nhwindow(_type) { return { lines: [] }; }
+function putstr(win, _attr, str) { if (win) win.lines.push(str); }
+function display_nhwindow(_win, _blocking) {}
+function destroy_nhwindow(_win) {}
+// C ref: getlin.c ynaq()/nyaq() — 'a' means "all", 'q' means "quit"; nyaq's
+// default is 'n', ynaq's is 'y'.  js/pickup.js's ynaq() is module-private.
+async function ynaq_(query) {
+    const { y_n } = await import('./display.js');
+    return await y_n(query, 'ynaq\x1b', 'y');
+}
+async function nyaq_(query) {
+    const { y_n } = await import('./display.js');
+    return await y_n(query, 'ynaq\x1b', 'n');
+}
+
+// C ref: shk.c dropped_container(obj, shkp, sale):3064 — mark a just-dropped
+// container's contents "no charge" (the top container is the caller's job).
+export function dropped_container(obj, shkp, sale) {
+    for (const otmp of (obj.cobj || [])) {
+        if (otmp.oclass === COIN_CLASS) continue;
+
+        if (!otmp.unpaid && !(sale && saleable(shkp, otmp))) otmp.no_charge = 1;
+
+        if (Has_contents(otmp)) dropped_container(otmp, shkp, sale);
+    }
+}
+
+// C ref: shk.c special_stock(obj, shkp, quietly):3103 — Izchak won't buy the
+// Candelabrum.  No RNG.
+export async function special_stock(obj, shkp, quietly) {
+    if (shkp.eshk.shoptype === CANDLESHOP
+        && obj.otyp === CANDELABRUM_OF_INVOCATION) {
+        if (!quietly) {
+            if (await is_izchak(shkp, true) && !game.u?.uevent?.invoked) {
+                if (Deaf() || muteshk(shkp)) {
+                    await update_topl(`${Shknam(shkp)} seems ${
+                        (obj.spe < 7) ? 'horrified' : 'concerned'
+                    } that you want to sell that.`);
+                } else {
+                    await verbalize("No thanks, I'd hang onto that if I were you.");
+                    if (obj.spe < 7)
+                        await verbalize(`You'll need ${7 - obj.spe}${
+                            (obj.spe > 0) ? ' more' : ''} candle${
+                            plur(7 - obj.spe)} to go along with it.`);
+                }
+            } else {
+                if (!Deaf() && !muteshk(shkp)) {
+                    await verbalize("I won't stock that.  Take it out of here!");
+                } else {
+                    await update_topl(`${Shknam(shkp)} shakes ${noit_mhis(shkp)} ${
+                        await mbodypart_(shkp, HEAD)} in refusal.`);
+                }
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+// C ref: shk.c gem_learned(oindx):3198 — IDing (or forgetting) a gem reprices
+// every unpaid stack of that type on every bill on the level.  oindx ==
+// STRANGE_OBJECT means "all gems".  No RNG.
+export function gem_learned(oindx) {
+    for (let shkp = next_shkp(fmon()[0], true); shkp;
+         shkp = next_shkp(nmon(shkp), true)) {
+        const eshk = shkp.eshk;
+        for (let ct = (eshk.billct || 0) - 1, i = 0; ct >= 0; --ct, ++i) {
+            const bp = eshk.bill[i];
+            const obj = find_oid(bp.bo_id);
+            if (!obj) continue; /* shouldn't happen */
+            if ((oindx !== STRANGE_OBJECT) ? (obj.otyp === oindx)
+                                           : (obj.oclass === GEM_CLASS))
+                bp.price = get_cost(obj, shkp);
+        }
+    }
+}
+
+// C ref: shk.c alter_cost(obj, amt):3237 — an item got more valuable; raise its
+// bill entry.  amt 0 = reprice, amt < 0 = force abs(amt) even if lower.
+// NOTE the C loop advances `shkp` itself, not shkp->nmon, so it re-tests the
+// same shk forever unless it breaks; next_shkp() finding the same monster again
+// is what makes that terminate.  Reproduced as-is.
+export function alter_cost(obj, amt) {
+    for (let shkp = next_shkp(fmon()[0], true); shkp; shkp = next_shkp(shkp, true)) {
+        const bp = onbill(obj, shkp);
+        if (bp) {
+            const new_price = !amt ? get_cost(obj, shkp) : (amt < 0) ? -amt : amt;
+            if (new_price > bp.price || amt < 0) {
+                bp.price = new_price;
+                update_inventory();
+            }
+            break; /* done */
+        }
+        break; /* C's loop cannot advance; without this it never terminates */
+    }
+}
+
+// C ref: shk.c add_one_tobill(obj, dummy, shkp):3309.  (Real port:
+// js/shkroom.js, private.)  No RNG.
+function add_one_tobill(obj, dummy, shkp) {
+    const eshkp = shkp.eshk;
+    let unbilled = false;
+
+    if (!eshkp.bill_p) eshkp.bill_p = eshkp.bill;
+
+    const owner = billable(shkp, obj, (game.u?.ushops || [])[0], true);
+    if (!owner) {
+        unbilled = true; /* shk doesn't want it */
+    } else if (eshkp.billct === BILLSZ) {
+        update_topl('You got that for free!');
+        unbilled = true;
+    }
+    if (unbilled) {
+        if (obj.where === OBJ_FREE) dealloc_obj(obj);
+        return;
+    }
+    shkp = owner;
+
+    const bct = eshkp.billct;
+    if (!Array.isArray(eshkp.bill)) eshkp.bill = [];
+    const bp = eshkp.bill[bct] || (eshkp.bill[bct] = {});
+    bp.bo_id = obj.o_id;
+    bp.bquan = obj.quan;
+    if (dummy) {         /* a dummy object goes on the billobjs chain here */
+        bp.useup = true;
+        add_to_billobjs(obj);
+    } else {
+        bp.useup = false;
+    }
+    bp.price = get_cost(obj, shkp);
+    if (obj.globby) {
+        /* for globs the amount charged for quan 1 depends on owt */
+        bp.price *= get_pricing_units(obj);
+        newomid(obj);
+        if (obj.oextra) obj.oextra.omid = obj.owt;
+    }
+    eshkp.billct++;
+    obj.unpaid = 1;
+    record_price_quote(obj.otyp, bp.price, true);
+}
+
+// C ref: shk.c add_to_billobjs(obj):3366 — the chain of FULLY used-up billed
+// items.  This port keeps it as an ARRAY, so C's prepend is a push (only o_on()
+// scan order differs, and no RNG depends on it).
+export function add_to_billobjs(obj) {
+    if (obj.where !== OBJ_FREE) return; /* C: panic("obj not free") */
+    if (obj.timed) obj.timed = 0;       /* C: obj_stop_timers(obj) */
+
+    if (!Array.isArray(game.billobjs)) game.billobjs = [];
+    game.billobjs.push(obj);
+    obj.where = OBJ_ONBILL;
+
+    /* a shop potion the hero drank is in_use but is not used up yet */
+    obj.in_use = 0;
+    obj.bypass = 0;
+}
+
+// C ref: shk.c bill_box_content(obj, ininv, dummy, shkp):3387 — recursive
+// billing of a container's contents.  A Schroedinger's Box is skipped so its
+// contents are not collapsed into existence.
+export function bill_box_content(obj, ininv, dummy, shkp) {
+    if (SchroedingersBox(obj)) return;
+    for (const otmp of (obj.cobj || [])) {
+        if (otmp.oclass === COIN_CLASS) continue;
+
+        /* the "top" box is added in addtobill() */
+        if (!otmp.no_charge) add_one_tobill(otmp, dummy, shkp);
+        if (Has_contents(otmp)) bill_box_content(otmp, ininv, dummy, shkp);
+    }
+}
+
+// C ref: shk.c splitbill(obj, otmp):3623 — otmp was split off obj, so the bill
+// grows a second entry at the same unit price.  No RNG (splitobj's rnd(2) is
+// spent by its caller).
+export function splitbill(obj, otmp) {
+    const shkp = shop_keeper((game.u?.ushops || [])[0]);
+    if (!shkp || !inhishop(shkp)) return; /* C: impossible() */
+    const bp = onbill(obj, shkp);
+    if (!bp) return;                      /* C: impossible() */
+    /* C impossible()s on bquan < quan and bquan == quan but keeps going */
+    bp.bquan -= otmp.quan;
+
+    if (shkp.eshk.billct === BILLSZ) {
+        otmp.unpaid = 0;
+    } else {
+        const tmp = bp.price;
+        const nbp = shkp.eshk.bill[shkp.eshk.billct]
+            || (shkp.eshk.bill[shkp.eshk.billct] = {});
+        nbp.bo_id = otmp.o_id;
+        nbp.bquan = otmp.quan;
+        nbp.useup = false;
+        nbp.price = tmp;
+        shkp.eshk.billct++;
+    }
+}
+
+// C ref: shk.c sub_one_frombill(obj, shkp):3661 — take obj off the bill.  RNG:
+// next_ident()'s rnd(2), and ONLY on the partly-used-up branch (bquan > quan),
+// where a dummy stands in for the consumed part.
+export function sub_one_frombill(obj, shkp) {
+    const bp = onbill(obj, shkp);
+    if (bp) {
+        obj.unpaid = 0;
+        if (bp.bquan > obj.quan) {
+            const otmp = { ...obj };       /* C: newobj(); *otmp = *obj */
+            otmp.oextra = null;
+            bp.bo_id = otmp.o_id = next_ident(); /* svc.context.ident++ */
+            otmp.where = OBJ_FREE;
+            bp.bquan -= obj.quan;
+            otmp.quan = bp.bquan;
+            otmp.owt = 0;                  /* superfluous */
+            bp.useup = true;
+            add_to_billobjs(otmp);
+            return;
+        }
+        const eshkp = shkp.eshk;
+        eshkp.billct--;
+        eshkp.bill[eshkp.bill.indexOf(bp)] = eshkp.bill[eshkp.billct];
+        return;
+    }
+    if (obj.unpaid) obj.unpaid = 0;         /* C: impossible() first */
+}
+
+// C ref: shk.c subfrombill(obj, shkp):3694 — recursive over nested containers.
+export function subfrombill(obj, shkp) {
+    sub_one_frombill(obj, shkp);
+
+    if (Has_contents(obj))
+        for (const otmp of (obj.cobj || [])) {
+            if (otmp.oclass === COIN_CLASS) continue;
+
+            if (Has_contents(otmp)) subfrombill(otmp, shkp);
+            else sub_one_frombill(otmp, shkp);
+        }
+}
+
+// C ref: shk.c stolen_container(obj, shkp, price, ininv):3713 — the value of a
+// stolen container's CONTENTS (the caller handles the top container).  Items
+// already on the bill come off it so they are not billed twice.
+export function stolen_container(obj, shkp, price, ininv) {
+    for (const otmp of (obj.cobj || [])) {
+        if (otmp.oclass === COIN_CLASS) continue;
+        let billamt = 0;
+        if (!billable(shkp, otmp, shkp.eshk.shoproom, true)) {
+            /* billable() returns false for objects already on the bill */
+            const bp = onbill(otmp, shkp);
+            if (!bp) continue;
+            billamt = bp.bquan * bp.price;
+            sub_one_frombill(otmp, shkp); /* avoid double billing */
+        }
+
+        if (billamt) price += billamt;
+        else if (ininv ? otmp.unpaid : !otmp.no_charge)
+            price += get_pricing_units(otmp) * get_cost(otmp, shkp);
+
+        if (Has_contents(otmp)) price = stolen_container(otmp, shkp, price, ininv);
+    }
+
+    return price;
+}
+
+// C ref: shk.c donate_gold(gltmp, shkp, selling):3877 — the hero dropped gold
+// in a shop; it pays down debt first, then becomes credit.
+export async function donate_gold(gltmp, shkp, selling) {
+    const eshkp = shkp.eshk;
+
+    if ((eshkp.debit || 0) >= gltmp) {
+        if (eshkp.loan) { /* you carry shop's gold */
+            if (eshkp.loan > gltmp) eshkp.loan -= gltmp;
+            else eshkp.loan = 0;
+        }
+        eshkp.debit -= gltmp;
+        await update_topl(`Your debt is ${eshkp.debit ? 'partially ' : ''}paid off.`);
+    } else {
+        const delta = gltmp - (eshkp.debit || 0);
+
+        eshkp.credit = (eshkp.credit || 0) + delta;
+        if (eshkp.debit) {
+            eshkp.debit = 0;
+            eshkp.loan = 0;
+            await update_topl('Your debt is paid off.');
+        }
+        if (eshkp.credit === delta)
+            await update_topl(`You have ${!selling ? 're-' : ''}established ${
+                delta} ${currency(delta)} credit.`);
+        else
+            await update_topl(`${delta} ${currency(delta)} added${
+                !selling ? ' back' : ''} to your credit; total is now ${
+                eshkp.credit} ${currency(eshkp.credit)}.`);
+    }
+}
+
+// C ref: shk.c sellobj_state(deliberate):3913 and decl.h gs.sell_response /
+// gs.sell_how / ga.auto_credit.  This port has no gs/ga structs; these three
+// module-level values are the C globals, read and written only by
+// sellobj_state() and sellobj() as in C.
+let sell_response = '\0';
+let sell_how = SELL_NORMAL;
+let auto_credit = false;
+export function sellobj_state(deliberate) {
+    /* dropping something deliberately means no automatic answer to the
+       "want to sell?" query; an accidental drop is bought without asking */
+    sell_response = (deliberate !== SELL_NORMAL) ? '\0' : 'a';
+    sell_how = deliberate;
+    auto_credit = false;
+}
+
+// C ref: shk.c sellobj(obj, x, y):3927 — the hero dropped something on shop
+// floor.  No rn2() of its own; the RNG it can reach is sub_one_frombill()'s
+// next_ident() and currency()'s hallucination roll.
+export async function sellobj(obj, x, y) {
+    let ltmp = 0, cltmp = 0, gltmp = 0, offer;
+    let cgold = false;
+    const container = Has_contents(obj);
+    const isgold = (obj.oclass === COIN_CLASS);
+    let only_partially_your_contents = false;
+
+    if (!(game.u?.ushops || []).length) return; /* cheapest exclusion first */
+    const shkp = shop_keeper(in_rooms(x, y, SHOPBASE)[0]);
+    if (!shkp || !inhishop(shkp)) return;
+    if (!costly_spot(x, y)) return;
+
+    if (obj.unpaid && !container && !isgold) {
+        sub_one_frombill(obj, shkp);
+        return;
+    }
+    if (container) {
+        /* the price of the contents, before subfrombill */
+        cltmp = contained_cost(obj, shkp, cltmp, true, false);
+        gltmp += contained_gold(obj, true);
+        cgold = (gltmp > 0);
+    }
+
+    const saleitem = saleable(shkp, obj);
+    if (!isgold && !obj.unpaid && saleitem) ltmp = set_cost(obj, shkp);
+
+    offer = ltmp + cltmp;
+
+    /* you dropped something of your own - probably want to sell it */
+    await rouse_shk(shkp, true);
+    const eshkp = shkp.eshk;
+
+    if (ANGRY(shkp)) { /* they become shop-objects, no pay */
+        if (!Deaf() && !muteshk(shkp)) await verbalize('Thank you, scum!');
+        else await update_topl(`${Shknam(shkp)} smirks with satisfaction.`);
+        subfrombill(obj, shkp);
+        return;
+    }
+
+    /* nothing to sell, and no gold */
+    if (!(isgold || cgold)
+        && ((offer + gltmp) === 0 || sell_how === SELL_DONTSELL)) {
+        const unpaid = is_unpaid(obj);
+
+        if (container) {
+            dropped_container(obj, shkp, false);
+            if (!obj.unpaid) obj.no_charge = 1;
+            if (unpaid) subfrombill(obj, shkp);
+        } else {
+            obj.no_charge = 1;
+        }
+
+        if (!unpaid && (sell_how !== SELL_DONTSELL)
+            && !(await special_stock(obj, shkp, false)))
+            await update_topl(`${Shknam(shkp)} seems uninterested.`);
+        return;
+    }
+
+    if (eshkp.robbed) { /* bones; shop robbed by a previous customer */
+        if (isgold) offer = obj.quan;
+        else if (cgold) offer += 1; /* C really adds the BOOLEAN cgold */
+        /* C:4004 `if ((eshkp->robbed -= offer < 0L))` — the comparison binds
+           tighter than the -=, so this subtracts 0 or 1 and then zeroes the
+           field whenever the result is nonzero.  Reproduced verbatim. */
+        eshkp.robbed -= (offer < 0) ? 1 : 0;
+        if (eshkp.robbed) eshkp.robbed = 0;
+        if (offer && !Deaf() && !muteshk(shkp))
+            await verbalize('Thank you for your contribution to restock this recently plundered shop.');
+        subfrombill(obj, shkp);
+        return;
+    }
+
+    if (isgold || cgold) {
+        if (!cgold) gltmp = obj.quan;
+
+        await donate_gold(gltmp, shkp, true);
+
+        if (!offer || sell_how === SELL_DONTSELL) {
+            if (!isgold) {
+                if (container) dropped_container(obj, shkp, false);
+                if (!obj.unpaid) obj.no_charge = 1;
+                subfrombill(obj, shkp);
+            }
+            return;
+        }
+    }
+
+    if ((!saleitem && !(container && cltmp > 0)) || eshkp.billct === BILLSZ
+        || obj.oclass === BALL_CLASS || obj.oclass === CHAIN_CLASS
+        || offer === 0 || (obj.oclass === FOOD_CLASS && obj.oeaten)
+        || (Is_candle(obj) && (obj.age || 0) < 20 * base_oc_cost(obj.otyp))) {
+        await update_topl(`${Shknam(shkp)} seems uninterested${
+            cgold ? ' in the rest' : ''}.`);
+        if (container) dropped_container(obj, shkp, false);
+        obj.no_charge = 1;
+        return;
+    }
+
+    const shkmoney = money_cnt(shkp.minvent);
+    if (!shkmoney) {
+        let c;
+        const tmpcr = Math.trunc((offer * 9) / 10) + (offer <= 1 ? 1 : 0);
+
+        if (sell_how === SELL_NORMAL || auto_credit) {
+            c = sell_response = 'y';
+        } else if (sell_response !== 'n') {
+            await update_topl(`${Shknam(shkp)} cannot pay you at present.`);
+            record_price_quote(obj.otyp, Math.trunc(tmpcr / (obj.quan || 1)), false);
+            /* C wraps the name in safe_qbuf(); its BUFSZ fallback is not ported */
+            c = await ynaq_(`Will you accept ${tmpcr} ${currency(tmpcr)
+                } in credit for ${doname_invent(obj)}?`);
+            if (c === 'a') { c = 'y'; auto_credit = true; }
+        } else { /* previously specified "quit" */
+            c = 'n';
+        }
+
+        if (c === 'y') {
+            await shk_names_obj(shkp, obj,
+                (sell_how !== SELL_NORMAL)
+                    ? 'traded %s for %ld zorkmid%s in %scredit.'
+                    : 'relinquish %s and acquire %ld zorkmid%s in %scredit.',
+                tmpcr, ((eshkp.credit || 0) > 0) ? 'additional ' : '');
+            eshkp.credit = (eshkp.credit || 0) + tmpcr;
+            if (container) dropped_container(obj, shkp, true);
+            subfrombill(obj, shkp);
+        } else {
+            if (c === 'q') sell_response = 'n';
+            if (container) dropped_container(obj, shkp, false);
+            if (!obj.unpaid) obj.no_charge = 1;
+            subfrombill(obj, shkp);
+        }
+    } else {
+        let qbuf = '';
+        const short_funds = (offer > shkmoney);
+        let one;
+
+        if (short_funds) offer = shkmoney;
+        if (!sell_response || sell_response === '\0') {
+            let yourc = 0, shksc;
+
+            if (container) {
+                shksc = count_contents(obj, true, true, false, true);
+                yourc = count_contents(obj, true, true, true, true) - shksc;
+                only_partially_your_contents = !!(shksc && yourc);
+            }
+            qbuf = `${Shknam(shkp)} offers${short_funds ? ' only' : ''} ${offer
+                } gold piece${plur(offer)} for ${
+                (cltmp && !ltmp)
+                    ? ((yourc === 1) ? 'your item in ' : 'your items in ')
+                    : ''}${obj.unpaid ? 'the' : 'your'} `;
+            one = !ltmp ? (yourc === 1) : ((obj.quan === 1) && !cltmp);
+            const qsfx = `${(cltmp && ltmp)
+                ? (only_partially_your_contents
+                    ? ((yourc === 1) ? ' and item inside' : ' and items inside')
+                    : and_its_contents)
+                : ''}.  Sell ${one ? 'it' : 'them'}?`;
+            record_price_quote(obj.otyp, Math.trunc(offer / (obj.quan || 1)), false);
+            /* C: safe_qbuf(qbuf, qbuf, qsfx, obj, xname, simpleonames, ...) */
+            qbuf = `${qbuf}${xname(obj)}${qsfx}`;
+        }
+
+        const resp = (sell_response && sell_response !== '\0')
+            ? sell_response : await nyaq_(qbuf);
+        switch (resp) {
+        case 'q':
+            sell_response = 'n';
+            /* FALLTHRU */
+        case 'n':
+            if (container) dropped_container(obj, shkp, false);
+            if (!obj.unpaid) obj.no_charge = 1;
+            subfrombill(obj, shkp);
+            break;
+        case 'a':
+            sell_response = 'y';
+            /* FALLTHRU */
+        case 'y':
+            if (container) dropped_container(obj, shkp, true);
+            if (!obj.unpaid && !saleitem) obj.no_charge = 1;
+            subfrombill(obj, shkp);
+            await pay(-offer, shkp);
+            await shk_names_obj(shkp, obj,
+                (sell_how !== SELL_NORMAL)
+                    ? ((!ltmp && cltmp && only_partially_your_contents)
+                        ? 'sold some items inside %s for %ld gold piece%s.%s'
+                        : 'sold %s for %ld gold piece%s.%s')
+                    : 'relinquish %s and receive %ld gold piece%s in compensation.%s',
+                offer, '');
+            break;
+        default:
+            break; /* C: impossible("invalid sell response") */
+        }
+    }
+}
+
+// C ref: shk.c doinvbill(mode):4197 — the `I x` listing of unpaid articles
+// already used up.  mode 0 just returns the count (that is what decides
+// whether `I`'s prompt offers 'x' at all).
+export function doinvbill(mode) {
+    const shkp = shop_keeper((game.u?.ushops || [])[0]);
+    if (!shkp || !inhishop(shkp)) return 0; /* C: impossible() when mode != 0 */
+    const eshkp = shkp.eshk;
+
+    if (mode === 0) {
+        let cnt = !eshkp.debit ? 0 : 1;
+        for (let i = 0; i < (eshkp.billct || 0); i++) {
+            const bp = eshkp.bill[i];
+            let obj;
+            if (bp.useup || ((obj = bp_to_obj(bp)) && obj.quan < bp.bquan)) cnt++;
+        }
+        return cnt;
+    }
+
+    const datawin = create_nhwindow(NHW_MENU);
+    putstr(datawin, 0, 'Unpaid articles already used up:');
+    putstr(datawin, 0, '');
+
+    let totused = 0;
+    for (let i = 0; i < (eshkp.billct || 0); i++) {
+        const bp = eshkp.bill[i];
+        const obj = bp_to_obj(bp);
+        if (!obj) {                       /* C: impossible(); goto quit */
+            destroy_nhwindow(datawin);
+            return 0;
+        }
+        if (bp.useup || bp.bquan > obj.quan) {
+            const oquan = obj.quan;
+            const uquan = (bp.useup ? bp.bquan : bp.bquan - oquan);
+            const thisused = bp.price * uquan;
+            totused += thisused;
+            game.iflags = game.iflags || {};
+            game.iflags.suppress_price = (game.iflags.suppress_price || 0) + 1;
+            /* 'x' to match `I x`, more or less */
+            const buf_p = xprname(obj, null, 'x', false, thisused, uquan);
+            game.iflags.suppress_price--;
+            putstr(datawin, 0, buf_p);
+        }
+    }
+    if (eshkp.debit) {
+        if (totused) putstr(datawin, 0, '');
+        totused += eshkp.debit;
+        putstr(datawin, 0, xprname(null, 'usage charges and/or other fees',
+                                   GOLD_SYM, false, eshkp.debit, 0));
+    }
+    putstr(datawin, 0, '');
+    putstr(datawin, 0, xprname(null, 'Total:', '*', false, totused, 0));
+    display_nhwindow(datawin, false);
+    destroy_nhwindow(datawin);
+    return 0;
+}
+
+// ── shk.c:4362 .. :6114 ─────────────────────────────────────────────────────
+
+// C ref: rm.h closed_door(x, y).  js/dig.js and js/dothrow.js each keep a
+// private copy.
+function closed_door(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!loc && IS_DOOR(loc.typ) && !!((loc.doormask || 0) & (D_LOCKED | D_CLOSED));
+}
+const Invis = () => ((game.u?.uprops?.Invis || 0) > 0);
+
+// C ref: shk.c shkcatch(obj, x, y):4362 — the shk snatches a pick-axe thrown
+// into her shop.  GAP: mnearto() is unported, so the `== 2` (had to displace a
+// monster) arm can never fire and the shk does not actually move.
+export async function shkcatch(obj, x, y) {
+    const shkp = shop_keeper(inside_shop(x, y));
+    if (!shkp || !inhishop(shkp)) return null;
+
+    const { dist2 } = await import('./hacklib.js');
+    if (!helpless(shkp)
+        && ((game.u?.ushops || [])[0] !== shkp.eshk.shoproom
+            || !inside_shop(game.u.ux, game.u.uy))
+        && dist2(shkp.mx, shkp.my, x, y) < 3
+        /* if it is the shk's own spot, you hit and anger him */
+        && (shkp.mx !== x || shkp.my !== y)) {
+        const moved = 0; /* GAP: mnearto(shkp, x, y, TRUE, RLOC_NOMSG) */
+        if (moved === 2 && !Deaf() && !muteshk(shkp))
+            await verbalize('Out of my way, scum!');
+        const { cansee } = await import('./vision.js');
+        if (cansee(x, y)) {
+            await update_topl(`${Shknam(shkp)}${
+                (x === shkp.mx && y === shkp.my) ? '' : ' reaches over and'
+            } nimbly catches ${the(xname(obj))}.`);
+            const { canspotmon } = await import('./uhitm.js');
+            if (!canspotmon(shkp)) map_invisible(x, y);
+        }
+        subfrombill(obj, shkp);
+        mpickobj(shkp, obj);
+        return shkp;
+    }
+    return null;
+}
+
+// C ref: shk.c add_damage(x, y, cost):4399 — schedule a wall/door for repair.
+// The damage list is a linked list threaded through `.next`, the shape
+// js/save.js already expects at game.level.damagelist.
+export async function add_damage(x, y, cost) {
+    const loc = game.level?.at(x, y);
+
+    if (loc && IS_DOOR(loc.typ)) {
+        /* don't schedule a repair unless it's a real shop entrance */
+        const shops = in_rooms(x, y, SHOPBASE);
+        let found = false;
+        for (const s of shops) {
+            const mtmp = shop_keeper(s);
+            if (mtmp && x === mtmp.eshk.shd?.x && y === mtmp.eshk.shd?.y) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) return;
+    }
+    for (let tmp_dam = game.level?.damagelist; tmp_dam; tmp_dam = tmp_dam.next)
+        if (tmp_dam.place.x === x && tmp_dam.place.y === y) {
+            tmp_dam.cost += cost;
+            tmp_dam.when = game.moves; /* needed by pay_for_damage() */
+            return;
+        }
+    const tmp_dam = {
+        when: game.moves, place: { x, y }, cost,
+        typ: loc?.typ ?? 0, flags: loc?.flags ?? 0,
+        next: game.level?.damagelist || null,
+    };
+    if (game.level) game.level.damagelist = tmp_dam;
+    /* if the player saw the damage, show the repaired wall as a wall */
+    const { cansee } = await import('./vision.js');
+    if (loc && cansee(x, y)) loc.seenv = SVALL;
+}
+
+// C ref: shk.c shk_impaired(shkp):4441 — cannot act (absent, helpless, or off
+// chasing the hero).
+export function shk_impaired(shkp) {
+    if (!shkp || !shkp.isshk || !inhishop(shkp)) return true;
+    if (helpless(shkp) || shkp.eshk.following) return true;
+    return false;
+}
+
+// C ref: shk.c repairable_damage(dam, shkp):4452.
+export async function repairable_damage(dam, shkp) {
+    if (!dam || shk_impaired(shkp)) return false;
+
+    const x = dam.place.x, y = dam.place.y;
+
+    /* too soon to fix it? */
+    if (((game.moves || 0) - dam.when) < REPAIR_DELAY) return false;
+    /* is it a wall? don't fix if anyone is in the way */
+    if (!IS_ROOM(dam.typ)) {
+        const mtmp = m_at(x, y);
+        if ((u_at(x, y) && !((game.u?.uprops?.Passes_walls || 0) > 0))
+            || (x === shkp.mx && y === shkp.my)
+            || (mtmp && !passes_walls(mtmp.data)))
+            return false;
+    }
+    /* is it a trap? don't fix if hero or monster is in it */
+    const { t_at } = await import('./mkroom.js');
+    const ttmp = t_at(x, y);
+    if (ttmp) {
+        if (u_at(x, y)) return false;
+        const mtmp = m_at(x, y);
+        if (mtmp && mtmp.mtrapped) return false;
+    }
+    /* does it belong to shkp? */
+    if (!in_rooms(x, y, SHOPBASE).includes(shkp.eshk.shoproom)) return false;
+
+    return true;
+}
+
+// C ref: shk.c find_damage(shkp):4491.
+export async function find_damage(shkp) {
+    let dam = game.level?.damagelist;
+
+    if (shk_impaired(shkp)) return null;
+
+    while (dam) {
+        if (await repairable_damage(dam, shkp)) return dam;
+        dam = dam.next;
+    }
+    return null;
+}
+
+// C ref: shk.c discard_damage_struct(dam):4509.
+export function discard_damage_struct(dam) {
+    if (!dam) return;
+
+    if (dam === game.level?.damagelist) {
+        game.level.damagelist = dam.next;
+    } else {
+        let prev = game.level?.damagelist;
+        while (prev && prev.next !== dam) prev = prev.next;
+        if (prev) prev.next = dam.next;
+    }
+    dam.next = null; /* C memsets and frees */
+}
+
+// C ref: shk.c discard_damage_owned_by(shkp):4530.
+export function discard_damage_owned_by(shkp) {
+    let dam = game.level?.damagelist, dam2, prevdam = null;
+
+    while (dam) {
+        const x = dam.place.x, y = dam.place.y;
+
+        if (in_rooms(x, y, SHOPBASE).includes(shkp.eshk.shoproom)) {
+            dam2 = dam.next;
+            if (prevdam) prevdam.next = dam2;
+            if (dam === game.level.damagelist) game.level.damagelist = dam2;
+            dam = null;
+        } else {
+            prevdam = dam;
+            dam2 = dam.next;
+        }
+        dam = dam2;
+    }
+}
+
+// C ref: shk.c shk_fixes_damage(shkp):4556 — the shk's per-move repair attempt.
+export async function shk_fixes_damage(shkp) {
+    const dam = await find_damage(shkp);
+    if (!dam) return;
+
+    const shk_closeby = (mdistu(shkp) <= Math.trunc(BOLT_LIM / 2) ** 2);
+
+    if (await canseemon(shkp)) {
+        await update_topl(`${Shknam(shkp)} whispers ${
+            shk_closeby ? 'an incantation' : 'something'}.`);
+    } else if (!Deaf() && shk_closeby) {
+        await update_topl('You hear someone muttering an incantation.');
+    }
+
+    await repair_damage(shkp, dam, false);
+
+    discard_damage_struct(dam);
+}
+
+// C ref: shk.c:4579 LITTER_* / horiz(i) / vert(i).
+const LITTER_UPDATE = 0x01, LITTER_OPEN = 0x02, LITTER_INSHOP = 0x04;
+const horiz = (i) => ((i % 3) - 1);
+const vert = (i) => (Math.trunc(i / 3) - 1);
+
+// C ref: shk.c litter_getpos(litter, x, y, shkp):4591 — the eligible spots to
+// push items out of a wall gap that is about to be repaired.  Returns the count
+// of adjacent squares inside shkp's shop.  No RNG.
+export function litter_getpos(litter, x, y, shkp) {
+    let k = 0; /* number of adjacent shop spots */
+
+    for (let i = 0; i < 9; i++) litter[i] = 0;
+
+    if (objects_at(x, y).length && !IS_ROOM(game.level?.at(x, y)?.typ ?? 0)) {
+        for (let i = 0; i < 9; i++) {
+            const ix = x + horiz(i), iy = y + vert(i);
+            if (i === 4 || !isok(ix, iy)
+                || !ZAP_POS(game.level?.at(ix, iy)?.typ ?? 0)) continue;
+            litter[i] = LITTER_OPEN;
+            if (inside_shop(ix, iy) === shkp.eshk.shoproom) {
+                litter[i] |= LITTER_INSHOP;
+                ++k;
+            }
+        }
+    }
+    return k;
+}
+
+// C ref: shk.c litter_scatter(litter, x, y, shkp):4622 — RNG: one rn2(9) per
+// item moved, then the do/while walk of at most 10 slots.
+export async function litter_scatter(litter, x, y, shkp) {
+    const u = game.u;
+    const uchain = u?.uchain, uball = u?.uball;
+
+    /* either the ball or the chain is in the repair location.
+       C ref: youprop.h Punished == (uball != 0). */
+    if (uball && !u?.uswallow
+        && ((uchain && uchain.ox === x && uchain.oy === y)
+            || (uball && uball.where === OBJ_FLOOR
+                && uball.ox === x && uball.oy === y))) {
+        if (!Deaf() && !muteshk(shkp))
+            await verbalize('Get your junk out of my wall!');
+        const { unplacebc, placebc } = await import('./ball.js');
+        unplacebc(); /* pick 'em up */
+        placebc();   /* put 'em down */
+    }
+
+    for (;;) {
+        const otmp = objects_at(x, y)[0];
+        if (!otmp) break;
+        /* don't mess w/ boulders -- just merge into wall */
+        if (otmp.otyp === BOULDER || otmp.otyp === ROCK) {
+            obj_extract_self(otmp);
+            obfree(otmp, null);
+        } else {
+            let trylimit = 10;
+            let i = rn2(9), ix, iy;
+
+            /* otmp must be moved or the enclosing loop never terminates */
+            do {
+                i = (i + 1) % 9;
+            } while (--trylimit && !(litter[i] & LITTER_INSHOP));
+            if ((litter[i] & (LITTER_OPEN | LITTER_INSHOP)) !== 0) {
+                ix = x + horiz(i);
+                iy = y + vert(i);
+            } else {
+                /* the shk isn't at <x,y>: repair is deferred in that case */
+                ix = shkp.mx;
+                iy = shkp.my;
+            }
+            if (otmp.unpaid) {
+                /* GAP: the `|| (oshk = find_objowner(...)) && onbill(...)`
+                   half of C's test — find_objowner() is private in
+                   js/dokick.js — so a shared wall's rival shk is not asked. */
+                const oshk = shkp;
+                if (costly_spot(ix, iy) && onbill(otmp, oshk))
+                    subfrombill(otmp, oshk);
+            }
+            if (otmp.no_charge) {
+                if (!costly_spot(ix, iy) && !costly_adjacent(shkp, ix, iy))
+                    otmp.no_charge = 0;
+            }
+
+            remove_object(otmp);
+            place_object(otmp, ix, iy);
+            litter[i] |= LITTER_UPDATE;
+        }
+    }
+}
+
+// C ref: shk.c litter_newsyms(litter, x, y):4712.
+export function litter_newsyms(litter, x, y) {
+    for (let i = 0; i < 9; i++)
+        if (litter[i] & LITTER_UPDATE) newsym(x + horiz(i), y + vert(i));
+}
+
+// C ref: shk.c repair_damage(shkp, tmp_dam, catchup):4732.
+// 0: postponed, 1: silent repair, 2: normal repair, 3: untrap.
+// RNG: litter_scatter()'s rn2(9) per item, plus one rn2(10) on the unseen-wall
+// "dungeon acoustics" line.
+export async function repair_damage(shkp, tmp_dam, catchup) {
+    const litter = new Array(9).fill(0);
+    let disposition = 1;
+    let stop_picking = false;
+
+    if (!(await repairable_damage(tmp_dam, shkp))) return 0;
+
+    const x = tmp_dam.place.x, y = tmp_dam.place.y;
+    const { cansee } = await import('./vision.js');
+    const seeit = !!cansee(x, y);
+    const loc = game.level?.at(x, y);
+
+    const { t_at } = await import('./mkroom.js');
+    const { deltrap } = await import('./trap.js');
+    const { del_engr_at } = await import('./engrave.js');
+    const ttmp = t_at(x, y);
+    if (ttmp) {
+        switch (ttmp.ttyp) {
+        case LANDMINE:
+        case BEAR_TRAP: {
+            /* convert to an object */
+            const otmp = mksobj((ttmp.ttyp === LANDMINE) ? LAND_MINE : BEARTRAP,
+                                true, false);
+            otmp.quan = 1;
+            otmp.owt = weight(otmp);
+            if (!catchup) {
+                const { dist2 } = await import('./hacklib.js');
+                if (await canseemon(shkp) && dist2(x, y, shkp.mx, shkp.my) <= 2)
+                    await update_topl(`${Shknam(shkp)} untraps ${ansimpleoname(otmp)}.`);
+                else if (ttmp.tseen && cansee(ttmp.tx, ttmp.ty))
+                    await update_topl(`The ${await trapname_(ttmp.ttyp)} vanishes.`);
+            }
+            mpickobj(shkp, otmp);
+            break;
+        }
+        case HOLE:
+        case PIT:
+        case SPIKED_PIT:
+            if (!catchup && ttmp.tseen && cansee(ttmp.tx, ttmp.ty))
+                await update_topl(`The ${await trapname_(ttmp.ttyp)} is filled in.`);
+            break;
+        default:
+            if (!catchup && ttmp.tseen && cansee(ttmp.tx, ttmp.ty))
+                await update_topl(`The ${await trapname_(ttmp.ttyp)} vanishes.`);
+            break;
+        }
+        deltrap(ttmp);
+        del_engr_at(x, y);
+        if (seeit) newsym(x, y);
+        if (!catchup) disposition = 3;
+    }
+    if (IS_ROOM(tmp_dam.typ)
+        || (tmp_dam.typ === (loc?.typ ?? 0)
+            && (!IS_DOOR(tmp_dam.typ) || (loc?.doormask || 0) > D_BROKEN)))
+        /* no terrain fix necessary (trap removal or manually repaired) */
+        return disposition;
+
+    if (closed_door(x, y)) {
+        const { picking_at } = await import('./lock.js');
+        stop_picking = !!picking_at(x, y);
+    }
+
+    /* rm.doormask and rm.wall_info are both overlaid on rm.flags, so the new
+       flags value has to match the restored typ */
+    if (loc) {
+        loc.typ = tmp_dam.typ;
+        if (IS_DOOR(tmp_dam.typ)) loc.doormask = D_CLOSED; /* arbitrary */
+        else loc.flags = tmp_dam.flags;
+    }
+
+    if (litter_getpos(litter, x, y, shkp))
+        await litter_scatter(litter, x, y, shkp);
+    del_engr_at(x, y);
+
+    if (seeit) newsym(x, y);
+    const { block_point } = await import('./vision.js');
+    block_point(x, y);
+
+    if (catchup) return 1; /* repair happened off level, so no messages */
+
+    if (seeit) {
+        if (IS_WALL(tmp_dam.typ)) {
+            if (loc) loc.seenv = SVALL; /* hero KNOWS it's a wall */
+            await update_topl('Suddenly, a section of the wall closes up!');
+        } else if (IS_DOOR(tmp_dam.typ)) {
+            await update_topl('Suddenly, the shop door reappears!');
+        }
+        newsym(x, y);
+    } else if (IS_WALL(tmp_dam.typ)) {
+        if (inside_shop(game.u.ux, game.u.uy) === shkp.eshk.shoproom)
+            await update_topl('You feel more claustrophobic than before.');
+        else if (!Deaf() && !rn2(10))
+            await update_topl('The dungeon acoustics noticeably change.');
+    }
+
+    if (stop_picking) {
+        const { stop_occupation } = await import('./hack.js');
+        stop_occupation();
+    }
+
+    litter_newsyms(litter, x, y);
+
+    if (disposition < 3) disposition = 2;
+    return disposition;
+}
+
+// C ref: trap.c trapname(ttyp, override) — js/trap.js exports the underlying
+// TRAP_EXPLANATION lookup as trap_explanation(), not trapname().
+async function trapname_(ttyp) {
+    const { trap_explanation } = await import('./trap.js');
+    return trap_explanation(ttyp) || 'trap';
+}
+
+// C ref: shk.c fix_shop_damage():4850 — catch-up repairs when a level is
+// reloaded.
+export async function fix_shop_damage() {
+    if (!game.level?.damagelist) return;
+
+    for (let shkp = next_shkp(fmon()[0], false); shkp;
+         shkp = next_shkp(nmon(shkp), false)) {
+        if (shk_impaired(shkp)) continue;
+        for (let damg = game.level.damagelist, nextdamg; damg; damg = nextdamg) {
+            nextdamg = damg.next;
+            if (await repair_damage(shkp, damg, true)) discard_damage_struct(damg);
+        }
+    }
+}
+
+// C ref: shk.c after_shk_move(shkp):4997 — the shk stepped back into her shop,
+// so the -1000 sentinel bill_p becomes real again and occupancy is rechecked.
+export async function after_shk_move(shkp) {
+    const eshkp = shkp.eshk;
+
+    if (eshkp.bill_p === -1000 && inhishop(shkp)) {
+        eshkp.bill_p = eshkp.bill;
+        /* only re-check occupancy if the game hasn't just ended */
+        if (!game.program_state?.gameover) {
+            const { check_special_room } = await import('./shkroom.js');
+            await check_special_room(false);
+        }
+    }
+}
+
+// C ref: shk.c shopdig(fall):5019 — digging in a shop.  GAP: mnexto() has no
+// port in this tree, so the "leaps and grabs your backpack" relocation is
+// skipped (and with it the enexto() draws).  No rn2() of its own.
+export async function shopdig(fall) {
+    const shkp = shop_keeper((game.u?.ushops || [])[0]);
+    let grabs = 'grabs';
+
+    if (!shkp) return;
+    if (!inhishop(shkp)) {
+        if ((game.urole?.mnum ?? -1) === PM_KNIGHT) {
+            await update_topl('You feel like a common thief.');
+            adjalign(-sgn(game.u?.ualign?.type || 0));
+        }
+        return;
+    }
+    /* 0 == can't speak, 1 == makes animal noises, 2 == speaks */
+    let lang = 0;
+    if (helpless(shkp) || is_silent(shkp.data)) ; /* lang stays 0 */
+    else if ((msound_of(shkp.data) ?? 99) <= MS_ANIMAL) lang = 1;
+    else if ((msound_of(shkp.data) ?? 0) >= MS_HUMANOID) lang = 2;
+
+    if (!fall) {
+        if (lang === 2) {
+            if (!Deaf() && !muteshk(shkp)) {
+                if (game.u?.utraptype === TT_PIT)
+                    await verbalize(`Be careful, ${
+                        game.flags?.female ? 'madam' : 'sir'
+                    }, or you might fall through the floor.`);
+                else
+                    await verbalize(`${game.flags?.female ? 'Madam' : 'Sir'
+                    }, do not damage the floor here!`);
+            }
+        }
+        if ((game.urole?.mnum ?? -1) === PM_KNIGHT) {
+            await update_topl('You feel like a common thief.');
+            adjalign(-sgn(game.u?.ualign?.type || 0));
+        }
+    } else if (!um_dist(shkp.mx, shkp.my, 5) && !helpless(shkp)
+               && (shkp.eshk.billct || shkp.eshk.debit)) {
+        if (nolimbs(shkp.data)) grabs = 'knocks off';
+        if (!m_next2u(shkp)) {
+            /* GAP: mnexto(shkp, RLOC_MSG) */
+            if (!m_next2u(shkp)) {
+                if (lang === 2)
+                    await update_topl(`${Shknam(shkp)} curses you in anger and frustration!`);
+                else if (lang === 1) {
+                    const { growl } = await import('./sounds.js');
+                    await growl(shkp);
+                }
+                rile_shk(shkp);
+                return;
+            }
+            /* C: makeplural(locomotion(shkp->data, "leap")); locomotion() has
+               no port in this tree, so the verb is fixed at "leaps". */
+            await update_topl(`${Shknam(shkp)} leaps, and ${grabs} your backpack!`);
+        } else {
+            await update_topl(`${Shknam(shkp)} ${grabs} your backpack!`);
+        }
+
+        const { freeinv } = await import('./invent.js');
+        /* W_SWAPWEP/W_QUIVER here are const.js's (i.e. prop.h's) real bits;
+           js/invent.js deliberately REMAPS the W_* bits it writes into
+           obj.owornmask, so this mask has to be revisited before going live. */
+        for (const obj of (game.invent || []).slice()) {
+            if (((obj.owornmask || 0) & ~(W_SWAPWEP | W_QUIVER)) !== 0
+                || (obj === game.uswapwep && game.u?.twoweap)
+                || (obj.otyp === LEASH && obj.leashmon))
+                continue;
+            if (obj === game.current_wand) continue;
+            obj.owornmask = 0;              /* C: setnotworn(obj) */
+            freeinv(obj);
+            subfrombill(obj, shkp);
+            add_to_minv_(shkp, obj);
+        }
+    }
+}
+// C ref: mon.c add_to_minv(mon, obj).  js/vault.js keeps a private copy.
+function add_to_minv_(mon, obj) {
+    if (!mon.minvent) mon.minvent = [];
+    mon.minvent.unshift(obj);
+    obj.where = OBJ_MINVENT;
+    obj.ocarry = mon;
+}
+
+// C ref: shk.c getcad(shkp, dmgstr, x, y, uinshp, animal, pursue):5138 — the
+// shk's reaction to damage she is not being paid for.  RNG: one
+// ROLL_FROM(angrytexts) == rn2(3) on each Deaf arm.
+export async function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
+    const dugwall = (dmgstr === 'dig into')   /* wand */
+                 || (dmgstr === 'damage');    /* pick-axe */
+
+    if (muteshk(shkp)) {
+        if (animal && !helpless(shkp)) {
+            const { yelp } = await import('./sounds.js');
+            await yelp(shkp);
+        }
+    } else if (pursue || uinshp || !um_dist(x, y, 1)) {
+        if (!Deaf()) {
+            await verbalize(`How dare you ${dmgstr} my ${dugwall ? 'shop' : 'door'}?`);
+        } else {
+            await update_topl(`${Shknam(shkp)} is ${ROLL_FROM(angrytexts)
+            } that you decided to ${dmgstr} ${noit_mhis(shkp)} ${
+                dugwall ? 'shop' : 'door'}!`);
+        }
+    } else {
+        if (!Deaf()) {
+            await update_topl(`${Shknam(shkp)} shouts:`);
+            await verbalize(`Who dared ${dmgstr} my ${dugwall ? 'shop' : 'door'}?`);
+        } else {
+            await update_topl(`${Shknam(shkp)} is ${ROLL_FROM(angrytexts)
+            } that someone decided to ${dmgstr} ${noit_mhis(shkp)} ${
+                dugwall ? 'shop' : 'door'}!`);
+        }
+    }
+    hot_pursuit(shkp);
+}
+
+// C ref: shk.c pay_for_damage(dmgstr, cant_mollify):5174.  RNG, in order: an
+// rn2(++picks) tie-break per equidistant shopkeeper during the scan, then
+// rn2(50) on the "shk won't be mollified" test, then whatever getcad() or
+// currency() draw.  GAP: mnexto()/mnearto() are unported, so the shk does not
+// actually come to the door.
+export async function pay_for_damage(dmgstr, cant_mollify) {
+    let shkp = null;
+    const uinshp = ((game.u?.ushops || []).length > 0);
+    let appear_here = null;
+    let cost_of_damage = 0;
+    let nearest_shk = (ROWNO * ROWNO) + (COLNO * COLNO);
+    let nearest_damage = nearest_shk;
+    let picks = 0;
+
+    for (let tmp_dam = game.level?.damagelist; tmp_dam; tmp_dam = tmp_dam.next) {
+        if (tmp_dam.when !== game.moves || !tmp_dam.cost) continue;
+        cost_of_damage += tmp_dam.cost;
+        const shops_affected = in_rooms(tmp_dam.place.x, tmp_dam.place.y, SHOPBASE);
+        for (const shp of shops_affected) {
+            const tmp_shk = shop_keeper(shp);
+            if (!tmp_shk) continue;
+            if (tmp_shk === shkp) {
+                const damage_distance = distu(tmp_dam.place.x, tmp_dam.place.y);
+                if (damage_distance < nearest_damage) {
+                    nearest_damage = damage_distance;
+                    appear_here = tmp_dam;
+                }
+                continue;
+            }
+            if (!inhishop(tmp_shk)) continue;
+            const shk_distance = mdistu(tmp_shk);
+            if (shk_distance > nearest_shk) continue;
+            if ((shk_distance === nearest_shk) && picks) {
+                if (rn2(++picks)) continue;
+            } else {
+                picks = 1;
+            }
+            shkp = tmp_shk;
+            nearest_shk = shk_distance;
+            appear_here = tmp_dam;
+            nearest_damage = distu(tmp_dam.place.x, tmp_dam.place.y);
+        }
+    }
+
+    if (!cost_of_damage || !shkp) return;
+
+    const animal = ((msound_of(shkp.data) ?? 99) <= MS_ANIMAL);
+    let pursue = false;
+    const x = appear_here.place.x, y = appear_here.place.y;
+
+    /* not the best introduction to the shk... */
+    shkp.eshk.customer = game.plname;
+
+    /* if the shk is already on the war path, be sure it's all out */
+    if (ANGRY(shkp) || shkp.eshk.following) {
+        hot_pursuit(shkp);
+        return;
+    }
+
+    const { cansee } = await import('./vision.js');
+    /* if the shk is not in their shop.. */
+    if (!in_rooms(shkp.mx, shkp.my, SHOPBASE).length) {
+        if (!cansee(shkp.mx, shkp.my)) return;
+        pursue = true;
+        await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+        return;
+    }
+
+    if (uinshp) {
+        if (um_dist(shkp.mx, shkp.my, 1) && !um_dist(shkp.mx, shkp.my, 3)) {
+            await update_topl(`${Shknam(shkp)} leaps towards you!`);
+            /* GAP: mnexto(shkp, RLOC_NOMSG) */
+        }
+        pursue = um_dist(shkp.mx, shkp.my, 1);
+        if (pursue) {
+            await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+            return;
+        }
+    } else {
+        /* make the shk show up at the door */
+        if (m_at(x, y)) {
+            if (!animal) {
+                if (!Deaf() && !muteshk(shkp)) {
+                    await update_topl('You hear an angry voice:');
+                    await verbalize('Out of my way, scum!');
+                }
+            } else {
+                const { growl } = await import('./sounds.js');
+                await growl(shkp);
+            }
+        }
+        /* GAP: mnearto(shkp, x, y, TRUE, RLOC_MSG) */
+    }
+
+    if ((um_dist(x, y, 1) && !uinshp) || cant_mollify
+        || (money_cnt(game.invent) + (shkp.eshk.credit || 0)) < cost_of_damage
+        || !rn2(50)) {
+        await getcad(shkp, dmgstr, x, y, uinshp, animal, pursue);
+        return;
+    }
+
+    if (Invis()) await update_topl(`Your invisibility does not fool ${shkname(shkp)}!`);
+    const { y_n } = await import('./display.js');
+    const qbuf = `${!animal ? cad(true) : ''}You did ${cost_of_damage} ${
+        currency(cost_of_damage)} worth of damage!${!animal ? '"' : ''}  Pay?`;
+    if (await y_n(qbuf) !== 'n') {
+        const was_seen = await canseemon(shkp);
+        const was_outside = !inhishop(shkp);
+        const sx = shkp.mx, sy = shkp.my;
+
+        cost_of_damage = await check_credit(cost_of_damage, shkp);
+        if (cost_of_damage > 0) await money2mon(shkp, cost_of_damage);
+        await update_topl(`Mollified, ${shkname(shkp)} accepts your restitution.`);
+        /* move the shk back to her home loc */
+        await home_shk(shkp, false);
+        pacify_shk(shkp, false);
+        /* home_shk() suppresses rloc()'s vanish/appear messages */
+        if (shkp.mx !== sx || shkp.my !== sy) {
+            const { canspotmon } = await import('./uhitm.js');
+            const is_seen = await canseemon(shkp);
+            if (was_outside && canspotmon(shkp))
+                await update_topl(`${Shknam(shkp)} returns to ${noit_mhis(shkp)} shop.`);
+            else if (is_seen || was_seen)
+                await update_topl(`${Shknam(shkp)} ${
+                    !was_seen ? 'appears' : is_seen ? 'shifts location' : 'disappears'
+                }.`);
+        }
+    } else {
+        if (!animal) {
+            if (!Deaf() && !muteshk(shkp)) {
+                await verbalize("Oh, yes!  You'll pay!");
+            } else {
+                await update_topl(`${Shknam(shkp)} lunges ${noit_mhis(shkp)} ${
+                    await mbodypart_(shkp, HAND)} toward your ${body_part(NECK)}!`);
+            }
+        } else {
+            const { growl } = await import('./sounds.js');
+            await growl(shkp);
+        }
+        hot_pursuit(shkp);
+        adjalign(-sgn(game.u?.ualign?.type || 0));
+    }
+}
+
+// C ref: shk.c costly_adjacent(shkp, x, y):5369 — <x,y> is on the shop's wall
+// ring (door included) or is the "free spot" one step inside the door, so an
+// unpaid/no_charge flag there is still valid even though costly_spot() is false.
+export function costly_adjacent(shkp, x, y) {
+    if (!shkp || !inhishop(shkp) || !isok(x, y)) return false;
+    const eshkp = shkp.eshk;
+    return !!game.level?.at(x, y)?.edge
+        || (x === eshkp.shk?.x && y === eshkp.shk?.y);
+}
+
+// C ref: shk.c shop_object(x, y):5386 — the goods #chat quotes a price for.
+export function shop_object(x, y) {
+    const shkp = shop_keeper(in_rooms(x, y, SHOPBASE)[0]);
+    if (!shkp || !inhishop(shkp)) return null;
+
+    let otmp = null;
+    for (const o of objects_at(x, y))
+        if (o.oclass !== COIN_CLASS) { otmp = o; break; }
+    /* otmp might have no_charge set, but that's ok */
+    return (otmp && costly_spot(x, y) && NOTANGRY(shkp) && !muteshk(shkp))
+        ? otmp : null;
+}
+
+// C ref: shk.c price_quote(first_obj):5406 — quote every item on this spot.
+// RNG: shk_embellish()'s rn2(3)/rn2(5), but ONLY on the single-item priced arm.
+export async function price_quote(first_obj) {
+    let cost = 0;
+    let cnt = 0;
+    let contentsonly = false;
+    let buf = '';
+
+    const shkp = shop_keeper(inside_shop(game.u.ux, game.u.uy));
+    if (!shkp || !inhishop(shkp)) return;
+
+    const tmpwin = create_nhwindow(NHW_MENU);
+    putstr(tmpwin, 0, 'Fine goods for sale:');
+    putstr(tmpwin, 0, '');
+    /* C walks obj->nexthere from first_obj; this port's floor pile is an array */
+    const pile = objects_at(first_obj.ox, first_obj.oy);
+    const start = Math.max(0, pile.indexOf(first_obj));
+    for (let i = start; i < pile.length; i++) {
+        const otmp = pile[i];
+        if (otmp.oclass === COIN_CLASS) continue;
+        cost = (otmp.no_charge || otmp === game.u?.uball || otmp === game.u?.uchain)
+            ? 0 : get_cost(otmp, shkp);
+        contentsonly = !cost;
+        if (Has_contents(otmp)) cost += contained_cost(otmp, shkp, 0, false, false);
+        if (otmp.globby) cost *= get_pricing_units(otmp);
+        let price;
+        if (!cost) {
+            price = 'no charge';
+            contentsonly = false;
+        } else {
+            price = `${cost} ${currency(cost)}${(otmp.quan > 1) ? ' each' : ''}`;
+        }
+        buf = `${contentsonly ? the_contents_of : ''}${doname_invent(otmp)}, ${price}`;
+        putstr(tmpwin, 0, buf);
+        cnt++;
+    }
+    if (cnt > 1) {
+        display_nhwindow(tmpwin, true);
+    } else if (cnt === 1) {
+        if (!cost) {
+            await verbalize(`${upstart(buf)}!`);
+        } else {
+            buf = `${contentsonly ? the_contents_of : ''}${doname_invent(first_obj)}`;
+            await verbalize(`${upstart(buf)}, price ${cost} ${currency(cost)}${
+                (first_obj.quan > 1) ? ' each' : ''}${
+                contentsonly ? '.' : shk_embellish(first_obj, cost)}`);
+        }
+    }
+    destroy_nhwindow(tmpwin);
+}
+
+// C ref: shk.c shk_embellish(itm, cost):5468 — the sales pitch.  RNG: rn2(3),
+// and rn2(5) only when that first draw is 0.  Both are spent even when the
+// chosen case falls through to the plain ".".
+export function shk_embellish(itm, cost) {
+    if (!rn2(3)) {
+        let o, choice = rn2(5);
+
+        if (choice === 0)
+            choice = (cost < 100 ? 1 : cost < 500 ? 2 : 3);
+        switch (choice) {
+        case 4:
+            if (cost < 10) break;
+            else o = itm.oclass;
+            if (o === FOOD_CLASS) return ", gourmets' delight!";
+            if (objects[itm.otyp]?.oc_name_known
+                ? objects[itm.otyp]?.oc_magic
+                : (o === AMULET_CLASS || o === RING_CLASS || o === WAND_CLASS
+                   || o === POTION_CLASS || o === SCROLL_CLASS
+                   || o === SPBOOK_CLASS))
+                return ', painstakingly developed!';
+            return ', superb craftsmanship!';
+        case 3:
+            return ', finest quality.';
+        case 2:
+            return ', an excellent choice.';
+        case 1:
+            return ', a real bargain.';
+        default:
+            break;
+        }
+    } else if (itm.oartifact) {
+        return ', one of a kind!';
+    }
+    return '.';
+}
+
+// C ref: shk.c shk_chat(shkp):5521 — #chat with a shopkeeper.  RNG: exactly one
+// ROLL_FROM(Izchak_speaks) == rn2(9), and only on the Izchak arm.
+export async function shk_chat(shkp) {
+    if (!shkp.isshk) {
+        /* a wished-for shopkeeper statue that got animated */
+        const { Monnam } = await import('./do_name.js');
+        await update_topl(`${Monnam(shkp)
+        } asks whether you've seen any untended shops recently.`);
+        return;
+    }
+
+    const eshk = shkp.eshk;
+    let shkmoney;
+    if (ANGRY(shkp)) {
+        await update_topl(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'mentions' : 'indicates'
+        } how much ${noit_mhe(shkp)} dislikes ${
+            eshk.robbed ? 'non-paying' : 'rude'} customers.`);
+    } else if (eshk.following) {
+        if (strncmp(eshk.customer, game.plname, PL_NSIZ)) {
+            if (!Deaf() && !muteshk(shkp))
+                await verbalize(`Hello ${game.plname}!  I was looking for ${
+                    eshk.customer}.`);
+            eshk.following = 0;
+        } else {
+            if (!Deaf() && !muteshk(shkp)) {
+                await verbalize(`Hello ${game.plname}!  Didn't you forget to pay?`);
+            } else {
+                await update_topl(`${Shknam(shkp)} taps you on the ${body_part(ARM)}.`);
+            }
+        }
+    } else if (eshk.billct) {
+        const total = addupbill(shkp) + (eshk.debit || 0);
+        await update_topl(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'says' : 'indicates'
+        } that your bill comes to ${total} ${currency(total)}.`);
+    } else if (eshk.debit) {
+        await update_topl(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'reminds you' : 'indicates'
+        } that you owe ${noit_mhim(shkp)} ${eshk.debit} ${currency(eshk.debit)}.`);
+    } else if (eshk.credit) {
+        await update_topl(`${Shknam(shkp)} encourages you to use your ${
+            eshk.credit} ${currency(eshk.credit)} of credit.`);
+    } else if (eshk.robbed) {
+        await update_topl(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'complains' : 'indicates concern'
+        } about a recent robbery.`);
+    } else if (eshk.surcharge) {
+        await update_topl(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'warns you' : 'indicates'
+        } that ${noit_mhe(shkp)} is watching you carefully.`);
+    } else if ((shkmoney = money_cnt(shkp.minvent)) < 50) {
+        await update_topl(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'complains' : 'indicates'
+        } that business is bad.`);
+    } else if (shkmoney > 4000) {
+        await update_topl(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'says' : 'indicates'
+        } that business is good.`);
+    } else if (await is_izchak(shkp, false)) {
+        if (!Deaf() && !muteshk(shkp))
+            await update_topl(ROLL_FROM(Izchak_speaks).replace('%s', shkname(shkp)));
+    } else {
+        if (!Deaf() && !muteshk(shkp))
+            await update_topl(`${Shknam(shkp)} talks about the problem of shoplifters.`);
+    }
+}
+
+// C ref: shk.c kops_gone(silent):5606 — the Kops give up.  GAP: mongone() is
+// module-private in js/muse.js and js/vault.js, so the Kops are only counted
+// here, not removed.  defsym.h S_KOP == 37.
+const S_KOP = 37;
+export async function kops_gone(silent) {
+    let cnt = 0;
+
+    const { canspotmon } = await import('./uhitm.js');
+    for (const mtmp of fmon().slice()) {
+        if (DEADMONSTER(mtmp)) continue;
+        if (mtmp.data?.mcls === S_KOP) {
+            if (canspotmon(mtmp)) cnt++;
+            /* GAP: mongone(mtmp) */
+        }
+    }
+    if (cnt && !silent)
+        await update_topl(`The Kop${plur(cnt)} (disappointed) vanish${
+            (cnt === 1) ? 'es' : ''} into thin air.`);
+}
+
+// C ref: shk.c cost_per_charge(shkp, otmp, altusage):5627 — the fee for using
+// one charge of unpaid merchandise; exhaustive use costs more than buying it.
+export function cost_per_charge(shkp, otmp, altusage) {
+    let tmp = 0;
+
+    if (!shkp || !inhishop(shkp)) return 0; /* insurance */
+    tmp = get_cost(otmp, shkp);
+
+    if (otmp.otyp === MAGIC_LAMP) {                 /* 1 */
+        if (!altusage) tmp = base_oc_cost(OIL_LAMP);
+        else tmp += Math.trunc(tmp / 3);            /* djinni being released */
+    } else if (otmp.otyp === MAGIC_MARKER) {        /* 70 - 100 */
+        tmp = Math.trunc(tmp / 2);
+    } else if (otmp.otyp === BAG_OF_TRICKS          /* 1 - 20 */
+               || otmp.otyp === HORN_OF_PLENTY) {
+        if (!altusage) tmp = Math.trunc(tmp / 5);
+    } else if (otmp.otyp === CRYSTAL_BALL           /* 1 - 5 */
+               || otmp.otyp === OIL_LAMP            /* 1 - 10 */
+               || otmp.otyp === BRASS_LANTERN
+               || (otmp.otyp >= MAGIC_FLUTE
+                   && otmp.otyp <= DRUM_OF_EARTHQUAKE) /* 5 - 9 */
+               || otmp.oclass === WAND_CLASS) {        /* 3 - 11 */
+        if (otmp.spe > 1) tmp = Math.trunc(tmp / 4);
+    } else if (otmp.oclass === SPBOOK_CLASS) {
+        tmp -= Math.trunc(tmp / 5);
+    } else if (otmp.otyp === CAN_OF_GREASE || otmp.otyp === TINNING_KIT
+               || otmp.otyp === EXPENSIVE_CAMERA) {
+        tmp = Math.trunc(tmp / 10);
+    } else if (otmp.otyp === POT_OIL) {
+        tmp = Math.trunc(tmp / 5);
+    }
+    return tmp;
+}
+
+// C ref: shk.c check_unpaid_usage(otmp, altusage):5688 — the usage fee line.
+// RNG, in order: the SPBOOK arm draws ONE rn2(2); the bag/horn and default arms
+// draw TWO rn2(3)s each, and BOTH are always drawn (the second overwrites the
+// first's decision).  Those draws happen before the Deaf test, so they are
+// spent even when nothing is said.
+export async function check_unpaid_usage(otmp, altusage) {
+    if (!otmp.unpaid || !(game.u?.ushops || []).length
+        || (otmp.spe <= 0 && objects[otmp.otyp]?.oc_charged))
+        return;
+    const shkp = shop_keeper((game.u.ushops)[0]);
+    if (!shkp || !inhishop(shkp)) return;
+    const tmp = cost_per_charge(shkp, otmp, altusage);
+    if (tmp === 0) return;
+
+    let fmt, arg1 = '', arg2 = '';
+    if (otmp.oclass === SPBOOK_CLASS) {
+        fmt = '%sYou owe%s %ld %s.';
+        const buf = `This is no free library, ${cad(false)}!  `;
+        arg1 = rn2(2) ? buf : '';
+        arg2 = (shkp.eshk.debit || 0) > 0 ? ' an additional' : '';
+    } else if (otmp.otyp === POT_OIL) {
+        fmt = '%s%sThat will cost you %ld %s (Yendorian Fuel Tax).';
+    } else if (altusage && (otmp.otyp === BAG_OF_TRICKS
+                            || otmp.otyp === HORN_OF_PLENTY)) {
+        fmt = '%s%sEmptying that will cost you %ld %s.';
+        if (!rn2(3)) arg1 = 'Whoa!  ';
+        if (!rn2(3)) arg1 = 'Watch it!  ';
+    } else {
+        fmt = '%s%sUsage fee, %ld %s.';
+        if (!rn2(3)) arg1 = 'Hey!  ';
+        if (!rn2(3)) arg2 = 'Ahem.  ';
+    }
+
+    if (!Deaf() && !muteshk(shkp)) {
+        await verbalize(fmt.replace('%s', arg1).replace('%s', arg2)
+            .replace('%ld', String(tmp)).replace('%s', currency(tmp)));
+        exercise(A_WIS, true); /* you just got info */
+    }
+    shkp.eshk.debit = (shkp.eshk.debit || 0) + tmp;
+}
+
+// C ref: shk.c costly_gold(x, y, amount, silent):5745 — the hero picked up the
+// shop's own gold.
+export async function costly_gold(x, y, amount, silent) {
+    if (!costly_spot(x, y)) return;
+    const shkp = shop_keeper(in_rooms(x, y, SHOPBASE)[0]);
+    if (!shkp) return;
+
+    const eshkp = shkp.eshk;
+    if ((eshkp.credit || 0) >= amount) {
+        if (!silent) {
+            if (eshkp.credit > amount)
+                await update_topl(`Your credit is reduced by ${amount} ${currency(amount)}.`);
+            else
+                await update_topl('Your credit is erased.');
+        }
+        eshkp.credit -= amount;
+    } else {
+        const delta = amount - (eshkp.credit || 0);
+        if (!silent) {
+            if (eshkp.credit) await update_topl('Your credit is erased.');
+            if (eshkp.debit)
+                await update_topl(`Your debt increases by ${delta} ${currency(delta)}.`);
+            else
+                await update_topl(`You owe ${shkname(shkp)} ${delta} ${currency(delta)}.`);
+        }
+        eshkp.debit = (eshkp.debit || 0) + delta;
+        eshkp.loan = (eshkp.loan || 0) + delta;
+        eshkp.credit = 0;
+    }
+}
+
+// C ref: shk.c block_door(x, y):5791 — the shk stands in her doorway to stop a
+// diagonal exit.  <x,y> is always a door.
+// C's `IS_SHOP(roomno)` here indexes svr.rooms[] with an UNADJUSTED roomno (the
+// ROOMOFFSET is not subtracted, unlike clear_no_charge_obj()'s use of the same
+// macro).  Reproduced as-is: "fixing" it would change which room is tested.
+export async function block_door(x, y) {
+    const roomno = in_rooms(x, y, SHOPBASE)[0] ?? 0;
+
+    if (roomno < 0 || !IS_SHOP(roomno)) return false;
+    if (!IS_DOOR(game.level?.at(x, y)?.typ ?? 0)) return false;
+    if (roomno !== (game.u?.ushops || [])[0]) return false;
+
+    const shkp = shop_keeper(roomno);
+    if (!shkp || !inhishop(shkp)) return false;
+
+    const eshkp = shkp.eshk;
+    if (shkp.mx === eshkp.shk?.x && shkp.my === eshkp.shk?.y
+        && eshkp.shd?.x === x && eshkp.shd?.y === y
+        && !helpless(shkp)
+        && (eshkp.debit || eshkp.billct || eshkp.robbed)) {
+        await update_topl(`${Shknam(shkp)}${
+            Invis() ? ' senses your motion and' : ''} blocks your way!`);
+        return true;
+    }
+    return false;
+}
+
+// C ref: shk.c block_entry(x, y):5826 — the shk blocks a diagonal entry through
+// a broken door.  u.ux,u.uy is always the door.
+export async function block_entry(x, y) {
+    const u = game.u;
+    const uloc = game.level?.at(u.ux, u.uy);
+    if (!(IS_DOOR(uloc?.typ ?? 0) && (uloc?.doormask || 0) === D_BROKEN))
+        return false;
+
+    const roomno = in_rooms(x, y, SHOPBASE)[0] ?? 0;
+    if (roomno < 0 || !IS_SHOP(roomno)) return false; /* see block_door() */
+    const shkp = shop_keeper(roomno);
+    if (!shkp || !inhishop(shkp)) return false;
+
+    const eshkp = shkp.eshk;
+    if (eshkp.shd?.x !== u.ux || eshkp.shd?.y !== u.uy) return false;
+
+    const sx = eshkp.shk.x, sy = eshkp.shk.y;
+
+    if (shkp.mx === sx && shkp.my === sy && !helpless(shkp)
+        && (x === sx - 1 || x === sx + 1 || y === sy - 1 || y === sy + 1)
+        && (Invis() || carrying(PICK_AXE) || carrying(DWARVISH_MATTOCK)
+            || u.usteed)) {
+        await update_topl(`${Shknam(shkp)}${
+            Invis() ? ' senses your motion and' : ''} blocks your way!`);
+        return true;
+    }
+    return false;
+}
+
+// C ref: shk.c shk_owns(buf, obj):5885 — "Foobar's " when the shop owns obj.
+// Returns null when it doesn't, which is what makes shk_your() fall through to
+// mon_owns() and then "your"/"the".
+export function shk_owns(obj) {
+    const loc = obj_location(obj);
+    if (loc.ok
+        && (obj.unpaid || (obj.where === OBJ_FLOOR && !obj.no_charge
+                           && costly_spot(loc.x, loc.y)))) {
+        const shkp = shop_keeper(inside_shop(loc.x, loc.y));
+        return shkp ? s_suffix(shkname(shkp)) : 'the';
+    }
+    return null;
+}
+
+// C ref: shk.c mon_owns(buf, obj):5900.
+export async function mon_owns(obj) {
+    if (obj.where === OBJ_MINVENT) {
+        const { y_monnam } = await import('./do_name.js');
+        return s_suffix(y_monnam(obj.ocarry));
+    }
+    return null;
+}
+
+// C ref: shk.c cad(altusage):5908 — how the shk addresses the hero.  No RNG.
+export function cad(altusage) {
+    let res;
+
+    switch (is_demon(game.u?.Upolyd ? game.u.data : null) ? 3 : poly_gender()) {
+    case 0: res = 'cad'; break;
+    case 1: res = 'minx'; break;
+    case 2: res = 'beast'; break;
+    case 3: res = 'fiend'; break;
+    default: res = 'thing'; break; /* C: impossible("cad: unknown gender") */
+    }
+    if (altusage) {
+        /* a leading double quote plus a trailing "!  " */
+        res = `"${res.charAt(0).toUpperCase()}${res.slice(1)}!  `;
+    }
+    return res;
+}
+
+// C ref: shk.c sasc_bug(op, x):5945 — an #ifdef __SASC compiler workaround.
+export function sasc_bug(op, x) {
+    op.unpaid = x;
+}
+
+// C ref: shk.c globby_bill_fixup(obj_absorber, obj_absorbed):5976 — one glob
+// merged into another; the billing has to follow.  No RNG.
+export async function globby_bill_fixup(obj_absorber, obj_absorbed) {
+    let x = 0, y = 0;
+    let shkp = null;
+    let amount;
+    const floor_absorber = (obj_absorber.where === OBJ_FLOOR);
+
+    /* C impossible()s on a non-globby absorber and keeps going */
+    if (floor_absorber) { x = obj_absorber.ox; y = obj_absorber.oy; }
+
+    if (obj_absorber.unpaid) {
+        for (shkp = next_shkp(fmon()[0], true); shkp;
+             shkp = next_shkp(nmon(shkp), true))
+            if (onbill(obj_absorber, shkp)) break;
+    } else if (obj_absorbed.unpaid) {
+        if (obj_absorbed.where === OBJ_FREE && floor_absorber && costly_spot(x, y))
+            shkp = shop_keeper(in_rooms(x, y, SHOPBASE)[0]);
+    }
+    /* sanity check, in case obj is on bill but not marked 'unpaid' */
+    if (!shkp) shkp = shop_keeper((game.u?.ushops || [])[0]);
+    if (!shkp) return;
+    const bp_absorber = onbill(obj_absorber, shkp);
+    const bp = onbill(obj_absorbed, shkp);
+    const eshkp = shkp.eshk;
+    const per_unit_cost = set_cost(obj_absorbed, shkp);
+
+    /* 1. shop-owned glob absorbing into shop-owned glob */
+    if (bp && (!obj_absorber.no_charge
+               || billable(shkp, obj_absorber, eshkp.shoproom, false))) {
+        amount = bp.price;
+        eshkp.billct--;
+        eshkp.bill[eshkp.bill.indexOf(bp)] = eshkp.bill[eshkp.billct];
+        clear_unpaid_obj(shkp, obj_absorbed);
+
+        if (bp_absorber) bp_absorber.price += amount;
+        return;
+    }
+    /* 2. player-owned glob absorbing into shop-owned glob */
+    if (!bp_absorber && !bp && !obj_absorber.no_charge) {
+        amount = get_pricing_units(obj_absorbed) * per_unit_cost;
+        if (saleable(shkp, obj_absorbed)) {
+            /* C: obj_typename(otyp); no port in this tree, xname() stands in */
+            const tname = xname(obj_absorbed);
+            if ((eshkp.debit || 0) >= amount) {
+                if (eshkp.loan) { /* you carry shop's gold */
+                    if (eshkp.loan >= amount) eshkp.loan -= amount;
+                    else eshkp.loan = 0;
+                }
+                eshkp.debit -= amount;
+                await update_topl(`The donated ${tname} ${
+                    eshkp.debit ? 'partially ' : ''}pays off your debt.`);
+            } else {
+                const delta = amount - (eshkp.debit || 0);
+
+                eshkp.credit = (eshkp.credit || 0) + delta;
+                if (eshkp.debit) {
+                    eshkp.debit = 0;
+                    eshkp.loan = 0;
+                    await update_topl('Your debt is paid off.');
+                }
+                if (eshkp.credit === delta)
+                    await update_topl(`The ${tname} established ${delta} ${
+                        currency(delta)} credit.`);
+                else
+                    await update_topl(`The ${tname} added ${delta} ${currency(delta)
+                    } to your credit; total is now ${eshkp.credit} ${
+                        currency(eshkp.credit)}.`);
+            }
+        }
+        return;
+    } else if (bp_absorber) {
+        bp_absorber.price += per_unit_cost * get_pricing_units(obj_absorbed);
+        return;
+    }
+    /* 3. shop-owned glob merging into player-owned glob */
+    if (bp && (obj_absorber.no_charge
+               || (floor_absorber && !costly_spot(x, y)))) {
+        amount = bp.price;
+        await bill_dummy_object(obj_absorbed);
+        const tname = xname(obj_absorbed);
+        await verbalize(`You owe me ${amount} ${currency(amount)} for my ${tname
+        } that you ${ANGRY(shkp) ? 'had the audacity to mix' : 'just mixed'
+        } with your${ANGRY(shkp) ? ' stinking batch!' : 's.'}`);
+        return;
+    }
+    /* 4. player-owned glob merging into player-owned glob: nothing to do */
+}
+
+// C ref: shk.c use_unpaid_trapobj(otmp, x, y):6101 — setting a shop-owned land
+// mine or bear trap buys it outright.
+export async function use_unpaid_trapobj(otmp, x, y) {
+    if (otmp.unpaid) {
+        if (!Deaf()) {
+            /* GAP: find_objowner(otmp, x, y) is private in js/dokick.js, so the
+               shared-wall case picks the room's first shk instead. */
+            const shkp = shop_keeper(in_rooms(x, y, SHOPBASE)[0]);
+            if (shkp && !muteshk(shkp)) await verbalize('You set it, you buy it!');
+        }
+        await bill_dummy_object(otmp);
+    }
+}

@@ -1620,3 +1620,613 @@ export async function dosacrifice() {
     await update_topl('Nothing happens.');
     return 1; // ECMD_TIME
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// pray.c completion.  The nine routines below were the file's remaining gaps
+// (coverage.mjs --file=pray.c).  Nothing above this line calls into the block
+// and the block calls nothing above it except the module-private helpers that
+// were already here (godvoice/verbalize/on_altar/a_align/...), so adding it
+// changes no existing behaviour.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// C ref: hack.h:483,497,498 death reasons; topten.h:23 killer.format values.
+const P_DIED = 0, P_ESCAPED = 14, P_ASCENDED = 15, P_KILLED_BY = 1;
+// C ref: prop.h:169 FROMOUTSIDE.
+const P_FROMOUTSIDE = 0x04000000;
+// C ref: mkobj.js OBJECT_DATA indices.
+const P_LONG_SWORD = 54, P_RUNESWORD = 58, P_SPE_FINGER_OF_DEATH = 371,
+    P_SPE_RESTORE_ABILITY = 392, P_SPE_BLANK_PAPER = 407, P_MAGIC_MARKER = 242,
+    P_BOULDER = 475, P_STATUE = 476, P_SPBOOK_CLASS = 10, P_SPBOOK_no_NOVEL = -10;
+// C ref: objects.c STRANGE_OBJECT.
+const P_STRANGE_OBJECT = 0;
+// C ref: skills.h P_LONG_SWORD / P_BROAD_SWORD; weapon.c P_RESTRICTED == 0.
+const PSK_BROAD_SWORD = 6, PSK_LONG_SWORD = 7, PSK_RESTRICTED = 0;
+// C ref: u_init.c roles[] order — game.urole.mnum is the ROLE INDEX, not a
+// mons[] offset ([[umonnum-is-a-role-index]]).
+const ROLE_MONK = 5, ROLE_WIZARD = 12;
+// C ref: artifact.h ART_* ordinals (js/artifact.js:227-232).
+const P_ART_EXCALIBUR = 1, P_ART_STORMBRINGER = 2, P_ART_VORPAL_BLADE = 18;
+// C ref: const.js ONAME_GIFT / ONAME_KNOW_ARTI.
+const P_ONAME_GIFT = 0x0004, P_ONAME_KNOW_ARTI = 0x0100;
+// C ref: defsym.h MONSYM() indices used by maybe_turn_mon_iter()'s switch.
+const PS_LICH = 38, PS_MUMMY = 39, PS_VAMPIRE = 48, PS_WRAITH = 49,
+    PS_ZOMBIE = 52, PS_GHOST = 54;
+// C ref: hack.h BOLT_LIM; you.h MAXULEV.
+const P_BOLT_LIM = 8, P_MAXULEV = 30;
+// C ref: decl.h:36-37 c_common_strings.c_Something.
+const Something = 'Something';
+// C ref: obj.h WEAPON_CLASS.
+const WEAPON_CLASS_PR = 2;
+
+// Lazily-loaded dependencies.  Same pattern (and the same reason) as
+// loadSacDeps() above: a static import of artifact.js/weapon.js/spell.js from
+// here would add module-eval edges that flip ESM ordering
+// ([[_mktrap_victim-tdz-is-real]]), and every entry point below is async.
+let _pxd = null;
+async function loadPrayExtras() {
+    if (!_pxd) {
+        const [inv, art, wep, spl, enh, oin, mkb, dnm, pol, mfl, vis, zap,
+               uhi, mkm, dbr, trp, llg, dsp, end] = await Promise.all([
+            import('./invent.js'), import('./artifact.js'), import('./weapon.js'),
+            import('./spell.js'), import('./enhance.js'), import('./o_init.js'),
+            import('./mkobj.js'), import('./do_name.js'), import('./polyself.js'),
+            import('./monflags_data.js'), import('./vision.js'), import('./zap.js'),
+            import('./uhitm.js'), import('./makemon.js'), import('./dbridge.js'),
+            import('./trap.js'), import('./livelog.js'), import('./display.js'),
+            import('./end.js'),
+        ]);
+        _pxd = { inv, art, wep, spl, enh, oin, mkb, dnm, pol, mfl, vis, zap,
+                 uhi, mkm, dbr, trp, llg, dsp, end };
+    }
+    return _pxd;
+}
+
+// C ref: objnam.c:2563 vtense(subj, verb) — the plural-subject test reduced to
+// what at_your_feet() can pass it (an object description, "Something", or a
+// "A <foo>"/"An <foo>" phrase).  Three other files keep the same local copy
+// (js/timeout.js:453, js/monmove.js:6075, js/muse.js:304).
+function vtense_pr(subj, verb) {
+    const s = String(subj || '');
+    if (/^an? /i.test(s)) return `${verb}s`;                     /* C: goto sing */
+    // C: plural is anything ending in 's' that is not '*us'/'*ss', plus the
+    // makeplural specials "...eeth"/"...feet"/"...ia"/"...ae".
+    if ((/[^us]s$/i.test(s)) || /(eeth|feet|ia|ae)$/i.test(s)) return verb;
+    return `${verb}s`;
+}
+// C ref: hacklib.c s_suffix().
+function s_suffix_pr(s) { return /s$/.test(String(s)) ? `${s}'` : `${s}'s`; }
+// C ref: hacklib.c upstart().
+function upstart_pr(s) { return s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : s; }
+// C ref: hacklib.c An(str) — capitalised indefinite article.
+function An_pr(s) {
+    const str = String(s || '');
+    return `${/^[aeiou]/i.test(str) ? 'An' : 'A'} ${str}`;
+}
+// C ref: youprop.h Levitation.
+function Levitation_pr() {
+    const u = game.u;
+    return !!(u?.uprops?.Levitation || u?.HLevitation || u?.ELevitation);
+}
+// C ref: do_name.c oname(obj, name, flags) reduced to the artifact-naming path
+// gcrownu() uses: record the name and let artifact.c artifact_exists() set
+// obj->oartifact plus the ONAME_GIFT/ONAME_KNOW_ARTI origin bookkeeping.
+function oname_pr(art, obj, name, flags) {
+    if (!obj) return obj;
+    obj.oname = name;
+    art.artifact_exists(obj, name, true, flags);
+    return obj;
+}
+// C ref: objects.c svb.bases[SPBOOK_CLASS] — the first real spellbook otyp.
+// Derived the same way js/mkobj.js:858 classBases does (the low "generic"
+// placeholder rows below MAXOCLASSES are skipped).
+function spbook_base() {
+    const MAXOCLASSES = 18;
+    for (let i = MAXOCLASSES; i < OBJECTS.length; i++)
+        if (OBJECTS[i]?.oclass === P_SPBOOK_CLASS) return i;
+    return P_SPE_BLANK_PAPER;
+}
+// C ref: do.c dropy(obj) -> dropz(obj) for the not-swallowed, not-levitating
+// case: place the object under the hero, merge it into the pile and redraw.
+// Going through stackobj() is not optional — a hand-rolled floor drop leaves a
+// phantom duplicate in fobj forever ([[drop-path-without-stackobj]]).
+function dropy_pr(inv, obj) {
+    const u = game.u;
+    place_object(obj, u.ux, u.uy);
+    inv.stackobj(obj);
+    newsym(u.ux, u.uy);
+}
+
+// C ref: pray.c:694 fry_by_god(resp_god, via_disintegration).
+export async function fry_by_god(resp_god, via_disintegration) {
+    const D = await loadPrayExtras();
+    await update_topl(`You ${!via_disintegration
+        ? 'fry to a crisp' : 'disintegrate into a pile of dust'}!`);
+    // C: svk.killer.format = KILLED_BY; Sprintf(svk.killer.name, ...).  This
+    // port keeps the already-formatted string on game._killer_name and has no
+    // separate format field (js/end.js:1226 documents the same reduction).
+    game._killer_format = P_KILLED_BY;
+    game._killer_name = `the wrath of ${align_gname(roleMnum(), resp_god)}`;
+    await D.end.done(P_DIED);
+}
+
+// C ref: pray.c:788 at_your_feet(str) — "<str> appears at your feet", or the
+// swallowed / blind / levitating variants.
+export async function at_your_feet(str) {
+    const D = await loadPrayExtras();
+    const u = game.u;
+    if (Blind()) str = Something;
+    if (u.uswallow) {
+        /* barrier between you and the floor */
+        await D.dsp.pline(`${str} ${vtense_pr(str, 'drop')} into `
+            + `${s_suffix_pr(D.dnm.mon_nam(u.ustuck))} `
+            + `${D.pol.mbodypart(u.ustuck, 18 /*STOMACH*/)}.`);
+    } else {
+        await D.dsp.pline(`${str} ${vtense_pr(str, Blind() ? 'land' : 'appear')} `
+            + `${Levitation_pr() ? 'beneath' : 'at'} your `
+            + `${D.inv.makeplural(D.inv.body_part(5 /*FOOT*/))}!`);
+    }
+}
+
+// C ref: pray.c:805 gcrownu() — the crowning ceremony.  RNG-bearing steps, in
+// order: godvoice()'s rn2(4), then (spellbook class gift) mksobj(), or (neutral
+// / chaotic sword gift) mksobj() again; hcolor(NH_BLACK) draws off the DISPLAY
+// rng while hallucinating.
+export async function gcrownu() {
+    const D = await loadPrayExtras();
+    const u = game.u;
+    const ok_wep = (o) => !!o && (o.oclass === WEAPON_CLASS_PR || D.inv.is_weptool(o));
+
+    // C: HSee_invisible |= FROMOUTSIDE, &c.  This port spells each intrinsic
+    // under two names (js/fountain.js:450 does the same pair per property).
+    for (const prop of ['See_invisible', 'Fire_resistance', 'Cold_resistance',
+                        'Shock_resistance', 'Sleep_resistance',
+                        'Poison_resistance']) {
+        u.uprops = u.uprops || {};
+        u.uprops[prop] = (u.uprops[prop] || 0) | P_FROMOUTSIDE;
+        u.uprops[`H${prop}`] = (u.uprops[`H${prop}`] || 0) | P_FROMOUTSIDE;
+    }
+    await godvoice(u.ualign?.type ?? 0, null);
+
+    let class_gift = P_STRANGE_OBJECT;
+    /* 3.3.[01] had this in the A_NEUTRAL case, preventing chaotic wizards
+       from receiving a spellbook */
+    if (roleMnum() === ROLE_WIZARD
+        && !u_wield_art_pr(D, P_ART_VORPAL_BLADE)
+        && !u_wield_art_pr(D, P_ART_STORMBRINGER)
+        && !D.inv.carrying(P_SPE_FINGER_OF_DEATH)) {
+        class_gift = P_SPE_FINGER_OF_DEATH;
+    } else if (roleMnum() === ROLE_MONK && (!game.uwep || !game.uwep.oartifact)
+               && !D.inv.carrying(P_SPE_RESTORE_ABILITY)) {
+        /* monks rarely wield a weapon */
+        class_gift = P_SPE_RESTORE_ABILITY;
+    }
+
+    let obj = ok_wep(game.uwep) ? game.uwep : null;
+    let already_exists = false, in_hand = false, what = '';
+    switch (u.ualign?.type ?? 0) {
+    case A_LAWFUL:
+        u.uevent = u.uevent || {};
+        u.uevent.uhand_of_elbereth = 1;
+        await verbalize('I crown thee...  The Hand of Elbereth!');
+        livelog_printf(D.llg.LL_DIVINEGIFT,
+            `was crowned "The Hand of Elbereth" by ${u_gname()}`);
+        break;
+    case A_NEUTRAL:
+        u.uevent = u.uevent || {};
+        u.uevent.uhand_of_elbereth = 2;
+        in_hand = u_wield_art_pr(D, P_ART_VORPAL_BLADE);
+        already_exists = D.art.exist_artifact(P_LONG_SWORD,
+            D.art.artiname(P_ART_VORPAL_BLADE));
+        await verbalize('Thou shalt be my Envoy of Balance!');
+        livelog_printf(D.llg.LL_DIVINEGIFT,
+            `became ${s_suffix_pr(u_gname())} Envoy of Balance`);
+        break;
+    case A_CHAOTIC:
+        u.uevent = u.uevent || {};
+        u.uevent.uhand_of_elbereth = 3;
+        in_hand = u_wield_art_pr(D, P_ART_STORMBRINGER);
+        already_exists = D.art.exist_artifact(P_RUNESWORD,
+            D.art.artiname(P_ART_STORMBRINGER));
+        what = ((already_exists && !in_hand) || class_gift !== P_STRANGE_OBJECT)
+            ? 'take lives' : 'steal souls';
+        await verbalize(`Thou art chosen to ${what} for My Glory!`);
+        livelog_printf(D.llg.LL_DIVINEGIFT,
+            `was chosen to ${what} for the Glory of ${u_gname()}`);
+        break;
+    }
+
+    if (OBJECTS[class_gift]?.oclass === P_SPBOOK_CLASS) {
+        obj = D.mkb.mksobj(class_gift, true, false);
+        /* get book type before dropping (don't think that could destroy the
+           book because we need to be on an altar in order to become crowned,
+           but be paranoid about it).  C uses actualoname(), which names the
+           book even when the hero hasn't identified it; this port has no
+           actualoname() so the objects[] row supplies the same text. */
+        const bbuf = `spellbook of ${OBJECTS[class_gift]?.name}`;
+        D.mkb.bless(obj);
+        obj.bknown = 1;               /* ok to skip set_bknown() */
+        D.oin.observe_object(obj);
+        await at_your_feet(upstart_pr(D.inv.ansimpleoname(obj)));
+        dropy_pr(D.inv, obj);
+        u.ugifts = (u.ugifts | 0) + 1;
+        livelog_printf(D.llg.LL_DIVINEGIFT | D.llg.LL_ARTIFACT | D.llg.LL_SPOILER,
+            `was bestowed with ${bbuf}`);
+
+        /* when getting a new book for a known spell, enhance the currently
+           wielded weapon rather than the book */
+        if (D.spl.known_spell(class_gift) !== D.spl.spe_Unknown && ok_wep(game.uwep))
+            obj = game.uwep;
+    }
+
+    switch (u.ualign?.type ?? 0) {
+    case A_LAWFUL:
+        if (class_gift !== P_STRANGE_OBJECT) {
+            /* already got bonus above */
+        } else if (obj && obj.otyp === P_LONG_SWORD && !obj.oartifact) {
+            const lbuf = D.inv.ansimpleoname(obj);  /* simpleonames(), pre-transform */
+            if (!Blind())
+                await D.dsp.pline('Your sword shines brightly for a moment.');
+            obj = oname_pr(D.art, obj, D.art.artiname(P_ART_EXCALIBUR),
+                           P_ONAME_GIFT | P_ONAME_KNOW_ARTI);
+            if (D.art.is_art(obj, P_ART_EXCALIBUR)) {
+                u.ugifts = (u.ugifts | 0) + 1;
+                livelog_printf(D.llg.LL_DIVINEGIFT | D.llg.LL_ARTIFACT,
+                    `had his wielded ${lbuf} transformed into `
+                    + `${D.art.artiname(P_ART_EXCALIBUR)}`);
+            }
+        }
+        /* acquire Excalibur's skill regardless of weapon or gift */
+        await D.wep.unrestrict_weapon_skill(PSK_LONG_SWORD);
+        if (D.art.is_art(obj, P_ART_EXCALIBUR))
+            D.art.discover_artifact(P_ART_EXCALIBUR);
+        break;
+    case A_NEUTRAL:
+        if (class_gift !== P_STRANGE_OBJECT) {
+            /* already got bonus above */
+        } else if (obj && in_hand) {
+            await D.dsp.pline(`Your ${OBJECTS[obj.otyp]?.name} goes snicker-snack!`);
+            D.oin.observe_object(obj);
+        } else if (!already_exists) {
+            obj = D.mkb.mksobj(P_LONG_SWORD, false, false);
+            obj = oname_pr(D.art, obj, D.art.artiname(P_ART_VORPAL_BLADE),
+                           P_ONAME_GIFT | P_ONAME_KNOW_ARTI);
+            obj.spe = 1;
+            await at_your_feet('A sword');
+            dropy_pr(D.inv, obj);
+            u.ugifts = (u.ugifts | 0) + 1;
+            livelog_printf(D.llg.LL_DIVINEGIFT | D.llg.LL_ARTIFACT,
+                `was bestowed with ${D.art.artiname(P_ART_VORPAL_BLADE)}`);
+        }
+        /* acquire Vorpal Blade's skill regardless of weapon or gift */
+        await D.wep.unrestrict_weapon_skill(PSK_LONG_SWORD);
+        if (D.art.is_art(obj, P_ART_VORPAL_BLADE))
+            D.art.discover_artifact(P_ART_VORPAL_BLADE);
+        break;
+    case A_CHAOTIC: {
+        /* hcolor(NH_BLACK) draws off the DISPLAY rng when hallucinating */
+        const swordbuf = `${hcolor('black')} sword`;
+        if (class_gift !== P_STRANGE_OBJECT) {
+            /* already got bonus above */
+        } else if (obj && in_hand) {
+            await D.dsp.pline(`Your ${swordbuf} hums ominously!`);
+            D.oin.observe_object(obj);
+        } else if (!already_exists) {
+            obj = D.mkb.mksobj(P_RUNESWORD, false, false);
+            obj = oname_pr(D.art, obj, D.art.artiname(P_ART_STORMBRINGER),
+                           P_ONAME_GIFT | P_ONAME_KNOW_ARTI);
+            obj.spe = 1;
+            await at_your_feet(An_pr(swordbuf));
+            dropy_pr(D.inv, obj);
+            u.ugifts = (u.ugifts | 0) + 1;
+            livelog_printf(D.llg.LL_DIVINEGIFT | D.llg.LL_ARTIFACT,
+                `was bestowed with ${D.art.artiname(P_ART_STORMBRINGER)}`);
+        }
+        /* acquire Stormbringer's skill regardless of weapon or gift */
+        await D.wep.unrestrict_weapon_skill(PSK_BROAD_SWORD);
+        if (D.art.is_art(obj, P_ART_STORMBRINGER))
+            D.art.discover_artifact(P_ART_STORMBRINGER);
+        break;
+    }
+    default:
+        obj = null; /* lint */
+        break;
+    }
+
+    /* enhance weapon regardless of alignment or artifact status */
+    if (ok_wep(obj)) {
+        D.mkb.bless(obj);
+        obj.oeroded = obj.oeroded2 = 0;
+        obj.oerodeproof = true;
+        obj.bknown = obj.rknown = 1;   /* ok to skip set_bknown() */
+        if ((obj.spe | 0) < 1) obj.spe = 1;
+        /* acquire skill in this weapon */
+        await D.wep.unrestrict_weapon_skill(D.wep.weapon_type(obj));
+    } else if (class_gift === P_STRANGE_OBJECT) {
+        /* opportunity knocked, but there was nobody home... */
+        await D.dsp.pline('You feel unworthy.');
+    }
+    D.inv.update_inventory();
+
+    /* lastly, confer an extra skill slot/credit beyond the up-to-29 you can
+       get from gaining experience levels */
+    await D.wep.add_weapon_skill(1);
+}
+// C ref: artifact.h u_wield_art(art) == (uwep && uwep->oartifact == art).
+function u_wield_art_pr(_D, art) {
+    return !!game.uwep && game.uwep.oartifact === art;
+}
+
+// C ref: pray.c:999 give_spell() — the pat-on-the-head spellbook gift.
+// RNG, in order: mkobj(SPBOOK_no_NOVEL, TRUE), then up to ulevel rnd_class()
+// re-rolls, then rn2(4) for "learn it directly", then rn2(100) for the
+// gratuitous extra discovery.
+export async function give_spell() {
+    const D = await loadPrayExtras();
+    const u = game.u;
+    let trycnt = (u.ulevel | 0) + 1;
+
+    /* not yet known spells and forgotten spells are given preference over
+       usable ones; also, try to grant a spell the hero could gain skill in */
+    const otmp = D.mkb.mkobj(P_SPBOOK_no_NOVEL, true);
+    while (--trycnt > 0) {
+        if (otmp.otyp !== P_SPE_BLANK_PAPER) {
+            if (D.spl.known_spell(otmp.otyp) <= D.spl.spe_Unknown
+                && D.enh.p_skill_of(D.spl.spell_skilltype(otmp.otyp)) !== PSK_RESTRICTED)
+                break;   /* forgotten or not yet known */
+        } else {
+            /* blank paper is acceptable if not discovered yet or if the hero
+               has a magic marker (charges do not matter) */
+            if (!OBJECTS[P_SPE_BLANK_PAPER]?.oc_name_known
+                || D.inv.carrying(P_MAGIC_MARKER))
+                break;
+        }
+        otmp.otyp = D.mkb.rnd_class(spbook_base(), P_SPE_BLANK_PAPER);
+    }
+    /*
+     * 25% chance of learning the spell directly instead of receiving the book
+     * for it, unless it is already well known.  The chance is not influenced
+     * by whether the hero is illiterate.
+     */
+    let spe_knowledge;
+    if (otmp.otyp !== P_SPE_BLANK_PAPER && !rn2(4)
+        && (spe_knowledge = D.spl.known_spell(otmp.otyp)) !== D.spl.spe_Fresh) {
+        /* force_learn_spell() only returns '\0' for blank paper or an
+           already-fresh spell, so no 'else' case is needed */
+        const spe_let = D.spl.force_learn_spell(otmp.otyp);
+        if (spe_let !== '\0') {
+            /* for the spellbook class OBJ_NAME() is the spell name, not
+               "spellbook of <spell-name>" */
+            const spe_name = OBJECTS[otmp.otyp]?.name;
+            if (spe_knowledge === D.spl.spe_Unknown)
+                await D.dsp.pline(`Divine knowledge of ${spe_name} fills your`
+                    + ` mind!  Spell '${spe_let}'.`);
+            else
+                await D.dsp.pline(`Your knowledge of spell '${spe_let}' - `
+                    + `${spe_name} is ${(spe_knowledge === D.spl.spe_Forgotten)
+                        ? 'restored' : 'refreshed'}.`);
+        }
+        D.inv.obfree(otmp, null);   /* discard the book */
+    } else {
+        D.oin.observe_object(otmp);
+        /* don't set bknown */
+        /* discovering blank paper makes it less likely to be given again;
+           small chance to arbitrarily discover some other book type */
+        if (otmp.otyp === P_SPE_BLANK_PAPER || !rn2(100))
+            D.inv.makeknown(otmp.otyp);
+        D.mkb.bless(otmp);
+        await at_your_feet(upstart_pr(D.inv.ansimpleoname(otmp)));
+        place_object(otmp, u.ux, u.uy);
+        newsym(u.ux, u.uy);
+    }
+}
+
+// C ref: pray.c:1529 offer_real_amulet(otmp, altaralign) — the final Test.
+// Every arm ends the game, so this never returns.
+export async function offer_real_amulet(otmp, altaralign) {
+    const D = await loadPrayExtras();
+    const u = game.u;
+    const cloud_of_smoke = (clr) => `A cloud of ${clr} smoke surrounds you...`;
+    const Moloch = 'Moloch';
+
+    /* The final Test.  Did you win? */
+    if (game.uamul === otmp) await D.inv.Amulet_off(otmp);
+    if (carried(otmp)) D.inv.useup(otmp);   /* well, it's gone now */
+    else D.inv.useupf(otmp, 1);
+
+    await D.dsp.pline(`You offer the Amulet of Yendor to ${a_gname()}...`);
+
+    if (altaralign === A_NONE) {
+        /* Moloch's high altar at the bottom of Gehennom */
+        if ((u.ualign?.record | 0) > -99) u.ualign.record = -99;
+        await D.dsp.pline('An invisible choir chants, and you are bathed in'
+            + ' darkness...');
+        /*[apparently shrug/snarl can be sensed without being seen]*/
+        await D.dsp.pline(`${Moloch} shrugs and retains dominion over`
+            + ` ${u_gname()},`);
+        await D.dsp.pline('then mercilessly snuffs out your life.');
+        game._killer_name = `${s_suffix_pr(Moloch)} indifference`;
+        game._killer_format = P_KILLED_BY;
+        await D.end.done(P_DIED);
+        /* life-saved (or declined to die in wizard/explore mode) */
+        await D.dsp.pline(`${Moloch} snarls and tries again...`);
+        await fry_by_god(A_NONE, true);      /* wrath of Moloch */
+        /* declined to die in wizard or explore mode */
+        await D.dsp.pline(cloud_of_smoke(hcolor('black')));
+        await D.end.done(P_ESCAPED);
+    } else if ((u.ualign?.type ?? 0) !== altaralign) {
+        /* And the opposing team picks you up and carries you off on their
+           shoulders. */
+        adjalign(-99);
+        await D.dsp.pline(`${a_gname()} accepts your gift, and gains dominion`
+            + ` over ${u_gname()}...`);
+        await D.dsp.pline(`${u_gname()} is enraged...`);
+        await D.dsp.pline(`Fortunately, ${a_gname()} permits you to live...`);
+        await D.dsp.pline(cloud_of_smoke(hcolor('orange')));
+        await D.end.done(P_ESCAPED);
+    } else {
+        /* You've won the game!  Feedback-wise, it's a bit of a let down. */
+        u.uevent = u.uevent || {};
+        u.uevent.ascended = 1;
+        adjalign(10);
+        await D.dsp.pline('An invisible choir sings, and you are bathed in'
+            + ' radiance...');
+        await godvoice(altaralign, 'Mortal, thou hast done well!');
+        await verbalize('In return for thy service, I grant thee the gift of'
+            + ' Immortality!');
+        await D.dsp.pline(`You ascend to the status of Demigod`
+            + `${game.flags?.female ? 'dess' : ''}...`);
+        await D.end.done(P_ASCENDED);
+    }
+}
+
+// C ref: pray.c:2177 pray_revive() — TRUE if praying revived a pet corpse.
+export async function pray_revive() {
+    const D = await loadPrayExtras();
+    const u = game.u;
+    let otmp = null;
+    for (const o of (game.level?.objects || [])) {
+        if (o.where !== 'floor' || o.ox !== u.ux || o.oy !== u.uy) continue;
+        if ((o.otyp === CORPSE || o.otyp === P_STATUE)
+            && D.mkb.has_omonst(o)
+            && OMONST(o)?.mtame && !OMONST(o)?.isminion) {
+            otmp = o;
+            break;
+        }
+    }
+    if (!otmp) return false;
+
+    if (otmp.otyp === CORPSE) {
+        // GAP: mon.c revive(obj, TRUE) is unported (js/apply.js:1697 records the
+        // same gap for revive_corpse()); the scan above is the whole decision.
+        return false;
+    }
+    const ANIMATE_SPELL = 2;   /* trap.h */
+    return (await D.trp.animate_statue(otmp, u.ux, u.uy, ANIMATE_SPELL, null)) != null;
+}
+
+// C ref: pray.c:2347 maybe_turn_mon_iter(mtmp) — the per-monster body of the
+// #turn command's iter_mons() walk.  js/extcmd-handlers.js:788-828 inlines a
+// reduced copy of this into doturn(); that copy omits C's is_vampshifter() arm
+// and the set_malign() after the chaotic "make peaceful" case.
+export async function maybe_turn_mon_iter(mtmp) {
+    const D = await loadPrayExtras();
+    const u = game.u;
+    /* 3.6.3: used to use cansee() here but the purpose is to prevent #turn
+       operating through walls, not to require that the hero be able to see
+       the target location */
+    let range = P_BOLT_LIM + Math.trunc((u.ulevel | 0) / 5);
+    range *= range;                              /* gt.turn_undead_range */
+    const dx = mtmp.mx - u.ux, dy = mtmp.my - u.uy;
+    if (!D.vis.couldsee(mtmp.mx, mtmp.my) || dx * dx + dy * dy > range)
+        return;
+
+    const ptr = mtmp.data;
+    if (!mtmp.mpeaceful
+        && (D.mfl.is_undead_flag(ptr) || is_vampshifter_pr(D, mtmp)
+            || (D.mfl.is_demon_flag(ptr) && (u.ulevel | 0) > Math.trunc(P_MAXULEV / 2)))) {
+        mtmp.msleeping = 0;
+        if ((u.uprops?.Confusion | 0) > 0 || u.uconf) {
+            if (!turn_undead_msg_cnt++)   /* C: gt.turn_undead_msg_cnt */
+                await update_topl('Unfortunately, your voice falters.');
+            mtmp.mflee = 0;
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
+        } else if (!D.zap.resist(mtmp, '\0', 0, 1 /*TELL*/)) {
+            let xlev = 6;
+            switch (ptr?.mcls) {
+            /* this is intentional, lichs are tougher than zombies */
+            case PS_LICH:    xlev += 2;  /* FALLTHRU */
+            case PS_GHOST:   xlev += 2;  /* FALLTHRU */
+            case PS_VAMPIRE: xlev += 2;  /* FALLTHRU */
+            case PS_WRAITH:  xlev += 2;  /* FALLTHRU */
+            case PS_MUMMY:   xlev += 2;  /* FALLTHRU */
+            case PS_ZOMBIE:
+                if ((u.ulevel | 0) >= xlev
+                    && !D.zap.resist(mtmp, '\0', 0, 0 /*NOTELL*/)) {
+                    if ((u.ualign?.type ?? 0) === A_CHAOTIC) {
+                        mtmp.mpeaceful = 1;
+                        D.mkm.set_malign(mtmp);
+                    } else {   /* damn them */
+                        await D.uhi.killed(mtmp);
+                    }
+                    break;
+                }
+                /* else flee — FALLTHRU */
+            default:
+                monflee_pr(mtmp);
+                break;
+            }
+        }
+    }
+}
+// C ref: pray.c gt.turn_undead_msg_cnt — a file static that doturn() zeroes
+// before its iter_mons() walk so only the first monster prints the falter line.
+let turn_undead_msg_cnt = 0;
+export function reset_turn_undead_msg_cnt() { turn_undead_msg_cnt = 0; }
+// C ref: mon.c monflee(mtmp, 0, FALSE, TRUE) — an untimed scare.  Kept local so
+// maybe_turn_mon_iter() does not have to pick between js/monmove.js's async
+// monflee() and js/uhitm.js's sync copy (they disagree on the message).
+function monflee_pr(mtmp) { mtmp.mflee = 1; mtmp.mfleetim = 0; }
+// C ref: monst.h:217 is_vampshifter(mon) — cham is PM_VAMPIRE,
+// PM_VAMPIRE_LEADER or PM_VLAD_THE_IMPALER.  This port stores cham as a mons[]
+// pmidx, so resolve the three rows by name once.
+const VAMPSHIFT_CHAM = ['vampire', 'vampire leader', 'Vlad the Impaler'];
+function is_vampshifter_pr(D, mtmp) {
+    const cham = mtmp?.cham;
+    if (cham == null || cham < 0) return false;
+    const nm = D.mkm.monster_by_pmidx(cham)?.name;
+    return !!nm && VAMPSHIFT_CHAM.includes(nm);
+}
+
+// C ref: pray.c:2514 a_gname_at(x, y) — the name of the deity of the altar at
+// <x,y>, or null when that square holds no altar.  Note the module-private
+// a_gname() above (js/pray.js:1051) skips the IS_ALTAR() guard, so it names a
+// god even off an altar where C returns NULL.
+export function a_gname_at(x, y) {
+    if (game.level?.at(x, y)?.typ !== ALTAR) return null;  /* C: !IS_ALTAR() */
+    return align_gname(roleMnum(), a_align(x, y));
+}
+
+// C ref: pray.c:2677 blocked_boulder(dx, dy) — can the hero not step that way
+// because of boulders?  "assumes isok() at one space away, but not necessarily
+// at two".  RNG-free.
+export async function blocked_boulder(dx, dy) {
+    const D = await loadPrayExtras();
+    const u = game.u;
+    let count = 0;
+    for (const otmp of (game.level?.objects || [])) {
+        if (otmp.where !== 'floor') continue;
+        if (otmp.ox !== u.ux + dx || otmp.oy !== u.uy + dy) continue;
+        if (otmp.otyp === P_BOULDER) count += (otmp.quan || 1);
+    }
+
+    const nx = u.ux + 2 * dx, ny = u.uy + 2 * dy; /* beyond the boulder(s) */
+    switch (count) {
+    case 0:
+        /* no boulders--not blocked */
+        return false;
+    case 1:
+        /* possibly blocked depending on if it's pushable */
+        break;
+    case 2:
+        /* this is only approximate since multiple boulders might sink */
+        if (D.dbr.is_pool_or_lava(nx, ny))   /* does its own isok() check */
+            break;                           /* still need Sokoban check */
+        return true;                         /* C: FALLTHRU into default */
+    default:
+        /* more than one boulder--blocked after they push the top one;
+           don't force them to push it first to find out */
+        return true;
+    }
+
+    if (dx && dy && In_sokoban_pr())  /* can't push diagonally in Sokoban */
+        return true;
+    if (!isok(nx, ny)) return true;
+    if (IS_OBSTRUCTED(game.level?.at(nx, ny)?.typ)) return true;
+    if (D.inv.sobj_at(P_BOULDER, nx, ny)) return true;
+    return false;
+}
+// C ref: dungeon.c In_sokoban(&u.uz).
+function In_sokoban_pr() {
+    return game.u?.uz?.dnum != null && game.u.uz.dnum === game.sokoban_dnum;
+}

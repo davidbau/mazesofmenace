@@ -42,7 +42,7 @@ import {
 // hoisted `function` declarations used only at call time, never at module init.
 import { inside_room, t_at as t_at_local } from './mkroom.js';
 import { does_block, block_point } from './vision.js';
-import { ARM_BONUS } from './worn.js';
+import { ARM_BONUS, m_dowear } from './worn.js';
 import {
     mflags2_of, mflags3_of, msound_of,
     M2_LORD, M2_PRINCE, M2_NASTY, M2_DEMON, M2_STRONG, M2_HOSTILE, M2_PEACEFUL, M2_MINION,
@@ -3492,15 +3492,10 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         // monster (per-class branches plus the rnd_defensive_item /
         // rnd_misc_item / likes_gold tail).
         m_initinv_full(mtmp);
-        // C ref: makemon.c:1445 `m_dowear(mtmp, TRUE)` — the monster puts its
-        // starting armour on at once, with no wear delay.  DELIBERATELY NOT
-        // CALLED YET.  worn.js is complete and its find_mac() is verified, but
-        // the call is only safe once uhitm.js relobj() clears owornmask +
-        // misc_worn_check the way worn.c extract_from_minvent() does: a killed
-        // monster otherwise drops armour that is still flagged worn, and the
-        // pet's dog_goal/dog_move object scan then scores the square
-        // differently (measured seed0014 494 -> 116).  Full wiring recipe and
-        // the +83 wave3 measurement are in the port log.
+        // C ref: makemon.c:1445.  Starting armour is worn before the monster
+        // appears on the level, so it receives no wear delay and later combat
+        // sees the established object-level worn mask.
+        m_dowear(mtmp, true);
         // C ref: makemon.c:1447 — `if (!rn2(100) && is_domestic(ptr)
         // && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE))
         //     put_saddle_on_mon((struct obj *) 0, mtmp);`
@@ -3973,3 +3968,383 @@ export function adj_erinys(abuse) {
     pm.mlevel = Math.min(7 + abuse, 50);
     pm.difficulty = Math.min(10 + Math.trunc(abuse / 3), 25);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// makemon.c — remaining functions.  INERT: nothing above calls into this
+// section and none of it is reachable from an existing call site.  The RNG-
+// drawing ones (clone_mon, bagotricks, summon_furies) go through the same
+// makemon()/rn2() this file already owns, so wiring one up is a measured
+// change, not a refactor.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// C ref: makemon.c:1058 init_mextra(mex) — `*mex = zeromextra` then the one
+// field whose zero value is wrong.  mextra.h:205 lists the members; this port
+// keeps mextra as a plain object (js/const.js:2863-2876 EPRI/EMIN/... read it).
+export function init_mextra(mex) {
+    if (!mex) return mex;
+    mex.mgivenname = null;
+    mex.egd = null;
+    mex.epri = null;
+    mex.eshk = null;
+    mex.emin = null;
+    mex.edog = null;
+    mex.ebones = null;
+    mex.mcorpsenm = NON_PM;
+    return mex;
+}
+
+// C ref: makemon.c:1065 newmextra() — alloc + init_mextra.
+export function newmextra() {
+    return init_mextra({});
+}
+
+// C ref: makemon.c:2369 — allocate an mcorpsenm field; only mextra itself is
+// needed, the field lives inside it.  MCORPSENM() is js/const.js:2869.
+export function newmcorpsenm(mtmp) {
+    if (!mtmp.mextra)
+        mtmp.mextra = newmextra();
+    mtmp.mextra.mcorpsenm = NON_PM; /* not initialized yet */
+}
+
+// C ref: makemon.c:2378 — release a monster's mcorpsenm; basically a no-op.
+// has_mcorpsenm(mon) is mextra.h `(mon)->mextra` (the field is not a pointer).
+export function freemcorpsenm(mtmp) {
+    if (mtmp && mtmp.mextra)
+        mtmp.mextra.mcorpsenm = NON_PM;
+}
+
+// C ref: makemon.c:575 — create a new stack of gold in a monster's inventory.
+// mk_mplayer() passes rn2(1000) so the amount can be 0, and then NOTHING is
+// created: no mksobj(), hence no next_ident() draw.  C's add_to_minv() is
+// mkobj.c's; mpickobj() (makemon.js:1411) is this port's minvent appender.
+// mksobj(GOLD_PIECE, FALSE, FALSE) — init FALSE, so one next_ident() only.
+export function mkmonmoney(mtmp, amount) {
+    if (amount > 0) {
+        const gold = mksobj(GOLD_PIECE_OTYP, false, false);
+        if (!gold) return;
+        gold.quan = amount;
+        gold.owt = weight(gold);
+        mpickobj(mtmp, gold);
+    }
+}
+const GOLD_PIECE_OTYP = 438; // objects[] index, as used at makemon.js:2330
+
+// C ref: makemon.c:1759 cmp_init_mongen_order(p1, p2) — the qsort comparator
+// init_mongen_order() (makemon.js:1154) applies to mongen_order[].  The #if 0
+// block that would push G_NOGEN|G_UNIQ species last is NOT compiled, so both
+// offsets are 0.  `mons[].mlet` here is C's NUMERIC S_* class index, which is
+// `.mcls` in this port — `.mlet` is the display character (makemon.js:620-621).
+export function cmp_init_mongen_order(p1, p2) {
+    const i1 = p1, i2 = p2;
+    const offset1 = 0, offset2 = 0;
+
+    /* incorporate the mlet into the sort values for comparison */
+    const difficulty1 = ((MONS[i1].difficulty + offset1) | (MONS[i1].mcls << 8));
+    const difficulty2 = ((MONS[i2].difficulty + offset2) | (MONS[i2].mcls << 8));
+    return difficulty1 - difficulty2;
+}
+
+/* C ref: pline.c debugpline*() — wizard-mode only trace output. */
+function debugpline_mongen(_s) { /* no-op: not wizard mode in any session */ }
+
+// C ref: makemon.c:1782 — compiled only when NH_DEVEL_STATUS != RELEASED.  It
+// verifies that within each class mongen_order[] is non-decreasing in
+// difficulty; init_mongen_order() calls it before AND after the qsort.  Returns
+// the count of complaints so a caller can assert on it (C only debugplines).
+export function check_mongen_order() {
+    let i, diff = 0, complaints = 0;
+    /* C's `char mlet = '\0'` is compared numerically against mons[].mlet (the
+       S_* index, `.mcls` here), and `!mlet` must be TRUE on the first pass —
+       so 0, not the string '\0', which is truthy in JS. */
+    let mlet = 0;
+
+    init_mongen_order();
+    for (i = 0; i < SPECIAL_PM; i++) {
+        if (i !== mongen_order[i]) {
+            debugpline_mongen(`changed:${MONS[i].name}=>${MONS[mongen_order[i]].name}`);
+        }
+
+        if (mlet === MONS[mongen_order[i]].mcls) {
+            if (MONS[mongen_order[i]].difficulty < diff) {
+                debugpline_mongen(`${MONS[mongen_order[i]].name}`);
+                complaints++;
+            }
+            diff = MONS[mongen_order[i]].difficulty;
+        }
+        if (!mlet || mlet !== MONS[mongen_order[i]].mcls) {
+            mlet = MONS[mongen_order[i]].mcls;
+            diff = 0;
+        }
+    }
+    return complaints;
+}
+
+// C ref: makemon.c:1834 — the --dumpmongen developer switch: print the sorted
+// mongen_order[] as a C initialiser.  C ends with freedynamicdata() because the
+// switch exits the process; that teardown has no place here.  `def_monsyms[
+// mons[].mlet].sym` is C's class symbol, which in this port is `ptr.mlet`
+// directly (makemon.js:621).  C uses monsdump[].nm for the PM_ spelling; this
+// port has no such table, so the mons[] name is emitted instead.
+export function dump_mongen() {
+    let mlet, prev_mlet = 0;
+    let i;
+    const nmwidth = 27;
+    const out = [];
+
+    init_mongen_order();
+    const MONSi = (k) => mongen_order[k];
+    out.push('int mongen_order[] = {');
+    for (i = 0; i < SPECIAL_PM; ++i) {
+        const special = (MONS[MONSi(i)].geno & (G_NOGEN | G_UNIQ));
+        mlet = MONS[MONSi(i)].mlet;
+        if (prev_mlet && prev_mlet !== mlet)
+            out.push('');
+        const nmbuf = `PM_${MONS[MONSi(i)].name}${(i === SPECIAL_PM - 1) ? '' : ','}`;
+        out.push(`    ${nmbuf.padEnd(nmwidth)} /* ${(i === MONSi(i)) ? ' ' : '.'} `
+                 + `seq=${String(i).padStart(3)}, idx=${String(MONSi(i)).padStart(3)}, `
+                 + `sym='${mlet}', diff=${String(MONS[MONSi(i)].difficulty).padStart(2)}, `
+                 + `freq=${String(MONS[MONSi(i)].geno & G_FREQ).padStart(2)}`
+                 + `[${mclass_maxf[MONS[MONSi(i)].mcls]}] `
+                 + ((special === (G_NOGEN | G_UNIQ)) ? '(G_NOGEN | G_UNIQ)'
+                    : (special === G_NOGEN) ? '(G_NOGEN)'
+                    : (special === G_UNIQ) ? '(G_UNIQ)'
+                    : '')
+                 + ' */');
+        prev_mlet = mlet;
+    }
+    out.push('};');
+    out.push('');
+    return out;
+}
+
+// C ref: makemon.c:836 clone_mon(mon, x, y) — x==0 means "near mon".  Note: for
+// long worms always call cutworm(), which calls this (js/worm.js:482 already
+// takes it as the `clone_monfn` argument and awaits it).
+//
+// RNG: enexto() when the target square is taken, then at most two rn2() —
+// `rn2(max(2 + u.uluck, 2))` for the tame case OR the peaceful case, never
+// both, and only when !context.mon_moving && mon->mpeaceful.  tamedog() draws
+// its own.  Everything else is state copying.
+//
+// Cross-file helpers arrive by `await import()`, the convention this port uses
+// for edges that would close an import cycle (js/dungeon.js:1639-1643).
+export async function clone_mon(mon, x, y) {
+    const mm = { x: 0, y: 0 };
+
+    /* may be too weak or have been extinguished for population control */
+    if (mon.mhp <= 1
+        || (mvflags(mon.data.pmidx) & G_EXTINCT) !== 0)
+        return null;
+
+    if (x === 0) {
+        mm.x = mon.mx;
+        mm.y = mon.my;
+    } else {
+        mm.x = x;
+        mm.y = y;
+    }
+    if (!(mm.x >= 1 && mm.x < COLNO && mm.y >= 0 && mm.y < ROWNO)) { /* !isok, paranoia */
+        return null;
+    }
+    if (mm_mon_at(mm.x, mm.y)) { /* (always True for the x==0 case) */
+        const cc = enexto_spawn(mm.x, mm.y, mon.data);
+        if (!cc) return null;
+        mm.x = cc.x; mm.y = cc.y;
+        if (mm_mon_at(mm.x, mm.y)) return null;
+    }
+
+    /* newmonst(); *m2 = *mon — a shallow copy of every field */
+    let m2 = { ...mon };
+    m2.mextra = null;
+    /* C: m2->nmon = fmon; fmon = m2 — the link happens here, before
+       place_monster(); placeOnLevel() (makemon.js) does both for this port. */
+    m2.m_id = next_ident();
+    m2.mx = mm.x;
+    m2.my = mm.y;
+
+    m2.mundetected = 0;
+    m2.mtrapped = 0;
+    m2.mcloned = 1;
+    m2.minvent = null; /* objects don't clone */
+    m2.mleashed = 0;
+    /* Max HP the same, but current HP halved for both.  When current HP is odd
+       the original keeps the extra point; the original has > 1 HP, so both end
+       up with at least 1. */
+    m2.mhpmax = mon.mhpmax;
+    m2.mhp = Math.trunc(mon.mhp / 2);
+    mon.mhp -= m2.mhp;
+
+    /* clone has no mextra so it mustn't retain special monster flags */
+    m2.isshk = 0;
+    m2.isgd = 0;
+    m2.ispriest = 0;
+    /* m2->isminion handled below */
+
+    /* clone shouldn't be reluctant to move on spots 'parent' just moved on */
+    m2.mtrack = [];                                 /* mon_track_clear(m2) */
+
+    placeOnLevel(m2, m2.mx, m2.my);                 /* place_monster() + fmon link */
+    {
+        const { emits_light, new_light_source } = await import('./light.js');
+        const range = emits_light(m2.data);
+        if (range)
+            new_light_source(m2.mx, m2.my, range, 2 /* LS_MONSTER */, m2);
+    }
+    /* if 'parent' is named, give the clone the same name */
+    if (mon.mgivenname || mon.mextra?.mgivenname) {
+        const { christen_monst } = await import('./do_name.js');
+        m2 = christen_monst(m2, mon.mgivenname || mon.mextra.mgivenname) || m2;
+    } else if (mon.isshk) {
+        const { christen_monst } = await import('./do_name.js');
+        const { shkname } = await import('./shkroom.js');
+        m2 = christen_monst(m2, shkname(mon)) || m2;
+    }
+
+    /* not all clones caused by player are tame or peaceful */
+    if (!game.context?.mon_moving && mon.mpeaceful) {
+        const uluck = game.u?.uluck | 0;
+        if (mon.mtame)
+            m2.mtame = rn2(Math.max(2 + uluck, 2)) ? mon.mtame : 0;
+        else if (mon.mpeaceful)
+            m2.mpeaceful = rn2(Math.max(2 + uluck, 2)) ? 1 : 0;
+    }
+    /* if a guardian angel could be cloned, m2 could be both isminion and
+       mtame; isminion takes precedence */
+    if (m2.isminion) {
+        /* newemin(m2); *EMIN(m2) = *EMIN(mon) */
+        if (!m2.mextra) m2.mextra = newmextra();
+        m2.mextra.emin = { ...(mon.mextra?.emin || mon.emin || {}) };
+        m2.emin = m2.mextra.emin;
+        /* renegade when same alignment as hero but not peaceful, or when
+           peaceful while being a different alignment from the hero */
+        const atyp = m2.mextra.emin.min_align;
+        m2.mextra.emin.renegade =
+            ((atyp !== (game.u?.ualign?.type ?? 0)) ? 1 : 0) ^ (!m2.mpeaceful ? 1 : 0);
+    } else if (m2.mtame) {
+        /* m2 is a copy of mon so it is tame but not init'ed; tamedog() will
+           not re-tame a tame dog, so clear the flag first. */
+        m2.mtame = 0;
+        const { tamedog } = await import('./dothrow.js');
+        if (await tamedog(m2, null, false)) {
+            if (!m2.mextra) m2.mextra = newmextra();
+            m2.mextra.edog = { ...(mon.mextra?.edog || mon.edog || {}) };
+            m2.edog = m2.mextra.edog;
+        }
+    }
+    set_malign(m2);
+    {
+        const { newsym } = await import('./display.js');
+        newsym(m2.mx, m2.my);                       /* display the new monster */
+    }
+
+    return m2;
+}
+
+/* decl.c c_common_strings — include/decl.h:31-32 maps these two names. */
+const nothing_happens = 'Nothing happens.';
+const nothing_seems_to_happen = 'Nothing seems to happen.';
+const BAG_OF_TRICKS_OTYP = 220; /* objclass.h ordering; js/extcmd-handlers.js:1480 */
+
+// C ref: makemon.c:2553 — release monsters from a bag of tricks; returns the
+// number created and adds the number the hero perceived to *seencount.  RNG:
+// consume_obj_charge() draws nothing, then `rn2(23)` ALWAYS (it is the left
+// operand) and `rnd(7)` only when that comes up 0, then one makemon() per
+// creature.  The do/while runs at least once even for creatcnt 1.
+//
+// `seencount` is C's `int *`; JS gets an object with a `.count` field so the
+// secondary output still works.
+export async function bagotricks(bag, tipping, seencount) {
+    let moncount = 0;
+
+    if (!bag || bag.otyp !== BAG_OF_TRICKS_OTYP) {
+        /* impossible("bad bag o' tricks") */
+    } else if (bag.spe < 1) {
+        /* if tipping a known-empty bag, give the normal empty-container line */
+        await bagotricks_pline((tipping && bag.cknown) ? "It's empty." : nothing_happens);
+        /* now known to be empty if sufficiently discovered */
+        if (bag.dknown && objects[bag.otyp]?.oc_name_known) {
+            bag.cknown = 1;
+            const { update_inventory } = await import('./invent.js');
+            update_inventory(); /* for perm_invent */
+        }
+    } else {
+        let creatcnt = 1, seecount = 0;
+
+        const { consume_obj_charge } = await import('./invent.js');
+        consume_obj_charge(bag, !tipping);
+
+        if (!rn2(23))
+            creatcnt += rnd(7);
+        do {
+            const mtmp = makemon(null, game.u.ux, game.u.uy, 0 /* NO_MM_FLAGS */);
+            if (mtmp) {
+                ++moncount;
+                if ((await bagotricks_canseemon(mtmp)
+                     && (M_AP_TYPE_local(mtmp) === 0 /* M_AP_NOTHING */
+                         || M_AP_TYPE_local(mtmp) === 3 /* M_AP_MONSTER */))
+                    || await bagotricks_sensemon(mtmp))
+                    ++seecount;
+            }
+        } while (--creatcnt > 0);
+        if (seecount) {
+            if (seencount)
+                seencount.count = (seencount.count | 0) + seecount;
+            if (bag.dknown) {
+                const { makeknown, update_inventory } = await import('./invent.js');
+                makeknown(BAG_OF_TRICKS_OTYP);
+                update_inventory(); /* for perm_invent */
+            }
+        } else if (!tipping) {
+            await bagotricks_pline(!moncount ? nothing_happens
+                                            : nothing_seems_to_happen);
+        }
+    }
+    return moncount;
+}
+
+/* pline1(s) — pline("%s", s).  js/display.js:2631 owns pline(). */
+async function bagotricks_pline(s) {
+    const { pline } = await import('./display.js');
+    await pline(s);
+}
+/* monst.h M_AP_TYPE(mon); js/const.js:2895 has the same one-liner. */
+function M_AP_TYPE_local(mon) { return mon?.m_ap_type ?? 0; }
+/* mondata.h canseemon / sensemon — private copies live in four modules
+   (dungeon.js:1724, muse.js:252, dogmove.js:2025, shk.js:1475); mon.js:715
+   exports sensemon(). */
+async function bagotricks_canseemon(mtmp) {
+    const { canspotmon } = await import('./uhitm.js');
+    return !!canspotmon(mtmp);
+}
+async function bagotricks_sensemon(mtmp) {
+    const { sensemon } = await import('./mon.js');
+    return !!sensemon(mtmp);
+}
+
+// C ref: makemon.c:2604 — create some or all remaining erinyes around the hero.
+// `limit` 0 means "until extinct".  mk_gen_ok(PM_ERINYS, G_GONE, 0) fails once
+// mvitals[PM_ERINYS] picks up G_EXTINCT (propagate() sets it at mbirth_limit),
+// so the unbounded form terminates.  MM_ADJACENTOK lets each one displace to a
+// neighbouring square instead of failing on the hero's own.
+export function summon_furies(limit) {
+    const PM_ERINYS_IDX = name_to_pmidx('erinys');
+    if (PM_ERINYS_IDX < 0) return;
+    let i = 0;
+    while (mk_gen_ok(PM_ERINYS_IDX, G_GONE, 0) && (i < limit || !limit)) {
+        makemon(MONS[PM_ERINYS_IDX], game.u.ux, game.u.uy,
+                MM_ADJACENTOK | MM_NOWAIT);
+        i++;
+    }
+}
+
+// ── C names for ports that already exist under a local name ────────────────
+// These three are FULLY ported above; only the C spelling was missing.  They
+// are re-exported rather than re-implemented — a second body is the
+// duplicate-reimplementation trap, and renaming the originals would touch
+// live call sites.
+//   m_initweap   -> m_initweap_full   (makemon.js:1698)
+//   m_initinv    -> m_initinv_full    (makemon.js:2180)
+//   peace_minded -> peace_minded_bigrm(makemon.js:2687)
+export function m_initweap(mtmp) { return m_initweap_full(mtmp); }
+export function m_initinv(mtmp) { return m_initinv_full(mtmp); }
+export function peace_minded(ptr) { return peace_minded_bigrm(ptr); }

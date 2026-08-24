@@ -47,13 +47,21 @@ function nh_terminate() {}
 function panic(msg, ...args) { throw new Error(format(msg, ...args)); }
 function impossible(msg, ...args) { game._impossible = format(msg, ...args); }
 function nhassert(cond, msg = 'assertion failed') { if (!cond) throw new Error(msg); }
+// C ref: patchlevel.h:39-44 COPYRIGHT_BANNER_A..D, verbatim including the nine
+// leading spaces that B, C and D carry.  Line 3 is
+// `nomakedefs.copyright_banner_c`, generated at runtime from the date.c path
+// that nethack-c/patches/001 pins to "May  2 2026 12:00:00" -- it is NOT the
+// bare "Version 5.0.0." this used to return, which dropped both the
+// "MacOS, built <date>" tail and the indent.  js/jsmain.js:339-342 already
+// prints the correct four lines by hand at cols 0/9/9/9; that hand-written copy
+// is the live one, and this now agrees with it.
 function copyright_banner_line(i) {
     return [
         '',
         'NetHack, Copyright 1985-2026',
-        'By Stichting Mathematisch Centrum and M. Stephenson.',
-        'Version 5.0.0.',
-        'See license for details.',
+        '         By Stichting Mathematisch Centrum and M. Stephenson.',
+        '         Version 5.0.0 MacOS, built May  2 2026 12:00:00.',
+        '         See license for details.',
     ][i] || '';
 }
 function getwindowsz() { return { rows: displayRows(), cols: displayCols() }; }

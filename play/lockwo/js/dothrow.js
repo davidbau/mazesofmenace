@@ -12,13 +12,16 @@
 // beside its caller.
 import { game } from './gstate.js';
 import { rn2, rnd, rnl } from './rng.js';
-import { m_at, newsym, update_topl } from './display.js';
+import { m_at, newsym, update_topl, glyph_at, map_invisible } from './display.js';
 import { cansee } from './vision.js';
 import { isok, IS_FURNITURE, IS_SINK, LAVAWALL, WATER, POOL, MOAT,
          LAVAPOOL, TT_PIT, P_DAGGER, A_DEX, A_CHA, NEED_HTH_WEAPON,
          MM_NOMSG, EYE } from './const.js';
+// C ref: trap.h:57 enum trap_types — used by the hurtle_step() port below.
+import { PIT, SPIKED_PIT, HOLE, TRAPDOOR, MAGIC_PORTAL, FIRE_TRAP,
+         VIBRATING_SQUARE } from './const.js';
 import { mflags1_of, mflags2_of, mflags3_of, msound_of, M1_BREATHLESS,
-         M1_NOEYES, M2_DOMESTIC, M3_WANTSARTI, MS_LEADER,
+         M1_NOEYES, M1_WALLWALK, M2_DOMESTIC, M3_WANTSARTI, MS_LEADER,
          is_human_flag, is_demon_flag } from './monflags_data.js';
 import { attacktype, dmgtype, AT_WEAP, AT_ENGL, AT_HUGS,
          AD_STCK, AD_WRAP } from './monattk_data.js';
@@ -1099,3 +1102,761 @@ async function force_attack(mtmp) {
         ctx.forcefight = save;
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// dothrow.c hurtle / mhurtle family + throwit()'s four static helpers.
+//
+// INERT: nothing in js/ calls anything below.  js/apply.js:1694 keeps an empty
+// ap_hurtle(), js/wizcmds.js:1584-1586 keep nyi_mhurtle()/nyi_hurtle(), and
+// js/uhitm.js:3407 comments out the mhurtle() call — wiring any of those up to
+// these is a separate, scored change.
+//
+// Cross-module callees are reached with `await import()` (the pattern this file
+// already uses at :1085/:1092) instead of new static import edges: a new
+// top-level edge into this file's import cycle can flip ESM evaluation order
+// and break the whole program load.
+// ════════════════════════════════════════════════════════════════════════════
+
+// C ref: monflag.h:181 MZ_HUGE.
+const MZ_HUGE = 4;
+// C ref: prop.h I_SPECIAL — hurtle_jump() overloads it on EWwalking to mean
+// "this step is a jump".
+const I_SPECIAL_PROP = 0x20000000;
+// C ref: rm.h IRONBARS / DOOR / TREE / POOL and D_ISOPEN.
+const IRONBARS_TYP = 21, DOOR_TYP = 23, TREE_TYP = 20, POOL_TYP = 16;
+const D_ISOPEN_MASK = 0x02;
+// C ref: hack.h u.utraptype values TT_WEB / TT_LAVA / TT_INFLOOR / TT_BURIEDBALL.
+const TT_WEB_TYPE = 3, TT_LAVA_TYPE = 4, TT_INFLOOR_TYPE = 5,
+      TT_BURIEDBALL_TYPE = 6;
+// C ref: trap.h:57 enum trap_types — the values hurtle_step()'s trap switch
+// tests.  js/const.js:2271-2284 already exports these under their C names.
+const PIT_TRAP = PIT, SPIKED_PIT_TRAP = SPIKED_PIT, HOLE_TRAP = HOLE,
+      TRAPDOOR_TRAP = TRAPDOOR, MAGIC_PORTAL_TRAP = MAGIC_PORTAL,
+      FIRE_TRAP_TRAP = FIRE_TRAP, VIBRATING_SQUARE_TRAP = VIBRATING_SQUARE;
+// C ref: trap.h enum trap_results (trap.h:98-102) — mintrap()'s return codes.
+const Trap_Effect_Finished = 0, Trap_Caught_Mon = 1, Trap_Killed_Mon = 2,
+      Trap_Moved_Mon = 3;
+// C ref: trap.h mintrap flags: NO_TRAP_FLAGS 0, FORCEBUNGLE 1, HURTLING 4.
+const NO_TRAP_FLAGS_ = 0, FORCEBUNGLE_FLAG = 1, HURTLING_FLAG = 4;
+// C ref: prop.h W_ARM / W_ARMC / W_ARMU, as js/invent.js remaps them
+// ([[worn-mask-remap-collision]] — do NOT "correct" these to prop.h's values).
+const W_ARM_MASK = 0x00000001, W_ARMC_MASK = 0x00000002,
+      W_ARMU_MASK = 0x00000020;
+// C ref: display.h DISP_FLASH / DISP_END (tmp_at modes).
+const DISP_FLASH_MODE = -4, DISP_END_MODE = -1;
+// C ref: do_name.h ARTICLE_A / ARTICLE_YOUR and the x_monnam() suppress bits.
+const ARTICLE_A_ = 2, ARTICLE_YOUR_ = 4;
+const SUPPRESS_SADDLE_ = 0x02, AUGMENT_IT_ = 0x20,
+      EXACT_NAME_ = 0x0F, SUPPRESS_NAME_ = 0x08;
+// C ref: hack.h KILLED_BY.
+const KILLED_BY_ = 1;
+// C ref: mkobj.h MM_IGNOREWATER / MM_IGNORELAVA (goodpos gpflags).
+const MM_IGNOREWATER_ = 0x00002000, MM_IGNORELAVA_ = 0x00004000;
+// C ref: hack.h WT_TOOMUCH_DIAGONAL.
+const WT_TOOMUCH_DIAGONAL_ = 600;
+
+// C ref: youprop.h Levitation / Flying / Wwalking / Passes_walls.  The port
+// keeps intrinsics/extrinsics as named uprops fields (js/dbridge.js:948
+// HProp()); it has NO B<prop> blocked-masks, so the "Levitation overrides
+// Flying" arm of C's macros cannot be expressed — see float_vs_flight() in
+// js/polyself.js for the same gap on the writing side.
+function uprop_any(...keys) {
+    const u = game.u;
+    for (const k of keys) {
+        const v = u?.uprops?.[k] ?? u?.[k];
+        if (v) return typeof v === 'number' ? v : 1;
+    }
+    return 0;
+}
+const Levitation_hurtle = () => uprop_any('Levitation', 'HLevitation', 'ELevitation') > 0;
+const Flying_hurtle = () => uprop_any('Flying', 'HFlying', 'EFlying') > 0;
+const Wwalking_hurtle = () => uprop_any('Wwalking', 'HWwalking', 'EWwalking') > 0;
+const Passes_walls_hurtle = () => uprop_any('Passes_walls', 'HPasses_walls', 'EPasses_walls') > 0;
+// C ref: youprop.h Punished — the hero is chained to the heavy iron ball.
+const uball_of = () => (game.u?.uball ?? game.uball ?? null);
+const Punished_hurtle = () => !!uball_of();
+// C ref: youprop.h Sokoban.
+const Sokoban_hurtle = () => game.u?.uz?.dnum === game.sokoban_dnum;
+
+// C ref: hack.c:939 may_passwall(x, y).  js/monmove.js:289 holds the faithful
+// copy but does not export it; the fix is to export that one.  rm.h:
+// IS_STWALL(typ) == (typ <= SDOOR), W_NONPASSWALL == 0x08.
+function may_passwall_hurtle(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    return !((loc.typ | 0) <= 12 /* SDOOR */ && ((loc.wall_info | 0) & 0x08));
+}
+
+// C ref: hack.c:937 bad_rock(mdat, x, y).  js/hack.js:621 holds a hero-only
+// copy (unexported); this one keeps C's mdat parameter, which mhurtle's callers
+// need.  tunnels(mdat) && may_dig() only relaxes it for a rock-eater.
+function bad_rock_hurtle(mdat, x, y) {
+    const typ = typ_at(x, y);
+    if (Sokoban_hurtle() && I.sobj_at(BOULDER, x, y)) return true;
+    /* rm.h IS_OBSTRUCTED(typ) == (typ < POOL); phasing is M1_WALLWALK */
+    return typ < POOL_TYP && (mflags1_of(mdat) & M1_WALLWALK) === 0;
+}
+
+// C ref: mondata.h touch_petrifies(ptr).  js/invent.js:409 takes a corpsenm;
+// this one takes a permonst row, as C does.
+function touch_petrifies_ptr(ptr) {
+    const nm = ptr?.name;
+    return nm === 'cockatrice' || nm === 'chickatrice';
+}
+
+// C ref: worn.c which_armor(mon, slotmask) — js/worn.js exports it, but this
+// file avoids new static edges, so the minvent scan is inlined.
+function which_armor_mask(mon, slotmask) {
+    for (const o of mon?.minvent || [])
+        if (o && ((o.owornmask | 0) & slotmask)) return o;
+    return null;
+}
+
+// C ref: dothrow.c:655 walk_path(src_cc, dest_cc, check_proc, arg) — Bresenham
+// from src to dest, calling check_proc(arg, x, y) on each step and stopping at
+// the first FALSE; on failure dest_cc is rewound to the last good square.
+// js/hack.js:1604 holds a REDUCED synchronous copy (no `arg`, no dest_cc
+// writeback) used only by the jump validity test; this is the full one.
+export async function walk_path(src_cc, dest_cc, check_proc, arg) {
+    let dx = dest_cc.x - src_cc.x, dy = dest_cc.y - src_cc.y;
+    let x = src_cc.x, y = src_cc.y;
+    let prev_x = x, prev_y = y;
+    let x_change, y_change, keep_going = true;
+
+    if (dx < 0) { x_change = -1; dx = -dx; } else { x_change = 1; }
+    if (dy < 0) { y_change = -1; dy = -dy; } else { y_change = 1; }
+    let i = 0, err = 0;
+    if (dx < dy) {
+        while (i++ < dy) {
+            prev_x = x; prev_y = y;
+            y += y_change;
+            err += dx << 1;
+            if (err > dy) { x += x_change; err -= dy << 1; }
+            /* check for early exit condition */
+            if (!(keep_going = await check_proc(arg, x, y))) break;
+        }
+    } else {
+        while (i++ < dx) {
+            prev_x = x; prev_y = y;
+            x += x_change;
+            err += dy << 1;
+            if (err > dx) { y += y_change; err -= dx << 1; }
+            if (!(keep_going = await check_proc(arg, x, y))) break;
+        }
+    }
+
+    if (keep_going) return true; /* successful */
+
+    dest_cc.x = prev_x;
+    dest_cc.y = prev_y;
+    return false;
+}
+
+// C ref: dothrow.c:742 hurtle_jump(arg, x, y) — C's own comment calls this a
+// "hack for hurtle_step()": EWwalking|I_SPECIAL marks the step as a JUMP, which
+// makes hurtle_step() land ON the destination instead of flying over it (and
+// keeps a jump over water from dropping the hero into that water).
+export async function hurtle_jump(arg, x, y) {
+    const props = (game.u.uprops = game.u.uprops || {});
+    const save_EWwalking = props.EWwalking | 0;
+
+    /* prevent jumping over water from being placed in that water */
+    props.EWwalking = save_EWwalking | I_SPECIAL_PROP;
+    const res = await hurtle_step(arg, x, y);
+    props.EWwalking = save_EWwalking;
+    return res;
+}
+
+// C ref: dothrow.c:773 hurtle_step(arg, x, y) — a single step of the hero
+// flying through the air (throw/kick recoil, jump).  C's `arg` is `int *range`;
+// here it is a one-field box `{ range }` so the decrement is visible to the
+// walk_path() caller.
+//
+// RNG: exactly one rnd(2 + *range) (dothrow.c:835), on the "bumped into
+// something" arm only.
+export async function hurtle_step(arg, x, y) {
+    const u = game.u;
+    const { in_out_region } = await import('./region.js');
+
+    if (!isok(x, y)) {
+        await update_topl('You feel the spirits holding you back.');
+        return false;
+    } else if (!in_out_region(x, y)) {
+        return false;
+    } else if (arg.range === 0) {
+        return false; /* previous step wants to stop now */
+    }
+    const via_jumping = ((u.uprops?.EWwalking | 0) & I_SPECIAL_PROP) !== 0;
+    const stopping_short = (via_jumping && arg.range < 2);
+    const lev = game.level?.at?.(x, y);
+    const ltyp = lev ? (lev.typ | 0) : 0;
+    const ydat = I.youmonst_data_pub();
+
+    let may_pass = true;
+    if (!Passes_walls_hurtle() || !(may_pass = may_passwall_hurtle(x, y))) {
+        let why = null;
+        const diagonal = (u.ux - x) !== 0 && (u.uy - y) !== 0;
+        const open_door = ltyp === DOOR_TYP
+            && ((lev?.doormask | 0) & D_ISOPEN_MASK) !== 0;
+        const odoor_diag = open_door && diagonal;
+        const obstructed = ltyp < POOL_TYP;   /* rm.h IS_OBSTRUCTED */
+        let obj;
+
+        if (obstructed || closed_door(x, y) || odoor_diag) {
+            why = ltyp === TREE_TYP ? 'bumping into a tree'
+                : obstructed ? 'bumping into a wall'
+                : odoor_diag ? 'bumping into a door frame'
+                : 'bumping into a closed door';
+            if (odoor_diag) await update_topl('You hit the door frame!');
+            await update_topl('Ouch!');
+        } else if (ltyp === IRONBARS_TYP) {
+            why = 'crashing into iron bars';
+            await update_topl('You crash into some iron bars.  Ouch!');
+        } else if ((obj = I.sobj_at(BOULDER, x, y)) != null) {
+            why = 'bumping into a boulder';
+            await update_topl(`You bump into a ${I.xname(obj)}.  Ouch!`);
+        } else if (!may_pass) {
+            /* did we hit a no-dig non-wall position? */
+            why = 'touching the edge of the universe';
+            await update_topl('You smack into something!');
+        } else if (diagonal
+                   && bad_rock_hurtle(ydat, u.ux, y)
+                   && bad_rock_hurtle(ydat, x, u.uy)) {
+            const too_much = (I.inventoryArray().length > 0
+                && (I.inv_weight() + I.weight_cap() > WT_TOOMUCH_DIAGONAL_));
+
+            if (bigmonst(ydat) || too_much) {
+                why = 'wedging into a narrow crevice';
+                await update_topl(`You ${too_much ? 'and all your belongings '
+                    : ''}get forcefully wedged into a crevice.`);
+            }
+        }
+        if (why) {
+            const dmg = rnd(2 + arg.range);                 /* dothrow.c:835 */
+            I.losehp_throw(Maybe_Half_Phys_hurtle(dmg), why, KILLED_BY_);
+            wake_nearto_hurtle(x, y, 10);
+            return false;
+        }
+    }
+
+    const mon = m_at(x, y);
+    if (mon) {
+        /* C's two extra exceptions (hides_under, S_EEL) sit inside `#if 0` and
+           are not compiled: any monster here stops the flight. */
+        const glyph = glyph_at(x, y);
+        const U = await import('./uhitm.js');
+
+        mon.mundetected = 0; /* wakeup() will handle mimic */
+        /* after unhiding; combination of a_monnam() and some_mon_nam() —
+           yields "someone"/"something" instead of "it" for an unseen mon */
+        const mnam = U.x_monnam(mon, ARTICLE_A_, null,
+            ((mon.mgivenname || mon.mextra?.mgivenname) ? SUPPRESS_SADDLE_ : 0)
+            | AUGMENT_IT_, false);
+        if (!glyph_is_monster_hurtle(glyph) && !U.glyph_is_invisible(x, y))
+            await update_topl(`You find ${mnam} by bumping into ${
+                noit_mhim_hurtle(mon)}.`);
+        else
+            await update_topl(`You bump into ${mnam}.`);
+        await wakeup_hurtle(mon, false);
+        if (!U.canspotmon(mon)) map_invisible(mon.mx, mon.my);
+        await U.setmangry(mon, false);
+        if (touch_petrifies_ptr(mon.data)
+            /* this is a bodily collision, so check for body armor */
+            && !game.uarmu && !game.uarm && !game.uarmc) {
+            game._killer_name = `bumping into ${an(mon.data?.name || 'it')}`;
+            await instapetrify_hurtle(game._killer_name);
+        }
+        if (touch_petrifies_ptr(ydat)
+            && !which_armor_mask(mon, W_ARMU_MASK | W_ARM_MASK | W_ARMC_MASK))
+            await minstapetrify_hurtle(mon, true);
+        wake_nearto_hurtle(x, y, 10);
+        return false;
+    }
+
+    if ((u.ux - x) && (u.uy - y)
+        && bad_rock_hurtle(ydat, u.ux, y)
+        && bad_rock_hurtle(ydat, x, u.uy)) {
+        /* Move at a diagonal. */
+        if (Sokoban_hurtle()) {
+            await update_topl('You come to an abrupt halt!');
+            return false;
+        }
+    }
+
+    /* caller has already determined that dragging the ball is allowed; if the
+       ball is carried we might still need to drag the chain */
+    if (Punished_hurtle()) {
+        const B = await import('./ball.js');
+        const bc = await B.drag_ball(x, y, true);
+        if (bc)
+            B.move_bc(0, bc.bc_control, bc.ballx, bc.bally, bc.chainx, bc.chainy);
+    }
+
+    const ox = u.ux, oy = u.uy;
+    const { u_on_newpos } = await import('./do.js');
+    u_on_newpos(x, y); /* set u.<ux,uy>, u.usteed-><mx,my>; cliparound() */
+    newsym(ox, oy);    /* update old position */
+    const { vision_recalc } = await import('./vision.js');
+    vision_recalc(1);  /* update for new position */
+    await flush_screen_hurtle(1);
+    /* if terrain type changes, levitation or flying might become blocked or
+       unblocked; do this AFTER map+vision has been updated for the new spot */
+    if (ltyp !== (game.level?.at?.(ox, oy)?.typ | 0))
+        switch_terrain_hurtle();
+
+    /* might be entering a special room (treasure zoo, throne room, &c) with a
+       first-time entry message, or leaving a shop with unpaid goods */
+    const { check_special_room } = await import('./shkroom.js');
+    await check_special_room(false);
+
+    if (is_pool_at(x, y) && !u.uinwater) {
+        const { Is_waterlevel } = await import('./const.js');
+        if (IS_WATERWALL(typ_at(x, y))
+            || !(Levitation_hurtle() || Flying_hurtle() || Wwalking_hurtle())) {
+            /* couldn't move while hurtling; allow movement now so that drown()
+               gives a chance to crawl out of the pool and survive */
+            game.multi = 0;
+            await drown_hurtle();
+            return false;
+        } else if (!Is_waterlevel(u.uz) && !stopping_short) {
+            /* Norep(): the port has no repeat suppression here */
+            await update_topl(`You move over ${
+                an(typ_at(x, y) === MOAT ? 'moat' : 'pool')}.`);
+        }
+    } else if (is_lava_at(x, y) && !stopping_short) {
+        await update_topl('You move over some lava.');
+    }
+
+    /* C's FIXME: each trap should really trigger on the recoil if it would
+       trigger during normal movement; only the tested ones do. */
+    const T = await import('./trap.js');
+    const ttmp = T.t_at(x, y);
+    if (ttmp) {
+        const tt = ttmp.ttyp | 0;
+        const is_pit = (tt === PIT_TRAP || tt === SPIKED_PIT_TRAP);
+        const is_hole = (tt === HOLE_TRAP || tt === TRAPDOOR_TRAP);
+        if (stopping_short) {
+            /* see the comment above hurtle_jump() */
+        } else if (tt === MAGIC_PORTAL_TRAP) {
+            await T.dotrap(ttmp, NO_TRAP_FLAGS_);
+            return false;
+        } else if (tt === VIBRATING_SQUARE_TRAP) {
+            await update_topl('The ground vibrates as you pass it.');
+            await T.dotrap(ttmp, NO_TRAP_FLAGS_); /* doesn't print messages */
+        } else if (tt === FIRE_TRAP_TRAP) {
+            await T.dotrap(ttmp, NO_TRAP_FLAGS_);
+        } else if ((is_pit || is_hole) && Sokoban_hurtle()) {
+            /* air currents overcome the recoil in Sokoban; when jumping, the
+               caller performs the last step and enters the trap */
+            if (!via_jumping) await T.dotrap(ttmp, NO_TRAP_FLAGS_);
+            arg.range = 0;
+            return true;
+        } else {
+            if (ttmp.tseen)
+                await update_topl(`You pass right over ${
+                    an(trapname_hurtle(tt))}.`);
+        }
+    }
+    if (--arg.range < 0) /* make sure our range never goes negative */
+        arg.range = 0;
+    if (arg.range !== 0)
+        await nh_delay_output_hurtle();
+    return true;
+}
+
+// C ref: dothrow.c:977 will_hurtle(mon, x, y) — used by mhurtle_step() for the
+// actual hurtling and also by mhitm_knockback() to vary the message when the
+// target will/won't change location.  No RNG.
+export function will_hurtle(mon, x, y) {
+    if (!isok(x, y)) return false;
+    /* redundant when called by mhurtle() but needed for mhitm_knockback() */
+    if ((mon?.data?.msize ?? 0) >= MZ_HUGE || mon === game.u?.ustuck
+        || mon?.mtrapped)
+        return false;
+    /*
+     * C's TODO: treat walls, doors, iron bars, etc. specially rather than just
+     * stopping before.
+     */
+    return goodpos_hurtle(x, y, mon, MM_IGNOREWATER_ | MM_IGNORELAVA_);
+}
+
+// C ref: teleport.c goodpos(x, y, mtmp, gpflags) — js/teleport.js:105 exports
+// it, but will_hurtle() is synchronous in C and this file resolves cross-module
+// callees asynchronously, so mhurtle() primes this handle before walking the
+// path.  A caller that reaches will_hurtle() without going through mhurtle()
+// gets the reduced answer below (empty, accessible square).
+let _goodpos_impl = null;
+function goodpos_hurtle(x, y, mtmp, gpflags) {
+    if (_goodpos_impl) return _goodpos_impl(x, y, mtmp, gpflags);
+    return !m_at(x, y) && !(x === game.u?.ux && y === game.u?.uy)
+        && typ_at(x, y) >= POOL_TYP;
+}
+
+// C ref: dothrow.c:992 mhurtle_step(arg, x, y) — a single step of a MONSTER
+// flying through the air; `arg` is the monster.  Draws no RNG itself (the
+// mintrap() it ends on can).
+export async function mhurtle_step(arg, x, y) {
+    const mon = arg;
+    const u = game.u;
+    const { m_in_out_region } = await import('./region.js');
+
+    if (!isok(x, y)) return false;
+
+    if (will_hurtle(mon, x, y) && m_in_out_region(mon, x, y)) {
+        if (mon !== u.usteed) {
+            remove_monster_hurtle(mon.mx, mon.my);
+            newsym(mon.mx, mon.my);
+            place_monster_hurtle(mon, x, y);
+            newsym(mon.mx, mon.my);
+        } else {
+            /* steed is hurtling, move hero which will also move steed */
+            u.ux0 = u.ux; u.uy0 = u.uy;
+            const { u_on_newpos } = await import('./do.js');
+            u_on_newpos(x, y);
+            newsym(u.ux0, u.uy0); /* update old position */
+            const { vision_recalc } = await import('./vision.js');
+            vision_recalc(0); /* new location => different lines of sight */
+        }
+        await flush_screen_hurtle(1);
+        await nh_delay_output_hurtle();
+        const { set_apparxy } = await import('./monmove.js');
+        set_apparxy(mon);
+        if (IS_WATERWALL(typ_at(x, y)))
+            return false;
+        const res = await mintrap_hurtle(mon, HURTLING_FLAG);
+        if (res === Trap_Killed_Mon
+            || res === Trap_Caught_Mon
+            || res === Trap_Moved_Mon)
+            return false;
+        return true;
+    }
+    const mtmp = m_at(x, y);
+    const mon_moving = !!game.context?.mon_moving;
+    if (mtmp && mtmp !== mon) {
+        const U = await import('./uhitm.js');
+        const N = await import('./do_name.js');
+        if (U.canspotmon(mon) || U.canspotmon(mtmp))
+            await update_topl(`${N.Monnam(mon)} bumps into ${N.a_monnam(mtmp)}.`);
+        await wakeup_hurtle(mtmp, !mon_moving);
+        /* check whether 'mon' is turned to stone by touching 'mtmp' */
+        if (touch_petrifies_ptr(mtmp.data)
+            && !which_armor_mask(mon, W_ARMU_MASK | W_ARM_MASK | W_ARMC_MASK)) {
+            await minstapetrify_hurtle(mon, !mon_moving);
+            newsym(mon.mx, mon.my);
+        }
+        /* and whether 'mtmp' is turned to stone by being touched by 'mon' */
+        if (touch_petrifies_ptr(mon.data)
+            && !which_armor_mask(mtmp, W_ARMU_MASK | W_ARM_MASK | W_ARMC_MASK)) {
+            await minstapetrify_hurtle(mtmp, !mon_moving);
+            newsym(mtmp.mx, mtmp.my);
+        }
+    } else if (x === u.ux && y === u.uy) {
+        /* a monster has caused 'mon' to hurtle against the hero */
+        const N = await import('./do_name.js');
+        await update_topl(`${N.Some_Monnam(mon)} bumps into you.`);
+        const { stop_occupation } = await import('./hack.js');
+        await stop_occupation();
+        /* check whether 'mon' is turned to stone by touching a poly'd hero */
+        if (Upolyd() && touch_petrifies_ptr(I.youmonst_data_pub())
+            && !which_armor_mask(mon, W_ARMU_MASK | W_ARM_MASK | W_ARMC_MASK)) {
+            /* give the poly'd hero credit/blame despite a monster causing it */
+            await minstapetrify_hurtle(mon, true);
+            newsym(mon.mx, mon.my);
+        }
+        /* and whether the hero is turned to stone by being touched by 'mon' */
+        if (touch_petrifies_ptr(mon.data)
+            && !(game.uarmu || game.uarm || game.uarmc)) {
+            const U = await import('./uhitm.js');
+            /* combine m_monnam() and noname_monnam(): "{your,a} hurtling
+               cockatrice" without any assigned name */
+            game._killer_name = `being hit by ${U.x_monnam(mon,
+                mon.mtame ? ARTICLE_YOUR_ : ARTICLE_A_, 'hurtling',
+                EXACT_NAME_ | SUPPRESS_NAME_, false)}`;
+            await instapetrify_hurtle(game._killer_name);
+            newsym(u.ux, u.uy);
+        }
+    }
+
+    return false;
+}
+
+// C ref: dothrow.c:1078 hurtle(dx, dy, range, verbose) — the hero moves through
+// the air for a few squares as a result of throwing or kicking something.  dx
+// and dy are the direction of the HURTLE, not of the original kick or throw.
+export async function hurtle(dx, dy, range, verbose) {
+    const u = game.u;
+
+    /*
+     * The chain is stretched vertically, so you shouldn't be able to move very
+     * far diagonally.  Rather than bother with the slack calculation, assume
+     * there is no slack, give the player a message and return.
+     */
+    if (Punished_hurtle() && !I.carried(uball_of())) {
+        await update_topl('You feel a tug from the iron ball.');
+        nomul_hurtle(0);
+        return;
+    } else if (u.utrap) {
+        const { hliquid } = await import('./do_name.js');
+        await update_topl(`You are anchored by the ${
+            (u.utraptype === TT_WEB_TYPE) ? 'web'
+            : (u.utraptype === TT_LAVA_TYPE) ? hliquid('lava')
+            : (u.utraptype === TT_INFLOOR_TYPE) ? surface(u.ux, u.uy)
+            : (u.utraptype === TT_BURIEDBALL_TYPE) ? 'buried ball'
+            : 'trap'}.`);
+        nomul_hurtle(0);
+        return;
+    }
+
+    /* make sure dx and dy are [-1,0,1] */
+    dx = sgn_hurtle(dx);
+    dy = sgn_hurtle(dy);
+
+    if (!range || (!dx && !dy) || u.ustuck)
+        return; /* paranoia */
+
+    nomul_hurtle(-range);
+    game.multi_reason = 'moving through the air';
+    game.nomovemsg = ''; /* it just happens */
+    if (verbose)
+        await update_topl(`You ${(range > 1) ? 'hurtle' : 'float'
+            } in the opposite direction.`);
+    /* if we're in the midst of shooting multiple projectiles, stop */
+    await endmultishot(true);
+    const uc = { x: u.ux, y: u.uy };
+    /* this setting of cc is only correct if dx and dy are [-1,0,1] only */
+    const cc = { x: u.ux + (dx * range), y: u.uy + (dy * range) };
+    await walk_path(uc, cc, hurtle_step, { range });
+}
+
+// C ref: dothrow.c:1130 mhurtle(mon, dx, dy, range) — move a monster through
+// the air for a few squares.  Draws no RNG itself.
+export async function mhurtle(mon, dx, dy, range) {
+    const u = game.u;
+
+    /* prime the goodpos() handle the synchronous will_hurtle() needs */
+    if (!_goodpos_impl) {
+        const { goodpos } = await import('./teleport.js');
+        _goodpos_impl = goodpos;
+    }
+
+    await wakeup_hurtle(mon, !game.context?.mon_moving);
+    /* At the very least, debilitate the monster */
+    mon.movement = 0;
+    mon.mstun = 1;
+
+    /* Is the monster stuck or too heavy to push?  (very large monsters have
+     * too much inertia, even floaters and flyers) */
+    if ((mon.data?.msize ?? 0) >= MZ_HUGE || mon === u.ustuck || mon.mtrapped) {
+        const U = await import('./uhitm.js');
+        if (U.canspotmon(mon)) {
+            const { Monnam } = await import('./do_name.js');
+            await update_topl(`${Monnam(mon)} doesn't budge!`);
+        }
+        return;
+    }
+
+    /* Make sure dx and dy are [-1,0,1] */
+    dx = sgn_hurtle(dx);
+    dy = sgn_hurtle(dy);
+    if (!range || (!dx && !dy))
+        return; /* paranoia */
+    /* don't let grid bugs be hurtled diagonally */
+    if (dx && dy && NODIAG_hurtle(mon.data))
+        return;
+
+    /* undetected monster can be moved by your strike */
+    if (mon.mundetected) {
+        mon.mundetected = 0;
+        newsym(mon.mx, mon.my);
+    }
+    if (mon.m_ap_type) await seemimic_hurtle(mon);
+
+    /* Send the monster along the path */
+    const mc = { x: mon.mx, y: mon.my };
+    const cc = { x: mon.mx + (dx * range), y: mon.my + (dy * range) };
+    await walk_path(mc, cc, mhurtle_step, mon);
+    const { DEADMONSTER } = await import('./mon.js');
+    if (!DEADMONSTER(mon)) {
+        const { t_at } = await import('./trap.js');
+        if (t_at(mon.mx, mon.my))
+            await mintrap_hurtle(mon, FORCEBUNGLE_FLAG);
+        else
+            await minliquid_hurtle(mon);
+    }
+}
+
+// C ref: dothrow.c:1442 sho_obj_return_to_u(obj) — animate a thrown weapon's
+// flight BACK to the hero (Mjollnir / aklys; boomerangs use boomhit()).
+// Display only: obj_to_glyph()'s rng argument is rn2_on_display_rng, never the
+// core RNG.
+export async function sho_obj_return_to_u(obj) {
+    const u = game.u;
+    const bh = game.bhitpos || { x: u.ux, y: u.uy };
+    /* might already be our location (bounced off a wall) */
+    if ((u.dx || u.dy) && (bh.x !== u.ux || bh.y !== u.uy)) {
+        let x = bh.x - u.dx, y = bh.y - u.dy;
+
+        await tmp_at_hurtle(DISP_FLASH_MODE, obj_to_glyph_hurtle(obj));
+        while (isok(x, y) && (x !== u.ux || y !== u.uy)) {
+            await tmp_at_hurtle(x, y);
+            await nh_delay_output_hurtle();
+            x -= u.dx;
+            y -= u.dy;
+        }
+        await tmp_at_hurtle(DISP_END_MODE, 0);
+    }
+}
+
+// C ref: dothrow.c:1460 throwit_return(clear_thrownobj) — drop the returning-
+// missile handle.  C's comment on throwit(): "No early returns after this point
+// or returning_missile will be left with a stale pointer."
+export function throwit_return(clear_thrownobj) {
+    const iflags = (game.iflags = game.iflags || {});
+    iflags.returning_missile = null;
+    if (clear_thrownobj)
+        game.thrownobj = null;
+}
+
+// C ref: dothrow.c:1468 swallowit(obj) — the swallowed hero throws something:
+// the engulfer simply eats it, unless it is the punishment ball.
+export async function swallowit(obj) {
+    if (obj !== uball_of()) {
+        const { mpickobj } = await import('./makemon.js');
+        mpickobj(game.u.ustuck, obj); /* clears 'gt.thrownobj' */
+        throwit_return(false);
+    } else {
+        throwit_return(true);
+    }
+}
+
+// C ref: dothrow.c:1482 throwit_mon_hit(obj, mon) — a thrown object reaches a
+// monster.  `mon` may be null.  Returns TRUE if a shopkeeper CAUGHT the object
+// (so the caller must not process a landing).  May delete obj, clearing
+// gt.thrownobj.
+export async function throwit_mon_hit(obj, mon) {
+    if (mon) {
+        const u = game.u;
+
+        if (mon.isshk && obj.where === 'minvent' && obj.ocarry === mon)
+            return true;
+
+        await snuff_candle_hurtle(obj);
+        const bh = game.bhitpos || { x: mon.mx, y: mon.my };
+        game.notonhead = (bh.x !== mon.mx || bh.y !== mon.my);
+        const obj_gone = await I.thitmonst(mon, obj);
+        /* Monster may have been tamed; this frees old mon [obsolete] */
+        mon = m_at(bh.x, bh.y);
+
+        /* [perhaps this should be moved into thitmonst or hmon] */
+        const { inside_shop } = await import('./shk.js');
+        const { in_rooms } = await import('./shkroom.js');
+        if (mon && mon.isshk
+            && (!inside_shop(u.ux, u.uy)
+                /* C: !strchr(in_rooms(mon->mx, mon->my, SHOPBASE), *u.ushops) */
+                || !Array.from(in_rooms(mon.mx, mon.my, 17 /* SHOPBASE */) || [])
+                        .includes(String(u.ushops || '')[0])))
+            await hot_pursuit_hurtle(mon);
+
+        if (obj_gone)
+            game.thrownobj = null;
+    }
+    return false;
+}
+
+// ── shims for dothrow.c callees whose faithful port exists elsewhere but is
+//    module-private.  Each names the original; the fix is to export THAT one,
+//    not to grow these.  All are RNG-free.
+// C ref: mon.c wakeup(mon, via_attack) — js/zap.js:1826 (unexported).
+async function wakeup_hurtle(mon, via_attack) {
+    if (!mon) return;
+    mon.msleeping = 0;
+    if (via_attack) {
+        const { setmangry } = await import('./uhitm.js');
+        await setmangry(mon, true);
+    }
+}
+// C ref: hack.h Maybe_Half_Phys(dmg) — js/zap.js:226 (unexported).
+function Maybe_Half_Phys_hurtle(dmg) {
+    return uprop_any('Half_physical_damage') ? Math.floor((dmg + 1) / 2) : dmg;
+}
+// C ref: monmove.c wake_nearto(x, y, distance) — `distance` is a SQUARED
+// distance (dist2), and 0 means "everything on the level".  js/monmove.js:4285
+// has the faithful copy (unexported); js/cmd.js exports its own.
+function wake_nearto_hurtle(x, y, distance) {
+    for (const m of game.level?.monsters || []) {
+        if (!m || (m.mhp != null && m.mhp <= 0)) continue;
+        const d2 = (m.mx - x) * (m.mx - x) + (m.my - y) * (m.my - y);
+        if (distance === 0 || d2 < distance) { m.msleeping = 0; m.meating = 0; }
+    }
+}
+// C ref: trap.c instapetrify(str) — js/invent.js:1396 is an empty stub too.
+async function instapetrify_hurtle(_why) { /* NOT PORTED (js/invent.js:1396) */ }
+// C ref: mon.c minstapetrify(mon, byplayer) — no port anywhere in js/.
+async function minstapetrify_hurtle(_mon, _byplayer) { /* NOT PORTED */ }
+// C ref: hack.c switch_terrain() — js/dig.js:870 is an empty stub because the
+// port has no B<prop> masks (see js/polyself.js float_vs_flight()).
+function switch_terrain_hurtle() { /* NOT PORTED (js/dig.js:870) */ }
+// C ref: trap.c drown() — js/trap.js:3381 (unexported).
+async function drown_hurtle() { return false; /* NOT PORTED */ }
+// C ref: trap.c mintrap(mon, mintrapflags) — no port anywhere in js/, so the
+// hurtling monster never triggers the trap it lands on.
+async function mintrap_hurtle(_mon, _flags) { return Trap_Effect_Finished; }
+// C ref: mon.c minliquid(mon) — js/mon.js:591 (unexported).
+async function minliquid_hurtle(_mon) { return false; }
+// C ref: mon.c seemimic(mon) — js/apply.js:533 (unexported).
+async function seemimic_hurtle(mon) {
+    if (mon) { mon.m_ap_type = 0; mon.mappearance = 0; }
+}
+// C ref: shk.c hot_pursuit(shkp) — js/shkroom.js:273 (unexported).
+async function hot_pursuit_hurtle(shkp) { if (shkp) shkp.mpeaceful = 0; }
+// C ref: apply.c snuff_candle(otmp) — exported, reached dynamically.
+async function snuff_candle_hurtle(obj) {
+    const { snuff_candle } = await import('./apply.js');
+    return snuff_candle(obj);
+}
+// C ref: display.c flush_screen(cursor_on_u) — exported, reached dynamically.
+async function flush_screen_hurtle(mode) {
+    const { flush_screen } = await import('./display.js');
+    return flush_screen(mode);
+}
+// C ref: display.c tmp_at(x, y) — exported, reached dynamically.
+async function tmp_at_hurtle(x, y) {
+    const { tmp_at } = await import('./display.js');
+    return tmp_at(x, y);
+}
+// C ref: display.c obj_to_glyph(obj, rng) — js/invent.js:1397 also returns 0.
+function obj_to_glyph_hurtle(_obj) { return 0; }
+// C ref: display.h glyph_is_monster(glyph) — the port's glyph_at() returns a
+// char/objectless value, so this cannot be decided from the glyph alone.
+function glyph_is_monster_hurtle(_glyph) { return false; }
+// C ref: do_name.c noit_mhim(mon) — "him"/"her"/"it", with "it" suppressed for
+// a named or seen monster.
+function noit_mhim_hurtle(mon) { return mon?.female ? 'her' : 'him'; }
+// C ref: hack.c nomul(nval) — js/hack.js exports it; only the multi write
+// matters for an inert call site.
+function nomul_hurtle(nval) { game.multi = nval; }
+// C ref: tty nh_delay_output() — js/hack.js:3734 (unexported).
+async function nh_delay_output_hurtle() { await Promise.resolve(); }
+// C ref: mon.c remove_monster(x, y) — js/worm.js:206 (unexported).
+function remove_monster_hurtle(x, y) {
+    for (const m of game.level?.monsters || [])
+        if (m && m.mx === x && m.my === y) { m.mx = 0; m.my = 0; }
+}
+// C ref: mon.c place_monster(mon, x, y) — js/vault.js:207 (unexported).
+function place_monster_hurtle(mon, x, y) { if (mon) { mon.mx = x; mon.my = y; } }
+// C ref: hacklib.c sgn(n).
+function sgn_hurtle(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }
+// C ref: mondata.h NODIAG(mndx) — grid bugs only.
+function NODIAG_hurtle(ptr) { return ptr?.name === 'grid bug'; }
+// C ref: trap.c trapname(ttyp, override) — the trap.h order, reduced to the
+// names hurtle_step()'s "You pass right over a <trap>." line can produce.
+const TRAPNAMES_HURTLE = {
+    1: 'arrow trap', 2: 'dart trap', 3: 'falling rock trap', 4: 'squeaky board',
+    5: 'bear trap', 6: 'land mine', 7: 'rolling boulder trap',
+    8: 'sleeping gas trap', 9: 'rust trap', 10: 'fire trap', 11: 'pit',
+    12: 'spiked pit', 13: 'hole', 14: 'trap door', 15: 'teleportation trap',
+    16: 'level teleporter', 17: 'magic portal', 18: 'web',
+    19: 'statue trap', 20: 'magic trap', 21: 'anti-magic field',
+    22: 'polymorph trap', 23: 'vibrating square',
+};
+function trapname_hurtle(ttyp) { return TRAPNAMES_HURTLE[ttyp] || 'trap'; }

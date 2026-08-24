@@ -28,10 +28,11 @@ import { adj_erinys } from './makemon.js';
 import { find_ac, u_init_skills_discoveries, moveloop_preamble_startup,
          race_attrmin, race_attrmax } from './u_init.js';
 import { com_pager_legacy } from './questpgr.js';
-import { roles, races, aligns, Hello, rankName } from './role.js';
+import { roles, races, aligns, genders, Hello, rankName } from './role.js';
 import { Unaware,
          ROLE_MALE, ROLE_FEMALE, NORMAL_SPEED, A_STR, A_WIS, A_INT, A_DEX, A_CON,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
+    A_ORIGINAL, A_CURRENT, Upolyd,
     Is_waterlevel, Is_airlevel } from './const.js';
 import { near_capacity } from './invent.js';
 import { exercise, acurr_eff } from './attrib.js';
@@ -1851,4 +1852,384 @@ export async function moveloop(resuming) {
         await moveloop_core();
         if (game.program_state?.gameover) break;
     }
+}
+
+// ===========================================================================
+// allmain.c: the remaining top-level functions, translated.  APPEND-ONLY —
+// nothing above this line calls anything below it, and nothing below mutates
+// state the live loop reads.  Heavy modules are pulled in with dynamic
+// import() rather than a new static edge: display.js statically imports this
+// file, so a static import back would flip ESM eval order.
+//
+// STRUCTURAL MISMATCH (reported, deliberately not rewired): C drives every
+// multi-turn activity through the single `go.occupation` function pointer plus
+// `ga.afternmv`, and moveloop_core() polls exactly that one slot.  This port
+// instead polls named per-subsystem slots (game._wait_occupation, the
+// _lvltport_dest scheduler, invent.js start_occupation(), ...).  The
+// moveloop_preamble() below is therefore a faithful translation of C's model
+// and NOT a drop-in for the live loop's decomposition
+// (moveloop_preamble_messages() + u_init.js moveloop_preamble_startup()).
+// ===========================================================================
+
+// C ref: allmain.c:33 early_init(argc, argv) — the pre-option-parsing globals
+// pass, called from main() before any window or config work.
+//
+// Four of its six callees have no JS counterpart because the port has no
+// separate "globals" storage to initialise: decl.c decl_globals_init(),
+// objects.c objects_globals_init() and monst.c monst_globals_init() copy the
+// read-only template tables into the mutable per-game ones, which js/ holds as
+// module-level tables that are reset per game where it matters (newgame()'s
+// adj_erinys(0) is one such reset).  sys.c sys_early_init()'s RESULT for this
+// build is the frozen table in js/cfgfiles.js:149.
+export function early_init(argc, argv) {
+    program_state_init();
+    /* CRASHREPORT is not defined for this build: no crashreport_init(). */
+    void argc; void argv;
+    decl_globals_init();
+    objects_globals_init();
+    monst_globals_init();
+    sys_early_init();
+    runtime_info_init();
+}
+
+// C ref: decl.c program_state_init() — zero the struct, then set the two
+// fields that are not zero at startup.
+function program_state_init() {
+    game.program_state = game.program_state || {};
+    const ps = game.program_state;
+    ps.gameover = 0;
+    ps.something_worth_saving = 0;
+    ps.in_moveloop = 0;
+    ps.beyond_savefile_load = 0;
+    ps.panicking = 0;
+    ps.exiting = 0;
+    ps.saving = ps.restoring = ps.freeing = 0;
+}
+// The three table-copy initialisers (decl.c/objects.c/monst.c) and
+// runtime_info_init() (sys.c) have no port; sys_early_init()'s outcome is
+// js/cfgfiles.js:149's frozen defaults, so it is a no-op here.
+function decl_globals_init() { /* decl.c: no separate globals store in js/ */ }
+function objects_globals_init() { /* objects.c: js/mkobj.js objects[] is live */ }
+function monst_globals_init() { /* monst.c: js/makemon.js MONS[] is live */ }
+function sys_early_init() { /* sys.c: see js/cfgfiles.js:149 */ }
+function runtime_info_init() { /* sys.c: version/runtime banner strings */ }
+
+// C ref: allmain.c:48 moveloop_preamble(resuming) — everything that happens
+// once between newgame()/restore and the first moveloop_core() iteration.
+export async function moveloop_preamble(resuming) {
+    const g = game;
+    const u = g.u;
+
+    /* if a save file created in normal mode is now being restored in
+       explore mode, treat it as normal restore followed by 'X' command
+       to use up the save file and require confirmation for explore mode */
+    if (resuming && g.iflags?.deferred_X) {
+        const { enter_explore_mode } = await import('./cmd.js');
+        await enter_explore_mode();
+    }
+
+    /* side-effects from the real world */
+    g.flags = g.flags || {};
+    g.flags.moonphase = phase_of_the_moon();
+    const { change_luck } = await import('./do_wear.js');
+    if (g.flags.moonphase === FULL_MOON) {
+        await pline('You are lucky!  Full moon tonight.');
+        change_luck(1);
+    } else if (g.flags.moonphase === NEW_MOON) {
+        await pline('Be careful!  New moon tonight.');
+    }
+    g.flags.friday13 = friday_13th();
+    if (g.flags.friday13) {
+        await pline('Watch out!  Bad things can happen on Friday the 13th.');
+        change_luck(-1);
+    }
+
+    if (!resuming) { /* new game */
+        g.program_state = g.program_state || {};
+        g.program_state.beyond_savefile_load = 1; /* for TTY_PERM_INVENT */
+        g.context = g.context || {};
+        g.context.rndencode = rnd(9000);
+        {   /* for side-effects of starting gear */
+            const { set_wear } = await import('./do_wear.js');
+            await set_wear(null);
+        }
+        {
+            const { reset_justpicked, pickup } = await import('./pickup.js');
+            const { inventoryArray } = await import('./invent.js');
+            reset_justpicked(inventoryArray());   /* C: gi.invent */
+            await pickup(1);                      /* autopickup at start spot */
+        }
+        /* only matters if someday a character is able to start with
+           clairvoyance; without this, the first "random" occurrence would
+           always kick in on turn 1 */
+        g.context.seer_turn = rnd(30);
+        /* give hero initial movement points; new game only--for restore,
+           pending movement points were included in the save file */
+        u.umovement = NORMAL_SPEED;
+        {
+            const { initrack } = await import('./track.js');
+            initrack();
+        }
+    }
+    g.disp = g.disp || {};
+    g.disp.botlx = true; /* for STATUS_HILITES */
+    if (resuming) { /* restoring old game */
+        {   /* subset of pickup() */
+            const { read_engr_at } = await import('./engrave.js');
+            await read_engr_at(u.ux, u.uy);
+        }
+        {
+            const { fix_shop_damage } = await import('./shk.js');
+            await fix_shop_damage();
+        }
+    }
+
+    {   /* in case they auto-picked up something */
+        const { encumber_msg } = await import('./invent.js');
+        await encumber_msg();
+    }
+    if (g.defer_see_monsters) {
+        g.defer_see_monsters = false;
+        const { see_monsters } = await import('./display.js');
+        await see_monsters();
+    }
+
+    u.uz0 = u.uz0 || {};
+    u.uz0.dlevel = u.uz?.dlevel;
+    g.context.move = 0;
+
+    /* finish processing "--debug:fuzzer" from the command line */
+    if (g.iflags?.fuzzerpending) {
+        g.iflags.debug_fuzzer = true;      /* C: fuzzer_impossible_panic */
+        g.iflags.fuzzerpending = false;
+    }
+
+    g.program_state.in_moveloop = 1;
+    /* for perm_invent preset at startup, display persistent inventory after
+       invent is fully populated and the in_moveloop flag has been set */
+    if (g.iflags?.perm_invent) {
+        const { update_inventory } = await import('./invent.js');
+        await update_inventory();
+    }
+}
+
+// C ref: allmain.c:699 init_sound_disp_gamewindows() — create the four
+// windows, then show them in the order the mac port liked.
+//
+// This build: VIA_WINDOWPORT() is true for tty (windowprocs.status_update is
+// not the genl_ stub), CHANGE_COLOR/MACOS9 are undefined, STATUS_HILITES IS
+// defined (so the standalone WIN_STATUS display is compiled out) and
+// TTY_PERM_INVENT is defined.
+export async function init_sound_disp_gamewindows() {
+    const W = await import('./wintty.js');
+    const { NHW_MESSAGE, NHW_STATUS, NHW_MAP, NHW_MENU, WIN_ERR,
+            MENU_BEHAVE_STANDARD, MENU_BEHAVE_PERMINV } = await import('./const.js');
+    const g = game;
+    let menu_behavior = MENU_BEHAVE_STANDARD;
+
+    {
+        const { activate_chosen_soundlib } = await import('./sounds.js');
+        activate_chosen_soundlib();
+    }
+
+    if (g.iflags?.wc_splash_screen && !g.flags?.randomall) {
+        SoundAchievement(0, sa2_splashscreen, 0);
+        /* ToDo: new splash screen invocation will go here */
+    } else {
+        SoundAchievement(0, sa2_newgame_nosplash, 0);
+    }
+
+    g.WIN_MESSAGE = W.tty_create_nhwindow(NHW_MESSAGE);
+    if (VIA_WINDOWPORT()) {
+        status_initialize(false);
+    } else {
+        g.WIN_STATUS = W.tty_create_nhwindow(NHW_STATUS);
+    }
+    g.WIN_MAP = W.tty_create_nhwindow(NHW_MAP);
+    g.WIN_INVEN = W.tty_create_nhwindow(NHW_MENU);
+    if (g.WIN_INVEN !== WIN_ERR)
+        adjust_menu_promptstyle(g.WIN_INVEN, g.iflags?.menu_headings);
+
+    /* TTY_PERM_INVENT: WINDOWPORT(tty) holds for this build */
+    if (g.WIN_INVEN !== WIN_ERR) {
+        menu_behavior = MENU_BEHAVE_PERMINV;
+        prepare_perminvent(g.WIN_INVEN);
+    }
+    /* in case of early quit where WIN_INVEN could be destroyed before ever
+       having been used, use it here to pacify the Qt interface */
+    W.tty_start_menu(g.WIN_INVEN, menu_behavior);
+    W.tty_end_menu(g.WIN_INVEN, null);
+
+    /*
+     * The mac port is not DEPENDENT on the order of these
+     * displays, but it looks a lot better this way...
+     */
+    /* STATUS_HILITES is defined: no display_nhwindow(WIN_STATUS, FALSE) */
+    W.tty_display_nhwindow(g.WIN_MESSAGE, false);
+    {
+        const { clear_glyph_buffer } = await import('./display.js');
+        clear_glyph_buffer();
+    }
+    W.tty_display_nhwindow(g.WIN_MAP, false);
+    if (g.iflags?.perm_invent_pending)
+        check_perm_invent_again();
+}
+
+// C ref: sounds.h SoundAchievement(dlvl, achidx, aflags) and the sa2_* enum —
+// this build has no soundlib bound, so both are no-ops (js/sounds.js:1570
+// activate_chosen_soundlib() selects the "no sound" lib).
+const sa2_splashscreen = 1, sa2_newgame_nosplash = 2;
+function SoundAchievement(_dlvl, _achidx, _aflags) { }
+// C ref: winprocs.h VIA_WINDOWPORT() — TRUE when the port supplies a real
+// status_update; js/wintty.js's tty_procs does, so this is TRUE for tty.
+function VIA_WINDOWPORT() { return true; }
+// status_initialize / adjust_menu_promptstyle / prepare_perminvent /
+// check_perm_invent_again are windowport hooks; js/wintty.js:121 keeps the same
+// stubs (frozen/terminal.js owns the real grid, and coverage.mjs marks
+// wintty.c/windows.c N/A).
+function status_initialize(_mode) { /* js/wintty.js:121 */ }
+function adjust_menu_promptstyle(_win, _menu_headings) { }
+function prepare_perminvent(_win) { }
+function check_perm_invent_again() { }
+
+// C ref: allmain.c:854 welcome(new_game) — the startup greeting.
+// `new_game === false` means "restoring an old game".
+export async function welcome(new_game) {
+    const g = game;
+    const u = g.u || {};
+    const currentgend = Upolyd(u) ? u.mfemale : g.flags?.female,
+          adrift = (u.ualign?.type !== u.ualignbase?.[A_CURRENT]);
+
+    {
+        /* nhlua.h NHCORE_START_NEW_GAME / NHCORE_RESTORE_OLD_GAME; the enum is
+           private to js/nhlua.js:108, so the two values are named here. */
+        const NHCORE_START_NEW_GAME = 0, NHCORE_RESTORE_OLD_GAME = 1;
+        const { l_nhcore_call } = await import('./nhlua.js');
+        l_nhcore_call(new_game ? NHCORE_START_NEW_GAME : NHCORE_RESTORE_OLD_GAME);
+    }
+
+    /* skip "welcome back" if restoring a doomed character */
+    if (!new_game && Upolyd(u) && ugenocided()) {
+        /* death via self-genocide is pending */
+        await pline(`You're back, but you still feel ${udeadinside()} inside.`);
+        return;
+    }
+
+    if (Hallucination())
+        await pline('NetHack is filmed in front of an undead studio audience.');
+
+    /*
+     * The "welcome back" message always describes your innate form
+     * even when polymorphed or wearing a helm of opposite alignment.
+     * Alignment is shown unconditionally for new games; for restores
+     * it's only shown if it has changed from its original value.
+     * Sex is shown for new games except when it is redundant; for
+     * restores it's only shown if different from its original value.
+     */
+    let buf = '';
+    if (new_game || u.ualignbase?.[A_ORIGINAL] !== u.ualignbase?.[A_CURRENT]
+        || adrift)
+        buf += ` ${adrift ? 'adrift ' : ''}${adrift
+            ? align_str_wel(u.ualign?.type)
+            : align_str_wel(u.ualignbase?.[A_CURRENT])}`;
+    const urole = roles[game.initrole], urace = races[game.initrace] || races[0];
+    if (!urole?.name?.f
+        && (new_game
+            ? (urole?.allow & (ROLE_MALE | ROLE_FEMALE)) === (ROLE_MALE | ROLE_FEMALE)
+            : !!currentgend !== !!(game.initgend === 1)))
+        buf += ` ${genders[currentgend ? 1 : 0].adj}`;
+    buf += ` ${urace.adj} ${(currentgend && urole?.name?.f) ? urole.name.f
+                                                           : urole?.name?.m}`;
+
+    await pline(new_game
+        ? `${Hello(gameRoleMnum())} ${welcomePlname()}, welcome to NetHack!`
+          + `  You are a${buf}.`
+        : `${Hello(gameRoleMnum())} ${welcomePlname()}, the${buf},`
+          + ' welcome back to NetHack!');
+
+    if (new_game) {
+        /* guarantee that 'major' event category is never empty */
+        livelog_printf(LL_ACHIEVE,
+                       `${welcomePlname()} the${buf} entered the dungeon`);
+    } else {
+        /* if restoring in Gehennom, give same hot/smoky message as when
+           first entering it */
+        await hellish_smoke_mesg();
+        /* remind player of the level annotation, like in goto_level() */
+        const { print_level_annotation } = await import('./dungeon.js');
+        await print_level_annotation();
+    }
+}
+
+// C ref: align.c align_str(alignment) — the adjective form.  js/pray.js:1054
+// and js/invent.js:9371 each hold an identical private copy; the fix is one
+// exported align.c port, not a fourth.
+function align_str_wel(alignment) {
+    const a = aligns.find((al) => al.value === alignment);
+    return a ? a.adj : 'unaligned';
+}
+// C ref: you.h ugenocided() / polyself.c udeadinside() — the self-genocide
+// death that is pending when a poly'd hero's own species was wiped out.  No
+// port: genocide of the hero's polyform is unreachable in this port's play.
+function ugenocided() { return false; }
+function udeadinside() { return 'dead'; }
+// C ref: dungeon.c hellish_smoke_mesg() — "It is hot here.  You smell smoke..."
+// on arrival in Gehennom.  js/mklev.js:394 tracks the level temperature this
+// keys off, but the message itself has no port yet.
+async function hellish_smoke_mesg() { /* dungeon.c; unported */ }
+
+// C ref: allmain.c:933 do_positionbar() — build the msdos POSITIONBAR string:
+// pairs of (marker, x) for every mapped staircase, then the hero.  Not compiled
+// for this build (POSITIONBAR is undefined), so moveloop_core() never calls it;
+// translated for completeness.  async only because js/glyphs.js is otherwise
+// outside this module's static import graph.
+export async function do_positionbar() {
+    const { glyph_to_cmap } = await import('./glyphs.js');
+    const pbar = [];
+
+    /* TODO: use the same method as getpos() so objects don't cover stairs */
+    /* FIXME: traversing 'stairs' list ignores mimics that pose as stairs */
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        const x = stway.sx, y = stway.sy;
+        const glyph = game.level?.at(x, y)?.glyph;
+        const symbol = glyph_to_cmap(glyph);
+
+        if (is_cmap_stairs(symbol)) {
+            pbar.push(stway.up ? '<' : '>');
+            pbar.push(String.fromCharCode(x));
+        }
+    }
+
+    /* hero location */
+    if (game.u?.ux) {
+        pbar.push('@');
+        pbar.push(String.fromCharCode(game.u.ux));
+    }
+    /* fence post: C's '\0' terminator is the JS string end */
+
+    update_positionbar(pbar.join(''));
+}
+
+// C ref: sym.h:107 is_cmap_stairs(i) — S_upstair..S_brdnladder (25..32).
+const S_upstair_pb = 25, S_brdnladder_pb = 32;
+function is_cmap_stairs(i) { return i >= S_upstair_pb && i <= S_brdnladder_pb; }
+// C ref: winprocs.h update_positionbar() — js/wintty.js:1328
+// tty_update_positionbar() is the (empty) tty implementation.
+function update_positionbar(pbar) { void pbar; /* js/wintty.js:1328 */ }
+
+// C ref: allmain.c:987 timet_to_seconds(ttim) — seconds represented by a
+// time_t, as a long.
+export function timet_to_seconds(ttim) {
+    /* for Unix-based and Posix-compliant systems, a cast to 'long' would
+       suffice but the C Standard doesn't require time_t to be that simple */
+    return timet_delta(ttim, 0);
+}
+
+// C ref: allmain.c:996 timet_delta(etim, stim) — difftime() in whole seconds.
+// The port's clock values (game.urealtime.start_timing / finish_time) are
+// seconds since the epoch, i.e. C's time_t, so difftime is a subtraction.
+export function timet_delta(etim, stim) {
+    /* difftime() is a STDC routine which returns the number of seconds
+       between two time_t values as a 'double' */
+    return Math.trunc((etim | 0) - (stim | 0));
 }

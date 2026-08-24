@@ -7,6 +7,7 @@
 // conservative no-op behavior so downstream porters have a stable 1:1 map.
 
 import { game } from './gstate.js';
+import { find_mac as worn_find_mac } from './worn.js';
 import { rn2, rnd, rnl, d } from './rng.js';
 import { nhgetch } from './input.js';
 import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot, m_at } from './display.js';
@@ -143,6 +144,9 @@ import {
 // fine (both sides only call each other's hoisted declarations at run time).
 import { body_part as poly_body_part } from './polyself.js';
 import * as DT from './dothrow.js';
+// monattk_data.js is a pure data/predicate leaf (no top-level side effects), so
+// this edge cannot reorder anything observable.
+import { attacktype_fordmg, AT_ENGL, AD_DGST } from './monattk_data.js';
 
 const LEASH = 236;
 const CANDELABRUM_OF_INVOCATION = 262;
@@ -1839,7 +1843,13 @@ function Japanese_item_name(otyp) {
 // C ref: objclass.h material constants — iron (rust-prone) vs others.
 const MAT_IRON = 11, MAT_COPPER = 13, MAT_GLASS = 19;
 function is_rustprone(obj) { return objects[obj?.otyp]?.material === MAT_IRON; }
-function is_corrodeable(obj) { const m = objects[obj?.otyp]?.material; return m === MAT_COPPER; }
+// objclass.h:205 is `oc_material == COPPER || oc_material == IRON`.  Testing
+// COPPER alone means add_erosion_words() below can never say "corroded" or
+// "corrodeproof" for an IRON item, which is the common case by a wide margin.
+function is_corrodeable(obj) {
+    const m = objects[obj?.otyp]?.material;
+    return m === MAT_COPPER || m === MAT_IRON;
+}
 // C ref: mkobj.c is_flammable(otmp) — (oc_material <= WOOD && != LIQUID) ||
 // PLASTIC.  The old literals (14/22/23) named NO real objclass.h material:
 // PAPER is 5, CLOTH 6, LEATHER 7, WOOD 8 — so this answered TRUE only for
@@ -3020,9 +3030,23 @@ export function freeinv(obj) {
     update_inventory();
 }
 
+// C keeps svl.level.objects as a per-cell [x][y] head-of-chain grid; this port
+// keeps ONE flat push-ordered array (js/mkobj.js place_object), where the LAST
+// matching entry is the top of the pile.  So C's nexthere order == the matching
+// entries in reverse index order.  Both functions below indexed the flat array
+// as if it were the grid, which yields undefined for every square: sobj_at()
+// answered null everywhere and delallobj() deleted nothing.  That is why
+// js/do.js:628, js/dbridge.js:877, js/muse.js, js/trap.js:3253, js/hack.js:583
+// and js/monmove.js:1706 all carry private copies.
+function floor_pile_at(x, y) {
+    const out = [];
+    for (const o of (game.level?.objects || []))
+        if (o.where === OBJ_FLOOR && o.ox === x && o.oy === y) out.unshift(o);
+    return out;   /* top of pile first == C's nexthere order */
+}
+
 export function delallobj(x, y) {
-    const list = game.level?.objects?.[x]?.[y] || [];
-    for (const obj of [...iterateObjects(list, true)]) delobj(obj);
+    for (const obj of floor_pile_at(x, y)) delobj(obj);
 }
 
 export function delobj(obj) { delobj_core(obj, false); }
@@ -3035,8 +3059,11 @@ export function delobj_core(obj, force = false) {
     obfree(obj, null);
 }
 
+// C ref: invent.c sobj_at(otyp, x, y) — first match walking nexthere from the
+// top of the pile.  See floor_pile_at() above for why the old [x][y] indexing
+// always returned null.
 export function sobj_at(otyp, x, y) {
-    for (const obj of iterateObjects(game.level?.objects?.[x]?.[y], true))
+    for (const obj of floor_pile_at(x, y))
         if (obj.otyp === otyp) return obj;
     return null;
 }
@@ -5418,12 +5445,8 @@ function throwing_weapon(obj) {
         || obj.otyp === WAR_HAMMER || obj.otyp === AKLYS;
 }
 
-// C ref: worn.c find_mac(mtmp) — mons[].ac; this port's monsters wear no body
-// armour (see the same routine in js/uhitm.js).
-function find_mac_thrown(mtmp) {
-    const base = mtmp?.data?.ac;
-    return (base != null) ? base : 10;
-}
+// C ref: worn.c find_mac(mtmp).
+function find_mac_thrown(mtmp) { return worn_find_mac(mtmp); }
 
 // C ref: weapon.c hitval(otmp, mon) — spe + oc_hitbon, plus the blessed bonus
 // against undead/demons.  (kebabable/trident/pick-axe are the other three arms;
@@ -7931,10 +7954,14 @@ async function pickup_checks() {
 
     if (u.uswallow) {
         if (!(u.ustuck?.minvent || []).length) {
-            // digests(u.ustuck->data): an engulfer with a stomach.  S_EEL and
-            // the vortices swallow without digesting; everything else digests.
+            // C ref: mondata.h:71 digests(ptr) is
+            // `dmgtype_fromattack(ptr, AD_DGST, AT_ENGL) != 0` — read off the
+            // attack table, NOT a monster-class test.  The old spelling here
+            // compared `.mlet` (a display CHARACTER in this port) against two
+            // numeric S_* constants, so both tests were vacuously true and
+            // every engulfer took the digests() branch.
             const dat = u.ustuck?.data;
-            if (dat && dat.mlet !== S_VORTEX_MLET && dat.mlet !== S_EEL_MLET) {
+            if (dat && attacktype_fordmg(dat, AT_ENGL, AD_DGST)) {
                 game._pending_message = `You pick up the ${dat.name || 'monster'}'s tongue.`;
                 await pline("But it's kind of slimy, so you drop it.");
             } else {
@@ -7995,7 +8022,6 @@ async function pickup_checks() {
     }
     return -1;
 }
-const S_VORTEX_MLET = 44, S_EEL_MLET = 15; /* monsym.h S_VORTEX / S_EEL */
 function IS_POOL_TYP(typ) { return typ === POOL || typ === MOAT || typ === WATER; }
 function t_at_local(x, y) {
     for (const t of (game.level?.traps || [])) if (t.tx === x && t.ty === y) return t;

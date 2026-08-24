@@ -11,10 +11,12 @@
 // Still unported, in rough order of RNG weight (see the comment at each site):
 //   peacefuls_respond()   setmangry's witness reactions (needs MS_* + grownups[])
 //   leprechaun dodge      needs m_move(), file-static in monmove.js
-//   hmon_hitmon_jousting  needs a lance + steed; d(2,10) + joust()'s rn2(5)/rnl(50)
-//   hmon_hitmon_splitmon  pudding split; needs clone_mon()
 //   dmgval silver bonus   rnd(20); needs objects[].oc_material
-//   Upolyd / hmonas()     no polymorph in this port at all
+// NOTE: hmon_hitmon_jousting/hmon_hitmon_splitmon/hmonas and the other 36
+// uhitm.c functions this live path skips are now TRANSLATED but NOT WIRED —
+// see the "uhitm.c staging area" block at the bottom of this file.  The
+// hmon_hitmon() below is still an inlined simplification of C's hmd pipeline;
+// adopting the staged pieces is a separate, measured change.
 
 import { game } from './gstate.js';
 import { shkname, in_rooms, shop_keeper } from './shkroom.js';
@@ -38,7 +40,7 @@ import { cansee, couldsee } from './vision.js';
 import { m_at, newsym, map_invisible, unmap_object, canseemon_shared } from './display.js';
 import { isok, IS_OBSTRUCTED, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, ACCESSIBLE,
          TAINT_AGE, CORPSTAT_INIT, CORPSTAT_NONE, W_SADDLE, SUPPRESS_SADDLE,
-         SHOPBASE, engulfing_u, STRAT_WAITMASK,
+         SHOPBASE, engulfing_u, STRAT_WAITMASK, I_SPECIAL,
          P_NONE, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
          P_LAST_WEAPON, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT,
          P_RIDING, ERODE_BURN, ERODE_RUST, ERODE_CORRODE, ER_NOTHING,
@@ -69,6 +71,7 @@ import { is_weptool, objectBaseName, simple_typename, is_plural, otense,
          near_capacity, update_inventory } from './invent.js';
 import { livelog_printf, LL_CONDUCT } from './livelog.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
+import { find_mac as worn_find_mac } from './worn.js';
 
 // ── small monster-state predicates (C: include/monst.h, mondata.h) ──
 
@@ -916,18 +919,9 @@ async function weapon_hit_bonus(weapon) {
 // the kebabable/trident/pick arms and the FULL oc_hitbon table (uhitm's local
 // WEAP subset silently read 0 for every weapon outside its 21 entries).
 
-// C ref: worn.c find_mac(mtmp) — mons[].ac reduced by every worn armour piece's
-// ARM_BONUS, then clamped to +-AC_MAX.  The minvent loop is a genuine no-op in
-// this port: makemon's m_initinv gives no monster body armour, and mkobj.js's
-// objects[] carries no a_ac to compute ARM_BONUS from.  The clamp is ported so
-// a data-model change there can't silently exceed C's range.
-const AC_MAX = 127;
-function find_mac(mtmp) {
-    let base = mtmp?.data?.ac;
-    base = (base != null) ? base : 10;
-    if (Math.abs(base) > AC_MAX) base = Math.sign(base) * AC_MAX;
-    return base;
-}
+// C ref: worn.c find_mac(mtmp).  Keep the C call site's local name while
+// sharing the one authoritative worn-mask calculation.
+function find_mac(mtmp) { return worn_find_mac(mtmp); }
 
 // C ref: uhitm.c find_roll_to_hit(mtmp, aatyp, weapon, ...) — the "to hit"
 // number; the swing connects when this exceeds the d20 dieroll.  Models the
@@ -1883,6 +1877,15 @@ export function relobj(mon, x, y) {
     // mdrop_obj() pushes onto the head of the floor pile, so the resulting
     // nexthere order is REVERSED relative to minvent.
     for (const otmp of [...inv].reverse()) {
+        // C ref: worn.c extract_from_minvent().  An object stops being worn
+        // before it reaches the floor; otherwise a pet which later picks it
+        // up incorrectly treats it as undroppable armour.
+        const unwornmask = otmp.owornmask | 0;
+        otmp.owornmask = 0;
+        if (unwornmask) {
+            mon.misc_worn_check = ((mon.misc_worn_check | 0) & ~unwornmask) | I_SPECIAL;
+            if (otmp === mon.mw) mon.mw = null;
+        }
         // mdrop_obj -> place_object + stackobj.  Merge into an existing floor
         // stack of the same otyp/spe so quantities combine like C stackobj().
         let merged = false;
@@ -2254,3 +2257,2469 @@ function an(s) {
 // stays below uhitm.js in the module graph.
 register_monnam_hooks({ x_monnam, mon_pmname });
 register_halluc_naming({ rndmonnam, bogon_is_pname });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// uhitm.c staging area — the remainder of the file.
+//
+// Everything past this line is a faithful port of the uhitm.c functions the
+// live melee path above (do_attack -> hitum -> known_hitum -> hmon ->
+// hmon_hitmon) does not call yet.  It is deliberately unreachable: the
+// hmon_hitmon() above is an inlined simplification of C's `struct
+// _hitmon_data` pipeline, and replacing it with these pieces is a separate,
+// measured change.  Translating them now pins each piece's RNG order to the C
+// source so that swap becomes a wiring job.
+//
+// Conventions in this block:
+//   * cross-module calls use dynamic import(), like the live code above, so
+//     nothing here can introduce a module-load cycle;
+//   * where the C callee has no port at all, the call site names it and names
+//     the RNG it would consume — those comments are the wiring blockers.
+// ═══════════════════════════════════════════════════════════════════════════
+
+import { ARTICLE_A, ARTICLE_YOUR, SUPPRESS_INVISIBLE, SUPPRESS_NAME,
+         HMON_MELEE, HMON_THROWN, HMON_KICKED,
+         M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
+         M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
+         MIM_REVEAL, MIM_OMIT_WAIT, W_ARM, W_ARMC, W_ARMU, W_ARMH, W_ARMG,
+         W_ARMF, W_RINGL, W_RINGR, W_WEP, STRAT_WAITFORU,
+         POTHIT_HERO_BASH, POTHIT_HERO_THROW, MON_EXPLODE, EXPL_FIERY,
+         NO_TRAP_FLAGS, M_AP_TYPE, ismnum, FACE, HAND, STOMACH,
+         xdir, ydir } from './const.js';
+import { M1_AMORPHOUS, M1_UNSOLID, M1_NOEYES, M1_NOHEAD, M1_NOHANDS, M1_FLY,
+         M1_BREATHLESS, M1_AMPHIBIOUS, M1_THICK_HIDE, M1_ANIMAL,
+         mindless } from './monflags_data.js';
+import { attacktype_fordmg, AD_DRIN, AD_WRAP, AD_DGST, AD_HALU, AD_DREN,
+         AD_SPEL, AT_SPIT, AT_TENT, AT_EXPL, AT_BREA, AT_GAZE,
+         AT_BOOM } from './monattk_data.js';
+import { EGG, BOULDER, HEAVY_IRON_BALL, IRON_CHAIN, EXPENSIVE_CAMERA,
+         LOADSTONE, ROCK, WAN_LIGHT, POTION_CLASS, BLINDING_VENOM, ACID_VENOM,
+         weight } from './mkobj.js';
+import { rnl, rn1 } from './rng.js';
+import { monster_by_pmidx } from './makemon.js';
+import { Mgender } from './do_name.js';
+
+// C ref: include/objects.h oc_material enum (MAT_VEGGY/MAT_PAPER are declared
+// with hmon_misc_obj_dmg above).
+const NO_MATERIAL = 0, MAT_LEATHER = 7, MAT_IRON = 11, MAT_METAL = 12,
+      MAT_SILVER = 14;
+
+// C ref: include/objects.h otyp ordinals, verified against js/mkobj.js
+// OBJECT_DATA by name; the ones mkobj.js exports are imported above.
+const MIRROR = 230, CLOVE_OF_GARLIC = 284, CREAM_PIE = 287, RUBBER_HOSE = 78,
+      OILSKIN_CLOAK = 142, KATANA = 56, YA = 22, YUMI = 86, ELVEN_ARROW = 19,
+      ELVEN_BOW = 84, BOOMERANG = 26;
+
+// C ref: include/defsym.h MONSYM ordinals (C's mons[].mlet == our data.mcls).
+const S_BLOB = 2, S_EYE = 5, S_KOBOLD = 11, S_ORC_CLS = 15, S_LIGHT = 25,
+      S_FUNGUS = 32, S_GNOME = 33, S_LICH = 38, S_MUMMY = 39, S_GHOST = 54,
+      S_ZOMBIE = 52;
+
+// C ref: include/artilist.h ordinals (same table js/artifact.js uses).
+const ART_CLEAVER = 4, ART_GIANTSLAYER = 15, ART_SNICKERSNEE = 19;
+
+// C ref: src/role.c roles[] order (PM_MONK/PM_SAMURAI/... are declared above).
+const PM_ROGUE = 8;
+
+// C ref: include/monflag.h MZ_SMALL / MR_POISON.
+const MZ_SMALL = 1, MR_POISON = 0x20;
+
+// C ref: include/hack.h DIR_* and src/cmd.c:3847 xytodir().  js/dothrow.js and
+// js/cmd.js each keep a file-static copy; a third is cheaper than an import
+// cycle, since both of those modules import from this one.
+const N_DIRS = 8, DIR_ERR = -1;
+const DIR_LEFT = (dir) => (dir + 7) % N_DIRS;
+const DIR_RIGHT = (dir) => (dir + 1) % N_DIRS;
+const DIR_LEFT2 = (dir) => (dir + 6) % N_DIRS;
+const DIR_RIGHT2 = (dir) => (dir + 2) % N_DIRS;
+function xytodir_uh(x, y) {
+    for (let dd = 0; dd < N_DIRS; dd++)
+        if (x === xdir[dd] && y === ydir[dd]) return dd;
+    return DIR_ERR;
+}
+
+// ── mondata.h / monst.h / obj.h predicates used only by this block ─────────
+// mflags1_of/mflags2_of, helpless(), is_orc(), is_undead(), largemonst() and
+// nonliving() are declared earlier in this file and reused here.
+
+function amorphous(ptr) { return (mflags1_of(ptr) & M1_AMORPHOUS) !== 0; }
+function unsolid(ptr) { return (mflags1_of(ptr) & M1_UNSOLID) !== 0; }
+function haseyes(ptr) { return (mflags1_of(ptr) & M1_NOEYES) === 0; }
+function has_head(ptr) { return (mflags1_of(ptr) & M1_NOHEAD) === 0; }
+function nohands_uh(ptr) { return (mflags1_of(ptr) & M1_NOHANDS) !== 0; }
+function thick_skinned(ptr) { return (mflags1_of(ptr) & M1_THICK_HIDE) !== 0; }
+function breathless(ptr) { return (mflags1_of(ptr) & M1_BREATHLESS) !== 0; }
+function amphibious(ptr) { return (mflags1_of(ptr) & M1_AMPHIBIOUS) !== 0; }
+function is_animal_uh(ptr) { return (mflags1_of(ptr) & M1_ANIMAL) !== 0; }
+function is_flyer(ptr) { return (mflags1_of(ptr) & M1_FLY) !== 0; }
+// C ref: mondata.h is_demon(ptr) — M2_DEMON.  (This file's is_orc()/is_undead()
+// are the same shape; _uh distinguishes it from js/mon.js's exported copy.)
+function is_demon_uh(ptr) { return (mflags2_of(ptr) & M2_DEMON) !== 0; }
+// C ref: mondata.h verysmall(ptr) / cantwield(ptr).
+function verysmall(ptr) { return (ptr?.msize ?? 2) < MZ_SMALL; }
+function cantwield(ptr) { return nohands_uh(ptr) || verysmall(ptr); }
+// C ref: mondata.h bigmonst(ptr) — msize >= MZ_LARGE; same predicate as this
+// file's largemonst(), kept under the C name for the ports below.
+function bigmonst(ptr) { return largemonst(ptr); }
+// C ref: mondata.h is_whirly(ptr) — S_VORTEX class or the air elemental.
+function is_whirly(ptr) {
+    return ptr?.mcls === S_VORTEX_U || ptr?.name === 'air elemental';
+}
+// C ref: mondata.h noncorporeal(ptr) — mlet == S_GHOST (this is NOT unsolid();
+// shades are S_GHOST too, which is what the silver/light messages below key on).
+function noncorporeal(ptr) { return ptr?.mcls === S_GHOST; }
+// C ref: mondata.h is_floater(ptr) — mlet == S_EYE || mlet == S_LIGHT.
+function is_floater(ptr) {
+    return ptr?.mcls === S_EYE || ptr?.mcls === S_LIGHT;
+}
+// C ref: mondata.h is_rider(ptr) — Death, Famine, Pestilence.
+const RIDER_NAMES = new Set(['Death', 'Famine', 'Pestilence']);
+function is_rider(ptr) { return RIDER_NAMES.has(ptr?.name); }
+// C ref: mondata.h digests(ptr)/enfolds(ptr) — dmgtype_fromattack(ptr, AD_x,
+// AT_ENGL); js/monattk_data.js spells that attacktype_fordmg(ptr, atyp, adtyp).
+function digests(ptr) { return attacktype_fordmg(ptr, AT_ENGL, AD_DGST); }
+function enfolds(ptr) { return attacktype_fordmg(ptr, AT_ENGL, AD_WRAP); }
+// C ref: mondata.h flaming(ptr).
+const FLAMING_NAMES = new Set(['fire vortex', 'flaming sphere',
+                               'fire elemental', 'salamander']);
+function flaming(ptr) { return FLAMING_NAMES.has(ptr?.name); }
+// C ref: monst.h is_vampshifter(mon) — cham is one of the three vampire forms.
+const VAMPSHIFTER_CHAM_NAMES = new Set(['vampire', 'vampire leader',
+                                        'Vlad the Impaler']);
+function is_vampshifter(mon) {
+    const ch = mon?.cham;
+    if (ch == null || ch < 0) return false;
+    return VAMPSHIFTER_CHAM_NAMES.has(monster_by_pmidx(ch)?.name);
+}
+// C ref: mondata.c:654 sticks(ptr) — a holder; grabbing one would be ambiguous.
+// Note the AT_ENGL exclusion on the AD_WRAP arm (an engulfer isn't a holder).
+function sticks(ptr) {
+    return dmgtype(ptr, AD_STCK)
+        || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
+        || attacktype(ptr, AT_HUGS);
+}
+// C ref: mondata.h hug_throttles(ptr) — the rope golem's strangling hug.
+function hug_throttles(ptr) { return ptr?.name === 'rope golem'; }
+// C ref: mondata.c:591 can_be_strangled(mon) — strangulation is loss of blood
+// flow to the brain, so headless creatures are immune (no neck) and so are
+// mindless ones that don't breathe.  The AMULET_OF_MAGICAL_BREATHING arm is
+// dropped: monsters never wear one (C says so at that line).
+function can_be_strangled(mon) {
+    const ptr = mon?.data;
+    if (!has_head(ptr)) return false;
+    const nobrainer = mindless(ptr);
+    const nonbreathing = breathless(ptr);
+    return !nobrainer || !nonbreathing;
+}
+// C ref: monst.h resists_poison(mon) — Resists_Elem(mon, POISON_RES); this
+// port tracks the species bit only (see js/mondata.js resists_bit).
+function resists_poison(mon) {
+    return ((mon?.data?.mresists ?? 0) & MR_POISON) !== 0;
+}
+// C ref: mondata.c:248 resists_blnd(mon) — monster half only (the hero can't be
+// the defender of a hero attack).  resists_blnd_by_arti() needs artifact
+// defends(); js/artifact.js has no such export, so the Sunsword arm is absent.
+function resists_blnd(mon) {
+    const ptr = mon?.data;
+    if (mon?.mblinded || !mon?.mcansee || !haseyes(ptr) || mon?.msleeping)
+        return true;
+    return attacktype_fordmg(ptr, AT_EXPL, AD_BLND)
+        || attacktype_fordmg(ptr, AT_GAZE, AD_BLND);
+}
+// C ref: mondata.h touch_petrifies(ptr) — cockatrice and chickatrice only
+// (Medusa petrifies when eaten, via flesh_petrifies(), not when touched).
+function touch_petrifies(ptr) {
+    return ptr?.name === 'cockatrice' || ptr?.name === 'chickatrice';
+}
+// C ref: mondata.h passes_rocks(ptr) — passes_walls && !unsolid; xorn and
+// earth elemental, but not ghosts/shades.  passes_walls() is declared above.
+function passes_rocks(ptr) { return passes_walls(ptr) && !unsolid(ptr); }
+// C ref: mondata.h hates_light(ptr) — the gremlin.
+function mon_hates_light(mon) { return mon?.data?.name === 'gremlin'; }
+// C ref: obj.h:418 is_flimsy(otmp) — oc_material <= LEATHER, or a rubber hose.
+function is_flimsy(otmp) {
+    return (objects[otmp?.otyp]?.material ?? NO_MATERIAL) <= MAT_LEATHER
+        || otmp?.otyp === RUBBER_HOSE;
+}
+// C ref: obj.h:316 stale_egg(egg) — (moves - age) > 2 * MAX_EGG_HATCH_TIME.
+// Same constant as js/dogmove.js's copy.
+function stale_egg(egg) { return ((game.moves || 1) - (egg?.age ?? 0)) > 400; }
+
+// ── do_name.c / hacklib.c string helpers ───────────────────────────────────
+// (an(), s_suffix(), mon_nam(), Monnam(), x_monnam() are declared above.)
+
+// C ref: hacklib.c highc()/upstart() — capitalise the leading character.
+function highc_uh(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+function upstart(s) { return highc_uh(s); }
+// C ref: hacklib.c exclam(force) — the punctuation that grades a hit.
+function exclam(force) { return force < 0 ? '?' : (force <= 4 ? '.' : '!'); }
+// C ref: hacklib.c plur(n).
+function plur(n) { return (Number(n) === 1) ? '' : 's'; }
+// C ref: hacklib.c vtense(subj, verb) — third-person agreement.  Reduced to the
+// fixed verbs this block passes ("pass", "sear", "are", "splash", "shatter");
+// C's full copy also handles "have"/"be" and the -y/-o/-ch suffix rules.
+function vtense_uh(subj, verb) {
+    const plural_subj = !!subj && /s$/.test(subj) && !/ss$/.test(subj);
+    if (plural_subj) return verb;
+    switch (verb) {
+    case 'are': return 'is';
+    case 'pass': return 'passes';
+    case 'splash': return 'splashes';
+    default: return `${verb}s`;
+    }
+}
+// C ref: hacklib.c the()/The().
+function the_uh(s) { return `the ${s}`; }
+function The_uh(s) { return `The ${s}`; }
+// C ref: do_name.c mhe(mtmp)/mhis(mtmp) — pronouns from Mgender().
+const MALE_G = 0, FEMALE_G = 1;
+function mhe(mtmp) { return Mgender(mtmp) === FEMALE_G ? 'she' : 'he'; }
+function mhis(mtmp) { return Mgender(mtmp) === FEMALE_G ? 'her' : 'his'; }
+// C ref: do_name.c a_monnam(mtmp) — "a <mon>".
+function a_monnam_uh(mtmp) { return x_monnam(mtmp, ARTICLE_A, null, 0, false); }
+
+// ── hero-state accessors (the ones this block needs) ───────────────────────
+function u_of() { return game.u || {}; }
+// C ref: youprop.h Fumbling/Stunned/Blind_telepat/See_invisible/Invisible.
+function Fumbling() { return (u_of().uprops?.Fumbling || 0) > 0; }
+function Stunned_uh() {
+    return (u_of().uprops?.Stun || 0) > 0 || !!u_of().Stunned
+        || (u_of().ustun | 0) > 0;
+}
+function Blind_telepat() { return (u_of().uprops?.Telepat || 0) > 0; }
+function See_invisible() { return !!u_of().see_invis; }
+function Invisible_uh() { return !!u_of().uinvis && !See_invisible(); }
+function Stone_resistance() { return (u_of().uprops?.StoneResistance || 0) > 0; }
+function Slow_digestion() { return (u_of().uprops?.SlowDigestion || 0) > 0; }
+function Deaf_uh() { return (u_of().uprops?.Deaf || 0) > 0; }
+function Upolyd() { return !!u_of().Upolyd; }
+// C ref: hack.h Hate_silver — a poly'd hero who hates silver.
+function Hate_silver() { return false; }
+// C ref: display.h m_next2u(mon) — adjacent to the hero.
+function m_next2u(mon) {
+    const u = u_of();
+    return !!mon && Math.abs((mon.mx | 0) - (u.ux | 0)) <= 1
+        && Math.abs((mon.my | 0) - (u.uy | 0)) <= 1;
+}
+// C ref: hack.h mdistu(mon) — dist2(mon->mx, mon->my, u.ux, u.uy).
+function mdistu(mon) {
+    const u = u_of();
+    const dx = (mon.mx | 0) - (u.ux | 0), dy = (mon.my | 0) - (u.uy | 0);
+    return dx * dx + dy * dy;
+}
+
+// C ref: uhitm.c:104 dynamic_multi_reason(mon, verb, by_gaze) — multi_reason is
+// usually a literal; here it names the monster that caused the paralysis, with
+// mon->m_id prefixed for done_in_by().  No RNG.
+export function dynamic_multi_reason(mon, verb, by_gaze) {
+    const who = x_monnam(mon, ARTICLE_A, null,
+                         (SUPPRESS_IT | SUPPRESS_INVISIBLE
+                          | SUPPRESS_HALLUCINATION | SUPPRESS_SADDLE
+                          | SUPPRESS_NAME), false);
+    /* C writes "<m_id>:" then the reason into one buffer and points
+       gm.multi_reason PAST the prefix, so done_in_by() can recover the id. */
+    const tail = `${verb} by ${!by_gaze ? who : s_suffix(who)}`
+        + `${!by_gaze ? '' : ' gaze'}`;
+    game.multireasonbuf = `${mon.m_id}:${tail}`;
+    game.multi_reason = tail;
+    return game.multi_reason;
+}
+
+// C ref: uhitm.c:651 hitum_cleave(target, uattk) — Cleaver hits the primary
+// target plus the monsters to either side of it; returns False if the primary
+// target died.  Swing direction alternates between calls (C's file-static
+// `clockwise`).
+//
+// Per iteration the RNG order is: find_roll_to_hit (hitval/weapon_hit_bonus,
+// RNG-free) -> rnd(20) -> known_hitum -> passive.  A square with no monster
+// consumes nothing.
+let _cleave_clockwise = false;
+export async function hitum_cleave(target, uattk) {
+    const u = game.u;
+    const x = u.ux, y = u.uy;
+    let i = xytodir_uh(u.dx, u.dy);
+    if (i === DIR_ERR)
+        return true; /* C: impossible(); target hasn't been killed */
+    /* step back two so the loop's first increment lands beside the primary */
+    i = _cleave_clockwise ? DIR_LEFT2(i) : DIR_RIGHT2(i);
+    const umort = u.umortality | 0;
+    const save_bhitpos = game.bhitpos;
+    const save_notonhead = game.notonhead;
+
+    for (let count = 3; count > 0; --count) {
+        i = _cleave_clockwise ? DIR_RIGHT(i) : DIR_LEFT(i);
+        const tx = x + xdir[i], ty = y + ydir[i];
+        if (!isok(tx, ty)) continue;
+        const mtmp = m_at(tx, ty);
+        if (!mtmp) {
+            /* display.c unmap_invisible(x, y): js/display.js spells it
+                   unmap_object() */
+                if (glyph_is_invisible(tx, ty)) unmap_object(tx, ty);
+            continue;
+        }
+        // find_roll_to_hit's local signature is (mtmp, weapon, first_swing);
+        // C passes uattk->aatyp and returns attknum/armorpenalty by reference.
+        // C's `attknum = 0` is declared INSIDE this loop body, so
+        // find_roll_to_hit's `if (!(*attk_count)++)` fires check_caitiff on
+        // every one of the three swings -- hence first_swing = true here.
+        const tmp = await find_roll_to_hit(mtmp, game.uwep, true);
+        mon_maybe_unparalyze(mtmp);
+        const dieroll = rnd(20);
+        const mhit = (tmp > dieroll);
+        game.bhitpos = { x: tx, y: ty };   /* normally set by do_attack() */
+        game.notonhead = (mtmp.mx !== tx || mtmp.my !== ty);
+        await known_hitum(mtmp, game.uwep, mhit, dieroll);
+        await passive(mtmp, game.uwep, mhit, !DEADMONSTER(mtmp), AT_WEAP);
+
+        /* stop if the weapon is gone or a passive counter-attack paralysed or
+           killed (then life-saved) the hero */
+        if (!game.uwep || (game.multi ?? 0) < 0 || (u.umortality | 0) > umort)
+            break;
+    }
+    _cleave_clockwise = !_cleave_clockwise;
+    game.bhitpos = save_bhitpos;
+    game.notonhead = save_notonhead;
+    return (target && DEADMONSTER(target)) ? false : true;
+}
+
+// C ref: uhitm.c:838 hmon_hitmon_barehands(hmd, mon) — bare-handed damage.
+// RNG: rnd(2)/rnd(4), then special_dmgval()'s blessed rnd(4) / silver rnd(20).
+export async function hmon_hitmon_barehands(hmd, mon) {
+    if (hmd.mdat?.name === 'shade') {
+        hmd.dmg = 0;
+    } else {
+        /* 1..2 or 1..4, then substantially raised by strength+skill bonuses */
+        hmd.dmg = rnd(!martial_bonus() ? 2 : 4);
+        hmd.use_weapon_skill = true;
+        hmd.train_weapon_skill = (hmd.dmg > 1);
+    }
+
+    /* Blessed gloves and silver rings both count as "bare-handed" bonuses;
+       rings sit under gloves so only one applies.  With a single hit both
+       rings are checked; with two hits only the ring on the acting hand. */
+    const spcdmgflg = game.uarmg ? W_ARMG
+        : ((((hmd.twohits === 0 || hmd.twohits === 1) ? W_RINGR : 0)
+            | ((hmd.twohits === 0 || hmd.twohits === 2) ? W_RINGL : 0)));
+    const { special_dmgval } = await import('./weapon.js');
+    const sd = special_dmgval(game.youmonst || game.u, mon, spcdmgflg);
+    hmd.dmg += sd.bonus;
+    const silverhit = sd.silverhit;
+
+    switch (hmd.twohits) {
+    case 0: /* one hit: either ring applies, wearing both is the same as one */
+        hmd.barehand_silver_rings = (silverhit & (W_RINGR | W_RINGL)) ? 1 : 0;
+        break;
+    case 1: /* first of two or more: right ring */
+        hmd.barehand_silver_rings = (silverhit & W_RINGR) ? 1 : 0;
+        break;
+    case 2: /* second of two or more: left ring */
+        hmd.barehand_silver_rings = (silverhit & W_RINGL) ? 1 : 0;
+        break;
+    default: /* third or later (poly'd hero); rings already applied */
+        hmd.barehand_silver_rings = 0;
+        break;
+    }
+    if (hmd.barehand_silver_rings > 0) hmd.silvermsg = true;
+}
+
+// C ref: uhitm.c:885 hmon_hitmon_weapon_ranged(hmd, mon, obj) — a launcher, or
+// ammo/missile used out of role: only 1-2 points and no weapon skill.
+// RNG: rnd(2), then the silver rnd(20)/rnd(10), then the boomerang rnl(4).
+export async function hmon_hitmon_weapon_ranged(hmd, mon, obj) {
+    const { shade_glare } = await import('./artifact.js');
+    const { mon_hates_silver } = await import('./mon.js');
+    if (hmd.mdat?.name === 'shade' && !shade_glare(obj))
+        hmd.dmg = 0;
+    else
+        hmd.dmg = rnd(2);
+    if (hmd.material === MAT_SILVER && mon_hates_silver(mon)) {
+        hmd.silvermsg = hmd.silverobj = true;
+        /* if it will already inflict damage, make it worse */
+        hmd.dmg += rnd(hmd.dmg ? 20 : 10);
+    }
+    if (!hmd.thrown && obj === game.uwep && obj.otyp === BOOMERANG
+        && rnl(4) === 4 - 1) {
+        const more_than_1 = ((obj.quan ?? 1) > 1);
+        const I = await import('./invent.js');
+        const { update_topl } = await import('./display.js');
+        await update_topl(`As you hit ${mon_nam(mon)}, `
+            + `${more_than_1 ? 'one of ' : ''}${I.yname(obj)}`
+            + ` breaks into splinters.`);
+        /* wield.c uwepgone() sets gu.unweapon; no port, so set it directly */
+        if (!more_than_1) game.unweapon = true;
+        I.useup(obj);
+        hmd.hittxt = true;
+        if (hmd.mdat?.name !== 'shade') hmd.dmg++;
+    }
+}
+
+// C ref: uhitm.c:921 backstabbable(mon) — can the target be stabbed in the
+// back?  No RNG.
+export function backstabbable(mon) {
+    const d = mon?.data;
+    return !amorphous(d)
+        && !is_whirly(d)
+        && !noncorporeal(d)
+        && d?.mcls !== S_BLOB
+        && d?.mcls !== S_EYE
+        && d?.mcls !== S_FUNGUS
+        && canseemon(mon)
+        && !!(mon.mflee || helpless(mon));
+}
+
+// C ref: uhitm.c:934 hmon_hitmon_weapon_melee(hmd, mon, obj) — the ordinary
+// wielded-weapon path.  RNG order: dmgval() (silver rnd(20) inside), the Rogue
+// backstab rnd(u.ulevel), the weapon-shatter obj_resists() + rn2(4) + monflee's
+// d(2,3), artifact_hit(), then joust()'s rn2(5)/rnl(50).
+export async function hmon_hitmon_weapon_melee(hmd, mon, obj) {
+    const I = await import('./invent.js');
+    const WPN = await import('./weapon.js');
+    const A = await import('./artifact.js');
+    const { update_topl } = await import('./display.js');
+    const u = game.u;
+
+    /* "normal" weapon usage */
+    hmd.use_weapon_skill = true;
+    hmd.dmg = dmgval(obj, mon);
+    /* a minimal hit doesn't exercise proficiency */
+    hmd.train_weapon_skill = (hmd.dmg > 1);
+
+    /* Healer with anatomy knowledge */
+    if (roleMnum() === PM_HEALER && hmd.hand_to_hand
+        && obj.oclass === WEAPON_CLASS
+        && (objects[obj.otyp]?.oc_skill ?? 0) === P_KNIFE)
+        hmd.dmg += Math.min(3,
+            Math.trunc((game.mvitals?.[mon.data?.pmidx]?.died ?? 0) / 6));
+
+    const { uwep_skill_type, p_skill_of } = await import('./enhance.js');
+    let monwep;
+    if (!hmd.train_weapon_skill || mon === u.ustuck || u.twoweap
+        /* Cleaver hits up to three targets, so it doesn't also backstab or
+           shatter foes' weapons */
+        || (hmd.hand_to_hand && A.is_art(obj, ART_CLEAVER))) {
+        /* no special bonuses */
+    } else if (roleMnum() === PM_ROGUE && backstabbable(mon) && !Upolyd()
+               /* multi-shot throwing would be too powerful here */
+               && hmd.hand_to_hand) {
+        await update_topl(`You strike ${mon_nam(mon)} from behind!`);
+        hmd.dmg += rnd(u.ulevel || 1);
+        hmd.hittxt = true;
+    } else if (hmd.dieroll === 2 && obj === game.uwep
+               && obj.oclass === WEAPON_CLASS
+               && (I.bimanual(obj)
+                   || (roleMnum() === PM_SAMURAI && obj.otyp === KATANA
+                       && !game.uarms))
+               && (uwep_skill_type() !== P_NONE
+                   && p_skill_of(uwep_skill_type()) >= P_SKILLED)
+               && ((monwep = MON_WEP_uh(mon)) != null
+                   && !is_flimsy(monwep)
+                   && !I.obj_resists(monwep,
+                                     50 + 15 * (WPN.greatest_erosion(obj)
+                                                - WPN.greatest_erosion(monwep)),
+                                     100))) {
+        /*
+         * 2.5% chance of shattering the defender's weapon when using a
+         * two-handed weapon; less if uwep is rusted.  dieroll == 2 is the most
+         * successful non-beheading hit, so artifact damage gets first refusal;
+         * the percentage is (1/20)*(50/100).  A rustier attacker weapon raises
+         * obj_resists' chance, i.e. lowers the shatter chance, and vice versa.
+         */
+        WPN.setmnotwielded(mon, monwep);
+        mon.weapon_check = 1 /* NEED_WEAPON */;
+        /* C uses Yobjnam2(monwep, "shatter") when the monster is seen ("Shk's
+           X shatters") and s_suffix(Monnam)+"weapon" when it isn't; this port
+           has no Yobjnam2(), so the seen case uses the same possessive form. */
+        const wepname = canseemon(mon) ? I.xname(monwep) : 'weapon';
+        const buf = `${s_suffix(Monnam(mon))} ${wepname}`
+            + `${plur(monwep.quan ?? 1)} ${I.otense(monwep, 'shatter')}`;
+        await update_topl(`${buf} from the force of your blow!`);
+        const { m_useupall } = await import('./mthrowu.js');
+        m_useupall(mon, monwep);
+        /* if someone just shattered MY weapon, I'd flee! */
+        if (rn2(4)) {
+            const { monflee: monflee_full } = await import('./monmove.js');
+            await monflee_full(mon, d(2, 3), true, true);
+        }
+        hmd.hittxt = true;
+    }
+
+    if (obj.oartifact) {
+        const mdmg = { d: hmd.dmg };
+        const special = await A.artifact_hit(game.youmonst || game.u, mon, obj,
+                                            mdmg, hmd.dieroll);
+        hmd.dmg = mdmg.d;
+        if (special) {
+            /* artifact_hit updated dmg but inflicted none itself; it may have
+               destroyed carried items, and those might kill the monster */
+            if (DEADMONSTER(mon)) {         /* artifact killed monster */
+                hmd.doreturn = true;
+                hmd.retval = false;
+                return;
+            }
+            if (hmd.dmg === 0) {            /* beheaded a headless monster */
+                hmd.doreturn = true;
+                hmd.retval = true;
+                return;
+            }
+            hmd.hittxt = true;
+        }
+    }
+    const { mon_hates_silver } = await import('./mon.js');
+    if (hmd.material === MAT_SILVER && mon_hates_silver(mon))
+        hmd.silvermsg = hmd.silverobj = true;
+    if (A.artifact_light(obj) && obj.lamplit && mon_hates_light(mon))
+        hmd.lightobj = true;
+    if (u.usteed && !hmd.thrown && hmd.dmg > 0
+        && weapon_type(obj) === P_LANCE && mon !== u.ustuck) {
+        hmd.jousting = await joust(mon, obj);
+        /* exercise skill even for minimal-damage hits */
+        if (hmd.jousting) hmd.train_weapon_skill = true;
+    }
+    if (hmd.thrown === HMON_THROWN && (I.is_ammo(obj) || I.is_missile(obj))) {
+        if (I.ammo_and_launcher(obj, game.uwep)) {
+            /* elves and samurai are highly trained with their own bows */
+            if (roleMnum() === PM_SAMURAI && obj.otyp === YA
+                && game.uwep.otyp === YUMI)
+                hmd.dmg++;
+            else if (Race_if_ELF() && obj.otyp === ELVEN_ARROW
+                     && game.uwep.otyp === ELVEN_BOW)
+                hmd.dmg++;
+            hmd.train_weapon_skill = (hmd.dmg > 0);
+        }
+        if (obj.opoisoned && (is_poisonable_uh(obj) || A.permapoisoned(obj)))
+            hmd.ispoisoned = true;
+    }
+    /* permapoisoned (Grimtooth) is non-ammo/missile, so limit the poison */
+    if (A.permapoisoned(obj) && hmd.dieroll <= 5) hmd.ispoisoned = true;
+}
+// C ref: monst.h MON_WEP(mon) — js/monmove.js exports the same one-liner; a
+// local copy keeps hmon_hitmon_weapon_melee() synchronous-looking.
+function MON_WEP_uh(mon) { return mon?.mw || null; }
+// C ref: obj.h:264 is_poisonable(otmp) — a WEAPON_CLASS item whose oc_skill is
+// in [-P_SHURIKEN, -P_BOW] (arrows/bolts/darts/shuriken), or permapoisoned.
+function is_poisonable_uh(obj) {
+    const sk = objects[obj?.otyp]?.oc_skill ?? 0;
+    return (obj?.oclass === WEAPON_CLASS && sk >= -24 && sk <= -20);
+}
+
+// C ref: uhitm.c:1070 hmon_hitmon_weapon(hmd, mon, obj) — the ranged/melee fork
+// for a WEAPON_CLASS, weptool or GEM_CLASS object.  No RNG of its own.
+export async function hmon_hitmon_weapon(hmd, mon, obj) {
+    const I = await import('./invent.js');
+    const A = await import('./artifact.js');
+    if (/* strike with a bow... */
+        I.is_launcher(obj)
+        /* or with a missile in your hand... */
+        || (!hmd.thrown && (I.is_missile(obj) || I.is_ammo(obj)))
+        /* or use a pole at short range and not mounted... */
+        || (!hmd.thrown && !game.u?.usteed && I.is_pole(obj)
+            && !A.is_art(obj, ART_SNICKERSNEE))
+        /* or throw a missile without the proper bow */
+        || (I.is_ammo(obj) && (hmd.thrown !== HMON_THROWN
+                               || !I.ammo_and_launcher(obj, game.uwep)))) {
+        await hmon_hitmon_weapon_ranged(hmd, mon, obj);
+    } else {
+        await hmon_hitmon_weapon_melee(hmd, mon, obj);
+        if (hmd.doreturn) return;
+    }
+}
+
+// C ref: uhitm.c:1095 hmon_hitmon_potion(hmd, mon, obj) — bash with a potion.
+// potion.c potionhit() is where the RNG lives (breakage + effect); this port
+// only has potionhit_hero() (monster-thrown at the hero), so the hero-bash
+// direction is a wiring blocker.
+export async function hmon_hitmon_potion(hmd, mon, obj) {
+    const I = await import('./invent.js');
+    if ((obj.quan ?? 1) > 1)
+        obj = I.splitobj(obj, 1);
+    else
+        game.uwep = null;      /* wield.c setuwep(0); no port */
+    I.freeinv(obj);
+    /* potion.c potionhit(mon, obj, hand_to_hand ? POTHIT_HERO_BASH
+       : POTHIT_HERO_THROW).  js/potion.js only has potionhit_hero() (a monster
+       throwing at the hero), so the hero-bashes-a-monster direction — and the
+       breakage/vapour RNG inside it — is a wiring blocker. */
+    void (hmd.hand_to_hand ? POTHIT_HERO_BASH : POTHIT_HERO_THROW);
+    if (DEADMONSTER(mon)) {
+        hmd.doreturn = true;
+        hmd.retval = false;    /* killed */
+        return;
+    }
+    hmd.hittxt = true;
+    /* in case the potion's effect transformed the target */
+    hmd.mdat = mon.data;
+    hmd.dmg = (hmd.mdat?.name === 'shade') ? 0 : 1;
+}
+
+// C ref: uhitm.c:1119 hmon_hitmon_misc_obj(hmd, mon, obj) — bashing with a
+// non-weapon.  The per-otyp arms come first; the `default:` arm (weight-based
+// damage) is the one js/invent.js's hmon_misc_obj_dmg() above already covers.
+//
+// RNG order per arm: BOULDER/BALL/CHAIN -> dmgval(); MIRROR -> breaktest();
+// CORPSE -> munstone()'s rolls; EGG -> explode()'s d(3,6) for a pyrolisk egg;
+// CLOVE_OF_GARLIC -> d(2,4) inside monflee; CREAM_PIE/BLINDING_VENOM ->
+// rn1(25,21); default -> rnd(weight), the wet-towel rnd()/rn2(spe+1), the
+// silver rnd(20), the blessed rnd(4).
+export async function hmon_hitmon_misc_obj(hmd, mon, obj) {
+    const I = await import('./invent.js');
+    const WPN = await import('./weapon.js');
+    const M = await import('./mon.js');
+    const { update_topl } = await import('./display.js');
+    const u = game.u;
+
+    /* C's useup_eggs(o) macro: obfree() when thrown, useupall() otherwise */
+    const useup_eggs = (o) => { if (hmd.thrown) I.obfree(o, null); else I.useupall(o); };
+
+    switch (obj.otyp) {
+    case BOULDER:         /* 1d20 */
+    case HEAVY_IRON_BALL: /* 1d25 */
+    case IRON_CHAIN:      /* 1d4+1 */
+        hmd.dmg = dmgval(obj, mon);
+        break;
+    case MIRROR: {
+        const { breaktest } = await import('./dothrow.js');
+        if (breaktest(obj)) {
+            await update_topl(`You break ${I.ysimple_name(obj)}.`
+                + `  That's bad luck!`);
+            change_luck(-2);
+            I.useup(obj);
+            obj = null;
+            hmd.unarmed = false;      /* avoid obj==0 confusion */
+            hmd.get_dmg_bonus = false;
+            hmd.hittxt = true;
+        }
+        hmd.dmg = 1;
+        break;
+    }
+    case EXPENSIVE_CAMERA: {
+        await update_topl(`You succeed in destroying ${I.ysimple_name(obj)}.`
+            + `  Congratulations!`);
+        const { release_camera_demon } = await import('./dothrow.js');
+        await release_camera_demon(obj, u.ux, u.uy);
+        I.useup(obj);
+        hmd.doreturn = true;
+        hmd.retval = true;
+        return;
+    }
+    case CORPSE:          /* fixed by polder@cs.vu.nl */
+        if (touch_petrifies(monster_by_pmidx(obj.corpsenm))) {
+            hmd.dmg = 1;
+            hmd.hittxt = true;
+            /* objnam.c corpse_xname(obj, 0, dknown ? CXN_PFX_THE
+               : CXN_ARTICLE); this port has no corpse_xname() */
+            await update_topl(`You hit ${mon_nam(mon)} with `
+                + `${obj.dknown ? 'the' : 'a'} `
+                + `${monster_by_pmidx(obj.corpsenm)?.name} corpse.`);
+            const { observe_object } = await import('./o_init.js');
+            observe_object(obj);
+            const { munstone } = await import('./muse.js');
+            if (!await munstone(mon, true)) {
+                /* mon.c minstapetrify(mon, TRUE) — unported; it turns 'mon'
+                   into a statue, consuming no RNG of its own. */
+            }
+            if (M.resists_ston(mon)) break;
+            /* note: hp may be <= 0 even if munstone() returned TRUE */
+            hmd.doreturn = true;
+            hmd.retval = !DEADMONSTER(mon);
+            return;
+        }
+        hmd.dmg = (ismnum(obj.corpsenm)
+                   ? (monster_by_pmidx(obj.corpsenm)?.msize ?? 0) : 0) + 1;
+        break;
+    case EGG: {
+        const cnt = obj.quan ?? 1;
+
+        hmd.dmg = 1;                /* nominal physical damage */
+        hmd.get_dmg_bonus = false;
+        hmd.hittxt = true;          /* message always given */
+        /* the egg is always used up or transformed, so the next hand-to-hand
+           attack should give a "bashing" message */
+        if (obj === game.uwep) game.unweapon = true;
+        if (obj.spe && ismnum(obj.corpsenm))
+            change_luck(cnt < 5 ? -cnt : -5);
+
+        if (ismnum(obj.corpsenm)
+            && touch_petrifies(monster_by_pmidx(obj.corpsenm))) {
+            await update_topl(`Splat!  You hit ${mon_nam(mon)} with `
+                + `${obj.known ? 'the' : cnt > 1 ? 'some' : 'a'} `
+                + `${obj.known ? monster_by_pmidx(obj.corpsenm)?.name
+                               : 'petrifying'} egg${plur(cnt)}!`);
+            obj.known = 1;          /* (not much point...) */
+            useup_eggs(obj);
+            const { munstone } = await import('./muse.js');
+            if (!await munstone(mon, true)) {
+                /* mon.c minstapetrify(mon, TRUE) — unported (RNG-free) */
+            }
+            if (M.resists_ston(mon)) break;
+            hmd.doreturn = true;
+            hmd.retval = !DEADMONSTER(mon);
+            return;
+        } else {                    /* ordinary egg(s) */
+            const mnum = obj.corpsenm;
+            const eggp = (ismnum(mnum) && obj.known)
+                ? the_uh(monster_by_pmidx(mnum)?.name)
+                : (cnt > 1 ? 'some' : 'an');
+
+            await update_topl(`You hit ${mon_nam(mon)} with ${eggp}`
+                + ` egg${plur(cnt)}.`);
+            if (touch_petrifies(hmd.mdat) && !stale_egg(obj)) {
+                await update_topl(`The egg${plur(cnt)} `
+                    + `${cnt === 1 ? "isn't" : "aren't"} alive any more...`);
+                if (obj.timed) obj.timed = false;  /* obj_stop_timers(obj) */
+                obj.otyp = ROCK;
+                obj.oclass = GEM_CLASS;
+                obj.oartifact = 0;
+                obj.spe = 0;
+                obj.known = obj.dknown = obj.bknown = 0;
+                obj.owt = weight(obj);
+                if (hmd.thrown) place_object(obj, mon.mx, mon.my);
+            } else if (monster_by_pmidx(obj.corpsenm)?.name === 'pyrolisk') {
+                useup_eggs(obj);
+                const { explode } = await import('./explode.js');
+                await explode(mon.mx, mon.my, -11, d(3, 6), 0, EXPL_FIERY);
+                hmd.doreturn = true;
+                hmd.retval = !DEADMONSTER(mon);
+                return;
+            } else {
+                await update_topl('Splat!');
+                useup_eggs(obj);
+                exercise(A_WIS, false);
+            }
+        }
+        break;
+    }
+    case CLOVE_OF_GARLIC:  /* no effect against demons */
+        if (is_undead(hmd.mdat) || is_vampshifter(mon)) {
+            const { monflee: monflee_full } = await import('./monmove.js');
+            await monflee_full(mon, d(2, 4), false, true);
+        }
+        hmd.dmg = 1;
+        break;
+    case CREAM_PIE:
+    case BLINDING_VENOM: {
+        mon.msleeping = 0;
+        const { can_blnd } = await import('./mhitm_ad.js');
+        if (can_blnd(game.youmonst || game.u, mon,
+                     (obj.otyp === BLINDING_VENOM) ? AT_SPIT : AT_WEAP, obj)) {
+            if (Blind()) {
+                await update_topl(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
+            } else if (obj.otyp === BLINDING_VENOM) {
+                await update_topl(`The venom blinds ${mon_nam(mon)}`
+                    + `${mon.mcansee ? '' : ' further'}!`);
+            } else {
+                let whom = mon_nam(mon);
+                let what = The_uh(I.xname(obj));
+                if (!hmd.thrown && (obj.quan ?? 1) > 1)
+                    what = an(I.xname(obj));
+                if (haseyes(hmd.mdat) && hmd.mdat?.pmidx !== PM_FLOATING_EYE) {
+                    const { mbodypart } = await import('./monmove.js');
+                    whom = `${s_suffix(whom)} ${mbodypart(mon, FACE)}`;
+                }
+                await update_topl(`${what} ${vtense_uh(what, 'splash')}`
+                    + ` over ${whom}!`);
+            }
+            await setmangry(mon, true);
+            mon.mcansee = 0;
+            hmd.dmg = rn1(25, 21);
+            if (((mon.mblinded | 0) + hmd.dmg) > 127) mon.mblinded = 127;
+            else mon.mblinded = (mon.mblinded | 0) + hmd.dmg;
+        } else {
+            await update_topl(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
+            await setmangry(mon, true);
+        }
+        if (hmd.thrown) I.obfree(obj, null); else I.useup(obj);
+        hmd.hittxt = true;
+        hmd.get_dmg_bonus = false;
+        hmd.dmg = 0;
+        break;
+    }
+    case ACID_VENOM: {     /* thrown (or spit) */
+        const { resists_acid } = await import('./mondata.js');
+        if (resists_acid(mon)) {
+            await update_topl(`Your venom hits ${mon_nam(mon)} harmlessly.`);
+            hmd.dmg = 0;
+        } else {
+            await update_topl(`Your venom burns ${mon_nam(mon)}!`);
+            hmd.dmg = dmgval(obj, mon);
+        }
+        if (hmd.thrown) I.obfree(obj, null); else I.useup(obj);
+        hmd.hittxt = true;
+        hmd.get_dmg_bonus = false;
+        break;
+    }
+    default: {
+        const mat = objects[obj.otyp]?.material ?? NO_MATERIAL;
+        if ((mat === MAT_VEGGY || mat === MAT_PAPER)
+            && obj.oclass !== SPBOOK_CLASS) {
+            /* vegetables (and similar) aren't rigid enough to do damage; paper
+               objects likewise, except for books */
+            hmd.dmg = 0;
+            hmd.get_dmg_bonus = false;
+            break;
+        }
+        /* non-weapons damage by their weight (but not too much) */
+        hmd.dmg = Math.trunc(((obj.owt | 0) + 99) / 100);
+        hmd.dmg = (hmd.dmg <= 1) ? 1 : rnd(hmd.dmg);
+        if (hmd.dmg > 6) hmd.dmg = 6;
+        /* a wet towel gets a modest bonus beyond its weight, from its wetness;
+           due to its low weight dmg is always 1 here, and spe is 1..7 */
+        if (WPN.is_wet_towel(obj)) {
+            const doubld = (mon.data?.name === 'iron golem');
+            hmd.dmg += (obj.spe | 0) * (doubld ? 2 : 1);
+            hmd.dmg = rnd(hmd.dmg);   /* wet towel damage is not capped at 6 */
+            /* usually lose some wetness, but defer that until after the hit
+               message */
+            hmd.dryit = (rn2((obj.spe | 0) + 1) > 0);
+        }
+        /* things like silver wands reach here, so silver (and blessed) need
+           another check */
+        if (hmd.material === MAT_SILVER && M.mon_hates_silver(mon)) {
+            hmd.dmg += rnd(20);
+            hmd.silvermsg = hmd.silverobj = true;
+        }
+        if (obj.blessed && mon_hates_blessings(mon)) hmd.dmg += rnd(4);
+    }
+    }
+}
+
+// C ref: uhitm.c:1387 hmon_hitmon_do_hit(hmd, mon, obj) — dispatch to the
+// bare-handed / weapon / potion / misc-object damage arm.  No RNG of its own.
+export async function hmon_hitmon_do_hit(hmd, mon, obj) {
+    if (!obj) {                       /* attack with bare hands */
+        await hmon_hitmon_barehands(hmd, mon);
+    } else {
+        const I = await import('./invent.js');
+        const A = await import('./artifact.js');
+        /* a stone missile doesn't hurt a xorn or earth elemental, but also
+           doesn't pass through and continue to a further target */
+        if ((hmd.thrown === HMON_THROWN || hmd.thrown === HMON_KICKED)
+            && stone_missile_uh(obj) && passes_rocks(hmd.mdat)) {
+            const { update_topl } = await import('./display.js');
+            /* mthrowu.c hit(mshot_xname(obj), mon, " but does no harm.") */
+            await update_topl(`${The_uh(I.xname(obj))} `
+                + `${vtense_uh(I.xname(obj), 'hit')} ${mon_nam(mon)}`
+                + ` but does no harm.`);
+            await wakeupAttack(mon, true);
+            hmd.doreturn = true;
+            hmd.retval = true;
+            return;
+        }
+        /* remember obj's name: it might be destroyed and still be needed */
+        if (!(A.artifact_light(obj) && obj.lamplit))
+            hmd.saved_oname = I.xname(obj);   /* C: cxname(obj) */
+        else
+            hmd.saved_oname = A.bare_artifactname(obj);
+
+        if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
+            || obj.oclass === GEM_CLASS) {
+            await hmon_hitmon_weapon(hmd, mon, obj);
+            if (hmd.doreturn) return;
+        /* attacking with non-weapons */
+        } else if (obj.oclass === POTION_CLASS) {
+            await hmon_hitmon_potion(hmd, mon, obj);
+            if (hmd.doreturn) return;
+        } else {
+            if (hmd.mdat?.name === 'shade' && !shade_aware(obj))
+                hmd.dmg = 0;
+            else
+                await hmon_hitmon_misc_obj(hmd, mon, obj);
+        }
+    }
+}
+// C ref: obj.h stone_missile(o) — GEMSTONE or MINERAL material and not a ring
+// (rings can be launched as missiles by an explosion).
+const MAT_GEMSTONE = 20, MAT_MINERAL = 21, RING_CLASS_UH = 4;
+function stone_missile_uh(o) {
+    const mat = objects[o?.otyp]?.material ?? NO_MATERIAL;
+    return (mat === MAT_GEMSTONE || mat === MAT_MINERAL)
+        && o?.oclass !== RING_CLASS_UH;
+}
+
+// C ref: uhitm.c:1436 hmon_hitmon_dmg_recalc(hmd, obj) — the increase-damage /
+// strength / weapon-skill bonuses.  No RNG (dbon() and weapon_dam_bonus() are
+// table lookups); use_skill() only bumps a counter.
+export async function hmon_hitmon_dmg_recalc(hmd, obj) {
+    const I = await import('./invent.js');
+    const WPN = await import('./weapon.js');
+    const u = game.u;
+    let dmgbonus = 0;
+
+    /*
+     * Potential bonus (or penalty) from a worn ring of increase damage (or the
+     * intrinsic from eating one) and from strength.  The strength bonus rises
+     * for melee with a two-handed weapon and falls for dual attacks (but when
+     * both land, their total exceeds a single regular hit's bonus).
+     */
+    if (hmd.get_dmg_bonus) {
+        /* for dual attacks udaminc applies to both; two-handed weapons use it
+           as-is */
+        dmgbonus = u.udaminc | 0;
+        /* throwing with a propellor gets the increase-damage bonus but not the
+           strength one; other attacks get both.  Dual attacks use 3/4 of the
+           strength bonus (3/2 overall when both hit); a melee hit with a
+           two-handed weapon uses 3/2 to approximately match two-weaponing.
+           The 3/2 factor does not apply to polearms unless the hero is simply
+           bashing with one, nor to jousting (lances are one-handed). */
+        if (hmd.thrown !== HMON_THROWN
+            || !obj || !game.uwep || !I.ammo_and_launcher(obj, game.uwep)) {
+            let strbonus = dbon();
+            const absbonus = Math.abs(strbonus);
+            if (hmd.twohits)
+                strbonus = Math.trunc((3 * absbonus + 2) / 4) * Math.sign(strbonus);
+            else if (hmd.thrown === HMON_MELEE && game.uwep
+                     && I.bimanual(game.uwep))
+                strbonus = Math.trunc((3 * absbonus + 1) / 2) * Math.sign(strbonus);
+            dmgbonus += strbonus;
+        }
+    }
+
+    /*
+     * Potential bonus (or penalty) from weapon skill.  use_weapon_skill is TRUE
+     * for a hand-to-hand ordinary weapon, an applied or jousting polearm/lance,
+     * a thrown missile (dart, shuriken, boomerang) or shot ammo; FALSE for a
+     * hand-to-hand or thrown non-weapon, an unmounted polearm/lance, a
+     * hand-to-hand missile/ammo/launcher, a thrown non-missile, or thrown ammo
+     * without its launcher wielded.
+     */
+    if (hmd.use_weapon_skill) {
+        let skillwep = obj;
+        /* C ref: uhitm.c:72 `#define PROJECTILE(obj) ((obj) && is_ammo(obj))`
+           — a file-local macro; is_missile() is NOT part of it. */
+        if (obj && I.is_ammo(obj) && I.ammo_and_launcher(obj, game.uwep))
+            skillwep = game.uwep;
+        dmgbonus += (skillwep
+            ? await weapon_dam_bonus_wielded(skillwep)
+            : await weapon_dam_bonus_barehand());
+
+        /* a hit for more than minimal damage (measured before the damage and
+           skill bonuses) trains the skill toward future enhancement */
+        if (hmd.train_weapon_skill) {
+            const { use_skill, uwep_skill_type } = await import('./enhance.js');
+            /* [this assumes that !thrown implies wielded...] */
+            const wtype = hmd.thrown ? weapon_type(skillwep) : uwep_skill_type();
+            use_skill(wtype, 1);
+        }
+    }
+
+    /* apply the combined damage+strength and skill bonuses */
+    hmd.dmg += dmgbonus;
+    /* don't let a negative bonus turn a hit into a miss */
+    if (hmd.dmg < 1) hmd.dmg = 1;
+}
+
+// C ref: uhitm.c:1510 hmon_hitmon_poison(hmd, mon, obj) — a poisoned weapon
+// landed.  RNG order: rn2(nopoison) to wear the poison off, then (unless the
+// target resists) rn2(10) and rnd(6).
+export async function hmon_hitmon_poison(hmd, mon, obj) {
+    const A = await import('./artifact.js');
+    const { update_topl } = await import('./display.js');
+    const u = game.u;
+    let nopoison = 10 - Math.trunc((obj.owt | 0) / 10);
+
+    if (nopoison < 2) nopoison = 2;
+    if (roleMnum() === PM_SAMURAI) {
+        await update_topl('You dishonorably use a poisoned weapon!');
+        adjalign(-Math.sign(u.ualign?.type ?? 0));
+    } else if ((u.ualign?.type ?? 0) === A_LAWFUL
+               && (u.ualign?.record ?? 0) > -10) {
+        await update_topl('You feel like an evil coward for using a poisoned'
+            + ' weapon.');
+        adjalign(-1);
+    }
+    if (!A.permapoisoned(obj) && !rn2(nopoison)) {
+        /* remove the poison now, in case obj ends up in a bones file */
+        obj.opoisoned = false;
+        /* defer "obj is no longer poisoned" until after the hit message */
+        hmd.unpoisonmsg = true;
+    }
+    if (resists_poison(mon)) hmd.needpoismsg = true;
+    else if (rn2(10)) hmd.dmg += rnd(6);
+    else hmd.poiskilled = true;
+}
+
+// C ref: uhitm.c:1541 hmon_hitmon_jousting(hmd, mon, obj) — a successful lance
+// joust.  RNG: d(2, 10) (or d(2,2) for the off-hand lance) then, on
+// hmd.jousting < 0, obj_resists() has already fired inside joust().
+export async function hmon_hitmon_jousting(hmd, mon, obj) {
+    const I = await import('./invent.js');
+    const { update_topl } = await import('./display.js');
+    hmd.dmg += d(2, (obj === game.uwep) ? 10 : 2);  /* [was in dmgval()] */
+    await update_topl(`You joust ${mon_nam(mon)}`
+        + `${canseemon(mon) ? exclam(hmd.dmg) : '.'}`);
+    /* if this hit just broke the never-hit-with-wielded-weapon conduct
+       (the caller bumped the counter), log that now */
+    if ((game.u?.uconduct?.weaphit ?? 0) <= 1) first_weapon_hit(obj);
+
+    if (hmd.jousting < 0) {
+        /* (must be either primary or secondary weapon to get here) */
+        game.u.twoweap = false;   /* wield.c set_twoweap(FALSE); untwoweapon()
+                                   * is too verbose here */
+        if (obj === game.uwep) game.unweapon = true;  /* uwepgone() */
+        await update_topl(`${highc_uh(I.yname(obj))} shatters on impact!`);
+        /* minor side-effect: a broken lance won't split puddings */
+        I.useup(obj);
+        obj = null;
+    }
+    if (await mhurtle_to_doom(mon, hmd.dmg, hmd)) hmd.already_killed = true;
+    hmd.hittxt = true;
+}
+
+// C ref: uhitm.c:1570 hmon_hitmon_stagger(hmd, mon, obj) — a martial-arts punch
+// may knock the target back.  RNG: rnd(100), unconditionally.
+export async function hmon_hitmon_stagger(hmd, mon, _obj) {
+    const { p_skill_of } = await import('./enhance.js');
+    /* VERY small chance of stunning the opponent if unarmed */
+    if (rnd(100) < p_skill_of(P_BARE_HANDED_COMBAT) && !bigmonst(hmd.mdat)
+        && !thick_skinned(hmd.mdat)) {
+        if (canspotmon(mon)) {
+            const { update_topl } = await import('./display.js');
+            /* mondata.c stagger(ptr, "stagger") picks the body-appropriate
+               verb; makeplural() then agrees it with Monnam() */
+            const I = await import('./invent.js');
+            await update_topl(`${Monnam(mon)} ${I.makeplural('stagger')}`
+                + ` from your powerful strike!`);
+        }
+        if (await mhurtle_to_doom(mon, hmd.dmg, hmd)) hmd.already_killed = true;
+        hmd.hittxt = true;
+    }
+}
+
+// C ref: uhitm.c:1604 hmon_hitmon_splitmon(hmd, mon, obj) — an iron or metal
+// melee hit splits a black/brown pudding.  mon.c clone_mon() has no port, so
+// the split (and the mintrap() that follows it) is a wiring blocker.
+export async function hmon_hitmon_splitmon(hmd, mon, obj) {
+    const I = await import('./invent.js');
+    if ((hmd.mdat?.name === 'black pudding' || hmd.mdat?.name === 'brown pudding')
+        /* pudding is alive and healthy enough to split */
+        && mon.mhp > 1 && !mon.mcan && !hmd.offmap
+        /* iron (3.6.1: or metal) weapon, melee or polearm; when two-weaponing
+           either weapon can cause the split */
+        && obj && (obj === game.uwep
+                   || (game.u?.twoweap && obj === game.uswapwep))
+        && ((hmd.material === MAT_IRON
+             /* allow scalpel and tsurugi to split puddings */
+             || hmd.material === MAT_METAL)
+            /* but not bashing with darts, arrows or ya */
+            && !(I.is_ammo(obj) || I.is_missile(obj)))
+        && hmd.hand_to_hand) {
+        /* mon.c clone_mon(mon, 0, 0) — unported; it draws for the clone's
+           placement and hit points, and the
+           mintrap(mclone, NO_TRAP_FLAGS) that follows draws for whatever trap
+           the clone lands on.  Both are wiring blockers. */
+        void NO_TRAP_FLAGS;
+    }
+}
+
+// C ref: uhitm.c:1637 hmon_hitmon_msg_hit(hmd, mon, obj) — the "You hit <mon>!"
+// line, suppressed once hittxt was set or the target was destroyed.  No RNG.
+export async function hmon_hitmon_msg_hit(hmd, mon, obj) {
+    if (!hmd.hittxt
+        && (!hmd.destroyed
+            || (hmd.thrown && (game.m_shot?.n ?? 0) > 1
+                && game.m_shot?.o === obj.otyp))) {
+        const { update_topl } = await import('./display.js');
+        const I = await import('./invent.js');
+        const WPN = await import('./weapon.js');
+        const verbose = game.flags?.verbose !== false;
+        if (hmd.thrown) {
+            /* mthrowu.c hit(mshot_xname(obj), mon, exclam(dmg)) */
+            const nm = I.xname(obj);
+            if ((!cansee(game.bhitpos?.x, game.bhitpos?.y) && !canspotmon(mon))
+                || !verbose)
+                await update_topl(`${The_uh(nm)} ${vtense_uh(nm, 'hit')} it.`);
+            else
+                await update_topl(`${The_uh(nm)} ${vtense_uh(nm, 'hit')}`
+                    + ` ${mon_nam(mon)}${exclam(hmd.dmg)}`);
+        } else if (!verbose) {
+            await update_topl('You hit it.');
+        } else {   /* hand_to_hand */
+            const verb =
+                (obj && (is_shield_uh(obj) || obj.otyp === HEAVY_IRON_BALL))
+                    ? 'bash'
+                : (obj && ((objects[obj.otyp]?.oc_skill ?? 0) === P_WHIP
+                           || WPN.is_wet_towel(obj))) ? 'lash'
+                : (roleMnum() === PM_BARBARIAN) ? 'smite'
+                : 'hit';
+            await update_topl(`You ${verb} ${mon_nam(mon)}`
+                + `${canseemon(mon) ? exclam(hmd.dmg) : '.'}`);
+        }
+    }
+}
+
+// C ref: uhitm.c:1663 hmon_hitmon_msg_silver(hmd, mon, obj) — the silver-sear
+// message.  No RNG.
+export async function hmon_hitmon_msg_silver(hmd, mon, _obj) {
+    const { update_topl } = await import('./display.js');
+    let whom = mon_nam(mon);
+    let fmt;
+
+    if (canspotmon(mon)) {
+        if (hmd.barehand_silver_rings === 1)
+            fmt = 'Your silver ring sears %s!';
+        else if (hmd.barehand_silver_rings === 2)
+            fmt = 'Your silver rings sear %s!';
+        else if (hmd.silverobj && hmd.saved_oname)
+            fmt = `Your ${/silver/.test(hmd.saved_oname) ? '' : 'silver '}`
+                + `${hmd.saved_oname} `
+                + `${vtense_uh(hmd.saved_oname, 'sear')} %s!`;
+        else
+            fmt = 'The silver sears %s!';
+    } else {
+        whom = highc_uh(whom);     /* "it" -> "It" */
+        fmt = '%s is seared!';
+    }
+    if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
+        whom = `${s_suffix(whom)} flesh`;
+    await update_topl(fmt.replace('%s', whom));
+}
+
+// C ref: uhitm.c:1702 hmon_hitmon_msg_lightobj(hmd, mon, obj) — the
+// light-emitting-artifact sear message.  No RNG.
+export async function hmon_hitmon_msg_lightobj(hmd, mon, _obj) {
+    const { update_topl } = await import('./display.js');
+    let whom = mon_nam(mon);
+    let fmt;
+
+    if (canspotmon(mon)) {
+        if (hmd.saved_oname)
+            fmt = `${s_suffix(hmd.saved_oname)} radiance penetrates deep into %s!`;
+        else
+            fmt = 'The light sears %s!';
+    } else {
+        whom = highc_uh(whom);     /* "it" -> "It" */
+        fmt = '%s is seared!';
+    }
+    if (!noncorporeal(hmd.mdat) && !amorphous(hmd.mdat))
+        whom = `${s_suffix(whom)} flesh`;
+    await update_topl(fmt.replace('%s', whom));
+}
+
+// C ref: uhitm.c:1942 mhurtle_to_doom(mon, tmp, mptr) — a joust or martial-arts
+// punch knocks the target back, which may kill it (via a trap) before
+// known_hitum() gets the chance.  Returns TRUE if 'mon' died.
+//
+// The third C argument is `struct permonst **mptr`, the caller's cached
+// mon->data; this port passes the hmd record instead and writes hmd.mdat.
+// dothrow.c mhurtle() has no port (js/apply.js keeps an empty ap_hurtle()), so
+// the knockback itself — and the mintrap() at the landing square, which is
+// where the RNG is — is a wiring blocker.
+export async function mhurtle_to_doom(mon, tmp, hmd) {
+    /* only hurtle if the pending physical damage isn't going to kill mon */
+    if (tmp < mon.mhp) {
+        /* dothrow.c mhurtle(mon, u.dx, u.dy, 1) — unported */
+        /* update the caller's cached mon->data: mon might have been pushed onto
+           a polymorph trap, or be a vampshifter whose current form was killed
+           by a trap and reverted */
+        if (hmd) hmd.mdat = mon.data;
+        if (DEADMONSTER(mon)) return true;
+    }
+    return false;   /* mon isn't dead yet */
+}
+
+// C ref: uhitm.c:1963 first_weapon_hit(weapon) — the gamelog line for breaking
+// never-hit-with-a-wielded-weapon conduct.  The conduct itself is counted in
+// known_hitum(); this is called from hmon_hitmon().  No RNG.
+export function first_weapon_hit(weapon) {
+    let buf = '';
+    /* avoid xname(), which would include a player-supplied "named <foo>" */
+    if (weapon.cursed && weapon.bknown) buf += 'cursed ';
+    /* objnam.c obj_is_pname(weapon) — a fully identified artifact keeps its own
+       name; this port has no ONAME(), so simpleonames() covers both arms and
+       the artifact suffix is appended as C does for the non-pname case. */
+    buf += objectBaseName(weapon);
+    livelog_printf(LL_CONDUCT,
+        `hit with a wielded weapon (${buf}) for the first time`);
+}
+
+// C ref: uhitm.c:1992 shade_aware(obj) — objects that either affect shades or
+// are handled correctly for shades elsewhere.  No RNG.
+export function shade_aware(obj) {
+    if (!obj) return false;
+    return obj.otyp === BOULDER
+        || obj.otyp === HEAVY_IRON_BALL
+        || obj.otyp === IRON_CHAIN         /* dmgval handles those three */
+        || obj.otyp === MIRROR             /* silver in the reflective surface */
+        || obj.otyp === CLOVE_OF_GARLIC    /* causes shades to flee */
+        || (objects[obj.otyp]?.material ?? NO_MATERIAL) === MAT_SILVER;
+}
+
+// C ref: uhitm.c:2016 shade_miss(magr, mdef, obj, thrown, verbose) — a
+// non-silver, non-blessed blow passes harmlessly through a shade.  dmgval() is
+// used here for zero/non-zero only, so its internal silver rnd(20) can fire.
+export async function shade_miss(magr, mdef, obj, thrown, verbose) {
+    const youagr = (magr === game.youmonst || magr === game.u);
+    const youdef = (mdef === game.youmonst || mdef === game.u);
+
+    if (mdef.data?.name !== 'shade' || (obj && dmgval(obj, mdef)))
+        return false;
+
+    if (verbose
+        && ((youdef || cansee(mdef.mx, mdef.my) || sensemon(mdef))
+            || (youagr && m_next2u(mdef)))) {
+        const I = await import('./invent.js');
+        const { update_topl } = await import('./display.js');
+        const harmlessly_thru = ' harmlessly through ';
+        const what = (!obj || shade_aware(obj)) ? 'attack' : I.xname(obj);
+        const target = youdef ? 'you' : mon_nam(mdef);
+        if (!thrown) {
+            const whose = youagr ? 'Your' : s_suffix(Monnam(magr));
+            await update_topl(`${whose} ${what} ${vtense_uh(what, 'pass')}`
+                + `${harmlessly_thru}${target}.`);
+        } else {
+            /* note: The(), not pline_The() */
+            await update_topl(`${The_uh(what)} ${vtense_uh(what, 'pass')}`
+                + `${harmlessly_thru}${target}.`);
+        }
+        if (!youdef && !canspotmon(mdef)) map_invisible(mdef.mx, mdef.my);
+    }
+    if (!youdef) mdef.msleeping = 0;
+    return true;
+}
+
+// C ref: uhitm.c:2056 m_slips_free(mdef, mattk) — greased or oilskin armour
+// makes the hero's grab slip off.  RNG: rn2(3) only when the armour is cursed,
+// then rn2(2) for the grease wearing off.
+export async function m_slips_free(mdef, mattk) {
+    const { which_armor } = await import('./worn.js');
+    let obj;
+
+    if (mattk.adtyp === AD_DRIN) {
+        /* intelligence drain attacks the head */
+        obj = which_armor(mdef, W_ARMH);
+    } else {
+        /* grabbing attacks the body */
+        obj = which_armor(mdef, W_ARMC);            /* cloak */
+        if (!obj) obj = which_armor(mdef, W_ARM);   /* suit */
+        if (!obj) obj = which_armor(mdef, W_ARMU);  /* shirt */
+    }
+
+    /* if the monster's cloak/armour is greased the grab slips off; this
+       protection can fail (33%) when the armour is cursed */
+    if (obj && (obj.greased || obj.otyp === OILSKIN_CLOAK)
+        && (!obj.cursed || rn2(3))) {
+        const I = await import('./invent.js');
+        const { update_topl } = await import('./display.js');
+        /* avoid "slippery slippery cloak" for an undiscovered oilskin cloak */
+        const what = (obj.greased || objects[obj.otyp]?.oc_name_known)
+            ? I.xname(obj) : 'cloak';
+        await update_topl(`You `
+            + `${(mattk.adtyp === AD_WRAP) ? 'slip off of'
+                                           : 'grab, but cannot hold onto'} `
+            + `${s_suffix(mon_nam(mdef))} `
+            + `${obj.greased ? 'greased' : 'slippery'} ${what}!`);
+
+        if (obj.greased && !rn2(2)) {
+            await update_topl('The grease wears off.');
+            obj.greased = 0;
+        }
+        return true;
+    }
+    return false;
+}
+
+// C ref: uhitm.c:2098 joust(mon, obj) — 1: joust hit, 0: ordinary hit,
+// -1: joust that breaks the lance.  RNG: rn2(5), then on a 0 roll rnl(50) and
+// obj_resists(obj, 0, 100).
+export async function joust(mon, obj) {
+    const u = game.u;
+    if (Fumbling() || Stunned_uh()) return 0;
+    /* sanity check: the lance must be wielded in order to joust */
+    if (obj !== game.uwep && (obj !== game.uswapwep || !u.twoweap)) return 0;
+    /* can't joust while trapped -- not enough room to maneuver */
+    if (u.utrap) return 0;
+
+    const { p_skill_of } = await import('./enhance.js');
+    /* if using two weapons, use the worse of the lance and two-weapon skills */
+    let skill_rating = p_skill_of(weapon_type(obj));
+    if (u.twoweap && p_skill_of(P_TWO_WEAPON_COMBAT) < skill_rating)
+        skill_rating = p_skill_of(P_TWO_WEAPON_COMBAT);
+    if (skill_rating === P_ISRESTRICTED)
+        skill_rating = P_UNSKILLED;   /* 0 => 1 */
+
+    /* odds to joust: expert 80%, skilled 60%, basic 40%, unskilled 20% */
+    const joust_dieroll = rn2(5);
+    if (joust_dieroll < skill_rating) {
+        const I = await import('./invent.js');
+        if (joust_dieroll === 0 && rnl(50) === (50 - 1)
+            && !unsolid(mon.data) && !I.obj_resists(obj, 0, 100))
+            return -1;   /* hit that breaks the lance */
+        return 1;        /* successful joust */
+    }
+    return 0;            /* no joust bonus; revert to an ordinary attack */
+}
+
+// C ref: uhitm.c:2133 demonpet() — a poly'd demon hero summons help.
+// RNG: rn2(6), then ndemon()'s own rolls, then makemon() and tamedog().
+export async function demonpet() {
+    const u = game.u;
+    const { update_topl } = await import('./display.js');
+    await update_topl('Some hell-p has arrived!');
+    /* makemon.c ndemon(alignment) — unported; it does its own rn2() scan over
+       the demon class, so the !rn2(6) below is only the gate. */
+    const i = !rn2(6) ? -1 /* ndemon(u.ualign.type) */ : -1 /* NON_PM */;
+    const pm = (i !== -1) ? monster_by_pmidx(i) : (game.youmonst?.data ?? null);
+    const { makemon } = await import('./makemon.js');
+    const dtmp = makemon(pm, u.ux, u.uy, 0 /* NO_MM_FLAGS */);
+    if (dtmp) {
+        const { tamedog } = await import('./dothrow.js');
+        await tamedog(dtmp, null, false);
+    }
+    exercise(A_WIS, true);
+}
+
+// C ref: uhitm.c:2148 theft_petrifies(otmp) — stealing a cockatrice corpse
+// bare-handed is fatal.  No RNG (instapetrify -> done()).
+export function theft_petrifies(otmp) {
+    if (game.uarmg || otmp.otyp !== CORPSE
+        || !touch_petrifies(monster_by_pmidx(otmp.corpsenm))
+        || Stone_resistance())
+        return false;
+
+    /* stealing this corpse is fatal...  polyself.c instapetrify(kbuf) has no
+       port; the poly_when_stoned()/PM_STONE_GOLEM arm is #if 0 in C too. */
+    return true;
+}
+
+// C ref: uhitm.c:2174 steal_it(mdef, mattk) — the hero's (poly'd) theft attack.
+// If the target wears body armour, take everything; otherwise take one object.
+// No RNG of its own; hold_another_object() and possibly_unwield() draw.
+export async function steal_it(mdef, mattk) {
+    const I = await import('./invent.js');
+    const { update_topl } = await import('./display.js');
+    const { could_seduce } = await import('./mhitu.js');
+    const { findgold } = await import('./steal.js');
+    const { mpickobj } = await import('./makemon.js');
+    const A = await import('./artifact.js');
+    const WPN = await import('./weapon.js');
+
+    let otmp = (mdef.minvent || [])[0];
+    if (!otmp || (otmp.oclass === COIN_CLASS && (mdef.minvent || []).length === 1))
+        return;    /* nothing to take */
+
+    /* look for worn body armour, moving it to the end of minvent as we go */
+    let ustealo = null;
+    if (could_seduce(game.youmonst || game.u, mdef, mattk) && mdef.mcanmove) {
+        const rest = [];
+        for (const o of (mdef.minvent || [])) {
+            if (o.owornmask & W_ARM) ustealo = o; else rest.push(o);
+        }
+        mdef.minvent = ustealo ? rest.concat([ustealo]) : rest;
+    }
+    let gold = findgold(mdef.minvent);
+
+    if (ustealo) {   /* we will be taking everything */
+        if (Mgender(mdef) === (game.u?.mfemale ? FEMALE_G : MALE_G)
+            && (game.youmonst?.data?.mcls === S_NYMPH))
+            await update_topl(`You charm ${mon_nam(mdef)}.  `
+                + `${upstart(mhe(mdef))} gladly hands over `
+                + `${!gold ? '' : 'most of '}${mhis(mdef)} possessions.`);
+        else
+            await update_topl(`You seduce ${mon_nam(mdef)} and ${mhe(mdef)}`
+                + ` starts to take off ${mhis(mdef)} clothes.`);
+    }
+
+    /* keep gold out of the selection so steal-item isn't a superset of
+       steal-gold; it goes back in if either side dies */
+    if (gold) I.obj_extract_self(gold);
+
+    while ((otmp = (mdef.minvent || [])[0]) != null) {
+        if (gold) { mpickobj(mdef, gold); gold = null; }
+        if (!Upolyd()) break;      /* no longer have the ability to steal */
+        const unwornmask = otmp.owornmask | 0;
+        /* doname() would do this when formatting for hold_another_object(), but
+           we want it done while otmp is still in mdef's inventory */
+        if (otmp.oartifact && !Blind()) A.find_artifact(otmp);
+        /* take the object away from the monster (muse.c
+           extract_from_minvent(mdef, otmp, TRUE, FALSE) is file-static there) */
+        mdef.minvent = (mdef.minvent || []).filter((o) => o !== otmp);
+        otmp.owornmask = 0;
+        /* special message for the final item; ustealo is only ever set on an
+           object with (owornmask & W_ARM) */
+        if (otmp === ustealo)
+            await update_topl(`${Monnam(mdef)} finishes taking off`
+                + ` ${mhis(mdef)} suit.`);
+        /* give the object to the character */
+        otmp = await I.hold_another_object(otmp, 'You snatched but dropped %s.',
+                                          I.xname(otmp), 'You steal: ');
+        /* might have dropped otmp, and it might have broken or left the level */
+        if (!otmp || otmp.where !== 3 /* OBJ_INVENT */) continue;
+        if (theft_petrifies(otmp))
+            break;   /* stop thieving even though the hero survived */
+        /* more take-away handling, after the theft message */
+        if (unwornmask & W_WEP) {
+            WPN.possibly_unwield(mdef, false);
+        } else if (unwornmask & W_ARMG) {
+            /* mon.c mselftouch(mdef, 0, TRUE) — unported; a monster whose
+               gloves were stolen while wielding a c'trice corpse petrifies. */
+            if (DEADMONSTER(mdef)) break;
+        }
+
+        if (!ustealo) break;   /* only taking one item */
+
+        /* take gold out of minvent before the next selection; if it is the only
+           thing left the loop terminates and it is put back below */
+        if ((gold = findgold(mdef.minvent)) != null) I.obj_extract_self(gold);
+    }
+
+    /* put the gold back; this won't happen if either the hero or 'mdef' died,
+       because then the gold is already back in the monster's inventory */
+    if (gold) mpickobj(mdef, gold);
+}
+
+// C ref: uhitm.c:4835 damageum(mdef, mattk, specialdmg) — a poly'd hero's
+// non-weapon attack lands.  RNG order: d(damn, damd) FIRST, then the demon-pet
+// rn2(13) (only reached when the hero's form is a demon), then
+// mhitm_adtyping().
+export async function damageum(mdef, mattk, specialdmg) {
+    const mhm = {
+        damage: d(mattk.damn | 0, mattk.damd | 0),
+        hitflags: M_ATTK_MISS,
+        permdmg: 0,
+        specialdmg,
+        done: false,
+    };
+
+    const ydata = game.youmonst?.data;
+    if (is_demon_uh(ydata) && !rn2(13) && !game.uwep
+        && ydata?.name !== 'amorous demon' && ydata?.name !== 'balrog') {
+        await demonpet();
+        return M_ATTK_MISS;
+    }
+
+    const { mhitm_adtyping } = await import('./mhitm_ad.js');
+    await mhitm_adtyping(game.youmonst || game.u, mattk, mdef, mhm);
+
+    if (mhm.done) return mhm.hitflags;
+
+    mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;   /* in case the player is very fast */
+    mdef.mhp -= mhm.damage;
+    if (DEADMONSTER(mdef)) {
+        /* a troll killed by Trollsbane won't auto-revive */
+        if (mattk.aatyp === AT_WEAP || mattk.aatyp === AT_CLAW) {
+            /* mondata.c troll_baned(mdef, uwep) — unported */
+            game.mkcorpstat_norevive = false;
+        }
+        /* (DEADMONSTER(mdef) and !mhm.damage => already killed) */
+        if (mdef.mtame && !cansee(mdef.mx, mdef.my)) {
+            const { update_topl } = await import('./display.js');
+            await update_topl('You feel embarrassed for a moment.');
+            if (mhm.damage) await killed(mdef, { nomsg: true });
+        } else if (game.flags?.verbose === false) {
+            const { update_topl } = await import('./display.js');
+            await update_topl('You destroy it!');
+            if (mhm.damage) await killed(mdef, { nomsg: true });
+        } else if (mhm.damage) {
+            await killed(mdef);   /* regular "you kill <mdef>" message */
+        }
+        game.mkcorpstat_norevive = false;
+        return M_ATTK_DEF_DIED;
+    }
+    return M_ATTK_HIT;
+}
+
+// C ref: uhitm.c:4891 explum(mdef, mattk) — a poly'd hero with an exploding
+// attack goes off.  RNG: d(damn, damd) first, then explode()'s own rolls.
+export async function explum(mdef, mattk) {
+    const u = game.u;
+    const { update_topl } = await import('./display.js');
+    const tmp = d(mattk.damn | 0, mattk.damd | 0);
+
+    switch (mattk.adtyp) {
+    case AD_BLND:
+        if (mdef && !resists_blnd(mdef)) {
+            await update_topl(`${Monnam(mdef)} is blinded by your flash of`
+                + ` light!`);
+            mdef.mblinded = Math.min((mdef.mblinded | 0) + tmp, 127);
+            mdef.mcansee = 0;
+        }
+        break;
+    case AD_HALU:
+        if (mdef && haseyes(mdef.data) && mdef.mcansee) {
+            await update_topl(`${Monnam(mdef)} is affected by your flash of`
+                + ` light!`);
+            mdef.mconf = 1;
+        }
+        break;
+    case AD_COLD:
+    case AD_FIRE:
+    case AD_ELEC: {
+        /* see mon_explodes() and zap.c for this math: the player is causing the
+           explosion, so the type is +20..+29 rather than negative */
+        const { explode, adtyp_to_expltype } = await import('./explode.js');
+        await explode(u.ux, u.uy, (mattk.adtyp - 1) + 20, tmp, MON_EXPLODE,
+                      adtyp_to_expltype(mattk.adtyp));
+        if (mdef && DEADMONSTER(mdef)) {
+            /* other monsters may have died too, but only report the target */
+            return M_ATTK_DEF_DIED;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    const { wake_nearto } = await import('./cmd.js');
+    await wake_nearto(u.ux, u.uy, 7 * 7);   /* same radius as an exploding mon */
+    return M_ATTK_HIT;
+}
+
+// C ref: uhitm.c:4931 start_engulf(mdef) — the swallow animation.  No RNG in
+// the C path this port can reach: rn2_on_display_rng() draws from the display
+// RNG, which is a separate stream.
+export async function start_engulf(mdef) {
+    const u = game.u;
+    const u_digest = digests(game.youmonst?.data);
+    const u_enfold = enfolds(game.youmonst?.data);
+    /* display.c map_location()/tmp_at()/mon_to_glyph() have no port: the
+       swallow animation is display-only. */
+    const { update_topl } = await import('./display.js');
+    await update_topl(`You `
+        + `${u_digest ? 'swallow' : u_enfold ? 'enclose' : 'engulf'} `
+        + `${mon_nam(mdef)}${u_digest ? ' whole' : ''}!`);
+    /* nh_delay_output() twice */
+}
+
+// C ref: uhitm.c:4949 end_engulf() — tear down the swallow animation.  No RNG.
+export function end_engulf() {
+    if (!Invisible_uh()) {
+        /* display.c tmp_at(DISP_END, 0) — no port */
+        newsym(game.u?.ux, game.u?.uy);
+    }
+}
+
+// C ref: uhitm.c:4958 gulpum(mdef, mattk) — a poly'd hero engulfs/swallows.
+//
+// RNG order: `dam = d(damn, damd)` is an initialiser, so it fires BEFORE the
+// engulf_target() gate — even a target that can't be engulfed consumes it.
+// After that, per adtyp: AD_ELEC/AD_COLD/AD_FIRE each roll rn2(2) first,
+// AD_DREN rolls rn2(4), and the AD_DGST kill path runs corpse_chance().
+export async function gulpum(mdef, mattk) {
+    const u = game.u;
+    const { update_topl } = await import('./display.js');
+    let dam = d(mattk.damn | 0, mattk.damd | 0);
+    let tmp;
+    const ydata = game.youmonst?.data;
+    const u_digest = digests(ydata), u_enfold = enfolds(ydata);
+    const pd = mdef.data;
+    const expel_verb = u_digest ? 'regurgitate' : u_enfold ? 'release' : 'expel';
+
+    /*
+     * Not totally the same as for real monsters.  These don't take multiple
+     * moves: we arbitrarily kill the monster immediately for AD_DGST and
+     * regurgitate it after exactly one round of attack otherwise.  -KAA
+     */
+
+    if (!engulf_target_uh(game.youmonst || game.u, mdef)) return M_ATTK_MISS;
+
+    if (!(u_digest && (u.uhunger | 0) >= 1500) && !u.uswallow) {
+        if (!flaming(ydata)) {
+            const { snuff_lit } = await import('./apply.js');
+            for (const otmp of (mdef.minvent || [])) snuff_lit(otmp);
+        }
+
+        /* force a vampire in bat, cloud or wolf form back to vampire form now,
+           rather than dealing with it when it dies */
+        const { newcham } = await import('./makemon.js');
+        if (is_vampshifter(mdef) && newcham(mdef, monster_by_pmidx(mdef.cham))) {
+            await update_topl(`You `
+                + `${u_digest ? 'swallow' : u_enfold ? 'enclose' : 'engulf'}`
+                + ` it, then ${expel_verb} it.`);
+            if (canspotmon(mdef)) {
+                /* avoiding a_monnam here: a named target would give "You bite
+                   Dracula.  You swallow it, then regurgitate it.  It turns into
+                   Dracula." */
+                await update_topl(`It turns into `
+                    + `${x_monnam(mdef, ARTICLE_A, null,
+                                  (SUPPRESS_NAME | SUPPRESS_IT
+                                   | SUPPRESS_INVISIBLE), false)}.`);
+            } else {
+                map_invisible(mdef.mx, mdef.my);
+            }
+            return M_ATTK_HIT;
+        }
+
+        /* engulfing a cockatrice, or digesting a Rider or Medusa */
+        const fatal_gulp = (touch_petrifies(pd) && !Stone_resistance())
+            || (mattk.adtyp === AD_DGST
+                && (is_rider(pd) || (pd?.name === 'Medusa'
+                                     && !Stone_resistance())));
+
+        if (mattk.adtyp === AD_DGST && (!Slow_digestion() || fatal_gulp)) {
+            /* eat.c eating_conducts(pd) — conduct bookkeeping, no RNG */
+        }
+
+        if (fatal_gulp && !is_rider(pd)) {   /* petrification */
+            await update_topl(`You ${u_digest ? 'englut' : 'engulf'}`
+                + ` ${mon_nam(mdef)}.`);
+            /* polyself.c instapetrify(kbuf) — unported (ends the game) */
+        } else {
+            await start_engulf(mdef);
+            switch (mattk.adtyp) {
+            case AD_DGST: {
+                /* eating a Rider or its corpse is fatal */
+                if (is_rider(pd)) {
+                    await update_topl('Unfortunately, digesting any of it is'
+                        + ' fatal.');
+                    end_engulf();
+                    /* done(DIED) — no port; returns M_ATTK_MISS if lifesaved */
+                    return M_ATTK_MISS;
+                }
+
+                if (Slow_digestion()) { dam = 0; break; }
+
+                /* use up an amulet of life saving */
+                const { mlifesaver } = await import('./mon.js');
+                const saver = mlifesaver(mdef);
+                if (saver) {
+                    const { m_useup } = await import('./muse.js');
+                    m_useup(mdef, saver);
+                }
+
+                const { newuhs } = await import('./eat.js');
+                await newuhs(false);
+                /* start_engulf() gave "you engulf <mdef>"; C wants the explicit
+                   "you kill <mdef>" here so a "welcome to level N+1" isn't
+                   printed out of order */
+                game.mswallower = game.youmonst || game.u;
+                await killed(mdef, { nocorpse: true });
+                if (!DEADMONSTER(mdef)) {   /* monster lifesaved */
+                    const { body_part } = await import('./invent.js');
+                    await update_topl(`You hurriedly regurgitate the sizzling`
+                        + ` in your ${body_part(STOMACH)}.`);
+                } else {
+                    tmp = 1 + ((pd?.cwt | 0) >> 8);
+                    if (corpse_chance(mdef) && !mon_nocorpse(pd)) {
+                        /* nutrition only if there can be a corpse */
+                        u.uhunger = (u.uhunger | 0)
+                            + Math.trunc(((pd?.cnutrit | 0) + 1) / 2);
+                    } else {
+                        tmp = 0;
+                    }
+                    const msgbuf = `You totally digest ${mon_nam(mdef)}.`;
+                    if (tmp !== 0) {
+                        await update_topl(`You digest ${mon_nam(mdef)}.`);
+                        if (Slow_digestion()) tmp *= 2;
+                        const { nomul } = await import('./hack.js');
+                        await nomul(-tmp);
+                        game.multi_reason = 'digesting something';
+                        game.nomovemsg = msgbuf;
+                        /* possible intrinsic once totally digested */
+                        game.corpsenm_digested = pd?.pmidx;
+                        /* ga.afternmv = Finish_digestion — no port */
+                    } else {
+                        await update_topl(msgbuf);
+                    }
+                    if (pd?.name === 'green slime') {
+                        /* make_slimed(5L, 0) — no port */
+                    } else {
+                        exercise(A_CON, true);
+                    }
+                }
+                game.mswallower = null;
+                end_engulf();
+                return M_ATTK_DEF_DIED;
+            }
+            case AD_PHYS:
+                if (ydata?.name === 'fog cloud') {
+                    await update_topl(`${Monnam(mdef)} is laden with your`
+                        + ` moisture.`);
+                    if ((breathless(pd) || amphibious(pd)) && !flaming(pd)) {
+                        dam = 0;
+                        await update_topl(`${Monnam(mdef)} seems unharmed.`);
+                    }
+                } else {
+                    await update_topl(`${Monnam(mdef)} is `
+                        + `${enfolds(ydata) ? 'being squashed'
+                                            : 'pummeled with your debris'}!`);
+                }
+                break;
+            case AD_ACID: {
+                const { resists_acid } = await import('./mondata.js');
+                await update_topl(`${Monnam(mdef)} is covered with your goo!`);
+                if (resists_acid(mdef)) {
+                    await update_topl(`It seems harmless to`
+                        + ` ${mon_nam(mdef)}.`);
+                    dam = 0;
+                }
+                break;
+            }
+            case AD_BLND: {
+                const { can_blnd } = await import('./mhitm_ad.js');
+                if (can_blnd(game.youmonst || game.u, mdef, mattk.aatyp, null)) {
+                    if (mdef.mcansee)
+                        await update_topl(`${Monnam(mdef)} can't see in there!`);
+                    mdef.mcansee = 0;
+                    dam += (mdef.mblinded | 0);
+                    if (dam > 127) dam = 127;
+                    mdef.mblinded = dam;
+                }
+                dam = 0;
+                break;
+            }
+            case AD_ELEC: {
+                if (rn2(2)) {
+                    const { resists_elec } = await import('./mondata.js');
+                    await update_topl(`The air around ${mon_nam(mdef)} crackles`
+                        + ` with electricity.`);
+                    if (resists_elec(mdef)) {
+                        await update_topl(`${Monnam(mdef)} seems unhurt.`);
+                        dam = 0;
+                    }
+                    /* mhitm_ad.c golemeffects(mdef, adtyp, dam) is file-static
+                       in js/mhitm_ad.js; RNG-free for elec/cold/fire golems */
+                } else {
+                    dam = 0;
+                }
+                break;
+            }
+            case AD_COLD: {
+                if (rn2(2)) {
+                    const { resists_cold } = await import('./mondata.js');
+                    if (resists_cold(mdef)) {
+                        await update_topl(`${Monnam(mdef)} seems mildly`
+                            + ` chilly.`);
+                        dam = 0;
+                    } else {
+                        await update_topl(`${Monnam(mdef)} is freezing to`
+                            + ` death!`);
+                    }
+                } else {
+                    dam = 0;
+                }
+                break;
+            }
+            case AD_FIRE: {
+                if (rn2(2)) {
+                    const { resists_fire } = await import('./mondata.js');
+                    if (resists_fire(mdef)) {
+                        await update_topl(`${Monnam(mdef)} seems mildly hot.`);
+                        dam = 0;
+                    } else {
+                        await update_topl(`${Monnam(mdef)} is burning to a`
+                            + ` crisp!`);
+                    }
+                } else {
+                    dam = 0;
+                }
+                break;
+            }
+            case AD_DREN:
+                if (!rn2(4)) {
+                    /* mhitm_ad.c xdrainenergym(mdef, TRUE) — no port */
+                }
+                dam = 0;
+                break;
+            default:
+                break;
+            }
+            end_engulf();
+            mdef.mhp -= dam;
+            if (DEADMONSTER(mdef)) {
+                await killed(mdef);
+                if (DEADMONSTER(mdef))   /* not lifesaved */
+                    return M_ATTK_DEF_DIED;
+            }
+            await update_topl(`You ${expel_verb} ${mon_nam(mdef)}!`);
+            if ((Slow_digestion() || is_animal_uh(ydata)) && u_digest) {
+                await update_topl(`Obviously, you didn't like`
+                    + ` ${s_suffix(mon_nam(mdef))} taste.`);
+            }
+        }
+    }
+    return M_ATTK_MISS;
+}
+
+// C ref: uhitm.c:5218 m_is_steadfast(mtmp) — equipment that protects against
+// knockback.  No RNG.
+export async function m_is_steadfast(mtmp) {
+    const is_u = (mtmp === game.youmonst || mtmp === game.u);
+    const u = game.u;
+    const otmp = is_u ? game.uwep : MON_WEP_uh(mtmp);
+    const A = await import('./artifact.js');
+    const { Is_airlevel, Is_waterlevel } = await import('./const.js');
+    const { is_pool } = await import('./dbridge.js');
+
+    /* must be on the ground (or in water) */
+    if ((is_u ? (Flying_uh() || Levitation_uh())
+              : (is_flyer(mtmp.data) || is_floater(mtmp.data)))
+        || Is_airlevel(u?.uz)                          /* air or cloud */
+        || (Is_waterlevel(u?.uz) && !is_pool(u.ux, u.uy)))  /* air bubble */
+        return false;
+
+    if (A.is_art(otmp, ART_GIANTSLAYER)) return true;
+
+    /* steadfast if carrying any loadstone (and not floating or flying);
+       m_carrying() is 'youmonst' aware in C, so 'is_u' isn't tested */
+    const { m_carrying } = await import('./monmove.js');
+    const I = await import('./invent.js');
+    if (is_u ? I.carrying(LOADSTONE) : m_carrying(mtmp, LOADSTONE)) return true;
+    /* when mounted and the steed is the knockback target, check the rider for a
+       loadstone too (Giantslayer's protection doesn't extend to the steed) */
+    if (u?.usteed && mtmp === u.usteed && I.carrying(LOADSTONE)) return true;
+
+    return false;
+}
+// C ref: youprop.h Flying/Levitation.
+function Flying_uh() { return (u_of().uprops?.Flying || 0) > 0; }
+function Levitation_uh() { return (u_of().uprops?.Levitation || 0) > 0; }
+
+// C ref: mhitm.c:807 engulf_target(magr, mdef) — can magr swallow mdef?  No
+// RNG.  js/mhitm.js references it only in a comment, so this is a local copy;
+// the hero-as-defender arms are dropped (the hero can't be gulpum()'s target).
+function engulf_target_uh(magr, mdef) {
+    const uatk = (magr === game.youmonst || magr === game.u);
+    const adata = uatk ? game.youmonst?.data : magr?.data;
+    /* can't swallow something that's too big */
+    if ((mdef.data?.msize ?? 2) >= 4 /*MZ_HUGE*/
+        || ((adata?.msize ?? 2) < (mdef.data?.msize ?? 2) && !is_whirly(adata)))
+        return false;
+    /* can't (move to) swallow if trapped */
+    if (mdef.mtrapped || magr?.mtrapped) return false;
+    /* both squares must be enterable by the other party, or expelling could
+       fail to place them back on the map */
+    const dx = mdef.mx, dy = mdef.my;
+    if (!passes_walls(mdef.data)
+        && IS_OBSTRUCTED(game.level?.at(dx, dy)?.typ ?? 0))
+        return false;
+    const ax = uatk ? game.u?.ux : magr.mx, ay = uatk ? game.u?.uy : magr.my;
+    if (!passes_walls(adata)
+        && IS_OBSTRUCTED(game.level?.at(ax, ay)?.typ ?? 0))
+        return false;
+    return true;
+}
+
+// C ref: uhitm.c:5424 hmonas(mon) — the poly'd hero's full attack sequence:
+// every mattk[] slot of the hero's current form, in order.  Returns whether
+// 'mon' survives.
+//
+// RNG order per slot: find_roll_to_hit (RNG-free) -> rnd(20) (rnd(20+i) for
+// AT_ENGL) -> known_hitum()/damageum()/gulpum()/explum() -> passive() ->
+// mhitm_knockback().  C's `goto use_weapon` / `goto passivedone` are modelled
+// with a per-iteration flag and a labelled block.
+export async function hmonas(mon) {
+    const u = game.u;
+    const I = await import('./invent.js');
+    const A = await import('./artifact.js');
+    const WPN = await import('./weapon.js');
+    const { getmattk, could_seduce, mtrapped_in_pit } = await import('./mhitu.js');
+    const { update_topl } = await import('./display.js');
+    const ydata = game.youmonst?.data;
+
+    let altwep = false, weapon_used = false, odd_claw = true;
+    let weapon = null, originalweapon = null;
+    let tmp, dieroll, dhit = 0, multi_claw = 0, multi_weap = 0;
+    /* C's `attknum = 0` is function-scoped here (unlike hitum_cleave's), so
+       find_roll_to_hit's check_caitiff() fires on the first call only. */
+    let attknum = 0;
+    let alt_attk = null;
+    const sum = new Array(NATTK).fill(M_ATTK_MISS);
+
+    /* not used here but umpteen mhitm_ad_xxxx() need this */
+    game.vis = (canseemon(mon) || m_next2u(mon));
+
+    /* with just one touch/claw/weapon attack both rings matter; with more than
+       one, alternate right and left when checking the silver ring hit */
+    for (let i = 0; i < NATTK; i++) {
+        const mattk0 = getmattk(game.youmonst || game.u, mon, i, sum);
+        if (!mattk0) continue;
+        if (mattk0.aatyp === AT_WEAP) ++multi_weap;
+        if (mattk0.aatyp === AT_WEAP || mattk0.aatyp === AT_CLAW
+            || mattk0.aatyp === AT_TUCH) ++multi_claw;
+    }
+    multi_claw = (multi_claw > 1) ? 1 : 0;   /* count -> yes/no */
+    game.twohits = 0;
+    game.skipdrin = false;                   /* [see mattackm(mhitm.c)] */
+
+    let broke_out = false;
+    for (let i = 0; i < NATTK && !broke_out; i++) {
+        /* the target might have been knocked out of range, or an engulfing
+           vampshifted fog cloud died and reverted at another spot */
+        if (i > 0 && (m_at(game.bhitpos?.x, game.bhitpos?.y) !== mon
+                      || DEADMONSTER(mon)))
+            continue;
+
+        let mattk = getmattk(game.youmonst || game.u, mon, i, sum);
+        if (!mattk) continue;
+        if (game.skipdrin && mattk.aatyp === AT_TENT
+            && mattk.adtyp === AD_DRIN)
+            continue;
+        weapon = null;
+        let goto_passivedone = false;
+        /* C reaches the AT_WEAP body by falling through from AT_CLAW/AT_TUCH/
+           AT_MAGC via `goto use_weapon`; this flag stands in for the label. */
+        let use_weapon = (mattk.aatyp === AT_WEAP);
+        if (!use_weapon) {
+            if (mattk.aatyp === AT_CLAW
+                && game.uwep && !cantwield(ydata) && !weapon_used)
+                use_weapon = true;
+            else if (mattk.aatyp === AT_TUCH
+                     && game.uwep && ydata?.mcls === S_LICH && !weapon_used)
+                use_weapon = true;
+            else if (mattk.aatyp === AT_MAGC
+                     && (ydata?.mcls === S_KOBOLD || ydata?.mcls === S_ORC_CLS
+                         || ydata?.mcls === S_GNOME) && !weapon_used)
+                use_weapon = true;
+        }
+
+        if (use_weapon) {
+            odd_claw = !odd_claw;   /* see AT_CLAW/AT_TUCH below */
+            /* if we've already hit with a two-handed weapon we don't get
+               another weapon attack (monsters that use weapons have no such
+               restriction, but they never get to use two weapons either) */
+            if (weapon_used && (sum[i - 1] > M_ATTK_MISS)
+                && game.uwep && I.bimanual(game.uwep))
+                continue;
+            /* some monsters don't use weapons as enemies, but a player poly'd
+               into them has hands or claws and should be able to.  If the form
+               has multiple claw attacks, only one can use a weapon. */
+            weapon_used = true;
+            /* approximate two-weapon mode; known_hitum() -> hmon() -> &c might
+               destroy the weapon, and it might already be Null, so track which
+               equipment SLOT it came from for passive() */
+            originalweapon = (altwep && game.uswapwep) ? 'uswapwep' : 'uwep';
+            if (game.uswapwep   /* set up 'altwep' for the next iteration */
+                /* only consider the secondary with a one-handed primary */
+                && game.uwep
+                && (game.uwep.oclass === WEAPON_CLASS || is_weptool(game.uwep))
+                && !I.bimanual(game.uwep)
+                /* only switch with no shield, and never to an artifact */
+                && !game.uarms && !game.uswapwep.oartifact
+                /* only switch to uswapwep if it's a weapon */
+                && (game.uswapwep.oclass === WEAPON_CLASS
+                    || is_weptool(game.uswapwep))
+                /* not a bow, arrows or darts */
+                && !(I.is_launcher(game.uswapwep) || I.is_ammo(game.uswapwep)
+                     || I.is_missile(game.uswapwep))
+                /* and not two-handed or impossible to wield */
+                && !I.bimanual(game.uswapwep)
+                && !((objects[game.uswapwep.otyp]?.material === MAT_SILVER)
+                     && Hate_silver()))
+                altwep = !altwep;
+            weapon = game[originalweapon];
+            /* no need to go past no-gloves to rings; rings aren't subject to
+               erosion damage */
+            if (!weapon) originalweapon = 'uarmg';
+
+            tmp = await find_roll_to_hit(mon, weapon, attknum++ === 0);
+            mon_maybe_unparalyze(mon);
+            dieroll = rnd(20);
+            dhit = (tmp > dieroll || u.uswallow) ? 1 : 0;
+            if (multi_weap > 1) ++game.twohits;
+            /* the caller must set game.bhitpos */
+            const kh = await known_hitum(mon, weapon, !!dhit, dieroll);
+            dhit = kh.mhit ? 1 : 0;
+            /* originalweapon names an equipment slot that might now be empty
+               if the weapon was destroyed during the hit; passive() then skips
+               passive_obj() */
+            weapon = game[originalweapon];
+            if (!kh.malive) {
+                sum[i] = M_ATTK_DEF_DIED;   /* enemy dead before any special */
+            } else {
+                sum[i] = dhit ? M_ATTK_HIT : M_ATTK_MISS;
+                /* might be a worm cut in half; if so, early exit */
+                if (m_at(u.ux + u.dx, u.uy + u.dy) !== mon) {
+                    i = NATTK;              /* skip additional attacks */
+                    goto_passivedone = true;
+                } else if (dhit && mattk.adtyp !== AD_SPEL
+                           && mattk.adtyp !== AD_PHYS) {
+                    /* don't print "You hit"; known_hitum already did */
+                    sum[i] = await damageum(mon, mattk, 0);
+                }
+            }
+        } else switch (mattk.aatyp) {
+        case AT_KICK:
+            if (mtrapped_in_pit(game.youmonst || game.u))
+                continue;
+            /* FALLTHRU */
+        case AT_TUCH:
+        case AT_CLAW:
+        case AT_BITE:
+        case AT_STNG:
+        case AT_BUTT:
+        case AT_TENT: {
+            tmp = await find_roll_to_hit(mon, null, attknum++ === 0);
+            mon_maybe_unparalyze(mon);
+            dieroll = rnd(20);
+            dhit = (tmp > dieroll || u.uswallow) ? 1 : 0;
+            if (dhit) {
+                let compat = 0, specialdmg = 0, silverhit = 0;
+                let verb = null;   /* verb or body part */
+
+                if (!u.uswallow
+                    && (compat = could_seduce(game.youmonst || game.u, mon,
+                                              mattk)) !== 0) {
+                    await update_topl(`You `
+                        + `${(mon.mcansee && haseyes(mon.data)) ? 'smile at'
+                                                                : 'talk to'} `
+                        + `${mon_nam(mon)} `
+                        + `${(compat === 2) ? 'engagingly' : 'seductively'}.`);
+                    /* doesn't anger it; no wakeup() */
+                    sum[i] = await damageum(mon, mattk, 0);
+                    break;
+                }
+                await wakeupAttack(mon, true);
+
+                specialdmg = 0;   /* blessed and/or silver bonus */
+                switch (mattk.aatyp) {
+                case AT_CLAW:
+                case AT_TUCH: {
+                    /* verb=="claws" may be overridden below */
+                    verb = (mattk.aatyp === AT_TUCH) ? 'touch' : 'claws';
+                    /* decide whether a silver-hater is hit by the ring(s); with
+                       'multi_claw' the attacks alternate, and 'even' claw/touch
+                       attacks use the dominant hand.  Even vs odd counts actual
+                       attacks, not the mattk[] index, so {bite,claw,claw} does
+                       not make a poly'd hero switch handedness. */
+                    odd_claw = !odd_claw;
+                    const sd = WPN.special_dmgval(game.youmonst || game.u, mon,
+                        W_ARMG
+                        | ((odd_claw || !multi_claw) ? W_RINGL : 0)
+                        | ((!odd_claw || !multi_claw) ? W_RINGR : 0));
+                    specialdmg = sd.bonus; silverhit = sd.silverhit;
+                    break;
+                }
+                case AT_TENT:
+                    /* assumes a mind flayer's tentacles-on-head rather than a
+                       sea monster's tentacle-as-arm */
+                    verb = 'tentacles';
+                    break;
+                case AT_KICK: {
+                    verb = 'kick';
+                    const sd = WPN.special_dmgval(game.youmonst || game.u, mon,
+                                                W_ARMF);
+                    specialdmg = sd.bonus; silverhit = sd.silverhit;
+                    break;
+                }
+                case AT_BUTT: {
+                    verb = 'head butt';   /* mbodypart(mon,HEAD)=="head" */
+                    /* hypothetical: if any head-butting form could wear a
+                       helmet, a blessed (or silver) one would hit shades */
+                    const sd = WPN.special_dmgval(game.youmonst || game.u, mon,
+                                                W_ARMH);
+                    specialdmg = sd.bonus; silverhit = sd.silverhit;
+                    break;
+                }
+                case AT_BITE: verb = 'bite'; break;
+                case AT_STNG: verb = 'sting'; break;
+                default: verb = 'hit'; break;
+                }
+                if (mon.data?.name === 'shade' && !specialdmg) {
+                    if (verb === 'hit'
+                        || (mattk.aatyp === AT_CLAW && humanoid(mon.data)))
+                        verb = 'attack';
+                    await update_topl(`Your ${verb} ${vtense_uh(verb, 'pass')}`
+                        + ` harmlessly through ${mon_nam(mon)}.`);
+                } else {
+                    /* either not a shade, or no special silver/blessed damage;
+                       other unsolid monsters are immune to AT_TUCH+AD_WRAP */
+                    if (await failed_grab_uh(game.youmonst || game.u, mon,
+                                             mattk))
+                        break;   /* miss; message already given */
+
+                    if (mattk.aatyp === AT_TENT) {
+                        await update_topl(`Your tentacles suck`
+                            + ` ${mon_nam(mon)}.`);
+                    } else {
+                        if (mattk.aatyp === AT_CLAW)
+                            verb = 'hit';   /* not "claws" */
+                        await update_topl(`You ${verb} ${mon_nam(mon)}.`);
+                        if (silverhit && game.flags?.verbose !== false)
+                            await WPN.silver_sears(game.youmonst || game.u, mon,
+                                                 silverhit);
+                    }
+                    sum[i] = await damageum(mon, mattk, specialdmg);
+                }
+            } else {   /* !dhit */
+                await missum(mon);   /* C: missum(mon, mattk, wouldhavehit) */
+            }
+            break;
+        }
+
+        case AT_HUGS: {
+            let specialdmg = 0, silverhit = 0;
+            const byhand = hug_throttles(monster_by_pmidx(u.umonnum));
+            let unconcerned = (byhand && !can_be_strangled(mon));
+
+            if (sticks(mon.data) || u.uswallow || game.notonhead
+                || (byhand && (game.uwep || !has_head(mon.data)))) {
+                /* can't hold a holder (ambiguous who holds whom); can't hug an
+                   engulfer from inside; can't hug a worm tail (it would
+                   immobilise the whole worm); byhand: can't choke something
+                   with no head, and can't choke while wielding a weapon */
+                if (byhand && game.uwep && u.ustuck
+                    && !(sticks(u.ustuck.data) || u.uswallow))
+                    unstuck_mon(u.ustuck);   /* C: uunstick() */
+                continue;   /* not 'break'; bypass the passive counter-attack */
+            }
+            /* automatic if the previous two attacks succeeded, or if already
+               grabbed in an earlier attack */
+            dhit = 1;
+            await wakeupAttack(mon, true);
+            /* a choking hug uses hands (gloves or rings); a normal hug uses the
+               outermost of cloak/suit/shirt */
+            {
+                const sd = WPN.special_dmgval(game.youmonst || game.u, mon,
+                    byhand ? (W_ARMG | W_RINGL | W_RINGR)
+                           : (W_ARMC | W_ARM | W_ARMU));
+                specialdmg = sd.bonus; silverhit = sd.silverhit;
+            }
+            if (unconcerned) {
+                /* strangling something that can't be strangled */
+                if (mattk !== alt_attk) {
+                    alt_attk = { ...mattk };
+                    mattk = alt_attk;
+                }
+                /* change the damage to 1d1: not strangling, but still doing
+                   minimal physical damage to the victim's body */
+                mattk.damn = mattk.damd = 1;
+                /* no 'unconcerned' feedback if there's extra damage, or the
+                   victim is nearly destroyed, or it lacks the mental ability to
+                   be concerned in the first place */
+                if (specialdmg || mindless(mon.data)
+                    || mon.mhp <= 1 + Math.max(u.udaminc | 0, 1))
+                    unconcerned = false;
+            }
+            if (mon.data?.name === 'shade') {
+                const verb = byhand ? 'grasp' : 'hug';
+                /* hugging a shade: successful with blessed outermost armour for
+                   a normal hug, or blessed gloves / silver ring(s) for a
+                   choking one; deals damage but never grabs hold */
+                if (specialdmg) {
+                    await update_topl(`You ${verb} ${mon_nam(mon)}`
+                        + `${exclam(specialdmg)}`);
+                    if (silverhit && game.flags?.verbose !== false)
+                        await WPN.silver_sears(game.youmonst || game.u, mon,
+                                             silverhit);
+                    sum[i] = await damageum(mon, mattk, specialdmg);
+                } else {
+                    await update_topl(`Your ${verb} passes harmlessly through`
+                        + ` ${mon_nam(mon)}.`);
+                }
+                break;
+            }
+            /* can't grab unsolid creatures (checked after shade handling) */
+            if (await failed_grab_uh(game.youmonst || game.u, mon, mattk))
+                break;
+            /* hug attack against an ordinary foe */
+            if (mon === u.ustuck) {
+                await update_topl(`${Monnam(mon)} is `
+                    + `${byhand ? 'throttled' : 'crushed'}`
+                    + `${unconcerned ? " but doesn't seem concerned" : ''}.`);
+                if (silverhit && game.flags?.verbose !== false)
+                    await WPN.silver_sears(game.youmonst || game.u, mon,
+                                         silverhit);
+                sum[i] = await damageum(mon, mattk, specialdmg);
+            } else if (i >= 2 && (sum[i - 1] > M_ATTK_MISS)
+                       && (sum[i - 2] > M_ATTK_MISS)) {
+                /* in case we're hugging a new target while already holding
+                   something else: "<u.ustuck> is no longer in your clutches" */
+                if (u.ustuck && u.ustuck !== mon) unstuck_mon(u.ustuck);
+                await update_topl(`You grab ${mon_nam(mon)}!`);
+                const { set_ustuck } = await import('./mon.js');
+                set_ustuck(mon);
+                if (silverhit && game.flags?.verbose !== false)
+                    await WPN.silver_sears(game.youmonst || game.u, mon,
+                                         silverhit);
+                sum[i] = await damageum(mon, mattk, specialdmg);
+            }
+            break;   /* AT_HUGS */
+        }
+
+        case AT_EXPL:   /* automatic hit if next to */
+            dhit = -1;
+            await wakeupAttack(mon, true);
+            await update_topl('You explode!');
+            sum[i] = await explum(mon, mattk);
+            break;
+
+        case AT_ENGL:
+            tmp = await find_roll_to_hit(mon, null, attknum++ === 0);
+            mon_maybe_unparalyze(mon);
+            dhit = (tmp > rnd(20 + i)) ? 1 : 0;
+            if (dhit) {
+                await wakeupAttack(mon, true);
+                /* can't engulf unsolid creatures */
+                if (mon.data?.name === 'shade') {
+                    /* no specialdmg check needed */
+                    await update_topl(`Your attempt to surround`
+                        + ` ${mon_nam(mon)} is harmless.`);
+                } else if (await failed_grab_uh(game.youmonst || game.u, mon,
+                                                mattk)) {
+                    /* non-shade miss; message already given */
+                } else {
+                    sum[i] = await gulpum(mon, mattk);
+                    if (sum[i] === M_ATTK_DEF_DIED
+                        && (mon.data?.mcls === S_ZOMBIE
+                            || mon.data?.mcls === S_MUMMY)
+                        && rn2(5) && !Sick_resistance_uh()) {
+                        await update_topl(`You feel `
+                            + `${Sick_uh() ? 'very ' : ''}sick.`);
+                        await mdamageu(mon, rnd(8));
+                    }
+                }
+            } else {
+                await missum(mon);
+            }
+            break;
+
+        case AT_MAGC:   /* only reached when the form couldn't use a weapon */
+        case AT_NONE:
+        case AT_BOOM:
+            continue;   /* not break: avoid passive attacks from the enemy */
+
+        case AT_BREA:
+        case AT_SPIT:
+        case AT_GAZE:   /* all done using the #monster command */
+            dhit = 0;
+            break;
+
+        default:        /* Strange... */
+            break;      /* C: impossible("strange attack of yours (%d)") */
+        }
+
+        if (!goto_passivedone) {
+            if (dhit === -1) {
+                u.mh = -1;   /* dead in the current form */
+                const { rehumanize } = await import('./polyself.js');
+                await rehumanize();
+            }
+            if (sum[i] === M_ATTK_DEF_DIED) {
+                await passive(mon, weapon, 1, 0, mattk.aatyp);
+            } else {
+                await passive(mon, weapon, (sum[i] !== M_ATTK_MISS) ? 1 : 0, 1,
+                              mattk.aatyp);
+            }
+            /* uhitm.c:5247 mhitm_knockback(&youmonst, mon, mattk, &sum[i],
+               weapon_used) is file-static in js/mhitm.js and js/monmove.js.
+               Its leading rolls always fire: rn2(3) knockdistance, then
+               rn2(chance) with chance==6 for a non-Ogresmasher hit. */
+            rn2(3);
+            if (rn2(6)) {
+                /* no knockback */
+            } else {
+                /* the size/solidity/steadfast gates would follow */
+            }
+        }
+
+        /* don't use sum[i] beyond this point: 'i' is out of bounds when we
+           arrive here via C's `goto passivedone` */
+        /* when using dual weapons, a cursed secondary doesn't weld, it gets
+           dropped; likewise when multiple AT_WEAP attacks simulate twoweap */
+        if (game.uswapwep && weapon === game.uswapwep && weapon.cursed) {
+            const { drop_uswapwep } = await import('./wield.js');
+            await drop_uswapwep();
+            break;   /* don't proceed with additional attacks */
+        }
+        /* stop attacking if the defender has died; deferred until after the
+           uswapwep->cursed check */
+        if (DEADMONSTER(mon)) break;
+        if (!Upolyd()) break;              /* no extra attacks if human again */
+        if ((game.multi ?? 0) < 0) break;  /* paralysed mid-attack (floating eye) */
+    }
+
+    game.vis = false;   /* reset */
+    game.twohits = 0;
+    /* the return value isn't used, but make it match hitum()'s */
+    return !DEADMONSTER(mon);
+}
+// C ref: mhitm.c:597 failed_grab(magr, mdef, mattk) — an unsolid target (or a
+// worm tail) can't be held.  RNG-free, but it CANCELS the strike.  js/mhitm.js
+// keeps a file-static copy; this one is the hero-as-attacker slice.
+async function failed_grab_uh(magr, mdef, mattk) {
+    if ((unsolid(mdef.data) || game.notonhead)
+        && (mattk.aatyp === AT_HUGS || mattk.adtyp === AD_WRAP
+            || mattk.adtyp === AD_STCK || mattk.adtyp === AD_DGST)) {
+        const { update_topl } = await import('./display.js');
+        const tailmiss = !!game.notonhead;
+        const verb = (mattk.adtyp === AD_DGST) ? 'gulp'
+            : (mattk.adtyp === AD_STCK) ? 'adhere' : 'grab';
+        const target = tailmiss ? `${s_suffix(mon_nam(mdef))} tail`
+                                : mon_nam(mdef);
+        await update_topl(`Your ${verb} attempt `
+            + `${!tailmiss ? 'passes right through' : 'fails to hold'}`
+            + ` ${target}!`);
+        return true;
+    }
+    return false;
+}
+// C ref: youprop.h Sick/Sick_resistance.
+function Sick_uh() { return (u_of().uprops?.Sick || 0) > 0; }
+function Sick_resistance_uh() {
+    return (u_of().uprops?.SickResistance || 0) > 0;
+}
+
+// C ref: uhitm.c:6201 that_is_a_mimic(mtmp, mimic_flags) — the "Wait!  That's a
+// <mimic>!" reveal, shared by stumble_onto_mimic() and bhitm()'s
+// WAN_LOCKING/WAN_OPENING cases.  No RNG of its own; the M_AP_OBJECT arm's
+// object_from_map() rolls next_ident() when it fabricates the disguise object
+// (see object_from_map_lite() above).
+export async function that_is_a_mimic(mtmp, mimic_flags) {
+    const reveal_it = (mimic_flags & MIM_REVEAL) !== 0;
+    const omit_wait = (mimic_flags & MIM_OMIT_WAIT) !== 0;
+    /* that_is_a_mimic_message() above builds the whole line: it picks the same
+       three fmtbuf variants C does ("That <furniture> actually is %s!",
+       "That/Those <object> is/are %s!", "Wait!  That's %s!") and substitutes
+       'what'.  C's Blind_telepat/M_AP_MONSTER branch is absent because
+       set_mimic_sym() never assigns M_AP_MONSTER in this port. */
+    let line = that_is_a_mimic_message(mtmp);
+    if (omit_wait && line.startsWith('Wait!  '))
+        line = line.slice(7);
+    const { update_topl } = await import('./display.js');
+    await update_topl(line);
+    if (reveal_it) seemimicLocal(mtmp);
+}
+
+// C ref: uhitm.c:6308 disguised_as_mon(mtmp) — mimicking another monster.
+export function disguised_as_mon(mtmp) {
+    return M_AP_TYPE(mtmp) !== 0 && M_AP_TYPE(mtmp) === M_AP_MONSTER;
+}
+
+// C ref: uhitm.c:6315 nohandglow(mon) — the confuse-monster charge is spent.
+// No RNG.
+export async function nohandglow(mon) {
+    const u = game.u;
+    if (!u.umconf || mon.mconf) return;
+
+    const I = await import('./invent.js');
+    const { hcolor } = await import('./do_name.js');
+    const { update_topl } = await import('./display.js');
+    const hands = I.makeplural(I.body_part(HAND));
+    const altfeedback = (Blind() || Invisible_uh());
+    if (u.umconf === 1) {
+        if (altfeedback) await update_topl(`Your ${hands} stop tingling.`);
+        else await update_topl(`Your ${hands} stop glowing`
+            + ` ${hcolor('red')}.`);
+    } else {
+        if (altfeedback)
+            await update_topl(`The tingling in your ${hands} lessens.`);
+        else await update_topl(`Your ${hands} no longer glow so brightly`
+            + ` ${hcolor('red')}.`);
+    }
+    u.umconf--;
+}
+
+// C ref: uhitm.c:6341 flash_hits_mon(mtmp, otmp) — a light flash hits a
+// monster; returns 1 if it had a noticeable effect.
+//
+// RNG order: the gremlin's d(1+spe,4) or rnd(min(mhp,4)), then rn2(4) for the
+// flee gate, then (only inside it) rn2(4) and rnd(100) for the duration, then
+// rnd(1 + 50/tmp) for the blindness.
+export async function flash_hits_mon(mtmp, otmp) {
+    const mx = mtmp.mx, my = mtmp.my;
+    let tmp, amt, res = 0;
+    const { update_topl } = await import('./display.js');
+
+    if (game.notonhead) return 0;
+    const lev = game.level?.at(mx, my);
+    const useeit = canseemon(mtmp);
+
+    if (M_AP_TYPE(mtmp) !== M_AP_NOTHING) {
+        /* hack.c mhidden_description(mtmp, MHID_ALTMON, buf) has no port; the
+           mimic's disguise name comes from the same helper that_is_a_mimic()
+           uses.  wakeup() -> seemimic() -> newsym() is what changes the glyph. */
+        const whatbuf = mhidden_description_uh(mtmp);
+        const was_disguised = M_AP_TYPE(mtmp) !== M_AP_NOTHING;
+        await wakeupAttack(mtmp, false);
+        /* if the glyph changed then the hero saw something happen */
+        if (was_disguised && M_AP_TYPE(mtmp) === M_AP_NOTHING) {
+            await update_topl(`That ${whatbuf} is really `
+                + `${x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_A,
+                              null, 0, false)}`
+                + `${mtmp.mtame ? '.' : '!'}`);
+            res = 1;
+        }
+    }
+
+    if (mtmp.msleeping && haseyes(mtmp.data)) {
+        mtmp.msleeping = 0;
+        if (useeit) {
+            await update_topl(`The flash awakens ${mon_nam(mtmp)}.`);
+            res = 1;
+        }
+    } else if (mtmp.data?.mcls !== S_LIGHT) {
+        if (!resists_blnd(mtmp)) {
+            tmp = dist2_uh(otmp.ox, otmp.oy, mx, my);
+            if (useeit) {
+                await update_topl(`${Monnam(mtmp)} is blinded by the flash!`);
+                res = 1;
+            }
+            if (mtmp.data?.name === 'gremlin') {
+                /* Rule #1: Keep them out of the light. */
+                amt = (otmp.otyp === WAN_LIGHT)
+                    ? d(1 + (otmp.spe | 0), 4)
+                    : rnd(Math.min(mtmp.mhp, 4));
+                await light_hits_gremlin(mtmp, amt);
+            }
+            if (!DEADMONSTER(mtmp)) {
+                if (!game.context?.mon_moving) await setmangry(mtmp, true);
+                if (tmp < 9 && !mtmp.isshk && rn2(4)) {
+                    const { monflee: monflee_full } = await import('./monmove.js');
+                    await monflee_full(mtmp, rn2(4) ? rnd(100) : 0, false, true);
+                }
+                mtmp.mcansee = 0;
+                mtmp.mblinded = (tmp < 3) ? 0 : rnd(1 + Math.trunc(50 / tmp));
+            }
+        } else if (useeit) {
+            /* resists_blnd_by_arti() -> shieldeff(): no artifact defends()
+               port, so the sparkle is absent */
+            if (game.flags?.verbose !== false) {
+                if (lev?.lit)
+                    await update_topl(`The flash of light shines on`
+                        + ` ${mon_nam(mtmp)}.`);
+                else
+                    await update_topl(`${Monnam(mtmp)} is illuminated.`);
+                res = 2;   /* 'message has been given' temporary value */
+            }
+        }
+    }
+    if (res) {
+        /* display_nhwindow(WIN_MESSAGE, TRUE) — the --More-- when the square is
+           unlit; no port for a forced flush here */
+        res &= 1;          /* change the temporary 2 back to 0 */
+    }
+    return res;
+}
+// C ref: hacklib.c dist2(x0, y0, x1, y1).
+function dist2_uh(x0, y0, x1, y1) {
+    const dx = x0 - x1, dy = y0 - y1;
+    return dx * dx + dy * dy;
+}
+
+// C ref: uhitm.c:6425 light_hits_gremlin(mon, dmg) — a gremlin takes light
+// damage.  No RNG.
+export async function light_hits_gremlin(mon, dmg) {
+    const { update_topl } = await import('./display.js');
+    if (!Deaf_uh() && mdistu(mon) <= 90) {
+        /* the cry of pain carries somewhat farther than the waking radius */
+        await update_topl(`${Monnam(mon)} `
+            + `${(dmg > Math.trunc(mon.mhp / 2)) ? 'wails in agony'
+                                                 : 'cries out in pain'}!`);
+    } else if (canseemon(mon)) {
+        await update_topl(`${Monnam(mon)} recoils from the light!`);
+    }
+    mon.mhp -= dmg;
+    const { wake_nearto } = await import('./cmd.js');
+    await wake_nearto(mon.mx, mon.my, 30);
+    if (DEADMONSTER(mon)) {
+        if (game.context?.mon_moving) {
+            /* mon.c monkilled(mon, 0, AD_BLND) — unported for this path */
+            await killed(mon);
+        } else {
+            await killed(mon);
+        }
+    } else if (cansee(mon.mx, mon.my) && !canspotmon(mon)) {
+        map_invisible(mon.mx, mon.my);
+    }
+}
+
+// C ref: hack.c mhidden_description(mtmp, MHID_ALTMON, buf) — names the shape a
+// concealed monster is wearing ("chest", "boulder", "staircase down"), which is
+// what flash_hits_mon() prints before the reveal.  js/hack.js keeps a copy that
+// isn't exported; this slice covers the two appearance types set_mimic_sym()
+// assigns in this port.
+function mhidden_description_uh(mtmp) {
+    if (M_AP_TYPE(mtmp) === M_AP_FURNITURE)
+        return FURNITURE_EXPLANATION[mtmp.mappearance] || 'thing';
+    if (M_AP_TYPE(mtmp) === M_AP_OBJECT)
+        return (mtmp.mappearance && mtmp.mappearance !== STRANGE_OBJECT)
+            ? simple_typename(mtmp.mappearance) : 'strange object';
+    return 'monster';
+}

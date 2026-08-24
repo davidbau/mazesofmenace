@@ -201,9 +201,42 @@ export const races = [
     },
 ];
 
+// C ref: role.c:688 genders[] — struct Gender is { adj, he, him, his,
+// filecode, allow } (you.h:301).  The he/him/his columns were missing here;
+// you.h:316 uhis() and you.h:323 mhe()/mhim()/mhis() index this table for every
+// monster pronoun, and four files already document that (js/wizcmds.js:90,
+// js/extcmd-handlers.js:1209, js/monmove.js:6265, js/timeout.js:459).
+//
+// C's table has FOUR rows: male, female, "neuter" (ROLE_NEUTER — a real gender
+// for monsters, never playable because ROLE_GENDERS is 2) and a trailing
+// "group"/they row that exists purely so mondata.c:1196 pronoun_gender() can
+// return rn2(4) while the hero is hallucinating.  Rows 2 and 3 live in
+// PRONOUN_GENDERS below rather than here, and that is a DELIBERATE, MEASURED
+// split, not an omission:
+//
+//   js/jsmain.js:516 (the live setup_gendmenu) and js/jsmain.js:935 (the live
+//   reset_role_filtering) iterate `genders.length`, where C uses ROLE_GENDERS
+//   and SIZE(genders)-1 respectively.  Appending the two rows here therefore
+//   put "neuter" and "group" into the actual chargen gender menu and measured
+//   -5 public screens (seed0006 -2, seed0007/seed0012/seed0077 -1 each).
+//   Fixing those two bounds in jsmain.js is what lets this table become the
+//   4-row C one; until then `genders` stays exactly ROLE_GENDERS long.
 export const genders = [
-    { name: 'male', adj: 'male', filecode: 'Mal', value: 0, allow: ROLE_MALE },
-    { name: 'female', adj: 'female', filecode: 'Fem', value: 1, allow: ROLE_FEMALE },
+    { name: 'male', adj: 'male', he: 'he', him: 'him', his: 'his', filecode: 'Mal', value: 0, allow: ROLE_MALE },
+    { name: 'female', adj: 'female', he: 'she', him: 'her', his: 'her', filecode: 'Fem', value: 1, allow: ROLE_FEMALE },
+];
+
+// C ref: role.c:688 genders[] in full — the table mondata.c:1196
+// pronoun_gender() indexes, including the hallucination-only rn2(4) row.
+// you.h:323 `mhe(mtmp) == genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he`, and
+// pronoun_gender() can answer 2 (neuter) or 3 (group), so a two-row table makes
+// every hallucinated monster pronoun read `undefined`.
+export const PRONOUN_GENDERS = [
+    genders[0],
+    genders[1],
+    { name: 'neuter', adj: 'neuter', he: 'it', him: 'it', his: 'its', filecode: 'Ntr', value: 2, allow: ROLE_NEUTER },
+    /* used by pronoun_gender() when hallucinating */
+    { name: 'group', adj: 'group', he: 'they', him: 'them', his: 'their', filecode: 'Grp', value: 3, allow: 0 },
 ];
 
 export const aligns = [
@@ -997,4 +1030,927 @@ export function build_plselection_prompt(rolenum, racenum, gendnum, alignnum) {
         if (gr.role_pa[BP_ALIGN]) { buf = promptsep(buf, num_post_attribs); buf += 'alignment'; }
     }
     return `${buf} for you? [ynaq] `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// role.c: the remaining top-level functions.
+//
+// A faithful, INERT translation.  Nothing above this line calls into this
+// block and the existing chargen path is untouched — js/jsmain.js drives role
+// selection with its own method-shaped copies of setup_rolemenu() /
+// role_menu_extra() / maybe_skip_seps() (jsmain.js:466, :595, :578) and
+// js/fastforward.js:35 fastforward_role_init() is the live reduced copy of
+// role_init()'s RNG draws.  Those are the ones the sessions run; these are the
+// C shapes, so that when the real window layer arrives the correct function is
+// already here rather than needing to be re-derived.
+//
+// Every import below is dynamic: role.js sits very early in the module graph
+// (options.js imports it) and adding modules to its static graph reorders ESM
+// evaluation, which this port is measurably sensitive to.
+
+import { RS_NAME, RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT } from './const.js';
+
+// C ref: winprocs.h:313 `#define RS_filter 5` and winprocs.h:314
+// `#define RS_menu_arg(x) (ROLE_RANDOM - ((x) + 1))  /* 0..5 -> -3..-8 */`.
+// const.js exports RS_NAME..RS_ALGNMNT but not these two.
+//
+// NOTE a real divergence: js/options.js:2691 defines its OWN
+// `RS_ROLE = 0, RS_RACE = 1, RS_GENDER = 2, RS_ALGNMNT = 3`, i.e. shifted by
+// one from winprocs.h.  options.js only ever passes them to its own private
+// clearrolefilter()/setrolefilter(), so it is self-consistent — but the two
+// numberings must never be mixed across the two files.
+export const RS_filter = 5;
+export function RS_menu_arg(x) { return ROLE_RANDOM - (x + 1); }
+
+// C ref: the tty window API — create_nhwindow / start_menu / add_menu /
+// add_menu_str / end_menu / select_menu / putstr / destroy_nhwindow.  This port
+// has no shared window layer (frozen/terminal.js owns the grid), so each inert
+// port keeps its own descriptor: js/topten.js:337 and js/end.js:1375 do exactly
+// this.  A "window" here is a plain object whose `strs` and `items` record what
+// C would have drawn, which is what makes the four setup_*menu() builders below
+// verifiable without a terminal.
+const NHW_MENU = 3, MENU_BEHAVE_STANDARD = 0;
+const ATR_NONE = 0, NO_COLOR = 0;
+const MENU_ITEMFLAGS_NONE = 0, MENU_ITEMFLAGS_SELECTED = 1;
+const PICK_ANY = 2;
+
+export function rs_create_nhwindow(type) {
+    return { type, strs: [], items: [], prompt: null, behave: null };
+}
+export function rs_start_menu(win, behave) { win.behave = behave; win.items = []; }
+export function rs_add_menu_str(win, str) {
+    win.strs.push(str);
+    win.items.push({ str, selector: 0, groupacc: 0, any: null });
+}
+export function rs_add_menu(win, any, selector, groupacc, attr, clr, text, itemflags) {
+    win.items.push({ str: text, selector, groupacc, attr, clr, any, itemflags });
+}
+export function rs_end_menu(win, prompt) { win.prompt = prompt; }
+export function rs_putstr(win, attr, str) { win.strs.push(str); void attr; }
+
+// C ref: hacklib.c lowc(c) / highc(c) — first character folded.  Six files in
+// js/ carry the same one-liners (js/objnam.js:60, js/topten.js:188, ...).
+function lowc(c) { return String(c ?? '').charAt(0).toLowerCase(); }
+function highc(c) { return String(c ?? '').charAt(0).toUpperCase(); }
+// C ref: objnam.c an(str).
+function rs_an(s) { return /^[aeiou]/i.test(String(s)) ? `an ${s}` : `a ${s}`; }
+
+// The four aspect tables' C sizes.  C's roles[] and races[] are NULL-terminated
+// so `SIZE(x) - 1` is the number of REAL rows; genders[] and aligns[] are not
+// terminated, so `SIZE(genders) - 1` is 3 (male/female/neuter, deliberately
+// excluding the hallucination-only "group" row) and `SIZE(aligns) - 1` is 3
+// (lawful/neutral/chaotic, excluding C's trailing "unaligned" row, which this
+// port's aligns[] does not carry at all).
+const C_NROLES = () => roles.length;              /* SIZE(roles) - 1  == 13 */
+const C_NRACES = () => races.length;              /* SIZE(races) - 1  ==  5 */
+const C_NGENDERS_FILTER = () => PRONOUN_GENDERS.length - 1; /* SIZE(genders)-1 == 3 */
+const C_NALIGNS_FILTER = () => aligns.length;     /* SIZE(aligns) - 1 ==  3 */
+
+// C ref: role.c:1284 setrolefilter(bufp) — "!Bar" style RC entries.  js has a
+// private copy at js/options.js:2708; this is the C shape, including the return
+// value that tells the caller the token was not recognised at all.
+export function setrolefilter(bufp) {
+    const f = rfilter();
+    if (!game.rfilter) game.rfilter = f;
+    if (!Array.isArray(f.roles)) f.roles = [];
+    let i;
+    let reslt = true;
+
+    if ((i = str2role(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
+        f.roles[i] = true;
+    else if ((i = str2race(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
+        f.mask |= races[i].selfmask;
+    else if ((i = str2gend(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
+        f.mask |= genders[i].allow;
+    else if ((i = str2align(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM)
+        f.mask |= aligns[i].allow;
+    else
+        reslt = false;
+    return reslt;
+}
+
+// C ref: role.c:1358 clearrolefilter(which) — note the RS_filter FALLTHROUGH
+// into RS_ROLE: clearing "the filter" clears the mask AND the per-role array.
+export function clearrolefilter(which) {
+    const f = rfilter();
+    if (!game.rfilter) game.rfilter = f;
+    let i;
+
+    switch (which) {
+    case RS_filter:
+        f.mask = 0; /* clear race, gender, and alignment filters */
+        /* FALLTHRU */
+    case RS_ROLE:
+        for (i = 0; i < C_NROLES(); ++i) f.roles[i] = false;
+        break;
+    case RS_RACE:
+        f.mask &= ~ROLE_RACEMASK;
+        break;
+    case RS_GENDER:
+        f.mask &= ~ROLE_GENDMASK;
+        break;
+    case RS_ALGNMNT:
+        f.mask &= ~ROLE_ALIGNMASK;
+        break;
+    default:
+        break;
+    }
+}
+
+// C ref: role.c:1318 rolefilterstring(outbuf, which) — "create a string like
+// ' !Bar !Kni' or ' !chaotic' that can be put back into an RC file by
+// #saveoptions".  C builds it with a leading space and returns &outbuf[1];
+// this returns the same string without that space.  Roles are abbreviated to
+// their first THREE characters ("%.3s") — i.e. "!Arc", not "!Archeologist".
+export function rolefilterstring(outbuf, which) {
+    const f = rfilter();
+    let buf = '';
+    let i;
+
+    switch (which) {
+    case RS_ROLE:
+        for (i = 0; i < C_NROLES(); ++i)
+            if (f.roles?.[i]) buf += ` !${roles[i].name.m.slice(0, 3)}`;
+        break;
+    case RS_RACE:
+        for (i = 0; i < C_NRACES(); ++i)
+            if ((f.mask & races[i].selfmask) !== 0) buf += ` !${races[i].noun}`;
+        break;
+    case RS_GENDER:
+        for (i = 0; i < C_NGENDERS_FILTER(); ++i)
+            if ((f.mask & PRONOUN_GENDERS[i].allow) !== 0)
+                buf += ` !${PRONOUN_GENDERS[i].adj}`;
+        break;
+    case RS_ALGNMNT:
+        for (i = 0; i < C_NALIGNS_FILTER(); ++i)
+            if ((f.mask & aligns[i].allow) !== 0) buf += ` !${aligns[i].adj}`;
+        break;
+    default:
+        /* C: impossible("rolefilterstring: bad role aspect (%d)", which) */
+        buf = ' ?';
+        break;
+    }
+    void outbuf;
+    /* constructed with a leading space; drop it */
+    return buf.slice(1);
+}
+
+// C ref: role.c:1665 plnamesuffix() — "Strip the role letter out of the player
+// name.  This is included for backwards compatibility."  Two jobs:
+//   1. blank out a name that matches sysopt.genericusers (so askname() runs),
+//      where a bare '*' means "every username is generic";
+//   2. split what is left on '-' and feed each token to str2role/str2race/
+//      str2gend/str2align, so `-u Bob-Val-dwa-fem-neu` pins four facets.
+// gp.plnamelen is non-zero only when the username itself contains a dash, and
+// it is reset every time askname() refills plname[].
+//
+// C's loop repeats until plname[] is non-empty (or askname() deferred it), so a
+// generic username asks again rather than falling through with no name.
+export function plnamesuffix() {
+    const g = game;
+    let sptr, eptr, i;
+
+    /* some generic user names will be ignored in favor of prompting */
+    const genericusers = g.sysopt?.genericusers;
+    if (genericusers) {
+        if (genericusers[0] === '*') {
+            g.plname = '';
+        } else {
+            /* need to ignore appended '-role-race-gender-alignment';
+               'plnamelen' is non-zero when dealing with plname[] value that
+               contains a username with dash(es) in it and is usually 0 */
+            const start = g.plnamelen | 0;
+            const dash = String(g.plname || '').indexOf('-', start);
+            i = (dash >= 0) ? dash : String(g.plname || '').length;
+            /* look for plname[] in the 'genericusers' space-separated list */
+            if (rs_findword(genericusers, String(g.plname || ''), i))
+                /* it's generic; remove it so that askname() will be called */
+                g.plname = '';
+        }
+        if (!g.plname) g.plnamelen = 0;
+    }
+
+    do {
+        if (!g.plname) {
+            // UNPORTED: files.c askname().  The chargen name prompt lives in
+            // js/jsmain.js (see [[chargen-plselection-path]]: it is NOT
+            // getlin), and calling into it from here would drag the whole
+            // display layer into role.js.  C would fill plname[] or set
+            // iflags.defer_plname; without it the loop below must not spin, so
+            // break out exactly as the defer_plname case does.
+            g.plnamelen = 0;
+            break;
+        }
+
+        /* Look for tokens delimited by '-' */
+        const parts = String(g.plname).slice(g.plnamelen | 0).split('-');
+        sptr = parts[0];
+        g.plname = String(g.plname).slice(0, g.plnamelen | 0) + sptr;
+        for (let k = 1; k < parts.length; k++) {
+            /* Isolate the next token */
+            eptr = parts[k];
+
+            /* Try to match it to something */
+            if ((i = str2role(eptr)) !== ROLE_NONE) g.initrole = i;
+            else if ((i = str2race(eptr)) !== ROLE_NONE) g.initrace = i;
+            else if ((i = str2gend(eptr)) !== ROLE_NONE) g.initgend = i;
+            else if ((i = str2align(eptr)) !== ROLE_NONE) g.initalign = i;
+        }
+    } while (!g.plname && !game.iflags?.defer_plname);
+
+    /* commas in the plname confuse the record file, convert to spaces */
+    g.plname = String(g.plname || '').replace(/,/g, ' ');
+}
+
+// C ref: hacklib.c findword(list, word, len, ignorecase) — is `word` (its first
+// `len` chars) one of the space-separated entries of `list`?
+function rs_findword(list, word, len) {
+    const needle = String(word).slice(0, len);
+    if (!needle) return false;
+    return String(list).split(/\s+/).some((w) => w === needle);
+}
+
+// C ref: role.c:1726 role_selection_prolog(which, where) — the five-line
+// "name: / role: / race: / gender: / alignment:" header the extended selection
+// menus carry.  The aspect being chosen right now reads " choosing now"; an
+// unset one " not yet specified"; ROLE_RANDOM " random".
+//
+// The constraint propagation is the interesting part and is one-directional:
+// a chosen role can pin race (Samurai => human), gender (Valkyrie => female)
+// and alignment, and a chosen race can pin alignment (orc => chaotic); gender
+// and alignment never narrow anything else enough to matter.
+export function role_selection_prolog(which, where) {
+    const choosing = ' choosing now', not_yet = ' not yet specified',
+          rand_choice = ' random';
+    let buf;
+    let r, c, gend, a, allowmask;
+
+    r = game.initrole;
+    c = game.initrace;
+    gend = game.initgend;
+    a = game.initalign;
+    if (r >= 0) {
+        allowmask = roles[r].allow;
+        if ((allowmask & ROLE_RACEMASK) === MH_HUMAN)
+            c = 0; /* races[human] */
+        else if (IndexOkT(c, races)
+                 && !(allowmask & ROLE_RACEMASK & races[c].allow))
+            c = ROLE_RANDOM;
+        if ((allowmask & ROLE_GENDMASK) === ROLE_MALE)
+            gend = 0; /* role forces male (hypothetical) */
+        else if ((allowmask & ROLE_GENDMASK) === ROLE_FEMALE)
+            gend = 1; /* role forces female (valkyrie) */
+        if ((allowmask & ROLE_ALIGNMASK) === AM_LAWFUL) a = 0;
+        else if ((allowmask & ROLE_ALIGNMASK) === AM_NEUTRAL) a = 1;
+        else if ((allowmask & ROLE_ALIGNMASK) === AM_CHAOTIC) a = 2;
+    }
+    if (c >= 0) {
+        allowmask = races[c].allow;
+        if ((allowmask & ROLE_ALIGNMASK) === AM_LAWFUL) a = 0;
+        else if ((allowmask & ROLE_ALIGNMASK) === AM_NEUTRAL) a = 1;
+        else if ((allowmask & ROLE_ALIGNMASK) === AM_CHAOTIC) a = 2;
+        /* [c never forces gender] */
+    }
+    /* [g and a don't constrain anything sufficiently to narrow something
+       down to a single choice] */
+
+    buf = `${'name:'.padStart(12)} `;
+    buf += (which === RS_NAME) ? choosing
+        : !game.plname ? not_yet : game.plname;
+    rs_putstr(where, 0, buf);
+
+    buf = `${'role:'.padStart(12)} `;
+    buf += (which === RS_ROLE) ? choosing
+        : (r === ROLE_NONE) ? not_yet
+        : (r === ROLE_RANDOM) ? rand_choice
+        : roles[r].name.m;
+    if (r >= 0 && roles[r].name.f) {
+        /* distinct female name [caveman/cavewoman, priest/priestess] */
+        if (gend === 1) {
+            /* female specified; replace male role name with female one */
+            const cut = buf.indexOf(':');
+            buf = `${buf.slice(0, cut)}: ${roles[r].name.f}`;
+        } else if (gend < 0) {
+            /* gender unspecified; append slash and female role name */
+            buf += `/${roles[r].name.f}`;
+        }
+    }
+    rs_putstr(where, 0, buf);
+
+    buf = `${'race:'.padStart(12)} `;
+    buf += (which === RS_RACE) ? choosing
+        : (c === ROLE_NONE) ? not_yet
+        : (c === ROLE_RANDOM) ? rand_choice
+        : races[c].noun;
+    rs_putstr(where, 0, buf);
+
+    buf = `${'gender:'.padStart(12)} `;
+    buf += (which === RS_GENDER) ? choosing
+        : (gend === ROLE_NONE) ? not_yet
+        : (gend === ROLE_RANDOM) ? rand_choice
+        : genders[gend].adj;
+    rs_putstr(where, 0, buf);
+
+    buf = `${'alignment:'.padStart(12)} `;
+    buf += (which === RS_ALGNMNT) ? choosing
+        : (a === ROLE_NONE) ? not_yet
+        : (a === ROLE_RANDOM) ? rand_choice
+        : aligns[a].adj;
+    rs_putstr(where, 0, buf);
+}
+
+// C ref: role.c:1816 role_menu_extra(which, where, preselect) — "add a 'pick
+// alignment first'-type entry to the specified menu".  It emits ONE line, and
+// which line is the whole subtlety:
+//   * when the aspect is already forced to a single value by role, race or the
+//     user's filters, an UNSELECTABLE "<constrainer> forces <value>" line
+//     faked-grey with four leading spaces (add_menu_str, so no selector);
+//   * otherwise a selectable "Pick [another] <what> first" whose selector is
+//     one of `= ? / " [` indexed by RS_NAME..RS_ALGNMNT;
+//   * RS_filter emits "Set/Reset role/race/&c filtering" on '~';
+//   * ROLE_RANDOM emits "Random" on '*' and ROLE_NONE "Quit" on 'q', either of
+//     which can be preselected.
+// C computes `f` (the aspect's current value) so that "another" appears only
+// when the aspect already has a value.
+export function role_menu_extra(which, where, preselect) {
+    const RS_menu_let = ['=', '?', '/', '"', '['];
+    let what = null, constrainer = null, forcedvalue = null;
+    let f = 0, r, c, gend, a, i, allowmask;
+    const clr = NO_COLOR;
+    const fmask = rfilter().mask | 0;
+    let any;
+
+    r = game.initrole;
+    c = game.initrace;
+    switch (which) {
+    case RS_NAME:
+        what = 'name';
+        break;
+    case RS_ROLE:
+        what = 'role';
+        f = r;
+        for (i = 0; i < C_NROLES(); ++i)
+            if (i !== f && !rfilter().roles?.[i]) break;
+        if (i === C_NROLES()) {
+            constrainer = 'filter';
+            forcedvalue = 'role';
+        }
+        break;
+    case RS_RACE:
+        what = 'race';
+        f = game.initrace;
+        c = ROLE_NONE; /* override player's setting */
+        if (r >= 0) {
+            allowmask = roles[r].allow & ROLE_RACEMASK;
+            if (allowmask === MH_HUMAN) c = 0; /* races[human] */
+            if (c >= 0) {
+                constrainer = 'role';
+                forcedvalue = races[c].noun;
+            } else if (f >= 0 && ((allowmask & ~fmask) === races[f].selfmask)) {
+                /* if there is only one race choice available due to user
+                   options disallowing others, race menu entry is disabled */
+                constrainer = 'filter';
+                forcedvalue = 'race';
+            }
+        }
+        break;
+    case RS_GENDER:
+        what = 'gender';
+        f = game.initgend;
+        gend = ROLE_NONE;
+        if (r >= 0) {
+            allowmask = roles[r].allow & ROLE_GENDMASK;
+            if (allowmask === ROLE_MALE) gend = 0;         /* genders[male] */
+            else if (allowmask === ROLE_FEMALE) gend = 1;  /* genders[female] */
+            if (gend >= 0) {
+                constrainer = 'role';
+                forcedvalue = genders[gend].adj;
+            } else if (f >= 0 && ((allowmask & ~fmask) === genders[f].allow)) {
+                /* if there is only one gender choice available due to user
+                   options disallowing other, gender menu entry is disabled */
+                constrainer = 'filter';
+                forcedvalue = 'gender';
+            }
+        }
+        break;
+    case RS_ALGNMNT:
+        what = 'alignment';
+        f = game.initalign;
+        a = ROLE_NONE;
+        if (r >= 0) {
+            allowmask = roles[r].allow & ROLE_ALIGNMASK;
+            if (allowmask === AM_LAWFUL) a = 0;
+            else if (allowmask === AM_NEUTRAL) a = 1;
+            else if (allowmask === AM_CHAOTIC) a = 2;
+            if (a >= 0) constrainer = 'role';
+        }
+        if (c >= 0 && !constrainer) {
+            allowmask = races[c].allow & ROLE_ALIGNMASK;
+            if (allowmask === AM_LAWFUL) a = 0;
+            else if (allowmask === AM_NEUTRAL) a = 1;
+            else if (allowmask === AM_CHAOTIC) a = 2;
+            if (a >= 0) constrainer = 'race';
+        }
+        if (f >= 0 && !constrainer
+            && (ROLE_ALIGNMASK & ~fmask) === aligns[f].allow) {
+            /* if there is only one alignment choice available due to user
+               options disallowing others, algn menu entry is disabled */
+            constrainer = 'filter';
+            forcedvalue = 'alignment';
+        }
+        if (a >= 0) forcedvalue = aligns[a].adj;
+        break;
+    default:
+        break;
+    }
+
+    if (constrainer) {
+        /* use four spaces of padding to fake a grayed out menu choice */
+        rs_add_menu_str(where, `    ${constrainer} forces ${forcedvalue}`);
+    } else if (what) {
+        any = { a_int: RS_menu_arg(which) };
+        rs_add_menu(where, any, RS_menu_let[which], 0, ATR_NONE, clr,
+                    `Pick${(f >= 0) ? ' another' : ''} ${what} first`,
+                    MENU_ITEMFLAGS_NONE);
+    } else if (which === RS_filter) {
+        any = { a_int: RS_menu_arg(RS_filter) };
+        rs_add_menu(where, any, '~', 0, ATR_NONE, clr,
+                    `${gotrolefilter() ? 'Reset' : 'Set'} role/race/&c filtering`,
+                    MENU_ITEMFLAGS_NONE);
+    } else if (which === ROLE_RANDOM) {
+        any = { a_int: ROLE_RANDOM };
+        rs_add_menu(where, any, '*', 0, ATR_NONE, clr, 'Random',
+                    preselect ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    } else if (which === ROLE_NONE) {
+        any = { a_int: ROLE_NONE };
+        rs_add_menu(where, any, 'q', 0, ATR_NONE, clr, 'Quit',
+                    preselect ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    /* else C: impossible("role_menu_extra: bad arg (%d)", which) */
+}
+
+// C ref: include/align.h AM_LAWFUL/AM_NEUTRAL/AM_CHAOTIC as they appear in a
+// roles[].allow mask — these ARE ROLE_LAWFUL/ROLE_NEUTRAL/ROLE_CHAOTIC (the
+// role.h ROLE_* alignment bits are #defined to the align.h AM_* values), so the
+// masks role_selection_prolog()/role_menu_extra() compare against are the same
+// bits the tables were built with.
+const AM_LAWFUL = ROLE_LAWFUL, AM_NEUTRAL = ROLE_NEUTRAL,
+      AM_CHAOTIC = ROLE_CHAOTIC;
+
+// C ref: role.c:1980 role_init() — "this is going to have to be done on each
+// newgame or restore, because you lose the permonst mods across a
+// save/restore", and it also replaces quest_init().
+//
+// RNG-wise there are exactly three places this can draw, and they are why
+// js/fastforward.js:35 exists at all:
+//   * randrole_filtered() when no valid role was pinned;
+//   * `rn2(100) < 50` for the quest LEADER and again for the quest NEMESIS,
+//     but ONLY when that monster's permonst carries none of neuter/female/male
+//     (in 3.7 that is the Archeologist's and Wizard's nemesis);
+//   * the `while (!roles[pantheon].lgod) pantheon = randrole(FALSE)` loop,
+//     which runs for the Priest (the only role with no gods of its own).
+export async function role_init() {
+    const g = game;
+    const { MFLAGS2, MFLAGS3, MSOUND, MS_LEADER, MS_NEMESIS,
+            M2_PEACEFUL, M2_HOSTILE, M2_NASTY, M2_STALK,
+            M3_CLOSE, M3_WANTSARTI, M3_WAITFORU } = await import('./monflags_data.js');
+    const { name_to_pmidx } = await import('./makemon.js');
+    let alignmnt;
+
+    /* Strip the role letter out of the player name. */
+    plnamesuffix();
+
+    /* Check for a valid role.  Try flags.initrole first. */
+    if (!validrole(g.initrole)) {
+        /* Try the player letter second */
+        if ((g.initrole = str2role(g.pl_character)) < 0)
+            /* None specified; pick a random role */
+            g.initrole = randrole_filtered();
+    }
+
+    /* We now have a valid role index.  Copy the role name back.
+       This should become OBSOLETE */
+    g.pl_character = roles[g.initrole].name.m;
+
+    /* Check for a valid race */
+    if (!validrace(g.initrole, g.initrace))
+        g.initrace = randrace(g.initrole);
+
+    /* Check for a valid gender.  If new game, check both initgend and female.
+       On restore, assume flags.female is correct. */
+    if (g.pantheon === -1 || g.pantheon == null) { /* new game */
+        if (!validgend(g.initrole, g.initrace, g.female ? 1 : 0))
+            g.female = !g.female;
+    }
+    if (!validgend(g.initrole, g.initrace, g.initgend))
+        /* Note that there is no way to check for an unspecified gender. */
+        g.initgend = g.female ? 1 : 0;
+
+    /* Check for a valid alignment */
+    if (!validalign(g.initrole, g.initrace, g.initalign))
+        /* Pick a random alignment */
+        g.initalign = randalign(g.initrole, g.initrace);
+    alignmnt = aligns[g.initalign].value;
+
+    /* Initialize gu.urole and gu.urace */
+    g.urole = { ...roles[g.initrole] };
+    g.urace = { ...races[g.initrace] };
+
+    if (!g.quest_status) g.quest_status = {};
+
+    // C ref: role.c roles[].ldrnum / .guardnum / .neminum.  js/role.js's
+    // roles[] table does NOT carry those three columns, so they are resolved
+    // here by monster NAME instead; ROLE_QUEST below is that mapping, in
+    // roles[] order.  This is the one part of role_init() that has no data to
+    // stand on in the port, and it is the part that DRAWS — see the two
+    // rn2(100) sites below.
+    const q = ROLE_QUEST[g.initrole] || {};
+    const ldrnum = q.ldr ? name_to_pmidx(q.ldr) : -1;
+    const guardnum = q.guard ? name_to_pmidx(q.guard) : -1;
+    const neminum = q.nemesis ? name_to_pmidx(q.nemesis) : -1;
+
+    /* Fix up the quest leader */
+    if (ldrnum >= 0) {
+        MSOUND[ldrnum] = MS_LEADER;
+        MFLAGS2[ldrnum] |= M2_PEACEFUL;
+        MFLAGS3[ldrnum] |= M3_CLOSE;
+        rs_set_maligntyp(ldrnum, alignmnt * 3);
+        /* if gender is random, we choose it now instead of waiting until the
+           leader monster is created */
+        g.quest_status.ldrgend =
+            rs_is_neuter(ldrnum) ? 2 : rs_is_female(ldrnum) ? 1
+            : rs_is_male(ldrnum) ? 0 : ((rn2(100) < 50) ? 1 : 0);
+    }
+
+    /* Fix up the quest guardians */
+    if (guardnum >= 0) {
+        MFLAGS2[guardnum] |= M2_PEACEFUL;
+        rs_set_maligntyp(guardnum, alignmnt * 3);
+    }
+
+    /* Fix up the quest nemesis */
+    if (neminum >= 0) {
+        MSOUND[neminum] = MS_NEMESIS;
+        MFLAGS2[neminum] &= ~M2_PEACEFUL;
+        MFLAGS2[neminum] |= (M2_NASTY | M2_STALK | M2_HOSTILE);
+        MFLAGS3[neminum] &= ~M3_CLOSE;
+        MFLAGS3[neminum] |= M3_WANTSARTI | M3_WAITFORU;
+        /* if gender is random, we choose it now instead of waiting until the
+           nemesis monster is created */
+        g.quest_status.nemgend =
+            rs_is_neuter(neminum) ? 2 : rs_is_female(neminum) ? 1
+            : rs_is_male(neminum) ? 0 : ((rn2(100) < 50) ? 1 : 0);
+    }
+
+    /* Fix up the god names */
+    if (g.pantheon === -1 || g.pantheon == null) {  /* new game */
+        let trycnt = 0;
+        g.pantheon = g.initrole;                    /* use own gods */
+        /* unless they're missing */
+        while (!roles[g.pantheon].gods && ++trycnt < 100)
+            g.pantheon = randrole(false);
+        if (!roles[g.pantheon].gods) {
+            for (let i = 0; i < C_NROLES(); i++)
+                if (roles[i].gods) { g.pantheon = i; break; }
+        }
+    }
+    if (!g.urole.gods) {
+        g.urole.gods = roles[g.pantheon].gods;
+    }
+    /* 0 or 1; no gods are neuter, nor is gender randomized */
+    g.quest_status.godgend =
+        (align_gtitle(g.initrole, alignmnt).toLowerCase() === 'goddess') ? 1 : 0;
+
+    if (g.initrole === ROLE_PRIEST) {
+        // C: objects[SPE_LIGHT].oc_skill = P_CLERIC_SPELL — a Priest's
+        // spellbook of light is a clerical spell rather than an attack one.
+        const { objects } = await import('./mkobj.js');
+        const SPE_LIGHT = objects.findIndex((o) => o.name === 'light');
+        const P_CLERIC_SPELL = 27;   /* skills.h */
+        if (SPE_LIGHT >= 0) objects[SPE_LIGHT].oc_skill = P_CLERIC_SPELL;
+    }
+
+    /* The mons[] "Fix up infravision" block is `#if 0`'d out in 3.7 so that
+       mons[] can be const; set_uasmon() reads mons[race] instead. */
+    /* Artifacts are fixed in hack_artifacts() */
+}
+
+// C ref: role.c roles[].ldrnum / .guardnum / .neminum, in roles[] order
+// (Arc, Bar, Cav, Hea, Kni, Mon, Pri, Rog, Ran, Sam, Tou, Val, Wiz — note
+// Rogue precedes Ranger, matching both C and this file's roles[]).  Named
+// rather than PM_-numbered so a mons[] index shift cannot silently repoint one.
+const ROLE_QUEST = [
+    { ldr: 'Lord Carnarvon', guard: 'student', nemesis: 'Minion of Huhetotl' },
+    { ldr: 'Pelias', guard: 'chieftain', nemesis: 'Thoth Amon' },
+    { ldr: 'Shaman Karnov', guard: 'neanderthal', nemesis: 'Chromatic Dragon' },
+    { ldr: 'Hippocrates', guard: 'attendant', nemesis: 'Cyclops' },
+    { ldr: 'King Arthur', guard: 'page', nemesis: 'Ixoth' },
+    { ldr: 'Grand Master', guard: 'abbot', nemesis: 'Master Kaen' },
+    { ldr: 'Arch Priest', guard: 'acolyte', nemesis: 'Nalzok' },
+    { ldr: 'Master of Thieves', guard: 'thug', nemesis: 'Master Assassin' },
+    { ldr: 'Orion', guard: 'hunter', nemesis: 'Scorpius' },
+    { ldr: 'Lord Sato', guard: 'roshi', nemesis: 'Ashikaga Takauji' },
+    { ldr: 'Twoflower', guard: 'guide', nemesis: 'Master of Thieves' },
+    { ldr: 'Norn', guard: 'warrior', nemesis: 'Lord Surtur' },
+    { ldr: 'Neferet the Green', guard: 'apprentice', nemesis: 'Dark One' },
+];
+
+// C ref: mondata.h is_neuter/is_female/is_male (ptr->mflags2 & M2_NEUTER etc.)
+// and permonst.maligntyp.  The generated tables are the port's mons[] columns.
+function rs_is_neuter(pmidx) { return rs_mflag2(pmidx, 0x40000); }  /* M2_NEUTER */
+function rs_is_female(pmidx) { return rs_mflag2(pmidx, 0x20000); }  /* M2_FEMALE */
+function rs_is_male(pmidx) { return rs_mflag2(pmidx, 0x10000); }    /* M2_MALE */
+function rs_mflag2(pmidx, bit) {
+    const t = game._MFLAGS2_cache;
+    return !!(t ? (t[pmidx] | 0) & bit : 0);
+}
+function rs_set_maligntyp(pmidx, val) {
+    const m = game.mons?.[pmidx];
+    if (m) m.maligntyp = val;
+}
+
+// C ref: role.c:2163 character_race(pmindex) — "if pmindex is any player race
+// (not necessarily the hero's), return a pointer to the races[] entry for it;
+// if pmindex is for some other type of monster which isn't a player race,
+// return Null".
+//
+// DIVERGENCE: C's races[].mnum IS the PM_ number (PM_HUMAN == 260); this port's
+// races[].mnum is the 0..4 race INDEX, and js/roles.js:39 carries the PM_
+// numbers in a separate `basepm` column.  So the scan has to go through the
+// table below rather than through races[i].mnum, which would answer "human" for
+// pmindex 0 (a giant ant).
+const RACE_PMNUM = [260 /*PM_HUMAN*/, 264 /*PM_ELF*/, 44 /*PM_DWARF*/,
+                    165 /*PM_GNOME*/, 72 /*PM_ORC*/];
+export function character_race(pmindex) {
+    for (let i = 0; i < races.length; ++i)
+        if (RACE_PMNUM[i] === pmindex) return races[i];
+    return null;
+}
+
+// C ref: role.c:2177 genl_player_selection() — "potential interface routine".
+// The window port's player_selection() falls back to this; it is the whole of
+// the generic path, and a cancelled selection QUITS the game rather than
+// falling through to a random character.
+export async function genl_player_selection() {
+    if (await genl_player_setup(0)) return;
+
+    // UNPORTED: allmain.c nh_terminate(EXIT_SUCCESS) — the player cancelled
+    // role/race/&c selection, so C exits.  This port's shutdown path lives in
+    // js/end.js / js/jsmain.js.
+}
+
+// C ref: role.c:2206 genl_player_setup(screenheight) — "guts of tty's
+// player_selection()".  The 800-line interactive loop is what js/jsmain.js
+// implements against the real terminal (jsmain.js:383-745), including the
+// menu-vs-single-valid-facet decision that [[makepicks]] warns about: an
+// rc-pinned INVALID facet must take the RNG-FREE counting branch.  Re-deriving
+// it here would fork the live chargen path, so this is deliberately the C
+// signature with the body named, not duplicated.
+export async function genl_player_setup(screenheight) {
+    void screenheight;
+    // UNPORTED: role.c genl_player_setup().  Live equivalent: js/jsmain.js's
+    // chargen driver.  Returning 0 means "player cancelled", which is what
+    // genl_player_selection() above then acts on.
+    return 0;
+}
+
+// C ref: role.c:2728 reset_role_filtering() — the "Pick all that apply" PICK_ANY
+// menu that sets the role/race/gender/alignment filters.  Each of the four
+// blocks is built with filtering=FALSE, which means: show EVERY row, key it by
+// the row's name string rather than an index, and PRESELECT the rows the
+// current filter already excludes.  n >= 0 (including n == 0, "clear the
+// filters and set none") clears the old filter and re-reads the selection, and
+// resets all four aspects to ROLE_NONE.
+export async function reset_role_filtering() {
+    let i, n;
+
+    const win = rs_create_nhwindow(NHW_MENU);
+    rs_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    /* no extra blank line preceding this entry; end_menu supplies one */
+    rs_add_menu_str(win, 'Unacceptable roles');
+    setup_rolemenu(win, false, ROLE_NONE, ROLE_NONE, ROLE_NONE);
+
+    rs_add_menu_str(win, '');
+    rs_add_menu_str(win, 'Unacceptable races');
+    setup_racemenu(win, false, ROLE_NONE, ROLE_NONE, ROLE_NONE);
+
+    rs_add_menu_str(win, '');
+    rs_add_menu_str(win, 'Unacceptable genders');
+    setup_gendmenu(win, false, ROLE_NONE, ROLE_NONE, ROLE_NONE);
+
+    rs_add_menu_str(win, '');
+    rs_add_menu_str(win, 'Unacceptable alignments');
+    setup_algnmenu(win, false, ROLE_NONE, ROLE_NONE, ROLE_NONE);
+
+    rs_end_menu(win, `Pick all that apply${gotrolefilter()
+        ? ' and/or unpick any that no longer apply' : ''}`);
+    // UNPORTED: windows.c select_menu(win, PICK_ANY, &selected).  With no
+    // window layer there is nothing to select, so n stays -1 ("cancelled"),
+    // which is exactly the arm that leaves the existing filters alone.
+    const selected = [];
+    n = -1;
+    void PICK_ANY;
+
+    if (n >= 0) { /* n==0: clear current filters and don't set new ones */
+        clearrolefilter(RS_filter);
+        for (i = 0; i < n; i++) setrolefilter(selected[i].item.a_string);
+
+        game.initrole = game.initrace = game.initgend = game.initalign = ROLE_NONE;
+    }
+    return (n > 0);
+}
+
+// C ref: role.c:2777 maybe_skip_seps(rows, aspect) — "the change in format when
+// this extended role selection was converted from tty-only to tty+curses+? made
+// the role selection menu require two pages on a traditional 24-line tty; that
+// wasn't fair to tty, so squeeze out some blank separator lines from the menu if
+// that will make it fit on one".
+//
+// Returns the EXCESS line count, and only ever for RS_ROLE.  One excess line
+// makes setup_rolemenu()'s caller drop the separator between 'random' and 'pick
+// race first'; two also drops plsel_startmenu()'s separator after the
+// role-so-far preview line.  The 4 + N + 2 + 5 + 1 arithmetic is C's, comment
+// for comment.  js/jsmain.js:578 _maybeSkipSeps() is the live copy.
+export function maybe_skip_seps(rows, aspect) {
+    let i, n = 0;
+
+    /* not much point to generalizing this to other aspects */
+    if (aspect !== RS_ROLE) return 0;
+
+    n += 4; /* title and ensuing separator, role info so far and separator */
+    for (i = 0; i < C_NROLES(); ++i)
+        if (ok_role(i, game.initrace, game.initgend, game.initalign)
+            && ok_race(i, game.initrace, game.initgend, game.initalign)
+            && ok_gend(i, game.initrace, game.initgend, game.initalign)
+            && ok_align(i, game.initrace, game.initgend, game.initalign))
+            ++n;
+    n += 2; /* 'random' and separator */
+    n += 5; /* race 1st, gender 1st, alignment 1st, reset filter, quit */
+    n += 1; /* footer/prompt */
+    if (rows > 0 && n > rows) return n - rows;
+    return 0;
+}
+
+// C ref: role.c:2806 plsel_startmenu(ttyrows, aspect) — "start a menu; show
+// role aspects specified so far as a header line".  rigid_role_checks() runs
+// FIRST, because whatever aspect was just chosen might force others (Orc =>
+// chaotic, Samurai => Human+lawful, Valkyrie => female).  The header is either
+// "<role> <race> <gender> <alignment>" with angle-bracket placeholders while
+// anything is still open, or the finished "<name> the <alignment> <gender>
+// <race.adj> <role>".  Each field is truncated to 20 characters ("%.20s").
+export function plsel_startmenu(ttyrows, aspect) {
+    let qbuf;
+
+    /* whatever aspect was just chosen might force others */
+    const sel = { role: game.initrole, race: game.initrace,
+                  gender: game.initgend, align: game.initalign };
+    rigid_role_checks(sel);
+    game.initrole = sel.role; game.initrace = sel.race;
+    game.initgend = sel.gender; game.initalign = sel.align;
+
+    const ROLE = game.initrole, RACE = game.initrace,
+          GEND = game.initgend, ALGN = game.initalign;
+    const t20 = (s) => String(s ?? '').slice(0, 20);
+    const rolename = (ROLE < 0) ? '<role>'
+        : (GEND === 1 && roles[ROLE].name.f) ? roles[ROLE].name.f
+        : roles[ROLE].name.m;
+
+    if (!game.plname || ROLE < 0 || RACE < 0 || GEND < 0 || ALGN < 0) {
+        /* "<role> <race.noun> <gender> <alignment>" */
+        qbuf = `${t20(rolename)} ${t20((RACE < 0) ? '<race>' : races[RACE].noun)}`
+             + ` ${t20((GEND < 0) ? '<gender>' : genders[GEND].adj)}`
+             + ` ${t20((ALGN < 0) ? '<alignment>' : aligns[ALGN].adj)}`;
+    } else {
+        /* "<name> the <alignment> <gender> <race.adjective> <role>" */
+        qbuf = `${t20(game.plname)} the ${t20(aligns[ALGN].adj)}`
+             + ` ${t20(genders[GEND].adj)} ${t20(races[RACE].adj)}`
+             + ` ${t20(rolename)}`;
+    }
+
+    const win = rs_create_nhwindow(NHW_MENU);
+    rs_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    rs_add_menu_str(win, qbuf);
+    if (maybe_skip_seps(ttyrows, aspect) !== 2) rs_add_menu_str(win, '');
+    return win;
+}
+
+// C ref: role.c:2854 setup_rolemenu(win, filtering, race, gend, algn) — "add
+// entries a-Archeologist, b-Barbarian, &c to the menu being built in 'win'".
+//
+// Two modes, and they differ in more than the filter:
+//   filtering=TRUE  (picking a role): skip rows the current race/gender/align
+//                   rules out, and carry `any.a_int = i + 1`;
+//   filtering=FALSE (reset_role_filtering): show EVERY row, carry
+//                   `any.a_string = name`, and PRESELECT the rows that are
+//                   currently excluded.
+// The selector is the lowercase first letter, upper-cased when the previous
+// entry already claimed it (Rogue 'r' then Ranger 'R') — note C compares
+// against `lastch`, the letter of the PREVIOUS EMITTED row, not against every
+// earlier row (js/jsmain.js:564 _roleSelectorChar() scans all earlier rows
+// instead, which differs the moment three roles share a letter).
+export function setup_rolemenu(win, filtering, race, gend, algn) {
+    let any, i, role_ok, thisch, lastch = '\0', rolenamebuf;
+    const clr = NO_COLOR;
+
+    for (i = 0; i < C_NROLES(); i++) {
+        /* role can be constrained by any of race, gender, or alignment */
+        role_ok = (ok_role(i, race, gend, algn)
+                   && ok_race(i, race, gend, algn)
+                   && ok_gend(i, race, gend, algn)
+                   && ok_align(i, race, gend, algn));
+        if (filtering && !role_ok) continue;
+        any = filtering ? { a_int: i + 1 } : { a_string: roles[i].name.m };
+        thisch = lowc(roles[i].name.m);
+        if (thisch === lastch) thisch = highc(thisch);
+        rolenamebuf = roles[i].name.m;
+        if (roles[i].name.f) {
+            /* role has distinct name for female (C,P) */
+            if (gend === 1) {
+                /* female already chosen; replace male name */
+                rolenamebuf = roles[i].name.f;
+            } else if (gend < 0) {
+                /* not chosen yet; append slash+female name */
+                rolenamebuf += `/${roles[i].name.f}`;
+            }
+        }
+        /* !filtering implies reset_role_filtering() where we want to mark this
+           role as preselected if current filter excludes it */
+        rs_add_menu(win, any, thisch, 0, ATR_NONE, clr, rs_an(rolenamebuf),
+                    (!filtering && !role_ok)
+                        ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+        lastch = thisch;
+    }
+}
+
+// C ref: role.c:2905 setup_racemenu(win, filtering, role, gend, algn).  No
+// ok_gend() test: race isn't constrained by gender.  The selector convention
+// flips with the mode — when picking, the lowercase first letter with the
+// uppercase as an unseen group accelerator; when resetting the filter, the
+// UPPERCASE letter, because the lowercase role letters are already on screen.
+export function setup_racemenu(win, filtering, role, gend, algn) {
+    let any, race_ok, i, this_ch;
+    const clr = NO_COLOR;
+
+    for (i = 0; i < C_NRACES(); i++) {
+        /* no ok_gend(); race isn't constrained by gender */
+        race_ok = (ok_race(role, i, gend, algn)
+                   && ok_role(role, i, gend, algn)
+                   && ok_align(role, i, gend, algn));
+        if (filtering && !race_ok) continue;
+        any = filtering ? { a_int: i + 1 } : { a_string: races[i].noun };
+        this_ch = races[i].noun[0];
+        rs_add_menu(win, any, filtering ? this_ch : highc(this_ch),
+                    filtering ? highc(this_ch) : 0,
+                    ATR_NONE, clr, races[i].noun,
+                    (!filtering && !race_ok)
+                        ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+}
+
+// C ref: role.c:2943 setup_gendmenu(win, filtering, role, race, algn).  Bounded
+// by ROLE_GENDERS (2), so neither the neuter nor the hallucination-only "group"
+// row of genders[] can ever appear in this menu.  No ok_align(): gender isn't
+// constrained by alignment.
+export function setup_gendmenu(win, filtering, role, race, algn) {
+    let any, gend_ok, i, this_ch;
+    const clr = NO_COLOR;
+
+    for (i = 0; i < ROLE_GENDERS; i++) {
+        /* no ok_align(); gender isn't constrained by alignment */
+        gend_ok = (ok_gend(role, race, i, algn)
+                   && ok_role(role, race, i, algn)
+                   && ok_race(role, race, i, algn));
+        if (filtering && !gend_ok) continue;
+        any = filtering ? { a_int: i + 1 } : { a_string: genders[i].adj };
+        this_ch = genders[i].adj[0];
+        rs_add_menu(win, any, filtering ? this_ch : highc(this_ch),
+                    filtering ? highc(this_ch) : 0,
+                    ATR_NONE, clr, genders[i].adj,
+                    (!filtering && !gend_ok)
+                        ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+}
+
+// C ref: role.c:2979 setup_algnmenu(win, filtering, role, race, gend).  Bounded
+// by ROLE_ALIGNS (3).  No ok_gend(): alignment isn't constrained by gender.
+export function setup_algnmenu(win, filtering, role, race, gend) {
+    let any, algn_ok, i, this_ch;
+    const clr = NO_COLOR;
+
+    for (i = 0; i < ROLE_ALIGNS; i++) {
+        /* no ok_gend(); alignment isn't constrained by gender */
+        algn_ok = (ok_align(role, race, gend, i)
+                   && ok_role(role, race, gend, i)
+                   && ok_race(role, race, gend, i));
+        if (filtering && !algn_ok) continue;
+        any = filtering ? { a_int: i + 1 } : { a_string: aligns[i].adj };
+        this_ch = aligns[i].adj[0];
+        rs_add_menu(win, any, filtering ? this_ch : highc(this_ch),
+                    filtering ? highc(this_ch) : 0,
+                    ATR_NONE, clr, aligns[i].adj,
+                    (!filtering && !algn_ok)
+                        ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
 }

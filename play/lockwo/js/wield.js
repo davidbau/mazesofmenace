@@ -311,3 +311,179 @@ export async function dotwoweapon() {
     }
     return 0; // ECMD_OK
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The rest of wield.c's slot machinery.  ADDITIVE ONLY — nothing above this
+// line calls any of it.
+//
+// One thing to know before wiring any of it up: js/invent.js:439
+// setuwep_slot() is a LIVE, exported, near-faithful copy of wield.c setuwep().
+// It differs from C in exactly three places, all of which are present below:
+//   * the two `disp.botl = TRUE` arms for gaining/losing Ogresmasher's Con bonus
+//     (wield.c:110 and wield.c:124),
+//   * the artifact_light()/end_burn() "Sunsword stops shining" arm (wield.c:117),
+//   * `&& !is_art(obj, ART_SNICKERSNEE)` inside the is_pole() clause of the
+//     gu.unweapon computation (wield.c:133).
+// Wire setuwep() in by replacing setuwep_slot()'s body with a call to it — do
+// NOT leave both live, or the two copies will drift
+// ([[duplicate-reimplementation-shadows-faithful-port]]).
+// ═══════════════════════════════════════════════════════════════════════════
+
+import { setuqwep, addinv_nomerge, is_pole, is_weptool as inv_is_weptool,
+         setuwep_slot } from './invent.js';
+import { is_art, artifact_light, ART_OGRESMASHER, ART_SNICKERSNEE } from './artifact.js';
+import { GEM_CLASS } from './mkobj.js';
+
+// C ref: obj.h is_launcher/is_ammo/is_missile — oc_skill range tests, the same
+// definitions js/invent.js:455-473 uses.  Repeated here because that file keeps
+// them module-private and they are objclass.h macros, not ported logic.
+const P_BOW_SK = 20, P_CROSSBOW_SK = 22, P_DART_SK = 23, P_BOOMERANG_SK = 25;
+function is_launcher(obj) {
+    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
+    const sk = oc_skill(obj);
+    return sk >= P_BOW_SK && sk <= P_CROSSBOW_SK;
+}
+function is_ammo(obj) {
+    if (!obj) return false;
+    const sk = oc_skill(obj);
+    return (obj.oclass === WEAPON_CLASS || obj.oclass === GEM_CLASS)
+        && sk >= -P_CROSSBOW_SK && sk <= -P_BOW_SK;
+}
+function is_missile(obj) {
+    if (!obj) return false;
+    const sk = oc_skill(obj);
+    return (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS)
+        && sk >= -P_BOOMERANG_SK && sk <= -P_DART_SK;
+}
+// C ref: obj.h is_wet_towel(o) — TOWEL with spe > 0.
+const TOWEL = 234;
+function is_wet_towel(obj) { return obj?.otyp === TOWEL && (obj.spe | 0) > 0; }
+
+// ── setuwep (C ref: wield.c:99) ────────────────────────────────────────────
+//
+// "Functions that place a given item in a slot.  Proper usage includes:
+//  1. Initializing the slot during character generation or a restore.
+//  2. Setting the slot due to a player's actions. ...
+//  5. Emptying the slot, by passing a null object.  NEVER pass cg.zeroobj!"
+//
+// No RNG, but two things behind it are stream-relevant: gu.unweapon gates
+// uhitm.c's one-shot "You begin bashing monsters with ..." topline, and the
+// Sunsword end_burn() arm both kills a light source (vision recalc) and prints
+// a line, so getting it wrong moves every later --More-- boundary.
+//
+// `setworn` is C's worn.c primitive; js/invent.js:422 setworn_slot(obj, QW_WEP,
+// ...) is it for this slot but is module-private, so it arrives via deps and
+// defaults to the exported wrapper around it.  NOTE the wrapper's own early
+// `if (obj === game.uwep) return` is harmless here: C tests the same thing one
+// line earlier.
+export async function setuwep(obj, deps = {}) {
+    const olduwep = game.uwep;
+
+    if (obj === game.uwep)
+        return;                 /* necessary to not set gu.unweapon */
+    (deps.setworn || setuwep_slot)(obj);        /* setworn(obj, W_WEP) */
+    /* handle Ogresmasher before Sunsword; even though they can't be happening
+       at the same time, botl flag update should come before pline message */
+    if (game.uwep === obj
+        && ((game.uwep && game.uwep.oartifact === ART_OGRESMASHER)
+            || (olduwep && olduwep.oartifact === ART_OGRESMASHER)))
+        game.botl = true;       /* gaining or losing Con bonus */
+    /* This message isn't printed in the caller because it happens *whenever*
+     * Sunsword is unwielded, from whatever cause. */
+    if (game.uwep === obj && artifact_light(olduwep) && olduwep.lamplit) {
+        await deps.end_burn?.(olduwep, false);
+        if (!game.u?.Blinded)
+            await pline(`${Tobjnam(olduwep, 'stop')} shining.`);
+    }
+    if (game.uwep === obj
+        && (u_wield_art(ART_OGRESMASHER) || is_art(olduwep, ART_OGRESMASHER)))
+        game.botl = true;
+    /* Note: Explicitly wielding a pick-axe will not give a "bashing" message.
+     * Wielding one via 'a'pplying it will.
+     * 3.2.2:  Wielding arbitrary objects will give bashing message too.
+     */
+    if (obj) {
+        game.unweapon = (obj.oclass === WEAPON_CLASS)
+            ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
+               || (is_pole(obj) && !game.u?.usteed
+                   && !is_art(obj, ART_SNICKERSNEE)))
+            : (!inv_is_weptool(obj) && !is_wet_towel(obj));
+    } else {
+        game.unweapon = true;   /* for "bare hands" message */
+    }
+}
+// C ref: artifact.h u_wield_art(art) — the hero is wielding that artifact.
+function u_wield_art(art) { return is_art(game.uwep, art); }
+// C ref: objnam.c Tobjnam(obj, verb) — capitalised "The <obj> <verbs>".
+function Tobjnam(obj, verb) { return highc(aobjnam(obj, verb)); }
+
+// ── cant_wield_corpse (C ref: wield.c:137) ─────────────────────────────────
+//
+// "Prevent wielding a cockatrice when not wearing gloves --KAA".  Returns TRUE
+// after killing the hero, so every caller must treat TRUE as "abort".
+// js/wield.js:230 notes the uswapwep arm of this test as dead in the covered
+// sessions; this is the function that arm calls.
+export async function cant_wield_corpse(obj, deps = {}) {
+    if (game.uarmg || obj.otyp !== CORPSE_OTYP
+        || !deps.touch_petrifies?.(obj.corpsenm)
+        || deps.Stone_resistance?.())
+        return false;
+
+    await pline(`You wield ${deps.corpse_xname?.(obj, null, /* CXN_PFX_THE */ 4)
+                             ?? `the ${xname_c(obj)}`} in your bare `
+                + `${makeplural_c(body_part(HAND))}.`);
+    const kbuf = `wielding ${deps.killer_xname?.(obj) ?? xname_c(obj)} bare-handed`;
+    await deps.instapetrify?.(kbuf);
+    return true;
+}
+// C ref: objects.h CORPSE.  (makeplural_c()/body_part()/HAND are already in
+// this file, at lines 187, 32 and the invent.js import.)
+const CORPSE_OTYP = 265;
+
+// ── finish_splitting (C ref: wield.c:345) ─────────────────────────────────
+//
+// "obj was split off from something; give it its own invlet."  freeinv() then
+// addinv_nomerge() is the pair that stops the split stack merging straight back
+// into its parent — using plain addinv() here is the classic way to make a
+// 2-of-N split silently reunite.
+export function finish_splitting(obj) {
+    freeinv(obj);
+    addinv_nomerge(obj);
+}
+
+// ── uwepgone / uswapwepgone / uqwepgone (C ref: wield.c:873, :887, :896) ──
+//
+// "These function empty a slot and cannot be used to fill a slot.  Proper usage
+// includes: 1. The item has been eaten, stolen, burned away, or rotted away.
+// 2. Making an item disappear for a bones pile."
+//
+// js/eat.js:3195 records that none of the three was exported by this port; this
+// is that gap.  setuwep_slot(null)/setuswapwep(null)/setuqwep(null) are C's
+// `setworn((struct obj *) 0, W_xxx)` for the three weapon slots (they also clear
+// two-weapon combat, which C's setworn does too).
+export async function uwepgone(deps = {}) {
+    if (game.uwep) {
+        if (artifact_light(game.uwep) && game.uwep.lamplit) {
+            await deps.end_burn?.(game.uwep, false);
+            if (!game.u?.Blinded)
+                await pline(`${Tobjnam(game.uwep, 'stop')} shining.`);
+        }
+        setuwep_slot(null);             /* setworn(0, W_WEP) */
+        game.unweapon = true;
+        update_inventory();
+    }
+}
+
+export function uswapwepgone() {
+    if (game.uswapwep) {
+        setuswapwep(null);              /* setworn(0, W_SWAPWEP) */
+        update_inventory();
+    }
+}
+
+export function uqwepgone() {
+    if (game.uquiver) {
+        setuqwep(null);                 /* setworn(0, W_QUIVER) */
+        update_inventory();
+    }
+}

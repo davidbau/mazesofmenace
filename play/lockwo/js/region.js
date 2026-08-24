@@ -1,14 +1,15 @@
 // region.js — C ref: src/region.c — the NhRegion subsystem (gas clouds).
 //
-// SCOPE: region.c also supports "force fields" (create_force_field) and
+// SCOPE: only the gas-cloud region type (INSIDE_GAS_CLOUD / EXPIRE_GAS_CLOUD)
+// is WIRED UP.  region.c also supports "force fields" (create_force_field) and
 // generic message/callback regions (create_msg_region); nothing in the
 // covered sessions ever creates one (they are used by a handful of special
-// levels and the Vlad's tower slow-force-field trap, neither reachable here),
-// so only the gas-cloud region type (INSIDE_GAS_CLOUD / EXPIRE_GAS_CLOUD) is
-// ported.  Likewise save/restore (save_regions/rest_regions) and the wizard-
-// mode #timeout / prayer danger helpers (region_danger/region_safety) are not
-// wired to anything a covered session reaches, and create_gas_cloud_selection
-// (used only by special-level SP_LEV scripts) is omitted.
+// levels and the Vlad's tower slow-force-field trap, neither reachable here).
+// Those, plus save/restore (save_regions/rest_regions), the monster-membership
+// helpers (add_mon_to_reg/remove_mon_from_reg/...) and the wizard-mode #timeout
+// / prayer danger helpers (region_danger/region_safety) are now ported at the
+// bottom of this file but are INERT: no function above calls them and no
+// existing call site was rewired.
 //
 // The region list is a flat array on `game.regions`.  do.js goto_level() plays
 // save_regions()/rest_regions(): it stashes the list on the departing level's
@@ -19,6 +20,9 @@ import { game } from './gstate.js';
 import { rn2, rn1, rnd } from './rng.js';
 import { isok, ACCESSIBLE, IS_POOL, IS_LAVA, COLNO, ROWNO } from './const.js';
 import { cansee, block_point, unblock_point, does_block, Blind } from './vision.js';
+// js/monflags_data.js is a generated LEAF module (no imports of its own), so
+// naming it here cannot create an import cycle or a TDZ edge.
+import { is_undead_flag, mflags1_of, M1_BREATHLESS } from './monflags_data.js';
 
 const MAX_CLOUD_SIZE = 150;
 
@@ -536,4 +540,460 @@ async function inside_gas_cloud(reg, mtmp) {
     // ttl refresh above (the only effect a damage-0 cloud can have) is
     // faithful for every case reached so far.
     return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The rest of src/region.c.  INERT: nothing above this line calls into it and
+// no existing call site was rewired.  Everything here works over the same flat
+// `game.regions` array and the same region record create_region() builds, with
+// one representation difference carried over from that record: C's
+// reg->monsters is an array of m_id with an explicit n_monst/max_monst pair,
+// while ours is a JS array of monster OBJECT REFS.  Where a C function only
+// exists to manage that array's capacity (add_mon_to_reg's realloc) the growth
+// bookkeeping is dropped; where the array's ORDER is observable
+// (remove_mon_from_reg's swap-with-last, which run_regions() then walks) it is
+// reproduced exactly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// C ref: include/defsym.h MONSYMS — the numeric class indices used below.
+// NOTE mons[].mlet is the display CHARACTER in this port (js/makemon.js:621);
+// the numeric S_* class index is `.mcls` (:620), so every C `ptr->mlet == S_FOO`
+// is written `ptr.mcls === S_FOO` here.
+const S_VORTEX = 22, S_GOLEM = 55;
+
+// C ref: region.c:210 mon_in_region(reg, mon) — "It's probably quicker to check
+// with the region internal list than to check for coordinates."
+export function mon_in_region(reg, mon) {
+    if (!reg || !mon) return false;
+    for (let i = 0; i < reg.monsters.length; i++)
+        if (reg.monsters[i] === mon)
+            return true;
+    return false;
+}
+
+// C ref: region.c:161 add_mon_to_reg(reg, mon) — append a monster.  A long worm
+// occupies several squares of the region, so it can already be present; C
+// impossible()s for anything else and returns either way.  The impossible() is
+// omitted rather than reached through a dynamic import of display.js (which is
+// a static-import cycle with this module); the early return IS the behaviour.
+export function add_mon_to_reg(reg, mon) {
+    if (!reg || !mon) return;
+    /* if this is a long worm, it might already be present in the region;
+       only include it once no matter how many segments the region contains */
+    if (mon_in_region(reg, mon))
+        return;
+    /* C grows reg->monsters by MONST_INC here; a JS array grows itself */
+    reg.monsters.push(mon);
+}
+
+// C ref: region.c:192 remove_mon_from_reg(reg, mon) — it left or died.  The
+// removal is a SWAP WITH THE LAST ELEMENT, not a splice: C moves
+// monsters[n_monst-1] into the freed slot.  run_regions() walks the list, so
+// preserving that reorder matters (js/region.js's own m_in_out_region() uses
+// splice, which is the C behaviour of a different function).
+export function remove_mon_from_reg(reg, mon) {
+    if (!reg || !mon) return;
+    for (let i = 0; i < reg.monsters.length; i++)
+        if (reg.monsters[i] === mon) {
+            const last = reg.monsters.length - 1;
+            reg.monsters[i] = reg.monsters[last];
+            reg.monsters.length = last;
+            return;
+        }
+}
+
+// C ref: region.c:622 replace_mon_regions(monold, monnew) — a monster that grew
+// needs a new struct, so swap the identity in every region holding the old one.
+// (C has this under `#if 0`; ported for completeness.)
+export function replace_mon_regions(monold, monnew) {
+    const list = regions();
+    for (let i = 0; i < list.length; i++)
+        if (mon_in_region(list[i], monold)) {
+            remove_mon_from_reg(list[i], monold);
+            add_mon_to_reg(list[i], monnew);
+        }
+}
+
+// C ref: region.c:638 remove_mon_from_regions(mon) — the monster just died.
+export function remove_mon_from_regions(mon) {
+    const list = regions();
+    for (let i = 0; i < list.length; i++)
+        if (mon_in_region(list[i], mon))
+            remove_mon_from_reg(list[i], mon);
+}
+
+// C ref: region.c:227 clone_region(reg) — a standalone copy (C `#if 0`, "not yet
+// used").  C's create_region(reg->rects, reg->nrects) rebuilds the bounding box
+// from the copied rects, so this goes through create_region() too rather than
+// copying boundingBox directly.
+export function clone_region(reg) {
+    const ret_reg = create_region(reg.rects);
+
+    ret_reg.ttl = reg.ttl;
+    ret_reg.attach2u = reg.attach2u;
+    ret_reg.attach2m = reg.attach2m;
+    /* ret_reg->attach_2_o = reg->attach_2_o; */
+    ret_reg.expireF = reg.expireF;
+    ret_reg.enterF = reg.enterF;
+    ret_reg.canEnterF = reg.canEnterF;
+    ret_reg.leaveF = reg.leaveF;
+    ret_reg.canLeaveF = reg.canLeaveF;
+    /* C copies player_flags as one word; this port splits it into the two
+       named bits set_hero_inside()/set_heros_fault() poke */
+    ret_reg.heroInside = reg.heroInside;
+    ret_reg.herosFault = reg.herosFault;
+    ret_reg.monsters = reg.monsters.slice();
+    /* fields C's clone_region does NOT copy, so neither do we: enter_msg,
+       leave_msg, inside_f, visible, glyph, arg */
+    return ret_reg;
+}
+
+// C ref: region.c:263 free_region(reg) — release the region and everything
+// hanging off it.  JS is garbage collected, so the faithful part is dropping
+// the references C frees (rects, monsters, enter_msg, leave_msg) rather than
+// the free() calls themselves; a region still on game.regions would otherwise
+// keep its whole monster list alive.
+export function free_region(reg) {
+    if (reg) {
+        if (reg.rects) reg.rects = null;
+        if (reg.monsters) reg.monsters = null;
+        if (reg.enterMsg) reg.enterMsg = null;
+        if (reg.leaveMsg) reg.leaveMsg = null;
+    }
+}
+
+// C ref: region.c:674 visible_region_summary(win) — the wizard-mode #timeout
+// listing.  js/timeout.js:1866 stubs this as _visible_region_summary(); the
+// window convention in this port is a `{ type, lines: [] }` record whose lines
+// the wiring pass renders (js/timeout.js:1863 _putstr, js/end.js:1375), so
+// putstr() is that push.
+export function visible_region_summary(win) {
+    const putstr = (w, _attr, s) => { if (w) (w.lines = w.lines || []).push(String(s ?? '')); };
+    const fldsep = game.iflags?.menu_tab_sep ? '\t' : '  ';
+    const list = regions();
+    let hdr_done = 0;
+
+    for (let i = 0; i < list.length; i++) {
+        const reg = list[i];
+        if (!reg.visible || reg.ttl === -2)
+            continue;
+
+        if (!hdr_done++) {
+            putstr(win, 0, '');
+            putstr(win, 0, 'Visible regions');
+        }
+        /* we display relative time (turns left) rather than absolute; since
+           time-to-live has already been decremented, regions due to time out
+           on the next turn have ttl==0, so add 1 to be less confusing */
+        let buf = String(reg.ttl + 1).padStart(5, ' ');
+        const damg = reg.arg | 0;
+        const typbuf = damg ? `poison gas (${damg})` : 'vapor';
+        buf += `${fldsep}${typbuf.padEnd(16, ' ')}`;
+        const b = reg.boundingBox;
+        buf += `${fldsep}@[${b.lx},${b.ly}..${b.hx},${b.hy}]`;
+        putstr(win, 0, buf);
+    }
+}
+
+// C ref: region.c:899 region_stats(hdrfmt, hdrbuf, &count, &size) — the
+// wizard-mode #stats row.  It is the one stats formatter that takes TWO %ld
+// arguments (sizeof NhRegion and sizeof NhRect), which js/wizcmds.js:1608
+// already documents; the return shape matches that file's nyi_*_stats()
+// convention ({ hdrbuf, count, size }) since C's out-params have no JS analogue.
+// C ref: region.h sizeof(NhRegion) / sizeof(NhRect) — the same two values
+// js/wizcmds.js:189 already uses for this row, so the #stats header matches.
+const SIZEOF_NHREGION = 96, SIZEOF_NHRECT = 8;
+export function region_stats(hdrfmt) {
+    const list = regions();
+    /* other stats formats take one parameter; this takes two */
+    const hdrbuf = String(hdrfmt ?? '')
+        .replace('%ld', String(SIZEOF_NHREGION))
+        .replace('%ld', String(SIZEOF_NHRECT));
+    const count = list.length; /* might be 0 even tho max_regions isn't */
+    let size = (game.max_regions | 0) * SIZEOF_NHREGION;
+
+    for (let i = 0; i < list.length; ++i) {
+        const rg = list[i];
+        size += (rg.rects?.length | 0) * SIZEOF_NHRECT;
+        if (rg.enterMsg) size += rg.enterMsg.length + 1;
+        if (rg.leaveMsg) size += rg.leaveMsg.length + 1;
+        /* C uses max_monst * sizeof *rg->monsters (unsigned m_id); a JS array
+           has no separate capacity, so n_monst stands in for max_monst */
+        size += (rg.monsters?.length | 0) * 4;
+    }
+    return { hdrbuf, count, size };
+}
+
+// C ref: restore.c lookup_id_mapping(gid, nid) — the bones-file id remap.
+// js/light.js:959 keeps the same private reader over game.id_map; this port
+// never loads another game's bones, so the map is empty and every lookup fails.
+function lookup_id_mapping(gid) {
+    const map = game.id_map;
+    if (!map) return null;
+    const nid = map.get ? map.get(gid) : map[gid];
+    return nid == null ? null : nid;
+}
+
+// C ref: region.c:928 reset_region_mids(reg) — remap a bones region's monster
+// ids onto the ids the restore just handed out, dropping the ones that did not
+// survive.  This is the ONE place the m_id representation is observable, so it
+// operates on the id form rest_regions() reads out of a save; a live region's
+// reg.monsters holds object refs and is left alone (an object is never a
+// lookup_id_mapping key).  Removal is swap-with-last: "order doesn't matter".
+export function reset_region_mids(reg) {
+    const mid_list = reg.monsters;
+    let i = 0, n = mid_list.length;
+
+    while (i < n) {
+        if (typeof mid_list[i] !== 'number') { ++i; continue; }
+        const nid = lookup_id_mapping(mid_list[i]);
+        if (nid == null) {
+            /* shrink list to remove missing monster; order doesn't matter */
+            mid_list[i] = mid_list[--n];
+        } else {
+            mid_list[i] = nid;
+            /* move on to next monster */
+            ++i;
+        }
+    }
+    mid_list.length = n;
+}
+
+// C ref: region.c:741 save_regions(nhfp) / :799 rest_regions(nhfp).
+// SCOPE: js/storage.js is frozen and this port's save format is its own, so the
+// per-field Sfo_*/Sfi_* marshalling has no analogue; what these two carry is
+// the LOGIC that is not marshalling — the moves timestamp, the release_data()
+// clear_regions(), the ttl aging on the way back in, the removal of regions
+// that expired while the hero was away, and the bones monster-id remap.
+// js/do.js:913 (stash) and js/do.js:1434 (restore + aging) inline exactly this
+// for the level-change path; these are region.c's own symbols for it.
+export function save_regions(nhfp) {
+    const list = regions();
+    if (!nhfp) return;
+    if (update_file(nhfp)) {
+        /* timestamp */
+        nhfp.regionTimestamp = game.moves | 0;
+        nhfp.n_regions = list.length;
+        /* the region records themselves; C writes bounding_box, nrects, each
+           rect, attach_2_u, attach_2_m, enter/leave msg, ttl, the six callback
+           indices, player_flags, the m_id list, visible, glyph and arg -- our
+           record already holds each of those under its own name */
+        nhfp.regions = list;
+    }
+    if (release_data(nhfp))
+        clear_regions();
+}
+// C ref: sfstruct.h update_file(nhfp) / release_data(nhfp) — a save writes the
+// data and (for a real save, not a checkpoint) then frees it.
+function update_file(nhfp) { return nhfp.update_file !== false; }
+function release_data(nhfp) { return nhfp.release_data === true; }
+// C ref: NHF_BONESFILE.
+const NHF_BONESFILE = 2;
+
+export function rest_regions(nhfp) {
+    const ghostly = (nhfp?.ftype === NHF_BONESFILE);
+    let tmstamp = nhfp?.regionTimestamp | 0;
+
+    clear_regions(); /* Just for security */
+    if (ghostly)
+        tmstamp = 0;
+    else
+        tmstamp = (game.moves | 0) - tmstamp;
+
+    const saved = nhfp?.regions || [];
+    game.regions = saved.slice();
+    game.max_regions = game.regions.length;
+    for (const r of game.regions) {
+        /* check for expired region */
+        if (r.ttl >= 0)
+            r.ttl = (r.ttl > tmstamp) ? r.ttl - tmstamp : 0;
+        if (ghostly) { /* settings pertained to old player */
+            r.heroInside = false; /* clear_hero_inside(r) */
+            r.herosFault = false; /* clear_heros_fault(r) */
+        }
+    }
+
+    /* remove expired regions, do not trigger the expire_f callback (yet!);
+       also update monster lists if this data is coming from a bones file.
+       C walks BACKWARD because remove_region() compacts the array. */
+    const out = [];
+    for (let i = game.regions.length - 1; i >= 0; i--) {
+        const r = game.regions[i];
+        if (r.ttl === 0)
+            out.push(r);
+        else if (ghostly && r.monsters?.length > 0)
+            reset_region_mids(r);
+    }
+    return out; /* callers await remove_region() on these; see note below */
+}
+// NOTE: rest_regions() cannot call remove_region() itself here — this port's
+// remove_region() is async (it awaits display.js for the newsym() refresh), and
+// C's rest_regions() is a void sync function whose callers are not.  The
+// expired regions are returned instead so a caller can `for (const r of
+// rest_regions(nhfp)) await remove_region(r);`.
+
+// C ref: region.c:955 create_msg_region(x, y, w, h, msg_enter, msg_leave) — a
+// permanent (ttl -1) region that only prints on entry/exit.  C `#if 0`, "not
+// yet used"; note the rect is x..x+w / y..y+h, so w/h are INCLUSIVE offsets and
+// a 0x0 region still covers one square.
+export function create_msg_region(x, y, w, h, msg_enter, msg_leave) {
+    const reg = create_region(null);
+
+    if (msg_enter) reg.enterMsg = String(msg_enter);
+    if (msg_leave) reg.leaveMsg = String(msg_leave);
+    add_rect_to_reg(reg, { lx: x, ly: y, hx: x + w, hy: y + h });
+    reg.ttl = -1;
+    return reg;
+}
+
+// C ref: region.c:983 enter_force_field(p1, p2) — the can_enter_f/can_leave_f
+// callback: p2 null means the hero, otherwise it is the monster that walked
+// into the field.  Always returns FALSE, i.e. entry is refused.  C `#if 0`.
+export async function enter_force_field(p1, p2) {
+    void p1;
+    const { update_topl } = await import('./display.js');
+
+    if (!p2) { /* That means the player */
+        if (!Blind())
+            await update_topl(`You bump into ${
+                Hallucination() ? 'an invisible tree'
+                                : 'some kind of invisible wall'}.  Ouch!`);
+        else
+            await update_topl('Ouch!');
+    } else {
+        const mtmp = p2;
+        const { canspotmon, Monnam } = await import('./uhitm.js');
+        /* C uses canseemon(); canspotmon() is the pair js/uhitm.js exports */
+        if (canspotmon(mtmp))
+            await update_topl(`${Monnam(mtmp)} bumps into something!`);
+    }
+    return false;
+}
+
+// C ref: region.c:1003 create_force_field(x, y, radius, ttl) — a diamond of
+// `radius` nested 1-column-wide rects centred on (x,y).  C `#if 0`; the two
+// can_enter_f/can_leave_f assignments are commented out THERE too, so the field
+// blocks nothing until they are restored.  Draws no RNG.
+export async function create_force_field(x, y, radius, ttl) {
+    const ff = create_region(null);
+    const nrect = radius;
+    const tmprect = { lx: x, hx: x, ly: y - (radius - 1), hy: y + (radius - 1) };
+
+    for (let i = 0; i < nrect; i++) {
+        add_rect_to_reg(ff, tmprect);
+        tmprect.lx--;
+        tmprect.hx++;
+        tmprect.ly++;
+        tmprect.hy--;
+    }
+    ff.ttl = ttl;
+    if (!game._in_mklev && !game.context?.mon_moving)
+        ff.herosFault = true; /* set_heros_fault(): assume the player made it */
+    /* ff->can_enter_f = enter_force_field; */
+    /* ff->can_leave_f = enter_force_field; */
+    await add_region(ff);
+    return ff;
+}
+
+// C ref: mondata.h:219 nonliving(ptr) — is_undead || PM_MANES || is_golem ||
+// mlet == S_VORTEX.  region.js's own nonliving_name() above is a NAME-REGEX
+// reduction of this used by inside_gas_cloud(); this is the flag/class form.
+function nonliving(ptr) {
+    return is_undead_flag(ptr) || ptr?.name === 'manes'
+        || ptr?.mcls === S_GOLEM || ptr?.mcls === S_VORTEX;
+}
+// C ref: youprop.h:276 Breathless — HMagical_breathing || EMagical_breathing ||
+// breathless(gy.youmonst.data).  u.data is a bogus mons[] row while
+// unpolymorphed in this port (u.umonnum is a ROLE index), and no player-monster
+// form is breathless anyway, so the form half is gated on Upolyd exactly as
+// C's own uses of youmonst.data are safe only because C keeps that row valid.
+function Breathless() {
+    const u = game.u, p = u?.uprops || {};
+    if (p.HMagical_breathing || p.EMagical_breathing || p.Magical_breathing)
+        return true;
+    return !!u?.Upolyd && (mflags1_of(u.data) & M1_BREATHLESS) !== 0;
+}
+function Poison_resistance() {
+    const p = game.u?.uprops || {};
+    return !!(p.HPoison_resistance || p.EPoison_resistance
+              || p.PoisonResistance || p.Poison_resistance);
+}
+function Hallucination() {
+    const u = game.u;
+    return !!(u?.uhallu || u?.HHallucination || u?.uprops?.Hallucination);
+}
+
+// C ref: region.c:1341 region_danger() — for checking troubles during prayer:
+// is the hero standing in something that can hurt her?  js/pray.js:203 and
+// js/timeout.js:497 both note this as unmodelled at their call sites.
+export function region_danger() {
+    const list = regions();
+    let n = 0;
+
+    for (let i = 0; i < list.length; i++) {
+        /* only care about regions that hero is in */
+        if (!list[i].heroInside)
+            continue;
+        const f_indx = list[i].insideF;
+        /* the only type of region we understand is gas_cloud */
+        if (f_indx === INSIDE_GAS_CLOUD) {
+            /* completely harmless if you don't need to breathe */
+            if ((game.u?.Upolyd && nonliving(game.u.data)) || Breathless())
+                continue;
+            /* minor inconvenience if you're poison resistant; not harmful
+               enough to be a prayer-level trouble */
+            if (Poison_resistance())
+                continue;
+            ++n;
+        }
+    }
+    return n ? true : false;
+}
+
+// C ref: region.c:1368 region_safety() — prayer's "fix all troubles" arm for
+// region_danger(); the danger detected at the START of the prayer may have
+// expired by now.  DRAWS: the multiple-overlapping-clouds arm rolls d(4,4) for
+// the granted magical-breathing timer, and safe_teleds() draws its own.
+export async function region_safety() {
+    const list = regions();
+    let r = null, n = 0;
+
+    for (let i = 0; i < list.length; i++) {
+        /* only care about regions that hero is in */
+        if (!list[i].heroInside)
+            continue;
+        const f_indx = list[i].insideF;
+        /* the only type of region we understand is gas_cloud */
+        if (f_indx === INSIDE_GAS_CLOUD) {
+            if (!n++ && list[i].ttl >= 0)
+                r = list[i];
+        }
+    }
+
+    const { update_topl } = await import('./display.js');
+    if (n > 1 || (n === 1 && !r)) {
+        /* multiple overlapping cloud regions or non-expiring one */
+        const { safe_teleds_hero } = await import('./read.js');
+        await safe_teleds_hero();
+        /* maybe there's no safe place available; must get hero out of danger
+           or prayer's "fix all troubles" result will get stuck in a loop */
+        if (region_danger()) {
+            const p = (game.u.uprops = game.u.uprops || {});
+            /* set_itimeout(&HMagical_breathing, d(4,4) + 4) */
+            p.HMagical_breathing = (rnd(4) + rnd(4) + rnd(4) + rnd(4)) + 4;
+            /* not already Breathless or wouldn't be in region danger */
+            await update_topl('You feel able to breathe.');
+        }
+    } else if (r) {
+        await remove_region(r);
+        await update_topl('The gas cloud enveloping you dissipates.');
+    } else {
+        /* cloud dissipated on its own, so nothing needs to be done */
+        await update_topl('The gas cloud has dissipated.');
+    }
+    /* maybe cure blindness too */
+    if ((game.u?.blinded | 0) === 1) {
+        const { make_blinded } = await import('./potion.js');
+        await make_blinded(0, true);
+    }
 }

@@ -9,7 +9,8 @@ import { BUFSZ, BURN, DUST, ENGR_BLOOD, ENGRAVE, HEADSTONE, ICE, MARK,
          FINGERTIP, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
          GRAVE, ROOM, TT_PIT, is_pit, is_hole, COLNO, ROWNO, IS_GRAVE,
          IS_ALTAR, IS_WALL, IS_DOOR, SDOOR, STONE, IS_FOUNTAIN, IS_AIR,
-         ACCESSIBLE, CLOUD, DRAWBRIDGE_DOWN } from './const.js';
+         ACCESSIBLE, CLOUD, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, isok,
+         Is_airlevel, Is_waterlevel, ECMD_OK } from './const.js';
 import { RUMORS_B64, ENGRAVE_B64 } from './rumors_data.js';
 import { EPITAPH_B64 } from './epitaph_data.js';
 import { WEAPON_CLASS, WAND_CLASS, GEM_CLASS, RING_CLASS,
@@ -1493,6 +1494,347 @@ function isStunned() { const u = game.u; return !!(u?.uprops?.Stun || u?.ustun);
 function isHallu() { const u = game.u; return !!(u?.uprops?.Hallucination || u?.uhallu); }
 // C ref: youprop.h Deaf (HDeaf || EDeaf).
 function isDeaf() { const u = game.u; return !!(u?.uprops?.Deaf || u?.Deaf); }
+
+// ===========================================================================
+// engrave.c functions with no caller in js/ yet.  Nothing above this line
+// calls into this block: it is additive only.
+//
+// C walks the level's engravings as the `head_engr` linked list, newest first
+// (make_engr_at pushes onto the head).  In this port that list is the
+// game.level.engravings array, which make_engr_at() unshift()s onto, so a plain
+// forward iteration over it is C's `for (ep = head_engr; ep; ep = ep->nxt_engr)`
+// in the same order.  The three C text slots engr_txt[actual_text] /
+// [remembered_text] / [pristine_text] are this port's ep.actualText /
+// ep.rememberedText / ep.pristineText.
+// ===========================================================================
+
+// C ref: engrave.h:19 head_engr.
+function head_engr() {
+    return game.level?.engravings ?? [];
+}
+
+// C ref: hacklib.c strstri(str, sub) — case-insensitive substring search; only
+// the truthiness of the returned pointer is used at the one call site below.
+function strstri_engr(str, sub) {
+    return str.toLowerCase().includes(sub.toLowerCase());
+}
+
+// C ref: engrave.c:251 sengr_at(s, x, y, strict).  "Decide whether a particular
+// string is engraved at a specified location; a case-insensitive substring match
+// is used.  Ignore headstones, in case the player names herself 'Elbereth'.  If
+// strict checking is requested, the word is only considered to be present if it
+// is intact and is the entire content of the engraving."
+// The engr_time test is what makes a half-finished engraving inert: the
+// engraving occupation stamps engr_time with the moment it will be FINISHED.
+export function sengr_at(s, x, y, strict) {
+    const ep = engr_at(x, y);
+
+    if (ep && ep.engr_type !== HEADSTONE && (ep.engr_time | 0) <= (game.moves | 0)) {
+        const txt = ep.actualText || '';
+        if (strict ? txt.toLowerCase() === String(s).toLowerCase()
+                   : strstri_engr(txt, String(s)))
+            return ep;
+    }
+    return null;
+}
+
+// C ref: engrave.c:297 engr_can_be_felt(ep) — non-zero if it can be felt.
+export function engr_can_be_felt(ep) {
+    let canfeel = false;
+
+    switch (ep.engr_type) {
+    case ENGRAVE:
+    case HEADSTONE:
+    case BURN:
+        canfeel = true;
+        break;
+    case DUST:
+    case MARK:
+    case ENGR_BLOOD:
+    default:
+        canfeel = false;
+        break;
+    }
+    return canfeel;
+}
+
+// C ref: engrave.c:1724 see_engraving(ep).  display.js is imported lazily for
+// the module-cycle reason documented at the top of this file.
+export async function see_engraving(ep) {
+    const { newsym } = await import('./display.js');
+    newsym(ep.engr_x, ep.engr_y);
+}
+
+// C ref: engrave.c:1732 feel_engraving(ep) — "like see_engravings() but
+// overrides vision, but only for some types of engravings that can be felt
+// [this isn't actually used anywhere?]".
+export async function feel_engraving(ep) {
+    if (engr_can_be_felt(ep)) {
+        ep.eread = 1;
+        ep.erevealed = 1;
+        // UNPORTED: map_engraving(ep, 1) (display.c:313) has no js/ counterpart;
+        // its two statements are `if (level.flags.hero_memory) levl[x][y].glyph
+        // = engraving_to_glyph(ep)` then `show_glyph(x, y, glyph)`.  Spelled out
+        // here with display.js's exported pieces rather than stubbed; when
+        // display.js gains map_engraving() this should call it instead.
+        const { newsym, engraving_glyph, show_glyph_cell }
+            = await import('./display.js');
+        const loc = game.level?.at(ep.engr_x, ep.engr_y);
+        if (loc) {
+            const g = engraving_glyph(loc);
+            if (game.level?.flags?.hero_memory)
+                loc.remembered_glyph = { ch: g.ch, color: g.color,
+                                         decgfx: g.dec, pile: false };
+            show_glyph_cell(ep.engr_x, ep.engr_y, g.ch, g.color, g.dec);
+        }
+        /* in case it's beneath something, redisplay the something */
+        newsym(ep.engr_x, ep.engr_y);
+    }
+}
+
+// C ref: bones.c:198 sanitize_name(namebuf) — "while loading bones, strip out
+// text possibly supplied by old player that might accidentally or maliciously
+// disrupt new player's display".  js/options.js:1619 has a same-named private
+// copy, but it is a DIFFERENT reduction (it deletes offending characters rather
+// than substituting '.'/'_', so it shortens the string); reusing it here would
+// silently change engraving lengths, which wipeout_text() counts.  Kept private
+// under a distinct name so it cannot shadow the real bones.c port.
+// strip_8th_bit = (WINDOWPORT(tty) && !iflags.wc_eight_bit_input): this build is
+// tty, and the 'eight_bit_tty' option (default off) lives in this port's wincap
+// BITMASK rather than in an iflags field (js/options.js:4210), so the C field
+// name reads undefined here and the flag is TRUE — which is the default-off
+// answer either way.
+function sanitize_engr_text(s) {
+    const strip_8th_bit = !(game.iflags?.wc_eight_bit_input);
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+        const raw = s.charCodeAt(i);
+        const c = raw & 0o177;
+        if (c < 0x20 /* ' ' */ || c === 0o177) {
+            /* non-printable or undesirable */
+            out += '.';
+        } else if (c !== raw) {
+            /* expected to be printable if user wants such things */
+            out += strip_8th_bit ? '_' : String.fromCharCode(raw);
+        } else {
+            out += String.fromCharCode(raw);
+        }
+    }
+    return out;
+}
+
+// C ref: engrave.c:1498 sanitize_engravings() — "while loading bones, clean up
+// text which might accidentally or maliciously disrupt player's terminal when
+// displayed".  Only engr_txt[actual_text] is sanitized (C sanitizes in place
+// through the same pointer, so the remembered/pristine copies keep the raw
+// bytes).
+export function sanitize_engravings() {
+    for (const ep of head_engr()) {
+        ep.actualText = sanitize_engr_text(ep.actualText || '');
+    }
+}
+
+// C ref: engrave.c:1509 forget_engravings() — "mark all engravings as
+// not-discovered/not-read when saving bones".  C's note: the three text slots
+// deliberately retain their original text.
+export function forget_engravings() {
+    for (const ep of head_engr()) {
+        ep.erevealed = ep.eread = 0;
+    }
+}
+
+// C ref: engrave.c:1524 engraving_sanity_check() — the '#sanity' wizard check.
+export async function engraving_sanity_check() {
+    const { impossible } = await import('./display.js');
+    const { is_pool_or_lava, db_under_typ } = await import('./dbridge.js');
+    const { surface } = await import('./dungeon.js');
+    const engravings = head_engr();
+
+    if (engravings.length && (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz))) {
+        await impossible('engraving sanity: on plane of air/water');
+        return;
+    }
+
+    for (const ep of engravings) {
+        const x = ep.engr_x, y = ep.engr_y;
+
+        if (!isok(x, y)) {
+            await impossible(`engraving sanity: !isok <${x},${y}>`);
+            continue;
+        }
+        // C ref: rm.h:146 SURFACE_AT(x, y).
+        const loc = game.level?.at(x, y);
+        const levtyp = (loc?.typ === DRAWBRIDGE_UP)
+            ? db_under_typ(loc.drawbridgemask) : (loc?.typ ?? STONE);
+        if (is_pool_or_lava(x, y) || IS_AIR(levtyp) || !ACCESSIBLE(levtyp)) {
+            await impossible(`engraving sanity: illegal surface (${levtyp}: "${surface(x, y)}")`);
+            continue;
+        }
+    }
+}
+
+// C ref: engrave.c:1551 save_engravings(nhfp).  House convention for a ported
+// save function (js/save.js:200) is to RETURN the blob C would have written;
+// `mode` is C's nhfp->mode bitmask, read through save.js's update_file() /
+// release_data().  save.js is reached by a lazy import because it statically
+// imports display.js, which statically imports THIS file.
+//
+// engr_szeach / engr_alloc are set by C's make_engr_at() from the text lengths
+// at creation time and never re-derived, so a wiped-down engraving still writes
+// its original allocation; this port's make_engr_at() does not record them, so
+// they are re-derived from the C formula when absent (see the note there).
+export async function save_engravings(mode) {
+    const { update_file, release_data } = await import('./save.js');
+    const engravings = head_engr();
+    const out = { engravings: [] };
+
+    for (const ep of engravings.slice()) {   /* C caches ep2 = ep->nxt_engr */
+        const szeach = engr_szeach(ep);
+        const engr_alloc = (ep.engr_alloc | 0) || szeach * 3;
+        if (engr_alloc && (ep.actualText || '')[0] && update_file(mode)) {
+            out.engravings.push({
+                engr_alloc,                            /* Sfo_unsigned */
+                engr: {                                /* Sfo_engr */
+                    engr_x: ep.engr_x, engr_y: ep.engr_y,
+                    engr_szeach: szeach, engr_alloc,
+                    engr_time: ep.engr_time, engr_type: ep.engr_type,
+                    guardobjects: ep.guardobjects ? 1 : 0,
+                    nowipeout: ep.nowipeout ? 1 : 0,
+                    eread: ep.eread ? 1 : 0,
+                    erevealed: ep.erevealed ? 1 : 0,
+                },
+                actual_text: ep.actualText || '',      /* Sfo_char x3 */
+                remembered_text: ep.rememberedText || '',
+                pristine_text: ep.pristineText || '',
+            });
+        }
+        /* release_data(): C dealloc_engr(ep)s every entry, written or not; JS
+           is garbage-collected, so dropping the list below is the whole job. */
+    }
+    if (update_file(mode))
+        out.no_more_engr = 0;    /* the 0 length that ends the chain */
+    if (release_data(mode) && game.level)
+        game.level.engravings = [];
+    return out;
+}
+
+// C ref: engrave.c:426/451 make_engr_at() — smem is the longest of the actual
+// and pristine texts plus its NUL, and engr_alloc is smem * 3.
+function engr_szeach(ep) {
+    if (ep.engr_szeach | 0) return ep.engr_szeach | 0;
+    let smem = (ep.actualText || '').length + 1;
+    const prmem = (ep.pristineText || '').length + 1;
+    if (prmem > smem) smem = prmem;
+    return smem;
+}
+
+// C ref: engrave.c:1584 rest_engravings(nhfp) — read the chain back until the
+// 0-length terminator.  The `saved` blob is what save_engravings() returned.
+// Two details are load-bearing and easy to lose:
+//   * the leading-blank skip on the actual and remembered text (C advances the
+//     pointer, which is this port's engr_off — see wipe_engr_at());
+//   * engr_time = svm.moves, "mark as finished for bones levels".
+export function rest_engravings(saved) {
+    if (!game.level) return;
+    game.level.engravings = [];   /* head_engr = 0 */
+    const list = saved?.engravings || [];
+
+    for (const rec of list) {
+        const lth = rec.engr_alloc | 0;
+        if (lth === 0) return;    /* C's `if (lth == 0) return` terminator */
+        const src = rec.engr || {};
+        const ep = {
+            engr_x: src.engr_x, engr_y: src.engr_y,
+            engr_szeach: src.engr_szeach | 0,
+            engr_alloc: lth,
+            engr_type: src.engr_type,
+            engr_time: src.engr_time,
+            guardobjects: !!src.guardobjects,
+            nowipeout: !!src.nowipeout,
+            eread: src.eread ? 1 : 0,
+            erevealed: src.erevealed ? 1 : 0,
+            actualText: rec.actual_text || '',
+            rememberedText: rec.remembered_text || '',
+            pristineText: rec.pristine_text || '',
+            engr_off: 0,
+        };
+        /* ep->nxt_engr = head_engr; head_engr = ep; */
+        game.level.engravings.unshift(ep);
+
+        const trimmed = ep.actualText.replace(/^ +/, '');
+        ep.engr_off = ep.actualText.length - trimmed.length;
+        ep.actualText = trimmed;
+        ep.rememberedText = ep.rememberedText.replace(/^ +/, '');
+        /* mark as finished for bones levels -- no problem for normal levels as
+           the player must have finished engraving to be able to move again */
+        ep.engr_time = game.moves | 0;
+    }
+}
+
+// C ref: engrave.c:1626 engr_stats(hdrfmt, hdrbuf, count, size) — the '#stats'
+// wizard-mode command.  C's three out-parameters become `{ s }` / `{ v }`
+// boxes, the same shape js/timeout.js:2500 timer_stats() uses.
+// sizeof(struct engr) is the recorded binary's 64 (js/wizcmds.js:188).
+const SIZEOF_ENGR = 64;
+
+export function engr_stats(hdrfmt, hdrbuf, count, size) {
+    if (hdrbuf) hdrbuf.s = String(hdrfmt).replace('%ld', String(SIZEOF_ENGR));
+    if (count) count.v = 0;
+    if (size) size.v = 0;
+    for (const ep of head_engr()) {
+        if (count) count.v += 1;
+        if (size) size.v += SIZEOF_ENGR + ((ep.engr_alloc | 0) || engr_szeach(ep) * 3);
+    }
+}
+
+// C ref: engrave.c:545 doengrave_ctx_init(de) — "initialize the doengrave data".
+// doengrave() above open-codes an equivalent block; this is the faithful
+// transcription, and it carries two things that copy does not: the
+// demon/vampire ENGR_BLOOD default, and de.oep being read BEFORE the stylus
+// prompt.  Nothing calls it yet (see this block's header).
+export async function doengrave_ctx_init(de) {
+    const { is_demon_flag } = await import('./monflags_data.js');
+    const u = game.u;
+
+    de.dengr = false;
+    de.doblind = false;
+    de.doknown = false;
+    de.eow = false;
+    de.ptext = true;
+    de.teleengr = false;
+    de.zapwand = false;
+    de.disprefresh = false;
+    de.adding = false;
+
+    de.ret = ECMD_OK;
+    de.type = DUST;
+    de.oetype = 0;
+
+    de.otmp = null;
+    de.oep = engr_at(u.ux, u.uy);
+
+    de.buf = '';
+    de.ebuf = '';
+    de.fbuf = '';
+    de.qbuf = '';
+    de.post_engr_text = '';
+    de.writer = null;
+
+    if (de.oep)
+        de.oetype = de.oep.engr_type;
+    // C ref: mondata.h is_demon(ptr) (M2_DEMON) / is_vampire(ptr) — C's
+    // `ptr->mlet == S_VAMPIRE` is the numeric class index, which in this port is
+    // .mcls (makemon.js:621 puts the display CHARACTER in .mlet).
+    const ydata = game.youmonst?.data;
+    if (ydata && (is_demon_flag(ydata) || ydata.mcls === S_VAMPIRE_CLS))
+        de.type = ENGR_BLOOD;
+
+    de.jello = !!(u.uswallow && !(is_animal(u.ustuck?.data)
+                                  || await is_whirly(u.ustuck?.data)));
+    de.frosted = (game.level?.at(u.ux, u.uy)?.typ === ICE);
+}
+// C ref: monsym.h S_VAMPIRE.
+const S_VAMPIRE_CLS = 48;
 
 export function wipe_engr_at(x, y, cnt, magical = false) {
     const ep = engr_at(x, y);

@@ -15,6 +15,8 @@ import {
 } from './monflags_data.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_ART,
+    W_ARMOR, W_ARTI, W_RINGL, W_RINGR, W_WEP, W_SWAPWEP, W_QUIVER, W_TOOL,
+    W_SADDLE, W_BALL, W_CHAIN,
 } from './const.js';
 // Cycle with makemon.js (which imports m_dowear from here) is safe: both sides
 // only touch the other's bindings from inside function bodies.
@@ -479,4 +481,288 @@ export async function print_m_dowear(pending) {
         if (autocurse)
             await pline(`${s_suffix(Monnam(mon))} ${objects[best.otyp]?.name} glows black for a moment.`);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// worn.c completion — the nine routines coverage.mjs --file=worn.c listed as
+// missing.  All of them are RNG-free; the block is inert (nothing above calls
+// into it) and does not alter the canonical find_mac() above.  The W_* bits
+// below come from js/const.js, the same
+// spelling this file already used ([[worn-mask-remap-collision]]).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// C ref: worn.c:14 worn[] — every hero worn/wielded slot, in C's exact order,
+// with the slot mask and the "for failing sanity check's feedback" name.  C
+// stores `struct obj **w_obj` (the address of uarm, uarmc, ...); this port
+// keeps those slots as named properties, so each row carries a get/set pair.
+// recalc_telepat_range() above walks the same list in the same order.
+const worn_table = [
+    { w_mask: W_ARM,     key: 'uarm',      on: 'game', w_what: 'suit' },
+    { w_mask: W_ARMC,    key: 'uarmc',     on: 'game', w_what: 'cloak' },
+    { w_mask: W_ARMH,    key: 'uarmh',     on: 'game', w_what: 'helmet' },
+    { w_mask: W_ARMS,    key: 'uarms',     on: 'game', w_what: 'shield' },
+    { w_mask: W_ARMG,    key: 'uarmg',     on: 'game', w_what: 'gloves' },
+    { w_mask: W_ARMF,    key: 'uarmf',     on: 'game', w_what: 'boots' },
+    { w_mask: W_ARMU,    key: 'uarmu',     on: 'game', w_what: 'shirt' },
+    { w_mask: W_RINGL,   key: 'uleft',     on: 'game', w_what: 'left ring' },
+    { w_mask: W_RINGR,   key: 'uright',    on: 'game', w_what: 'right ring' },
+    { w_mask: W_WEP,     key: 'uwep',      on: 'game', w_what: 'weapon' },
+    { w_mask: W_SWAPWEP, key: 'uswapwep',  on: 'game', w_what: 'alternate weapon' },
+    { w_mask: W_QUIVER,  key: 'uquiver',   on: 'game', w_what: 'quiver' },
+    { w_mask: W_AMUL,    key: 'uamul',     on: 'game', w_what: 'amulet' },
+    /* blindfold|towel|lenses */
+    { w_mask: W_TOOL,    key: 'ublindf',   on: 'game', w_what: 'facewear' },
+    { w_mask: W_BALL,    key: 'uball',     on: 'u',    w_what: 'chained ball' },
+    { w_mask: W_CHAIN,   key: 'uchain',    on: 'u',    w_what: 'attached chain' },
+];
+function worn_slot_owner(row) { return row.on === 'u' ? game.u : game; }
+function worn_slot_read(row) { return worn_slot_owner(row)?.[row.key] ?? null; }
+function worn_slot_write(row, val) {
+    const owner = worn_slot_owner(row);
+    if (owner) owner[row.key] = val;
+}
+
+// ─── worn.c:188 allunworn() ────────────────────────────────────────────────
+// Called when saving with FREEING set has just discarded inventory: remove the
+// stale slot pointers.  The objects are already gone, so their owornmask is
+// deliberately NOT updated.  js/save.js:534-536 records this as UNPORTED at
+// the one call site; that call site is left alone.
+export function allunworn() {
+    const u = game.u;
+    if (u) u.twoweap = 0;   /* uwep and uswapwep are going away */
+    /* note: uball and uchain might not be freed yet but we clear them here
+       anyway (savegamestate() and its callers deal with them) */
+    for (const wp of worn_table)
+        worn_slot_write(wp, null);   /* C: *(wp->w_obj) = (struct obj *) 0 */
+}
+
+// ─── worn.c:206 wearmask_to_obj(wornmask) ──────────────────────────────────
+// The item worn in the slot indicated by wornmask; needed by poly_obj().
+// First match in worn[] order wins, so a mask naming two slots (W_RING) yields
+// the left ring.
+export function wearmask_to_obj(wornmask) {
+    for (const wp of worn_table)
+        if (wp.w_mask & wornmask)
+            return worn_slot_read(wp);
+    return null;
+}
+
+// ─── worn.c:218 wornmask_to_armcat(mask) ───────────────────────────────────
+// Convert an armor wornmask to its oc_armcat.  Note C's `switch (mask &
+// W_ARMOR)`: a mask naming two armour slots matches no case and yields 0,
+// which is ARM_SUIT's value — that ambiguity is C's, not a port artifact.
+export function wornmask_to_armcat(mask) {
+    let cat = 0;
+    switch (mask & W_ARMOR) {
+    case W_ARM:  cat = ARM_SUIT;   break;
+    case W_ARMC: cat = ARM_CLOAK;  break;
+    case W_ARMH: cat = ARM_HELM;   break;
+    case W_ARMS: cat = ARM_SHIELD; break;
+    case W_ARMG: cat = ARM_GLOVES; break;
+    case W_ARMF: cat = ARM_BOOTS;  break;
+    case W_ARMU: cat = ARM_SHIRT;  break;
+    default: break;
+    }
+    return cat;
+}
+
+// ─── worn.c:250 armcat_to_wornmask(cat) ────────────────────────────────────
+// The inverse; 0 for anything that is not an armour category.
+export function armcat_to_wornmask(cat) {
+    let mask = 0;
+    switch (cat) {
+    case ARM_SUIT:   mask = W_ARM;  break;
+    case ARM_CLOAK:  mask = W_ARMC; break;
+    case ARM_HELM:   mask = W_ARMH; break;
+    case ARM_SHIELD: mask = W_ARMS; break;
+    case ARM_GLOVES: mask = W_ARMG; break;
+    case ARM_BOOTS:  mask = W_ARMF; break;
+    case ARM_SHIRT:  mask = W_ARMU; break;
+    default: break;
+    }
+    return mask;
+}
+
+// C ref: mkobj.js OBJECT_DATA indices for the tools/food wearslot() names.
+const BLINDFOLD = 233, TOWEL = 234, SADDLE_OTYP = 235, LENSES = 232,
+    TIN_OPENER = 239, MEAT_RING = 270;
+// C ref: objclass.h oclass values (RING_CLASS/FOOD_CLASS/GEM_CLASS/BALL_CLASS/
+// CHAIN_CLASS are not among this file's existing four).
+const RING_CLASS = 4, FOOD_CLASS = 7, GEM_CLASS = 13, BALL_CLASS = 14,
+    CHAIN_CLASS = 15;
+
+// ─── worn.c:282 wearslot(obj) ──────────────────────────────────────────────
+// A bitmask of the equipment slot(s) a given item might be worn in.
+// "practically any item can be wielded or quivered; it's up to our caller to
+// handle such things--we assume 'normal' usage".
+export function wearslot(obj) {
+    const otyp = obj?.otyp;
+    let res = 0;   /* default: can't be worn anywhere */
+
+    switch (obj?.oclass ?? objects[otyp]?.oclass) {
+    case AMULET_CLASS:
+        res = W_AMUL;                    /* WORN_AMUL */
+        break;
+    case RING_CLASS:
+        res = W_RINGL | W_RINGR;         /* W_RING, BOTH_SIDES */
+        break;
+    case ARMOR_CLASS:
+        switch (oc_armcat(otyp)) {
+        case ARM_SUIT:   res = W_ARM;  break;  /* WORN_ARMOR */
+        case ARM_SHIELD: res = W_ARMS; break;  /* WORN_SHIELD */
+        case ARM_HELM:   res = W_ARMH; break;  /* WORN_HELMET */
+        case ARM_GLOVES: res = W_ARMG; break;  /* WORN_GLOVES */
+        case ARM_BOOTS:  res = W_ARMF; break;  /* WORN_BOOTS */
+        case ARM_CLOAK:  res = W_ARMC; break;  /* WORN_CLOAK */
+        case ARM_SHIRT:  res = W_ARMU; break;  /* WORN_SHIRT */
+        default: break;
+        }
+        break;
+    case WEAPON_CLASS:
+        res = W_WEP | W_SWAPWEP;
+        if (objects[otyp]?.oc_merge) res |= W_QUIVER;
+        break;
+    case TOOL_CLASS:
+        if (otyp === BLINDFOLD || otyp === TOWEL || otyp === LENSES)
+            res = W_TOOL;                /* WORN_BLINDF */
+        else if (is_weptool_worn(obj) || otyp === TIN_OPENER)
+            res = W_WEP | W_SWAPWEP;
+        else if (otyp === SADDLE_OTYP)
+            res = W_SADDLE;
+        break;
+    case FOOD_CLASS:
+        if (otyp === MEAT_RING)
+            res = W_RINGL | W_RINGR;
+        break;
+    case GEM_CLASS:
+        res = W_QUIVER;
+        break;
+    case BALL_CLASS:
+        res = W_BALL;
+        break;
+    case CHAIN_CLASS:
+        res = W_CHAIN;
+        break;
+    default:
+        break;
+    }
+    return res;
+}
+// C ref: obj.h is_weptool(o) — a TOOL_CLASS object with a real weapon skill.
+// js/invent.js:1387 exports the same predicate; kept local so wearslot() adds
+// no module edge from worn.js to invent.js.
+function is_weptool_worn(obj) {
+    return (obj?.oclass ?? objects[obj?.otyp]?.oclass) === TOOL_CLASS
+        && (objects[obj?.otyp]?.oc_skill ?? 0) !== 0;
+}
+
+// C ref: prop.h I_SPECIAL (js/artifact.js:2370 keeps the same constant).
+const I_SPECIAL = 0x10000000;
+// C ref: hack.h impossible() — this port has no panic/impossible channel, so
+// the complaints check_wornmask_slots() would raise are collected here instead.
+export const worn_slot_insanity = [];
+function impossible_worn(msg) { worn_slot_insanity.push(msg); }
+// C ref: objnam.c simpleonames(obj) — enough of it for the one complaint that
+// names an object (js/invent.js:507 ansimpleoname() is the articled form).
+function simpleonames_worn(obj) { return objects[obj?.otyp]?.name ?? 'object'; }
+
+// ─── worn.c:355 check_wornmask_slots() ─────────────────────────────────────
+// The 'sanity_check' option's worn-slot audit, called by you_sanity_check().
+// C's two EXTRA_SANITY_CHECKS blocks (embedded dragon scales, two-weaponing)
+// are compiled out of the recorded builds and are not ported.
+export function check_wornmask_slots() {
+    /* we'll skip ball and chain here--they warrant separate sanity check */
+    const IGNORE_SLOTS = (W_ART | W_ARTI | W_SADDLE | W_BALL | W_CHAIN);
+    const invent = game.invent || [];
+
+    for (const wp of worn_table) {
+        const m = wp.w_mask;
+        if ((m & IGNORE_SLOTS) !== 0 && (m & ~IGNORE_SLOTS) === 0)
+            continue;
+        const o = worn_slot_read(wp);
+        if (o) {
+            let whybuf = '';
+            /* slot pointer (uarm, uwep, &c) is populated; check that the
+               object is in inventory and has the relevant owornmask bit set */
+            const found = invent.includes(o);
+            if (!found)
+                whybuf = `${wp.w_what} not found in invent`;
+            else if (((o.owornmask | 0) & m) === 0)
+                whybuf = `${wp.w_what} bit not set in owornmask`
+                    + ` [0x${((o.owornmask | 0) >>> 0).toString(16).padStart(8, '0')}]`;
+            else if (((o.owornmask | 0) & ~(m | IGNORE_SLOTS)) !== 0)
+                whybuf = `${wp.w_what} wrong bit set in owornmask`
+                    + ` [0x${((o.owornmask | 0) >>> 0).toString(16).padStart(8, '0')}]`;
+            if (whybuf)
+                impossible_worn(`Worn-slot insanity: ${whybuf}.`);
+        } /* o != NULL */
+
+        /* check whether any item other than the one in the slot pointer claims
+           to be worn/wielded in this slot; make this test whether 'o' is Null
+           or not */
+        for (const otmp of invent) {
+            if (otmp !== o && ((otmp.owornmask | 0) & m) !== 0
+                /* embedded scales owornmask is W_ARM|I_SPECIAL so would give a
+                   false complaint about an item other than uarm having the
+                   W_ARM bit set if we didn't screen it out here */
+                && (m !== W_ARM || otmp !== game.uskin
+                    || ((otmp.owornmask | 0) & I_SPECIAL) === 0)) {
+                impossible_worn(`Worn-slot insanity: ${simpleonames_worn(otmp)}`
+                    + ` [0x${((otmp.owornmask | 0) >>> 0).toString(16).padStart(8, '0')}]`
+                    + ` has ${wp.w_what} mask 0x${(m >>> 0).toString(16).padStart(8, '0')}`
+                    + ' bit set.');
+            }
+        }
+    } /* for wp in worn[] */
+}
+
+// ─── worn.c:474 mon_set_minvis(mon, cursed_potion) ─────────────────────────
+// A monster becomes invisible.  perminvis is the permanent flag and minvis the
+// currently-visible-or-not one; a monster whose invisibility is blocked (a worn
+// mummy wrapping, invis_blkd) gets perminvis only.  js/mon.js:2250,
+// js/zap.js:929 and js/makemon.js:3286 each record this as unported at their
+// call site; those call sites are left alone.
+export function mon_set_minvis(mon, cursed_potion) {
+    if (!mon) return;
+    mon.perminvis = !cursed_potion ? 1 : 0;
+    if (!mon.invis_blkd) {
+        mon.minvis = mon.perminvis;
+        newsym_worn(mon.mx, mon.my);   /* make it disappear */
+        if (mon.wormno)
+            see_wsegs_worn(mon);       /* and any tail too */
+    }
+}
+// C ref: display.c newsym(x, y) / worm.c see_wsegs(mon).  Resolved lazily so
+// mon_set_minvis() adds no module edge from worn.js to display.js/worm.js.
+function newsym_worn(x, y) {
+    import('./display.js').then((d) => d.newsym?.(x, y)).catch(() => {});
+}
+function see_wsegs_worn(mon) {
+    import('./worm.js').then((w) => w.see_wsegs?.(mon)).catch(() => {});
+}
+
+// ─── worn.c:1055 clear_bypass(objchn) ──────────────────────────────────────
+// Clear the bypass bits for an object chain, plus contents if applicable.
+// C walks a `nobj` linked list; this port keeps object chains as arrays and
+// container contents on `.cobj` (js/invent.js:375 Has_contents), so the
+// recursion is over those.  A single object is accepted as a one-item chain.
+export function clear_bypass(objchn) {
+    const chain = Array.isArray(objchn) ? objchn : (objchn ? [objchn] : []);
+    for (const o of chain) {
+        o.bypass = 0;
+        if (Has_contents_worn(o))
+            clear_bypass(o.cobj);
+    }
+}
+// C ref: obj.h Has_contents(o).
+function Has_contents_worn(o) { return !!(o?.cobj && o.cobj.length); }
+
+// ─── worn.c:1119 bypass_obj(obj) ───────────────────────────────────────────
+// Mark one object as "already handled this pass" and raise the global flag
+// that tells clear_bypasses() there is work to do.
+export function bypass_obj(obj) {
+    if (!obj) return;
+    obj.bypass = 1;
+    game.context = game.context || {};
+    game.context.bypasses = true;   /* C: svc.context.bypasses = TRUE */
 }

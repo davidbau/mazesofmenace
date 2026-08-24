@@ -18,7 +18,7 @@ import { record_price_quote } from './o_init.js';
 import { depth as depth_of_level } from './hacklib.js';
 import {
     ROOMOFFSET, NO_ROOM, SHARED, SHARED_PLUS, SHOPBASE, COLNO, ROWNO,
-    A_CHA, HUNGRY, TEMPLE, MAXNROFROOMS,
+    A_CHA, HUNGRY, TEMPLE, MAXNROFROOMS, G_GONE,
 } from './const.js';
 
 const PICK_AXE = 259, DWARVISH_MATTOCK = 71;
@@ -388,11 +388,13 @@ function makekops(mm) {
     }
 }
 
-// C ref: mon.h G_GONE — genocided or extinct.  Nothing in the covered sessions
-// genocides a Kop, but the check gates the whole rank in C.
+// C ref: monflag.h:211 G_GONE == G_GENOD | G_EXTINCT == 0x02 | 0x01.  Nothing in
+// the covered sessions genocides a Kop, but the check gates the whole rank in C.
+// The old mask was 0x30, and mvflags only ever holds 0x01/0x02/0x08
+// (MV_KNOWS_EGG), so this predicate was unconditionally false.
 function mvitals_gone(mndx) {
     const mv = game.mvitals?.[mndx];
-    return !!(mv && (mv.mvflags & 0x30 /* G_GENOD | G_EXTINCT */));
+    return !!(mv && (mv.mvflags & G_GONE));
 }
 
 // C ref: shk.c call_kops(shkp, nearshop) — the alarm and the two swarms.  The

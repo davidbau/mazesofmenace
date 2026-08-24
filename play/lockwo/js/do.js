@@ -47,17 +47,29 @@ import { COLNO, ROWNO, ROOM, CORR, AIR, LR_DOWNTELE, LR_UPTELE, STRAT_WAITFORU,
          MAGIC_PORTAL, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
          STAIRS, LADDER, VIBRATING_SQUARE, TT_PIT, TOOKPLUNGE, is_pit, is_hole,
          UNENCUMBERED, SLT_ENCUMBER, In_sokoban, Is_knox_level,
-         Is_rogue_level, Is_waterlevel, Is_airlevel } from './const.js';
+         Is_rogue_level, Is_waterlevel, Is_airlevel,
+         // additions used only by the do.c completeness ports at the end of
+         // this file (const.js is a leaf module, so no new import edge).
+         SINK, FOUNTAIN, THRONE, ALTAR, GRAVE, IS_ALTAR, IS_WATERWALL,
+         DRAWBRIDGE_UP, DB_FLOOR, DB_UNDER, AM_NONE, Align2amask, F_LOOTED,
+         T_LOOTED, SET_LIT_NOCHANGE, NO_TRAP, PIT, HOLE, TRAPDOOR,
+         WT_SPLASH_THRESHOLD, ER_DESTROYED, HAND, LEG, Has_contents, WRITING,
+         CXN_SINGULAR, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT, RLOC_NOMSG,
+         NON_PM, G_GENOD, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, UTOTYPE_NONE,
+         UTOTYPE_DEFERRED, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
+         UTOTYPE_RMPORTAL } from './const.js';
 import { docrt, flush_screen, pline, update_topl, topl_more, y_n, newsym,
          see_nearby_objects } from './display.js';
 import { seetrap, dotrap } from './trap.js';
 import { check_special_room } from './shkroom.js';
 import { near_capacity, addinv, prinv } from './invent.js';
 import { BOULDER, run_object_timers, mksobj, AMULET_OF_YENDOR } from './mkobj.js';
-import { vision_reset, vision_recalc, Blind } from './vision.js';
+import { vision_reset, vision_recalc, Blind, cansee,
+         recalc_block_point } from './vision.js';
 import { hide_monst } from './mon.js';
 import { mflags2_of, M2_STALK, is_swimmer_flag, throws_rocks_flag,
-         is_flyer_flag } from './monflags_data.js';
+         is_flyer_flag, mflags1_of, mflags3_of, M1_WALLWALK, M2_UNDEAD,
+         M3_DISPLACES } from './monflags_data.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { olfaction } from './eat.js';
 import { placebc, unplacebc } from './ball.js';
@@ -2261,4 +2273,1454 @@ export async function dodown() {
     await next_level(true);
     game.at_ladder = false;
     return 1; // ECMD_TIME
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// do.c completeness ports.
+//
+// INERT BY CONSTRUCTION: nothing above this banner calls anything below it, and
+// every cross-module dependency is reached through a lazy `await import()`, so
+// this block adds NO static import edge to js/do.js.  (An sp_lev -> mklev edge
+// once flipped ESM evaluation order and the whole program failed to load; do.js
+// sits on the drop / level-change path the corpus exercises constantly, so a
+// load-order accident here is not survivable.)  Wire these in ONE AT A TIME,
+// each behind its own measurement.
+//
+// Overlaps recorded rather than duplicated:
+//   * familiar_level_msg() below delegates to resolve_familiar_msg() above —
+//     that is the rn2(4)-drawing half, split out so goto_level() can draw at
+//     C's stream position and print the line later.
+//   * temperature_change_msg() / hellish_smoke_mesg() also exist INLINE inside
+//     goto_level() (the prevTemperature block); these are the named C forms.
+//   * schedule_goto() / deferred_goto() have a reduced level-teleport-only twin
+//     above in `game._lvltport_dest` + run_deferred_lvltport().
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── local shims ─────────────────────────────────────────────────────────────
+// The port's convention for the objnam/pline string helpers is a file-private
+// copy (js/dothrow.js:74-115, js/dbridge.js:899-916, js/muse.js:275, ...)
+// because the real ones are module-private in js/invent.js / js/cmd.js.
+
+// C ref: objnam.c an(str) / the(str) / upstart(str).
+function an(s) { return /^[aeiou]/i.test(String(s)) ? `an ${s}` : `a ${s}`; }
+function the(s) { return /^[A-Z]/.test(String(s)) ? String(s) : `the ${s}`; }
+function upstart(s) {
+    return s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : s;
+}
+
+// C ref: objnam.c vtense(subj, verb) — 2nd->3rd person unless `subj` reads as
+// plural.  The special_subjs[] false-match table and the " of "/" from " head
+// noun scan are omitted (js/dothrow.js:74 documents the same reduction).
+function vtense(subj, verb) {
+    const s = subj == null ? '' : String(subj);
+    if (s && !/^an? /i.test(s)) {
+        const last = s.charAt(s.length - 1).toLowerCase();
+        const prev = s.length > 1 ? s.charAt(s.length - 2).toLowerCase() : '';
+        if ((last === 's' && s.length > 1 && prev !== 'u' && prev !== 's')
+            || /eeth$|feet$|ia$|ae$/i.test(s))
+            return String(verb);
+        if (/^(they|you|we)$/i.test(s)) return String(verb);
+    }
+    const v = String(verb), lc = v.toLowerCase();
+    if (lc === 'are') return 'is';
+    if (lc === 'have') return `${v.slice(0, -2)}s`;
+    const end = lc.charAt(lc.length - 1);
+    if ('zxs'.includes(end)
+        || (v.length >= 2 && end === 'h' && 'cs'.includes(lc.charAt(lc.length - 2)))
+        || (v.length === 2 && end === 'o'))
+        return `${v}es`;
+    if (end === 'y' && !'aeiou'.includes(lc.charAt(lc.length - 2)))
+        return `${v.slice(0, -1)}ies`;
+    return `${v}s`;
+}
+
+// C ref: hack.h distu(x,y) — squared distance from the hero; hack.h u_at(x,y).
+function distu(x, y) {
+    const u = game.u;
+    const dx = x - (u?.ux ?? 0), dy = y - (u?.uy ?? 0);
+    return dx * dx + dy * dy;
+}
+function u_at(x, y) { return game.u?.ux === x && game.u?.uy === y; }
+
+// ── hero properties (youprop.h), following this file's existing `_do` suffix
+//    convention (Levitation_do / Flying_do / Punished_do / Fumbling_do above) ──
+function uprop_do(...keys) {
+    const u = game.u;
+    for (const k of keys) {
+        const v = u?.uprops?.[k] ?? u?.[k];
+        if (v) return typeof v === 'number' ? v : 1;
+    }
+    return 0;
+}
+function Deaf_do() { return uprop_do('Deaf', 'HDeaf', 'EDeaf') > 0; }
+function Hallucination_do() {
+    return uprop_do('Hallucination', 'HHallucination') > 0 || !!game.u?.uhallu;
+}
+function Underwater_do() { return !!(game.u?.uinwater || game.u?.uunderwater); }
+function Fire_resistance_do() {
+    return uprop_do('Fire_resistance', 'HFire_resistance', 'EFire_resistance') > 0;
+}
+function Passes_walls_do() {
+    return uprop_do('Passes_walls', 'HPasses_walls', 'EPasses_walls') > 0;
+}
+function Stoned_do() { return uprop_do('Stoned') > 0; }
+function Slimed_do() { return uprop_do('Slimed') > 0; }
+function Strangled_do() { return uprop_do('Strangled') > 0; }
+function Sick_do() { return uprop_do('Sick') > 0 || !!game.u?.sick; }
+// C ref: youprop.h Half_physical_damage / Maybe_Half_Phys(dmg) — no RNG.
+function Half_physical_damage_do() {
+    return uprop_do('Half_physical_damage', 'HHalf_physical_damage',
+                    'EHalf_physical_damage') > 0;
+}
+function Maybe_Half_Phys_do(dmg) {
+    return Half_physical_damage_do() ? Math.floor((dmg + 1) / 2) : dmg;
+}
+// C ref: youprop.h EWounded_legs (u.uprops[WOUNDED_LEGS].extrinsic).
+// js/allmain.js:1405 keeps the same private pair.
+function EWounded_legs_do() {
+    return (game.u?.EWounded_legs | 0) || (game.u?.uprops?.EWounded_legs | 0);
+}
+
+// C ref: dungeon.c on_level(a,b) / assign_level(dst,src).  Private copies also
+// live in js/dig.js:636, js/questpgr.js:2883 and js/wizcmds.js:106; js/dungeon.js
+// is the file that should own the single export.
+function on_level(a, b) {
+    return !!a && !!b && a.dnum === b.dnum && a.dlevel === b.dlevel;
+}
+function assign_level(dst, src) {
+    dst.dnum = src?.dnum ?? 0;
+    dst.dlevel = src?.dlevel ?? 0;
+    return dst;
+}
+
+// C ref: pager.c waterbody_name(x,y).  js/cmd.js:593 has the full version (the
+// three MOAT special-level overrides plus hliquid()); this is the reduced form
+// js/trap.js:3264 also keeps.  pager.c is where the single export belongs.
+function waterbody_name_do(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    if (typ === LAVAPOOL) return 'molten lava';
+    if (typ === MOAT) return 'moat';
+    if (typ === WATER) return 'wall of water';
+    if (typ === LAVAWALL) return 'wall of lava';
+    return 'pool of water';
+}
+
+// C ref: objclass.h object classes.  js/allmain.js:48, js/display.js:49/115 and
+// js/artifact.js:136 each keep the same private set.
+const RING_CLASS = 4, POTION_CLASS = 8, COIN_CLASS = 12;
+// C ref: onames.h (generated) — the ring block, rows 173..200 of js/mkobj.js's
+// OBJECT_DATA table, which is the port's authority for otyp numbering.  mkobj.js
+// exports only the four rings it needs itself, so the rest are named here.
+const RIN_ADORNMENT = 173, RIN_GAIN_STRENGTH = 174, RIN_GAIN_CONSTITUTION = 175,
+      RIN_INCREASE_ACCURACY = 176, RIN_INCREASE_DAMAGE = 177,
+      RIN_PROTECTION = 178, RIN_REGENERATION = 179, RIN_SEARCHING = 180,
+      RIN_STEALTH = 181, RIN_SUSTAIN_ABILITY = 182, RIN_LEVITATION = 183,
+      RIN_HUNGER = 184, RIN_AGGRAVATE_MONSTER = 185, RIN_CONFLICT = 186,
+      RIN_WARNING = 187, RIN_POISON_RESISTANCE = 188, RIN_FIRE_RESISTANCE = 189,
+      RIN_COLD_RESISTANCE = 190, RIN_SHOCK_RESISTANCE = 191,
+      RIN_FREE_ACTION = 192, RIN_SLOW_DIGESTION = 193,
+      RIN_TELEPORTATION = 194, RIN_TELEPORT_CONTROL = 195,
+      RIN_POLYMORPH = 196, RIN_POLYMORPH_CONTROL = 197,
+      RIN_INVISIBILITY = 198, RIN_SEE_INVISIBLE = 199,
+      RIN_PROTECTION_FROM_SHAPE_CHAN = 200;
+// C ref: onames.h — the weapon/food otyps the two digestion paths test (same
+// OBJECT_DATA rows).  CORPSE/GLOB_OF_GREEN_SLIME/POT_OIL/WORM_TOOTH are also
+// exported by js/mkobj.js; named here so the whole set reads from one place.
+const WORM_TOOTH = 42, CRYSKNIFE = 43, CORPSE = 265, MEATBALL = 267,
+      MEAT_STICK = 268, ENORMOUS_MEATBALL = 269, MEAT_RING = 270,
+      GLOB_OF_GREEN_SLIME = 273, POT_OIL = 321;
+// C ref: defsym.h MONSYM() — monster classes (js/symbols.js owns the table).
+const S_VORTEX = 22, S_TROLL = 46, S_ZOMBIE = 52, S_GOLEM = 55;
+
+// C ref: monsters.h PM_* indices, resolved from the species NAME at first use
+// (js/mkobj.js:203 documents why literals are unsafe here: mons[] shifts).
+const _do_pm_cache = new Map();
+async function PM_do(name) {
+    if (!_do_pm_cache.has(name)) {
+        const M = await import('./makemon.js');
+        _do_pm_cache.set(name, M.name_to_pmidx(name));
+    }
+    return _do_pm_cache.get(name);
+}
+
+// C ref: pline.c impossible() — js/display.js owns the one implementation.
+async function impossible_do(msg) {
+    const { impossible } = await import('./display.js');
+    await impossible(msg);
+}
+// C ref: pline.c You_hear() — suppressed when Deaf.
+async function You_hear_do(msg) {
+    if (!Deaf_do()) await pline(`You hear ${msg}`);
+}
+// C ref: mondata.h is_whirly(ptr) = mlet == S_VORTEX || ptr == &mons[PM_AIR_ELEMENTAL].
+async function is_whirly_do(ptr) {
+    if (!ptr) return false;
+    return ptr.mcls === S_VORTEX || ptr.pmidx === await PM_do('air elemental');
+}
+
+// C ref: zap.c revive(corpse, by_hero) — NOT PORTED: nothing in js/ defines it
+// (js/mkobj.js only has corpse_revive_type(), the vampire-corpse helper).  Kept
+// as the call site so revive_corpse()'s control flow below is C's; answering
+// null takes C's `return FALSE` tail.
+async function revive_unported(_corpse, _by_hero) { return null; }
+
+// C ref: objnam.c Tobjnam(obj, verb) / Doname2(obj) / is_plural(obj).
+async function Tobjnam_do(obj, verb) {
+    const I = await import('./invent.js');
+    return `${upstart(the(I.xname(obj)))} ${I.otense(obj, verb)}`;
+}
+async function Doname2_do(obj) {
+    const I = await import('./invent.js');
+    return upstart(I.obj_doname(obj));
+}
+// C ref: trap.c reset_utrap(msg) — clear the trapped state (js/dothrow.js:166
+// and js/dig.js:702 keep the same private copy).
+function reset_utrap_do(_msg) {
+    const u = game.u;
+    u.utrap = 0;
+    u.utraptype = 0;
+}
+// C ref: mondata.h passes_walls(ptr) / nonliving(ptr) / is_vampshifter(mon).
+function passes_walls_do(ptr) { return (mflags1_of(ptr) & M1_WALLWALK) !== 0; }
+function nonliving_do(mtmp) {
+    const ptr = mtmp?.data ?? mtmp;
+    if (!ptr) return false;
+    return (mflags2_of(ptr) & M2_UNDEAD) !== 0 || ptr.name === 'manes'
+        || ptr.mcls === S_GOLEM || ptr.mcls === S_VORTEX;
+}
+async function is_vampshifter_do(mon) {
+    const cham = mon?.cham;
+    if (cham == null || cham < 0) return false;
+    return cham === await PM_do('vampire') || cham === await PM_do('vampire leader')
+        || cham === await PM_do('Vlad the Impaler');
+}
+
+// ── boulder_hits_pool (C ref: do.c:50) ──────────────────────────────────────
+// A boulder dropped, thrown or pushed into water or lava either fills the pool
+// or sinks away; either way it is gone.  The single rn2(10) is drawn for EVERY
+// pool-or-lava destination, BEFORE the fills_up decision — including on the
+// Plane of Water where fills_up is unconditionally FALSE.
+export async function boulder_hits_pool(otmp, rx, ry, pushing) {
+    const DB = await import('./dbridge.js');
+
+    if (!otmp || otmp.otyp !== BOULDER) {
+        await impossible_do('Not a boulder?');
+    } else if (DB.is_pool_or_lava(rx, ry)) {
+        const loc = game.level?.at(rx, ry);
+        const lava = DB.is_lava(rx, ry);
+        const what = waterbody_name_do(rx, ry);
+        const ltyp = loc?.typ;
+        const chance = rn2(10); /* water: 90%; lava: 10% */
+        let mtmp;
+
+        /* Plane of Water 0%, lava 10%, wall of water 50%, other water 90% */
+        const fills_up = Is_waterlevel(game.u.uz) ? false
+                       : IS_WATERWALL(ltyp) ? (chance < 5)
+                       : lava ? (chance === 0) : (chance !== 0);
+
+        if (fills_up) {
+            const ttmp = t_at(rx, ry);
+
+            if (ltyp === DRAWBRIDGE_UP) {
+                loc.drawbridgemask = (loc.drawbridgemask | 0) & ~DB_UNDER; /* clear lava */
+                loc.drawbridgemask |= DB_FLOOR;
+            } else {
+                loc.typ = ROOM; loc.flags = 0;
+                recalc_block_point(rx, ry);
+            }
+            // C ref: do.c:80-90 — DEADMONSTER() is tested even though we are not
+            // walking fmon: a giant drowned by melting ice is still on the map
+            // while it drops inventory, and killing it twice trips dmonsfree().
+            const MN = await import('./mon.js');
+            if ((mtmp = m_at(rx, ry)) != null && !MN.DEADMONSTER(mtmp)
+                && !m_in_air_do(mtmp)) {
+                const MM = await import('./mhitm.js');
+                await MM.mondied_mm(mtmp);
+            }
+
+            if (ttmp) {
+                const T = await import('./trap.js');
+                T.delfloortrap(ttmp);
+            }
+            const DIG = await import('./dig.js');
+            await DIG.bury_objs(rx, ry);
+
+            newsym(rx, ry);
+            if (pushing) {
+                let whobuf = 'you';
+                if (game.u.usteed) {
+                    const DN = await import('./do_name.js');
+                    whobuf = DN.y_monnam(game.u.usteed);
+                }
+                const I = await import('./invent.js');
+                await pline(`${upstart(whobuf)} ${vtense(whobuf, 'push')} `
+                            + `${the(I.xname(otmp))} into the ${what}.`);
+                if (game.flags?.verbose && !Blind())
+                    await pline('Now you can cross it!');
+                /* no splashing in this case */
+            }
+        }
+        if (!fills_up || !pushing) { /* splashing occurs */
+            if (!game.u.uinwater) {
+                if (pushing ? !Blind() : cansee(rx, ry)) {
+                    const I = await import('./invent.js');
+                    await pline(`There is a large splash as ${the(I.xname(otmp))} `
+                                + `${fills_up ? 'fills' : 'falls into'} the ${what}.`);
+                } else if (!Deaf_do()) {
+                    /* C: Soundeffect(se_sizzling|se_splash, 100) then You_hear() */
+                    await pline(`You hear a${lava ? ' sizzling' : ''} splash.`);
+                }
+                const C = await import('./cmd.js');
+                await C.wake_nearto(rx, ry, 40);
+            }
+
+            if (fills_up && game.u.uinwater && distu(rx, ry) === 0) {
+                // C ref: do.c:128 set_uinwater(0) — NOT PORTED (nothing in js/
+                // defines it); it clears u.uinwater and redoes the underwater
+                // display bookkeeping.  The flag is what every caller reads.
+                game.u.uinwater = 0;
+                await docrt();
+                game.vision_full_recalc = 1;
+                await pline('You find yourself on dry land again!');
+            } else if (lava && next2u(rx, ry)) {
+                const DN = await import('./do_name.js');
+                await pline(`You are hit by molten ${DN.hliquid('lava')}`
+                            + `${Fire_resistance_do() ? '.' : '!'}`);
+                const TO = await import('./timeout.js');
+                await TO.burn_away_slime();
+                const dmg = d(Fire_resistance_do() ? 1 : 3, 6);
+                /* C: losehp(Maybe_Half_Phys(dmg), "molten lava", KILLED_BY) */
+                await losehp_do(Maybe_Half_Phys_do(dmg));
+            } else if (!fills_up && game.flags?.verbose
+                       && (pushing ? !Blind() : cansee(rx, ry))) {
+                await pline('It sinks without a trace!');
+            }
+        }
+
+        /* boulder is now gone */
+        const I = await import('./invent.js');
+        if (pushing) I.useupf(otmp, otmp.quan);
+        else I.obfree(otmp, null);
+        return true;
+    }
+    return false;
+}
+
+// ── flooreffects (C ref: do.c:162) ──────────────────────────────────────────
+// What happens to an object as it lands on <x,y>; must be called with the object
+// in no chain at all.  Returns TRUE if the object went away.
+//
+// Unported dependencies, each kept as its call site so the control flow is C's:
+//   * uhitm.c hmon()      — ported but module-private in js/uhitm.js:1145 under
+//                           a reduced signature with no HMON_* mode argument.
+//   * trap.c lava_damage()— no port anywhere in js/.
+//   * dig.c  ship_object()— no port anywhere in js/.
+//   * display.c map_background() — no port; newsym() is what redraws here.
+export async function flooreffects(obj, x, y, verb) {
+    let t, mtmp;
+    let tseen = false;
+    let ttyp = NO_TRAP, res = false;
+    let deletedwithboulder = false;
+
+    // C: `if (obj->where != OBJ_FREE) panic("flooreffects: obj not free")`.  This
+    // port stores obj.where as the lower-cased OBJ_* name (js/invent.js
+    // objects_at(), js/dig.js rot_corpse()); js/ has no panic().
+    if (obj.where !== 'free') {
+        await impossible_do('flooreffects: obj not free');
+        return false;
+    }
+    /* make sure things like water_damage() have no pointers to follow */
+    obj.nobj = obj.nexthere = null;
+    // C ref: do.c:179-183 — erode_obj() (from water_damage()/lava_damage())
+    // needs bhitpos, but that broke wand zaps arriving through rloco(), so C
+    // saves it here and restores it on EVERY exit path.
+    const save_bhitpos = game.bhitpos ? { x: game.bhitpos.x, y: game.bhitpos.y }
+                                      : { x: 0, y: 0 };
+    game.bhitpos = { x, y };
+
+    const DB = await import('./dbridge.js');
+    const I = await import('./invent.js');
+    const MO = await import('./mkobj.js');
+    const T = await import('./trap.js');
+    const DIG = await import('./dig.js');
+    const MN = await import('./mon.js');
+
+    if (obj.otyp === BOULDER && await boulder_hits_pool(obj, x, y, false)) {
+        res = true;
+    } else if (obj.otyp === BOULDER && (t = t_at(x, y)) != null
+               && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
+        ttyp = t.ttyp;
+        tseen = t.tseen ? true : false;
+        // C ref: do.c:191 — the assignment to mtmp happens INSIDE the condition,
+        // so a non-trapped monster standing here still lands in `mtmp` when it
+        // was the second clause (a trapped HERO) that fired; C then takes the
+        // `if (mtmp)` arm and hits that monster.  Keep the short-circuit exactly.
+        if (((mtmp = m_at(x, y)) != null && mtmp.mtrapped)
+            || (game.u.utrap && u_at(x, y))) {
+            if (verb && (cansee(x, y) || distu(x, y) === 0))
+                await pline(`${Blind() ? 'A' : 'The'} boulder `
+                            + `${vtense(null, verb)} into the pit`
+                            + `${mtmp ? '' : ' with you'}.`);
+            if (mtmp) {
+                if (!passes_walls_do(mtmp.data) && !throws_rocks_flag(mtmp.data)) {
+                    /* dieroll was rnd(20); 1 == maximum chance to hit, since a
+                       trapped target is a sitting duck */
+                    const dieroll = 1;
+
+                    if (game.context?.mon_moving) {
+                        /* normally ohitmon(), but that can re-enter flooreffects */
+                        const W = await import('./weapon.js');
+                        const damage = W.dmgval(obj, mtmp);
+                        mtmp.mhp -= damage;
+                        if (MN.DEADMONSTER(mtmp)) {
+                            const U = await import('./uhitm.js');
+                            if (U.canspotmon(mtmp)) {
+                                const DN = await import('./do_name.js');
+                                const dead = nonliving_do(mtmp)
+                                          || await is_vampshifter_do(mtmp);
+                                await pline(`${DN.Monnam(mtmp)} is `
+                                            + `${dead ? 'destroyed' : 'killed'}!`);
+                            }
+                            const MM = await import('./mhitm.js');
+                            await MM.mondied_mm(mtmp);
+                        }
+                    } else {
+                        // C ref: do.c:223 `(void) hmon(mtmp, obj, HMON_THROWN,
+                        // dieroll);` — see the header note; exporting the full
+                        // hmon() is the fix.  Skipped, so the trapped monster
+                        // takes no damage here.
+                        void dieroll;
+                    }
+                    if (!MN.DEADMONSTER(mtmp) && !await is_whirly_do(mtmp.data))
+                        res = false; /* still alive, boulder still intact */
+                    /* C: nhUse(res) */
+                }
+                mtmp.mtrapped = 0;
+            } else {
+                if (!Passes_walls_do() && !throws_rocks_flag(game.u.data)) {
+                    /* C: losehp(Maybe_Half_Phys(rnd(15)),
+                              "squished under a boulder", NO_KILLER_PREFIX) */
+                    await losehp_do(Maybe_Half_Phys_do(rnd(15)));
+                    deletedwithboulder = true; /* C: goto deletedwithboulder */
+                } else {
+                    reset_utrap_do(true);
+                }
+            }
+        }
+        if (!deletedwithboulder && verb) {
+            if (Blind() && u_at(x, y)) {
+                await You_hear_do('a CRASH! beneath you.');
+            } else if (!Blind() && cansee(x, y)) {
+                await pline('The boulder '
+                    + `${(ttyp === TRAPDOOR && !tseen) ? 'triggers and ' : ''}`
+                    + `${(ttyp === TRAPDOOR) ? 'plugs a trap door'
+                        : (ttyp === HOLE) ? 'plugs a hole' : 'fills a pit'}.`);
+            } else {
+                await You_hear_do(`a boulder ${verb}.`);
+            }
+        }
+        /* deletedwithboulder: — the trap may already have gone away through
+           mondied -> mondead -> m_detach -> fill_pit.  A pit in ice turns that
+           ice into floor, so no special ice handling is needed here. */
+        if ((t = t_at(x, y)) != null) {
+            T.delfloortrap(t);
+            if (game.u.utrap && u_at(x, y)) reset_utrap_do(false);
+        }
+        I.useupf(obj, 1);
+        await DIG.bury_objs(x, y);
+        newsym(x, y);
+        res = true;
+    } else if (DB.is_lava(x, y)) {
+        // C ref: do.c:271 `res = lava_damage(obj, x, y);` — trap.c lava_damage()
+        // has no port in js/ (only water_damage(), js/trap.js:707), so an object
+        // that C burns up survives here.
+        res = false;
+    } else if (DB.is_pool(x, y)) {
+        /* Reasonably bulky objects splash when dropped; if you are floating
+           above the water even small things make noise.  Stuff dropped near
+           fountains always misses. */
+        if ((Blind() || (Levitation_do() || Flying_do())) && !Deaf_do()
+            && u_at(x, y)) {
+            if (!Underwater_do()) {
+                if (MO.weight(obj) > WT_SPLASH_THRESHOLD) {
+                    await pline('Splash!');
+                } else if (Levitation_do() || Flying_do()) {
+                    await pline('Plop!');
+                }
+            }
+            /* C: map_background(x, y, 0) — unported; newsym() is the redraw */
+            newsym(x, y);
+        }
+        res = (await T.water_damage(obj, null, false)) === ER_DESTROYED;
+    } else if (u_at(x, y) && (t = t_at(x, y)) != null
+               && (uteetering_at_seen_pit(t) || uescaped_shaft(t))) {
+        if (is_pit(t.ttyp)) {
+            if (Blind() && !Deaf_do()) {
+                await You_hear_do(`${the(I.xname(obj))} tumble downwards.`);
+            } else {
+                await pline(`${await Tobjnam_do(obj, 'tumble')} into `
+                            + `${t.madeby_u ? 'your' : 'the'} pit.`);
+            }
+        } else {
+            // C ref: do.c:298 `else if (ship_object(obj, x, y, FALSE)) res=TRUE;`
+            // — dig.c ship_object() has no port in js/; it drops the object to
+            // the level below and prints its own message.
+            void 0;
+        }
+    } else if (obj.globby) {
+        /* Globby things like puddings might stick together.  C passes &globbyobj
+           and &otmp, and obj_meld() may null either out; js/mkobj.js models the
+           two by-reference parameters as {obj} boxes. */
+        const g1 = { obj }, g2 = { obj: null };
+        while (g1.obj && (g2.obj = MO.obj_nexto_xy(g1.obj, x, y, true)) != null) {
+            /* C: pudding_merge_message(globbyobj, otmp) — js/invent.js:485 keeps
+               it as a private no-op (the merge lines are not modelled). */
+            MO.obj_meld(g1, g2);
+        }
+        res = !g1.obj;
+    } else if (game.context?.mon_moving && IS_ALTAR(game.level?.at(x, y)?.typ)
+               && cansee(x, y)) {
+        await doaltarobj(obj);
+    } else if (obj.oclass === POTION_CLASS
+               && (game.level?.flags?.temperature | 0) > 0
+               && (game.level?.at(x, y)?.typ === ROOM
+                   || game.level?.at(x, y)?.typ === CORR)) {
+        /* Potions are sometimes destroyed when landing on very hot ground: 50%
+           for nonblessed, 30% for blessed, adjusted by 2% per point of Luck if
+           the hero has ever handled the object.  Oil is exempt (its boiling and
+           flash points are both above water's). */
+        if (cansee(x, y)) {
+            /* unconditional "ground": this arm only runs for ROOM and CORR */
+            await pline(`${await Tobjnam_do(obj, 'heat')} up as `
+                        + `${I.is_plural(obj) ? 'they hit' : 'it hits'} `
+                        + 'the hot ground.');
+        }
+
+        let survival_chance = obj.blessed ? 70 : 50;
+        if (obj.invlet) survival_chance += Luck_do() * 2;
+        if (obj.otyp === POT_OIL) survival_chance = 100;
+
+        if (!I.obj_resists(obj, survival_chance, 100)) {
+            if (cansee(x, y)) {
+                await pline(I.is_plural(obj) ? 'They shatter from the heat!'
+                                            : 'It shatters from the heat!');
+            } else {
+                await You_hear_do('a shattering noise.');
+            }
+            const DT = await import('./dothrow.js');
+            await DT.breakobj(obj, x, y, false, false);
+            res = true;
+        }
+    }
+
+    game.bhitpos = save_bhitpos;
+    return res;
+}
+
+// ── doaltarobj (C ref: do.c:363) ────────────────────────────────────────────
+// An object dropped on an altar: the amber/black flash reveals its BUC status.
+export async function doaltarobj(obj) {
+    if (Blind()) return;
+
+    const I = await import('./invent.js');
+    if (obj.oclass !== COIN_CLASS) {
+        /* KMH, conduct — the post-increment happens even when mon_moving */
+        if (!game.context?.mon_moving) {
+            const uc = (game.u.uconduct = game.u.uconduct || {});
+            const was = uc.gnostic | 0;
+            uc.gnostic = was + 1;
+            if (!was) {
+                const LL = await import('./livelog.js');
+                LL.livelog_printf(LL.LL_CONDUCT ?? 0x0008,
+                    `eschewed atheism, by dropping ${I.obj_doname(obj)} on an altar`);
+            }
+        }
+    } else {
+        /* coins don't have bless/curse status */
+        obj.blessed = obj.cursed = 0;
+    }
+
+    if (obj.blessed || obj.cursed) {
+        const DN = await import('./do_name.js');
+        await pline(`There is ${an(DN.hcolor(obj.blessed ? 'amber' : 'black'))} `
+                    + `flash as ${I.obj_doname(obj)} ${I.otense(obj, 'hit')} `
+                    + 'the altar.');
+        if (!Hallucination_do()) obj.bknown = 1; /* ok to bypass set_bknown() */
+    } else {
+        await pline(`${await Doname2_do(obj)} ${I.otense(obj, 'land')} `
+                    + 'on the altar.');
+        if (obj.oclass !== COIN_CLASS) obj.bknown = 1;
+    }
+}
+
+// ── polymorph_sink (C ref: do.c:404) ────────────────────────────────────────
+// A ring of polymorph down the drain turns the sink into a fountain, throne,
+// altar or grave.  RNG: rn2(4) picks the form; the ALTAR arm then draws rn2(3)
+// for the alignment and, ONLY when Inhell, a second rn2(3) for the AM_NONE roll.
+export async function polymorph_sink() {
+    const u = game.u;
+    const loc = game.level?.at(u.ux, u.uy);
+    const SY = await import('./symbols.js');
+    const SP = await import('./sp_lev.js');
+    let sym = SY.S_sink;
+
+    if (loc?.typ !== SINK) return;
+
+    const sinklooted = (loc.looted | 0) !== 0;
+    /* C: svl.level.flags.nsinks-- is commented out — set_levltyp() recounts.
+       NOTE: mkmaze.c set_levltyp()'s count_level_features() call is NOT ported
+       (js/mklev.js recount_level_features() is private and only mklev calls it),
+       so level.flags.nsinks/nfountains do not follow these edits. */
+    loc.flags = 0;
+    switch (rn2(4)) {
+    default:
+    case 0:
+        sym = SY.S_fountain;
+        SP.set_levltyp_lit(u.ux, u.uy, FOUNTAIN, SET_LIT_NOCHANGE);
+        loc.blessedftn = 0;
+        if (sinklooted) loc.looted = (loc.looted | 0) | F_LOOTED; /* SET_FOUNTAIN_LOOTED */
+        break;
+    case 1:
+        sym = SY.S_throne;
+        SP.set_levltyp_lit(u.ux, u.uy, THRONE, SET_LIT_NOCHANGE);
+        if (sinklooted) loc.looted = T_LOOTED;
+        break;
+    case 2: {
+        sym = SY.S_altar;
+        SP.set_levltyp_lit(u.ux, u.uy, ALTAR, SET_LIT_NOCHANGE);
+        /* 3.6.3: this used to pass 'rn2(A_LAWFUL + 2) - 1' to Align2amask() but
+           that evaluates its argument more than once */
+        const algn = rn2(3) - 1; /* -1 (A_Cha) or 0 (A_Neu) or +1 (A_Law) */
+        loc.altarmask = (In_hell(u.uz) && rn2(3)) ? AM_NONE : Align2amask(algn);
+        break;
+    }
+    case 3: {
+        sym = SY.S_room;
+        SP.set_levltyp_lit(u.ux, u.uy, ROOM, SET_LIT_NOCHANGE);
+        const EN = await import('./engrave.js');
+        EN.make_grave(u.ux, u.uy, null);
+        if (game.level?.at(u.ux, u.uy)?.typ === GRAVE) sym = SY.S_grave;
+        break;
+    }
+    }
+    /* give the message even if blind: we know we are not levitating, so the
+       outcome can be felt even when it cannot be seen */
+    if (game.level?.at(u.ux, u.uy)?.typ !== ROOM)
+        await pline(`The sink transforms into ${an(SY.defsyms[sym].explanation)}!`);
+    else
+        await pline('The sink vanishes.');
+    newsym(u.ux, u.uy);
+}
+
+// ── teleport_sink (C ref: do.c:460) ─────────────────────────────────────────
+// Move the sink under the hero somewhere else.  RNG: each of up to 200 tries
+// draws rnd(COLNO-3) then rn2(ROWNO-2), IN THAT ORDER, and the loop stops on the
+// first acceptable square — so the draw count is data-dependent on the map.
+export async function teleport_sink() {
+    const u = game.u;
+    const SP = await import('./sp_lev.js');
+    const EN = await import('./engrave.js');
+    let trycnt = 0;
+
+    do {
+        /* C keeps a disabled `rnd(COLNO-1)/rn2(ROWNO)` variant above this one:
+           edge squares are almost never ROOM, so picking them wastes tries. */
+        const cx = 1 + rnd((COLNO - 1) - 2); /* 2..COLNO-2 */
+        const cy = 1 + rn2(ROWNO - 2);       /* 1..ROWNO-2 */
+
+        if (game.level?.at(cx, cy)?.typ === ROOM
+            && !t_at(cx, cy) && !EN.engr_at(cx, cy)
+            && (!cansee(cx, cy) || distu(cx, cy) > 3 * 3)) {
+            /* this makes set_levltyp() count every sink and fountain on the
+               level twice, which is harmless */
+            const alreadylooted = game.level.at(u.ux, u.uy).looted;
+            /* remove old sink */
+            SP.set_levltyp_lit(u.ux, u.uy, ROOM, SET_LIT_NOCHANGE);
+            game.level.at(u.ux, u.uy).looted = 0;
+            newsym(u.ux, u.uy);
+            /* create sink at new position */
+            SP.set_levltyp_lit(cx, cy, SINK, SET_LIT_NOCHANGE);
+            game.level.at(cx, cy).looted = alreadylooted ? 1 : 0;
+            newsym(cx, cy);
+            return true;
+        }
+    } while (++trycnt < 200);
+
+    return false;
+}
+
+// ── dosinkring (C ref: do.c:498) ────────────────────────────────────────────
+// A ring dropped down a kitchen sink.  Two switches: the first covers effects
+// noticeable without eyes, the second (only when sighted and the first produced
+// nothing) the visual ones.  The tail draws rn2(20) and then, only if that was
+// non-zero, rn2(5) — deciding between backing up, being buried, and vanishing.
+export async function dosinkring(obj) {
+    const I = await import('./invent.js');
+    const u = game.u;
+    let ideed = true;
+    let nosink = false;
+
+    await pline(`You drop ${I.obj_doname(obj)} down the drain.`);
+    obj.in_use = true; /* block free identification via interrupt */
+
+    let giveback = false;
+    switch (obj.otyp) { /* effects that can be noticed without eyes */
+    case RIN_SEARCHING:
+        await pline(`You thought ${I.yname(obj)} got lost in the sink, `
+                    + 'but there it is!');
+        giveback = true;
+        break;
+    case RIN_SLOW_DIGESTION:
+        await pline('The ring is regurgitated!');
+        giveback = true;
+        break;
+    case RIN_LEVITATION:
+        await pline('The sink quivers upward for a moment.');
+        break;
+    case RIN_POISON_RESISTANCE: {
+        const O = await import('./objnam.js');
+        await pline(`You smell rotten ${I.makeplural(O.fruitname(false))}.`);
+        break;
+    }
+    case RIN_AGGRAVATE_MONSTER: {
+        const DN = await import('./do_name.js');
+        await pline(`Several ${Hallucination_do()
+            ? I.makeplural(DN.rndmonnam()) : 'flies'} buzz angrily around the sink.`);
+        break;
+    }
+    case RIN_SHOCK_RESISTANCE:
+        await pline('Static electricity surrounds the sink.');
+        break;
+    case RIN_CONFLICT:
+        await You_hear_do('loud noises coming from the drain.');
+        break;
+    case RIN_SUSTAIN_ABILITY: /* KMH */
+        await pline(`The ${await hliquid_do('water')} flow seems fixed.`);
+        break;
+    case RIN_GAIN_STRENGTH:
+        await pline(`The ${await hliquid_do('water')} flow seems `
+                    + `${(obj.spe < 0) ? 'weak' : 'strong'}er now.`);
+        break;
+    case RIN_GAIN_CONSTITUTION:
+        await pline(`The ${await hliquid_do('water')} flow seems `
+                    + `${(obj.spe < 0) ? 'less' : 'great'}er now.`);
+        break;
+    case RIN_INCREASE_ACCURACY: /* KMH */
+        await pline(`The ${await hliquid_do('water')} flow `
+                    + `${(obj.spe < 0) ? 'misses' : 'hits'} the drain.`);
+        break;
+    case RIN_INCREASE_DAMAGE:
+        await pline("The water's force seems "
+                    + `${(obj.spe < 0) ? 'small' : 'great'}er now.`);
+        break;
+    case RIN_HUNGER: {
+        ideed = false;
+        /* C walks svl.level.objects[u.ux][u.uy] via ->nexthere, saving otmp2
+           first because delobj() unlinks otmp; objects_at() returns that same
+           pile topmost-first as a snapshot array. */
+        for (const otmp of I.objects_at(u.ux, u.uy)) {
+            if (otmp !== game.uball && otmp !== game.uchain
+                && !I.obj_resists(otmp, 1, 99)) {
+                if (!Blind()) {
+                    await pline(`Suddenly, ${I.obj_doname(otmp)} `
+                                + `${I.otense(otmp, 'vanish')} from the sink!`);
+                    ideed = true;
+                }
+                I.delobj(otmp);
+            }
+        }
+        break;
+    }
+    case MEAT_RING:
+        /* Not the same as aggravate monster; besides, it's obvious. */
+        await pline('Several flies buzz around the sink.');
+        break;
+    case RIN_TELEPORTATION:
+        nosink = await teleport_sink();
+        /* message even if blind: not levitating, so the outcome is felt */
+        await pline(`The sink ${nosink ? '' : 'momentarily '}vanishes.`);
+        ideed = false;
+        break;
+    case RIN_POLYMORPH:
+        await polymorph_sink();
+        nosink = true;
+        /* for the S_room case the teleportation message is given instead */
+        ideed = (game.level?.at(u.ux, u.uy)?.typ !== ROOM);
+        break;
+    default:
+        ideed = false;
+        break;
+    }
+    if (giveback) { /* C: the `giveback:` label */
+        obj.in_use = false;
+        I.dropx(obj);
+        await I.trycall(obj);
+        return;
+    }
+
+    if (!Blind() && !ideed) {
+        ideed = true;
+        const DN = await import('./do_name.js');
+        switch (obj.otyp) { /* effects that need eyes */
+        case RIN_ADORNMENT:
+            await pline('The faucets flash brightly for a moment.');
+            break;
+        case RIN_REGENERATION:
+            await pline('The sink looks as good as new.');
+            break;
+        case RIN_INVISIBILITY:
+            await pline("You don't see anything happen to the sink.");
+            break;
+        case RIN_FREE_ACTION:
+            await pline('You see the ring slide right down the drain!');
+            break;
+        case RIN_SEE_INVISIBLE:
+            await pline(`You see some ${Hallucination_do()
+                ? 'oxygen molecules' : 'air'} in the sink.`);
+            break;
+        case RIN_STEALTH:
+            await pline('The sink seems to blend into the floor for a moment.');
+            break;
+        case RIN_FIRE_RESISTANCE:
+            await pline(`The hot ${await hliquid_do('water')} faucet flashes `
+                        + 'brightly for a moment.');
+            break;
+        case RIN_COLD_RESISTANCE:
+            await pline(`The cold ${await hliquid_do('water')} faucet flashes `
+                        + 'brightly for a moment.');
+            break;
+        case RIN_PROTECTION_FROM_SHAPE_CHAN:
+            await pline('The sink looks nothing like a fountain.');
+            break;
+        case RIN_PROTECTION:
+            await pline(`The sink glows ${DN.hcolor((obj.spe < 0)
+                ? 'black' : 'silver')} for a moment.`);
+            break;
+        case RIN_WARNING:
+            await pline(`The sink glows ${DN.hcolor('white')} for a moment.`);
+            break;
+        case RIN_TELEPORT_CONTROL:
+            await pline('The sink looks like it is being beamed aboard somewhere.');
+            break;
+        case RIN_POLYMORPH_CONTROL:
+            await pline('The sink momentarily looks like a regularly '
+                        + 'erupting geyser.');
+            break;
+        default:
+            break;
+        }
+    }
+    if (ideed) {
+        await I.trycall(obj);
+    } else if (!nosink) {
+        await You_hear_do('the ring bouncing down the drainpipe.');
+    }
+    if (!rn2(20) && !nosink) {
+        await pline(`The sink backs up, leaving ${I.obj_doname(obj)}.`);
+        obj.in_use = false;
+        I.dropx(obj);
+    } else if (!rn2(5)) {
+        I.freeinv(obj);
+        obj.in_use = false;
+        obj.ox = u.ux;
+        obj.oy = u.uy;
+        const MO = await import('./mkobj.js');
+        MO.add_to_buried(obj);
+    } else {
+        I.useup(obj);
+    }
+}
+
+// ── engulfer_digests_food (C ref: do.c:849) ─────────────────────────────────
+// While swallowed, a dropped object moves into u.ustuck's inventory; an animal
+// swallower (purple worm) instead eats any corpse, glob or meat item outright.
+// Returns TRUE if the object was used up.
+export async function engulfer_digests_food(obj) {
+    const u = game.u;
+    const ustuck = u.ustuck;
+
+    if (await digests_do(ustuck?.data)
+        && (obj.otyp === CORPSE || obj.globby
+            || obj.otyp === MEATBALL || obj.otyp === ENORMOUS_MEATBALL
+            || obj.otyp === MEAT_RING || obj.otyp === MEAT_STICK)) {
+        let could_petrify = false, could_poly = false, could_slime = false,
+            could_grow = false, could_heal = false;
+
+        if (obj.otyp === CORPSE) {
+            const MK = await import('./makemon.js');
+            could_petrify = await touch_petrifies_do(
+                                MK.monster_by_pmidx(obj.corpsenm));
+            // C ref: do.c:863 polyfood(obj) — eat.c polyfood() has no port in
+            // js/, so a chameleon/genetic-engineer corpse will not re-poly the
+            // engulfer here.
+            could_poly = false;
+            could_grow = (obj.corpsenm === await PM_do('wraith'));
+            could_heal = (obj.corpsenm === await PM_do('nurse'));
+        } else if (obj.otyp === GLOB_OF_GREEN_SLIME) {
+            could_slime = true;
+        }
+        /* see or feel the effect */
+        await pline(`${await Tobjnam_do(obj, 'are')} instantly digested!`);
+
+        if (could_poly || could_slime) {
+            const MK = await import('./makemon.js');
+            const slime = could_slime
+                ? MK.monster_by_pmidx(await PM_do('green slime')) : null;
+            /* C: newcham(u.ustuck, slime, could_slime ? NC_SHOW_MSG : 0) */
+            MK.newcham(ustuck, slime);
+        } else if (could_petrify) {
+            // C ref: do.c:876 minstapetrify(u.ustuck, TRUE) — mon.c
+            // minstapetrify() has no port in js/, so the engulfer survives.
+            void 0;
+        } else if (could_grow) {
+            // C ref: do.c:878 grow_up(u.ustuck, NULL) — makemon.c grow_up() is
+            // ported but module-private in js/mhitm.js:693 under a two-monster
+            // (magr, mdef) signature; exporting it is the fix.
+            void 0;
+        } else if (could_heal) {
+            const MNS = await import('./mon.js');
+            MNS.healmon(ustuck, ustuck.mhpmax, 0);
+            /* FALSE: don't realize that sight is cured from inside */
+            const MU = await import('./muse.js');
+            await MU.mcureblindness(ustuck, false);
+        }
+        const I = await import('./invent.js');
+        I.delobj(obj); /* always used up */
+        return true;
+    }
+    return false;
+}
+
+// ── obj_no_longer_held (C ref: do.c:893) ────────────────────────────────────
+// Things that must change when an object stops being held; recurses into
+// containers.  Called for both the hero and monsters.  RNG: a FIXED (erodeproof)
+// crysknife draws rn2(10), an ordinary one draws nothing.
+export async function obj_no_longer_held(obj) {
+    if (!obj) {
+        return;
+    } else if (Has_contents(obj)) {
+        for (let contents = obj.cobj; contents; contents = contents.nobj)
+            await obj_no_longer_held(contents);
+    }
+    switch (obj.otyp) {
+    case CRYSKNIFE:
+        /* A normal crysknife reverts to a worm tooth when not held by hero or
+           monster; a fixed one has only a 10% chance of reverting.  A stack of
+           the latter should arguably get a per-item roll, but stack splitting
+           cannot be handled here. */
+        if (!obj.oerodeproof || !rn2(10)) {
+            /* if monsters aren't moving, assume the player is responsible */
+            if (!game.context?.mon_moving && !game.program_state_gameover) {
+                // C ref: do.c:914 costly_alteration(obj, COST_DEGRD) — shk.c
+                // costly_alteration() is a private no-op stub at js/trap.js:829;
+                // the shop bill is therefore not adjusted.
+                void 0;
+            }
+            obj.otyp = WORM_TOOTH;
+            obj.oerodeproof = 0;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+// ── better_not_try_to_drop_that (C ref: do.c:947) ───────────────────────────
+// The paranoid confirmation before dropping a corpse that could petrify you
+// bare-handed.  Returns TRUE when the drop should be abandoned.
+export async function better_not_try_to_drop_that(otmp) {
+    const P = await import('./pickup.js');
+    const I = await import('./invent.js');
+
+    /* u_safe_from_fatal_corpse() with st_all checks for gloves and stoning
+       resistance before bothering to prompt you. */
+    if (otmp.otyp === CORPSE && !P.u_safe_from_fatal_corpse(otmp, P.st_all)) {
+        const DN = await import('./do_name.js');
+        const buf = `Drop the ${DN.obj_pmname(otmp)} corpse without `
+                  + `${I.body_part(HAND)} protection on?`;
+        // C ref: do.c:959 paranoid_ynq(TRUE, buf, FALSE) — cmd.c paranoid_ynq()
+        // is ported but module-private (js/eat.js:669, js/wizcmds.js:130); the
+        // shape of the query is a plain y_n with 'n' as the ESC/default answer.
+        const ans = await y_n(buf, 'yn\x1b', 'n');
+        return ans !== 'y';
+    }
+    return false;
+}
+
+// ── currentlevel_rewrite (C ref: do.c:1348) ─────────────────────────────────
+// Check that the current level can be written out before leaving it.  A failure
+// is not impossible (disk quota, unwritable directory) and means the hero can
+// neither leave the level nor save.
+export async function currentlevel_rewrite() {
+    /* since a level change can be slow, flush any buffered screen output (like
+       "you fall through a trap door") */
+    // C ref: do.c:1355 mark_synch() — windowport bookkeeping; frozen/terminal.js
+    // owns the grid in this port and there is nothing to mark.
+    await flush_screen(1);
+
+    // C ref: files.c create_levelfile(ledger_no(&u.uz), whynot) — there are no
+    // level files in this port at all (files.c is judge-frozen territory);
+    // js/save.js:945 keeps the same seam as a null-returning
+    // create_levelfile_sv().  Null here is exactly C's failure branch.
+    void ledger_no_do(game.u?.uz);
+    const nhfp = null;
+    if (!nhfp) {
+        /*
+         * This is not quite impossible: e.g., we may have exceeded our quota.
+         * If that is the case then we cannot leave this level, and cannot save
+         * either.  Another possibility is that the directory was not writable.
+         */
+        await pline('Cannot create level file.'); /* C: pline1(whynot) */
+        return null;
+    }
+    return nhfp;
+}
+
+// C ref: dungeon.c:1376 ledger_no(lev).  js/bones.js:69 has the faithful private
+// copy and js/dig.js:924 a reduced one; js/dungeon.js should own the export.
+function ledger_no_do(lev) {
+    if (!lev) return 0;
+    const dng = game.dungeons?.[lev.dnum];
+    return (lev.dlevel | 0) + ((dng?.ledger_start | 0) || 0);
+}
+
+// ── save_currentstate (C ref: do.c:1375) ────────────────────────────────────
+// The INSURANCE checkpoint: write the just-attained level (with pets and
+// everything) plus the non-level state.  INSURANCE is not enabled in the
+// recorder build, which is why nothing calls this.
+export async function save_currentstate() {
+    const S = await import('./save.js');
+
+    game.program_state = game.program_state || {};
+    game.program_state.in_checkpoint = (game.program_state.in_checkpoint | 0) + 1;
+    if (game.flags?.ins_chkpt) {
+        /* write out just-attained level, with pets and everything */
+        const nhfp = await currentlevel_rewrite();
+        if (!nhfp) {
+            game.program_state.in_checkpoint -= 1;
+            return;
+        }
+        /* C: if (nhfp->structlevel) bufon(nhfp->fd); nhfp->mode = WRITING */
+        await S.savelev(ledger_no_do(game.u?.uz), WRITING);
+        /* C: close_nhfile(nhfp) */
+    }
+
+    /* write out non-level state */
+    await S.savestateinlock();
+    game.program_state.in_checkpoint -= 1;
+}
+
+// ── badspot (C ref: do.c:1400) ──────────────────────────────────────────────
+// COMMENTED OUT in 3.7's do.c (it sits inside a /* */ block right above
+// u_collide_m); ported under its C name for completeness.  A square is "bad"
+// for arrival if it is not plain floor/air/corridor or a monster is on it.
+export function badspot(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return (typ !== ROOM && typ !== AIR && typ !== CORR) || !!m_at(x, y);
+}
+
+// ── familiar_level_msg (C ref: do.c:1448) ───────────────────────────────────
+// The flavour line for arriving on a bones level whose ghost shares the hero's
+// name.  resolve_familiar_msg() above is this function's rn2(4)-drawing half,
+// split out so goto_level() draws at C's stream position; this is the C-shaped
+// wrapper (draw AND print together).
+export async function familiar_level_msg() {
+    const mesg = resolve_familiar_msg();
+    if (mesg) await pline(mesg); /* C: pline1(mesg) */
+}
+
+// ── hellish_smoke_mesg (C ref: do.c:2003) ───────────────────────────────────
+// The temperature line on entering a Gehennom level other than the Valley; also
+// given when restoring a game in that situation.
+export async function hellish_smoke_mesg() {
+    const temp = game.level?.flags?.temperature | 0;
+    if (temp)
+        await pline(`It is ${temp > 0 ? 'hot' : 'cold'} here.`);
+
+    if (In_hell(game.u.uz) && temp > 0)
+        await pline(`You ${olfaction(game.u?.data) ? 'smell' : 'sense'} smoke...`);
+}
+
+// ── temperature_change_msg (C ref: do.c:2016) ───────────────────────────────
+// The message when the level temperature differs from the previous level's.
+// goto_level() above carries an inline copy of this at its prevTemperature
+// block; this is the named C form.
+export async function temperature_change_msg(prev_temperature) {
+    const temp = game.level?.flags?.temperature | 0;
+    if (prev_temperature !== temp) {
+        if (temp) {
+            await hellish_smoke_mesg();
+        } else if (prev_temperature > 0) {
+            await pline(`The heat ${In_hell(game.u.uz0) ? 'and smoke are' : 'is'} gone.`);
+        } else if (prev_temperature < 0) {
+            await pline('You are out of the cold.');
+        }
+    }
+}
+
+// ── maybe_lvltport_feedback (C ref: do.c:2032) ──────────────────────────────
+// Deliver the deferred "You materialize on a different level!" over the freshly
+// drawn map.  Usually called from goto_level(); might be called from
+// Sting_effects().  Only a message that STARTS with "You materialize" is
+// consumed — anything else stays pending for deferred_goto()'s own tail.
+export async function maybe_lvltport_feedback() {
+    const msg = game.dfr_post_msg;
+    if (msg && String(msg).slice(0, 15).toLowerCase() === 'you materialize') {
+        await pline(String(msg));
+        game.dfr_post_msg = null; /* C: free() + NULL */
+    }
+}
+
+// ── final_level (C ref: do.c:2043) ──────────────────────────────────────────
+// Arrival on the Astral Plane.
+export async function final_level() {
+    /* reset monster hostility relative to player */
+    // C ref: do.c:2046 iter_mons(reset_hostility) — mon.c reset_hostility() has
+    // no port in js/; it clears mpeaceful/mtame for player-monsters and Riders.
+    void 0;
+
+    /* create some player-monsters */
+    // C ref: do.c:2049 create_mplayers(rn1(4, 3), TRUE).  The rn1(4,3) count is
+    // C's ARGUMENT, drawn here, so keep the draw even though makemon.c
+    // create_mplayers() has no port in js/ — the stream position is C's.
+    const nplayers = rn1(4, 3);
+    void nplayers;
+
+    /* create a guardian angel next to player, if worthy */
+    // C ref: do.c:2052 gain_guardian_angel() — priest.c gain_guardian_angel()
+    // has no port in js/ (it draws through makemon() when u.ualign.record > 8).
+    void 0;
+}
+
+// ── schedule_goto (C ref: do.c:2057) ────────────────────────────────────────
+// Change levels at the end of this turn, after the monsters finish moving.
+// UTOTYPE_DEFERRED is always ORed in so that a UTOTYPE_NONE transit still trips
+// moveloop_core()'s `if (u.utotype) deferred_goto()` test.
+export function schedule_goto(tolev, utotype_flags, pre_msg, post_msg) {
+    const u = game.u;
+    u.utotype = utotype_flags | UTOTYPE_DEFERRED;
+    /* destination level */
+    u.utolev = u.utolev || { dnum: 0, dlevel: 0 };
+    assign_level(u.utolev, tolev);
+
+    if (pre_msg) game.dfr_pre_msg = String(pre_msg);   /* C: dupstr() */
+    if (post_msg) game.dfr_post_msg = String(post_msg);
+}
+
+// ── deferred_goto (C ref: do.c:2075) ────────────────────────────────────────
+// Perform a scheduled level change (portal ejection, trap door, level tele).
+// run_deferred_lvltport() above is the reduced level-teleport-only twin that the
+// covered scroll path uses; this is the general C form.
+export async function deferred_goto() {
+    const u = game.u;
+    if (!on_level(u.uz, u.utolev)) {
+        const dest = { dnum: 0, dlevel: 0 }, oldlev = { dnum: 0, dlevel: 0 };
+        const typmask = u.utotype; /* save it; goto_level zeroes u.utotype */
+
+        assign_level(dest, u.utolev);
+        assign_level(oldlev, u.uz);
+        if (game.dfr_pre_msg) await pline(String(game.dfr_pre_msg));
+        await goto_level(dest, !!(typmask & UTOTYPE_ATSTAIRS),
+                         !!(typmask & UTOTYPE_FALLING),
+                         !!(typmask & UTOTYPE_PORTAL));
+        if (typmask & UTOTYPE_RMPORTAL) { /* remove portal */
+            const t = t_at(u.ux, u.uy);
+            if (t) {
+                const T = await import('./trap.js');
+                T.deltrap(t);
+                newsym(u.ux, u.uy);
+            }
+        }
+        if (game.dfr_post_msg && !on_level(u.uz, oldlev))
+            await pline(String(game.dfr_post_msg));
+    }
+    u.utotype = UTOTYPE_NONE; /* our caller keys off of this */
+    if (game.dfr_pre_msg) game.dfr_pre_msg = null;
+    if (game.dfr_post_msg) game.dfr_post_msg = null;
+}
+
+// ── revive_corpse (C ref: do.c:2111) ────────────────────────────────────────
+// Turn a corpse back into its monster.  Returns TRUE (corpse gone) on success.
+// The whole of the RNG spend is inside zap.c revive(), which has NO port in js/
+// (see revive_unported above), so this currently always takes C's FALSE tail.
+export async function revive_corpse(corpse) {
+    const I = await import('./invent.js');
+    const MK = await import('./makemon.js');
+    const U = await import('./uhitm.js');
+    const DN = await import('./do_name.js');
+
+    let container = null;
+    let container_where = 0;
+    let mcarry;
+
+    const where = corpse.where;
+    const montype = corpse.corpsenm;
+    /* treat a buried auto-reviver (troll, Rider?) like a zombie so that it can
+       dig itself out of the ground if it revives */
+    const mons_row = MK.monster_by_pmidx(montype);
+    const is_zomb = (mons_row?.mcls === S_ZOMBIE)
+                 || (where === 'buried' && await is_reviver_do(mons_row));
+    const is_uwep = (corpse === game.u.uwep);
+    const chewed = (corpse.oeaten | 0) !== 0;
+    // C ref: do.c:2131 corpse_xname(corpse, chewed ? "bite-covered" : NULL,
+    // CXN_SINGULAR) — objnam.c corpse_xname() is ported but module-private at
+    // js/invent.js:657; exporting it is the fix.  xname() drops the adjective.
+    const cname = I.xname(corpse);
+    void CXN_SINGULAR;
+    mcarry = (where === 'minvent') ? corpse.ocarry : null;
+    /* mcarry is NULL for 'buried' and 'contained' now */
+
+    /* C: get_obj_location(corpse, &corpsex, &corpsey, CONTAINED_TOO|BURIED_TOO) */
+    const corpsex = corpse.ox, corpsey = corpse.oy;
+
+    if (where === 'contained') {
+        container = corpse.ocontainer;
+        // C ref: do.c:2144 get_container_location(container, &where, NULL) —
+        // pickup.c get_container_location() has no port in js/; without it the
+        // nested-container message arm cannot pick between INVENT and FLOOR.
+        container_where = 0;
+    }
+    const mtmp = await revive_unported(corpse, false); /* corpse gone on success */
+
+    if (mtmp) {
+        switch (where) {
+        case 'invent':
+            if (is_uwep)
+                await pline(`The ${cname} writhes out of your grasp!`);
+            else
+                await pline('You feel squirming in your backpack!');
+            break;
+
+        case 'floor':
+            if (cansee(corpsex, corpsey) || await canseemon_do(mtmp)) {
+                let effect = '';
+
+                if (mtmp.data?.pmidx === await PM_do('Death'))
+                    effect = ' in a whirl of spectral skulls';
+                else if (mtmp.data?.pmidx === await PM_do('Pestilence'))
+                    effect = ' in a churning pillar of flies';
+                else if (mtmp.data?.pmidx === await PM_do('Famine'))
+                    effect = ' in a ring of withered crops';
+
+                if (await canseemon_do(mtmp)) {
+                    await pline(`${chewed ? DN.Adjmonnam(mtmp, 'bite-covered')
+                                          : DN.Monnam(mtmp)} `
+                                + `rises from the dead${effect}!`);
+                } else {
+                    await pline(`${upstart(the(cname))} disappears${effect}!`);
+                }
+            }
+            break;
+
+        case 'minvent': /* probably a nymph's */
+            if (cansee(mtmp.mx, mtmp.my)) {
+                if (mcarry && await canseemon_do(mcarry))
+                    await pline(`Startled, ${DN.mon_nam(mcarry)} drops `
+                                + `${an(cname)} as it `
+                                + `${U.canspotmon(mtmp) ? 'revives' : 'disappears'}!`);
+                else if (U.canspotmon(mtmp))
+                    await pline(`${chewed ? DN.Adjmonnam(mtmp, 'bite-covered')
+                                          : DN.Monnam(mtmp)} suddenly appears!`);
+            }
+            break;
+        case 'contained': {
+            /* Could use x_monnam(..., AUGMENT_IT) but that would say "someone"
+               for humanoid monsters, a distinction the hero cannot make here. */
+            const mnam = U.canspotmon(mtmp) ? DN.Amonnam(mtmp) : 'Something';
+
+            if (!container) {
+                await impossible_do('reviving corpse from non-existent container');
+            } else if (mcarry && await canseemon_do(mcarry)) {
+                await pline(`${mnam} writhes out of ${I.yname(container)}!`);
+            } else if (container_where === 'invent') {
+                await pline(`${mnam} ${locomotion_do(mtmp.data, 'writhes')} `
+                            + `out of ${an(I.xname(container))} in your pack!`);
+            } else if (container_where === 'floor' && cansee(corpsex, corpsey)) {
+                await pline(`${mnam} escapes from ${an(I.xname(container))}!`);
+            }
+            break;
+        }
+        case 'buried':
+            if (is_zomb) {
+                const T = await import('./trap.js');
+                T.maketrap(mtmp.mx, mtmp.my, PIT);
+                if (cansee(mtmp.mx, mtmp.my)) {
+                    const ttmp = t_at(mtmp.mx, mtmp.my);
+                    if (ttmp) ttmp.tseen = true;
+                    await pline(`${U.canspotmon(mtmp) ? DN.Amonnam(mtmp)
+                                                      : 'Something'} `
+                                + 'claws itself out of the ground!');
+                    newsym(mtmp.mx, mtmp.my);
+                } else if (distu(mtmp.mx, mtmp.my) < 5 * 5) {
+                    await You_hear_do('scratching noises.');
+                }
+                T.fill_pit(mtmp.mx, mtmp.my);
+                break;
+            }
+            /* FALLTHRU */
+        default:
+            /* we should be able to handle the other cases... */
+            await impossible_do(`revive_corpse: lost corpse @ ${where}`);
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
+// C ref: mondata.c locomotion(ptr, def) — js/dogmove.js:2056, js/monmove.js:1876
+// and js/muse.js:297 each keep the same private copy.
+function locomotion_do(_ptr, def) { return def; }
+
+// ── revive_mon (C ref: do.c:2251) ───────────────────────────────────────────
+// The REVIVE_MON timeout callback.  A displacer (Rider) bumps whatever is
+// standing on its corpse out of the way first; on failure the corpse either
+// re-arms the Rider retry (rn2(99)) or falls back to rotting (d(5,50)).
+export async function revive_mon(arg, timeout) {
+    const body = arg.a_obj;
+    const MK = await import('./makemon.js');
+    const MO = await import('./mkobj.js');
+    const mptr = MK.monster_by_pmidx(body.corpsenm);
+    let mtmp;
+
+    /* corpse will revive somewhere else if there is a monster in the way;
+       Riders get a chance to try to bump the obstacle out of their way */
+    if (is_displacer_do(mptr) && body.where === 'floor'
+        && (mtmp = m_at(body.ox, body.oy)) != null
+        && (game.level?.flags?.stasis_until | 0) < (game.moves | 0)) {
+        const U = await import('./uhitm.js');
+        const DN = await import('./do_name.js');
+        const x = body.ox, y = body.oy;
+        const notice_it = await canseemon_do(mtmp); /* before rloc() */
+        const monname = DN.Monnam(mtmp);
+
+        const TP = await import('./teleport.js');
+        if (await TP.rloc(mtmp, RLOC_NOMSG)) {
+            if (notice_it && !await canseemon_do(mtmp))
+                await pline(`${monname} vanishes.`);
+            else if (!notice_it && await canseemon_do(mtmp))
+                await pline(`${DN.Monnam(mtmp)} appears.`); /* not pre-rloc monname */
+            else if (notice_it
+                     && ((mtmp.mx - x) * (mtmp.mx - x)
+                         + (mtmp.my - y) * (mtmp.my - y)) > 2)
+                await pline(`${monname} teleports.`); /* saw it and still see it */
+        }
+    }
+
+    /* if we succeed, the corpse is gone */
+    if (!await revive_corpse(body)) {
+        let when, action;
+        const TO = await import('./timeout.js');
+
+        if (MO.is_rider_pm(body.corpsenm) && rn2(99)) { /* Rider usually retries */
+            action = REVIVE_MON;
+            // C ref: do.c:2283 rider_revival_time(body, TRUE) — ported but
+            // module-private at js/mkobj.js:1404; exporting it is the fix.  The
+            // C form is 12 + rnd(500) rescaled by the corpse's age.
+            when = 12 + rnd(500);
+        } else { /* rot this corpse away */
+            if (!TO.obj_has_timer(body, ROT_CORPSE))
+                await pline(`You feel ${MO.is_rider_pm(body.corpsenm) ? 'much ' : ''}`
+                            + 'less hassled.');
+            action = ROT_CORPSE;
+            when = d(5, 50) - ((game.moves | 0) - (body.age | 0));
+            if (when < 1) when = 1;
+        }
+        if (!TO.obj_has_timer(body, action))
+            await TO.start_timer(when, TIMER_OBJECT, action, arg);
+    }
+    void timeout;
+}
+
+// ── zombify_mon (C ref: do.c:2299) ──────────────────────────────────────────
+// The ZOMBIFY_MON timeout callback: re-type the corpse as its zombie form and
+// fall into revive_mon(), or just rot if there is no (non-genocided) zombie.
+export async function zombify_mon(arg, timeout) {
+    const body = arg.a_obj;
+    const MNS = await import('./mon.js');
+    const MK = await import('./makemon.js');
+    const MO = await import('./mkobj.js');
+    const zmon = MNS.zombie_form(MK.monster_by_pmidx(body.corpsenm));
+
+    if (zmon !== NON_PM && !((game.mvitals?.[zmon]?.mvflags | 0) & G_GENOD)) {
+        if (MO.has_omid(body)) MO.free_omid(body);
+        if (MO.has_omonst(body)) MO.free_omonst(body);
+
+        MO.set_corpsenm(body, zmon);
+        await revive_mon(arg, timeout);
+    } else {
+        const DIG = await import('./dig.js');
+        await DIG.rot_corpse(arg, timeout);
+    }
+}
+
+// ── danger_uprops (C ref: do.c:2319) ────────────────────────────────────────
+// TRUE when a hero property is actively dangerous, i.e. waiting is a bad idea.
+// Used by cmd_safety_prevention() to decide whether to nag about #wait.
+export function danger_uprops() {
+    return Stoned_do() || Slimed_do() || Strangled_do() || Sick_do();
+}
+
+// ── legs_in_no_shape (C ref: do.c:2408) ─────────────────────────────────────
+// The common wounded-legs refusal for jumping / kicking / riding.
+export async function legs_in_no_shape(for_what, by_steed) {
+    const u = game.u;
+    if (by_steed && u.usteed) {
+        const DN = await import('./do_name.js');
+        await pline(`${DN.Monnam(u.usteed)} is in no shape for ${for_what}.`);
+    } else {
+        const I = await import('./invent.js');
+        const wl = EWounded_legs_do() & BOTH_SIDES;
+        let bp = I.body_part(LEG);
+
+        if (wl === BOTH_SIDES) bp = I.makeplural(bp);
+        await pline(`Your ${(wl === LEFT_SIDE) ? 'left '
+                          : (wl === RIGHT_SIDE) ? 'right ' : ''}${bp} `
+                    + `${(wl === BOTH_SIDES) ? 'are' : 'is'} in no shape `
+                    + `for ${for_what}.`);
+    }
+}
+
+// C ref: do_name.c hliquid(liquidpref) — js/do_name.js owns the one copy; it
+// draws off the DISPLAY rng while Hallucination, not the core rng.
+async function hliquid_do(pref) {
+    const DN = await import('./do_name.js');
+    return DN.hliquid(pref);
+}
+
+// C ref: hack.h Luck — u.uluck plus the moon / Friday-13th moreluck term
+// (js/zap.js:374, js/dig.js:652, js/readobjnam.js:125 keep the same copy).
+function Luck_do() { return (game.u?.uluck | 0) + (game.u?.moreluck | 0); }
+
+// C ref: mondata.h digests(ptr) = dmgtype_fromattack(ptr, AD_DGST, AT_ENGL).
+// js/monattk_data.js owns the attack table; its attacktype_fordmg() takes the
+// attack type FIRST, so the two argument orders are not interchangeable.
+async function digests_do(ptr) {
+    const A = await import('./monattk_data.js');
+    return !!A.attacktype_fordmg(ptr, A.AT_ENGL, A.AD_DGST);
+}
+// C ref: mondata.h:200 touch_petrifies(ptr) — cockatrice or chickatrice ONLY
+// (Medusa is flesh_petrifies, not this).  js/mon.js:1477 and js/muse.js:366
+// keep the same private pmidx-keyed copy.
+async function touch_petrifies_do(ptr) {
+    if (!ptr) return false;
+    const idx = ptr.pmidx;
+    return idx === await PM_do('cockatrice') || idx === await PM_do('chickatrice');
+}
+// C ref: mondata.h:170 is_reviver(ptr) = is_rider(ptr) || mlet == S_TROLL.
+async function is_reviver_do(ptr) {
+    if (!ptr) return false;
+    if (ptr.mcls === S_TROLL) return true;
+    const idx = ptr.pmidx;
+    return idx === await PM_do('Death') || idx === await PM_do('Famine')
+        || idx === await PM_do('Pestilence');
+}
+// C ref: mondata.h:156 is_displacer(ptr) = (mflags3 & M3_DISPLACES) != 0.
+function is_displacer_do(ptr) {
+    return (mflags3_of(ptr) & M3_DISPLACES) !== 0;
+}
+// C ref: display.h canseemon(mon) — js/display.js:398 owns canseemon_shared().
+async function canseemon_do(mon) {
+    const D = await import('./display.js');
+    return D.canseemon_shared(mon);
 }

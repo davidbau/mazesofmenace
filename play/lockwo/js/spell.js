@@ -4,18 +4,29 @@
 // spelleffects for the healing-on-self case exercised by the gameplay sessions.
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn1 } from './rng.js';
-import { pline, update_topl } from './display.js';
+import { rn2, rnd, rn1, rnl, d } from './rng.js';
+import { pline, update_topl, m_at, map_invisible, canseemon_shared } from './display.js';
 import { exercise } from './attrib.js';
-import { objects, mksobj, weight, SPE_BLANK_PAPER, SPE_NOVEL } from './mkobj.js';
+import { objects, mksobj, weight, set_bknown, SPE_BLANK_PAPER, SPE_NOVEL } from './mkobj.js';
 import { SPELL_META } from './u_init.js';
 import { A_WIS, A_INT, A_STR, P_UNSKILLED, P_EXPERT, P_SKILLED, P_BASIC,
-         STRAT_WAITFORU, STRAT_APPEARMSG, EXT_ENCUMBER } from './const.js';
+         STRAT_WAITFORU, STRAT_APPEARMSG, EXT_ENCUMBER,
+         isok, u_at, IS_STWALL, IS_DOOR, IS_TREE, ZAP_POS, SPACE_POS,
+         D_ISOPEN, D_CLOSED, D_LOCKED, POOL, MOAT, DRAWBRIDGE_UP, LAVAPOOL,
+         CLOUD, N_DIRS, xdir, ydir, SPINE, NO_MINVENT, ACH_INVK,
+         Is_waterlevel } from './const.js';
 import { p_skill_of, use_skill } from './enhance.js';
-import { monster_by_pmidx } from './makemon.js';
-import { msound_of, mflags1_of, M1_NOHEAD } from './monflags_data.js';
-import { discover_object } from './o_init.js';
+import { monster_by_pmidx, makemon, set_malign, name_to_pmidx } from './makemon.js';
+import { msound_of, mflags1_of, mflags2_of, M1_NOHEAD, M2_UNDEAD,
+         is_animal } from './monflags_data.js';
+import { discover_object, observe_object } from './o_init.js';
 import { DESCR_BY_OTYP } from './o_descr_data.js';
+import { distmin, dist2 } from './hacklib.js';
+import { cansee, Blind } from './vision.js';
+import { hcolor, hliquid } from './do_name.js';
+import { find_ac } from './u_init.js';
+import { DEADMONSTER } from './mon.js';
+import { resists_elec } from './mondata.js';
 
 // C ref: objclass.h obj_material_types — is_metallic() = material in [IRON,MITHRIL].
 const MAT_IRON = 11, MAT_MITHRIL = 17;
@@ -43,7 +54,11 @@ export function spelltypemnemonic(otyp) {
     return SKILL_CATEGORY[spell_skilltype(otyp)] || 'attack';
 }
 
-export const MAXSPELL = 25; // C ref: spell.h.
+// C ref: objclass.h:184 `MAXSPELL = (LAST_SPELL - FIRST_SPELL + 1)`, i.e.
+// SPE_BLANK_PAPER - SPE_DIG + 1.  Both markers resolve against this tree's own
+// objects[] as otyp 407 and 366, so MAXSPELL is 42, not 25.  It sizes
+// spl_book[] and gates learn()'s "Too many spells memorized!" arm.
+export const MAXSPELL = 42;
 export const NO_SPELL = 0;
 export const KEEN = 20000; // C ref: spell.c — full spell retention.
 // C ref: include/monsters.h MS_* — the msound values can_chant() rejects.
@@ -1125,3 +1140,1172 @@ function spellet(i) {
 }
 
 export { spellid, spellev, spellknow };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The rest of spell.c.  INERT BY DESIGN: nothing above this line, and nothing
+// anywhere else in js/, calls any of it.  Each function is a translation of
+// its C counterpart so a wiring pass can land one call site at a time under
+// measurement.  Three notes for that pass:
+//
+//  * js/invent.js dovspell() (js/invent.js:2465) is a LIVE, REDUCED copy of
+//    dospellmenu()'s SPELLMENU_VIEW case: it renders the tty geometry inline
+//    and ignores gs.spl_orderindx and the [sort spells] submenu entirely.
+//    Wiring dospellmenu() must REPLACE that renderer, never add a second
+//    caller (the duplicate-shadow trap).
+//  * js/read.js forget() (js/read.js:625) already probes `spell.losespells`
+//    and calls it the moment it exists, so the scroll-of-amnesia path becomes
+//    live with this commit.  That is the one non-inert edge here, and it moves
+//    TOWARD C: C's forget() calls losespells() before the rnd() that sizes
+//    drain_weapon_skill().
+//  * learn() is NOT re-translated: js/spell.js learn_step() above IS the
+//    faithful learn() port (renamed because allmain.js drives it as the
+//    studying occupation rather than through a go.occupation function pointer).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── C ref: windows.c create_nhwindow(NHW_MENU) / start_menu / add_menu /
+// add_menu_heading / add_menu_str / end_menu / select_menu / destroy_nhwindow.
+// This port has no generic menu-window layer (invent.js and
+// extcmd-handlers.js each keep a private tty renderer instead), so — as
+// js/topten.js does with putstr() — the primitives below record into a plain
+// object and select_menu() reports "nothing picked" until a wiring pass
+// installs a driver.  Every add_menu() string handed to them is C's verbatim,
+// so a driver only has to render `win.items` and answer with the picked
+// `item` values.
+const ATR_NONE = 0, ATR_INVERSE = 7; // C ref: include/color.h ATR_*
+const NO_COLOR = 8;                  // C ref: include/color.h
+const PICK_NONE = 0, PICK_ONE = 1;   // C ref: include/wintype.h
+const MENU_ITEMFLAGS_NONE = 0x0, MENU_ITEMFLAGS_SELECTED = 0x1;
+let sm_driver = null;
+/* Install the select_menu() driver: (win, how) -> [{ item }, ...]. */
+export function set_spellmenu_driver(fn) { sm_driver = fn || null; }
+function create_nhwindow_menu() { return { items: [], prompt: '' }; }
+function start_menu(win) { win.items.length = 0; }
+function add_menu(win, a_int, ch, gch, attr, clr, str, itemflags) {
+    win.items.push({ a_int, ch, gch, attr, clr, str, itemflags });
+}
+function add_menu_heading(win, str) {
+    win.items.push({ a_int: 0, ch: 0, attr: ATR_INVERSE, clr: NO_COLOR,
+                     str, itemflags: MENU_ITEMFLAGS_NONE, heading: true });
+}
+function add_menu_str(win, str) {
+    win.items.push({ a_int: 0, ch: 0, attr: ATR_NONE, clr: NO_COLOR,
+                     str, itemflags: MENU_ITEMFLAGS_NONE, plain: true });
+}
+function end_menu(win, prompt) { win.prompt = prompt ?? ''; }
+async function select_menu(win, how) {
+    return sm_driver ? (await sm_driver(win, how)) || [] : [];
+}
+function destroy_nhwindow(_win) {}
+
+// ── C ref: display.c tmp_at() / display.h cmap_to_glyph() / zapdir_to_glyph()
+// and windows.c nh_delay_output().  The temporary-glyph animation layer has no
+// port (frozen/terminal.js owns the grid); all four are RNG-free.  Prefixed
+// sp_ so they cannot claim display.c coverage they do not deliver — the same
+// convention js/apply.js:1636 uses for its jump-hilite loop.
+const DISP_BEAM = -1, DISP_CHANGE = -5, DISP_END = -7; // include/display.h
+const S_goodpos = 0;                                   // include/defsym.h cmap
+function sp_tmp_at(_x, _y) {}
+function sp_cmap_to_glyph(_cmap) { return 0; }
+function sp_zapdir_to_glyph(_dx, _dy, _beam_type) { return 0; }
+function sp_nh_delay_output() {}
+
+// ── small C macros/library calls with no shared port in js/.
+// C ref: hacklib.c sgn(x).
+function sp_sgn(x) { return (x < 0) ? -1 : (x > 0) ? 1 : 0; }
+// C ref: hack.h mdistu(mon) == distu(mon->mx, mon->my) == dist2 to the hero.
+function sp_mdistu(mon) {
+    return dist2(mon.mx, mon.my, game.u?.ux ?? 0, game.u?.uy ?? 0);
+}
+// C ref: mondata.h is_undead(ptr) / monst.h is_vampshifter(mon).  The three
+// vampire pmidx are the same ones js/mon.js:1489 and js/monmove.js carry.
+const PM_VAMPIRE = 226, PM_VAMPIRE_LEADER = 227, PM_VLAD_THE_IMPALER = 228;
+function sp_is_undead(ptr) { return (mflags2_of(ptr) & M2_UNDEAD) !== 0; }
+function sp_is_vampshifter(mon) {
+    return mon.cham === PM_VAMPIRE || mon.cham === PM_VAMPIRE_LEADER
+        || mon.cham === PM_VLAD_THE_IMPALER;
+}
+// C ref: mondata.h is_whirly(ptr) / enfolds(ptr).  is_whirly is a class test
+// (S_VORTEX) plus the air elemental; enfolds is dmgtype_fromattack(AD_WRAP,
+// AT_ENGL), i.e. the trapper/lurker-above family.
+const S_VORTEX = 22;                    // C ref: include/defsym.h monsyms ('v')
+function sp_is_whirly(ptr) {
+    return ptr?.mcls === S_VORTEX
+        || ptr?.pmidx === sp_pm('air elemental');
+}
+function sp_enfolds(ptr) {
+    return ptr?.pmidx === sp_pm('trapper') || ptr?.pmidx === sp_pm('lurker above');
+}
+// C ref: objnam.c an(str).
+function sp_an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
+// C ref: hacklib.c strcmpi(s1, s2) — case-insensitive strcmp; returns the
+// difference of the first differing (lowercased) characters.
+function sp_strcmpi(s1, s2) {
+    const a = String(s1).toLowerCase(), b = String(s2).toLowerCase();
+    const n = Math.min(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+        const dc = a.charCodeAt(i) - b.charCodeAt(i);
+        if (dc) return dc;
+    }
+    return a.length - b.length;
+}
+// C ref: Sprintf's %-Ns / %Ns field padding, used by dospellmenu's fmt strings.
+function sp_padr(s, n) {
+    s = String(s); return s.length >= n ? s : s + ' '.repeat(n - s.length);
+}
+function sp_padl(s, n) {
+    s = String(s); return s.length >= n ? s : ' '.repeat(n - s.length) + s;
+}
+// Lazy memoized PM_* lookup — it must stay lazy for the same reason
+// js/mon.js:1706 keeps one: a top-level name_to_pmidx() would run during this
+// module's own evaluation, when makemon.js's MONS table is only guaranteed
+// built in the absence of an import cycle.
+let _sp_pmcache = null;
+function sp_pm(name) {
+    if (!_sp_pmcache) _sp_pmcache = new Map();
+    if (!_sp_pmcache.has(name)) _sp_pmcache.set(name, name_to_pmidx(name));
+    return _sp_pmcache.get(name);
+}
+// C ref: dungeon.c invocation_pos(x, y) / stairs.c On_stairs(x, y).  js/apply.js
+// and js/artifact.js each keep the same two-line pair; kept local for the same
+// reason (neither is exported anywhere).
+function sp_invocation_pos(x, y) {
+    const inv = game.level?.invocation_pos;
+    return !!inv && inv.x === x && inv.y === y;
+}
+function sp_On_stairs(x, y) {
+    const st = game.level?.stairs || [];
+    return st.some((s) => s && s.sx === x && s.sy === y);
+}
+// C ref: youprop.h Confusion.
+function sp_Confusion() {
+    const u = game.u;
+    return !!(u?.uconf || u?.HConfusion || (u?.uprops?.Confusion || 0) > 0);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// C ref: spell.c:114 spell_let_to_idx(ilet) — convert a letter into a number
+// in the range 0..51, or -1 if not a letter.
+export function spell_let_to_idx(ilet) {
+    const c = (typeof ilet === 'number') ? ilet : String(ilet).charCodeAt(0);
+    let indx = c - 97;                                  /* 'a' */
+    if (indx >= 0 && indx < 26)
+        return indx;
+    indx = c - 65;                                      /* 'A' */
+    if (indx >= 0 && indx < 26)
+        return indx + 26;
+    return -1;
+}
+
+// C ref: spell.c:210 deadbook_pacify_undead(mtmp) — pacify or tame an undead
+// monster (iter_mons callback for a blessed Book of the Dead).  Note C's
+// dangling `else`: the inner if/mtame-else/tamedog pair is complete, so the
+// trailing `else monflee(...)` binds to the OUTER alignment+distance test.
+export async function deadbook_pacify_undead(mtmp) {
+    if ((sp_is_undead(mtmp.data) || sp_is_vampshifter(mtmp))
+        && cansee(mtmp.mx, mtmp.my)) {
+        mtmp.mpeaceful = 1;
+        if (sp_sgn(mtmp.data?.maligntyp ?? 0) === sp_sgn(game.u?.ualign?.type ?? 0)
+            && sp_mdistu(mtmp) < 4) {
+            if (mtmp.mtame) {
+                if (mtmp.mtame < 20)
+                    mtmp.mtame++;
+            } else {
+                const { tamedog } = await import('./dothrow.js');
+                await tamedog(mtmp, null, true);
+            }
+        } else {
+            const { monflee } = await import('./monmove.js');
+            await monflee(mtmp, 0, false, true);
+        }
+    }
+}
+
+// C ref: spell.c:230 deadbook(book2) — special effects for the Book of the
+// Dead; reading it while blind is allowed so that is taken into account too.
+// RNG: the invocation-success arm draws d(2,6); the raise-dead arm draws rn2(3)
+// then (only when that is 0) up to two makemon() calls, then mkundead(); the
+// plain-uncursed arm draws one rn2(3) for its flavour message.
+export async function deadbook(book2) {
+    const u = game.u;
+    const { makeknown } = await import('./invent.js');
+    const { body_part } = await import('./polyself.js');
+
+    // C ref: spell.c:307 `raise_dead:` — the label is reached both by falling
+    // through (a cursed book outside the invocation position) and by the
+    // `goto raise_dead` from the not-all-relics-primed arm.
+    const raise_dead = async () => {
+        let mtmp = null;
+        await pline('You raised the dead!');
+        /* first maybe place a dangerous adversary */
+        if (!rn2(3)
+            && ((mtmp = makemon(monster_by_pmidx(sp_pm('master lich')),
+                                u.ux, u.uy, NO_MINVENT)) != null
+                || (mtmp = makemon(monster_by_pmidx(sp_pm('nalfeshnee')),
+                                   u.ux, u.uy, NO_MINVENT)) != null)) {
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp);
+        }
+        /* next handle the affect on things you're carrying */
+        // DEFERRED: mon.c unturn_dead(&youmonst) has no port; it is RNG-free
+        // for a hero carrying no corpses/figurines and otherwise draws
+        // revive()'s makemon.
+        /* last place some monsters around you */
+        const mm = { x: u.ux, y: u.uy };
+        // DEFERRED: makemon.c mkundead(&mm, TRUE, NO_MINVENT) has no port
+        // (js/apply.js:1692 keeps the same stub); it draws rn2/makemon.
+        void mm;
+    };
+
+    await pline('You turn the pages of the Book of the Dead...');
+    makeknown(SPE_BOOK_OF_THE_DEAD);
+    observe_object(book2); /* in case blind now and hasn't been seen yet */
+    /* KMH -- Need ->known to avoid "_a_ Book of the Dead" */
+    book2.known = 1;
+    if (sp_invocation_pos(u.ux, u.uy) && !sp_On_stairs(u.ux, u.uy)) {
+        let arti1_primed = false, arti2_primed = false, arti_cursed = false;
+
+        if (book2.cursed) {
+            await pline(`The ${Blind()
+                ? 'Book seems to be ignoring you'
+                : "runes appear scrambled.  You can't read them"}!`);
+            return;
+        }
+
+        if (!u.uhave?.bell || !u.uhave?.menorah) {
+            await pline(`A chill runs down your ${body_part(SPINE)}.`);
+            if (!u.uhave?.bell) {
+                // C: Soundeffect(se_faint_chime, 30); You_hear("a faint
+                // chime...") — You_hear is suppressed while Deaf.
+                await pline('You hear a faint chime...');
+            }
+            if (!u.uhave?.menorah)
+                await pline("Vlad's doppelganger is amused.");
+            return;
+        }
+
+        const { inventoryArray } = await import('./invent.js');
+        for (const otmp of inventoryArray()) {
+            if (otmp.otyp === CANDELABRUM_OF_INVOCATION && otmp.spe === 7
+                && otmp.lamplit) {
+                if (!otmp.cursed)
+                    arti1_primed = true;
+                else
+                    arti_cursed = true;
+            }
+            if (otmp.otyp === BELL_OF_OPENING
+                && ((game.moves | 0) - (otmp.age | 0)) < 5) { /* rang it recently */
+                if (!otmp.cursed)
+                    arti2_primed = true;
+                else
+                    arti_cursed = true;
+            }
+        }
+
+        if (arti_cursed) {
+            await pline('The invocation fails!');
+            /* this used to say "your artifacts" but the invocation tools
+               are not artifacts */
+            await pline('At least one of your relics is cursed...');
+        } else if (arti1_primed && arti2_primed) {
+            const soon = d(2, 6); /* time til next intervene() */
+
+            /* successful invocation */
+            // DEFERRED: mkmaze.c mkinvokearea() has no port; it is RNG-free
+            // (it rewrites the sanctum terrain and prints the four messages).
+            u.uevent = u.uevent || {};
+            u.uevent.invoked = 1;
+            const { record_achievement } = await import('./insight.js');
+            record_achievement(ACH_INVK);
+            /* in case you haven't killed the Wizard yet, behave as if
+               you just did */
+            u.uevent.udemigod = 1; /* wizdeadorgone() */
+            if (!u.udg_cnt || u.udg_cnt > soon)
+                u.udg_cnt = soon;
+        } else { /* at least one relic not prepared properly */
+            await pline('You have a feeling that something is amiss...');
+            await raise_dead();
+            return;
+        }
+        return;
+    }
+
+    /* when not an invocation situation */
+    if (book2.cursed) {
+        await raise_dead();
+    } else if (book2.blessed) {
+        const { iter_mons } = await import('./mon.js');
+        await iter_mons(deadbook_pacify_undead);
+    } else {
+        switch (rn2(3)) {
+        case 0:
+            await pline('Your ancestors are annoyed with you!');
+            break;
+        case 1:
+            await pline('The headstones in the cemetery begin to move!');
+            break;
+        default:
+            await pline('Oh my!  Your name appears in the book!');
+            break;
+        }
+    }
+}
+// C ref: include/objects.h otyps read by deadbook().
+const CANDELABRUM_OF_INVOCATION = 262, BELL_OF_OPENING = 263;
+
+// C ref: spell.c:342 book_cursed(book) — 'book' has just become cursed; if
+// we're reading it, interrupt.  C tests `go.occupation == learn`; this port
+// drives the studying occupation off game._study_occupation (study_book() sets
+// it and allmain.js:1742 calls learn_step() while it is set), so that flag is
+// the same predicate.  js/mkobj.js:1098 already notes the missing call site.
+export async function book_cursed(book) {
+    if (book.cursed && (game.multi ?? 0) >= 0
+        && game._study_occupation && game.context?.spbook?.book === book) {
+        const _invent = await import('./invent.js');
+        const nm = _invent.xname(book);
+        /* C: pline("%s shut!", Tobjnam(book, "slam")) */
+        await pline(`${/^[A-Z]/.test(nm) ? '' : 'The '}${nm} `
+                    + `${_invent.otense(book, 'slam')} shut!`);
+        set_bknown(book, 1);
+        const { stop_occupation } = await import('./hack.js');
+        await stop_occupation();
+    }
+}
+
+// C ref: spell.c:645 book_disappears(obj) — a spellbook has been destroyed or
+// the character has changed levels; the stored address for the current book is
+// no longer valid.
+export function book_disappears(obj) {
+    const sb = game.context?.spbook;
+    if (sb && obj === sb.book) {
+        sb.book = 0;
+        sb.o_id = 0;
+    }
+}
+
+// C ref: spell.c:657 book_substitution(old_obj, new_obj) — renaming an object
+// usually results in it having a different address, so start reading / get
+// interrupted / name the book / resume would read the "new" book from scratch.
+export function book_substitution(old_obj, new_obj) {
+    const sb = game.context?.spbook;
+    if (sb && old_obj === sb.book) {
+        sb.book = new_obj;
+        if (sb.book)
+            sb.o_id = sb.book.o_id;
+    }
+}
+
+// C ref: spell.c:786 dowizcast() — #wizcast, cast any spell even without
+// knowing it.  The menu lists MAXSPELL entries starting at SPE_DIG, stopping
+// at SPE_BLANK_PAPER; the pick is passed to spelleffects(otyp, FALSE, TRUE),
+// whose force=TRUE arm skips spelleffects_check() entirely.
+export async function dowizcast() {
+    let i, n;
+
+    const win = create_nhwindow_menu();
+    start_menu(win);
+
+    for (i = 0; i < MAXSPELL; i++) {
+        n = (SPE_DIG + i);
+        if (n >= SPE_BLANK_PAPER)
+            break;
+        add_menu(win, n, 0, 0, ATR_NONE, NO_COLOR,
+                 objects[n]?.name || '', MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(win, 'Cast which spell?');
+    const selected = await select_menu(win, PICK_ONE);
+    destroy_nhwindow(win);
+    if (selected.length > 0) {
+        i = selected[0].item;
+        return await spelleffects(i, false, true);
+    }
+    return ECMD_OK;
+}
+
+// C ref: spell.c:1103 cast_protection() — SPE_PROTECTION.  RNG: the hcolor()
+// call draws one rn2_on_display_rng(HCOLORS) while hallucinating (and only
+// then), inside the !Blind arm and BEFORE either message.
+export async function cast_protection() {
+    const u = game.u;
+    let l = u.ulevel | 0, loglev = 0;
+    let natac = (u.uac | 0) + (u.uspellprot | 0);
+    /* note: u.uspellprot is subtracted when find_ac() factors it into u.uac,
+       so adding here factors it back out */
+
+    /* loglev=log2(u.ulevel)+1 (1..5) */
+    while (l) {
+        loglev++;
+        l = Math.trunc(l / 2);
+    }
+
+    natac = Math.trunc((10 - natac) / 10); /* convert to positive, scale down */
+    const gain = loglev - Math.trunc((u.uspellprot | 0) / (4 - Math.min(3, natac)));
+
+    if (gain > 0) {
+        if (!Blind()) {
+            const hgolden = hcolor(NH_GOLDEN);
+
+            if (u.uspellprot) {
+                await pline(`The ${hgolden} haze around you becomes more dense.`);
+            } else {
+                const pm = u.ustuck ? u.ustuck.data : null;
+                const rmtyp = game.level?.at(u.ux, u.uy)?.typ;
+                const atmosphere = (pm && u.uswallow)
+                    ? ((pm.pmidx === sp_pm('fog cloud')) ? 'mist'
+                       : sp_is_whirly(pm) ? 'maelstrom'
+                         : sp_enfolds(pm) ? 'folds'
+                           : is_animal(pm) ? 'maw'
+                             : 'ooze')
+                    : (u.uinwater ? hliquid('water')
+                       : (rmtyp === CLOUD) ? 'cloud'
+                         : IS_TREE(rmtyp) ? 'vegetation'
+                           : IS_STWALL(rmtyp) ? 'stone'
+                             : 'air');
+                await pline(`The ${atmosphere} around you begins to shimmer `
+                            + `with ${sp_an(hgolden)} haze.`);
+            }
+        }
+        u.uspellprot = (u.uspellprot | 0) + gain;
+        u.uspmtime = (p_skill_of(spell_skilltype(SPE_PROTECTION)) === P_EXPERT)
+                       ? 20 : 10;
+        if (!u.usptime)
+            u.usptime = u.uspmtime;
+        find_ac();
+    } else {
+        await pline('Your skin feels warm for a moment.');
+    }
+}
+// C ref: decl.h NH_GOLDEN == c_color_names.c_golden.
+const NH_GOLDEN = 'golden';
+
+// ── chain lightning.  C ref: spell.c:909-1100.
+// Limit the total area chain lightning can cover.
+const CHAIN_LIGHTNING_LIMIT = 100;
+// Unlike most zaps, chain lightning can't hit solid terrain, it only covers
+// open space.  C ref: spell.c:919 CHAIN_LIGHTNING_TYP / :922 _POS.
+function CHAIN_LIGHTNING_TYP(typ) {
+    return SPACE_POS(typ) || typ === POOL || typ === MOAT /* not WATER */
+        || typ === DRAWBRIDGE_UP || typ === LAVAPOOL;     /* not LAVAWALL */
+}
+function CHAIN_LIGHTNING_POS(x, y) {
+    if (!isok(x, y)) return false;
+    const lev = game.level?.at(x, y);
+    if (!lev) return false;
+    return CHAIN_LIGHTNING_TYP(lev.typ)
+        || (IS_DOOR(lev.typ) && !(lev.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+// C ref: spell.c:951 propagate_chain_lightning(clq, zap) — move a potential
+// zap one square forward, then queue it unless it would hit an invalid square
+// or is out of power.  `zap` is passed BY VALUE in C, so the move-forward must
+// not be visible to the caller: copy it here.
+export function propagate_chain_lightning(clq, zap_in) {
+    const zap = { dir: zap_in.dir, x: zap_in.x, y: zap_in.y,
+                  strength: zap_in.strength };
+
+    zap.x += xdir[zap.dir];
+    zap.y += ydir[zap.dir];
+
+    if (clq.tail >= CHAIN_LIGHTNING_LIMIT)
+        return;    /* zap has covered too many squares */
+    if (!CHAIN_LIGHTNING_POS(zap.x, zap.y))
+        return;    /* zap can't go to this square */
+
+    const mon = m_at(zap.x, zap.y);
+    if (mon && mon.mpeaceful)
+        return;    /* chain lightning avoids peaceful and tame monsters */
+
+    // When hitting a monster that isn't electricity-resistant, a particular
+    // zap regains all its power; upon hitting a shock-resistant monster it
+    // can't continue, but we let it hit the monster to show the shield effect.
+    if (mon && !resists_elec(mon) && !sp_defended_elec(mon))
+        zap.strength = 3;
+    else if (mon)
+        zap.strength = 0;
+
+    /* Unless it hits a monster, the last square of a zap isn't drawn on
+       screen and can't propagate further, so discard it now */
+    if (!mon && !zap.strength)
+        return;
+
+    /* The same square can't be chained to twice. */
+    for (let i = 0; i < clq.tail; i++) {
+        if (clq.q[i].x === zap.x && clq.q[i].y === zap.y)
+            return;
+    }
+
+    clq.q[clq.tail++] = zap;
+
+    /* Draw it. */
+    sp_tmp_at(DISP_CHANGE, sp_zapdir_to_glyph(xdir[zap.dir], ydir[zap.dir],
+                                              clq.displayed_beam));
+    sp_tmp_at(zap.x, zap.y);
+}
+
+// C ref: spell.c:1002 cast_chain_lightning() — SPE_CHAIN_LIGHTNING.  The whole
+// RNG cost is zhitm()'s (per monster struck) plus, while hallucinating, one
+// rn2_on_display_rng(6) for the beam colour; the propagation itself is
+// deterministic.
+export async function cast_chain_lightning() {
+    const u = game.u;
+    const { Hallucination_u } = await import('./display.js');
+    const { rn2_on_display_rng } = await import('./disprng.js');
+    const clq = {
+        q: new Array(CHAIN_LIGHTNING_LIMIT), head: 0, tail: 0,
+        displayed_beam: Hallucination_u() ? rn2_on_display_rng(6)
+                                          : (AD_ELEC - 1),
+    };
+
+    if (u.uswallow) {
+        // C: "TODO: damage the engulfer"
+        return;
+    }
+
+    /* set the type of beam we're using; the direction here is arbitrary */
+    sp_tmp_at(DISP_BEAM, sp_zapdir_to_glyph(0, 1, clq.displayed_beam));
+
+    /* start by propagating in all directions from the caster */
+    for (let dir = 0; dir < N_DIRS; dir++) {
+        propagate_chain_lightning(clq, { dir, x: u.ux, y: u.uy, strength: 2 });
+    }
+    sp_nh_delay_output();
+
+    while (clq.head < clq.tail) {
+        const delay_tail = clq.tail;
+
+        while (clq.head < delay_tail) {
+            const zap = clq.q[clq.head++];
+            /* damage any monster that was hit */
+            const mon = m_at(zap.x, zap.y);
+
+            if (mon) {
+                game.notonhead = (mon.mx !== (game.bhitpos?.x ?? mon.mx)
+                                  || mon.my !== (game.bhitpos?.y ?? mon.my));
+                const dmg = await sp_zhitm(mon, BZ_U_SPELL(AD_ELEC - 1), 2);
+
+                if (dmg) {
+                    // mon has been damaged, but the messages and kill credit
+                    // aren't given yet; assume the hero can sense their spell
+                    // hitting monsters, because they can steer it away from
+                    // peacefuls.
+                    if (DEADMONSTER(mon)) {
+                        const { killed } = await import('./uhitm.js');
+                        await killed(mon, { givemsg: true }); /* XKILL_GIVEMSG */
+                    } else {
+                        await pline(`You shock ${await sp_mon_nam(mon)}`
+                                    + `${sp_exclam(dmg)}`);
+                        /* if a long worm, only map 'I' for its head */
+                        if (!canseemon_shared(mon) && !game.notonhead)
+                            map_invisible(zap.x, zap.y);
+                    }
+                } else if (canseemon_shared(mon)) {
+                    await pline(`${await sp_Monnam(mon)} resists.`);
+                }
+                if (!DEADMONSTER(mon)) {
+                    // wakeup is via attack, but since mon is already hostile we
+                    // pass via_attack==False rather than True, otherwise other
+                    // monsters witnessing this would treat it as seeing hero
+                    // attack a peaceful.
+                    game.context = game.context || {};
+                    game.context.forcefight = (game.context.forcefight | 0) + 1;
+                    await sp_wakeup(mon, false);
+                    game.context.forcefight = (game.context.forcefight | 0) - 1;
+                }
+            }
+
+            // Each zap propagates forwards with 1 less strength, and diagonally
+            // with 0 strength; exception: if the zap just hit a monster, the
+            // diagonals have as much strength as the forwards zap.
+            if (!zap.strength)
+                continue; /* upon hitting a shock-resistant monster */
+            zap.strength--;
+
+            propagate_chain_lightning(clq, zap);
+
+            if (zap.strength < 2)
+                zap.strength = 0;
+            else if (u.uen > 0)
+                u.uen--; /* propagating past mons increases Pw cost a bit */
+            zap.dir = DIR_LEFT(zap.dir);
+            propagate_chain_lightning(clq, zap);
+
+            zap.dir = DIR_RIGHT2(zap.dir);
+            propagate_chain_lightning(clq, zap);
+        }
+        sp_nh_delay_output();
+    }
+    sp_nh_delay_output();
+    sp_nh_delay_output();
+
+    sp_tmp_at(DISP_END, 0);
+}
+// C ref: hack.h:658 DIR_LEFT / :661 DIR_RIGHT2.
+function DIR_LEFT(dir) { return (dir + 7) % N_DIRS; }
+function DIR_RIGHT2(dir) { return (dir + 2) % N_DIRS; }
+// C ref: monattk.h AD_ELEC and zap.h BZ_U_SPELL(zt) == 10 + (zt).
+const AD_ELEC = 6;
+function BZ_U_SPELL(zt) { return 10 + zt; }
+// C ref: zap.c zhitm(mon, type, nd, &ootmp) / zap.c wakeup(mon, via_attack) /
+// mondata.c defended(mon, adtyp) / zap.c exclam(force) / do_name.c mon_nam().
+// zhitm and wakeup are module-PRIVATE in js/zap.js (js/zap.js:2006 and :1807)
+// and defended is module-private in js/artifact.js:617 — the fix is to EXPORT
+// the originals, not to duplicate them here, so these probe for the export and
+// otherwise report "no damage"/no-op.
+async function sp_zhitm(mon, type, nd) {
+    const Z = await import('./zap.js');
+    if (typeof Z.zhitm === 'function') {
+        const r = await Z.zhitm(mon, type, nd);
+        return (r && typeof r === 'object') ? (r.tmp | 0) : (r | 0);
+    }
+    return 0;
+}
+async function sp_wakeup(mon, via_attack) {
+    const Z = await import('./zap.js');
+    if (typeof Z.wakeup === 'function') await Z.wakeup(mon, via_attack);
+}
+function sp_defended_elec(_mon) {
+    // js/artifact.js:617, js/mhitm_ad.js:142 and js/zap.js each keep a private
+    // defended(); propagate_chain_lightning() is sync in C so it cannot await a
+    // dynamic import.  FALSE is right for every monster without a shock-
+    // resisting artifact or dragon-scale armor; the fix is to EXPORT one of the
+    // three originals and call it here, not to write a fourth copy.
+    return false;
+}
+function sp_exclam(force) { return force < 0 ? '?' : (force <= 4 ? '.' : '!'); }
+async function sp_mon_nam(mon) {
+    const { mon_nam } = await import('./do_name.js');
+    return mon_nam(mon);
+}
+async function sp_Monnam(mon) {
+    const { Monnam } = await import('./do_name.js');
+    return Monnam(mon);
+}
+
+// C ref: spell.c:1606 spell_aim_step(arg, x, y) — walk_path() callback used by
+// throwspell() to stop the aim at the first square a spell can't cross.
+export function spell_aim_step(_arg, x, y) {
+    if (!isok(x, y))
+        return false;
+    const lev = game.level?.at(x, y);
+    if (!lev) return false;
+    if (!ZAP_POS(lev.typ)
+        && !(IS_DOOR(lev.typ) && (lev.doormask & D_ISOPEN)))
+        return false;
+    return true;
+}
+
+// C ref: spell.c:1618 can_center_spell_location(x, y) — "not quite the same as
+// throwspell limits, but close enough"; the getpos() validator.
+export function can_center_spell_location(x, y) {
+    if (distmin(game.u?.ux ?? 0, game.u?.uy ?? 0, x, y) > 10)
+        return false;
+    return isok(x, y) && cansee(x, y)
+        && !IS_STWALL(game.level?.at(x, y)?.typ);
+}
+
+// C ref: spell.c:1626 display_spell_target_positions(on_off) — hilite every
+// square a spell can be centred on.  Display-only (see sp_tmp_at); RNG-free.
+export function display_spell_target_positions(on_off) {
+    let x, y, dx, dy;
+    const dist = 10;
+
+    if (on_off) {
+        /* on */
+        sp_tmp_at(DISP_BEAM, sp_cmap_to_glyph(S_goodpos));
+        for (dx = -dist; dx <= dist; dx++)
+            for (dy = -dist; dy <= dist; dy++) {
+                x = (game.u?.ux ?? 0) + dx;
+                y = (game.u?.uy ?? 0) + dy;
+                // hero's location is allowed but highlighting the hero's spot
+                // makes the map harder to read
+                if (u_at(x, y))
+                    continue;
+                if (can_center_spell_location(x, y))
+                    sp_tmp_at(x, y);
+            }
+    } else {
+        /* off */
+        sp_tmp_at(DISP_END, 0);
+    }
+}
+
+// C ref: spell.c:1654 throwspell() — choose the location where a Skilled+
+// fireball/cone of cold takes effect.  Returns 1 with u.dx/u.dy holding the
+// TARGET COORDINATES (not a direction), 0 on any refusal.  RNG-free.
+export async function throwspell() {
+    const u = game.u;
+    let mtmp;
+
+    if (u.uinwater) {
+        await pline("You're joking!  In this weather?");
+        return 0;
+    } else if (Is_waterlevel(u.uz)) {
+        await pline('You had better wait for the sun to come out.');
+        return 0;
+    }
+
+    await pline('Where do you want to cast the spell?');
+    const cc = { x: u.ux, y: u.uy };
+    // C: getpos_sethilite(display_spell_target_positions,
+    //                     can_center_spell_location) — js/hack.js's getpos()
+    // takes the validator as an argument instead of through the two globals,
+    // and paints no beam overlay (see sp_tmp_at).
+    const { getpos } = await import('./hack.js');
+    const pos = await getpos('the desired position', cc.x, cc.y,
+                             (x, y) => can_center_spell_location(x, y),
+                             /*force=*/true);
+    if (!pos)
+        return 0; /* user pressed ESC */
+    cc.x = pos.x;
+    cc.y = pos.y;
+    game._pending_message = ''; /* clear_nhwindow(WIN_MESSAGE) */
+
+    /* The number of moves from hero to where the spell drops. */
+    if (distmin(u.ux, u.uy, cc.x, cc.y) > 10) {
+        await pline('The spell dissipates over the distance!');
+        return 0;
+    } else if (u.uswallow) {
+        await pline('The spell is cut short!');
+        exercise(A_WIS, false); /* What were you THINKING! */
+        u.dx = 0;
+        u.dy = 0;
+        return 1;
+    } else if (((cc.x !== u.ux || cc.y !== u.uy) && !cansee(cc.x, cc.y)
+                && (!(mtmp = m_at(cc.x, cc.y)) || !canseemon_shared(mtmp)))
+               || IS_STWALL(game.level?.at(cc.x, cc.y)?.typ)) {
+        await pline('Your mind fails to lock onto that location!');
+        return 0;
+    }
+
+    // DEFERRED: hack.c walk_path(&uc, &cc, spell_aim_step, 0) has no port; it
+    // is RNG-free (it only truncates the aim at the first blocked square).
+    u.dx = cc.x;
+    u.dy = cc.y;
+    return 1;
+}
+
+// C ref: teleport.c / spell.c:1715 — the dotelecmd() menu-repair opcodes.
+export const NOOP_SPELL = 0, HIDE_SPELL = 1, ADD_SPELL = 2,
+             UNHIDESPELL = 3, REMOVESPELL = 4;
+// C ref: spell.c:1709 `static struct tport_hideaway save_tport`.
+const save_tport = { savespell: { sp_id: NO_SPELL, sp_lev: 0, sp_know: 0 },
+                     tport_indx: 0 };
+
+// C ref: spell.c:1706 tport_spell(what) — add/hide/remove/unhide teleport-away
+// on behalf of dotelecmd() so wizard-mode ^T can honour a menu choice.
+// Returns the opcode needed to REVERSE the operation.  RNG-free.
+export function tport_spell(what) {
+    const book = spl_book();
+    let i;
+
+    for (i = 0; i < MAXSPELL; i++)
+        if (spellid(i) === SPE_TELEPORT_AWAY || spellid(i) === NO_SPELL)
+            break;
+    if (i === MAXSPELL) {
+        /* C: impossible("tport_spell: spellbook full") */
+    } else if (spellid(i) === NO_SPELL) {
+        if (what === HIDE_SPELL || what === REMOVESPELL) {
+            save_tport.tport_indx = MAXSPELL;
+        } else if (what === UNHIDESPELL) {
+            const s = save_tport.savespell;
+            book[save_tport.tport_indx].sp_id = s.sp_id;
+            book[save_tport.tport_indx].sp_lev = s.sp_lev;
+            book[save_tport.tport_indx].sp_know = s.sp_know;
+            save_tport.tport_indx = MAXSPELL; /* burn bridge... */
+        } else if (what === ADD_SPELL) {
+            save_tport.savespell = { sp_id: book[i].sp_id,
+                                     sp_lev: book[i].sp_lev,
+                                     sp_know: book[i].sp_know };
+            save_tport.tport_indx = i;
+            book[i].sp_id = SPE_TELEPORT_AWAY;
+            book[i].sp_lev = spell_level_of(SPE_TELEPORT_AWAY);
+            book[i].sp_know = KEEN;
+            return REMOVESPELL; /* operation needed to reverse */
+        }
+    } else { /* spellid(i) == SPE_TELEPORT_AWAY */
+        if (what === ADD_SPELL || what === UNHIDESPELL) {
+            save_tport.tport_indx = MAXSPELL;
+        } else if (what === REMOVESPELL) {
+            const s = save_tport.savespell;
+            book[i].sp_id = s.sp_id;
+            book[i].sp_lev = s.sp_lev;
+            book[i].sp_know = s.sp_know;
+            save_tport.tport_indx = MAXSPELL;
+        } else if (what === HIDE_SPELL) {
+            save_tport.savespell = { sp_id: book[i].sp_id,
+                                     sp_lev: book[i].sp_lev,
+                                     sp_know: book[i].sp_know };
+            save_tport.tport_indx = i;
+            book[i].sp_id = NO_SPELL;
+            return UNHIDESPELL; /* operation needed to reverse */
+        }
+    }
+    return NOOP_SPELL;
+}
+
+// C ref: spell.c:1762 losespells() — forget a random selection of known spells
+// due to amnesia; retention is zeroed rather than the entry removed.
+// RNG, in order: rn2(n+1); a second rn2(n+1) while Confused; rnl(7) then
+// rnd(nzap) when nzap > 1; then one rn2(n-i) per candidate examined.  Note that
+// with no spells known (n == 0) C STILL draws rn2(1), which consumes a value.
+export function losespells() {
+    let n, nzap, i;
+
+    /* in case reading has been interrupted earlier, discard context */
+    const sb = game.context?.spbook;
+    if (sb) {
+        sb.book = 0;
+        sb.o_id = 0;
+    }
+    /* count the number of known spells */
+    for (n = 0; n < MAXSPELL; ++n)
+        if (spellid(n) === NO_SPELL)
+            break;
+
+    /* lose anywhere from zero to all known spells;
+       if confused, use the worse of two die rolls */
+    nzap = rn2(n + 1);
+    if (sp_Confusion()) {
+        i = rn2(n + 1);
+        if (i > nzap)
+            nzap = i;
+    }
+    /* good Luck might ameliorate spell loss */
+    if (nzap > 1 && !rnl(7))
+        nzap = rnd(nzap);
+
+    const book = spl_book();
+    for (i = 0; nzap > 0; ++i) {
+        // when nzap is small relative to the number of spells left, the chance
+        // to lose spell [i] is small; overall, exactly nzap entries are hit
+        if (rn2(n - i) < nzap) {
+            book[i].sp_know = 0;        /* lose access to spell [i] */
+            exercise(A_WIS, false);     /* and abuse wisdom */
+            --nzap;                     /* one less spell slated to be lost */
+        }
+    }
+}
+
+// ── the "view known spells" sort machinery.  C ref: spell.c:1841-2017.
+// C ref: spell.c:1841 enum spl_sort_types.
+export const SORTBY_LETTER = 0, SORTBY_ALPHA = 1, SORTBY_LVL_LO = 2,
+             SORTBY_LVL_HI = 3, SORTBY_SKL_AL = 4, SORTBY_SKL_LO = 5,
+             SORTBY_SKL_HI = 6, SORTBY_CURRENT = 7, SORTRETAINORDER = 8,
+             NUM_SPELL_SORTBY = 9;
+// C ref: spell.c:1855 spl_sortchoices[] — verbatim; these are menu lines.
+const spl_sortchoices = [
+    'by casting letter',
+    'alphabetically',
+    'by level, low to high',
+    'by level, high to low',
+    'by skill group, alphabetized within each group',
+    'by skill group, low to high level within group',
+    'by skill group, high to low level within group',
+    'maintain current ordering',
+    /* a menu choice rather than a sort choice */
+    'reassign casting letters to retain current order',
+];
+// C's gs.spl_sortmode / gs.spl_orderindx live on `game` here.
+function spl_sortmode() { return game.spl_sortmode | 0; }
+
+// C ref: spell.c:1869 spell_cmp(vptr1, vptr2) — the qsort callback.  C is
+// handed pointers into gs.spl_orderindx[]; this port is handed the element
+// VALUES (the svs.spl_book[] indices), which is all the body reads apart from
+// the SORTBY_CURRENT arm.  C's `(vptr1 < vptr2) ? -1 : (vptr1 > vptr2)` there
+// compares the two ADDRESSES, i.e. "keep the current order"; returning 0 under
+// V8's stable Array.prototype.sort is the same result, and the arm is only
+// reachable via `default:` anyway (sortspells() returns early for
+// SORTBY_CURRENT).
+export function spell_cmp(vptr1, vptr2) {
+    const indx1 = vptr1 | 0, indx2 = vptr2 | 0,
+        otyp1 = spellid(indx1), otyp2 = spellid(indx2),
+        levl1 = spell_level_of(otyp1), levl2 = spell_level_of(otyp2),
+        skil1 = spell_skilltype(otyp1), skil2 = spell_skilltype(otyp2);
+
+    switch (spl_sortmode()) {
+    case SORTBY_LETTER:
+        return indx1 - indx2;
+    case SORTBY_ALPHA:
+        break;
+    case SORTBY_LVL_LO:
+        if (levl1 !== levl2)
+            return levl1 - levl2;
+        break;
+    case SORTBY_LVL_HI:
+        if (levl1 !== levl2)
+            return levl2 - levl1;
+        break;
+    case SORTBY_SKL_AL:
+        if (skil1 !== skil2)
+            return skil1 - skil2;
+        break;
+    case SORTBY_SKL_LO:
+        if (skil1 !== skil2)
+            return skil1 - skil2;
+        if (levl1 !== levl2)
+            return levl1 - levl2;
+        break;
+    case SORTBY_SKL_HI:
+        if (skil1 !== skil2)
+            return skil1 - skil2;
+        if (levl1 !== levl2)
+            return levl2 - levl1;
+        break;
+    case SORTBY_CURRENT:
+    default:
+        return 0; /* keep current order */
+    }
+    /* tie-breaker for most sorts--alphabetical by spell name */
+    return sp_strcmpi(objects[otyp1]?.name || '', objects[otyp2]?.name || '');
+}
+
+// C ref: spell.c:1926 sortspells() — sort the index used for the display order
+// of the "view known spells" list, or (SORTRETAINORDER) sort svs.spl_book[]
+// itself so the current display order sticks.  RNG-free.
+export function sortspells() {
+    let i, n;
+
+    if (spl_sortmode() === SORTBY_CURRENT)
+        return;
+    for (n = 0; n < MAXSPELL && spellid(n) !== NO_SPELL; ++n)
+        continue;
+    if (n < 2)
+        return; /* not enough entries to need sorting */
+
+    if (!game.spl_orderindx) {
+        /* we haven't done any sorting yet; list is in casting order */
+        if (spl_sortmode() === SORTBY_LETTER /* default */
+            || spl_sortmode() === SORTRETAINORDER)
+            return;
+        /* allocate enough for full spellbook rather than just N spells */
+        game.spl_orderindx = new Array(MAXSPELL);
+        for (i = 0; i < MAXSPELL; i++)
+            game.spl_orderindx[i] = i;
+    }
+
+    if (spl_sortmode() === SORTRETAINORDER) {
+        const book = spl_book();
+        // C copies struct spell BY VALUE through tmp_book[]; snapshot the
+        // fields so the permutation cannot alias.
+        const tmp_book = new Array(MAXSPELL);
+        for (i = 0; i < MAXSPELL; i++) {
+            const s = book[game.spl_orderindx[i]];
+            tmp_book[i] = { sp_id: s.sp_id, sp_lev: s.sp_lev, sp_know: s.sp_know };
+        }
+        for (i = 0; i < MAXSPELL; i++) {
+            book[i].sp_id = tmp_book[i].sp_id;
+            book[i].sp_lev = tmp_book[i].sp_lev;
+            book[i].sp_know = tmp_book[i].sp_know;
+            game.spl_orderindx[i] = i;
+        }
+        game.spl_sortmode = SORTBY_LETTER; /* reset */
+        return;
+    }
+
+    /* usual case, sort the index rather than the spells themselves.
+       C: qsort(spl_orderindx, n, ...) — only the first n entries move. */
+    const head = game.spl_orderindx.slice(0, n).sort(spell_cmp);
+    for (i = 0; i < n; i++)
+        game.spl_orderindx[i] = head[i];
+}
+
+// C ref: spell.c:1975 spellsortmenu() — the [sort spells] entry's own menu.
+// Returns TRUE when a new sort mode was chosen.  RNG-free.
+export async function spellsortmenu() {
+    let let_, i, n, choice;
+    const clr = NO_COLOR;
+
+    const tmpwin = create_nhwindow_menu();
+    start_menu(tmpwin);
+
+    for (i = 0; i < spl_sortchoices.length; i++) {
+        if (i === SORTRETAINORDER) {
+            let_ = 'z'; /* assumes fewer than 26 sort choices... */
+            /* separate final choice from others with a blank line */
+            add_menu_str(tmpwin, '');
+        } else {
+            let_ = String.fromCharCode(97 + i);
+        }
+        add_menu(tmpwin, i + 1, let_, 0, ATR_NONE, clr, spl_sortchoices[i],
+                 (i === spl_sortmode()) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'View known spells list sorted');
+
+    const selected = await select_menu(tmpwin, PICK_ONE);
+    destroy_nhwindow(tmpwin);
+    n = selected.length;
+    if (n > 0) {
+        choice = selected[0].item - 1;
+        /* skip preselected entry if we have more than one item chosen */
+        if (n > 1 && choice === spl_sortmode())
+            choice = selected[1].item - 1;
+        game.spl_sortmode = choice;
+        return true;
+    }
+    return false;
+}
+
+// C ref: spell.c:8-11 — the dospellmenu() `splaction` sentinels.  SPELLMENU_SORT
+// is MAXSPELL, so it rides the same numbering as a real spl_book[] index.
+export const SPELLMENU_DUMP = -3, SPELLMENU_CAST = -2, SPELLMENU_VIEW = -1;
+export const SPELLMENU_SORT = MAXSPELL;
+
+// C ref: spell.c:2074 dospellmenu(prompt, splaction, spell_no) — show the menu
+// of known spells, with options to sort them.  Returns FALSE on cancel, TRUE
+// otherwise; the chosen svs.spl_book[] index is reported through `spell_no`,
+// which is C's `int *` out-parameter modelled here as `{ value }`.
+//
+// The header and per-row format strings are transcribed literally; the '+'
+// (#showspells) window is a scored surface and these are what it prints.
+//   heading, !menu_tab_sep: "%s%-20s Level %-12s Fail Retention"
+//   row,     !menu_tab_sep: "%-20s  %2d   %-12s %3d%% %9s"
+//   heading,  menu_tab_sep: "Name\tLevel\tCategory\tFail\tRetention"
+//   row,      menu_tab_sep: "%s\t%-d\t%s\t%-d%%\t%s"
+//   wizard-mode suffix:     heading "%c%6s" ("turns"), row "%c%6d" (sp_know)
+export async function dospellmenu(prompt, splaction, spell_no) {
+    let buf, tabbed, sep, i, n, how, splnum;
+    const clr = NO_COLOR;
+    const wizard = !!game.flags?.debug;
+
+    const tmpwin = create_nhwindow_menu();
+    start_menu(tmpwin);
+
+    /*
+     * The correct spacing of the columns when not using tab separation
+     * depends on (1) a monospaced font and (2) selection letters prepended
+     * to the given string in the form "a - ".  For SPELLMENU_DUMP, (2) is
+     * untrue, so four spaces need to be subtracted.
+     */
+    if (!game.iflags?.menu_tab_sep) {
+        buf = `${splaction === SPELLMENU_DUMP ? '' : '    '}`
+            + `${sp_padr('Name', 20)} Level ${sp_padr('Category', 12)}`
+            + ' Fail Retention';
+        tabbed = false;
+        sep = ' ';
+    } else {
+        buf = 'Name\tLevel\tCategory\tFail\tRetention';
+        tabbed = true;
+        sep = '\t';
+    }
+    if (wizard)
+        buf += `${sep}${sp_padl('turns', 6)}`;
+
+    add_menu_heading(tmpwin, buf);
+    for (i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
+        splnum = !game.spl_orderindx ? i : game.spl_orderindx[i];
+        const nm = objects[spellid(splnum)]?.name || '';   /* spellname() */
+        const lev = spellev(splnum);
+        // C: spelltypemnemonic(spell_skilltype(spellid(splnum))).  This port's
+        // spelltypemnemonic() takes the OTYP and does the spell_skilltype()
+        // lookup itself (see its definition at the top of this file).
+        const cat = spelltypemnemonic(spellid(splnum));
+        const fail = 100 - percent_success(splnum);
+        const ret = spellretention(splnum);
+        buf = tabbed
+            ? `${nm}\t${lev}\t${cat}\t${fail}%\t${ret}`
+            : `${sp_padr(nm, 20)}  ${sp_padl(lev, 2)}   ${sp_padr(cat, 12)} `
+              + `${sp_padl(fail, 3)}% ${sp_padl(ret, 9)}`;
+        if (wizard)
+            /* NOTE C's index: the "turns" column uses the LOOP index i while
+               every other column uses the sort-order index splnum. */
+            buf += `${sep}${sp_padl(spellknow(i), 6)}`;
+
+        add_menu(tmpwin, splnum + 1 /* must be non-zero */, spellet(splnum), 0,
+                 ATR_NONE, clr, buf,
+                 (splnum === splaction) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+    }
+    how = PICK_ONE;
+    if (splaction === SPELLMENU_VIEW) {
+        if (spellid(1) === NO_SPELL) {
+            /* only one spell => nothing to swap with */
+            how = PICK_NONE;
+        } else {
+            /* more than 1 spell, add an extra menu entry */
+            add_menu(tmpwin, SPELLMENU_SORT + 1, '+', 0, ATR_NONE, clr,
+                     '[sort spells]', MENU_ITEMFLAGS_NONE);
+        }
+    }
+    end_menu(tmpwin, prompt);
+
+    const selected = await select_menu(tmpwin, how);
+    destroy_nhwindow(tmpwin);
+    n = selected.length;
+    if (n > 0) {
+        spell_no.value = selected[0].item - 1;
+        /* menu selection for `PICK_ONE' does not de-select a preselection */
+        if (n > 1 && spell_no.value === splaction)
+            spell_no.value = selected[1].item - 1;
+        /* default selection of the preselected spell means that the user
+           chose not to swap it with anything */
+        if (spell_no.value === splaction)
+            return false;
+        return true;
+    } else if (splaction >= 0) {
+        /* explicit de-selection of the preselected spell means the user is
+           still swapping but not for the current spell */
+        spell_no.value = splaction;
+        return true;
+    }
+    return false;
+}
+
+// C ref: spell.c:2058 show_spells() — lists spells for endgame dumplog
+// purposes.  js/end.js:1536 marks the call site this replaces.
+export async function show_spells() {
+    const unused = { value: SPELLMENU_DUMP };
+
+    if (spellid(0) === NO_SPELL) {
+        await pline("You didn't know any spells.");
+        await pline('');
+    } else {
+        await pline('Spells:');
+        await dospellmenu('', SPELLMENU_DUMP, unused);
+    }
+}
+
+// C ref: include/spell.h:21 enum spellbook_states.
+export const spe_Forgotten = -1, spe_Unknown = 0, spe_Fresh = 1,
+             spe_GoingStale = 2;
+// C ref: include/spell.h:9 UNKNOWN_SPELL.
+export const UNKNOWN_SPELL = -1;
+
+// C ref: spell.c:2362 known_spell(otyp) — one of spe_Unknown / spe_Fresh /
+// spe_GoingStale / spe_Forgotten.  js/cmd.js:2084 documents the ^T call site.
+export function known_spell(otyp) {
+    for (let i = 0; (i < MAXSPELL) && (spellid(i) !== NO_SPELL); i++)
+        if (spellid(i) === otyp) {
+            const k = spellknow(i);
+            return (k > KEEN / 10) ? spe_Fresh
+                : (k > 0) ? spe_GoingStale
+                    : spe_Forgotten;
+        }
+    return spe_Unknown;
+}
+
+// C ref: spell.c:2390 force_learn_spell(otyp) — learn or refresh spell otyp if
+// feasible; returns the casting letter or '\0' (pray.c:1035 compares against
+// '\0', NOT truthiness — and '\0' is TRUTHY in JS, so a caller must do the same
+// explicit comparison).  RNG-free.
+export function force_learn_spell(otyp) {
+    let i;
+
+    if (otyp === SPE_BLANK_PAPER || otyp === SPE_BOOK_OF_THE_DEAD
+        || known_spell(otyp) === spe_Fresh)
+        return '\0';
+
+    for (i = 0; i < MAXSPELL; i++)
+        if (spellid(i) === NO_SPELL || spellid(i) === otyp)
+            break;
+    if (i === MAXSPELL) {
+        /* C: impossible("Too many spells memorized") */
+        return '\0';
+    }
+    // for a going-stale or forgotten spell the sp_id and sp_lev assignments are
+    // redundant but harmless; for an unknown spell, they're essential
+    const book = spl_book();
+    book[i].sp_id = otyp;
+    book[i].sp_lev = spell_level_of(otyp);
+    book[i].sp_know = KEEN;  /* incrnknow(i, 0) — no +1: not read from a book */
+    return spellet(i);
+}

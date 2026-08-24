@@ -8,13 +8,14 @@
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
+import { init_rect, rnd_rect, get_rect, split_rects, within_bounded_area } from './rect.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
 import { set_mktrap_victim, filler_region, lspo_map, lspo_region, fill_special_room, themeroom_fill, themeroom_map_contents, makemaz_bigroom, makemaz_bar_strt, makemaz_bar_loca, makemaz_bar_goal, makemaz_arc_strt, makemaz_arc_loca, makemaz_arc_goal, makemaz_pri_strt, makemaz_pri_loca, makemaz_pri_goal, makemaz_tower1, makemaz_tower2, makemaz_tower3, makemaz_soko1, makemaz_soko_upper, makemaz_valley, makemaz_sanctum, makemaz_minetown2, makemaz_minetown3, makemaz_minetown5, makemaz_minetown7, makemaz_minend1, makemaz_minend2, makemaz_minend3, makemaz_medusa1, makemaz_medusa2, makemaz_medusa3, makemaz_medusa4, makemaz_asmodeus, makemaz_baalz, makemaz_juiblex, makemaz_orcus, makemaz_wizard1, makemaz_wizard2, makemaz_wizard3, makemaz_fakewiz1, makemaz_fakewiz2, makemaz_air, makemaz_earth, makemaz_fire, makemaz_water, makemaz_astral, makemaz_cav_strt, makemaz_hea_strt, makemaz_kni_strt, makemaz_mon_strt, makemaz_ran_strt, makemaz_rog_strt, makemaz_sam_strt, makemaz_tou_strt, makemaz_val_strt, makemaz_wiz_loca, makemaz_wiz_strt, shuffle,
          mapfrag_fromstr, mapfrag_match, selection_match, set_levltyp_lit,
          splev_map_origin, reset_xystart_size, flip_level, bigrm_get_level_extends, set_door_orientation,
          okdoor, bydoor, create_door, lspo_door_relative,
          is_ok_location, pm_to_humidity, LOC_DRY,
+         run_themeroom_postprocess,
          SET_LIT_NOCHANGE } from './sp_lev.js';
 import { create_maze, walkfrom, mz, reset_maze_bounds, mkportal } from './mkmaze.js';
 import {
@@ -27,16 +28,17 @@ import {
     l_selection_randline, W_ANY, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST,
 } from './selvar.js';
 import { Is_special, builds_up, In_hell, Is_valley, dunlevs_in_dungeon, level_difficulty_c } from './dungeon.js';
-import { In_quest, BR_PORTAL, BR_NO_END1, BR_NO_END2 } from './const.js';
+import { In_quest, BR_PORTAL, BR_NO_END1, BR_NO_END2,
+         Is_knox_level } from './const.js';
 import { roles, races } from './role.js';
 import { mflags2_of } from './monflags_data.js';
 import { priestini } from './priest.js';
 import { somex, somey, somexy, somexyspace, occupied, has_dnstairs, has_upstairs, inside_room, nexttodoor } from './mkroom.js';
-import { maketrap, Can_fall_thru, Can_dig_down, t_at, Invocation_lev } from './trap.js';
+import { maketrap, Can_fall_thru, Can_dig_down, t_at, Invocation_lev, deltrap } from './trap.js';
 import { makemon as make_monster, rndmonst, mkclass,
          name_to_pmidx, monster_by_pmidx, enexto_spawn, placeOnLevel,
          name_gender_hint, MGEND_MALE, MGEND_FEMALE, MGEND_NEUTRAL } from './makemon.js';
-import { m_at } from './display.js';
+import { m_at, newsym } from './display.js';
 import { getbones } from './bones.js';
 import { set_corpsenm } from './mkobj.js';
 import { make_engr_at, random_engraving, wipe_engr_at, get_rnd_epitaph,
@@ -53,6 +55,7 @@ import {
     CRAM_RATION, LEMBAS_WAFER, WAND_CLASS, SPBOOK_CLASS,
     mkobj, mkobj_at, mksobj, mksobj_at, mkcorpstat, mkgold, curse,
     place_object, weight, objects, add_to_container,
+    obj_extract_self_mkobj, dealloc_oextra, GEM_CLASS as GEM_CLASS_MK,
 } from './mkobj.js';
 import { shtypes } from './shtypes.js';
 import { obj_resists } from './zap.js';
@@ -83,6 +86,7 @@ import {
     In_endgame, BURN,
     DUST, MARK, HEADSTONE,
     TAINT_AGE,
+    COULD_SEE, IN_SIGHT,
 } from './const.js';
 
 const XLIM = 4;
@@ -6235,7 +6239,13 @@ function traptype_rnd() {
     case ROLLING_BOULDER_TRAP: case SLP_GAS_TRAP:
         if (lvl < 2) kind = NO_TRAP; break;
     case LEVEL_TELEP:
-        if (lvl < 5 || game.level?.flags?.noteleport) kind = NO_TRAP; break;
+        // C ref: mklev.c:1962 — the third term, `single_level_branch(&u.uz)`,
+        // was missing.  dungeon.c's body is literally `return Is_knox(lev)`, so
+        // on Fort Ludios C refuses a LEVEL_TELEP and we accepted one: a
+        // different trap type, and every later mklev draw shifted.
+        if (lvl < 5 || game.level?.flags?.noteleport
+            || Is_knox_level(game.u?.uz)) kind = NO_TRAP;
+        break;
     case SPIKED_PIT:
         if (lvl < 5) kind = NO_TRAP; break;
     case LANDMINE:
@@ -6983,4 +6993,632 @@ function level_finalize_topology() {
         const rm = rooms[i];
         if (rm && rm.rtype != null) rm.orig_rtype = rm.rtype;
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// mklev.c — remaining functions.  INERT: nothing above calls into this section
+// and no existing call site was rewired.  The RNG-drawing ones (mktrap,
+// mkgrave, mkinvpos) go through the same maketrap()/rn2() the live builders
+// use, so wiring one up reorders the shared draw stream and is a measured
+// change, not a refactor.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// hack.h:1429-1433 — mktrap()'s flag word.
+export const MKTRAP_NOFLAGS = 0x0;
+export const MKTRAP_SEEN = 0x1;          /* trap is seen */
+export const MKTRAP_MAZEFLAG = 0x2;      /* random coords instead of a room */
+export const MKTRAP_NOSPIDERONWEB = 0x4; /* web will not generate a spider */
+export const MKTRAP_NOVICTIM = 0x8;      /* no victim corpse or items on it */
+
+// hack.h:427-430 enum lua_theme_group.
+export const all_themes = 1;   /* for end of game */
+export const most_themes = 2;  /* for entering endgame */
+export const tut_themes = 3;   /* for leaving tutorial */
+
+// global.h:387 — svd.doors grows by this many entries at a time.
+const DOORINC = 20;
+
+// C ref: mklev.c:59 mkroom_cmp(vx, vy) — sort_rooms()'s qsort comparator,
+// ordering rooms by left edge.  Note C returns the BOOLEAN `x->lx > y->lx`
+// (i.e. 0 or 1) for the not-less case, never a magnitude; transcribed as is.
+// sort_rooms() (mklev.js:2351) inlines the same key.
+export function mkroom_cmp(vx, vy) {
+    const x = vx, y = vy;
+    if (x.lx < y.lx)
+        return -1;
+    return (x.lx > y.lx) ? 1 : 0;
+}
+
+// C ref: mklev.c:555 — (re)allocate space for the svd.doors array.  C grows a
+// flat coord[] by DOORINC whenever doorindex catches up with the allocation and
+// memcpy()s the old contents over; a JS array grows implicitly, so the only
+// observable part is the zero-fill of the new slots (add_door() at mklev.js:2620
+// writes into g.level.doors[] directly and never reads an uninitialised slot).
+// Kept so a save/restore pass that has to reproduce doors_alloc has the rule.
+export function alloc_doors() {
+    const g = game;
+    if (!g.level) return;
+    if (!g.level.doors) g.level.doors = [];
+    if (g.level.doors_alloc == null) g.level.doors_alloc = 0;
+    if (!g.level.doors.length || g.level.doorindex >= g.level.doors_alloc) {
+        const c = g.level.doors_alloc + DOORINC;
+        for (let i = g.level.doors.length; i < c; i++)
+            g.level.doors[i] = { x: 0, y: 0 };   /* memset(doortmp, 0, ...) */
+        g.level.doors_alloc = c;
+    }
+}
+
+// C ref: mklev.c:344 free_luathemes(theme_group) — release the per-dungeon
+// themeroom lua states.  `tut_themes` frees only the tutorial's, `most_themes`
+// keeps the Astral one (that dungeon is being entered), `all_themes` frees
+// everything.  This port has no lua_State; mklev.js:771-778 records "themes
+// loaded for dnum" in game._luathemes_loaded, which is the same lifetime, so
+// that is what gets cleared.  js/save.js:1111 records this as UNPORTED.
+export function free_luathemes(theme_group) {
+    const g = game;
+    const luathemes = g._luathemes_loaded;
+    if (!luathemes) return;
+    const n_dgns = g.dungeons?.length ?? 0;
+    const tutorial_dnum = g.tutorial_dnum ?? -1;
+    const astral_dnum = g.astral_level?.dnum ?? -1;
+
+    for (let i = 0; i < n_dgns; ++i) {
+        if ((theme_group === tut_themes && i !== tutorial_dnum)
+            || (theme_group === most_themes && i === astral_dnum))
+            continue;
+        if (luathemes[i]) {
+            luathemes[i] = 0;               /* nhl_done(); pointer cleared */
+        }
+    }
+}
+
+// C ref: mklev.c:1173 — the tail of makelevel(): run themerms.lua's
+// post_level_generate() (this port queues its work and replays it in
+// sp_lev.js's run_themeroom_postprocess()), then wallify the WHOLE map.
+// `if (!themes) return` matters: a dungeon with no themes file skips the
+// wallification too, which is why makelevel() and not mklev() owns it.
+export async function themerooms_post_level_generate() {
+    const g = game;
+    const themes = g._luathemes_loaded?.[g.u?.uz?.dnum ?? 0];
+
+    /* themes should already be loaded by makerooms(); if not, skip this too */
+    if (!themes)
+        return;
+
+    reset_xystart_size();
+    g.in_lua = g.in_mk_themerooms = true;
+    if (g.level) g.level.themeroom_failed = false;
+    await run_themeroom_postprocess();      /* lua post_level_generate() */
+    g.in_lua = g.in_mk_themerooms = false;
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    /* C also frees gc.coder and runs lua_gc(themes, LUA_GCCOLLECT) */
+}
+
+// C ref: mklev.c:1197 — does a door open into solid terrain?  The four tests
+// are "one side is passable and the other is not"; `typ > TREE` is the
+// passable half of rm.h's terrain ordering (STONE..TREE are the solid ones).
+// Note both arms return FALSE for a MISMATCH, so a door with solid terrain on
+// BOTH sides (or open on both) is reported ok.
+export function chk_okdoor(x, y) {
+    const loc = game.level?.at(x, y);
+    if (loc && IS_DOOR(loc.typ)) {
+        if (loc.horizontal) {
+            if ((isok(x, y - 1) && (game.level.at(x, y - 1).typ > TREE))
+                && (isok(x, y + 1) && (game.level.at(x, y + 1).typ <= TREE)))
+                return false;
+            if ((isok(x, y - 1) && (game.level.at(x, y - 1).typ <= TREE))
+                && (isok(x, y + 1) && (game.level.at(x, y + 1).typ > TREE)))
+                return false;
+        } else {
+            if ((isok(x - 1, y) && (game.level.at(x - 1, y).typ > TREE))
+                && (isok(x + 1, y) && (game.level.at(x + 1, y).typ <= TREE)))
+                return false;
+            if ((isok(x - 1, y) && (game.level.at(x - 1, y).typ <= TREE))
+                && (isok(x + 1, y) && (game.level.at(x + 1, y).typ > TREE)))
+                return false;
+        }
+        return true;
+    }
+    return true;
+}
+
+// C ref: mklev.c:1222 — post-mklev sanity check, gated on iflags.sanity_check
+// or the fuzzer (neither is set in any recorded session, so C's body never
+// runs).  Returns the complaints instead of calling impossible(), so a caller
+// can assert on it; C's `rmno` walk only ever latches the FIRST needjoining
+// room's smeq value, exactly as transcribed.
+export function mklev_sanity_check() {
+    const g = game;
+    const complaints = [];
+    let rmno = -1;
+    let x, y, i;
+
+    if (!(g.iflags?.sanity_check || g.iflags?.debug_fuzzer))
+        return complaints;
+
+    for (y = 0; y < ROWNO; y++) {
+        for (x = 1; x < COLNO; x++) {
+            if (!chk_okdoor(x, y))
+                complaints.push(`levl[${x}][${y}] door not ok`);
+        }
+    }
+
+    const nroom = g.level?.nroom ?? 0;
+    for (i = 0; i < nroom; i++) {
+        if (!g.level.rooms[i].needjoining)
+            continue;
+        if (rmno === -1)
+            rmno = g.smeq[i];
+        if (rmno !== -1 && g.smeq[i] !== rmno)
+            complaints.push(`room ${i} not connected?`);
+    }
+    return complaints;
+}
+
+// C ref: mklev.c:1676 — find the room containing (x,y), or Null.  The live
+// mklev.js:6126 call site notes C's `else (void) pos_to_room(x, y);` only
+// caches gl.lastseentyp, which is why nothing needed this until now.
+export function pos_to_room(x, y) {
+    const rooms = game.level?.rooms ?? [];
+    const nroom = game.level?.nroom ?? 0;
+    for (let i = 0; i < nroom; i++) {
+        const curr = rooms[i];
+        if (curr && inside_room(curr, x, y))
+            return curr;
+    }
+    return null;
+}
+
+// C ref: mklev.c:2001 — the Rogue level's own trap table.  `default:` is the
+// rn2(7)==0 arm, so BEAR_TRAP is what 0 gives; every other value has its own
+// case, so the switch is total and the ordering below is C's.
+export function traptype_roguelvl() {
+    let kind;
+
+    switch (rn2(7)) {
+    default:
+        kind = BEAR_TRAP;
+        break; /* 0 */
+    case 1:
+        kind = ARROW_TRAP;
+        break;
+    case 2:
+        kind = DART_TRAP;
+        break;
+    case 3:
+        kind = TRAPDOOR;
+        break;
+    case 4:
+        kind = PIT;
+        break;
+    case 5:
+        kind = SLP_GAS_TRAP;
+        break;
+    case 6:
+        kind = RUST_TRAP;
+        break;
+    }
+    return kind;
+}
+
+// C ref: rm.h is_pool_or_lava(x,y).  Private copies also sit at hack.js:85 and
+// polyself.js:1832; mktrap()'s only use is the `tm` early-out.
+function mklev_is_pool_or_lava(x, y) {
+    const t = game.level?.at(x, y)?.typ;
+    return IS_POOL(t) || t === LAVAPOOL || t === LAVAWALL;
+}
+
+// C ref: mkmaze.c:1316 mazexy(cc) — rnd(x_maze_max)/rnd(y_maze_max) until the
+// square is the maze's own floor type, up to 100 tries, then a systematic scan.
+// js/mkmaze.js exports maze0xy() (the odd-cell carve start) but NOT mazexy, so
+// this local copy is what mktrap()'s MKTRAP_MAZEFLAG arm needs; if mkmaze.js
+// gains a mazexy() export, delete this and import that instead.
+function mklev_mazexy(cc) {
+    const allowedtyp = game.level?.flags?.corrmaze ? CORR : ROOM;
+    let cpt = 0;
+    let x, y;
+
+    do {
+        x = rnd(mz.x_maze_max);
+        y = rnd(mz.y_maze_max);
+        if (game.level?.at(x, y)?.typ === allowedtyp) {
+            cc.x = x;
+            cc.y = y;
+            return;
+        }
+    } while (++cpt < 100);
+    /* 100 random attempts failed; systematically try every possibility */
+    for (x = 1; x <= mz.x_maze_max; x++)
+        for (y = 1; y <= mz.y_maze_max; y++)
+            if (game.level?.at(x, y)?.typ === allowedtyp) {
+                cc.x = x;
+                cc.y = y;
+                return;
+            }
+    /* C: panic("mazexy: can't find a place!") */
+}
+
+/* mklev.c:2042 `static int mktrap_err` — the paniclog is issued once per run. */
+let mktrap_err = 0;
+
+// C ref: mklev.c:2035 mktrap(num, mktrapflags, croom, tm) — the general form.
+// mktrap_room() (mklev.js:6378) is the croom-only, flagless specialisation the
+// live fill path uses; this is the whole function, including the `tm` and
+// MKTRAP_MAZEFLAG placement arms and the three flag tests.
+//
+// RNG: the kind selection draws (traptype_rnd's rnd(TRAPNUM-1) in a NO_TRAP
+// retry loop, or traptype_roguelvl's rn2(7), or Gehennom's rn2(5) which is
+// drawn BEFORE the fire-trap shortcut and therefore always), then one
+// somexyspace()/mazexy() per placement attempt, then maketrap(), then the
+// victim gate's rnd(4) — which is the RIGHT operand of `lvl <= rnd(4)` and so
+// is drawn whenever the earlier conditions hold.
+//
+// CAVEAT: traptype_rnd() at mklev.js:6229 takes no argument, so C's
+// `case WEB: if (lvl < 7 && !(mktrapflags & MKTRAP_NOSPIDERONWEB))` degrades to
+// `if (lvl < 7)` here.  Identical for every flagless caller; a caller that
+// passes MKTRAP_NOSPIDERONWEB (a des.trap() with spider_on_web=false) would get
+// NO_TRAP where C gets a web.  Fixing that means editing traptype_rnd().
+export async function mktrap(num, mktrapflags, croom, tm) {
+    let t, kind;
+    const m = { x: 0, y: 0 };
+    const lvl = level_difficulty();
+
+    if (!tm && !croom && !(mktrapflags & MKTRAP_MAZEFLAG)) {
+        /* complain when the combination of arguments will never set 'm' */
+        if (!mktrap_err++) {
+            /* paniclog("mktrap", "args (...) are invalid") */
+        }
+        return;
+    }
+    m.x = m.y = 0;
+
+    /* no traps in pools */
+    if (tm && mklev_is_pool_or_lava(tm.x, tm.y))
+        return;
+
+    if (num > NO_TRAP && num < TRAPNUM) {
+        kind = num;
+    } else if (Is_rogue_level_mk()) {
+        kind = traptype_roguelvl();
+    } else if (In_hell(game.u?.uz) && !rn2(5)) {
+        /* bias the frequency of fire traps in Gehennom */
+        kind = FIRE_TRAP;
+    } else {
+        do {
+            kind = traptype_rnd(mktrapflags);
+        } while (kind === NO_TRAP);
+    }
+
+    if (is_hole(kind) && !Can_fall_thru(game.u?.uz))
+        kind = ROCKTRAP;
+
+    if (tm) {
+        m.x = tm.x; m.y = tm.y;
+    } else {
+        let tryct = 0;
+        const avoid_boulder = (is_pit(kind) || is_hole(kind));
+
+        do {
+            if (++tryct > 200)
+                return;
+            if ((mktrapflags & MKTRAP_MAZEFLAG) !== 0)
+                mklev_mazexy(m);
+            else if (croom && !somexyspace(croom, m))
+                return;
+        } while (occupied(m.x, m.y)
+                 || (avoid_boulder && mk_sobj_at_boulder(m.x, m.y)));
+    }
+
+    t = await maketrap(m.x, m.y, kind);
+    /* we should always get the type of trap we're asking for (the occupied()
+       test should prevent cases where that might not happen) but be paranoid */
+    kind = t ? t.ttyp : NO_TRAP;
+
+    if (kind === WEB && !(mktrapflags & MKTRAP_NOSPIDERONWEB)) {
+        const spiderPm = monster_by_pmidx(name_to_pmidx('giant spider'));
+        /* through the local makemon() wrapper so the spider is linked into
+           fmon — see the note at mklev.js:6406 */
+        if (spiderPm) await makemon(spiderPm, m.x, m.y, 0);
+    }
+    if (t && (mktrapflags & MKTRAP_SEEN))
+        t.tseen = true;
+    if (kind === MAGIC_PORTAL
+        && (game.u?.ucamefrom?.dnum || game.u?.ucamefrom?.dlevel)) {
+        t.dst = { dnum: game.u.ucamefrom.dnum,      /* assign_level() */
+                  dlevel: game.u.ucamefrom.dlevel };
+    }
+
+    /* The hero isn't the only person who's entered the dungeon in search of
+       treasure: on the shallowest levels a created trap may already have
+       killed something (guaranteed on Dlvl 1).  Nonlethal and later/fancier
+       trap types are excluded, and pits because an item in an unseen pit is
+       weird. */
+    if (game.in_mklev
+        && kind !== NO_TRAP && !(mktrapflags & MKTRAP_NOVICTIM)
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        /* a rolling boulder trap might have no boulder if there was no viable
+           path, in which case tx,ty == launch.x,y; no boulder => no corpse */
+        && !(kind === ROLLING_BOULDER_TRAP
+             && t.launch?.x === t.tx && t.launch?.y === t.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) {
+            /* a victim killed by a land mine scatters no objects; treat the
+               mine as exploded, i.e. an unconcealed pit */
+            t.ttyp = PIT;
+            t.tseen = 1;
+        }
+        mktrap_victim(t);
+    }
+    return;
+}
+
+// C ref: mklev.c:2316 — a sink, if a free non-doorway square can be found.
+// find_okay_roompos() (mklev.js:6260) draws somexyspace() per attempt.  The
+// live fill_ordinary_room() (mklev.js:6529) inlines this; the difference is
+// C's set_levltyp() refusal to overwrite STAIRS/LADDER, which the inline copy
+// does not honour — a sink can only lose that race on a stairs square, which
+// occupied() already rejects, so the two agree in practice.
+export function mksink(croom) {
+    const m = { x: 0, y: 0 };
+
+    if (!find_okay_roompos(croom, m))
+        return;
+
+    /* Put a sink at m.x, m.y */
+    if (!set_levltyp_lit(m.x, m.y, SINK, SET_LIT_NOCHANGE))
+        return;
+
+    game.level.flags.nsinks = (game.level.flags.nsinks || 0) + 1;
+}
+
+// ── C names for ports that already exist under a local name ────────────────
+// mkgrave() is fully ported as mkgrave_room() (mklev.js:6456) — including the
+// `dobell = !rn2(10)` declaration-initialiser ordering fix.  Re-exported under
+// the C spelling rather than re-implemented; renaming the original would touch
+// its live call site in fill_ordinary_room().
+export function mkgrave(croom) { return mkgrave_room(croom); }
+
+// ── invocation area (mklev.c:2409-2613) ────────────────────────────────────
+
+// C ref: mklev.c:2602 — reduces clutter in mkinvokearea() while keeping the
+// isok() guard on the levl[][] access.  IRONBARS counts as a wall here, which
+// is why the "walls bend and crumble" line can appear on a barred level.
+export function mkinvk_check_wall(x, y) {
+    if (!isok(x, y))
+        return 0;
+    const ltyp = game.level?.at(x, y)?.typ;
+    return (IS_STWALL(ltyp) || ltyp === IRONBARS) ? 1 : 0;
+}
+
+/* mkinvpos()'s local #defines: maze levels keep 2 columns/rows of margin. */
+const X_MAZE_MIN = 2;
+const Y_MAZE_MIN = 2;
+
+// C ref: mklev.c:2409 mkinvokearea() — the earthquake that opens the stairs to
+// the Sanctum after the Book of the Dead is read on the vibrating square.
+// Two passes over the same 13x9-ish diamond: the first only COUNTS walls (to
+// decide whether to print the crumbling line), the second calls mkinvpos() to
+// actually retopologise, with a flush_screen()+delay per ring so the animation
+// plays outward.  `dist != 3` is C's comment "the area is wider than it is
+// high" — the y extent stops growing for one ring.
+//
+// No RNG of its own; mkinvpos()'s maketrap(FIRE_TRAP) and fracture_rock() draw.
+export async function mkinvokearea() {
+    let dist, wallct;
+    let xmin, xmax, ymin, ymax;
+    let i;
+    const g = game;
+    const { pline, flush_screen } = await import('./display.js');
+
+    /* slightly odd if levitating, but not wrong */
+    await pline('The floor shakes violently under you!');   /* pline_The() */
+    /* decide whether to issue the crumbling walls message */
+    {
+        xmin = xmax = g.inv_pos.x;
+        ymin = ymax = g.inv_pos.y;
+        wallct = mkinvk_check_wall(xmin, ymin);
+        /* replicates the loop below, working out from the stair position,
+           except for stopping early when walls are found */
+        for (dist = 1; !wallct && dist < 7; ++dist) {
+            xmin--, xmax++;
+            /* top and bottom */
+            if (dist !== 3) { /* the area is wider than it is high */
+                ymin--, ymax++;
+                for (i = xmin + 1; i < xmax; i++) {
+                    if (mkinvk_check_wall(i, ymin))
+                        ++wallct;
+                    if (mkinvk_check_wall(i, ymax))
+                        ++wallct;
+                }
+            }
+            /* left and right */
+            if (!wallct) { /* skip the y loop if the x loop found any walls */
+                for (i = ymin; i <= ymax; i++) {
+                    if (mkinvk_check_wall(xmin, i))
+                        ++wallct;
+                    if (mkinvk_check_wall(xmax, i))
+                        ++wallct;
+                }
+            }
+        }
+        /* the message won't appear if this level's maze 'walls' are lava or if
+           every wall in range has been dug away; iron bars read as "walls" */
+        if (wallct)
+            await pline('The walls around you begin to bend and crumble!');
+    }
+    /* display_nhwindow(WIN_MESSAGE, TRUE) — force the --More-- */
+
+    /* any trap the hero is stuck in is going away now */
+    if (g.u?.utrap) {
+        if (g.u.utraptype === 6 /* TT_BURIEDBALL */) {
+            const { buried_ball_to_punishment } = await import('./dig.js');
+            await buried_ball_to_punishment();
+        }
+        g.u.utrap = 0;                          /* reset_utrap(FALSE) */
+    }
+
+    xmin = xmax = g.inv_pos.x;  /* reset after the check for walls */
+    ymin = ymax = g.inv_pos.y;
+    await mkinvpos(xmin, ymin, 0); /* middle, before placing stairs */
+
+    for (dist = 1; dist < 7; dist++) {
+        xmin--;
+        xmax++;
+
+        /* top and bottom */
+        if (dist !== 3) { /* the area is wider than it is high */
+            ymin--;
+            ymax++;
+            for (i = xmin + 1; i < xmax; i++) {
+                await mkinvpos(i, ymin, dist);
+                await mkinvpos(i, ymax, dist);
+            }
+        }
+
+        /* left and right */
+        for (i = ymin; i <= ymax; i++) {
+            await mkinvpos(xmin, i, dist);
+            await mkinvpos(xmax, i, dist);
+        }
+
+        await flush_screen(1); /* make sure the new glyphs show up */
+        /* nh_delay_output() */
+    }
+
+    await pline('You are standing at the top of a stairwell leading down!');
+    /* C: mkstairs(u.ux, u.uy, 0, (struct mkroom *) 0, FALSE) — mklev.js's
+       mkstairs() has no `force` parameter, and FALSE is the no-force case. */
+    mkstairs(g.u.ux, g.u.uy, 0, null);          /* down */
+    newsym(g.u.ux, g.u.uy);
+    g.vision_full_recalc = 1;                   /* everything changed */
+}
+
+// C ref: zap.c fracture_rock(obj) — a boulder becomes rn1(60,7) rocks.  Private
+// copies already sit at vault.js:283, dig.js:956 and explode.js:630; none is
+// exported, so mkinvpos() gets a fourth.  The fix is to export ONE of them (the
+// dig.js copy is the C shape) and delete the rest — not to keep adding copies.
+// The rn1(60, 7) is the only draw and happens whether or not obj is on a floor.
+function mkinv_fracture_rock(obj) {
+    if (!obj) return;
+    obj.otyp = ROCK;
+    obj.oclass = GEM_CLASS_MK;
+    obj.quan = rn1(60, 7);
+    obj.owt = weight(obj);
+    obj.dknown = obj.bknown = obj.rknown = 0;
+    obj.known = 1;                       /* rocks have no oc_uses_known */
+    dealloc_oextra(obj);
+    if (obj.where === 'floor') {
+        const ox = obj.ox, oy = obj.oy;
+        obj_extract_self_mkobj(obj);
+        place_object(obj, ox, oy);
+    }
+}
+
+// C ref: invent.c sobj_at(otyp, x, y) — the first floor object of that type.
+// mk_sobj_at_boulder() (mklev.js:6371) answers the same question as a boolean;
+// mkinvpos() needs the object itself so it can fracture or free it.
+function mkinv_sobj_at(otyp, x, y) {
+    for (const o of game.level?.objects ?? [])
+        if (o.where === 'floor' && o.ox === x && o.oy === y && o.otyp === otyp)
+            return o;
+    return null;
+}
+
+// C ref: mklev.c:2502 mkinvpos(x, y, dist) — retopologise one square of the
+// invocation area.  `dist` selects the terrain: 1 => fire traps, 4/5 => moat,
+// everything else => ROOM, and dist < 6 is the lit part.  It writes viz_array
+// directly to short-circuit the vision recalc so the animation is visible.
+//
+// Boulder handling draws: the FIRST boulder on a non-{moat,trap} square is
+// fractured (rn1(60,7)), the rest are freed outright.
+export async function mkinvpos(x, y, dist) {
+    let ttmp, otmp;
+    let make_rocks;
+    const lev = game.level?.at(x, y);
+    if (!lev) return;
+
+    /* clip at existing map borders if necessary */
+    if (!within_bounded_area(x, y, X_MAZE_MIN, Y_MAZE_MIN,
+                             mz.x_maze_max, mz.y_maze_max)) {
+        /* the outermost 2 columns and/or rows may be truncated by the edge;
+           C panics when !isok(x,y) and impossible()s otherwise */
+        return;
+    }
+
+    /* clear traps */
+    if ((ttmp = t_at(x, y)) != null)
+        deltrap(ttmp);
+
+    /* clear boulders; leave some rocks for non-{moat|trap} locations */
+    make_rocks = (dist !== 1 && dist !== 4 && dist !== 5) ? true : false;
+    while ((otmp = mkinv_sobj_at(BOULDER, x, y)) != null) {
+        if (make_rocks) {
+            mkinv_fracture_rock(otmp);
+            make_rocks = false; /* don't bother with more rocks */
+        } else {
+            obj_extract_self_mkobj(otmp);
+            const { obfree } = await import('./invent.js');
+            obfree(otmp, null);
+        }
+    }
+
+    /* fake out saved state */
+    lev.seenv = 0;
+    lev.doormask = 0;
+    if (dist < 6)
+        lev.lit = true;
+    lev.waslit = true;
+    lev.horizontal = false;
+    /* short-circuit vision recalc */
+    if (game.viz_array?.[y])
+        game.viz_array[y][x] = (dist < 6) ? (IN_SIGHT | COULD_SEE) : COULD_SEE;
+
+    switch (dist) {
+    case 1: /* fire traps */
+        if (IS_POOL(lev.typ))
+            break;
+        lev.typ = ROOM;
+        ttmp = await maketrap(x, y, FIRE_TRAP);
+        if (ttmp)
+            ttmp.tseen = true;
+        break;
+    case 0: /* lit room locations */
+    case 2:
+    case 3:
+    case 6: /* unlit room locations */
+        lev.typ = ROOM;
+        break;
+    case 4: /* pools (aka a wide moat) */
+    case 5:
+        lev.typ = MOAT;
+        /* No kelp! */
+        break;
+    default:
+        /* impossible("mkinvpos called with dist %d", dist) */
+        break;
+    }
+
+    const mon = m_at(x, y);
+    if (mon) {
+        /* wake up mimics; don't want to deal with them blocking vision */
+        if (mon.m_ap_type)
+            mon.m_ap_type = 0;                  /* seemimic(mon) */
+
+        /* NOT PORTED: mintrap() (trap.c) has no JS counterpart and
+           minliquid() is private at js/mon.js:591, so a monster caught by the
+           new fire trap or moat is left alone here. */
+    }
+
+    {
+        const { does_block, unblock_point } = await import('./vision.js');
+        /* this port's does_block() takes (x,y); C also passes &levl[x][y] */
+        if (!does_block(x, y))
+            unblock_point(x, y); /* make sure vision knows the spot is open */
+    }
+
+    /* display the new value of the position; there could be a monster or
+       object on it */
+    newsym(x, y);
 }

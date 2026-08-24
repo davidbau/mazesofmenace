@@ -293,3 +293,343 @@ function In_hell() { return !!game.level?.flags?.hellish || !!game.u?.uz?.inhell
 function Is_astralevel() { return !!game.level?.flags?.is_astral; }
 // C ref: dungeon.c In_endgame(&u.uz) — the Planes (dnum == the endgame dnum).
 function In_endgame() { return !!game.level?.flags?.is_astral || !!game.u?.uz?.in_endgame; }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// wizard.c completion — the covetous-monster strategy/tactics machinery, the
+// eight routines coverage.mjs --file=wizard.c listed as missing.  Nothing above
+// this line calls into the block.
+//
+// strategy() decides WHAT a covetous monster attempts and tactics() implements
+// it.  tactics() is the RNG-bearing half: rn2(3 + mhp/10) for the W-tower
+// rloc, rnd(8) for the self-heal, rn2(mflee ? 33 : 5) for the harass mnexto,
+// and rn2(5) for the "a monster is standing on my target" nudge.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// C ref: monst.h mflags3 M3_WANTS* (js/monflags_data.js:82-87).
+const M3_WANTSAMUL = 0x1, M3_WANTSBELL = 0x2, M3_WANTSBOOK = 0x4,
+    M3_WANTSCAND = 0x8, M3_WANTSARTI = 0x10;
+// C ref: monst.h STRAT_* (js/const.js:1321-1332).
+const STRAT_APPEARMSG = 0x80000000, STRAT_HEAL = 0x08000000,
+    STRAT_GROUND = 0x04000000, STRAT_MONSTR = 0x02000000,
+    STRAT_PLAYER = 0x01000000, STRAT_NONE = 0x00000000,
+    STRAT_STRATMASK = 0x0f000000, STRAT_GOAL = 0x000000ff;
+// C ref: obj.h:271 any_quest_artifact(o) == (o->oartifact >=
+// ART_ORB_OF_DETECTION).  js/invent.js:370 keeps a stub that always answers
+// FALSE; this is the real test.  (js/artifact.js:233 fixes the ordinal at 21.)
+const ART_ORB_OF_DETECTION = 21;
+function any_quest_artifact(o) { return (o?.oartifact | 0) >= ART_ORB_OF_DETECTION; }
+// C ref: hack.h BOLT_LIM.
+const BOLT_LIM_WIZ = 8;
+// C ref: teleport.h RLOC_MSG.
+const RLOC_MSG = 0x02;
+// C ref: wizard.c:139 M_Wants(mask) == (mtmp->data->mflags3 & (mask)).
+function M_Wants(mtmp, mask) { return ((mdata(mtmp)?.mflags3 | 0) & mask) !== 0; }
+// C ref: mkobj.c fobj — every object lying on the level's floor, in chain
+// order.  This port keeps one array per level and tags each entry's location.
+function floorObjects() {
+    return (game.level?.objects || []).filter((o) => o.where === 'floor');
+}
+// C ref: display.h u_at(x, y).
+function u_at(x, y) { return game.u?.ux === x && game.u?.uy === y; }
+// C ref: display.h MON_AT(x, y).
+function MON_AT(x, y) {
+    for (const m of monsterList())
+        if (!DEADMONSTER(m) && m.mx === x && m.my === y) return true;
+    return false;
+}
+// C ref: hacklib.c isok(x, y).
+function isok_wiz(x, y) { return x >= 1 && x < 80 && y >= 0 && y < 21; }
+
+// ─── wizard.c:142 which_arti(mask) ─────────────────────────────────────────
+// The otyp the given M3_WANTS* bit is after; 0 means "the quest artifact",
+// which is not an object type.
+export function which_arti(mask) {
+    switch (mask) {
+    case M3_WANTSAMUL: return AMULET_OF_YENDOR;
+    case M3_WANTSBELL: return BELL_OF_OPENING;
+    case M3_WANTSCAND: return CANDELABRUM_OF_INVOCATION;
+    case M3_WANTSBOOK: return SPE_BOOK_OF_THE_DEAD;
+    default: break;   /* 0 signifies quest artifact */
+    }
+    return 0;
+}
+
+// ─── wizard.c:165 mon_has_arti(mtmp, otyp) ─────────────────────────────────
+// "If 'otyp' is zero, it triggers a check for the quest_artifact, since bell,
+// book, candle, and amulet are all objects, not really artifacts right now."
+export function mon_has_arti(mtmp, otyp) {
+    for (const otmp of (mtmp?.minvent || [])) {
+        if (otyp) {
+            if (otmp.otyp === otyp) return true;
+        } else if (any_quest_artifact(otmp)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ─── wizard.c:184 other_mon_has_arti(mtmp, otyp) ───────────────────────────
+// Some monster OTHER than mtmp that has it, or null.  Note there is no
+// DEADMONSTER() filter here: C's comment is "no need ... since they have no
+// inventory".
+export function other_mon_has_arti(mtmp, otyp) {
+    for (const mtmp2 of monsterList())
+        if (mtmp2 !== mtmp)
+            if (mon_has_arti(mtmp2, otyp))
+                return mtmp2;
+    return null;
+}
+
+// ─── wizard.c:202 on_ground(otyp) ──────────────────────────────────────────
+// The first object of that type lying on the floor anywhere on the level.
+export function on_ground(otyp) {
+    for (const otmp of floorObjects()) {
+        if (otyp) {
+            if (otmp.otyp === otyp) return otmp;
+        } else if (any_quest_artifact(otmp)) {
+            return otmp;
+        }
+    }
+    return null;
+}
+
+// ─── wizard.c:216 you_have(mask) ───────────────────────────────────────────
+export function you_have(mask) {
+    const uhave = game.u?.uhave || {};
+    switch (mask) {
+    case M3_WANTSAMUL: return !!uhave.amulet;
+    case M3_WANTSBELL: return !!uhave.bell;
+    case M3_WANTSCAND: return !!uhave.menorah;
+    case M3_WANTSBOOK: return !!uhave.book;
+    case M3_WANTSARTI: return !!uhave.questart;
+    default: break;
+    }
+    return false;
+}
+
+// ─── wizard.c:236 target_on(mask, mtmp) ────────────────────────────────────
+// Does mtmp want the thing `mask` names, and if so where is it?  Writes
+// mtmp->mgoal and returns STRAT_PLAYER / STRAT_GROUND / STRAT_MONSTR ORed with
+// the mask, or STRAT_NONE (which also zeroes mgoal).
+export async function target_on(mask, mtmp) {
+    if (!M_Wants(mtmp, mask))
+        return STRAT_NONE;
+
+    const otyp = which_arti(mask);
+    if (!mon_has_arti(mtmp, otyp)) {
+        let otmp, mtmp2;
+        if (you_have(mask)) {
+            mtmp.mgoal = { x: game.u.ux, y: game.u.uy };
+            return (STRAT_PLAYER | mask);
+        } else if ((otmp = on_ground(otyp))) {
+            mtmp.mgoal = { x: otmp.ox, y: otmp.oy };
+            return (STRAT_GROUND | mask);
+        } else if ((mtmp2 = other_mon_has_arti(mtmp, otyp))
+                 /* when seeking the Amulet, avoid targeting the Wizard or
+                    temple priests (to protect Moloch's high priest) */
+                 && (otyp !== AMULET_OF_YENDOR
+                     || (!mtmp2.iswiz && !await inhistemple_wiz(mtmp2)))) {
+            mtmp.mgoal = { x: mtmp2.mx, y: mtmp2.my };
+            return (STRAT_MONSTR | mask);
+        }
+    }
+    mtmp.mgoal = { x: 0, y: 0 };
+    return STRAT_NONE;
+}
+// C ref: priest.c inhistemple(priest).  js/dungeon.js:1876 holds the port but
+// keeps it module-private and async; resolved lazily here rather than making
+// dungeon.js export a third copy.
+async function inhistemple_wiz(mon) {
+    if (!mon?.ispriest) return false;
+    const dgn = await import('./dungeon.js');
+    if (typeof dgn.inhistemple === 'function') return !!await dgn.inhistemple(mon);
+    // Reduced: a temple priest is "in his temple" when he is standing in the
+    // room his temple occupies (C also checks the temple's alignment record).
+    return !!mon.inhistemple;
+}
+// C ref: shk.c inhishop(shkp).  js/shk.js:399 exports the port.
+async function inhishop_wiz(mon) {
+    if (!mon?.isshk) return false;
+    const shk = await import('./shk.js');
+    return typeof shk.inhishop === 'function' ? !!shk.inhishop(mon) : false;
+}
+
+// ─── wizard.c:270 strategy(mtmp) ───────────────────────────────────────────
+// WHAT a covetous monster is going to attempt.  RNG-free.
+export async function strategy(mtmp) {
+    const M = await import('./makemon.js');
+    let strat, dstrat;
+
+    if (!M.is_covetous(mdata(mtmp))
+        /* perhaps a shopkeeper has been polymorphed into a master lich; we
+           don't want it teleporting to the stairs to heal because that will
+           leave its shop untended */
+        || (mtmp.isshk && await inhishop_wiz(mtmp))
+        /* likewise for temple priests */
+        || (mtmp.ispriest && await inhistemple_wiz(mtmp)))
+        return STRAT_NONE;
+
+    switch (Math.trunc(((mtmp.mhp | 0) * 3) / (mtmp.mhpmax | 0))) { /* 0-3 */
+    default:
+    case 0: /* panic time - mtmp is almost snuffed */
+        return STRAT_HEAL;
+    case 1: /* the wiz is less cautious */
+        if (mdata(mtmp)?.name !== 'Wizard of Yendor')
+            return STRAT_HEAL;
+        /* FALLTHRU */
+    case 2:
+        dstrat = STRAT_HEAL;
+        break;
+    case 3:
+        dstrat = STRAT_NONE;
+        break;
+    }
+
+    if (game.context?.made_amulet)
+        if ((strat = await target_on(M3_WANTSAMUL, mtmp)) !== STRAT_NONE)
+            return strat;
+
+    if (game.u?.uevent?.invoked) { /* priorities change once gate opened */
+        if ((strat = await target_on(M3_WANTSARTI, mtmp)) !== STRAT_NONE) return strat;
+        if ((strat = await target_on(M3_WANTSBOOK, mtmp)) !== STRAT_NONE) return strat;
+        if ((strat = await target_on(M3_WANTSBELL, mtmp)) !== STRAT_NONE) return strat;
+        if ((strat = await target_on(M3_WANTSCAND, mtmp)) !== STRAT_NONE) return strat;
+    } else {
+        if ((strat = await target_on(M3_WANTSBOOK, mtmp)) !== STRAT_NONE) return strat;
+        if ((strat = await target_on(M3_WANTSBELL, mtmp)) !== STRAT_NONE) return strat;
+        if ((strat = await target_on(M3_WANTSCAND, mtmp)) !== STRAT_NONE) return strat;
+        if ((strat = await target_on(M3_WANTSARTI, mtmp)) !== STRAT_NONE) return strat;
+    }
+    return dstrat;
+}
+
+// ─── wizard.c:369 tactics(mtmp) ────────────────────────────────────────────
+// Carry out what strategy() decided.  Returns 1 when the monster used its turn
+// (healed itself or picked the target up), else 0.
+export async function tactics(mtmp) {
+    const [tel, mon, mhu, shkr, dsp, inv, dnm, vis, dgm] = await Promise.all([
+        import('./teleport.js'), import('./mon.js'), import('./mhitu.js'),
+        import('./shkroom.js'), import('./display.js'), import('./invent.js'),
+        import('./do_name.js'), import('./vision.js'), import('./dogmove.js'),
+    ]);
+    const mm = await import('./monmove.js');
+    const u = game.u;
+    const strat = await strategy(mtmp);
+    let sx = 0, sy = 0, mx, my;
+
+    mtmp.mstrategy = ((mtmp.mstrategy | 0) & (STRAT_WAITMASK | STRAT_APPEARMSG))
+        | strat;
+
+    switch (strat) {
+    case STRAT_HEAL: /* hide and recover */
+        mx = mtmp.mx; my = mtmp.my;
+
+        if (u.uswallow && u.ustuck === mtmp)
+            await mhu.expels(mtmp, mdata(mtmp), true);
+
+        /* if wounded, hole up on or near the stairs (to block them) */
+        {
+            // C: choose_stairs(&sx, &sy, (mtmp->m_id % 2)).  js/shkroom.js:343
+            // holds the port but keeps it module-private and returns the spot
+            // instead of filling two out-params; when it is unavailable the
+            // out-params stay 0, which is C's "no spot found" case.
+            const st = (typeof shkr.choose_stairs === 'function')
+                ? shkr.choose_stairs((mtmp.m_id | 0) % 2) : null;
+            if (st) { sx = st.x | 0; sy = st.y | 0; }
+        }
+        mtmp.mavenge = 1; /* covetous monsters attack while fleeing */
+        if (In_W_tower_wiz(mx, my)
+            || (mtmp.iswiz && !sx && !mon_has_amulet(mtmp))) {
+            if (!mm.noteleport_level(mtmp) && !rn2(3 + Math.trunc((mtmp.mhp | 0) / 10)))
+                await tel.rloc(mtmp, RLOC_MSG);
+        } else if (sx && (mx !== sx || my !== sy)) {
+            if (!mm.noteleport_level(mtmp)
+                && !await mon.mnearto(mtmp, sx, sy, true, RLOC_MSG)) {
+                /* couldn't move to the target spot for some reason, so stay
+                   where we are (don't actually need rloc_to() because mtmp is
+                   still on the map at <mx,my>... */
+                await tel.rloc_to(mtmp, mx, my);
+                return 0;
+            }
+            mx = mtmp.mx; my = mtmp.my; /* update cached location */
+        }
+        /* if you're not around, cast healing spells */
+        if (distu(mx, my) > (BOLT_LIM_WIZ * BOLT_LIM_WIZ))
+            if ((mtmp.mhp | 0) <= (mtmp.mhpmax | 0) - 8) {
+                mon.healmon(mtmp, rnd(8), 0);
+                return 1;
+            }
+        /* FALLTHRU */
+    case STRAT_NONE: /* harass */
+        if (!mm.noteleport_level(mtmp) && !rn2(!mtmp.mflee ? 5 : 33))
+            await mnexto_wiz(mtmp);
+        return 0;
+
+    default: { /* kill, maim, pillage! */
+        const where = (strat & STRAT_STRATMASK);
+        const tx = mtmp.mgoal?.x | 0, ty = mtmp.mgoal?.y | 0;
+        const targ = (strat & STRAT_GOAL);
+        let otmp;
+
+        if (!targ || !isok_wiz(tx, ty)) { /* simply wants you to close */
+            return 0;
+        }
+        if (mm.noteleport_level(mtmp) && !dgm.monnear(mtmp, tx, ty))
+            return 0;
+        if (u_at(tx, ty) || where === STRAT_PLAYER) {
+            /* player is standing on it (or has it) */
+            mx = mtmp.mx; my = mtmp.my;
+            if (mm.noteleport_level(mtmp)
+                || !await mon.mnearto(mtmp, tx, ty, false, RLOC_MSG))
+                await tel.rloc_to(mtmp, mx, my); /* no room? stay put */
+            return 0;
+        }
+        if (where === STRAT_GROUND) {
+            if (!MON_AT(tx, ty) || (mtmp.mx === tx && mtmp.my === ty)) {
+                /* teleport to it and pick it up */
+                await tel.rloc_to(mtmp, tx, ty); /* clean old pos */
+
+                if ((otmp = on_ground(which_arti(targ)))) {
+                    if (vis.cansee(mtmp.mx, mtmp.my))
+                        await dsp.pline(`${dnm.Monnam(mtmp)} picks up `
+                            + `${inv.distant_doname(otmp,
+                                inv.distant_far(otmp, mtmp.mx, mtmp.my))}.`);
+                    inv.obj_extract_self(otmp);
+                    (await import('./steal.js')).mpickobj(mtmp, otmp);
+                    return 1;
+                } else {
+                    return 0;
+                }
+            } else {
+                /* a monster is standing on it - cause some trouble */
+                if (!rn2(5) && !mm.noteleport_level(mtmp))
+                    await mnexto_wiz(mtmp);
+                return 0;
+            }
+        } else { /* a monster has it - 'port beside it. */
+            mx = mtmp.mx; my = mtmp.my;
+            if (!mm.noteleport_level(mtmp)
+                && !await mon.mnearto(mtmp, tx, ty, false, RLOC_MSG))
+                await tel.rloc_to(mtmp, mx, my); /* no room? stay put */
+            return 0;
+        }
+    } /* default case */
+    } /* switch */
+}
+// C ref: dungeon.c In_W_tower(x, y, &u.uz) — inside the Wizard's tower on the
+// current level.  This port has no wizard-tower region test; the level flag is
+// the closest thing it carries.
+function In_W_tower_wiz(_x, _y) {
+    return !!game.level?.flags?.is_wiztower;
+}
+// C ref: teleport.c mnexto(mtmp, rlocflags) — js/do.js:467 and js/vault.js:442
+// each keep a private copy; js/do.js exports mnexto_rloc(), which is the same
+// call with the flags threaded through.
+async function mnexto_wiz(mtmp) {
+    const d = await import('./do.js');
+    if (typeof d.mnexto_rloc === 'function') await d.mnexto_rloc(mtmp, RLOC_MSG);
+}
+// C ref: mon.c monnear(mon, x, y) == dist2 < 3 with the NODIAG exception;
+// js/dogmove.js:2167 exports the port, and vision.c cansee() comes from
+// js/vision.js.  Both are resolved in tactics()'s Promise.all above rather than
+// via a static import, so wizard.js gains no module-eval edge to either.

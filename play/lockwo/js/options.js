@@ -12,6 +12,19 @@ import { EXTCMD_TABLE } from './cmd_data.js';
 import { str2role, str2race, str2gend, str2align,
          races, genders, aligns } from './role.js';
 import { ROLE_NONE, ROLE_RANDOM } from './const.js';
+// For fruitadd() only (the appended "not yet reached" section at the bottom of
+// this file).  All three modules are already evaluated before this one's body
+// runs -- pickup.js above imports makesingular, objects and makemon.js -- so
+// these edges add no module and change no evaluation order.
+import { makesingular } from './objnam.js';
+import { objects } from './mkobj.js';
+import { name_to_pmidx } from './makemon.js';
+// pline()/impossible() for the same section: C's interactive option handlers
+// report through them.  display.js is likewise already evaluated (pickup.js).
+import { pline, impossible } from './display.js';
+import { makeplural } from './invent.js';
+// fruitadd()'s 127-fruit overflow fallback is `return rnd(127)`.
+import { rnd } from './rng.js';
 
 // ---------------------------------------------------------------------------
 // option_help() — the "List of game options." help topic ('?g').
@@ -3983,3 +3996,2978 @@ export {
     // continues that file's port and must not grow a second copy).
     match_str2clr, match_str2attr, add_menu_coloring_parsed,
 };
+
+// ===========================================================================
+// options.c functions the port does not reach yet.
+//
+// Everything below this line is a faithful translation of an options.c
+// function that no js/ code calls: the interactive 'O'/#optionsfull handlers,
+// the #saveoptions config-file writer, the option-value query API, the
+// windowport-capability predicates, and the option-string save/restore used by
+// #saveoptions after a role was picked.  They are exported (C names verbatim)
+// but DELIBERATELY UNREFERENCED -- js/options.js parses the nethackrc, and an
+// rc-parsing change costs a whole session from chargen onward, so nothing above
+// may start calling these without being measured on its own.
+//
+// The C in this section reads and writes `allopt[]` fields that ALLOPT (the
+// parsing table, above) does not carry: setwhere, section, opttyp+addr,
+// termpref, disregarded.  Those live in the parallel ALLOPT_META below rather
+// than in ALLOPT itself.
+// ===========================================================================
+
+// C ref: include/optlist.h allopt[].setwhere / .section, with this build's
+// #ifdefs resolved -- `name|<setwhere><section>`, setwhere from global.h's
+// optset_restrictions (1 sysconf, 2 config, 3 gameview, 4 in_game, 5 wizonly,
+// 6 wiznofuz, 7 hidden) and section from OptSection (G/B/M/S/A).  The dozen
+// names that appear twice in optlist.h resolve to: WIN32 off (altkeyhandling
+// -> set_in_config), ALTMETA on, INSURANCE on, STATUS_HILITES on (hilite_status
+// /statushilites -> set_in_game), MACOS9 off, TTY_GRAPHICS on (menu_overlay),
+// PREV_MSGS 1 (msg_window), SCORE_ON_BOTL off (showscore -> set_in_config),
+// TIMED_DELAY on (config1.h defines MACOS on Apple), SND_SPEECH off (voices ->
+// set_gameview/Term_Excluded), CHANGE_COLOR off (palette absent entirely).
+// Cross-checked: filtering this table the way option_help() does reproduces
+// OPT_BOOL (87) and OPT_COMPOUND (71) exactly.
+const ALLOPT_META_DATA = `
+    windowtype|3A,playmode|3A,name|3A,role|3A,race|3A,gender|3A,alignment|3A,
+    accessiblemsg|4A,acoustics|4A,align_message|3A,align_status|3A,
+    altkeyhandling|2A,altmeta|4A,armorstatus|4A,ascii_map|4A,
+    autocompletions|4A,autodescribe|4A,autodig|4B,autoopen|4B,autopickup|4B,
+    autopickup exceptions|4B,autoquiver|4B,autounlock|4B,bgcolors|4M,
+    bind keys|4A,BIOS|2A,blind|2A,bones|2A,boulder|4A,catname|3A,
+    checkpoint|4A,cmdassist|4B,color|4M,confirm|4A,crash_email|4A,
+    crash_name|4A,crash_urlmax|4A,customcolors|4M,customsymbols|4M,
+    dark_room|4A,deaf|2A,DECgraphics|2A,debug_hunger|6A,debug_mongen|6A,
+    debug_overwrite_stairs|6A,disclose|4A,dogname|3A,dropped_nopick|4B,
+    dungeon|2A,effects|2A,eight_bit_tty|4A,extmenu|4A,female|2A,
+    fireassist|4B,fixinv|4A,font_map|3A,font_menu|3A,font_message|3A,
+    font_size_map|3A,font_size_menu|3A,font_size_message|3A,
+    font_size_status|3A,font_size_text|3A,font_status|3A,font_text|3A,
+    force_invmenu|4A,fruit|4G,fullscreen|2A,glyph|4A,goldX|4A,guicolor|4A,
+    help|4A,herecmd_menu|4A,hilite_pet|4M,hilite_pile|4M,hilite_status|4A,
+    hitpointbar|4S,horsename|3A,IBMgraphics|2A,idlecheckpoint|4A,ignintr|4A,
+    implicit_uncursed|4A,legacy|2A,lit_corridor|4A,lootabc|4A,mail|4A,
+    map_mode|3A,mention_decor|4A,mention_map|4A,mention_walls|4A,
+    menu_deselect_all|2A,menu_deselect_page|2A,menu_first_page|2A,
+    menu_headings|4A,menu_invert_all|2A,menu_invert_page|2A,
+    menu_last_page|2A,menu_next_page|2A,menu_objsyms|4A,menu_overlay|4A,
+    menu_previous_page|2A,menu_search|2A,menu_select_all|2A,
+    menu_select_page|2A,menu_shift_left|2A,menu_shift_right|2A,
+    menu_tab_sep|5A,menucolors|4A,menu colors|4S,menuinvertmode|4A,
+    menustyle|4A,message types|4A,mon_movement|4A,monpolycontrol|5A,
+    montelecontrol|5A,monsters|2A,mouse_support|4A,msg_window|4A,
+    msghistory|3A,news|2A,nudist|2A,null|4A,number_pad|4G,objects|2A,
+    packorder|4A,paranoid_confirmation|4A,pauper|2A,perm_invent|4A,
+    perminv_mode|4A,petattr|4A,pettype|3A,pickup_burden|4A,pickup_stolen|4B,
+    pickup_thrown|4B,pickup_types|4B,pile_limit|4A,player_selection|3A,
+    popup_dialog|4A,preload_tiles|2A,price_quotes|4G,pushweapon|4B,
+    query_menu|4A,quick_farsight|4A,rawio|2A,reroll|2A,rest_on_space|4A,
+    roguesymset|4A,runmode|4A,safe_pet|4A,safe_wait|4A,sanity_check|5A,
+    scores|4A,scroll_amount|3A,scroll_margin|3A,selectsaved|2A,showdamage|4A,
+    showexp|4S,showrace|4M,showscore|2S,showvers|4A,silent|4A,
+    softkeyboard|2A,sortdiscoveries|4A,sortloot|4A,sortpack|4A,
+    sortvanquished|4A,soundlib|3A,sounds|4A,sparkle|4M,spot_monsters|4A,
+    splash_screen|2A,standout|4A,status_updates|2A,
+    status condition fields|4S,statushilites|4A,status highlight rules|4S,
+    statuslines|4S,suppress_alert|4A,symset|4M,term_cols|2A,term_rows|2A,
+    terrainstatus|4A,tile_file|3A,tile_height|3A,tile_width|3A,tiled_map|4A,
+    time|4S,timed_delay|4M,tips|4A,tombstone|4A,toptenwin|4A,traps|2A,
+    travel|4A,travel_debug|5A,tutorial|2A,use_darkgray|2A,use_inverse|4A,
+    use_truecolor|2A,vary_msgcount|3A,verbose|4A,versinfo|4A,voices|3A,
+    vt_tiledata|2A,vt_sounddata|2A,warnings|2A,weaponstatus|4A,
+    whatis_coord|4A,whatis_filter|4A,whatis_menu|4A,whatis_moveskip|4A,
+    windowborders|4A,windowcolors|3A,wizmgender|5A,wizweight|5A,wraptext|4A,
+    cond_|7A,font|7A`;
+
+// C ref: include/global.h enum optset_restrictions.
+const SET_IN_SYSCONF = 1, SET_IN_CONFIG = 2, SET_GAMEVIEW = 3,
+      SET_IN_GAME = 4, SET_WIZONLY = 5, SET_WIZNOFUZ = 6, SET_HIDDEN = 7;
+// C ref: include/global.h SET__IS_VALUE_VALID() -- note the macro is inverted
+// relative to its name: it is TRUE for an OUT-of-range status, which is what
+// set_option_mod_status() &c test before complaining.
+function SET__IS_VALUE_VALID(s) { return (s < SET_IN_SYSCONF) || (s > SET_WIZNOFUZ); }
+
+// C ref: include/optlist.h enum OptSection.
+const OPT_SECTIONS = { G: 0, B: 1, M: 2, S: 3, A: 4 };
+// C ref: include/optlist.h enum menu_terminology_preference; every entry in
+// this build is Term_False except these five.
+const TERM_FALSE = 0, TERM_OFF = 1, TERM_DISABLED = 2, TERM_EXCLUDED = 3;
+const ALLOPT_TERMPREF = {
+    bgcolors: TERM_OFF, idlecheckpoint: TERM_OFF, perm_invent: TERM_OFF,
+    sounds: TERM_OFF, voices: TERM_EXCLUDED,
+};
+
+// name -> { setwhere, section, termpref }.  setwhere is writable:
+// set_option_mod_status() mutates allopt[].setwhere at run time.
+const ALLOPT_META = (() => {
+    const m = new Map();
+    for (const ent of ALLOPT_META_DATA.split(',')) {
+        const t = ent.trim();
+        if (!t) continue;
+        const bar = t.lastIndexOf('|');
+        const name = t.slice(0, bar), sw = t.slice(bar + 1);
+        m.set(name, { setwhere: Number(sw[0]), section: OPT_SECTIONS[sw[1]],
+                      termpref: ALLOPT_TERMPREF[name] || TERM_FALSE });
+    }
+    return m;
+})();
+
+// C ref: include/optlist.h OPTCOUNT (SIZE(allopt) - 1, the NULL sentinel
+// excluded).  ALLOPT holds exactly the same names in the same order.
+const OPTCOUNT = ALLOPT.length;
+
+// allopt[optidx].setwhere, for an index into ALLOPT.
+function opt_setwhere(optidx) {
+    const o = ALLOPT[optidx];
+    const meta = o && ALLOPT_META.get(o.name);
+    return meta ? meta.setwhere : SET_HIDDEN;
+}
+
+// C ref: options.c set_option_mod_status() -- js/wintty.js carries the no-op
+// stub the windowport calls; the table mutation it is supposed to perform
+// belongs here, next to the table.  str_start_is(name, optnam, TRUE) means the
+// FIRST option whose name starts with optnam wins, and the loop then returns.
+function allopt_set_setwhere(optnam, status) {
+    for (let k = 0; k < OPTCOUNT; k++) {
+        if (str_start_is(ALLOPT[k].name, optnam, true)) {
+            const meta = ALLOPT_META.get(ALLOPT[k].name);
+            if (meta) meta.setwhere = status;
+            return;
+        }
+    }
+}
+
+// C ref: options.c allopt[].disregarded -- cfgfiles.c's #saveoptions path turns
+// every option off, re-enables just windowtype+soundlib, reads the file, then
+// turns them all back on.
+let allopt_disregarded = new Array(OPTCOUNT).fill(false);
+
+// C ref: options.c heed_all_options().
+export function heed_all_options() {
+    for (let i = 0; i < OPTCOUNT; i++) allopt_disregarded[i] = false;
+}
+
+// C ref: options.c disregard_all_options().
+export function disregard_all_options() {
+    for (let i = 0; i < OPTCOUNT; i++) allopt_disregarded[i] = true;
+}
+
+// C ref: options.c heed_this_option().
+export function heed_this_option(optidx) {
+    if (optidx >= 0 && optidx < OPTCOUNT) allopt_disregarded[optidx] = false;
+}
+
+// C ref: options.c disregard_this_option().
+export function disregard_this_option(optidx) {
+    if (optidx >= 0 && optidx < OPTCOUNT) allopt_disregarded[optidx] = true;
+}
+
+// ---------------------------------------------------------------------------
+// windowport capabilities.  C ref: options.c wc_options[]/wc2_options[] plus
+// include/winprocs.h WC_*/WC2_*; the two masks below are win/tty/wintty.c's
+// tty_procs.wincap/.wincap2 with this build's #ifdefs resolved (TTY_PERM_INVENT
+// off, MSDOS/WIN32CON off, SELECTSAVED on, STATUS_HILITES on, NO_TERMS off).
+
+const WC_COLOR = 0x00000001, WC_HILITE_PET = 0x00000002,
+      WC_ASCII_MAP = 0x00000004, WC_TILED_MAP = 0x00000008,
+      WC_PRELOAD_TILES = 0x00000010, WC_TILE_WIDTH = 0x00000020,
+      WC_TILE_HEIGHT = 0x00000040, WC_TILE_FILE = 0x00000080,
+      WC_INVERSE = 0x00000100, WC_ALIGN_MESSAGE = 0x00000200,
+      WC_ALIGN_STATUS = 0x00000400, WC_VARY_MSGCOUNT = 0x00000800,
+      WC_FONT_MAP = 0x00001000, WC_FONT_MESSAGE = 0x00002000,
+      WC_FONT_STATUS = 0x00004000, WC_FONT_MENU = 0x00008000,
+      WC_FONT_TEXT = 0x00010000, WC_FONTSIZ_MAP = 0x00020000,
+      WC_FONTSIZ_MESSAGE = 0x00040000, WC_FONTSIZ_STATUS = 0x00080000,
+      WC_FONTSIZ_MENU = 0x00100000, WC_FONTSIZ_TEXT = 0x00200000,
+      WC_SCROLL_MARGIN = 0x00400000, WC_SPLASH_SCREEN = 0x00800000,
+      WC_POPUP_DIALOG = 0x01000000, WC_SCROLL_AMOUNT = 0x02000000,
+      WC_EIGHT_BIT_IN = 0x04000000, WC_PERM_INVENT = 0x08000000,
+      WC_MAP_MODE = 0x10000000, WC_WINDOWCOLORS = 0x20000000,
+      WC_PLAYER_SELECTION = 0x40000000, WC_MOUSE_SUPPORT = 0x80000000;
+
+const WC2_FULLSCREEN = 0x0001, WC2_SOFTKEYBOARD = 0x0002,
+      WC2_WRAPTEXT = 0x0004, WC2_HILITE_STATUS = 0x0008,
+      WC2_SELECTSAVED = 0x0010, WC2_DARKGRAY = 0x0020,
+      WC2_HITPOINTBAR = 0x0040, WC2_FLUSH_STATUS = 0x0080,
+      WC2_RESET_STATUS = 0x0100, WC2_TERM_SIZE = 0x0200,
+      WC2_STATUSLINES = 0x0400, WC2_WINDOWBORDERS = 0x0800,
+      WC2_PETATTR = 0x1000, WC2_GUICOLOR = 0x2000,
+      WC2_URGENT_MESG = 0x4000, WC2_SUPPRESS_HIST = 0x8000,
+      WC2_MENU_SHIFT = 0x010000, WC2_U_UTF8STR = 0x020000,
+      WC2_EXTRACOLORS = 0x040000, WC2_EXTRASTATUS = 0x080000;
+
+// C ref: win/tty/wintty.c tty_procs.wincap / .wincap2.
+const TTY_WINCAP = WC_COLOR | WC_HILITE_PET | WC_INVERSE | WC_EIGHT_BIT_IN;
+const TTY_WINCAP2 = WC2_SELECTSAVED
+                  | WC2_HILITE_STATUS | WC2_HITPOINTBAR | WC2_FLUSH_STATUS
+                  | WC2_RESET_STATUS
+                  | WC2_DARKGRAY | WC2_SUPPRESS_HIST | WC2_URGENT_MESG
+                  | WC2_STATUSLINES | WC2_U_UTF8STR | WC2_PETATTR
+                  | WC2_EXTRACOLORS | WC2_EXTRASTATUS;
+
+// C ref: options.c wc_options[].
+const WC_OPTIONS = [
+    ['ascii_map', WC_ASCII_MAP], ['color', WC_COLOR],
+    ['eight_bit_tty', WC_EIGHT_BIT_IN], ['hilite_pet', WC_HILITE_PET],
+    ['perm_invent', WC_PERM_INVENT],
+    ['perminv_mode', WC_PERM_INVENT],   /* shares WC_PERM_INVENT */
+    ['popup_dialog', WC_POPUP_DIALOG],
+    ['player_selection', WC_PLAYER_SELECTION],
+    ['preload_tiles', WC_PRELOAD_TILES], ['tiled_map', WC_TILED_MAP],
+    ['tile_file', WC_TILE_FILE], ['tile_width', WC_TILE_WIDTH],
+    ['tile_height', WC_TILE_HEIGHT], ['align_message', WC_ALIGN_MESSAGE],
+    ['align_status', WC_ALIGN_STATUS], ['font_map', WC_FONT_MAP],
+    ['font_menu', WC_FONT_MENU], ['font_message', WC_FONT_MESSAGE],
+    ['font_size_map', WC_FONTSIZ_MAP], ['font_size_menu', WC_FONTSIZ_MENU],
+    ['font_size_message', WC_FONTSIZ_MESSAGE],
+    ['font_size_status', WC_FONTSIZ_STATUS],
+    ['font_size_text', WC_FONTSIZ_TEXT], ['font_status', WC_FONT_STATUS],
+    ['font_text', WC_FONT_TEXT], ['map_mode', WC_MAP_MODE],
+    ['scroll_amount', WC_SCROLL_AMOUNT], ['scroll_margin', WC_SCROLL_MARGIN],
+    ['splash_screen', WC_SPLASH_SCREEN], ['use_inverse', WC_INVERSE],
+    ['vary_msgcount', WC_VARY_MSGCOUNT], ['windowcolors', WC_WINDOWCOLORS],
+    ['mouse_support', WC_MOUSE_SUPPORT],
+];
+
+// C ref: options.c wc2_options[].
+const WC2_OPTIONS = [
+    ['armorstatus', WC2_EXTRASTATUS], ['fullscreen', WC2_FULLSCREEN],
+    ['guicolor', WC2_GUICOLOR], ['hilite_status', WC2_HILITE_STATUS],
+    ['hitpointbar', WC2_HITPOINTBAR], ['menu_shift', WC2_MENU_SHIFT],
+    ['petattr', WC2_PETATTR], ['softkeyboard', WC2_SOFTKEYBOARD],
+    /* name shown in 'O' menu is different */
+    ['status hilite rules', WC2_HILITE_STATUS],
+    /* statushilites doesn't have its own bit */
+    ['statushilites', WC2_HILITE_STATUS], ['statuslines', WC2_STATUSLINES],
+    ['term_cols', WC2_TERM_SIZE], ['term_rows', WC2_TERM_SIZE],
+    ['terrainstatus', WC2_EXTRASTATUS], ['use_darkgray', WC2_DARKGRAY],
+    ['weaponstatus', WC2_EXTRASTATUS], ['windowborders', WC2_WINDOWBORDERS],
+    ['wraptext', WC2_WRAPTEXT],
+];
+
+// C ref: options.c set_wc_option_mod_status().
+export function set_wc_option_mod_status(optmask, status) {
+    let k = 0;
+
+    if (SET__IS_VALUE_VALID(status)) {
+        impossible(`set_wc_option_mod_status: status out of range ${status}.`);
+        return;
+    }
+    while (k < WC_OPTIONS.length) {
+        if (optmask & WC_OPTIONS[k][1])
+            allopt_set_setwhere(WC_OPTIONS[k][0], status);
+        k++;
+    }
+}
+
+// C ref: options.c set_wc2_option_mod_status().  NOTE js/wintty.js also has a
+// `set_wc2_option_mod_status` -- a FILE-LOCAL no-op stub for the windowport's
+// own init calls, next to its set_option_mod_status stub.  This is the real
+// options.c function; nothing reaches across, but do not "dedupe" them.
+export function set_wc2_option_mod_status(optmask, status) {
+    let k = 0;
+
+    if (SET__IS_VALUE_VALID(status)) {
+        impossible(`set_wc2_option_mod_status: status out of range ${status}.`);
+        return;
+    }
+    while (k < WC2_OPTIONS.length) {
+        if (optmask & WC2_OPTIONS[k][1])
+            allopt_set_setwhere(WC2_OPTIONS[k][0], status);
+        k++;
+    }
+}
+
+// C ref: options.c is_wc_option().
+export function is_wc_option(optnam) {
+    let k = 0;
+    while (k < WC_OPTIONS.length) {
+        if (WC_OPTIONS[k][0] === optnam) return true;
+        k++;
+    }
+    return false;
+}
+
+// C ref: options.c wc_supported().
+export function wc_supported(optnam) {
+    for (let k = 0; k < WC_OPTIONS.length; ++k)
+        if (WC_OPTIONS[k][0] === optnam)
+            return (TTY_WINCAP & WC_OPTIONS[k][1]) ? true : false;
+    return false;
+}
+
+// C ref: options.c is_wc2_option().
+export function is_wc2_option(optnam) {
+    let k = 0;
+    while (k < WC2_OPTIONS.length) {
+        if (WC2_OPTIONS[k][0] === optnam) return true;
+        k++;
+    }
+    return false;
+}
+
+// C ref: options.c wc2_supported().
+export function wc2_supported(optnam) {
+    for (let k = 0; k < WC2_OPTIONS.length; ++k)
+        if (WC2_OPTIONS[k][0] === optnam)
+            return (TTY_WINCAP2 & WC2_OPTIONS[k][1]) ? true : false;
+    return false;
+}
+
+// C ref: include/winprocs.h MAP_OPTION &c, the wc_set_font_name() selector.
+const MAP_OPTION = 0, MESSAGE_OPTION = 1, STATUS_OPTION = 2, TEXT_OPTION = 3,
+      MENU_OPTION = 4;
+
+// C ref: options.c wc_set_font_name().  No tty font is settable, so the fields
+// only ever feed all_options_strbuf()'s font_* lines back out again.
+export function wc_set_font_name(opttype, fontname) {
+    let fn = null;
+
+    if (!fontname) return;
+    game.iflags = game.iflags || {};
+    switch (opttype) {
+    case MAP_OPTION:     fn = 'wc_font_map'; break;
+    case MESSAGE_OPTION: fn = 'wc_font_message'; break;
+    case TEXT_OPTION:    fn = 'wc_font_text'; break;
+    case MENU_OPTION:    fn = 'wc_font_menu'; break;
+    case STATUS_OPTION:  fn = 'wc_font_status'; break;
+    default:
+        return;
+    }
+    if (fn) game.iflags[fn] = fontname;
+}
+
+// C ref: options.c options_free_window_colors() -- iflags.wcolors[][fg,bg] and
+// the options_set_window_colors_flag that wc_set_window_colors() sets.
+export function options_free_window_colors() {
+    const wc = game.iflags && game.iflags.wcolors;
+    for (let j = 0; j < WCNAMES.length; ++j) {
+        if (!wc || !wc[j]) continue;
+        if (wc[j].fg) wc[j].fg = null;
+        if (wc[j].bg) wc[j].bg = null;
+    }
+    if (game.iflags) game.iflags.options_set_window_colors_flag = 0;
+}
+
+// ---------------------------------------------------------------------------
+// roleoptvals[][] -- the unparsed role/race/gender/alignment strings, kept per
+// option phase so #saveoptions can write out what the player actually typed
+// ("Valkyrie", "random", "@") rather than the resolved index.
+// C ref: options.c:110 `enum { MAX_ROLEOPT = 4 }` and roleoptvals[4][7].
+
+const MAX_ROLEOPT = 4;
+// C ref: include/global.h enum option_phases.  phase_not_set is 0, so the
+// array has num_opt_phases (7) slots and slot 0 is never used.
+const PHASE_NOT_SET = 0, BUILTIN_OPT = 1, SYSCF_OPT = 2, RC_FILE_OPT = 3,
+      ENVIRON_OPT = 4, CMDLINE_OPT = 5, PLAY_OPT = 6, NUM_OPT_PHASES = 7;
+
+// C ref: decl.h go.opt_phase -- which source is being parsed right now.
+let opt_phase = PHASE_NOT_SET;
+
+const roleoptvals = Array.from({ length: MAX_ROLEOPT },
+                              () => new Array(NUM_OPT_PHASES).fill(null));
+
+// C ref: options.c roleopt2opt[4].
+const roleopt2opt = ['role', 'race', 'gender', 'alignment'];
+
+// C ref: options.c opt2roleopt() -- role => 0, race => 1, gender => 2,
+// alignment => 3.  `optidx` is an option NAME here: ALLOPT is indexed by
+// position, and the C enum values are not reproduced in this port.
+export function opt2roleopt(roleopt) {
+    switch (roleopt) {
+    case 'role':      return 0;
+    case 'race':      return 1;
+    case 'gender':    return 2;
+    case 'alignment': return 3;
+    default:          break;
+    }
+    return 0;
+}
+
+// C ref: options.c getoptstr() -- fetch the saved string for one phase, or for
+// ophase == num_opt_phases the highest-priority non-Null one.
+export function getoptstr(optidx, ophase) {
+    const roleoptindx = opt2roleopt(optidx);
+
+    if (ophase === NUM_OPT_PHASES) { /* any source */
+        /* find non-Null, in order optvals[][play_opt], [cmdline_opt],
+           [environ_opt], [rc_file_opt], [syscf_opt], [builtin_opt] */
+        for (let phase = NUM_OPT_PHASES - 1; phase >= 0; --phase)
+            if (roleoptvals[roleoptindx][phase]) {
+                ophase = phase;
+                break;
+            }
+    }
+    if (roleoptindx >= 0 && roleoptindx < MAX_ROLEOPT
+        && ophase >= 0 && ophase < NUM_OPT_PHASES)
+        return roleoptvals[roleoptindx][ophase];
+    panic(`bad index roleoptvals[${roleoptindx}][${ophase}]`);
+    /*NOTREACHED*/
+    return null;
+}
+
+// C ref: options.c saveoptstr() -- strips "optname:" (or "optname=", whichever
+// comes first) off the front and keeps the rest for go.opt_phase.
+export function saveoptstr(optidx, optstr) {
+    const phase = opt_phase, roleoptindx = opt2roleopt(optidx);
+    let p = optstr.indexOf(':');
+    const q = optstr.indexOf('=');
+
+    if (p < 0 || (q >= 0 && q < p)) p = q;
+    if (p >= 0) optstr = optstr.slice(p + 1);
+
+    roleoptvals[roleoptindx][phase] = optstr;
+}
+
+// C ref: options.c unsaveoptstr().
+export function unsaveoptstr(optidx, ophase) {
+    const roleoptindx = opt2roleopt(optidx);
+
+    if (roleoptvals[roleoptindx][ophase])
+        roleoptvals[roleoptindx][ophase] = null;
+}
+
+// C ref: options.c freeroleoptvals().
+export function freeroleoptvals() {
+    for (let i = 0; i < 4; ++i)
+        for (let j = 0; j < NUM_OPT_PHASES; ++j)
+            unsaveoptstr(roleopt2opt[i], j);
+}
+
+// C ref: options.c saveoptvals() -- inside `#if 0 /* not needed */`, kept for
+// the day #saveoptions can run after a restore.  js/storage.js owns the save
+// format, so this writes the same [4][num_opt_phases] shape into the caller's
+// record instead of emitting Sfo_ fields.
+export function saveoptvals(nhfp) {
+    if (update_file(nhfp)) {
+        for (let i = 0; i < 4; ++i)
+            for (let j = 0; j < NUM_OPT_PHASES; ++j) {
+                const val = roleoptvals[i][j];
+                const len = val ? val.length + 1 : 0;
+                nhfp.optvals = nhfp.optvals || [];
+                nhfp.optvals.push(len);
+                if (val) nhfp.optvals.push(val);
+            }
+    }
+    if (release_data(nhfp)) freeroleoptvals();
+}
+
+// C ref: options.c restoptvals() -- the read side of the above.
+export function restoptvals(nhfp) {
+    if (nhfp.structlevel) {
+        const src = nhfp.optvals || [];
+        let k = 0;
+        for (let i = 0; i < 4; ++i)
+            for (let j = 0; j < NUM_OPT_PHASES; ++j) {
+                /* len includes terminating '\0' for non-Null values */
+                const len = src[k++];
+                if (len) roleoptvals[i][j] = src[k++];
+                else roleoptvals[i][j] = null;
+            }
+    }
+}
+
+// C ref: options.c get_cnf_role_opt() -- the value to write into a new config
+// file: skip the command line, the environment and the compiled-in default,
+// highest phase first.
+export function get_cnf_role_opt(optidx) {
+    let op = null;
+
+    for (let phase = NUM_OPT_PHASES - 1; phase >= 0 && !op; --phase) {
+        if (phase === CMDLINE_OPT || phase === ENVIRON_OPT
+            || phase === BUILTIN_OPT)
+            continue;
+        op = getoptstr(optidx, phase);
+    }
+    return op;
+}
+
+// C ref: sfstruct.c update_file()/release_data() -- the NHFILE mode tests
+// saveoptvals() gates on.  js/storage.js owns the real save file; these read
+// the same two mode flags off whatever record the caller passes.
+function update_file(nhfp) { return !!(nhfp && nhfp.mode & 0x02 /* WRITING */); }
+function release_data(nhfp) { return !!(nhfp && nhfp.mode & 0x04 /* FREEING */); }
+
+// C ref: panic.c panic() -- unrecoverable; the port has no equivalent, so
+// report through raw_print() and throw rather than continuing with bad state.
+function panic(msg) {
+    raw_print(`panic: ${msg}`);
+    throw new Error(`panic: ${msg}`);
+}
+
+// ---------------------------------------------------------------------------
+// A menu collector for the handler_*() ports below.
+//
+// C ref: the windowport menu API (create_nhwindow(), start_menu(), add_menu(),
+// end_menu(), select_menu(), destroy_nhwindow()).  js/ has no windowport
+// abstraction -- every ported menu drives frozen/terminal.js directly, see
+// js/doset.js -- so these build the exact item list C would have built and
+// hand it to OPT_MENU_DRIVER.  With no driver installed select_menu() reports
+// -1, "player hit ESC", which is the one answer that changes nothing.
+
+const NHW_MENU = 4, NHW_TEXT = 5;                 /* wintype.h */
+const PICK_NONE = 0, PICK_ONE = 1, PICK_ANY = 2;  /* wintype.h */
+const MENU_BEHAVE_STANDARD = 0;                   /* wintype.h */
+const MENU_ITEMFLAGS_NONE = 0x0, MENU_ITEMFLAGS_SELECTED = 0x1,
+      MENU_ITEMFLAGS_SKIPINVERT = 0x2;
+
+// Install `select` (win, how) -> array of picked `any` values, or null/-1 for
+// ESC; `getlin` (prompt) -> string ('\033' for ESC) to drive these for real.
+export const OPT_MENU_DRIVER = { select: null, getlin: null };
+
+function create_nhwindow(type) {
+    return { type, items: [], query: '', lines: [] };
+}
+function destroy_nhwindow(_win) { }
+function start_menu(win, behave) { win.items.length = 0; win.behave = behave; }
+function add_menu(win, _glyphinfo, any, accel, gacc, attr, clr, str, itemflags) {
+    win.items.push({ any, accel, gacc, attr, clr, str, itemflags,
+                     selectable: any !== null && any !== undefined });
+}
+function add_menu_str(win, str) {
+    win.items.push({ any: null, str, selectable: false });
+}
+function add_menu_heading(win, str) {
+    win.items.push({ any: null, str, heading: true, selectable: false });
+}
+function end_menu(win, query) { win.query = query; }
+function putstr(win, _attr, str) { win.lines.push(str); }
+
+// Returns C's select_menu() count: >0 picked, 0 picked-nothing-but-confirmed,
+// -1 cancelled.  `picks` is the menu_item** out-param.
+async function select_menu(win, how, picks) {
+    if (!OPT_MENU_DRIVER.select) return -1;
+    const got = await OPT_MENU_DRIVER.select(win, how);
+    if (!got || got === -1) return -1;
+    for (const g of got) picks.push(g);
+    return picks.length;
+}
+
+// C ref: getlin() -- returns the typed line, or "\033" when ESC'd.
+async function getlin(prompt) {
+    if (!OPT_MENU_DRIVER.getlin) return '\x1b';
+    return await OPT_MENU_DRIVER.getlin(prompt);
+}
+
+// The port's stand-ins for the side effects C's handlers trigger.  Each is a
+// genuine no-op FOR THIS BUILD, not a deferral:
+//   update_inventory()          -- TTY_PERM_INVENT is undefined, so there is
+//                                  no persistent inventory window to refresh.
+//   adjust_menu_promptstyle()   -- ditto (it restyles WIN_INVEN's header).
+//   perm_invent_toggled()       -- ditto.
+//   check_tty_wincap()          -- tty_procs.wincap lacks WC_PERM_INVENT.
+//   number_pad()/reset_commands() -- js/cmd.js owns key dispatch and rebuilds
+//                                  it from game.flags on the next command.
+function update_inventory() { }
+function adjust_menu_promptstyle(_win, _ca) { }
+function perm_invent_toggled(_negated) { }
+function check_tty_wincap(_bit) { return false; }
+function number_pad(_state) { }
+function reset_commands(_initial) { }
+
+// ---------------------------------------------------------------------------
+// The static tables options.c's handlers display.  ALLOPT and the optfn_*
+// parsers above only needed the option NAMES; the menus also need the
+// per-choice explanations, so those columns live here.
+
+// C ref: options.c menutype[][3] -- 'menustyle' settings.
+const MENUTYPE = [
+    ['traditional', '[prompt for object class(es), then',
+                    ' ask y/n for each item in those classes]'],
+    ['combination', '[prompt for object class(es), then',
+                    ' use menu for items in those classes]'],
+    ['full',        '[use menu to choose class(es), then',
+                    ' use another menu for items in those]'],
+    ['partial',     '[skip class filtering; always',
+                    ' use menu of all available items]'],
+];
+
+// C ref: options.c msgwind[][3] -- 'msg_window' settings (PREV_MSGS is 1 for
+// tty, which supports all four).
+const MSGWIND = [
+    ['single',      '[show one old message at a time,',
+                    ' most recent first]'],
+    ['combination', '[for consecutive ^P requests, use',
+                    " 'single' for first two, then 'full']"],
+    ['full',        '[show all available messages,',
+                    ' oldest first and most recent last]'],
+    ['reversed',    '[show all available messages,',
+                    ' most recent first]'],
+];
+
+// C ref: options.c unlocktypes[][2] -- the second column UNLOCKTYPES lacks.
+const UNLOCKTYPE_DESCR = ['(might fail)', '', '(doors only)',
+                          '(chests/boxes only)'];
+
+// C ref: options.c burdentype[], runmodes[], sortltype[].
+const BURDENTYPE = ['unencumbered', 'burdened', 'stressed',
+                    'strained', 'overtaxed', 'overloaded'];
+const RUNMODES = ['teleport', 'run', 'walk', 'crawl'];
+const SORTLTYPE = ['none', 'loot', 'full'];
+
+// C ref: options.c perminv_modes[][2] (the third column; PERMINV_MODES above
+// carries the name and its alias).  Entries 5/6 are TTY_PERM_INVENT-only and
+// so are NULL in this build.
+const PERMINV_MODE_DESCR = [
+    'no permanent inventory window', 'all inventory except for gold',
+    'full inventory including gold', null, null, null, null, null,
+    'subset: items currently in use',
+];
+
+// C ref: options.c objsymvals[].descr (OBJSYMVALS above is the .nam column).
+const OBJSYMVAL_DESCR = [
+    "don't show object symbols in menus",
+    'show object symbols in menu header lines',
+    'show object symbols in individual menu entries',
+    'show object symbols in headers and menu entries',
+    'show objsyms in entries if no headers are shown',
+    'show objsyms in header, in entries if no header',
+];
+
+// C ref: options.c paranoia[].explain (PARANOIA above stops at synMinLen).
+const PARANOIA_EXPLAIN = [
+    'for "yes" confirmations, require "no" to reject',
+    'yes vs y to quit or to enter explore mode',
+    'yes vs y to die (explore mode or debug mode)',
+    'yes vs y to save bones data when dying in debug mode',
+    'yes vs y to attack a peaceful monster',
+    'yes vs y to break a wand via (a)pply',
+    'yes vs y to continue eating after first bite when satiated',
+    'yes vs y to change form when lycanthropy is controllable',
+    'y required to pray (supersedes old "prayconfirm" option)',
+    'y required to enter known trap unless considered harmless',
+    "y required to pick filter choice 'A' for menustyle:Full",
+    "'m' prefix necessary to deliberately walk into lava or water",
+    'always pick from inventory for Remove and Takeoff',
+    null, null,   /* "none" and "all": config-file only, no menu entry */
+];
+const PARANOID_BONES = 0x0008; /* flag.h; handler skips it outside wizard mode */
+
+// C ref: options.c default_menu_cmd_info[].desc (DEFAULT_MENU_CMD_INFO above
+// is the .name/.cmd columns).
+const DEFAULT_MENU_CMD_DESC = [
+    'Go to next page', 'Go to previous page', 'Go to first page',
+    'Go to last page', 'Select all items in entire menu',
+    'Invert selection for all items', 'Unselect all items in entire menu',
+    'Select all items on current page', "Invert current page's selections",
+    'Unselect all items on current page', 'Search and invert matching items',
+    'Pan current page to right (perm_invent only)',
+    'Pan current page to left (perm_invent only)',
+];
+
+// C ref: include/flag.h DISCLOSE_*, NUM_DISCLOSURE_OPTIONS.
+const NUM_DISCLOSURE_OPTIONS = 6;
+const DISCLOSE_PROMPT_DEFAULT_YES = 'y', DISCLOSE_PROMPT_DEFAULT_NO = 'n',
+      DISCLOSE_PROMPT_DEFAULT_SPECIAL = '?', DISCLOSE_YES_WITHOUT_PROMPT = '+',
+      DISCLOSE_NO_WITHOUT_PROMPT = '-', DISCLOSE_SPECIAL_WITHOUT_PROMPT = '#';
+// C ref: include/winprocs.h ALIGN_*.
+const ALIGN_LEFT = 1, ALIGN_RIGHT = 2, ALIGN_TOP = 3, ALIGN_BOTTOM = 4;
+// C ref: include/flag.h GPCOORDS_*, GFILTER_*.
+const GPCOORDS_NONE = 'n', GPCOORDS_MAP = 'm', GPCOORDS_COMPASS = 'c',
+      GPCOORDS_COMFULL = 'f', GPCOORDS_SCREEN = 's';
+const GFILTER_NONE = 0, GFILTER_VIEW = 1, GFILTER_AREA = 2;
+// C ref: include/flag.h VI_*.
+const VI_NUMBER = 1, VI_NAME = 2, VI_BRANCH = 4;
+// C ref: include/wintype.h InvOpt* / InvSparse.
+const InvOptNone = 0, InvOptOn = 1, InvSparse = 4;
+// C ref: include/global.h COLNO/ROWNO.
+const COLNO = 80, ROWNO = 21;
+
+// C ref: options.c:108 `static boolean give_opt_msg = TRUE` -- doset_simple()
+// clears it around its handler calls so the simple menu stays quiet.
+let give_opt_msg = true;
+
+// ---------------------------------------------------------------------------
+// handler_*() -- the per-option interactive setters the 'O' menus dispatch to.
+// Each is async because the port's input is: C's select_menu()/getlin() block,
+// ours awaits.  All return optn_ok (or the sub-handler's result).
+
+// C ref: options.c handler_menustyle().  flags.menu_style is a 0..3 index in C;
+// the port keeps the same setting as game.flags.menustyle, the option value's
+// first letter, which js/pickup.js menu_style() maps to MENU_*.
+export async function handler_menustyle() {
+    let tmpwin, chngd, i, n;
+    game.flags = game.flags || {};
+    const old_menu_style = menustyle_index();
+    let buf, sep = (game.iflags && game.iflags.menu_tab_sep) ? '\t' : ' ';
+    const style_pick = [];
+    const clr = NO_COLOR;
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < MENUTYPE.length; i++) {
+        buf = `${padtrunc(MENUTYPE[i][0], 12)}${sep}${MENUTYPE[i][1].slice(0, 60)}`;
+        add_menu(tmpwin, null, { a_int: i + 1 }, buf[0], 0, ATR_NONE, clr, buf,
+                 (i === old_menu_style) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+        /* second line is prefixed by spaces that "c - " would use */
+        buf = `${' '.repeat(4)}${' '.repeat(12)}${sep}${MENUTYPE[i][2].slice(0, 60)}`;
+        add_menu_str(tmpwin, buf);
+    }
+    end_menu(tmpwin, 'Select menustyle:');
+    n = await select_menu(tmpwin, PICK_ONE, style_pick);
+    if (n > 0) {
+        i = style_pick[0].a_int - 1;
+        /* if there are two picks, use the one that wasn't pre-selected */
+        if (n > 1 && i === old_menu_style) i = style_pick[1].a_int - 1;
+        game.flags.menustyle = MENUTYPE[i][0][0];
+    }
+    destroy_nhwindow(tmpwin);
+    chngd = (menustyle_index() !== old_menu_style);
+    if (chngd || game.flags.verbose)
+        await pline(`'menustyle' ${chngd ? 'changed to' : 'is still'} `
+                    + `"${MENUTYPE[menustyle_index()][0]}".`);
+    return OPTN_OK;
+}
+
+// flags.menu_style as C sees it, recovered from the port's letter.  Default is
+// MENU_FULL (initoptions_init(): `flags.menu_style = MENU_FULL`).
+function menustyle_index() {
+    const c = lowc(String((game.flags && game.flags.menustyle) || 'f')[0]);
+    switch (c) {
+    case 't': return 0;
+    case 'c': return 1;
+    case 'f': return 2;
+    case 'p': return 3;
+    default:  return 2;
+    }
+}
+
+// C's "%-N.Ns": pad to n, truncate at n.
+function padtrunc(s, n) { return String(s).slice(0, n).padEnd(n, ' '); }
+
+// C ref: options.c handler_align_misc() -- shared by align_message and
+// align_status; `optidx` is the option NAME in this port.
+export async function handler_align_misc(optidx) {
+    let tmpwin, abuf;
+    const window_pick = [];
+    const clr = NO_COLOR;
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    add_menu(tmpwin, null, { a_int: ALIGN_TOP }, 't', 0, ATR_NONE, clr, 'top',
+             MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_int: ALIGN_BOTTOM }, 'b', 0, ATR_NONE, clr,
+             'bottom', MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_int: ALIGN_LEFT }, 'l', 0, ATR_NONE, clr, 'left',
+             MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_int: ALIGN_RIGHT }, 'r', 0, ATR_NONE, clr,
+             'right', MENU_ITEMFLAGS_NONE);
+    abuf = 'Select ' + ((optidx === 'align_message') ? 'message' : 'status')
+           + ' window placement relative to the map:';
+    end_menu(tmpwin, abuf);
+    if (await select_menu(tmpwin, PICK_ONE, window_pick) > 0) {
+        game.iflags = game.iflags || {};
+        if (optidx === 'align_message')
+            game.iflags.wc_align_message = window_pick[0].a_int;
+        else
+            game.iflags.wc_align_status = window_pick[0].a_int;
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_autounlock() -- PICK_ANY over unlocktypes[]; n == 0
+// (everything deselected) means 'none'.
+export async function handler_autounlock(optidx) {
+    let tmpwin, chngd, i, n, presel, buf;
+    game.flags = game.flags || {};
+    const oldflags = game.flags.autounlock | 0;
+    const optname = optidx;
+    const sep = (game.iflags && game.iflags.menu_tab_sep) ? '\t' : ' ';
+    const window_pick = [];
+    const res = OPTN_OK;
+    const clr = NO_COLOR;
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < UNLOCKTYPES.length; ++i) {
+        buf = `${padtrunc(UNLOCKTYPES[i], 10)}${sep}`
+              + UNLOCKTYPE_DESCR[i].slice(0, 40);
+        presel = (game.flags.autounlock & (1 << i));
+        add_menu(tmpwin, null, { a_int: i + 1 }, UNLOCKTYPES[i][0], 0,
+                 ATR_NONE, clr, buf,
+                 presel ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, `Select '${optname.slice(0, 20)}' actions:`);
+    n = await select_menu(tmpwin, PICK_ANY, window_pick);
+    if (n > 0) {
+        let newflags = 0;
+
+        for (i = 0; i < n; ++i) newflags |= (1 << (window_pick[i].a_int - 1));
+        game.flags.autounlock = newflags;
+    } else if (n === 0) { /* nothing was picked but menu wasn't cancelled */
+        /* something that was preselected got unselected, leaving nothing;
+           treat that as picking 'none' (even though 'none' is no longer
+           among the choices) */
+        game.flags.autounlock = 0;
+    }
+    destroy_nhwindow(tmpwin);
+    chngd = (game.flags.autounlock !== oldflags);
+    if ((chngd || game.flags.verbose) && give_opt_msg) {
+        /* C: optfn_autounlock(optidx, get_val, ...) -- the port's optfn_*()
+           have no get_val mode, so build the same comma list here. */
+        buf = autounlock_val();
+        await pline(`'${optname}' ${chngd ? 'changed to' : 'is still'} `
+                    + `'${buf}'.`);
+    }
+    return res;
+}
+
+// C ref: options.c optfn_autounlock()'s get_val arm: "none" or the enabled
+// unlocktypes[] names joined with '+'.
+function autounlock_val() {
+    const bits = (game.flags && game.flags.autounlock) | 0;
+    if (!bits) return 'none';
+    const parts = [];
+    for (let i = 0; i < UNLOCKTYPES.length; ++i)
+        if (bits & (1 << i)) parts.push(UNLOCKTYPES[i]);
+    return parts.join('+');
+}
+
+// C ref: options.c handler_disclose() -- a category menu, then one sub-menu per
+// picked category.  disclosure_names[] order matches decl.c
+// disclosure_options[] ("iavgco").
+export async function handler_disclose() {
+    let tmpwin, i, n, buf;
+    const disclosure_names = ['inventory', 'attributes', 'vanquished',
+                              'genocides', 'conduct', 'overview'];
+    const disc_cat = new Array(NUM_DISCLOSURE_OPTIONS).fill(0);
+    let pick_cnt, pick_idx, opt_idx, c;
+    let disclosure_pick = [];
+    const clr = NO_COLOR;
+    game.flags = game.flags || {};
+    const end_disclose = (game.flags.end_disclose = game.flags.end_disclose
+        || new Array(NUM_DISCLOSURE_OPTIONS).fill(DISCLOSE_PROMPT_DEFAULT_NO));
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
+        buf = `${String(disclosure_names[i]).padEnd(12, ' ')}`
+              + `[${end_disclose[i]}${DISCLOSURE_OPTIONS[i]}]`;
+        add_menu(tmpwin, null, { a_int: i + 1 }, DISCLOSURE_OPTIONS[i],
+                 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+        disc_cat[i] = 0;
+    }
+    end_menu(tmpwin, 'Change which disclosure options categories:');
+    pick_cnt = await select_menu(tmpwin, PICK_ANY, disclosure_pick);
+    if (pick_cnt > 0) {
+        for (pick_idx = 0; pick_idx < pick_cnt; ++pick_idx) {
+            opt_idx = disclosure_pick[pick_idx].a_int - 1;
+            disc_cat[opt_idx] = 1;
+        }
+        disclosure_pick = [];
+    }
+    destroy_nhwindow(tmpwin);
+
+    for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
+        if (disc_cat[i]) {
+            c = end_disclose[i];
+            buf = `Disclosure options for ${disclosure_names[i]}:`;
+            tmpwin = create_nhwindow(NHW_MENU);
+            start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+            /* 'y','n',and '+' work as alternate selectors; '-' doesn't */
+            add_menu(tmpwin, null, { a_char: DISCLOSE_NO_WITHOUT_PROMPT }, 0,
+                     DISCLOSE_NO_WITHOUT_PROMPT, ATR_NONE, clr,
+                     'Never disclose, without prompting',
+                     (c === DISCLOSE_NO_WITHOUT_PROMPT)
+                         ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+            add_menu(tmpwin, null, { a_char: DISCLOSE_YES_WITHOUT_PROMPT }, 0,
+                     DISCLOSE_YES_WITHOUT_PROMPT, ATR_NONE, clr,
+                     'Always disclose, without prompting',
+                     (c === DISCLOSE_YES_WITHOUT_PROMPT)
+                         ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+            if (disclosure_names[i][0] === 'v'
+                || disclosure_names[i][0] === 'g') {
+                add_menu(tmpwin, null,
+                         { a_char: DISCLOSE_SPECIAL_WITHOUT_PROMPT }, 0,
+                         DISCLOSE_SPECIAL_WITHOUT_PROMPT, ATR_NONE, clr,
+                         'Always disclose, pick sort order from menu',
+                         (c === DISCLOSE_SPECIAL_WITHOUT_PROMPT)
+                             ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+            }
+            add_menu(tmpwin, null, { a_char: DISCLOSE_PROMPT_DEFAULT_NO }, 0,
+                     DISCLOSE_PROMPT_DEFAULT_NO, ATR_NONE, clr,
+                     'Prompt, with default answer of "No"',
+                     (c === DISCLOSE_PROMPT_DEFAULT_NO)
+                         ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+            add_menu(tmpwin, null, { a_char: DISCLOSE_PROMPT_DEFAULT_YES }, 0,
+                     DISCLOSE_PROMPT_DEFAULT_YES, ATR_NONE, clr,
+                     'Prompt, with default answer of "Yes"',
+                     (c === DISCLOSE_PROMPT_DEFAULT_YES)
+                         ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+            if (disclosure_names[i][0] === 'v'
+                || disclosure_names[i][0] === 'g') {
+                add_menu(tmpwin, null,
+                         { a_char: DISCLOSE_PROMPT_DEFAULT_SPECIAL }, 0,
+                         DISCLOSE_PROMPT_DEFAULT_SPECIAL, ATR_NONE, clr,
+                         'Prompt, with default answer of "Ask" to request sort menu',
+                         (c === DISCLOSE_PROMPT_DEFAULT_SPECIAL)
+                             ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+            }
+            end_menu(tmpwin, buf);
+            disclosure_pick = [];
+            n = await select_menu(tmpwin, PICK_ONE, disclosure_pick);
+            if (n > 0) {
+                end_disclose[i] = disclosure_pick[0].a_char;
+                if (n > 1 && end_disclose[i] === c)
+                    end_disclose[i] = disclosure_pick[1].a_char;
+            }
+            destroy_nhwindow(tmpwin);
+        }
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_menu_headings().  query_color_attr() lives in
+// js/coloratt.js, which imports THIS file, so it is pulled in on demand.
+export async function handler_menu_headings() {
+    game.iflags = game.iflags || {};
+    const ca = game.iflags.menu_headings
+        || (game.iflags.menu_headings = { attr: ATR_INVERSE,
+                                          color: NO_COLOR_IDX });
+    const { query_color_attr } = await import('./coloratt.js');
+    const gotca = await query_color_attr(ca, 'How to highlight menu headings:');
+
+    if (gotca) {
+        /* header highlighting affects persistent inventory display */
+        if (game.iflags.perm_invent) update_inventory();
+    }
+    adjust_menu_promptstyle(null, ca);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_menu_objsyms().
+export async function handler_menu_objsyms() {
+    let tmpwin, buf, i, j, n;
+    const picklist = [];
+    const sep = (game.iflags && game.iflags.menu_tab_sep) ? '\t' : ' ';
+    const clr = NO_COLOR;
+    game.iflags = game.iflags || {};
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < OBJSYMVALS.length; ++i) {
+        buf = `${padtrunc(OBJSYMVALS[i], 12)}${sep}`
+              + OBJSYMVAL_DESCR[i].slice(0, 60);
+        j = i; /* objsymvals[i].num == i for every row */
+        add_menu(tmpwin, null, { a_int: i + 1 },
+                 String.fromCharCode(48 + i), buf[0], ATR_NONE, clr, buf,
+                 (j === game.iflags.menuobjsyms) ? MENU_ITEMFLAGS_SELECTED
+                                                 : MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'Set object symbols in menus to what?');
+    n = await select_menu(tmpwin, PICK_ONE, picklist);
+    if (n > 0) {
+        i = picklist[0].a_int - 1;
+        /* if there are two picks, use the one that wasn't pre-selected */
+        if (n > 1 && i === game.iflags.menuobjsyms) i = picklist[1].a_int - 1;
+        set_menuobjsyms_flags(i, { iflags: game.iflags });
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_msg_window() -- PREV_MSGS is 1 and this is the tty,
+// so the "not supported" arm is unreachable here.  Note C's loop bound is
+// SIZE(menutype), not SIZE(msgwind) (they are both 4).
+export async function handler_msg_window() {
+    let tmpwin;
+    const is_curses = false, is_tty = true;   /* WINDOWPORT(tty) */
+    const clr = NO_COLOR;
+
+    if (is_tty || is_curses) {
+        /* by Christian W. Cooper */
+        let chngd, i, n, buf, c;
+        const sep = (game.iflags && game.iflags.menu_tab_sep) ? '\t' : ' ';
+        game.iflags = game.iflags || {};
+        const old_prevmsg_window = game.iflags.prevmsg_window;
+        const window_pick = [];
+
+        tmpwin = create_nhwindow(NHW_MENU);
+        start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+
+        for (i = 0; i < MENUTYPE.length; i++) {
+            if (i < 2 && is_curses) continue;
+            buf = `${padtrunc(MSGWIND[i][0], 12)}${sep}`
+                  + MSGWIND[i][1].slice(0, 60);
+            c = MSGWIND[i][0][0];
+            add_menu(tmpwin, null, { a_char: c }, buf[0], 0,
+                     ATR_NONE, clr, buf,
+                     (c === game.iflags.prevmsg_window)
+                         ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+            /* second line is prefixed by spaces that "c - " would use */
+            buf = `${' '.repeat(4)}${' '.repeat(12)}${sep}`
+                  + MSGWIND[i][2].slice(0, 60);
+            add_menu_str(tmpwin, buf);
+        }
+        end_menu(tmpwin, 'Select message history display type:');
+        n = await select_menu(tmpwin, PICK_ONE, window_pick);
+        if (n > 0) {
+            c = window_pick[0].a_char;
+            /* if there are two picks, use the one that wasn't pre-selected */
+            if (n > 1 && c === old_prevmsg_window) c = window_pick[1].a_char;
+            game.iflags.prevmsg_window = c;
+        }
+        destroy_nhwindow(tmpwin);
+        chngd = (game.iflags.prevmsg_window !== old_prevmsg_window);
+        if (chngd || (game.flags && game.flags.verbose)) {
+            /* C: optfn_msg_window(..., get_val, ...); the value is the full
+               msgwind[] name for the stored letter. */
+            buf = msg_window_val();
+            await pline(`'msg_window' ${chngd ? 'changed to' : 'is still'} `
+                        + `"${buf.slice(0, 20)}".`);
+        }
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c optfn_msg_window()'s get_val arm.
+function msg_window_val() {
+    const c = (game.iflags && game.iflags.prevmsg_window) || 's';
+    for (const row of MSGWIND) if (row[0][0] === c) return row[0];
+    return 'single';
+}
+
+// C ref: options.c handler_number_pad().
+export async function handler_number_pad() {
+    let tmpwin, i;
+    const npchoices = [
+        ' 0 (off)', ' 1 (on)', ' 2 (on, MSDOS compatible)',
+        ' 3 (on, phone-style digit layout)',
+        ' 4 (on, phone-style layout, MSDOS compatible)',
+        "-1 (off, 'z' to move upper-left, 'y' to zap wands)",
+    ];
+    const mode_pick = [];
+    const clr = NO_COLOR;
+    game.iflags = game.iflags || {};
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < npchoices.length; i++)
+        add_menu(tmpwin, null, { a_int: i + 1 },
+                 String.fromCharCode(97 + i), String.fromCharCode(48 + i),
+                 ATR_NONE, clr, npchoices[i], MENU_ITEMFLAGS_NONE);
+    end_menu(tmpwin, 'Select number_pad mode:');
+    if (await select_menu(tmpwin, PICK_ONE, mode_pick) > 0) {
+        switch (mode_pick[0].a_int - 1) {
+        case 0:
+            game.iflags.num_pad = false;
+            game.iflags.num_pad_mode = 0;
+            break;
+        case 1:
+            game.iflags.num_pad = true;
+            game.iflags.num_pad_mode = 0;
+            break;
+        case 2:
+            game.iflags.num_pad = true;
+            game.iflags.num_pad_mode = 1;
+            break;
+        case 3:
+            game.iflags.num_pad = true;
+            game.iflags.num_pad_mode = 2;
+            break;
+        case 4:
+            game.iflags.num_pad = true;
+            game.iflags.num_pad_mode = 3;
+            break;
+        /* last menu choice: number_pad == -1 */
+        case 5:
+            game.iflags.num_pad = false;
+            game.iflags.num_pad_mode = 1;
+            break;
+        }
+        reset_commands(false);
+        number_pad(game.iflags.num_pad ? 1 : 0);
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_paranoid_confirmation().  The 'm'-prefix substitution
+// in the 'swim' explanation needs cmd_from_func(do_reqmenu), which js/cmd.js
+// keeps private; 'm' is its default binding and nothing in the port rebinds it,
+// so the text is used as-is.
+export async function handler_paranoid_confirmation() {
+    let tmpwin, i;
+    let explain;
+    const paranoia_picks = [];
+    const clr = NO_COLOR;
+    game.flags = game.flags || {};
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; PARANOIA[i][0] !== 0; ++i) {
+        /* C `wizard`; js/readobjnam.js spells the same test this way */
+        if (PARANOIA[i][0] === PARANOID_BONES
+            && !((game.flags && game.flags.debug) || game.wizard)) continue;
+        explain = PARANOIA_EXPLAIN[i];
+        add_menu(tmpwin, null, { a_int: PARANOIA[i][0] }, PARANOIA[i][1][0],
+                 0, ATR_NONE, clr, explain,
+                 ((game.flags.paranoia_bits | 0) & PARANOIA[i][0])
+                     ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'Actions requiring extra confirmation:');
+    i = await select_menu(tmpwin, PICK_ANY, paranoia_picks);
+    if (i >= 0) {
+        /* player didn't cancel; we reset all the paranoia options
+           here even if there were no items picked, since user
+           could have toggled off preselected ones to end up with 0 */
+        game.flags.paranoia_bits = 0;
+        if (i > 0) {
+            /* at least 1 item set, either preselected or newly picked */
+            while (--i >= 0)
+                game.flags.paranoia_bits |= paranoia_picks[i].a_int;
+        }
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_perminv_mode().  TTY_PERM_INVENT is undefined, so
+// the "+grid" rows are NULL and the tty re-toggle FIXME does not apply.
+export async function handler_perminv_mode() {
+    let tmpwin, let_, buf, sepbuf, pi0, pi1, i, n;
+    const pi_pick = [];
+    game.iflags = game.iflags || {};
+    const old_perm_invent = game.iflags.perm_invent;
+    const old_pi = game.iflags.perminv_mode | 0;
+    let new_pi = old_pi;
+    const widest = 11; /* WINDOWPORT(tty): "full+grid__" */
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < PERMINV_MODES.length; ++i) {
+        if (!PERMINV_MODES[i] || !(pi0 = PERMINV_MODES[i][0])) continue;
+        pi1 = PERMINV_MODES[i][1];
+        if (!game.iflags.menu_tab_sep) {
+            const numspaces = widest - pi0.length;
+
+            sepbuf = ' '.repeat(Math.max(numspaces, 1));
+        } else {
+            sepbuf = '\t';
+        }
+        buf = `${pi0}${sepbuf}${PERMINV_MODE_DESCR[i]}`;
+        let_ = ((i & InvSparse) !== 0) ? highc(pi1[0]) : pi0[0];
+        add_menu(tmpwin, null, { a_int: i + 1 }, let_,
+                 String.fromCharCode(48 + i), ATR_NONE, NO_COLOR,
+                 buf, (i === old_pi) ? MENU_ITEMFLAGS_SELECTED
+                                     : MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'Choose permanent inventory mode:');
+    n = await select_menu(tmpwin, PICK_ONE, pi_pick);
+    destroy_nhwindow(tmpwin);
+    if (n > 0) {
+        new_pi = pi_pick[0].a_int - 1;
+        if (n > 1 && new_pi === old_pi) new_pi = pi_pick[1].a_int - 1;
+        game.iflags.perminv_mode = new_pi;
+    }
+    if (n >= 0) { /* not ESC */
+        /* C: optfn_perminv_mode(..., get_val, ...) -> the mode's alias name */
+        buf = (PERMINV_MODES[new_pi] || ['none', 'off'])[1];
+        await pline(`'perminv_mode' `
+                    + `${(new_pi !== old_pi) ? 'changed to' : 'is still'} `
+                    + `'${PERMINV_MODES[new_pi][0]}' (${buf}).`);
+        if (new_pi !== InvOptNone && !old_perm_invent)
+            game.iflags.perm_invent = can_set_perm_invent();
+        else if (new_pi === InvOptNone && old_perm_invent)
+            game.iflags.perm_invent = false;
+
+        if (new_pi !== old_pi
+            || game.iflags.perm_invent !== old_perm_invent)
+            opt_need_redraw = true;
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_pickup_burden() + burdentype[].
+export async function handler_pickup_burden() {
+    let tmpwin, i;
+    let burden_name;
+    const burden_letters = 'ubsntl';
+    const burden_pick = [];
+    const clr = NO_COLOR;
+    game.flags = game.flags || {};
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < BURDENTYPE.length; i++) {
+        burden_name = BURDENTYPE[i];
+        add_menu(tmpwin, null, { a_int: i + 1 }, burden_letters[i],
+                 0, ATR_NONE, clr, burden_name, MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'Select encumbrance level:');
+    if (await select_menu(tmpwin, PICK_ONE, burden_pick) > 0)
+        game.flags.pickup_burden = burden_pick[0].a_int - 1;
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_pickup_types() -- parseoptions() itself prompts for
+// the list of object classes.
+export async function handler_pickup_types() {
+    /* parseoptions will prompt for the list of types */
+    parseoptions('pickup_types', false, opt_result_shim());
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_runmode() + runmodes[].
+export async function handler_runmode() {
+    let tmpwin, i;
+    let mode_name;
+    const mode_pick = [];
+    const clr = NO_COLOR;
+    game.flags = game.flags || {};
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < RUNMODES.length; i++) {
+        mode_name = RUNMODES[i];
+        add_menu(tmpwin, null, { a_int: i + 1 }, mode_name[0],
+                 0, ATR_NONE, clr, mode_name, MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'Select run/travel display mode:');
+    if (await select_menu(tmpwin, PICK_ONE, mode_pick) > 0)
+        /* C stores the index; the port keeps flags.runmode as the name (see
+           optfn_runmode() above), which js/hack.c's runmode tests read. */
+        game.flags.runmode = RUNMODES[mode_pick[0].a_int - 1];
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_petattr().
+export async function handler_petattr() {
+    game.iflags = game.iflags || {};
+    const { query_attr } = await import('./coloratt.js');
+    const tmp = await query_attr('Select pet highlight attribute',
+                                 game.iflags.wc2_petattr);
+
+    if (tmp !== -1) {
+        game.iflags.wc2_petattr = tmp;
+        game.iflags.hilite_pet = (game.iflags.wc2_petattr !== ATR_NONE);
+        if (!opt_initial) opt_need_redraw = true;
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_sortloot() + sortltype[].
+export async function handler_sortloot() {
+    let tmpwin, i, n;
+    let sortl_name;
+    const sortl_pick = [];
+    const clr = NO_COLOR;
+    game.flags = game.flags || {};
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < SORTLTYPE.length; i++) {
+        sortl_name = SORTLTYPE[i];
+        add_menu(tmpwin, null, { a_char: sortl_name[0] }, sortl_name[0],
+                 0, ATR_NONE, clr, sortl_name,
+                 (game.flags.sortloot === sortl_name[0])
+                     ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'Select loot sorting type:');
+    n = await select_menu(tmpwin, PICK_ONE, sortl_pick);
+    if (n > 0) {
+        let c = sortl_pick[0].a_char;
+
+        if (n > 1 && c === game.flags.sortloot) c = sortl_pick[1].a_char;
+        game.flags.sortloot = c;
+        /* changing to or from 'f' affects persistent inventory display */
+        if (game.iflags && game.iflags.perm_invent) update_inventory();
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_whatis_coord().
+export async function handler_whatis_coord() {
+    let tmpwin, buf;
+    const window_pick = [];
+    let pick_cnt;
+    game.iflags = game.iflags || {};
+    const gpc = game.iflags.getpos_coords;
+    const clr = NO_COLOR;
+    const verbose = !!(game.flags && game.flags.verbose);
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    add_menu(tmpwin, null, { a_char: GPCOORDS_COMPASS }, GPCOORDS_COMPASS,
+             0, ATR_NONE, clr, "compass ('east' or '3s' or '2n,4w')",
+             (gpc === GPCOORDS_COMPASS) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_char: GPCOORDS_COMFULL }, GPCOORDS_COMFULL,
+             0, ATR_NONE, clr,
+             "full compass ('east' or '3south' or '2north,4west')",
+             (gpc === GPCOORDS_COMFULL) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_char: GPCOORDS_MAP }, GPCOORDS_MAP,
+             0, ATR_NONE, clr, 'map <x,y>',
+             (gpc === GPCOORDS_MAP) ? MENU_ITEMFLAGS_SELECTED
+                                    : MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_char: GPCOORDS_SCREEN }, GPCOORDS_SCREEN,
+             0, ATR_NONE, clr, 'screen [row,column]',
+             (gpc === GPCOORDS_SCREEN) ? MENU_ITEMFLAGS_SELECTED
+                                       : MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_char: GPCOORDS_NONE }, GPCOORDS_NONE,
+             0, ATR_NONE, clr, 'none (no coordinates displayed)',
+             (gpc === GPCOORDS_NONE) ? MENU_ITEMFLAGS_SELECTED
+                                     : MENU_ITEMFLAGS_NONE);
+    add_menu_str(tmpwin, '');
+    buf = `map: upper-left: <${1},${0}>, lower-right: <${COLNO - 1},`
+          + `${ROWNO - 1}>`
+          + (verbose ? '; column 0 unused, off left edge' : '');
+    add_menu_str(tmpwin, buf);
+    /* `if (strcmp(windowprocs.name, "tty"))` -- this IS tty, so the
+       "screen: row is offset ..." note is not added */
+    buf = `screen: upper-left: [${String(0 + 2).padStart(2, '0')},`
+          + `${String(1).padStart(2, '0')}], lower-right: `
+          + `[${ROWNO - 1 + 2},${COLNO - 1}]`
+          + (verbose ? '; column 80 is not used' : ''); /* COLNO == 80 */
+    add_menu_str(tmpwin, buf);
+    add_menu_str(tmpwin, '');
+    end_menu(tmpwin,
+        'Select coordinate display when auto-describing a map position:');
+    if ((pick_cnt = await select_menu(tmpwin, PICK_ONE, window_pick)) > 0) {
+        game.iflags.getpos_coords = window_pick[0].a_char;
+        /* PICK_ONE doesn't unselect preselected entry when
+           selecting another one */
+        if (pick_cnt > 1 && game.iflags.getpos_coords === gpc)
+            game.iflags.getpos_coords = window_pick[1].a_char;
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_whatis_filter() -- note the a_char values are
+// GFILTER_* PLUS ONE, because a_char 0 would make the entry unselectable.
+export async function handler_whatis_filter() {
+    let tmpwin;
+    const window_pick = [];
+    let pick_cnt;
+    game.iflags = game.iflags || {};
+    const gfilt = game.iflags.getloc_filter | 0;
+    const clr = NO_COLOR;
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    add_menu(tmpwin, null, { a_char: GFILTER_NONE + 1 }, 'n',
+             0, ATR_NONE, clr, 'no filtering',
+             (gfilt === GFILTER_NONE) ? MENU_ITEMFLAGS_SELECTED
+                                      : MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_char: GFILTER_VIEW + 1 }, 'v',
+             0, ATR_NONE, clr, 'in view only',
+             (gfilt === GFILTER_VIEW) ? MENU_ITEMFLAGS_SELECTED
+                                      : MENU_ITEMFLAGS_NONE);
+    add_menu(tmpwin, null, { a_char: GFILTER_AREA + 1 }, 'a',
+             0, ATR_NONE, clr, 'in same area',
+             (gfilt === GFILTER_AREA) ? MENU_ITEMFLAGS_SELECTED
+                                      : MENU_ITEMFLAGS_NONE);
+    end_menu(tmpwin,
+      'Select location filtering when going for next/previous map position:');
+    if ((pick_cnt = await select_menu(tmpwin, PICK_ONE, window_pick)) > 0) {
+        game.iflags.getloc_filter = window_pick[0].a_char - 1;
+        /* PICK_ONE doesn't unselect preselected entry when
+           selecting another one */
+        if (pick_cnt > 1 && game.iflags.getloc_filter === gfilt)
+            game.iflags.getloc_filter = window_pick[1].a_char - 1;
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_symset() -- symbols.c do_symset() lives in
+// js/symbols.js, which imports this file, so load it on demand.
+export async function handler_symset(optidx) {
+    let reslt;
+
+    const { do_symset } = await import('./symbols.js');
+    reslt = await do_symset(optidx === 'roguesymset');   /* symbols.c */
+    opt_need_redraw = true;
+    return reslt;
+}
+
+// C ref: decl.h go.opt_initial / go.opt_need_redraw / the other
+// go.opt_* visual-reset flags reset_needed_visuals() consumes.
+let opt_initial = false, opt_need_redraw = false, opt_need_glyph_reset = false,
+    opt_reset_customcolors = false, opt_reset_customsymbols = false,
+    opt_update_basic_palette = false, opt_need_promptstyle = false;
+
+// C ref: parseoptions()'s third argument -- the accumulator parseNethackrc()
+// builds for a whole config file.  handler_pickup_types() reaches parseoptions()
+// from the 'O' menu, where C writes straight into flags/iflags, so give it a
+// throw-away accumulator with the same shape.
+function opt_result_shim() {
+    return {
+        name: '', role: -1, race: -1, gender: -1, align: -1,
+        flags: {}, iflags: {}, keybind: {}, symoverride: {}, apelist: [],
+        warnsyms: [],
+        menu_cmd_alias: [], keybind_param: {}, keyunbind: [], spkeys: {},
+        mousebtn: {}, autocomplete: {}, msgtypes: [], menucolors: [],
+        status_hilites: [], conds: {},
+    };
+}
+
+// C ref: options.c handler_autopickup_exception() -- add/list/remove loop.
+export async function handler_autopickup_exception() {
+    let tmpwin, i;
+    let opt_idx, numapes = 0;
+    let apebuf;
+    let ape;
+    const clr = NO_COLOR;
+    const result = { apelist: (game.apelist = game.apelist || []) };
+
+    for (;;) {                                          /* ape_again: */
+        numapes = count_apes();
+        opt_idx = await handle_add_list_remove('autopickup exception', numapes);
+        if (opt_idx === 3) { /* done */
+            return true;
+        } else if (opt_idx === 0) { /* add new */
+            /* EDIT_GETLIN:  assume user doesn't user want previous
+               exception used as default input string for this one... */
+            apebuf = await getlin('What new autopickup exception pattern?');
+            apebuf = mungspaces(apebuf); /* regularize whitespace */
+            if (apebuf[0] === '\x1b') return true;
+            if (apebuf) {
+                /* guarantee room for \" prefix and \"\0 suffix */
+                add_autopickup_exception(`"${apebuf}"`, result);
+            }
+            continue;
+        } else { /* list (1) or remove (2) */
+            let pick_idx, pick_cnt;
+            const pick_list = [];
+
+            tmpwin = create_nhwindow(NHW_MENU);
+            start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+            if (numapes) {
+                add_menu_heading(tmpwin,
+                                 "Always pickup '<'; never pickup '>'");
+                for (i = 0; i < numapes && (ape = result.apelist[i]); i++) {
+                    /* length of pattern plus quotes (plus '<'/'>') is
+                       less than BUFSZ */
+                    apebuf = `"${ape.grab ? '<' : '>'}${ape.pattern}"`;
+                    add_menu(tmpwin, null,
+                             { a_void: (opt_idx === 1) ? null : ape }, 0, 0,
+                             ATR_NONE, clr, apebuf, MENU_ITEMFLAGS_NONE);
+                }
+            }
+            apebuf = `${(opt_idx === 1) ? 'List of' : 'Remove which'}`
+                     + ' autopickup exceptions';
+            end_menu(tmpwin, apebuf);
+            pick_cnt = await select_menu(tmpwin,
+                                         (opt_idx === 1) ? PICK_NONE : PICK_ANY,
+                                         pick_list);
+            if (pick_cnt > 0) {
+                for (pick_idx = 0; pick_idx < pick_cnt; ++pick_idx)
+                    remove_autopickup_exception(pick_list[pick_idx].a_void,
+                                                result);
+            }
+            destroy_nhwindow(tmpwin);
+            if (pick_cnt >= 0) continue;
+        }
+        break;
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_menu_colors().  free_one_menu_coloring() is
+// coloratt.c's; the port keeps the list in game.menucolors, so splice it here
+// (the same thing free_one_msgtype() does for message types above).
+export async function handler_menu_colors() {
+    let tmpwin, buf;
+    let opt_idx, nmc, mcclr, mcattr;
+    let mcbuf;
+    const clr = NO_COLOR;
+    const colorings = (game.menucolors = game.menucolors || []);
+
+    for (;;) {                                      /* menucolors_again: */
+        nmc = count_menucolors();
+        opt_idx = await handle_add_list_remove('menucolor', nmc);
+        if (opt_idx === 3) { /* done */
+            /* menucolors_done: in case we've made a change which impacts
+               current persistent inventory window; we don't track whether an
+               actual change occurred, so just assume there was one */
+            if (game.iflags && game.iflags.use_menu_color) {
+                if (game.iflags.perm_invent) update_inventory();
+            }
+            return OPTN_OK;
+        } else if (opt_idx === 0) { /* add new */
+            mcbuf = await getlin('What new menucolor pattern?');
+            if (mcbuf[0] === '\x1b') {
+                if (game.iflags && game.iflags.use_menu_color
+                    && game.iflags.perm_invent) update_inventory();
+                return OPTN_OK;                     /* goto menucolors_done */
+            }
+            const { query_color, query_attr } = await import('./coloratt.js');
+            if (mcbuf
+                && test_regex_pattern(mcbuf, 'MENUCOLORS regex')
+                && (mcclr = await query_color(null, NO_COLOR_IDX)) !== -1
+                && (mcattr = await query_attr(null, ATR_NONE)) !== -1
+                && !add_menu_coloring_parsed(mcbuf, mcclr, mcattr,
+                                             { menucolors: colorings })) {
+                await pline('Error adding the menu color.');
+                wait_synch();
+            }
+            continue;
+        } else { /* list (1) or remove (2) */
+            let pick_idx, pick_cnt, mc_idx, ln, sattr, sclr;
+            const pick_list = [];
+            let ti = 0;
+
+            tmpwin = create_nhwindow(NHW_MENU);
+            start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+            mc_idx = 0;
+            while (ti < colorings.length) {
+                const tmp = colorings[ti++];
+                sattr = opt_attr2attrname(tmp.attr);
+                sclr = strNsubst(opt_clr2colorname(tmp.color), ' ', '-', 0);
+                /* construct suffix */
+                buf = `""=${sclr}${(tmp.attr !== ATR_NONE) ? '&' : ''}`
+                      + `${(tmp.attr !== ATR_NONE) ? sattr : ''}`;
+                /* now main string */
+                ln = BUFSZ - buf.length - 1; /* length available */
+                mcbuf = '"';
+                if (tmp.origstr.length > ln)
+                    mcbuf += tmp.origstr.slice(0, ln - 3) + '...';
+                else
+                    mcbuf += tmp.origstr;
+                /* combine main string and suffix */
+                mcbuf += buf.slice(1); /* skip buf[]'s initial quote */
+                add_menu(tmpwin, null, { a_int: ++mc_idx }, 0, 0,
+                         ATR_NONE, clr, mcbuf, MENU_ITEMFLAGS_NONE);
+            }
+            mcbuf = `${(opt_idx === 1) ? 'List of' : 'Remove which'}`
+                    + ' menu colors';
+            end_menu(tmpwin, mcbuf);
+            pick_cnt = await select_menu(tmpwin,
+                                         (opt_idx === 1) ? PICK_NONE : PICK_ANY,
+                                         pick_list);
+            if (pick_cnt > 0) {
+                for (pick_idx = 0; pick_idx < pick_cnt; ++pick_idx)
+                    colorings.splice(pick_list[pick_idx].a_int - 1 - pick_idx,
+                                     1);
+            }
+            destroy_nhwindow(tmpwin);
+            if (pick_cnt >= 0) continue;
+        }
+        break;
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_msgtype().
+export async function handler_msgtype() {
+    let tmpwin;
+    let opt_idx, nmt, mttyp;
+    let mtbuf;
+    const types = (game.msgtypes = game.msgtypes || []);
+
+    for (;;) {                                      /* msgtypes_again: */
+        nmt = msgtype_count();
+        opt_idx = await handle_add_list_remove('message type', nmt);
+        if (opt_idx === 3) { /* done */
+            return true;
+        } else if (opt_idx === 0) { /* add new */
+            mtbuf = await getlin('What new message pattern?');
+            if (mtbuf[0] === '\x1b') return true;
+            if (mtbuf
+                && test_regex_pattern(mtbuf, 'MSGTYPE regex')
+                && (mttyp = await query_msgtype()) !== -1
+                && !msgtype_add(mttyp, mtbuf, { msgtypes: types })) {
+                await pline('Error adding the message type.');
+                wait_synch();
+            }
+            continue;
+        } else { /* list (1) or remove (2) */
+            let pick_idx, pick_cnt, mt_idx, ln, mtype;
+            const pick_list = [];
+            let ti = 0;
+            const clr = NO_COLOR;
+
+            tmpwin = create_nhwindow(NHW_MENU);
+            start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+            mt_idx = 0;
+            while (ti < types.length) {
+                const tmp = types[ti++];
+                mtype = msgtype2name(tmp.msgtype);
+                mtbuf = `${String(mtype).padEnd(5, ' ')} "`;
+                ln = BUFSZ - mtbuf.length - 2 /* sizeof "\"" */;
+                if (tmp.pattern.length > ln)
+                    mtbuf += tmp.pattern.slice(0, ln - 3) + '..."';
+                else
+                    mtbuf += tmp.pattern + '"';
+                add_menu(tmpwin, null, { a_int: ++mt_idx }, 0, 0,
+                         ATR_NONE, clr, mtbuf, MENU_ITEMFLAGS_NONE);
+            }
+            mtbuf = `${(opt_idx === 1) ? 'List of' : 'Remove which'}`
+                    + ' message types';
+            end_menu(tmpwin, mtbuf);
+            pick_cnt = await select_menu(tmpwin,
+                                         (opt_idx === 1) ? PICK_NONE : PICK_ANY,
+                                         pick_list);
+            if (pick_cnt > 0) {
+                for (pick_idx = 0; pick_idx < pick_cnt; ++pick_idx)
+                    free_one_msgtype(pick_list[pick_idx].a_int - 1 - pick_idx,
+                                     { msgtypes: types });
+            }
+            destroy_nhwindow(tmpwin);
+            if (pick_cnt >= 0) continue;
+        }
+        break;
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_versinfo().  nomakedefs.git_branch is empty in a
+// released build, so the third entry reads "(not applicable)"
+// (NH_DEVEL_STATUS == NH_STATUS_RELEASED).
+export async function handler_versinfo() {
+    let tmpwin, n;
+    const vi_pick = [];
+    const have_branch = false;
+    game.flags = game.flags || {};
+    const vi = game.flags.versinfo | 0;
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+
+    n = VI_NUMBER; /* 1 */
+    add_menu(tmpwin, null, { a_int: n }, 'n', String.fromCharCode(n + 48),
+             ATR_NONE, NO_COLOR, 'version number',
+             (vi & n) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    n = VI_NAME; /* 2 */
+    add_menu(tmpwin, null, { a_int: n }, 'g', String.fromCharCode(n + 48),
+             ATR_NONE, NO_COLOR, 'game name',
+             (vi & n) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    n = VI_BRANCH; /* 4 */
+    add_menu(tmpwin, null, { a_int: n }, 'b', String.fromCharCode(n + 48),
+             ATR_NONE, NO_COLOR,
+             have_branch ? 'development branch' : '(not applicable)',
+             (vi & n) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+
+    end_menu(tmpwin, 'Select version information flags:');
+    n = await select_menu(tmpwin, PICK_ANY, vi_pick);
+    if (n > 0) {
+        let i, newval = 0;
+
+        for (i = 0; i < n; ++i) newval |= vi_pick[i].a_int;
+        newval &= 7;
+        if (newval) game.flags.versinfo = newval;
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c handler_windowborders() -- curses-only setting, but the
+// menu is built the same way for every port.
+export async function handler_windowborders() {
+    let tmpwin, i;
+    let mode_name;
+    const mode_pick = [];
+    const clr = NO_COLOR;
+    const windowborders_text = [
+        'Off, never show borders',
+        'On, always show borders',
+        'Auto, on if display is at least (24+2)x(80+2)',
+        'On, except forced off for perm_invent',
+        'Auto, except forced off for perm_invent',
+    ];
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < windowborders_text.length; i++) {
+        mode_name = windowborders_text[i];
+        /* index 'i' matches the numeric setting for windowborders,
+           so allow corresponding digit as group accelerator */
+        add_menu(tmpwin, null, { a_int: i + 1 }, String.fromCharCode(97 + i),
+                 String.fromCharCode(48 + i), ATR_NONE, clr, mode_name,
+                 MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'Select window borders mode:');
+    if (await select_menu(tmpwin, PICK_ONE, mode_pick) > 0) {
+        game.iflags = game.iflags || {};
+        game.iflags.wc2_windowborders = mode_pick[0].a_int - 1;
+    }
+    destroy_nhwindow(tmpwin);
+    return OPTN_OK;
+}
+
+// C ref: options.c query_msgtype() -- msgtype_names[] rows that have a .descr.
+export async function query_msgtype() {
+    let tmpwin, i, pick_cnt;
+    const picks = [];
+    const clr = NO_COLOR;
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < MSGTYPE_NAMES.length; i++)
+        if (MSGTYPE_DESCR[i])
+            add_menu(tmpwin, null, { a_int: MSGTYPE_NAMES[i][1] + 1 }, 0, 0,
+                     ATR_NONE, clr, MSGTYPE_DESCR[i], MENU_ITEMFLAGS_NONE);
+    end_menu(tmpwin, 'How to show the message');
+    pick_cnt = await select_menu(tmpwin, PICK_ONE, picks);
+    destroy_nhwindow(tmpwin);
+    if (pick_cnt > 0) return picks[0].a_int - 1;
+    return -1;
+}
+
+// C ref: options.c msgtype_names[].descr (MSGTYPE_NAMES above is name+type; the
+// "norep" alias row has a NULL descr and so is skipped by query_msgtype()).
+const MSGTYPE_DESCR = [
+    'Show message normally',                /* show */
+    'Hide message',                         /* hide */
+    null,                                   /* noshow (alias) */
+    'Prompt for more after the message',     /* stop */
+    null,                                   /* more (alias) */
+    'Do not repeat the message',            /* norep */
+];
+
+// C ref: options.c handle_add_list_remove() -- common to msg-types,
+// menu-colors and autopickup-exceptions.  Returns 0 add / 1 list / 2 remove /
+// 3 exit.
+export async function handle_add_list_remove(optname, numtotal) {
+    let tmpwin, i, pick_cnt, opt_idx;
+    const pick_list = [];
+    const action_titles = [
+        ['a', 'add new %s'],         /* [0] */
+        ['l', 'list %s'],            /* [1] */
+        ['r', 'remove existing %s'], /* [2] */
+        ['x', 'exit this menu'],     /* [3] */
+    ];
+    const clr = NO_COLOR;
+    let a_int = 0;
+
+    tmpwin = create_nhwindow(NHW_MENU);
+    start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < action_titles.length; i++) {
+        a_int++;
+        /* omit list and remove if there aren't any yet */
+        if (!numtotal && (i === 1 || i === 2)) continue;
+        const tmpbuf = action_titles[i][1].replace('%s',
+            (i === 1) ? makeplural(optname) : optname);
+        add_menu(tmpwin, null, { a_int }, action_titles[i][0],
+                 0, ATR_NONE, clr, tmpbuf,
+                 (i === 3) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    end_menu(tmpwin, 'Do what?');
+    if ((pick_cnt = await select_menu(tmpwin, PICK_ONE, pick_list)) > 0) {
+        opt_idx = pick_list[0].a_int - 1;
+        if (pick_cnt > 1 && opt_idx === 3) opt_idx = pick_list[1].a_int - 1;
+    } else {
+        opt_idx = 3; /* none selected, exit menu */
+    }
+    destroy_nhwindow(tmpwin);
+    return opt_idx;
+}
+
+// C ref: coloratt.c clr2colorname()/attr2attrname().  js/coloratt.js exports
+// both, but it imports THIS file, so a static import would be a cycle; these
+// read the same COLORNAMES/ATTRNAMES tables that live here.  First match wins,
+// which is why the aliases appended after each primary name never surface.
+function opt_clr2colorname(clr) {
+    for (const [name, color] of COLORNAMES) if (color === clr) return name;
+    return null;
+}
+function opt_attr2attrname(attr) {
+    for (const [name, a] of ATTRNAMES) if (a === attr) return name;
+    return null;
+}
+
+// C ref: hacklib.c strNsubst() -- replace occurrences of `orig` with `replacement`;
+// n == 0 means every occurrence, otherwise only the n'th one.
+function strNsubst(bp, orig, replacement, n) {
+    if (!bp || !orig) return bp;
+    let out = '', i = 0, count = 0;
+    for (;;) {
+        const at = bp.indexOf(orig, i);
+        if (at < 0) { out += bp.slice(i); break; }
+        ++count;
+        if (n === 0 || n === count) {
+            out += bp.slice(i, at) + replacement;
+            i = at + orig.length;
+            if (n !== 0) { out += bp.slice(i); break; }
+        } else {
+            out += bp.slice(i, at + orig.length);
+            i = at + orig.length;
+        }
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// doset()/#optionsfull support.
+
+// C ref: options.c can_set_perm_invent() -- called only when perm_invent is
+// False and about to become True.  tty_procs.wincap lacks WC_PERM_INVENT in
+// this build (TTY_PERM_INVENT undefined) and check_tty_wincap() agrees, so this
+// always refuses: 'perm_invent' cannot be turned on here at all.
+export function can_set_perm_invent() {
+    game.iflags = game.iflags || {};
+    const old_perminv_mode = game.iflags.perminv_mode;
+
+    if (!(TTY_WINCAP & WC_PERM_INVENT)) {
+        /* check tty, not necessarily the active window port;
+           windows early startup can still be set to safeprocs */
+        if (!check_tty_wincap(WC_PERM_INVENT)) return false;
+    }
+
+    if (game.iflags.perminv_mode === InvOptNone)
+        game.iflags.perminv_mode = InvOptOn;
+
+    /* #else arm of TTY_PERM_INVENT: nhUse(old_perminv_mode) */
+    void old_perminv_mode;
+    return true;
+}
+
+// C ref: options.c check_perm_invent_again() -- inside #ifdef TTY_PERM_INVENT,
+// so it is not compiled in this build; kept for the ports that do define it.
+export function check_perm_invent_again() {
+    game.iflags = game.iflags || {};
+    if (game.iflags.perm_invent_pending) {
+        game.iflags.perm_invent = false;
+        if (can_set_perm_invent()) game.iflags.perm_invent = true;
+        game.iflags.perm_invent_pending = false;
+    }
+}
+
+// C ref: options.c term_for_boolean() -- the word doset() shows for a boolean's
+// value, chosen by allopt[].termpref.  booleanterms[][] has num_terms (4)
+// columns, so C's `i < num_terms && i < SIZE(booleanterms[0])` lets all four
+// through; only 'voices' (Term_Excluded) reaches the last one in this build.
+export function term_for_boolean(idx, b) {
+    const f_t = b ? 1 : 0;
+    const booleanterms = [
+        ['false', 'off', 'disabled', 'excluded from build'],
+        ['true', 'on', 'enabled', 'included'],
+    ];
+    let boolean_term = booleanterms[f_t][0];
+    const meta = ALLOPT[idx] && ALLOPT_META.get(ALLOPT[idx].name);
+    const i = meta ? meta.termpref : TERM_FALSE;
+
+    if (i > TERM_FALSE && i < 4 /* num_terms */
+        && i < booleanterms[0].length)
+        boolean_term = booleanterms[f_t][i];
+    return boolean_term;
+}
+
+// C ref: options.c longest_option_name() -- doset()'s column width.  pass 0
+// counts the Boolean options with an addr, pass 1 the rest; both are filtered
+// by setwhere range and windowport capability.
+export function longest_option_name(startpass, endpass) {
+    /* spin through the options to find the longest name */
+    let longest_name_len = 0;
+    let i, pass, optflags, name;
+
+    for (pass = 0; pass < 2; pass++)
+        for (i = 0; i < OPTCOUNT && (name = ALLOPT[i].name); i++) {
+            if (pass === 0 && (ALLOPT[i].typ !== 'B' || ALLOPT[i].noaddr))
+                continue;
+            optflags = opt_setwhere(i);
+            if (optflags < startpass || optflags > endpass) continue;
+            if ((is_wc_option(name) && !wc_supported(name))
+                || (is_wc2_option(name) && !wc2_supported(name)))
+                continue;
+
+            const len = name.length;
+            if (len > longest_name_len) longest_name_len = len;
+        }
+    return longest_name_len;
+}
+
+// C ref: options.c get_option_value() -- "Currently handles only boolean and
+// compound options."  The port's optfn_*() have no get_val/get_cnf_val mode, so
+// the compound arm reads the value the parser recorded on game.flags (keep()'s
+// destination) instead of asking the option function to format it.
+export function get_option_value(optname, cnfvalid) {
+    let i;
+
+    for (i = 0; i < OPTCOUNT && ALLOPT[i].name; i++)
+        if (optname === ALLOPT[i].name) {
+            if (ALLOPT[i].typ === 'B' && !ALLOPT[i].noaddr) {
+                const v = game.flags && game.flags[optname];
+                return v ? 'true' : 'false';
+            } else if (ALLOPT[i].typ === 'C') {
+                const v = game.flags && game.flags[optname];
+                if (v !== undefined && v !== null && v !== ''
+                    && v !== false)
+                    return (v === true) ? optname : String(v);
+                return null;
+            }
+        }
+    return null;
+}
+
+// C ref: options.c doset_add_menu() -- one compound-option line in the
+// #optionsfull menu.  indexoffset 0 makes the entry unselectable, which is how
+// doset() greys out an option that cannot be changed now.
+export function doset_add_menu(win, option, fmtstr, idx, indexoffset) {
+    let value = 'unknown'; /* current value */
+    let indent, buf, buf2 = '';
+    const any = {};
+    const i = idx;
+    const clr = NO_COLOR;
+
+    if (i >= 0 && i < OPTCOUNT && ALLOPT[i] && ALLOPT[i].name) {
+        any.a_int = (indexoffset === 0) ? 0 : i + 1 + indexoffset;
+        const v = get_option_value(ALLOPT[i].name, false);
+        if (v) buf2 = v;
+        if (buf2) value = buf2;
+    } else {
+        /* We are trying to add an option not found in allopt[].
+           This is almost certainly bad, but we'll let it through anyway
+           (with a zero value, so it can't be selected). */
+        any.a_int = 0;
+        if (!buf2) buf2 = 'unknown';
+        value = buf2;
+    }
+
+    /* "    " replaces "a - " -- assumes menus follow that style */
+    indent = !any.a_int ? '    ' : '';
+    buf = opt_sprintf3(fmtstr, indent, option, value);
+    add_menu(win, null, any, 0, 0, ATR_NONE, clr, buf,
+             MENU_ITEMFLAGS_SKIPINVERT);
+}
+
+// doset()'s fmtstr is "%s%-*s [%s]" pre-baked with the column width, or the
+// tab-separated "%s%s\t[%s]".  Only those two shapes reach here.
+function opt_sprintf3(fmtstr, a, b, c) {
+    const m = /^%s%-(\d+)s \[%s\]/.exec(fmtstr);
+    if (m) return a + String(b).padEnd(Number(m[1]), ' ') + ' [' + c + ']';
+    return a + b + '\t[' + c + ']';
+}
+
+// C ref: options.c enhance_menu_text() -- the whole body is inside
+// `#if 0 /*#ifdef TTY_PERM_INVENT*/`, so it appends nothing in any build.
+export function enhance_menu_text(buf, sz, whichpass, bool_p, thisopt) {
+    if (!buf) return buf;
+    const nowsz = buf.length + 1;
+    const availsz = sz - nowsz;
+
+    void availsz; void bool_p; void thisopt; void whichpass;
+    return buf;
+}
+
+// C ref: options.c reset_needed_visuals() -- run after a doset() round to apply
+// whatever the picks invalidated.  reset_glyphmap()/reset_customcolors()/
+// reset_customsymbols()/check_gold_symbol() live in js/symbols.js and
+// js/display.js, both of which are on the far side of an import cycle from
+// here, so they load on demand.
+export async function reset_needed_visuals() {
+    if (opt_need_glyph_reset) {
+        const sym = await import('./symbols.js');
+        if (sym.reset_glyphmap) sym.reset_glyphmap('gm_optionchange');
+    }
+    if (opt_reset_customcolors || opt_update_basic_palette
+        || opt_reset_customsymbols || opt_need_redraw) {
+        if (opt_update_basic_palette) {
+            /* #ifdef CHANGE_COLOR change_palette() -- not this build */
+            opt_update_basic_palette = false;
+        }
+        const sym = await import('./symbols.js');
+        if (opt_reset_customcolors && sym.reset_customcolors)
+            sym.reset_customcolors();
+        if (opt_reset_customsymbols && sym.reset_customsymbols)
+            sym.reset_customsymbols();
+        if (opt_need_redraw) {
+            if (sym.check_gold_symbol) sym.check_gold_symbol();
+            const disp = await import('./display.js');
+            if (disp.reglyph_darkroom) disp.reglyph_darkroom();
+        }
+        const disp = await import('./display.js');
+        if (disp.docrt) await disp.docrt();
+    }
+    if (opt_need_promptstyle)
+        adjust_menu_promptstyle(null, game.iflags && game.iflags.menu_headings);
+    if (game.disp && (game.disp.botl || game.disp.botlx)) {
+        const disp = await import('./display.js');
+        if (disp.bot) await disp.bot();
+    }
+    opt_need_redraw = false;
+    opt_need_glyph_reset = false;
+    opt_reset_customcolors = false;
+    opt_reset_customsymbols = false;
+    opt_update_basic_palette = false;
+}
+
+// C ref: options.c toggle_bool_option() -- '#optionsfull's shortcut and the
+// only caller of reset_needed_visuals() outside doset().  Matches on a PREFIX
+// (strncmpi over strlen(p)) and keeps going, so an ambiguous prefix toggles
+// every match.
+export async function toggle_bool_option(p) {
+    let i;
+    let ret = ECMD_FAIL;
+
+    for (i = 0; i < OPTCOUNT; i++)
+        if (strncmpi_eq(ALLOPT[i].name, p, p.length)
+            && ALLOPT[i].typ === 'B'
+            && opt_setwhere(i) === SET_IN_GAME
+            && !ALLOPT[i].noaddr) {
+            const cur = !!(game.flags && game.flags[ALLOPT[i].name]);
+            const buf = `${cur ? '!' : ''}${ALLOPT[i].name}`;
+
+            if (parseoptions(buf, false, opt_result_shim())) ret = ECMD_OK;
+
+            await reset_needed_visuals();
+        }
+    return ret;
+}
+
+// C ref: include/hack.h ECMD_* -- the command-return bits.
+const ECMD_OK = 0x00, ECMD_FAIL = 0x04;
+
+// C ref: options.c get_menu_cmd_key() -- the reverse of map_menu_cmd(): given
+// an internal MENU_* char, the key the player must press for it.
+export function get_menu_cmd_key(ch) {
+    const alias = game.menu_cmd_alias || [];
+    /* gm.mapped_menu_op holds the internal commands, gm.mapped_menu_cmds the
+       user's keys; add_menu_cmd_alias(from_ch=key, to_ch=command) appends to
+       both in lockstep, so a pair here is [key, command]. */
+    for (const [key, cmd] of alias) if (cmd === ch) return key;
+    return ch;
+}
+
+// C ref: options.c collect_menu_keys() -- the scrolling keys to offer in a
+// prompt (printable) or to a yn_function (raw).
+export function collect_menu_keys(outbuf, scrollmask, printable) {
+    const scroll_keys = [
+        [MENU_FIRST_PAGE, 1],
+        [MENU_PREVIOUS_PAGE, 1],
+        [MENU_NEXT_PAGE, 2],
+        [MENU_LAST_PAGE, 2],
+        [MENU_SHIFT_LEFT, 4],
+        [MENU_SHIFT_RIGHT, 8],
+    ];
+    let i;
+
+    outbuf = '';
+    for (i = 0; i < scroll_keys.length; ++i) {
+        if (scrollmask & scroll_keys[i][1]) {
+            const c = get_menu_cmd_key(scroll_keys[i][0]);
+
+            if (printable) outbuf += visctrl(c);
+            else outbuf += c;
+        }
+    }
+    return outbuf;
+}
+
+// C ref: options.c rejectoption() -- MICRO is undefined, so the #else text.
+export async function rejectoption(optname) {
+    await pline(`${optname} can be set only from NETHACKOPTIONS or `
+                + `${OPT_CONFIGFILE}.`);
+}
+
+// C ref: options.c next_opt() -- prints the next boolean option name, on the
+// same line if it fits, on a new line if not; next_opt(win, "") flushes.  The
+// buffer is static in C, so a sequence of calls builds one wrapped list.
+// (option_help_lines() above inlines this loop for its own single use.)
+let next_opt_buf = null;
+export function next_opt(datawin, str) {
+    let i, s;
+
+    if (next_opt_buf === null) next_opt_buf = '';
+
+    if (!str) {
+        s = next_opt_buf.length;
+        if (s > 1 && next_opt_buf.slice(s - 2) === ', ')
+            /* replace ending ", " with "." */
+            next_opt_buf = next_opt_buf.slice(0, s - 2) + '.';
+        i = COLNO;              /* (greater than COLNO - 2) */
+    } else {
+        i = next_opt_buf.length + str.length + 2;
+    }
+
+    if (i > COLNO - 2) { /* rule of thumb */
+        putstr(datawin, 0, next_opt_buf);
+        next_opt_buf = '';
+    }
+    if (str) {
+        next_opt_buf += str;
+        next_opt_buf += ', ';
+    } else {
+        putstr(datawin, 0, str);
+        next_opt_buf = null;
+    }
+}
+
+// C ref: options.c show_menu_controls() -- used by cmd.c '?i' (dolist TRUE) and
+// pager.c '?k' (dolist FALSE).  js/pager.js domenucontrols() renders the '?k'
+// half directly into its own line list; this is the options.c function itself,
+// writing through putstr() into a window.
+export function show_menu_controls(win, dolist) {
+    const hardcoded = [
+        ['Return', 'Accept current choice(s) and dismiss menu'],
+        ['Enter',  'Same as Return'],
+        ['Space',  'If not on last page, advance one page;'],
+        ['     ',  'when on last page, treat like Return'],
+        ['Escape', 'Cancel menu without making any choice(s)'],
+    ];
+    const mc_fmt = (a, b, c) => `${String(a).padStart(8, ' ')}     `
+                                + `${String(b).padEnd(6, ' ')} ${c}`;
+    const mc_altfmt = (a, b, c) => `${String(a).padStart(9, ' ')}  `
+                                   + `${String(b).padEnd(6, ' ')} ${c}`;
+    let buf, arg, fmt;
+    const has_menu_shift = wc2_supported('menu_shift');
+
+    /*
+     * Relies on spaces to line things up in columns, so must be rendered
+     * with a fixed-width font or will look dreadful.
+     */
+
+    putstr(win, 0, 'Menu control keys:');
+    if (dolist) { /* key bindings help: '?i' */
+        let i, ch;
+
+        for (i = 0; i < DEFAULT_MENU_CMD_INFO.length; i++) {
+            ch = DEFAULT_MENU_CMD_INFO[i][1];
+            if ((ch === MENU_SHIFT_RIGHT || ch === MENU_SHIFT_LEFT)
+                && !has_menu_shift)
+                continue;
+            buf = `${visctrl(get_menu_cmd_key(ch)).padEnd(7, ' ')} `
+                  + DEFAULT_MENU_CMD_DESC[i];
+            putstr(win, 0, buf);
+        }
+        /* no separator before hardcoded */
+        fmt = 1;  /* "%s%-7s %s" -- extra specifier absorbs 'arg' */
+        arg = ''; /* no extra prefix for 'dolist' */
+    } else { /* menu controls help: '?k' */
+        putstr(win, 0, '');
+        putstr(win, 0, mc_altfmt('', 'Whole', 'Current'));
+        putstr(win, 0, mc_altfmt('', ' Menu', ' Page'));
+        putstr(win, 0, mc_fmt('Select',
+                              visctrl(get_menu_cmd_key(MENU_SELECT_ALL)),
+                              visctrl(get_menu_cmd_key(MENU_SELECT_PAGE))));
+        putstr(win, 0, mc_fmt('Invert',
+                              visctrl(get_menu_cmd_key(MENU_INVERT_ALL)),
+                              visctrl(get_menu_cmd_key(MENU_INVERT_PAGE))));
+        putstr(win, 0, mc_fmt('Deselect',
+                              visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)),
+                              visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE))));
+        putstr(win, 0, '');
+        putstr(win, 0, mc_fmt('Go to',
+                              visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)),
+                              'Next page'));
+        putstr(win, 0, mc_fmt('',
+                              visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)),
+                              'Previous page'));
+        putstr(win, 0, mc_fmt('',
+                              visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)),
+                              'First page'));
+        putstr(win, 0, mc_fmt('',
+                              visctrl(get_menu_cmd_key(MENU_LAST_PAGE)),
+                              'Last page'));
+        if (has_menu_shift) {
+            putstr(win, 0, mc_fmt('Pan view',
+                                  visctrl(get_menu_cmd_key(MENU_SHIFT_RIGHT)),
+                                  'Right (perm_invent only)'));
+            putstr(win, 0, mc_fmt('',
+                                  visctrl(get_menu_cmd_key(MENU_SHIFT_LEFT)),
+                                  'Left'));
+        }
+        putstr(win, 0, '');
+        putstr(win, 0, mc_fmt('Search',
+                              visctrl(get_menu_cmd_key(MENU_SEARCH)),
+            'Exter a target string and invert all matching entries'));
+        /* separator before hardcoded */
+        putstr(win, 0, '');
+        fmt = 2;  /* "%9s  %-8s %s" */
+        arg = 'Other '; /* prefix for first hardcoded[] entry, then reset */
+    }
+    for (const xcp of hardcoded) {
+        buf = (fmt === 1) ? `${arg}${xcp[0].padEnd(7, ' ')} ${xcp[1]}`
+                          : `${String(arg).padStart(9, ' ')}  `
+                            + `${xcp[0].padEnd(8, ' ')} ${xcp[1]}`;
+        putstr(win, 0, buf);
+        arg = '';
+    }
+}
+
+// C ref: options.c dotogglepickup() -- the '@' command.  (js/cmd.js inlines the
+// same three lines inside its '@' arm.)
+export async function dotogglepickup() {
+    let buf, ocl;
+
+    game.flags = game.flags || {};
+    game.flags.pickup = !game.flags.pickup;
+    if (game.flags.pickup) {
+        /* C: oc_to_str(flags.pickup_types, ocl) turns the stored CLASS NUMBERS
+           into symbols; the port's optfn_pickup_types() keeps the symbol string
+           itself (js/cmd.js's '@' arm prints it raw), so no conversion. */
+        ocl = game.flags.pickup_types || '';
+        buf = `ON, for ${ocl ? ocl : 'all'} objects`
+              + ((game.apelist && game.apelist.length)
+                 ? ((count_apes() === 1) ? ', with one exception'
+                                         : ', with some exceptions')
+                 : '');
+    } else {
+        buf = 'OFF';
+    }
+    await pline(`Autopickup: ${buf}.`);
+    return ECMD_OK;
+}
+
+// ---------------------------------------------------------------------------
+// #saveoptions -- all_options_strbuf() and its helpers.  C accumulates into a
+// strbuf_t; here `sbuf` is { str: '' } and strbuf_append() concatenates.
+// js/cfgfiles.js's write_config_file() path is what would call this.
+
+function strbuf_init(sbuf) { sbuf.str = ''; }
+function strbuf_append(sbuf, s) { sbuf.str += s; }
+
+// C ref: options.c all_options_conds() -- one OPTIONS=cond_foo,!cond_bar entry,
+// wrapped with backslash+newline at 75 columns.  botl.c opt_next_cond() IS
+// ported (js/botl.js exports it), but botl.js -> coloratt.js -> options.js is a
+// cycle, so it loads on demand; that is the only reason this is async.
+export async function all_options_conds(sbuf) {
+    let buf = '', nextcond;
+    let idx = 0;
+    let gotone = false;
+    const { opt_next_cond } = await import('./botl.js');
+    const out = { buf: '' };
+
+    while (opt_next_cond(idx, out) && (nextcond = out.buf) !== null) {
+        /* 75: room for about 5 conditions, with enough space for player
+           to edit resulting file manually and insert '!' in front of them */
+        if (idx === 0) {
+            buf = 'OPTIONS=';
+        } else if (buf.length + 1 + nextcond.length >= 75) {
+            /* finish off previous line */
+            buf += ',\\\n'; /* comma and backslash+newline */
+            strbuf_append(sbuf, buf);
+            /* indent continuation line */
+            buf = ' '.repeat(8); /* 8: strlen("OPTIONS=") */
+        } else if (nextcond && gotone) {
+            buf += ',';
+        }
+        if (nextcond) {
+            gotone = true;
+            buf += nextcond;
+        }
+        ++idx;
+    }
+    /* finish off final line; value might be empty if one or more cond_xyz
+       options were changed in such a manner that they're all back to their
+       default values--which will produce "OPTIONS=" with nothing after the
+       equals sign; only add to the output when there is more present */
+    if (buf !== 'OPTIONS=') {
+        buf += '\n';
+        strbuf_append(sbuf, buf);
+    }
+}
+
+// C ref: options.c all_options_menucolors() -- emitted in REVERSE list order,
+// because add_menu_coloring() prepends.
+export function all_options_menucolors(sbuf) {
+    let i = 0;
+    const ncolors = count_menucolors();
+    let buf;
+
+    if (!ncolors) return;
+
+    /* reverse the order */
+    const arr = [];
+    for (const mc of (game.menucolors || [])) arr[i++] = mc;
+
+    for (i = ncolors; i > 0; i--) {
+        const tmp = arr[i - 1];
+        const sattr = opt_attr2attrname(tmp.attr);
+        const sclr = opt_clr2colorname(tmp.color);
+        buf = `MENUCOLOR="${tmp.origstr}"=${sclr}`
+              + `${(tmp.attr !== ATR_NONE) ? '&' : ''}`
+              + `${(tmp.attr !== ATR_NONE) ? sattr : ''}\n`;
+        strbuf_append(sbuf, buf);
+    }
+}
+
+// C ref: options.c all_options_msgtypes().
+export function all_options_msgtypes(sbuf) {
+    let buf;
+
+    for (const tmp of (game.msgtypes || [])) {
+        const mtype = msgtype2name(tmp.msgtype);
+        buf = `MSGTYPE=${mtype} "${tmp.pattern}"\n`;
+        strbuf_append(sbuf, buf);
+    }
+}
+
+// C ref: options.c all_options_apes().
+export function all_options_apes(sbuf) {
+    let buf;
+
+    for (const tmp of (game.apelist || [])) {
+        buf = `autopickup_exception="${tmp.grab ? '<' : '>'}${tmp.pattern}"\n`;
+        strbuf_append(sbuf, buf);
+    }
+}
+
+// C ref: options.c all_options_palette() -- inside #ifdef CHANGE_COLOR, so it
+// is not compiled in this build (ga.altpalette[] is never populated either).
+export function all_options_palette(sbuf) {
+    const altpalette = (game.altpalette || []);
+    let clr, buf;
+    const n = altpalette.filter((v) => v).length; /* count_alt_palette() */
+
+    if (!n) return;
+
+    for (clr = 0; clr < CLR_MAX; ++clr) {
+        if (altpalette[clr]) {
+            const hex = (altpalette[clr] & 0xffffff).toString(16)
+                            .padStart(6, '0');
+            buf = `OPTIONS=palette:${opt_clr2colorname(clr)}/#${hex}\n`;
+            strbuf_append(sbuf, buf);
+        }
+    }
+}
+
+// C ref: options.c all_options_strbuf() -- the whole new config file.
+// opt_set_in_config[] is C's "this option was actually set in the RC file"
+// bitmap; the port records the same thing as the presence of a key on
+// game.flags/game.iflags, so `optset` below stands in for it.
+export async function all_options_strbuf(sbuf) {
+    let name, tmp, buf2, i;
+
+    strbuf_init(sbuf);
+    tmp = `# NetHack config, saved ${yyyymmddhhmmss(0)}\n#\n`;
+    strbuf_append(sbuf, tmp);
+
+    const optset = (nm) => (game.flags && Object.hasOwn(game.flags, nm))
+                        || (game.iflags && Object.hasOwn(game.iflags, nm));
+
+    for (i = 0; i < OPTCOUNT && (name = ALLOPT[i].name); i++) {
+        if (!optset(name)) continue;
+        switch (ALLOPT[i].typ) {
+        case 'B': {
+            if (ALLOPT[i].noaddr || name === 'female')
+                break; /* obsolete */
+            const val = !!(game.flags && game.flags[name]);
+            /* allopt[].initval; the parser only records a boolean it saw, so
+               anything present here differs from the compiled-in default */
+            tmp = `OPTIONS=${val ? '' : '!'}${name}\n`;
+            strbuf_append(sbuf, tmp);
+            break;
+        }
+        case 'C': {
+            const sw = opt_setwhere(i);
+            if (!(sw === SET_IN_CONFIG || sw === SET_GAMEVIEW
+                  || sw === SET_IN_GAME))
+                break;
+            /* FIXME: get_option_value for:
+               - menu_deselect_all &c menu control keys,
+               - term_cols, term_rows */
+            buf2 = get_option_value(name, true);
+            if (buf2) {
+                tmp = `OPTIONS=${name}:${buf2}`.slice(0, BUFSZ - 1);
+                tmp += '\n'; /* guaranteed to fit */
+                strbuf_append(sbuf, tmp);
+            }
+            break;
+        }
+        case 'O':
+            break;
+        }
+    }
+
+    /* cond_xyz are closer to regular options than the other 'other opts'
+       so put them next; [pfx_cond_] will be set if any cond_Foo were
+       present when RC file was read in or if player made any changes via
+       status conditions menu; ignore opt_set_in_config[opt_o_status_cond] */
+    if (game.conds && Object.keys(game.conds).length)
+        await all_options_conds(sbuf);
+
+    /* #ifdef CHANGE_COLOR all_options_palette(sbuf) -- not this build */
+    /* cmd.c get_changed_key_binds() and symbols.c savedsym_strbuf() have no
+       port; the rest of the file is written below. */
+    all_options_menucolors(sbuf);
+    all_options_msgtypes(sbuf);
+    all_options_apes(sbuf);
+    /* cmd.c all_options_autocomplete() has no port either */
+    /* #ifdef STATUS_HILITES all_options_statushilites(sbuf) -- botl.c */
+
+    if (game.wizkit) {
+        tmp = `WIZKIT=${game.wizkit}\n`;
+        strbuf_append(sbuf, tmp);
+    }
+}
+
+// C ref: hacklib.c yyyymmddhhmmss(0) -- "now", as 14 digits of local time.
+function yyyymmddhhmmss(when) {
+    const d = when ? new Date(when * 1000) : new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}`
+           + `${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+}
+
+// ---------------------------------------------------------------------------
+// optfn_*() / pfxfn_*() that this build compiles OUT.  They are here for
+// completeness -- the option names they serve are absent from ALLOPT, so
+// parseoptions() can never reach them and no OPTFN entry points at them.
+//   optfn_cursesgraphics  #ifdef CURSES_GRAPHICS  (config.h: commented out)
+//   optfn_palette         #ifdef CHANGE_COLOR     (windconf/amiconf only)
+//   optfn_videocolors,
+//   optfn_videoshades     #ifdef VIDEOSHADES      (MSDOS)
+//   optfn_video_width,
+//   optfn_video_height,
+//   optfn_video           #ifdef MSDOS [+ NO_TERMS]
+//   optfn_windowchain     #ifdef WINCHAIN
+//   optfn_subkeyvalue     #ifdef WIN32CON
+//   pfxfn_IBM_            #if defined(MICRO) && !defined(AMIGA)
+// C's five request modes are do_init / do_set / get_val / get_cnf_val; the
+// port's optfn_*() are do_set-only, so these keep the same shape.
+
+// C ref: options.c optfn_cursesgraphics() -- with BACKWARD_COMPAT defined (it
+// is, unconditionally, in optlist.h) this is "symset:cursesgraphics".
+export function optfn_cursesgraphics(o, negated, opts, op, result) {
+    let badflag = false;
+
+    if (!negated) {
+        /* There is no rogue level cursesgraphics-specific set */
+        if (result.symset) {
+            badflag = true;
+        } else if (!read_sym_file(o.name)) {
+            badflag = true;
+        } else {
+            result.symset = o.name;
+        }
+        if (badflag) {
+            config_error_add(`Failure to load symbol set ${o.name}.`);
+            return OPTN_ERR;
+        }
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c optfn_palette() -- the non-MACOS9 variant; the OS9 one is
+// inside `#if 0`.  alternative_palette() is coloratt.c's "color/#RRGGBB" parser,
+// which has no port, so the value is validated only for shape here.
+export function optfn_palette(o, negated, opts, op, result) {
+    if (op === '') return OPTN_ERR;
+
+    if (match_optname(opts, 'palette', 3, true)) {
+        /*
+         *  palette (adjust an RGB color in palette (color/R-G-B)
+         */
+        if (!alternative_palette(op, result)) {
+            config_error_add(`Error in palette parameter '${op}'`);
+            return OPTN_ERR;
+        }
+        if (!opt_initial) opt_update_basic_palette = true;
+    }
+    return OPTN_OK;
+}
+
+// C ref: coloratt.c alternative_palette() -- "<colorname>/#rrggbb" (or
+// "/r-g-b"); stores into ga.altpalette[clr] with COLORVAL packing.
+function alternative_palette(op, result) {
+    const slash = op.indexOf('/');
+    if (slash < 0) return false;
+    const clr = match_str2clr(op.slice(0, slash), true);
+    if (clr < 0 || clr >= CLR_MAX) return false;
+    let spec = op.slice(slash + 1);
+    let rgb = -1;
+    if (spec[0] === '#') {
+        if (!/^[0-9a-fA-F]{6}$/.test(spec.slice(1))) return false;
+        rgb = parseInt(spec.slice(1), 16);
+    } else {
+        const parts = spec.split('-');
+        if (parts.length !== 3) return false;
+        const v = parts.map((p) => parseInt(p, 10));
+        if (v.some((x) => !(x >= 0 && x <= 255))) return false;
+        rgb = (v[0] << 16) | (v[1] << 8) | v[2];
+    }
+    const tgt = result || game;
+    tgt.altpalette = tgt.altpalette || new Array(CLR_MAX).fill(0);
+    /* COLORVAL() keeps the low 24 bits; the high bit marks "set" */
+    tgt.altpalette[clr] = rgb | 0x1000000;
+    return true;
+}
+
+// C ref: options.c optfn_videocolors() -- MSDOS ttycolors[] remap.
+export function optfn_videocolors(o, negated, opts, op, result) {
+    opts = string_for_env_opt(o.name, opts, false);
+    if (opts === '') return OPTN_ERR;
+    if (!assign_videocolors(opts, result)) {
+        config_error_add(`Unknown error handling '${o.name}'`);
+        return OPTN_ERR;
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c optfn_videoshades().
+export function optfn_videoshades(o, negated, opts, op, result) {
+    opts = string_for_env_opt(o.name, opts, false);
+    if (opts === '') return OPTN_ERR;
+    if (!assign_videoshades(opts, result)) {
+        config_error_add(`Unknown error handling '${o.name}'`);
+        return OPTN_ERR;
+    }
+    return OPTN_OK;
+}
+
+// C ref: sys/share/pcvideo.c assign_videocolors()/assign_videoshades() -- the
+// MSDOS-only "-"-separated remaps; nothing outside MSDOS ever calls them.
+function assign_videocolors(op, result) {
+    const parts = String(op).split('-');
+    if (parts.length !== 12) return false;
+    const v = parts.map((p) => parseInt(p, 10));
+    if (v.some((x) => !(x >= 0 && x < CLR_MAX))) return false;
+    (result || game).ttycolors = v;
+    return true;
+}
+function assign_videoshades(op, result) {
+    const parts = String(op).split('-');
+    if (parts.length !== 3) return false;
+    (result || game).shade = parts;
+    return true;
+}
+
+// C ref: options.c optfn_video_width()/optfn_video_height() -- note both pass
+// `negated` as string_for_opt()'s val_optional, so "!video_width" is accepted
+// and silently sets nothing.
+export function optfn_video_width(o, negated, opts, op, result) {
+    op = string_for_opt(opts, negated);
+    if (op !== '') result.iflags.wc_video_width = parseInt(op, 10) || 0;
+    else return OPTN_ERR;
+    return OPTN_OK;
+}
+export function optfn_video_height(o, negated, opts, op, result) {
+    op = string_for_opt(opts, negated);
+    if (op !== '') result.iflags.wc_video_height = parseInt(op, 10) || 0;
+    else return OPTN_ERR;
+    return OPTN_OK;
+}
+
+// C ref: options.c optfn_video() -- #ifdef NO_TERMS inside #ifdef MSDOS.
+export function optfn_video(o, negated, opts, op, result) {
+    opts = string_for_env_opt(o.name, opts, false);
+    if (opts === '') return OPTN_ERR;
+    if (!assign_video(opts, result)) {
+        config_error_add(`Unknown error handling '${o.name}'`);
+        return OPTN_ERR;
+    }
+    return OPTN_OK;
+}
+
+// C ref: sys/share/pcvideo.c assign_video() -- "autodetect", "default" or "vga".
+function assign_video(op, result) {
+    for (const nm of ['autodetect', 'default', 'vga'])
+        if (strcmpi_eq(op, nm)) { (result || game).video = nm; return true; }
+    return false;
+}
+
+// C ref: options.c optfn_windowchain() -- #ifdef WINCHAIN; addto_windowchain()
+// is win/win32/winchain.c's and has no port.
+export function optfn_windowchain(o, negated, opts, op, result) {
+    op = string_for_env_opt(o.name, opts, false);
+    if (op !== '') {
+        const WINTYPELEN = 16;
+        const buf = nmcpy(op, WINTYPELEN);
+        result.windowchain = (result.windowchain || []).concat([buf]);
+    } else {
+        return OPTN_ERR;
+    }
+    return OPTN_OK;
+}
+
+// C ref: options.c optfn_subkeyvalue() -- #ifdef WIN32CON; map_subkeyvalue()
+// is a Windows console scancode remap.
+export function optfn_subkeyvalue(o, negated, opts, op, result) {
+    if (op === '') return OPTN_ERR;
+    /* #ifdef TTY_GRAPHICS map_subkeyvalue(op) -- WIN32CON only */
+    return OPTN_OK;
+}
+
+// C ref: options.c pfxfn_IBM_() -- the "IBM_" prefix option; every request mode
+// is a no-op, it exists only so the name matches instead of erroring.
+export function pfxfn_IBM_(o, negated, opts, op, result) {
+    return OPTN_OK;
+}
+
+// ---------------------------------------------------------------------------
+// fruitadd() -- register the player's named fruit (or a fruit name arriving
+// from a bones file / orctown loot) and return its fid.
+
+const PL_FSIZ = 32;   /* global.h -- fruit name */
+const FOOD_CLASS = 7; /* objclass.h */
+
+// C ref: objnam.c fruit_from_name(fname, exact, &highest_fid).  js/objnam.js
+// has no port of it yet, so this private copy keeps fruitadd() faithful;
+// delete it in favour of an objnam.js export when that lands.  Returns
+// { f, highest_fid }.
+function fruit_from_name_local(fname, exact) {
+    let f, tentativef, altfname, k;
+    let highest_fid = 0;
+    const chain = () => {
+        const out = [];
+        for (let p = game.ffruit; p; p = p.nextf) out.push(p);
+        return out;
+    };
+
+    /* note: named fruits are case-sensitive... */
+    /* first try for an exact match */
+    for (f of chain()) {
+        if (f.fname === fname) return { f, highest_fid };
+        else if (f.fid > highest_fid) highest_fid = f.fid;
+    }
+
+    /* didn't match as-is; if caller is willing to accept a prefix match, try
+       to find one; we want the LONGEST prefix that matches, not the first */
+    f = null;
+    if (!exact) {
+        tentativef = null;
+        for (const g of chain()) {
+            k = g.fname.length;
+            if (fname.slice(0, k) === g.fname
+                && (!fname[k] || fname[k] === ' ')
+                && (!tentativef || k > tentativef.fname.length))
+                tentativef = g;
+        }
+        f = tentativef;
+    }
+    /* if we still don't have a match, try singularizing the target */
+    if (!f) {
+        altfname = makesingular(fname);
+        for (const g of chain()) if (g.fname === altfname) { f = g; break; }
+    }
+    if (!f && !exact) {
+        const fname_k = fname.length; /* length of assumed plural fname */
+
+        tentativef = null;
+        for (const g of chain()) {
+            k = g.fname.length;
+            let fnamebuf = fname;
+            /* bug? if singular of fname is longer than plural, failing the
+               'fname_k > k' test could skip a viable candidate ... compromise
+               and use 'fname_k >= k' */
+            const sp = fnamebuf.indexOf(' ', k);
+            if (fname_k >= k && sp >= 0) {
+                fnamebuf = fnamebuf.slice(0, sp);
+                altfname = makesingular(fnamebuf);
+                k = altfname.length; /* actually revised 'fname_k' */
+                if (g.fname === altfname
+                    && (!tentativef || k > tentativef.fname.length))
+                    tentativef = g;
+            }
+        }
+        f = tentativef;
+    }
+    return { f: f || null, highest_fid };
+}
+
+// C ref: objclass.h svb.bases[FOOD_CLASS] -- where fruitadd()'s "is this the
+// name of a real food?" scan starts.  init_objects() fills bases[] in, so the
+// call from initoptions_finish() (which runs BEFORE init_objects()) sees 0,
+// objects[0] is STRANGE_OBJECT/ILLOBJ_CLASS, and the scan does nothing -- which
+// is exactly why the default "slime mold" is not renamed to "candied slime
+// mold".  js/o_init.js and js/objnam.js each keep a PRIVATE bases[]; when one
+// of them publishes it (as game.svb.bases), this reads the real value and the
+// post-init_objects behaviour follows with no other change.
+function svb_bases_food() {
+    return (game.svb && game.svb.bases && game.svb.bases[FOOD_CLASS]) || 0;
+}
+
+// C ref: options.c fruitadd().  `str === game.svp.pl_fruit` is C's
+// `user_specified` test: the option's own buffer, not a copy.
+export function fruitadd(str, replace_fruit) {
+    let i, f;
+    let highest_fruit_id = 0, globpfx;
+    let buf, altname = '';
+    game.svp = game.svp || {};
+    game.flags = game.flags || {};
+    const user_specified = (str === game.svp.pl_fruit);
+    /* if not user-specified, then it's a fruit name for a fruit on
+     * a bones level or from orctown raider's loot...
+     */
+
+    /* Note: every fruit has an id (kept in obj->spe) of at least 1;
+     * 0 is an error.
+     */
+    if (user_specified) {
+        let found = false, numeric = false;
+
+        /* force fruit to be singular; this handling is not needed--or
+           wanted--for fruits from bones because they already received it in
+           their original game */
+        game.svp.pl_fruit = nmcpy(makesingular(str), PL_FSIZ);
+
+        /* disallow naming after other foods (since it'd be impossible
+         * to tell the difference); globs might have a size prefix which
+         * needs to be skipped in order to match the object type name
+         */
+        const pf = () => game.svp.pl_fruit;
+        globpfx = (pf().startsWith('small ') || pf().startsWith('large ')) ? 6
+                  : pf().startsWith('medium ') ? 7
+                  : pf().startsWith('very large ') ? 11
+                  : 0;
+        for (i = svb_bases_food(); objects[i]
+                                   && objects[i].oc_class === FOOD_CLASS; i++) {
+            if (objects[i].name === pf()
+                || (globpfx > 0 && objects[i].name === pf().slice(globpfx))) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            let c = 0;
+            while (c < pf().length && pf()[c] >= '0' && pf()[c] <= '9') c++;
+            if (c >= pf().length || isspace(pf()[c])) numeric = true;
+        }
+        if (found || numeric
+            /* these checks for applying food attributes to actual items
+               are case sensitive; "glob of foo" is caught by 'found'
+               if 'foo' is a valid glob; when not valid, allow it as-is */
+            || pf().startsWith('cursed ')
+            || pf().startsWith('uncursed ')
+            || pf().startsWith('blessed ')
+            || pf().startsWith('partly eaten ')
+            || (pf().startsWith('tin of ')
+                && (pf().slice(7) === 'spinach'
+                    || name_to_pmidx(pf().slice(7)) >= 0))
+            || pf() === 'empty tin'
+            || (pf() === 'glob'
+                || (globpfx > 0 && 'glob' === pf().slice(globpfx)))
+            || ((pf().endsWith(' corpse') || pf().endsWith(' egg'))
+                && name_to_pmidx(pf()) >= 0)) {
+            buf = pf();
+            game.svp.pl_fruit = 'candied ' + nmcpy(buf, PL_FSIZ - 8);
+        }
+        altname = '';
+        /* This flag indicates that a fruit has been made since the
+         * last time the user set the fruit.  If it hasn't, we can
+         * safely overwrite the current fruit, preventing the user from
+         * setting many fruits in a row and overflowing.
+         */
+        game.flags.made_fruit = false;
+        if (replace_fruit) {
+            /* replace_fruit is already part of the fruit chain;
+               update it in place rather than looking it up again */
+            f = replace_fruit;
+            f.fname = game.svp.pl_fruit.slice(0, PL_FSIZ - 1);
+            return fruitadd_nonew(f, user_specified);
+        }
+    } else {
+        /* not user_supplied, so assumed to be from bones (or orc gang) */
+        altname = sanitize_name(String(str).slice(0, PL_FSIZ - 1));
+        game.flags.made_fruit = true; /* for safety.  Any fruit name added
+                                       * from a bones level should exist. */
+    }
+    /* C's `str` IS svp.pl_fruit when user_specified (the caller passes that
+       buffer), so the nmcpy()s above are visible through it -- e.g. "apples"
+       has become "candied apple" by now.  JS strings don't alias, so read the
+       buffer back instead of the argument. */
+    const lookup = user_specified ? game.svp.pl_fruit : str;
+    const found = fruit_from_name_local(altname ? altname : lookup, false);
+    f = found.f;
+    highest_fruit_id = found.highest_fid;
+    if (f) return fruitadd_nonew(f, user_specified);
+
+    /* Maximum number of named fruits is 127, even if obj->spe can
+       handle bigger values.  If adding another fruit would overflow,
+       use a random fruit instead... we've got a lot to choose from.
+       current_fruit remains as is. */
+    if (highest_fruit_id >= 127) return rnd(127);
+
+    f = { fname: String(altname ? altname : lookup).slice(0, PL_FSIZ - 1),
+          fid: ++highest_fruit_id, nextf: null };
+    /* we used to go out of our way to add it at the end of the list,
+       but the order is arbitrary so use simpler insertion at start */
+    f.nextf = game.ffruit || null;
+    game.ffruit = f;
+    return fruitadd_nonew(f, user_specified);
+}
+
+// C ref: options.c fruitadd()'s `nonew:` label.
+function fruitadd_nonew(f, user_specified) {
+    if (user_specified) {
+        game.context = game.context || {};
+        game.context.current_fruit = f.fid;
+    }
+    return f.fid;
+}
+
+// ---------------------------------------------------------------------------
+// initoptions() and friends.  The port does this work at module load (see
+// determine_ambiguities() above) and in js/cfgfiles.js rcfile(); these are the
+// C functions themselves, for the day the startup sequence is driven from here.
+
+// C ref: options.c allopt_array_init() -- copy allopt_init[] over allopt[],
+// compute the minmatch lengths, apply every initval, then give each option
+// function its do_init call.  Runs once per process.
+let options_array_inited_already = false;
+export function allopt_array_init() {
+    let i;
+
+    if (!options_array_inited_already) {
+        /* memcpy(allopt, allopt_init, sizeof(allopt)): ALLOPT is built from
+           ALLOPT_META_DATA once, at module load, so there is nothing to copy */
+        determine_ambiguities();
+        for (i = 0; i < OPTCOUNT; i++) {
+            /* `if (allopt[i].addr) *(allopt[i].addr) = allopt[i].initval` --
+               the port has no addr column; parseNethackrc() starts from an
+               empty flags/iflags and every reader supplies the same default. */
+            void i;
+        }
+        heed_all_options();
+        /*
+         * Call each option function with an init flag and give it a chance
+         * to make any preparations that it might require.  We do this
+         * whether or not the option itself is ever specified.
+         *
+         * Every optfn_*()'s do_init arm in options.c is `return optn_ok`, so
+         * the port's do_set-only option functions lose nothing by skipping it.
+         */
+        options_array_inited_already = true;
+    }
+}
+
+// C ref: options.c initoptions_init() -- the compiled-in defaults, before any
+// config file is read.  Steps with no counterpart in this port are named in the
+// comments rather than silently dropped.
+export function initoptions_init() {
+    let i;
+    const have_branch = false; /* nomakedefs.git_branch is empty when released */
+
+    opt_phase = BUILTIN_OPT;    /* Did I need to move this here? */
+    /* sf_init() -- js/storage.js owns the save format */
+    allopt_array_init();
+    /* gc.cmdline_windowsys: the harness never passes -windowtype */
+    /* fill_glyphid_cache() -- js/symbols.js builds its caches lazily */
+    /* reset_commands(TRUE) -- js/cmd.js builds its dispatch from game.flags */
+    /* init_random(rn2)/init_random(rn2_on_display_rng) -- frozen/rng.js */
+
+    opt_phase = BUILTIN_OPT;
+    game.flags = game.flags || {};
+    game.iflags = game.iflags || {};
+    const flags = game.flags, iflags = game.iflags;
+
+    flags.end_own = false;
+    flags.end_top = 3;
+    flags.end_around = 2;
+    /* PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP */
+    flags.paranoia_bits = 0x0400 | 0x2000 | 0x0800;
+    flags.versinfo = have_branch ? 4 : 1;
+    flags.pile_limit = PILE_LIMIT_DFLT;  /* 5 */
+    flags.runmode = 'teleport';          /* RUN_LEAP; port stores the name */
+    iflags.msg_history = 20;
+
+    /* msg_window has conflicting defaults for multi-interface binary */
+    iflags.prevmsg_window = 's';         /* #ifdef TTY_GRAPHICS */
+
+    iflags.menu_headings = { attr: ATR_INVERSE, color: NO_COLOR_IDX };
+    iflags.getpos_coords = GPCOORDS_NONE;
+
+    /* hero's role, race, &c haven't been chosen yet */
+    flags.initrole = flags.initrace = flags.initgend = flags.initalign
+        = ROLE_NONE;
+
+    /* init_ov_primary_symbols()/init_ov_rogue_symbols()/init_symbols() and
+       gw.warnsyms[] -- js/symbols.js */
+
+    flags.inv_order = DEF_INV_ORDER.slice();
+    flags.pickup_types = '';
+    flags.pickup_burden = 2;             /* MOD_ENCUMBER */
+    flags.sortloot = 'l'; /* sort only loot by default */
+
+    flags.end_disclose = new Array(NUM_DISCLOSURE_OPTIONS)
+        .fill(DISCLOSE_PROMPT_DEFAULT_NO);
+    /* switch_symbols(FALSE)/init_rogue_symbols() -- js/symbols.js */
+    /* the UNIX TERM=AT / TERM=vt* symset autodetection: the recorder's TERM is
+       neither, so neither load_symset() runs */
+
+    flags.menustyle = 'f';               /* MENU_FULL; port stores the letter */
+
+    iflags.wc_align_message = ALIGN_TOP;
+    iflags.wc_align_status = ALIGN_BOTTOM;
+    /* used by tty and curses */
+    iflags.wc2_statuslines = 2;
+    iflags.wc2_petattr = ATR_INVERSE;
+    /* only used by curses */
+    iflags.wc2_windowborders = 2; /* 'Auto' */
+
+    /*
+     * 'menuinvertmode' controls how 'skip-invert' menu items behave:
+     * 0: ignore the flag; 1: don't toggle them On for set-all/set-page/
+     * invert-all/invert-page but do toggle Off if already set (default);
+     * 2: don't toggle them either way.
+     */
+    iflags.menuinvertmode = 1;
+
+    /* since this is done before init_objects(), do partial init here */
+    game.svp = game.svp || {};
+    game.svp.pl_fruit = nmcpy(objects[SLIME_MOLD()]
+                              ? objects[SLIME_MOLD()].name : 'slime mold',
+                              PL_FSIZ);
+
+    /* #ifdef SYSCF_FILE read_config_file(SYSCF_FILE, set_in_sysconf):
+       js/cfgfiles.js owns the sysconf pass */
+    void i;
+}
+
+// C ref: objects[SLIME_MOLD] -- the fruit's default name comes from the object
+// whose name initoptions_finish() then overrides with "fruit".  Resolved on
+// first use, not at module load: `objects` is an imported binding and this file
+// is on a cycle with js/coloratt.js and js/symbols.js.
+let slime_mold_otyp = -2;
+function SLIME_MOLD() {
+    if (slime_mold_otyp === -2)
+        slime_mold_otyp = objects.findIndex((o) => o && o.name === 'slime mold');
+    return slime_mold_otyp;
+}
+
+// C ref: options.c initoptions_finish() -- runs the RC file, then the
+// after-the-fact fixups.
+export function initoptions_finish() {
+    /* rcfile() -- js/cfgfiles.js */
+
+    fruitadd(game.svp && game.svp.pl_fruit, null);
+    /*
+     * Remove "slime mold" from list of object names.  This will
+     * prevent it from being wished unless it's actually present
+     * as a named (or default) fruit.  Wishing for "fruit" will
+     * result in the player's preferred fruit.
+     */
+    if (objects[SLIME_MOLD()]) game.obj_descr_fruit_override = 'fruit';
+
+    /* get_othersym(SYM_BOULDER, ...)/reglyph_darkroom()/reset_glyphmap() --
+       js/symbols.js and js/display.js */
+
+    /* #ifdef STATUS_HILITES: a multi-interface binary might not support status
+       highlighting for the active interface */
+    if (game.iflags && game.iflags.hilite_delta
+        && !wc2_supported('statushilites')) {
+        raw_print('Status highlighting not supported for tty interface.');
+        game.iflags.hilite_delta = 0;
+    }
+    /* update_rest_on_space() -- js/cmd.js */
+
+    /* these can't rely on compile-time initialization for their defaults
+       because a multi-interface binary might need different values for
+       different interfaces; if neither tiled_map nor ascii_map pass the
+       wc_supported() test, assume ascii_map */
+    const iflags = (game.iflags = game.iflags || {});
+    if (iflags.wc_tiled_map && !wc_supported('tiled_map')) {
+        iflags.wc_tiled_map = false; iflags.wc_ascii_map = true;
+    } else if (iflags.wc_ascii_map && !wc_supported('ascii_map')
+               && wc_supported('tiled_map')) {
+        iflags.wc_ascii_map = false; iflags.wc_tiled_map = true;
+    }
+
+    /* #ifdef ENHANCED_SYMBOLS apply_customizations() -- js/symbols.js */
+    opt_initial = false;
+    return;
+}
+
+// C ref: options.c initoptions() -- initoptions_init() unless it has already
+// run, then the sysconf pass, then initoptions_finish().
+export function initoptions() {
+    /*
+     * Most places that call initoptions_init()/initoptions() would
+     * have the calls next to each other, so instead of adding
+     * initoptions_init() everywhere, just add it where it's needed in
+     * a non-adjacent place and call it here for all the other cases.
+     */
+    if (opt_phase !== BUILTIN_OPT) initoptions_init();
+    /* #ifdef SYSCF_FILE: assure_syscf_file() + read_config_file(SYSCF_FILE,
+       set_in_sysconf) -- js/cfgfiles.js owns that pass */
+    /* gd.deferred_showpaths: -showpaths is never passed by the harness */
+    initoptions_finish();
+}

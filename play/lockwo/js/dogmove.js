@@ -32,7 +32,7 @@ import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, m_avoid_kicked_loc,
     mon_allowflags, set_apparxy, onscary, mon_wield_item,
     Conflict, resist_conflict, mattacku } from './monmove.js';
 import { goodpos } from './teleport.js';
-import { ALLOW_TRAPS as ALLOW_TRAPS_F, ALLOW_U } from './const.js';
+import { ALLOW_TRAPS as ALLOW_TRAPS_F, ALLOW_U, I_SPECIAL } from './const.js';
 import { t_at } from './trap.js';
 import { mattackm } from './mhitm.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_MISS } from './const.js';
@@ -946,6 +946,12 @@ async function mdrop_obj(mtmp, obj, verbosely) {
     // C ref: steal.c:825 extract_from_minvent(mon, obj, FALSE, TRUE).
     const ix = mtmp.minvent ? mtmp.minvent.indexOf(obj) : -1;
     if (ix >= 0) mtmp.minvent.splice(ix, 1);
+    const unwornmask = obj.owornmask | 0;
+    obj.owornmask = 0;
+    if (unwornmask) {
+        mtmp.misc_worn_check = ((mtmp.misc_worn_check | 0) & ~unwornmask) | I_SPECIAL;
+        if (obj === mtmp.mw) mtmp.mw = null;
+    }
     // C ref: steal.c:835 — the pline fires AFTER the extract and BEFORE the
     // floor placement, so a --More-- here shows the square without the glyph.
     // Routing through update_topl (not a raw _pending_message assignment) lets

@@ -11,10 +11,17 @@ import { NO_COLOR } from './terminal.js';
 import { roles, rank_of, align_gname, align_gtitle } from './role.js';
 import { A_LAWFUL, A_NEUTRAL, A_CHAOTIC, In_quest } from './const.js';
 import { rn2 } from './rng.js';
-import { flush_screen, topl_more, update_topl } from './display.js';
+import { flush_screen, topl_more, update_topl, impossible } from './display.js';
 import { renderWindowScreen } from './invent.js';
 import { Blind } from './vision.js';
-import { msound_of, MS_LEADER, MS_NEMESIS, MS_GUARDIAN } from './monflags_data.js';
+import { msound_of, MS_LEADER, MS_NEMESIS, MS_GUARDIAN,
+         mflags2_of, M2_PNAME } from './monflags_data.js';
+// Needed only by the questpgr.c block at the bottom of this file (quest_info,
+// ldrname, neminame, guardname, is_quest_artifact): the numeric role fields
+// (ldrnum/neminum/guardnum/questarti) are resolved out of QUEST_ROLE_DATA's
+// formatted names through these two tables.
+import { name_to_pmidx, monster_by_pmidx } from './makemon.js';
+import { artilist } from './artifact.js';
 // C ref: botl.c rank_of() — LEVEL-dependent rank. role.js's rank_of() ignores
 // its level argument and always yields rank[0], which is only right at XL<=2;
 // the readiness-gate texts below are delivered at XL>=14, where %r must be the
@@ -2871,10 +2878,9 @@ export async function com_pager(msgid) {
     await com_pager_core('common', msgid);
 }
 
-// C ref: questpgr.c deliver_splev_message() (do.c:1858) is NOT ported: it
-// plines gl.lev_message, which only des.message() writes, and the only level
-// files that call it are air/earth/water/astral and Sam-strt — none reached by
-// any covered session, and sp_lev.js has no des.message() to fill it.
+// C ref: questpgr.c deliver_splev_message() (do.c:1858) — ported at the bottom
+// of this file now; js/do.js:1162 still open-codes it inline.  Note that
+// sp_lev.js:5529 DOES fill gl.lev_message from des.message() these days.
 
 // ════════════════════════════════════════════════════════════════════════
 // quest.c — the arrival hooks and the leader/nemesis/guardian dialogue.
@@ -3146,4 +3152,267 @@ export async function quest_chat(mtmp) {
 // second needs the prisoner's verbalize/adjalign/angry_guards chain.
 export async function quest_talk(mtmp) {
     if (is_quest_leader(mtmp)) await leader_speaks(mtmp);
+}
+
+// ===========================================================================
+// questpgr.c functions with no caller in js/ yet.  Nothing above this line
+// calls into this block: it is additive only.
+// ===========================================================================
+
+// C ref: role.c roles[] — the four quest columns quest_info() reads.  js/role.js
+// carries none of them and QUEST_ROLE_DATA above stores the FORMATTED names
+// (ldrname()/neminame() output, the(artiname()) output), so the numeric ids are
+// resolved back out of those strings once, by name.  Resolving by name is the
+// house rule here: a mons[] or artilist[] reshuffle cannot silently re-point it.
+let _qnums = new Map();
+function quest_nums() {
+    const code = urole_filecode();
+    if (_qnums.has(code)) return _qnums.get(code);
+    const q = QUEST_ROLE_DATA[code];
+    const nums = { questarti: 0, ldrnum: NON_PM_Q, neminum: NON_PM_Q,
+                   guardnum: NON_PM_Q };
+    if (q) {
+        // ldr/nem carry ldrname()/neminame()'s "the " prefix; guard does not.
+        nums.ldrnum = pmidx_of_qname(q.ldr);
+        nums.neminum = pmidx_of_qname(q.nem);
+        nums.guardnum = pmidx_of_qname(q.guard);
+        nums.questarti = artiidx_of_qname(q.qarti);
+    }
+    _qnums.set(code, nums);
+    return nums;
+}
+// C ref: mondata.h NON_PM.
+const NON_PM_Q = -1;
+function pmidx_of_qname(nm) {
+    if (!nm) return NON_PM_Q;
+    const bare = /^the /i.test(nm) ? nm.slice(4) : nm;
+    return name_to_pmidx(bare) ?? NON_PM_Q;
+}
+// C ref: artifact.c artiname(a) == artilist[a].name; the() lowercases the
+// leading "The", which is how QUEST_ROLE_DATA.qarti was written.
+function artiidx_of_qname(nm) {
+    if (!nm) return 0;
+    const want = nm.toLowerCase();
+    for (let i = 1; i < artilist.length; i++) {
+        const n = artilist[i]?.name;
+        if (n && n.toLowerCase() === want) return i;
+    }
+    return 0;
+}
+
+// C ref: questpgr.c:31 quest_info(typ) — the four role fields the quest code
+// asks for by MS_* sound.  C's `default:` is an impossible() and returns 0.
+export async function quest_info(typ) {
+    const nums = quest_nums();
+    switch (typ) {
+    case 0:
+        return nums.questarti;
+    case MS_LEADER:
+        return nums.ldrnum;
+    case MS_NEMESIS:
+        return nums.neminum;
+    case MS_GUARDIAN:
+        return nums.guardnum;
+    default:
+        await impossible(`quest_info(${typ})`);
+    }
+    return 0;
+}
+
+// C ref: mondata.h type_is_pname(ptr) — M2_PNAME, "Lord Carnarvon" vs "the
+// Grand Master".
+function type_is_pname_q(ptr) {
+    return !!ptr && (mflags2_of(ptr) & M2_PNAME) !== 0;
+}
+// C ref: `&mons[i]`.
+function qmons(i) { return (i >= 0) ? monster_by_pmidx(i) : null; }
+
+// C ref: questpgr.c:50 ldrname() — "return your role leader's name".  Writes
+// gn.nambuf, which the caller must use before the next ldrname()/neminame().
+export function ldrname() {
+    const i = quest_nums().ldrnum;
+    const ptr = qmons(i);
+    // C: Sprintf(nambuf, "%s%s", type_is_pname ? "" : "the ", pmnames[NEUTRAL]).
+    // QUEST_ROLE_DATA.ldr above is this same string, precomputed.
+    if (!ptr) return QUEST_ROLE_DATA[urole_filecode()]?.ldr ?? '';
+    game._nambuf = `${type_is_pname_q(ptr) ? '' : 'the '}${ptr.name}`;
+    return game._nambuf;
+}
+
+// C ref: questpgr.c:61 intermed() — "return your intermediate target string".
+export function intermed() {
+    return QUEST_ROLE_DATA[urole_filecode()]?.intermed ?? '';
+}
+
+// C ref: questpgr.c:67 is_quest_artifact(otmp).  js/invent.js:370 holds a
+// same-named PRIVATE copy that is a hardcoded `return false`, so every caller
+// there (invent.js:5315 the launcher bonus, bones.js:862's deps hook,
+// readobjnam.js:1215) behaves as if the hero can never hold a quest artifact.
+// The fix is to delete that stub and export this one, not to keep both.
+export function is_quest_artifact(otmp) {
+    return (otmp.oartifact === quest_nums().questarti);
+}
+
+// C ref: obj.h Has_contents(obj) — a container with something in it.  A cobj
+// chain is an array in this port.
+function has_contents_q(otmp) {
+    const c = otmp.cobj;
+    return Array.isArray(c) ? c.length > 0 : !!c;
+}
+// A chain C walks by ->nobj is usually an array here; accept either so the walk
+// below reads like the C.
+function as_ochain(v) {
+    if (!v) return [];
+    if (Array.isArray(v)) return v;
+    const out = [];
+    for (let p = v; p; p = p.nobj) out.push(p);
+    return out;
+}
+
+// C ref: questpgr.c:73 find_qarti(ochain) — depth-first over one object chain,
+// descending into containers.  Order matters: C checks the object itself before
+// its contents, and returns the FIRST match in chain order.
+export function find_qarti(ochain) {
+    for (const otmp of as_ochain(ochain)) {
+        if (is_quest_artifact(otmp))
+            return otmp;
+        let qarti;
+        if (has_contents_q(otmp) && (qarti = find_qarti(otmp.cobj)) !== null)
+            return qarti;
+    }
+    return null;
+}
+
+// C ref: questpgr.c:89 find_quest_artifact(whichchains) — "check several object
+// chains for the quest artifact to determine whether it is present on the
+// current level".  whichchains is a bitmask of (1 << OBJ_*).
+export function find_quest_artifact(whichchains) {
+    let qarti = null;
+
+    if ((whichchains & (1 << OBJ_INVENT_Q)) !== 0)
+        qarti = find_qarti(game.invent);
+    if (!qarti && (whichchains & (1 << OBJ_FLOOR_Q)) !== 0)
+        qarti = find_qarti(game.level?.objects);
+    if (!qarti && (whichchains & (1 << OBJ_MINVENT_Q)) !== 0)
+        for (const mtmp of (game.level?.monsters || [])) {
+            if (deadmonster_q(mtmp))
+                continue;
+            if ((qarti = find_qarti(mtmp.minvent)) !== null)
+                break;
+        }
+    if (!qarti && (whichchains & (1 << OBJ_MIGRATING_Q)) !== 0) {
+        /* check migrating objects and minvent of migrating monsters */
+        for (const mtmp of (game.migrating_mons || [])) {
+            if (deadmonster_q(mtmp))
+                continue;
+            if ((qarti = find_qarti(mtmp.minvent)) !== null)
+                break;
+        }
+        if (!qarti)
+            qarti = find_qarti(game.migrating_objs);
+    }
+    if (!qarti && (whichchains & (1 << OBJ_BURIED_Q)) !== 0)
+        qarti = find_qarti(game.level?.buriedobjlist);
+
+    return qarti;
+}
+// C ref: obj.h OBJ_* where_obj codes (const.js exports them; kept local so this
+// block adds no import edge).
+const OBJ_FLOOR_Q = 1, OBJ_INVENT_Q = 3, OBJ_MINVENT_Q = 4,
+      OBJ_MIGRATING_Q = 5, OBJ_BURIED_Q = 6;
+// C ref: monst.h DEADMONSTER(mon).
+function deadmonster_q(mon) { return !mon || (mon.mhp != null && mon.mhp < 1); }
+
+// C ref: questpgr.c:124 neminame() — "return your role nemesis' name".
+export function neminame() {
+    const i = quest_nums().neminum;
+    const ptr = qmons(i);
+    if (!ptr) return QUEST_ROLE_DATA[urole_filecode()]?.nem ?? '';
+    game._nambuf = `${type_is_pname_q(ptr) ? '' : 'the '}${ptr.name}`;
+    return game._nambuf;
+}
+
+// C ref: questpgr.c:134 guardname() — "return your role leader's guard monster
+// name".  No "the " prefix: C returns the bare pmname.
+export function guardname() {
+    const i = quest_nums().guardnum;
+    const ptr = qmons(i);
+    if (!ptr) return QUEST_ROLE_DATA[urole_filecode()]?.guard ?? '';
+    return ptr.name;
+}
+
+// C ref: questpgr.c:142 homebase() — "return your role leader's location".
+export function homebase() {
+    return QUEST_ROLE_DATA[urole_filecode()]?.homebase ?? '';
+}
+
+// C ref: questpgr.c:459 skip_pager(common) — "WIZKIT: suppress plot feedback if
+// starting with quest artifact".  `common` is UNUSED in C.
+export function skip_pager(_common) {
+    if (game.program_state?.wizkit_wishing)
+        return true;
+    return false;
+}
+
+// C ref: questpgr.c:468 com_pager_core()'s `rawtext` arm — it pays skip_pager()
+// and the full nhl_init()/nhl_loadlua() reload (hence the shuffle draws), then
+// returns questtext[section][msgid].text WITHOUT delivering it and without
+// touching the array-of-strings / output / synopsis logic.  com_pager_core()
+// above has no rawtext parameter, so the early path is repeated here; keep the
+// two in step.
+function com_pager_core_rawtext(section, msgid) {
+    if (skip_pager(true))
+        return null;
+    quest_lua_reload_shuffle();
+    const sec = QUEST_TEXT[section];
+    let m = sec?.[msgid];
+    if (!m && MSG_FALLBACKS[msgid]) m = sec?.[MSG_FALLBACKS[msgid]];
+    if (!m) return null;
+    // C's get_table_str_opt(L, "text", NULL): the single `text` string, with the
+    // newlines this port's `t` array was split on put back.
+    return m.t ? m.t.join('\n') : null;
+}
+
+// C ref: questpgr.c:150 stinky_nemesis(mon) — "returns 1 if nemesis death
+// message mentions noxious fumes, otherwise 0; does not display the message".
+// The `mon` argument is nhUse()d in C: the text is always the HERO's role's,
+// "even if not appropriate for 'mon'".
+export function stinky_nemesis(_mon) {
+    let mesg = com_pager_core_rawtext(urole_filecode(), 'killed_nemesis');
+    let res = 0;
+
+    /* this is somewhat fragile; it assumes that when both {noxious or
+       poisonous or toxic} and {gas or fumes} are present, the latter
+       refers to the former rather than to something unrelated; it does
+       make sure that fumes occurs after noxious rather than before */
+    if (mesg) {
+        /* change newlines into spaces to cope with "...noxious\nfumes..." */
+        mesg = mesg.split('\n').join(' ');
+
+        // C: strstri() is case-insensitive and returns a POINTER, so the second
+        // test searches only the tail from the first hit onward.
+        const low = mesg.toLowerCase();
+        let p = low.indexOf('noxious');
+        if (p < 0) p = low.indexOf('poisonous');
+        if (p < 0) p = low.indexOf('toxic');
+        if (p >= 0) {
+            const tail = low.slice(p);
+            if (tail.includes(' gas') || tail.includes(' fumes'))
+                res = 1;
+        }
+    }
+    return res;
+}
+
+// C ref: questpgr.c:655 deliver_splev_message() — "special levels can include a
+// custom arrival message; display it".  "There's no provision for delivering via
+// window instead of pline."  js/do.js:1162 open-codes the same three lines.
+export async function deliver_splev_message() {
+    if (game.lev_message) {
+        // deliver_by_pline() takes the already-split lines here; C hands it the
+        // whole string and copynchars() stops at each newline.
+        await deliver_by_pline(String(game.lev_message).split('\n'));
+
+        game.lev_message = null;
+    }
 }

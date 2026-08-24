@@ -43,6 +43,25 @@ import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, ICE, STAIRS, FOUNTAIN,
          IS_WATERWALL, In_sokoban, Is_rogue_level, CLOUD, Is_airlevel,
          Is_waterlevel, isok, VIBRATING_SQUARE, STRAT_WAITMASK, I_SPECIAL } from './const.js';
 
+// Imports used only by the hack.c completeness block at the bottom of this file.
+import { ROOMOFFSET, MOD_ENCUMBER, SLT_ENCUMBER, FOOT,
+         RUN_TPORT, RUN_LEAP, RUN_CRAWL,
+         TIP_ENHANCE, TIP_SWIM, TIP_UNTRAP_MON, TIP_GETPOS, NUM_TIPS,
+         NHCORE_GETPOS_TIP, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
+         has_mgivenname } from './const.js';
+import { in_rooms } from './shkroom.js';
+import { inside_room } from './mkroom.js';
+import { DEADMONSTER } from './mon.js';
+import { is_pool } from './dbridge.js';
+import { water_friction } from './mkmaze.js';
+import { xname, carrying, makeplural, near_capacity } from './invent.js';
+import { body_part } from './polyself.js';
+import { y_monnam, ARTICLE_A, ARTICLE_YOUR, SUPPRESS_SADDLE } from './do_name.js';
+import { x_monnam } from './uhitm.js';
+import { canseemon_shared } from './display.js';
+import { mflags2_of, M2_PNAME, is_hider_flag } from './monflags_data.js';
+import { l_nhcore_call } from './nhlua.js';
+
 // Run direction deltas for the capital-letter run commands (and the
 // 'G'/'g' prefix followed by a movement key).  C: xdir[]/ydir[].
 //   y u    \ | /
@@ -3391,3 +3410,446 @@ export async function dotele_wizard() {
 }
 
 export { getpos_tip, getpos, getpos_render, jump_landing, is_valid_jump_pos, get_valid_jump_position, jump_hilite_first_cursor, distu };
+
+// ═════════════════════════════════════════════════════════════════════════════
+// hack.c completeness block — INERT.
+//
+// Nothing above this line calls anything below it.  These are hack.c functions
+// the port had no JS home for, added with C's names, control flow and RNG order
+// so a future caller can wire them up without re-deriving them.  Wiring is
+// deliberately left undone: js/cmd.js owns domove()/moverock() and js/allmain.js
+// owns the moveloop, and both already have their own inline equivalents of the
+// hack.c functions that were NOT added here.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── shared local helpers ────────────────────────────────────────────────────
+
+// C ref: objnam.c the(str) / The(str).  js/eat.js:378 and js/do_name.js:460 each
+// carry the same private one-liner; the real fix is one shared export.
+function the_(s) { return /^[A-Z]/.test(s) ? s : `the ${s}`; }
+function The_(s) { return upstart(the_(s)); }
+// C ref: do_name.h YMonnam(mtmp) — upstart(y_monnam(mtmp)).
+function YMonnam(mtmp) { return upstart(y_monnam(mtmp)); }
+// C ref: mondata.h type_is_pname(ptr).  Private at js/do_name.js:57.
+function type_is_pname(ptr) { return (mflags2_of(ptr) & M2_PNAME) !== 0; }
+
+// ── hack.c:73-95  the `anything` union constructors ─────────────────────────
+
+// C ref: hack.c:71 gt.tmp_anything — all four *_to_any() builders return a
+// pointer to ONE static, so two results ALIAS: f(long_to_any(1), long_to_any(2))
+// passes the same pointer twice, both reading 2.  Modelled as one shared object.
+// obj_to_any() is not repeated here: js/timeout.js:563 _obj_to_any() already has
+// the faithful union form.  (js/invent.js:780 also defines one, but as the
+// identity function, in that file's block of private no-op stubs; it has no
+// callers, so it is not a live menu-identifier producer.)
+const tmp_anything = {
+    a_void: null, a_obj: null, a_monst: null, a_char: 0, a_schar: 0,
+    a_uchar: 0, a_ushort: 0, a_int: 0, a_uint: 0, a_long: 0, a_ulong: 0,
+    a_iflags: 0,
+};
+
+// C ref: decl.c cg.zeroany.
+function zeroany_tmp() {
+    for (const k of Object.keys(tmp_anything)) tmp_anything[k] = 0;
+    tmp_anything.a_void = null;
+    tmp_anything.a_obj = null;
+    tmp_anything.a_monst = null;
+    return tmp_anything;
+}
+
+// C's `anything` is a UNION, so writing a_uint/a_long/a_monst also makes a_void
+// read non-NULL — and non-NULL a_void is wintty.c tty_add_menu()'s
+// selectability marker (cf. js/coloratt.js:79-83, which models the same thing).
+// C ref: hack.c:73 uint_to_any(ui).
+export function uint_to_any(ui) {
+    const any = zeroany_tmp();
+    any.a_uint = ui;
+    any.a_void = ui;
+    return any;
+}
+
+// C ref: hack.c:81 long_to_any(lng).
+export function long_to_any(lng) {
+    const any = zeroany_tmp();
+    any.a_long = lng;
+    any.a_void = lng;
+    return any;
+}
+
+// C ref: hack.c:89 monst_to_any(mtmp).
+export function monst_to_any(mtmp) {
+    const any = zeroany_tmp();
+    any.a_monst = mtmp;
+    any.a_void = mtmp;
+    return any;
+}
+
+// ── hack.c:247-333  moverock() message + teardown helpers ───────────────────
+// (moverock_core() itself is already implemented inline as moverock() in
+//  js/cmd.js:3789ff, so it is not duplicated here.)
+
+// C ref: hack.c:247 cannot_push_msg(otmp, sx, sy) — the boulder-won't-budge
+// line, after cannot_push() has decided the hero can't get past it either.
+export async function cannot_push_msg(otmp, sx, sy) {
+    const u = game.u;
+    const what = the_(xname(otmp));
+
+    if (u.usteed)
+        await pline(`${YMonnam(u.usteed)} tries to move ${what}, but cannot.`);
+    else
+        await pline(`You try to move ${what}, but in vain.`);
+    if (Blind())
+        feel_location(sx, sy);
+}
+
+// C ref: hack.c:315 rock_disappear_msg(otmp) — a pushed boulder that the
+// destination square swallows (pit, hole, water, trapdoor).
+export async function rock_disappear_msg(otmp) {
+    const u = game.u;
+    const what = the_(xname(otmp));
+
+    if (u.usteed)
+        await pline(`${YMonnam(u.usteed)} pushes ${what} and suddenly it disappears!`);
+    else
+        await pline(`You push ${what} and suddenly it disappears!`);
+}
+
+// C ref: hack.c:327 moverock_done(sx, sy) — undo the next_boulder chaining that
+// moverock_core() set up for its "boulder behind a boulder" xname(), so the pile
+// reads as plain "boulder" again.  C walks svl.level.objects[sx][sy]'s nexthere
+// chain; the port keeps one flat object list keyed by ox/oy/where.
+export function moverock_done(sx, sy) {
+    for (const otmp of game.level?.objects || []) {
+        if (otmp.ox === sx && otmp.oy === sy
+            && (otmp.where === 'floor' || otmp.where === 1)
+            && otmp.otyp === BOULDER)
+            otmp.next_boulder = 0;
+    }
+}
+
+// ── hack.c:1708-1783  the a11y "you notice a monster" announcements ──────────
+
+// C ref: hack.c:1735 notice_mons_cmp() — qsort comparator putting the nearest
+// monster first.  C's qsort is unstable; Array.prototype.sort has been stable
+// since ES2019, so equal distances keep list order here.
+export function notice_mons_cmp(m1, m2) {
+    return distu(m1.mx, m1.my) - distu(m2.mx, m2.my);
+}
+
+// C ref: display.c set_msg_xy(x, y) — remembers which square the next message
+// is about (msg_xy / #terrain highlighting).  Not ported.
+function set_msg_xy(_x, _y) { /* no-op */ }
+
+// C ref: hack.c:1708 notice_mon(mtmp) — announce a newly spotted monster once,
+// and forget it again when it stops being spottable.  Gated on
+// ACCESSIBILITY=mon_notices, which no recorded session sets, so this is inert
+// in the corpus but it is real state (mtmp->mspotted) when enabled.
+export async function notice_mon(mtmp) {
+    const a11y = game.a11y || {};
+
+    if (a11y.mon_notices && !a11y.mon_notices_blocked) {
+        const spot = canspotmon(mtmp)
+            && !(is_hider_flag(mtmp.data)
+                 && (mtmp.mundetected
+                     || M_AP_TYPE(mtmp) === M_AP_FURNITURE
+                     || M_AP_TYPE(mtmp) === M_AP_OBJECT));
+
+        if (spot && !mtmp.mspotted && !DEADMONSTER(mtmp)) {
+            mtmp.mspotted = true;
+            set_msg_xy(mtmp.mx, mtmp.my);
+            const nam = x_monnam(mtmp,
+                                 mtmp.mtame ? ARTICLE_YOUR
+                                 : (!has_mgivenname(mtmp)
+                                    && !type_is_pname(mtmp.data)) ? ARTICLE_A
+                                 : ARTICLE_NONE,
+                                 (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null,
+                                 has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
+            await pline(`You ${canseemon_shared(mtmp) ? 'see' : 'notice'} ${nam}.`);
+        } else if (!spot) {
+            mtmp.mspotted = false;
+        }
+    }
+}
+
+// C ref: hack.c:1744 notice_all_mons(reset) — announce every spottable monster,
+// nearest first.  The two passes are C's and differ: pass 1 only clears
+// mspotted when `reset`, pass 2 clears it unconditionally.  Keeping both
+// matters because pass 1's count caps how many pass 2 collects.
+export async function notice_all_mons(reset) {
+    const a11y = game.a11y || {};
+    if (!(a11y.mon_notices && !a11y.mon_notices_blocked))
+        return;
+
+    const fmon = game.level?.monsters || [];
+    let cnt = 0;
+
+    for (const mtmp of fmon) {
+        if (DEADMONSTER(mtmp)) continue;
+        if (canspotmon(mtmp)) cnt++;
+        else if (reset) mtmp.mspotted = false;
+    }
+    if (!cnt)
+        return;
+
+    const arr = [];
+    for (const mtmp of fmon) {
+        if (DEADMONSTER(mtmp)) continue;
+        if (!canspotmon(mtmp)) mtmp.mspotted = false;
+        else if (arr.length < cnt) arr.push(mtmp);
+    }
+
+    if (arr.length) {
+        arr.sort(notice_mons_cmp);
+        for (const mtmp of arr)
+            await notice_mon(mtmp);
+    }
+}
+
+// ── hack.c:1852  one-shot gameplay tips ─────────────────────────────────────
+
+// C ref: hack.c:1852 handle_tip(tip) — show a tip once per game, tracked in
+// svc.context.tips as bit `1 << tip`.
+//
+// DIVERGENCE (not fixed here — the three call sites are in other owners' files
+// and in a function body above): the port's three existing per-tip inlines all
+// disagree with C and with each other about the bit.
+//   js/cmd.js:630            game._tips_shown, bit `1 << TIP_SWIM`   (correct form,
+//                            but a different field from everyone else)
+//   getpos_tip() above       game.context.tips, bit `1 << 4`         (should be 1 << 3)
+//   js/extcmd-handlers.js:889, js/invent.js:6753
+//                            game.context.tips & TIP_GETPOS          (missing the
+//                            `1 <<`: tests bits 0|1, i.e. value 3)
+// So the setter writes bit 16 and the two readers test bits 0|1 — the tip's
+// "already shown" state is invisible across the sites.
+export async function handle_tip(tip) {
+    if (!game.flags?.tips)
+        return false;
+
+    const c = game.context;
+    if (tip >= 0 && tip < NUM_TIPS && !((c.tips || 0) & (1 << tip))) {
+        c.tips = (c.tips || 0) | (1 << tip);
+        /* the "Tip:" prefix is a hint to use of OPTIONS=!tips to suppress */
+        switch (tip) {
+        case TIP_ENHANCE:
+            await pline('(Tip: use the #enhance command to advance them.)');
+            break;
+        case TIP_SWIM:
+            /* C: visctrl(cmd_from_func(do_reqmenu)).  'm' is do_reqmenu's
+               binding and the port has no key rebinding (cf. js/cmd.js:633). */
+            await pline("(Tip: use 'm' prefix to step in if you really want to.)");
+            break;
+        case TIP_UNTRAP_MON:
+            await pline('(Tip: perhaps #untrap would help?)');
+            break;
+        case TIP_GETPOS:
+            l_nhcore_call(NHCORE_GETPOS_TIP);
+            break;
+        default:
+            /* C: impossible("Unknown tip in handle_tip(%i)", tip) */
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
+// ── hack.c:2365-2509  movement-blocking checks ──────────────────────────────
+
+// C ref: hack.c:2365 water_turbulence(&x, &y) — a submerged hero's step is first
+// deflected by water_friction() (which draws rn2), and only then is the
+// destination re-derived from the possibly-rewritten u.dx/u.dy.  `pos` stands in
+// for C's two `coordxy *` out-params and is mutated in place.
+// RNG: water_friction() only — near_capacity() draws nothing.
+export async function water_turbulence(pos) {
+    const u = game.u;
+
+    if (u?.uinwater) {
+        const wtmod = u.uprops?.Swimming ? MOD_ENCUMBER : SLT_ENCUMBER;
+
+        await water_friction();
+        if (!u.dx && !u.dy) {
+            nomul(0);
+            return true;
+        }
+        pos.x = u.ux + u.dx;
+        pos.y = u.uy + u.dy;
+
+        /* are we trying to move out of water while carrying too much?
+           aquatic form (Swimming) may be stressed; otherwise only burdened */
+        if (isok(pos.x, pos.y) && !is_pool(pos.x, pos.y)
+            && !Is_waterlevel(u.uz) && near_capacity() > wtmod) {
+            await pline('You are carrying too much to climb out of the water.');
+            nomul(0);
+            return true;
+        }
+    }
+    return false;
+}
+
+// C ref: hack.c:2495 avoid_running_into_trap_or_liquid(x, y) — while
+// running/rushing, refuse to step onto a known trap (or, when blind, into
+// liquid).  Note the asymmetry: for run == 1 it still nomul(0)s but reports
+// FALSE, so the step happens and only the run ends; run >= 2 also zeroes
+// context.move so no turn elapses.
+// C passes `would_stop` as avoid_moving_on_{trap,liquid}()'s `msg` argument;
+// both local helpers above drop that parameter because their
+// flags.mention_walls line is emitted at the js/cmd.js call site (see :128-131).
+export function avoid_running_into_trap_or_liquid(x, y) {
+    const c = game.context;
+    const would_stop = (c?.run || 0) >= 2;
+
+    if (!c?.run)
+        return false;
+
+    if (avoid_moving_on_trap(x, y)
+        || (Blind() && avoid_moving_on_liquid(x, y))) {
+        nomul(0);
+        if (would_stop)
+            c.move = 0;
+        return would_stop;
+    }
+    return false;
+}
+
+// ── hack.c:2996  the per-step run delay ─────────────────────────────────────
+
+// C ref: options.c:217 runmodes[] — this port stores flags.runmode as its option
+// NAME rather than the RUN_* enum, so map back.
+//
+// DIVERGENCE (not fixed here — js/options.js is another owner's file):
+// js/options.js:6846 initialises `flags.runmode = 'teleport'` with the comment
+// "RUN_LEAP".  C's default is RUN_LEAP (options.c:7176), whose runmodes[] name
+// is "run", not "teleport" (that is RUN_TPORT, index 0).  js/doset.js:292
+// already displays "[run]", so the O-menu and the flag disagree.  The effect is
+// that runmode_delay_output() below short-circuits on every call and never
+// performs its `disp.time_botl = flags.time` write.
+const RUNMODES = ['teleport', 'run', 'walk', 'crawl'];
+function runmode_value() {
+    const i = RUNMODES.indexOf(game.flags?.runmode);
+    return i < 0 ? RUN_LEAP : i;
+}
+
+// C ref: windows nh_delay_output() — a pure output pause.  js/light.js:1005 has
+// the identical no-op (private there).
+async function nh_delay_output() { await Promise.resolve(); }
+// C ref: windows curs_on_u() — park the cursor on the hero.  The recorded cursor
+// is placed by js/display.js flush_screen() instead.
+function curs_on_u() { /* no-op */ }
+
+// C ref: hack.c:2996 runmode_delay_output() — the per-step display pause while
+// running or in a multi-turn action.  The load-bearing part for a recorder is
+// `disp.time_botl = flags.time`: moveloop() suppresses time_botl while running,
+// and this is the only thing that puts it back, so without it T: never
+// refreshes during a run.
+export async function runmode_delay_output() {
+    const runmode = runmode_value();
+
+    if ((game.context?.run || game.multi) && runmode !== RUN_TPORT) {
+        /* tport: show nothing until we stop.  leap: every 7th move (relative to
+           the turn counter, not to the start of running).  walk and crawl
+           (visual debugging): every step. */
+        if (runmode !== RUN_LEAP || !((game.moves == null ? 0 : (game.moves | 0)) % 7)) {
+            /* moveloop() suppresses time_botl when running */
+            const time_botl = !!game.flags?.time;
+            game.time_botl = time_botl;
+            if (game.disp) game.disp.time_botl = time_botl;
+            curs_on_u();
+            await nh_delay_output();
+            if (runmode === RUN_CRAWL) {
+                await nh_delay_output();
+                await nh_delay_output();
+                await nh_delay_output();
+                await nh_delay_output();
+            }
+        }
+    }
+}
+
+// ── hack.c:3064  the vibrating-square clue ──────────────────────────────────
+
+// C ref: dungeon.c invocation_pos(x, y) / On_stairs(x, y).  Both are private at
+// js/artifact.js:2801 and :2805 (and On_stairs again at js/dogmove.js:521); the
+// real fix is to export those, not to keep copies.
+function invocation_pos(x, y) {
+    const inv = game.level?.invocation_pos;
+    return !!inv && inv.x === x && inv.y === y;
+}
+function On_stairs(x, y) {
+    return (game.level?.stairs || []).some((s) => s.sx === x && s.sy === y);
+}
+// C ref: objects[] CANDELABRUM_OF_INVOCATION; js/apply.js:1470 holds the same
+// private literal.
+const CANDELABRUM_OF_INVOCATION = 262;
+
+// C ref: hack.c:3064 invocation_message() — the "strange vibration" clue printed
+// on the vibrating square.  Consumes no RNG.  Note that it nomul(0)s BEFORE the
+// message, so a run stops on the square it lands on.
+export async function invocation_message() {
+    const u = game.u;
+
+    if (invocation_pos(u.ux, u.uy) && !On_stairs(u.ux, u.uy)) {
+        let buf;
+        const otmp = carrying(CANDELABRUM_OF_INVOCATION);
+
+        nomul(0); /* stop running or travelling */
+        if (u.usteed)
+            buf = `beneath ${y_monnam(u.usteed)}`;
+        else if (u.uprops?.Levitation || u.uprops?.Flying)
+            buf = 'beneath you';
+        else
+            buf = `under your ${makeplural(body_part(FOOT))}`;
+
+        await pline(`You feel a strange vibration ${buf}.`);
+        (u.uevent = u.uevent || {}).uvibrated = 1;
+        if (otmp && otmp.spe === 7 && otmp.lamplit)
+            await pline(`${The_(xname(otmp))} ${
+                Blind() ? 'throbs palpably' : 'glows with a strange light'}!`);
+    }
+}
+
+// ── hack.c:3466-3495  room contents queries ─────────────────────────────────
+
+// C ref: hack.c:3466 monstinroom(mdat, roomno) — the first live monster of
+// species `mdat` inside room `roomno`.  C's
+// `strchr(in_rooms(mx, my, 0), roomno + ROOMOFFSET)` becomes includes():
+// js/shkroom.js in_rooms() returns the room numbers as an array, already
+// ROOMOFFSET-based to match levl[][].roomno.
+export function monstinroom(mdat, roomno) {
+    for (const mtmp of game.level?.monsters || []) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (mtmp.data === mdat
+            && in_rooms(mtmp.mx, mtmp.my, 0).includes(roomno + ROOMOFFSET))
+            return mtmp;
+    }
+    return null;
+}
+
+// C ref: hack.c:3482 furniture_present(furniture, roomno) — does room `roomno`
+// contain a square of terrain type `furniture`?  The inside_room() test is what
+// handles irregularly shaped rooms, whose bounding box covers other squares.
+export function furniture_present(furniture, roomno) {
+    const sroom = game.level?.rooms?.[roomno];
+    if (!sroom)
+        return false;
+
+    const ly = sroom.ly, hy = sroom.hy, lx = sroom.lx, hx = sroom.hx;
+    for (let y = ly; y <= hy; ++y)
+        for (let x = lx; x <= hx; ++x)
+            if (game.level?.at(x, y)?.typ === furniture && inside_room(sroom, x, y))
+                return true;
+    return false;
+}
+
+// ── hack.c:4247  the showdamage option's per-hit line ───────────────────────
+
+// C ref: hack.c:4247 showdamage(dmg) — losehp()'s "[HP -3, 12 left]" trailer.
+// iflags.showdamage is off in every recorded rc (js/options.js:1227).
+export async function showdamage(dmg) {
+    const iflags = game.iflags, u = game.u;
+
+    if (!iflags?.showdamage || !dmg)
+        return;
+
+    await pline(`[HP ${-dmg}, ${u?.Upolyd ? u.mh : u.uhp} left]`);
+}

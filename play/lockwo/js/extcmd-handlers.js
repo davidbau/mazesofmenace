@@ -2843,7 +2843,9 @@ export async function show_overview_disclosure(final, how) {
 // the static dungeon model init_dungeons() already built.
 export async function wiz_where() {
     if (!game.flags?.debug) {
-        await pline("Unavailable command '#wizwhere'.");
+        // C ref: cmd.c:3092 ecname_from_fn() returns extcmdlist[].ef_txt, which
+        // is "wizwhere" (cmd.c:1998) with NO leading '#'.
+        await pline("Unavailable command 'wizwhere'.");
         return 0;
     }
     await display_text_fullscreen(print_dungeon_lines());

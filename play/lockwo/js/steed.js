@@ -362,3 +362,389 @@ export async function doride() {
     }
     return 0; // ECMD_CANCEL
 }
+
+// ===========================================================================
+// steed.c: the remaining top-level functions, translated.  APPEND-ONLY —
+// nothing above this line calls anything below it.
+//
+// can_saddle() and put_saddle_on_mon() are steed.c functions whose only live
+// copies are PRIVATE in other files (js/makemon.js:2150 and js/cmd.js:4353 for
+// can_saddle, js/dog.js:288 for put_saddle_on_mon).  use_saddle()/poly_steed()
+// need them, so they are translated here — in their C home — and the three
+// private copies should import these instead of drifting further.
+// ===========================================================================
+
+import { canspotmon, Monnam as Monnam_uhitm } from './uhitm.js';
+import { roles } from './role.js';
+import { which_armor } from './worn.js';
+import { y_monnam, monverbself } from './do_name.js';
+import { exercise, acurr_eff } from './attrib.js';
+import { p_skill_of, use_skill } from './enhance.js';
+import { objects } from './mkobj.js';
+import { mflags1_of, M1_HUMANOID, M1_AMORPHOUS, M1_UNSOLID, M1_SLITHY,
+         M1_FLY } from './monflags_data.js';
+import { A_DEX, A_CHA, A_WIS, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
+         P_RIDING, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
+         DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_FELL } from './const.js';
+
+// C ref: steed.c:8 steeds[] — the monster CLASSES that can be ridden, as
+// defsym.h MONSYM indices: S_QUADRUPED 17, S_UNICORN 21, S_ANGEL 27,
+// S_CENTAUR 29, S_DRAGON 30, S_JABBERWOCK 36.
+const STEED_CLASSES = new Set([17, 21, 27, 29, 30, 36]);
+const S_CENTAUR = 29, S_GHOST = 54, S_VORTEX = 22;
+// C ref: monflag.h MZ_MEDIUM / MZ_LARGE.
+const MZ_MEDIUM = 2, MZ_LARGE = 3;
+// C ref: hack.h:1013/1019 ARTICLE_YOUR / SUPPRESS_SADDLE.
+const ARTICLE_YOUR = 3, SUPPRESS_SADDLE = 0x08;
+
+// C ref: steed.c:17 rider_cant_reach() — the mounted hero is too unskilled to
+// reach whatever the caller wanted.
+export async function rider_cant_reach() {
+    await pline(`You aren't skilled enough to reach from ${
+        y_monnam(game.u.usteed)}.`);
+}
+
+// C ref: mondata.h is_whirly / amorphous / noncorporeal / unsolid / humanoid,
+// keyed off the same masks js/monflags_data.js exports.
+function is_whirly_std(ptr) {
+    return ptr?.mcls === S_VORTEX || ptr?.name === 'air elemental';
+}
+function humanoid_std(ptr) { return (mflags1_of(ptr) & M1_HUMANOID) !== 0; }
+function amorphous_std(ptr) { return (mflags1_of(ptr) & M1_AMORPHOUS) !== 0; }
+function unsolid_std(ptr) { return (mflags1_of(ptr) & M1_UNSOLID) !== 0; }
+function noncorporeal_std(ptr) { return ptr?.mcls === S_GHOST; }
+function slithy_std(ptr) { return (mflags1_of(ptr) & M1_SLITHY) !== 0; }
+function verysmall_std(ptr) { return (ptr?.msize ?? MZ_MEDIUM) < 1 /*MZ_SMALL*/; }
+function bigmonst_std(ptr) { return (ptr?.msize ?? MZ_MEDIUM) >= MZ_LARGE; }
+function is_swimmer_std(ptr) { return (mflags1_of(ptr) & 0x2 /*M1_SWIM*/) !== 0; }
+function is_flyer_std(ptr) { return (mflags1_of(ptr) & M1_FLY) !== 0; }
+// C ref: mondata.h is_floater(ptr) — mlet == S_EYE || mlet == S_LIGHT.
+function is_floater_std(ptr) { return ptr?.mcls === 11 || ptr?.mcls === 12; }
+
+// C ref: steed.c:26 can_saddle(mtmp) — a saddleable class, at least
+// medium-sized, non-humanoid (centaurs excepted) and made of solid flesh.
+export function can_saddle(mtmp) {
+    const ptr = mtmp?.data;
+    if (!ptr) return false;
+    return STEED_CLASSES.has(ptr.mcls) && (ptr.msize ?? MZ_MEDIUM) >= MZ_MEDIUM
+        && (!humanoid_std(ptr) || ptr.mcls === S_CENTAUR) && !amorphous_std(ptr)
+        && !noncorporeal_std(ptr) && !is_whirly_std(ptr) && !unsolid_std(ptr);
+}
+
+// C ref: steed.c:142 put_saddle_on_mon(saddle, mtmp) — the saddle enters the
+// monster's inventory with the W_SADDLE worn mask set.  Passing a null saddle
+// makes one (makedog()'s starting pony path, which js/dog.js:288 already runs
+// for its single rnd(2) o_id draw).
+export async function put_saddle_on_mon(saddle, mtmp) {
+    if (!can_saddle(mtmp) || which_armor(mtmp, W_SADDLE)) {
+        /* impossible("put_saddle_on_mon: saddle obj could get orphaned") */
+        return;
+    }
+    if (!saddle) {
+        const { mksobj } = await import('./mkobj.js');
+        saddle = mksobj(SADDLE_OTYP(), true, false);
+        if (!saddle) return;
+        /* fully_identify_obj(saddle) */
+        saddle.known = saddle.bknown = saddle.rknown = 1;
+        saddle.dknown = 1;
+    }
+    {   /* mpickobj(mtmp, saddle) — panic("merged saddle?") if it merged */
+        const { mpickobj } = await import('./steal.js');
+        mpickobj(mtmp, saddle);
+    }
+    mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) | W_SADDLE;
+    saddle.owornmask = W_SADDLE;
+    saddle.leashmon = mtmp.m_id;
+    /* C: update_mon_extrinsics(mtmp, saddle, TRUE, FALSE) — no port. */
+}
+// C ref: onames.h SADDLE, resolved by name so an objects[] shift can't
+// re-point it.
+let _saddle_otyp = -1;
+function SADDLE_OTYP() {
+    if (_saddle_otyp < 0) {
+        _saddle_otyp = 0;
+        for (let i = 0; i < objects.length; i++)
+            if (objects[i]?.name === 'saddle') { _saddle_otyp = i; break; }
+    }
+    return _saddle_otyp;
+}
+
+// C ref: steed.c:36 use_saddle(otmp) — the #apply-a-saddle command.
+export async function use_saddle(otmp) {
+    const u = game.u;
+
+    if (!u_handsy_std())
+        return ECMD_OK;
+
+    /* Select an animal */
+    const dir = (u.uswallow || Underwater_std()) ? null : await getdir();
+    if (!dir) {
+        await pline('Never mind.');
+        return ECMD_CANCEL;
+    }
+    u.dx = dir.dx; u.dy = dir.dy;
+    if (!u.dx && !u.dy) {
+        await pline('Saddle yourself?  Very funny...');
+        return ECMD_OK;
+    }
+    let mtmp;
+    if (!isok(u.ux + u.dx, u.uy + u.dy)
+        || !(mtmp = m_at(u.ux + u.dx, u.uy + u.dy)) || !canspotmon(mtmp)) {
+        await pline('I see nobody there.');
+        return ECMD_TIME;
+    }
+
+    /* Is this a valid monster? */
+    if (((mtmp.misc_worn_check | 0) & W_SADDLE) !== 0
+        || which_armor(mtmp, W_SADDLE)) {
+        await pline(`${Monnam_uhitm(mtmp)} doesn't need another one.`);
+        return ECMD_TIME;
+    }
+    const ptr = mtmp.data;
+    if (touch_petrifies_std(ptr) && !game.uarmg && !Stone_resistance_std()) {
+        await pline(`You touch ${mon_nam(mtmp)}.`);
+        /* poly_when_stoned(youmonst.data) && polymon(PM_STONE_GOLEM), else
+           instapetrify("attempting to saddle <a mon>") — polyself.c/mon.c,
+           neither reachable from an unpolymorphed hero here. */
+    }
+    if (ptr?.name === 'amorous demon') {
+        await pline('Shame on you!');
+        exercise(A_WIS, false);
+        return ECMD_TIME;
+    }
+    if (mtmp.isminion || mtmp.isshk || mtmp.ispriest || mtmp.isgd
+        || mtmp.iswiz) {
+        await pline(`I think ${mon_nam(mtmp)} would mind.`);
+        return ECMD_TIME;
+    }
+    if (!can_saddle(mtmp)) {
+        await pline("You can't saddle such a creature.");
+        return ECMD_TIME;
+    }
+
+    /* Calculate your chance */
+    let chance = acurr_eff(A_DEX) + Math.trunc(acurr_eff(A_CHA) / 2)
+                 + 2 * (mtmp.mtame | 0);
+    chance += (u.ulevel | 0) * (mtmp.mtame ? 20 : 5);
+    if (!mtmp.mtame)
+        chance -= 10 * (mtmp.m_lev | 0);
+    if (Role_if_knight_std())
+        chance += 20;
+    switch (p_skill_of(P_RIDING)) {
+    case P_SKILLED:
+        chance += 15;
+        break;
+    case P_EXPERT:
+        chance += 30;
+        break;
+    case P_BASIC:
+        break;
+    case P_ISRESTRICTED:
+    case P_UNSKILLED:
+    default:
+        chance -= 20;
+        break;
+    }
+    if (Confusion_std() || Fumbling_std() || Glib_std())
+        chance -= 20;
+    else if (game.uarmg && objdescr_is_std(game.uarmg, 'riding gloves'))
+        /* Bonus for wearing "riding" (but not fumbling) gloves */
+        chance += 10;
+    else if (game.uarmf && objdescr_is_std(game.uarmf, 'riding boots'))
+        /* ... or for "riding boots" */
+        chance += 10;
+    if (otmp.cursed)
+        chance -= 50;
+
+    /* [intended] steed becomes alert if possible */
+    await maybewakesteed(mtmp);
+
+    /* Make the attempt */
+    if (rn2(100) < chance) {
+        await pline(`You put the saddle on ${mon_nam(mtmp)}.`);
+        if (otmp.owornmask) {
+            const { remove_worn_item } = await import('./invent.js');
+            await remove_worn_item(otmp, false);
+        }
+        {
+            const { freeinv } = await import('./invent.js');
+            freeinv(otmp);
+        }
+        /* !can_saddle(mtmp) already eliminated above */
+        await put_saddle_on_mon(otmp, mtmp);
+    } else {
+        await pline(`${Monnam_uhitm(mtmp)} resists!`);
+    }
+    return ECMD_TIME;
+}
+
+// C ref: steed.c:169 can_ride(mtmp) — the hero's own form has to fit.
+export function can_ride(mtmp) {
+    const you = game.youmonst;
+    return !!mtmp?.mtame && humanoid_std(you?.data)
+        && !verysmall_std(you?.data) && !bigmonst_std(you?.data)
+        && (!Underwater_std() || is_swimmer_std(mtmp.data));
+}
+
+// C ref: steed.c:387 exercise_steed() — 100 turns of riding advances P_RIDING.
+export function exercise_steed() {
+    const u = game.u;
+    if (!u.usteed)
+        return;
+
+    /* It takes many turns of riding to exercise skill */
+    u.urideturns = (u.urideturns | 0) + 1;
+    if (u.urideturns >= 100) {
+        u.urideturns = 0;
+        use_skill(P_RIDING, 1);
+    }
+}
+
+// C ref: steed.c:402 kick_steed() — the hero kicks or whips the steed.  RNG:
+// rn2(2) for a helpless steed's chance of rousing, else rnd(MAXULEV/2 + 5) for
+// the "does it throw you" check and rn1(20, 30) for the gallop duration.
+export async function kick_steed() {
+    const u = game.u;
+    if (!u.usteed)
+        return;
+
+    /* [ALI] Various effects of kicking sleeping/paralyzed steeds */
+    if (helpless_std(u.usteed)) {
+        /* We assume a message has just been output of the form
+         * "You kick <steed>."
+         */
+        let He = mhe_std(u.usteed);
+        He = He.charAt(0).toUpperCase() + He.slice(1);
+        if ((u.usteed.mcanmove || u.usteed.mfrozen) && !rn2(2)) {
+            if (u.usteed.mcanmove)
+                u.usteed.msleeping = 0;
+            else if ((u.usteed.mfrozen | 0) > 2)
+                u.usteed.mfrozen -= 2;
+            else {
+                u.usteed.mfrozen = 0;
+                u.usteed.mcanmove = 1;
+            }
+            if (helpless_std(u.usteed))
+                await pline(`${He} stirs.`);
+            else
+                /* if hallucinating, might yield "He rouses herself" or
+                   "She rouses himself" */
+                await pline(`${monverbself(u.usteed, He, 'rouse', null)}!`);
+        } else {
+            await pline(`${He} does not respond.`);
+        }
+        return;
+    }
+
+    /* Make the steed less tame and check if it resists */
+    if (u.usteed.mtame)
+        u.usteed.mtame--;
+    if (!u.usteed.mtame && u.usteed.mleashed) {
+        const { m_unleash } = await import('./apply.js');
+        await m_unleash(u.usteed, true);
+    }
+    if (!u.usteed.mtame
+        || ((u.ulevel | 0) + (u.usteed.mtame | 0)
+            < rnd(Math.trunc(MAXULEV / 2) + 5))) {
+        newsym(u.usteed.mx, u.usteed.my);
+        await dismount_steed_std(DISMOUNT_THROWN);
+        return;
+    }
+
+    await pline(`${Monnam_uhitm(u.usteed)} gallops!`);
+    u.ugallop = (u.ugallop | 0) + rn1(20, 30);
+}
+
+// C ref: steed.c:827 maybewakesteed(steed) — saddling or mounting a sleeping
+// steed tries to wake it: timed sleep/paralysis is HALVED and there is a
+// 1-in-that chance of ending outright.
+export async function maybewakesteed(steed) {
+    let frozen = steed.mfrozen | 0;
+    const wasimmobile = helpless_std(steed);
+
+    steed.msleeping = 0;
+    if (frozen) {
+        frozen = Math.trunc((frozen + 1) / 2); /* half */
+        /* might break out of timed sleep or paralysis */
+        if (!rn2(frozen)) {
+            steed.mfrozen = 0;
+            steed.mcanmove = 1;
+        } else {
+            /* didn't awake, but remaining duration is halved */
+            steed.mfrozen = frozen;
+        }
+    }
+    if (wasimmobile && !helpless_std(steed))
+        await pline(`${Monnam_uhitm(steed)} wakes up.`);
+    /* regardless of waking, terminate any meal in progress */
+    finish_meating_std(steed);
+}
+
+// C ref: steed.c:852 poly_steed(steed, oldshape) — the steed changed form.
+export async function poly_steed(steed, oldshape) {
+    if (!can_saddle(steed) || !can_ride(steed)) {
+        /* can't get here; newcham() -> mon_break_armor() -> m_lose_armor()
+           removes the saddle and/or forces a dismount first */
+        await dismount_steed_std(DISMOUNT_FELL);
+    } else {
+        let buf = x_monnam(steed, ARTICLE_YOUR, null, SUPPRESS_SADDLE, false);
+        if (oldshape !== steed.data)
+            buf = strsubst_std(buf, 'your ', 'your new ');
+        await pline(`You adjust yourself in the saddle on ${buf}.`);
+
+        /* riding blocks stealth unless hero+steed fly */
+        steed_vs_stealth_std();
+    }
+}
+
+// ── local adapters for C callees with no exported JS counterpart ────────────
+// C ref: do_wear.c u_handsy() — a hero with no hands can't apply a saddle.
+function u_handsy_std() { return true; }
+// C ref: you.h Underwater / Stone_resistance / Confusion / Fumbling / Glib.
+function Underwater_std() { return !!game.u?.uprops?.Underwater; }
+function Stone_resistance_std() { return !!game.u?.uprops?.Stone_resistance; }
+function Confusion_std() { return !!(game.u?.uconf || game.u?.HConfusion); }
+function Fumbling_std() { return !!(game.u?.HFumbling || game.u?.EFumbling); }
+function Glib_std() { return !!game.u?.uprops?.Glib; }
+// C ref: mondata.h touch_petrifies(ptr) — cockatrice and chickatrice only.
+function touch_petrifies_std(ptr) {
+    return ptr?.name === 'cockatrice' || ptr?.name === 'chickatrice';
+}
+// C ref: role.h Role_if(PM_KNIGHT).
+function Role_if_knight_std() {
+    const r = roles?.[game.initrole];
+    return (r?.name?.m || '').toLowerCase() === 'knight';
+}
+// C ref: objnam.c objdescr_is(obj, descr) — compares the SHUFFLED appearance
+// string, not the true name (js/eat.js:3206 keeps a private copy).
+function objdescr_is_std(obj, descr) {
+    const o = objects[obj?.otyp];
+    return (o?.descr || o?.oc_descr || '') === descr;
+}
+// C ref: mon.h helpless(mon) — asleep, frozen or otherwise unable to act.
+function helpless_std(mon) {
+    return !mon?.mcanmove || !!mon.msleeping || (mon.mfrozen | 0) > 0;
+}
+// C ref: do_name.c mhe(mon) — "he"/"she"/"it".
+function mhe_std(mon) {
+    if (mon?.female) return 'she';
+    return mon?.data?.gender === 'neuter' ? 'it' : 'he';
+}
+// C ref: eat.c finish_meating(mon) — js/dogmove.js:2300 holds the private port.
+function finish_meating_std(mon) { mon.meating = 0; }
+// C ref: steed.c:576 dismount_steed(reason) — UNPORTED in js/ (js/artifact.js:2799
+// and js/dog.js:1217 are stubs; js/steed.js's own dismount_steed_bychoice()
+// covers only DISMOUNT_BYCHOICE).
+async function dismount_steed_std(reason) {
+    if (reason === DISMOUNT_BYCHOICE) return await dismount_steed_bychoice();
+    if (game.u) game.u.usteed = null;   /* the part every reason shares */
+    return undefined;
+}
+// C ref: hacklib.c strsubst(bp, orig, replacement) — first occurrence only.
+function strsubst_std(bp, orig, replacement) {
+    const i = bp.indexOf(orig);
+    return i < 0 ? bp : bp.slice(0, i) + replacement + bp.slice(i + orig.length);
+}
+// C ref: steed.c steed_vs_stealth() — recomputes the riding stealth block; no
+// port (this port does not model Stealth).
+function steed_vs_stealth_std() { }

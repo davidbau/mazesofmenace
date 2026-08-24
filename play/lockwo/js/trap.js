@@ -1886,10 +1886,25 @@ async function trapeffect_vibrating_square(trap, _trflags) {
     feeltrap(trap);
 }
 
-// C ref: mkmaze.c fillholetyp(x, y, fill_if_any) — what a new hole at <x,y>
+// C ref: dig.c:605 fillholetyp(x, y, fill_if_any) — what a new hole at <x,y>
 // fills with, given its neighbours.  With no adjacent water or lava every arm
-// short-circuits before its rn2(), so a dry square costs no draw.  (mkmaze.js
-// has no copy of this; blow_up_landmine is currently its only caller.)
+// short-circuits before its rn2(), so a dry square costs no draw.
+// blow_up_landmine is currently the only caller.
+//
+// The lava arm is `(lava_cnt > moat+pool && rn2(lava_cnt+1))
+//                  || (lava_cnt && fill_if_any)`.
+// It was previously grouped as `(lava_cnt > moat+pool) && (rn2(..) ||
+// fill_if_any)`, which is NOT the same expression: with fill_if_any set and
+// lava present but outnumbered by water, C returns LAVAPOOL with no draw and
+// the old form fell through to the MOAT arm and drew there.  (The moat and
+// pool arms happen to be equivalent under either grouping.)
+//
+// Still approximate: the neighbour scan tests typ directly rather than C's
+// is_moat/is_pool/is_lava, so a raised DRAWBRIDGE_UP always counts as moat
+// (C splits it on drawbridgemask & DB_UNDER) and a Juiblex MOAT counts as
+// moat rather than pool.  Both need levels the corpus never generates; the
+// faithful predicates are exported from js/dbridge.js, but dbridge.js imports
+// trap.js, so wiring them in means breaking that cycle first.
 function fillholetyp(x, y, fill_if_any) {
     const lo_x = Math.max(1, x - 1), hi_x = Math.min(x + 1, 79);
     const lo_y = Math.max(0, y - 1), hi_y = Math.min(y + 1, 20);
@@ -1902,11 +1917,12 @@ function fillholetyp(x, y, fill_if_any) {
             else if (typ === LAVAPOOL || typ === LAVAWALL) lava_cnt++;
         }
     if (!fill_if_any) pool_cnt = Math.trunc(pool_cnt / 3);
-    if ((lava_cnt > moat_cnt + pool_cnt) && (rn2(lava_cnt + 1) || fill_if_any))
+    if ((lava_cnt > moat_cnt + pool_cnt && rn2(lava_cnt + 1))
+        || (lava_cnt && fill_if_any))
         return LAVAPOOL;
-    if ((moat_cnt > 0) && (rn2(moat_cnt + 1) || fill_if_any))
+    if ((moat_cnt > 0 && rn2(moat_cnt + 1)) || (moat_cnt && fill_if_any))
         return MOAT;
-    if ((pool_cnt > 0) && (rn2(pool_cnt + 1) || fill_if_any))
+    if ((pool_cnt > 0 && rn2(pool_cnt + 1)) || (pool_cnt && fill_if_any))
         return POOL;
     return ROOM;
 }

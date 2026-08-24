@@ -26,7 +26,8 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { Is_special } from './dungeon.js';
-import { MAGIC_PORTAL, VIBRATING_SQUARE } from './const.js';
+import { MAGIC_PORTAL, VIBRATING_SQUARE, DELPHI, ROOMOFFSET,
+         Is_oracle_level } from './const.js';
 import { msound_of, MS_LEADER, MS_NEMESIS } from './monflags_data.js';
 
 // ── small accessors that mirror the C globals/macros bones.c relies on ──
@@ -783,3 +784,302 @@ export default { getbones, can_make_bones, no_bones_level, bones_include_name,
 // rn2(3) / wizard semantics), so wiring this in is a no-op for the call stream
 // and cannot regress any session.  The orchestrator is expected to apply that
 // one-line import swap in mklev.js.
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The remaining bones.c entry points, translated verbatim.  ADDITIVE ONLY:
+// nothing above this line calls them (savebones() still uses its own
+// reset_obj_chain(); see the note on resetobjs() below).
+//
+// The callees these need — obj_extract_self(), curse(), artifact_exists(),
+// cant_revive(), enexto(), ... — are either module-private stubs elsewhere in
+// js/ or would close an import cycle through mkobj.js -> eat.js (the reason
+// savebones() hands `O` in as a parameter, see js/bones.js:436).  They
+// therefore arrive through a trailing `deps` argument, the same convention
+// drop_upon_death()/give_to_nearby_mon() above already use.  C's control flow
+// and its order of operations are unchanged.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// C ref: objnam.c:431 fruit_from_indx() — walk svc.ffruit for a fid.  Repeated
+// here rather than imported: js/objnam.js is a static-import cycle risk for
+// this file and the walk is three lines.
+function fruit_from_indx(indx) {
+    for (let f = game.ffruit; f; f = f.nextf)
+        if (f.fid === indx) return f;
+    return null;
+}
+
+// C ref: bones.c:41 goodfruit(id) — "call this for each fruit object saved in
+// the bones level: it marks that particular type of fruit as existing".  A
+// slime mold's obj->spe is the NEGATED fruit index while the type is only
+// provisional, so flipping fid back to positive is the "this one survives"
+// marker savefruitchn() then filters on.
+export function goodfruit(id) {
+    const f = fruit_from_indx(-id);
+
+    if (f)
+        f.fid = id;
+}
+
+// C ref: bones.c:50 resetobjs(ochain, restore) — the full two-armed version.
+//
+// The `restore` arm re-registers (or demotes) artifacts as a bones level is
+// read back and re-prices partly eaten food in a shop; the `!restore` arm
+// strips everything the DEAD hero knew and neuters the objects that must not
+// survive into another game.  Recursive over containers, and it can delete the
+// object it is looking at (the in_use arm), which is why C caches nobj first.
+//
+// NOTE for whoever wires bones up: reset_obj_chain() at js/bones.js:440 is the
+// incomplete predecessor of this function (saving arm only; no oc_uses_known,
+// SLIME_MOLD, SCR_MAIL, TIN, CORPSE/STATUE or prize handling) and savebones()
+// still calls it.  Move that call here once `deps` can be filled in; do not
+// "fix" reset_obj_chain, delete it.
+//
+// C's `nobj` chain is an array in this port (the same representation
+// reset_obj_chain and savebones already use), and `cobj` likewise.
+export function resetobjs(ochain, restore, deps = {}) {
+    const O = deps.O || {};
+    const objects = O.objects || [];
+
+    if (!Array.isArray(ochain)) return;
+    // C: `for (otmp = ochain; otmp; otmp = nobj) { nobj = otmp->nobj; ... }` —
+    // the snapshot is what makes deleting otmp mid-loop safe.
+    for (const otmp of [...ochain]) {
+        if (!otmp) continue;
+        if (Array.isArray(otmp.cobj) && otmp.cobj.length)
+            resetobjs(otmp.cobj, restore, deps);
+
+        if (otmp.in_use) {
+            deps.obj_extract_self?.(otmp);
+            deps.dealloc_obj?.(otmp);
+            continue;
+        }
+
+        if (restore) {
+            /* artifact bookkeeping needs to be done during restore; other
+               fixups are done while saving */
+            if (otmp.oartifact) {
+                if (deps.exist_artifact?.(otmp.otyp, safe_oname(otmp))
+                    || deps.is_quest_artifact?.(otmp)) {
+                    /* prevent duplicate -- revert to ordinary obj */
+                    otmp.oartifact = 0;
+                    if (has_oname(otmp))
+                        deps.free_oname?.(otmp);
+                } else {
+                    deps.artifact_exists?.(otmp, safe_oname(otmp), true,
+                                           deps.ONAME_BONES ?? 0);
+                }
+            } else if (has_oname(otmp)) {
+                deps.sanitize_name?.(otmp);
+            }
+            /* 3.6.3: set no_charge for partly eaten food in shop; all other
+               items become goods for sale if in a shop */
+            if (otmp.oclass === O.FOOD_CLASS && otmp.oeaten) {
+                let top = otmp;
+                // C: `for (top = otmp; top->where == OBJ_CONTAINED;
+                //       top = top->ocontainer) continue;`
+                while (top.where === 'contained' && top.ocontainer)
+                    top = top.ocontainer;
+                const loc = { x: 0, y: 0 };
+                otmp.no_charge = (top.where === 'floor'
+                                  && deps.get_obj_location?.(top, loc, 0)
+                                  /* can't use costly_spot(): its result
+                                     depends on the hero's location */
+                                  && deps.inside_shop?.(loc.x, loc.y)
+                                  && deps.tended_shop?.(loc.x, loc.y)) ? 1 : 0;
+            }
+        } else { /* saving */
+            /* do not zero out o_ids for ghost levels anymore */
+
+            if (objects[otmp.otyp]?.oc_uses_known)
+                otmp.known = 0;
+            otmp.dknown = otmp.bknown = 0;
+            otmp.rknown = 0;
+            otmp.lknown = 0;
+            otmp.cknown = 0;
+            otmp.tknown = 0;
+            otmp.invlet = 0;
+            otmp.no_charge = 0;
+            otmp.how_lost = 0;                      /* LOST_NONE */
+
+            /* strip user-supplied names.  Statue and some corpse names are
+               left intact, presumably in case they came from the score file. */
+            if (has_oname(otmp)
+                && !(otmp.oartifact || otmp.otyp === O.STATUE
+                     || otmp.otyp === O.SPE_NOVEL
+                     || (otmp.otyp === O.CORPSE
+                         && otmp.corpsenm >= O.SPECIAL_PM))) {
+                deps.free_oname?.(otmp);
+            }
+
+            if (otmp.otyp === O.SLIME_MOLD) {
+                goodfruit(otmp.spe);
+            } else if (otmp.otyp === O.SCR_MAIL) {
+                /* MAIL_STRUCTURES.  0: delivered in-game via external event;
+                   1: from bones or wishing; 2: written with a marker */
+                if (otmp.spe === 0)
+                    otmp.spe = 1;
+            } else if (otmp.otyp === O.EGG) {
+                otmp.spe = 0;               /* not "laid by you" next game */
+            } else if (otmp.otyp === O.TIN) {
+                /* make tins of a unique monster's meat be empty */
+                if (ismnum(otmp.corpsenm)
+                    && deps.unique_corpstat?.(otmp.corpsenm))
+                    otmp.corpsenm = -1;     /* NON_PM */
+            } else if (otmp.otyp === O.CORPSE || otmp.otyp === O.STATUE) {
+                /* Discard incarnation details of unique monsters (by passing
+                   null instead of otmp for object), shopkeepers (by passing
+                   false for the revival flag), temple priests and vault guards,
+                   to prevent corpse revival / statue reanimation. */
+                const mnumRef = { value: otmp.corpsenm };
+                if (has_omonst(otmp)
+                    && deps.cant_revive?.(mnumRef, false, null)) {
+                    deps.free_omonst?.(otmp);
+                    /* mnum is now either human_zombie or doppelganger; for
+                       corpses of uniques the transformation has to happen NOW
+                       rather than at a revival attempt, otherwise eating this
+                       corpse would behave as if it remains unique */
+                    if (mnumRef.value === deps.PM_DOPPELGANGER
+                        && otmp.otyp === O.CORPSE)
+                        deps.set_corpsenm?.(otmp, mnumRef.value);
+                }
+            } else if (deps.is_mines_prize?.(otmp) || deps.is_soko_prize?.(otmp)) {
+                /* achievement tracking; in case the prize was moved off its
+                   original level (which is always a no-bones level) */
+                otmp.nomerge = 0;
+            } else if (otmp.otyp === O.AMULET_OF_YENDOR) {
+                otmp.otyp = O.FAKE_AMULET_OF_YENDOR;  /* no longer the real one */
+                deps.curse?.(otmp);
+            } else if (otmp.otyp === O.CANDELABRUM_OF_INVOCATION) {
+                if (otmp.lamplit)
+                    deps.end_burn?.(otmp, true);
+                otmp.otyp = O.WAX_CANDLE;
+                otmp.age = 50;                        /* assume used */
+                if (otmp.spe > 0)
+                    otmp.quan = otmp.spe;
+                otmp.spe = 0;
+                otmp.owt = deps.weight ? deps.weight(otmp) : otmp.owt;
+                deps.curse?.(otmp);
+            } else if (otmp.otyp === O.BELL_OF_OPENING) {
+                otmp.otyp = O.BELL;
+                deps.curse?.(otmp);
+            } else if (otmp.otyp === O.SPE_BOOK_OF_THE_DEAD) {
+                otmp.otyp = O.SPE_BLANK_PAPER;
+                deps.curse?.(otmp);
+            }
+        }
+    }
+}
+// C ref: obj.h has_oname(obj) / ONAME(obj); this port keeps the name in
+// obj.oname (js/invent.js:312 safe_oname()).  mkobj.h ismnum(mnum) is
+// `mnum > NON_PM && mnum < NUMMONS`.
+function has_oname(obj) { return !!obj?.oname; }
+function safe_oname(obj) { return obj?.oname || ''; }
+function has_omonst(obj) { return !!(obj?.omonst || obj?.oextra?.omonst); }
+function ismnum(mnum) { return (mnum | 0) > -1; }
+
+// C ref: bones.c:308 fixuporacle(oracle) — "possibly restore oracle's room
+// and/or put her back inside it; returns False if she's on the wrong level and
+// should be removed, True otherwise".  Called from remove_mon_from_bones(),
+// whose port at js/bones.js:516 deliberately omits the Oracle arm (see the
+// comment there); this is that arm.
+//
+// No RNG of its own, but enexto() rolls, so the early `return FALSE` and the
+// `o_ridx === ridx` short circuit both matter to the stream.
+export async function fixuporacle(oracle, deps = {}) {
+    /* the oracle doesn't move, but a knight's joust or a monk's staggering
+       blow could push her onto a hole in the floor; at present traps don't
+       activate in such a situation so she won't fall to another level, but
+       that could change, so be prepared to cope with such things */
+    if (!Is_oracle_level(game.u?.uz))
+        return false;
+
+    oracle.mpeaceful = 1;   /* for behavior toward the next character */
+    const rooms = game.level?.rooms || [];
+    let o_ridx = roomno_at(oracle.mx, oracle.my) - ROOMOFFSET;
+    if (o_ridx >= 0 && rooms[o_ridx]?.rtype === DELPHI)
+        return true;        /* no fixup needed */
+
+    /*
+     * The Oracle isn't in the DELPHI room.  Either the hero entered her
+     * chamber and got the one-time welcome message, converting it into an
+     * ordinary room, or she got teleported out, or both.  Try to put her back
+     * inside her room, if necessary, and restore its type.
+     */
+
+    /* find the original delphi chamber; should always succeed.  C scans the
+       whole fixed-size svr.rooms[] array, so `ridx === SIZE(rooms)` is its
+       "not found" answer — mirrored here with rooms.length. */
+    let ridx = 0;
+    for (; ridx < rooms.length; ++ridx)
+        if ((rooms[ridx]?.orig_rtype | 0) === DELPHI)
+            break;
+
+    if (o_ridx !== ridx && ridx < rooms.length) {
+        /* room found and she's not in it, so try to move her there */
+        const cc = { x: Math.trunc((rooms[ridx].lx + rooms[ridx].hx) / 2),
+                     y: Math.trunc((rooms[ridx].ly + rooms[ridx].hy) / 2) };
+        const spot = deps.enexto?.(cc.x, cc.y, oracle.data);
+        if (spot) {
+            await deps.rloc_to?.(oracle, spot.x, spot.y);
+            o_ridx = roomno_at(oracle.mx, oracle.my) - ROOMOFFSET;
+        }
+        /* [if her room is already full she might end up outside; that's ok,
+           the next hero just won't get any welcome message, same as used to
+           happen before this fixup was introduced] */
+    }
+    if (ridx === o_ridx)    /* if she's in her room, mark it as such */
+        rooms[ridx].rtype = DELPHI;
+    return true;            /* keep the oracle in the new bones file */
+}
+// C ref: rm.h levl[x][y].roomno.
+function roomno_at(x, y) { return game.level?.at?.(x, y)?.roomno | 0; }
+
+// C ref: bones.c:795 fix_ghostly_obj(obj) — "called when a marked object from a
+// bones file is picked up.  Some could result in a message, and the obj->ghostly
+// flag is always cleared."  The asymmetrical launchers were strung for the
+// previous, possibly opposite-handed, hero.
+export async function fix_ghostly_obj(obj) {
+    if (!obj?.ghostly)
+        return;
+    const O = await import('./mkobj.js');
+    const otyp_of = (nm) => O.objects.find((o) => o.sym === nm)?.otyp;
+    switch (obj.otyp) {
+    /* asymmetrical weapons */
+    case otyp_of('BOW'):
+    case otyp_of('ELVEN_BOW'):
+    case otyp_of('ORCISH_BOW'):
+    case otyp_of('YUMI'):
+    case otyp_of('BOOMERANG'): {
+        const { pline } = await import('./display.js');
+        const { xname } = await import('./invent.js');
+        await pline(`You make adjustments to ${the(xname(obj))} to suit your `
+                    + `${URIGHTY() ? 'right' : 'left'} hand.`);
+        break;
+    }
+    default:
+        break;
+    }
+    obj.ghostly = 0;
+}
+// C ref: hack.h the() / URIGHTY (u.uhandedness == RIGHT_HANDED, the default).
+function the(s) { return /^[A-Z]/.test(String(s)) ? String(s) : `the ${s}`; }
+function URIGHTY() { return (game.u?.uhandedness ?? 0) === 0; }
+
+// C ref: bones.c:817 newebones(mtmp) — allocate mtmp's `struct ebones` (the
+// "which bones pile did this monster come from" record), zeroed except for
+// parentmid.  mextra is a plain object in this port (js/dog.js:542 newmextra()).
+export function newebones(mtmp) {
+    if (!mtmp.mextra)
+        mtmp.mextra = {};                       /* newmextra() */
+    if (!mtmp.mextra.ebones) {
+        mtmp.mextra.ebones = { parentmid: 0 };  /* alloc + memset 0 */
+        mtmp.mextra.ebones.parentmid = mtmp.m_id;
+    }
+}
+
+// C ref: bones.c:832 free_ebones(mtmp) — "this is not currently used".
+export function free_ebones(mtmp) {
+    if (mtmp.mextra && mtmp.mextra.ebones) {
+        mtmp.mextra.ebones = null;
+    }
+}

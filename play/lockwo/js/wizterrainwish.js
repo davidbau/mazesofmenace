@@ -31,11 +31,14 @@ import {
     A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, Align2amask,
     IS_WALL, IS_DOOR, IS_FURNITURE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_POOL,
     IS_LAVA, COLNO, ROWNO,
+    // rm.h:291-295. This file used to declare its own copies and every one of
+    // the five was wrong (DB_UNDER 0x0f, DB_FLOOR 0, DB_MOAT 2, DB_LAVA 3,
+    // DB_ICE 4 vs C's 28/16/0/4/8), so the four drawbridgemask writes below
+    // produced masks that js/dbridge.js is_moat()/is_lava()/is_ice() — which
+    // use these, the correct, values — then misread.
+    DB_UNDER, DB_FLOOR, DB_MOAT, DB_LAVA, DB_ICE,
 } from './const.js';
 import { isok } from './hacklib.js';
-
-// C ref: rm.h DB_UNDER / DB_FLOOR / DB_MOAT / DB_LAVA / DB_ICE.
-const DB_UNDER = 0x0f, DB_FLOOR = 0, DB_MOAT = 2, DB_LAVA = 3, DB_ICE = 4;
 
 // C ref: drawing.c defsyms[].explanation for S_arrow_trap..S_trapped_chest,
 // which is exactly what trap.c:7154 trapname(ttyp, TRUE) returns.  Indexed by

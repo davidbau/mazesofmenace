@@ -463,12 +463,18 @@ export const DUNGEON_ALIGN_BY_DNUM = {
     [TUTORIAL]: A_CHAOTIC,
 };
 
-// Build-specific constants: hand-pinned for deterministic replay.
-// These come from date.h and change every C rebuild, so the generator skips them.
-export const BUILD_DATE = "Sun May  3 01:27:17 2026";
-export const BUILD_TIME = (1777786037);
-// nomakedefs.copyright_banner_c — build-specific version string
-export const COPYRIGHT_BANNER_C = "         Version 5.0.0 MacOS, built Sun May  3 01:27:17 2026.";
+// Build-specific constants, hand-pinned for deterministic replay and permitted
+// as literals by docs/recording-environment.md.
+//
+// These do NOT come from date.h.  patchlevel.h:43 defines COPYRIGHT_BANNER_C as
+// `nomakedefs.copyright_banner_c`, i.e. the RUNTIME date.c path, whose
+// `__DATE__ " " __TIME__` is pinned by nethack-c/patches/001 line 133 to
+// "May  2 2026 12:00:00".  The old values here ("Sun May  3 01:27:17 2026",
+// 1777786037) were somebody's local date.h and never matched the recorder.
+export const BUILD_DATE = "May  2 2026 12:00:00";
+export const BUILD_TIME = (1777737600);
+// nomakedefs.copyright_banner_c — nine leading spaces, as in patchlevel.h.
+export const COPYRIGHT_BANNER_C = "         Version 5.0.0 MacOS, built May  2 2026 12:00:00.";
 
 // AUTO-IMPORT-BEGIN: CONST_ALL_HEADERS
 // Auto-imported header constants (pre-symbol pass)

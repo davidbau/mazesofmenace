@@ -23,23 +23,26 @@ const pline = update_topl;
 import { exercise, acurr_eff } from './attrib.js';
 import { find_ac, race_attrmax, race_attrmin, race_attrmax_of } from './u_init.js';
 import { encumber_msg, freeinv, xname, makeplural, near_capacity,
-    youmonst_data_pub } from './invent.js';
+    youmonst_data_pub, makeknown } from './invent.js';
 import { base_mmove } from './mon.js';
 import { P_NAME, weapon_type } from './enhance.js';
-import { objects as OBJECTS } from './mkobj.js';
+import { objects as OBJECTS, maybe_adjust_light } from './mkobj.js';
 import { place_object, WEAPON_CLASS, TOOL_CLASS, ARMOR_CLASS, FOOD_CLASS,
     POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS, COIN_CLASS,
     GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS,
     RING_CLASS, AMULET_CLASS, ILLOBJ_CLASS } from './mkobj.js';
 import { makesingular } from './objnam.js';
-import { newuexp, newhp, newpw, adjabil, update_rank } from './exper.js';
+import { newuexp, newhp, newpw, adjabil, update_rank, rank_of } from './exper.js';
 import { newuhs } from './eat.js';
 import { monster_by_pmidx, name_to_pmidx, golemhp_js as golemhp,
     is_home_elemental, MGEND_MALE, MGEND_FEMALE, MGEND_NEUTRAL } from './makemon.js';
-import { livelog_printf, LL_CONDUCT } from './livelog.js';
+import { livelog_printf, LL_CONDUCT, LL_MINORAC } from './livelog.js';
 import { A_STR, A_INT, A_WIS, A_CON, A_DEX, A_MAX, TT_PIT, TT_BURIEDBALL,
     IS_FOUNTAIN, IS_POOL, IS_LAVA, IS_AIR, In_endgame,
     POLY_CONTROLLED, POLY_MONSTER, POLY_REVERT, POLY_LOW_CTRL } from './const.js';
+// C ref: hack.h bodypart NECK; prop.h I_SPECIAL / FROMOUTSIDE / FROMRACE — the
+// float_vs_flight() / steed_vs_stealth() / polysense() ports below need them.
+import { NECK, I_SPECIAL, FROMOUTSIDE, FROMRACE } from './const.js';
 import { Unaware } from './const.js';
 // C ref: hack.h enum bodypart_types — mbodypart()/body_part() selectors.
 import { ARM, EYE, FINGER, FINGERTIP, FOOT, HAND, HANDED, HEAD, LEG, TOE,
@@ -47,7 +50,7 @@ import { ARM, EYE, FINGER, FINGERTIP, FOOT, HAND, HANDED, HEAD, LEG, TOE,
 import {
     is_hider_flag, hides_under_flag, is_were_flag, likes_gems_flag,
     strongmonst_flag, is_male_flag, is_flyer_flag, mflags1_of, M1_CLING,
-    M1_SLITHY, M1_NOEYES,
+    M1_SLITHY, M1_NOEYES, M1_NOHEAD, M1_BREATHLESS,
     lays_eggs_flag, mindless, msound_of, is_swimmer_flag,
     is_female_flag, is_neuter_flag, is_orc_flag, is_elf_flag, is_dwarf_flag,
     is_gnome_flag, is_giant_flag, is_undead_flag, nohands, humanoid,
@@ -56,12 +59,12 @@ import {
 } from './monflags_data.js';
 import { attacktype, mattk_of, AT_BREA, AT_SPIT, AT_GAZE, AT_CLAW,
     AD_MAGM, AD_CONF, AD_FIRE } from './monattk_data.js';
-import { monsterList, DEADMONSTER } from './mon.js';
-import { races } from './role.js';
+import { monsterList, DEADMONSTER, set_ustuck } from './mon.js';
+import { races, roles, genders } from './role.js';
 import { Blind } from './vision.js';
 import { surface, In_hell } from './dungeon.js';
 import { emits_light, new_light_source, del_light_source, LS_MONSTER,
-    HERO } from './light.js';
+    HERO, arti_light_radius, artifact_light } from './light.js';
 
 // ── real (not session-specific) monster-index constants (mons[] order) ──
 const PM_HUMAN = 260;
@@ -1910,3 +1913,322 @@ export async function domonability() {
 }
 
 export { is_placeholder_pm, PM_HUMAN, PM_ORC, PM_GIANT, PM_ELF };
+
+// ════════════════════════════════════════════════════════════════════════════
+// polyself.c: the ten functions that had no counterpart here.
+//
+// INERT: nothing in js/ calls anything below.  The existing deferral comments
+// that name these (polyself.js:620-621 for float_vs_flight/steed_vs_stealth/
+// polysense, :1395 for polysense, :1901 for dopoly, js/do_wear.js:330 and
+// js/invent.js:1033/3650/3833 and js/read.js:1074 and js/cmd.js:3680 for
+// float_vs_flight) still describe the LIVE behaviour; wiring them up is a
+// separate, scored change.
+//
+// The blocking-property gap this exposes, once: C keeps three "blocked" masks
+// (BFlying / BLevitation / BStealth) alongside the H<prop>/E<prop> pair, and
+// Levitation/Flying/Stealth are all defined as "(H|E) && !B".  This port has
+// only the H/E halves (js/dbridge.js:948 HProp(), js/do_wear.js:204 BStealth()
+// recomputes the riding rule inline), so the writes below land in fields that
+// NO reader consults.  Reported rather than papered over.
+// ════════════════════════════════════════════════════════════════════════════
+
+// C ref: onames.h AMULET_OF_STRANGULATION (js/eat.js:1902, js/dogmove.js:78).
+const AMULET_OF_STRANGULATION_OTYP = 203;
+// C ref: monflag.h M2_HUMAN|M2_ELF — polysense()'s vampire warntype mask.
+// C ref: mons[] rows polysense() switches on.
+const PM_PURPLE_WORM = name_to_pmidx('purple worm');
+const PM_BABY_PURPLE_WORM = name_to_pmidx('baby purple worm');
+const PM_SHRIEKER = name_to_pmidx('shrieker');
+const PM_VAMPIRE = name_to_pmidx('vampire');
+const PM_VAMPIRE_LEADER = name_to_pmidx('vampire leader');
+const PM_MANES = name_to_pmidx('manes');
+
+// C ref: youprop.h — the uprops fields the three blocked-mask writers touch.
+function uprops_of() { const u = game.u; return (u.uprops = u.uprops || {}); }
+// C ref: youprop.h HLevitation/ELevitation, HFlying/EFlying.  These read the
+// H/E halves ONLY (see the header note): C's Levitation macro also demands
+// !BLevitation.
+function HELevitation() {
+    const p = game.u?.uprops || {};
+    return (p.HLevitation | 0) || (p.ELevitation | 0) || (p.Levitation | 0);
+}
+function HEFlying() {
+    const p = game.u?.uprops || {};
+    return (p.HFlying | 0) || (p.EFlying | 0) || (p.Flying | 0);
+}
+
+// C ref: polyself.c:131 float_vs_flight() — "Levitation overrides Flying; set
+// or clear BFlying|I_SPECIAL".  Called from every place that changes
+// levitation, flight or floor-trapping.  No RNG.
+export function float_vs_flight() {
+    const u = game.u;
+    const p = uprops_of();
+    const stuck_in_floor = !!(u.utrap && u.utraptype !== TT_PIT);
+
+    /* floating overrides flight; so does being trapped in the floor */
+    if (HELevitation() || (HEFlying() && stuck_in_floor))
+        p.BFlying = (p.BFlying | 0) | I_SPECIAL;
+    else
+        p.BFlying = (p.BFlying | 0) & ~I_SPECIAL;
+    /* being trapped on the ground (bear trap, web, molten lava survived with
+       fire resistance, former lava solidified via cold, tethered to a buried
+       iron ball) overrides floating -- the floor is reachable */
+    if (HELevitation() && stuck_in_floor)
+        p.BLevitation = (p.BLevitation | 0) | I_SPECIAL;
+    else
+        p.BLevitation = (p.BLevitation | 0) & ~I_SPECIAL;
+
+    /* riding blocks stealth unless hero+steed fly, so a change in flying
+       might cause a change in stealth */
+    steed_vs_stealth();
+
+    game.botl = true;
+}
+
+// C ref: polyself.c:158 steed_vs_stealth() — riding blocks stealth unless
+// hero+steed fly.  No RNG.  (js/do_wear.js:204 BStealth() recomputes exactly
+// this rule inline instead of reading the mask written here.)
+export function steed_vs_stealth() {
+    const u = game.u;
+    const p = uprops_of();
+    if (u.usteed && !HEFlying() && !HELevitation())
+        p.BStealth = (p.BStealth | 0) | FROMOUTSIDE;
+    else
+        p.BStealth = (p.BStealth | 0) & ~FROMOUTSIDE;
+}
+
+// C ref: mondata.h has_head(ptr) — !(mflags1 & M1_NOHEAD).
+function has_head_poly(ptr) { return (mflags1_of(ptr) & M1_NOHEAD) === 0; }
+// C ref: mondata.c:591 can_be_strangled(&gy.youmonst) — headless forms are
+// immune (no neck), as are mindless forms that do not breathe.  The hero can
+// never be mindless while unpolymorphed, but a mindless polyform confers the
+// protection.  js/uhitm.js:2405 has the monster-side copy (unexported).
+function can_be_strangled_u() {
+    const ptr = youmonst_data_pub();
+    if (!has_head_poly(ptr)) return false;
+    const nobrainer = mindless(ptr);
+    /* Breathless: intrinsic (form) or extrinsic (amulet of magical breathing) */
+    const p = game.u?.uprops || {};
+    const nonbreathing = ((mflags1_of(ptr) & M1_BREATHLESS) !== 0)
+        || !!(p.Breathless || p.HBreathless || p.EBreathless);
+    return !nobrainer || !nonbreathing;
+}
+// C ref: objnam.c simpleonames(obj) — xname() without the enchantment/BUC
+// prefixes.  For the amulet of strangulation the two agree.
+function simpleonames_poly(obj) { return xname(obj); }
+
+// C ref: polyself.c:168 check_strangling(on) — for changing into (on=FALSE) or
+// out of (on=TRUE) a form that is immune to strangulation.  Called by polymon()
+// / polyman() / rehumanize() around the form change.  No RNG.
+export async function check_strangling(on) {
+    const u = game.u;
+    /* on -- maybe resume strangling */
+    if (on) {
+        const was_strangled = ((u.Strangled | 0) !== 0);
+
+        /* when Strangled is already set, polymorphing from one vulnerable form
+           into another causes the counter to be reset */
+        if (game.uamul && game.uamul.otyp === AMULET_OF_STRANGULATION_OTYP
+            && can_be_strangled_u()) {
+            u.Strangled = 6;
+            game.botl = true;
+            await pline(`Your ${simpleonames_poly(game.uamul)} ${
+                was_strangled ? 'still constricts' : 'begins constricting'
+            } your ${body_part(NECK)}!`); /* "throat" */
+            makeknown(AMULET_OF_STRANGULATION_OTYP);
+        }
+
+    /* off -- maybe block strangling */
+    } else {
+        if (u.Strangled && !can_be_strangled_u()) {
+            u.Strangled = 0;
+            game.botl = true;
+            await pline('You are no longer being strangled.');
+        }
+    }
+}
+
+// C ref: polyself.c:307 livelog_newform(viapoly, oldgend, newgend) — log a
+// message if a NON-poly'd hero's gender has changed (newman()/change_sex()).
+// No RNG.  C's own TODO notes the rest of newman()'s logging ought to move here.
+export function livelog_newform(viapoly, oldgend, newgend) {
+    const u = game.u;
+
+    if (!u.Upolyd) {
+        if (newgend !== oldgend) {
+            /* C ref: you.h Role_switch == gu.urole.mnum; this port's
+               roles[].mnum is the 0-based ROLE index (js/role.js:25), which is
+               also what exper.js rank_of() wants */
+            const urole = game.urole || roles[0];
+            const oldrole = (oldgend && urole.name.f) ? urole.name.f : urole.name.m;
+            const newrole = (newgend && urole.name.f) ? urole.name.f : urole.name.m;
+            const oldrank = rank_of(u.ulevel, urole.mnum, !!oldgend);
+            const newrank = rank_of(u.ulevel, urole.mnum, !!newgend);
+            /* C: Sprintf(buf, "%.10s %.30s", genders[flags.female].adj, newrank) */
+            const buf = `${String(genders[game.flags?.female ? 1 : 0]?.adj || '')
+                .slice(0, 10)} ${String(newrank).slice(0, 30)}`;
+            livelog_printf(LL_MINORAC, `${viapoly ? 'polymorphed' : 'transformed'
+                } into ${an(newrole !== oldrole ? newrole
+                    : newrank !== oldrank ? newrank : buf)}`);
+        }
+    }
+}
+
+// C ref: mondata.h is_vampire(ptr) — the 'V' class minus the vampire bat.
+// polyself.js:116 is_vampire_pm() already answers this from mlet.
+// C ref: mondata.h is_vampshifter(mon) — a shapeshifter whose base form is a
+// vampire (mon->cham names it).  js/monmove.js:1490 and js/artifact.js:636 hold
+// unexported copies; for the hero, u.ucham is the equivalent field.
+function is_vampshifter_u() {
+    const cham = game.u?.ucham;
+    if (cham == null || cham < 0) return false;
+    const nm = monster_by_pmidx(cham)?.name;
+    return nm === 'vampire' || nm === 'vampire leader'
+        || nm === 'Vlad the Impaler';
+}
+
+// C ref: polyself.c:1877 dopoly() — #monster for a vampire (or vampshifter)
+// hero: shift form.  polyself(POLY_MONSTER) is where any RNG happens.
+export async function dopoly() {
+    const u = game.u;
+    const savedat = youmonst_data_pub();
+
+    if (is_vampire_pm(savedat) || is_vampshifter_u()) {
+        await polyself(POLY_MONSTER);
+        if (savedat !== youmonst_data_pub()) {
+            await pline(`You transform into ${
+                an(await pmname_of(youmonst_data_pub(), !!Ugender_poly()))}.`);
+            newsym(u.ux, u.uy);
+        }
+    }
+    return ECMD_TIME;
+}
+// C ref: you.h:555 Ugender == ((Upolyd ? u.mfemale : flags.female) ? 1 : 0).
+function Ugender_poly() {
+    const u = game.u;
+    return (u?.Upolyd ? u.mfemale : game.flags?.female) ? 1 : 0;
+}
+
+// C ref: polyself.c:1941 uunstick() — the hero's grip on u.ustuck is broken
+// (losing a sticky form, or the victim escaping).  set_ustuck() must run BEFORE
+// the pline(), because Monnam() of a freed monster is what C prints.  No RNG.
+export async function uunstick() {
+    const u = game.u;
+    const mtmp = u.ustuck;
+
+    if (!mtmp) {
+        /* C: impossible("uunstick: no ustuck?") */
+        return;
+    }
+    set_ustuck(null); /* before pline() */
+    const { Monnam } = await import('./do_name.js');
+    await pline(`${Monnam(mtmp)} is no longer in your clutches.`);
+}
+
+// C ref: polyself.c:1954 skinback(silently) — a dragon-scale-mail hero reverts:
+// the merged scales come back out of the uskin slot into uarm.  The
+// `owornmask &= ~I_SPECIAL` undoes the save/restore hack that keeps uskin out
+// of the normal worn-slot bookkeeping.  No RNG.
+export async function skinback(silently) {
+    if (game.uskin) {
+        const old_light = arti_light_radius(game.uskin);
+
+        if (!silently) await pline('Your skin returns to its original form.');
+        game.uarm = game.uskin;
+        game.uskin = null;
+        /* undo save/restore hack */
+        game.uarm.owornmask = (game.uarm.owornmask | 0) & ~I_SPECIAL;
+
+        if (artifact_light(game.uarm))
+            maybe_adjust_light(game.uarm, old_light);
+    }
+}
+
+// C ref: polyself.c:2236 polysense() — "some species have awareness of other
+// species".  Sets svc.context.warntype (a species index + permonst pointer, or
+// a monster-flag mask for the vampire case) and the FROMRACE bit of
+// HWarn_of_mon.  No RNG.
+export function polysense() {
+    const u = game.u;
+    const ctx = (game.context = game.context || {});
+    const p = uprops_of();
+    let warnidx = NON_PM;
+
+    ctx.warntype = ctx.warntype || {};
+    ctx.warntype.speciesidx = NON_PM;
+    ctx.warntype.species = 0;
+    ctx.warntype.polyd = 0;
+    p.HWarn_of_mon = (p.HWarn_of_mon | 0) & ~FROMRACE;
+
+    /* C switches on u.umonnum, which is a mons[] index there.  In THIS port
+       u.umonnum is a ROLE index while unpolymorphed ([[umonnum-is-a-role-
+       index]]), so the switch has to run off youmonst.data's pmidx and only
+       when Upolyd — exactly the guard C's own callers rely on. */
+    const mndx = u.Upolyd ? (youmonst_data_pub()?.pmidx ?? NON_PM) : NON_PM;
+
+    switch (mndx) {
+    case PM_PURPLE_WORM:
+    case PM_BABY_PURPLE_WORM:
+        warnidx = PM_SHRIEKER;
+        break;
+    case PM_VAMPIRE:
+    case PM_VAMPIRE_LEADER:
+        ctx.warntype.polyd = M2_HUMAN | M2_ELF;
+        p.HWarn_of_mon = (p.HWarn_of_mon | 0) | FROMRACE;
+        return;
+    default:
+        break;
+    }
+    if (ismnum(warnidx)) {
+        ctx.warntype.speciesidx = warnidx;
+        ctx.warntype.species = monster_by_pmidx(warnidx);
+        p.HWarn_of_mon = (p.HWarn_of_mon | 0) | FROMRACE;
+    }
+}
+
+// C ref: polyself.c:2265 ugenocided() — TRUE iff the hero's role or race has
+// been genocided.  No RNG.
+//
+// C indexes svm.mvitals[] with gu.urole.mnum / gu.urace.mnum, which ARE mons[]
+// rows there.  In this port roles[].mnum / races[].mnum are 0-based role/race
+// indices (js/role.js:25 / :162), so both have to be mapped to the mons[] row
+// first — the same trap as [[umonnum-is-a-role-index]].
+const PM_ARCHEOLOGIST_ROW = 331;   /* js/monmove.js:6018 */
+let _race_rows = null;
+function race_mons_row(raceidx) {
+    if (!_race_rows) {
+        _race_rows = [PM_HUMAN, PM_ELF, name_to_pmidx('dwarf'),
+                      name_to_pmidx('gnome'), PM_ORC];
+    }
+    return _race_rows[raceidx] ?? NON_PM;
+}
+export function ugenocided() {
+    const roleRow = PM_ARCHEOLOGIST_ROW + (game.urole?.mnum ?? 0);
+    const raceRow = race_mons_row(game.urace?.mnum ?? 0);
+    return !!((mvflags_of(roleRow) & G_GENOD_F)
+              || (mvflags_of(raceRow) & G_GENOD_F));
+}
+
+// C ref: mondata.h:218 weirdnonliving(ptr) == is_golem(ptr) || mlet == S_VORTEX.
+function weirdnonliving_poly(ptr) {
+    return is_golem(ptr) || (!!ptr && ptr.mlet === 'v');
+}
+// C ref: mondata.h:219 nonliving(ptr) == is_undead(ptr) || ptr == &mons[PM_MANES]
+// || weirdnonliving(ptr).
+function nonliving_poly(ptr) {
+    return is_undead_flag(ptr) || (!!ptr && ptr.pmidx === PM_MANES)
+        || weirdnonliving_poly(ptr);
+}
+
+// C ref: polyself.c:2273 udeadinside() — how the hero feels "inside" after
+// self-genocide of role or race.  Living (including demons) reads "dead",
+// undead plus manes read "condemned", golems plus vortices read "empty".
+// No RNG.
+export function udeadinside() {
+    const ptr = youmonst_data_pub();
+    return !nonliving_poly(ptr)
+        ? 'dead'                                /* living, including demons */
+        : !weirdnonliving_poly(ptr)
+            ? 'condemned'                       /* undead plus manes */
+            : 'empty';                          /* golems plus vortices */
+}

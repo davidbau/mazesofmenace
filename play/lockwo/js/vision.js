@@ -5,7 +5,7 @@
 
 import { game, hooks } from './gstate.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
+    COLNO, ROWNO, DOOR, SDOOR, POOL, ROOMOFFSET, isok,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     IS_WALL, CROSSWALL, TRWALL, TREE, CLOUD, WATER, LAVAWALL, TEMP_LIT,
@@ -867,4 +867,161 @@ export function init_vision_globals() {
     game.cs_right = null;
     game.cs_func = null;
     game.cs_arg = null;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// vision.c: the remaining top-level symbols.
+//
+// INERT: nothing in js/ calls anything below EXCEPT get_viz_clear(), which
+// js/wizcmds.js:1146 already tries to import — see the note on that function.
+//
+// The four _q?_path() entries are ALIASES of this file's existing private
+// q1_path()..q4_path() (vision.js:341/365/389/413), not new copies.  C compiles
+// the quadrant walkers as MACROS by default (include/config.h:533 defines
+// MACRO_CPATH unless NO_MACRO_CPATH), and vision.js's q?_path() are faithful
+// ports of those macros (vision.c:1212/1260/1309/1357).  The `#else` bodies at
+// vision.c:1419/1466/1513/1560 are the same algorithm, but their parameter LIST
+// is written `(int scol, int srow, int y2, int x2)` while every call site passes
+// (row, col, row, col) — so in the !MACRO_CPATH build `x = scol` reads the ROW.
+// That branch is not compiled, so the macro semantics are the real ones and the
+// aliases below are correct.
+// ════════════════════════════════════════════════════════════════════════════
+
+// C ref: vision.c:1419/1466/1513/1560 _q1_path/_q4_path/_q2_path/_q3_path.
+export const _q1_path = q1_path;
+export const _q2_path = q2_path;
+export const _q3_path = q3_path;
+export const _q4_path = q4_path;
+
+// C ref: vision.c:105 get_viz_clear(x, y) — "expose viz_clear[][] for sanity
+// checking".  NOTE THE POLARITY: despite the name it returns TRUE when the
+// point is NOT viz_clear, i.e. when it BLOCKS light.  That is what makes
+// wizcmds.c levl_sanity_check()'s `does_block(x,y) != get_viz_clear(x,y)`
+// comparison meaningful, and js/wizcmds.js:1152 relies on the same polarity.
+//
+// js/wizcmds.js:1146 already imports this name; until now the import resolved
+// to undefined and levl_sanity_check() silently compared `blocks` with itself.
+// Exporting it makes that check live.
+export function get_viz_clear(x, y) {
+    if (isok(x, y) && !viz_clear[y][x])
+        return true;
+    return false;
+}
+
+// C ref: vision.c:1651 view_init() — "Initialize algorithm C (nothing)."
+export function view_init() {
+}
+
+// C ref: vision.c:121 vision_init() — the ONE-TIME vision initialization, which
+// must run before mklev() in newgame() or before a restore.  C's first loop
+// installs the row pointers into cs_rows0/cs_rows1/viz_clear_rows; this port
+// keeps the three work areas as fixed arrays (vision.js:65-75) so there is
+// nothing to point.  What remains is: select buffer 0 as current, clear
+// vision_full_recalc, zero both could_see planes, and call view_init().
+//
+// The port's own entry point is init_vision_globals() (vision.js:859), which
+// jsmain.js calls; it sets the same globals plus the cs_* view_from scratch
+// fields.  Left untouched.
+export function vision_init() {
+    /* Start out with cs0 as our current array */
+    game.viz_array = cs_buf0;
+    game.active_buf = 0;
+    game._viz_rmin = cs_rmin0;
+    game._viz_rmax = cs_rmax0;
+
+    game.vision_full_recalc = 0;
+    /* memset(could_see, 0, sizeof(could_see)) — BOTH planes */
+    for (let y = 0; y < ROWNO; y++) { cs_buf0[y].fill(0); cs_buf1[y].fill(0); }
+
+    /* Initialize the vision algorithm (currently C). */
+    view_init();
+}
+
+// C ref: vision.c:274 get_unused_cs(&rows, &rmin, &rmax) — "Called from
+// vision_recalc() and at least one light routine.  Get pointers to the unused
+// vision work area", memset to "see nothing" and with rmin/rmax reset to the
+// empty range (COLNO-1 / 1).
+//
+// C returns three out-parameters; this returns { rows, rmin, rmax }.
+// vision_recalc() above INLINES this at vision.js:640-648 — with one deliberate
+// difference the next porter must not "fix" blindly: it resets rmin to COLNO
+// and rmax to 0, not C's COLNO-1 and 1.  Those are equivalent as an empty
+// range (`for (col = rmin; col <= rmax; ...)` runs zero times either way) and
+// vision.js's own loops use the wider sentinels; this function reproduces C's.
+export function get_unused_cs() {
+    const rows = (game.viz_array === cs_buf0) ? cs_buf1 : cs_buf0;
+    const rmin = (game.viz_array === cs_buf0) ? cs_rmin1 : cs_rmin0;
+    const rmax = (game.viz_array === cs_buf0) ? cs_rmax1 : cs_rmax0;
+
+    /* return an initialized, unused work area */
+    for (let y = 0; y < ROWNO; y++) rows[y].fill(0);   /* see nothing */
+    for (let row = 0; row < ROWNO; row++) {            /* set row min & max */
+        rmin[row] = COLNO - 1;
+        rmax[row] = 1;
+    }
+    return { rows, rmin, rmax };
+}
+
+// C ref: vision.c:314 rogue_vision(next, rmin, rmax) — vision on the Rogue
+// level acts like the original rogue game: in a room the hero sees to the room
+// boundaries, and always sees the eight adjacent squares.  The in_sight bit is
+// set here too, to dodge a bug caused by the one-sided lit-wall hack.
+//
+// No RNG.  vision_recalc() dispatches to this instead of view_from() when
+// Is_rogue_level(&u.uz); this port's vision_recalc() has no such arm.
+export function rogue_vision(next, rmin, rmax) {
+    const u = game.u;
+    const level = game.level;
+    /* no SHARED... */
+    const rnum = (level?.at(u.ux, u.uy)?.roomno ?? 0) - ROOMOFFSET;
+
+    /* If in a lit room, we are able to see to its boundaries. */
+    /* If dark, set COULD_SEE so various spells work -dlc */
+    if (rnum >= 0) {
+        const room = level?.rooms?.[rnum];
+        if (room) {
+            for (let zy = room.ly - 1; zy <= room.hy + 1; zy++) {
+                if (zy < 0 || zy >= ROWNO) continue;
+                const start = room.lx - 1, stop = room.hx + 1;
+                rmin[zy] = start;
+                rmax[zy] = stop;
+
+                for (let zx = start; zx <= stop; zx++) {
+                    if (zx < 0 || zx >= COLNO) continue;
+                    if (room.rlit) {
+                        next[zy][zx] = COULD_SEE | IN_SIGHT;
+                        const loc = level.at(zx, zy);
+                        if (loc) loc.seenv = SVALL;   /* see the walls */
+                    } else {
+                        next[zy][zx] = COULD_SEE;
+                    }
+                }
+            }
+        }
+    }
+
+    const in_door = (level?.at(u.ux, u.uy)?.typ === DOOR);
+
+    /* Can always see adjacent. */
+    const ylo = Math.max(u.uy - 1, 0);
+    const yhi = Math.min(u.uy + 1, ROWNO - 1);
+    const xlo = Math.max(u.ux - 1, 1);
+    const xhi = Math.min(u.ux + 1, COLNO - 1);
+    for (let zy = ylo; zy <= yhi; zy++) {
+        if (xlo < rmin[zy]) rmin[zy] = xlo;
+        if (xhi > rmax[zy]) rmax[zy] = xhi;
+
+        for (let zx = xlo; zx <= xhi; zx++) {
+            next[zy][zx] = COULD_SEE | IN_SIGHT;
+            /*
+             * Yuck, update adjacent non-diagonal positions when in a doorway.
+             * We need to do this to catch the case when we first step into a
+             * room.  The room's walls were not seen from the outside, but now
+             * are seen (the seen bits are set just above).  However, the
+             * positions are not updated because they were already in sight.
+             * So, we have to do it here.
+             */
+            if (in_door && (zx === u.ux || zy === u.uy)) newsym(zx, zy);
+        }
+    }
 }

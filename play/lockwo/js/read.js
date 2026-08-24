@@ -11,8 +11,9 @@ import { game } from './gstate.js';
 import { rnd, rn2, rn1, d } from './rng.js';
 import { pline, topl_more, update_topl, newsym } from './display.js';
 import { getobj, makeknown, useup, useupall, xname, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
-         GETOBJ_EXCLUDE, GETOBJ_PROMPT, identify_pack, trycall, near_capacity,
-         remove_worn_item, makeplural } from './invent.js';
+         GETOBJ_EXCLUDE, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_EXCLUDE_SELECTABLE,
+         identify_pack, trycall, near_capacity, obj_doname, stackobj, obfree,
+         update_inventory, remove_worn_item, makeplural } from './invent.js';
 import { exercise } from './attrib.js';
 import { discover_object } from './o_init.js';
 import { do_mapping } from './detect.js';
@@ -24,16 +25,25 @@ import { SCROLL_CLASS, SPBOOK_CLASS, SCR_BLANK_PAPER, SCR_TELEPORTATION,
          SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER, SCR_SCARE_MONSTER,
          BALL_CLASS, CHAIN_CLASS, HEAVY_IRON_BALL, mkobj, place_object,
          WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, COIN_CLASS, WAND_CLASS,
-         POTION_CLASS, RING_CLASS, objects,
+         POTION_CLASS, RING_CLASS, objects, mksobj,
          bless, curse, uncurse, blessorcurse, weight } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, A_DEX, A_INT, CORR, Is_rogue_level, Is_waterlevel,
          ERODE_NONE, EF_PAY, EF_DESTROY, ER_NOTHING, ER_DESTROYED,
          COLNO, ROWNO, VIBRATING_SQUARE, is_pit, is_hole, SPE_LIM,
-         W_BALL, W_CHAIN, SDOOR, DOOR, D_CLOSED, D_LOCKED, isok,
+         W_BALL, W_CHAIN, W_ARMH, SDOOR, DOOR, D_CLOSED, D_LOCKED, isok,
+         ACCESSIBLE, IS_POOL, IS_LAVA, IS_AIR, IS_OBSTRUCTED, HI_ZAP,
+         In_endgame, Is_earthlevel, In_sokoban, GENOCIDED, KILLED_BY,
+         KILLED_BY_AN, ROOM, STONE, IS_WALL, IS_DOOR,
          G_GONE } from './const.js';
+import { S_invisible, S_WORM_TAIL, S_MIMIC_DEF, S_MIMIC, S_WORM, S_DEMON,
+         S_XAN, S_EEL, S_GHOST, def_monsyms, MAXMCLASSES } from './symbols.js';
+import { wipeout_text } from './engrave.js';
 import { Blind, vision_recalc, cansee } from './vision.js';
-import { mflags1_of, msound_of, M1_NOHEAD } from './monflags_data.js';
+import { mflags1_of, mflags2_of, msound_of, M1_NOHEAD, M1_AMORPHOUS,
+         M1_UNSOLID, M1_WALLWALK, M1_HIDE,
+         M2_PNAME, M2_HUMAN, M2_DEMON, M2_MALE, M2_FEMALE } from './monflags_data.js';
 import { mon_mr } from './monmr_data.js';
+import { NUMMONS } from './disprng.js';
 
 const ECMD_CANCEL = 0;
 const ECMD_OK = 0;
@@ -81,7 +91,6 @@ const NO_MINVENT = 0x00000001, MM_EDOG = 0x00000800, MM_NOMSG = 0x00020000;
 async function pline_append(msg) {
     await update_topl(msg);
 }
-
 // C ref: read.c seffects — `if (objects[otyp].oc_magic) exercise(A_WIS, TRUE)`.
 // mkobj.js's object table DOES carry oc_magic (OC_MAGIC_RANGES), so read it
 // directly rather than keeping a hand-listed set here: the old set named only
@@ -2004,4 +2013,1453 @@ export async function doread() {
         await run_deferred_lvltport();
     }
     return ECMD_TIME;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// read.c breadth port.  Everything below this line is a faithful translation
+// of a read.c function that had no JS counterpart.  NOTHING here is reached
+// from the code above (or from any other file) yet: seffects()' switch still
+// falls through to its default for these otyps.  Wiring one in is a separate,
+// measurable change; what is recorded here is C's control flow, message order
+// and RNG order so that step doesn't have to re-derive them.
+// ═════════════════════════════════════════════════════════════════════════
+
+const MAX_ERODE = 3;                       // C ref: include/obj.h MAX_ERODE
+const BOULDER = 475, ROCK = 474;           // C ref: include/objects.h otyp
+const OIL_LAMP = 227, BRASS_LANTERN = 226, MAGIC_LAMP = 228;
+const F_CHARGED = 1;                       // C ref: objclass.h BITS() chg field
+// C ref: decl.c c_common_strings — the shared message literals.
+const NOTHING_HAPPENS = 'Nothing happens.';
+const NEVER_MIND = 'Never mind.';
+const THATS_ENOUGH_TRIES = "That's enough tries!";
+// C ref: include/monflag.h enum mons_sounds.
+const MS_LEADER = 36, MS_NEMESIS = 37, MS_GUARDIAN = 38;
+// C ref: read.c do_genocide()'s `how` bits.
+const REALLY = 1, PLAYER = 2, ONTHRONE = 4;
+// C ref: include/monflag.h mons[].geno bits (mvitals[].mvflags reuses
+// G_NOCORPSE; G_GENOD/G_EXTINCT are the mvflags-only bits in const.js).
+const G_NOCORPSE = 0x0010, G_UNIQ = 0x1000, G_GENO = 0x0020;
+const G_GENOD = 0x02, G_EXTINCT = 0x01;
+// C ref: hack.h makemon() flags used by the ports below.
+const MM_MALE = 0x00000010, MM_FEMALE = 0x00000020, MM_NOEXCLAM = 0x00004000,
+      MM_MINVIS = 0x00000002;
+// C ref: include/monflag.h enum mgender { MALE, FEMALE, NEUTRAL }.
+const MALE = 0, FEMALE = 1, NEUTRAL = 2;
+const NON_PM = -1, LOW_PM = 0;             // C ref: permonst.h
+
+// C ref: hack.h distu(x, y) == dist2(x, y, u.ux, u.uy).  hack.js exports the
+// same helper, but hack.js imports THIS file, so importing it back would close
+// a module cycle.
+function distu_read(x, y) {
+    const u = game.u;
+    const dx = x - (u?.ux || 0), dy = y - (u?.uy || 0);
+    return dx * dx + dy * dy;
+}
+
+// C ref: objclass.h objects[].oc_charged.  invent.js:1644 has the identical
+// private helper; the JS object table carries the flag as bit 1 of `flags`.
+function oc_charged(otyp) { return !!(objects[otyp]?.flags & F_CHARGED); }
+
+// C ref: mondata.h amorphous/unsolid/passes_walls/noncorporeal/is_hider and
+// is_human/is_demon/is_male/is_female/type_is_pname.  Private copies of the
+// same predicates monmove.js/muse.js/artifact.js/hack.js each keep; none of
+// those is exported, so they are read straight off the mflags tables here
+// rather than from a species-name set (the name-regex bug class).
+function amorphous_read(ptr) { return (mflags1_of(ptr) & M1_AMORPHOUS) !== 0; }
+function unsolid_read(ptr) { return (mflags1_of(ptr) & M1_UNSOLID) !== 0; }
+function passes_walls_read(ptr) { return (mflags1_of(ptr) & M1_WALLWALK) !== 0; }
+function noncorporeal_read(ptr) { return ptr?.mcls === S_GHOST; }
+function is_hider_read(ptr) { return (mflags1_of(ptr) & M1_HIDE) !== 0; }
+function type_is_pname_read(ptr) { return (mflags2_of(ptr) & M2_PNAME) !== 0; }
+function is_human_read(ptr) { return (mflags2_of(ptr) & M2_HUMAN) !== 0; }
+function is_demon_read(ptr) { return (mflags2_of(ptr) & M2_DEMON) !== 0; }
+function is_male_read(ptr) { return (mflags2_of(ptr) & M2_MALE) !== 0; }
+function is_female_read(ptr) { return (mflags2_of(ptr) & M2_FEMALE) !== 0; }
+
+// C ref: monst.h engulfing_u(mon) == (u.uswallow && u.ustuck == mon).
+function engulfing_u_read(mon) {
+    return !!game.u?.uswallow && game.u?.ustuck === mon;
+}
+
+// C ref: youprop.h Deaf.  apply.js:280 keeps the same private copy.
+function Deaf_read() {
+    const u = game.u;
+    return !!(u?.uprops?.Deafness || u?.udeaf);
+}
+
+// C ref: mon.c mvitals[mndx].mvflags |= bits — the only writer these ports
+// need; game.mvitals is the port's svm.mvitals (see mvitals_mvflags above).
+function mvitals_set(pmidx, bits) {
+    if (!game.mvitals) game.mvitals = [];
+    if (!game.mvitals[pmidx]) game.mvitals[pmidx] = { born: 0, died: 0, mvflags: 0 };
+    game.mvitals[pmidx].mvflags |= bits;
+}
+
+// C ref: minion.c monster_census(spotted) — how many monsters are on the level.
+// wizard.js:111 holds the same (private) copy; the isgd/canspotmon clauses are
+// C's and are kept here because create_particular_parse()'s quantity cap and
+// do_genocide()'s "Sent in ..." count both read the difference.
+async function monster_census_read(spotted) {
+    const { DEADMONSTER } = await import('./mon.js');
+    const { canspotmon } = await import('./uhitm.js');
+    let count = 0;
+    for (const mtmp of (game.level?.monsters || [])) {
+        if (DEADMONSTER(mtmp)) continue;
+        if (mtmp.isgd && mtmp.mx === 0) continue;
+        if (spotted && !canspotmon(mtmp)) continue;
+        ++count;
+    }
+    return count;
+}
+
+// C ref: dungeon.c has_ceiling/avoid_ceiling/ceiling(x, y).  The ceiling()
+// reduction is dig.js's and engrave.js:1452's (no in_rooms() vault/temple/shop
+// lookup, no air/water/fire level), since seffect_earth is refused outright on
+// every level those arms describe.
+function has_ceiling_read(uz) {
+    if (In_endgame(uz) && !Is_earthlevel(uz)) return false;
+    return true;
+}
+function avoid_ceiling_read(uz) {
+    // C: `In_quest(lev) || !has_ceiling(lev)`.  In_quest() is not ported here.
+    return !has_ceiling_read(uz);
+}
+function ceiling_read(x, y) {
+    const typ = game.level?.at(x, y)?.typ ?? STONE;
+    if (typ === ROOM || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR)
+        return 'ceiling';
+    return 'rock cavern';
+}
+
+// C ref: trap.c:7039 sokoban_guilt() — a luck penalty for cheating in Sokoban.
+function sokoban_guilt_read() {
+    if (!In_sokoban(game.u?.uz)) return;
+    const u = game.u;
+    u.uconduct = u.uconduct || {};
+    u.uconduct.sokocheat = (u.uconduct.sokocheat || 0) + 1;
+    // C ref: attrib.c change_luck(-1); do_wear.js:229 exports the same helper.
+    u.uluck = (u.uluck || 0) - 1;
+}
+
+// C ref: rm.h closed_door(x, y) — IS_DOOR && (D_LOCKED|D_CLOSED).
+function closed_door_read(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ)) return false;
+    return (loc.doormask & (D_LOCKED | D_CLOSED)) !== 0;
+}
+
+// C ref: objnam.c an(str).  hack.js:2633 keeps the same private copy.
+function an_read(s) {
+    if (!s) return s;
+    if (/^[aeiouAEIOU]/.test(s)) return `an ${s}`;
+    return `a ${s}`;
+}
+// C ref: hacklib.c upstart(s) — capitalise the first letter in place.
+function upstart_read(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+// C ref: objnam.c vtense(subj, verb) — plural subject keeps the bare verb.
+// Only the two seffect_earth call sites ("avalanches materialize" vs "an
+// avalanche materializes") reach this.
+function vtense_read(subj, verb) {
+    const s = String(subj || '');
+    const plural = /s$/.test(s) && !/ss$/.test(s);
+    return plural ? verb : vtense_sing_wep(verb);
+}
+
+// ── read.c:89 erode_obj_text / the o_id-indexed slogan tables ─────────────
+
+// C ref: obj.h greatest_erosion(otmp) — max(oeroded, oeroded2).
+function greatest_erosion_read(otmp) {
+    return Math.max(otmp?.oeroded || 0, otmp?.oeroded2 || 0);
+}
+
+// C ref: read.c:89 erode_obj_text(otmp, buf) — a worn or burnt shirt/apron has
+// characters rubbed out of its slogan.  wipeout_text()'s SEEDED form draws no
+// RNG: the `o_id ^ (unsigned) ubirthday` seed makes one object's damage stable.
+//
+// GOTCHA: engrave.js's wipeout_text() advances the seed as `seed *= 31; seed %=
+// (BUFSZ - 1)` in JS number arithmetic, while C wraps the unsigned product at
+// 2^32 BEFORE the modulus.  Every other caller passes seed 0 (the RNG path), so
+// this is the first call site where the difference is reachable; the wiped
+// characters can differ from C's for a heavily eroded shirt.
+export function erode_obj_text(otmp, buf) {
+    const erosion = greatest_erosion_read(otmp);
+    if (erosion)
+        buf = wipeout_text(buf,
+                           Math.trunc(buf.length * erosion / (2 * MAX_ERODE)),
+                           (((otmp?.o_id | 0) ^ (ubirthday_secs() | 0)) >>> 0));
+    return buf;
+}
+
+// C ref: read.c:100 tshirt_text() — shirt_msgs[], indexed by o_id.  No RNG.
+const SHIRT_MSGS = [
+    "I explored the Dungeons of Doom and all I got was this lousy T-shirt!",
+    'Is that Mjollnir in your pocket or are you just happy to see me?',
+    "It's not the size of your sword, it's how #enhance'd you are with it.",
+    "Madame Elvira's House O' Succubi Lifetime Customer",
+    "Madame Elvira's House O' Succubi Employee of the Month",
+    'Ludios Vault Guards Do It In Small, Dark Rooms',
+    'Yendor Military Soldiers Do It In Large Groups',
+    'I survived Yendor Military Boot Camp',
+    'Ludios Accounting School Intra-Mural Lacrosse Team',
+    'Oracle(TM) Fountains 10th Annual Wet T-Shirt Contest',
+    'Hey, black dragon!  Disintegrate THIS!',
+    "I'm With Stupid -->",
+    "Don't blame me, I voted for Izchak!",
+    "Don't Panic",                            /* HHGTTG */
+    'Furinkan High School Athletic Dept.',    /* Ranma 1/2 */
+    'Hel-LOOO, Nurse!',                       /* Animaniacs */
+    '=^.^=',
+    '100% goblin hair - do not wash',
+    'Aberzombie and Fitch',
+    'cK -- Cockatrice touches the Kop',
+    "Don't ask me, I only adventure here",
+    'Down with pants!',
+    'd, your dog or a killer?',
+    'FREE PUG AND NEWT!',
+    'Go team ant!',
+    'Got newt?',
+    'Hello, my darlings!',                    /* Charlie Drake */
+    'Hey!  Nymphs!  Steal This T-Shirt!',
+    'I <3 Dungeon of Doom',
+    'I <3 Maud',
+    'I am a Valkyrie.  If you see me running, try to keep up.',
+    'I am not a pack rat - I am a collector',
+    'I bounced off a rubber tree',            /* Monkey Island */
+    'Plunder Island Brimstone Beach Club',    /* Monkey Island */
+    'If you can read this, I can hit you with my polearm',
+    "I'm confused!",
+    'I scored with the princess',
+    'I want to live forever or die in the attempt.',
+    'Lichen Park',
+    'LOST IN THOUGHT - please send search party',
+    'Meat is Mordor',
+    'Minetown Better Business Bureau',
+    'Minetown Watch',
+    "Ms. Palm's House of Negotiable Affection--A Very Reputable House Of Disrepute",
+    'Protection Racketeer',
+    'Real men love Crom',
+    'Somebody stole my Mojo!',
+    'The Hellhound Gang',
+    'The Werewolves',
+    'They Might Be Storm Giants',
+    "Weapons don't kill people, I kill people",
+    'White Zombie',
+    "You're killing me!",
+    'Anhur State University - Home of the Fighting Fire Ants!',
+    'FREE HUGS',
+    'Serial Ascender',
+    'Real men are valkyries',
+    "Young Men's Cavedigging Association",
+    'Occupy Fort Ludios',
+    "I couldn't afford this T-shirt so I stole it!",
+    'Mind flayers suck',
+    "I'm not wearing any pants",
+    'Down with the living!',
+    'Pudding farmer',
+    'Vegetarian',
+    "Hello, I'm War!",
+    'It is better to light a candle than to curse the darkness',
+    'It is easier to curse the darkness than to light a candle',
+    'rock--paper--scissors--lizard--Spock!',
+    '/Valar morghulis/ -- /Valar dohaeris/',
+];
+export function tshirt_text(tshirt) {
+    return erode_obj_text(tshirt,
+                          SHIRT_MSGS[(tshirt?.o_id | 0) % SHIRT_MSGS.length]);
+}
+
+// C ref: read.c:254 apron_text() — apron_msgs[], indexed by o_id.  No RNG.
+const APRON_MSGS = [
+    'Kiss the cook',
+    "I'm making SCIENCE!",
+    "Don't mess with the chef",
+    "Don't make me poison you",
+    "Gehennom's Kitchen",
+    'Rat: The other white meat',
+    "If you can't stand the heat, get out of Gehennom!",
+    "If we weren't meant to eat animals, why are they made out of meat?",
+    "If you don't like the food, I'll stab you",
+    'I am an alchemist; if you see me running, try to catch up...',
+];
+export function apron_text(apron) {
+    return erode_obj_text(apron,
+                          APRON_MSGS[(apron?.o_id | 0) % APRON_MSGS.length]);
+}
+
+// C ref: read.c:296 candy_wrapper_text(obj) — the modulo is just bullet
+// proofing; 'spe' is already in range (assign_candy_wrapper set it).
+export function candy_wrapper_text(obj) {
+    return CANDY_WRAPPERS[(obj?.spe | 0) % CANDY_WRAPPERS.length];
+}
+
+// ── read.c:652 stripspe / p_glow1 / p_glow3 ──────────────────────────────
+
+// C ref: read.c:652 stripspe(obj) — a cursed recharge drains the charges.
+// C's own comment on the body: "order matters: message, shop handling, actual
+// transformation".  (costly_alteration(obj, COST_UNCHRG) is shop billing;
+// trap.js:829's copy of it is already a no-op stub in this port.)
+export async function stripspe(obj) {
+    if (obj.blessed || (obj.spe || 0) <= 0) {
+        await pline_append(NOTHING_HAPPENS);
+    } else {
+        await pline_append(`${Yobjnam2_wep(obj, 'vibrate')} briefly.`);
+        obj.spe = 0;
+        if (obj.otyp === OIL_LAMP || obj.otyp === BRASS_LANTERN)
+            obj.age = 0;
+    }
+}
+
+// C ref: read.c:667 p_glow1(otmp).
+export async function p_glow1(otmp) {
+    await pline_append(`${Yobjnam2_wep(otmp, Blind() ? 'vibrate' : 'glow')} briefly.`);
+}
+
+// C ref: read.c:680 p_glow3(otmp, color).  NOTE: this file's p_glow2() above
+// does NOT match C's p_glow2() — see the divergence note on that function.
+export async function p_glow3(otmp, color) {
+    await pline_append(`${Yobjnam2_wep(otmp, Blind() ? 'vibrate' : 'glow')} feebly${
+        Blind() ? '' : ' '}${Blind() ? '' : hcolor_wep(color)} for a moment.`);
+}
+
+// ── read.c:1044 taming ───────────────────────────────────────────────────
+
+// C ref: read.c:1044 maybe_tame(mtmp, sobj) — one monster hit by a scroll of
+// taming.  Returns +1 (became friendlier), -1 (became angry) or 0.  RNG: the
+// non-cursed arm draws resist()'s rn2(100 + alev - dlev) for every candidate,
+// and tamedog() draws its own.
+export async function maybe_tame(mtmp, sobj) {
+    const was_tame = mtmp.mtame;
+    const was_peaceful = mtmp.mpeaceful;
+
+    if (sobj.cursed) {
+        const { setmangry } = await import('./uhitm.js');
+        await setmangry(mtmp, false);
+        if (was_peaceful && !mtmp.mpeaceful) return -1;
+    } else {
+        // C: a shopkeeper gets make_happy_shk() from tamedog() even when the
+        // taming itself is resisted, so tamedog() runs for isshk regardless.
+        if (!resist(mtmp, sobj.oclass, 0, false) || mtmp.isshk) {
+            const { tamedog } = await import('./dothrow.js');
+            await tamedog(mtmp, sobj, false);
+        }
+        if ((!was_peaceful && mtmp.mpeaceful) || was_tame !== mtmp.mtame)
+            return 1;
+    }
+    return 0;
+}
+
+// C ref: read.c:1679 seffect_taming() — scroll of taming / charm monster.  The
+// scan is a square of side 2*bd+1 centred on the hero (bd 5 when confused), in
+// C's i-then-j order, and maybe_tame() draws per candidate, so the order is
+// RNG-visible.
+export async function seffect_taming(sobj) {
+    const u = game.u;
+    const confused = Confused();
+    let candidates, results, vis_results;
+
+    if (u.uswallow) {
+        candidates = 1;
+        results = vis_results = await maybe_tame(u.ustuck, sobj);
+    } else {
+        const bd = confused ? 5 : 1;
+        const { m_at } = await import('./display.js');
+        const { canspotmon } = await import('./uhitm.js');
+        candidates = results = vis_results = 0;
+        for (let i = -bd; i <= bd; i++)
+            for (let j = -bd; j <= bd; j++) {
+                if (!isok(u.ux + i, u.uy + j)) continue;
+                let mtmp = m_at(u.ux + i, u.uy + j);
+                if (!mtmp && !i && !j) mtmp = u.usteed || null;
+                if (mtmp) {
+                    ++candidates;
+                    const res = await maybe_tame(mtmp, sobj);
+                    results += res;
+                    if (canspotmon(mtmp)) vis_results += res;
+                }
+            }
+    }
+    if (!results) {
+        await pline_append(`Nothing interesting ${
+            !candidates ? 'happens' : 'seems to happen'}.`);
+    } else {
+        await pline_append(`The neighborhood ${vis_results ? 'is' : 'seems'} ${
+            (results < 0) ? 'un' : ''}friendlier.`);
+        if (vis_results > 0) game.known = true;
+    }
+}
+
+// ── read.c:1080 stinking cloud ───────────────────────────────────────────
+
+// C ref: read.c:1080 can_center_cloud(x, y) — the getpos hilite/validity
+// callback, and the range test seffect_stinking_cloud uses to decide whether
+// the scroll has any effect at all.  NOT the same as valid_cloud_pos().
+//
+// region.js:282 already holds the faithful valid_cloud_pos(), but it is
+// module-private; the fix is to export it there rather than add a second named
+// copy, so its body is spelled out inline here.
+export function can_center_cloud(x, y) {
+    // C: valid_cloud_pos(x, y)
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    if (!(ACCESSIBLE(loc.typ) || IS_POOL(loc.typ) || IS_LAVA(loc.typ)))
+        return false;
+    return cansee(x, y) && distu_read(x, y) < 32;
+}
+
+// The cells display_stinking_cloud_positions() painted, so the "off" call can
+// restore exactly those (C's tmp_at(DISP_END, 0)).
+const _stinking_cloud_hilite = [];
+
+// C ref: read.c:1088 display_stinking_cloud_positions(on_off) — paint every
+// in-range centerable square with the S_goodpos cmap glyph ('$', HI_ZAP) while
+// the getpos() cursor loop runs, then erase.
+//
+// SCOPE: display.c's tmp_at() is not ported; zap.js:1288 documents the same gap
+// and uses show_glyph_cell() + newsym() as the overlay, which is what is done
+// here.  The dx/dy scan order is C's, so the paint (and erase) order matches.
+export async function display_stinking_cloud_positions(on_off) {
+    const u = game.u;
+    const dist = 6;
+
+    if (on_off) {
+        /* on */
+        const { show_glyph_cell } = await import('./display.js');
+        _stinking_cloud_hilite.length = 0;
+        for (let dx = -dist; dx <= dist; dx++)
+            for (let dy = -dist; dy <= dist; dy++) {
+                const x = u.ux + dx, y = u.uy + dy;
+                // C: the hero's own spot is allowed but highlighting it makes
+                // the map harder to read.
+                if (x === u.ux && y === u.uy) continue;
+                if (can_center_cloud(x, y)) {
+                    show_glyph_cell(x, y, '$', HI_ZAP);
+                    _stinking_cloud_hilite.push([x, y]);
+                }
+            }
+    } else {
+        /* off */
+        for (const [x, y] of _stinking_cloud_hilite) newsym(x, y);
+        _stinking_cloud_hilite.length = 0;
+    }
+}
+
+// C ref: read.c:3082 do_stinking_cloud(sobj, mention_stinking) — prompt for a
+// location and create the cloud there.
+//
+// SCOPE: C's getpos_sethilite(display_stinking_cloud_positions,
+// can_center_cloud) REGISTERS two callbacks with the getpos() loop; the hilite
+// painter only runs when the player presses the show-valid key, and getpos()
+// calls it with FALSE on the way out.  The port's getpos() takes the validity
+// predicate (`validfn`) but has no hilite hook, so the painter is left
+// unwired — deliberately, since calling it here would draw cells C does not.
+export async function do_stinking_cloud(sobj, mention_stinking) {
+    const u = game.u;
+    const cc = { x: u.ux, y: u.uy };
+
+    await pline_append(`Where do you want to center the ${
+        mention_stinking ? 'stinking ' : ''}cloud?`);
+    const { getpos } = await import('./hack.js');
+    const pos = await getpos('the desired position', u.ux, u.uy,
+                             can_center_cloud, /*force=*/true,
+                             game.flags?.verbose !== false);
+    if (!pos) {                        /* getpos() < 0 */
+        await pline_append(NEVER_MIND);
+        return;
+    }
+    cc.x = pos.x; cc.y = pos.y;
+    if (!can_center_cloud(cc.x, cc.y)) {
+        if (Hallucination())
+            await pline_append('Ugh... someone cut the cheese.');
+        else
+            await pline_append(`${sobj.oclass === SCROLL_CLASS
+                ? 'The scroll crumbles with' : 'You smell'} a whiff of rotten eggs.`);
+        return;
+    }
+    const bcsign = (sobj.blessed ? 1 : 0) - (sobj.cursed ? 1 : 0);
+    const { create_gas_cloud } = await import('./region.js');
+    await create_gas_cloud(cc.x, cc.y, 15 + 10 * bcsign, 8 + 4 * bcsign);
+}
+
+// C ref: read.c:1991 seffect_stinking_cloud().
+export async function seffect_stinking_cloud(sobj) {
+    const otyp = sobj.otyp;
+    const already_known = (sobj.oclass === SPBOOK_CLASS
+                           || !!objects[otyp]?.oc_name_known);
+
+    if (!already_known)
+        await pline_append('You have found a scroll of stinking cloud!');
+    game.known = true;
+    await do_stinking_cloud(sobj, already_known);
+}
+
+// ── read.c:2294 scroll of earth ──────────────────────────────────────────
+
+// C ref: read.c:2294 drop_boulder_on_player(confused, helmet_protects, byu,
+// skip_uswallow).  RNG order: mksobj(BOULDER|ROCK, FALSE, FALSE) — which
+// itself draws for a rock's quantity — then the confused rn1(5, 2) stack, then
+// dmgval()'s damage dice, then flooreffects().
+//
+// SCOPE: do.c flooreffects() is not ported anywhere (dokick.js:1013 has a
+// kick-specific private copy), so the boulder is always placed rather than
+// possibly filling a pit / sinking in water; and the amorphous/Passes_walls/
+// noncorporeal/unsolid polyform test needs youmonst.data, which is only set
+// while polymorphed (see [[umonnum-is-a-role-index]]).
+export async function drop_boulder_on_player(confused, helmet_protects, byu,
+                                             skip_uswallow) {
+    const u = game.u;
+    let dmg;
+
+    /* hit monster if swallowed */
+    if (u.uswallow && !skip_uswallow) {
+        await drop_boulder_on_monster(u.ux, u.uy, confused, byu);
+        return;
+    }
+
+    const otmp2 = mksobj(confused ? ROCK : BOULDER, false, false);
+    if (!otmp2) return;
+    otmp2.quan = confused ? rn1(5, 2) : 1;
+    otmp2.owt = weight(otmp2);
+
+    const ymd = game.youmonst?.data;
+    const solid_hero = !amorphous_read(ymd) && !passes_walls_read(ymd)
+                       && !noncorporeal_read(ymd) && !unsolid_read(ymd);
+    if (!ymd || solid_hero) {
+        await pline_append(`You are hit by ${obj_doname(otmp2)}!`);
+        const { dmgval } = await import('./weapon.js');
+        dmg = dmgval(otmp2, game.youmonst) * otmp2.quan;
+        if (game.uarmh && helmet_protects) {
+            const { hard_helmet } = await import('./do_wear.js');
+            if (hard_helmet(game.uarmh)) {
+                await pline_append('Fortunately, you are wearing a hard helmet.');
+                if (dmg > 2) dmg = 2;
+            } else if (game.flags?.verbose !== false) {
+                await pline_append(`${Yname2_wep(game.uarmh)} does not protect you.`);
+            }
+        }
+    } else {
+        dmg = 0;
+    }
+    const { wake_nearto } = await import('./cmd.js');
+    await wake_nearto(u.ux, u.uy, 4 * 4);
+    /* C: must be before the losehp(), for bones files */
+    place_object(otmp2, u.ux, u.uy);
+    stackobj(otmp2);
+    newsym(u.ux, u.uy);
+    if (dmg) losehp_read(dmg);         // C: losehp(Maybe_Half_Phys(dmg), ...)
+}
+
+// C ref: read.c:2341 drop_boulder_on_monster(x, y, confused, byu).  Same RNG
+// order as the player version; the helmet check reads the monster's own W_ARMH.
+//
+// SCOPE: flooreffects() as above; mon.c mondied() is not exported (mhitm.js's
+// mondied_mm() is the port's stand-in and is used here).
+export async function drop_boulder_on_monster(x, y, confused, byu) {
+    /* Make the object(s) */
+    const otmp2 = mksobj(confused ? ROCK : BOULDER, false, false);
+    if (!otmp2) return false;          /* Shouldn't happen */
+    otmp2.quan = confused ? rn1(5, 2) : 1;
+    otmp2.owt = weight(otmp2);
+
+    /* Find the monster here (won't be player) */
+    const { m_at, map_invisible } = await import('./display.js');
+    const mtmp = m_at(x, y);
+    const mdat = mtmp?.data;
+    if (mtmp && !amorphous_read(mdat) && !passes_walls_read(mdat)
+        && !noncorporeal_read(mdat) && !unsolid_read(mdat)) {
+        const { which_armor } = await import('./worn.js');
+        const { canspotmon, Monnam } = await import('./uhitm.js');
+        const { mon_nam } = await import('./do_name.js');
+        const { DEADMONSTER } = await import('./mon.js');
+        const helmet = which_armor(mtmp, W_ARMH);
+
+        if (cansee(mtmp.mx, mtmp.my)) {
+            await pline_append(`${Monnam(mtmp)} is hit by ${obj_doname(otmp2)}!`);
+            if (mtmp.minvis && !canspotmon(mtmp))
+                map_invisible(mtmp.mx, mtmp.my);
+        } else if (engulfing_u_read(mtmp)) {
+            await pline_append(`You hear something hit ${
+                mon_nam(mtmp)}'s stomach over your head!`);
+        }
+
+        const { dmgval } = await import('./weapon.js');
+        let mdmg = dmgval(otmp2, mtmp) * otmp2.quan;
+        if (helmet) {
+            const { hard_helmet } = await import('./do_wear.js');
+            if (hard_helmet(helmet)) {
+                if (canspotmon(mtmp))
+                    await pline_append(`Fortunately, ${
+                        mon_nam(mtmp)} is wearing a hard helmet.`);
+                else if (!Deaf_read())
+                    await pline_append('You hear a clanging sound.');
+                if (mdmg > 2) mdmg = 2;
+            } else if (canspotmon(mtmp)) {
+                // C: pline("%s's %s does not protect %s.", Monnam, xname, mhim)
+                await pline_append(`${Monnam(mtmp)}'s ${xname(helmet)} does not protect it.`);
+            }
+        }
+        mtmp.mhp = (mtmp.mhp || 0) - mdmg;
+        if (DEADMONSTER(mtmp)) {
+            if (byu) {
+                const { killed } = await import('./uhitm.js');
+                await killed(mtmp);
+            } else {
+                await pline_append(`${Monnam(mtmp)} is killed.`);
+                const { mondied_mm } = await import('./mhitm.js');
+                await mondied_mm(mtmp);
+            }
+        } else {
+            const { wakeupAttack } = await import('./uhitm.js');
+            await wakeupAttack(mtmp, byu);
+        }
+        const { wake_nearto } = await import('./cmd.js');
+        await wake_nearto(x, y, 4 * 4);
+    } else if (engulfing_u_read(mtmp)) {
+        obfree(otmp2, null);
+        /* fall through to player */
+        await drop_boulder_on_player(confused, true, false, true);
+        return true;
+    }
+    /* Drop the rock/boulder to the floor */
+    place_object(otmp2, x, y);
+    stackobj(otmp2);
+    newsym(x, y);                      /* map the rock */
+    return true;
+}
+
+// C ref: read.c:1919 seffect_earth() — scroll of earth.  The eight surrounding
+// squares are visited in C's x-then-y order and each drop draws, so the order
+// is RNG-visible; the hero's own square is attacked LAST (after the ring).
+export async function seffect_earth(sobj) {
+    const u = game.u;
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const confused = Confused();
+
+    /* TODO (C's own): handle steeds */
+    if (!Is_rogue_level(u.uz) && has_ceiling_read(u.uz)
+        && (!In_endgame(u.uz) || Is_earthlevel(u.uz))) {
+        let nboulders = 0;
+
+        /* Identify the scroll */
+        if (u.uswallow) {
+            await pline_append('You hear rumbling.');
+        } else if (!avoid_ceiling_read(u.uz)) {
+            await pline_append(`The ${ceiling_read(u.ux, u.uy)} rumbles ${
+                sblessed ? 'around' : 'above'} you!`);
+        } else {
+            const avalanche = 'avalanche';
+            const matbuf = sblessed ? makeplural(avalanche) : an_read(avalanche);
+            await pline_append(`${upstart_read(matbuf)} of boulders ${
+                vtense_read(matbuf, 'materialize')} ${
+                sblessed ? 'around' : 'above'} you!`);
+        }
+        game.known = true;
+        sokoban_guilt_read();
+
+        /* Loop through the surrounding squares */
+        if (!scursed)
+            for (let x = u.ux - 1; x <= u.ux + 1; x++)
+                for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+                    const typ = game.level?.at(x, y)?.typ;
+                    if (isok(x, y) && !closed_door_read(x, y)
+                        && !IS_OBSTRUCTED(typ) && !IS_AIR(typ)
+                        && (x !== u.ux || y !== u.uy)) {
+                        nboulders += (await drop_boulder_on_monster(x, y, confused,
+                                                                   true)) ? 1 : 0;
+                    }
+                }
+        /* Attack the player */
+        if (!sblessed) {
+            await drop_boulder_on_player(confused, !scursed, true, false);
+        } else if (!nboulders) {
+            await pline_append('But nothing else happens.');
+        }
+    }
+}
+
+// ── read.c:689 charging ──────────────────────────────────────────────────
+
+// C ref: read.c:689 charge_ok(obj) — getobj callback for the scroll of
+// charging.  artifact.js:475 registers `charge_ok: null` as an unimplemented
+// hook; this is the real filter.
+export function charge_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+
+    if (obj.oclass === WAND_CLASS)
+        return GETOBJ_SUGGEST;
+
+    if (obj.oclass === RING_CLASS && oc_charged(obj.otyp)
+        && obj.dknown && objects[obj.otyp]?.oc_name_known)
+        return GETOBJ_SUGGEST;
+
+    if (is_weptool_wep(obj))           /* specific check before general tools */
+        return GETOBJ_EXCLUDE;
+
+    if (obj.oclass === TOOL_CLASS) {
+        /* suggest tools that aren't oc_charged but can still be recharged */
+        if (obj.otyp === BRASS_LANTERN
+            || obj.otyp === OIL_LAMP
+            /* only list magic lamps if they are not identified yet */
+            || (obj.otyp === MAGIC_LAMP && !objects[MAGIC_LAMP]?.oc_name_known))
+            return GETOBJ_SUGGEST;
+        /* suggest chargeable tools only if discovered, to prevent leaking info
+           (e.g. revealing whether an unidentified 'flute' is magic) */
+        if (oc_charged(obj.otyp))
+            return (obj.dknown && objects[obj.otyp]?.oc_name_known)
+                     ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
+        return GETOBJ_EXCLUDE;
+    }
+    /* C: "why are weapons/armor considered charged anyway?" — selectable even
+       so, for the "feeling of loss" message */
+    return GETOBJ_EXCLUDE_SELECTABLE;
+}
+
+// C ref: read.c:1788 seffect_charging() — scroll of charging.  Returns true on
+// C's `*sobjp = 0` path (the scroll is used up inside, before the getobj), so
+// the caller must skip its own discover/useup handling.
+//
+// BLOCKER: read.c:729 recharge(obj, curse_bless) is NOT ported anywhere in js/
+// (artifact.js:480 registers it as a null hook).  It is the whole RNG payload
+// of the non-confused arm — rn2/rnd per object class plus wand_explode() — so
+// the call site below is left as a comment rather than a silent stub: wiring
+// this seffect in requires porting recharge() first.
+export async function seffect_charging(sobj) {
+    const otyp = sobj.otyp;
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const confused = Confused();
+    const already_known = (sobj.oclass === SPBOOK_CLASS
+                           || !!objects[otyp]?.oc_name_known);
+    const u = game.u;
+
+    if (confused) {
+        if (scursed) {
+            await pline_append('You feel discharged.');
+            u.uen = 0;
+        } else {
+            await pline_append('You feel charged up!');
+            u.uen = (u.uen || 0) + d(sblessed ? 6 : 4, 4);
+            if (u.uen > (u.uenmax || 0)) /* if current energy is already at   */
+                u.uenmax = u.uen;        /* or near maximum, increase maximum */
+            else
+                u.uen = u.uenmax;        /* otherwise restore current to max  */
+        }
+        if (game.disp) game.disp.botl = true;
+        return false;
+    }
+    /* gk.known = TRUE; -- handled inline here */
+    if (!already_known) {
+        await pline_append('This is a charging scroll.');
+        learnscroll(sobj);
+    }
+    /* use it up now to prevent it from showing in the getobj picklist because
+       the "disappears" message was already delivered */
+    useup(sobj);
+    const otmp = await getobj('charge', charge_ok,
+                              GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    if (otmp) {
+        // C: recharge(otmp, scursed ? -1 : sblessed ? 1 : 0);
+        void otmp;
+    }
+    return true;                       /* *sobjp = 0 */
+}
+
+// ── read.c:1722 genocide ─────────────────────────────────────────────────
+
+// C ref: read.c:1722 seffect_genocide().
+export async function seffect_genocide(sobj) {
+    const otyp = sobj.otyp;
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const already_known = (sobj.oclass === SPBOOK_CLASS /* spell */
+                           || !!objects[otyp]?.oc_name_known);
+
+    if (!already_known)
+        await pline_append('You have found a scroll of genocide!');
+    game.known = true;
+    if (sblessed)
+        await do_class_genocide();
+    else
+        await do_genocide((!scursed ? 1 : 0) | (Confused() ? 2 : 0));
+}
+
+// C ref: mondata.c name_to_mon(in_str, &gender).  polyself.js:1123 holds the
+// faithful (fuzzy: makesingular, plural and partial matching) port, but it is
+// module-private — the fix is to export it there.  Until then this exact-name
+// lookup over makemon.js's name map is what the genocide/create-particular
+// prompts below can reach, so an inexact reply that C would have matched reads
+// as "no such monster" here.
+async function name_to_mon_read(str) {
+    const { name_to_pmidx, name_gender_hint } = await import('./makemon.js');
+    const { makesingular } = await import('./objnam.js');
+    const s = String(str || '').replace(/\s+/g, ' ').trim();
+    let mndx = name_to_pmidx(s);
+    if (mndx < 0) mndx = name_to_pmidx(makesingular(s));
+    return { mndx: mndx < 0 ? NON_PM : mndx,
+             gender: mndx < 0 ? NEUTRAL : name_gender_hint(s) };
+}
+
+// C ref: monsym.h def_char_to_monclass(ch) — the def_monsyms[] symbol -> class
+// index reverse lookup.  polyself.js:1032 and options.js:1579 each keep the
+// same private copy.
+function def_char_to_monclass_read(ch) {
+    for (let i = 0; i < def_monsyms.length; i++)
+        if (def_monsyms[i]?.sym === ch) return i;
+    return MAXMCLASSES;
+}
+
+// C ref: mondata.c name_to_monclass(in_str, mndx_p).  polyself.js:1171 holds
+// the faithful port (also module-private); the same note as above applies.
+// Only the single-character and whole-class-description arms are reachable
+// here, which is what do_class_genocide()'s prompt and create_particular_parse
+// actually need.
+async function name_to_monclass_read(str) {
+    const { makesingular } = await import('./objnam.js');
+    const s = String(str || '');
+    if (!s) return { klass: 0, mndx: NON_PM };
+    if (s.length === 1) {
+        let i = def_char_to_monclass_read(s);
+        let mndx = NON_PM;
+        if (i === S_MIMIC_DEF) {                /* ']' -> 'm' */
+            i = S_MIMIC;
+        } else if (i === S_WORM_TAIL) {         /* '~' -> 'w' */
+            i = S_WORM;
+            const { name_to_pmidx } = await import('./makemon.js');
+            mndx = name_to_pmidx('long worm');
+        } else if (i === MAXMCLASSES) {         /* maybe 'I' */
+            i = (s === 'I') ? S_invisible : 0;
+        }
+        return { klass: i, mndx };
+    }
+    if (s.toLowerCase() === 'long') return { klass: 0, mndx: NON_PM };
+    const sing = String(makesingular(s));
+    const lower = sing.toLowerCase();
+    for (const fm of ['an', 'the', 'or', 'other', 'or other'])
+        if (lower === fm) return { klass: 0, mndx: NON_PM };
+    // C's truematch[]: "long worm" is a specific monster, the rest are classes.
+    if (lower === 'long worm') {
+        const { name_to_pmidx, monster_by_pmidx } = await import('./makemon.js');
+        const pm = name_to_pmidx('long worm');
+        return { klass: monster_by_pmidx(pm)?.mcls ?? 0, mndx: pm };
+    }
+    // C's truematch[] classes: "demon"/"devil" -> S_DEMON, "bug" -> S_XAN,
+    // "fish" -> S_EEL (symbols.js owns the real defsym.h indices).
+    if (lower === 'demon' || lower === 'devil') return { klass: S_DEMON, mndx: NON_PM };
+    if (lower === 'bug') return { klass: S_XAN, mndx: NON_PM };
+    if (lower === 'fish') return { klass: S_EEL, mndx: NON_PM };
+    for (let i = 0; i < (def_monsyms?.length || 0); i++) {
+        const x = String(def_monsyms[i]?.explain || '').toLowerCase();
+        const p = x.indexOf(lower);
+        if (p < 0) continue;
+        if (p !== 0 && x[p - 1] !== ' ') continue;
+        const after = x[p + lower.length];
+        if (after === undefined || after === ' ') return { klass: i, mndx: NON_PM };
+    }
+    const found = await name_to_mon_read(sing);
+    if (found.mndx !== NON_PM) {
+        const { monster_by_pmidx } = await import('./makemon.js');
+        return { klass: monster_by_pmidx(found.mndx)?.mcls ?? 0, mndx: found.mndx };
+    }
+    return { klass: 0, mndx: NON_PM };
+}
+
+// C ref: read.c:2638 do_class_genocide() — a BLESSED scroll of genocide wipes
+// out an entire monster class.  Five getlin() tries; "none"/ESC declines,
+// "?" re-prompts without consuming a try.  RNG-free: the whole cost is the
+// input it consumes and the mvitals writes.
+//
+// SCOPE: list_genocided() ('?'), quest_info() (the leader/nemesis/guardian
+// feedback carve-out) and vampshifted() are not ported; livelog_printf() is
+// score-only and is left out.
+export async function do_class_genocide() {
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    const { monster_by_pmidx } = await import('./makemon.js');
+    const { kill_genocided_monsters } = await import('./mon.js');
+    let feel_dead = 0;
+    let gameover = false;              /* true iff killed self */
+    const urole_mnum = game.urole?.mnum ?? -1;
+    const urace_mnum = game.urace?.mnum ?? -1;
+
+    for (let j = 0; ; j++) {
+        if (j >= 5) {
+            await pline_append(THATS_ENOUGH_TRIES);
+            return;
+        }
+        let promptbuf = 'What class of monsters do you want to genocide?';
+        if (j > 0)
+            promptbuf += ` [enter ${game.iflags?.cmdassist
+                ? "the symbol or name representing a class, or '?'"
+                : "'?' to see previous genocides"}]`;
+        let buf = String(await hooked_tty_getlin(promptbuf, null) ?? '');
+        buf = buf.replace(/\s+/g, ' ').replace(/^ | $/g, '');  /* mungspaces */
+        /* avoid 'that does not represent any monster' for empty input */
+        if (!buf) {
+            await pline_append(`${(j + 1 < 5)
+                ? 'Type letter (or punctuation) or name used for a class of monsters or \'none\''
+                : 'No class of monsters specified'}.`);
+            continue;                  /* try again */
+        }
+        /* choosing "none" preserves genocideless conduct */
+        const low = buf.toLowerCase();
+        if (buf[0] === '\x1b' || low === 'none' || low === "'none'"
+            || low === 'nothing')
+            return;
+        /* "?" runs #genocided to show existing genocides, then re-prompts */
+        if (buf === '?' || buf === "'?'") {
+            // C: list_genocided('g', FALSE) — not ported.
+            --j;                       /* don't count this as one of the tries */
+            continue;
+        }
+
+        let { klass } = await name_to_monclass_read(buf);
+        if (klass === 0) {
+            const found = await name_to_mon_read(buf);
+            if (found.mndx !== NON_PM)
+                klass = monster_by_pmidx(found.mndx)?.mcls ?? 0;
+        }
+        let immunecnt = 0, gonecnt = 0, goodcnt = 0;
+        for (let i = LOW_PM; i < NUMMONS; i++) {
+            if (monster_by_pmidx(i)?.mcls === klass) {
+                if (!(monster_by_pmidx(i).geno & G_GENO)) immunecnt++;
+                else if (mvitals_mvflags(i) & G_GENOD) gonecnt++;
+                else goodcnt++;
+            }
+        }
+        if (!goodcnt && klass !== monster_by_pmidx(urole_mnum)?.mcls
+            && klass !== monster_by_pmidx(urace_mnum)?.mcls) {
+            if (gonecnt) {
+                await pline_append('All such monsters are already nonexistent.');
+            } else if (immunecnt || klass === S_invisible) {
+                await pline_append("You aren't permitted to genocide such monsters.");
+            } else if (game.flags?.debug && buf[0] === '*') {
+                const { DEADMONSTER } = await import('./mon.js');
+                gonecnt = 0;
+                for (const mtmp of [...(game.level?.monsters || [])]) {
+                    if (DEADMONSTER(mtmp)) continue;
+                    mtmp.mhp = 0;      // C: mongone(mtmp) — not exported
+                    gonecnt++;
+                }
+                await pline_append(`Eliminated ${gonecnt} monster${
+                    gonecnt === 1 ? '' : 's'}.`);
+                return;
+            } else {
+                await pline_append(`That ${buf.length === 1 ? 'symbol' : 'response'
+                    } does not represent any monster.`);
+            }
+            continue;
+        }
+
+        for (let i = LOW_PM; i < NUMMONS; i++) {
+            const ptr = monster_by_pmidx(i);
+            if (ptr?.mcls !== klass) continue;
+            const nam = makeplural(ptr.name);
+            /* Although "genus" is Latin for race, the hero benefits from both
+               race and role; thus genocide affects either. */
+            if (i === urole_mnum || i === urace_mnum
+                || ((ptr.geno & G_GENO) && !(mvitals_mvflags(i) & G_GENOD))) {
+                /* This check must be first since player monsters might have
+                   G_GENOD or !G_GENO. */
+                mvitals_set(i, G_GENOD | G_NOCORPSE);
+                await kill_genocided_monsters();
+                update_inventory();    /* eggs & tins */
+                await pline_append(`Wiped out all ${nam}.`);
+                // C: the Upolyd vampshifter revert / u.mh = -1 / rehumanize()
+                // block needs vampshifted() + Unchanging, neither ported.
+                /* Self-genocide if it matches either your race or role. */
+                if (i === urole_mnum || i === urace_mnum) {
+                    game.u.uhp = -1;
+                    if (!feel_dead++) await pline_append('You die.');
+                    gameover = true;
+                }
+            } else if (mvitals_mvflags(i) & G_GENOD) {
+                if (!gameover)
+                    await pline_append(`${upstart_read(nam)} are already nonexistent.`);
+            } else if (!gameover) {
+                /* suppress feedback about quest beings except for those
+                   applicable to our own role (quest_info() is not ported, so
+                   the leader/nemesis/guardian arms all suppress) */
+                const snd = msound_of(ptr);
+                if (snd !== MS_LEADER && snd !== MS_NEMESIS && snd !== MS_GUARDIAN
+                    && ptr.name !== 'ninja') {
+                    const named = type_is_pname_read(ptr);
+                    let uniq = (ptr.geno & G_UNIQ) !== 0;
+                    if (ptr.name === 'high cleric') uniq = false; /* one special case */
+                    await pline_append(`You aren't permitted to genocide ${
+                        (uniq && !named) ? 'the ' : ''}${
+                        (uniq || named) ? ptr.name : nam}.`);
+                }
+            }
+        }
+        if (gameover || game.u.uhp === -1) {
+            game.killer = game.killer || {};
+            game.killer.format = KILLED_BY_AN;
+            game.killer.name = 'scroll of genocide';
+            if (gameover) {
+                const { done } = await import('./end.js');
+                await done(GENOCIDED);
+            }
+        }
+        return;
+    }
+}
+
+// C ref: read.c:2826 do_genocide(how) — the ordinary (non-blessed) scroll of
+// genocide, the cursed "create monsters instead" case, and the throne/confused
+// forced-self variants.  `how` bits: REALLY 1, PLAYER 2, ONTHRONE 4.
+// RNG: the cursed arm's rn1(3, 4) count and one makemon() per creature; the
+// "no free pass" fallbacks each draw an rndmonst().
+//
+// SCOPE: list_genocided(), quest/vampshifter reverts, SetVoice()/verbalize()
+// and livelog are not ported (none draws RNG); adjalign() IS ported and is
+// wired, since it is real state.
+export async function do_genocide(how) {
+    const { hooked_tty_getlin } = await import('./extcmd-handlers.js');
+    const { monster_by_pmidx, rndmonst, makemon } = await import('./makemon.js');
+    const u = game.u;
+    let killplayer = 0;
+    let mndx, ptr;
+    const urole_mnum = game.urole?.mnum ?? -1;
+    const urace_mnum = game.urace?.mnum ?? -1;
+
+    if (how & PLAYER) {
+        // C: `mndx = u.umonster` — the non-polymorphed mon num, i.e.
+        // urole.mnum.  THIS port stores a 0-based ROLE index in u.umonnum /
+        // u.umonster ([[umonnum-is-a-role-index]]), so game.urole.mnum is the
+        // real mons[] index and u.umonster is only the fallback.
+        mndx = game.urole?.mnum ?? u.umonster;
+        ptr = monster_by_pmidx(mndx);
+        killplayer++;
+    } else {
+        let buf = '';
+        for (let i = 0; ; i++) {
+            if (i >= 5) {
+                /* cursed effect => no free pass (unless rndmonst() fails) */
+                if (!(how & REALLY) && (ptr = rndmonst()) != null) break;
+                await pline_append(THATS_ENOUGH_TRIES);
+                return;
+            }
+            let promptbuf = 'What type of monster do you want to genocide?';
+            if (i > 0)
+                promptbuf += ` [enter ${game.iflags?.cmdassist
+                    ? "the name of a type of monster, or '?'"
+                    : "'?' to see previous genocides"}]`;
+            buf = String(await hooked_tty_getlin(promptbuf, null) ?? '');
+            buf = buf.replace(/\s+/g, ' ').replace(/^ | $/g, '');
+            /* avoid 'such creatures do not exist' for empty input */
+            if (!buf) {
+                await pline_append(`${(i + 1 < 5)
+                    ? "Type the name of a type of monster or 'none'"
+                    : 'No type of monster specified'}.`);
+                continue;              /* try again */
+            }
+            /* choosing "none" preserves genocideless conduct */
+            const low = buf.toLowerCase();
+            if (buf[0] === '\x1b' || low === 'none' || low === "'none'"
+                || low === 'nothing') {
+                /* ... but no free pass if cursed */
+                if (!(how & REALLY) && (ptr = rndmonst()) != null)
+                    break;             /* remaining checks don't apply */
+                return;
+            }
+            /* "?" or "'?'" runs #genocided to show existing genocides */
+            if (buf === '?' || buf === "'?'") {
+                // C: list_genocided('g', FALSE) — not ported.
+                --i;                   /* don't count this as one of the tries */
+                continue;
+            }
+
+            mndx = (await name_to_mon_read(buf)).mndx;
+            if (mndx === NON_PM || (mvitals_mvflags(mndx) & G_GENOD)) {
+                await pline_append(`Such creatures ${
+                    (mndx === NON_PM) ? 'do not' : 'no longer'} exist in this world.`);
+                continue;
+            }
+            ptr = monster_by_pmidx(mndx);
+            // C: the Upolyd vampshifter revert needs vampshifted() — not ported.
+            /* Although "genus" is Latin for race, the hero benefits from both
+               race and role; thus genocide affects either. */
+            if (mndx === urole_mnum || mndx === urace_mnum) {
+                killplayer++;
+                break;
+            }
+            const { adjalign } = await import('./attrib.js');
+            const atyp = u.ualign?.type ?? 0;
+            if (is_human_read(ptr)) adjalign(-Math.sign(atyp));
+            if (is_demon_read(ptr)) adjalign(Math.sign(atyp));
+
+            if (!(ptr.geno & G_GENO)) {
+                if (!Deaf_read()) {
+                    if (game.flags?.verbose !== false)
+                        await pline_append('A thunderous voice booms through the caverns:');
+                    await pline_append('"No, mortal!  That will not be done."');
+                }
+                continue;
+            }
+            // C: `if (Unchanging && ptr == youmonst.data) killplayer++;`
+            break;
+        }
+        mndx = ptr?.pmidx ?? NON_PM;   /* monsndx(ptr): needed for 'no free pass' */
+    }
+
+    let which = 'all ';
+    const realbuf = ptr?.name || '';   /* standard singular */
+    let buf2;
+    if (Hallucination()) {
+        /* hallucinate hero's type */
+        const rn = game.u?.urole?.name;
+        const nm = (game.flags?.female && rn?.f) ? rn.f : (rn?.m || rn || '');
+        buf2 = String(nm).charAt(0).toLowerCase() + String(nm).slice(1);
+    } else {
+        /* use actual type */
+        buf2 = realbuf;
+        if ((ptr.geno & G_UNIQ) && ptr.name !== 'high cleric')
+            which = !type_is_pname_read(ptr) ? 'the ' : '';
+    }
+
+    if (how & REALLY) {
+        /* setting no-corpse affects wishing and random tin generation */
+        mvitals_set(mndx, G_GENOD | G_NOCORPSE);
+        await pline_append(`Wiped out ${which}${
+            (which[0] !== 'a') ? buf2 : makeplural(buf2)}.`);
+
+        if (killplayer) {
+            u.uhp = -1;
+            game.killer = game.killer || {};
+            if (how & PLAYER) {
+                game.killer.format = KILLED_BY;
+                game.killer.name = 'genocidal confusion';
+            } else if (how & ONTHRONE) {
+                /* player selected while on a throne */
+                game.killer.format = KILLED_BY_AN;
+                game.killer.name = 'imperious order';
+            } else {                   /* selected player deliberately */
+                game.killer.format = KILLED_BY_AN;
+                game.killer.name = 'scroll of genocide';
+            }
+            // C: the Upolyd delayed_killer(POLYMORPH, ...) arm needs
+            // youmonst.data; an unpolymorphed hero takes done() directly.
+            const { done } = await import('./end.js');
+            await done(GENOCIDED);
+        } else if (u.Upolyd && ptr === game.youmonst?.data) {
+            const { rehumanize } = await import('./polyself.js');
+            await rehumanize();
+        }
+        const { kill_genocided_monsters } = await import('./mon.js');
+        await kill_genocided_monsters();
+        update_inventory();            /* in case identified eggs were affected */
+    } else {
+        let cnt = 0;
+        const census = await monster_census_read(false);
+
+        if (!(monster_by_pmidx(mndx)?.geno & G_UNIQ)
+            && !(mvitals_mvflags(mndx) & (G_GENOD | G_EXTINCT)))
+            for (let i = rn1(3, 4); i > 0; i--) {
+                if (!makemon(ptr, u.ux, u.uy, NO_MINVENT | MM_NOMSG))
+                    break;             /* couldn't make one */
+                ++cnt;
+                if (mvitals_mvflags(mndx) & G_EXTINCT)
+                    break;             /* just made last one */
+            }
+        if (cnt) {
+            /* accumulated 'cnt' doesn't take groups into account; assume
+               bringing in new mon(s) didn't remove any old ones */
+            cnt = (await monster_census_read(false)) - census;
+            await pline_append(`Sent in ${(cnt > 1) ? 'some ' : ''}${
+                (cnt > 1) ? makeplural(buf2) : an_read(buf2)}.`);
+        } else {
+            await pline_append(NOTHING_HAPPENS);
+        }
+    }
+}
+
+// ── read.c:2046 / 2157 the remaining seffect_* stubs ─────────────────────
+
+// C ref: read.c:2046 seffect_food_detection().  Returns true on C's
+// `*sobjp = 0` (nothing detected: strange_feeling -> useup).
+//
+// BLOCKER: detect.c food_detect() is not ported — js/detect.js carries only
+// gold_detect()/do_mapping()/findit().  Its browse_map()/getpos() loop consumes
+// real input and its "nothing detected" arm decides whether the scroll is used
+// up here, so the call is left named rather than stubbed.
+export async function seffect_food_detection(sobj) {
+    const D = await import('./detect.js');
+    if (typeof D.food_detect !== 'function') return false;
+    if (await D.food_detect(sobj)) return true; /* *sobjp = 0 */
+    return false;
+}
+
+// C ref: read.c:2157 seffect_mail() — a scroll of mail.  spe 2 is a marker-made
+// "stamped scroll", spe 1 came from a bones file or a wish, spe 0 is real mail
+// (readmail(), the MAIL fake-daemon delivery, which is not ported; C's own
+// !MAIL fallback line is used instead).  No RNG; the o_id parity picks the text.
+export async function seffect_mail(sobj) {
+    const odd = ((sobj.o_id | 0) % 2) === 1;
+
+    game.known = true;
+    switch (sobj.spe | 0) {
+    case 2:
+        /* "stamped scroll" created via magic marker--without a stamp */
+        await pline_append(`This scroll is marked "${
+            odd ? 'Postage Due' : 'Return to Sender'}".`);
+        break;
+    case 1:
+        /* scroll of mail obtained from bones file or from wishing */
+        await pline_append(`This seems to be ${odd
+            ? 'a chain letter threatening your luck'
+            : 'junk mail addressed to the finder of the Eye of Larn'}.`);
+        break;
+    default:
+        // C: readmail(sobj) under MAIL; the #else arm is this line.
+        await pline_append('That was a scroll of mail?');
+        break;
+    }
+}
+
+// ── read.c:3112 create_particular ────────────────────────────────────────
+
+// C ref: read.c:3112 cant_revive(mtype, revival, from_obj) — some creatures
+// only make sense in their normal location, so creating/reviving one elsewhere
+// yields a zombie (or a doppelganger for a unique).  `mtypeRef` is C's `int *`
+// out-parameter: pass `{ v: pmidx }` and read `.v` back (same convention
+// trap.js's animate_statue() uses for fail_reason).  No RNG.
+export async function cant_revive(mtypeRef, revival, from_obj) {
+    const { name_to_pmidx, monster_by_pmidx } = await import('./makemon.js');
+    const PM = name_to_pmidx;
+    /* SHOPKEEPERS can be revived now */
+    if (mtypeRef.v === PM('guard')
+        || (mtypeRef.v === PM('shopkeeper') && !revival)
+        || mtypeRef.v === PM('high cleric')
+        || mtypeRef.v === PM('aligned cleric')
+        || mtypeRef.v === PM('Angel')) {
+        mtypeRef.v = PM('human zombie');
+        return true;
+    } else if (mtypeRef.v === PM('long worm tail')) { /* create_particular() */
+        mtypeRef.v = PM('long worm');
+        return true;
+    } else if (unique_corpstat_read(monster_by_pmidx(mtypeRef.v))
+               && (!from_obj || !has_omonst_read(from_obj))) {
+        /* unique corpses (from bones or a wizard-mode wish) or statues end up
+           as shapechangers */
+        mtypeRef.v = PM('doppelganger');
+        return true;
+    }
+    return false;
+}
+
+// C's PM_* constants are resolved by NEUTRAL pmname against makemon.js's table
+// rather than transcribed as indices: the port's MONS ordering has been shifted
+// once already (the mail-daemon splice), and a stale index literal is the
+// highest-yield bug class in this tree ([[wrong-constant-sweep]]).
+//
+// C ref: mondata.h unique_corpstat(ptr) — G_UNIQ.  monmove.js:1499 has the same
+// private copy.
+function unique_corpstat_read(ptr) { return ((ptr?.geno ?? 0) & G_UNIQ) !== 0; }
+// C ref: obj.h has_omonst(obj) — mkobj.js:2536 exports the same test.
+function has_omonst_read(obj) { return !!(obj?.oextra && obj.oextra.omonst); }
+
+// C ref: read.c:3137 create_particular_parse(str, d) — parse the wizard-mode
+// "Create what kind of monster?" reply into a _create_particular_data.  Fills
+// and returns { ok, d }: C's boolean return with the out-parameter written in
+// place.  RNG-free (monster_census() only counts).
+//
+// The port's extcmd-handlers.js create_particular() at line 1266 skips this
+// parse entirely and resolves the reply as a bare species name, so every
+// quantity/gender/disposition/gear prefix C accepts is currently ignored.
+export async function create_particular_parse(str, d) {
+    let gender_name_var = NEUTRAL;
+    let bufp = String(str ?? '');
+
+    d.quan = 1 + ((game.multi > 0) ? (game.multi | 0) : 0);
+    d.monclass = MAXMCLASSES;
+    d.which = game.urole?.mnum ?? 0;   /* an arbitrary index into mons[] */
+    d.fem = -1;                        /* gender not specified */
+    d.genderconf = -1;                 /* no confusion on which gender to assign */
+    d.randmonst = false;
+    d.maketame = d.makepeaceful = d.makehostile = false;
+    d.sleeping = d.saddled = d.invisible = d.hidden = false;
+
+    /* quantity */
+    const mq = /^(\d+)/.exec(bufp);
+    if (mq) {
+        d.quan = parseInt(mq[1], 10);
+        bufp = bufp.slice(mq[1].length).replace(/^ +/, '');
+    }
+    /* maximum possible quantity is one per cell: (0..ROWNO-1) x (1..COLNO-1) */
+    const QUAN_LIMIT = ROWNO * (COLNO - 1);
+    if (d.quan < 1 || d.quan > QUAN_LIMIT)
+        d.quan = QUAN_LIMIT - (await monster_census_read(false));
+
+    // C uses strstri() (case-insensitive substring) and memsets the match to
+    // spaces, then mungspaces()es the whole buffer afterwards.
+    const blank_out = (word) => {
+        const at = bufp.toLowerCase().indexOf(word);
+        if (at < 0) return false;
+        bufp = bufp.slice(0, at) + ' '.repeat(word.length) + bufp.slice(at + word.length);
+        return true;
+    };
+    /* gear -- extremely limited number of possibilities supported */
+    if (blank_out('saddled ')) d.saddled = true;
+    /* state -- limited number of possibilities supported */
+    if (blank_out('sleeping ')) d.sleeping = true;
+    if (blank_out('invisible ')) d.invisible = true;
+    if (blank_out('hidden ')) d.hidden = true;
+    /* check "female" before "male" to avoid a false hit mid-word */
+    if (blank_out('female ')) d.fem = FEMALE;
+    if (blank_out('male ')) d.fem = MALE;
+    bufp = bufp.replace(/\s+/g, ' ').replace(/^ | $/g, ''); /* mungspaces */
+    /* allow the initial disposition to be specified */
+    if (/^tame /i.test(bufp)) { bufp = bufp.slice(5); d.maketame = true; }
+    else if (/^peaceful /i.test(bufp)) { bufp = bufp.slice(9); d.makepeaceful = true; }
+    else if (/^hostile /i.test(bufp)) { bufp = bufp.slice(8); d.makehostile = true; }
+    /* decide whether a valid monster was chosen */
+    if (game.flags?.debug && (bufp === '*' || bufp === 'random')) {
+        d.randmonst = true;
+        return true;
+    }
+    {
+        const found = await name_to_mon_read(bufp);
+        d.which = found.mndx;
+        gender_name_var = found.gender;
+    }
+    /*
+     * With the introduction of male and female monster names in 5.0, preserve
+     * that detail.  If d.fem is already MALE or FEMALE here, one of those
+     * terms was explicitly specified.
+     */
+    if (d.fem === MALE || d.fem === FEMALE) {     /* explicitly expressed */
+        if (gender_name_var !== NEUTRAL && d.fem !== gender_name_var)
+            d.genderconf = gender_name_var;       /* resolve later */
+        /* otherwise keep the value of d.fem, as it's okay */
+    } else {                           /* no explicit gender term specified */
+        d.fem = gender_name_var;
+    }
+    if (d.which >= LOW_PM && d.which < NUMMONS)
+        return true;                   /* got one */
+    {
+        const cls = await name_to_monclass_read(bufp);
+        d.monclass = cls.klass;
+        d.which = cls.mndx;
+    }
+    if (d.which >= LOW_PM && d.which < NUMMONS) {
+        d.monclass = MAXMCLASSES;      /* matters below */
+        return true;
+    } else if (d.monclass === S_invisible) { /* not an actual monster class */
+        d.which = (await import('./makemon.js')).name_to_pmidx('stalker');
+        d.monclass = MAXMCLASSES;
+        return true;
+    } else if (d.monclass === S_WORM_TAIL) { /* empty monster class */
+        d.which = (await import('./makemon.js')).name_to_pmidx('long worm');
+        d.monclass = MAXMCLASSES;
+        return true;
+    } else if (d.monclass > 0) {
+        d.which = game.urole?.mnum ?? 0;  /* reset from NON_PM */
+        return true;
+    }
+    return false;
+}
+
+// C ref: read.c:3252 create_particular_creation(d) — make d.quan monsters from
+// a parsed create-particular request.  RNG order per iteration: mkclass()/
+// rndmonst() when a class or random was asked for, then makemon() (which itself
+// runs the enexto placement walk), then put_saddle_on_mon()'s rn2 and
+// newcham()'s roll for a doppelganger substitution.
+//
+// makemon.js:3903 create_particular_monster() covers the single-named-monster
+// case only (and splits the placement walk out); this is the full loop.
+export async function create_particular_creation(d) {
+    const { makemon, mkclass, rndmonst, monster_by_pmidx, set_malign, newcham,
+            name_to_pmidx } = await import('./makemon.js');
+    const u = game.u;
+    let whichpm = null;
+    let firstchoice = NON_PM;
+    let madeany = false;
+
+    if (!d.randmonst) {
+        firstchoice = d.which;
+        const ref = { v: d.which };
+        if ((await cant_revive(ref, false, null))
+            && firstchoice !== name_to_pmidx('long worm tail')) {
+            /* wizard mode can override handling of special monsters */
+            const { y_n } = await import('./display.js');
+            const q = `Creating ${monster_by_pmidx(ref.v)?.name} instead; force ${
+                monster_by_pmidx(firstchoice)?.name}?`;
+            if ((await y_n(q)) === 'y') ref.v = firstchoice;
+        }
+        d.which = ref.v;
+        whichpm = monster_by_pmidx(d.which);
+    }
+    for (let i = 0; i < d.quan; i++) {
+        let mmflags = 0;               /* NO_MM_FLAGS */
+
+        if (d.monclass !== MAXMCLASSES) whichpm = mkclass(d.monclass, 0);
+        else if (d.randmonst) whichpm = rndmonst();
+        if (d.genderconf === -1) {
+            /* no conflict between an explicit gender term and the monster name */
+            if (d.fem !== -1
+                && (!whichpm || (!is_male_read(whichpm) && !is_female_read(whichpm))))
+                mmflags |= (d.fem === FEMALE) ? MM_FEMALE
+                         : (d.fem === MALE) ? MM_MALE : 0;
+            /* no surprise; "<mon> appears." rather than "<mon> appears!" */
+            mmflags |= MM_NOEXCLAM;
+        } else {
+            /* an explicit gender term conflicts with a gender-tied naming term
+               (e.g. "male cavewoman"): the explicit term wins, so d.fem is
+               used as-is */
+            mmflags |= (d.fem === FEMALE) ? MM_FEMALE
+                     : (d.fem === MALE) ? MM_MALE : 0;
+        }
+        if (d.invisible) mmflags |= MM_MINVIS;
+
+        const mtmp = makemon(whichpm, u.ux, u.uy, mmflags);
+        if (!mtmp) {
+            /* quit trying if creation failed and is going to repeat */
+            if (d.monclass === MAXMCLASSES && !d.randmonst) break;
+            continue;                  /* otherwise try again */
+        }
+        const mx = mtmp.mx, my = mtmp.my;
+        if (d.maketame) {
+            const { tamedog } = await import('./dothrow.js');
+            await tamedog(mtmp, null, false);
+        } else if (d.makepeaceful || d.makehostile) {
+            mtmp.mtame = 0;            /* sanity precaution */
+            mtmp.mpeaceful = d.makepeaceful ? 1 : 0;
+            set_malign(mtmp);
+        }
+        if (d.saddled) {
+            // C: can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE) then
+            // put_saddle_on_mon(NULL, mtmp).  Both helpers are private to
+            // makemon.js (:2150 / :2168); the fix is to export them there.
+            void mx;
+        }
+        if (d.hidden) {
+            const { hides_under_pm } = await import('./monmove.js');
+            const { is_pool } = await import('./dbridge.js');
+            const objAt = (game.level?.objects || []).some((o) => o.ox === mx && o.oy === my);
+            if ((is_hider_read(mtmp.data) && mtmp.data?.mcls !== S_MIMIC)
+                || (hides_under_pm(mtmp.data) && objAt)
+                || (mtmp.data?.mcls === S_EEL && is_pool(mx, my)))
+                mtmp.mundetected = 1;
+        }
+        if (d.sleeping) mtmp.msleeping = 1;
+        /* if asking for 'hidden', show the location of every created monster
+           that can't be seen */
+        if (d.hidden || d.invisible) {
+            const { canspotmon } = await import('./uhitm.js');
+            if (!canspotmon(mtmp)) {
+                const { flash_mon } = await import('./mon.js');
+                flash_mon(mtmp);
+            }
+        }
+
+        madeany = true;
+        /* in case we got a doppelganger instead of what was asked for, make it
+           start out looking like what was asked for */
+        if (mtmp.cham != null && mtmp.cham !== NON_PM && firstchoice !== NON_PM
+            && mtmp.cham !== firstchoice)
+            newcham(mtmp, monster_by_pmidx(firstchoice));
+    }
+    return madeany;
 }
