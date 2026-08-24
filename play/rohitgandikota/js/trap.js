@@ -77,8 +77,12 @@ import { couldsee } from './vision.js';
 import { mdistu } from './monmove.js';
 import { wake_nearby, wake_nearto } from './mon.js';
 import { MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
-import { is_pit, is_hole, TT_BEARTRAP, Upolyd, LEFT_SIDE,
+import { is_pit, is_hole, TT_BEARTRAP, TT_PIT, Upolyd, LEFT_SIDE,
          RIGHT_SIDE } from './const.js';
+import { defsyms, cmap_names } from './drawing_data.js';
+import { xytodir } from './cmd.js';
+import { mons_see_trap } from './mondata.js';
+const CM_S_arrow_trap = cmap_names.S_arrow_trap;
 import { set_wounded_legs } from './do.js';
 import { sobj_at } from './invent.js';
 import { metallivorous } from './mondata.js';
@@ -437,6 +441,48 @@ export async function thitu(tlev, dam, objp, name) {
     return 1;
 }
 
+// src/trap.c:7100 trapname() — the display name of a trap type; the
+// hallucination riff list draws on the display rng and is recorded.
+function trapname(ttyp, override) {
+    if (Hallucination() && !override)
+        note_unported_trap('trapname:hallucination');
+    return defsyms[CM_S_arrow_trap + ttyp - 1].explain;
+}
+
+// src/trap.c:6552 conjoined_pits() — did the hero step between two pits dug
+// into each other? False-fast unless currently in a pit.
+function conjoined_pits(trap2, trap1, u_entering_trap2) {
+    if (!trap1 || !trap2)
+        return false;
+    if (!isok(trap2.tx, trap2.ty) || !isok(trap1.tx, trap1.ty)
+        || !is_pit(trap2.ttyp) || !is_pit(trap1.ttyp)
+        || (u_entering_trap2
+            && !(game.u.utrap && game.u.utraptype === TT_PIT)))
+        return false;
+    const dx = Math.sign(trap2.tx - trap1.tx);
+    const dy = Math.sign(trap2.ty - trap1.ty);
+    const diridx = xytodir(dx, dy);
+    if (diridx !== -1 /* DIR_ERR */) {
+        const adjidx = (diridx + 4) % 8;    /* DIR_180 */
+        if (((trap1.conjoined | 0) & (1 << diridx))
+            && ((trap2.conjoined | 0) & (1 << adjidx)))
+            return true;
+    }
+    return false;
+}
+
+// src/trap.c:6604 adj_nonconjoined_pit()
+function adj_nonconjoined_pit(adjtrap) {
+    const trap_with_u = t_at_mon(game.u.ux0 ?? 0, game.u.uy0 ?? 0);
+    if (trap_with_u && adjtrap && game.u.utrap
+        && game.u.utraptype === TT_PIT
+        && is_pit(trap_with_u.ttyp) && is_pit(adjtrap.ttyp)) {
+        if (xytodir(game.u.dx, game.u.dy) !== -1)
+            return true;
+    }
+    return false;
+}
+
 // src/trap.c:1188 dotrap() — the hero steps on a trap.
 //
 // Only the arms whose effects are ported dispatch; every other trap type is
@@ -444,6 +490,59 @@ export async function thitu(tlev, dam, objp, name) {
 // than silently wrong.
 export async function dotrap(trap, trflags) {
     const ttype = trap.ttyp;
+    const already_seen = !!trap.tseen;
+    let forcetrap = ((trflags & FORCETRAP) !== 0
+                     || (trflags & FAILEDUNTRAP) !== 0);
+    const forcebungle = (trflags & FORCEBUNGLE) !== 0;
+    const plunged = (trflags & TOOKPLUNGE) !== 0;
+    const conj_pit = conjoined_pits(trap,
+                                    t_at_mon(game.u.ux0 ?? 0,
+                                             game.u.uy0 ?? 0),
+                                    true);
+    const adj_pit = adj_nonconjoined_pit(trap);
+    /* a_your[trap->madeby_u] */
+    const a_your = trap.madeby_u ? 'your' : 'a';
+
+    nomul(0);
+
+    if (fixed_tele_trap(trap)) {
+        trflags |= FORCETRAP;
+        forcetrap = true;
+    }
+
+    /* KMH -- You can't escape the Sokoban level traps */
+    if (Sokoban() && (is_pit(ttype) || is_hole(ttype))) {
+        await pline(`Air currents pull you down into ${a_your} ${
+            trapname(ttype, true)}!`);
+        /* then proceed to normal trap effect */
+    } else if (!forcetrap) {
+        if (floor_trigger(ttype) && check_in_air(game.youmonst, trflags)) {
+            if (already_seen) {
+                const { u_locomotion } = await import('./hack.js');
+                await You(`${u_locomotion('step')} over ${
+                    (ttype === ARROW_TRAP && !trap.madeby_u)
+                        ? 'an' : a_your} ${trapname(ttype, false)}.`);
+            }
+            return Trap_Effect_Finished;
+        }
+        if (already_seen && !game.u.uprops?.FUMBLING
+            && !(ttype === MAGIC_PORTAL || ttype === VIBRATING_SQUARE)
+            && ttype !== ANTI_MAGIC && !forcebungle && !plunged
+            && !conj_pit && !adj_pit
+            && (!rn2(5)
+                || (is_pit(ttype)
+                    && is_clinger(game.youmonst?.data
+                                  ?? { mflags1: 0 })))) {
+            await You(`escape ${(ttype === ARROW_TRAP && !trap.madeby_u)
+                                    ? 'an' : a_your} ${
+                trapname(ttype, false)}.`);
+            return Trap_Effect_Finished;
+        }
+    }
+
+    if (game.u.usteed)
+        mon_learns_traps(game.u.usteed, ttype);
+    mons_see_trap(trap);
 
     game.u.utrap = 0;                   /* reset_utrap() */
     if (ttype === ARROW_TRAP)
@@ -655,7 +754,9 @@ async function trapeffect_magic_trap(mtmp, trap, trflags) {
 }
 
 /* include/hack.h:1306 */
-const FORCETRAP = 0x01, FORCEBUNGLE = 0x08, FAILEDUNTRAP = 0x40;
+/* include/hack.h:1306 — trap-activation flags. FORCEBUNGLE is 0x04
+   (0x08 is RECURSIVETRAP). */
+const FORCETRAP = 0x01, FORCEBUNGLE = 0x04, FAILEDUNTRAP = 0x40;
 
 // src/mondata.c:1617 mon_knows_traps() — mtrapseen is a bitmask of trap types
 // this monster has already walked into.
@@ -993,7 +1094,7 @@ export async function mintrap(mtmp, mintrapflags) {
         }
 
         mon_learns_traps(mtmp, tt);
-        /* mons_see_trap() marks the trap seen by onlookers */
+        mons_see_trap(trap);
 
         /* Monster is aggravated by being trapped by you. Recognizing who made
            the trap isn't completely unreasonable; everybody has their own

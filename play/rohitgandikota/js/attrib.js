@@ -13,7 +13,9 @@
 import { game } from './gstate.js';
 import { You, Your } from './pline.js';
 import { pline } from './display.js';
-import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE } from './const.js';
+import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE,
+         FROMEXPER, FROMRACE, FROMOUTSIDE, Is_airlevel } from './const.js';
+import { strongmonst } from './mondata.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { rn2 } from './rng.js';
 import { role_abil, race_abil } from './role_data.js';
@@ -42,17 +44,24 @@ export function weight_cap() {
     /* include/weight.h:12,14 — WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE */
     let carrcap = (25 * (acurrstr() + acurr(A_CON))) + 50;
 
-    if (game.u.uprops?.LEVITATION || game.u.usteed)
-        note_unported_attrib('weight_cap:levitation_or_steed');
-    if (carrcap > 1000)             /* MAX_CARR_CAP */
-        carrcap = 1000;
-    /* include/weight.h WT_WOUNDEDLEG_REDUCT (100) per wounded leg; the
-       side bits live in EWounded_legs (worn-ring bits). Flying negates. */
-    if (!game.u.uprops?.FLYING) {
-        if ((game.u.EWounded_legs || 0) & LEFT_SIDE)
-            carrcap -= 100;
-        if ((game.u.EWounded_legs || 0) & RIGHT_SIDE)
-            carrcap -= 100;
+    /* Upolyd scaling needs polyself, which nothing reaches yet */
+
+    /* src/hack.c:4325 — levitating, on the Plane of Air, or riding a
+       strong steed lifts the cap to MAX_CARR_CAP outright */
+    if (game.u.uprops?.LEVITATION || Is_airlevel(game.u.uz)
+        || (game.u.usteed && strongmonst(game.u.usteed.data))) {
+        carrcap = 1000;             /* MAX_CARR_CAP */
+    } else {
+        if (carrcap > 1000)         /* MAX_CARR_CAP */
+            carrcap = 1000;
+        /* include/weight.h WT_WOUNDEDLEG_REDUCT (100) per wounded leg; the
+           side bits live in EWounded_legs (worn-ring bits). Flying negates. */
+        if (!game.u.uprops?.FLYING) {
+            if ((game.u.EWounded_legs || 0) & LEFT_SIDE)
+                carrcap -= 100;
+            if ((game.u.EWounded_legs || 0) & RIGHT_SIDE)
+                carrcap -= 100;
+        }
     }
 
     return Math.max(carrcap, 1);    /* never return 0 */
@@ -311,15 +320,21 @@ export async function adjabil(oldlevel, newlevel) {
        creation print nothing because oldlevel is 0 only during u_init, when
        the message window isn't live yet — C's init path passes (0, 1) before
        the game windows exist and the recordings show no such lines. */
-    const grant = async (table) => {
+    /* C stores the grant as a SOURCE BIT in the same intrinsic word the
+       corpse-eaten FROMOUTSIDE grants use: role abilities set FROMEXPER,
+       race abilities FROMRACE (attrib.c:1042 `mask`). from_what() reads the
+       bits back to say "innately" vs "because of your experience". */
+    const grant = async (table, mask) => {
         for (const [ulevel, ability, gainstr, losestr] of table) {
             if (ulevel > oldlevel && ulevel <= newlevel) {
                 const had = !!u.intrinsic[ability];
-                u.intrinsic[ability] = true;
+                u.intrinsic[ability] = (u.intrinsic[ability] | 0) | mask;
                 if (!had && gainstr && oldlevel > 0)
                     await You_feel(`${gainstr}!`);
             } else if (ulevel > newlevel && ulevel <= oldlevel) {
-                delete u.intrinsic[ability];
+                u.intrinsic[ability] = (u.intrinsic[ability] | 0) & ~mask;
+                if (!u.intrinsic[ability])
+                    delete u.intrinsic[ability];
                 if (losestr && newlevel > 0)
                     await You_feel(`${losestr}!`);
                 else if (gainstr && newlevel > 0)
@@ -328,8 +343,70 @@ export async function adjabil(oldlevel, newlevel) {
         }
     };
 
-    await grant(role_abil(game.flags.initrole ?? 0));
-    await grant(race_abil(game.flags.initrace ?? 0));
+    await grant(role_abil(game.flags.initrole ?? 0), FROMEXPER);
+    await grant(race_abil(game.flags.initrace ?? 0), FROMRACE);
+}
+
+// src/attrib.c:815 check_innate_abil() — would the role/race table have
+// granted this ability at the hero's current level? C matches by the
+// ability word's address; the port matches by its key.
+function check_innate_abil(abilKey, frommask) {
+    const table = (frommask === FROMEXPER)
+        ? role_abil(game.flags.initrole ?? 0)
+        : race_abil(game.flags.initrace ?? 0);
+    for (const [ulevel, ability] of table)
+        if (ability === abilKey && (game.u.ulevel ?? 1) >= ulevel)
+            return { ulevel };
+    return null;
+}
+
+/* src/attrib.c:854 reasons for innate ability */
+export const FROM_NONE = 0, FROM_ROLE_ABIL = 1, FROM_RACE_ABIL = 2,
+             FROM_INTR = 3, FROM_EXP = 4, FROM_FORM = 5, FROM_LYCN = 6;
+
+// src/attrib.c:863 innately()
+function innately(abilKey) {
+    let iptr;
+    if ((iptr = check_innate_abil(abilKey, FROMEXPER)))
+        return (iptr.ulevel === 1) ? FROM_ROLE_ABIL : FROM_EXP;
+    if (check_innate_abil(abilKey, FROMRACE))
+        return FROM_RACE_ABIL;
+    const word = game.u.intrinsic?.[abilKey] | 0;
+    if (word & FROMOUTSIDE)
+        return FROM_INTR;
+    /* FROMFORM — polymorphed heroes are not a thing yet */
+    return FROM_NONE;
+}
+
+// src/attrib.c:880 is_innate()
+export function is_innate(abilKey) {
+    if (abilKey === 'HFast' && Very_fast())
+        return FROM_NONE; /* can't become very fast innately */
+    return innately(abilKey);
+    /* the DRAIN_RES lycanthropy, knight-jumping, and eyeless-blind arms
+       need states nothing sets yet */
+}
+
+// src/attrib.c:905 from_what() — the source of the attribute, appended to
+// the ^X line; restricted to debug mode, like C.
+export function from_what(abilKey) {
+    let buf = '';
+    if (game.wizard) {
+        const innateness = is_innate(abilKey);
+        if (innateness === FROM_ROLE_ABIL || innateness === FROM_RACE_ABIL)
+            buf = ' innately';
+        else if (innateness === FROM_INTR)
+            buf = ' intrinsically';
+        else if (innateness === FROM_EXP)
+            buf = ' because of your experience';
+        else {
+            /* the property is on but not from the innate tables or an
+               eaten corpse — " because of %s" needs what_gives() over
+               worn equipment; recorded until a wizard-mode hero has one */
+            (game.unported ||= new Set()).add('attrib:from_what:' + abilKey);
+        }
+    }
+    return buf;
 }
 
 // include/youprop.h:

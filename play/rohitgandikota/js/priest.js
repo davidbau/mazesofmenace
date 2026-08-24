@@ -255,3 +255,20 @@ export function mk_roamer(ptr, alignment, x, y, peaceful) {
 
     return roamer;
 }
+
+// src/priest.c:755 reset_hostility() — on the Astral Plane the placeholder
+// alignments the level script gave its clerics and Angels resolve against
+// the hero's actual alignment.
+export function reset_hostility(roamer) {
+    if (!roamer.isminion)
+        return;
+    if (roamer.data !== game.mons[PMNAMES.PM_ALIGNED_CLERIC]
+        && roamer.data !== game.mons[PMNAMES.PM_ANGEL])
+        return;
+
+    if ((roamer.emin?.min_align) !== game.u.ualign.type) {
+        roamer.mpeaceful = roamer.mtame = 0;
+        set_malign(roamer);
+    }
+    newsym(roamer.mx, roamer.my);
+}

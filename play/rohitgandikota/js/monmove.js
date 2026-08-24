@@ -36,7 +36,8 @@ import { acidic, slimeproof } from './dog.js';
 import { Is_mbag } from './mkobj.js';
 import { Is_container } from './obj.js';
 import { is_weptool } from './mkobj.js';
-import { metallivorous, corpse_eater } from './mondata.js';
+import { metallivorous, corpse_eater, is_covetous,
+         resist_conflict } from './mondata.js';
 import { may_dig } from './hack.js';
 import { place_monster, remove_monster } from './makemon.js';
 import { rn2, rnd } from './rng.js';
@@ -210,7 +211,7 @@ export function inhishop(mtmp) {
 }
 
 // src/priest.c:161 inhistemple()
-function inhistemple(mtmp) {
+export function inhistemple(mtmp) {
     /* make sure we have a priest */
     if (!mtmp || !mtmp.ispriest)
         return false;
@@ -1038,6 +1039,18 @@ export async function dochug(mtmp) {
        monster's guess at the hero's position, not the hero's real one. */
     set_apparxy(mtmp);
 
+    /* src/monmove.c:782 — monsters that want to acquire things may
+       teleport, so do it before inrange is set. This costs a turn only if
+       mstate is set. */
+    if (is_covetous(game.mons[mtmp.mnum])) {
+        const { tactics } = await import('./wizard.js');
+        await tactics(mtmp);
+        /* tactics -> mnexto -> deal_with_overcrowding */
+        if (mtmp.mstate)
+            return 0;
+        set_apparxy(mtmp);
+    }
+
     /* src/monmove.c:791 */
     let { inrange, nearby, scared } = distfleeck(mtmp);
 
@@ -1203,9 +1216,9 @@ function select_rwep_absent(mtmp) {
 
 /* src/priest.c resist_conflict() — conflict resistance check for priests;
    only reachable under Conflict, which is recorded state already. */
+/* src/mondata.c:1607 resist_conflict() — now the real port */
 function resist_conflict_absent(mtmp) {
-    note_unported_monmove('dochug:resist_conflict');
-    return false;
+    return resist_conflict(mtmp);
 }
 
 // src/monmove.c:1720 m_move() — a non-tame monster's turn. The tame case is
@@ -1525,11 +1538,6 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
        square keeps the monster's glyph and a moving pet leaves a trail. */
     if (mmoved === MMOVE_MOVED) {
         newsym(omx, omy);
-        /* src/monmove.c:1656 — and the arrival square: the engulf arm's else
-           branch draws the monster at its new spot. Without it a hostile
-           walking into view is painted only when something else happens to
-           redraw its cell. */
-        newsym(mtmp.mx, mtmp.my);
     }
 
     /* src/monmove.c:1509 — the arrival square's trap fires here, for pets and
@@ -1634,6 +1642,13 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
             if (await mdig_tunnel(mtmp))
                 return MMOVE_DIED; /* mon died */
         }
+
+        /* src/monmove.c:1656 — the arrival square is painted LAST in the
+           MMOVE_MOVED block, after mintrap and the door arms. Painting it
+           at the top put the pet on screen before its own "steps
+           reluctantly" --More--, one frame earlier than C (seed0004
+           screen 39). The engulf arm is handled by its own machinery. */
+        newsym(mtmp.mx, mtmp.my);
     }
 
     if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {

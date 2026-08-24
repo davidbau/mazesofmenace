@@ -621,6 +621,21 @@ function obj_is_pname(obj) {
     return true;
 }
 
+// src/objnam.c:1106 the_unique_obj() — is this THE Amulet (or another
+// unique object the hero has identified)? The fake amulet lies while
+// unknown.
+function the_unique_obj(obj) {
+    const known = obj.known;
+
+    if (!obj.dknown)
+        return false;
+    else if (obj.otyp === ONAMES.FAKE_AMULET_OF_YENDOR && !known)
+        return true; /* lie */
+    else
+        return !!(game.objects[obj.otyp].oc_unique
+                  && (known || obj.otyp === ONAMES.AMULET_OF_YENDOR));
+}
+
 // src/artifact.c undiscovered_artifact() — C scans artidisco[]. Nothing ported
 // discovers an artifact, so the list is empty and every artifact is
 // undiscovered; the call is recorded so this stops being an assumption the
@@ -784,6 +799,8 @@ export function doname(obj) {
         prefix = `${obj.quan} `;
     else if (obj.otyp === ONAMES.CORPSE)
         ;                              /* corpse_xname supplies the article */
+    else if (obj_is_pname(obj) || the_unique_obj(obj))
+        prefix = 'the ';               /* src/objnam.c:1292 */
     else
         prefix = 'a ';                 /* recomputed at the end */
 

@@ -30,7 +30,8 @@ import { fill_special_room, sp_lev_wire_mklev, sp_lev_wire_walkfrom, sp_lev_wire
 import { walkfrom, mkmaze_wire_mklev } from './mkmaze.js';
 import { enexto_core } from './teleport.js';
 import { goodpos } from './makemon.js';
-import { GP_CHECKSCARY as GP_CHECKSCARY_MK } from './const.js';
+import { GP_CHECKSCARY as GP_CHECKSCARY_MK,
+         In_endgame as In_endgame_mk } from './const.js';
 import { breaktest } from './dothrow.js';
 import {
     mkgold, place_object, mkobj_at, mksobj_at, add_to_container, curse,
@@ -604,6 +605,9 @@ function clear_level_structures() {
     lf.fumaroles = false;
     lf.stormy = false;
     lf.stasis_until = 0;
+    /* mklev.c:923 — discard any undelivered des.message text from the
+       previous level generation */
+    g.lev_message = null;
     init_rect();
 }
 
@@ -871,7 +875,7 @@ sp_lev_wire_mklev({ mkstairs, makecorridors, wallification,
                     mkgold: (amt, x, y) => mkgold(amt, x, y),
                     maketrap });
 sp_lev_wire_walkfrom(walkfrom);
-mkmaze_wire_mklev({ mkstairs, place_branch, wallification });
+mkmaze_wire_mklev({ mkstairs, place_branch, wallification, maketrap });
 import('./priest.js').then(m => { sp_lev_wire_priest(m.priestini);
                                   sp_lev_wire_roamer(m.mk_roamer); });
 
@@ -2725,6 +2729,10 @@ function mineralize_kelp(kelp_pool, kelp_moat) {
 
 function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
+    /* src/mklev.c:1463 — "Place kelp, except on the plane of water": the
+       whole endgame returns before the kelp loop even runs */
+    if (!skip_lvl_checks && In_endgame_mk(game.u?.uz))
+        return;
     mineralize_kelp(kelp_pool, kelp_moat);
 
     /* src/mklev.c:1472 — hell, the Vlad tower, rogue, arboreal and every

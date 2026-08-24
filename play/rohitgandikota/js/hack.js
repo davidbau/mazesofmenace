@@ -19,7 +19,7 @@ import { inv_weight, weight_cap } from './attrib.js';
 import { carrying } from './invent.js';
 import { a_monnam, upstart } from './do_name.js';
 import { is_door_mappear, helpless } from './monst.js';
-import { dist2 } from './hacklib.js';
+import { dist2, distmin } from './hacklib.js';
 import { Levitation, Flying, Fire_resistance, Underwater,
          Hallucination } from './youprop.js';
 import { is_pool_or_lava } from './dbridge.js';
@@ -54,8 +54,12 @@ import {
     THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, D_ISOPEN, ACCESSIBLE, IS_SDOOR,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
     IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, WT_SQUEEZABLE_INV,
-    WT_TOOMUCH_DIAGONAL, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP } from './const.js';
+    WT_TOOMUCH_DIAGONAL, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP,
+    DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
+    xdir, ydir, N_DIRS } from './const.js';
 import { sobj_at } from './invent.js';
+import { couldsee } from './vision.js';
+import { D_CLOSED, D_LOCKED } from './const.js';
 import { done } from './end.js';
 import { DIED } from './const.js';
 import { ONAMES } from './objects_data.js';
@@ -686,6 +690,9 @@ export function end_running(and_travel) {
 // a caller asking for a SHORTER helplessness than the one already in effect is
 // ignored, so the longest wins rather than the latest.
 export function nomul(nval) {
+    if (globalThis.__dog_trace && game.context?.travel)
+        console.error('NOMUL during travel:', (new Error().stack || '')
+            .split('\n')[2]?.trim());
     if (game.multi < nval)
         return;              /* This is a bug fix by ab@unido */
     (game.disp ||= {}).botl ||= (game.multi >= 0);
@@ -1490,4 +1497,216 @@ async function moverock_core(sx, sy) {
         }
     }
     return 0;
+}
+
+/* include/hack.h TRAVP_* — findtravelpath modes */
+export const TRAVP_TRAVEL = 0, TRAVP_GUESS = 1, TRAVP_VALID = 2;
+
+// src/hack.c:4079 crawl_destination() — is <x,y> a spot the hero could
+// crawl to (used for the travel-to-adjacent shortcut)?
+export async function crawl_destination(x, y) {
+    const { goodpos } = await import('./makemon.js');
+    if (!goodpos(x, y, game.youmonst, 0))
+        return false;
+    if (x === game.u.ux || y === game.u.uy)
+        return true;
+    /* NODIAG: poly'd into a grid bug — polyself absent */
+    if (game.u.uprops?.WALLWALK)
+        return true;
+    const loc = game.level.at(x, y);
+    if (IS_DOOR(loc.typ) && (!doorless_door(x, y) || _shk_block_door(x, y)))
+        return false;
+    return !(bad_rock(game.youmonst.data, game.u.ux, y)
+             && bad_rock(game.youmonst.data, x, game.u.uy)
+             && cant_squeeze_thru(game.youmonst));
+}
+
+function _shk_block_door(x, y) {
+    /* shk.js block_door needs shop state; false when no shops exist */
+    return false;
+}
+
+// src/hack.c:1266 findtravelpath() — pick u.dx/u.dy for the next travel
+// step: a breadth-first flood from the destination back to the hero over
+// squares the hero has seen (TEST_TRAV), preferring paths without closed
+// doors, boulders or seen traps. Draws nothing.
+export async function findtravelpath(mode) {
+    const u = game.u;
+    (game.travelmap ||= new Set());
+
+    /* if travel to adjacent, reachable location, use normal movement rules */
+    if ((mode === TRAVP_TRAVEL || mode === TRAVP_VALID) && game.context.travel1
+        && (Math.abs(u.tx - u.ux) <= 1 && Math.abs(u.ty - u.uy) <= 1
+            && !(u.tx === u.ux && u.ty === u.uy)) /* next2u */
+        && await crawl_destination(u.tx, u.ty)) {
+        end_running_hack(false);
+        if (await test_move(u.ux, u.uy, u.tx - u.ux, u.ty - u.uy, TEST_MOVE)) {
+            if (mode === TRAVP_TRAVEL) {
+                u.dx = u.tx - u.ux;
+                u.dy = u.ty - u.uy;
+                nomul(0);
+                game.iflags.travelcc = { x: 0, y: 0 };
+            }
+            return true;
+        }
+        if (mode === TRAVP_TRAVEL)
+            game.context.run = 8;
+    }
+    if (u.tx !== u.ux || u.ty !== u.uy) {
+        const travel = Array.from({ length: COLNO },
+                                  () => new Array(ROWNO).fill(0));
+        let travelstep = [[], []];
+        let n = 1, set = 0, radius = 1;
+        let tx, ty, ux, uy;
+
+        if (mode === TRAVP_GUESS || mode === TRAVP_VALID) {
+            tx = u.ux; ty = u.uy; ux = u.tx; uy = u.ty;
+        } else {
+            tx = u.tx; ty = u.ty; ux = u.ux; uy = u.uy;
+        }
+
+        for (;;) { /* noguess: */
+            for (const col of travel) col.fill(0);
+            travelstep = [[{ x: tx, y: ty }], []];
+            n = 1; set = 0; radius = 1;
+
+            while (n !== 0) {
+                let nn = 0;
+                travelstep[1 - set] = [];
+                for (let i = 0; i < n; i++) {
+                    const x = travelstep[set][i].x, y = travelstep[set][i].y;
+                    const dirmax = N_DIRS; /* NODIAG needs polyself */
+                    let alreadyrepeated = false;
+
+                    for (let dir = 0; dir < dirmax; ++dir) {
+                        const nx = x + xdir[dirs_ord_hack[dir]];
+                        const ny = y + ydir[dirs_ord_hack[dir]];
+
+                        if (!isok(nx, ny)
+                            || (mode === TRAVP_GUESS && !couldsee(nx, ny)))
+                            continue;
+                        if ((!game.u.uprops?.WALLWALK /* !Passes_walls */
+                             && closed_door_hack(x, y))
+                            || (sobj_at(ONAMES.BOULDER, x, y)
+                                && !could_move_onto_boulder(x, y))
+                            || await test_move(x, y, nx - x, ny - y,
+                                               TEST_TRAP)) {
+                            /* closed doors and boulders usually cause a
+                               delay, so prefer another path */
+                            if (travel[x][y] > radius - 3) {
+                                if (!alreadyrepeated) {
+                                    travelstep[1 - set].push({ x, y });
+                                    nn++;
+                                    alreadyrepeated = true;
+                                }
+                                continue;
+                            }
+                        }
+                        const nloc = game.level.at(nx, ny);
+                        if (await test_move(x, y, nx - x, ny - y, TEST_TRAV)
+                            && (nloc.seenv
+                                || (!game.u.ublind && couldsee(nx, ny)))) {
+                            if (nx === ux && ny === uy) {
+                                if (mode === TRAVP_TRAVEL
+                                    || mode === TRAVP_VALID) {
+                                    const visited = game.travelmap
+                                        .has(`${x},${y}`);
+                                    u.dx = x - ux;
+                                    u.dy = y - uy;
+                                    if (mode === TRAVP_TRAVEL
+                                        && ((x === u.tx && y === u.ty)
+                                            || visited)) {
+                                        nomul(0);
+                                        /* reset run so domove run checks
+                                           work */
+                                        game.context.run = 8;
+                                        if (visited)
+                                            await You('stop, unsure which way to go.');
+                                        else
+                                            game.iflags.travelcc = { x: 0, y: 0 };
+                                    }
+                                    game.travelmap.add(`${u.ux},${u.uy}`);
+                                    return true;
+                                }
+                            } else if (!travel[nx][ny]) {
+                                travelstep[1 - set].push({ x: nx, y: ny });
+                                travel[nx][ny] = radius;
+                                nn++;
+                            }
+                        }
+                    }
+                }
+                n = nn;
+                set = 1 - set;
+                radius++;
+            }
+
+            /* if guessing, find best location in travel matrix, go there */
+            if (mode === TRAVP_GUESS) {
+                let px = tx, py = ty;
+                let dist = distmin(ux, uy, tx, ty);
+                let d2 = dist2(ux, uy, tx, ty);
+                let ptrav = COLNO * ROWNO;
+                for (let sx = 1; sx < COLNO; ++sx)
+                    for (let sy = 0; sy < ROWNO; ++sy) {
+                        const ctrav = travel[sx][sy];
+                        if (couldsee(sx, sy) && ctrav > 0) {
+                            const nxtdist = distmin(ux, uy, sx, sy);
+                            if (nxtdist === dist && ctrav < ptrav) {
+                                const nd2 = dist2(ux, uy, sx, sy);
+                                if (nd2 < d2) {
+                                    px = sx; py = sy; d2 = nd2;
+                                    ptrav = ctrav;
+                                }
+                            } else if (nxtdist < dist) {
+                                px = sx; py = sy; dist = nxtdist;
+                                d2 = dist2(ux, uy, sx, sy);
+                                ptrav = ctrav;
+                            }
+                        }
+                    }
+
+                if (px === u.ux && py === u.uy) {
+                    /* no guesses, just go in the general direction */
+                    u.dx = Math.sign(u.tx - u.ux);
+                    u.dy = Math.sign(u.ty - u.uy);
+                    if (await test_move(u.ux, u.uy, u.dx, u.dy, TEST_MOVE)) {
+                        game.travelmap.add(`${u.ux},${u.uy}`);
+                        return true;
+                    }
+                    break; /* goto found */
+                }
+                tx = px; ty = py; ux = u.ux; uy = u.uy;
+                mode = TRAVP_TRAVEL;
+                continue; /* goto noguess */
+            }
+            return false;
+        }
+    }
+
+    /* found: */
+    u.dx = 0;
+    u.dy = 0;
+    nomul(0);
+    return false;
+}
+
+/* src/decl.c:81 dirs_ord[] — reordered directions, cardinals first */
+const dirs_ord_hack = [DIR_W, DIR_N, DIR_E, DIR_S,
+                       DIR_NW, DIR_NE, DIR_SE, DIR_SW];
+
+/* include/rm.h closed_door() — local twin (cmd.js has one too) */
+function closed_door_hack(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!(loc && IS_DOOR(loc.typ)
+              && (loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+/* src/hack.c end_running(FALSE) — the flag-clearing half */
+function end_running_hack(and_travel) {
+    game.context.run = 0;
+    if (and_travel) {
+        game.context.travel = game.context.travel1 = 0;
+        game.context.mv = 0;
+    }
 }

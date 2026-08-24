@@ -21,7 +21,7 @@ import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          NEED_WEAPON, NEED_HTH_WEAPON } from './const.js';
 import { acurr } from './attrib.js';
 import { put_saddle_on_mon } from './steed.js';
-import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless, attacktype, resists_ston, resists_acid, max_passive_dmg, is_flyer, is_floater, regenerates } from './mondata.js';
+import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless, attacktype, resists_ston, resists_acid, max_passive_dmg, is_flyer, is_floater, regenerates, resist_conflict } from './mondata.js';
 import { sobj_at, eaten_stat, obj_extract_self } from './invent.js';
 import { may_dig } from './hack.js';
 import { is_metallic, OBJ_FLOOR } from './obj.js';
@@ -187,8 +187,8 @@ function initedog(mtmp, everything) {
        when taming magic affects an already-tame monster */
     if ((edogp.hungrytime ?? 0) < minhungry)
         edogp.hungrytime = minhungry;
-    /* src/dog.c:87 — pets-conduct counter; #conduct and the Astral
-       guardian-angel gift read it */
+    /* src/dog.c:87 — pets-conduct counter (the first-pet livelog is
+       invisible); gain_guardian_angel() reads it on the Astral Plane */
     (game.u.uconduct ||= {}).pets = ((game.u.uconduct.pets | 0) + 1);
 }
 
@@ -1194,10 +1194,13 @@ export async function dog_move(mtmp, after) {
        the turn; `goto newdogpos` with nix,niy still at omx,omy, so the
        movement block reduces to the leash kludge and it returns MMOVE_MOVED. */
     const j_inv = await dog_invent(mtmp, edog, udist);
-    if (j_inv === 2)
+    if (j_inv === 2) {
+        if (globalThis.__dog_trace) console.error('DOGPRE invent2');
         return DEADMONSTER(mtmp) ? MMOVE_DIED : MMOVE_DONE;
-    else if (j_inv === 1)
+    } else if (j_inv === 1) {
+        if (globalThis.__dog_trace) console.error('DOGPRE invent1');
         return MMOVE_MOVED;
+    }
 
     /* src/dogmove.c:1038 — whappr is TRUE for the five turns after the pet was
        whistled for, and edog->whistletime starts at 0, so it is TRUE for the
@@ -1206,12 +1209,36 @@ export async function dog_move(mtmp, after) {
        — a completely different path from C's, drawn with the same numbers. */
     const whappr = (game.moves - (edog.whistletime || 0)) < 5 ? 1 : 0;
     const appr = dog_goal(mtmp, edog, after, udist, whappr);
-    if (appr === -2)
+    if (appr === -2) {
+        if (globalThis.__dog_trace) console.error('DOGPRE goal-2');
         return MMOVE_NOTHING;
+    }
+
+    /* src/dogmove.c:1046 — a conflicted pet rolls resist_conflict every
+       action; an edog that fails just keeps going (the non-edog guardian
+       angel arm needs minions) */
+    if (game.u.uprops?.CONFLICT && !resist_conflict(mtmp)) {
+        if (!edog)
+            (game.unported ||= new Set()).add('dog_move:lose_guardian_angel');
+    }
 
     /* src/dogmove.c:1062 — the squares the pet may move to */
     const mfp = {};
     const cnt = mfndpos(mtmp, mfp, mon_allowflags(mtmp));
+
+    /* Debug-only trace (never set during scoring): log the pet's goal and
+       candidate squares. globalThis.__dog_trace = true */
+    if (globalThis.__dog_trace) {
+        const trk = (mtmp.mtrack || []);
+        console.error(`DOGTRK t=${game.moves} (${omx},${omy}) trk=` +
+            [0,1,2,3].map(i => `${trk[i]?.x ?? 0},${trk[i]?.y ?? 0}`).join(' '));
+    }
+    if (globalThis.__dog_trace)
+        console.error(`DOGTRACE turn=${game.moves} pet(${omx},${omy})`
+            + ` goal=(${game.gg?.gtyp},${game.gg?.gx},${game.gg?.gy})`
+            + ` appr=${appr} cnt=${cnt} poss=${(mfp.poss || []).slice(0, cnt)
+                  .map((p, i) => `${p.x},${p.y}:${(mfp.info[i] || 0).toString(16)}`)
+                  .join(' ')}`);
 
     /* Dogs normally avoid cursed items, so count the clean squares first;
        the count is the bound of the rn2 below. */
@@ -1220,12 +1247,20 @@ export async function dog_move(mtmp, after) {
         const nx = mfp.poss[i].x, ny = mfp.poss[i].y;
         /* src/dogmove.c:1073 — a square holding a monster the pet may not
            attack or displace is not a free square, so it does not count. */
-        if (m_at(nx, ny) && !(mfp.info[i] & (ALLOW_M | ALLOW_MDISP)))
+        if (m_at(nx, ny) && !(mfp.info[i] & (ALLOW_M | ALLOW_MDISP))) {
+            if (globalThis.__dog_trace)
+                console.error(`DOGUNC skip-mon (${nx},${ny}) info=${(mfp.info[i]|0).toString(16)} ALLOW_M=${ALLOW_M.toString(16)}`);
             continue;
-        if (cursed_object_at(nx, ny))
+        }
+        if (cursed_object_at(nx, ny)) {
+            if (globalThis.__dog_trace)
+                console.error(`DOGUNC skip-curse (${nx},${ny})`);
             continue;
+        }
         uncursedcnt++;
     }
+    if (globalThis.__dog_trace)
+        console.error(`DOGUNC t=${game.moves} uncursedcnt=${uncursedcnt}`);
 
     let nix = omx, niy = omy, chi = -1, chcnt = 0;
     /* src/dogmove.c:1010 — do_eat and the obj it refers to are function-scope
@@ -1416,6 +1451,10 @@ export async function dog_move(mtmp, after) {
             return i;
     }
 
+    if (globalThis.__dog_trace)
+        console.error(`DOGCHOSE turn=${game.moves} (${omx},${omy})->` +
+            `(${nix},${niy}) chi=${chi} do_eat=${do_eat} hero(${game.u.ux},${game.u.uy})`);
+
     /* src/dogmove.c:1276 newdogpos — apply the move. Draws nothing: it is
        remove_monster() followed by place_monster(), which for us is just the
        pet's coordinates. C does NOT reorder fmon here, so neither do we.
@@ -1470,7 +1509,12 @@ export async function dog_move(mtmp, after) {
         }
         return MMOVE_MOVED;
     }
-    return MMOVE_NOTHING;
+    /* src/dogmove.c:1356 — the STAY case also returns MMOVE_MOVED: the pet
+       spent its action, and postmov() then runs mintrap() on the square it
+       is standing on. A pony camped on a seen bear trap draws the
+       already-seen rn2(4) dodge on every stay-action; returning
+       MMOVE_NOTHING here silently skipped all of them (seed0004's head). */
+    return MMOVE_MOVED;
 }
 
 /* include/monst.h MTSZ — how many previous squares a monster remembers. */

@@ -426,9 +426,11 @@ async function seffect_teleportation(sobj) {
            be a teleport scroll */
         game.known = true;
     } else {
-        /* scrolltele(): getpos-controlled or random in-level teleport;
-           not ported yet — recorded so the gap is visible */
-        note_unported_read('seffect_teleportation:scrolltele');
+        /* src/read.c:2090 — scrolltele(): controlled getpos teleport when
+           Teleport_control/blessed, else a random destination */
+        const { scrolltele } = await import('./teleport.js');
+        await scrolltele(sobj);
+        game.known = true;
     }
 }
 

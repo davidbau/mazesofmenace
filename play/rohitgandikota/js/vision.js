@@ -16,9 +16,13 @@ import { is_lightblocker_mappear } from './monst.js';
 import { See_invisible, Underwater } from './youprop.js';
 import { is_moat } from './dbridge.js';
 import { visible_region_at } from './region.js';
+import { do_light_sources } from './light.js';
 
-const COULD_SEE = 0x1;
-const IN_SIGHT = 0x2;
+// include/vision.h:8-10 — viz_array bits. TEMP_LIT is stamped by
+// do_light_sources() (js/light.js) during each recalc.
+export const COULD_SEE = 0x1;
+export const IN_SIGHT = 0x2;
+export const TEMP_LIT = 0x4;
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
@@ -687,6 +691,9 @@ export function vision_recalc(control = 0) {
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
     }
 
+    /* src/vision.c:703 — set the correct bits for all light sources */
+    do_light_sources(next);
+
     // Compute IN_SIGHT from COULD_SEE + lighting
     const level = game.level;
     const ux = u.ux, uy = u.uy;
@@ -704,14 +711,15 @@ export function vision_recalc(control = 0) {
                 continue;
             }
 
-            // Lit cells
-            if (loc.lit) {
+            // Lit cells (src/vision.c:756 — lev->lit || TEMP_LIT)
+            if (loc.lit || (next[row][col] & TEMP_LIT)) {
                 if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
                     && !viz_clear[row]?.[col]) {
                     // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
                     const dx = Math.sign(ux - col);
                     const flev = level?.at(col + dx, row + dy);
-                    if (flev?.lit) {
+                    if (flev?.lit
+                        || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                         next[row][col] |= IN_SIGHT;
                     }
                 } else {
@@ -753,12 +761,14 @@ export function vision_recalc(control = 0) {
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
-                } else if ((nv & COULD_SEE) && loc.lit) {
+                } else if ((nv & COULD_SEE)
+                           && (loc.lit || (nv & TEMP_LIT))) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
                         && !viz_clear[row][col]) {
                         const dx = Math.sign(ux - col);
                         const adjLoc = game.level.at(col + dx, row + dy);
-                        if (adjLoc?.lit) {
+                        if (adjLoc?.lit
+                            || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
@@ -875,7 +885,8 @@ export function clear_path(col1, row1, col2, row2) {
    TRUNCATED copy (`circle_data_findit`, radii 0..8) for findit(). */
 
 // src/vision.c circle_ptr() — the half-width row for radius z.
-function circle_ptr(z) {
+// (include/vision.h:62; do_light_sources in js/light.js imports it too.)
+export function circle_ptr(z) {
     return circle_data.slice(circle_start[z]);
 }
 

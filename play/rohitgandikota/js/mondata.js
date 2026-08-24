@@ -12,10 +12,14 @@
 
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { Hallucination } from './youprop.js';
 import { canspotmon } from './display.js';
 import { G_UNIQ, PRONOUN_NO_IT, PRONOUN_HALLU } from './const.js';
+import { dist2 } from './hacklib.js';
+import { clear_path } from './vision.js';
+import { ACURR } from './attrib.js';
+import { A_CHA } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { is_vampshifter } from './monst.js';
 import { NATTK } from './const.js';
@@ -154,6 +158,45 @@ export const perceives = (ptr) => (ptr.mflags1 & MFLAGS.M1_SEE_INVIS) !== 0;
 
 // include/mondata.h is_animal()
 export const is_animal = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
+
+// src/mondata.c:1641 mons_see_trap() — monsters see a trap trigger, and
+// remember it. Runs from dotrap() and mintrap() whenever a trap actually
+// fires; the learned bit is what makes a pet's later step draw the
+// already-seen rn2(4) dodge in mintrap.
+// src/mondata.c:1607 resist_conflict() — can a monster resist conflict
+// caused by the hero? High-CHA heroes 'convince' monsters more easily.
+export function resist_conflict(mtmp) {
+    /* always a small chance at 19 */
+    const resist_chance = Math.min(19,
+        (ACURR(A_CHA) - (mtmp.m_lev ?? 0) + (game.u.ulevel ?? 1)));
+    return (rnd(20) > resist_chance);
+}
+
+export function mons_see_trap(ttmp) {
+    const tx = ttmp.tx, ty = ttmp.ty;
+    const lit = game.level?.at(tx, ty)?.lit;
+    const maxdist = lit ? 7 * 7 : 2;
+
+    for (const mtmp of (game.level?.monsters || [])) {
+        if (mtmp.mhp <= 0)
+            continue;
+        const ptr = game.mons[mtmp.mnum];
+        if (is_animal(ptr) || mindless(ptr)
+            || !haseyes(ptr) || !mtmp.mcansee)
+            continue;
+        if (dist2(mtmp.mx, mtmp.my, tx, ty) > maxdist)
+            continue;
+        if (!clear_path(mtmp.mx, mtmp.my, tx, ty)) /* m_cansee() */
+            continue;
+        mon_learns_traps_md(mtmp, ttmp.ttyp);
+    }
+}
+
+// src/mondata.c:1629 mon_learns_traps() — the mtrapseen bitmask. js/trap.js
+// keeps a private copy for mintrap; this one serves mons_see_trap.
+function mon_learns_traps_md(mtmp, ttyp) {
+    mtmp.mtrapseen = (mtmp.mtrapseen | 0) | (1 << (ttyp - 1));
+}
 
 // include/mondata.h mindless()
 export const mindless = (ptr) => (ptr.mflags1 & MFLAGS.M1_MINDLESS) !== 0;

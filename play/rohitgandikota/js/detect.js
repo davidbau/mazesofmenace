@@ -26,7 +26,68 @@ import { MONSYMS } from './monst_data.js';
 import { M_AP_TYPE } from './const.js';
 import { recalc_block_point, unblock_point } from './vision.js';
 import { nomul } from './hack.js';
+import { back_to_glyph, show_glyph_cell, flush_screen, trap_glyph,
+         xy_set_wall_state, pline, covers_traps } from './display.js';
+import { TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, IS_WALL,
+         M_AP_FURNITURE } from './const.js';
+import { NO_COLOR, CLR_GREEN } from './terminal.js';
+import { cansee } from './vision.js';
+import { getpos } from './getpos.js';
 const CM = cmap_names;
+
+// src/detect.c:65 unconstrain_map() — lift the swallowed/underwater/buried
+// display constraint so the whole map can be drawn; the state is stashed for
+// reconstrain_map() to put back.
+function unconstrain_map() {
+    const u = game.u;
+    const restriction = !!(u.uswallow || u.uinwater || u.uburied);
+
+    game.iflags = game.iflags || {};
+    game.iflags.save_uswallow = u.uswallow;
+    game.iflags.save_uinwater = u.uinwater;
+    game.iflags.save_uburied = u.uburied;
+    /* bypass set_uinwater() */
+    u.uswallow = u.uinwater = u.uburied = 0;
+
+    return restriction;
+}
+
+// src/detect.c:84 reconstrain_map()
+function reconstrain_map() {
+    const u = game.u;
+    /* if was in water and taken out, put back; bypass set_uinwater() */
+    u.uinwater = game.iflags?.save_uinwater || 0;
+    u.uswallow = game.iflags?.save_uswallow || 0;
+    u.uburied = game.iflags?.save_uburied || 0;
+    if (game.iflags) {
+        game.iflags.save_uinwater = 0;
+        game.iflags.save_uswallow = 0;
+        game.iflags.save_uburied = 0;
+    }
+}
+
+// src/detect.c:93 map_redisplay()
+async function map_redisplay() {
+    reconstrain_map();
+    await docrt(); /* redraw the screen to remove unseen traps from the map */
+    if (game.u.uinwater || game.u.uburied)
+        /* under_water(2) / under_ground(2) — the constrained-view repaint;
+           no session reaches the terrain browser while submerged */
+        note_unported_detect('map_redisplay:constrained');
+}
+
+// src/detect.c:106 browse_map() — use getpos()'s 'autodescribe' to view
+// whatever is currently shown on map.
+async function browse_map(ter_typ, ter_explain) {
+    const dummy_pos = { x: game.u.ux, y: game.u.uy };
+    game.iflags = game.iflags || {};
+    const save_autodescribe = game.iflags.autodescribe;
+    game.iflags.autodescribe = true;
+    game.iflags.terrainmode = ter_typ;
+    await getpos(dummy_pos, false, ter_explain);
+    game.iflags.terrainmode = 0;
+    game.iflags.autodescribe = save_autodescribe;
+}
 
 // src/detect.c:1893 dosearch0() — intrinsic autosearch vs explicit searching.
 //
@@ -196,6 +257,12 @@ export async function dosearch0(aflag) {
 
 // src/detect.c dosearch()
 export async function dosearch() {
+    /* src/detect.c:2097 — the safe_wait gate: plain 's' next to a spotted
+       monster refuses (no time) unless m-prefixed */
+    const { cmd_safety_prevention } = await import('./do.js');
+    if (await cmd_safety_prevention('Searching', 'another search',
+                                    'You already found a monster.'))
+        return 0;                      /* ECMD_OK — no time passes */
     return dosearch0(0);
 }
 
@@ -418,5 +485,189 @@ export function do_mapping() {
 
     /* hero_memory is set, so C only reconstrains (a no-op) here */
     exercise(A_WIS, true);
+}
+
+// src/detect.c:2167 reveal_terrain_getglyph() — what to show at x,y for the
+// terrain view: the hero's memory with monsters, objects, and/or traps
+// stripped as which_subset dictates.
+//
+// C works in glyph numbers; this port's display buffer keeps cells
+// ({ch,color,dec}) with a provenance descriptor ({kind,...}), so the same
+// decision tree runs on descriptors and returns a cell. back_to_glyph()
+// already folds in wall_angle() and the per-dungeon wall colour.
+function reveal_terrain_getglyph(x, y, swallowed, default_cell, which_subset) {
+    const keep_traps = (which_subset & TER_TRP) !== 0,
+          keep_objs = (which_subset & TER_OBJ) !== 0,
+          keep_mons = (which_subset & TER_MON) !== 0,
+          full = (which_subset & TER_FULL) !== 0;
+    const loc = game.level?.at(x, y);
+    if (!loc)
+        return { ...default_cell };
+    const hero_memory = !!game.level?.flags?.hero_memory;
+
+    const btg_cell = () => {
+        const b = back_to_glyph(loc, x, y);
+        return { ch: b.ch, color: b.color, dec: !!b.dec,
+                 glyph: { kind: 'cmap', cmap: b.cmap } };
+    };
+
+    /* for 'full', show the actual terrain for the entire level, otherwise
+       what the hero remembers for seen locations */
+    const seenv = (full || hero_memory) ? (loc.seenv || 0)
+                  : (cansee(x, y) ? SVALL : 0);
+    let cell;
+    if (full) {
+        const sv = loc.seenv;
+        loc.seenv = SVALL;
+        cell = btg_cell();
+        loc.seenv = sv;
+    } else {
+        /* levl[][].glyph — the remembered glyph, never a monster */
+        const rem = loc.remembered_glyph;
+        const levl_cell = hero_memory
+            ? (rem ? { ch: rem.ch, color: rem.color, dec: !!rem.decgfx,
+                       glyph: rem.glyph }
+                   : { ...default_cell })
+            : (seenv ? btg_cell() : { ...default_cell });
+        /* glyph_at() — the displayed cell, which might be a monster */
+        cell = !swallowed
+            ? (loc.disp_glyph !== undefined || loc.disp_ch !== undefined
+                   ? { ch: loc.disp_ch ?? ' ', color: loc.disp_color,
+                       dec: !!loc.disp_decgfx, glyph: loc.disp_glyph }
+                   : { ...default_cell })
+            : levl_cell;
+        let was_mon = false;
+        const kind = () => cell.glyph?.kind;
+        if (keep_mons && x === game.u.ux && y === game.u.uy && swallowed) {
+            /* mon_to_glyph(u.ustuck) — detection while engulfed */
+            note_unported_detect('reveal_terrain:swallowed_keepmons');
+        } else if ((!keep_mons && (kind() === 'mon' || kind() === 'hero'
+                                   || kind() === 'warn'))
+                   || kind() === 'swallow') {
+            cell = { ...levl_cell };
+            was_mon = true;
+        }
+        const is_trap_cell = () => cell.glyph?.kind === 'cmap'
+            && cell.glyph.cmap >= CM.S_arrow_trap
+            && cell.glyph.cmap <= CM.S_trapped_chest;
+        /* NhRegion gas clouds (visible_region_at) cannot exist: region.c is
+           unported, so no region is ever created */
+        if (((!keep_objs && kind() === 'obj') || kind() === 'invis')
+            && keep_traps && !covers_traps(x, y)) {
+            const t = t_at(x, y);
+            if (t && t.tseen) {
+                const tg = trap_glyph(t);
+                cell = { ch: tg.ch, color: tg.color, dec: !!tg.dec,
+                         glyph: { kind: 'cmap', cmap: tg.cmap } };
+            }
+        }
+        if ((!keep_objs && kind() === 'obj')
+            || (!keep_traps && is_trap_cell())
+            || kind() === 'invis') {
+            if (!seenv) {
+                cell = { ...default_cell };
+            } else if (loc.lastseentyp === loc.typ) {
+                cell = btg_cell();
+            } else {
+                /* look for a mimic here posing as furniture; if we don't
+                   find one, we'll have to fake it */
+                const mtmp = m_at(x, y);
+                if (mtmp && M_AP_TYPE(mtmp) === M_AP_FURNITURE) {
+                    const ds = defsyms[mtmp.mappearance];
+                    cell = { ch: ds?.ch ?? '?', color: ds?.color,
+                             dec: false,
+                             glyph: { kind: 'cmap',
+                                      cmap: mtmp.mappearance } };
+                } else {
+                    /* we have a topology type but want a screen symbol:
+                       temporarily swap in lastseentyp for back_to_glyph(),
+                       recalculating wall_info as C does */
+                    const save_typ = loc.typ,
+                          save_wall = loc.wall_info,
+                          save_horiz = loc.horizontal;
+                    loc.typ = loc.lastseentyp ?? STONE;
+                    if (IS_WALL(loc.typ) || loc.typ === SDOOR)
+                        xy_set_wall_state(x, y);
+                    cell = btg_cell();
+                    loc.typ = save_typ;
+                    loc.wall_info = save_wall;
+                    loc.horizontal = save_horiz;
+                }
+            }
+        }
+    }
+    /* FIXME: dirty hack (C's words) — the darkroom and lit-corridor
+       variants read as their plain forms in the terrain view */
+    if (cell.glyph?.kind === 'cmap' && cell.glyph.cmap === CM.S_darkroom)
+        cell = { ch: '~', color: NO_COLOR, dec: true,
+                 glyph: { kind: 'cmap', cmap: CM.S_room } };
+    else if (cell.glyph?.kind === 'cmap' && cell.glyph.cmap === CM.S_litcorr)
+        cell = { ch: '#', color: NO_COLOR, dec: false,
+                 glyph: { kind: 'cmap', cmap: CM.S_corr } };
+    return cell;
+}
+
+// src/detect.c:2356 reveal_terrain() — idea from crawl; show known portion
+// of map without monsters, objects, or traps occluding the view of the
+// underlying terrain.
+export async function reveal_terrain(which_subset) {
+    /* 'full' overrides impairment and implies no-traps, no-objs, no-mons */
+    const full = (which_subset & TER_FULL) !== 0;
+    const u = game.u;
+    const intr = u.intrinsics || {};
+    const props = u.uprops || {};
+
+    if ((Hallucination() || intr.HStun || props.STUNNED
+         || intr.HConfusion || props.CONFUSION) && !full) {
+        await You('are too disoriented for this.');
+    } else {
+        const keep_traps = (which_subset & TER_TRP) !== 0,
+              keep_objs = (which_subset & TER_OBJ) !== 0,
+              keep_mons = (which_subset & TER_MON) !== 0;
+        const swallowed = u.uswallow ? 1 : 0; /* before unconstrain_map() */
+
+        if (unconstrain_map())
+            await docrt();
+        /* nhsym default: S_tree on arboreal levels, S_stone otherwise */
+        const default_cell = game.level?.flags?.arboreal
+            ? { ch: 'g', color: CLR_GREEN, dec: true,
+                glyph: { kind: 'cmap', cmap: CM.S_tree } }
+            : { ch: ' ', color: NO_COLOR, dec: false,
+                glyph: { kind: 'cmap', cmap: CM.S_stone } };
+
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++) {
+                const cell = reveal_terrain_getglyph(x, y, swallowed,
+                                                     default_cell,
+                                                     which_subset);
+                show_glyph_cell(x, y, cell.ch, cell.color, cell.dec, 0,
+                                cell.glyph);
+            }
+
+        /* hero's location is not highlighted, but getpos() starts with
+           cursor there */
+        await flush_screen(1);
+        let buf;
+        if (full) {
+            buf = 'underlying terrain';
+        } else {
+            buf = 'known terrain';
+            if (keep_traps)
+                buf += `${(keep_objs || keep_mons) ? ',' : ' and'} traps`;
+            if (keep_objs)
+                buf += `${(keep_traps || keep_mons) ? ',' : ''}${
+                    keep_mons ? '' : ' and'} objects`;
+            if (keep_mons)
+                buf += `${(keep_traps || keep_objs) ? ',' : ''} and monsters`;
+        }
+        await pline(`Showing ${buf} only...`);
+
+        /* allow player to move cursor around and get autodescribe feedback
+           based on what is visible now rather than what is on 'real' map */
+        which_subset |= TER_MAP; /* guarantee non-zero */
+        await browse_map(which_subset, 'anything of interest');
+
+        await map_redisplay();
+    }
 }
 

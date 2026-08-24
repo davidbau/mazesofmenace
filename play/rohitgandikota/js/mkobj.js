@@ -26,6 +26,8 @@ import { nartifact_exist } from './artifact.js';
 // js/o_init.js init_objects().
 
 import { game } from './gstate.js';
+import { start_timer, TIMER_OBJECT,
+         ROT_CORPSE as TIMEOUT_ROT_CORPSE } from './timeout.js';
 import { attach_egg_hatch_timeout } from './timeout.js';
 import { Is_rogue_level, NODIR, OBJ_FLOOR, OBJ_INVENT, In_quest } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
@@ -499,7 +501,12 @@ export function mksobj_init(otmp, artif) {
         break;
 
     case AMULET_CLASS:
+        /* mkobj.c:1061 — creating the real Amulet flips the flag covetous
+           monsters' strategy() keys on */
+        if (otmp.otyp === ONAMES.AMULET_OF_YENDOR)
+            (game.context ||= {}).made_amulet = true;
         if (rn2(10) && (otmp.otyp === ONAMES.AMULET_OF_STRANGULATION
+                        || otmp.otyp === ONAMES.AMULET_OF_CHANGE
                         || otmp.otyp === ONAMES.AMULET_OF_RESTFUL_SLEEP))
             curse(otmp);
         else
@@ -1265,7 +1272,10 @@ export function start_corpse_timeout(body) {
                 break;
             }
     }
-    body.rot_when = when;
+    /* src/mkobj.c:1440 — start_timer(when, TIMER_OBJECT, ROT_CORPSE, body).
+       Scheduling was missing: the rnz above drew but the corpse never
+       actually rotted, so piles kept a '%' on top forever (seed0004). */
+    start_timer(when, TIMER_OBJECT, TIMEOUT_ROT_CORPSE, body);
 }
 
 // include/objclass.h OBJ_NAME() — obj_descr[].oc_name; a null name marks a

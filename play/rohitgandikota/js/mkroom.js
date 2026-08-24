@@ -24,7 +24,13 @@ import { OROOM, SHOPBASE, FILL_NORMAL, COURT, ZOO, BEEHIVE, MORGUE,
          ANY_TYPE, ANY_SHOP,
          ROOMOFFSET, POOL, SDOOR, ROOM, IS_ROOM, IS_DOOR, isok, G_GONE,
          In_endgame, SPACE_POS, IS_THRONE, THRONE, ALTAR, AM_SHRINE,
-         OBJ_AT } from './const.js';
+         OBJ_AT,
+         STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
+         CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, DOOR, IRONBARS, TREE,
+         CORR, STAIRS, LADDER, GRAVE, SINK, FOUNTAIN, ICE, LAVAPOOL,
+         DRAWBRIDGE_DOWN, DBWALL, AIR, CLOUD, WATER,
+         LAVAWALL } from './const.js';
+import { cmap_names } from './drawing_data.js';
 import { makemon, mkclass, mkclass_aligned } from './makemon.js';
 import { m_at, t_at } from './mon.js';
 import { PMNAMES, MONSYMS, MFLAGS } from './monst_data.js';
@@ -675,4 +681,57 @@ export function search_special(type) {
             return croom;
     }
     return null;
+}
+
+// src/mkroom.c:912 cmap_to_type() — convert a display symbol for terrain
+// into topology type; used for remembered terrain when mimics pose as
+// furniture (and by update_lastseentyp()).
+export function cmap_to_type(sym) {
+    const CM = cmap_names;
+    switch (sym) {
+    case CM.S_stone:    return STONE;
+    case CM.S_vwall:    return VWALL;
+    case CM.S_hwall:    return HWALL;
+    case CM.S_tlcorn:   return TLCORNER;
+    case CM.S_trcorn:   return TRCORNER;
+    case CM.S_blcorn:   return BLCORNER;
+    case CM.S_brcorn:   return BRCORNER;
+    case CM.S_crwall:   return CROSSWALL;
+    case CM.S_tuwall:   return TUWALL;
+    case CM.S_tdwall:   return TDWALL;
+    case CM.S_tlwall:   return TLWALL;
+    case CM.S_trwall:   return TRWALL;
+    case CM.S_ndoor:    /* no door (empty doorway) */
+    case CM.S_vodoor:   /* open door in vertical wall */
+    case CM.S_hodoor:
+    case CM.S_vcdoor:   /* closed door in vertical wall */
+    case CM.S_hcdoor:   return DOOR;
+    case CM.S_bars:     return IRONBARS;
+    case CM.S_tree:     return TREE;
+    case CM.S_room:
+    case CM.S_darkroom: return ROOM;
+    case CM.S_corr:
+    case CM.S_litcorr:  return CORR;
+    case CM.S_upstair:
+    case CM.S_dnstair:  return STAIRS;
+    case CM.S_upladder:
+    case CM.S_dnladder: return LADDER;
+    case CM.S_altar:    return ALTAR;
+    case CM.S_grave:    return GRAVE;
+    case CM.S_throne:   return THRONE;
+    case CM.S_sink:     return SINK;
+    case CM.S_fountain: return FOUNTAIN;
+    case CM.S_pool:     return POOL;
+    case CM.S_ice:      return ICE;
+    case CM.S_lava:     return LAVAPOOL;
+    case CM.S_vodbridge: /* open drawbridge spanning north/south */
+    case CM.S_hodbridge: return DRAWBRIDGE_DOWN;
+    case CM.S_vcdbridge: /* closed drawbridge in vertical wall */
+    case CM.S_hcdbridge: return DBWALL;
+    case CM.S_air:      return AIR;
+    case CM.S_cloud:    return CLOUD;
+    case CM.S_water:    return WATER;
+    case CM.S_lavawall: return LAVAWALL;
+    default:            return STONE; /* not a cmap symbol? (catchall) */
+    }
 }

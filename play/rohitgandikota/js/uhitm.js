@@ -480,7 +480,11 @@ export async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty,
         malive = await hmon(mon, weapon, HMON_MELEE, dieroll);
 
         if (malive) {
-            if (!rn2(25) && mon.mhp < mon.mhpmax / 2 && !game.u.uswallow) {
+            /* C integer division: a 3-hp-max jackal at 1 hp is NOT below
+               mhpmax/2 (3/2 == 1, 1 < 1 false); float division made it
+               flee and spend rn2(3)+rnd(100) C never drew */
+            if (!rn2(25) && mon.mhp < Math.trunc(mon.mhpmax / 2)
+                && !game.u.uswallow) {
                 monflee(mon, !rn2(3) ? rnd(100) : 0, false, true);
 
                 if (game.u.ustuck === mon && !game.u.uswallow)

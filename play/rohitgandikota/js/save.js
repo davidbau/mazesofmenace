@@ -25,6 +25,10 @@ const SKIP_KEYS = new Set([
     'nhDisplay', 'coreCtx', 'dispCtx', 'storage',
     '_preNhgetchHook', '_pendingDisplay', 'coder', 'rc', 'unported',
     'currentSeed', 'fixed_datetime',
+    /* transient topline machinery: C never saves the message window's
+       state, and restoring a mid-'Saving...' pending line replayed a
+       stale --More-- on the welcome-back boot */
+    '_pending_message', '_toplin', '_toplines', '_topl_cury',
 ]);
 
 /* keys whose values are static tables rebuilt from data files; saving them
@@ -135,7 +139,8 @@ export function gamestate_decode(node) {
 
 // src/save.c:43 dosave() — the 'S' command.
 export async function dosave() {
-    const ans = await tty_yn_function('Really save?', 'yn', 'y');
+    /* src/save.c:46 y_n() — ynq defaults 'n' (include/hack.h y_n macro) */
+    const ans = await tty_yn_function('Really save?', 'yn', 'n');
     if (ans === 'n') {
         if ((game.multi ?? 0) > 0)
             nomul(0);
@@ -143,7 +148,22 @@ export async function dosave() {
         await pline('Saving...');
         if (dosave0()) {
             game.u.uhp = -1; /* universal game's over indicator */
-            /* exit_nhwindows("Be seeing you...") then nh_terminate() */
+            /* src/save.c:64 exit_nhwindows("Be seeing you...") — the tty
+               port clears the message line and raw-prints the farewell,
+               leaving the cursor on the next row; then nh_terminate() */
+            {
+                /* the tty exit clears the whole screen first */
+                game._pending_message = '';
+                const display = game?.nhDisplay;
+                if (display?.clearScreen)
+                    display.clearScreen();
+                if (display) {
+                    const s = 'Be seeing you...';
+                    for (let i = 0; i < s.length; i++)
+                        display.setCell(i, 0, s[i], 8 /* NO_COLOR */, 0);
+                    display.setCursor(0, 1);
+                }
+            }
             game.program_state_gameover = true;
             const sig = new Error('nh_terminate');
             sig.__nh_gameover = true;

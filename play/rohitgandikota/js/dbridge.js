@@ -8,7 +8,7 @@
 import { is_pool, is_lava } from './mon.js';
 import { game } from './gstate.js';
 import { isok, MOAT, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_ICE, ICE,
-         Is_juiblex_level,
+         Is_juiblex_level, DB_LAVA, LAVAPOOL, STONE,
          DOOR, DBWALL, IS_DRAWBRIDGE, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST,
          DB_WEST } from './const.js';
 
@@ -66,4 +66,19 @@ export function is_moat(x, y) {
                 && ((game.level.at(x, y).drawbridgemask ?? 0) & DB_UNDER) === DB_MOAT)))
         return true;
     return false;
+}
+
+// src/dbridge.c:116 db_under_typ() — the terrain hiding under a raised
+// drawbridge.
+export function db_under_typ(mask) {
+    switch (mask & DB_UNDER) {
+    case DB_ICE:
+        return ICE;
+    case DB_LAVA:
+        return LAVAPOOL;
+    case DB_MOAT:
+        return MOAT;
+    default:
+        return STONE;
+    }
 }

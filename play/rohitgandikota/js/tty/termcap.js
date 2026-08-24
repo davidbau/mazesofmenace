@@ -19,10 +19,17 @@
 // character matches, which is invisible in the RNG stream and shows up only as
 // a screen mismatch.
 
-import { CLR_GRAY, NO_COLOR } from '../terminal.js';
+import { CLR_GRAY, CLR_BLACK, NO_COLOR } from '../terminal.js';
 
 // win/tty/termcap.c term_start_color() — the effective colour once hilites[]
 // is applied. Returns NO_COLOR for anything that maps to the empty string.
+//
+// CLR_BLACK collapses too: with use_darkgray on (the default), init_hilite
+// (termcap.c:1299) makes hilites[CLR_BLACK] the bold-black escape, and the
+// recording pipeline registers that as the default foreground — seed0373's
+// carnivorous ape 'Y' and vampire bat 'B' record as uncoloured cells. The
+// recording is the ground truth for what the scorer sees.
 export function term_start_color(color) {
-    return (color === CLR_GRAY || color === NO_COLOR) ? NO_COLOR : color;
+    return (color === CLR_GRAY || color === NO_COLOR
+            || color === CLR_BLACK) ? NO_COLOR : color;
 }

@@ -2,9 +2,11 @@ import { mon_offmap, is_lightblocker_mappear } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { m_dowear } from './worn.js';
 import { is_hider, perceives, is_human, is_unicorn , regenerates, hides_under } from './mondata.js';
-import { ceiling_hider } from './mondata.js';
+import { ceiling_hider, emits_light, resist_conflict } from './mondata.js';
+import { new_light_source, del_light_source, LS_MONSTER } from './light.js';
 import { sensemon } from './display.js';
-import { mdistu, mon_track_clear, m_everyturn_effect } from './monmove.js';
+import { mdistu, mon_track_clear, m_everyturn_effect,
+         set_apparxy as set_apparxy_ref } from './monmove.js';
 // mon.js — monster bookkeeping.
 // C ref: src/mon.c
 //
@@ -31,7 +33,7 @@ import { newsym, canseemon, canspotmon, pline } from './display.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster, place_monster, goodpos } from './makemon.js';
-import { enexto_core } from './teleport.js';
+import { enexto_core, enexto } from './teleport.js';
 import { GP_CHECKSCARY, STRAT_WAITFORU, BOLT_LIM, NC_SHOW_MSG, ismnum,
          G_GENOD } from './const.js';
 import { G_UNIQ } from './const.js';
@@ -56,7 +58,9 @@ import { online2, isok } from './hacklib.js';
    functions living in js/monmove.js, which imports this file. Both sides
    export function declarations, so the cycle resolves through hoisting. */
 import { onscary, in_your_sanctuary, m_can_break_boulder, mon_knows_traps, can_fog, inhishop, mon_would_take_item } from './monmove.js';
-import { Is_waterlevel, Is_rogue_level, engulfing_u } from './const.js';
+import { Is_waterlevel, Is_rogue_level, engulfing_u, In_endgame,
+         Is_astralevel, has_emin, has_epri, has_eshk, RLOC_NOMSG,
+         MON_OBLITERATE } from './const.js';
 import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
     is_clinger, is_flyer, is_floater, mindless, dmgtype, attacktype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
@@ -197,6 +201,10 @@ async function movemon_singlemon(mtmp) {
        vapor where they stand, before the movement-energy gate */
     m_everyturn_effect(mtmp);
 
+    if (globalThis.__dog_trace && mtmp.mtame)
+        console.error(`DOGNRG turn=${game.moves} mv=${mtmp.movement}`);
+    if (globalThis.__dog_trace && mtmp.mnum === 158)
+        console.error(`LICH t=${game.moves} mv=${mtmp.movement}`);
     if (mtmp.movement < NORMAL_SPEED)
         return false;
     mtmp.movement -= NORMAL_SPEED;
@@ -767,7 +775,7 @@ function resists_poison(mon) {
    while this file's own callers still see a local binding. */
 import { touch_artifact } from './artifact.js';
 export { touch_artifact };
-import { pick_nasty } from './wizard.js';
+import { pick_nasty, mon_has_amulet } from './wizard.js';
 import { tt_doppel } from './topten.js';
 /* include/mondata.h:93 polyok() */
 const polyok = (ptr) => (ptr.mflags2 & MFLAGS.M2_NOPOLY) === 0;
@@ -903,6 +911,11 @@ export function mon_allowflags(mtmp) {
     else if (mtmp.mpeaceful)
         allowflags |= ALLOW_SANCT | ALLOW_SSM;
     else
+        allowflags |= ALLOW_U;
+    /* src/mon.c:2086 — a conflicted monster that fails to resist may
+       attack the hero; the roll fires for every monster while the ring
+       is worn */
+    if (game.u.uprops?.CONFLICT && !resist_conflict(mtmp))
         allowflags |= ALLOW_U;
 
     if (mtmp.isshk) allowflags |= ALLOW_SSM;
@@ -1134,6 +1147,10 @@ export function m_detach(mtmp, mptr, due_to_death) {
     if (mtmp.mleashed || mtmp.iswiz || mtmp.isshk || mtmp.wormno
         || due_to_death)
         (game.unported ||= new Set()).add('mon:m_detach');
+
+    /* src/mon.c:2744 — a glowing monster takes its light with it */
+    if (mtmp.mx > 0 && emits_light(mptr))
+        del_light_source(LS_MONSTER, mtmp.m_id);
 
     /* mon_leaving_level() — off the map, but still on the fmon chain */
     if (mtmp.mx > 0)
@@ -1735,6 +1752,96 @@ export async function monkilled(mdef, fltxt, how) {
     await mondied(mdef);
 }
 
+// src/mon.c:3864 ok_to_obliterate() — monsters that should not be
+// obliterated by elemental_clog. The C tests the mextra blocks; this port
+// also honors the flag fields its monster records actually carry.
+function ok_to_obliterate(mtmp) {
+    const mdat = game.mons[mtmp.mnum];
+    if (mdat === game.mons[PMNAMES.PM_WIZARD_OF_YENDOR] || is_rider(mdat)
+        || has_emin(mtmp) || has_epri(mtmp) || has_eshk(mtmp)
+        || mtmp.isminion || mtmp.ispriest || mtmp.isshk
+        || mtmp === game.u.ustuck || mtmp === game.u.usteed)
+        return false;
+    return true;
+}
+
+// src/mon.c:3878 elemental_clog() — the endgame planes are so full of
+// monsters that a monster with no place to go obliterates a less important
+// one and takes its spot: an off-plane elemental first, then a home
+// elemental, the weakest ordinary hostile, any other hostile, then a pet.
+let elemental_clog_msgmv = 0;       /* static long msgmv = 0L */
+
+export async function elemental_clog(mon) {
+    let m_lev = 0;
+    let m1 = null, m2 = null, m3 = null, m4 = null, m5 = null;
+    const zm = null;
+
+    if (In_endgame(game.u.uz)) {
+        if (!elemental_clog_msgmv
+            || (game.moves - elemental_clog_msgmv) > 200) {
+            if (!elemental_clog_msgmv || rn2(2))
+                await You_feel('besieged.');
+            elemental_clog_msgmv = game.moves;
+        }
+        /*
+         * m1 an elemental from another plane.
+         * m2 an elemental from this plane.
+         * m3 the least powerful monst encountered in loop so far.
+         * m4 some other non-tame monster.
+         * m5 a pet.
+         */
+        for (const mtmp of (game.level.monsters || [])) {
+            if (DEADMONSTER(mtmp) || mtmp === mon)
+                continue;
+            if (mtmp.mx === 0 && mtmp.my === 0)
+                continue;
+            if (mon_has_amulet(mtmp) || !ok_to_obliterate(mtmp))
+                continue;
+            const mdat = game.mons[mtmp.mnum];
+            if (mdat.mlet === MONSYMS.S_ELEMENTAL) {
+                const { is_home_elemental } = await import('./makemon.js');
+                if (!is_home_elemental(mdat)) {
+                    if (!m1)
+                        m1 = mtmp;
+                } else {
+                    if (!m2)
+                        m2 = mtmp;
+                }
+            } else {
+                if (!mtmp.mtame) {
+                    if (!m_lev || mtmp.m_lev < m_lev) {
+                        m_lev = mtmp.m_lev;
+                        m3 = mtmp;
+                    } else if (!m4) {
+                        m4 = mtmp;
+                    }
+                } else {
+                    if (!m5)
+                        m5 = mtmp;
+                    break;
+                }
+            }
+        }
+        const mtmp = m1 ? m1 : m2 ? m2 : m3 ? m3 : m4 ? m4 : m5 ? m5 : zm;
+        if (mtmp) {
+            const mx = mtmp.mx, my = mtmp.my;
+
+            mtmp.mstate = (mtmp.mstate | 0) | MON_OBLITERATE;
+            mongone(mtmp);
+            /* rloc_to(mon, mx, my) — same remove/place reduction as
+               mnexto below */
+            if (mon.mx || mon.my)
+                remove_monster(mon.mx, mon.my);
+            place_monster(mon, mx, my);
+            newsym(mon.mx, mon.my);
+
+        /* last resort - migrate mon to the next plane */
+        } else if (!Is_astralevel(game.u.uz)) {
+            note_unported_mon('elemental_clog:migrate_mon');
+        }
+    }
+}
+
 // src/mon.c:3955 mnexto() — move a monster next to the hero: enexto()'s
 // two-pass search (whose collect_coords ring shuffles are the draws), then
 // rloc_to. Overcrowding sends the monster to limbo; recorded.
@@ -1758,6 +1865,69 @@ export function mnexto(mtmp, rlocflags) {
         remove_monster(mtmp.mx, mtmp.my);
     place_monster(mtmp, mm.x, mm.y);
     newsym(mtmp.mx, mtmp.my);
+}
+
+// src/mon.c:4031 mnearto() — like mnexto() but around <x,y>; with
+// move_other, evict whoever stands there first and re-place them after.
+// Returns 0 on failure, 1 on success, 2 when another monster was moved.
+// rloc_to_flag is the same remove+place+newsym+set_apparxy reduction
+// mnexto uses; the overcrowding fallback goes through elemental_clog in
+// the endgame (deal_with_overcrowding, mon.c:3986) and records elsewhere.
+export async function mnearto(mtmp, x, y, move_other, rlocflags) {
+    let othermon = null;
+    let newx, newy;
+    const mm = { x: 0, y: 0 };
+    let res = 1;
+
+    if (mtmp.mx === x && mtmp.my === y && m_at(x, y) === mtmp)
+        return res;
+
+    if (move_other && (othermon = m_at(x, y)) != null) {
+        /* take othermon off the map; it might end up immediately
+           returning but for the moment it is leaving */
+        remove_monster(othermon.mx, othermon.my); /* mon_leaving_level() */
+        othermon.mx = othermon.my = 0; /* 'othermon' is not on the map */
+        othermon.mstate = (othermon.mstate | 0) | 0x01; /* MON_OFFMAP */
+    }
+
+    newx = x;
+    newy = y;
+    if (!goodpos(newx, newy, mtmp, 0)) {
+        /* Actually we have real problems if enexto ever fails. */
+        if (!enexto(mm, newx, newy, mtmp.data)
+            || !isok(mm.x, mm.y)) {
+            if (othermon) {
+                /* deal_with_overcrowding(othermon) */
+                if (In_endgame(game.u.uz))
+                    await elemental_clog(othermon);
+                else
+                    note_unported_mon('mnearto:m_into_limbo');
+            }
+            return 0;
+        }
+        newx = mm.x;
+        newy = mm.y;
+    }
+    /* rloc_to_flag(mtmp, newx, newy, rlocflags) */
+    if (mtmp.mx || mtmp.my)
+        remove_monster(mtmp.mx, mtmp.my);
+    mon_track_clear(mtmp);
+    place_monster(mtmp, newx, newy);
+    newsym(newx, newy);
+    set_apparxy_ref(mtmp);          /* orient monster */
+
+    if (move_other && othermon) {
+        res = 2; /* moving another monster out of the way */
+        /* 'move_other'==FALSE this time; fail rather than recurse */
+        if (!await mnearto(othermon, x, y, false, rlocflags)) {
+            if (In_endgame(game.u.uz))
+                await elemental_clog(othermon);
+            else
+                note_unported_mon('mnearto:m_into_limbo');
+        }
+    }
+
+    return res;
 }
 
 /* ==== shapechanger creation (src/mon.c) ==== */
@@ -2064,10 +2234,20 @@ export function newcham(mtmp, mdat, ncflags) {
         mtmp.mhp = 1;
 
     /* take on the new form */
+    const olddata = game.mons[mtmp.mnum];
     mtmp.mnum = mndx;
     mtmp.data = mdat;
 
-    /* light sources, leashes, mimicry, worm shrink: recorded when reached */
+    /* src/mon.c:5397 — used to give light, now doesn't, or vice versa */
+    if (emits_light(olddata) !== emits_light(mdat)) {
+        if (emits_light(olddata))
+            del_light_source(LS_MONSTER, mtmp.m_id);
+        if (emits_light(mdat))
+            new_light_source(mtmp.mx, mtmp.my, emits_light(mdat),
+                             LS_MONSTER, mtmp.m_id);
+    }
+
+    /* leashes, mimicry, worm shrink: recorded when reached */
     return 1;
 }
 

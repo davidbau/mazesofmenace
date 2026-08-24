@@ -8,6 +8,7 @@
 // changes the number of draws, not just their values.
 
 import { game } from './gstate.js';
+import { new_light_source, LS_MONSTER } from './light.js';
 import { ARM_BONUS } from './do_wear.js';
 import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire } from './worm.js';
 import { newcham, mon_wire_cham } from './mon.js';
@@ -33,7 +34,8 @@ import { canspotmon, newsym } from './display.js';
 import { cansee, does_block, block_point } from './vision.js';
 import { COLNO, ROWNO } from './const.js';
 import { attacktype, is_neuter, is_floater, emits_light, likes_lava,
-         amorphous, throws_rocks, haseyes } from './mondata.js';
+         amorphous, throws_rocks, haseyes, is_flyer, is_whirly,
+         noncorporeal } from './mondata.js';
 import { is_vampshifter } from './monst.js';
 import { t_at, is_pool, is_lava, m_in_air, resists_ston } from './mon.js';
 import { touch_petrifies } from './mondata.js';
@@ -42,7 +44,8 @@ import { couldsee } from './vision.js';
 import { is_pit, OBJ_FLOOR } from './const.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U, GP_CHECKSCARY, GP_AVOID_MONPOS, MM_IGNORELAVA,
-    IS_WATERWALL, IS_ALTAR, Is_waterlevel } from './const.js';
+    IS_WATERWALL, IS_ALTAR, Is_waterlevel, Is_airlevel, Is_firelevel,
+    Is_earthlevel, Is_astralevel, In_endgame as In_endgame_uz } from './const.js';
 import { enexto_core, enexto, noteleport_level } from './teleport.js';
 import { mon_track_clear, onscary } from './monmove.js';
 /* questpgr.js has no imports back into makemon.js at module level except
@@ -74,7 +77,7 @@ const { S_GOLEM, S_DRAGON, S_MIMIC, S_SPIDER, S_SNAKE, S_LIGHT, S_ELEMENTAL,
         S_EEL, S_LEPRECHAUN, S_JABBERWOCK, S_NYMPH, S_ORC, S_UNICORN, S_BAT,
         S_HUMAN, S_GIANT, S_WRAITH, S_LICH, S_MUMMY, S_QUANTMECH,
         S_DEMON, S_GNOME, S_ANGEL, S_HUMANOID, S_KOP, S_OGRE, S_TROLL,
-        S_KOBOLD, S_CENTAUR, S_ZOMBIE, S_LIZARD } = MONSYMS;
+        S_KOBOLD, S_CENTAUR, S_ZOMBIE, S_LIZARD, S_TRAPPER } = MONSYMS;
 const { MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST } = MSOUND;
 const { AT_WEAP, AD_ANY } = ATTKS;
 
@@ -218,7 +221,9 @@ export function rndmonst_adj(minadj, maxadj) {
     minmlev = monmin_difficulty(zlevel) + minadj;
     maxmlev = monmax_difficulty(zlevel) + maxadj;
     const upper = false;      /* Is_rogue_level */
-    const elemlevel = false;  /* In_endgame && !Is_astralevel */
+    /* src/makemon.c:1678 — on the elemental planes (astral excepted) only
+       monsters at home on the element are generated */
+    const elemlevel = In_endgame_uz(game.u.uz) && !Is_astralevel(game.u.uz);
 
     totalweight = 0;
     selected_mndx = NON_PM;
@@ -230,7 +235,7 @@ export function rndmonst_adj(minadj, maxadj) {
             continue;
         if (upper)      /* !isupper(monsym(ptr)) */
             continue;
-        if (elemlevel)  /* wrong_elem_type(ptr) */
+        if (elemlevel && wrong_elem_type(ptr))
             continue;
         if (uncommon(mndx))
             continue;
@@ -511,8 +516,44 @@ function In_endgame() {
     return game.dungeons?.[game.u?.uz?.dnum]?.dname === 'The Elemental Planes';
 }
 
-function is_home_elemental(/* ptr */) {
-    /* only true in the endgame planes, which no public session reaches */
+// src/makemon.c:33 is_home_elemental() — an elemental on its own plane.
+export function is_home_elemental(ptr) {
+    if (ptr?.mlet === S_ELEMENTAL) {
+        switch (monsndx(ptr)) {
+        case PMNAMES.PM_AIR_ELEMENTAL:
+            return Is_airlevel(game.u.uz);
+        case PMNAMES.PM_FIRE_ELEMENTAL:
+            return Is_firelevel(game.u.uz);
+        case PMNAMES.PM_EARTH_ELEMENTAL:
+            return Is_earthlevel(game.u.uz);
+        case PMNAMES.PM_WATER_ELEMENTAL:
+            return Is_waterlevel(game.u.uz);
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
+// src/makemon.c:56 wrong_elem_type() — true if the given monster cannot
+// exist on this elemental level.
+function wrong_elem_type(ptr) {
+    if (ptr.mlet === S_ELEMENTAL) {
+        return !is_home_elemental(ptr);
+    } else if (Is_earthlevel(game.u.uz)) {
+        /* no restrictions? */
+    } else if (Is_waterlevel(game.u.uz)) {
+        /* just monsters that can swim */
+        if (!is_swimmer(ptr))
+            return true;
+    } else if (Is_firelevel(game.u.uz)) {
+        if (!((ptr.mresists ?? 0) & MFLAGS.MR_FIRE))
+            return true;
+    } else if (Is_airlevel(game.u.uz)) {
+        if (!(is_flyer(ptr) && ptr.mlet !== S_TRAPPER) && !is_floater(ptr)
+            && !amorphous(ptr) && !noncorporeal(ptr) && !is_whirly(ptr))
+            return true;
+    }
     return false;
 }
 
@@ -737,7 +778,9 @@ function m_initinv(mtmp) {
         break;
     case S_GIANT:
         if (monsndx(ptr) === PMNAMES.PM_MINOTAUR) {
-            if (!rn2(8) || (game.in_mklev && false /* Is_earthlevel */))
+            /* makemon.c:740 — a minotaur born on the Plane of Earth always
+               carries a wand of digging */
+            if (!rn2(8) || (game.in_mklev && Is_earthlevel(game.u.uz)))
                 mongets(mtmp, ONAMES.WAN_DIGGING);
         } else if ((ptr.mflags2 & MFLAGS.M2_GIANT) !== 0) {
             /* src/makemon.c:743 — giants carry a handful of random gems */
@@ -948,6 +991,7 @@ export function place_monster(mtmp, x, y) {
     mtmp.mx = x;
     mtmp.my = y;
     (game.level.monAt ||= new Map()).set(`${x},${y}`, mtmp);
+    mtmp.mstate = 0;    /* steed.c:931 — back on the floor: MON_FLOOR */
 }
 
 // include/rm.h:534 remove_monster() — clears the grid slot only. A mover that
@@ -2040,6 +2084,12 @@ export function makemon(ptr, x, y, mmflags) {
     default:
         break;
     }
+    /* src/makemon.c:1348 — glowing monsters carry their own light */
+    {
+        const ct = emits_light(ptr);
+        if (ct > 0)
+            new_light_source(mtmp.mx, mtmp.my, ct, LS_MONSTER, mtmp.m_id);
+    }
 
     mitem = 0; /* STRANGE_OBJECT */
     if (mndx === PMNAMES.PM_VLAD_THE_IMPALER)
@@ -2073,7 +2123,13 @@ export function makemon(ptr, x, y, mmflags) {
             && newcham(mtmp, null, 0))
             allow_minvent = false;
     } else if (mndx === PMNAMES.PM_WIZARD_OF_YENDOR) {
-        note_unported(`makemon shapechanger/wizard mndx=${mndx}`);
+        /* src/makemon.c:1370 */
+        mtmp.iswiz = true;
+        (game.context ||= {}).no_of_wizards =
+            (game.context.no_of_wizards | 0) + 1;
+        if (game.context.no_of_wizards === 1
+            && Is_earthlevel(game.u.uz))
+            mitem = ONAMES.SPE_DIG;
     }
 
     if (mitem && allow_minvent)
@@ -2161,7 +2217,8 @@ export function grow_up(mtmp, victim) {
             hp_threshold = 4;
         else if (is_golem(ptr))
             hp_threshold = (Math.trunc(mtmp.mhpmax / 10) + 1) * 10 - 1;
-        /* is_home_elemental needs the plane levels; not reachable */
+        else if (is_home_elemental(ptr))       /* makemon.c:2087 */
+            hp_threshold *= 3;
         lev_limit = Math.trunc(3 * ptr.mlevel / 2);
         if (oldtype !== newtype && game.mons[newtype].mlevel > lev_limit)
             lev_limit = game.mons[newtype].mlevel;
@@ -2295,8 +2352,10 @@ export function clone_mon(mon, x, y) {
     mon_track_clear(m2);
 
     place_monster(m2, m2.mx, m2.my);
+    /* src/makemon.c:899 — the clone glows like the original */
     if (emits_light(game.mons[m2.mnum]))
-        note_unported_makemon('clone_mon:new_light_source');
+        new_light_source(m2.mx, m2.my, emits_light(game.mons[m2.mnum]),
+                         LS_MONSTER, m2.m_id);
     /* if 'parent' is named, give the clone the same name */
     if (mon.mgivenname) {
         christen_monst(m2, mon.mgivenname);

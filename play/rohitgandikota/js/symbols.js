@@ -14,6 +14,7 @@
 // sets are a column selection rather than a file parse.
 
 import { defsyms } from './drawing_data.js';
+import { game } from './gstate.js';
 
 /* src/decl.c gs.showsyms[] — the live table. Terrain entries only; object and
    monster class symbols are the same in both sets, because dat/symbols'
@@ -53,6 +54,15 @@ export function assign_graphics(dec) {
     if (dec)
         for (let i = 0; i < defsyms.length; i++)
             gs_showsyms.P[i] = { ch: defsyms[i].ch, dec: defsyms[i].dec };
+    /* src/display.c:1851 — with dark_room on (the 5.0 default) S_darkroom
+       displays with S_room's symbol: the DEC middle dot under DECgraphics,
+       plain '.' otherwise. Verified against the instrumented recorder:
+       showsyms[S_darkroom] is 0xfe for a symset:DECgraphics rc and '.' for
+       a plain one. */
+    if (game?.flags?.dark_room !== false) {
+        const S_room = 19, S_darkroom = 20; /* cmap_names would cycle */
+        gs_showsyms.P[S_darkroom] = { ...gs_showsyms.P[S_room] };
+    }
     /* dat/symbols' DECgraphics block carries "handling:DEC"; the built-in
        default set has no name and no handler. */
     gs_symset[PRIMARYSET] = dec ? { name: 'DECgraphics', handling: H_DEC }

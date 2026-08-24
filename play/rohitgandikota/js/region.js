@@ -38,6 +38,7 @@ export function visible_region_at(x, y) {
 import { rn1, rn2 } from './rng.js';
 import { isok } from './hacklib.js';
 import { ACCESSIBLE } from './const.js';
+import { cmap_names } from './drawing_data.js';
 
 /* region.c MAX_CLOUD_SIZE */
 const MAX_CLOUD_SIZE = 150;
@@ -74,6 +75,9 @@ function make_gas_cloud(cloud, damage, inside_cloud) {
     cloud.arg = damage;
     cloud.visible = true;
     cloud.damaging = !!damage;
+    /* src/region.c:1194 — reg->glyph = cmap_to_glyph(damage ? S_poisoncloud
+       : S_cloud); show_region() (js/display.js) paints it */
+    cloud.glyph_cmap = damage ? cmap_names.S_poisoncloud : cmap_names.S_cloud;
     add_region(cloud);
     /* the "You are enveloped" message needs hero-inside tracking; no
        recorded session stands in a fresh cloud at creation */

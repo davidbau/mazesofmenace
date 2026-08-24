@@ -343,6 +343,29 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
     if (handsbuf || menuquery)
         note_unported_invent('display_pickinv:hands_or_forcemenu');
 
+    /* src/invent.c:3130 — count 0, 1, or more-than-1 candidates. With
+       exactly one item of interest C uses a message-line "menu" instead of
+       a window: the single xprname line gets a --More-- whose dismissal
+       accepts the item's letter (tty_message_menu), which is why reading
+       with one scroll shows "o - a scroll labeled X.--More--" rather than
+       opening a menu. force_invmenu defaults off. */
+    {
+        const n = allowed_choices ? allowed_choices.length
+                  : !game.invent?.length ? 0 : game.invent.length === 1 ? 1 : 2;
+        if (n === 1 && allowed_choices) {
+            const otmp = (game.invent || [])
+                .find(o => o.invlet === allowed_choices[0]);
+            if (otmp) {
+                const { tty_message_menu } = await import('./tty/wintty.js');
+                /* xprname(otmp, NULL, lets[0], TRUE, 0, 0) */
+                const line = `${otmp.invlet} - ${doname(otmp)}.`;
+                const r = await tty_message_menu(otmp.invlet,
+                                                 1 /* PICK_ONE */, line);
+                return (r === '\0' || r === 0) ? 0 : r;
+            }
+        }
+    }
+
     const win = tty_create_nhwindow(W_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
     /* src/invent.c:3273 — C applies the `lets` filter FIRST and only then adds
@@ -1307,6 +1330,19 @@ export async function doprwep() {
     return ECMD_OK;
 }
 
+
+// src/invent.c:2963 dispinv_with_action() — one item prints as a pline
+// ("c - an uncursed +1 leather armor (being worn)."), more open the menu.
+async function dispinv_with_action(objs) {
+    if (objs.length === 1) {
+        const o = objs[0];
+        await pline(`${o.invlet} - ${doname(o)}.`);
+    } else {
+        note_unported_invent('dispinv_with_action:menu');
+    }
+    return ECMD_OK;
+}
+
 // src/invent.c:4601 doprarm() — the '[' command.
 export async function doprarm() {
     const lets = [W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU]
@@ -1316,7 +1352,7 @@ export async function doprarm() {
         /* noarmor(TRUE) */
         await You('are not wearing any armor.');
     } else {
-        note_unported_invent('doprarm:dispinv_with_action');
+        return await dispinv_with_action(lets);
     }
     return ECMD_OK;
 }
@@ -1326,7 +1362,8 @@ export async function doprring() {
     if (!worn(W_RINGL) && !worn(W_RINGR))
         await You('are not wearing any rings.');
     else
-        note_unported_invent('doprring:dispinv_with_action');
+        return await dispinv_with_action(
+            [worn(W_RINGL), worn(W_RINGR)].filter(Boolean));
     return ECMD_OK;
 }
 
@@ -1335,7 +1372,7 @@ export async function dopramulet() {
     if (!worn(W_AMUL))
         await You('are not wearing an amulet.');
     else
-        note_unported_invent('dopramulet:dispinv_with_action');
+        return await dispinv_with_action([worn(W_AMUL)]);
     return ECMD_OK;
 }
 

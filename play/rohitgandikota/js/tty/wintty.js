@@ -589,6 +589,38 @@ export async function tty_display_nhwindow(window) {
     render_page(cw, 0, display);
 }
 
+// win/tty/wintty.c:2819 tty_message_menu() — a one-line "menu": the message
+// plus --More--, where typing the item's letter selects it (the More's
+// dismiss_more mechanism in xwaitforspace).
+export async function tty_message_menu(letter, how, mesg) {
+    const { pline, more, TOPLINE_NEED_MORE } = await import('./../display.js');
+    const { xwaitforspace } = await import('./getline.js');
+    const { PICK_NONE } = await import('./../const.js');
+
+    /* "menu" without selection; use ordinary pline, no more() */
+    if (how === 0 /* PICK_NONE */) {
+        await pline(mesg);
+        return 0;
+    }
+
+    (game.ttyDisplay ||= {}).dismiss_more = letter;
+    game.morc = 0;
+    await pline(mesg);
+    if (game._toplin === TOPLINE_NEED_MORE) {
+        await more();
+        game._toplin = TOPLINE_NEED_MORE; /* more resets this */
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+        game._pending_message = '';
+        const { TOPLINE_EMPTY } = await import('./../display.js');
+        game._toplin = TOPLINE_EMPTY;
+    }
+    game._win_stop = false;             /* wins[WIN_MESSAGE] &= ~WIN_CANCELLED */
+    game.ttyDisplay.dismiss_more = 0;
+
+    return ((how === 1 /* PICK_ONE */ && game.morc === letter)
+            || game.morc === '\x1b') ? game.morc : '\0';
+}
+
 // win/tty/wintty.c:1246 invert_all_on_page()
 function invert_all_on_page(window, page, acc, count) {
     const items = menu_page_items(window, page);

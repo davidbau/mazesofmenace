@@ -9,20 +9,32 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { Is_special, depth } from './dungeon.js';
+import { Is_special, depth, find_level } from './dungeon.js';
 import { load_special, sp_lev_wire_create_maze } from './sp_lev.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, STONE, HWALL, IS_DOOR,
          ACCESSIBLE, W_NONDIGGABLE, POOL, IRONBARS, TLWALL, TRWALL,
          TUWALL, TDWALL, BLCORNER, BRCORNER, TLCORNER,
-         TRCORNER } from './const.js';
-import { isok } from './hacklib.js';
+         TRCORNER, WATER, CLOUD, LAVAPOOL, MAGIC_PORTAL, MOAT,
+         Is_waterlevel, Is_airlevel, Is_firelevel, u_at,
+         MON_BUBBLEMOVE } from './const.js';
+import { isok, distu, sgn } from './hacklib.js';
 import { occupied, somex, somey } from './mklev.js';
-import { t_at, m_at } from './mon.js';
-import { goodpos, rndmonnum } from './makemon.js';
-import { mk_tt_object, mkcorpstat, set_corpsenm } from './mkobj.js';
+import { t_at, m_at, mnexto, mnearto, elemental_clog } from './mon.js';
+import { goodpos, rndmonnum, remove_monster } from './makemon.js';
+import { mk_tt_object, mkcorpstat, set_corpsenm, place_object } from './mkobj.js';
 import { poly_when_stoned } from './mondata.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { ONAMES } from './objects_data.js';
+/* the endgame-plane machinery below; these modules are already in this
+   module's transitive import graph through mon.js, so the static edges add
+   no new cycle — but they must stay AFTER the mon.js import above */
+import { newsym, pline } from './display.js';
+import { block_point, unblock_point, recalc_block_point,
+         vision_recalc } from './vision.js';
+import { obj_extract_self, stackobj } from './invent.js';
+import { cmap_names } from './drawing_data.js';
+import { CLR_BRIGHT_BLUE, CLR_CYAN, CLR_GRAY } from './terminal.js';
+import { RLOC_NOMSG } from './const.js';
 
 function note_unported_mkmaze(what) {
     (game.unported ||= new Set()).add(what);
@@ -129,7 +141,10 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
         break;
     }
     case LR_PORTAL:
-        note_unported_mkmaze('put_lregion_here:mkportal');
+        if (lev)
+            mkportal(x, y, lev.dnum, lev.dlevel);
+        else
+            note_unported_mkmaze('put_lregion_here:mkportal');
         break;
     case LR_DOWNSTAIR:
     case LR_UPSTAIR:
@@ -189,16 +204,22 @@ var mkmaze_mklev_fns;
 export function mkmaze_wire_mklev(fns) { mkmaze_mklev_fns = fns; }
 
 // src/mkmaze.c:570 fixup_special() — post-script placement of lregions and
-// the per-level oddities. The water/air setup, medusa statues, cleric
-// graveyard, stronghold, baalzebub and ransacked-mines arms are recorded.
-export function fixup_special() {
+// the per-level oddities. The medusa statues, cleric graveyard, stronghold,
+// baalzebub and ransacked-mines arms are below; the endgame water/air arm
+// builds the bubbles/clouds before any lregion is placed.
+export async function fixup_special() {
     const lregions = game.lregions || [];
     let added_branch = false;
 
-    if (game.dungeons[game.u.uz.dnum]?.dname === 'The Elemental Planes')
-        note_unported_mkmaze('fixup_special:waterlevel');
+    if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz)) {
+        game.level.flags.hero_memory = 0;
+        /* water level is an odd beast - it has to be set up
+           before calling place_lregions etc. */
+        await setup_waterlevel();
+    }
 
     for (const r of lregions) {
+        let lev = null;
         switch (r.rtype) {
         case LR_BRANCH:
             added_branch = true;
@@ -206,11 +227,25 @@ export function fixup_special() {
         case LR_PORTAL:
         case LR_UPSTAIR:
         case LR_DOWNSTAIR:
-            if (r.rtype === LR_PORTAL)
-                note_unported_mkmaze('fixup_special:portal_dest');
+            if (r.rtype === LR_PORTAL) {
+                /* src/mkmaze.c:591 — a leading digit means "chutes and
+                   ladders" (same-dungeon dlevel); otherwise the name
+                   resolves through find_level() */
+                if (r.rname && r.rname[0] >= '0' && r.rname[0] <= '9') {
+                    lev = { dnum: game.u.uz.dnum,
+                            dlevel: parseInt(r.rname, 10) };
+                } else {
+                    const sp = r.rname ? find_level(r.rname) : null;
+                    if (sp)
+                        lev = { dnum: sp.dlevel.dnum,
+                                dlevel: sp.dlevel.dlevel };
+                    else
+                        note_unported_mkmaze('fixup_special:portal_dest');
+                }
+            }
             place_lregion(r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                           r.delarea.x1, r.delarea.y1, r.delarea.x2,
-                          r.delarea.y2, r.rtype, r.dest ?? null);
+                          r.delarea.y2, r.rtype, lev);
             break;
         default:
             /* save the region outlines for goto_level() */
@@ -622,5 +657,604 @@ export function walkfrom(x, y, typ) {
            call the while(1) continues from the MOVED position, not the
            frame's original one. The draw order depends on this. */
         x = c.x; y = c.y;
+    }
+}
+
+/* ==== the endgame planes (src/mkmaze.c:1464-2103) ==== */
+
+// src/mkmaze.c:1464 mkportal() — a portal "trap" must be matched by a portal
+// in the destination dungeon/dlevel. maketrap comes through the mklev wire.
+export function mkportal(x, y, todnum, todlevel) {
+    const ttmp = mkmaze_mklev_fns?.maketrap?.(x, y, MAGIC_PORTAL);
+
+    if (!ttmp) {
+        /* impossible("portal on top of portal?") */
+        note_unported_mkmaze('mkportal:refused');
+        return;
+    }
+    ttmp.dst = { dnum: todnum, dlevel: todlevel };
+}
+
+// src/mkmaze.c:1484 fumaroles() — lava emits poison gas at random. Up to
+// rn2(3)+2 probe points on a hot fire level; each that lands on lava grows
+// a gas cloud (create_gas_cloud draws size/damage/shape).
+export async function fumaroles() {
+    let nmax = rn2(3);
+    let sizemin = 5;
+    let snd = false, loud = false;
+
+    if (Is_firelevel(game.u.uz)) {
+        nmax++;
+        sizemin += 5;
+    }
+    if ((game.level.flags.temperature | 0) > 0) {
+        nmax++;
+        sizemin += 5;
+    }
+
+    for (let n = nmax; n; n--) {
+        const x = rn1(COLNO - 4, 3);
+        const y = rn1(ROWNO - 4, 3);
+
+        if (game.level.at(x, y)?.typ === LAVAPOOL) {
+            const { create_gas_cloud } = await import('./region.js');
+            const r = create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5));
+
+            /* include/region.h:22 clear_heros_fault(): not the hero's doing */
+            if (r)
+                r.player_flags = (r.player_flags | 0) | 2; /* REG_NOT_HEROS */
+            snd = true;
+            if (distu(x, y) < 15)
+                loud = true;
+        }
+    }
+    if (snd) {
+        const { Deaf } = await import('./youprop.js');
+        if (!Deaf()) {
+            const { Norep } = await import('./pline.js');
+            await Norep(`You hear a ${loud ? 'loud ' : ''}whoosh!`);
+        }
+    }
+}
+
+/*
+ * Special waterlevel stuff in endgame (TH) — src/mkmaze.c:1520.
+ *
+ * C keeps the bubble list on svb.bbubbles/ge.ebubbles, the bounds in
+ * svx/svy fields and hero_bubble/up in file-scope statics; one session is
+ * one game process, so module state has the same lifetime. The list is
+ * written to (and read back from) the in-memory saved level by
+ * save_waterlevel()/restore_waterlevel(), where C uses the level file.
+ */
+
+/* bubble movement boundaries — src/mkmaze.c:1523 gbxmin..gbymax over the
+   svx.xmin/svy.ymin/svx.xmax/svy.ymax statics */
+let wlev_xmin = 0, wlev_ymin = 0, wlev_xmax = 0, wlev_ymax = 0;
+const gbxmin = () => wlev_xmin + 1;
+const gbymin = () => wlev_ymin + 1;
+const gbxmax = () => wlev_xmax - 1;
+const gbymax = () => wlev_ymax - 1;
+
+/* svb.bbubbles / ge.ebubbles; static struct bubble *hero_bubble */
+let bbubbles = null, ebubbles = null;
+let hero_bubble = null;
+
+/* include/hack.h:162 enum bubble_contains_types */
+const CONS_OBJ = 0, CONS_MON = 1, CONS_HERO = 2, CONS_TRAP = 3;
+
+/* the whole-rm backdrop stamps movebubbles/setup_waterlevel write into the
+   hero's map memory: C's water_pos/air_pos (mkmaze.c:1541) and
+   setup_waterlevel's cmap_to_glyph. Values mirror display.js
+   terrain_glyph() rows for WATER/AIR/CLOUD. */
+const WATER_GLYPH = () => ({ ch: '`', color: CLR_BRIGHT_BLUE, decgfx: true,
+                             glyph: { kind: 'cmap',
+                                      cmap: cmap_names.S_water } });
+const AIR_GLYPH = () => ({ ch: ' ', color: CLR_CYAN, decgfx: false,
+                           glyph: { kind: 'cmap', cmap: cmap_names.S_air } });
+const CLOUD_GLYPH = () => ({ ch: '#', color: CLR_GRAY, decgfx: false,
+                             glyph: { kind: 'cmap',
+                                      cmap: cmap_names.S_cloud } });
+
+/* struct rm assignment — levl[x][y] = water_pos/air_pos resets every field
+   of the square, not just typ and lit */
+function set_whole_rm(loc, typ, lit, memglyph) {
+    loc.typ = typ;
+    loc.lit = !!lit;
+    loc.waslit = false;
+    loc.seenv = 0;
+    loc.flags = 0;
+    loc.doormask = 0;
+    loc.horizontal = false;
+    loc.roomno = 0;
+    loc.edge = false;
+    loc.wall_info = 0;
+    loc.remembered_glyph = memglyph;
+}
+
+// src/mkmaze.c:1538 movebubbles() — augment the Planes of Water (bubbles)
+// and Air (clouds); called from goto_level() when arriving and
+// moveloop_core() when on the level.
+let movebubbles_up = false;         /* static boolean up = FALSE */
+
+export async function movebubbles() {
+    const g = game;
+
+    /* set up the portal the first time bubbles are moved */
+    if (!g.wportal)
+        set_wportal();
+
+    vision_recalc(2);
+
+    hero_bubble = null;
+
+    if (Is_waterlevel(g.u.uz)) {
+        /* keep attached ball&chain separate from bubble objects */
+        if (g.uball)
+            note_unported_mkmaze('movebubbles:unplacebc');
+
+        /*
+         * Pick up everything inside of a bubble then fill all bubble
+         * locations.
+         */
+        for (let b = movebubbles_up ? bbubbles : ebubbles; b;
+             b = movebubbles_up ? b.next : b.prev) {
+            if (b.cons.length)
+                throw new Error('movebubbles: cons != null');
+            for (let i = 0, x = b.x; i < b.bm[0]; i++, x++)
+                for (let j = 0, y = b.y; j < b.bm[1]; j++, y++)
+                    if (b.bm[j + 2] & (1 << i)) {
+                        if (!isok(x, y))
+                            continue;   /* impossible("bad pos") */
+
+                        /* pick up objects, monsters, hero, and traps */
+                        const olist = (g.level.objects || [])
+                            .filter(o => o.ox === x && o.oy === y);
+                        if (olist.length) {
+                            for (const otmp of olist) {
+                                obj_extract_self(otmp);  /* remove_object */
+                                otmp.ox = otmp.oy = 0;
+                            }
+                            /* C reverses the pile into cons->list and
+                               reverses it again on the way back down; the
+                               head-first array with reversed placement
+                               reproduces that */
+                            b.cons.unshift({ x, y, what: CONS_OBJ,
+                                             list: olist });
+                        }
+                        const mon = m_at(x, y);
+                        if (mon) {
+                            b.cons.unshift({ x, y, what: CONS_MON,
+                                             list: mon });
+                            /* mon->wormno remove_worm: no worms swim the
+                               Plane of Water's bubbles in any session */
+                            remove_monster(x, y);
+                            await newsym(x, y); /* clean up old position */
+                            mon.mx = mon.my = 0;
+                            mon.mstate = (mon.mstate | 0) | MON_BUBBLEMOVE;
+                        }
+                        if (!g.u.uswallow && u_at(x, y)) {
+                            b.cons.unshift({ x, y, what: CONS_HERO,
+                                             list: null });
+                            hero_bubble = b;
+                        }
+                        const btrap = t_at(x, y);
+                        if (btrap) {
+                            b.cons.unshift({ x, y, what: CONS_TRAP,
+                                             list: btrap });
+                        }
+
+                        set_whole_rm(g.level.at(x, y), WATER, 0,
+                                     WATER_GLYPH());
+                        block_point(x, y);
+                    }
+        }
+    } else if (Is_airlevel(g.u.uz)) {
+        for (let x = 1; x <= COLNO - 1; x++)
+            for (let y = 0; y <= ROWNO - 1; y++) {
+                /* air_pos: the remembered glyph is the CLOUD one even
+                   though the terrain reverts to AIR (mkmaze.c:1543) */
+                set_whole_rm(game.level.at(x, y), AIR, 1, CLOUD_GLYPH());
+                recalc_block_point(x, y);
+                /* all air or all cloud around the perimeter of the Air
+                   level tends to look strange; break up the pattern */
+                const xedge = (x < gbxmin() || x > gbxmax());
+                const yedge = (y < gbymin() || y > gbymax());
+                if (xedge || yedge) {
+                    if (!rn2(xedge ? 3 : 5)) {
+                        game.level.at(x, y).typ = CLOUD;
+                        block_point(x, y);
+                    }
+                }
+            }
+    }
+
+    /*
+     * Every second time traverse down.  This is because otherwise
+     * all the junk that changes owners when bubbles overlap
+     * would eventually end up in the last bubble in the chain.
+     */
+    movebubbles_up = !movebubbles_up;
+    for (let b = movebubbles_up ? bbubbles : ebubbles; b;
+         b = movebubbles_up ? b.next : b.prev) {
+        const rx = rn2(3), ry = rn2(3);
+
+        await mv_bubble(b, b.dx + 1 - (!b.dx ? rx : (rx ? 1 : 0)),
+                        b.dy + 1 - (!b.dy ? ry : (ry ? 1 : 0)), false);
+    }
+
+    /* put attached ball&chain back */
+    if (Is_waterlevel(g.u.uz) && g.uball)
+        note_unported_mkmaze('movebubbles:placebc');
+    g.vision_full_recalc = 1;
+}
+
+// src/mkmaze.c:1688 water_friction() — when moving in water, possibly
+// (1 in 3) alter the intended destination.
+export async function water_friction() {
+    const g = game;
+    let eff = false;
+
+    /* Swimming — no session hero has intrinsic swimming yet */
+    if (g.u.uprops?.SWIMMING && rn2(4))
+        return; /* natural swimmers have advantage */
+
+    if (g.u.dx && !rn2(!g.u.dy ? 3 : 6)) { /* 1/3 chance or half that */
+        /* cancel delta x and choose an arbitrary delta y value */
+        const x = g.u.ux;
+        let dy, y;
+        do {
+            dy = rn2(3) - 1; /* -1, 0, 1 */
+            y = g.u.uy + dy;
+        } while (dy && (!isok(x, y) || !mklev_is_pool(x, y)));
+        g.u.dx = 0;
+        g.u.dy = dy;
+        eff = true;
+    } else if (g.u.dy && !rn2(!g.u.dx ? 3 : 5)) { /* 1/3 or 1/5*(5/6) */
+        /* cancel delta y and choose an arbitrary delta x value */
+        const y = g.u.uy;
+        let dx, x;
+        do {
+            dx = rn2(3) - 1; /* -1 .. 1 */
+            x = g.u.ux + dx;
+        } while (dx && (!isok(x, y) || !mklev_is_pool(x, y)));
+        g.u.dy = 0;
+        g.u.dx = dx;
+        eff = true;
+    }
+    if (eff)
+        await pline('Water turbulence affects your movements.');
+}
+
+/* is_pool() lives in js/mon.js's wire set; reach it through the same
+   mon_fns-style seam sp_lev.js uses, but locally: dynamic would be per
+   call, so resolve through the sp_lev wire helper below. */
+function mklev_is_pool(x, y) {
+    const typ = game.level.at(x, y)?.typ;
+    /* include/rm.h is_pool(): POOL, MOAT, WATER */
+    return typ === POOL || typ === MOAT || typ === WATER;
+}
+
+// src/mkmaze.c:1724 save_waterlevel() — the bubble list is written with the
+// level (here: parked on the in-memory saved level) and then freed.
+export function save_waterlevel() {
+    if (!bbubbles)
+        return;
+
+    const blist = [];
+    for (let b = bbubbles; b; b = b.next)
+        blist.push({ x: b.x, y: b.y, dx: b.dx, dy: b.dy,
+                     bm: b.bm.slice() });
+    game.level._waterlevel = { bubbles: blist, xmin: wlev_xmin,
+                               ymin: wlev_ymin, xmax: wlev_xmax,
+                               ymax: wlev_ymax };
+    unsetup_waterlevel();       /* release_data() arm */
+}
+
+// src/mkmaze.c:1751 restore_waterlevel() — restoring air bubbles on the
+// Plane of Water or clouds on the Plane of Air: rebuild the list and
+// mv_bubble(b, 0, 0, TRUE) each one (on the Air level that DRAWS the
+// rn2(6) cloud-speed gate per bubble, exactly as C's restore does).
+export async function restore_waterlevel() {
+    const saved = game.level._waterlevel;
+    if (!saved)
+        return;
+
+    wlev_xmin = saved.xmin;
+    wlev_ymin = saved.ymin;
+    wlev_xmax = saved.xmax;
+    wlev_ymax = saved.ymax;
+    let b = null;
+    for (const sb of saved.bubbles) {
+        const btmp = b;
+        b = { x: sb.x, y: sb.y, dx: sb.dx, dy: sb.dy, bm: sb.bm.slice(),
+              cons: [], prev: null, next: null };
+        if (btmp) {
+            btmp.next = b;
+            b.prev = btmp;
+        } else {
+            bbubbles = b;
+            b.prev = null;
+        }
+        await mv_bubble(b, 0, 0, true);
+    }
+    ebubbles = b;
+    if (b)
+        b.next = null;
+    delete game.level._waterlevel;
+}
+
+// src/mkmaze.c:1802 set_wportal() — there better be only one magic portal
+// on the water level...
+function set_wportal() {
+    for (const t of (game.level.traps || []))
+        if (t.ttyp === MAGIC_PORTAL) {
+            game.wportal = t;
+            return;
+        }
+    game.wportal = null;
+    /* impossible("set_wportal(): no portal!") */
+}
+
+// src/mkmaze.c:1812 setup_waterlevel() — flood the level's memory with the
+// water/air backdrop, then sow the bubble grid: xskip/yskip each draw once,
+// and every mk_bubble draws rn2(7) for its size plus its direction pair.
+async function setup_waterlevel() {
+    const water = Is_waterlevel(game.u.uz);
+
+    if (!water && !Is_airlevel(game.u.uz))
+        throw new Error("setup_waterlevel(): neither 'Water' nor 'Air'");
+
+    /* ouch, hardcoded... */
+    wlev_xmin = 3;
+    wlev_ymin = 1;
+    wlev_xmax = Math.min(78, COLNO - 1 - 1);
+    wlev_ymax = Math.min(20, ROWNO - 1);
+
+    /* entire level is remembered as one glyph and any unspecified portion
+       should default to level's base element rather than to usual stone */
+    const typ = water ? WATER : AIR;
+
+    /* set unspecified terrain (stone) and hero's memory to water or air */
+    for (let x = 1; x <= COLNO - 1; x++)
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const loc = game.level.at(x, y);
+            loc.remembered_glyph = water ? WATER_GLYPH() : AIR_GLYPH();
+            if (loc.typ === STONE)
+                loc.typ = typ;
+        }
+
+    /* make bubbles */
+    let xskip, yskip;
+    if (water) {
+        xskip = 10 + rn2(10);
+        yskip = 4 + rn2(4);
+    } else {
+        xskip = 6 + rn2(4);
+        yskip = 3 + rn2(3);
+    }
+
+    for (let x = gbxmin(); x <= gbxmax(); x += xskip)
+        for (let y = gbymin(); y <= gbymax(); y += yskip)
+            await mk_bubble(x, y, rn2(7));
+}
+
+// src/mkmaze.c:1859 unsetup_waterlevel() — free the bubbles.
+function unsetup_waterlevel() {
+    bbubbles = ebubbles = null;
+}
+
+/* src/mkmaze.c:1872 mk_bubble() — the static bubble bitmasks. "These bit
+   masks make visually pleasing bubbles on a normal aspect 25x80 terminal,
+   which naturally results in them being mathematically anything but
+   symmetric." First two entries are the bounding box. */
+const bmask = [
+    [2, 1, 0x3],
+    [3, 2, 0x7, 0x7],
+    [4, 3, 0x6, 0xf, 0x6],
+    [5, 3, 0xe, 0x1f, 0xe],
+    [6, 4, 0x1e, 0x3f, 0x3f, 0x1e],
+    [7, 4, 0x3e, 0x7f, 0x7f, 0x3e],
+    [8, 4, 0x7e, 0xff, 0xff, 0x7e],
+];
+
+// src/mkmaze.c:1866 mk_bubble()
+async function mk_bubble(x, y, n) {
+    if (x >= gbxmax() || y >= gbymax())
+        return;
+    if (n >= bmask.length)
+        n = bmask.length - 1;       /* impossible("n too large") */
+
+    if ((x + bmask[n][0] - 1) > gbxmax())
+        x = gbxmax() - bmask[n][0] + 1;
+    if ((y + bmask[n][1] - 1) > gbymax())
+        y = gbymax() - bmask[n][1] + 1;
+    const b = {
+        x, y,
+        dx: 1 - rn2(3),
+        dy: 1 - rn2(3),
+        /* y dimension is the length of bitmap data - see bmask above */
+        bm: bmask[n].slice(),
+        cons: [],
+        prev: null, next: null,
+    };
+    if (!bbubbles)
+        bbubbles = b;
+    if (ebubbles) {
+        ebubbles.next = b;
+        b.prev = ebubbles;
+    } else
+        b.prev = null;
+    b.next = null;
+    ebubbles = b;
+    await mv_bubble(b, 0, 0, true);
+}
+
+// src/mkmaze.c:1929 maybe_adjust_hero_bubble() — maybe change the movement
+// direction of the bubble the hero is in: one rn2(2) after every actual
+// hero move on the Plane of Water.
+export function maybe_adjust_hero_bubble() {
+    if (!Is_waterlevel(game.u.uz))
+        return;
+
+    if (!game.u.dx && !game.u.dy)
+        return;
+
+    if (hero_bubble && !rn2(2)) {
+        hero_bubble.dx = game.u.dx;
+        hero_bubble.dy = game.u.dy;
+    }
+}
+
+/*
+ * src/mkmaze.c:1955 mv_bubble() — the player, the portal and all other
+ * objects and monsters float along with their associated bubbles.  Bubbles
+ * may overlap freely, and the contents may get associated with other
+ * bubbles in the process.
+ */
+async function mv_bubble(b, dx, dy, ini) {
+    let colli = 0;
+
+    /* clouds move slowly */
+    if (!Is_airlevel(game.u.uz) || !rn2(6)) {
+        /* move bubble */
+        if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
+            dx = sgn(dx);
+            dy = sgn(dy);
+        }
+
+        /*
+         * collision with level borders?
+         *      1 = horizontal border, 2 = vertical, 3 = corner
+         */
+        if (b.x <= gbxmin())
+            colli |= 2;
+        if (b.y <= gbymin())
+            colli |= 1;
+        if ((b.x + b.bm[0] - 1) >= gbxmax())
+            colli |= 2;
+        if ((b.y + b.bm[1] - 1) >= gbymax())
+            colli |= 1;
+
+        if (b.x < gbxmin()) {
+            await pline(`bubble xmin: x = ${b.x}, xmin = ${gbxmin()}`);
+            b.x = gbxmin();
+        }
+        if (b.y < gbymin()) {
+            await pline(`bubble ymin: y = ${b.y}, ymin = ${gbymin()}`);
+            b.y = gbymin();
+        }
+        if ((b.x + b.bm[0] - 1) > gbxmax()) {
+            await pline(`bubble xmax: x = ${b.x + b.bm[0] - 1}, xmax = ${
+                        gbxmax()}`);
+            b.x = gbxmax() - b.bm[0] + 1;
+        }
+        if ((b.y + b.bm[1] - 1) > gbymax()) {
+            await pline(`bubble ymax: y = ${b.y + b.bm[1] - 1}, ymax = ${
+                        gbymax()}`);
+            b.y = gbymax() - b.bm[1] + 1;
+        }
+
+        /* bounce if we're trying to move off the border */
+        if (b.x === gbxmin() && dx < 0)
+            dx = -dx;
+        if (b.x + b.bm[0] - 1 === gbxmax() && dx > 0)
+            dx = -dx;
+        if (b.y === gbymin() && dy < 0)
+            dy = -dy;
+        if (b.y + b.bm[1] - 1 === gbymax() && dy > 0)
+            dy = -dy;
+
+        b.x += dx;
+        b.y += dy;
+    }
+
+    /* draw the bubbles */
+    for (let i = 0, x = b.x; i < b.bm[0]; i++, x++)
+        for (let j = 0, y = b.y; j < b.bm[1]; j++, y++)
+            if (b.bm[j + 2] & (1 << i)) {
+                if (Is_waterlevel(game.u.uz)) {
+                    const loc = game.level.at(x, y);
+                    loc.typ = AIR;
+                    loc.lit = true;
+                    unblock_point(x, y);
+                } else if (Is_airlevel(game.u.uz)) {
+                    const loc = game.level.at(x, y);
+                    loc.typ = CLOUD;
+                    loc.lit = true;
+                    block_point(x, y);
+                }
+            }
+
+    if (Is_waterlevel(game.u.uz)) {
+        /* replace contents of bubble */
+        for (const cons of b.cons) {
+            cons.x += dx;
+            cons.y += dy;
+
+            switch (cons.what) {
+            case CONS_OBJ: {
+                /* C walks its reversed chain, prepending each; iterating
+                   the head-first array in reverse restores pile order */
+                for (let k = cons.list.length - 1; k >= 0; k--) {
+                    place_object(cons.list[k], cons.x, cons.y);
+                    stackobj(cons.list[k]);
+                }
+                break;
+            }
+            case CONS_MON: {
+                const mon = cons.list;
+
+                /* mnearto() might fail. We can jump right to
+                   elemental_clog from here rather than
+                   deal_with_overcrowding() */
+                if (!await mnearto(mon, cons.x, cons.y, true, RLOC_NOMSG))
+                    await elemental_clog(mon);
+                break;
+            }
+            case CONS_HERO: {
+                const mtmp = m_at(cons.x, cons.y);
+                const ux0 = game.u.ux, uy0 = game.u.uy;
+
+                game.u.ux = cons.x;     /* u_on_newpos() */
+                game.u.uy = cons.y;
+                await newsym(ux0, uy0); /* clean up old position */
+
+                if (mtmp) {
+                    mnexto(mtmp, RLOC_NOMSG);
+                }
+                break;
+            }
+            case CONS_TRAP: {
+                const btrap = cons.list;
+
+                btrap.tx = cons.x;
+                btrap.ty = cons.y;
+                break;
+            }
+            default:
+                throw new Error('mv_bubble: unknown bubble contents');
+            }
+        }
+        b.cons = [];
+    }
+
+    /* boing? */
+    switch (colli) {
+    case 1:
+        b.dy = -b.dy;
+        break;
+    case 3:
+        b.dy = -b.dy;
+        /* FALLTHRU */
+    case 2:
+        b.dx = -b.dx;
+        break;
+    default:
+        /* sometimes alter direction for fun anyway
+           (higher probability for stationary bubbles) */
+        if (!ini && ((b.dx || b.dy) ? !rn2(20) : !rn2(5))) {
+            b.dx = 1 - rn2(3);
+            b.dy = 1 - rn2(3);
+        }
     }
 }

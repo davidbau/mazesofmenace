@@ -86,8 +86,11 @@ function align_str(alignment) {
 
 
 function monname(idx) {
+    /* C reads mons[i].pmnames[NEUTRAL] — index 2; the male/female slots are
+       null for ungendered monsters like Pelias */
     const pm = mons[idx];
-    return (type_is_pname(pm) ? '' : 'the ') + pm.pmnames[0];
+    return (type_is_pname(pm) ? '' : 'the ')
+           + (pm.pmnames[2] ?? pm.pmnames[0] ?? pm.pmnames[1]);
 }
 
 // src/questpgr.c:50 ldrname(), :121 neminame(), :131 guardname()
@@ -227,6 +230,23 @@ function convert_line(in_line) {
         out += ch;
     }
     return out;
+}
+
+// src/questpgr.c:423 deliver_by_pline() — one pline per newline-separated
+// line, each through convert_line()'s %-code expansion.
+async function deliver_by_pline(str) {
+    const { pline } = await import('./display.js');
+    for (const line of String(str).split('\n'))
+        await pline(convert_line(line));
+}
+
+// src/questpgr.c:655 deliver_splev_message() — special levels can include a
+// custom arrival message (des.message); display it once, then discard it.
+export async function deliver_splev_message() {
+    if (game.lev_message) {
+        await deliver_by_pline(game.lev_message);
+        game.lev_message = null;
+    }
 }
 
 // src/questpgr.c:438 deliver_by_window()

@@ -24,7 +24,8 @@ import { magic_negation } from './mhitu.js';
 function note_unported_insight(what) {
     (game.unported ||= new Set()).add('insight:' + what);
 }
-import { depth } from './dungeon.js';
+import { depth, dunlev, endgamelevelname } from './dungeon.js';
+import { In_endgame, In_quest, Is_knox_level } from './const.js';
 import { aligns } from './role_data.js';
 import { A_MAX } from './attrib.js';
 import { rank_of } from './botl.js';
@@ -35,7 +36,11 @@ import { type_is_pname } from './mondata.js';
 import { inv_weight } from './attrib.js';
 import { ONAMES } from './objects_data.js';
 import { pline } from './display.js';
-import { Fast, Very_fast } from './attrib.js';
+import { Fast, Very_fast, from_what } from './attrib.js';
+import { Fire_resistance, Cold_resistance, Sleep_resistance,
+         Shock_resistance, Poison_resistance, Stealth, Searching,
+         Warning, Teleport_control, See_invisible,
+         Infravision } from './youprop.js';
 
 // include/attrib.h
 const A_STR = 0, A_INT = 1, A_WIS = 2, A_DEX = 3, A_CON = 4, A_CHA = 5;
@@ -140,13 +145,27 @@ function background_enlightenment() {
 
     you_are((u.uhandedness === RIGHT_HANDED) ? 'right-handed' : 'left-handed');
 
-    /* "in %s, on %s" — dungeon name with a leading "The " stripped */
-    /* src/insight.c:152 — a leading "The " is LOWERCASED, not stripped, so
-       the sentence reads "in the Dungeons of Doom". */
-    let dgnbuf = game.dungeons[u.uz.dnum].dname;
-    if (/^the /i.test(dgnbuf))
-        dgnbuf = dgnbuf[0].toLowerCase() + dgnbuf.slice(1);
-    you_are(`in ${dgnbuf}, on level ${depth(u.uz)}`);
+    /* src/insight.c:604 — dungeon level, so that ^X really has all status
+       info as claimed */
+    if (In_endgame(u.uz)) {
+        /* observable_depth() is just depth() (topten.c:183, the
+           randomized-planes arm is #if 0) */
+        const tmpbuf = endgamelevelname(depth(u.uz));
+        you_are(`in the endgame, on the ${
+            tmpbuf.startsWith('Plane') ? 'Elemental ' : ''}${tmpbuf}`);
+    } else if (Is_knox_level(u.uz)) {
+        /* this gives away the fact that the knox branch is only 1 level */
+        you_are(`on the ${game.dungeons[u.uz.dnum].dname} level`);
+    } else {
+        /* "in %s, on %s" — dungeon name with a leading "The " LOWERCASED,
+           not stripped, so the sentence reads "in the Dungeons of Doom"
+           (src/insight.c:152) */
+        let dgnbuf = game.dungeons[u.uz.dnum].dname;
+        if (/^the /i.test(dgnbuf))
+            dgnbuf = dgnbuf[0].toLowerCase() + dgnbuf.slice(1);
+        you_are(`in ${dgnbuf}, on level ${
+            In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz)}`);
+    }
 
     if (game.moves === 1)
         you_have('just started your adventure');
@@ -518,6 +537,38 @@ function attributes_enlightenment() {
                 game.wizard ? ' because of your cloak of magic resistance'
                             : '');
 
+    /* src/insight.c:1526-1541 — resistances to troubles, each with
+       from_what() naming the source in wizard mode */
+    if (Fire_resistance())
+        you_are('fire resistant', from_what('HFire_resistance'));
+    if (Cold_resistance())
+        you_are('cold resistant', from_what('HCold_resistance'));
+    if (Sleep_resistance())
+        you_are('sleep resistant', from_what('HSleep_resistance'));
+    if (Shock_resistance())
+        you_are('shock resistant', from_what('HShock_resistance'));
+    if (Poison_resistance())
+        you_are('poison resistant', from_what('HPoison_resistance'));
+
+    /*** Vision and senses (insight.c:1566) ***/
+    if (See_invisible())
+        enl_msg('You ', 'see ', 'saw ', 'invisible',
+                from_what('HSee_invisible'));
+    if (Warning())
+        you_are('warned', from_what('HWarning'));
+    if (Searching())
+        you_have('automatic searching', from_what('HSearching'));
+    if (Infravision())
+        you_have('infravision', from_what('HInfravision'));
+
+    /*** Appearance and behavior (insight.c:1670) ***/
+    if (Stealth())
+        you_are('stealthy', from_what('HStealth'));
+
+    /*** Transportation (insight.c:1688) ***/
+    if (Teleport_control())
+        you_have('teleport control', from_what('HTeleport_control'));
+
     /* src/insight.c:1799 — the magic cancellation factor from worn armor:
        "warded" / "guarded" / "protected" for mc 1..3 */
     const armpro = magic_negation(null);
@@ -525,6 +576,10 @@ function attributes_enlightenment() {
         const mc_types = ['', 'warded', 'guarded', 'protected'];
         you_are(mc_types[Math.min(armpro, 3)]);
     }
+
+    /* src/insight.c:1898 — Fast, between the mc line and Luck */
+    if (Fast())
+        you_are(Very_fast() ? 'very fast' : 'fast', from_what('HFast'));
 
     /* src/insight.c:1909 — Luck; the zero line is wizard-mode only */
     const luck = (game.u.uluck ?? 0) + (game.u.moreluck ?? 0);

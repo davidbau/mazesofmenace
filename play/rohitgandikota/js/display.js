@@ -27,10 +27,14 @@ import {
     WM_C_OUTER, WM_C_INNER, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    M_AP_FURNITURE, M_AP_OBJECT,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, ACCESSIBLE, Is_rogue_level,
 } from './const.js';
 import { engr_at } from './engrave.js';
+import { visible_region_at } from './region.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { is_pool } from './mon.js';
 import { nhgetch } from './input.js';
+import { update_lastseentyp } from './dungeon.js';
 import { def_monsyms, def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
 import { PMNAMES } from './monst_data.js';
 import { showsym } from './symbols.js';
@@ -595,19 +599,25 @@ const trap_cmap_color = {
 };
 
 // include/rm.h:497 trap_to_defsym() — S_arrow_trap + ttyp - 1.
-function trap_glyph(trap) {
+export function trap_glyph(trap) {
     const cmap = CM.S_arrow_trap + trap.ttyp - 1;
     const sym = showsym(cmap);
     return { ch: sym ? sym.ch : '^', color: trap_cmap_color[cmap] ?? NO_COLOR,
              cmap };
 }
 
-// include/display.h:218 covers_objects() / :222 covers_traps() — a pool or
-// lava square hides what is under it.
-function covers_traps(x, y) {
-    const loc = game.level?.at(x, y);
-    return !!loc && (loc.typ === POOL || loc.typ === MOAT || loc.typ === WATER
-                     || loc.typ === LAVAPOOL || loc.typ === LAVAWALL);
+// include/display.h:218 covers_objects() — what is really at the location
+// "covers" any objects that might be there: water (unless the hero is under
+// it too) and lava.
+export function covers_objects(x, y) {
+    const typ = game.level?.at(x, y)?.typ;
+    return (is_pool(x, y) && !game.u?.uinwater)
+           || typ === LAVAPOOL || typ === LAVAWALL;
+}
+
+// include/display.h:222 covers_traps()
+export function covers_traps(x, y) {
+    return covers_objects(x, y);
 }
 
 // ── src/display.c:2302 back_to_glyph() — terrain to cmap index + colour ──
@@ -719,6 +729,27 @@ export function back_to_glyph(loc, x, y) {
 
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
+}
+
+// include/flag.h flags.dark_room && iflags.use_color — dark_room defaults ON
+// in 5.0 (optlist.h:264) and the tty runs in color.
+function dark_room_color() {
+    return game.flags?.dark_room !== false;
+}
+
+// include/display.h DARKROOMSYM — S_darkroom when dark_room+color, else
+// S_stone. S_darkroom renders through the active symset, where
+// assign_graphics() has copied S_room's symbol into its slot
+// (display.c:1851): the DEC middle dot under DECgraphics, '.' otherwise.
+// defsym.h's CLR_BLACK collapses to the default foreground, so the cell
+// records identically to a plain floor except for its memory identity.
+function darkroomsym_cell() {
+    if (!dark_room_color())
+        return { ch: ' ', color: NO_COLOR, decgfx: false,
+                 glyph: { kind: 'cmap', cmap: cmap_names.S_stone } };
+    const s = showsym(cmap_names.S_darkroom);
+    return { ch: s ? s.ch : '.', color: CLR_BLACK, decgfx: s ? !!s.dec : false,
+             glyph: { kind: 'cmap', cmap: cmap_names.S_darkroom } };
 }
 
 // ── show_glyph_cell ──
@@ -938,6 +969,14 @@ export function see_nearby_objects() {
 }
 
 export function newsym(x, y) {
+    /* src/display.c:926 — don't try to produce map output when level is in
+       a state of flux (_suppress_map_output: in_mklev, saving, restoring).
+       Without this, an object placed during level GENERATION could pass the
+       cansee() test against the PREVIOUS level's vision array and write
+       itself into the new level's map memory: seed0373's sokoban arrival
+       remembered a spellbook in a dark room the hero had never seen. */
+    if (game.in_mklev)
+        return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
@@ -951,6 +990,23 @@ export function newsym(x, y) {
        default-coloured instead of white. */
     if (cansee(x, y))
         loc.waslit = loc.lit ? 1 : 0;
+
+    /* src/display.c:993 — a visible gas-cloud region covers the spot:
+       normal region shown only on accessible positions, but poison clouds
+       and steam clouds also shown above lava, pools and moats. Sensed or
+       adjacent-visible monsters take precedence over the cloud. */
+    if (cansee(x, y)) {
+        const reg = visible_region_at(x, y);
+        if (reg && (ACCESSIBLE(loc.typ)
+                    || (reg.visible && is_pool_or_lava(x, y)))) {
+            const mon0 = (game.level?.monsters || [])
+                .find(m => m.mx === x && m.my === y && m.mhp > 0);
+            if (!mon_overrides_region(mon0 || null, x, y)) {
+                show_region(reg, x, y);
+                return;
+            }
+        }
+    }
 
     if (game.u?.ux === x && game.u?.uy === y) {
         /* Hero. Map memory keeps the topmost non-monster layer, so an object
@@ -966,13 +1022,15 @@ export function newsym(x, y) {
                             { kind: 'hero' });
         else
             show_glyph_cell(x, y, '@', CLR_WHITE, false, 0, { kind: 'hero' });
-        const under = (game.level?.objects || [])
-                          .find(o => o.ox === x && o.oy === y);
+        const under = covers_objects(x, y) ? null
+            : (game.level?.objects || [])
+                  .find(o => o.ox === x && o.oy === y);
         const tg = under ? floor_object_glyph(under, x, y)
                          : terrain_glyph(loc, x, y);
         loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
                                  glyph: tg.glyph
                                      ?? { kind: 'cmap', cmap: tg.cmap } };
+        update_lastseentyp(x, y);   /* _map_location(x, y, !see_self) */
         return;
     }
 
@@ -983,9 +1041,12 @@ export function newsym(x, y) {
     // layer too — a monster is drawn OVER it and is not itself remembered.
     if (cansee(x, y)) {
         /* C shows the TOP of the pile, and our object list is newest-first
-           (place_object prepends), so the first match is the top. */
-        const obj = (game.level?.objects || [])
-                        .find(o => o.ox === x && o.oy === y);
+           (place_object prepends), so the first match is the top.
+           _map_location: vobj_at(x,y) && !covers_objects(x,y) — a pool or
+           lava square hides what floats... sinks under it. */
+        const obj = covers_objects(x, y) ? null
+            : (game.level?.objects || [])
+                  .find(o => o.ox === x && o.oy === y);
         const memg = obj ? floor_object_glyph(obj, x, y)
                          : (engraving_glyph(loc, x, y)
                             || terrain_glyph(loc, x, y));
@@ -994,6 +1055,7 @@ export function newsym(x, y) {
                                      decgfx: memg.dec,
                                      glyph: memg.glyph
                                          ?? { kind: 'cmap', cmap: memg.cmap } };
+        update_lastseentyp(x, y);   /* _map_location(x, y, 1) */
 
         const mon = (game.level?.monsters || [])
                         .find(m => m.mx === x && m.my === y && m.mhp > 0
@@ -1057,8 +1119,14 @@ export function newsym(x, y) {
        never drawn: seed0002 knew about the dart trap at (75,12) with tseen
        set from step 87 on and still painted plain floor there. */
     {
+        /* _map_location's chain: the OBJECT arm comes first, so a trap under
+           a visible object never reaches map_trap — the corpse on seed0004's
+           bear trap keeps showing '%' after the trap is found. */
         const trap = t_at(x, y);
-        if (trap && trap.tseen && !covers_traps(x, y)) {
+        const objhere = !covers_objects(x, y)
+            && (game.level?.objects || [])
+                   .some(o => o.ox === x && o.oy === y);
+        if (!objhere && trap && trap.tseen && !covers_traps(x, y)) {
             const tg = trap_glyph(trap);
             if (game.level?.flags?.hero_memory)
                 loc.remembered_glyph = { ch: tg.ch, color: tg.color,
@@ -1114,13 +1182,45 @@ export function newsym(x, y) {
                                      glyph: { kind: 'cmap', cmap: tg.cmap } };
         }
     } else if (loc.remembered_glyph) {
-        /* src/display.c:852,898 — "Corridors are never felt as lit":
-           a remembered lit corridor reverts to the dark one (S_corr) when
-           the cell is out of sight and not waslit; C rewrites lev->glyph. */
-        if (loc.typ === CORR && loc.remembered_glyph.color === CLR_WHITE
-            && !loc.waslit)
-            loc.remembered_glyph = { ch: '#', color: NO_COLOR, decgfx: false,
-                                     glyph: { kind: 'cmap', cmap: CM.S_corr } };
+        /* src/display.c:1058 — memory of a dark place that was displayed lit
+           (night vision, or darkened out of sight) is manually corrected to
+           match waslit once the spot is out of sight:
+           - the rogue level uses S_stone for both dark floor and corridor;
+           - otherwise !waslit reverts S_litcorr to S_corr and S_room to
+             DARKROOMSYM, which with dark_room off is S_stone — the classic
+             "dark room floors vanish when you leave". C rewrites lev->glyph
+             and shows it. */
+        const remcmap = loc.remembered_glyph.glyph?.cmap;
+        if (Is_rogue_level(game.u.uz)) {
+            if (remcmap === CM.S_litcorr && loc.typ === CORR)
+                loc.remembered_glyph = { ch: '#', color: NO_COLOR,
+                                         decgfx: false,
+                                         glyph: { kind: 'cmap',
+                                                  cmap: CM.S_corr } };
+            else if (remcmap === CM.S_room && loc.typ === ROOM
+                     && !loc.waslit)
+                loc.remembered_glyph = { ch: ' ', color: NO_COLOR,
+                                         decgfx: false,
+                                         glyph: { kind: 'cmap',
+                                                  cmap: CM.S_stone } };
+        } else if (!loc.waslit || dark_room_color()) {
+            /* flags.dark_room defaults ON in 5.0 (optlist.h:264 opt_out On),
+               so a remembered floor out of sight becomes DARKROOMSYM ==
+               S_darkroom. It is wire-invisible: init_showsyms copies
+               showsyms[S_room] into showsyms[S_darkroom] (display.c:1851)
+               and its CLR_BLACK collapses to the default foreground, so the
+               cell still records as an uncoloured '·'. The IDENTITY matters
+               to code that compares memory, e.g. pick_lock's learned test. */
+            if (loc.typ === CORR && (remcmap === CM.S_litcorr
+                                     || (loc.remembered_glyph.color
+                                         === CLR_WHITE)))
+                loc.remembered_glyph = { ch: '#', color: NO_COLOR,
+                                         decgfx: false,
+                                         glyph: { kind: 'cmap',
+                                                  cmap: CM.S_corr } };
+            else if (remcmap === CM.S_room && loc.typ === ROOM)
+                loc.remembered_glyph = darkroomsym_cell();
+        }
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx, 0,
@@ -1164,6 +1264,10 @@ function engraving_glyph(loc, x, y) {
 export async function docrt() {
     if (!game.level) return;
 
+    /* src/display.c:1740 — "shut down vision" so the recalc below sees an
+       empty previous state and newsyms every in-sight square */
+    vision_recalc(2);
+
     /* src/display.c:1739 — docrt_flags() clears first unless docrtNocls.
        cls() flushes the message window, so an unacknowledged message gets
        its --More-- BEFORE the map is wiped and repainted; that is why C
@@ -1179,6 +1283,14 @@ export async function docrt() {
                     loc.remembered_glyph.glyph);
             }
         }
+
+    /* src/display.c:1750 — "see what is to be seen": the live view paints
+       OVER the memory sweep; against the emptied vision state every
+       in-sight square gets a newsym. On a hero_memory level the two agree,
+       but the endgame planes keep a one-glyph backdrop as memory and only
+       this pass shows the hero's actual surroundings. */
+    vision_recalc(0);
+
     /* src/display.c:1761 — "overlay with monsters": see_monsters() runs a
        newsym over every live monster, which is what brings the pet back
        after a menu overlay is dismissed and the map redrawn from memory. */
@@ -1437,8 +1549,9 @@ export function feel_location(x, y) {
         (game.unported ||= new Set()).add('feel_location:levitation');
 
     /* _map_location(x, y, 1) */
-    const obj = (game.level?.objects || [])
-                    .find(o => o.ox === x && o.oy === y);
+    const obj = covers_objects(x, y) ? null
+        : (game.level?.objects || [])
+              .find(o => o.ox === x && o.oy === y);
     const trap = t_at(x, y);
     const memg = obj ? floor_object_glyph(obj, x, y)
         : (trap && trap.tseen) ? trap_glyph(trap)
@@ -1448,11 +1561,31 @@ export function feel_location(x, y) {
                                  decgfx: memg.dec,
                                  glyph: memg.glyph
                                      ?? { kind: 'cmap', cmap: memg.cmap } };
+
     /* map_background()/map_location() record the terrain type the hero
        has last seen here (svl.lastseentyp); callers compare it to learn
        whether feeling the spot taught the hero anything. */
-    loc.lastseentyp = loc.typ;
+    update_lastseentyp(x, y);
     newsym(x, y);
+
+    /* src/display.c:894 — "Floor spaces are dark if unlit": with dark_room
+       on (5.0 default) a felt room floor is remembered as S_darkroom even
+       when waslit; an unlit felt corridor drops its lit form. The rewrite
+       is what makes pick_lock's "did the hero learn anything" comparison
+       come out true on a plain floor square. It runs AFTER the repaint
+       (C's fixup follows _map_location), so the newsym above must not
+       clobber it. */
+    {
+        const rg = loc.remembered_glyph;
+        if (loc.typ === ROOM && rg?.glyph?.cmap === CM.S_room
+            && (!loc.waslit || dark_room_color()))
+            loc.remembered_glyph = darkroomsym_cell();
+        else if (loc.typ === CORR && rg?.glyph?.cmap === CM.S_litcorr
+                 && !loc.waslit)
+            loc.remembered_glyph = { ch: '#', color: NO_COLOR, decgfx: false,
+                                     glyph: { kind: 'cmap',
+                                              cmap: CM.S_corr } };
+    }
 }
 
 // src/display.c:2147 row_refresh() — repaint map row y, columns start..stop,
@@ -1834,6 +1967,7 @@ export function map_background(x, y, show) {
     if (show)
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0,
                         tg.glyph ?? { kind: 'cmap', cmap: tg.cmap });
+    update_lastseentyp(x, y);   /* src/display.c:257 */
 }
 
 // src/display.c:295 map_object() — remember and (optionally) show one
@@ -1904,6 +2038,48 @@ export function magic_map_background(x, y, show) {
     if (show && tg)
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0,
                         { kind: 'cmap', cmap: tg.cmap });
+}
+
+// src/region.c:732 show_region() — paint the region's cloud glyph over the
+// spot. include/defsym.h: S_cloud is '#' CLR_GRAY, S_poisoncloud is '#'
+// CLR_BRIGHT_GREEN; neither has a DECgraphics override.
+export function show_region(reg, x, y) {
+    const cmap = reg.glyph_cmap ?? cmap_names.S_cloud;
+    show_glyph_cell(x, y, '#',
+                    cmap === cmap_names.S_poisoncloud ? CLR_BRIGHT_GREEN
+                                                      : CLR_GRAY,
+                    false, 0, { kind: 'cmap', cmap });
+}
+
+// src/display.c:668 mon_overrides_region() — used by newsym() to decide
+// whether to show a monster or a visible gas cloud region when both are at
+// the same spot; caller deals with the region.
+function mon_overrides_region(mon, mx, my) {
+    const u = game.u;
+
+    /* this is redundant because newsym() doesn't call us when swallowed */
+    if (u.uswallow && (!mon || mon !== u.ustuck))
+        return false;
+
+    if (mon) {
+        /* when not a worm tail, show mon if sensed rather than seen */
+        if (mx === mon.mx && my === mon.my
+            && (sensemon(mon) || mon_warning(mon)))
+            return true;
+
+        /* check whether the spot is adjacent and 'mon' would be visible
+           there if the gas cloud wasn't interfering with normal vision */
+        const r = ((u.xray_range ?? -1) > 1) ? u.xray_range : 1;
+        if (!u.ublind && mon_visible(mon)
+            && M_AP_TYPE(mon) !== M_AP_FURNITURE
+            && M_AP_TYPE(mon) !== M_AP_OBJECT
+            && distu(mx, my) <= r * (r + 1))
+            return true;
+    }
+
+    /* if not overriding region for current mon, propagate "remembered,
+       unseen monster" */
+    return glyph_is_invisible_at(mx, my);
 }
 
 // include/display.h:64 _mon_warning() — Warning, hostile, within 10 squares,

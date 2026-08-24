@@ -435,6 +435,17 @@ export function lspo_replace_terrain(opts) {
     }
     const fromtyp = splev_chr2typ(opts.fromterrain);
     const chance = (opts.chance === undefined) ? 100 : opts.chance;
+    /* sp_lev.c:5087 — tolit defaults SET_LIT_NOCHANGE; replacements go
+       through set_levltyp_lit (mkmaze.c:127): lava forces lit, RANDOM
+       draws rn2(2), NOCHANGE leaves the square's lit alone */
+    const tolit = (opts.lit === undefined) ? SET_LIT_NOCHANGE : opts.lit;
+    const set_typ_lit = (loc) => {
+        loc.typ = totyp;
+        if (IS_LAVA(totyp))
+            loc.lit = true;
+        else if (tolit !== SET_LIT_NOCHANGE)
+            loc.lit = (tolit === SET_LIT_RANDOM) ? !!rn2(2) : !!tolit;
+    };
     if (opts.selection) {
         /* src/sp_lev.c:5108 — an explicit selection (its points are already
            absolute) instead of a region: walk its bounds with x clamped to
@@ -454,7 +465,7 @@ export function lspo_replace_terrain(opts) {
                       || loc.typ === fromtyp))
                     continue;
                 if (rn2(100) < chance)
-                    loc.typ = totyp;
+                    set_typ_lit(loc);
             }
         return;
     }
@@ -488,7 +499,7 @@ export function lspo_replace_terrain(opts) {
                   || loc.typ === fromtyp))
                 continue;
             if (rn2(100) < chance)
-                loc.typ = totyp;
+                set_typ_lit(loc);
         }
 }
 
@@ -510,6 +521,18 @@ export function mkroom_table(tmpr) {
         /* the C mkroom itself, for selection_from_mkroom() */
         _mkroom: tmpr,
     };
+}
+
+// src/sp_lev.c:3076 lspo_message() — des.message("..."): append to the
+// level's pending arrival message, newline-separated. Delivered (and
+// cleared) by deliver_splev_message() on level entry; a regenerated level
+// clears any leftover in clear_level_structures() (mklev.c:923). No draws.
+export function lspo_message(msg) {
+    create_des_coder();
+    if (msg === undefined || msg === null)
+        return;                     /* nhl_error("Wrong parameters") */
+    game.lev_message = game.lev_message
+        ? `${game.lev_message}\n${msg}` : String(msg);
 }
 
 // src/sp_lev.c is_ok_location() — may this square host what we are placing?
@@ -2325,6 +2348,10 @@ export function lspo_level_flags(...flags) {
         case 'nomongen': game.level.flags.rndmongen = 0; break;
         case 'nodeathdrops': game.level.flags.deathdrops = 0; break;
         case 'noautosearch': game.level.flags.noautosearch = 1; break;
+        /* src/sp_lev.c:3818-3821 — the Plane of Fire's poison-gas lava and
+           the Plane of Air's lightning-cloud flags */
+        case 'fumaroles': game.level.flags.fumaroles = 1; break;
+        case 'stormy': game.level.flags.stormy = 1; break;
         case 'icedpools': game.splev_icedpools = true; break;
         default:
             note_unported(`lspo_level_flags:${s}`);
@@ -2827,7 +2854,7 @@ export async function load_special(name) {
 
     {
         const { fixup_special } = await import('./mkmaze.js');
-        fixup_special();
+        await fixup_special();
     }
 
     /* sp_lev.c:6054 — the "premapped" level flag (sokoban) */

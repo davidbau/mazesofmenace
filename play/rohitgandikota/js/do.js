@@ -234,6 +234,9 @@ export async function next_level(at_stairs) {
 // changes in the stream comes from mklev() running at all.
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const up = (depth_do(newlevel) < depth_do(game.u.uz));
+    /* src/do.c:1499 — level temperature before the change, for
+       temperature_change_msg() at the tail */
+    const prev_temperature = game.level?.flags?.temperature | 0;
 
     /* src/do.c:1585 keepdogs() — adjacent followers leave the map with the
        hero BEFORE the old level is left */
@@ -462,17 +465,61 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     await docrt();
     await flush_screen(-1);
 
-    /* src/do.c:1858 — special levels can have a custom arrival message */
-    {
+    /* src/do.c:1850 — the deferred arrival message for level teleport looks
+       odd if given after the various messages below, so give it before
+       them; maybe_lvltport_feedback() clears dfr_post_msg so
+       deferred_goto() won't repeat it */
+    if (game.dfr_post_msg && /^You materialize/i.test(game.dfr_post_msg)) {
+        await pline(game.dfr_post_msg);
+        game.dfr_post_msg = null;
     }
 
-    /* src/do.c:1879 — special location arrival messages/events. Only the
-       quest arm is wired; the endgame, Knox, Mines and Sokoban arms are
-       achievements and alarms that no ported session reaches yet, and the
-       quest-portal call from the leader needs at_dgn_entrance(). */
-    if (game.u.uz.dnum === game.quest_dnum) {   /* In_quest(&u.uz) */
-        const { onquest } = await import('./quest.js');
-        await onquest();
+    /* src/do.c:1858 — special levels can have a custom arrival message */
+    {
+        const { deliver_splev_message } = await import('./questpgr.js');
+        await deliver_splev_message();
+    }
+
+    /* src/do.c:1879 — special location arrival messages/events. The
+       endgame and quest arms are wired; the Knox, Mines and Sokoban arms
+       are achievements and alarms that no ported session reaches yet, and
+       the quest-portal call from the leader needs at_dgn_entrance(). */
+    {
+        const { In_endgame, Is_astralevel } = await import('./const.js');
+        const newdungeon = (game.u.uz0.dnum !== game.u.uz.dnum);
+        if (In_endgame(game.u.uz)) {
+            /* record_achievement(ACH_ENDG) — invisible */
+            if (!familiar_level && Is_astralevel(game.u.uz)) {
+                await final_level(); /* guardian angel,&c */
+                /* record_achievement(ACH_ASTR) — invisible */
+            } else if (newdungeon && game.u.uhave?.amulet) {
+                const { resurrect } = await import('./wizard.js');
+                await resurrect(); /* force confrontation with Wizard */
+            }
+        } else if (game.u.uz.dnum === game.quest_dnum) { /* In_quest() */
+            const { onquest } = await import('./quest.js');
+            await onquest();
+        }
+    }
+
+    /* src/do.c:1935 temperature_change_msg() — a message when the level
+       temperature differs from the previous level's */
+    {
+        const temp = game.level?.flags?.temperature | 0;
+        if (prev_temperature !== temp) {
+            if (temp) {
+                /* hellish_smoke_mesg() (do.c:2003) */
+                await pline(`It is ${temp > 0 ? 'hot' : 'cold'} here.`);
+                if (game.u.uz.dnum === game.hell_dnum && temp > 0)
+                    await You('smell smoke...');
+            } else if (prev_temperature > 0) {
+                await pline(`The heat ${
+                    game.u.uz0.dnum === game.hell_dnum
+                        ? 'and smoke are' : 'is'} gone.`);
+            } else if (prev_temperature < 0) {
+                await You('are out of the cold.');
+            }
+        }
     }
 
     /* src/do.c:1942 — first visit to a level: the livelog entry itself is
@@ -524,6 +571,28 @@ async function u_collide_m(mtmp, m_at, mnexto) {
    which reaches back here through deferred_goto's users). */
 function depth_do(dlev) {
     return (game.dungeons?.[dlev.dnum]?.depth_start ?? 1) + dlev.dlevel - 1;
+}
+
+// src/do.c:2043 final_level() — just arrived on the Astral Plane: resolve
+// the placeholder alignments of the level's minions against the hero's,
+// summon rn1(4,3) player-monsters, and grant the guardian angel.
+async function final_level() {
+    /* reset monster hostility relative to player: iter_mons() */
+    const { reset_hostility } = await import('./priest.js');
+    for (const mtmp of (game.level?.monsters || [])) {
+        const { DEADMONSTER } = await import('./monst.js');
+        if (!DEADMONSTER(mtmp))
+            reset_hostility(mtmp);
+    }
+
+    /* create some player-monsters */
+    const { create_mplayers } = await import('./mplayer.js');
+    const { rn1 } = await import('./rng.js');
+    create_mplayers(rn1(4, 3), true);
+
+    /* create a guardian angel next to player, if worthy */
+    const { gain_guardian_angel } = await import('./minion.js');
+    await gain_guardian_angel();
 }
 
 // src/do.c u_on_dnstairs() — put the hero on the down staircase of the new
@@ -787,14 +856,16 @@ export function canletgo(obj, word) {
 
 // src/do.c:2325 cmd_safety_prevention() — refuse a no-op command next to a
 // spottable hostile (flags.safe_wait defaults On).
-async function cmd_safety_prevention(ucverb, cmddesc, act) {
+export async function cmd_safety_prevention(ucverb, cmddesc, act) {
     if ((game.flags?.safe_wait ?? true) && !game.iflags_menu_requested
         && !(game.multi ?? 0)) {
         const { monster_nearby } = await import('./hack.js');
         /* iflags.cmdassist defaults On, so the hint suffix always prints */
         const buf = `  Use 'm' prefix to force ${cmddesc}.`;
         if (monster_nearby()) {
-            await pline(`${act}${buf}`);
+            /* C uses Norep: back-to-back refusals print only once */
+            const { Norep } = await import('./pline.js');
+            await Norep(`${act}${buf}`);
             return true;
         }
         /* danger_uprops(): Stoned/Slimed/Strangled/Sick — none tracked */

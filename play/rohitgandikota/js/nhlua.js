@@ -75,7 +75,6 @@ export async function show_getpos_tip() {
     const { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD } = await import('./const.js');
     const { NO_COLOR } = await import('./terminal.js');
     const { xwaitforspace } = await import('./tty/getline.js');
-    const { docrt } = await import('./display.js');
 
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
@@ -84,11 +83,13 @@ export async function show_getpos_tip() {
                      MENU_ITEMFLAGS_NONE);
     tty_end_menu(win, null);
     /* select_menu(tmpwin, PICK_NONE, &picks) — display and wait for a
-       dismissing key */
+       dismissing key. The teardown's erase_menu_or_text() repaints the rows
+       under the window from the glyph buffer, which is what keeps a
+       #terrain view intact behind the tip; a docrt() here would rebuild the
+       REAL map over it (C has no redraw on this path). */
     await tty_display_nhwindow(win);
     await xwaitforspace(' \r\n\x1b');
     tty_destroy_nhwindow(win);
-    await docrt();
 }
 
 // dat/nhlib.lua:43 percent() — `math.random(0, 99) < threshold`, and the

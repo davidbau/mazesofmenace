@@ -78,6 +78,36 @@ export function start_timer(when, kind, func_index, arg) {
     return true;
 }
 
+// src/timeout.c:2222 run_timers() — fire every timer whose time has come.
+// The list is ordered; we are done when the first element is in the future.
+// Runs from nh_timeout()'s tail (timeout.c:947) and from goto_level.
+export async function run_timers() {
+    const base = (game.timer_base ||= []);
+    while (base.length && base[0].timeout <= (game.moves ?? 0)) {
+        const curr = base.shift();
+        if (curr.kind === TIMER_OBJECT && curr.arg)
+            curr.arg.timed = Math.max(0, (curr.arg.timed ?? 1) - 1);
+        switch (curr.func_index) {
+        case ROT_CORPSE: {
+            const { rot_corpse } = await import('./dig.js');
+            await rot_corpse(curr.arg);
+            break;
+        }
+        case ROT_ORGANIC: {
+            const { rot_organic } = await import('./dig.js');
+            rot_organic(curr.arg);
+            break;
+        }
+        default:
+            /* hatch_egg, burn_object, revive_mon... — each is its own
+               subsystem; record which one fired unported */
+            (game.unported ||= new Set())
+                .add('timeout:run_timers:' + curr.func_index);
+            break;
+        }
+    }
+}
+
 // src/timeout.c:951 fall_asleep() — put the hero to sleep for -how_long turns.
 //
 // The #if 0 deafness block is not compiled in C and is not ported. usleep
@@ -134,6 +164,9 @@ export async function nh_timeout() {
             break;
         }
     }
+
+    /* src/timeout.c:947 — expired timers fire at the end of nh_timeout */
+    await run_timers();
 }
 
 function note_unported_timeout(what) {
@@ -153,4 +186,57 @@ export function attach_egg_hatch_timeout(egg, when = 0) {
     }
     if (when)
         start_timer(when, TIMER_OBJECT, HATCH_EGG, egg);
+}
+
+// src/timeout.c:1846 do_storms() — no lightning if not a stormy level (the
+// Plane of Air) or too often even then: the rn2(8) gate is the only draw on
+// 7 of 8 stormy turns. A strike sequence spends rnd(64), a cloud hunt of
+// up to 100 coordinate pairs and an rn2(3) pair per strike; the bolt itself
+// is buzz(), the zap beam engine, which is not ported and records.
+export async function do_storms() {
+    const { rn2 } = await import('./rng.js');
+    const { COLNO, ROWNO, CLOUD } = await import('./const.js');
+
+    /* no lightning if not stormy level or too often, even then */
+    if (!game.level?.flags?.stormy || rn2(8))
+        return;
+
+    /* the number of strikes is 8-log2(nstrike) */
+    for (let nstrike = rnd(64); nstrike <= 64; nstrike *= 2) {
+        let x, y, count = 0;
+        do {
+            x = rnd(COLNO - 1);
+            y = rn2(ROWNO);
+        } while (++count < 100 && game.level.at(x, y)?.typ !== CLOUD);
+
+        if (count < 100) {
+            const dirx = rn2(3) - 1;
+            const diry = rn2(3) - 1;
+            if (dirx !== 0 || diry !== 0)
+                note_unported_timeout('do_storms:buzz');
+        }
+    }
+
+    if (game.level.at(game.u.ux, game.u.uy)?.typ === CLOUD) {
+        /* Inside a cloud during a thunderstorm is deafening. */
+        /* Even if already deaf, we sense the thunder's vibrations. */
+        const { pline } = await import('./display.js');
+        await pline('Kaboom!!!  Boom!!  Boom!!');
+        /* incr_itimeout(&HDeaf, rn1(20, 30)) — the draw is C's; the
+           deafness property linkage past the timer is not wired */
+        const { rn1 } = await import('./rng.js');
+        (game.u.intrinsic ||= {}).HDeaf =
+            ((game.u.intrinsic.HDeaf | 0) + rn1(20, 30));
+        game.botl = true;
+        if (!game.u.uinvulnerable) {
+            const { stop_occupation } = await import('./allmain.js');
+            await stop_occupation();
+            await nomul(-3);
+            game.multi_reason = 'hiding from thunderstorm';
+            game.nomovemsg = 0;
+        }
+    } else {
+        const { You_hear } = await import('./pline.js');
+        await You_hear('a rumbling noise.');
+    }
 }

@@ -60,7 +60,8 @@ export const Unaware = () =>
     (game.multi ?? 0) < 0 && (unconscious() || is_fainted());
 
 // include/youprop.h:152 See_invisible — (HSee_invisible || ESee_invisible).
-export const See_invisible = () => !!game.u?.uprops?.SEE_INVIS;
+export const See_invisible = () => !!(game.u?.intrinsic?.HSee_invisible
+                                      || game.u?.uprops?.SEE_INVIS);
 
 // include/youprop.h:198 Invis — ((HInvis || EInvis) && !BInvis).
 // The flat uprops map has no blocked slot, so the BInvis term has nowhere to
@@ -78,7 +79,32 @@ export const Flying = () =>
     || !!(game.u?.usteed && is_flyer(game.u.usteed.data));
 
 // include/youprop.h Fire_resistance — (HFire_resistance || EFire_resistance).
-export const Fire_resistance = () => !!game.u?.uprops?.FIRE_RES;
+// The H word carries the FROMEXPER/FROMRACE/FROMOUTSIDE source bits (role
+// grant, race grant, eaten corpse); the E side is worn equipment (uprops).
+export const Fire_resistance = () => !!(game.u?.intrinsic?.HFire_resistance
+                                        || game.u?.uprops?.FIRE_RES);
+
+// include/youprop.h — the rest of the H||E property pairs the innate-ability
+// tables (src/attrib.c role_abil/race_abil) and corpse intrinsics can set.
+export const Cold_resistance = () => !!(game.u?.intrinsic?.HCold_resistance
+                                        || game.u?.uprops?.COLD_RES);
+export const Sleep_resistance = () => !!(game.u?.intrinsic?.HSleep_resistance
+                                         || game.u?.uprops?.SLEEP_RES);
+export const Shock_resistance = () => !!(game.u?.intrinsic?.HShock_resistance
+                                         || game.u?.uprops?.SHOCK_RES);
+export const Poison_resistance = () =>
+    !!(game.u?.intrinsic?.HPoison_resistance || game.u?.uprops?.POISON_RES);
+/* #define Stealth ((HStealth || EStealth) && !BStealth) — nothing that sets
+   BStealth (riding, sunk in water) is tracked yet */
+export const Stealth = () => !!(game.u?.intrinsic?.HStealth
+                                || game.u?.uprops?.STEALTH);
+export const Searching = () => !!(game.u?.intrinsic?.HSearching
+                                  || game.u?.uprops?.SEARCHING);
+export const Warning = () => !!(game.u?.intrinsic?.HWarning
+                                || game.u?.uprops?.WARNING);
+export const Teleport_control = () =>
+    !!(game.u?.intrinsic?.HTeleport_control
+       || game.u?.uprops?.TELEPORT_CONTROL);
 
 // include/youprop.h:186 Infravision — HInfravision || EInfravision.
 // The intrinsic half comes from the hero's race via set_uasmon().

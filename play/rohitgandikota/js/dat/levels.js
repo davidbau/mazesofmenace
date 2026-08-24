@@ -65,6 +65,11 @@ import { fakewiz2_level } from './fakewiz2.js';
 import { wizard1_level } from './wizard1.js';
 import { wizard2_level } from './wizard2.js';
 import { wizard3_level } from './wizard3.js';
+import { earth_level } from './earth.js';
+import { air_level } from './air.js';
+import { fire_level } from './fire.js';
+import { water_level } from './water.js';
+import { astral_level } from './astral.js';
 
 export const SPECIAL_LEVELS = {
     'bigrm-1': bigrm1_level,
@@ -129,4 +134,9 @@ export const SPECIAL_LEVELS = {
     wizard1: wizard1_level,
     wizard2: wizard2_level,
     wizard3: wizard3_level,
+    earth: earth_level,
+    air: air_level,
+    fire: fire_level,
+    water: water_level,
+    astral: astral_level,
 };

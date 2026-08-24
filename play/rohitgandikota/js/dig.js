@@ -11,7 +11,7 @@ import { You_feel, You_hear } from './pline.js';
 import { unblock_point, recalc_block_point } from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { mksobj_at } from './mkobj.js';
-import { sobj_at } from './invent.js';
+import { sobj_at, obj_extract_self } from './invent.js';
 import { ONAMES } from './objects_data.js';
 import { ACURR, exercise } from './attrib.js';
 import { sgn } from './hacklib.js';
@@ -145,4 +145,59 @@ export async function mdig_tunnel(mtmp) {
         unblock_point(mtmp.mx, mtmp.my);
 
     return false;
+}
+
+// src/dig.c:2125 rot_organic() — an object rots away. Contents of a rotting
+// container become buried objects; a corpse has none, and the burial
+// machinery is absent, so a container with contents is recorded.
+export function rot_organic(obj) {
+    if (obj.cobj && obj.cobj.length)
+        (game.unported ||= new Set()).add('dig:rot_organic:bury_contents');
+    obj_extract_self(obj);
+    /* obfree(obj, NULL) — the object leaves the game; extract already
+       removed it from whichever chain held it */
+}
+
+// src/dig.c:2146 rot_corpse() — called when a corpse has rotted completely
+// away. Draws nothing; the messages and the hider exposure are the
+// observable effects.
+export async function rot_corpse(obj) {
+    const on_floor = obj.where === 1 /* OBJ_FLOOR */;
+    const in_invent = obj.where === 3 /* OBJ_INVENT */;
+    let x = 0, y = 0;
+
+    if (on_floor) {
+        x = obj.ox;
+        y = obj.oy;
+    } else if (in_invent) {
+        if (game.flags?.verbose !== false) {
+            const { corpse_xname } = await import('./objnam.js');
+            const cname = corpse_xname(obj, null, 8 /* CXN_NO_PFX */);
+            const { Your } = await import('./pline.js');
+            await Your(`${obj === game.uwep ? 'wielded ' : ''}${cname} rot${
+                (obj.quan ?? 1) > 1 ? '' : 's'} away${
+                obj === game.uwep ? '!' : '.'}`);
+        }
+        if (obj.owornmask)
+            (game.unported ||= new Set()).add('dig:rot_corpse:worn');
+    } else if (obj.where === 4 /* OBJ_MINVENT */) {
+        if (obj.owornmask)
+            (game.unported ||= new Set()).add('dig:rot_corpse:mon_wep');
+    }
+    rot_organic(obj);
+    if (on_floor) {
+        const { m_at } = await import('./mon.js');
+        const { hides_under } = await import('./mondata.js');
+        const mtmp = m_at(x, y);
+        /* a hiding monster may be exposed */
+        const objs_left = (game.level?.objects || [])
+            .some(o => o.ox === x && o.oy === y);
+        if (mtmp && !objs_left && mtmp.mundetected
+            && hides_under(game.mons[mtmp.mnum])) {
+            mtmp.mundetected = 0;
+        }
+        newsym(x, y);
+    } else if (in_invent) {
+        /* update_inventory() — perm_invent only */
+    }
 }

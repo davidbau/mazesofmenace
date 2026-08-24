@@ -282,8 +282,18 @@ export async function level_tele() {
         return;
     }
 
-    if (In_endgame(game.u.uz)) {
-        note_unported_tele('level_tele:endgame');
+    if (In_endgame(game.u.uz)) { /* must already be wizard */
+        /* src/teleport.c:1308 — planes are addressed as negative numbers
+           counting down from the dungeon's top */
+        const llimit = dunlevs_in_dungeon(game.u.uz);
+
+        if (newlev >= 0 || newlev <= -llimit) {
+            await You_cant('get there from here.');
+            return;
+        }
+        newlevel.dnum = game.u.uz.dnum;
+        newlevel.dlevel = llimit + newlev;
+        schedule_goto(newlevel, 0 /* UTOTYPE_NONE */, null, null);
         return;
     }
 
@@ -510,49 +520,53 @@ export const TELEDS_NO_FLAGS = 0, TELEDS_ALLOW_DRAG = 1, TELEDS_TELEPORT = 2;
 // Only the controlled arm is ported: Teleport_control or wizard mode, hero
 // conscious. The Amulet/W-tower disorientation, the uncontrolled random
 // destination and the level-teleport arms are recorded.
-async function scrolltele(scroll) {
+export async function scrolltele(scroll) {
     const cc = { x: 0, y: 0 };
 
     if ((game.u.uhave?.amulet) && !rn2(3)) {
         note_unported_teleport('scrolltele:disoriented');
         return;
     }
+    /* src/teleport.c:872 — Teleport_control (or a blessed scroll, or
+       wizard mode) picks the spot via getpos; everyone else falls through
+       to the random destination below */
     const controlled = (game.u.uprops?.TELEPORT_CONTROL
+                        || game.u.intrinsic?.HTeleport_control
                         || (scroll && scroll.blessed) || game.wizard);
-    if (!controlled) {
-        note_unported_teleport('scrolltele:uncontrolled');
-        return;
-    }
-    if (unconscious()) {
-        await pline('Being unconscious, you cannot control your teleport.');
-        return;
+    if (controlled) {
+        if (unconscious()) {
+            await pline('Being unconscious, you cannot control your teleport.');
+        } else {
+            /* "you and <steed>" when riding */
+            const whobuf = 'you';
+            await pline(`Where do ${whobuf} want to be teleported?`);
+            if (scroll)
+                note_unported_teleport('scrolltele:learnscroll');
+            cc.x = game.u.ux;
+            cc.y = game.u.uy;
+            if (isok(game.iflags?.travelcc?.x, game.iflags?.travelcc?.y)) {
+                /* The player showed some interest in traveling here;
+                   pre-suggest this coordinate. */
+                cc.x = game.iflags.travelcc.x;
+                cc.y = game.iflags.travelcc.y;
+            }
+            if ((await getpos(cc, true, 'the desired position')) < 0)
+                return;             /* abort */
+            /* possible extensions: introduce a small error if magic power
+               is low; allow transfer to solid rock */
+            if (teleok(cc.x, cc.y, false)) {
+                await teleds(cc.x, cc.y, TELEDS_TELEPORT);
+                return;
+            }
+            await pline('Sorry...');
+        }
     }
 
-    /* "you and <steed>" when riding */
-    const whobuf = 'you';
-    await pline(`Where do ${whobuf} want to be teleported?`);
+    /* src/teleport.c:912 — discovery is unconditional now that there is
+       always a materialize message */
     if (scroll)
         note_unported_teleport('scrolltele:learnscroll');
-    cc.x = game.u.ux;
-    cc.y = game.u.uy;
-    if (isok(game.iflags?.travelcc?.x, game.iflags?.travelcc?.y)) {
-        /* The player showed some interest in traveling here; pre-suggest
-           this coordinate. */
-        cc.x = game.iflags.travelcc.x;
-        cc.y = game.iflags.travelcc.y;
-    }
-    if ((await getpos(cc, true, 'the desired position')) < 0)
-        return;                 /* abort */
-    /* possible extensions: introduce a small error if magic power is low;
-       allow transfer to solid rock */
-    if (teleok(cc.x, cc.y, false)) {
-        await teleds(cc.x, cc.y, TELEDS_TELEPORT);
-        return;
-    }
-    await pline('Sorry...');
 
-    /* src/teleport.c:914 — an unusable choice falls through to a random
-       destination */
     await safe_teleds(TELEDS_TELEPORT);
 }
 
