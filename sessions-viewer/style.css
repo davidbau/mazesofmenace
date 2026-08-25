@@ -15,7 +15,50 @@
     --warn:         #b8651b;
     --err:          #a02020;
 
-    /* Diff colors on the 80x24 grid (kept high-contrast on black) */
+    /* Bisect controls — small toolbar next to the step readout. */
+.bisect-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 22px 4px;
+    font-family: var(--font-serif);
+}
+.bisect-controls button {
+    font: inherit;
+    font-size: 0.92em;
+    color: var(--fg);
+    background: var(--bg-3);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 3px 10px;
+    cursor: pointer;
+}
+.bisect-controls button:hover {
+    background: var(--bg-2);
+    border-color: var(--accent);
+}
+.bisect-controls button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.bisect-readout {
+    color: var(--fg-2);
+    font-style: italic;
+    font-size: 0.9em;
+}
+.bisect-readout[data-kind="none"] {
+    color: var(--ok);
+    font-style: normal;
+}
+.bisect-readout[data-kind="prng"],
+.bisect-readout[data-kind="screen-char"],
+.bisect-readout[data-kind="screen-attr"],
+.bisect-readout[data-kind="cursor"] {
+    color: var(--accent);
+    font-style: normal;
+}
+
+/* Diff colors on the 80x24 grid (kept high-contrast on black) */
     --diff-char:    #c0392b;
     --diff-attr:    #b8860b;
     --diff-cursor:  #2563eb;

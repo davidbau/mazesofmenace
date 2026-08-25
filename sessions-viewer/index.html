@@ -109,6 +109,11 @@
         </span>
         <span id="step-readout">step 0 / 0</span>
     </div>
+    <div class="bisect-controls">
+        <button type="button" id="bisect-jump" title="Jump to the first step where canon and js diverge (press d)">jump to first divergence</button>
+        <button type="button" id="bisect-export" title="Download a session.json containing the first N steps (current step + 5) so you can iterate against a focused test instead of the full 4000-step session">export slice</button>
+        <span id="bisect-readout" class="bisect-readout" aria-live="polite"></span>
+    </div>
 </section>
 
 <main>
