@@ -1,5 +1,6 @@
 // mhitu.js — Monster attacks hero (partial).
-// C ref: mhitu.c mattacku / hitmu / hitmsg / missmu / mdamageu;
+// C ref: mhitu.c mattacku / hitmu / hitmsg / missmu / mdamageu /
+//         u_slow_down;
 //         uhitm.c mhitm_ad_phys (mhitu bare / weapon subset).
 
 import { game } from './gstate.js';
@@ -9,7 +10,7 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
     Upolyd, DIED, P_WHIP, NON_PM, XKILL_NOMSG, NEW_MOON,
-    DISPLACED, CONFLICT, IS_WATERWALL, RLOC_MSG, RLOC_NOMSG, TIMEOUT, ARTICLE_A,
+    DISPLACED, CONFLICT, IS_WATERWALL, RLOC_MSG, RLOC_NOMSG, TIMEOUT, FAST, ARTICLE_A,
     LEFT_SIDE, RIGHT_SIDE, LEG, POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
     W_ARMS, W_WEP, W_AMUL, W_ARM, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
@@ -46,7 +47,7 @@ import {
 import { done_in_by, done } from './end.js';
 import { msummon, Inhell } from './minion.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { A_STR, A_INT, A_DEX, A_CON, acurr, adjattrib, exercise, poisoned } from './attrib.js';
+import { A_STR, A_INT, A_DEX, A_CON, acurr, adjattrib, exercise, poisoned, Fast } from './attrib.js';
 import { xkilled, killed } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
@@ -360,6 +361,29 @@ export async function missmu(mtmp, nearmiss, mattk) {
         await pline_mon(mtmp, `${Monnam(mtmp)} ${just}misses!`);
     }
     await stop_occupation();
+}
+
+/**
+ * C ref: mhitu.c u_slow_down :161–171 — called when your intrinsic
+ * speed is taken away. HFast = 0; !Fast → "You slow down." else
+ * (speed boots / EFast) "Your quickness feels less natural.";
+ * exercise(A_DEX, FALSE). Callers: zap.c zapyourself WAN/SPE_SLOW
+ * (D-1433). mhitu AD_SLOW gaze / uhitm mhitm_ad_slow still named.
+ */
+export async function u_slow_down() {
+    const u = game.u || (game.u = {});
+    u.HFast = 0;
+    if (!u.uprops) u.uprops = {};
+    const prop = u.uprops[FAST] || (u.uprops[FAST] = {
+        intrinsic: 0, extrinsic: 0, blocked: 0,
+    });
+    prop.intrinsic = 0;
+    if (!Fast()) {
+        await pline('You slow down.');
+    } else {
+        await pline('Your quickness feels less natural.');
+    }
+    exercise(A_DEX, false);
 }
 
 /**

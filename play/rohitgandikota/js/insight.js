@@ -56,6 +56,13 @@ const RIGHT_HANDED = 0x00;
 const lines = [];
 const out = (buf) => lines.push(buf);
 
+/* src/insight.c:383 — ENL_GAMEINPROGRESS:0, ENL_GAMEOVERALIVE:1,
+   ENL_GAMEOVERDEAD:2; the whole window switches to past tense when set. */
+export const ENL_GAMEINPROGRESS = 0, ENL_GAMEOVERALIVE = 1,
+             ENL_GAMEOVERDEAD = 2;
+export const BASICENLIGHTENMENT = 1, MAGICENLIGHTENMENT = 2;
+let en_final = 0;
+
 // src/insight.c:135 enlght_line()
 const CONTRACTIONS = [
     [' are not ', " aren't "], [' were not ', " weren't "],
@@ -70,10 +77,9 @@ function enlght_line(start, middle, end, ps) {
     out(buf);
 }
 
-// src/insight.c:105-108 — the enl_msg family. `final` is 0 for ^X, so the
-// present-tense form is always the one used.
+// src/insight.c:105-108 — the enl_msg family; en_final picks the tense.
 const enl_msg = (prefix, present, past, suffix, ps) =>
-    enlght_line(prefix, present, suffix, ps);
+    enlght_line(prefix, en_final ? past : present, suffix, ps);
 const you_are = (attr, ps = '') => enl_msg('You ', 'are ', 'were ', attr, ps);
 const you_have = (attr, ps = '') => enl_msg('You ', 'have ', 'had ', attr, ps);
 const you_can = (attr, ps = '') => enl_msg('You ', 'can ', 'could ', attr, ps);
@@ -131,9 +137,9 @@ function background_enlightenment() {
     you_are(buf);
 
     /* bypasses you_are() so the sentence has no trailing period yet */
-    out(` You are ${align_str(u.ualign.type)}, on a mission for ${u_gname()}`);
+    out(` You ${en_final ? 'were' : 'are'} ${align_str(u.ualign.type)}, on a mission for ${u_gname()}`);
 
-    let opp = ' who is opposed by';
+    let opp = ` who ${en_final ? 'was' : 'is'} opposed by`;
     if (u.ualign.type !== 1)
         opp += ` ${align_gname(1)} (${align_str(1)}) and`;
     if (u.ualign.type !== 0)
@@ -184,16 +190,19 @@ function background_enlightenment() {
                 + ' moon in effect', '');
     }
     if (game.flags.friday13)
-        out(' Bad things can happen on Friday the 13th.');
+        out(` Bad things ${!en_final ? 'can happen'
+            : (en_final === ENL_GAMEOVERALIVE) ? 'could have happened'
+              : 'happened'} on Friday the 13th.`);
 
     {
         let buf = `${u.uexp | 0} experience point${plur(u.uexp | 0)}`;
         /* src/insight.c:702 — wizard mode (or final disclosure) appends the
            delta to the next level; "to attain" below 18, "for" above */
         const ulvl = u.ulevel | 0;
-        if (ulvl < 30 && game.wizard) {
+        if (ulvl < 30 && (en_final || game.wizard)) {
             const nxtlvl = newuexp(ulvl), delta = nxtlvl - (u.uexp | 0);
-            buf += `, ${delta} ${(u.uexp > 0) ? 'more ' : ''}needed ${
+            buf += `, ${delta} ${(u.uexp > 0) ? 'more ' : ''}${
+                !en_final ? '' : (delta === 1) ? 'was ' : 'were '}needed ${
                 (ulvl < 18) ? 'to attain' : 'for'} level ${ulvl + 1}`;
         }
         you_have(buf);
@@ -225,8 +234,8 @@ function basics_enlightenment() {
     /* src/insight.c:781 — money_cnt(gi.invent), the live count, not the
        starting umoney0 snapshot; hidden_gold (containers) is recorded. */
     const money = money_cnt(game.invent);
-    out(money ? ` Your wallet contains ${money} zorkmid${plur(money)}`
-              : ' Your wallet is empty');
+    out(money ? ` Your wallet contain${en_final ? 'ed' : 's'} ${money} zorkmid${plur(money)}`
+              : ` Your wallet ${en_final ? 'was' : 'is'} empty`);
     /* C terminates that line here when nothing follows it */
     lines[lines.length - 1] += '.';
 
@@ -269,9 +278,10 @@ function one_characteristic(attrindx) {
     const alimit = game.urace.attrmax[attrindx];
     let valubuf = attrval(attrindx, acurrent);
 
-    const interesting_alimit =
-        (alimit !== (attrindx !== A_STR ? 18 : STR18(100)));
-    let paren_pfx = ' (current; ';
+    const interesting_alimit = en_final
+        ? true /* was originally (abase != alimit) */
+        : (alimit !== (attrindx !== A_STR ? 18 : STR18(100)));
+    let paren_pfx = en_final ? ' (' : ' (current; ';
     if (acurrent !== abase) {
         valubuf += `${paren_pfx}base:${attrval(attrindx, abase)}`;
         paren_pfx = ', ';
@@ -293,7 +303,7 @@ function one_characteristic(attrindx) {
 // src/insight.c:900 characteristics_enlightenment() — bottom-line order.
 function characteristics_enlightenment() {
     out('');
-    out('Characteristics:');
+    out(`${en_final ? 'Final ' : ''}Characteristics:`);
     for (const a of [A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA])
         one_characteristic(a);
 }
@@ -302,7 +312,7 @@ function characteristics_enlightenment() {
 // fresh hero reaches.
 function status_enlightenment() {
     out('');
-    out('Status:');
+    out(`${en_final ? 'Final ' : ''}Status:`);
 
     /* hunger: hu_stat[] is empty for the normal state, and C substitutes
        "not hungry", which the contraction turns into "aren't hungry";
@@ -462,7 +472,13 @@ function wearing_any_armor() {
 
 // src/insight.c:200 enlightenment() — returns the lines for the caller to put
 // into a window.
-export function enlightenment() {
+export function enlightenment(mode, final) {
+    /* the ^X caller passes nothing: BASIC (+MAGIC for wizard/discover),
+       game in progress — src/insight.c:2009 doattributes() */
+    if (mode === undefined)
+        mode = BASICENLIGHTENMENT
+               | ((game.wizard || game.discover) ? MAGICENLIGHTENMENT : 0);
+    en_final = final | 0;
     lines.length = 0;
 
     const tmpbuf = highc(game.plname || '');
@@ -470,24 +486,30 @@ export function enlightenment() {
     out(`${tmpbuf} the ${(female && game.urole.name.f) ? game.urole.name.f
                                                        : game.urole.name.m}'s attributes:`);
 
-    background_enlightenment();
-    basics_enlightenment();
-    characteristics_enlightenment();
+    if (mode & BASICENLIGHTENMENT) {
+        background_enlightenment();
+        basics_enlightenment();
+        characteristics_enlightenment();
+    }
     status_enlightenment();
 
     /* src/insight.c:420 — the intrinsics section is shown for
-       MAGICENLIGHTENMENT, which doattributes grants when wizard or
-       discover; a plain-mode ^X stops at Status. */
-    if (game.wizard || game.discover)
+       MAGICENLIGHTENMENT: wizard/discover ^X, and always at game end. */
+    if (mode & MAGICENLIGHTENMENT)
         attributes_enlightenment();
 
     out('');
     out('Miscellaneous:');
-    /* src/insight.c:428 — wizard/discover reminder plus the bones tally */
-    if (game.wizard || game.discover) {
-        you_are(`running in ${game.wizard ? 'debug' : 'explore'} mode`);
+    /* src/insight.c:428 — wizard/discover reminder plus the bones tally,
+       which the end-of-game disclosure always shows */
+    if ((mode & BASICENLIGHTENMENT)
+        && (game.wizard || game.discover || en_final)) {
+        if (game.wizard || game.discover)
+            you_are(`running in ${game.wizard ? 'debug' : 'explore'} mode`);
         if (game.flags?.bones === false) {
-            you_have('disabled loading of bones levels');
+            you_have(`disabled loading${
+                en_final === ENL_GAMEOVERDEAD ? ' and storing' : ''
+                } of bones levels`);
         } else if (!(game.u.uroleplay?.numbones)) {
             enl_msg('You ', "haven't encountered", "didn't encounter",
                     ' any bones levels', '');
@@ -495,9 +517,11 @@ export function enlightenment() {
             note_unported_insight('enlightenment:bones_count');
         }
     }
-    out(' Total elapsed playing time is none.');
+    enl_msg('Total elapsed playing time ', 'is', 'was', ' none', '');
 
-    return lines.slice();
+    const result = lines.slice();
+    en_final = 0;
+    return result;
 }
 
 // src/insight.c:1487 attributes_enlightenment() — the "Attributes:" section.
@@ -510,7 +534,7 @@ function attributes_enlightenment() {
     const u = game.u;
 
     out('');
-    out('Attributes:');
+    out(`${en_final ? 'Final ' : ''}Attributes:`);
 
     if (u.uevent?.uhand_of_elbereth)
         note_unported_insight('attributes:hand_of_elbereth');
@@ -596,11 +620,31 @@ function attributes_enlightenment() {
 
     if (u.ugangr) {
         note_unported_insight('attributes:ugangr');
-    } else {
-        /* src/insight.c:1940 — "can [not] safely pray"; suppressed when the
-           game is over */
+    } else if (!en_final) {
+        /* src/insight.c:1936 — suppressed when the game is over: death can
+           change can_pray()'s answer */
         you_can(`${can_pray(false) ? '' : 'not '}safely pray`
                 + (game.wizard ? ` (${u.ublesscnt})` : ''));
+    }
+
+    /* src/insight.c:1968 — mortality tally; at a death it is the plain
+       " You are dead." line (the past-tense slot carries it) */
+    {
+        let buf = '';
+        let p;
+        if (en_final < ENL_GAMEOVERDEAD) {
+            p = 'survived after being killed ';
+            if (!(u.umortality | 0))
+                p = !en_final ? null : 'survived';
+            else
+                note_unported_insight('attributes:umortality_times');
+        } else {
+            p = 'are dead';
+            if ((u.umortality | 0) > 1)
+                note_unported_insight('attributes:umortality_ordinal');
+        }
+        if (p)
+            enl_msg('You ', 'have been killed ', p, buf, '');
     }
 }
 
@@ -731,7 +775,7 @@ export async function do_gamelog() {
 // src/insight.c:2089 show_conduct() — the #conduct window. The arms whose
 // state no session reaches (blind/deaf/pauper/nudist rolls, wish details)
 // stay silent exactly as C's would with zeroed fields.
-export async function show_conduct() {
+export async function show_conduct(final) {
     const {
         tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
         tty_display_nhwindow, tty_next_page, NHW_MENU,
@@ -740,59 +784,73 @@ export async function show_conduct() {
     const { docrt } = await import('./display.js');
     const { xwaitforspace } = await import('./tty/getline.js');
     const c = game.u.uconduct || {};
+    const fin = final | 0;
     const win = tty_create_nhwindow(NHW_MENU);
     const put = (s) => tty_putstr(win, 0, s);
+    /* the enl_msg tense pairs from src/insight.c:105-115, applied with the
+       same one-space lead and contraction pass as enlght_line */
+    const cmsg = (present, past, thing) => {
+        let buf = ` You ${fin ? past : present}${thing}.`;
+        if (buf.includes(' not '))
+            buf = buf.split(' are not ').join(" aren't ")
+                     .split(' have not ').join(" haven't ");
+        put(buf);
+    };
+    const have_been = (g) => cmsg('have been ', 'were ', g);
+    const have_never = (b) => cmsg('have never ', 'never ', b);
+    const have_X = (x) => cmsg('have ', '', x);
 
     put('Voluntary challenges:');
-    /* u.uroleplay.reroll is never enabled in a recorded rc */
+    /* u.uroleplay.reroll is never enabled in a recorded rc; C phrases this
+       one in past tense always */
     put(' Character rerolling was not enabled.');
 
     if (!c.food)
-        put(' You have gone without food.');
+        cmsg('have gone ', 'went ', 'without food');
     else if (!c.unvegan)
-        put(' You have followed a strict vegan diet.');
+        have_X('followed a strict vegan diet');
     else if (!c.unvegetarian)
-        put(' You have been vegetarian.');
+        have_been('vegetarian');
 
     if (!c.gnostic)
-        put(' You have been an atheist.');
+        have_been('an atheist');
 
     if (!c.weaphit)
-        put(' You have never hit with a wielded weapon.');
+        have_never('hit with a wielded weapon');
     else if (game.wizard)
-        put(` You have hit with a wielded weapon ${c.weaphit} time${
-            c.weaphit === 1 ? '' : 's'}.`);
+        have_X(`hit with a wielded weapon ${c.weaphit} time${
+            c.weaphit === 1 ? '' : 's'}`);
     if (!c.killer)
-        put(' You have been a pacifist.');
+        have_been('a pacifist');
 
     if (!c.literate)
-        put(' You have been illiterate.');
+        have_been('illiterate');
     else if (game.wizard)
-        put(` You have read items or engraved ${c.literate} time${
-            c.literate === 1 ? '' : 's'}.`);
+        have_X(`read items or engraved ${c.literate} time${
+            c.literate === 1 ? '' : 's'}`);
 
     if (!c.pets)
-        put(' You have never had a pet.');
+        have_never('had a pet');
 
     /* num_genocides() is always 0 so far */
-    put(' You have never genocided any monsters.');
+    have_never('genocided any monsters');
 
     if (!c.polypiles)
-        put(' You have never polymorphed an object.');
+        have_never('polymorphed an object');
     else if (game.wizard)
-        put(` You have polymorphed ${c.polypiles} item${
-            c.polypiles === 1 ? '' : 's'}.`);
+        have_X(`polymorphed ${c.polypiles} item${
+            c.polypiles === 1 ? '' : 's'}`);
 
     if (!c.polyselfs)
-        put(' You have never changed form.');
+        have_never('changed form');
     else if (game.wizard)
-        put(` You have changed form ${c.polyselfs} time${
-            c.polyselfs === 1 ? '' : 's'}.`);
+        have_X(`changed form ${c.polyselfs} time${
+            c.polyselfs === 1 ? '' : 's'}`);
 
     if (!c.wishes)
-        put(' You have used no wishes.');
+        have_X('used no wishes');
     else
-        put(` You have used ${c.wishes} wish${c.wishes > 1 ? 'es' : ''}.`);
+        have_X(`used ${c.wishes} wish${c.wishes > 1 ? 'es' : ''}`);
 
     await tty_display_nhwindow(win);
     await xwaitforspace(' \r\n\x1b');

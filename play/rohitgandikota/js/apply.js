@@ -8,6 +8,7 @@ import { getdir, get_adjacent_loc } from './cmd.js';
 import { pick_lock } from './lock.js';
 import { is_pick, is_axe } from './mon.js';
 import { is_pole } from './u_init.js';
+import { ECMD_FAIL } from './const.js';
 import { Hallucination, Deaf } from './youprop.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE } from './invent.js';
 import { OCLASSES } from './objects_data.js';
@@ -191,9 +192,43 @@ export async function doapply() {
     if (LAMPS.includes(obj.otyp))
         return ECMD_TIME;
 
-    note_unported_apply(`apply:otyp=${obj.otyp}`);
-    return ECMD_OK;
+    /* src/apply.c doapply's switch: an otyp with a real case whose handler
+       is not ported yet is recorded; anything else falls to C's default
+       arm, which is fully defined: pole-arms and diggers get their use
+       functions, everything else is refused with a message. */
+    if (APPLY_CASED_OTYPS.has(obj.otyp)) {
+        note_unported_apply(`apply:otyp=${obj.otyp}`);
+        return ECMD_OK;
+    }
+    if (is_pole(obj)) {
+        note_unported_apply('apply:use_pole');
+        return ECMD_OK;
+    }
+    if (is_pick(obj) || is_axe(obj)) {
+        note_unported_apply('apply:use_pick_axe');
+        return ECMD_OK;
+    }
+    await pline("Sorry, I don't know how to use that.");
+    return ECMD_FAIL;
 }
+
+/* src/apply.c:4280 — the otyps doapply's switch names explicitly */
+const APPLY_CASED_OTYPS = new Set([
+    'BLINDFOLD', 'LENSES', 'CREAM_PIE', 'LUMP_OF_ROYAL_JELLY', 'BULLWHIP',
+    'GRAPPLING_HOOK', 'LARGE_BOX', 'CHEST', 'ICE_BOX', 'SACK',
+    'BAG_OF_HOLDING', 'OILSKIN_SACK', 'BAG_OF_TRICKS', 'CAN_OF_GREASE',
+    'LOCK_PICK', 'CREDIT_CARD', 'SKELETON_KEY', 'PICK_AXE',
+    'DWARVISH_MATTOCK', 'TINNING_KIT', 'LEASH', 'SADDLE', 'MAGIC_WHISTLE',
+    'TIN_WHISTLE', 'EUCALYPTUS_LEAF', 'STETHOSCOPE', 'MIRROR', 'BELL',
+    'BELL_OF_OPENING', 'CANDELABRUM_OF_INVOCATION', 'WAX_CANDLE',
+    'TALLOW_CANDLE', 'OIL_LAMP', 'MAGIC_LAMP', 'BRASS_LANTERN', 'POT_OIL',
+    'EXPENSIVE_CAMERA', 'TOWEL', 'CRYSTAL_BALL', 'MAGIC_MARKER',
+    'TIN_OPENER', 'FIGURINE', 'UNICORN_HORN', 'WOODEN_FLUTE', 'MAGIC_FLUTE',
+    'TOOLED_HORN', 'FROST_HORN', 'FIRE_HORN', 'WOODEN_HARP', 'MAGIC_HARP',
+    'BUGLE', 'LEATHER_DRUM', 'DRUM_OF_EARTHQUAKE', 'HORN_OF_PLENTY',
+    'LAND_MINE', 'BEARTRAP', 'FLINT', 'LUCKSTONE', 'LOADSTONE',
+    'TOUCHSTONE', 'BANANA',
+].map((k) => ONAMES[k]).filter((v) => v !== undefined));
 
 
 // src/apply.c:1997 is_valid_jump_pos() — can the hero jump to <x,y>?

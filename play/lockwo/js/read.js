@@ -8,6 +8,7 @@
 // detect.c's gold_detect/food_detect/trap_detect respectively).
 
 import { game } from './gstate.js';
+import { LL_CONDUCT, livelog_printf } from './livelog.js';
 import { rnd, rn2, rn1, d } from './rng.js';
 import { pline, topl_more, update_topl, newsym } from './display.js';
 import { getobj, makeknown, useup, useupall, xname, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
@@ -1728,11 +1729,13 @@ const CANDY_WRAPPERS = [
 
 // C ref: read.c doread — `if (!u.uconduct.literate++) livelog_printf(...)`.
 // Score/livelog only, no RNG, but the counter itself is real state.
-function bump_literate() {
+function bump_literate(event) {
     const u = game.u;
     if (!u) return;
     u.uconduct = u.uconduct || {};
+    const first = !(u.uconduct.literate || 0);
     u.uconduct.literate = (u.uconduct.literate || 0) + 1;
+    if (first && event) livelog_printf(LL_CONDUCT, event);
 }
 
 // C ref: role.h Role_if(PM_TOURIST).
@@ -1944,7 +1947,9 @@ export async function doread() {
     // but the counter is what gates the SCR_MAIL confirmation prompt.
     if (otyp !== SPE_BOOK_OF_THE_DEAD && otyp !== SPE_NOVEL
         && otyp !== SPE_BLANK_PAPER && otyp !== SCR_BLANK_PAPER)
-        bump_literate();
+        bump_literate(scroll.oclass === SPBOOK_CLASS
+            ? 'became literate by reading a book'
+            : 'became literate by reading a scroll');
 
     if (scroll.oclass === SPBOOK_CLASS) {
         return (await study_book(scroll)) ? ECMD_TIME : ECMD_OK;

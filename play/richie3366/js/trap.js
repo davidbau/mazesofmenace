@@ -13,6 +13,7 @@
 // uteetering_at_seen_pit / uescaped_shaft (D-1073 sit OBJ_AT gate +
 // do.c flooreffects; D-1083 can_reach_floor(check_pit)),
 // make_corpse ordinary path via thitm death.
+// openholdingtrap (D-0981) / closeholdingtrap (D-1425).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d, rnl } from './rng.js';
@@ -52,7 +53,7 @@ import {
     hides_under,
 } from './monsters.js';
 import {
-    DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, FORCEBUNGLE, RECURSIVETRAP,
+    DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, NOWEBMSG, FORCEBUNGLE, RECURSIVETRAP,
     SQKY_BOARD, HOLE, TRAPDOOR, TRAPPED_DOOR, TRAPPED_CHEST,
     PIT, SPIKED_PIT, STATUE_TRAP, MAGIC_TRAP, FIRE_TRAP, SLP_GAS_TRAP,
     TELEP_TRAP, ROLLING_BOULDER_TRAP, POLY_TRAP,
@@ -4918,6 +4919,46 @@ export async function openholdingtrap(mon) {
         }
     }
     return { happened: true, noticed };
+}
+
+/**
+ * C ref: trap.c closeholdingtrap :6210–6247 — magic lock snaps a
+ * BEAR_TRAP/WEB on hero or monster. Returns whether the target was
+ * hit (might avoid actually becoming trapped). *noticed is set only
+ * when the attempt runs; otherwise the previous value is left intact
+ * (JS: noticed stays false on early return).
+ * Callers: zap.c bhitm WAN_LOCKING (D-1425); zapyourself WAN_LOCKING
+ * (D-1434); zap_updown still named.
+ * @param {object|null} mon  target (youmonst or steed → hero path)
+ * @returns {Promise<{happened:boolean,noticed:boolean}>}
+ */
+export async function closeholdingtrap(mon) {
+    if (!mon) return { happened: false, noticed: false };
+    const u = game.u || {};
+    let ishero = mon === game.youmonst || !!mon._youmonst;
+    if (mon === u.usteed) ishero = true;
+
+    const t = t_at(ishero ? (u.ux | 0) : (mon.mx | 0),
+        ishero ? (u.uy | 0) : (mon.my | 0));
+    if (!t || ((t.ttyp | 0) !== BEAR_TRAP && (t.ttyp | 0) !== WEB)) {
+        return { happened: false, noticed: false };
+    }
+
+    if (ishero) {
+        if (u.utrap | 0) return { happened: false, noticed: false };
+        let dotrapflags = FORCETRAP;
+        // C: dotrap calls mintrap when mounted hero encounters a web
+        if (u.usteed) dotrapflags |= NOWEBMSG;
+        await dotrap(t, dotrapflags | FORCETRAP);
+        return { happened: !!(u.utrap | 0), noticed: true };
+    }
+    if (mon.mtrapped | 0) return { happened: false, noticed: false };
+    const noticed = cansee(t.tx | 0, t.ty | 0) || canspotmon(mon);
+    const res = await mintrap(mon, FORCETRAP);
+    return {
+        happened: res !== Trap_Effect_Finished,
+        noticed,
+    };
 }
 
 /**

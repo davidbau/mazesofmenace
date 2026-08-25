@@ -10,6 +10,7 @@ import { mpickstuff } from './mon.js';
 import { sengr_at } from './engrave.js';
 import { autoreturn_weapon } from './weapon.js';
 import { MON_WEP } from './monst.js';
+import { find_offensive } from './muse.js';
 import { is_launcher, is_pole } from './u_init.js';
 import { ammo_and_launcher } from './wield.js';
 import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
@@ -21,8 +22,8 @@ import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
 import { amorphous, passes_walls, is_floater, nonliving,
          attacktype, can_blow, needspick, flaming, noncorporeal,
          tunnels, nohands as nohands_mm,
-         verysmall as verysmall_mm } from './mondata.js';
-import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, In_endgame, NOTONL } from './const.js';
+         verysmall as verysmall_mm , sticks } from './mondata.js';
+import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, In_endgame, NOTONL } from './const.js';
 import { is_vampshifter } from './monst.js';
 import { newsym, canseemon, canspotmon, pline } from './display.js';
 import { You_see, You_hear } from './pline.js';
@@ -1150,7 +1151,7 @@ export async function dochug(mtmp) {
             if (!nearby
                 && (ranged_attk_available(mtmp)
                     || attacktype(mdat, ATTKS.AT_WEAP)
-                    || dochug_find_offensive(mtmp)))
+                    || find_offensive(mtmp)))
                 break;
             /* a monster that's digesting you can move at the
              * same time -dlc
@@ -1195,17 +1196,6 @@ export async function dochug(mtmp) {
     return (status === MMOVE_DIED) ? 1 : 0;
 }
 
-/* src/muse.c find_offensive() — same recorded absence as in js/mhitu.js:
-   scan for the item classes muse would consider. */
-function dochug_find_offensive(mtmp) {
-    for (const o of (mtmp.minvent || [])) {
-        const cl = o.oclass;
-        if (cl === OCLASSES.WAND_CLASS || cl === OCLASSES.POTION_CLASS
-            || cl === OCLASSES.SCROLL_CLASS || cl === OCLASSES.TOOL_CLASS)
-            return true;
-    }
-    return false;
-}
 
 /* src/weapon.c select_rwep() — the throwing subsystem is absent; reaching
    this guard (a trapped weapon-monster out of melee range) is recorded. */
@@ -1219,6 +1209,17 @@ function select_rwep_absent(mtmp) {
 /* src/mondata.c:1607 resist_conflict() — now the real port */
 function resist_conflict_absent(mtmp) {
     return resist_conflict(mtmp);
+}
+
+// src/monmove.c:1053 itsstuck() — a poly'd hero that sticks keeps hold of
+// the monster it grabbed.
+export async function itsstuck(mtmp) {
+    if (sticks(game.mons[game.u.umonnum]) && mtmp === game.u.ustuck
+        && !game.u.uswallow) {
+        await pline(`${Monnam(mtmp)} cannot escape from you!`);
+        return true;
+    }
+    return false;
 }
 
 // src/monmove.c:1720 m_move() — a non-tame monster's turn. The tame case is
@@ -1587,7 +1588,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
                 if (btrapped) {
                     note_unported('postmov:mb_trapped');
                 } else {
-                    await openit(4 /* D_ISOPEN */);
+                    await openit(D_ISOPEN);
                     if (game.flags?.verbose) {
                         if (canseeit && canspotmon(mtmp))
                             await pline(`${Monnam(mtmp)} unlocks and opens a door.`);
@@ -1601,7 +1602,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
                 if (btrapped) {
                     note_unported('postmov:mb_trapped');
                 } else {
-                    await openit(4 /* D_ISOPEN */);
+                    await openit(D_ISOPEN);
                     if (game.flags?.verbose) {
                         if (canseeit && canspotmon(mtmp))
                             await pline(`${Monnam(mtmp)} opens a door.`);

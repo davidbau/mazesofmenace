@@ -868,7 +868,9 @@ export async function mstatusline(mtmp) {
 
 /**
  * C ref: insight.c ustatusline — one-line stethoscope/self-probe status.
+ * Callers: apply.c use_stethoscope; zap.c zapyourself WAN_PROBING (D-1435).
  * Status ailments (Sick/Stoned/…) deferred; info suffix empty for now.
+ * Upolyd mh/mlevel still named.
  */
 export async function ustatusline() {
     const u = game.u || {};

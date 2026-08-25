@@ -45,6 +45,7 @@ import { hitval, mon_wield_item } from './weapon.js';
 import { mhitm_ad_phys, mhitm_ad_elec, mhitm_knockback } from './uhitm.js';
 import { t_at } from './mon.js';
 import { touch_petrifies } from './dog.js';
+import { find_offensive } from './muse.js';
 
 function note_unported_mhitu(what) {
     (game.unported ||= new Set()).add(what);
@@ -662,19 +663,6 @@ export function is_pole(obj) {
            || obj.otyp === ONAMES.LANCE;
 }
 
-/* src/muse.c find_offensive() — whether the monster has an offensive item
-   to use instead of attacking. The muse subsystem is absent; a monster
-   carrying an item class it would consider is recorded, so the silent
-   "no" is only given for inventories muse would also refuse. */
-function find_offensive(mtmp) {
-    for (const o of (mtmp.minvent || [])) {
-        const cl = o.oclass;
-        if (cl === OCLASSES.WAND_CLASS || cl === OCLASSES.POTION_CLASS
-            || cl === OCLASSES.SCROLL_CLASS || cl === OCLASSES.TOOL_CLASS)
-            return true;
-    }
-    return false;
-}
 
 // src/mhitu.c:1089 magic_negation() — the magic cancellation factor worn
 // armor gives its wearer; the best a_can among worn pieces. The extrinsic

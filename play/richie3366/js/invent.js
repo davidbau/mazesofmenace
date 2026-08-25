@@ -3,6 +3,8 @@
 //        consume_obj_charge unpaid check_unpaid (D-1047);
 //        update_inventory in_moveloop + suppress_map_output +
 //        suppress_price dance (D-1126; perm_invent On WIN_INVEN still named);
+//        display_minventory MINV_ALL|PICK_NONE (D-1426; zap.c
+//        probe_monster); worn_wield_only / PICK_ONE / INCLUDE_HERO named;
 //        o_init.c dodiscovered / discover_object;
 //        insight.c enlightenment (BASIC ^X + MAGIC-only in-progress D-1116).
 // D-0856: display_pickinv / invent_lines obj_to_glyph Hallu display RNG.
@@ -57,6 +59,10 @@ import {
     SORTLOOT_LOOT,
     SORTLOOT_INVLET,
     PICK_ONE,
+    PICK_NONE,
+    MINV_ALL,
+    MINV_NOLET,
+    engulfing_u,
     In_endgame,
     In_quest,
     Is_knox_level,
@@ -1173,6 +1179,93 @@ export async function display_inventory() {
     // Fullscreen invent sets no corner geom — dismiss → docrt (C).
     if (fullscreen) game._tty_menu_geom = { offx: 0, endRow: menuItems.length };
     await dismiss_nhw_menu();
+}
+
+/** C hacklib.c s_suffix — it→its, you→your, *s/*z/*x/*ch/*sh → *', else *'s. */
+function s_suffix_inv(s) {
+    if (!s) return s;
+    if (s === 'it' || s === 'It') return 'its';
+    if (s === 'you' || s === 'You') return 'your';
+    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
+        || s.endsWith('ch') || s.endsWith('sh')) {
+        return `${s}'`;
+    }
+    return `${s}'s`;
+}
+
+/**
+ * C ref: invent.c display_minventory :5340–5386.
+ * Callers: zap.c probe_monster MINV_ALL|MINV_NOLET|PICK_NONE (D-1426);
+ * look_here swallowed MINV_ALL|PICK_NONE (title supplied).
+ * Branch envelope: MINV_ALL → query_objlist analog (INVORDER_SORT
+ * class headings + doname under suppress_price + PICK_NONE).
+ * youmonst.data swap for "weapon in claw". Empty → "(none)".
+ * Named omit: worn_wield_only / !MINV_ALL armament; PICK_ONE/ANY;
+ * INCLUDE_HERO fake youmonst; sortloot loot-name; USE_INVLET letters
+ * (MINV_NOLET / PICK_NONE skip them); invdisp_nothing NHW_MENU polish.
+ * @returns {Promise<object|null>} selected object (PICK_NONE → null)
+ */
+export async function display_minventory(mon, dflags, title) {
+    if (!mon) return null;
+    const do_all = (dflags & MINV_ALL) !== 0;
+    void MINV_NOLET; // letters skipped: !USE_INVLET + PICK_NONE
+    void PICK_NONE;
+    let hdr = title;
+    if (!hdr) {
+        const { noit_Monnam } = await import('./do_name.js');
+        hdr = `${s_suffix_inv(noit_Monnam(mon))} ${
+            do_all ? 'possessions' : 'armament'}:`;
+    }
+    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const items = [];
+    for (let otmp = mon.minvent; otmp; otmp = otmp.nobj) items.push(otmp);
+    const incl_hero = do_all && engulfing_u(mon);
+    // INCLUDE_HERO fake-hero row named
+    void incl_hero;
+    const have_any = items.length > 0;
+    if (!(do_all ? have_any : false)) {
+        await select_menu_pick_none([
+            { text: hdr, attr: headingAttr },
+            { text: '', attr: 0 },
+            { text: '(none)', attr: 0 },
+        ]);
+        return null;
+    }
+    if (!game.youmonst) game.youmonst = { _youmonst: true };
+    if (!game.iflags) game.iflags = {};
+    const savedData = game.youmonst.data;
+    game.youmonst.data = mon.data;
+    // C iflags.suppress_price++ so doname_with_price ≡ doname
+    game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
+    try {
+        const entries = [{ text: hdr, attr: headingAttr }];
+        const classes = DEF_INV_ORDER.includes(VENOM_CLASS)
+            ? [...DEF_INV_ORDER]
+            : [...DEF_INV_ORDER, VENOM_CLASS];
+        for (const oclass of classes) {
+            const group = items.filter((o) => (o.oclass | 0) === oclass);
+            if (!group.length) continue;
+            entries.push({ text: let_to_name(oclass), attr: headingAttr });
+            for (const otmp of group) {
+                obj_glyph(otmp);
+                entries.push({ text: doname(otmp), attr: 0 });
+            }
+        }
+        const rows = display()?.rows || 24;
+        const lmax = Math.min(52, rows - 1);
+        if (entries.length > lmax) {
+            await select_menu_pick_none(entries);
+        } else {
+            await paint_corner_nhw_menu(entries, '(end) ');
+            await flush_screen(1);
+            await nhgetch();
+            await dismiss_nhw_menu();
+        }
+    } finally {
+        game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
+        game.youmonst.data = savedData;
+    }
+    return null;
 }
 
 /**

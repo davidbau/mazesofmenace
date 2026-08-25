@@ -2255,15 +2255,27 @@ export function lspo_door(opts) {
                     south: W_SOUTH, east: W_EAST, west: W_WEST };
     const msk = STATES[opts?.state ?? 'random'] ?? -1;
 
+    /* src/sp_lev.c:4696 get_table_xy_or_coord() — both the x/y pair and
+       the coord table select the direct-stamp branch */
+    let dx = opts?.x ?? -1, dy = opts?.y ?? -1;
+    if (opts?.coord) {
+        dx = Array.isArray(opts.coord) ? opts.coord[0] : opts.coord.x;
+        dy = Array.isArray(opts.coord) ? opts.coord[1] : opts.coord.y;
+    }
+
     /* src/sp_lev.c:4703 — typ is computed BEFORE the coordinate branch, so
        a random state spends rnddoor()'s draw even on the wall-based form
        (which then passes the still-random mask to create_door anyway). */
     const typ = (msk === -1) ? rnddoor() : msk;
 
-    /* src/sp_lev.c:4704 — the coordinate form stamps the door directly */
-    if (opts?.x != null && opts?.y != null) {
-        const x = opts.x + (game.xstart | 0), y = opts.y + (game.ystart | 0);
-        sel_set_door(x, y, typ);
+    /* src/sp_lev.c:4704 — the coordinate form stamps the door directly,
+       mapping through get_location_coord like C */
+    if (dx !== -1 || dy !== -1) {
+        const p = get_location_coord(dx, dy, ANY_LOC, game.coder?.croom,
+                                     SP_COORD_PACK(dx, dy));
+        if (!isok(p.x, p.y))
+            return; /* nhl_error "door coord not ok" */
+        sel_set_door(p.x, p.y, typ);
         return;
     }
 

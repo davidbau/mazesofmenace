@@ -20,7 +20,7 @@ import { flooreffects } from './do.js';
 import { place_object } from './mkobj.js';
 import { stackobj } from './invent.js';
 import { u_at, M_AP_MONSTER, XKILL_NOMSG, SLT_ENCUMBER,
-         A_DEX } from './const.js';
+         A_DEX, WATER, LAVAWALL } from './const.js';
 import { calc_capacity, ACURR } from './attrib.js';
 import { MON_WEP } from './monst.js';
 import { DEADMONSTER, is_vampshifter } from './monst.js';
@@ -687,4 +687,46 @@ function URETREATING(x, y) {
 /* wield.c mwelded(), local: caller guarantees a monster's item */
 function mwelded_mt(obj) {
     return !!(obj && (obj.owornmask & W_WEP) && obj.cursed);
+}
+
+// src/mthrowu.c:1280 blocking_terrain() — terrain at x,y blocks linedup
+// checks.
+function blocking_terrain(x, y) {
+    if (!isok(x, y))
+        return true;
+    const typ = game.level.at(x, y).typ;
+    /* src/dbridge.c:38 is_waterwall() is IS_WATERWALL(typ), i.e. WATER */
+    if (IS_OBSTRUCTED(typ) || closed_door(x, y)
+        || typ === WATER || typ === LAVAWALL)
+        return true;
+    return false;
+}
+
+// src/mthrowu.c:1295 linedup_callback() — walk from (bx,by) toward (ax,ay)
+// along a straight or diagonal line within BOLT_LIM, calling fnc for each
+// step; stops at blocking terrain, returns true when fnc does.
+export function linedup_callback(ax, ay, bx, by, fnc) {
+    /* These two values are set for use after successful return. */
+    game.tbx = ax - bx;
+    game.tby = ay - by;
+
+    /* sometimes displacement makes a monster think that you're at its
+       own location; prevent it from throwing and zapping in that case */
+    if (!game.tbx && !game.tby)
+        return false;
+
+    /* straight line, orthogonal to the map or diagonal */
+    if ((!game.tbx || !game.tby || Math.abs(game.tbx) === Math.abs(game.tby))
+        && distmin(game.tbx, game.tby, 0, 0) < BOLT_LIM) {
+        const dx = sgn(ax - bx), dy = sgn(ay - by);
+        do {
+            /* <bx,by> is guaranteed to eventually converge with <ax,ay> */
+            bx += dx, by += dy;
+            if (blocking_terrain(bx, by))
+                return false;
+            if (fnc(bx, by))
+                return true;
+        } while (bx !== ax || by !== ay);
+    }
+    return false;
 }

@@ -574,6 +574,18 @@ function add_quoted_engraving(x, y, buf, force) {
 /* src/pager.c:1670 — also used by the getpos hack */
 export const what_is_a_location = 'a monster, object or location';
 
+// src/pager.c:68 is_swallow_sym() — characters that could represent a
+// monster's stomach; compared against the active symset's swallow slots.
+function is_swallow_sym(sympair) {
+    const S_sw_tl = 88, S_sw_br = 95; /* include/defsym.h:221 */
+    for (let i = S_sw_tl; i <= S_sw_br; i++) {
+        const ds = showsym(i) || defsyms[i];
+        if (ds && sympair.ch === ds.ch && sympair.dec === !!ds.dec)
+            return true;
+    }
+    return false;
+}
+
 // src/pager.c:1247 do_screen_description() — build the description of the
 // spot (looked=true) or of a typed symbol (looked=false). Returns
 // { found, out_str, firstmatch, pm }.
@@ -605,7 +617,24 @@ export function do_screen_description(cc, looked, sym) {
 
     state.out_str = '';
 
-    /* swallowed / submerged handling first — neither state is reachable */
+    /* src/pager.c:1301 — restricted-vision handling first. The
+       u.uswallow/submerged and TER_DETECT arms need states no session
+       reaches, but is_swallow_sym() matches on the SYMBOL alone: under
+       DECgraphics the swallow borders share glyphs with walls ('x') and
+       other terrain, so a looked-at wall lists "the interior of a
+       monster" before its other meanings. */
+    if (looked && is_swallow_sym(sympair)) {
+        const mon_interior = 'the interior of a monster';
+        need_to_look = true; /* for specific monster type */
+        if (!found) {
+            state.out_str = prefix + mon_interior;
+            state.firstmatch = mon_interior;
+            found++;
+        } else {
+            found += append_str(state, mon_interior);
+        }
+        /* don't jump to the end: list the symbol's other possibilities */
+    }
 
     /* Check for monsters */
     {

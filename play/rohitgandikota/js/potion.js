@@ -178,10 +178,23 @@ export async function dopotion(otmp) {
 export async function dodrink(drink_ok) {
     /* Strangled needs the amulet of strangulation */
 
-    /* fountain / sink / underwater prompts happen before getobj */
+    /* src/potion.c:540 — the fountain/sink prompts come before getobj;
+       'm'-prefixed quaff skips them. can_reach_floor(FALSE) is true for
+       an ordinary walking hero. */
     const typ = game.level?.at(game.u.ux, game.u.uy)?.typ;
-    if (IS_FOUNTAIN(typ) || IS_SINK(typ))
-        note_unported_potion('dodrink:fountain_or_sink_prompt');
+    if (!game.iflags?.menu_requested) {
+        if (IS_FOUNTAIN(typ)) {
+            const { tty_yn_function } = await import('./tty/topl.js');
+            if ((await tty_yn_function('Drink from the fountain?', 'yn', 'n'))
+                === 'y') {
+                const { drinkfountain } = await import('./fountain.js');
+                await drinkfountain();
+                return ECMD_TIME;
+            }
+        }
+        if (IS_SINK(typ))
+            note_unported_potion('dodrink:sink_prompt');
+    }
 
     const otmp = await getobj('drink', drink_ok, GETOBJ_NOFLAGS);
     if (!otmp)

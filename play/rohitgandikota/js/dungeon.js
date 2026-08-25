@@ -11,7 +11,7 @@
 // docs/plan/04-level-generation.md §4.0.
 
 import { game } from './gstate.js';
-import { In_endgame, Is_earthlevel, ROOM, CORR, ICE, SDOOR, ALTAR, GRAVE,
+import { In_endgame, Is_earthlevel, ROOM, CORR, ICE, SDOOR, ALTAR, GRAVE, TREE, THRONE,
          FOUNTAIN, SINK, IRONBARS, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, IS_WALL,
          IS_DOOR, M_AP_TYPE, M_AP_FURNITURE } from './const.js';
 import { is_pool, is_lava, m_at } from './mon.js';
@@ -1146,9 +1146,9 @@ export function recalc_mapseen() {
             case FOUNTAIN: feat.nfount++; break;
             case SINK: feat.nsink++; break;
             case ALTAR: feat.naltar++; break;
-            case 29 /* THRONE */: feat.nthrone++; break;
+            case THRONE: feat.nthrone++; break;
             case GRAVE: feat.ngrave++; break;
-            case 18 /* TREE */: feat.ntree++; break;
+            case TREE: feat.ntree++; break;
             default: break;
             }
         }
@@ -1170,7 +1170,11 @@ function seen_string(x, obj) {
 
 // src/dungeon.c:3339 show_overview() + :3516 print_mapseen — the ^O/#overview
 // window. Only the branch-annotation and endgame arms are unported.
-export async function show_overview() {
+const ESCAPED_HOW = 14; /* include/hack.h:497 ESCAPED */
+export async function show_overview(why, reason) {
+    /* why: 0 normal #overview, -1 'm' prefix, 1 final (lived), 2 final
+       (died); reason: how the game ended, for the resting-place line */
+    why = why | 0;
     recalc_mapseen();
     const {
         tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu,
@@ -1188,8 +1192,12 @@ export async function show_overview() {
     for (const m of entries) {
         if (m.dnum !== lastdnum) {
             lastdnum = m.dnum;
-            /* the dungeon-name line is an add_menu_heading: ATR_INVERSE */
-            tty_add_menu(win, null, 0, 0, 0, 7 /* NH ATR_INVERSE */, NO_COLOR,
+            /* the dungeon-name line is an add_menu_heading: ATR_INVERSE,
+               except that src/windows.c:1822 suppresses the highlight
+               during end-of-game disclosure */
+            const hattr = game.program_state_gameover ? 0
+                          : 7 /* NH ATR_INVERSE */;
+            tty_add_menu(win, null, 0, 0, 0, hattr, NO_COLOR,
                          `${game.dungeons[m.dnum].dname}:`, 0);
         }
         const dep = game.dungeons[m.dnum].depth_start + m.dlevel - 1;
@@ -1201,9 +1209,29 @@ export async function show_overview() {
         }
         if (m.custom)
             buf += ` "${m.custom}"`;
+        const died_here = (why > 0 && game.u.uz.dnum === m.dnum
+                           && game.u.uz.dlevel === m.dlevel);
         if (game.u.uz.dnum === m.dnum && game.u.uz.dlevel === m.dlevel)
-            buf += ' <- You are here.';
+            buf += ` <- You ${why <= 0 ? 'are'
+                : (why === 1 && reason === ESCAPED_HOW) ? 'left from'
+                  : 'were'} here.`;
         tty_add_menu(win, null, 0, 0, 0, 0, NO_COLOR, buf, 0);
+
+        /* src/dungeon.c:3696 — bones details; at game end the hero's own
+           resting place is listed (before bones creation, so it gives
+           nothing away) */
+        if (died_here) {
+            tty_add_menu(win, null, 0, 0, 0, 0, NO_COLOR,
+                         `${PREFIX}Final resting place for`, 0);
+            const { formatkiller } = await import('./end.js');
+            let tmpbuf = formatkiller(reason, true)
+                .replace(' himself', ' yourself')
+                .replace(' herself', ' yourself')
+                .replace(' his ', ' your ')
+                .replace(' her ', ' your ');
+            tty_add_menu(win, null, 0, 0, 0, 0, NO_COLOR,
+                         `${PREFIX}${TAB}you, ${tmpbuf}.`, 0);
+        }
 
         const f = m.feat || {};
         let i = 0;

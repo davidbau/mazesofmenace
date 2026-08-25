@@ -996,16 +996,16 @@ export async function polymon(mntmp) {
  * random ordinary pick, then polymon/newman.
  * Named omissions: were/vamp/dragon-merge/POLY_MONSTER/POLY_REVERT;
  * placeholder orc/elf/giant substitutes; mkclass_poly; controllable_poly
- * getlin (non-force); wizard rehumanize own-role; light-source bookkeeping;
- * POLY_LOW_CTRL forcecontrol downgrade.
+ * getlin (non-force); wizard rehumanize own-role; light-source bookkeeping.
+ * POLY_LOW_CTRL forcecontrol downgrade is live (D-1428).
  * @param {number} [psflags=POLY_NOFLAGS]
  */
 export async function polyself(psflags = 0) {
     const u = game.u || (game.u = {});
-    const forcecontrol = (psflags & POLY_CONTROLLED) !== 0;
-    // low_control / monsterpoly / formrevert reserved for later arms
-    void (psflags & POLY_LOW_CTRL);
-    void (psflags & POLY_MONSTER);
+    let forcecontrol = (psflags & POLY_CONTROLLED) !== 0;
+    const low_control = (psflags & POLY_LOW_CTRL) !== 0;
+    const monsterpoly = (psflags & POLY_MONSTER) !== 0;
+    // formrevert named omit
     void (psflags & POLY_REVERT);
 
     if (Unchanging(u)) {
@@ -1030,6 +1030,13 @@ export async function polyself(psflags = 0) {
             exercise(A_CON, false);
             return;
         }
+    }
+
+    // C polyself.c :506–508 — blessed potion LOW_CTRL does not prompt
+    // when already a dragon-merge / monster-poly / vamp / were form.
+    if (forcecontrol && low_control
+        && (draconian || monsterpoly || isvamp || iswere)) {
+        forcecontrol = false;
     }
 
     let mntmp = NON_PM;

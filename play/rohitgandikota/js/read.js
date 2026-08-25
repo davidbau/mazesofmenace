@@ -95,9 +95,12 @@ export async function doread(read_ok) {
 }
 
 // src/read.c:308 learnscroll() — reading identifies the scroll type.
-function learnscroll(sobj) {
-    /* it's implied hero became literate */
-    makeknown(sobj.otyp);
+// Also called from teleport.js for the scroll of teleportation.
+export function learnscroll(sobj) {
+    /* it's implied that sobj->dknown is set;
+       we couldn't be reading this scroll otherwise */
+    if (sobj.oclass !== OCLASSES.SPBOOK_CLASS)
+        learnscrolltyp(sobj.otyp);
 }
 
 // src/read.c:2263 seffects() — scroll effects, one arm per type. Only

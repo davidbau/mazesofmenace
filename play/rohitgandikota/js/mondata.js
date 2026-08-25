@@ -13,7 +13,8 @@
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { Hallucination } from './youprop.js';
+import { Hallucination, Unaware } from './youprop.js';
+import { defends, defends_when_carried } from './artifact.js';
 import { canspotmon } from './display.js';
 import { G_UNIQ, PRONOUN_NO_IT, PRONOUN_HALLU } from './const.js';
 import { dist2 } from './hacklib.js';
@@ -267,30 +268,66 @@ export const Is_dragon_armor = (obj) =>
 // otyp is derived from the species. defends() and Is_dragon_armor() read only
 // otyp, so the rest of the object is left unset exactly as C leaves it.
 export function defended(mon, adtyp) {
-    /* artifact weapons do not exist in this port yet, and C guards on
-       o->oartifact before calling defends(), so that arm is unreachable
-       rather than skipped. */
-    let o = MON_WEP(mon);
-    if (o && o.oartifact) {
-        note_unported_mondata('defended:defends(artifact weapon)');
-        return false;
-    }
+    const is_you = (mon === game.u || mon === null);
 
-    const mndx = mon.data.pmidx;
+    /* is 'mon' wielding an artifact that protects against 'adtyp'? */
+    let o = is_you ? game.u.uwep : MON_WEP(mon);
+    if (o && o.oartifact && defends(adtyp, o))
+        return true;
+
+    const mndx = is_you ? game.u.umonnum : mon.data.pmidx;
     if (mndx >= PMNAMES.PM_GRAY_DRAGON && mndx <= PMNAMES.PM_YELLOW_DRAGON) {
         o = {
             oclass: OCLASSES.ARMOR_CLASS,
             otyp: ONAMES.GRAY_DRAGON_SCALES + (mndx - PMNAMES.PM_GRAY_DRAGON),
         };
     } else {
-        o = which_armor(mon, W_ARM);
+        o = is_you ? game.u.uarm : which_armor(mon, W_ARM);
     }
 
-    if (o && Is_dragon_armor(o)) {
-        note_unported_mondata('defended:defends(dragon scales)');
-        return false;
-    }
+    /* is 'mon' wearing dragon scales that protect against 'adtyp'? */
+    if (o && Is_dragon_armor(o) && defends(adtyp, o))
+        return true;
 
+    return false;
+}
+
+// src/mondata.c:278 resists_blnd_by_arti() — light-blindness resistance from
+// worn or wielded magical equipment.
+export function resists_blnd_by_arti(mon) {
+    const is_you = (mon === game.u || mon === null);
+
+    let o = is_you ? game.u.uwep : MON_WEP(mon);
+    if (o && o.oartifact && defends(ATTKS.AD_BLND, o))
+        return true;
+    const chain = is_you ? (game.invent || []) : (mon.minvent || []);
+    for (const obj of chain)
+        if (defends_when_carried(ATTKS.AD_BLND, obj))
+            return true;
+    return false;
+}
+
+// src/mondata.c:248 resists_blnd() — resistant to light-induced blindness.
+// Pass game.u (or null) for the hero, mirroring C's &gy.youmonst.
+export function resists_blnd(mon) {
+    const is_you = (mon === game.u || mon === null);
+    const ptr = is_you ? game.mons[game.u.umonnum] : mon.data;
+
+    if (is_you ? (!!game.u.ublind || Unaware())
+               : (mon.mblinded || !mon.mcansee || !haseyes(ptr)
+                  /* BUG: temporary sleep sets mfrozen, but since
+                          paralysis does too, we can't check it */
+                  || mon.msleeping))
+        return true;
+    /* yellow light, Archon; !dust vortex, !cobra, !raven */
+    if (dmgtype_fromattack(ptr, ATTKS.AD_BLND, ATTKS.AT_EXPL)
+        || dmgtype_fromattack(ptr, ATTKS.AD_BLND, ATTKS.AT_GAZE))
+        return true;
+    /* Sunsword */
+    if (resists_blnd_by_arti(is_you ? null : mon))
+        return true;
+    /* C's catchall tests Blnd_resist and calls impossible(); the properties
+       it covers have no other source here yet, so it stays a fall-through */
     return false;
 }
 

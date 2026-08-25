@@ -37,6 +37,7 @@ import { getpos } from './getpos.js';
 
 import { isok, ECMD_OK, ECMD_TIME, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
 import { ONAMES } from './objects_data.js';
+import { learnscroll } from './read.js';
 
 // include/hack.h:1204-1210
 
@@ -541,7 +542,7 @@ export async function scrolltele(scroll) {
             const whobuf = 'you';
             await pline(`Where do ${whobuf} want to be teleported?`);
             if (scroll)
-                note_unported_teleport('scrolltele:learnscroll');
+                learnscroll(scroll);
             cc.x = game.u.ux;
             cc.y = game.u.uy;
             if (isok(game.iflags?.travelcc?.x, game.iflags?.travelcc?.y)) {
@@ -565,7 +566,7 @@ export async function scrolltele(scroll) {
     /* src/teleport.c:912 — discovery is unconditional now that there is
        always a materialize message */
     if (scroll)
-        note_unported_teleport('scrolltele:learnscroll');
+        learnscroll(scroll);
 
     await safe_teleds(TELEDS_TELEPORT);
 }

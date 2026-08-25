@@ -17,7 +17,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          LEFT_RING, RIGHT_RING } from './const.js';
 import { setworn } from './worn.js';
 import { welded, is_sword } from './wield.js';
-import { bimanual } from './obj.js';
+import { bimanual, is_metallic } from './obj.js';
 import { Is_dragon_armor } from './mondata.js';
 import { sgn } from './hacklib.js';
 import { erode_obj, is_flammable, is_rustprone, is_crackable, is_rottable,
@@ -974,4 +974,12 @@ export async function destroy_arm() {
     if (ret)
         await stop_occupation();
     return ret;
+}
+
+// src/do_wear.c:568 hard_helmet() — hard helms provide better protection
+// against falling rocks.
+export function hard_helmet(obj) {
+    if (!obj || !is_helmet(obj))
+        return false;
+    return (is_metallic(obj) || is_crackable(obj)) ? true : false;
 }

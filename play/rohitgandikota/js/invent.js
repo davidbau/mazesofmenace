@@ -118,6 +118,50 @@ export function addinv_nomerge(obj) {
     return obj;
 }
 
+// src/invent.c:4037 dfeature_at(), in C's arm order: door, fountain,
+// throne, lava, ice, pool, sink, altar, STAIRS (after altar), the
+// drawbridges, grave, tree, iron bars.
+export function dfeature_at(x, y) {
+    let dfeature = null;
+    const stway = stairway_at(x, y);
+    const loc0 = game.level?.at(x, y);
+    const ltyp = loc0?.typ;
+    if (loc0 && IS_DOOR(ltyp)) {
+        switch (loc0.doormask) {
+        case D_NODOOR: dfeature = 'doorway'; break;
+        case D_ISOPEN: dfeature = 'open door'; break;
+        case D_BROKEN: dfeature = 'broken door'; break;
+        default:       dfeature = 'closed door'; break;
+        }
+        /* open-drawbridge portcullis override needs drawbridge walls */
+    } else if (ltyp === FOUNTAIN) {
+        dfeature = 'fountain';
+    } else if (ltyp === THRONE) {
+        dfeature = 'opulent throne';
+    } else if (is_lava(x, y)) {
+        dfeature = 'molten lava';
+    } else if (ltyp === ICE) {
+        dfeature = 'ice';           /* ice_descr's age arms are not seen */
+    } else if (is_pool(x, y)) {
+        dfeature = 'pool of water';
+    } else if (ltyp === SINK) {
+        dfeature = 'sink';
+    } else if (ltyp === ALTAR) {
+        note_unported_invent('look_here:altar_dfeature');
+    } else if (stway) {
+        dfeature = stairs_description(stway, true);
+    } else if (ltyp === DRAWBRIDGE_DOWN) {
+        dfeature = 'lowered drawbridge';
+    } else if (ltyp === GRAVE) {
+        dfeature = 'grave';
+    } else if (ltyp === TREE) {
+        dfeature = 'tree';
+    } else if (ltyp === IRONBARS) {
+        dfeature = 'set of iron bars';
+    }
+    return dfeature;
+}
+
 // src/invent.c:4104 look_here()
 //
 // The engulfed arm, gas regions, cockatrice touches and Blind feel-arms are
@@ -147,46 +191,7 @@ export async function look_here(obj_cnt, lhflags) {
             note_unported_invent('look_here:trap_here');
     }
 
-    /* src/invent.c:4037 — dfeature_at(), in C's arm order: door, fountain,
-       throne, lava, ice, pool, sink, altar, STAIRS (after altar), the
-       drawbridges, grave, tree, iron bars. */
-    let dfeature = null;
-    const stway = stairway_at(game.u.ux, game.u.uy);
-    const loc0 = game.level?.at(game.u.ux, game.u.uy);
-    const ltyp = loc0?.typ;
-    if (loc0 && IS_DOOR(ltyp)) {
-        switch (loc0.doormask) {
-        case D_NODOOR: dfeature = 'doorway'; break;
-        case D_ISOPEN: dfeature = 'open door'; break;
-        case D_BROKEN: dfeature = 'broken door'; break;
-        default:       dfeature = 'closed door'; break;
-        }
-        /* open-drawbridge portcullis override needs drawbridge walls */
-    } else if (ltyp === FOUNTAIN) {
-        dfeature = 'fountain';
-    } else if (ltyp === THRONE) {
-        dfeature = 'opulent throne';
-    } else if (is_lava(game.u.ux, game.u.uy)) {
-        dfeature = 'molten lava';
-    } else if (ltyp === ICE) {
-        dfeature = 'ice';           /* ice_descr's age arms are not seen */
-    } else if (is_pool(game.u.ux, game.u.uy)) {
-        dfeature = 'pool of water';
-    } else if (ltyp === SINK) {
-        dfeature = 'sink';
-    } else if (ltyp === ALTAR) {
-        note_unported_invent('look_here:altar_dfeature');
-    } else if (stway) {
-        dfeature = stairs_description(stway, true);
-    } else if (ltyp === DRAWBRIDGE_DOWN) {
-        dfeature = 'lowered drawbridge';
-    } else if (ltyp === GRAVE) {
-        dfeature = 'grave';
-    } else if (ltyp === TREE) {
-        dfeature = 'tree';
-    } else if (ltyp === IRONBARS) {
-        dfeature = 'set of iron bars';
-    }
+    const dfeature = dfeature_at(game.u.ux, game.u.uy);
     if (Blind && dfeature)
         note_unported_invent('look_here:blind_feel');
 

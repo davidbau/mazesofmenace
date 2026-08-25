@@ -192,6 +192,7 @@ import {
     PM_KOBOLD_MUMMY,
     PM_KOBOLD_ZOMBIE,
     PM_KITTEN,
+    PM_KILLER_BEE,
     PM_LARGE_MIMIC,
     PM_LICH,
     PM_LICHEN,
@@ -208,6 +209,7 @@ import {
     PM_OGRE_LEADER,
     PM_OGRE_TYRANT,
     PM_PONY,
+    PM_QUEEN_BEE,
     PM_SEWER_RAT,
     PM_SHOPKEEPER,
     PM_SOLDIER,
@@ -215,6 +217,7 @@ import {
     PM_SNAKE,
     PM_STALKER,
     PM_STONE_GIANT,
+    PM_UMBER_HULK,
     PM_URUK_HAI,
     PM_VAMPIRE,
     PM_VAMPIRE_BAT,
@@ -1059,13 +1062,18 @@ function assertSupportedSpecies(species) {
             || species.mlet === S_KOBOLD
             || species.mlet === S_GNOME
             || species.mlet === S_ORC);
+    const beehiveSpecies = species
+        && (species.pmidx === PM_QUEEN_BEE
+            || species.pmidx === PM_KILLER_BEE);
     if (!species
         || (!INITIAL_LEVEL_MONSTERS.has(species.pmidx)
             && !TUTORIAL_LEVEL_MONSTERS.has(species.pmidx)
             && !isStatuaryReservoirSpecies(species)
             && !isOrdinaryD5ReservoirSpecies(species)
             && !isMausoleumSpecies(species)
-            && !courtSpecies)) {
+            && !courtSpecies
+            && !beehiveSpecies
+            && species.pmidx !== PM_UMBER_HULK)) {
         throw new UnsupportedMonsterCreationError(
             `monster ${species?.pmidx ?? 'null'}`,
         );

@@ -22,6 +22,9 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { freeinv, addinv_nomerge, useupall, update_inventory } from './invent.js';
+import { setworn, setnotworn } from './worn.js';
+import { init_uhunger } from './eat.js';
 
 // dat/nhlib.lua:19 shuffle() — Fisher-Yates from the top down, so a list of
 // three draws rn2(3) then rn2(2).
@@ -119,4 +122,91 @@ export function lua_d(dice, faces) {
     for (let i = 1; i <= dice; i++)
         sum += nh_random(1, faces);
     return sum;
+}
+
+// src/nhlua.c:1837 tutorial() — called from goto_level(do.c) on entering or
+// leaving the tutorial branch; runs dat/nhcore.lua's enter_tutorial /
+// leave_tutorial (nhlib.lua tutorial_enter/tutorial_leave), whose real work
+// is nh.gamestate(): stash the whole game state on the way in, restore it on
+// the way out.
+export function tutorial(entering) {
+    if (entering)
+        nhl_gamestate_save();
+    else
+        nhl_gamestate_restore();
+    /* nhlib.lua also registers cmd_before (blacklists #save) and end_turn
+       (the low-hunger food-ration event) callbacks; the end_turn event
+       only acts when u.uhunger < 148, which is recorded when reached */
+}
+
+// src/nhlua.c:2058 nhl_gamestate() — the save arm: strip the inventory
+// into gmst_invent, snapshot u, discoveries, mvitals and the spellbook.
+function nhl_gamestate_save() {
+    const g = game;
+    if (g.gmst_stored)
+        return; /* impossible() */
+    const invent = [];
+    while ((g.invent || []).length) {
+        const otmp = g.invent[0];
+        const wornmask = otmp.owornmask;
+        setnotworn(otmp);
+        freeinv(otmp);
+        otmp.owornmask = wornmask; /* flag for later restore */
+        invent.push(otmp);
+    }
+    g.gmst = {
+        moves: g.moves,
+        invent,
+        ubak: { ...g.u },
+        disco: JSON.parse(JSON.stringify(g.disco ?? [])),
+        mvitals: JSON.parse(JSON.stringify(g.mvitals ?? {})),
+        spl_book: JSON.parse(JSON.stringify(g.u.spl_book ?? [])),
+    };
+    g.lastinvnr = 51; /* next inventory letter will be 'a' */
+    if (g.u.spl_book)
+        g.u.spl_book = [];
+    g.gmst_stored = true;
+    update_inventory();
+}
+
+// the restore arm: put everything back, reset time, re-init hunger.
+function nhl_gamestate_restore() {
+    const g = game;
+    if (!g.gmst_stored || !g.gmst)
+        return; /* impossible() */
+    const cur_uz = g.u.uz, cur_uz0 = g.u.uz0;
+
+    g.moves = g.gmst.moves;
+    /* pline("Resetting time to move #%ld.") is printed by C here */
+    pline_tutorial_reset(g.moves);
+
+    g.lastinvnr = 51;
+    while ((g.invent || []).length)
+        useupall(g.invent[0]);
+    for (const otmp of g.gmst.invent) {
+        const wornmask = otmp.owornmask;
+        otmp.owornmask = 0;
+        addinv_nomerge(otmp);
+        if (wornmask)
+            setworn(otmp, wornmask);
+    }
+    Object.assign(g.u, g.gmst.ubak);
+    g.disco = g.gmst.disco;
+    g.mvitals = g.gmst.mvitals;
+    g.u.spl_book = g.gmst.spl_book;
+    /* uname'd object types are cleared in C; ours stores oc_uname on
+       game.objects entries */
+    for (const oc of (g.objects || []))
+        if (oc && oc.oc_uname)
+            oc.oc_uname = null;
+    g.u.uz = cur_uz, g.u.uz0 = cur_uz0;
+    init_uhunger();
+    g.gmst = null;
+    g.gmst_stored = false;
+    update_inventory();
+}
+
+async function pline_tutorial_reset(moves) {
+    const { pline } = await import('./display.js');
+    await pline(`Resetting time to move #${moves}.`);
 }

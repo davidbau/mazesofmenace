@@ -28,9 +28,10 @@ import { is_metallic, is_mines_prize, is_soko_prize } from './obj.js';
 import { bad_rock, may_dig, may_passwall } from './hack.js';
 import { which_armor } from './worn.js';
 import { obj_resists } from './zap.js';
-import { mksobj_at, splitobj, mkobj, place_object, clear_splitobjs } from './mkobj.js';
+import { mksobj_at, splitobj, mkobj, place_object, clear_splitobjs, mkgold, undead_to_corpse } from './mkobj.js';
+import { weight } from './invent.js';
 import { newsym, canseemon, canspotmon, pline } from './display.js';
-import { rn1, rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd, rnl, d } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster, place_monster, goodpos } from './makemon.js';
 import { enexto_core, enexto } from './teleport.js';
@@ -71,7 +72,7 @@ import { is_rider, set_mimic_sym, hideunder, is_male, is_female } from './makemo
 import { mpickobj } from './steal.js';
 import { nonliving, is_neuter, is_animal, is_mplayer, has_head } from './mondata.js';
 import { mkcorpstat } from './mklev.js';
-import { CORPSTAT_NONE, CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, ACCESSIBLE } from './const.js';
+import { CORPSTAT_NONE, CORPSTAT_INIT, CORPSTAT_FEMALE, CORPSTAT_MALE, ACCESSIBLE, TAINT_AGE, CORPSTAT_BURIED } from './const.js';
 import { MAX_CARR_CAP, WT_HUMAN, W_ARMG, W_ARMS, P_AXE, P_PICK_AXE, IS_TREE } from './const.js';
 
 // include/monflag.h:180 MZ_HUMAN is MZ_MEDIUM
@@ -266,12 +267,24 @@ async function movemon_singlemon(mtmp) {
             return false;
     }
 
+    /* src/mon.c:1306 — under Conflict a monster that can see the hero and
+       is within bolt range may spend its action fighting a neighbor
+       instead. fightm's head rolls resist_conflict, so the call order
+       against dochug is draw-visible. The call to fightm() must be _last_:
+       the monster might have died if it returns 1. */
+    if (game.u.uprops?.CONFLICT && !mtmp.iswiz && m_canseeu(mtmp)) {
+        if (cansee(mtmp.mx, mtmp.my)
+            && (mdistu(mtmp) <= BOLT_LIM * BOLT_LIM)
+            && await fightm(mtmp))
+            return false; /* mon might have died */
+    }
     await dochug(mtmp);   /* C: dochugw(mtmp, TRUE) — the occupation
                              interrupt half of dochugw is not ported */
     return false;
 }
 
-import { dochug } from './monmove.js';
+import { dochug, m_canseeu } from './monmove.js';
+import { fightm } from './mhitm.js';
 
 // include/you.h:560 m_next2u() — distu((m)->mx, (m)->my) <= 2.
 // Its C home is you.h; kept here because restrap() below is its only user so
@@ -1626,33 +1639,150 @@ const { G_NOCORPSE: MC_G_NOCORPSE, G_FREQ: MC_G_FREQ } = MFLAGS;
 export function make_corpse(mtmp, corpseflags) {
     const mdat = game.mons[mtmp.mnum];
     const mndx = mtmp.mnum;
+    const x = mtmp.mx, y = mtmp.my;
     let corpstatflags = corpseflags;
+    let obj = null;
+    let num;
 
     if (mtmp.female)
         corpstatflags |= CORPSTAT_FEMALE;
     else if (!is_neuter(mdat))
         corpstatflags |= CORPSTAT_MALE;
 
-    /* dragons, unicorns, long worm, vampires, mummies/zombies and golems
-       leave something other than a plain fresh corpse */
-    if ((mndx >= PMNAMES.PM_GRAY_DRAGON && mndx <= PMNAMES.PM_YELLOW_DRAGON)
-        || (mndx >= PMNAMES.PM_WHITE_UNICORN && mndx <= PMNAMES.PM_BLACK_UNICORN)
-        || mndx === PMNAMES.PM_LONG_WORM
-        || mdat.mlet === MONSYMS.S_MUMMY || mdat.mlet === MONSYMS.S_ZOMBIE
-        || mdat.mlet === MONSYMS.S_GOLEM
-        || mndx === PMNAMES.PM_VAMPIRE || mndx === PMNAMES.PM_VAMPIRE_LEADER) {
-        note_unported_mon('make_corpse:special_arm');
-        return null;
+    const P = PMNAMES;
+    const in_range = (lo, hi) => mndx >= lo && mndx <= hi;
+    let default_1 = false;
+
+    if (in_range(P.PM_GRAY_DRAGON, P.PM_YELLOW_DRAGON)) {
+        /* dragon scales; relies on scales matching the dragon order */
+        if (!rn2(mtmp.mrevived ? 20 : 3)) {
+            num = ONAMES.GRAY_DRAGON_SCALES + mndx - P.PM_GRAY_DRAGON;
+            obj = mksobj_at(num, x, y, false, false);
+            obj.spe = 0;
+            obj.cursed = obj.blessed = false;
+        }
+        default_1 = true;
+    } else if (in_range(P.PM_WHITE_UNICORN, P.PM_BLACK_UNICORN)) {
+        if (mtmp.mrevived && rn2(2)) {
+            note_unported_mon('make_corpse:regrown horn crumbles');
+        } else {
+            obj = mksobj_at(ONAMES.UNICORN_HORN, x, y, true, false);
+            if (obj && mtmp.mrevived)
+                obj.degraded_horn = 1;
+        }
+        default_1 = true;
+    } else if (mndx === P.PM_LONG_WORM) {
+        mksobj_at(ONAMES.WORM_TOOTH, x, y, true, false);
+        default_1 = true;
+    } else if (mndx === P.PM_VAMPIRE || mndx === P.PM_VAMPIRE_LEADER) {
+        /* include mtmp in the mkcorpstat() call */
+        num = undead_to_corpse(mndx);
+        corpstatflags |= CORPSTAT_INIT;
+        obj = mkcorpstat(ONAMES.CORPSE, mtmp, num, x, y, corpstatflags);
+        obj.age -= (TAINT_AGE + 1); /* this is an *OLD* corpse */
+    } else if (mdat.mlet === MONSYMS.S_MUMMY
+               || mdat.mlet === MONSYMS.S_ZOMBIE) {
+        /* src/mon.c:668 — the named mummy/zombie cases; kinds without an
+           undead_to_corpse mapping (were-, giant-class uniques) fall to
+           default_1 in C via the explicit case list, matched here by
+           undead_to_corpse returning the index unchanged */
+        num = undead_to_corpse(mndx);
+        if (num !== mndx) {
+            corpstatflags |= CORPSTAT_INIT;
+            obj = mkcorpstat(ONAMES.CORPSE, mtmp, num, x, y, corpstatflags);
+            obj.age -= (TAINT_AGE + 1); /* this is an *OLD* corpse */
+            mtmp.mgivenname = null; /* free_mgivenname */
+        } else {
+            default_1 = true;
+        }
+    } else if (mndx === P.PM_IRON_GOLEM) {
+        num = d(2, 6);
+        while (num--)
+            obj = mksobj_at(ONAMES.IRON_CHAIN, x, y, true, false);
+        mtmp.mgivenname = null;
+    } else if (mndx === P.PM_GLASS_GOLEM) {
+        num = d(2, 4); /* very low chance of creating all glass gems */
+        while (num--)
+            obj = mksobj_at(ONAMES.WORTHLESS_WHITE_GLASS + rn2(9),
+                            x, y, true, false); /* FIRST..LAST_GLASS_GEM */
+        mtmp.mgivenname = null;
+    } else if (mndx === P.PM_CLAY_GOLEM) {
+        obj = mksobj_at(ONAMES.ROCK, x, y, false, false);
+        obj.quan = rn2(20) + 50;
+        obj.owt = weight(obj);
+        mtmp.mgivenname = null;
+    } else if (mndx === P.PM_STONE_GOLEM) {
+        corpstatflags &= ~CORPSTAT_INIT;
+        obj = mkcorpstat(ONAMES.STATUE, null, mndx, x, y, corpstatflags);
+    } else if (mndx === P.PM_WOOD_GOLEM) {
+        num = d(2, 4);
+        while (num--) {
+            obj = mksobj_at(rn2(2) ? ONAMES.QUARTERSTAFF
+                            : rn2(3) ? ONAMES.SMALL_SHIELD
+                            : rn2(3) ? ONAMES.CLUB
+                            : rn2(3) ? ONAMES.ELVEN_SPEAR
+                            : ONAMES.BOOMERANG, x, y, true, false);
+        }
+        mtmp.mgivenname = null;
+    } else if (mndx === P.PM_ROPE_GOLEM) {
+        num = rn2(3);
+        while (num-- > 0) {
+            obj = mksobj_at(rn2(2) ? ONAMES.LEASH
+                            : rn2(3) ? ONAMES.BULLWHIP
+                            : ONAMES.GRAPPLING_HOOK, x, y, true, false);
+        }
+        mtmp.mgivenname = null;
+    } else if (mndx === P.PM_LEATHER_GOLEM) {
+        num = d(2, 4);
+        while (num--)
+            obj = mksobj_at(rn2(4) ? ONAMES.LEATHER_ARMOR
+                            : rn2(3) ? ONAMES.LEATHER_CLOAK
+                            : ONAMES.SADDLE, x, y, true, false);
+        mtmp.mgivenname = null;
+    } else if (mndx === P.PM_GOLD_GOLEM) {
+        /* Good luck gives more coins */
+        obj = mkgold(200 - rnl(101), x, y);
+        mtmp.mgivenname = null;
+    } else if (mndx === P.PM_PAPER_GOLEM) {
+        num = rnd(4);
+        while (num--)
+            obj = mksobj_at(ONAMES.SCR_BLANK_PAPER, x, y, true, false);
+        mtmp.mgivenname = null;
+    } else if (mndx === P.PM_GRAY_OOZE || mndx === P.PM_BROWN_PUDDING
+               || mndx === P.PM_GREEN_SLIME
+               || mndx === P.PM_BLACK_PUDDING) {
+        obj = mksobj_at(ONAMES.GLOB_OF_BLACK_PUDDING
+                        - (P.PM_BLACK_PUDDING - mndx), x, y, true, false);
+        /* obj_nexto/obj_meld glob merging is recorded when piles meet */
+        note_unported_mon('make_corpse:glob merge check');
+        mtmp.mgivenname = null;
+        newsym(x, y);
+        return obj;
+    } else {
+        default_1 = true;
     }
 
-    if ((game.mvitals?.[mndx]?.mvflags ?? 0) & MC_G_NOCORPSE)
+    if (default_1) {
+        /* All special cases precede the G_NOCORPSE check (mon.c:910) */
+        if ((game.mvitals?.[mndx]?.mvflags ?? 0) & MC_G_NOCORPSE)
+            return null;
+        corpstatflags |= CORPSTAT_INIT;
+        /* preserve the unique traits of some creatures */
+        const keep = (mtmp.isshk || mtmp.mtame || is_rider(mdat));
+        obj = mkcorpstat(ONAMES.CORPSE, keep ? mtmp : null, mndx,
+                         x, y, corpstatflags);
+        if (corpseflags & CORPSTAT_BURIED)
+            note_unported_mon('make_corpse:burythem');
+    }
+
+    if (!obj)
         return null;
 
-    corpstatflags |= CORPSTAT_INIT;
-    /* KEEPTRAITS: shopkeepers, tame, uniques, revivers keep identity */
-    const keep = (mtmp.isshk || mtmp.mtame || is_rider(mdat));
-    const obj = mkcorpstat(ONAMES.CORPSE, keep ? mtmp : null, mndx,
-                           mtmp.mx, mtmp.my, corpstatflags);
+    /* bypass_obj under context.bypasses is polymorph state; recorded */
+    if (mtmp.mgivenname)
+        note_unported_mon('make_corpse:oname');
+
+    /* obj->dknown stays 0: "It was hidden under a green mold corpse!" */
     return obj;
 }
 

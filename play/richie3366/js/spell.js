@@ -38,16 +38,32 @@
 // SPE_DETECT_MONSTERS peffects (D-1418; same C `:1534–1546` skilled
 // bless then peffects; callee potion.c peffect_monster_detection →
 // detect.c monster_detect when unblessed / swallow / underwater).
+// SPE_LEVITATION peffects (D-1419; same C `:1534–1546` skilled bless
+// then peffects; callee potion.c peffect_levitation → trap.c
+// float_up / timeout.c float_down).
+// SPE_RESTORE_ABILITY peffects (D-1420; same C `:1534–1546` skilled
+// bless then peffects; callee potion.c peffect_restore_ability →
+// apply.c unfixable_trouble_count; potion pluslvl only).
+// SPE_INVISIBILITY peffects (D-1421; C `:1544–1546` FALLTHROUGH
+// peffects, no skilled bless; callee potion.c peffect_invisibility).
 // spell_backfire (D-1409; C `:1179–1217` rn2(10) confuse/stun
 // TIMEOUT increment; caller spelleffects_check `:1251–1260`
 // when spellknow<=0).
 // SPE_DETECT_UNSEEN NODIR weffects → zapnodir findit (D-1412;
 // C `:1474` wand-duplicate group; callee zap.c `:2552–2558`).
+// SPE_LIGHT NODIR weffects → zapnodir litroom+lightdamage (D-1427;
+// C `:1473` same group; callee zap.c `:2544–2550` D-1366).
+// SPE_SLEEP RAY weffects → ubuzz BZ_U_SPELL (D-1440; C `:1462`
+// same wand-duplicate group; callee zap.c `:3461–3462`).
+// SPE_DIG RAY weffects → zap_dig (D-1441; C `:1467` same group;
+// callee zap.c `:3459–3460` / dig.c `zap_dig`).
+// SPE_DRAIN_LIFE IMMEDIATE weffects → bhitm (D-1436; C `:1477`
+// same wand-duplicate group; callee zap.c `:521–544`).
 // Named omissions: novel/tribute; dull sleep; confused_book body;
 // learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
-// swap/sort; other spelleffects otyps (remaining peffects:
-// LEVITATION / RESTORE_ABILITY / INVISIBILITY;
-// remaining wand-duplicate SPE_LIGHT / SLEEP / DIG / …);
+// swap/sort; other spelleffects otyps (remaining peffects
+// mix/potionhit/potionbreathe;
+// remaining wand-duplicate MAGIC_MISSILE / FINGER / IMMEDIATE);
 // #jump known_spell fallback; directional weffects for
 // IMMEDIATE heal/tele;
 // amulet drain; CQ_REPEAT; cursed_book shieldeff polish;
@@ -182,6 +198,7 @@ const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
 const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
 const SPE_DETECT_FOOD = objectNames.indexOf('SPE_DETECT_FOOD');
 const SPE_RESTORE_ABILITY = objectNames.indexOf('SPE_RESTORE_ABILITY');
+const SPE_INVISIBILITY = objectNames.indexOf('SPE_INVISIBILITY');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
 const SPE_FORCE_BOLT = objectNames.indexOf('SPE_FORCE_BOLT');
 const SPE_MAGIC_MISSILE = objectNames.indexOf('SPE_MAGIC_MISSILE');
@@ -199,7 +216,12 @@ const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
 const SPE_HASTE_SELF = objectNames.indexOf('SPE_HASTE_SELF');
 const SPE_DETECT_TREASURE = objectNames.indexOf('SPE_DETECT_TREASURE');
 const SPE_DETECT_MONSTERS = objectNames.indexOf('SPE_DETECT_MONSTERS');
+const SPE_LEVITATION = objectNames.indexOf('SPE_LEVITATION');
 const SPE_DETECT_UNSEEN = objectNames.indexOf('SPE_DETECT_UNSEEN');
+const SPE_LIGHT = objectNames.indexOf('SPE_LIGHT');
+const SPE_SLEEP = objectNames.indexOf('SPE_SLEEP');
+const SPE_DIG = objectNames.indexOf('SPE_DIG');
+const SPE_DRAIN_LIFE = objectNames.indexOf('SPE_DRAIN_LIFE');
 const CORNUTHAUM = objectNames.indexOf('CORNUTHAUM');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
@@ -1738,13 +1760,22 @@ async function cast_protection() {
  * speed_up). SPE_DETECT_TREASURE peffects (D-1417; same arm;
  * callee potion.c peffect_object_detection). SPE_DETECT_MONSTERS
  * peffects (D-1418; same arm; callee potion.c
- * peffect_monster_detection). Sibling LEVITATION / RESTORE_ABILITY
- * / INVISIBILITY still named.
+ * peffect_monster_detection). SPE_LEVITATION peffects (D-1419;
+ * same arm; callee potion.c peffect_levitation). SPE_RESTORE_ABILITY
+ * peffects (D-1420; same arm; callee potion.c peffect_restore_ability).
+ * SPE_INVISIBILITY peffects (D-1421; C `:1544–1546` FALLTHROUGH
+ * peffects, no skilled bless; callee potion.c peffect_invisibility).
  * Forgotten spellknow<=0 → spell_backfire then rnd(energy)
  * Pw debit (D-1409; C `:1251–1260`) before this body.
  * SPE_DETECT_UNSEEN NODIR weffects → zapnodir findit (D-1412;
- * C `:1474` / zap.c `:2552–2558`). Remaining wand-duplicate
- * SPE_LIGHT / SLEEP / DIG still named.
+ * C `:1474` / zap.c `:2552–2558`). SPE_LIGHT NODIR weffects
+ * → zapnodir litroom+lightdamage (D-1427; C `:1473` / zap.c
+ * `:2544–2550` D-1366). SPE_SLEEP RAY weffects → ubuzz
+ * BZ_U_SPELL (D-1440; C `:1462` / zap.c `:3461–3462`).
+ * SPE_DIG RAY weffects → zap_dig (D-1441; C `:1467` /
+ * zap.c `:3459–3460`). SPE_DRAIN_LIFE IMMEDIATE weffects →
+ * bhitm (D-1436; C `:1477` / zap.c `:521–544`). Remaining
+ * wand-duplicate MAGIC_MISSILE / FINGER / IMMEDIATE still named.
  * Other otyps named omission (return TIME after energy
  * spent + exercise).
  */
@@ -1912,15 +1943,39 @@ export async function spelleffects(spell_otyp, atme, force) {
         const { seffects } = await import('./read.js');
         await seffects(pseudo);
     } else if (otyp === SPE_HASTE_SELF || otyp === SPE_DETECT_TREASURE
-        || otyp === SPE_DETECT_MONSTERS) {
-        /* C spell.c :1534–1546 — skilled bless then peffects(pseudo).
-         * Sibling LEVITATION / RESTORE_ABILITY FALLTHROUGH +
-         * SPE_INVISIBILITY still named. */
+        || otyp === SPE_DETECT_MONSTERS || otyp === SPE_LEVITATION
+        || otyp === SPE_RESTORE_ABILITY) {
+        /* C spell.c :1534–1546 — skilled bless then peffects(pseudo). */
         if (role_skill >= P_SKILLED) pseudo.blessed = true;
         await peffects(pseudo);
-    } else if (otyp === SPE_DETECT_UNSEEN) {
-        /* C spell.c :1474 NODIR weffects → zapnodir findit (D-1412).
-         * physical_damage is FORCE_BOLT-only; unused on NODIR. */
+    } else if (otyp === SPE_INVISIBILITY) {
+        /* C spell.c :1544–1546 — FALLTHROUGH peffects; no skilled bless. */
+        await peffects(pseudo);
+    } else if (otyp === SPE_LIGHT || otyp === SPE_DETECT_UNSEEN) {
+        /* C spell.c :1473–1514 NODIR weffects → zapnodir.
+         * SPE_LIGHT litroom+lightdamage (D-1427; callee D-1366);
+         * SPE_DETECT_UNSEEN findit (D-1412). physical_damage is
+         * FORCE_BOLT-only; unused on NODIR. */
+        await wand_duplicate_weffects(pseudo, atme, false);
+    } else if (otyp === SPE_SLEEP) {
+        /* C spell.c :1462–1514 wand-duplicate RAY weffects
+         * → ubuzz BZ_U_SPELL(BZ_OFS_SPE(SPE_SLEEP)) nd=ulevel/2+1
+         * (D-1440; callee zap.c :3461–3462). physical_damage is
+         * FORCE_BOLT-only. Self-dir zapyourself SPE_SLEEP already
+         * live. DIG is D-1441. */
+        await wand_duplicate_weffects(pseudo, atme, false);
+    } else if (otyp === SPE_DIG) {
+        /* C spell.c :1467–1514 wand-duplicate RAY weffects
+         * → zap_dig (D-1441; callee zap.c :3459–3460 /
+         * dig.c zap_dig). oc_dir RAY so getdir; self-dir
+         * zapyourself is a no-op (C :2955–2959). physical_damage
+         * is FORCE_BOLT-only. MAGIC_MISSILE / FINGER / IMMEDIATE
+         * still named. */
+        await wand_duplicate_weffects(pseudo, atme, false);
+    } else if (otyp === SPE_DRAIN_LIFE) {
+        /* C spell.c :1477–1514 wand-duplicate IMMEDIATE weffects
+         * → bhit → bhitm SPE_DRAIN_LIFE (D-1436). physical_damage
+         * is FORCE_BOLT-only. Self-dir still zapyourself (named). */
         await wand_duplicate_weffects(pseudo, atme, false);
     } else {
         // Other spell otyps deferred after energy/exercise/mksobj RNG

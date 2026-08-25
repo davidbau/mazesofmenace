@@ -2928,9 +2928,10 @@ async function maybe_cannibal(pm, allowmsg) {
 }
 
 /**
- * C ref: eat.c fix_petrification — clear Stoned via make_stoned(0).
+ * C ref: eat.c fix_petrification :867–877 — clear Stoned via make_stoned(0).
+ * Callers: cprefx lizard/acidic; potion.c peffect_acid (D-1430).
  */
-async function fix_petrification() {
+export async function fix_petrification() {
     const hallu = !!(game.u?.Hallucination || game.u?.HHallucination);
     let buf;
     if (hallu) {

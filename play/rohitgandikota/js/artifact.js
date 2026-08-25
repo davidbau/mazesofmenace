@@ -11,7 +11,7 @@ import { fuzzymatch } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
 import { artifact_names, artifact_otyps, artifact_records,
          ART_GRIMTOOTH, ART_EXCALIBUR } from './artilist_data.js';
-import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
+import { PMNAMES, MFLAGS, MONSYMS, ATTKS as ADTYPES } from './monst_data.js';
 import { is_covetous, is_mplayer } from './mondata.js';
 import { rn2 } from './rng.js';
 import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
@@ -181,6 +181,81 @@ export function get_artifact(obj) {
     const n = obj?.oartifact ?? 0;
     return (n > 0 && n < artifact_records.length) ? artifact_records[n]
                                                   : artifact_records[0];
+}
+
+// include/artilist.h attack-struct macros — the adtyp each defn/cary string
+// head encodes. DFNS(c)/CARY(c) carry the AD_ name directly; the named damage
+// macros fix theirs (POIS is AD_DRST per artilist.h:46).
+const ARTI_ADTYP_HEADS = {
+    PHYS: 'AD_PHYS', DRLI: 'AD_DRLI', COLD: 'AD_COLD', FIRE: 'AD_FIRE',
+    ELEC: 'AD_ELEC', STUN: 'AD_STUN', POIS: 'AD_DRST',
+};
+function arti_adtyp(field) {
+    if (!field || field.startsWith('NO_'))
+        return 0;
+    const m = /^([A-Z_]+)\(?(AD_[A-Z]+)?/.exec(field);
+    if (!m)
+        return 0;
+    const name = m[2] || ARTI_ADTYP_HEADS[m[1]];
+    return name ? (ADTYPES[name] | 0) : 0;
+}
+
+// include/obj.h:347 Is_dragon_scales() / Is_dragon_mail() / Is_dragon_armor()
+const Is_dragon_scales = (obj) => obj.otyp >= ONAMES.GRAY_DRAGON_SCALES
+                               && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALES;
+const Is_dragon_mail = (obj) => obj.otyp >= ONAMES.GRAY_DRAGON_SCALE_MAIL
+                             && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALE_MAIL;
+
+// src/artifact.c:636 defends() — artifact (or dragon armor) protects its
+// user against this damage type.
+export function defends(adtyp, otmp) {
+    if (!otmp)
+        return false;
+    const weap = get_artifact(otmp);
+    if (weap !== artifact_records[0])
+        return arti_adtyp(weap.defn) === adtyp;
+    if (Is_dragon_scales(otmp) || Is_dragon_mail(otmp)) {
+        let otyp = otmp.otyp;
+        /* convert mail to scales to simplify testing */
+        if (Is_dragon_mail(otmp))
+            otyp += ONAMES.GRAY_DRAGON_SCALES - ONAMES.GRAY_DRAGON_SCALE_MAIL;
+        switch (adtyp) {
+        case ADTYPES.AD_MAGM:
+            return otyp === ONAMES.GRAY_DRAGON_SCALES;
+        case ADTYPES.AD_HALU:
+            return otyp === ONAMES.GOLD_DRAGON_SCALES;
+        case ADTYPES.AD_FIRE:
+            return otyp === ONAMES.RED_DRAGON_SCALES;
+        case ADTYPES.AD_COLD:
+            return otyp === ONAMES.WHITE_DRAGON_SCALES;
+        case ADTYPES.AD_DRST:
+        case ADTYPES.AD_DISE:
+            return otyp === ONAMES.GREEN_DRAGON_SCALES;
+        case ADTYPES.AD_SLEE:
+        case ADTYPES.AD_PLYS:
+            return otyp === ONAMES.ORANGE_DRAGON_SCALES;
+        case ADTYPES.AD_DISN:
+        case ADTYPES.AD_DRLI:
+            return otyp === ONAMES.BLACK_DRAGON_SCALES;
+        case ADTYPES.AD_ELEC:
+        case ADTYPES.AD_SLOW:
+            return otyp === ONAMES.BLUE_DRAGON_SCALES;
+        case ADTYPES.AD_ACID:
+        case ADTYPES.AD_STON:
+            return otyp === ONAMES.YELLOW_DRAGON_SCALES;
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
+// src/artifact.c:687 defends_when_carried()
+export function defends_when_carried(adtyp, otmp) {
+    const weap = get_artifact(otmp);
+    if (weap !== artifact_records[0])
+        return arti_adtyp(weap.cary) === adtyp;
+    return false;
 }
 
 // src/artifact.c:1009 spec_applies(), the DBONUS slice bane_applies uses.

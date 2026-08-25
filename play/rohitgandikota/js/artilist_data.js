@@ -132,6 +132,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -141,6 +142,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(5, 10)",
   "defn": "DRLI(0, 0)",
+  "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_KNIGHT",
   "race": "NON_PM"
@@ -150,6 +152,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "DRLI(5, 2)",
   "defn": "DRLI(0, 0)",
+  "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -159,6 +162,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "ELEC(5, 24)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_VALKYRIE",
   "race": "NON_PM"
@@ -168,6 +172,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(3, 6)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_BARBARIAN",
   "race": "NON_PM"
@@ -177,6 +182,7 @@ export const artifact_records = [
   "mtype": "M2_ELF",
   "attk": "PHYS(2, 6)",
   "defn": "POIS(0,0)",
+  "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
   "race": "PM_ORC"
@@ -186,6 +192,7 @@ export const artifact_records = [
   "mtype": "M2_ORC",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
   "race": "PM_ELF"
@@ -195,6 +202,7 @@ export const artifact_records = [
   "mtype": "M2_ORC",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
   "race": "PM_ELF"
@@ -204,6 +212,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "STUN(3, 4)",
   "defn": "DFNS(AD_MAGM)",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_WIZARD",
   "race": "NON_PM"
@@ -213,6 +222,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "COLD(5, 0)",
   "defn": "COLD(0, 0)",
+  "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -222,6 +232,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "FIRE(5, 0)",
   "defn": "FIRE(0, 0)",
+  "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -231,6 +242,7 @@ export const artifact_records = [
   "mtype": "S_DRAGON",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -240,6 +252,7 @@ export const artifact_records = [
   "mtype": "M2_DEMON",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_CLERIC",
   "race": "NON_PM"
@@ -249,6 +262,7 @@ export const artifact_records = [
   "mtype": "M2_WERE",
   "attk": "PHYS(5, 0)",
   "defn": "DFNS(AD_WERE)",
+  "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -258,6 +272,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -267,6 +282,7 @@ export const artifact_records = [
   "mtype": "M2_GIANT",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -276,6 +292,7 @@ export const artifact_records = [
   "mtype": "S_OGRE",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -285,6 +302,7 @@ export const artifact_records = [
   "mtype": "S_TROLL",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -294,6 +312,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(5, 1)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -303,6 +322,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(0, 8)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_SAMURAI",
   "race": "NON_PM"
@@ -312,6 +332,7 @@ export const artifact_records = [
   "mtype": "M2_UNDEAD",
   "attk": "PHYS(5, 0)",
   "defn": "DFNS(AD_BLND)",
+  "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "NON_PM",
   "race": "NON_PM"
@@ -321,6 +342,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
+  "cary": "CARY(AD_MAGM)",
   "align": "A_LAWFUL",
   "role": "PM_ARCHEOLOGIST",
   "race": "NON_PM"
@@ -330,6 +352,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_BARBARIAN",
   "race": "NON_PM"
@@ -339,6 +362,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(5, 0)",
   "defn": "DFNS(AD_MAGM)",
+  "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_CAVE_DWELLER",
   "race": "NON_PM"
@@ -348,6 +372,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
   "race": "PM_ELF"
@@ -357,6 +382,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "DRLI(0, 0)",
   "defn": "DRLI(0, 0)",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_HEALER",
   "race": "NON_PM"
@@ -366,6 +392,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
+  "cary": "CARY(AD_MAGM)",
   "align": "A_LAWFUL",
   "role": "PM_KNIGHT",
   "race": "NON_PM"
@@ -375,6 +402,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "DFNS(AD_MAGM)",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_MONK",
   "race": "NON_PM"
@@ -384,6 +412,7 @@ export const artifact_records = [
   "mtype": "M2_UNDEAD",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
+  "cary": "CARY(AD_FIRE)",
   "align": "A_LAWFUL",
   "role": "PM_CLERIC",
   "race": "NON_PM"
@@ -393,6 +422,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "PM_RANGER",
   "race": "NON_PM"
@@ -402,6 +432,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "PM_ROGUE",
   "race": "NON_PM"
@@ -411,6 +442,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "PHYS(0, 8)",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_SAMURAI",
   "race": "NON_PM"
@@ -420,6 +452,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
+  "cary": "CARY(AD_MAGM)",
   "align": "A_NEUTRAL",
   "role": "PM_TOURIST",
   "race": "NON_PM"
@@ -429,6 +462,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_VALKYRIE",
   "race": "NON_PM"
@@ -438,6 +472,7 @@ export const artifact_records = [
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "DFNS(AD_MAGM)",
+  "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_WIZARD",
   "race": "NON_PM"

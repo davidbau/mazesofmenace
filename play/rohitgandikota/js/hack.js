@@ -24,6 +24,10 @@ import { Levitation, Flying, Fire_resistance, Underwater,
          Hallucination } from './youprop.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { is_pool, is_lava, t_at, m_at, is_pick } from './mon.js';
+import { hliquid } from './do_name.js';
+import { Is_waterlevel, WATER, LAVAPOOL, POOL } from './const.js';
+import { waterbody_name } from './pager.js';
+import { surface } from './dungeon.js';
 import { pickup, can_reach_floor } from './pickup.js';
 import { dotrap } from './trap.js';
 import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD_TIME, OBJ_AT, GOLD_SYM, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
@@ -607,6 +611,136 @@ const note_unported_hack = (w) => {
     return false;
 };
 
+// src/hack.c:1832 u_simple_floortyp() — floor solid/liquid state for the
+// hero: walls of water/lava always count; pools only when grounded.
+function u_simple_floortyp(x, y) {
+    const u_in_air = !!(game.u.uprops?.LEVITATION || game.u.uprops?.FLYING);
+    const typ = game.level?.at(x, y)?.typ;
+    if (typ === WATER)
+        return WATER;
+    if (typ === LAVAWALL)
+        return LAVAWALL;
+    if (!u_in_air) {
+        if (is_pool(x, y))
+            return POOL;
+        if (is_lava(x, y))
+            return LAVAPOOL;
+    }
+    return ROOM;
+}
+
+// src/hack.c:1885 swim_move_danger() — refuse to walk into known water or
+// lava without the m prefix. paranoid_confirmation defaults include swim,
+// so ParanoidSwim is on unless the rc turns it off.
+export async function swim_move_danger(x, y) {
+    const newtyp = u_simple_floortyp(x, y);
+    const liquid_wall = (newtyp === WATER || newtyp === LAVAWALL);
+
+    if (game.u.uprops?.UNDERWATER && (is_pool(x, y) || newtyp === WATER))
+        return false;
+
+    const loc = game.level?.at(x, y);
+    if ((newtyp !== u_simple_floortyp(game.u.ux, game.u.uy))
+        && !game.u.uprops?.STUNNED && !game.u.uprops?.CONFUSION
+        && loc?.seenv
+        && (is_pool(x, y) || is_lava(x, y) || liquid_wall)) {
+        /* Known_wwalking / Known_lwalking need identified worn gear the
+           sessions lack; both read false here */
+        if ((is_pool(x, y))
+            || (is_lava(x, y) && !is_lava(game.u.ux, game.u.uy))
+            || liquid_wall) {
+            if (game.context.nopick) {
+                /* moving with m-prefix */
+                game.context.tips = (game.context.tips | 0) | (1 << TIP_SWIM);
+                return false;
+            } else if (paranoid_swim() || liquid_wall) {
+                await You(`avoid ${
+                    game.u.uprops?.LEVITATION ? 'floating'
+                    : game.u.uprops?.FLYING ? 'flying' : 'stepping'} into the ${
+                    waterbody_name(x, y)}.`);
+                await handle_tip(TIP_SWIM);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* flag.h:580 ParanoidSwim — paranoid_confirmation's default list includes
+   swim; an rc override would land in game.flags.paranoia_bits */
+function paranoid_swim() {
+    if (game.flags?.paranoia_bits !== undefined)
+        return (game.flags.paranoia_bits & 0x0400) !== 0; /* PARANOID_SWIM */
+    return true;
+}
+
+// src/hack.c:3230 pooleffects() — entering/leaving water or lava.
+// Returns true when the hero changed location surviving the problem (the
+// caller skips the rest of spoteffects then).
+export async function pooleffects(newspot) {
+    const u = game.u;
+
+    /* check for leaving water */
+    if (u.uinwater) {
+        let still_inwater = false;
+        if (!is_pool(u.ux, u.uy)) {
+            if (Is_waterlevel(u.uz)) {
+                await You('pop into an air bubble.');
+            } else if (is_lava(u.ux, u.uy)) {
+                await You(`leave the ${hliquid('water')}...`); /* oops! */
+            } else {
+                /* back_on_ground(FALSE) */
+                let surf = surface(u.ux, u.uy);
+                if (surf === 'floor' || surf === 'ground')
+                    surf = 'solid ground';
+                await pline(`You're back on ${surf}.`);
+            }
+        } else if (Is_waterlevel(u.uz)) {
+            still_inwater = true;
+        } else if (u.uprops?.LEVITATION) {
+            await You(`pop out of the ${hliquid('water')} like a cork!`);
+        } else if (u.uprops?.FLYING) {
+            await You(`fly out of the ${hliquid('water')}.`);
+        } else if (u.uprops?.WWALKING) {
+            await You('slowly rise above the surface.');
+        } else {
+            still_inwater = true;
+        }
+        if (!still_inwater) {
+            /* was_underwater display restore is tied to the underwater
+               constrained view, which is recorded rather than modelled */
+            if (u.uinwater) {
+                u.uinwater = 0;
+                (game.unported ||= new Set()).add('hack:pooleffects:leave');
+            }
+        }
+    }
+
+    /* check for entering water or lava */
+    if (!u.ustuck && !u.uprops?.LEVITATION && !u.uprops?.FLYING
+        && is_pool_or_lava(u.ux, u.uy)) {
+        if (u.usteed) {
+            note_unported_hack('pooleffects:steed');
+            return false;
+        }
+        /* ceiling hider check needs polyself */
+        if (is_lava(u.ux, u.uy)) {
+            const { lava_effects } = await import('./trap.js');
+            if (await lava_effects())
+                return true;
+        } else if ((!u.uprops?.WWALKING
+                    || game.level?.at(u.ux, u.uy)?.typ === WATER)
+                   && (newspot || !u.uinwater
+                       || !(u.uprops?.SWIMMING || u.uprops?.AMPHIBIOUS
+                            || u.uprops?.BREATHLESS))) {
+            const { drown } = await import('./trap.js');
+            if (await drown())
+                return true;
+        }
+    }
+    return false;
+}
+
 // src/hack.c:3312 spoteffects() — what happens on the square just moved onto.
 //
 // The reachable slice is the pickup(1) call, ordered around a pit trap the
@@ -616,6 +750,11 @@ const note_unported_hack = (w) => {
 // recorded when their state is underfoot.
 export async function spoteffects(pick) {
     const trap = t_at(game.u.ux, game.u.uy);
+
+    /* src/hack.c:3349 — pooleffects first; when the hero is carried off by
+       water or lava (drown/lava_effects moved them), the rest is skipped */
+    if (await pooleffects(true))
+        return;
 
     /* check_special_room(FALSE) — announces shops, zoos, temples */
     const inspecial = (game.level?.rooms || []).some(r => r.rtype
@@ -778,7 +917,8 @@ export async function handle_tip(tip) {
             await pline('(Tip: use the #enhance command to advance them.)');
             break;
         case TIP_SWIM:
-            (game.unported ||= new Set()).add('hack:handle_tip:swim');
+            /* visctrl(cmd_from_func(do_reqmenu)) is the m prefix */
+            await pline("(Tip: use 'm' prefix to step in if you really want to.)");
             break;
         case TIP_UNTRAP_MON:
             await pline('(Tip: perhaps #untrap would help?)');
@@ -1609,8 +1749,12 @@ export async function findtravelpath(mode) {
                             if (nx === ux && ny === uy) {
                                 if (mode === TRAVP_TRAVEL
                                     || mode === TRAVP_VALID) {
+                                    /* selvar.c:168 selection_getpoint
+                                       returns 0 for a null selection: nomul
+                                       (via mattacku etc.) can free the map
+                                       mid-search, exactly as in C */
                                     const visited = game.travelmap
-                                        .has(`${x},${y}`);
+                                        ?.has(`${x},${y}`) ?? false;
                                     u.dx = x - ux;
                                     u.dy = y - uy;
                                     if (mode === TRAVP_TRAVEL
@@ -1625,7 +1769,9 @@ export async function findtravelpath(mode) {
                                         else
                                             game.iflags.travelcc = { x: 0, y: 0 };
                                     }
-                                    game.travelmap.add(`${u.ux},${u.uy}`);
+                                    /* selvar.c:181 selection_setpoint is
+                                       a no-op for a null selection */
+                                    game.travelmap?.add(`${u.ux},${u.uy}`);
                                     return true;
                                 }
                             } else if (!travel[nx][ny]) {
@@ -1671,7 +1817,8 @@ export async function findtravelpath(mode) {
                     u.dx = Math.sign(u.tx - u.ux);
                     u.dy = Math.sign(u.ty - u.uy);
                     if (await test_move(u.ux, u.uy, u.dx, u.dy, TEST_MOVE)) {
-                        game.travelmap.add(`${u.ux},${u.uy}`);
+                        /* selvar.c:181 — no-op when the map was freed */
+                        game.travelmap?.add(`${u.ux},${u.uy}`);
                         return true;
                     }
                     break; /* goto found */

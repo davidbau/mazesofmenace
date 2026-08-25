@@ -68,6 +68,19 @@ async function nhgetch_core() {
     if (game._toplin === TOPLINE_NEED_MORE)
         game._toplin = TOPLINE_NON_EMPTY;
 
+    /* Not a NetHack function: the pty line discipline. The C game runs on a
+       pty whose termios keeps ICRNL set (NetHack's cbreak() clears only
+       ICANON/ECHO), so a typed or recorded CR (0x0D) reaches the C binary as
+       NL (0x0A) -- the game itself never sees '\r'. That is what makes RET
+       act as ^J (rush south) at the top-level prompt: seed0004 step 299.
+       Model the same translation here so every reader downstream sees what
+       the C's read() saw. The queue holds char codes; readKey may hand back
+       a string. */
+    if (key === 0x0d)
+        key = 0x0a;
+    else if (key === '\r')
+        key = '\n';
+
     return key;
 }
 

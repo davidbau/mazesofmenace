@@ -12,7 +12,7 @@ import { pline } from './display.js';
 import { You } from './pline.js';
 import { money_cnt } from './invent.js';
 import { depth, dunlevs_in_dungeon } from './dungeon.js';
-import { In_endgame, In_quest, NHW_TEXT } from './const.js';
+import { In_endgame, In_quest, NHW_TEXT, NHW_MENU } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow } from './tty/wintty.js';
@@ -49,19 +49,31 @@ export const DIED = 0, CHOKING = 1, POISONING = 2, STARVING = 3,
 // follows svk.killer.format the same way.
 export function formatkiller(how, incl_helpless) {
     const k = game.killer || {};
-    const name = k.name || deaths[how] || 'died';
+    let name = k.name || deaths[how] || 'died';
+    /* src/topten.c:103 killed_by_prefix[] — the verb depends on `how` */
+    const killed_by_prefix = [
+        /* DIED, CHOKING, POISONING, STARVING, */
+        'killed by ', 'choked on ', 'poisoned by ', 'died of ',
+        /* DROWNING, BURNING, DISSOLVED, CRUSHING, */
+        'drowned in ', 'burned by ', 'dissolved in ',
+        'crushed to death by ',
+        /* STONING, TURNED_SLIME, GENOCIDED, */
+        'petrified by ', 'turned to slime by ', 'killed by ',
+        /* PANICKED, TRICKED, QUIT, ESCAPED, ASCENDED */
+        '', '', '', '', '',
+    ];
+    const prefix = killed_by_prefix[how] ?? 'killed by ';
     /* KILLED_BY_AN = 0, KILLED_BY = 1, NO_KILLER_PREFIX = 2 */
     switch (k.format ?? 0) {
     case 2:
         return name;
+    case 0:
+        /* an() before the prefix attaches */
+        name = (/^[aeiou]/i.test(name) ? 'an ' : 'a ') + name;
+        /* FALLTHRU */
     case 1:
-        return 'killed by ' + name;
-    default: {
-        /* killed by an <name> — an() without importing objnam for a
-           non-object phrase */
-        const art = /^[aeiou]/i.test(name) ? 'an ' : 'a ';
-        return 'killed by ' + art + name;
-    }
+    default:
+        return prefix + name;
     }
 }
 
@@ -166,6 +178,10 @@ async function really_done(how) {
     const u = game.u;
     let corpse = null;
     let umoney;
+
+    /* src/end.c:1144 — the game is now over; disclosure windows read this
+       (add_menu_heading drops its highlight, hallucination stops, &c) */
+    game.program_state_gameover = true;
 
     /* achievements, dumplog, signal handlers: none modelled */
 
@@ -306,20 +322,21 @@ async function really_done(how) {
     }
     tty_destroy_nhwindow(endwin);
 
-    /* end.c:1579 — exit_nhwindows() runs before topten() (settty ->
-       end_screen clears the terminal). The visible effect only differs
-       when the summary was suppressed; the endwin fullscreen display
-       covers it otherwise, so clear only on the stopprint path to keep
-       the died-session frames byte-stable. */
-    if (game.done_stopprint) {
+    /* end.c:1579 — exit_nhwindows() runs before topten(): settty ->
+       end_screen clears the terminal and homes the cursor, on every path */
+    {
         const { cls } = await import('./display.js');
         await cls();
-        /* end_screen homes the cursor; the raw prints start from the top */
         const { tty_curs_base } = await import('./tty/wintty.js');
         tty_curs_base(0, 0);
     }
     const { topten } = await import('./topten.js');
     await topten(how);
+    {
+        /* the raw prints moved the base cursor; the terminal shows it */
+        const { tty_base_cursor } = await import('./tty/wintty.js');
+        tty_base_cursor();
+    }
 
     /* end.c:1585 — the stopprint path pads two blank raw lines, which is
        where the recorded cursor parks */
@@ -344,6 +361,48 @@ async function really_done(how) {
     throw sig;
 }
 
+// src/end.c:476 should_query_disclose_option() — how to handle one
+// disclosure category: {ask, defquery}. flags.end_disclose comes from the
+// rc's disclose: option; each category char is one of
+// y/n (prompt, with that default), +/- (always/never, no prompt), a/#.
+function should_query_disclose_option(category) {
+    const disclosure_options = 'iavgco'; /* decl.c:54 */
+    const idx = disclosure_options.indexOf(category);
+    let end = game.flags?.end_disclose;
+    if (end === undefined) {
+        /* parse the raw rc string once: "-i -a" style tokens */
+        end = 'nnnnnn'.split('');
+        const raw = game.flags?.disclose;
+        if (typeof raw === 'string') {
+            for (const tok of raw.trim().split(/\s+/)) {
+                if (tok.length === 2) {
+                    const k = disclosure_options.indexOf(tok[1]);
+                    if (k >= 0)
+                        end[k] = tok[0];
+                } else if (tok.length === 1) {
+                    const k = disclosure_options.indexOf(tok[0]);
+                    if (k >= 0)
+                        end[k] = 'y';
+                }
+            }
+        }
+        end = end.join('');
+        (game.flags ||= {}).end_disclose = end;
+    }
+    const disclose = end[idx] ?? 'n';
+    if (disclose === '+')
+        return { ask: false, defquery: 'y' };
+    if (disclose === '#')
+        return { ask: false, defquery: 'a' };
+    if (disclose === '-')
+        return { ask: false, defquery: 'n' };
+    if (disclose === 'y')
+        return { ask: true, defquery: 'y' };
+    if (disclose === 'a')
+        return { ask: true, defquery: 'a' };
+    return { ask: true, defquery: 'n' };
+}
+
 // src/end.c:2010 disclose() — end of game disclosure. Every category in the
 // tourist rc is '-' (never); prompted categories would need the i/a/v/g/c/o
 // menus, which are recorded until a session actually reaches one.
@@ -355,11 +414,12 @@ async function disclose(how, taken) {
     let c;
 
     if ((game.invent || []).length && !game.done_stopprint) {
+        const { ask, defquery } = should_query_disclose_option('i');
         const qbuf = taken
             ? `Do you want to see what you had when you ${
                   how === QUIT ? 'quit' : 'died'}?`
             : 'Do you want your possessions identified?';
-        c = await tty_yn_function(qbuf, 'ynq', 'n');
+        c = ask ? await tty_yn_function(qbuf, 'ynq', defquery) : defquery;
         if (c === 'y') {
             const { display_inventory } = await import('./invent.js');
             await display_inventory(null, true);
@@ -370,36 +430,70 @@ async function disclose(how, taken) {
     }
 
     if (!game.done_stopprint) {
-        c = await tty_yn_function('Do you want to see your attributes?',
-                                  'ynq', 'n');
-        if (c === 'y')
-            note_unported_end('disclose:enlightenment_view');
+        const { ask, defquery } = should_query_disclose_option('a');
+        c = ask ? await tty_yn_function('Do you want to see your attributes?',
+                                        'ynq', defquery) : defquery;
+        if (c === 'y') {
+            /* src/end.c:594 — the full window, past tense; en_via_menu is
+               FALSE for the final call so the lines go out as putstr text
+               with --More-- paging, not a menu pager */
+            const { enlightenment, BASICENLIGHTENMENT, MAGICENLIGHTENMENT,
+                    ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD } =
+                await import('./insight.js');
+            const { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
+                    tty_destroy_nhwindow, tty_next_page } =
+                await import('./tty/wintty.js');
+            const { nhgetch } = await import('./input.js');
+            const win = tty_create_nhwindow(NHW_MENU);
+            for (const l of enlightenment(
+                     BASICENLIGHTENMENT | MAGICENLIGHTENMENT,
+                     (how >= PANICKED) ? ENL_GAMEOVERALIVE
+                                       : ENL_GAMEOVERDEAD))
+                tty_putstr(win, 0, l);
+            await tty_display_nhwindow(win);
+            await nhgetch();
+            while (tty_next_page(win))
+                await nhgetch();
+            tty_destroy_nhwindow(win);
+        }
         if (c === 'q')
             game.done_stopprint = (game.done_stopprint | 0) + 1;
     }
 
     if (!game.done_stopprint) {
         /* list_vanquished(defquery, ask) prompts only when something died */
-        if ((game.u.nkilled_total | 0) > 0)
-            note_unported_end('disclose:list_vanquished');
+        const { ask, defquery } = should_query_disclose_option('v');
+        if ((game.u.nkilled_total | 0) > 0) {
+            if (ask || defquery !== 'n')
+                note_unported_end('disclose:list_vanquished');
+        }
     }
 
     /* list_genocided: nothing is ever genocided in a recorded session */
 
     if (!game.done_stopprint) {
-        c = await tty_yn_function('Do you want to see your conduct?',
-                                  'ynq', 'n');
-        if (c === 'y')
-            note_unported_end('disclose:show_conduct');
+        const { ask, defquery } = should_query_disclose_option('c');
+        c = ask ? await tty_yn_function('Do you want to see your conduct?',
+                                        'ynq', defquery) : defquery;
+        if (c === 'y') {
+            const { show_conduct, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD } =
+                await import('./insight.js');
+            await show_conduct((how >= PANICKED) ? ENL_GAMEOVERALIVE
+                                                 : ENL_GAMEOVERDEAD);
+        }
         if (c === 'q')
             game.done_stopprint = (game.done_stopprint | 0) + 1;
     }
 
     if (!game.done_stopprint) {
-        c = await tty_yn_function('Do you want to see the dungeon overview?',
-                                  'ynq', 'n');
-        if (c === 'y')
-            note_unported_end('disclose:show_overview');
+        const { ask, defquery } = should_query_disclose_option('o');
+        c = ask ? await tty_yn_function(
+                'Do you want to see the dungeon overview?', 'ynq', defquery)
+                : defquery;
+        if (c === 'y') {
+            const { show_overview } = await import('./dungeon.js');
+            await show_overview((how >= PANICKED) ? 1 : 2, how);
+        }
         if (c === 'q')
             game.done_stopprint = (game.done_stopprint | 0) + 1;
     }

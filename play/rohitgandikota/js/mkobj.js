@@ -1010,7 +1010,7 @@ const UNDEAD_TO_CORPSE = (() => {
     return m;
 })();
 
-function undead_to_corpse(mndx) {
+export function undead_to_corpse(mndx) {
     return UNDEAD_TO_CORPSE.get(mndx) ?? mndx;
 }
 

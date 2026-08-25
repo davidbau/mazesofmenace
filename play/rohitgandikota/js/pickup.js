@@ -11,12 +11,12 @@ import { game } from './gstate.js';
 import { addinv, prinv, obj_extract_self, inv_order, let_to_name,
          freeinv, update_inventory, weight } from './invent.js';
 import { observe_object } from './o_init.js';
-import { doname, xname, the, yname, singular } from './objnam.js';
+import { doname, xname, the, yname, singular, an } from './objnam.js';
 import { Is_container, Has_contents, carried } from './obj.js';
 import { AUTOUNLOCK_UNTRAP, AUTOUNLOCK_APPLY_KEY,
          AUTOUNLOCK_FORCE } from './const.js';
 import { check_capacity } from './hack.js';
-import { ECMD_OK, ECMD_TIME } from './const.js';
+import { ECMD_OK, ECMD_TIME, IS_FURNITURE, ICE, POOL, MOAT, WATER, LAVAPOOL } from './const.js';
 import { upstart } from './do_name.js';
 
 /* src/hacklib.c The() — the() with the first letter capitalised. */
@@ -77,10 +77,12 @@ export function u_safe_from_fatal_corpse(obj, tests) {
 // src/pickup.c:430 check_here() — look at the objects at our location.
 export async function check_here(picked_some) {
     let ct = 0;
-    const lhflags = picked_some ? LOOKHERE_PICKED_SOME : LOOKHERE_NOFLAGS;
+    let lhflags = picked_some ? LOOKHERE_PICKED_SOME : LOOKHERE_NOFLAGS;
 
-    if (game.flags?.mention_decor)
-        note_unported_pickup('check_here:describe_decor');
+    if (game.flags?.mention_decor) {
+        if (await describe_decor())
+            lhflags |= LOOKHERE_SKIP_DFEATURE;
+    }
 
     /* count the objects here */
     for (const obj of game.level?.objects || []) {
@@ -106,6 +108,54 @@ export async function check_here(picked_some) {
 // explicit ',' command. With flags.pickup off (the recorded rc default —
 // optlist.h initval is Off in 5.0), an autopickup call lands in the
 // check_here() arm and only looks. The true picking flows are recorded.
+/* iflags.prev_decor — terrain type of the previous decor mention */
+// src/pickup.c:353 describe_decor() — 'mention_decor' feedback when walking
+// onto a dungeon feature. Ordinary open doors and doorways are skipped;
+// broken (and closed, via Passes_walls) doors are mentioned. Returns true
+// when it printed, so check_here can skip look_here's duplicate line.
+export async function describe_decor() {
+    /* the fumbling deferral needs the Fumbling timeout; recorded */
+    const { dfeature_at } = await import('./invent.js');
+    const loc = game.level?.at(game.u.ux, game.u.uy);
+    const ltyp = loc?.typ ?? 0;
+    let dfeature = dfeature_at(game.u.ux, game.u.uy);
+    let res = true;
+
+    const doorhere = dfeature && (dfeature === 'open door'
+                                  || dfeature === 'doorway');
+    const waterhere = dfeature && dfeature === 'pool of water';
+    if (doorhere || game.u.uprops?.UNDERWATER)
+        dfeature = null;
+
+    const prev = game.iflags.prev_decor ?? 0 /* STONE */;
+    if (ltyp === prev && !IS_FURNITURE(ltyp)) {
+        res = false;
+    } else if (dfeature) {
+        if (waterhere) {
+            const { waterbody_name } = await import('./pager.js');
+            dfeature = waterbody_name(game.u.ux, game.u.uy);
+        }
+        if (dfeature !== 'swamp' && ltyp !== ICE)
+            dfeature = an(dfeature);
+
+        if (game.flags?.verbose !== false) {
+            await pline(`There is ${dfeature} here.`);
+        } else {
+            await pline(`${dfeature[0].toUpperCase()}${dfeature.slice(1)}.`);
+        }
+    } else if (!game.u.uprops?.UNDERWATER) {
+        /* the back-on-ground arm keys on prev_decor being pool/lava/ice */
+        if (is_pool_typ(prev) || prev === LAVAPOOL_TYP || prev === ICE)
+            note_unported_pickup('describe_decor:back_on_ground');
+    }
+    /* only adapt the next describe_decor() when the option is On */
+    game.iflags.prev_decor = game.flags?.mention_decor ? ltyp : 0;
+    return res;
+}
+
+const is_pool_typ = (t) => t === POOL || t === MOAT || t === WATER;
+const LAVAPOOL_TYP = LAVAPOOL;
+
 export async function pickup(what) {
     const autopickup = what > 0;
 
@@ -120,7 +170,7 @@ export async function pickup(what) {
                            || (is_pool(game.u.ux, game.u.uy) && !game.u.uinwater)
                            || is_lava(game.u.ux, game.u.uy))) {
             if (game.flags?.mention_decor)
-                note_unported_pickup('pickup:describe_decor');
+                await describe_decor();
             await read_engr_at(game.u.ux, game.u.uy);
             return 0;
         }

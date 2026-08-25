@@ -6,6 +6,17 @@
 //         peffect_speed (D-1408), peffect_water,
 //         peffect_object_detection (D-1417),
 //         peffect_monster_detection (D-1418),
+//         peffect_levitation (D-1419),
+//         peffect_restore_ability (D-1420),
+//         peffect_invisibility (D-1421),
+//         peffect_polymorph (D-1428),
+//         peffect_gain_energy (D-1429),
+//         peffect_acid (D-1430),
+//         peffect_gain_level (D-1431),
+//         peffect_blindness (D-1432),
+//         peffect_sleeping (D-1437),
+//         peffect_gain_ability (D-1438),
+//         peffect_hallucination (D-1439),
 //         make_confused, dodip, speed_up, djinni_from_bottle (D-1144);
 //         invent.c getobj; fountain.c drinkfountain / dipfountain / dipsink.
 // Branch envelope: POT_WATER peffect + potionbreathe lycan vapor (D-1004).
@@ -18,6 +29,46 @@
 // SPE_DETECT_MONSTERS / POT_MONSTER_DETECTION peffect_monster_detection
 // (D-1418; callee detect.c monster_detect when unblessed / swallow /
 // underwater).
+// SPE_LEVITATION / POT_LEVITATION peffect_levitation (D-1419;
+// callee trap.c float_up / timeout.c float_down; cursed doup /
+// ceiling losehp).
+// SPE_RESTORE_ABILITY / POT_RESTORE_ABILITY peffect_restore_ability
+// (D-1420; apply.c unfixable_trouble_count; potion pluslvl; spell
+// does not restore lost levels).
+// SPE_INVISIBILITY / POT_INVISIBILITY peffect_invisibility (D-1421;
+// C spell.c :1544–1546 FALLTHROUGH peffects, no skilled bless;
+// mummy wrapping spell-block; HInvis FROMOUTSIDE / d(6-3*bcsign,100)+100;
+// cursed aggravate strips FROMOUTSIDE; timeout.c INVIS expiry).
+// POT_POLYMORPH peffect_polymorph (D-1428; You_feel little strange/normal;
+// !Unchanging POLY_NOFLAGS unless blessed original form
+// POLY_CONTROLLED|POLY_LOW_CTRL then mtimedone min rn2(15)+10).
+// POT_GAIN_ENERGY peffect_gain_energy (D-1429; cursed lackluster else
+// Magical energies; d(blessed?3:!cursed?2:1,6) ±uenmax + 3*num uen
+// clamp 0/max; uenpeak; botl; exercise WIS TRUE).
+// POT_ACID peffect_acid (D-1430; Acid_resistance tastes tangy/sour
+// else burns a little/a lot/like acid; d(cursed?2:1, blessed?4:8)
+// losehp Maybe_Half_Phys KILLED_BY_AN; exercise CON FALSE; Stoned
+// eat.c fix_petrification; potion_unkn++).
+// POT_GAIN_LEVEL peffect_gain_level (D-1431; cursed potion_unkn++ then
+// ledger 1+amulet → earth_level else Can_rise_up → get_level(depth-1);
+// same-level "It tasted bad"; else You rise through ceiling + goto_level
+// else uneasy; uncursed/blessed pluslvl(FALSE); blessed uexp=rndexp(TRUE)).
+// POT_BLINDNESS peffect_blindness (D-1432; already Blind or
+// (H||E)&&BBlinded → potion_nothing++; make_blinded(itimeout_incr(
+// BlindedTimeout, rn1(200, 250-125*bcsign)), !Blind); callee do.js
+// make_blinded).
+// POT_SLEEPING peffect_sleeping (D-1437; Sleep_resistance||Free_action
+// monstseesu + yawn else fall_asleep(-rn1(10, 25-12*bcsign), TRUE);
+// callee timeout.c fall_asleep / mondata.c monstseesu).
+// POT_GAIN_ABILITY peffect_gain_ability (D-1438; cursed Ulch+unkn;
+// Fixed_abil extrinsic potion_nothing; else blessed adjattrib all
+// A_MAX with msgflg 0, uncursed rn2 tries msgflg -1 then last 0,
+// break on first success).
+// POT_HALLUCINATION peffect_hallucination (D-1439; Halluc_resistance
+// potion_nothing return; else already Hallucination potion_nothing
+// then still make_hallucinated(itimeout_incr(HHallucination,
+// rn1(200, 600-300*bcsign)), TRUE, 0); blessed !rn2(3) else
+// !cursed && !rn2(6) MAGIC enlightenment).
 // POT_FULL_HEALING peffect_full_healing (D-1411).
 // POT_ENLIGHTENMENT peffect_enlightenment (D-1413).
 
@@ -27,38 +78,46 @@ import {
     flush_screen, flush_topl_more, pline, You_feel, verbalize, canspotmon,
     canseemon, see_monsters, unmap_object, glyph_is_invisible, newsym,
 } from './display.js';
-import { POTION_CLASS, SPBOOK_CLASS, COIN_CLASS, objectNames } from './objects.js';
+import {
+    POTION_CLASS, SPBOOK_CLASS, COIN_CLASS, ARMOR_CLASS, objectNames,
+} from './objects.js';
 import {
     weight, obj_extract_self, bless, curse, unbless, uncurse,
+    is_metallic, is_crackable,
 } from './mkobj.js';
 import {
     A_WIS, A_INT, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise, acurr,
     Fast, Very_fast,
 } from './attrib.js';
-import { makeknown, compactify_invlets } from './invent.js';
+import { makeknown, compactify_invlets, enlightenment } from './invent.js';
 import { yn_function } from './getline.js';
 import {
     doname, xname, short_oname, thesimpleoname, makeplural,
-    The, vtense, an, cxname,
+    The, vtense, an, cxname, yname,
 } from './objnam.js';
 import {
     dipfountain, drinkfountain, drinksink, dipsink,
     wash_hands, floating_above, mongrantswish,
 } from './fountain.js';
 import {
-    IS_FOUNTAIN, IS_SINK,
+    IS_FOUNTAIN, IS_SINK, IS_AIR, IS_ROOM, IS_WALL, IS_DOOR, SDOOR,
     ECMD_TIME, ECMD_CANCEL,
     POTHIT_HERO_THROW, POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
-    TIMEOUT, HALLUC_RES, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
-    DETECT_MONSTERS, COLNO, ROWNO,
+    TIMEOUT, I_SPECIAL, HALLUC_RES, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
+    DETECT_MONSTERS, LEVITATION, INVIS, HEAD, COLNO, ROWNO,
+    In_endgame, Is_earthlevel, In_sokoban,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
     OBJ_INVENT, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, W_SADDLE,
+    POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, UNCHANGING, ACID_RES,
+    M_SEEN_SLEEP, FIXED_ABIL,
+    MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
 } from './const.js';
 import { hands_obj, P_SKILL } from './weapon.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
-import { losehp, nomul, maybe_half_phys, is_pool, waterbody_name } from './hack.js';
+import { losehp, nomul, maybe_half_phys, is_pool, waterbody_name, fall_asleep } from './hack.js';
+import { monstseesu, monstunseesu } from './mondata.js';
 import { cansee } from './vision.js';
 import {
     mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames,
@@ -71,18 +130,21 @@ import { mongone, wakeup, healmon, wake_nearto, dist2, m_at } from './mon.js';
 import { tamedog } from './dog.js';
 import { can_reach_floor } from './engrave.js';
 import { bcsign } from './rumors.js';
-import { more_experienced, pluslvl } from './exper.js';
+import { more_experienced, pluslvl, rndexp } from './exper.js';
+import { depth } from './hacklib.js';
 import {
     trycall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
     Hallucination,
 } from './do_name.js';
-import { newuhs } from './eat.js';
-import { heal_legs, water_damage } from './trap.js';
+import { newuhs, fix_petrification } from './eat.js';
+import { heal_legs, water_damage, float_up, self_invis_message } from './trap.js';
+import { aggravate } from './wizard.js';
 import {
     delayed_killer, find_delayed_killer, dealloc_killer,
 } from './end.js';
 import { you_were, you_unwere, set_ulycn, new_were } from './were.js';
 import { which_armor } from './worn.js';
+import { polyself } from './polyself.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const POT_ACID = objectNames.indexOf('POT_ACID');
@@ -104,9 +166,19 @@ const POT_OBJECT_DETECTION = objectNames.indexOf('POT_OBJECT_DETECTION');
 const SPE_DETECT_TREASURE = objectNames.indexOf('SPE_DETECT_TREASURE');
 const POT_MONSTER_DETECTION = objectNames.indexOf('POT_MONSTER_DETECTION');
 const SPE_DETECT_MONSTERS = objectNames.indexOf('SPE_DETECT_MONSTERS');
+const POT_LEVITATION = objectNames.indexOf('POT_LEVITATION');
+const SPE_LEVITATION = objectNames.indexOf('SPE_LEVITATION');
+const POT_RESTORE_ABILITY = objectNames.indexOf('POT_RESTORE_ABILITY');
+const SPE_RESTORE_ABILITY = objectNames.indexOf('SPE_RESTORE_ABILITY');
+const SPE_INVISIBILITY = objectNames.indexOf('SPE_INVISIBILITY');
+const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const POT_SICKNESS = objectNames.indexOf('POT_SICKNESS');
 const POT_WATER = objectNames.indexOf('POT_WATER');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
+const POT_GAIN_ENERGY = objectNames.indexOf('POT_GAIN_ENERGY');
+const POT_GAIN_LEVEL = objectNames.indexOf('POT_GAIN_LEVEL');
+const POT_GAIN_ABILITY = objectNames.indexOf('POT_GAIN_ABILITY');
+const POT_HALLUCINATION = objectNames.indexOf('POT_HALLUCINATION');
 const PM_DJINNI = monsterNames.indexOf('PM_DJINNI');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
@@ -496,6 +568,117 @@ function incr_itimeout_HDetect_monsters(incr) {
     const cur = (u.HDetect_monsters | 0)
         | (u.uprops?.[DETECT_MONSTERS]?.intrinsic | 0);
     set_HDetect_monsters((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
+}
+
+/** C obj.h is_helmet — ARMOR + oc_armcat ARM_HELM (JS oc_skill stand-in). */
+const ARM_HELM = 2;
+function is_helmet(obj) {
+    return !!obj && obj.oclass === ARMOR_CLASS
+        && (game.objects?.[obj.otyp]?.oc_skill ?? -1) === ARM_HELM;
+}
+
+/** C ref: do_wear.c hard_helmet — metallic or glass helm. */
+function hard_helmet(obj) {
+    if (!obj || !is_helmet(obj)) return false;
+    return is_metallic(obj) || is_crackable(obj);
+}
+
+/** C dungeon.c has_ceiling — endgame non-earth has no ceiling. */
+function has_ceiling(lev) {
+    if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
+    return true;
+}
+
+/**
+ * C dungeon.c ceiling — room/air labels for cursed levitation pline.
+ * Named omit: vault/temple/shop in_rooms; water/fire/quest/Underwater.
+ */
+function ceiling_at(x, y) {
+    const typ = game.level?.at?.(x, y)?.typ ?? 0;
+    if (IS_AIR(typ)) return 'sky';
+    if (IS_ROOM(typ) || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR) {
+        return 'ceiling';
+    }
+    return 'rock cavern';
+}
+
+/** Sync flat HLevitation with uprops[LEVITATION].intrinsic. */
+function set_HLevitation(val) {
+    const u = game.u || (game.u = {});
+    u.HLevitation = val | 0;
+    if (!u.uprops) u.uprops = {};
+    const prop = u.uprops[LEVITATION] || (u.uprops[LEVITATION] = {
+        intrinsic: 0, extrinsic: 0, blocked: 0,
+    });
+    prop.intrinsic = u.HLevitation;
+}
+
+function hlev_bits() {
+    const u = game.u || (game.u = {});
+    return (u.HLevitation | 0) | (u.uprops?.[LEVITATION]?.intrinsic | 0);
+}
+
+/** C potion.c set_itimeout(&HLevitation, val) — TIMEOUT bits only. */
+function set_itimeout_HLevitation(val) {
+    const cur = hlev_bits();
+    set_HLevitation((cur & ~TIMEOUT) | ((val | 0) & TIMEOUT));
+}
+
+/**
+ * C potion.c incr_itimeout(&HLevitation, incr) — TIMEOUT bits only.
+ */
+function incr_itimeout_HLevitation(incr) {
+    const cur = hlev_bits();
+    set_HLevitation((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
+}
+
+/** Sync flat HInvis with uprops[INVIS].intrinsic (C HInvis single slot). */
+function set_HInvis(val) {
+    const u = game.u || (game.u = {});
+    u.HInvis = val | 0;
+    if (!u.uprops) u.uprops = {};
+    const prop = u.uprops[INVIS] || (u.uprops[INVIS] = {
+        intrinsic: 0, extrinsic: 0, blocked: 0,
+    });
+    prop.intrinsic = u.HInvis;
+}
+
+function hinvis_bits() {
+    const u = game.u || (game.u = {});
+    return (u.HInvis | 0) | (u.uprops?.[INVIS]?.intrinsic | 0);
+}
+
+/**
+ * C potion.c incr_itimeout(&HInvis, incr) — TIMEOUT bits only.
+ */
+function incr_itimeout_HInvis(incr) {
+    const cur = hinvis_bits();
+    set_HInvis((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
+}
+
+/**
+ * C youprop.h BInvis — uprops[INVIS].blocked.
+ * JS setworn named-omits w_blocks; worn MUMMY_WRAPPING on uarmc
+ * stands in (C worn.c setworn; zap.js BInvis).
+ */
+function BInvis() {
+    const u = game.u || {};
+    const p = u.uprops?.[INVIS];
+    if ((u.BInvis | 0) || (p?.blocked | 0)) return true;
+    const cloak = u.uarmc;
+    return !!(cloak && (cloak.otyp | 0) === MUMMY_WRAPPING);
+}
+
+/**
+ * C youprop.h Invis — (HInvis || EInvis) && !BInvis
+ * via flats + uprops[INVIS].
+ */
+function Invis() {
+    const u = game.u || {};
+    const p = u.uprops?.[INVIS];
+    const H = (u.HInvis | 0) || (p?.intrinsic | 0);
+    const E = (u.EInvis | 0) || (p?.extrinsic | 0);
+    return !!(H || E) && !BInvis();
 }
 
 /** C youprop.h Detect_monsters — HDetect_monsters || EDetect_monsters. */
@@ -1019,6 +1202,153 @@ async function peffect_monster_detection(otmp) {
 }
 
 /**
+ * C ref: potion.c peffect_levitation
+ * !Levitation && !BLevitation → set_itimeout(HLevitation,1) + float_up;
+ * else potion_nothing++. Cursed: HLevitation &= ~I_SPECIAL then upstairs
+ * doup or has_ceiling rnd(!uarmh?10:!hard_helmet?6:3) losehp Maybe_Half_Phys
+ * colliding with the ceiling. Blessed: incr rn1(50,250) + I_SPECIAL.
+ * Uncursed: incr rn1(140,10). Levitation+sink → spoteffects(FALSE).
+ * Always float_vs_flight. Cursed potion/spell upstairs / ceiling named
+ * live; vault/temple/shop ceiling labels still named.
+ */
+async function peffect_levitation(otmp) {
+    const u = game.u || (game.u = {});
+    if (!Levitation() && !BLevitation()) {
+        /* kludge so float_up sees Levitation */
+        set_itimeout_HLevitation(1);
+        await float_up();
+        /* cursed keeps timeout 1 → float_down next turn */
+    } else {
+        potion_nothing++;
+    }
+
+    if (otmp.cursed) {
+        set_HLevitation(hlev_bits() & ~I_SPECIAL);
+        if (BLevitation()) {
+            /* rising via levitation is blocked */
+        } else {
+            const { stairway_at } = await import('./mklev.js');
+            const stway = stairway_at(u.ux | 0, u.uy | 0);
+            if (stway && stway.up) {
+                const { doup } = await import('./do.js');
+                await doup();
+                potion_nothing = 0;
+            } else if (has_ceiling(u.uz)) {
+                const dmg = rnd(!u.uarmh ? 10
+                    : !hard_helmet(u.uarmh) ? 6 : 3);
+                const { body_part } = await import('./polyself.js');
+                await pline(
+                    `You hit your ${body_part(HEAD)} on the ${ceiling_at(u.ux | 0, u.uy | 0)}.`,
+                );
+                losehp(
+                    maybe_half_phys(dmg),
+                    'colliding with the ceiling',
+                    KILLED_BY,
+                );
+                potion_nothing = 0;
+            }
+        }
+    } else if (otmp.blessed) {
+        incr_itimeout_HLevitation(rn1(50, 250));
+        set_HLevitation(hlev_bits() | I_SPECIAL);
+    } else {
+        incr_itimeout_HLevitation(rn1(140, 10));
+    }
+
+    if (Levitation() && IS_SINK(game.level?.at?.(u.ux | 0, u.uy | 0)?.typ)) {
+        const { spoteffects } = await import('./pickup.js');
+        await spoteffects(false);
+    }
+    const { float_vs_flight } = await import('./polyself.js');
+    float_vs_flight();
+}
+
+/**
+ * C ref: potion.c peffect_restore_ability :646–693.
+ * potion_unkn++. Cursed: Ulch mediocre return. Else Wow good (uncursed)
+ * / better (blessed + unfixable_trouble_count(FALSE)) / great; rn2(A_MAX)
+ * start; ABASE=AMAX + AEXE = max(AEXE,0) for first (uncursed) or all
+ * (blessed) drained attrs. Overrides Fixed_abil (direct ABASE, not
+ * adjattrib). Does not recover ATEMP hunger STR / wounded-legs DEX.
+ * Potion only: pluslvl(FALSE) while ulevel < ulevelmax (blessed: all
+ * lost levels; uncursed: one). Spell otyp skips pluslvl.
+ */
+async function peffect_restore_ability(otmp) {
+    potion_unkn++;
+    if (otmp.cursed) {
+        await pline('Ulch!  This makes you feel mediocre!');
+        return;
+    }
+    let feel;
+    if (!otmp.blessed) {
+        feel = 'good';
+    } else {
+        const { unfixable_trouble_count } = await import('./apply.js');
+        feel = unfixable_trouble_count(false) ? 'better' : 'great';
+    }
+    await pline(`Wow!  This makes you feel ${feel}!`);
+    const u = game.u || (game.u = {});
+    let i = rn2(A_MAX); /* start at a random point */
+    for (let ii = 0; ii < A_MAX; ii++) {
+        const lim = u.amax.a[i] | 0;
+        if ((u.acurr.a[i] | 0) < lim) {
+            u.acurr.a[i] = lim;
+            if (!u.aexe) u.aexe = { a: [0, 0, 0, 0, 0, 0] };
+            u.aexe.a[i] = Math.max(u.aexe.a[i] | 0, 0);
+            if (game.disp) game.disp.botl = true;
+            if (game.flags) game.flags.botl = true;
+            if (!otmp.blessed) break;
+        }
+        if (++i >= A_MAX) i = 0;
+    }
+    if ((otmp.otyp | 0) === POT_RESTORE_ABILITY
+        && (u.ulevel | 0) < (u.ulevelmax | 0)) {
+        do {
+            await pluslvl(false);
+        } while ((u.ulevel | 0) < (u.ulevelmax | 0) && otmp.blessed);
+    }
+}
+
+/**
+ * C ref: potion.c peffect_invisibility :811–838.
+ * Spell + BInvis + mummy wrapping: You_feel itchy under yname(uarmc)
+ * and return (no timeout). Else Invis||Blind||BInvis → potion_nothing
+ * else self_invis_message. Blessed !rn2(HInvis?15:30) → HInvis |=
+ * FROMOUTSIDE else incr_itimeout d(6-3*bcsign,100)+100. newsym.
+ * Cursed: presence-known pline, aggravate, HInvis &= ~FROMOUTSIDE.
+ */
+async function peffect_invisibility(otmp) {
+    const u = game.u || (game.u = {});
+    const is_spell = (otmp.oclass | 0) === SPBOOK_CLASS;
+
+    /* spell cannot penetrate mummy wrapping */
+    if (is_spell && BInvis() && u.uarmc
+        && (u.uarmc.otyp | 0) === MUMMY_WRAPPING) {
+        await You_feel(`rather itchy under ${yname(u.uarmc)}.`);
+        return;
+    }
+    if (Invis() || Blind() || BInvis()) {
+        potion_nothing++;
+    } else {
+        await self_invis_message();
+    }
+    if (otmp.blessed && !rn2(hinvis_bits() ? 15 : 30)) {
+        set_HInvis(hinvis_bits() | FROMOUTSIDE);
+    } else {
+        incr_itimeout_HInvis(d(6 - 3 * bcsign(otmp), 100) + 100);
+    }
+    newsym(u.ux | 0, u.uy | 0); /* update position */
+    if (otmp.cursed) {
+        await pline('For some reason, you feel your presence is known.');
+        aggravate();
+
+        /* doing this gives temporary invisibility, but removes permanent
+           invisibility */
+        set_HInvis(hinvis_bits() & ~FROMOUTSIDE);
+    }
+}
+
+/**
  * C ref: potion.c peffect_booze
  * potion_unkn + taste pline; !blessed → make_confused(d(2+uhs,8));
  * !odiluted → healup(1); hunger + newuhs; exercise WIS; cursed pass-out.
@@ -1114,13 +1444,425 @@ async function peffect_water(otmp) {
     }
 }
 
+/** C ref: youprop.h Unchanging — H || E via flat + uprops. */
+function Unchanging(u = game.u || {}) {
+    const e = u.uprops?.[UNCHANGING];
+    return !!((u.Unchanging || u.HUnchanging || u.EUnchanging)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/**
+ * C youprop.h Acid_resistance — HAcid_resistance || EAcid_resistance
+ * ≡ uprops[ACID_RES].intrinsic || uprops[ACID_RES].extrinsic.
+ * confer_oc_oprop writes ACID_RES only to uprops (EAcid_resistance
+ * unmirrored). Keep H/E/sticky flats for eat/poly.
+ */
+function Acid_resistance(u = game.u || {}) {
+    const e = u.uprops?.[ACID_RES];
+    return !!((u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/**
+ * C youprop.h Stoned — uprops[STONED].intrinsic.
+ * make_stoned writes the Stoned flat; check both.
+ */
+function Stoned(u = game.u || {}) {
+    const e = u.uprops?.[STONED];
+    return !!((u.Stoned | 0) || (e?.intrinsic | 0));
+}
+
+/**
+ * C ref: potion.c peffect_polymorph :1318–1330.
+ * You_feel a little strange (Hallucination: normal). If !Unchanging:
+ * unblessed or already polymorphed → polyself(POLY_NOFLAGS); blessed
+ * original form → polyself(POLY_CONTROLLED|POLY_LOW_CTRL) then
+ * mtimedone = min(mtimedone, rn2(15)+10) when still Upolyd.
+ * SPE_POLYMORPH is not this case (wand-duplicate / zapyourself).
+ * potionhit / potionbreathe / mix / dipsink POT_POLYMORPH still named.
+ */
+async function peffect_polymorph(otmp) {
+    const u = game.u || (game.u = {});
+    await You_feel(`a little ${Hallucination() ? 'normal' : 'strange'}.`);
+    if (!Unchanging(u)) {
+        if (!otmp.blessed || ((u.umonnum | 0) !== (u.umonster | 0))) {
+            await polyself(POLY_NOFLAGS);
+        } else {
+            await polyself(POLY_CONTROLLED | POLY_LOW_CTRL);
+            if ((u.mtimedone | 0) && ((u.umonnum | 0) !== (u.umonster | 0))) {
+                u.mtimedone = Math.min(u.mtimedone | 0, rn2(15) + 10);
+            }
+        }
+    }
+}
+
+/**
+ * C ref: potion.c peffect_gain_energy :1224–1257.
+ * Cursed You_feel lackluster; else Magical energies pline.
+ * num = d(blessed ? 3 : !cursed ? 2 : 1, 6); cursed negates.
+ * uenmax += num (peak if higher; clamp <=0 to 0); uen += 3*num
+ * (clamp to [0, uenmax]); disp.botl; exercise(A_WIS, TRUE).
+ * potionhit / potionbreathe / mix / dipsink POT_GAIN_ENERGY still named.
+ */
+async function peffect_gain_energy(otmp) {
+    const u = game.u || (game.u = {});
+    if (otmp.cursed) {
+        await You_feel('lackluster.');
+    } else {
+        await pline('Magical energies course through your body.');
+    }
+    /* C: d(otmp->blessed ? 3 : !otmp->cursed ? 2 : 1, 6) */
+    let num = d(otmp.blessed ? 3 : !otmp.cursed ? 2 : 1, 6);
+    if (otmp.cursed) num = -num;
+    u.uenmax = (u.uenmax | 0) + num;
+    if ((u.uenmax | 0) > (u.uenpeak | 0)) {
+        u.uenpeak = u.uenmax;
+    } else if ((u.uenmax | 0) <= 0) {
+        u.uenmax = 0;
+    }
+    u.uen = (u.uen | 0) + 3 * num;
+    if ((u.uen | 0) > (u.uenmax | 0)) {
+        u.uen = u.uenmax;
+    } else if ((u.uen | 0) <= 0) {
+        u.uen = 0;
+    }
+    if (game.disp) game.disp.botl = true;
+    if (game.flags) game.flags.botl = true;
+    exercise(A_WIS, true);
+}
+
+/**
+ * C ref: potion.c peffect_acid :1297–1314.
+ * Acid_resistance: This tastes tangy (Hallucination) / sour.
+ * Else: This burns a little / a lot / like acid; dmg =
+ * d(cursed?2:1, blessed?4:8); losehp(Maybe_Half_Phys) "potion of
+ * acid" KILLED_BY_AN; exercise(A_CON, FALSE).
+ * Always: if Stoned, eat.c fix_petrification; potion_unkn++
+ * (holy/unholy water can burn like acid too).
+ * potionhit / potionbreathe / mix / dipsink POT_ACID still named.
+ */
+async function peffect_acid(otmp) {
+    const u = game.u || (game.u = {});
+    if (Acid_resistance(u)) {
+        /* Not necessarily a creature who _likes_ acid */
+        await pline(`This tastes ${Hallucination() ? 'tangy' : 'sour'}.`);
+    } else {
+        const how = otmp.blessed ? ' a little'
+            : otmp.cursed ? ' a lot' : ' like acid';
+        await pline(`This burns${how}!`);
+        const dmg = d(otmp.cursed ? 2 : 1, otmp.blessed ? 4 : 8);
+        losehp(maybe_half_phys(dmg), 'potion of acid', KILLED_BY_AN);
+        exercise(A_CON, false);
+    }
+    if (Stoned(u)) {
+        await fix_petrification();
+    }
+    potion_unkn++;
+}
+
+/** C dungeon.c ledger_no — dlevel + dungeons[dnum].ledger_start. */
+function ledger_no(lev) {
+    const dun = game.dungeons?.[lev?.dnum | 0];
+    return ((lev?.dlevel | 0) + (dun?.ledger_start | 0)) | 0;
+}
+
+/** C dungeon.c on_level — same dnum/dlevel. */
+function on_level(a, b) {
+    return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
+}
+
+/** C dungeon.h Lassigned — dlevel or dnum nonzero. */
+function Lassigned(z) {
+    return !!((z?.dlevel | 0) || (z?.dnum | 0));
+}
+
+/** C dungeon.h Is_wiz1_level. */
+function Is_wiz1_level(lev) {
+    const w = game.wiz1_level;
+    return Lassigned(w) && on_level(lev, w);
+}
+
+/** C dungeon.c On_W_tower_level — wizard1/2/3 specials. */
+function On_W_tower_level(lev) {
+    for (const key of ['wiz1_level', 'wiz2_level', 'wiz3_level']) {
+        const w = game[key];
+        if (Lassigned(w) && on_level(lev, w)) return true;
+    }
+    return false;
+}
+
+/**
+ * C dungeon.c In_W_tower — inside the Wizard's Tower rectangle (dndest).
+ * Named omit: impossible() when nlx==0.
+ */
+function In_W_tower(x, y, lev) {
+    if (!On_W_tower_level(lev)) return false;
+    const d = game.dndest;
+    if (!d || !(d.nlx | 0)) return false;
+    return (x | 0) >= (d.nlx | 0) && (x | 0) <= (d.nhx | 0)
+        && (y | 0) >= (d.nly | 0) && (y | 0) <= (d.nhy | 0);
+}
+
+/**
+ * C stairs.c stairway_find_special_dir — branch stair whose
+ * tolev.dnum != u.uz.dnum and up != want.
+ */
+function stairway_find_special_dir(up) {
+    const want = !!up;
+    const dnum = game.u?.uz?.dnum ?? 0;
+    for (let s = game.stairs; s; s = s.next) {
+        if ((s.tolev?.dnum | 0) !== dnum && !!s.up !== want) return s;
+    }
+    return null;
+}
+
+/**
+ * C ref: dungeon.c Can_rise_up :1674–1687.
+ * True if cursed gain-level can escape upward (not endgame/sokoban/
+ * Wizard tower top). dlevel>1, or dungeon entry_lev==1 with a
+ * special up-stair and not ledger 1.
+ */
+function Can_rise_up(x, y, lev) {
+    const stway = stairway_find_special_dir(false);
+    if (In_endgame(lev) || In_sokoban(lev)
+        || (Is_wiz1_level(lev) && In_W_tower(x, y, lev))) {
+        return false;
+    }
+    return (lev?.dlevel | 0) > 1
+        || ((game.dungeons?.[lev?.dnum | 0]?.entry_lev | 0) === 1
+            && ledger_no(lev) !== 1
+            && stway && stway.up);
+}
+
+/**
+ * C dungeon.c assign_level — dest = src.
+ */
+function assign_level(dest, src) {
+    dest.dnum = src?.dnum | 0;
+    dest.dlevel = src?.dlevel | 0;
+}
+
+/**
+ * C ref: potion.c peffect_gain_level :1083–1116.
+ * Cursed: potion_unkn++; ledger_no==1 with amulet → earth_level,
+ * else Can_rise_up → get_level(depth-1); same-level "It tasted bad"
+ * return; else You rise through ceiling + goto_level; else uneasy.
+ * Uncursed/blessed: pluslvl(FALSE); blessed u.uexp = rndexp(TRUE)
+ * (middle of the new level's XP band, not the low point).
+ * potionhit / potionbreathe / mix / dipsink POT_GAIN_LEVEL still named.
+ * ceiling() vault/temple/shop/water/fire/quest/Underwater still named
+ * (ceiling_at).
+ */
+async function peffect_gain_level(otmp) {
+    const u = game.u || (game.u = {});
+    if (otmp.cursed) {
+        const on_lvl_1 = ledger_no(u.uz) === 1;
+
+        potion_unkn++;
+        /* they went up a level */
+        const haveAmulet = !!(u.uhave?.amulet || u.uhave_amulet);
+        if (on_lvl_1 ? haveAmulet : Can_rise_up(u.ux, u.uy, u.uz)) {
+            const newlevel = { dnum: 0, dlevel: 0 };
+
+            if (on_lvl_1) {
+                assign_level(newlevel, game.earth_level);
+            } else {
+                const newlev = depth(u.uz) - 1;
+                const { get_level } = await import('./dungeon.js');
+                get_level(newlevel, newlev);
+                if (on_level(newlevel, u.uz)) {
+                    await pline('It tasted bad.');
+                    return;
+                }
+            }
+            await pline(
+                `You rise up, through the ${ceiling_at(u.ux | 0, u.uy | 0)}!`,
+            );
+            const { goto_level } = await import('./do.js');
+            await goto_level(newlevel, false, false, false);
+        } else {
+            await pline('You have an uneasy feeling.');
+        }
+        return;
+    }
+    await pluslvl(false);
+    /* blessed potions place you at a random spot in the
+       middle of the new level instead of the low point */
+    if (otmp.blessed) {
+        u.uexp = rndexp(true);
+    }
+}
+
+/**
+ * C youprop.h BlindedTimeout — HBlinded & TIMEOUT.
+ */
+function BlindedTimeout() {
+    const u = game.u || {};
+    return (u.HBlinded | 0) & TIMEOUT;
+}
+
+/**
+ * C ref: potion.c peffect_blindness :1073–1080.
+ * Already Blind, or (HBlinded||EBlinded)&&BBlinded (Eyes override):
+ * potion_nothing++. Always make_blinded(itimeout_incr(BlindedTimeout,
+ * rn1(200, 250-125*bcsign(otmp))), !Blind). Talk is the pre-call
+ * !Blind snapshot (C arg). Callee do.js make_blinded (Eyes talk /
+ * Unaware / Hallucination / Punished set_bc / Sting still named there).
+ * potionhit / potionbreathe / mix / dipsink POT_BLINDNESS still named.
+ */
+async function peffect_blindness(otmp) {
+    const u = game.u || {};
+    const HBlinded = u.HBlinded | 0;
+    const EBlinded = u.EBlinded | 0;
+    const BBlinded = u.BBlinded | 0;
+    if (Blind() || ((HBlinded || EBlinded) && BBlinded)) {
+        potion_nothing++;
+    }
+    const { make_blinded } = await import('./do.js');
+    await make_blinded(
+        itimeout_incr(BlindedTimeout(), rn1(200, 250 - 125 * bcsign(otmp))),
+        !Blind(),
+    );
+}
+
+/**
+ * C youprop.h Sleep_resistance — HSleep_resistance || ESleep_resistance.
+ */
+function Sleep_resistance() {
+    const u = game.u || {};
+    return !!((u.HSleep_resistance | 0) || (u.ESleep_resistance | 0)
+        || u.Sleep_resistance);
+}
+
+/**
+ * C youprop.h Free_action — u.uprops[FREE_ACTION].extrinsic.
+ * JS also mirrors flat Free_action / EFree_action (peffect_paralysis).
+ */
+function Free_action() {
+    const u = game.u || {};
+    return !!(u.Free_action || u.HFree_action || u.EFree_action);
+}
+
+/**
+ * C ref: potion.c peffect_sleeping :901–911.
+ * Sleep_resistance || Free_action: monstseesu(M_SEEN_SLEEP) then You yawn.
+ * Else You suddenly fall asleep, monstunseesu, then
+ * fall_asleep(-rn1(10, 25-12*bcsign(otmp)), TRUE) (timeout.c; JS hack.js).
+ * potionhit / potionbreathe / mix / dipsink POT_SLEEPING still named.
+ */
+async function peffect_sleeping(otmp) {
+    if (Sleep_resistance() || Free_action()) {
+        monstseesu(M_SEEN_SLEEP);
+        await pline('You yawn.');
+    } else {
+        await pline('You suddenly fall asleep!');
+        monstunseesu(M_SEEN_SLEEP);
+        fall_asleep(-rn1(10, 25 - 12 * bcsign(otmp)), true);
+    }
+}
+
+/**
+ * C youprop.h Fixed_abil — u.uprops[FIXED_ABIL].extrinsic only (ring
+ * of sustain ability). JS also mirrors EFixed_abil / Fixed_abil.
+ */
+function Fixed_abil() {
+    const u = game.u || {};
+    return !!((u.uprops?.[FIXED_ABIL]?.extrinsic | 0)
+        || (u.EFixed_abil | 0)
+        || u.Fixed_abil);
+}
+
+/**
+ * C ref: potion.c peffect_gain_ability :1030–1048.
+ * Cursed: Ulch foul + potion_unkn++. Fixed_abil: potion_nothing++.
+ * Else blessed: adjattrib(i, 1, 0) for i = 0 .. A_MAX-1.
+ * Uncursed: up to A_MAX rn2(A_MAX) tries; msgflg -1 except last (0);
+ * break on first successful adjattrib. Callee attrib.c adjattrib
+ * (verbose already-max plines still named there). potionhit /
+ * potionbreathe / mix / dipsink POT_GAIN_ABILITY still named.
+ */
+async function peffect_gain_ability(otmp) {
+    if (otmp.cursed) {
+        await pline('Ulch!  That potion tasted foul!');
+        potion_unkn++;
+    } else if (Fixed_abil()) {
+        potion_nothing++;
+    } else { /* If blessed, increase all; if not, try up to */
+        let i = -1; /* increment to 0 */
+        for (let ii = A_MAX; ii > 0; ii--) {
+            i = otmp.blessed ? i + 1 : rn2(A_MAX);
+            /* only give "your X is already as high as it can get"
+               message on last attempt (except blessed potions) */
+            const itmp = (otmp.blessed || ii === 1) ? 0 : -1;
+            if (await adjattrib(i, 1, itmp) && !otmp.blessed)
+                break;
+        }
+    }
+}
+
+/**
+ * C youprop.h Halluc_resistance — HHalluc_resistance || EHalluc_resistance
+ * (uprops[HALLUC_RES] intrinsic/extrinsic). JS also mirrors
+ * u.Halluc_resistance.
+ */
+function Halluc_resistance() {
+    const u = game.u || {};
+    return !!((u.HHalluc_resistance | 0)
+        || (u.EHalluc_resistance | 0)
+        || (u.uprops?.[HALLUC_RES]?.intrinsic | 0)
+        || (u.uprops?.[HALLUC_RES]?.extrinsic | 0)
+        || (u.Halluc_resistance | 0));
+}
+
+/**
+ * C ref: potion.c peffect_hallucination :696–714.
+ * Halluc_resistance: potion_nothing++ and return (no timeout, no
+ * enlightenment). Else already Hallucination: potion_nothing++ then
+ * still extend. make_hallucinated(itimeout_incr(HHallucination,
+ * rn1(200, 600-300*bcsign)), TRUE, 0L). Then
+ * (blessed && !rn2(3)) || (!cursed && !rn2(6)): You perceive
+ * yourself... + display_nhwindow(WIN_MESSAGE, FALSE) +
+ * enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS) + Your
+ * awareness re-normalizes + exercise(WIS, TRUE). Callee
+ * make_hallucinated (eatmupdate / update_inventory / itch-flatten
+ * still named there). potionhit / potionbreathe / mix still named.
+ */
+async function peffect_hallucination(otmp) {
+    const u = game.u || (game.u = {});
+    if (Halluc_resistance()) {
+        potion_nothing++;
+        return;
+    } else if (Hallucination()) {
+        potion_nothing++;
+    }
+    await make_hallucinated(
+        itimeout_incr(u.HHallucination | 0, rn1(200, 600 - 300 * bcsign(otmp))),
+        true,
+        0,
+    );
+    if ((otmp.blessed && !rn2(3)) || (!otmp.cursed && !rn2(6))) {
+        await pline('You perceive yourself...');
+        await flush_topl_more(); // display_nhwindow(WIN_MESSAGE, FALSE)
+        await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
+        await pline('Your awareness re-normalizes.');
+        exercise(A_WIS, true);
+    }
+}
+
 /**
  * C ref: potion.c peffects() — POT_OIL + fruit juice / see invisible /
  * paralysis / confusion / booze / healing / extra healing /
  * full healing (D-1411) / enlightenment (D-1413) / sickness / water;
  * POT_SPEED / SPE_HASTE_SELF (D-1408);
  * POT_OBJECT_DETECTION / SPE_DETECT_TREASURE (D-1417);
- * POT_MONSTER_DETECTION / SPE_DETECT_MONSTERS (D-1418); other otyps in map.
+ * POT_MONSTER_DETECTION / SPE_DETECT_MONSTERS (D-1418);
+ * POT_LEVITATION / SPE_LEVITATION (D-1419);
+ * POT_RESTORE_ABILITY / SPE_RESTORE_ABILITY (D-1420);
+ * POT_INVISIBILITY / SPE_INVISIBILITY (D-1421);
+ * POT_POLYMORPH (D-1428); POT_GAIN_ENERGY (D-1429);
+ * POT_ACID (D-1430); POT_GAIN_LEVEL (D-1431); POT_BLINDNESS (D-1432);
+ * POT_SLEEPING (D-1437); POT_GAIN_ABILITY (D-1438);
+ * POT_HALLUCINATION (D-1439); other otyps in map.
  */
 export async function peffects(otmp) {
     switch (otmp.otyp) {
@@ -1133,6 +1875,9 @@ export async function peffects(otmp) {
         return -1;
     case POT_PARALYSIS:
         await peffect_paralysis(otmp);
+        return -1;
+    case POT_SLEEPING:
+        await peffect_sleeping(otmp);
         return -1;
     case POT_CONFUSION:
         await peffect_confusion(otmp);
@@ -1164,11 +1909,44 @@ export async function peffects(otmp) {
     case SPE_DETECT_MONSTERS:
         if (await peffect_monster_detection(otmp)) return 1;
         return -1;
+    case POT_LEVITATION:
+    case SPE_LEVITATION:
+        await peffect_levitation(otmp);
+        return -1;
+    case POT_RESTORE_ABILITY:
+    case SPE_RESTORE_ABILITY:
+        await peffect_restore_ability(otmp);
+        return -1;
+    case SPE_INVISIBILITY:
+    case POT_INVISIBILITY:
+        await peffect_invisibility(otmp);
+        return -1;
     case POT_SICKNESS:
         await peffect_sickness(otmp);
         return -1;
     case POT_WATER:
         await peffect_water(otmp);
+        return -1;
+    case POT_POLYMORPH:
+        await peffect_polymorph(otmp);
+        return -1;
+    case POT_GAIN_ENERGY:
+        await peffect_gain_energy(otmp);
+        return -1;
+    case POT_ACID:
+        await peffect_acid(otmp);
+        return -1;
+    case POT_GAIN_LEVEL:
+        await peffect_gain_level(otmp);
+        return -1;
+    case POT_BLINDNESS:
+        await peffect_blindness(otmp);
+        return -1;
+    case POT_GAIN_ABILITY:
+        await peffect_gain_ability(otmp);
+        return -1;
+    case POT_HALLUCINATION:
+        await peffect_hallucination(otmp);
         return -1;
     default:
         // Other peffect_* deferred — do not useup
@@ -1414,12 +2192,21 @@ async function getobj_dip(at_here) {
 
 /**
  * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
- * Sticky u.Levitation is not a C field (D-1070).
+ * Sticky u.Levitation is not a C field (D-1070). Flat + uprops (D-1419).
  */
 function Levitation() {
     const u = game.u || {};
-    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
-        && !(u.BLevitation | 0));
+    const p = u.uprops?.[LEVITATION];
+    const h = (u.HLevitation | 0) || (p?.intrinsic | 0);
+    const e = (u.ELevitation | 0) || (p?.extrinsic | 0);
+    const b = (u.BLevitation | 0) || (p?.blocked | 0);
+    return !!(h || e) && !b;
+}
+
+/** C youprop.h BLevitation — blocked bits (flat or uprops). */
+function BLevitation() {
+    const u = game.u || {};
+    return !!((u.BLevitation | 0) || (u.uprops?.[LEVITATION]?.blocked | 0));
 }
 
 /**

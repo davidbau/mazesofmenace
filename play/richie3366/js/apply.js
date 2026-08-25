@@ -20,7 +20,7 @@ import {
     P_TWO_WEAPON_COMBAT, NEED_WEAPON,
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, nothing_happens, nothing_seems_to_happen,
     FACE, FOOT, FINGER, TIMEOUT, BLINDED, SICK, HALLUC, VOMITING, CONFUSION,
-    STUNNED, DEAF, SICK_NONVOMITABLE, SICK_ALL,
+    STUNNED, DEAF, STRANGLED, SICK_NONVOMITABLE, SICK_ALL,
     OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, isok, SDOOR, SCORR,
     COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, ZAP_POS, MAXULEV, WEAK,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING,
@@ -4783,6 +4783,49 @@ function TimedTrouble(P) {
     const p = P | 0;
     if (p && !(p & ~TIMEOUT)) return p & TIMEOUT;
     return 0;
+}
+
+/**
+ * C ref: apply.c unfixable_trouble_count :4431–4469.
+ * Potion/spell restore-ability (is_horn FALSE) counts timed Sick/Stun/
+ * Confusion/Hallucination/Vomiting/Deaf as unfixable; unihorn only
+ * counts them when non-TIMEOUT bits remain. Caller: potion.c
+ * peffect_restore_ability (D-1420).
+ */
+export function unfixable_trouble_count(is_horn) {
+    const u = game.u || {};
+    let unfixable_trbl = 0;
+
+    if (u.Stoned) unfixable_trbl++;
+    if (u.Slimed) unfixable_trbl++;
+    const strangled = (u.Strangled | 0)
+        || (u.HStrangled | 0)
+        || (u.uprops?.[STRANGLED]?.intrinsic | 0);
+    if (strangled) unfixable_trbl++;
+    const wounded = !!(u.Wounded_legs
+        || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0));
+    if (((u.atemp?.a?.[A_DEX] | 0) < 0) && wounded) unfixable_trbl++;
+    if (((u.atemp?.a?.[A_STR] | 0) < 0) && ((u.uhs | 0) >= WEAK)) {
+        unfixable_trbl++;
+    }
+
+    const sick = u.Sick | 0;
+    if (sick && (!is_horn || (sick & ~TIMEOUT) !== 0)) unfixable_trbl++;
+    const hstun = u.HStun | 0;
+    if (hstun && (!is_horn || (hstun & ~TIMEOUT) !== 0)) unfixable_trbl++;
+    const hconf = u.HConfusion | 0;
+    if (hconf && (!is_horn || (hconf & ~TIMEOUT) !== 0)) unfixable_trbl++;
+    if (Hallucination()
+        && (!is_horn || ((u.HHallucination | 0) & ~TIMEOUT) !== 0)) {
+        unfixable_trbl++;
+    }
+    const vom = u.Vomiting | 0;
+    if (vom && (!is_horn || (vom & ~TIMEOUT) !== 0)) unfixable_trbl++;
+    if (Deaf_hero() && (!is_horn || ((u.HDeaf | 0) & ~TIMEOUT) !== 0)) {
+        unfixable_trbl++;
+    }
+    return unfixable_trbl;
 }
 
 /**

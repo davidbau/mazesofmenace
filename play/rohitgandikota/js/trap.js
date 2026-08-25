@@ -7,6 +7,21 @@
 // finds it in the file its C twin lives in.
 
 import { t_at as t_at_mon } from './mon.js';
+import { inv_cnt, crawl_destination, unmul } from './hack.js';
+import { near_capacity } from './attrib.js';
+import { UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DROWNING, BURNING,
+         WATER, FIRE_RES } from './const.js';
+import { goodpos } from './makemon.js';
+import { waterbody_name } from './pager.js';
+import { hliquid } from './do_name.js';
+import { Teleport_control, Unaware } from './youprop.js';
+import { teleds, safe_teleds, TELEDS_ALLOW_DRAG,
+         TELEDS_TELEPORT } from './teleport.js';
+import { done } from './end.js';
+import { vision_recalc } from './vision.js';
+import { useupall } from './invent.js';
+import { obj_resists } from './zap.js';
+
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { mksobj, place_object } from './mkobj.js';
@@ -22,7 +37,7 @@ import { monkilled } from './mon.js';
 import { find_mac, which_armor } from './worn.js';
 import { canseemon } from './display.js';
 import { cansee } from './vision.js';
-import { passes_walls } from './mondata.js';
+import { passes_walls, likes_lava } from './mondata.js';
 import { has_ceiling } from './dungeon.js';
 import { Monnam } from './do_name.js';
 import { MATERIALS } from './objects_data.js';
@@ -1408,6 +1423,315 @@ export async function water_damage_chain(objs, here) {
         await water_damage(obj, null, false);
 }
 
+// src/apply.c:698 number_leashed()
+function number_leashed() {
+    let i = 0;
+    for (const obj of (game.invent || []))
+        if (obj.otyp === ONAMES.LEASH && obj.leashmon)
+            i++;
+    return i;
+}
+
+// src/hack.c:3221 set_uinwater() — besides the flag, entering/leaving water
+// re-evaluates terrain-derived properties.
+function set_uinwater(in_out) {
+    if (!!in_out !== !!game.u.uinwater) {
+        game.u.uinwater = in_out ? 1 : 0;
+        /* switch_terrain() toggles Lev/Fly from terrain; no recorded
+           session carries either, so the call is recorded */
+        note_unported_trap('set_uinwater:switch_terrain');
+    }
+}
+
+// src/trap.c:4900 emergency_disrobe() — drop random items until light
+// enough to crawl out; true if now unencumbered enough.
+async function emergency_disrobe(state) {
+    let invc = inv_cnt(true);
+
+    while (near_capacity() > (game.u.uprops?.PUNISHED ? UNENCUMBERED
+                                                      : SLT_ENCUMBER)) {
+        let otmp = null;
+
+        /* Pick a random object */
+        if (invc > 0) {
+            let i = rn2(invc);
+            for (const obj of (game.invent || [])) {
+                /* undroppables: body armor, boots, gloves, amulets, rings,
+                   cursed loadstones, items mid-removal */
+                const u = game.u;
+                if (!((obj.otyp === ONAMES.LOADSTONE && obj.cursed)
+                      || obj === u.uamul || obj === u.uleft
+                      || obj === u.uright || obj === u.ublindf
+                      || obj === u.uarm || obj === u.uarmc
+                      || obj === u.uarmg || obj === u.uarmf
+                      || obj === u.uarmu
+                      || (obj.cursed && (obj === u.uarmh || obj === u.uarms))
+                      || (obj.owornmask & W_WEP && obj.cursed) /* welded */
+                      || obj.in_use))
+                    otmp = obj;
+                /* reached the mark and found some stuff to drop? */
+                if (--i < 0 && otmp)
+                    break;
+            }
+        }
+        if (!otmp)
+            return false; /* nothing to drop! */
+        if (otmp.owornmask)
+            note_unported_trap('emergency_disrobe:remove_worn_item');
+        state.lostsome = true;
+        const { dropx } = await import('./do.js');
+        await dropx(otmp);
+        invc--;
+    }
+    return true;
+}
+
+// src/trap.c:4946 rnd_nextto_goodpos() — pick a random goodpos() next to
+// x,y; for the hero it uses crawl_destination(). Mutates and returns the
+// coord, null when none works. The Fisher-Yates over N_DIRS draws all
+// eight rn2()s before any direction is tested.
+export async function rnd_nextto_goodpos(cc, mtmp) {
+    const is_u = (mtmp === game.youmonst || mtmp === null);
+    const dirs = [];
+    for (let i = 0; i < N_DIRS; ++i)
+        dirs[i] = i;
+    for (let i = N_DIRS; i > 0; --i) {
+        const j = rn2(i);
+        const k = dirs[j];
+        dirs[j] = dirs[i - 1];
+        dirs[i - 1] = k;
+    }
+    for (let i = 0; i < N_DIRS; ++i) {
+        const nx = cc.x + xdir[dirs[i]];
+        const ny = cc.y + ydir[dirs[i]];
+        /* crawl_destination and goodpos both include an isok() check */
+        if (is_u ? await crawl_destination(nx, ny)
+                 : goodpos(nx, ny, mtmp, 0)) {
+            cc.x = nx;
+            cc.y = ny;
+            return true;
+        }
+    }
+    return false;
+}
+
+// src/trap.c:4977 back_on_ground() — message after leaving a pool.
+async function back_on_ground(rescued) {
+    /* Levitation/Flying and the ice/bridge/altar wordings need state no
+       session carries; the ordinary floor case is the live one */
+    const preposit = 'on';
+    let surf = surface(game.u.ux, game.u.uy);
+    if (surf === 'floor' || surf === 'ground')
+        surf = 'solid ground';
+    const you_are_back = rescued ? 'You are back' : "You're back";
+    await pline(`${you_are_back} ${preposit} ${surf}.`);
+}
+
+// src/trap.c:5059 drown() — the hero is in water. Returns true if the hero
+// changed location while surviving.
+export async function drown() {
+    const u = game.u;
+    let inpool_ok = false;
+    const is_solid = game.level?.at(u.ux, u.uy)?.typ === WATER;
+
+    newsym(u.ux, u.uy); /* feel_newsym: in case Blind, map the water here */
+    const swimming = !!u.uprops?.SWIMMING;
+    const amphibious = !!u.uprops?.AMPHIBIOUS;
+    const breathless = !!u.uprops?.BREATHLESS;
+    /* happily wading in the same contiguous pool */
+    if (u.uinwater && is_pool(u.ux - u.dx, u.uy - u.dy)
+        && (swimming || amphibious || breathless)) {
+        /* water effects on objects every now and then */
+        if (!rn2(5))
+            inpool_ok = true;
+        else
+            return false;
+    }
+
+    if (!u.uinwater) {
+        await You(`${is_solid ? 'plunge' : 'fall'} into the ${
+            waterbody_name(u.ux, u.uy)}${
+            (amphibious || swimming || breathless) ? '.' : '!'}`);
+        if (!swimming && !is_solid)
+            await You(`sink like ${Hallucination() ? 'the Titanic'
+                                                   : 'a rock'}.`);
+    }
+
+    await water_damage_chain(game.invent || [], false);
+
+    /* gremlin split and iron golem rust need polyself */
+    if (u.umonnum !== u.umonster)
+        note_unported_trap('drown:polyd');
+    if (inpool_ok)
+        return false;
+
+    {
+        const i = number_leashed();
+        if (i > 0) {
+            await pline(`The leash${i > 1 ? 'es' : ''} slip${
+                i > 1 ? '' : 's'} loose.`);
+            note_unported_trap('drown:unleash_all');
+        }
+    }
+
+    if (amphibious || breathless || swimming) {
+        if (amphibious || breathless) {
+            if (game.flags?.verbose !== false)
+                await pline("But you aren't drowning.");
+            if (!Is_waterlevel(u.uz)) {
+                if (Hallucination())
+                    await Your('keel hits the bottom.');
+                else
+                    await You('touch bottom.');
+            }
+        }
+        if (u.uprops?.PUNISHED)
+            note_unported_trap('drown:placebc');
+        vision_recalc(2); /* unsee old position */
+        set_uinwater(1);
+        note_unported_trap('drown:under_water');
+        game.vision_full_recalc = 1;
+        return false;
+    }
+    /* include/mondata.h:82 can_teleport(): M1_TPORT (monflag.h:110) */
+    if ((u.uprops?.TELEPORT
+         || (game.mons[u.umonnum].mflags1 & MFLAGS.M1_TPORT))
+        && !Unaware()
+        && (Teleport_control() || rn2(3) < (game.u.uluck | 0) + 2)) {
+        await You('attempt a teleport spell.'); /* utcsri!carroll */
+        note_unported_trap('drown:dotele');
+    }
+    if (u.usteed) {
+        note_unported_trap('drown:dismount');
+        if (!is_pool(u.ux, u.uy))
+            return true;
+    }
+    /* if sleeping, wake up now; being doused revives from fainting */
+    if (u.usleep)
+        await unmul('Suddenly you wake up!');
+    /* is_fainted()/reset_faint need the hunger-faint state */
+
+    const cc = { x: u.ux, y: u.uy };
+    /* have to be able to move in order to crawl */
+    if (game.multi >= 0 && game.mons[u.umonnum].mmove
+        && await rnd_nextto_goodpos(cc, game.youmonst ?? null)) {
+        const state = { lostsome: false };
+        /* time to do some strip-tease... */
+        const succ = Is_waterlevel(u.uz) ? true
+                     : await emergency_disrobe(state);
+
+        await You(`try to crawl out of the ${hliquid('water')}.`);
+        if (state.lostsome)
+            await You('dump some of your gear to lose weight...');
+        if (succ) {
+            await pline('Pheew!  That was close.');
+            await teleds(cc.x, cc.y, TELEDS_ALLOW_DRAG);
+            return true;
+        }
+        /* still too much weight */
+        await pline('But in vain.');
+    }
+    set_uinwater(1);
+    await pline('You drown.'); /* urgent_pline */
+    for (let i = 0; i < 2; i++) {
+        let pool_of_water = waterbody_name(u.ux, u.uy);
+        let kfmt = KILLED_BY_AN;
+        /* avoid "drowned in [a] water" */
+        if (pool_of_water === 'water') {
+            pool_of_water = 'deep water';
+            kfmt = KILLED_BY;
+        } else if (pool_of_water === 'limitless water') {
+            kfmt = KILLED_BY;
+        }
+        game.killer = { format: kfmt, name: pool_of_water };
+        await done(DROWNING);
+        /* oops, still alive; get out of the water */
+        if (await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT))
+            break;
+        await pline("You're still drowning.");
+    }
+    if (u.uinwater) {
+        set_uinwater(0);
+        note_unported_trap('drown:rescued_from_terrain');
+    }
+    return true;
+}
+
+// src/trap.c:6790 lava_effects() — the hero is in lava. Returns true if
+// the hero changed location while surviving.
+export async function lava_effects() {
+    const u = game.u;
+    const dmg = d(6, 6); /* only applicable for water walking */
+
+    newsym(u.ux, u.uy); /* feel_newsym */
+    /* burn_away_slime() needs the sliming timer; no session carries it */
+    if (likes_lava(game.mons[u.umonnum]))
+        return false;
+
+    const fire_res = !!u.uprops?.FIRE_RES;
+    const wwalking = !!u.uprops?.WWALKING;
+    let usurvive = fire_res || (wwalking && dmg < u.uhp);
+    /* flag items to be destroyed before any messages */
+    if (!usurvive) {
+        for (const obj of [...(game.invent || [])]) {
+            if (obj.in_use)
+                continue;
+            if ((game.objects[obj.otyp].oc_material <= MATERIALS.WOOD
+                 || obj.oclass === OCLASSES.POTION_CLASS)
+                && !obj.oerodeproof
+                && game.objects[obj.otyp].oc_oprop !== FIRE_RES
+                && obj.otyp !== ONAMES.SCR_FIRE
+                && obj.otyp !== ONAMES.SPE_FIREBALL
+                && !obj_resists(obj, 0, 0))
+                obj.in_use = 1;
+        }
+    }
+
+    /* boots burn first; assumption: water walking comes from boots */
+    if (u.uarmf && (u.uarmf.in_use
+                    || (game.objects[u.uarmf.otyp].oc_material
+                            <= MATERIALS.WOOD
+                        && !u.uarmf.oerodeproof))) {
+        note_unported_trap('lava_effects:boots_burn');
+    }
+
+    if (!fire_res) {
+        if (wwalking) {
+            note_unported_trap('lava_effects:wwalking');
+        } else {
+            await You(`fall into the ${waterbody_name(u.ux, u.uy)}!`);
+        }
+
+        usurvive = false; /* Lifesaved || discover || wizard */
+
+        for (const obj of [...(game.invent || [])]) {
+            if (obj.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD) {
+                note_unported_trap('lava_effects:book_of_the_dead');
+            } else if (obj.in_use) {
+                if (obj.owornmask)
+                    note_unported_trap('lava_effects:worn_burn');
+                useupall(obj);
+            }
+        }
+
+        /* s/he died... burn to death */
+        for (let burncount = 0; burncount < 2; ++burncount) {
+            u.uhp = -1;
+            game.killer = { format: KILLED_BY, name: 'molten lava' };
+            await pline('You burn to a crisp...'); /* urgent_pline */
+            await done(BURNING);
+            if (await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT))
+                break;
+            await pline("You're still burning.");
+        }
+
+        await You('find yourself back on solid ground.');
+    } else {
+        note_unported_trap('lava_effects:fire_resistant');
+    }
+    return true;
+}
+
 // src/trap.c:1602 trapeffect_rust_trap() — a gush of water; one rn2(5)
 // picks the target slot, then water_damage on whatever is there.
 async function trapeffect_rust_trap(mtmp, trap, trflags) {
@@ -1734,7 +2058,7 @@ export async function climb_pit() {
 
 /* ==== the rolling-boulder launch machinery (maketrap's last gap) ==== */
 
-import { xdir, ydir, ZAP_POS, is_xport } from './const.js';
+import { xdir, ydir, ZAP_POS, is_xport, N_DIRS } from './const.js';
 import { closed_door } from './cmd.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { stackobj } from './invent.js';

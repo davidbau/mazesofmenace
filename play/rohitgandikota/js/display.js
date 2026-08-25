@@ -1640,9 +1640,14 @@ export async function flush_screen(cursor_on_u) {
     game._flushing = true;
 
     /* src/display.c:1939 — if (disp.botl || disp.botlx) bot();
-       The port repaints unconditionally: the botl dirty flags are not
-       tracked everywhere C sets them, and the repaint is idempotent. */
-    await bot();
+       gameover matters: really_done sets u.uhp = -1 without dirtying the
+       flags, and C's final --More-- shows the STALE status line. During
+       play the port still repaints unconditionally (the dirty flags are
+       not tracked everywhere C sets them, and the repaint is idempotent);
+       once the game is over it honors the flags so the death frames keep
+       the last live status. */
+    if (!game.program_state_gameover || game.disp?.botl || game.disp?.botlx)
+        await bot();
 
     const rows = game.gbuf || [];
     for (let y = 0; y < ROWNO; y++) {

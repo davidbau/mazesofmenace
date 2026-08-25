@@ -59,14 +59,20 @@ export function tty_curs_base(x, y) {
     base.cury = y;
 }
 
-export function tty_putstr_base(str) {
+export function tty_putstr_base(str, attr = 0) {
     const display = game?.nhDisplay;
     if (!display) return;
     const s = String(str ?? '');
     for (let i = 0, col = 0; col < COLS; i++, col++)
-        display.setCell(col, base.cury, i < s.length ? s[i] : ' ', NO_COLOR, 0);
+        display.setCell(col, base.cury, i < s.length ? s[i] : ' ', NO_COLOR,
+                        i < s.length ? attr : 0);
     base.curx = 0;
     base.cury++;
+}
+
+// win/tty/wintty.c tty_raw_print_bold() — standout raw line.
+export function tty_raw_print_bold(str) {
+    tty_putstr_base(str ?? '', TERM_BOLD);
 }
 
 // Echo a single character at the base cursor, as tty_askname() does.
@@ -377,7 +383,12 @@ function render_page(cw, page, display) {
            the inventory menu's text starts at 32 when offx is 31, and why the
            attributes menu's text starts at column 1 when offx is 0. A TEXT
            window only indents when it is actually inset. */
-        let col = cw.offx + ((cw.type === NHW_MENU) ? 1 : (cw.offx ? 1 : 0));
+        /* win/tty/wintty.c:1802 process_text_window — which serves EVERY
+           data-backed window, NHW_MENU included (wintty.c:1943 dispatches
+           on cw->data, not type): the leading space is emitted only when
+           the window is inset (offx). The always-indented form belongs to
+           process_menu_window's mlist entries only. */
+        let col = cw.offx + (cw.offx ? 1 : 0);
         /* win/tty/wintty.c positions with tty_curs(window, 1, n), and window
            column 1 is ABSOLUTE column offx — so the leading space a menu emits
            lands ON offx and the text starts at offx + 1. Starting the paint at

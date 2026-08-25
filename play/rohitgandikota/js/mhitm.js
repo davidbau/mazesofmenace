@@ -13,14 +13,16 @@
 import { game } from './gstate.js';
 import { Deaf } from './youprop.js';
 import { You_hear } from './pline.js';
-import { M_AP_TYPE } from './const.js';
+import { M_AP_TYPE, NORMAL_SPEED } from './const.js';
 import { ATTKS } from './monst_data.js';
-import { seemimic } from './mon.js';
+import { resist_conflict } from './mondata.js';
+import { seemimic, set_ustuck } from './mon.js';
 import { newsym, canspotmon, pline } from './display.js';
-import { mdistu } from './monmove.js';
+import { mdistu, monnear, itsstuck } from './monmove.js';
+import { engulfing_u } from './const.js';
 import { Monnam, mon_nam_too } from './do_name.js';
 import { could_seduce, getmattk, mswings_verb } from './mhitu.js';
-import { MON_WEP } from './monst.js';
+import { MON_WEP, DEADMONSTER } from './monst.js';
 import { hitval, mon_wield_item, possibly_unwield } from './weapon.js';
 import { mon_nam } from './do_name.js';
 import { xname } from './objnam.js';
@@ -138,6 +140,71 @@ const is_elf = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
 
 /* getmattk() lives in src/mhitu.c and is shared with mattacku(); it is
    imported from js/mhitu.js above. */
+
+// src/mhitm.c:106 fightm() — have monsters fight each other under
+// Conflict. Returns 1 if mtmp made an attack (it might have died).
+export async function fightm(mtmp) {
+    /* perhaps the monster will resist Conflict */
+    if (resist_conflict(mtmp))
+        return 0;
+
+    if (game.u.ustuck === mtmp) {
+        /* perhaps we're holding it... */
+        if (await itsstuck(mtmp))
+            return 0;
+    }
+    const has_u_swallowed = engulfing_u(mtmp);
+
+    const roster = (game.level?.monsters || []).slice();
+    for (const mon of roster) {
+        /* Be careful to ignore monsters that are already dead, since we
+         * might be calling this before we've cleaned them up.  This can
+         * happen if the monster attacked a cockatrice bare-handedly, for
+         * instance.
+         */
+        if (mon !== mtmp && !DEADMONSTER(mon)) {
+            if (monnear(mtmp, mon.mx, mon.my)) {
+                if (!game.u.uswallow && mtmp === game.u.ustuck) {
+                    if (!rn2(4)) {
+                        set_ustuck(null);
+                        await pline(`${Monnam(mtmp)} releases you!`);
+                    } else
+                        break;
+                }
+
+                /* mtmp can be killed */
+                game.bhitpos = { x: mon.mx, y: mon.my };
+                game.notonhead = false;
+                const result = await mattackm(mtmp, mon);
+
+                if (result & M_ATTK_AGR_DIED)
+                    return 1; /* mtmp died */
+                /*
+                 * If mtmp has the hero swallowed, lie and say there
+                 * was no attack (this allows mtmp to digest the hero).
+                 */
+                if (has_u_swallowed)
+                    return 0;
+
+                /* allow attacked monsters a chance to hit back, primarily
+                   to allow monsters that resist conflict to respond */
+                if ((result & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+                    && rn2(4) && mon.movement > rn2(NORMAL_SPEED)) {
+                    if (mon.movement > NORMAL_SPEED)
+                        mon.movement -= NORMAL_SPEED;
+                    else
+                        mon.movement = 0;
+                    game.bhitpos = { x: mtmp.mx, y: mtmp.my };
+                    game.notonhead = false;
+                    await mattackm(mon, mtmp); /* return attack */
+                }
+
+                return (result & M_ATTK_HIT) ? 1 : 0;
+            }
+        }
+    }
+    return 0;
+}
 
 // src/mhitm.c:293 mattackm() — one monster performs all its attacks on
 // another. Returns the M_ATTK_* result bits.

@@ -538,6 +538,9 @@ export { l_nhcore_init } from './nhlua.js';
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
+    /* src/mklev.c:1582 — every created level gets its overview entry */
+    const { init_mapseen } = await import('./dungeon.js');
+    init_mapseen(g.u.uz);
     if (await getbones()) return;
     g.in_mklev = true;
     await makelevel();

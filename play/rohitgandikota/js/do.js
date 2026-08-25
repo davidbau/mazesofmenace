@@ -233,7 +233,24 @@ export async function next_level(at_stairs) {
 // spends none of them, so this path adds no draws of its own -- everything it
 // changes in the stream comes from mklev() running at all.
 export async function goto_level(newlevel, at_stairs, falling, portal) {
-    const up = (depth_do(newlevel) < depth_do(game.u.uz));
+    let up = (depth_do(newlevel) < depth_do(game.u.uz));
+
+    /* src/do.c:1502 — dungeon-change arms. In_tutorial(lev) is
+       lev.dnum == tutorial_dnum; entering stashes the whole game state
+       (inventory included) via nhcore's enter_tutorial, leaving restores
+       it and re-enters level 1 as if starting a new game. */
+    {
+        const newdungeon = (game.u.uz.dnum !== newlevel.dnum);
+        if (newdungeon) {
+            const { tutorial } = await import('./nhlua.js');
+            if (newlevel.dnum === game.tutorial_dnum) {
+                tutorial(true); /* entering tutorial */
+            } else if (game.u.uz.dnum === game.tutorial_dnum) {
+                tutorial(false); /* leaving tutorial */
+                up = false; /* re-enter level 1 as if starting new game */
+            }
+        }
+    }
     /* src/do.c:1499 — level temperature before the change, for
        temperature_change_msg() at the tail */
     const prev_temperature = game.level?.flags?.temperature | 0;
@@ -534,6 +551,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     /* src/do.c:1967 — reset u.uz0 */
     game.u.uz0 = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
+
+    /* src/do.c:1996 — the arrival square gets its pickup pass, which is
+       also what prints look_here/read_engr_at feedback on arrival */
+    {
+        const { pickup } = await import('./pickup.js');
+        await pickup(1);
+    }
 }
 
 // src/do.c:1411 u_collide_m() — the hero and a monster landed on the same
