@@ -8,15 +8,16 @@ import { trycall } from './do_name.js';
 import { newuhs } from './eat.js';
 import { game } from './gstate.js';
 import { pline } from './display.js';
-import { You, You_feel } from './pline.js';
+import { You, You_feel, pline_The } from './pline.js';
 import { exercise, adjattrib, A_MAX, ACURR } from './attrib.js';
 import { A_STR, A_INT, A_DEX, A_CON, A_CHA,
-         KILLED_BY_AN, KILLED_BY } from './const.js';
+         KILLED_BY_AN, KILLED_BY, POTHIT_OTHER_THROW, HEAD } from './const.js';
 import { Your } from './pline.js';
 import { nomul, losehp } from './hack.js';
 import { surface } from './dungeon.js';
 import { A_WIS, ECMD_CANCEL, IS_FOUNTAIN, IS_SINK } from './const.js';
-import { Unaware, Hallucination, Poison_resistance } from './youprop.js';
+import { Unaware, Hallucination, Poison_resistance,
+         Sleep_resistance } from './youprop.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { ONAMES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
@@ -30,7 +31,10 @@ import { OCLASSES } from './objects_data.js';
 import { tty_yn_function } from './tty/topl.js';
 import { GETOBJ_NOFLAGS } from './const.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE } from './invent.js';
-import { doname, short_oname, thesimpleoname } from './objnam.js';
+import { doname, short_oname, thesimpleoname, Tobjnam } from './objnam.js';
+import { body_part } from './polyself.js';
+import { breathless, haseyes } from './mondata.js';
+import { cansee } from './vision.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
 function note_unported_potion(what) {
@@ -61,6 +65,140 @@ export function healup(nhp, nxtra, curesick, cureblind) {
             note_unported_potion('healup:curesick');
     }
     (game.disp ||= {}).botl = true;
+}
+
+const bottlenames = ['bottle', 'phial', 'flagon', 'carafe', 'flask', 'jar',
+                     'vial'];
+const hallucinated_bottlenames = [
+    'jug', 'pitcher', 'barrel', 'tin', 'bag', 'box', 'glass', 'beaker',
+    'tumbler', 'vase', 'flowerpot', 'pan', 'thingy', 'mug', 'teacup',
+    'teapot', 'keg', 'bucket', 'thermos', 'amphora', 'wineskin', 'parcel',
+    'bowl', 'ampoule',
+];
+
+// src/potion.c:1490 bottlename().
+export function bottlename() {
+    const names = Hallucination() ? hallucinated_bottlenames : bottlenames;
+    return names[rn2(names.length)];
+}
+
+// src/potion.c:1932 potionbreathe(), common offensive-potion vapors.
+export async function potionbreathe(obj) {
+    let kn = 0;
+    const already_in_use = !!obj.in_use;
+    obj.in_use = true;
+
+    const wet_towel = game.u.ublindf?.otyp === ONAMES.TOWEL
+                       && (game.u.ublindf.spe | 0) > 0;
+    if (wet_towel) {
+        await pline('Some vapor passes harmlessly around you.');
+    } else {
+        switch (obj.otyp) {
+        case ONAMES.POT_CONFUSION:
+        case ONAMES.POT_BOOZE:
+            if (!game.u.uprops?.CONFUSION)
+                await You_feel('somewhat dizzy.');
+            await make_confused(itimeout_incr(game.u.intrinsic?.HConfusion,
+                                              rnd(5)), false);
+            break;
+        case ONAMES.POT_INVISIBILITY:
+            if (!game.u.ublind && !game.u.uprops?.INVIS) {
+                kn++;
+                await pline(`For an instant you ${
+                    game.u.uprops?.SEE_INVIS ? 'could see right through yourself'
+                                             : "couldn't see yourself"}!`);
+            }
+            break;
+        case ONAMES.POT_PARALYSIS:
+            kn++;
+            if (!game.u.uprops?.FREE_ACTION
+                && !game.u.intrinsic?.HFree_action) {
+                await pline('Something seems to be holding you.');
+                nomul(-rnd(5));
+                game.multi_reason = 'frozen by a potion';
+                game.nomovemsg = 'You can move again.';
+                exercise(A_DEX, false);
+            } else {
+                await You('stiffen momentarily.');
+            }
+            break;
+        case ONAMES.POT_SLEEPING:
+            kn++;
+            if (!game.u.uprops?.FREE_ACTION
+                && !game.u.intrinsic?.HFree_action
+                && !Sleep_resistance()) {
+                await You_feel('rather tired.');
+                nomul(-rnd(5));
+                game.multi_reason = 'sleeping off a magical draught';
+                game.nomovemsg = 'You can move again.';
+                exercise(A_DEX, false);
+            } else {
+                await You('yawn.');
+                note_unported_potion('potionbreathe:monstseesu_sleep');
+            }
+            break;
+        case ONAMES.POT_BLINDNESS:
+            if (!game.u.ublind && !Unaware()) {
+                kn++;
+                await pline('It suddenly gets dark.');
+            }
+            game.u.ublind = Math.max(game.u.ublind | 0, rnd(5));
+            break;
+        case ONAMES.POT_ACID:
+        case ONAMES.POT_POLYMORPH:
+            exercise(A_CON, false);
+            break;
+        default:
+            note_unported_potion(`potionbreathe:otyp=${obj.otyp}`);
+            break;
+        }
+    }
+
+    if (!already_in_use)
+        obj.in_use = false;
+    if (obj.dknown) {
+        if (kn)
+            makeknown(obj.otyp);
+        else
+            await trycall(obj);
+    }
+}
+
+// src/potion.c:1618 potionhit(), hero arm. The bottle name and impact damage
+// are drawn before the evaporation and vapor effects.
+export async function potionhit(mon, obj, how) {
+    const botlnam = bottlename();
+    const isyou = mon === game.youmonst;
+
+    if (!isyou) {
+        note_unported_potion('potionhit:monster');
+        return;
+    }
+
+    const tx = game.u.ux, ty = game.u.uy;
+    await pline_The(`${botlnam} crashes on your ${body_part(HEAD)} and breaks into shards.`);
+    let impact = rnd(2);
+    if (game.u.uprops?.HALF_PHDAM)
+        impact = Math.trunc((impact + 1) / 2);
+    await losehp(impact,
+                 how === POTHIT_OTHER_THROW ? 'propelled potion'
+                                            : 'thrown potion',
+                 KILLED_BY_AN);
+
+    if (obj.otyp !== ONAMES.POT_OIL && cansee(tx, ty))
+        await pline(`${Tobjnam(obj, 'evaporate')}.`);
+
+    if (obj.otyp === ONAMES.POT_ACID && !game.u.uprops?.ACID_RES) {
+        await pline(`This burns${obj.blessed ? ' a little'
+                              : obj.cursed ? ' a lot' : ''}!`);
+        let damage = d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
+        if (game.u.uprops?.HALF_PHDAM)
+            damage = Math.trunc((damage + 1) / 2);
+        await losehp(damage, 'potion of acid', KILLED_BY_AN);
+    }
+
+    if (!breathless(game.youmonst.data) || haseyes(game.youmonst.data))
+        await potionbreathe(obj);
 }
 
 // src/potion.c:89 make_confused() — set or clear the confusion timeout.

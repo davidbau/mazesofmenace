@@ -209,7 +209,7 @@ export async function doclose() {
     /* Confusion/Stunned would set res = ECMD_TIME; both unreachable yet.
        The Blind feel_location arm is recorded. */
     if (game.u?.ublind)
-        note_unported('doclose:blind_feel');
+        note_unported_lock('doclose:blind_feel');
 
     const door = nodoor ? null : game.level.at(x, y);
     /* drawbridges are not generated yet; the portcullis arms are recorded

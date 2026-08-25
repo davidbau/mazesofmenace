@@ -30,7 +30,8 @@ import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
 import { stop_occupation } from './allmain.js';
 import { pline } from './display.js';
 import { You, You_feel, You_cant, Your } from './pline.js';
-import { an, xname, doname, the, gloves_simple_name } from './objnam.js';
+import { an, xname, doname, the, gloves_simple_name,
+         suit_simple_name } from './objnam.js';
 import { makeknown } from './o_init.js';
 import { prinv, update_inventory, ECMD_OK } from './invent.js';
 import { nomul, unmul } from './hack.js';
@@ -580,7 +581,7 @@ export async function accessory_or_armor_on(obj) {
 
     if (obj.owornmask & (W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF
                          | W_ARMU | W_RINGL | W_RINGR | W_AMUL)) {
-        await You('are already wearing that.');
+        await You('are already wearing that!');
         return ECMD_OK;
     }
 
@@ -809,6 +810,7 @@ async function armoroff(otmp) {
     const names = ['suit', 'shield', 'helmet', 'gloves', 'boots',
                    'cloak', 'shirt'];
     let what = names[cat] || 'armor';
+    if (cat === 0) what = suit_simple_name(otmp);
     if (cat === 5) what = cloak_simple_name(otmp);
     if (cat === 2) what = helm_simple_name(otmp);
 

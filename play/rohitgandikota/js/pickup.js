@@ -44,6 +44,7 @@ import { Levitation, Stone_resistance } from './youprop.js';
 import { st_gloves, st_corpse, st_petrifies, st_resists, W_ARMG } from './const.js';
 import { worn } from './do_wear.js';
 import { touch_petrifies } from './mondata.js';
+import { nohands } from './mondata.js';
 
 function note_unported_pickup(what) {
     (game.unported ||= new Set()).add(what);
@@ -449,6 +450,11 @@ export async function doloot() {
     if (check_capacity(null))
         return ECMD_OK;
 
+    if (nohands(game.youmonst.data)) {
+        await You('have no hands!');
+        return ECMD_OK;
+    }
+
     if (game.u.uprops?.CONFUSION) {
         note_unported_pickup('doloot:confused');
         return ECMD_OK;
@@ -492,6 +498,28 @@ export async function doloot() {
     }
 
     await You("don't find anything here to loot.");
+    return ECMD_OK;
+}
+
+// src/pickup.c:3562 dotip(): floor-container selection. The ordinary
+// carried-container and actual-spillage paths remain recorded.
+export async function dotip() {
+    const here = (game.level?.objects || [])
+        .filter(o => o.ox === game.u.ux && o.oy === game.u.uy
+                     && Is_container(o));
+    if (here.length === 1) {
+        const { tty_yn_function } = await import('./tty/topl.js');
+        const c = await tty_yn_function(
+            `There is ${doname(here[0])} here, tip it?`, 'ynq', 'q');
+        if (c === 'q')
+            return ECMD_OK;
+        if (c === 'y') {
+            note_unported_pickup('dotip:tipcontainer');
+            return ECMD_TIME;
+        }
+    }
+
+    note_unported_pickup('dotip:inventory');
     return ECMD_OK;
 }
 

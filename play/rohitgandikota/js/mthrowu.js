@@ -30,7 +30,8 @@ import { find_mac } from './worn.js';
 import { omon_adj } from './dothrow.js';
 import { hit, miss, exclam } from './zap.js';
 import { distant_name, mshot_xname, xname, an, the } from './objnam.js';
-import { pline, canspotmon, display_object_at, newsym } from './display.js';
+import { pline, canspotmon, display_object_at, temporary_object_glyph,
+         newsym } from './display.js';
 import { pline_The } from './pline.js';
 import { seemimic, setmangry, xkilled, mondied } from './mon.js';
 import { dmgval } from './weapon.js';
@@ -416,7 +417,8 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     const show_missile = async () => {
         if (tempMissile)
             newsym(tempMissile.x, tempMissile.y);
-        display_object_at(singleobj, game.bhitpos.x, game.bhitpos.y);
+        display_object_at(singleobj, game.bhitpos.x, game.bhitpos.y,
+                          missileGlyph);
         tempMissile = { x: game.bhitpos.x, y: game.bhitpos.y };
         if (game.animationFrame)
             await game.animationFrame();
@@ -431,6 +433,10 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     singleobj.owornmask = 0;    /* threw one of multiple weapons in hand? */
     if (!canseemon(mon))
         singleobj.dknown = 0;   /* clear_dknown(singleobj) */
+
+    /* C passes obj_to_glyph() to tmp_at() once, before visible flight
+       squares can make the object dknown. tmp_at() retains that glyph. */
+    const missileGlyph = temporary_object_glyph(singleobj);
 
     if ((singleobj.cursed || singleobj.greased) && (dx || dy) && !rn2(7)) {
         if (canseemon(mon) && game.flags.verbose) {
@@ -490,8 +496,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                 break;
 
             if (singleobj.oclass === OCLASSES.POTION_CLASS) {
-                /* potionhit needs potion smash; records, missile stops */
-                note_unported_mthrowu('m_throw:potionhit');
+                const { potionhit } = await import('./potion.js');
+                const { POTHIT_MONST_THROW } = await import('./const.js');
+                await potionhit(game.youmonst, singleobj, POTHIT_MONST_THROW);
                 break;
             }
 

@@ -95,8 +95,11 @@ import {
 import { enexto, enexto_core, enexto_gpflags, goodpos, noteleport_level } from './teleport.js';
 import {
     mksobj, mkobj, mkobj_at, weight, objects_at, curse, bless, is_crackable,
-    set_corpsenm, stop_timer, add_to_container, rnd_class, carry_obj_effects,
+    set_corpsenm, stop_timer, add_to_container, add_to_minv, rnd_class,
+    carry_obj_effects,
 } from './mkobj.js';
+
+export { add_to_minv };
 
 /** Local t_at — avoid makemon↔trap import cycle; matches trap.js t_at. */
 function t_at_local(x, y) {
@@ -1097,17 +1100,6 @@ export function peace_minded(ptr) {
     const record = game.u?.ualign?.record ?? 0;
     const recClamp = record < -15 ? -15 : record;
     return !!rn2(16 + recClamp) && !!rn2(2 + Math.abs(mal));
-}
-
-// C ref: mkobj.c add_to_minv — prepend; merge omitted (first stack only)
-export function add_to_minv(mtmp, obj) {
-    if (!obj) return 1;
-    // C: obj->where = OBJ_MINVENT
-    obj.where = OBJ_MINVENT;
-    obj.ocarry = mtmp;
-    obj.nobj = mtmp.minvent;
-    mtmp.minvent = obj;
-    return 0;
 }
 
 // C ref: steal.c mpickobj — carry_obj_effects then add_to_minv

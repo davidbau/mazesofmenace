@@ -1,12 +1,15 @@
-// worm.js — Long worm segment bookkeeping (creation path).
+// worm.js — Long worm segment bookkeeping (creation + movement).
 // C ref: worm.c — get_wormno, initworm, create_worm_tail, count_wsegs,
-//   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h).
-// Named omissions: worm_move/grow/shrink, cutworm, wormgone save/restore,
-//   worm_known, detect_wsegs display.
+//   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h),
+//   worm_move / shrink_worm / worm_nomove (D-1491).
+// Named omissions: cutworm, wormgone, save/rest wsegs, worm_known,
+//   see_wsegs / detect_wsegs display; muse.c / mhitu.c worm_move callers.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { MAX_NUM_WORMS, N_DIRS, xdir, ydir } from './const.js';
+import { rn2, rnd, rn1, d } from './rng.js';
+import {
+    MAX_NUM_WORMS, N_DIRS, xdir, ydir, MHPMAX, MSLOW, MFAST, NORMAL_SPEED,
+} from './const.js';
 import { goodpos } from './teleport.js';
 import { newsym } from './display.js';
 
@@ -125,6 +128,112 @@ function toss_wsegs(curr, display_update) {
             if (display_update) newsym(curr.wx, curr.wy);
         }
         curr = nxtseg;
+    }
+}
+
+/**
+ * C ref: worm.c shrink_worm — drop the tail (list start). No-op when the
+ * worm is only the hidden dummy co-located with the head.
+ */
+function shrink_worm(wnum) {
+    if (wtails[wnum] === wheads[wnum]) return; /* no tail */
+    const seg = wtails[wnum];
+    wtails[wnum] = seg.nseg;
+    seg.nseg = null;
+    toss_wsegs(seg, true);
+}
+
+/**
+ * C ref: mon.c mcalcmove(mon, FALSE) — mmove + MSLOW/MFAST only; the
+ * m_moving rn2 rounding is skipped. Local copy so worm.js does not
+ * import mon.js (mon.js already imports worm_cross).
+ */
+function worm_mcalcmove(worm) {
+    let mmove = worm.data?.mmove ?? NORMAL_SPEED;
+    if (worm.mspeed === MSLOW) {
+        if (mmove < NORMAL_SPEED) mmove = Math.trunc((2 * mmove + 1) / 3);
+        else mmove = 4 + Math.trunc(mmove / 3);
+    } else if (worm.mspeed === MFAST) {
+        mmove = Math.trunc((4 * mmove + 2) / 3);
+    }
+    return mmove;
+}
+
+/**
+ * C ref: worm.c worm_move — caller already moved the head (place_monster).
+ * Occupy the old dummy as a visible segment, append a new dummy at the
+ * new head, then either grow (wgrowtime/HP) or shrink the tail.
+ * Caller must check worm.wormno.
+ */
+export function worm_move(worm) {
+    const wnum = worm.wormno | 0;
+    const seg = wheads[wnum];
+    place_worm_seg(worm, seg.wx, seg.wy);
+    newsym(seg.wx, seg.wy);
+
+    const new_seg = newseg();
+    new_seg.wx = worm.mx | 0;
+    new_seg.wy = worm.my | 0;
+    new_seg.nseg = null;
+    seg.nseg = new_seg;
+    wheads[wnum] = new_seg;
+
+    if ((wgrowtime[wnum] | 0) <= (game.moves | 0)) {
+        let wsegs = count_wsegs(worm);
+
+        if (!wgrowtime[wnum]) {
+            wgrowtime[wnum] = (game.moves | 0) + rnd(5);
+        } else {
+            const mmove = worm_mcalcmove(worm);
+            let incr = rn1(10, 2); /* 2..11 */
+            incr = Math.trunc((incr * NORMAL_SPEED) / Math.max(mmove, 1));
+            wgrowtime[wnum] = (game.moves | 0) + incr;
+        }
+
+        let whplimit = !(worm.m_lev | 0) ? 4 : (8 * (worm.m_lev | 0));
+        /* wsegs includes the hidden dummy co-located with the head */
+        if (wsegs > 33) {
+            whplimit += 2 * (wsegs - 33);
+            wsegs = 33;
+        }
+        if (wsegs > 22) {
+            whplimit += 4 * (wsegs - 22);
+            wsegs = 22;
+        }
+        if (wsegs > 11) {
+            whplimit += 6 * (wsegs - 11);
+            wsegs = 11;
+        }
+        whplimit += 8 * wsegs;
+        if (whplimit > MHPMAX) whplimit = MHPMAX;
+
+        const prev_mhp = worm.mhp | 0;
+        worm.mhp = prev_mhp + d(2, 2); /* 2..4 */
+        const whpcap = Math.max(whplimit, worm.mhpmax | 0);
+        if ((worm.mhp | 0) < whpcap) {
+            if ((worm.mhp | 0) > whplimit) {
+                worm.mhp = Math.max(prev_mhp, whplimit);
+            }
+            if ((worm.mhp | 0) > (worm.mhpmax | 0)) {
+                worm.mhpmax = worm.mhp | 0;
+            }
+        } else if ((worm.mhp | 0) > (worm.mhpmax | 0)) {
+            worm.mhp = worm.mhpmax | 0;
+        }
+    } else {
+        shrink_worm(wnum);
+    }
+}
+
+/**
+ * C ref: worm.c worm_nomove — failed move: drop the tail and maybe HP.
+ * Caller must check worm.wormno.
+ */
+export function worm_nomove(worm) {
+    shrink_worm(worm.wormno | 0);
+    if ((worm.mhp | 0) > count_wsegs(worm)) {
+        worm.mhp = (worm.mhp | 0) - d(2, 2);
+        if ((worm.mhp | 0) < 1) worm.mhp = 1;
     }
 }
 

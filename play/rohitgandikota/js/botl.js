@@ -8,7 +8,9 @@
 import { game } from './gstate.js';
 import { roles } from './role_data.js';
 import { near_capacity } from './attrib.js';
-import { NOT_HUNGRY, UNENCUMBERED, SICK_VOMITABLE, SICK_NONVOMITABLE } from './const.js';
+import { NOT_HUNGRY, UNENCUMBERED, SICK_VOMITABLE, SICK_NONVOMITABLE,
+         Upolyd } from './const.js';
+import { MFLAGS } from './monst_data.js';
 
 /* src/botl.c:817 condtests[] — one row per status condition. `enabled`
    defaults to !opt_in and the 'status condition fields' option edits it; the
@@ -112,7 +114,9 @@ export function bot_conditions() {
     if (intr.HConfusion || props.CONFUSION) cond += ' Conf';
     if (intr.HHallucination) cond += ' Hallu';
     if (props.LEVITATION || intr.HLevitation) cond += ' Lev';
-    else if (props.FLYING || intr.HFlying) cond += ' Fly';
+    else if (props.FLYING || intr.HFlying
+             || (Upolyd(u) && (game.youmonst.data.mflags1 & MFLAGS.M1_FLY)))
+        cond += ' Fly';
     if (u.usteed) cond += ' Ride';
     return cond;
 }

@@ -29,17 +29,16 @@ export const ART_SUNSWORD = 20;
 export const ART_ORB_OF_DETECTION = 21;
 export const ART_HEART_OF_AHRIMAN = 22;
 export const ART_SCEPTRE_OF_MIGHT = 23;
-export const ART_PALANTIR_OF_WESTERNESSE = 24;
-export const ART_STAFF_OF_AESCULAPIUS = 25;
-export const ART_MAGIC_MIRROR_OF_MERLIN = 26;
-export const ART_EYES_OF_THE_OVERWORLD = 27;
-export const ART_MITRE_OF_HOLINESS = 28;
-export const ART_LONGBOW_OF_DIANA = 29;
-export const ART_MASTER_KEY_OF_THIEVERY = 30;
-export const ART_TSURUGI_OF_MURAMASA = 31;
-export const ART_YENDORIAN_EXPRESS_CARD = 32;
-export const ART_ORB_OF_FATE = 33;
-export const ART_EYE_OF_THE_AETHIOPICA = 34;
+export const ART_STAFF_OF_AESCULAPIUS = 24;
+export const ART_MAGIC_MIRROR_OF_MERLIN = 25;
+export const ART_EYES_OF_THE_OVERWORLD = 26;
+export const ART_MITRE_OF_HOLINESS = 27;
+export const ART_LONGBOW_OF_DIANA = 28;
+export const ART_MASTER_KEY_OF_THIEVERY = 29;
+export const ART_TSURUGI_OF_MURAMASA = 30;
+export const ART_YENDORIAN_EXPRESS_CARD = 31;
+export const ART_ORB_OF_FATE = 32;
+export const ART_EYE_OF_THE_AETHIOPICA = 33;
 
 // Names in list order including the empty dummy at 0, so this indexes directly
 // by oartifact the way C's artifact_names[] does.
@@ -68,7 +67,6 @@ export const artifact_names = [
  "The Orb of Detection",
  "The Heart of Ahriman",
  "The Sceptre of Might",
- "The Palantir of Westernesse",
  "The Staff of Aesculapius",
  "The Magic Mirror of Merlin",
  "The Eyes of the Overworld",
@@ -109,7 +107,6 @@ export const artifact_otyps = [
  "CRYSTAL_BALL",
  "LUCKSTONE",
  "MACE",
- "CRYSTAL_BALL",
  "QUARTERSTAFF",
  "MIRROR",
  "LENSES",
@@ -366,16 +363,6 @@ export const artifact_records = [
   "align": "A_LAWFUL",
   "role": "PM_CAVE_DWELLER",
   "race": "NON_PM"
- },
- {
-  "spfx": 7,
-  "mtype": "0",
-  "attk": "NO_ATTK",
-  "defn": "NO_DFNS",
-  "cary": "NO_CARY",
-  "align": "A_CHAOTIC",
-  "role": "NON_PM",
-  "race": "PM_ELF"
  },
  {
   "spfx": 16711,

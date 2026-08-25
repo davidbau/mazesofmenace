@@ -8,8 +8,9 @@ import { update_topl } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
 import { term_start_color } from './tty/termcap.js';
 import { rank, bot_conditions } from './botl.js';
+import { Upolyd } from './const.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
-import { Infravision, Hallucination } from './youprop.js';
+import { Infravision, Hallucination, Invis, See_invisible } from './youprop.js';
 import { observe_object } from './o_init.js';
 import { distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
@@ -22,6 +23,7 @@ import {
     IRONBARS, TREE, LADDER, ALTAR, GRAVE, THRONE, SINK, FOUNTAIN,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     AIR, CLOUD, HI_METAL, HI_GOLD, LA_DOWN, IS_DOOR,
+    DB_MOAT, DB_LAVA, DB_ICE, DB_FLOOR, DB_UNDER,
     SCORR, isok, IS_STWALL, IS_SDOOR,
     WM_MASK, WM_W_TOP, WM_W_BOTTOM, WM_W_LEFT, WM_W_RIGHT,
     WM_C_OUTER, WM_C_INNER, WM_T_LONG, WM_T_BL, WM_T_BR,
@@ -36,7 +38,7 @@ import { is_pool } from './mon.js';
 import { nhgetch } from './input.js';
 import { update_lastseentyp } from './dungeon.js';
 import { def_monsyms, def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
-import { PMNAMES } from './monst_data.js';
+import { PMNAMES, mons } from './monst_data.js';
 import { showsym } from './symbols.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_BLACK,
@@ -67,6 +69,19 @@ const ANSI_COLOR = [
     96,  // CLR_BRIGHT_CYAN   14
     97,  // CLR_WHITE     15
 ];
+
+/* include/display.h canspotself().  Blind heroes can locate themselves by
+   touch; otherwise intrinsic invisibility hides the hero glyph unless they
+   can see invisible. */
+function canspotself() {
+    const u = game.u;
+    if (!u)
+        return false;
+    const invisible = Invis() && !See_invisible();
+    return !!u.ublind || !!u.uswallow
+           || (!invisible && !u.uundetected)
+           || !!u.uprops?.DETECT_MONSTERS;
+}
 
 /* src/stairs.c:180 known_branch_stairs() and stairway_at() — needed to pick
    S_brupstair over S_upstair for the displayed glyph, the same test
@@ -567,21 +582,22 @@ function wall_glyph(loc) {
     return { ch: d.ch, color: wall_color_here(), dec: d.dec, cmap: idx };
 }
 
-/* src/display.c:2947 reset_glyphmap's per-dungeon wall ranges +
-   wallcolors[]. The shipped 5.0 binary colors them main=gray,
-   mines=CLR_BROWN, gehennom=CLR_RED, knox=gray, sokoban=CLR_BLUE —
-   verified against the seed0360 tour recording ([39m/[33m/[31m/[34m
-   before wall runs), which the vendored source's all-gray initializer
-   does not reproduce. */
+/* src/display.c:2947 reset_glyphmap's per-dungeon wall ranges start gray.
+   dat/symbols applies the branch colors below only for DECgraphics (and its
+   curses approximation). The default ASCII set therefore keeps gray walls. */
 function wall_color_here() {
     const uz = game.u?.uz;
     if (!uz) return NO_COLOR;
+    if (!showsym(CM.S_vwall)?.dec)
+        return NO_COLOR;
     if (game.sokoban_dnum !== undefined && uz.dnum === game.sokoban_dnum)
         return CLR_BLUE;
     if (game.mines_dnum !== undefined && uz.dnum === game.mines_dnum)
         return CLR_BROWN;
     if (game.dungeons?.[uz.dnum]?.flags?.hellish)
         return CLR_RED;
+    if (game.dungeons?.[uz.dnum]?.dname === 'Fort Ludios')
+        return CLR_YELLOW;
     return NO_COLOR;
 }
 
@@ -725,9 +741,20 @@ export function back_to_glyph(loc, x, y) {
     case DRAWBRIDGE_DOWN:                                  /* S_[vh]odbridge */
         return { ch: '~', color: CLR_BROWN, dec: true,
                  cmap: loc.horizontal ? CM.S_hodbridge : CM.S_vodbridge };
-    case DRAWBRIDGE_UP:                                    /* S_[vh]cdbridge */
-        return { ch: '#', color: CLR_BROWN, dec: false,
-                 cmap: loc.horizontal ? CM.S_hcdbridge : CM.S_vcdbridge };
+    case DRAWBRIDGE_UP:
+        /* display.c:2396: a raised bridge displays the terrain beneath it,
+           not the closed-bridge symbol used by the adjacent DBWALL gate. */
+        switch (loc.drawbridgemask & DB_UNDER) {
+        case DB_MOAT:
+            return { ch: '`', color: CLR_BLUE, dec: true, cmap: CM.S_pool };
+        case DB_LAVA:
+            return { ch: '`', color: CLR_RED, dec: true, cmap: CM.S_lava };
+        case DB_ICE:
+            return { ch: '~', color: CLR_CYAN, dec: true, cmap: CM.S_ice };
+        case DB_FLOOR:
+        default:
+            return { ch: '.', color: CLR_GRAY, dec: true, cmap: CM.S_room };
+        }
     case AIR:       return { ch: ' ', color: CLR_CYAN, dec: false, cmap: CM.S_air };
     case CLOUD:     return { ch: '#', color: CLR_GRAY, dec: false, cmap: CM.S_cloud };
     case SDOOR:     return wall_glyph(loc);
@@ -1032,18 +1059,27 @@ export function newsym(x, y) {
            and display_self() draws '@' over it.
            include/display.h:246 maybe_display_usteed() — while riding, the
            hero's square shows the STEED's glyph, not '@'. */
-        const steed = game.u.usteed;
-        if (steed && mon_visible(steed))
-            show_glyph_cell(x, y, def_monsyms[steed.data.mlet] || '?',
-                            steed.data.mcolor ?? NO_COLOR, false, 0,
-                            { kind: 'hero', mon: steed });
-        else
-            show_glyph_cell(x, y, '@', CLR_WHITE, false, 0, { kind: 'hero' });
         const under = covers_objects(x, y) ? null
             : (game.level?.objects || [])
                   .find(o => o.ox === x && o.oy === y);
         const tg = under ? floor_object_glyph(under, x, y)
                          : terrain_glyph(loc, x, y);
+        const steed = game.u.usteed;
+        if (canspotself() && steed && mon_visible(steed))
+            show_glyph_cell(x, y, def_monsyms[steed.data.mlet] || '?',
+                            steed.data.mcolor ?? NO_COLOR, false, 0,
+                            { kind: 'hero', mon: steed });
+        else if (canspotself()) {
+            const self = game.youmonst?.data;
+            show_glyph_cell(x, y,
+                            Upolyd(game.u)
+                                ? (def_monsyms[self.mlet] || '?') : '@',
+                            Upolyd(game.u) ? self.mcolor : CLR_WHITE,
+                            false, 0, { kind: 'hero' });
+        }
+        else
+            show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, pile_attr(tg.glyph),
+                            tg.glyph ?? { kind: 'cmap', cmap: tg.cmap });
         loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
                                  glyph: tg.glyph
                                      ?? { kind: 'cmap', cmap: tg.cmap } };
@@ -1092,7 +1128,7 @@ export function newsym(x, y) {
            mimics stay spottable (mundetected 0) and display_monster() draws
            the DISGUISE (display.c:533). */
         if (mon && canspotmon(mon)) {
-            if (mon.m_ap_type === M_AP_OBJECT && mon.mappearance) {
+            if (mon.m_ap_type === M_AP_OBJECT) {
                 /* display.c:564 — a fake object sent to map_object() */
                 const fake = { otyp: mon.mappearance, ox: x, oy: y,
                                oclass: game.objects?.[mon.mappearance]?.oc_class,
@@ -1103,7 +1139,7 @@ export function newsym(x, y) {
                                 g.glyph ?? { kind: 'obj', otyp: fake.otyp });
                 return;
             }
-            if (mon.m_ap_type === M_AP_FURNITURE && mon.mappearance) {
+            if (mon.m_ap_type === M_AP_FURNITURE) {
                 /* display.c:543 — poor man's map_background of the S_ sym */
                 const s = showsym(mon.mappearance);
                 show_glyph_cell(x, y, s ? s.ch : '?',
@@ -1237,9 +1273,7 @@ export function newsym(x, y) {
                and its CLR_BLACK collapses to the default foreground, so the
                cell still records as an uncoloured '·'. The IDENTITY matters
                to code that compares memory, e.g. pick_lock's learned test. */
-            if (loc.typ === CORR && (remcmap === CM.S_litcorr
-                                     || (loc.remembered_glyph.color
-                                         === CLR_WHITE)))
+            if (loc.typ === CORR && remcmap === CM.S_litcorr)
                 loc.remembered_glyph = { ch: '#', color: NO_COLOR,
                                          decgfx: false,
                                          glyph: { kind: 'cmap',
@@ -1326,7 +1360,7 @@ export async function docrt() {
         if (mtmp.mhp <= 0) continue;
         newsym(mtmp.mx, mtmp.my);
     }
-    if (game.u?.ux > 0)
+    if (game.u?.ux > 0 && canspotself())
         show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false, 0,
                         { kind: 'hero' });
 
@@ -1429,7 +1463,13 @@ function _statusLine1() {
     /* src/botl.c rank() — the status line shows the RANK for the hero's
        experience level, not the role name. This read urole.rank.m, which only
        worked against the stub role record that used to be installed here. */
-    const role = rank();
+    const polyname = Upolyd(u)
+        ? (mons[u.umonnum].pmnames[game.flags.female ? 1 : 0]
+           || mons[u.umonnum].pmnames[2] || mons[u.umonnum].pmnames[0])
+        : '';
+    const role = Upolyd(u)
+        ? polyname.replace(/\b\w/g, c => c.toUpperCase())
+        : rank();
     const title = `${name} the ${role}`;
     /* src/botl.c:87 — u.acurr.a[] is indexed by the include/attrib.h enum
        (A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA), which is NOT the order the
@@ -1491,14 +1531,19 @@ function _statusLine2() {
             delete game._deferred_status_money;
     }
     const shownHp = game._deferred_status_hp_until_more
-        ?? Math.max(u.uhp | 0, 0);
+        ?? Math.max((Upolyd(u) ? u.mh : u.uhp) | 0, 0);
+    const maxHp = Upolyd(u) ? u.mhmax : u.uhpmax;
     let s = `${lvldesc} $:${shownMoney}`
           /* src/botl.c:120 — hp = max(hp, 0): the dying frame shows 0 */
-          + ` HP:${shownHp}(${u.uhpmax || 0})`
+          + ` HP:${shownHp}(${maxHp || 0})`
           + ` Pw:${u.uen || 0}(${u.uenmax || 0})`
-          + ` AC:${u.uac ?? 0}`
-          + ` Xp:${u.ulevel || 1}`;
-    if (f.showexp) s += `/${u.uexp || 0}`;
+          + ` AC:${u.uac ?? 0}`;
+    if (Upolyd(u))
+        s += ` HD:${mons[u.umonnum].mlevel}`;
+    else {
+        s += ` Xp:${u.ulevel || 1}`;
+        if (f.showexp) s += `/${u.uexp || 0}`;
+    }
     if (f.time) s += ` T:${game.moves || 1}`;
     s += bot_conditions();
     return s;
@@ -2054,10 +2099,16 @@ export function map_object(obj, show) {
                         og.glyph ?? { kind: 'cmap', cmap: og.cmap });
 }
 
+// include/display.h obj_to_glyph(). Capture the glyph tmp_at() will retain
+// for an object's entire flight.
+export function temporary_object_glyph(obj) {
+    return floor_object_glyph(obj, undefined, undefined, false);
+}
+
 // src/display.c tmp_at() object display. Paint an object glyph at a temporary
 // coordinate without changing floor-object memory or the object's location.
-export function display_object_at(obj, x, y) {
-    const og = floor_object_glyph(obj, x, y, false);
+export function display_object_at(obj, x, y, capturedGlyph = null) {
+    const og = capturedGlyph ?? floor_object_glyph(obj, x, y, false);
     show_glyph_cell(x, y, og.ch, og.color, og.dec, og.attr,
                     og.glyph ?? { kind: 'cmap', cmap: og.cmap });
 }

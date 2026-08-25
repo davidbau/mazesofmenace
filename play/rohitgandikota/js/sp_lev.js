@@ -70,7 +70,7 @@ import { def_monsyms } from './drawing_data.js';
 import { CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE } from './const.js';
 import { In_mines } from './const.js';
 import { Align2amask as Align2amask_sp, Amask2align as Amask2align_sp,
-         A_ORIGINAL } from './const.js';
+         A_NONE, A_LAWFUL, A_ORIGINAL } from './const.js';
 import {
     OROOM, THEMEROOM, VAULT, COURT, ZOO, BEEHIVE, ANTHOLE, COCKNEST,
     LEPREHALL, MORGUE, BARRACKS, TEMPLE, SWAMP, SHOPBASE, DELPHI,
@@ -355,7 +355,7 @@ export function lspo_region(dx1, dy1, rtype, irregular, needfill, contents,
     create_des_coder();
     if (contents) {
         spo_push_room(troom);
-        contents(troom);
+        contents(mkroom_table(troom));
         spo_endroom();
     }
     add_doors_to_room(troom);
@@ -1997,7 +1997,7 @@ function sp_amask_to_amask(sp_amask) {
     if (sp_amask === AM_SPLEV_CO)
         return Align2amask_sp(game.u.ualignbase[A_ORIGINAL]);
     if (sp_amask === AM_SPLEV_NONCO)
-        return Align2amask_sp(noncoalignment(game.u.ualignbase[A_ORIGINAL]));
+        return noncoaligned_amask(game.u.ualignbase[A_ORIGINAL]);
     if (sp_amask === AM_SPLEV_RANDOM)
         return induced_align(80);
     return sp_amask & AM_MASK;
@@ -2009,6 +2009,17 @@ function noncoalignment(alignment) {
     if (!alignment)
         return k ? -1 : 1;
     return k ? -alignment : 0;
+}
+
+// align.h's Align2amask(x) is a macro which can evaluate x three times.
+// sp_lev.c passes noncoalignment() directly to it, so preserve those repeated
+// draws instead of evaluating the random expression once as normal JS would.
+function noncoaligned_amask(alignment) {
+    if (noncoalignment(alignment) === A_NONE)
+        return 0;
+    if (noncoalignment(alignment) === A_LAWFUL)
+        return 4;
+    return noncoalignment(alignment) + 2;
 }
 
 // src/sp_lev.c:3114 get_table_align() — the "align" option strings, keyed

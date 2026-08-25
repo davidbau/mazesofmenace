@@ -1,24 +1,22 @@
 // pray.js — prayer.
 // C ref: src/pray.c
 //
-// The #pray command through its "too soon" resolution: dopray (with the
-// default paranoid confirmation), can_pray, the three-turn nomul, and
-// prayer_done's p_type 0 arm (rnz(250) bless timeout, luck loss, upset
-// gods). angrygods' displeased-message arms are live; the punishing arms
-// (curse items, summon minion, god zaps) sit on unported subsystems and
-// record themselves. dosacrifice is not here yet.
+// The #pray command covers confirmation, eligibility, the three-turn delay,
+// failed prayer, and the ordinary coaligned successful response. Punishments,
+// trouble cures, rare divine favors, and sacrifice remain partial.
 
 import { game } from './gstate.js';
-import { rn2, rnd, rnz, rnl } from './rng.js';
+import { rn1, rn2, rnd, rnz, rnl } from './rng.js';
 import { pline } from './display.js';
 import { You, You_feel, pline_The } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
 import { nomul, losehp } from './hack.js';
-import { change_luck, near_capacity, exercise } from './attrib.js';
+import { adjalign, change_luck, near_capacity, exercise } from './attrib.js';
 import { which_armor } from './worn.js';
 import { IS_ALTAR, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          ECMD_OK, ECMD_TIME, W_SADDLE, TT_LAVA, TT_BURIEDBALL, WEAK, HUNGRY,
-         EXT_ENCUMBER, A_MAX, A_STR, A_WIS, TIMEOUT, Upolyd } from './const.js';
+         EXT_ENCUMBER, A_MAX, A_STR, A_WIS, AM_SHRINE, TIMEOUT,
+         Upolyd } from './const.js';
 import { ONAMES } from './objects_data.js';
 
 function note_unported_pray(what) {
@@ -27,6 +25,8 @@ function note_unported_pray(what) {
 
 /* src/pray.c:105 on_altar() */
 const on_altar = () => IS_ALTAR(game.level.at(game.u.ux, game.u.uy).typ);
+const on_shrine = () => on_altar()
+    && !!(game.level.at(game.u.ux, game.u.uy).altarmask & AM_SHRINE);
 
 /* module state: C keeps these in gp */
 let p_aligntyp = 0;
@@ -42,6 +42,9 @@ const TROUBLE_PUNISHED = -1, TROUBLE_FUMBLING = -2, TROUBLE_CURSED_ITEMS = -3,
       TROUBLE_SADDLE = -4, TROUBLE_BLIND = -5, TROUBLE_POISONED = -6,
       TROUBLE_WOUNDED_LEGS = -7, TROUBLE_HUNGRY = -8, TROUBLE_STUNNED = -9,
       TROUBLE_CONFUSED = -10, TROUBLE_HALLUCINATION = -11;
+
+/* include/align.h alignment record thresholds used by pleased() */
+const DEVOUT = 14, STRIDENT = 4;
 
 // src/pray.c:116 critically_low_hp()
 function critically_low_hp(only_if_injured) {
@@ -298,6 +301,56 @@ async function godvoice(g_align, words) {
     await pline_The(`voice of ${align_gname(g_align)} ${godvoices[rn2(godvoices.length)]}: ${quot}${words}${quot}`);
 }
 
+// src/pray.c:1071 pleased(). The ordinary no-trouble successful-prayer path is
+// complete. Trouble cures and rare favors preserve their dispatch draw and
+// record the missing state change.
+async function pleased(g_align) {
+    const u = game.u;
+    const trouble = in_trouble();
+    let pat_on_head = false;
+    const hallucinating = !!u.uprops?.HALLUC;
+
+    const mood = u.ualign.record >= DEVOUT
+        ? (hallucinating ? 'pleased as punch' : 'well-pleased')
+        : u.ualign.record >= STRIDENT
+          ? (hallucinating ? 'ticklish' : 'pleased')
+          : (hallucinating ? 'full' : 'satisfied');
+    await You_feel(`that ${align_gname(g_align)} is ${mood}.`);
+
+    if (on_altar() && p_aligntyp !== u.ualign.type) {
+        adjalign(-1);
+        return;
+    } else if (u.ualign.record < 2 && trouble <= 0) {
+        adjalign(1);
+    }
+
+    if (!trouble && u.ualign.record >= DEVOUT) {
+        if (p_trouble === 0)
+            pat_on_head = true;
+    } else {
+        const luck = Math.max((u.uluck || 0) + (u.moreluck || 0), -1);
+        let action = rn1(luck + (on_altar() ? 3 + Number(on_shrine()) : 2), 1);
+        if (!on_altar())
+            action = Math.min(action, 3);
+        if (u.ualign.record < STRIDENT)
+            action = (u.ualign.record > 0 || !rnl(2)) ? 1 : 0;
+
+        if (trouble || action > 1)
+            note_unported_pray(`pleased:action=${Math.min(action, 5)}:trouble=${trouble}`);
+        if (action >= 5)
+            pat_on_head = true;
+    }
+
+    if (pat_on_head) {
+        const luck = (u.uluck || 0) + (u.moreluck || 0);
+        const favor = rn2((luck + 6) >> 1);
+        if (favor)
+            note_unported_pray(`pleased:favor=${favor}`);
+    }
+
+    u.ublesscnt = rnz(350);
+}
+
 // src/pray.c:2276 prayer_done()
 async function prayer_done() {
     const u = game.u;
@@ -330,7 +383,7 @@ async function prayer_done() {
         /* coaligned */
         if (on_altar())
             note_unported_pray('prayer_done:pray_revive_water');
-        note_unported_pray('prayer_done:pleased');
+        await pleased(alignment);
     }
     return 1;
 }

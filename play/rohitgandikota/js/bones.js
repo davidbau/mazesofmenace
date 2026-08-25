@@ -170,7 +170,8 @@ export async function savebones(how, corpse) {
         game.in_mklev = false;
         if (!mtmp)
             return;
-        mtmp.mname = game.plname; /* christen_monst */
+        const { christen_monst } = await import('./do_name.js');
+        christen_monst(mtmp, game.plname);
         if (corpse)
             note_unported_bones('savebones:obj_attach_mid');
 
@@ -211,6 +212,11 @@ function strip_mons(list) {
     return (list || []).map(m => {
         const copy = { ...m };
         delete copy.data;
+        /* MON_WEP points back into minvent and would make the snapshot
+           circular.  Save its chain position and restore the pointer after
+           parsing. */
+        copy.mw_index = m.mw ? (m.minvent || []).indexOf(m.mw) : -1;
+        delete copy.mw;
         copy.minvent = strip_objs(m.minvent);
         /* src/bones.c:544 — per-monster bones sanitization: pets go feral,
            movement bookkeeping resets, hero observations are wiped. Trap
@@ -222,6 +228,30 @@ function strip_mons(list) {
         delete copy.edog;
         return copy;
     });
+}
+
+function strip_stairs() {
+    const stairs = [];
+    for (let st = game.stairs; st; st = st.next) {
+        stairs.push({
+            sx: st.sx,
+            sy: st.sy,
+            up: !!st.up,
+            isladder: !!st.isladder,
+            u_traversed: !!st.u_traversed,
+            tolev: { ...st.tolev },
+        });
+    }
+    return stairs;
+}
+
+function restore_stairs(stairs) {
+    let chain = null;
+    for (let i = (stairs || []).length - 1; i >= 0; --i) {
+        const st = stairs[i];
+        chain = { ...st, tolev: { ...st.tolev }, next: chain };
+    }
+    return chain;
 }
 
 // the write half of src/bones.c:403 savebones()
@@ -265,7 +295,9 @@ function write_bonesfile() {
         traps: (lvl.traps || []).map(t => ({ ...t, madeby_u: 0,
             /* unhideable_trap: holes, and not much else on these levels */
             tseen: false })),
-        stairs: (lvl.stairs || []).map(st => ({ ...st })),
+        stairs: strip_stairs(),
+        upstair: lvl.upstair ? { ...lvl.upstair } : null,
+        dnstair: lvl.dnstair ? { ...lvl.dnstair } : null,
         engravings: (game.engravings || []).map(e => ({ ...e })),
         objects: strip_objs((lvl.objects || [])
             .filter(o => o.where === 1 /* OBJ_FLOOR */ || o.where === 0)),
@@ -340,7 +372,9 @@ export async function getbones_load() {
     lvl.rooms = snap.rooms || [];
     lvl.doors = snap.doors || [];
     lvl.traps = snap.traps || [];
-    lvl.stairs = snap.stairs || [];
+    game.stairs = restore_stairs(snap.stairs);
+    lvl.upstair = snap.upstair ? { ...snap.upstair } : null;
+    lvl.dnstair = snap.dnstair ? { ...snap.dnstair } : null;
     game.engravings = snap.engravings || [];
     lvl.objects = rewire_objs(snap.objects, null, null);
     lvl.buriedobjs = rewire_objs(snap.buried || [], null, null);
@@ -348,6 +382,8 @@ export async function getbones_load() {
     for (const m of lvl.monsters) {
         m.data = game.mons[m.mnum];
         rewire_objs(m.minvent, m, null);
+        m.mw = m.mw_index >= 0 ? (m.minvent?.[m.mw_index] || null) : null;
+        delete m.mw_index;
     }
     if (snap.track) {
         game.utcnt = snap.track.utcnt | 0;
@@ -379,6 +415,23 @@ export async function getbones_load() {
     /* monsters' m_ids come from the same counter: one next_ident each */
     for (const m of lvl.monsters)
         m.m_id = next_ident();
+
+    /* restore.c:1202 ghostly monsters meet a different hero, so their
+       peacefulness and alignment must be recomputed before they move. */
+    const { is_unicorn } = await import('./mondata.js');
+    const { peace_minded, set_malign } = await import('./makemon.js');
+    const { restore_cham, hide_monst } = await import('./mon.js');
+    const { sgn } = await import('./hacklib.js');
+    for (const m of lvl.monsters) {
+        if (!m.isshk) {
+            m.mpeaceful = is_unicorn(m.data)
+                && sgn(game.u.ualign.type) === sgn(m.data.maligntyp)
+                ? true : peace_minded(m.data);
+        }
+        set_malign(m);
+        restore_cham(m);
+        hide_monst(m);
+    }
 
     /* the cemetery record: goto_level's familiar_level_msg reads it */
     lvl.bonesinfo = snap.bonesinfo || null;

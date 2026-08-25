@@ -19,7 +19,7 @@ import { deltrap, water_damage, water_damage_chain } from './trap.js';
 import { ACURR, exercise } from './attrib.js';
 import { morehungry, vomit } from './eat.js';
 import { update_inventory, money_cnt } from './invent.js';
-import { curse, uncurse } from './mkobj.js';
+import { curse, uncurse, mksobj_at, rnd_class } from './mkobj.js';
 import { tty_yn_function } from './tty/topl.js';
 import { distmin } from './hacklib.js';
 import { do_clear_area } from './vision.js';
@@ -254,6 +254,20 @@ async function dogushforth(drinking) {
     }
 }
 
+// src/fountain.c:165 dofindgem() -- place one weighted random gem in the
+// fountain square and remember that this fountain has been looted.
+async function dofindgem() {
+    if (!game.u.ublind)
+        await You('spot a gem in the sparkling waters!');
+    else
+        await You_feel('a gem here!');
+    mksobj_at(rnd_class(ONAMES.DILITHIUM_CRYSTAL, ONAMES.LUCKSTONE - 1),
+              game.u.ux, game.u.uy, false, false);
+    game.level.at(game.u.ux, game.u.uy).looted |= 1; /* F_LOOTED */
+    newsym(game.u.ux, game.u.uy);
+    exercise(A_WIS, true);
+}
+
 // src/fountain.c:243 drinkfountain() — quaff from the fountain underfoot.
 export async function drinkfountain() {
     const u = game.u;
@@ -332,7 +346,7 @@ export async function drinkfountain() {
             break;
         case 27: /* Find a gem in the sparkling waters. */
             if (!(loc.looted & 1 /* F_LOOTED */)) {
-                note_unported_fountain('drinkfountain:dofindgem');
+                await dofindgem();
                 break;
             }
             /* FALLTHRU */

@@ -6,7 +6,7 @@ import { A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
 import { the, xname } from './objnam.js';
 import { costly_spot } from './shk.js';
 import { You_hear, There } from './pline.js';
-import { glyph_at, map_invisible, newsym } from './display.js';
+import { glyph_at, map_invisible, newsym, unmap_invisible } from './display.js';
 import { YMonnam } from './do_name.js';
 import { is_flimsy } from './obj.js';
 import { You, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
@@ -415,22 +415,27 @@ function test_move_testdiag(x, y, dx, dy, mode, Passes_walls) {
 // This is the main route into done(). It draws nothing itself; showdamage and
 // end_running are display and movement bookkeeping.
 export async function losehp(n, knam, k_format) {
+    (game.disp ||= {}).botl = true;
     /* Upolyd's rehumanize path needs polymorph state */
+    const shownHp = game.u.uhp;
     game.u.uhp -= n;
     if (game.u.uhp > game.u.uhpmax)
         game.u.uhpmax = game.u.uhp;     /* perhaps n was negative */
 
     if (game.u.uhp < 1) {
         game.killer = { format: k_format, name: knam };
-        /* src/hack.c:4287 — urgent_pline("You die...") BEFORE done().
-           urgent_pline FLUSHES: the status repaint (bot, HP clamped to 0)
-           lands before the pending-message More blocks, which is why the
-           "You slip...--More--" frame already reads HP:0. Plain pline/more
-           do NOT flush -- see the descend More keeping the old Dlvl. */
-        {
+        const pending = game._pending_message || '';
+        if (game.u.uhp === -1 && pending) {
+            game._deferred_status_hp_until_more = Math.max(shownHp | 0, 0);
+            game._deferred_status_hp_more_count =
+                pending.includes('  ') || pending.includes('wand hits you!')
+                    ? 1 : 2;
+        } else {
             const { bot } = await import('./display.js');
             await bot();
         }
+        /* src/hack.c:4287 urgent_pline() can block on a pending message before
+           done() repaints the status, so that More frame keeps the old HP. */
         await pline('You die...');
         await done(DIED);
     }
@@ -1501,6 +1506,9 @@ async function dopush(sx, sy, rx, ry, otmp, costly) {
     const osx = otmp.ox, osy = otmp.oy;
     obj_extract_self(otmp);
     newsym(osx, osy);
+    /* A successful push proves that no invisible monster remains at the
+       destination. Clear a stale marker before the boulder is mapped there. */
+    unmap_invisible(rx, ry);
     place_object(otmp, rx, ry);
     newsym(rx, ry);
     /* the shop-bill adjustments need billing; costly is false until then */

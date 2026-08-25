@@ -18,7 +18,7 @@ import {
 import { in_rooms } from './hack.js';
 import { MM_NOCOUNTBIRTH, MM_NOMSG, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
          BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST,
-         G_GONE } from './const.js';
+         G_GONE, BR_NO_END1, BR_NO_END2, BR_PORTAL } from './const.js';
 import { do_mkroom, antholemon, mkroom_wire } from './mkroom.js';
 import { SPBOOK_no_NOVEL } from './mkobj.js';
 import { mongone } from './mon.js';
@@ -27,7 +27,7 @@ import { set_wall_state } from './display.js';
 import { obj_extract_self } from './invent.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { fill_special_room, sp_lev_wire_mklev, sp_lev_wire_walkfrom, sp_lev_wire_priest, sp_lev_wire_roamer, reset_xystart_size } from './sp_lev.js';
-import { walkfrom, mkmaze_wire_mklev } from './mkmaze.js';
+import { walkfrom, mkmaze_wire_mklev, mkportal } from './mkmaze.js';
 import { enexto_core } from './teleport.js';
 import { goodpos } from './makemon.js';
 import { GP_CHECKSCARY as GP_CHECKSCARY_MK,
@@ -168,7 +168,7 @@ import { Can_fall_thru } from './dungeon.js';
 import { lspo_map, lspo_region, sp_lev_wire, sp_lev_wire_mktrap,
          sp_lev_wire_okdoor, sp_lev_wire_subroom,
          lspo_room, lspo_door, lspo_object, lspo_monster, lspo_exclusion,
-         inside_room } from './sp_lev.js';
+         inside_room, lspo_replace_terrain } from './sp_lev.js';
 import { percent } from './nhlua.js';
 import { lua_shuffle } from './nhlua.js';
 
@@ -401,7 +401,7 @@ function choose_trapnote(ttmp) {
 // awaits in it; the async marker was invented here and it forced every caller
 // up to lspo_region() to be async too, which is what blocked the themeroom
 // fills from calling des.trap at all.
-function maketrap(x, y, typ) {
+export function maketrap(x, y, typ) {
     /* src/trap.c:463 — the refusal arms. A trap request can FAIL, and the
        caller (mktrap) turns that into kind = NO_TRAP, which short-circuits
        the victim gate before its rnd(4). Creating unconditionally made the
@@ -961,13 +961,16 @@ async function themerooms_generate(difficulty) {
         return !game.themeroom_failed;
 
     let rtype = OROOM, rlit = -1, contents = null;
+    let needfill = FILL_NORMAL;
     let roomW = -1, roomH = -1;
     switch (pick.name) {
     case 'default': break;
     case 'Default room with themed fill':
-        rtype = THEMEROOM; contents = themeroom_fill; break;
+        rtype = THEMEROOM; contents = themeroom_fill; needfill = FILL_NONE; break;
     case 'Unlit room with themed fill':
-        rtype = THEMEROOM; contents = themeroom_fill; rlit = 0; break;
+        rtype = THEMEROOM; contents = themeroom_fill; rlit = 0;
+        needfill = FILL_NONE;
+        break;
     case 'Room with both normal contents and themed fill':
         rtype = THEMEROOM; contents = themeroom_fill; break;
     case 'Room in a room':
@@ -1058,7 +1061,9 @@ async function themerooms_generate(difficulty) {
         const aroom = game.level.rooms[game.level.nroom - 1];
         if (aroom) {
             topologize(aroom);
-            aroom.needfill = FILL_NORMAL;
+            /* Theme-room des.room defaults to unfilled unless its Lua table
+               explicitly says filled=1. */
+            aroom.needfill = needfill;
             /* This is our inline equivalent of the des.room{} the themeroom
                Lua actually writes, so it owes the same bookkeeping lspo_room
                does: push the room as the coder's croom around the contents
@@ -1105,8 +1110,8 @@ function fill_eligible(fill, rm, difficulty) {
     if (fill.mindiff != null && difficulty < fill.mindiff) return false;
     if (fill.maxdiff != null && difficulty > fill.maxdiff) return false;
     if (rm != null && fill.eligible) {
-        if (fill.eligible === 'return rm.lit == true;') return !!rm.rlit;
-        if (fill.eligible === 'return rm.lit == false;') return !rm.rlit;
+        if (fill.eligible === 'return rm.lit == true;') return !!rm.lit;
+        if (fill.eligible === 'return rm.lit == false;') return !rm.lit;
         note_unported_lev(`fill eligible ${fill.name}`);
         return true;
     }
@@ -1135,7 +1140,7 @@ function themeroom_fill(rm) {
        transcribed in js/themerms.js. */
     const contents = themeroom_fill_contents[pick.name];
     if (contents)
-        contents(mkroom_table(rm));     /* sp_lev.c:5704 — Lua sees a table */
+        contents(rm);                   /* sp_lev.c:5704, already a Lua table */
     else
         note_unported_lev(`themeroom_fill ${pick.name}`);
 }
@@ -1168,7 +1173,11 @@ function themeroom_contents(pick, mf) {
             if (percent(30)) {
                 const terr = ['-', 'P'];
                 lua_shuffle(terr);
-                note_unported_lev('des.replace_terrain');
+                lspo_replace_terrain({
+                    region: [1, 1, 9, 9],
+                    fromterrain: 'L',
+                    toterrain: terr[0],
+                });
             }
             filler_region(1, 1);
         });
@@ -2259,15 +2268,22 @@ export function place_branch(branchp, bx, by) {
         const on_end1 = (branchp.end1?.dnum === g.u?.uz?.dnum
             && branchp.end1?.dlevel === g.u?.uz?.dlevel);
         const dest = on_end1 ? branchp.end2 : branchp.end1;
-        const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
-        const loc = g.level?.at(mp.x, mp.y);
-        if (loc) {
-            loc.typ = STAIRS;
-            loc.ladder = goes_up ? 1 : 2;
+        const make_stairs = branchp.type !== (on_end1 ? BR_NO_END1
+                                                       : BR_NO_END2);
+        if (branchp.type === BR_PORTAL) {
+            mkportal(mp.x, mp.y, dest?.dnum ?? 0, dest?.dlevel ?? 0);
+        } else if (make_stairs) {
+            const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
+            const loc = g.level?.at(mp.x, mp.y);
+            if (loc) {
+                loc.typ = STAIRS;
+                loc.ladder = goes_up ? 1 : 2;
+            }
+            stairway_add(mp.x, mp.y, goes_up, false,
+                         dest || { dnum: 0, dlevel: 0 });
+            if (goes_up) g.level.upstair = { x: mp.x, y: mp.y };
+            else g.level.dnstair = { x: mp.x, y: mp.y };
         }
-        stairway_add(mp.x, mp.y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
-        if (goes_up) g.level.upstair = { x: mp.x, y: mp.y };
-        else g.level.dnstair = { x: mp.x, y: mp.y };
     }
     g.made_branch = true;
 }

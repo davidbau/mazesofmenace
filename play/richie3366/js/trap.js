@@ -69,7 +69,8 @@ import {
     DB_UNDER, DB_ICE, DB_FLOOR,
     MELT_ICE_AWAY, ROT_ORGANIC,
     MAGIC_PORTAL, LEVEL_TELEP, Is_waterlevel, Is_airlevel,
-    D_CLOSED, D_LOCKED, D_BROKEN,
+    D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, D_TRAPPED,
+    MAXULEV,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     EF_NONE, EF_GREASE, EF_DESTROY, EF_VERBOSE, EF_PAY,
@@ -83,7 +84,7 @@ import {
     WATER, BURNING, DROWNING, DISSOLVED, PLNMSG_BACK_ON_GROUND,
     TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
-    HEAD, ARM,
+    HEAD, ARM, FINGER,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP,
     W_SADDLE, I_SPECIAL,
     CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_GENDER, CORPSTAT_MALE,
@@ -112,14 +113,14 @@ import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS,
 } from './objects.js';
-import { monsterNames } from './generated/monsters_data.js';
+import { monsterNames, PM_ROGUE } from './generated/monsters_data.js';
 import { thitu, ohitmon, hits_bars } from './mthrowu.js';
 import { dmgval, MON_WEP, mwepgone, wet_a_towel, dry_a_towel, is_wet_towel } from './weapon.js';
 import { observe_object, encumber_msg, near_capacity } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
 import {
-    A_CHA, A_STR, A_DEX, A_CON, adjattrib, exercise, adjalign, poisoned,
-    change_luck,
+    A_CHA, A_STR, A_DEX, A_CON, A_WIS, adjattrib, exercise, adjalign,
+    poisoned, change_luck, Fumbling,
 } from './attrib.js';
 import { tamedog, wary_dog } from './dog.js';
 import { welded, uwepgone, uswapwepgone } from './wield.js';
@@ -3798,6 +3799,10 @@ function Hallucination() {
     if (u.Hallucination) return true;
     return !!((u.HHallucination | 0) && !(u.Halluc_resistance | 0));
 }
+/** C youprop.h Confusion — HConfusion (booleanized). */
+function Confusion() {
+    return !!((game.u?.HConfusion | 0));
+}
 function HInvis_val() { return (game.u?.HInvis | 0); }
 function EInvis_val() { return (game.u?.EInvis | 0); }
 function Invis() {
@@ -5000,7 +5005,7 @@ export async function openfallingtrap(mon, trapdoor_only) {
 /**
  * C ref: trap.c could_untrap — preliminary #untrap / autounlock gates.
  * Named omissions: sticks/ustuck busy-hands wording; check_floor reach
- * surface; untrap floor/box/door disarm arms (see untrap()).
+ * surface; untrap floor/box arms (door force is D-1495).
  * @param {boolean} verbosely
  * @param {boolean} [check_floor=false]
  * @returns {Promise<boolean>} true when allowed (C returns 1)
@@ -5039,10 +5044,11 @@ export async function could_untrap(verbosely, check_floor = false) {
 /**
  * C ref: trap.c untrap — hero able to attempt disarm, so do so.
  * Branch envelope: usual #untrap `getdir(NULL)`; cancel → 0; !isok;
- * non-door with no tseen trap → "You know of no traps there."
- * Named omissions: has_magic_key force; floor-trap disarm_* switch;
- * boxcnt/ynq/untrap_box; door trap find/disarm RNG; autounlock;
- * can_reach_floor / mimic stumble messaging.
+ * non-door with no tseen trap → "You know of no traps there.";
+ * has_magic_key → force; door D_NODOOR/ISOPEN/BROKEN; D_TRAPPED
+ * find/disarm with force luck-skip (`:5865–5868` / `:6051–6095`).
+ * Named omissions: floor-trap disarm_* switch; boxcnt/ynq/untrap_box;
+ * autounlock_box; can_reach "can't reach" pline; mimic stumble.
  * @param {boolean} [force=false]
  * @param {number} [rx=0]
  * @param {number} [ry=0]
@@ -5050,9 +5056,16 @@ export async function could_untrap(verbosely, check_floor = false) {
  * @returns {Promise<number>} 1 spent time, 0 otherwise (C boolean)
  */
 export async function untrap(force = false, rx = 0, ry = 0, container = null) {
-    void force; // has_magic_key → force deferred
+    const confused = !!(Confusion() || Hallucination());
+    let autounlock_door = false;
+    let trap_skipped = false;
     let x;
     let y;
+    // C: force is true for #invoke; carrying MKoT makes #untrap force
+    if (!force) {
+        const { has_magic_key } = await import('./artifact.js');
+        if (has_magic_key(game.youmonst)) force = true;
+    }
     if (!rx && !container) {
         // C: usual case — getdir((char *)0) → "In what direction?"
         const { getdir } = await import('./lock.js');
@@ -5063,9 +5076,9 @@ export async function untrap(force = false, rx = 0, ry = 0, container = null) {
         // Named omission: untrap_box(container, force, confused)
         return 1;
     } else {
-        // autounlock door coords — disarm body deferred
         x = rx | 0;
         y = ry | 0;
+        autounlock_door = true;
     }
     if (!isok(x, y)) {
         await pline('The perils lurking there are beyond your grasp.');
@@ -5074,15 +5087,67 @@ export async function untrap(force = false, rx = 0, ry = 0, container = null) {
     const ttmp0 = t_at(x, y);
     const ttmp = ttmp0 && ttmp0.tseen ? ttmp0 : null;
     const loc = game.level?.at?.(x, y);
-    // Floor-trap / box arms deferred. Match C empty exit when no door
-    // and no seen floor trap (trap_skipped stays false).
+    if (!autounlock_door && ttmp) {
+        const { can_reach_floor } = await import('./engrave.js');
+        if (can_reach_floor(false)) {
+            // Floor-trap disarm_* named — C returns from the ttyp switch.
+            return 0;
+        }
+        trap_skipped = true;
+    }
     if (!loc || !IS_DOOR(loc.typ | 0)) {
-        if (!ttmp) await pline('You know of no traps there.');
-        // else: disarm_holdingtrap / landmine / … deferred
+        if (!trap_skipped) await pline('You know of no traps there.');
         return 0;
     }
-    // Door D_TRAPPED find/disarm (rn2/rnd) deferred — no invented RNG.
-    return 0;
+    const mask = loc.doormask | 0;
+    switch (mask) {
+    case D_NODOOR:
+        await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+        return 0;
+    case D_ISOPEN:
+        await pline('This door is safely open.');
+        return 0;
+    case D_BROKEN:
+        await pline('This door is broken.');
+        return 0;
+    }
+    const u = game.u || {};
+    const trapped = (mask & D_TRAPPED) !== 0;
+    if ((trapped && (force || (!confused
+            && rn2(MAXULEV - (u.ulevel | 0) + 11) < 10)))
+        || (!force && confused && !rn2(3))) {
+        await pline('You find a trap on the door!');
+        exercise(A_WIS, true);
+        const { yn_function } = await import('./getline.js');
+        if ((await yn_function('Disarm it?', 'ynq', 'n')) !== 'y') return 1;
+        if (trapped) {
+            const ch = 15 + (Role_if(PM_ROGUE)
+                ? (u.ulevel | 0) * 3
+                : (u.ulevel | 0));
+            exercise(A_DEX, true);
+            if (!force && (confused || Fumbling()
+                || rnd(75 + Math.trunc(level_difficulty() / 2)) > ch)) {
+                await pline('You set it off!');
+                await b_trapped('door', FINGER);
+                loc.doormask = D_NODOOR;
+                recalc_block_point(x, y);
+                newsym(x, y);
+                if (in_rooms(x, y, SHOPBASE)) add_damage(x, y, 0);
+            } else {
+                await pline('You disarm it!');
+                loc.doormask = mask & ~D_TRAPPED;
+                const { more_experienced, newexplevel } =
+                    await import('./exper.js');
+                more_experienced(8, 0);
+                await newexplevel();
+            }
+        } else {
+            await pline('This door was not trapped.');
+        }
+        return 1;
+    }
+    await pline('You find no traps on the door.');
+    return 1;
 }
 
 /**

@@ -165,6 +165,9 @@ export class NethackGame {
            creation"; newhp()'s alignment-record assignment is one. It was
            hardcoded to 1 here, so that branch could never run. */
         g.moves = 0;
+        /* decl.c g_init_h: moves becomes 1 during role initialization, and
+           hero_seq starts at moves * 8. It advances only when time passes. */
+        g.hero_seq = 8;
 
         /* Placeholders until allmain.c's u_init_misc() installs the real
            records. Nothing should read these — allmain.js:109 overwrites both
@@ -194,6 +197,9 @@ export class NethackGame {
 
         // Run game startup
         await newgame();
+        /* src/allmain.c moveloop_preamble() sets this before the first
+           command. Attribute changes use it to announce load changes. */
+        g.program_state.in_moveloop = true;
 
         /* sys/unix/unixmain.c:317 — "newgame(); wd_message();": the play-mode
            notice lands between welcome() and the tutorial query. */

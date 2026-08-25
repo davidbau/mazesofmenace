@@ -2,7 +2,7 @@ import { game } from './gstate.js';
 import { pline } from './display.js';
 import { splitobj, place_object } from './mkobj.js';
 import { freeinv, stackobj } from './invent.js';
-import { encumber_msg, ACURR, acurrstr, exercise } from './attrib.js';
+import { encumber_msg, near_capacity, ACURR, acurrstr, exercise } from './attrib.js';
 import { A_DEX, A_STR, BOLT_LIM, IS_SOFT, LOST_THROWN, THROWN_WEAPON,
          HMON_THROWN, HMON_KICKED, HMON_APPLIED, engulfing_u } from './const.js';
 /* include/objclass.h:79 — oc_dir bits for weapons */
@@ -187,7 +187,14 @@ export async function throw_obj(obj, shotlimit) {
                 note_unported_dothrow('throw_obj:remove_worn_item');
             obj = null;
         }
+        const old_encumbr = near_capacity();
         freeinv(otmp);
+        if (near_capacity() !== old_encumbr) {
+            /* C leaves the old capacity on the tty until encumber_msg()
+               announces the change after throwit() finishes. */
+            game._encumber_status_stale = true;
+            game._deferred_status_capacity = old_encumbr;
+        }
         await throwit(otmp, wep_mask);
         await encumber_msg();
     }

@@ -17,13 +17,13 @@ import { sp_lev_wire_mon } from './sp_lev.js';
 import { is_pool, is_lava, m_at, t_at, newcham, resists_ston,
          mongone } from './mon.js';
 import { do_attack } from './uhitm.js';
-import { is_safemon, mon_visible, sensemon } from './display.js';
+import { is_safemon, mon_visible, sensemon, unmap_invisible } from './display.js';
 import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
 import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup, trapmove, doorless_door, could_move_onto_boulder } from './hack.js';
-import { In_sokoban } from './dungeon.js';
+import { In_sokoban, surface } from './dungeon.js';
 import { Hallucination } from './youprop.js';
 import { u_on_newpos } from './teleport.js';
 import { doloot } from './pickup.js';
@@ -142,8 +142,7 @@ function blocksMove(x, y, dx, dy) {
     game.context.door_opened = false;
     const loc = game.level?.at(x, y);
     if (!loc) return true;
-    if (loc.typ === STONE) return true;
-    if (IS_WALL(loc.typ)) return true;
+    if (IS_OBSTRUCTED(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
     /* src/hack.c:1140 test_move() — diagonal moves into an intact doorway
        are not allowed (block_door boulder check needs Sokoban state) */
@@ -410,13 +409,37 @@ export async function getlin(query, hook) {
          * any of that left the prompt invisible: seed0360's '#' never
          * appeared and the cursor sat out on the map.
          */
-        game._pending_message = `${query} ${buf}`;
+        const promptText = `${query} ${buf}`;
         game._toplin = TOPLINE_SPECIAL_PROMPT;
-        paint_topline();
         const display = game?.nhDisplay;
+        const CO = display?.cols ?? 80;
+        /* win/tty/topl.c topl_putsym() reserves the final terminal
+           column. When curx reaches CO - 1, it moves to the next row
+           before painting the following character. */
+        const lineWidth = Math.max(CO - 1, 1);
+        const lines = [];
+        for (let start = 0; start < promptText.length; start += lineWidth)
+            lines.push(promptText.slice(start, start + lineWidth));
+        if (!lines.length)
+            lines.push('');
+
+        const oldCury = game._topl_cury || 0;
+        const newCury = lines.length - 1;
+        if (oldCury > newCury)
+            tty_clear_nhwindow_message(oldCury);
+
+        game._pending_message = lines.join('\n');
+        game._topl_cury = newCury;
+        paint_topline();
+
         if (display) {
-            const CO = display.cols ?? 80;
-            display.setCursor(Math.min(query.length + 1 + pos, CO - 1), 0);
+            const logicalPos = query.length + 1 + pos;
+            let cursorRow = 0, cursorCol = logicalPos;
+            if (logicalPos > lineWidth) {
+                cursorRow = Math.floor((logicalPos - 1) / lineWidth);
+                cursorCol = ((logicalPos - 1) % lineWidth) + 1;
+            }
+            display.setCursor(cursorCol, cursorRow);
         }
 
         const c = String.fromCharCode(await nhgetch());
@@ -758,6 +781,36 @@ export async function doextcmd() {
         const { dodip } = await import('./potion.js');
         return await dodip();
     }
+    if (name === 'rub') {
+        const { dorub } = await import('./apply.js');
+        return await dorub();
+    }
+    if (name === 'wipe') {
+        const { dowipe } = await import('./do.js');
+        return await dowipe();
+    }
+    if (name === 'polyself') {
+        const { wiz_polyself } = await import('./polyself.js');
+        return await wiz_polyself();
+    }
+    if (name === 'monster') {
+        const { domonability } = await import('./polyself.js');
+        return await domonability();
+    }
+    if (name === 'invoke') {
+        const { doinvoke } = await import('./artifact.js');
+        return await doinvoke();
+    }
+    if (name === 'untrap') {
+        const { dountrap } = await import('./trap.js');
+        return await dountrap();
+    }
+    if (name === 'tip') {
+        const { dotip } = await import('./pickup.js');
+        return await dotip();
+    }
+    if (name === 'herecmdmenu')
+        return await doherecmdmenu();
     if (name === 'annotate') {
         /* src/dungeon.c:2571 donamelevel() -> query_annotation(): the
            getlin consumes the annotation text; skipping it fed the typed
@@ -811,6 +864,108 @@ export async function doextcmd() {
         return await wiz_genesis();
 
     note_unported_cmd(`extcmd:${name}`);
+    return ECMD_OK;
+}
+
+// src/cmd.c:4332 doherecmdmenu() and there_cmd_menu_self(). The command
+// presents actions available on the hero's square, then queues the selected
+// action so the normal command loop runs it on the next pass.
+async function doherecmdmenu() {
+    const { Is_container } = await import('./obj.js');
+    const { doname } = await import('./objnam.js');
+    const { num_spells } = await import('./spell.js');
+    const { can_reach_floor, dotip } = await import('./pickup.js');
+    const { dountrap } = await import('./trap.js');
+    const { donull } = await import('./do.js');
+    const {
+        FOUNTAIN, SINK, THRONE, ALTAR, VIBRATING_SQUARE,
+    } = await import('./const.js');
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    const actions = new Map();
+    let nextId = 1;
+    const add = (text, fn, ...keys) => {
+        const id = nextId++;
+        actions.set(id, { fn, keys });
+        tty_add_menu(win, null, id, 0, 0, ATR_NONE, NO_COLOR, text,
+                     MENU_ITEMFLAGS_NONE);
+    };
+
+    const u = game.u;
+    const loc = game.level?.at(u.ux, u.uy);
+    const typ = loc?.typ;
+    if ((typ === FOUNTAIN || typ === SINK) && can_reach_floor(false)) {
+        add(`Drink from the ${typ === FOUNTAIN ? 'fountain' : 'sink'}`,
+            () => dodrink(drink_ok), 'y');
+    }
+    if (typ === FOUNTAIN && can_reach_floor(false)) {
+        const { dodip } = await import('./potion.js');
+        add('Dip something into the fountain', dodip);
+    }
+    if (typ === THRONE) {
+        const { dosit } = await import('./sit.js');
+        add('Sit on the throne', dosit);
+    }
+    if (typ === ALTAR)
+        add('Sacrifice something on the altar',
+            () => doextcmd_named_offer());
+
+    const stway = stairway_at(u.ux, u.uy);
+    if (stway) {
+        const kind = stway.isladder ? 'ladder' : 'stairs';
+        add(`Go ${stway.up ? 'up' : 'down'} the ${kind}`,
+            stway.up ? doup : dodown);
+    }
+
+    const floor = (game.level?.objects || [])
+        .filter(o => o.ox === u.ux && o.oy === u.uy);
+    if (floor.length) {
+        const obj = floor[0];
+        add(`Pick up ${floor.length > 1 ? 'items' : doname(obj)}`, dopickup);
+        if (Is_container(obj)) {
+            add(`Loot ${doname(obj)}`, doloot);
+            add(`Tip ${doname(obj)}`, dotip, 'y');
+        }
+        if (obj.oclass === OCLASSES.FOOD_CLASS)
+            add(`Eat ${doname(obj)}`, doeat, 'y');
+    }
+
+    if ((game.invent || []).length) {
+        add('Inventory', show_inventory);
+        add('Drop items', dodrop);
+    }
+    add('Rest one turn', donull);
+    add('Search around you', dosearch);
+    add('Look at what is here', dolook);
+    if (num_spells() > 0)
+        add('Cast a spell', docast);
+
+    const trap = t_at(u.ux, u.uy);
+    if (trap?.tseen && trap.ttyp !== VIBRATING_SQUARE)
+        add('Attempt to disarm trap', dountrap);
+
+    tty_end_menu(win, 'What do you want to do?');
+    const picks = await tty_select_menu(win, 1 /* PICK_ONE */);
+    tty_destroy_nhwindow(win);
+    if (picks.length) {
+        const action = actions.get(picks[0]);
+        if (action) {
+            cmdq_add_ec(CQ_CANNED, action.fn);
+            for (const key of action.keys)
+                cmdq_add_key(CQ_CANNED, key);
+        }
+    }
+    return ECMD_OK;
+}
+
+async function doextcmd_named_offer() {
+    const loc = game.level?.at(game.u.ux, game.u.uy);
+    if (!loc || loc.typ !== (await import('./const.js')).ALTAR) {
+        await You('are not on an altar.');
+        return ECMD_OK;
+    }
+    note_unported_cmd('cmd:doextcmd:offer_rite');
     return ECMD_OK;
 }
 
@@ -1138,7 +1293,10 @@ export async function rhack(key) {
            erased that clear, so a wall bump charged a full turn: seed0016's
            three bumps put the whole game three turns ahead of C. */
         game.context.move = 1;
+        const was_forcefight = !!game.context.forcefight;
         await domove();
+        if (was_forcefight)
+            game.context.forcefight = 0;
     } else if (ch === 'z') {
         // src/cmd.c cmdlist — 'z' is dozap: getobj for the wand, getdir for
         // the direction, and a self-zap of sleep knocks the hero out for
@@ -1498,18 +1656,12 @@ async function domove_core() {
        square instead of moving onto it, whether or not anything is there. The
        attack itself needs the combat code; what matters here is that the hero
        does NOT move and the turn is still spent. */
-    if (game.context.forcefight) {
-        game.context.forcefight = 0;
-        const target = m_at(newx, newy);
-        if (!target) {
-            /* src/hack.c:2228 domove_fight_empty() — "harmlessly attack" */
-            const { domove_fight_empty } = await import('./hack.js');
-            await domove_fight_empty(newx, newy);
-        } else {
-            /* attacking a real monster this way needs do_attack routed
-               through the forcefight gate; recorded until then */
-            note_unported_cmd('domove:forcefight attack');
-        }
+    if (game.context.forcefight && !m_at(newx, newy)) {
+        /* src/hack.c:2228 domove_fight_empty() handles the no-target case.
+           A real target continues through domove_attackmon_at below while
+           forcefight is still set, bypassing the peaceful-monster prompt. */
+        const { domove_fight_empty } = await import('./hack.js');
+        await domove_fight_empty(newx, newy);
         game.context.move = 1;
         return;
     }
@@ -1608,6 +1760,12 @@ async function domove_core() {
             }
         }
     }
+
+    /* src/hack.c:2813: reaching an apparently empty destination proves
+       that a remembered invisible-monster marker there is stale. This must
+       run before boulder handling so a boulder pushed onto that square can
+       replace the marker in map memory. */
+    unmap_invisible(newx, newy);
 
     /* src/hack.c:2831 — when u.utrap is true the struggle may consume the
        move: trapmove() returns FALSE to stay put (time passes), TRUE when
@@ -1979,6 +2137,11 @@ async function show_item_actions(obj) {
         add_item_action(win, 'C', `Call the type for ${simpleName}`);
     if (!wornItem)
         add_item_action(win, 'd', `Drop this ${obj.quan > 1 ? 'stack' : 'item'}`);
+    if (obj.oclass === OCLASSES.RING_CLASS) {
+        const verb = game.objects[obj.otyp].oc_tough ? 'Engrave' : 'Write';
+        add_item_action(win, 'E', `${verb} on the ${surface(game.u.ux, game.u.uy)} `
+                        + `with ${obj.quan > 1 ? 'one of these items' : 'this item'}`);
+    }
     if (obj.oclass !== OCLASSES.COIN_CLASS)
         add_item_action(win, 'i', 'Adjust inventory by assigning new letter');
     if (obj.quan > 1 && obj.oclass !== OCLASSES.COIN_CLASS)
@@ -1987,6 +2150,9 @@ async function show_item_actions(obj) {
         add_item_action(win, 'r', 'Study this spellbook');
     else if (obj.oclass === OCLASSES.SCROLL_CLASS)
         add_item_action(win, 'r', 'Read this scroll to activate its magic');
+    if (!wornItem && obj.oclass === OCLASSES.RING_CLASS)
+        add_item_action(win, 'P', !game.u.uleft || !game.u.uright
+            ? 'Put this ring on' : '[both ring fingers in use]');
     if (!wornItem)
         add_item_action(win, 't', obj.quan === 1
             ? 'Throw this item' : 'Throw one of these');
@@ -2016,6 +2182,8 @@ function queue_item_action(action, obj) {
     switch (action) {
     case 'c': push(docallcmd, 'i', obj.invlet); break;
     case 'd': push(dodrop, obj.invlet); break;
+    case 'E': push(doengrave, obj.invlet); break;
+    case 'P': push(doputon, obj.invlet); break;
     case 'r': push(() => doread(read_ok), obj.invlet); break;
     case 't': push(dothrow, obj.invlet); break;
     case 'w': push(dowield, obj.invlet); break;

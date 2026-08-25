@@ -46,7 +46,11 @@ export async function stop_occupation() {
         game.occtxt = null;
         (game.disp ||= {}).botl = true; /* in case u.uhs changed */
     }
-    game.multi = 0;
+    /* nomul(0) preserves a negative multi value.  That matters when a
+       monster attacks while the hero is dressing or disrobing: the attack
+       stops an occupation, but it must not cancel the separate afternmv
+       countdown. */
+    nomul(0);
 }
 
 import { rn2, rn1 } from './rng.js';
@@ -520,7 +524,7 @@ function u_calc_moveamt(wtcap) {
         /* your speed doesn't augment steed's speed */
         moveamt = mcalcmove(game.u.usteed, true);
     } else {
-        moveamt = 12;                 /* youmonst.data->mmove */
+        moveamt = game.youmonst.data.mmove;
 
         if (Very_fast()) {            /* speed boots, potion, or spell */
             if (rn2(3) !== 0) moveamt += NORMAL_SPEED;
@@ -674,11 +678,13 @@ export async function moveloop_core() {
                act. This inner loop is the whole reason a pet gets to move at
                all: movement is allotted below, so a single movemon() call per
                command would always find every monster still at zero. */
+            g.context.mon_moving = true;
             do {
                 monscanmove = await movemon();
                 if (g.u.umovement >= NORMAL_SPEED)
                     break;         /* it's now your turn */
             } while (monscanmove);
+            g.context.mon_moving = false;
 
             if (!monscanmove && g.u.umovement < NORMAL_SPEED) {
                 /* src/allmain.c:222 — both hero and monsters are out of
@@ -706,6 +712,8 @@ export async function moveloop_core() {
                    `(g.moves || 1) + 1` only happened to agree because the
                    first increment landed on 2 either way. */
                 g.moves++;
+                /* allmain.c:260: begin this turn's hero movement sequence. */
+                g.hero_seq = g.moves * 8;
 
                 /* src/allmain.c:275 — nh_timeout() then the prayer
                    timeout, every turn. */
@@ -789,6 +797,10 @@ export async function moveloop_core() {
             }
         } while (g.u.umovement < NORMAL_SPEED);
 
+        /* allmain.c:396: one distinct sequence number per action that takes
+           time, including extra actions by a fast hero in the same turn. */
+        g.hero_seq++;
+
         /* src/allmain.c:403 checks again after timeout and monster actions,
            so inventory changes made by the hero get immediate feedback. */
         await encumber_msg();
@@ -839,11 +851,6 @@ export async function moveloop_core() {
     }
 
     find_ac();
-
-    /* C bumps hero_seq inside the move gate (moves*8 + n); this port's
-       counter ticks every core because use_stethoscope's first-use-free
-       test was calibrated against that frame (see STATUS). */
-    g.hero_seq = (g.hero_seq || 0) + 1;
 
     // Vision + display
     if (g.vision_full_recalc) {

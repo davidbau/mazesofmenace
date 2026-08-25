@@ -24,7 +24,7 @@ import { hcolor } from './do_name.js';
 import { NH_BLACK, NH_BLUE, NH_AMBER, HAND, A_DEX,
          invlet_basic } from './const.js';
 import { Yobjnam2, otense, simpleonames, makeplural, an, xname, The,
-         aobjnam, Yname2, yname, vtense } from './objnam.js';
+         aobjnam, Yname2, yname, vtense, doname } from './objnam.js';
 import { body_part } from './polyself.js';
 import { uncurse } from './mkobj.js';
 import { setworn } from './worn.js';
@@ -686,6 +686,74 @@ export async function can_twoweapon() {
     } else
         return true;
     return false;
+}
+
+// src/wield.c:683 wield_tool(): wield an object before applying it.
+// Used by #rub and by several tool applications in C.
+export async function wield_tool(obj, verb = 'wield') {
+    if (game.u.uwep && obj === game.u.uwep)
+        return true;
+
+    const what = xname(obj);
+    let more_than_1 = obj.quan > 1
+                      || what.toLowerCase().includes('pair of ')
+                      || what.toLowerCase().includes('s of ');
+
+    if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
+        await You_cant(`${verb} ${yname(obj)} while wearing `
+                       + `${more_than_1 ? 'them' : 'it'}.`);
+        return false;
+    }
+    if (game.u.uwep && welded(game.u.uwep)) {
+        if (game.flags.verbose) {
+            let hand = body_part(HAND);
+            if (bimanual(game.u.uwep))
+                hand = makeplural(hand);
+            if (what.toLowerCase().includes('pair of '))
+                more_than_1 = false;
+            await pline(`Since your weapon is welded to your ${hand}, `
+                        + `you cannot ${verb} ${more_than_1 ? 'those' : 'that'} `
+                        + `${xname(obj)}.`);
+        } else {
+            await You_cant('do that.');
+        }
+        return false;
+    }
+    if (game.youmonst?.data && cantwield(game.youmonst.data)) {
+        await You_cant(`hold ${more_than_1 ? 'them' : 'it'} strongly enough.`);
+        return false;
+    }
+    if (game.u.uarms && bimanual(obj)) {
+        await You(`cannot ${verb} a two-handed `
+                  + `${obj.oclass === OCLASSES.WEAPON_CLASS ? 'weapon' : 'tool'} `
+                  + 'while wearing a shield.');
+        return false;
+    }
+
+    if (game.u.uquiver === obj)
+        setuqwep(null);
+    if (game.u.uswapwep === obj) {
+        await doswapweapon();
+        if (game.u.uswapwep === obj)
+            return false;
+    } else {
+        const oldwep = game.u.uwep;
+        if (will_weld(obj)) {
+            await ready_weapon(obj);
+        } else {
+            await You(`now wield ${doname(obj)}.`);
+            setuwep(obj);
+        }
+        if (game.flags.pushweapon && oldwep && game.u.uwep !== oldwep)
+            setuswapwep(oldwep);
+    }
+    if (game.u.uwep && game.u.uwep !== obj)
+        return false;
+    if (game.u.twoweap)
+        untwoweapon();
+    if (obj.oclass !== OCLASSES.WEAPON_CLASS)
+        game.unweapon = true;
+    return true;
 }
 
 // src/wield.c:834 set_twoweap() — flip u.twoweap, flag the status line if

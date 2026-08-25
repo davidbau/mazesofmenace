@@ -1,16 +1,19 @@
-// polyself.js — the hero's polymorphed form.
+// polyself.js: the hero's polymorphed form.
 // C ref: src/polyself.c
 //
 // poly_gender() arrived because could_seduce() needs it, and mbodypart()
-// because every "your <hand>" message goes through it. Polymorph itself is not
-// ported: the hero is never polymorphed yet, so both read the ordinary
-// starting form and give the ordinary answer.
+// because every "your <hand>" message goes through it. Controlled wizard
+// polymorph and return to the hero's race are also implemented here.
 
 import { game } from './gstate.js';
-import { is_neuter, humanoid, slithy, attacktype } from './mondata.js';
+import { is_neuter, humanoid, slithy, attacktype, name_to_monplus,
+         strongmonst, sliparm, nohands } from './mondata.js';
 import { mons, PMNAMES, MONSYMS, ATTKS } from './monst_data.js';
 import { NO_PART, ARM, FINGER, FINGERTIP, FOOT, HAND, HANDED,
-         HEAD, LEG, TOE, HAIR, EYE, NOSE } from './const.js';
+         HEAD, LEG, TOE, HAIR, EYE, NOSE, A_STR, A_WIS, A_CON,
+         ECMD_OK, ECMD_TIME, Upolyd } from './const.js';
+import { rn2, rn1, d, rnd } from './rng.js';
+import { OCLASSES } from './objects_data.js';
 
 /* src/polyself.c:1975 — the per-shape body-part tables, in C's order:
    ARM, EYE, FACE, FINGER, FINGERTIP, FOOT, HAND, HANDED, HEAD, LEG,
@@ -205,4 +208,246 @@ export function poly_gender() {
     if (is_neuter(data) || !humanoid(data))
         return 2;
     return game.flags?.female ? 1 : 0;
+}
+
+const clone_attr = (attr) => attr ? { ...attr, a: [...attr.a] } : attr;
+const indefinite = (name) => `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
+
+// src/polyself.c:332 newman() and :200 polyman(), the controlled return to
+// the hero's race. This rebuilds level, attributes, HP and energy before
+// restoring the saved human state.
+async function newman() {
+    const u = game.u;
+    const oldlvl = u.ulevel;
+    let newlvl = oldlvl + rn1(5, -2);
+    const MAXULEV = 30;
+
+    if (newlvl < 1 || newlvl > 127) {
+        (game.unported ||= new Set()).add('newman:unsuccessful_polymorph');
+        return 0;
+    }
+    newlvl = Math.min(newlvl, MAXULEV);
+    if (newlvl < oldlvl)
+        u.ulevelmax -= oldlvl - newlvl;
+    if (u.ulevelmax < newlvl)
+        u.ulevelmax = newlvl;
+    u.ulevel = newlvl;
+
+    if (!rn2(10)) {
+        game.flags.female = !game.flags.female;
+        u.mfemale = !u.mfemale;
+    }
+
+    const { adjabil, redist_attr, encumber_msg } = await import('./attrib.js');
+    await adjabil(oldlvl, newlvl);
+    const { rndexp, newhp, newpw, setuhpmax } = await import('./exper.js');
+    u.uexp = rndexp(false);
+    redist_attr();
+
+    const { rounddiv } = await import('./hack.js');
+    let hpmax = u.uhpmax;
+    for (let i = 0; i < oldlvl; i++)
+        hpmax -= u.uhpinc?.[i] || 0;
+    hpmax = rounddiv(hpmax * rn1(4, 8), 10);
+    for (let i = 0; i < newlvl; i++) {
+        u.ulevel = i;
+        hpmax += newhp();
+    }
+    u.ulevel = newlvl;
+    if (hpmax < u.ulevel)
+        hpmax = u.ulevel;
+    u.uhp = rounddiv(u.uhp * hpmax, u.uhpmax);
+    setuhpmax(hpmax, true);
+
+    let enmax = u.uenmax;
+    for (let i = 0; i < oldlvl; i++)
+        enmax -= u.ueninc?.[i] || 0;
+    enmax = rounddiv(enmax * rn1(4, 8), 10);
+    for (let i = 0; i < newlvl; i++) {
+        u.ulevel = i;
+        enmax += newpw();
+    }
+    u.ulevel = newlvl;
+    if (enmax < u.ulevel)
+        enmax = u.ulevel;
+    u.uen = rounddiv(u.uen * enmax, Math.max(u.uenmax, 1));
+    u.uenmax = enmax;
+
+    u.uhunger = rn1(500, 500);
+    const { newuhs } = await import('./eat.js');
+    await newuhs(false);
+
+    u.acurr = clone_attr(u.macurr);
+    u.amax = clone_attr(u.mamax);
+    u.umonnum = u.umonster;
+    game.flags.female = !!u.mfemale;
+    game.youmonst.data = mons[u.umonster];
+    game.youmonst.mnum = u.umonster;
+    u.mh = u.mhmax = 0;
+    u.mtimedone = 0;
+    u.uundetected = 0;
+
+    const { find_ac } = await import('./do_wear.js');
+    find_ac();
+    const { newsym } = await import('./display.js');
+    newsym(u.ux, u.uy);
+    game.vision_full_recalc = 1;
+    (game.disp ||= {}).botl = true;
+
+    const form = game.flags.female
+        ? (game.urace.individual?.f || game.urace.noun)
+        : (game.urace.individual?.m || game.urace.noun);
+    const { pline } = await import('./display.js');
+    await pline(`You feel like a new ${form}!`);
+    await encumber_msg();
+    return 1;
+}
+
+// src/polyself.c:735 polymon(): install a monster form. The shared state,
+// hit-dice, armor-fit and wielded-object paths are live for every form; rare
+// form-specific effects remain recorded at their trigger.
+export async function polymon(mntmp) {
+    const u = game.u;
+    const mdat = mons[mntmp];
+    if (!mdat)
+        return 0;
+
+    const { exercise, encumber_msg } = await import('./attrib.js');
+    exercise(A_CON, false);
+    exercise(A_WIS, true);
+
+    if (!Upolyd(u)) {
+        u.macurr = clone_attr(u.acurr);
+        u.mamax = clone_attr(u.amax);
+        u.mfemale = !!game.flags.female;
+    } else {
+        u.acurr = clone_attr(u.macurr);
+        u.amax = clone_attr(u.mamax);
+        game.flags.female = !!u.mfemale;
+    }
+
+    const fixed_male = !!(mdat.mflags2 & 0x00010000);
+    const fixed_female = !!(mdat.mflags2 & 0x00020000);
+    if (fixed_male && game.flags.female)
+        game.flags.female = false;
+    else if (fixed_female && !game.flags.female)
+        game.flags.female = true;
+    else if (!fixed_male && !fixed_female && !is_neuter(mdat) && !rn2(10))
+        game.flags.female = !game.flags.female;
+
+    const monname = mdat.pmnames[game.flags.female ? 1 : 0]
+                    || mdat.pmnames[2] || mdat.pmnames[0];
+    const { You } = await import('./pline.js');
+    await You(`${u.umonnum !== mntmp ? 'turn into' : 'feel like'} `
+              + `${indefinite(u.umonnum !== mntmp ? monname : `new ${monname}`)}!`);
+
+    u.mtimedone = rn1(500, 500);
+    /* src/mondata.c:11 set_mon_data() prorates banked movement when the
+       new form is slower. A faster form keeps the old amount rather than
+       receiving free movement. */
+    const oldspeed = game.youmonst.data?.mmove || 0;
+    if (u.umovement && mdat.mmove < oldspeed && oldspeed > 0)
+        u.umovement = Math.trunc(u.umovement * mdat.mmove / oldspeed);
+    u.umonnum = mntmp;
+    game.youmonst.data = mdat;
+    game.youmonst.mnum = mntmp;
+
+    if (strongmonst(mdat)) {
+        u.acurr.a[A_STR] = 118;
+        u.amax.a[A_STR] = 118;
+    } else {
+        u.amax.a[A_STR] = Math.min(u.amax.a[A_STR], 18);
+        u.acurr.a[A_STR] = Math.min(u.acurr.a[A_STR], u.amax.a[A_STR]);
+    }
+
+    const mlvl = mdat.mlevel;
+    if (mdat.mlet === MONSYMS.S_DRAGON
+        && mntmp >= PMNAMES.PM_GRAY_DRAGON) {
+        u.mhmax = 4 * mlvl + d(mlvl, 4);
+    } else {
+        u.mhmax = mlvl ? d(mlvl, 8) : rnd(4);
+    }
+    u.mh = u.mhmax;
+    if (u.ulevel < mlvl)
+        u.mtimedone = Math.trunc(u.mtimedone * u.ulevel / mlvl);
+
+    if (sliparm(mdat) && u.uarmc) {
+        const cloak = u.uarmc;
+        const { cloak_simple_name } = await import('./do_wear.js');
+        await You(`shrink out of your ${cloak_simple_name(cloak)}!`);
+        const { setnotworn } = await import('./worn.js');
+        setnotworn(cloak);
+        const { dropx } = await import('./do.js');
+        await dropx(cloak);
+    }
+
+    if (nohands(mdat) && u.uwep) {
+        const weapon = u.uwep;
+        const what = weapon.oclass === OCLASSES.WEAPON_CLASS
+            ? 'weapon' : 'tool';
+        await You(`find you must drop your ${what}!`);
+        const { uwepgone } = await import('./wield.js');
+        uwepgone();
+        const { dropx } = await import('./do.js');
+        await dropx(weapon);
+    }
+
+    const { find_ac } = await import('./do_wear.js');
+    find_ac();
+    const { newsym } = await import('./display.js');
+    newsym(u.ux, u.uy);
+    game.vision_full_recalc = 1;
+    (game.disp ||= {}).botl = true;
+    await encumber_msg();
+
+    if (game.flags.verbose && attacktype(mdat, ATTKS.AT_BREA)) {
+        const { pline } = await import('./display.js');
+        await pline('Use the command #monster to use your breath weapon.');
+    }
+    return 1;
+}
+
+// src/wizcmds.c:568 wiz_polyself() and polyself(POLY_CONTROLLED).
+export async function wiz_polyself() {
+    const { getlin } = await import('./cmd.js');
+    const name = await getlin('Become what kind of monster? [type the name]');
+    if (name == null || name === '\x1b') {
+        const { pline } = await import('./display.js');
+        await pline('Never mind.');
+        return ECMD_OK;
+    }
+    const mntmp = name_to_monplus(name.trim(), null, { v: -1 });
+    if (mntmp < 0) {
+        const { pline } = await import('./display.js');
+        await pline("I've never heard of such monsters.");
+        return ECMD_OK;
+    }
+    if (mntmp === game.urace.mnum)
+        await newman();
+    else
+        await polymon(mntmp);
+    return ECMD_OK;
+}
+
+// src/cmd.c:890 domonability(): use the current form's active ability.
+export async function domonability() {
+    const mdat = game.youmonst.data;
+    const { You } = await import('./pline.js');
+    if (attacktype(mdat, ATTKS.AT_BREA)) {
+        if (game.u.uen < 15) {
+            await You("don't have enough energy to breathe!");
+            return ECMD_OK;
+        }
+        game.u.uen -= 15;
+        (game.disp ||= {}).botl = true;
+        const { getdir } = await import('./cmd.js');
+        return await getdir(null) ? ECMD_TIME : ECMD_OK;
+    }
+    if (Upolyd(game.u)) {
+        const { pline } = await import('./display.js');
+        await pline('Any special ability you may have is purely reflexive.');
+    } else {
+        await You("don't have a special ability in your normal form!");
+    }
+    return ECMD_OK;
 }

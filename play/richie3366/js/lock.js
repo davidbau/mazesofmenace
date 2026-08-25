@@ -4,18 +4,18 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, newsym } from './display.js';
+import { flush_screen, pline, newsym, canseemon, pline_mon } from './display.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
-import { stop_occupation } from './hack.js';
+import { stop_occupation, in_rooms } from './hack.js';
 import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
-    DOOR, SDOOR, Is_rogue_level,
+    DOOR, SDOOR, Is_rogue_level, SHOPBASE,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
     AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
     M_AP_FURNITURE, M_AP_OBJECT, FINGER,
 } from './const.js';
-import { rnl, rn2 } from './rng.js';
+import { rnl, rn2, rnd } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
 import { verysmall, nohands, passes_walls, G_UNIQ } from './monsters.js';
 import {
@@ -30,7 +30,7 @@ import { doname, xname, cxname, singular } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
 import { PM_ROGUE, PM_WIZARD } from './generated/monsters_data.js';
-import { m_at } from './mon.js';
+import { m_at, wake_nearto } from './mon.js';
 import { getdir_cmdassist } from './dothrow.js';
 import { b_trapped, t_at } from './trap.js';
 
@@ -116,6 +116,8 @@ const WAN_LOCKING = objectNames.indexOf('WAN_LOCKING');
 const SPE_WIZARD_LOCK = objectNames.indexOf('SPE_WIZARD_LOCK');
 const WAN_OPENING = objectNames.indexOf('WAN_OPENING');
 const SPE_KNOCK = objectNames.indexOf('SPE_KNOCK');
+const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
+const SPE_FORCE_BOLT = objectNames.indexOf('SPE_FORCE_BOLT');
 const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
 const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
 
@@ -507,13 +509,61 @@ export async function doopen_indir(x, y) {
     return true;
 }
 
+/** C youprop.h Deaf */
+function Deaf() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+}
+
+/** C youprop.h Unaware — multi < 0 && (unconscious || fainted). */
+function Unaware() {
+    if ((game.multi | 0) >= 0) return false;
+    const u = game.u || {};
+    return !!(u.usleep || u.Unaware);
+}
+
+/** C hacklib.c dist2 — squared distance. */
+function dist2_lock(x0, y0, x1, y1) {
+    const dx = (x0 | 0) - (x1 | 0);
+    const dy = (y0 | 0) - (y1 | 0);
+    return dx * dx + dy * dy;
+}
+
 /**
  * C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred.
  */
 async function You_hear(line) {
-    const u = game.u || {};
-    if (u.Deaf || game.flags?.acoustics === false) return;
+    if (Deaf() || game.flags?.acoustics === false) return;
     await pline(`You hear ${line}`);
+}
+
+/**
+ * C monmove.c mb_trapped :54–74 — monster on a trapped door that
+ * just exploded. doorlock :1215–1218 calls this so wake_nearto
+ * lives here (loudness stays 0 in doorlock). Named: mondied /
+ * lifesave; mon_learns_traps(TRAPPED_DOOR).
+ */
+async function mb_trapped(mtmp, canseeit) {
+    if (game.flags?.verbose !== false) {
+        if (canseeit && !Unaware()) {
+            await pline_mon(mtmp, 'KABOOM!!  You see a door explode.');
+        } else if (!Deaf()) {
+            const far = dist2_lock(
+                mtmp.mx, mtmp.my, game.u?.ux | 0, game.u?.uy | 0,
+            ) > 7 * 7;
+            await You_hear(`a ${far ? 'distant' : 'nearby'} explosion.`);
+        }
+    }
+    await wake_nearto(mtmp.mx | 0, mtmp.my | 0, 7 * 7);
+    mtmp.mstun = 1;
+    mtmp.mhp -= rnd(15);
+    if ((mtmp.mhp | 0) < 1) {
+        mtmp.mhp = 0;
+        mtmp.mx = 0;
+        mtmp.my = 0;
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -845,7 +895,7 @@ function Is_box(obj) {
  * C ref: lock.c boxlock — wand/spell lock/unlock on a box.
  * Callers: zap.c bhito WAN_OPENING/WAN_LOCKING/SPE_KNOCK/
  * SPE_WIZARD_LOCK (D-1467); zap.c boxlock_invent (D-1434 /
- * D-0981). Named: bhito poly-arm reset_pick; Soundeffect.
+ * D-0981); zap.c bhito poly-arm (D-1483). Named: Soundeffect.
  * @returns {Promise<boolean>} true if something happened
  */
 export async function boxlock(obj, otmp) {
@@ -897,19 +947,22 @@ export async function boxlock_invent(obj) {
 /**
  * C lock.c doorlock :1103–1272 — wand/spell on a door or secret door.
  * Returns true if something happened.
- * Branch envelope (D-1462 + D-1475): WAN_OPENING/SPE_KNOCK SDOOR
- * appear + locked unlock; WAN_LOCKING/SPE_WIZARD_LOCK SDOOR no-op,
- * Rogue hide, obstructed, trap-in-doorway, lock-shut (`:1135–1192`).
+ * Branch envelope (D-1462 + D-1475 + D-1482): WAN_OPENING/SPE_KNOCK
+ * SDOOR appear + locked unlock; WAN_LOCKING/SPE_WIZARD_LOCK SDOOR
+ * no-op, Rogue hide, obstructed, trap-in-doorway, lock-shut
+ * (`:1135–1192`); WAN_STRIKING/SPE_FORCE_BOLT SDOOR appear then
+ * continue, trapped explode / D_BROKEN crash (`:1201–1253`),
+ * loudness wake_nearto + shop add_damage(0) (`:1260–1265`).
  * picking_at → stop_occupation + reset_pick (`:1267–1271`; SDOOR
- * OPENING/KNOCK and Rogue LOCKING early return skip this). Named:
- * WAN_STRIKING/SPE_FORCE_BOLT trapped explode / D_BROKEN crash;
- * loudness wake_nearto + shop add_damage; muse.c mbhit doorlock.
+ * OPENING/KNOCK and Rogue LOCKING early return skip this). mbhit
+ * doorlock is D-1484. Named: mondied / mon_learns_traps in mb_trapped;
  * Soundeffect. obstructed Some_Monnam / worm-tail / map_invisible.
  */
 export async function doorlock(otmp, x, y) {
     const door = game.level?.at?.(x, y);
     if (!door || !otmp) return false;
     let res = true;
+    let loudness = 0;
     let msg = null;
     const otyp = otmp.otyp | 0;
     const dustcloud = 'A cloud of dust';
@@ -920,20 +973,21 @@ export async function doorlock(otmp, x, y) {
         switch (otyp) {
         case WAN_OPENING:
         case SPE_KNOCK:
+        case WAN_STRIKING:
+        case SPE_FORCE_BOLT:
             door.typ = DOOR;
             door.doormask = D_CLOSED | ((door.doormask | 0) & D_TRAPPED);
             newsym(x, y);
             if (cansee(x, y)) {
                 await pline('A door appears in the wall!');
             }
-            /* C :1124–1125 — OPENING/KNOCK return; striking continues. */
-            return true;
+            /* C :1124–1126 — OPENING/KNOCK return; striking continues. */
+            if (otyp === WAN_OPENING || otyp === SPE_KNOCK) return true;
+            break;
         case WAN_LOCKING:
         case SPE_WIZARD_LOCK:
-            /* C :1127–1130 — LOCKING on SDOOR is a no-op. */
-            return false;
         default:
-            /* WAN_STRIKING / SPE_FORCE_BOLT named — C appear then continue. */
+            /* C :1127–1130 — LOCKING/default on SDOOR is a no-op. */
             return false;
         }
     }
@@ -1005,15 +1059,74 @@ export async function doorlock(otmp, x, y) {
             res = false;
         }
         break;
+    case WAN_STRIKING:
+    case SPE_FORCE_BOLT:
+        /* C lock.c doorlock :1201–1253 (D-1482). */
+        if ((door.doormask | 0) & (D_LOCKED | D_CLOSED)) {
+            let sawit;
+            let seeit;
+            if ((door.doormask | 0) & D_TRAPPED) {
+                const mtmp = m_at(x, y);
+                sawit = mtmp ? canseemon(mtmp) : cansee(x, y);
+                door.doormask = D_NODOOR;
+                recalc_block_point(x, y); /* C unblock_point */
+                newsym(x, y);
+                seeit = mtmp ? canseemon(mtmp) : cansee(x, y);
+                if (mtmp) {
+                    await mb_trapped(mtmp, sawit || seeit);
+                } else {
+                    /* for mtmp, mb_trapped() does its own wake_nearto() */
+                    loudness = 40;
+                    if (game.flags?.verbose !== false) {
+                        if ((sawit || seeit) && !Unaware()) {
+                            await pline('KABOOM!!  You see a door explode.');
+                        } else if (!Deaf()) {
+                            const far = dist2_lock(
+                                x, y, game.u?.ux | 0, game.u?.uy | 0,
+                            ) > 7 * 7;
+                            await You_hear(
+                                `a ${far ? 'distant' : 'nearby'} explosion.`,
+                            );
+                        }
+                    }
+                }
+                break;
+            }
+            sawit = cansee(x, y);
+            door.doormask = D_BROKEN;
+            recalc_block_point(x, y);
+            seeit = cansee(x, y);
+            newsym(x, y);
+            if (game.flags?.verbose !== false) {
+                if ((sawit || seeit) && !Unaware()) {
+                    await pline('The door crashes open!');
+                } else if (!Deaf()) {
+                    await You_hear('a crashing sound.');
+                }
+            }
+            /* force vision recalc before printing more messages */
+            if (game.vision_full_recalc) vision_recalc(0);
+            loudness = 20;
+        } else {
+            res = false;
+        }
+        break;
     default:
-        /* WAN_STRIKING / SPE_FORCE_BOLT named — C :1201–1253. */
+        /* C :1254–1256 impossible — unknown otyp. */
         res = false;
         break;
     }
     if (msg && cansee(x, y)) {
         await pline(msg);
     }
-    /* loudness named (OPENING/KNOCK/LOCKING never set it). */
+    if (loudness > 0) {
+        /* C :1260–1265 — door was destroyed. */
+        await wake_nearto(x, y, loudness);
+        if (in_rooms(x, y, SHOPBASE)) {
+            const { add_damage } = await import('./shk.js');
+            add_damage(x, y, 0);
+        }
+    }
     if (res && picking_at(x, y)) {
         await stop_occupation();
         reset_pick();

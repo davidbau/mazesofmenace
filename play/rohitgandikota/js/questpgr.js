@@ -25,6 +25,7 @@ import { rank_of } from './botl.js';
 import { an, An, makeplural } from './objnam.js';
 import { s_suffix } from './hacklib.js';
 import { mons } from './monst_data.js';
+import { artifact_names } from './artilist_data.js';
 import { A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE, A_ORIGINAL,
          MIN_QUEST_LEVEL, M2_PNAME } from './const.js';
 import {
@@ -118,9 +119,16 @@ function convert_arg(c) {
     case 'l': str = ldrname(); break;
     case 'i': str = intermed(); break;
     case 'O': case 'o':
-        /* the(artiname(urole.questarti)) — the artifact table is not ported */
-        note_unported('convert_arg %o');
-        str = '';
+        str = artifact_names[urole.questarti] || '';
+        if (/^The /i.test(str))
+            str = 'the ' + str.slice(4);
+        else
+            str = 'the ' + str;
+        if (c === 'O') {
+            const of = str.toLowerCase().indexOf(' of ');
+            if (of >= 0)
+                str = str.slice(0, of);
+        }
         break;
     case 'n': str = neminame(); break;
     case 'g': str = guardname(); break;
@@ -301,8 +309,7 @@ export async function com_pager_core(section, msgid, showerror) {
         output = 2;
 
     if (output === 0 || output === 1) {
-        /* deliver_by_pline() — one pline per line */
-        note_unported(`com_pager pline ${section}/${msgid}`);
+        await deliver_by_pline(text);
     } else {
         await deliver_by_window(text, (output === 3) ? NHW_MENU : NHW_TEXT);
     }

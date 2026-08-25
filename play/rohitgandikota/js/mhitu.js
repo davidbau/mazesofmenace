@@ -47,7 +47,7 @@ import { mhitm_ad_phys, mhitm_ad_elec, mhitm_ad_drst,
          mhitm_knockback } from './uhitm.js';
 import { t_at } from './mon.js';
 import { touch_petrifies } from './dog.js';
-import { find_offensive } from './muse.js';
+import { find_offensive, use_offensive } from './muse.js';
 import { steal } from './steal.js';
 
 function note_unported_mhitu(what) {
@@ -475,7 +475,9 @@ export async function mattacku(mtmp) {
 
     /* Unlike defensive stuff, don't let them use item _and_ attack. */
     if (find_offensive(mtmp)) {
-        note_unported_mhitu('mattacku:use_offensive');
+        const offended = await use_offensive(mtmp);
+        if (offended)
+            return offended === 1 ? 1 : 0;
     }
 
     game.skipdrin = false; /* [see mattackm(mhitm.c)] */
@@ -861,13 +863,12 @@ export async function mdamageu(mtmp, n) {
         if (game.u.uhp > game.u.uhpmax)
             game.u.uhp = game.u.uhpmax;
         if (game.u.uhp < 1) {
-            /* When this hit follows another message on the same top line,
-               both that joined line and the death line keep the status HP
-               painted by the earlier message. A lone fatal hit is repainted
-               to zero immediately. */
-            if ((game._pending_message || '').includes('  ')) {
+            const pending = game._pending_message || '';
+            if (game.u.uhp === -1 && pending) {
                 game._deferred_status_hp_until_more = Math.max(shownHp | 0, 0);
-                game._deferred_status_hp_more_count = 2;
+                game._deferred_status_hp_more_count = game.u.uprops?.LIFESAVED
+                    || pending.includes('  Boing!  ')
+                    ? 1 : 2;
             }
             const { done_in_by, DIED } = await import('./end.js');
             await done_in_by(mtmp, DIED);

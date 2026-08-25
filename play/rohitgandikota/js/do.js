@@ -20,13 +20,14 @@ import { pline, newsym } from './display.js';
 import { You, You_cant, Your } from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp } from './hack.js';
-import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, VIBRATING_SQUARE, A_DEX, BOTH_SIDES, KILLED_BY } from './const.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, VIBRATING_SQUARE, A_DEX, BOTH_SIDES, KILLED_BY, FACE } from './const.js';
 import { t_at, m_at, is_pool, is_lava } from './mon.js';
 import { is_pick } from './mon.js';
 import { cansee } from './vision.js';
 import { OCLASSES } from './objects_data.js';
 import { rn2, rnd } from './rng.js';
 import { can_reach_floor } from './pickup.js';
+import { body_part } from './polyself.js';
 
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
    A dynamic import() here hits the same partially-initialised module the
@@ -933,7 +934,7 @@ export function canletgo(obj, word) {
 // src/do.c:2325 cmd_safety_prevention() — refuse a no-op command next to a
 // spottable hostile (flags.safe_wait defaults On).
 export async function cmd_safety_prevention(ucverb, cmddesc, act) {
-    if ((game.flags?.safe_wait ?? true) && !game.iflags_menu_requested
+    if ((game.flags?.safe_wait ?? true) && !game.iflags?.menu_requested
         && !(game.multi ?? 0)) {
         const { monster_nearby } = await import('./hack.js');
         /* iflags.cmdassist defaults On, so the hint suffix always prints */
@@ -955,6 +956,44 @@ export async function donull() {
                                     'Are you waiting to get hit?'))
         return ECMD_OK;
     return ECMD_TIME; /* Do nothing, but let other things happen */
+}
+
+// src/do.c:2361 wipeoff() and :2390 dowipe(): wipe cream-pie goop from
+// the hero's face as a multi-turn occupation.
+async function wipeoff() {
+    const u = game.u;
+    u.ucreamed = Math.max(0, (u.ucreamed || 0)
+                             - Math.min(u.ucreamed || 0, 4));
+    const intr = (u.intrinsic ||= {});
+    const blinded = intr.HBlinded || 0;
+    intr.HBlinded = Math.max(0, blinded - Math.min(blinded, 4));
+
+    if (!intr.HBlinded) {
+        await pline("You've got the glop off.");
+        u.ucreamed = 0;
+        if (u.ublind && !u.ublindf) {
+            u.ublind = 0;
+            game.vision_full_recalc = 1;
+            (game.disp ||= {}).botl = true;
+            await You('can see again.');
+        }
+        return 0;
+    }
+    if (!u.ucreamed) {
+        await Your(`${body_part(FACE)} feels clean now.`);
+        return 0;
+    }
+    return 1;
+}
+
+export async function dowipe() {
+    if (game.u.ucreamed) {
+        const { set_occupation } = await import('./allmain.js');
+        set_occupation(wipeoff, `wiping off your ${body_part(FACE)}`, 0);
+        return ECMD_TIME;
+    }
+    await Your(`${body_part(FACE)} is already clean.`);
+    return ECMD_TIME;
 }
 
 

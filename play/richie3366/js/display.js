@@ -58,6 +58,9 @@ import {
     WARNCOUNT,
     def_warnsyms,
     TELEPAT,
+    HALLUC,
+    HALLUC_RES,
+    WARN_OF_MON,
     BOLT_LIM,
     Upolyd,
     MALE,
@@ -278,6 +281,41 @@ function hero_Blind_telepat() {
 }
 function hero_Unblind_telepat() {
     return !!hero_ETelepat();
+}
+
+/**
+ * C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance.
+ * Timeout only; sticky u.Hallucination is not sufficient (D-1493).
+ */
+export function Hallucination() {
+    const u = game.u || {};
+    const h = (u.HHallucination | 0) || (u.uprops?.[HALLUC]?.intrinsic | 0);
+    if (!h) return false;
+    const resist = !!(
+        (u.Halluc_resistance | 0)
+        || (u.HHalluc_resistance | 0)
+        || (u.EHalluc_resistance | 0)
+        || (u.uprops?.[HALLUC_RES]?.intrinsic | 0)
+        || (u.uprops?.[HALLUC_RES]?.extrinsic | 0)
+    );
+    return !resist;
+}
+
+/**
+ * C ref: youprop.h Warn_of_mon — HWarn_of_mon || EWarn_of_mon.
+ */
+export function Warn_of_mon() {
+    const u = game.u || {};
+    const p = u.uprops?.[WARN_OF_MON];
+    return !!((u.HWarn_of_mon | 0) || (u.EWarn_of_mon | 0)
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
+}
+
+// artifact.js imports display.js; Sting_effects registers here at load.
+let _Sting_effects = null;
+/** Late-bind artifact.c Sting_effects (avoid display↔artifact ESM cycle). */
+export function set_sting_effects(fn) {
+    _Sting_effects = fn;
 }
 
 /**
@@ -2828,18 +2866,32 @@ export function swallowed(first = 0) {
  * C ref: display.c see_monsters — refresh every live mon cell (+ hero).
  * Clears stale Warning float glyphs when mon_warning no longer applies
  * (e.g. after teleds moves the hero out of range).
- * Named omissions: worm see_wsegs; Warn_of_mon / Sting_effects;
- * defer_see_monsters; MON_STILL_ARRIVING skip.
+ * Warn_of_mon counts warntype.obj & mflags2 then Sting_effects (D-1493).
+ * Named omissions: worm see_wsegs; MON_STILL_ARRIVING skip;
+ * MATCH_WARN_OF_MON overlay.
  */
 export function see_monsters() {
     if (game.defer_see_monsters) return;
     const u = game.u;
     if (u?.usteed) u.usteed.meverseen = 1;
     if (u?.ustuck) u.ustuck.meverseen = 1;
+    let new_warn_obj_cnt = 0;
+    const warn_obj = (game.context?.warntype?.obj | 0) >>> 0;
+    const warn_of_mon = Warn_of_mon();
     for (const mon of game.fmon || []) {
         if (!mon || (mon.mhp != null && mon.mhp <= 0)) continue;
         if (!mon.mx) continue;
         newsym(mon.mx, mon.my);
+        // C: if (mon->wormno) see_wsegs(mon) — named omit
+        if (warn_of_mon
+            && (warn_obj & (mon.data?.mflags2 | 0)) !== 0) {
+            new_warn_obj_cnt++;
+        }
+    }
+    // C: Sting_effects then gw.warn_obj_cnt = new (reads old count)
+    if (new_warn_obj_cnt !== (game.warn_obj_cnt | 0)) {
+        if (_Sting_effects) _Sting_effects(new_warn_obj_cnt);
+        game.warn_obj_cnt = new_warn_obj_cnt;
     }
     if (!u?.usteed && u?.ux) newsym(u.ux, u.uy);
 }

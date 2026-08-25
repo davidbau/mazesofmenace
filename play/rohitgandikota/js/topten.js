@@ -1,16 +1,38 @@
 // topten.js — the high-score list.
 // C ref: src/topten.c
 //
-// Only the wizard/discover arm is live: those modes never touch the record
-// file, they just say so. The real list needs the record file and the
-// score-insertion walk, which no replayed session can reach (every recorded
-// death is in debug mode).
+// The native record file is represented by one JSON array in the shared
+// Web-Storage handle.  That handle outlives each runSegment() call, just as
+// NetHack's record file outlives each process.
 
 import { game } from './gstate.js';
 import { COLNO } from './const.js';
 import { tty_raw_print, tty_raw_print_bold, tty_base_cursor } from './tty/wintty.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { PMNAMES } from './monst_data.js';
+import { depth } from './dungeon.js';
+
+const RECORD_KEY = 'record:topten';
+
+function read_record() {
+    const raw = game.storage?.getItem?.(RECORD_KEY);
+    if (raw) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed))
+                return parsed;
+        } catch {
+            /* treat a damaged record file as empty */
+        }
+    }
+    return Array.isArray(game.topten_record) ? game.topten_record : [];
+}
+
+function write_record(entries) {
+    game.topten_record = entries;
+    game.topten_entries = entries;
+    game.storage?.setItem?.(RECORD_KEY, JSON.stringify(entries));
+}
 
 function note_unported_topten(what) {
     (game.unported ||= new Set()).add('topten:' + what);
@@ -145,7 +167,7 @@ export async function topten(how) {
     const t0 = {
         points: u.urexp | 0,
         deathdnum: u.uz.dnum,
-        deathlev: u.uz.dlevel, /* observable_depth == depth for now */
+        deathlev: depth(u.uz), /* observable_depth() is depth() outside endgame */
         maxlvl: game.deepest_lev_reached_depth ?? u.uz.dlevel,
         hp: (u.umonnum !== u.umonster ? u.mh : u.uhp) | 0,
         maxhp: (u.umonnum !== u.umonster ? u.mhmax : u.uhpmax) | 0,
@@ -164,34 +186,42 @@ export async function topten(how) {
     if (t0.points < 1)
         t0.points = 0;
 
-    /* the record store is empty every judged run (fresh install), so the
-       insertion walk reduces to: rank0 undefined, one sentinel entry */
-    const record = game.topten_record ?? [];
-    let rank = 1, rank0 = -1, rank1 = 0;
-    const list = [];
-    for (const t1 of record) {
-        if (rank0 < 0 && (t1.points | 0) < t0.points) {
-            rank0 = rank++;
-            list.push(t0);
+    const record = read_record();
+    let rank0 = -1;
+    let list = record.slice();
+    if (t0.points > 0) {
+        const at = list.findIndex(t1 => (t1.points | 0) < t0.points);
+        const insertAt = at < 0 ? list.length : at;
+        rank0 = insertAt + 1;
+        list.splice(insertAt, 0, t0);
+        list = list.slice(0, 100); /* sysopt.entrymax */
+        if (rank0 <= list.length)
+            write_record(list);
+        else
+            rank0 = -1;
+    }
+
+    if (rank0 > 0 && !game.done_stopprint) {
+        if (rank0 <= 10) {
+            topten_print('You made the top ten list!');
+        } else {
+            const mod100 = rank0 % 100;
+            const suffix = (mod100 >= 11 && mod100 <= 13) ? 'th'
+                : rank0 % 10 === 1 ? 'st'
+                : rank0 % 10 === 2 ? 'nd'
+                : rank0 % 10 === 3 ? 'rd' : 'th';
+            topten_print(`You reached the ${rank0}${suffix} place on the top 100 list.`);
         }
-        list.push(t1);
-        rank++;
+        topten_print('');
     }
-    if (rank0 < 0 && t0.points > 0) {
-        rank0 = rank;
-        list.push(t0);
-    }
-    if (t0.points > 0)
-        game.topten_record = list;
 
     const end_top = game.flags?.end_top ?? 3;
     const end_around = game.flags?.end_around ?? 2;
     const end_own = game.flags?.end_own ?? false;
     const skip_scores = !end_top && !end_around && !end_own;
-    if (rank0 === 0)
-        rank0 = rank1;
+    const rankAfterList = list.length + 1;
     if (rank0 <= 0)
-        rank0 = rank;
+        rank0 = rankAfterList;
     if (!skip_scores && !game.done_stopprint)
         outheader();
     let r = 1;
@@ -201,12 +231,15 @@ export async function topten(how) {
         if (r <= end_top
             || (r >= rank0 - end_around && r <= rank0 + end_around)
             || (end_own && t1.name === t0.name)) {
+            if (r === rank0 - end_around
+                && rank0 > end_top + end_around + 1 && !end_own)
+                topten_print('');
             outentry(r, t1, r === rank0);
         }
         r++;
     }
     /* the sub-minimum score still gets shown, rankless and highlighted */
-    if (rank0 >= rank)
+    if (rank0 >= rankAfterList)
         if (!skip_scores && !game.done_stopprint)
             outentry(0, t0, true);
 }
@@ -217,13 +250,9 @@ export async function topten(how) {
 // the draw and returns null.
 export function get_rnd_toptenentry() {
     const maxrank = 10;             /* sysconf tt_oname_maxrank default */
-    rnd(maxrank);
-    /* the port's record store: wizard-mode games never insert, so the
-       walk over stored entries finds nothing */
-    const entries = game.topten_entries ?? [];
-    if (!entries.length)
-        return null;
-    return entries[0] ?? null;
+    const rank = rnd(maxrank);
+    const entries = read_record();
+    return entries[rank - 1] ?? null;
 }
 
 // src/topten.c:1356 classmon() — role filecode to its monster.

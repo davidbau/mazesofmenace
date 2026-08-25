@@ -95,7 +95,13 @@ export async function update_topl(bp) {
     const out = wrap_topline(bp.slice(0, TBUFSZ - 1), CO);
 
     game._pending_message = out;
-    await redotoplin(out);
+    /* "You die" is urgent and lifts an earlier ESC suppression. */
+    if (!notdied) {
+        game._win_stop = false;
+        skip = false;
+    }
+    if (!skip)
+        await redotoplin(out);
 }
 
 // win/tty/topl.c:229 addtopl() — append to the line already being shown.

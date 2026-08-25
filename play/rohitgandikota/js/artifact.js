@@ -16,7 +16,8 @@ import { is_covetous, is_mplayer } from './mondata.js';
 import { rn2 } from './rng.js';
 import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM,
-         ONAME_KNOW_ARTI } from './const.js';
+         ONAME_KNOW_ARTI, ECMD_TIME, ECMD_CANCEL, GETOBJ_PROMPT,
+         nothing_happens } from './const.js';
 
 /* include/artilist.h — artilist[i].otyp, resolved from the generated
    ONAMES-key table. Index 0 is the dummy (STRANGE_OBJECT == 0). */
@@ -384,4 +385,41 @@ export function retouch_object(obj, loseit) {
     if (obj.owornmask || loseit)
         note_unported_art('retouch_object:drop');
     return 0;
+}
+
+// src/artifact.c:1727 doinvoke() and its invoke_ok() getobj callback.
+export async function doinvoke() {
+    /* artifact.js is below invent.js through mon.js in the module graph, so
+       load getobj here rather than adding another static cycle. */
+    const { getobj, GETOBJ_EXCLUDE, GETOBJ_SUGGEST } =
+        await import('./invent.js');
+    const invoke_ok = (obj) => {
+        if (!obj)
+            return GETOBJ_EXCLUDE;
+        if (obj.oartifact || game.objects[obj.otyp]?.oc_unique
+            || (obj.otyp === ONAMES.FAKE_AMULET_OF_YENDOR && !obj.known)
+            || obj.otyp === ONAMES.CRYSTAL_BALL)
+            return GETOBJ_SUGGEST;
+        return GETOBJ_EXCLUDE;
+    };
+
+    const obj = await getobj('invoke', invoke_ok, GETOBJ_PROMPT);
+    if (!obj)
+        return ECMD_CANCEL;
+    if (!retouch_object(obj, false))
+        return ECMD_TIME;
+
+    const oart = get_artifact(obj);
+    if (!obj.oartifact || !oart.inv_prop) {
+        if (obj.otyp === ONAMES.CRYSTAL_BALL)
+            note_unported_art('arti_invoke:crystal_ball');
+        else {
+            const { pline } = await import('./display.js');
+            await pline(nothing_happens);
+        }
+        return ECMD_TIME;
+    }
+
+    note_unported_art('arti_invoke:special_power');
+    return ECMD_TIME;
 }

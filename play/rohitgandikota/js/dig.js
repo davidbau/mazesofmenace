@@ -1,25 +1,26 @@
 // dig.js — digging.
 // C ref: src/dig.c
 //
-// Only monster tunneling (mdig_tunnel) and its draft messages are ported so
-// far; the hero's dig occupation and zap_dig record when reached.
+// Monster tunneling, draft messages, and lateral wand or spell digging are
+// ported. The hero's pick-axe occupation and vertical digging remain partial.
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { newsym, canseemon, pline } from './display.js';
-import { You_feel, You_hear } from './pline.js';
-import { unblock_point, recalc_block_point } from './vision.js';
+import { You_feel, You_hear, pline_The } from './pline.js';
+import { cansee, unblock_point, recalc_block_point } from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { mksobj_at } from './mkobj.js';
 import { sobj_at, obj_extract_self } from './invent.js';
 import { ONAMES } from './objects_data.js';
 import { ACURR, exercise } from './attrib.js';
-import { sgn } from './hacklib.js';
+import { isok, sgn } from './hacklib.js';
+import { in_rooms, in_town, may_dig } from './hack.js';
 import { Hallucination } from './youprop.js';
 import { IS_OBSTRUCTED, IS_TREE, IS_WALL, IS_STWALL, SDOOR, SCORR, CORR,
          ROOM, DOOR, D_NODOOR, D_BROKEN, D_TRAPPED, D_LOCKED, D_CLOSED,
          W_NONDIGGABLE, SHOPBASE, A_STR, A_DEX, A_CON, A_CHA, A_INT,
-         A_WIS } from './const.js';
+         A_WIS, STONE, Is_earthlevel } from './const.js';
 
 function note_unported_dig(what) {
     (game.unported ||= new Set()).add(what);
@@ -67,6 +68,123 @@ export async function draft_message(unexpected) {
             await You_feel(`like ${draft_reaction[dridx]}.`);
         }
     }
+}
+
+// src/dig.c:1548 zap_dig() -- a lateral digging beam opens doors, walls,
+// trees, and rock until its randomized depth is spent.
+export async function zap_dig() {
+    const u = game.u;
+
+    if (u.uswallow) {
+        note_unported_dig('zap_dig:swallowed');
+        return;
+    }
+    if (u.dz) {
+        note_unported_dig('zap_dig:vertical');
+        return;
+    }
+
+    let shopdoor = false, shopwall = false;
+    const maze_dig = !!game.level.flags?.is_maze_lev
+        && !Is_earthlevel(u.uz);
+    let zx = u.ux + u.dx, zy = u.uy + u.dy;
+    let digdepth = rn1(18, 8);
+
+    if (u.utrap)
+        note_unported_dig('zap_dig:pit');
+
+    while (--digdepth >= 0) {
+        if (!isok(zx, zy))
+            break;
+        const room = game.level.at(zx, zy);
+
+        if (closed_door(zx, zy) || room.typ === SDOOR) {
+            if (in_rooms(zx, zy, SHOPBASE))
+                shopdoor = true;
+            if (room.typ === SDOOR)
+                room.typ = DOOR;
+            else if (cansee(zx, zy))
+                await pline_The('door is razed!');
+            note_unported_dig('zap_dig:watch_dig');
+            room.doormask = D_NODOOR;
+            recalc_block_point(zx, zy);
+            digdepth -= 2;
+            if (maze_dig) {
+                newsym(zx, zy);
+                break;
+            }
+        } else if (maze_dig) {
+            if (IS_WALL(room.typ)) {
+                if (!(room.wall_info & W_NONDIGGABLE)) {
+                    if (in_rooms(zx, zy, SHOPBASE))
+                        shopwall = true;
+                    room.typ = ROOM;
+                    room.flags = 0;
+                    unblock_point(zx, zy);
+                } else if (!u.ublind) {
+                    await pline_The('wall glows then fades.');
+                }
+                newsym(zx, zy);
+                break;
+            } else if (IS_TREE(room.typ)) {
+                if (!(room.wall_info & W_NONDIGGABLE)) {
+                    room.typ = ROOM;
+                    room.flags = 0;
+                    unblock_point(zx, zy);
+                } else if (!u.ublind) {
+                    await pline_The('tree shudders but is unharmed.');
+                }
+                newsym(zx, zy);
+                break;
+            } else if (room.typ === STONE || room.typ === SCORR) {
+                if (!(room.wall_info & W_NONDIGGABLE)) {
+                    room.typ = CORR;
+                    room.flags = 0;
+                    unblock_point(zx, zy);
+                } else if (!u.ublind) {
+                    await pline_The('rock glows then fades.');
+                }
+                newsym(zx, zy);
+                break;
+            }
+        } else if (IS_OBSTRUCTED(room.typ)) {
+            if (!may_dig(zx, zy)) {
+                newsym(zx, zy);
+                break;
+            }
+            if (IS_WALL(room.typ) || room.typ === SDOOR) {
+                if (in_rooms(zx, zy, SHOPBASE))
+                    shopwall = true;
+                note_unported_dig('zap_dig:watch_dig');
+                if (game.level.flags?.is_cavernous_lev
+                    && !in_town(zx, zy)) {
+                    room.typ = CORR;
+                    room.flags = 0;
+                } else {
+                    room.typ = DOOR;
+                    room.doormask = D_NODOOR;
+                }
+                digdepth -= 2;
+            } else if (IS_TREE(room.typ)) {
+                room.typ = ROOM;
+                room.flags = 0;
+                digdepth -= 2;
+            } else {
+                room.typ = CORR;
+                room.flags = 0;
+                digdepth--;
+            }
+            unblock_point(zx, zy);
+        }
+        /* tmp_at() restores the preceding beam square with newsym() as the
+           beam advances. Keep the final map visible without the animation. */
+        newsym(zx, zy);
+        zx += u.dx;
+        zy += u.dy;
+    }
+
+    if (shopdoor || shopwall)
+        note_unported_dig('zap_dig:pay_for_damage');
 }
 
 // src/dig.c:1414 mdig_tunnel() — a tunneling monster eats through the door,

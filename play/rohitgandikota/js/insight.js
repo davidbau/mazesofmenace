@@ -15,8 +15,10 @@
 
 import { game } from './gstate.js';
 import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK,
-         P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE } from './const.js';
-import { makeplural } from './objnam.js';
+         P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
+         ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE, STRAT_WAITMASK,
+         MSLOW, MFAST, A_NONE } from './const.js';
+import { makeplural, minimal_xname } from './objnam.js';
 import { weapon_descr, weapon_type, skill_name, skill_level_name, P_SKILL, can_advance } from './weapon.js';
 import { empty_handed, is_ammo } from './wield.js';
 import { magic_negation } from './mhitu.js';
@@ -37,11 +39,45 @@ import { type_is_pname } from './mondata.js';
 import { inv_weight, near_capacity } from './attrib.js';
 import { ONAMES } from './objects_data.js';
 import { pline } from './display.js';
-import { Fast, Very_fast, from_what } from './attrib.js';
+import { x_monnam } from './do_name.js';
+import { find_mac } from './worn.js';
+import { Fast, Very_fast, from_what as innate_source } from './attrib.js';
 import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Shock_resistance, Poison_resistance, Stealth, Searching,
          Warning, Teleport_control, See_invisible,
          Infravision, Deaf } from './youprop.js';
+
+const EXTRINSIC_KEYS = {
+    HFire_resistance: 'FIRE_RES',
+    HCold_resistance: 'COLD_RES',
+    HSleep_resistance: 'SLEEP_RES',
+    HShock_resistance: 'SHOCK_RES',
+    HPoison_resistance: 'POISON_RES',
+    HSee_invisible: 'SEE_INVIS',
+    HWarning: 'WARNING',
+    HSearching: 'SEARCHING',
+    HInfravision: 'INFRAVISION',
+    HStealth: 'STEALTH',
+    HTeleport_control: 'TELEPORT_CONTROL',
+    HFast: 'FAST',
+};
+
+// src/attrib.c:905 from_what(), equipment arm. The flat extrinsic value is a
+// worn-slot mask, so it identifies the inventory object conveying the property.
+function from_what(abilKey) {
+    const innate = innate_source(abilKey);
+    if (innate || !game.wizard)
+        return innate;
+
+    const mask = game.u.uprops?.[EXTRINSIC_KEYS[abilKey]] | 0;
+    const obj = mask && (game.invent || []).find(
+        (candidate) => ((candidate.owornmask | 0) & mask) !== 0);
+    if (!obj)
+        return '';
+
+    const name = minimal_xname(obj).replace(/\bpair of /i, '');
+    return ` because of your ${name}`;
+}
 
 // include/attrib.h
 const A_STR = 0, A_INT = 1, A_WIS = 2, A_DEX = 3, A_CON = 4, A_CHA = 5;
@@ -490,7 +526,9 @@ function status_enlightenment() {
 }
 
 function wearing_any_armor() {
-    return (game.invent || []).some(o => o.owornmask);
+    const u = game.u;
+    return !!(u.uarm || u.uarmu || u.uarmc || u.uarms
+              || u.uarmg || u.uarmf || u.uarmh);
 }
 
 // src/insight.c:200 enlightenment() — returns the lines for the caller to put
@@ -740,7 +778,54 @@ export function piousness(showneg, suffix) {
     return buf;
 }
 
-// src/insight.c:3402 ustatusline() — "Status of <name> (<piousness>): ...".
+// src/insight.c:3275 mstatusline() gives stethoscope and probing feedback.
+export async function mstatusline(mtmp) {
+    const mdat = game.mons[mtmp.mnum];
+    let info = '';
+
+    if (mtmp.mtame)
+        info += ', tame';
+    else if (mtmp.mpeaceful)
+        info += ', peaceful';
+    if (mtmp.meating) info += ', eating';
+    if (mtmp.mcan) info += ', cancelled';
+    if (mtmp.mconf) info += ', confused';
+    if (mtmp.mblinded || mtmp.mcansee === 0) info += ', blind';
+    if (mtmp.mstun) info += ', stunned';
+    if (mtmp.msleeping)
+        info += ', asleep';
+    else if (mtmp.mfrozen || (mtmp.mcanmove ?? 1) === 0)
+        info += ", can't move";
+    else if (((mtmp.mstrategy | 0) & STRAT_WAITMASK) !== 0)
+        info += ', meditating';
+    if (mtmp.mflee) info += ', scared';
+    if (mtmp.mtrapped) info += ', trapped';
+    if (mtmp.mspeed)
+        info += mtmp.mspeed === MFAST ? ', fast'
+              : mtmp.mspeed === MSLOW ? ', slow' : ', [? speed]';
+    if (mtmp.minvis) info += ', invisible';
+    if (mtmp === game.u.ustuck)
+        info += game.u.uswallow ? ', engulfing you' : ', holding you';
+    if (mtmp === game.u.usteed) info += ', carrying you';
+    if (mtmp.mleashed) info += ', leashed';
+
+    let alignment = mtmp.ispriest
+        ? (mtmp.epri?.shralign ?? mtmp.mextra?.epri?.shralign ?? A_NONE)
+        : mtmp.isminion
+          ? (mtmp.emin?.min_align ?? mtmp.mextra?.emin?.min_align ?? A_NONE)
+          : mdat.maligntyp;
+    if (alignment !== A_NONE)
+        alignment = Math.sign(alignment);
+    const size = ['tiny', 'small', 'medium', 'large', 'huge', 'gigantic'][mdat.msize]
+                 ?? `unknown size (${mdat.msize})`;
+    const monname = x_monnam(mtmp, ARTICLE_YOUR, null,
+                             SUPPRESS_IT | SUPPRESS_INVISIBLE, false);
+    await pline(`Status of ${monname} (${align_str(alignment)}, ${size}):  `
+                + `Level ${mtmp.m_lev}  HP ${mtmp.mhp}(${mtmp.mhpmax})  `
+                + `AC ${find_mac(mtmp)}${info}.`);
+}
+
+// src/insight.c:3402 ustatusline() gives the hero's one-line status.
 //
 // The condition suffixes read state that is absent for most fresh heroes and
 // simply contribute nothing; the swallow/engulf and gas-region arms are

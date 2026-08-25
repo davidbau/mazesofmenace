@@ -17,7 +17,7 @@ import { M_AP_TYPE, NORMAL_SPEED } from './const.js';
 import { ATTKS } from './monst_data.js';
 import { resist_conflict } from './mondata.js';
 import { seemimic, set_ustuck } from './mon.js';
-import { newsym, canspotmon, pline } from './display.js';
+import { newsym, canspotmon, pline, map_invisible } from './display.js';
 import { mdistu, monnear, itsstuck } from './monmove.js';
 import { engulfing_u } from './const.js';
 import { Monnam, mon_nam_too } from './do_name.js';
@@ -107,15 +107,6 @@ export function pre_mm_attack(magr, mdef) {
         else if (showit)
             newsym(mdef.mx, mdef.my);
     }
-}
-
-// src/display.c:378 map_invisible() — remember an unseen monster as 'I'.
-//
-// Needs the glyph layer (GLYPH_INVISIBLE and show_glyph), which is not ported,
-// so it is recorded rather than guessed. Painting the wrong thing here would
-// put an 'I' on the map that C does not put there, or miss one it does.
-function map_invisible(x, y) {
-    (game.unported ||= new Set()).add('display:map_invisible');
 }
 
 // src/mhitm.c:76 missmm() — feedback for a monster-vs-monster attack that misses.

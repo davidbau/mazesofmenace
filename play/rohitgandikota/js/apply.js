@@ -2,21 +2,23 @@
 // C ref: src/apply.c
 
 import { game } from './gstate.js';
-import { ECMD_OK, ECMD_TIME } from './const.js';
+import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED, GETOBJ_NOFLAGS,
+         nothing_happens, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
+         M_AP_MONSTER, ARTICLE_A, SUPPRESS_IT,
+         SUPPRESS_INVISIBLE } from './const.js';
 import { getobj } from './invent.js';
-import { getdir, get_adjacent_loc } from './cmd.js';
+import { getdir, get_adjacent_loc, cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { pick_lock } from './lock.js';
-import { is_pick, is_axe } from './mon.js';
+import { is_pick, is_axe, delobj, m_at, seemimic } from './mon.js';
 import { is_pole } from './u_init.js';
 import { ECMD_FAIL } from './const.js';
 import { Hallucination, Deaf } from './youprop.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE } from './invent.js';
 import { OCLASSES } from './objects_data.js';
-import { ustatusline } from './insight.js';
+import { mstatusline, ustatusline } from './insight.js';
 import { You_cant, You_hear } from './pline.js';
-import { m_at } from './mon.js';
-import { rn2 } from './rng.js';
-import { isok, ECMD_CANCEL, ACCESSIBLE, IS_STWALL, IS_DOOR, D_ISOPEN } from './const.js';
+import { rn2, rnd } from './rng.js';
+import { isok, ACCESSIBLE, IS_STWALL, IS_DOOR, D_ISOPEN } from './const.js';
 import { walk_path } from './dothrow.js';
 import { closed_door } from './cmd.js';
 import { sobj_at } from './invent.js';
@@ -25,6 +27,14 @@ import { pline } from './display.js';
 import { You, There } from './pline.js';
 import { dist2 } from './hacklib.js';
 import { cansee } from './vision.js';
+import { wield_tool } from './wield.js';
+import { body_part } from './polyself.js';
+import { FACE } from './const.js';
+import { OBJ_NAME, xname, the, makeplural } from './objnam.js';
+import { pmname, x_monnam } from './do_name.js';
+import { defsyms } from './drawing_data.js';
+import { is_boots, is_gloves } from './obj.js';
+import { splitobj } from './mkobj.js';
 
 function note_unported_apply(what) {
     (game.unported ||= new Set()).add(what);
@@ -69,6 +79,67 @@ const APPLIED_CONTAINERS = [ONAMES.LARGE_BOX, ONAMES.CHEST, ONAMES.ICE_BOX,
 const is_graystone = (o) =>
     o.otyp === ONAMES.LUCKSTONE || o.otyp === ONAMES.LOADSTONE
     || o.otyp === ONAMES.FLINT || o.otyp === ONAMES.TOUCHSTONE;
+
+// src/write.c:61 write_ok() selects blank scrolls and spellbooks first.
+function write_ok(obj) {
+    if (!obj || (obj.oclass !== OCLASSES.SCROLL_CLASS
+                 && obj.oclass !== OCLASSES.SPBOOK_CLASS))
+        return GETOBJ_EXCLUDE;
+    if (obj.otyp === ONAMES.SCR_BLANK_PAPER
+        || obj.otyp === ONAMES.SPE_BLANK_PAPER)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_DOWNPLAY;
+}
+
+// src/apply.c:1772 rub_ok(): objects accepted by #rub.
+export function rub_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+    if (obj.otyp === ONAMES.OIL_LAMP || obj.otyp === ONAMES.MAGIC_LAMP
+        || obj.otyp === ONAMES.BRASS_LANTERN || is_graystone(obj)
+        || obj.otyp === ONAMES.LUMP_OF_ROYAL_JELLY)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
+// src/apply.c:1785 dorub(): the #rub command.
+export async function dorub() {
+    const obj = await getobj('rub', rub_ok, GETOBJ_NOFLAGS);
+    if (!obj)
+        return ECMD_CANCEL;
+
+    if (obj.oclass === OCLASSES.GEM_CLASS
+        || obj.oclass === OCLASSES.FOOD_CLASS) {
+        note_unported_apply(is_graystone(obj) ? 'dorub:use_stone'
+                                             : 'dorub:use_royal_jelly');
+        await pline("Sorry, I don't know how to use that.");
+        return ECMD_OK;
+    }
+    if (obj !== game.u.uwep) {
+        if (await wield_tool(obj, 'rub')) {
+            cmdq_add_ec(CQ_CANNED, dorub);
+            cmdq_add_key(CQ_CANNED, obj.invlet);
+            return ECMD_TIME;
+        }
+        return ECMD_OK;
+    }
+
+    if (obj.otyp === ONAMES.MAGIC_LAMP) {
+        if (obj.spe > 0 && !rn2(3)) {
+            note_unported_apply('dorub:djinni_from_bottle');
+        } else if (rn2(2)) {
+            await You(`${game.u.ublind ? 'smell' : 'see a puff of'} smoke.`);
+        } else {
+            await pline(nothing_happens);
+        }
+    } else if (obj.otyp === ONAMES.BRASS_LANTERN) {
+        await pline('Rubbing the electric lamp is not particularly rewarding.');
+        await pline('Anyway, nothing exciting happens.');
+    } else {
+        await pline(nothing_happens);
+    }
+    return ECMD_TIME;
+}
 
 export function apply_ok(obj) {
     if (!obj)
@@ -122,6 +193,42 @@ export function apply_ok(obj) {
     return GETOBJ_EXCLUDE_SELECTABLE;
 }
 
+// src/apply.c:3568 use_cream_pie(): apply a pie to the hero's face.
+async function use_cream_pie(obj) {
+    const wasblind = !!game.u.ublind;
+    const wascreamed = !!game.u.ucreamed;
+    const several = obj.quan > 1;
+    if (several)
+        obj = splitobj(obj, 1);
+    const pie_name = the(xname(obj));
+
+    if (Hallucination()) {
+        await You('give yourself a facial.');
+    } else {
+        await You(`immerse your ${body_part(FACE)} in `
+                  + `${several ? 'one of ' : ''}`
+                  + `${several ? makeplural(pie_name) : pie_name}.`);
+    }
+
+    const blindinc = rnd(25);
+    game.u.ucreamed = (game.u.ucreamed || 0) + blindinc;
+    const intr = (game.u.intrinsic ||= {});
+    intr.HBlinded = (intr.HBlinded || 0) + blindinc;
+    game.u.ublind = 1;
+    game.vision_full_recalc = 1;
+    (game.disp ||= {}).botl = true;
+    if (!game.u.ublind || (game.u.ublind && wasblind)) {
+        await pline(`There's ${wascreamed ? 'more ' : ''}sticky goop all over `
+                    + `your ${body_part(FACE)}.`);
+    } else {
+        await You_cant(`see through all the sticky goop on your `
+                       + `${body_part(FACE)}.`);
+    }
+
+    delobj(obj);
+    return ECMD_OK;
+}
+
 // src/apply.c:318 use_stethoscope() — apply a stethoscope.
 //
 // THE TIME RULE: the first use in a hero turn is free; the second in the
@@ -172,10 +279,37 @@ async function use_stethoscope(obj) {
     }
     const mtmp = m_at(rx, ry);
     if (mtmp) {
-        note_unported_apply('use_stethoscope:mstatusline');
+        if (mtmp.mundetected) {
+            note_unported_apply('use_stethoscope:hidden_monster');
+            mtmp.mundetected = 0;
+        } else if (mtmp.mappearance) {
+            let what = 'thing', use_plural = false;
+            switch (M_AP_TYPE(mtmp)) {
+            case M_AP_OBJECT: {
+                const otyp = mtmp.mappearance;
+                const fake = { otyp, oclass: game.objects[otyp]?.oc_class };
+                what = OBJ_NAME(game.objects[otyp]) || 'thing';
+                use_plural = is_boots(fake) || is_gloves(fake)
+                             || otyp === ONAMES.LENSES;
+                break;
+            }
+            case M_AP_MONSTER:
+                what = pmname(game.mons[mtmp.mappearance], mtmp.female ? 1 : 0);
+                break;
+            case M_AP_FURNITURE:
+                what = defsyms[mtmp.mappearance]?.explain || 'thing';
+                break;
+            }
+            seemimic(mtmp);
+            const mnm = x_monnam(mtmp, ARTICLE_A, null,
+                                 SUPPRESS_IT | SUPPRESS_INVISIBLE, false);
+            await pline(`${use_plural ? 'Those' : 'That'} ${what} `
+                        + `${use_plural ? 'are' : 'is'} really ${mnm}.`);
+        }
+        await mstatusline(mtmp);
         return res;
     }
-    note_unported_apply('use_stethoscope:location');
+    await You('hear nothing special.');
     return res;
 }
 
@@ -194,6 +328,19 @@ export async function doapply() {
 
     if (obj.otyp === ONAMES.STETHOSCOPE)
         return await use_stethoscope(obj);
+
+    if (obj.otyp === ONAMES.CREAM_PIE)
+        return await use_cream_pie(obj);
+
+    if (obj.otyp === ONAMES.MAGIC_MARKER) {
+        /* src/write.c dowrite(): selecting the paper is the entire observed
+           path when the player chooses an ineligible inventory letter. */
+        const paper = await getobj('write on', write_ok, GETOBJ_NOFLAGS);
+        if (!paper)
+            return ECMD_CANCEL;
+        note_unported_apply('dowrite:paper');
+        return ECMD_TIME;
+    }
 
     if (NEEDS_DIR.includes(obj.otyp)) {
         if (!await getdir(null))

@@ -205,6 +205,9 @@ const PM_MINOTAUR = monsterNames.indexOf('PM_MINOTAUR');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const TALLOW_CANDLE = objectNames.indexOf('TALLOW_CANDLE');
 const WAX_CANDLE = objectNames.indexOf('WAX_CANDLE');
+const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
+const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
+const WAN_MAGIC_MISSILE = objectNames.indexOf('WAN_MAGIC_MISSILE');
 const WAN_SECRET_DOOR_DETECTION =
     objectNames.indexOf('WAN_SECRET_DOOR_DETECTION');
 const APPLE = objectNames.indexOf('APPLE');
@@ -956,8 +959,7 @@ function migr_booty_item(otyp, gang) {
 /**
  * C ref: mkmaze.c stolen_booty — orctown loot onto migrating_objs and
  * fleeing orcs. Caller: fixup_special when mines && ransacked.
- * Named omit: minetn-1 loader (public-unhit until that proto exists);
- * dog.c mon_arrive MIGR_LEFTOVERS DF_ALL.
+ * Named omit: dog.c mon_arrive MIGR_LEFTOVERS DF_ALL. add_to_minv merge is D-1492.
  */
 export function stolen_booty() {
     const gang = rndorcname();
@@ -1355,15 +1357,14 @@ function reset_xystart_size() {
  * bigrm-4, bigrm-7, bigrm-8, bigrm-9, bigrm-12, Bar-strt, Bar-loca, Bar-fila,
  * Bar-filb, Arc-strt, Arc-loca, Arc-fila, Arc-filb, Arc-goal, soko1-1,
  * soko1-2, soko2-1, soko3-1, soko3-2, soko4-1, soko4-2, tower1, tower2,
- * tower3, fire, air, minend-1, minend-2, minetn-2, minetn-3, minetn-5,
- * medusa-1, medusa-3, oracle, castle, valley, sanctum, asmodeus, juiblex,
- * baalz, orcus, wizard1–3, Wiz-strt, Wiz-loca, Wiz-fila, Wiz-filb,
- * Pri-fila, Pri-filb, hellfill, minetn-2/3/4/5, Kni-goal.
+ * tower3, fire, air, minend-1, minend-2, minetn-1, minetn-2, minetn-3,
+ * minetn-5, medusa-1, medusa-3, oracle, castle, valley, sanctum, asmodeus,
+ * juiblex, baalz, orcus, wizard1–3, Wiz-strt, Wiz-loca, Wiz-fila, Wiz-filb,
+ * Pri-fila, Pri-filb, hellfill, minetn-1/2/3/4/5, Kni-goal.
  * Named omissions: other bigrm-N / soko2-2 / quest
  * protos (Bar-goal; Wiz-goal; Kni-strt/loca/fila/filb);
- * minetn-1/6/7; minend-3; medusa-2/4; water/astral; fakewiz;
- * create_maze makemaz("") fallback; hellfill rnd_hell_prefab;
- * stolen_booty (D-1363) waits on minetn-1 loader; dmonsfree.
+ * minetn-6/7; minend-3; medusa-2/4; water/astral; fakewiz;
+ * create_maze makemaz("") fallback; hellfill rnd_hell_prefab; dmonsfree.
  */
 async function makemaz(s) {
     const g = game;
@@ -1599,6 +1600,10 @@ function load_special_proto(protofile) {
     }
     if (protofile === 'minend-2') {
         load_minend_2();
+        return true;
+    }
+    if (protofile === 'minetn-1') {
+        load_minetn_1();
         return true;
     }
     if (protofile === 'minetn-2') {
@@ -7459,9 +7464,287 @@ function load_minend_2() {
 }
 
 /**
+ * C ref: dat/minetn-1.lua via load_special — Mines town "Orcish Town".
+ * mines init + centered map + iron bars + ransacked orc army.
+ * Named omissions: minetn-6/7; link_doors_rooms extras; ensure_way_out;
+ * map_cleanup; count_level_features; dog leftovers. add_to_minv merge is D-1492.
+ */
+function load_minetn_1() {
+    const g = game;
+    nhlib_shuffle_align();
+
+    // des.level_flags("mazelevel") before mines init (mkmap walled+join
+    // may clear is_maze_lev and set cavernous).
+    if (!g.level.flags) g.level.flags = {};
+    g.level.flags.is_maze_lev = true;
+
+    // des.level_init({ style="mines", fg=".", bg=" ", smoothed=true,
+    // joined=true, walled=true }) — filling defaults to fg; lit BOOL_RANDOM
+    splev_initlev({
+        init_style: LVLINIT_MINES,
+        fg: ROOM, bg: STONE, filling: ROOM,
+        lit: BOOL_RANDOM, smoothed: true, joined: true, walled: true,
+        icedpools: false,
+    });
+
+    const MINETN1_MAP = `
+.....................................
+.----------------F------------------.
+.|.................................|.
+.|.-------------......------------.|.
+.|.|...|...|...|......|..|...|...|.|.
+.F.|...|...|...|......|..|...|...|.|.
+.|.|...|...|...|......|..|...|...|.F.
+.|.|...|...|----......------------.|.
+.|.---------.......................|.
+.|.................................|.
+.|.---------.....--...--...........|.
+.|.|...|...|----.|.....|.---------.|.
+.|.|...|...|...|.|.....|.|..|....|.|.
+.|.|...|...|...|.|.....|.|..|....|.|.
+.|.|...|...|...|.|.....|.|..|....|.|.
+.|.-------------.-------.---------.|.
+.|.................................F.
+.-----------F------------F----------.
+.....................................
+`.replace(/^\n/, '');
+    const { xstart: mx, ystart: my } = splev_apply_centered_map(MINETN1_MAP);
+    // C lspo_map string form lit=FALSE → set_levltyp_lit clears mines-init
+    {
+        const sp = g.SpLev_Map;
+        if (sp) {
+            for (const key of sp) {
+                const comma = key.indexOf(',');
+                const x = Number(key.slice(0, comma));
+                const y = Number(key.slice(comma + 1));
+                const loc = g.level.at(x, y);
+                if (!loc) continue;
+                loc.lit = IS_LAVA(loc.typ) ? true : false;
+            }
+        }
+    }
+
+    // des.teleport_region region_islev=1; exclude map-relative
+    l_teleport_region({
+        region: [1, 1, 75, 19],
+        exclude: [1, 0, 35, 21],
+        region_islev: 1,
+    });
+    // des.region(selection.area(01,01,35,17), "lit") — grow + sel_set_lit
+    light_region(mx + 1, my + 1, mx + 35, my + 17, true);
+    // des.levregion stair-up / stair-down — region_islev=1; exclude map-rel
+    const pushLev = (rtype, region, exclude) => {
+        levregion_add({
+            inarea: {
+                x1: region[0] | 0, y1: region[1] | 0,
+                x2: region[2] | 0, y2: region[3] | 0,
+            },
+            delarea: {
+                x1: exclude[0] | 0, y1: exclude[1] | 0,
+                x2: exclude[2] | 0, y2: exclude[3] | 0,
+            },
+            in_islev: true,
+            del_islev: false,
+            rtype,
+            padding: 0,
+            rname: { str: null },
+        });
+    };
+    pushLev(LR_UPSTAIR, [1, 3, 21, 19], [0, 1, 36, 17]);
+    pushLev(LR_DOWNSTAIR, [57, 3, 75, 19], [0, 1, 36, 17]);
+
+    // des.feature fountain
+    for (const [rx, ry] of [[16, 9], [25, 9]]) {
+        const loc = g.level.at(mx + rx, my + ry);
+        if (loc && !IS_FURNITURE(loc.typ)) loc.typ = FOUNTAIN;
+    }
+
+    // des.altar noalign shrine — no TEMPLE room → skip priestini / shrine bit
+    {
+        const ax = mx + 20, ay = my + 13;
+        const loc = g.level.at(ax, ay);
+        if (loc) {
+            loc.typ = ALTAR;
+            loc.flags = AM_NONE;
+            loc.altarmask = AM_NONE;
+        }
+    }
+
+    const tnDoor = (rx, ry, mask) => {
+        const loc = g.level.at(mx + rx, my + ry);
+        if (!loc) return;
+        if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        loc.doormask = mask;
+        loc.flags = mask;
+    };
+    for (const [rx, ry] of [
+        [5, 8], [9, 8], [13, 7], [22, 5], [27, 7], [31, 7],
+        [5, 10], [9, 10], [15, 13], [25, 13], [31, 11],
+    ]) tnDoor(rx, ry, rnddoor());
+
+    // des.replace_terrain fromterrain="|" → VWALL
+    lspo_replace_terrain_region(7, 4, 11, 6, VWALL, ROOM, 18);
+    lspo_replace_terrain_region(25, 4, 29, 6, VWALL, ROOM, 18);
+    lspo_replace_terrain_region(7, 12, 11, 14, VWALL, ROOM, 18);
+    lspo_replace_terrain_region(28, 12, 28, 14, VWALL, ROOM, 33);
+
+    const place = [
+        [5, 4], [9, 5], [13, 4], [26, 4], [31, 5],
+        [30, 14], [5, 14], [10, 13], [26, 14], [27, 13],
+    ];
+    nhlib_shuffle(place);
+
+    const placeObj = (opts) => {
+        const otmp = l_create_object(opts);
+        if (otmp && (opts.quan | 0) > 0) {
+            otmp.quan = opts.quan | 0;
+            otmp.owt = weight(otmp);
+        }
+        return otmp;
+    };
+    placeObj({
+        id: CORPSE, rx: 20, ry: 12, montype: 'aligned cleric',
+    });
+    for (let i = 0; i < 5; i++) {
+        placeObj({
+            id: CORPSE, rx: place[i][0], ry: place[i][1],
+            montype: 'shopkeeper',
+        });
+    }
+    for (let i = 0; i < 4; i++) placeObj({ id: CORPSE, montype: 'watchman' });
+    placeObj({ id: CORPSE, montype: 'watch captain' });
+
+    // rubble: math.random(10,19) then percent(90) boulder + always rock
+    for (let i = 0, n = lua_random2(10, 19); i < n; i++) {
+        if (percent(90)) placeObj({ id: BOULDER });
+        placeObj({ id: ROCK });
+    }
+
+    placeObj({
+        id: WAX_CANDLE, rx: place[3][0], ry: place[3][1],
+        quan: lua_random2(1, 2),
+    });
+    placeObj({
+        id: WAX_CANDLE, rx: place[0][0], ry: place[0][1],
+        quan: lua_random2(2, 4),
+    });
+    placeObj({
+        id: WAX_CANDLE, rx: place[1][0], ry: place[1][1],
+        quan: lua_random2(1, 2),
+    });
+    placeObj({
+        id: TALLOW_CANDLE, rx: place[2][0], ry: place[2][1],
+        quan: lua_random2(1, 3),
+    });
+    placeObj({
+        id: TALLOW_CANDLE, rx: place[1][0], ry: place[1][1],
+        quan: lua_random2(1, 2),
+    });
+    placeObj({
+        id: TALLOW_CANDLE, rx: place[3][0], ry: place[3][1],
+        quan: lua_random2(1, 2),
+    });
+
+    placeObj({ id: OIL_LAMP, rx: place[1][0], ry: place[1][1] });
+    placeObj({
+        id: WAN_STRIKING, rx: place[0][0], ry: place[0][1],
+        buc: 'uncursed', spe: 0,
+    });
+    placeObj({
+        id: WAN_STRIKING, rx: place[2][0], ry: place[2][1],
+        buc: 'uncursed', spe: 0,
+    });
+    placeObj({
+        id: WAN_STRIKING, rx: place[3][0], ry: place[3][1],
+        buc: 'uncursed', spe: 0,
+    });
+    placeObj({
+        id: WAN_MAGIC_MISSILE, rx: place[3][0], ry: place[3][1],
+        buc: 'uncursed', spe: 0,
+    });
+    placeObj({
+        id: WAN_MAGIC_MISSILE, rx: place[4][0], ry: place[4][1],
+        buc: 'uncursed', spe: 0,
+    });
+
+    const placeHostile = (id, absPos, mLevAdj) => {
+        const { mndx, female } = find_montype_gender(id);
+        induced_align(80);
+        let pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
+        pm = splev_mines_maybe_clear_your_race(pm);
+        let pos;
+        if (absPos && absPos.x >= 0 && absPos.y >= 0) {
+            pos = { x: absPos.x, y: absPos.y };
+        } else if (pm) {
+            let loc = pm_to_humidity(pm);
+            pos = get_location_coord_random(loc | NO_LOC_WARN);
+            if (pos.x < 0) {
+                loc |= DRY;
+                pos = get_location_coord_random(loc);
+            }
+        } else {
+            pos = get_location_coord_random(DRY);
+        }
+        pos = splev_resolve_occupied(pos.x, pos.y, pm);
+        const mtmp = makemon(pm, pos.x, pos.y, 0);
+        if (!mtmp) return;
+        mtmp.female = female;
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        const adj = mLevAdj | 0;
+        if (adj) {
+            const nl = (mtmp.m_lev | 0) + adj;
+            mtmp.m_lev = nl > 49 ? 49 : nl < 0 ? 0 : nl;
+        }
+    };
+
+    // local inside = selection.floodfill(18,8) — map-relative seed
+    const inside = selection_new();
+    {
+        const fx = mx + 18, fy = my + 8;
+        const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
+        selection_floodfill(inside, fx, fy, false, matchTyp);
+    }
+    const near_temple = selection_and(
+        selection_fillrect(mx + 17, my + 8, mx + 23, my + 14),
+        inside,
+    );
+
+    for (let i = 0, n = lua_random2(5, 15); i < n; i++) {
+        // C: percent then table ctor rndcoord(1) then lspo find_montype
+        if (percent(50)) {
+            placeHostile('orc-captain', selection_rndcoord(inside, true));
+        } else if (percent(80)) {
+            placeHostile('Uruk-hai', selection_rndcoord(inside, true));
+        } else {
+            placeHostile('Mordor orc', selection_rndcoord(inside, true));
+        }
+    }
+    for (let i = 1, n = lua_random2(1, 6); i <= n; i++) {
+        const pos = selection_rndcoord(near_temple, false);
+        placeHostile('orc shaman', pos, i === 1 ? 3 : 0);
+    }
+    for (let i = 0, n = lua_random2(10, 19); i < n; i++) {
+        if (percent(90)) placeHostile('hill orc', null);
+        else placeHostile('goblin', null);
+    }
+
+    // des.wallify() then C load_special wallification → flip → fixup
+    {
+        const xsize = g.splev_xsize | 0;
+        const ysize = g.splev_ysize | 0;
+        wallify_map(mx - 1, my - 1, mx + xsize + 1, my + ysize + 1);
+    }
+    if (!g.level.flags?.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
+    fixup_special();
+}
+
+/**
  * C ref: dat/minetn-2.lua via load_special — Mines town "Town Square".
  * Nested des.room + create_subroom/create_door + shops/temple/watch.
- * Named omissions: minetn-1/6/7; link_doors_rooms extras; ensure_way_out.
+ * Named omissions: minetn-6/7; link_doors_rooms extras; ensure_way_out.
  */
 function load_minetn_2() {
     const g = game;
@@ -7562,7 +7845,7 @@ function load_minetn_2() {
 /**
  * C ref: dat/minetn-3.lua via load_special — Mines town "Alley Town".
  * Nested des.room town + chance shops + temple align[1] + watch.
- * Named omissions: minetn-1/6/7; link_doors_rooms extras; ensure_way_out.
+ * Named omissions: minetn-6/7; link_doors_rooms extras; ensure_way_out.
  */
 function load_minetn_3() {
     const g = game;
@@ -7693,7 +7976,7 @@ function load_minetn_3() {
 /**
  * C ref: dat/minetn-4.lua via load_special — Mines town "College Town".
  * Nested des.room town + book/candle/tool/food shops + temple align[1]
- * + watch. Named omissions: minetn-1/6/7; link_doors_rooms extras;
+ * + watch. Named omissions: minetn-6/7; link_doors_rooms extras;
  * ensure_way_out.
  */
 function load_minetn_4() {
@@ -7814,7 +8097,7 @@ function load_minetn_4() {
 /**
  * C ref: dat/minetn-5.lua via load_special — Mines town "Grotto Town".
  * Solidfill + centered map + percent terrain + shops/temple/watch.
- * Named omissions: minetn-1/6/7; link_doors_rooms extras; ensure_way_out;
+ * Named omissions: minetn-6/7; link_doors_rooms extras; ensure_way_out;
  * hellfill/asmodeus/baalz/orcus/juiblex/wizard1-3/fakewiz.
  */
 function load_minetn_5() {

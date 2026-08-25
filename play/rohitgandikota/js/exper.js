@@ -5,7 +5,7 @@ import { adjabil } from './attrib.js';
 import { game } from './gstate.js';
 import { aligns } from './role_data.js';
 import { PMNAMES, ATTKS as A, MFLAGS, MONSYMS } from './monst_data.js';
-import { rnd, rn1 } from './rng.js';
+import { rnd, rn1, rn2 } from './rng.js';
 import { ACURR } from './attrib.js';
 import { pline } from './display.js';
 import { A_CON, A_WIS, NORMAL_SPEED, NATTK } from './const.js';
@@ -159,6 +159,28 @@ export function newuexp(lev) {
     if (lev < 20)
         return 10000 * (1 << (lev - 10));
     return 10000000 * (lev - 19);
+}
+
+// src/exper.c:378 rndexp(): a random experience total within the hero's
+// current level. The factor loop keeps rn2's argument within a signed int.
+export function rndexp(gaining) {
+    const u = game.u;
+    const minexp = (u.ulevel === 1) ? 0 : newuexp(u.ulevel - 1);
+    const maxexp = newuexp(u.ulevel);
+    let diff = maxexp - minexp;
+    let factor = 1;
+    const LARGEST_INT = 0x7fffffff;
+    while (diff >= LARGEST_INT) {
+        diff = Math.trunc(diff / 2);
+        factor *= 2;
+    }
+    let result = minexp + factor * rn2(diff);
+    if (u.ulevel === MAXULEV && gaining) {
+        result += (u.uexp || 0) - minexp;
+        if (result < (u.uexp || 0))
+            result = u.uexp || 0;
+    }
+    return result;
 }
 
 // src/attrib.c setuhpmax() — set max HP, tracking the peak.

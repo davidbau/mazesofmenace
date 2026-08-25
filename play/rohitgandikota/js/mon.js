@@ -17,7 +17,7 @@ import { mdistu, mon_track_clear, m_everyturn_effect,
 
 import { game } from './gstate.js';
 import { worm_cross } from './worm.js';
-import { adjalign, change_luck } from './attrib.js';
+import { adjalign, change_luck, exercise } from './attrib.js';
 import { couldsee, cansee, does_block, unblock_point, vision_recalc } from './vision.js';
 import { finish_meating } from './dogmove.js';
 import { growl } from './sounds.js';
@@ -27,7 +27,7 @@ import { hot_pursuit } from './shk.js';
 import { is_metallic, is_mines_prize, is_soko_prize } from './obj.js';
 import { bad_rock, may_dig, may_passwall } from './hack.js';
 import { which_armor } from './worn.js';
-import { obj_resists } from './zap.js';
+import { obj_resists, destroy_items, resist } from './zap.js';
 import { mksobj_at, splitobj, mkobj, place_object, clear_splitobjs, mkgold, undead_to_corpse } from './mkobj.js';
 import { weight } from './invent.js';
 import { newsym, canseemon, canspotmon, pline,
@@ -35,14 +35,14 @@ import { newsym, canseemon, canspotmon, pline,
 import { rn1, rn2, rnd, rnl, d } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster, place_monster, goodpos } from './makemon.js';
-import { enexto_core, enexto } from './teleport.js';
+import { enexto_core, enexto, noteleport_level } from './teleport.js';
 import { GP_CHECKSCARY, STRAT_WAITFORU, BOLT_LIM, NC_SHOW_MSG, ismnum,
-         G_GENOD, A_NONE, ARTICLE_NONE, ARTICLE_THE,
+         G_GENOD, A_NONE, A_STR, ARTICLE_NONE, ARTICLE_THE,
          SUPPRESS_SADDLE } from './const.js';
 import { G_UNIQ } from './const.js';
 import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG,
          M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL,
-         XKILL_NOMSG, XKILL_NOCORPSE } from './const.js';
+         XKILL_NOMSG, XKILL_NOCORPSE, MON_EXPLODE } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS, MSOUND } from './monst_data.js';
 import { def_monsyms } from './drawing_data.js';
 
@@ -65,7 +65,7 @@ import { Is_waterlevel, Is_rogue_level, engulfing_u, In_endgame,
          Is_astralevel, has_emin, has_epri, has_eshk, RLOC_NOMSG,
          MON_OBLITERATE } from './const.js';
 import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
-    is_clinger, is_flyer, is_floater, mindless, dmgtype, attacktype, mon_resistancebits, humanoid } from './mondata.js';
+    is_clinger, is_flyer, is_floater, mindless, dmgtype, attacktype, mon_resistancebits, humanoid, is_undead, unsolid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { distant_name, doname } from './objnam.js';
 import { You, You_feel } from './pline.js';
@@ -915,11 +915,16 @@ export function mon_allowflags(mtmp) {
     const d = mtmp.data;
 
     const can_open = !(nohands(d) || verysmall(d));
-    /* monhaskey() needs monster inventory; iswiz and is_rider are enough
-       for anything the public corpus generates this early. */
-    const can_unlock = (mtmp.iswiz || is_rider(d));
+    const haskey = (mtmp.minvent || []).some((obj) =>
+        obj.otyp === ONAMES.CREDIT_CARD || obj.otyp === ONAMES.SKELETON_KEY
+        || obj.otyp === ONAMES.LOCK_PICK);
+    const can_unlock = (can_open && haskey) || mtmp.iswiz || is_rider(d);
     const doorbuster = is_giant(d);
-    const can_tunnel = tunnels(d);
+    let can_tunnel = tunnels(d) && !Is_rogue_level(game.u.uz);
+    if (can_tunnel && needspick(d)
+        && ((!mtmp.mpeaceful || game.u.uprops?.CONFLICT)
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8))
+        can_tunnel = false;
 
     if (mtmp.mtame)
         allowflags |= ALLOW_M | ALLOW_TRAPS | ALLOW_SANCT | ALLOW_SSM;
@@ -941,7 +946,19 @@ export function mon_allowflags(mtmp) {
     if (doorbuster) allowflags |= BUSTDOOR;
     if (can_open) allowflags |= OPENDOOR;
     if (can_unlock) allowflags |= UNLOCKDOOR;
-    if (passes_bars(d)) allowflags |= ALLOW_BARS;
+    if (passes_bars(d)
+        && (mtmp !== game.u.ustuck
+            || unsolid(game.youmonst.data) || verysmall(game.youmonst.data)))
+        allowflags |= ALLOW_BARS;
+    if ((d.mflags2 & MFLAGS.M2_MINION) || is_rider(d))
+        allowflags |= ALLOW_SANCT;
+    if (is_unicorn(d) && !noteleport_level(mtmp))
+        allowflags |= NOTONL;
+    if (is_human(d) || d.pmidx === PMNAMES.PM_MINOTAUR)
+        allowflags |= ALLOW_SSM;
+    if ((is_undead(d) && d.mlet !== MONSYMS.S_GHOST)
+        || is_vampshifter_mon(mtmp))
+        allowflags |= NOGARLIC;
 
     return allowflags;
 }
@@ -1455,7 +1472,7 @@ export async function xkilled(mtmp, xkill_flags) {
             }
         }
         /* corpse--none if hero was inside the monster */
-        if (corpse_chance(mtmp, null, false))
+        if (await corpse_chance(mtmp, null, false))
             make_corpse(mtmp, CORPSTAT_NONE);
     }
 
@@ -1818,9 +1835,62 @@ export function make_corpse(mtmp, corpseflags) {
 
 // src/mon.c:3181 corpse_chance() — does the kill leave a corpse at all?
 //
-// The AT_BOOM walk (gas spores) and the lich/Vlad crumble arm are recorded;
-// the ordinary tail is the draw: !rn2(2 + rare + verysmall).
-export function corpse_chance(mon, magr, was_swallowed) {
+// A visible, uncontained physical death explosion applies its effects in
+// map order: nearby monsters first, then the hero.  Elemental explosions and
+// swallowed explosions still remain outside this slice.
+async function mon_explodes(mon, mattk) {
+    const dam = mattk[2] ? d(mattk[2], mattk[3])
+              : mattk[3] ? d(game.mons[mon.mnum].mlevel + 1, mattk[3])
+                : 0;
+    const name = game.mons[mon.mnum].pmnames?.[2] || 'monster';
+    const possessive = name.endsWith('s') ? `${name}'` : `${name}'s`;
+    const blast = `${possessive} explosion`;
+    const x = mon.mx, y = mon.my;
+
+    /* tmp_at(DISP_END) restores every blast square before the messages and
+       damage are processed. */
+    for (let xx = x - 1; xx <= x + 1; xx++)
+        for (let yy = y - 1; yy <= y + 1; yy++)
+            if (isok(xx, yy))
+                newsym(xx, yy);
+
+    await pline('Boom!');
+
+    if (dam) {
+        for (let xx = x - 1; xx <= x + 1; xx++) {
+            for (let yy = y - 1; yy <= y + 1; yy++) {
+                if (!isok(xx, yy))
+                    continue;
+                const mtmp = m_at(xx, yy);
+                if (!mtmp || DEADMONSTER(mtmp))
+                    continue;
+                if (cansee(xx, yy))
+                    await pline(`${Monnam(mtmp)} is caught in the ${blast}!`);
+                const itemdmg = await destroy_items(mtmp, ATTKS.AD_PHYS, dam);
+                let mdam = dam;
+                if (resist(mtmp, MON_EXPLODE, 0, false))
+                    mdam = Math.trunc((dam + 1) / 2);
+                mtmp.mhp -= mdam + itemdmg;
+                if (DEADMONSTER(mtmp))
+                    await xkilled(mtmp, XKILL_GIVEMSG);
+                else
+                    await setmangry(mtmp, true);
+            }
+        }
+
+        if (Math.abs(game.u.ux - x) <= 1 && Math.abs(game.u.uy - y) <= 1) {
+            await You(`are caught in the ${blast}!`);
+            await destroy_items(game.youmonst, ATTKS.AD_PHYS, dam);
+            game.u.uhp -= dam;
+            (game.disp ||= {}).botl = true;
+            exercise(A_STR, false);
+        }
+    }
+}
+
+// src/mon.c:3181 corpse_chance() -- does the kill leave a corpse at all?
+// The ordinary tail is the draw: !rn2(2 + rare + verysmall).
+export async function corpse_chance(mon, magr, was_swallowed) {
     const A = ATTKS;
     const mdat = game.mons[mon.mnum];
 
@@ -1831,7 +1901,16 @@ export function corpse_chance(mon, magr, was_swallowed) {
 
     for (let i = 0; i < 6; i++) {
         if (mdat.mattk[i][0] === A.AT_BOOM) {
-            note_unported_mon('corpse_chance:AT_BOOM');
+            /* corpse_chance computes the contained-blast damage even when it
+               goes on to call mon_explodes(), which rolls the damage again. */
+            if (mdat.mattk[i][2])
+                d(mdat.mattk[i][2], mdat.mattk[i][3]);
+            else if (mdat.mattk[i][3])
+                d(mdat.mlevel + 1, mdat.mattk[i][3]);
+            if (was_swallowed && magr)
+                note_unported_mon('corpse_chance:swallowed_AT_BOOM');
+            else
+                await mon_explodes(mon, mdat.mattk[i]);
             return false;
         }
     }
@@ -1888,7 +1967,7 @@ export async function mondied(mdef) {
 
     await mondead(mdef);
 
-    if (corpse_chance(mdef, null, false)
+    if (await corpse_chance(mdef, null, false)
         && (ACCESSIBLE(game.level?.at(mx, my)?.typ) || is_pool(mx, my)))
         make_corpse(mdef, CORPSTAT_NONE);
 

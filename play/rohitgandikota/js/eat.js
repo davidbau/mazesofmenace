@@ -1,4 +1,4 @@
-import { exercise, near_capacity, adjalign } from './attrib.js';
+import { exercise, near_capacity, adjalign, poison_strdmg } from './attrib.js';
 import { A_CON, SLT_ENCUMBER, W_RINGL, W_RINGR } from './const.js';
 // eat.js — nutrition.
 // C ref: src/eat.c
@@ -15,7 +15,7 @@ import { carnivorous, herbivorous, metallivorous, acidic, poisonous,
 import { can_reach_floor } from './pickup.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { tty_yn_function } from './tty/topl.js';
-import { Unaware, Hallucination } from './youprop.js';
+import { Unaware, Hallucination, Poison_resistance } from './youprop.js';
 import { singular, xname, doname } from './objnam.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { You, You_cant } from './pline.js';
@@ -477,7 +477,14 @@ async function eatcorpse(otmp) {
         note_unported_eat('eatcorpse:acidic');
     } else if (poisonous(mdat) && rn2(5)) {
         tp++;
-        note_unported_eat('eatcorpse:poisonous');
+        await pline('Ecch - that must have been poisonous!');
+        if (!Poison_resistance()) {
+            await poison_strdmg(rnd(4), rnd(15),
+                                !glob ? 'poisonous corpse' : 'poisonous glob',
+                                KILLED_BY_AN);
+        } else {
+            await You('seem unaffected by the poison.');
+        }
     /* now any corpse left too long will make you mildly ill */
     } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
                && !game.u.uprops?.[SICK_RES]?.intrinsic) {

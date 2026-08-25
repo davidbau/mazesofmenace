@@ -10,8 +10,8 @@
 // the offensive slice at its head exactly as C does.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { sgn, dist2 } from './hacklib.js';
+import { rn2, rn1, rnd, d } from './rng.js';
+import { sgn, dist2, distmin } from './hacklib.js';
 import { ONAMES, MATERIALS } from './objects_data.js';
 import { ATTKS, PMNAMES } from './monst_data.js';
 import { is_animal, mindless, nohands, dmgtype, can_blow, amorphous,
@@ -25,13 +25,13 @@ import { noteleport_level } from './teleport.js';
 import { stairway_at } from './stairs.js';
 import { carrying, sobj_at } from './invent.js';
 import { m_at, t_at } from './mon.js';
-import { linedup_callback } from './mthrowu.js';
+import { linedup_callback, m_throw } from './mthrowu.js';
 import { Teleport_control, See_invisible } from './youprop.js';
 import { xytodir, dirtocoord } from './cmd.js';
 import { isok, W_ARMH, M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE,
          M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_ACID, TELEP_TRAP, N_DIRS,
-         Is_rogue_level, In_endgame, Is_earthlevel, W_ARMF, MFAST, NON_PM,
-         POLY_TRAP, u_at } from './const.js';
+         Is_rogue_level, In_endgame, Is_earthlevel, W_ARMF, MSLOW, MFAST, NON_PM,
+         POLY_TRAP, u_at, KILLED_BY_AN } from './const.js';
 import { Is_container, Has_contents, bimanual, is_plural } from './obj.js';
 import { MON_WEP } from './monst.js';
 import { canletgo } from './do.js';
@@ -199,68 +199,79 @@ export function find_offensive(mtmp) {
     /* this picks the last viable item rather than prioritizing choices */
     for (const obj of (mtmp.minvent || [])) {
         if (!reflection_skip) {
-            if (!nomore(MUSE_WAN_DEATH)
-                && obj.otyp === ONAMES.WAN_DEATH && obj.spe > 0
+            if (nomore(MUSE_WAN_DEATH))
+                continue;
+            if (obj.otyp === ONAMES.WAN_DEATH && obj.spe > 0
                 && !m_seenres(mtmp, M_SEEN_MAGR)) {
                 game.m.offensive = obj;
                 game.m.has_offense = MUSE_WAN_DEATH;
             }
-            if (!nomore(MUSE_WAN_SLEEP)
-                && obj.otyp === ONAMES.WAN_SLEEP && obj.spe > 0
+            if (nomore(MUSE_WAN_SLEEP))
+                continue;
+            if (obj.otyp === ONAMES.WAN_SLEEP && obj.spe > 0
                 && game.multi >= 0
                 && !m_seenres(mtmp, M_SEEN_SLEEP)) {
                 game.m.offensive = obj;
                 game.m.has_offense = MUSE_WAN_SLEEP;
             }
-            if (!nomore(MUSE_WAN_FIRE)
-                && obj.otyp === ONAMES.WAN_FIRE && obj.spe > 0
+            if (nomore(MUSE_WAN_FIRE))
+                continue;
+            if (obj.otyp === ONAMES.WAN_FIRE && obj.spe > 0
                 && !m_seenres(mtmp, M_SEEN_FIRE)) {
                 game.m.offensive = obj;
                 game.m.has_offense = MUSE_WAN_FIRE;
             }
-            if (!nomore(MUSE_FIRE_HORN)
-                && obj.otyp === ONAMES.FIRE_HORN && obj.spe > 0
+            if (nomore(MUSE_FIRE_HORN))
+                continue;
+            if (obj.otyp === ONAMES.FIRE_HORN && obj.spe > 0
                 && can_blow(mtmp)
                 && !m_seenres(mtmp, M_SEEN_FIRE)) {
                 game.m.offensive = obj;
                 game.m.has_offense = MUSE_FIRE_HORN;
             }
-            if (!nomore(MUSE_WAN_COLD)
-                && obj.otyp === ONAMES.WAN_COLD && obj.spe > 0
+            if (nomore(MUSE_WAN_COLD))
+                continue;
+            if (obj.otyp === ONAMES.WAN_COLD && obj.spe > 0
                 && !m_seenres(mtmp, M_SEEN_COLD)) {
                 game.m.offensive = obj;
                 game.m.has_offense = MUSE_WAN_COLD;
             }
-            if (!nomore(MUSE_FROST_HORN)
-                && obj.otyp === ONAMES.FROST_HORN && obj.spe > 0
+            if (nomore(MUSE_FROST_HORN))
+                continue;
+            if (obj.otyp === ONAMES.FROST_HORN && obj.spe > 0
                 && can_blow(mtmp)
                 && !m_seenres(mtmp, M_SEEN_COLD)) {
                 game.m.offensive = obj;
                 game.m.has_offense = MUSE_FROST_HORN;
             }
-            if (!nomore(MUSE_WAN_LIGHTNING)
-                && obj.otyp === ONAMES.WAN_LIGHTNING && obj.spe > 0
+            if (nomore(MUSE_WAN_LIGHTNING))
+                continue;
+            if (obj.otyp === ONAMES.WAN_LIGHTNING && obj.spe > 0
                 && !m_seenres(mtmp, M_SEEN_ELEC)) {
                 game.m.offensive = obj;
                 game.m.has_offense = MUSE_WAN_LIGHTNING;
             }
-            if (!nomore(MUSE_WAN_MAGIC_MISSILE)
-                && obj.otyp === ONAMES.WAN_MAGIC_MISSILE && obj.spe > 0
+            if (nomore(MUSE_WAN_MAGIC_MISSILE))
+                continue;
+            if (obj.otyp === ONAMES.WAN_MAGIC_MISSILE && obj.spe > 0
                 && !m_seenres(mtmp, M_SEEN_MAGR)) {
                 game.m.offensive = obj;
                 game.m.has_offense = MUSE_WAN_MAGIC_MISSILE;
             }
         }
-        if (!nomore(MUSE_WAN_UNDEAD_TURNING))
-            m_use_undead_turning(mtmp, obj);
-        if (!nomore(MUSE_WAN_STRIKING)
-            && obj.otyp === ONAMES.WAN_STRIKING && obj.spe > 0
+        if (nomore(MUSE_WAN_UNDEAD_TURNING))
+            continue;
+        m_use_undead_turning(mtmp, obj);
+        if (nomore(MUSE_WAN_STRIKING))
+            continue;
+        if (obj.otyp === ONAMES.WAN_STRIKING && obj.spe > 0
             && !m_seenres(mtmp, M_SEEN_MAGR)) {
             game.m.offensive = obj;
             game.m.has_offense = MUSE_WAN_STRIKING;
         }
-        if (!nomore(MUSE_WAN_TELEPORTATION)
-            && obj.otyp === ONAMES.WAN_TELEPORTATION && obj.spe > 0
+        if (nomore(MUSE_WAN_TELEPORTATION))
+            continue;
+        if (obj.otyp === ONAMES.WAN_TELEPORTATION && obj.spe > 0
             /* don't give controlled hero a free teleport */
             && !Teleport_control()
             /* same hack as MUSE_WAN_TELEPORTATION_SELF */
@@ -274,30 +285,35 @@ export function find_offensive(mtmp) {
             game.m.offensive = obj;
             game.m.has_offense = MUSE_WAN_TELEPORTATION;
         }
-        if (!nomore(MUSE_POT_PARALYSIS)
-            && obj.otyp === ONAMES.POT_PARALYSIS && game.multi >= 0) {
+        if (nomore(MUSE_POT_PARALYSIS))
+            continue;
+        if (obj.otyp === ONAMES.POT_PARALYSIS && game.multi >= 0) {
             game.m.offensive = obj;
             game.m.has_offense = MUSE_POT_PARALYSIS;
         }
-        if (!nomore(MUSE_POT_BLINDNESS)
-            && obj.otyp === ONAMES.POT_BLINDNESS
+        if (nomore(MUSE_POT_BLINDNESS))
+            continue;
+        if (obj.otyp === ONAMES.POT_BLINDNESS
             && !attacktype(mdat, ATTKS.AT_GAZE)) {
             game.m.offensive = obj;
             game.m.has_offense = MUSE_POT_BLINDNESS;
         }
-        if (!nomore(MUSE_POT_CONFUSION)
-            && obj.otyp === ONAMES.POT_CONFUSION) {
+        if (nomore(MUSE_POT_CONFUSION))
+            continue;
+        if (obj.otyp === ONAMES.POT_CONFUSION) {
             game.m.offensive = obj;
             game.m.has_offense = MUSE_POT_CONFUSION;
         }
-        if (!nomore(MUSE_POT_SLEEPING)
-            && obj.otyp === ONAMES.POT_SLEEPING
+        if (nomore(MUSE_POT_SLEEPING))
+            continue;
+        if (obj.otyp === ONAMES.POT_SLEEPING
             && !m_seenres(mtmp, M_SEEN_SLEEP)) {
             game.m.offensive = obj;
             game.m.has_offense = MUSE_POT_SLEEPING;
         }
-        if (!nomore(MUSE_POT_ACID)
-            && obj.otyp === ONAMES.POT_ACID
+        if (nomore(MUSE_POT_ACID))
+            continue;
+        if (obj.otyp === ONAMES.POT_ACID
             && !m_seenres(mtmp, M_SEEN_ACID)) {
             game.m.offensive = obj;
             game.m.has_offense = MUSE_POT_ACID;
@@ -306,8 +322,9 @@ export function find_offensive(mtmp) {
          * are in a 1 square radius are a subset of the locations that
          * are in wand or throwing range (in other words, always lined_up())
          */
-        if (!nomore(MUSE_SCR_EARTH)
-            && obj.otyp === ONAMES.SCR_EARTH
+        if (nomore(MUSE_SCR_EARTH))
+            continue;
+        if (obj.otyp === ONAMES.SCR_EARTH
             && (hard_helmet(mtmp_helmet) || mtmp.mconf
                 || amorphous(mdat) || passes_walls(mdat)
                 || noncorporeal(mdat) || unsolid(mdat)
@@ -319,8 +336,9 @@ export function find_offensive(mtmp) {
             game.m.offensive = obj;
             game.m.has_offense = MUSE_SCR_EARTH;
         }
-        if (!nomore(MUSE_CAMERA)
-            && obj.otyp === ONAMES.EXPENSIVE_CAMERA
+        if (nomore(MUSE_CAMERA))
+            continue;
+        if (obj.otyp === ONAMES.EXPENSIVE_CAMERA
             && ((!game.u.ublind && !resists_blnd(null))
                 || hates_light(game.mons[game.u.umonnum]))
             && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 2
@@ -330,6 +348,96 @@ export function find_offensive(mtmp) {
         }
     }
     return !!game.m.has_offense;
+}
+
+// src/muse.c:1824 use_offensive(), offensive potion arm. Potions bypass the
+// wand precheck and are thrown directly along the line selected above.
+export async function use_offensive(mtmp) {
+    const obj = game.m?.offensive || null;
+
+    if (!obj)
+        return 0;
+    switch (game.m?.has_offense || 0) {
+    case MUSE_WAN_STRIKING: {
+        const [{ canseemon, pline }, { couldsee }, { You_hear },
+               { Monnam }, { an, xname }, { unknow_object }, { makeknown },
+               { stop_occupation }, { nomul, losehp }, { pline_The }]
+            = await Promise.all([
+                import('./display.js'), import('./vision.js'),
+                import('./pline.js'), import('./do_name.js'),
+                import('./objnam.js'), import('./mkobj.js'),
+                import('./o_init.js'), import('./allmain.js'),
+                import('./hack.js'), import('./pline.js'),
+            ]);
+        const seen = canseemon(mtmp);
+
+        if (!seen) {
+            const range = couldsee(mtmp.mx, mtmp.my) ? 9 : 5;
+            const nearby = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy)
+                           <= range * range;
+            await You_hear(`a ${nearby ? 'nearby' : 'distant'} zap.`);
+            unknow_object(obj);
+        } else {
+            await pline(`${Monnam(mtmp)} zaps ${an(xname(obj))}!`);
+            await stop_occupation();
+        }
+        obj.spe--;
+
+        /* mbhit() always chooses its range before applying the wand at the
+           adjacent hero square. */
+        rn1(8, 6);
+        if (game.u.uprops?.ANTIMAGIC || game.u.uprops?.MAGIC_RES) {
+            mtmp.seen_resistance = (mtmp.seen_resistance ?? 0) | M_SEEN_MAGR;
+            await pline('Boing!');
+            if (seen)
+                makeknown(obj.otyp);
+        } else {
+            const hit = rnd(20) < 10 + (game.u.uac ?? 0) && !!mtmp.mwandexp;
+            if (hit) {
+                mtmp.seen_resistance = (mtmp.seen_resistance ?? 0)
+                                       & ~M_SEEN_MAGR;
+                await pline_The('wand hits you!');
+                let damage = d(2, 12);
+                if (game.u.uprops?.HALF_SPDAM)
+                    damage = Math.trunc((damage + 1) / 2);
+                await losehp(damage, 'wand', KILLED_BY_AN);
+                if (seen)
+                    makeknown(obj.otyp);
+            } else {
+                await pline_The('wand misses you.');
+            }
+        }
+        await stop_occupation();
+        nomul(0);
+        mtmp.mwandexp = true;
+        return 2;
+    }
+    case MUSE_POT_PARALYSIS:
+    case MUSE_POT_BLINDNESS:
+    case MUSE_POT_CONFUSION:
+    case MUSE_POT_SLEEPING:
+    case MUSE_POT_ACID: {
+        const [{ cansee }, { observe_object }, { pline }, { Monnam },
+               { singular, doname }] = await Promise.all([
+            import('./vision.js'), import('./o_init.js'),
+            import('./display.js'), import('./do_name.js'),
+            import('./objnam.js'),
+        ]);
+
+        if (cansee(mtmp.mx, mtmp.my)) {
+            observe_object(obj);
+            await pline(`${Monnam(mtmp)} hurls ${singular(obj, doname)}!`);
+        }
+        await m_throw(mtmp, mtmp.mx, mtmp.my,
+                      sgn(mtmp.mux - mtmp.mx), sgn(mtmp.muy - mtmp.my),
+                      distmin(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy), obj);
+        return 2;
+    }
+    default:
+        (game.unported ||= new Set()).add(
+            `use_offensive:action=${game.m?.has_offense || 0}`);
+        return 0;
+    }
 }
 
 // src/muse.c:2095 find_misc() selects the last viable utility item in a
@@ -487,6 +595,79 @@ export async function use_misc(mtmp) {
     const obj = game.m?.misc || null;
 
     switch (game.m?.has_misc || 0) {
+    case MUSE_WAN_SPEED_MONSTER: {
+        if (!obj || obj.spe < 1)
+            return 0;
+        const [{ canseemon, pline }, { couldsee }, { You_hear },
+               { Monnam }, { doname }, { unknow_object }, { learnwand }]
+            = await Promise.all([
+                import('./display.js'), import('./vision.js'),
+                import('./pline.js'), import('./do_name.js'),
+                import('./objnam.js'), import('./mkobj.js'),
+                import('./zap.js'),
+            ]);
+        const seen = canseemon(mtmp);
+
+        if (!seen) {
+            const range = couldsee(mtmp.mx, mtmp.my) ? 9 : 5;
+            const nearby = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy)
+                           <= range * range;
+            await You_hear(`a ${nearby ? 'nearby' : 'distant'} zap.`);
+            unknow_object(obj);
+        } else {
+            const self = mtmp.female ? 'herself' : 'himself';
+            await pline(`${Monnam(mtmp)} zaps ${self} with ${doname(obj)}!`);
+        }
+        obj.spe--;
+
+        const oldspeed = mtmp.mspeed ?? 0;
+        mtmp.permspeed = (mtmp.permspeed === MSLOW) ? 0 : MFAST;
+        mtmp.mspeed = mtmp.permspeed;
+        if (seen && mtmp.mspeed !== oldspeed && mtmp.data.mmove
+            && !mtmp.mfrozen && !mtmp.msleeping) {
+            const howmuch = (mtmp.mspeed + oldspeed === MFAST + MSLOW)
+                            ? 'much ' : '';
+            await pline(`${Monnam(mtmp)} is suddenly moving ${howmuch}faster.`);
+            learnwand(obj);
+        }
+        return 2;
+    }
+    case MUSE_POT_SPEED: {
+        if (!obj)
+            return 0;
+        const [{ canseemon, pline }, { You_hear }, { Deaf }, { Monnam },
+               { singular, doname }, { observe_object }, { learnwand }]
+            = await Promise.all([
+                import('./display.js'), import('./pline.js'),
+                import('./youprop.js'), import('./do_name.js'),
+                import('./objnam.js'), import('./o_init.js'),
+                import('./zap.js'),
+            ]);
+        const seen = canseemon(mtmp);
+
+        if (seen) {
+            observe_object(obj);
+            await pline(`${Monnam(mtmp)} drinks ${singular(obj, doname)}!`);
+        } else if (!Deaf()) {
+            await You_hear('a chugging sound.');
+        }
+
+        const oldspeed = mtmp.mspeed ?? 0;
+        mtmp.permspeed = (mtmp.permspeed === MSLOW) ? 0 : MFAST;
+        const speedBoots = (mtmp.minvent || []).some((item) =>
+            item.otyp === ONAMES.SPEED_BOOTS && item.owornmask);
+        mtmp.mspeed = speedBoots ? MFAST : mtmp.permspeed;
+        if (seen && mtmp.mspeed !== oldspeed && mtmp.data.mmove
+            && !mtmp.mfrozen && !mtmp.msleeping) {
+            const howmuch = (mtmp.mspeed + oldspeed === MFAST + MSLOW)
+                            ? 'much ' : '';
+            await pline(`${Monnam(mtmp)} is suddenly moving ${howmuch}faster.`);
+            learnwand(obj);
+        }
+
+        m_useup_misc(mtmp, obj);
+        return 2;
+    }
     case MUSE_POT_INVISIBILITY: {
         if (!obj)
             return 0;

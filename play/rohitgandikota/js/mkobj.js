@@ -523,7 +523,10 @@ export function mksobj_init(otmp, artif) {
 
     case POTION_CLASS:
     case SCROLL_CLASS:
-        blessorcurse(otmp, 4);
+        /* MAIL_STRUCTURES: mail scrolls have fixed provenance rather than
+           random BUC status; readobjnam() applies a requested status later. */
+        if (otmp.otyp !== ONAMES.SCR_MAIL)
+            blessorcurse(otmp, 4);
         break;
 
     case SPBOOK_CLASS:

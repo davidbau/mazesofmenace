@@ -1,4 +1,4 @@
-import { exercise } from './attrib.js';
+import { exercise, poisoned } from './attrib.js';
 import { A_DEX, A_STR, ERODE_NONE, ERODE_BURN, ERODE_RUST,
          ERODE_CORRODE } from './const.js';
 // uhitm.js — the hero attacking, or declining to attack, a monster.
@@ -22,18 +22,20 @@ import { which_armor } from './worn.js';
 import { hitmsg, magic_negation } from './mhitu.js';
 import { You, Your } from './pline.js';
 import { end_running } from './hack.js';
-import { mon_nam, Monnam, y_monnam, upstart } from './do_name.js';
+import { mon_nam, Monnam, y_monnam, upstart, a_monnam, x_monnam,
+         pmname } from './do_name.js';
 import { exclam } from './zap.js';
 import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline } from './display.js';
 import { wakeup, killed, xkilled, seemimic, setmangry } from './mon.js';
 import { DEADMONSTER } from './monst.js';
 import { is_pole } from './u_init.js';
-import { bimanual } from './obj.js';
+import { bimanual, is_plural } from './obj.js';
 import { is_ammo, is_missile, ammo_and_launcher, uwepgone } from './wield.js';
 import { useup } from './invent.js';
 import { rnl } from './rng.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
-import { yname, cxname, xname, The, makeplural } from './objnam.js';
+import { yname, cxname, xname, The, makeplural, simpleonames,
+         otense } from './objnam.js';
 import { mintrap } from './trap.js';
 import { clone_mon } from './makemon.js';
 import { rn2, rnd, d } from './rng.js';
@@ -56,9 +58,9 @@ import { MONSYMS } from './monst_data.js';
 import { u_wipe_engr } from './engrave.js';
 import { check_capacity, overexertion } from './hack.js';
 import { is_blade, is_axe, set_ustuck, m_at } from './mon.js';
-import { is_weptool } from './mkobj.js';
+import { is_weptool, mksobj } from './mkobj.js';
 import { OCLASSES, MATERIALS, ONAMES, SKILLS } from './objects_data.js';
-import { sgn } from './hacklib.js';
+import { sgn, distu } from './hacklib.js';
 import { ATTKS } from './monst_data.js';
 import { STR18 } from './const.js';
 import { ACURR } from './attrib.js';
@@ -70,6 +72,9 @@ import { is_undead } from './mondata.js';
 import { A_LAWFUL } from './const.js';
 import { FACE, HAND } from './const.js';
 import { body_part, mbodypart } from './polyself.js';
+import { M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
+         M_AP_MONSTER, MIM_REVEAL, MIM_OMIT_WAIT, ARTICLE_A } from './const.js';
+import { defsyms } from './drawing_data.js';
 
 function note_unported_uhitm(what) {
     (game.unported ||= new Set()).add(`uhitm:${what}`);
@@ -197,6 +202,77 @@ export async function do_attack(mtmp) {
 
 const mdat_of = (mtmp) => game.mons[mtmp.mnum];
 
+// src/uhitm.c:6201 that_is_a_mimic() and :6282 stumble_onto_mimic().
+// Naming an object-shaped mimic manufactures the temporary object which the
+// map glyph claims is present. Even with init=false, mksobj() allocates an
+// object id, so this visible message spends one rnd(2) before revealing it.
+async function that_is_a_mimic(mtmp, mimic_flags) {
+    let fmt = "Wait!  That's %s!";
+    let what = null;
+    const reveal_it = (mimic_flags & MIM_REVEAL) !== 0;
+    const omit_wait = (mimic_flags & MIM_OMIT_WAIT) !== 0;
+
+    if (game.u.ublind) {
+        /* Blind telepathy can identify a monster-shaped disguise. That branch
+           needs the full telepathy property model; the generic wording is the
+           exact non-telepathic result. */
+        what = 'a monster';
+    } else {
+        const glyph = glyph_at(mtmp.mx, mtmp.my);
+
+        if (glyph?.kind === 'cmap') {
+            if (M_AP_TYPE(mtmp) === M_AP_FURNITURE) {
+                const explanation = defsyms[glyph.cmap]?.explain || 'object';
+                fmt = `That ${explanation} actually is %s!`;
+            }
+        } else if (glyph?.kind === 'obj') {
+            const fake = mksobj(glyph.otyp, false, false);
+            if (fake.oclass === OCLASSES.COIN_CLASS)
+                fake.quan = 2;
+            else if (fake.otyp === ONAMES.SLIME_MOLD)
+                fake.spe = game.context?.current_fruit || 0;
+            const fake_name = simpleonames(fake);
+            fmt = `${is_plural(fake) ? 'Those' : 'That'} ${fake_name} `
+                + `${otense(fake, 'are')} %s!`;
+        } else if (glyph?.kind === 'mon') {
+            const shown = game.mons[mtmp.mappearance];
+            if (shown)
+                fmt = `Wait!  That ${pmname(shown, 0)} is really %s!`;
+        }
+
+        if (M_AP_TYPE(mtmp) === M_AP_MONSTER) {
+            what = x_monnam(mtmp, ARTICLE_A, null, 0, true);
+        } else if ((M_AP_TYPE(mtmp) === M_AP_OBJECT
+                    || M_AP_TYPE(mtmp) === M_AP_FURNITURE)
+                   && (mtmp.msleeping || mtmp.mfrozen)) {
+            what = x_monnam(mtmp, ARTICLE_A, 'sleeping', 0, false);
+        } else {
+            what = a_monnam(mtmp);
+        }
+    }
+
+    if (what) {
+        const shown_fmt = omit_wait && fmt.startsWith('Wait!  ')
+                        ? fmt.slice(7) : fmt;
+        await pline(shown_fmt.replace('%s', what));
+    }
+    if (reveal_it)
+        seemimic(mtmp);
+}
+
+async function stumble_onto_mimic(mtmp) {
+    await that_is_a_mimic(mtmp, MIM_REVEAL);
+
+    if (!game.u.ustuck && !mtmp.mflee
+        && dmgtype(mdat_of(mtmp), ATTKS.AD_STCK)
+        && distu(mtmp.mx, mtmp.my) <= 2)
+        set_ustuck(mtmp);
+
+    await wakeup(mtmp, false);
+    if (!canspotmon(mtmp))
+        note_unported_uhitm('stumble_onto_mimic:map_invisible');
+}
+
 // src/uhitm.c:189 attack_checks() — everything that can stop an attack before
 // it starts. Returns TRUE when the hero's move is used up without a blow.
 //
@@ -237,7 +313,7 @@ export async function attack_checks(mtmp, wep) {
             seemimic(mtmp);
             return false;
         }
-        note_unported_uhitm('attack_checks:stumble_onto_mimic');
+        await stumble_onto_mimic(mtmp);
         return true;
     }
 
@@ -1546,8 +1622,14 @@ export async function mhitm_ad_drst(magr, mattk, mdef, mhm) {
     } else if (mdef === game.youmonst) {
         await hitmsg(magr, mattk, mhm.indx);
         mhm.hitflags |= M_ATTK_HIT;
-        if (!negated && !rn2(8))
-            note_unported_uhitm('mhitm_ad_drst:mhitu_poisoned');
+        if (!negated && !rn2(8)) {
+            const ptmp = mattk[1] === ATTKS.AD_DRDX ? A_DEX
+                       : mattk[1] === ATTKS.AD_DRCO ? A_CON : A_STR;
+            const reason = `${s_suffix(Monnam(magr))} ${
+                (await import('./mhitu.js')).mpoisons_subj(magr, mattk)}`;
+            await poisoned(reason, ptmp,
+                pmname(game.mons[magr.mnum], magr.female ? 1 : 0), 30, false);
+        }
     } else if (!negated && !rn2(8)) {
         note_unported_uhitm('mhitm_ad_drst:mhitm_really_poison');
     }

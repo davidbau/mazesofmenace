@@ -77,6 +77,7 @@ import {
     canspotmon as display_canspotmon, sensemon, Norep, verbalize,
 } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
+import { worm_move, worm_nomove } from './worm.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { tactics } from './wizard.js';
 import { rn2, rnd, d } from './rng.js';
@@ -1812,6 +1813,8 @@ export async function m_move(mtmp, after) {
             && rn2(2) && !(await tele_restrict(mtmp))) {
             if (rloc(mtmp, 0)) return MMOVE_MOVED;
         }
+        // C: worm_nomove shrinks the tail when the head did not move
+        if (mtmp.wormno) worm_nomove(mtmp);
         return postmov(mtmp, omx, omy, MMOVE_NOTHING, can_tunnel, can_unlock, can_open);
     }
 
@@ -1867,11 +1870,13 @@ export async function m_move(mtmp, after) {
     // C: m_postmove_effect before place (Hezrou/Steam at old mx/my)
     await m_postmove_effect(mtmp);
 
-    // C: place_monster + msg_mon_movement then worm_move (named) /
+    // C: place_monster + msg_mon_movement then worm_move /
     // maybe_unhide_at + mon_track_add then postmov
     mtmp.mx = nix;
     mtmp.my = niy;
     await msg_mon_movement(mtmp, omx, omy);
+    // C: reconnect dummy head as a visible seg; grow or shrink (D-1491)
+    if (mtmp.wormno) worm_move(mtmp);
     // C ref: monmove.c m_move — maybe_unhide_at before mon_track_add/postmov
     // so postmov hide rn2(5) sees cleared mundetected when dest has no cover.
     await maybe_unhide_at(mtmp.mx, mtmp.my);

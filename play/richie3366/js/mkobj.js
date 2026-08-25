@@ -210,6 +210,28 @@ export function add_to_container(container, obj) {
 }
 
 /**
+ * C ref: mkobj.c add_to_minv — merge via invent.c merged(), else prepend.
+ * Returns 1 if obj merged (C-freed); 0 if prepended onto minvent.
+ * C panics if obj->where != OBJ_FREE; JS extracts like add_to_container.
+ */
+export function add_to_minv(mon, obj) {
+    if (!mon || !obj) return 1;
+    if (obj.where && obj.where !== OBJ_FREE) obj_extract_self(obj);
+    // C: for (otmp = mon->minvent; otmp; otmp = otmp->nobj)
+    //        if (merged(&otmp, &obj)) return 1;
+    for (let otmp = mon.minvent; otmp; otmp = otmp.nobj) {
+        const potmp = { obj: otmp };
+        const pobj = { obj };
+        if (merged(potmp, pobj)) return 1;
+    }
+    obj.where = OBJ_MINVENT;
+    obj.ocarry = mon;
+    obj.nobj = mon.minvent;
+    mon.minvent = obj;
+    return 0;
+}
+
+/**
  * C ref: mkobj.c weight() — subset; containers sum cobj; BoH factor deferred.
  */
 export function weight(obj) {

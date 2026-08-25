@@ -1060,8 +1060,6 @@ export function killer_xname(obj) {
 /**
  * C ref: rumors.c CapitalMon / init_CapMons — capitalized type/title names
  * that take "the" (Archon, Oracle, Green-elf) vs pname uniques (Medusa).
- * Named omit: fruit_from_name + artifact_name fruit carve in the() (objnam
- * cannot import artifact.js — invent cycle).
  */
 const BOGON_CODES = '-_+|=';
 let CapMons = null;
@@ -1142,8 +1140,84 @@ export function CapitalMon(word) {
 }
 
 /**
+ * C ref: objnam.c fruit_from_name `:443–519` — look up a named fruit.
+ * exact True: strcmp then makesingular; False also tries longest prefix
+ * and prefix+singularize. Case-sensitive. highest_fid optional out
+ * `{ fid }` (only meaningful when not found). fruit_from_indx named.
+ */
+export function fruit_from_name(fname, exact, highest_fid = null) {
+    if (highest_fid) highest_fid.fid = 0;
+    const name = fname == null ? '' : String(fname);
+    let f;
+    for (f = game.ffruit; f; f = f.nextf) {
+        if (f.fname === name) return f;
+        else if (highest_fid && f.fid > highest_fid.fid) highest_fid.fid = f.fid;
+    }
+    if (!exact) {
+        let tentativef = null;
+        for (f = game.ffruit; f; f = f.nextf) {
+            const k = String(f.fname || '').length;
+            if (name.slice(0, k) === f.fname
+                && (!name[k] || name[k] === ' ')
+                && (!tentativef || k > String(tentativef.fname || '').length)) {
+                tentativef = f;
+            }
+        }
+        f = tentativef;
+    }
+    if (!f) {
+        const altfname = makesingular(name);
+        for (f = game.ffruit; f; f = f.nextf) {
+            if (f.fname === altfname) break;
+        }
+    }
+    if (!f && !exact) {
+        const fname_k = name.length;
+        let tentativef = null;
+        for (f = game.ffruit; f; f = f.nextf) {
+            const k0 = String(f.fname || '').length;
+            if (fname_k >= k0) {
+                const sp = name.indexOf(' ', k0);
+                if (sp >= 0) {
+                    const altfname = makesingular(name.slice(0, sp));
+                    const k = altfname.length;
+                    if (f.fname === altfname
+                        && (!tentativef
+                            || k > String(tentativef.fname || '').length)) {
+                        tentativef = f;
+                    }
+                }
+            }
+        }
+        f = tentativef;
+    }
+    return f || null;
+}
+
+/**
+ * C ref: artifact.c artifact_name — strcmpi after stripping leading "the ".
+ * Local copy so objnam does not import artifact.js (invent cycle); fuzzy
+ * still lives in artifact.js.
+ */
+function artifact_name_objnam(name) {
+    if (!name) return null;
+    let n = name;
+    if (n.length >= 4 && n.slice(0, 4).toLowerCase() === 'the ') n = n.slice(4);
+    for (let i = 1; i < artilistRaw.length; i++) {
+        const a = artilistRaw[i];
+        if (!a?.name) continue;
+        let aname = a.name;
+        if (aname.length >= 4 && aname.slice(0, 4).toLowerCase() === 'the ') {
+            aname = aname.slice(4);
+        }
+        if (n.toLowerCase() === aname.toLowerCase()) return a.name;
+    }
+    return null;
+}
+
+/**
  * C ref: objnam.c the() — definite article for non-proper names.
- * Named omit: fruit_from_name + artifact_name (invent cycle).
+ * fruit_from_name + artifact_name fruit carve (D-1487). fruit_from_indx named.
  */
 export function the(str) {
     if (!str) return 'the []';
@@ -1155,9 +1229,12 @@ export function the(str) {
     }
     let insert_the = false;
     const c0 = str.charCodeAt(0);
+    let aname;
     if (c0 < 65 || c0 > 90
         || CapitalMon(str)
-        /* fruit_from_name(str, TRUE) && artifact_name named omit */) {
+        || (fruit_from_name(str, true, null)
+            && ((aname = artifact_name_objnam(str)) == null
+                || aname.slice(0, 4).toLowerCase() === 'the '))) {
         insert_the = true;
     } else {
         let tmp = str.lastIndexOf(' ');

@@ -15,6 +15,7 @@
 
 import { game } from './gstate.js';
 import { is_flyer } from './mondata.js';
+import { Upolyd } from './const.js';
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
 
@@ -78,6 +79,7 @@ export const Levitation = () => !!game.u?.uprops?.LEVITATION;
 // counts, which is why this cannot be a plain uprops read.
 export const Flying = () =>
     !!game.u?.uprops?.FLYING
+    || !!(Upolyd(game.u) && is_flyer(game.youmonst.data))
     || !!(game.u?.usteed && is_flyer(game.u.usteed.data));
 
 // include/youprop.h Fire_resistance — (HFire_resistance || EFire_resistance).

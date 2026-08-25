@@ -214,6 +214,10 @@ export function dorecover() {
             game[k] = v;
     }
 
+    /* restore.c:705 recalculates this process-local movement sequence from
+       the restored turn. It is not carried across the save boundary. */
+    game.hero_seq = game.moves * 8;
+
     /* C deletes the save file once restored */
     try { game.storage.removeItem(save_key()); } catch (e) {}
     return true;

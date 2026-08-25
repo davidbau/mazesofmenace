@@ -9,13 +9,15 @@
 
 import { game } from './gstate.js';
 import { pline, canspotmon } from './display.js';
-import { You } from './pline.js';
-import { hidden_gold, money_cnt } from './invent.js';
+import { You, Your, You_feel, pline_The } from './pline.js';
+import { hidden_gold, money_cnt, useup } from './invent.js';
 import { depth, dunlevs_in_dungeon } from './dungeon.js';
 import { G_GENOD, G_UNIQ, In_endgame, In_quest, KILLED_BY_AN, KILLED_BY,
          LOW_PM, M_AP_MONSTER, M_AP_TYPE, MGIVENNAME, NHW_TEXT, NHW_MENU,
-         NON_PM, has_mgivenname } from './const.js';
+         OBJ_FREE,
+         NON_PM, A_CON, has_mgivenname } from './const.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
+import { ONAMES } from './objects_data.js';
 import { pmname } from './do_name.js';
 import { gender, type_is_pname } from './mondata.js';
 import { is_vampshifter } from './monst.js';
@@ -25,6 +27,8 @@ import { Race_if } from './u_init.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow } from './tty/wintty.js';
 import { tty_yn_function } from './tty/topl.js';
+import { makeknown } from './o_init.js';
+import { ACURR, adjattrib } from './attrib.js';
 
 function note_unported_end(what) {
     (game.unported ||= new Set()).add('end:' + what);
@@ -175,6 +179,7 @@ export async function done_in_by(mtmp, how) {
 export function formatkiller(how, incl_helpless) {
     const k = game.killer || {};
     let name = k.name || deaths[how] || 'died';
+    name = name.replaceAll(',', ';').replaceAll('=', '_').replaceAll('\t', ' ');
     /* src/topten.c:103 killed_by_prefix[] — the verb depends on `how` */
     const killed_by_prefix = [
         /* DIED, CHOKING, POISONING, STARVING, */
@@ -205,8 +210,7 @@ export function formatkiller(how, incl_helpless) {
 // src/end.c:704 savelife() — explore/wizard "OK, so you don't die."
 function savelife(how) {
     const u = game.u;
-    const A_CON = 2;
-    const acon = u.acurr?.a?.[A_CON] ?? 10;
+    const acon = ACURR(A_CON);
     const givehp = 50 + 10 * ((acon / 2) | 0);
 
     if (u.ulevel < 1)
@@ -220,9 +224,15 @@ function savelife(how) {
         u.uhs = 1;         /* NOT_HUNGRY */
     }
     game.nomovemsg = 'You survived that attempt on your life.';
+    (game.context ||= {}).move = 0;
     game.multi = -1; /* can't move again during the current turn */
+    game.multi_reason = game.urole?.mnum === PMNAMES.PM_TOURIST
+        ? 'being toyed with by Fate' : 'attempting to cheat Death';
     game.disp = game.disp || {};
     game.disp.botl = true;
+    u.ugrave_arise = NON_PM;
+    if (u.uprops)
+        delete u.uprops.UNCHANGING;
 }
 
 // src/end.c done() — the hero's game is over.
@@ -261,9 +271,25 @@ export async function done(how) {
             game.disp.botl = true;
         }
     }
-    /* Lifesaved (amulet of life saving): no session wears one yet */
-    if (u.uprops?.LIFESAVED && how <= GENOCIDED)
-        note_unported_end('done:lifesaved');
+    if (u.uprops?.LIFESAVED && how <= GENOCIDED) {
+        await pline('But wait...');
+        makeknown(ONAMES.AMULET_OF_LIFE_SAVING);
+        await Your(`medallion ${u.ublind ? 'feels warm' : 'begins to glow'}!`);
+        if (how === CHOKING)
+            await You('vomit ...');
+        await You_feel('much better!');
+        await pline_The('medallion crumbles to dust!');
+        if (u.uamul)
+            useup(u.uamul);
+
+        await adjattrib(A_CON, -1, true);
+        savelife(how);
+        if (how === GENOCIDED) {
+            await pline('Unfortunately you are still genocided...');
+        } else {
+            survive = true;
+        }
+    }
 
     /* explore and wizard modes offer player the option to keep playing */
     if (!survive && (game.wizard || game.discover) && how <= GENOCIDED) {
@@ -281,6 +307,31 @@ export async function done(how) {
         return;
     }
     await really_done(how);
+}
+
+// src/end.c:851 done_object_cleanup() -- a fatal hit can interrupt an object
+// while it is OBJ_FREE in flight. Put that projectile back on the map before
+// disclosure and bones saving so it is not lost from the level snapshot.
+async function done_object_cleanup() {
+    const u = game.u;
+    const { isok } = await import('./hacklib.js');
+    const { accessible } = await import('./monmove.js');
+    const { place_object } = await import('./mkobj.js');
+    const { stackobj } = await import('./invent.js');
+    let ox = u.ux + (u.dx || 0), oy = u.uy + (u.dy || 0);
+
+    if (!isok(ox, oy) || !accessible(ox, oy)) {
+        ox = u.ux;
+        oy = u.uy;
+    }
+    for (const field of ['thrownobj', 'kickedobj']) {
+        const obj = game[field];
+        if (obj && (obj.where ?? OBJ_FREE) === OBJ_FREE) {
+            place_object(obj, ox, oy);
+            stackobj(obj);
+            game[field] = null;
+        }
+    }
 }
 
 // src/dungeon.c deepest_lev_reached() — deepest ledger depth the hero saw.
@@ -303,10 +354,14 @@ async function really_done(how) {
     const u = game.u;
     let corpse = null;
     let umoney;
+    let taken = false;
+    let repos = null;
 
     /* src/end.c:1144 — the game is now over; disclosure windows read this
        (add_menu_heading drops its highlight, hallucination stops, &c) */
     game.program_state_gameover = true;
+    if (!game.program_state?.panicking)
+        await done_object_cleanup();
     {
         const { night, midnight } = await import('./calendar.js');
         (game.iflags ||= {}).at_night = night();
@@ -315,7 +370,7 @@ async function really_done(how) {
 
     /* achievements, dumplog, signal handlers: none modelled */
 
-    const { can_make_bones, savebones } = await import('./bones.js');
+    const { can_make_bones, savebones, drop_upon_death } = await import('./bones.js');
     const bones_ok = (how < GENOCIDED) && can_make_bones();
 
     /* maintain ugrave_arise even for !bones_ok */
@@ -328,7 +383,50 @@ async function really_done(how) {
     else
         u.ugrave_arise = u.ugrave_arise ?? -1;   /* NON_PM */
 
-    /* paybill/paygd: no shop bill or vault gold for these heroes */
+    if (how === QUIT || how === ESCAPED || how === PANICKED)
+        game.killer.format = 2; /* NO_KILLER_PREFIX */
+
+    /* src/shk.c paybill()/inherits(): the resident or pursuing shopkeeper
+       gets first claim on a dead hero's inventory.  The full billing walk
+       reduces to these two early-game cases when there is one local keeper:
+       peaceful inheritance inside the shop, or confiscation by an angry or
+       unpaid keeper. */
+    if (how !== PANICKED && (game.invent || []).length) {
+        const ushops = u.ushops || '';
+        const shks = (game.level?.monsters || []).filter(m => m.isshk);
+        const priority = (shkp) => {
+            const eshk = shkp.eshk || shkp.mextra?.eshk || {};
+            const inside = ushops.includes(String.fromCharCode(eshk.shoproom || 0));
+            const owed = !!((eshk.billct | 0) || eshk.bill_p?.length
+                            || (eshk.debit | 0) || (eshk.robbed | 0));
+            if (inside && owed) return 0;
+            if (inside) return 1;
+            if (owed) return 2;
+            if (eshk.following || !shkp.mpeaceful) return 3;
+            return 4;
+        };
+        shks.sort((a, b) => priority(a) - priority(b));
+        const shkp = shks[0];
+        if (shkp) {
+            const eshk = shkp.eshk || shkp.mextra?.eshk || {};
+            const inside = ushops.includes(String.fromCharCode(eshk.shoproom || 0));
+            const owed = !!((eshk.billct | 0) || eshk.bill_p?.length
+                            || (eshk.debit | 0) || (eshk.robbed | 0));
+            const raw = shkp.shknam || eshk.shknam || 'the shopkeeper';
+            const shkname = /^[-+_|]/.test(raw) ? raw.slice(1) : raw;
+            const cleanInheritance = inside && shkp.mpeaceful
+                && !owed && !eshk.following && u.ugrave_arise < LOW_PM;
+            if (cleanInheritance) {
+                await pline(`${shkname} gratefully inherits all your possessions.`);
+                taken = true;
+            } else if (inside || owed || eshk.following || !shkp.mpeaceful) {
+                await pline(`${shkname} takes all your possessions.`);
+                taken = true;
+            }
+            if (taken)
+                repos = { x: u.ux || u.ux0, y: u.uy || u.uy0 };
+        }
+    }
 
     /* discover everything in inventory for disclosure and dumplog */
     const { discover_object } = await import('./o_init.js');
@@ -345,9 +443,12 @@ async function really_done(how) {
             obj.lknown = 1;
     }
 
-    await disclose(how);
+    await disclose(how, taken);
 
     /* dump_everything: dumplog disabled */
+
+    if (bones_ok && taken)
+        drop_upon_death(null, null, repos.x, repos.y);
 
     /* grave creation after disclosure */
     if (bones_ok && u.ugrave_arise === -1
@@ -370,6 +471,7 @@ async function really_done(how) {
     /* calculate score, before creating bones [container gold] */
     {
         const deepest = deepest_lev_reached();
+        game.deepest_lev_reached_depth = deepest;
         umoney = money_cnt(game.invent || []);
         umoney += hidden_gold(game.invent || [], true);
         let tmp = u.umoney0 ?? 0;

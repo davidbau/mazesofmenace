@@ -7,7 +7,7 @@ import { stairway_at, stairs_description } from './stairs.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { delobj, t_at, is_pool, is_lava } from './mon.js';
 import { costly_spot, doname_with_price } from './shk.js';
-import { u_at, CMDQ_INT, CQ_CANNED, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
+import { u_at, CMDQ_KEY, CMDQ_INT, CQ_CANNED, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
          ICE, DRAWBRIDGE_DOWN, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN } from './const.js';
 import { hides_under } from './mondata.js';
 import { worn } from './do_wear.js';
@@ -455,7 +455,8 @@ export const hands_obj = { otyp: 0, oclass: 0, hands: true };
 // each letter is appended FIRST and then removed when the filter rejects it.
 function getobj_letters(obj_ok, ctrlflags) {
     let buf = '';
-    const forceprompt = (ctrlflags & GETOBJ_PROMPT) !== 0;
+    let altbuf = '';
+    let forceprompt = (ctrlflags & GETOBJ_PROMPT) !== 0;
 
     if (forceprompt || !obj_ok) {
         const v = obj_ok ? obj_ok(null) : GETOBJ_EXCLUDE;
@@ -471,6 +472,11 @@ function getobj_letters(obj_ok, ctrlflags) {
         if (v === GETOBJ_SUGGEST) {
             buf += otmp.invlet;
             suggested++;
+        } else if (v === GETOBJ_DOWNPLAY) {
+            /* src/invent.c altlets: acceptable but omitted from the likely
+               choices. Their presence still forces the [*] prompt. */
+            altbuf += otmp.invlet;
+            forceprompt = true;
         }
     }
     /* src/invent.c:1908 — "if (suggested > 5) compactify" — five letters
@@ -481,7 +487,9 @@ function getobj_letters(obj_ok, ctrlflags) {
        characters silently drops e and f from the inventory window. */
     return {
         choices: buf,
+        altChoices: altbuf,
         prompt: suggested > 5 ? compactify(buf) : buf,
+        forceprompt,
     };
 }
 
@@ -561,13 +569,13 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
        loop already read a key here; routing it through tty_yn_function adds
        the paint without changing which keys are consumed. */
     let qbuf = `What do you want to ${word}?`;
-    const { choices: lets, prompt: promptLets } =
+    const { choices: lets, altChoices, prompt: promptLets, forceprompt } =
         getobj_letters(obj_ok_func, ctrlflags | 0);
 
     /* src/invent.c:1911 — nothing suggested, no forced prompt, no '-'
        choice: refuse up front. The "else " variant needs the inaccessible
        tracking and is recorded. */
-    if (!lets && obj_ok_func && !(ctrlflags & GETOBJ_PROMPT)) {
+    if (!lets && obj_ok_func && !(ctrlflags & GETOBJ_PROMPT) && !forceprompt) {
         await You(`don't have anything to ${word}.`);
         return null;
     }
@@ -598,7 +606,7 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         if (ilet === '?' || ilet === '*') {
             /* src/invent.c:1963 — '?' lists only the letters this command
                accepts, '*' lists everything. */
-            const allowed_choices = (ilet === '?') ? lets : null;
+            const allowed_choices = (ilet === '?') ? (lets || altChoices) : null;
             /* C's `allownone` comes from the '-' choice being offered; our
                hands arm above is recorded, so it is always false here. */
             ilet = await display_pickinv(allowed_choices, null, null, false);
@@ -613,8 +621,15 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         }
 
         const otmp = (game.invent || []).find(o => o.invlet === ilet);
-        if (otmp)
+        if (otmp) {
+            const allowed = obj_ok_func ? await obj_ok_func(otmp)
+                                        : GETOBJ_SUGGEST;
+            if (allowed === GETOBJ_EXCLUDE) {
+                await pline(`That is a silly thing to ${word}.`);
+                return null;
+            }
             return otmp;
+        }
 
         /* src/invent.c:2059 — an unrecognised letter says so, then the
            re-issued prompt forces --More-- on the message. */
@@ -1253,7 +1268,8 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         drop_it = true;
     } else {
         const oquan = obj.quan;
-        let prev_encumbr = near_capacity(); /* before addinv() */
+        const old_encumbr = near_capacity(); /* before addinv() */
+        let prev_encumbr = old_encumbr;
 
         /* encumbrance limit is max( current_state, pickup_burden );
            this used to use hardcoded MOD_ENCUMBER (stressed) instead
@@ -1270,6 +1286,13 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
                 obj = splitobj(obj, oquan);
             drop_it = true;
         } else {
+            if (near_capacity() !== old_encumbr) {
+                /* C does not repaint the new capacity condition until
+                   encumber_msg() has announced it. Keep the pre-add status
+                   while prinv() is blocked at a More prompt. */
+                game._encumber_status_stale = true;
+                game._deferred_status_capacity = old_encumbr;
+            }
             if (game.flags?.autoquiver && !game.uquiver && !obj.owornmask
                 && (is_missile(obj) || ammo_and_launcher(obj, game.uwep)
                     || ammo_and_launcher(obj, game.uswapwep)))

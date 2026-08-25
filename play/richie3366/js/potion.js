@@ -18,6 +18,7 @@
 //         peffect_gain_ability (D-1438),
 //         peffect_hallucination (D-1439),
 //         mixtype / potion_dip potion-potion mix (D-1457),
+//         potion_dip unicorn/amethyst mixtype dip (D-1486),
 //         potionhit remaining otyp switch + shop unpaid (D-1472),
 //         potionbreathe remaining otyps (D-1477),
 //         make_confused, dodip, speed_up, djinni_from_bottle (D-1144);
@@ -98,7 +99,7 @@ import {
     Fast, Very_fast,
 } from './attrib.js';
 import {
-    makeknown, compactify_invlets, enlightenment,
+    makeknown, compactify_invlets, enlightenment, observe_object,
     hold_another_object, update_inventory, near_capacity, freeinv_core,
 } from './invent.js';
 import { yn_function } from './getline.js';
@@ -126,7 +127,7 @@ import {
     POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, UNCHANGING, ACID_RES,
     M_SEEN_SLEEP, FIXED_ABIL, ANTIMAGIC, SHOPBASE, STRAT_WAITFORU,
     M_AP_FURNITURE, M_AP_OBJECT, BURNING_OIL, LOST_EXPLODING, EXPL_FIERY,
-    MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
+    MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, COST_NUTRLZ,
 } from './const.js';
 import { hands_obj, P_SKILL } from './weapon.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
@@ -148,7 +149,7 @@ import { bcsign } from './rumors.js';
 import { more_experienced, pluslvl, rndexp } from './exper.js';
 import { depth } from './hacklib.js';
 import {
-    trycall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
+    trycall, docall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
     Hallucination,
 } from './do_name.js';
 import { newuhs, fix_petrification } from './eat.js';
@@ -2745,7 +2746,8 @@ function potion_descr(otyp) {
 /**
  * C potion.c mixtype `:2120–2209` — recipe when o1 is dipped in o2.
  * Swap when o1 is a potion and o2 is a catalyst. Healing FALLTHROUGH
- * into unicorn-horn neutralize. Unicorn/amethyst dip callers named.
+ * into unicorn-horn neutralize. Callers: potion-potion mix (D-1457)
+ * and unicorn/amethyst dip (D-1486).
  */
 function mixtype(o1, o2) {
     let o1typ = o1.otyp | 0;
@@ -2902,8 +2904,8 @@ async function hold_potion(potobj, drop_fmt, drop_arg, hold_msg) {
 /**
  * C potion.c potion_dip `:2441–2791` — after dodip/dip_into choose.
  * Envelope: Klein bottle, hands, H2Opotion_dip, poly gate, potion-potion
- * mixtype (D-1457). Named: poly_obj, lichen/acid, towel, poison-coat,
- * oil/lamp, unicorn/amethyst mixtype dip.
+ * mixtype (D-1457), unicorn/amethyst mixtype dip (D-1486). Named:
+ * poly_obj, lichen/acid, towel, poison-coat, oil/lamp, dip_into.
  */
 async function potion_dip(obj, potion) {
     if (potion === obj && (potion.quan | 0) === 1) {
@@ -2999,8 +3001,70 @@ async function potion_dip(obj, potion) {
         return ECMD_TIME;
     }
 
-    // poison-coat / acid-erode / oil / lamp / unicorn mixtype named
-    potion.in_use = false;
+    // lichen/acid corpse, towel soak, poison-coat, acid-erode, oil/lamp named
+    potion.in_use = false; /* didn't go poof */
+    // C potion.c potion_dip `:2726–2787` — unicorn horn / amethyst mixtype
+    if ((obj.otyp | 0) === UNICORN_HORN || (obj.otyp | 0) === AMETHYST) {
+        const mixture = mixtype(obj, potion);
+        if (mixture !== STRANGE_OBJECT) {
+            const old_otyp = potion.otyp | 0;
+            let old_dknown = false;
+            const more_than_one = (potion.quan | 0) > 1;
+            let oldbuf = '';
+            if (potion.dknown) {
+                old_dknown = true;
+                oldbuf = `${hcolor(potion_descr(potion.otyp))} `;
+            }
+            let singlepotion;
+            if ((potion.quan | 0) > 1) {
+                singlepotion = splitobj(potion, 1) || potion;
+            } else {
+                singlepotion = potion;
+            }
+            const { costly_alteration } = await import('./shk.js');
+            await costly_alteration(singlepotion, COST_NUTRLZ);
+            singlepotion.otyp = mixture;
+            singlepotion.blessed = 0;
+            if (mixture === POT_WATER) {
+                singlepotion.cursed = 0;
+                singlepotion.odiluted = 0;
+            } else {
+                singlepotion.cursed = obj.cursed; /* odiluted left as-is */
+            }
+            singlepotion.bknown = 0;
+            singlepotion.dknown = 0; /* provisionally */
+            if (!Blind()) {
+                if (!Hallucination()) observe_object(singlepotion);
+                let newbuf = '';
+                if (mixture === POT_WATER && singlepotion.dknown) {
+                    newbuf = 'clears';
+                } else if (!Blind()) {
+                    newbuf = `turns ${hcolor(potion_descr(mixture))}`;
+                }
+                if (newbuf) {
+                    await pline(`The ${oldbuf}potion${
+                        more_than_one ? ' that you dipped into' : ''} ${newbuf}.`);
+                } else {
+                    await pline('Something happens.');
+                }
+                const ocl = game.objects?.[old_otyp];
+                if (old_dknown && ocl && !ocl.oc_name_known && !ocl.oc_uname) {
+                    const fakeobj = {
+                        dknown: 1,
+                        otyp: old_otyp,
+                        oclass: POTION_CLASS,
+                        quan: 1,
+                    };
+                    await docall(fakeobj);
+                }
+            }
+            const juggle = doname(singlepotion);
+            await hold_potion(singlepotion, 'You juggle and drop %s!',
+                juggle, null);
+            return ECMD_TIME;
+        }
+    }
+
     await pline('Interesting...');
     return ECMD_TIME;
 }

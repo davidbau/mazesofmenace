@@ -1,7 +1,7 @@
 // muse.js — Monster item use.
 // C ref: muse.c find_offensive / use_offensive (MUSE_POT_* throw +
-// MUSE_WAN_STRIKING mbhit + MUSE_CAMERA lightdamage D-1376);
-// find_defensive / find_misc / use_misc.
+// MUSE_WAN_STRIKING mbhit + doorlock D-1484 + MUSE_CAMERA lightdamage
+// D-1376); find_defensive / find_misc / use_misc.
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
@@ -20,7 +20,9 @@ import {
     SCROLL_CLASS, AMULET_CLASS, TOOL_CLASS, FOOD_CLASS,
 } from './objects.js';
 import { observe_object, makeknown } from './invent.js';
-import { losehp, nomul } from './hack.js';
+import { losehp, nomul, in_rooms } from './hack.js';
+import { doorlock } from './lock.js';
+import { find_drawbridge } from './dbridge.js';
 import { finish_losehp_done } from './end.js';
 import { m_seenres, monstseesu, monstunseesu } from './mondata.js';
 import { bcsign } from './rumors.js';
@@ -31,7 +33,8 @@ import { dropy, make_blinded } from './do.js';
 import { learnwand, lightdamage } from './zap.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
-    D_LOCKED, D_CLOSED, KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR, TIMEOUT,
+    SDOOR, DRAWBRIDGE_UP, D_LOCKED, D_CLOSED, D_BROKEN, SHOPBASE,
+    KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR, TIMEOUT,
     OBJ_FLOOR, G_GONE, MM_NOMSG,
     W_ARMOR, W_ACCESSORY, W_SADDLE,
     MIGR_RANDOM, In_endgame, In_sokoban,
@@ -57,6 +60,8 @@ const POT_GAIN_LEVEL = objectNames.indexOf('POT_GAIN_LEVEL');
 const POT_INVISIBILITY = objectNames.indexOf('POT_INVISIBILITY');
 const WAN_SPEED_MONSTER = objectNames.indexOf('WAN_SPEED_MONSTER');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
+const WAN_OPENING = objectNames.indexOf('WAN_OPENING');
+const WAN_LOCKING = objectNames.indexOf('WAN_LOCKING');
 const WAN_MAKE_INVISIBLE = objectNames.indexOf('WAN_MAKE_INVISIBLE');
 const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
 const WAN_POLYMORPH = objectNames.indexOf('WAN_POLYMORPH');
@@ -501,7 +506,11 @@ async function mbhitm(mtmp, otmp, hits_you) {
 
 /**
  * C ref: muse.c mbhit — mon wand beam toward mux/muy.
- * Named omissions: fhito_loc / drawbridge / doorlock; map_invisible.
+ * Doorlock WAN_OPENING/WAN_LOCKING/WAN_STRIKING (D-1484; C `:1785–1802`;
+ * callee lock.c doorlock already live D-1462/D-1475/D-1482). zap_oseen
+ * makeknown (not hero bhit learnwand / !Deaf). Shop D_BROKEN
+ * add_damage(0) (not SHOP_DOOR_COST / pay_for_damage).
+ * Named omissions: fhito_loc / destroy_drawbridge; map_invisible.
  */
 async function mbhit(mon, range, obj) {
     const bhitpos = game._bhitpos || (game._bhitpos = { x: 0, y: 0 });
@@ -509,6 +518,7 @@ async function mbhit(mon, range, obj) {
     bhitpos.y = mon.my;
     const ddx = sgn((mon.mux ?? game.u?.ux) - mon.mx);
     const ddy = sgn((mon.muy ?? game.u?.uy) - mon.my);
+    const otyp = obj?.otyp | 0;
     let r = range;
 
     while (r-- > 0) {
@@ -533,9 +543,34 @@ async function mbhit(mon, range, obj) {
                 r -= 3;
             }
         }
-        // fhito_loc / destroy_drawbridge / doorlock deferred
+        /* C muse.c mbhit :1772 — fhito_loc deferred. */
         const loc = game.level?.at?.(x, y);
         const ltyp = loc?.typ;
+        /* C muse.c mbhit :1776–1803 — STRIKING find_drawbridge then
+         * else-if IS_DOOR||SDOOR doorlock. destroy_drawbridge named. */
+        const dbxy = { x, y };
+        if (otyp === WAN_STRIKING
+            && ltyp !== DRAWBRIDGE_UP
+            && find_drawbridge(dbxy)) {
+            /* destroy_drawbridge(dbxy.x, dbxy.y) deferred. */
+        } else if (IS_DOOR(ltyp) || ltyp === SDOOR) {
+            switch (otyp) {
+            /* C :1787–1788 — monsters don't use opening/locking magic
+             * at present; keep the placeholders. */
+            case WAN_OPENING:
+            case WAN_LOCKING:
+            case WAN_STRIKING:
+                if (await doorlock(obj, x, y)) {
+                    if (game._zap_oseen) makeknown(otyp);
+                    if ((loc?.doormask | 0) === D_BROKEN
+                        && in_rooms(x, y, SHOPBASE)) {
+                        const { add_damage } = await import('./shk.js');
+                        add_damage(x, y, 0);
+                    }
+                }
+                break;
+            }
+        }
         if (!ZAP_POS(ltyp)
             || (IS_DOOR(ltyp) && loc
                 && ((loc.doormask || 0) & (D_LOCKED | D_CLOSED)))) {
