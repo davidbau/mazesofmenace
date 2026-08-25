@@ -4,7 +4,10 @@
 //        update_inventory in_moveloop + suppress_map_output +
 //        suppress_price dance (D-1126; perm_invent On WIN_INVEN still named);
 //        display_minventory MINV_ALL|PICK_NONE (D-1426; zap.c
-//        probe_monster); worn_wield_only / PICK_ONE / INCLUDE_HERO named;
+//        probe_monster); display_binventory buried/pool (D-1444;
+//        zap.c zap_updown WAN_PROBING); display_cinventory container
+//        contents (D-1445; zap.c bhito WAN_PROBING); worn_wield_only /
+//        PICK_ONE / INCLUDE_HERO named;
 //        o_init.c dodiscovered / discover_object;
 //        insight.c enlightenment (BASIC ^X + MAGIC-only in-progress D-1116).
 // D-0856: display_pickinv / invent_lines obj_to_glyph Hallu display RNG.
@@ -757,7 +760,7 @@ export function not_fully_identified(otmp) {
 }
 
 /** C ref: invent.c set_cknown_lknown */
-function set_cknown_lknown(obj) {
+export function set_cknown_lknown(obj) {
     if (!obj) return;
     if (Is_container(obj) || (obj.otyp | 0) === STATUE) {
         obj.cknown = obj.lknown = 1;
@@ -1265,6 +1268,160 @@ export async function display_minventory(mon, dflags, title) {
         game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
         game.youmonst.data = savedData;
     }
+    return null;
+}
+
+const LENSES_OTYP = objectNames.indexOf('LENSES');
+const ARM_GLOVES_CAT = 3;
+const ARM_BOOTS_CAT = 4;
+
+/** C obj.h pair_of — lenses / gloves / boots. oc_skill ≡ oc_armcat. */
+function pair_of_inv(obj) {
+    if (!obj) return false;
+    if (LENSES_OTYP >= 0 && (obj.otyp | 0) === LENSES_OTYP) return true;
+    if ((obj.oclass | 0) !== ARMOR_CLASS) return false;
+    const cat = game.objects?.[obj.otyp]?.oc_skill | 0;
+    return cat === ARM_GLOVES_CAT || cat === ARM_BOOTS_CAT;
+}
+
+/**
+ * C invent.c query_objlist PICK_NONE analog for display_binventory.
+ * INVORDER_SORT uses class headings; else nexthere order (pool overlay).
+ */
+async function query_objlist_pick_none_binv(title, items, invorder_sort) {
+    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const entries = [{ text: title, attr: headingAttr }];
+    if (!game.iflags) game.iflags = {};
+    game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
+    try {
+        if (invorder_sort) {
+            const classes = DEF_INV_ORDER.includes(VENOM_CLASS)
+                ? [...DEF_INV_ORDER]
+                : [...DEF_INV_ORDER, VENOM_CLASS];
+            for (const oclass of classes) {
+                const group = items.filter((o) => (o.oclass | 0) === oclass);
+                if (!group.length) continue;
+                entries.push({ text: let_to_name(oclass), attr: headingAttr });
+                for (const otmp of group) {
+                    obj_glyph(otmp);
+                    entries.push({ text: doname(otmp), attr: 0 });
+                }
+            }
+        } else {
+            for (const otmp of items) {
+                obj_glyph(otmp);
+                entries.push({ text: doname(otmp), attr: 0 });
+            }
+        }
+    } finally {
+        game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
+    }
+    const rows = display()?.rows || 24;
+    const lmax = Math.min(52, rows - 1);
+    if (entries.length > lmax) {
+        await select_menu_pick_none(entries);
+    } else {
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        await nhgetch();
+        await dismiss_nhw_menu();
+    }
+}
+
+/**
+ * C invent.c display_binventory :5488–5546 — buried / underwater overlay.
+ * Only caller: zap.c zap_updown WAN_PROBING down (D-1444).
+ * as_if_seen → observe_object on buried at <x,y>. Return n+n2.
+ * Named omit: query_objlist PICK_ONE/ANY; go.only coord filter
+ * (we pre-filter buried by ox/oy).
+ */
+export async function display_binventory(x, y, as_if_seen) {
+    let n2 = 0;
+    let underwhat = 'here';
+    const { is_pool, is_lava } = await import('./hack.js');
+    if ((is_pool(x, y) || is_lava(x, y)) && !game.u?.Underwater) {
+        const obj = objects_at(x, y);
+        if (obj) {
+            const { hliquid } = await import('./do_name.js');
+            const real_liquid = is_pool(x, y) ? 'water' : 'lava';
+            const seen_liquid = hliquid(real_liquid);
+            if (!obj.nexthere) {
+                let more_than_1 = (obj.quan | 0) !== 1;
+                await pline(
+                    `There ${more_than_1 ? 'are' : 'is'} ${doname(obj)} under the ${seen_liquid} here.`,
+                );
+                n2 = 1;
+                if (pair_of_inv(obj)) more_than_1 = true;
+                underwhat = more_than_1 ? 'under them' : 'beneath it';
+            } else {
+                const items = [];
+                for (let o = obj; o; o = o.nexthere) items.push(o);
+                n2 = items.length;
+                await query_objlist_pick_none_binv(
+                    `Things that are under the ${seen_liquid} here:`,
+                    items,
+                    false,
+                );
+                underwhat = 'beneath them';
+            }
+        }
+    }
+
+    const buried = [];
+    for (let obj = game.level?.buriedobjlist || null; obj; obj = obj.nobj) {
+        if ((obj.ox | 0) === (x | 0) && (obj.oy | 0) === (y | 0)) {
+            if (as_if_seen) observe_object(obj);
+            buried.push(obj);
+        }
+    }
+    const n = buried.length;
+    if (n) {
+        await query_objlist_pick_none_binv(
+            `Things that are buried ${underwhat}:`,
+            buried,
+            true,
+        );
+    }
+    return n + n2;
+}
+
+/** C invent.c cinv_doname :5391–5418 — insert "trapped" before lock word. */
+function cinv_doname(obj) {
+    let result = doname(obj);
+    if (!obj?.otrapped) return result;
+    const p = result.indexOf(' locked');
+    const q = result.indexOf(' unlocked');
+    if (p >= 0 && (q < 0 || p < q)) {
+        result = result.replace(' locked ', ' trapped locked ');
+    } else if (q >= 0) {
+        result = result.replace(' unlocked ', ' trapped unlocked ');
+    }
+    return result.replace('an trapped ', 'a trapped ');
+}
+
+/**
+ * C invent.c display_cinventory :5446–5473 — container/statue contents.
+ * Caller: zap.c bhito WAN_PROBING (D-1445). Title via cinv_doname.
+ * PICK_NONE query_objlist analog; empty → "(empty)". Always cknown.
+ * Named omit: safe_qbuf overflow → cinv_ansimpleoname; PICK_ONE.
+ * @returns {Promise<object|null>}
+ */
+export async function display_cinventory(obj) {
+    if (!obj) return null;
+    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const qbuf = `Contents of ${cinv_doname(obj)}:`;
+    const items = [];
+    for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) items.push(otmp);
+    if (items.length) {
+        await query_objlist_pick_none_binv(qbuf, items, true);
+    } else {
+        await select_menu_pick_none([
+            { text: qbuf, attr: headingAttr },
+            { text: '', attr: 0 },
+            { text: '(empty)', attr: 0 },
+        ]);
+    }
+    obj.cknown = 1;
     return null;
 }
 

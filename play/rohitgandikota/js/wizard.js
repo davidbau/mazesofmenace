@@ -10,13 +10,14 @@ import { rn2 } from './rng.js';
 import { PMNAMES, MFLAGS, GROWNUPS } from './monst_data.js';
 import { Is_rogue_level, MAGIC_PORTAL, BOLT_LIM, RLOC_MSG,
          STRAT_NONE, STRAT_HEAL, STRAT_PLAYER, STRAT_GROUND, STRAT_MONSTR,
-         STRAT_WAITMASK, STRAT_APPEARMSG, STRAT_STRATMASK,
+         STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG, STRAT_STRATMASK,
          STRAT_GOAL } from './const.js';
 import { distu, isok } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
 import { is_covetous } from './mondata.js';
 import { inhishop, inhistemple } from './monmove.js';
 import { builds_up } from './dungeon.js';
+import { DEADMONSTER } from './monst.js';
 
 // src/wizard.c:61 amulet() — carrying the Amulet: a worn or wielded Amulet
 // senses the portal (rn2(15) gate), and while the Wizard of Yendor is in
@@ -404,6 +405,24 @@ export async function tactics(mtmp) {
    the planes is inside it. */
 function In_W_tower_w(/* x, y */) {
     return false;
+}
+
+// src/wizard.c:494 aggravate()
+export function aggravate() {
+    const hero_in_tower = In_W_tower_w(game.u.ux, game.u.uy);
+
+    for (const mtmp of game.level?.monsters || []) {
+        if (DEADMONSTER(mtmp)
+            || hero_in_tower !== In_W_tower_w(mtmp.mx, mtmp.my))
+            continue;
+        mtmp.mstrategy = (mtmp.mstrategy | 0)
+            & ~(STRAT_WAITFORU | STRAT_APPEARMSG);
+        mtmp.msleeping = 0;
+        if (!mtmp.mcanmove && !rn2(5)) {
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
+        }
+    }
 }
 
 // src/wizard.c:481 resurrect() — force confrontation with the Wizard:

@@ -1,5 +1,6 @@
 // artifact.js — Artifact table accessors and touch rules (partial).
 // C ref: artifact.c / artilist.h
+// defends / defends_when_carried + defn/cary extract (D-1453).
 
 import { game } from './gstate.js';
 import {
@@ -96,11 +97,31 @@ const AD_PHYS = 0;
 const AD_MAGM = 1;
 const AD_FIRE = 2;
 const AD_COLD = 3;
+const AD_SLEE = 4;
+const AD_DISN = 5;
 const AD_ELEC = 6;
 const AD_DRST = 7;
+const AD_ACID = 8;
+const AD_BLND = 11;
 const AD_STUN = 12;
+const AD_SLOW = 13;
+const AD_PLYS = 14;
 const AD_DRLI = 15;
 const AD_STON = 18;
+const AD_DISE = 33;
+const AD_HALU = 36;
+
+const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+const GOLD_DRAGON_SCALES = objectNames.indexOf('GOLD_DRAGON_SCALES');
+const RED_DRAGON_SCALES = objectNames.indexOf('RED_DRAGON_SCALES');
+const WHITE_DRAGON_SCALES = objectNames.indexOf('WHITE_DRAGON_SCALES');
+const GREEN_DRAGON_SCALES = objectNames.indexOf('GREEN_DRAGON_SCALES');
+const ORANGE_DRAGON_SCALES = objectNames.indexOf('ORANGE_DRAGON_SCALES');
+const BLACK_DRAGON_SCALES = objectNames.indexOf('BLACK_DRAGON_SCALES');
+const BLUE_DRAGON_SCALES = objectNames.indexOf('BLUE_DRAGON_SCALES');
+const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
+const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
 
 // C: gy.youmonst — sentinel for hero touch_artifact / spec_applies path
 export const youmonst = { _youmonst: true };
@@ -139,6 +160,16 @@ export function artifacts_globals_init() {
             adtyp: raw.attkAdtyp | 0,
             damn: raw.attkDamn | 0,
             damd: raw.attkDamd | 0,
+        },
+        defn: {
+            adtyp: raw.defnAdtyp | 0,
+            damn: raw.defnDamn | 0,
+            damd: raw.defnDamd | 0,
+        },
+        cary: {
+            adtyp: raw.caryAdtyp | 0,
+            damn: raw.caryDamn | 0,
+            damd: raw.caryDamd | 0,
         },
         alignment: raw.alignment | 0,
         role: resolvePm(raw.roleName),
@@ -944,6 +975,81 @@ export function attacks(adtyp, otmp) {
     const list = artilist();
     const weap = get_artifact(otmp);
     return weap !== list[ART_NONARTIFACT] && (weap.attk?.adtyp | 0) === (adtyp | 0);
+}
+
+/** C ref: obj.h Is_dragon_mail / Is_dragon_armor. */
+function Is_dragon_mail(obj) {
+    const t = obj?.otyp | 0;
+    return t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL;
+}
+
+function Is_dragon_armor(obj) {
+    if (!obj) return false;
+    const t = obj.otyp | 0;
+    return (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES)
+        || Is_dragon_mail(obj);
+}
+
+/**
+ * C ref: artifact.c defends :636–683 — artifact defn.adtyp, else
+ * dragon armor converted mail→scales. Caller: zap.c drain_item
+ * (D-1453). Named omit: defended() worn walk (mondata).
+ */
+export function defends(adtyp, otmp) {
+    if (!otmp) return false;
+    const list = artilist();
+    const weap = get_artifact(otmp);
+    if (weap !== list[ART_NONARTIFACT]) {
+        return (weap.defn?.adtyp | 0) === (adtyp | 0);
+    }
+    if (Is_dragon_armor(otmp)) {
+        let otyp = otmp.otyp | 0;
+        if (Is_dragon_mail(otmp)) {
+            otyp += GRAY_DRAGON_SCALES - GRAY_DRAGON_SCALE_MAIL;
+        }
+        switch (adtyp | 0) {
+        case AD_MAGM:
+            return otyp === GRAY_DRAGON_SCALES;
+        case AD_HALU:
+            return otyp === GOLD_DRAGON_SCALES;
+        case AD_FIRE:
+            return otyp === RED_DRAGON_SCALES;
+        case AD_COLD:
+            return otyp === WHITE_DRAGON_SCALES;
+        case AD_DRST:
+        case AD_DISE:
+            return otyp === GREEN_DRAGON_SCALES;
+        case AD_SLEE:
+        case AD_PLYS:
+            return otyp === ORANGE_DRAGON_SCALES;
+        case AD_DISN:
+        case AD_DRLI:
+            return otyp === BLACK_DRAGON_SCALES;
+        case AD_ELEC:
+        case AD_SLOW:
+            return otyp === BLUE_DRAGON_SCALES;
+        case AD_ACID:
+        case AD_STON:
+            return otyp === YELLOW_DRAGON_SCALES;
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: artifact.c defends_when_carried :687–694 — artifact
+ * cary.adtyp. No dragon-armor walk. Caller: zap.c drain_item
+ * (D-1453). No current artilist row has CARY(AD_DRLI).
+ */
+export function defends_when_carried(adtyp, otmp) {
+    const list = artilist();
+    const weap = get_artifact(otmp);
+    if (weap !== list[ART_NONARTIFACT]) {
+        return (weap.cary?.adtyp | 0) === (adtyp | 0);
+    }
+    return false;
 }
 
 /**

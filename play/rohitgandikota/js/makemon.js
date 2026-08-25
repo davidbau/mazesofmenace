@@ -1056,9 +1056,9 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
        co-located with you. This rejected u.ux/u.uy unconditionally. */
     if (!(gpflags & GP_ALLOW_U)) {
         if (game.u.ux === x && game.u.uy === y
-            && ptr !== game.youmonst
-            && (ptr !== game.u.ustuck || !game.u.uswallow)
-            && (!game.u.usteed || ptr !== game.u.usteed))
+            && mtmp !== game.youmonst
+            && (mtmp !== game.u.ustuck || !game.u.uswallow)
+            && (!game.u.usteed || mtmp !== game.u.usteed))
             return false;
     }
     /* src/teleport.c:114 — `if (MON_AT(x, y) && avoid_monpos) return FALSE;`

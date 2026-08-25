@@ -8,9 +8,9 @@ import { worn } from './do_wear.js';
 import { ACURR } from './attrib.js';
 import { isqrt } from './hacklib.js';
 import { is_metallic } from './obj.js';
-import { ONAMES, SKILLS } from './objects_data.js';
+import { ONAMES, OCLASSES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
-import { rnd } from './rng.js';
+import { rnd, rn2, rn1 } from './rng.js';
 import { tty_yn_function } from './tty/topl.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow, ATR_NONE,
@@ -29,7 +29,7 @@ import { makeknown } from './o_init.js';
 import { getdir } from './cmd.js';
 import { update_inventory } from './invent.js';
 import { NODIR } from './const.js';
-import { A_WIS } from './const.js';
+import { A_WIS, KILLED_BY_AN } from './const.js';
 import { morehungry } from './eat.js';
 import { ECMD_TIME } from './const.js';
 import { A_STR, A_INT } from './const.js';
@@ -87,18 +87,217 @@ export function initialspell(obj) {
     }
 }
 
-// src/spell.c:468 study_book() — read a spellbook.
-//
-// The live path: a book whose spell is already fresh in memory prints
-// "You know X quite well already." and asks to refresh. The dull-book
-// sleep gate is real (it keys on the book's shuffled appearance and draws
-// rnd(25) when it fires); the learning occupation itself is recorded.
+// src/spell.c:130 cursed_book()
+async function cursed_book(book) {
+    const lev = game.objects[book.otyp].oc_level;
+
+    switch (rn2(lev)) {
+    case 0: {
+        await You_feel('a wrenching sensation.');
+        const { tele } = await import('./teleport.js');
+        await tele();
+        break;
+    }
+    case 1: {
+        await You_feel('threatened.');
+        const { aggravate } = await import('./wizard.js');
+        aggravate();
+        break;
+    }
+    case 2: {
+        const intr = (game.u.intrinsic ||= {});
+        const was_blind = !!game.u.ublind;
+        intr.HBlinded = (intr.HBlinded | 0) + rn1(100, 250);
+        game.u.ublind = 1;
+        (game.disp ||= {}).botl = true;
+        game.vision_full_recalc = 1;
+        if (!was_blind)
+            await pline('A cloud of darkness falls upon you.');
+        break;
+    }
+    case 3: {
+        const coins = (game.invent || [])
+            .filter((obj) => obj.oclass === OCLASSES.COIN_CLASS);
+        if (!coins.length) {
+            await You_feel('a strange sensation.');
+        } else {
+            const { useupall } = await import('./invent.js');
+            for (const coin of coins)
+                useupall(coin);
+            await You('notice you have no gold!');
+            (game.disp ||= {}).botl = true;
+        }
+        break;
+    }
+    case 4: {
+        await pline('These runes were just too much to comprehend.');
+        const { make_confused } = await import('./potion.js');
+        await make_confused((game.u.intrinsic?.HConfusion | 0) + rn1(7, 16),
+                            false);
+        break;
+    }
+    case 5: {
+        await pline_The('book was coated with contact poison!');
+        if (game.u.uarmg) {
+            note_unported_spell('cursed_book:corrode_gloves');
+            break;
+        }
+        const poison_resistant = !!(game.u.intrinsic?.HPoison_resistance
+                                    || game.u.uprops?.POISON_RES);
+        const strloss = poison_resistant ? rn1(2, 1) : rn1(4, 3);
+        const damage = rnd(poison_resistant ? 6 : 10);
+        const { adjattrib } = await import('./attrib.js');
+        const { losehp } = await import('./hack.js');
+        const was_in_use = book.in_use;
+        book.in_use = false;
+        await adjattrib(A_STR, -strloss, 1);
+        note_unported_spell('cursed_book:losestr_killer');
+        await losehp(damage, 'contact-poisoned spellbook', KILLED_BY_AN);
+        book.in_use = was_in_use;
+        break;
+    }
+    case 6: {
+        if (game.u.uprops?.ANTIMAGIC || game.u.uprops?.MAGIC_RES) {
+            await pline_The('book radiates explosive energy, but you are unharmed!');
+        } else {
+            await pline('As you read the book, it radiates explosive energy in your face!');
+            let damage = 2 * rnd(10) + 5;
+            if (game.u.uprops?.HALF_PHDAM)
+                damage = Math.ceil(damage / 2);
+            const { losehp } = await import('./hack.js');
+            await losehp(damage, 'exploding rune', KILLED_BY_AN);
+        }
+        return true;
+    }
+    }
+    return false;
+}
+
+// src/spell.c:189 confused_book()
+async function confused_book(spellbook) {
+    if (!rn2(3) && spellbook.otyp !== ONAMES.SPE_BOOK_OF_THE_DEAD) {
+        spellbook.in_use = true;
+        await pline('Being confused you have difficulties in controlling your actions.');
+        await You('accidentally tear the spellbook to pieces.');
+        const { trycall } = await import('./do_name.js');
+        const { useup } = await import('./invent.js');
+        await trycall(spellbook);
+        useup(spellbook);
+        return true;
+    }
+    await You(`find yourself reading the ${
+        spellbook === game.context.spbook?.book ? 'next' : 'first'
+    } line over and over again.`);
+    return false;
+}
+
+// include/spell.h:12
+const MAX_SPELL_STUDY = 3;
+
+// src/spell.c:356 learn(), the per-turn spellbook study occupation.
+async function learn() {
+    const spbook = (game.context.spbook ||= {});
+    const book = spbook.book;
+
+    if (!book)
+        return 0;
+    if (spbook.delay && game.u.ublindf?.otyp === ONAMES.LENSES && rn2(2))
+        spbook.delay++;
+    if (game.u.uprops?.CONFUSION) {
+        await confused_book(book);
+        spbook.book = null;
+        spbook.o_id = 0;
+        const { nomul } = await import('./hack.js');
+        nomul(spbook.delay);
+        game.multi_reason = 'reading a book';
+        game.nomovemsg = null;
+        spbook.delay = 0;
+        return 0;
+    }
+    if (spbook.delay) {
+        spbook.delay++;
+        return 1;
+    }
+
+    exercise(A_WIS, true);
+    let booktype = book.otyp;
+    if (booktype === ONAMES.SPE_BOOK_OF_THE_DEAD) {
+        note_unported_spell('learn:book_of_the_dead');
+        spbook.book = null;
+        spbook.o_id = 0;
+        return 0;
+    }
+
+    const name = OBJ_NAME(game.objects[booktype]);
+    const splname = game.objects[booktype].oc_name_known
+        ? `"${name}"` : `the "${name}" spell`;
+    let i;
+    for (i = 0; i < MAXSPELL; i++)
+        if (spellid(i) === booktype || spellid(i) === NO_SPELL)
+            break;
+
+    let faded_to_blank = false;
+    if (i === MAXSPELL) {
+        note_unported_spell('learn:too_many_spells');
+    } else if (spellid(i) === booktype) {
+        if ((book.spestudied | 0) > MAX_SPELL_STUDY) {
+            await pline('This spellbook is too faint to be read any more.');
+            book.otyp = booktype = ONAMES.SPE_BLANK_PAPER;
+            faded_to_blank = true;
+            book.spestudied = rn2(book.spestudied);
+        } else {
+            await Your(`knowledge of ${splname} is ${
+                spellknow(i) ? 'keener' : 'restored'}.`);
+            incrnknow(i, 1);
+            book.spestudied = (book.spestudied | 0) + 1;
+            exercise(A_WIS, true);
+        }
+    } else if ((book.spestudied | 0) >= MAX_SPELL_STUDY) {
+        await pline('This spellbook is too faint to read even once.');
+        book.otyp = booktype = ONAMES.SPE_BLANK_PAPER;
+        faded_to_blank = true;
+        book.spestudied = rn2(book.spestudied);
+    } else {
+        (game.spl_book ||= [])[i] = {
+            sp_id: booktype,
+            sp_lev: game.objects[booktype].oc_level,
+            sp_know: 0,
+        };
+        incrnknow(i, 1);
+        book.spestudied = (book.spestudied | 0) + 1;
+        if (!i)
+            await You(`learn ${splname}.`);
+        else
+            await You(`add ${splname} to your repertoire, as '${spellet(i)}'.`);
+    }
+    if (i < MAXSPELL) {
+        makeknown(booktype);
+        if (faded_to_blank)
+            update_inventory();
+    }
+
+    if (book.cursed && await cursed_book(book)) {
+        const { useup } = await import('./invent.js');
+        useup(book);
+        spbook.book = null;
+        spbook.o_id = 0;
+        return 0;
+    }
+    if (book.unpaid)
+        note_unported_spell('learn:check_unpaid');
+    spbook.book = null;
+    spbook.o_id = 0;
+    return 0;
+}
+
+// src/spell.c:468 study_book()
 export async function study_book(spellbook) {
     const booktype = spellbook.otyp;
     const confused = !!game.u.uprops?.CONFUSION;
 
     /* attempting to read dull book may make hero fall asleep */
-    if (!confused && !game.u.uprops?.SLEEP_RES
+    if (!confused
+        && !(game.u.intrinsic?.HSleep_resistance || game.u.uprops?.SLEEP_RES)
         && OBJ_DESCR(game.objects[booktype]) === 'dull') {
         let dullbook = rnd(25) - ACURR(A_WIS);
         if (game.context.spbook?.delay
@@ -113,42 +312,108 @@ export async function study_book(spellbook) {
         }
     }
 
-    if (game.context.spbook?.delay && !confused
+    const continuing = game.context.spbook?.delay && !confused
         && spellbook === game.context.spbook?.book
-        && booktype !== ONAMES.SPE_BLANK_PAPER) {
-        note_unported_spell('study_book:continue_efforts');
-        return 1;
-    }
+        && booktype !== ONAMES.SPE_BLANK_PAPER;
 
-    if (booktype === ONAMES.SPE_BLANK_PAPER || booktype === ONAMES.SPE_NOVEL) {
-        note_unported_spell('study_book:blank_or_novel');
-        return 1;
-    }
-
-    /* src/spell.c:537 — study time by level; no draw */
-    const lvl = game.objects[booktype].oc_level;
-    const delayTbl = { 1: 1, 2: 1, 3: lvl - 1, 4: lvl - 1, 5: lvl, 6: lvl, 7: 8 };
-    (game.context.spbook ||= {}).delay =
-        -(delayTbl[lvl] ?? 1) * game.objects[booktype].oc_delay;
-
-    /* check to see if we already know it and want to refresh our memory */
-    let i;
-    for (i = 0; i < MAXSPELL; i++)
-        if (spellid(i) === booktype || spellid(i) === NO_SPELL)
-            break;
-    if (spellid(i) === booktype && spellknow(i) > KEEN / 10) {
-        await You(`know "${OBJ_NAME(game.objects[booktype])}" quite well already.`);
-        makeknown(booktype);
-        if ((await tty_yn_function('Refresh your memory anyway?', 'yn', 'n'))
-            === 'n') {
-            game.context.spbook.delay = 0;
-            return 0;
+    if (continuing) {
+        await You(`continue your efforts to ${
+            booktype === ONAMES.SPE_NOVEL ? 'read the novel'
+                                          : 'memorize the spell'}.`);
+    } else {
+        if (booktype === ONAMES.SPE_BLANK_PAPER) {
+            await pline('This spellbook is all blank.');
+            makeknown(booktype);
+            return 1;
         }
+        if (booktype === ONAMES.SPE_NOVEL) {
+            note_unported_spell('study_book:novel');
+            return 1;
+        }
+
+        const lvl = game.objects[booktype].oc_level;
+        const delayTbl = {
+            1: 1, 2: 1, 3: lvl - 1, 4: lvl - 1,
+            5: lvl, 6: lvl, 7: 8,
+        };
+        (game.context.spbook ||= {}).delay =
+            -(delayTbl[lvl] ?? 1) * game.objects[booktype].oc_delay;
+
+        let i;
+        for (i = 0; i < MAXSPELL; i++)
+            if (spellid(i) === booktype || spellid(i) === NO_SPELL)
+                break;
+        if (spellid(i) === booktype && spellknow(i) > KEEN / 10) {
+            await You(`know "${OBJ_NAME(game.objects[booktype])}" quite well already.`);
+            makeknown(booktype);
+            if ((await tty_yn_function('Refresh your memory anyway?', 'yn', 'n'))
+                === 'n')
+                return 0;
+        }
+
+        spellbook.in_use = true;
+        let too_hard = false;
+        if (!spellbook.blessed && booktype !== ONAMES.SPE_BOOK_OF_THE_DEAD) {
+            if (spellbook.cursed) {
+                too_hard = true;
+            } else {
+                const read_ability = ACURR(A_INT) + 4
+                    + Math.trunc(game.u.ulevel / 2) - 2 * lvl
+                    + (game.u.ublindf?.otyp === ONAMES.LENSES ? 2 : 0);
+                if (Role_if(PMNAMES.PM_WIZARD) && read_ability < 20
+                    && !confused) {
+                    const very = read_ability < 12 ? 'very ' : '';
+                    if ((await tty_yn_function(
+                        `This spellbook is ${very}difficult to comprehend.  Continue?`,
+                        'yn', 'n')) !== 'y') {
+                        spellbook.in_use = false;
+                        return 1;
+                    }
+                }
+                if (rnd(20) > read_ability)
+                    too_hard = true;
+            }
+        }
+
+        if (too_hard) {
+            const gone = await cursed_book(spellbook);
+            const { nomul } = await import('./hack.js');
+            nomul(game.context.spbook.delay);
+            game.multi_reason = 'reading a book';
+            game.nomovemsg = null;
+            game.context.spbook.delay = 0;
+            if (gone || !rn2(3)) {
+                if (!gone)
+                    await pline_The('spellbook crumbles to dust!');
+                const { trycall } = await import('./do_name.js');
+                const { useup } = await import('./invent.js');
+                await trycall(spellbook);
+                useup(spellbook);
+            } else {
+                spellbook.in_use = false;
+            }
+            return 1;
+        }
+        if (confused) {
+            if (!await confused_book(spellbook))
+                spellbook.in_use = false;
+            const { nomul } = await import('./hack.js');
+            nomul(game.context.spbook.delay);
+            game.multi_reason = 'reading a book';
+            game.nomovemsg = null;
+            game.context.spbook.delay = 0;
+            return 1;
+        }
+        spellbook.in_use = false;
+        await You(`begin to ${
+            booktype === ONAMES.SPE_BOOK_OF_THE_DEAD ? 'recite' : 'memorize'
+        } the runes.`);
     }
 
-    /* the read-ability roll, the cursed-book arm and the learning
-       occupation follow; each draws */
-    note_unported_spell('study_book:learn');
+    game.context.spbook.book = spellbook;
+    game.context.spbook.o_id = spellbook.o_id;
+    const { set_occupation } = await import('./allmain.js');
+    set_occupation(learn, 'studying', 0);
     return 1;
 }
 

@@ -922,6 +922,15 @@ function count_feat_lastseentyp(mptr, x, y) {
 }
 
 /**
+ * C dungeon.c update_mapseen_for :2943–2947 — recalc then lastseentyp[x][y].
+ * Caller: zap.c zap_updown WAN_PROBING down (D-1444); lock.c named.
+ */
+export function update_mapseen_for(x, y) {
+    recalc_mapseen();
+    return game.lastseentyp?.[x | 0]?.[y | 0] | 0;
+}
+
+/**
  * C ref: dungeon.c recalc_mapseen — reset current-level feat counts from
  * msrooms (shops/temples) + lastseentyp. Bones/valley/sanctum/oracle/
  * Blind bigroom/drawbridge castle still deferred (named in C-JS-MAP).

@@ -1126,17 +1126,16 @@ export function newsym(x, y) {
         const objhere = !covers_objects(x, y)
             && (game.level?.objects || [])
                    .some(o => o.ox === x && o.oy === y);
-        if (!objhere && trap && trap.tseen && !covers_traps(x, y)) {
+        if (!objhere && trap && trap.tseen && !covers_traps(x, y)
+            && cansee(x, y)) {
             const tg = trap_glyph(trap);
             if (game.level?.flags?.hero_memory)
                 loc.remembered_glyph = { ch: tg.ch, color: tg.color,
                                          decgfx: false,
                                          glyph: { kind: 'cmap', cmap: tg.cmap } };
-            if (cansee(x, y)) {
-                show_glyph_cell(x, y, tg.ch, tg.color, false, 0,
-                                { kind: 'cmap', cmap: tg.cmap });
-                return;
-            }
+            show_glyph_cell(x, y, tg.ch, tg.color, false, 0,
+                            { kind: 'cmap', cmap: tg.cmap });
+            return;
         }
     }
 

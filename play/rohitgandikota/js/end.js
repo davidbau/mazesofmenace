@@ -8,12 +8,20 @@
 // swallowed and the next segment starts a fresh game.
 
 import { game } from './gstate.js';
-import { pline } from './display.js';
+import { pline, canspotmon } from './display.js';
 import { You } from './pline.js';
 import { money_cnt } from './invent.js';
 import { depth, dunlevs_in_dungeon } from './dungeon.js';
-import { In_endgame, In_quest, NHW_TEXT, NHW_MENU } from './const.js';
-import { mons, PMNAMES } from './monst_data.js';
+import { G_GENOD, G_UNIQ, In_endgame, In_quest, KILLED_BY_AN, KILLED_BY,
+         LOW_PM, M_AP_MONSTER, M_AP_TYPE, MGIVENNAME, NHW_TEXT, NHW_MENU,
+         NON_PM, has_mgivenname } from './const.js';
+import { PMNAMES, MONSYMS } from './monst_data.js';
+import { pmname } from './do_name.js';
+import { gender, type_is_pname } from './mondata.js';
+import { is_vampshifter } from './monst.js';
+import { Hallucination } from './youprop.js';
+import { an } from './objnam.js';
+import { Race_if } from './u_init.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow } from './tty/wintty.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -43,6 +51,123 @@ export const DIED = 0, CHOKING = 1, POISONING = 2, STARVING = 3,
              DROWNING = 4, BURNING = 5, DISSOLVED = 6, CRUSHING = 7,
              STONING = 8, TURNED_SLIME = 9, GENOCIDED = 10, PANICKED = 11,
              TRICKED = 12, QUIT = 13, ESCAPED = 14, ASCENDED = 15;
+
+const the_unique_pm = (ptr) =>
+    !type_is_pname(ptr) && (ptr.geno & G_UNIQ) !== 0;
+
+// src/mon.c:362 zombie_maker(), used here only to choose the hero's bones
+// form after a fatal attack.
+function zombie_maker(mon) {
+    const ptr = mon.data;
+    if (mon.mcan)
+        return false;
+    if (ptr.mlet === MONSYMS.S_ZOMBIE)
+        return ptr.pmidx !== PMNAMES.PM_GHOUL
+            && ptr.pmidx !== PMNAMES.PM_SKELETON;
+    return ptr.mlet === MONSYMS.S_LICH;
+}
+
+// src/end.c:185 done_in_by() -- death caused directly by a monster.
+export async function done_in_by(mtmp, how) {
+    const original = mtmp.data;
+    const chamData = Number.isInteger(mtmp.cham) && mtmp.cham >= LOW_PM
+        ? game.mons?.[mtmp.cham] : null;
+    const champtr = chamData || original;
+    const mimicker = M_AP_TYPE(mtmp) === M_AP_MONSTER;
+    const imitator = original !== champtr || mimicker;
+    const monGender = gender(mtmp);
+    let format = KILLED_BY_AN;
+    let buf = '';
+
+    await You(how === STONING ? 'turn to stone...' : 'die...');
+
+    if ((original.geno & G_UNIQ) !== 0 && !(imitator && !mimicker)
+        && !(original === game.mons[PMNAMES.PM_HIGH_CLERIC]
+             && !mtmp.ispriest)) {
+        if (!type_is_pname(original))
+            buf += 'the ';
+        format = KILLED_BY;
+    }
+    if (original === game.mons[PMNAMES.PM_GHOST]
+        && has_mgivenname(mtmp)) {
+        buf += 'the ';
+        format = KILLED_BY;
+    }
+    if (mtmp.minvis)
+        buf += 'invisible ';
+    if (Hallucination() && canspotmon(mtmp))
+        buf += 'hallucinogen-distorted ';
+
+    if (imitator) {
+        let shapePtr = original;
+        const realnm = pmname(champtr, monGender);
+        let fakenm = pmname(original, monGender);
+        const alternate = is_vampshifter(mtmp);
+
+        if (mimicker) {
+            shapePtr = game.mons[mtmp.mappearance] || original;
+            fakenm = pmname(shapePtr, monGender);
+        } else if (alternate && realnm.includes('vampire')
+                   && fakenm === 'vampire bat') {
+            fakenm = 'bat';
+        }
+
+        const shape = alternate || type_is_pname(shapePtr) ? fakenm
+            : the_unique_pm(shapePtr) ? `the ${fakenm}` : an(fakenm);
+        buf += alternate ? `${realnm} in ${shape} form`
+            : mimicker ? `${realnm} disguised as ${shape}`
+              : `${realnm} imitating ${shape}`;
+    } else if (original === game.mons[PMNAMES.PM_GHOST]) {
+        buf += 'ghost';
+        if (has_mgivenname(mtmp))
+            buf += ` of ${MGIVENNAME(mtmp)}`;
+    } else if (mtmp.isshk) {
+        const rawName = mtmp.shknam || mtmp.eshk?.shknam
+            || mtmp.mextra?.eshk?.shknam || '';
+        if (rawName) {
+            const personal = /^[-+=]/.test(rawName);
+            const shkname = /^[A-Za-z]/.test(rawName[0])
+                ? rawName : rawName.slice(1);
+            buf += `${personal ? '' : mtmp.female ? 'Ms. ' : 'Mr. '}`
+                + `${shkname}, the shopkeeper`;
+        } else {
+            note_unported_end('done_in_by:shopkeeper-name');
+            buf += pmname(original, monGender);
+        }
+        format = KILLED_BY;
+    } else if (mtmp.ispriest || mtmp.isminion) {
+        note_unported_end('done_in_by:priest-or-minion-name');
+        buf += pmname(original, monGender);
+    } else {
+        buf += pmname(original, monGender);
+        if (has_mgivenname(mtmp))
+            buf += ` called ${MGIVENNAME(mtmp)}`;
+    }
+
+    game.killer = { format, name: buf };
+    if (game.multi_reason)
+        note_unported_end('done_in_by:multi-reason-truncation');
+
+    if (original.mlet === MONSYMS.S_WRAITH) {
+        game.u.ugrave_arise = PMNAMES.PM_WRAITH;
+    } else if (original.mlet === MONSYMS.S_MUMMY
+               && (game.urace?.mummynum ?? NON_PM) !== NON_PM) {
+        game.u.ugrave_arise = game.urace.mummynum;
+    } else if (zombie_maker(mtmp)
+               && (game.urace?.zombienum ?? NON_PM) !== NON_PM) {
+        game.u.ugrave_arise = game.urace.zombienum;
+    } else if (original.mlet === MONSYMS.S_VAMPIRE
+               && Race_if(PMNAMES.PM_HUMAN)) {
+        game.u.ugrave_arise = PMNAMES.PM_VAMPIRE;
+    } else if (original === game.mons[PMNAMES.PM_GHOUL]) {
+        game.u.ugrave_arise = PMNAMES.PM_GHOUL;
+    }
+    if ((game.u.ugrave_arise ?? NON_PM) >= LOW_PM
+        && (game.mvitals[game.u.ugrave_arise].mvflags & G_GENOD) !== 0)
+        game.u.ugrave_arise = NON_PM;
+
+    await done(how);
+}
 
 // src/end.c:1855 formatkiller() — final death description. Only the
 // NO_KILLER_PREFIX and KILLED_BY* forms are live; the fuller article logic

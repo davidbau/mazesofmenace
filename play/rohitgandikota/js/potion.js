@@ -9,14 +9,15 @@ import { newuhs } from './eat.js';
 import { game } from './gstate.js';
 import { pline } from './display.js';
 import { You, You_feel } from './pline.js';
-import { exercise } from './attrib.js';
-import { A_DEX } from './const.js';
+import { exercise, adjattrib, A_MAX, ACURR } from './attrib.js';
+import { A_STR, A_INT, A_DEX, A_CON, A_CHA,
+         KILLED_BY_AN, KILLED_BY } from './const.js';
 import { Your } from './pline.js';
-import { nomul } from './hack.js';
+import { nomul, losehp } from './hack.js';
 import { surface } from './dungeon.js';
 import { A_WIS, ECMD_CANCEL, IS_FOUNTAIN, IS_SINK } from './const.js';
-import { Unaware, Hallucination } from './youprop.js';
-import { rn2, rn1 } from './rng.js';
+import { Unaware, Hallucination, Poison_resistance } from './youprop.js';
+import { rn2, rn1, rnd } from './rng.js';
 import { ONAMES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { OBJ_DESCR } from './objnam.js';
@@ -107,6 +108,81 @@ async function peffect_confusion(otmp) {
                         false);
 }
 
+// src/attrib.c:294 poisontell()
+async function poisontell(typ) {
+    switch (typ) {
+    case A_STR:
+        await You_feel(`${ACURR(A_STR) === 125 ? 'innately ' : ''}weaker.`);
+        break;
+    case A_INT:
+        await Your('brain is on fire.');
+        break;
+    case A_WIS:
+        await Your('judgement is impaired.');
+        break;
+    case A_DEX:
+        await Your("muscles won't obey you.");
+        break;
+    case A_CON:
+        await You_feel(`${ACURR(A_CON) === 25 ? 'sick inside' : 'very sick'}.`);
+        break;
+    case A_CHA:
+        await You('break out in hives.');
+        break;
+    }
+}
+
+// include/you.h:247 Role_if()
+function Role_if(pm) {
+    const m = game.urole?.mnum;
+    return m === pm || m === PMNAMES[pm];
+}
+
+// src/potion.c:963 peffect_sickness()
+async function peffect_sickness(otmp) {
+    await pline('Yecch!  This stuff tastes like poison.');
+    if (otmp.blessed) {
+        await pline(`(But in fact it was mildly stale ${fruitname(true)}.)`);
+        if (!Role_if('PM_HEALER'))
+            await losehp(1, 'mildly contaminated potion', KILLED_BY_AN);
+    } else {
+        const poison_resistant = Poison_resistance();
+
+        if (poison_resistant) {
+            await pline(`(But in fact it was biologically contaminated ${
+                fruitname(true)}.)`);
+        }
+        if (Role_if('PM_HEALER')) {
+            await pline('Fortunately, you have been immunized.');
+        } else {
+            const typ = rn2(A_MAX);
+            const contaminant = `${poison_resistant ? 'mildly ' : ''}${
+                otmp.fromsink ? 'contaminated tap water'
+                              : 'contaminated potion'}`;
+
+            if (!game.u.uprops?.FIXED_ABIL) {
+                await poisontell(typ);
+                await adjattrib(typ, poison_resistant ? -1 : -rn1(4, 3), 1);
+            }
+            const damage = poison_resistant ? 1 + rn2(2)
+                                            : rnd(10) + 5 * !!otmp.cursed;
+            await losehp(damage, contaminant,
+                         otmp.fromsink ? KILLED_BY : KILLED_BY_AN);
+            exercise(A_CON, false);
+        }
+    }
+    if (Hallucination()) {
+        await You('are shocked back to your senses!');
+        if (game.u.uprops)
+            delete game.u.uprops.HALLUC;
+        if (game.u.intrinsic)
+            delete game.u.intrinsic.HHallucination;
+        (game.disp ||= {}).botl = true;
+        /* make_hallucinated() also redraws monsters, objects, and traps. */
+        note_unported_potion('peffect_sickness:hallucination_redraw');
+    }
+}
+
 // src/potion.c:1260 peffect_oil() — the one potion arm the sessions reach.
 async function peffect_oil(otmp) {
     const good_for_you = false;
@@ -128,6 +204,9 @@ async function peffects(otmp) {
     switch (otmp.otyp) {
     case ONAMES.POT_CONFUSION:
         await peffect_confusion(otmp);
+        break;
+    case ONAMES.POT_SICKNESS:
+        await peffect_sickness(otmp);
         break;
     case ONAMES.POT_PARALYSIS:
         await peffect_paralysis(otmp);

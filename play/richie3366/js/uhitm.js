@@ -2379,7 +2379,7 @@ function a_monnam(mtmp) {
  * C ref: uhitm.c that_is_a_mimic — name fake object via object_from_map/mksobj.
  * Blind / hallu / invis / cmap-furniture defsyms / trapped-chest glyph deferred.
  */
-async function that_is_a_mimic(mtmp, mimic_flags) {
+export async function that_is_a_mimic(mtmp, mimic_flags) {
     const reveal_it = (mimic_flags & MIM_REVEAL) !== 0;
     let msg = null;
 
