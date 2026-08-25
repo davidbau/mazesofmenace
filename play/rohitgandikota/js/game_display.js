@@ -28,6 +28,33 @@ export class GameDisplay {
             );
         }
 
+        /* The frozen terminal's serializer skips leading blank cells when it
+           chooses where a row begins. A menu heading can intentionally put
+           inverse video on that leading blank, so preserve it by making the
+           first attributed blank temporarily nonblank during serialization. */
+        const terminalSerialize = this.terminal.serialize.bind(this.terminal);
+        this.terminal.serialize = () => {
+            const touched = [];
+            for (let r = 0; r < this.terminal.rows; r++) {
+                const row = this.terminal.grid[r];
+                const last = row.findLastIndex(cell => cell.ch !== ' ');
+                if (last < 0)
+                    continue;
+                const first = row.findIndex((cell, c) => c <= last
+                    && (cell.ch !== ' ' || cell.attr));
+                if (first >= 0 && row[first].ch === ' ') {
+                    row[first].ch = '\0';
+                    touched.push(row[first]);
+                }
+            }
+            try {
+                return terminalSerialize().replaceAll('\0', ' ');
+            } finally {
+                for (const cell of touched)
+                    cell.ch = ' ';
+            }
+        };
+
         // NetHack-specific message state
         this.topMessage = null;
         this.toplines = '';

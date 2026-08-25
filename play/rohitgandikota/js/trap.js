@@ -6,7 +6,7 @@
 // holds the pieces of src/trap.c it calls into, so that a grep for a C symbol
 // finds it in the file its C twin lives in.
 
-import { t_at as t_at_mon } from './mon.js';
+import { m_at, t_at as t_at_mon } from './mon.js';
 import { inv_cnt, crawl_destination, unmul } from './hack.js';
 import { near_capacity } from './attrib.js';
 import { UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DROWNING, BURNING,
@@ -14,21 +14,21 @@ import { UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DROWNING, BURNING,
 import { goodpos } from './makemon.js';
 import { waterbody_name } from './pager.js';
 import { hliquid } from './do_name.js';
-import { Teleport_control, Unaware } from './youprop.js';
+import { Teleport_control, Unaware, Sleep_resistance } from './youprop.js';
 import { teleds, safe_teleds, TELEDS_ALLOW_DRAG,
          TELEDS_TELEPORT } from './teleport.js';
 import { done } from './end.js';
-import { vision_recalc } from './vision.js';
+import { recalc_block_point, vision_recalc } from './vision.js';
 import { useupall } from './invent.js';
 import { obj_resists } from './zap.js';
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { mksobj, place_object } from './mkobj.js';
+import { mksobj, place_object, splitobj } from './mkobj.js';
 import { weight } from './invent.js';
 import { dmgval } from './weapon.js';
 import { observe_object } from './o_init.js';
-import { newsym, pline } from './display.js';
+import { canspotmon, display_object_at, newsym, pline } from './display.js';
 import { You, You_hear, You_feel, Your, Norep } from './pline.js';
 import { an, the, doname, mshot_xname, xname } from './objnam.js';
 import { upstart } from './do_name.js';
@@ -37,7 +37,7 @@ import { monkilled } from './mon.js';
 import { find_mac, which_armor } from './worn.js';
 import { canseemon } from './display.js';
 import { cansee } from './vision.js';
-import { passes_walls, likes_lava } from './mondata.js';
+import { passes_walls, likes_lava, throws_rocks } from './mondata.js';
 import { has_ceiling } from './dungeon.js';
 import { Monnam } from './do_name.js';
 import { MATERIALS } from './objects_data.js';
@@ -54,7 +54,7 @@ import { W_SADDLE, NO_TRAP_FLAGS, HEAD, ARM, W_ARMH, W_ARMS, W_ARMG,
 import { rnl } from './rng.js';
 import { body_part } from './polyself.js';
 import { mon_nam } from './do_name.js';
-import { MON_WEP, DEADMONSTER } from './monst.js';
+import { MON_WEP, DEADMONSTER, helpless } from './monst.js';
 import { erosion_matters } from './mkobj.js';
 import { cxname, vtense, suit_simple_name,
          gloves_simple_name } from './objnam.js';
@@ -71,7 +71,7 @@ import { Is_airlevel, Is_waterlevel } from './const.js';
 /* src/trap.h — trapeffect_*() return values. */
 /* include/trap.h:98-101 — Trap_Is_Gone shares 0 with Finished. */
 const Trap_Effect_Finished = 0, Trap_Is_Gone = 0,
-      Trap_Caught_Mon = 1, Trap_Killed_Mon = 2;
+      Trap_Caught_Mon = 1, Trap_Killed_Mon = 2, Trap_Moved_Mon = 3;
 
 function note_unported_trap(what) {
     (game.unported ||= new Set()).add(what);
@@ -84,7 +84,7 @@ import { In_quest, TOOKPLUNGE, VIASITTING, HURTLING,
          ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT,
          SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP,
-         VIBRATING_SQUARE, BOLT_LIM } from './const.js';
+         VIBRATING_SQUARE, BOLT_LIM, WT_ELF } from './const.js';
 import { just_an } from './objnam.js';
 import { Deaf, Levitation, Flying, Hallucination } from './youprop.js';
 import { mindless } from './mondata.js';
@@ -99,10 +99,10 @@ import { xytodir } from './cmd.js';
 import { mons_see_trap } from './mondata.js';
 const CM_S_arrow_trap = cmap_names.S_arrow_trap;
 import { set_wounded_legs } from './do.js';
-import { sobj_at } from './invent.js';
+import { obj_extract_self, sobj_at } from './invent.js';
 import { metallivorous } from './mondata.js';
 import { amorphous, is_whirly, unsolid, is_clinger, is_floater, is_flyer,
-         webmaker, defended, resists_fire, resists_sleep,
+         webmaker, defended, resists_fire, resists_sleep, breathless,
          resists_magm } from './mondata.js';
 
 // include/rm.h:538 Sokoban — the level flag, not the dungeon branch.
@@ -570,12 +570,16 @@ export async function dotrap(trap, trflags) {
         return await trapeffect_magic_trap(game.youmonst, trap, trflags);
     if (ttype === BEAR_TRAP)
         return await trapeffect_bear_trap(game.youmonst, trap, trflags);
+    if (ttype === SLP_GAS_TRAP)
+        return await trapeffect_slp_gas_trap(game.youmonst, trap, trflags);
     if (ttype === RUST_TRAP)
         return await trapeffect_rust_trap(game.youmonst, trap, trflags);
     if (ttype === HOLE || ttype === TRAPDOOR)
         return await trapeffect_hole(game.youmonst, trap, trflags);
     if (ttype === ANTI_MAGIC)
         return await trapeffect_anti_magic(game.youmonst, trap, trflags);
+    if (ttype === TELEP_TRAP)
+        return await trapeffect_telep_trap(game.youmonst, trap, trflags);
 
     note_unported_trap(`dotrap:ttyp=${ttype}`);
     return Trap_Effect_Finished;
@@ -804,6 +808,32 @@ function wearing_iron_shoes(mtmp) {
     return !!(armf && game.objects[armf.otyp].oc_material === MATERIALS.IRON);
 }
 
+// src/trap.c:2527 trapeffect_landmine(). Damage is rolled before the mine
+// tests whether a monster is heavy enough to press its trigger. That discarded
+// rnd(16) is part of every light monster's path.
+async function trapeffect_landmine(mtmp, trap, trflags) {
+    let damage = rnd(16);
+
+    if (wearing_iron_shoes(mtmp))
+        damage = Math.trunc((damage + 3) / 4);
+
+    if (mtmp === game.youmonst) {
+        note_unported_trap('trapeffect_landmine:hero');
+        return Trap_Effect_Finished;
+    }
+
+    /* MINE_TRIGGER_WT is WT_ELF / 2. Monsters below the threshold leave the
+       mine untouched after this one weight roll. */
+    if (rn2(mtmp.data.cwt + 1) < Math.trunc(WT_ELF / 2))
+        return Trap_Effect_Finished;
+
+    if (m_in_air(mtmp) && rn2(3))
+        return Trap_Effect_Finished;
+
+    note_unported_trap(`trapeffect_landmine:explosion:damage=${damage}`);
+    return Trap_Effect_Finished;
+}
+
 /* Yname2(uarmf) — "Your <boots>"; xname through the hero's boots. */
 function yname_boots() {
     return 'Your ' + xname(game.u.uarmf);
@@ -932,6 +962,40 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
         ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
+// src/trap.c:1560 trapeffect_slp_gas_trap() — sleep gas affects a breathing,
+// non-resistant creature for rnd(25) turns.
+async function trapeffect_slp_gas_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        seetrap(trap);
+        if (Sleep_resistance() || breathless(game.youmonst.data)) {
+            await You('are enveloped in a cloud of gas!');
+        } else {
+            await pline('A cloud of gas puts you to sleep!');
+            const { fall_asleep } = await import('./timeout.js');
+            await fall_asleep(-rnd(25), true);
+        }
+        if (game.u.usteed)
+            note_unported_trap('trapeffect_slp_gas_trap:steed');
+        return Trap_Effect_Finished;
+    }
+
+    const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+    if (!resists_sleep(mtmp) && !breathless(mtmp.data) && !helpless(mtmp)) {
+        let amount = rnd(25);
+        if (!defended(mtmp, ATTKS.AD_SLEE) && mtmp.mcanmove) {
+            mtmp.meating = 0;
+            amount += mtmp.mfrozen | 0;
+            mtmp.mcanmove = 0;
+            mtmp.mfrozen = Math.min(amount, 127);
+            if (in_sight) {
+                await pline(`${Monnam(mtmp)} suddenly falls asleep!`);
+                seetrap(trap);
+            }
+        }
+    }
+    return Trap_Effect_Finished;
+}
+
 // src/trap.c:1826 trapeffect_pit() — monster arm only.
 async function trapeffect_pit(mtmp, trap, trflags) {
     const ttype = trap.ttyp;
@@ -1016,15 +1080,48 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return await trapeffect_magic_trap(mtmp, trap, trflags);
     case BEAR_TRAP:
         return await trapeffect_bear_trap(mtmp, trap, trflags);
+    case SLP_GAS_TRAP:
+        return await trapeffect_slp_gas_trap(mtmp, trap, trflags);
+    case LANDMINE:
+        return await trapeffect_landmine(mtmp, trap, trflags);
     case PIT:
     case SPIKED_PIT:
         return await trapeffect_pit(mtmp, trap, trflags);
     case RUST_TRAP:
         return await trapeffect_rust_trap(mtmp, trap, trflags);
+    case ROLLING_BOULDER_TRAP:
+        return await trapeffect_rolling_boulder_trap(mtmp, trap, trflags);
+    case TELEP_TRAP:
+        return await trapeffect_telep_trap(mtmp, trap, trflags);
     default:
         note_unported_trap(`trapeffect_selector:ttyp=${trap.ttyp}`);
         return Trap_Effect_Finished;
     }
+}
+
+// src/trap.c:2070 trapeffect_telep_trap(), hero path. A one-shot trap is the
+// vault teleporter; ordinary traps use the level's normal random teleport.
+async function trapeffect_telep_trap(mtmp, trap, trflags) {
+    if (mtmp !== game.youmonst) {
+        note_unported_trap('trapeffect_telep_trap:monster');
+        return Trap_Moved_Mon;
+    }
+
+    seetrap(trap);
+    const { noteleport_level, tele, vault_tele } =
+        await import('./teleport.js');
+    if (game.u.uprops?.ANTIMAGIC || noteleport_level(game.youmonst)) {
+        await You_feel('a wrenching sensation.');
+    } else if (trap.once) {
+        deltrap(trap);
+        newsym(game.u.ux, game.u.uy);
+        await vault_tele();
+    } else if (isok(trap.teledest?.x ?? 0, trap.teledest?.y ?? 0)) {
+        note_unported_trap('trapeffect_telep_trap:fixed_destination');
+    } else {
+        await tele();
+    }
+    return Trap_Effect_Finished;
 }
 
 // src/trap.c:3733 mintrap() — a monster steps onto a trap.
@@ -1716,8 +1813,10 @@ export async function lava_effects() {
 
         /* s/he died... burn to death */
         for (let burncount = 0; burncount < 2; ++burncount) {
+            const shownHp = u.uhp;
             u.uhp = -1;
             game.killer = { format: KILLED_BY, name: 'molten lava' };
+            game._deferred_status_hp_until_more = shownHp;
             await pline('You burn to a crisp...'); /* urgent_pline */
             await done(BURNING);
             if (await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT))
@@ -2058,7 +2157,8 @@ export async function climb_pit() {
 
 /* ==== the rolling-boulder launch machinery (maketrap's last gap) ==== */
 
-import { xdir, ydir, ZAP_POS, is_xport, N_DIRS } from './const.js';
+import { xdir, ydir, ZAP_POS, is_xport, N_DIRS, ROLL, LAUNCH_UNSEEN,
+         LAUNCH_KNOWN, IS_STWALL, IS_TREE, IRONBARS, D_BROKEN } from './const.js';
 import { closed_door } from './cmd.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { stackobj } from './invent.js';
@@ -2170,4 +2270,184 @@ export function mkroll_launch(ttmp, x, y, otyp, ocount) {
     }
     newsym(ttmp.launch.x, ttmp.launch.y);
     return 1;
+}
+
+// src/trap.c:3282 launch_obj() moves a trap-launched object along its fixed
+// path. Rolling boulders keep moving after a monster hit unless consumed.
+export async function launch_obj(otyp, x1, y1, x2, y2, style) {
+    let otmp = sobj_at(otyp, x1, y1);
+    let otherside = false;
+
+    if (!otmp && otyp === ONAMES.BOULDER) {
+        otherside = true;
+        otmp = sobj_at(otyp, x2, y2);
+    }
+    if (!otmp)
+        return 0;
+    if (otherside) {
+        [x1, x2] = [x2, x1];
+        [y1, y2] = [y2, y1];
+    }
+
+    let singleobj;
+    if (otmp.quan === 1) {
+        obj_extract_self(otmp);
+        singleobj = otmp;
+    } else {
+        singleobj = splitobj(otmp, 1);
+        obj_extract_self(singleobj);
+    }
+    newsym(x1, y1);
+    /* src/trap.c:3321 tmp_at(DISP_FLASH, obj_to_glyph(...)); tmp_at(x,y).
+       The temporary boulder is visible while a later hit message pauses on
+       --More--, even though it has already been unlinked from the floor.
+       Removing a boulder schedules a vision update, so settle that first or
+       pline() would repaint the floor over this temporary glyph. */
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+    display_object_at(singleobj, x1, y1);
+
+    let dist = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+    let x = x1, y = y1;
+    let tmpx = x1, tmpy = y1;
+    let finalx = x2, finaly = y2;
+    const dx = Math.sign(x2 - x1), dy = Math.sign(y2 - y1);
+    const rolling = (style & ROLL) !== 0;
+    let used_up = false;
+    game.bhitpos = { x, y };
+
+    if ((style & LAUNCH_KNOWN) !== 0)
+        singleobj.otrapped = 1;
+    /* LAUNCH_UNSEEN only changes sound and animation, neither draws from the
+       core RNG. Keep the flag consumed so the remaining style is ROLL. */
+    style &= ~(LAUNCH_UNSEEN | LAUNCH_KNOWN);
+
+    while (dist-- > 0 && !used_up) {
+        /* C advances tmp_at at the start of each animation iteration. If a
+           collision message pauses, the glyph remains one square behind the
+           object being tested for impact. */
+        if (x !== tmpx || y !== tmpy) {
+            newsym(tmpx, tmpy);
+            display_object_at(singleobj, x, y);
+            tmpx = x;
+            tmpy = y;
+        }
+        if (!isok(game.bhitpos.x + dx, game.bhitpos.y + dy)) {
+            finalx = x;
+            finaly = y;
+            break;
+        }
+        x = game.bhitpos.x += dx;
+        y = game.bhitpos.y += dy;
+
+        const mtmp = m_at(x, y);
+        if (mtmp) {
+            if (otyp === ONAMES.BOULDER && throws_rocks(mtmp.data)
+                && rn2(3)) {
+                if (cansee(x, y))
+                    await pline(`${Monnam(mtmp)} snatches the boulder.`);
+                singleobj.otrapped = 0;
+                const { mpickobj } = await import('./steal.js');
+                mpickobj(mtmp, singleobj);
+                used_up = true;
+                break;
+            }
+            const { ohitmon } = await import('./mthrowu.js');
+            if (await ohitmon(mtmp, singleobj, rolling ? -1 : dist, false)) {
+                used_up = true;
+                break;
+            }
+        } else if (game.u.ux === x && game.u.uy === y) {
+            const dam = dmgval(singleobj, game.youmonst);
+            if (game.multi)
+                nomul(0);
+            await thitu(9 + (singleobj.spe || 0), dam,
+                        { obj: singleobj }, null);
+        }
+
+        if (rolling) {
+            const floorfx = await import('./do.js');
+            if (await floorfx.flooreffects(singleobj, x, y, 'fall')) {
+                used_up = true;
+                break;
+            }
+
+            const otmp2 = otyp === ONAMES.BOULDER
+                ? sobj_at(ONAMES.BOULDER, x, y) : null;
+            if (otmp2) {
+                await You_hear(`a loud crash${cansee(x, y)
+                    ? ' as one boulder sets another in motion' : ''}!`);
+                obj_extract_self(otmp2);
+                otmp2.otrapped = singleobj.otrapped;
+                singleobj.otrapped = 0;
+                place_object(singleobj, x, y);
+                singleobj = otmp2;
+                wake_nearto(x, y, 100);
+            }
+        }
+
+        if (otyp === ONAMES.BOULDER && closed_door(x, y)) {
+            if (cansee(x, y))
+                await pline('The boulder crashes through a door.');
+            game.level.at(x, y).doormask = D_BROKEN;
+            if (dist)
+                recalc_block_point(x, y);
+        }
+
+        if (dist > 0 && isok(x + dx, y + dy)) {
+            const nexttyp = game.level.at(x + dx, y + dy).typ;
+            if (nexttyp === IRONBARS) {
+                note_unported_trap('launch_obj:hits_bars');
+                finalx = x;
+                finaly = y;
+                break;
+            }
+            if (IS_STWALL(nexttyp) || IS_TREE(nexttyp)) {
+                finalx = x;
+                finaly = y;
+                if (!Deaf())
+                    await pline('Thump!');
+                wake_nearto(x, y, 16);
+                break;
+            }
+        }
+    }
+
+    /* End the tmp_at display; the final placement is redrawn below. */
+    newsym(tmpx, tmpy);
+    if (!used_up) {
+        singleobj.otrapped = 0;
+        place_object(singleobj, finalx, finaly);
+        newsym(finalx, finaly);
+        return 1;
+    }
+    return 2;
+}
+
+// src/trap.c trapeffect_rolling_boulder_trap(), monster arm.
+async function trapeffect_rolling_boulder_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        note_unported_trap('rolling_boulder:hero');
+        return Trap_Effect_Finished;
+    }
+    if (check_in_air(mtmp, trflags))
+        return Trap_Effect_Finished;
+
+    const in_sight = mtmp === game.u.usteed
+        || (cansee(mtmp.mx, mtmp.my) && canspotmon(mtmp));
+    newsym(mtmp.mx, mtmp.my);
+    if (in_sight) {
+        await pline(`${Deaf() ? '' : 'Click!  '}${Monnam(mtmp)} triggers `
+                    + `${trap.tseen ? 'a rolling boulder trap' : 'something'}.`);
+    }
+    if (await launch_obj(ONAMES.BOULDER,
+                         trap.launch.x, trap.launch.y,
+                         trap.launch2.x, trap.launch2.y,
+                         ROLL | (in_sight ? 0 : LAUNCH_UNSEEN))) {
+        if (in_sight)
+            trap.tseen = true;
+        if (DEADMONSTER(mtmp))
+            return Trap_Killed_Mon;
+    }
+    return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }

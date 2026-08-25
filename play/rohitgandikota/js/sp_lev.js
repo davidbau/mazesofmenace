@@ -1560,12 +1560,16 @@ export function create_monster(m, croom) {
         /* pm == 0 here means the class was genocided; settle for random */
     }
 
-    /* src/sp_lev.c:1959 — in the Mines a dwarf or gnome HERO makes every
-       same-race monster spend an rn2(3) that can discard the species.
-       your_race() and Race_if() need the hero's race; recorded rather than
-       assumed, because guessing false skips a draw C spends. */
-    if (In_mines(game.u?.uz) && pm)
-        note_unported('create_monster:mines_race_check');
+    /* src/sp_lev.c:1959: dwarves and gnomes in the Mines usually replace
+       scripted members of their own race with a random monster. */
+    const heroRace = game.urace?.mnum;
+    const dwarfOrGnome = heroRace === PMNAMES.PM_DWARF
+                      || heroRace === PMNAMES.PM_GNOME;
+    if (In_mines(game.u?.uz) && pm
+        && ((pm.mflags2 || 0) & (game.urace?.selfmask || 0))
+        && dwarfOrGnome && rn2(3)) {
+        pm = null;
+    }
 
     let pos;
     if (pm) {
@@ -2240,8 +2244,12 @@ export function create_door(dd, broom) {
         return;                         /* impossible("can't find a place") */
 
     const loc = game.level?.at(x, y);
-    if (!loc || !SPACE_POS(loc.typ))
-        return;                         /* set_levltyp refuses */
+    if (!loc)
+        return;
+    /* set_levltyp() can replace every terrain except stairs and ladders.
+       create_door deliberately replaces the room's wall square. */
+    if (loc.typ === STAIRS || loc.typ === LADDER)
+        return;
     loc.typ = dd.secret ? SDOOR : DOOR;
     loc.doormask = dd.mask;
 }

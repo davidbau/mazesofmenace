@@ -99,7 +99,12 @@ export function bot_conditions() {
     if (u.usick_type & SICK_VOMITABLE) cond += ' FoodPois';
     if (u.usick_type & SICK_NONVOMITABLE) cond += ' TermIll';
     if (u.uhs != null && u.uhs !== NOT_HUNGRY) cond += ' ' + hu_stat[u.uhs];
-    const cap = near_capacity();
+    /* encumber_msg() prints before botl is marked dirty.  The tty therefore
+       keeps the preceding capacity condition while that message is blocked
+       at --More--; display.js otherwise recomputes every status line from
+       live state and would reveal the new condition one screen too early. */
+    const cap = Number.isInteger(game._deferred_status_capacity)
+        ? game._deferred_status_capacity : near_capacity();
     if (cap > UNENCUMBERED) cond += ' ' + enc_stat[cap];
     if (u.ublind || intr.HBlinded) cond += ' Blind';
     if (intr.HDeaf || props.DEAF) cond += ' Deaf';

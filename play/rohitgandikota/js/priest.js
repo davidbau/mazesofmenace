@@ -53,7 +53,8 @@ export function priestini(lvl, sroom, sx, sy, sanctum) {
     const priest = makemon(prim, px, py, MMFLAGS.MM_EPRI);
     if (priest) {
         priest.epri = {
-            shroom: (game.level.rooms.indexOf(sroom) + ROOMOFFSET),
+            shroom: ((sroom.roomnoidx ?? game.level.rooms.indexOf(sroom))
+                     + ROOMOFFSET),
             shralign: Amask2align(game.level.at(sx, sy)?.altarmask ?? 0),
             shrpos: { x: sx, y: sy },
             shrlevel: { dnum: lvl.dnum, dlevel: lvl.dlevel },

@@ -753,6 +753,17 @@ export const is_unicorn = (ptr) =>
 export const acidic    = (d) => (d.mflags1 & MFLAGS.M1_ACID) !== 0;
 export const poisonous = (d) => (d.mflags1 & MFLAGS.M1_POIS) !== 0;
 
+// src/mondata.c:663 cantvomit() -- rats, mice, and equines cannot vomit.
+export function cantvomit(ptr) {
+    if (ptr.mlet === MONSYMS.S_RODENT
+        && ptr !== game.mons?.[PMNAMES.PM_ROCK_MOLE]
+        && ptr !== game.mons?.[PMNAMES.PM_WOODCHUCK])
+        return true;
+    return ptr === game.mons?.[PMNAMES.PM_WARHORSE]
+        || ptr === game.mons?.[PMNAMES.PM_HORSE]
+        || ptr === game.mons?.[PMNAMES.PM_PONY];
+}
+
 // include/mondata.h:200 touch_petrifies() — the two identities C names, not
 // a flag; Medusa is added by flesh_petrifies() at :203 because she petrifies
 // when eaten but not when touched.

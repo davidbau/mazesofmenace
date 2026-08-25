@@ -19,7 +19,7 @@ import { pline, flush_screen, glyph_at, tty_clear_nhwindow_message,
 import { defsyms, cmap_names } from './drawing_data.js';
 import { do_screen_description, is_cmap_wall, is_cmap_room, is_cmap_corr,
          is_cmap_door, is_cmap_engraving } from './pager.js';
-import { handle_tip, TIP_GETPOS } from './hack.js';
+import { handle_tip, is_valid_travelpt, TIP_GETPOS } from './hack.js';
 
 const CM = cmap_names;
 
@@ -37,6 +37,13 @@ const pick_chars_ret = [LOOK_TRADITIONAL, LOOK_QUICK, LOOK_ONCE, LOOK_VERBOSE];
 // the cursor here; their shifted forms are the run variants (8 squares).
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
+/* reset_commands() binds Ctrl plus every vi direction to MV_RUSH. The pty
+   turns Return into Ctrl-J before NetHack reads it, so Return is one of these
+   fast cursor movements too. */
+const CTRL_DIR = {
+    '\x08': 'h', '\x19': 'y', '\x0b': 'k', '\x15': 'u',
+    '\x0c': 'l', '\x0e': 'n', '\x0a': 'j', '\x02': 'b',
+};
 
 function note_unported_getpos(what) {
     (game.unported ||= new Set()).add('getpos:' + what);
@@ -58,15 +65,15 @@ async function auto_describe(cx, cy) {
     const res = do_screen_description(cc, true, 0);
     if (res.found) {
         /* coord_desc() with the default whatis_coord ('none') is empty */
-        if (game.iflags?.getloc_travelmode)
-            /* " (no travel path)" needs is_valid_travelpt(); absent */
-            note_unported_getpos('auto_describe:travelmode');
         /* src/getpos.c:655 — a command that set a validator through
            getpos_sethilite() marks squares it cannot use. */
         const invalid = (game.iflags?.autodescribe !== false
                          && getpos_getvalid && !getpos_getvalid(cx, cy))
                         ? ' (invalid target)' : '';
-        await pline(`${res.firstmatch}${invalid}`);
+        const noTravelPath = (game.iflags?.getloc_travelmode
+                              && !(await is_valid_travelpt(cx, cy)))
+                             ? ' (no travel path)' : '';
+        await pline(`${res.firstmatch}${invalid}${noTravelPath}`);
         curs_map(cx, cy);
         flush_screen(0);
     }
@@ -172,12 +179,13 @@ export async function getpos(ccp, force, goal) {
         } else if (DIR_DX[ch] !== undefined && !rushrun) {
             /* movecmd(c, MV_WALK) */
             truncate_to_map(c, DIR_DX[ch], DIR_DY[ch]);
-        } else if (DIR_DX[ch.toLowerCase()] !== undefined) {
+        } else if (DIR_DX[CTRL_DIR[ch] ?? ch.toLowerCase()] !== undefined) {
             /* movecmd(c, MV_RUSH | MV_RUN): shifted letter, or a walk
-               letter behind the 'g'/'G' prefix. iflags.getloc_moveskip
-               defaults off, so the cursor jumps 8 squares. */
-            const lc = ch.toLowerCase();
-            truncate_to_map(c, 8 * DIR_DX[lc], 8 * DIR_DY[lc]);
+               letter behind the 'g'/'G' prefix, or Ctrl plus a direction.
+               iflags.getloc_moveskip defaults off, so the cursor jumps 8
+               squares. */
+            const dir = CTRL_DIR[ch] ?? ch.toLowerCase();
+            truncate_to_map(c, 8 * DIR_DX[dir], 8 * DIR_DY[dir]);
         } else if (ch === '?') {
             /* getpos_help() puts up its own window and consumes its own
                dismiss keys; unported, and recorded loudly because a session

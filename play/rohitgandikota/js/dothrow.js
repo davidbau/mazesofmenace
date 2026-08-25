@@ -2,20 +2,21 @@ import { game } from './gstate.js';
 import { pline } from './display.js';
 import { splitobj, place_object } from './mkobj.js';
 import { freeinv, stackobj } from './invent.js';
-import { encumber_msg, ACURR, acurrstr } from './attrib.js';
-import { A_DEX, BOLT_LIM, IS_SOFT, LOST_THROWN, THROWN_WEAPON } from './const.js';
+import { encumber_msg, ACURR, acurrstr, exercise } from './attrib.js';
+import { A_DEX, A_STR, BOLT_LIM, IS_SOFT, LOST_THROWN, THROWN_WEAPON,
+         HMON_THROWN, HMON_KICKED, HMON_APPLIED, engulfing_u } from './const.js';
 /* include/objclass.h:79 — oc_dir bits for weapons */
 const PIERCE = 1;
-import { singular, xname, an } from './objnam.js';
+import { singular, xname, an, The, otense, mshot_xname } from './objnam.js';
 import { skill_name, weapon_descr, weapon_type, P_SKILL } from './weapon.js';
 import { SKILLS, MATERIALS } from './objects_data.js';
 import { rn2, rnd } from './rng.js';
-import { bhit, obj_resists } from './zap.js';
-import { is_pool, is_lava } from './mon.js';
+import { bhit, obj_resists, miss } from './zap.js';
+import { is_pool, is_lava, wakeup } from './mon.js';
 import { is_blade } from './mon.js';
 import { is_missile, is_sword } from './wield.js';
 import { cansee } from './vision.js';
-import { newsym } from './display.js';
+import { newsym, canseemon } from './display.js';
 import { Levitation } from './youprop.js';
 import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { doswapweapon, dowield, doquiver_core, is_ammo } from './wield.js';
@@ -28,11 +29,14 @@ import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED } from './const.js';
 import { getobj, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_PROMPT, GETOBJ_ALLOWCNT } from './invent.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
-import { throws_rocks } from './mondata.js';
+import { throws_rocks, is_orc, is_elf, is_unicorn } from './mondata.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_weptool } from './mkobj.js';
-import { hitval } from './weapon.js';
+import { hitval, weapon_hit_bonus } from './weapon.js';
 import { getdir } from './cmd.js';
+import { find_mac } from './worn.js';
+import { distmin } from './hacklib.js';
+import { hmon } from './uhitm.js';
 
 // dothrow.js — throwing, firing, and the path a thrown thing takes.
 // C ref: src/dothrow.c
@@ -291,10 +295,10 @@ export async function throwit(obj, wep_mask) {
     }
 
     if (mon) {
-        /* throwit_mon_hit: the hit/damage chain (thitmonst) is combat */
-        note_unported_dothrow('throwit:mon_hit');
-        game.thrownobj = null;
-        return;
+        if (await thitmonst(mon, obj)) {
+            game.thrownobj = null;
+            return;
+        }
     }
 
     /* src/dothrow.c:1780 — landing: break, splash, or come to rest */
@@ -317,6 +321,131 @@ export async function throwit(obj, wep_mask) {
     stackobj(obj);
     if (cansee(bx, by))
         newsym(bx, by);
+}
+
+// src/dothrow.c:2013 thitmonst() - resolve a thrown object at a monster.
+//
+// The base roll is shared by every object type. In particular, cream pies
+// spend rnd(20) before their separate Dexterity check, even though the base
+// to-hit number is not used for them.
+export async function thitmonst(mon, obj) {
+    const u = game.u;
+    const mdat = game.mons[mon.mnum];
+    const guaranteed_hit = engulfing_u(mon);
+    const hmode = obj === u.uwep ? HMON_APPLIED
+                  : obj === game.kickedobj ? HMON_KICKED : HMON_THROWN;
+
+    const Luck = (u.uluck || 0) + (u.moreluck || 0);
+    let tmp = -1 + Luck + find_mac(mon) + (u.uhitinc || 0)
+              + (u.ulevel || 0);
+    const dex = ACURR(A_DEX);
+    if (dex < 4)
+        tmp -= 3;
+    else if (dex < 6)
+        tmp -= 2;
+    else if (dex < 8)
+        tmp -= 1;
+    else if (dex >= 14)
+        tmp += dex - 14;
+
+    let disttmp = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
+    if (disttmp < -4)
+        disttmp = -4;
+    tmp += disttmp;
+
+    if (u.uarmg && u.uwep
+        && game.objects[u.uwep.otyp].oc_skill === SKILLS.P_BOW) {
+        if (u.uarmg.otyp === ONAMES.GAUNTLETS_OF_POWER)
+            tmp -= 2;
+        else if (u.uarmg.otyp === ONAMES.GAUNTLETS_OF_FUMBLING)
+            tmp -= 3;
+    }
+
+    tmp += omon_adj(mon, obj, true);
+    if (is_orc(mdat) && is_elf(game.youmonst.data))
+        tmp++;
+    if (guaranteed_hit)
+        tmp += 1000;
+
+    /* Unicorn gifts and quest-leader catches precede dieroll in C. */
+    if (obj.oclass === OCLASSES.GEM_CLASS && is_unicorn(mdat)) {
+        note_unported_dothrow('thitmonst:unicorn_gift');
+        return 0;
+    }
+
+    const dieroll = rnd(20);
+
+    if (obj.oclass === OCLASSES.WEAPON_CLASS || is_weptool(obj, game.objects)
+        || obj.oclass === OCLASSES.GEM_CLASS) {
+        if (hmode === HMON_KICKED) {
+            tmp -= is_ammo(obj) ? 5 : 3;
+        } else if (is_ammo(obj)) {
+            if (!ammo_and_launcher(obj, u.uwep)) {
+                tmp -= 4;
+            } else {
+                tmp += (u.uwep.spe || 0) - greatest_erosion(u.uwep);
+                tmp += weapon_hit_bonus(u.uwep);
+                if (u.uwep.oartifact)
+                    note_unported_dothrow('thitmonst:launcher_artifact');
+            }
+        } else {
+            if (obj.otyp === ONAMES.BOOMERANG)
+                tmp += 4;
+            else if (throwing_weapon(obj))
+                tmp += 2;
+            else if (obj === game.thrownobj)
+                tmp -= 2;
+            tmp += weapon_hit_bonus(obj);
+        }
+
+        if (tmp >= dieroll) {
+            const wasthrown = !!game.thrownobj;
+            await hmon(mon, obj, hmode, dieroll);
+            exercise(A_DEX, true);
+            if (wasthrown && !game.thrownobj)
+                return 1;
+            if (should_mulch_missile(obj)) {
+                game.thrownobj = null;
+                return 1;
+            }
+            note_unported_dothrow('thitmonst:passive_obj');
+        } else {
+            await tmiss(obj, mon, true);
+            if (hmode === HMON_APPLIED)
+                await wakeup(mon, true);
+        }
+    } else if (obj.otyp === ONAMES.HEAVY_IRON_BALL
+               || obj.otyp === ONAMES.BOULDER) {
+        exercise(A_STR, true);
+        if (tmp >= dieroll) {
+            exercise(A_DEX, true);
+            await hmon(mon, obj, hmode, dieroll);
+        } else {
+            await tmiss(obj, mon, true);
+        }
+    } else if ((obj.otyp === ONAMES.EGG || obj.otyp === ONAMES.CREAM_PIE
+                || obj.otyp === ONAMES.BLINDING_VENOM
+                || obj.otyp === ONAMES.ACID_VENOM)
+               && (guaranteed_hit || dex > rnd(25))) {
+        await hmon(mon, obj, hmode, dieroll);
+        return 1;
+    } else {
+        await tmiss(obj, mon, true);
+    }
+
+    return 0;
+}
+
+// src/dothrow.c:1951 tmiss() - report a miss, then sometimes wake the target.
+async function tmiss(obj, mon, maybe_wakeup) {
+    const missile = mshot_xname(obj);
+
+    if (!canseemon(mon))
+        await pline(`${The(missile)} ${otense(obj, 'miss')}.`);
+    else
+        await miss(missile, mon);
+    if (maybe_wakeup && !rn2(3))
+        await wakeup(mon, true);
 }
 
 // src/dothrow.c:2582 breaktest() — does this object break on impact?

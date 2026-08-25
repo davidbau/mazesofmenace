@@ -6,7 +6,7 @@ import { read_engr_at } from './engrave.js';
 import { stairway_at, stairs_description } from './stairs.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { delobj, t_at, is_pool, is_lava } from './mon.js';
-import { costly_spot } from './shk.js';
+import { costly_spot, doname_with_price } from './shk.js';
 import { u_at, CMDQ_INT, CQ_CANNED, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
          ICE, DRAWBRIDGE_DOWN, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN } from './const.js';
 import { hides_under } from './mondata.js';
@@ -72,7 +72,12 @@ export function assigninvlet(otmp) {
         const c = o.invlet;
         if (c >= 'a' && c <= 'z') inuse[c.charCodeAt(0) - 97] = true;
         else if (c >= 'A' && c <= 'Z') inuse[c.charCodeAt(0) - 65 + 26] = true;
+        if (c === otmp.invlet)
+            otmp.invlet = null;
     }
+    if ((otmp.invlet >= 'a' && otmp.invlet <= 'z')
+        || (otmp.invlet >= 'A' && otmp.invlet <= 'Z'))
+        return;
     let i;
     const last = game.lastinvnr ?? -1;
     for (i = last + 1; i !== last; i++) {
@@ -95,12 +100,16 @@ export function addinv(obj) {
        inv_weight() and hid encumbrance transitions. */
     for (const otmp of game.invent) {
         const r = merged({ o: otmp }, { o: obj });
-        if (r)
+        if (r) {
+            /* src/invent.c:1142 marks the resulting stack, including a
+               merged stack, as the most recently picked-up object. */
+            otmp.pickup_prev = 1;
             /* merged() hands back a promise when its discovery pline must
                be awaited; addinv's async callers await the result either
                way, and the sync init-time path never merges stacks whose
                identification states differ */
             return (r instanceof Promise) ? r.then(() => otmp) : otmp;
+        }
     }
     return addinv_nomerge(obj);
 }
@@ -111,6 +120,7 @@ export function addinv_nomerge(obj) {
     game.invent ||= [];
     assigninvlet(obj);
     obj.where = 3;                      /* OBJ_INVENT */
+    obj.pickup_prev = 1;
     game.invent.push(obj);
     /* src/invent.c:1117 — flags.invlet_constant defaults On, so the chain
        is kept in inv_rank order (gold first). */
@@ -236,8 +246,7 @@ export async function look_here(obj_cnt, lhflags) {
         if (dfeature && !skip_dfeature)
             await pline(`There is ${an(dfeature)} here.`);
         await read_engr_at(game.u.ux, game.u.uy); /* Eric Backus */
-        /* doname_with_price() is doname() until shops exist */
-        await You(`${verb} here ${doname(otmp)}.`);
+        await You(`${verb} here ${doname_with_price(otmp)}.`);
         if (otmp.otyp === ONAMES.CORPSE)
             note_unported_invent('look_here:feel_cockatrice');
     } else {
@@ -251,7 +260,7 @@ export async function look_here(obj_cnt, lhflags) {
         for (const otmp of pile) {
             if (otmp.otyp === ONAMES.CORPSE)
                 note_unported_invent('look_here:feel_cockatrice');
-            tty_putstr(tmpwin, 0, doname(otmp));
+            tty_putstr(tmpwin, 0, doname_with_price(otmp));
         }
         await tty_display_nhwindow(tmpwin);
         /* win/tty dmore(): the window waits for quitchars (space, enter,
@@ -466,7 +475,14 @@ function getobj_letters(obj_ok, ctrlflags) {
     }
     /* src/invent.c:1908 — "if (suggested > 5) compactify" — five letters
        stay verbatim, six or more compress */
-    return suggested > 5 ? compactify(buf) : buf;
+    /* src/invent.c:1907 copies the complete letter list into `lets` before
+       compactifying `buf` for the one-line prompt.  The menu must receive
+       the complete list: treating a prompt range such as "d-g" as literal
+       characters silently drops e and f from the inventory window. */
+    return {
+        choices: buf,
+        prompt: suggested > 5 ? compactify(buf) : buf,
+    };
 }
 
 // src/invent.c:1627 compactify() — "a-e" for 3+ consecutive letters, and
@@ -545,7 +561,8 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
        loop already read a key here; routing it through tty_yn_function adds
        the paint without changing which keys are consumed. */
     let qbuf = `What do you want to ${word}?`;
-    const lets = getobj_letters(obj_ok_func, ctrlflags | 0);
+    const { choices: lets, prompt: promptLets } =
+        getobj_letters(obj_ok_func, ctrlflags | 0);
 
     /* src/invent.c:1911 — nothing suggested, no forced prompt, no '-'
        choice: refuse up front. The "else " variant needs the inaccessible
@@ -554,7 +571,7 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         await You(`don't have anything to ${word}.`);
         return null;
     }
-    qbuf += lets ? ` [${lets} or ?*]` : ' [*]';
+    qbuf += promptLets ? ` [${promptLets} or ?*]` : ' [*]';
 
     for (;;) {
         let ilet = await tty_yn_function(qbuf, null, '\0');
@@ -982,6 +999,30 @@ export function money_cnt(invent) {
         if (otmp.oclass === OCLASSES.COIN_CLASS)
             return otmp.quan;
     return 0;
+}
+
+// src/shk.c:3046 contained_gold() and src/vault.c:1257 hidden_gold().
+// Unknown nested containers only contribute when the caller requests all
+// hidden gold, as end-of-game scoring does.
+export function contained_gold(obj, even_if_unknown = false) {
+    let value = 0;
+    for (const otmp of obj?.cobj || []) {
+        if (otmp.oclass === OCLASSES.COIN_CLASS)
+            value += otmp.quan;
+        else if ((otmp.cobj || []).length
+                 && (otmp.cknown || even_if_unknown))
+            value += contained_gold(otmp, even_if_unknown);
+    }
+    return value;
+}
+
+export function hidden_gold(invent, even_if_unknown = false) {
+    let value = 0;
+    for (const obj of invent || []) {
+        if ((obj.cobj || []).length && (obj.cknown || even_if_unknown))
+            value += contained_gold(obj, even_if_unknown);
+    }
+    return value;
 }
 
 // src/mkobj.c obj_extract_self() — unlink the object from wherever it lives.

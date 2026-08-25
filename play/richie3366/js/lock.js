@@ -1,12 +1,15 @@
 // lock.js — Lock picking, door open/close.
-// C ref: lock.c pick_lock / picklock / doopen_indir / doclose (subset).
+// C ref: lock.c pick_lock / picklock / doopen_indir / doclose /
+//        boxlock / doorlock (subset).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, newsym } from './display.js';
-import { vision_recalc, recalc_block_point } from './vision.js';
+import { vision_recalc, recalc_block_point, cansee } from './vision.js';
+import { stop_occupation } from './hack.js';
 import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
+    DOOR, SDOOR, Is_rogue_level,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
     AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
@@ -20,7 +23,8 @@ import {
 } from './mkobj.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
 import {
-    WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, POTION_CLASS, objectNames,
+    WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, POTION_CLASS, WAND_CLASS,
+    objectNames,
 } from './objects.js';
 import { doname, xname, cxname, singular } from './objnam.js';
 import { obj_resists } from './dogmove.js';
@@ -28,7 +32,7 @@ import { setuwep } from './wield.js';
 import { PM_ROGUE, PM_WIZARD } from './generated/monsters_data.js';
 import { m_at } from './mon.js';
 import { getdir_cmdassist } from './dothrow.js';
-import { b_trapped } from './trap.js';
+import { b_trapped, t_at } from './trap.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -504,24 +508,38 @@ export async function doopen_indir(x, y) {
 }
 
 /**
- * C ref: lock.c obstructed — mon/obj blocks closing a door.
- * Named omissions: worm-tail phrasing; map_invisible; Something vs Some_Monnam.
+ * C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred.
  */
-async function obstructed_close(x, y) {
+async function You_hear(line) {
+    const u = game.u || {};
+    if (u.Deaf || game.flags?.acoustics === false) return;
+    await pline(`You hear ${line}`);
+}
+
+/**
+ * C ref: lock.c obstructed — mon/obj blocks closing a door.
+ * `quietly` (doorlock mysterywand) skips pline. Named omissions:
+ * worm-tail phrasing; map_invisible; Something vs Some_Monnam.
+ */
+async function obstructed(x, y, quietly) {
     const mtmp = m_at(x, y);
     if (mtmp && M_AP_TYPE(mtmp) !== M_AP_FURNITURE) {
         if (M_AP_TYPE(mtmp) === M_AP_OBJECT) {
-            await pline("Something's in the way.");
+            if (!quietly) await pline("Something's in the way.");
             return true;
         }
-        await pline('Something blocks the way!');
+        if (!quietly) await pline('Something blocks the way!');
         return true;
     }
     if ((objects_at(x, y) || []).length > 0) {
-        await pline("Something's in the way.");
+        if (!quietly) await pline("Something's in the way.");
         return true;
     }
     return false;
+}
+
+async function obstructed_close(x, y) {
+    return obstructed(x, y, false);
 }
 
 /**
@@ -825,6 +843,9 @@ function Is_box(obj) {
 
 /**
  * C ref: lock.c boxlock — wand/spell lock/unlock on a box.
+ * Callers: zap.c bhito WAN_OPENING/WAN_LOCKING/SPE_KNOCK/
+ * SPE_WIZARD_LOCK (D-1467); zap.c boxlock_invent (D-1434 /
+ * D-0981). Named: bhito poly-arm reset_pick; Soundeffect.
  * @returns {Promise<boolean>} true if something happened
  */
 export async function boxlock(obj, otmp) {
@@ -871,6 +892,133 @@ export async function boxlock_invent(obj) {
     for (const otmp of [...(game.invent || [])]) {
         if (Is_box(otmp)) await boxlock(otmp, obj);
     }
+}
+
+/**
+ * C lock.c doorlock :1103–1272 — wand/spell on a door or secret door.
+ * Returns true if something happened.
+ * Branch envelope (D-1462 + D-1475): WAN_OPENING/SPE_KNOCK SDOOR
+ * appear + locked unlock; WAN_LOCKING/SPE_WIZARD_LOCK SDOOR no-op,
+ * Rogue hide, obstructed, trap-in-doorway, lock-shut (`:1135–1192`).
+ * picking_at → stop_occupation + reset_pick (`:1267–1271`; SDOOR
+ * OPENING/KNOCK and Rogue LOCKING early return skip this). Named:
+ * WAN_STRIKING/SPE_FORCE_BOLT trapped explode / D_BROKEN crash;
+ * loudness wake_nearto + shop add_damage; muse.c mbhit doorlock.
+ * Soundeffect. obstructed Some_Monnam / worm-tail / map_invisible.
+ */
+export async function doorlock(otmp, x, y) {
+    const door = game.level?.at?.(x, y);
+    if (!door || !otmp) return false;
+    let res = true;
+    let msg = null;
+    const otyp = otmp.otyp | 0;
+    const dustcloud = 'A cloud of dust';
+    const quickly_dissipates = 'quickly dissipates';
+    const mysterywand = (otmp.oclass === WAND_CLASS && !otmp.dknown);
+
+    if ((door.typ | 0) === SDOOR) {
+        switch (otyp) {
+        case WAN_OPENING:
+        case SPE_KNOCK:
+            door.typ = DOOR;
+            door.doormask = D_CLOSED | ((door.doormask | 0) & D_TRAPPED);
+            newsym(x, y);
+            if (cansee(x, y)) {
+                await pline('A door appears in the wall!');
+            }
+            /* C :1124–1125 — OPENING/KNOCK return; striking continues. */
+            return true;
+        case WAN_LOCKING:
+        case SPE_WIZARD_LOCK:
+            /* C :1127–1130 — LOCKING on SDOOR is a no-op. */
+            return false;
+        default:
+            /* WAN_STRIKING / SPE_FORCE_BOLT named — C appear then continue. */
+            return false;
+        }
+    }
+
+    switch (otyp) {
+    case WAN_LOCKING:
+    case SPE_WIZARD_LOCK:
+        /* C lock.c doorlock :1135–1192 (D-1475). */
+        if (Is_rogue_level(game.u?.uz)) {
+            const vis = cansee(x, y);
+            if (vis) {
+                await pline(
+                    `${dustcloud} springs up in the older, more primitive doorway.`,
+                );
+            } else {
+                await You_hear('a swoosh.');
+            }
+            if (await obstructed(x, y, mysterywand)) {
+                if (vis) {
+                    await pline(`The cloud ${quickly_dissipates}.`);
+                }
+                return false;
+            }
+            recalc_block_point(x, y); /* C block_point */
+            door.typ = SDOOR;
+            door.doormask = D_NODOOR;
+            if (vis) {
+                await pline('The doorway vanishes!');
+            }
+            newsym(x, y);
+            return true;
+        }
+        if (await obstructed(x, y, mysterywand)) return false;
+        /* Don't allow doors to close over traps. */
+        if (t_at(x, y)) {
+            await pline(
+                `${dustcloud} springs up in the doorway, but ${quickly_dissipates}.`,
+            );
+            return false;
+        }
+
+        switch ((door.doormask | 0) & ~D_TRAPPED) {
+        case D_CLOSED:
+            msg = 'The door locks!';
+            break;
+        case D_ISOPEN:
+            msg = 'The door swings shut, and locks!';
+            break;
+        case D_BROKEN:
+            msg = 'The broken door reassembles and locks!';
+            break;
+        case D_NODOOR:
+            msg = 'A cloud of dust springs up and assembles itself into a door!';
+            break;
+        default:
+            res = false;
+            break;
+        }
+        recalc_block_point(x, y); /* C block_point */
+        door.doormask = D_LOCKED | ((door.doormask | 0) & D_TRAPPED);
+        newsym(x, y);
+        break;
+    case WAN_OPENING:
+    case SPE_KNOCK:
+        if ((door.doormask | 0) & D_LOCKED) {
+            msg = 'The door unlocks!';
+            door.doormask = D_CLOSED | ((door.doormask | 0) & D_TRAPPED);
+        } else {
+            res = false;
+        }
+        break;
+    default:
+        /* WAN_STRIKING / SPE_FORCE_BOLT named — C :1201–1253. */
+        res = false;
+        break;
+    }
+    if (msg && cansee(x, y)) {
+        await pline(msg);
+    }
+    /* loudness named (OPENING/KNOCK/LOCKING never set it). */
+    if (res && picking_at(x, y)) {
+        await stop_occupation();
+        reset_pick();
+    }
+    return res;
 }
 
 /** C ref: obj.h is_weptool */

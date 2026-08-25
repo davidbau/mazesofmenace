@@ -17,7 +17,7 @@ import { nomul, losehp } from './hack.js';
 import { surface } from './dungeon.js';
 import { A_WIS, ECMD_CANCEL, IS_FOUNTAIN, IS_SINK } from './const.js';
 import { Unaware, Hallucination, Poison_resistance } from './youprop.js';
-import { rn2, rn1, rnd } from './rng.js';
+import { rn2, rn1, rnd, d } from './rng.js';
 import { ONAMES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { OBJ_DESCR } from './objnam.js';
@@ -30,7 +30,7 @@ import { OCLASSES } from './objects_data.js';
 import { tty_yn_function } from './tty/topl.js';
 import { GETOBJ_NOFLAGS } from './const.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE } from './invent.js';
-import { doname } from './objnam.js';
+import { doname, short_oname, thesimpleoname } from './objnam.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
 function note_unported_potion(what) {
@@ -198,10 +198,49 @@ async function peffect_oil(otmp) {
     exercise(A_WIS, good_for_you);
 }
 
+// src/potion.c:772 peffect_booze()
+async function peffect_booze(otmp) {
+    game.potion_unkn++;
+    await pline(`Ooph!  This tastes like ${otmp.odiluted ? 'watered down ' : ''}`
+                + `${Hallucination() ? 'dandelion wine' : 'liquid fire'}!`);
+    if (!otmp.blessed) {
+        await make_confused(
+            itimeout_incr(game.u.intrinsic?.HConfusion,
+                          d(2 + game.u.uhs, 8)),
+            false);
+    }
+    if (!otmp.odiluted)
+        healup(1, 0, false, false);
+    game.u.uhunger += 10 * (2 + bcsign(otmp));
+    await newuhs(false);
+    exercise(A_WIS, false);
+    if (otmp.cursed) {
+        await You('pass out.');
+        game.multi = -rnd(15);
+        game.nomovemsg = 'You awake with a headache.';
+    }
+}
+
+// src/potion.c:1119 peffect_healing()
+async function peffect_healing(otmp) {
+    await You_feel('better.');
+    healup(8 + d(4 + 2 * bcsign(otmp), 4),
+           otmp.cursed ? 0 : 1,
+           !!otmp.blessed,
+           !otmp.cursed);
+    exercise(A_CON, true);
+}
+
 // src/potion.c:1333 peffects() — dispatch one quaffed potion.
 // Returns -1 to let dopotion() finish (identify + useup), matching C.
 async function peffects(otmp) {
     switch (otmp.otyp) {
+    case ONAMES.POT_BOOZE:
+        await peffect_booze(otmp);
+        break;
+    case ONAMES.POT_HEALING:
+        await peffect_healing(otmp);
+        break;
     case ONAMES.POT_CONFUSION:
         await peffect_confusion(otmp);
         break;
@@ -271,8 +310,15 @@ export async function dodrink(drink_ok) {
                 return ECMD_TIME;
             }
         }
-        if (IS_SINK(typ))
-            note_unported_potion('dodrink:sink_prompt');
+        if (IS_SINK(typ)) {
+            const { tty_yn_function } = await import('./tty/topl.js');
+            if ((await tty_yn_function('Drink from the sink?', 'yn', 'n'))
+                === 'y') {
+                const { drinksink } = await import('./fountain.js');
+                await drinksink();
+                return ECMD_TIME;
+            }
+        }
     }
 
     const otmp = await getobj('drink', drink_ok, GETOBJ_NOFLAGS);
@@ -397,10 +443,12 @@ export async function dodip() {
     if (at_fountain || at_pool || at_sink) {
         /* can_reach_floor is true for an unimpaired hero */
         if (at_fountain) {
-            /* src/potion.c:2301 — obuf is short_oname(obj, doname, ...):
-               the full name when verbose, the pronoun otherwise */
+            /* src/potion.c:2301: reserve room for the longest possible
+               second-stage dip prompt, then shorten the object name by the
+               same sequence C uses. */
+            const obuf = short_oname(obj, doname, thesimpleoname, 49);
             const q = `Dip ${game.flags?.verbose === false ? shortestname
-                             : doname(obj)} into the fountain?`;
+                             : obuf} into the fountain?`;
             const ans = await tty_yn_function(q, 'yn', 'n');
             if (ans === 'y') {
                 obj.pickup_prev = 0;

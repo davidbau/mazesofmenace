@@ -26,12 +26,12 @@ import { is_weptool, is_rustprone, is_corrodeable, is_flammable,
          is_crackable, is_rottable } from './mkobj.js';
 import { is_damageable } from './trap.js';
 import { bimanual } from './obj.js';
-import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_QUIVER, W_WEP, plur, P_BOW, W_SWAPWEP,
+import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_AMUL, W_QUIVER, W_WEP, plur, P_BOW, W_SWAPWEP,
          MALE, FEMALE, NEUTER, NEUTRAL, CORPSTAT_MALE, CORPSTAT_FEMALE,
          CORPSTAT_RANDOM, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, NON_PM, LOW_PM,
          ismnum, SPE_LIM, RANDOM_TIN, GOLD_SYM, WT_IRON_BALL_INCR,
          P_POLEARMS, P_HAMMER, ONAME_WISH, ONAME_NO_FLAGS,
-         HAND } from './const.js';
+         HAND, ROOMOFFSET } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { observe_object } from './o_init.js';
 import { ordin, distu } from './hacklib.js';
@@ -41,9 +41,9 @@ const mons_PM_SAMURAI = PMNAMES.PM_SAMURAI;
 import { OCLASSES, ONAMES, MATERIALS, obj_descr,
          NUM_OBJECTS } from './objects_data.js';
 import { strstri, strsubst, fuzzymatch, mungspaces } from './hacklib.js';
-import { weight } from './invent.js';
-import { hands_obj } from './invent.js';
-import { tin_variety_txt, obj_nutrition, consume_oeaten } from './eat.js';
+import { currency, hands_obj, weight } from './invent.js';
+import { tin_variety_txt, tintxts, obj_nutrition,
+         consume_oeaten } from './eat.js';
 import { is_were, counter_were } from './were.js';
 import { is_male, is_female } from './makemon.js';
 import { def_char_to_objclass } from './sp_lev.js';
@@ -209,6 +209,14 @@ export function makeplural(s) {
             return s;
     if (low === 'ya' || low.endsWith(' ya'))
         return s;
+    for (const [singular, plural] of one_off) {
+        if (low.endsWith(singular.toLowerCase())) {
+            const start = s.length - singular.length;
+            const replacement = /^[A-Z]/.test(s.slice(start))
+                ? plural.charAt(0).toUpperCase() + plural.slice(1) : plural;
+            return s.slice(0, start) + replacement;
+        }
+    }
 
     const sp = s.lastIndexOf(' ');
     const head = sp >= 0 ? s.slice(0, sp + 1) : '';
@@ -245,7 +253,7 @@ export function xname(obj) {
            if (!Blind && !gd.distantname) observe_object(obj);
        This is where a wished amulet's dknown comes from ("a cubical
        amulet", not "an amulet"). */
-    if (!game.u?.ublind)
+    if (!game.u?.ublind && !game.distantname)
         observe_object(obj);
     const nn = ocl.oc_name_known;
     let actualn = OBJ_NAME(ocl) ?? 'object?';
@@ -310,7 +318,7 @@ export function xname(obj) {
         buf = actualn;
         /* src/objnam.c tin_details(): a tin names its contents once known */
         if (obj.otyp === ONAMES.TIN && obj.known)
-            buf += tin_details(obj);
+            buf = tin_details(obj);
         break;
     case AMULET_CLASS:
         if (!dknown)
@@ -525,6 +533,76 @@ export function simpleonames(obj) {
     if (obj.quan !== 1)
         simpleoname = makeplural(simpleoname);
     return simpleoname;
+}
+
+// src/objnam.c:2474 thesimpleoname(): the shortest form used when a query
+// cannot fit the normal object description.
+export function thesimpleoname(obj) {
+    return the(simpleonames(obj));
+}
+
+// src/objnam.c:2009 short_oname(): progressively shorten an object name to
+// fit a query. User-supplied names are clipped first. If that is not enough,
+// hide BUC, erosion-proofing, grease, and erosion details, then fall back to
+// the caller's minimal formatter.
+export function short_oname(obj, func, altfunc, lenlimit) {
+    let out = func(obj);
+    if (out.length <= lenlimit)
+        return out;
+
+    const ocl = game.objects[obj.otyp];
+    const savedUname = ocl.oc_uname;
+    const savedOname = obj.oname;
+    const shortUname = (typeof savedUname === 'string'
+                        && savedUname.length >= 12)
+                       ? savedUname.slice(0, 8) + '...' : savedUname;
+    const shortOname = (typeof savedOname === 'string'
+                        && savedOname.length >= 12)
+                       ? savedOname.slice(0, 8) + '...' : savedOname;
+
+    if (shortUname !== savedUname) {
+        ocl.oc_uname = shortUname;
+        out = func(obj);
+        ocl.oc_uname = savedUname;
+        if (out.length <= lenlimit)
+            return out;
+    }
+    if (shortOname !== savedOname) {
+        obj.oname = shortOname;
+        out = func(obj);
+        obj.oname = savedOname;
+        if (out.length <= lenlimit)
+            return out;
+    }
+    if (shortUname !== savedUname && shortOname !== savedOname) {
+        ocl.oc_uname = shortUname;
+        obj.oname = shortOname;
+        out = func(obj);
+        ocl.oc_uname = savedUname;
+        obj.oname = savedOname;
+        if (out.length <= lenlimit)
+            return out;
+    }
+
+    const saved = {
+        bknown: obj.bknown, rknown: obj.rknown, greased: obj.greased,
+        oeroded: obj.oeroded, oeroded2: obj.oeroded2,
+    };
+    ocl.oc_uname = shortUname;
+    if (shortOname !== undefined)
+        obj.oname = shortOname;
+    obj.bknown = obj.rknown = obj.greased = 0;
+    obj.oeroded = obj.oeroded2 = 0;
+    out = func(obj);
+    if (altfunc && out.length > lenlimit)
+        out = altfunc(obj);
+    Object.assign(obj, saved);
+    ocl.oc_uname = savedUname;
+    if (savedOname === undefined)
+        delete obj.oname;
+    else
+        obj.oname = savedOname;
+    return out;
 }
 
 // src/objnam.c:1924 cxname() — xname(), except a corpse names its monster.
@@ -768,14 +846,28 @@ export function singular(otmp, func) {
 }
 
 function tin_details(obj) {
-    if (obj.spe === 1) return ' of spinach';
-    if (obj.corpsenm !== undefined && obj.corpsenm >= 0) {
-        const m = game.mons[obj.corpsenm];
-        const nm = m && (m.pmnames[2] ?? m.pmnames[0] ?? m.pmnames[1]);
-        /* src/eat.c:1453 — "%s meat" unless the creature is vegetarian */
-        if (nm) return vegetarian(m) ? ` of ${nm}` : ` of ${nm} meat`;
+    if (obj.spe === 1)
+        return 'tin of spinach';
+    if (obj.corpsenm === undefined || obj.corpsenm < 0)
+        return 'empty tin';
+
+    let variety = obj.cursed ? 0
+                : obj.spe < 0 ? -obj.spe - 1
+                : rn2(tintxts.length - 1);
+    const m = game.mons[obj.corpsenm];
+    if (variety === 0
+        && (obj.corpsenm === PMNAMES.PM_LIZARD
+            || obj.corpsenm === PMNAMES.PM_LICHEN))
+        variety = 1;
+
+    const nm = m && (m.pmnames[2] ?? m.pmnames[0] ?? m.pmnames[1]);
+    const contents = vegetarian(m) ? nm : `${nm} meat`;
+    if ((obj.cknown || game.iflags?.override_ID) && obj.spe < 0) {
+        if (variety === 0 || variety === 1)
+            return `${tintxts[variety].txt} tin of ${contents}`;
+        return `tin of ${tintxts[variety].txt} ${contents}`;
     }
-    return '';
+    return `tin of ${contents}`;
 }
 
 // src/objnam.c:1063 doname_base()
@@ -884,7 +976,16 @@ export function doname(obj) {
                         : is_rottable(obj, game.objects) ? 'rotproof '
                           : '';
 
+    /* src/objnam.c:1373 -- once a container's contents are known, doname()
+       reports the number of separate stacks it holds. */
+    if (obj.cknown && obj.cobj?.length)
+        bp += ` containing ${obj.cobj.length} item${plur(obj.cobj.length)}`;
+
     switch (obj.oclass) {
+    case AMULET_CLASS:
+        if (obj.owornmask & W_AMUL)
+            bp += ' (being worn)';
+        break;
     case ARMOR_CLASS:
         if (obj.owornmask & W_ARMOR) bp += ' (being worn)';
         /* FALLTHRU */
@@ -969,6 +1070,24 @@ export function doname(obj) {
         bp += ` (${(Qtyp === 1) ? 'in quiver'
                  : (Qtyp === 2) ? 'in quiver pouch'
                    : 'at the ready'})`;
+    }
+
+    /* src/objnam.c:1654: carried shop stock shows the price stored when it
+       was added to the current shopkeeper's bill. */
+    if (obj.unpaid) {
+        let quotedprice = 0;
+        for (const room of game.u.ushops || '') {
+            const shkp = game.level?.rooms?.[
+                room.charCodeAt(0) - ROOMOFFSET]?.resident;
+            const bill = shkp?.eshk?.bill_p;
+            const entry = Array.isArray(bill)
+                ? bill.find(bp_ => bp_.bo_id === obj.o_id) : null;
+            if (entry) {
+                quotedprice = entry.price * obj.quan;
+                break;
+            }
+        }
+        bp += ` (unpaid, ${quotedprice} ${currency(quotedprice)})`;
     }
 
     /* src/objnam.c:1527 — recompute the article now that the prefix is

@@ -7,7 +7,7 @@ import {
     COLNO, ROWNO, DOOR, SDOOR, POOL, TREE, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
-    IS_WALL, MAX_RADIUS, CROSSWALL, TRWALL,
+    IS_WALL, MAX_RADIUS,
 } from './const.js';
 import { newsym } from './display.js';
 import { ONAMES } from './objects_data.js';
@@ -66,44 +66,10 @@ const cs_rmax0 = new Int16Array(ROWNO).fill(0);
 const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax1 = new Int16Array(ROWNO).fill(0);
 
-// src/vision.c:414 new_angle() — extra seen-angle bits for crosswalls and
-// T walls viewed from an angle. `sv` is the base seenv_matrix entry.
-function new_angle(lev, sv, row, col) {
-    let res = sv;
-
-    /*
-     * Do extra checks for crosswalls and T walls if we see them from
-     * an angle.
-     */
-    if (lev.typ >= CROSSWALL && lev.typ <= TRWALL) {
-        switch (res) {
-        case SV0:
-            if (col > 0 && viz_clear[row][col - 1])
-                res |= SV7;
-            if (row > 0 && viz_clear[row - 1][col])
-                res |= SV1;
-            break;
-        case SV2:
-            if (row > 0 && viz_clear[row - 1][col])
-                res |= SV1;
-            if (col < COLNO - 1 && viz_clear[row][col + 1])
-                res |= SV3;
-            break;
-        case SV4:
-            if (col < COLNO - 1 && viz_clear[row][col + 1])
-                res |= SV3;
-            if (row < ROWNO - 1 && viz_clear[row + 1][col])
-                res |= SV5;
-            break;
-        case SV6:
-            if (row < ROWNO - 1 && viz_clear[row + 1][col])
-                res |= SV5;
-            if (col > 0 && viz_clear[row][col - 1])
-                res |= SV7;
-            break;
-        }
-    }
-    return res;
+// EXTEND_SPINE is disabled in upstream vision.c, so new_angle is a macro
+// which returns the base seenv_matrix bit and ignores its other arguments.
+function new_angle(_lev, sv, _row, _col) {
+    return sv;
 }
 
 /* src/vision.c:1143-1144 — set by view_from() for the quadrant scans.
@@ -691,6 +657,35 @@ export function vision_recalc(control = 0) {
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
     }
 
+    /* src/vision.c:552. A blind hero still has COULD_SEE geometry so
+       monsters can see the hero, but none of those cells are IN_SIGHT. */
+    if (u.ublind && control !== 2) {
+        const old_array = game.viz_array;
+        const old_rmin = game._viz_rmin;
+        const old_rmax = game._viz_rmax;
+        game.viz_array = next;
+        game.active_buf = game.active_buf === 0 ? 1 : 0;
+        if (old_array && game.level) {
+            for (let row = 0; row < ROWNO; row++) {
+                const start = old_rmin
+                    ? Math.min(old_rmin[row], next_rmin[row])
+                    : next_rmin[row];
+                const stop = old_rmax
+                    ? Math.max(old_rmax[row], next_rmax[row])
+                    : next_rmax[row];
+                for (let col = start; col <= stop; col++) {
+                    if (col > 0 && (old_array[row][col] & IN_SIGHT))
+                        newsym(col, row);
+                }
+            }
+        }
+        if (u.ux > 0)
+            newsym(u.ux, u.uy);
+        game._viz_rmin = next_rmin;
+        game._viz_rmax = next_rmax;
+        return;
+    }
+
     /* src/vision.c:703 — set the correct bits for all light sources */
     do_light_sources(next);
 
@@ -736,7 +731,7 @@ export function vision_recalc(control = 0) {
 
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;
-    if (old_array && control !== 2 && game.level) {
+    if (old_array && game.level) {
         for (let row = 0; row < ROWNO; row++) {
             const old_row = old_array[row];
             const next_row = next[row];

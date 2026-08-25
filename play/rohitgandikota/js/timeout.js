@@ -11,9 +11,12 @@
 // (bury_an_obj spends rnd(250) for ROT_ORGANIC). Only the bookkeeping is here.
 
 import { game } from './gstate.js';
-import { rnd } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
+import { TIMEOUT, FROMOUTSIDE, WT_NOISY_INV, FOOT, A_DEX,
+         PLNMSG_ONE_ITEM_HERE } from './const.js';
+import { ONAMES } from './objects_data.js';
 
 // include/timeout.h:11 enum timer_type
 export const TIMER_NONE = 0;
@@ -122,6 +125,95 @@ export async function fall_asleep(how_long, wakeup_msg) {
     game.nomovemsg = wakeup_msg ? "You wake up." : "You can move again.";
 }
 
+// src/timeout.c:1221 slip_or_trip() — feedback when FUMBLING expires after a
+// move. The floor-object and ordinary on-foot paths are common. Ice and
+// mounted movement retain their exact gates and record only the unported
+// forced-movement tail.
+async function slip_or_trip() {
+    const u = game.u;
+    const on_foot = !u.usteed;
+    let otmp = (game.level?.objects || [])
+        .find(o => o.ox === u.ux && o.oy === u.uy) || null;
+    const { is_pool } = await import('./mon.js');
+    if (otmp && on_foot && !u.uinwater && is_pool(u.ux, u.uy))
+        otmp = null;
+
+    const { You } = await import('./pline.js');
+    const { Hallucination } = await import('./youprop.js');
+    if (otmp && on_foot) {
+        const { doname } = await import('./objnam.js');
+        const { body_part } = await import('./polyself.js');
+        let what;
+        if (game.iflags?.last_msg === PLNMSG_ONE_ITEM_HERE)
+            what = (otmp.quan === 1) ? 'it'
+                 : Hallucination() ? 'they' : 'them';
+        else if (otmp.dknown || !u.ublind)
+            what = doname(otmp);
+        else {
+            const rock = (game.level.objects || [])
+                .find(o => o.ox === u.ux && o.oy === u.uy
+                           && o.otyp === ONAMES.ROCK);
+            what = !rock ? 'something'
+                 : rock.quan === 1 ? 'a rock' : 'some rocks';
+        }
+        if (Hallucination()) {
+            const { pline } = await import('./display.js');
+            const cap = what.charAt(0).toUpperCase() + what.slice(1);
+            await pline(`Egads!  ${cap} bite${otmp.quan === 1 ? 's' : ''} `
+                        + `your ${body_part(FOOT)}!`);
+        } else {
+            await You(`trip over ${what}.`);
+        }
+        if (!u.uarmf && otmp.otyp === ONAMES.CORPSE)
+            note_unported_timeout('slip_or_trip:petrifying_corpse');
+        return;
+    }
+
+    const { is_ice } = await import('./dbridge.js');
+    const intrinsic = u.intrinsic || {};
+    if ((intrinsic.HFumbling & FROMOUTSIDE)
+        || (is_ice(u.ux, u.uy) && !rn2(3))) {
+        const { pline } = await import('./display.js');
+        const verb = rn2(2) ? 'slip' : 'slide';
+        await pline(`You ${verb} ${is_ice(u.ux, u.uy) ? 'on' : 'off'} the ice.`);
+        if (!on_foot) {
+            note_unported_timeout('slip_or_trip:mounted_ice');
+        } else {
+            const { ACURR } = await import('./attrib.js');
+            if (!rn2(10 + ACURR(A_DEX)))
+                note_unported_timeout('slip_or_trip:hurtle');
+        }
+        return;
+    }
+
+    if (on_foot) {
+        switch (rn2(4)) {
+        case 1: {
+            const { body_part } = await import('./polyself.js');
+            const { makeplural } = await import('./objnam.js');
+            await You(`trip over your own ${Hallucination()
+                       ? 'elbow' : makeplural(body_part(FOOT))}.`);
+            break;
+        }
+        case 2:
+            await You(`slip ${Hallucination()
+                      ? 'on a banana peel' : 'and nearly fall'}.`);
+            break;
+        case 3:
+            await You('flounder.');
+            break;
+        default:
+            await You('stumble.');
+            break;
+        }
+    } else {
+        /* The mounted branch uses the same rn2(4), then dismounts unless the
+           saddle is cursed. Keep the draw while its steed plumbing is absent. */
+        rn2(4);
+        note_unported_timeout('slip_or_trip:mounted');
+    }
+}
+
 // src/timeout.c:660 nh_timeout() — the per-turn countdown of intrinsic
 // timeouts. Only the intrinsic-timer loop is live; the luck rebalancing,
 // storm/fumaroles arms and most expiry cases need absent state and are
@@ -135,10 +227,10 @@ export async function nh_timeout() {
 
     for (const key of Object.keys(intr)) {
         const v = intr[key];
-        if (typeof v !== 'number' || v <= 0)
+        if (typeof v !== 'number' || !(v & TIMEOUT))
             continue;
-        intr[key] = v - 1;
-        if (intr[key] > 0)
+        intr[key] = (v & ~TIMEOUT) | (((v & TIMEOUT) - 1) & TIMEOUT);
+        if (intr[key] & TIMEOUT)
             continue;
         /* the timeout just ran out */
         switch (key) {
@@ -156,6 +248,31 @@ export async function nh_timeout() {
             if (!game.u.uprops?.CONFUSION) {
                 const { stop_occupation } = await import('./allmain.js');
                 await stop_occupation();
+            }
+            break;
+        }
+        case 'HFumbling': {
+            const { Levitation, Flying, Deaf } = await import('./youprop.js');
+            if (game.u.umoved && !(Levitation() || Flying())) {
+                await slip_or_trip();
+                nomul(-2);
+                game.multi_reason = 'fumbling';
+                game.nomovemsg = '';
+                const { inv_weight } = await import('./attrib.js');
+                if (inv_weight() > -WT_NOISY_INV) {
+                    if (!Deaf()) {
+                        const { You } = await import('./pline.js');
+                        await You('make a lot of noise!');
+                    }
+                    const { wake_nearby } = await import('./mon.js');
+                    wake_nearby(false);
+                }
+            }
+            intr.HFumbling &= ~FROMOUTSIDE;
+            if (intr.HFumbling || game.u.uprops?.FUMBLING) {
+                const timeout = Math.min(TIMEOUT,
+                    (intr.HFumbling & TIMEOUT) + rnd(20));
+                intr.HFumbling = (intr.HFumbling & ~TIMEOUT) | timeout;
             }
             break;
         }

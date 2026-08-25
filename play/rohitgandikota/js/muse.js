@@ -12,11 +12,11 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { sgn, dist2 } from './hacklib.js';
-import { ONAMES } from './objects_data.js';
-import { ATTKS } from './monst_data.js';
+import { ONAMES, MATERIALS } from './objects_data.js';
+import { ATTKS, PMNAMES } from './monst_data.js';
 import { is_animal, mindless, nohands, dmgtype, can_blow, amorphous,
          passes_walls, noncorporeal, unsolid, haseyes, hates_light,
-         resists_blnd, attacktype } from './mondata.js';
+         resists_blnd, attacktype, verysmall, throws_rocks } from './mondata.js';
 import { in_your_sanctuary, lined_up, monnear, onscary, mon_knows_traps,
          mon_would_take_item, accessible } from './monmove.js';
 import { which_armor } from './worn.js';
@@ -24,13 +24,17 @@ import { hard_helmet } from './do_wear.js';
 import { noteleport_level } from './teleport.js';
 import { stairway_at } from './stairs.js';
 import { carrying, sobj_at } from './invent.js';
-import { m_at } from './mon.js';
+import { m_at, t_at } from './mon.js';
 import { linedup_callback } from './mthrowu.js';
-import { Teleport_control } from './youprop.js';
+import { Teleport_control, See_invisible } from './youprop.js';
 import { xytodir, dirtocoord } from './cmd.js';
 import { isok, W_ARMH, M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE,
          M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_ACID, TELEP_TRAP, N_DIRS,
-         Is_rogue_level, In_endgame, Is_earthlevel } from './const.js';
+         Is_rogue_level, In_endgame, Is_earthlevel, W_ARMF, MFAST, NON_PM,
+         POLY_TRAP, u_at } from './const.js';
+import { Is_container, Has_contents, bimanual, is_plural } from './obj.js';
+import { MON_WEP } from './monst.js';
+import { canletgo } from './do.js';
 
 // src/muse.c:1272 — the offensive MUSE_* selection codes.
 const MUSE_WAN_DEATH = 1;
@@ -51,6 +55,18 @@ const MUSE_POT_SLEEPING = 16;
 const MUSE_SCR_EARTH = 17;
 const MUSE_CAMERA = 18;
 const MUSE_WAN_UNDEAD_TURNING = 20; /* shared with the defensive list */
+
+// src/muse.c:2084 miscellaneous item selection codes.
+export const MUSE_POT_GAIN_LEVEL = 1;
+export const MUSE_WAN_MAKE_INVISIBLE = 2;
+export const MUSE_POT_INVISIBILITY = 3;
+export const MUSE_POLY_TRAP = 4;
+export const MUSE_WAN_POLYMORPH = 5;
+export const MUSE_POT_SPEED = 6;
+export const MUSE_WAN_SPEED_MONSTER = 7;
+export const MUSE_BULLWHIP = 8;
+export const MUSE_POT_POLYMORPH = 9;
+export const MUSE_BAG = 10;
 
 // include/monst.h:89 m_seenres()
 const m_seenres = (mon, mask) => ((mon.seen_resistance ?? 0) & mask);
@@ -314,4 +330,274 @@ export function find_offensive(mtmp) {
         }
     }
     return !!game.m.has_offense;
+}
+
+// src/muse.c:2095 find_misc() selects the last viable utility item in a
+// monster's inventory. The condition order matters because carried containers
+// spend rn2(5) even when another item has already been selected.
+export function find_misc(mtmp) {
+    const mdat = mtmp.data ?? game.mons[mtmp.mnum];
+    const x = mtmp.mx, y = mtmp.my;
+    const immobile = mdat.mmove === 0;
+    const stuck = mtmp === game.u.ustuck;
+
+    if (!game.m)
+        game.m = {};
+    game.m.misc = null;
+    game.m.has_misc = 0;
+
+    if (is_animal(mdat) || mindless(mdat))
+        return false;
+    if (game.u.uswallow && stuck)
+        return false;
+    if (dist2(x, y, mtmp.mux, mtmp.muy) > 36)
+        return false;
+
+    if (!stuck && !immobile && !mtmp.mtrapped
+        && (mtmp.cham ?? NON_PM) === NON_PM && mdat.difficulty < 6) {
+        const ignore_boulders = verysmall(mdat) || throws_rocks(mdat)
+                                || passes_walls(mdat);
+        const diag_ok = mdat.pmidx !== PMNAMES.PM_GRID_BUG;
+
+        for (let xx = x - 1; xx <= x + 1; xx++)
+            for (let yy = y - 1; yy <= y + 1; yy++) {
+                if (!isok(xx, yy) || u_at(xx, yy)
+                    || (!diag_ok && xx !== x && yy !== y)
+                    || ((xx !== x || yy !== y) && m_at(xx, yy)))
+                    continue;
+                const trap = t_at(xx, yy);
+                if (!trap || (!ignore_boulders
+                              && sobj_at(ONAMES.BOULDER, xx, yy))
+                    || onscary(xx, yy, mtmp))
+                    continue;
+                const shoes = which_armor(mtmp, W_ARMF);
+                const iron_shoes = shoes
+                    && game.objects[shoes.otyp].oc_material === MATERIALS.IRON;
+                if (trap.ttyp === POLY_TRAP && !iron_shoes) {
+                    game.trapx = xx;
+                    game.trapy = yy;
+                    game.m.has_misc = MUSE_POLY_TRAP;
+                    return true;
+                }
+            }
+    }
+    if (nohands(mdat))
+        return false;
+
+    for (const obj of (mtmp.minvent || [])) {
+        if (obj.otyp === ONAMES.POT_GAIN_LEVEL
+            && (!obj.cursed
+                || (!mtmp.isgd && !mtmp.isshk && !mtmp.ispriest))) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_POT_GAIN_LEVEL;
+        }
+
+        if (game.m.has_misc === MUSE_BULLWHIP)
+            continue;
+        if (obj.otyp === ONAMES.BULLWHIP && !mtmp.mpeaceful
+            && game.u.uwep && !rn2(5) && obj === MON_WEP(mtmp)
+            && u_at(mtmp.mux, mtmp.muy)
+            && dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) <= 2
+            && !game.u.uswallow
+            && (canletgo(game.u.uwep, '')
+                || (game.u.twoweap && canletgo(game.u.uswapwep, '')))) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_BULLWHIP;
+        }
+
+        if (game.m.has_misc === MUSE_WAN_MAKE_INVISIBLE)
+            continue;
+        if (obj.otyp === ONAMES.WAN_MAKE_INVISIBLE && obj.spe > 0
+            && !mtmp.minvis && !mtmp.invis_blkd
+            && (!mtmp.mpeaceful || See_invisible())
+            && (!attacktype(mdat, ATTKS.AT_GAZE) || mtmp.mcan)) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_WAN_MAKE_INVISIBLE;
+        }
+
+        if (game.m.has_misc === MUSE_POT_INVISIBILITY)
+            continue;
+        if (obj.otyp === ONAMES.POT_INVISIBILITY && !mtmp.minvis
+            && !mtmp.invis_blkd && (!mtmp.mpeaceful || See_invisible())
+            && (!attacktype(mdat, ATTKS.AT_GAZE) || mtmp.mcan)) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_POT_INVISIBILITY;
+        }
+
+        if (game.m.has_misc === MUSE_WAN_SPEED_MONSTER)
+            continue;
+        if (obj.otyp === ONAMES.WAN_SPEED_MONSTER && obj.spe > 0
+            && mtmp.mspeed !== MFAST && !mtmp.isgd) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_WAN_SPEED_MONSTER;
+        }
+
+        if (game.m.has_misc === MUSE_POT_SPEED)
+            continue;
+        if (obj.otyp === ONAMES.POT_SPEED && mtmp.mspeed !== MFAST
+            && !mtmp.isgd) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_POT_SPEED;
+        }
+
+        if (game.m.has_misc === MUSE_WAN_POLYMORPH)
+            continue;
+        if (obj.otyp === ONAMES.WAN_POLYMORPH && obj.spe > 0
+            && (mtmp.cham ?? NON_PM) === NON_PM && mdat.difficulty < 6) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_WAN_POLYMORPH;
+        }
+
+        if (game.m.has_misc === MUSE_POT_POLYMORPH)
+            continue;
+        if (obj.otyp === ONAMES.POT_POLYMORPH
+            && (mtmp.cham ?? NON_PM) === NON_PM && mdat.difficulty < 6) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_POT_POLYMORPH;
+        }
+
+        if (game.m.has_misc === MUSE_BAG)
+            continue;
+        if (Is_container(obj) && obj.otyp !== ONAMES.BAG_OF_TRICKS
+            && !rn2(5)
+            && !(obj.otyp === ONAMES.LARGE_BOX && obj.spe === 1)
+            && !game.m.has_misc && Has_contents(obj)
+            && !obj.olocked && !obj.otrapped) {
+            game.m.misc = obj;
+            game.m.has_misc = MUSE_BAG;
+        }
+    }
+    return !!game.m.has_misc;
+}
+
+function m_useup_misc(mtmp, obj) {
+    if ((obj.quan ?? 1) > 1) {
+        obj.quan--;
+        return;
+    }
+    const at = (mtmp.minvent || []).indexOf(obj);
+    if (at >= 0)
+        mtmp.minvent.splice(at, 1);
+}
+
+// src/muse.c:2383 use_misc(). The invisibility potion is the first common
+// utility action reached by the public trace. It changes visibility without
+// drawing, consumes one potion, and spends the monster's action.
+export async function use_misc(mtmp) {
+    const obj = game.m?.misc || null;
+
+    switch (game.m?.has_misc || 0) {
+    case MUSE_POT_INVISIBILITY: {
+        if (!obj)
+            return 0;
+        const [{ canseemon, canspotmon, pline, newsym },
+               { You_hear }, { Deaf }, { Monnam, mon_nam },
+               { singular, doname }] = await Promise.all([
+            import('./display.js'), import('./pline.js'), import('./youprop.js'),
+            import('./do_name.js'), import('./objnam.js'),
+        ]);
+        const vismon = canseemon(mtmp);
+        const oldname = mon_nam(mtmp);
+
+        if (vismon)
+            await pline(`${Monnam(mtmp)} drinks ${singular(obj, doname)}!`);
+        else if (!Deaf())
+            await You_hear('a chugging sound.');
+
+        mtmp.perminvis = obj.cursed ? 0 : 1;
+        if (!mtmp.invis_blkd) {
+            mtmp.minvis = mtmp.perminvis;
+            newsym(mtmp.mx, mtmp.my);
+        }
+        if (vismon && mtmp.minvis) {
+            if (canspotmon(mtmp))
+                await pline(`${Monnam(mtmp)}'s body takes on a strange transparency.`);
+            else
+                await pline(`Suddenly you cannot see ${oldname}.`);
+        }
+
+        if (obj.cursed)
+            (game.unported ||= new Set()).add('use_misc:you_aggravate');
+        m_useup_misc(mtmp, obj);
+        return 2;
+    }
+    case MUSE_BULLWHIP: {
+        let where_to = rn2(4);
+        let target = game.u.uwep;
+        if (!target || !canletgo(target, '')
+            || (game.u.twoweap && canletgo(game.u.uswapwep, '') && rn2(2)))
+            target = game.u.uswapwep;
+        if (!target)
+            return 0;
+
+        const [{ canseemon, pline, newsym }, { Monnam },
+               { xname, the, makeplural }, { body_part },
+               { welded, setuwep, setuswapwep, setuqwep },
+               { freeinv }, { place_object }, { dropy },
+               { mpickobj }, { mon_hates_silver }, { surface },
+               { HAND }] = await Promise.all([
+            import('./display.js'), import('./do_name.js'),
+            import('./objnam.js'), import('./polyself.js'),
+            import('./wield.js'), import('./invent.js'), import('./mkobj.js'),
+            import('./do.js'), import('./steal.js'), import('./dog.js'),
+            import('./dungeon.js'), import('./const.js'),
+        ]);
+        const vismon = canseemon(mtmp);
+        const the_whip = vismon ? 'The bullwhip' : 'A whip';
+        const the_weapon = the(xname(target));
+        let hand = body_part(HAND);
+        if (bimanual(target))
+            hand = makeplural(hand);
+
+        if (vismon)
+            await pline(`${Monnam(mtmp)} flicks a bullwhip towards your ${hand}!`);
+        if (target.otyp === ONAMES.HEAVY_IRON_BALL) {
+            await pline(`${the_whip} fails to wrap around ${the_weapon}.`);
+            return 1;
+        }
+        await pline(`${the_whip} wraps around ${the_weapon} you're wielding!`);
+        if (welded(target)) {
+            await pline(`${is_plural(target) ? 'They are' : 'It is'} welded to your ${hand}.`);
+            where_to = 0;
+        }
+        if (!where_to) {
+            await pline('The whip slips free.');
+            return 1;
+        }
+        if (where_to === 3 && mon_hates_silver(mtmp)
+            && game.objects[target.otyp].oc_material === MATERIALS.SILVER)
+            where_to = 2;
+
+        if (target === game.u.uwep)
+            setuwep(null);
+        if (target === game.u.uswapwep)
+            setuswapwep(null);
+        if (target === game.u.uquiver)
+            setuqwep(null);
+        freeinv(target);
+
+        switch (where_to) {
+        case 1:
+            await pline(`${Monnam(mtmp)} yanks ${the_weapon} from your ${hand}!`);
+            place_object(target, mtmp.mx, mtmp.my);
+            newsym(mtmp.mx, mtmp.my);
+            break;
+        case 2:
+            await pline(`${Monnam(mtmp)} yanks ${the_weapon} to the ${
+                surface(game.u.ux, game.u.uy)}!`);
+            await dropy(target);
+            break;
+        case 3:
+            await pline(`${Monnam(mtmp)} snatches ${the_weapon}!`);
+            mpickobj(mtmp, target);
+            break;
+        default:
+            break;
+        }
+        return 1;
+    }
+    default:
+        (game.unported ||= new Set()).add(`use_misc:${game.m?.has_misc || 0}`);
+        return game.m?.has_misc ? 2 : 0;
+    }
 }

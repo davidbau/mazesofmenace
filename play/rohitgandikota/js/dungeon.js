@@ -1197,8 +1197,22 @@ export async function show_overview(why, reason) {
                during end-of-game disclosure */
             const hattr = game.program_state_gameover ? 0
                           : 7 /* NH ATR_INVERSE */;
+            const dptr = game.dungeons[m.dnum];
+            let dname = `${dptr.dname}:`;
+            if ((dptr.dunlev_ureached ?? 0) !== dptr.entry_lev
+                && !In_endgame(m)) {
+                const knoxdnum = game.special_levels?.knox_level?.dnum
+                              ?? game.knox_level?.dnum;
+                const depthstart = (m.dnum === game.quest_dnum
+                                    || m.dnum === knoxdnum)
+                    ? 1 : dptr.depth_start;
+                const reached = depthstart + dptr.dunlev_ureached - 1;
+                dname = builds_up(m)
+                    ? `${dptr.dname}: levels ${depthstart + dptr.entry_lev - 1} up to ${reached}`
+                    : `${dptr.dname}: levels ${depthstart} to ${reached}`;
+            }
             tty_add_menu(win, null, 0, 0, 0, hattr, NO_COLOR,
-                         `${game.dungeons[m.dnum].dname}:`, 0);
+                         dname, 0);
         }
         const dep = game.dungeons[m.dnum].depth_start + m.dlevel - 1;
         let buf = `${TAB}Level ${dep}:`;

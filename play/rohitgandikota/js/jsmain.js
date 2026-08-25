@@ -90,6 +90,10 @@ export class NethackGame {
     async start() {
         const g = resetGame();
 
+        /* Give gameplay modules the universal nh_delay_output hook described
+           above. This replay wrapper owns the per-step frame buffers. */
+        g.animationFrame = this.animationFrame.bind(this);
+
         /* Module-scoped state that C keeps in globals and re-initialises per
            process. The judge runs every session in one process, so anything
            left behind leaks into the next game. */
@@ -314,4 +318,3 @@ export async function runSegment(input) {
 
     return nhGame;
 }
-

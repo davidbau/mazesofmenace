@@ -1,4 +1,4 @@
-import { is_neuter } from './mondata.js';
+import { is_human, is_neuter } from './mondata.js';
 import { nartifact_exist } from './artifact.js';
 // mkobj.js — object creation.
 // C ref: src/mkobj.c
@@ -33,7 +33,7 @@ import { Is_rogue_level, NODIR, OBJ_FLOOR, OBJ_INVENT, In_quest } from './const.
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
-    rndmonnum, level_difficulty, is_male, is_female, is_rider,
+    rndmonnum, rndmonnum_adj, level_difficulty, is_male, is_female, is_rider,
 } from './makemon.js';
 import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 /* invent.js imports erosion_matters() from here, so this edge closes a cycle.
@@ -470,7 +470,10 @@ export function mksobj_init(otmp, artif) {
             otmp.spe = rn1(18, 3);
             break;
         case ONAMES.FIGURINE:
-            /* corpsenm needs rndmonnum() — see the header note */
+            let tryct = 0;
+            do {
+                otmp.corpsenm = rndmonnum_adj(5, 10);
+            } while (is_human(game.mons[otmp.corpsenm]) && tryct++ < 30);
             blessorcurse(otmp, 4);
             break;
         case ONAMES.BELL_OF_OPENING:

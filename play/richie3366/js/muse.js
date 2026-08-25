@@ -682,8 +682,9 @@ async function mquaffmsg(mtmp, otmp) {
 
 /**
  * C ref: muse.c mcureblindness.
+ * Caller: zap.c bhitm SPE_HEALING/SPE_EXTRA_HEALING (D-1469).
  */
-async function mcureblindness(mon, verbos) {
+export async function mcureblindness(mon, verbos) {
     if (!mon?.mcansee) {
         mon.mcansee = 1;
         mon.mblinded = 0;

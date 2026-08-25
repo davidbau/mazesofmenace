@@ -1118,7 +1118,9 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
                                                     : goodpos_onscary(x, y, ptr)))
             return false;
     }
-    if (!ACCESSIBLE(loc.typ)) {
+    /* src/monmove.c accessible(): a closed or locked door is not an
+       accessible destination even though DOOR is an accessible map type. */
+    if (!ACCESSIBLE(loc.typ) || closed_door(x, y)) {
         if (!(is_pool(x, y) && ignorewater)
             && !(is_lava(x, y) && (gpflags & MM_IGNORELAVA)))
             return false;
@@ -1156,20 +1158,35 @@ function pmIndexOf(name) {
 
 // src/align.c set_malign() — recomputes malign from peacefulness. No draw.
 export function set_malign(mtmp) {
-    const mal = mtmp.data.maligntyp;
+    let mal = mtmp.data.maligntyp;
+
+    if (mtmp.ispriest || mtmp.isminion) {
+        if (mtmp.ispriest)
+            mal = mtmp.epri?.shralign ?? mtmp.mextra?.epri?.shralign ?? mal;
+        else
+            mal = mtmp.emin?.min_align ?? mtmp.mextra?.emin?.min_align ?? mal;
+        if (mal !== A_NONE_VALUE)
+            mal *= 5;
+    }
     const coaligned = (sgn(mal) === sgn(game.u.ualign.type));
 
     if (mtmp.data.msound === MS_LEADER) {
         mtmp.malign = -20;
     } else if (mal === A_NONE_VALUE) {
         mtmp.malign = mtmp.mpeaceful ? 0 : 20;
+    } else if (always_peaceful(mtmp.data)) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(5, absmal)
+                                     : 3 * Math.max(5, absmal);
+    } else if (always_hostile(mtmp.data)) {
+        const absmal = Math.abs(mal);
+        mtmp.malign = coaligned ? 0 : Math.max(5, absmal);
     } else if (coaligned) {
         const absmal = Math.abs(mal);
-        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(5 - absmal, 1)
-                                     : Math.max(5 - absmal, 1);
+        mtmp.malign = mtmp.mpeaceful ? -3 * Math.max(3, absmal)
+                                     : Math.max(3, absmal);
     } else {
-        const absmal = Math.abs(mal);
-        mtmp.malign = mtmp.mpeaceful ? 0 : Math.max(20 - absmal, 6);
+        mtmp.malign = Math.abs(mal);
     }
 }
 const A_NONE_VALUE = -128;   /* include/align.h A_NONE */
@@ -1267,7 +1284,11 @@ export function set_mimic_sym(mtmp) {
     const lev = game.level.at(mx, my);
     const typ = lev?.typ;
     const roomno = (lev?.roomno ?? 0) - ROOMOFFSET;
-    const rt = (roomno >= 0) ? (game.level.rooms[roomno]?.rtype ?? 0) : 0;
+    const mimicRoom = roomno < 0 ? null
+        : [...(game.level.rooms || []).slice(0, game.level.nroom),
+           ...(game.level.subrooms || [])]
+            .find(r => r?.roomnoidx === roomno);
+    const rt = mimicRoom?.rtype ?? 0;
     let ap_type, appear, s_sym = null;
 
     if (OBJ_AT(mx, my)) {
@@ -2010,6 +2031,16 @@ export function makemon(ptr, x, y, mmflags) {
         minvent: null, mgold: 0, data: ptr, mnum: mndx,
         cham: NON_PM, mstrategy: 0,
     };
+    /* src/makemon.c:1237-1246 allocates requested extended records before
+       assigning the monster id.  The records themselves consume no RNG. */
+    if (mmflags & (MM_EGD | MM_EPRI | MM_ESHK | MM_EMIN | MM_EDOG)) {
+        mtmp.mextra = { mcorpsenm: NON_PM };
+        if (mmflags & MM_EGD)  mtmp.mextra.egd = {};
+        if (mmflags & MM_EPRI) mtmp.mextra.epri = {};
+        if (mmflags & MM_ESHK) mtmp.mextra.eshk = {};
+        if (mmflags & MM_EMIN) mtmp.mextra.emin = {};
+        if (mmflags & MM_EDOG) mtmp.mextra.edog = {};
+    }
     if (mmflags & MM_ASLEEP)
         mtmp.msleeping = 1;
     /* src/makemon.c:1249 — C prepends to fmon here, not in place_monster(), so

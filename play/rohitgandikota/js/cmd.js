@@ -17,7 +17,7 @@ import { sp_lev_wire_mon } from './sp_lev.js';
 import { is_pool, is_lava, m_at, t_at, newcham, resists_ston,
          mongone } from './mon.js';
 import { do_attack } from './uhitm.js';
-import { is_safemon } from './display.js';
+import { is_safemon, mon_visible, sensemon } from './display.js';
 import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
@@ -28,10 +28,12 @@ import { Hallucination } from './youprop.js';
 import { u_on_newpos } from './teleport.js';
 import { doloot } from './pickup.js';
 import { curr_mon_load } from './mon.js';
-import { ECMD_FAIL, ECMD_CANCEL, A_DEX } from './const.js';
-import { ACURR } from './attrib.js';
+import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, M_AP_TYPE, M_AP_FURNITURE,
+         M_AP_OBJECT } from './const.js';
+import { ACURR, exercise } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
+import { cxname, simpleonames, the } from './objnam.js';
 import { x_monnam, docallcmd } from './do_name.js';
 import { You } from './pline.js';
 
@@ -52,7 +54,9 @@ import { tty_yn_function } from './tty/topl.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered } from './o_init.js';
 import { enlightenment } from './insight.js';
-import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
+import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
+         tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+         tty_select_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
 import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
@@ -250,9 +254,9 @@ async function help_dir(sym, msg) {
                "(Suppress this message with !cmdassist in config file.)");
     }
     await tty_display_nhwindow(win);
-    await nhgetch();
+    await xwaitforspace('\x1b ');
     while (tty_next_page(win))
-        await nhgetch();
+        await xwaitforspace('\x1b ');
     tty_destroy_nhwindow(win);
     await docrt();
     return true;
@@ -344,8 +348,10 @@ export async function getdir(s) {
 
 // src/cmd.c get_adjacent_loc()
 export async function get_adjacent_loc(prompt, emsg, x, y, cc) {
-    if (!await getdir(prompt))
-        return 0; /* pline1(Never_mind) */
+    if (!await getdir(prompt)) {
+        await pline(Never_mind);
+        return 0;
+    }
 
     const new_x = x + game.u.dx;
     const new_y = y + game.u.dy;
@@ -353,6 +359,8 @@ export async function get_adjacent_loc(prompt, emsg, x, y, cc) {
         cc.x = new_x;
         cc.y = new_y;
     } else {
+        if (emsg)
+            await pline(emsg);
         return 0;
     }
     return 1;
@@ -1154,6 +1162,10 @@ export async function rhack(key) {
     } else if (ch === ',') {
         // src/cmd.c:1799 cmdlist — ',' is dopickup.
         game.context.move = (await dopickup() === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'p') {
+        // src/cmd.c cmdlist: 'p' is dopay.
+        const { dopay } = await import('./shk.js');
+        game.context.move = ((await dopay()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'O') {
         // src/cmd.c:1780 cmdlist — 'O' is doset_simple.
         const { doset_simple } = await import('./options.js');
@@ -1516,6 +1528,31 @@ async function domove_core() {
         return;
     }
 
+    /* src/hack.c:2763 -- a run into a visible monster that is not currently
+       safe stops before attacking and costs no turn.  Confusion can make a
+       tame monster temporarily unsafe, so this guard must precede the normal
+       bump/attack path. */
+    {
+        const mtmp_run = m_at(newx, newy);
+        if (mtmp_run && !is_safemon(mtmp_run) && game.context.run
+            && ((!u.ublind && mon_visible(mtmp_run)
+                 && M_AP_TYPE(mtmp_run) !== M_AP_FURNITURE
+                 && M_AP_TYPE(mtmp_run) !== M_AP_OBJECT)
+                || sensemon(mtmp_run))) {
+            nomul(0);
+            game.context.move = 0;
+            return;
+        }
+    }
+
+    /* src/hack.c:2775 -- record the start of this move before bump, attack,
+       trap, liquid, and blocked-terrain exits.  Missile AI later compares
+       this position with the current one to decide whether the hero is
+       retreating, so updating it only after a successful step leaves stale
+       state. */
+    u.ux0 = u.ux;
+    u.uy0 = u.uy;
+
     /* src/hack.c's domove_attackmon_at() call is NOT wired here yet.
        js/hack.js now holds that function (it was missing entirely; the C
        does not call do_attack from domove directly, it calls this).
@@ -1626,10 +1663,19 @@ async function domove_core() {
         if (closed_door(newx, newy) && !game.context.door_opened
             && (newx === u.ux || newy === u.uy)) {
             if (u.ublind || game.u.uprops?.STUNNED || ACURR(A_DEX) < 10
-                || game.u.uprops?.FUMBLING)
-                note_unported_cmd('test_move:walk_into_door');
-            else
+                || game.u.uprops?.FUMBLING) {
+                if (u.usteed) {
+                    note_unported_cmd('test_move:steed_into_door');
+                } else {
+                    await pline('Ouch!  You bump into a door.');
+                    exercise(A_DEX, false);
+                }
+                game.context.door_opened = true;
+                game.context.move = 1;
+                nomul(0);
+            } else {
                 await pline('That door is closed.');
+            }
         } else if (game.flags?.mention_walls && !game.context.door_opened) {
             if (!bloc || bloc.typ === STONE)
                 await pline("It's solid stone.");
@@ -1676,8 +1722,6 @@ async function domove_core() {
 
     // Move the hero
     const oldx = u.ux, oldy = u.uy;
-    u.ux0 = oldx;
-    u.uy0 = oldy;
     u.ux = newx;
     u.uy = newy;
 
@@ -1900,20 +1944,87 @@ async function show_inventory() {
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
     for (const it of items)
-        tty_add_menu(win, null, it.heading ? 0 : 1, it.invlet || 0, 0,
+        tty_add_menu(win, null,
+                     it.heading ? 0 : it.invlet.charCodeAt(0),
+                     it.invlet || 0, 0,
                      it.attr, NO_COLOR, it.str, MENU_ITEMFLAGS_NONE);
     tty_end_menu(win, null);
-    await tty_display_nhwindow(win);
-
-    /* win/tty/wintty.c process_menu_window — ESC quits the menu even when
-       more pages remain; any other key pages forward. */
-    let key = await nhgetch();
-    while (key !== 0x1b && String.fromCharCode(key) !== '\x1b'
-           && tty_next_page(win))
-        key = await nhgetch();
-
+    const picks = await tty_select_menu(win, 1 /* PICK_ONE */);
     tty_destroy_nhwindow(win);
-    await docrt();
+    if (!picks.length)
+        return;
+
+    const invlet = String.fromCharCode(picks[0]);
+    const obj = (game.invent || []).find(o => o.invlet === invlet);
+    if (obj)
+        await show_item_actions(obj);
+}
+
+function add_item_action(win, action, text) {
+    tty_add_menu(win, null, action.charCodeAt(0), action, 0,
+                 ATR_NONE, NO_COLOR, text, MENU_ITEMFLAGS_NONE);
+}
+
+/* src/iactions.c itemactions(), common ordinary-object actions. More unusual
+   item-specific apply, invoke, and equipment variants stay with their command
+   implementations until those paths need them. */
+async function show_item_actions(obj) {
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    const wornItem = !!(obj.owornmask & (W_ARMOR | W_ACCESSORY));
+    const simpleName = simpleonames(obj);
+
+    add_item_action(win, 'c', `Name this specific ${simpleName}`);
+    if (!game.objects[obj.otyp].oc_name_known)
+        add_item_action(win, 'C', `Call the type for ${simpleName}`);
+    if (!wornItem)
+        add_item_action(win, 'd', `Drop this ${obj.quan > 1 ? 'stack' : 'item'}`);
+    if (obj.oclass !== OCLASSES.COIN_CLASS)
+        add_item_action(win, 'i', 'Adjust inventory by assigning new letter');
+    if (obj.quan > 1 && obj.oclass !== OCLASSES.COIN_CLASS)
+        add_item_action(win, 'I', 'Adjust inventory by splitting this stack');
+    if (obj.oclass === OCLASSES.SPBOOK_CLASS)
+        add_item_action(win, 'r', 'Study this spellbook');
+    else if (obj.oclass === OCLASSES.SCROLL_CLASS)
+        add_item_action(win, 'r', 'Read this scroll to activate its magic');
+    if (!wornItem)
+        add_item_action(win, 't', obj.quan === 1
+            ? 'Throw this item' : 'Throw one of these');
+    if (!wornItem && obj !== game.u.uwep)
+        add_item_action(win, 'w', `Wield this ${obj.quan > 1 ? 'stack' : 'item'}`
+                        + ' in your hands');
+    if (!wornItem && obj.oclass === OCLASSES.ARMOR_CLASS)
+        add_item_action(win, 'W', 'Wear this armor');
+    if (obj.oclass === OCLASSES.WAND_CLASS)
+        add_item_action(win, 'z', 'Zap this wand to release its magic');
+    add_item_action(win, '/', `Look up information about ${obj.quan > 1
+        ? 'these' : 'this'}`);
+
+    tty_end_menu(win, `Do what with ${the(cxname(obj))}?`);
+    const picks = await tty_select_menu(win, 1 /* PICK_ONE */);
+    tty_destroy_nhwindow(win);
+    if (picks.length)
+        queue_item_action(String.fromCharCode(picks[0]), obj);
+}
+
+function queue_item_action(action, obj) {
+    const push = (fn, ...keys) => {
+        cmdq_add_ec(CQ_CANNED, fn);
+        for (const key of keys)
+            cmdq_add_key(CQ_CANNED, key);
+    };
+    switch (action) {
+    case 'c': push(docallcmd, 'i', obj.invlet); break;
+    case 'd': push(dodrop, obj.invlet); break;
+    case 'r': push(() => doread(read_ok), obj.invlet); break;
+    case 't': push(dothrow, obj.invlet); break;
+    case 'w': push(dowield, obj.invlet); break;
+    case 'z': push(dozap, obj.invlet); break;
+    case '/': push(dowhatis, 'i', obj.invlet); break;
+    default:
+        note_unported_cmd(`item_action:${action}`);
+        break;
+    }
 }
 
 // src/do_wear.c reset_remarm() — forget a partly-finished take-off.

@@ -15,6 +15,27 @@ import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPEC
          paint_topline } from '../display.js';
 import { nhgetch } from '../input.js';
 
+function wrap_topline(text, columns) {
+    let out = text;
+    let tl = 0, n = out.length;
+    while (n >= columns) {
+        const otl = tl;
+        let k = tl + columns - 1;
+        for (; k !== otl; --k)
+            if (out[k] === ' ')
+                break;
+        if (k === otl) {
+            k = out.indexOf(' ', otl);
+            if (k < 0)
+                break;
+        }
+        out = out.slice(0, k) + '\n' + out.slice(k + 1);
+        tl = k + 1;
+        n = out.length - tl;
+    }
+    return out;
+}
+
 // win/tty/topl.c:251 update_topl() — put `bp` on the top line.
 //
 // The first branch is the one that is easy to miss. When a message is already
@@ -71,27 +92,7 @@ export async function update_topl(bp) {
        back from column CO - 1 to find one; a token longer than the whole line
        is split after instead. The newlines stay inside gt.toplines, which is
        how a long message ends up on two rows. */
-    let out = bp.slice(0, TBUFSZ - 1);
-    {
-        let tl = 0, n = n0;
-        while (n >= CO) {
-            const otl = tl;
-            let k = tl + CO - 1;
-            for (; k !== otl; --k)
-                if (out[k] === ' ')
-                    break;
-            if (k === otl) {
-                /* Eek!  A huge token.  Try splitting after it. */
-                const sp = out.indexOf(' ', otl);
-                if (sp < 0)
-                    break;              /* No choice but to spit it out whole. */
-                k = sp;
-            }
-            out = out.slice(0, k) + '\n' + out.slice(k + 1);
-            tl = k + 1;
-            n = out.length - tl;
-        }
-    }
+    const out = wrap_topline(bp.slice(0, TBUFSZ - 1), CO);
 
     game._pending_message = out;
     await redotoplin(out);
@@ -182,13 +183,24 @@ export async function tty_yn_function(query, resp, def) {
             prompt += ` (${def})`;
     }
 
+    /* C includes a trailing space for a possible reprompt. It is enough to
+       advance a 79-column question's logical cursor onto an empty second
+       row, even though the visible cells contain only the question text. */
+    const columns = game?.nhDisplay?.cols ?? 80;
+    const renderedPrompt = wrap_topline(prompt + ' ', columns);
     game._pending_message = prompt;
     game._toplin = TOPLINE_SPECIAL_PROMPT;
     paint_topline();
 
     const display = game?.nhDisplay;
-    if (display)
-        display.setCursor(Math.min(prompt.length + 1, (display.cols ?? 80) - 1), 0);
+    if (display) {
+        const promptLines = renderedPrompt.split('\n');
+        const cursorRow = promptLines.length - 1;
+        const lastLineLength = promptLines[cursorRow].length;
+        /* The tty's clear-to-EOL fallback parks column 1 on an empty wrapped
+           row; the recorder captures that logical cursor position. */
+        display.setCursor(lastLineLength || (cursorRow ? 1 : 0), cursorRow);
+    }
 
     /* win/tty/topl.c:533 clean_up — the answered prompt (plus the visible
        form of the answer key) becomes the topline text, flagged NON_EMPTY so

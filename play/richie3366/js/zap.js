@@ -4,7 +4,7 @@
 //        bhit, bhito, bhitm, bhitpile, poly_obj, obj_shudders,
 //        probe_monster, probe_objchain,
 //        cancel_item, cancel_monst, revive, revive_egg, unturn_dead,
-//        unturn_you, drain_item
+//        unturn_you, drain_item, zap_map, maybe_explode_trap
 //
 // Branch envelope: getobj wand + zappable + cursed backfire gate +
 // NODIR weffects → zapnodir WAN_SECRET_DOOR_DETECTION → findit;
@@ -39,6 +39,11 @@
 // C spell.c :1471 / zap.c :3440–3451);
 // SPE_STONE_TO_FLESH IMMEDIATE wand-duplicate weffects bhit (D-1461;
 // C spell.c :1478 / zap.c :3440–3451);
+// SPE_TELEPORT_AWAY IMMEDIATE wand-duplicate weffects bhit (D-1468;
+// C spell.c :1470 / zap.c :3440–3451);
+// SPE_HEALING/SPE_EXTRA_HEALING IMMEDIATE wand-duplicate weffects
+// bhit (D-1469; C spell.c :1475–1514 / zap.c :3440–3451;
+// bhitm :433–473 healmon);
 // zapyourself WAN_MAKE_INVISIBLE (D-1369);
 // zapyourself WAN_SPEED_MONSTER speed_up(rn1(25,50)) (D-1410);
 // zapyourself WAN/SPE_SLOW_MONSTER u_slow_down (D-1433);
@@ -54,12 +59,28 @@
 // bhitm WAN_PROBING probe_monster + probe_objchain (D-1426);
 // zap_steed WAN_PROBING probe_monster (D-1443);
 // zap_steed WAN_TELEPORTATION / SPE_TELEPORT_AWAY tele() together (D-1455);
+// zap_steed WAN_OPENING/SPE_KNOCK via bhitm (D-1463);
+// zap_steed SPE_DRAIN_LIFE via bhitm (D-1464);
+// zap_steed WAN_CANCELLATION/SPE_CANCELLATION via bhitm (D-1470);
+// zap_steed WAN_POLYMORPH/SPE_POLYMORPH via bhitm (D-1471);
+// zap_steed WAN_MAKE_INVISIBLE via bhitm (D-1473);
+// zap_steed WAN_STRIKING/SPE_FORCE_BOLT via bhitm (D-1474);
+// zap_steed WAN_SLOW_MONSTER/SPE_SLOW_MONSTER via bhitm (D-1478);
+// zap_steed WAN_SPEED_MONSTER via bhitm (D-1479);
+// zap_steed SPE_CURE_SICKNESS via bhitm (D-1480);
 // zap_updown WAN_PROBING bhitpile+zap_map+display_binventory (D-1444);
 // zap_updown WAN_OPENING/SPE_KNOCK portcullis/quest/traps (D-1454);
+// bhit doorlock WAN_OPENING/SPE_KNOCK SDOOR appear + locked unlock (D-1462);
+// bhit doorlock WAN_LOCKING/SPE_WIZARD_LOCK Rogue hide / obstructed /
+// trap-in-doorway / lock-shut (D-1475);
 // zap_updown WAN_STRIKING/SPE_FORCE_BOLT destroy db / rock / trapdoor (D-1456);
+// zap_updown WAN_LOCKING/SPE_WIZARD_LOCK close db / hole→trapdoor (D-1465);
+// zap_updown SPE_STONE_TO_FLESH blood / nothing_happens then epilogue (D-1466);
 // bhito WAN_PROBING observe + display_cinventory / tin / egg (D-1445);
 // bhito SPE_DRAIN_LIFE drain_item (D-1453);
 // bhitm SPE_DRAIN_LIFE monhp_per_lvl + resist + m_lev (D-1436);
+// bhitm SPE_HEALING/SPE_EXTRA_HEALING healmon + skilled/extra
+// mcureblindness (D-1469);
 // dozap cursed backfire explode + d(spe+2,6) + useupall (D-1416);
 // dozap self-zap losehp killer_xname + uhim (D-1345);
 // getobj `?`/`*` → display_pickinv_reply; RAY weffects → ubuzz/dobuzz
@@ -70,21 +91,38 @@
 // → zap_dig (dig.c); RAY SPE_MAGIC_MISSILE..SPE_FINGER_OF_DEATH weffects
 // → ubuzz BZ_U_SPELL (D-1386); SPE_FORCE_BOLT IMMEDIATE weffects/bhit
 // + bhitm spell_damage_bonus (D-1388; Knight questart dbldam named).
-// Named omissions: zap_updown LOCKING/STONE / uswallow pile;
-// bhito boxlock / opening chain
+// Named omissions: zap_map lateral drawbridge / uswallow pile;
+// zap_map from lateral bhit; force_decor ice/furniture; draft_message
+// Rogue SDOOR; Invocation_lev vibrating-square "the";
+// bhito opening chain / uchain unpunish; poly-arm boxlock reset_pick;
+// bhit doorlock STRIKING/SPE_FORCE_BOLT;
 // (zapyourself WAN_SPEED is D-1410; zapyourself WAN_SLOW is D-1433;
 // zapyourself WAN_LOCKING is D-1434; zapyourself WAN_PROBING is D-1435;
 // zapyourself SPE_DRAIN_LIFE is D-1446;
 // zap_steed WAN_PROBING is D-1443; zap_steed WAN_TELEPORTATION is D-1455;
+// zap_steed WAN_OPENING/SPE_KNOCK bhitm is D-1463;
+// zap_steed SPE_DRAIN_LIFE bhitm is D-1464;
+// zap_steed SPE_HEALING/SPE_EXTRA_HEALING bhitm is D-1469;
 // zap_updown WAN_PROBING is D-1444;
 // zap_updown WAN_OPENING/SPE_KNOCK is D-1454;
 // zap_updown WAN_STRIKING/SPE_FORCE_BOLT is D-1456;
+// zap_updown WAN_LOCKING/SPE_WIZARD_LOCK is D-1465;
+// zap_updown SPE_STONE_TO_FLESH is D-1466;
 // bhito WAN_PROBING is D-1445; bhito SPE_DRAIN_LIFE is D-1453;
-// bhitm-routed zap_steed named;
+// bhito WAN_OPENING/WAN_LOCKING/SPE_KNOCK/SPE_WIZARD_LOCK boxlock
+// is D-1467;
+// zap_steed SPE_CURE_SICKNESS bhitm is D-1480;
+// zap_steed WAN_SPEED_MONSTER bhitm is D-1479;
+// zap_steed WAN_SLOW_MONSTER/SPE_SLOW_MONSTER bhitm is D-1478;
+// zap_steed WAN_CANCELLATION/SPE_CANCELLATION bhitm is D-1470;
+// zap_steed WAN_POLYMORPH/SPE_POLYMORPH bhitm is D-1471;
+// zap_steed WAN_MAKE_INVISIBLE bhitm is D-1473;
+// zap_steed WAN_STRIKING/SPE_FORCE_BOLT bhitm is D-1474;
 // bhitm WAN_SPEED is D-1422; bhitm WAN_SLOW is D-1424;
 // bhitm WAN_MAKE_INVISIBLE is D-1414; bhitm WAN_LOCKING is D-1425;
 // bhitm WAN_PROBING is D-1426; bhitm SPE_DRAIN_LIFE is D-1436);
-// zap_map non-probing (engraving/drawbridge/cancel trap); force_decor;
+// zap_map engraving/cancel trap is D-1476;
+// zap_map non-probing lateral drawbridge; force_decor;
 // zap_map from lateral bhit; mon_reflects;
 // Hallucination hdmgtype rn2; map_invisible/unmap during buzz;
 // SPE_LIGHT NODIR wand-duplicate cast dispatch is D-1427
@@ -99,15 +137,16 @@
 // IMMEDIATE wand-duplicate weffects is D-1458; SPE_POLYMORPH
 // IMMEDIATE wand-duplicate weffects is D-1459; SPE_CANCELLATION
 // IMMEDIATE wand-duplicate weffects is D-1460; SPE_STONE_TO_FLESH
-// IMMEDIATE wand-duplicate weffects is D-1461; remaining
-// IMMEDIATE wand-duplicate TELE;
+// IMMEDIATE wand-duplicate weffects is D-1461; SPE_TELEPORT_AWAY
+// IMMEDIATE wand-duplicate weffects is D-1468; SPE_HEALING/
+// SPE_EXTRA_HEALING IMMEDIATE wand-duplicate weffects is D-1469;
 // potion peffect_enlightenment is D-1413;
 // dozap spe<0 dust useupall (backfire is D-1416);
 // wrest pline; check_capacity;
 // check_unpaid; update_inventory; shieldeff/monstunseesu; setworn
 // EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/dragon
 // D-1353 (shared muse.c clone); mcastu ureflects named; create_polymon after poly_zapped;
-// do_osshock shop bill; invent/worn poly_obj arms; floor boxlock;
+// do_osshock shop bill; invent/worn poly_obj arms; poly-arm boxlock;
 // blank_novel / corpse revive→rot timer;
 // cant_finish_meal; animate_statue montraits wire; defended(); resists_magm
 // body; ignite_items body; burnarmor worn erode ported (D-0741);
@@ -125,6 +164,15 @@
 // probe_monster bhitm WAN_PROBING (D-1426);
 // zap_steed WAN_PROBING probe_monster (D-1443);
 // zap_steed WAN_TELEPORTATION / SPE_TELEPORT_AWAY tele() together (D-1455);
+// zap_steed WAN_OPENING/SPE_KNOCK via bhitm (D-1463);
+// zap_steed SPE_DRAIN_LIFE via bhitm (D-1464);
+// zap_steed WAN_CANCELLATION/SPE_CANCELLATION via bhitm (D-1470);
+// zap_steed WAN_POLYMORPH/SPE_POLYMORPH via bhitm (D-1471);
+// zap_steed WAN_MAKE_INVISIBLE via bhitm (D-1473);
+// zap_steed WAN_STRIKING/SPE_FORCE_BOLT via bhitm (D-1474);
+// zap_steed WAN_SLOW_MONSTER/SPE_SLOW_MONSTER via bhitm (D-1478);
+// zap_steed WAN_SPEED_MONSTER via bhitm (D-1479);
+// zap_steed SPE_CURE_SICKNESS via bhitm (D-1480);
 // montraits/omonst/ghost recorporealize (D-0982);
 // trap_ice_effects; Underwater/utrap lava arms.
 // spell.c skilled SPE_FIREBALL scatter is D-1378 (this callee
@@ -135,8 +183,18 @@
 // bhit WEB stick D-1393; throwit fly / skiprange named.
 // bhitm WAN_MAKE_INVISIBLE is D-1414; conferral See_invisible
 // uprops in knowninvisible is D-1423; zap_steed WAN_PROBING is
-// D-1443; zap_steed WAN_TELEPORTATION is D-1455; zap_updown /
-// zap_steed WAN_MAKE_INVISIBLE + setworn w_blocks still named.
+// D-1443; zap_steed WAN_TELEPORTATION is D-1455; zap_steed
+// WAN_OPENING/SPE_KNOCK bhitm is D-1463; zap_steed
+// SPE_DRAIN_LIFE bhitm is D-1464; zap_steed
+// WAN_CANCELLATION/SPE_CANCELLATION bhitm is D-1470;
+// zap_steed WAN_POLYMORPH/SPE_POLYMORPH bhitm is D-1471;
+// zap_steed WAN_MAKE_INVISIBLE bhitm is D-1473;
+// zap_steed WAN_STRIKING/SPE_FORCE_BOLT bhitm is D-1474;
+// zap_steed WAN_SLOW_MONSTER/SPE_SLOW_MONSTER bhitm is D-1478;
+// zap_steed WAN_SPEED_MONSTER bhitm is D-1479;
+// zap_steed SPE_CURE_SICKNESS bhitm is D-1480;
+// zap_map WAN_MAKE_INVISIBLE engraving is D-1476; setworn
+// w_blocks still named.
 // maybe_destroy_item AD_ELEC rings/wands (D-1368); Shock_resistance
 // via uprops[SHOCK_RES] (D-1371); inventory_resistance / full
 // read.c recharge wand·tool·blessed still named.
@@ -167,11 +225,11 @@ import {
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn } from './do.js';
-import { doname, xname, yname, distant_name, vtense, The, the, an, An, killer_xname, ansimpleoname, otyp_is_charged } from './objnam.js';
+import { doname, xname, yname, distant_name, vtense, The, the, an, An, killer_xname, ansimpleoname, otyp_is_charged, makeplural } from './objnam.js';
 import { uhim } from './roles.js';
 import { fix_wall_spines } from './mklev.js';
 import {
-    A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise, acurr,
+    A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise, acurr, adjalign,
 } from './attrib.js';
 import { findit, cvt_sdoor_to_door, show_map_spot } from './detect.js';
 import {
@@ -185,15 +243,15 @@ import {
     G_UNIQ, G_NOCORPSE, is_rider, is_swimmer, mindless, MZ_MEDIUM, is_whirly,
     hides_under, is_golem, vegetarian, carnivorous,
 } from './monsters.js';
-import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder } from './mon.js';
+import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon } from './mon.js';
 import { find_mac, monkilled, shade_miss } from './mhitm.js';
 import { update_mapseen_for } from './dungeon.js';
 import {
-    find_drawbridge, open_drawbridge, is_db_wall, is_drawbridge_wall,
-    destroy_drawbridge,
+    find_drawbridge, open_drawbridge, close_drawbridge, is_db_wall,
+    is_drawbridge_wall, destroy_drawbridge,
 } from './dbridge.js';
 import { ok_to_quest } from './quest.js';
-import { more_experienced, losexp } from './exper.js';
+import { more_experienced, losexp, newexplevel } from './exper.js';
 import { obj_resists } from './dogmove.js';
 import { zap_dig, fracture_rock, break_statue, bury_objs, unearth_objs } from './dig.js';
 import {
@@ -202,7 +260,7 @@ import {
 import { mon_nam, Monnam, noit_Monnam, christen_monst, hliquid, Hallucination, rndmonnam } from './do_name.js';
 import { finish_losehp_done } from './end.js';
 import {
-    burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap,
+    burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap, deltrap,
     NO_TRAP_FLAGS, ignite_items, openholdingtrap, closeholdingtrap,
     openfallingtrap, self_invis_message, trapname, animate_statue,
 } from './trap.js';
@@ -211,10 +269,10 @@ import { useup, carried, fix_petrification } from './eat.js';
 import { burn_away_slime, get_obj_location } from './timeout.js';
 import { create_gas_cloud } from './region.js';
 import { recalc_block_point } from './vision.js';
-import { picking_at, reset_pick, boxlock_invent } from './lock.js';
+import { picking_at, reset_pick, boxlock, boxlock_invent, doorlock } from './lock.js';
 import { monflee, sticks } from './monmove.js';
 import { digests, set_ustuck, unstuck, expels, ureflects, u_slow_down } from './mhitu.js';
-import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv } from './makemon.js';
+import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv, set_mimic_sym } from './makemon.js';
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
 import { rehumanize, polymon } from './polyself.js';
@@ -222,6 +280,7 @@ import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit 
 import { dryup } from './fountain.js';
 import { explode } from './explode.js';
 import { unpunish, litroom } from './read.js';
+import { engr_at, del_engr, make_engr_at, wipe_engr_at, random_engraving, rloc_engr } from './engrave.js';
 import { bare_artifactname, defends, defends_when_carried } from './artifact.js';
 import { Ring_gone, Ring_off, Ring_on, setworn } from './do_wear.js';
 import { which_armor, mon_set_minvis, check_gear_next_turn } from './worn.js';
@@ -272,19 +331,20 @@ import {
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
     OMONST, has_oname, ONAME, has_omonst, has_omid, OMID, ESHK,
-    WEB, PIT, HOLE, TRAPDOOR, HEAD, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
-    TIMER_LEVEL, MELT_ICE_AWAY, EXPL_FIERY, COLNO, ROWNO,
+    WEB, PIT, HOLE, TRAPDOOR, HEAD, FACE, FOOT, ENGRAVE, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
+    TIMER_LEVEL, MELT_ICE_AWAY, EXPL_FIERY, EXPL_MAGICAL, COLNO, ROWNO,
     xytodir,
     IS_ALTAR, Is_earthlevel, IS_AIR, CLOUD, IS_SINK,
     MM_NOTAIL, MM_ADJACENTOK, NATTK,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
     IS_FURNITURE, IS_GRAVE, SCORR, VAULT, TEMPLE, In_quest, Is_firelevel,
-    VIBRATING_SQUARE,
+    VIBRATING_SQUARE, MAGIC_PORTAL, HEADSTONE, TRAP_EXPLODE, is_magical_trap,
 } from './const.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
 const SPE_EXTRA_HEALING = objectNames.indexOf('SPE_EXTRA_HEALING');
+const SPE_CURE_SICKNESS = objectNames.indexOf('SPE_CURE_SICKNESS');
 const WAN_MAGIC_MISSILE = objectNames.indexOf('WAN_MAGIC_MISSILE');
 const SPE_MAGIC_MISSILE = objectNames.indexOf('SPE_MAGIC_MISSILE');
 const WAN_SLEEP = objectNames.indexOf('WAN_SLEEP');
@@ -391,10 +451,12 @@ const HELM_OF_BRILLIANCE = objectNames.indexOf('HELM_OF_BRILLIANCE');
 const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const PM_CLAY_GOLEM = monsterNames.indexOf('PM_CLAY_GOLEM');
 const PM_KNIGHT = monsterNames.indexOf('PM_KNIGHT');
+const PM_HEALER = monsterNames.indexOf('PM_HEALER');
 const PM_MONK = monsterNames.indexOf('PM_MONK');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
+const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const NC_VIA_WAND_OR_SPELL = 0x02;
 const NC_SHOW_MSG = 0x01;
@@ -579,11 +641,14 @@ function hard_helmet(obj) {
 }
 
 /**
- * C polyself.c body_part for zap_updown rock. Poly tables named
- * (avoid static zap→polyself→do→zap cycle); humanoid HEAD → "head".
+ * C polyself.c body_part for zap_updown rock (D-1456) and
+ * SPE_STONE_TO_FLESH FACE/FOOT (D-1466). Poly tables named
+ * (avoid static zap→polyself→do→zap cycle); humanoid HEAD/FACE/FOOT.
  */
 function body_part_zap(part) {
     if (part === HEAD) return 'head';
+    if (part === FACE) return 'face';
+    if (part === FOOT) return 'foot';
     return 'body';
 }
 
@@ -2542,7 +2607,10 @@ export async function do_enlightenment_effect() {
  * (D-1459; bhitm WAN/SPE/POT poly live; zapyourself D-0156).
  * SPE_CANCELLATION IMMEDIATE wand-duplicate weffects bhit
  * (D-1460). SPE_STONE_TO_FLESH IMMEDIATE wand-duplicate
- * weffects bhit (D-1461). Named omit: remaining TELE.
+ * weffects bhit (D-1461). SPE_TELEPORT_AWAY IMMEDIATE
+ * wand-duplicate weffects bhit (D-1468). SPE_HEALING/
+ * SPE_EXTRA_HEALING IMMEDIATE wand-duplicate weffects bhit
+ * (D-1469; bhitm healmon :433–473).
  */
 export async function zapnodir(obj) {
     let known = false;
@@ -3565,6 +3633,29 @@ async function shieldeff_mon(mtmp) {
     }
 }
 
+/* C decl.c c_obj_colors[] — mimic_hit_msg vivid color. */
+const C_OBJ_COLORS_ZAP = [
+    'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+    'transparent', 'orange', 'bright green', 'yellow', 'bright blue',
+    'bright magenta', 'bright cyan', 'white',
+];
+
+/**
+ * C ref: mon.c mimic_hit_msg :5776–5793 — object-mimic hit by
+ * SPE_HEALING/SPE_EXTRA_HEALING prints a more vivid color.
+ * Caller: zap.c bhitm (D-1469).
+ */
+async function mimic_hit_msg(mtmp, otyp) {
+    if (M_AP_TYPE(mtmp) !== M_AP_OBJECT) return;
+    if (otyp !== SPE_HEALING && otyp !== SPE_EXTRA_HEALING) return;
+    const ap = mtmp.mappearance | 0;
+    const oc = game.objects?.[ap];
+    const color = C_OBJ_COLORS_ZAP[oc?.oc_color | 0] || 'colorless';
+    const raw = objectNames[ap] || 'object';
+    const name = String(raw).toLowerCase().replace(/_/g, ' ');
+    await pline_mon(mtmp, `${The(name)} seems a more vivid ${color} than before.`);
+}
+
 /**
  * C ref: zap.c bhitm — monster hit by wand/spell effect.
  * Envelope (break-wand / IMMEDIATE): WAN_STRIKING, WAN_UNDEAD_TURNING
@@ -3580,11 +3671,14 @@ async function shieldeff_mon(mtmp) {
  * spell_damage_bonus; resists_drli → shieldeff_mon else !resist
  * NOTELL then extra mhp/mhpmax + m_lev-- / killed),
  * SPE_STONE_TO_FLESH (D-1461; golem newcham / stone-mimic
- * that_is_a_mimic(MIM_REVEAL|MIM_OMIT_WAIT); else wake FALSE).
+ * that_is_a_mimic(MIM_REVEAL|MIM_OMIT_WAIT); else wake FALSE),
+ * SPE_HEALING/SPE_EXTRA_HEALING (D-1469; healmon + skilled/extra
+ * mcureblindness; Pestilence resist TELL; wake FALSE).
  * Named omit: long-worm mcorpsenm polish; Knight questart double
  * on striking; mhurtle petrify/steed; that_is_a_mimic MIM_REVEAL
- * pline (box_or_door+seemimic wired); zap_updown STONE;
- * zap_updown/zap_steed WAN_MAKE_INVISIBLE; zap_steed WAN_PROBING
+ * pline (box_or_door+seemimic wired);
+ * zap_steed WAN_MAKE_INVISIBLE is D-1473; zap_map engraving
+ * WAN_MAKE_INVISIBLE is D-1476; zap_steed WAN_PROBING
  * is D-1443; bhito WAN_PROBING is
  * D-1445; SPE_DRAIN_LIFE drain_item is D-1453; worm see_wsegs; defended(AD_DRLI).
  * zapyourself WAN_LOCKING is D-1434; zapyourself WAN_PROBING is D-1435;
@@ -3592,6 +3686,9 @@ async function shieldeff_mon(mtmp) {
  * SPE_TURN_UNDEAD wand-duplicate weffects is D-1458
  * (bhitm dbldam + spell_damage_bonus; unturn_dead D-0955).
  * SPE_FORCE_BOLT spell_damage_bonus is D-1388.
+ * SPE_HEALING/SPE_EXTRA_HEALING wand-duplicate weffects is D-1469.
+ * zap_steed SPE_CURE_SICKNESS routes here (D-1480) but C has
+ * no bhitm arm (default impossible; objects.h NODIR).
  * @returns {Promise<number>} 0 (non-stopping for bhit range)
  */
 export async function bhitm(mtmp, otmp) {
@@ -3601,6 +3698,8 @@ export async function bhitm(mtmp, otmp) {
     let learn_it = false;
     let helpful_gesture = false;
     const otyp = otmp.otyp | 0;
+    /* C zap.c bhitm :186 — SPBOOK + blessed (skilled heal spell). */
+    const skilled_spell = otmp.oclass === SPBOOK_CLASS && !!otmp.blessed;
     let zap_type_text = 'spell';
     const disguised_mimic = mtmp.data?.mlet === 'S_MIMIC'
         && M_AP_TYPE(mtmp) !== M_AP_NOTHING;
@@ -3613,6 +3712,11 @@ export async function bhitm(mtmp, otmp) {
         zap_type_text = 'wand';
         // FALLTHROUGH
     case SPE_FORCE_BOLT: {
+        // C zap.c bhitm :189–217. zap_steed WAN_STRIKING/
+        // SPE_FORCE_BOLT routes here (D-1474). resists_magm
+        // Boing (shieldeff named); else rnd(20)<10+find_mac
+        // then d(2,12) + SPE spell_damage_bonus (D-1388) +
+        // resist TELL; miss skips learn_it. Knight dbldam named.
         reveal_invis = true;
         learn_it = cansee(bhitpos.x | 0, bhitpos.y | 0);
         if (resists_magm(mtmp)) {
@@ -3643,7 +3747,8 @@ export async function bhitm(mtmp, otmp) {
         // Whirly engulfer: You disrupt + huge hole + expels.
         // No helpful_gesture (unlike WAN_SPEED :233–242 / D-1422).
         // Callee worn.c mon_adjust_speed lives in muse.js (D-0871).
-        // zap_steed routes here; zapyourself WAN_SLOW is D-1433.
+        // zap_steed WAN/SPE_SLOW via bhitm is D-1478.
+        // zapyourself WAN_SLOW is D-1433.
         // SPE_SLOW wand-duplicate weffects is D-1451.
         if (!(await resist(mtmp, otmp.oclass, 0, NOTELL))) {
             if (disguised_mimic) seemimic(mtmp);
@@ -3663,7 +3768,7 @@ export async function bhitm(mtmp, otmp) {
         // mon_adjust_speed(mtmp, 1, otmp), check_gear_next_turn.
         // helpful_gesture always (wake without anger). Callee
         // worn.c mon_adjust_speed lives in muse.js (D-0871).
-        // zap_steed routes here; WAN_SLOW is D-1424.
+        // zap_steed WAN_SPEED via bhitm is D-1479; WAN_SLOW is D-1424.
         if (!(await resist(mtmp, otmp.oclass, 0, NOTELL))) {
             if (disguised_mimic) seemimic(mtmp);
             const { mon_adjust_speed } = await import('./muse.js');
@@ -3707,7 +3812,8 @@ export async function bhitm(mtmp, otmp) {
     case SPE_POLYMORPH:
     case POT_POLYMORPH: {
         // C zap.c bhitm :263–334. SPE_POLYMORPH wand-duplicate
-        // weffects is D-1459. long-worm mcorpsenm skip named.
+        // weffects is D-1459. zap_steed WAN/SPE_POLYMORPH
+        // routes here (D-1471). long-worm mcorpsenm skip named.
         if (mtmp.data === mons(PM_LONG_WORM)
             || (mtmp.data?.mndx | 0) === PM_LONG_WORM) {
             // long-worm mcorpsenm skip deferred — still allow first hit
@@ -3747,6 +3853,8 @@ export async function bhitm(mtmp, otmp) {
     }
     case WAN_CANCELLATION:
     case SPE_CANCELLATION:
+        // C zap.c bhitm :335–340. zap_steed WAN/SPE_CANCELLATION
+        // routes here (D-1470); cancel_monst invent=FALSE.
         if (disguised_mimic) seemimic(mtmp);
         await cancel_monst(mtmp, otmp, true, true, false);
         break;
@@ -3765,7 +3873,8 @@ export async function bhitm(mtmp, otmp) {
         // knowninvisible; else vanish iff couldsee && !canseemon.
         // knowninvisible See_invisible is youprop.h H||E ≡
         // uprops[SEE_INVIS] so conferral ring-of-SI still learns
-        // (D-1423). zap_updown is a no-op; zap_steed still named.
+        // (D-1423). zap_steed WAN_MAKE_INVISIBLE routes here
+        // (D-1473). zap_map engraving WAN_MAKE_INVISIBLE is D-1476.
         const oldinvis = mtmp.minvis;
         const couldsee = canseemon(mtmp);
         if (disguised_mimic) seemimic(mtmp);
@@ -3785,7 +3894,7 @@ export async function bhitm(mtmp, otmp) {
         // C zap.c bhitm :370–375 — box_or_door mimic then
         // wake = closeholdingtrap(mtmp, &learn_it). that_is_a_mimic
         // (MIM_REVEAL) named; seemimic is the C comment. Callee
-        // trap.c :6210–6247. other zap_updown otyps named.
+        // trap.c :6210–6247. zap_updown LOCKING is D-1465.
         // zap_steed does not route locking to bhitm.
         // zapyourself WAN_LOCKING is D-1434.
         // SPE_WIZARD_LOCK wand-duplicate weffects is D-1452.
@@ -3810,7 +3919,7 @@ export async function bhitm(mtmp, otmp) {
         /* C zap.c bhitm :490–520 — golem newcham / stone-mimic
          * that_is_a_mimic(MIM_REVEAL|MIM_OMIT_WAIT); else wake
          * FALSE. SPE_STONE wand-duplicate weffects is D-1461.
-         * zap_updown STONE named. */
+         * zap_updown SPE_STONE_TO_FLESH is D-1466. */
         if (mtmp.data?.mlet === 'S_GOLEM') {
             const name = Monnam(mtmp);
             const mndx = mtmp.data?.mndx | 0;
@@ -3851,7 +3960,8 @@ export async function bhitm(mtmp, otmp) {
         // Callees: makemon.c monhp_per_lvl; mondata.c resists_drli
         // (defended AD_DRLI named); mon.c shieldeff_mon; zap.c
         // resist. zapyourself SPE_DRAIN is D-1446; bhito
-        // drain_item is D-1453; zap_steed routes here in C.
+        // drain_item is D-1453; zap_steed SPE_DRAIN_LIFE
+        // routes here (D-1464).
         if (disguised_mimic) seemimic(mtmp);
         let dmg = monhp_per_lvl(mtmp);
         const dbldam = Role_if(PM_KNIGHT) && !!(game.u?.uhave?.questart);
@@ -3887,6 +3997,8 @@ export async function bhitm(mtmp, otmp) {
         break;
     case WAN_OPENING:
     case SPE_KNOCK:
+        // C zap.c bhitm :383–432. zap_steed WAN_OPENING/SPE_KNOCK
+        // routes here (D-1463). that_is_a_mimic box_or_door named.
         if (disguised_mimic) {
             // that_is_a_mimic box_or_door deferred → seemimic
             seemimic(mtmp);
@@ -3955,6 +4067,57 @@ export async function bhitm(mtmp, otmp) {
             }
         }
         break;
+    case SPE_HEALING:
+    case SPE_EXTRA_HEALING: {
+        /* C zap.c bhitm :433–473. d(6, extra?8:4) then Pestilence
+         * resist(healamt/2, TELL); else wake FALSE, healmon,
+         * skilled||extra mcureblindness, looks better, Healer
+         * tame XP, tame/peaceful adjalign. Caller spelleffects
+         * D-1469; zap_steed via bhitm. */
+        const healamt = d(6, otyp === SPE_EXTRA_HEALING ? 8 : 4);
+        reveal_invis = true;
+        const pest = (mtmp.data?.mndx | 0) === PM_PESTILENCE
+            || mtmp.data === mons(PM_PESTILENCE);
+        if (!pest) {
+            const delta = (mtmp.mhpmax | 0) - (mtmp.mhp | 0);
+            wake = false;
+            healmon(mtmp, healamt, 0);
+            if (skilled_spell || otyp === SPE_EXTRA_HEALING) {
+                const { mcureblindness } = await import('./muse.js');
+                await mcureblindness(mtmp, canseemon(mtmp));
+            }
+            if (canseemon(mtmp)) {
+                if (disguised_mimic) {
+                    if (M_AP_TYPE(mtmp) === M_AP_OBJECT
+                        && (mtmp.mappearance | 0) === STRANGE_OBJECT) {
+                        set_mimic_sym(mtmp);
+                        newsym(mtmp.mx | 0, mtmp.my | 0);
+                    } else {
+                        await mimic_hit_msg(mtmp, otyp);
+                    }
+                } else {
+                    await pline(
+                        `${Monnam(mtmp)} looks${
+                            otyp === SPE_EXTRA_HEALING ? ' much' : ''
+                        } better.`,
+                    );
+                }
+            }
+            if (mtmp.mtame && Role_if(PM_HEALER) && delta > 0) {
+                more_experienced(Math.min(delta, healamt), 0);
+                await newexplevel();
+            }
+            if (mtmp.mtame || mtmp.mpeaceful) {
+                const atype = game.u?.ualign?.type | 0;
+                adjalign(Role_if(PM_HEALER)
+                    ? 1
+                    : (atype < 0 ? -1 : atype !== 0 ? 1 : 0));
+            }
+        } else {
+            await resist(mtmp, otmp.oclass, (healamt / 2) | 0, TELL);
+        }
+        break;
+    }
     default:
         break;
     }
@@ -4226,7 +4389,7 @@ export async function zapyourself(obj, ordinary) {
         // ("no effect for spells..."). Callee exper.c losexp
         // (undead/demon still no-ops after learn_it). bhitm
         // drain is D-1436; bhito drain_item is D-1453; zap_steed
-        // routes drain to bhitm (named).
+        // SPE_DRAIN_LIFE via bhitm is D-1464.
         if (!Drain_resistance()) {
             learn_it = true;
             await losexp('life drainage');
@@ -4398,7 +4561,8 @@ export async function zapyourself(obj, ordinary) {
         // changing HInvis; mummy wrapping absorbs (BInvis +
         // uarmc MUMMY_WRAPPING); else incr_itimeout rn1(15,31);
         // if msg: learn + newsym then self_invis_message.
-        // bhitm is D-1414; zap_updown / zap_steed still named.
+        // bhitm is D-1414; zap_steed is D-1473; zap_map
+        // engraving WAN_MAKE_INVISIBLE is D-1476.
         const u = game.u || {};
         const msg = !Invis() && !Blinded_for_invis() && !BInvis();
         const uarmc = u.uarmc;
@@ -4420,7 +4584,9 @@ export async function zapyourself(obj, ordinary) {
         // speed_up(rn1(25, 50)) then always learn. Callee
         // potion.c speed_up :2918–2928 (D-1408). bhitm
         // WAN_SPEED is D-1422; bhitm WAN_SLOW is D-1424;
-        // zap_steed still named. zapyourself WAN_SLOW is D-1433.
+        // zap_steed WAN/SPE_SLOW is D-1478; zap_steed WAN_SPEED
+        // is D-1479.
+        // zapyourself WAN_SLOW is D-1433.
         await speed_up(rn1(25, 50));
         learn_it = true;
         break;
@@ -4452,7 +4618,8 @@ export async function zapyourself(obj, ordinary) {
         // (noticed stays unset). Callee trap.c :6210–6247 (D-1425)
         // + zap.c boxlock_invent :2687–2702 (lock.c boxlock).
         // WAN_PROBING is D-1435. bhitm SPE_DRAIN is D-1436;
-        // zapyourself SPE_DRAIN is D-1446; other zap_updown otyps still named.
+        // zapyourself SPE_DRAIN is D-1446; zap_updown LOCKING is
+        // D-1465; STONE still named.
         // SPE_WIZARD_LOCK wand-duplicate weffects is D-1452.
         const alreadyTrapped = !!(game.u?.utrap | 0);
         if (alreadyTrapped) {
@@ -4626,8 +4793,9 @@ function delete_contents(obj) {
  * C zap.c stone_to_flesh_obj :1991–2112 — mineral/gemstone then
  * obj_resists(2,98); ROCK/TOOL boulder meat / statue animate /
  * figurine makemon; RING meat ring; WAND meat stick; GEM meatball.
- * SPE_STONE wand-duplicate is D-1461. Named: zap_updown STONE;
- * zap_map engraving; globby merge.
+ * SPE_STONE wand-duplicate is D-1461. Named: zap_map
+ * lateral drawbridge. zap_updown SPE_STONE_TO_FLESH is D-1466.
+ * zap_map SPE_STONE_TO_FLESH ENGRAVE wipe is D-1476.
  * @returns {Promise<number>}
  */
 async function stone_to_flesh_obj(obj) {
@@ -4966,8 +5134,11 @@ export async function drain_item(obj, by_you) {
  * drain_item (D-1453; void return so res stays 1); WAN_TELEPORTATION
  * rloco; WAN_UNDEAD_TURNING floor corpse/egg thin revive;
  * SPE_STONE_TO_FLESH stone_to_flesh_obj (D-1461; invent ok —
- * C `:2178–2179` floor-or-STONE). Named omit: boxlock; opening
- * chain; uchain unpunish; zap_updown STONE.
+ * C `:2178–2179` floor-or-STONE); WAN_OPENING/SPE_KNOCK/
+ * WAN_LOCKING/SPE_WIZARD_LOCK boxlock (D-1467; learn iff
+ * Klunk/Klick). Named omit: opening chain / uchain unpunish;
+ * poly-arm boxlock reset_pick. zap_updown SPE_STONE_TO_FLESH
+ * is D-1466.
  * @returns {Promise<number>} 1 if affected
  */
 async function bhito(obj, otmp) {
@@ -5099,6 +5270,20 @@ async function bhito(obj, otmp) {
             res = 0;
         }
         break;
+    case WAN_OPENING:
+    case SPE_KNOCK:
+    case WAN_LOCKING:
+    case SPE_WIZARD_LOCK:
+        /* C zap.c bhito :2393–2403 — Is_box → boxlock; else res=0.
+         * learn_it iff boxlock returned true (Klunk/Klick).
+         * uchain unpunish named; poly-arm boxlock named. */
+        if (Is_box(obj)) {
+            res = (await boxlock(obj, otmp)) ? 1 : 0;
+        } else {
+            res = 0;
+        }
+        if (res) learn_it = true;
+        break;
     case SPE_STONE_TO_FLESH:
         /* C zap.c bhito :2412–2414 — stone_to_flesh_obj; no learn_it. */
         res = await stone_to_flesh_obj(obj);
@@ -5165,10 +5350,13 @@ function bhit_xyglyph_known_monster(loc) {
  * shade_miss thrown/kicked skip is D-1383 (`:3984–3986`).
  * M_AP_OBJECT skip is D-1392 (`:3986–3992`).
  * WEB stick is D-1393 (`:3926–3938`) — after m_at/t_at, before shade.
+ * doorlock WAN_OPENING/SPE_KNOCK is D-1462; WAN_LOCKING/SPE_WIZARD_LOCK
+ * is D-1475 (`:4056–4074`; callee lock.c `:1103–1272`).
  * Named omit: THROWN_WEAPON fly callers (throwit still inlines those
  * and still skips WEB / shade / mimic-object); FLASHED_LIGHT DISP_BEAM /
  * INVIS_BEAM stop; show_transient_light; shkcatch pick;
- * map_invisible / unmap_object; zap_map / doorlock; skiprange rocks.
+ * map_invisible / unmap_object; zap_map from lateral bhit;
+ * doorlock STRIKING/SPE_FORCE_BOLT; skiprange rocks.
  * pobj is `{ obj }` — may set `.obj = null` when destroyed (kicked).
  */
 async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
@@ -5304,8 +5492,21 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
                 }
             }
 
-            if (weapon === ZAPPED_WAND && (IS_DOOR(typ) || typ === STONE)) {
-                // doorlock deferred
+            if (weapon === ZAPPED_WAND && (IS_DOOR(typ) || typ === SDOOR)) {
+                /* C zap.c bhit :4056–4074 — doorlock WAN_OPENING/
+                 * SPE_KNOCK (D-1462) + WAN_LOCKING/SPE_WIZARD_LOCK
+                 * (D-1475). JS had typ===STONE (wrong); C is SDOOR.
+                 * WAN_STRIKING/SPE_FORCE_BOLT named. D_BROKEN shop
+                 * add_damage named (OPENING/KNOCK/LOCKING do not
+                 * break). C learnwand also if WAN_STRIKING && !Deaf
+                 * — false here. */
+                const otyp = obj?.otyp | 0;
+                if (otyp === WAN_OPENING || otyp === SPE_KNOCK
+                    || otyp === WAN_LOCKING || otyp === SPE_WIZARD_LOCK) {
+                    if (await doorlock(obj, x, y)) {
+                        if (cansee(x, y)) learnwand(obj);
+                    }
+                }
             }
             if (!ZAP_POS(typ) || closed_door(x, y)) {
                 bhitpos.x -= ddx;
@@ -5359,20 +5560,106 @@ export async function zapwrapup() {
     game._obj_zapped = false;
 }
 
-export { zapsetup, bhito, bhit };
+export { zapsetup, bhito, bhit, zap_map };
 
 /**
- * C zap.c zap_map :3628–3800 — WAN_PROBING terrain/trap (D-1444).
- * Called from zap_updown down before display_binventory.
- * Named: maybe_explode_trap; down-zap engravings; lateral
- * drawbridge; force_decor ice/furniture describe; draft_message
- * Rogue SDOOR; Invocation_lev vibrating-square "the"; lateral
- * bhit zap_map.
+ * C trap.h undestroyable_trap — portal / vibrating square.
+ * maybe_explode_trap (D-1476) uses the same predicate as trap.c.
+ */
+function undestroyable_trap(ttyp) {
+    return (ttyp | 0) === MAGIC_PORTAL || (ttyp | 0) === VIBRATING_SQUARE;
+}
+
+/**
+ * C zap.c maybe_explode_trap :3594–3623 — cancellation vs trap.
+ * Magical traps explode (TRAP_EXPLODE); undestroyable shield+tseen.
+ * Ordinary pits/holes are a no-op. Must not destroy otmp.
+ */
+async function maybe_explode_trap(ttmp, otmp, learn) {
+    if (!ttmp || !otmp) return;
+    const otyp = otmp.otyp | 0;
+    if (otyp !== WAN_CANCELLATION && otyp !== SPE_CANCELLATION) return;
+    const x = ttmp.tx | 0;
+    const y = ttmp.ty | 0;
+    if (undestroyable_trap(ttmp.ttyp | 0)) {
+        await shieldeff(x, y);
+        if (cansee(x, y)) {
+            ttmp.tseen = 1;
+            newsym(x, y);
+            learn.v = true;
+        }
+    } else if (is_magical_trap(ttmp.ttyp | 0)) {
+        const seeit = cansee(x, y);
+        /* C :3614 — explosion mustn't destroy otmp */
+        await explode(
+            x, y, -WAN_CANCELLATION, 20 + d(3, 6),
+            TRAP_EXPLODE, EXPL_MAGICAL,
+        );
+        deltrap(ttmp);
+        newsym(x, y);
+        if (seeit) learn.v = true;
+    }
+}
+
+/**
+ * C zap.c zap_map :3628–3800 — cancel trap + down engraving (D-1476)
+ * then WAN_PROBING terrain/trap (D-1444).
+ * Called from zap_updown down. Named: lateral drawbridge;
+ * force_decor ice/furniture; draft_message Rogue SDOOR;
+ * Invocation_lev vibrating-square "the"; zap_map from lateral bhit.
  */
 async function zap_map(x, y, obj) {
     if (!obj) return;
-    const ttmp = t_at(x, y);
-    let learn_it = false;
+    let ttmp = t_at(x, y);
+    const learn = { v: false };
+
+    /* C :3641–3643 — cancellation before engraving / probing. */
+    await maybe_explode_trap(ttmp, obj, learn);
+    ttmp = t_at(x, y);
+
+    if ((game.u?.dz | 0) > 0) {
+        /* C :3645–3683 — down-zap engravings; none sets disclose. */
+        const e = engr_at(x, y);
+        if (e && (e.engr_type | 0) !== HEADSTONE) {
+            switch (obj.otyp | 0) {
+            case WAN_POLYMORPH:
+            case SPE_POLYMORPH: {
+                del_engr(e);
+                const rndengr = random_engraving();
+                make_engr_at(
+                    x, y, rndengr.text, rndengr.pristine,
+                    game.moves | 0, 0,
+                );
+                break;
+            }
+            case WAN_CANCELLATION:
+            case SPE_CANCELLATION:
+            case WAN_MAKE_INVISIBLE:
+                del_engr(e);
+                break;
+            case WAN_TELEPORTATION:
+            case SPE_TELEPORT_AWAY:
+                rloc_engr(e);
+                break;
+            case SPE_STONE_TO_FLESH:
+                if ((e.engr_type | 0) === ENGRAVE) {
+                    await pline(Hallucination()
+                        ? 'The floor runs like butter!'
+                        : 'The edges on the floor get smoother.');
+                    wipe_engr_at(x, y, d(2, 4), true);
+                }
+                break;
+            case WAN_STRIKING:
+            case SPE_FORCE_BOLT:
+                wipe_engr_at(x, y, d(2, 4), true);
+                break;
+            default:
+                break;
+            }
+        }
+    } else if (!(game.u?.dz | 0)) {
+        /* C :3685–3717 — lateral drawbridge named */
+    }
 
     if ((obj.otyp | 0) === WAN_PROBING) {
         const oldtyp = game.lastseentyp?.[x]?.[y] | 0;
@@ -5386,7 +5673,7 @@ async function zap_map(x, y, obj) {
             ? `${loc1.disp_ch ?? ''}|${loc1.disp_kind ?? ''}|${loc1.disp_color ?? ''}`
             : '';
         if ((game.lastseentyp?.[x]?.[y] | 0) !== oldtyp || newglyph !== oldglyph) {
-            learn_it = true;
+            learn.v = true;
         }
         const ltyp = SURFACE_AT(x, y);
         if (ltyp === SDOOR) {
@@ -5395,7 +5682,7 @@ async function zap_map(x, y, obj) {
             newsym(x, y);
             if (cansee(x, y)) {
                 await pline('Probing reveals a secret door.');
-                learn_it = true;
+                learn.v = true;
             }
             /* Rogue !cansee draft_message named */
         } else if (ltyp === SCORR) {
@@ -5403,11 +5690,11 @@ async function zap_map(x, y, obj) {
             recalc_block_point(x, y);
             newsym(x, y);
             await pline('Probing exposes a secret corridor.');
-            learn_it = true;
+            learn.v = true;
         } else if (ltyp === ICE || IS_FURNITURE(ltyp)) {
             if ((game.u?.dz | 0) > 0) {
                 /* force_decor(TRUE) named */
-                learn_it = true;
+                learn.v = true;
             }
         }
         if (ttmp) {
@@ -5420,12 +5707,13 @@ async function zap_map(x, y, obj) {
                 /* Invocation_lev vibrating-square "the" named */
                 const use_the = hallu ? !rn2(4) : false;
                 await You(`find ${use_the ? the(ttmpname) : an(ttmpname)}${use_the ? '!' : '.'}`);
-                learn_it = !hallu;
+                /* C :3793 — assign, not OR */
+                learn.v = !hallu;
             }
         }
     }
 
-    if (learn_it) learnwand(obj);
+    if (learn.v) learnwand(obj);
 }
 
 /** C dungeon.c on_level — same dnum/dlevel. zap_updown quest stairs. */
@@ -5440,14 +5728,28 @@ function Is_qstart_updown(lev) {
 }
 
 /**
+ * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.
+ * Sticky u.Levitation is not a C field (D-1070). zap_updown D-1466.
+ */
+function Levitation_updown() {
+    const u = game.u || {};
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
+}
+
+/**
  * C zap.c zap_updown :3219–3411 — IMMEDIATE wand/spell up or down.
  * WAN_PROBING :3236–3262 (D-1444; early return; own bhitpile).
  * WAN_OPENING/SPE_KNOCK :3263–3288 (D-1454) then shared down
  * bhitpile+zap_map / up hideunder bhito :3382–3408.
  * WAN_STRIKING/SPE_FORCE_BOLT :3290–3354 (D-1456; striking=TRUE
- * FALLTHROUGH into locking body; locking cases still named).
- * Named: WAN_LOCKING/SPE_WIZARD_LOCK; SPE_STONE_TO_FLESH;
- * zap_map engraving/cancel trap; bhito boxlock; poly body_part.
+ * FALLTHROUGH into locking body). WAN_LOCKING/SPE_WIZARD_LOCK
+ * :3295–3354 (D-1465; !striking close_drawbridge / closeholdingtrap
+ * / hole→trapdoor). SPE_STONE_TO_FLESH :3355–3377 (D-1466; C has
+ * no WAN_STONE_TO_FLESH) then shared down bhitpile+zap_map / up
+ * hideunder. Named: zap_map lateral drawbridge; poly body_part.
+ * zap_map engraving/cancel trap is D-1476.
+ * bhito boxlock is D-1467.
  */
 async function zap_updown(obj) {
     if (!obj) return false;
@@ -5521,17 +5823,21 @@ async function zap_updown(obj) {
         break;
     }
     case WAN_STRIKING:
-    case SPE_FORCE_BOLT: {
-        /* C zap.c :3290–3354 — striking=TRUE; WAN_LOCKING named. */
-        const striking = true;
+    case SPE_FORCE_BOLT:
+    case WAN_LOCKING:
+    case SPE_WIZARD_LOCK: {
+        /* C zap.c :3290–3354 — striking=TRUE FALLTHROUGH into locking. */
+        const otyp = obj.otyp | 0;
+        const striking = otyp === WAN_STRIKING || otyp === SPE_FORCE_BOLT;
         const dbxy = { x, y };
         const levtyp = game.level?.at(x, y)?.typ | 0;
         const db_hit = (levtyp === DRAWBRIDGE_DOWN)
             ? (dz > 0)
             : (is_drawbridge_wall(x, y) >= 0 && !is_db_wall(x, y));
         if (db_hit && find_drawbridge(dbxy)) {
-            /* C :3302–3306 — !striking close_drawbridge is LOCKING (named). */
-            await destroy_drawbridge(dbxy.x, dbxy.y);
+            /* C :3302–3306 — !striking close_drawbridge (D-1465). */
+            if (!striking) await close_drawbridge(dbxy.x, dbxy.y);
+            else await destroy_drawbridge(dbxy.x, dbxy.y);
             disclose = true;
         } else if (striking && dz < 0 && rn2(3)
             && !Is_airlevel(game.u?.uz)
@@ -5555,8 +5861,18 @@ async function zap_updown(obj) {
             }
             newsym(x, y);
         } else if (dz > 0 && ttmp) {
-            /* C :3322 — !striking closeholdingtrap / hole→trapdoor named. */
-            if (striking && (ttmp.ttyp | 0) === TRAPDOOR) {
+            /* C :3321–3352 — locking closeholdingtrap then hole→trapdoor. */
+            let holding = false;
+            if (!striking) {
+                const closed = await closeholdingtrap(
+                    game.youmonst || { _youmonst: true },
+                );
+                if (closed.noticed) disclose = true;
+                holding = closed.happened;
+            }
+            if (holding) {
+                /* C :3322–3323 — now stuck in web or bear trap */
+            } else if (striking && (ttmp.ttyp | 0) === TRAPDOOR) {
                 if (Blind() && !(ttmp.tseen | 0)) {
                     await pline('Something beneath you shatters.');
                 } else if (!(ttmp.tseen | 0)) {
@@ -5569,6 +5885,46 @@ async function zap_updown(obj) {
                 ttmp.tseen = 1;
                 newsym(x, y);
                 await dotrap(ttmp, NO_TRAP_FLAGS);
+            } else if (!striking && (ttmp.ttyp | 0) === HOLE) {
+                /* C :3339–3351 — locking transforms hole into trapdoor. */
+                ttmp.ttyp = TRAPDOOR;
+                if (Blind() || !(ttmp.tseen | 0)) {
+                    await pline(
+                        `Some ${is_ice(x, y) ? 'frost' : 'dust'} swirls beneath you.`,
+                    );
+                } else {
+                    ttmp.tseen = 1;
+                    newsym(x, y);
+                    await pline('A trapdoor appears beneath you.');
+                    disclose = true;
+                }
+            }
+        }
+        break;
+    }
+    case SPE_STONE_TO_FLESH: {
+        /* C zap.c :3355–3377 — spell-only; no WAN_STONE_TO_FLESH.
+         * Flavor does not set disclose. Then shared epilogue. */
+        if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz)
+            || !!(game.u?.uinwater | 0)
+            || (Is_qstart_updown(game.u?.uz) && dz < 0)) {
+            await pline(nothing_happens);
+        } else if (dz < 0) {
+            /* C :3359–3360 — "we should do more..." */
+            await pline(`Blood drips on your ${body_part_zap(FACE)}.`);
+        } else if (dz > 0 && !objects_at(x, y)) {
+            /* C :3361–3375 — skip if ENGRAVE (zap_map D-1476 owns it). */
+            const e = engr_at(x, y);
+            if (!(e && (e.engr_type | 0) === ENGRAVE)) {
+                if (is_pool(x, y) || is_ice(x, y)) {
+                    await pline(nothing_happens);
+                } else {
+                    await pline(
+                        `Blood ${is_lava(x, y) ? 'boil' : 'pool'}s ${
+                            Levitation_updown() ? 'beneath' : 'at'
+                        } your ${makeplural(body_part_zap(FOOT))}.`,
+                    );
+                }
             }
         }
         break;
@@ -5577,7 +5933,7 @@ async function zap_updown(obj) {
         return false;
     }
 
-    /* C zap.c :3382–3408 — PROBING already returned. Other otyps named. */
+    /* C zap.c :3382–3408 — PROBING already returned. */
     if (dz > 0) {
         await bhitpile(obj, bhito, x, y, dz);
         await zap_map(x, y, obj);
@@ -5601,9 +5957,26 @@ async function zap_updown(obj) {
  * WAN_PROBING probes the steed directly (not via bhitm) (D-1443).
  * WAN_TELEPORTATION / SPE_TELEPORT_AWAY tele() the hero+steed
  * together then learnwand on the same criteria as zapyourself
- * (D-1455). Caller weffects :3437–3439 sets disclose then
- * learnwand again. Named: bhitm routing (invis / cancel / poly /
- * striking / slow / speed / heal / drain / opening).
+ * (D-1455). WAN_OPENING / SPE_KNOCK go through bhitm (D-1463).
+ * SPE_DRAIN_LIFE goes through bhitm (D-1464; callee D-1436).
+ * SPE_HEALING/SPE_EXTRA_HEALING go through bhitm (D-1469).
+ * WAN_CANCELLATION / SPE_CANCELLATION go through bhitm
+ * (D-1470; callee cancel_monst invent=FALSE).
+ * WAN_POLYMORPH / SPE_POLYMORPH go through bhitm
+ * (D-1471; callee resist / rn2(25) shock / newcham).
+ * WAN_MAKE_INVISIBLE goes through bhitm
+ * (D-1473; callee mon_set_minvis / knowninvisible).
+ * WAN_STRIKING / SPE_FORCE_BOLT go through bhitm
+ * (D-1474; callee :189–217 Boing / d(2,12) / miss).
+ * WAN_SLOW_MONSTER / SPE_SLOW_MONSTER go through bhitm
+ * (D-1478; callee :218–232 resist NOTELL / mon_adjust_speed(-1)).
+ * WAN_SPEED_MONSTER goes through bhitm
+ * (D-1479; callee :233–242 resist NOTELL / mon_adjust_speed(+1)
+ * / helpful_gesture). SPE_CURE_SICKNESS goes through bhitm
+ * (D-1480; callee has no arm — C bhitm default impossible;
+ * objects.h oc_dir is NODIR so weffects never reaches this
+ * from a real cast). Caller weffects :3437–3439 sets
+ * disclose then learnwand again when oc_dir != NODIR.
  */
 async function zap_steed(obj) {
     const steed = game.u?.usteed;
@@ -5638,6 +6011,48 @@ async function zap_steed(obj) {
         steedhit = true;
         break;
     }
+    case SPE_CURE_SICKNESS:
+    case WAN_MAKE_INVISIBLE:
+    case WAN_STRIKING:
+    case SPE_FORCE_BOLT:
+    case WAN_SLOW_MONSTER:
+    case SPE_SLOW_MONSTER:
+    case WAN_SPEED_MONSTER:
+    case WAN_POLYMORPH:
+    case SPE_POLYMORPH:
+    case WAN_CANCELLATION:
+    case SPE_CANCELLATION:
+    case SPE_DRAIN_LIFE:
+    case SPE_HEALING:
+    case SPE_EXTRA_HEALING:
+    case WAN_OPENING:
+    case SPE_KNOCK:
+        /* C zap.c :3115–3134 — Default processing via bhitm().
+         * SPE_CURE_SICKNESS is D-1480 (callee bhitm has no
+         * arm; C default impossible; objects.h NODIR so
+         * weffects :3437 skips zap_steed on a real cast;
+         * spell.c self healup is D-1398).
+         * WAN_SPEED_MONSTER is D-1479 (callee bhitm :233–242
+         * !resist NOTELL then seemimic + mon_adjust_speed(+1)
+         * + check_gear_next_turn; helpful_gesture always).
+         * WAN_SLOW_MONSTER/SPE_SLOW_MONSTER is D-1478 (callee
+         * bhitm :218–232 !resist NOTELL then seemimic +
+         * mon_adjust_speed(-1) + check_gear_next_turn).
+         * WAN_STRIKING/SPE_FORCE_BOLT is D-1474 (callee bhitm
+         * :189–217 Boing / d(2,12)+spell_damage_bonus / miss).
+         * WAN_MAKE_INVISIBLE is D-1473 (callee bhitm
+         * :348–368 mon_set_minvis / knowninvisible).
+         * WAN/SPE_POLYMORPH is D-1471 (callee bhitm
+         * :263–334 resist / rn2(25) shock / newcham).
+         * WAN/SPE_CANCELLATION is D-1470 (callee bhitm
+         * :335–340 cancel_monst invent=FALSE).
+         * SPE_DRAIN_LIFE is D-1464 (callee bhitm D-1436).
+         * SPE_HEALING/SPE_EXTRA_HEALING is D-1469 (callee
+         * bhitm :433–473). Saddle drop / SPE_KNOCK mhurtle
+         * live in bhitm (D-0981). */
+        await bhitm(steed, obj);
+        steedhit = true;
+        break;
     default:
         steedhit = false;
         break;
@@ -5666,12 +6081,29 @@ async function zap_steed(obj) {
  * cancel_monst live; zapyourself cancel_monst(&youmonst) live).
  * SPE_STONE_TO_FLESH IMMEDIATE bhit (D-1461; bhitm golem/mimic;
  * zapyourself polymon/Stoned/invent; bhito stone_to_flesh_obj).
+ * SPE_TELEPORT_AWAY IMMEDIATE bhit (D-1468; bhitm
+ * u_teleport_mon; zapyourself tele(); bhito rloco).
+ * SPE_HEALING/SPE_EXTRA_HEALING IMMEDIATE bhit (D-1469;
+ * bhitm healmon; zapyourself healup D-0135; zap_steed
+ * via bhitm).
  * zap_steed WAN_PROBING (D-1443); zap_steed WAN_TELEPORTATION /
- * SPE_TELEPORT_AWAY (D-1455); zap_updown WAN_PROBING (D-1444);
+ * SPE_TELEPORT_AWAY (D-1455); zap_steed WAN_OPENING/SPE_KNOCK
+ * via bhitm (D-1463); zap_steed SPE_DRAIN_LIFE via bhitm
+ * (D-1464); zap_steed SPE_HEALING/SPE_EXTRA_HEALING via
+ * bhitm (D-1469); zap_steed WAN_CANCELLATION/SPE_CANCELLATION
+ * via bhitm (D-1470); zap_steed WAN_POLYMORPH/SPE_POLYMORPH
+ * via bhitm (D-1471); zap_steed WAN_MAKE_INVISIBLE via
+ * bhitm (D-1473); zap_steed WAN_STRIKING/SPE_FORCE_BOLT
+ * via bhitm (D-1474); zap_steed WAN_SLOW_MONSTER/
+ * SPE_SLOW_MONSTER via bhitm (D-1478); zap_steed
+ * WAN_SPEED_MONSTER via bhitm (D-1479); zap_steed
+ * SPE_CURE_SICKNESS via bhitm (D-1480); zap_updown WAN_PROBING (D-1444);
  * zap_updown WAN_OPENING/SPE_KNOCK (D-1454); zap_updown
- * WAN_STRIKING/SPE_FORCE_BOLT (D-1456); remaining zap_steed
- * bhitm-routed otyps / zap_updown LOCKING/STONE /
- * zap_map engraving / doorlock deferred.
+ * WAN_STRIKING/SPE_FORCE_BOLT (D-1456); zap_updown
+ * WAN_LOCKING/SPE_WIZARD_LOCK (D-1465); zap_updown
+ * SPE_STONE_TO_FLESH (D-1466); zap_map engraving/cancel trap
+ * is D-1476; doorlock STRIKING named;
+ * LOCKING is D-1475.
  */
 export async function weffects(obj) {
     const otyp = obj.otyp;
@@ -5683,8 +6115,19 @@ export async function weffects(obj) {
 
     /* C zap.c weffects :3437–3439 — mounted downward zap hits the
      * steed first. WAN_PROBING is D-1443; WAN_TELEPORTATION /
-     * SPE_TELEPORT_AWAY is D-1455; remaining zap_steed otyps
-     * return false and fall through (named). */
+     * SPE_TELEPORT_AWAY is D-1455; WAN_OPENING/SPE_KNOCK via
+     * bhitm is D-1463; SPE_DRAIN_LIFE via bhitm is D-1464;
+     * SPE_HEALING/SPE_EXTRA_HEALING via bhitm is D-1469;
+     * WAN_CANCELLATION/SPE_CANCELLATION via bhitm is D-1470;
+     * WAN_POLYMORPH/SPE_POLYMORPH via bhitm is D-1471;
+     * WAN_MAKE_INVISIBLE via bhitm is D-1473;
+     * WAN_STRIKING/SPE_FORCE_BOLT via bhitm is D-1474;
+     * WAN_SLOW_MONSTER/SPE_SLOW_MONSTER via bhitm is D-1478;
+     * WAN_SPEED_MONSTER via bhitm is D-1479;
+     * SPE_CURE_SICKNESS via bhitm is D-1480 (objects.h NODIR
+     * so this prefix does not run on a real cast);
+     * remaining zap_steed otyps return false and fall through
+     * (named). */
     if (game.u?.usteed && oc && oc.oc_dir !== NODIR
         && !(game.u.dx | 0) && !(game.u.dy | 0)
         && (game.u.dz | 0) > 0

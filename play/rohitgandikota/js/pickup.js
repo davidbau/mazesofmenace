@@ -11,11 +11,11 @@ import { game } from './gstate.js';
 import { addinv, prinv, obj_extract_self, inv_order, let_to_name,
          freeinv, update_inventory, weight } from './invent.js';
 import { observe_object } from './o_init.js';
-import { doname, xname, the, yname, singular, an } from './objnam.js';
+import { doname, xname, cxname, the, yname, singular, an } from './objnam.js';
 import { Is_container, Has_contents, carried } from './obj.js';
 import { AUTOUNLOCK_UNTRAP, AUTOUNLOCK_APPLY_KEY,
          AUTOUNLOCK_FORCE } from './const.js';
-import { check_capacity } from './hack.js';
+import { check_capacity, in_rooms } from './hack.js';
 import { ECMD_OK, ECMD_TIME, IS_FURNITURE, ICE, POOL, MOAT, WATER, LAVAPOOL } from './const.js';
 import { upstart } from './do_name.js';
 
@@ -23,8 +23,9 @@ import { upstart } from './do_name.js';
 const The = (s2) => upstart(the(s2));
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { newsym, pline, bot } from './display.js';
-import { UNENCUMBERED } from './const.js';
-import { costly_spot } from './shk.js';
+import { UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER,
+         EXT_ENCUMBER, SHOPBASE } from './const.js';
+import { addtobill, costly_spot } from './shk.js';
 import { near_capacity } from './attrib.js';
 import { In_sokoban } from './dungeon.js';
 import { Is_mbag } from './mkobj.js';
@@ -36,7 +37,7 @@ import { You } from './pline.js';
 import { flush_screen } from './display.js';
 import { look_here } from './invent.js';
 import { nomul } from './hack.js';
-import { t_at, is_pool, is_lava } from './mon.js';
+import { t_at, is_pool, is_lava, m_at } from './mon.js';
 import { unconscious } from './trap.js';
 import { is_pit } from './const.js';
 import { Levitation, Stone_resistance } from './youprop.js';
@@ -156,6 +157,13 @@ export async function describe_decor() {
 const is_pool_typ = (t) => t === POOL || t === MOAT || t === WATER;
 const LAVAPOOL_TYP = LAVAPOOL;
 
+// src/pickup.c:616 reset_justpicked() -- a new successful pickup attempt
+// replaces the previous "just picked up" inventory group.
+function reset_justpicked() {
+    for (const obj of game.invent || [])
+        obj.pickup_prev = 0;
+}
+
 export async function pickup(what) {
     const autopickup = what > 0;
 
@@ -163,6 +171,10 @@ export async function pickup(what) {
     if (autopickup && game.multi < 0 && unconscious()) {
         return 0;
     }
+
+    /* src/pickup.c:691: only the first object that changes encumbrance in
+       this pickup operation gets the verbose lifting prefix. */
+    game.pickup_encumbrance = 0;
 
     if (!game.u.uswallow) {
         /* no auto-pick if no-pick move, nothing there, or in a pool */
@@ -205,6 +217,8 @@ export async function pickup(what) {
     let n_picked = 0, n_tried = 0;
     if (here.length > 1 && !autopickup) {
         const picked = await query_objlist('Pick up what?', here);
+        if (picked.length)
+            reset_justpicked();
         for (const obj of picked) {
             n_tried++;
             if ((await pickup_object(obj, obj.quan, false)) > 0)
@@ -212,6 +226,8 @@ export async function pickup(what) {
         }
     } else {
         /* autopick(): no menu, take every eligible object */
+        if (here.length)
+            reset_justpicked();
         for (const obj of here) {
             n_tried++;
             if ((await pickup_object(obj, obj.quan, false)) > 0)
@@ -225,6 +241,7 @@ export async function pickup(what) {
     if (autopickup && !game.u.uswallow)
         await check_here(n_picked > 0);
 
+    game.pickup_encumbrance = 0;
     return n_tried > 0 ? 1 : 0;
 }
 
@@ -330,19 +347,48 @@ export async function pickup_object(obj, count, telekinesis) {
 }
 
 // src/pickup.c:1897 pick_obj() — off the floor and into inventory.
-function pick_obj(otmp) {
+async function pick_obj(otmp) {
     const ox = otmp.ox, oy = otmp.oy;
+    let robshop = !game.u.uswallow && otmp !== game.uball
+               && costly_spot(ox, oy);
 
-    if (costly_spot(ox, oy))
-        note_unported_pickup('pick_obj:shop');
     obj_extract_self(otmp);
     newsym(ox, oy);
-    return addinv(otmp);
+    if (robshop) {
+        const saveushops = game.u.ushops || '';
+        const fakeshop = in_rooms(ox, oy, SHOPBASE).charAt(0);
+        game.u.ushops = fakeshop;
+        try {
+            await addtobill(otmp, true, false, false);
+        } finally {
+            game.u.ushops = saveushops;
+        }
+        robshop = !!otmp.unpaid && !saveushops.includes(fakeshop);
+    }
+
+    const oldcap = near_capacity();
+    const result = addinv(otmp);
+    if (near_capacity() !== oldcap)
+        game._encumber_status_stale = true;
+    if (robshop)
+        note_unported_pickup('pick_obj:remote_burglary');
+    return result;
 }
 
-// src/pickup.c pickup_prinv() — "k - a goblin corpse."
+// src/pickup.c:1948 pickup_prinv() limits encumbrance feedback to the first
+// item in one pickup operation that changes the current load category.
 async function pickup_prinv(obj, count) {
-    await prinv(null, obj, count);
+    const nearload = near_capacity();
+    let prefix = '';
+    if (nearload !== game.pickup_encumbrance) {
+        prefix = nearload >= EXT_ENCUMBER ? 'You have extreme difficulty'
+               : nearload >= HVY_ENCUMBER ? 'You have much trouble'
+                 : nearload >= MOD_ENCUMBER ? 'You have trouble'
+                   : nearload >= SLT_ENCUMBER ? 'You have a little trouble'
+                     : '';
+        game.pickup_encumbrance = nearload;
+    }
+    await prinv(prefix ? `${prefix} lifting` : null, obj, count);
 }
 
 
@@ -396,9 +442,9 @@ async function do_loot_cont(cobj, ccount, ci) {
 
 // src/pickup.c:2166 doloot() — the #loot command.
 //
-// Only the container-underfoot path is ported. The confused arm, the blind
-// cockatrice check, the multi-container menu, grave digging and the
-// directional monster-looting tail are recorded.
+// The container-underfoot path and ordinary directional tail are ported. The
+// confused arm, blind cockatrice check, multi-container menu, grave digging,
+// and saddle removal are recorded.
 export async function doloot() {
     if (check_capacity(null))
         return ECMD_OK;
@@ -421,8 +467,31 @@ export async function doloot() {
         return timepassed ? ECMD_TIME : ECMD_OK;
     }
 
-    /* the grave arm and the directional "Loot in what direction?" tail */
-    note_unported_pickup('doloot:nothing_underfoot');
+    let monBeside = false;
+    for (let dx = -1; dx <= 1 && !monBeside; ++dx)
+        for (let dy = -1; dy <= 1; ++dy)
+            if (m_at(game.u.ux + dx, game.u.uy + dy)) {
+                monBeside = true;
+                break;
+            }
+
+    if (monBeside || game.iflags.menu_requested) {
+        const cc = { x: game.u.ux, y: game.u.uy };
+        const { get_adjacent_loc } = await import('./cmd.js');
+        if (!await get_adjacent_loc('Loot in what direction?',
+                                    'Invalid loot location',
+                                    game.u.ux, game.u.uy, cc))
+            return ECMD_OK;
+
+        const underfoot = cc.x === game.u.ux && cc.y === game.u.uy;
+        const mtmp = m_at(cc.x, cc.y);
+        if (mtmp)
+            note_unported_pickup('doloot:loot_mon_saddle');
+        await You(`don't find anything ${underfoot ? 'here' : 'there'} to loot.`);
+        return ECMD_OK;
+    }
+
+    await You("don't find anything here to loot.");
     return ECMD_OK;
 }
 
@@ -625,7 +694,8 @@ async function query_category(qstr, olist, qflags) {
     for (const oclass of pack) {
         if (!olist.some(o => o.oclass === oclass))
             continue;
-        tty_add_menu(win, null, oclass, invlet, 0, ATR_NONE, NO_COLOR,
+        tty_add_menu(win, null, oclass, invlet, def_oc_syms[oclass],
+                     ATR_NONE, NO_COLOR,
                      let_to_name(oclass), MENU_ITEMFLAGS_NONE);
         invlet = String.fromCharCode(invlet.charCodeAt(0) + 1);
     }
@@ -1149,7 +1219,7 @@ export function sortloot_items(items) {
         .map((obj, idx) => ({ obj, idx,
                               sub: loot_subclass(obj),
                               disco: loot_disco(obj),
-                              nam: singular(obj, xname).toLowerCase() }))
+                              nam: singular(obj, cxname).toLowerCase() }))
         .sort((a, b) => {
             if (a.sub !== b.sub) return a.sub - b.sub;
             if (a.disco !== b.disco) return a.disco - b.disco;

@@ -35,7 +35,9 @@ export const Hallucination = () => HHallucination() && !Halluc_resistance();
 // include/youprop.h:123 HDeaf, :124 EDeaf, :125 Deaf.
 // As with HALLUC above, the flat uprops map collapses intrinsic and extrinsic
 // into one read. u.uroleplay.deaf is the deaf conduct, chosen at startup.
-export const Deaf = () => !!game.u?.uprops?.DEAF || !!game.u?.uroleplay?.deaf;
+export const Deaf = () => !!game.u?.intrinsic?.HDeaf
+                         || !!game.u?.uprops?.DEAF
+                         || !!game.u?.uroleplay?.deaf;
 
 // include/youprop.h:65 Stone_resistance — flat uprops map collapses the
 // intrinsic and extrinsic halves into one read.
@@ -105,6 +107,10 @@ export const Warning = () => !!(game.u?.intrinsic?.HWarning
 export const Teleport_control = () =>
     !!(game.u?.intrinsic?.HTeleport_control
        || game.u?.uprops?.TELEPORT_CONTROL);
+
+// include/youprop.h:113 Reflecting. The flat property value is C's
+// EReflecting slot mask, so a nonzero mask means reflection is active.
+export const Reflecting = () => !!game.u?.uprops?.REFLECTING;
 
 // include/youprop.h:186 Infravision — HInfravision || EInfravision.
 // The intrinsic half comes from the hero's race via set_uasmon().

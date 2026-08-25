@@ -19,8 +19,8 @@ import { place_object } from './mkobj.js';
 import { pline, newsym } from './display.js';
 import { You, You_cant, Your } from './pline.js';
 import { near_capacity } from './attrib.js';
-import { u_locomotion } from './hack.js';
-import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, VIBRATING_SQUARE, A_DEX, BOTH_SIDES } from './const.js';
+import { u_locomotion, losehp } from './hack.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, VIBRATING_SQUARE, A_DEX, BOTH_SIDES, KILLED_BY } from './const.js';
 import { t_at, m_at, is_pool, is_lava } from './mon.js';
 import { is_pick } from './mon.js';
 import { cansee } from './vision.js';
@@ -103,6 +103,17 @@ export async function flooreffects(obj, x, y, verb) {
 export function stairway_at(x, y) {
     for (let s = game.stairs; s; s = s.next)
         if (s.sx === x && s.sy === y)
+            return s;
+    return null;
+}
+
+// src/stairs.c:55 stairway_find_from(), find the arrival staircase whose
+// remote end is the level the hero just left.
+function stairway_find_from(fromdlev, isladder) {
+    for (let s = game.stairs; s; s = s.next)
+        if (s.tolev?.dnum === fromdlev?.dnum
+            && s.tolev?.dlevel === fromdlev?.dlevel
+            && !!s.isladder === !!isladder)
             return s;
     return null;
 }
@@ -229,9 +240,8 @@ export async function next_level(at_stairs) {
 //
 // Three of goto_level's four draws are the Mysterious Force
 // (rn2(4 + mysteryforce), rn2(odds), rn2(diff + 2)), which fires only in the
-// Quest, and the fourth is rnd(3) falling damage. A plain staircase descent
-// spends none of them, so this path adds no draws of its own -- everything it
-// changes in the stream comes from mklev() running at all.
+// Quest. The fourth is rnd(3) falling damage for an encumbered, punished, or
+// fumbling hero. A plain staircase descent spends no draw of its own.
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     let up = (depth_do(newlevel) < depth_do(game.u.uz));
 
@@ -258,10 +268,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1585 keepdogs() — adjacent followers leave the map with the
        hero BEFORE the old level is left */
     const { keepdogs, losedogs } = await import('./dog.js');
+    /* src/do.c:1607 - a destination belongs to the level being left. */
+    game.iflags = game.iflags || {};
+    game.iflags.travelcc = { x: 0, y: 0 };
     /* src/do.c:1623 — the tutorial transition sets iflags.nofollowers so
        the pet stays behind */
     if (!game.iflags?.nofollowers)
         keepdogs(false);
+    /* src/do.c:1634: clear old visibility after followers leave. This
+       redraws their former squares while the bones prompt is onscreen. */
+    {
+        const { vision_recalc } = await import('./vision.js');
+        vision_recalc(2);
+    }
 
     /* src/do.c:1660 savelev() — keep the outgoing level so a return
        restores it instead of regenerating. update_mlstmv() (dog.c:294)
@@ -280,6 +299,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             utpnt: game.utpnt | 0,
             utrack: (game.utrack || []).map(p => ({ x: p.x, y: p.y })),
         };
+        /* The stairway chain belongs to this level. savelev() writes it
+           with the map, and getlev() restores it before arrival handling. */
+        game.level._saved_stairs = game.stairs;
         (game.saved_levels ||= new Map())
             .set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, game.level);
         /* src/save.c savelev() — leaving a Plane of Water/Air parks the
@@ -336,6 +358,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
            the same state; the visible cost is restore.c:1190's monster
            catchup against the time spent away. */
         game.level = game.saved_levels.get(ledger);
+        game.stairs = game.level._saved_stairs || null;
+        const { oinit } = await import('./o_init.js');
+        oinit();
         const { DEADMONSTER } = await import('./monst.js');
         const { mon_catchup_elapsed_time } = await import('./dog.js');
         const { restore_cham, hide_monst } = await import('./mon.js');
@@ -394,7 +419,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     }
 
     if (at_stairs) {
-        if (up) {
+        /* src/do.c:1747/1765, prefer the stair whose remote end is the
+           level just left. Besides choosing the exact branch stair, C marks
+           the arrival side traversed so known branch stairs turn yellow. */
+        const arrival_stair = stairway_find_from(game.u.uz0, false);
+        if (arrival_stair) {
+            game.u.ux = arrival_stair.sx;
+            game.u.uy = arrival_stair.sy;
+            arrival_stair.u_traversed = true;
+        } else if (up) {
             /* src/do.c — arriving from below lands on the DOWN staircase
                of the upper level (C u_on_dnstairs()) */
             const dn = game.level?.dnstair;
@@ -407,19 +440,38 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             u_on_dnstairs();
         }
 
-        /* src/do.c:1774 — the arrival message. Levitation, Flying and the
-           encumbered/Punished/Fumbling fall are all recorded; the ordinary
-           descent is the one every recorded game takes. `at_ladder` is
-           false for a staircase. */
+        /* src/do.c:1774 — arrival message and stair-fall damage. `at_ladder`
+           is false for this staircase path. */
         if (!game.u.dz) {
             ; /* stayed on same level? (no transit effects) */
         } else if (up) {
             if (game.flags?.verbose)
                 await pline(`You ${u_locomotion('climb')} up the stairs.`);
-        } else if (game.u.uprops?.FLYING || game.u.uprops?.LEVITATION
-                   || near_capacity() > UNENCUMBERED || game.uball
-                   || game.u.uprops?.FUMBLING) {
-            note_unported_do('goto_level:fly_or_fall_arrival');
+        } else if (game.u.uprops?.FLYING) {
+            if (game.flags?.verbose)
+                await You('fly down the stairs.');
+        } else if (near_capacity() > UNENCUMBERED || game.uball
+                   || game.u.uprops?.FUMBLING
+                   || game.u.intrinsic?.HFumbling) {
+            await You('fall down the stairs.');
+            if (game.uball)
+                note_unported_do('goto_level:drag_down');
+            if (game.u.usteed) {
+                const { dismount_steed } = await import('./steed.js');
+                await dismount_steed(1 /* DISMOUNT_FELL */);
+            } else {
+                let damage = rnd(3);
+                if (game.u.uprops?.HALF_PHDAM)
+                    damage = Math.trunc((damage + 1) / 2);
+                await losehp(damage, 'tumbling down a flight of stairs',
+                             KILLED_BY);
+            }
+            /* selftouch("Falling, you") draws nothing unless a petrifying
+               corpse is wielded; that fatal branch remains explicit. */
+            if (game.u.uwep?.otyp === ONAMES.CORPSE
+                || (game.u.twoweap
+                    && game.u.uswapwep?.otyp === ONAMES.CORPSE))
+                note_unported_do('goto_level:selftouch');
         } else { /* ordinary descent */
             if (game.flags?.verbose)
                 await You('descend the stairs.');
@@ -453,25 +505,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     }
 
-    /* src/do.c:1879 — arriving on a bones level a same-named hero died
-       on gives the deja-vu message; rn2(4) picks it (index 3 is silent). */
-    {
-        const { bones_include_name } = await import('./bones.js');
-        if (game.level?.bonesinfo && bones_include_name(game.plname)) {
-            const fam_msgs = [
-                'You have a sense of deja vu.',
-                "You feel like you've been here before.",
-                'This place %s familiar...', null ];
-            /* halu variants recorded with the rest of Hallucination */
-            let mesg = fam_msgs[rn2(4)];
-            if (mesg && mesg.includes('%s'))
-                mesg = mesg.replace('%s',
-                                    !game.u.ublind ? 'looks' : 'seems');
-            if (mesg)
-                await pline(mesg);
-        }
-    }
-
     /* src/do.c:1837 — reset the screen: vision blockages for the new
        map, then a full redraw with vision recalc */
     const { vision_reset, vision_recalc } = await import('./vision.js');
@@ -495,6 +528,25 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     {
         const { deliver_splev_message } = await import('./questpgr.js');
         await deliver_splev_message();
+    }
+
+    /* src/do.c:1879: after the new map and deferred arrival message, a
+       same-named bones level gives one randomly chosen deja-vu message. */
+    {
+        const { bones_include_name } = await import('./bones.js');
+        if (game.level?.bonesinfo && bones_include_name(game.plname)) {
+            const fam_msgs = [
+                'You have a sense of deja vu.',
+                "You feel like you've been here before.",
+                'This place %s familiar...', null ];
+            /* halu variants recorded with the rest of Hallucination */
+            let mesg = fam_msgs[rn2(4)];
+            if (mesg && mesg.includes('%s'))
+                mesg = mesg.replace('%s',
+                                    !game.u.ublind ? 'looks' : 'seems');
+            if (mesg)
+                await pline(mesg);
+        }
     }
 
     /* src/do.c:1879 — special location arrival messages/events. The

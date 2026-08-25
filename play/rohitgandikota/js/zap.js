@@ -9,13 +9,14 @@ import { game } from './gstate.js';
 import { isok } from './hacklib.js';
 import { m_at, t_at } from './mon.js';
 import { cansee } from './vision.js';
-import { newsym } from './display.js';
+import { display_cmap_at, map_invisible, newsym, unmap_invisible } from './display.js';
 import { closed_door } from './cmd.js';
 
 import { STONE, WATER, LAVAWALL, IRONBARS, IS_SINK, POOL, WEB,
          THROWN_WEAPON, KICKED_WEAPON, ZAPPED_WAND, M_AP_TYPE,
          M_AP_OBJECT, ICE, Is_airlevel, Is_waterlevel, st_all, plur,
-         ONAME_WISH, ONAME_KNOW_ARTI } from './const.js';
+         ONAME_WISH, ONAME_KNOW_ARTI, IS_ROOM, STRAT_WAITMASK,
+         ZAP_POS, W_ARM, W_ARMS, W_WEP, W_AMUL, HI_ZAP } from './const.js';
 import { mungspaces } from './hacklib.js';
 import { hands_obj, hold_another_object } from './invent.js';
 import { u_safe_from_fatal_corpse } from './pickup.js';
@@ -25,7 +26,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow, NHW_TEXT } from './tty/wintty.js';
 import { OCLASSES } from './objects_data.js';
 import { DEADMONSTER } from './monst.js';
-import { killed, shieldeff_mon } from './mon.js';
+import { killed, shieldeff_mon, wakeup } from './mon.js';
 import { ONAMES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_rider } from './makemon.js';
@@ -56,7 +57,13 @@ import { delobj } from './mon.js';
 import { weight } from './invent.js';
 import { is_flammable, is_rottable } from './trap.js';
 import { MATERIALS } from './objects_data.js';
-import { PMNAMES } from './monst_data.js';
+import { ATTKS, PMNAMES } from './monst_data.js';
+import { defended, resists_cold, resists_fire, resists_magm } from './mondata.js';
+import { find_mac } from './worn.js';
+import { Reflecting, Sleep_resistance } from './youprop.js';
+import { cmap_names } from './drawing_data.js';
+import { CLR_ORANGE, CLR_WHITE, CLR_BLACK, CLR_GREEN,
+         CLR_YELLOW } from './terminal.js';
 
 /* include/objclass.h:200/:201/:204 — local copies of the material
    predicates trap.js also carries (they are header macros in C). */
@@ -903,12 +910,299 @@ export function zap_map(x, y, obj) {
         note_unported_zap('zap_map:terrain_reveal');
 }
 
+const flash_types = [
+    'magic missile', 'bolt of fire', 'bolt of cold', 'sleep ray', 'death ray',
+    'bolt of lightning', '', '', '', '',
+    'magic missile', 'fireball', 'cone of cold', 'sleep ray',
+    'finger of death', 'bolt of lightning', '', '', '', '',
+    'blast of missiles', 'blast of fire', 'blast of frost',
+    'blast of sleep gas', 'blast of disintegration', 'blast of lightning',
+    'blast of poison gas', 'blast of acid', '', '',
+];
+
+// src/zap.c:89 zaptype().
+function zaptype(type) {
+    if (type <= -30 && type >= -39)
+        type += 30;
+    return Math.abs(type);
+}
+
+function flash_str(type) {
+    const fltyp = zaptype(type);
+    if (game.u.uprops?.HALLUC) {
+        note_unported_zap('flash_str:hallucination');
+        return flash_types[fltyp] || 'ray';
+    }
+    return flash_types[fltyp] || 'ray';
+}
+
+// src/zap.c:4705 zap_hit(). Hero spell bonuses remain an explicit gap.
+function zap_hit(ac, spell_type) {
+    const chance = rn2(20);
+    if (spell_type)
+        note_unported_zap('zap_hit:spell_bonus');
+    if (!chance)
+        return rnd(10) < ac;
+    if (ac < 0)
+        ac = -rnd(-ac);
+    return 3 - chance < ac;
+}
+
+const DMG_DESTROY_SCALE = 5;
+
+// src/zap.c:5965 destroy_items(). The damage cap is calculated before the
+// inventory is scanned, so its rn2(5) is spent even when the target carries
+// nothing. Item-class damage remains an explicit gap for occupied inventories.
+function destroy_items(mon, osym, dmg_in) {
+    let limit = Math.trunc(dmg_in / DMG_DESTROY_SCALE);
+    if (dmg_in % DMG_DESTROY_SCALE > rn2(DMG_DESTROY_SCALE))
+        ++limit;
+    if (limit < 1 || !(mon.minvent || []).length)
+        return 0;
+
+    note_unported_zap(`destroy_items:osym=${osym}`);
+    return 0;
+}
+
+// src/zap.c:4238 zhitm(). The common missile and cold-ray damage paths are
+// complete. Other ray families stay marked until their item-destruction and
+// status effects are ported together.
+function zhitm(mon, type, nd) {
+    const damgtype = zaptype(type) % 10;
+    let damage = 0;
+
+    switch (damgtype) {
+    case 0:
+        if (resists_magm(mon) || defended(mon, ATTKS.AD_MAGM)) {
+            shieldeff_mon(mon);
+            break;
+        }
+        damage = d(nd, 6);
+        break;
+    case 2:
+        if (resists_cold(mon) || defended(mon, ATTKS.AD_COLD)) {
+            shieldeff_mon(mon);
+            break;
+        }
+        damage = d(nd, 6);
+        {
+            const orig_damage = damage;
+            if (resists_fire(mon))
+                damage += d(nd, 3);
+            if (!rn2(3))
+                damage += destroy_items(mon, ATTKS.AD_COLD, orig_damage);
+        }
+        break;
+    default:
+        note_unported_zap(`zhitm:type=${damgtype}`);
+        return 0;
+    }
+
+    if (damage > 0 && type >= 0
+        && resist(mon, type < 10 ? OCLASSES.WAND_CLASS : 0, 0, false))
+        damage = Math.trunc(damage / 2);
+    mon.mhp -= damage;
+    return damage;
+}
+
+// src/zap.c:4664 bounce_dir().
+function bounce_dir(sx, sy, delta, bounceback) {
+    if (!delta.dx || !delta.dy || (bounceback > 0 && !rn2(bounceback))) {
+        delta.dx = -delta.dx;
+        delta.dy = -delta.dy;
+        return;
+    }
+
+    const lsx = sx - delta.dx, lsy = sy - delta.dy;
+    let bounce = 0;
+    const vert = game.level?.at(sx, lsy);
+    if (isok(sx, lsy) && vert && ZAP_POS(vert.typ)
+        && !closed_door(sx, lsy)
+        && (IS_ROOM(vert.typ)
+            || (isok(sx + delta.dx, lsy)
+                && ZAP_POS(game.level.at(sx + delta.dx, lsy).typ))))
+        bounce = 1;
+    const horiz = game.level?.at(lsx, sy);
+    if (isok(lsx, sy) && horiz && ZAP_POS(horiz.typ)
+        && !closed_door(lsx, sy)
+        && (IS_ROOM(horiz.typ)
+            || (isok(lsx, sy + delta.dy)
+                && ZAP_POS(game.level.at(lsx, sy + delta.dy).typ)))) {
+        if (!bounce || rn2(2))
+            bounce = 2;
+    }
+    switch (bounce) {
+    case 0:
+        delta.dx = -delta.dx;
+        delta.dy = -delta.dy;
+        break;
+    case 1:
+        delta.dy = -delta.dy;
+        break;
+    case 2:
+        delta.dx = -delta.dx;
+        break;
+    }
+}
+
+const zap_colors = [
+    HI_ZAP, CLR_ORANGE, CLR_WHITE, HI_ZAP,
+    CLR_BLACK, CLR_WHITE, CLR_GREEN, CLR_YELLOW,
+];
+
+// src/display.c:2461 zapdir_to_glyph(). A zap type changes the color, while
+// these four cmap entries supply the active symbol-set character.
+function zapdir_cmap(dx, dy) {
+    if (dx === dy)
+        return cmap_names.S_lslant;
+    if (dx && dy)
+        return cmap_names.S_rslant;
+    return dx ? cmap_names.S_hbeam : cmap_names.S_vbeam;
+}
+
+// src/muse.c:2836 ureflects(), outermost equipment first.
+async function ureflects() {
+    const mask = game.u.uprops?.REFLECTING | 0;
+    let source = null;
+    let identify = 0;
+
+    if (mask & W_ARMS) {
+        source = 'shield';
+        identify = ONAMES.SHIELD_OF_REFLECTION;
+    } else if (mask & W_WEP) {
+        source = 'weapon';
+    } else if (mask & W_AMUL) {
+        source = 'medallion';
+        identify = ONAMES.AMULET_OF_REFLECTION;
+    } else if (mask & W_ARM) {
+        source = game.u.uskin ? 'luster' : 'armor';
+    }
+    if (!source) {
+        note_unported_zap('ureflects:source');
+        source = 'body';
+    }
+    await pline(`But it reflects from your ${source}!`);
+    if (identify)
+        makeknown(identify);
+}
+
+// src/zap.c:4780 dobuzz(). This ports the lateral beam walk, monster hit,
+// death, and ordinary terrain bounce spine used by wand and spell rays.
+async function dobuzz(type, nd, startx, starty, ddx, ddy) {
+    if (game.u.uswallow) {
+        note_unported_zap('dobuzz:swallowed');
+        return;
+    }
+
+    let range = rn1(7, 7);
+    if (!ddx && !ddy)
+        range = 1;
+    let sx = startx, sy = starty;
+    const delta = { dx: ddx, dy: ddy };
+    const beam_cells = [];
+    const damgtype = zaptype(type) % 10;
+
+    try {
+        while (range-- > 0) {
+            const lsx = sx, lsy = sy;
+            sx += delta.dx;
+            sy += delta.dy;
+            let loc = isok(sx, sy) ? game.level?.at(sx, sy) : null;
+
+            if (loc && loc.typ !== STONE) {
+                let mon = m_at(sx, sy);
+                if (cansee(sx, sy)) {
+                    if (mon && !canspotmon(mon))
+                        map_invisible(sx, sy);
+                    else if (!mon)
+                        unmap_invisible(sx, sy);
+                    if (ZAP_POS(loc.typ)
+                        || (isok(lsx, lsy) && cansee(lsx, lsy))) {
+                        display_cmap_at(zapdir_cmap(delta.dx, delta.dy),
+                                        sx, sy,
+                                        zap_colors[damgtype] ?? HI_ZAP, 'zap');
+                        beam_cells.push([sx, sy]);
+                    }
+                    await game.animationFrame();
+                }
+
+                if (loc.typ === WATER || loc.typ === POOL || loc.typ === ICE)
+                    note_unported_zap('dobuzz:zap_over_floor');
+
+                if (mon) {
+                    if (type >= 0)
+                        mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_WAITMASK;
+                    if (zap_hit(find_mac(mon), type >= 10 && type < 20 ? type : 0)) {
+                        const damage = zhitm(mon, type, nd);
+                        if (DEADMONSTER(mon)) {
+                            if (type < 0)
+                                note_unported_zap('dobuzz:monkilled');
+                            else
+                                await killed(mon);
+                        } else {
+                            if (canspotmon(mon))
+                                await pline_The(`${flash_str(type)} hits ${
+                                    mon_nam(mon)}${exclam(damage)}`);
+                            if (damgtype !== 3)
+                                await wakeup(mon, type >= 0);
+                        }
+                        range -= 2;
+                    }
+                } else if (game.u.ux === sx && game.u.uy === sy && range >= 0) {
+                    const { nomul } = await import('./hack.js');
+                    nomul(0);
+                    if (zap_hit(game.u.uac | 0, 0)) {
+                        range -= 2;
+                        await pline(`${The(flash_str(type))} hits you!`);
+                        if (Reflecting()) {
+                            await ureflects();
+                            delta.dx = -delta.dx;
+                            delta.dy = -delta.dy;
+                        } else if (damgtype === 3) {
+                            if (Sleep_resistance())
+                                await You("don't feel sleepy.");
+                            else
+                                await fall_asleep(-d(nd, 25), true);
+                        } else {
+                            note_unported_zap(`dobuzz:zhitu=${damgtype}`);
+                        }
+                    } else if (!game.u.uprops?.BLINDED) {
+                        await pline(`${The(flash_str(type))} whizzes by you!`);
+                    }
+                    if (game.occupation) {
+                        const { stop_occupation } = await import('./allmain.js');
+                        await stop_occupation();
+                    }
+                    nomul(0);
+                }
+            }
+
+            loc = isok(sx, sy) ? game.level?.at(sx, sy) : null;
+            if (!loc || loc.typ === STONE || !ZAP_POS(loc.typ)
+                || (closed_door(sx, sy) && range >= 0)) {
+                const bchance = (!loc || loc.typ === STONE) ? 10 : 75;
+                if (--range > 0 && isok(lsx, lsy) && cansee(lsx, lsy))
+                    await pline_The(`${flash_str(type)} bounces!`);
+                bounce_dir(sx, sy, delta, bchance);
+            }
+        }
+    } finally {
+        for (const [x, y] of beam_cells)
+            newsym(x, y);
+    }
+}
+
+async function ubuzz(type, nd) {
+    await dobuzz(type, nd, game.u.ux, game.u.uy, game.u.dx, game.u.dy);
+}
+
 // src/zap.c:3431 weffects() — dispatch a zap's effect. The IMMEDIATE
-// lateral arm is live (bhit walk with bhitm/bhito); up/down and beams
-// record themselves.
+// lateral arm uses bhit; directional rays use dobuzz.
 export async function weffects(obj) {
     const otyp = obj.otyp;
     const dirprop = game.objects[otyp].oc_dir;
+    const was_unkn = !game.objects[otyp].oc_name_known;
+    let disclose = false;
 
     /* exercise(A_WIS) is done by dozap before dispatching here, matching
        C's placement at the head of weffects */
@@ -927,10 +1221,26 @@ export async function weffects(obj) {
     } else if (dirprop === NODIR) {
         await zapnodir(obj);
     } else {
-        /* neither immediate nor directionless: digging and the buzz rays */
-        note_unported_zap(`weffects:ray otyp=${otyp}`);
+        if (otyp === ONAMES.WAN_DIGGING || otyp === ONAMES.SPE_DIG) {
+            note_unported_zap('weffects:zap_dig');
+        } else if (otyp >= ONAMES.SPE_MAGIC_MISSILE
+                   && otyp <= ONAMES.SPE_FINGER_OF_DEATH) {
+            await ubuzz(10 + (otyp - ONAMES.SPE_MAGIC_MISSILE),
+                        Math.trunc(game.u.ulevel / 2) + 1);
+        } else if (otyp >= ONAMES.WAN_MAGIC_MISSILE
+                   && otyp <= ONAMES.WAN_LIGHTNING) {
+            await ubuzz(otyp - ONAMES.WAN_MAGIC_MISSILE,
+                        otyp === ONAMES.WAN_MAGIC_MISSILE ? 2 : 6);
+        } else {
+            note_unported_zap(`weffects:ray otyp=${otyp}`);
+        }
+        disclose = true;
     }
-    /* disclose/learnwand for rays is handled per-arm above */
+    if (disclose) {
+        learnwand(obj);
+        if (was_unkn)
+            more_experienced(0, 10);
+    }
 }
 
 // src/zap.c:2627 dozap() — the 'z' command.

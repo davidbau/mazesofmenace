@@ -724,6 +724,12 @@ function unset_all_on_page(window, page) {
 export async function tty_select_menu(window, how) {
     const cw = windows[window];
     if (!cw) return [];
+    /* src/windows.c select_menu() suppresses status output for the whole
+       window-port call, including tty_dismiss_nhwindow(). A full-screen menu
+       can therefore leave the status rows blank while its nested handler
+       opens another menu. */
+    const oldBotDisabled = !!game.bot_disabled;
+    game.bot_disabled = true;
     cw.how = how;
     await tty_display_nhwindow(window);
 
@@ -845,6 +851,7 @@ export async function tty_select_menu(window, how) {
        erase_menu_or_text() handles the repaint (its offx==0 arm is C's
        `docrt(); flush_screen(1);` restructured for a sync context). */
     tty_dismiss_nhwindow(window);
+    game.bot_disabled = oldBotDisabled;
 
     if (cw.cancelled)
         return [];

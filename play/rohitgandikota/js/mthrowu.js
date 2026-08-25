@@ -30,7 +30,7 @@ import { find_mac } from './worn.js';
 import { omon_adj } from './dothrow.js';
 import { hit, miss, exclam } from './zap.js';
 import { distant_name, mshot_xname, xname, an, the } from './objnam.js';
-import { pline, canspotmon } from './display.js';
+import { pline, canspotmon, display_object_at, newsym } from './display.js';
 import { pline_The } from './pline.js';
 import { seemimic, setmangry, xkilled, mondied } from './mon.js';
 import { dmgval } from './weapon.js';
@@ -361,8 +361,8 @@ function mt_flightcheck(pre, singleobj, dx, dy) {
 
 // src/mthrowu.c:572 m_throw() — fly the missile from (x,y) along (dx,dy).
 //
-// tmp_at()/nh_delay_output() flight animation is not implemented anywhere in
-// this tree (same as zap's bhit); the logic and every draw are.  The tether
+// tmp_at()/nh_delay_output() keeps one temporary missile glyph on the map as
+// the object advances.  The tether
 // (aklys) return journey, hero catch/gem-catch, potion hit, poisoning and
 // blinding of the HERO record, each gated on the missile that would do it.
 // src/mthrowu.c:532 u_catch_thrown_obj() — hero may catch a thrown object.
@@ -392,6 +392,7 @@ async function u_catch_thrown_obj(otmp) {
 export async function m_throw(mon, x, y, dx, dy, range, obj) {
     let mtmp, singleobj;
     let hitu = 0, blindinc = 0;
+    let tempMissile = null;
 
     game.bhitpos = { x, y };
     game.notonhead = false;     /* reset potentially stale value */
@@ -409,6 +410,23 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         obj_extract_self(singleobj);
     }
     game.thrownobj = singleobj;
+
+    /* display.c tmp_at() restores the preceding temporary cell whenever the
+       missile advances, then leaves the new one painted during messages. */
+    const show_missile = async () => {
+        if (tempMissile)
+            newsym(tempMissile.x, tempMissile.y);
+        display_object_at(singleobj, game.bhitpos.x, game.bhitpos.y);
+        tempMissile = { x: game.bhitpos.x, y: game.bhitpos.y };
+        if (game.animationFrame)
+            await game.animationFrame();
+    };
+    const end_missile = () => {
+        if (tempMissile) {
+            newsym(tempMissile.x, tempMissile.y);
+            tempMissile = null;
+        }
+    };
 
     singleobj.owornmask = 0;    /* threw one of multiple weapons in hand? */
     if (!canseemon(mon))
@@ -561,7 +579,10 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             break;
         }
         void forcehit; /* consumed by the flightcheck's hits_bars in C */
+        await show_missile();
     }
+    await show_missile();
+    end_missile();
     game.mesg_given = 0; /* reset */
 
     if (blindinc) {
@@ -676,6 +697,11 @@ export async function thrwmu(mtmp) {
 
     const mwep = MON_WEP(mtmp); /* wielded weapon */
     await monshoot(mtmp, otmp, mwep); /* multishot shooting or throwing */
+    /* src/mthrowu.c:1263, firing a volley interrupts any counted command
+       even when the missile hits a pet or another monster instead of the
+       hero.  The occupation wrapper notices multi == 0 on its next call and
+       releases the queued input. */
+    nomul(0);
 }
 
 /* src/mthrowu.c:18 URETREATING(x,y) */

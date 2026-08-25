@@ -6,7 +6,7 @@
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 
 import { game } from './gstate.js';
-import { OCLASSES, ONAMES } from './objects_data.js';
+import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import {
     mkobj, mksobj, next_ident, blessorcurse, special_corpse, start_corpse_timeout,
     mkcorpstat,
@@ -103,6 +103,7 @@ import { random_engraving, wipeout_text } from './engrave.js';
 import { merged, weight, sobj_at } from './invent.js';
 import { mkroll_launch } from './trap.js';
 import { themeroom_fill_contents, post_level_generate } from './themerms.js';
+import { oinit } from './o_init.js';
 import { mkroom_table, create_des_coder, spo_push_room,
          spo_endroom } from './sp_lev.js';
 
@@ -166,7 +167,8 @@ import { hole_destination } from './trap.js';
 import { Can_fall_thru } from './dungeon.js';
 import { lspo_map, lspo_region, sp_lev_wire, sp_lev_wire_mktrap,
          sp_lev_wire_okdoor, sp_lev_wire_subroom,
-         lspo_room, lspo_door, inside_room } from './sp_lev.js';
+         lspo_room, lspo_door, lspo_object, lspo_monster, lspo_exclusion,
+         inside_room } from './sp_lev.js';
 import { percent } from './nhlua.js';
 import { lua_shuffle } from './nhlua.js';
 
@@ -191,7 +193,7 @@ import {
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
-    SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
+    SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL,
     MKTRAP_NOFLAGS, MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB,
     MKTRAP_NOVICTIM,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
@@ -199,6 +201,7 @@ import {
     LR_UPTELE,
     LADDER, DRAWBRIDGE_UP, IS_AIR,
 } from './const.js';
+import { OBJ_FREE } from './obj.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
 const RANDOM_CLASS = 0;
@@ -311,9 +314,6 @@ export function u_on_upstairs() {
     // Random placement via place_lregion
     place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
 }
-
-// oinit stub (level-dependent object probability reset)
-function oinit() { /* no-op for contest */ }
 
 /* level_difficulty() now comes from js/makemon.js, which is where src/dungeon.c
    puts it; the local copy here duplicated it. */
@@ -1140,6 +1140,21 @@ function themeroom_fill(rm) {
         note_unported_lev(`themeroom_fill ${pick.name}`);
 }
 
+// src/nhlobj.c l_obj_new_readobjnam(), for the four exact names used by the
+// water-surrounded vault. readobjnam() resolves a full object name through
+// rnd_otyp_by_namedesc() even when only one type can win. xtra_prob is 1, so
+// that lookup spends rn2(oc_prob + 1) before mksobj(). Its implicit count of
+// one also spends rnd(6) for a mergeable object.
+function themeroom_obj_new(otyp) {
+    rn2(game.objects[otyp].oc_prob + 1);
+    const otmp = mksobj(otyp, true, false);
+    otmp.where = OBJ_FREE;
+    if (game.objects[otyp].oc_merge)
+        rnd(6);
+    otmp.owt = weight(otmp);
+    return otmp;
+}
+
 // The `contents` function of each shaped room, transcribed from themerms.lua.
 // Seventeen of the nineteen are a bare filler_region(a,b) and come straight
 // from the generated table; the two that are not are spelled out here.
@@ -1159,12 +1174,50 @@ function themeroom_contents(pick, mf) {
         });
         return true;
     }
+    if (pick.name === 'Water-surrounded vault') {
+        // dat/themerms.lua:765. Keep the Lua statement order because object
+        // initialization and both shuffles all draw from the game PRNG.
+        lspo_map(mf, () => {
+            lspo_region(3, 3, THEMEROOM, true, FILL_NONE, null, false);
+
+            const nasty_undead = [
+                'giant zombie', 'ettin zombie', 'vampire lord',
+            ];
+            const chest_spots = [[2, 2], [3, 2], [2, 3], [3, 3]];
+            lua_shuffle(chest_spots);
+
+            const escape_items = [
+                ONAMES.SCR_TELEPORTATION, ONAMES.RIN_TELEPORTATION,
+                ONAMES.WAN_TELEPORTATION, ONAMES.WAN_DIGGING,
+            ];
+            const itm = themeroom_obj_new(escape_items[rn2(4)]);
+            const itm_is_glass = game.objects[itm.otyp].oc_material
+                                 === MATERIALS.GLASS;
+            /* The pinned script spells this `olocked`, while lspo_object()
+               reads `locked`; C therefore keeps the generated lock state. */
+            const [bx, by] = chest_spots[0];
+            const box = lspo_object('chest', bx, by,
+                                    itm_is_glass ? { olocked: 'no' } : null);
+            obj_extract_self(itm);
+            add_to_container(box, itm);
+            box.owt = weight(box);
+
+            for (let i = 1; i < chest_spots.length; i++) {
+                const [x, y] = chest_spots[i];
+                lspo_object('chest', x, y);
+            }
+
+            lua_shuffle(nasty_undead);
+            lspo_monster(nasty_undead[0], 2, 2);
+            lspo_exclusion({ type: 'teleport', region: [2, 2, 3, 3] });
+        });
+        return true;
+    }
     if (mf.filler) {
         const [fx, fy] = mf.filler;
         lspo_map(mf, () => filler_region(fx, fy));
         return true;
     }
-    /* 'Water-surrounded vault' places objects and monsters; not ported. */
     return false;
 }
 
@@ -1771,6 +1824,15 @@ export function add_door(x, y, aroom) {
     for (const broom of g.level.rooms || []) {
         if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0)) continue;
         if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
+    }
+    /* C keeps rooms and subrooms in separate arrays and adjusts both when
+       inserting into the shared door array. Without this, the second shop in
+       a room-based Minetown reads another subroom's door coordinates. */
+    for (const broom of g.level.subrooms || []) {
+        if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0))
+            continue;
+        if ((broom.fdoor ?? 0) >= aroom.fdoor)
+            broom.fdoor++;
     }
     g.level.doors[aroom.fdoor] = { x, y };
     g.level.doorindex++;

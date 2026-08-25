@@ -15,11 +15,14 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
-         NO_MM_FLAGS } from './const.js';
+         NO_MM_FLAGS, RLOC_MSG, RLOC_NOMSG, RLOC_ERR,
+         BOLT_LIM, VAULT } from './const.js';
 import { rnl } from './rng.js';
-import { pline, see_nearby_objects } from './display.js';
+import { pline, see_nearby_objects, canspotmon, canseemon,
+         sensemon } from './display.js';
 import { Hallucination } from './youprop.js';
-import { is_demon, is_lord, is_prince, is_covetous } from './mondata.js';
+import { is_demon, is_lord, is_prince, is_covetous,
+         passes_walls } from './mondata.js';
 import { You, You_feel, You_cant } from './pline.js';
 import { getlin } from './cmd.js';
 import { get_level, depth, print_dungeon, dunlevs_in_dungeon } from './dungeon.js';
@@ -28,12 +31,14 @@ import { Is_knox_level } from './const.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
 import { t_at } from './mon.js';
 import { unconscious } from './trap.js';
-import { goodpos } from './makemon.js';
+import { goodpos, remove_monster, place_monster } from './makemon.js';
 import { newsym } from './display.js';
-import { vision_recalc } from './vision.js';
+import { vision_recalc, couldsee } from './vision.js';
 import { spoteffects } from './hack.js';
 import { morehungry } from './eat.js';
 import { getpos } from './getpos.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { distu } from './hacklib.js';
 
 import { isok, ECMD_OK, ECMD_TIME, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
 import { ONAMES } from './objects_data.js';
@@ -461,6 +466,142 @@ export function noteleport_level(mon) {
     return false;
 }
 
+function within_bounded_area(x, y, lx, ly, hx, hy) {
+    return x >= lx && x <= hx && y >= ly && y <= hy;
+}
+
+// src/teleport.c:386 tele_jump_ok(). Restricted special-level regions are
+// barriers: a teleport cannot cross into or out of either exclusion box.
+function tele_jump_ok(x1, y1, x2, y2) {
+    if (!isok(x2, y2))
+        return false;
+    for (const region of [game.dndest || {}, game.updest || {}]) {
+        if ((region.nlx | 0) > 0) {
+            const fromInside = within_bounded_area(
+                x1, y1, region.nlx, region.nly, region.nhx, region.nhy);
+            const toInside = within_bounded_area(
+                x2, y2, region.nlx, region.nly, region.nhx, region.nhy);
+            if (fromInside !== toInside)
+                return false;
+        }
+    }
+    return true;
+}
+
+// src/teleport.c:1575 rloc_pos_ok(), for an already placed ordinary
+// monster. Migrating arrivals and resident shop or temple restrictions are
+// recorded only when reached because they need their own arrival handling.
+function rloc_pos_ok(x, y, mtmp) {
+    if (!goodpos(x, y, mtmp, GP_CHECKSCARY))
+        return false;
+    if (!mtmp.mx) {
+        note_unported_teleport('rloc:migrating_arrival_region');
+        return true;
+    }
+    if (mtmp.isshk || mtmp.ispriest)
+        note_unported_teleport('rloc:resident_room');
+    return tele_jump_ok(mtmp.mx, mtmp.my, x, y);
+}
+
+// src/teleport.c:1648 rloc_to_core(), ordinary non-worm relocation path.
+async function rloc_to_core(mtmp, x, y, rlocflags) {
+    const oldx = mtmp.mx, oldy = mtmp.my;
+    const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
+    const vanishmsg = (rlocflags & RLOC_MSG) !== 0;
+    const domsg = !game.in_mklev && vanishmsg && !preventmsg;
+    let telemsg = false;
+
+    if (x === oldx && y === oldy && m_at(x, y) === mtmp)
+        return;
+
+    if (oldx) {
+        if (domsg && canspotmon(mtmp)) {
+            if (couldsee(x, y) || sensemon(mtmp)) {
+                telemsg = true;
+            } else {
+                await pline(`${Monnam(mtmp)} vanishes!`);
+            }
+        }
+        if (mtmp.wormno) {
+            note_unported_teleport('rloc:worm');
+        } else {
+            remove_monster(oldx, oldy);
+            newsym(oldx, oldy);
+        }
+    }
+
+    const { mon_track_clear, set_apparxy } = await import('./monmove.js');
+    mon_track_clear(mtmp);
+    place_monster(mtmp, x, y);
+    newsym(x, y);
+    set_apparxy(mtmp);
+
+    if (domsg && canspotmon(mtmp)) {
+        const du = distu(x, y);
+        const suffix = du <= 2 ? ' next to you'
+            : du <= BOLT_LIM * BOLT_LIM ? ' close by'
+            : telemsg && distu(oldx, oldy) !== du
+                ? (du < distu(oldx, oldy)
+                    ? ' closer to you' : ' farther away')
+                : '';
+        if (telemsg && (couldsee(x, y) || sensemon(mtmp)))
+            await pline(`${Monnam(mtmp)} vanishes and reappears${suffix}.`);
+        else
+            await pline(`${Monnam(mtmp)} ${game.u.ublind ? 'arrives' : 'appears'}${suffix}!`);
+    }
+}
+
+// src/teleport.c:1802 rloc(). Try 50 random coordinates first, then use the
+// same shuffled exhaustive fallback as C.
+export async function rloc(mtmp, rlocflags = 0) {
+    for (let trycount = 0; trycount < 50; ++trycount) {
+        const x = rnd(COLNO - 1);
+        const y = rn2(ROWNO);
+        if (rloc_pos_ok(x, y, mtmp)) {
+            await rloc_to_core(mtmp, x, y, rlocflags);
+            return true;
+        }
+    }
+
+    let ccFlags = CC_INCL_CENTER | CC_UNSHUFFLED | CC_SKIP_MONS;
+    if (!passes_walls(mtmp.data))
+        ccFlags |= CC_SKIP_INACCS;
+    const candy = collect_coords(Math.trunc(COLNO / 2),
+                                 Math.trunc(ROWNO / 2), 0, ccFlags, null);
+    let backup = null;
+    for (let i = 0; i < candy.length; ++i) {
+        const j = rn2(candy.length - i);
+        if (j > 0) {
+            const tmp = candy[i];
+            candy[i] = candy[i + j];
+            candy[i + j] = tmp;
+        }
+        const { x, y } = candy[i];
+        if (rloc_pos_ok(x, y, mtmp)) {
+            await rloc_to_core(mtmp, x, y, rlocflags);
+            return true;
+        }
+        if (!backup && goodpos(x, y, mtmp, NO_MM_FLAGS))
+            backup = { x, y };
+    }
+    if (backup) {
+        await rloc_to_core(mtmp, backup.x, backup.y, rlocflags);
+        return true;
+    }
+    if (rlocflags & RLOC_ERR)
+        note_unported_teleport('rloc:no_destination');
+    return false;
+}
+
+// src/teleport.c:1950 tele_restrict().
+export async function tele_restrict(mon) {
+    if (!noteleport_level(mon))
+        return false;
+    if (canseemon(mon))
+        await pline(`A mysterious force prevents ${mon_nam(mon)} from teleporting!`);
+    return true;
+}
+
 // src/teleport.c teleok() — may the hero teleport onto <x,y>?
 function teleok(x, y, trapok) {
     if (!trapok) {
@@ -607,6 +748,21 @@ export async function safe_teleds(teleds_flags) {
         return true;
     }
     return false;
+}
+
+// src/teleport.c:768 vault_tele() -- a one-shot teleport trap sends the hero
+// into the level's vault when that room has a valid free square.
+export async function vault_tele() {
+    const { search_special } = await import('./mkroom.js');
+    const { somexyspace } = await import('./mklev.js');
+    const croom = search_special(VAULT);
+    const c = { x: 0, y: 0 };
+
+    if (croom && somexyspace(croom, c) && teleok(c.x, c.y, false)) {
+        await teleds(c.x, c.y, TELEDS_TELEPORT);
+        return;
+    }
+    await tele();
 }
 
 // src/teleport.c:842 tele()

@@ -123,17 +123,71 @@ export function good_shopdoor(sroom) {
 // faithful, and names_avail is the generated list's length, which is why the
 // list must not lose or gain an entry.
 export function nameshk(shk, shknms) {
-    const nlp = SHKNAMES[shknms];
-    const names_avail = nlp.length;
+    let list_name = shknms;
+    let nlp = SHKNAMES[list_name];
+    let names_avail = nlp.length;
 
     if (shknms === 'shktools') {
         shk.shknam = nlp[rn2(names_avail)];
         shk.female = 0;         /* reversed below for '_' prefix */
     } else {
-        /* name_wanted needs ubirthday; the arm taken draws nothing either way */
-        (game.unported ||= new Set()).add('shknam:nameshk:ubirthday');
-        shk.female = 0;
+        /* The canonical recorder runs in America/New_York and copied the
+           recorder's daylight-saving flag before replacing its calendar
+           fields. The public and hidden corpus was recorded during EDT, so
+           every fixed wall time converts with the same UTC-4 offset. */
+        const dt = String(game.fixed_datetime || '');
+        const birthday = dt.length === 14
+            ? Date.UTC(Number(dt.slice(0, 4)), Number(dt.slice(4, 6)) - 1,
+                       Number(dt.slice(6, 8)), Number(dt.slice(8, 10)),
+                       Number(dt.slice(10, 12)), Number(dt.slice(12, 14)))
+                / 1000 + 4 * 60 * 60
+            : 0;
+        const nseed = Math.trunc(birthday / 257);
+        const ledger = (game.dungeons?.[game.u.uz.dnum]?.ledger_start || 0)
+            + game.u.uz.dlevel;
+        let name_wanted = shk.m_id + ledger
+            + (nseed % 13) - (nseed % 5);
+        if (name_wanted < 0)
+            name_wanted += 18;
+        shk.female = name_wanted & 1;
+        name_wanted %= names_avail;
+
+        let shname = null;
+        for (let trycnt = 0; trycnt < 50; ++trycnt) {
+            if (name_wanted < names_avail) {
+                shname = nlp[name_wanted];
+            } else {
+                const i = rn2(names_avail);
+                if (i) {
+                    shname = nlp[i - 1];
+                } else if (list_name !== 'shkgeneral') {
+                    list_name = 'shkgeneral';
+                    nlp = SHKNAMES[list_name];
+                    names_avail = nlp.length;
+                    continue;
+                } else {
+                    shname = shk.female ? '-Lucrezia' : '+Dirk';
+                }
+            }
+
+            if (shname[0] === '_' || shname[0] === '-')
+                shk.female = 1;
+            else if (shname[0] === '|' || shname[0] === '+')
+                shk.female = 0;
+
+            const duplicate = (game.level?.monsters || []).some(mtmp =>
+                mtmp !== shk && mtmp.mhp > 0 && mtmp.isshk
+                && (mtmp.shknam || mtmp.eshk?.shknam
+                    || mtmp.mextra?.eshk?.shknam) === shname);
+            if (!duplicate)
+                break;
+            name_wanted = names_avail;
+        }
+        shk.shknam = shname;
     }
+
+    if (shk.eshk)
+        shk.eshk.shknam = shk.shknam;
 }
 
 // src/shknam.c:465 get_shop_item() — pick one item type for a shop square.
@@ -176,7 +230,8 @@ function shkinit(shp, sroom) {
     set_malign(shk);
     shk.msleeping = 0;
     shk.eshk = {
-        shoproom: game.level.rooms.indexOf(sroom) + ROOMOFFSET,
+        shoproom: ((sroom.roomnoidx ?? game.level.rooms.indexOf(sroom))
+                   + ROOMOFFSET),
         shoptype: sroom.rtype,
         shd: game.level.doors[sh],
         shk: { x: sx, y: sy },

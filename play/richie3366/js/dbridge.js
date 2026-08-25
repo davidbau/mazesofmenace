@@ -128,7 +128,8 @@ export function is_drawbridge_wall(x, y) {
 
 /**
  * C ref: dbridge.c is_db_wall :169–173 — closed portcullis (typ == DBWALL).
- * Callers: zap.c zap_updown WAN_OPENING / WAN_STRIKING; lock/hack/dig named.
+ * Callers: zap.c zap_updown WAN_OPENING / WAN_STRIKING / WAN_LOCKING;
+ * lock/hack/dig named.
  */
 export function is_db_wall(x, y) {
     return (game.level?.at(x, y)?.typ | 0) === DBWALL;

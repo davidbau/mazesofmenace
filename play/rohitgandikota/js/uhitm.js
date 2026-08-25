@@ -25,7 +25,7 @@ import { end_running } from './hack.js';
 import { mon_nam, Monnam, y_monnam, upstart } from './do_name.js';
 import { exclam } from './zap.js';
 import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline } from './display.js';
-import { wakeup, killed, xkilled, seemimic } from './mon.js';
+import { wakeup, killed, xkilled, seemimic, setmangry } from './mon.js';
 import { DEADMONSTER } from './monst.js';
 import { is_pole } from './u_init.js';
 import { bimanual } from './obj.js';
@@ -33,7 +33,7 @@ import { is_ammo, is_missile, ammo_and_launcher, uwepgone } from './wield.js';
 import { useup } from './invent.js';
 import { rnl } from './rng.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
-import { yname, cxname } from './objnam.js';
+import { yname, cxname, xname, The, makeplural } from './objnam.js';
 import { mintrap } from './trap.js';
 import { clone_mon } from './makemon.js';
 import { rn2, rnd, d } from './rng.js';
@@ -46,7 +46,8 @@ import { adjalign, near_capacity } from './attrib.js';
 import { abon, hitval, weapon_hit_bonus, dmgval, weapon_dam_bonus, use_skill, uwep_skill_type, weapon_type } from './weapon.js';
 import { find_mac } from './worn.js';
 import { worn } from './do_wear.js';
-import { is_orc, unsolid, noncorporeal, amorphous, thick_skinned, attacktype, sticks } from './mondata.js';
+import { is_orc, unsolid, noncorporeal, amorphous, thick_skinned, attacktype,
+         sticks, haseyes, cantwield } from './mondata.js';
 import { mon_hates_silver } from './dog.js';
 import { s_suffix } from './hacklib.js';
 import { vtense } from './objnam.js';
@@ -67,6 +68,8 @@ import { W_ARM, W_ARMS, P_BARE_HANDED_COMBAT, P_BASIC,
          STRAT_WAITMASK, engulfing_u } from './const.js';
 import { is_undead } from './mondata.js';
 import { A_LAWFUL } from './const.js';
+import { FACE, HAND } from './const.js';
+import { body_part, mbodypart } from './polyself.js';
 
 function note_unported_uhitm(what) {
     (game.unported ||= new Set()).add(`uhitm:${what}`);
@@ -162,8 +165,17 @@ export async function do_attack(mtmp) {
 
     if (game.unweapon) {
         game.unweapon = false;
-        if (game.flags?.verbose)
-            note_unported_uhitm('do_attack:unweapon_message');
+        if (game.flags?.verbose) {
+            if (game.u.uwep) {
+                await You(`begin bashing monsters with ${yname(game.u.uwep)}.`);
+            } else if (!cantwield(game.youmonst.data)) {
+                const action = Role_if(PMNAMES.PM_MONK)
+                    ? 'striking' : 'bashing';
+                await You(`begin ${action} monsters with your ${
+                    game.u.uarmg ? 'gloved' : 'bare'} ${
+                    makeplural(body_part(HAND))}.`);
+            }
+        }
     }
     exercise(A_STR, true);  /* you're exercising muscles */
     /* andrew@orca: prevent unlimited pick-axe attacks */
@@ -205,7 +217,7 @@ export async function attack_checks(mtmp, wep) {
        looking at it again */
     const glyph = glyph_at(game.bhitpos.x, game.bhitpos.y);
     const glyph_is_warning = (g) => g?.kind === 'warning';
-    const glyph_is_invisible = (g) => g?.kind === 'invisible';
+    const glyph_is_invisible = (g) => g?.kind === 'invis';
 
     if (!canspotmon(mtmp)
         && !glyph_is_warning(glyph) && !glyph_is_invisible(glyph)
@@ -1014,9 +1026,60 @@ async function hmon_hitmon_do_hit(hmd, mon, obj) {
             if (hmd.mdat === game.mons[PMNAMES.PM_SHADE] && !shade_aware(obj)) {
                 hmd.dmg = 0;
             } else {
-                note_unported_uhitm('hmon_hitmon:misc_obj');
+                await hmon_hitmon_misc_obj(hmd, mon, obj);
             }
         }
+    }
+}
+
+// src/uhitm.c:1280 hmon_hitmon_misc_obj() - non-weapon impact effects.
+async function hmon_hitmon_misc_obj(hmd, mon, obj) {
+    switch (obj.otyp) {
+    case ONAMES.CREAM_PIE:
+    case ONAMES.BLINDING_VENOM: {
+        mon.msleeping = 0;
+        const can_blind = haseyes(hmd.mdat)
+                          && !(!mon.mcansee && !(mon.mblinded || 0));
+
+        if (can_blind) {
+            if (game.u.ublind) {
+                await pline(obj.otyp === ONAMES.CREAM_PIE ? 'Splat!'
+                                                          : 'Splash!');
+            } else if (obj.otyp === ONAMES.BLINDING_VENOM) {
+                await pline(`The venom blinds ${mon_nam(mon)}${
+                    mon.mcansee ? '' : ' further'}!`);
+            } else {
+                let whom = mon_nam(mon);
+                const what = The(xname(obj));
+
+                if (haseyes(hmd.mdat)
+                    && hmd.mdat !== game.mons[PMNAMES.PM_FLOATING_EYE])
+                    whom = `${s_suffix(whom)} ${mbodypart(mon, FACE)}`;
+                await pline(`${what} ${vtense(what, 'splash')} over ${whom}!`);
+            }
+            await setmangry(mon, true);
+            mon.mcansee = 0;
+            const duration = rn1(25, 21);
+            mon.mblinded = Math.min(127, (mon.mblinded || 0) + duration);
+        } else {
+            await pline(obj.otyp === ONAMES.CREAM_PIE ? 'Splat!' : 'Splash!');
+            await setmangry(mon, true);
+        }
+
+        if (hmd.thrown) {
+            if (obj === game.thrownobj)
+                game.thrownobj = null;
+        } else {
+            useup(obj);
+        }
+        hmd.hittxt = true;
+        hmd.get_dmg_bonus = false;
+        hmd.dmg = 0;
+        break;
+    }
+    default:
+        note_unported_uhitm('hmon_hitmon:misc_obj');
+        break;
     }
 }
 
@@ -1472,6 +1535,24 @@ export async function mhitm_ad_elec(magr, mattk, mdef, mhm) {
     }
 }
 
+// src/uhitm.c:3122 mhitm_ad_drst(), poison carried by a natural attack.
+// Magical cancellation is checked before the one-in-eight poison gate.
+export async function mhitm_ad_drst(magr, mattk, mdef, mhm) {
+    const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
+
+    if (magr === game.youmonst) {
+        if (!negated && !rn2(8))
+            note_unported_uhitm('mhitm_ad_drst:uhitm_poison');
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk, mhm.indx);
+        mhm.hitflags |= M_ATTK_HIT;
+        if (!negated && !rn2(8))
+            note_unported_uhitm('mhitm_ad_drst:mhitu_poisoned');
+    } else if (!negated && !rn2(8)) {
+        note_unported_uhitm('mhitm_ad_drst:mhitm_really_poison');
+    }
+}
+
 export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     const A = ATTKS;
     const pd = game.mons[mdef.mnum];
@@ -1639,4 +1720,3 @@ export function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     note_unported_uhitm('mhitm_knockback:hurtle');
     return false;
 }
-

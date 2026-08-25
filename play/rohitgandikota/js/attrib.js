@@ -17,7 +17,7 @@ import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE,
          FROMEXPER, FROMRACE, FROMOUTSIDE, Is_airlevel } from './const.js';
 import { strongmonst } from './mondata.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1 } from './rng.js';
 import { role_abil, race_abil } from './role_data.js';
 import { You_feel } from './pline.js';
 import {
@@ -114,42 +114,50 @@ export function near_capacity() {
 // is C's verbatim.
 export async function encumber_msg() {
     const newcap = near_capacity();
+    const oldcap = game.oldcap;
 
-    if (game.oldcap < newcap) {
-        switch (newcap) {
-        case 1:
-            await Your('movements are slowed slightly because of your load.');
-            break;
-        case 2:
-            await You('rebalance your load.  Movement is difficult.');
-            break;
-        case 3:
-            note_unported_attrib('encumber_msg:stagger');
-            await You('stagger under your heavy load.  Movement is very hard.');
-            break;
-        default:
-            await You(`${newcap === 4 ? 'can barely' : "can't even"}`
-                      + ' move a handspan with this load!');
-            break;
+    if (game._encumber_status_stale && oldcap !== newcap)
+        game._deferred_status_capacity = oldcap;
+    try {
+        if (oldcap < newcap) {
+            switch (newcap) {
+            case 1:
+                await Your('movements are slowed slightly because of your load.');
+                break;
+            case 2:
+                await You('rebalance your load.  Movement is difficult.');
+                break;
+            case 3:
+                note_unported_attrib('encumber_msg:stagger');
+                await You('stagger under your heavy load.  Movement is very hard.');
+                break;
+            default:
+                await You(`${newcap === 4 ? 'can barely' : "can't even"}`
+                          + ' move a handspan with this load!');
+                break;
+            }
+            game.botl = true;
+        } else if (oldcap > newcap) {
+            switch (newcap) {
+            case 0:
+                await Your('movements are now unencumbered.');
+                break;
+            case 1:
+                await Your('movements are only slowed slightly by your load.');
+                break;
+            case 2:
+                await You('rebalance your load.  Movement is still difficult.');
+                break;
+            case 3:
+                note_unported_attrib('encumber_msg:stagger');
+                await You('stagger under your load.  Movement is still very hard.');
+                break;
+            }
+            game.botl = true;
         }
-        game.botl = true;
-    } else if (game.oldcap > newcap) {
-        switch (newcap) {
-        case 0:
-            await Your('movements are now unencumbered.');
-            break;
-        case 1:
-            await Your('movements are only slowed slightly by your load.');
-            break;
-        case 2:
-            await You('rebalance your load.  Movement is still difficult.');
-            break;
-        case 3:
-            note_unported_attrib('encumber_msg:stagger');
-            await You('stagger under your load.  Movement is still very hard.');
-            break;
-        }
-        game.botl = true;
+    } finally {
+        delete game._deferred_status_capacity;
+        delete game._encumber_status_stale;
     }
 
     game.oldcap = newcap;
@@ -557,17 +565,49 @@ export function exerper() {
 }
 
 // src/attrib.c exerchk() — apply the accumulated exercise when due.
-export function exerchk() {
+export async function exerchk() {
     globalThis.__EC = (globalThis.__EC ?? 0) + 1;
     /*  Check out the periodic accumulations */
     exerper();
 
     /*  Are we ready for a test? */
     if (game.moves >= game.context.next_attrib_check && !game.multi) {
-        /* The test itself adjusts attributes through adjattrib() and needs
-           ATTRMIN/ATTRMAX plus the poly rules; it draws only through
-           attrcurse(), which no reachable state triggers yet. */
-        note_unported_attrib('exerchk:test');
+        for (let i = 0; i < A_MAX; i++) {
+            let ax = AEXE(i);
+            if (!ax)
+                continue;
+
+            const mod_val = Math.sign(ax);
+            const lolim = ATTRMIN(i);
+            const hilim = Math.min(ATTRMAX(i), 18);
+            if (ax < 0 ? ABASE(i) <= lolim : ABASE(i) >= hilim) {
+                setAEXE(i, Math.trunc(Math.abs(ax) / 2) * mod_val);
+                continue;
+            }
+            if (game.u.umonnum !== game.u.umonster && i !== A_WIS) {
+                setAEXE(i, Math.trunc(Math.abs(ax) / 2) * mod_val);
+                continue;
+            }
+
+            const target = i !== A_WIS
+                ? Math.trunc(Math.abs(ax) * 2 / 3) : Math.abs(ax);
+            if (rn2(AVAL) <= target
+                && await adjattrib(i, mod_val, -1)) {
+                setAEXE(i, 0);
+                ax = 0;
+                await You(`${mod_val > 0 ? 'must have been' : "haven't been"} ${
+                    [
+                        ['exercising diligently', 'exercising properly'],
+                        [null, null],
+                        ['very observant', 'paying attention'],
+                        ['working on your reflexes', 'working on reflexes lately'],
+                        ['leading a healthy life-style', 'watching your health'],
+                        [null, null],
+                    ][i][mod_val > 0 ? 0 : 1]}.`);
+            }
+            setAEXE(i, Math.trunc(Math.abs(ax) / 2) * mod_val);
+        }
+        game.context.next_attrib_check += rn1(200, 800);
     }
 }
 

@@ -14,7 +14,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          ECMD_TIME, TT_BEARTRAP, TT_INFLOOR, I_SPECIAL,
          WORN_ARMOR, WORN_CLOAK, WORN_SHIRT, WORN_HELMET, WORN_GLOVES,
          WORN_SHIELD, WORN_BOOTS, WORN_AMUL, WORN_BLINDF,
-         LEFT_RING, RIGHT_RING } from './const.js';
+         LEFT_RING, RIGHT_RING, TIMEOUT } from './const.js';
 import { setworn } from './worn.js';
 import { welded, is_sword } from './wield.js';
 import { bimanual, is_metallic } from './obj.js';
@@ -23,7 +23,7 @@ import { sgn } from './hacklib.js';
 import { erode_obj, is_flammable, is_rustprone, is_crackable, is_rottable,
          is_corrodeable, is_damageable } from './trap.js';
 import { erosion_matters } from './mkobj.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
          ERODE_NONE, EF_PAY, EF_DESTROY, ER_NOTHING,
          ER_DESTROYED } from './const.js';
@@ -111,6 +111,25 @@ export function Armor_on() {
         note_unported_do_wear('Armor_on:artifact_light');
     return 0;
 }
+
+/* Every armor-slot on-handler ends by revealing the item's enchantment: the
+   status-line AC change makes its +/- value evident. Slot-specific magical
+   effects remain in their dedicated handlers; these common tails cover the
+   ordinary armor paths. */
+function reveal_worn_armor(mask) {
+    const obj = worn(mask);
+    if (obj && !obj.known) {
+        obj.known = 1;
+        update_inventory();
+    }
+    return 0;
+}
+
+function Cloak_on()  { return reveal_worn_armor(W_ARMC); }
+function Helmet_on() { return reveal_worn_armor(W_ARMH); }
+function Gloves_on() { return reveal_worn_armor(W_ARMG); }
+function Shield_on() { return reveal_worn_armor(W_ARMS); }
+function Shirt_on()  { return reveal_worn_armor(W_ARMU); }
 
 /* include/prop.h enum prop_types, index -> uprops key. The flat uprops map
    keys by the C constant's name; setworn's generic property arm (src/worn.c)
@@ -214,9 +233,18 @@ export function donning(otmp) {
         result = true;
     else if (otmp === game.u.uarm)
         result = (game.afternmv === Armor_on);
+    else if (otmp === game.u.uarmc)
+        result = (game.afternmv === Cloak_on);
+    else if (otmp === game.u.uarmh)
+        result = (game.afternmv === Helmet_on);
+    else if (otmp === game.u.uarmg)
+        result = (game.afternmv === Gloves_on);
     else if (otmp === game.u.uarmf)
         result = (game.afternmv === Boots_on);
-    /* Shirt_on/Cloak_on/Helmet_on/Gloves_on/Shield_on are not ported */
+    else if (otmp === game.u.uarms)
+        result = (game.afternmv === Shield_on);
+    else if (otmp === game.u.uarmu)
+        result = (game.afternmv === Shirt_on);
 
     return result;
 }
@@ -267,7 +295,12 @@ export function cancel_don() {
        corresponding armor category takes 1 turn to wear, but check all of
        them anyway (only the ported handlers can appear on this tree) */
     tk.cancelled_don = (game.afternmv === Armor_on
-                        || game.afternmv === Boots_on);
+                        || game.afternmv === Cloak_on
+                        || game.afternmv === Helmet_on
+                        || game.afternmv === Gloves_on
+                        || game.afternmv === Boots_on
+                        || game.afternmv === Shield_on
+                        || game.afternmv === Shirt_on);
     game.afternmv = null;
     game.nomovemsg = null;
     game.multi = 0;
@@ -307,6 +340,7 @@ async function on_msg(otmp) {
 export async function Boots_on() {
     const uarmf = worn(W_ARMF);
     if (!uarmf) return;
+    const oldprop = (game.u.uprops?.FUMBLING || 0) & ~WORN_BOOTS;
     switch (uarmf.otyp) {
     case ONAMES.LOW_BOOTS:
     case ONAMES.IRON_SHOES:
@@ -326,11 +360,23 @@ export async function Boots_on() {
         break;
     case ONAMES.WATER_WALKING_BOOTS:
     case ONAMES.ELVEN_BOOTS:
-    case ONAMES.FUMBLE_BOOTS:
     case ONAMES.LEVITATION_BOOTS:
     default:
         note_unported_do_wear(`Boots_on:otyp=${uarmf.otyp}`);
         break;
+    case ONAMES.FUMBLE_BOOTS: {
+        const intrinsic = (game.u.intrinsic ||= {});
+        const old = intrinsic.HFumbling || 0;
+        if (!oldprop && !(old & ~TIMEOUT)) {
+            const timeout = Math.min(TIMEOUT, (old & TIMEOUT) + rnd(20));
+            intrinsic.HFumbling = (old & ~TIMEOUT) | timeout;
+        }
+        break;
+    }
+    }
+    if (game.u.uarmf && !game.u.uarmf.known) {
+        game.u.uarmf.known = 1;
+        update_inventory();
     }
 }
 
@@ -369,6 +415,15 @@ export async function Amulet_on(amul) {
     case ONAMES.AMULET_OF_REFLECTION:
     case ONAMES.FAKE_AMULET_OF_YENDOR:
         break;
+    case ONAMES.AMULET_OF_RESTFUL_SLEEP: {
+        const intrinsic = (game.u.intrinsic ||= {});
+        const oldnap = (intrinsic.HSleepy || 0) & TIMEOUT;
+        const newnap = rnd(98) + 2;
+        if (newnap < oldnap || oldnap === 0)
+            intrinsic.HSleepy = ((intrinsic.HSleepy || 0) & ~TIMEOUT)
+                                | newnap;
+        break;
+    }
     default:
         note_unported_do_wear(`Amulet_on:otyp=${amul.otyp}`);
         break;
@@ -589,9 +644,12 @@ export async function accessory_or_armor_on(obj) {
         setworn(obj, mask);
         let afternmv = null;
         if (mask === W_ARM) afternmv = Armor_on;
+        else if (mask === W_ARMC) afternmv = Cloak_on;
+        else if (mask === W_ARMH) afternmv = Helmet_on;
+        else if (mask === W_ARMG) afternmv = Gloves_on;
         else if (mask === W_ARMF) afternmv = Boots_on;
-        /* the other slots' handlers reduce to their property grant, which
-           setworn has already applied */
+        else if (mask === W_ARMS) afternmv = Shield_on;
+        else if (mask === W_ARMU) afternmv = Shirt_on;
 
         const delay = -(objects[obj.otyp].oc_delay || 0);
         if (delay) {
@@ -619,6 +677,13 @@ export async function accessory_or_armor_on(obj) {
 // src/do_wear.c:1461 Blindf_on() — wear a blindfold/towel/lenses. The
 // wielded-release, ball&chain and Eyes-of-the-Overworld arms need absent
 // state; the blindness toggle itself is the live path.
+async function toggle_blindness() {
+    (game.disp ||= {}).botl = true;
+    game.vision_full_recalc = 1;
+    const { vision_recalc } = await import('./vision.js');
+    vision_recalc(0);
+}
+
 export async function Blindf_on(otmp) {
     const already_blind = !!game.u.ublind;
 
@@ -632,11 +697,10 @@ export async function Blindf_on(otmp) {
     if (game.u.ublind && !already_blind) {
         if (game.flags?.verbose)
             await You_cant('see any more.');
-        /* toggle_blindness() — vision swap for the new state */
-        game.vision_full_recalc = 1;
+        await toggle_blindness();
     } else if (already_blind && !game.u.ublind) {
         await You('can see!');
-        game.vision_full_recalc = 1;
+        await toggle_blindness();
     }
 }
 
@@ -829,11 +893,11 @@ export async function Blindf_off(otmp) {
         } else {
             await You_cant('see anything now!');
         }
-        game.vision_full_recalc = 1;
+        await toggle_blindness();
     } else if (was_blind) {
         /* gulp_blnd_check() needs the engulfed state; absent */
         await You('can see again.');
-        game.vision_full_recalc = 1;
+        await toggle_blindness();
     }
 }
 

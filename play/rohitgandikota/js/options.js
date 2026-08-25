@@ -1016,6 +1016,7 @@ async function doset_simple_menu() {
                    routing it through parseoptions() updated game.rc.opts and
                    left the menu showing the old value. */
                 game.flags[allopt[k].name] = !bool_optval(allopt[k]);
+                boolopt_side_effects(allopt[k].name);
             } else if (allopt[k].hasHandler !== 'Yes') {
                 /* src/options.c:8672 — a compound option with no handler
                    asks for its value outright. C then re-enters
@@ -1066,10 +1067,8 @@ export async function doset_simple() {
        with updated settings to offer chance for further change */
     do {
         pickedone = await doset_simple_menu();
-        /* go.opt_need_redraw drives reset_needed_visuals()+flush_screen(1);
-           nothing ported sets it, and the flush-model audit this port still
-           owes C is the blocker for adding it (see docs/plan/NOTES.md). */
     } while (pickedone > 0);
+    await reset_needed_visuals();
     return ECMD_OK;
 }
 
@@ -1138,7 +1137,7 @@ function boolopt_side_effects(name) {
         if (bool_optval(findOption('color')))
             game.opt_need_redraw = true;
         break;
-    case 'showrace': case 'use_inverse': case 'hilite_pile':
+    case 'showrace': case 'use_inverse': case 'hilite_pet': case 'hilite_pile':
     case 'color':
         game.opt_need_redraw = true;
         break;

@@ -17,7 +17,7 @@ import { mdistu, mon_track_clear, m_everyturn_effect,
 
 import { game } from './gstate.js';
 import { worm_cross } from './worm.js';
-import { adjalign } from './attrib.js';
+import { adjalign, change_luck } from './attrib.js';
 import { couldsee, cansee, does_block, unblock_point, vision_recalc } from './vision.js';
 import { finish_meating } from './dogmove.js';
 import { growl } from './sounds.js';
@@ -30,13 +30,15 @@ import { which_armor } from './worn.js';
 import { obj_resists } from './zap.js';
 import { mksobj_at, splitobj, mkobj, place_object, clear_splitobjs, mkgold, undead_to_corpse } from './mkobj.js';
 import { weight } from './invent.js';
-import { newsym, canseemon, canspotmon, pline } from './display.js';
+import { newsym, canseemon, canspotmon, pline,
+         unmap_invisible } from './display.js';
 import { rn1, rn2, rnd, rnl, d } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster, place_monster, goodpos } from './makemon.js';
 import { enexto_core, enexto } from './teleport.js';
 import { GP_CHECKSCARY, STRAT_WAITFORU, BOLT_LIM, NC_SHOW_MSG, ismnum,
-         G_GENOD } from './const.js';
+         G_GENOD, A_NONE, ARTICLE_NONE, ARTICLE_THE,
+         SUPPRESS_SADDLE } from './const.js';
 import { G_UNIQ } from './const.js';
 import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, STRAT_WAITMASK, XKILL_GIVEMSG,
          M_AP_FURNITURE, M_AP_OBJECT, ROOM, is_pit, I_SPECIAL,
@@ -65,6 +67,7 @@ import { Is_waterlevel, Is_rogue_level, engulfing_u, In_endgame,
 import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
     is_clinger, is_flyer, is_floater, mindless, dmgtype, attacktype, mon_resistancebits, humanoid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
+import { distant_name, doname } from './objnam.js';
 import { You, You_feel } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { touch_petrifies, acidic, mon_hates_silver, could_reach_item } from './dog.js';
@@ -278,12 +281,11 @@ async function movemon_singlemon(mtmp) {
             && await fightm(mtmp))
             return false; /* mon might have died */
     }
-    await dochug(mtmp);   /* C: dochugw(mtmp, TRUE) — the occupation
-                             interrupt half of dochugw is not ported */
+    await dochugw(mtmp, true);
     return false;
 }
 
-import { dochug, m_canseeu } from './monmove.js';
+import { dochugw, m_canseeu } from './monmove.js';
 import { fightm } from './mhitm.js';
 
 // include/you.h:560 m_next2u() — distu((m)->mx, (m)->my) <= 2.
@@ -1479,9 +1481,38 @@ export async function xkilled(mtmp, xkill_flags) {
     more_experienced(tmp, 0);
     await newexplevel(); /* will decide if you go up */
 
-    if (mtmp.ispriest || mdat.msound === MSOUND.MS_NEMESIS
-        || mdat.msound === MSOUND.MS_GUARDIAN)
-        note_unported_mon('xkilled:alignment_arms');
+    /* src/mon.c:3674: apply special-kill adjustments, then the malign value
+       fixed when the monster was created. */
+    const alignlim = 10 + Math.trunc((game.moves || 0) / 200);
+    if (mtmp.m_id === game.quest_status?.leader_m_id) {
+        adjalign(-(game.u.ualign.record + Math.trunc(alignlim / 2)));
+        game.u.ugangr = (game.u.ugangr || 0) + 7;
+        change_luck(-20);
+        note_unported_mon('xkilled:quest_leader');
+    } else if (mdat.msound === MSOUND.MS_NEMESIS) {
+        if (!game.quest_status?.killed_leader)
+            adjalign(Math.trunc(alignlim / 4));
+    } else if (mdat.msound === MSOUND.MS_GUARDIAN) {
+        adjalign(-Math.trunc(alignlim / 8));
+        game.u.ugangr = (game.u.ugangr || 0) + 1;
+        change_luck(-4);
+        note_unported_mon('xkilled:guardian_message');
+    } else if (mtmp.ispriest) {
+        const palign = mtmp.epri?.shralign
+                    ?? mtmp.mextra?.epri?.shralign ?? A_NONE;
+        const coaligned = sgn(palign) === sgn(game.u.ualign.type);
+        adjalign(coaligned ? -2 : 2);
+        if (coaligned)
+            game.u.ublessed = 0;
+        if (mdat.maligntyp === A_NONE)
+            adjalign(Math.trunc(alignlim / 4));
+    } else if (mtmp.mtame) {
+        adjalign(-15);
+        note_unported_mon('xkilled:tame_message');
+    } else if (mtmp.mpeaceful) {
+        adjalign(-5);
+    }
+    adjalign(mtmp.malign || 0);
 }
 
 // src/mon.c:6058 shieldeff_mon() — the "resists!" flash.
@@ -1561,7 +1592,7 @@ export function seemimic(mtmp) {
 // Returns after the FIRST object taken; C's comment says "pick only one".
 //
 // distant_name/doname, mpickobj and check_gear_next_turn are recorded.
-export function mpickstuff(mtmp) {
+export async function mpickstuff(mtmp) {
     const mdat = game.mons[mtmp.mnum];
 
     /* prevent shopkeepers from leaving the door of their shop */
@@ -1587,7 +1618,6 @@ export function mpickstuff(mtmp) {
         if (is_mines_prize(otmp) || is_soko_prize(otmp))
             continue;
 
-        /* Nymphs take everything.  Most monsters don't pick up corpses. */
         if (mon_would_take_item(mtmp, otmp)) {
             /* Nymphs take everything.  Most monsters don't pick up corpses. */
             if (otmp.otyp === ONAMES.CORPSE && mdat.mlet !== MONSYMS.S_NYMPH
@@ -1609,9 +1639,9 @@ export function mpickstuff(mtmp) {
             if (cansee(mtmp.mx, mtmp.my)) {
                 /* C calls distant_name() for its SIDE EFFECTS even when the
                    result is not printed, and does so BEFORE the extract */
-                note_unported_mon('mpickstuff:distant_name');
+                const otmpname = distant_name(otmp, doname);
                 if (game.flags?.verbose)
-                    note_unported_mon('mpickstuff:pline_picks_up');
+                    await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
             }
             obj_extract_self(otmp3);        /* remove from floor */
             /* src/steal.c:618 mpickobj() — may merge and free otmp3.
@@ -1834,6 +1864,10 @@ export async function mondead(mdef) {
         if ((mv.died | 0) < 255)
             mv.died = (mv.died | 0) + 1;
     }
+    /* src/mon.c:3170, death proves the remembered invisible marker stale.
+       Clear it before detaching so the corpse or dropped object can replace
+       it on the same screen boundary. */
+    unmap_invisible(mx, my);
     remove_monster(mx, my);
     const idx = (game.level?.monsters || []).indexOf(mdef);
     if (idx >= 0)

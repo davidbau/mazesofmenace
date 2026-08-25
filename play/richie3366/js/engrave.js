@@ -1,7 +1,7 @@
 // engrave.js — Engrave command / floor inscriptions (partial).
 // C ref: engrave.c doengrave, engrave occupation, make_engr_at, engr_at,
 //        read_engr_at, wipeout_text, wipe_engr_at, u_wipe_engr,
-//        random_engraving, make_grave, can_reach_floor;
+//        random_engraving, rloc_engr, make_grave, can_reach_floor;
 //        hack.c maybe_smudge_engr.
 //
 // Branch envelope: u_can_engrave floor gate + getobj write-with (hands `-`
@@ -17,7 +17,7 @@
 // domove smudge via maybe_smudge_engr → wipe_engr_at(rnd(5)).
 // Named omissions: wand/weapon/marker/towel/gem/ring stylus sfx;
 // altar/jello/swallow/lava/pool; add-to/overwrite yn; multi-turn
-// dulling occupation; del_engr/rloc_engr; livelog;
+// dulling occupation; livelog;
 // allmain DEX timeout D-1372; dokick(2) D-1360;
 // uhitm do_attack(3) D-1373; dothrow throw_obj(2) D-1374;
 // dig.c still stubbed;
@@ -36,7 +36,7 @@
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, newsym } from './display.js';
 import { getlin } from './getline.js';
@@ -51,13 +51,14 @@ import {
 } from './objects.js';
 import {
     DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, ICE,
-    ROOM, GRAVE, IS_GRAVE, MM_NOMSG,
+    ROOM, GRAVE, IS_GRAVE, MM_NOMSG, COLNO, ROWNO,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
     FLYING,
 } from './const.js';
 import { nomul } from './hack.js';
 import { t_at, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
+import { goodpos } from './teleport.js';
 import { makemon } from './makemon.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { mons, is_hider, is_clinger, is_flyer, MZ_HUGE } from './monsters.js';
@@ -126,6 +127,27 @@ export function del_engr(ep) {
             return;
         }
     }
+}
+
+/**
+ * C engrave.c rloc_engr :1666–1681 — randomly relocate one engraving.
+ * `goodpos(NULL, 0)` is the live teleport.c export (D-1476 zap_map
+ * TELE). `newsym` the destination; C notes the caller handled the
+ * old cell (zap_map does not newsym it).
+ */
+export function rloc_engr(ep) {
+    if (!ep) return;
+    let tryct = 200;
+    let tx;
+    let ty;
+    do {
+        if (--tryct < 0) return;
+        tx = rn1(COLNO - 3, 2);
+        ty = rn2(ROWNO);
+    } while (engr_at(tx, ty) || !goodpos(tx, ty, null, 0));
+    ep.engr_x = tx;
+    ep.engr_y = ty;
+    newsym(tx, ty);
 }
 
 /** C hack.h / global.h BUFSZ — wipeout_text modulus + read_engr_at buf. */

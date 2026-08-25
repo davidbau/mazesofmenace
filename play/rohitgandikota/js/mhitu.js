@@ -20,12 +20,13 @@ import { ATTKS, MONSYMS, PMNAMES, MFLAGS } from './monst_data.js';
 import { W_ARMOR, W_AMUL, NON_PM, u_at, is_pit, Upolyd, PRONOUN_HALLU,
          M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
          M_ATTK_DEF_DIED,
+         RLOC_MSG,
          TT_PIT, WATER, P_WHIP, P_POLEARMS, NEED_WEAPON,
          NEED_HTH_WEAPON } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { genders } from './role_data.js';
 import { pline, canspotmon, canseemon, mon_visible, sensemon, bot,
-         newsym } from './display.js';
+         map_invisible, newsym } from './display.js';
 import { cansee } from './vision.js';
 import { Monnam } from './do_name.js';
 import { You_hear } from './pline.js';
@@ -42,10 +43,12 @@ import { xname } from './objnam.js';
 import { nomul } from './hack.js';
 import { stop_occupation } from './allmain.js';
 import { hitval, mon_wield_item } from './weapon.js';
-import { mhitm_ad_phys, mhitm_ad_elec, mhitm_knockback } from './uhitm.js';
+import { mhitm_ad_phys, mhitm_ad_elec, mhitm_ad_drst,
+         mhitm_knockback } from './uhitm.js';
 import { t_at } from './mon.js';
 import { touch_petrifies } from './dog.js';
 import { find_offensive } from './muse.js';
+import { steal } from './steal.js';
 
 function note_unported_mhitu(what) {
     (game.unported ||= new Set()).add(what);
@@ -259,11 +262,6 @@ async function wildmiss(mtmp, mattk) {
         else
             await pline(`${Monst_name} is fooled by water reflections and misses!`);
     }
-}
-
-// src/display.c map_invisible() — remembered 'I' marker; absent, recorded.
-function map_invisible(x, y) {
-    note_unported_mhitu('display:map_invisible');
 }
 
 // src/mhitu.c:310 getmattk() — the attack for this slot, with substitutions.
@@ -756,6 +754,38 @@ async function hitmu(mtmp, mattk, indx) {
     } else if (mattk[1] === A.AD_ELEC) {
         mhm.indx = indx;
         await mhitm_ad_elec(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_DRST || mattk[1] === A.AD_DRDX
+               || mattk[1] === A.AD_DRCO) {
+        await mhitm_ad_drst(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_SITM || mattk[1] === A.AD_SEDU) {
+        mhm.damage = 0;
+        if (is_animal(mtmp.data)) {
+            await hitmsg(mtmp, mattk, indx);
+            if (mtmp.mcan)
+                return mhm.hitflags;
+        } else if (mtmp.mcan) {
+            note_unported_mhitu('hitmu:cancelled_seduction');
+            return mhm.hitflags;
+        }
+
+        const stolenName = {};
+        const stolen = await steal(mtmp, stolenName);
+        if (stolen < 0) {
+            mhm.hitflags = M_ATTK_AGR_DIED;
+            mhm.done = true;
+        } else if (stolen > 0) {
+            if (!is_animal(mtmp.data)) {
+                const { tele_restrict, rloc } = await import('./teleport.js');
+                if (!await tele_restrict(mtmp))
+                    await rloc(mtmp, RLOC_MSG);
+            } else if (stolenName.value && canseemon(mtmp)) {
+                note_unported_mhitu('hitmu:animal_theft_message');
+            }
+            const { monflee } = await import('./monmove.js');
+            monflee(mtmp, 0, false, false);
+            mhm.hitflags = M_ATTK_AGR_DONE;
+            mhm.done = true;
+        }
     } else {
         note_unported_mhitu(`hitmu:adtyp=${mattk[1]}`);
         /* the generic arms still print the plain hit message */
@@ -825,11 +855,20 @@ export async function mdamageu(mtmp, n) {
         if (game.u.mh < 1)
             note_unported_mhitu('mdamageu:rehumanize');
     } else {
+        const shownHp = game.u.uhp;
         game.u.uhp -= n;
         showdamage(n);
         if (game.u.uhp > game.u.uhpmax)
             game.u.uhp = game.u.uhpmax;
         if (game.u.uhp < 1) {
+            /* When this hit follows another message on the same top line,
+               both that joined line and the death line keep the status HP
+               painted by the earlier message. A lone fatal hit is repainted
+               to zero immediately. */
+            if ((game._pending_message || '').includes('  ')) {
+                game._deferred_status_hp_until_more = Math.max(shownHp | 0, 0);
+                game._deferred_status_hp_more_count = 2;
+            }
             const { done_in_by, DIED } = await import('./end.js');
             await done_in_by(mtmp, DIED);
         }

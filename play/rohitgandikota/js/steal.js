@@ -1,37 +1,153 @@
-// steal.js — theft and monster-inventory release.
+// steal.js: theft and monster-inventory release.
 // C ref: src/steal.c
-//
-// Only the release half is here so far: mdrop_obj() and relobj(), reached by
-// a pet putting down what it fetched (dogmove.c:420). The theft half (stealing
-// nymphs, seducers) belongs to monster attacks that are not ported.
 
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import { doname } from './objnam.js';
 import { Monnam } from './do_name.js';
 import { pline_xy } from './pline.js';
-import { newsym } from './display.js';
+import { newsym, pline } from './display.js';
 import { place_object, unknow_object } from './mkobj.js';
-import { stackobj, obj_extract_self } from './invent.js';
+import { freeinv, stackobj, obj_extract_self } from './invent.js';
 import { flooreffects } from './do.js';
 /* src/light.c obj_sheds_light() == obj_is_burning(): a lit lamp/candle/
    artifact. The port tracks lamplit; artifact light records elsewhere. */
 const obj_sheds_light = (o) => !!o.lamplit;
-import { attacktype } from './mondata.js';
-import { ATTKS } from './monst_data.js';
+import { attacktype, is_animal } from './mondata.js';
+import { ATTKS, MONSYMS } from './monst_data.js';
 import { canseemon } from './display.js';
 import { merged } from './invent.js';
 import { LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN,
-         OBJ_MINVENT } from './const.js';
-import { ONAMES } from './objects_data.js';
+         OBJ_MINVENT, W_ARMOR, W_ACCESSORY, W_WEAPONS } from './const.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
 import { droppables } from './dog.js';
 import { costly_spot } from './shk.js';
 import { obj_resists } from './zap.js';
 import { is_quest_artifact } from './questpgr.js';
 import { W_SADDLE } from './const.js';
+import { rn2, rn1 } from './rng.js';
+import { setnotworn } from './worn.js';
+import { stop_occupation } from './allmain.js';
+import { encumber_msg } from './attrib.js';
 
 function note_unported_steal(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/steal.c:14 somegold() — choose the proportional amount used by theft
+// and by a fountain taking part of the hero's money.
+export function somegold(lmoney) {
+    let gold = Math.min(lmoney, 0x7fffffff);
+
+    if (gold < 50)
+        return gold;
+    if (gold < 100)
+        return rn1(gold - 25 + 1, 25);
+    if (gold < 500)
+        return rn1(gold - 50 + 1, 50);
+    if (gold < 1000)
+        return rn1(gold - 100 + 1, 100);
+    if (gold < 5000)
+        return rn1(gold - 500 + 1, 500);
+    if (gold < 10000)
+        return rn1(gold - 1000 + 1, 1000);
+    return rn1(gold - 5000 + 1, 5000);
+}
+
+function theft_removal_name(obj) {
+    let name = doname(obj);
+    name = name.replace(/^(?:an?|the) /, 'your ')
+               .replace(' (being worn)', '')
+               .replace(' (alternate weapon; not wielded)', '')
+               .replace(' (on left hand)', ' (from left hand)')
+               .replace(' (on right hand)', ' (from right hand)');
+    return name;
+}
+
+// src/steal.c:306 worn_item_removal(), ordinary worn object path.
+async function worn_item_removal(mon, obj) {
+    const name = theft_removal_name(obj);
+    const verb = (obj.owornmask & W_WEAPONS) ? 'disarms'
+               : (obj.owornmask & W_ACCESSORY) ? 'removes' : 'takes off';
+    await pline(`${Monnam(mon)} ${verb} ${name}.`);
+    setnotworn(obj);
+}
+
+// src/steal.c:343 steal(). This covers the nymph and monkey weighted item
+// choice, immediate worn-item removal, inventory transfer, and messages.
+// Multi-turn armor seduction remains marked at the exact selected object.
+export async function steal(mtmp, objnambuf = null) {
+    const u = game.u;
+    const monkey_business = is_animal(mtmp.data);
+    const inventory = game.invent || [];
+    const noncoin = inventory.filter(o => o.oclass !== OCLASSES.COIN_CLASS);
+
+    if (!noncoin.length) {
+        await pline(`${Monnam(mtmp)} tries to rob you, but there is nothing to steal!`);
+        return 1;
+    }
+
+    const candidates = inventory.filter(obj =>
+        (!u.uarm || obj !== u.uarmc)
+        && obj !== u.uskin && obj.oclass !== OCLASSES.COIN_CLASS);
+    let total = 0;
+    for (const obj of candidates)
+        total += (obj.owornmask & (W_ARMOR | W_ACCESSORY)) ? 5 : 1;
+    if (!total)
+        return 1;
+
+    let pick = rn2(total), otmp = null;
+    for (const obj of candidates) {
+        pick -= (obj.owornmask & (W_ARMOR | W_ACCESSORY)) ? 5 : 1;
+        if (pick < 0) {
+            otmp = obj;
+            break;
+        }
+    }
+    if (!otmp)
+        return 0;
+
+    if ((otmp === u.uleft || otmp === u.uright) && u.uarmg)
+        otmp = u.uarmg;
+    if (otmp === u.uarmg && u.uwep)
+        otmp = u.uwep;
+    else if (otmp === u.uarm && u.uarmc)
+        otmp = u.uarmc;
+    else if (otmp === u.uarmu && u.uarmc)
+        otmp = u.uarmc;
+    else if (otmp === u.uarmu && u.uarm)
+        otmp = u.uarm;
+
+    if (otmp.otyp === ONAMES.BOULDER && !monkey_business) {
+        note_unported_steal('steal:boulder');
+        return 0;
+    }
+
+    await stop_occupation();
+    let named = false;
+    if (otmp.owornmask & (W_ARMOR | W_ACCESSORY)) {
+        if (otmp.oclass === OCLASSES.ARMOR_CLASS
+            && (game.objects[otmp.otyp].oc_delay | 0) > 0
+            && !monkey_business) {
+            note_unported_steal('steal:delayed_armor');
+            return 0;
+        }
+        await worn_item_removal(mtmp, otmp);
+        named = mtmp.data.mlet === MONSYMS.S_NYMPH;
+    } else if (otmp.owornmask) {
+        await worn_item_removal(mtmp, otmp);
+    }
+
+    const lost_name = doname(otmp);
+    if (objnambuf && typeof objnambuf === 'object')
+        objnambuf.value = lost_name;
+    mtmp.mavenge = 1;
+    freeinv(otmp);
+    await pline(`${named ? 'She' : Monnam(mtmp)} stole ${doname(otmp)}.`);
+    await encumber_msg();
+    otmp.how_lost = LOST_STOLEN;
+    mpickobj(mtmp, otmp);
+    return 1;
 }
 
 // src/steal.c:814 mdrop_obj() — monster puts one object on its own square.
@@ -151,7 +267,9 @@ export function mpickobj(mtmp, otmp) {
         if (merged({ o: held }, { o: otmp }))
             return 1; /* obj merged and then free'd */
     }
-    (mtmp.minvent ||= []).push(otmp);
+    /* add_to_minv() prepends to the nobj chain. Inventory order controls
+       both which item a monster drops first and which item is drawn on top. */
+    (mtmp.minvent ||= []).unshift(otmp);
     otmp.where = OBJ_MINVENT;
     otmp.ocarry = mtmp;
     return 0;

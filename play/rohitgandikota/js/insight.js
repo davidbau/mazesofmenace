@@ -32,15 +32,16 @@ import { rank_of } from './botl.js';
 import { money_cnt } from './invent.js';
 import { costly_spot } from './shk.js';
 import { newuexp } from './exper.js';
+import { night, midnight } from './calendar.js';
 import { type_is_pname } from './mondata.js';
-import { inv_weight } from './attrib.js';
+import { inv_weight, near_capacity } from './attrib.js';
 import { ONAMES } from './objects_data.js';
 import { pline } from './display.js';
 import { Fast, Very_fast, from_what } from './attrib.js';
 import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Shock_resistance, Poison_resistance, Stealth, Searching,
          Warning, Teleport_control, See_invisible,
-         Infravision } from './youprop.js';
+         Infravision, Deaf } from './youprop.js';
 
 // include/attrib.h
 const A_STR = 0, A_INT = 1, A_WIS = 2, A_DEX = 3, A_CON = 4, A_CHA = 5;
@@ -179,15 +180,20 @@ function background_enlightenment() {
         enlght_line('You ', 'entered ',
                     `the dungeon ${game.moves} turn${plur(game.moves)} ago`, '');
 
-    /* src/insight.c:645 — the midnight/nighttime arms need the wall clock
-       (night(), midnight()); the recorded panels carry neither line. */
+    /* really_done() freezes these values before the disclosure prompts so
+       waiting at a prompt cannot change the final report. */
+    if (en_final ? game.iflags?.at_midnight : midnight())
+        enl_msg('It ', 'is ', 'was ', 'the midnight hour', '');
+    else if (en_final ? game.iflags?.at_night : night())
+        enl_msg('It ', 'is ', 'was ', 'nighttime', '');
 
     /* src/insight.c:653 — "other environmental factors" */
     if (game.flags.moonphase === FULL_MOON
         || game.flags.moonphase === NEW_MOON) {
         enl_msg('There ', 'is ', 'was ',
                 `a ${game.flags.moonphase === FULL_MOON ? 'full' : 'new'}`
-                + ' moon in effect', '');
+                + ` moon in effect${en_final
+                    ? ' when your adventure ended' : ''}`, '');
     }
     if (game.flags.friday13)
         out(` Bad things ${!en_final ? 'can happen'
@@ -314,14 +320,31 @@ function status_enlightenment() {
     out('');
     out(`${en_final ? 'Final ' : ''}Status:`);
 
+    if (Deaf())
+        you_are('deaf');
+
+    /* src/insight.c:1181, restful sleep and other Sleepy sources. */
+    if ((game.u.intrinsic?.HSleepy || game.u.uprops?.SLEEPY))
+        enl_msg('You ', 'fall', 'fell', ' asleep uncontrollably', '');
+
     /* hunger: hu_stat[] is empty for the normal state, and C substitutes
        "not hungry", which the contraction turns into "aren't hungry";
        wizard mode reveals u.uhunger (insight.c:1208) */
     you_are('not hungry' + (game.wizard ? ` <${game.u.uhunger}>` : ''));
 
-    /* encumbrance: near_capacity() is UNENCUMBERED with a starting pack;
-       wizard mode reveals inv_weight() (insight.c:1245) */
-    you_are('unencumbered' + (game.wizard ? ` <${inv_weight()}>` : ''));
+    /* src/insight.c:1211 encumbrance. */
+    const cap = near_capacity();
+    if (cap > 0) {
+        const enc = ['unencumbered', 'burdened', 'stressed', 'strained',
+                     'overtaxed', 'overloaded'];
+        const adj = ['?', 'slightly', 'moderately', 'very', 'extremely',
+                     'not possible'];
+        let state = enc[cap] + (game.wizard ? ` <${inv_weight()}>` : '');
+        state += `; movement is ${adj[cap]}${cap < 5 ? ' slowed' : ''}`;
+        you_are(state);
+    } else {
+        you_are('unencumbered' + (game.wizard ? ` <${inv_weight()}>` : ''));
+    }
 
     /* src/insight.c:1270 weapon_insight() — the reachable arms: weaponless
        (empty_handed) or wielding a plain weapon described by its skill
@@ -882,11 +905,11 @@ export async function list_vanquished(defquery, ask) {
             const { tty_yn_function } = await import('./tty/topl.js');
             c = await tty_yn_function(
                 'Do you want an account of creatures vanquished?',
-                'ynq', defquery || 'n');
+                ntypes > 1 ? 'ynaq' : 'ynq', defquery || 'n');
         }
         if (c === 'q')
             game.done_stopprint = (game.done_stopprint | 0) + 1;
-        if (c !== 'y')
+        if (c !== 'y' && c !== 'a')
             return;
         const {
             tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
@@ -930,7 +953,7 @@ export async function list_vanquished(defquery, ask) {
             await xwaitforspace(' \r\n\x1b');
         tty_destroy_nhwindow(win);
         await docrt();
-    } else if (ask) {
+    } else if (ask && !game.program_state_gameover) {
         await pline('No creatures have been vanquished.');
     }
 }

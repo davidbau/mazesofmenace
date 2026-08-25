@@ -50,7 +50,8 @@ export async function stop_occupation() {
 }
 
 import { rn2, rn1 } from './rng.js';
-import { exerchk, change_luck, ACURR, near_capacity } from './attrib.js';
+import { encumber_msg, exerchk, change_luck, ACURR,
+         near_capacity } from './attrib.js';
 import { init_uhunger } from './eat.js';
 import { settrack, initrack } from './track.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
@@ -107,6 +108,7 @@ import { depth } from './dungeon.js';
 import { rnd } from './rng.js';
 import { find_ac } from './do_wear.js';
 import { clear_splitobjs } from './mkobj.js';
+import { pickup } from './pickup.js';
 
 // C ref: allmain.c newgame()
 export async function newgame() {
@@ -193,6 +195,9 @@ export async function newgame() {
             return;
         }
     }
+
+    game.context.ident = 2;  /* id 1 is reserved for gy.youmonst */
+    game.context.next_attrib_check = 600;
 
     /* src/allmain.c:776 — "turn on 3.6 tributes". stock_room's
        specialspot = rnd(stockcount) draw for the novel is gated on this,
@@ -402,12 +407,9 @@ export async function newgame() {
     // hero-can't-move loop starts at -NORMAL_SPEED instead of 0 and runs its
     // new-turn block twice per command, advancing the turn counter twice.
     g.context.rndencode = rnd(9000);
-    /* src/allmain.c:73 — a NEW game calls set_wear((struct obj *) 0) here,
-       "for side-effects of starting gear", and nothing else. The
-       read_engr_at() on line 87 is in the `if (resuming)` branch and only
-       runs when RESTORING a save, so it is not on this path at all; an
-       earlier comment here claimed pickup(1), which C does not call either.
-       set_wear is 30 lines in src/do_wear.c but is a DISPATCHER, not a leaf:
+    /* src/allmain.c:73 calls set_wear((struct obj *) 0) here for the side
+       effects of starting gear. set_wear is 30 lines in src/do_wear.c but is
+       a dispatcher, not a leaf:
        it calls Blindf_on, Ring_on, Amulet_on, Shirt_on, Armor_on, Cloak_on,
        Boots_on, Gloves_on, Helmet_on and Shield_on, and NONE of those ten
        exist in js/ yet. Porting it means porting whichever of them the
@@ -418,6 +420,11 @@ export async function newgame() {
        tools/unported-hits.mjs has this reached by 100% of sessions, but the
        reach figure counts the CALL, not the work behind it. */
     set_wear(null);   /* for side-effects of starting gear */
+    /* src/allmain.c:74-75 clears the flags set while creating starting
+       inventory, then performs the initial-square autopickup. */
+    for (const obj of (g.invent || []))
+        obj.pickup_prev = 0;
+    await pickup(1);
     g.context.seer_turn = rnd(30);
     g.u.umovement = NORMAL_SPEED;
 
@@ -660,6 +667,8 @@ export async function moveloop_core() {
         do {                       /* src/allmain.c:207 hero-can't-move loop */
             let monscanmove;
 
+            await encumber_msg();
+
             /* src/allmain.c:211 — monsters keep taking turns until none of
                them has movement left, or until the hero has banked enough to
                act. This inner loop is the whole reason a pet gets to move at
@@ -736,11 +745,15 @@ export async function moveloop_core() {
                    attribute the hunger and encumbrance state calls for, and
                    each of those spends an rn2(19). */
                 age_spells();
-                exerchk();
+                await exerchk();
 
-                /* src/allmain.c:358 — invault() needs the vault-guard
-                   subsystem (pre-existing gap); the Amulet check runs for
-                   any hero carrying it (the endgame tour does) */
+                /* src/allmain.c:357 vault occupancy and guard arrival. */
+                {
+                    const { invault } = await import('./vault.js');
+                    await invault();
+                }
+
+                /* The Amulet check runs for any hero carrying it. */
                 if (g.u.uhave?.amulet) {
                     const { amulet } = await import('./wizard.js');
                     await amulet();
@@ -775,6 +788,10 @@ export async function moveloop_core() {
                 }
             }
         } while (g.u.umovement < NORMAL_SPEED);
+
+        /* src/allmain.c:403 checks again after timeout and monster actions,
+           so inventory changes made by the hero get immediate feedback. */
+        await encumber_msg();
 
         /* src/allmain.c:409 — INSIDE the context.move gate: the vicinity
            counter only advances on cores where time actually passed, which
@@ -845,14 +862,6 @@ export async function moveloop_core() {
      *         if (monster_nearby()) stop_occupation();
      *     }
      */
-    /* a helpless hero (multi < 0) takes no command; the turn machinery above
-       advanced the count, and context.move stays set so the next core call
-       burns the next helpless turn, exactly like an occupation. */
-    if ((g.multi ?? 0) < 0) {
-        g.context.move = 1;
-        return;
-    }
-
     if ((g.multi ?? 0) >= 0 && g.occupation) {
         if ((await g.occupation()) === 0)
             g.occupation = null;
@@ -872,6 +881,15 @@ export async function moveloop_core() {
        when the hero's position actually changed. u_calc_moveamt reads it to
        decide whether a mounted hero's budget comes from the steed. */
     g.u.umoved = false;
+
+    /* a helpless hero (multi < 0) takes no command; the turn machinery above
+       advanced the count, and context.move stays set so the next core call
+       burns the next helpless turn, exactly like an occupation. C clears
+       u.umoved before reaching this state. */
+    if ((g.multi ?? 0) < 0) {
+        g.context.move = 1;
+        return;
+    }
 
     /* src/allmain.c:515 — the run/rush loop. While multi is positive the hero
        keeps moving WITHOUT reading another key, which is what makes one

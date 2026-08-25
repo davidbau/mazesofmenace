@@ -7,11 +7,11 @@
 import { game } from './gstate.js';
 import { getobj, GETOBJ_PROMPT, ECMD_TIME, ECMD_OK } from './invent.js';
 import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR,
-         A_STR, A_CON } from './const.js';
+         A_STR, A_CON, W_BALL, W_ART, W_ARTI, TT_BURIEDBALL } from './const.js';
 import { sgn, distu } from './hacklib.js';
 import { valid_cloud_pos } from './region.js';
 import { cansee } from './vision.js';
-import { bcsign } from './mkobj.js';
+import { bcsign, blessorcurse, uncurse } from './mkobj.js';
 import { chwepon } from './wield.js';
 import { erosion_matters } from './mkobj.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -21,7 +21,7 @@ import { getlin } from './cmd.js';
 import { name_to_monplus } from './mondata.js';
 import { makemon } from './makemon.js';
 import { canseemon } from './display.js';
-import { Amonnam } from './do_name.js';
+import { Amonnam, trycall } from './do_name.js';
 import { MM_NOEXCLAM } from './const.js';
 import { study_book } from './spell.js';
 import { do_mapping } from './detect.js';
@@ -29,7 +29,7 @@ import { do_clear_area, vision_recalc } from './vision.js';
 import { makeknown } from './o_init.js';
 import { more_experienced } from './exper.js';
 import { You } from './pline.js';
-import { useup, identify_pack } from './invent.js';
+import { useup, identify_pack, update_inventory } from './invent.js';
 import { exercise } from './attrib.js';
 import { A_WIS } from './const.js';
 
@@ -80,13 +80,19 @@ export async function doread(read_ok) {
                              && scroll.cursed));
     await pline(nodisappear ? 'You read the scroll.'
                             : 'As you read the scroll, it disappears.');
+    if (game.u.uprops?.CONFUSION || game.u.intrinsic?.HConfusion) {
+        if (game.u.uprops?.HALLUC && !game.u.uprops?.HALLUC_RES)
+            await pline('Being so trippy, you screw up...');
+        else
+            await pline('Being confused, you mispronounce the magic words...');
+    }
 
     if (!await seffects(scroll)) {
         if (!game.objects[otyp].oc_name_known) {
             if (game.known)
                 learnscroll(scroll);
-            /* else trycall() asks for a name; not reachable while known
-               stays false only for effectless scrolls we record */
+            else
+                await trycall(scroll);
         }
         if (otyp !== ONAMES.SCR_BLANK_PAPER)
             useup(scroll);
@@ -132,6 +138,10 @@ async function seffects(sobj) {
         return await seffect_light(sobj);
     case ONAMES.SCR_DESTROY_ARMOR:
         return await seffect_destroy_armor(sobj);
+    case ONAMES.SCR_REMOVE_CURSE:
+    case ONAMES.SPE_REMOVE_CURSE:
+        await seffect_remove_curse(sobj);
+        break;
     case ONAMES.SCR_STINKING_CLOUD:
         await seffect_stinking_cloud(sobj);
         break;
@@ -140,6 +150,74 @@ async function seffects(sobj) {
         break;
     }
     return false;
+}
+
+// src/read.c:1490 seffect_remove_curse(). A cursed scroll only reports and
+// disintegrates. An uncursed one processes eligible carried objects in list
+// order, which also preserves blessorcurse() draw order when confused.
+async function seffect_remove_curse(sobj) {
+    const otyp = sobj.otyp;
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const confused = !!(game.u.intrinsic?.HConfusion
+                         || game.u.uprops?.CONFUSION);
+    const hallucinating = !!game.u.uprops?.HALLUC
+                          && !game.u.uprops?.HALLUC_RES;
+
+    await You(`feel ${!hallucinating
+        ? (!confused ? 'like someone is helping you.'
+                     : 'like you need some help.')
+        : (!confused ? 'in touch with the Universal Oneness.'
+                     : 'the power of the Force against you!')}`);
+
+    if (scursed) {
+        await pline('The scroll disintegrates.');
+    } else {
+        for (const obj of [...(game.invent || [])]) {
+            if (obj.oclass === OCLASSES.COIN_CLASS)
+                continue;
+            if (obj === sobj && obj.quan === 1)
+                continue;
+
+            let wornmask = (obj.owornmask | 0) & ~(W_BALL | W_ART | W_ARTI);
+            if (wornmask && !sblessed) {
+                if (obj === game.u.uswapwep && !game.u.twoweap) {
+                    wornmask = 0;
+                } else if (obj === game.u.uquiver) {
+                    if (obj.oclass === OCLASSES.WEAPON_CLASS) {
+                        if (!game.objects[obj.otyp].oc_merge)
+                            wornmask = 0;
+                    } else if (obj.oclass === OCLASSES.GEM_CLASS) {
+                        if (game.u.uwep?.otyp !== ONAMES.SLING)
+                            wornmask = 0;
+                    } else {
+                        wornmask = 0;
+                    }
+                }
+            }
+
+            if (sblessed || wornmask || obj.otyp === ONAMES.LOADSTONE
+                || (obj.otyp === ONAMES.LEASH && obj.leashmon)) {
+                if (confused) {
+                    blessorcurse(obj, 2);
+                    obj.bknown = 0;
+                } else if (obj.cursed) {
+                    const knew_curse = !!obj.bknown;
+                    uncurse(obj);
+                    if (knew_curse && otyp === ONAMES.SCR_REMOVE_CURSE)
+                        learnscrolltyp(ONAMES.SCR_REMOVE_CURSE);
+                }
+            }
+        }
+        if (game.u.usteed)
+            note_unported_read('seffect_remove_curse:saddle');
+    }
+
+    if (game.uball && !confused)
+        note_unported_read('seffect_remove_curse:unpunish');
+    if (game.u.utraptype === TT_BURIEDBALL)
+        note_unported_read('seffect_remove_curse:buried_ball');
+    update_inventory();
 }
 
 // src/read.c:1324 seffect_destroy_armor()

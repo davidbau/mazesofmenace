@@ -58,7 +58,8 @@ import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_D
 export async function noises(magr, mattk) {
     const farq = (mdistu(magr) > 15);
 
-    if (!Deaf() && (farq !== game.far_noise || game.moves - (game.noisetime | 0) > 10)) {
+    if (!Deaf() && (farq !== (game.far_noise ?? false)
+                    || game.moves - (game.noisetime | 0) > 10)) {
         game.far_noise = farq;
         game.noisetime = game.moves;
         await You_hear(
@@ -395,10 +396,10 @@ export async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     pre_mm_attack(magr, mdef);
 
     const compat = !magr.mcan ? could_seduce(magr, mdef, mattk) : 0;
-    if (compat)
-        note_unported_mhitm('hitmm:seduce_msg');
-
-    if (game.vis && !compat) {
+    if (game.vis && compat) {
+        await pline(`${Monnam(magr)} ${mdef.mcansee ? 'smiles at' : 'talks to'} ${
+            mon_nam(mdef)} ${compat === 2 ? 'engagingly' : 'seductively'}.`);
+    } else if (game.vis) {
         let buf = '';
         switch (mattk[0]) {
         case A.AT_BITE: buf = `${Monnam(magr)} bites`; break;

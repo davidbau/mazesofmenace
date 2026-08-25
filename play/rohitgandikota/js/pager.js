@@ -13,7 +13,9 @@ import { game } from './gstate.js';
 import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          D_TRAPPED, D_BROKEN, IS_WALL,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
-         MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, ECMD_OK } from './const.js';
+         MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, ECMD_OK,
+         TER_DETECT, TER_MAP, M_AP_TYPE, M_AP_FURNITURE,
+         M_AP_OBJECT } from './const.js';
 import { defsyms, monexplain, oc_explain, def_monsyms, def_oc_syms,
          cmap_names } from './drawing_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -158,6 +160,15 @@ function look_at_monster(mtmp, x, y) {
         buf += ', leashed to you';
     if (mtmp.mtrapped)
         note_unported_pager('look_at_monster:mtrapped');
+    const appearance = M_AP_TYPE(mtmp);
+    if (appearance === M_AP_FURNITURE) {
+        const what = defsyms[mtmp.mappearance]?.explain || 'something';
+        buf += `, mimicking ${an(what)}`;
+    } else if (appearance === M_AP_OBJECT) {
+        /* The detection map replaces the remembered object glyph with the
+           monster glyph, so object_from_map() has no specific object to name. */
+        buf += ', mimicking something';
+    }
     /* monbuf (howmonseen beyond normal vision) needs see-invisible &c */
     return { buf, monbuf: '' };
 }
@@ -192,6 +203,10 @@ function lookat(x, y) {
         /* pm stays null for self: file lookup uses the name string.
            The only exception is a gnomish wizard, forced to the generic
            "wizard" entry (pager.c:673) — not a reachable start. */
+    } else if ((game.iflags?.terrainmode & (TER_DETECT | TER_MAP))
+               === TER_DETECT
+               && glyph.kind === 'cmap' && glyph.cmap === CM.S_stone) {
+        buf = 'unexplored area';
     } else if (glyph.kind === 'mon') {
         const mtmp = m_at(x, y);
         if (mtmp) {

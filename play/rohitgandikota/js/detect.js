@@ -6,7 +6,7 @@ import { rnl } from './rng.js';
 import { isok } from './hacklib.js';
 import { newsym, cls, docrt, canspotmon, sensemon, map_invisible,
          glyph_is_invisible_at, unmap_invisible } from './display.js';
-import { cmap_names, defsyms } from './drawing_data.js';
+import { cmap_names, def_monsyms, defsyms } from './drawing_data.js';
 import { You, You_feel } from './pline.js';
 import { m_at, t_at, seemimic } from './mon.js';
 import { Is_rogue_level, WM_MASK, D_LOCKED, D_CLOSED, ROWNO, COLNO,
@@ -28,9 +28,9 @@ import { recalc_block_point, unblock_point } from './vision.js';
 import { nomul } from './hack.js';
 import { back_to_glyph, show_glyph_cell, flush_screen, trap_glyph,
          xy_set_wall_state, pline, covers_traps } from './display.js';
-import { TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, IS_WALL,
+import { TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, IS_WALL,
          M_AP_FURNITURE } from './const.js';
-import { NO_COLOR, CLR_GREEN } from './terminal.js';
+import { NO_COLOR, CLR_GREEN, CLR_WHITE } from './terminal.js';
 import { cansee } from './vision.js';
 import { getpos } from './getpos.js';
 const CM = cmap_names;
@@ -87,6 +87,61 @@ async function browse_map(ter_typ, ter_explain) {
     await getpos(dummy_pos, false, ter_explain);
     game.iflags.terrainmode = 0;
     game.iflags.autodescribe = save_autodescribe;
+}
+
+// src/detect.c:798 monster_detect(), used by potions and fountains.
+// The one-shot path replaces the map with every live monster, lets getpos()
+// browse that temporary map, then restores the ordinary view.
+export async function monster_detect(otmp, mclass = 0) {
+    const monsters = (game.level?.monsters || []).filter(mtmp =>
+        mtmp.mhp > 0 && !(mtmp.isgd && !mtmp.mx));
+
+    if (!monsters.length) {
+        if (otmp)
+            note_unported_detect('monster_detect:strange_feeling');
+        return 1;
+    }
+
+    const swallowed = game.u.uswallow;
+    await cls();
+    const unconstrained = unconstrain_map();
+    for (const mtmp of monsters) {
+        if (mclass && mtmp.data.mlet !== mclass)
+            continue;
+        if (Hallucination())
+            note_unported_detect('monster_detect:hallucination_glyph');
+        show_glyph_cell(mtmp.mx, mtmp.my,
+                        def_monsyms[mtmp.data.mlet] || '?',
+                        mtmp.data.mcolor ?? NO_COLOR, false, 0,
+                        { kind: 'mon', mon: mtmp });
+        if (mtmp.wormno)
+            note_unported_detect('monster_detect:worm_segments');
+    }
+    if (!swallowed)
+        show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false, 0,
+                        { kind: 'hero' });
+
+    await You('sense the presence of monsters.');
+    if (otmp?.cursed)
+        note_unported_detect('monster_detect:wake_monsters');
+
+    if (otmp?.blessed && !unconstrained) {
+        await flush_screen(1);
+    } else {
+        const uprops = game.u.uprops ||= {};
+        const saved_detection = uprops.DETECT_MONSTERS;
+        uprops.DETECT_MONSTERS = true;
+        try {
+            await browse_map(TER_DETECT | TER_MON, 'monster of interest');
+        } finally {
+            if (saved_detection === undefined)
+                delete uprops.DETECT_MONSTERS;
+            else
+                uprops.DETECT_MONSTERS = saved_detection;
+        }
+    }
+    await map_redisplay();
+    return 0;
 }
 
 // src/detect.c:1893 dosearch0() — intrinsic autosearch vs explicit searching.
@@ -670,4 +725,3 @@ export async function reveal_terrain(which_subset) {
         await map_redisplay();
     }
 }
-

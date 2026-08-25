@@ -7,17 +7,17 @@
 
 import { game } from './gstate.js';
 import { mpickstuff } from './mon.js';
-import { sengr_at } from './engrave.js';
+import { sengr_at, wipe_engr_at } from './engrave.js';
 import { autoreturn_weapon } from './weapon.js';
 import { MON_WEP } from './monst.js';
-import { find_offensive } from './muse.js';
+import { find_offensive, find_misc, use_misc } from './muse.js';
 import { is_launcher, is_pole } from './u_init.js';
 import { ammo_and_launcher } from './wield.js';
 import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
-    IS_OBSTRUCTED, LAVAWALL,
+    IS_OBSTRUCTED, IS_STWALL, IS_TREE, LAVAWALL,
     P_DAGGER, P_KNIFE,
     AM_SHRINE, Amask2align, ROOMOFFSET, ALLOW_MDISP, ALLOW_M, SHOPBASE,
-    TEMPLE
+    TEMPLE, RLOC_MSG
 , STRAT_WAITFORU, STRAT_WAITMASK } from './const.js';
 import { amorphous, passes_walls, is_floater, nonliving,
          attacktype, can_blow, needspick, flaming, noncorporeal,
@@ -39,8 +39,8 @@ import { Is_container } from './obj.js';
 import { is_weptool } from './mkobj.js';
 import { metallivorous, corpse_eater, is_covetous,
          resist_conflict } from './mondata.js';
-import { may_dig } from './hack.js';
-import { place_monster, remove_monster } from './makemon.js';
+import { may_dig, in_town } from './hack.js';
+import { place_monster, remove_monster, hideunder } from './makemon.js';
 import { rn2, rnd } from './rng.js';
 import {
     dog_move, could_reach_item, dogfood, MANFOOD, ACCFOOD,
@@ -58,6 +58,7 @@ import { couldsee, cansee, clear_path, recalc_block_point,
 import { gettrack } from './track.js';
 import { distmin , isok, sgn, distu, dist2} from './hacklib.js';
 import { acurrstr } from './attrib.js';
+import { Hallucination } from './youprop.js';
 
 // include/mondata.h throws_rocks()
 const throws_rocks = (ptr) => (ptr.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
@@ -73,16 +74,31 @@ import {
 import { is_rider } from './makemon.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          MMOVE_NOMOVES, engulfing_u, NEED_WEAPON, NEED_HTH_WEAPON,
+         NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
          Upolyd, u_at } from './const.js';
 import { mon_wield_item } from './weapon.js';
 import { mattacku } from './mhitu.js';
 import { noattacks } from './mondata.js';
 import { helpless } from './monst.js';
-import { is_pick } from './mon.js';
+import { is_axe, is_pick } from './mon.js';
 import { MSOUND } from './monst_data.js';
 
 function note_unported_monmove(what) {
     (game.unported ||= new Set()).add('monmove:' + what);
+}
+
+const is_watch = (ptr) => ptr.pmidx === PMNAMES.PM_WATCHMAN
+    || ptr.pmidx === PMNAMES.PM_WATCH_CAPTAIN;
+
+// src/monmove.c:176 watch_on_duty() — a peaceful Minetown watch member has
+// a one-in-three chance to notice lock picking or digging in town.
+function watch_on_duty(mtmp) {
+    if (mtmp.mpeaceful
+        && in_town(game.u.ux + game.u.dx, game.u.uy + game.u.dy)
+        && mtmp.mcansee && m_canseeu(mtmp) && !rn2(3)) {
+        if (game.occtxt === 'picking the lock' || game.occtxt === 'digging')
+            note_unported_monmove('watch_on_duty:warning');
+    }
 }
 
 // src/priest.c:9 ALGN_SINNED — worse than strayed (-1..-3).
@@ -1006,6 +1022,10 @@ export async function dochug(mtmp) {
     if (mtmp.msleeping && !disturb(mtmp))
         return 0;
 
+    /* src/monmove.c:732: active monsters scuff any engraving beneath them
+       before status recovery or teleport checks. */
+    wipe_engr_at(mtmp.mx, mtmp.my, 1, false);
+
     /* src/monmove.c:735 — confused monsters get unconfused with small
        probability */
     if (mtmp.mconf && !rn2(50))
@@ -1019,11 +1039,14 @@ export async function dochug(mtmp) {
        turn. The rn2(40) is spent by EVERY fleeing monster; only one that
        can actually teleport then rloc()s. */
     if (mtmp.mflee && !rn2(40) && can_teleport(game.mons[mtmp.mnum])
-        && !mtmp.iswiz
-        && !(game.level?.flags?.noteleport)) {
-        /* rloc(mtmp, RLOC_MSG) + leppie_stash */
-        note_unported('dochug:flee_teleport_rloc');
-        return 0;
+        && !mtmp.iswiz) {
+        const { noteleport_level, rloc } = await import('./teleport.js');
+        if (!noteleport_level(mtmp)) {
+            if (await rloc(mtmp, RLOC_MSG)
+                && game.mons[mtmp.mnum].mlet === MONSYMS.S_LEPRECHAUN)
+                note_unported('dochug:leppie_stash');
+            return 0;
+        }
     }
 
     /* m_respond(): the shrieker/medusa special responses are recorded */
@@ -1058,6 +1081,17 @@ export async function dochug(mtmp) {
     const mdat = game.mons[mtmp.mnum];
     let status = 0;
     let panicattk = false;
+
+    /* src/monmove.c:794 checks defensive items first. That selector remains
+       outside the common early-game path, but find_misc() must still run for
+       carried containers because its failed rn2(5) check is observable. */
+    if (find_misc(mtmp)) {
+        await use_misc(mtmp);
+        return 0;
+    }
+
+    if (is_watch(mdat))
+        watch_on_duty(mtmp);
 
     /* src/monmove.c:840 — if monster is nearby you, and has to wield a
        weapon, do so. This costs the monster a move, of course. */
@@ -1196,6 +1230,28 @@ export async function dochug(mtmp) {
     return (status === MMOVE_DIED) ? 1 : 0;
 }
 
+// src/monmove.c:204 dochugw() -- move a monster, then interrupt an active
+// occupation when a hostile threat has newly come into view nearby.
+export async function dochugw(mtmp, chug) {
+    const x = mtmp.mx, y = mtmp.my;
+    const already_saw_mon = !!(chug && game.occupation && canspotmon(mtmp));
+    const rd = chug ? await dochug(mtmp) : 0;
+
+    if (game.occupation && !rd
+        && (Hallucination()
+            || (!mtmp.mpeaceful && !noattacks(game.mons[mtmp.mnum])))
+        && mdistu(mtmp) <= (BOLT_LIM + 1) * (BOLT_LIM + 1)
+        && (!already_saw_mon || !couldsee(x, y)
+            || dist2(x, y, game.u.ux, game.u.uy)
+                > (BOLT_LIM + 1) * (BOLT_LIM + 1))
+        && canspotmon(mtmp) && couldsee(mtmp.mx, mtmp.my)
+        && (mtmp.mcanmove ?? 1) && !onscary(game.u.ux, game.u.uy, mtmp)) {
+        const { stop_occupation } = await import('./allmain.js');
+        await stop_occupation();
+    }
+    return rd;
+}
+
 
 /* src/weapon.c select_rwep() — the throwing subsystem is absent; reaching
    this guard (a trapped weapon-monster out of melee range) is recorded. */
@@ -1280,9 +1336,8 @@ export async function m_move(mtmp, after) {
             const { shk_move } = await import('./shk.js');
             xm = await shk_move(mtmp);
         } else if (mtmp.isgd) {
-            /* gd_move(): the vault guard walk is not ported yet */
-            note_unported_monmove('m_move:gd_move');
-            xm = 0;
+            const { gd_move } = await import('./vault.js');
+            xm = await gd_move(mtmp);
         } else {
             const { pri_move } = await import('./priest.js');
             xm = await pri_move(mtmp);
@@ -1464,6 +1519,11 @@ export async function m_move(mtmp, after) {
         }
     }
 
+    if (mmoved === MMOVE_MOVED
+        && await m_digweapon_check(mtmp, nix, niy)) {
+        return MMOVE_DONE;
+    }
+
     if (mmoved === MMOVE_MOVED && (nix !== omx || niy !== omy)) {
         /* src/monmove.c:2006 — if ALLOW_U is set, either it's trying to
            attack you, or it thinks it is. Attack this spot in preference to
@@ -1499,6 +1559,32 @@ export async function m_move(mtmp, after) {
     }
 
     return await postmov(mtmp, ptr, omx, omy, mmoved);
+}
+
+// src/monmove.c:1108 m_digweapon_check() lets a tunneling monster ready the
+// tool needed for its chosen square. Equipping it spends this move.
+async function m_digweapon_check(mtmp, nix, niy) {
+    const mw_tmp = MON_WEP(mtmp);
+    const can_tunnel = !IRL_const(game.u.uz) && tunnels(mtmp.data);
+
+    if (can_tunnel && needspick(mtmp.data) && !mwelded(mw_tmp)
+        && (may_dig(nix, niy) || closed_door_mm(nix, niy))) {
+        if (closed_door_mm(nix, niy)) {
+            if (!mw_tmp || !is_pick(mw_tmp) || !is_axe(mw_tmp))
+                mtmp.weapon_check = NEED_PICK_OR_AXE;
+        } else if (IS_TREE(game.level.at(nix, niy)?.typ)) {
+            if (!mw_tmp || !is_axe(mw_tmp))
+                mtmp.weapon_check = NEED_AXE;
+        } else if (IS_STWALL(game.level.at(nix, niy)?.typ)) {
+            if (!mw_tmp || !is_pick(mw_tmp))
+                mtmp.weapon_check = NEED_PICK_AXE;
+        }
+        if (mtmp.weapon_check >= NEED_PICK_AXE
+            && await mon_wield_item(mtmp)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // src/monmove.c:1070 should_displace() — is displacing a monster the only
@@ -1668,7 +1754,16 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
             if (corpse_eater(ptr))
                 note_unported('postmov:meatcorpse');
 
-            mpickstuff(mtmp);
+            await mpickstuff(mtmp);
+        }
+
+        /* src/monmove.c:1692, concealment-capable monsters and eels
+           reconsider hiding after every move. The rn2(5) is spent even
+           when there is no object or pool at the destination. */
+        if (hides_under(ptr) || ptr.mlet === MONSYMS.S_EEL) {
+            if (mtmp.mundetected || (!helpless(mtmp) && rn2(5)))
+                hideunder(mtmp);
+            newsym(mtmp.mx, mtmp.my);
         }
     }
     return mmoved;

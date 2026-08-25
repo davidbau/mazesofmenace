@@ -1,23 +1,33 @@
 // fountain.js — fountains.
 // C ref: src/fountain.c
 //
-// dipfountain() and dryup() so far: the dip effects that draw (the rnd(30)
-// table, the dryup rn2(3)) run for real, with the summon/gem/gush arms
-// recorded until their machinery lands. drinkfountain() is not here yet.
+// Fountain and sink interactions.  The implemented arms preserve the C
+// source's draw order; unavailable side effects remain explicitly recorded.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { pline } from './display.js';
-import { You, You_feel, pline_The } from './pline.js';
+import { You, You_feel, You_hear, Your, pline_The } from './pline.js';
 import { newsym } from './display.js';
-import { IS_FOUNTAIN, ROOM, A_WIS, A_CON } from './const.js';
+import { IS_FOUNTAIN, ROOM, POOL, A_WIS, A_CON, IS_DOOR, SDOOR, isok,
+         SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT,
+         HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP,
+         ANTI_MAGIC } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { OCLASSES } from './objects_data.js';
-import { water_damage } from './trap.js';
-import { exercise } from './attrib.js';
-import { update_inventory } from './invent.js';
+import { deltrap, water_damage, water_damage_chain } from './trap.js';
+import { ACURR, exercise } from './attrib.js';
+import { morehungry, vomit } from './eat.js';
+import { update_inventory, money_cnt } from './invent.js';
 import { curse, uncurse } from './mkobj.js';
 import { tty_yn_function } from './tty/topl.js';
+import { distmin } from './hacklib.js';
+import { do_clear_area } from './vision.js';
+import { m_at, t_at } from './mon.js';
+import { sobj_at } from './invent.js';
+import { del_engr, engr_at } from './engrave.js';
+import { somegold } from './steal.js';
+import { hliquid } from './do_name.js';
 
 function note_unported_fountain(what) {
     (game.unported ||= new Set()).add('fountain:' + what);
@@ -28,7 +38,28 @@ export async function dryup(x, y, isyou) {
     const loc = game.level.at(x, y);
     if (IS_FOUNTAIN(loc.typ)
         && (!rn2(3) || (loc.looted & 2 /* F_WARNED */))) {
-        /* in_town watchman warning — towns are not modelled */
+        const { in_town } = await import('./hack.js');
+        if (isyou && in_town(x, y) && !(loc.looted & 2 /* F_WARNED */)) {
+            const { couldsee } = await import('./vision.js');
+            const { PMNAMES } = await import('./monst_data.js');
+            const watch = (game.level.monsters || []).find(mtmp =>
+                (mtmp.data?.pmidx === PMNAMES.PM_WATCHMAN
+                 || mtmp.data?.pmidx === PMNAMES.PM_WATCH_CAPTAIN)
+                && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful);
+
+            loc.looted |= 2; /* F_WARNED */
+            const { Deaf } = await import('./youprop.js');
+            if (watch && !Deaf()) {
+                const { Amonnam } = await import('./do_name.js');
+                await pline(`${Amonnam(watch)} yells:`);
+                await pline('"Hey, stop using that fountain!"');
+            } else if (!watch) {
+                await pline_The('flow reduces to a trickle.');
+            } else {
+                note_unported_fountain('dryup:deaf_watchman_warning');
+            }
+            return;
+        }
         if (isyou && game.wizard) {
             const ans = await tty_yn_function('Dry up fountain?', 'yn', 'n');
             if (ans === 'n')
@@ -44,6 +75,36 @@ export async function dryup(x, y, isyou) {
             game.level.flags.nfountains =
                 Math.max(0, (game.level.flags.nfountains || 1) - 1);
         newsym(x, y);
+    }
+}
+
+// src/fountain.c:40 dowatersnakes()
+async function dowatersnakes() {
+    const num = rn1(5, 2);
+    const { makemon } = await import('./makemon.js');
+    const { PMNAMES } = await import('./monst_data.js');
+    const { MM_NOMSG, NO_TRAP_FLAGS } = await import('./const.js');
+    const { mintrap } = await import('./trap.js');
+    const G_GONE = 0x03;
+
+    if (!((game.mvitals?.[PMNAMES.PM_WATER_MOCCASIN]?.mvflags ?? 0)
+          & G_GONE)) {
+        if (!game.u.ublind) {
+            if (game.u.uprops?.HALLUC)
+                note_unported_fountain('dowatersnakes:hallucination_name');
+            await pline('An endless stream of snakes pours forth!');
+        } else {
+            const { You_hear } = await import('./pline.js');
+            await You_hear('something hissing!');
+        }
+        for (let i = 0; i < num; ++i) {
+            const mtmp = makemon(game.mons[PMNAMES.PM_WATER_MOCCASIN],
+                                 game.u.ux, game.u.uy, MM_NOMSG);
+            if (mtmp && t_at(mtmp.mx, mtmp.my))
+                await mintrap(mtmp, NO_TRAP_FLAGS);
+        }
+    } else {
+        await pline_The('fountain bubbles furiously for a moment, then calms.');
     }
 }
 
@@ -110,6 +171,89 @@ async function dowaternymph() {
     }
 }
 
+function nexttodoor(x, y) {
+    for (let dx = -1; dx <= 1; ++dx)
+        for (let dy = -1; dy <= 1; ++dy) {
+            const nx = x + dx, ny = y + dy;
+            if (!isok(nx, ny))
+                continue;
+            const typ = game.level.at(nx, ny)?.typ;
+            if (IS_DOOR(typ) || typ === SDOOR)
+                return true;
+        }
+    return false;
+}
+
+const gush_floor_traps = new Set([
+    SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT, HOLE,
+    TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP, ANTI_MAGIC,
+]);
+
+function delete_gush_trap(ttmp) {
+    if (!gush_floor_traps.has(ttmp.ttyp))
+        return false;
+    const mon = m_at(ttmp.tx, ttmp.ty);
+    if (mon)
+        mon.mtrapped = 0;
+    deltrap(ttmp);
+    return true;
+}
+
+// src/fountain.c:134 gush(). The distance roll precedes the terrain, boulder,
+// and door checks, so even an ineligible visible square can spend a draw.
+async function gush(x, y, state) {
+    if ((x + y) % 2 || (game.u.ux === x && game.u.uy === y)
+        || rn2(1 + distmin(game.u.ux, game.u.uy, x, y))
+        || game.level.at(x, y)?.typ !== ROOM
+        || sobj_at(ONAMES.BOULDER, x, y) || nexttodoor(x, y))
+        return;
+
+    const trap = t_at(x, y);
+    if (trap && !delete_gush_trap(trap))
+        return;
+
+    if (state.madepool++ === 0)
+        await pline('Water gushes forth from the overflowing fountain!');
+
+    const loc = game.level.at(x, y);
+    loc.typ = POOL;
+    loc.flags = 0;
+    const engraving = engr_at(x, y);
+    if (engraving)
+        del_engr(engraving);
+
+    const floor_objects = (game.level.objects || [])
+        .filter(obj => obj.ox === x && obj.oy === y);
+    await water_damage_chain(floor_objects, true);
+
+    if (m_at(x, y)) {
+        /* minliquid() is only relevant for a monster on a newly made pool.
+           Keep the flood and draw order exact while its drowning branches
+           remain isolated as a tracked gap. */
+        note_unported_fountain('gush:minliquid');
+    } else {
+        newsym(x, y);
+    }
+}
+
+// src/fountain.c:121 dogushforth(). do_clear_area supplies C's exact visible
+// coordinate order; process the collected coordinates serially for water
+// damage messages and draws.
+async function dogushforth(drinking) {
+    const coords = [];
+    do_clear_area(game.u.ux, game.u.uy, 7,
+                  (x, y) => coords.push([x, y]), null);
+    const state = { madepool: 0 };
+    for (const [x, y] of coords)
+        await gush(x, y, state);
+    if (!state.madepool) {
+        if (drinking)
+            await Your('thirst is quenched.');
+        else
+            await pline('Water sprays all over you.');
+    }
+}
+
 // src/fountain.c:243 drinkfountain() — quaff from the fountain underfoot.
 export async function drinkfountain() {
     const u = game.u;
@@ -140,13 +284,18 @@ export async function drinkfountain() {
             note_unported_fountain('drinkfountain:self_knowledge');
             break;
         case 20: /* Foul water */
-            note_unported_fountain('drinkfountain:foul_water');
+            {
+                await pline_The('water is foul!  You gag and vomit.');
+                const { morehungry, vomit } = await import('./eat.js');
+                await morehungry(rn1(20, 11));
+                await vomit();
+            }
             break;
         case 21: /* Poisonous */
             note_unported_fountain('drinkfountain:poisonous');
             break;
         case 22: /* Fountain of snakes! */
-            note_unported_fountain('drinkfountain:watersnakes');
+            await dowatersnakes();
             break;
         case 23: /* Water demon */
             await dowaterdemon();
@@ -174,7 +323,12 @@ export async function drinkfountain() {
             note_unported_fountain('drinkfountain:see_invisible');
             break;
         case 26: /* See Monsters */
-            note_unported_fountain('drinkfountain:monster_detect');
+            {
+                const { monster_detect } = await import('./detect.js');
+                if (await monster_detect(null, 0))
+                    await pline_The('water tastes like nothing.');
+                exercise(A_WIS, true);
+            }
             break;
         case 27: /* Find a gem in the sparkling waters. */
             if (!(loc.looted & 1 /* F_LOOTED */)) {
@@ -197,7 +351,7 @@ export async function drinkfountain() {
             }
             break;
         case 30: /* Gushing forth in this room */
-            note_unported_fountain('drinkfountain:dogushforth');
+            await dogushforth(true);
             break;
         default:
             await pline('This tepid water is tasteless.');
@@ -205,6 +359,59 @@ export async function drinkfountain() {
         }
     }
     await dryup(u.ux, u.uy, true);
+}
+
+// src/fountain.c:595 drinksink() -- quaff from the sink underfoot.
+// Start with the no-side-effect arms used by the reference corpus.  The
+// remaining outcomes are kept as named gaps until their dependent mechanics
+// can be ported without changing C's RNG stream.
+export async function drinksink() {
+    if (game.u.uprops?.LEVITATION) {
+        await You('are floating high above the sink.');
+        return;
+    }
+
+    const outcome = rn2(20);
+    switch (outcome) {
+    case 0:
+        await You(`take a sip of very cold ${hliquid('water')}.`);
+        break;
+    case 1:
+        await You(`take a sip of very warm ${hliquid('water')}.`);
+        break;
+    case 11:
+        await You_hear('clanking from the pipes...');
+        break;
+    case 12:
+        await You_hear('snatches of song from among the sewers...');
+        break;
+    case 19:
+        if (game.u.intrinsic?.HHallucination || game.u.uprops?.HALLUC) {
+            await pline('From the murky drain, a hand reaches up... --oops--');
+            break;
+        }
+        /* FALLTHRU */
+    default:
+        await You(`take a sip of ${rn2(3) ? (rn2(2) ? 'cold' : 'warm')
+                                         : 'hot'} ${hliquid('water')}.`);
+        break;
+    case 2:
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+    case 8:
+    case 10:
+    case 13:
+        note_unported_fountain(`drinksink:outcome=${outcome}`);
+        break;
+    case 9:
+        await pline('Gaggg... this tastes like sewage!  You vomit.');
+        await morehungry(rn1(30 - ACURR(A_CON), 11));
+        await vomit();
+        break;
+    }
 }
 
 // src/fountain.c:394 dipfountain() — dip an object into a fountain.
@@ -255,16 +462,16 @@ export async function dipfountain(obj) {
         note_unported_fountain('dipfountain:dowaterdemon');
         break;
     case 22: /* Water Nymph */
-        note_unported_fountain('dipfountain:dowaternymph');
+        await dowaternymph();
         break;
     case 23: /* an Endless Stream of Snakes */
-        note_unported_fountain('dipfountain:dowatersnakes');
+        await dowatersnakes();
         break;
     case 24: /* Find a gem */
         note_unported_fountain('dipfountain:dofindgem');
         break;
     case 25: /* Water gushes forth */
-        note_unported_fountain('dipfountain:dogushforth');
+        await dogushforth(false);
         break;
     case 26: /* Strange feeling */
         await pline('A strange tingling runs up your arm.');
@@ -274,7 +481,33 @@ export async function dipfountain(obj) {
         break;
     case 28: /* Strange feeling */
         await pline('An urge to take a bath overwhelms you.');
-        note_unported_fountain('dipfountain:gold_bath');
+        {
+            let money = money_cnt(game.invent);
+            if (money > 10) {
+                game._deferred_status_money = {
+                    value: money,
+                    throughMove: (game.moves ?? 0) + 1,
+                };
+                money = Math.trunc(somegold(money) / 10);
+                for (const coin of [...(game.invent || [])]) {
+                    if (money <= 0)
+                        break;
+                    if (coin.oclass !== OCLASSES.COIN_CLASS)
+                        continue;
+                    const denomination = game.objects[coin.otyp].oc_cost;
+                    const coin_loss = Math.min(
+                        Math.trunc((money + denomination - 1) / denomination),
+                        coin.quan);
+                    coin.quan -= coin_loss;
+                    money -= coin_loss * denomination;
+                    if (!coin.quan)
+                        game.invent.splice(game.invent.indexOf(coin), 1);
+                }
+                await You('lost some of your gold in the fountain!');
+                game.level.at(game.u.ux, game.u.uy).looted &= ~1;
+                exercise(A_WIS, false);
+            }
+        }
         break;
     case 29: /* You see coins */
         note_unported_fountain('dipfountain:see_coins');

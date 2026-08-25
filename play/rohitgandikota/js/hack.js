@@ -6,14 +6,14 @@ import { A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
 import { the, xname } from './objnam.js';
 import { costly_spot } from './shk.js';
 import { You_hear, There } from './pline.js';
-import { newsym } from './display.js';
+import { glyph_at, map_invisible, newsym } from './display.js';
 import { YMonnam } from './do_name.js';
 import { is_flimsy } from './obj.js';
 import { You, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { feel_location } from './display.js';
 import { can_ooze } from './monmove.js';
 import { worm_cross } from './worm.js';
-import { block_door, block_entry } from './shk.js';
+import { block_door, block_entry, u_entered_shop } from './shk.js';
 import { curr_mon_load } from './mon.js';
 import { inv_weight, weight_cap } from './attrib.js';
 import { carrying } from './invent.js';
@@ -21,7 +21,7 @@ import { a_monnam, upstart } from './do_name.js';
 import { is_door_mappear, helpless } from './monst.js';
 import { dist2, distmin } from './hacklib.js';
 import { Levitation, Flying, Fire_resistance, Underwater,
-         Hallucination } from './youprop.js';
+         Hallucination, Deaf } from './youprop.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { is_pool, is_lava, t_at, m_at, is_pick } from './mon.js';
 import { hliquid } from './do_name.js';
@@ -54,7 +54,7 @@ import {
     IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     W_NONDIGGABLE, W_NONPASSWALL,
 
-    ROOMOFFSET, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR,
+    ROOMOFFSET, MAXNROFROOMS, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR,
     THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, D_ISOPEN, ACCESSIBLE, IS_SDOOR,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
     IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, WT_SQUEEZABLE_INV,
@@ -69,6 +69,7 @@ import { DIED } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { In_sokoban } from './dungeon.js';
 import { inside_room } from './sp_lev.js';
+import { cmap_names } from './drawing_data.js';
 import { tunnels, needspick, passes_walls, passes_bars, dmgtype,
          metallivorous, throws_rocks, verysmall, bigmonst, amorphous,
          is_whirly, noncorporeal, slithy } from './mondata.js';
@@ -451,10 +452,15 @@ export function in_rooms(x, y, typewanted) {
        so reading it here made every TYPE-FILTERED lookup fail -- in_rooms(x,
        y, SHOPBASE) and in_rooms(x, y, TEMPLE) always returned empty. */
     const rooms = game.level?.rooms || [];
+    const subrooms = game.level?.subrooms || [];
     const goodtype = (rno) => {
         if (!typewanted)
             return true;
-        const typefound = rooms[rno - ROOMOFFSET]?.rtype;
+        const roomidx = rno - ROOMOFFSET;
+        const room = roomidx <= MAXNROFROOMS
+            ? rooms[roomidx]
+            : subrooms.find(r => r.roomnoidx === roomidx);
+        const typefound = room?.rtype;
         return typefound === typewanted
             || (typewanted === SHOPBASE && typefound > SHOPBASE);
     };
@@ -499,6 +505,36 @@ export function in_rooms(x, y, typewanted) {
                 push(rno);
         }
     return out;
+}
+
+// src/hack.c:3588 move_update() tracks the rooms and shops which touch the
+// hero's current square.  Vault timing and ambient sounds read u.urooms.
+export function move_update(newlev) {
+    const u = game.u;
+    u.urooms0 = u.urooms || '';
+    u.ushops0 = u.ushops || '';
+    if (newlev) {
+        u.urooms = u.uentered = u.ushops = u.ushops_entered = '';
+        u.ushops_left = u.ushops0;
+        return;
+    }
+
+    u.urooms = in_rooms(u.ux, u.uy, 0);
+    u.uentered = '';
+    u.ushops = '';
+    u.ushops_entered = '';
+    for (const ch of u.urooms) {
+        if (!u.urooms0.includes(ch))
+            u.uentered += ch;
+        const rtype = game.level?.rooms?.[ch.charCodeAt(0) - ROOMOFFSET]?.rtype;
+        if (rtype >= SHOPBASE) {
+            u.ushops += ch;
+            if (!u.ushops0.includes(ch))
+                u.ushops_entered += ch;
+        }
+    }
+    u.ushops_left = [...u.ushops0]
+        .filter(ch => !u.ushops.includes(ch)).join('');
 }
 
 /* js/monmove.js needs in_rooms() but cannot import this file without closing
@@ -756,11 +792,15 @@ export async function spoteffects(pick) {
     if (await pooleffects(true))
         return;
 
-    /* check_special_room(FALSE) — announces shops, zoos, temples */
+    move_update(false);
+
+    /* check_special_room(FALSE): shops are the live special-room arm. */
+    if (game.u.ushops_entered)
+        await u_entered_shop(game.u.ushops_entered);
     const inspecial = (game.level?.rooms || []).some(r => r.rtype
         && game.u.ux >= r.lx - 1 && game.u.ux <= r.hx + 1
         && game.u.uy >= r.ly - 1 && game.u.uy <= r.hy + 1);
-    if (inspecial)
+    if (inspecial && !game.u.ushops_entered)
         note_unported_hack('spoteffects:check_special_room');
 
     /* src/hack.c:3355 — "if dismounting, check again later": the whole
@@ -855,7 +895,7 @@ export function nomul(nval) {
 export async function unmul(msg_override) {
     (game.disp ||= {}).botl = true;
     game.multi = 0; /* caller will usually have done this already */
-    if (msg_override)
+    if (msg_override !== undefined && msg_override !== null)
         game.nomovemsg = msg_override;
     /* C tests the POINTER here (`!gn.nomovemsg`), so only an unset message
        gets the default; an explicitly EMPTY string survives. */
@@ -1581,7 +1621,9 @@ async function moverock_core(sx, sy) {
                     deliver_part1 = true;
                 } else {
                     await You_hear(`a monster behind ${the(xname(otmp))}.`);
-                    note_unported_hack('moverock:map_invisible');
+                    if (!Deaf())
+                        deliver_part1 = true;
+                    map_invisible(rx, ry);
                 }
                 if (game.flags?.verbose !== false) {
                     const you_or_steed = game.u.usteed
@@ -1641,6 +1683,31 @@ async function moverock_core(sx, sy) {
 
 /* include/hack.h TRAVP_* — findtravelpath modes */
 export const TRAVP_TRAVEL = 0, TRAVP_GUESS = 1, TRAVP_VALID = 2;
+
+// src/hack.c:1526 is_valid_travelpt(): can travel's pathfinder reach this
+// map square? Unseen stone is rejected before the path search.
+export async function is_valid_travelpt(x, y) {
+    const u = game.u;
+    if (u_at(x, y))
+        return true;
+
+    const glyph = glyph_at(x, y);
+    const loc = game.level?.at(x, y);
+    if (isok(x, y)
+        && (glyph?.kind === 'unexplored'
+            || (glyph?.kind === 'cmap'
+                && glyph.cmap === cmap_names.S_stone))
+        && !loc?.seenv)
+        return false;
+
+    const tx = u.tx, ty = u.ty;
+    u.tx = x;
+    u.ty = y;
+    const result = await findtravelpath(TRAVP_VALID);
+    u.tx = tx;
+    u.ty = ty;
+    return result;
+}
 
 // src/hack.c:4079 crawl_destination() — is <x,y> a spot the hero could
 // crawl to (used for the travel-to-adjacent shortcut)?
