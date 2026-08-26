@@ -24,8 +24,8 @@ import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
 import { bad_rock, cant_squeeze_thru, nomul, domove_attackmon_at, spoteffects,
-         dopickup, trapmove, doorless_door,
-         could_move_onto_boulder } from './hack.js';
+         domove_bump_mon, dopickup, trapmove, doorless_door,
+         could_move_onto_boulder, u_locomotion } from './hack.js';
 import { In_sokoban, surface } from './dungeon.js';
 import { Blind, Hallucination } from './youprop.js';
 import { u_on_newpos } from './teleport.js';
@@ -35,7 +35,7 @@ import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
          M_AP_FURNITURE, M_AP_OBJECT, OVERLOADED, Is_airlevel,
          Upolyd } from './const.js';
 import { ACURR, exercise, near_capacity } from './attrib.js';
-import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY } from './const.js';
+import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { an, cxname, simpleonames, the } from './objnam.js';
 import { cmap_names, defsyms } from './drawing_data.js';
@@ -75,7 +75,8 @@ import { dothrow, dofire } from './dothrow.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { get_valid_jump_position, is_valid_jump_pos } from './apply.js';
 import { dowear, doputon, dotakeoff, doremring, canwearobj_core } from './do_wear.js';
-import { boolean_option, show_menu_controls } from './options.js';
+import { boolean_option, show_menu_controls, paranoia_bits,
+         PARANOID_CONFIRM, PARANOID_TRAP } from './options.js';
 import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
@@ -2184,6 +2185,8 @@ async function domove_core() {
         const mtmp_bump = m_at(newx, newy);
         if (mtmp_bump && (!is_safemon(mtmp_bump) || game.context.forcefight))
             nomul(0);
+        if (mtmp_bump && await domove_bump_mon(mtmp_bump, newx, newy))
+            return;
     }
 
     /* src/hack.c:2790 — domove_attackmon_at() gates walking into an occupied
@@ -2230,6 +2233,41 @@ async function domove_core() {
             game.context.move = 0;
             nomul(0);
             return;
+        }
+    }
+
+    /* src/hack.c:2549, ask before walking into a known harmful trap.
+       The default paranoid setting uses a single y/n answer. */
+    {
+        const bits = paranoia_bits();
+        const trap = t_at(newx, newy);
+        const groundTypes = new Set([
+            BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, PIT, SPIKED_PIT,
+            HOLE, TRAPDOOR,
+        ]);
+        const clearlyImmune = groundTypes.has(trap?.ttyp)
+            && !!(game.u.uprops?.LEVITATION || game.u.uprops?.FLYING);
+        if ((bits & PARANOID_TRAP) && !game.u.uprops?.STUNNED
+            && !game.u.uprops?.CONFUSION
+            && (!game.context.nopick || game.context.run)
+            && trap?.tseen && !clearlyImmune) {
+            const intoTypes = new Set([
+                BEAR_TRAP, PIT, SPIKED_PIT, HOLE, TELEP_TRAP,
+                LEVEL_TELEP, MAGIC_PORTAL, WEB,
+            ]);
+            const cmap = cmap_names.S_arrow_trap + trap.ttyp - 1;
+            const explanation = defsyms[cmap]?.explain || 'trap';
+            if (bits & PARANOID_CONFIRM)
+                note_unported_cmd('domove:paranoid_confirm_words');
+            const answer = await tty_yn_function(
+                `Really ${u_locomotion('step')} ${
+                    intoTypes.has(trap.ttyp) ? 'into' : 'onto'} that ${
+                    explanation}?`, 'yn', 'n');
+            if (answer !== 'y') {
+                game.context.move = 0;
+                nomul(0);
+                return;
+            }
         }
     }
 

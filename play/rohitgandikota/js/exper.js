@@ -10,6 +10,7 @@ import { ACURR } from './attrib.js';
 import { pline } from './display.js';
 import { A_CON, A_WIS, NORMAL_SPEED, NATTK } from './const.js';
 import { find_mac } from './worn.js';
+import { Goodbye } from './role.js';
 
 // src/exper.c enermod() — role-based energy multiplier. Only reached above
 // level 0, so not exercised at character creation.
@@ -193,11 +194,11 @@ export async function losexp(drainer) {
     /* resists_drli(youmonst) — worn drain-resistance not modelled */
 
     if (u.ulevel > 1 || drainer)
-        await pline(`Goodbye level ${u.ulevel}.`);
+        await pline(`${Goodbye()} level ${u.ulevel}.`);
 
     if (u.ulevel > 1) {
         u.ulevel -= 1;
-        (game.unported ||= new Set()).add('losexp:adjabil');
+        await adjabil(u.ulevel + 1, u.ulevel);
     } else {
         if (drainer) {
             game.killer = { format: 1 /* KILLED_BY */, name: drainer };

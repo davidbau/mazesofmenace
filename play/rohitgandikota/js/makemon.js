@@ -13,13 +13,16 @@ import { ARM_BONUS } from './do_wear.js';
 import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire } from './worm.js';
 import { newcham, mon_wire_cham } from './mon.js';
 import { weight as weight_fn, sobj_at } from './invent.js';
-import { In_mines, Is_rogue_level } from './const.js';
+import { In_mines, Is_rogue_level, MIGR_TO_SPECIES, OBJ_FREE,
+         W_SADDLE, has_mgivenname } from './const.js';
 import { Levitation, Flying } from './youprop.js';
 import { closed_door } from './cmd.js';
 import { may_passwall } from './hack.js';
 import { sengr_at } from './engrave.js';
-import { rndghostname, christen_monst, y_monnam } from './do_name.js';
-import { m_dowear } from './worn.js';
+import { rndghostname, christen_monst, christen_orc,
+         y_monnam } from './do_name.js';
+import { m_dowear, which_armor } from './worn.js';
+import { can_saddle, put_saddle_on_mon } from './steed.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     mons as MONS_INIT, PMNAMES, NUMMONS, MONSYMS, MSOUND, ATTKS, MFLAGS,
@@ -660,6 +663,54 @@ export function mongets(mtmp, otyp) {
 import { mpickobj } from './steal.js';
 import { in_town } from './hack.js';
 export { mpickobj };
+
+export const DF_NONE = 0, DF_RANDOM = 1, DF_ALL = 2;
+const DELIVER_PM = MFLAGS.M2_UNDEAD | MFLAGS.M2_WERE | MFLAGS.M2_HUMAN
+                 | MFLAGS.M2_ELF | MFLAGS.M2_DWARF | MFLAGS.M2_GNOME
+                 | MFLAGS.M2_ORC | MFLAGS.M2_DEMON | MFLAGS.M2_GIANT;
+
+// src/dokick.c:1860 deliver_obj_to_mon(). Species-targeted migrating items
+// are handed to newly made monsters before makemon() returns.
+export function deliver_obj_to_mon(mtmp, requested, deliverflags = DF_NONE) {
+    const migrating = game.migrating_objs || [];
+    let maxobj = 1;
+    if ((deliverflags & DF_RANDOM) && requested > 1)
+        maxobj = rnd(requested);
+    else if (deliverflags & DF_ALL)
+        maxobj = 0;
+
+    const atCrimeScene = In_mines(game.u.uz);
+    let delivered = 0;
+    for (let i = 0; i < migrating.length; ) {
+        const otmp = migrating[i];
+        const where = (otmp.owornmask || 0) & 0x7fff;
+        const species = otmp.migr_species ?? NON_PM;
+        if (!(where & MIGR_TO_SPECIES)
+            || species === NON_PM
+            || (mtmp.data.mflags2 & DELIVER_PM) !== species) {
+            i++;
+            continue;
+        }
+
+        migrating.splice(i, 1);
+        otmp.where = OBJ_FREE;
+        otmp.owornmask = 0;
+        otmp.ox = otmp.oy = 0;
+
+        if ((species & MFLAGS.M2_ORC) && otmp.oname) {
+            if (!has_mgivenname(mtmp) && (atCrimeScene || !rn2(2)))
+                christen_orc(mtmp, atCrimeScene ? otmp.oname : null,
+                             ' the Fence');
+            delete otmp.oname;
+        }
+        otmp.migr_species = NON_PM;
+        otmp.omigr_from_dnum = otmp.omigr_from_dlevel = 0;
+        mpickobj(mtmp, otmp);
+        delivered++;
+        if (maxobj && delivered >= maxobj)
+            break;
+    }
+}
 
 // src/makemon.c:589 m_initinv() — species-specific starting inventory.
 //
@@ -1507,8 +1558,6 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
 /* include/makemon.h m_initsgrp()/m_initlgrp() */
 function m_initsgrp(mtmp, x, y, mmf) { m_initgrp(mtmp, x, y, 3, mmf); }
 function m_initlgrp(mtmp, x, y, mmf) { m_initgrp(mtmp, x, y, 10, mmf); }
-function can_saddle(mtmp) { return mtmp.data.msize >= 2; /* MZ_MEDIUM */ }
-
 /* m_dowear() now lives in js/worn.js, its C home (src/worn.c:757). The copy
    that stood here short-circuited on an empty minvent and recorded otherwise;
    the real one does the slot walk. */
@@ -2269,8 +2318,9 @@ export function makemon(ptr, x, y, mmflags) {
         m_initinv(mtmp);
         m_dowear(mtmp, true);
 
-        if (!rn2(100) && is_domestic(ptr) && can_saddle(mtmp))
-            note_unported('put_saddle_on_mon');
+        if (!rn2(100) && is_domestic(ptr)
+            && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE))
+            put_saddle_on_mon(null, mtmp);
     }
 
     if (ptr.mflags3 && !(mmflags & MM_NOWAIT)) {
@@ -2281,6 +2331,9 @@ export function makemon(ptr, x, y, mmflags) {
         if (ptr.mflags3 & (M3_WAITMASK | M3_COVETOUS))
             mtmp.mstrategy |= STRAT_APPEARMSG;
     }
+
+    if (allow_minvent && (game.migrating_objs || []).length)
+        deliver_obj_to_mon(mtmp, 1, DF_NONE);
 
     /* src/makemon.c:1472 — "make sure the mon shows up". A monster created
        mid-game is drawn immediately; during level generation nothing is on

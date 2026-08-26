@@ -448,7 +448,7 @@ export async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         note_unported_mhitm(`mdamagem:adtyp=${mattk[1]}`);
     }
 
-    if (mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+    if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
         && ((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0))
         return mhm.hitflags;
 

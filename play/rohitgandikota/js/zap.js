@@ -66,8 +66,8 @@ import { is_flammable, is_rottable, burnarmor } from './trap.js';
 import { is_metallic } from './obj.js';
 import { MATERIALS } from './objects_data.js';
 import { ATTKS, PMNAMES } from './monst_data.js';
-import { breathless, defended, haseyes, resists_cold, resists_elec,
-         resists_fire, resists_magm, nohands } from './mondata.js';
+import { breathless, defended, haseyes, resists_blnd, resists_cold,
+         resists_elec, resists_fire, resists_magm, nohands } from './mondata.js';
 import { find_mac } from './worn.js';
 import { Reflecting, Sleep_resistance, Fire_resistance, Cold_resistance,
          Shock_resistance, Deaf, Unaware } from './youprop.js';
@@ -1360,6 +1360,23 @@ async function zhitm(mon, type, nd) {
                 damage += await destroy_items(mon, ATTKS.AD_COLD, orig_damage);
         }
         break;
+    case 5: {
+        damage = d(nd, 6);
+        const orig_damage = damage;
+        if (resists_elec(mon) || defended(mon, ATTKS.AD_ELEC)) {
+            shieldeff_mon(mon);
+            damage = 0;
+        }
+        if (!resists_blnd(mon)
+            && !(type > 0 && engulfing_u(mon)) && nd > 2) {
+            const blind = rnd(50);
+            mon.mcansee = 0;
+            mon.mblinded = Math.min(127, (mon.mblinded | 0) + blind);
+        }
+        if (!rn2(3))
+            damage += await destroy_items(mon, ATTKS.AD_ELEC, orig_damage);
+        break;
+    }
     default:
         note_unported_zap(`zhitm:type=${damgtype}`);
         return 0;

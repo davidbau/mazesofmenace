@@ -27,11 +27,11 @@ import { OBJ_NAME, OBJ_DESCR } from './objnam.js';
 import { obj_resists } from './zap.js';
 import { OBJ_BURIED } from './obj.js';
 import { start_timer, TIMER_OBJECT, ROT_ORGANIC } from './timeout.js';
-import { make_engr_at, engr_at } from './engrave.js';
+import { make_engr_at, engr_at, del_engr } from './engrave.js';
 import { oname, christen_monst } from './do_name.js';
 import { ONAME_LEVEL_DEF } from './const.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, STRAT_WAITFORU,
-         MM_NOCOUNTBIRTH, MM_NOMSG } from './const.js';
+         MM_NOCOUNTBIRTH, MM_NOMSG, G_UNIQ, G_EXTINCT, G_GONE } from './const.js';
 
 /* is_pool/is_lava/m_at live in js/mon.js, which reaches this file back through
    invent.js -> mkobj.js. A direct import leaves them in TDZ the second time a
@@ -69,6 +69,8 @@ const G_IGNORE_SP = MFLAGS_SP.G_IGNORE;
 import { def_monsyms } from './drawing_data.js';
 import { CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE } from './const.js';
 import { In_mines } from './const.js';
+import { flip_worm_segs_vertical,
+         flip_worm_segs_horizontal } from './worm.js';
 import { Align2amask as Align2amask_sp, Amask2align as Amask2align_sp,
          A_NONE, A_LAWFUL, A_ORIGINAL } from './const.js';
 import {
@@ -1560,8 +1562,11 @@ export function create_monster(m, croom) {
 
     if (m.id !== NON_PM) {
         pm = game.mons[m.id];
-        /* the G_UNIQ/G_EXTINCT/G_GONE checks read mvitals, which this port
-           does not track; nothing is genocided during level generation. */
+        const mvflags = game.mvitals?.[m.id]?.mvflags ?? 0;
+        if ((pm.geno & G_UNIQ) && (mvflags & G_EXTINCT))
+            return null;
+        if (mvflags & G_GONE)
+            pm = null;
     } else if (m.class >= 0 || typeof m.class === 'string') {
         /* src/sp_lev.c:1918 — a one-char class string goes through
            def_char_to_monclass before mkclass */
@@ -2599,17 +2604,30 @@ function remove_boundary_syms() {
     }
 }
 
-// src/sp_lev.c:328 map_cleanup() — boulders and traps on liquid; nothing a
-// current special level puts there, but the walk itself is cheap and the
-// deep arms are recorded when reached.
+// src/sp_lev.c:328 map_cleanup(), remove boulders, ordinary traps, and
+// engravings which a special-level terrain pass left under liquid.
 function map_cleanup() {
     for (let x = 0; x < COLNO; x++)
         for (let y = 0; y < ROWNO; y++) {
             const typ = game.level.at(x, y)?.typ;
             if (typ === LAVAPOOL || typ === POOL || typ === MOAT
                 || typ === WATER) {
-                if (sobj_at(ONAMES.BOULDER, x, y))
-                    note_unported('map_cleanup:boulder_on_liquid');
+                let boulder;
+                while ((boulder = sobj_at(ONAMES.BOULDER, x, y)))
+                    obj_extract_self(boulder);
+
+                const trapIndex = (game.level.traps || [])
+                    .findIndex(t => t.tx === x && t.ty === y);
+                if (trapIndex >= 0) {
+                    const trap = game.level.traps[trapIndex];
+                    if (trap.ttyp !== MAGIC_PORTAL
+                        && trap.ttyp !== VIBRATING_SQUARE)
+                        game.level.traps.splice(trapIndex, 1);
+                }
+
+                const engraving = engr_at(x, y);
+                if (engraving)
+                    del_engr(engraving);
             }
         }
 }
@@ -2713,7 +2731,7 @@ export function flip_level(flp, extras) {
         if (flp & 2) m.mx = FlipX(m.mx);
         (game.level.monAt ||= new Map()).set(`${m.mx},${m.my}`, m);
 
-        /* mgoal is not modelled; worm segments cannot exist at creation */
+        /* mgoal is not modelled. */
         if (m.ispriest) {
             Flip_coord(m.epri?.shrpos);
         } else if (m.isshk) {
@@ -2721,6 +2739,11 @@ export function flip_level(flp, extras) {
             /* eshk.shd ALIASES the door record in level.doors, which the
                doors pass below already flips; C's shd is a value copy and
                needs its own Flip_coord, ours must not flip it twice. */
+        } else if (m.wormno) {
+            if (flp & 1)
+                flip_worm_segs_vertical(m, miny, maxy);
+            if (flp & 2)
+                flip_worm_segs_horizontal(m, minx, maxx);
         }
     }
 
@@ -3092,11 +3115,12 @@ export function lspo_level_init(opts) {
 // bounds; the table form ({halign=..., valign=..., map=...}) places by
 // alignment (sp_lev.c:6192-6222). Both nudge to odd parity. No draws.
 export function lspo_map_full(mapstr, contents) {
-    let halign = 'center', valign = 'center';
+    let halign = 'center', valign = 'center', lit = 0;
     if (mapstr && typeof mapstr === 'object') {
         const opts = mapstr;
         halign = opts.halign ?? 'center';
         valign = opts.valign ?? 'center';
+        lit = opts.lit ? 1 : 0;
         contents = opts.contents ?? contents;
         mapstr = opts.map;
     }
@@ -3145,7 +3169,7 @@ export function lspo_map_full(mapstr, contents) {
             loc.horizontal = false; loc.roomno = 0; loc.edge = 0;
             SpLev_Map_set(x, y);
             selection_setpoint(x, y, mapsel, 1);
-            sel_set_ter(x, y, mptyp);
+            sel_set_ter(x, y, mptyp, lit);
         }
 
     game.xstart = xstart; game.ystart = ystart;
@@ -3679,12 +3703,19 @@ export function selection_area_obj(x1, y1, x2, y2) {
             pts.push({ x, y });
     return {
         pts,
-        set(x, y) { this.pts.push({ x, y }); },
+        set(x, y) {
+            if (!this.pts.some(p => p.x === x && p.y === y))
+                this.pts.push({ x, y });
+        },
         rndcoord(removeit) {
             if (!this.pts.length) return { x: -1, y: -1 };
-            const i = rn2(this.pts.length);
-            const c = this.pts[i];
-            if (removeit) this.pts.splice(i, 1);
+            const ordered = this.pts.slice()
+                .sort((a, b) => (a.x - b.x) || (a.y - b.y));
+            const c = ordered[rn2(ordered.length)];
+            if (removeit) {
+                const i = this.pts.findIndex(p => p.x === c.x && p.y === c.y);
+                this.pts.splice(i, 1);
+            }
             /* the coord is map-relative like every other script coord */
             return { x: c.x, y: c.y };
         },

@@ -12,7 +12,7 @@
 
 import { game } from '../gstate.js';
 import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT,
-         paint_topline } from '../display.js';
+         paint_topline, tty_clear_nhwindow_message } from '../display.js';
 import { nhgetch } from '../input.js';
 
 function wrap_topline(text, columns) {
@@ -84,7 +84,9 @@ export async function update_topl(bp) {
         if (game._toplin === TOPLINE_NEED_MORE) {
             await more();
         } else if (cury) {
-            /* docorner(1, cury + 1, 0) — reset cury if the screen is redrawn */
+            /* docorner(1, cury + 1, 0) restores map rows covered by a
+               wrapped prompt before the replacement message is painted. */
+            tty_clear_nhwindow_message(cury);
             game._topl_curx = game._topl_cury = 0;
         }
     }
@@ -215,9 +217,13 @@ export async function tty_yn_function(query, resp, def) {
        advance a 79-column question's logical cursor onto an empty second
        row, even though the visible cells contain only the question text. */
     const columns = game?.nhDisplay?.cols ?? 80;
-    const renderedPrompt = wrap_topline(prompt + ' ', columns);
+    /* tty continuation rows retain the space that occupied the wrap column;
+       update_topl replaces it logically, but the physical tty starts the
+       continuation at column 1. */
+    const renderedPrompt = wrap_topline(prompt + ' ', columns)
+        .replace(/\n/g, '\n ');
     game._topline_physical_prefix = '';
-    game._pending_message = prompt;
+    game._pending_message = renderedPrompt;
     game._toplin = TOPLINE_SPECIAL_PROMPT;
     paint_topline();
 
@@ -226,6 +232,8 @@ export async function tty_yn_function(query, resp, def) {
         const promptLines = renderedPrompt.split('\n');
         const cursorRow = promptLines.length - 1;
         const lastLineLength = promptLines[cursorRow].length;
+        game._topl_curx = lastLineLength;
+        game._topl_cury = cursorRow;
         /* The tty's clear-to-EOL fallback parks column 1 on an empty wrapped
            row; the recorder captures that logical cursor position. */
         display.setCursor(lastLineLength || (cursorRow ? 1 : 0), cursorRow);

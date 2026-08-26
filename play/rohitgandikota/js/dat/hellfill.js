@@ -4,7 +4,9 @@
 import {
     lspo_level_flags, lspo_level_init, lspo_stair, lspo_object,
     lspo_trap, lspo_monster, lspo_gold, lspo_replace_terrain,
-    lspo_mazewalk, lspo_terrain, lspo_wallify,
+    lspo_mazewalk, lspo_terrain, lspo_wallify, lspo_map_full,
+    lspo_map_coord, lspo_non_diggable, lspo_region_full,
+    lspo_exclusion, lspo_drawbridge, lspo_altar,
     l_selection_match, l_selection_fillrect, l_selection_negate,
     l_selection_grow, l_selection_filter_mapchar, l_selection_rect,
 } from '../sp_lev.js';
@@ -16,12 +18,251 @@ import { hell_tweaks } from './nhlib.js';
 const mathrandom = (n) => 1 + rn2(n);
 const percent = (n) => rn2(100) < n;
 
-function note_unported(what) {
-    (game.unported ||= new Set()).add(`hellfill:${what}`);
+function shuffle(list) {
+    for (let i = list.length - 1; i >= 1; --i) {
+        const j = rn2(i + 1);
+        [list[i], list[j]] = [list[j], list[i]];
+    }
 }
 
-function rnd_hell_prefab() {
-    note_unported('rnd_hell_prefab');
+const rnd_halign = () => ['half-left', 'center', 'half-right'][rn2(3)];
+const rnd_valign = () => ['top', 'center', 'bottom'][rn2(3)];
+const emptyContents = () => {};
+const placeMap = (opts) =>
+    (opts.x !== undefined || opts.y !== undefined)
+        ? lspo_map_coord(opts) : lspo_map_full(opts);
+
+const hellPrefabs = [
+    {
+        repeatable: true,
+        contents: () => placeMap({
+            halign: rnd_halign(), valign: 'center',
+            map: `
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......
+......`,
+            contents: emptyContents,
+        }),
+    },
+    {
+        repeatable: true,
+        contents: () => placeMap({
+            halign: rnd_halign(), valign: 'center',
+            map: `
+xxxxxx.....xxxxxx
+xxxx.........xxxx
+xx.............xx
+xx.............xx
+x...............x
+x...............x
+.................
+.................
+.................
+.................
+.................
+x...............x
+x...............x
+xx.............xx
+xx.............xx
+xxxx.........xxxx
+xxxxxx.....xxxxxx`,
+            contents: emptyContents,
+        }),
+    },
+    (coldhell) => placeMap({
+        halign: rnd_halign(), valign: rnd_valign(),
+        map: `
+xxxxxx.xxxxxx
+xLLLLLLLLLLLx
+xL---------Lx
+xL|.......|Lx
+xL|.......|Lx
+.L|.......|L.
+xL|.......|Lx
+xL|.......|Lx
+xL---------Lx
+xLLLLLLLLLLLx
+xxxxxx.xxxxxx`,
+        contents: () => {
+            lspo_non_diggable(2, 2, 10, 8);
+            lspo_region_full({ area: [4, 4, 8, 6], lit: 1 });
+            lspo_exclusion({ type: 'teleport', region: [2, 2, 10, 8] });
+            if (coldhell) {
+                lspo_replace_terrain({ region: [1, 1, 11, 9],
+                                       fromterrain: 'L', toterrain: 'P' });
+            }
+            const dblocs = [
+                { x: 1, y: 5, dir: 'east', state: 'closed' },
+                { x: 11, y: 5, dir: 'west', state: 'closed' },
+                { x: 6, y: 1, dir: 'south', state: 'closed' },
+                { x: 6, y: 9, dir: 'north', state: 'closed' },
+            ];
+            shuffle(dblocs);
+            for (let i = 0, n = mathrandom(dblocs.length); i < n; ++i)
+                lspo_drawbridge(dblocs[i]);
+
+            const mons = ['H', 'T', '@'];
+            shuffle(mons);
+            for (let i = 0, n = 3 + mathrandom(5); i < n; ++i)
+                lspo_monster(mons[0], 6, 5);
+        },
+    }),
+    {
+        repeatable: true,
+        contents: () => placeMap({
+            halign: 'center', valign: 'center',
+            map: `
+..............................................................
+..............................................................
+..............................................................
+..............................................................
+..............................................................`,
+            contents: emptyContents,
+        }),
+    },
+    {
+        repeatable: true,
+        contents: () => placeMap({
+            halign: rnd_halign(), valign: rnd_valign(), lit: true,
+            map: `
+x.....x
+.......
+.......
+.......
+.......
+.......
+x.....x`,
+            contents: emptyContents,
+        }),
+    },
+    () => placeMap({
+        halign: rnd_halign(), valign: rnd_valign(),
+        map: `
+BBBBBBB
+B.....B
+B.....B
+B.....B
+B.....B
+B.....B
+BBBBBBB`,
+        contents: () => {
+            lspo_region_full({ region: [2, 2, 2, 2], type: 'temple',
+                               filled: 1, irregular: 1 });
+            lspo_altar({ x: 3, y: 3, align: 'noalign',
+                         type: percent(75) ? 'altar' : 'shrine' });
+        },
+    }),
+    () => placeMap({
+        halign: rnd_halign(), valign: rnd_valign(),
+        map: `
+..........
+..........
+..........
+...FFFF...
+...F..F...
+...F..F...
+...FFFF...
+..........
+..........
+..........`,
+        contents: () => {
+            lspo_exclusion({ type: 'teleport', region: [4, 4, 5, 5] });
+            const mons = ['Angel', 'D', 'H', 'L'];
+            lspo_monster(mons[mathrandom(mons.length) - 1], 4, 4);
+        },
+    }),
+    () => placeMap({
+        halign: rnd_halign(), valign: rnd_valign(),
+        map: `
+.........
+.}}}}}}}.
+.}}---}}.
+.}--.--}.
+.}|...|}.
+.}--.--}.
+.}}---}}.
+.}}}}}}}.
+.........`,
+        contents: () => {
+            lspo_exclusion({ type: 'teleport', region: [3, 3, 5, 5] });
+            lspo_monster('L', 4, 4);
+        },
+    }),
+    () => {
+        const map = percent(30)
+            ? `
+.....
+.LLL.
+.LZL.
+.LLL.
+.....`
+            : `
+.....
+.PPP.
+.PWP.
+.PPP.
+.....`;
+        for (let dx = 1; dx <= 5; ++dx) {
+            placeMap({ x: dx * 14 - 4, y: 3 + rn2(13), map,
+                       contents: emptyContents });
+        }
+    },
+    {
+        repeatable: true,
+        contents: () => {
+            const map = `
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...
+...`;
+            for (let dx = 1; dx <= 3; ++dx) {
+                placeMap({ x: 3 + rn2(73), y: 3, map,
+                           contents: emptyContents });
+            }
+        },
+    },
+];
+
+function rnd_hell_prefab(coldhell) {
+    let dorepeat = true;
+    let nloops = 0;
+    do {
+        ++nloops;
+        const fab = hellPrefabs[rn2(hellPrefabs.length)];
+        if (typeof fab === 'function') {
+            fab(coldhell);
+            dorepeat = false;
+        } else {
+            fab.contents(coldhell);
+            dorepeat = !(fab.repeatable && rn2(nloops * 2 + 1) === 0);
+        }
+    } while (dorepeat && nloops <= 5);
 }
 
 function populate_maze() {

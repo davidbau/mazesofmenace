@@ -12,7 +12,7 @@
 import { game } from './gstate.js';
 import { which_armor } from './worn.js';
 import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';
-import { mnexto } from './mon.js';
+import { mnexto, mnearto } from './mon.js';
 import { m_avoid_kicked_loc, m_avoid_soko_push_loc, monnear, onscary } from './monmove.js';
 /* include/hack.h:1322 — MMOVE_MOVED is 1 and MMOVE_DIED is 2. This file had
    its own copy with MMOVE_MOVED = 2 (C's DIED value) and no MMOVE_DIED at all,
@@ -49,6 +49,9 @@ import { couldsee, clear_path, cansee } from './vision.js';
 import { doname } from './objnam.js';
 import { Monnam, noit_Monnam, christen_monst, x_monnam } from './do_name.js';
 import { ARTICLE_YOUR } from './const.js';
+import { MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_WITH_HERO,
+         MIGR_LEFTOVERS, MON_MIGRATING, MON_LIMBO,
+         RLOC_NOMSG } from './const.js';
 import { Hallucination } from './youprop.js';
 import { pline_xy } from './pline.js';
 import { relobj } from './steal.js';
@@ -60,7 +63,8 @@ import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './con
 import { PMNAMES } from './monst_data.js';
 import {
     makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, is_rider,
-    mpickobj, set_malign } from './makemon.js';
+    mpickobj, set_malign, deliver_obj_to_mon, DF_ALL } from './makemon.js';
+import { rloc } from './teleport.js';
 
 const NON_PM = -1;
 
@@ -1794,43 +1798,136 @@ function levl_follower(mtmp) {
         return true;
     if (mtmp.iswiz)
         return true; /* (amulet check is inside the wiz arm in C) */
-    if (mtmp.mtame || mtmp.isshk)
+    /* is_fshk() means a shopkeeper who is actively following the customer,
+       not every shopkeeper. Ordinary peaceful shopkeepers stay with their
+       shop when the hero changes levels. */
+    if (mtmp.mtame
+        || (mtmp.isshk
+            && !!(mtmp.eshk || mtmp.mextra?.eshk)?.following))
         return true;
     return (game.mons[mtmp.mnum].mflags2 & MFLAGS.M2_STALK) !== 0
         && (!mtmp.mflee || game.u.uhave?.amulet);
 }
 
-// src/dog.c:304 losedogs() — place the monsters accompanying the hero on
-// the new level. The shopkeeper/Kops bookkeeping and the general
-// migrating_mons list need absent subsystems; only mydogs is live.
-export function losedogs() {
+const Before_you = 0, With_you = 1, After_you = 2;
+const MON_STILL_ARRIVING = 0x100;
+
+// src/dog.c:304 losedogs(). Restore exact-position residents first, then
+// companions, then independent migrants scheduled for this level.
+export async function losedogs() {
+    const migrating = game.migrating_mons || [];
+    const failed = [];
+
+    for (let i = 0; i < migrating.length; ) {
+        const mtmp = migrating[i];
+        const xyloc = mtmp.mtrack?.[0]?.x ?? MIGR_RANDOM;
+        if (mtmp.mux === game.u.uz.dnum && mtmp.muy === game.u.uz.dlevel
+            && xyloc === MIGR_EXACT_XY) {
+            migrating.splice(i, 1);
+            if (!(await mon_arrive(mtmp, Before_you)))
+                failed.push(mtmp);
+        } else {
+            i++;
+        }
+    }
+
     while ((game.mydogs || []).length) {
         const mtmp = game.mydogs.shift();
-        mon_arrive(mtmp, true /* With_you */);
+        if (!(await mon_arrive(mtmp, With_you)))
+            failed.push(mtmp);
     }
+
+    for (let i = 0; i < migrating.length; ) {
+        const mtmp = migrating[i];
+        const xyloc = mtmp.mtrack?.[0]?.x ?? MIGR_RANDOM;
+        if (mtmp.mux === game.u.uz.dnum && mtmp.muy === game.u.uz.dlevel
+            && xyloc !== MIGR_EXACT_XY) {
+            migrating.splice(i, 1);
+            if (!(await mon_arrive(mtmp, After_you)))
+                failed.push(mtmp);
+        } else {
+            i++;
+        }
+    }
+
+    for (let i = failed.length - 1; i >= 0; i--)
+        migrating.unshift(failed[i]);
 }
 
-// src/dog.c:420 mon_arrive() — With_you slice: land on the hero's spot
-// 1 time in 10 (pet) if it is free, otherwise next to it via mnexto().
-function mon_arrive(mtmp, with_you) {
-    game.level.monsters.unshift(mtmp); /* back onto fmon (newest first) */
+// src/dog.c:420 mon_arrive(). This covers companions plus random,
+// approximate, exact, and hero-relative independent arrivals.
+async function mon_arrive(mtmp, when) {
+    (game.level.monsters ||= []).unshift(mtmp);
+    mtmp.mstate = (mtmp.mstate || 0) | MON_STILL_ARRIVING;
     mtmp.mstrategy = (mtmp.mstrategy | 0) | 0x40000000; /* STRAT_ARRIVE */
+    mtmp.mstate &= ~(MON_MIGRATING | MON_LIMBO);
+
+    const xyloc = mtmp.mtrack?.[0]?.x ?? MIGR_RANDOM;
+    const xyflags = mtmp.mtrack?.[0]?.y ?? 0;
+    let xlocale = mtmp.mtrack?.[1]?.x ?? 0;
+    let ylocale = mtmp.mtrack?.[1]?.y ?? 0;
     mtmp.mux = game.u.ux;
     mtmp.muy = game.u.uy;
     mon_track_clear_dog(mtmp);
 
-    if (with_you) {
+    if (mtmp === game.u.usteed) {
+        mtmp.mstate &= ~MON_STILL_ARRIVING;
+        return true;
+    }
+    if (when === With_you) {
         if (!m_at(game.u.ux, game.u.uy)
             && !rn2(mtmp.mtame ? 10 : mtmp.mpeaceful ? 5 : 2)) {
-            /* rloc_to(mtmp, u.ux, u.uy) */
             place_monster(mtmp, game.u.ux, game.u.uy);
             newsym(mtmp.mx, mtmp.my);
         } else {
-            mnexto(mtmp);
+            mnexto(mtmp, RLOC_NOMSG);
         }
-        return;
+        mtmp.mstate &= ~MON_STILL_ARRIVING;
+        return true;
     }
-    note_unported('mon_arrive:independent');
+
+    let wander = 0;
+    if ((mtmp.mlstmv ?? game.moves) < game.moves - 1) {
+        const elapsed = game.moves - 1 - mtmp.mlstmv;
+        await mon_catchup_elapsed_time(mtmp, elapsed);
+        wander = Math.min(elapsed, 8);
+    }
+
+    switch (xyloc) {
+    case MIGR_APPROX_XY:
+    case MIGR_EXACT_XY:
+        if (xyloc === MIGR_EXACT_XY)
+            wander = 0;
+        break;
+    case MIGR_WITH_HERO:
+        xlocale = game.u.ux;
+        ylocale = game.u.uy;
+        break;
+    default:
+        xlocale = ylocale = 0;
+        break;
+    }
+
+    if ((mtmp.migflags || 0) & MIGR_LEFTOVERS)
+        deliver_obj_to_mon(mtmp, 0, DF_ALL);
+
+    if (xlocale && wander)
+        note_unported('mon_arrive:wander_near_arrival');
+
+    mtmp.mx = 0;
+    mtmp.my = xyflags;
+    const placed = xlocale
+        ? !!(await mnearto(mtmp, xlocale, ylocale, false, RLOC_NOMSG))
+        : await rloc(mtmp, RLOC_NOMSG);
+    mtmp.mstate &= ~MON_STILL_ARRIVING;
+
+    if (!placed) {
+        const at = game.level.monsters.indexOf(mtmp);
+        if (at >= 0)
+            game.level.monsters.splice(at, 1);
+        mtmp.mstate |= MON_MIGRATING;
+    }
+    return placed;
 }
 
 // src/monmove.c:88 mon_track_clear()

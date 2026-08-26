@@ -489,14 +489,21 @@ function tele_jump_ok(x1, y1, x2, y2) {
     return true;
 }
 
-// src/teleport.c:1575 rloc_pos_ok(), for an already placed ordinary
-// monster. Migrating arrivals and resident shop or temple restrictions are
-// recorded only when reached because they need their own arrival handling.
+// src/teleport.c:1575 rloc_pos_ok(). Migrating arrivals are restricted to the
+// appropriate special-level destination region, excluding its forbidden box.
 function rloc_pos_ok(x, y, mtmp) {
     if (!goodpos(x, y, mtmp, GP_CHECKSCARY))
         return false;
     if (!mtmp.mx) {
-        note_unported_teleport('rloc:migrating_arrival_region');
+        const movingUp = ((mtmp.my || 0) & 1) !== 0;
+        const region = movingUp ? (game.updest || {}) : (game.dndest || {});
+        if (region.lx) {
+            return within_bounded_area(x, y, region.lx, region.ly,
+                                       region.hx, region.hy)
+                && (!region.nlx
+                    || !within_bounded_area(x, y, region.nlx, region.nly,
+                                            region.nhx, region.nhy));
+        }
         return true;
     }
     if (mtmp.isshk || mtmp.ispriest)

@@ -9,32 +9,33 @@
 import { game } from './gstate.js';
 import { ESHK, SHOPBASE, IS_DOOR, ROOMOFFSET, NO_ROOM, A_CHA, MAXULEV,
          HUNGRY, PICK_ANY, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
-         ECMD_OK, ECMD_TIME } from './const.js';
+         ECMD_OK, ECMD_TIME, G_GONE } from './const.js';
 import { in_rooms } from './hack.js';
-import { distu, dist2, online2 } from './hacklib.js';
+import { distu, dist2, online2, isok } from './hacklib.js';
 import { m_canseeu, inhishop } from './monmove.js';
 import { move_special } from './priest.js';
-import { carrying, sobj_at, currency, money_cnt, freeinv } from './invent.js';
+import { addinv, carrying, sobj_at, currency, money_cnt, freeinv } from './invent.js';
 import { wake_nearto } from './mon.js';
 import { Blind, Deaf, Invis } from './youprop.js';
-import { ACURR, Fast } from './attrib.js';
+import { ACURR, Fast, adjalign } from './attrib.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MSOUND } from './monst_data.js';
 import { Has_contents, Is_candle } from './obj.js';
 import { helpless } from './monst.js';
 import { is_elf, is_human } from './mondata.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { bot, pline } from './display.js';
 import { doname, xname } from './objnam.js';
 import { splitobj } from './mkobj.js';
 import { OBJ_FREE } from './obj.js';
 import { s_suffix } from './hacklib.js';
-import { shtypes } from './shknam.js';
+import { shtypes, VEGETARIAN_CLASS } from './shknam.js';
 import { Hello } from './role.js';
 import { ATR_NONE, NHW_MENU, tty_add_menu, tty_create_nhwindow,
          tty_destroy_nhwindow, tty_end_menu, tty_select_menu,
          tty_start_menu } from './tty/wintty.js';
 import { NO_COLOR } from './terminal.js';
+import { tty_yn_function } from './tty/topl.js';
 
 // src/shk.c:1449 hot_pursuit() — the shopkeeper starts following you.
 //
@@ -54,19 +55,29 @@ export function hot_pursuit(shkp) {
     if (!shkp.isshk)
         return;
 
-    note_unported_shk('hot_pursuit:rile_shk');
-
     const eshk = shkp.eshk || ESHK(shkp);
     if (eshk) {
+        shkp.mpeaceful = 0;
+        if (!eshk.surcharge) {
+            eshk.surcharge = true;
+            for (const bp of eshk.bill_p || [])
+                bp.price += Math.trunc((bp.price + 2) / 3);
+        }
         eshk.customer = game.plname || '';
         eshk.following = 1;
     }
 
-    /* shopkeeper networking: clear obj->no_charge for all obj on the floor
-       of this level (including inside containers on floor), even those that
-       are in other shopkeepers' shops */
-    note_unported_shk('hot_pursuit:clear_no_charge');
-    note_unported_shk('hot_pursuit:clear_no_charge_pets');
+    const clear = (objects) => {
+        for (const obj of objects || []) {
+            obj.no_charge = 0;
+            clear(obj.cobj);
+        }
+    };
+    clear(game.level?.objects);
+    for (const mon of game.level?.monsters || []) {
+        if (mon.mtame)
+            clear(mon.minvent);
+    }
 }
 
 function note_unported_shk(what) {
@@ -181,6 +192,136 @@ export function costly_spot(x, y) {
     const eshk = shkp.eshk || ESHK(shkp);
     return !!inside_shop(x, y)
         && !(x === eshk.shk.x && y === eshk.shk.y);
+}
+
+function add_up_bill(shkp) {
+    const eshk = shkp.eshk || ESHK(shkp);
+    return (eshk.bill_p || []).reduce(
+        (total, bp) => total + bp.price * bp.bquan, 0);
+}
+
+function clear_unpaid(objects) {
+    for (const obj of objects || []) {
+        obj.unpaid = 0;
+        clear_unpaid(obj.cobj);
+    }
+}
+
+function setpaid(shkp) {
+    clear_unpaid(game.invent);
+    clear_unpaid(game.level?.objects);
+    for (const mon of game.level?.monsters || [])
+        clear_unpaid(mon.minvent);
+
+    const eshk = shkp.eshk || ESHK(shkp);
+    eshk.bill_p = [];
+    eshk.billct = 0;
+    eshk.credit = 0;
+    eshk.debit = 0;
+    eshk.loan = 0;
+}
+
+async function makekops(origin) {
+    const [{ depth }, { enexto }, { makemon, MM_NOMSG }] = await Promise.all([
+        import('./dungeon.js'), import('./teleport.js'), import('./makemon.js'),
+    ]);
+    const count = Math.abs(depth(game.u.uz)) + rnd(5);
+    const counts = [count, Math.trunc(count / 3) + 1,
+                    Math.trunc(count / 6), Math.trunc(count / 9)];
+    const types = [PMNAMES.PM_KEYSTONE_KOP, PMNAMES.PM_KOP_SERGEANT,
+                   PMNAMES.PM_KOP_LIEUTENANT, PMNAMES.PM_KOP_KAPTAIN];
+    const spot = { x: origin.x, y: origin.y };
+
+    for (let k = 0; k < types.length; ++k) {
+        if (!counts[k])
+            break;
+        const mndx = types[k];
+        if ((game.mvitals?.[mndx]?.mvflags || 0) & G_GONE)
+            continue;
+        for (let left = counts[k]; left > 0; --left) {
+            if (enexto(spot, spot.x, spot.y, game.mons[mndx])) {
+                makemon(game.mons[mndx], spot.x, spot.y, MM_NOMSG);
+            }
+        }
+    }
+}
+
+async function call_kops(shkp, nearshop) {
+    await pline('An alarm sounds!');
+    const types = [PMNAMES.PM_KEYSTONE_KOP, PMNAMES.PM_KOP_SERGEANT,
+                   PMNAMES.PM_KOP_LIEUTENANT, PMNAMES.PM_KOP_KAPTAIN];
+    if (types.every(mndx =>
+        ((game.mvitals?.[mndx]?.mvflags || 0) & G_GONE))) {
+        if (game.flags?.verbose !== false)
+            await pline('But no one seems to respond to it.');
+        return;
+    }
+
+    if (nearshop) {
+        if (game.flags?.verbose !== false)
+            await pline('The Keystone Kops appear!');
+        await makekops({ x: game.u.ux, y: game.u.uy });
+        return;
+    }
+
+    if (game.flags?.verbose !== false)
+        await pline('The Keystone Kops are after you!');
+    const { choose_stairs } = await import('./wizard.js');
+    const stairs = { sx: 0, sy: 0 };
+    choose_stairs(stairs, true);
+    if (isok(stairs.sx, stairs.sy))
+        await makekops({ x: stairs.sx, y: stairs.sy });
+    await makekops({ x: shkp.mx, y: shkp.my });
+}
+
+async function rob_shop(shkp) {
+    const eshk = shkp.eshk || ESHK(shkp);
+    let total = add_up_bill(shkp) + (eshk.debit || 0);
+    if ((eshk.credit || 0) >= total) {
+        await pline(`Your credit of ${eshk.credit} ${currency(eshk.credit)} is used to cover your shopping bill.`);
+        total = 0;
+    } else {
+        await pline('You escaped the shop without paying!');
+        total -= eshk.credit || 0;
+    }
+    setpaid(shkp);
+    if (!total)
+        return false;
+
+    eshk.robbed = (eshk.robbed || 0) + total;
+    await pline(`You stole ${total} ${currency(total)} worth of merchandise.`);
+    if (game.urole?.mnum !== PMNAMES.PM_ROGUE)
+        adjalign(-Math.sign(game.u.ualign?.type || 0));
+    hot_pursuit(shkp);
+    return true;
+}
+
+// src/shk.c u_left_shop(), including credit settlement and the Kops alarm.
+export async function u_left_shop(leavestring, newlev) {
+    const u = game.u;
+    if (!leavestring
+        && (!game.level?.at(u.ux, u.uy)?.edge
+            || game.level?.at(u.ux0, u.uy0)?.edge))
+        return;
+
+    const roomno = (leavestring || u.ushops0 || '').charCodeAt(0);
+    const shkp = shop_keeper(roomno);
+    if (!shkp || !inhishop(shkp))
+        return;
+    const eshk = shkp.eshk || ESHK(shkp);
+    if (!eshk.billct && !eshk.debit)
+        return;
+
+    if (!leavestring && !muteshk(shkp)) {
+        const warning = eshk.surcharge
+            ? `${game.plname}!  Don't you leave without paying!`
+            : `${game.plname}!  Please pay before leaving.`;
+        await pline(`"${warning}"`);
+        return;
+    }
+
+    if (await rob_shop(shkp))
+        await call_kops(shkp, !newlev && !!game.level?.at(u.ux0, u.uy0)?.edge);
 }
 
 // src/shk.c:2809 get_cost_of_shop_item(), for ordinary floor stock.
@@ -465,6 +606,242 @@ function ordinary_itemized_bill(eshk) {
     return result;
 }
 
+const SELL_NORMAL = 0;
+const SELL_DELIBERATE = 1;
+const SELL_DONTSELL = 2;
+
+// src/shk.c sellobj_state(). Deliberate drops ask before selling, while
+// accidental and multi-object drops can reuse one response.
+export function sellobj_state(deliberate) {
+    game.sell_response = deliberate !== SELL_NORMAL ? '' : 'a';
+    game.sell_how = deliberate;
+    game.auto_credit = false;
+}
+
+function saleable(shkp, obj) {
+    const eshk = shkp.eshk || ESHK(shkp);
+    const shop = shtypes[(eshk.shoptype || SHOPBASE) - SHOPBASE];
+    if (!shop || shop.symb === OCLASSES.RANDOM_CLASS)
+        return true;
+    for (const [, itype] of shop.iprobs || []) {
+        if (itype === VEGETARIAN_CLASS) {
+            note_unported_shk('saleable:vegetarian');
+            continue;
+        }
+        if (itype < 0 ? itype === -obj.otyp : itype === obj.oclass)
+            return true;
+    }
+    return false;
+}
+
+// src/shk.c set_cost(), the amount a shopkeeper offers for ordinary goods.
+function set_cost(obj, shkp) {
+    let amount = (obj.quan || 1) * getprice(obj);
+    let multiplier = 1;
+    let divisor = 1;
+    const u = game.u;
+    const tourist = game.urole?.mnum === PMNAMES.PM_TOURIST
+                 || game.urole?.mnum === 'PM_TOURIST';
+
+    if (u.uarmh?.otyp === ONAMES.DUNCE_CAP) {
+        divisor *= 3;
+    } else if ((tourist && u.ulevel < MAXULEV / 2)
+               || (u.uarmu && !u.uarm && !u.uarmc)) {
+        divisor *= 3;
+    } else {
+        divisor *= 2;
+    }
+
+    const ocl = game.objects[obj.otyp];
+    if (!obj.dknown || !ocl.oc_name_known) {
+        if (obj.oclass === OCLASSES.GEM_CLASS) {
+            note_unported_shk('set_cost:unidentified_gem');
+        } else if (amount > 1 && !((shkp.m_id || 0) % 4)) {
+            multiplier *= 3;
+            divisor *= 4;
+        }
+    }
+
+    if (amount >= 1) {
+        amount *= multiplier;
+        if (divisor > 1)
+            amount = Math.trunc((Math.trunc(amount * 10 / divisor) + 5) / 10);
+        amount = Math.max(1, amount);
+    }
+    return amount;
+}
+
+function sub_one_frombill(obj, shkp) {
+    const eshk = shkp.eshk || ESHK(shkp);
+    const bill = eshk.bill_p || [];
+    const index = bill.findIndex(bp => bp.bo_id === obj.o_id);
+    if (index < 0) {
+        obj.unpaid = 0;
+        return;
+    }
+    obj.unpaid = 0;
+    if (bill[index].bquan > obj.quan) {
+        note_unported_shk('sub_one_frombill:partly_used');
+        bill[index].bquan -= obj.quan;
+        return;
+    }
+    bill.splice(index, 1);
+    eshk.billct = bill.length;
+}
+
+function subfrombill(obj, shkp) {
+    sub_one_frombill(obj, shkp);
+    for (const contained of obj.cobj || []) {
+        if (contained.oclass !== OCLASSES.COIN_CLASS)
+            subfrombill(contained, shkp);
+    }
+}
+
+async function money2u(mon, amount) {
+    const minvent = mon.minvent || [];
+    const gold = minvent.find(obj => obj.oclass === OCLASSES.COIN_CLASS);
+    if (!gold || amount <= 0 || gold.quan < amount)
+        return 0;
+
+    const paidGold = gold.quan > amount ? splitobj(gold, amount) : gold;
+    if (paidGold === gold)
+        minvent.splice(minvent.indexOf(gold), 1);
+    paidGold.where = OBJ_FREE;
+    paidGold.ocarry = null;
+    await addinv(paidGold);
+    (game.disp ||= {}).botl = true;
+    return amount;
+}
+
+async function donate_gold(amount, shkp, selling) {
+    const eshk = shkp.eshk || ESHK(shkp);
+    if ((eshk.debit || 0) >= amount) {
+        if (eshk.loan)
+            eshk.loan = Math.max(0, eshk.loan - amount);
+        eshk.debit -= amount;
+        await pline(`Your debt is ${eshk.debit ? 'partially ' : ''}paid off.`);
+        return;
+    }
+
+    const delta = amount - (eshk.debit || 0);
+    eshk.credit = (eshk.credit || 0) + delta;
+    if (eshk.debit) {
+        eshk.debit = 0;
+        eshk.loan = 0;
+        await pline('Your debt is paid off.');
+    }
+    if (eshk.credit === delta) {
+        await pline(`You have ${selling ? '' : 're-'}established ${delta} ${currency(delta)} credit.`);
+    } else {
+        await pline(`${delta} ${currency(delta)} added${selling ? '' : ' back'} to your credit; total is now ${eshk.credit} ${currency(eshk.credit)}.`);
+    }
+}
+
+// src/shk.c sellobj(), ordinary objects and gold. Container-specific billing
+// remains explicit because nested ownership needs the bill-object chain.
+export async function sellobj(obj, x, y) {
+    if (!(game.u.ushops || '').length)
+        return;
+    const rooms = in_rooms(x, y, SHOPBASE);
+    const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : NO_ROOM);
+    if (!shkp || !inhishop(shkp) || !costly_spot(x, y))
+        return;
+
+    if (obj.unpaid && !Has_contents(obj)
+        && obj.oclass !== OCLASSES.COIN_CLASS) {
+        sub_one_frombill(obj, shkp);
+        return;
+    }
+    if (Has_contents(obj)) {
+        note_unported_shk('sellobj:container');
+        return;
+    }
+
+    const eshk = shkp.eshk || ESHK(shkp);
+    const isgold = obj.oclass === OCLASSES.COIN_CLASS;
+    const saleitem = saleable(shkp, obj);
+    let offer = !isgold && saleitem ? set_cost(obj, shkp) : 0;
+
+    if (!shkp.mpeaceful) {
+        await pline('"Thank you, scum!"');
+        subfrombill(obj, shkp);
+        return;
+    }
+
+    if (!isgold && (!offer || game.sell_how === SELL_DONTSELL)) {
+        obj.no_charge = 1;
+        if (game.sell_how !== SELL_DONTSELL)
+            await pline(`${shopkeeper_name(shkp)} seems uninterested.`);
+        return;
+    }
+
+    if (isgold) {
+        await donate_gold(obj.quan, shkp, true);
+        return;
+    }
+
+    const shkmoney = money_cnt(shkp.minvent || []);
+    if (!shkmoney) {
+        const creditOffer = Math.trunc(offer * 9 / 10) + (offer <= 1 ? 1 : 0);
+        let answer = game.sell_response;
+        if (game.sell_how === SELL_NORMAL || game.auto_credit) {
+            answer = game.sell_response = 'y';
+        } else if (answer !== 'n') {
+            await pline(`${shopkeeper_name(shkp)} cannot pay you at present.`);
+            answer = await tty_yn_function(
+                `Will you accept ${creditOffer} ${currency(creditOffer)} in credit for ${doname(obj)}?`,
+                'ynaq', 'n');
+            if (answer === 'a') {
+                answer = 'y';
+                game.auto_credit = true;
+            }
+        }
+        if (answer === 'y') {
+            delete game._encumber_status_stale;
+            await pline(`You traded ${doname(obj)} for ${creditOffer} zorkmid${creditOffer === 1 ? '' : 's'} in ${eshk.credit ? 'additional ' : ''}credit.`);
+            eshk.credit = (eshk.credit || 0) + creditOffer;
+            subfrombill(obj, shkp);
+        } else {
+            if (answer === 'q')
+                game.sell_response = 'n';
+            obj.no_charge = 1;
+            subfrombill(obj, shkp);
+        }
+        return;
+    }
+
+    const shortFunds = offer > shkmoney;
+    if (shortFunds)
+        offer = shkmoney;
+    record_price_quote(obj.otyp, Math.trunc(offer / (obj.quan || 1)), false);
+
+    let answer = game.sell_response;
+    if (!answer) {
+        const one = (obj.quan || 1) === 1;
+        answer = await tty_yn_function(
+            `${shopkeeper_name(shkp)} offers${shortFunds ? ' only' : ''} ${offer} gold piece${offer === 1 ? '' : 's'} for your ${xname(obj)}.  Sell ${one ? 'it' : 'them'}?`,
+            'ynaq', 'n');
+    }
+    if (answer === 'q') {
+        game.sell_response = 'n';
+        answer = 'n';
+    } else if (answer === 'a') {
+        game.sell_response = 'y';
+        answer = 'y';
+    }
+    delete game._encumber_status_stale;
+
+    if (answer !== 'y') {
+        obj.no_charge = 1;
+        subfrombill(obj, shkp);
+        return;
+    }
+
+    subfrombill(obj, shkp);
+    await money2u(shkp, offer);
+    await pline(`You sold ${doname(obj)} for ${offer} gold piece${offer === 1 ? '' : 's'}.`);
+}
+
 // src/shk.c menu_pick_pay_items() -- choose intact ordinary items to buy.
 async function menu_pick_pay_items(items) {
     const win = tty_create_nhwindow(NHW_MENU);
@@ -563,6 +940,10 @@ export async function dopay() {
     const items = ordinary_itemized_bill(eshk);
     if (!items.length)
         return ECMD_OK;
+    if (!money_cnt(game.invent) && !(eshk.credit || 0)) {
+        await pline('You have no gold or credit.');
+        return ECMD_OK;
+    }
     if (money_cnt(game.invent) + (eshk.credit || 0)
         < Math.min(...items.map(it => it.cost))) {
         await pline(`You don't have enough gold to buy`

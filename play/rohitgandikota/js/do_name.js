@@ -8,7 +8,7 @@
 
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow } from './tty/wintty.js';
-import { docrt, pline } from './display.js';
+import { docrt, flush_screen, pline } from './display.js';
 import { discover_object } from './o_init.js';
 import { an, xname } from './objnam.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
@@ -17,14 +17,14 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
          ONAME_KNOW_ARTI } from './const.js';
 import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { game } from './gstate.js';
-import { rn2, rn2_on_display_rng } from './rng.js';
+import { rn1, rn2, rn2_on_display_rng } from './rng.js';
 import { Hallucination } from './youprop.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
          SUPPRESS_SADDLE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
-         SUPPRESS_HALLUCINATION, MD_PAD_BOGONS,
+         SUPPRESS_HALLUCINATION, SUPPRESS_MAPPEARANCE, MD_PAD_BOGONS,
          has_mgivenname, MGIVENNAME, W_SADDLE } from './const.js';
 import { humanoid, is_animal, mindless, pronoun_gender, type_is_pname } from './mondata.js';
 import { canspotmon } from './display.js';
@@ -54,6 +54,41 @@ const ghostnames = [
 // draw happens. ROLL_FROM is include/hack.h:1493, array[rn2(SIZE(array))].
 export function rndghostname() {
     return rn2(7) ? ghostnames[rn2(ghostnames.length)] : game.plname;
+}
+
+// src/do_name.c:1539 rndorcname() and :1556 christen_orc(). Orcish Town
+// uses these for the raiding gang, its local members, and later delivery of
+// the gang's migrating loot.
+export function rndorcname() {
+    const vowels = ['a', 'ai', 'og', 'u'];
+    const sounds = ['gor', 'gris', 'un', 'bane', 'ruk', 'oth',
+                    'ul', 'z', 'thos', 'akh', 'hai'];
+    const count = rn1(2, 3);
+    let vowelNext = rn2(2);
+    let name = '';
+
+    for (let i = 0; i < count; i++) {
+        vowelNext = 1 - vowelNext;
+        if (i > 0 && !rn2(30))
+            name += '-';
+        name += vowelNext ? vowels[rn2(vowels.length)]
+                          : sounds[rn2(sounds.length)];
+    }
+    return name;
+}
+
+export function christen_orc(mtmp, gang, other) {
+    const orcname = rndorcname();
+    let name = null;
+
+    if (gang != null)
+        name = `${upstart(orcname)} of ${upstart(gang)}`;
+    else if (other != null)
+        name = `${upstart(orcname)}${other}`;
+
+    if (name != null && name.length < 256)
+        return christen_monst(mtmp, name);
+    return mtmp;
 }
 
 // src/do_name.c:1424 roguename(), the name used by the Rogue-level ghost.
@@ -260,6 +295,13 @@ export function christen_monst(mtmp, name) {
 export const mon_nam = (mtmp) =>
     x_monnam(mtmp, ARTICLE_THE, null,
              has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
+
+// src/do_name.c:1110 m_monnam(), the monster's exact own name without an
+// article, hallucination, visibility, appearance, or saddle decoration.
+export const m_monnam = (mtmp) =>
+    x_monnam(mtmp, ARTICLE_NONE, null,
+             SUPPRESS_IT | SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION
+             | SUPPRESS_SADDLE | SUPPRESS_MAPPEARANCE, false);
 
 // src/do_name.c:1117 y_monnam() — ARTICLE_YOUR, which x_monnam downgrades
 // to THE for anything not tame. "saddled" is redundant when mounted, so the
@@ -517,6 +559,10 @@ export async function donamelevel() {
 export async function docall(obj) {
     if (!obj.dknown)
         return; /* probably blind */
+
+    /* src/do_name.c:644 flushes pending status changes before either the
+       acknowledgement prompt or the naming prompt captures a frame. */
+    await flush_screen(1);
 
     /* safe_qbuf(qbuf, "Call ", ":", obj, docall_xname, simpleonames, "thing")
        — docall_xname() strips quantity and BUC so the prompt names the TYPE,

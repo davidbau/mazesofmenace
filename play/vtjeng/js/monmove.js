@@ -176,6 +176,7 @@ import {
     attacktype,
     attacktype_fordmg,
     breathless,
+    can_teleport,
     dmgtype,
     flesh_petrifies,
     haseyes,
@@ -333,6 +334,7 @@ import {
     floor_trigger,
     mintrap,
 } from './trap_effects.js';
+import { noteleport_level } from './teleport.js';
 import { ttyPline } from './tty_message.js';
 import {
     cansee,
@@ -1735,8 +1737,6 @@ export async function wield_pre_move_weapon(monster, range, rawEnv = {}) {
 // as in C.  Steps C runs that this does not are listed with the source
 // condition that keeps them unreachable behind the current action boundary:
 //   quest_stat_check(), quest_talk()      no quest monster is reachable
-//   mconf/mstun recovery draws            assertSimpleActionState() rejects
-//                                         mconf and mstun
 //   m_respond(), is_covetous() tactics    the boundary rejects both
 //   release_hero(), u.ustuck              no hero-grabbing monster is reachable
 //   Demonic Blackmail, watch_on_duty(),   the boundary rejects guards,
@@ -1748,8 +1748,8 @@ export async function wield_pre_move_weapon(monster, range, rawEnv = {}) {
 //   mon_offmap(), wormhitu()              unreachable on a fresh D:1 level
 //   cuss()                                no MS_CUSS species can be generated
 //                                         at the D:1 difficulty cap
-// A timed fleeing state is reachable for a starting pet after do_attack()'s
-// safe_pet refusal. Other fleeing monsters remain behind the action boundary.
+// A fleeing state is reachable for starting pets (after do_attack()'s
+// safe_pet refusal) and for hostile monsters (after monflee() calls).
 //
 // cuss() used to be listed with mon_offmap() and wormhitu() because only a
 // nearby monster reached it. It is not distance that stops it now: the
@@ -1805,11 +1805,31 @@ export async function dochug(monster, rawEnv = {}) {
     }
 
     wipeEngraving(monster.mx, monster.my, 1, false, env);
+
+    // confused monsters get unconfused with small probability (monmove.c:737-738)
+    if (monster.mconf && !random.rn2(50))
+        monster.mconf = 0;
+
+    // stunned monsters get un-stunned with larger probability (monmove.c:741-742)
+    if (monster.mstun && !random.rn2(10))
+        monster.mstun = 0;
+
     if (monster.mflee) {
-        // C evaluates !rn2(40) before can_teleport(), so starting dogs, cats,
-        // and ponies consume this draw even though they cannot teleport.
-        random.rn2(40);
-        // m_respond() is inert for all three starting-pet species.
+        // C ref: monmove.c:745-749.  Some teleporting monsters flee by
+        // teleporting.  C evaluates !rn2(40) unconditionally so every fleeing
+        // monster consumes this draw regardless of whether it can teleport.
+        if (!random.rn2(40) && can_teleport(monster.data) && !monster.iswiz
+            && !noteleport_level(monster, state)) {
+            // rloc(RLOC_MSG) and leppie_stash() are not yet ported for this
+            // path.  The action boundary blocks tengu, the only reachable
+            // species with M1_TPORT, so this branch is unreachable until
+            // that guard is removed.
+            unsupported('fleeing monster teleport');
+        }
+        // C ref: monmove.c:753-755.  m_respond() is inert for every species
+        // that reaches this code: Shrieker, Medusa, and Erinys are all behind
+        // the SPECIAL_RESPONDERS boundary.
+        // C ref: monmove.c:758-760.  Fleeing monsters might regain courage.
         if (!monster.mfleetim
             && monster.mhp === monster.mhpmax
             && !random.rn2(25)) {

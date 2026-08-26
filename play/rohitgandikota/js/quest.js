@@ -23,6 +23,22 @@ function Qstat() {
     return (game.quest_status ||= {});
 }
 
+// src/quest.c:125 artitouch() -- first contact with the role's quest
+// artifact identifies it by name, delivers the role-specific quest text, and
+// exercises wisdom.  addinv_core1() calls this before the object is linked
+// into inventory, so the pager precedes the ordinary inventory message.
+export async function artitouch(obj) {
+    const q = Qstat();
+    if (q.touched_artifact)
+        return;
+
+    const { observe_object } = await import('./o_init.js');
+    observe_object(obj);
+    q.touched_artifact = true;
+    await qt_pager('gotit');
+    exercise(A_WIS, true);
+}
+
 /* include/dungeon.h:129 Lcheck() via on_level() */
 const on_level = (a, b) => !!a && !!b && a.dnum === b.dnum
                            && a.dlevel === b.dlevel;

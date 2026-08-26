@@ -17,6 +17,7 @@ import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE,
          FROMEXPER, FROMRACE, FROMOUTSIDE, Is_airlevel, TIMEOUT } from './const.js';
 import { strongmonst } from './mondata.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
+import { ART_OGRESMASHER } from './artilist_data.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { role_abil, race_abil } from './role_data.js';
 import { You_feel } from './pline.js';
@@ -801,7 +802,8 @@ export function acurr(chridx) {
                          || game.u.umonnum === PMNAMES.PM_AMOROUS_DEMON))
             result = 18;
     } else if (chridx === A_CON) {
-        /* u_wield_art(ART_OGRESMASHER) */
+        if (game.u.uwep?.oartifact === ART_OGRESMASHER)
+            result = 25;
     } else if (chridx === A_INT || chridx === A_WIS) {
         /* uarmh == DUNCE_CAP -> 6 */
     } else if (chridx === A_DEX) {

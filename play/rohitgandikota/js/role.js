@@ -600,6 +600,17 @@ export function Hello(mtmp) {
     }
 }
 
+// src/role.c:2143 Goodbye(), role-specific level-loss and farewell text.
+export function Goodbye() {
+    switch (game.urole?.mnum) {
+    case PMNAMES.PM_KNIGHT:   return 'Fare thee well'; /* Olde English */
+    case PMNAMES.PM_SAMURAI:  return 'Sayonara';       /* Japanese */
+    case PMNAMES.PM_TOURIST:  return 'Aloha';          /* Hawaiian */
+    case PMNAMES.PM_VALKYRIE: return 'Farvel';         /* Norse */
+    default:                  return 'Goodbye';
+    }
+}
+
 // src/insight.c align_str()
 export function align_str(alignment) {
     switch (alignment) {

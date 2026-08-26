@@ -254,6 +254,12 @@ export async function nh_timeout() {
             }
             break;
         }
+        case 'HStun': {
+            const { make_stunned } = await import('./potion.js');
+            intr.HStun = 1; /* preserve the old timeout for the cure */
+            await make_stunned(0, true);
+            break;
+        }
         case 'HBlinded': {
             const { make_blinded } = await import('./potion.js');
             intr.HBlinded = 1; /* preserve the old timeout for the cure */

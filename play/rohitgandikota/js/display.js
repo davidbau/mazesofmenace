@@ -20,7 +20,7 @@ import { m_at, t_at } from './mon.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
-    CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
+    CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, DBWALL,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, SDOOR, ICE,
     IRONBARS, TREE, LADDER, ALTAR, GRAVE, THRONE, SINK, FOUNTAIN,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
@@ -32,7 +32,7 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
-    AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK,
+    AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SANCTUM,
     ACCESSIBLE, Is_rogue_level,
 } from './const.js';
 import { engr_at } from './engrave.js';
@@ -709,11 +709,11 @@ export function back_to_glyph(loc, x, y) {
            key off a `stair_seen` flag, which is not a thing C has. */
         const branch = known_branch_stairs(stairway_at(x, y));
         const scol = branch ? CLR_YELLOW : NO_COLOR;
-        if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
-            return { ch: '<', color: scol, dec: false,
-                     cmap: branch ? CM.S_brupstair : CM.S_upstair };
-        return { ch: '>', color: scol, dec: false,
-                 cmap: branch ? CM.S_brdnstair : CM.S_dnstair };
+        return (loc.ladder & LA_DOWN)
+            ? { ch: '>', color: scol, dec: false,
+                cmap: branch ? CM.S_brdnstair : CM.S_dnstair }
+            : { ch: '<', color: scol, dec: false,
+                cmap: branch ? CM.S_brupstair : CM.S_upstair };
     }
     // Wall types → DEC line-drawing characters
     /* src/display.c:2336 — every wall arm is `ptr->seenv ? wall_angle(ptr)
@@ -751,7 +751,9 @@ export function back_to_glyph(loc, x, y) {
     }
     case ALTAR: {
         let color;
-        switch ((loc.altarmask ?? AM_NONE) & AM_MASK) {
+        if ((loc.altarmask ?? AM_NONE) & AM_SANCTUM) {
+            color = CLR_BRIGHT_MAGENTA;
+        } else switch ((loc.altarmask ?? AM_NONE) & AM_MASK) {
         case AM_NONE:
             color = CLR_RED;
             break;
@@ -776,6 +778,9 @@ export function back_to_glyph(loc, x, y) {
     case LAVAPOOL:  return { ch: '`', color: CLR_RED, dec: true, cmap: CM.S_lava };
     case LAVAWALL:  return { ch: '`', color: CLR_ORANGE, dec: true, cmap: CM.S_lavawall };
     case ICE:       return { ch: '~', color: CLR_CYAN, dec: true, cmap: CM.S_ice };   // \xfe
+    case DBWALL:    return { ch: '#', color: CLR_BROWN, dec: false,
+                             cmap: loc.horizontal ? CM.S_hcdbridge
+                                                  : CM.S_vcdbridge };
     case DRAWBRIDGE_DOWN:                                  /* S_[vh]odbridge */
         return { ch: '~', color: CLR_BROWN, dec: true,
                  cmap: loc.horizontal ? CM.S_hodbridge : CM.S_vodbridge };
@@ -1180,9 +1185,17 @@ export function newsym(x, y) {
                 .find(m => m.mx === x && m.my === y && m.mhp > 0
                            && !m.msleeping_hidden);
         const mon = mon0?.mhp > 0 ? mon0 : null;
+        /* display.c:970 is_worm_tail().  A tail square maps to the worm,
+           but the monster's own coordinates remain at its head.  Since this
+           square is visible, mon_visible() is enough to see the tail; using
+           canspotmon() would incorrectly test cansee() at the distant head. */
+        const wormTail = !!(mon?.wormno
+                            && (mon.mx !== x || mon.my !== y));
+        const spotMon = !!(mon && (mon_visible(mon)
+                                   || (!wormTail && sensemon(mon))));
         /* src/display.c:1031 — an 'I' stays mapped until some action proves
            that it is stale. Merely seeing the square again is not proof. */
-        if (!(mon && canspotmon(mon)) && glyph_is_invisible_at(x, y)) {
+        if (!spotMon && glyph_is_invisible_at(x, y)) {
             map_invisible(x, y);
             return;
         }
@@ -1209,7 +1222,7 @@ export function newsym(x, y) {
            water) shows the layer beneath it, not its letter. Disguised
            mimics stay spottable (mundetected 0) and display_monster() draws
            the DISGUISE (display.c:533). */
-        if (mon && canspotmon(mon)) {
+        if (spotMon) {
             if (mon.m_ap_type === M_AP_OBJECT) {
                 /* display.c:564 — a fake object sent to map_object() */
                 const fake = { otyp: mon.mappearance, ox: x, oy: y,
@@ -1232,8 +1245,9 @@ export function newsym(x, y) {
             }
             const shown = game.mons[Hallucination()
                 ? rn2_on_display_rng(NUMMONS)
-                : (mon.m_ap_type === M_AP_MONSTER
-                    ? mon.mappearance : mon.mnum)];
+                : (wormTail ? PMNAMES.PM_LONG_WORM_TAIL
+                    : (mon.m_ap_type === M_AP_MONSTER
+                        ? mon.mappearance : mon.mnum))];
             show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
                             shown.mcolor ?? NO_COLOR, false, 0,
                             { kind: 'mon', mon });
@@ -1269,6 +1283,7 @@ export function newsym(x, y) {
                     || (see_with_infrared(mon) && mon_visible(mon)))) {
             const shown = game.mons[Hallucination()
                 ? rn2_on_display_rng(NUMMONS) : mon.mnum];
+            clear_invisible_memory(x, y);
             show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
                             shown.mcolor ?? NO_COLOR, false, 0,
                             { kind: 'mon', mon });
@@ -1332,6 +1347,7 @@ export function newsym(x, y) {
             if (wl > 5) wl = 5;
             if (wl < 1) wl = 1;
             const warncolor = [CLR_WHITE, 1, 1, 1, 5, 13];
+            clear_invisible_memory(x, y);
             show_glyph_cell(x, y, String(wl), warncolor[wl], false, 0,
                             { kind: 'warn', wl });
             return;
@@ -2295,14 +2311,19 @@ export function glyph_is_invisible_at(x, y) {
     return game.level?.at(x, y)?.remembered_glyph?.glyph?.kind === 'invis';
 }
 
+function clear_invisible_memory(x, y) {
+    if (!isok(x, y) || !glyph_is_invisible_at(x, y))
+        return false;
+    const loc = game.level.at(x, y);
+    const tg = terrain_glyph(loc, x, y);
+    loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                             glyph: { kind: 'cmap', cmap: tg.cmap } };
+    return true;
+}
+
 // src/display.c unmap_invisible() — clear a stale 'I' marker.
 export function unmap_invisible(x, y) {
-    if (isok(x, y) && glyph_is_invisible_at(x, y)) {
-        const loc = game.level.at(x, y);
-        /* unmap_object(): memory reverts to the background */
-        const tg = terrain_glyph(loc, x, y);
-        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
-                                 glyph: { kind: 'cmap', cmap: tg.cmap } };
+    if (clear_invisible_memory(x, y)) {
         newsym(x, y);
     }
 }

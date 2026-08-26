@@ -190,3 +190,30 @@ export function worm_cross(x1, y1, x2, y2) {
     }
     return false;
 }
+
+/* src/worm.c:968 flip_worm_segs_vertical() and :979 horizontal().
+   C flips level.monsters[][] after changing the segment coordinates.  Our
+   positional grid is a Map, so move each segment's key explicitly too. */
+function flip_worm_segs(worm, axis, min, max) {
+    const w = wstate();
+    const segments = [];
+    for (let curr = w.wtails[worm.wormno]; curr; curr = curr.nseg) {
+        if (game.level?.monAt?.get(`${curr.wx},${curr.wy}`) === worm)
+            game.level.monAt.delete(`${curr.wx},${curr.wy}`);
+        if (axis === 'y')
+            curr.wy = max - curr.wy + min;
+        else
+            curr.wx = max - curr.wx + min;
+        segments.push(curr);
+    }
+    for (const curr of segments)
+        game.level?.monAt?.set(`${curr.wx},${curr.wy}`, worm);
+}
+
+export function flip_worm_segs_vertical(worm, miny, maxy) {
+    flip_worm_segs(worm, 'y', miny, maxy);
+}
+
+export function flip_worm_segs_horizontal(worm, minx, maxx) {
+    flip_worm_segs(worm, 'x', minx, maxx);
+}

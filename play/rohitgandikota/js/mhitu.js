@@ -48,7 +48,8 @@ import { nomul } from './hack.js';
 import { stop_occupation } from './allmain.js';
 import { hitval, mon_wield_item } from './weapon.js';
 import { mhitm_ad_phys, mhitm_ad_cold, mhitm_ad_elec, mhitm_ad_drst,
-         mhitm_ad_blnd, mhitm_ad_ston, mhitm_knockback } from './uhitm.js';
+         mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_drli,
+         mhitm_knockback } from './uhitm.js';
 import { is_pool, t_at } from './mon.js';
 import { touch_petrifies } from './dog.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -418,10 +419,9 @@ async function explmu(mtmp, mattk, ufound, indx) {
     return DEADMONSTER(mtmp) ? M_ATTK_AGR_DIED : M_ATTK_MISS;
 }
 
-// src/mhitu.c:1680 gazemu(), common visibility and hallucination gates.
-// Hallucination spends rn2(4) before the attack-specific switch even when
-// blindness makes every ordinary gaze ineffective. The individual gaze
-// effects remain recorded until their status and reflection paths land.
+// src/mhitu.c:1680 gazemu(), common visibility and hallucination gates plus
+// the umber hulk's confusion gaze. Other gaze effects remain recorded until
+// their status and reflection paths land.
 async function gazemu(mtmp, mattk) {
     const is_medusa = mtmp.mnum === PMNAMES.PM_MEDUSA;
     const reflectable = Reflecting() && couldsee(mtmp.mx, mtmp.my)
@@ -439,6 +439,28 @@ async function gazemu(mtmp, mattk) {
     if (!mcanseeu
         && !(mattk[1] === ATTKS.AD_BLND && canseemon(mtmp)))
         return M_ATTK_MISS;
+
+    if (mattk[1] === ATTKS.AD_CONF) {
+        if (!mtmp.mspec_used && rn2(5)) {
+            if (cancelled) {
+                note_unported_mhitu('gazemu:adtyp=25 cancelled=1');
+            } else {
+                const conf = d(3, 4);
+                mtmp.mspec_used += conf + rn2(6);
+                if (!(game.u.intrinsic?.HConfusion
+                      || game.u.uprops?.CONFUSION)) {
+                    await pline(`${s_suffix(Monnam(mtmp))} gaze confuses you!`);
+                } else {
+                    await You('are getting more and more confused.');
+                }
+                const { make_confused } = await import('./potion.js');
+                await make_confused((game.u.intrinsic?.HConfusion || 0)
+                                    + conf, false);
+                await stop_occupation();
+            }
+        }
+        return M_ATTK_MISS;
+    }
 
     note_unported_mhitu(`gazemu:adtyp=${mattk[1]} cancelled=${cancelled ? 1 : 0}`);
     return M_ATTK_MISS;
@@ -996,6 +1018,8 @@ async function hitmu(mtmp, mattk, indx) {
         await mhitm_ad_blnd(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_STON) {
         await mhitm_ad_ston(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_DRLI) {
+        await mhitm_ad_drli(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_LEGS) {
         const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
         const sidestr = side === RIGHT_SIDE ? 'right' : 'left';
@@ -1065,7 +1089,8 @@ async function hitmu(mtmp, mattk, indx) {
         mhm.hitflags |= M_ATTK_HIT;
     }
 
-    mhitm_knockback(mtmp, game.youmonst, mattk, mhm, (MON_WEP(mtmp) != null));
+    await mhitm_knockback(mtmp, game.youmonst, mattk, mhm,
+                          (MON_WEP(mtmp) != null));
 
     if (mhm.done)
         return mhm.hitflags;

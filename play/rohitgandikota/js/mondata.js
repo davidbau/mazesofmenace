@@ -231,6 +231,29 @@ export function locomotion(ptr, def) {
     return def;
 }
 
+// src/mondata.c:1395 stagger(), the impaired-motion counterpart to
+// locomotion().
+export function stagger(ptr, def) {
+    const upper = def[0] === def[0].toUpperCase();
+    const verb = (lower, capital) => upper ? capital : lower;
+
+    if (is_floater(ptr))
+        return verb('wobble', 'Wobble');
+    if (is_flyer(ptr) && ptr.msize <= MFLAGS.MZ_SMALL)
+        return verb('flutter', 'Flutter');
+    if (is_flyer(ptr))
+        return verb('stagger', 'Stagger');
+    if (slithy(ptr))
+        return verb('falter', 'Falter');
+    if (amorphous(ptr))
+        return verb('tremble', 'Tremble');
+    if (!ptr.mmove)
+        return verb('pulsate', 'Pulsate');
+    if (nolimbs(ptr))
+        return verb('falter', 'Falter');
+    return def;
+}
+
 // include/mondata.h:196 likes_fire() — an explicit pair plus likes_lava, not a
 // flag test; writing it from a flag would be the M1_FIRE_RES mistake again.
 export const likes_fire = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX

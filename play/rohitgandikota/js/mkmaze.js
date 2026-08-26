@@ -4,37 +4,44 @@
 // makemaz() resolves the proto file name and hands off to load_special();
 // place_lregion()/put_lregion_here() place branch stairs, portals and the
 // hero's arrival spot; fixup_special() is the post-script cleanup. The
-// water-level, medusa and mines-ransacked arms need absent subsystems and
-// are recorded at their C decision points.
+// water-level, Medusa, and Mines postprocessing lives below.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { Is_special, depth, find_level } from './dungeon.js';
+import { Is_special, depth, find_level, get_level,
+         dunlevs_in_dungeon } from './dungeon.js';
 import { load_special, sp_lev_wire_create_maze } from './sp_lev.js';
 import { COLNO, ROWNO, ROOM, CORR, AIR, STONE, HWALL, IS_DOOR,
          ACCESSIBLE, W_NONDIGGABLE, POOL, IRONBARS, TLWALL, TRWALL,
          TUWALL, TDWALL, BLCORNER, BRCORNER, TLCORNER,
          TRCORNER, WATER, CLOUD, LAVAPOOL, MAGIC_PORTAL, MOAT,
          Is_waterlevel, Is_airlevel, Is_firelevel, u_at,
-         MON_BUBBLEMOVE } from './const.js';
+         MON_BUBBLEMOVE, MIGR_RANDOM, MIGR_LEFTOVERS, MIGR_TO_SPECIES,
+         OBJ_MIGRATING, has_mgivenname } from './const.js';
 import { isok, distu, sgn } from './hacklib.js';
 import { occupied, somex, somey } from './mklev.js';
 import { t_at, m_at, mnexto, mnearto, elemental_clog } from './mon.js';
-import { goodpos, rndmonnum, remove_monster } from './makemon.js';
-import { mk_tt_object, mkcorpstat, set_corpsenm, place_object } from './mkobj.js';
-import { poly_when_stoned } from './mondata.js';
+import { goodpos, rndmonnum, remove_monster, makemon, set_malign,
+         mpickobj, MM_NONAME } from './makemon.js';
+import { mk_tt_object, mkcorpstat, set_corpsenm, place_object, mksobj,
+         mkobj } from './mkobj.js';
+import { poly_when_stoned, is_orc } from './mondata.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
-import { ONAMES } from './objects_data.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
+import { christen_monst, christen_orc, new_oname, rndorcname,
+         upstart } from './do_name.js';
+import { rnd_otyp_by_namedesc } from './objnam.js';
+import { DEADMONSTER } from './monst.js';
 /* the endgame-plane machinery below; these modules are already in this
    module's transitive import graph through mon.js, so the static edges add
    no new cycle — but they must stay AFTER the mon.js import above */
 import { newsym, pline } from './display.js';
 import { block_point, unblock_point, recalc_block_point,
          vision_recalc } from './vision.js';
-import { obj_extract_self, stackobj } from './invent.js';
+import { obj_extract_self, stackobj, weight } from './invent.js';
 import { cmap_names } from './drawing_data.js';
 import { CLR_BRIGHT_BLUE, CLR_CYAN, CLR_GRAY } from './terminal.js';
-import { RLOC_NOMSG } from './const.js';
+import { RLOC_ERR, RLOC_NOMSG } from './const.js';
 
 function note_unported_mkmaze(what) {
     (game.unported ||= new Set()).add(what);
@@ -203,6 +210,165 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
 var mkmaze_mklev_fns;
 export function mkmaze_wire_mklev(fns) { mkmaze_mklev_fns = fns; }
 
+const ORC_LEADER = 1;
+const orcfruit = ['paddle cactus', 'dwarven root'];
+
+// src/options.c:8170 fruitadd(), for the non-user fruit names attached to
+// Orcish Town loot. These short fixed names need only the normal lookup and
+// insertion path.
+function add_orc_fruit(name) {
+    let highest = 0;
+    for (let fruit = game.ffruit; fruit; fruit = fruit.nextf) {
+        highest = Math.max(highest, fruit.fid | 0);
+        if (fruit.fname === name)
+            return fruit.fid;
+    }
+    if (highest >= 127)
+        return rnd(127);
+    const fruit = { fname: name, fid: highest + 1,
+                    nextf: game.ffruit || null };
+    game.ffruit = fruit;
+    if (game.flags)
+        game.flags.made_fruit = true;
+    return fruit.fid;
+}
+
+// src/mkobj.c:253 mksobj_migr_to_species(). The destination species mask is
+// kept until an eligible monster receives the stolen item on a later level.
+function migr_booty_item(otyp, gang) {
+    const otmp = mksobj(otyp, true, false);
+    otmp.where = OBJ_MIGRATING;
+    otmp.owornmask = MIGR_TO_SPECIES;
+    otmp.migr_species = MFLAGS.M2_ORC;
+    otmp.omigr_from_dnum = game.u.uz.dnum;
+    otmp.omigr_from_dlevel = game.u.uz.dlevel;
+    (game.migrating_objs ||= []).unshift(otmp);
+
+    if (gang != null) {
+        new_oname(otmp, gang.length + 1);
+        otmp.oname = gang;
+        if (game.objects[otyp].oc_class === OCLASSES.FOOD_CLASS) {
+            if (otyp === ONAMES.SLIME_MOLD)
+                otmp.spe = add_orc_fruit(orcfruit[rn2(orcfruit.length)]);
+            otmp.quan += rn2(3);
+            otmp.owt = weight(otmp);
+        }
+    }
+    return otmp;
+}
+
+// src/mkmaze.c:753 shiny_orc_stuff().
+function shiny_orc_stuff(mtmp) {
+    const isCaptain = mtmp.mnum === PMNAMES.PM_ORC_CAPTAIN;
+    const goldprob = isCaptain ? 600 : 300;
+    const gemprob = Math.trunc(goldprob / 4);
+
+    if (rn2(1000) < goldprob) {
+        const otmp = mksobj(ONAMES.GOLD_PIECE, true, false);
+        otmp.quan = 1 + rnd(goldprob);
+        otmp.owt = weight(otmp);
+        mpickobj(mtmp, otmp);
+    }
+    if (rn2(1000) < gemprob) {
+        const otmp = mkobj(OCLASSES.GEM_CLASS, false);
+        if (otmp.otyp !== ONAMES.ROCK)
+            mpickobj(mtmp, otmp);
+    }
+    if (isCaptain || !rn2(8)) {
+        const otyp = rnd_otyp_by_namedesc('shiny', OCLASSES.RING_CLASS, 0);
+        if (otyp !== ONAMES.STRANGE_OBJECT)
+            mpickobj(mtmp, mksobj(otyp, true, false));
+    }
+}
+
+// src/mkmaze.c:716 migrate_orc().
+function migrate_orc(mtmp, mflags, migrate_monster) {
+    const curDepth = depth(game.u.uz);
+    const dgn = game.dungeons[game.u.uz.dnum];
+    const maxDepth = dunlevs_in_dungeon(game.u.uz) + dgn.depth_start - 1;
+    let nlev;
+
+    if (mflags === ORC_LEADER) {
+        nlev = maxDepth;
+        if (!rn2(40))
+            nlev--;
+        mtmp.migflags = (mtmp.migflags || 0) | MIGR_LEFTOVERS;
+    } else {
+        nlev = rn2((maxDepth - curDepth) + 1) + curDepth;
+        if (nlev === curDepth)
+            nlev++;
+        if (nlev > maxDepth)
+            nlev = maxDepth;
+        mtmp.migflags = (mtmp.migflags || 0) & ~MIGR_LEFTOVERS;
+    }
+
+    const dest = {};
+    get_level(dest, nlev);
+    migrate_monster(mtmp, dest, MIGR_RANDOM);
+}
+
+// src/mkmaze.c:799 stolen_booty(). Orcish Town creates stolen goods and
+// sends the raiding gang deeper into the Mines after the level script runs.
+async function stolen_booty() {
+    const { migrate_monster } = await import('./trap.js');
+    const gang = rndorcname();
+    let cnt, otyp, mtmp;
+
+    cnt = rnd(4);
+    for (let i = 0; i < cnt; i++)
+        migr_booty_item(rn2(4) ? ONAMES.TALLOW_CANDLE
+                               : ONAMES.WAX_CANDLE, gang);
+    cnt = rnd(3);
+    for (let i = 0; i < cnt; i++)
+        migr_booty_item(ONAMES.SKELETON_KEY, gang);
+    otyp = rn1((ONAMES.GAUNTLETS_OF_DEXTERITY - ONAMES.LEATHER_GLOVES) + 1,
+               ONAMES.LEATHER_GLOVES);
+    migr_booty_item(otyp, gang);
+
+    cnt = rnd(10);
+    for (let i = 0; i < cnt; i++) {
+        otyp = rn1(ONAMES.TIN - ONAMES.TRIPE_RATION + 1,
+                   ONAMES.TRIPE_RATION);
+        if (otyp !== ONAMES.LEMBAS_WAFER
+            && (game.objects[otyp].oc_prob !== 0
+                || otyp === ONAMES.C_RATION || otyp === ONAMES.K_RATION)
+            && otyp !== ONAMES.CORPSE && otyp !== ONAMES.EGG
+            && otyp !== ONAMES.TIN)
+            migr_booty_item(otyp, gang);
+    }
+    migr_booty_item(rn2(2) ? ONAMES.LONG_SWORD
+                            : ONAMES.SILVER_SABER, gang);
+
+    mtmp = makemon(game.mons[PMNAMES.PM_ORC_CAPTAIN], 0, 0, MM_NONAME);
+    if (mtmp) {
+        christen_monst(mtmp, upstart(gang));
+        mtmp.mpeaceful = false;
+        set_malign(mtmp);
+        shiny_orc_stuff(mtmp);
+        migrate_orc(mtmp, ORC_LEADER, migrate_monster);
+    }
+
+    for (const mon of (game.level.monsters || [])) {
+        if (DEADMONSTER(mon))
+            continue;
+        if (is_orc(mon.data) && !has_mgivenname(mon) && rn2(10)
+            && mon.mnum !== PMNAMES.PM_ORC_CAPTAIN)
+            christen_orc(mon, upstart(gang), '');
+    }
+
+    cnt = rn2(10) + 5;
+    for (let i = 0; i < cnt; i++) {
+        const mtyp = rn2((PMNAMES.PM_ORC_SHAMAN - PMNAMES.PM_ORC) + 1)
+                     + PMNAMES.PM_ORC;
+        mtmp = makemon(game.mons[mtyp], 0, 0, MM_NONAME);
+        if (mtmp) {
+            shiny_orc_stuff(mtmp);
+            migrate_orc(mtmp, 0, migrate_monster);
+        }
+    }
+    game.ransacked = false;
+}
+
 // src/mkmaze.c:570 fixup_special() — post-script placement of lregions and
 // the per-level oddities. The medusa statues, cleric graveyard, stronghold,
 // baalzebub and ransacked-mines arms are below; the endgame water/air arm
@@ -320,9 +486,9 @@ export async function fixup_special() {
         game.level.flags.graveyard = 1;
     } else if (on_lev('baalzebub_level')) {
         /* custom wallify the "beetle" portion of the level */
-        baalz_fixup();
+        await baalz_fixup();
     } else if (game.u.uz.dnum === game.mines_dnum && game.ransacked) {
-        note_unported_mkmaze('fixup_special:stolen_booty');
+        await stolen_booty();
     }
 
     if (Is_special(game.u.uz)?.flags?.town)
@@ -337,7 +503,7 @@ export async function fixup_special() {
 // spots needing the post-wallify corner fixes, and the iron-bar "eyes" get
 // diggable columns in front of them. Draws only if a monster stands on a
 // pool spot (rloc).
-function baalz_fixup() {
+async function baalz_fixup() {
     const g = game;
     let x, y, lastx, lasty;
 
@@ -415,8 +581,10 @@ function baalz_fixup() {
                                ? BRCORNER : BLCORNER;
         g.level.at(x, y + 1).typ = HWALL;
         const mtmp = m_at(x, y);
-        if (mtmp) /* something at temporary pool... rloc(RLOC_ERR|NOMSG) */
-            note_unported_mkmaze('baalz_fixup:rloc');
+        if (mtmp) { /* something at temporary pool... */
+            const { rloc } = await import('./teleport.js');
+            await rloc(mtmp, RLOC_ERR | RLOC_NOMSG);
+        }
     }
 
     x = bughack.delarea.x2; y = bughack.delarea.y2;
@@ -428,8 +596,10 @@ function baalz_fixup() {
                                ? TRCORNER : TLCORNER;
         g.level.at(x, y - 1).typ = HWALL;
         const mtmp = m_at(x, y);
-        if (mtmp) /* something at temporary pool... rloc(RLOC_ERR|NOMSG) */
-            note_unported_mkmaze('baalz_fixup:rloc');
+        if (mtmp) { /* something at temporary pool... */
+            const { rloc } = await import('./teleport.js');
+            await rloc(mtmp, RLOC_ERR | RLOC_NOMSG);
+        }
     }
 
     /* reset bughack region; set low end to <COLNO,ROWNO> so that

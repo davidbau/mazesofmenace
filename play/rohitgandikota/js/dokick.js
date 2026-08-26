@@ -499,6 +499,8 @@ export async function dokick() {
         return ECMD_TIME;
     }
 
+    unmap_invisible(x, y);
+
     /* src/dokick.c:1328 — KMH: kicking boots always succeed */
     const avrg_attrib = (game.u.uarmf
                          && game.u.uarmf.otyp === ONAMES.KICKING_BOOTS)

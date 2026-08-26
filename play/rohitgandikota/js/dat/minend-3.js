@@ -138,4 +138,9 @@ export async function minend3_level() {
     des.monster('Z');
     des.monster('Z');
     des.monster('Z');
+    des.monster('V');
+    des.monster('e');
+    des.monster('e');
+    des.monster('e');
+    des.monster('e');
 }

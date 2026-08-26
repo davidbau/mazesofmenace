@@ -65,7 +65,11 @@ import { UnsupportedRegionPlacementError } from './mkmaze.js';
 import { docallcmd, UnsupportedObjectNamingError } from './do_name.js';
 import { UnsupportedObjectOperationError } from './obj.js';
 import { doloot, UnsupportedPickupError } from './pickup.js';
-import { UnsupportedPotionError } from './potion.js';
+import {
+    dodrink,
+    UnsupportedPotionError,
+    UnsupportedQuaffError,
+} from './potion.js';
 import { UnsupportedItemDestructionError } from './zap_destroy_items.js';
 import { UnsupportedPositionCheckError } from './teleport.js';
 import { UnsupportedHeroTimeoutBoundaryError } from './timeout.js';
@@ -101,7 +105,7 @@ import {
 import { doattributes, UnsupportedEnlightenmentError } from './insight.js';
 import { dodiscovered, UnsupportedDiscoveryDisplayError } from './o_init.js';
 import { UnsupportedObjectNameError } from './objnam.js';
-import { doset_simple, UnsupportedOptionMenuError } from './options.js';
+import { doset_simple, dotogglepickup, UnsupportedOptionMenuError } from './options.js';
 import { dopray, UnsupportedPrayerError } from './pray.js';
 import { UnsupportedHideError } from './mon.js';
 import { dosave } from './save.js';
@@ -994,8 +998,9 @@ export async function parseCommand(state = game) {
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
     'eat', 'apply', 'close', 'down', 'up', 'drop', 'pickup', 'takeoff', 'wear',
-    'puton', 'zap', 'reqmenu', 'fight', 'options', 'wizwish', 'wizlevelport',
-    'wizgenesis', 'fire', 'throw', 'swap', 'kick', 'save', 'wield', '#',
+    'puton', 'quaff', 'zap', 'reqmenu', 'fight', 'options', 'autopickup', 'wizwish',
+    'wizlevelport', 'wizgenesis', 'fire', 'throw', 'swap', 'kick', 'save',
+    'wield', '#',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
     + `${ADMITTED_COMMANDS.join(', ')}, a one-square walk, a shift-direction `
@@ -1466,6 +1471,11 @@ export function failClosedCommandRefusals() {
         // nor already called something.
         UnsupportedItemDestructionError,
         UnsupportedPotionError,
+        // potion.c dodrink()/dopotion()/peffects() raises this for the 22
+        // potion types besides POT_SPEED and for the strangled, fountain,
+        // sink, underwater, worn-potion, milky and smoky branches of
+        // dodrink() that this port has not reached.
+        UnsupportedQuaffError,
         UnsupportedObjectNamingError,
         // Two paths raise this. invent.c hold_another_object(), which
         // makewish() calls unguarded, raises it from its drop, artifact,
@@ -1704,6 +1714,13 @@ async function runCloseCommand(key, state) {
 // or not it had a charge left to spend.
 async function runZapCommand(key, state) {
     return failClosedCommand(key, state, () => dozap(state));
+}
+
+// C ref: potion.c dodrink(). Like dosearch() and doeat() it returns its own
+// ECMD_* result: ECMD_OK for the strangled refusal, ECMD_CANCEL for a
+// cancelled object prompt, and ECMD_TIME for the quaff that happens.
+async function runQuaffCommand(key, state) {
+    return failClosedCommand(key, state, () => dodrink(state));
 }
 
 // C ref: do.c dodown(). Like dosearch() and doeat() it returns its own ECMD_*
@@ -2420,6 +2437,21 @@ export async function rhack(key, state = game) {
             if (res & ECMD_TIME) commandTookTime(state);
             return;
         }
+        if (command === 'quaff') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3818, the same
+            // three tests the '#', `search`, `eat` and `zap` arms apply.
+            // dodrink() reaches all three: ECMD_OK for the strangled refusal,
+            // ECMD_CANCEL for an escaped object prompt, and ECMD_TIME for the
+            // quaff that happens. cmd.c:1809's "quaff" row carries
+            // CMD_M_PREFIX, so an 'm' prefix sets iflags.menu_requested and
+            // skips the fountain/sink/underwater prompts.
+            const res = await runQuaffCommand(key, state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
         if (command === 'down') {
             // C ref: rhack()'s result handling at cmd.c:3810-3818, the same
             // three tests the '#', `search` and `eat` arms apply. The
@@ -2647,6 +2679,17 @@ export async function rhack(key, state = game) {
             // divert it: extcmdlist[]'s "options" row carries IFBURIED,
             // GENERALCMD and CMD_M_PREFIX and no movement flag.
             await runOptionsCommand(key, state);
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'autopickup') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3818.
+            // dotogglepickup() ends `return ECMD_OK` (options.c:9273), so
+            // only reset_cmd_vars() runs. The MOVEMENTCMD and
+            // domove_attempting tests at 3773-3800 cannot divert it:
+            // extcmdlist[]'s "autopickup" row (cmd.c:1681) carries IFBURIED
+            // and GENERALCMD and no movement flag.
+            await dotogglepickup(state);
             resetCommandVars(state, state.multi < 0);
             return;
         }

@@ -235,8 +235,7 @@ export function choose_stairs(sxy, dir) {
     /* stairway_find_type_dir(isladder, up) — teleport.c */
     const find_type_dir = (isladder, up) => {
         for (let s = game.stairs; s; s = s.next)
-            if (!!s.isladder === isladder && !!s.up === up
-                && s.tolev?.dnum === game.u.uz.dnum)
+            if (!!s.isladder === isladder && !!s.up === up)
                 return s;
         return null;
     };

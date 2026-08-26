@@ -13,7 +13,7 @@ import { hides_under } from './mondata.js';
 import { worn } from './do_wear.js';
 import { empty_handed } from './wield.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
-         W_RINGL, W_RINGR, W_AMUL } from './const.js';
+         W_RINGL, W_RINGR, W_AMUL, W_ART } from './const.js';
 import { Blind as heroBlind, Hallucination } from './youprop.js';
 import { doname, an } from './objnam.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -91,6 +91,25 @@ export function assigninvlet(otmp) {
     game.lastinvnr = i;
 }
 
+// src/invent.c:960 addinv_core1(), artifact arm. Quest-artifact text is
+// asynchronous in the tty port, so addinv() waits for it before assigning an
+// inventory letter and printing the ordinary pickup message.
+function addinv_core1(obj) {
+    if (!obj.oartifact)
+        return null;
+
+    return (async () => {
+        const { is_quest_artifact } = await import('./questpgr.js');
+        if (is_quest_artifact(obj)) {
+            (game.u.uhave ||= {}).questart = 1;
+            const { artitouch } = await import('./quest.js');
+            await artitouch(obj);
+        }
+        const { set_artifact_intrinsic } = await import('./artifact.js');
+        set_artifact_intrinsic(obj, true, W_ART);
+    })();
+}
+
 // src/invent.c:600 addinv() — merge into an existing stack if possible,
 // otherwise take the next inventory letter.
 export function addinv(obj) {
@@ -104,6 +123,12 @@ export function addinv(obj) {
     obj.no_charge = 0;
     obj.how_lost = LOST_NONE;
 
+    const pending = addinv_core1(obj);
+    return pending ? pending.then(() => addinv_finish(obj))
+                   : addinv_finish(obj);
+}
+
+function addinv_finish(obj) {
     /* src/invent.c addinv_core0 — merging goes through merged(), which
        recomputes the stack's owt. The old inline quan += left every
        merged stack carrying a single item's weight, which under-read

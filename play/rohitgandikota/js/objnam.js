@@ -32,7 +32,8 @@ import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_AMUL, W_QUIVER, W_WEP,
          CORPSTAT_RANDOM, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, NON_PM, LOW_PM,
          ismnum, SPE_LIM, RANDOM_TIN, GOLD_SYM, WT_IRON_BALL_INCR,
          P_POLEARMS, P_HAMMER, ONAME_WISH, ONAME_NO_FLAGS,
-         HAND, ROOMOFFSET } from './const.js';
+         HAND, ROOMOFFSET, NO_TRAP, TRAPNUM, ROCKTRAP, MAGIC_PORTAL,
+         is_hole } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { observe_object } from './o_init.js';
 import { ordin, distu } from './hacklib.js';
@@ -309,7 +310,7 @@ export function xname(obj) {
                     ? (obj.blessed ? 'holy ' : 'unholy ') : '';
                 buf += ` of ${holy}${actualn}`;
             } else if (un) buf += ` called ${un}`;
-            else buf = `${dn} potion`;
+            else buf = `${obj.odiluted ? 'diluted ' : ''}${dn} potion`;
         }
         break;
     case SCROLL_CLASS:
@@ -2451,6 +2452,34 @@ function readobjnam_postparse3(d) {
     return 0;
 }
 
+// src/objnam.c:3554 wizterrainwish(), debug wishes for named traps.
+// Furniture and direct terrain replacement remain separate unported paths.
+async function wiztrapwish(d) {
+    const { trapname } = await import('./trap.js');
+    const { maketrap } = await import('./mklev.js');
+    const { Can_fall_thru } = await import('./dungeon.js');
+    const wanted = d.bp.toLowerCase();
+
+    for (let typ = NO_TRAP + 1; typ < TRAPNUM; ++typ) {
+        let actual = typ;
+        let name = trapname(typ, true);
+        if (!wanted.startsWith(name.toLowerCase()))
+            continue;
+        if (is_hole(actual) && !Can_fall_thru(game.u.uz))
+            actual = ROCKTRAP;
+        const trap = maketrap(game.u.ux, game.u.uy, actual);
+        if (trap) {
+            name = trapname(trap.ttyp, true);
+            await pline(`${An(name)}${trap.ttyp === MAGIC_PORTAL
+                ? ' to nowhere' : ''}.`);
+        } else {
+            await pline(`Creation of ${an(name)} failed.`);
+        }
+        return hands_obj;
+    }
+    return null;
+}
+
 /*
  * Return something wished for.  Specifying a null pointer for
  * the user request string results in a random object.  Otherwise,
@@ -2536,9 +2565,10 @@ export async function readobjnam(bp, no_wish) {
          */
         if (game.wizard && !game.program_state?.wizkit_wishing
             && !d.oclass) {
-            /* src/objnam.c:3554 wizterrainwish() — needs maketrap and the
-               terrain rewrite machinery, none of which is ported; C would
-               alter the map and return &hands_obj */
+            const wishedTrap = await wiztrapwish(d);
+            if (wishedTrap)
+                return wishedTrap;
+            /* The remaining wizterrainwish paths replace terrain. */
             note_unported_objnam('readobjnam:wizterrainwish');
         }
 

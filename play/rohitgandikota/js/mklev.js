@@ -1013,6 +1013,38 @@ async function themerooms_generate(difficulty) {
             lspo_terrain(pillars, terr[0]);
         };
         break;
+    case 'Mausoleum':
+        /* dat/themerms.lua:420. Build a themed outer room, then a centered
+           unjoined one-square subroom containing either an undead monster
+           or a human corpse, with an optional secret door. */
+        roomW = 5 + rn2(3) * 2;
+        roomH = 5 + rn2(3) * 2;
+        rtype = THEMEROOM;
+        needfill = FILL_NONE;
+        contents = (rm) => {
+            lspo_room({
+                type: 'themed',
+                x: (rm.width - 1) / 2,
+                y: (rm.height - 1) / 2,
+                w: 1,
+                h: 1,
+                joined: false,
+                contents: () => {
+                    if (percent(50)) {
+                        const monsterClasses = ['M', 'V', 'L', 'Z'];
+                        lua_shuffle(monsterClasses);
+                        lspo_monster({ class: monsterClasses[0], x: 0, y: 0,
+                                      waiting: true });
+                    } else {
+                        lspo_object({ id: 'corpse', montype: '@',
+                                      coord: [0, 0] });
+                    }
+                    if (percent(20))
+                        lspo_door({ state: 'secret', wall: 'all' });
+                },
+            }, create_room, topologize);
+        };
+        break;
     case 'Room in a room':
         /* dat/themerms.lua:308 — nested des.room() with a door innermost:
              des.room({ type="ordinary", filled=1, contents = function()
@@ -1087,6 +1119,19 @@ async function themerooms_generate(difficulty) {
                 if (percent(15))
                     lspo_door({ state: 'random', wall: 'all' });
             } }, create_room, topologize);
+        };
+        break;
+    case 'Random dungeon feature in the middle of an odd-sized room':
+        /* dat/themerms.lua:446. The odd dimensions are evaluated before
+           des.room() spends its chance draw. The five feature symbols are
+           shuffled only after the room has been created. */
+        roomW = 3 + rn2(3) * 2;
+        roomH = 3 + rn2(3) * 2;
+        contents = (rm) => {
+            const features = ['C', 'L', 'I', 'P', 'T'];
+            lua_shuffle(features);
+            lspo_terrain((rm.width - 1) / 2,
+                         (rm.height - 1) / 2, features[0]);
         };
         break;
     default:

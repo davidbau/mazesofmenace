@@ -7,7 +7,8 @@
 // finds it in the file its C twin lives in.
 
 import { m_at, t_at as t_at_mon } from './mon.js';
-import { inv_cnt, crawl_destination, unmul, in_rooms } from './hack.js';
+import { inv_cnt, crawl_destination, unmul, in_rooms,
+         u_locomotion } from './hack.js';
 import { near_capacity } from './attrib.js';
 import { UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DROWNING, BURNING,
          WATER, FIRE_RES } from './const.js';
@@ -99,7 +100,7 @@ import { mdistu } from './monmove.js';
 import { wake_nearby, wake_nearto } from './mon.js';
 import { MFLAGS, PMNAMES, ATTKS, MONSYMS } from './monst_data.js';
 import { is_pit, is_hole, TT_BEARTRAP, TT_PIT, Upolyd, LEFT_SIDE,
-         RIGHT_SIDE } from './const.js';
+         RIGHT_SIDE, TT_BURIEDBALL } from './const.js';
 import { defsyms, cmap_names } from './drawing_data.js';
 import { xytodir } from './cmd.js';
 import { mons_see_trap } from './mondata.js';
@@ -142,7 +143,7 @@ function dunlev(lev) {
 
 // include/dungeon.h In_hell() — the Gehennom branch.
 function In_hell(lev) {
-    return lev.dnum === game.hell_dnum;
+    return game.dungeons?.[lev.dnum]?.flags?.hellish === true;
 }
 
 // src/trap.c:418 dng_bottom() — how far down a hole can reach, stopping at the
@@ -700,8 +701,12 @@ export async function dotrap(trap, trflags) {
         return await trapeffect_hole(game.youmonst, trap, trflags);
     if (ttype === ANTI_MAGIC)
         return await trapeffect_anti_magic(game.youmonst, trap, trflags);
+    if (ttype === LEVEL_TELEP)
+        return await trapeffect_level_telep(game.youmonst, trap, trflags);
     if (ttype === TELEP_TRAP)
         return await trapeffect_telep_trap(game.youmonst, trap, trflags);
+    if (ttype === MAGIC_PORTAL)
+        return await trapeffect_magic_portal(game.youmonst, trap, trflags);
 
     note_unported_trap(`dotrap:ttyp=${ttype}`);
     return Trap_Effect_Finished;
@@ -1444,11 +1449,87 @@ async function trapeffect_telep_trap(mtmp, trap, trflags) {
     return Trap_Effect_Finished;
 }
 
+// src/trap.c:2088 trapeffect_level_telep() and
+// src/teleport.c:1537 level_tele_trap(), hero branch.
+async function trapeffect_level_telep(mtmp, trap, trflags) {
+    if (mtmp !== game.youmonst) {
+        note_unported_trap('trapeffect_level_telep:monster');
+        return Trap_Moved_Mon;
+    }
+
+    seetrap(trap);
+    const intentional = (trflags & (VIASITTING | FORCETRAP)) !== 0;
+    const verb = intentional ? 'trigger' : `${u_locomotion('step')} onto`;
+    await You(`${verb} a level teleport trap!`);
+
+    if ((game.u.uprops?.ANTIMAGIC && !intentional)
+        || In_endgame(game.u.uz)) {
+        await You_feel('a wrenching sensation.');
+        return Trap_Effect_Finished;
+    }
+
+    deltrap(trap);
+    newsym(game.u.ux, game.u.uy);
+    const { level_tele } = await import('./teleport.js');
+    await level_tele();
+
+    if (Hallucination() || Teleport_control()) {
+        await You(`briefly feel ${Hallucination() ? 'oriented' : 'centered'}.`);
+    } else {
+        await You_feel(`${game.u.uprops?.CONFUSION ? 'even more ' : ''}disoriented.`);
+    }
+    if (!Teleport_control()) {
+        const { make_confused } = await import('./potion.js');
+        const timeout = (game.u.intrinsic?.HConfusion || 0) & TIMEOUT;
+        await make_confused(timeout + 3, false);
+    }
+    return Trap_Effect_Finished;
+}
+
 // src/trap.c:2710 trapeffect_magic_portal(), monster path. Portals send a
 // monster to their fixed destination through the migrating-monster list.
 async function trapeffect_magic_portal(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        note_unported_trap('trapeffect_magic_portal:hero');
+        feeltrap(trap);
+
+        /* src/teleport.c:1444 domagicportal(). The follower-adjacency check
+           uses the same current simplification as fall_through(). */
+        if (game.u.utrap && game.u.utraptype === TT_BURIEDBALL)
+            note_unported_trap('domagicportal:buried_ball_to_punishment');
+
+        /* Landing on a portal from another level must not send the hero
+           straight back through it. */
+        if (game.u.uz.dnum !== game.u.uz0.dnum
+            || game.u.uz.dlevel !== game.u.uz0.dlevel)
+            return Trap_Effect_Finished;
+
+        await You('activated a magic portal!');
+        if (In_endgame(game.u.uz) && !game.u.uhave?.amulet) {
+            await You_feel('dizzy for a moment, but nothing happens...');
+            return Trap_Effect_Finished;
+        }
+        if (!trap.dst || trap.dst.dnum < 0) {
+            note_unported_trap('trapeffect_magic_portal:no_destination');
+            return Trap_Effect_Finished;
+        }
+
+        const leavingTutorial = game.u.uz.dnum === game.tutorial_dnum
+            && trap.dst.dnum !== game.tutorial_dnum;
+        const { schedule_goto, UTOTYPE_ATSTAIRS, UTOTYPE_PORTAL } =
+            await import('./do.js');
+        let totype, stunmsg;
+        if (leavingTutorial) {
+            totype = UTOTYPE_ATSTAIRS;
+            stunmsg = 'Resuming regular play.';
+        } else {
+            totype = UTOTYPE_PORTAL;
+            const oldStun = (game.u.intrinsic?.HStun || 0) & TIMEOUT;
+            stunmsg = (oldStun || game.u.uprops?.STUNNED)
+                ? 'You feel dizzier.' : 'You feel slightly dizzy.';
+            const { make_stunned } = await import('./potion.js');
+            await make_stunned(oldStun + 3, false);
+        }
+        schedule_goto(trap.dst, totype, stunmsg, null);
         return Trap_Effect_Finished;
     }
     if (mtmp === game.u.usteed)
@@ -1577,9 +1658,10 @@ export async function mintrap(mtmp, mintrapflags) {
     return trap_result;
 }
 
-/* src/trap.c fixed_tele_trap() — a vault or level teleporter always fires. */
+/* include/trap.h fixed_tele_trap(), a teleport trap with a fixed target. */
 function fixed_tele_trap(trap) {
-    return (trap.ttyp === LEVEL_TELEP || (trap.ttyp === TELEP_TRAP && trap.once));
+    return trap.ttyp === TELEP_TRAP
+        && isok(trap.teledest?.x ?? 0, trap.teledest?.y ?? 0);
 }
 
 
@@ -2459,7 +2541,7 @@ export async function fall_through(td, ftflags) {
 // src/dog.c:887 migrate_to_level(), reduced to the shared bookkeeping used
 // by trap-driven migration. Destination coordinates live in mux/muy while
 // off-level, and mtrack carries the arrival mode, origin, and prior level.
-function migrate_monster(mtmp, dest, xyloc, cc = null) {
+export function migrate_monster(mtmp, dest, xyloc, cc = null) {
     const mx = mtmp.mx, my = mtmp.my;
     remove_monster(mx, my);
     const at = (game.level.monsters || []).indexOf(mtmp);

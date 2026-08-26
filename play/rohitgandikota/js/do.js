@@ -26,7 +26,7 @@ import { is_pick } from './mon.js';
 import { cansee } from './vision.js';
 import { Blind, Levitation } from './youprop.js';
 import { OCLASSES } from './objects_data.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { can_reach_floor, add_valid_menu_class, allow_category,
          query_drop_categories, query_objlist } from './pickup.js';
 import { body_part } from './polyself.js';
@@ -387,7 +387,9 @@ export async function next_level(at_stairs) {
 // Quest. The fourth is rnd(3) falling damage for an encumbered, punished, or
 // fumbling hero. A plain staircase descent spends no draw of its own.
 export async function goto_level(newlevel, at_stairs, falling, portal) {
+    const dist = depth_do(newlevel) - depth_do(game.u.uz);
     let up = (depth_do(newlevel) < depth_do(game.u.uz));
+    let do_fall_dmg = false;
 
     /* src/do.c:1502 — dungeon-change arms. In_tutorial(lev) is
        lev.dnum == tutorial_dnum; entering stashes the whole game state
@@ -697,13 +699,23 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     } else { /* trap door or level_tele or In_endgame */
         const { u_on_rndspot } = await import('./dungeon.js');
         await u_on_rndspot(up ? 1 : 0);
+        if (falling) {
+            if (game.u.uball)
+                note_unported_do('goto_level:ballfall');
+            if (game.u.uwep?.otyp === ONAMES.CORPSE
+                || (game.u.twoweap
+                    && game.u.uswapwep?.otyp === ONAMES.CORPSE))
+                note_unported_do('goto_level:selftouch');
+            do_fall_dmg = true;
+        }
     }
 
     if (game.u.uball)
         await placebc();
 
-    /* obj_delivery() — migrating objects; none exist yet */
-    losedogs();
+    /* C runs ordinary migrating-object delivery here before monster arrivals.
+       Species-targeted loot is delivered through makemon()/mon_arrive(). */
+    await losedogs();
 
     /* src/do.c:1826 — hero might be arriving at a spot containing a
        monster; u_collide_m moves one or the other */
@@ -896,6 +908,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
        all level-specific arrival messages, before pickup feedback. */
     await check_special_room(false);
 
+    /* src/do.c:1989, a trapdoor or hole inflicts impact damage only after
+       the new level is drawn and its arrival messages have been handled. */
+    if (do_fall_dmg) {
+        await losehp(maybe_half_physical(d(Math.max(dist, 1), 6)),
+                     'falling down a mine shaft', KILLED_BY);
+    }
+
     /* src/do.c:1996 — the arrival square gets its pickup pass, which is
        also what prints look_here/read_engr_at feedback on arrival */
     {
@@ -1062,8 +1081,10 @@ export async function dropz(obj, with_impact) {
         impact_disturbs_zombies(obj, with_impact);
         if (obj === game.uball)
             note_unported_do('dropz:drop_ball');
-        else if (game.level?.flags?.has_shop)
-            note_unported_do('dropz:sellobj');
+        else if (game.level?.flags?.has_shop) {
+            const { sellobj } = await import('./shk.js');
+            await sellobj(obj, game.u.ux, game.u.uy);
+        }
         stackobj(obj);
         newsym(game.u.ux, game.u.uy);   /* remap location under self */
     }
@@ -1082,7 +1103,10 @@ export async function dropy(obj) {
 // nothing reaches the floor there; doaltarobj sets bknown when it lands on
 // an altar.
 export async function dropx(obj) {
+    const oldcap = near_capacity();
     freeinv(obj);
+    if (near_capacity() !== oldcap)
+        game._encumber_status_stale = true;
     if (!game.u.uswallow) {
         /* src/do.c:298 — ship_object() sends the object down a hole or
            stairs and returns TRUE when it did, in which case dropy() must
@@ -1158,12 +1182,16 @@ export async function drop(obj) {
 // DELIBERATE sale rather than an accidental one, and is restored afterwards
 // whether or not anything was dropped.
 export async function dodrop() {
-    if (game.u.ushops?.length)
-        note_unported_do('dodrop:sellobj_state:DELIBERATE');
+    if (game.u.ushops?.length) {
+        const { sellobj_state } = await import('./shk.js');
+        sellobj_state(1); // SELL_DELIBERATE
+    }
     const result = await drop(await getobj('drop', any_obj_ok,
                                      GETOBJ_PROMPT | GETOBJ_ALLOWCNT));
-    if (game.u.ushops?.length)
-        note_unported_do('dodrop:sellobj_state:NORMAL');
+    if (game.u.ushops?.length) {
+        const { sellobj_state } = await import('./shk.js');
+        sellobj_state(0); // SELL_NORMAL
+    }
     if (result)
         reset_occupations();
 
@@ -1178,8 +1206,10 @@ export async function doddrop() {
     }
 
     add_valid_menu_class(0);
-    if (game.u.ushops?.length)
-        note_unported_do('doddrop:sellobj_state:DELIBERATE');
+    if (game.u.ushops?.length) {
+        const { sellobj_state } = await import('./shk.js');
+        sellobj_state(1); // SELL_DELIBERATE
+    }
 
     let result = ECMD_OK;
     if ((game.flags?.menu_style ?? MENU_FULL) === MENU_FULL) {
@@ -1220,8 +1250,10 @@ export async function doddrop() {
         note_unported_do('doddrop:non_full_menu_style');
     }
 
-    if (game.u.ushops?.length)
-        note_unported_do('doddrop:sellobj_state:NORMAL');
+    if (game.u.ushops?.length) {
+        const { sellobj_state } = await import('./shk.js');
+        sellobj_state(0); // SELL_NORMAL
+    }
     if (result)
         reset_occupations();
     return result;

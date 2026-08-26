@@ -22,6 +22,7 @@ import { OCLASSES, ONAMES } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { pline, glyph_at, docrt, flush_screen,
          tty_clear_nhwindow_message } from './display.js';
+import { couldsee } from './vision.js';
 import { DEC_TO_UNICODE, NO_COLOR } from './terminal.js';
 import { m_at, t_at } from './mon.js';
 import { engr_at } from './engrave.js';
@@ -1122,19 +1123,57 @@ async function look_all(nearby, do_mons) {
 async function look_traps(nearby) {
     const win = tty_create_nhwindow(NHW_TEXT);
     const { lo_x, lo_y, hi_x, hi_y } = look_region_nearby(nearby);
+    const { trapname } = await import('./trap.js');
+    const movingLevel = game.u.uz
+        && ((game.water_level
+             && game.u.uz.dnum === game.water_level.dnum
+             && game.u.uz.dlevel === game.water_level.dlevel)
+            || (game.air_level
+                && game.u.uz.dnum === game.air_level.dnum
+                && game.u.uz.dlevel === game.air_level.dlevel));
     let count = 0;
     for (let y = lo_y; y <= hi_y; y++) {
         for (let x = lo_x; x <= hi_x; x++) {
             const t = t_at(x, y);
-            if (t && t.tseen) {
-                note_unported_pager('look_traps:entry');
-                ++count;
+            const glyph = glyph_at(x, y);
+            const shownTrap = glyph.kind === 'cmap'
+                && is_cmap_trap(glyph.cmap);
+            let tnum = 0;
+            let lookbuf = '';
+            let trapCmap = 0;
+
+            if (shownTrap) {
+                tnum = glyph.cmap - CM.S_arrow_trap + 1;
+                lookbuf = trapname(tnum, false);
+                trapCmap = glyph.cmap;
+            } else if (t?.tseen && (!movingLevel || couldsee(x, y))) {
+                tnum = t.ttyp;
+                lookbuf = `${trapname(tnum, false)}, obscured by ${
+                    encglyph_char(x, y)}`;
+                trapCmap = CM.S_arrow_trap + tnum - 1;
             }
+            if (!lookbuf)
+                continue;
+
+            if (++count === 1) {
+                tty_putstr(win, 0, upstart(`${nearby ? 'nearby ' : ''}`
+                    + `seen or remembered traps${nearby ? ''
+                        : ' on this level'}:`));
+                tty_putstr(win, 0, '    ');
+            }
+            let coordbuf = coord_desc_map(x, y);
+            const trapSym = showsym(trapCmap);
+            let outbuf = coordbuf.padStart(8) + '  ';
+            outbuf += `${decoded_ch(trapSym?.ch || '^', !!trapSym?.dec)}  `;
+            outbuf += lookbuf;
+            tty_putstr(win, 0, outbuf);
         }
     }
     if (count) {
         await tty_display_nhwindow(win);
         await xwaitforspace(quitchars);
+        while (tty_next_page(win))
+            await xwaitforspace(quitchars);
         tty_destroy_nhwindow(win);
         await docrt();
     } else {
@@ -1177,8 +1216,8 @@ async function look_engrs(nearby) {
                 tty_putstr(win, 0, upstart(outbuf));
                 tty_putstr(win, 0, '    '); /* separator */
             }
-            /* unlike look_all/look_traps, look_engrs does NOT pad y<10
-               coordinates with a trailing space */
+            /* Like look_traps, unlike look_all, look_engrs does not pad
+               y<10 coordinates with a trailing space. */
             const coordbuf = coord_desc_map(x, y);
             /* the engraving symbol: '#' on a corridor, '`' otherwise */
             const engch = (loc.typ === CORR) ? '#' : '`';

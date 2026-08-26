@@ -106,7 +106,8 @@ export function bot_conditions() {
        at --More--; display.js otherwise recomputes every status line from
        live state and would reveal the new condition one screen too early. */
     const cap = Number.isInteger(game._deferred_status_capacity)
-        ? game._deferred_status_capacity : near_capacity();
+        ? game._deferred_status_capacity
+        : game._encumber_status_stale ? game.oldcap : near_capacity();
     if (cap > UNENCUMBERED) cond += ' ' + enc_stat[cap];
     if (u.ublind || intr.HBlinded
         || (Upolyd(u) && (game.youmonst.data.mflags1 & MFLAGS.M1_NOEYES)))

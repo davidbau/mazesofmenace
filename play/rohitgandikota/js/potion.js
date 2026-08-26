@@ -11,7 +11,8 @@ import { pline } from './display.js';
 import { You, You_feel, pline_The } from './pline.js';
 import { exercise, adjattrib, A_MAX, ACURR } from './attrib.js';
 import { A_STR, A_INT, A_DEX, A_CON, A_CHA,
-         KILLED_BY_AN, KILLED_BY, POTHIT_OTHER_THROW, HEAD } from './const.js';
+         BOLT_LIM, KILLED_BY_AN, KILLED_BY, POTHIT_OTHER_THROW,
+         HEAD } from './const.js';
 import { Your } from './pline.js';
 import { nomul, losehp } from './hack.js';
 import { surface } from './dungeon.js';
@@ -24,17 +25,21 @@ import { PMNAMES, MFLAGS } from './monst_data.js';
 import { OBJ_DESCR } from './objnam.js';
 import { makeknown, observe_object } from './o_init.js';
 import { more_experienced } from './exper.js';
-import { getobj, useup, ECMD_TIME, ECMD_OK,
-         GETOBJ_PROMPT } from './invent.js';
-import { is_pool } from './mon.js';
+import { freeinv, getobj, hold_another_object, useup, useupall,
+         ECMD_TIME, ECMD_OK, GETOBJ_PROMPT } from './invent.js';
+import { is_pool, wake_nearto } from './mon.js';
 import { OCLASSES } from './objects_data.js';
 import { tty_yn_function } from './tty/topl.js';
 import { GETOBJ_NOFLAGS } from './const.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE } from './invent.js';
-import { doname, short_oname, thesimpleoname, Tobjnam } from './objnam.js';
+import { GETOBJ_EXCLUDE_INACCESS } from './invent.js';
+import { doname, otense, short_oname, simpleonames, thesimpleoname,
+         Tobjnam } from './objnam.js';
 import { body_part } from './polyself.js';
-import { breathless, haseyes } from './mondata.js';
+import { breathless, haseyes, stagger } from './mondata.js';
 import { cansee, vision_recalc } from './vision.js';
+import { hcolor } from './do_name.js';
+import { mkobj, splitobj } from './mkobj.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
 function note_unported_potion(what) {
@@ -85,6 +90,7 @@ export function bottlename() {
 // src/potion.c:1932 potionbreathe(), common offensive-potion vapors.
 export async function potionbreathe(obj) {
     let kn = 0;
+    let cureblind = false;
     const already_in_use = !!obj.in_use;
     obj.in_use = true;
 
@@ -94,6 +100,35 @@ export async function potionbreathe(obj) {
         await pline('Some vapor passes harmlessly around you.');
     } else {
         switch (obj.otyp) {
+        case ONAMES.POT_FULL_HEALING:
+            if (game.u.uhp < game.u.uhpmax) {
+                game.u.uhp++;
+                (game.disp ||= {}).botl = true;
+            }
+            cureblind = true;
+            // Falls through for the extra-healing and healing vapor effects.
+        case ONAMES.POT_EXTRA_HEALING:
+            if (game.u.uhp < game.u.uhpmax) {
+                game.u.uhp++;
+                (game.disp ||= {}).botl = true;
+            }
+            if (!obj.cursed)
+                cureblind = true;
+            // Falls through for the ordinary healing vapor effect.
+        case ONAMES.POT_HEALING:
+            if (game.u.uhp < game.u.uhpmax) {
+                game.u.uhp++;
+                (game.disp ||= {}).botl = true;
+            }
+            if (obj.blessed)
+                cureblind = true;
+            if (cureblind) {
+                await make_blinded(0, !game.u.ucreamed);
+                if (game.u.uprops?.DEAF)
+                    note_unported_potion('potionbreathe:make_deaf');
+            }
+            exercise(A_CON, true);
+            break;
         case ONAMES.POT_CONFUSION:
         case ONAMES.POT_BOOZE:
             if (!game.u.uprops?.CONFUSION)
@@ -223,6 +258,33 @@ export async function make_confused(xtime, talk) {
         (game.u.uprops ||= {}).CONFUSION = 1;
     else if (game.u.uprops)
         delete game.u.uprops.CONFUSION;
+}
+
+// src/potion.c:107 make_stunned(), set or clear the stun timeout.
+export async function make_stunned(xtime, talk) {
+    const old = game.u.intrinsic?.HStun || 0;
+
+    if (Unaware())
+        talk = false;
+
+    if (!xtime && old && talk) {
+        await You_feel(`${Hallucination() ? 'less wobbly'
+                                         : 'a bit steadier'} now.`);
+    }
+    if (xtime && !old && talk) {
+        if (game.u.usteed)
+            await You('wobble in the saddle.');
+        else
+            await You(`${stagger(game.youmonst.data, 'stagger')}...`);
+    }
+    if ((!xtime && old) || (xtime && !old))
+        (game.disp ||= {}).botl = true;
+
+    (game.u.intrinsic ||= {}).HStun = xtime;
+    if (xtime)
+        (game.u.uprops ||= {}).STUNNED = 1;
+    else if (game.u.uprops)
+        delete game.u.uprops.STUNNED;
 }
 
 // src/potion.c:261 make_blinded(), common temporary-blindness path.
@@ -629,8 +691,23 @@ export async function strange_feeling(obj, txt) {
     useup(obj);
 }
 
-// src/potion.c:2254 dip_ok() — candidates for dipping: everything except
-// gold (and the hands pseudo-object, which the port does not offer yet).
+// src/do_wear.c:3342 inaccessible_equipment(), selection-only arm. Dipping
+// cannot reach a suit under a cloak, a shirt under outer armor, or a ring
+// under gloves.
+function inaccessible_equipment(obj) {
+    if (!obj?.owornmask)
+        return false;
+    if (obj === game.u.uarm && game.u.uarmc)
+        return true;
+    if (obj === game.u.uarmu && (game.u.uarm || game.u.uarmc))
+        return true;
+    if ((obj === game.u.uleft || obj === game.u.uright) && game.u.uarmg)
+        return true;
+    return false;
+}
+
+// src/potion.c:2214 dip_ok(), candidates for dipping: everything except
+// gold, inaccessible worn equipment, and the hands pseudo-object.
 function dip_ok(obj) {
     /* the numeric returns were swapped against invent.js's constants:
        1 is DOWNPLAY there (kept out of the prompt's letter range), so
@@ -640,7 +717,190 @@ function dip_ok(obj) {
     /* dipping gold isn't currently implemented */
     if (obj.oclass === OCLASSES.COIN_CLASS)
         return GETOBJ_EXCLUDE;
+    if (inaccessible_equipment(obj))
+        return GETOBJ_EXCLUDE_INACCESS;
     return GETOBJ_SUGGEST;
+}
+
+// src/potion.c:2120 mixtype() -- deterministic alchemy recipes plus the two
+// recipe-specific random choices.
+function mixtype(o1, o2) {
+    let o1typ = o1.otyp, o2typ = o2.otyp;
+    if (o1.oclass === OCLASSES.POTION_CLASS
+        && [ONAMES.POT_GAIN_LEVEL, ONAMES.POT_GAIN_ENERGY,
+            ONAMES.POT_HEALING, ONAMES.POT_EXTRA_HEALING,
+            ONAMES.POT_FULL_HEALING, ONAMES.POT_ENLIGHTENMENT,
+            ONAMES.POT_FRUIT_JUICE].includes(o2typ)) {
+        [o1typ, o2typ] = [o2typ, o1typ];
+    }
+
+    switch (o1typ) {
+    case ONAMES.POT_HEALING:
+        if (o2typ === ONAMES.POT_SPEED)
+            return ONAMES.POT_EXTRA_HEALING;
+        // Falls through to the gain-level and gain-energy recipes.
+    case ONAMES.POT_EXTRA_HEALING:
+    case ONAMES.POT_FULL_HEALING:
+        if (o2typ === ONAMES.POT_GAIN_LEVEL
+            || o2typ === ONAMES.POT_GAIN_ENERGY) {
+            return o1typ === ONAMES.POT_HEALING
+                ? ONAMES.POT_EXTRA_HEALING
+                : o1typ === ONAMES.POT_EXTRA_HEALING
+                  ? ONAMES.POT_FULL_HEALING : ONAMES.POT_GAIN_ABILITY;
+        }
+        // Falls through to the unicorn-horn recipes.
+    case ONAMES.UNICORN_HORN:
+        if (o2typ === ONAMES.POT_SICKNESS)
+            return ONAMES.POT_FRUIT_JUICE;
+        if ([ONAMES.POT_HALLUCINATION, ONAMES.POT_BLINDNESS,
+             ONAMES.POT_CONFUSION].includes(o2typ))
+            return ONAMES.POT_WATER;
+        break;
+    case ONAMES.AMETHYST:
+        if (o2typ === ONAMES.POT_BOOZE)
+            return ONAMES.POT_FRUIT_JUICE;
+        break;
+    case ONAMES.POT_GAIN_LEVEL:
+    case ONAMES.POT_GAIN_ENERGY:
+        switch (o2typ) {
+        case ONAMES.POT_CONFUSION:
+            return rn2(3) ? ONAMES.POT_BOOZE : ONAMES.POT_ENLIGHTENMENT;
+        case ONAMES.POT_HEALING:       return ONAMES.POT_EXTRA_HEALING;
+        case ONAMES.POT_EXTRA_HEALING: return ONAMES.POT_FULL_HEALING;
+        case ONAMES.POT_FULL_HEALING:  return ONAMES.POT_GAIN_ABILITY;
+        case ONAMES.POT_FRUIT_JUICE:   return ONAMES.POT_SEE_INVISIBLE;
+        case ONAMES.POT_BOOZE:         return ONAMES.POT_HALLUCINATION;
+        }
+        break;
+    case ONAMES.POT_FRUIT_JUICE:
+        switch (o2typ) {
+        case ONAMES.POT_SICKNESS:      return ONAMES.POT_SICKNESS;
+        case ONAMES.POT_ENLIGHTENMENT:
+        case ONAMES.POT_SPEED:         return ONAMES.POT_BOOZE;
+        case ONAMES.POT_GAIN_LEVEL:
+        case ONAMES.POT_GAIN_ENERGY:   return ONAMES.POT_SEE_INVISIBLE;
+        }
+        break;
+    case ONAMES.POT_ENLIGHTENMENT:
+        if (o2typ === ONAMES.POT_LEVITATION && rn2(3))
+            return ONAMES.POT_GAIN_LEVEL;
+        if (o2typ === ONAMES.POT_FRUIT_JUICE)
+            return ONAMES.POT_BOOZE;
+        if (o2typ === ONAMES.POT_BOOZE)
+            return ONAMES.POT_CONFUSION;
+        break;
+    }
+    return ONAMES.STRANGE_OBJECT;
+}
+
+// src/potion.c:2417 dip_potion_explosion().
+async function dip_potion_explosion(obj, damage) {
+    const smock = game.u.uarmc?.otyp === ONAMES.ALCHEMY_SMOCK;
+    if (!(obj.cursed || obj.otyp === ONAMES.POT_ACID
+          || (obj.otyp === ONAMES.POT_OIL && obj.lamplit)
+          || !rn2(smock ? 30 : 10)))
+        return false;
+
+    obj.in_use = true;
+    await pline(`${game.u.uprops?.DEAF ? '' : 'BOOM!  '}They explode!`);
+    wake_nearto(game.u.ux, game.u.uy, (BOLT_LIM + 1) * (BOLT_LIM + 1));
+    exercise(A_STR, false);
+    if (!breathless(game.youmonst.data) || haseyes(game.youmonst.data))
+        await potionbreathe(obj);
+    useupall(obj);
+    await losehp(damage, 'alchemic blast', KILLED_BY_AN);
+    return true;
+}
+
+// src/potion.c:2442 potion_dip(), potion-into-potion alchemy. Other dipping
+// targets remain with their existing specialized paths.
+async function potion_dip(obj, potion) {
+    if (potion === obj && potion.quan === 1) {
+        await pline('That is a potion bottle, not a Klein bottle!');
+        return ECMD_OK;
+    }
+
+    obj.pickup_prev = 0;
+    potion.in_use = true;
+    if (obj.oclass !== OCLASSES.POTION_CLASS || obj.otyp === potion.otyp) {
+        potion.in_use = false;
+        note_unported_potion('potion_dip:non_alchemy');
+        return ECMD_TIME;
+    }
+
+    let amount = obj.quan;
+    const mixture = mixtype(obj, potion);
+    const magic = mixture !== ONAMES.STRANGE_OBJECT
+        ? !!game.objects[mixture].oc_magic
+        : !!(game.objects[obj.otyp].oc_magic
+             || game.objects[potion.otyp].oc_magic);
+    let subject = 'The';
+
+    if (amount > (obj.odiluted ? 2 : magic ? 3 : 7)) {
+        if (obj.odiluted) {
+            amount = 2;
+        } else if (magic) {
+            amount = rnd(Math.min(amount, 8) - 2) + 2;
+        } else {
+            amount = rnd(amount - 6) + 6;
+        }
+        if (amount < obj.quan) {
+            const remainder = obj;
+            obj = splitobj(remainder, amount);
+            const at = (game.invent || []).indexOf(remainder);
+            if (at >= 0)
+                game.invent.splice(at + 1, 0, obj);
+            subject = `${obj.quan} of the`;
+        }
+    }
+
+    await pline(`${subject} ${simpleonames(obj)} ${otense(obj, 'mix')} with ${
+        potion.quan > 1 ? 'one of ' : ''}${thesimpleoname(potion)}...`);
+    useup(potion);
+    if (await dip_potion_explosion(obj, amount + rnd(9)))
+        return ECMD_TIME;
+
+    obj.blessed = obj.cursed = obj.bknown = 0;
+    if (game.u.ublind || Hallucination())
+        obj.dknown = 0;
+
+    if (mixture !== ONAMES.STRANGE_OBJECT) {
+        obj.otyp = mixture;
+    } else {
+        switch (obj.odiluted ? 1 : rnd(8)) {
+        case 1:
+            obj.otyp = ONAMES.POT_WATER;
+            break;
+        case 2:
+        case 3:
+            obj.otyp = ONAMES.POT_SICKNESS;
+            break;
+        case 4: {
+            const random = mkobj(OCLASSES.POTION_CLASS, false);
+            obj.otyp = random.otyp;
+            break;
+        }
+        default:
+            useupall(obj);
+            await pline_The(`mixture ${game.u.ublind
+                ? '' : 'glows brightly and '}evaporates.`);
+            return ECMD_TIME;
+        }
+    }
+    obj.odiluted = obj.otyp !== ONAMES.POT_WATER;
+
+    if (obj.otyp === ONAMES.POT_WATER && !Hallucination()) {
+        await pline_The(`mixture bubbles${game.u.ublind
+            ? '' : ', then clears'}.`);
+    } else if (!game.u.ublind) {
+        await pline_The(`mixture looks ${hcolor(OBJ_DESCR(
+            game.objects[obj.otyp]))}.`);
+    }
+
+    const drop_arg = doname(obj);
+    freeinv(obj);
+    await hold_another_object(obj, 'You drop %s!', drop_arg, null);
+    return ECMD_TIME;
 }
 
 // src/potion.c:2267 dodip() — the #dip command. The fountain/sink arms
@@ -691,6 +951,5 @@ export async function dodip() {
         GETOBJ_NOFLAGS);
     if (!potion)
         return ECMD_CANCEL;
-    note_unported_potion('dodip:potion_dip');
-    return ECMD_OK;
+    return await potion_dip(obj, potion);
 }

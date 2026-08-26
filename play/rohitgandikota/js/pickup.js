@@ -289,7 +289,13 @@ export async function query_objlist(qstr, olist, use_invlet = false) {
     let id = 1;
     const byid = new Map();
     for (const oclass of inv_order()) {
-        const items = sortloot_items(olist.filter(o => o.oclass === oclass));
+        const items = olist.filter(o => o.oclass === oclass);
+        if (use_invlet) {
+            items.sort((a, b) => ((a.invlet.charCodeAt(0) ^ 0o40)
+                                  - (b.invlet.charCodeAt(0) ^ 0o40)));
+        } else {
+            items.splice(0, items.length, ...sortloot_items(items));
+        }
         if (!items.length)
             continue;
         tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR,
@@ -936,7 +942,8 @@ async function menu_loot(retry, put_in) {
         const src = put_in ? (game.invent || [])
                            : (current_container.cobj || []);
         const eligible = src.filter(o => all_categories || allow_category(o));
-        const picks = await query_objlist(`${action} what?`, eligible);
+        const picks = await query_objlist(`${action} what?`, eligible,
+                                          put_in && game.flags?.fixinv !== false);
         if (picks.length) {
             n_looted = picks.length;
             for (let otmp of picks) {
