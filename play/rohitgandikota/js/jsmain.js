@@ -14,7 +14,7 @@ import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core, maybe_do_tutorial } from './allmain.js';
 import { wd_message } from './unixmain.js';
-import { parseNethackrc, optValue } from './options.js';
+import { parseNethackrc, optValue, set_fruit_name } from './options.js';
 import { assign_graphics } from './symbols.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
@@ -159,6 +159,7 @@ export class NethackGame {
         // Initialize hero struct
         g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
         g.context = { move: 0 };
+        set_fruit_name(optValue(rc, 'fruit') || 'slime mold', true);
         g.program_state = {};
         /* src/decl.c — svm.moves starts at 0 and moveloop() advances it. Several
            things in u_init read `moves == 0` to mean "this is character

@@ -712,7 +712,7 @@ function mon_regen(mon, digest_meal) {
  * C ref: mon.c decide_to_shapeshift — cham once-per-turn form change.
  * Regular + vampshifter (low-hp revert / fog pickvampshape / vamp shift).
  * Named omissions: mon_has_special Vlad stay in pickvampshape; NC_SHOW_MSG
- * display polish; canseemon worm_known.
+ * display polish; canseemon uses worm_known when wormno (D-1548).
  */
 async function decide_to_shapeshift(mon) {
     let ptr = null;

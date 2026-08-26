@@ -7,8 +7,9 @@
 // (OPTIONS_AT_RUNTIME → get_lua_version nhlib shuffle) + display_file
 // dat/* pages + dokeylist/domenucontrols/docontact; data.base lookups for
 // checkfile. object_from_map + look_at_object (SLIME_MOLD spe =
-// current_fruit). Full glyph encyclopedia, whatdoes keyhelp body, and
-// PORT_HELP deferred.
+// current_fruit). getpos auto_describe / brief_at glyph_is_object
+// fakeobj (D-1547). mhidden_description (D-1554). Full glyph encyclopedia,
+// whatdoes keyhelp body, and PORT_HELP deferred.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -16,6 +17,7 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, more,
     mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
+    glyph_to_obj_at,
 } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import {
@@ -26,12 +28,15 @@ import {
     getpos, LOOK_ONCE, LOOK_VERBOSE, room_cmap_explanation,
     maybe_blocked_staircase_down,
 } from './getpos.js';
-import { mon_at } from './uhitm.js';
+import { mon_at, defsym_explanation } from './uhitm.js';
 import { objects_at, mksobj, mkobj, obj_stop_timers } from './mkobj.js';
 import {
-    doname, an, xname, singular, ansimpleoname, distant_name,
+    doname, an, xname, singular, ansimpleoname, distant_name, simpleonames,
 } from './objnam.js';
 import { distant_monnam_none, pmname, Ugender } from './do_name.js';
+import { hides_under, is_hider, is_clinger, is_flyer, mons } from './monsters.js';
+import { is_pool } from './hack.js';
+import { visible_region_at } from './region.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
@@ -45,8 +50,10 @@ import {
     CLOUD,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
     STRAT_WAITMASK, IS_WALL, Upolyd, Is_airlevel,
-    OBJ_FREE, OBJ_FLOOR, M_AP_OBJECT, M_AP_TYPMASK, M_AP_F_DKNOWN,
-    MCORPSENM, NON_PM,
+    OBJ_FREE, OBJ_FLOOR, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
+    M_AP_TYPMASK, M_AP_F_DKNOWN,
+    MCORPSENM, NON_PM, MALE, FEMALE,
+    MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -218,8 +225,37 @@ function look_getpos_cmode() {
 }
 
 /**
+ * C monst.h U_AP_TYPE / pager.c youmonst for self_lookat.
+ * JS artifact youmonst is a sentinel; fill data/m_ap from u when needed.
+ */
+function youmonst_for_hidden() {
+    const u = game.u || {};
+    const ym = game.youmonst;
+    const mndx = u.umonnum ?? game.urole?.mnum;
+    const data = ym?.data || (mndx != null ? mons(mndx) : null);
+    if (ym && (ym.data || ym.m_ap_type || ym.mappearance)) {
+        if (!ym.data && data) ym.data = data;
+        if (ym.mundetected == null) ym.mundetected = !!u.uundetected;
+        if (ym.female == null) ym.female = !!(u.mfemale ?? game.flags?.female);
+        ym._youmonst = true;
+        return ym;
+    }
+    return {
+        _youmonst: true,
+        mx: u.ux | 0,
+        my: u.uy | 0,
+        data,
+        m_ap_type: (ym?.m_ap_type | 0),
+        mappearance: (ym?.mappearance | 0),
+        mundetected: !!u.uundetected,
+        female: !!(u.mfemale ?? game.flags?.female),
+    };
+}
+
+/**
  * C ref: pager.c self_lookat — race adj + pmname(umonnum,Ugender) + called
- * plname + Punished ", chained to %s". Steed / mhidden / utrap deferred.
+ * plname + mhidden_description (D-1554) + Punished ", chained to %s".
+ * Steed / utrap deferred.
  */
 function self_lookat() {
     const u = game.u || {};
@@ -235,19 +271,26 @@ function self_lookat() {
     const invis =
         u.Invis && (u.senseself || !u.Blind) ? 'invisible ' : '';
     let buf = `${invis}${race}${form} called ${plname}`;
+    const youm = youmonst_for_hidden();
+    const u_ap = (youm.m_ap_type | 0) & M_AP_TYPMASK;
+    // C: if (u.uundetected || (Upolyd && U_AP_TYPE) || visible_region_at)
+    if (u.uundetected || (Upolyd(u) && u_ap) || visible_region_at(u.ux, u.uy)) {
+        buf += mhidden_description(youm,
+            MHID_PREFIX | MHID_ARTICLE | MHID_REGION);
+    }
     // C: if (Punished) … uball ? ansimpleoname(uball) : "nothing?"
     // C: Punished ≡ (uball != 0)
     if (u.uball) {
         buf += `, chained to ${ansimpleoname(u.uball)}`;
     }
-    // Steed / mhidden / utrap arms deferred
+    // Steed / utrap arms deferred
     return buf;
 }
 
 /**
  * C ref: pager.c look_at_monster — distant_monnam ARTICLE_NONE + tame/peaceful
- * + mfrozen/msleeping/STRAT_WAITMASK. Health / stuck / leashed / trapped /
- * mhidden / hallu deferred.
+ * + mfrozen/msleeping/STRAT_WAITMASK + mhidden_description (D-1554).
+ * Health / stuck / leashed / trapped / hallu / howmonseen deferred.
  */
 function look_at_monster_buf(mtmp) {
     if (!mtmp) return 'monster';
@@ -262,6 +305,15 @@ function look_at_monster_buf(mtmp) {
         buf += ', asleep';
     } else if ((mtmp.mstrategy || 0) & STRAT_WAITMASK) {
         buf += ', meditating';
+    }
+    const x = mtmp.mx | 0;
+    const y = mtmp.my | 0;
+    // C: mundetected || M_AP_TYPE || visible_region_at(look x,y).
+    // Worm-tail look coords named (C FIXME uses mx,my inside mhidden).
+    if (mtmp.mundetected || ((mtmp.m_ap_type | 0) & M_AP_TYPMASK)
+        || visible_region_at(x, y)) {
+        buf += mhidden_description(mtmp,
+            MHID_PREFIX | MHID_ARTICLE | MHID_REGION);
     }
     return buf;
 }
@@ -676,7 +728,9 @@ export function object_from_map(glyphotyp, x, y) {
 
 /**
  * C ref: pager.c look_at_object `:380–399`.
+ * Callers: lookat / look_all / getpos auto_describe + brief_at (D-1547).
  * doname_with_price / doname_vague_quan named — doname stand-in.
+ * Buried/tree/stone/wall/door/pool suffixes named.
  */
 export function look_at_object(x, y, glyphotyp) {
     const { fakeobj, otmp } = object_from_map(glyphotyp, x, y);
@@ -691,6 +745,134 @@ export function look_at_object(x, y, glyphotyp) {
         }
     }
     return buf;
+}
+
+/** C monst.h M_AP_TYPE — mask F_DKNOWN. */
+function hidden_ap_type(mon) {
+    return (mon?.m_ap_type | 0) & M_AP_TYPMASK;
+}
+
+/** C pager.c: mon == &gy.youmonst. */
+function hidden_isyou(mon) {
+    return !!(mon && (mon._youmonst || mon === game.youmonst));
+}
+
+/**
+ * C pager.c mhidden_description glyph pick: hero_memory && !isyou →
+ * levl.glyph (remembered otyp), else glyph_at (gbuf). JS has no integer
+ * glyph ids; remembered_glyph.otyp / glyph_to_obj_at stand in for
+ * glyph_is_object + glyph_to_obj.
+ */
+function hidden_object_glyphotyp(x, y, isyou) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return -1;
+    const heroMem = game.level?.flags?.hero_memory !== false;
+    if (heroMem && !isyou) {
+        const rg = loc.remembered_glyph;
+        if (rg && !rg.invisible && rg.otyp != null && (rg.otyp | 0) >= 0) {
+            return rg.otyp | 0;
+        }
+        return -1;
+    }
+    return glyph_to_obj_at(x, y);
+}
+
+/**
+ * C pager.c objfrommap label inside mhidden_description.
+ * fakeobj: object_from_map set OBJ_FLOOR; free via OBJ_FREE (GC; no
+ * dealloc_obj clone).
+ */
+function hidden_objfrommap(incl_article, glyphotyp, x, y) {
+    const { fakeobj, otmp } = object_from_map(glyphotyp, x, y);
+    let what = (otmp && (otmp.otyp | 0) !== STRANGE_OBJECT)
+        ? simpleonames(otmp)
+        : (objectNameStrs[STRANGE_OBJECT] || 'strange object');
+    if (incl_article && (!otmp || (otmp.quan | 0) === 1)) {
+        what = an(what);
+    }
+    if (fakeobj && otmp) {
+        otmp.where = OBJ_FREE;
+    }
+    return what;
+}
+
+/**
+ * C ref: pager.c mhidden_description `:184–280`.
+ * Returns the suffix C writes into outbuf (callers append).
+ * Callers: self_lookat / look_at_monster; insight mstatusline;
+ * makemon appear; uhitm flash_hits_mon.
+ * Named: dungeon.c surface ice/pool/altar/swallow (trapper uses
+ * "floor"); long-worm tail coords (C FIXME); glyph_is_cmap region
+ * ids (JS string 'S_poisoncloud').
+ */
+export function mhidden_description(mon, mhid_flags) {
+    if (!mon) return '';
+    const incl_prefix = (mhid_flags & MHID_PREFIX) !== 0;
+    const incl_article = (mhid_flags & MHID_ARTICLE) !== 0;
+    const show_altmon = (mhid_flags & MHID_ALTMON) !== 0;
+    const force_region = (mhid_flags & MHID_REGION) !== 0;
+    const isyou = hidden_isyou(mon);
+    const u = game.u || {};
+    const x = isyou ? (u.ux | 0) : (mon.mx | 0);
+    const y = isyou ? (u.uy | 0) : (mon.my | 0);
+    const ap = hidden_ap_type(mon);
+    const ptr = mon.data;
+    // C: one glyph pick (memory vs glyph_at); glyph_is_object ≡ otyp>=0
+    const gtyp = hidden_object_glyphotyp(x, y, isyou);
+    let outbuf = '';
+
+    if (ap === M_AP_FURNITURE || ap === M_AP_OBJECT) {
+        if (incl_prefix) outbuf = ', mimicking ';
+        if (ap === M_AP_FURNITURE) {
+            let what = defsym_explanation(mon.mappearance | 0);
+            if (incl_article) what = an(what);
+            outbuf += what;
+        } else if (ap === M_AP_OBJECT && gtyp >= 0) {
+            outbuf += hidden_objfrommap(incl_article, gtyp, x, y);
+        } else {
+            outbuf += 'something';
+        }
+    } else if (ap === M_AP_MONSTER) {
+        if (show_altmon) {
+            if (incl_prefix) outbuf += ', masquerading as ';
+            let what = pmname(mon.mappearance | 0,
+                mon.female ? FEMALE : MALE);
+            // C: article follows incl_prefix, not incl_article
+            if (incl_prefix) what = an(what);
+            outbuf += what;
+        }
+    } else if (isyou ? u.uundetected : mon.mundetected) {
+        outbuf = ', hiding';
+        if (hides_under(ptr)) {
+            outbuf += ' under ';
+            if (gtyp >= 0) {
+                outbuf += hidden_objfrommap(incl_article, gtyp, x, y);
+            } else {
+                outbuf += 'something';
+            }
+        } else if (is_hider(ptr)) {
+            // C ceiling_hider macro — inline, no fourth named clone.
+            const ceil = (is_clinger(ptr) && ptr.mlet !== 'S_MIMIC')
+                || is_flyer(ptr);
+            // C surface() ice/pool/altar/swallow named; trapper floor.
+            outbuf += ` on the ${ceil ? 'ceiling' : 'floor'}`;
+        } else if (ptr?.mlet === 'S_EEL' && is_pool(x, y)) {
+            outbuf += ' in murky water';
+        }
+    }
+
+    const reg = visible_region_at(x, y);
+    if (reg) {
+        const xr = u.xray_range | 0;
+        const r = xr > 1 ? xr : 1;
+        const dx = (x | 0) - (u.ux | 0);
+        const dy = (y | 0) - (u.uy | 0);
+        if (dx * dx + dy * dy <= r * (r + 1) || force_region) {
+            const poison = reg.glyph === 'S_poisoncloud';
+            outbuf += `, in a cloud of ${poison ? 'poison gas' : 'vapor'}`;
+        }
+    }
+    return outbuf;
 }
 
 /**
@@ -709,12 +891,13 @@ function brief_at(x, y) {
     if (u.ux === x && u.uy === y) {
         return self_lookat();
     }
+    // C lookat: glyph_is_monster then glyph_is_object (getpos describeAt)
+    const objTyp = glyph_to_obj_at(x, y);
     const mtmp = mon_at(x, y);
-    if (mtmp) {
+    if (mtmp && objTyp < 0) {
         return look_at_monster_buf(mtmp);
     }
-    const top = objects_at(x, y);
-    if (top) return look_at_object(x, y, top.otyp);
+    if (objTyp >= 0) return look_at_object(x, y, objTyp);
     // C lookat glyph_is_trap → trap_description (seen map_trap glyph)
     const trap = t_at(x, y);
     if (trap && trap.tseen) {

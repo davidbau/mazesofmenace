@@ -178,8 +178,10 @@ export function show_transient_light(obj, x, y) {
 }
 
 // src/light.c:648 any_light_source()
-export function any_light_source() {
-    return lights().length > 0;
+export function any_light_source(type = null) {
+    const sources = lights();
+    return type == null ? sources.length > 0
+                        : sources.some((source) => source.type === type);
 }
 
 // src/light.c:657 snuff_light_source() — extinguish a burning object at

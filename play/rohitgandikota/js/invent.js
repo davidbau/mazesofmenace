@@ -34,7 +34,7 @@ import { is_missile, ammo_and_launcher, setuqwep } from './wield.js';
 import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { xwaitforspace } from './tty/getline.js';
-import { pline, docrt, temporary_object_glyph } from './display.js';
+import { pline, display_nhwindow_message, temporary_object_glyph } from './display.js';
 import { makeknown, observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
 import { You } from './pline.js';
@@ -291,6 +291,11 @@ export async function look_here(obj_cnt, lhflags) {
         if (otmp.otyp === ONAMES.CORPSE)
             note_unported_invent('look_here:feel_cockatrice');
     } else {
+        /* src/invent.c:4289 flushes WIN_MESSAGE before constructing the
+           multi-object popup.  For an acknowledged no-history getpos
+           description, the tty marks the message logically empty but leaves
+           its pixels under the menu overlay. */
+        await display_nhwindow_message();
         const tmpwin = tty_create_nhwindow(NHW_MENU);
         if (dfeature && !skip_dfeature) {
             tty_putstr(tmpwin, 0, `There is ${an(dfeature)} here.`);
@@ -311,7 +316,6 @@ export async function look_here(obj_cnt, lhflags) {
         while (tty_next_page(tmpwin))
             await xwaitforspace(' \r\n\x1b');
         tty_destroy_nhwindow(tmpwin);
-        await docrt();
     }
 
     /* C's multi-object menu arm does not call read_engr_at; the other three
@@ -370,7 +374,7 @@ export function display_inventory(allowed_choices = null) {
         out.push({ heading: true, str: let_to_name(oclass), attr: ATR_INVERSE });
         for (const o of items) {
             /* src/invent.c:1039 — displaying the item observes its type */
-            if (!game.u?.ublind)
+            if (!Blind())
                 observe_object(o);
             /* src/invent.c:3320. obj_to_glyph() precedes doname(), even when
                the tty window never renders the supplied glyph. */
@@ -1277,7 +1281,7 @@ export function freeinv(obj) {
 export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     let drop_it = false;
 
-    if (!game.u.ublind)
+    if (!Blind())
         observe_object(obj); /* maximize mergeability */
     if (obj.oartifact) {
         /* place_object may change these */
@@ -1676,7 +1680,7 @@ export async function doorganize() {
             other.invlet = obj.invlet;
         obj.invlet = let_;
         reorder_invent();
-        await prinv(null, obj, 0);
+        await prinv('Moving:', obj, 0);
         return ECMD_OK;
     }
 }

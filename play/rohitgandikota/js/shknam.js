@@ -11,10 +11,11 @@ import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { isok, ROOMOFFSET, IS_ROOM, D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED,
-         SDOOR, DOOR, MM_ESHK, NO_MM_FLAGS, HEALTHY_TIN } from './const.js';
+         SDOOR, DOOR, MM_ESHK, NO_MM_FLAGS, HEALTHY_TIN,
+         RLOC_NOMSG } from './const.js';
 import { makemon, mkclass, mkmonmoney, mongets, set_malign } from './makemon.js';
 import { mkobj_at, mksobj_at, set_tin_variety } from './mkobj.js';
-import { m_at } from './mon.js';
+import { m_at, mongone } from './mon.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { rnd as _rnd } from './rng.js';
 import { distmin } from './hacklib.js';
@@ -245,13 +246,16 @@ function mkveggy_at(sx, sy) {
 // draws NEITHER, because the first two disjuncts short-circuit; a ring shop
 // draws rn2(2) and a general store rn2(5). Then nameshk, which draws only for
 // a tools shop. Getting shknms wrong changes which draw happens.
-function shkinit(shp, sroom) {
+async function shkinit(shp, sroom) {
     const { di: sh, sx, sy } = good_shopdoor(sroom);
     if (sh < 0)
         return -1;
 
-    if (m_at(sx, sy))
-        (game.unported ||= new Set()).add('shknam:shkinit:rloc'); /* insurance */
+    const occupant = m_at(sx, sy);
+    if (occupant) {
+        const { rloc } = await import('./teleport.js');
+        await rloc(occupant, RLOC_NOMSG); /* insurance */
+    }
 
     const shk = makemon(game.mons[PMNAMES.PM_SHOPKEEPER], sx, sy, MM_ESHK);
     if (!shk)
@@ -339,13 +343,13 @@ function mkshobj_at(shp, sx, sy, mkspecl) {
 }
 
 // src/shknam.c:718 stock_room() — stock a newly-created shop.
-export function stock_room(shp_indx, sroom) {
+export async function stock_room(shp_indx, sroom) {
     let stockcount = 0, specialspot = 0;
     const rmno = game.level.rooms.indexOf(sroom) + ROOMOFFSET;
     const shp = shtypes[shp_indx];
 
     /* first, try to place a shopkeeper in the room */
-    const sh = shkinit(shp, sroom);
+    const sh = await shkinit(shp, sroom);
     if (sh < 0)
         return;
 
@@ -383,6 +387,16 @@ export function stock_room(shp_indx, sroom) {
                 stockcount++;
                 mkshobj_at(shp, sx, sy, stockcount === specialspot);
             }
+
+    /* src/shknam.c stock_room() removes Orcus-town's shopkeepers after the
+       abandoned shops have been stocked. mongone() also performs the
+       protected-inventory checks which consume one draw per ordinary item. */
+    const orcus = game.special_levels?.orcus_level;
+    if (orcus && game.u.uz.dnum === orcus.dnum
+        && game.u.uz.dlevel === orcus.dlevel) {
+        mongone(sroom.resident);
+        sroom.resident = null;
+    }
 
     game.level.flags.has_shop = true;
 }

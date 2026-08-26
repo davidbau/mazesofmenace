@@ -8,7 +8,7 @@
 // swallowed and the next segment starts a fresh game.
 
 import { game } from './gstate.js';
-import { pline, canspotmon } from './display.js';
+import { pline, canspotmon, tty_clear_nhwindow_message } from './display.js';
 import { You, Your, You_feel, pline_The } from './pline.js';
 import { hidden_gold, money_cnt, useup } from './invent.js';
 import { depth, dunlevs_in_dungeon } from './dungeon.js';
@@ -780,6 +780,7 @@ export async function done2() {
     const c0 = await tty_yn_function('Really quit without saving?', 'yn', 'n');
     if (c0 !== 'y') {
         /* clear_nhwindow(WIN_MESSAGE); nomul(0) */
+        tty_clear_nhwindow_message(game._topl_cury || 0);
         const { nomul } = await import('./hack.js');
         if ((game.multi ?? 0) > 0)
             nomul(0);

@@ -14,7 +14,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          ECMD_TIME, TT_BEARTRAP, TT_INFLOOR, I_SPECIAL,
          WORN_ARMOR, WORN_CLOAK, WORN_SHIRT, WORN_HELMET, WORN_GLOVES,
          WORN_SHIELD, WORN_BOOTS, WORN_AMUL, WORN_BLINDF,
-         LEFT_RING, RIGHT_RING, TIMEOUT } from './const.js';
+         LEFT_RING, RIGHT_RING, TIMEOUT, A_DEX } from './const.js';
 import { setworn } from './worn.js';
 import { welded, is_sword } from './wield.js';
 import { bimanual, is_metallic } from './obj.js';
@@ -36,6 +36,7 @@ import { makeknown, observe_object } from './o_init.js';
 import { prinv, update_inventory, ECMD_OK } from './invent.js';
 import { nomul, unmul } from './hack.js';
 import { tty_yn_function } from './tty/topl.js';
+import { encumber_msg } from './attrib.js';
 
 const OCLASSES_ARMOR = OCLASSES.ARMOR_CLASS;
 const OCLASSES_RING = OCLASSES.RING_CLASS;
@@ -134,9 +135,56 @@ function reveal_worn_armor(mask) {
     return 0;
 }
 
-function Cloak_on()  { return reveal_worn_armor(W_ARMC); }
+async function Cloak_on() {
+    const uarmc = worn(W_ARMC);
+    if (!uarmc)
+        return 0;
+    const prop = PROP_KEYS[objects[uarmc.otyp].oc_oprop];
+    const oldprop = (game.u.uprops?.[prop] || 0) & ~WORN_CLOAK;
+
+    if (uarmc.otyp === ONAMES.CLOAK_OF_DISPLACEMENT
+        && !oldprop && !game.u.intrinsic?.HDisplaced
+        && !game.u.blocked?.DISPLACED
+        && ((!game.u.ublind && !game.u.uswallow && !game.u.uprops?.INVIS)
+            || game.u.unblind_telepat_range >= 0
+            || game.u.uprops?.DETECT_MONSTERS)) {
+        makeknown(uarmc.otyp);
+        await You_feel('that monsters have difficulty pinpointing your location.');
+    } else if (uarmc.otyp === ONAMES.CLOAK_OF_PROTECTION) {
+        makeknown(uarmc.otyp);
+    }
+    return reveal_worn_armor(W_ARMC);
+}
 function Helmet_on() { return reveal_worn_armor(W_ARMH); }
-function Gloves_on() { return reveal_worn_armor(W_ARMG); }
+function Gloves_on() {
+    const uarmg = worn(W_ARMG);
+    if (!uarmg)
+        return 0;
+
+    switch (uarmg.otyp) {
+    case ONAMES.GAUNTLETS_OF_POWER:
+        makeknown(uarmg.otyp);
+        (game.disp ||= {}).botl = true;
+        break;
+    case ONAMES.GAUNTLETS_OF_DEXTERITY:
+        if (uarmg.spe) {
+            makeknown(uarmg.otyp);
+            game.u.abon.a[A_DEX] += uarmg.spe;
+        }
+        (game.disp ||= {}).botl = true;
+        break;
+    case ONAMES.GAUNTLETS_OF_FUMBLING: {
+        const intrinsic = (game.u.intrinsic ||= {});
+        const old = intrinsic.HFumbling || 0;
+        const oldprop = (game.u.uprops?.FUMBLING || 0) & ~WORN_GLOVES;
+        if (!oldprop && !(old & ~TIMEOUT))
+            intrinsic.HFumbling = (old & ~TIMEOUT)
+                | Math.min(TIMEOUT, (old & TIMEOUT) + rnd(20));
+        break;
+    }
+    }
+    return reveal_worn_armor(W_ARMG);
+}
 function Shield_on() { return reveal_worn_armor(W_ARMS); }
 function Shirt_on()  { return reveal_worn_armor(W_ARMU); }
 
@@ -876,6 +924,10 @@ async function slot_off(otmp) {
         & (W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU);
     if (otmp.owornmask & W_ARMF)
         await Boots_off(otmp);
+    if (otmp.owornmask & W_ARMG) {
+        await Gloves_off(otmp);
+        return;
+    }
     if (otmp.owornmask & W_ARM) {
         /* Armor_off clears setworn's primary property before removing the
            second property supplied by blue dragon armor. */
@@ -896,6 +948,34 @@ async function slot_off(otmp) {
     } else {
         setworn(null, mask); /* each C *_off handler clears its own slot */
     }
+}
+
+async function Gloves_off(otmp) {
+    switch (otmp.otyp) {
+    case ONAMES.GAUNTLETS_OF_POWER:
+        makeknown(otmp.otyp);
+        (game.disp ||= {}).botl = true;
+        break;
+    case ONAMES.GAUNTLETS_OF_DEXTERITY:
+        if (!game.context_takeoff?.cancelled_don && otmp.spe) {
+            makeknown(otmp.otyp);
+            game.u.abon.a[A_DEX] -= otmp.spe;
+        }
+        (game.disp ||= {}).botl = true;
+        break;
+    case ONAMES.GAUNTLETS_OF_FUMBLING: {
+        const oldprop = (game.u.uprops?.FUMBLING || 0) & ~WORN_GLOVES;
+        const intrinsic = (game.u.intrinsic ||= {});
+        if (!oldprop && !((intrinsic.HFumbling || 0) & ~TIMEOUT)) {
+            intrinsic.HFumbling = 0;
+            if (game.u.uprops)
+                delete game.u.uprops.FUMBLING;
+        }
+        break;
+    }
+    }
+    setworn(null, W_ARMG);
+    await encumber_msg();
 }
 
 // src/do_wear.c:1771 armor_or_accessory_off()

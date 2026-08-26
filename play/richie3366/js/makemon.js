@@ -84,7 +84,7 @@ import {
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD, G_EXTINCT,
     isok, has_mgivenname, MGIVENNAME, has_emin, MON_FLOOR,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
-    ARTICLE_A, BOLT_LIM,
+    ARTICLE_A, BOLT_LIM, MHID_ARTICLE, MHID_ALTMON,
     IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
     HWALL, TLCORNER, TRWALL, BLCORNER, TDWALL, CROSSWALL, TUWALL,
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
@@ -130,8 +130,9 @@ import {
     RANDOM_CLASS, objects,
 } from './objects.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
-import { cansee } from './vision.js';
+import { cansee, does_block, block_point } from './vision.js';
 import { newsym, Norep, canseemon, sensemon } from './display.js';
+import { mhidden_description } from './pager.js';
 import { emits_light, new_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
 import { christen_monst, oname, x_monnam } from './do_name.js';
@@ -248,7 +249,8 @@ const MIMIC_SYMS = [
     S_MIMIC_DEF_SYM, S_MIMIC_DEF_SYM,
 ];
 // C ref: defsym.h PCHAR — door/wall mimic mappearance (D-1536); TEMPLE
-// S_altar (D-1525); furnsyms ROLL_FROM (D-1543).
+// S_altar (D-1525); furnsyms ROLL_FROM (D-1543); DELPHI S_fountain
+// (D-1556).
 const S_vwall = 1;
 const S_hwall = 2;
 const S_vcdoor = 15;
@@ -259,6 +261,7 @@ const S_altar = 33;
 const S_grave = 34;
 const S_throne = 35;
 const S_sink = 36;
+const S_fountain = 37; // defsym.h PCHAR — DELPHI mimic (D-1556)
 // C ref: makemon.c set_mimic_sym furnsyms[] :2491–2494
 const MIMIC_FURNSYMS = [
     S_upstair, S_upstair, S_dnstair, S_dnstair,
@@ -2453,8 +2456,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
 
     // C: !in_mklev → newsym so the mon shows up (even with MM_NOMSG)
     // Appear Norep is async (pline→more); callers await makemon_appear_msg
-    // after sync makemon (D-0559 / D-0928 #1164). Mimic mhidden_description
-    // + set_msg_xy + dochugw occupation still deferred.
+    // after sync makemon (D-0559 / D-0928 #1164). Mimic furniture/object
+    // appear uses mhidden_description (D-1554). set_msg_xy + dochugw
+    // occupation still deferred.
     if (!game.in_mklev) {
         newsym(mtmp.mx, mtmp.my);
     }
@@ -2466,8 +2470,8 @@ export function makemon(mdat, x, y, mmflags = 0) {
  * C ref: makemon.c makemon post-place appear Norep (!in_mklev, !MM_NOMSG).
  * Uses requested (x,y) for next2u/distu — wizgenesis passes u.ux,u.uy so
  * distance 0 → always " next to you" when visible.
- * Named omit: mimic furniture/object mhidden_description; set_msg_xy;
- * occupation dochugw.
+ * Mimic furniture/object: mhidden_description + upstart (D-1554).
+ * Named omit: set_msg_xy; occupation dochugw.
  */
 export async function makemon_appear_msg(mtmp, x, y, mmflags = 0) {
     if (!mtmp || game.in_mklev) return;
@@ -2481,8 +2485,11 @@ export async function makemon_appear_msg(mtmp, x, y, mmflags = 0) {
         const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
         what = s ? s.charAt(0).toUpperCase() + s.slice(1) : null;
         if (ap === M_AP_MONSTER) exclaim = true;
+    } else if (canseemon(mtmp)) {
+        // C: mimic masquerading as furniture or object and not sensed
+        const mbuf = mhidden_description(mtmp, MHID_ARTICLE | MHID_ALTMON);
+        what = mbuf ? mbuf.charAt(0).toUpperCase() + mbuf.slice(1) : null;
     }
-    // else if (canseemon) mimic mhidden_description — deferred
     if (!what) return;
 
     const u = game.u || {};
@@ -2537,11 +2544,11 @@ function in_town(x, y) {
  * C ref: makemon.c set_mimic_sym — ordinary + shop (get_shop_item) +
  * maze/sokoban/in_town statue (D-1517) + TEMPLE S_altar Align2amask
  * MCORPSENM (D-1525) + door/wall/SDOOR/SCORR S_hcdoor (D-1536) +
- * furnsyms real S_* (D-1543).
+ * furnsyms real S_* (D-1543) + DELPHI S_fountain (D-1556) +
+ * does_block / block_point (D-1557).
  * Named omissions: Protection_from_shape_changers early-out when
- * hero wears the amulet (stubbed false at mklev), block_point,
- * DELPHI S_fountain, slime-mold flags.made_fruit, nocorpse/hatch/tin
- * Plan-B.
+ * hero wears the amulet (stubbed false at mklev), slime-mold
+ * flags.made_fruit, nocorpse/hatch/tin Plan-B.
  */
 export function set_mimic_sym(mtmp) {
     if (!mtmp) return;
@@ -2601,12 +2608,13 @@ export function set_mimic_sym(mtmp) {
         ap_type = M_AP_OBJECT;
         appear = GOLD_PIECE;
     } else if (rt === DELPHI) {
+        // C: rn2(2) STATUE else M_AP_FURNITURE S_fountain (cmap 37).
         if (rn2(2)) {
             ap_type = M_AP_OBJECT;
             appear = STATUE;
         } else {
             ap_type = M_AP_FURNITURE;
-            appear = 0; // S_fountain stub
+            appear = S_fountain;
         }
     } else if (rt === TEMPLE) {
         ap_type = M_AP_FURNITURE;
@@ -2683,7 +2691,9 @@ export function set_mimic_sym(mtmp) {
         // C: has_mcorpsenm → NON_PM (drop stale statue/figurine shape)
         mtmp.mextra.mcorpsenm = NON_PM;
     }
-    // block_point deferred
+    // C: if (does_block(mx, my, &levl[mx][my])) block_point(mx, my)
+    if (does_block(mx, my, loc))
+        block_point(mx, my);
 }
 
 /**

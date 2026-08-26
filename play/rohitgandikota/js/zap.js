@@ -69,12 +69,13 @@ import { ATTKS, PMNAMES } from './monst_data.js';
 import { breathless, defended, haseyes, resists_cold, resists_elec,
          resists_fire, resists_magm, nohands } from './mondata.js';
 import { find_mac } from './worn.js';
-import { Reflecting, Sleep_resistance, Fire_resistance,
+import { Reflecting, Sleep_resistance, Fire_resistance, Cold_resistance,
          Shock_resistance, Deaf, Unaware } from './youprop.js';
 import { cmap_names } from './drawing_data.js';
 import { CLR_ORANGE, CLR_WHITE, CLR_BLACK, CLR_GREEN,
          CLR_YELLOW } from './terminal.js';
 import { create_gas_cloud } from './region.js';
+import { boolean_option } from './options.js';
 
 /* include/objclass.h:200/:201/:204 — local copies of the material
    predicates trap.js also carries (they are header macros in C). */
@@ -382,7 +383,7 @@ async function wishcmdassist(triesleft) {
                    plur(triesleft)},`);
     tty_putstr(win, 0, retry_too);
     tty_putstr(win, 0, '');
-    if (game.iflags?.cmdassist ?? true)
+    if (boolean_option('cmdassist'))
         tty_putstr(win, 0, suppress_cmdassist);
     await tty_display_nhwindow(win);
     tty_destroy_nhwindow(win);
@@ -413,7 +414,7 @@ export async function makewish() {
     /* retry: */
     for (;;) {
         promptbuf = 'For what do you wish';
-        if ((game.iflags?.cmdassist ?? true) && tries > 0)
+        if (boolean_option('cmdassist') && tries > 0)
             promptbuf += " (enter 'help' for assistance)";
         promptbuf += '?';
 
@@ -1393,6 +1394,18 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             if (!rn2(3))
                 note_unported_zap('zhitu:ignite_items');
         }
+        break;
+    }
+    case 2: { /* ZT_COLD */
+        const origDamage = d(nd, 6);
+        if (Cold_resistance()) {
+            note_unported_zap('zhitu:cold_shieldeff_golem');
+            await You("don't feel cold.");
+        } else {
+            damage = origDamage;
+        }
+        if (!rn2(3))
+            await destroy_items(game.youmonst, ATTKS.AD_COLD, origDamage);
         break;
     }
     default:

@@ -23,7 +23,7 @@ import { outrumor } from './rumors.js';
 import { BY_COOKIE } from './const.js';
 import { PMNAMES, MFLAGS as MFLAGS_EAT, ATTKS } from './monst_data.js';
 import { done } from './end.js';
-import { end_running, nomul, rounddiv } from './hack.js';
+import { end_running, nomul, rounddiv, check_capacity } from './hack.js';
 import { sgn, distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
 import { bot } from './display.js';
@@ -547,6 +547,8 @@ export async function doeat() {
 
     if (!otmp)
         return ECMD_OK;
+    if (await check_capacity(null))
+        return ECMD_OK;
 
     /* src/eat.c:2864 — "We have to make non-foods take 1 move to eat,
        unless..." — an explicitly chosen non-food is rejected without
@@ -567,6 +569,8 @@ export async function doeat() {
         note_unported_eat('doeat:tin');
         return ECMD_TIME;
     }
+
+    (game.u.uconduct ||= {}).food = (game.u.uconduct.food | 0) + 1;
 
     let dont_start = false;
     if (otmp.otyp === ONAMES.CORPSE || otmp.globby) {

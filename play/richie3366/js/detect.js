@@ -39,7 +39,7 @@
 // M_AP_FURNITURE; wiz_map_levltyp / wiz_levltyp_legend;
 // TER_FULL explore-only map body; arboreal default tree;
 // monster_detect cursed wake / blessed WIN_MAP /
-// worm segs / pet_to_glyph / TER_DETECT autodescribe;
+// pet_to_glyph / TER_DETECT autodescribe;
 // mfind0 set_msg_xy / display_nhwindow flush;
 // object_detect buried/minvent/cursed-mimic/gold/clear_stale_map;
 // observe_recursively on buried/minvent (invent+floor do_dknown D-1417);
@@ -57,7 +57,7 @@ import {
 } from './display.js';
 import { vision_recalc, couldsee, recalc_block_point, cansee } from './vision.js';
 import { visible_region_at } from './region.js';
-import { an, the, xname, The, makeplural, vtense } from './objnam.js';
+import { an, the, xname, The, makeplural, vtense, otense } from './objnam.js';
 import { body_part } from './polyself.js';
 import { A_WIS, A_INT, acurr, exercise } from './attrib.js';
 import {
@@ -80,7 +80,8 @@ import { objects_at, weight } from './mkobj.js';
 import { makeknown, consume_obj_charge, observe_object } from './invent.js';
 import { yn_function } from './getline.js';
 import { nomul, losehp, maybe_half_phys, is_pool } from './hack.js';
-import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
+import { detect_wsegs } from './worm.js';
+import { PM_LONG_WORM_TAIL, monsterNames } from './generated/monsters_data.js';
 import { depth, dist2 } from './hacklib.js';
 import {
     isok, SDOOR, SCORR, DOOR, CORR, D_NODOOR, D_CLOSED, D_LOCKED, D_ISOPEN,
@@ -93,6 +94,8 @@ import {
     IN_SIGHT, CLAIRVOYANT, LAVAPOOL, LAVAWALL, Has_contents,
 } from './const.js';
 import { room_discovered } from './dungeon.js';
+
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 
 /** C youprop.h Blind — (H||E) && !B; no sticky u.Blind (D-0716). */
 function Blind() {
@@ -213,13 +216,6 @@ function observe_recursively(obj) {
     }
 }
 
-/** C objnam.c otense — verb given plural; singular → vtense. */
-function otense(obj, verb) {
-    if ((obj?.quan | 0) !== 1) return verb;
-    return vtense(null, verb);
-}
-
-/** C objnam.c Tobjnam */
 function Tobjnam(obj, verb) {
     const bp = The(xname(obj));
     return verb ? `${bp} ${otense(obj, verb)}` : bp;
@@ -783,6 +779,8 @@ function map_object_premap(obj, show) {
     if (game.level?.flags?.hero_memory) {
         lev.remembered_glyph = {
             ch: og.ch, color: og.color, decgfx: !!og.dec,
+            otyp: obj.otyp | 0,
+            boulder: true,
         };
     }
     if (show) show_glyph_cell(x, y, og.ch, og.color, !!og.dec);
@@ -990,9 +988,9 @@ function glyph_disp_changed(a, b) {
  * map_monst / map_invisible; skilled/blessed/Clairvoyant observe_object +
  * mdetected browse; random_farsight quick_farsight skip; post-loop I-replace
  * + see_monsters; browse_map then docrt.
- * Named omissions: worm-tail glyph_to_mon skip (heads only via mx==zx);
- * pet_to_glyph / detected_mon_to_glyph (plain mon_glyph); allmain seer_turn
- * caller still named.
+ * Named omissions: pet_to_glyph / detected_mon_to_glyph (plain
+ * mon_glyph); allmain seer_turn caller still named. detect_wsegs is
+ * D-1545 (map_monst FALSE here, like C `:1531`).
  * @param {object|null} sobj fake spellbook (null = random farsight)
  */
 export async function do_vicinity_map(sobj) {
@@ -1041,7 +1039,7 @@ export async function do_vicinity_map(sobj) {
                     && oldglyph.kind !== 'monster') {
                     map_invisible(zx, zy);
                 } else {
-                    map_monst(mtmp, mon_glyph, show_glyph_cell);
+                    map_monst(mtmp, false);
                 }
                 const newglyph = glyph_at_disp(zx, zy);
                 if (extended && glyph_disp_changed(newglyph, oldglyph)
@@ -1093,11 +1091,25 @@ export async function do_vicinity_map(sobj) {
 }
 
 /**
- * C ref: detect.c map_monst — show_glyph mon/pet/detected; worm segs deferred.
+ * C detect.c :132 / :832 — mtmp->data == &mons[PM_LONG_WORM] (static
+ * slot). JS mons() allocates a new object; compare mnum/mndx (D-1549).
  */
-function map_monst(mtmp, mon_glyph, show_glyph_cell) {
+function mtmp_is_long_worm(mtmp) {
+    return ((mtmp.data?.mndx ?? mtmp.mnum) | 0) === PM_LONG_WORM;
+}
+
+/**
+ * C ref: detect.c map_monst :120–134 — show_glyph head; showtail &&
+ * PM_LONG_WORM → detect_wsegs(mtmp, 0) (D-1545; identity D-1549).
+ * Named: monsym==' ' detected_mon_to_glyph; pet_to_glyph (plain
+ * mon_glyph).
+ */
+export function map_monst(mtmp, showtail) {
     const g = mon_glyph(mtmp);
     show_glyph_cell(mtmp.mx, mtmp.my, g.ch, g.color, false);
+    if (showtail && mtmp_is_long_worm(mtmp)) {
+        detect_wsegs(mtmp, false);
+    }
 }
 
 /**
@@ -1108,12 +1120,13 @@ function map_monst(mtmp, mon_glyph, show_glyph_cell) {
  * Empty + otmp → strange_feeling (D-1418; hallu heebie jeebies else
  * threatened). Crystal-ball / fountain pass null and skip that.
  * Named omissions: cursed-otmp wake; blessed persistent
- * display_nhwindow; unconstrain underwater/buried/swallow; worm
- * detect_wsegs; pet_to_glyph / detected_mon_to_glyph
- * (plain mon_glyph).
+ * display_nhwindow; unconstrain underwater/buried/swallow;
+ * pet_to_glyph / detected_mon_to_glyph (plain mon_glyph).
+ * detect_wsegs is D-1545 (map_monst TRUE). Long-worm identity is
+ * D-1549 (mnum/mndx, not mons() ptr).
  */
 export async function monster_detect(otmp, mclass) {
-    const { cls, pline, mon_glyph, show_glyph_cell, flush_topl_more } =
+    const { cls, pline, flush_topl_more } =
         await import('./display.js');
 
     let mcnt = 0;
@@ -1146,8 +1159,11 @@ export async function monster_detect(otmp, mclass) {
         if ((mtmp.mhp | 0) < 1) continue;
         if (mtmp.isgd && !(mtmp.mx | 0)) continue;
         const mlet = mtmp.data?.mlet;
-        if (!mclass || mlet === mclass) {
-            map_monst(mtmp, mon_glyph, show_glyph_cell);
+        /* C :831–834 — also map a long worm when the class is S_WORM_TAIL */
+        if (!mclass || mlet === mclass
+            || (mtmp_is_long_worm(mtmp)
+                && mclass === 'S_WORM_TAIL')) {
+            map_monst(mtmp, true);
         }
         // cursed otmp helpless wake deferred
     }

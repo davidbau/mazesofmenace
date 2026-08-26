@@ -25,7 +25,8 @@ import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
 import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
          MENU_ITEMFLAGS_SKIPINVERT, MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE,
-         PICK_ONE, PICK_ANY, GOLD_SYM, ROWNO, COLNO } from './../const.js';
+         MENU_SEARCH, PICK_ONE, PICK_ANY, GOLD_SYM, ROWNO, COLNO } from './../const.js';
+import { pmatch } from './../hacklib.js';
 
 // include/wintype.h:128-137 — NetHack's attribute numbers. These are NOT the
 // frozen terminal's bit flags; win/tty/wintty.c term_start_attr() translates
@@ -719,9 +720,9 @@ function unset_all_on_page(window, page) {
 // win/tty/wintty.c:1329 process_menu_window() — display the menu and run the
 // key loop, then win/tty/wintty.c tty_select_menu() collects what is selected.
 //
-// Counts and menu search are not reached by any ported caller yet. Returns the
-// identifiers of the picked entries, so C's `select_menu(...) > 0` test
-// becomes `.length > 0`.
+// Counts are not reached by any ported caller yet. Returns the identifiers of
+// the picked entries, so C's `select_menu(...) > 0` test becomes
+// `.length > 0`.
 export async function tty_select_menu(window, how) {
     const cw = windows[window];
     if (!cw) return [];
@@ -758,8 +759,24 @@ export async function tty_select_menu(window, how) {
     while (!finished) {
         const c = await nhgetch();
         const morc = String.fromCharCode(c);
+        const explicitItems = menu_page_items(window, cw.curr_page);
+        const explicitIndex = explicitItems.findIndex(
+            item => item.identifier && item.selector === morc);
 
-        if (morc === '\x1b') {                  /* cancel */
+        /* wintty.c checks the page's response characters before mapping menu
+           commands, so ':' selects a ':' entry instead of opening search. */
+        if (explicitIndex >= 0) {
+            const curr = explicitItems[explicitIndex];
+            if (curr.selected) {
+                curr.selected = false;
+                curr.count = -1;
+            } else {
+                curr.selected = true;
+            }
+            set_item_state(window, explicitIndex, curr);
+            if (how === PICK_ONE)
+                finished = true;
+        } else if (morc === '\x1b') {           /* cancel */
             for (let curr = cw.mlist; curr; curr = curr.next) {
                 curr.selected = false;
                 curr.count = -1;
@@ -817,6 +834,40 @@ export async function tty_select_menu(window, how) {
         } else if (morc === '@') {              /* MENU_INVERT_ALL */
             if (cw.how === PICK_ANY)
                 invert_all(window, cw.curr_page, 0, -1);
+        } else if (morc === MENU_SEARCH) {
+            if (cw.how !== 0 /* PICK_NONE */) {
+                const { getlin } = await import('./../cmd.js');
+                const search = await getlin('Search for:');
+                if (search && search !== '\x1b') {
+                    const pattern = `*${search}*`.toLowerCase();
+                    const items = menu_page_items(window, cw.curr_page);
+                    const onpage = new Map(items.map((item, n) => [item, n]));
+                    for (let curr = cw.mlist; curr; curr = curr.next) {
+                        if (!curr.identifier
+                            || !pmatch(pattern, curr.str.toLowerCase()))
+                            continue;
+                        const lineno = onpage.get(curr);
+                        if (curr.selected) {
+                            curr.selected = false;
+                            curr.count = -1;
+                        } else {
+                            curr.selected = true;
+                        }
+                        if (lineno !== undefined)
+                            set_item_state(window, lineno, curr);
+                        if (how === PICK_ONE) {
+                            finished = true;
+                            break;
+                        }
+                    }
+                }
+                const items = menu_page_items(window, cw.curr_page);
+                const morestr = (cw.npages > 1)
+                                ? `(${cw.curr_page + 1} of ${cw.npages})`
+                                : cw.morestr;
+                game?.nhDisplay?.setCursor(
+                    cw.offx + 1 + morestr.length, cw.offy + items.length);
+            }
         } else if (gacc.includes(morc)) {
             /* group accelerator; for the PICK_ONE case, we know that it
                matches exactly one item in order to be in gacc[] */

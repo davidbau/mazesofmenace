@@ -7,6 +7,7 @@ import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, mon_visible, see_with_infrared, pline_mon, verbalize } from './display.js';
+import { worm_known } from './worm.js';
 import { Monnam, mon_nam, Hallucination } from './do_name.js';
 import { doname, singular, an, xname, the, makeplural } from './objnam.js';
 import { dist2, distmin, m_at, m_carrying } from './mon.js';
@@ -186,8 +187,10 @@ function sgn(n) {
 
 function canseemon(mtmp) {
     if (!mtmp) return false;
-    if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
-    return mon_visible(mtmp);
+    const loc_seen = mtmp.wormno
+        ? worm_known(mtmp)
+        : (cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp));
+    return loc_seen && mon_visible(mtmp);
 }
 
 function attacktype(ptr, aatyp) {

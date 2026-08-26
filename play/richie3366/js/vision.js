@@ -4,10 +4,11 @@
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL, CLOUD, LAVAWALL,
+    COLNO, ROWNO, DOOR, SDOOR, TREE, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
-    IS_WALL, IS_WATERWALL, ROOMOFFSET, Is_rogue_level,
+    IS_WALL, IS_WATERWALL, IS_OBSTRUCTED, IS_DOOR,
+    ROOMOFFSET, Is_rogue_level,
     TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE,
 } from './const.js';
 import { newsym } from './display.js';
@@ -116,34 +117,36 @@ export function set_mimic_blocking() {
 
 /**
  * C ref: vision.c does_block — terrain/door + BOULDER + lightblocker mimic
- * + visible_region_at gas cloud (return 2). Underwater moat deferred.
+ * + visible_region_at gas cloud (return 2). Occupancy via fmon (no
+ * vision→mon.js `m_at`; cycle). Underwater moat deferred.
  */
-function _blocks(level, x, y) {
-    const loc = level.at(x, y);
-    if (!loc) return true;
+export function does_block(x, y, lev) {
+    const loc = lev ?? game.level?.at?.(x, y);
+    if (!loc) return 1;
     const typ = loc.typ ?? 0;
-    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR, TREE
-    if (typ === DOOR) {
-        const mask = loc.doormask ?? 0;
-        if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
+    // C: IS_OBSTRUCTED || TREE || closed/locked/trapped door
+    if (IS_OBSTRUCTED(typ) || typ === TREE
+        || (IS_DOOR(typ)
+            && ((loc.doormask ?? 0) & (D_CLOSED | D_LOCKED | D_TRAPPED)))) {
+        return 1;
     }
-    if (typ === CLOUD || IS_WATERWALL(typ) || typ === LAVAWALL) return true;
+    if (typ === CLOUD || IS_WATERWALL(typ) || typ === LAVAWALL) return 1;
     // Boulders block light (level.objects nexthere chain)
     const head = game._objects_at?.get?.(`${x},${y}`);
     for (let obj = head; obj; obj = obj.nexthere) {
-        if (obj.otyp === BOULDER) return true;
+        if (obj.otyp === BOULDER) return 1;
     }
-    // C: mimics mimicking boulder/door/wall/tree block light
+    // C: m_at + (!minvis || See_invisible) && is_lightblocker_mappear
     const steed = game.u?.usteed;
     for (const mon of game.fmon || []) {
         if (!mon || mon === steed) continue;
         if (mon.mx !== x || mon.my !== y) continue;
         if (mon.minvis && !game.u?.See_invisible) continue;
-        if (is_lightblocker_mappear(mon)) return true;
+        if (is_lightblocker_mappear(mon)) return 1;
     }
     // C: visible_region_at → return 2 (opaque gas cloud)
-    if (visible_region_at(x, y)) return true;
-    return false;
+    if (visible_region_at(x, y)) return 2;
+    return 0;
 }
 
 // C ref: vision_reset() — rebuild viz_clear and left/right ptrs
@@ -156,7 +159,7 @@ export function vision_reset() {
         let dig_left = 0;
         let block = true;
         for (let x = 1; x < COLNO; x++) {
-            const cur_block = _blocks(level, x, y);
+            const cur_block = !!does_block(x, y, level.at(x, y));
             if (block !== cur_block) {
                 if (block) {
                     for (let i = dig_left; i < x; i++) {
@@ -186,6 +189,99 @@ export function vision_reset() {
     }
     game._viz_rmin = null;
     game._viz_rmax = null;
+}
+
+/**
+ * C ref: vision.c fill_point — incremental viz_clear / left_ptrs /
+ * right_ptrs when a cell becomes opaque. `i` is function-scoped like C
+ * (post-loop leftover writes). Caller is block_point(x,y) → fill_point(y,x).
+ */
+function fill_point(row, col) {
+    let i;
+
+    if (!viz_clear[row]?.[col]) return;
+
+    viz_clear[row][col] = 0;
+
+    if (col === 0) {
+        if (viz_clear[row][1]) { /* adjacent is clear */
+            right_ptrs[row][0] = 0;
+        } else {
+            right_ptrs[row][0] = right_ptrs[row][1];
+            for (i = 1; i <= right_ptrs[row][1]; i++)
+                left_ptrs[row][i] = 0;
+        }
+    } else if (col === COLNO - 1) {
+        if (viz_clear[row][COLNO - 2]) { /* adjacent is clear */
+            left_ptrs[row][COLNO - 1] = COLNO - 1;
+        } else {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+            for (i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs[row][i] = COLNO - 1;
+        }
+
+    /*
+     * Else we know that we are not on an edge.
+     */
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        /* Both sides clear */
+        for (i = left_ptrs[row][col - 1] + 1; i <= col; i++)
+            right_ptrs[row][i] = col;
+
+        if (!left_ptrs[row][col - 1]) /* catch the end case */
+            right_ptrs[row][0] = col;
+
+        for (i = col; i < right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        if (right_ptrs[row][col + 1] === COLNO - 1) /* catch the end case */
+            left_ptrs[row][COLNO - 1] = col;
+
+    } else if (viz_clear[row][col - 1]) {
+        /* Left side clear, right side blocked. */
+        for (i = col; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        for (i = left_ptrs[row][col - 1] + 1; i < col; i++)
+            right_ptrs[row][i] = col;
+
+        if (!left_ptrs[row][col - 1]) /* catch the end case */
+            right_ptrs[row][i] = col;
+
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+
+    } else if (viz_clear[row][col + 1]) {
+        /* Right side clear, left side blocked. */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++)
+            right_ptrs[row][i] = col;
+
+        for (i = col + 1; i < right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col;
+
+        if (right_ptrs[row][col + 1] === COLNO - 1) /* catch the end case */
+            left_ptrs[row][i] = col;
+
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+
+    } else {
+        /* Both sides blocked */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++)
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+
+        for (i = col; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+    }
+}
+
+/**
+ * C ref: vision.c block_point — fill_point(y, x) then vision_full_recalc
+ * if viz_array[y][x] (could-see). DEBUG seethru omitted. unblock_point /
+ * dig_point still named (recalc_block_point keeps full vision_reset).
+ */
+export function block_point(x, y) {
+    fill_point(y, x);
+    if (game.viz_array?.[y]?.[x])
+        game.vision_full_recalc = 1;
 }
 
 /**

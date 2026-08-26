@@ -66,9 +66,26 @@ async function is_pure(talk) {
                 u.ualign.record = MIN_QUEST_ALIGN;
         }
     }
+    return quest_purity();
+}
+
+function quest_purity() {
+    const u = game.u;
+    const original = u.ualignbase?.[A_ORIGINAL] ?? u.ualign.type;
+    const current = u.ualignbase?.[A_CURRENT] ?? u.ualign.type;
     return (u.ualign.record >= MIN_QUEST_ALIGN
             && u.ualign.type === original && current === original)
         ? 1 : (current !== original) ? -1 : 0;
+}
+
+// src/quest.c:140 ok_to_quest(), the quest leader must have granted access,
+// and the hero must still meet the alignment requirement. Killing the leader
+// bypasses both checks, matching the C rule used by goto_level().
+export function ok_to_quest() {
+    const q = Qstat();
+    return !!(q.killed_leader
+              || ((q.got_quest || q.got_thanks)
+                  && quest_purity() > 0));
 }
 
 // src/quest.c:306 chat_with_leader() and quest_chat().

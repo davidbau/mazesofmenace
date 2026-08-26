@@ -33,7 +33,9 @@ import {
     LADDER, LA_DOWN, LA_UP,
     MAX_TYPE, INVALID_TYPE, MATCH_WALL,
     A_LAWFUL, A_NONE, Align2amask, Amask2align, AM_NONE, AM_LAWFUL, AM_NEUTRAL,
-    AM_CHAOTIC, AM_SHRINE, AM_SANCTUM, MM_EPRI, MM_EMIN, MM_ADJACENTOK,
+    AM_CHAOTIC, AM_MASK, AM_SHRINE, AM_SANCTUM,
+    AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM,
+    MM_EPRI, MM_EMIN, MM_ADJACENTOK,
     N_DIRS, W_ARMC, RLOC_NOMSG,
     FILL_LVFLAGS, STRAT_WAITFORU, NON_PM, ONAME_LEVEL_DEF,
     MM_NONAME, MIGR_LEFTOVERS, MIGR_RANDOM, has_mgivenname,
@@ -4032,28 +4034,12 @@ function load_pri_loca() {
     }
 
     // des.monster({ id = "aligned cleric", x=20, y=07, align="noalign", peaceful=0 })
-    {
-        // C sp_lev.c create_monster :1983–1984: find_montype gender first;
-        // align=noalign → sp_amask != AM_SPLEV_RANDOM, no induced_align(80);
-        // mk_roamer(pm, Amask2align(AM_NONE), x, y, peaceful) (MM_EMIN,
-        // min_align=A_NONE), not makemon(..., 0). Then :2125–2129 female
-        // and peaceful > BOOL_RANDOM override + set_malign.
-        const { mndx, female } = find_montype_gender('aligned cleric');
-        const pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
-        let pos = { x: mx + 20, y: my + 7 };
-        pos = splev_resolve_occupied(pos.x, pos.y, pm);
-        const peaceful = 0;
-        const mtmp = pm
-            ? mk_roamer_splev(pm, Amask2align(AM_NONE), pos.x, pos.y, peaceful)
-            : null;
-        if (mtmp) {
-            mtmp.female = female;
-            if (peaceful > BOOL_RANDOM) {
-                mtmp.mpeaceful = peaceful;
-                set_malign(mtmp);
-            }
-        }
-    }
+    // C create_monster :1983–1984 via splev_create_monster (D-1553).
+    splev_create_monster('aligned cleric', 0, {
+        sp_amask: AM_NONE,
+        rx: 20,
+        ry: 7,
+    });
 
     // des.door locked
     const priDoor = (rx, ry, mask) => {
@@ -11172,9 +11158,45 @@ function splev_mines_maybe_clear_your_race(pm) {
     return pm;
 }
 
-// C ref: sp_lev.c create_monster — sp_amask_to_amask before mkclass / makemon
-// optional peaceful (> BOOL_RANDOM) overrides after makemon (quest fills).
-function splev_create_monster(id_or_class, peaceful) {
+/** C ref: sp_lev.c noncoalignment :1851–1860 — rn2(2) vs original align. */
+function noncoalignment(alignment) {
+    const k = rn2(2);
+    if (!alignment) return k ? -1 : 1;
+    return k ? -alignment : 0;
+}
+
+/**
+ * C ref: sp_lev.c sp_amask_to_amask :1907–1922.
+ * RANDOM is the only arm that burns induced_align(80). CO/NONCO use
+ * ualignbase original (JS object, not C A_ORIGINAL index). Else AM_MASK.
+ */
+function sp_amask_to_amask(sp_amask) {
+    if (sp_amask === AM_SPLEV_CO) {
+        return Align2amask(game.u?.ualignbase?.original ?? game.u?.ualign?.type ?? 0);
+    }
+    if (sp_amask === AM_SPLEV_NONCO) {
+        return Align2amask(noncoalignment(
+            game.u?.ualignbase?.original ?? game.u?.ualign?.type ?? 0,
+        ));
+    }
+    if (sp_amask === AM_SPLEV_RANDOM) return induced_align(80);
+    return sp_amask & AM_MASK;
+}
+
+/**
+ * C ref: sp_lev.c create_monster :1924–2187.
+ * Spawn: sp_amask != RANDOM → mk_roamer; else makemon(mm_flags).
+ * Post: female always; peaceful > BOOL_RANDOM then set_malign (:2125–2129).
+ * Named omit: mk_mplayer role-id; appear_as; christen; invent DEFAULT/CUSTOM;
+ * cancelled/revived/avenge/stun/conf/invis/blind/para/flee; waiting
+ * vampshifted newcham; m_lev_adj; G_UNIQ extinct return; G_GONE → random.
+ */
+export function splev_create_monster(id_or_class, peaceful, opts) {
+    const sp_amask = opts?.sp_amask ?? AM_SPLEV_RANDOM;
+    const mm_flags = opts?.mm_flags ?? 0;
+    const croom = opts?.croom ?? null;
+    const rx = opts?.rx ?? -1;
+    const ry = opts?.ry ?? -1;
     let pm = null;
     let female = 0;
     const isClass = typeof id_or_class === 'string' && id_or_class.length === 1;
@@ -11185,8 +11207,7 @@ function splev_create_monster(id_or_class, peaceful) {
         female = r.female;
         if (r.mndx !== NON_PM && r.mndx >= 0) pm = mons(r.mndx);
     }
-    // C: amask = sp_amask_to_amask(m->sp_amask) → induced_align(80) for RANDOM
-    induced_align(80);
+    const amask = sp_amask_to_amask(sp_amask);
     if (isClass) {
         const mlet = monclass_letter_to_mlet(id_or_class);
         pm = mlet ? mkclass(mlet, G_NOGEN) : null;
@@ -11197,26 +11218,42 @@ function splev_create_monster(id_or_class, peaceful) {
     let pos;
     if (pm) {
         let loc = pm_to_humidity(pm);
-        pos = get_location_coord_random(loc | NO_LOC_WARN);
+        pos = get_location_coord(loc | NO_LOC_WARN, croom, rx, ry);
         if (pos.x < 0) {
             loc |= DRY;
-            pos = get_location_coord_random(loc);
+            pos = get_location_coord(loc, croom, rx, ry);
         }
     } else {
-        pos = get_location_coord_random(DRY);
+        pos = get_location_coord(DRY, croom, rx, ry);
     }
     pos = splev_resolve_occupied(pos.x, pos.y, pm);
-    const mtmp = makemon(pm, pos.x, pos.y, 0);
-    // C: sp_lev.c create_monster — always mtmp->female = m->female after
-    // makemon (overwrites makemon's rn2(2)). Named id → find_montype gender;
-    // des.monster() / class letter → tmpmons.female stays 0 (D-0873).
+    if (croom && !inside_room(croom, pos.x, pos.y)) return null;
+
+    let mtmp;
+    if (sp_amask !== AM_SPLEV_RANDOM) {
+        const peaceArg = (peaceful != null) ? peaceful : BOOL_RANDOM;
+        mtmp = mk_roamer_splev(pm, Amask2align(amask), pos.x, pos.y, peaceArg);
+    } else {
+        // C: else if PM_ARCHEOLOGIST <= m->id && m->id <= PM_WIZARD → mk_mplayer
+        // Named omit: mk_mplayer not in JS. RANDOM role-id stays makemon.
+        mtmp = makemon(pm, pos.x, pos.y, mm_flags);
+    }
+    // C: always mtmp->female = m->female after spawn (D-0873). Named id →
+    // find_montype gender; des.monster() / class letter → female stays 0.
     if (mtmp) {
         mtmp.female = (typeof id_or_class === 'string' && id_or_class.length > 1)
             ? female
             : 0;
+        if (peaceful != null && peaceful > BOOL_RANDOM) {
+            mtmp.mpeaceful = peaceful;
+            set_malign(mtmp);
+        }
+        if (opts?.asleep != null && opts.asleep > BOOL_RANDOM)
+            mtmp.msleeping = opts.asleep ? 1 : 0;
+        if (opts?.waiting)
+            mtmp.mstrategy = (mtmp.mstrategy || 0) | STRAT_WAITFORU;
     }
-    if (mtmp && peaceful != null && peaceful > BOOL_RANDOM)
-        mtmp.mpeaceful = peaceful;
+    return mtmp;
 }
 
 // C ref: sp_lev.c — static container_obj[MAX_CONTAINMENT] / container_idx
@@ -11733,47 +11770,10 @@ function splev_room_object(croom, oclass = null) {
 
 /**
  * C ref: sp_lev.c create_monster with croom (des.monster inside des.room).
+ * Same function as splev_create_monster — do not clone the spawn dispatch.
  */
-function splev_room_monster(croom, id_or_class, peaceful) {
-    let pm = null;
-    let female = 0;
-    const isClass = typeof id_or_class === 'string' && id_or_class.length === 1;
-    if (!isClass && typeof id_or_class === 'string') {
-        const r = find_montype_gender(id_or_class);
-        female = r.female;
-        if (r.mndx !== NON_PM && r.mndx >= 0) pm = mons(r.mndx);
-    }
-    induced_align(80);
-    if (isClass) {
-        const mlet = monclass_letter_to_mlet(id_or_class);
-        pm = mlet ? mkclass(mlet, G_NOGEN) : null;
-    }
-    pm = splev_mines_maybe_clear_your_race(pm);
-    let pos;
-    if (pm) {
-        let loc = pm_to_humidity(pm);
-        // C: get_location_coord(loc|NO_LOC_WARN) then DRY fallback
-        pos = get_location_coord_in_room(croom, loc | NO_LOC_WARN);
-        if (pos.x < 0) {
-            loc |= DRY;
-            pos = get_location_coord_in_room(croom, loc);
-        }
-    } else {
-        pos = get_location_coord_in_room(croom, DRY);
-    }
-    if (pos.x < 0) return null;
-    pos = splev_resolve_occupied(pos.x, pos.y, pm);
-    if (croom && !inside_room(croom, pos.x, pos.y)) return null;
-    const mtmp = makemon(pm, pos.x, pos.y, 0);
-    // C: create_monster always mtmp->female = m->female (D-0873)
-    if (mtmp) {
-        mtmp.female = (typeof id_or_class === 'string' && id_or_class.length > 1)
-            ? female
-            : 0;
-    }
-    if (mtmp && peaceful != null && peaceful > BOOL_RANDOM)
-        mtmp.mpeaceful = peaceful;
-    return mtmp;
+function splev_room_monster(croom, id_or_class, peaceful, opts) {
+    return splev_create_monster(id_or_class, peaceful, { ...opts, croom });
 }
 
 /**
@@ -12155,35 +12155,10 @@ function splev_room_statue_montype(croom, rx, ry, montypeLetter, historic) {
 
 /**
  * C ref: sp_lev.c create_monster at fixed room-relative coords
- * (des.monster("Oracle", 1, 1)).
+ * (des.monster("Oracle", 1, 1)). Same dispatcher as splev_create_monster.
  */
 function splev_room_monster_at(croom, id_or_class, rx, ry) {
-    let pm = null;
-    let female = 0;
-    const isClass = typeof id_or_class === 'string' && id_or_class.length === 1;
-    if (!isClass && typeof id_or_class === 'string') {
-        const r = find_montype_gender(id_or_class);
-        female = r.female;
-        if (r.mndx !== NON_PM && r.mndx >= 0) pm = mons(r.mndx);
-    }
-    induced_align(80);
-    if (isClass) {
-        const mlet = monclass_letter_to_mlet(id_or_class);
-        pm = mlet ? mkclass(mlet, G_NOGEN) : null;
-    }
-    pm = splev_mines_maybe_clear_your_race(pm);
-    let x = croom.lx + rx;
-    let y = croom.ly + ry;
-    ({ x, y } = splev_resolve_occupied(x, y, pm));
-    if (croom && !inside_room(croom, x, y)) return;
-    const mtmp = makemon(pm, x, y, 0);
-    // C: create_monster always mtmp->female = m->female (D-0873)
-    if (mtmp) {
-        mtmp.female = (typeof id_or_class === 'string' && id_or_class.length > 1)
-            ? female
-            : 0;
-    }
-    return mtmp;
+    return splev_create_monster(id_or_class, undefined, { croom, rx, ry });
 }
 
 /**
@@ -14900,8 +14875,8 @@ function load_wizard3() {
 
 /**
  * C ref: priest.c mk_roamer — aligned cleric/angel with emin.
- * Callers: sanctum noalign horde; Pri-loca lua align=noalign cleric
- * (create_monster :1983–1984). Local to avoid mklev↔priest cycle.
+ * Callers: splev_create_monster when sp_amask != RANDOM (D-1553);
+ * sanctum / Pri-loca lua align=noalign. Local to avoid mklev↔priest.
  * Named: reset_hostility deferred.
  */
 function mk_roamer_splev(ptr, alignment, x, y, peaceful) {
@@ -15145,16 +15120,12 @@ function load_sanctum() {
         set_malign(mtmp);
     };
     const placeNoalignCleric = (rx, ry) => {
-        // C: align=noalign → amask=AM_NONE (no induced_align); mk_roamer
-        const { mndx, female } = find_montype_gender('aligned cleric');
-        const pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
-        let x = mx + rx, y = my + ry;
-        if (m_at(x, y)) {
-            const cc = { x: 0, y: 0 };
-            if (enexto(cc, x, y, pm)) { x = cc.x; y = cc.y; }
-        }
-        const mtmp = mk_roamer_splev(pm, A_NONE, x, y, false);
-        if (mtmp) mtmp.female = female;
+        // C: align=noalign → AM_NONE; create_monster → mk_roamer (D-1553)
+        splev_create_monster('aligned cleric', 0, {
+            sp_amask: AM_NONE,
+            rx,
+            ry,
+        });
     };
 
     placeNamed('horned devil', 14, 12, 0);

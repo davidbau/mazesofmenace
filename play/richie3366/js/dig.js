@@ -61,7 +61,7 @@ import { dbon } from './weapon.js';
 import { depth } from './hacklib.js';
 import { get_level } from './dungeon.js';
 import { align_str } from './roles.js';
-import { count_wsegs } from './worm.js';
+import { count_wsegs, worm_known } from './worm.js';
 import {
     dogushforth, dryup, breaksink, SET_FOUNTAIN_WARNED,
 } from './fountain.js';
@@ -167,7 +167,12 @@ function sobj_at(otyp, x, y) {
 }
 
 function canseemon(mtmp) {
-    if (!mtmp?.mx) return false;
+    if (!mtmp) return false;
+    if (mtmp.wormno) {
+        if (!worm_known(mtmp)) return false;
+        return !mtmp.minvis;
+    }
+    if (!mtmp.mx) return false;
     if (!cansee(mtmp.mx, mtmp.my)) return false;
     return !mtmp.minvis;
 }

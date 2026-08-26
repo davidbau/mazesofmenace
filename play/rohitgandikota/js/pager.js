@@ -19,6 +19,7 @@ import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
 import { defsyms, monexplain, oc_explain, def_monsyms, def_oc_syms,
          cmap_names } from './drawing_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
+import { PMNAMES } from './monst_data.js';
 import { pline, glyph_at, docrt, flush_screen,
          tty_clear_nhwindow_message } from './display.js';
 import { DEC_TO_UNICODE, NO_COLOR } from './terminal.js';
@@ -26,7 +27,8 @@ import { m_at, t_at } from './mon.js';
 import { engr_at } from './engrave.js';
 import { x_monnam, upstart, pmname, hliquid } from './do_name.js';
 import { ARTICLE_NONE } from './const.js';
-import { an, the, makesingular, singular, xname, doname } from './objnam.js';
+import { an, the, makesingular, singular, xname, doname,
+         simpleonames } from './objnam.js';
 import { pmatch, tabexpand, mungspaces, isok } from './hacklib.js';
 import { data as DATAFILE } from './dat_files.js';
 import * as DAT from './dat_files.js';
@@ -42,6 +44,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_add_menu_str, tty_end_menu, tty_select_menu, tty_dismiss_nhwindow,
          NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
 import { nhgetch } from './input.js';
+import { ok_to_quest } from './quest.js';
 
 function note_unported_pager(what) {
     (game.unported ||= new Set()).add('pager:' + what);
@@ -97,6 +100,8 @@ export function self_lookat() {
     let outbuf = `${invis ? 'invisible ' : ''}${race}`
         + `${pmname(game.mons[game.u.umonnum], game.flags?.female ? 1 : 0)}`
         + ` called ${game.plname}`;
+    if (game.u.uball)
+        outbuf += `, chained to ${an(simpleonames(game.u.uball))}`;
     if (game.u.usteed)
         note_unported_pager('self_lookat:steed');
     if (game.u.utrap)
@@ -175,7 +180,7 @@ function look_at_monster(mtmp, x, y) {
 
 // src/pager.c:560 waterbody_name() — 5.0 moved it here from mkmaze.c.
 // The hallucination variants and the Medusa/Juiblex/Samurai-quest moat
-// flavors need level state no session reaches.
+// flavors use the current special-level globals.
 export function waterbody_name(x, y) {
     if (!isok(x, y)) return 'drink';
     return waterbody_name_typ(game.level?.at(x, y)?.typ, x, y);
@@ -189,8 +194,22 @@ function waterbody_name_typ(ltyp, x, y) {
     if (ltyp === ICE)
         return hallucinate ? `frozen ${hliquid('water')}` : 'ice';
     if (ltyp === POOL) return `pool of ${hliquid('water')}`;
-    if (ltyp === MOAT)
-        return hallucinate ? `deep ${hliquid('water')}` : 'moat';
+    if (ltyp === MOAT) {
+        if (hallucinate)
+            return `deep ${hliquid('water')}`;
+        const on_level = (a, b) => !!a && !!b
+            && a.dnum === b.dnum && a.dlevel === b.dlevel;
+        if (on_level(game.u?.uz, game.medusa_level))
+            return 'shallow sea';
+        if (on_level(game.u?.uz, game.juiblex_level))
+            return 'swamp';
+        const role = game.urole?.mnum;
+        if ((role === PMNAMES.PM_SAMURAI
+             || role === 'PM_SAMURAI')
+            && on_level(game.u?.uz, game.qstart_level))
+            return 'pond';
+        return 'moat';
+    }
     if (ltyp === WATER) return `wall of ${hliquid('water')}`;
     if (ltyp === LAVAWALL) return `wall of ${hliquid('lava')}`;
     return 'water';
@@ -797,8 +816,15 @@ export function do_screen_description(cc, looked, sym) {
     if (looked && (found > 1 || need_to_look)) {
         let { buf: look_buf, monbuf, pm: lookpm } = lookat(cc.x, cc.y);
         pm = lookpm;
-        /* ice_descr and the blocked-quest-staircase refinements need
-           states no session reaches */
+        /* src/pager.c:1603, the Quest start staircase remains visible while
+           the leader's access gate is still closed. */
+        if (look_buf === 'staircase down') {
+            const qstart = game.special_levels?.qstart_level;
+            if (qstart && game.u?.uz?.dnum === qstart.dnum
+                && game.u.uz.dlevel === qstart.dlevel
+                && !ok_to_quest())
+                look_buf = 'blocked staircase down';
+        }
         if (look_buf) {
             state.firstmatch = look_buf;
             let temp_buf = ` (${state.firstmatch}`;
@@ -1348,7 +1374,10 @@ const HELP_MENU_ITEMS = [
 export async function dohelp() {
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    HELP_MENU_ITEMS.forEach((text, i) => {
+    const items = game.wizard
+        ? [...HELP_MENU_ITEMS, 'List of wizard-mode commands.']
+        : HELP_MENU_ITEMS;
+    items.forEach((text, i) => {
         tty_add_menu(win, null, String.fromCharCode(97 + i), 0, 0, ATR_NONE,
                      NO_COLOR, text, MENU_ITEMFLAGS_NONE);
     });
@@ -1382,6 +1411,8 @@ export async function dohelp() {
     case 'o':
         await docontact();
         return ECMD_OK;
+    case 'p':
+        return await display_file(DAT.wizhelp);
     case 'f':
         return await dowhatdoes();
     case 'g': {

@@ -56,6 +56,12 @@ export function rndghostname() {
     return rn2(7) ? ghostnames[rn2(ghostnames.length)] : game.plname;
 }
 
+// src/do_name.c:1424 roguename(), the name used by the Rogue-level ghost.
+export function roguename() {
+    return rn2(3) ? (rn2(2) ? 'Michael Toy' : 'Kenneth Arnold')
+                  : 'Glenn Wichman';
+}
+
 // src/do_name.c:1389 rndmonnam(), choose a display-only hallucinated monster
 // name. Real monsters use a second display-RNG draw for gender. Bogus names
 // use the same random byte-offset lookup as C's BOGUSMONFILE.

@@ -791,11 +791,11 @@ export function acurr(chridx) {
     let result = 0;
 
     if (chridx === A_STR) {
-        if (tmp >= STR19(25))
+        if (tmp >= STR19(25)
+            || game.u.uarmg?.otyp === ONAMES.GAUNTLETS_OF_POWER)
             result = STR19(25);         /* 125 */
         else
             result = Math.max(tmp, 3);
-        /* GAUNTLETS_OF_POWER needs worn armour; recorded where uarmg lands. */
     } else if (chridx === A_CHA) {
         if (tmp < 18 && (game.youmonst?.data?.mlet === MONSYMS.S_NYMPH
                          || game.u.umonnum === PMNAMES.PM_AMOROUS_DEMON))

@@ -74,7 +74,7 @@ import { stairway_at, stairway_find_from } from './mklev.js';
 import { ok_to_quest } from './quest.js';
 import {
     xname, The, cxname, An, doname, singular, distant_name, the, makeplural,
-    killer_xname,
+    killer_xname, is_plural, otense,
 } from './objnam.js';
 import { setuwep, setuqwep, setuswapwep } from './wield.js';
 import {
@@ -181,10 +181,6 @@ function dunlevs_in_dungeon(lev) {
 function rnd_treefruit_at(x, y) {
     if (!TREEFRUITS.length) return null;
     return mksobj_at(TREEFRUITS[rn2(TREEFRUITS.length)], x, y, true, false);
-}
-
-function is_plural(obj) {
-    return (obj?.quan || 1) > 1;
 }
 
 function Blind() {
@@ -1790,23 +1786,6 @@ async function You_hear(line) {
     await pline(`You hear ${line}`);
 }
 
-/** C ref: objnam.c otense — plural verb if quan ≠ 1. */
-function otense(obj, verb) {
-    if (!obj || (obj.quan | 0) === 1) {
-        // thin 3sg: fall→falls, hit→hits, rattle→rattles
-        if (!verb) return '';
-        if (verb.endsWith('s') || verb.endsWith('x') || verb.endsWith('ch')
-            || verb.endsWith('sh') || verb.endsWith('z')) {
-            return `${verb}es`;
-        }
-        if (verb.endsWith('y') && verb.length > 1
-            && !'aeiou'.includes(verb[verb.length - 2])) {
-            return `${verb.slice(0, -1)}ies`;
-        }
-        return `${verb}s`;
-    }
-    return verb;
-}
 
 /**
  * C ref: dokick.c otransit_msg — visible fall / impact message.

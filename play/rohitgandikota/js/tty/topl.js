@@ -70,7 +70,9 @@ export async function update_topl(bp) {
         && n0 + toplines.length + 3 < CO - 8   /* room for --More-- */
         && (notdied = bp.slice(0, 7) !== 'You die')) {
         game._pending_message = toplines + '  ' + bp;
-        game._topl_curx = (game._topl_curx || 0) + 2;
+        const painted = (game._topline_physical_prefix || '')
+            + game._pending_message;
+        game._topl_curx = painted.length;
         if (!skip) {
             addtopl(bp);
             paint_topline();    /* addtopl() -> topl_putsym: painted at once */
@@ -148,6 +150,7 @@ function remember_topl() {
 async function redotoplin(str) {
     const otoplin = game._toplin;
 
+    game._topline_physical_prefix = '';
     game._toplin = str ? TOPLINE_NEED_MORE : TOPLINE_EMPTY;
     game._topl_curx = 0;
     game._topl_cury = (str.match(/\n/g) || []).length;
@@ -155,6 +158,23 @@ async function redotoplin(str) {
                            the message NOW, not at the next screen flush */
     if (game._topl_cury && otoplin !== TOPLINE_SPECIAL_PROMPT)
         await more();
+}
+
+// tty_putstr(..., ATR_NOHISTORY) takes the show_topl() path.  The displayed
+// text is deliberately absent from gt.toplines, so a later ordinary message
+// can append logically while the no-history prefix remains painted.
+export function show_topl_nohistory(str) {
+    remember_topl();
+    if (game._win_stop)
+        return;
+
+    game._pending_message = '';
+    game._topline_physical_prefix = str;
+    game._topl_curx = str.split('\n').at(-1).length;
+    game._topl_cury = (str.match(/\n/g) || []).length;
+    game._toplin = game._topl_cury
+        ? TOPLINE_NON_EMPTY : TOPLINE_NEED_MORE;
+    paint_topline();
 }
 
 // include/decl.h TBUFSZ
@@ -196,6 +216,7 @@ export async function tty_yn_function(query, resp, def) {
        row, even though the visible cells contain only the question text. */
     const columns = game?.nhDisplay?.cols ?? 80;
     const renderedPrompt = wrap_topline(prompt + ' ', columns);
+    game._topline_physical_prefix = '';
     game._pending_message = prompt;
     game._toplin = TOPLINE_SPECIAL_PROMPT;
     paint_topline();

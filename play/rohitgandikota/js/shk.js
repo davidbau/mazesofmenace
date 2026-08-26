@@ -16,7 +16,7 @@ import { m_canseeu, inhishop } from './monmove.js';
 import { move_special } from './priest.js';
 import { carrying, sobj_at, currency, money_cnt, freeinv } from './invent.js';
 import { wake_nearto } from './mon.js';
-import { Deaf, Invis } from './youprop.js';
+import { Blind, Deaf, Invis } from './youprop.js';
 import { ACURR, Fast } from './attrib.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MSOUND } from './monst_data.js';
@@ -538,7 +538,10 @@ export async function dopay() {
     const roomno = game.u.ushops ? game.u.ushops.charCodeAt(0) : NO_ROOM;
     const shkp = shop_keeper(roomno);
     if (!shkp || !inhishop(shkp)) {
-        await pline('There appears to be no shopkeeper here to receive your payment.');
+        if (Blind())
+            await pline("You can't see...");
+        else
+            await pline('There appears to be no shopkeeper here to receive your payment.');
         return ECMD_OK;
     }
 

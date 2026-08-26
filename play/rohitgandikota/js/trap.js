@@ -39,7 +39,7 @@ import { find_mac, which_armor } from './worn.js';
 import { canseemon } from './display.js';
 import { cansee } from './vision.js';
 import { passes_walls, likes_lava, throws_rocks } from './mondata.js';
-import { has_ceiling, Can_fall_thru } from './dungeon.js';
+import { has_ceiling, Can_fall_thru, depth } from './dungeon.js';
 import { Monnam } from './do_name.js';
 import { MATERIALS } from './objects_data.js';
 import { W_ARMF, A_DEX } from './const.js';
@@ -67,7 +67,7 @@ import { encumber_msg } from './attrib.js';
 import { nomul } from './hack.js';
 import { pickup } from './pickup.js';
 import { surface, In_sokoban } from './dungeon.js';
-import { Is_airlevel, Is_waterlevel } from './const.js';
+import { Is_airlevel, Is_waterlevel, In_endgame } from './const.js';
 import { count_wsegs } from './worm.js';
 
 /* src/trap.h — trapeffect_*() return values. */
@@ -88,7 +88,7 @@ import { In_quest, TOOKPLUNGE, VIASITTING, HURTLING,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP,
          VIBRATING_SQUARE, BOLT_LIM, WT_ELF, VAULT, TEMPLE, SHOPBASE,
          Is_firelevel, Is_earthlevel, IS_AIR, IS_ROOM,
-         IS_WALL, IS_DOOR, SDOOR, MIGR_RANDOM, MON_MIGRATING,
+         IS_WALL, IS_DOOR, SDOOR, MIGR_RANDOM, MIGR_PORTAL, MON_MIGRATING,
          NO_MM_FLAGS, TIMEOUT } from './const.js';
 import { just_an } from './objnam.js';
 import { Deaf, Levitation, Flying, Hallucination, Underwater,
@@ -119,6 +119,9 @@ export async function dountrap() {
         await pline('And just how do you expect to do that?');
         return ECMD_OK;
     }
+    const { getdir } = await import('./cmd.js');
+    if (!(await getdir(null)))
+        return ECMD_OK;
     (game.unported ||= new Set()).add('trap:dountrap');
     return ECMD_OK;
 }
@@ -1406,6 +1409,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return await trapeffect_rolling_boulder_trap(mtmp, trap, trflags);
     case TELEP_TRAP:
         return await trapeffect_telep_trap(mtmp, trap, trflags);
+    case MAGIC_PORTAL:
+        return await trapeffect_magic_portal(mtmp, trap, trflags);
     case WEB:
         return await trapeffect_web(mtmp, trap, trflags);
     default:
@@ -1437,6 +1442,44 @@ async function trapeffect_telep_trap(mtmp, trap, trflags) {
         await tele();
     }
     return Trap_Effect_Finished;
+}
+
+// src/trap.c:2710 trapeffect_magic_portal(), monster path. Portals send a
+// monster to their fixed destination through the migrating-monster list.
+async function trapeffect_magic_portal(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        note_unported_trap('trapeffect_magic_portal:hero');
+        return Trap_Effect_Finished;
+    }
+    if (mtmp === game.u.usteed)
+        return Trap_Effect_Finished;
+
+    const in_sight = canseemon(mtmp);
+    if (In_endgame(game.u.uz)) {
+        const { mon_has_amulet } = await import('./wizard.js');
+        const { is_home_elemental } = await import('./makemon.js');
+        if (mon_has_amulet(mtmp) || is_home_elemental(mtmp.data) || rn2(7)) {
+            if (in_sight && mtmp.data.mlet !== MONSYMS.S_ELEMENTAL) {
+                await pline(`${Monnam(mtmp)} seems to shimmer for a moment.`);
+                seetrap(trap);
+            }
+            return Trap_Effect_Finished;
+        }
+    }
+
+    const dest = trap.dst;
+    if (!dest || dest.dnum < 0) {
+        note_unported_trap('trapeffect_magic_portal:no_destination');
+        return Trap_Effect_Finished;
+    }
+    if (in_sight) {
+        await pline(`Suddenly, ${mon_nam(mtmp)} disappears out of sight.`);
+        seetrap(trap);
+    }
+    if (!(mtmp.data.mflags1 & MFLAGS.M1_TPORT_CNTRL))
+        mtmp.mconf = 1;
+    migrate_monster(mtmp, dest, MIGR_PORTAL);
+    return Trap_Moved_Mon;
 }
 
 // src/trap.c:3733 mintrap() — a monster steps onto a trap.
@@ -2413,6 +2456,31 @@ export async function fall_through(td, ftflags) {
                   null, null);
 }
 
+// src/dog.c:887 migrate_to_level(), reduced to the shared bookkeeping used
+// by trap-driven migration. Destination coordinates live in mux/muy while
+// off-level, and mtrack carries the arrival mode, origin, and prior level.
+function migrate_monster(mtmp, dest, xyloc, cc = null) {
+    const mx = mtmp.mx, my = mtmp.my;
+    remove_monster(mx, my);
+    const at = (game.level.monsters || []).indexOf(mtmp);
+    if (at >= 0)
+        game.level.monsters.splice(at, 1);
+
+    mtmp.mstate = (mtmp.mstate || 0) | MON_MIGRATING;
+    mtmp.mtrack ||= [];
+    mtmp.mtrack[2] = { x: game.u.uz.dnum, y: game.u.uz.dlevel };
+    mtmp.mtrack[1] = cc ? { x: cc.x, y: cc.y } : { x: mx, y: my };
+    mtmp.mtrack[0] = {
+        x: xyloc,
+        y: depth(dest) < depth(game.u.uz) ? 1 : 0,
+    };
+    mtmp.mux = dest.dnum;
+    mtmp.muy = dest.dlevel;
+    mtmp.mx = mtmp.my = 0;
+    mtmp.mlstmv = game.moves;
+    (game.migrating_mons ||= []).unshift(mtmp);
+}
+
 // src/trap.c:2013 trapeffect_hole().
 async function trapeffect_hole(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
@@ -2457,24 +2525,10 @@ async function trapeffect_hole(mtmp, trap, trflags) {
         seetrap(trap);
     }
 
-    const mx = mtmp.mx, my = mtmp.my;
     const dest = (trap.dst?.dnum ?? -1) >= 0
         ? { dnum: trap.dst.dnum, dlevel: trap.dst.dlevel }
         : { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel + 1 };
-    remove_monster(mx, my);
-    const at = (game.level.monsters || []).indexOf(mtmp);
-    if (at >= 0)
-        game.level.monsters.splice(at, 1);
-    mtmp.mstate = (mtmp.mstate || 0) | MON_MIGRATING;
-    mtmp.mtrack ||= [{}, {}, {}];
-    mtmp.mtrack[2] = { x: game.u.uz.dnum, y: game.u.uz.dlevel };
-    mtmp.mtrack[1] = { x: mx, y: my };
-    mtmp.mtrack[0] = { x: MIGR_RANDOM, y: 0 };
-    mtmp.mux = dest.dnum;
-    mtmp.muy = dest.dlevel;
-    mtmp.mx = mtmp.my = 0;
-    mtmp.mlstmv = game.moves;
-    (game.migrating_mons ||= []).unshift(mtmp);
+    migrate_monster(mtmp, dest, MIGR_RANDOM);
     return Trap_Moved_Mon;
 }
 

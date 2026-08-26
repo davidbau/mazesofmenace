@@ -868,10 +868,10 @@ export async function moveloop_core() {
         } else if (Warning) {
             see_monsters();
         }
-    }
-    if (g.vision_full_recalc) {
-        vision_recalc(0);
-        g.vision_full_recalc = 0;
+        /* src/allmain.c:470. During an uninterrupted run, defer this until
+           movement stops or a moving monster consumes it mid-sweep. */
+        if (g.vision_full_recalc)
+            vision_recalc(0);
     }
     await bot();
     await flush_screen(1);

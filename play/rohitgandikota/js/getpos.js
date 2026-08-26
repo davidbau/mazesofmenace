@@ -14,12 +14,15 @@ import { game } from './gstate.js';
 import { COLNO, ROWNO } from './const.js';
 import { sgn, isok } from './hacklib.js';
 import { nhgetch } from './input.js';
-import { pline, flush_screen, glyph_at, tty_clear_nhwindow_message,
-         TOPLINE_EMPTY } from './display.js';
+import { pline, pline_nohistory_no_cursor, flush_screen, glyph_at,
+         tty_clear_nhwindow_message, TOPLINE_EMPTY, docrt,
+         newsym } from './display.js';
 import { defsyms, cmap_names } from './drawing_data.js';
 import { do_screen_description, is_cmap_wall, is_cmap_room, is_cmap_corr,
          is_cmap_door, is_cmap_engraving } from './pager.js';
 import { handle_tip, is_valid_travelpt, TIP_GETPOS } from './hack.js';
+import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
+         tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
 
 const CM = cmap_names;
 
@@ -49,6 +52,73 @@ function note_unported_getpos(what) {
     (game.unported ||= new Set()).add('getpos:' + what);
 }
 
+/* src/hacklib.c visctrl(), used for keys embedded in getpos feedback. */
+function visctrl(ch) {
+    let c = typeof ch === 'number' ? ch : ch.charCodeAt(0);
+    let out = '';
+    if (c & 0x80) {
+        out = 'M-';
+        c &= 0x7f;
+    }
+    if (c < 0x20)
+        return out + '^' + String.fromCharCode(c | 0x40);
+    if (c === 0x7f)
+        return out + '^?';
+    return out + String.fromCharCode(c);
+}
+
+// src/getpos.c:167 getpos_help(), the '?' window inside the position picker.
+async function getpos_help(force, goal) {
+    const win = tty_create_nhwindow(NHW_MENU);
+    const put = (line) => tty_putstr(win, 0, line);
+    const fastmode = game.iflags?.getloc_moveskip
+        ? 'skipping same glyphs' : '8 units at a time';
+    const nextmode = game.iflags?.getloc_moveskip
+        ? '8 units at a time' : 'skipping same glyphs';
+    const usemenu = !!game.iflags?.getloc_usemenu;
+    const filter = ['', ' in view', ' in this area'][
+        game.iflags?.getloc_filter | 0] || '';
+    const pair = (lo, hi, description, menuDescription = description) => {
+        put(`Use '${lo}'/'${hi}' to ${usemenu ? 'get a menu of '
+            : 'move the cursor to '}${usemenu ? menuDescription
+            : description}${filter}.`);
+    };
+
+    put(`Use 'h', 'j', 'k', 'l' to move the cursor to ${goal}.`);
+    put(`Use 'H', 'J', 'K', 'L' to fast-move the cursor, ${fastmode}.`);
+    put("(or prefix normal move with 'G' or 'g' to fast-move)");
+    put("Or enter a background symbol (ex. '<').");
+    put("Use '@' to move the cursor on yourself.");
+    pair('m', 'M', 'next/previous monster', 'monsters');
+    if (goal !== 'a monster') {
+        pair('o', 'O', 'next/previous object', 'objects');
+        pair('d', 'D', 'next/previous door or doorway', 'doors or doorways');
+        if (usemenu) {
+            let shortFilter = filter.replace('this area', 'area');
+            put(`Use 'x'/'X' to get a menu of locations next to unexplored locations${shortFilter}.`);
+        } else {
+            put(`Use 'x'/'X' to move the cursor next to an unexplored location${filter}.`);
+        }
+        pair('a', 'A', 'anything interesting', 'anything interesting');
+    }
+    put(`Use '*' to change fast-move mode to ${nextmode}.`);
+    put("Use '!' to toggle menu listing for possible targets.");
+    put("Use '\"' to change the mode of limiting possible targets.");
+    if (getpos_getvalid)
+        put("Use 'z' or 'Z' to move to valid locations.");
+    put("Use '#' to toggle automatic description.");
+    put("Type a '.' when you are at the right place.");
+    if (!force)
+        put("Type Space or Escape when you're done.");
+    put('');
+
+    await tty_display_nhwindow(win);
+    await nhgetch();
+    while (tty_next_page(win))
+        await nhgetch();
+    tty_destroy_nhwindow(win);
+}
+
 // C curs(WIN_MAP, cx, cy) — park the terminal cursor on the map square.
 // _buildScreenOutput() honors game._map_cursor over the hero's position.
 function curs_map(x, y) {
@@ -73,7 +143,8 @@ async function auto_describe(cx, cy) {
         const noTravelPath = (game.iflags?.getloc_travelmode
                               && !(await is_valid_travelpt(cx, cy)))
                              ? ' (no travel path)' : '';
-        await pline(`${res.firstmatch}${invalid}${noTravelPath}`);
+        await pline_nohistory_no_cursor(
+            `${res.firstmatch}${invalid}${noTravelPath}`);
         curs_map(cx, cy);
         flush_screen(0);
     }
@@ -84,7 +155,30 @@ let getpos_getvalid = null;
 
 // src/getpos.c:1560 getpos_sethilite()
 export function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
-    getpos_getvalid = gp_getvalidfunc || null;
+    const old_getvalid = getpos_getvalid;
+    const new_getvalid = gp_getvalidfunc || null;
+    getpos_getvalid = new_getvalid;
+
+    /* C redraws the union of locations accepted by the old and new
+       validators. flush_screen() paints those forced glyphs by row, so the
+       tty cursor ends at the last location in row-major order. This is
+       observable if a tip asks for input before getpos parks the cursor on
+       the hero. */
+    if (new_getvalid !== old_getvalid) {
+        let last = null;
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                if ((old_getvalid && old_getvalid(x, y))
+                    || (new_getvalid && new_getvalid(x, y))) {
+                    newsym(x, y);
+                    if (!last || y > last.y || (y === last.y && x > last.x))
+                        last = { x, y };
+                }
+            }
+        }
+        if (last && new_getvalid)
+            game._flush_cursor_override = { col: last.x, row: last.y + 1 };
+    }
 }
 
 // src/getpos.c:729 truncate_to_map() — clamp a step to the map, adjusting the
@@ -122,6 +216,8 @@ function truncate_to_map(c, dx, dy) {
 export async function getpos(ccp, force, goal) {
     let result = 0;
     const c = { x: ccp.x, y: ccp.y };
+    const gathered = new Array(4).fill(null);
+    const gatherIndex = new Array(4).fill(0);
     /* boolean msg_given = TRUE: clear message window by default */
     let msg_given = true;
     let show_goal_msg = false;
@@ -186,11 +282,11 @@ export async function getpos(ccp, force, goal) {
                squares. */
             const dir = CTRL_DIR[ch] ?? ch.toLowerCase();
             truncate_to_map(c, 8 * DIR_DX[dir], 8 * DIR_DY[dir]);
-        } else if (ch === '?') {
-            /* getpos_help() puts up its own window and consumes its own
-               dismiss keys; unported, and recorded loudly because a session
-               that reaches it will desync */
-            note_unported_getpos('help');
+        } else if (ch === '?' || ch === '\x12') {
+            if (ch === '\x12')
+                await docrt();
+            else
+                await getpos_help(force, goal);
             show_goal_msg = true;
         } else if (ch === '#') {
             /* NHKF_GETPOS_AUTODESC — toggle */
@@ -214,8 +310,46 @@ export async function getpos(ccp, force, goal) {
             await pline(`${game.iflags.getloc_moveskip ? 'S' : 'Not s'}`
                 + 'kipping over similar terrain when fastmoving the cursor.');
             msg_given = true;
-        } else if ('mMoOdDxXaAzZ'.includes(ch) || ch === '!'
-                   || ch === '$' || ch === '"') {
+        } else if (ch === '$') {
+            note_unported_getpos(`key:${ch}`);
+            show_goal_msg = true;
+        } else if ((ch === 'd' || ch === 'D')
+                   && !game.iflags?.getloc_usemenu) {
+            const gloc = 2;
+            if (!gathered[gloc]) {
+                const doors = [];
+                for (let x = 1; x < COLNO; x++) {
+                    for (let y = 0; y < ROWNO; y++) {
+                        const glyph = glyph_at(x, y);
+                        const cmap = glyph.kind === 'cmap' ? glyph.cmap : -1;
+                        const isDoor = is_cmap_door(cmap)
+                            || (cmap >= CM.S_vodbridge
+                                && cmap <= CM.S_hcdbridge)
+                            || cmap === CM.S_ndoor;
+                        if ((x === game.u.ux && y === game.u.uy) || isDoor)
+                            doors.push({ x, y });
+                    }
+                }
+                doors.sort((a, b) => {
+                    const ad = Math.max(Math.abs(game.u.ux - a.x),
+                                        Math.abs(game.u.uy - a.y));
+                    const bd = Math.max(Math.abs(game.u.ux - b.x),
+                                        Math.abs(game.u.uy - b.y));
+                    return ad !== bd ? ad - bd
+                        : a.y !== b.y ? a.y - b.y : a.x - b.x;
+                });
+                gathered[gloc] = doors;
+                gatherIndex[gloc] = 0;
+            }
+            const doors = gathered[gloc];
+            if (ch === 'd')
+                gatherIndex[gloc] = (gatherIndex[gloc] + 1) % doors.length;
+            else
+                gatherIndex[gloc] = (gatherIndex[gloc] + doors.length - 1)
+                    % doors.length;
+            c.x = doors[gatherIndex[gloc]].x;
+            c.y = doors[gatherIndex[gloc]].y;
+        } else if ('mMoOxXaAzZ'.includes(ch) || ch === '!' || ch === '"') {
             /* gather_locs cycling, the menu, hilite and the view filter —
                each consumes only its own key */
             note_unported_getpos(`key:${ch}`);
@@ -231,7 +365,6 @@ export async function getpos(ccp, force, goal) {
                         || sidx === CM.S_ndoor)
                         continue;
                     const ds = defsyms[sidx];
-                    if (!ds.explain) continue;
                     if (ch === ds.sym
                         || (ch === ds.ch && !ds.dec)
                         || (ch === '^' && sidx >= CM.S_arrow_trap
@@ -288,7 +421,7 @@ export async function getpos(ccp, force, goal) {
                     const note = !force
                         ? 'aborted'
                         : "use 'h', 'j', 'k', 'l' or '.'";
-                    await pline(`Unknown direction: '${ch}' (${note}).`);
+                    await pline(`Unknown direction: '${visctrl(ch)}' (${note}).`);
                     msg_given = true;
                 }
                 curs_map(c.x, c.y);

@@ -4,7 +4,8 @@
 import { game } from './gstate.js';
 import { rn2, d } from './rng.js';
 import { ATTKS } from './monst_data.js';
-import { M_ATTK_MISS, M_ATTK_HIT, MFAST, STRAT_WAITFORU, HEAD,
+import { ONAMES } from './objects_data.js';
+import { M_ATTK_MISS, M_ATTK_HIT, MFAST, MSLOW, STRAT_WAITFORU, HEAD,
          M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
          M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON,
          M_SEEN_ACID } from './const.js';
@@ -246,6 +247,21 @@ async function mcast_spell(mtmp, dmg, spellnum) {
             dmg = 0;
         }
         break;
+    case MCAST_HASTE_SELF: {
+        const oldspeed = mtmp.mspeed ?? 0;
+        mtmp.permspeed = mtmp.permspeed === MSLOW ? 0 : MFAST;
+        const speedBoots = (mtmp.minvent || []).some((obj) =>
+            obj.otyp === ONAMES.SPEED_BOOTS && obj.owornmask);
+        mtmp.mspeed = speedBoots ? MFAST : mtmp.permspeed;
+        if (mtmp.mspeed !== oldspeed && mtmp.data.mmove
+            && !mtmp.mfrozen && !mtmp.msleeping && canseemon(mtmp)) {
+            const howmuch = mtmp.mspeed + oldspeed === MFAST + MSLOW
+                ? 'much ' : '';
+            await pline(`${Monnam(mtmp)} is suddenly moving ${howmuch}faster.`);
+        }
+        dmg = 0;
+        break;
+    }
     case MCAST_SUMMON_MONS:
         await mcast_summon_mons(mtmp);
         dmg = 0;

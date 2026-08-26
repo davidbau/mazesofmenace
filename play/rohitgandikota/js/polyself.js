@@ -367,6 +367,8 @@ export async function polymon(mntmp) {
     if (!mdat)
         return 0;
 
+    (u.uconduct ||= {}).polyselfs = (u.uconduct.polyselfs | 0) + 1;
+
     const { exercise, encumber_msg } = await import('./attrib.js');
     exercise(A_CON, false);
     exercise(A_WIS, true);

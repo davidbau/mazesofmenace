@@ -16,7 +16,7 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
          NO_MM_FLAGS, RLOC_MSG, RLOC_NOMSG, RLOC_ERR,
-         BOLT_LIM, VAULT, STRAT_APPEARMSG } from './const.js';
+         BOLT_LIM, VAULT, STRAT_APPEARMSG, OBJ_FREE, OBJ_INVENT } from './const.js';
 import { rnl } from './rng.js';
 import { pline, see_nearby_objects, canspotmon, canseemon,
          sensemon, see_monsters } from './display.js';
@@ -29,7 +29,7 @@ import { get_level, find_hell, depth, print_dungeon,
          dunlevs_in_dungeon } from './dungeon.js';
 import { rnd } from './rng.js';
 import { Is_knox_level } from './const.js';
-import { schedule_goto, UTOTYPE_NONE } from './do.js';
+import { schedule_goto, UTOTYPE_NONE, unplacebc, placebc } from './do.js';
 import { t_at } from './mon.js';
 import { unconscious } from './trap.js';
 import { goodpos, remove_monster, place_monster } from './makemon.js';
@@ -39,7 +39,7 @@ import { spoteffects } from './hack.js';
 import { morehungry } from './eat.js';
 import { getpos } from './getpos.js';
 import { Amonnam, Monnam, mon_nam } from './do_name.js';
-import { distu } from './hacklib.js';
+import { distu, distmin } from './hacklib.js';
 
 import { isok, ECMD_OK, ECMD_TIME, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
 import { ONAMES } from './objects_data.js';
@@ -435,7 +435,10 @@ export function u_on_newpos(x, y) {
 /* include/mondata.h:140 is_dlord/is_dprince, include/dungeon.h In_hell */
 const is_dlord = (ptr) => is_demon(ptr) && is_lord(ptr);
 const is_dprince = (ptr) => is_demon(ptr) && is_prince(ptr);
-const In_hell = (lev) => (lev ?? game.u?.uz)?.dnum === game.hell_dnum;
+const In_hell = (lev) => {
+    const where = lev ?? game.u?.uz;
+    return game.dungeons?.[where?.dnum]?.flags?.hellish === true;
+};
 
 // src/teleport.c:21 m_blocks_teleporting() — a demon lord or prince in
 // residence blocks others' teleports in Gehennom.
@@ -638,19 +641,35 @@ function teleok(x, y, trapok) {
 
 // src/teleport.c teleds() — put the hero at <nux,nuy>.
 //
-// Only the plain path is live: an unpunished, unswallowed hero with no ball
-// and chain. The ball/chain drag, the mimic un-hide and the vault-guard arms
-// are recorded.
+// A distant teleport unplaces the punishment pieces and puts them back below
+// the hero at the destination. The nearby drag cases still need drag_ball().
 export async function teleds(nux, nuy, teleds_flags) {
-    const is_teleport = !(teleds_flags & TELEDS_ALLOW_DRAG);
+    const is_teleport = !!(teleds_flags & TELEDS_TELEPORT);
+    const ball = game.u.uball;
+    const ballActive = !!(ball && ball.where !== OBJ_FREE);
+    let ballUnplaced = false;
 
-    if (game.uball || game.u.uswallow || game.u.utrap)
+    if (game.u.uswallow || game.u.utrap)
         note_unported_teleport('teleds:ball_or_swallow');
+
+    if (ballActive) {
+        const ballStillInRange = ball.where !== OBJ_INVENT
+            && distmin(nux, nuy, ball.ox, ball.oy) <= 2;
+        if (!ballStillInRange) {
+            unplacebc();
+            ballUnplaced = true;
+        } else {
+            note_unported_teleport('teleds:nearby_ball_drag');
+        }
+    }
 
     const ux0 = game.u.ux, uy0 = game.u.uy;
     game.u.ux0 = ux0;
     game.u.uy0 = uy0;
     u_on_newpos(nux, nuy);
+
+    if (ballUnplaced)
+        await placebc();
 
     newsym(ux0, uy0);           /* clear the old position */
     see_monsters();             /* clear or redraw old sensing glyphs */

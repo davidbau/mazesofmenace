@@ -13,7 +13,8 @@
 import { game } from './gstate.js';
 import { In_endgame, Is_earthlevel, ROOM, CORR, ICE, SDOOR, ALTAR, GRAVE, TREE, THRONE,
          FOUNTAIN, SINK, IRONBARS, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, IS_WALL,
-         IS_DOOR, M_AP_TYPE, M_AP_FURNITURE } from './const.js';
+         IS_DOOR, M_AP_TYPE, M_AP_FURNITURE, SHOPBASE, TEMPLE, DELPHI,
+         ROOMOFFSET } from './const.js';
 import { is_pool, is_lava, m_at } from './mon.js';
 import { db_under_typ } from './dbridge.js';
 import { cmap_to_type } from './mkroom.js';
@@ -30,7 +31,7 @@ import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
 import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { MENU_ITEMFLAGS_NONE } from './const.js';
-import { makeplural } from './objnam.js';
+import { an, makeplural } from './objnam.js';
 
 // include/global.h:408-409
 const MAXDUNGEON = 16;
@@ -1119,7 +1120,7 @@ export function surface(x, y) {
         return 'wall'; /* 'surface' during Passes_walls */
     if (IS_DOOR(levtyp))
         return 'doorway'; /* even for closed door */
-    if (levtyp === ROOM || levtyp === CORR || levtyp === ICE)
+    if (levtyp === ROOM)
         return 'floor';
     return 'ground';
 }
@@ -1171,6 +1172,29 @@ export function init_mapseen(uz) {
         game.mapseen[key] = { dnum: uz.dnum, dlevel: uz.dlevel, feat: {} };
 }
 
+// src/dungeon.c:2446 recbranch_mapseen(), remember a branch only when the
+// hero follows it from its parent side. Returning through it does not move the
+// annotation to the child level.
+export function recbranch_mapseen(source, dest) {
+    if (source.dnum === dest.dnum)
+        return;
+    const same = (a, b) => a.dnum === b.dnum && a.dlevel === b.dlevel;
+    let found = null;
+    for (const br of game.branches || []) {
+        if (same(source, br.end1) && same(dest, br.end2)) {
+            found = br;
+            break;
+        }
+        if (same(source, br.end2) && same(dest, br.end1))
+            return;
+    }
+    if (!found)
+        return;
+    const m = game.mapseen?.[`${source.dnum}:${source.dlevel}`];
+    if (m)
+        m.br = found;
+}
+
 // src/dungeon.c:3050 recalc_mapseen() — recount the current level's seen
 // features. C gates each square on lastseentyp (the hero must have SEEN it).
 export function recalc_mapseen() {
@@ -1180,7 +1204,31 @@ export function recalc_mapseen() {
     init_mapseen(uz);
     const m = game.mapseen[`${uz.dnum}:${uz.dlevel}`];
     const feat = { nfount: 0, nsink: 0, naltar: 0, nthrone: 0,
-                   ngrave: 0, ntree: 0, nshop: 0, ntemple: 0 };
+                   ngrave: 0, ntree: 0, nshop: 0, ntemple: 0,
+                   shoptype: 0 };
+    const seenRooms = new Set(game.level._mapseen_rooms || []);
+    for (let x = 1; x < 80; x++)
+        for (let y = 0; y < 21; y++) {
+            const loc = game.level.at(x, y);
+            if (loc?.seenv && loc.roomno >= ROOMOFFSET)
+                seenRooms.add(loc.roomno - ROOMOFFSET);
+        }
+    for (const roomno of seenRooms) {
+        const room = game.level.rooms?.[roomno];
+        if (!room)
+            continue;
+        if (room.rtype >= SHOPBASE) {
+            feat.nshop++;
+            if (feat.nshop === 1)
+                feat.shoptype = room.rtype;
+            else if (feat.shoptype !== room.rtype)
+                feat.shoptype = 0;
+        } else if (room.rtype === TEMPLE) {
+            feat.ntemple++;
+        } else if (room.orig_rtype === DELPHI) {
+            (m.flags ||= {}).oracle = true;
+        }
+    }
     for (let x = 1; x < 80; x++)
         for (let y = 0; y < 21; y++) {
             const loc = game.level.at(x, y);
@@ -1198,6 +1246,37 @@ export function recalc_mapseen() {
         }
     m.feat = feat;
     m.custom = game.level_annotations?.[`${uz.dnum}:${uz.dlevel}`] ?? null;
+}
+
+// src/dungeon.c:2489 print_level_annotation(), remind the hero about a
+// custom annotation after arriving on that level.
+export async function print_level_annotation() {
+    const uz = game.u?.uz;
+    if (!uz)
+        return;
+    const annotation = game.mapseen?.[`${uz.dnum}:${uz.dlevel}`]?.custom;
+    if (annotation) {
+        const { You } = await import('./pline.js');
+        await You(`remember this level as ${annotation}.`);
+    }
+}
+
+function interest_mapseen(m) {
+    if (game.u.uz.dnum === m.dnum && game.u.uz.dlevel === m.dlevel)
+        return true;
+    if (m.flags?.notreachable || m.flags?.forgot)
+        return false;
+    if (m.flags?.oracle || m.flags?.bigroom || m.flags?.roguelevel
+        || m.flags?.castle || m.flags?.valley || m.flags?.msanctum
+        || m.flags?.vibrating_square || m.flags?.quest_summons
+        || m.flags?.questing)
+        return true;
+    const f = m.feat || {};
+    if (f.nfount || f.nsink || f.naltar || f.nthrone || f.ngrave
+        || f.ntree || f.nshop || f.ntemple)
+        return true;
+    return !!(m.custom || m.br
+        || m.dlevel === game.dungeons?.[m.dnum]?.dunlev_ureached);
 }
 
 // src/dungeon.c:3368 seen_string() — "players are computer scientists:
@@ -1225,12 +1304,14 @@ export async function show_overview(why, reason) {
         tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU,
     } = await import('./tty/wintty.js');
     const { NO_COLOR } = await import('./terminal.js');
+    const { shtypes } = await import('./shknam.js');
     const TAB = '   ', PREFIX = '      ';
     const plur = (n) => (n === 1 ? '' : 's');
 
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, 0);
     const entries = Object.values(game.mapseen || {})
+        .filter(m => why !== 0 || interest_mapseen(m))
         .sort((a, b) => (a.dnum - b.dnum) || (a.dlevel - b.dlevel));
     let lastdnum = -1;
     for (const m of entries) {
@@ -1299,7 +1380,16 @@ export async function show_overview(why, reason) {
             if (v)
                 fbuf += `${COMMA()}${seen_string(v, nam)} ${nam}${plur(v)}`;
         };
-        /* shop/temple/altar arms come first in C; none is seen yet */
+        if (f.nshop > 1) {
+            ADDN('shop', f.nshop);
+        } else if (f.nshop === 1) {
+            const shop = f.shoptype >= SHOPBASE
+                ? shtypes[f.shoptype - SHOPBASE] : null;
+            fbuf += `${COMMA()}${an(shop?.annotation || shop?.name
+                                     || 'untended shop')}`;
+        }
+        /* shop/temple/altar arms come first in C */
+        ADDN('temple', f.ntemple);
         if (f.naltar > 0)
             ADDN('altar', f.naltar);
         ADDN('throne', f.nthrone);
@@ -1313,6 +1403,25 @@ export async function show_overview(why, reason) {
             fbuf = fbuf.slice(0, k) + fbuf[k].toUpperCase() + fbuf.slice(k + 1)
                    + '.';
             tty_add_menu(win, null, 0, 0, 0, 0, NO_COLOR, fbuf, 0);
+        }
+
+        if (m.br) {
+            const br = m.br;
+            let descr;
+            if (br.type === BR_PORTAL)
+                descr = 'Portal';
+            else if (br.type === BR_NO_END1)
+                descr = 'Connection';
+            else if (br.type === BR_NO_END2)
+                descr = `One way stairs ${br.end1_up ? 'up' : 'down'}`;
+            else
+                descr = `Stairs ${br.end1_up ? 'up' : 'down'}`;
+            let branch = `${PREFIX}${descr} to ${
+                game.dungeons?.[br.end2.dnum]?.dname || 'unknown dungeon'}`;
+            if (br.end1_up && !In_endgame(br.end2))
+                branch += `, level ${depth(br.end2)}`;
+            tty_add_menu(win, null, 0, 0, 0, 0, NO_COLOR,
+                         `${branch}.`, 0);
         }
     }
     tty_end_menu(win, '');

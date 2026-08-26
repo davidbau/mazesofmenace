@@ -31,7 +31,7 @@ import {
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
 import { christen_monst, Monnam } from './do_name.js';
-import { monnear, m_at, see_monster_closeup, minliquid, restore_cham } from './mon.js';
+import { monnear, m_at, see_monster_closeup, minliquid, restore_cham, wake_nearto } from './mon.js';
 import { enexto, rloc_to, rloc, rloc_to_flag, goodpos } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
 import { newsym, pline, pline_mon, canspotmon, Hallucination } from './display.js';
@@ -346,7 +346,7 @@ export function keepdogs(pets_only = false) {
  * Peaceful + edog for ordinary monsters; shop/gd/priest/minion/human/
  * is_covetous / is_demon-vs-hero / quest leader rejected. D-1532.
  * isshk → make_happy_shk D-1540.
- * Named omissions: wake_nearto (msleeping); FULL_MOON night S_DOG;
+ * Named omissions: FULL_MOON night S_DOG;
  * ustuck expels/unstuck (mhitu→uhitm→dog cycle); redraw_worm;
  * Tobjnam stop / big_corpse catch; initedog has_edog vs !mtame.
  */
@@ -361,9 +361,10 @@ export async function tamedog(mtmp, obj, givemsg = true) {
     }
 
     if (mtmp.mfrozen) mtmp.mfrozen = ((mtmp.mfrozen | 0) + 1) >> 1;
-    // C :1160–1161 wake_nearto(mx,my,1) named — clear sleep locally
+    // C :1159–1161 — end indefinite sleep; distance==1 limits waking
+    // to mtmp (wake_msg + STRAT_WAITMASK + disturb), not wakeup()
     if (mtmp.msleeping) {
-        mtmp.msleeping = 0;
+        await wake_nearto(mtmp.mx, mtmp.my, 1);
     }
 
     if (mtmp.iswiz || (mtmp.data?.mndx | 0) === monsterNames.indexOf('PM_MEDUSA')

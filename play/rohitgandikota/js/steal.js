@@ -136,6 +136,7 @@ export async function steal(mtmp, objnambuf = null) {
         named = mtmp.data.mlet === MONSYMS.S_NYMPH;
     } else if (otmp.owornmask) {
         await worn_item_removal(mtmp, otmp);
+        named = mtmp.data.mlet === MONSYMS.S_NYMPH;
     }
 
     const lost_name = doname(otmp);

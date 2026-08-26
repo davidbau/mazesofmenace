@@ -3,7 +3,7 @@
 //
 // Only healup() so far, reached by the healing spells' zapyourself route.
 
-import { fruitname } from './objnam.js';
+import { fruitname, xname } from './objnam.js';
 import { trycall } from './do_name.js';
 import { newuhs } from './eat.js';
 import { game } from './gstate.js';
@@ -254,6 +254,13 @@ export async function make_blinded(xtime, talk) {
             await pline('A cloud of darkness falls upon you.');
     }
 
+    /* src/potion.c:308: capture the glyphs under an attached ball and chain
+       before the blindness flag changes. */
+    if (!was_blind && blind_now && u.uball && u.uchain) {
+        const { set_bc } = await import('./cmd.js');
+        set_bc(false);
+    }
+
     /* C does not change HBlinded until after the transition message. If that
        message first blocks on an older --More-- prompt, the old Blind status
        remains visible throughout the wait. */
@@ -268,8 +275,18 @@ export async function make_blinded(xtime, talk) {
             /* src/invent.c learn_unseen_invent(): carried objects picked up
                while blind become visibly encountered as soon as sight
                returns. */
-            for (const obj of game.invent || [])
-                observe_object(obj);
+            const role = game.urole?.mnum;
+            const cleric = role === 'PM_CLERIC'
+                || role === PMNAMES.PM_CLERIC;
+            const archeologist = role === 'PM_ARCHEOLOGIST'
+                || role === PMNAMES.PM_ARCHEOLOGIST;
+            for (const obj of game.invent || []) {
+                if (obj.dknown && (obj.bknown || !cleric)
+                    && (obj.oclass !== OCLASSES.SCROLL_CLASS
+                        || !archeologist))
+                    continue;
+                xname(obj);
+            }
         }
     }
 }

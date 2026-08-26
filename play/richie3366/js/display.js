@@ -2,7 +2,8 @@
 // C ref: display.c — newsym, show_glyph (glyph_updates / show_glyph_change
 // D-1219; Hallu classifier D-1221), docrt (in_docrt), cls, flush_screen,
 // suppress_map_output (D-1126), show_region overlay (D-1528),
-// see_wsegs / is_worm_tail (D-1529),
+// see_wsegs / is_worm_tail (D-1529), detect_wsegs show_wseg_detect_glyph
+// (D-1545), worm_known in canseemon (D-1548),
 // shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
 import { game } from './gstate.js';
@@ -90,7 +91,7 @@ import { depth, dist2 } from './hacklib.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { observe_object, near_capacity } from './invent.js';
 import { visible_region_at, show_region } from './region.js';
-import { see_wsegs } from './worm.js';
+import { see_wsegs, worm_known } from './worm.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -276,6 +277,24 @@ function worm_tail_glyph() {
     return { ch, color };
 }
 
+/**
+ * C ref: display.h detected_monnum_to_glyph / petnum_to_glyph /
+ * monnum_to_glyph then display.c show_glyph. Caller worm.c detect_wsegs
+ * `:509–516`. tty: MG_PET + hilite_pet → mon_map_attr; MG_DETECT +
+ * use_inverse → ATR_INVERSE. Named: male/fem glyph offsets (same mlet
+ * on tty).
+ */
+export function show_wseg_detect_glyph(x, y, mnum, worm, use_detection_glyph) {
+    const g = monnum_to_display_glyph(mnum);
+    let attr = 0;
+    if (use_detection_glyph) {
+        if (use_inverse_opt()) attr = ATR_INVERSE;
+    } else if (worm?.mtame) {
+        attr = mon_map_attr(worm);
+    }
+    show_glyph_cell(x, y, g.ch, g.color, false, attr);
+}
+
 // C ref: display.h _mon_visible — invis/undetected only (caller handles sight)
 export function mon_visible(mon) {
     if (!mon) return false;
@@ -285,13 +304,16 @@ export function mon_visible(mon) {
 }
 
 /**
- * C ref: display.h _canseemon — location sight/infrared + mon_visible.
- * Named omission: worm_known for long worms.
+ * C ref: display.h _canseemon :117–120 — wormno ? worm_known
+ * : (cansee(head) || see_with_infrared) && mon_visible.
+ * Infrared is skipped for tailed worms (D-1548).
  */
 export function canseemon(mon) {
-    if (!mon?.mx) return false;
-    if (!(cansee(mon.mx, mon.my) || see_with_infrared(mon))) return false;
-    return mon_visible(mon);
+    if (!mon) return false;
+    const loc_seen = mon.wormno
+        ? worm_known(mon)
+        : (cansee(mon.mx, mon.my) || see_with_infrared(mon));
+    return loc_seen && mon_visible(mon);
 }
 
 /**
@@ -672,6 +694,66 @@ export function look_shown_at(x, y) {
     return null;
 }
 
+/** C glyph_to_obj analogue: remembered object glyph encodes otyp. */
+function remembered_glyph_otyp(g) {
+    if (!g || g.invisible) return -1;
+    if (g.otyp == null || (g.otyp | 0) < 0) return -1;
+    return g.otyp | 0;
+}
+
+/**
+ * C display.h glyph_is_object + glyph_to_obj of glyph_at (gbuf).
+ * JS has no integer glyph ids. Returns otyp or -1.
+ *
+ * Unsensed M_AP_OBJECT paints an object glyph (gbuf_show_kind), so
+ * lookat takes look_at_object / fakeobj — not look_at_monster.
+ * Remembered-gone piles use map_object's stored otyp (C levl.glyph).
+ *
+ * Named: Hallu random_obj_to_glyph otyp (obj_glyph does not return the
+ * rolled type); cmap trapped-chest CHEST|LARGE_BOX; glyph_is_body /
+ * glyph_is_statue corpsenm from glyph id.
+ */
+export function glyph_to_obj_at(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return -1;
+
+    const mtmp = mon_at_display(x, y);
+    if (mtmp && cell_shows_displayed_monster(mtmp, x, y)) {
+        // C glyph_at is gbuf: unsensed M_AP_OBJECT paints an object
+        // glyph; any other displayed mon is glyph_is_monster (memory
+        // object under the monster must not win).
+        if (
+            ((mtmp.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_OBJECT
+            && !sensemon(mtmp)
+        ) {
+            return mtmp.mappearance | 0;
+        }
+        return -1;
+    }
+    if (loc.disp_kind === 'monster') return -1;
+
+    if (loc.disp_kind === 'object') {
+        const obj = objects_at(x, y);
+        if (obj && !covers_objects(x, y)) return obj.otyp | 0;
+        return remembered_glyph_otyp(loc.remembered_glyph);
+    }
+
+    // Out of sight: gbuf is memory. C glyph_at still inspects that id.
+    const rg = loc.remembered_glyph;
+    const memTyp = remembered_glyph_otyp(rg);
+    if (
+        memTyp >= 0
+        && loc.disp_ch
+        && loc.disp_ch === rg.ch
+        && loc.disp_kind !== 'monster'
+        && loc.disp_kind !== 'trap'
+        && loc.disp_kind !== 'invisible'
+    ) {
+        return memTyp;
+    }
+    return -1;
+}
+
 // C ref: display.c map_glyph / mon_color / pet_color — per-species mcolor.
 // C ref: display.h mon_to_glyph / what_mon — Hallu → random_monster(display rng).
 export function mon_glyph(mtmp) {
@@ -698,7 +780,7 @@ export function mon_glyph(mtmp) {
  * sensed overlay; Hallucination statue random_obj.
  */
 function mimic_object_appearance_glyph(mtmp) {
-    if (M_AP_TYPE(mtmp) !== M_AP_OBJECT) return null;
+    if (((mtmp.m_ap_type | 0) & M_AP_TYPMASK) !== M_AP_OBJECT) return null;
     // C: sensed = Protection_from_shape_changers || sensemon(mon)
     // Protection stubbed false; when sensed, caller shows real mon_glyph.
     if (sensemon(mtmp)) return null;
@@ -1075,6 +1157,7 @@ export function map_object(obj, show) {
                     color: mcolors[mnum] ?? NO_COLOR,
                     decgfx: false,
                     objpile: pile,
+                    otyp,
                 };
             } else {
                 const def = game.objects?.[otyp];
@@ -1084,16 +1167,22 @@ export function map_object(obj, show) {
                     color: def?.oc_color ?? NO_COLOR,
                     decgfx: false,
                     objpile: pile,
+                    otyp,
+                    statue: otyp === STATUE_OTYP,
+                    boulder: otyp === BOULDER_OTYP,
                 };
             }
             loc.remembered_glyph = mem;
         } else {
-            loc.remembered_glyph = {
+            const mem = {
                 ch: og.ch, color: og.color, decgfx: !!og.dec, objpile: pile,
                 // C glyph ranges encode statue/boulder; JS has no integer IDs
                 statue: obj.otyp === STATUE_OTYP,
                 boulder: obj.otyp === BOULDER_OTYP,
             };
+            // C obj_to_glyph encodes otyp. Hallu random_obj otyp named.
+            if (!game.u?.Hallucination) mem.otyp = obj.otyp | 0;
+            loc.remembered_glyph = mem;
         }
     }
     if (show) show_glyph_cell(x, y, og.ch, og.color, !!og.dec, attr);
@@ -1809,7 +1898,7 @@ function gbuf_show_kind(x, y, ch, color, decgfx, loc) {
     const mtmp = mon_at_display(x, y);
     if (mtmp && cell_shows_displayed_monster(mtmp, x, y)) {
         // Mimic object: M_AP_TYPE, not a second obj_glyph Hallu roll.
-        if (M_AP_TYPE(mtmp) === M_AP_OBJECT && !sensemon(mtmp)) {
+        if (((mtmp.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_OBJECT && !sensemon(mtmp)) {
             return 'object';
         }
         return 'monster';
@@ -1958,12 +2047,17 @@ function reveal_terrain_cmap_hack(g) {
 /** Copy remembered / terrain glyph into a plain {ch,color,dec[,invisible]}. */
 function copy_glyph(g) {
     if (!g) return null;
-    return {
+    const out = {
         ch: g.ch,
         color: g.color ?? NO_COLOR,
         dec: !!(g.dec ?? g.decgfx),
         invisible: !!g.invisible,
     };
+    if (g.otyp != null) out.otyp = g.otyp | 0;
+    if (g.statue) out.statue = true;
+    if (g.boulder) out.boulder = true;
+    if (g.objpile) out.objpile = true;
+    return out;
 }
 
 /**
@@ -2792,6 +2886,7 @@ export function newsym(x, y) {
                         ch: apg.ch, color: apg.color, decgfx: !!apg.dec,
                         statue: (mtmp.mappearance | 0) === STATUE_OTYP,
                         boulder: (mtmp.mappearance | 0) === BOULDER_OTYP,
+                        otyp: mtmp.mappearance | 0,
                     };
                 }
                 return;

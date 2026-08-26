@@ -219,11 +219,14 @@ async function slip_or_trip() {
 // storm/fumaroles arms and most expiry cases need absent state and are
 // recorded when their trigger appears.
 export async function nh_timeout() {
-    const intr = game.u.intrinsic;
     if (game.u.uluck)
         note_unported_timeout('nh_timeout:luck_rebalance');
-    if (!intr)
+    /* src/timeout.c:621, successful prayer freezes every dangerous
+       timeout, including wizard-set intrinsics, until prayer finishes. */
+    if (game.u.uinvulnerable)
         return;
+
+    const intr = (game.u.intrinsic ||= {});
 
     for (const key of Object.keys(intr)) {
         const v = intr[key];
@@ -257,6 +260,14 @@ export async function nh_timeout() {
             await make_blinded(0, true);
             break;
         }
+        case 'HFast': {
+            const { Fast, Very_fast } = await import('./attrib.js');
+            if (!Very_fast()) {
+                const { You_feel } = await import('./pline.js');
+                await You_feel(`yourself slow down${Fast() ? ' a bit' : ''}.`);
+            }
+            break;
+        }
         case 'HFumbling': {
             const { Levitation, Flying, Deaf } = await import('./youprop.js');
             if (game.u.umoved && !(Levitation() || Flying())) {
@@ -285,6 +296,19 @@ export async function nh_timeout() {
         default:
             note_unported_timeout(`nh_timeout:${key}`);
             break;
+        }
+    }
+
+    /* wiz_intrinsic_timeout() keeps properties without a dedicated live
+       HFoo slot here. They are still ordinary u.uprops timeouts in C and
+       lose one turn in the same loop. */
+    const wiz = game.u.wiz_intrinsic_timeouts;
+    if (wiz) {
+        for (const key of Object.keys(wiz)) {
+            if (typeof wiz[key] !== 'number' || wiz[key] <= 0)
+                continue;
+            if (--wiz[key] === 0)
+                delete wiz[key];
         }
     }
 

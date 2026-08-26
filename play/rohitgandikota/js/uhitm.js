@@ -365,9 +365,9 @@ export async function attack_checks(mtmp, wep) {
 // sequence, guarded by `if (!(*attk_count)++)`, so it must not fire on the
 // second and later attacks of a multi-attack turn.
 //
-// The two You() messages need pline plumbing and are recorded; the alignment
-// change is the part that persists.
-export function check_caitiff(mtmp) {
+// The two You() messages are displayed before the alignment change, matching
+// the C call order and preserving message-window boundaries.
+export async function check_caitiff(mtmp) {
     if (game.u.ualign.record <= -10)
         return;
 
@@ -376,11 +376,11 @@ export function check_caitiff(mtmp) {
     if (Role_if(PMNAMES.PM_KNIGHT) && game.u.ualign.type === A_LAWFUL
         && !is_undead(d)
         && (helpless(mtmp) || (mtmp.mflee && !mtmp.mavenge))) {
-        note_unported_uhitm('check_caitiff:caitiff_message');
+        await You('caitiff!');
         adjalign(-1);
     } else if (Role_if(PMNAMES.PM_SAMURAI) && mtmp.mpeaceful) {
         /* attacking peaceful creatures is bad for the samurai's giri */
-        note_unported_uhitm('check_caitiff:dishonor_message');
+        await You('dishonorably attack the innocent!');
         adjalign(-1);
     }
 }
@@ -406,7 +406,7 @@ const Role_if = (pm) => {
 // The check_caitiff() call is guarded by `if (!(*attk_count)++)`, so it fires
 // on the FIRST attack of a sequence only -- a multi-attack turn must not
 // penalise the hero's alignment repeatedly.
-export function find_roll_to_hit(mtmp, aatyp, weapon, out) {
+export async function find_roll_to_hit(mtmp, aatyp, weapon, out) {
     const ptr = game.mons[mtmp.mnum];
     out.role_roll_penalty = 0;              /* default is `none' */
 
@@ -419,7 +419,7 @@ export function find_roll_to_hit(mtmp, aatyp, weapon, out) {
 
     /* some actions should occur only once during multiple attacks */
     if (!(out.attk_count++))
-        check_caitiff(mtmp);
+        await check_caitiff(mtmp);
 
     /* adjust vs. monster state */
     if (mtmp.mstun)      tmp += 2;
@@ -634,7 +634,7 @@ export async function hitum(mon, uattk) {
     /* 0: single hit, 1: first of two; hmon_hitmon reads it downstream */
     game.twohits = (game.u.uwep ? game.u.twoweap : double_punch()) ? 1 : 0;
 
-    let tmp = find_roll_to_hit(mon, uattk.aatyp, game.u.uwep, out);
+    let tmp = await find_roll_to_hit(mon, uattk.aatyp, game.u.uwep, out);
     mon_maybe_unparalyze(mon);
     let dieroll = rnd(20);
     const mhit = [(tmp > dieroll || game.u.uswallow) ? 1 : 0];
@@ -653,7 +653,7 @@ export async function hitum(mon, uattk) {
                           || (game.u.umortality || 0) > oldumort
                           || !malive || m_at(x, y) !== mon)) {
         game.twohits = 2;               /* second of 2 hits */
-        tmp = find_roll_to_hit(mon, uattk.aatyp, game.u.uswapwep, out);
+        tmp = await find_roll_to_hit(mon, uattk.aatyp, game.u.uswapwep, out);
         mon_maybe_unparalyze(mon);
         dieroll = rnd(20);
         mhit[0] = (tmp > dieroll || game.u.uswallow) ? 1 : 0;

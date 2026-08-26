@@ -105,14 +105,14 @@ import {
 var add_room_fn, add_door_fn, somexy_fn;
 
 // src/sp_lev.c:2731 fill_special_room()
-export function fill_special_room(croom) {
+export async function fill_special_room(croom) {
     if (!croom)
         return;
 
     /* subrooms first, so an unfilled outer room does not block a special
        subroom and vice versa */
     for (const sub of croom.sbrooms || [])
-        fill_special_room(sub);
+        await fill_special_room(sub);
 
     if (croom.rtype === OROOM || croom.rtype === THEMEROOM
         || croom.needfill === FILL_NONE)
@@ -122,7 +122,7 @@ export function fill_special_room(croom) {
         if (croom.rtype >= SHOPBASE) {
             /* src/mklev.c fill_special_room() — a shop's stock and its
                shopkeeper. stock_room sets has_shop itself. */
-            stock_room(croom.rtype - SHOPBASE, croom);
+            await stock_room(croom.rtype - SHOPBASE, croom);
             return;
         }
 
@@ -400,12 +400,14 @@ export function sp_lev_wire(addRoom, addDoor, someXY) {
 /* somexy_fn declared at the top of this file (see note above) */
 
 // src/sp_lev.c:4978 lspo_terrain() — set the terrain of every square in a
-// selection. `des.terrain(sel, "I")` is the argc == 2 form.
+// selection, or one map-relative square via `des.terrain(x, y, "I")`.
 //
 // No draws. sel_set_ter() is the same per-square worker lspo_map() uses, so a
 // terrain change from a themeroom fill and one from a stamped map produce
 // identical cells.
-export function lspo_terrain(sel, mapchr) {
+export function lspo_terrain(selOrX, mapchrOrY, coordMapchr) {
+    const positional = typeof selOrX === 'number';
+    const mapchr = positional ? coordMapchr : mapchrOrY;
     const ter = splev_chr2typ(mapchr);
 
     if (ter === INVALID_TYPE)
@@ -413,7 +415,16 @@ export function lspo_terrain(sel, mapchr) {
 
     /* sp_lev.c:4986 — tmpterrain.tlit = SET_LIT_NOCHANGE: des.terrain never
        touches the lit state of the squares it retypes */
-    selection_iterate(sel, (x, y) => sel_set_ter(x, y, ter, SET_LIT_NOCHANGE));
+    if (positional) {
+        const pos = get_location_coord(-1, -1, ANY_LOC,
+                                       game.coder?.croom ?? null,
+                                       SP_COORD_PACK(selOrX, mapchrOrY));
+        if (isok(pos.x, pos.y))
+            sel_set_ter(pos.x, pos.y, ter, SET_LIT_NOCHANGE);
+        return;
+    }
+    selection_iterate(selOrX,
+                      (x, y) => sel_set_ter(x, y, ter, SET_LIT_NOCHANGE));
 }
 
 // src/sp_lev.c:5055 lspo_replace_terrain() — swap one terrain type for

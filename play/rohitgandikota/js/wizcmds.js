@@ -23,6 +23,7 @@ import {
     tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu,
     tty_select_menu, tty_start_menu,
 } from './tty/wintty.js';
+import { boolean_option } from './options.js';
 
 function note_unported_wizcmds(what) {
     (game.unported ||= new Set()).add(what);
@@ -226,7 +227,7 @@ export async function wiz_intrinsic() {
 
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    if (game.iflags?.cmdassist !== false) {
+    if (boolean_option('cmdassist')) {
         tty_add_menu_str(win,
             '[Precede any selection with a count to increment by other than 30.]');
     }

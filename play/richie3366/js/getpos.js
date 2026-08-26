@@ -19,10 +19,11 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph,
-    look_shown_at, newsym_force, glyph_is_invisible,
+    look_shown_at, newsym_force, glyph_is_invisible, glyph_to_obj_at,
 } from './display.js';
 import { cansee } from './vision.js';
-import { distant_name, doname, ansimpleoname } from './objnam.js';
+import { ansimpleoname } from './objnam.js';
+import { look_at_object } from './pager.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING, GLOC_VALID,
@@ -580,9 +581,8 @@ function cmap_defsym_explanation(x, y, loc) {
  *
  * Named omissions: full do_screen_description symbol table, coord_desc,
  * underwater unreconnoitered, special cmap arms (altar; doors D-0815;
- * cloud typ D-0811). Object: shown floor via look_shown_at + distant_name
- * doname (D-0928 #1136); pager `object_from_map` live (D-1524) but getpos
- * still look_shown_at (pager import cycle); doname_with_price /
+ * cloud typ D-0811). Object: lookat glyph_is_object → look_at_object
+ * (D-1547; fakeobj via object_from_map D-1524). doname_with_price /
  * doname_vague_quan, buried/embedded suffixes deferred. Trap: tseen
  * `trapname` only (trapped_chest/door / Hallucination deferred). Travel:
  * " (no travel path)" via is_valid_travelpt when getloc_travelmode
@@ -599,8 +599,15 @@ export function auto_describe_text(cx, cy) {
         return self_lookat_brief();
     }
 
+    // C lookat: glyph_is_monster then glyph_is_object (gbuf, not occupancy).
+    const objTyp = glyph_to_obj_at(cx, cy);
+
     const mtmp = mon_at_xy(cx, cy);
-    if (mtmp && (!terrainmode || (terrainmode & TER_MON) !== 0)) {
+    if (
+        mtmp
+        && objTyp < 0
+        && (!terrainmode || (terrainmode & TER_MON) !== 0)
+    ) {
         const loc = game.level?.at?.(cx, cy);
         const ch = loc?.disp_ch;
         // Detect/map may blank a cell while mon still exists in fmon —
@@ -611,13 +618,9 @@ export function auto_describe_text(cx, cy) {
     }
 
     // C lookat glyph_is_object → look_at_object (before trap/cmap)
-    if (!terrainmode || (terrainmode & TER_OBJ) !== 0) {
-        const shown = look_shown_at(cx, cy);
-        if (shown?.kind === 'obj' && shown.obj) {
-            // C: distant_name(otmp, dknown ? doname_with_price : doname_vague_quan)
-            // Named: with_price / vague_quan / fakeobj / location suffixes
-            return distant_name(shown.obj, doname);
-        }
+    if (objTyp >= 0 && (!terrainmode || (terrainmode & TER_OBJ) !== 0)) {
+        // Named: with_price / vague_quan / buried-embedded suffixes
+        return look_at_object(cx, cy, objTyp);
     }
 
     const loc = game.level?.at?.(cx, cy);

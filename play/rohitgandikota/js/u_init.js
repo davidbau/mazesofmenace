@@ -25,7 +25,7 @@ import { PMNAMES } from './monst_data.js';
 import { skill_tables } from './skills_data.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
 import { P_NONE, W_QUIVER, W_WEP , W_SWAPWEP, W_ARMS, W_ARMH, W_ARMG,
-         W_ARMU, W_ARMC, W_ARMF, W_ARM } from './const.js';
+         W_ARMU, W_ARMC, W_ARMF, W_ARM, FROMOUTSIDE } from './const.js';
 import { Is_container, bimanual, is_shield, is_helmet, is_gloves, is_shirt,
          is_cloak, is_boots, is_suit } from './obj.js';
 import { is_missile, set_twoweap, setuqwep, setuwep,
@@ -431,6 +431,8 @@ export function u_init_role() {
         ini_inv(TROBJ.Knight);
         knows_class(WEAPON_CLASS);
         knows_class(ARMOR_CLASS);
+        (u.intrinsic ||= {}).HJumping =
+            (u.intrinsic.HJumping | 0) | FROMOUTSIDE;
         break;
     case PMNAMES.PM_MONK: {
         const M_spell = [TROBJ.Healing_book, TROBJ.Protection_book,
@@ -665,4 +667,3 @@ export function u_init_skills_discoveries() {
         (game.u.ueninc ||= [])[game.u.ulevel] = SPELL_LEV_PW(1);
     }
 }
-

@@ -47,6 +47,7 @@ import {
 import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
     hold_another_object, consume_obj_charge, update_inventory,
+    getobj_from_cmdq,
 } from './invent.js';
 import { rn2, rn1, rnd, d, rnl, shuffle_int_array } from './rng.js';
 import {
@@ -365,28 +366,11 @@ function apply_has_downplay() {
  * flush_topl_more before re-prompt so "don't have" gets --More--.
  * Empty SUGGEST with no DOWNPLAY/hands → early "don't have anything"
  * (C suggested==0 && !forceprompt && !allownone); do not prompt [*].
+ * Canned CMDQ_KEY live; CMDQ_INT aborts (!ALLOWCNT).
  */
 async function getobj_apply() {
-    // C invent.c getobj: cmdq_pop CMDQ_KEY before interactive prompt
-    // (use_pick_axe / itemactions re-queue doapply + invlet; D-1018).
-    const q = game._cmdq_canned;
-    if (q?.length) {
-        const head = q[0];
-        if (head && typeof head === 'object' && head.typ === 'key') {
-            q.shift();
-            const ch = typeof head.key === 'string'
-                ? head.key
-                : String.fromCharCode(head.key);
-            for (const o of game.invent || []) {
-                if (o.invlet === ch) {
-                    const v = apply_ok(o);
-                    if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY) return o;
-                }
-            }
-            game._cmdq_canned = [];
-            return null;
-        }
-    }
+    const cq = getobj_from_cmdq(apply_ok, false);
+    if (!cq.skip) return cq.otmp;
 
     const lets0 = apply_lets();
     // C: apply_ok(NULL) is GETOBJ_EXCLUDE — no hands; DOWNPLAY sets forceprompt.
@@ -2239,33 +2223,12 @@ function grease_ok(obj) {
  * always SUGGEST (allownone). GETOBJ_PROMPT always asks. Gold → cannot
  * grease gold. EXCLUDE → silly_thing. Named omit: pickinv handsbuf line;
  * compactify '-' prefix; GETOBJ_EXCLUDE_INACCESS "else" empty-invent.
+ * Canned KEY live; CMDQ_INT aborts (!ALLOWCNT).
  */
 async function getobj_grease() {
     const word = 'grease';
-    const q = game._cmdq_canned;
-    if (q?.length) {
-        const head = q[0];
-        if (head && typeof head === 'object' && head.typ === 'key') {
-            q.shift();
-            const ch = typeof head.key === 'string'
-                ? head.key
-                : String.fromCharCode(head.key);
-            if (ch === '-') {
-                const v = grease_ok(null);
-                if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY) {
-                    return hands_obj;
-                }
-            }
-            for (const o of game.invent || []) {
-                if (o.invlet === ch) {
-                    const v = grease_ok(o);
-                    if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY) return o;
-                }
-            }
-            game._cmdq_canned = [];
-            return null;
-        }
-    }
+    const cq = getobj_from_cmdq(grease_ok, false, hands_obj);
+    if (!cq.skip) return cq.otmp;
 
     const suggest_lets = () => {
         const lets = [];
@@ -3126,23 +3089,12 @@ function jelly_ok(obj) {
 
 /**
  * C ref: invent.c getobj("rub the royal jelly on", jelly_ok, GETOBJ_PROMPT).
- * Prompt even with no eggs. CMDQ_KEY like other getobj. EXCLUDE → silly_thing.
+ * Prompt even with no eggs. Canned KEY live; CMDQ_INT aborts (!ALLOWCNT).
  */
 async function getobj_jelly() {
     const word = 'rub the royal jelly on';
-    const q = game._cmdq_canned;
-    if (q?.length) {
-        const head = q[0];
-        if (head && typeof head === 'object' && head.typ === 'key') {
-            q.shift();
-            const ch = String.fromCharCode(head.key);
-            for (const o of game.invent || []) {
-                if (o.invlet === ch && jelly_ok(o) === GETOBJ_SUGGEST) return o;
-            }
-            game._cmdq_canned = [];
-            return null;
-        }
-    }
+    const cq = getobj_from_cmdq(jelly_ok, false);
+    if (!cq.skip) return cq.otmp;
 
     const suggest_lets = () => {
         const lets = [];
@@ -5430,24 +5382,12 @@ function rub_suggest_lets() {
 }
 
 /**
- * C ref: invent.c getobj("rub", rub_ok) — also consumes CMDQ_KEY from
- * game._cmdq_canned when dorub re-queues after wield_tool.
+ * C ref: invent.c getobj("rub", rub_ok).
+ * Canned KEY live (dorub re-queue); CMDQ_INT aborts (!ALLOWCNT).
  */
 async function getobj_rub() {
-    // C getobj: cmdq_pop CMDQ_KEY before interactive prompt
-    const q = game._cmdq_canned;
-    if (q?.length) {
-        const head = q[0];
-        if (head && typeof head === 'object' && head.typ === 'key') {
-            q.shift();
-            const ch = String.fromCharCode(head.key);
-            for (const o of game.invent || []) {
-                if (o.invlet === ch && rub_ok(o) === GETOBJ_SUGGEST) return o;
-            }
-            game._cmdq_canned = [];
-            return null;
-        }
-    }
+    const cq = getobj_from_cmdq(rub_ok, false);
+    if (!cq.skip) return cq.otmp;
 
     const raw = rub_suggest_lets();
     if (!raw) {

@@ -271,7 +271,7 @@ function autopick_testobj(otmp) {
 // C sorts the list into class order with a heading per class, exactly as the
 // inventory menu does, and assigns a,b,c... down the list rather than reusing
 // any inventory letter. Returns the chosen objects in menu order.
-async function query_objlist(qstr, olist) {
+export async function query_objlist(qstr, olist, use_invlet = false) {
     const { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
             tty_display_nhwindow, tty_select_menu, tty_destroy_nhwindow,
             ATR_NONE, ATR_INVERSE, NHW_MENU } = await import('./tty/wintty.js');
@@ -302,11 +302,12 @@ async function query_objlist(qstr, olist) {
             /* the first coin entry keeps GOLD_SYM as its selector
                (query_objlist: "(first && oclass == COIN_CLASS) ?
                GOLD_SYM : 0"); everything else auto-assigns letters */
-            const sel = (first_of_class && oclass === OCLASSES.COIN_CLASS)
-                        ? '$' : let_;
+            const sel = use_invlet ? o.invlet
+                        : (first_of_class && oclass === OCLASSES.COIN_CLASS)
+                          ? '$' : let_;
             tty_add_menu(win, null, id, sel, 0, ATR_NONE,
                          NO_COLOR, doname(o), MENU_ITEMFLAGS_NONE);
-            if (sel !== '$')
+            if (!use_invlet && sel !== '$')
                 let_ = String.fromCharCode(let_.charCodeAt(0) + 1);
             first_of_class = false;
             id++;
@@ -566,7 +567,7 @@ export function add_valid_menu_class(c) {
 
 /* src/pickup.c:523 allow_category() — see the C's long comment: with more
    than one filter TYPE active, an object must match one entry of EACH type */
-function allow_category(obj) {
+export function allow_category(obj) {
     if (!class_filter && !shop_filter && !bucx_filter && !picked_filter)
         return false;
 
@@ -769,6 +770,14 @@ async function query_category(qstr, olist, qflags) {
     tty_destroy_nhwindow(win);
     await docrt();
     return picks;
+}
+
+// src/do.c:994 menu_drop() category flags for MENU_FULL.
+export async function query_drop_categories(olist) {
+    return query_category(
+        'Drop what type of items?', olist,
+        UNPAID_TYPES | ALL_TYPES | CHOOSE_ALL | BUC_BLESSED | BUC_CURSED
+        | BUC_UNCURSED | BUC_UNKNOWN | JUSTPICKED | INCLUDE_VENOM);
 }
 
 // src/pickup.c:1705 lift_object() — the reachable slice: ordinary items

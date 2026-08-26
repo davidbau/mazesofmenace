@@ -77,7 +77,7 @@ import {
     canspotmon as display_canspotmon, sensemon, Norep, verbalize,
 } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
-import { worm_move, worm_nomove, see_wsegs } from './worm.js';
+import { worm_move, worm_nomove, see_wsegs, worm_known } from './worm.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { tactics } from './wizard.js';
 import { rn2, rnd, d } from './rng.js';
@@ -963,10 +963,16 @@ function unblock_door(here, mtmp, what, didseeit) {
 
 /**
  * C ref: display.h canseemon / canspotmon stubs for door feedback.
- * infrared/invis/worm deferred — lit cansee + !minvis stand-in.
+ * infrared/invis deferred — lit cansee + !minvis stand-in; worm_known
+ * when wormno (D-1548).
  */
 function canseemon(mtmp) {
-    if (!mtmp?.mx) return false;
+    if (!mtmp) return false;
+    if (mtmp.wormno) {
+        if (!worm_known(mtmp)) return false;
+        return !mtmp.minvis;
+    }
+    if (!mtmp.mx) return false;
     if (!cansee(mtmp.mx, mtmp.my)) return false;
     return !mtmp.minvis;
 }

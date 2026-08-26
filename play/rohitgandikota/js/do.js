@@ -20,13 +20,15 @@ import { cls, pline, newsym } from './display.js';
 import { pline_The, You, You_cant, You_hear, Your } from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp, check_special_room } from './hack.js';
-import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, VIBRATING_SQUARE, MAGIC_PORTAL, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE } from './const.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, VIBRATING_SQUARE, MAGIC_PORTAL, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE, BC_BALL, BC_CHAIN, MENU_FULL, ALL_TYPES_SELECTED, Is_rogue_level } from './const.js';
 import { t_at, m_at, is_pool, is_lava } from './mon.js';
 import { is_pick } from './mon.js';
 import { cansee } from './vision.js';
+import { Blind, Levitation } from './youprop.js';
 import { OCLASSES } from './objects_data.js';
 import { rn2, rnd } from './rng.js';
-import { can_reach_floor } from './pickup.js';
+import { can_reach_floor, add_valid_menu_class, allow_category,
+         query_drop_categories, query_objlist } from './pickup.js';
 import { body_part } from './polyself.js';
 
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
@@ -50,7 +52,7 @@ function note_unported_do(what) {
 }
 
 // src/ball.c:147 unplacebc_core(): detach punishment pieces from this level.
-function unplacebc() {
+export function unplacebc() {
     const u = game.u;
     const ball = u.uball;
     const chain = u.uchain;
@@ -60,15 +62,26 @@ function unplacebc() {
     if (ball.where !== OBJ_INVENT) {
         const bx = ball.ox, by = ball.oy;
         obj_extract_self(ball);
+        if (Blind() && ((u.bc_felt | 0) & BC_BALL)) {
+            const loc = game.level?.at(bx, by);
+            if (loc)
+                loc.remembered_glyph = u.bglyph;
+        }
         newsym(bx, by);
     }
     const cx = chain.ox, cy = chain.oy;
     obj_extract_self(chain);
+    if (Blind() && ((u.bc_felt | 0) & BC_CHAIN)) {
+        const loc = game.level?.at(cx, cy);
+        if (loc)
+            loc.remembered_glyph = u.cglyph;
+    }
     newsym(cx, cy);
+    u.bc_felt = 0;
 }
 
 // src/ball.c:120 placebc_core(): put punishment pieces under the arriving hero.
-async function placebc() {
+export async function placebc() {
     const u = game.u;
     const ball = u.uball;
     const chain = u.uchain;
@@ -84,6 +97,7 @@ async function placebc() {
         u.bc_order = 1; /* BCPOS_CHAIN */
     }
     place_object(chain, u.ux, u.uy);
+    u.bglyph = u.cglyph = game.level?.at(u.ux, u.uy)?.remembered_glyph;
     newsym(u.ux, u.uy);
 }
 
@@ -391,6 +405,22 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             }
         }
     }
+    /* src/do.c:1577, the Quest start level blocks every descent within the
+       same dungeon until the leader grants access. This also applies to a
+       wizard-mode level teleport selected from the dungeon overview. */
+    {
+        const qstart = game.special_levels?.qstart_level;
+        const atQstart = qstart && game.u.uz.dnum === qstart.dnum
+                         && game.u.uz.dlevel === qstart.dlevel;
+        const newdungeon = game.u.uz.dnum !== newlevel.dnum;
+        if (atQstart && !newdungeon) {
+            const { ok_to_quest } = await import('./quest.js');
+            if (!await ok_to_quest()) {
+                await pline('A mysterious force prevents you from descending.');
+                return;
+            }
+        }
+    }
     /* src/do.c:1499 — level temperature before the change, for
        temperature_change_msg() at the tail */
     const prev_temperature = game.level?.flags?.temperature | 0;
@@ -408,6 +438,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
        the pet stays behind */
     if (!game.iflags?.nofollowers)
         keepdogs(false);
+    /* src/do.c:1625, preserve the overview information from the level
+       being left before its visibility and live structures are replaced. */
+    {
+        const { recalc_mapseen } = await import('./dungeon.js');
+        recalc_mapseen();
+    }
     /* src/do.c:1634: clear old visibility after followers leave. This
        redraws their former squares while the bones prompt is onscreen. */
     {
@@ -465,6 +501,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
        "reset u.uz0" catches it up; onquest() and the arrival messages
        read it to tell a fresh arrival from a revisit. */
     game.u.uz0 = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
+    if ((at_stairs || falling || portal)
+        && game.u.uz.dnum !== newlevel.dnum) {
+        const { recbranch_mapseen } = await import('./dungeon.js');
+        recbranch_mapseen(game.u.uz, newlevel);
+    }
     game.u.uz = { dnum: newlevel.dnum, dlevel: newlevel.dlevel };
     (game.visited_ledgers ||= new Set());
 
@@ -618,8 +659,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         if (!game.u.dz) {
             ; /* stayed on same level? (no transit effects) */
         } else if (up) {
-            if (game.flags?.verbose)
-                await pline(`You ${u_locomotion('climb')} up the stairs.`);
+            const great_effort = !!game.u.uball && !Levitation();
+            if (game.flags?.verbose || great_effort) {
+                await pline(`${great_effort ? 'With great effort, you' : 'You'} `
+                            + `${u_locomotion('climb')} up the stairs.`);
+            }
         } else if (game.u.uprops?.FLYING) {
             if (game.flags?.verbose)
                 await You('fly down the stairs.');
@@ -722,6 +766,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             await pline_The('odor of burnt flesh and decay pervades the air.');
             await You_hear('groans and moans everywhere.');
         }
+        if (!wasInHell && inHell) {
+            const { ACH_HELL, record_achievement } =
+                await import('./insight.js');
+            record_achievement(ACH_HELL);
+        }
         if (inHell && !isValley)
             (game.u.uevent ||= {}).gehennom_entered = 1;
     }
@@ -763,7 +812,21 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         } else if (game.u.uz.dnum === game.quest_dnum) { /* In_quest() */
             const { onquest } = await import('./quest.js');
             await onquest();
+        } else if (game.u.uz.dnum === game.mines_dnum) {
+            if (newdungeon) {
+                const { ACH_MINE, record_achievement } =
+                    await import('./insight.js');
+                record_achievement(ACH_MINE);
+            }
+        } else if (game.u.uz.dnum === game.sokoban_dnum) {
+            if (newdungeon) {
+                const { ACH_SOKO, record_achievement } =
+                    await import('./insight.js');
+                record_achievement(ACH_SOKO);
+            }
         } else {
+            if (!familiar_level && Is_rogue_level(game.u.uz))
+                await You('enter what seems to be an older, more primitive world.');
             /* src/do.c:1918, the first arrival at the main-dungeon side
                of the Quest portal carries the leader's telepathic call. */
             const { at_dgn_entrance } = await import('./dungeon.js');
@@ -821,6 +884,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     /* src/do.c:1967 — reset u.uz0 */
     game.u.uz0 = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
+
+    /* src/do.c:1974, a saved overview annotation is repeated on arrival,
+       before room messages and the automatic pickup pass. */
+    {
+        const { print_level_annotation } = await import('./dungeon.js');
+        await print_level_annotation();
+    }
 
     /* src/do.c:1985: deliver one-time room and shop entry messages after
        all level-specific arrival messages, before pickup feedback. */
@@ -1100,6 +1170,63 @@ export async function dodrop() {
     return result;
 }
 
+// src/do.c:924 doddrop() and :980 menu_drop(), the 'D' command.
+export async function doddrop() {
+    if (!game.invent?.length) {
+        await You('have nothing to drop.');
+        return ECMD_OK;
+    }
+
+    add_valid_menu_class(0);
+    if (game.u.ushops?.length)
+        note_unported_do('doddrop:sellobj_state:DELIBERATE');
+
+    let result = ECMD_OK;
+    if ((game.flags?.menu_style ?? MENU_FULL) === MENU_FULL) {
+        let all_categories = false;
+        let drop_everything = false;
+        let autopick = false;
+        const categories = await query_drop_categories(game.invent);
+
+        for (const category of categories) {
+            if (category === ALL_TYPES_SELECTED) {
+                all_categories = true;
+            } else if (category === 'A'.charCodeAt(0)) {
+                drop_everything = autopick = true;
+            } else {
+                add_valid_menu_class(category);
+                drop_everything = false;
+            }
+        }
+
+        let dropped = 0;
+        if (autopick) {
+            for (const obj of [...game.invent]) {
+                if (drop_everything || all_categories || allow_category(obj))
+                    dropped += (await drop(obj)) === ECMD_TIME ? 1 : 0;
+            }
+        } else if (categories.length) {
+            const eligible = game.invent.filter(
+                (obj) => all_categories || allow_category(obj));
+            const objects = await query_objlist(
+                'What would you like to drop?', eligible, true);
+            for (const obj of objects) {
+                if (game.invent.includes(obj))
+                    dropped += (await drop(obj)) === ECMD_TIME ? 1 : 0;
+            }
+        }
+        result = dropped ? ECMD_TIME : ECMD_OK;
+    } else {
+        note_unported_do('doddrop:non_full_menu_style');
+    }
+
+    if (game.u.ushops?.length)
+        note_unported_do('doddrop:sellobj_state:NORMAL');
+    if (result)
+        reset_occupations();
+    return result;
+}
+
 // src/do.c:665 canletgo() — may this object leave the hero's hands?
 //
 // Five refusals, and each one's MESSAGE is suppressed when `word` is empty:
@@ -1154,13 +1281,17 @@ export function canletgo(obj, word) {
 
 // src/do.c:2325 cmd_safety_prevention() — refuse a no-op command next to a
 // spottable hostile (flags.safe_wait defaults On).
-export async function cmd_safety_prevention(ucverb, cmddesc, act) {
+export async function cmd_safety_prevention(ucverb, cmddesc, act,
+                                            flagname = 'did_nothing_flag') {
     if ((game.flags?.safe_wait ?? true) && !game.iflags?.menu_requested
         && !(game.multi ?? 0)) {
         const { monster_nearby } = await import('./hack.js');
-        /* iflags.cmdassist defaults On, so the hint suffix always prints */
-        const buf = `  Use 'm' prefix to force ${cmddesc}.`;
+        const { boolean_option } = await import('./options.js');
+        const first = !(game[flagname] | 0);
+        const buf = (boolean_option('cmdassist') || first)
+            ? `  Use 'm' prefix to force ${cmddesc}.` : '';
         if (monster_nearby()) {
+            game[flagname] = (game[flagname] | 0) + 1;
             /* C uses Norep: back-to-back refusals print only once */
             const { Norep } = await import('./pline.js');
             await Norep(`${act}${buf}`);
@@ -1168,6 +1299,7 @@ export async function cmd_safety_prevention(ucverb, cmddesc, act) {
         }
         /* danger_uprops(): Stoned/Slimed/Strangled/Sick — none tracked */
     }
+    game[flagname] = 0;
     return false;
 }
 

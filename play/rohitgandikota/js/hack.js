@@ -73,6 +73,7 @@ import { cmap_names } from './drawing_data.js';
 import { tunnels, needspick, passes_walls, passes_bars, dmgtype,
          metallivorous, throws_rocks, verysmall, bigmonst, amorphous,
          is_whirly, noncorporeal, slithy } from './mondata.js';
+import { INTRINSIC } from './const.js';
 
 // src/hack.c:922 may_dig() — intended to be called only on ROCKs or TREEs. A
 // non-diggable wall or tree cannot be tunnelled through, which is what stops
@@ -410,6 +411,41 @@ function test_move_testdiag(x, y, dx, dy, mode, Passes_walls) {
     return 'fallthru';
 }
 
+// src/hack.c:4212 maybe_wail()
+async function maybe_wail() {
+    if ((game.moves || 0) <= (game.wailmsg || 0) + 50)
+        return;
+
+    game.wailmsg = game.moves || 0;
+    const role = game.urole?.mnum;
+    const race = game.urace?.mnum;
+    const isWizard = role === 'PM_WIZARD' || role === PMNAMES.PM_WIZARD;
+    const isValkyrie = role === 'PM_VALKYRIE' || role === PMNAMES.PM_VALKYRIE;
+    const isElf = race === 'PM_ELF' || race === PMNAMES.PM_ELF;
+    if (isWizard || isValkyrie || isElf) {
+        const who = (isWizard || isValkyrie) ? game.urole.name.m : 'Elf';
+        if (game.u.uhp === 1) {
+            await pline(`${who} is about to die.`);
+        } else {
+            const powers = [
+                'HTeleportation', 'HSee_invisible', 'HPoison_resistance',
+                'HCold_resistance', 'HShock_resistance', 'HFire_resistance',
+                'HSleep_resistance', 'HDisint_resistance',
+                'HTeleport_control', 'HStealth', 'HFast', 'HInvis',
+            ];
+            const count = powers.filter(
+                key => ((game.u.intrinsic?.[key] | 0) & INTRINSIC)).length;
+            await pline(count >= 4
+                ? `${who}, all your powers will be lost...`
+                : `${who}, your life force is running out.`);
+        }
+    } else {
+        await You_hear(game.u.uhp === 1
+            ? 'the wailing of the Banshee...'
+            : 'the howling of the CwnAnnwn...');
+    }
+}
+
 // src/hack.c:4256 losehp() — the hero takes damage, and dies if it reaches 0.
 //
 // This is the main route into done(). It draws nothing itself; showdamage and
@@ -438,6 +474,8 @@ export async function losehp(n, knam, k_format) {
            done() repaints the status, so that More frame keeps the old HP. */
         await pline('You die...');
         await done(DIED);
+    } else if (n > 0 && game.u.uhp * 10 < game.u.uhpmax) {
+        await maybe_wail();
     }
 }
 
@@ -553,11 +591,27 @@ export async function check_special_room(newlev) {
             note_unported_hack('check_special_room:u_left_shop');
         return;
     }
+
+    const achieveo = ((game.context ||= {}).achieveo ||= {});
+    if (game.level?.flags?.has_town && !achieveo.minetn_reached
+        && game.u.uz.dnum === game.mines_dnum
+        && in_town(game.u.ux, game.u.uy)) {
+        const { ACH_TOWN, record_achievement } = await import('./insight.js');
+        record_achievement(ACH_TOWN);
+        achieveo.minetn_reached = true;
+    }
     if (!game.u.uentered && !game.u.ushops_entered)
         return;
 
-    if (game.u.ushops_entered)
+    if (game.u.ushops_entered) {
         await u_entered_shop(game.u.ushops_entered);
+        const seen = (game.level._mapseen_rooms ||= []);
+        for (const ch of game.u.ushops_entered) {
+            const roomno = ch.charCodeAt(0) - ROOMOFFSET;
+            if (!seen.includes(roomno))
+                seen.push(roomno);
+        }
+    }
 
     for (const ch of game.u.uentered) {
         const roomno = ch.charCodeAt(0) - ROOMOFFSET;
@@ -580,6 +634,11 @@ export async function check_special_room(newlev) {
                 game.level.flags.has_morgue = false;
         } else if (room.rtype !== OROOM) {
             note_unported_hack('check_special_room:other');
+        }
+        if (room.rtype !== OROOM) {
+            const seen = (game.level._mapseen_rooms ||= []);
+            if (!seen.includes(roomno))
+                seen.push(roomno);
         }
     }
 }

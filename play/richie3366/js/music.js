@@ -33,7 +33,7 @@ import {
     Is_stronghold, ACH_TUNE, isok,
 } from './const.js';
 import { A_WIS, A_DEX, acurr, exercise, Fumbling } from './attrib.js';
-import { cxname, an, xname, The, the } from './objnam.js';
+import { cxname, an, xname, The, the, otense } from './objnam.js';
 import {
     mindless, G_UNIQ, is_flyer, is_clinger, humanoid, is_hider, nolimbs,
     M1_SLITHY, is_mercenary, MR_SLEEP,
@@ -275,16 +275,6 @@ function Blind() {
     return !!((u.HBlind | 0) || (u.EBlind | 0) || u.Blind);
 }
 
-/** C ref: objnam.c otense subset — singular 3sg; quan≠1 keeps base. */
-function otense(obj, verb) {
-    if (!verb) return '';
-    if ((obj?.quan | 0) !== 1) return verb;
-    if (/[sxz]$/.test(verb) || /(?:ch|sh)$/.test(verb)) return `${verb}es`;
-    if (/[^aeiou]y$/.test(verb)) return `${verb.slice(0, -1)}ies`;
-    return `${verb}s`;
-}
-
-/** C ref: objnam.c Tobjnam — The(xname) + optional otense verb. */
 function Tobjnam(obj, verb) {
     const bp = The(xname(obj));
     return verb ? `${bp} ${otense(obj, verb)}` : bp;

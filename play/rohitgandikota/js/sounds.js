@@ -27,7 +27,7 @@ import { pline_The, You, You_hear } from './pline.js';
 import { pline } from './display.js';
 import { Monnam } from './do_name.js';
 import { vtense } from './objnam.js';
-import { wake_nearto } from './mon.js';
+import { wake_nearto_with_messages } from './mon.js';
 import { nomul } from './hack.js';
 import { poly_gender } from './polyself.js';
 
@@ -201,13 +201,15 @@ export async function dochat() {
     if (!await getdir('Talk to whom? (in what direction)'))
         return ECMD_OK; /* ECMD_CANCEL */
 
-    /* src/sounds.c — chatting downward, at yourself, or at empty air all
-       return without a turn; only domonnoise() on a real monster can take one,
-       and that needs the monster-sound tables. */
-    if (game.u.dz)
+    /* src/sounds.c:1309/:1321, neither direction consumes a turn. */
+    if (game.u.dz) {
+        await pline(`They won't hear you ${game.u.dz < 0 ? 'up' : 'down'} there.`);
         return ECMD_OK;
-    if (game.u.dx === 0 && game.u.dy === 0)
+    }
+    if (game.u.dx === 0 && game.u.dy === 0) {
+        await pline('Talking to yourself is a bad habit for a dungeoneer.');
         return ECMD_OK;
+    }
 
     const tx = game.u.ux + game.u.dx, ty = game.u.uy + game.u.dy;
     if (!isok(tx, ty))
@@ -488,7 +490,8 @@ export async function growl(mtmp) {
                 nomul(0);
         }
         /* OUTSIDE the canseemon check on purpose */
-        wake_nearto(mtmp.mx, mtmp.my, game.mons[mtmp.mnum].mlevel * 18);
+        await wake_nearto_with_messages(
+            mtmp.mx, mtmp.my, game.mons[mtmp.mnum].mlevel * 18);
     }
 }
 
@@ -529,7 +532,8 @@ export async function yelp(mtmp) {
         await pline(`${Monnam(mtmp)} ${vtense(null, yelp_verb)}!`);
         if (game.context?.run)
             nomul(0);
-        wake_nearto(mtmp.mx, mtmp.my, game.mons[mtmp.mnum].mlevel * 12);
+        await wake_nearto_with_messages(
+            mtmp.mx, mtmp.my, game.mons[mtmp.mnum].mlevel * 12);
     }
 }
 

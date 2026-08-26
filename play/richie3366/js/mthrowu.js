@@ -22,6 +22,7 @@ import {
     Has_contents,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
+import { worm_known } from './worm.js';
 import {
     place_object, splitobj, stackobj, obj_extract_self, delobj, objects_at,
     mksobj, weight, is_flammable,
@@ -216,12 +217,14 @@ function sobj_at(otyp, x, y) {
 }
 
 /**
- * C ref: display.h _canseemon — cansee/infrared + mon_visible (worms deferred).
+ * C ref: display.h _canseemon — wormno ? worm_known : cansee||infrared.
  */
 function canseemon(mtmp) {
     if (!mtmp) return false;
-    if (!(cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp))) return false;
-    return mon_visible(mtmp);
+    const loc_seen = mtmp.wormno
+        ? worm_known(mtmp)
+        : (cansee(mtmp.mx, mtmp.my) || see_with_infrared(mtmp));
+    return loc_seen && mon_visible(mtmp);
 }
 
 /** C ref: zap.c exclam — punctuation by damage force. */

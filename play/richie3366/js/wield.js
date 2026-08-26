@@ -23,7 +23,7 @@ import {
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
-import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count } from './invent.js';
+import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq } from './invent.js';
 import { uncurse, weight } from './mkobj.js';
 import { trycall } from './do_name.js';
 
@@ -448,9 +448,15 @@ function wield_prompt_lets(raw) {
  * C ref: invent.c getobj("wield", wield_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
  * Hands GETOBJ_SUGGEST → buf prefix "- "; invent SUGGEST letters after;
  * compactify when suggested > 5. Count prefix + split_otmp live.
- * finish_splitting / unsplitobj / ?/* pickinv named.
+ * Canned CMDQ_INT/KEY live. finish_splitting / unsplitobj / ?/* named.
  */
 async function getobj_wield() {
+    const cq = getobj_from_cmdq(wield_ok, true, hands_obj);
+    if (!cq.skip) {
+        if (!cq.otmp) return undefined;
+        if (cq.otmp === hands_obj || cq.otmp._hands) return null;
+        return cq.otmp;
+    }
     for (;;) {
         await flush_topl_more();
         const rawLets = wield_suggest_lets();
@@ -584,9 +590,15 @@ function ready_suggest_lets() {
 /**
  * C ref: invent.c getobj(verb, ready_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
  * Count prefix + split_otmp live; '-' → hands_obj; DOWNPLAY letters still
- * accepted. finish_splitting / unsplitobj / coin partial named.
+ * accepted. Canned CMDQ_INT/KEY live. finish_splitting / unsplitobj /
+ * coin partial named.
  */
 async function getobj_ready(verb) {
+    const cq = getobj_from_cmdq(ready_ok, true, hands_obj);
+    if (!cq.skip) {
+        if (!cq.otmp) return undefined;
+        return cq.otmp;
+    }
     for (;;) {
         await flush_topl_more();
         const lets = ready_suggest_lets();

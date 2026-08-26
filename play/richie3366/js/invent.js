@@ -18,7 +18,7 @@ import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
     endgamelevelname, obj_glyph, suppress_map_output, clear_nhwindow_message,
 } from './display.js';
-import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname } from './objnam.js';
+import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, set_not_fully_identified } from './objnam.js';
 import { yn_function } from './getline.js';
 import { mergable, is_damageable, stop_timer, splitobj } from './mkobj.js';
 import { cansee } from './vision.js';
@@ -72,6 +72,15 @@ import {
     Is_rogue_level,
     thats_enough_tries,
     LARGEST_INT,
+    HANDS_SYM,
+    GETOBJ_EXCLUDE,
+    GETOBJ_SUGGEST,
+    GETOBJ_DOWNPLAY,
+    CMDQ_KEY,
+    CMDQ_EXTCMD,
+    CMDQ_USER_INPUT,
+    CMDQ_INT,
+    CQ_REPEAT,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -126,7 +135,7 @@ import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { PM_SAMURAI, PM_MONK } from './generated/monsters_data.js';
 import { humanoid, strongmonst } from './monsters.js';
-import { set_artifact_intrinsic } from './artifact.js';
+import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact } from './artifact.js';
 
 // C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
 const MZ_HUMAN = 2;
@@ -734,8 +743,7 @@ function is_weptool_obj(obj) {
 
 /**
  * C ref: objnam.c not_fully_identified.
- * Named omissions: undiscovered_artifact (always treated discovered);
- * MAIL_STRUCTURES SCR_MAIL bknown skip when SCR_MAIL absent.
+ * Named omissions: MAIL_STRUCTURES SCR_MAIL bknown skip when SCR_MAIL absent.
  */
 export function not_fully_identified(otmp) {
     if (!otmp) return false;
@@ -750,7 +758,9 @@ export function not_fully_identified(otmp) {
         || (!otmp.lknown && Is_box(otmp))) {
         return true;
     }
-    // oartifact undiscovered_artifact deferred — skip artifact gate
+    if (otmp.oartifact && undiscovered_artifact(otmp.oartifact)) {
+        return true;
+    }
     if (otmp.rknown
         || (otmp.oclass !== ARMOR_CLASS && otmp.oclass !== WEAPON_CLASS
             && !is_weptool_obj(otmp)
@@ -760,6 +770,7 @@ export function not_fully_identified(otmp) {
     // lack of rknown only matters for damageable objects
     return is_damageable(otmp);
 }
+set_not_fully_identified(not_fully_identified);
 
 /** C ref: invent.c set_cknown_lknown */
 export function set_cknown_lknown(obj) {
@@ -773,12 +784,12 @@ export function set_cknown_lknown(obj) {
 
 /**
  * C ref: invent.c fully_identify_obj.
- * Named omissions: discover_artifact; learn_egg_type.
+ * Named omissions: learn_egg_type.
  */
 export function fully_identify_obj(otmp) {
     if (!otmp) return;
     makeknown(otmp.otyp);
-    // discover_artifact deferred
+    if (otmp.oartifact) discover_artifact(otmp.oartifact);
     observe_object(otmp);
     otmp.known = otmp.bknown = otmp.rknown = 1;
     set_cknown_lknown(otmp);
@@ -3772,9 +3783,114 @@ export function getobj_split_otmp(otmp, cntgiven, cnt) {
 }
 
 /**
+ * C cmd.c cmdq_add_int. CQ_REPEAT is `game._cmdq_repeat` (in_doagain
+ * named). Interactive getobj REPEAT record named.
+ * @param {number} q CQ_CANNED or CQ_REPEAT
+ * @param {number} val
+ */
+export function cmdq_add_int(q, val) {
+    const name = (q | 0) === CQ_REPEAT ? '_cmdq_repeat' : '_cmdq_canned';
+    if (!game[name]) game[name] = [];
+    game[name].push({ typ: CMDQ_INT, intval: val | 0 });
+}
+
+/** C cmd.c cmdq_pop — in_doagain uses CQ_REPEAT, else CQ_CANNED. */
+function cmdq_pop_getobj() {
+    const name = game.in_doagain ? '_cmdq_repeat' : '_cmdq_canned';
+    const q = game[name];
+    if (!q || !q.length) return null;
+    return q.shift();
+}
+
+function cmdq_clear_canned() {
+    game._cmdq_canned = [];
+}
+
+function cmdq_key_char(head) {
+    if (typeof head.key === 'string') return head.key;
+    if (typeof head.key === 'number') return String.fromCharCode(head.key);
+    return '';
+}
+
+function getobj_cmdq_rank_ok(v) {
+    return v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY;
+}
+
+/**
+ * C invent.c getobj need_more_cq `:1778–1830`. CMDQ_INT (partial stack)
+ * then CMDQ_KEY. !allowcnt or a second INT → cmdq_clear(CQ_CANNED), NULL.
+ * C's `need_more_cq` boolean is never set TRUE, so INT without a
+ * following KEY falls through to interactive. USER_INPUT is consumed
+ * then interactive. JS function / CMDQ_EXTCMD heads are rhack's — do
+ * not pop them here. in_doagain REPEAT record named.
+ * @param {(obj: object|null) => number} obj_ok
+ * @param {boolean} allowcnt
+ * @param {object|null} [hands] C `&hands_obj` when '-' is acceptable
+ * @returns {{ skip: true } | { skip: false, otmp: object|null }}
+ */
+export function getobj_from_cmdq(obj_ok, allowcnt, hands) {
+    let cntgiven = false;
+    let cnt = 0;
+    for (;;) {
+        const head = (() => {
+            const name = game.in_doagain ? '_cmdq_repeat' : '_cmdq_canned';
+            const q = game[name];
+            if (!q?.length) return undefined;
+            return q[0];
+        })();
+        if (head === undefined) {
+            return { skip: true };
+        }
+        if (typeof head === 'function' || head?.typ === CMDQ_EXTCMD) {
+            return { skip: true };
+        }
+        if (!head || typeof head !== 'object') {
+            return { skip: true };
+        }
+        cmdq_pop_getobj();
+        if (head.typ === CMDQ_USER_INPUT) {
+            return { skip: true };
+        }
+        let otmp = null;
+        const isKey = head.typ === 'key' || head.typ === CMDQ_KEY;
+        const isInt = head.typ === 'int' || head.typ === CMDQ_INT;
+        if (isKey) {
+            const ch = cmdq_key_char(head);
+            if (ch === HANDS_SYM) {
+                if (getobj_cmdq_rank_ok(obj_ok(null))) otmp = hands ?? null;
+            } else {
+                for (const o of game.invent || []) {
+                    if (o.invlet === ch && getobj_cmdq_rank_ok(obj_ok(o))) {
+                        otmp = o;
+                        break;
+                    }
+                }
+            }
+        } else if (isInt) {
+            if (!cntgiven && allowcnt) {
+                cnt = head.intval | 0;
+                cntgiven = true;
+                continue;
+            }
+            cmdq_clear_canned();
+            return { skip: false, otmp: null };
+        }
+        if (!otmp) {
+            cmdq_clear_canned();
+            return { skip: false, otmp: null };
+        }
+        if (cntgiven) {
+            if (cnt < 1 || (otmp.quan || 1) <= cnt) cntgiven = false;
+            return { skip: false, otmp: getobj_split_otmp(otmp, cntgiven, cnt) };
+        }
+        return { skip: false, otmp };
+    }
+}
+
+/**
  * C invent.c getobj after the letter `:2021–2088` — gold LRS, throw-one,
- * "don't have that many", then split_otmp. CMDQ_REPEAT / silly_thing /
- * pickinv count / canned CMDQ_INT named.
+ * "don't have that many", then split_otmp. CMDQ_REPEAT record /
+ * silly_thing / pickinv `&ctmp` named.
  * @returns {Promise<null | { retry: true } | object>}
  */
 export async function getobj_apply_count(otmp, word, cntgiven, cnt) {
@@ -3812,6 +3928,12 @@ export async function getobj_apply_count(otmp, word, cntgiven, cnt) {
     return getobj_split_otmp(otmp, cntgiven, cnt);
 }
 
+/** C invent.c adjust_ok `:4916–4923`. */
+function adjust_ok(obj) {
+    if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+    return GETOBJ_SUGGEST;
+}
+
 /** Suggest letters for #adjust getobj (excludes gold). */
 function adjust_suggest_lets() {
     const lets = [];
@@ -3828,10 +3950,12 @@ function adjust_suggest_lets() {
 
 /**
  * C ref: invent.c getobj("adjust", adjust_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * Count prefix + split_otmp live. ?/* invent menus still deferred.
- * doorganize_core nobj splitting / unsplitobj on cancel named.
+ * Count prefix + split_otmp live. Canned CMDQ_INT/KEY live.
+ * ?/* invent menus still deferred. doorganize_core nobj-unsplit named.
  */
 async function getobj_adjust() {
+    const cq = getobj_from_cmdq(adjust_ok, true);
+    if (!cq.skip) return cq.otmp;
     for (;;) {
         await flush_topl_more();
         const lets = adjust_suggest_lets();

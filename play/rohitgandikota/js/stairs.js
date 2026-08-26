@@ -45,11 +45,13 @@ export function stairs_description(sway, stcase) {
         /* ordinary stairs or branch stairs to not-yet-visited branch */
         outbuf = `${stairs} ${updown}`;
         if (sway.u_traversed) {
-            /* depth(&tolev): dnum 0 is the main dungeon where depth ==
-               dlevel; other dungeons need the depth table */
-            if ((tolev.dnum ?? 0) !== 0)
-                note_unported_stairs('stairs_description:depth_branch');
-            outbuf += ` to level ${tolev.dlevel}`;
+            const dgn = game.dungeons?.[tolev.dnum];
+            const specialDepth = tolev.dnum === game.quest_dnum
+                || dgn?.num_dunlevs === 1;
+            const shownLevel = specialDepth
+                ? tolev.dlevel
+                : (dgn?.depth_start ?? 1) + tolev.dlevel - 1;
+            outbuf += ` to level ${shownLevel}`;
         }
     } else if (uz.dnum === 0 && uz.dlevel === 1 && sway.up) {
         /* stairs up from level one are a special case; the remote side
@@ -65,8 +67,10 @@ export function stairs_description(sway, stcase) {
         }
     } else {
         /* known branch stairs; destination dungeon name */
-        note_unported_stairs('stairs_description:branch_dname');
-        outbuf = `branch ${stairs} ${updown}`;
+        let dname = game.dungeons?.[tolev.dnum]?.dname || 'unknown dungeon';
+        if (dname.startsWith('The '))
+            dname = `the ${dname.slice(4)}`;
+        outbuf = `branch ${stairs} ${updown} to ${dname}`;
     }
     return outbuf;
 }

@@ -35,6 +35,8 @@ import { pmname, x_monnam } from './do_name.js';
 import { defsyms } from './drawing_data.js';
 import { is_boots, is_gloves } from './obj.js';
 import { splitobj } from './mkobj.js';
+import { nohands } from './mondata.js';
+import { check_capacity } from './hack.js';
 
 function note_unported_apply(what) {
     (game.unported ||= new Set()).add(what);
@@ -365,6 +367,13 @@ async function use_stethoscope(obj) {
 
 // src/apply.c doapply() — the 'a' command.
 export async function doapply() {
+    if (nohands(game.youmonst.data)) {
+        await You("aren't able to use or apply tools in your current form.");
+        return ECMD_OK;
+    }
+    if (await check_capacity(null))
+        return ECMD_OK;
+
     const obj = await getobj('use or apply', apply_ok, 0);
 
     if (!obj)

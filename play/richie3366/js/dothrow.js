@@ -50,7 +50,7 @@ import {
     setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
-import { calc_capacity, fully_identify_obj, encumber_msg, getobj_take_count, getobj_apply_count } from './invent.js';
+import { calc_capacity, fully_identify_obj, encumber_msg, getobj_take_count, getobj_apply_count, getobj_from_cmdq } from './invent.js';
 import { add_to_minv, mpickobj } from './makemon.js';
 import { finish_quest } from './quest.js';
 import { align_gname } from './roles.js';
@@ -67,7 +67,7 @@ import {
 } from './generated/monsters_data.js';
 import {
     xname, killer_xname, singular, an, the, vtense, doname, thesimpleoname,
-    makeplural,
+    makeplural, otense,
 } from './objnam.js';
 import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond } from './mon.js';
 import { mon_nam, Monnam, hliquid, Hallucination } from './do_name.js';
@@ -298,24 +298,11 @@ function throwable_lets() {
  * C ref: invent.c getobj("throw", throw_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT).
  * Count prefix: gold may use a count; other stacks can only throw one
  * (C `:2028–2047`) then split_otmp. `?`/`*` → display_pickinv_reply.
- * CMDQ_KEY from itemactions / fireassist consumed before interactive prompt.
- * Canned CMDQ_INT named.
+ * Canned CMDQ_INT then KEY (need_more_cq) live; canned skip throw-one.
  */
 async function getobj_throw() {
-    // C getobj: cmdq_pop CMDQ_KEY before interactive prompt
-    const q = game._cmdq_canned;
-    if (q?.length) {
-        const head = q[0];
-        if (head && typeof head === 'object' && head.typ === 'key') {
-            q.shift();
-            const ch = String.fromCharCode(head.key);
-            for (const o of game.invent || []) {
-                if (o.invlet === ch && throw_ok(o)) return o;
-            }
-            game._cmdq_canned = [];
-            return null;
-        }
-    }
+    const cq = getobj_from_cmdq(throw_ok, true);
+    if (!cq.skip) return cq.otmp;
 
     for (;;) {
         await flush_topl_more();
@@ -437,12 +424,6 @@ function befriend_with_obj(ptr, obj) {
         return obj.otyp === CORPSE && (obj.corpsenm | 0) === PM_LICHEN;
     }
     return true;
-}
-
-/** C ref: objnam.c otense — plural verb if xname(obj) would be plural. */
-function otense(obj, verb) {
-    if ((obj?.quan | 0) !== 1) return verb; // quan≠1 → plural form (C is_plural)
-    return vtense(null, verb);
 }
 
 function The(str) {

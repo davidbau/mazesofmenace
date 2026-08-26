@@ -8,17 +8,17 @@
 // changes the number of draws, not just their values.
 
 import { game } from './gstate.js';
-import { new_light_source, LS_MONSTER } from './light.js';
+import { new_light_source, LS_OBJECT, LS_MONSTER } from './light.js';
 import { ARM_BONUS } from './do_wear.js';
 import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire } from './worm.js';
 import { newcham, mon_wire_cham } from './mon.js';
 import { weight as weight_fn, sobj_at } from './invent.js';
-import { In_mines } from './const.js';
+import { In_mines, Is_rogue_level } from './const.js';
 import { Levitation, Flying } from './youprop.js';
 import { closed_door } from './cmd.js';
 import { may_passwall } from './hack.js';
 import { sengr_at } from './engrave.js';
-import { rndghostname, christen_monst } from './do_name.js';
+import { rndghostname, christen_monst, y_monnam } from './do_name.js';
 import { m_dowear } from './worn.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
@@ -30,22 +30,23 @@ import { depth } from './dungeon.js';
 import { next_ident, mksobj, mkobj, place_object, curse, rnd_class, can_be_hatched } from './mkobj.js';
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
-import { canspotmon, newsym } from './display.js';
+import { canseemon, canspotmon, newsym } from './display.js';
 import { cansee, does_block, block_point } from './vision.js';
 import { COLNO, ROWNO, MFAST } from './const.js';
 import { attacktype, is_neuter, is_floater, emits_light, likes_lava,
          amorphous, throws_rocks, haseyes, is_flyer, is_whirly,
-         noncorporeal } from './mondata.js';
+         noncorporeal, locomotion } from './mondata.js';
 import { is_vampshifter } from './monst.js';
 import { t_at, is_pool, is_lava, m_in_air, resists_ston } from './mon.js';
 import { touch_petrifies } from './mondata.js';
 import { can_hide_under_obj } from './monmove.js';
 import { couldsee } from './vision.js';
-import { is_pit, OBJ_FLOOR } from './const.js';
+import { is_pit, OBJ_FLOOR, PLNMSG_HIDE_UNDER } from './const.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U, GP_CHECKSCARY, GP_AVOID_MONPOS, MM_IGNORELAVA,
     IS_WATERWALL, IS_ALTAR, Is_waterlevel, Is_airlevel, Is_firelevel,
-    Is_earthlevel, Is_astralevel, In_endgame as In_endgame_uz } from './const.js';
+    Is_earthlevel, Is_astralevel, In_sokoban,
+    In_endgame as In_endgame_uz } from './const.js';
 import { enexto_core, enexto, noteleport_level } from './teleport.js';
 import { mon_track_clear, onscary } from './monmove.js';
 /* questpgr.js has no imports back into makemon.js at module level except
@@ -669,6 +670,9 @@ export { mpickobj };
 function m_initinv(mtmp) {
     const ptr = mtmp.data;
 
+    if (Is_rogue_level(game.u.uz))
+        return;
+
     switch (ptr.mlet) {
     case S_NYMPH:
         if (!rn2(2))
@@ -846,8 +850,17 @@ function m_initinv(mtmp) {
                                        : ONAMES.WAX_CANDLE, true, false);
             otmp.quan = 1;
             otmp.owt = weight_fn(otmp);
-            if (!mpickobj(mtmp, otmp) && !game.level.at(mtmp.mx, mtmp.my)?.lit)
-                note_unported('m_initinv:begin_burn');
+            if (!mpickobj(mtmp, otmp)
+                && !game.level.at(mtmp.mx, mtmp.my)?.lit) {
+                /* src/timeout.c:1712 begin_burn(). A single candle has
+                   radius 2. Its 125- or 325-turn burn timer is longer than
+                   level-generation arrivals need, but the active object
+                   light source must exist immediately. */
+                otmp.lamplit = 1;
+                new_light_source(mtmp.mx, mtmp.my, 2, LS_OBJECT, otmp.o_id);
+                game.vision_full_recalc = 1;
+                note_unported('m_initinv:begin_burn_timer');
+            }
         }
         break;
     default:
@@ -1211,7 +1224,7 @@ function mkobj_at(oclass, x, y, artif) {
 // No draws; the messages need seeit, which is 0 during mklev. This was a
 // stub that always set mundetected = 0, so a swamp snake created over its
 // starter object stood in plain sight where C's is hidden.
-export function hideunder(mtmp) {
+export function hideunder(mtmp, defer_newsym = false) {
     let undetected = false;
     const x = mtmp.mx, y = mtmp.my;
     const ptr = game.mons[mtmp.mnum];
@@ -1255,6 +1268,43 @@ export function hideunder(mtmp) {
 
     const oldundetctd = !!mtmp.mundetected;
     mtmp.mundetected = undetected ? 1 : 0;
+    if (undetected !== oldundetctd && !defer_newsym)
+        newsym(x, y);
+    return undetected;
+}
+
+// src/mon.c:4726 hideunder(), including its runtime visibility message.
+// Delaying newsym until after You_see() preserves the tty image beneath a
+// --More-- prompt when the new message first has to flush an older one.
+export async function hideunder_with_message(mtmp) {
+    const x = mtmp.mx, y = mtmp.my;
+    const ptr = game.mons[mtmp.mnum];
+    const seeit = !game.in_mklev && canseemon(mtmp);
+    const seenmon = seeit ? y_monnam(mtmp) : null;
+    let seenobj = null, locomo = null;
+
+    if (seeit && ptr.mlet === MONSYMS.S_EEL) {
+        seenobj = 'the water';
+        locomo = 'dive';
+    } else if (seeit && (ptr.mflags1 & MFLAGS.M1_CONCEAL) !== 0) {
+        const shelter = (game.level?.objects || []).find(
+            (o) => o.ox === x && o.oy === y
+                && (o.where === undefined || o.where === OBJ_FLOOR));
+        if (shelter) {
+            const { ansimpleoname } = await import('./objnam.js');
+            seenobj = ansimpleoname(shelter);
+        }
+    }
+
+    const oldundetctd = !!mtmp.mundetected;
+    const undetected = hideunder(mtmp, true);
+    if (undetected && seenmon && seenobj) {
+        const { You_see, set_msg_xy } = await import('./pline.js');
+        set_msg_xy(x, y);
+        await You_see(`${seenmon} ${locomo || locomotion(ptr, 'hide')} under ${seenobj}.`);
+        (game.iflags ||= {}).last_msg = PLNMSG_HIDE_UNDER;
+        (game.gl ||= {}).last_hider = mtmp.m_id;
+    }
     if (undetected !== oldundetctd)
         newsym(x, y);
     return undetected;
@@ -1402,6 +1452,7 @@ export function set_mimic_sym(mtmp) {
         mtmp.mcorpsenm = mndx;
     } else if (ap_type === M_AP_OBJECT && appear === ONAMES.SLIME_MOLD) {
         mtmp.mcorpsenm = game.context.current_fruit;
+        game.flags.made_fruit = true;
     } else if (ap_type === M_AP_FURNITURE && appear === MONSYMS.S_altar) {
         const algn = rn2(3) - 1; /* -1 chaos, 0 neutral, +1 law */
         const inhell = game.u?.uz?.dnum === game.hell_dnum;
@@ -2019,7 +2070,10 @@ export function makemon(ptr, x, y, mmflags) {
         do {
             if (!(ptr = rndmonst()))
                 return null;
-        } while (++tryct <= 50 && !goodpos(x, y, { data: ptr, wormno: 0 }));
+        } while (++tryct <= 50
+                 && ((tryct === 1 && throws_rocks(ptr)
+                      && In_sokoban(game.u.uz))
+                     || !goodpos(x, y, { data: ptr, wormno: 0 })));
         mndx = monsndx(ptr);
     }
     propagate(mndx, countbirth, false);

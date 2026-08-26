@@ -19,8 +19,10 @@ import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WE
          ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE, STRAT_WAITMASK,
          MSLOW, MFAST, A_NONE, TIMEOUT, W_ARM, W_ARMC, W_ARMH, W_ARMS,
          W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_RINGL, W_RINGR,
-         W_WEP, W_TOOL, W_ARMOR, W_ACCESSORY, W_ART } from './const.js';
-import { makeplural, minimal_xname, suit_simple_name } from './objnam.js';
+         W_WEP, W_TOOL, W_ARMOR, W_ACCESSORY, W_ART,
+         LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, LEG } from './const.js';
+import { makeplural, minimal_xname, simpleonames,
+         suit_simple_name } from './objnam.js';
 import { weapon_descr, weapon_type, skill_name, skill_level_name, P_SKILL, can_advance } from './weapon.js';
 import { empty_handed, is_ammo } from './wield.js';
 import { magic_negation } from './mhitu.js';
@@ -31,7 +33,7 @@ function note_unported_insight(what) {
 import { depth, dunlev, endgamelevelname } from './dungeon.js';
 import { In_endgame, In_quest, Is_knox_level } from './const.js';
 import { aligns } from './role_data.js';
-import { A_MAX } from './attrib.js';
+import { A_MAX, ACURR } from './attrib.js';
 import { hu_stat, rank_of } from './botl.js';
 import { money_cnt } from './invent.js';
 import { costly_spot } from './shk.js';
@@ -50,6 +52,7 @@ import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Infravision, Deaf, Hallucination, Halluc_resistance,
          Reflecting } from './youprop.js';
 import { artifact_names } from './artilist_data.js';
+import { body_part } from './polyself.js';
 
 const EXTRINSIC_KEYS = {
     HFire_resistance: 'FIRE_RES',
@@ -65,6 +68,8 @@ const EXTRINSIC_KEYS = {
     HInfravision: 'INFRAVISION',
     HTelepat: 'TELEPAT',
     HStealth: 'STEALTH',
+    HDisplaced: 'DISPLACED',
+    HJumping: 'JUMPING',
     HTeleport_control: 'TELEPORT_CONTROL',
     HFast: 'FAST',
     HReflecting: 'REFLECTING',
@@ -83,7 +88,8 @@ function from_what(abilKey) {
             return ' because of a potion or spell';
         if ((mask & W_ARMF) && game.u.uarmf?.dknown
             && game.objects[game.u.uarmf.otyp]?.oc_name_known)
-            return ` because of your ${minimal_xname(game.u.uarmf)}`;
+            return ` because of your ${minimal_xname(game.u.uarmf)
+                .replace(/\bpair of /i, '')}`;
         if (mask)
             return ' because of worn equipment';
     }
@@ -147,7 +153,15 @@ const out = (buf) => lines.push(buf);
 export const ENL_GAMEINPROGRESS = 0, ENL_GAMEOVERALIVE = 1,
              ENL_GAMEOVERDEAD = 2;
 export const BASICENLIGHTENMENT = 1, MAGICENLIGHTENMENT = 2;
+export const ACH_HELL = 2, ACH_MINE = 15, ACH_TOWN = 16,
+             ACH_SOKO = 21, ACH_RNK1 = 23;
 let en_final = 0;
+
+export function record_achievement(achidx) {
+    const achieved = (game.u.uachieved ||= []);
+    if (!achieved.some((entry) => Math.abs(entry) === Math.abs(achidx)))
+        achieved.push(achidx);
+}
 
 // src/insight.c:135 enlght_line()
 const CONTRACTIONS = [
@@ -364,8 +378,8 @@ function attrval(attrindx, attrvalue) {
 }
 
 function one_characteristic(attrindx) {
-    const acurrent = game.u.acurr.a[attrindx];
-    const abase = acurrent, apeak = game.u.amax.a[attrindx];
+    const acurrent = ACURR(attrindx);
+    const abase = game.u.acurr.a[attrindx], apeak = game.u.amax.a[attrindx];
     const alimit = game.urace.attrmax[attrindx];
     let valubuf = attrval(attrindx, acurrent);
 
@@ -414,6 +428,29 @@ function status_enlightenment() {
 
     if (Hallucination())
         you_are('hallucinating');
+
+    if (game.u.uprops?.PUNISHED) {
+        const punishment = game.u.uball
+            ? `chained to ${an(simpleonames(game.u.uball))}`
+            : 'punished';
+        you_are(punishment);
+    }
+
+    if (((game.u.intrinsic?.HWounded_legs | 0) > 0
+         || (game.u.EWounded_legs | 0)) && !game.u.usteed) {
+        const side = (game.u.EWounded_legs | 0) & BOTH_SIDES;
+        let part = body_part(LEG);
+        let article = 'a ';
+        let which = '';
+        if (side === BOTH_SIDES) {
+            part = makeplural(part);
+            article = '';
+        } else {
+            which = side === LEFT_SIDE ? 'left '
+                  : side === RIGHT_SIDE ? 'right ' : '';
+        }
+        you_have(`${article}wounded ${which}${part}`);
+    }
 
     /* hunger: hu_stat[] is blank for the normal state. */
     let hunger = (hu_stat[game.u.uhs] || '').trim().toLowerCase();
@@ -708,10 +745,14 @@ function attributes_enlightenment() {
         you_have('infravision', from_what('HInfravision'));
 
     /*** Appearance and behavior (insight.c:1670) ***/
+    if (u.uprops?.DISPLACED)
+        you_are('displaced', from_what('HDisplaced'));
     if (Stealth())
         you_are('stealthy', from_what('HStealth'));
 
     /*** Transportation (insight.c:1688) ***/
+    if (u.intrinsic?.HJumping || u.uprops?.JUMPING)
+        you_can('jump', from_what('HJumping'));
     if (Teleport_control())
         you_have('teleport control', from_what('HTeleport_control'));
 
@@ -762,12 +803,21 @@ function attributes_enlightenment() {
             p = 'survived after being killed ';
             if (!(u.umortality | 0))
                 p = !en_final ? null : 'survived';
-            else
-                note_unported_insight('attributes:umortality_times');
+            else {
+                const n = u.umortality | 0;
+                buf = n === 1 ? 'once' : n === 2 ? 'twice'
+                    : n === 3 ? 'thrice' : `${n} times`;
+            }
         } else {
             p = 'are dead';
-            if ((u.umortality | 0) > 1)
-                note_unported_insight('attributes:umortality_ordinal');
+            if ((u.umortality | 0) > 1) {
+                const n = u.umortality | 0;
+                const mod100 = n % 100;
+                const ord = mod100 >= 11 && mod100 <= 13 ? 'th'
+                    : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd'
+                    : n % 10 === 3 ? 'rd' : 'th';
+                buf = ` (${n}${ord} time!)`;
+            }
         }
         if (p)
             enl_msg('You ', 'have been killed ', p, buf, '');
@@ -1020,10 +1070,48 @@ export async function show_conduct(final) {
         have_X(`changed form ${c.polyselfs} time${
             c.polyselfs === 1 ? '' : 's'}`);
 
-    if (!c.wishes)
+    if (!c.wishes) {
         have_X('used no wishes');
-    else
-        have_X(`used ${c.wishes} wish${c.wishes > 1 ? 'es' : ''}`);
+    } else {
+        let wishbuf = `used ${c.wishes} wish${c.wishes > 1 ? 'es' : ''}`;
+        if (c.wisharti) {
+            if (c.wisharti === c.wishes) {
+                const qualifier = c.wisharti > 2 ? 'all '
+                    : c.wisharti === 2 ? 'both ' : '';
+                wishbuf += ` (${qualifier}for ${
+                    c.wisharti === 1 ? 'an artifact' : 'artifacts'})`;
+            } else {
+                wishbuf += ` (${c.wisharti} for ${
+                    c.wisharti === 1 ? 'an artifact' : 'artifacts'})`;
+            }
+        }
+        have_X(wishbuf);
+        if (!c.wisharti)
+            cmsg('have not wished ', 'did not wish ', 'for any artifacts');
+    }
+
+    const achieved = game.u.uachieved || [];
+    if ((fin || game.wizard) && achieved.length) {
+        put('');
+        put(`Achievement${achieved.length === 1 ? '' : 's'}:`);
+        for (const signed of achieved) {
+            const ach = Math.abs(signed);
+            if (ach >= ACH_RNK1 && ach <= ACH_RNK1 + 7) {
+                const rank = ach - ACH_RNK1 + 1;
+                const xlev = rank < 2 ? 3 : rank < 8 ? rank * 4 - 2 : 30;
+                have_X(`attained the rank of ${
+                    rank_of(xlev, game.urole, signed < 0)}`);
+            } else if (ach === ACH_HELL) {
+                have_X('entered Gehennom');
+            } else if (ach === ACH_MINE) {
+                have_X('entered the Gnomish Mines');
+            } else if (ach === ACH_TOWN) {
+                have_X('entered Minetown');
+            } else if (ach === ACH_SOKO) {
+                have_X('entered Sokoban');
+            }
+        }
+    }
 
     await tty_display_nhwindow(win);
     await xwaitforspace(' \r\n\x1b');

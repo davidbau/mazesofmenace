@@ -107,9 +107,7 @@ export function hell_tweaks(protected_area) {
             selection_filter_percent(l_selection_match('.\nw\n.'), amount));
         bwalls = l_selection_and(bwalls, prot);
         l_selection_iterate(bwalls, (x, y) => {
-            /* des.terrain(x, y, ".") — the coordinate form re-applies the
-               map frame offset, sp_lev.c:5008 */
-            lspo_terrain(l_selection_setpoint(selection_new(), x, y), '.');
+            lspo_terrain(x, y, '.');
             lspo_object('boulder', x, y);
         });
     }

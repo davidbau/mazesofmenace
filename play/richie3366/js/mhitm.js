@@ -17,7 +17,7 @@ import { MON_WEP, mon_wield_item, hitval, dmgval } from './weapon.js';
 import { arti_reflects, artifact_hit, is_art, ART_GRIMTOOTH } from './artifact.js';
 import { find_mac, which_armor } from './worn.js';
 import { update_monster_region } from './region.js';
-import { remove_worm, place_worm_tail_randomly } from './worm.js';
+import { remove_worm, place_worm_tail_randomly, worm_known } from './worm.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -2017,11 +2017,12 @@ export async function mondied(mdef) {
 /**
  * C ref: mon.c monkilled — pline then mondied (or mondead if disintegested).
  * D-1244: AD_DGST / -AD_RBRE / FIRE completelyburns → mondead, no corpse.
- * Named omissions: worm_known; pet roast pline.
+ * D-1548: wormno ? worm_known : cansee(head) (`:3384–3385`).
+ * Named omissions: pet roast pline; pline_mon vs pline.
  */
 export async function monkilled(mdef, fltxt, how) {
     const txt = fltxt || '';
-    if (cansee(mdef.mx, mdef.my)) {
+    if (mdef.wormno ? worm_known(mdef) : cansee(mdef.mx, mdef.my)) {
         const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
         await pline(
             `${Monnam(mdef)} is ${verb}${txt ? ' by the ' : ''}${txt}!`,

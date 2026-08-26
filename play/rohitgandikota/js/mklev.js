@@ -151,6 +151,13 @@ const {
     LARGE_BOX,
     CHEST,
     FOOD_RATION,
+    MACE,
+    TWO_HANDED_SWORD,
+    BOW,
+    ARROW,
+    RING_MAIL,
+    PLATE_MAIL,
+    FAKE_AMULET_OF_YENDOR,
     CRAM_RATION,
     LEMBAS_WAFER,
 } = ONAMES;
@@ -172,6 +179,7 @@ import { lspo_map, lspo_region, sp_lev_wire, sp_lev_wire_mktrap,
 import { percent } from './nhlua.js';
 import { lua_shuffle } from './nhlua.js';
 import { selection_new, selection_setpoint } from './selvar.js';
+import { christen_monst, roguename } from './do_name.js';
 
 /* mktrap()'s "no traps in pools" test needs mon.js's terrain predicates, and
    mklev.js is reached FROM mon.js's import graph, so they arrive by wire.
@@ -180,7 +188,7 @@ import { selection_new, selection_setpoint } from './selvar.js';
 var mklev_mon;
 export function mklev_wire_mon(fns) { mklev_mon = fns; }
 import { depth as depth_of_level, Is_special, insert_branch } from './dungeon.js';
-import { Is_oracle_level, In_mines } from './const.js';
+import { Is_oracle_level, Is_rogue_level, In_mines } from './const.js';
 
 /* include/dungeon.h In_hell() — the Gehennom branch. js/trap.js has a private
    copy of this; C has one, and they should be consolidated. */
@@ -641,7 +649,7 @@ async function makelevel() {
     const dgn = g.dungeons?.[g.u.uz.dnum];
     const medusa = g.medusa_level;
     let special_done = false;
-    if (slev && !g.level?.flags?.is_rogue_level) {
+    if (slev && !Is_rogue_level(g.u.uz)) {
         special_done = await makemaz(slev.proto);
     } else if (dgn?.proto) {
         special_done = await makemaz('');
@@ -667,7 +675,7 @@ async function makelevel() {
            and proto levels too; makemaz FALLS THROUGH to it in C. The
            room-building middle and fill_ordinary_room are regular-only. */
         for (let i = 0; i < g.level.nroom; i++)
-            fill_special_room(g.level.rooms[i]);
+            await fill_special_room(g.level.rooms[i]);
         reset_xystart_size();
         post_level_generate();
         return;
@@ -687,7 +695,13 @@ async function makelevel() {
         g._luathemes_loaded[dnum] = true;
     }
 
-    await makerooms();
+    const rogue_level = Is_rogue_level(g.u.uz);
+    if (rogue_level) {
+        makeroguerooms();
+        makerogueghost();
+    } else {
+        await makerooms();
+    }
 
     if (g.level.nroom <= 0) return;
     sort_rooms();
@@ -700,8 +714,10 @@ async function makelevel() {
        but must not make a shop eligible. */
     let room_threshold = branchp ? 4 : 3;
 
-    makecorridors();
-    await make_niches();
+    if (!rogue_level) {
+        makecorridors();
+        await make_niches();
+    }
 
     // src/mklev.c:1317 — a secret treasure vault, not connected to anything.
     //
@@ -710,7 +726,7 @@ async function makelevel() {
     // on rnd_rect() — and with only one free rectangle left that is 100
     // consecutive rn2(1) calls with nothing between them, because a vault sets
     // dx = dy = 1 rather than rolling them.
-    if (g.vault_x !== -1) {   /* do_vault() */
+    if (!rogue_level && g.vault_x !== -1) {   /* do_vault() */
         const vw = { v: 1 }, vh = { v: 1 };
         /* C passes &gv.vault_x, and a FAILED check_room still writes through
            it, so the retry starts from the moved coordinates. */
@@ -736,7 +752,7 @@ async function makelevel() {
                 vaultRoom.needfill = FILL_NORMAL;
                 /* fills the vault with gold: one rn1(depth*100, 51) and one
                    next_ident per square */
-                fill_special_room(vaultRoom);
+                await fill_special_room(vaultRoom);
             }
             mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
             if (!g.level.flags.noteleport && !rn2(3))
@@ -755,7 +771,7 @@ async function makelevel() {
        Depth arithmetic worth keeping in mind: the shop arm's gate is
        rn2(u_depth) < 3, so at depths 2 and 3 it is ALWAYS true and a shop is
        made whenever nroom >= room_threshold. */
-    {
+    if (!rogue_level) {
         const u_depth = g.u?.uz?.dlevel ?? 1;
         const medusa_depth = g.medusa_level?.dlevel ?? 999;
 
@@ -831,7 +847,7 @@ async function makelevel() {
        this is a special level, a proto level or an ordinary one. This is a
        SECOND fill_special_room() call site; the vault above is the first. */
     for (let i = 0; i < g.level.nroom; i++)
-        fill_special_room(g.level.rooms[i]);
+        await fill_special_room(g.level.rooms[i]);
 
     /* src/mklev.c:1420 themerooms_post_level_generate() — drain the handlers
        the fills queued. It runs AFTER every room is filled, which is the point:
@@ -1825,6 +1841,10 @@ function dosdoor(x, y, aroom, type) {
         } else {
             loc.doormask = shdoor ? D_ISOPEN : D_NODOOR;
         }
+        /* src/mklev.c:640, Rogue doors are always open doorways. Doing this
+           before the trapped-door mimic check also suppresses that check. */
+        if (Is_rogue_level(game.u.uz))
+            loc.doormask = D_NODOOR;
         if (loc.doormask & D_TRAPPED) {
             if (level_difficulty() >= 9 && !rn2(5)) {
                 loc.doormask = D_NODOOR;
@@ -1969,6 +1989,240 @@ function makecorridors() {
     }
 }
 
+// src/extralev.c, Rogue levels use a 3 by 3 room grid rather than the
+// ordinary room generator.
+const XL_UP = 1, XL_DOWN = 2, XL_LEFT = 4, XL_RIGHT = 8;
+
+function roguecorr_cell(x, y) {
+    game.level.at(x, y).typ = rn2(50) ? CORR : SCORR;
+}
+
+function roguejoin(x1, y1, x2, y2, horiz) {
+    if (horiz) {
+        const middle = x1 + rn2(x2 - x1 + 1);
+        for (let x = Math.min(x1, middle); x <= Math.max(x1, middle); ++x)
+            roguecorr_cell(x, y1);
+        for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); ++y)
+            roguecorr_cell(middle, y);
+        for (let x = Math.min(middle, x2); x <= Math.max(middle, x2); ++x)
+            roguecorr_cell(x, y2);
+    } else {
+        const middle = y1 + rn2(y2 - y1 + 1);
+        for (let y = Math.min(y1, middle); y <= Math.max(y1, middle); ++y)
+            roguecorr_cell(x1, y);
+        for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); ++x)
+            roguecorr_cell(x, middle);
+        for (let y = Math.min(middle, y2); y <= Math.max(middle, y2); ++y)
+            roguecorr_cell(x2, y);
+    }
+}
+
+function roguecorr(grid, x, y, dir) {
+    let fromx, fromy, tox, toy;
+    let here = grid[x][y];
+
+    if (dir === XL_DOWN) {
+        here.doortable &= ~XL_DOWN;
+        if (!here.real) {
+            fromx = here.rlx + 1 + 26 * x;
+            fromy = here.rly + 7 * y;
+        } else {
+            fromx = here.rlx + rn2(here.dx) + 1 + 26 * x;
+            fromy = here.rly + here.dy + 7 * y;
+            dodoor(fromx, fromy, game.level.rooms[here.nroom]);
+            game.level.at(fromx, fromy).doormask = D_NODOOR;
+            ++fromy;
+        }
+        ++y;
+        here = grid[x][y];
+        here.doortable &= ~XL_UP;
+        if (!here.real) {
+            tox = here.rlx + 1 + 26 * x;
+            toy = here.rly + 7 * y;
+        } else {
+            tox = here.rlx + rn2(here.dx) + 1 + 26 * x;
+            toy = here.rly - 1 + 7 * y;
+            dodoor(tox, toy, game.level.rooms[here.nroom]);
+            game.level.at(tox, toy).doormask = D_NODOOR;
+            --toy;
+        }
+        roguejoin(fromx, fromy, tox, toy, false);
+    } else if (dir === XL_RIGHT) {
+        here.doortable &= ~XL_RIGHT;
+        if (!here.real) {
+            fromx = here.rlx + 1 + 26 * x;
+            fromy = here.rly + 7 * y;
+        } else {
+            fromx = here.rlx + here.dx + 1 + 26 * x;
+            fromy = here.rly + rn2(here.dy) + 7 * y;
+            dodoor(fromx, fromy, game.level.rooms[here.nroom]);
+            game.level.at(fromx, fromy).doormask = D_NODOOR;
+            ++fromx;
+        }
+        ++x;
+        here = grid[x][y];
+        here.doortable &= ~XL_LEFT;
+        if (!here.real) {
+            tox = here.rlx + 1 + 26 * x;
+            toy = here.rly + 7 * y;
+        } else {
+            tox = here.rlx - 1 + 1 + 26 * x;
+            toy = here.rly + rn2(here.dy) + 7 * y;
+            dodoor(tox, toy, game.level.rooms[here.nroom]);
+            game.level.at(tox, toy).doormask = D_NODOOR;
+            --tox;
+        }
+        roguejoin(fromx, fromy, tox, toy, true);
+    }
+}
+
+function miniwalk(grid, x, y) {
+    for (;;) {
+        const dirs = [];
+        const here = grid[x][y];
+        if (x > 0 && !(here.doortable & XL_LEFT)
+            && (!grid[x - 1][y].doortable || !rn2(10)))
+            dirs.push(0);
+        if (x < 2 && !(here.doortable & XL_RIGHT)
+            && (!grid[x + 1][y].doortable || !rn2(10)))
+            dirs.push(1);
+        if (y > 0 && !(here.doortable & XL_UP)
+            && (!grid[x][y - 1].doortable || !rn2(10)))
+            dirs.push(2);
+        if (y < 2 && !(here.doortable & XL_DOWN)
+            && (!grid[x][y + 1].doortable || !rn2(10)))
+            dirs.push(3);
+        if (!dirs.length)
+            return;
+
+        switch (dirs[rn2(dirs.length)]) {
+        case 0:
+            here.doortable |= XL_LEFT;
+            --x;
+            grid[x][y].doortable |= XL_RIGHT;
+            break;
+        case 1:
+            here.doortable |= XL_RIGHT;
+            ++x;
+            grid[x][y].doortable |= XL_LEFT;
+            break;
+        case 2:
+            here.doortable |= XL_UP;
+            --y;
+            grid[x][y].doortable |= XL_DOWN;
+            break;
+        case 3:
+            here.doortable |= XL_DOWN;
+            ++y;
+            grid[x][y].doortable |= XL_UP;
+            break;
+        }
+        miniwalk(grid, x, y);
+    }
+}
+
+function makeroguerooms() {
+    const grid = Array.from({ length: 3 }, () => new Array(3));
+    let nreal = 0;
+
+    for (let y = 0; y < 3; ++y) {
+        for (let x = 0; x < 3; ++x) {
+            const here = grid[x][y] = { doortable: 0 };
+            if (!rn2(5) && (nreal || (x < 2 && y < 2))) {
+                here.real = false;
+                here.rlx = rn1(22, 2);
+                here.rly = rn1(y === 2 ? 4 : 3, 2);
+            } else {
+                here.real = true;
+                here.dx = rn1(22, 2);
+                here.dy = rn1(y === 2 ? 4 : 3, 2);
+                here.rlx = rnd(23 - here.dx + 1);
+                here.rly = rnd((y === 2 ? 5 : 4) - here.dy + 1);
+                ++nreal;
+            }
+        }
+    }
+
+    miniwalk(grid, rn2(3), rn2(3));
+    game.level.nroom = 0;
+    for (let y = 0; y < 3; ++y) {
+        for (let x = 0; x < 3; ++x) {
+            const here = grid[x][y];
+            if (!here.real)
+                continue;
+            here.nroom = game.level.nroom;
+            game.smeq[game.level.nroom] = game.level.nroom;
+            const lowx = 1 + 26 * x + here.rlx;
+            const lowy = 7 * y + here.rly;
+            add_room(lowx, lowy, lowx + here.dx - 1, lowy + here.dy - 1,
+                     !rn2(7), OROOM, false);
+        }
+    }
+
+    for (let y = 0; y < 3; ++y) {
+        for (let x = 0; x < 3; ++x) {
+            const here = grid[x][y];
+            if (here.doortable & XL_DOWN)
+                roguecorr(grid, x, y, XL_DOWN);
+            if (here.doortable & XL_RIGHT)
+                roguecorr(grid, x, y, XL_RIGHT);
+        }
+    }
+}
+
+function makerogueghost() {
+    if (!game.level.nroom)
+        return;
+    const croom = game.level.rooms[rn2(game.level.nroom)];
+    const x = somex(croom), y = somey(croom);
+    const ghost = makemon(game.mons[PMNAMES.PM_GHOST], x, y, NO_MM_FLAGS);
+    if (!ghost)
+        return;
+    ghost.msleeping = 1;
+    christen_monst(ghost, roguename());
+
+    let obj;
+    if (rn2(4)) {
+        obj = mksobj_at(FOOD_RATION, x, y, false, false);
+        obj.quan = rnd(7);
+        obj.owt = weight(obj);
+    }
+    if (rn2(2)) {
+        obj = mksobj_at(MACE, x, y, false, false);
+        obj.spe = rnd(3);
+        if (rn2(4)) curse(obj);
+    } else {
+        obj = mksobj_at(TWO_HANDED_SWORD, x, y, false, false);
+        obj.spe = rnd(5) - 2;
+        if (rn2(4)) curse(obj);
+    }
+    obj = mksobj_at(BOW, x, y, false, false);
+    obj.spe = 1;
+    if (rn2(4)) curse(obj);
+
+    obj = mksobj_at(ARROW, x, y, false, false);
+    obj.spe = 0;
+    obj.quan = rn1(10, 25);
+    obj.owt = weight(obj);
+    if (rn2(4)) curse(obj);
+
+    if (rn2(2)) {
+        obj = mksobj_at(RING_MAIL, x, y, false, false);
+        obj.spe = rn2(3);
+        if (!rn2(3)) obj.oerodeproof = true;
+        if (rn2(4)) curse(obj);
+    } else {
+        obj = mksobj_at(PLATE_MAIL, x, y, false, false);
+        obj.spe = rnd(5) - 2;
+        if (!rn2(3)) obj.oerodeproof = true;
+        if (rn2(4)) curse(obj);
+    }
+    if (rn2(2)) {
+        obj = mksobj_at(FAKE_AMULET_OF_YENDOR, x, y, true, false);
+        obj.known = true;
+    }
+}
+
 // ============================================================
 // Room helper functions
 // ============================================================
@@ -2102,6 +2356,13 @@ function generate_stairs_find_room() {
 
 function mkstairs(x, y, up, croom) {
     const g = game;
+    const uz = g.u?.uz;
+    const dungeonLevels = uz && g.dungeons?.[uz.dnum]?.num_dunlevs;
+    /* src/mklev.c:2183: a special-level map can specify a regular stair
+       beyond either end of its dungeon.  The coordinate selection still
+       happens, but the square and stairway list must remain unchanged. */
+    if (uz && uz.dlevel === (up ? 1 : dungeonLevels))
+        return;
     const loc = g.level.at(x, y);
     if (loc) {
         loc.typ = STAIRS;

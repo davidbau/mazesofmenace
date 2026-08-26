@@ -66,7 +66,8 @@ import {
     VANQ_COUNT_L_H,
 } from './const.js';
 import { pline } from './display.js';
-import { show_text_pages, show_nhw_menu_text } from './pager.js';
+import { show_text_pages, show_nhw_menu_text, mhidden_description } from './pager.js';
+import { visible_region_at } from './region.js';
 import {
     NUMMONS, mons, G_UNIQ, M2_PNAME, monsterNames,
     MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
@@ -75,7 +76,7 @@ import { an, makeplural } from './objnam.js';
 import { align_str, rank_of, rank_to_xlev } from './roles.js';
 import { x_monnam_tame } from './do_name.js';
 import { find_mac } from './mhitm.js';
-import { A_NONE, A_LAWFUL, A_CHAOTIC } from './const.js';
+import { A_NONE, A_LAWFUL, A_CHAOTIC, MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION } from './const.js';
 
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
 
@@ -841,10 +842,11 @@ function mon_aligntyp(mon) {
 
 /**
  * C ref: insight.c mstatusline — stethoscope/probe one-line monster status.
- * Branch envelope: tame/peaceful suffix; align + size; Level/HP/AC.
+ * Branch envelope: tame/peaceful suffix; mhidden_description (D-1554);
+ * align + size; Level/HP/AC.
  * Named omissions: wizard tame hungry/apport; worm segments; shapechanger/
- * eating/mhidden_description; ailment flags (cancelled/confused/…);
- * ustuck/usteed/leash arms.
+ * eating; ailment flags (cancelled/confused/…); ustuck/usteed/leash;
+ * gb.bhitpos worm-tail region gate (uses mx,my).
  */
 export async function mstatusline(mtmp) {
     if (!mtmp) return;
@@ -855,7 +857,12 @@ export async function mstatusline(mtmp) {
     } else if (mtmp.mpeaceful) {
         info = ', peaceful';
     }
-    // worm / cham / meating / mhidden / ailments deferred
+    // C: mundetected || m_ap_type (unmasked) || visible_region_at(bhitpos)
+    if (mtmp.mundetected || mtmp.m_ap_type
+        || visible_region_at(mtmp.mx | 0, mtmp.my | 0)) {
+        info += mhidden_description(mtmp,
+            MHID_PREFIX | MHID_ARTICLE | MHID_ALTMON | MHID_REGION);
+    }
     const monnambuf = x_monnam_tame(mtmp);
     const alignment = mon_aligntyp(mtmp);
     const sz = size_str(mtmp.data?.msize ?? MZ_MEDIUM);

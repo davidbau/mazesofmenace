@@ -307,8 +307,13 @@ export async function pluslvl(incr) {
         /* src/botl.c xlev_to_rank() */
         const xlev_to_rank = (xlev) =>
             (xlev <= 2) ? 0 : (xlev <= 30) ? Math.trunc((xlev + 2) / 4) : 8;
-        if (xlev_to_rank(game.u.ulevel) > xlev_to_rank(game.u.ulevel - 1))
-            note_unported_exper('pluslvl:record_achievement');
+        const newrank = xlev_to_rank(game.u.ulevel);
+        if (newrank > xlev_to_rank(game.u.ulevel - 1)) {
+            const { ACH_RNK1, record_achievement } =
+                await import('./insight.js');
+            const ach = ACH_RNK1 + newrank - 1;
+            record_achievement(game.flags.female ? -ach : ach);
+        }
         if (game.u.ulevel > (game.u.ulevelpeak ?? 0))
             game.u.ulevelpeak = game.u.ulevel;
 

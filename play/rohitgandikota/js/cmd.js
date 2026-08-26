@@ -7,7 +7,7 @@ import { seemimic } from './mon.js';
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
-import { dodrop } from './do.js';
+import { dodrop, doddrop } from './do.js';
 import { any_obj_ok, doprwep, doprarm, doprring, dopramulet, doprtool,
          doprinuse, doprgold, obj_extract_self } from './invent.js';
 import { dodown, doup, do_wire_mklev, do_wire_dokick, stairway_at } from './do.js';
@@ -17,15 +17,17 @@ import { sp_lev_wire_mon } from './sp_lev.js';
 import { is_pool, is_lava, m_at, t_at, newcham, resists_ston,
          mongone } from './mon.js';
 import { do_attack } from './uhitm.js';
-import { glyph_is_invisible_at, is_safemon, mon_visible, sensemon,
-         unmap_invisible } from './display.js';
+import { back_to_glyph, glyph_is_invisible_at, is_safemon, mon_visible,
+         sensemon, unmap_invisible } from './display.js';
 import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_hider, verysmall } from './mondata.js';
-import { bad_rock, nomul, domove_attackmon_at, spoteffects, dopickup, trapmove, doorless_door, could_move_onto_boulder } from './hack.js';
+import { bad_rock, cant_squeeze_thru, nomul, domove_attackmon_at, spoteffects,
+         dopickup, trapmove, doorless_door,
+         could_move_onto_boulder } from './hack.js';
 import { In_sokoban, surface } from './dungeon.js';
-import { Hallucination } from './youprop.js';
+import { Blind, Hallucination } from './youprop.js';
 import { u_on_newpos } from './teleport.js';
 import { doloot } from './pickup.js';
 import { curr_mon_load } from './mon.js';
@@ -35,8 +37,9 @@ import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
 import { ACURR, exercise, near_capacity } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { cxname, simpleonames, the } from './objnam.js';
-import { x_monnam, docallcmd, donamelevel } from './do_name.js';
+import { an, cxname, simpleonames, the } from './objnam.js';
+import { cmap_names, defsyms } from './drawing_data.js';
+import { x_monnam, YMonnam, docallcmd, donamelevel } from './do_name.js';
 import { You } from './pline.js';
 
 /* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
@@ -62,6 +65,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
 import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH, BC_BALL, BC_CHAIN, SLT_ENCUMBER, OBJ_FLOOR } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
+import { count_unidentified } from './invent.js';
 import { doeat } from './eat.js';
 import { doread, wiz_genesis } from './read.js';
 import { dodrink } from './potion.js';
@@ -71,13 +75,13 @@ import { dothrow, dofire } from './dothrow.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { get_valid_jump_position, is_valid_jump_pos } from './apply.js';
 import { dowear, doputon, dotakeoff, doremring, canwearobj_core } from './do_wear.js';
-import { show_menu_controls } from './options.js';
+import { boolean_option, show_menu_controls } from './options.js';
 import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, docrt, paint_topline, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
+import { newsym, flush_screen, pline, docrt, map_object, paint_topline, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
 import { vision_recalc } from './vision.js';
-import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
+import { COLNO, ROWNO, STONE, DOOR, DBWALL, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
 import { dosearch } from './detect.js';
 import { doengrave, engr_at, wipe_engr_at } from './engrave.js';
 import { rnd, rn2 } from './rng.js';
@@ -329,7 +333,7 @@ export async function getdir(s) {
            '?' help-request retry is recorded; no recorded session asks. */
         if (!" \r\n\x1b".includes(dirsym)) {
             let did_help = false;
-            if (dirsym === '?' || (game.iflags.cmdassist !== false)) {
+            if (dirsym === '?' || boolean_option('cmdassist')) {
                 did_help = await help_dir('\0', "Invalid direction key!");
                 if (dirsym === '?')
                     note_unported_cmd('getdir:help_retry');
@@ -715,6 +719,8 @@ export async function doextcmd() {
         const { doorganize } = await import('./invent.js');
         return await doorganize();
     }
+    if (name === 'wizidentify')
+        return await show_wiz_identify();
     if (name === 'genocided') {
         /* src/insight.c list_genocided() — nothing is ever genocided in a
            recorded session, so only the empty-list line is live */
@@ -1496,6 +1502,8 @@ export async function rhack(key) {
         // getobj(). 330 keystrokes across the public corpus, the most of any
         // command we did not handle.
         game.context.move = (await doeat() === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'D') {
+        game.context.move = (await doddrop() === ECMD_TIME ? 1 : 0);
     } else if (ch === 'd') {
         game.context.move = (await dodrop() === ECMD_TIME ? 1 : 0);
     } else if ('rwqWPRT'.includes(ch)) {
@@ -1544,6 +1552,11 @@ export async function rhack(key) {
         // src/cmd.c cmdlist — '#' is doextcmd, which reads the command name
         // off the input before doing anything.
         game.context.move = (await doextcmd() === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x06' && game.wizard) {
+        /* src/cmd.c:1982, debug-mode ^F is the default binding for
+           #wizmap. It reveals the level without consuming a turn. */
+        const { wiz_map } = await import('./wizcmds.js');
+        game.context.move = ((await wiz_map()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'S') {
         // src/cmd.c cmdlist — 'S' is dosave: "Really save?", write the
         // state to storage, and exit the process like C's nh_terminate.
@@ -1677,6 +1690,56 @@ function punishmentOrder(ball, chain, ballOnFloor) {
             return BCPOS_BALL;
     }
     return BCPOS_DIFFER;
+}
+
+// src/ball.c:380 set_bc(): preserve what lies beneath the punishment pieces
+// just before sight is lost, then mark the pieces as felt.
+export function set_bc(alreadyBlind = false) {
+    const u = game.u;
+    const ball = u.uball;
+    const chain = u.uchain;
+    if (!ball || !chain)
+        return;
+
+    const ballOnFloor = ball.where === OBJ_FLOOR;
+    u.bc_order = punishmentOrder(ball, chain, ballOnFloor);
+    u.bc_felt = ballOnFloor ? BC_BALL | BC_CHAIN : BC_CHAIN;
+
+    const memoryAt = (x, y) => game.level?.at(x, y)?.remembered_glyph;
+    if (alreadyBlind || u.uswallow) {
+        u.cglyph = u.bglyph = memoryAt(u.ux, u.uy);
+        return;
+    }
+
+    obj_extract_self(chain);
+    if (ballOnFloor)
+        obj_extract_self(ball);
+
+    newsym(chain.ox, chain.oy);
+    u.cglyph = memoryAt(chain.ox, chain.oy);
+
+    if (u.bc_order === BCPOS_DIFFER) {
+        place_object(chain, chain.ox, chain.oy);
+        newsym(chain.ox, chain.oy);
+        if (ballOnFloor) {
+            newsym(ball.ox, ball.oy);
+            u.bglyph = memoryAt(ball.ox, ball.oy);
+            place_object(ball, ball.ox, ball.oy);
+            newsym(ball.ox, ball.oy);
+        }
+    } else {
+        u.bglyph = u.cglyph;
+        if (u.bc_order === BCPOS_CHAIN) {
+            if (ballOnFloor)
+                place_object(ball, ball.ox, ball.oy);
+            place_object(chain, chain.ox, chain.oy);
+        } else {
+            place_object(chain, chain.ox, chain.oy);
+            if (ballOnFloor)
+                place_object(ball, ball.ox, ball.oy);
+        }
+        newsym(chain.ox, chain.oy);
+    }
 }
 
 function chainRock(x, y) {
@@ -1855,11 +1918,13 @@ async function preparePunishmentMove(x, y) {
         }
     }
 
-    obj_extract_self(chain);
-    newsym(chain.ox, chain.oy);
-    if (ballOnFloor) {
-        obj_extract_self(ball);
-        newsym(ball.ox, ball.oy);
+    if (!Blind()) {
+        obj_extract_self(chain);
+        newsym(chain.ox, chain.oy);
+        if (ballOnFloor) {
+            obj_extract_self(ball);
+            newsym(ball.ox, ball.oy);
+        }
     }
     return state;
 }
@@ -1867,6 +1932,71 @@ async function preparePunishmentMove(x, y) {
 function finishPunishmentMove(state) {
     if (!state)
         return;
+
+    if (Blind()) {
+        const u = game.u;
+        const { ball, chain } = state;
+        const memoryAt = (x, y) => game.level?.at(x, y)?.remembered_glyph;
+        const setMemory = (x, y, glyph) => {
+            const loc = game.level?.at(x, y);
+            if (loc)
+                loc.remembered_glyph = glyph;
+        };
+        const moveObject = (obj, x, y) => {
+            obj_extract_self(obj);
+            place_object(obj, x, y);
+        };
+        const control = state.control;
+
+        if ((control & BC_BALL) && (control & BC_CHAIN)) {
+            if ((u.bc_felt | 0) & BC_BALL)
+                setMemory(ball.ox, ball.oy, u.bglyph);
+            if ((u.bc_felt | 0) & BC_CHAIN)
+                setMemory(chain.ox, chain.oy, u.cglyph);
+            u.bc_felt = 0;
+            u.bglyph = memoryAt(state.ballx, state.bally);
+            u.cglyph = memoryAt(state.chainx, state.chainy);
+            moveObject(ball, state.ballx, state.bally);
+            moveObject(chain, state.chainx, state.chainy);
+        } else if (control & BC_BALL) {
+            if ((u.bc_felt | 0) & BC_BALL) {
+                if (u.bc_order === BCPOS_DIFFER) {
+                    setMemory(ball.ox, ball.oy, u.bglyph);
+                } else if (u.bc_order === BCPOS_BALL) {
+                    if ((u.bc_felt | 0) & BC_CHAIN)
+                        map_object(chain, 0);
+                    else
+                        setMemory(ball.ox, ball.oy, u.bglyph);
+                }
+                u.bc_felt &= ~BC_BALL;
+            }
+            u.bglyph = (state.ballx !== state.chainx
+                        || state.bally !== state.chainy)
+                ? memoryAt(state.ballx, state.bally) : u.cglyph;
+            moveObject(ball, state.ballx, state.bally);
+        } else if (control & BC_CHAIN) {
+            if ((u.bc_felt | 0) & BC_CHAIN) {
+                if (u.bc_order === BCPOS_DIFFER) {
+                    setMemory(chain.ox, chain.oy, u.cglyph);
+                } else if (u.bc_order === BCPOS_CHAIN) {
+                    if ((u.bc_felt | 0) & BC_BALL)
+                        map_object(ball, 0);
+                    else
+                        setMemory(chain.ox, chain.oy, u.cglyph);
+                }
+                u.bc_felt &= ~BC_CHAIN;
+            }
+            u.cglyph = (state.ballx !== state.chainx
+                        || state.bally !== state.chainy)
+                ? memoryAt(state.chainx, state.chainy) : u.bglyph;
+            moveObject(chain, state.chainx, state.chainy);
+        }
+
+        u.bc_order = punishmentOrder(ball, chain,
+                                     ball.where === OBJ_FLOOR);
+        return;
+    }
+
     const chainOnTop = (state.control & BC_CHAIN)
                        || (!state.control && state.order === BCPOS_CHAIN);
     if (chainOnTop) {
@@ -2144,19 +2274,42 @@ async function domove_core() {
             } else {
                 await pline('That door is closed.');
             }
+        } else if (bloc?.typ === DBWALL) {
+            await pline('That drawbridge is up!');
         } else if (game.flags?.mention_walls && !game.context.door_opened) {
-            if (!bloc || bloc.typ === STONE)
+            const glyph = bloc ? back_to_glyph(bloc, newx, newy) : null;
+            const cmap = glyph?.cmap;
+            if (!bloc || cmap === cmap_names.S_stone) {
                 await pline("It's solid stone.");
-            else if (IS_WALL(bloc.typ))
-                await pline("It's a wall.");
-            else
+            } else if (Number.isInteger(cmap) && defsyms[cmap]?.explain) {
+                await pline(`It's ${an(defsyms[cmap].explain)}.`);
+            } else {
                 note_unported_cmd('test_move:mention_walls_other');
+            }
         }
         if (!game.context.door_opened) {
             game.context.move = 0;
             nomul(0);
         }
         return;
+    }
+
+    /* src/hack.c:1153, a tight diagonal is rejected after the destination's
+       own terrain check but before its boulder's moverock path. */
+    if (dx && dy && bad_rock(game.youmonst.data, u.ux, newy)
+        && bad_rock(game.youmonst.data, newx, u.uy)) {
+        const why = cant_squeeze_thru(game.youmonst);
+        switch (why) {
+        case 3: await You('cannot pass that way.'); break;
+        case 2: await You('are carrying too much to get through.'); break;
+        case 1: await pline('Your body is too large to fit through.'); break;
+        default: break;
+        }
+        if (why) {
+            game.context.move = 0;
+            nomul(0);
+            return;
+        }
     }
 
     /* src/hack.c:1230 — test_move()'s boulder arm, the DO_MOVE slice:
@@ -2325,7 +2478,7 @@ async function domove_swap_with_pet(mtmp, x, y) {
                && (!goodpos(game.u.ux0, game.u.uy0, mtmp, 0)
                    || t_at(game.u.ux0, game.u.uy0) !== null
                    || mundisplaceable(mtmp))) {
-        note_unported_cmd('domove_swap_with_pet:wont_swap_msg');
+        await You(`stop.  ${YMonnam(mtmp)} doesn't want to swap places.`);
         didnt_move = true;
     } else {
         mtmp.mtrapped = 0;
@@ -2384,10 +2537,39 @@ async function show_discoveries() {
         tty_putstr(win, attr, text);
     await tty_display_nhwindow(win);      /* draws the page and parks the cursor */
 
-    /* dmore(): block here until the player dismisses the window */
-    await nhgetch();
+    /* dmore(): block once per page until the player dismisses the window. */
+    await xwaitforspace(' \r\n\x1b');
+    while (game.morc !== '\x1b' && tty_next_page(win))
+        await xwaitforspace(' \r\n\x1b');
 
     tty_destroy_nhwindow(win);
+}
+
+// src/wizcmds.c wiz_identify(), empty-selection arm of display_inventory().
+async function show_wiz_identify() {
+    if (!game.wizard) {
+        await pline("Unavailable command '#wizidentify'.");
+        return ECMD_OK;
+    }
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR,
+                 'Debug Identify', MENU_ITEMFLAGS_NONE);
+    const unid = count_unidentified(game.invent || []);
+    if (!unid) {
+        tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR,
+                     '(all items are permanently identified already)',
+                     MENU_ITEMFLAGS_NONE);
+    } else {
+        tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR,
+                     `select ${unid === 1 ? 'it' : 'any or all of them'} to permanently identify`,
+                     MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(win, null);
+    await tty_select_menu(win, 0 /* PICK_NONE */);
+    tty_destroy_nhwindow(win);
+    return ECMD_OK;
 }
 
 

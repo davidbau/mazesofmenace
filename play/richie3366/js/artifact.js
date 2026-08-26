@@ -75,8 +75,8 @@ import {
     flush_screen, flush_topl_more, pline, You_feel, newsym, see_monsters,
     set_sting_effects,
 } from './display.js';
-import { compactify_invlets, display_pickinv_reply, update_inventory, getobj_take_count, getobj_apply_count } from './invent.js';
-import { xname, the, vtense, cxname } from './objnam.js';
+import { compactify_invlets, display_pickinv_reply, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq } from './invent.js';
+import { xname, the, vtense, cxname, otense, set_undiscovered_artifact } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
@@ -340,6 +340,25 @@ export function discover_artifact(m) {
         }
     }
 }
+
+/**
+ * C ref: artifact.c undiscovered_artifact `:1130–1143` — artidisco[] scan;
+ * empty slot means not yet discovered. Callee of obj.h is_plural (Eyes)
+ * and objnam.c not_fully_identified.
+ * @param {number} m
+ * @returns {boolean}
+ */
+export function undiscovered_artifact(m) {
+    const id = m | 0;
+    const artidisco = game.artidisco;
+    if (!artidisco) return true;
+    for (let i = 0; i < NROFARTIFACTS; i++) {
+        if (artidisco[i] === id) return false;
+        if (artidisco[i] === 0) break;
+    }
+    return true;
+}
+set_undiscovered_artifact(undiscovered_artifact);
 
 /** C ref: artifact.c get_artifact */
 export function get_artifact(obj) {
@@ -911,9 +930,11 @@ async function getobj_invoke() {
 
 /** C invent.c getobj("charge", charge_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT).
  * SUGGEST in the prompt; DOWNPLAY/EXCLUDE_SELECTABLE selectable.
- * Count prefix + split_otmp live. Canned CMDQ_INT named. */
+ * Count prefix + split_otmp live. Canned CMDQ_INT/KEY live. */
 async function getobj_charge() {
     const { charge_ok } = await import('./read.js');
+    const cq = getobj_from_cmdq(charge_ok, true);
+    if (!cq.skip) return cq.otmp;
     const selectable = (o) => charge_ok(o) !== GETOBJ_EXCLUDE;
     const suggest = [];
     let anySel = false;
@@ -1065,11 +1086,6 @@ function prop_intrinsic(prop) {
     else if (prop === LEVITATION) h |= u.HLevitation | 0;
     else if (prop === CONFLICT) h |= u.HConflict | 0;
     return h;
-}
-
-function otense(obj, verb) {
-    if ((obj?.quan | 0) !== 1) return verb;
-    return vtense(null, verb);
 }
 
 /**

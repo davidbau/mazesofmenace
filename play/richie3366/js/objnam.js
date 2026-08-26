@@ -32,7 +32,8 @@ import {
     PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
 } from './generated/monsters_data.js';
 import {
-    ART_ORB_OF_DETECTION, ART_SUNSWORD, artilistRaw, NROFARTIFACTS,
+    ART_ORB_OF_DETECTION, ART_SUNSWORD, ART_EYES_OF_THE_OVERWORLD,
+    artilistRaw, NROFARTIFACTS,
 } from './generated/artifacts_data.js';
 import {
     W_ARMOR, W_AMUL, W_RING, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
@@ -1638,6 +1639,36 @@ export function vtense(subj, verb) {
     return verb + 's';
 }
 
+/**
+ * Late-bound from artifact.js — C artifact.c undiscovered_artifact.
+ * Default TRUE (empty artidisco) until artifact.js registers.
+ * Avoids static objnam→artifact (artifact already imports objnam; D-1521).
+ */
+let _undiscovered_artifact = (_m) => true;
+export function set_undiscovered_artifact(fn) {
+    _undiscovered_artifact = fn;
+}
+
+/**
+ * C ref: obj.h is_plural — quan != 1L, or discovered Eyes of the Overworld.
+ * "the Eyes of the Overworld" are plural; "a pair of lenses named …" is not.
+ */
+export function is_plural(o) {
+    if (!o) return false;
+    if ((o.quan ?? 0) !== 1) return true;
+    return (o.oartifact | 0) === ART_EYES_OF_THE_OVERWORLD
+        && !_undiscovered_artifact(ART_EYES_OF_THE_OVERWORLD);
+}
+
+/**
+ * C ref: objnam.c otense — plural verb if is_plural(otmp), else
+ * vtense(NULL, verb).
+ */
+export function otense(otmp, verb) {
+    if (!is_plural(otmp)) return vtense(null, verb);
+    return verb;
+}
+
 /** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */
 function bimanual(obj) {
     if (!obj) return false;
@@ -1792,14 +1823,22 @@ export function the_unique_obj(obj) {
 }
 
 /**
+ * Late-bound from invent.js — C objnam.c obj_is_pname calls
+ * not_fully_identified (includes undiscovered_artifact). Default is the
+ * known/dknown/bknown subset until invent.js registers.
+ */
+let _not_fully_identified = (obj) => !obj?.known || !obj?.dknown || !obj?.bknown;
+export function set_not_fully_identified(fn) {
+    _not_fully_identified = fn;
+}
+
+/**
  * C ref: objnam.c obj_is_pname — fully identified artifact with oname.
- * Named omissions: program_state.gameover; full not_fully_identified.
  */
 export function obj_is_pname(obj) {
-    if (!obj?.oartifact || !obj.oextra?.oname) return false;
+    if (!obj?.oartifact || !has_oname(obj)) return false;
     if (!game.program_state?.gameover && !game.iflags?.override_ID) {
-        // not_fully_identified subset: known + dknown + bknown
-        if (!obj.known || !obj.dknown || !obj.bknown) return false;
+        if (_not_fully_identified(obj)) return false;
     }
     return true;
 }

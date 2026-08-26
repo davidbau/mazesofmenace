@@ -211,6 +211,26 @@ export const is_floater = (ptr) => ptr.mlet === MONSYMS.S_EYE
 export const amphibious = (ptr) => (ptr.mflags1 & MFLAGS.M1_AMPHIBIOUS) !== 0;
 export const is_swimmer = (ptr) => (ptr.mflags1 & MFLAGS.M1_SWIM) !== 0;
 
+// src/mondata.c:1380 locomotion(), choose a species-appropriate verb.
+export function locomotion(ptr, def) {
+    const upper = def[0] === def[0].toUpperCase();
+    const verb = (lower, capital) => upper ? capital : lower;
+
+    if (is_floater(ptr))
+        return verb('float', 'Float');
+    if (is_flyer(ptr))
+        return verb('fly', 'Fly');
+    if (slithy(ptr))
+        return verb('slither', 'Slither');
+    if (amorphous(ptr))
+        return verb('ooze', 'Ooze');
+    if (!ptr.mmove)
+        return verb('wiggle', 'Wiggle');
+    if (nolimbs(ptr))
+        return verb('crawl', 'Crawl');
+    return def;
+}
+
 // include/mondata.h:196 likes_fire() — an explicit pair plus likes_lava, not a
 // flag test; writing it from a flag would be the M1_FIRE_RES mistake again.
 export const likes_fire = (ptr) => ptr.pmidx === PMNAMES.PM_FIRE_VORTEX

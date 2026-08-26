@@ -388,6 +388,7 @@ export function mksobj_init(otmp, artif) {
             break;
         case ONAMES.SLIME_MOLD:
             otmp.spe = game.context.current_fruit ?? 1;
+            game.flags.made_fruit = true;
             break;
         case ONAMES.KELP_FROND:
             otmp.quan = rnd(2);
@@ -747,6 +748,10 @@ export function mksobj(otyp, init, artif) {
         oeaten: 0,
         age: Math.max(game.moves ?? 1, 1),
         corpsenm: NON_PM,
+        /* C's newobj() zeroes the structure before mksobj() calls weight().
+           HEAVY_IRON_BALL treats a nonzero cached weight as an adjusted
+           punishment ball, so this field must start at zero, not undefined. */
+        owt: 0,
         o_id: next_ident(),
     };
     unknow_object(otmp);

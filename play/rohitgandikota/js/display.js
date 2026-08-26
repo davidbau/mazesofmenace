@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rn2_on_display_rng } from './rng.js';
 import { money_cnt } from './invent.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { update_topl } from './tty/topl.js';
+import { update_topl, show_topl_nohistory } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
 import { term_start_color } from './tty/termcap.js';
 import { rank, bot_conditions } from './botl.js';
@@ -101,6 +101,21 @@ export function known_branch_stairs(sway) {
 }
 
 const CM = cmap_names;
+
+const rogue_obj_syms = [...def_oc_syms];
+rogue_obj_syms[OCLASSES.ARMOR_CLASS] = ']';
+rogue_obj_syms[OCLASSES.AMULET_CLASS] = ',';
+rogue_obj_syms[OCLASSES.FOOD_CLASS] = ':';
+rogue_obj_syms[OCLASSES.COIN_CLASS] = def_oc_syms[OCLASSES.GEM_CLASS];
+
+function rogue_cmap_sym(cmap) {
+    if (cmap === CM.S_ndoor || cmap === CM.S_vodoor
+        || cmap === CM.S_hodoor)
+        return '+';
+    if (cmap === CM.S_upstair || cmap === CM.S_dnstair)
+        return '%';
+    return defsyms[cmap]?.sym;
+}
 
 // src/display.c:2938 map_glyphinfo() — a glyph becomes a symbol by looking its
 // cmap index up in the ACTIVE symbol set. back_to_glyph() below picks the cmap
@@ -824,6 +839,16 @@ export function gbuf_at(x, y) {
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0, glyph = undefined) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+    if (Is_rogue_level(game.u?.uz)) {
+        color = NO_COLOR;
+        decgfx = false;
+        if (glyph?.cmap !== undefined)
+            ch = rogue_cmap_sym(glyph.cmap) ?? ch;
+        else if (glyph?.kind === 'obj' && !glyph.statue) {
+            const oclass = glyph.body ? OCLASSES.FOOD_CLASS : glyph.oclass;
+            ch = rogue_obj_syms[oclass] ?? ch;
+        }
+    }
     /* Debug-only cell watch (never set during scoring): log who writes a
        watched map cell. globalThis.__cell_watch = {cells: [[x,y],...]} */
     if (globalThis.__cell_watch
@@ -1101,7 +1126,7 @@ export function newsym(x, y) {
                 ? game.level.monAt.get(`${x},${y}`)
                 : (game.level?.monsters || [])
                     .find(m => m.mx === x && m.my === y && m.mhp > 0);
-            if (!mon_overrides_region(mon0 || null, x, y)) {
+            if (!mon_overrides_region(mon0?.mhp > 0 ? mon0 : null, x, y)) {
                 show_region(reg, x, y);
                 return;
             }
@@ -1149,11 +1174,12 @@ export function newsym(x, y) {
     // visible. Memory (lev->glyph in C, _map_location()) stores the object
     // layer too — a monster is drawn OVER it and is not itself remembered.
     if (cansee(x, y)) {
-        const mon = game.level?.monAt instanceof Map
+        const mon0 = game.level?.monAt instanceof Map
             ? game.level.monAt.get(`${x},${y}`)
             : (game.level?.monsters || [])
                 .find(m => m.mx === x && m.my === y && m.mhp > 0
                            && !m.msleeping_hidden);
+        const mon = mon0?.mhp > 0 ? mon0 : null;
         /* src/display.c:1031 — an 'I' stays mapped until some action proves
            that it is stale. Merely seeing the square again is not proof. */
         if (!(mon && canspotmon(mon)) && glyph_is_invisible_at(x, y)) {
@@ -1468,9 +1494,14 @@ export async function docrt() {
         if (mtmp.mhp <= 0) continue;
         newsym(mtmp.mx, mtmp.my);
     }
-    if (game.u?.ux > 0 && canspotself())
-        show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false, 0,
-                        { kind: 'hero' });
+    if (game.u?.ux > 0 && canspotself()) {
+        const self = game.youmonst?.data;
+        show_glyph_cell(game.u.ux, game.u.uy,
+                        Upolyd(game.u)
+                            ? (def_monsyms[self.mlet] || '?') : '@',
+                        Upolyd(game.u) ? self.mcolor : CLR_WHITE,
+                        false, 0, { kind: 'hero' });
+    }
 
     /* C's docrt() only refills the glyph buffer; the physical paint comes
        from the flush its caller always reaches before the next input (the
@@ -1641,7 +1672,7 @@ function _statusLine2() {
     const shownHp = game._deferred_status_hp_until_more
         ?? Math.max((Upolyd(u) ? u.mh : u.uhp) | 0, 0);
     const maxHp = Upolyd(u) ? u.mhmax : u.uhpmax;
-    let s = `${lvldesc} $:${shownMoney}`
+    let s = `${lvldesc} ${Is_rogue_level(u.uz) ? '*' : '$'}:${shownMoney}`
           /* src/botl.c:120 — hp = max(hp, 0): the dying frame shows 0 */
           + ` HP:${shownHp}(${maxHp || 0})`
           + ` Pw:${u.uen || 0}(${u.uenmax || 0})`
@@ -1805,7 +1836,9 @@ export function paint_topline() {
     const display = game?.nhDisplay;
     if (!display) return;
     const CO = display.cols ?? 80;
-    const msgLines = (game._pending_message || '').split('\n');
+    const painted = (game._topline_physical_prefix || '')
+        + (game._pending_message || '');
+    const msgLines = painted.split('\n');
     for (let r = 0; r < msgLines.length && r < 24; r++) {
         const line = msgLines[r];
         for (let c = 0; c < CO; c++)
@@ -1860,7 +1893,11 @@ export async function flush_screen(cursor_on_u) {
         }
     }
 
-    if (cursor_on_u) {
+    if (game._flush_cursor_override) {
+        display.setCursor(game._flush_cursor_override.col,
+                          game._flush_cursor_override.row);
+        game._flush_cursor_override = null;
+    } else if (cursor_on_u) {
         /* curs_on_u() — unless getpos has parked the cursor elsewhere */
         if (game._map_cursor)
             display.setCursor(game._map_cursor.col, game._map_cursor.row);
@@ -1971,6 +2008,18 @@ export async function pline(msg) {
     game._prevmsg = msg;
 }
 
+// custompline(SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U).
+// getpos uses this for automatic descriptions so they do not enter message
+// history and do not move the terminal cursor back onto the hero.
+export async function pline_nohistory_no_cursor(msg) {
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+    if (game.u?.ux)
+        await flush_screen(0);
+    show_topl_nohistory(msg);
+    game._prevmsg = msg;
+}
+
 // src/pline.c:315 urgent_pline().  The tty lifts ESC message suppression only
 // after pline's vision and screen flush.  Doing it earlier briefly painted a
 // suppressed spell message before the urgent polymorph-reversion message.
@@ -2003,7 +2052,8 @@ export async function more() {
     paint_topline();
 
     const display = game?.nhDisplay;
-    const msg = game._pending_message || '';
+    const msg = (game._topline_physical_prefix || '')
+        + (game._pending_message || '');
     /* cury must outlive the paint block: tty_clear_nhwindow() erases through
        cw->cury, and that is set here by the same test that wraps the suffix.
        A message update_topl wrapped with '\n' already sits on multiple rows;
@@ -2058,6 +2108,18 @@ export async function more() {
     game._toplin = TOPLINE_EMPTY;
 }
 
+// win/tty/wintty.c tty_display_nhwindow(WIN_MESSAGE, FALSE).  A message
+// which still needs acknowledgement blocks and is erased by more().  An
+// already-seen message is only marked empty, leaving its terminal pixels in
+// place until later output overwrites them.
+export async function display_nhwindow_message() {
+    if (game._toplin === TOPLINE_NEED_MORE)
+        await more();
+    else
+        game._toplin = TOPLINE_EMPTY;
+    game._topl_curx = game._topl_cury = 0;
+}
+
 // win/tty/wintty.c tty_clear_nhwindow(), the NHW_MESSAGE arm:
 //
 //     if (ttyDisplay->toplin != TOPLINE_EMPTY) {
@@ -2089,6 +2151,7 @@ export function tty_clear_nhwindow_message(cury) {
                 _paint_map_cell(display, x, r - 1);
         }
     }
+    game._topline_physical_prefix = '';
     game._toplin = TOPLINE_EMPTY;
 }
 
@@ -2333,20 +2396,26 @@ export function map_trap(trap, show) {
 
 // src/display.c:233 magic_map_background() — write the true terrain into map
 // memory for one cell, with the dark-cell corrections: an unlit unseen room
-// floor is remembered as NOTHING (dark rooms stay blank on a magic map) and
-// an unlit unseen corridor is the dark form. Memory is only overwritten when
-// it currently holds background (never a remembered object).
+// floor is remembered as DARKROOMSYM when dark-room display is enabled and as
+// NOTHING otherwise; an unlit unseen corridor is the dark form. Memory is only
+// overwritten when it currently holds background (never a remembered object).
 export function magic_map_background(x, y, show) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
     let tg = terrain_glyph(loc, x, y);
-    /* The recorded magic maps SHOW the floors of unvisited LIT rooms and
-       blank only the unlit ones, so the lit bit stands in for waslit here
-       (an unvisited room can never have waslit set). */
-    if (!cansee(x, y) && !loc.waslit && !loc.lit) {
-        if (loc.typ === ROOM && tg.cmap === cmap_names.S_room)
-            tg = null;                          /* GLYPH_NOTHING */
+    /* src/display.c:242: out-of-sight room and corridor memory follows what
+       the hero remembers, not the square's current light bit. */
+    if (!cansee(x, y) && !loc.waslit) {
+        if (loc.typ === ROOM && tg.cmap === cmap_names.S_room) {
+            if (dark_room_color()) {
+                const dr = darkroomsym_cell();
+                tg = { ch: dr.ch, color: dr.color, dec: dr.decgfx,
+                       cmap: cmap_names.S_darkroom };
+            } else {
+                tg = null;                      /* GLYPH_NOTHING */
+            }
+        }
         else if (loc.typ === CORR)
             tg = { ch: '#', color: NO_COLOR, dec: false,
                    cmap: cmap_names.S_corr };   /* dark corr */

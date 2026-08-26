@@ -17,7 +17,7 @@ import { rn2 } from './rng.js';
 import { magic_map_background, map_background, map_object,
          map_trap } from './display.js';
 import { exercise } from './attrib.js';
-import { Hallucination } from './youprop.js';
+import { Blind, Hallucination } from './youprop.js';
 import { an } from './objnam.js';
 import { ONAMES } from './objects_data.js';
 import { y_monnam, a_monnam } from './do_name.js';
@@ -257,7 +257,7 @@ export async function dosearch0(aflag) {
             /* src/detect.c:2040: blind searching first refreshes each
                adjacent square by touch. This clears stale invisible-monster
                glyphs before mfind0 decides whether a monster is newly found. */
-            if (!aflag && game.u.ublind)
+            if (!aflag && Blind())
                 feel_location(x, y);
 
             if (loc.typ === SDOOR) {
@@ -298,7 +298,7 @@ export async function dosearch0(aflag) {
 
                 /* see if an invisible monster has moved--if Blind,
                    feel_location() already did it */
-                if (!aflag && !mtmp && !game.u.ublind)
+                if (!aflag && !mtmp && !Blind())
                     unmap_invisible(x, y);
 
                 const trap = t_at(x, y);
@@ -322,7 +322,8 @@ export async function dosearch() {
        monster refuses (no time) unless m-prefixed */
     const { cmd_safety_prevention } = await import('./do.js');
     if (await cmd_safety_prevention('Searching', 'another search',
-                                    'You already found a monster.'))
+                                    'You already found a monster.',
+                                    'already_found_flag'))
         return 0;                      /* ECMD_OK — no time passes */
     return dosearch0(0);
 }
@@ -480,9 +481,9 @@ export function show_map_spot(x, y, cnf) {
     if (!IS_FURNITURE(loc.typ)) {
         const t = t_at(x, y);
         if (t && t.tseen) {
-            note_unported_detect('show_map_spot:map_trap');
-        } else if ((game.level?.engravings || [])
-                       .some(e => e.engr_x === x && e.engr_y === y)) {
+            map_trap(t, 1);
+        } else if ((game.level?.lev_engr || [])
+                       .some(e => e.x === x && e.y === y)) {
             /* map_engraving(ep, 1) — engraving_glyph via newsym covers the
                visible case; write the engraving into memory too */
             const eg = { ch: loc.typ === CORR ? '#' : '`',

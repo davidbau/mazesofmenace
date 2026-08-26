@@ -31,6 +31,42 @@ function note_unported_options(what) {
     (game.unported ||= new Set()).add('options:' + what);
 }
 
+// src/options.c fruitadd(), keep the preferred name, its fruit id, and the
+// replace-before-use behavior in sync.
+export function set_fruit_name(value, initial = false) {
+    const previous = game.svp?.pl_fruit || 'slime mold';
+    const name = String(value ?? '').trim().replace(/\s+/g, ' ')
+                 || 'slime mold';
+    if (initial)
+        game.ffruit = null;
+
+    let highest = 0;
+    let existing = null;
+    let replace = null;
+    for (let fruit = game.ffruit; fruit; fruit = fruit.nextf) {
+        highest = Math.max(highest, fruit.fid | 0);
+        if (fruit.fname === name)
+            existing = fruit;
+        if (!initial && !game.flags?.made_fruit && fruit.fname === previous)
+            replace = fruit;
+    }
+
+    game.svp ||= {};
+    game.svp.pl_fruit = name;
+    let current = replace || existing;
+    if (replace) {
+        replace.fname = name;
+    } else if (!current) {
+        current = { fname: name, fid: highest + 1, nextf: game.ffruit };
+        game.ffruit = current;
+    }
+    game.context ||= {};
+    game.context.current_fruit = current.fid;
+    if (game.flags)
+        game.flags.made_fruit = false;
+    return name;
+}
+
 // src/options.c:489 parseoptions()
 //
 // Two behaviours here are easy to get wrong and both are load-bearing:
@@ -593,6 +629,11 @@ function bool_optval(o) {
     return (v === undefined) ? (o.initval === 'On') : !!v;
 }
 
+export function boolean_option(name) {
+    const o = findOption(name);
+    return !!o && o.type === 'BoolOpt' && bool_optval(o);
+}
+
 /* src/options.c:9179 count_cond() */
 function count_cond() {
     let cnt = 0;
@@ -1024,8 +1065,12 @@ async function doset_simple_menu() {
                    game.flags, so the value lands there. */
                 const { getlin } = await import('./cmd.js');
                 const abuf = await getlin(`Set ${allopt[k].name} to what?`);
-                if (abuf !== null && abuf !== '\x1b')
-                    game.flags[allopt[k].name] = abuf;
+                if (abuf !== null && abuf !== '\x1b') {
+                    if (allopt[k].name === 'fruit')
+                        set_fruit_name(abuf);
+                    else
+                        game.flags[allopt[k].name] = abuf;
+                }
             } else if (allopt[k].name === 'pickup_types') {
                 /* compound option with a handler: src/options.c:6114
                    handler_pickup_types() just re-enters parseoptions with a

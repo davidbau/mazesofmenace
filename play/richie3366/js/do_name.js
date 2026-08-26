@@ -1,6 +1,6 @@
 // do_name.js — Object naming helpers (partial).
-// C ref: do_name.c oname / artifact naming / docallcmd;
-//        christen_orc / rndorcname / free_oname (D-1193);
+// C ref: do_name.c oname / artifact naming / docallcmd / namefloorobj
+//        (D-1555); christen_orc / rndorcname / free_oname (D-1193);
 //        new_oname (D-1363).
 
 import { artifact_exists, exist_artifact } from './artifact.js';
@@ -9,6 +9,7 @@ import { rn2, rn1, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, docrt, canspotmon, pline,
+    glyph_to_obj_at,
 } from './display.js';
 import {
     paint_corner_nhw_menu, discover_object, compactify_invlets,
@@ -20,18 +21,26 @@ import {
     SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
     SUPPRESS_SADDLE, SUPPRESS_NAME,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
-    has_oname, ONAME, CLR_MAX, BUFSZ,
+    has_oname, ONAME, CLR_MAX, BUFSZ, u_at, OBJ_FREE,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
     M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames, G_NOGEN, G_UNIQ, mons,
-    LOW_PM, SPECIAL_PM,
+    LOW_PM, SPECIAL_PM, hides_under,
 } from './monsters.js';
 import { getlin } from './getline.js';
-import { an, xname, simpleonames, set_y_monnam, set_noit_mon_nam } from './objnam.js';
-import { POTION_CLASS, COIN_CLASS, objectNames } from './objects.js';
+import { getpos } from './getpos.js';
+import { object_from_map } from './pager.js';
+import { objects_at } from './mkobj.js';
+import { rank_of } from './roles.js';
+import { an, xname, simpleonames, set_y_monnam, set_noit_mon_nam, The } from './objnam.js';
+import {
+    POTION_CLASS, COIN_CLASS, AMULET_CLASS, SCROLL_CLASS, WAND_CLASS,
+    RING_CLASS, GEM_CLASS, SPBOOK_CLASS, ARMOR_CLASS, TOOL_CLASS,
+    VENOM_CLASS, objectNames, objectNameStrs, objectDescrs,
+} from './objects.js';
 import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 
@@ -40,6 +49,9 @@ const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const BOGUSMONSIZE = 100; // C: do_name.c rndmonnam
 const BOGON_CODES = '-_+|=';
 const QUITCHARS = ' \r\n\x1b';
@@ -48,6 +60,45 @@ const QUITCHARS = ' \r\n\x1b';
 function name_ok(obj) {
     if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
     if (!obj.dknown || obj.oartifact || obj.otyp === SPE_NOVEL) {
+        return GETOBJ_DOWNPLAY;
+    }
+    return GETOBJ_SUGGEST;
+}
+
+/**
+ * C ref: do_name.c objtyp_is_callable `:428–463`.
+ * oc_uname or (class with OBJ_DESCR); Yendor amulets excluded.
+ */
+export function objtyp_is_callable(i) {
+    const ocl = game.objects?.[i];
+    if (!ocl) return false;
+    if (ocl.oc_uname) return true;
+    const oc = ocl.oc_class;
+    if (oc === AMULET_CLASS) {
+        if (i === AMULET_OF_YENDOR || i === FAKE_AMULET_OF_YENDOR) {
+            return false;
+        }
+    }
+    if (
+        oc === AMULET_CLASS || oc === SCROLL_CLASS || oc === POTION_CLASS
+        || oc === WAND_CLASS || oc === RING_CLASS || oc === GEM_CLASS
+        || oc === SPBOOK_CLASS || oc === ARMOR_CLASS || oc === TOOL_CLASS
+        || oc === VENOM_CLASS
+    ) {
+        const di = ocl.oc_descr_idx ?? i;
+        return !!(objectDescrs[di] || ocl.oc_descr);
+    }
+    return false;
+}
+
+/**
+ * C ref: do_name.c call_ok `:479–495`.
+ * EXCLUDE if not callable; DOWNPLAY if unseen or discovered without uname.
+ */
+export function call_ok(obj) {
+    if (!obj || !objtyp_is_callable(obj.otyp)) return GETOBJ_EXCLUDE;
+    const ocl = game.objects?.[obj.otyp];
+    if (!obj.dknown || (ocl?.oc_name_known && !ocl?.oc_uname)) {
         return GETOBJ_DOWNPLAY;
     }
     return GETOBJ_SUGGEST;
@@ -769,7 +820,7 @@ export function christen_orc(mtmp, gang, other) {
 
 /**
  * C ref: do_name.c docallcmd — "What do you want to name?" menu.
- * `i` → getobj("name")+do_oname; floor getpos-cancel; other branches deferred.
+ * `i` → getobj("name")+do_oname; `f` → namefloorobj; other branches deferred.
  */
 export async function docallcmd() {
     await flush_topl_more();
@@ -794,7 +845,7 @@ export async function docallcmd() {
         // C select_menu: Enter/space with no pick → re-prompt (n==0)
         if (ch === '\r' || ch === '\n' || ch === ' ') continue;
         if (ch === 'f' || ch === ',') {
-            await namefloorobj_stub();
+            await namefloorobj();
             return;
         }
         if (ch === 'i' || ch === 'y') {
@@ -816,18 +867,73 @@ export async function docallcmd() {
 }
 
 /**
- * C ref: do_name.c namefloorobj — getpos subset; Esc cancels.
- * hjkl move a targeting cursor, not the hero.
+ * C ref: do_name.c namefloorobj `:678–757`.
+ * Caller: docallcmd `'f'`. getpos then vobj_at (hero cell) or
+ * glyph_is_object + object_from_map; Hallu display-rng names; else
+ * call_ok / dknown / docall. Fakeobj: OBJ_FREE (GC; no dealloc_obj clone).
  */
-async function namefloorobj_stub() {
-    game._pending_message = "object on map (or '.' for one under you)";
-    await flush_screen(1);
-    for (;;) {
-        const key = await nhgetch();
-        if (key === 27) {
-            game._pending_message = '';
-            return;
+async function namefloorobj() {
+    const u = game.u || {};
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    // C: gy.youmonst.data — current form (hide-under vs over)
+    const youdata = game.youmonst?.data || u.data;
+    const overunder = (u.uundetected && hides_under(youdata))
+        ? 'over' : 'under';
+    const goal = `object on map (or '.' for one ${overunder} you)`;
+    if (await getpos(cc, false, goal) < 0 || (cc.x | 0) <= 0) return;
+
+    let obj = null;
+    let fakeobj = false;
+    if (u_at(cc.x, cc.y)) {
+        // C: vobj_at(u.ux, u.uy) — display.h level.objects[x][y]
+        obj = objects_at(u.ux, u.uy);
+    } else {
+        const glyphotyp = glyph_to_obj_at(cc.x, cc.y);
+        if (glyphotyp >= 0) {
+            const frommap = object_from_map(glyphotyp, cc.x, cc.y);
+            fakeobj = !!frommap.fakeobj;
+            obj = frommap.otmp;
         }
+    }
+    if (!obj) {
+        await pline(`There doesn't seem to be any object ${
+            u_at(cc.x, cc.y) ? 'under you' : 'there'}.`);
+        return;
+    }
+    /* C: STRANGE_OBJECT (mimic) skips simpleonames → "glorkum" */
+    const buf = ((obj.otyp | 0) !== STRANGE_OBJECT)
+        ? simpleonames(obj)
+        : (objectNameStrs[STRANGE_OBJECT] || 'strange object');
+    const use_plural = (obj.quan | 0) > 1;
+    if (Hallucination()) {
+        const unames = new Array(6);
+        // C: Upolyd ? u.mfemale : flags.female
+        const female = Upolyd(u) ? u.mfemale : game.flags?.female;
+        const urole = game.urole || {};
+        unames[0] = (female && urole.name?.f) ? urole.name.f
+            : (urole.name?.m || 'Player');
+        /* C: 30 is hardcoded in xlev_to_rank */
+        unames[1] = rank_of(
+            rn2_on_display_rng(30) + 1,
+            urole.mnum | 0, // C Role_switch
+            !!game.flags?.female,
+        );
+        unames[2] = bogusmon(null);
+        unames[3] = unames[2];
+        unames[4] = roguename();
+        unames[5] = 'Wibbly Wobbly';
+        await pline(`${The(buf)} ${use_plural ? 'decide' : 'decides'} to call you "${
+            unames[rn2_on_display_rng(unames.length)]}."`);
+    } else if (call_ok(obj) === GETOBJ_EXCLUDE) {
+        await pline(`${use_plural ? 'Those' : 'That'} ${buf} can't be assigned a type name.`);
+    } else if (!obj.dknown) {
+        await pline(`You don't know ${use_plural ? 'those' : 'that'} ${buf} well enough to name ${
+            use_plural ? 'them' : 'it'}.`);
+    } else {
+        await docall(obj);
+    }
+    if (fakeobj) {
+        obj.where = OBJ_FREE; /* object_from_map set OBJ_FLOOR */
     }
 }
 

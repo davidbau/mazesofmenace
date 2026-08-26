@@ -19,10 +19,10 @@ import { MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP,
 import { rn2 } from './rng.js';
 import { dist2 } from './hacklib.js';
 import { near_capacity, acurrstr, ACURR, exercise, inv_weight,
-         weight_cap } from './attrib.js';
+         weight_cap, encumber_msg } from './attrib.js';
 import { rnl, rnd } from './rng.js';
 import { A_STR, A_DEX, A_CON, D_ISOPEN, D_BROKEN, D_NODOOR, D_TRAPPED,
-         IS_DOOR } from './const.js';
+         IS_DOOR, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, LEG } from './const.js';
 import { newsym } from './display.js';
 import { You } from './pline.js';
 import { is_pool } from './mon.js';
@@ -45,8 +45,8 @@ import { losehp } from './hack.js';
 import { wake_nearto, setmangry, seemimic, killed, mnexto } from './mon.js';
 import { Deaf } from './youprop.js';
 import { hcolor, mon_nam, Monnam, a_monnam } from './do_name.js';
-import { doname } from './objnam.js';
-import { poly_gender } from './polyself.js';
+import { doname, makeplural } from './objnam.js';
+import { poly_gender, body_part } from './polyself.js';
 import { adjalign } from './attrib.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { stairway_at } from './display.js';
@@ -217,7 +217,7 @@ async function kickdmg(mon, clumsy) {
 
     if (M_AP_TYPE(mon))
         seemimic(mon);
-    check_caitiff(mon);
+    await check_caitiff(mon);
 
     if (mon.mtame) {
         await abuse_dog(mon);
@@ -413,13 +413,31 @@ async function really_kick_object(obj, x, y) {
 // objects, doors and terrain is recorded.
 export async function dokick() {
     let no_kick = false;
+    const mdat = game.youmonst?.data;
 
-    if (game.u.usteed) {
+    if (nolimbs(mdat) || slithy(mdat)) {
+        await You('have no legs to kick with.');
+        no_kick = true;
+    } else if (verysmall(mdat)) {
+        await You('are too small to do any kicking.');
+        no_kick = true;
+    } else if (game.u.usteed) {
         note_unported_dokick('dokick:steed');
         return ECMD_OK;
-    }
-    if (near_capacity() > SLT_ENCUMBER) {
+    } else if ((game.u.intrinsic?.HWounded_legs || 0) > 0
+               || (game.u.EWounded_legs || 0)) {
+        const side = (game.u.EWounded_legs || 0) & BOTH_SIDES;
+        let leg = body_part(LEG);
+        if (side === BOTH_SIDES)
+            leg = makeplural(leg);
+        await Your(`${side === LEFT_SIDE ? 'left ' : side === RIGHT_SIDE ? 'right ' : ''}`
+                   + `${leg} ${side === BOTH_SIDES ? 'are' : 'is'} in no shape for kicking.`);
+        no_kick = true;
+    } else if (near_capacity() > SLT_ENCUMBER) {
         await Your('load is too heavy to balance yourself for a kick.');
+        no_kick = true;
+    } else if (mdat?.mlet === MONSYMS.S_LIZARD) {
+        await Your('legs cannot kick effectively.');
         no_kick = true;
     } else if (game.u.uinwater && !rn2(2)) {
         await Your("slow motion kick doesn't hit anything.");
@@ -551,6 +569,22 @@ function kickstr(maploc, kickobjnam) {
 }
 
 // src/dokick.c:881 kick_ouch() — the kick hurt the hero, not the target.
+// Kept local because importing do.js here creates the dokick/do wiring cycle
+// described at the top of this file.
+async function wound_kicking_leg(timex) {
+    game.disp ||= {};
+    game.disp.botl = true;
+    const intr = (game.u.intrinsic ||= {});
+    const wounded = (intr.HWounded_legs || 0) > 0
+        || (game.u.EWounded_legs || 0);
+    if (!wounded)
+        game.u.atemp.a[A_DEX]--;
+    if (!wounded || (intr.HWounded_legs || 0) < timex)
+        intr.HWounded_legs = timex;
+    game.u.EWounded_legs = (game.u.EWounded_legs || 0) | RIGHT_SIDE;
+    await encumber_msg();
+}
+
 async function kick_ouch(x, y, maploc, kickobjnam) {
     await pline('Ouch!  That hurts!');
     exercise(A_DEX, false);
@@ -564,10 +598,8 @@ async function kick_ouch(x, y, maploc, kickobjnam) {
         }
         wake_nearto(x, y, 5 * 5);
     }
-    if (!rn2(3)) {
-        note_unported_dokick('kick_ouch:wounded_legs');
-        rnd(5);             /* set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) */
-    }
+    if (!rn2(3))
+        await wound_kicking_leg(5 + rnd(5));
     const dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
     await losehp(dmg, kickstr(maploc, kickobjnam), KILLED_BY);
     if (game.u.uprops?.LEVITATION)
@@ -584,8 +616,7 @@ async function kick_dumb(x, y) {
     } else {
         await pline('Dumb move!  You strain a muscle.');
         exercise(A_STR, false);
-        note_unported_dokick('kick_dumb:wounded_legs');
-        rnd(5);                 /* set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) */
+        await wound_kicking_leg(5 + rnd(5));
     }
     /* the airlevel/Levitation hurtle needs neither here */
 }
