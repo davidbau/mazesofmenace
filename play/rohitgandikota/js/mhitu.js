@@ -8,7 +8,7 @@
 // exact C decision point, so game.unported names what a divergence wanted.
 
 import { game } from './gstate.js';
-import { thrwmu, spitmm } from './mthrowu.js';
+import { breamm, thrwmu, spitmm } from './mthrowu.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_animal, perceives, dmgtype, gender, pronoun_gender,
          is_swimmer, thick_skinned, unsolid, hides_under, is_hider, is_demon,
@@ -16,7 +16,7 @@ import { is_animal, perceives, dmgtype, gender, pronoun_gender,
          defended, resists_cold, resists_elec, resists_fire } from './mondata.js';
 import { is_vampshifter, DEADMONSTER, MON_WEP } from './monst.js';
 import { poly_gender, body_part } from './polyself.js';
-import { Invis, See_invisible, Underwater, Deaf, Levitation, Flying,
+import { Blind, Invis, See_invisible, Underwater, Deaf, Levitation, Flying,
          Cold_resistance, Fire_resistance, Hallucination,
          Reflecting, Shock_resistance, Unaware } from './youprop.js';
 import { ATTKS, MONSYMS, PMNAMES, MFLAGS } from './monst_data.js';
@@ -26,13 +26,13 @@ import { W_ARMOR, W_AMUL, NON_PM, u_at, is_pit, Upolyd, PRONOUN_HALLU,
          RLOC_MSG,
          TT_PIT, WATER, P_WHIP, P_POLEARMS, NEED_WEAPON,
          NEED_HTH_WEAPON, LEFT_SIDE, RIGHT_SIDE, LEG,
-         MON_EXPLODE } from './const.js';
+         MON_EXPLODE, XKILL_NOMSG } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { genders } from './role_data.js';
 import { pline, canspotmon, canseemon, mon_visible, sensemon, bot,
          map_invisible, newsym } from './display.js';
 import { cansee, couldsee } from './vision.js';
-import { Monnam, pmname, rndmonnam } from './do_name.js';
+import { Amonnam, Monnam, pmname, rndmonnam } from './do_name.js';
 import { You, You_hear } from './pline.js';
 import { attacktype_fordmg, dmgtype_fromattack } from './mondata.js';
 import { mon_nam } from './do_name.js';
@@ -43,16 +43,17 @@ import { ACURR, exercise } from './attrib.js';
 import { A_CON, A_STR, A_DEX } from './const.js';
 import { sobj_at } from './invent.js';
 import { s_suffix } from './hacklib.js';
-import { xname } from './objnam.js';
+import { doname, xname } from './objnam.js';
 import { nomul } from './hack.js';
 import { stop_occupation } from './allmain.js';
 import { hitval, mon_wield_item } from './weapon.js';
 import { mhitm_ad_phys, mhitm_ad_cold, mhitm_ad_elec, mhitm_ad_drst,
-         mhitm_knockback } from './uhitm.js';
-import { t_at } from './mon.js';
+         mhitm_ad_blnd, mhitm_ad_ston, mhitm_knockback } from './uhitm.js';
+import { is_pool, t_at } from './mon.js';
 import { touch_petrifies } from './dog.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { steal } from './steal.js';
+import { castmu } from './mcastu.js';
 
 function note_unported_mhitu(what) {
     (game.unported ||= new Set()).add(what);
@@ -484,6 +485,21 @@ export function getmattk(magr, mdef, indx, prev_result) {
         }
         return alt;
     }
+
+    /* src/mhitu.c:416: a lich uses weaker physical touch damage when its
+       target resists cold, unless the target is a shade. */
+    const cold_resistant_target = mdef === game.youmonst
+        ? Cold_resistance() : resists_cold(mdef);
+    if (indx === 0 && attk[0] === A.AT_TUCH && attk[1] === A.AD_COLD
+        && cold_resistant_target
+        && mdef.data.pmidx !== PMNAMES.PM_SHADE) {
+        const alt = [...attk];
+        alt[1] = A.AD_PHYS;
+        alt[2] = Math.trunc((alt[2] + 1) / 2);
+        if (alt[3] === 10)
+            alt[3] = 6;
+        return alt;
+    }
     return attk;
 }
 
@@ -786,7 +802,7 @@ export async function mattacku(mtmp) {
             break;
         case A.AT_BREA:
             if (v.range2)
-                note_unported_mhitu('mattacku:breamu');
+                sum[i] = await breamm(mtmp, mattk, game.youmonst);
             break;
         case A.AT_SPIT:
             if (v.range2)
@@ -839,7 +855,7 @@ export async function mattacku(mtmp) {
             if (v.range2)
                 note_unported_mhitu('mattacku:buzzmu');
             else
-                note_unported_mhitu('mattacku:castmu');
+                sum[i] = await castmu(mtmp, mattk, true, v.foundyou);
             break;
 
         default: /* no attack */
@@ -942,10 +958,22 @@ async function hitmu(mtmp, mattk, indx) {
     if (mtmp.mundetected
         && (hides_under(mdat) || mdat.mlet === MONSYMS.S_EEL)) {
         mtmp.mundetected = 0;
-        /* the "was hidden under" message needs doname/Amonnam plumbing for
-           the object underneath; the reveal itself must still happen */
-        note_unported_mhitu('hitmu:hidden_under_reveal');
-        newsym(mtmp.mx, mtmp.my);
+        if (!sensemon(mtmp) && !game.u.uprops?.DETECT_MONSTERS) {
+            const obj = (game.level?.objects || [])
+                .find(o => o.ox === mtmp.mx && o.oy === mtmp.my);
+            if (obj) {
+                const what = Blind() && !obj.dknown
+                    ? 'something'
+                    : is_pool(mtmp.mx, mtmp.my) && !Underwater()
+                        ? 'the water'
+                        : doname(obj);
+                let attacker = Amonnam(mtmp);
+                if (attacker === 'It')
+                    attacker = 'Something';
+                await pline(`${attacker} was hidden under ${what}!`);
+            }
+            newsym(mtmp.mx, mtmp.my);
+        }
     }
 
     /*  First determine the base damage done */
@@ -964,6 +992,10 @@ async function hitmu(mtmp, mattk, indx) {
     } else if (mattk[1] === A.AD_DRST || mattk[1] === A.AD_DRDX
                || mattk[1] === A.AD_DRCO) {
         await mhitm_ad_drst(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_BLND) {
+        await mhitm_ad_blnd(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_STON) {
+        await mhitm_ad_ston(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_LEGS) {
         const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
         const sidestr = side === RIGHT_SIDE ? 'right' : 'left';
@@ -1066,7 +1098,7 @@ async function hitmu(mtmp, mattk, indx) {
     }
 
     if (mhm.damage)
-        res = passiveum(olduasmon, mtmp, mattk);
+        res = await passiveum(olduasmon, mtmp, mattk);
     else
         res = M_ATTK_HIT;
     await stop_occupation();
@@ -1092,8 +1124,10 @@ export async function mdamageu(mtmp, n) {
         showdamage(n);
         if (game.u.mh > game.u.mhmax)
             game.u.mh = game.u.mhmax;
-        if (game.u.mh < 1)
-            note_unported_mhitu('mdamageu:rehumanize');
+        if (game.u.mh < 1) {
+            const { rehumanize } = await import('./polyself.js');
+            await rehumanize();
+        }
     } else {
         const shownHp = game.u.uhp;
         game.u.uhp -= n;
@@ -1185,7 +1219,7 @@ export function could_seduce(magr, mdef, mattk) {
 // (possibly former) monster form. A normal hero's row is all-zero: no dice,
 // AD_PHYS, so nothing happens and nothing is drawn. The polymorphed arms
 // (acid splash, cockatrice touch, disenchant) are recorded.
-function passiveum(olduasmon, mtmp, mattk) {
+async function passiveum(olduasmon, mtmp, mattk) {
     const A = ATTKS;
     let i, oldu_mattk = null;
 
@@ -1223,8 +1257,38 @@ function passiveum(olduasmon, mtmp, mattk) {
 
     /* These affect the enemy only if you are still a monster */
     if (rn2(3)) {
-        if (oldu_mattk[1] && tmp)
-            note_unported_mhitu(`passiveum:adtyp=${oldu_mattk[1]}`);
+        switch (oldu_mattk[1]) {
+        case A.AD_COLD: /* brown mold or blue jelly */
+            if (resists_cold(mtmp)) {
+                note_unported_mhitu('passiveum:AD_COLD:shieldeff_golem');
+                await pline(`${Monnam(mtmp)} is mildly chilly.`);
+                tmp = 0;
+                break;
+            }
+            await pline(`${Monnam(mtmp)} is suddenly very cold!`);
+            game.u.mh += Math.trunc((tmp + rn2(2)) / 2);
+            if (game.u.mhmax < game.u.mh)
+                game.u.mhmax = game.u.mh;
+            (game.disp ||= {}).botl = true;
+            if (game.u.mhmax > (olduasmon.mlevel + 1) * 8)
+                note_unported_mhitu('passiveum:AD_COLD:split_mon');
+            break;
+        default:
+            if (oldu_mattk[1] && tmp)
+                note_unported_mhitu(`passiveum:adtyp=${oldu_mattk[1]}`);
+            tmp = 0;
+            break;
+        }
+    } else {
+        tmp = 0;
+    }
+
+    mtmp.mhp -= tmp;
+    if (mtmp.mhp <= 0) {
+        await pline(`${Monnam(mtmp)} dies!`);
+        const { xkilled } = await import('./mon.js');
+        await xkilled(mtmp, XKILL_NOMSG);
+        return DEADMONSTER(mtmp) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
     }
     return M_ATTK_HIT;
 }

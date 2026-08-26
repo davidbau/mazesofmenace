@@ -14,7 +14,7 @@
 // Nothing here draws.
 
 import { game } from './gstate.js';
-import { is_flyer } from './mondata.js';
+import { haseyes, is_flyer, resists_cold } from './mondata.js';
 import { Upolyd } from './const.js';
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
@@ -39,6 +39,12 @@ export const Hallucination = () => HHallucination() && !Halluc_resistance();
 export const Deaf = () => !!game.u?.intrinsic?.HDeaf
                          || !!game.u?.uprops?.DEAF
                          || !!game.u?.uroleplay?.deaf;
+
+// include/youprop.h:103 Blind. An eyeless polymorph form contributes the
+// FROMFORM half of HBlinded in C, alongside timed and equipment blindness.
+export const Blind = () => !!game.u?.ublind
+                         || !!(Upolyd(game.u) && game.youmonst?.data
+                               && !haseyes(game.youmonst.data));
 
 // include/youprop.h:65 Stone_resistance — flat uprops map collapses the
 // intrinsic and extrinsic halves into one read.
@@ -91,7 +97,9 @@ export const Fire_resistance = () => !!(game.u?.intrinsic?.HFire_resistance
 // include/youprop.h — the rest of the H||E property pairs the innate-ability
 // tables (src/attrib.c role_abil/race_abil) and corpse intrinsics can set.
 export const Cold_resistance = () => !!(game.u?.intrinsic?.HCold_resistance
-                                        || game.u?.uprops?.COLD_RES);
+                                        || game.u?.uprops?.COLD_RES
+                                        || (Upolyd(game.u)
+                                            && resists_cold(game.youmonst)));
 export const Sleep_resistance = () => !!(game.u?.intrinsic?.HSleep_resistance
                                          || game.u?.uprops?.SLEEP_RES);
 export const Shock_resistance = () => !!(game.u?.intrinsic?.HShock_resistance

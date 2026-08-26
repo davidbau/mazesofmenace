@@ -8,19 +8,38 @@ import { couldsee } from './vision.js';
 import {
     M_ATTK_MISS, M_ATTK_HIT, MFAST,
     MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
-    HEAD,
+    HEAD, EYE,
 } from './const.js';
 import { mon_adjust_speed } from './muse.js';
-import { pline, verbalize, canspotmon } from './display.js';
+import { pline, verbalize, canspotmon, impossible } from './display.js';
 import { Monnam } from './do_name.js';
 import { nomul } from './hack.js';
 import { nasty } from './wizard.js';
-import { M1_SEE_INVIS } from './monsters.js';
+import { M1_SEE_INVIS, eyecount } from './monsters.js';
 import { body_part } from './polyself.js';
+import { makeplural } from './objnam.js';
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
     return ((ptr?.mflags1 | 0) & M1_SEE_INVIS) !== 0;
+}
+
+/** C youprop.h Blinded — HBlinded && !BBlinded (not Blindfolded/EBlinded). */
+function Blinded() {
+    const u = game.u || {};
+    return ((u.HBlinded | 0) && !(u.BBlinded | 0)) ? 1 : 0;
+}
+
+/** C youprop.h Blind — (HBlinded || EBlinded) && !BBlinded. */
+function Blind() {
+    const u = game.u || {};
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C youprop.h Half_spell_damage — H || E (this spell's 100 vs 200 only). */
+function Half_spell_damage() {
+    const u = game.u || {};
+    return !!(u.HHalf_spell_damage || u.EHalf_spell_damage);
 }
 
 // C ref: mcastu.h MONSPELL — unified spell ids
@@ -131,12 +150,10 @@ function spell_would_be_useless(mtmp, spellnum) {
     case MCAST_CURE_SELF:
         if ((mtmp.mhp | 0) === (mtmp.mhpmax | 0)) return true;
         break;
-    case MCAST_BLIND_YOU: {
-        const Blinded = !!((u.HBlinded | 0) || (u.EBlinded | 0)
-            || u.uroleplay?.blind);
-        if (Blinded) return true;
+    case MCAST_BLIND_YOU:
+        // C youprop.h Blinded — HBlinded && !BBlinded (not EBlinded)
+        if (Blinded()) return true;
         break;
-    }
     default:
         break;
     }
@@ -189,6 +206,27 @@ async function mcast_psi_bolt(dmg) {
 }
 
 /**
+ * C ref: mcastu.c mcast_blind_you — resists_blnd does not apply.
+ * Scales cover body_part(EYE); make_blinded(200L or 100L); Eyes
+ * leave Blind false so Your1(vision_clears).
+ */
+async function mcast_blind_you() {
+    if (!Blinded()) {
+        const num_eyes = eyecount(game.youmonst?.data);
+        const eye = body_part(EYE);
+        const what = (num_eyes === 1) ? eye : makeplural(eye);
+        await pline(`Scales cover your ${what}!`);
+        const { make_blinded } = await import('./do.js');
+        await make_blinded(Half_spell_damage() ? 100 : 200, false);
+        if (!Blind()) {
+            await pline('Your vision clears.');
+        }
+    } else {
+        await impossible('no reason for monster to cast blindness spell?');
+    }
+}
+
+/**
  * C ref: mcastu.c mcast_open_wounds — Antimagic halves; severity pline.
  */
 async function mcast_open_wounds(dmg) {
@@ -236,7 +274,8 @@ async function mcast_summon_mons(mtmp) {
  * C ref: mcastu.c castmu — spell selection + undirected early-out for
  * dochug non-attack cast. Burns mspec_used + fumble rn2; pline cast
  * before mcast_spell (D-0928 #1191); applies HASTE_SELF / CURE_SELF /
- * PSI_BOLT / OPEN_WOUNDS / SUMMON_MONS. Other mcast_spell bodies deferred.
+ * PSI_BOLT / OPEN_WOUNDS / SUMMON_MONS / BLIND_YOU. Other mcast_spell
+ * bodies deferred.
  *
  * @param {object} mtmp
  * @param {{ adtyp: number }} mattk
@@ -320,7 +359,8 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     }
 
     // C ref: mcastu.c mcast_spell — undirected HASTE/CURE/SUMMON + directed
-    // PSI_BOLT/OPEN_WOUNDS (pline then mdamageu). Other spell bodies deferred.
+    // PSI_BOLT/OPEN_WOUNDS (pline then mdamageu) + BLIND_YOU. Other
+    // spell bodies deferred.
     if (adtyp === AD_SPEL || adtyp === AD_CLRC) {
         switch (spellnum) {
         case MCAST_HASTE_SELF:
@@ -350,6 +390,11 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         case MCAST_OPEN_WOUNDS:
             // C: mcast_open_wounds — Antimagic halves + severity pline
             dmg = await mcast_open_wounds(dmg);
+            break;
+        case MCAST_BLIND_YOU:
+            // C: mcast_blind_you — EYE scales + make_blinded; dmg = 0
+            await mcast_blind_you();
+            dmg = 0;
             break;
         default:
             // Named omission: other mcast_spell cases (dmg zeroed in C)
@@ -381,4 +426,5 @@ export async function buzzmu(mtmp, mattk) {
     return M_ATTK_MISS;
 }
 
-export { AD_SPEL, AD_CLRC, is_undirected_spell, choose_monster_spell };
+export { AD_SPEL, AD_CLRC, is_undirected_spell, choose_monster_spell,
+    mcast_blind_you };

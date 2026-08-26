@@ -6,15 +6,15 @@
 // (tactics, intervene, resurrection) is not ported.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { PMNAMES, MFLAGS, GROWNUPS } from './monst_data.js';
+import { rn2, rnd } from './rng.js';
+import { PMNAMES, MONSYMS, ATTKS, MFLAGS, GROWNUPS } from './monst_data.js';
 import { Is_rogue_level, MAGIC_PORTAL, BOLT_LIM, RLOC_MSG,
          STRAT_NONE, STRAT_HEAL, STRAT_PLAYER, STRAT_GROUND, STRAT_MONSTR,
          STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG, STRAT_STRATMASK,
-         STRAT_GOAL } from './const.js';
-import { distu, isok } from './hacklib.js';
+         STRAT_GOAL, In_endgame } from './const.js';
+import { distu, isok, sgn } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
-import { is_covetous } from './mondata.js';
+import { attacktype, is_covetous } from './mondata.js';
 import { inhishop, inhistemple } from './monmove.js';
 import { builds_up } from './dungeon.js';
 import { DEADMONSTER } from './monst.js';
@@ -335,7 +335,7 @@ export async function tactics(mtmp) {
         /* FALLTHRU */
     case STRAT_NONE: /* harass */
         if (!noteleport_level(mtmp) && !rn2(!mtmp.mflee ? 5 : 33))
-            mnexto(mtmp, RLOC_MSG);
+            await mnexto(mtmp, RLOC_MSG);
         return 0;
 
     default: /* kill, maim, pillage! */
@@ -386,7 +386,7 @@ export async function tactics(mtmp) {
             } else {
                 /* a monster is standing on it - cause some trouble */
                 if (!rn2(5) && !noteleport_level(mtmp))
-                    mnexto(mtmp, RLOC_MSG);
+                    await mnexto(mtmp, RLOC_MSG);
                 return 0;
             }
         } else { /* a monster has it - 'port beside it. */
@@ -514,7 +514,8 @@ export function big_to_little(montype) {
 }
 
 /* include/dungeon.h In_hell() */
-const In_hell = (lev) => (lev ?? game.u?.uz)?.dnum === game.hell_dnum;
+const In_hell = (lev) =>
+    game.dungeons?.[(lev ?? game.u?.uz)?.dnum]?.flags?.hellish === true;
 
 // src/wizard.c:537 pick_nasty() — a random nasty shape, demoted to its
 // juvenile form when genocided, over the difficulty cap, or out of place
@@ -553,4 +554,116 @@ export function pick_nasty(difcap) {
     }
 
     return res;
+}
+
+// src/wizard.c:580 nasty() creates hostile monsters aligned with the caster,
+// then returns the actual increase in the live-monster census.  Monster
+// creation can add groups, so counting successful makemon() calls is not
+// enough for the return value.
+export async function nasty(summoner) {
+    const [{ monster_census, msummon }, { enexto },
+           { makemon, set_malign, NO_MM_FLAGS, MM_NOMSG },
+           { discard_minvent }, { mongone }] = await Promise.all([
+        import('./minion.js'), import('./teleport.js'), import('./makemon.js'),
+        import('./mkobj.js'), import('./mon.js'),
+    ]);
+    const census = monster_census(false);
+    let count;
+
+    if (!rn2(10) && In_hell(game.u?.uz)) {
+        count = await msummon(null);
+    } else {
+        const sdata = summoner?.data;
+        const s_cls = sdata?.mlet ?? 0;
+        let difcap = sdata?.difficulty ?? 0;
+        const castalign = summoner ? sgn(sdata.maligntyp) : 0;
+        const rounds = rnd((game.u.ulevel > 3)
+                           ? Math.trunc(game.u.ulevel / 3) : 1);
+        const bypos = { x: game.u.ux, y: game.u.uy };
+        const mmflags = summoner ? MM_NOMSG : NO_MM_FLAGS;
+
+        count = 0;
+        for (let i = rounds; i > 0 && count < 10; --i) {
+            for (let j = 0; j < 20; ++j) {
+                let makeindex = -1;
+                let m_cls = 0;
+                let trylimit = 11;
+
+                do {
+                    if (!--trylimit)
+                        break;
+                    makeindex = pick_nasty(difcap);
+                    m_cls = game.mons[makeindex].mlet;
+                } while ((difcap > 0
+                           && game.mons[makeindex].difficulty >= difcap
+                           && attacktype(game.mons[makeindex], ATTKS.AT_MAGC))
+                         || (s_cls === MONSYMS.S_DEMON
+                             && m_cls === MONSYMS.S_ANGEL)
+                         || (s_cls === MONSYMS.S_ANGEL
+                             && m_cls === MONSYMS.S_DEMON));
+                if (!trylimit)
+                    continue;
+
+                if (summoner
+                    && !enexto(bypos, summoner.mux, summoner.muy,
+                               game.mons[makeindex]))
+                    continue;
+
+                let mtmp = makemon(game.mons[makeindex], bypos.x, bypos.y,
+                                   mmflags);
+                if (mtmp) {
+                    mtmp.msleeping = 0;
+                    mtmp.mpeaceful = 0;
+                    mtmp.mtame = 0;
+                    set_malign(mtmp);
+                } else {
+                    mtmp = makemon(null, bypos.x, bypos.y, mmflags);
+                    if (mtmp) {
+                        m_cls = mtmp.data.mlet;
+                        const capped_spellcaster = difcap > 0
+                            && mtmp.data.difficulty >= difcap
+                            && rn2(In_endgame(game.u.uz) ? 3 : 7)
+                            && attacktype(mtmp.data, ATTKS.AT_MAGC);
+                        if (capped_spellcaster
+                            || (s_cls === MONSYMS.S_DEMON
+                                && m_cls === MONSYMS.S_ANGEL)
+                            || (s_cls === MONSYMS.S_ANGEL
+                                && m_cls === MONSYMS.S_DEMON)) {
+                            const vitals = game.mvitals?.[mtmp.mnum];
+                            if (vitals && vitals.born > 0 && vitals.born < 255)
+                                --vitals.born;
+                            if ((mtmp.data.geno & MFLAGS.G_UNIQ) !== 0
+                                && vitals)
+                                vitals.mvflags &= ~MFLAGS.G_EXTINCT;
+                            mtmp.mhp = 0;
+                            discard_minvent(mtmp, true);
+                            mongone(mtmp);
+                            mtmp = null;
+                        }
+                    }
+                }
+
+                if (mtmp) {
+                    if (mtmp.data === game.mons[PMNAMES.PM_ARCH_LICH]
+                        || mtmp.data === game.mons[PMNAMES.PM_ARCHON]) {
+                        const cap = Math.min(
+                            game.mons[PMNAMES.PM_ARCHON].difficulty,
+                            game.mons[PMNAMES.PM_ARCH_LICH].difficulty,
+                        );
+                        if (!difcap || difcap > cap)
+                            difcap = cap;
+                    }
+                    mtmp.mspec_used = rnd(4);
+                    ++count;
+                    if (count >= 10 || mtmp.data.maligntyp === 0
+                        || sgn(mtmp.data.maligntyp) === castalign)
+                        break;
+                }
+            }
+        }
+    }
+
+    if (count)
+        count = monster_census(false) - census;
+    return count;
 }

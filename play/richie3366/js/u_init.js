@@ -56,6 +56,7 @@ import {
     NOT_HUNGRY,
     INTRINSIC,
     PROTECTION,
+    W_ART,
 } from './const.js';
 import {
     PM_TOURIST, PM_ROGUE, PM_CLERIC, PM_WIZARD, PM_MONK, PM_KNIGHT,
@@ -70,6 +71,7 @@ import {
     M3_CLOSE, M3_WANTSARTI, M3_WAITFORU,
 } from './monsters.js';
 import { skill_init } from './weapon.js';
+import { set_artifact_intrinsic } from './artifact.js';
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
 const ARM_SUIT = 0;
@@ -886,10 +888,13 @@ function reorder_invent() {
 }
 
 // C ref: invent.c addinv() → merged() for stack absorb + compare-learn pline.
-// Named omissions: quiver-prefer merge; addinv_before; thrown autoquiver;
-// oname absorb; worn-slot merge; globby/pudding; lamplit timers.
+// addinv_core1 artifact W_ART conferral (D-1539). Named omissions: quiver-prefer
+// merge; addinv_before; thrown autoquiver; oname absorb; worn-slot merge;
+// globby/pudding; lamplit timers; questart/artitouch; addinv_core2 luck.
 export async function addinv(obj) {
     if (!game.invent) game.invent = [];
+    // C invent.c addinv_core1 `:984–991` — before merge/link
+    if (obj?.oartifact) set_artifact_intrinsic(obj, true, W_ART);
     for (const otmp of game.invent) {
         if (!mergable(otmp, obj)) continue;
         // C invent.c merged(): age/quan/weight (+ coin bknown wipe) BEFORE

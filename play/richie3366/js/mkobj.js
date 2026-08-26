@@ -839,7 +839,8 @@ export function obj_has_timer(obj, action) {
  * C ref: timeout.c start_timer — queue timer; timeout = moves+when.
  * TIMER_OBJECT: arg is obj (duplicate same obj+action aborted).
  * TIMER_LEVEL: arg is packed a_long (or `{ a_long }`); used for
- * MELT_ICE_AWAY spot timers (D-0965).
+ * MELT_ICE_AWAY spot timers (D-0965). tid = svt.timer_id++ (D-1527
+ * #timeout print_queue). save/rest timer_id named.
  */
 export function start_timer(when, kind, action, arg) {
     const isObj = (kind | 0) === TIMER_OBJECT;
@@ -855,9 +856,12 @@ export function start_timer(when, kind, action, arg) {
         if (!isObj && (dup.a_long | 0) === a_long) return 0;
     }
     const moves = game.moves | 0;
+    /* C timeout.c start_timer: gnu->tid = svt.timer_id++; starts 1UL. */
+    if ((game.timer_id | 0) < 1) game.timer_id = 1;
     const gnu = {
         next: null,
         timeout: moves + (when | 0),
+        tid: game.timer_id++,
         kind: kind | 0,
         action: action | 0,
         obj,

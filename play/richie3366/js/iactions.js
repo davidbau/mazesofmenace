@@ -23,6 +23,7 @@ import {
 } from './objects.js';
 import {
     ECMD_OK, GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
+    CMDQ_EXTCMD,
     W_ARMOR, W_ACCESSORY, W_AMUL, W_RING, W_TOOL, Is_container,
     Has_contents, has_oname, ONAME, HANDS_SYM,
 } from './const.js';
@@ -32,6 +33,16 @@ import { ATR_INVERSE } from './terminal.js';
 function cmdq_add_ec(fn) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
     game._cmdq_canned.push(fn);
+}
+
+/**
+ * C cmd.c cmdq_add_ec: typ=CMDQ_EXTCMD, ec_entry=ext_func_tab_from_func.
+ * Only IA_DIP_OBJ (#altdip INTERNALCMD) uses this; other arms stay
+ * bare-function clones (do not write a sixth cmdq_add_ec module).
+ */
+function cmdq_add_ec_entry(txt, fn) {
+    if (!game._cmdq_canned) game._cmdq_canned = [];
+    game._cmdq_canned.push({ typ: CMDQ_EXTCMD, txt, run: fn });
 }
 function cmdq_add_key(ch) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
@@ -77,10 +88,10 @@ async function itemactions_pushkeys(act, otmp) {
         break;
     }
     case IA_DIP_OBJ: {
-        /* C iactions.c `:159–166` — #altdip; potion invlet answers
-           getobj("dip", drink_ok); ignores floor water. */
+        /* C iactions.c `:159–166` — cmdq_add_ec(dip_into) looks up
+           INTERNALCMD "altdip"; potion invlet answers getobj drink_ok. */
         const { dip_into } = await import('./potion.js');
-        cmdq_add_ec(dip_into);
+        cmdq_add_ec_entry('altdip', dip_into);
         cmdq_add_key(otmp.invlet);
         break;
     }

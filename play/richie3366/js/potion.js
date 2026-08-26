@@ -2643,9 +2643,9 @@ async function getobj_dip_ok(word, inacc) {
  * potion first (already in CQ_CANNED), then the object to dip.
  * Ignores floor water. Caller iactions.c IA_DIP_OBJ.
  * Callee do_wear.c inaccessible_equipment via apply.js (dynamic;
- * apply.js already imports potion.js). Named omit: INTERNALCMD
- * extcmdlist "altdip" autocomplete; Eyes of Overworld is_plural;
- * dodip inaccessible (still named).
+ * apply.js already imports potion.js). Named omit: Eyes of Overworld
+ * is_plural; dodip inaccessible (still named). INTERNALCMD extcmdlist
+ * "altdip" is D-1537 (typed # unknown; canned CMDQ_EXTCMD).
  * @returns {number} ECMD_*
  */
 export async function dip_into() {

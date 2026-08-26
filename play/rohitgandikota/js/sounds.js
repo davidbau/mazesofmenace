@@ -364,6 +364,13 @@ export async function domonnoise(mtmp) {
             break;
         }
         break;
+    case MSOUND.MS_LEADER:
+    case MSOUND.MS_NEMESIS:
+    case MSOUND.MS_GUARDIAN: {
+        const { quest_chat } = await import('./quest.js');
+        await quest_chat(mtmp);
+        break;
+    }
     default:
         note_unported_sounds(`domonnoise:msound=${msound}`);
         break;

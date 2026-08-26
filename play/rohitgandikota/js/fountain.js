@@ -12,11 +12,11 @@ import { newsym } from './display.js';
 import { IS_FOUNTAIN, ROOM, POOL, A_WIS, A_CON, IS_DOOR, SDOOR, isok,
          SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP, PIT, SPIKED_PIT,
          HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP,
-         ANTI_MAGIC } from './const.js';
+         ANTI_MAGIC, KILLED_BY_AN, KILLED_BY } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { OCLASSES } from './objects_data.js';
 import { deltrap, water_damage, water_damage_chain } from './trap.js';
-import { ACURR, adjattrib, A_MAX, exercise } from './attrib.js';
+import { ACURR, adjattrib, A_MAX, exercise, poison_strdmg } from './attrib.js';
 import { morehungry, vomit } from './eat.js';
 import { update_inventory, money_cnt } from './invent.js';
 import { curse, uncurse, mksobj_at, rnd_class } from './mkobj.js';
@@ -360,7 +360,22 @@ export async function drinkfountain() {
             }
             break;
         case 21: /* Poisonous */
-            note_unported_fountain('drinkfountain:poisonous');
+            {
+                await pline_The('water is contaminated!');
+                const { Poison_resistance } = await import('./youprop.js');
+                if (Poison_resistance()) {
+                    const { fruitname } = await import('./objnam.js');
+                    const { losehp } = await import('./hack.js');
+                    await pline(`Perhaps it is runoff from the nearby ${
+                        fruitname(false)} farm.`);
+                    await losehp(rnd(4), 'unrefrigerated sip of juice',
+                                 KILLED_BY_AN);
+                    break;
+                }
+                await poison_strdmg(rn1(4, 3), rnd(10),
+                                    'contaminated water', KILLED_BY);
+                exercise(A_CON, false);
+            }
             break;
         case 22: /* Fountain of snakes! */
             await dowatersnakes();

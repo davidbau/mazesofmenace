@@ -14,11 +14,14 @@ import { save_track, rest_track } from './track.js';
 import { yn_function } from './getline.js';
 import { paint_gbuf_level_to_terminal } from './display.js';
 import { vision_off_newsym_gbuf } from './vision.js';
-import { fruit_from_indx } from './objnam.js';
+import { fruit_from_indx, fruit_from_name } from './objnam.js';
+import { rnd } from './rng.js';
 import { objectNames } from './generated/objects_data.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+/** C ref: global.h PL_FSIZ — fruit name buffer (copynchars n = PL_FSIZ-1). */
+const PL_FSIZ = 32;
 
 /**
  * C ref: bones.c goodfruit `:42–47` — look up fruit_from_indx(-id); if
@@ -75,7 +78,8 @@ export function savefruitchn() {
 /**
  * C ref: restore.c loadfruitchn `:468–483` — read until fid==0; prepend
  * so the last written fruit is head (reverses savefruitchn order).
- * Bones getlev stores this on go.oldfruit; ghostfruit remap named.
+ * Bones getlev stores this on go.oldfruit so ghostfruit can remap
+ * SLIME_MOLD spe (D-1541).
  * @param {{ fname?: string, fid?: number }[]|null|undefined} arr
  * @returns {object|null}
  */
@@ -370,11 +374,68 @@ function deserObjChain(arr, where) {
 }
 
 /**
- * C ref: restore.c restobjchn ghostly — next_ident per object, parent before cobj.
+ * C ref: options.c fruitadd else `:8257–8286` (not user_specified —
+ * `str != svp.pl_fruit`). ghostfruit passes oldf->fname, a different
+ * buffer even when the text equals pl_fruit, so JS cannot use string
+ * `===` (D-1520). User doset path stays in options.js (bones → options
+ * → invent → mklev cycle). Walker is live objnam fruit_from_name(FALSE).
+ * Does not candify, makesingular, or write current_fruit / pl_fruit.
+ * 8-bit sanitize strip named (tty eight_bit_input on).
+ * @param {string} str  old fruit fname
+ * @returns {number} fid in the current game's ffruit chain
+ */
+function fruitadd_bones(str) {
+    let altname = '';
+    const raw = String(str || '');
+    const n = raw.length > PL_FSIZ - 1 ? raw.slice(0, PL_FSIZ - 1) : raw;
+    for (let i = 0; i < n.length; i++) {
+        const c = n.charCodeAt(i) & 0x7f;
+        altname += (c < 0x20 || c === 0x7f) ? '.' : String.fromCharCode(c);
+    }
+    if (!game.flags) game.flags = {};
+    game.flags.made_fruit = true;
+    const look = altname || str;
+    const highest = { fid: 0 };
+    const found = fruit_from_name(look, false, highest);
+    if (found) return found.fid | 0;
+    if (highest.fid >= 127) return rnd(127);
+    const f = {
+        fname: String(look).slice(0, PL_FSIZ - 1),
+        fid: (highest.fid | 0) + 1,
+        nextf: game.ffruit || null,
+    };
+    game.ffruit = f;
+    return f.fid;
+}
+
+/**
+ * C ref: restore.c ghostfruit `:500–511` — look up go.oldfruit by
+ * otmp->spe; miss → impossible (pline named: restobjchn is sync);
+ * hit → otmp->spe = fruitadd(oldf->fname, NULL) else-path.
+ * Caller restobjchn `:260–261` after ghostly next_ident, before
+ * contents / age shift (age named).
+ * @param {object} otmp  SLIME_MOLD whose spe is a bones fid
+ */
+export function ghostfruit(otmp) {
+    let oldf;
+    for (oldf = game.oldfruit; oldf; oldf = oldf.nextf) {
+        if ((oldf.fid | 0) === (otmp.spe | 0)) break;
+    }
+    if (!oldf) {
+        // C: impossible("no old fruit?"); spe unchanged
+        return;
+    }
+    otmp.spe = fruitadd_bones(oldf.fname);
+}
+
+/**
+ * C ref: restore.c restobjchn ghostly — next_ident per object, then
+ * SLIME_MOLD ghostfruit, parent before cobj.
  */
 function remapObjChainIds(head) {
     for (let otmp = head; otmp; otmp = otmp.nobj) {
         otmp.o_id = next_ident();
+        if ((otmp.otyp | 0) === SLIME_MOLD) ghostfruit(otmp);
         if (otmp.cobj) remapObjChainIds(otmp.cobj);
     }
 }
@@ -466,7 +527,7 @@ export async function try_load_bones(lev) {
         }
 
         // C getlev ghostly: go.oldfruit = loadfruitchn before restobjchn
-        // so ghostfruit can remap SLIME_MOLD spe (ghostfruit named).
+        // so ghostfruit can remap SLIME_MOLD spe (D-1541).
         game.oldfruit = loadfruitchn(payload.fruitchn);
 
         const map = new GameMap();
@@ -557,8 +618,7 @@ export async function try_load_bones(lev) {
     rebuildObjectsAt(fobj);
     // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
     rest_track(payload.track);
-    // C getlev ghostly: freefruitchn(oldfruit) after restobjchn.
-    // ghostfruit remap of SLIME_MOLD spe still named.
+    // C getlev ghostly: freefruitchn(oldfruit) after restobjchn / rest_track.
     game.oldfruit = null;
 
     if (!game.u) game.u = {};

@@ -10,7 +10,8 @@ import { mpickstuff, mondied, wake_nearto } from './mon.js';
 import { sengr_at, wipe_engr_at } from './engrave.js';
 import { autoreturn_weapon } from './weapon.js';
 import { MON_WEP } from './monst.js';
-import { find_offensive, find_misc, use_misc } from './muse.js';
+import { find_offensive, find_defensive, use_defensive,
+         find_misc, use_misc } from './muse.js';
 import { is_launcher, is_pole } from './u_init.js';
 import { ammo_and_launcher } from './wield.js';
 import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
@@ -19,7 +20,7 @@ import { MON_POLE_DIST, OBJ_FLOOR, RAY, MFAST, NON_PM, W_ARMG, W_WEP,
     P_DAGGER, P_KNIFE,
     AM_SHRINE, Amask2align, ROOMOFFSET, ALLOW_MDISP, ALLOW_M, SHOPBASE,
     TEMPLE, RLOC_MSG
-, STRAT_WAITFORU, STRAT_WAITMASK } from './const.js';
+, STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE } from './const.js';
 import { amorphous, passes_walls, is_floater, nonliving,
          attacktype, can_blow, needspick, flaming, noncorporeal,
          tunnels, nohands as nohands_mm,
@@ -77,7 +78,7 @@ import { is_rider } from './makemon.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          MMOVE_NOMOVES, engulfing_u, NEED_WEAPON, NEED_HTH_WEAPON,
          NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
-         Upolyd, u_at } from './const.js';
+         Upolyd, u_at, M_ATTK_HIT } from './const.js';
 import { mon_wield_item } from './weapon.js';
 import { mattacku } from './mhitu.js';
 import { noattacks } from './mondata.js';
@@ -954,12 +955,6 @@ export function set_apparxy(mtmp) {
        know where you are don't suddenly forget, if you haven't moved away */
     if (mtmp.mtame || mtmp === game.u.ustuck
         || (game.u.ux === mx && game.u.uy === my)) {
-        if (globalThis.__gate_log && mtmp.mnum === 100) {
-            const { rngLogLength } = globalThis.__rng_mod || {};
-            const idx = rngLogLength ? rngLogLength() : -1;
-            if (idx >= 4150 && idx <= 4260)
-                console.error(`APX idx=${idx} u=(${game.u.ux},${game.u.uy}) stack=${new Error().stack.split('\n')[2].trim()}`);
-        }
         mtmp.mux = game.u.ux;
         mtmp.muy = game.u.uy;
         return;
@@ -1098,7 +1093,11 @@ export async function dochug(mtmp) {
     /* src/monmove.c:717 — frozen or strategically waiting monsters do
        nothing at all this turn (BEFORE the sleep/disturb check). */
     if (!(mtmp.mcanmove ?? 1) || (mtmp.mstrategy & STRAT_WAITMASK)) {
-        /* STRAT_CLOSE pop-out arm needs the covetous machinery */
+        if (mtmp.mcanmove && (mtmp.mstrategy & STRAT_CLOSE)
+            && !mtmp.msleeping && monnear(mtmp, game.u.ux, game.u.uy)) {
+            const { quest_talk } = await import('./quest.js');
+            await quest_talk(mtmp);
+        }
         return 0;
     }
 
@@ -1168,10 +1167,11 @@ export async function dochug(mtmp) {
     let status = 0;
     let panicattk = false;
 
-    /* src/monmove.c:794 checks defensive items first. That selector remains
-       outside the common early-game path, but find_misc() must still run for
-       carried containers because its failed rn2(5) check is observable. */
-    if (find_misc(mtmp)) {
+    /* src/monmove.c:794, defensive actions take priority over utility. */
+    if (find_defensive(mtmp, false)) {
+        await use_defensive(mtmp);
+        return 0;
+    } else if (find_misc(mtmp)) {
         await use_misc(mtmp);
         return 0;
     }
@@ -1199,12 +1199,6 @@ export async function dochug(mtmp) {
         }
     }
 
-    if (globalThis.__gate_log) {
-        const { rngLogLength } = await import('./rng.js');
-        const idx = rngLogLength();
-        if (idx >= 4240 && idx <= 4260)
-            console.error(`GATE idx=${idx} mnum=${mtmp.mnum} at(${mtmp.mx},${mtmp.my}) mux=(${mtmp.mux},${mtmp.muy}) nearby=${nearby} inrange=${inrange} tame=${mtmp.mtame|0} peaceful=${mtmp.mpeaceful|0}`);
-    }
     /* src/monmove.c:882 — a monster only gets to move if it passes this. Each
        arm that draws does so ONLY because the arms before it were false, so
        dropping the whole condition (as we did) loses a draw on any turn a
@@ -1225,8 +1219,11 @@ export async function dochug(mtmp) {
             for (const a of mdat.mattk) {
                 if (a[0] === ATTKS.AT_MAGC
                     && (a[1] === ATTKS.AD_SPEL || a[1] === ATTKS.AD_CLRC)) {
-                    note_unported('castmu');
-                    break;
+                    const { castmu } = await import('./mcastu.js');
+                    if ((await castmu(mtmp, a, false, false)) & M_ATTK_HIT) {
+                        status = MMOVE_DONE;
+                        break;
+                    }
                 }
             }
         }
@@ -1527,8 +1524,11 @@ export async function m_move(mtmp, after) {
     const flag = mon_allowflags(mtmp);
     const mfp = {};
     const cnt = mfndpos(mtmp, mfp, flag);
-    if (cnt === 0)
+    if (cnt === 0) {
+        if (find_defensive(mtmp, true) && await use_defensive(mtmp))
+            return MMOVE_DONE;
         return MMOVE_NOMOVES;
+    }
 
     let chcnt = 0;
     const jcnt = Math.min(MTSZ, cnt - 1);

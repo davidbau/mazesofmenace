@@ -24,8 +24,10 @@ import { A_NONE, AM_NONE, A_LAWFUL, AM_LAWFUL, PICK_ONE,
 import { dungeon as DUNGEON_DATA } from './dungeon_data.js';
 import { roles } from './role_data.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
-         tty_select_menu, tty_destroy_nhwindow, tty_putstr, NHW_MENU,
-         ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
+         tty_select_menu, tty_destroy_nhwindow, tty_display_nhwindow,
+         tty_next_page, tty_putstr, NHW_MENU, ATR_NONE,
+         ATR_INVERSE } from './tty/wintty.js';
+import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { MENU_ITEMFLAGS_NONE } from './const.js';
 import { makeplural } from './objnam.js';
@@ -668,6 +670,17 @@ function dname_to_dnum(nam) {
     return i;
 }
 
+// src/dungeon.c:1897 at_dgn_entrance() -- is the hero standing on the
+// parent level which contains the branch into the named dungeon?
+export function at_dgn_entrance(nam) {
+    const dnum = dname_to_dnum(nam);
+    const br = (game.branches || []).find(b => b.end2.dnum === dnum);
+    if (!br)
+        throw new Error(`at_dgn_entrance: no branch to "${nam}"`);
+    return game.u.uz.dnum === br.end1.dnum
+           && game.u.uz.dlevel === br.end1.dlevel;
+}
+
 // src/dungeon.c:540 add_level() — insert into the special-level chain in level
 // order within a dungeon. find_level() depends on this ordering later.
 function add_level(new_lev) {
@@ -959,8 +972,6 @@ function print_branch(win, dnum, lower_bound, upper_bound, bymenu, lchoices) {
 }
 
 // src/dungeon.c:2290 print_dungeon() — the wizard-mode dungeon overview.
-// Only the bymenu form (the ^V '?' destination menu) is ported; the plain
-// listing arm is reached from #wizwhere and is recorded.
 //
 // Returns the picked destination's player-visible depth (0 if cancelled)
 // and fills out.lev / out.dnum with the d_level.
@@ -969,12 +980,8 @@ export async function print_dungeon(bymenu, out) {
                        playerlev: [] };
     const win = tty_create_nhwindow(NHW_MENU);
 
-    if (!bymenu) {
-        note_unported_dungeon('print_dungeon:listing');
-        tty_destroy_nhwindow(win);
-        return 0;
-    }
-    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    if (bymenu)
+        tty_start_menu(win, MENU_BEHAVE_STANDARD);
 
     for (let i = 0; i < game.dungeons.length; i++) {
         const dptr = game.dungeons[i];
@@ -998,9 +1005,13 @@ export async function print_dungeon(bymenu, out) {
             else
                 buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
         }
-        /* add_menu_heading() */
-        tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR, buf,
-                     MENU_ITEMFLAGS_NONE);
+        if (bymenu) {
+            /* add_menu_heading() */
+            tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR, buf,
+                         MENU_ITEMFLAGS_NONE);
+        } else {
+            tty_putstr(win, 0, buf);
+        }
 
         /*
          * Circle through the special levels to find levels that are in
@@ -1021,8 +1032,12 @@ export async function print_dungeon(bymenu, out) {
             if (stronghold && slev.dlevel.dnum === stronghold.dnum
                 && slev.dlevel.dlevel === stronghold.dlevel)
                 sbuf += ` (tune ${game.castle_tune})`;
-            tport_menu(win, sbuf, lchoices, slev.dlevel,
-                       unreachable_level(slev.dlevel, unplaced));
+            if (bymenu) {
+                tport_menu(win, sbuf, lchoices, slev.dlevel,
+                           unreachable_level(slev.dlevel, unplaced));
+            } else {
+                tty_putstr(win, 0, sbuf);
+            }
 
             last_level = slev.dlevel.dlevel;
         }
@@ -1030,17 +1045,40 @@ export async function print_dungeon(bymenu, out) {
         print_branch(win, i, last_level, MAXLEVEL, bymenu, lchoices);
     }
 
-    tty_end_menu(win, 'Level teleport to where:');
-    const picks = await tty_select_menu(win, PICK_ONE);
-    tty_destroy_nhwindow(win);
-    if (picks.length > 0) {
-        const idx = picks[0] - 1;
-        if (out) {
-            out.lev = lchoices.lev[idx];
-            out.dnum = lchoices.dgn[idx];
-            return lchoices.playerlev[idx];
+    if (bymenu) {
+        tty_end_menu(win, 'Level teleport to where:');
+        const picks = await tty_select_menu(win, PICK_ONE);
+        tty_destroy_nhwindow(win);
+        if (picks.length > 0) {
+            const idx = picks[0] - 1;
+            if (out) {
+                out.lev = lchoices.lev[idx];
+                out.dnum = lchoices.dgn[idx];
+                return lchoices.playerlev[idx];
+            }
+        }
+        return 0;
+    }
+
+    /* Print out floating branches, if any. */
+    let first = true;
+    for (const br of (game.branches || [])) {
+        if (br.end1.dnum === game.dungeons.length) {
+            if (first) {
+                tty_putstr(win, 0, '');
+                tty_putstr(win, 0, 'Floating branches');
+                first = false;
+            }
+            tty_putstr(win, 0, `   ${br_string(br.type)} to ${
+                game.dungeons[br.end2.dnum].dname}`);
         }
     }
+
+    await tty_display_nhwindow(win);
+    await xwaitforspace(' \r\n\x1b');
+    while (game.morc !== '\x1b' && tty_next_page(win))
+        await xwaitforspace(' \r\n\x1b');
+    tty_destroy_nhwindow(win);
     return 0;
 }
 

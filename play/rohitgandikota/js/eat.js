@@ -11,7 +11,7 @@ import { game } from './gstate.js';
 import { Race_if } from './u_init.js';
 import { carnivorous, herbivorous, metallivorous, acidic, poisonous,
          flesh_petrifies, vegan, vegetarian, type_is_pname, dmgtype,
-         attacktype, cantvomit } from './mondata.js';
+         attacktype, cantvomit, olfaction } from './mondata.js';
 import { can_reach_floor } from './pickup.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -24,7 +24,7 @@ import { BY_COOKIE } from './const.js';
 import { PMNAMES, MFLAGS as MFLAGS_EAT, ATTKS } from './monst_data.js';
 import { done } from './end.js';
 import { end_running, nomul, rounddiv } from './hack.js';
-import { sgn } from './hacklib.js';
+import { sgn, distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
 import { bot } from './display.js';
 import { A_STR, STARVING, STARVED, FIRE_RES, SLEEP_RES, COLD_RES,
@@ -301,7 +301,7 @@ export function tin_variety_txt(s, tinvariety) {
 // assigninvlet's rule: first unused letter, a-z then A-Z.
 function touchfood(otmp) {
     if (otmp.quan > 1) {
-        if (!(game.invent || []).includes(otmp))
+        if (!carried(otmp))
             splitobj(otmp, otmp.quan - 1);
         else
             otmp = splitobj(otmp, 1);
@@ -312,7 +312,7 @@ function touchfood(otmp) {
         otmp.oeaten = obj_nutrition(otmp);
     }
 
-    if ((game.invent || []).includes(otmp)) {
+    if (carried(otmp)) {
         freeinv(otmp);
         if ((game.invent || []).length >= 52) {
             note_unported_eat('touchfood:overflow_drop');
@@ -744,9 +744,17 @@ async function fprefx(otmp) {
         await give_feedback();
         break;
     case ONAMES.CLOVE_OF_GARLIC:
-        /* the is_undead vomit arm needs a polymorphed hero;
-           iter_mons(garlic_breath) scares nearby vampiric pets */
-        note_unported_eat('fprefx:garlic_breath');
+        /* src/eat.c garlic_breath(): every nearby monster which can smell
+           the garlic starts fleeing. Import monmove lazily to avoid making
+           eat.js part of its static dependency cycle. */
+        {
+            const { monflee } = await import('./monmove.js');
+            for (const mtmp of game.level?.monsters || []) {
+                if (mtmp.mhp > 0 && olfaction(mtmp.data)
+                    && distu(mtmp.mx, mtmp.my) < 7)
+                    monflee(mtmp, 0, false, false);
+            }
+        }
         /*FALLTHRU*/
     default:
         if (otmp.otyp === ONAMES.SLIME_MOLD && !otmp.cursed

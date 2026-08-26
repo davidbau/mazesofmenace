@@ -1,10 +1,9 @@
 // muse.js — monsters using items.
 // C ref: src/muse.c
 //
-// Only the offensive-item selector lives here so far. find_offensive() is
-// what dochug()'s post-move gate and mattacku()'s pre-attack check call; the
-// far larger find_defensive()/use_*() machinery is still absent and its
-// absence is recorded at the call sites that would need it.
+// This includes offensive and miscellaneous item use plus the healing-potion
+// subset of defensive item use. The remaining defensive actions are still
+// absent.
 //
 // gm.m (the muse selection struct) is game.m here; find_offensive() resets
 // the offensive slice at its head exactly as C does.
@@ -32,7 +31,7 @@ import { isok, W_ARMH, M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE,
          M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_ACID, TELEP_TRAP, N_DIRS,
          Is_rogue_level, In_endgame, Is_earthlevel, W_ARMF, MSLOW, MFAST, NON_PM,
          POLY_TRAP, u_at, KILLED_BY_AN, ZAP_POS, IS_DOOR, D_LOCKED,
-         D_CLOSED } from './const.js';
+         D_CLOSED, G_GONE } from './const.js';
 import { Is_container, Has_contents, bimanual, is_plural } from './obj.js';
 import { MON_WEP } from './monst.js';
 import { canletgo } from './do.js';
@@ -56,6 +55,11 @@ const MUSE_POT_SLEEPING = 16;
 const MUSE_SCR_EARTH = 17;
 const MUSE_CAMERA = 18;
 const MUSE_WAN_UNDEAD_TURNING = 20; /* shared with the defensive list */
+
+// src/muse.c:310 defensive item selection codes used below.
+const MUSE_POT_HEALING = 3;
+const MUSE_POT_EXTRA_HEALING = 4;
+const MUSE_POT_FULL_HEALING = 18;
 
 // src/muse.c:2084 miscellaneous item selection codes.
 export const MUSE_POT_GAIN_LEVEL = 1;
@@ -631,6 +635,133 @@ function m_useup_misc(mtmp, obj) {
     const at = (mtmp.minvent || []).indexOf(obj);
     if (at >= 0)
         mtmp.minvent.splice(at, 1);
+}
+
+// src/muse.c:441 find_defensive(), healing subset. Monsters use healing
+// while badly hurt, and also as an escape action when movement has no legal
+// square. Other defensive items remain outside this subset.
+export function find_defensive(mtmp, tryescape) {
+    const mdat = mtmp.data ?? game.mons[mtmp.mnum];
+    const stuck = mtmp === game.u.ustuck;
+
+    if (!game.m)
+        game.m = {};
+    game.m.defensive = null;
+    game.m.has_defense = 0;
+
+    if (is_animal(mdat) || mindless(mdat))
+        return false;
+    if (!tryescape && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) > 25)
+        return false;
+    if (game.u.uswallow && stuck)
+        return false;
+
+    if (!tryescape) {
+        const fraction = game.u.ulevel < 10 ? 5
+                       : game.u.ulevel < 14 ? 4 : 3;
+        if (mtmp.mhp >= mtmp.mhpmax
+            || (mtmp.mhp >= 10 && mtmp.mhp * fraction >= mtmp.mhpmax))
+            return false;
+    }
+    if (nohands(mdat))
+        return false;
+
+    for (const obj of (mtmp.minvent || [])) {
+        if (game.m.has_defense && !rn2(3))
+            break;
+        if (game.m.has_defense === MUSE_POT_FULL_HEALING)
+            continue;
+        if (obj.otyp === ONAMES.POT_FULL_HEALING) {
+            game.m.defensive = obj;
+            game.m.has_defense = MUSE_POT_FULL_HEALING;
+        }
+        if (game.m.has_defense === MUSE_POT_EXTRA_HEALING)
+            continue;
+        if (obj.otyp === ONAMES.POT_EXTRA_HEALING) {
+            game.m.defensive = obj;
+            game.m.has_defense = MUSE_POT_EXTRA_HEALING;
+        }
+        if (game.m.has_defense === MUSE_POT_HEALING)
+            continue;
+        if (obj.otyp === ONAMES.POT_HEALING) {
+            game.m.defensive = obj;
+            game.m.has_defense = MUSE_POT_HEALING;
+        }
+    }
+    return !!game.m.has_defense;
+}
+
+async function defensive_precheck(mtmp, obj) {
+    if (!obj)
+        return 0;
+    const descr = game.obj_descr?.[game.objects[obj.otyp].oc_descr_idx]
+        ?.oc_descr;
+    const occupant = descr === 'milky' ? PMNAMES.PM_GHOST
+                   : descr === 'smoky' ? PMNAMES.PM_DJINNI : NON_PM;
+    if (occupant !== NON_PM) {
+        const vital = game.mvitals?.[occupant] || {};
+        if (!(vital.mvflags & G_GONE)
+            && !rn2(13 + 2 * (vital.born ?? 0))) {
+            (game.unported ||= new Set()).add(
+                'muse:defensive_precheck:potion_occupant');
+            m_useup_misc(mtmp, obj);
+            return 2;
+        }
+    }
+    return 0;
+}
+
+async function mquaffmsg(mtmp, obj) {
+    const [{ canseemon, pline }, { Deaf }, { You_hear }, { Monnam },
+           { singular, doname }, { observe_object }]
+        = await Promise.all([
+            import('./display.js'), import('./youprop.js'),
+            import('./pline.js'), import('./do_name.js'),
+            import('./objnam.js'), import('./o_init.js'),
+        ]);
+    if (canseemon(mtmp)) {
+        observe_object(obj);
+        await pline(`${Monnam(mtmp)} drinks ${singular(obj, doname)}!`);
+    } else if (!Deaf()) {
+        await You_hear('a chugging sound.');
+    }
+}
+
+// src/muse.c:796 use_defensive(), healing potion subset.
+export async function use_defensive(mtmp) {
+    const obj = game.m?.defensive || null;
+    const action = game.m?.has_defense || 0;
+    const checked = await defensive_precheck(mtmp, obj);
+    if (checked)
+        return checked;
+    if (action !== MUSE_POT_HEALING
+        && action !== MUSE_POT_EXTRA_HEALING
+        && action !== MUSE_POT_FULL_HEALING)
+        return 0;
+
+    const [{ bcsign }, { healmon }, { canseemon, pline }, { Monnam }]
+        = await Promise.all([
+            import('./mkobj.js'), import('./mon.js'),
+            import('./display.js'), import('./do_name.js'),
+        ]);
+    const vismon = canseemon(mtmp);
+    await mquaffmsg(mtmp, obj);
+
+    if (action === MUSE_POT_HEALING) {
+        healmon(mtmp, d(6 + 2 * bcsign(obj), 4), 1);
+        if (vismon)
+            await pline(`${Monnam(mtmp)} looks better.`);
+    } else if (action === MUSE_POT_EXTRA_HEALING) {
+        healmon(mtmp, d(6 + 2 * bcsign(obj), 8), obj.blessed ? 5 : 2);
+        if (vismon)
+            await pline(`${Monnam(mtmp)} looks much better.`);
+    } else {
+        healmon(mtmp, mtmp.mhpmax, obj.blessed ? 8 : 4);
+        if (vismon)
+            await pline(`${Monnam(mtmp)} looks completely healed.`);
+    }
+    m_useup_misc(mtmp, obj);
+    return 2;
 }
 
 // src/muse.c:2383 use_misc(). The invisibility potion is the first common

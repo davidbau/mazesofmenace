@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { isok } from './hacklib.js';
-import { m_at, t_at } from './mon.js';
+import { is_pool, m_at, t_at } from './mon.js';
 import { cansee, block_point, unblock_point, recalc_block_point,
          vision_recalc } from './vision.js';
 import { display_cmap_at, display_object_at, map_invisible, newsym,
@@ -32,7 +32,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow, NHW_TEXT } from './tty/wintty.js';
 import { OCLASSES } from './objects_data.js';
 import { DEADMONSTER } from './monst.js';
-import { killed, shieldeff_mon, wakeup, wake_nearto } from './mon.js';
+import { killed, monkilled, shieldeff_mon, wakeup, wake_nearto } from './mon.js';
 import { ONAMES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_rider } from './makemon.js';
@@ -49,14 +49,14 @@ import { more_experienced } from './exper.js';
 import { exercise } from './attrib.js';
 import { A_WIS } from './const.js';
 import { rn1 } from './rng.js';
-import { pline_The, You, You_feel, You_hear } from './pline.js';
+import { Norep, pline_The, You, You_feel, You_hear } from './pline.js';
 import { pline } from './display.js';
 import { The, vtense, xname, Yname2, yname, makeplural,
          Yobjnam2, otense } from './objnam.js';
 import { mon_nam } from './do_name.js';
 import { canseemon, canspotmon } from './display.js';
 import { engulfing_u } from './const.js';
-import { nothing_happens, ECMD_TIME, ECMD_CANCEL, NODIR, IMMEDIATE,
+import { nothing_happens, ECMD_OK, ECMD_TIME, ECMD_CANCEL, NODIR, IMMEDIATE,
          OBJ_FLOOR } from './const.js';
 import { splitobj, mkobj, mksobj, rnd_class, set_corpsenm,
          erosion_matters } from './mkobj.js';
@@ -67,13 +67,14 @@ import { is_metallic } from './obj.js';
 import { MATERIALS } from './objects_data.js';
 import { ATTKS, PMNAMES } from './monst_data.js';
 import { breathless, defended, haseyes, resists_cold, resists_elec,
-         resists_fire, resists_magm } from './mondata.js';
+         resists_fire, resists_magm, nohands } from './mondata.js';
 import { find_mac } from './worn.js';
 import { Reflecting, Sleep_resistance, Fire_resistance,
          Shock_resistance, Deaf, Unaware } from './youprop.js';
 import { cmap_names } from './drawing_data.js';
 import { CLR_ORANGE, CLR_WHITE, CLR_BLACK, CLR_GREEN,
          CLR_YELLOW } from './terminal.js';
+import { create_gas_cloud } from './region.js';
 
 /* include/objclass.h:200/:201/:204 — local copies of the material
    predicates trap.js also carries (they are header macros in C). */
@@ -250,11 +251,21 @@ export async function zapyourself(obj, ordinary) {
         await done(DIED);
         break;
     }
+    case ONAMES.WAN_POLYMORPH:
+    case ONAMES.SPE_POLYMORPH:
+        if (!game.u.uprops?.UNCHANGING) {
+            learn_it = true;
+            const { polyself } = await import('./polyself.js');
+            await polyself();
+        }
+        break;
     case ONAMES.SPE_HEALING:
     case ONAMES.SPE_EXTRA_HEALING: {
         learn_it = true; /* (no effect for spells...) */
-        healup(d(6, obj.otyp === ONAMES.SPE_EXTRA_HEALING ? 8 : 4), 0, false,
-               (!!obj.blessed || obj.otyp === ONAMES.SPE_EXTRA_HEALING));
+        await healup(d(6, obj.otyp === ONAMES.SPE_EXTRA_HEALING ? 8 : 4),
+                     0, false,
+                     (!!obj.blessed
+                      || obj.otyp === ONAMES.SPE_EXTRA_HEALING));
         await You_feel(`${obj.otyp === ONAMES.SPE_EXTRA_HEALING ? 'much ' : ''}better.`);
         break;
     }
@@ -1319,6 +1330,21 @@ async function zhitm(mon, type, nd) {
         }
         damage = d(nd, 6);
         break;
+    case 1: {
+        if (resists_fire(mon) || defended(mon, ATTKS.AD_FIRE)) {
+            shieldeff_mon(mon);
+            break;
+        }
+        damage = d(nd, 6);
+        const orig_damage = damage;
+        if (resists_cold(mon))
+            damage += 7;
+        if (await burnarmor(mon) && !rn2(3)) {
+            damage += await destroy_items(mon, ATTKS.AD_FIRE, orig_damage);
+            note_unported_zap('zhitm:ignite_items');
+        }
+        break;
+    }
     case 2:
         if (resists_cold(mon) || defended(mon, ATTKS.AD_COLD)) {
             shieldeff_mon(mon);
@@ -1464,9 +1490,31 @@ async function ureflects() {
         makeknown(identify);
 }
 
+// src/zap.c:5141 zap_over_floor(), the fire-over-water and poison-gas paths.
+async function zap_over_floor(x, y, type) {
+    const damgtype = zaptype(type) % 10;
+    const loc = game.level?.at(x, y);
+    if (!loc)
+        return 0;
+
+    if (damgtype === ATTKS.AD_FIRE - ATTKS.AD_MAGM && is_pool(x, y)) {
+        if (!Is_waterlevel())
+            create_gas_cloud(x, y, rnd(5), 0);
+        if (loc.typ === POOL) {
+            note_unported_zap('zap_over_floor:evaporate_pool');
+        } else if (!Deaf()) {
+            await Norep('You hear hissing gas.');
+        }
+    } else if (damgtype === ATTKS.AD_DRST - ATTKS.AD_MAGM
+               && ZAP_POS(loc.typ)) {
+        create_gas_cloud(x, y, 1, 8);
+    }
+    return 0;
+}
+
 // src/zap.c:4780 dobuzz(). This ports the lateral beam walk, monster hit,
 // death, and ordinary terrain bounce spine used by wand and spell rays.
-async function dobuzz(type, nd, startx, starty, ddx, ddy) {
+export async function dobuzz(type, nd, startx, starty, ddx, ddy) {
     if (game.u.uswallow) {
         note_unported_zap('dobuzz:swallowed');
         return;
@@ -1504,8 +1552,9 @@ async function dobuzz(type, nd, startx, starty, ddx, ddy) {
                     await game.animationFrame();
                 }
 
-                if (loc.typ === WATER || loc.typ === POOL || loc.typ === ICE)
-                    note_unported_zap('dobuzz:zap_over_floor');
+                const gas_hit = damgtype === ATTKS.AD_DRST - ATTKS.AD_MAGM;
+                if (!gas_hit)
+                    range += await zap_over_floor(sx, sy, type);
 
                 if (mon) {
                     if (type >= 0)
@@ -1514,13 +1563,16 @@ async function dobuzz(type, nd, startx, starty, ddx, ddy) {
                         const damage = await zhitm(mon, type, nd);
                         if (DEADMONSTER(mon)) {
                             if (type < 0)
-                                note_unported_zap('dobuzz:monkilled');
+                                await monkilled(mon, flash_str(type),
+                                                ATTKS.AD_RBRE);
                             else
                                 await killed(mon);
                         } else {
-                            if (canspotmon(mon))
-                                await pline_The(`${flash_str(type)} hits ${
-                                    mon_nam(mon)}${exclam(damage)}`);
+                            /* buzz() supplies sayhit=true, so an out-of-sight
+                               target still produces the generic "it" hit
+                               message. */
+                            await pline_The(`${flash_str(type)} hits ${
+                                mon_nam(mon)}${exclam(damage)}`);
                             if (damgtype !== 3)
                                 await wakeup(mon, type >= 0);
                         }
@@ -1554,6 +1606,8 @@ async function dobuzz(type, nd, startx, starty, ddx, ddy) {
                     }
                     nomul(0);
                 }
+                if (gas_hit)
+                    await zap_over_floor(sx, sy, type);
             }
 
             loc = isok(sx, sy) ? game.level?.at(sx, sy) : null;
@@ -1625,7 +1679,13 @@ export async function weffects(obj) {
 
 // src/zap.c:2627 dozap() — the 'z' command.
 export async function dozap() {
-    /* nohands/check_capacity cannot fire for a fresh hero */
+    if (nohands(game.youmonst.data)) {
+        await You("aren't able to zap anything in your current form.");
+        return ECMD_OK;
+    }
+    const { check_capacity } = await import('./hack.js');
+    if (await check_capacity(null))
+        return ECMD_OK;
     const obj = await getobj("zap", zap_ok, 0);
     if (!obj)
         return ECMD_CANCEL;

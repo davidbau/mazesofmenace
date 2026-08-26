@@ -9,12 +9,14 @@
 import { game } from './gstate.js';
 import { makewish } from './zap.js';
 import { encumber_msg } from './attrib.js';
-import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY }
+import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY,
+         TIMEOUT }
     from './const.js';
 import { getlin } from './cmd.js';
-import { docrt, pline, see_monsters, swallowed } from './display.js';
+import { docrt, map_trap, pline, see_monsters, swallowed } from './display.js';
 import { pluslvl } from './exper.js';
 import { level_tele } from './teleport.js';
+import { do_mapping } from './detect.js';
 import { NO_COLOR } from './terminal.js';
 import {
     ATR_NONE, NHW_MENU, tty_add_menu, tty_add_menu_str,
@@ -41,6 +43,41 @@ export async function wiz_wish() {
     } else {
         note_unported_wizcmds('wiz_wish:unavailcmd');
     }
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:176 wiz_map(): reveal the level, traps, and engravings.
+export function wiz_map() {
+    if (!game.wizard) {
+        note_unported_wizcmds('wiz_map:unavailcmd');
+        return ECMD_OK;
+    }
+
+    const u = game.u;
+    const intrinsic = (u.intrinsic ||= {});
+    const uprops = (u.uprops ||= {});
+    const saved = {
+        hconf: intrinsic.HConfusion,
+        hhallu: intrinsic.HHallucination,
+        conf: uprops.CONFUSION,
+        hallu: uprops.HALLUC,
+    };
+    delete intrinsic.HConfusion;
+    delete intrinsic.HHallucination;
+    delete uprops.CONFUSION;
+    delete uprops.HALLUC;
+
+    for (const trap of game.level?.traps || []) {
+        trap.tseen = 1;
+        map_trap(trap, true);
+    }
+    /* show_map_spot() maps engravings while do_mapping() scans the level. */
+    do_mapping();
+
+    if (saved.hconf !== undefined) intrinsic.HConfusion = saved.hconf;
+    if (saved.hhallu !== undefined) intrinsic.HHallucination = saved.hhallu;
+    if (saved.conf !== undefined) uprops.CONFUSION = saved.conf;
+    if (saved.hallu !== undefined) uprops.HALLUC = saved.hallu;
     return ECMD_OK;
 }
 
@@ -171,6 +208,10 @@ const WIZ_INTRINSICS = [
 function wiz_intrinsic_timeout(key) {
     if (key === 'HALLUC')
         return Number(game.u.uprops?.HALLUC) || 0;
+    if (key === 'BLINDED')
+        return (game.u.intrinsic?.HBlinded | 0) & TIMEOUT;
+    if (key === 'FAST')
+        return (game.u.intrinsic?.HFast | 0) & TIMEOUT;
     return Number(game.u.wiz_intrinsic_timeouts?.[key]) || 0;
 }
 
@@ -211,7 +252,10 @@ export async function wiz_intrinsic() {
         const name = prop[1];
         const oldtimeout = wiz_intrinsic_timeout(key);
 
-        if (key === 'HALLUC') {
+        if (key === 'BLINDED') {
+            const { make_blinded } = await import('./potion.js');
+            await make_blinded(oldtimeout + 30, true);
+        } else if (key === 'HALLUC') {
             const uprops = (game.u.uprops ||= {});
             uprops.HALLUC = oldtimeout + 30;
             (game.u.intrinsic ||= {}).HHallucination = oldtimeout + 30;
@@ -224,6 +268,14 @@ export async function wiz_intrinsic() {
                 await pline(`Oh wow!  Everything ${game.u.ublind
                     ? 'feels' : 'looks'} so cosmic!`);
             }
+        } else if (key === 'FAST') {
+            const intr = (game.u.intrinsic ||= {});
+            const word = intr.HFast | 0;
+            intr.HFast = (word & ~TIMEOUT)
+                         | Math.min(TIMEOUT, oldtimeout + 30);
+            (game.disp ||= {}).botl = true;
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} 30.`);
         } else {
             (game.u.wiz_intrinsic_timeouts ||= {})[key] = oldtimeout + 30;
             (game.disp ||= {}).botl = true;

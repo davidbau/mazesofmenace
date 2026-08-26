@@ -1,9 +1,9 @@
 // worm.js — Long worm segment bookkeeping (creation + movement).
 // C ref: worm.c — get_wormno, initworm, create_worm_tail, count_wsegs,
 //   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h),
-//   worm_move / shrink_worm / worm_nomove (D-1491).
+//   worm_move / shrink_worm / worm_nomove (D-1491), see_wsegs (D-1529).
 // Named omissions: cutworm, wormgone, save/rest wsegs, worm_known,
-//   see_wsegs / detect_wsegs display; muse.c / mhitu.c worm_move callers.
+//   detect_wsegs; muse.c / mhitu.c worm_move callers.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -234,6 +234,23 @@ export function worm_nomove(worm) {
     if ((worm.mhp | 0) > count_wsegs(worm)) {
         worm.mhp = (worm.mhp | 0) - d(2, 2);
         if ((worm.mhp | 0) < 1) worm.mhp = 1;
+    }
+}
+
+/**
+ * C ref: worm.c see_wsegs :487–495 — newsym every segment except the
+ * dummy co-located with the head. Callers: display.c see_monsters
+ * `:1511–1512`; worn.c mon_set_minvis `:482–483`; monmove.c postmov
+ * `:1683–1686` after pickup when minvis.
+ */
+export function see_wsegs(worm) {
+    const wnum = worm?.wormno | 0;
+    if (!wnum) return;
+    let curr = wtails[wnum];
+    const head = wheads[wnum];
+    while (curr && curr !== head) {
+        newsym(curr.wx, curr.wy);
+        curr = curr.nseg;
     }
 }
 

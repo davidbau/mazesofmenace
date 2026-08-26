@@ -6,7 +6,7 @@ import { ceiling_hider, emits_light, resist_conflict } from './mondata.js';
 import { new_light_source, del_light_source, LS_MONSTER } from './light.js';
 import { sensemon } from './display.js';
 import { mdistu, mon_track_clear, m_everyturn_effect,
-         set_apparxy as set_apparxy_ref } from './monmove.js';
+         set_apparxy as set_apparxy_ref, monflee } from './monmove.js';
 // mon.js — monster bookkeeping.
 // C ref: src/mon.c
 //
@@ -35,7 +35,8 @@ import { newsym, canseemon, canspotmon, pline,
 import { rn1, rn2, rnd, rnl, d } from './rng.js';
 import { DEADMONSTER, MON_WEP } from './monst.js';
 import { remove_monster, place_monster, goodpos } from './makemon.js';
-import { enexto_core, enexto, noteleport_level } from './teleport.js';
+import { enexto_core, enexto, noteleport_level,
+         rloc_to_flag } from './teleport.js';
 import { GP_CHECKSCARY, STRAT_WAITFORU, BOLT_LIM, NC_SHOW_MSG, ismnum,
          G_GENOD, A_NONE, A_STR, ARTICLE_NONE, ARTICLE_THE,
          SUPPRESS_SADDLE } from './const.js';
@@ -63,9 +64,9 @@ import { online2, isok } from './hacklib.js';
 import { onscary, in_your_sanctuary, m_can_break_boulder, mon_knows_traps, can_fog, inhishop, mon_would_take_item } from './monmove.js';
 import { Is_waterlevel, Is_rogue_level, engulfing_u, In_endgame,
          Is_astralevel, has_emin, has_epri, has_eshk, RLOC_NOMSG,
-         MON_OBLITERATE } from './const.js';
+         RLOC_MSG, MON_OBLITERATE } from './const.js';
 import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohands, verysmall, is_giant, tunnels, passes_walls, throws_rocks, passes_bars, is_displacer, notake, strongmonst, is_covetous,
-    is_clinger, is_flyer, is_floater, mindless, dmgtype, attacktype, mon_resistancebits, humanoid, is_undead, unsolid } from './mondata.js';
+    is_clinger, is_flyer, is_floater, mindless, dmgtype, attacktype, mon_resistancebits, humanoid, is_undead, unsolid, breathless } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { distant_name, doname } from './objnam.js';
 import { You, You_feel, You_hear } from './pline.js';
@@ -173,6 +174,21 @@ async function m_calcdistress(mtmp) {
    turn and reordered every monster interleave at occupation seams. */
 var gs_somebody_can_move = false;
 
+// src/mon.c:2487 dmonsfree(): unlink monsters detached during the sweep.
+function dmonsfree() {
+    const monsters = game.level?.monsters;
+    if (!monsters)
+        return;
+
+    for (let i = monsters.length - 1; i >= 0; --i) {
+        const mtmp = monsters[i];
+        if (DEADMONSTER(mtmp) && !mtmp.isgd)
+            monsters.splice(i, 1);
+    }
+    if (game.iflags)
+        game.iflags.purge_monsters = 0;
+}
+
 export async function movemon() {
     gs_somebody_can_move = false;
     /* src/mon.c:4500 iter_mons_safe() — C snapshots fmon into itermonarr[]
@@ -185,6 +201,17 @@ export async function movemon() {
     for (const mtmp of [...(game.level?.monsters || [])]) {
         if (mtmp.mhp <= 0) continue;   /* died earlier in this sweep */
         if (await movemon_singlemon(mtmp)) break;
+    }
+    clear_splitobjs();
+    dmonsfree();
+
+    /* src/mon.c:1343, a monster can schedule the hero's departure, notably
+       when a quest leader expels the hero. Finish it at the end of this
+       monster sweep so no command is read on the level being left. */
+    if (game.u?.utotype) {
+        const { deferred_goto } = await import('./do.js');
+        await deferred_goto();
+        gs_somebody_can_move = false;
     }
     return gs_somebody_can_move;
 }
@@ -227,12 +254,9 @@ async function movemon_singlemon(mtmp) {
     /* src/mon.c:1263-1264 — reset obj bypasses, forget the splitobj pair */
     clear_splitobjs();
 
-    /* src/mon.c:1265 minliquid() — drowning, burning and fountain effects.
-       162 lines in minliquid_core, and every arm is gated on inpool, inlava
-       or infountain, so a monster on dry floor draws nothing and this is
-       recorded rather than ported. A monster standing in water WILL diverge. */
-    if (is_pool(mtmp.mx, mtmp.my) || is_lava(mtmp.mx, mtmp.my))
-        (game.unported ||= new Set()).add('movemon_singlemon:minliquid');
+    /* src/mon.c:1265 minliquid() runs for every moving monster. */
+    if (minliquid(mtmp))
+        return false;
 
     /* src/mon.c:1268 — after losing equipment, try to put on replacement.
        C's comment: "hostiles only try to equip things if they think hero
@@ -284,6 +308,22 @@ async function movemon_singlemon(mtmp) {
     }
     await dochugw(mtmp, true);
     return false;
+}
+
+// src/mon.c:957 minliquid(), including the dry-land eel arm.
+export function minliquid(mtmp) {
+    if (is_pool(mtmp.mx, mtmp.my) || is_lava(mtmp.mx, mtmp.my)) {
+        (game.unported ||= new Set()).add('minliquid:pool_or_lava');
+        return 0;
+    }
+
+    if (mtmp.data.mlet === MONSYMS.S_EEL && !Is_waterlevel(game.u.uz)
+        && !breathless(mtmp.data)) {
+        if (mtmp.mhp > 1 && rn2(mtmp.mhp) > rn2(8))
+            mtmp.mhp--;
+        monflee(mtmp, 2, false, false);
+    }
+    return 0;
 }
 
 import { dochugw, m_canseeu } from './monmove.js';
@@ -2203,7 +2243,11 @@ export function mnexto(mtmp, rlocflags) {
         note_unported_mon('mnexto:deal_with_overcrowding');
         return;
     }
-    /* rloc_to_flag(mtmp, mm.x, mm.y, rlocflags) — remove+place+newsym */
+    if ((rlocflags & RLOC_MSG) !== 0)
+        return rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
+
+    /* rloc_to_flag(mtmp, mm.x, mm.y, rlocflags): the no-message path is
+       kept synchronous for level-arrival callers which do not await it. */
     if (mtmp.mx || mtmp.my)
         remove_monster(mtmp.mx, mtmp.my);
     place_monster(mtmp, mm.x, mm.y);
@@ -2251,13 +2295,7 @@ export async function mnearto(mtmp, x, y, move_other, rlocflags) {
         newx = mm.x;
         newy = mm.y;
     }
-    /* rloc_to_flag(mtmp, newx, newy, rlocflags) */
-    if (mtmp.mx || mtmp.my)
-        remove_monster(mtmp.mx, mtmp.my);
-    mon_track_clear(mtmp);
-    place_monster(mtmp, newx, newy);
-    newsym(newx, newy);
-    set_apparxy_ref(mtmp);          /* orient monster */
+    await rloc_to_flag(mtmp, newx, newy, rlocflags);
 
     if (move_other && othermon) {
         res = 2; /* moving another monster out of the way */

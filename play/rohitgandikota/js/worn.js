@@ -23,6 +23,7 @@ import { update_inventory } from './invent.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { See_invisible } from './youprop.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
+import { set_artifact_intrinsic } from './artifact.js';
 import { INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT,
          STEALTH, TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED,
          FUMBLING, JUMPING, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES,
@@ -112,7 +113,7 @@ export function setworn(obj, mask) {
                         if ((p = w_blocks(oobj, mask)) !== 0)
                             note_unported_worn('setworn:blocked');
                         if (oobj.oartifact)
-                            note_unported_worn('setworn:set_artifact_intrinsic');
+                            set_artifact_intrinsic(oobj, false, wp.w_mask);
                     }
                     /* in case wearing or removal is in progress or removal
                        is pending (via 'A' command for multiple items) */
@@ -136,7 +137,7 @@ export function setworn(obj, mask) {
                                 note_unported_worn('setworn:blocked');
                         }
                         if (obj.oartifact)
-                            note_unported_worn('setworn:set_artifact_intrinsic');
+                            set_artifact_intrinsic(obj, true, wp.w_mask);
                     }
                 }
             }
@@ -183,7 +184,7 @@ export function setnotworn(obj) {
             /* monstunseesu_prop(p): omitted, see setworn */
             obj.owornmask &= ~wp.w_mask;
             if (obj.oartifact)
-                note_unported_worn('setnotworn:set_artifact_intrinsic');
+                set_artifact_intrinsic(obj, false, wp.w_mask);
             if ((p = w_blocks(obj, wp.w_mask)) !== 0)
                 note_unported_worn('setnotworn:blocked');
         }

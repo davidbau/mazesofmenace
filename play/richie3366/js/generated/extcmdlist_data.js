@@ -161,6 +161,12 @@ export const EXTCMDLIST = [
   { key: 0, txt: "runsoutheast", desc: "run southeast (screen lower right)", flags: 1152 },
   { key: 0, txt: "runsouth", desc: "run south (screen down)", flags: 1152 },
   { key: 0, txt: "runsouthwest", desc: "run southwest (screen lower left)", flags: 1152 },
+  { key: 0, txt: "clicklook", desc: "", flags: 2112 },
+  { key: 0, txt: "mouseaction", desc: "", flags: 2112 },
+  { key: 0, txt: "altadjust", desc: "", flags: 64 },
+  { key: 0, txt: "altdip", desc: "", flags: 64 },
+  { key: 0, txt: "alttakeoff", desc: "", flags: 64 },
+  { key: 0, txt: "altunwield", desc: "", flags: 64 },
 ];
 
 export const IFBURIED = 0x0001;

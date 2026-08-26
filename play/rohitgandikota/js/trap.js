@@ -691,6 +691,8 @@ export async function dotrap(trap, trflags) {
         return await trapeffect_slp_gas_trap(game.youmonst, trap, trflags);
     if (ttype === RUST_TRAP)
         return await trapeffect_rust_trap(game.youmonst, trap, trflags);
+    if (ttype === ROLLING_BOULDER_TRAP)
+        return await trapeffect_rolling_boulder_trap(game.youmonst, trap, trflags);
     if (ttype === HOLE || ttype === TRAPDOOR)
         return await trapeffect_hole(game.youmonst, trap, trflags);
     if (ttype === ANTI_MAGIC)
@@ -1398,6 +1400,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return await trapeffect_hole(mtmp, trap, trflags);
     case RUST_TRAP:
         return await trapeffect_rust_trap(mtmp, trap, trflags);
+    case FIRE_TRAP:
+        return await trapeffect_fire_trap(mtmp, trap, trflags);
     case ROLLING_BOULDER_TRAP:
         return await trapeffect_rolling_boulder_trap(mtmp, trap, trflags);
     case TELEP_TRAP:
@@ -2872,10 +2876,20 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     return 2;
 }
 
-// src/trap.c trapeffect_rolling_boulder_trap(), monster arm.
+// src/trap.c trapeffect_rolling_boulder_trap().
 async function trapeffect_rolling_boulder_trap(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
-        note_unported_trap('rolling_boulder:hero');
+        const style = ROLL | (trap.tseen ? LAUNCH_KNOWN : 0);
+        feeltrap(trap);
+        await pline(`${Deaf() ? '' : 'Click!  '}`
+                    + 'You trigger a rolling boulder trap!');
+        if (!await launch_obj(ONAMES.BOULDER,
+                              trap.launch.x, trap.launch.y,
+                              trap.launch2.x, trap.launch2.y, style)) {
+            await pline((style & LAUNCH_KNOWN)
+                ? 'No boulder was released.'
+                : 'Fortunately for you, no boulder was released.');
+        }
         return Trap_Effect_Finished;
     }
     if (check_in_air(mtmp, trflags))

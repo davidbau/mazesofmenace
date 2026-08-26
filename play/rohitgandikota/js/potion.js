@@ -22,7 +22,7 @@ import { rn2, rn1, rnd, d } from './rng.js';
 import { ONAMES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { OBJ_DESCR } from './objnam.js';
-import { makeknown } from './o_init.js';
+import { makeknown, observe_object } from './o_init.js';
 import { more_experienced } from './exper.js';
 import { getobj, useup, ECMD_TIME, ECMD_OK,
          GETOBJ_PROMPT } from './invent.js';
@@ -42,7 +42,7 @@ function note_unported_potion(what) {
 }
 
 // src/potion.c:1428 healup()
-export function healup(nhp, nxtra, curesick, cureblind) {
+export async function healup(nhp, nxtra, curesick, cureblind) {
     const u = game.u;
 
     if (nhp) {
@@ -55,10 +55,10 @@ export function healup(nhp, nxtra, curesick, cureblind) {
         }
     }
     if (cureblind) {
-        /* make_blinded(0)/make_deaf(0) cure; visible only while afflicted */
-        if (u.ucreamed || u.ublind || u.uprops?.DEAF)
-            note_unported_potion('healup:cureblind');
         u.ucreamed = 0;
+        await make_blinded(0, true);
+        if (u.uprops?.DEAF)
+            note_unported_potion('healup:make_deaf');
     }
     if (curesick) {
         if (u.uprops?.VOMITING || u.uprops?.SICK)
@@ -264,6 +264,13 @@ export async function make_blinded(xtime, talk) {
         (game.disp ||= {}).botl = true;
         game.vision_full_recalc = 1;
         vision_recalc(0);
+        if (was_blind && !blind_now) {
+            /* src/invent.c learn_unseen_invent(): carried objects picked up
+               while blind become visibly encountered as soon as sight
+               returns. */
+            for (const obj of game.invent || [])
+                observe_object(obj);
+        }
     }
 }
 
@@ -390,7 +397,7 @@ async function peffect_booze(otmp) {
             false);
     }
     if (!otmp.odiluted)
-        healup(1, 0, false, false);
+        await healup(1, 0, false, false);
     game.u.uhunger += 10 * (2 + bcsign(otmp));
     await newuhs(false);
     exercise(A_WIS, false);
@@ -404,11 +411,24 @@ async function peffect_booze(otmp) {
 // src/potion.c:1119 peffect_healing()
 async function peffect_healing(otmp) {
     await You_feel('better.');
-    healup(8 + d(4 + 2 * bcsign(otmp), 4),
-           otmp.cursed ? 0 : 1,
-           !!otmp.blessed,
-           !otmp.cursed);
+    await healup(8 + d(4 + 2 * bcsign(otmp), 4),
+                 otmp.cursed ? 0 : 1,
+                 !!otmp.blessed,
+                 !otmp.cursed);
     exercise(A_CON, true);
+}
+
+// src/potion.c:1127 peffect_extra_healing().
+async function peffect_extra_healing(otmp) {
+    await You_feel('much better.');
+    await healup(16 + d(4 + 2 * bcsign(otmp), 8),
+                 otmp.blessed ? 5 : otmp.cursed ? 0 : 2,
+                 !otmp.cursed,
+                 true);
+    if (Hallucination())
+        note_unported_potion('peffect_extra_healing:make_hallucinated');
+    exercise(A_CON, true);
+    exercise(A_STR, true);
 }
 
 // src/potion.c:1333 peffects() — dispatch one quaffed potion.
@@ -420,6 +440,9 @@ async function peffects(otmp) {
         break;
     case ONAMES.POT_HEALING:
         await peffect_healing(otmp);
+        break;
+    case ONAMES.POT_EXTRA_HEALING:
+        await peffect_extra_healing(otmp);
         break;
     case ONAMES.POT_CONFUSION:
         await peffect_confusion(otmp);

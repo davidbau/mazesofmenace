@@ -1,11 +1,13 @@
 // pickup.js — Floor look / autopickup / manual `,` pickup.
 // C ref: pickup.c — check_here(), pickup(), pickup_object(), pick_obj(),
-//        describe_decor(); hack.c — spoteffects(), dopickup(), pickup_checks().
+//        describe_decor(), observe_quantum_cat, use_container, tipcontainer;
+//        hack.c — spoteffects(), dopickup(), pickup_checks().
 
 import { game } from './gstate.js';
+import { rn2 } from './rng.js';
 import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
-    place_object, hornoplenty, unbless, mergable, delobj,
+    place_object, hornoplenty, unbless, mergable, delobj, set_corpsenm,
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
@@ -15,7 +17,7 @@ import {
 import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT, switch_terrain } from './hack.js';
 import {
     flush_screen, pline, newsym, docrt, bot, flush_topl_more, canseemon,
-    clear_nhwindow_message,
+    canspotmon, Hallucination, clear_nhwindow_message,
 } from './display.js';
 import { addinv } from './u_init.js';
 import {
@@ -25,6 +27,7 @@ import {
 import { can_reach_floor } from './engrave.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
+    OBJ_FREE,
     is_pit, LOST_DROPPED,
     STONE, ICE, MAX_TYPE,
     IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL, IS_SINK,
@@ -37,7 +40,7 @@ import {
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     AUTOUNLOCK_APPLY_KEY,
     nothing_seems_to_happen, engulfing_u,
-    HAND,
+    HAND, FOOT, NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, ONAME_NO_FLAGS,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects, instapetrify } from './trap.js';
 import { nhgetch } from './input.js';
@@ -56,7 +59,9 @@ import { cansee } from './vision.js';
 import { touch_artifact, youmonst } from './artifact.js';
 import { exercise, A_WIS } from './attrib.js';
 import { inv_cnt } from './steal.js';
-import { trycall, Monnam } from './do_name.js';
+import { trycall, Monnam, christen_monst, oname, rndmonnam } from './do_name.js';
+import { makemon, set_malign } from './makemon.js';
+import { more_experienced, newexplevel } from './exper.js';
 
 /** C ref: mondata.h notake — M1_NOTAKE. */
 function notake(ptr) {
@@ -81,11 +86,13 @@ function simpleonames(obj) {
 
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
 const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
+const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const CORPSE = objectNames.indexOf('CORPSE');
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
+const PM_HOUSECAT = monsterNames.indexOf('PM_HOUSECAT');
 /* C hack.h invlet_basic — a-zA-Z invent slots. */
 const INVLET_BASIC = 52;
 /* C hack.h stoning_checks — u_safe_from_fatal_corpse tests. */
@@ -123,6 +130,33 @@ function ysimple_name(obj) {
 /** C ref: objnam.c Ysimple_name2 — capitalized ysimple_name. */
 function Ysimple_name2(obj) {
     return upstart(ysimple_name(obj));
+}
+
+/** C obj.h SchroedingersBox — LARGE_BOX with spe==1. */
+export function SchroedingersBox(obj) {
+    return !!obj && (obj.otyp | 0) === LARGE_BOX && (obj.spe | 0) === 1;
+}
+
+/**
+ * C ref: zap.c get_obj_location flags=0 — invent/floor/minvent only.
+ * timeout.js export is behind pickup→trap→timeout→do→pickup; local clone.
+ */
+function get_obj_location_quantum(obj) {
+    if (!obj) return null;
+    switch (obj.where | 0) {
+    case OBJ_INVENT:
+        return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
+    case OBJ_FLOOR:
+        return { x: obj.ox | 0, y: obj.oy | 0 };
+    case OBJ_MINVENT:
+        if (obj.ocarry && (obj.ocarry.mx | 0)) {
+            return { x: obj.ocarry.mx | 0, y: obj.ocarry.my | 0 };
+        }
+        break;
+    default:
+        break;
+    }
+    return null;
 }
 
 /** C ref: pickup.c reset_justpicked — clear pickup_prev on invent chain. */
@@ -1025,8 +1059,8 @@ function Levitation_pe() {
  * C ref: end.c container_contents — NHW_MENU "Contents of %s:" + doname lines
  * via invent.c sortloot(SORTLOOT_LOOT|SORTLOOT_PACK). display_nhwindow(TRUE).
  * Named omissions: identified discover path; unpaid doname (D-0461);
- * nested containers / Schroedinger / empty pline beyond reportempty=false;
- * sortloot subclass/disco/BUCX.
+ * nested containers / empty pline beyond reportempty=false;
+ * sortloot subclass/disco/BUCX. Disclose live-cat line is end.c.
  */
 async function container_contents(box) {
     if (!box) return;
@@ -1035,15 +1069,20 @@ async function container_contents(box) {
     const { show_nhw_menu_text } = await import('./pager.js');
     const lines = [`Contents of ${theArt(xname(box))}:`, ''];
     if (box.cobj) {
-        // C: flags.sortloot 'l'/'f' → SORTLOOT_LOOT; sortpack → SORTLOOT_PACK
-        const flags = game.flags || {};
-        const sortlootOpt = flags.sortloot ?? 'l';
-        let sortflags = 0;
-        if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
-        if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
-        const sorted = sortloot(box.cobj, sortflags, false);
-        for (const srtc of sorted) {
-            lines.push(`  ${doname(srtc.obj)}`);
+        if (SchroedingersBox(box)) {
+            // C end.c: spe still 1 → live cat; pretend the corpse is not there
+            lines.push("  Schroedinger's cat!");
+        } else {
+            // C: flags.sortloot 'l'/'f' → SORTLOOT_LOOT; sortpack → SORTLOOT_PACK
+            const flags = game.flags || {};
+            const sortlootOpt = flags.sortloot ?? 'l';
+            let sortflags = 0;
+            if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
+            if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
+            const sorted = sortloot(box.cobj, sortflags, false);
+            for (const srtc of sorted) {
+                lines.push(`  ${doname(srtc.obj)}`);
+            }
         }
     }
     await show_nhw_menu_text(lines);
@@ -1714,11 +1753,91 @@ async function u_handsy() {
 }
 
 /**
+ * C ref: pickup.c observe_quantum_cat — collapse SchroedingersBox.
+ * body_part(FOOT) via objnam latebound (polyself→do→pickup cycle).
+ * Callers: use_container / tipcontainer_checks (makecat+givemsg TRUE);
+ * end.c disclose walk (FALSE, FALSE — live leaves spe set).
+ * Named omissions: muse.c monster-loot; escape/ascend Schroedingers_cat
+ * companion HP; shop Shk_Your ownership prefixes.
+ *
+ * @param {object} box
+ * @param {boolean} makecat
+ * @param {boolean} givemsg
+ */
+export async function observe_quantum_cat(box, makecat, givemsg) {
+    if (!box) return;
+    const sc = "Schroedinger's Cat";
+    let deadcat = box.cobj;
+    let livecat = null;
+    const itsalive = !rn2(2);
+
+    const loc = get_obj_location_quantum(box);
+    if (loc) {
+        box.ox = loc.x;
+        box.oy = loc.y;
+    }
+
+    if (itsalive) {
+        if (makecat) {
+            livecat = makemon(
+                mons(PM_HOUSECAT), box.ox | 0, box.oy | 0,
+                NO_MINVENT | MM_ADJACENTOK | MM_NOMSG,
+            );
+        }
+        if (livecat) {
+            livecat.mpeaceful = 1;
+            set_malign(livecat);
+            if (givemsg) {
+                if (!canspotmon(livecat)) {
+                    // C You("think %s brushed your %s.", something, body_part(FOOT))
+                    await pline(
+                        `You think something brushed your ${body_part_latebound(FOOT)}.`,
+                    );
+                } else {
+                    await pline(
+                        `${Monnam(livecat)} inside the box is still alive!`,
+                    );
+                }
+            }
+            christen_monst(livecat, sc);
+            if (deadcat) {
+                obj_extract_self(deadcat);
+                deadcat.quan = 0;
+                deadcat.where = OBJ_FREE;
+                deadcat = null;
+            }
+            box.owt = weight(box);
+            box.spe = 0;
+            if (!game.context?.mon_moving) {
+                more_experienced(10, 20);
+                await newexplevel();
+            }
+        }
+    } else {
+        box.spe = 0;
+        if (givemsg) {
+            await pline(
+                `The ${Hallucination() ? rndmonnam(null) : 'housecat'} inside the box is dead!`,
+            );
+        }
+        if (deadcat) {
+            deadcat.age = game.moves | 0;
+            set_corpsenm(deadcat, PM_HOUSECAT);
+            deadcat = oname(deadcat, sc, ONAME_NO_FLAGS);
+            if (!game.context?.mon_moving) {
+                more_experienced(20, 10);
+                await newexplevel();
+            }
+        }
+    }
+}
+
+/**
  * C ref: pickup.c use_container — held/floor container loot.
  * Branch envelope: u_handsy; unlocked; in_or_out_menu (lootabc a/b/c);
  * ':' look; 'o'/'a' menu_loot take-out; 'i'/'b' put-in; 'q' abort.
  * Named omissions: chest trap; BoT; stash/both/reversed; traditional_loot;
- * autopick 'A'; more_containers 'n'.
+ * autopick 'A'; more_containers 'n'; cursed-mbag emptymsg "now ".
  *
  * @param {object} obj container
  * @param {boolean} [held=false] applied from invent
@@ -1744,14 +1863,20 @@ export async function use_container(obj, held = false, _more = false) {
 
     game._current_container = obj;
     let used = ECMD_OK;
+    // C pickup.c:3020–3025 — SchroedingersBox before inokay/outokay.
+    const quantum_cat = SchroedingersBox(obj);
+    if (quantum_cat) {
+        await observe_quantum_cat(obj, true, true);
+        used = ECMD_TIME;
+    }
     const inokay = (game.invent || []).some((o) => o && o !== obj);
     // C: outokay = Has_contents; outmaybe = outokay || !cknown
     const outokay = Has_contents(obj);
-    // C: preformat emptymsg when !outokay — Ysimple_name2 + optional "now "
-    // (quantum_cat / cursed_mbag "now " deferred).
+    // C: preformat emptymsg when !outokay — Ysimple_name2 + "now " after
+    // quantum_cat (cursed_mbag "now " still named).
     let emptymsg = '';
     if (!outokay) {
-        emptymsg = `${Ysimple_name2(obj)} is empty.`;
+        emptymsg = `${Ysimple_name2(obj)} is ${quantum_cat ? 'now ' : ''}empty.`;
     }
     let c = 'q';
     for (;;) {
@@ -1977,6 +2102,7 @@ async function able_to_loot(x, y, looting) {
  * ice-box thaw; shop billing; altarizing doaltarobj; cursed mbag
  * item-gone; otrapped chest_trap; invent getobj tip; dropy terse
  * comma-list; toss_up; subfrombill after floor shop BoT/horn.
+ * SchroedingersBox is observe_quantum_cat before spill.
  * @param {object} box
  */
 export async function tipcontainer(box) {
@@ -2031,6 +2157,20 @@ export async function tipcontainer(box) {
             box.cknown = 1;
         }
         return; // C TIPCHECK_CANNOT — already emptied
+    }
+    if (SchroedingersBox(box)) {
+        // C pickup.c:4034–4045 — observe before empty/spill; live cat
+        // leaves no cobj → "Your/The box is now empty." (TIPCHECK_EMPTY).
+        await observe_quantum_cat(box, true, true);
+        if (!Has_contents(box)) {
+            const carried = box.where === OBJ_INVENT
+                || (game.invent || []).includes(box);
+            await pline(`${carried ? 'Your' : 'The'} box is now empty.`);
+            box.cknown = 1;
+            return;
+        }
+        box.cknown = 1;
+        // dead cat: corpse remains; fall through to spill
     }
     if (!Has_contents(box)) {
         box.cknown = 1;

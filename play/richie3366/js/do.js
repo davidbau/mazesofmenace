@@ -90,7 +90,7 @@ import { Monnam, Amonnam, Adjmonnam, mon_nam } from './do_name.js';
 import { revive } from './zap.js';
 import {
     compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
-    freeinv_core,
+    freeinv_core, getobj_take_count, getobj_apply_count,
 } from './invent.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
 import { pickup } from './pickup.js';
@@ -2156,7 +2156,8 @@ function drop_suggest_lets() {
 
 /**
  * C ref: invent.c getobj("drop", any_obj_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * via yn_function(qbuf, NULL, '\0'). Count-split and ?/* menus deferred.
+ * via yn_function(qbuf, NULL, '\0'). Count prefix + split_otmp live.
+ * ?/* pickinv still deferred.
  */
 async function getobj_drop() {
     for (;;) {
@@ -2166,7 +2167,10 @@ async function getobj_drop() {
             ? `What do you want to drop? [${lets} or ?*]`
             : 'What do you want to drop? [*]';
         // C invent.c getobj → yn_function(qbuf, (char *)0, '\0', FALSE)
-        const ch = await yn_function(query, null, '\0');
+        let ch = await yn_function(query, null, '\0');
+        const counted = await getobj_take_count(ch, true);
+        if (counted.retry) continue;
+        ch = counted.ch;
         if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
             if (game.flags?.verbose !== false) await pline('Never mind.');
             return null;
@@ -2181,9 +2185,14 @@ async function getobj_drop() {
             await pline("You don't have that object.");
             continue;
         }
+        const got = await getobj_apply_count(
+            otmp, 'drop', counted.cntgiven, counted.cnt,
+        );
+        if (!got) return null;
+        if (got.retry) continue;
         // C: leave gt.toplines; !verbose drop stays silent until parse clear.
         mark_topline_prompt(game._pending_message);
-        return otmp;
+        return got;
     }
 }
 
@@ -2193,7 +2202,7 @@ async function getobj_drop() {
  *
  * Branch envelope: ordinary floor drop of invent item including uwep;
  * cancel / missing letter / worn armor reject. Deferred: #droptype,
- * count-split, sinks, containers.
+ * sinks, containers. Count prefix is getobj ALLOWCNT.
  */
 export async function dodrop() {
     const u = game.u || {};

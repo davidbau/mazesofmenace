@@ -7,7 +7,7 @@
 // array that comparison has no input at all.
 
 import { game } from './gstate.js';
-import { OBJ_NAME, doname, xname, the } from './objnam.js';
+import { OBJ_NAME, doname, xname, the, makesingular } from './objnam.js';
 /* include/defsym.h OBJCLASS rows, the `name` column — C's def_oc_syms[].name
    (js/drawing_data.js keeps only the symbol chars). Index = oclass. Used by
    weapon_descr() below, same as C's object_detect(). */
@@ -49,6 +49,7 @@ import { spell_skilltype } from './spell.js';
 import { discover_object } from './o_init.js';
 import { P_NONE, P_NUM_SKILLS, P_BARE_HANDED_COMBAT, P_RIDING, P_HEALING_SPELL, P_CLERIC_SPELL, P_TWO_WEAPON_COMBAT, P_SKILLED, P_MASTER, P_GRAND_MASTER, P_ATTACK_SPELL, P_ENCHANTMENT_SPELL, P_BOW, P_CROSSBOW } from './const.js';
 import { PMNAMES } from './monst_data.js';
+import { spec_abon } from './artifact.js';
 
 // include/skills.h:106 practice_needed_to_advance()
 const practice_needed_to_advance = (level) => level * level * 20;
@@ -443,7 +444,7 @@ export function hitval(otmp, mon) {
         tmp += 2;
 
     if (otmp.oartifact)
-        note_unported_weapon('hitval:spec_abon');
+        tmp += spec_abon(otmp, mon);
 
     return tmp;
 }
@@ -550,14 +551,7 @@ export function weapon_descr(obj) {
     default:
         break;
     }
-    /* C finishes with makesingular(descr) (src/objnam.c, ~120 lines of
-       plural handling). Every name reachable here is already singular except
-       the odd_skill_names plurals ("polearms", "... spells"), so the
-       singularization is recorded when it would actually change the text
-       rather than half-ported. */
-    if (descr.endsWith('s'))
-        note_unported_weapon('weapon_descr:makesingular');
-    return descr;
+    return makesingular(descr);
 }
 
 // src/weapon.c:1092 skill_level_name()
@@ -598,7 +592,9 @@ export function can_advance(skill, speedy) {
         || (game.u.skills_advanced | 0) >= P_SKILL_LIMIT)
         return false;
 
-    /* the wizard-mode speedy arm is unreachable here */
+    if (game.wizard && speedy)
+        return true;
+
     return (sk.advance | 0) >= practice_needed_to_advance(sk.skill)
            && (game.u.weapon_slots | 0) >= slots_required(skill);
 }
@@ -1328,9 +1324,10 @@ export async function enhance_weapon_skill() {
                         await You_feel('you could be more dangerous!');
                     }
                     more++;
+                    break;
                 }
             }
-            if (more)
+            if (speedy && more)
                 continue;
         }
         break;

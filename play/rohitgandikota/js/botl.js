@@ -108,7 +108,9 @@ export function bot_conditions() {
     const cap = Number.isInteger(game._deferred_status_capacity)
         ? game._deferred_status_capacity : near_capacity();
     if (cap > UNENCUMBERED) cond += ' ' + enc_stat[cap];
-    if (u.ublind || intr.HBlinded) cond += ' Blind';
+    if (u.ublind || intr.HBlinded
+        || (Upolyd(u) && (game.youmonst.data.mflags1 & MFLAGS.M1_NOEYES)))
+        cond += ' Blind';
     if (intr.HDeaf || props.DEAF) cond += ' Deaf';
     if (intr.HStun || props.STUNNED) cond += ' Stun';
     if (intr.HConfusion || props.CONFUSION) cond += ' Conf';

@@ -324,5 +324,6 @@ export async function getpos(ccp, force, goal) {
     ccp.y = c.y;
     game.getposx = game.getposy = 0;
     game._map_cursor = null;
+    getpos_sethilite(null, null);
     return result;
 }

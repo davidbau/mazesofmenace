@@ -15,6 +15,7 @@ import { exercise, acurrstr, ACURR } from './attrib.js';
 import { get_adjacent_loc } from './cmd.js';
 import { m_at } from './mon.js';
 import { is_door_mappear } from './monst.js';
+import { nohands } from './mondata.js';
 import { canspotmon } from './display.js';
 
 import { You_cant, You, pline_The } from './pline.js';
@@ -59,6 +60,11 @@ function verysmall(ptr) {
 export async function doopen_indir(x, y) {
     let res = ECMD_OK;
     const cc = { x: 0, y: 0 };
+
+    if (nohands(game.youmonst.data)) {
+        await You_cant('open anything -- you have no hands!');
+        return ECMD_OK;
+    }
 
     if (verysmall(game.mons[game.u.umonnum])) {
         /* "You're too small to pull the door open." */
@@ -185,7 +191,11 @@ async function obstructed(x, y, quietly) {
 export async function doclose() {
     let res = ECMD_OK;
 
-    /* nohands(youmonst.data) cannot fire un-polymorphed */
+    if (nohands(game.youmonst.data)) {
+        await You_cant('close anything -- you have no hands!');
+        return ECMD_OK;
+    }
+
     if (game.u.utrap && game.u.utraptype === TT_PIT) {
         await You_cant("reach over the edge of the pit.");
         return ECMD_OK;

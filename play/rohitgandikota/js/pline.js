@@ -90,11 +90,11 @@ export async function There(line) {
 }
 
 
-// src/pline.c Norep() — pline unless the text matches the message already
-// on the top line, so a struggle repeated every turn does not stack --More--
-// prompts. gt.toplines is tracked as game._toplines by update_topl.
+// src/pline.c Norep(): pline unless the text matches the preceding
+// individual message. gp.prevmsg is separate from the tty's combined top
+// line, which can contain several messages joined with two spaces.
 export async function Norep(line) {
-    if ((game._toplines || '') !== line)
+    if ((game._prevmsg || '') !== line)
         await pline(line);
 }
 

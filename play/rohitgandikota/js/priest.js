@@ -5,7 +5,7 @@
 // Priest movement, chat and donations are recorded when reached.
 
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, d } from './rng.js';
 import { makemon, remove_monster, place_monster,
          set_malign, mongets } from './makemon.js';
 import { ONAMES } from './objects_data.js';
@@ -14,12 +14,15 @@ import { mkobj, curse, SPBOOK_no_NOVEL } from './mkobj.js';
 import { pm_good_location } from './sp_lev.js';
 import { PMNAMES, MMFLAGS } from './monst_data.js';
 import { ROOMOFFSET, W_ARMC, IS_ROOM, NOTONL, ALLOW_M,
-         ALLOW_ROCK } from './const.js';
+         ALLOW_ROCK, SPINE, AM_SHRINE, IS_ALTAR, In_endgame } from './const.js';
 import { mfndpos, mon_allowflags, m_at } from './mon.js';
 import { monnear, m_canseeu, histemple_at, inhishop } from './monmove.js';
 import { dist2, online2 } from './hacklib.js';
-import { newsym } from './display.js';
-import { Invis } from './youprop.js';
+import { newsym, canseemon, canspotmon, pline } from './display.js';
+import { Invis, Deaf, Hallucination } from './youprop.js';
+import { You, You_feel } from './pline.js';
+import { Monnam } from './do_name.js';
+import { helpless } from './monst.js';
 
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
@@ -30,6 +33,7 @@ function note_unported_priest(what) {
 
 // src/priest.c:219 priestini() — exclusively for mktemple()/shrine altars.
 export function priestini(lvl, sroom, sx, sy, sanctum) {
+    game.p_coaligned = p_coaligned;
     const si = rn2(8);
     const prim = game.mons[sanctum ? PMNAMES.PM_HIGH_CLERIC
                                    : PMNAMES.PM_ALIGNED_CLERIC];
@@ -93,6 +97,139 @@ function Amask2align(amask) {
     const AM_LAWFUL = 4, AM_NEUTRAL = 2, AM_CHAOTIC = 1;
     return (amask & AM_LAWFUL) ? 1 : (amask & AM_NEUTRAL) ? 0
          : (amask & AM_CHAOTIC) ? -1 : 0 /* A_NONE-ish */;
+}
+
+// src/priest.c:370 p_coaligned() and :376 has_shrine().
+export function p_coaligned(priest) {
+    return game.u.ualign.type === priest.epri?.shralign;
+}
+
+function has_shrine(priest) {
+    const epri = priest?.epri;
+    if (!priest?.ispriest || !epri)
+        return false;
+    const lev = game.level.at(epri.shrpos.x, epri.shrpos.y);
+    return !!lev && IS_ALTAR(lev.typ) && !!(lev.altarmask & AM_SHRINE)
+           && epri.shralign === Amask2align(lev.altarmask & ~AM_SHRINE);
+}
+
+// src/priest.c:414 intemple(), temple entry feedback.
+export async function intemple(roomno) {
+    game.p_coaligned = p_coaligned;
+    /* Re-entering while already touching the temple does nothing. */
+    for (const ch of game.u.urooms0 || '') {
+        if (game.level?.rooms?.[ch.charCodeAt(0) - ROOMOFFSET]?.rtype === 10)
+            return;
+    }
+
+    const priest = (game.level?.monsters || []).find(mtmp =>
+        mtmp.mhp > 0 && mtmp.ispriest && mtmp.epri?.shroom === roomno
+        && histemple_at(mtmp, mtmp.mx, mtmp.my));
+    if (priest) {
+        const epri = priest.epri;
+        const shrined = has_shrine(priest);
+        const sanctumLevel = game.special_levels?.sanctum_level;
+        const isSanctum = !!sanctumLevel
+            && game.u.uz.dnum === sanctumLevel.dnum
+            && game.u.uz.dlevel === sanctumLevel.dlevel;
+        const sanctum = priest.mnum === PMNAMES.PM_HIGH_CLERIC
+                        && (isSanctum || In_endgame(game.u.uz));
+        const canSpeak = !helpless(priest);
+
+        if (canSpeak && !Deaf()
+            && game.moves >= (epri.intone_time ?? 0)) {
+            const savePriest = priest.ispriest;
+            if (sanctum && !Hallucination())
+                priest.ispriest = 0;
+            await pline(`${canseemon(priest) ? Monnam(priest)
+                                              : 'A nearby voice'} intones:`);
+            priest.ispriest = savePriest;
+            epri.intone_time = game.moves + d(10, 500);
+            epri.enter_time = 0;
+        }
+
+        let msg1 = null, msg2 = null;
+        if (sanctum && isSanctum) {
+            if (priest.mpeaceful) {
+                msg1 = "Infidel, you have entered Moloch's Sanctum!";
+                msg2 = 'Be gone!';
+                priest.mpeaceful = 0;
+                set_malign(priest);
+            } else {
+                msg1 = 'You desecrate this place by your presence!';
+            }
+        } else if (game.moves >= (epri.enter_time ?? 0)) {
+            msg1 = `Pilgrim, you enter a ${shrined ? 'sacred'
+                                                   : 'desecrated'} place!`;
+        }
+        if (msg1 && canSpeak && !Deaf()) {
+            await pline(`"${msg1}"`);
+            if (msg2)
+                await pline(`"${msg2}"`);
+            epri.enter_time = game.moves + d(10, 100);
+        }
+
+        if (!sanctum) {
+            let line, timeKey, otherKey;
+            if (!shrined || !p_coaligned(priest)
+                || game.u.ualign.record <= -4) {
+                line = `have a${(!shrined || !p_coaligned(priest))
+                    ? '' : ' strange'} forbidding feeling...`;
+                timeKey = 'hostile_time';
+                otherKey = 'peaceful_time';
+            } else {
+                line = `experience ${game.u.ualign.record >= 14
+                    ? 'a' : 'an unusual'} sense of peace.`;
+                timeKey = 'peaceful_time';
+                otherKey = 'hostile_time';
+            }
+            const thisTime = epri[timeKey] ?? 0;
+            const otherTime = epri[otherKey] ?? 0;
+            if (game.moves >= thisTime || otherTime >= thisTime) {
+                await You(line);
+                epri[timeKey] = game.moves + d(10, 20);
+                if (epri[timeKey] <= otherTime)
+                    epri[otherKey] = epri[timeKey] - 1;
+            }
+        }
+        return;
+    }
+
+    switch (rn2(4)) {
+    case 0:
+        await You('have an eerie feeling...');
+        break;
+    case 1:
+        await You_feel('like you are being watched.');
+        break;
+    case 2: {
+        const { body_part } = await import('./polyself.js');
+        await pline(`A shiver runs down your ${body_part(SPINE)}.`);
+        break;
+    }
+    default:
+        break;
+    }
+
+    if (!rn2(5)) {
+        const ghost = makemon(game.mons[PMNAMES.PM_GHOST], game.u.ux,
+                              game.u.uy, MMFLAGS.MM_NOMSG);
+        if (ghost) {
+            const ngen = game.mvitals?.[PMNAMES.PM_GHOST]?.born ?? 0;
+            if (canspotmon(ghost))
+                await pline(`A${ngen < 5 ? 'n enormous' : ''} ghost appears next to you${ngen < 10 ? '!' : '.'}`);
+            else
+                await You('sense a presence close by!');
+            ghost.mpeaceful = 0;
+            set_malign(ghost);
+            if (game.flags?.verbose !== false)
+                await You('are frightened to death, and unable to move.');
+            const { nomul } = await import('./hack.js');
+            nomul(-3);
+            game.multi_reason = 'being terrified of a ghost';
+            game.nomovemsg = 'You regain your composure.';
+        }
+    }
 }
 
 /* ------------------------------------------------------------------ *

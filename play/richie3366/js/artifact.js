@@ -38,6 +38,12 @@ import {
     REFLECTING,
     WARNING,
     WARN_OF_MON,
+    TELEPAT,
+    STEALTH,
+    TELEPORT_CONTROL,
+    ENERGY_REGENERATION,
+    HALF_SPDAM,
+    HALF_PHDAM,
     ECMD_OK,
     ECMD_TIME,
     ECMD_CANCEL,
@@ -69,8 +75,9 @@ import {
     flush_screen, flush_topl_more, pline, You_feel, newsym, see_monsters,
     set_sting_effects,
 } from './display.js';
-import { compactify_invlets, display_pickinv_reply, update_inventory } from './invent.js';
+import { compactify_invlets, display_pickinv_reply, update_inventory, getobj_take_count, getobj_apply_count } from './invent.js';
 import { xname, the, vtense, cxname } from './objnam.js';
+import { recalc_telepat_range } from './do_wear.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -104,6 +111,12 @@ export const SPFX_INTEL = 0x00000004;
 export const SPFX_WARN = 0x00000020;
 export const SPFX_ATTK = 0x00000040;
 export const SPFX_HALRES = 0x00000800;
+export const SPFX_ESP = 0x00001000;
+export const SPFX_STLTH = 0x00002000;
+export const SPFX_EREGEN = 0x00008000;
+export const SPFX_HSPDAM = 0x00010000;
+export const SPFX_HPHDAM = 0x00020000;
+export const SPFX_TCTRL = 0x00040000;
 export const SPFX_LUCK = 0x00080000;
 export const SPFX_DMONS = 0x00100000;
 export const SPFX_DCLAS = 0x00200000;
@@ -197,7 +210,7 @@ export function artifacts_globals_init() {
         name: raw.name,
         otyp: objectNames.indexOf(raw.otypName),
         spfx: raw.spfx | 0,
-        // cspfx not extracted (D-1342: no artilist row has cspfx SPFX_REFLECT)
+        // C artilist.h A() s2 — carry-only (D-1539)
         cspfx: raw.cspfx | 0,
         mtype: resolveMtype(raw),
         attk: {
@@ -373,7 +386,7 @@ export function confers_luck(obj) {
  * carried cspfx. Callers: muse.c mon_reflects MON_WEP (:2807).
  * Hero W_WEP identity is set_artifact_intrinsic EReflecting (:867–872)
  * then ureflects (EReflecting & W_WEP).
- * Named omit: cspfx extract (no row in this artilist has cspfx&SPFX_REFLECT).
+ * Named omit: no artilist row has cspfx&SPFX_REFLECT (extract is D-1539).
  * @param {object|null} obj
  * @returns {boolean}
  */
@@ -553,15 +566,18 @@ function warntype_info() {
 }
 
 /**
- * C ref: artifact.c set_artifact_intrinsic — SPFX_HALRES, SPFX_WARN,
- * SPFX_REFLECT W_WEP.
+ * C ref: artifact.c set_artifact_intrinsic `:715–893`.
+ * Carry path `:770` `spfx = (wp_mask != W_ART) ? oart->spfx : oart->cspfx`
+ * (MKoT WARN|TCTRL|HPHDAM; Orb of Fate WARN|HSPDAM|HPHDAM). Drop W_ART
+ * strips bits still conferred by other invent artifacts (`:771–778`).
+ * Callers: invent.c addinv_core1 `:991` / freeinv_core `:1383` W_ART;
+ * worn.c setworn/setnotworn weapon/armor masks.
  * C uses make_hallucinated(xtime=!on, talk, wp_mask) which sets
  * EHalluc_resistance |= mask when conferring (xtime==0).
  * SPFX_WARN `:824–839`: spec_m2 → EWarn_of_mon + warntype.obj + see_monsters;
  * else EWarning. MATCH_WARN overlay is display.c (D-1514).
- * Named omissions: defn resist masks; SPFX_SEARCH/ESP/STLTH/REGEN/TCTRL/
- * EREGEN/HSPDAM/HPHDAM; cspfx W_ART (MKoT/Orb of Fate carry WARN);
- * invent W_ART conferral; message paths.
+ * Named omissions: defn/cary resist masks; SPFX_SEARCH/REGEN/XRAY/PROTECT;
+ * inv_prop arti_invoke on W_ART drop; Sunsword EBlnd_resist; message paths.
  * SPFX_REFLECT && W_WEP is D-1342 (not other wp_mask).
  * @param {object} otmp
  * @param {boolean} on
@@ -573,11 +589,33 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
     const oart = get_artifact(otmp);
     if (oart === list[0]) return;
     // C: spfx = (wp_mask != W_ART) ? oart->spfx : oart->cspfx
-    // cspfx not extracted yet — carried-only props deferred.
-    const spfx = (wp_mask !== W_ART) ? (oart.spfx | 0) : 0;
+    let spfx = (wp_mask !== W_ART) ? (oart.spfx | 0) : (oart.cspfx | 0);
+    if (spfx && wp_mask === W_ART && !on) {
+        // C: don't change any spfx also conferred by other artifacts
+        for (const obj of game.invent || []) {
+            if (!obj || obj === otmp || !obj.oartifact) continue;
+            const art = get_artifact(obj);
+            if (art === list[0]) continue;
+            spfx &= ~(art.cspfx | 0);
+        }
+    }
     if (spfx & SPFX_HALRES) {
         // C potion.c make_hallucinated mask arm: !xtime → |= ; xtime → &=~
         set_spfx_extrinsic(HALLUC_RES, 'EHalluc_resistance', wp_mask, on);
+    }
+    // C artifact.c:798–805 — SPFX_ESP ETelepat + recalc + see_monsters
+    if (spfx & SPFX_ESP) {
+        set_spfx_extrinsic(TELEPAT, 'ETelepat', wp_mask, on);
+        recalc_telepat_range();
+        see_monsters();
+    }
+    // C artifact.c:806–811 — SPFX_STLTH (Heart of Ahriman cspfx)
+    if (spfx & SPFX_STLTH) {
+        set_spfx_extrinsic(STEALTH, 'EStealth', wp_mask, on);
+    }
+    // C artifact.c:818–823 — SPFX_TCTRL (MKoT cspfx)
+    if (spfx & SPFX_TCTRL) {
+        set_spfx_extrinsic(TELEPORT_CONTROL, 'ETeleport_control', wp_mask, on);
     }
     // C artifact.c:824–839 — Sting/Orcrist/Grimtooth spec_m2, else EWarning
     if (spfx & SPFX_WARN) {
@@ -591,6 +629,18 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
         } else {
             set_spfx_extrinsic(WARNING, 'EWarning', wp_mask, on);
         }
+    }
+    // C artifact.c:841–846 — SPFX_EREGEN (Eye of the Aethiopica cspfx)
+    if (spfx & SPFX_EREGEN) {
+        set_spfx_extrinsic(ENERGY_REGENERATION, 'EEnergy_regeneration', wp_mask, on);
+    }
+    // C artifact.c:847–852 — SPFX_HSPDAM (Orb of Fate / Detection / PYEC / Eye)
+    if (spfx & SPFX_HSPDAM) {
+        set_spfx_extrinsic(HALF_SPDAM, 'EHalf_spell_damage', wp_mask, on);
+    }
+    // C artifact.c:853–858 — SPFX_HPHDAM (MKoT / Orb of Fate cspfx)
+    if (spfx & SPFX_HPHDAM) {
+        set_spfx_extrinsic(HALF_PHDAM, 'EHalf_physical_damage', wp_mask, on);
     }
     // C artifact.c:867–872 — only the wielded-weapon slot sets EReflecting
     if ((spfx & SPFX_REFLECT) && (wp_mask & W_WEP)) {
@@ -861,7 +911,7 @@ async function getobj_invoke() {
 
 /** C invent.c getobj("charge", charge_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT).
  * SUGGEST in the prompt; DOWNPLAY/EXCLUDE_SELECTABLE selectable.
- * Count prefix (ALLOWCNT) named omit. */
+ * Count prefix + split_otmp live. Canned CMDQ_INT named. */
 async function getobj_charge() {
     const { charge_ok } = await import('./read.js');
     const selectable = (o) => charge_ok(o) !== GETOBJ_EXCLUDE;
@@ -889,8 +939,11 @@ async function getobj_charge() {
         await flush_screen(1);
         game.nhDisplay?.setCursor?.(prompt.length, 0);
         const key = await nhgetch();
-        if (key === 27) return null;
-        const ch = String.fromCharCode(key);
+        let ch = String.fromCharCode(key);
+        const counted = await getobj_take_count(ch, true);
+        if (counted.retry) continue;
+        ch = counted.ch;
+        if (ch.charCodeAt(0) === 27) return null;
         if (ch === '?' || ch === '*') {
             const ilet = await display_pickinv_reply(ch === '*' ? '*' : (raw || '*'));
             if (ilet === '\x1b') return null;
@@ -900,8 +953,13 @@ async function getobj_charge() {
                 await pline("You don't have that object.");
                 continue;
             }
+            const got = await getobj_apply_count(
+                picked, 'charge', counted.cntgiven, counted.cnt,
+            );
+            if (!got) return null;
+            if (got.retry) continue;
             game._pending_message = '';
-            return picked;
+            return got;
         }
         if (ch === ' ' || ch === '\n' || ch === '\r') return null;
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
@@ -909,8 +967,13 @@ async function getobj_charge() {
             await pline("You don't have that object.");
             continue;
         }
+        const got = await getobj_apply_count(
+            otmp, 'charge', counted.cntgiven, counted.cnt,
+        );
+        if (!got) return null;
+        if (got.retry) continue;
         game._pending_message = '';
-        return otmp;
+        return got;
     }
 }
 
@@ -1788,7 +1851,7 @@ export function artifact_hit(magr, mdef, otmp, dmgBox, dieroll) {
  * Ported: artifact SPFX_HALRES when wielded/worn; non-artifact wornmask
  * match (rings/armor/amulet/tool).
  * Named omissions: other abil_to_spfx / abil_to_adtyp arms; Sunsword EBlnd;
- * cary/defn/cspfx beyond HALRES.
+ * cary/defn; what_gives cspfx match (conferral is D-1539).
  * @param {number} extrinsicBits u.uprops[prop].extrinsic
  * @returns {object|null}
  */

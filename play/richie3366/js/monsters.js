@@ -939,6 +939,18 @@ export function telepathic(ptr) {
         || mndx === PM_MASTER_MIND_FLAYER;
 }
 
+/**
+ * C ref: mondata.h eyecount — no eyes 0; cyclops/floating eye 1; else 2.
+ * JS mons() allocates, so compare mndx like mbodypart.
+ */
+const PM_CYCLOPS = monsterNames.indexOf('PM_CYCLOPS');
+export function eyecount(ptr) {
+    if (!haseyes(ptr)) return 0;
+    const n = ptr?.mndx ?? ptr?.mnum ?? -1;
+    if (n === PM_CYCLOPS || n === PM_FLOATING_EYE) return 1;
+    return 2;
+}
+
 /** C ref: mondata.h webmaker — cave/giant spider only (keep in sync with mons). */
 const PM_CAVE_SPIDER = monsterNames.indexOf('PM_CAVE_SPIDER');
 export function webmaker(ptr) {

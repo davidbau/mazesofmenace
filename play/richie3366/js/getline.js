@@ -4,7 +4,12 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, mark_topline_prompt, clear_win_stop } from './display.js';
-import { COLNO, QBUFSZ, PARANOID_CONFIRM } from './const.js';
+import {
+    COLNO, QBUFSZ, PARANOID_CONFIRM,
+    ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD,
+    INTERNALCMD, AUTOCOMPLETE, WIZMODECMD, CMD_NOT_AVAILABLE,
+} from './const.js';
+import { EXTCMDLIST } from './generated/extcmdlist_data.js';
 
 /**
  * C ref: topl.c topl_putsym — before writing when curx == CO-1, emit `\n`
@@ -236,6 +241,19 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "altdip" INTERNALCMD → dip_into. Not AUTOCOMPLETE;
+        // extcmds_match skips INTERNALCMD so typed #altdip is unknown.
+        // Canned IA_DIP_OBJ uses cmdq CMDQ_EXTCMD (D-1537).
+        name: 'altdip',
+        wiz: false,
+        autocomplete: false,
+        internal: true,
+        run: async () => {
+            const { dip_into } = await import('./potion.js');
+            return dip_into();
+        },
+    },
+    {
         name: 'sit',
         wiz: false,
         autocomplete: true,
@@ -427,6 +445,17 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "timeout" IFBURIED|AUTOCOMPLETE|WIZMODECMD
+        // → timeout.c wiz_timeout_queue (D-1527)
+        name: 'timeout',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_timeout_queue } = await import('./timeout.js');
+            return wiz_timeout_queue();
+        },
+    },
+    {
         // C: flags IFBURIED|WIZMODECMD (no AUTOCOMPLETE) — full name required
         name: 'wizgenesis',
         wiz: true,
@@ -574,7 +603,38 @@ function wizardMode() {
 }
 
 function availableExtCmds() {
-    return EXT_CMDS.filter((ec) => !ec.wiz || wizardMode());
+    return EXT_CMDS.filter((ec) => !ec.internal && (!ec.wiz || wizardMode()));
+}
+
+/**
+ * C ref: cmd.c extcmds_match. Skips CMD_NOT_AVAILABLE|INTERNALCMD.
+ * ECM_IGNOREAC includes !AUTOCOMPLETE (typed # exact match).
+ * @param {string | null} findstr
+ * @param {number} ecmflags
+ * @returns {number[]} indices into EXTCMDLIST
+ */
+export function extcmds_match(findstr, ecmflags) {
+    const ignoreac = (ecmflags & ECM_IGNOREAC) !== 0;
+    const exactmatch = (ecmflags & ECM_EXACTMATCH) !== 0;
+    const no1charcmd = (ecmflags & ECM_NO1CHARCMD) !== 0;
+    const wizard = wizardMode();
+    const needle = findstr == null ? null : String(findstr).toLowerCase();
+    const out = [];
+    for (let i = 0; i < EXTCMDLIST.length; i++) {
+        const e = EXTCMDLIST[i];
+        if (e.flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) continue;
+        if (!wizard && (e.flags & WIZMODECMD)) continue;
+        if (!ignoreac && !(e.flags & AUTOCOMPLETE)) continue;
+        if (no1charcmd && e.txt.length === 1) continue;
+        if (!needle) {
+            out.push(i);
+        } else if (exactmatch) {
+            if (e.txt.toLowerCase() === needle) out.push(i);
+        } else if (e.txt.toLowerCase().startsWith(needle)) {
+            out.push(i);
+        }
+    }
+    return out;
 }
 
 /**
@@ -664,7 +724,15 @@ export async function get_ext_cmd() {
     game._pending_message = '';
     const name = buf.trim().toLowerCase();
     if (!name) return -1;
-    const idx = availableExtCmds().findIndex((ec) => ec.name === name);
+    /* C tty_get_ext_cmd: extcmds_match(buf, ECM_IGNOREAC|ECM_EXACTMATCH).
+       INTERNALCMD (#altdip) is skipped — unknown even with a runner. */
+    const matches = extcmds_match(name, ECM_IGNOREAC | ECM_EXACTMATCH);
+    if (matches.length !== 1) {
+        await pline(`#${buf}: unknown extended command.`);
+        return -1;
+    }
+    const txt = EXTCMDLIST[matches[0]].txt.toLowerCase();
+    const idx = availableExtCmds().findIndex((ec) => ec.name === txt);
     if (idx < 0) {
         await pline(`#${buf}: unknown extended command.`);
         return -1;

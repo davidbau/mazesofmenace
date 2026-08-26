@@ -18,7 +18,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
 import { setworn } from './worn.js';
 import { welded, is_sword } from './wield.js';
 import { bimanual, is_metallic } from './obj.js';
-import { Is_dragon_armor } from './mondata.js';
+import { Is_dragon_armor, nolimbs, nohands, verysmall } from './mondata.js';
 import { sgn } from './hacklib.js';
 import { erode_obj, is_flammable, is_rustprone, is_crackable, is_rottable,
          is_corrodeable, is_damageable } from './trap.js';
@@ -95,19 +95,27 @@ export function find_ac() {
 // dragon_armor_handling and the artifact-light branch (begin_burn plus its
 // "begins to shine" message) are recorded; neither fires for ordinary
 // starting armour.
-export function Armor_on() {
+export async function Armor_on() {
     if (!game.u.uarm)   /* no known instances of !uarm here but play it safe */
         return 0;
     if (!game.u.uarm.known) {
         game.u.uarm.known = 1; /* +/- evident because of status line AC */
         note_unported_do_wear('Armor_on:update_inventory');
     }
-    /* C calls dragon_armor_handling(uarm, TRUE, TRUE) unconditionally, but
-       the function is a switch over dragon scale types and does nothing for
-       any other suit; the artifact-light branch needs artifact_light().
-       Both record only when they could actually act. */
-    if (Is_dragon_armor(game.u.uarm))
+    /* src/do_wear.c dragon_armor_handling(): blue dragon armor grants an
+       extra speed property in addition to its ordinary shock resistance. */
+    if (game.u.uarm.otyp === ONAMES.BLUE_DRAGON_SCALES
+        || game.u.uarm.otyp === ONAMES.BLUE_DRAGON_SCALE_MAIL) {
+        const hfast = game.u.intrinsic?.HFast | 0;
+        const efast = game.u.uprops?.FAST | 0;
+        const fast = !!(hfast || efast);
+        const very_fast = !!((hfast & TIMEOUT) || efast);
+        if (!very_fast)
+            await You(`speed up${fast ? ' a bit more' : ''}.`);
+        (game.u.uprops ||= {}).FAST = efast | W_ARM;
+    } else if (Is_dragon_armor(game.u.uarm)) {
         note_unported_do_wear('Armor_on:dragon_armor_handling');
+    }
     if (game.u.uarm.oartifact)
         note_unported_do_wear('Armor_on:artifact_light');
     return 0;
@@ -580,8 +588,10 @@ function bimanual_obj(o) {
 }
 
 export function helm_simple_name(h) {
-    /* "hat" for flimsy headgear, else "helmet" */
-    return objects[h.otyp].oc_material <= 3 ? 'hat' : 'helmet';
+    /* "hat" for flimsy headgear, else "helm" */
+    if (!h)
+        return 'hat';
+    return hard_helmet(h) ? 'helm' : 'hat';
 }
 export function cloak_simple_name(c) {
     if (c) {
@@ -617,6 +627,10 @@ export async function accessory_or_armor_on(obj) {
         if (!mask)
             return ECMD_OK;
     } else if (ring) {
+        if (nolimbs(game.youmonst.data)) {
+            await You('cannot make the ring stick to your body.');
+            return ECMD_OK;
+        }
         const uleft = worn(W_RINGL), uright = worn(W_RINGR);
         if (uleft && uright) {
             await pline('There are no more ring-fingers to fill.');
@@ -862,7 +876,26 @@ async function slot_off(otmp) {
         & (W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU);
     if (otmp.owornmask & W_ARMF)
         await Boots_off(otmp);
-    setworn(null, mask);   /* each C *_off handler does setworn(NULL, W_x) */
+    if (otmp.owornmask & W_ARM) {
+        /* Armor_off clears setworn's primary property before removing the
+           second property supplied by blue dragon armor. */
+        setworn(null, W_ARM);
+        if (otmp.otyp === ONAMES.BLUE_DRAGON_SCALES
+            || otmp.otyp === ONAMES.BLUE_DRAGON_SCALE_MAIL) {
+            const left = (game.u.uprops?.FAST | 0) & ~W_ARM;
+            if (left)
+                game.u.uprops.FAST = left;
+            else if (game.u.uprops)
+                delete game.u.uprops.FAST;
+            const hfast = game.u.intrinsic?.HFast | 0;
+            const efast = game.u.uprops?.FAST | 0;
+            if (!((hfast & TIMEOUT) || efast)
+                && !game.context_takeoff?.cancelled_don)
+                await You('slow down.');
+        }
+    } else {
+        setworn(null, mask); /* each C *_off handler clears its own slot */
+    }
 }
 
 // src/do_wear.c:1771 armor_or_accessory_off()
@@ -1000,6 +1033,10 @@ export async function doremring() {
 
 // src/do_wear.c:2432 dowear() — the 'W' command.
 export async function dowear() {
+    if (verysmall(game.youmonst.data) || nohands(game.youmonst.data)) {
+        await pline("Don't even bother.");
+        return ECMD_OK;
+    }
     const { getobj } = await import('./invent.js');
     const { wear_ok } = await import('./cmd.js');
     const otmp = await getobj('wear', wear_ok, 0);

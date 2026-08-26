@@ -45,7 +45,7 @@ import {
     CXN_NORMAL, CXN_SINGULAR, CXN_NO_PFX, CXN_PFX_THE, CXN_ARTICLE,
     CXN_NOCORPSE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
-    BURN_OBJECT, HAND, RIGHT_HANDED,
+    BURN_OBJECT, HAND, FOOT, RIGHT_HANDED,
 } from './const.js';
 
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
@@ -1700,11 +1700,13 @@ export function set_body_part(fn) {
 /**
  * Seam for modules that cannot import polyself.js (wield: polyself→wield).
  * Not the C-locus name — that is only `polyself.js` `body_part`.
- * Unset → C mbodypart null-data humanoid "hand" / "body part".
+ * Unset → C mbodypart null-data humanoid "hand" / "foot" / "body part".
  */
 export function body_part_latebound(part) {
     if (_body_part) return _body_part(part);
-    if ((part | 0) === HAND) return 'hand';
+    const p = part | 0;
+    if (p === HAND) return 'hand';
+    if (p === FOOT) return 'foot';
     return 'body part';
 }
 

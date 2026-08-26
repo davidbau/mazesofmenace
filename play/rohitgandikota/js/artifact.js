@@ -8,14 +8,15 @@ import { game } from './gstate.js';
 import { fuzzymatch } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
 import { artifact_names, artifact_otyps, artifact_records,
-         ART_GRIMTOOTH, ART_EXCALIBUR } from './artilist_data.js';
+         ART_GRIMTOOTH, ART_EXCALIBUR,
+         ART_SUNSWORD } from './artilist_data.js';
 import { PMNAMES, MFLAGS, MONSYMS, ATTKS as ADTYPES } from './monst_data.js';
 import { is_covetous, is_mplayer } from './mondata.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM,
          ONAME_KNOW_ARTI, ECMD_TIME, ECMD_CANCEL, GETOBJ_PROMPT,
-         nothing_happens } from './const.js';
+         nothing_happens, W_WEP } from './const.js';
 
 /* include/artilist.h — artilist[i].otyp, resolved from the generated
    ONAMES-key table. Index 0 is the dummy (STRANGE_OBJECT == 0). */
@@ -210,16 +211,33 @@ const ALIGNS = { A_LAWFUL: 1, A_NEUTRAL: 0, A_CHAOTIC: -1, A_NONE: -128 };
 const rec_align = (rec) => ALIGNS[rec.align] ?? -128;
 
 /* include/artifact.h SPFX_* bits used below */
-const SPFX_INTEL = 0x04, SPFX_RESTR = 0x02, SPFX_ATTK = 0x40,
+const SPFX_INTEL = 0x04, SPFX_RESTR = 0x02, SPFX_WARN = 0x20,
+      SPFX_ATTK = 0x40, SPFX_SEARCH = 0x00000200,
+      SPFX_HALRES = 0x00000800, SPFX_ESP = 0x00001000,
+      SPFX_STLTH = 0x00002000, SPFX_REGEN = 0x00004000,
+      SPFX_EREGEN = 0x00008000, SPFX_HSPDAM = 0x00010000,
+      SPFX_HPHDAM = 0x00020000, SPFX_TCTRL = 0x00040000,
       SPFX_DMONS = 0x00100000, SPFX_DCLAS = 0x00200000,
       SPFX_DFLAG1 = 0x00400000, SPFX_DFLAG2 = 0x00800000,
-      SPFX_DALIGN = 0x01000000, SPFX_DBONUS = 0x01F00000;
+      SPFX_DALIGN = 0x01000000, SPFX_DBONUS = 0x01F00000,
+      SPFX_XRAY = 0x02000000, SPFX_REFLECT = 0x04000000,
+      SPFX_PROTECT = 0x08000000;
 
 // src/artifact.c get_artifact() — the artilist record for an object.
 export function get_artifact(obj) {
     const n = obj?.oartifact ?? 0;
     return (n > 0 && n < artifact_records.length) ? artifact_records[n]
                                                   : artifact_records[0];
+}
+
+function set_artifact_prop(key, on, mask) {
+    const uprops = (game.u.uprops ||= {});
+    const value = (uprops[key] || 0);
+    const next = on ? (value | mask) : (value & ~mask);
+    if (next)
+        uprops[key] = next;
+    else
+        delete uprops[key];
 }
 
 // include/artilist.h attack-struct macros — the adtyp each defn/cary string
@@ -237,6 +255,51 @@ function arti_adtyp(field) {
         return 0;
     const name = m[2] || ARTI_ADTYP_HEADS[m[1]];
     return name ? (ADTYPES[name] | 0) : 0;
+}
+
+// src/artifact.c:716 set_artifact_intrinsic(), wielded and worn effects.
+export function set_artifact_intrinsic(obj, on, wp_mask) {
+    const art = get_artifact(obj);
+    if (art === artifact_records[0])
+        return;
+
+    const dprops = new Map([
+        [ADTYPES.AD_FIRE, 'FIRE_RES'], [ADTYPES.AD_COLD, 'COLD_RES'],
+        [ADTYPES.AD_ELEC, 'SHOCK_RES'], [ADTYPES.AD_MAGM, 'ANTIMAGIC'],
+        [ADTYPES.AD_DISN, 'DISINT_RES'], [ADTYPES.AD_DRST, 'POISON_RES'],
+        [ADTYPES.AD_DRLI, 'DRAIN_RES'],
+    ]);
+    const dprop = dprops.get(arti_adtyp(art.defn));
+    if (dprop)
+        set_artifact_prop(dprop, on, wp_mask);
+
+    const mappings = [
+        [SPFX_SEARCH, 'SEARCHING'], [SPFX_HALRES, 'HALLUC_RES'],
+        [SPFX_ESP, 'TELEPAT'], [SPFX_STLTH, 'STEALTH'],
+        [SPFX_REGEN, 'REGENERATION'],
+        [SPFX_EREGEN, 'ENERGY_REGENERATION'],
+        [SPFX_TCTRL, 'TELEPORT_CONTROL'], [SPFX_HSPDAM, 'HALF_SPDAM'],
+        [SPFX_HPHDAM, 'HALF_PHDAM'], [SPFX_PROTECT, 'PROTECTION'],
+    ];
+    for (const [bit, key] of mappings)
+        if (art.spfx & bit)
+            set_artifact_prop(key, on, wp_mask);
+
+    if (art.spfx & SPFX_WARN) {
+        const mt = mtype_value(art);
+        set_artifact_prop(mt ? 'WARN_OF_MON' : 'WARNING', on, wp_mask);
+        if (mt) {
+            const warning = ((game.context ||= {}).warntype ||= {});
+            warning.obj = on ? ((warning.obj || 0) | mt)
+                             : ((warning.obj || 0) & ~mt);
+        }
+    }
+    if ((art.spfx & SPFX_REFLECT) && (wp_mask & W_WEP))
+        set_artifact_prop('REFLECTING', on, wp_mask);
+    if (art.spfx & SPFX_XRAY)
+        game.u.xray_range = on ? 3 : -1;
+    if ((wp_mask & W_WEP) && is_art(obj, ART_SUNSWORD))
+        set_artifact_prop('BLND_RES', on, wp_mask);
 }
 
 // include/obj.h:347 Is_dragon_scales() / Is_dragon_mail() / Is_dragon_armor()
@@ -325,6 +388,44 @@ function spec_applies(weap, mon) {
                      : (ptr.maligntyp === -128
                         || Math.sign(ptr.maligntyp) !== rec_align(weap));
     return false;
+}
+
+/* include/artilist.h ATTK() payload, stored in generated records as
+   "PHYS(5, 10)", "FIRE(5, 0)", and similar strings. */
+function arti_attack(field) {
+    const match = /^([A-Z_]+)\((\d+),\s*(\d+)\)$/.exec(field || '');
+    return match ? { adtyp: match[1], damn: Number(match[2]),
+                     damd: Number(match[3]) }
+                 : { adtyp: 'PHYS', damn: 0, damd: 0 };
+}
+
+// src/artifact.c:1075 spec_abon(), the artifact's special to-hit bonus.
+export function spec_abon(obj, mon) {
+    const weap = get_artifact(obj);
+    const { damn } = arti_attack(weap.attk);
+    if (weap !== artifact_records[0] && damn && spec_applies(weap, mon))
+        return rnd(damn);
+    return 0;
+}
+
+// src/artifact.c:1091 spec_dbon(), the artifact's special damage bonus.
+export function spec_dbon(obj, mon, tmp) {
+    const weap = get_artifact(obj);
+    const { adtyp, damn, damd } = arti_attack(weap.attk);
+    let applies;
+
+    if (weap === artifact_records[0]
+        || (adtyp === 'PHYS' && damn === 0 && damd === 0))
+        applies = false;
+    else if (is_art(obj, ART_GRIMTOOTH))
+        applies = true;
+    else
+        applies = spec_applies(weap, mon);
+
+    game.spec_dbon_applies = applies;
+    if (!applies)
+        return 0;
+    return damd ? rnd(damd) : Math.max(tmp, 1);
 }
 
 // src/artifact.c:994 bane_applies() — the artifact hates this creature.

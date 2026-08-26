@@ -781,6 +781,18 @@ export const hates_light = (ptr) => ptr.pmidx === PMNAMES.PM_GREMLIN;
 // include/mondata.h:46 haseyes()
 export const haseyes = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
 
+// src/mondata.c:1507 olfaction(): forms known not to have a sense of smell.
+export const olfaction = (ptr) =>
+    ptr.mlet !== MONSYMS.S_GOLEM
+    && ptr.mlet !== MONSYMS.S_EYE
+    && ptr.mlet !== MONSYMS.S_JELLY
+    && ptr.mlet !== MONSYMS.S_PUDDING
+    && ptr.mlet !== MONSYMS.S_BLOB
+    && ptr.mlet !== MONSYMS.S_VORTEX
+    && ptr.mlet !== MONSYMS.S_ELEMENTAL
+    && ptr.mlet !== MONSYMS.S_FUNGUS
+    && ptr.mlet !== MONSYMS.S_LIGHT;
+
 // include/mondata.h:178 emits_light() — 1-square light radius for these.
 export const emits_light = (ptr) =>
     (ptr.mlet === MONSYMS.S_LIGHT

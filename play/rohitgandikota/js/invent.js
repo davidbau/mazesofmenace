@@ -14,7 +14,7 @@ import { worn } from './do_wear.js';
 import { empty_handed } from './wield.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
          W_RINGL, W_RINGR, W_AMUL } from './const.js';
-import { Hallucination } from './youprop.js';
+import { Blind as heroBlind, Hallucination } from './youprop.js';
 import { doname, an } from './objnam.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { MONSYMS, NUMMONS, PMNAMES } from './monst_data.js';
@@ -199,7 +199,7 @@ export function dfeature_at(x, y) {
 // gated on state no session can reach yet and are recorded when hit. The
 // dungeon-feature description carries only the stairway arm so far.
 export async function look_here(obj_cnt, lhflags) {
-    const Blind = !!game.u?.ublind;
+    const Blind = heroBlind();
     const verb = Blind ? 'feel' : 'see';
     const picked_some = (lhflags & LOOKHERE_PICKED_SOME) !== 0;
     let skip_dfeature = (lhflags & LOOKHERE_SKIP_DFEATURE) !== 0;
@@ -1139,7 +1139,7 @@ const is_reviver = (ptr) => !!ptr && (is_rider(ptr) || ptr.mlet === MONSYMS.S_TR
 /* Blind() needs the blindness property plumbing; it only ever makes mergable
    STRICTER, so a false here can merge two stacks C would keep apart while the
    hero is blind. */
-function Blind() { return !!game.u?.ublind; }
+function Blind() { return heroBlind(); }
 
 /* src/role.c Role_if() — this used to be hardcoded `return false`, which
    silently disabled every role test in this file. C switches on a PM number;

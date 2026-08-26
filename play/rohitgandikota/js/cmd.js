@@ -17,7 +17,8 @@ import { sp_lev_wire_mon } from './sp_lev.js';
 import { is_pool, is_lava, m_at, t_at, newcham, resists_ston,
          mongone } from './mon.js';
 import { do_attack } from './uhitm.js';
-import { is_safemon, mon_visible, sensemon, unmap_invisible } from './display.js';
+import { glyph_is_invisible_at, is_safemon, mon_visible, sensemon,
+         unmap_invisible } from './display.js';
 import { goodpos, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
@@ -28,13 +29,14 @@ import { Hallucination } from './youprop.js';
 import { u_on_newpos } from './teleport.js';
 import { doloot } from './pickup.js';
 import { curr_mon_load } from './mon.js';
-import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, M_AP_TYPE, M_AP_FURNITURE,
-         M_AP_OBJECT } from './const.js';
+import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
+         M_AP_FURNITURE, M_AP_OBJECT, OVERLOADED, Is_airlevel,
+         Upolyd } from './const.js';
 import { ACURR, exercise, near_capacity } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { cxname, simpleonames, the } from './objnam.js';
-import { x_monnam, docallcmd } from './do_name.js';
+import { x_monnam, docallcmd, donamelevel } from './do_name.js';
 import { You } from './pline.js';
 
 /* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
@@ -84,7 +86,7 @@ import { morehungry } from './eat.js';
 import { dohelp, dowhatis, doquickwhatis } from './pager.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
-import { dowieldquiver, dowield, dotwoweapon } from './wield.js';
+import { dowieldquiver, dowield, doswapweapon, dotwoweapon } from './wield.js';
 import { dozap } from './zap.js';
 import { dist2, distmin } from './hacklib.js';
 import { place_object } from './mkobj.js';
@@ -703,6 +705,10 @@ export async function doextcmd() {
         const { enhance_weapon_skill } = await import('./weapon.js');
         return await enhance_weapon_skill();
     }
+    if (name === 'turn') {
+        const { doturn } = await import('./pray.js');
+        return await doturn();
+    }
     if (name === 'terrain')
         return await doterrain();
     if (name === 'adjust') {
@@ -733,6 +739,16 @@ export async function doextcmd() {
         /* src/dungeon.c:3339 show_overview() — the ^O window */
         const { show_overview } = await import('./dungeon.js');
         await show_overview();
+        return ECMD_OK;
+    }
+    if (name === 'wizwhere') {
+        const { print_dungeon } = await import('./dungeon.js');
+        if (game.wizard)
+            await print_dungeon(false, null);
+        else {
+            const { pline } = await import('./display.js');
+            await pline("Unavailable command '#wizwhere'.");
+        }
         return ECMD_OK;
     }
     if (name === 'offer') {
@@ -813,18 +829,7 @@ export async function doextcmd() {
     if (name === 'herecmdmenu')
         return await doherecmdmenu();
     if (name === 'annotate') {
-        /* src/dungeon.c:2571 donamelevel() -> query_annotation(): the
-           getlin consumes the annotation text; skipping it fed the typed
-           annotation to the command loop as keystrokes. */
-        const nbuf = await getlin(
-            'What do you want to call this dungeon level?');
-        if (nbuf != null && nbuf !== '' && nbuf !== '\x1b') {
-            const t = nbuf.trim().replace(/ {2,}/g, ' ');
-            if (t && t !== ' ')
-                (game.level_annotations ||= {})[
-                    `${game.u.uz.dnum}:${game.u.uz.dlevel}`] = t;
-        }
-        return ECMD_OK;
+        return await donamelevel();
     }
     if (name === 'version') {
         /* src/version.c:169 doextversion() — the options text substitutes
@@ -866,6 +871,10 @@ export async function doextcmd() {
     if (name === 'wizintrinsic') {
         const { wiz_intrinsic } = await import('./wizcmds.js');
         return await wiz_intrinsic();
+    }
+    if (name === 'wizmap') {
+        const { wiz_map } = await import('./wizcmds.js');
+        return await wiz_map();
     }
 
     note_unported_cmd(`extcmd:${name}`);
@@ -1285,6 +1294,19 @@ export async function rhack(key) {
         return;
     }
 
+    /* src/cmd.c:3693-3723 applies the same prefix validation to do_fight.
+       A nonmovement key is consumed by the rejected F command rather than
+       dispatched as its ordinary command. */
+    if (game.context.forcefight && !isMovementKey(ch)
+            && !'gGmF'.includes(ch)) {
+        const vertical = ch === '<' || ch === '>';
+        game.context.forcefight = 0;
+        game.context.move = 0;
+        await pline("The 'F' prefix should be followed by a movement command"
+                    + `${vertical ? ' other than up or down' : ''}.`);
+        return;
+    }
+
     if (isMovementKey(ch)) {
         /* src/cmd.c:1386 set_move_cmd() — sets u.dx/u.dy and, when no g/G
            prefix is pending, context.run. Keeping the direction on `u` is
@@ -1328,6 +1350,9 @@ export async function rhack(key) {
     } else if (ch === 'X') {
         // src/cmd.c:1913 cmdlist — 'X' is dotwoweapon.
         game.context.move = ((await dotwoweapon()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'x') {
+        // src/cmd.c cmdlist: 'x' is doswapweapon.
+        game.context.move = ((await doswapweapon()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'Z') {
         // src/cmd.c cmdlist — 'Z' is docast.
         game.context.move = ((await docast()) === ECMD_TIME ? 1 : 0);
@@ -1449,6 +1474,7 @@ export async function rhack(key) {
             game.context.move = 0;
         } else {
             game.context.forcefight = 1;
+            game._cmd_prefix_pending = true;
             game.context.move = 0;
         }
     } else if (ch === 't') {
@@ -1874,6 +1900,27 @@ async function domove_core() {
         game.context.travel1 = 0;
     }
 
+    /* src/hack.c:2730 checks encumbrance before terrain, monsters, and even
+       swallowed movement. An overloaded attempt into solid rock still spends
+       a turn and reports the collapse rather than the wall. */
+    {
+        const wtcap = near_capacity();
+        if ((wtcap >= OVERLOADED
+             || (wtcap > SLT_ENCUMBER
+                 && (Upolyd(u) ? (u.mh < 5 && u.mh !== u.mhmax)
+                                : (u.uhp < 10 && u.uhp !== u.uhpmax))))
+            && !Is_airlevel(u.uz)) {
+            if (wtcap < OVERLOADED) {
+                await You("don't have enough stamina to move.");
+                exercise(A_CON, false);
+            } else {
+                await You('collapse under your load.');
+            }
+            nomul(0);
+            return;
+        }
+    }
+
     /* src/hack.c:2733. A direction while swallowed attacks the engulfer
        from the shared square instead of moving the hero. */
     if (u.uswallow) {
@@ -1912,11 +1959,14 @@ async function domove_core() {
     const newx = u.ux + dx;
     const newy = u.uy + dy;
 
-    /* src/hack.c:2242 — with the fight prefix set, the hero attacks the target
-       square instead of moving onto it, whether or not anything is there. The
-       attack itself needs the combat code; what matters here is that the hero
-       does NOT move and the turn is still spent. */
-    if (game.context.forcefight && !m_at(newx, newy)) {
+    /* src/hack.c:2242: force-fighting an empty square, or walking into a stale
+       invisible-monster marker without nopick, attacks the square instead of
+       moving onto it. */
+    const empty_target = !m_at(newx, newy);
+    const stale_invisible = empty_target
+        && glyph_is_invisible_at(newx, newy)
+        && !game.context.nopick;
+    if (empty_target && (game.context.forcefight || stale_invisible)) {
         /* src/hack.c:2228 domove_fight_empty() handles the no-target case.
            A real target continues through domove_attackmon_at below while
            forcefight is still set, bypassing the peaceful-monster prompt. */

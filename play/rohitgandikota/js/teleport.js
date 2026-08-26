@@ -16,11 +16,11 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
          NO_MM_FLAGS, RLOC_MSG, RLOC_NOMSG, RLOC_ERR,
-         BOLT_LIM, VAULT } from './const.js';
+         BOLT_LIM, VAULT, STRAT_APPEARMSG } from './const.js';
 import { rnl } from './rng.js';
 import { pline, see_nearby_objects, canspotmon, canseemon,
-         sensemon } from './display.js';
-import { Hallucination } from './youprop.js';
+         sensemon, see_monsters } from './display.js';
+import { Blind, Hallucination } from './youprop.js';
 import { is_demon, is_lord, is_prince, is_covetous,
          passes_walls } from './mondata.js';
 import { You, You_feel, You_cant } from './pline.js';
@@ -38,7 +38,7 @@ import { vision_recalc, couldsee } from './vision.js';
 import { spoteffects } from './hack.js';
 import { morehungry } from './eat.js';
 import { getpos } from './getpos.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Amonnam, Monnam, mon_nam } from './do_name.js';
 import { distu } from './hacklib.js';
 
 import { isok, ECMD_OK, ECMD_TIME, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
@@ -506,7 +506,8 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
     const oldx = mtmp.mx, oldy = mtmp.my;
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
     const vanishmsg = (rlocflags & RLOC_MSG) !== 0;
-    const domsg = !game.in_mklev && vanishmsg && !preventmsg;
+    let appearmsg = ((mtmp.mstrategy | 0) & STRAT_APPEARMSG) !== 0;
+    const domsg = !game.in_mklev && (vanishmsg || appearmsg) && !preventmsg;
     let telemsg = false;
 
     if (x === oldx && y === oldy && m_at(x, y) === mtmp)
@@ -519,6 +520,7 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
             } else {
                 await pline(`${Monnam(mtmp)} vanishes!`);
             }
+            appearmsg = false;
         }
         if (mtmp.wormno) {
             note_unported_teleport('rloc:worm');
@@ -534,7 +536,8 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
     newsym(x, y);
     set_apparxy(mtmp);
 
-    if (domsg && canspotmon(mtmp)) {
+    if (domsg && (canspotmon(mtmp) || appearmsg
+                  || mtmp === game.u.ustuck)) {
         const du = distu(x, y);
         const suffix = du <= 2 ? ' next to you'
             : du <= BOLT_LIM * BOLT_LIM ? ' close by'
@@ -542,11 +545,19 @@ async function rloc_to_core(mtmp, x, y, rlocflags) {
                 ? (du < distu(oldx, oldy)
                     ? ' closer to you' : ' farther away')
                 : '';
+        mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_APPEARMSG;
         if (telemsg && (couldsee(x, y) || sensemon(mtmp)))
             await pline(`${Monnam(mtmp)} vanishes and reappears${suffix}.`);
         else
-            await pline(`${Monnam(mtmp)} ${game.u.ublind ? 'arrives' : 'appears'}${suffix}!`);
+            await pline(`${appearmsg ? Amonnam(mtmp) : Monnam(mtmp)} ${
+                appearmsg ? 'suddenly ' : ''}${Blind() ? 'arrives' : 'appears'
+            }${suffix}!`);
     }
+}
+
+// src/teleport.c:1777 rloc_to_flag().
+export async function rloc_to_flag(mtmp, x, y, rlocflags) {
+    await rloc_to_core(mtmp, x, y, rlocflags);
 }
 
 // src/teleport.c:1802 rloc(). Try 50 random coordinates first, then use the
@@ -642,6 +653,7 @@ export async function teleds(nux, nuy, teleds_flags) {
     u_on_newpos(nux, nuy);
 
     newsym(ux0, uy0);           /* clear the old position */
+    see_monsters();             /* clear or redraw old sensing glyphs */
     vision_recalc(0);           /* vision before effects */
 
     if (is_teleport && game.flags?.verbose)

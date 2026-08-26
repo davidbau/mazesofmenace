@@ -13,7 +13,7 @@
 // cost, exactly what the save/restore recordings show.
 
 import { game } from './gstate.js';
-import { pline } from './display.js';
+import { pline, tty_clear_nhwindow_message } from './display.js';
 import { tty_yn_function } from './tty/topl.js';
 import { nomul } from './hack.js';
 import { ECMD_OK } from './const.js';
@@ -139,8 +139,12 @@ export function gamestate_decode(node) {
 
 // src/save.c:43 dosave() — the 'S' command.
 export async function dosave() {
+    tty_clear_nhwindow_message(game._topl_cury || 0);
+    game._pending_message = '';
     /* src/save.c:46 y_n() — ynq defaults 'n' (include/hack.h y_n macro) */
     const ans = await tty_yn_function('Really save?', 'yn', 'n');
+    tty_clear_nhwindow_message(game._topl_cury || 0);
+    game._pending_message = '';
     if (ans === 'n') {
         if ((game.multi ?? 0) > 0)
             nomul(0);

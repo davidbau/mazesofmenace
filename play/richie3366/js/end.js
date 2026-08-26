@@ -59,6 +59,7 @@ const STATUE = objectNames.indexOf('STATUE');
 const TIN = objectNames.indexOf('TIN');
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 
@@ -358,6 +359,11 @@ export function can_make_bones() {
     return true;
 }
 
+/** C obj.h SchroedingersBox — LARGE_BOX with spe==1. */
+function SchroedingersBox(obj) {
+    return !!obj && (obj.otyp | 0) === LARGE_BOX && (obj.spe | 0) === 1;
+}
+
 /**
  * C ref: invent.c set_cknown_lknown — containers/statue/tin flags.
  */
@@ -372,24 +378,40 @@ function set_cknown_lknown(obj) {
 
 /**
  * C ref: end.c really_done invent walk before disclose — ID everything
- * for inventory disclosure / dumplog. Named omissions: SchroedingersBox
- * observe_quantum_cat / Schroedingers_cat.
+ * for inventory disclosure / dumplog. observe_quantum_cat(FALSE, FALSE)
+ * so a live cat leaves spe set (container_contents "Schroedinger's cat!").
+ * Named omissions: escape/ascend companion HP from Schroedingers_cat.
  */
-function identify_invent_for_disclose() {
+async function identify_invent_for_disclose() {
     const invent = game.invent || [];
+    // Local to this death — C file-static; JS games reuse the module.
+    let Schroedingers_cat = false;
+    let observe_quantum_cat = null;
     for (const obj of invent) {
         if (!obj) continue;
         discover_object(obj.otyp, true, true, false);
         obj.known = obj.bknown = obj.dknown = obj.rknown = 1;
         set_cknown_lknown(obj);
-        // SchroedingersBox deferred
+        if (SchroedingersBox(obj)) {
+            if (!Schroedingers_cat) {
+                // pickup→trap→end cycle; load after modules are live
+                if (!observe_quantum_cat) {
+                    ({ observe_quantum_cat } = await import('./pickup.js'));
+                }
+                await observe_quantum_cat(obj, false, false);
+                if (SchroedingersBox(obj)) Schroedingers_cat = true;
+            } else {
+                obj.spe = 0;
+            }
+        }
     }
 }
 
 /**
  * C ref: end.c container_contents — walk invent/container list after
- * disclose invent 'y'. Named omissions: SchroedingersBox live-cat line;
- * nested identify polish beyond discover_object; update_inventory.
+ * disclose invent 'y'. Live-cat line when spe still 1 after
+ * observe_quantum_cat(FALSE, FALSE). Named omissions: nested identify
+ * polish beyond discover_object; update_inventory; doname_with_price.
  * @param {object[]|object|null} list invent array or cobj chain head
  * @param {boolean} identified
  * @param {boolean} all_containers
@@ -421,25 +443,31 @@ async function container_contents(list, identified, all_containers, reportempty)
         }
         if (box.cobj) {
             const lines = [`Contents of ${theArt(xname(box))}:`, ''];
-            const flags = game.flags || {};
-            const sortlootOpt = flags.sortloot ?? 'l';
-            let sortflags = 0;
-            if (sortlootOpt === 'l' || sortlootOpt === 'f') {
-                sortflags |= SORTLOOT_LOOT;
-            }
-            if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
-            const sorted = sortloot(box.cobj, sortflags, false);
-            for (const srtc of sorted) {
-                const obj = srtc.obj;
-                if (identified && obj) {
-                    discover_object(obj.otyp, true, true, false);
-                    obj.dknown = 1;
-                    obj.known = obj.bknown = obj.rknown = 1;
-                    if (Is_container(obj) || obj.otyp === STATUE) {
-                        obj.cknown = obj.lknown = 1;
-                    }
+            // C: SchroedingersBox flag only if the cat is still live
+            const cat = SchroedingersBox(box);
+            if (!cat) {
+                const flags = game.flags || {};
+                const sortlootOpt = flags.sortloot ?? 'l';
+                let sortflags = 0;
+                if (sortlootOpt === 'l' || sortlootOpt === 'f') {
+                    sortflags |= SORTLOOT_LOOT;
                 }
-                lines.push(`  ${doname(obj)}`);
+                if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
+                const sorted = sortloot(box.cobj, sortflags, false);
+                for (const srtc of sorted) {
+                    const obj = srtc.obj;
+                    if (identified && obj) {
+                        discover_object(obj.otyp, true, true, false);
+                        obj.dknown = 1;
+                        obj.known = obj.bknown = obj.rknown = 1;
+                        if (Is_container(obj) || obj.otyp === STATUE) {
+                            obj.cknown = obj.lknown = 1;
+                        }
+                    }
+                    lines.push(`  ${doname(obj)}`);
+                }
+            } else {
+                lines.push("  Schroedinger's cat!");
             }
             await show_nhw_menu_text(lines);
             if (all_containers) {
@@ -666,7 +694,7 @@ async function really_done(how) {
         if (!game.iflags) game.iflags = {};
         game.iflags.at_night = night() ? 1 : 0;
         game.iflags.at_midnight = midnight() ? 1 : 0;
-        identify_invent_for_disclose();
+        await identify_invent_for_disclose();
     }
 
     // C: strcmp(flags.end_disclose, "none") — array never equals "none"

@@ -8,16 +8,19 @@
 
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow } from './tty/wintty.js';
-import { docrt } from './display.js';
+import { docrt, pline } from './display.js';
 import { discover_object } from './o_init.js';
 import { an, xname } from './objnam.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
-         PICK_ONE, ECMD_OK } from './const.js';
+         PICK_ONE, ECMD_OK, GETOBJ_PROMPT, GETOBJ_EXCLUDE,
+         GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, ONAME_VIA_NAMING,
+         ONAME_KNOW_ARTI } from './const.js';
 import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { game } from './gstate.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { Hallucination } from './youprop.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
          SUPPRESS_SADDLE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
@@ -28,8 +31,9 @@ import { canspotmon } from './display.js';
 import { ONAME_SKIP_INVUPD } from './const.js';
 import { exist_artifact, artifact_exists } from './artifact.js';
 import { carried } from './obj.js';
-import { update_inventory } from './invent.js';
+import { getobj, update_inventory } from './invent.js';
 import { get_rnd_text } from './rumors.js';
+import { mungspaces } from './hacklib.js';
 
 // src/do_name.c:759 ghostnames[] — 34 entries.
 const ghostnames = [
@@ -371,12 +375,44 @@ export function oname(obj, name, oflgs) {
     return obj;
 }
 
+// src/do_name.c:467 name_ok() and :290 do_oname(), select and name one
+// particular inventory object. The artifact-name restriction path is left to
+// oname(); ordinary player notes consume no gameplay RNG.
+function name_ok(obj) {
+    if (!obj || obj.oclass === OCLASSES.COIN_CLASS)
+        return GETOBJ_EXCLUDE;
+    if (!obj.dknown || obj.oartifact || obj.otyp === ONAMES.SPE_NOVEL)
+        return GETOBJ_DOWNPLAY;
+    return GETOBJ_SUGGEST;
+}
+
+async function do_oname(obj) {
+    if (obj.otyp === ONAMES.SPE_NOVEL) {
+        await pline('That novel already has a published name.');
+        return;
+    }
+
+    const { getlin } = await import('./cmd.js');
+    const which = obj.quan > 1 ? 'these' : 'this';
+    const raw = await getlin(`What do you want to name ${which} ${xname(obj)}?`);
+    if (!raw || raw[0] === '\x1b')
+        return;
+
+    const name = mungspaces(raw).slice(0, PL_PSIZ - 1);
+    if (!name)
+        return;
+    if (obj.oartifact) {
+        await pline(`${obj.oname || 'The artifact'} resists the attempt.`);
+        return;
+    }
+    oname(obj, name, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
+}
+
 // src/do_name.c:499 docallcmd() — the #call / #name command: player can name a
 // monster, an object, or a type of object.
 //
-// The menu and the cancel path are complete. Every switch arm's worker
-// (do_mgivenname, do_oname via getobj, docall, namefloorobj, rename_disco,
-// donamelevel) is unported and recorded, so picking one records and returns.
+// The menu, cancel path, and level annotation arm are complete. The other
+// workers are recorded when selected.
 // C's cmdq_pop arm services a queued key from a scripted command; this port
 // has no queue producer yet, which in C is the empty-queue fallthrough, so no
 // marker fires for it.
@@ -422,7 +458,11 @@ export async function docallcmd() {
         note_unported_do_name('docallcmd:do_mgivenname');
         break;
     case 'i': /* name an individual object in inventory */
-        note_unported_do_name('docallcmd:do_oname');
+        {
+            const obj = await getobj('name', name_ok, GETOBJ_PROMPT);
+            if (obj)
+                await do_oname(obj);
+        }
         break;
     case 'o': /* name a type of object in inventory */
         note_unported_do_name('docallcmd:docall');
@@ -434,9 +474,31 @@ export async function docallcmd() {
         note_unported_do_name('docallcmd:rename_disco');
         break;
     case 'a': /* annotate level */
-        note_unported_do_name('docallcmd:donamelevel');
+        await donamelevel();
         break;
     }
+    return ECMD_OK;
+}
+
+// src/dungeon.c:2520 query_annotation() and :2571 donamelevel().
+export async function donamelevel() {
+    const key = `${game.u.uz.dnum}:${game.u.uz.dlevel}`;
+    const old = game.level_annotations?.[key] || '';
+    const prompt = old
+        ? `Replace annotation "${old.slice(0, 30)}${old.length > 30 ? '...' : ''}" with?`
+        : 'What do you want to call this dungeon level?';
+    const { getlin } = await import('./cmd.js');
+    const raw = await getlin(prompt);
+
+    if (raw == null || raw === '' || raw[0] === '\x1b')
+        return ECMD_OK;
+
+    const annotation = raw.replace(/[ \t]+/g, ' ').trim();
+    const annotations = (game.level_annotations ||= {});
+    if (annotation)
+        annotations[key] = annotation;
+    else
+        delete annotations[key];
     return ECMD_OK;
 }
 

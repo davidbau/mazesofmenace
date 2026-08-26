@@ -57,14 +57,28 @@ export function valid_cloud_pos(x, y) {
 // src/region.c:369 add_region() — register and mark cells seen by vision.
 function add_region(reg) {
     (game.regions ||= []).push(reg);
+    if (reg.visible) {
+        for (let x = reg.bounding_box.lx; x <= reg.bounding_box.hx; ++x)
+            for (let y = reg.bounding_box.ly; y <= reg.bounding_box.hy; ++y)
+                if (isok(x, y) && inside_region(reg, x, y))
+                    game._block_point_ref?.(x, y);
+    }
 }
 
 // src/region.c:394 remove_region()
 export function remove_region(reg) {
     const rs = game.regions || [];
     const i = rs.indexOf(reg);
-    if (i >= 0)
+    if (i >= 0) {
         rs.splice(i, 1);
+        reg.ttl = -2;
+        if (reg.visible) {
+            for (let x = reg.bounding_box.lx; x <= reg.bounding_box.hx; ++x)
+                for (let y = reg.bounding_box.ly; y <= reg.bounding_box.hy; ++y)
+                    if (isok(x, y) && inside_region(reg, x, y))
+                        game._recalc_block_point_ref?.(x, y);
+        }
+    }
 }
 
 // src/region.c:1182 make_gas_cloud() — flags, callbacks and the visible

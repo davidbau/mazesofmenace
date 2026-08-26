@@ -11,7 +11,8 @@ import { term_start_color } from './tty/termcap.js';
 import { rank, bot_conditions } from './botl.js';
 import { Upolyd } from './const.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
-import { Infravision, Hallucination, Invis, See_invisible } from './youprop.js';
+import { Blind, Infravision, Hallucination, Invis, See_invisible,
+         Underwater } from './youprop.js';
 import { observe_object } from './o_init.js';
 import { distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
@@ -31,6 +32,7 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
+    AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK,
     ACCESSIBLE, Is_rogue_level,
 } from './const.js';
 import { engr_at } from './engrave.js';
@@ -40,7 +42,7 @@ import { is_pool } from './mon.js';
 import { nhgetch } from './input.js';
 import { update_lastseentyp } from './dungeon.js';
 import { def_monsyms, def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
-import { PMNAMES, mons, NUMMONS } from './monst_data.js';
+import { PMNAMES, mons, NUMMONS, MFLAGS } from './monst_data.js';
 import { showsym } from './symbols.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_BLACK,
@@ -80,7 +82,7 @@ function canspotself() {
     if (!u)
         return false;
     const invisible = Invis() && !See_invisible();
-    return !!u.ublind || !!u.uswallow
+    return Blind() || !!u.uswallow
            || (!invisible && !u.uundetected)
            || !!u.uprops?.DETECT_MONSTERS;
 }
@@ -732,7 +734,23 @@ export function back_to_glyph(loc, x, y) {
             : { ch: 'y', color: CLR_BROWN, dec: true,
                 cmap: lbranch ? CM.S_brupladder : CM.S_upladder };
     }
-    case ALTAR:     return { ch: '{', color: CLR_GRAY, dec: true, cmap: CM.S_altar };   // \xfb
+    case ALTAR: {
+        let color;
+        switch ((loc.altarmask ?? AM_NONE) & AM_MASK) {
+        case AM_NONE:
+            color = CLR_RED;
+            break;
+        case AM_CHAOTIC:
+        case AM_NEUTRAL:
+        case AM_LAWFUL:
+            color = CLR_GRAY;
+            break;
+        default:
+            color = CLR_BRIGHT_MAGENTA;
+            break;
+        }
+        return { ch: '{', color, dec: true, cmap: CM.S_altar };   // \xfb
+    }
     case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false, cmap: CM.S_grave };
     case THRONE:    return { ch: '\\', color: HI_GOLD, dec: false, cmap: CM.S_throne };
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false, cmap: CM.S_sink };
@@ -1193,6 +1211,20 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
                             shown.mcolor ?? NO_COLOR, false, 0,
                             { kind: 'mon', mon });
+            return;
+        }
+
+        /* src/display.c:1029: warning still marks an unseen monster whose
+           square itself is visible, such as a submerged eel in clear water. */
+        if (mon && mon_warning(mon)) {
+            let wl = Hallucination()
+                ? rn2_on_display_rng(5) + 1
+                : ((mon.m_lev ?? 0) / 4) | 0;
+            if (wl > 5) wl = 5;
+            if (wl < 1) wl = 1;
+            const warncolor = [CLR_WHITE, 1, 1, 1, 5, 13];
+            show_glyph_cell(x, y, String(wl), warncolor[wl], false, 0,
+                            { kind: 'warn', wl });
             return;
         }
 
@@ -1914,7 +1946,7 @@ const defmorestr = '--More--';
 // "--More--" and CONSUMES A KEY. Without that, the key meant for the --More--
 // is read by whatever comes next — which is how the tutorial menu ended up on
 // its second pass.
-export async function pline(msg) {
+async function prepare_pline() {
     /* src/pline.c:266-274 — a message settles any pending vision recalc and
        flushes the screen FIRST, so the map and status under it are current.
        During goto_level's flush_screen(-1) bracket the flush is a no-op and
@@ -1923,12 +1955,33 @@ export async function pline(msg) {
         vision_recalc(0);
     if (game.u?.ux)
         await flush_screen(1);
+}
+
+export async function pline(msg) {
+    await prepare_pline();
 
     /* src/pline.c vpline() -> putstr(WIN_MESSAGE) -> tty_putstr() ->
        update_topl(). Assigning the message straight into the top line skipped
        the state machine entirely: a second message overwrote the first instead
        of either joining it or raising --More-- and waiting for a key. */
     await update_topl(msg);
+    /* src/pline.c vpline() records the most recent individual message after
+       the tty has accepted it. Norep compares against this, not against the
+       combined top line that update_topl may have built. */
+    game._prevmsg = msg;
+}
+
+// src/pline.c:315 urgent_pline().  The tty lifts ESC message suppression only
+// after pline's vision and screen flush.  Doing it earlier briefly painted a
+// suppressed spell message before the urgent polymorph-reversion message.
+export async function urgent_pline(msg) {
+    await prepare_pline();
+    if (game._win_stop) {
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+        game._win_stop = false;
+    }
+    await update_topl(msg);
+    game._prevmsg = msg;
 }
 
 // win/tty/topl.c more() — draw the suffix, block for a key, clear the top line.
@@ -2052,23 +2105,46 @@ export function mon_visible(mon) {
         && !(mon.mburied || game.u.uburied);
 }
 
-// include/display.h:55 _sensemon() — telepathy and monster detection. Every
-// arm needs a hero property no early game has; each is recorded rather than
-// assumed, so a session that does have one reports itself.
+// include/display.h:35 _tp_sensemon()
+function tp_sensemon(mon) {
+    const u = game.u;
+    if (mon.data?.mflags1 & MFLAGS.M1_MINDLESS)
+        return false;
+    const blindTelepat = !!(u.intrinsic?.HTelepat || u.uprops?.TELEPAT);
+    const unblindTelepat = !!u.uprops?.TELEPAT;
+    return (Blind() && blindTelepat)
+        || (unblindTelepat
+            && distu(mon.mx, mon.my) <= (u.unblind_telepat_range ?? -1));
+}
+
+// include/hack.h:1135 MATCH_WARN_OF_MON()
+function match_warn_of_mon(mon) {
+    if (!game.u.uprops?.WARN_OF_MON)
+        return false;
+    const wt = game.context?.warntype || {};
+    return !!(((wt.obj || 0) & (mon.data?.mflags2 || 0))
+              || ((wt.polyd || 0) & (mon.data?.mflags2 || 0))
+              || (wt.species
+                  && (wt.species === mon.data || wt.species === mon.mnum)));
+}
+
+// include/display.h:55 _sensemon(), telepathy, detection, and specific warning.
 export function sensemon(mon) {
-    if (game.u.uprops?.DETECT_MONSTERS
-        && (!game.u.uswallow || mon === game.u.ustuck))
-        return true;
-    if (game.u.uswallow || game.u.uprops?.TELEPAT
-        || game.u.uprops?.WARN_OF_MON)
-        (game.unported ||= new Set()).add('display:sensemon');
-    return false;
+    const u = game.u;
+    if (u.uswallow && mon !== u.ustuck)
+        return false;
+    if (Underwater()
+        && !(distu(mon.mx, mon.my) <= 2 && is_pool(mon.mx, mon.my)))
+        return false;
+    return !!(u.uprops?.DETECT_MONSTERS
+              || tp_sensemon(mon)
+              || match_warn_of_mon(mon));
 }
 
 // include/display.h:106 _see_with_infrared() — caller must check
 // invisibility; infravision doesn't see invisible monsters.
 export function see_with_infrared(mon) {
-    return !game.u.ublind && Infravision()
+    return !Blind() && Infravision()
            && infravisible(game.mons[mon.mnum])
            && couldsee(mon.mx, mon.my);
 }
@@ -2325,7 +2401,7 @@ function mon_overrides_region(mon, mx, my) {
         /* check whether the spot is adjacent and 'mon' would be visible
            there if the gas cloud wasn't interfering with normal vision */
         const r = ((u.xray_range ?? -1) > 1) ? u.xray_range : 1;
-        if (!u.ublind && mon_visible(mon)
+        if (!Blind() && mon_visible(mon)
             && M_AP_TYPE(mon) !== M_AP_FURNITURE
             && M_AP_TYPE(mon) !== M_AP_OBJECT
             && distu(mx, my) <= r * (r + 1))

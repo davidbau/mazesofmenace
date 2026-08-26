@@ -20,13 +20,14 @@
 // D-1168. allmain youmonst m_everyturn_effect D-1175 (fog at u.ux).
 // Selection create D-1158. rloc_to update_monster_region D-1161; mhitm
 // mdisplacem D-1174 (dbridge named).
-// timeout.c visible_region_summary / wiz_timeout_queue named.
-// display.c show_region overlay after map_location named.
+// timeout.c wiz_timeout_queue calls visible_region_summary (D-1527).
+// display.c newsym / _map_location call show_region (D-1528).
 // Level leave stashes the regions array (D-0675).
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { pline, You_feel } from './display.js';
+import { pline, You_feel, show_glyph_cell } from './display.js';
+import { CLR_GRAY, CLR_BRIGHT_GREEN } from './terminal.js';
 import {
     isok, ACCESSIBLE, COLNO, ROWNO, u_at, TIMEOUT, REG_HERO_INSIDE,
     REG_NOT_HEROS,
@@ -85,12 +86,26 @@ export function visible_region_at(x, y) {
 }
 
 /**
+ * C ref: region.c show_region — show_glyph(x, y, reg->glyph).
+ * JS has no integer cmap ids; make_gas_cloud tags 'S_poisoncloud'
+ * or 'S_cloud' (defsym.h '#' / CLR_BRIGHT_GREEN vs CLR_GRAY).
+ * Callers: display.c _map_location (show && !Blind) and newsym
+ * cansee early overlay (D-1528). Does not write hero_memory.
+ */
+export function show_region(reg, x, y) {
+    if (!reg) return;
+    const poison = reg.glyph === 'S_poisoncloud';
+    show_glyph_cell(x, y, '#', poison ? CLR_BRIGHT_GREEN : CLR_GRAY, false);
+}
+
+/**
  * C ref: region.c any_visible_region — true if this level has a
  * visible NhRegion whose ttl is not the expire-in-progress sentinel
  * -2. Walks svn.n_regions in array order; first hit returns TRUE.
  * Caller allmain.c once-per-input else-if (gas-cloud see_monsters
- * refresh after walking away). timeout.c wiz_timeout_queue summary
- * named. show_region overlay named.
+ * refresh after walking away). timeout.c wiz_timeout_queue gates
+ * visible_region_summary with this (D-1527). display.c newsym /
+ * _map_location overlay is D-1528.
  */
 export function any_visible_region() {
     const regs = game.regions || [];
@@ -99,6 +114,37 @@ export function any_visible_region() {
         return true;
     }
     return false;
+}
+
+/**
+ * C ref: region.c visible_region_summary — wizard #timeout listing.
+ * Same skip as any_visible_region / visible_region_at (`!visible`
+ * or ttl == -2). Header once: blank then "Visible regions".
+ * Relative ttl+1 (C: already decremented; 0 means next turn).
+ * damg = arg: "poison gas (%d)" else "vapor", %-16s. Bounding box
+ * from rects (C stores bounding_box at create_region).
+ * fldsep: iflags.menu_tab_sep ? tab : two spaces.
+ * Caller timeout.c wiz_timeout_queue only when any_visible_region.
+ * @param {string[]} lines  JS stand-in for putstr(win)
+ */
+export function visible_region_summary(lines) {
+    const fldsep = game.iflags?.menu_tab_sep ? '\t' : '  ';
+    let hdr_done = 0;
+    for (const reg of game.regions || []) {
+        if (!reg.visible || reg.ttl === -2) continue;
+        if (!hdr_done++) {
+            lines.push('');
+            lines.push('Visible regions');
+        }
+        /* C: display relative turns left; ttl already decremented. */
+        let buf = String((reg.ttl | 0) + 1).padStart(5, ' ');
+        const damg = reg.arg | 0;
+        const typbuf = damg ? `poison gas (${damg})` : 'vapor';
+        buf += fldsep + typbuf.padEnd(16, ' ');
+        const box = region_bounding_box(reg);
+        buf += `${fldsep}@[${box.lx | 0},${box.ly | 0}..${box.hx | 0},${box.hy | 0}]`;
+        lines.push(buf);
+    }
 }
 
 /**

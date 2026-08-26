@@ -4,7 +4,6 @@
 //   racial_exception; mon.c check_gear_next_turn.
 // Named omissions: wear plines when !creation (freeze still applied);
 //   artifact_light begin_burn/end_burn; full w_blocks Clairvoyance/Eyes;
-//   worm see_wsegs after mon_set_minvis;
 //   dragon-scale altprop beyond alchemy smock;
 //   extract_from_minvent artifact_light/obj_no_longer_held;
 //   youmonst which_armor slot table (hero uses uarm*).
@@ -32,6 +31,7 @@ import {
 } from './objects.js';
 import { curse, obj_extract_self, oc_merge_of } from './mkobj.js';
 import { canseemon, newsym } from './display.js';
+import { see_wsegs } from './worm.js';
 import { dist2 } from './hacklib.js';
 import { Monnam, mon_nam } from './do_name.js';
 
@@ -331,8 +331,8 @@ export function which_armor(mon, flag) {
 /**
  * C ref: worn.c mon_set_minvis :474–484 — permanent invis from
  * potion/wand. FALSE = not a cursed potion → perminvis 1.
- * Caller zap.c bhitm WAN_MAKE_INVISIBLE (D-1414). Named omit:
- * worm see_wsegs (tail newsym).
+ * Caller zap.c bhitm WAN_MAKE_INVISIBLE (D-1414). see_wsegs when
+ * wormno (D-1529). muse.c / mon.c local clones still named.
  */
 export function mon_set_minvis(mon, cursed_potion) {
     if (!mon) return;
@@ -340,6 +340,7 @@ export function mon_set_minvis(mon, cursed_potion) {
     if (!mon.invis_blkd) {
         mon.minvis = mon.perminvis;
         newsym(mon.mx | 0, mon.my | 0);
+        if (mon.wormno) see_wsegs(mon);
     }
 }
 

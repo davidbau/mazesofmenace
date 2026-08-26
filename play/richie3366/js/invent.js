@@ -16,11 +16,11 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
-    endgamelevelname, obj_glyph, suppress_map_output,
+    endgamelevelname, obj_glyph, suppress_map_output, clear_nhwindow_message,
 } from './display.js';
 import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname } from './objnam.js';
 import { yn_function } from './getline.js';
-import { mergable, is_damageable, stop_timer } from './mkobj.js';
+import { mergable, is_damageable, stop_timer, splitobj } from './mkobj.js';
 import { cansee } from './vision.js';
 import {
     WEAPON_CLASS,
@@ -71,6 +71,7 @@ import {
     Is_knox_level,
     Is_rogue_level,
     thats_enough_tries,
+    LARGEST_INT,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -125,6 +126,7 @@ import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { PM_SAMURAI, PM_MONK } from './generated/monsters_data.js';
 import { humanoid, strongmonst } from './monsters.js';
+import { set_artifact_intrinsic } from './artifact.js';
 
 // C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
 const MZ_HUMAN = 2;
@@ -3579,12 +3581,15 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 }
 
 /**
- * C ref: invent.c freeinv_core — figurine stop FIG_TRANSFORM. Named omit:
- * amulet/candelabrum/bell/book/artifact uhaves; loadstone curse;
- * confers_luck set_moreluck; tin context.
+ * C ref: invent.c freeinv_core — figurine stop FIG_TRANSFORM; artifact
+ * W_ART conferral off (D-1539). Named omit: amulet/candelabrum/bell/book
+ * uhaves / questart; loadstone curse; confers_luck set_moreluck; tin
+ * context; inv_prop arti_invoke on drop.
  */
 export function freeinv_core(obj) {
     if (!obj) return;
+    // C invent.c:1377–1383 — oartifact → set_artifact_intrinsic(obj, 0, W_ART)
+    if (obj.oartifact) set_artifact_intrinsic(obj, false, W_ART);
     if ((obj.otyp | 0) === FIGURINE && (obj.timed | 0)) {
         stop_timer(FIG_TRANSFORM, obj);
     }
@@ -3638,6 +3643,175 @@ export function compactify_invlets(buf) {
     return chars.slice(0, i2 + 1).join('').replace(/\0/g, '');
 }
 
+/**
+ * C wield.c will_weld — cursed weapon / weptool / ball / chain / tin opener.
+ * Local clone: invent must not import wield.js (wield → invent).
+ */
+function getobj_will_weld(obj) {
+    if (!obj?.cursed) return false;
+    if (obj.oclass === WEAPON_CLASS || is_weptool_obj(obj)) return true;
+    const n = objectNames[obj.otyp];
+    return n === 'HEAVY_IRON_BALL' || n === 'IRON_CHAIN' || n === 'TIN_OPENER';
+}
+
+/**
+ * C invent.c splittable `:1664–1668` — cursed loadstone and welded uwep
+ * must not split when getobj has a count.
+ */
+export function splittable(obj) {
+    if (!obj) return false;
+    if ((obj.otyp | 0) === LOADSTONE && obj.cursed) return false;
+    const uwep = game.u?.uwep;
+    if (obj === uwep && getobj_will_weld(uwep)) {
+        uwep.bknown = 1; // C welded() side effect
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C cmd.c get_count with inkey = first digit, maxcount LARGEST_INT,
+ * GC_SAVEHIST (`invent.c` getobj `:1944`). Echo "Count: N" after the
+ * second digit or a backspace. putmsghistory at GC_SAVEHIST named.
+ * @returns {Promise<{ ch: string, cnt: number }>}
+ */
+async function getobj_get_count(inkey) {
+    let cnt = 0;
+    let keych = inkey;
+    let first = true;
+    let backspaced = false;
+    let showzero = true;
+    const maxcount = LARGEST_INT;
+    for (;;) {
+        let key;
+        let ch;
+        if (first) {
+            ch = keych;
+            key = ch.charCodeAt(0);
+            first = false;
+            keych = '';
+        } else {
+            key = await nhgetch();
+            ch = String.fromCharCode(key);
+        }
+        if (ch >= '0' && ch <= '9') {
+            const dgt = key - 48;
+            cnt = cnt * 10 + dgt;
+            if (cnt < 0) cnt = 0;
+            else if (maxcount > 0 && cnt > maxcount) cnt = maxcount;
+            showzero = (ch === '0');
+        } else if (key === 8 || key === 127) {
+            if (!cnt) return { ch, cnt: 0 };
+            showzero = false;
+            cnt = Math.trunc(cnt / 10);
+            backspaced = true;
+        } else if (key === 27) {
+            return { ch, cnt: 0 };
+        } else {
+            return { ch, cnt };
+        }
+        if (cnt > 9 || backspaced) {
+            clear_nhwindow_message();
+            const qbuf = (backspaced && !cnt && !showzero)
+                ? 'Count: '
+                : `Count: ${cnt}`;
+            game._pending_message = qbuf;
+            await flush_screen(1);
+            game.nhDisplay?.setCursor?.(qbuf.length, 0);
+            backspaced = false;
+        }
+    }
+}
+
+/**
+ * C invent.c getobj digit arm `:1937–1948`.
+ * !ALLOWCNT → "No count allowed" and retry. Digit + ALLOWCNT → get_count.
+ * @returns {Promise<{ retry?: boolean, ch: string, cnt: number, cntgiven: boolean }>}
+ */
+export async function getobj_take_count(ch, allowcnt) {
+    if (typeof ch === 'number') ch = String.fromCharCode(ch);
+    if (ch < '0' || ch > '9') {
+        return { ch, cnt: 0, cntgiven: false };
+    }
+    if (!allowcnt) {
+        await pline('No count allowed with this command.');
+        return { retry: true, ch, cnt: 0, cntgiven: false };
+    }
+    const got = await getobj_get_count(ch);
+    return {
+        ch: got.ch,
+        cnt: got.cnt,
+        cntgiven: got.cnt !== 0,
+    };
+}
+
+/**
+ * C invent.c getobj split_otmp `:2075–2087`. Child follows parent on
+ * invent[] (C nobj). splitobj itself still omits invent[] (eat/D-0924).
+ */
+export function getobj_split_otmp(otmp, cntgiven, cnt) {
+    if (!cntgiven) return otmp;
+    if (cnt === 0) return null;
+    if (!otmp) return null;
+    if (cnt === (otmp.quan || 1)) return otmp;
+    if (splittable(otmp)) {
+        const child = splitobj(otmp, cnt);
+        if (!child) return otmp;
+        const inv = game.invent;
+        if (inv) {
+            const i = inv.indexOf(otmp);
+            if (i >= 0) inv.splice(i + 1, 0, child);
+        }
+        child.where = OBJ_INVENT;
+        return child;
+    }
+    if ((otmp.otyp | 0) === LOADSTONE && otmp.cursed) {
+        otmp.corpsenm = cnt | 0;
+    }
+    return otmp;
+}
+
+/**
+ * C invent.c getobj after the letter `:2021–2088` — gold LRS, throw-one,
+ * "don't have that many", then split_otmp. CMDQ_REPEAT / silly_thing /
+ * pickinv count / canned CMDQ_INT named.
+ * @returns {Promise<null | { retry: true } | object>}
+ */
+export async function getobj_apply_count(otmp, word, cntgiven, cnt) {
+    const coins = !!(otmp && otmp.oclass === COIN_CLASS);
+    if (coins && cntgiven && cnt <= 0) {
+        if (cnt < 0) {
+            await pline(
+                'The LRS would be very interested to know you have that much.',
+            );
+        }
+        return null;
+    }
+    if (cntgiven && word === 'throw') {
+        if (cnt === 0 || !otmp) return null;
+        if (cnt > 1 && (!coins || cnt > (otmp.quan || 1))) {
+            const q = otmp.quan || 1;
+            const only_one = 'can only throw one at a time';
+            if (cnt > q) {
+                const extra = !coins && q > 1 ? ` and ${only_one}` : '';
+                await pline(`You only have ${q}${extra}.`);
+            } else {
+                await pline(`You ${only_one}.`);
+            }
+            return { retry: true };
+        }
+    }
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true; // C disp.botl
+    if (!otmp) return { retry: true };
+    const quan = otmp.quan || 1;
+    if (cnt < 0 || quan < cnt) {
+        await pline(`You don't have that many!  You have only ${quan}.`);
+        return { retry: true };
+    }
+    return getobj_split_otmp(otmp, cntgiven, cnt);
+}
+
 /** Suggest letters for #adjust getobj (excludes gold). */
 function adjust_suggest_lets() {
     const lets = [];
@@ -3654,7 +3828,8 @@ function adjust_suggest_lets() {
 
 /**
  * C ref: invent.c getobj("adjust", adjust_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * Count-split and ?/* invent menus deferred.
+ * Count prefix + split_otmp live. ?/* invent menus still deferred.
+ * doorganize_core nobj splitting / unsplitobj on cancel named.
  */
 async function getobj_adjust() {
     for (;;) {
@@ -3669,8 +3844,12 @@ async function getobj_adjust() {
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(prompt.length, 0);
 
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
+        let key = await nhgetch();
+        let ch = String.fromCharCode(key);
+        const counted = await getobj_take_count(ch, true);
+        if (counted.retry) continue;
+        ch = counted.ch;
+        key = ch.charCodeAt(0);
         if (QUITCHARS.includes(ch) || key === 27) {
             if (game.flags?.verbose !== false) await pline(Never_mind);
             return null;
@@ -3680,7 +3859,6 @@ async function getobj_adjust() {
             if (game.flags?.verbose !== false) await pline(Never_mind);
             return null;
         }
-        // digit → get_count / splitobj deferred (falls through as unknown letter)
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
         if (!otmp) {
             await pline("You don't have that object.");
@@ -3691,8 +3869,13 @@ async function getobj_adjust() {
             await pline('You cannot adjust gold.');
             return null;
         }
+        const got = await getobj_apply_count(
+            otmp, 'adjust', counted.cntgiven, counted.cnt,
+        );
+        if (!got) return null;
+        if (got.retry) continue;
         game._pending_message = '';
-        return otmp;
+        return got;
     }
 }
 
@@ -3758,7 +3941,8 @@ function names_ok_for_adjust_merge(otmp, obj) {
 
 /**
  * C ref: invent.c doorganize_core — destination pick + move/collect/swap/merge.
- * Deferred: count-split, display_used_invlets, gold adjust, pack-full bump.
+ * Deferred: display_used_invlets, gold adjust, pack-full bump.
+ * getobj count-split is live; nobj splitting / unsplitobj on cancel named.
  */
 async function doorganize_core(obj) {
     if (!obj) return ECMD_CANCEL;

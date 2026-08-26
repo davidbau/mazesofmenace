@@ -1330,7 +1330,7 @@ function mdrop_obj_overcrowd(mon, obj) {
  * arti before migrate or mongone. Ordinary items still burn
  * obj_resists(0,0) rn2(100).
  */
-function mdrop_special_objs(mon) {
+export function mdrop_special_objs(mon) {
     if (!mon) return;
     for (let obj = mon.minvent; obj; ) {
         const next = obj.nobj;

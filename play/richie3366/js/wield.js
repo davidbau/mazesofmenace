@@ -23,7 +23,7 @@ import {
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
-import { makeknown, encumber_msg, compactify_invlets, update_inventory } from './invent.js';
+import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count } from './invent.js';
 import { uncurse, weight } from './mkobj.js';
 import { trycall } from './do_name.js';
 
@@ -447,7 +447,8 @@ function wield_prompt_lets(raw) {
 /**
  * C ref: invent.c getobj("wield", wield_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
  * Hands GETOBJ_SUGGEST → buf prefix "- "; invent SUGGEST letters after;
- * compactify when suggested > 5. Count-split / ?/* pickinv deferred.
+ * compactify when suggested > 5. Count prefix + split_otmp live.
+ * finish_splitting / unsplitobj / ?/* pickinv named.
  */
 async function getobj_wield() {
     for (;;) {
@@ -464,8 +465,11 @@ async function getobj_wield() {
         if (disp?.setCursor) disp.setCursor(prompt.length, 0);
 
         const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+        let ch = String.fromCharCode(key);
+        const counted = await getobj_take_count(ch, true);
+        if (counted.retry) continue;
+        ch = counted.ch;
+        if (ch.charCodeAt(0) === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
             if (game.flags?.verbose !== false) await pline('Never mind.');
             return undefined; // cancel
         }
@@ -488,9 +492,13 @@ async function getobj_wield() {
             await pline('You cannot wield that!');
             return undefined;
         }
-        // SUGGEST + DOWNPLAY both selectable (C getobj)
+        const got = await getobj_apply_count(
+            otmp, 'wield', counted.cntgiven, counted.cnt,
+        );
+        if (!got) return undefined;
+        if (got.retry) continue;
         game._pending_message = '';
-        return otmp;
+        return got;
     }
 }
 
@@ -575,7 +583,8 @@ function ready_suggest_lets() {
 
 /**
  * C ref: invent.c getobj(verb, ready_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * Count-split deferred; '-' → hands_obj; DOWNPLAY letters still accepted.
+ * Count prefix + split_otmp live; '-' → hands_obj; DOWNPLAY letters still
+ * accepted. finish_splitting / unsplitobj / coin partial named.
  */
 async function getobj_ready(verb) {
     for (;;) {
@@ -597,8 +606,11 @@ async function getobj_ready(verb) {
         if (disp?.setCursor) disp.setCursor(prompt.length, 0);
 
         const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+        let ch = String.fromCharCode(key);
+        const counted = await getobj_take_count(ch, true);
+        if (counted.retry) continue;
+        ch = counted.ch;
+        if (ch.charCodeAt(0) === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
             if (game.flags?.verbose !== false) await pline('Never mind.');
             return undefined;
         }
@@ -620,8 +632,13 @@ async function getobj_ready(verb) {
             await pline(`You cannot ${verb} that!`);
             return undefined;
         }
+        const got = await getobj_apply_count(
+            otmp, verb, counted.cntgiven, counted.cnt,
+        );
+        if (!got) return undefined;
+        if (got.retry) continue;
         game._pending_message = '';
-        return otmp;
+        return got;
     }
 }
 
@@ -629,7 +646,8 @@ async function getobj_ready(verb) {
  * C ref: wield.c doquiver_core — #quiver / Q and dofire refill.
  * Branch envelope: empty invent; '-' clear; already quivered; worn reject;
  * uwep/uswapwep ynq confirm (no quan-split); setuqwep + prinv.
- * Deferred: count-split finish_splitting / unsplitobj / coin partial.
+ * Deferred: finish_splitting / unsplitobj / coin partial after getobj
+ * split (C wield.c `:390–401`). Count prefix is invent getobj.
  * @returns {number} 0 = ECMD_OK / cancel; 1 = ECMD_TIME
  */
 export async function doquiver_core(verb) {

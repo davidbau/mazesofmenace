@@ -702,7 +702,8 @@ function sanitize_name(namebuf) {
  * C ref: options.c fruitadd `:8169–8287` — user-specified pl_fruit path
  * (doset getlin / optfn_fruit). Callers pass game.pl_fruit so C
  * `str == svp.pl_fruit` holds; JS strings cannot emulate that pointer
- * test for a second buffer. Bones/restore ghostfruit else-path named;
+ * test for a second buffer. Bones/restore ghostfruit else-path is the
+ * clone in bones.js (D-1541; bones→options→invent→mklev cycle);
  * orc loot is fruitadd_orc in mklev.js (mklev↔options cycle) using the
  * same objnam fruit_from_name walker (D-1520).
  * @param {string} str  current pl_fruit (C passes svp.pl_fruit pointer)
@@ -791,7 +792,7 @@ export function fruitadd(str, replaceFruit) {
  * not candied. fid 1; current_fruit. OPTIONS=fruit: (opt_initial) only
  * nmcpy's pl_fruit — this call installs the chain. Do not call fruitadd
  * here after objects exist (that walker candifies SLIME_MOLD). Bones
- * restore ghostfruit (fruitadd else) named.
+ * restore ghostfruit fruitadd else is D-1541.
  */
 export function init_fruit_chain() {
     if (game.ffruit) return;
@@ -1679,7 +1680,7 @@ export async function doset() {
  * C ref: options.c doset_simple — loop doset_simple_menu until no pick.
  * Named omissions: number_pad/autounlock/symset/status handlers;
  * help descr lines under simple_options_help; fruitadd bones/restore
- * ghostfruit else-path.
+ * ghostfruit else is D-1541 (clone in bones.js).
  */
 export async function doset_simple() {
     if (!game.flags) game.flags = {};

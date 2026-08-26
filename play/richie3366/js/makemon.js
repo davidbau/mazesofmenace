@@ -77,7 +77,7 @@ import {
 import { big_to_little } from './mondata.js';
 import {
     NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
-    MM_EMIN, MM_EPRI, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT, MM_MALE, MM_FEMALE,
+    MM_EMIN, MM_EPRI, MM_ANGRY, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT, MM_MALE, MM_FEMALE,
     MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     In_mines, In_sokoban, In_endgame,
@@ -86,9 +86,10 @@ import {
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     ARTICLE_A, BOLT_LIM,
     IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
+    HWALL, TLCORNER, TRWALL, BLCORNER, TDWALL, CROSSWALL, TUWALL,
     SDOOR, SCORR, ZOO, VAULT, DELPHI, TEMPLE, SHOPBASE, FODDERSHOP,
     ROOMOFFSET, LS_MONSTER,
-    AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT,
+    AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT, Align2amask,
     In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
@@ -246,9 +247,23 @@ const MIMIC_SYMS = [
     AMULET_CLASS, TOOL_CLASS, ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS,
     S_MIMIC_DEF_SYM, S_MIMIC_DEF_SYM,
 ];
-// C ref: furnsyms[] — only need length for ROLL_FROM RNG; appear value unused
-// when appear_as overrides (Storeroom). Indices are pchar S_* stubs.
-const MIMIC_FURNSYMS = [0, 0, 1, 1, 2, 3, 4, 5];
+// C ref: defsym.h PCHAR — door/wall mimic mappearance (D-1536); TEMPLE
+// S_altar (D-1525); furnsyms ROLL_FROM (D-1543).
+const S_vwall = 1;
+const S_hwall = 2;
+const S_vcdoor = 15;
+const S_hcdoor = 16;
+const S_upstair = 25;
+const S_dnstair = 26;
+const S_altar = 33;
+const S_grave = 34;
+const S_throne = 35;
+const S_sink = 36;
+// C ref: makemon.c set_mimic_sym furnsyms[] :2491–2494
+const MIMIC_FURNSYMS = [
+    S_upstair, S_upstair, S_dnstair, S_dnstair,
+    S_altar, S_grave, S_throne, S_sink,
+];
 
 // C ref: do_name.c ghostnames[] / rndghostname
 const GHOSTNAMES = [
@@ -2359,7 +2374,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
     }
 
     // C: makemon.c :1397–1404 after in_mklev sleep / byyou newsym,
-    // before LONG_WORM. emin roaming still named.
+    // before LONG_WORM. emin roaming is :1410–1428 after worm.
     if (is_dprince(ptr) && (ptr.msound | 0) === MS_BRIBE) {
         mtmp.mpeaceful = mtmp.minvis = mtmp.perminvis = 1;
         mtmp.mavenge = 0;
@@ -2373,7 +2388,6 @@ export function makemon(mdat, x, y, mmflags = 0) {
     }
 
     // C: PM_LONG_WORM → get_wormno / initworm / place_worm_tail_randomly
-    // Named omissions: emin/angel roaming after worm (still before invent).
     if (ptr.mndx === pm('LONG_WORM')) {
         mtmp.wormno = get_wormno();
         if (mtmp.wormno) {
@@ -2384,8 +2398,29 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     }
 
+    // C: makemon.c :1410–1428 after LONG_WORM, before set_malign.
+    // Ordinary ALIGNED_CLERIC/HIGH_CLERIC without MM_EPRI|MM_EMIN, or
+    // ANGEL without MM_EMIN && !rn2(3), get emin roaming. Caller that
+    // passed those flags fills emin/epri itself (mk_roamer / priestini).
+    {
+        const mndx = ptr.mndx | 0;
+        if ((mndx === pm('ALIGNED_CLERIC') || mndx === pm('HIGH_CLERIC'))
+                ? !(mmflags & (MM_EPRI | MM_EMIN))
+                : (mndx === pm('ANGEL') && !(mmflags & MM_EMIN) && !rn2(3))) {
+            newemin(mtmp);
+            const eminp = EMIN(mtmp);
+            mtmp.isminion = 1; /* make priest be a roamer */
+            eminp.min_align = rn2(3) - 1; /* no A_NONE */
+            eminp.renegade = (mmflags & MM_ANGRY) ? 1 : (!rn2(3) ? 1 : 0);
+            const ual = game.u?.ualign?.type | 0;
+            mtmp.mpeaceful = (eminp.min_align === ual)
+                ? (eminp.renegade ? 0 : 1)
+                : eminp.renegade;
+        }
+    }
+
     // C: set_malign after peaceful changes (S_ORC/S_UNICORN mlet D-1092;
-    // dprince MS_BRIBE / raven BEC_DE_CORBIN; emin roaming still deferred)
+    // dprince MS_BRIBE / raven BEC_DE_CORBIN; emin roaming D-1526)
     set_malign(mtmp);
 
     // C: anymon && !(mmflags & MM_NOGRP) → small/large group (after sleep)
@@ -2500,10 +2535,13 @@ function in_town(x, y) {
 
 /**
  * C ref: makemon.c set_mimic_sym — ordinary + shop (get_shop_item) +
- * maze/sokoban/in_town statue (D-1517).
- * Named omissions: altar Align2amask MCORPSENM, door/wall S_hcdoor,
- * Protection_from_shape_changers early-out when hero wears the amulet
- * (stubbed false at mklev).
+ * maze/sokoban/in_town statue (D-1517) + TEMPLE S_altar Align2amask
+ * MCORPSENM (D-1525) + door/wall/SDOOR/SCORR S_hcdoor (D-1536) +
+ * furnsyms real S_* (D-1543).
+ * Named omissions: Protection_from_shape_changers early-out when
+ * hero wears the amulet (stubbed false at mklev), block_point,
+ * DELPHI S_fountain, slime-mold flags.made_fruit, nocorpse/hatch/tin
+ * Plan-B.
  */
 export function set_mimic_sym(mtmp) {
     if (!mtmp) return;
@@ -2528,8 +2566,25 @@ export function set_mimic_sym(mtmp) {
         appear = floorObj.otyp;
     } else if (IS_DOOR(typ) || IS_WALL(typ) || typ === SDOOR || typ === SCORR) {
         ap_type = M_AP_FURNITURE;
-        // door/wall glyph pick has no RNG
-        appear = 0;
+        // C: left-connecting wall → S_hcdoor (rogue S_hwall); else
+        // S_vcdoor (rogue S_vwall). mx==0 short-circuits the levl
+        // read. No RNG. Corners of rooms cannot be doors this way.
+        let leftConnects = false;
+        if (mx !== 0) {
+            const leftTyp = game.level?.at?.(mx - 1, my)?.typ ?? 0;
+            leftConnects = leftTyp === HWALL
+                || leftTyp === TLCORNER
+                || leftTyp === TRWALL
+                || leftTyp === BLCORNER
+                || leftTyp === TDWALL
+                || leftTyp === CROSSWALL
+                || leftTyp === TUWALL;
+        }
+        if (leftConnects) {
+            appear = Is_rogue_level(game.u?.uz) ? S_hwall : S_hcdoor;
+        } else {
+            appear = Is_rogue_level(game.u?.uz) ? S_vwall : S_vcdoor;
+        }
     } else if (game.level?.flags?.is_maze_lev
         && !(In_mines(game.u?.uz)
             && in_town(game.u?.ux | 0, game.u?.uy | 0))
@@ -2555,7 +2610,7 @@ export function set_mimic_sym(mtmp) {
         }
     } else if (rt === TEMPLE) {
         ap_type = M_AP_FURNITURE;
-        appear = 0; // S_altar stub
+        appear = S_altar;
     } else if (rt >= SHOPBASE) {
         // C: rn2(10) >= depth(&u.uz) → S_MIMIC_DEF; else get_shop_item
         if (rn2(10) >= depth_of_level(game.u?.uz)) {
@@ -2583,6 +2638,9 @@ export function set_mimic_sym(mtmp) {
 
     if (assignSym) {
         if (s_sym === MAXOCLASSES) {
+            // C: ROLL_FROM(furnsyms) — S_upstair×2, S_dnstair×2,
+            // S_altar, S_grave, S_throne, S_sink. Appear is a cmap
+            // index (not levl.typ). S_altar then takes the amask arm.
             ap_type = M_AP_FURNITURE;
             appear = MIMIC_FURNSYMS[rn2(MIMIC_FURNSYMS.length)];
         } else {
@@ -2612,8 +2670,20 @@ export function set_mimic_sym(mtmp) {
     } else if (ap_type === M_AP_OBJECT && appear === SLIME_MOLD) {
         if (!mtmp.mextra) mtmp.mextra = {};
         mtmp.mextra.mcorpsenm = game.context?.current_fruit ?? 0;
+        // flags.made_fruit named omit
+    } else if (ap_type === M_AP_FURNITURE && appear === S_altar) {
+        // C: algn = rn2(3)-1; (Inhell && rn2(3)) ? AM_NONE : Align2amask
+        // Inhell = dungeon.c In_hell = dungeons[dnum].flags.hellish
+        // (do not import minion.js Inhell — minion → makemon).
+        const algn = rn2(3) - 1;
+        const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
+        if (!mtmp.mextra) mtmp.mextra = {};
+        mtmp.mextra.mcorpsenm = (inhell && rn2(3)) ? AM_NONE : Align2amask(algn);
+    } else if (mtmp.mextra && (mtmp.mextra.mcorpsenm ?? NON_PM) !== NON_PM) {
+        // C: has_mcorpsenm → NON_PM (drop stale statue/figurine shape)
+        mtmp.mextra.mcorpsenm = NON_PM;
     }
-    // altar Align2amask / block_point deferred
+    // block_point deferred
 }
 
 /**

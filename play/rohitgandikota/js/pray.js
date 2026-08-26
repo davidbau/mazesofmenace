@@ -6,7 +6,7 @@
 // trouble cures, rare divine favors, and sacrifice remain partial.
 
 import { game } from './gstate.js';
-import { rn1, rn2, rnd, rnz, rnl } from './rng.js';
+import { rn1, rn2, rnd, rnz, rnl, rn2_on_display_rng } from './rng.js';
 import { pline, more } from './display.js';
 import { You, You_feel, pline_The } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -17,16 +17,26 @@ import { IS_ALTAR, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          ECMD_OK, ECMD_TIME, W_SADDLE, TT_LAVA, TT_BURIEDBALL, WEAK, HUNGRY,
          EXT_ENCUMBER, A_MAX, A_STR, A_WIS, AM_SHRINE, TIMEOUT,
          Upolyd, KILLED_BY, W_ARMS, W_ARMC, W_ARM, W_ARMU,
-         NH_BLACK } from './const.js';
+         NH_BLACK, BOLT_LIM, MAXULEV } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { An } from './objnam.js';
 import { hcolor } from './do_name.js';
 import { attrcurse, rndcurse } from './sit.js';
-import { Reflecting, Shock_resistance } from './youprop.js';
-import { obj_resists } from './zap.js';
+import { Reflecting, Shock_resistance, Hallucination } from './youprop.js';
+import { obj_resists, resist } from './zap.js';
 import { useup } from './invent.js';
 import { find_ac } from './do_wear.js';
 import { done, DIED } from './end.js';
+import { roles } from './role_data.js';
+import { PMNAMES, MONSYMS, MFLAGS } from './monst_data.js';
+import { is_undead, is_demon, is_silent, has_head } from './mondata.js';
+import { is_vampshifter, DEADMONSTER } from './monst.js';
+import { couldsee } from './vision.js';
+import { mdistu, monflee } from './monmove.js';
+import { set_malign, Inhell } from './makemon.js';
+import { killed } from './mon.js';
+import { aggravate } from './wizard.js';
+import { setuhpmax } from './exper.js';
 
 function note_unported_pray(what) {
     (game.unported ||= new Set()).add('pray:' + what);
@@ -164,6 +174,31 @@ function in_trouble() {
 
 function TROUBLE_CURSED_BLINDFOLD_() { return -12; }
 
+// src/pray.c:382 fix_worst_trouble(), implemented as each state becomes live.
+async function fix_worst_trouble(trouble) {
+    const u = game.u;
+
+    switch (trouble) {
+    case TROUBLE_HIT: {
+        await You_feel('much better.');
+        if (Upolyd(u)) {
+            u.mhmax = Math.max((u.mhmax || 0) + rnd(5), 6);
+            u.mh = u.mhmax;
+        }
+        let maxhp = u.uhpmax;
+        if (maxhp < u.ulevel * 5 + 11)
+            maxhp += rnd(5);
+        setuhpmax(Math.max(maxhp, 6), true);
+        u.uhp = u.uhpmax;
+        (game.disp ||= {}).botl = true;
+        return true;
+    }
+    default:
+        note_unported_pray(`fix_worst_trouble:${trouble}`);
+        return false;
+    }
+}
+
 // src/pray.c:2530 align_gname()
 export function align_gname(alignment) {
     let gnam;
@@ -177,6 +212,172 @@ export function align_gname(alignment) {
     if (gnam && gnam[0] === '_')
         gnam = gnam.slice(1);
     return gnam || 'someone';
+}
+
+const hallu_gods = [
+    'the Flying Spaghetti Monster', 'Eris', 'the Martians', 'Xom',
+    'AnDoR dRaKoN', 'the Central Bank of Yendor', 'Tooth Fairy', 'Om',
+    'Yawgmoth', 'Morgoth', 'Cthulhu', 'the Ori', 'destiny',
+    'your Friend the Computer',
+];
+
+const turn_destroy_levels = new Map([
+    [MONSYMS.S_ZOMBIE, 6], [MONSYMS.S_MUMMY, 8],
+    [MONSYMS.S_WRAITH, 10], [MONSYMS.S_VAMPIRE, 12],
+    [MONSYMS.S_GHOST, 14], [MONSYMS.S_LICH, 16],
+]);
+
+// src/pray.c:2581 halu_gname(). Hallucinatory deity names use the display
+// RNG, so choosing one never changes the contest's core random stream.
+function halu_gname(alignment) {
+    if (!Hallucination())
+        return align_gname(alignment);
+
+    let role;
+    do {
+        role = roles[rn2_on_display_rng(roles.length)];
+    } while (!role?.lgod);
+
+    let gnam;
+    switch (rn2_on_display_rng(9)) {
+    case 0:
+    case 1:
+        gnam = role.lgod;
+        break;
+    case 2:
+    case 3:
+        gnam = role.ngod;
+        break;
+    case 4:
+    case 5:
+        gnam = role.cgod;
+        break;
+    case 6:
+    case 7:
+        gnam = hallu_gods[rn2_on_display_rng(hallu_gods.length)];
+        break;
+    default:
+        gnam = 'Moloch';
+        break;
+    }
+    if (!gnam)
+        gnam = 'your Friend the Computer';
+    return gnam[0] === '_' ? gnam.slice(1) : gnam;
+}
+
+// src/mondata.c:580 can_chant().
+function can_chant(mon) {
+    const data = mon?.data;
+    const strangled = mon === game.youmonst
+        && !!(game.u.intrinsic?.HStrangled || game.u.uprops?.STRANGLED);
+    return !!data && !strangled && !is_silent(data) && has_head(data)
+        && data.msound !== MFLAGS.MS_BUZZ
+        && data.msound !== MFLAGS.MS_BURBLE;
+}
+
+// src/pray.c:2378 maybe_turn_mon_iter().
+async function maybe_turn_mon(mtmp, range) {
+    if (DEADMONSTER(mtmp) || !couldsee(mtmp.mx, mtmp.my)
+        || mdistu(mtmp) > range)
+        return false;
+
+    const data = mtmp.data || game.mons[mtmp.mnum];
+    if (mtmp.mpeaceful
+        || !(is_undead(data) || is_vampshifter(mtmp)
+             || (is_demon(data) && game.u.ulevel > MAXULEV / 2)))
+        return false;
+
+    mtmp.msleeping = 0;
+    const confused = !!(game.u.intrinsic?.HConfusion
+                         || game.u.uprops?.CONFUSION);
+    if (confused) {
+        mtmp.mflee = 0;
+        mtmp.mfrozen = 0;
+        mtmp.mcanmove = 1;
+        return true;
+    }
+    if (resist(mtmp, 0, 0, true))
+        return false;
+
+    const destroy_level = turn_destroy_levels.get(data.mlet);
+    if (destroy_level !== undefined && game.u.ulevel >= destroy_level
+        && !resist(mtmp, 0, 0, false)) {
+        if (game.u.ualign.type === A_CHAOTIC) {
+            mtmp.mpeaceful = 1;
+            set_malign(mtmp);
+        } else {
+            await killed(mtmp);
+        }
+    } else {
+        monflee(mtmp, 0, false, true);
+    }
+    return false;
+}
+
+// src/pray.c:2417 doturn().
+export async function doturn() {
+    const role = game.urole?.mnum;
+    const innate = role === PMNAMES.PM_CLERIC || role === PMNAMES.PM_KNIGHT
+        || role === 'PM_CLERIC' || role === 'PM_KNIGHT';
+    if (!innate) {
+        if ((game.spl_book || []).some(
+                spell => spell.sp_id === ONAMES.SPE_TURN_UNDEAD)) {
+            const { spelleffects } = await import('./spell.js');
+            return await spelleffects(ONAMES.SPE_TURN_UNDEAD, false, false);
+        }
+        await You("don't know how to turn undead!");
+        return ECMD_OK;
+    }
+
+    game.u.uconduct ||= {};
+    if (!game.u.uconduct.gnostic) {
+        const { livelog_add } = await import('./pline.js');
+        livelog_add('rejected atheism by turning undead');
+    }
+    game.u.uconduct.gnostic = (game.u.uconduct.gnostic || 0) + 1;
+
+    const gname = halu_gname(game.u.ualign.type);
+    if (!can_chant(game.youmonst)) {
+        const unable = game.u.intrinsic?.HStrangled
+                       || game.u.uprops?.STRANGLED;
+        await You(`are ${unable ? 'not able to call' : 'incapable of calling'} `
+                  + `upon ${gname} to turn aside evilness.`);
+        return game.u.uconduct.gnostic === 1 ? ECMD_TIME : ECMD_OK;
+    }
+
+    const herodata = game.youmonst?.data;
+    if ((game.u.ualign.type !== A_CHAOTIC
+         && (is_demon(herodata) || is_undead(herodata)
+             || is_vampshifter(game.youmonst)))
+        || (game.u.ugangr || 0) > 6) {
+        await pline(`For some reason, ${gname} seems to ignore you.`);
+        aggravate();
+        exercise(A_WIS, false);
+        return ECMD_TIME;
+    }
+    if (Inhell()) {
+        await pline(`Since you are in Gehennom, ${gname} `
+                    + `${gname === 'Moloch' ? "won't" : "can't"} help you.`);
+        aggravate();
+        return ECMD_TIME;
+    }
+
+    await pline(`Calling upon ${gname}, you chant an arcane formula.`);
+    exercise(A_WIS, true);
+
+    const radius = BOLT_LIM + Math.trunc(game.u.ulevel / 5);
+    let falter_message = false;
+    for (const mtmp of [...(game.level?.monsters || [])]) {
+        if (await maybe_turn_mon(mtmp, radius * radius) && !falter_message) {
+            await pline('Unfortunately, your voice falters.');
+            falter_message = true;
+        }
+    }
+
+    nomul(-(5 - Math.trunc((game.u.ulevel - 1) / 6)));
+    game.multi_reason = 'trying to turn the monsters';
+    game.nomovemsg = 'You can move again.';
+    return ECMD_TIME;
 }
 
 // src/pray.c:2124 can_pray() — set up p_type and p_aligntyp.
@@ -402,7 +603,7 @@ async function god_zaps_you(resp_god) {
 // record the missing state change.
 async function pleased(g_align) {
     const u = game.u;
-    const trouble = in_trouble();
+    let trouble = in_trouble();
     let pat_on_head = false;
     const hallucinating = !!u.uprops?.HALLUC;
 
@@ -431,10 +632,41 @@ async function pleased(g_align) {
         if (u.ualign.record < STRIDENT)
             action = (u.ualign.record > 0 || !rnl(2)) ? 1 : 0;
 
-        if (trouble || action > 1)
-            note_unported_pray(`pleased:action=${Math.min(action, 5)}:trouble=${trouble}`);
-        if (action >= 5)
+        switch (Math.min(action, 5)) {
+        case 5:
             pat_on_head = true;
+            // Fall through to fixing every trouble.
+        case 4:
+            while (trouble) {
+                if (!(await fix_worst_trouble(trouble)))
+                    break;
+                trouble = in_trouble();
+            }
+            break;
+        case 3: {
+            await fix_worst_trouble(trouble);
+            let tryct = 0;
+            while ((trouble = in_trouble()) > 0 && ++tryct < 10) {
+                if (!(await fix_worst_trouble(trouble)))
+                    break;
+            }
+            break;
+        }
+        case 2: {
+            let tryct = 0;
+            while ((trouble = in_trouble()) > 0 && ++tryct < 10) {
+                if (!(await fix_worst_trouble(trouble)))
+                    break;
+            }
+            break;
+        }
+        case 1:
+            if (trouble > 0)
+                await fix_worst_trouble(trouble);
+            break;
+        default:
+            break;
+        }
     }
 
     if (pat_on_head) {

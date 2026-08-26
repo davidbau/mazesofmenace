@@ -4033,17 +4033,25 @@ function load_pri_loca() {
 
     // des.monster({ id = "aligned cleric", x=20, y=07, align="noalign", peaceful=0 })
     {
-        // C: find_montype gender before create_monster; align=noalign skips
-        // induced_align(80) random-amask burn.
+        // C sp_lev.c create_monster :1983–1984: find_montype gender first;
+        // align=noalign → sp_amask != AM_SPLEV_RANDOM, no induced_align(80);
+        // mk_roamer(pm, Amask2align(AM_NONE), x, y, peaceful) (MM_EMIN,
+        // min_align=A_NONE), not makemon(..., 0). Then :2125–2129 female
+        // and peaceful > BOOL_RANDOM override + set_malign.
         const { mndx, female } = find_montype_gender('aligned cleric');
         const pm = (mndx >= 0 && mndx !== NON_PM) ? mons(mndx) : null;
         let pos = { x: mx + 20, y: my + 7 };
         pos = splev_resolve_occupied(pos.x, pos.y, pm);
-        const mtmp = pm ? makemon(pm, pos.x, pos.y, 0) : null;
+        const peaceful = 0;
+        const mtmp = pm
+            ? mk_roamer_splev(pm, Amask2align(AM_NONE), pos.x, pos.y, peaceful)
+            : null;
         if (mtmp) {
             mtmp.female = female;
-            mtmp.mpeaceful = 0;
-            set_malign(mtmp);
+            if (peaceful > BOOL_RANDOM) {
+                mtmp.mpeaceful = peaceful;
+                set_malign(mtmp);
+            }
         }
     }
 
@@ -11304,9 +11312,10 @@ function get_location_coord(humidity, croom, rx, ry) {
  * C ref: sp_lev.c create_object (~2193–2439).
  * Named omit: oname / novelidx; quan>0 oc_merge; recharged; tknown;
  * invent_carrying_monster / saddle; artifact uncreate when container_obj
- * is NULL; Medusa statue fill; achievement prizes; lit begin_burn;
- * buried bury_an_obj; class-letter def_char_to_objclass (id-less
- * RANDOM_CLASS / mkobj_at oclass still work).
+ * is NULL; Medusa statue fill; achievement prizes; buried bury_an_obj;
+ * class-letter def_char_to_objclass (id-less RANDOM_CLASS / mkobj_at
+ * oclass still work). themerms Light source fill (D-1542) is the
+ * production lua that sets lit=true; this arm is the callee.
  */
 function create_object(o, croom) {
     const named = !!(o.name);
@@ -11405,7 +11414,13 @@ function create_object(o, croom) {
         }
     }
 
-    if (!(containment & SP_OBJ_CONTENT)) stackobj(otmp);
+    if (!(containment & SP_OBJ_CONTENT)) {
+        stackobj(otmp);
+        // C sp_lev.c create_object :2425–2426 — after stackobj, not
+        // levl[x][y].lit (mktrap_victim is D-1519).
+        if (o.lit)
+            begin_burn(otmp, false);
+    }
     return otmp;
 }
 
@@ -11508,6 +11523,8 @@ export function l_create_object(o, contentsFn, croom = null) {
     if (tmp.curse_state == null) tmp.curse_state = 0;
     if (tmp.rx == null) tmp.rx = -1;
     if (tmp.ry == null) tmp.ry = -1;
+    // C lspo_object: get_table_boolean_opt(L, "lit", 0)
+    if (tmp.lit == null) tmp.lit = 0;
     if (tmp.corpsenm == null) tmp.corpsenm = NON_PM;
     if ((tmp.class == null || tmp.class < 0) && (tmp.id | 0) > 0) {
         const oc = game.objects?.[tmp.id]?.oc_class;
@@ -14882,8 +14899,10 @@ function load_wizard3() {
 }
 
 /**
- * C ref: priest.c mk_roamer — aligned cleric/angel with emin (sanctum horde).
- * Local to avoid mklev↔priest cycle. Named: reset_hostility deferred.
+ * C ref: priest.c mk_roamer — aligned cleric/angel with emin.
+ * Callers: sanctum noalign horde; Pri-loca lua align=noalign cleric
+ * (create_monster :1983–1984). Local to avoid mklev↔priest cycle.
+ * Named: reset_hostility deferred.
  */
 function mk_roamer_splev(ptr, alignment, x, y, peaceful) {
     if (m_at(x, y)) rloc(m_at(x, y), RLOC_NOMSG);
@@ -17743,6 +17762,18 @@ function themeroom_fill_buried_zombies(croom) {
 }
 
 /**
+ * C ref: themerms.lua "Light source" `:204–209` + sp_lev.c create_object
+ * `o->lit` after stackobj (D-1533). Lua eligible is `rm.lit == false`
+ * (`THEMEROOM_FILLS` needs_unlit; `l_push_mkroom_table` lit←rlit).
+ * Contents is one `des.object({ id = "oil lamp", lit = true })` — table
+ * form, no coord → get_location_coord(DRY, croom) then begin_burn.
+ * Do not use create_object_themed / mksobj_at (those skip o->lit).
+ */
+function themeroom_fill_light_source(croom) {
+    l_create_object({ id: OIL_LAMP, lit: true }, null, croom);
+}
+
+/**
  * C ref: themerms.lua "Cloud room" contents + sp_lev.c lspo_gas_cloud.
  * selection.room() then asleep fog clouds (numpoints/4, Lua float /)
  * then des.gas_cloud({ selection = fog }) — damage 0, ttl default -1.
@@ -17914,6 +17945,7 @@ const THEMEROOM_FILL_BODIES = {
     'Buried zombies': themeroom_fill_buried_zombies,
     'Temple of the gods': themeroom_fill_temple_of_the_gods,
     'Cloud room': themeroom_fill_cloud,
+    'Light source': themeroom_fill_light_source,
 };
 
 // C ref: themerms.lua themeroom_fill() — reservoir + dispatched fill bodies
@@ -17933,7 +17965,7 @@ function themeroom_fill(croom) {
     const body = THEMEROOM_FILL_BODIES[pick.name];
     if (body) body(croom);
     // Named omission: other fill contents (Ice/Boulder/Spider/Trap/
-    // Garden/Buried treasure/Massacre/Statuary/Light source/…)
+    // Garden/Buried treasure/Massacre/Statuary/…)
 }
 
 // C ref: themerms.lua filler_region + sp_lev.c lspo_region irregular path

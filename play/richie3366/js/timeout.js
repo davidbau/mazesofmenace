@@ -1,16 +1,29 @@
 // timeout.js — timed property expiry (timeout.c nh_timeout subset).
 // C ref: timeout.c nh_timeout — once-per-turn intrinsic TIMEOUT decrement.
+// C ref: timeout.c wiz_timeout_queue / print_queue / kind_name (D-1527);
+// callee region.c visible_region_summary.
 
 import { game } from './gstate.js';
 import {
     TIMEOUT, FROMOUTSIDE, FUMBLING, FAST, FOOT, ICE, STRAT_WAITMASK,
     UNCHANGING, LAST_PROP, WOUNDED_LEGS, CONFUSION, BLINDED, DEAF,
-    GLIB, I_SPECIAL,
-    STUNNED, HALLUC, LEVITATION, FLYING, INVIS, SEE_INVIS, CLAIRVOYANT,
-    TELEPORT, REGENERATION, DETECT_MONSTERS,
+    GLIB, I_SPECIAL, ECMD_OK,
+    STUNNED, HALLUC, HALLUC_RES, LEVITATION, FLYING, INVIS, SEE_INVIS,
+    CLAIRVOYANT, TELEPORT, REGENERATION, DETECT_MONSTERS,
+    INVULNERABLE, STONED, SLIMED, STRANGLED, SICK, SLEEPY, POLYMORPH,
+    VOMITING, ACID_RES, STONE_RES, DISPLACED, PASSES_WALLS,
+    MAGICAL_BREATHING, WWALKING, FIRE_RES, COLD_RES, SLEEP_RES,
+    DISINT_RES, SHOCK_RES, POISON_RES, DRAIN_RES, SICK_RES, ANTIMAGIC,
+    BLND_RES, HUNGER, TELEPAT, WARNING, WARN_OF_MON, WARN_UNDEAD,
+    SEARCHING, INFRAVISION, ADORNED, STEALTH, AGGRAVATE_MONSTER,
+    CONFLICT, JUMPING, TELEPORT_CONTROL, SWIMMING, SLOW_DIGESTION,
+    HALF_SPDAM, HALF_PHDAM, ENERGY_REGENERATION, PROTECTION,
+    PROT_FROM_SHAPE_CHANGERS, POLYMORPH_CONTROL, REFLECTING,
+    FREE_ACTION, FIXED_ABIL, LIFESAVED,
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_FREE,
     OBJ_CONTAINED, OBJ_BURIED,
-    CONTAINED_TOO, BURIED_TOO, TIMER_OBJECT, BURN_OBJECT, LS_OBJECT,
+    CONTAINED_TOO, BURIED_TOO, TIMER_OBJECT, TIMER_NONE, TIMER_LEVEL,
+    TIMER_GLOBAL, TIMER_MONSTER, BURN_OBJECT, LS_OBJECT,
     MAX_RADIUS, W_ARM,
     G_GENOD, G_EXTINCT, NO_MINVENT, MM_NOMSG, NON_PM,
     MV_KNOWS_EGG, ARTICLE_NONE, ARTICLE_A, EXACT_NAME,
@@ -48,6 +61,7 @@ import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
 import { Monnam, x_monnam, hcolor } from './do_name.js';
 import { find_ac } from './u_init.js';
+import { any_visible_region, visible_region_summary } from './region.js';
 
 /**
  * Props whose TIMEOUT is already decremented by the dedicated arms below
@@ -1338,4 +1352,220 @@ export async function zombify_mon(body, timeout) {
     } else {
         await rot_corpse(body);
     }
+}
+
+/** C timeout.c propertynames[] — #timeout listing + #wizintrinsic order. */
+const PROPERTYNAMES = [
+    [INVULNERABLE, 'invulnerable'],
+    [STONED, 'petrifying'],
+    [SLIMED, 'becoming slime'],
+    [STRANGLED, 'strangling'],
+    [SICK, 'fatally sick'],
+    [STUNNED, 'stunned'],
+    [CONFUSION, 'confused'],
+    [HALLUC, 'hallucinating'],
+    [BLINDED, 'blinded'],
+    [DEAF, 'deafness'],
+    [VOMITING, 'vomiting'],
+    [GLIB, 'slippery fingers'],
+    [WOUNDED_LEGS, 'wounded legs'],
+    [SLEEPY, 'sleepy'],
+    [TELEPORT, 'teleporting'],
+    [POLYMORPH, 'polymorphing'],
+    [LEVITATION, 'levitating'],
+    [FAST, 'very fast'],
+    [CLAIRVOYANT, 'clairvoyant'],
+    [DETECT_MONSTERS, 'monster detection'],
+    [SEE_INVIS, 'see invisible'],
+    [INVIS, 'invisible'],
+    [ACID_RES, 'acid resistance'],
+    [STONE_RES, 'stoning resistance'],
+    [DISPLACED, 'displaced'],
+    [PASSES_WALLS, 'pass thru walls'],
+    [MAGICAL_BREATHING, 'magical breathing'],
+    [WWALKING, 'water walking'],
+    [FIRE_RES, 'fire resistance'],
+    [COLD_RES, 'cold resistance'],
+    [SLEEP_RES, 'sleep resistance'],
+    [DISINT_RES, 'disintegration resistance'],
+    [SHOCK_RES, 'shock resistance'],
+    [POISON_RES, 'poison resistance'],
+    [DRAIN_RES, 'drain resistance'],
+    [SICK_RES, 'sickness resistance'],
+    [ANTIMAGIC, 'magic resistance'],
+    [HALLUC_RES, 'hallucination resistance'],
+    [BLND_RES, 'light-induced blindness resistance'],
+    [FUMBLING, 'fumbling'],
+    [HUNGER, 'voracious hunger'],
+    [TELEPAT, 'telepathic'],
+    [WARNING, 'warning'],
+    [WARN_OF_MON, 'warn: monster type or class'],
+    [WARN_UNDEAD, 'warn: undead'],
+    [SEARCHING, 'searching'],
+    [INFRAVISION, 'infravision'],
+    [ADORNED, 'adorned (+/- Cha)'],
+    [STEALTH, 'stealthy'],
+    [AGGRAVATE_MONSTER, 'monster aggravation'],
+    [CONFLICT, 'conflict'],
+    [JUMPING, 'jumping'],
+    [TELEPORT_CONTROL, 'teleport control'],
+    [FLYING, 'flying'],
+    [SWIMMING, 'swimming'],
+    [SLOW_DIGESTION, 'slow digestion'],
+    [HALF_SPDAM, 'half spell damage'],
+    [HALF_PHDAM, 'half physical damage'],
+    [REGENERATION, 'HP regeneration'],
+    [ENERGY_REGENERATION, 'energy regeneration'],
+    [PROTECTION, 'extra protection'],
+    [PROT_FROM_SHAPE_CHANGERS, 'protection from shape changers'],
+    [POLYMORPH_CONTROL, 'polymorph control'],
+    [UNCHANGING, 'unchanging'],
+    [REFLECTING, 'reflecting'],
+    [FREE_ACTION, 'free action'],
+    [FIXED_ABIL, 'fixed abilities'],
+    [LIFESAVED, 'life will be saved'],
+];
+
+/**
+ * C ref: timeout.c kind_name — TIMER_* label for #timeout print_queue.
+ * TIMER_NONE C calls impossible(); JS returns "none" (queue never
+ * stores TIMER_NONE — start_timer rejects kind <= TIMER_NONE).
+ */
+function kind_name(kind) {
+    switch (kind | 0) {
+        case TIMER_NONE:
+            return 'none';
+        case TIMER_LEVEL:
+            return 'level';
+        case TIMER_GLOBAL:
+            return 'global';
+        case TIMER_OBJECT:
+            return 'object';
+        case TIMER_MONSTER:
+            return 'monster';
+        default:
+            return 'unknown';
+    }
+}
+
+/**
+ * C ref: alloc.c fmt_ptr — %p / 0x hex. TIMER_OBJECT uses o_id (C is
+ * the heap pointer); TIMER_LEVEL uses packed a_long bit pattern.
+ */
+function fmt_timer_arg(curr) {
+    if ((curr.kind | 0) === TIMER_OBJECT) {
+        const id = curr.obj?.o_id | 0;
+        return `0x${id.toString(16)}`;
+    }
+    return `0x${((curr.a_long | 0) >>> 0).toString(16)}`;
+}
+
+/**
+ * C ref: timeout.c print_queue — empty line or header + one row per
+ * timer_element. !VERBOSE_TIMER: "#%d(%s)" func_index + fmt_ptr.
+ * @param {string[]} lines
+ * @param {object | null} base  game._timer_base
+ */
+function print_queue(lines, base) {
+    if (!base) {
+        lines.push(' <empty>');
+        return;
+    }
+    lines.push('timeout  id   kind   call');
+    for (let curr = base; curr; curr = curr.next) {
+        const timeout = String(curr.timeout | 0).padStart(4, ' ');
+        const tid = String(curr.tid | 0).padStart(4, ' ');
+        const kind = kind_name(curr.kind).padEnd(6, ' ');
+        const fi = curr.action | 0;
+        lines.push(` ${timeout}   ${tid}  ${kind} #${fi}(${fmt_timer_arg(curr)})`);
+    }
+}
+
+/**
+ * C ref: timeout.c wiz_timeout_queue putstr body (winid → string[]).
+ * Envelope: moves; print_queue(gt.timer_base); timed uprops TIMEOUT
+ * (COLD_RES+ banner once); uswldtim; uinvault; any_visible_region →
+ * visible_region_summary; stasis_until. display_nhwindow is the
+ * async caller. Named: VERBOSE_TIMER names; save/rest timer_id;
+ * fmt_ptr heap vs o_id; TIMER_NONE impossible(); light.c
+ * wiz_light_sources; timer_sanity_check.
+ */
+export function wiz_timeout_queue_lines() {
+    const lines = [];
+    const u = game.u || {};
+    lines.push(`Current time = ${game.moves | 0}.`);
+    lines.push('');
+    lines.push('Active timeout queue:');
+    lines.push('');
+    print_queue(lines, game._timer_base || null);
+
+    let count = 0;
+    let longestlen = 0;
+    let specindx = 0;
+    for (let i = 0; i < PROPERTYNAMES.length; i++) {
+        const [p, propname] = PROPERTYNAMES[i];
+        const intrinsic = u.uprops?.[p]?.intrinsic | 0;
+        if (intrinsic & TIMEOUT) {
+            count++;
+            const ln = propname.length;
+            if (ln > longestlen) longestlen = ln;
+        }
+        if (specindx === 0 && p === COLD_RES) specindx = i;
+    }
+    lines.push('');
+    if (!count) {
+        lines.push('No timed properties.');
+    } else {
+        lines.push('Timed properties:');
+        lines.push('');
+        let banner = specindx;
+        for (let i = 0; i < PROPERTYNAMES.length; i++) {
+            const [p, propname] = PROPERTYNAMES[i];
+            const intrinsic = u.uprops?.[p]?.intrinsic | 0;
+            if (intrinsic & TIMEOUT) {
+                if (banner > 0 && i >= banner) {
+                    lines.push(' -- settable via #wizintrinsic only --');
+                    banner = 0;
+                }
+                const left = propname.padEnd(longestlen, ' ');
+                const leftv = String(intrinsic & TIMEOUT).padStart(4, ' ');
+                lines.push(` ${left} ${leftv}`);
+            }
+        }
+    }
+    if (u.uswldtim) {
+        lines.push('');
+        lines.push(`Swallow countdown is ${u.uswldtim | 0}.`);
+    }
+    if (u.uinvault) {
+        lines.push('');
+        lines.push(`Vault counter is ${u.uinvault | 0}.`);
+    }
+    if (any_visible_region()) {
+        visible_region_summary(lines);
+    }
+    const until = game.level?.flags?.stasis_until | 0;
+    const moves = game.moves | 0;
+    if (until >= moves) {
+        lines.push('');
+        const remain = until - moves;
+        const word = remain > 0 ? 'turns' : 'more turn';
+        lines.push(`Level is no-teleport for ${remain + 1} ${word}.`);
+    }
+    return lines;
+}
+
+/**
+ * C ref: timeout.c wiz_timeout_queue — wizard #timeout.
+ * create_nhwindow(NHW_MENU) + putstr + display_nhwindow(FALSE).
+ * JS: show_nhw_menu_text (same NHW_MENU path as #wizwhere).
+ */
+export async function wiz_timeout_queue() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline("Unavailable command 'timeout'.");
+        return ECMD_OK;
+    }
+    const { show_nhw_menu_text } = await import('./pager.js');
+    await show_nhw_menu_text(wiz_timeout_queue_lines());
+    return ECMD_OK;
 }

@@ -20,12 +20,12 @@ import { dmgtype } from './mondata.js';
 import { touch_petrifies, abuse_dog } from './dog.js';
 import { which_armor } from './worn.js';
 import { hitmsg, magic_negation } from './mhitu.js';
-import { You, Your } from './pline.js';
+import { You, Your, You_hear } from './pline.js';
 import { end_running } from './hack.js';
 import { mon_nam, Monnam, y_monnam, upstart, a_monnam, x_monnam,
          pmname } from './do_name.js';
 import { destroy_items, exclam } from './zap.js';
-import { Cold_resistance } from './youprop.js';
+import { Blind, Cold_resistance, Deaf, Hallucination } from './youprop.js';
 import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline } from './display.js';
 import { wakeup, killed, xkilled, seemimic, setmangry } from './mon.js';
 import { DEADMONSTER } from './monst.js';
@@ -68,7 +68,7 @@ import { ACURR } from './attrib.js';
 import { W_ARM, W_ARMS, P_BARE_HANDED_COMBAT, P_BASIC,
          HMON_MELEE, HMON_APPLIED, HMON_THROWN, HMON_KICKED,
          W_ARMG, W_RINGR, W_RINGL, P_KNIFE, P_WHIP, XKILL_NOMSG,
-         STRAT_WAITMASK, engulfing_u } from './const.js';
+         STRAT_WAITMASK, engulfing_u, NEW_MOON } from './const.js';
 import { is_undead } from './mondata.js';
 import { A_LAWFUL } from './const.js';
 import { FACE, HAND } from './const.js';
@@ -76,6 +76,7 @@ import { body_part, mbodypart } from './polyself.js';
 import { M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
          M_AP_MONSTER, MIM_REVEAL, MIM_OMIT_WAIT, ARTICLE_A } from './const.js';
 import { defsyms } from './drawing_data.js';
+import { spec_dbon } from './artifact.js';
 
 function note_unported_uhitm(what) {
     (game.unported ||= new Set()).add(`uhitm:${what}`);
@@ -162,7 +163,7 @@ export async function do_attack(mtmp) {
     /* src/uhitm.c:530 — check_capacity() prints and returns 1 when the hero
        is overloaded; overexertion() calls gethungry(), which DRAWS, so an
        attack costs a hunger tick the plain step does not. */
-    if (check_capacity('You cannot fight while so heavily loaded.')
+    if (await check_capacity('You cannot fight while so heavily loaded.')
         || await overexertion())
         return true;                            /* goto atk_done */
 
@@ -1388,6 +1389,9 @@ function hmon_hitmon_weapon_melee(hmd, mon, obj) {
         note_unported_uhitm('hmon_hitmon:special_attacks');
     }
 
+    if (obj.oartifact)
+        hmd.dmg += spec_dbon(obj, mon, hmd.dmg);
+
     /* src/uhitm.c:1035 — silver weapon against a silver-hater flags the
        sear message; the extra damage itself came from dmgval's rnd(20) */
     if (hmd.material === MATERIALS.SILVER && mon_hates_silver(mon))
@@ -1665,6 +1669,74 @@ export async function mhitm_ad_drst(magr, mattk, mdef, mhm) {
         }
     } else if (!negated && !rn2(8)) {
         note_unported_uhitm('mhitm_ad_drst:mhitm_really_poison');
+    }
+}
+
+// src/mondata.c:305 can_blnd(), restricted to a monster's physical
+// blindness attack against the hero. Ravens use AT_CLAW; facewear and a
+// visored helmet protect the hero's eyes.
+function can_blnd_u(magr, mattk) {
+    if (!haseyes(game.youmonst.data))
+        return false;
+    if (mattk[0] === ATTKS.AT_CLAW) {
+        if (game.u.ublindf)
+            return false;
+        const helm = game.u.uarmh;
+        if (helm && game.objects[helm.otyp]?.oc_descr === 'visored helmet')
+            return false;
+    } else if ((mattk[0] === ATTKS.AT_TUCH
+                || mattk[0] === ATTKS.AT_STNG) && magr.mcan) {
+        return false;
+    }
+    return true;
+}
+
+// src/uhitm.c:2958 mhitm_ad_blnd(), monster against hero arm.
+export async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
+    if (mdef !== game.youmonst) {
+        note_unported_uhitm('mhitm_ad_blnd:nonhero');
+        mhm.damage = 0;
+        return;
+    }
+
+    if (can_blnd_u(magr, mattk)) {
+        if (!game.u.ublind)
+            await pline(`${Monnam(magr)} blinds you!`);
+        const intr = (game.u.intrinsic ||= {});
+        const { make_blinded } = await import('./potion.js');
+        await make_blinded((intr.HBlinded | 0) + mhm.damage, false);
+        if (!game.u.ublind)
+            await Your('vision clears.');
+    }
+    mhm.damage = 0;
+}
+
+// src/uhitm.c:4203 mhitm_ad_ston(), the cockatrice hiss attack.
+export async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        note_unported_uhitm('mhitm_ad_ston:uhitm');
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk, mhm.indx);
+        if (!rn2(3)) {
+            if (magr.mcan) {
+                if (!Deaf())
+                    await You_hear(`a cough from ${mon_nam(magr)}!`);
+            } else {
+                if (Hallucination() && !Blind()) {
+                    await You_hear('hissing.');
+                    await pline(`${Monnam(magr)} appears to be blowing you a kiss...`);
+                } else if (!Deaf()) {
+                    await You_hear(`${s_suffix(mon_nam(magr))} hissing!`);
+                } else if (!Blind()) {
+                    await pline(`${Monnam(magr)} seems to grimace.`);
+                }
+                if (!rn2(10) || game.flags?.moonphase === NEW_MOON)
+                    note_unported_uhitm('mhitm_ad_ston:do_stone_u');
+            }
+        }
+    } else {
+        note_unported_uhitm('mhitm_ad_ston:mhitm');
     }
 }
 

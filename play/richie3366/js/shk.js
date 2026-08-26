@@ -22,7 +22,9 @@
 // SetVoice / Soundeffect robbed mutter; leave-bill verbalize;
 // shk_move Fast + sobj_at pickaxe (u_entered_shop doorway is D-1080);
 // addupbill body; clear_unpaid walks in setpaid; mongone full;
-// mnearto full (door yank uses enexto/rloc); paygd; M1_NOHEAD has_head;
+// mnearto full (door yank uses enexto/rloc; home_shk still coord set);
+// after_shk_move occupancy check_special_room (bill_p==-1000 producer);
+// losedogs make_happy_shoppers; paygd; M1_NOHEAD has_head;
 // container bill_box_content / contained_cost; remote_burglary; gem glass
 // pseudo-ID in get_cost; arti_cost; Hallu currency ROLL_FROM;
 // get_obj_location buried (minvent via distant_name); sell-side quotes partial;
@@ -52,7 +54,7 @@ import {
     DISPLACED, LOW_PM, Has_contents, MAXULEV, ECMD_OK, ECMD_TIME,
     EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE,
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
-    W_SWAPWEP, W_QUIVER, TT_PIT,
+    W_SWAPWEP, W_QUIVER, TT_PIT, MIGR_APPROX_XY, MON_FLOOR,
     SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, CANDLESHOP,
     ARTICLE_THE,
 } from './const.js';
@@ -70,7 +72,7 @@ import {
 import { cansee, recalc_block_point } from './vision.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
-import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT } from './generated/monsters_data.js';
+import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT, PM_ROGUE } from './generated/monsters_data.js';
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable } from './shknam.js';
 import {
@@ -85,8 +87,8 @@ import {
     ansimpleoname,
 } from './objnam.js';
 import {
-    is_human, is_demon, nolimbs, is_floater, is_flyer, amorphous, M1_SLITHY,
-    passes_walls,
+    is_human, is_demon, is_watch, nolimbs, is_floater, is_flyer, amorphous,
+    M1_SLITHY, passes_walls,
 } from './monsters.js';
 import { nhgetch } from './input.js';
 import {
@@ -94,7 +96,8 @@ import {
 } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import { yn_function } from './getline.js';
-import { enexto, rloc_to_flag } from './teleport.js';
+import { enexto, rloc_to_flag, migrate_to_level } from './teleport.js';
+import { ledger_no } from './dungeon.js';
 import { Is_candle } from './timeout.js';
 import { addinv } from './u_init.js';
 
@@ -562,6 +565,11 @@ function currency(amount) {
 
 function Role_if(pm) {
     return game.urole?.mnum === pm;
+}
+
+/** C hack.h sgn */
+function sgn(n) {
+    return n > 0 ? 1 : n < 0 ? -1 : 0;
 }
 
 /** C shk.c oid_price_adjustment — no RNG. */
@@ -1250,21 +1258,107 @@ export async function make_angry_shk(shkp, _ox, _oy) {
 }
 
 /**
- * C ref: shk.c make_happy_shk — pacify + clear robbed/following.
- * Named omit: Role_if Rogue adjalign; home_shk / migrate_to_level /
- * make_happy_shoppers / kops_gone / pacify_guards; vanish pline.
+ * C ref: shk.c angry_shk_exists — any live isshk still ANGRY.
+ * Walks next_shkp(withbill=FALSE); rile side-effect matches C.
  */
-export async function make_happy_shk(shkp, _silentkops) {
+function angry_shk_exists() {
+    let startIdx = 0;
+    for (;;) {
+        const { shkp, nextIdx } = next_shkp(startIdx, false);
+        if (!shkp) return false;
+        if (ANGRY(shkp)) return true;
+        startIdx = nextIdx;
+    }
+}
+
+/**
+ * C ref: shk.c kops_gone — mongone every live S_KOP; pline unless silent.
+ * Snapshot then mongone: JS fmon is an array (C saves nmon).
+ */
+async function kops_gone(silent) {
+    let cnt = 0;
+    const kops = (game.fmon || []).filter((mtmp) => (
+        mtmp && (mtmp.mhp | 0) >= 1 && mtmp.data?.mlet === 'S_KOP'
+    ));
+    if (kops.length) {
+        const { mongone } = await import('./mon.js');
+        for (const mtmp of kops) {
+            if (canspotmon(mtmp)) cnt++;
+            await mongone(mtmp);
+        }
+    }
+    if (cnt && !silent) {
+        await pline(
+            `The Kop${plur(cnt)} (disappointed) vanish${cnt === 1 ? 'es' : ''} into thin air.`,
+        );
+    }
+}
+
+/**
+ * C ref: mon.c pacify_guards / pacify_guard — is_watch → mpeaceful.
+ * Clone (mon.js→trap/monmove→shk cycle). iter_mons skips dead/offmap.
+ */
+function pacify_guards() {
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) < 1) continue;
+        if ((mtmp.mstate | 0) !== MON_FLOOR) continue;
+        if (is_watch(mtmp.data)) mtmp.mpeaceful = 1;
+    }
+}
+
+/**
+ * C ref: shk.c make_happy_shoppers — kops+guards iff no angry shk remains.
+ * Caller losedogs still named.
+ */
+export async function make_happy_shoppers(silentkops) {
+    if (!angry_shk_exists()) {
+        await kops_gone(!!silentkops);
+        pacify_guards();
+    }
+}
+
+/**
+ * C ref: shk.c make_happy_shk — pacify, adjalign (non-Rogue), home or
+ * migrate+dismiss_kops, then make_happy_shoppers. D-1540.
+ * Named omit: full mnearto yank in home_shk.
+ */
+export async function make_happy_shk(shkp, silentkops) {
     if (!shkp?.isshk) return;
     const wasmad = ANGRY(shkp);
-    pacify_shk(shkp, false);
     const eshkp = ESHK(shkp);
+    pacify_shk(shkp, false);
     if (eshkp) {
         eshkp.following = 0;
         eshkp.robbed = 0;
     }
-    // home_shk / migrate / shoppers deferred
-    if (wasmad) await pline(`${Shknam(shkp)} calms down.`);
+    if (!Role_if(PM_ROGUE)) adjalign(sgn(game.u?.ualign?.type | 0));
+    if (!inhishop(shkp)) {
+        const shk_nam = shkname(shkp);
+        let vanished = canseemon(shkp);
+        if (on_level(eshkp?.shoplevel, game.u?.uz)) {
+            await home_shk(shkp, false);
+            if (canspotmon(shkp)) {
+                await pline(
+                    `${Shknam(shkp)} returns to ${noit_mhis(shkp)} shop.`,
+                );
+                vanished = false;
+            }
+        } else {
+            if (sensemon(shkp)) vanished = true;
+            const { mdrop_special_objs } = await import('./mon.js');
+            mdrop_special_objs(shkp);
+            migrate_to_level(
+                shkp, ledger_no(eshkp?.shoplevel), MIGR_APPROX_XY, eshkp?.shd,
+            );
+            if (eshkp) eshkp.dismiss_kops = true;
+        }
+        if (vanished) {
+            await pline(`Satisfied, ${shk_nam} suddenly disappears!`);
+        }
+    } else if (wasmad) {
+        await pline(`${Shknam(shkp)} calms down.`);
+    }
+    await make_happy_shoppers(silentkops);
 }
 
 /**
@@ -1320,7 +1414,7 @@ async function mnearto_shk_door(shkp, x, y) {
  * C ref: shk.c pay_for_damage — bill/mollify/pursue after shop damage this
  * turn (damagelist.when == moves && cost).
  * Named omissions: SetVoice; sleep(1); full mnearto yank; mbodypart lunge;
- * noit_mhis; pacify_guards via make_happy path not used here.
+ * noit_mhis;
  */
 export async function pay_for_damage(dmgstr, cant_mollify) {
     const u = game.u || {};
@@ -1448,7 +1542,7 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
             if (game.flags) game.flags.botl = true;
         }
         await pline(`Mollified, ${shkname(shkp)} accepts your restitution.`);
-        home_shk(shkp, false);
+        await home_shk(shkp, false);
         pacify_shk(shkp, false);
         if ((shkp.mx | 0) !== sx || (shkp.my | 0) !== sy) {
             if (was_outside && canseemon(shkp)) {
@@ -3424,22 +3518,40 @@ function rouse_shk(shkp, _verbosely) {
 }
 
 /**
- * C ref: shk.c home_shk — return to shk.x,shk.y (mnearto/RLOC deferred).
+ * C ref: shk.c after_shk_move — bill_p==-1000 re-entry reset.
+ * Occupancy check_special_room named omit (sentinel producer still unnamed).
  */
-function home_shk(shkp, _killkops) {
+function after_shk_move(shkp) {
+    const eshkp = ESHK(shkp);
+    if (eshkp?.bill_p === -1000 && inhishop(shkp)) {
+        eshkp.bill_p = eshkp.bill || [];
+    }
+}
+
+/**
+ * C ref: shk.c home_shk — return to shk.x,shk.y then maybe kops.
+ * Named omit: full mnearto(RLOC_NOMSG) yank (coord set like prior door path).
+ */
+async function home_shk(shkp, killkops) {
     const eshk = ESHK(shkp);
-    if (!eshk?.shk) return;
-    const x = eshk.shk.x | 0;
-    const y = eshk.shk.y | 0;
-    const ox = shkp.mx;
-    const oy = shkp.my;
-    if (ox === x && oy === y) return;
-    shkp.mx = x;
-    shkp.my = y;
-    if (ox != null && oy != null) newsym(ox, oy);
-    newsym(x, y);
+    if (eshk?.shk) {
+        const x = eshk.shk.x | 0;
+        const y = eshk.shk.y | 0;
+        const ox = shkp.mx;
+        const oy = shkp.my;
+        if (ox !== x || oy !== y) {
+            shkp.mx = x;
+            shkp.my = y;
+            if (ox != null && oy != null) newsym(ox, oy);
+            newsym(x, y);
+        }
+    }
     if (game.level?.flags) game.level.flags.has_shop = 1;
-    // after_shk_move / kops deferred
+    if (killkops) {
+        await kops_gone(true);
+        pacify_guards();
+    }
+    after_shk_move(shkp);
 }
 
 /** C ref: shk.c costly_adjacent — edge or free spot. */
@@ -3514,7 +3626,7 @@ async function inherits(shkp, numsk, croaked, silently) {
         taken = uinshop;
         // skip → rouse/home below
         rouse_shk(shkp, false);
-        if (!inhishop(shkp)) home_shk(shkp, false);
+        if (!inhishop(shkp)) await home_shk(shkp, false);
         setpaid(shkp);
         if (taken) set_repo_loc(shkp);
         return taken;
@@ -3547,7 +3659,7 @@ async function inherits(shkp, numsk, croaked, silently) {
     if (eshkp.following || ANGRY(shkp) || take) {
         if (!(game.invent && game.invent.length)) {
             rouse_shk(shkp, false);
-            if (!inhishop(shkp)) home_shk(shkp, false);
+            if (!inhishop(shkp)) await home_shk(shkp, false);
             setpaid(shkp);
             return false;
         }
@@ -3580,7 +3692,7 @@ async function inherits(shkp, numsk, croaked, silently) {
             eshkp.robbed = 0;
         }
         rouse_shk(shkp, false);
-        if (!inhishop(shkp)) home_shk(shkp, false);
+        if (!inhishop(shkp)) await home_shk(shkp, false);
     }
     setpaid(shkp);
     if (taken) set_repo_loc(shkp);

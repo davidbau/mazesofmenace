@@ -77,7 +77,7 @@ import {
     canspotmon as display_canspotmon, sensemon, Norep, verbalize,
 } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
-import { worm_move, worm_nomove } from './worm.js';
+import { worm_move, worm_nomove, see_wsegs } from './worm.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { tactics } from './wizard.js';
 import { rn2, rnd, d } from './rng.js';
@@ -1431,7 +1431,11 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
         if (await mpickstuff(mtmp)) {
             mmoved = MMOVE_DONE;
         }
-        // minvis newsym deferred
+        // C: postmov :1683–1686 — minvis newsym + see_wsegs (D-1529)
+        if (mtmp.minvis) {
+            newsym(mtmp.mx, mtmp.my);
+            if (mtmp.wormno) see_wsegs(mtmp);
+        }
     }
 
     // C: maybe_spin_web (monmove.c) before hides_under

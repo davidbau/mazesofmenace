@@ -50,7 +50,7 @@ import {
     setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
-import { calc_capacity, fully_identify_obj, encumber_msg } from './invent.js';
+import { calc_capacity, fully_identify_obj, encumber_msg, getobj_take_count, getobj_apply_count } from './invent.js';
 import { add_to_minv, mpickobj } from './makemon.js';
 import { finish_quest } from './quest.js';
 import { align_gname } from './roles.js';
@@ -295,10 +295,11 @@ function throwable_lets() {
 }
 
 /**
- * C ref: invent.c getobj("throw", throw_ok) — loop on missing letter;
- * re-prompt after more() when prior topline still needs acknowledgment.
- * `?`/`*` → display_pickinv_reply (DOWNPLAY food selectable via `*`).
+ * C ref: invent.c getobj("throw", throw_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT).
+ * Count prefix: gold may use a count; other stacks can only throw one
+ * (C `:2028–2047`) then split_otmp. `?`/`*` → display_pickinv_reply.
  * CMDQ_KEY from itemactions / fireassist consumed before interactive prompt.
+ * Canned CMDQ_INT named.
  */
 async function getobj_throw() {
     // C getobj: cmdq_pop CMDQ_KEY before interactive prompt
@@ -329,8 +330,11 @@ async function getobj_throw() {
         if (disp?.setCursor) disp.setCursor(prompt.length, 0);
 
         const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+        let ch = String.fromCharCode(key);
+        const counted = await getobj_take_count(ch, true);
+        if (counted.retry) continue;
+        ch = counted.ch;
+        if (ch.charCodeAt(0) === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
             if (game.flags?.verbose !== false) await pline('Never mind.');
             return null;
         }
@@ -351,8 +355,13 @@ async function getobj_throw() {
                 await pline('You cannot throw that!');
                 return null;
             }
+            const got = await getobj_apply_count(
+                picked, 'throw', counted.cntgiven, counted.cnt,
+            );
+            if (!got) return null;
+            if (got.retry) continue;
             game._pending_message = '';
-            return picked;
+            return got;
         }
         const otmp = (game.invent || []).find(o => o.invlet === ch);
         if (!otmp) {
@@ -364,8 +373,13 @@ async function getobj_throw() {
             await pline('You cannot throw that!');
             return null;
         }
+        const got = await getobj_apply_count(
+            otmp, 'throw', counted.cntgiven, counted.cnt,
+        );
+        if (!got) return null;
+        if (got.retry) continue;
         game._pending_message = '';
-        return otmp;
+        return got;
     }
 }
 

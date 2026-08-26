@@ -32,7 +32,7 @@ import {
     tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
     tty_destroy_nhwindow, NHW_MENU, NHW_TEXT,
 } from './tty/wintty.js';
-import { nhgetch } from './input.js';
+import { xwaitforspace } from './tty/getline.js';
 
 const Moloch = 'Moloch';
 
@@ -97,7 +97,10 @@ function monname(idx) {
 // src/questpgr.c:50 ldrname(), :121 neminame(), :131 guardname()
 function ldrname() { return monname(game.urole.ldrnum); }
 function neminame() { return monname(game.urole.neminum); }
-function guardname() { return monname(game.urole.guardnum); }
+function guardname() {
+    const pm = mons[game.urole.guardnum];
+    return pm.pmnames[2] ?? pm.pmnames[0] ?? pm.pmnames[1];
+}
 function intermed() { return game.urole.intermed; }
 function homebase() { return game.urole.homebase; }
 
@@ -265,8 +268,9 @@ async function deliver_by_window(msg, how) {
 
     await tty_display_nhwindow(win);
     /* display_nhwindow(win, TRUE) blocks in dmore() until a key arrives; the
-       recorder captures the frame at that read. */
-    await nhgetch();
+       recorder captures the frame at that read. dmore() accepts quitchars,
+       not every key, so control and command keys leave the page open. */
+    await xwaitforspace(' \r\n\x1b');
     tty_destroy_nhwindow(win);
 }
 

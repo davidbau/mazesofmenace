@@ -45,6 +45,10 @@ function note_unported_read(what) {
 
 // src/read.c:330 doread()
 export async function doread(read_ok) {
+    const { check_capacity } = await import('./hack.js');
+    if (await check_capacity(null))
+        return ECMD_OK;
+
     const scroll = await getobj('read', read_ok, GETOBJ_PROMPT);
     if (!scroll)
         return ECMD_CANCEL;

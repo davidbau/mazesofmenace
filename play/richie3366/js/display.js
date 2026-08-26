@@ -1,7 +1,8 @@
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph (glyph_updates / show_glyph_change
 // D-1219; Hallu classifier D-1221), docrt (in_docrt), cls, flush_screen,
-// suppress_map_output (D-1126),
+// suppress_map_output (D-1126), show_region overlay (D-1528),
+// see_wsegs / is_worm_tail (D-1529),
 // shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
 import { game } from './gstate.js';
@@ -25,6 +26,7 @@ import {
     BC_BALL, BC_CHAIN,
     ENGRAVE, BURN, HEADSTONE,
     IS_OBSTRUCTED, IS_DOOR, IS_ROOM, IS_WALL, IS_FURNITURE,
+    ACCESSIBLE,
     Is_waterlevel, Is_airlevel,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
@@ -87,12 +89,15 @@ import {
 import { depth, dist2 } from './hacklib.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { observe_object, near_capacity } from './invent.js';
+import { visible_region_at, show_region } from './region.js';
+import { see_wsegs } from './worm.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
 const BOULDER_OTYP = objectNames.indexOf('BOULDER');
 // C display_monster M_AP_OBJECT default corpsenm when !has_mcorpsenm
 const PM_TENGU = monsterNames.indexOf('PM_TENGU');
+const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
 // C ref: objects.h MARKER — obj_is_generic gem/spell ranges
 const FIRST_REAL_GEM_OTYP = objectNames.indexOf('DILITHIUM_CRYSTAL');
 const LAST_GLASS_GEM_OTYP = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
@@ -237,6 +242,11 @@ const MLET_CH = {
 
 function mon_at_display(x, y) {
     const steed = game.u?.usteed;
+    // C m_at: level.monsters[][] includes worm segs (place_worm_seg).
+    const seg = game._level_monsters?.get(`${x},${y}`);
+    if (seg && seg !== steed && (seg.mhp == null || (seg.mhp | 0) > 0)) {
+        return seg;
+    }
     for (const m of game.fmon || []) {
         // C: remove_monster while mounted — steed not on the map grid
         if (steed && m === steed) continue;
@@ -244,6 +254,26 @@ function mon_at_display(x, y) {
             return m;
     }
     return null;
+}
+
+/** C display.c :500 — is_worm_tail(mon): display pos is not the head. */
+function is_worm_tail(mon, x, y) {
+    return !!(mon && ((x | 0) !== (mon.mx | 0) || (y | 0) !== (mon.my | 0)));
+}
+
+/**
+ * C ref: display.c display_monster worm_tail — what_mon(PM_LONG_WORM_TAIL,
+ * rn2_on_display_rng). petnum_to_glyph is the same mlet + mon_map_attr.
+ */
+function worm_tail_glyph() {
+    let mnum = PM_LONG_WORM_TAIL;
+    if (game.u?.Hallucination) mnum = rn2_on_display_rng(NUMMONS);
+    const ptr = mons(mnum);
+    const ch = MLET_CH[ptr?.mlet] || '~';
+    const color = (mnum != null && mnum >= 0)
+        ? (mcolors[mnum] ?? CLR_GRAY)
+        : CLR_GRAY;
+    return { ch, color };
 }
 
 // C ref: display.h _mon_visible — invis/undetected only (caller handles sight)
@@ -399,6 +429,74 @@ export function warning_of(mon) {
     let tmp = (mon.m_lev | 0) / 4 | 0;
     if (tmp > WARNCOUNT - 1) tmp = WARNCOUNT - 1;
     return tmp;
+}
+
+/**
+ * C ref: display.c mon_overrides_region — newsym chooses monster vs
+ * gas-cloud glyph when both occupy the cell. Swallow is already
+ * handled by newsym's early return. worm_tail cells use m_at occupancy
+ * (D-1529); C first-branch already requires x==mx && y==my.
+ */
+function mon_overrides_region(mon, mx, my) {
+    const u = game.u || {};
+    if (u.uswallow && (!mon || mon !== u.ustuck)) return false;
+    if (mon) {
+        if ((mx | 0) === (mon.mx | 0) && (my | 0) === (mon.my | 0)
+            && (sensemon(mon) || mon_warning(mon))) {
+            return true;
+        }
+        const xr = u.xray_range | 0;
+        const r = xr > 1 ? xr : 1;
+        const ap = M_AP_TYPE(mon);
+        if (!hero_Blind() && mon_visible(mon)
+            && ap !== M_AP_FURNITURE && ap !== M_AP_OBJECT
+            && distu(mx, my) <= r * (r + 1)) {
+            return true;
+        }
+    }
+    const loc = game.level?.at(mx, my);
+    return glyph_is_invisible(loc);
+}
+
+/**
+ * C ref: dbridge.c is_pool_or_lava — local clone (hack.js imports
+ * display). DRAWBRIDGE_UP under-typ (is_moat / DB_LAVA) named.
+ */
+function is_pool_or_lava_disp(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const t = loc.typ | 0;
+    if (t === LAVAPOOL || t === LAVAWALL) return true;
+    if (t === POOL || t === MOAT || t === WATER) return true;
+    return false;
+}
+
+/**
+ * C ref: display.c newsym :993–998 — paint the cloud and skip the
+ * rest of newsym when the cell is accessible or a visible cloud
+ * over pool/lava and the monster does not take precedence.
+ * @returns {boolean} true if caller should return
+ */
+function newsym_try_show_region(x, y, loc, mon) {
+    const reg = visible_region_at(x, y);
+    if (reg && (ACCESSIBLE(loc.typ | 0)
+                || (reg.visible && is_pool_or_lava_disp(x, y)))) {
+        if (!mon_overrides_region(mon, x, y)) {
+            show_region(reg, x, y);
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: display.c _map_location — after mapping, if show && !Blind
+ * && visible_region_at then show_region (does not write memory).
+ */
+function maybe_overlay_visible_region(x, y, show) {
+    if (!show || hero_Blind()) return;
+    const reg = visible_region_at(x, y);
+    if (reg) show_region(reg, x, y);
 }
 
 /**
@@ -1675,10 +1773,17 @@ export function terrain_glyph(loc, x, y) {
 function cell_shows_displayed_monster(mtmp, x, y) {
     if (!mtmp) return false;
     if (game.u?.uswallow) return false;
-    if (cansee(x, y) && (mon_visible(mtmp) || tp_sensemon(mtmp))) return true;
-    if (tp_sensemon(mtmp) || (mon_visible(mtmp) && see_with_infrared(mtmp))) {
+    const worm_tail = is_worm_tail(mtmp, x, y);
+    if (cansee(x, y)) {
+        // C: see_it = mon_visible || (!worm_tail && (tp || MATCH_WARN))
+        // Detect_monsters cansee arm still named.
+        return !!(mon_visible(mtmp) || (!worm_tail && tp_sensemon(mtmp)));
+    }
+    if (tp_sensemon(mtmp) || MATCH_WARN_OF_MON(mtmp)
+        || (mon_visible(mtmp) && see_with_infrared(mtmp))) {
         return true;
     }
+    if (worm_tail) return false;
     const u = game.u || {};
     return !!(u.Detect_monsters
         || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0));
@@ -1693,6 +1798,14 @@ function cell_shows_displayed_monster(mtmp, x, y) {
  */
 function gbuf_show_kind(x, y, ch, color, decgfx, loc) {
     if (ch === 'I' && !decgfx) return 'invisible';
+    // C show_glyph classifies the already-chosen id; region overlay is
+    // cmap S_cloud / S_poisoncloud, not the occupant under the cloud.
+    const reg = visible_region_at(x, y);
+    if (reg && !hero_Blind()) {
+        const poison = reg.glyph === 'S_poisoncloud';
+        const want = poison ? CLR_BRIGHT_GREEN : CLR_GRAY;
+        if (ch === '#' && color === want) return 'cmap';
+    }
     const mtmp = mon_at_display(x, y);
     if (mtmp && cell_shows_displayed_monster(mtmp, x, y)) {
         // Mimic object: M_AP_TYPE, not a second obj_glyph Hallu roll.
@@ -2557,7 +2670,9 @@ export function feel_newsym(x, y) {
 // C ref: display.c _map_location(x,y,show) — remember non-living contents
 // (object / trap / engraving / background); paint when show.
 // Used under hero/monster so out-of-sight memory keeps the object glyph.
-// Named omissions: Hallucination trap glyphs; visible_region_at after show.
+// After mapping: show && !Blind && visible_region_at → show_region (D-1528).
+// Named omissions: Hallucination trap glyphs; DRAWBRIDGE_UP under-typ
+// in the newsym pool/lava region test.
 export function map_location(x, y, show) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
@@ -2568,6 +2683,7 @@ export function map_location(x, y, show) {
         // C: map_object(obj, show) — Hallu statue memory burns extra
         map_object(obj, show);
         update_lastseentyp(x, y);
+        maybe_overlay_visible_region(x, y, show);
         return;
     }
     // C: t_at && tseen && !covers_traps → map_trap
@@ -2575,6 +2691,7 @@ export function map_location(x, y, show) {
     if (trap && trap.tseen && !covers_traps(x, y)) {
         map_trap(trap, show);
         update_lastseentyp(x, y);
+        maybe_overlay_visible_region(x, y, show);
         return;
     }
     if (spot_shows_engravings(loc)) {
@@ -2591,6 +2708,7 @@ export function map_location(x, y, show) {
     if (mem) loc.remembered_glyph = { ch: g.ch, color: g.color, decgfx: g.decgfx };
     if (show) show_glyph_cell(x, y, g.ch, g.color, g.decgfx);
     update_lastseentyp(x, y);
+    maybe_overlay_visible_region(x, y, show);
 }
 
 function map_location_memory(x, y) {
@@ -2624,7 +2742,8 @@ export function newsym(x, y) {
             loc.waslit = !!loc.lit;
             const hep = engr_at(x, y);
             if (hep) hep.erevealed = 1;
-            // poison/steam regions deferred (mon_overrides_region)
+            // C: poison/steam region may hide self (mon_overrides_region)
+            if (newsym_try_show_region(x, y, loc, mon_at_display(x, y))) return;
             const see_self = canspotself();
             // C: _map_location(x, y, !see_self); if (see_self) display_self()
             map_location(x, y, !see_self);
@@ -2639,19 +2758,24 @@ export function newsym(x, y) {
 
     // C ref: display.c newsym — monster via cansee+mon_visible, or infrared
     const mtmp = mon_at_display(x, y);
+    const worm_tail = is_worm_tail(mtmp, x, y);
     if (cansee(x, y)) {
         // C: lev->waslit = (lev->lit != 0); /* remember lit condition */
         loc.waslit = !!loc.lit;
         // C: erevealed = 1 even when covered by objects or a monster
         const epSee = engr_at(x, y);
         if (epSee) epSee.erevealed = 1;
-        if (mtmp && (mon_visible(mtmp) || tp_sensemon(mtmp)
-            || MATCH_WARN_OF_MON(mtmp))) {
+        // C: accessible / pool-lava visible region before monster/map
+        if (newsym_try_show_region(x, y, loc, mtmp)) return;
+        // C: see_it = mon_visible || (!worm_tail && (tp || MATCH_WARN))
+        // Detect_monsters cansee arm still named.
+        const see_it = mtmp && (mon_visible(mtmp)
+            || (!worm_tail && (tp_sensemon(mtmp) || MATCH_WARN_OF_MON(mtmp))));
+        if (see_it) {
             // C: _map_location(x, y, FALSE) then display_monster — memory
             // keeps object under the monster so leaving sight does not
             // replace ) with remembered corridor.
             // show_mon_or_warn clears invisible memory when showing mon
-            // Named omission: Detect_monsters cansee arm; worm_tail skip.
             if (glyph_is_invisible(loc)) {
                 loc.remembered_glyph = null;
                 map_location_memory(x, y);
@@ -2672,12 +2796,12 @@ export function newsym(x, y) {
                 }
                 return;
             }
-            const mg = mon_glyph(mtmp);
+            const mg = worm_tail ? worm_tail_glyph() : mon_glyph(mtmp);
             show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
             return;
         }
         // C: else if (mon && mon_warning(mon) && !worm_tail) display_warning
-        if (mtmp && mon_warning(mtmp)) {
+        if (mtmp && mon_warning(mtmp) && !worm_tail) {
             display_warning(mtmp);
             return;
         }
@@ -2686,65 +2810,31 @@ export function newsym(x, y) {
             map_invisible(x, y);
             return;
         }
-        // C ref: display.c _map_location — vobj_at before trap/engraving/bg
-        // C: map_object(obj, show) — Hallu statue memory burns extra
-        const obj = objects_at(x, y);
-        if (obj && !covers_objects(x, y)) {
-            map_object(obj, true);
-            update_lastseentyp(x, y);
-            return;
-        }
-        // C: t_at && tseen && !covers_traps → map_trap
-        const trap = t_at_display(x, y);
-        if (trap && trap.tseen && !covers_traps(x, y)) {
-            map_trap(trap, true);
-            update_lastseentyp(x, y);
-            return;
-        }
-        // C: spot_shows_engravings && engr_at && erevealed → map_engraving
-        if (spot_shows_engravings(loc)) {
-            const ep = engr_at(x, y);
-            if (ep && ep.erevealed && !covers_traps(x, y)) {
-                const eg = engraving_glyph(loc);
-                show_glyph_cell(x, y, eg.ch, eg.color, eg.dec);
-                if (game.level?.flags?.hero_memory) {
-                    loc.remembered_glyph = {
-                        ch: eg.ch, color: eg.color, decgfx: eg.dec,
-                    };
-                }
-                update_lastseentyp(x, y);
-                return;
-            }
-        }
-        const tg = terrain_glyph(loc, x, y);
-        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
-        if (game.level?.flags?.hero_memory) {
-            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
-        }
-        update_lastseentyp(x, y);
+        // C: _map_location(x, y, 1) — object/trap/engraving/bg then
+        // show_region overlay when !Blind (D-1528)
+        map_location(x, y, true);
         return;
     }
 
     // C: !cansee — still show sensed monsters (infrared / telepathy / MATCH_WARN)
     // C order: see_it (tp_sensemon / MATCH_WARN / infrared+visible) then
-    // Detect_monsters, then mon_warning, then invisible glyph, else memory.
-    // Named omission: worm tails.
+    // Detect_monsters && !worm_tail, then mon_warning && !worm_tail.
     if (mtmp && (tp_sensemon(mtmp) || MATCH_WARN_OF_MON(mtmp)
         || (mon_visible(mtmp) && see_with_infrared(mtmp)))) {
-        const mg = mon_glyph(mtmp);
+        const mg = worm_tail ? worm_tail_glyph() : mon_glyph(mtmp);
         show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
         return;
     }
     {
         const u = game.u || {};
-        if (mtmp && (u.Detect_monsters
+        if (mtmp && !worm_tail && (u.Detect_monsters
             || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0))) {
             const mg = mon_glyph(mtmp);
             show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
             return;
         }
     }
-    if (mtmp && mon_warning(mtmp)) {
+    if (mtmp && mon_warning(mtmp) && !worm_tail) {
         display_warning(mtmp);
         return;
     }
@@ -2894,7 +2984,8 @@ export function swallowed(first = 0) {
  * (e.g. after teleds moves the hero out of range).
  * Warn_of_mon counts warntype.obj & mflags2 then Sting_effects (D-1493).
  * MATCH_WARN overlay is newsym see_it (D-1514).
- * Named omissions: worm see_wsegs; MON_STILL_ARRIVING skip.
+ * see_wsegs refreshes tail cells (D-1529).
+ * Named omissions: MON_STILL_ARRIVING skip; Detect_monsters cansee.
  */
 export function see_monsters() {
     if (game.defer_see_monsters) return;
@@ -2908,7 +2999,7 @@ export function see_monsters() {
         if (!mon || (mon.mhp != null && mon.mhp <= 0)) continue;
         if (!mon.mx) continue;
         newsym(mon.mx, mon.my);
-        // C: if (mon->wormno) see_wsegs(mon) — named omit
+        if (mon.wormno) see_wsegs(mon);
         if (warn_of_mon
             && (warn_obj & (mon.data?.mflags2 | 0)) !== 0) {
             new_warn_obj_cnt++;

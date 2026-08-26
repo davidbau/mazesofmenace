@@ -23,13 +23,14 @@ import { doswapweapon, dowield, doquiver_core, is_ammo } from './wield.js';
 import { greatest_erosion } from './do_wear.js';
 import { rnl } from './rng.js';
 import { is_pole, is_spear } from './u_init.js';
-import { You } from './pline.js';
+import { You, You_cant } from './pline.js';
 import { ammo_and_launcher } from './wield.js';
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED } from './const.js';
 import { getobj, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_PROMPT, GETOBJ_ALLOWCNT } from './invent.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
-import { throws_rocks, is_orc, is_elf, is_unicorn } from './mondata.js';
+import { throws_rocks, is_orc, is_elf, is_unicorn, notake,
+         nohands } from './mondata.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { is_weptool } from './mkobj.js';
 import { hitval, weapon_hit_bonus } from './weapon.js';
@@ -530,7 +531,23 @@ function throw_ok(obj) {
     return GETOBJ_DOWNPLAY;
 }
 
+async function ok_to_throw() {
+    game.multi = 0;
+    if (notake(game.youmonst.data)) {
+        await You('are physically incapable of throwing or shooting anything.');
+        return false;
+    }
+    if (nohands(game.youmonst.data)) {
+        await You_cant('throw or shoot without hands.');
+        return false;
+    }
+    const { check_capacity } = await import('./hack.js');
+    return !await check_capacity(null);
+}
+
 export async function dothrow() {
+    if (!await ok_to_throw())
+        return ECMD_OK;
     const obj = await getobj('throw', throw_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
 
     return obj ? await throw_obj(obj, 0) : ECMD_OK;
@@ -643,6 +660,9 @@ export async function dofire() {
     let obj;
     let skip_fireassist = false;
     let res = ECMD_OK;
+
+    if (!await ok_to_throw())
+        return ECMD_OK;
 
     if (game.u.uwep && game.u.uwep.oartifact)
         note_unported_dothrow('dofire:AutoReturn');

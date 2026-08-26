@@ -43,8 +43,7 @@ import { is_pit } from './const.js';
 import { Levitation, Stone_resistance } from './youprop.js';
 import { st_gloves, st_corpse, st_petrifies, st_resists, W_ARMG } from './const.js';
 import { worn } from './do_wear.js';
-import { touch_petrifies } from './mondata.js';
-import { nohands } from './mondata.js';
+import { nohands, notake, touch_petrifies } from './mondata.js';
 
 function note_unported_pickup(what) {
     (game.unported ||= new Set()).add(what);
@@ -193,9 +192,14 @@ export async function pickup(what) {
             note_unported_pickup('pickup:cant_reach_floor');
             return 0;
         }
+        const cannotTake = notake(game.youmonst.data);
         if ((game.multi && !game.context.run)
-            || (autopickup && !game.flags?.autopickup)) {
+            || (autopickup && !game.flags?.autopickup)
+            || cannotTake) {
             await check_here(false);
+            if (cannotTake && OBJ_AT(game.u.ux, game.u.uy)
+                && (autopickup || game.flags?.autopickup))
+                await You('are physically incapable of picking anything up.');
             return 0;
         }
 
@@ -447,7 +451,7 @@ async function do_loot_cont(cobj, ccount, ci) {
 // confused arm, blind cockatrice check, multi-container menu, grave digging,
 // and saddle removal are recorded.
 export async function doloot() {
-    if (check_capacity(null))
+    if (await check_capacity(null))
         return ECMD_OK;
 
     if (nohands(game.youmonst.data)) {

@@ -21,6 +21,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL,
          ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
+         CMDQ_EXTCMD, IFBURIED, WIZMODECMD, NOFUZZERCMD,
          xdir, ydir, xytodir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          GFILTER_VIEW, GLOC_INTERESTING,
@@ -28,6 +29,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          PARANOID_TRAP,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
+import { EXTCMDLIST } from './generated/extcmdlist_data.js';
 
 const STATUE_OTYP = objectNames.indexOf('STATUE');
 const BOULDER_OTYP = objectNames.indexOf('BOULDER');
@@ -101,6 +103,60 @@ function cmdq_pop() {
 function cmdq_add_ec(fn) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
     game._cmdq_canned.push(fn);
+}
+
+/**
+ * C ref: cmd.c ext_func_tab_from_func — first extcmdlist row with matching
+ * ef_txt (INTERNALCMD included; "altdip" is dip_into).
+ * @param {string} txt
+ * @returns {typeof EXTCMDLIST[number] | null}
+ */
+export function ext_func_tab_from_txt(txt) {
+    if (txt == null || txt === '') return null;
+    const want = String(txt).toLowerCase();
+    for (const e of EXTCMDLIST) {
+        if (e.txt.toLowerCase() === want) return e;
+    }
+    return null;
+}
+
+/**
+ * C ref: cmd.c can_do_extcmd `:462–488`. Lua NHCB_CMD_BEFORE named omit.
+ * altdip is INTERNALCMD with no IFBURIED — buried hero is refused.
+ * @param {typeof EXTCMDLIST[number] | null | undefined} extcmd
+ * @returns {Promise<boolean>}
+ */
+export async function can_do_extcmd(extcmd) {
+    if (!extcmd) return false;
+    const ecflags = extcmd.flags | 0;
+    const wizard = !!(game.flags?.debug || game.flags?.wizard || game.wizard);
+    if (!wizard && (ecflags & WIZMODECMD)) {
+        await pline(`Unavailable command '${extcmd.txt}'.`);
+        return false;
+    }
+    if (game.u?.uburied && !(ecflags & IFBURIED)) {
+        await pline("You can't do that while you are buried!");
+        return false;
+    }
+    if (game.iflags?.debug_fuzzer && (ecflags & NOFUZZERCMD)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C rhack do_cmdq_extcmd: can_do_extcmd then ef_funct. Failure
+ * reset_cmd_vars(TRUE) drops leftover CQ_CANNED keys.
+ * @param {{ typ: number, txt: string, run: () => Promise<number> }} cq
+ * @returns {Promise<number>}
+ */
+async function run_cmdq_extcmd(cq) {
+    const tab = ext_func_tab_from_txt(cq.txt);
+    if (!tab || !(await can_do_extcmd(tab))) {
+        cmdq_clear();
+        return ECMD_OK;
+    }
+    return (await cq.run()) | 0;
 }
 
 /**
@@ -1430,7 +1486,12 @@ export async function rhack(key) {
     // C: cmdq_pop before parse — fireassist swap/retry lives here
     const canned = (key === 0) ? cmdq_pop() : null;
     if (canned) {
-        const res = await canned();
+        if (!game.context) game.context = {};
+        // C: CMDQ_EXTCMD uses ext_func_tab (altdip INTERNALCMD). Bare
+        // function clones stay for other canned arms (named).
+        const res = (typeof canned === 'object' && canned.typ === CMDQ_EXTCMD)
+            ? await run_cmdq_extcmd(canned)
+            : await canned();
         // C rhack: (res & ECMD_TIME) → context.move; CANCEL|FAIL →
         // reset_cmd_vars(TRUE) clears remaining CQ_CANNED. Boolean true
         // from doapply is ECMD_TIME (true & 1); D-1018 canned re-apply.
