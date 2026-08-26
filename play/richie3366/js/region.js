@@ -1,8 +1,8 @@
 // region.js — gas-cloud / NhRegion subset.
 // C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at /
-// clear_regions / run_regions / expire_gas_cloud / in_out_region /
-// m_in_out_region / update_monster_region / inside_gas_cloud;
-// region_danger / region_safety (pray);
+// any_visible_region / clear_regions / run_regions / expire_gas_cloud /
+// in_out_region / m_in_out_region / update_monster_region /
+// inside_gas_cloud; region_danger / region_safety (pray);
 // read.c valid_cloud_pos.
 // Named omissions: numeric cmap glyph ints (JS tags
 // 'S_poisoncloud'/'S_cloud'); binary save_regions format; force
@@ -20,6 +20,8 @@
 // D-1168. allmain youmonst m_everyturn_effect D-1175 (fog at u.ux).
 // Selection create D-1158. rloc_to update_monster_region D-1161; mhitm
 // mdisplacem D-1174 (dbridge named).
+// timeout.c visible_region_summary / wiz_timeout_queue named.
+// display.c show_region overlay after map_location named.
 // Level leave stashes the regions array (D-0675).
 
 import { game } from './gstate.js';
@@ -80,6 +82,23 @@ export function visible_region_at(x, y) {
         if (inside_region(reg, x, y)) return reg;
     }
     return null;
+}
+
+/**
+ * C ref: region.c any_visible_region — true if this level has a
+ * visible NhRegion whose ttl is not the expire-in-progress sentinel
+ * -2. Walks svn.n_regions in array order; first hit returns TRUE.
+ * Caller allmain.c once-per-input else-if (gas-cloud see_monsters
+ * refresh after walking away). timeout.c wiz_timeout_queue summary
+ * named. show_region overlay named.
+ */
+export function any_visible_region() {
+    const regs = game.regions || [];
+    for (const reg of regs) {
+        if (!reg.visible || reg.ttl === -2) continue;
+        return true;
+    }
+    return false;
 }
 
 /**

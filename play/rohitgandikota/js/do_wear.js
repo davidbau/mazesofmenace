@@ -32,7 +32,7 @@ import { pline } from './display.js';
 import { You, You_feel, You_cant, Your } from './pline.js';
 import { an, xname, doname, the, gloves_simple_name,
          suit_simple_name } from './objnam.js';
-import { makeknown } from './o_init.js';
+import { makeknown, observe_object } from './o_init.js';
 import { prinv, update_inventory, ECMD_OK } from './invent.js';
 import { nomul, unmul } from './hack.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -452,15 +452,35 @@ async function Amulet_off() {
     find_ac();
 }
 
-// src/do_wear.c Ring_on()/Ring_off() — only the property grant and the
-// makeknown-adjacent arms that never draw are live; everything else records.
+// src/do_wear.c:1193 learnring(): reveal an observed effect and, once the
+// type is known, the enchantment of a charged ring.
+function learnring(ring, observed) {
+    const ringtype = ring.otyp;
+    if (observed) {
+        if (game.objects[ringtype].oc_name_known)
+            observe_object(ring);
+        else if (ring.dknown)
+            makeknown(ringtype);
+    }
+    if (ring.dknown && game.objects[ringtype].oc_name_known) {
+        if (game.objects[ringtype].oc_charged)
+            ring.known = 1;
+        update_inventory();
+    }
+}
+
+// src/do_wear.c Ring_on()/Ring_off().
 async function Ring_on(obj) {
     switch (obj.otyp) {
     case ONAMES.RIN_ADORNMENT:
     case ONAMES.RIN_STEALTH:
     case ONAMES.RIN_SUSTAIN_ABILITY:
     case ONAMES.RIN_WARNING:
+        break;
     case ONAMES.RIN_PROTECTION:
+        learnring(obj, obj.spe !== 0);
+        if (obj.spe)
+            find_ac();
         break;
     default:
         note_unported_do_wear(`Ring_on:otyp=${obj.otyp}`);
@@ -469,9 +489,16 @@ async function Ring_on(obj) {
 }
 
 async function Ring_off(obj) {
+    const observable = obj.otyp === ONAMES.RIN_PROTECTION && obj.spe !== 0;
     setworn(null, obj.owornmask & (W_RINGL | W_RINGR));
-    find_ac();  /* C: Ring_off_or_gone's RIN_PROTECTION arm */
-    note_unported_do_wear(`Ring_off:otyp=${obj.otyp}`);
+    if (obj.otyp === ONAMES.RIN_PROTECTION) {
+        learnring(obj, observable);
+        if (obj.spe)
+            find_ac();
+    } else {
+        find_ac();
+        note_unported_do_wear(`Ring_off:otyp=${obj.otyp}`);
+    }
 }
 
 // src/do_wear.c:2030 canwearobj() — find the slot; refuse with C's message
@@ -924,10 +951,15 @@ function count_worn_stuff(all) {
         const o = worn(mask);
         if (o && !blocked) { armor++; otmp = o; }
     }
-    for (const mask of [W_RINGL, W_RINGR, W_AMUL]) {
-        if (worn(mask)) accessories++;
+    let accessory = null;
+    for (const mask of [W_RINGL, W_RINGR, W_AMUL, W_TOOL]) {
+        const o = worn(mask);
+        if (o) {
+            accessories++;
+            accessory = o;
+        }
     }
-    return { armor, accessories, otmp };
+    return { armor, accessories, otmp: all ? accessory : otmp };
 }
 
 // src/do_wear.c:1833 dotakeoff() — the 'T' command.
@@ -952,16 +984,12 @@ export async function dotakeoff() {
 export async function doremring() {
     const { getobj } = await import('./invent.js');
     const { remove_ok } = await import('./cmd.js');
-    const { armor, accessories } = count_worn_stuff(true);
+    const { armor, accessories, otmp } = count_worn_stuff(true);
     if (!accessories && !armor) {
         await pline('Not wearing any accessories or armor.');
         return ECMD_OK;
     }
-    let pick = null;
-    const rings = [worn(W_RINGL), worn(W_RINGR), worn(W_AMUL)]
-        .filter(Boolean);
-    if (accessories === 1 && !armor)
-        pick = rings[0];
+    let pick = accessories === 1 ? otmp : null;
     if (!pick) {
         pick = await getobj('remove', remove_ok, 0);
         if (!pick)

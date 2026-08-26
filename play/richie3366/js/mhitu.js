@@ -65,7 +65,7 @@ import {
     AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN,
 } from './mhitm.js';
 import { castmu, buzzmu } from './mcastu.js';
-import { rehumanize, polymon } from './polyself.js';
+import { rehumanize, polymon, body_part } from './polyself.js';
 import { set_wounded_legs, burnarmor, ignite_items } from './trap.js';
 import { mon_explodes } from './explode.js';
 import { make_hallucinated, make_confused, make_stunned } from './potion.js';
@@ -583,12 +583,6 @@ function Flying() {
     const steedFly = !!(u.usteed && is_flyer(u.usteed.data));
     return !!(((u.HFlying | 0) || (u.EFlying | 0) || steedFly)
         && !(u.BFlying | 0));
-}
-
-/** C ref: mondata.c body_part — LEG → "leg"; full poly deferred. */
-function body_part(part) {
-    if (part === LEG) return 'leg';
-    return 'body';
 }
 
 /**

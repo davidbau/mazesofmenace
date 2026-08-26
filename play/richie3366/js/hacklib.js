@@ -81,4 +81,13 @@ export function level_difficulty(uz) {
     return res;
 }
 
+/**
+ * C ref: hacklib.c str_end_is `:241–248` — true when `str` ends with `chkstr`.
+ */
+export function str_end_is(str, chkstr) {
+    const s = String(str ?? '');
+    const c = String(chkstr ?? '');
+    return s.length >= c.length && s.slice(s.length - c.length) === c;
+}
+
 // C ref: rn2(x) already in rng.js — re-export not needed

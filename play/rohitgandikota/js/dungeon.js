@@ -762,6 +762,12 @@ export function get_level(newlevel, levnum) {
     newlevel.dlevel = levnum;
 }
 
+// src/dungeon.c:1948 find_hell() -- the Valley is Gehennom's gateway.
+export function find_hell(lev) {
+    lev.dnum = game.valley_level.dnum;
+    lev.dlevel = 1;
+}
+
 // src/dungeon.c:1325 dunlev() — how deep inside its own dungeon branch.
 export function dunlev(lev) {
     return lev.dlevel;

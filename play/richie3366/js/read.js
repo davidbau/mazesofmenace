@@ -16,7 +16,8 @@
 // named-monster path for #wizgenesis + do_genocide REALLY|ONTHRONE getlin
 // (throne sit case 8, D-1034) + seffects SCR_GENOCIDE / do_class_genocide
 // (D-1098) + seffect_create_monster SCR/SPE_CREATE_MONSTER (D-1401) +
-// SPE_MAGIC_MAPPING seffects (D-1407; callee seffect_magic_mapping).
+// SPE_MAGIC_MAPPING seffects (D-1407; callee seffect_magic_mapping) +
+// seffect_taming SCR_TAMING/SPE_CHARM_MONSTER + recharge/charge_ok (D-1502).
 // Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
 // Blind gates; study_book novel / dull sleep (occupation learn D-0907);
 // other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
@@ -72,13 +73,14 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, urgent_pline, newsym, You_feel, verbalize } from './display.js';
-import { xname, makeplural, an } from './objnam.js';
+import { flush_screen, flush_topl_more, pline, urgent_pline, newsym, You_feel, verbalize, canspotmon } from './display.js';
+import { xname, makeplural, an, vtense, otyp_is_charged } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
-    ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, objectNames,
+    ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
+    NODIR, objectNames,
 } from './objects.js';
-import { weight, uncurse, blessorcurse, mkobj, delobj } from './mkobj.js';
+import { weight, uncurse, curse, bless, blessorcurse, mkobj, delobj } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
     makeknown, display_pickinv_reply, identify_pack, near_capacity,
@@ -87,19 +89,21 @@ import { more_experienced } from './exper.js';
 import { do_mapping, cvt_sdoor_to_door } from './detect.js';
 import { study_book, can_chant } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
-import { trycall } from './do_name.js';
-import { chwepon } from './wield.js';
+import { trycall, hcolor } from './do_name.js';
+import { chwepon, is_weptool } from './wield.js';
 import { destroy_arm, some_armor, setworn } from './do_wear.js';
 import { dropy } from './do.js';
 import { placebc } from './ball.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
-    HEAD,
+    HEAD, isok,
     W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM,
     NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
     GENOCIDED, KILLED_BY, KILLED_BY_AN, NO_MINVENT, MM_NOMSG, Upolyd,
     nothing_happens, G_GENOD, G_EXTINCT, UNCHANGING,
+    GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
+    LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, NOTELL,
 } from './const.js';
 import { vision_recalc, do_clear_area } from './vision.js';
 import { getlin } from './getline.js';
@@ -109,7 +113,7 @@ import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, is_whirly, unsolid,
     M2_PNAME, monsterNames, nonliving, weirdnonliving, PM_ACID_BLOB,
 } from './monsters.js';
 import { makemon, makemon_appear_msg, rndmonst, create_critters } from './makemon.js';
-import { kill_genocided_monsters, mongone } from './mon.js';
+import { kill_genocided_monsters, mongone, m_at, setmangry } from './mon.js';
 import { done } from './end.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
 
@@ -135,6 +139,23 @@ const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const LEASH = objectNames.indexOf('LEASH');
 const SLING = objectNames.indexOf('SLING');
 const POT_WATER = objectNames.indexOf('POT_WATER');
+const _on = (n) => objectNames.indexOf(n);
+const SCR_TAMING = _on('SCR_TAMING'), SPE_CHARM_MONSTER = _on('SPE_CHARM_MONSTER');
+const WAN_WISHING = _on('WAN_WISHING'), WAN_CANCELLATION = _on('WAN_CANCELLATION');
+const WAN_DEATH = _on('WAN_DEATH'), WAN_POLYMORPH = _on('WAN_POLYMORPH');
+const WAN_UNDEAD_TURNING = _on('WAN_UNDEAD_TURNING'), WAN_COLD = _on('WAN_COLD');
+const WAN_FIRE = _on('WAN_FIRE'), WAN_LIGHTNING = _on('WAN_LIGHTNING');
+const WAN_MAGIC_MISSILE = _on('WAN_MAGIC_MISSILE'), WAN_NOTHING = _on('WAN_NOTHING');
+const BELL_OF_OPENING = _on('BELL_OF_OPENING'), MAGIC_MARKER = _on('MAGIC_MARKER');
+const TINNING_KIT = _on('TINNING_KIT'), EXPENSIVE_CAMERA = _on('EXPENSIVE_CAMERA');
+const OIL_LAMP = _on('OIL_LAMP'), BRASS_LANTERN = _on('BRASS_LANTERN');
+const MAGIC_LAMP = _on('MAGIC_LAMP'), HORN_OF_PLENTY = _on('HORN_OF_PLENTY');
+const BAG_OF_TRICKS = _on('BAG_OF_TRICKS'), CAN_OF_GREASE = _on('CAN_OF_GREASE');
+const MAGIC_FLUTE = _on('MAGIC_FLUTE'), MAGIC_HARP = _on('MAGIC_HARP');
+const FROST_HORN = _on('FROST_HORN'), FIRE_HORN = _on('FIRE_HORN');
+const DRUM_OF_EARTHQUAKE = _on('DRUM_OF_EARTHQUAKE'), CRYSTAL_BALL = _on('CRYSTAL_BALL');
+const NH_BLUE = 'blue', NH_WHITE = 'white', NH_BLACK = 'black';
+const NH_LIGHT_BLUE = 'light blue', NH_AMBER = 'amber';
 
 /** C gk.known — scroll effect observed this read */
 let known = false;
@@ -575,6 +596,348 @@ function cap_spe(obj) {
     }
 }
 
+/** C youprop.h Blind — (H||E Blinded) && !BBlinded. */
+function Blind_read() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+function Yobjnam2_read(obj, verb) {
+    const nam = xname(obj);
+    return `Your ${nam} ${vtense(nam, verb)}`;
+}
+function Yname2_read(obj) { return `Your ${xname(obj)}`; }
+function Tobjnam_read(obj, verb) {
+    const nam = xname(obj);
+    return `The ${nam} ${vtense(nam, verb)}`;
+}
+
+/** C ref: read.c stripspe :652–664 / p_glow1–3 :667–685. */
+async function stripspe(obj) {
+    if (obj.blessed || (obj.spe | 0) <= 0) {
+        await pline(nothing_happens);
+        return;
+    }
+    await pline(`${Yobjnam2_read(obj, 'vibrate')} briefly.`);
+    const { costly_alteration } = await import('./shk.js');
+    await costly_alteration(obj, COST_UNCHRG);
+    obj.spe = 0;
+    if ((obj.otyp | 0) === OIL_LAMP || (obj.otyp | 0) === BRASS_LANTERN) obj.age = 0;
+}
+async function p_glow1(otmp) {
+    await pline(`${Yobjnam2_read(otmp, Blind_read() ? 'vibrate' : 'glow')} briefly.`);
+}
+async function p_glow2(otmp, color, feeble) {
+    const blind = Blind_read();
+    const glow = Yobjnam2_read(otmp, blind ? 'vibrate' : 'glow');
+    const extra = blind ? '' : ` ${hcolor(color)}`;
+    await pline(`${glow}${feeble ? ' feebly' : ''}${extra} for a moment.`);
+}
+
+/** C ref: read.c wand_explode :2414–2457. */
+async function explode_losehp(dmg, how) {
+    const { losehp, maybe_half_phys, finish_maybe_wail } = await import('./hack.js');
+    losehp(maybe_half_phys(dmg), how, KILLED_BY_AN);
+    await finish_maybe_wail();
+    if (game._losehp_needs_done || game.program_state?.gameover) {
+        const { finish_losehp_done } = await import('./end.js');
+        await finish_losehp_done();
+    }
+}
+async function wand_explode(obj, chg) {
+    const expl = !chg ? 'suddenly' : 'vibrates violently and';
+    if (!chg) chg = 2;
+    let n = (obj.spe | 0) + (chg | 0);
+    if (n < 2) n = 2;
+    const otyp = obj.otyp | 0;
+    const k = otyp === WAN_WISHING ? 12
+        : (otyp === WAN_CANCELLATION || otyp === WAN_DEATH
+            || otyp === WAN_POLYMORPH || otyp === WAN_UNDEAD_TURNING) ? 10
+        : (otyp === WAN_COLD || otyp === WAN_FIRE
+            || otyp === WAN_LIGHTNING || otyp === WAN_MAGIC_MISSILE) ? 8
+        : otyp === WAN_NOTHING ? 4 : 6;
+    obj.in_use = true;
+    await pline(`${Yname2_read(obj)} ${expl} explodes!`);
+    await explode_losehp(d(n, k), 'exploding wand');
+    const { useup } = await import('./eat.js');
+    useup(obj);
+    exercise(A_STR, false);
+}
+
+/** C read.c charge_ok :688–724. */
+export function charge_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    if (obj.oclass === WAND_CLASS) return GETOBJ_SUGGEST;
+    if (obj.oclass === RING_CLASS && otyp_is_charged(obj.otyp | 0)
+        && obj.dknown && game.objects?.[obj.otyp | 0]?.oc_name_known) {
+        return GETOBJ_SUGGEST;
+    }
+    if (is_weptool(obj)) return GETOBJ_EXCLUDE;
+    if (obj.oclass === TOOL_CLASS) {
+        const otyp = obj.otyp | 0;
+        if (otyp === BRASS_LANTERN || otyp === OIL_LAMP
+            || (otyp === MAGIC_LAMP && !game.objects?.[MAGIC_LAMP]?.oc_name_known)) {
+            return GETOBJ_SUGGEST;
+        }
+        if (otyp_is_charged(otyp)) {
+            return (obj.dknown && game.objects?.[otyp]?.oc_name_known)
+                ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
+        }
+        return GETOBJ_EXCLUDE;
+    }
+    return GETOBJ_EXCLUDE_SELECTABLE;
+}
+
+/** C read.c recharge :726–1008 — curse_bless -1/+1/0; cap_spe at end. */
+export async function recharge(obj, curse_bless) {
+    if (!obj) return;
+    const is_cursed = curse_bless < 0;
+    const is_blessed = curse_bless > 0;
+    const oc = game.objects?.[obj.otyp | 0];
+
+    if (obj.oclass === WAND_CLASS) {
+        const lim = (obj.otyp | 0) === WAN_WISHING ? 1
+            : ((oc?.oc_dir | 0) !== NODIR) ? 8 : 15;
+        if ((obj.spe | 0) === -1) obj.spe = 0;
+        const nprev = obj.recharged | 0;
+        if (nprev > 0 && ((obj.otyp | 0) === WAN_WISHING
+            || (nprev * nprev * nprev > rn2(7 * 7 * 7)))) {
+            await wand_explode(obj, rnd(lim));
+            return;
+        }
+        obj.recharged = nprev + 1;
+        if (is_cursed) {
+            await stripspe(obj);
+        } else {
+            let n = (lim === 1) ? 1 : rn1(5, lim + 1 - 5);
+            if (!is_blessed) n = rnd(n);
+            if ((obj.spe | 0) < n) obj.spe = n;
+            else obj.spe = (obj.spe | 0) + 1;
+            if ((obj.otyp | 0) === WAN_WISHING && (obj.spe | 0) > 3) {
+                await wand_explode(obj, 1);
+                return;
+            }
+            if (lim === 1) await p_glow2(obj, NH_BLUE, true);
+            else if ((obj.spe | 0) >= lim) await p_glow2(obj, NH_BLUE);
+            else await p_glow1(obj);
+        }
+    } else if (obj.oclass === RING_CLASS && otyp_is_charged(obj.otyp | 0)) {
+        const s = is_blessed ? rnd(3) : is_cursed ? -rnd(2) : 1;
+        const u = game.u || {};
+        const is_on = obj === u.uleft || obj === u.uright;
+        if ((obj.spe | 0) > rn2(7) || (obj.spe | 0) <= -5) {
+            await pline(
+                `${Yobjnam2_read(obj, 'pulsate')} momentarily, then ${vtense(xname(obj), 'explode')}!`,
+            );
+            if (is_on) {
+                const { Ring_gone } = await import('./do_wear.js');
+                await Ring_gone(obj);
+            }
+            const dmg = rnd(3 * Math.abs(obj.spe | 0));
+            const { useup } = await import('./eat.js');
+            useup(obj);
+            obj = null;
+            await explode_losehp(dmg, 'exploding ring');
+        } else {
+            await pline(
+                `${Yname2_read(obj)} spins ${s < 0 ? 'counter' : ''}clockwise for a moment.`,
+            );
+            if (s < 0) {
+                const { costly_alteration } = await import('./shk.js');
+                await costly_alteration(obj, COST_DECHNT);
+            }
+            const mask = is_on ? (obj === u.uleft ? LEFT_RING : RIGHT_RING) : 0;
+            if (is_on) {
+                const { Ring_off, Ring_on } = await import('./do_wear.js');
+                await Ring_off(obj);
+                obj.spe = (obj.spe | 0) + s;
+                setworn(obj, mask);
+                await Ring_on(obj);
+            } else {
+                obj.spe = (obj.spe | 0) + s;
+            }
+            if (s > 0 && obj.unpaid) {
+                const { alter_cost } = await import('./shk.js');
+                alter_cost(obj, 0);
+            }
+        }
+    } else if (obj.oclass === TOOL_CLASS) {
+        const rechrg = obj.recharged | 0;
+        if (otyp_is_charged(obj.otyp | 0)) {
+            if (rechrg < 7) obj.recharged = rechrg + 1;
+        }
+        switch (obj.otyp | 0) {
+        case BELL_OF_OPENING:
+            if (is_cursed) await stripspe(obj);
+            else obj.spe = (obj.spe | 0) + (is_blessed ? rnd(3) : 1);
+            if ((obj.spe | 0) > 5) obj.spe = 5;
+            break;
+        case MAGIC_MARKER:
+        case TINNING_KIT:
+        case EXPENSIVE_CAMERA:
+            if (is_cursed) {
+                await stripspe(obj);
+            } else if (rechrg && (obj.otyp | 0) === MAGIC_MARKER) {
+                obj.recharged = 1;
+                await pline((obj.spe | 0) < 3
+                    ? 'Your marker seems permanently dried out.' : nothing_happens);
+            } else if (is_blessed) {
+                const n = rn1(16, 15);
+                const tot = (obj.spe | 0) + n;
+                obj.spe = tot <= 50 ? 50 : tot <= 75 ? 75 : Math.min(127, tot);
+                await p_glow2(obj, NH_BLUE);
+            } else {
+                const n = rn1(11, 10);
+                const tot = (obj.spe | 0) + n;
+                obj.spe = tot <= 50 ? 50 : Math.min(SPE_LIM, tot);
+                await p_glow2(obj, NH_WHITE);
+            }
+            break;
+        case OIL_LAMP:
+        case BRASS_LANTERN:
+            if (is_cursed) {
+                await stripspe(obj);
+                if (obj.lamplit) {
+                    if (!Blind_read()) await pline(`${Tobjnam_read(obj, 'go')} out!`);
+                    const { end_burn } = await import('./timeout.js');
+                    end_burn(obj, true);
+                }
+            } else if (is_blessed) {
+                obj.spe = 1; obj.age = 1500;
+                await p_glow2(obj, NH_BLUE);
+            } else {
+                obj.spe = 1;
+                obj.age = Math.min(1500, (obj.age | 0) + 750);
+                await p_glow1(obj);
+            }
+            break;
+        case CRYSTAL_BALL:
+            if ((obj.spe | 0) === -1) obj.spe = 0;
+            if (is_cursed) {
+                if (!obj.cursed) {
+                    await p_glow2(obj, NH_BLACK);
+                    curse(obj);
+                } else {
+                    await pline(`${Yobjnam2_read(obj, 'vibrate')} briefly.`);
+                }
+                if ((obj.spe | 0) > 0) {
+                    const { costly_alteration } = await import('./shk.js');
+                    await costly_alteration(obj, COST_UNCHRG);
+                }
+                obj.spe = 0;
+            } else if (is_blessed) {
+                obj.spe = 7;
+                await p_glow2(obj, !obj.blessed ? NH_LIGHT_BLUE : NH_BLUE);
+                if (!obj.blessed) bless(obj);
+            } else if ((obj.spe | 0) < 7 || obj.cursed) {
+                obj.spe = Math.min((obj.spe | 0) + rnd(2), 7);
+                if (!obj.cursed) await p_glow1(obj);
+                else {
+                    await p_glow2(obj, NH_AMBER);
+                    uncurse(obj);
+                }
+            } else {
+                await pline(nothing_happens);
+            }
+            break;
+        case HORN_OF_PLENTY:
+        case BAG_OF_TRICKS:
+        case CAN_OF_GREASE:
+            if (is_cursed) await stripspe(obj);
+            else if (is_blessed) {
+                obj.spe = (obj.spe | 0) + ((obj.spe | 0) <= 10 ? rn1(10, 6) : rn1(5, 6));
+                if ((obj.spe | 0) > 50) obj.spe = 50;
+                await p_glow2(obj, NH_BLUE);
+            } else {
+                obj.spe = (obj.spe | 0) + rn1(5, 2);
+                if ((obj.spe | 0) > 50) obj.spe = 50;
+                await p_glow1(obj);
+            }
+            break;
+        case MAGIC_FLUTE:
+        case MAGIC_HARP:
+        case FROST_HORN:
+        case FIRE_HORN:
+        case DRUM_OF_EARTHQUAKE:
+            if (is_cursed) await stripspe(obj);
+            else if (is_blessed) {
+                obj.spe = (obj.spe | 0) + d(2, 4);
+                if ((obj.spe | 0) > 20) obj.spe = 20;
+                await p_glow2(obj, NH_BLUE);
+            } else {
+                obj.spe = (obj.spe | 0) + rnd(4);
+                if ((obj.spe | 0) > 20) obj.spe = 20;
+                await p_glow1(obj);
+            }
+            break;
+        default:
+            await pline('You have a feeling of loss.');
+            break;
+        }
+    } else {
+        await pline('You have a feeling of loss.');
+    }
+    if (obj) cap_spe(obj);
+}
+
+/** C read.c maybe_tame :1043–1063. */
+async function maybe_tame(mtmp, sobj) {
+    const was_tame = mtmp.mtame | 0;
+    const was_peaceful = mtmp.mpeaceful | 0;
+    if (sobj.cursed) {
+        setmangry(mtmp, false);
+        if (was_peaceful && !mtmp.mpeaceful) return -1;
+    } else {
+        const { resist } = await import('./zap.js');
+        if (!(await resist(mtmp, sobj.oclass | 0, 0, NOTELL)) || mtmp.isshk) {
+            const { tamedog } = await import('./dog.js');
+            await tamedog(mtmp, sobj, false);
+        }
+        if ((!was_peaceful && mtmp.mpeaceful) || was_tame !== (mtmp.mtame | 0)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/** C read.c seffect_taming :1679–1719 — 3x3 (confused 11x11) / swallow. */
+async function seffect_taming(sobj) {
+    const u = game.u || {};
+    const confused = !!(u.HConfusion | 0);
+    let candidates = 0;
+    let results = 0;
+    let vis_results = 0;
+    if (u.uswallow) {
+        candidates = 1;
+        const res = await maybe_tame(u.ustuck, sobj);
+        results = vis_results = res;
+    } else {
+        const bd = confused ? 5 : 1;
+        const ux = u.ux | 0;
+        const uy = u.uy | 0;
+        for (let i = -bd; i <= bd; i++) {
+            for (let j = -bd; j <= bd; j++) {
+                if (!isok(ux + i, uy + j)) continue;
+                let mtmp = m_at(ux + i, uy + j);
+                if (!mtmp && !i && !j) mtmp = u.usteed || null;
+                if (!mtmp) continue;
+                candidates++;
+                const res = await maybe_tame(mtmp, sobj);
+                results += res;
+                if (canspotmon(mtmp)) vis_results += res;
+            }
+        }
+    }
+    if (!results) {
+        await pline(`Nothing interesting ${!candidates ? 'happens' : 'seems to happen'}.`);
+    } else {
+        await pline(
+            `The neighborhood ${vis_results ? 'is' : 'seems'} ${results < 0 ? 'un' : ''}friendlier.`,
+        );
+        if (vis_results > 0) known = true;
+    }
+}
+
 /**
  * C ref: objnam.c erosion_matters — weapon/armor/ball/chain; tools if weptool.
  * Local copy to avoid exporting from mkobj (weptool name list matches).
@@ -953,6 +1316,10 @@ export async function seffects(sobj) {
     case SCR_CREATE_MONSTER:
     case SPE_CREATE_MONSTER:
         await seffect_create_monster(sobj);
+        break;
+    case SCR_TAMING:
+    case SPE_CHARM_MONSTER:
+        await seffect_taming(sobj);
         break;
     default:
         // Other seffect_* deferred — do not useup

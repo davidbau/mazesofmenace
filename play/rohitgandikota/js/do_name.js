@@ -20,14 +20,16 @@ import { Hallucination } from './youprop.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
-         SUPPRESS_SADDLE, SUPPRESS_IT, has_mgivenname, MGIVENNAME,
-         W_SADDLE } from './const.js';
+         SUPPRESS_SADDLE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
+         SUPPRESS_HALLUCINATION, MD_PAD_BOGONS,
+         has_mgivenname, MGIVENNAME, W_SADDLE } from './const.js';
 import { humanoid, is_animal, mindless, pronoun_gender, type_is_pname } from './mondata.js';
 import { canspotmon } from './display.js';
 import { ONAME_SKIP_INVUPD } from './const.js';
 import { exist_artifact, artifact_exists } from './artifact.js';
 import { carried } from './obj.js';
 import { update_inventory } from './invent.js';
+import { get_rnd_text } from './rumors.js';
 
 // src/do_name.c:759 ghostnames[] — 34 entries.
 const ghostnames = [
@@ -48,6 +50,42 @@ const ghostnames = [
 // draw happens. ROLL_FROM is include/hack.h:1493, array[rn2(SIZE(array))].
 export function rndghostname() {
     return rn2(7) ? ghostnames[rn2(ghostnames.length)] : game.plname;
+}
+
+// src/do_name.c:1389 rndmonnam(), choose a display-only hallucinated monster
+// name. Real monsters use a second display-RNG draw for gender. Bogus names
+// use the same random byte-offset lookup as C's BOGUSMONFILE.
+function rndmonnam_with_code() {
+    const special = PMNAMES.SPECIAL_PM;
+    let name;
+
+    do {
+        name = rn2_on_display_rng(special + 100);
+    } while (name < special
+             && (type_is_pname(game.mons[name])
+                 || (game.mons[name].geno & MFLAGS.G_NOGEN)));
+
+    if (name >= special) {
+        let bogus = get_rnd_text('bogusmon', rn2_on_display_rng,
+                                 MD_PAD_BOGONS) || 'bogon';
+        let code = '';
+        if ('-_+|='.includes(bogus[0])) {
+            code = bogus[0];
+            bogus = bogus.slice(1);
+        }
+        return {
+            name: bogus,
+            name_at_start: code !== '' && '-+='.includes(code),
+        };
+    }
+    return {
+        name: pmname(game.mons[name], rn2_on_display_rng(2)),
+        name_at_start: false,
+    };
+}
+
+export function rndmonnam() {
+    return rndmonnam_with_code().name;
 }
 
 // src/mondata.h pmname() — pick from pmnames[male, female, neutral]. The
@@ -82,6 +120,15 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
     if (article === ARTICLE_YOUR && !mtmp.mtame)
         article = ARTICLE_THE;
 
+    const is_engulfer = game.u.uswallow && game.u.ustuck === mtmp;
+    if (is_engulfer) {
+        article = ARTICLE_THE;
+        suppress = (suppress || 0) | SUPPRESS_INVISIBLE;
+    }
+
+    const do_hallu = Hallucination()
+        && !((suppress || 0) & SUPPRESS_HALLUCINATION);
+
     const mdat = game.mons[mtmp.mnum];
     /* src/do_name.c mon_pmname(), ordinary monster names use Mgender(),
        with pmname() falling back to the neutral slot when that sex has no
@@ -114,7 +161,8 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
        arm cannot fire -- that arm's rn2(2) under Hallucination is therefore
        not spent, which matches C only while Hallucination is unported. */
     const do_it = !canspotmon(mtmp) && article !== ARTICLE_YOUR
-                  && mtmp !== game.u.usteed;
+                  && mtmp !== game.u.usteed && !is_engulfer
+                  && !((suppress || 0) & SUPPRESS_IT);
     if (do_it) {
         note_do_name_unported('x_monnam:augment_it');
         return 'it';
@@ -134,7 +182,11 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
        the species and, standing alone, suppresses the article entirely:
        "You swap places with Hachi.", never "your Hachi". */
     let name_at_start;
-    if (has_mgivenname(mtmp)) {
+    if (do_hallu) {
+        const hallu_name = rndmonnam_with_code();
+        buf += hallu_name.name;
+        name_at_start = hallu_name.name_at_start;
+    } else if (has_mgivenname(mtmp)) {
         const name = MGIVENNAME(mtmp);
         if (mtmp.mnum === PMNAMES.PM_GHOST) {
             buf += `${name}'s ghost`;

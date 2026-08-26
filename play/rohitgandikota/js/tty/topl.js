@@ -55,8 +55,10 @@ export async function update_topl(bp) {
     const toplines = game._pending_message || '';   /* gt.toplines */
     const cury = game._topl_cury || 0;
 
-    /* strncmp(bp, "You die", 7) != 0 */
-    const notdied = bp.slice(0, 7) !== 'You die';
+    /* C assigns notdied inside the final term of the joining condition.
+       When an earlier term fails, especially because an ESC-suppressed line
+       has grown too long, that comparison is never reached. */
+    let notdied = true;
 
     /* win/tty/topl.c:257 — WIN_STOP means the player pressed ESC at a
        --More-- this turn: buffer the text but do not paint it and do not
@@ -66,7 +68,7 @@ export async function update_topl(bp) {
     if ((game._toplin === TOPLINE_NEED_MORE || skip)
         && cury === 0
         && n0 + toplines.length + 3 < CO - 8   /* room for --More-- */
-        && notdied) {
+        && (notdied = bp.slice(0, 7) !== 'You die')) {
         game._pending_message = toplines + '  ' + bp;
         game._topl_curx = (game._topl_curx || 0) + 2;
         if (!skip) {

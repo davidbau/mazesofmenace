@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { makemon, set_malign, rndmonst_adj } from './makemon.js';
+import { deliver_obj_to_mon } from './dokick.js';
 import { mons, NON_PM, is_human, regenerates, M2_STALK, is_domestic, haseyes } from './monsters.js';
 import {
     MM_EDOG, MM_IGNOREWATER, MM_NOMSG, MM_FEMALE, MM_MALE, NO_MINVENT,
@@ -11,8 +12,9 @@ import {
     CORPSTAT_MALE, NEED_HTH_WEAPON, ismnum, has_oname, ONAME,
     MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP,
     MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS,
-    MIGR_PORTAL, MIGR_WITH_HERO, MON_MIGRATING, MON_LIMBO, STRAT_ARRIVE,
-    RLOC_NOMSG, MAGIC_PORTAL, In_endgame, isok, MTSZ,
+    MIGR_PORTAL, MIGR_WITH_HERO, MIGR_LEFTOVERS, MON_MIGRATING, MON_LIMBO,
+    STRAT_ARRIVE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, isok, MTSZ, MANFOOD,
+    DF_ALL,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { is_pool } from './hack.js';
@@ -415,6 +417,12 @@ export async function tamedog(mtmp, obj, givemsg = true) {
         || is_human(mtmp.data)) {
         return false;
     }
+    // C dog.c tamedog :1247 — is_covetous / is_demon-vs-hero named;
+    // obj && dogfood >= MANFOOD (invoke_taming zeroobj pseudo → APPORT).
+    if (obj) {
+        const { dogfood } = await import('./dogmove.js');
+        if (dogfood(mtmp, obj) >= MANFOOD) return false;
+    }
 
     if (!mtmp.edog) mtmp.edog = {};
     initedog(mtmp, !(mtmp.mtame));
@@ -438,8 +446,7 @@ export async function tamedog(mtmp, obj, givemsg = true) {
 
 /**
  * C ref: dog.c mon_arrive(With_you) — place accompanying pet near hero.
- * Named omit: full mon_arrive MIGR_LEFTOVERS → deliver_obj_to_mon
- * DF_ALL (D-1193 callee).
+ * C returns here before MIGR_LEFTOVERS (D-1505 After_you).
  */
 function mon_arrive_with_you(mtmp) {
     const u = game.u;
@@ -540,9 +547,11 @@ function arrive_track_clear(mtmp) {
  * C ref: dog.c mon_arrive After_you — independent migrant.
  * D-1199: mtmp.my = xyflags (mx stays 0) before mnearto/rloc so
  * rloc_pos_ok reads up/W-tower bits (D-1182 / D-1198 writer).
- * Named omissions: worm/isshk residency; wander/somexy; MIGR_LEFTOVERS
- * DF_ALL; Wiz_arrive; failed_arrivals/relmon; debug_fuzzer portal;
- * impossible() no-portal; full mnearto yank.
+ * D-1505: MIGR_LEFTOVERS → deliver_obj_to_mon(..., DF_ALL) after xyloc
+ * switch, before my=xyflags / place (callee D-1193).
+ * Named omissions: worm/isshk residency; wander/somexy; Wiz_arrive;
+ * failed_arrivals/relmon; debug_fuzzer portal; impossible() no-portal;
+ * full mnearto yank.
  */
 async function mon_arrive_after_you(mtmp) {
     const u = game.u;
@@ -629,6 +638,14 @@ async function mon_arrive_after_you(mtmp) {
         xlocale = 0;
         ylocale = 0;
         break;
+    }
+
+    /* C dog.c:576–580 — leftover MIGR_TO_SPECIES cargo (stolen_booty
+     * captain). With_you already returned; Wiz_arrive still named. */
+    if (((mtmp.migflags | 0) & MIGR_LEFTOVERS) !== 0) {
+        if (game.migrating_objs) {
+            deliver_obj_to_mon(mtmp, 0, DF_ALL);
+        }
     }
 
     /* C dog.c:607–613 — mx already 0; my holds flags for rloc_pos_ok. */

@@ -18,7 +18,8 @@
 
 import { game } from './../gstate.js';
 import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './../display.js';
-import { tty_clear_nhwindow_message, row_refresh, bot } from './../display.js';
+import { tty_clear_nhwindow_message, row_refresh, bot,
+         docrt_sync_rebuild } from './../display.js';
 import { nhgetch } from './../input.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
@@ -920,9 +921,9 @@ function erase_menu_or_text(cw, display, clear) {
             display.clearScreen();
         } else {
             /* C: docrt(); flush_screen(1); — async in this port and this
-               runs under synchronous destroy sites, so repaint the same
-               pixels directly: wipe, redraw every map row from the glyph
-               buffer, redraw the status rows, cursor back on the hero. */
+               runs under synchronous destroy sites. Rebuild the glyph buffer
+               synchronously, then paint those cells directly. */
+            docrt_sync_rebuild();
             display.clearScreen();
             for (let y = 0; y < ROWNO; y++)
                 row_refresh(1, COLNO - 1, y);

@@ -11,7 +11,7 @@
 import { lspo_level_flags, lspo_level_init, lspo_map_full,
          lspo_replace_terrain, lspo_region_full, lspo_stair,
          lspo_non_diggable, lspo_object, lspo_trap,
-         lspo_monster } from '../sp_lev.js';
+         lspo_monster, lspo_wallify } from '../sp_lev.js';
 import { percent } from '../nhlua.js';
 
 const BIGRM12_MAP = `
@@ -44,6 +44,7 @@ export async function bigrm12_level() {
         region: (o) => lspo_region_full(o),
         stair: (d) => lspo_stair(d),
         non_diggable: () => lspo_non_diggable(),
+        wallify: () => lspo_wallify(),
         object: (a, x, y, o) => lspo_object(a, x, y, o),
         trap: () => lspo_trap(),
         monster: (a, x, y, o) => lspo_monster(a, x, y, o),
@@ -89,9 +90,7 @@ export async function bigrm12_level() {
 
     des.region({ area: [0, 0, 75, 19], lit: 1 });
     des.non_diggable();
-
-    /* des.wallify(): load_special()'s !corrmaze tail wallifies the whole
-       map after the script returns, which is the same draw-free pass. */
+    des.wallify();
 
     des.stair('up');
     des.stair('down');

@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname, xname, makeplural, vtense, an, doname, The } from './objnam.js';
+import { xprname, xname, makeplural, vtense, an, doname, The, body_part_latebound } from './objnam.js';
 import { yn_function } from './getline.js';
 import { hands_obj } from './weapon.js';
 import { humanoid, mons } from './monsters.js';
@@ -850,12 +850,6 @@ export async function untwoweapon() {
     }
 }
 
-/** C ref: mondata.c body_part — HAND → "hand"; full poly table deferred. */
-function body_part(part) {
-    if (part === HAND) return 'hand';
-    return 'body part';
-}
-
 /** C ref: potion.c hcolor — Hallucination synonym deferred. */
 function hcolor(colorword) {
     return colorword || 'odd';
@@ -936,12 +930,12 @@ export async function chwepon(otmp, amount) {
                 buf = `${Yobjnam2(uwep, 'glow')} with ${an(hcolor('amber'))} aura.`;
                 uwep.bknown = Hallucination ? 0 : 1;
             } else {
-                buf = `Your right ${body_part(HAND)} tingles.`;
+                buf = `Your right ${body_part_latebound(HAND)} tingles.`;
             }
             uncurse(uwep);
             // update_inventory deferred
         } else {
-            buf = `Your ${makeplural(body_part(HAND))} ${amount >= 0 ? 'twitch' : 'itch'}.`;
+            buf = `Your ${makeplural(body_part_latebound(HAND))} ${amount >= 0 ? 'twitch' : 'itch'}.`;
         }
         await strange_feeling(otmp, buf);
         exercise(A_DEX, amount >= 0);

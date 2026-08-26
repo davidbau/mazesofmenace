@@ -168,9 +168,10 @@ import { Can_fall_thru } from './dungeon.js';
 import { lspo_map, lspo_region, sp_lev_wire, sp_lev_wire_mktrap,
          sp_lev_wire_okdoor, sp_lev_wire_subroom,
          lspo_room, lspo_door, lspo_object, lspo_monster, lspo_exclusion,
-         inside_room, lspo_replace_terrain } from './sp_lev.js';
+         inside_room, lspo_terrain, lspo_replace_terrain } from './sp_lev.js';
 import { percent } from './nhlua.js';
 import { lua_shuffle } from './nhlua.js';
+import { selection_new, selection_setpoint } from './selvar.js';
 
 /* mktrap()'s "no traps in pools" test needs mon.js's terrain predicates, and
    mklev.js is reached FROM mon.js's import graph, so they arrive by wire.
@@ -973,6 +974,29 @@ async function themerooms_generate(difficulty) {
         break;
     case 'Room with both normal contents and themed fill':
         rtype = THEMEROOM; contents = themeroom_fill; break;
+    case 'Pillars':
+        /* dat/themerms.lua:379. The chosen terrain is shared by every
+           two-by-two pillar block, so the seven-entry shuffle happens once. */
+        roomW = roomH = 10;
+        rtype = THEMEROOM;
+        needfill = FILL_NONE;
+        contents = (rm) => {
+            const terr = ['-', '-', '-', '-', 'L', 'P', 'T'];
+            lua_shuffle(terr);
+            const pillars = selection_new();
+            for (let x = 0; x <= rm.width / 4 - 1; x++) {
+                for (let y = 0; y <= rm.height / 4 - 1; y++) {
+                    const px = rm.region.x1 + x * 4 + 2;
+                    const py = rm.region.y1 + y * 4 + 2;
+                    selection_setpoint(px, py, pillars, 1);
+                    selection_setpoint(px + 1, py, pillars, 1);
+                    selection_setpoint(px, py + 1, pillars, 1);
+                    selection_setpoint(px + 1, py + 1, pillars, 1);
+                }
+            }
+            lspo_terrain(pillars, terr[0]);
+        };
+        break;
     case 'Room in a room':
         /* dat/themerms.lua:308 — nested des.room() with a door innermost:
              des.room({ type="ordinary", filled=1, contents = function()

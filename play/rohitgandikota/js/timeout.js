@@ -251,6 +251,12 @@ export async function nh_timeout() {
             }
             break;
         }
+        case 'HBlinded': {
+            const { make_blinded } = await import('./potion.js');
+            intr.HBlinded = 1; /* preserve the old timeout for the cure */
+            await make_blinded(0, true);
+            break;
+        }
         case 'HFumbling': {
             const { Levitation, Flying, Deaf } = await import('./youprop.js');
             if (game.u.umoved && !(Levitation() || Flying())) {

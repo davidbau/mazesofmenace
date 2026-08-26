@@ -1352,7 +1352,7 @@ function mdrop_special_objs(mon) {
  * C ref: mon.c migrate_mon — unstuck + mdrop_special_objs when on map,
  * then migrate_to_level.
  */
-async function migrate_mon(mtmp, target_lev, xyloc) {
+export async function migrate_mon(mtmp, target_lev, xyloc) {
     if ((mtmp.mx | 0)) {
         const { unstuck } = await import('./mhitu.js');
         await unstuck(mtmp);

@@ -1,8 +1,8 @@
 // sit.js — the #sit command and its consequences.
 // C ref: src/sit.c
 //
-// dosit() is here; take_gold(), rndcurse() and attrcurse() are not ported
-// yet. The terrain arms whose subsystems are missing (throne effects, altar
+// dosit(), rndcurse(), and attrcurse() are here. The terrain arms whose
+// subsystems are missing (throne effects, altar
 // wrath, egg laying, gremlin splitting, water damage) record themselves; the
 // common floor/object/trap arms run for real. Sitting always costs the turn
 // (ECMD_TIME) except for the can't-sit early outs, exactly as the C returns.
@@ -10,7 +10,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { pline } from './display.js';
-import { You, You_cant, Your, There, pline_The } from './pline.js';
+import { You, You_cant, You_feel, Your, There, pline_The } from './pline.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { pronoun_gender } from './mondata.js';
 import { genders } from './role_data.js';
@@ -29,13 +29,16 @@ import { surface, In_sokoban } from './dungeon.js';
 import { dotrap, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { exercise } from './attrib.js';
 import { body_part } from './polyself.js';
-import { the, xname } from './objnam.js';
-import { useupf } from './invent.js';
+import { the, xname, Tobjnam } from './objnam.js';
+import { useupf, update_inventory } from './invent.js';
+import { curse, unbless } from './mkobj.js';
+import { get_artifact } from './artifact.js';
+import { ART_MAGICBANE } from './artilist_data.js';
 import { defsyms, cmap_names } from './drawing_data.js';
 import { ECMD_OK, ECMD_TIME, OBJ_AT, STAIRS, LADDER, DRAWBRIDGE_DOWN,
          IS_SINK, IS_ALTAR, IS_GRAVE, IS_THRONE, FOUNTAIN,
          TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
-         SPIKED_PIT, VIASITTING, A_WIS, A_STR, FOOT,
+         SPIKED_PIT, VIASITTING, A_WIS, A_STR, FOOT, INTRINSIC,
          Is_waterlevel, Upolyd, KILLED_BY } from './const.js';
 import { ONAMES, MATERIALS, OCLASSES } from './objects_data.js';
 import { MONSYMS, PMNAMES } from './monst_data.js';
@@ -48,6 +51,89 @@ function eggs_in_water(ptr) {
 
 function note_unported_sit(what) {
     (game.unported ||= new Set()).add('sit:' + what);
+}
+
+// src/sit.c:569 rndcurse() and :644 attrcurse().
+const SPFX_INTEL = 0x04;
+
+export async function rndcurse() {
+    const u = game.u;
+    const antimagic = !!(u.uprops?.ANTIMAGIC || u.uprops?.MAGIC_RES);
+    const halfSpellDamage = !!u.uprops?.HALF_SPDAM;
+
+    if (u.uwep?.oartifact === ART_MAGICBANE && rn2(20)) {
+        await You('feel a malignant aura surround the magic-absorbing blade.');
+        return;
+    }
+    if (antimagic)
+        note_unported_sit('rndcurse:shieldeff');
+    await You('feel a malignant aura surround you.');
+
+    const inventory = game.invent.filter(
+        (obj) => obj.oclass !== OCLASSES.COIN_CLASS);
+    let count = rnd(Math.trunc(6 / (Number(antimagic)
+                                   + Number(halfSpellDamage) + 1)));
+    while (inventory.length && count-- > 0) {
+        const obj = inventory[rnd(inventory.length) - 1];
+        if (!obj || obj.cursed)
+            continue;
+        if (obj.oartifact && (get_artifact(obj).spfx & SPFX_INTEL)
+            && rn2(10) < 8) {
+            await pline(`${Tobjnam(obj, 'resist')}!`);
+            continue;
+        }
+        if (obj.blessed)
+            unbless(obj);
+        else
+            curse(obj);
+    }
+    if (inventory.length)
+        update_inventory();
+
+    /* The steed saddle arm depends on naming and blindness details that are
+       separate from the inventory curse loop. */
+    if (u.usteed)
+        note_unported_sit('rndcurse:saddle');
+}
+
+export async function attrcurse() {
+    const intr = game.u.intrinsic ||= {};
+    const remove = async (key, message, owner = You_feel) => {
+        if (!((intr[key] | 0) & INTRINSIC))
+            return false;
+        intr[key] = (intr[key] | 0) & ~INTRINSIC;
+        await owner(message);
+        return true;
+    };
+
+    switch (rnd(11)) {
+    case 1:
+        if (await remove('HFire_resistance', 'warmer.')) return 1;
+    case 2:
+        if (await remove('HTeleportation', 'less jumpy.')) return 2;
+    case 3:
+        if (await remove('HPoison_resistance', 'a little sick!')) return 3;
+    case 4:
+        if (await remove('HTelepat', 'senses fail!', Your)) return 4;
+    case 5:
+        if (await remove('HCold_resistance', 'cooler.')) return 5;
+    case 6:
+        if (await remove('HInvis', 'paranoid.')) return 6;
+    case 7:
+        if (await remove('HSee_invisible', game.u.uprops?.HALLUC
+                         ? 'tawt you taw a puttie tat!'
+                         : 'thought you saw something', You)) return 7;
+    case 8:
+        if (await remove('HFast', 'slower.')) return 8;
+    case 9:
+        if (await remove('HStealth', 'clumsy.')) return 9;
+    case 10:
+        if (await remove('HProtection', 'vulnerable.')) return 10;
+    case 11:
+        if (await remove('HAggravate_monster', 'less attractive.')) return 11;
+    default:
+        return 0;
+    }
 }
 
 // src/sit.c:400 dosit() — the #sit command.

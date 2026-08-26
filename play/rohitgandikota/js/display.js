@@ -2,6 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
+import { rn2_on_display_rng } from './rng.js';
 import { money_cnt } from './invent.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { update_topl } from './tty/topl.js';
@@ -14,7 +15,7 @@ import { Infravision, Hallucination, Invis, See_invisible } from './youprop.js';
 import { observe_object } from './o_init.js';
 import { distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
-import { t_at } from './mon.js';
+import { m_at, t_at } from './mon.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -29,7 +30,8 @@ import {
     WM_C_OUTER, WM_C_INNER, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, ACCESSIBLE, Is_rogue_level,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
+    ACCESSIBLE, Is_rogue_level,
 } from './const.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at } from './region.js';
@@ -38,7 +40,7 @@ import { is_pool } from './mon.js';
 import { nhgetch } from './input.js';
 import { update_lastseentyp } from './dungeon.js';
 import { def_monsyms, def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
-import { PMNAMES, mons } from './monst_data.js';
+import { PMNAMES, mons, NUMMONS } from './monst_data.js';
 import { showsym } from './symbols.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_BLACK,
@@ -645,7 +647,10 @@ export function back_to_glyph(loc, x, y) {
     /* src/display.c:2294 -- a secret corridor is displayed as unexplored
        stone until searching converts it to CORR. */
     case SCORR:
-    case STONE:     return { ch: ' ', color: NO_COLOR, dec: false, cmap: CM.S_stone };
+    case STONE:
+        return game.level?.flags?.arboreal
+            ? { ch: 'g', color: CLR_GREEN, dec: true, cmap: CM.S_tree }
+            : { ch: ' ', color: NO_COLOR, dec: false, cmap: CM.S_stone };
     case ROOM:      return { ch: '~', color: NO_COLOR, dec: true, cmap: CM.S_room };  // DEC middle dot
     case CORR: {
         /* src/display.c:2302 back_to_glyph() picks S_litcorr when the cell
@@ -868,6 +873,22 @@ function pile_attr(glyph) {
 }
 
 function floor_object_glyph(obj, x, y, piletop = true) {
+    /* include/display.h random_obj_to_glyph(): every object is shown as a
+       random object while hallucinating. CORPSE is the one random type that
+       needs another display-RNG draw to choose the body species. */
+    if (Hallucination()) {
+        const otyp = rn2_on_display_rng(
+            ONAMES.NUM_OBJECTS - ONAMES.FIRST_OBJECT) + ONAMES.FIRST_OBJECT;
+        obj = {
+            otyp,
+            oclass: game.objects?.[otyp]?.oc_class,
+            corpsenm: otyp === ONAMES.CORPSE
+                ? rn2_on_display_rng(NUMMONS) : -1,
+            quan: 1,
+            dknown: 1,
+        };
+        piletop = false;
+    }
     /* src/display.c:340 _map_location() — if the object would display as
        generic but the hero can see the spot from nearby (same radius as
        distant_name(): r = max(u.xray_range, 2), neardist = 2r²−r), mark
@@ -953,7 +974,10 @@ export async function swallowed(first) {
     };
     const put = (x, y, name) => {
         const g = sw(name);
-        show_glyph_cell(x, y, g.ch, swcolor, g.dec, 0,
+        const color = Hallucination()
+            ? (game.mons?.[rn2_on_display_rng(NUMMONS)]?.mcolor ?? NO_COLOR)
+            : swcolor;
+        show_glyph_cell(x, y, g.ch, color, g.dec, 0,
                         { kind: 'swallow', cmap: g.cmap });
     };
     const left_ok = isok(u.ux - 1, u.uy);
@@ -1021,6 +1045,20 @@ export function newsym(x, y) {
         return;
     const loc = game.level?.at(x, y);
     if (!loc) return;
+
+    /* src/display.c:939. The swallowed view owns the map. Ordinary
+       newsym() calls may repaint only the hero's center cell. */
+    if (game.u?.uswallow) {
+        if (game.u.ux === x && game.u.uy === y) {
+            const self = game.youmonst?.data;
+            show_glyph_cell(x, y,
+                            Upolyd(game.u)
+                                ? (def_monsyms[self.mlet] || '?') : '@',
+                            Upolyd(game.u) ? self.mcolor : CLR_WHITE,
+                            false, 0, { kind: 'hero' });
+        }
+        return;
+    }
 
     /* src/display.c:967 — `lev->waslit = (lev->lit != 0)`, inside newsym's
        cansee() branch and BEFORE the hero-specific handling, so the hero's own
@@ -1148,8 +1186,12 @@ export function newsym(x, y) {
                                 { kind: 'cmap', cmap: mon.mappearance });
                 return;
             }
-            show_glyph_cell(x, y, def_monsyms[mon.data.mlet] || '?',
-                            mon.data.mcolor ?? NO_COLOR, false, 0,
+            const shown = game.mons[Hallucination()
+                ? rn2_on_display_rng(NUMMONS)
+                : (mon.m_ap_type === M_AP_MONSTER
+                    ? mon.mappearance : mon.mnum)];
+            show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
+                            shown.mcolor ?? NO_COLOR, false, 0,
                             { kind: 'mon', mon });
             return;
         }
@@ -1167,8 +1209,10 @@ export function newsym(x, y) {
                                    && !m.msleeping_hidden);
         if (mon && (sensemon(mon)
                     || (see_with_infrared(mon) && mon_visible(mon)))) {
-            show_glyph_cell(x, y, def_monsyms[mon.data.mlet] || '?',
-                            mon.data.mcolor ?? NO_COLOR, false, 0,
+            const shown = game.mons[Hallucination()
+                ? rn2_on_display_rng(NUMMONS) : mon.mnum];
+            show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
+                            shown.mcolor ?? NO_COLOR, false, 0,
                             { kind: 'mon', mon });
             return;
         }
@@ -1224,7 +1268,9 @@ export function newsym(x, y) {
         const wmon = (game.level?.monsters || [])
             .find(m => m.mx === x && m.my === y && m.mhp > 0);
         if (wmon && mon_warning(wmon)) {
-            let wl = ((wmon.m_lev ?? 0) / 4) | 0;
+            let wl = Hallucination()
+                ? rn2_on_display_rng(5) + 1
+                : ((wmon.m_lev ?? 0) / 4) | 0;
             if (wl > 5) wl = 5;
             if (wl < 1) wl = 1;
             const warncolor = [CLR_WHITE, 1, 1, 1, 5, 13];
@@ -1322,8 +1368,38 @@ function engraving_glyph(loc, x, y) {
 }
 
 // ── docrt ──
+// Synchronous map-buffer half of docrt(), used by the tty window port when a
+// full-screen menu is dismissed. The tty call itself is synchronous, but C
+// still performs the complete vision shutdown, memory pass, and live overlay.
+export function docrt_sync_rebuild() {
+    if (!game.level || game.u?.uswallow)
+        return;
+
+    vision_recalc(2);
+    clear_glyph_buffer();
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level.at(x, y);
+            if (loc?.remembered_glyph) {
+                show_glyph_cell(x, y, loc.remembered_glyph.ch,
+                    loc.remembered_glyph.color, loc.remembered_glyph.decgfx,
+                    pile_attr(loc.remembered_glyph.glyph),
+                    loc.remembered_glyph.glyph);
+            }
+        }
+    vision_recalc(0);
+    see_monsters();
+}
+
 export async function docrt() {
     if (!game.level) return;
+
+    /* src/display.c:1726. swallowed() owns the complete map display. */
+    if (game.u?.uswallow) {
+        await swallowed(1);
+        await flush_screen(0);
+        return;
+    }
 
     /* src/display.c:1740 — "shut down vision" so the recalc below sees an
        empty previous state and newsyms every in-sight square */
@@ -1335,8 +1411,8 @@ export async function docrt() {
        shows the old level under "You descend the stairs.--More--". */
     await cls();
 
-    for (let y = 0; y < ROWNO; y++)
-        for (let x = 1; x < COLNO; x++) {
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
             const loc = game.level.at(x, y);
             if (loc?.remembered_glyph) {
                 show_glyph_cell(x, y, loc.remembered_glyph.ch,
@@ -1625,6 +1701,12 @@ export function feel_location(x, y) {
         return;
     const loc = game.level?.at(x, y);
     if (!loc)
+        return;
+
+    /* src/display.c:761: keep an accurately remembered invisible-monster
+       marker. Search relies on this early return to avoid finding and
+       exercising Wisdom from the same unseen monster every turn. */
+    if (glyph_is_invisible_at(x, y) && m_at(x, y))
         return;
 
     set_seenv(loc, game.u.ux, game.u.uy, x, y);
@@ -1965,7 +2047,7 @@ export function tty_clear_nhwindow_message(cury) {
 export function mon_visible(mon) {
     /* The hero can see the monster IF it is not invisible, is not an
        undetected hider, and neither you nor it is buried. */
-    return (!mon.minvis || game.u.uprops?.SEE_INVIS)
+    return (!mon.minvis || See_invisible())
         && !mon.mundetected
         && !(mon.mburied || game.u.uburied);
 }
@@ -2006,6 +2088,41 @@ export function canseemon(mon) {
 // include/display.h:129 canspotmon()
 export function canspotmon(mon) {
     return canseemon(mon) || sensemon(mon);
+}
+
+// src/display.c:1487 see_monsters() redraws every live monster, then the
+// hero. Callers use this when a sensing property changes or needs refreshing.
+export function see_monsters() {
+    for (const mon of game.level?.monsters || []) {
+        if (mon.mhp > 0)
+            newsym(mon.mx, mon.my);
+    }
+    if (!game.u?.usteed)
+        newsym(game.u.ux, game.u.uy);
+}
+
+// src/display.c:1558 see_objects() redraws the top object at every occupied
+// floor location while hallucinating.
+export function see_objects() {
+    const objects = game.level?.objects || [];
+    const seen = new Set();
+    for (const obj of objects) {
+        const key = `${obj.ox},${obj.oy}`;
+        if (seen.has(key))
+            continue;
+        seen.add(key);
+        newsym(obj.ox, obj.oy);
+    }
+}
+
+// src/display.c:1611 see_traps() refreshes traps which are currently the
+// topmost displayed layer.
+export function see_traps() {
+    for (const trap of game.level?.traps || []) {
+        const glyph = gbuf_at(trap.tx, trap.ty)?.disp_glyph;
+        if (glyph?.kind === 'cmap' && glyph.cmap in trap_cmap_color)
+            newsym(trap.tx, trap.ty);
+    }
 }
 
 // win/tty/wintty.c tty_print_glyph(), MG_PET with hilite_pet. NetHack's
@@ -2230,5 +2347,5 @@ function mon_warning(mon) {
     const dx = mon.mx - u.ux, dy = mon.my - u.uy;
     if (dx * dx + dy * dy >= 100)
         return false;
-    return (((mon.m_lev ?? 0) / 4) | 0) >= (game.context_warnlevel ?? 0);
+    return (((mon.m_lev ?? 0) / 4) | 0) >= (game.context?.warnlevel ?? 1);
 }

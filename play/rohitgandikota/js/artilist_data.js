@@ -119,10 +119,7 @@ export const artifact_otyps = [
  "AMULET_OF_ESP"
 ];
 
-// Per-artifact records touch_artifact/spec_applies need: spfx bits, the
-// monster type bonus target, attack/defense macro heads (their name IS the
-// damage type: PHYS/DRLI/COLD/FIRE/ELEC/STUN/DFNS...), alignment, role and
-// race as written in artilist.h.
+// Per-artifact records used by generation, touch checks, and combat.
 export const artifact_records = [
  {
   "spfx": 0,
@@ -132,7 +129,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 0
  },
  {
   "spfx": 663,
@@ -142,7 +141,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_KNIGHT",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 10
  },
  {
   "spfx": 454,
@@ -152,7 +153,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 9
  },
  {
   "spfx": 66,
@@ -162,7 +165,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_VALKYRIE",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 8
  },
  {
   "spfx": 2,
@@ -172,7 +177,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_BARBARIAN",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 8
  },
  {
   "spfx": 8388642,
@@ -182,7 +189,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
-  "race": "PM_ORC"
+  "race": "PM_ORC",
+  "gen_spe": 0,
+  "gift_value": 5
  },
  {
   "spfx": 8388640,
@@ -192,7 +201,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
-  "race": "PM_ELF"
+  "race": "PM_ELF",
+  "gen_spe": 3,
+  "gift_value": 4
  },
  {
   "spfx": 8388640,
@@ -202,7 +213,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "NON_PM",
-  "race": "PM_ELF"
+  "race": "PM_ELF",
+  "gen_spe": 3,
+  "gift_value": 1
  },
  {
   "spfx": 194,
@@ -212,7 +225,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_WIZARD",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 7
  },
  {
   "spfx": 194,
@@ -222,7 +237,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 9
  },
  {
   "spfx": 194,
@@ -232,7 +249,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 5
  },
  {
   "spfx": 69206018,
@@ -242,7 +261,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 2,
+  "gift_value": 5
  },
  {
   "spfx": 8388610,
@@ -252,7 +273,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_CLERIC",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 1,
+  "gift_value": 3
  },
  {
   "spfx": 8388610,
@@ -262,7 +285,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 1,
+  "gift_value": 4
  },
  {
   "spfx": 2050,
@@ -272,7 +297,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 10
  },
  {
   "spfx": 8388610,
@@ -282,7 +309,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 2,
+  "gift_value": 4
  },
  {
   "spfx": 2097154,
@@ -292,7 +321,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 2,
+  "gift_value": 1
  },
  {
   "spfx": 2113538,
@@ -302,7 +333,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NONE",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 2,
+  "gift_value": 1
  },
  {
   "spfx": 1026,
@@ -312,7 +345,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 1,
+  "gift_value": 5
  },
  {
   "spfx": 2,
@@ -322,7 +357,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_SAMURAI",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 8
  },
  {
   "spfx": 8388610,
@@ -332,7 +369,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "NON_PM",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 6
  },
  {
   "spfx": 7,
@@ -342,7 +381,9 @@ export const artifact_records = [
   "cary": "CARY(AD_MAGM)",
   "align": "A_LAWFUL",
   "role": "PM_ARCHEOLOGIST",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 7,
@@ -352,7 +393,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_BARBARIAN",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 16777223,
@@ -362,7 +405,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_CAVE_DWELLER",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 16711,
@@ -372,7 +417,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_HEALER",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 15,
@@ -382,7 +429,9 @@ export const artifact_records = [
   "cary": "CARY(AD_MAGM)",
   "align": "A_LAWFUL",
   "role": "PM_KNIGHT",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 33554439,
@@ -392,7 +441,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_MONK",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 142606343,
@@ -402,7 +453,9 @@ export const artifact_records = [
   "cary": "CARY(AD_FIRE)",
   "align": "A_LAWFUL",
   "role": "PM_CLERIC",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 67108871,
@@ -412,7 +465,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "PM_RANGER",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 15,
@@ -422,7 +477,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_CHAOTIC",
   "role": "PM_ROGUE",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 134743047,
@@ -432,7 +489,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_LAWFUL",
   "role": "PM_SAMURAI",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 135,
@@ -442,7 +501,9 @@ export const artifact_records = [
   "cary": "CARY(AD_MAGM)",
   "align": "A_NEUTRAL",
   "role": "PM_TOURIST",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 524295,
@@ -452,7 +513,9 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_VALKYRIE",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  },
  {
   "spfx": 7,
@@ -462,6 +525,8 @@ export const artifact_records = [
   "cary": "NO_CARY",
   "align": "A_NEUTRAL",
   "role": "PM_WIZARD",
-  "race": "NON_PM"
+  "race": "NON_PM",
+  "gen_spe": 0,
+  "gift_value": 12
  }
 ];

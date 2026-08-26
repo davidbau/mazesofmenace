@@ -9,11 +9,18 @@
 import { game } from './gstate.js';
 import { makewish } from './zap.js';
 import { encumber_msg } from './attrib.js';
-import { ECMD_OK } from './const.js';
+import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY }
+    from './const.js';
 import { getlin } from './cmd.js';
-import { pline } from './display.js';
+import { docrt, pline, see_monsters, swallowed } from './display.js';
 import { pluslvl } from './exper.js';
 import { level_tele } from './teleport.js';
+import { NO_COLOR } from './terminal.js';
+import {
+    ATR_NONE, NHW_MENU, tty_add_menu, tty_add_menu_str,
+    tty_create_nhwindow, tty_destroy_nhwindow, tty_end_menu,
+    tty_select_menu, tty_start_menu,
+} from './tty/wintty.js';
 
 function note_unported_wizcmds(what) {
     (game.unported ||= new Set()).add(what);
@@ -84,6 +91,147 @@ export async function wiz_level_change() {
 
     /* blessed full healing or restore ability won't fix any lost levels */
     game.u.ulevelmax = game.u.ulevel;
+    return ECMD_OK;
+}
+
+// src/timeout.c propertynames[], in its menu order. HALLUC_RES is omitted by
+// wiz_intrinsic(), and the null entry is the separator before timed-only
+// properties.
+const WIZ_INTRINSICS = [
+    ['INVULNERABLE', 'invulnerable'],
+    ['STONED', 'petrifying'],
+    ['SLIMED', 'becoming slime'],
+    ['STRANGLED', 'strangling'],
+    ['SICK', 'fatally sick'],
+    ['STUNNED', 'stunned'],
+    ['CONFUSION', 'confused'],
+    ['HALLUC', 'hallucinating'],
+    ['BLINDED', 'blinded'],
+    ['DEAF', 'deafness'],
+    ['VOMITING', 'vomiting'],
+    ['GLIB', 'slippery fingers'],
+    ['WOUNDED_LEGS', 'wounded legs'],
+    ['SLEEPY', 'sleepy'],
+    ['TELEPORT', 'teleporting'],
+    ['POLYMORPH', 'polymorphing'],
+    ['LEVITATION', 'levitating'],
+    ['FAST', 'very fast'],
+    ['CLAIRVOYANT', 'clairvoyant'],
+    ['DETECT_MONSTERS', 'monster detection'],
+    ['SEE_INVIS', 'see invisible'],
+    ['INVIS', 'invisible'],
+    ['ACID_RES', 'acid resistance'],
+    ['STONE_RES', 'stoning resistance'],
+    ['DISPLACED', 'displaced'],
+    ['PASSES_WALLS', 'pass thru walls'],
+    ['MAGICAL_BREATHING', 'magical breathing'],
+    ['WWALKING', 'water walking'],
+    null,
+    ['FIRE_RES', 'fire resistance'],
+    ['COLD_RES', 'cold resistance'],
+    ['SLEEP_RES', 'sleep resistance'],
+    ['DISINT_RES', 'disintegration resistance'],
+    ['SHOCK_RES', 'shock resistance'],
+    ['POISON_RES', 'poison resistance'],
+    ['DRAIN_RES', 'drain resistance'],
+    ['SICK_RES', 'sickness resistance'],
+    ['ANTIMAGIC', 'magic resistance'],
+    ['BLND_RES', 'light-induced blindness resistance'],
+    ['FUMBLING', 'fumbling'],
+    ['HUNGER', 'voracious hunger'],
+    ['TELEPAT', 'telepathic'],
+    ['WARNING', 'warning'],
+    ['WARN_OF_MON', 'warn: monster type or class'],
+    ['WARN_UNDEAD', 'warn: undead'],
+    ['SEARCHING', 'searching'],
+    ['INFRAVISION', 'infravision'],
+    ['ADORNED', 'adorned (+/- Cha)'],
+    ['STEALTH', 'stealthy'],
+    ['AGGRAVATE_MONSTER', 'monster aggravation'],
+    ['CONFLICT', 'conflict'],
+    ['JUMPING', 'jumping'],
+    ['TELEPORT_CONTROL', 'teleport control'],
+    ['FLYING', 'flying'],
+    ['SWIMMING', 'swimming'],
+    ['SLOW_DIGESTION', 'slow digestion'],
+    ['HALF_SPDAM', 'half spell damage'],
+    ['HALF_PHDAM', 'half physical damage'],
+    ['REGENERATION', 'HP regeneration'],
+    ['ENERGY_REGENERATION', 'energy regeneration'],
+    ['PROTECTION', 'extra protection'],
+    ['PROT_FROM_SHAPE_CHANGERS', 'protection from shape changers'],
+    ['POLYMORPH_CONTROL', 'polymorph control'],
+    ['UNCHANGING', 'unchanging'],
+    ['REFLECTING', 'reflecting'],
+    ['FREE_ACTION', 'free action'],
+    ['FIXED_ABIL', 'fixed abilities'],
+    ['LIFESAVED', 'life will be saved'],
+];
+
+function wiz_intrinsic_timeout(key) {
+    if (key === 'HALLUC')
+        return Number(game.u.uprops?.HALLUC) || 0;
+    return Number(game.u.wiz_intrinsic_timeouts?.[key]) || 0;
+}
+
+// src/wizcmds.c:949 wiz_intrinsic(). The menu and ordinary timeout updates
+// are shared by every property. Hallucination has its source feedback and
+// redraw because it changes every warning glyph immediately.
+export async function wiz_intrinsic() {
+    if (!game.wizard) {
+        await pline('Unavailable command.');
+        return ECMD_OK;
+    }
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    if (game.iflags?.cmdassist !== false) {
+        tty_add_menu_str(win,
+            '[Precede any selection with a count to increment by other than 30.]');
+    }
+    for (const prop of WIZ_INTRINSICS) {
+        if (!prop) {
+            tty_add_menu_str(win, '--');
+            continue;
+        }
+        const [key, name] = prop;
+        const oldtimeout = wiz_intrinsic_timeout(key);
+        const text = oldtimeout ? `${name.padEnd(27)} [${oldtimeout}]` : name;
+        tty_add_menu(win, null, key, 0, 0, ATR_NONE, NO_COLOR, text,
+                     MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(win, 'Which intrinsics?');
+    const picks = await tty_select_menu(win, PICK_ANY);
+    tty_destroy_nhwindow(win);
+
+    for (const key of picks) {
+        const prop = WIZ_INTRINSICS.find(p => p?.[0] === key);
+        if (!prop)
+            continue;
+        const name = prop[1];
+        const oldtimeout = wiz_intrinsic_timeout(key);
+
+        if (key === 'HALLUC') {
+            const uprops = (game.u.uprops ||= {});
+            uprops.HALLUC = oldtimeout + 30;
+            (game.u.intrinsic ||= {}).HHallucination = oldtimeout + 30;
+            if (!oldtimeout && !uprops.HALLUC_RES) {
+                if (game.u.uswallow)
+                    await swallowed(0);
+                else
+                    see_monsters();
+                (game.disp ||= {}).botl = true;
+                await pline(`Oh wow!  Everything ${game.u.ublind
+                    ? 'feels' : 'looks'} so cosmic!`);
+            }
+        } else {
+            (game.u.wiz_intrinsic_timeouts ||= {})[key] = oldtimeout + 30;
+            (game.disp ||= {}).botl = true;
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} 30.`);
+        }
+    }
+    await docrt();
     return ECMD_OK;
 }
 

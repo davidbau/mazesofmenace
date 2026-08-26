@@ -27,8 +27,8 @@ import { newsym } from './display.js';
 import { You } from './pline.js';
 import { is_pool } from './mon.js';
 import { OBJ_AT } from './const.js';
-import { sobj_at } from './invent.js';
-import { ONAMES, MATERIALS } from './objects_data.js';
+import { sobj_at, weight } from './invent.js';
+import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { pline, canspotmon, more, map_invisible, unmap_invisible,
          glyph_is_invisible_at } from './display.js';
 import { Your, There } from './pline.js';
@@ -37,7 +37,7 @@ import { u_wipe_engr } from './engrave.js';
 import { overexertion } from './hack.js';
 
 import { attack_checks, passive, check_caitiff } from './uhitm.js';
-import { getdir } from './cmd.js';
+import { closed_door, getdir } from './cmd.js';
 import { recalc_block_point, unblock_point } from './vision.js';
 import { pline_The } from './pline.js';
 import { is_drawbridge_wall } from './dbridge.js';
@@ -45,6 +45,7 @@ import { losehp } from './hack.js';
 import { wake_nearto, setmangry, seemimic, killed, mnexto } from './mon.js';
 import { Deaf } from './youprop.js';
 import { hcolor, mon_nam, Monnam, a_monnam } from './do_name.js';
+import { doname } from './objnam.js';
 import { poly_gender } from './polyself.js';
 import { adjalign } from './attrib.js';
 import { cvt_sdoor_to_door } from './detect.js';
@@ -67,7 +68,7 @@ import { SDOOR, SCORR, CORR, STAIRS, LADDER, IRONBARS, LA_DOWN, ROOM,
          IS_SINK, IS_OBSTRUCTED, IS_DRAWBRIDGE, D_LOCKED,
          T_LOOTED, TREE_LOOTED, TREE_SWARM, S_LPUDDING, S_LDWASHER,
          MM_ANGRY, MM_NOMSG, MM_MALE, MM_FEMALE, KILLED_BY,
-         A_WIS, A_LAWFUL } from './const.js';
+         A_WIS, A_LAWFUL, ICE, ZAP_POS } from './const.js';
 
 /* src/dokick.c:8 martial() — Samurai and Monk get the bonus, as do bigfoot
    forms and anyone wearing kicking boots. */
@@ -341,6 +342,69 @@ async function kick_monster(mon, x, y) {
     await kickdmg(mon, clumsy);
 }
 
+// src/dokick.c:508 really_kick_object(), through the common immovable-object
+// path. This covers ordinary floor stacks whose next square is blocked, while
+// retaining the range and break-test draws that happen before the "Thump!".
+async function really_kick_object(obj, x, y) {
+    if (!obj || obj.otyp === ONAMES.BOULDER)
+        return false;
+
+    if (Fumbling() && !rn2(3)) {
+        await Your('clumsy kick missed.');
+        return true;
+    }
+
+    const isgold = obj.oclass === OCLASSES.COIN_CLASS;
+    let k_owt = obj.owt;
+    if (obj.quan > 1 && !isgold) {
+        const save_quan = obj.quan;
+        obj.quan = 1;
+        k_owt = weight(obj);
+        obj.quan = save_quan;
+    }
+
+    let range = Math.trunc(acurrstr() / 2) - Math.trunc(k_owt / 40);
+    if (martial())
+        range += rnd(3);
+
+    if (is_pool(x, y)) {
+        range = Math.trunc(range / 3) + 1;
+    } else {
+        if (game.level.at(x, y)?.typ === ICE)
+            range += rnd(3);
+        if (obj.greased)
+            range += rnd(3);
+    }
+
+    const nx = x + game.u.dx, ny = y + game.u.dy;
+    const nextloc = game.level.at(nx, ny);
+    if (!isok(nx, ny) || !nextloc || !ZAP_POS(nextloc.typ)
+        || closed_door(nx, ny))
+        range = 1;
+
+    await You(`kick ${doname(obj)}.`);
+
+    const isbox = obj.otyp === ONAMES.LARGE_BOX || obj.otyp === ONAMES.CHEST;
+    if (isbox) {
+        note_unported_dokick('really_kick_object:box');
+        return true;
+    }
+
+    const { breaktest } = await import('./dothrow.js');
+    if (breaktest(obj)) {
+        note_unported_dokick('really_kick_object:breakage');
+        return true;
+    }
+
+    if (range < 2) {
+        await pline('Thump!');
+        return !rn2(3) || martial();
+    }
+
+    note_unported_dokick('really_kick_object:motion');
+    return true;
+}
+
 // src/dokick.c:1257 dokick() — the '^D' command.
 //
 // The refusal chain comes first and each arm ends the command after a
@@ -430,7 +494,12 @@ export async function dokick() {
     }
 
     if (OBJ_AT(x, y)) {
-        /* kick_object() moves the pile and has its own damage rolls */
+        /* The flat floor list is newest-first, matching the head of C's
+           per-square pile chain. */
+        const obj = (game.level.objects || [])
+            .find(o => o.ox === x && o.oy === y);
+        if (await really_kick_object(obj, x, y))
+            return ECMD_TIME;
         note_unported_dokick('dokick:kick_object');
         return ECMD_TIME;
     }

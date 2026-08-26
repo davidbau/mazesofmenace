@@ -1,7 +1,7 @@
 // worn.js — Monster armor don/doff helpers.
-// C ref: worn.c — which_armor, mon_set_minvis, m_dowear, m_dowear_type,
-//   update_mon_extrinsics, extra_pref, racial_exception;
-//   mon.c check_gear_next_turn.
+// C ref: worn.c — which_armor, wearmask_to_obj, wearslot, mon_set_minvis,
+//   m_dowear, m_dowear_type, update_mon_extrinsics, extra_pref,
+//   racial_exception; mon.c check_gear_next_turn.
 // Named omissions: wear plines when !creation (freeze still applied);
 //   artifact_light begin_burn/end_burn; full w_blocks Clairvoyance/Eyes;
 //   worm see_wsegs after mon_set_minvis;
@@ -13,7 +13,8 @@
 import { game } from './gstate.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_WEP,
-    I_SPECIAL, AC_MAX, OBJ_MINVENT, NEED_WEAPON,
+    W_RINGL, W_RINGR, W_SWAPWEP, W_QUIVER, W_TOOL, W_BALL, W_CHAIN, W_SADDLE,
+    I_SPECIAL, AC_MAX, OBJ_MINVENT, NEED_WEAPON, P_NONE,
     INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT, STEALTH,
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
@@ -26,9 +27,10 @@ import {
 } from './monsters.js';
 import {
     ARMOR_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
+    RING_CLASS, FOOD_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS,
     objectNames,
 } from './objects.js';
-import { curse, obj_extract_self } from './mkobj.js';
+import { curse, obj_extract_self, oc_merge_of } from './mkobj.js';
 import { canseemon, newsym } from './display.js';
 import { dist2 } from './hacklib.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -40,6 +42,13 @@ const ARM_GLOVES = 3;
 const ARM_BOOTS = 4;
 const ARM_CLOAK = 5;
 const ARM_SHIRT = 6;
+
+const BLINDFOLD = objectNames.indexOf('BLINDFOLD');
+const TOWEL = objectNames.indexOf('TOWEL');
+const LENSES = objectNames.indexOf('LENSES');
+const TIN_OPENER = objectNames.indexOf('TIN_OPENER');
+const SADDLE = objectNames.indexOf('SADDLE');
+const MEAT_RING = objectNames.indexOf('MEAT_RING');
 
 const LEATHER = 7;
 const RUBBER_HOSE = objectNames.indexOf('RUBBER_HOSE');
@@ -216,6 +225,95 @@ function bimanual(obj) {
     if (!obj) return false;
     if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
     return !!(game.objects?.[obj.otyp]?.oc_big);
+}
+
+/** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE. */
+function is_weptool(obj) {
+    if (!obj || obj.oclass !== TOOL_CLASS) return false;
+    const sk = game.objects?.[obj.otyp]?.oc_skill;
+    return sk != null && sk !== P_NONE;
+}
+
+/**
+ * C ref: worn.c wearmask_to_obj — first worn[] slot whose mask bit is
+ * set. Caller zap.c poly_obj after set_wear (D-1510; amulet of change
+ * may have destroyed otmp).
+ */
+export function wearmask_to_obj(wornmask) {
+    const u = game.u || {};
+    const slots = [
+        [W_ARM, u.uarm],
+        [W_ARMC, u.uarmc],
+        [W_ARMH, u.uarmh],
+        [W_ARMS, u.uarms],
+        [W_ARMG, u.uarmg],
+        [W_ARMF, u.uarmf],
+        [W_ARMU, u.uarmu],
+        [W_RINGL, u.uleft],
+        [W_RINGR, u.uright],
+        [W_WEP, u.uwep],
+        [W_SWAPWEP, u.uswapwep],
+        [W_QUIVER, u.uquiver],
+        [W_AMUL, u.uamul],
+        [W_TOOL, u.ublindf],
+        [W_BALL, u.uball],
+        [W_CHAIN, u.uchain],
+    ];
+    for (const [mask, obj] of slots) {
+        if (mask & wornmask) return obj || null;
+    }
+    return null;
+}
+
+/**
+ * C ref: worn.c wearslot — bitmask of slots obj might occupy. Caller
+ * zap.c poly_obj worn remap (D-1510). Wield/quiver of non-weapons is
+ * the caller's job (poly_obj keeps old W_WEAPONS bits).
+ */
+export function wearslot(obj) {
+    if (!obj) return 0;
+    const otyp = obj.otyp | 0;
+    switch (obj.oclass) {
+    case AMULET_CLASS:
+        return W_AMUL;
+    case RING_CLASS:
+        return W_RINGL | W_RINGR;
+    case ARMOR_CLASS:
+        switch (game.objects?.[otyp]?.oc_skill) {
+        case ARM_SUIT: return W_ARM;
+        case ARM_SHIELD: return W_ARMS;
+        case ARM_HELM: return W_ARMH;
+        case ARM_GLOVES: return W_ARMG;
+        case ARM_BOOTS: return W_ARMF;
+        case ARM_CLOAK: return W_ARMC;
+        case ARM_SHIRT: return W_ARMU;
+        default: return 0;
+        }
+    case WEAPON_CLASS: {
+        let res = W_WEP | W_SWAPWEP;
+        if (oc_merge_of(otyp)) res |= W_QUIVER;
+        return res;
+    }
+    case TOOL_CLASS:
+        if (otyp === BLINDFOLD || otyp === TOWEL || otyp === LENSES) {
+            return W_TOOL;
+        }
+        if (is_weptool(obj) || otyp === TIN_OPENER) {
+            return W_WEP | W_SWAPWEP;
+        }
+        if (otyp === SADDLE) return W_SADDLE;
+        return 0;
+    case FOOD_CLASS:
+        return otyp === MEAT_RING ? (W_RINGL | W_RINGR) : 0;
+    case GEM_CLASS:
+        return W_QUIVER;
+    case BALL_CLASS:
+        return W_BALL;
+    case CHAIN_CLASS:
+        return W_CHAIN;
+    default:
+        return 0;
+    }
 }
 
 /**

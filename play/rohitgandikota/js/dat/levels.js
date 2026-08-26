@@ -28,6 +28,7 @@ import { barfilb_level } from './bar-filb.js';
 import { barloca_level } from './bar-loca.js';
 import { bargoal_level } from './bar-goal.js';
 import { minefill_level } from './minefill.js';
+import { hellfill_level } from './hellfill.js';
 import { QUEST_LEVELS } from './quest-levels.js';
 import { tower1_level } from './tower1.js';
 import { tower2_level } from './tower2.js';
@@ -98,6 +99,7 @@ export const SPECIAL_LEVELS = {
     'Bar-goal': bargoal_level,
     ...QUEST_LEVELS,
     minefill: minefill_level,
+    hellfill: hellfill_level,
     tower1: tower1_level,
     tower2: tower2_level,
     tower3: tower3_level,

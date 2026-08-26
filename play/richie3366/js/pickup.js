@@ -20,7 +20,7 @@ import {
 import { addinv } from './u_init.js';
 import {
     an, doname, xname, cxname, cxname_singular,
-    the as theArt, The,
+    the as theArt, The, body_part_latebound,
 } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import {
@@ -37,6 +37,7 @@ import {
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     AUTOUNLOCK_APPLY_KEY,
     nothing_seems_to_happen, engulfing_u,
+    HAND,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects, instapetrify } from './trap.js';
 import { nhgetch } from './input.js';
@@ -83,6 +84,7 @@ const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
 const CORPSE = objectNames.indexOf('CORPSE');
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
+const BOULDER = objectNames.indexOf('BOULDER');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 /* C hack.h invlet_basic — a-zA-Z invent slots. */
 const INVLET_BASIC = 52;
@@ -506,10 +508,19 @@ async function carry_count(obj, count, telekinesis, wts) {
 /**
  * C ref: pickup.c lift_object — willing/able to carry. telekinesis
  * skips the ynq Continue? and refuses when encumbrance would rise.
- * Named omit: Sokoban boulder HAND wrap; LOADSTONE/giant-boulder
- * weight override; container path; shop no_charge merge_choice.
+ * Sokoban boulder uses body_part(HAND) (latebound; polyself→do→pickup cycle).
+ * Named omit: LOADSTONE/giant-boulder weight override; container path;
+ * shop no_charge merge_choice.
  */
 async function lift_object(obj, cntRef, telekinesis) {
+    // C: #define Sokoban svl.level.flags.sokoban_rules — not In_sokoban.
+    const Sokoban = !!(game.level?.flags?.sokoban_rules || game.Sokoban);
+    if ((obj.otyp | 0) === BOULDER && Sokoban) {
+        await pline(
+            `You cannot get your ${body_part_latebound(HAND)} around this ${xname(obj)}.`,
+        );
+        return -1;
+    }
     cntRef.count = await carry_count(obj, cntRef.count, telekinesis, cntRef);
     if (cntRef.count < 1) return -1;
     if (obj.oclass !== COIN_CLASS
@@ -550,7 +561,7 @@ async function lift_object(obj, cntRef, telekinesis) {
  * Branch envelope: observe_object; telekinesis through corpse/scare/
  * lift_object (D-1050); gold disp.botl; splitobj; pick_obj + prinv.
  * Named omissions: LOADSTONE no-split already honored; ghostly
- * fix_ghostly_obj; Sokoban boulder / LOADSTONE weight override;
+ * fix_ghostly_obj; LOADSTONE/giant-boulder weight override;
  * container carry_count; Death/Pestilence revive suffixes.
  */
 export async function pickup_object(obj, count, telekinesis) {
@@ -1684,13 +1695,9 @@ function freehand() {
     return false;
 }
 
-/** C ref: mondata.c body_part(HAND) — poly table deferred → "hand". */
-function body_part_hand() {
-    return 'hand';
-}
-
 /**
  * C ref: pickup.c u_handsy — nohands / freehand gate for containers.
+ * body_part(HAND) via objnam latebound (polyself→do→pickup cycle).
  * @returns {Promise<boolean>}
  */
 async function u_handsy() {
@@ -1700,7 +1707,7 @@ async function u_handsy() {
         return false;
     }
     if (!freehand()) {
-        await pline(`You have no free ${body_part_hand()}.`);
+        await pline(`You have no free ${body_part_latebound(HAND)}.`);
         return false;
     }
     return true;
@@ -1924,7 +1931,7 @@ function check_capacity(str) {
 /**
  * C ref: pickup.c able_to_loot — tip/loot reachability gates.
  * Named omissions: usteed rider_cant_reach; Underwater tip carve-out;
- * freehand for looting; body_part(HAND) wording.
+ * hliquid wording.
  * @param {number} x
  * @param {number} y
  * @param {boolean} looting true=loot, false=tip
@@ -1952,6 +1959,12 @@ async function able_to_loot(x, y, looting) {
         }
     } catch {
         /* mondata optional */
+    }
+    if (looting && !freehand()) {
+        await pline(
+            `Without a free ${body_part_latebound(HAND)}, you cannot loot anything.`,
+        );
+        return false;
     }
     return true;
 }

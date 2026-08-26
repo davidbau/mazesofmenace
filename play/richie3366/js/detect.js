@@ -58,6 +58,7 @@ import {
 import { vision_recalc, couldsee, recalc_block_point, cansee } from './vision.js';
 import { visible_region_at } from './region.js';
 import { an, the, xname, The, makeplural, vtense } from './objnam.js';
+import { body_part } from './polyself.js';
 import { A_WIS, A_INT, acurr, exercise } from './attrib.js';
 import {
     t_at, activate_statue_trap, b_trapped, openholdingtrap, openfallingtrap,
@@ -251,12 +252,6 @@ function resists_blnd(_mon) {
 function is_quest_artifact(obj) {
     const want = game.urole?.questarti | 0;
     return !!(obj && want && (obj.oartifact | 0) === want);
-}
-
-/** C you.h body_part(TOE) subset. */
-function body_part(part) {
-    if (part === TOE) return 'toe';
-    return 'body part';
 }
 
 /**

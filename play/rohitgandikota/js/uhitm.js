@@ -24,7 +24,8 @@ import { You, Your } from './pline.js';
 import { end_running } from './hack.js';
 import { mon_nam, Monnam, y_monnam, upstart, a_monnam, x_monnam,
          pmname } from './do_name.js';
-import { exclam } from './zap.js';
+import { destroy_items, exclam } from './zap.js';
+import { Cold_resistance } from './youprop.js';
 import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline } from './display.js';
 import { wakeup, killed, xkilled, seemimic, setmangry } from './mon.js';
 import { DEADMONSTER } from './monst.js';
@@ -343,8 +344,13 @@ export async function attack_checks(mtmp, wep) {
         && !game.u.uprops?.STUNNED) {
         /* is_art(wep, ART_STORMBRINGER) — no artifact is wielded this early */
         if (canspotmon(mtmp)) {
-            note_unported_uhitm('attack_checks:really_attack_query');
-            return true;
+            const { tty_yn_function } = await import('./tty/topl.js');
+            const answer = await tty_yn_function(
+                `Really attack ${mon_nam(mtmp)}?`, 'yn', 'n');
+            if (answer !== 'y') {
+                game.context.move = 0;
+                return true;
+            }
         }
     }
 
@@ -1580,6 +1586,33 @@ export async function mhitm_mgc_atk_negated(magr, mdef, verbosely) {
         return true;
     }
     return false;
+}
+
+// src/uhitm.c:2626 mhitm_ad_cold(), a cold touch against the hero.
+export async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
+    const orig_dmg = mhm.damage;
+
+    if (magr === game.youmonst) {
+        note_unported_uhitm('mhitm_ad_cold:uhitm');
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk, mhm.indx);
+        if (!(await mhitm_mgc_atk_negated(magr, mdef, true))) {
+            await pline("You're covered in frost!");
+            if (Cold_resistance()) {
+                await pline("The frost doesn't seem cold!");
+                note_unported_uhitm('mhitm_ad_cold:monstseesu');
+                mhm.damage = 0;
+            } else {
+                note_unported_uhitm('mhitm_ad_cold:monstunseesu');
+            }
+            if (magr.m_lev > rn2(20))
+                await destroy_items(game.youmonst, ATTKS.AD_COLD, orig_dmg);
+        } else {
+            mhm.damage = 0;
+        }
+    } else {
+        note_unported_uhitm('mhitm_ad_cold:mhitm');
+    }
 }
 
 // src/uhitm.c:2684 mhitm_ad_elec() — a shock attack.

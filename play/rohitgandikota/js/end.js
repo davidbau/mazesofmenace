@@ -674,7 +674,8 @@ async function disclose(how, taken) {
             const win = tty_create_nhwindow(NHW_MENU);
             tty_start_menu(win, MENU_BEHAVE_STANDARD);
             for (const item of display_inventory()) {
-                tty_add_menu(win, null, item.heading ? 0 : 1,
+                tty_add_menu(win, item.glyphinfo ?? null,
+                             item.heading ? 0 : 1,
                              item.invlet || 0, 0, 0, NO_COLOR, item.str,
                              MENU_ITEMFLAGS_NONE);
             }

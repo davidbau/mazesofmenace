@@ -11,7 +11,7 @@ import { inv_cnt, crawl_destination, unmul, in_rooms } from './hack.js';
 import { near_capacity } from './attrib.js';
 import { UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DROWNING, BURNING,
          WATER, FIRE_RES } from './const.js';
-import { goodpos, remove_monster } from './makemon.js';
+import { goodpos, makemon, remove_monster } from './makemon.js';
 import { waterbody_name } from './pager.js';
 import { hliquid } from './do_name.js';
 import { Teleport_control, Unaware, Sleep_resistance } from './youprop.js';
@@ -20,7 +20,7 @@ import { teleds, safe_teleds, TELEDS_ALLOW_DRAG,
 import { done } from './end.js';
 import { recalc_block_point, vision_recalc } from './vision.js';
 import { useupall } from './invent.js';
-import { obj_resists } from './zap.js';
+import { destroy_items, obj_resists } from './zap.js';
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -28,8 +28,9 @@ import { mksobj, place_object, splitobj } from './mkobj.js';
 import { weight } from './invent.js';
 import { dmgval } from './weapon.js';
 import { observe_object } from './o_init.js';
-import { canspotmon, display_object_at, newsym, pline } from './display.js';
-import { You, You_hear, You_feel, Your, Norep } from './pline.js';
+import { canspotmon, display_object_at, newsym, pline,
+         temporary_object_glyph } from './display.js';
+import { You, You_hear, You_feel, You_see, Your, Norep } from './pline.js';
 import { an, the, doname, mshot_xname, xname, Yname2 } from './objnam.js';
 import { upstart } from './do_name.js';
 import { losehp } from './hack.js';
@@ -87,7 +88,8 @@ import { In_quest, TOOKPLUNGE, VIASITTING, HURTLING,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP,
          VIBRATING_SQUARE, BOLT_LIM, WT_ELF, VAULT, TEMPLE, SHOPBASE,
          Is_firelevel, Is_earthlevel, IS_AIR, IS_ROOM,
-         IS_WALL, IS_DOOR, SDOOR, MIGR_RANDOM, MON_MIGRATING } from './const.js';
+         IS_WALL, IS_DOOR, SDOOR, MIGR_RANDOM, MON_MIGRATING,
+         NO_MM_FLAGS, TIMEOUT } from './const.js';
 import { just_an } from './objnam.js';
 import { Deaf, Levitation, Flying, Hallucination, Underwater,
          See_invisible, Invis } from './youprop.js';
@@ -107,7 +109,7 @@ import { obj_extract_self, sobj_at } from './invent.js';
 import { metallivorous } from './mondata.js';
 import { amorphous, is_whirly, unsolid, is_clinger, is_floater, is_flyer,
          webmaker, nohands, defended, resists_fire, resists_sleep, breathless,
-         resists_magm, flaming, acidic } from './mondata.js';
+         resists_magm, resists_blnd, flaming, acidic } from './mondata.js';
 import { ECMD_OK } from './const.js';
 
 // src/trap.c:5250 dountrap() and the preliminary could_untrap() checks.
@@ -571,7 +573,7 @@ export async function thitu(tlev, dam, objp, name) {
 
 // src/trap.c:7100 trapname() — the display name of a trap type; the
 // hallucination riff list draws on the display rng and is recorded.
-function trapname(ttyp, override) {
+export function trapname(ttyp, override) {
     if (Hallucination() && !override)
         note_unported_trap('trapname:hallucination');
     return defsyms[CM_S_arrow_trap + ttyp - 1].explain;
@@ -832,18 +834,116 @@ async function drain_en(n, max_already_drained) {
     await You_feel(`${mesg}${punct}`);
 }
 
+// src/trap.c:1730 trapeffect_fire_trap(), monster path. Magic traps use
+// this when their one-in-21 monster trigger fires.
+async function trapeffect_fire_trap(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        note_unported_trap('trapeffect_fire_trap:hero');
+        return Trap_Effect_Finished;
+    }
+
+    const in_sight = canseemon(mtmp) || mtmp === game.u.usteed;
+    const see_it = cansee(trap.tx, trap.ty);
+    const orig_dmg = d(2, 4);
+    let trapkilled = false;
+
+    if (in_sight) {
+        await pline(`A tower of flame erupts from the ${
+            surface(mtmp.mx, mtmp.my)} under ${mon_nam(mtmp)}!`);
+    } else if (see_it) {
+        await You_see(`a tower of flame erupt from the ${
+            surface(mtmp.mx, mtmp.my)}!`);
+    }
+
+    if (resists_fire(mtmp)) {
+        if (in_sight)
+            await pline(`${Monnam(mtmp)} is uninjured.`);
+    } else {
+        let num = orig_dmg;
+        let alt = 0;
+        let immolate = false;
+        switch (mtmp.mnum) {
+        case PMNAMES.PM_PAPER_GOLEM:
+            immolate = true;
+            alt = mtmp.mhpmax;
+            break;
+        case PMNAMES.PM_STRAW_GOLEM:
+            alt = Math.trunc(mtmp.mhpmax / 2);
+            break;
+        case PMNAMES.PM_WOOD_GOLEM:
+            alt = Math.trunc(mtmp.mhpmax / 4);
+            break;
+        case PMNAMES.PM_LEATHER_GOLEM:
+            alt = Math.trunc(mtmp.mhpmax / 8);
+            break;
+        }
+        if (alt > num)
+            num = alt;
+
+        if (await thitm(0, mtmp, null, num, immolate)) {
+            trapkilled = true;
+        } else {
+            mtmp.mhpmax -= rn2(num + 1);
+            if (mtmp.mhp > mtmp.mhpmax)
+                mtmp.mhp = mtmp.mhpmax;
+        }
+    }
+
+    if (await burnarmor(mtmp) || rn2(3)) {
+        const xtradmg = await destroy_items(mtmp, ATTKS.AD_FIRE, orig_dmg);
+        if (mtmp.mhp > 0) {
+            mtmp.mhp -= xtradmg;
+            if (mtmp.mhp <= 0) {
+                await monkilled(mtmp, '', ATTKS.AD_FIRE);
+                trapkilled = true;
+            }
+        }
+    }
+
+    if (mtmp.mhp <= 0)
+        trapkilled = true;
+    if (see_it)
+        seetrap(trap);
+    return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
+        ? Trap_Caught_Mon : Trap_Effect_Finished;
+}
+
 
 // src/trap.c:4356 domagictrap() — the magic trap's effect roll.
 //
-// fate = rnd(20) drives everything. Under 10 is the blinding flash (which
-// wakes nearby monsters); 10..19 are the individual arms. Only the pure
-// message arms are live; the rest record, so a session that lands on one is
-// visibly incomplete rather than silently wrong.
+// fate = rnd(20) drives everything. Under 10 is the blinding flash, which
+// wakes nearby monsters; 10..19 are the individual arms.
 async function domagictrap() {
     const fate = rnd(20);
 
     if (fate < 10) {
-        note_unported_trap('domagictrap:blinding_flash');
+        let cnt = rnd(4);
+
+        if (!resists_blnd(null)) {
+            await You('are momentarily blinded by a flash of light!');
+            const { make_blinded } = await import('./potion.js');
+            await make_blinded(rn1(5, 10), false);
+            if (!game.u.ublind)
+                await Your('vision clears.');
+        } else if (!game.u.ublind) {
+            await You_see('a flash of light!');
+        }
+
+        const intr = (game.u.intrinsic ||= {});
+        if (!Deaf()) {
+            await You_hear('a deafening roar!');
+            intr.HDeaf = Math.min(TIMEOUT,
+                (intr.HDeaf | 0) + rn1(20, 30));
+        } else {
+            await You_feel('rankled.');
+            intr.HDeaf = Math.min(TIMEOUT,
+                (intr.HDeaf | 0) + rn1(5, 15));
+        }
+        (game.disp ||= {}).botl = true;
+
+        while (cnt--)
+            makemon(null, game.u.ux, game.u.uy, NO_MM_FLAGS);
+        wake_nearto(game.u.ux, game.u.uy, 7 * 7);
         return;
     }
 
@@ -886,7 +986,7 @@ async function domagictrap() {
 async function trapeffect_magic_trap(mtmp, trap, trflags) {
     if (mtmp !== game.youmonst) {
         if (!rn2(21))
-            note_unported_trap('trapeffect_magic_trap:monster_fire');
+            return await trapeffect_fire_trap(mtmp, trap, trflags);
         return Trap_Effect_Finished;
     }
 
@@ -2652,7 +2752,8 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
        pline() would repaint the floor over this temporary glyph. */
     if (game.vision_full_recalc)
         vision_recalc(0);
-    display_object_at(singleobj, x1, y1);
+    const launchedGlyph = temporary_object_glyph(singleobj);
+    display_object_at(singleobj, x1, y1, launchedGlyph);
 
     let dist = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
     let x = x1, y = y1;
@@ -2675,7 +2776,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
            object being tested for impact. */
         if (x !== tmpx || y !== tmpy) {
             newsym(tmpx, tmpy);
-            display_object_at(singleobj, x, y);
+            display_object_at(singleobj, x, y, launchedGlyph);
             tmpx = x;
             tmpy = y;
         }

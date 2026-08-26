@@ -31,7 +31,8 @@ import { xytodir, dirtocoord } from './cmd.js';
 import { isok, W_ARMH, M_SEEN_REFL, M_SEEN_MAGR, M_SEEN_SLEEP, M_SEEN_FIRE,
          M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_ACID, TELEP_TRAP, N_DIRS,
          Is_rogue_level, In_endgame, Is_earthlevel, W_ARMF, MSLOW, MFAST, NON_PM,
-         POLY_TRAP, u_at, KILLED_BY_AN } from './const.js';
+         POLY_TRAP, u_at, KILLED_BY_AN, ZAP_POS, IS_DOOR, D_LOCKED,
+         D_CLOSED } from './const.js';
 import { Is_container, Has_contents, bimanual, is_plural } from './obj.js';
 import { MON_WEP } from './monst.js';
 import { canletgo } from './do.js';
@@ -361,13 +362,14 @@ export async function use_offensive(mtmp) {
     case MUSE_WAN_STRIKING: {
         const [{ canseemon, pline }, { couldsee }, { You_hear },
                { Monnam }, { an, xname }, { unknow_object }, { makeknown },
-               { stop_occupation }, { nomul, losehp }, { pline_The }]
+               { stop_occupation }, { nomul, losehp }, { pline_The },
+               { bhitpile, bhito }]
             = await Promise.all([
                 import('./display.js'), import('./vision.js'),
                 import('./pline.js'), import('./do_name.js'),
                 import('./objnam.js'), import('./mkobj.js'),
                 import('./o_init.js'), import('./allmain.js'),
-                import('./hack.js'), import('./pline.js'),
+                import('./hack.js'), import('./pline.js'), import('./zap.js'),
             ]);
         const seen = canseemon(mtmp);
 
@@ -383,32 +385,75 @@ export async function use_offensive(mtmp) {
         }
         obj.spe--;
 
-        /* mbhit() always chooses its range before applying the wand at the
-           adjacent hero square. */
-        rn1(8, 6);
-        if (game.u.uprops?.ANTIMAGIC || game.u.uprops?.MAGIC_RES) {
-            mtmp.seen_resistance = (mtmp.seen_resistance ?? 0) | M_SEEN_MAGR;
-            await pline('Boing!');
-            if (seen)
-                makeknown(obj.otyp);
-        } else {
-            const hit = rnd(20) < 10 + (game.u.uac ?? 0) && !!mtmp.mwandexp;
-            if (hit) {
-                mtmp.seen_resistance = (mtmp.seen_resistance ?? 0)
-                                       & ~M_SEEN_MAGR;
-                await pline_The('wand hits you!');
-                let damage = d(2, 12);
-                if (game.u.uprops?.HALF_SPDAM)
-                    damage = Math.trunc((damage + 1) / 2);
-                await losehp(damage, 'wand', KILLED_BY_AN);
-                if (seen)
-                    makeknown(obj.otyp);
-            } else {
-                await pline_The('wand misses you.');
+        /* src/muse.c:1734 mbhit(). Unlike the hero's bhit(), this starts at
+           the monster, crosses the hero square, then keeps going so every
+           floor pile on the remaining line receives bhito(). */
+        let range = rn1(8, 6);
+        const ddx = sgn(mtmp.mux - mtmp.mx);
+        const ddy = sgn(mtmp.muy - mtmp.my);
+        game.bhitpos = { x: mtmp.mx, y: mtmp.my };
+
+        while (range-- > 0) {
+            game.bhitpos.x += ddx;
+            game.bhitpos.y += ddy;
+            const x = game.bhitpos.x, y = game.bhitpos.y;
+
+            if (!isok(x, y)) {
+                game.bhitpos.x -= ddx;
+                game.bhitpos.y -= ddy;
+                break;
+            }
+
+            if (u_at(x, y)) {
+                if (game.u.uprops?.ANTIMAGIC || game.u.uprops?.MAGIC_RES) {
+                    mtmp.seen_resistance = (mtmp.seen_resistance ?? 0)
+                                               | M_SEEN_MAGR;
+                    await pline('Boing!');
+                    if (seen)
+                        makeknown(obj.otyp);
+                } else {
+                    const hit = rnd(20) < 10 + (game.u.uac ?? 0)
+                                && !!mtmp.mwandexp;
+                    if (hit) {
+                        mtmp.seen_resistance = (mtmp.seen_resistance ?? 0)
+                                               & ~M_SEEN_MAGR;
+                        await pline_The('wand hits you!');
+                        let damage = d(2, 12);
+                        if (game.u.uprops?.HALF_SPDAM)
+                            damage = Math.trunc((damage + 1) / 2);
+                        await losehp(damage, 'wand', KILLED_BY_AN);
+                        if (seen)
+                            makeknown(obj.otyp);
+                    } else {
+                        await pline_The('wand misses you.');
+                    }
+                }
+                await stop_occupation();
+                nomul(0);
+                range -= 3;
+            } else if (m_at(x, y)) {
+                /* mbhitm() for intervening monsters has resistance, damage,
+                   death, and visibility consequences not reached here yet. */
+                (game.unported ||= new Set()).add(
+                    'use_offensive:striking_intervening_monster');
+                range -= 3;
+            }
+
+            if (await bhitpile(obj, bhito, x, y, 0))
+                range--;
+
+            const loc = game.level.at(x, y);
+            if (loc && IS_DOOR(loc.typ))
+                (game.unported ||= new Set()).add(
+                    'use_offensive:striking_door');
+            if (!loc || !ZAP_POS(loc.typ)
+                || (IS_DOOR(loc.typ)
+                    && (loc.doormask & (D_LOCKED | D_CLOSED)))) {
+                game.bhitpos.x -= ddx;
+                game.bhitpos.y -= ddy;
+                break;
             }
         }
-        await stop_occupation();
-        nomul(0);
         mtmp.mwandexp = true;
         return 2;
     }

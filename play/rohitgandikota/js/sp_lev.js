@@ -423,17 +423,16 @@ export function lspo_terrain(sel, mapchr) {
 // 100 where the replacement always happens. Skipping the draw for a level
 // that uses this desynchronises the whole build.
 //
-// The mapfrag (`mapfragment`) and explicit-`selection` forms are recorded;
-// the region + fromterrain form is what the level files use.
+// The mapfragment form matches its pattern at each selected square before
+// spending the same rn2(100) chance draw as the fromterrain form.
 export function lspo_replace_terrain(opts) {
     const totyp = splev_chr2typ(opts.toterrain);
     if (totyp === INVALID_TYPE)
         return;
-    if (opts.mapfragment) {
-        note_unported('replace_terrain:mapfragment');
+    const mf = opts.mapfragment ? mapfrag_fromstr(opts.mapfragment) : null;
+    if (mf && mapfrag_error(mf) !== null)
         return;
-    }
-    const fromtyp = splev_chr2typ(opts.fromterrain);
+    const fromtyp = mf ? INVALID_TYPE : splev_chr2typ(opts.fromterrain);
     const chance = (opts.chance === undefined) ? 100 : opts.chance;
     /* sp_lev.c:5087 — tolit defaults SET_LIT_NOCHANGE; replacements go
        through set_levltyp_lit (mkmaze.c:127): lava forces lit, RANDOM
@@ -446,6 +445,9 @@ export function lspo_replace_terrain(opts) {
         else if (tolit !== SET_LIT_NOCHANGE)
             loc.lit = (tolit === SET_LIT_RANDOM) ? !!rn2(2) : !!tolit;
     };
+    const matches = (x, y, loc) => mf ? mapfrag_match(mf, x, y)
+        : ((fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
+           || loc.typ === fromtyp);
     if (opts.selection) {
         /* src/sp_lev.c:5108 — an explicit selection (its points are already
            absolute) instead of a region: walk its bounds with x clamped to
@@ -461,8 +463,7 @@ export function lspo_replace_terrain(opts) {
                 const loc = game.level?.at(x, y);
                 if (!loc)
                     continue;
-                if (!((fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
-                      || loc.typ === fromtyp))
+                if (!matches(x, y, loc))
                     continue;
                 if (rn2(100) < chance)
                     set_typ_lit(loc);
@@ -495,8 +496,7 @@ export function lspo_replace_terrain(opts) {
                file uses to mean "any stone or wall". That made the scan match
                a handful of squares where C matches the whole wall run, so we
                spent one rn2(100) where C spends dozens. */
-            if (!((fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
-                  || loc.typ === fromtyp))
+            if (!matches(x, y, loc))
                 continue;
             if (rn2(100) < chance)
                 set_typ_lit(loc);
@@ -3478,7 +3478,7 @@ export function lspo_region_full(opts) {
         for (let x = x1; x <= x2; x++)
             for (let y = y1; y <= y2; y++) {
                 const loc = game.level.at(x, y);
-                if (loc) loc.lit = !!rlit;
+                if (loc) loc.lit = !!(IS_LAVA(loc.typ) || rlit);
             }
         return;
     }
@@ -3521,7 +3521,7 @@ export function lspo_region_full(opts) {
         for (let x = lowx; x <= hix; x++)
             for (let y = lowy; y <= hiy; y++) {
                 const loc = game.level.at(x, y);
-                if (loc) loc.lit = !!rlit;
+                if (loc) loc.lit = !!(IS_LAVA(loc.typ) || rlit);
             }
         return;
     }

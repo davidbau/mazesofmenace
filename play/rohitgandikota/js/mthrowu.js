@@ -17,7 +17,7 @@ import { should_mulch_missile } from './dothrow.js';
 import { delobj, m_at } from './mon.js';
 import { down_gate, ship_object } from './dokick.js';
 import { flooreffects } from './do.js';
-import { place_object } from './mkobj.js';
+import { place_object, mksobj } from './mkobj.js';
 import { stackobj } from './invent.js';
 import { u_at, M_AP_MONSTER, XKILL_NOMSG, SLT_ENCUMBER,
          A_DEX, WATER, LAVAWALL } from './const.js';
@@ -47,7 +47,7 @@ import { obj_extract_self } from './invent.js';
 import { MATERIALS } from './objects_data.js';
 import { isok, IS_OBSTRUCTED, IRONBARS, IS_SINK, BOLT_LIM, W_WEP,
          NEED_WEAPON, NEED_RANGED_WEAPON, MON_POLE_DIST, FACE,
-         EYE } from './const.js';
+         EYE, M_ATTK_MISS, M_ATTK_HIT } from './const.js';
 import { closed_door } from './cmd.js';
 import { setmnotwielded, select_rwep, mon_wield_item,
          autoreturn_weapon } from './weapon.js';
@@ -64,10 +64,13 @@ import { body_part } from './polyself.js';
 import { Your, pline_The as pline_The2 } from './pline.js';
 import { stop_occupation } from './allmain.js';
 import { mswings_verb } from './mhitu.js';
-import { couldsee } from './vision.js';
-import { lined_up } from './monmove.js';
+import { couldsee, clear_path } from './vision.js';
+import { lined_up, mdistu } from './monmove.js';
 import { is_pole } from './u_init.js';
 import { rn2 } from './rng.js';
+import { ATTKS } from './monst_data.js';
+import { Deaf } from './youprop.js';
+import { You_hear } from './pline.js';
 
 // src/mthrowu.c:198 monmulti() — how many missiles this volley holds.
 //
@@ -638,6 +641,71 @@ export async function monshoot(mtmp, otmp, mwep) {
     game.m_shot.n = game.m_shot.i = 0;
     game.m_shot.o = ONAMES.STRANGE_OBJECT;
     game.m_shot.s = false;
+}
+
+// src/mthrowu.c:1016 spitmm() -- a monster spits venom at another monster.
+// Venom is a real temporary object, so even a failed spit spends the
+// next_ident() draw in mksobj() before rolling its chance to fire.
+export async function spitmm(mtmp, mattk, mtarg) {
+    if (mtmp.mcan) {
+        if (!Deaf() && mdistu(mtmp) < BOLT_LIM * BOLT_LIM) {
+            if (canspotmon(mtmp)) {
+                await pline(`A dry rattle comes from ${
+                    s_suffix(mon_nam(mtmp))} throat.`);
+            } else {
+                await You_hear('a dry rattle nearby.');
+            }
+        }
+        return M_ATTK_MISS;
+    }
+
+    const utarg = mtarg === game.youmonst;
+    const tx = utarg ? mtmp.mux : mtarg.mx;
+    const ty = utarg ? mtmp.muy : mtarg.my;
+    const tbx = tx - mtmp.mx, tby = ty - mtmp.my;
+
+    /* m_lined_up(mtarg, mtmp), with boulders blocking monster targets. */
+    game.tbx = tbx;
+    game.tby = tby;
+    const lined = utarg
+        ? lined_up(mtmp)
+        : !!((!tbx || !tby || Math.abs(tbx) === Math.abs(tby))
+             && distmin(tbx, tby, 0, 0) < BOLT_LIM
+             && clear_path(tx, ty, mtmp.mx, mtmp.my));
+    if (!lined)
+        return M_ATTK_MISS;
+
+    let otyp;
+    switch (mattk[1]) {
+    case ATTKS.AD_BLND:
+    case ATTKS.AD_DRST:
+        otyp = ONAMES.BLINDING_VENOM;
+        break;
+    case ATTKS.AD_ACID:
+    default:
+        otyp = ONAMES.ACID_VENOM;
+        break;
+    }
+    const otmp = mksobj(otyp, true, false);
+
+    if (!rn2(BOLT_LIM - distmin(mtmp.mx, mtmp.my, tx, ty))) {
+        if (canseemon(mtmp))
+            await pline(`${Monnam(mtmp)} spits venom!`);
+        if (!utarg)
+            game.mtarget = mtarg;
+        await m_throw(mtmp, mtmp.mx, mtmp.my, sgn(game.tbx), sgn(game.tby),
+                      distmin(mtmp.mx, mtmp.my, tx, ty), otmp);
+        game.mtarget = null;
+        nomul(0);
+
+        if (mtmp.mtame && !mtmp.isminion && mtmp.edog
+            && mtmp.edog.hungrytime > 1)
+            mtmp.edog.hungrytime -= 5;
+        return M_ATTK_HIT;
+    }
+
+    /* obj_extract_self() and obfree() are no-ops for this OBJ_FREE venom. */
+    return M_ATTK_MISS;
 }
 
 // src/mthrowu.c:1174 thrwmu() — monster attempts ranged attack on the hero.

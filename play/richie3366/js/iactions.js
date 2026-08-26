@@ -5,7 +5,7 @@
 //
 // Branch envelope: build + show "Do what with …?" PICK_ONE menu; ESC /
 // Return / Space cancel; itemactions_pushkeys for throw (and selected arms).
-// Named omissions: full pushkeys catalogue (dip/offer/tip/invoke/…);
+// Named omissions: full pushkeys catalogue (offer/tip/invoke/…);
 // shop pay; tip/invoke/two-weapon edge cases.
 
 import { game } from './gstate.js';
@@ -42,7 +42,7 @@ function cmdq_add_key(ch) {
 /**
  * C ref: iactions.c itemactions_pushkeys — queue CQ_CANNED ec + invlet.
  * Named omissions: most arms beyond throw/drop/apply/read/quaff/wield/
- * wear/takeoff/zap/quiver/fire (enough for seed5002 itemed throw).
+ * wear/takeoff/zap/quiver/fire/dip (offer/tip/invoke still named).
  */
 async function itemactions_pushkeys(act, otmp) {
     switch (act) {
@@ -73,6 +73,14 @@ async function itemactions_pushkeys(act, otmp) {
     case IA_QUAFF_OBJ: {
         const { dodrink } = await import('./potion.js');
         cmdq_add_ec(dodrink);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_DIP_OBJ: {
+        /* C iactions.c `:159–166` — #altdip; potion invlet answers
+           getobj("dip", drink_ok); ignores floor water. */
+        const { dip_into } = await import('./potion.js');
+        cmdq_add_ec(dip_into);
         cmdq_add_key(otmp.invlet);
         break;
     }

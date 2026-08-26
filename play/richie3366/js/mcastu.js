@@ -8,6 +8,7 @@ import { couldsee } from './vision.js';
 import {
     M_ATTK_MISS, M_ATTK_HIT, MFAST,
     MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
+    HEAD,
 } from './const.js';
 import { mon_adjust_speed } from './muse.js';
 import { pline, verbalize, canspotmon } from './display.js';
@@ -15,6 +16,7 @@ import { Monnam } from './do_name.js';
 import { nomul } from './hack.js';
 import { nasty } from './wizard.js';
 import { M1_SEE_INVIS } from './monsters.js';
+import { body_part } from './polyself.js';
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -166,28 +168,16 @@ function choose_monster_spell(mtmp, adtyp) {
 }
 
 /**
- * C ref: polyself.c body_part / mbodypart — HEAD noun for psi-bolt msgs.
- * Fungus → "cap area"; jelly/blob/pudding → "cerebral area"; else "head".
- */
-function body_part_head() {
-    const mlet = game.youmonst?.data?.mlet;
-    if (mlet === 'S_FUNGUS') return 'cap area';
-    if (mlet === 'S_JELLY' || mlet === 'S_BLOB' || mlet === 'S_PUDDING') {
-        return 'cerebral area';
-    }
-    return 'head';
-}
-
-/**
  * C ref: mcastu.c mcast_psi_bolt — Antimagic halves dmg; severity pline;
- * then caller mdamageu. monstunseesu / monstseesu / shieldeff deferred.
+ * then caller mdamageu. body_part(HEAD) via polyself.c (not a local clone).
+ * monstunseesu / monstseesu / shieldeff deferred.
  */
 async function mcast_psi_bolt(dmg) {
     const u = game.u || {};
     const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
     if (Antimagic) dmg = Math.trunc((dmg + 1) / 2);
     dmg = dmg | 0;
-    const head = body_part_head();
+    const head = body_part(HEAD);
     if (dmg <= 5) await pline(`You get a slight ${head}ache.`);
     else if (dmg <= 10) await pline('Your brain is on fire!');
     else if (dmg <= 20) {

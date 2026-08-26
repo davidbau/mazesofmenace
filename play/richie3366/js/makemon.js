@@ -53,6 +53,7 @@ import {
     is_elf,
     is_giant,
     is_ndemon,
+    is_dprince,
     is_shapeshifter,
     is_vampire,
     is_vampshifter,
@@ -70,6 +71,7 @@ import {
     polyok,
     is_mplayer,
     hides_under,
+    throws_rocks,
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK, M3_COVETOUS,
 } from './monsters.js';
 import { big_to_little } from './mondata.js';
@@ -126,9 +128,11 @@ import {
     TOOL_CLASS, ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS, MAXOCLASSES,
     RANDOM_CLASS, objects,
 } from './objects.js';
+import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee } from './vision.js';
 import { newsym, Norep, canseemon, sensemon } from './display.js';
 import { emits_light, new_light_source } from './light.js';
+import { begin_burn } from './timeout.js';
 import { christen_monst, oname, x_monnam } from './do_name.js';
 import { vtense } from './objnam.js';
 import { get_shop_item, shkname } from './shknam.js';
@@ -455,7 +459,17 @@ function Race_if(pmnum) {
     return (game.urace?.mnum | 0) === (pmnum | 0);
 }
 
+/**
+ * C ref: obj.h u_wield_art — is_art(uwep, art). Local clone: cannot
+ * import artifact.js (artifact → display → mkobj → makemon).
+ */
+function u_wield_art(art) {
+    const uwep = game.u?.uwep;
+    return !!(uwep && (uwep.oartifact | 0) === (art | 0));
+}
+
 /** C ref: monflag.h enum ms_sounds — msounds[] D-1053; peace/malign D-1079. */
+const MS_BRIBE = 33;
 const MS_LEADER = 36;
 const MS_NEMESIS = 37;
 const MS_GUARDIAN = 38;
@@ -1431,9 +1445,14 @@ function m_initweap(mtmp) {
             otmp.spe = rnd(3);
             if (!rn2(2)) curse(otmp);
             mpickobj(mtmp, otmp);
+        } else if (mm === pm('NINJA')) {
+            // C: makemon.c m_initweap S_HUMAN PM_NINJA — extra quest
+            // villains between priest and guardian. AT_WEAP so is_armed
+            // calls this; G_NOGEN until quest create.
+            mongets(mtmp, rn2(4) ? otyp('SHURIKEN') : otyp('DART'));
+            mongets(mtmp, rn2(4) ? otyp('SHORT_SWORD') : otyp('AXE'));
         } else if (
-            // C: ptr->msound == MS_GUARDIAN then switch(mm); PM_NINJA between
-            // priest and guardian is still named-omit (C-JS-MAP).
+            // C: ptr->msound == MS_GUARDIAN then switch(mm)
             (ptr.msound | 0) === MS_GUARDIAN
         ) {
             // C: makemon.c m_initweap MS_GUARDIAN switch
@@ -1496,7 +1515,6 @@ function m_initweap(mtmp) {
                 break;
             }
         }
-        // C: PM_NINJA between priest and guardian — named omit (C-JS-MAP)
         break;
     case 'S_DEMON':
         // C: named demon specials then is_demon → FALLTHROUGH default
@@ -1568,10 +1586,20 @@ function m_initweap(mtmp) {
         }
         break;
     case 'S_KOP':
-        // Deferred special cases (C-JS-MAP).
+        // C: makemon.c m_initweap S_KOP — cream pies to throw, then
+        // club or rubber hose. Keystone Kops have AT_WEAP so is_armed
+        // calls this; rnd_offensive_item still returns 0 (muse.c).
+        if (!rn2(4)) m_initthrow(mtmp, otyp('CREAM_PIE'), 2);
+        if (!rn2(3)) {
+            mongets(mtmp, rn2(2) ? otyp('CLUB') : otyp('RUBBER_HOSE'));
+        }
         break;
     case 'S_LIZARD':
-        // C: makemon.c m_initweap S_LIZARD — salamander weapon kit
+        // C: makemon.c m_initweap S_LIZARD — only PM_SALAMANDER has
+        // AT_WEAP, so is_armed is the call gate. Newt/gecko/iguana/
+        // baby crocodile/lizard/chameleon/crocodile skip this
+        // function. If called, `if (mm == PM_SALAMANDER)` short-circuits
+        // with no rn2, then break.
         if (mm === pm('SALAMANDER')) {
             mongets(mtmp, rn2(7) ? otyp('SPEAR')
                 : rn2(3) ? otyp('TRIDENT') : otyp('STILETTO'));
@@ -1718,8 +1746,12 @@ function m_initinv(mtmp) {
             );
             otmp.quan = 1;
             otmp.owt = weight(otmp);
-            // begin_burn when mpickobj fails and tile unlit — deferred (no RNG)
-            mpickobj(mtmp, otmp);
+            // C makemon.c m_initinv S_GNOME: !mpickobj means otmp still
+            // lives on minvent (not merged/freed); unlit tile → light it.
+            if (!mpickobj(mtmp, otmp)
+                && !game.level?.at?.(mtmp.mx, mtmp.my)?.lit) {
+                begin_burn(otmp, false);
+            }
         }
         break;
     case 'S_NYMPH':
@@ -2090,9 +2122,15 @@ export function makemon(mdat, x, y, mmflags = 0) {
         do {
             ptr = rndmonst();
             if (!ptr) return null;
+            // C: fakemon.data = ptr for goodpos (JS fakemon is { data: ptr })
         } while (++tryct <= 50
-            // throws_rocks(ptr) && In_sokoban deferred — not on ordinary dlvl1
-            && !goodpos(x, y, { data: ptr }, gpflags));
+            /* in Sokoban, don't accept a giant on first try;
+               after that, boulder carriers are fair game
+               (makemon.c :1226–1230). tryct==1 && throws_rocks &&
+               In_sokoban short-circuits so goodpos (eel rn2) is
+               not consumed on that reject. */
+            && ((tryct === 1 && throws_rocks(ptr) && In_sokoban(game.u?.uz))
+                || !goodpos(x, y, { data: ptr }, gpflags)));
     }
 
     // C: *mtmp = cg.zeromonst — mux/muy stay 0 until set_apparxy (not spawn xy)
@@ -2320,9 +2358,22 @@ export function makemon(mdat, x, y, mmflags = 0) {
         newsym(mtmp.mx, mtmp.my);
     }
 
+    // C: makemon.c :1397–1404 after in_mklev sleep / byyou newsym,
+    // before LONG_WORM. emin roaming still named.
+    if (is_dprince(ptr) && (ptr.msound | 0) === MS_BRIBE) {
+        mtmp.mpeaceful = mtmp.minvis = mtmp.perminvis = 1;
+        mtmp.mavenge = 0;
+        if (u_wield_art(ART_EXCALIBUR) || u_wield_art(ART_DEMONBANE)) {
+            mtmp.mpeaceful = mtmp.mtame = 0;
+        }
+    }
+    if (ptr.mndx === pm('RAVEN') && game.u?.uwep
+        && (game.u.uwep.otyp | 0) === otyp('BEC_DE_CORBIN')) {
+        mtmp.mpeaceful = 1;
+    }
+
     // C: PM_LONG_WORM → get_wormno / initworm / place_worm_tail_randomly
-    // Named omissions: dprince bribe peace; raven BEC_DE_CORBIN; emin/angel
-    // roaming after worm (still before invent in C — deferred).
+    // Named omissions: emin/angel roaming after worm (still before invent).
     if (ptr.mndx === pm('LONG_WORM')) {
         mtmp.wormno = get_wormno();
         if (mtmp.wormno) {
@@ -2334,7 +2385,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
     }
 
     // C: set_malign after peaceful changes (S_ORC/S_UNICORN mlet D-1092;
-    // dprince bribe / raven BEC_DE_CORBIN / emin roaming still deferred)
+    // dprince MS_BRIBE / raven BEC_DE_CORBIN; emin roaming still deferred)
     set_malign(mtmp);
 
     // C: anymon && !(mmflags & MM_NOGRP) → small/large group (after sleep)
@@ -2412,8 +2463,45 @@ export async function makemon_appear_msg(mtmp, x, y, mmflags = 0) {
 }
 
 /**
- * C ref: makemon.c set_mimic_sym — ordinary + shop (get_shop_item) paths.
- * Named omissions: maze town arms, altar Align2amask MCORPSENM,
+ * C ref: mkroom.c inside_room — bbox (incl. walls) or irregular roomno.
+ * Local copy for in_town (hack.js keeps the live export; same reason as
+ * t_at_local — hack → trap/mon → makemon).
+ */
+function inside_room_mimic(croom, x, y) {
+    if (croom.irregular) {
+        const i = (croom.roomnoidx ?? -1) + ROOMOFFSET;
+        const loc = game.level?.at(x, y);
+        return !!(loc && !loc.edge && (loc.roomno | 0) === i);
+    }
+    return x >= (croom.lx | 0) - 1 && x <= (croom.hx | 0) + 1
+        && y >= (croom.ly | 0) - 1 && y <= (croom.hy | 0) + 1;
+}
+
+/**
+ * C ref: hack.c in_town — Mine Town (or whole level if no subroom parent).
+ * Caller set_mimic_sym uses hero u.ux,u.uy, not the mimic cell.
+ */
+function in_town(x, y) {
+    if (!game.level?.flags?.has_town) return false;
+    const rooms = game.level.rooms;
+    if (!rooms) return false;
+    let has_subrooms = false;
+    const n = (game.level.nroom | 0) + (game.level.nsubroom | 0);
+    for (let i = 0; i < n; i++) {
+        const sroom = rooms[i];
+        if (!sroom || (sroom.hx | 0) <= 0) continue;
+        if ((sroom.nsubrooms | 0) > 0) {
+            has_subrooms = true;
+            if (inside_room_mimic(sroom, x, y)) return true;
+        }
+    }
+    return !has_subrooms;
+}
+
+/**
+ * C ref: makemon.c set_mimic_sym — ordinary + shop (get_shop_item) +
+ * maze/sokoban/in_town statue (D-1517).
+ * Named omissions: altar Align2amask MCORPSENM, door/wall S_hcdoor,
  * Protection_from_shape_changers early-out when hero wears the amulet
  * (stubbed false at mklev).
  */
@@ -2443,9 +2531,11 @@ export function set_mimic_sym(mtmp) {
         // door/wall glyph pick has no RNG
         appear = 0;
     } else if (game.level?.flags?.is_maze_lev
-        && !(In_mines(game.u?.uz) /* && in_town */)
+        && !(In_mines(game.u?.uz)
+            && in_town(game.u?.ux | 0, game.u?.uy | 0))
         && !In_sokoban(game.u?.uz) && rn2(2)) {
-        // C: !In_sokoban before rn2(2) — Sokoban must not burn this roll
+        // C: In_mines && in_town(u.ux,u.uy) then !In_sokoban then rn2(2).
+        // Sokoban / mines-town must not burn the statue roll.
         ap_type = M_AP_OBJECT;
         appear = STATUE;
     } else if (roomno < 0 && !t_at_local(mx, my)) {

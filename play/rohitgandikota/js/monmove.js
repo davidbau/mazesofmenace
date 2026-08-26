@@ -6,7 +6,7 @@
 // awake monsters spends after the movement allotment.
 
 import { game } from './gstate.js';
-import { mpickstuff } from './mon.js';
+import { mpickstuff, mondied, wake_nearto } from './mon.js';
 import { sengr_at, wipe_engr_at } from './engrave.js';
 import { autoreturn_weapon } from './weapon.js';
 import { MON_WEP } from './monst.js';
@@ -24,7 +24,8 @@ import { amorphous, passes_walls, is_floater, nonliving,
          attacktype, can_blow, needspick, flaming, noncorporeal,
          tunnels, nohands as nohands_mm,
          verysmall as verysmall_mm, sticks, webmaker } from './mondata.js';
-import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, In_endgame, NOTONL } from './const.js';
+import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_NODOOR,
+         D_BROKEN, In_endgame, NOTONL } from './const.js';
 import { is_vampshifter } from './monst.js';
 import { newsym, canseemon, canspotmon, pline } from './display.js';
 import { You_see, You_hear } from './pline.js';
@@ -33,7 +34,7 @@ import { Monnam, y_monnam, upstart } from './do_name.js';
 import { Deaf } from './youprop.js';
 import { Is_rogue_level as IRL_const, D_TRAPPED } from './const.js';
 import { sobj_at, money_cnt } from './invent.js';
-import { m_carrying, meatmetal, resists_ston } from './mon.js';
+import { is_pool, m_carrying, meatmetal, meatobj, resists_ston } from './mon.js';
 import { acidic, slimeproof } from './dog.js';
 import { Is_mbag } from './mkobj.js';
 import { Is_container } from './obj.js';
@@ -59,7 +60,7 @@ import { couldsee, cansee, clear_path, recalc_block_point,
 import { gettrack } from './track.js';
 import { distmin , isok, sgn, distu, dist2} from './hacklib.js';
 import { acurrstr } from './attrib.js';
-import { Hallucination } from './youprop.js';
+import { Hallucination, Unaware } from './youprop.js';
 
 // include/mondata.h throws_rocks()
 const throws_rocks = (ptr) => (ptr.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
@@ -70,7 +71,7 @@ const haseyes = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
 import {
     ALLOW_U, COULD_SEE, A_LAWFUL, BOLT_LIM, IS_ALTAR, COLNO, ROWNO, A_STR,
     ALL_TRAPS, NO_TRAP,
-    G_GENOD,
+    G_GENOD, TRAPPED_DOOR,
 } from './const.js';
 import { is_rider } from './makemon.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
@@ -113,6 +114,27 @@ const perceives = (ptr) => (ptr.mflags1 & MFLAGS.M1_SEE_INVIS) !== 0;
 const unique_corpstat = (ptr) => (ptr.geno & MFLAGS.G_UNIQ) !== 0;
 const NODIAG = (monnum) => monnum === PMNAMES.PM_GRID_BUG;
 const is_minion = (ptr) => (ptr.mflags2 & MFLAGS.M2_MINION) !== 0;
+
+// src/monmove.c:54 mb_trapped() -- a monster triggers a trapped door.
+async function mb_trapped(mtmp, canseeit) {
+    if (game.flags?.verbose) {
+        if (canseeit && !Unaware())
+            await pline('KABOOM!!  You see a door explode.');
+        else if (!Deaf())
+            await You_hear(`a ${distu(mtmp.mx, mtmp.my) > 7 * 7
+                                ? 'distant' : 'nearby'} explosion.`);
+    }
+    wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
+    mtmp.mstun = 1;
+    mtmp.mhp -= rnd(15);
+    if (DEADMONSTER(mtmp)) {
+        await mondied(mtmp);
+        if (DEADMONSTER(mtmp))
+            return true;
+    }
+    mtmp.mtrapseen = (mtmp.mtrapseen | 0) | (1 << (TRAPPED_DOOR - 1));
+    return false;
+}
 const is_lminion = (mon) =>
     is_minion(game.mons[mon.mnum]) && mon_aligntyp(mon) === A_LAWFUL;
 
@@ -1215,9 +1237,8 @@ export async function dochug(mtmp) {
            on the new one (monmove.c:1508 and the mintrap arm). Without it a
            pet's move never repaints and the frames show it frozen at its old
            square. postmov's trap/door arms are recorded. */
-        if (!status) {
+        if (!status)
             status = await m_move(mtmp, 0);
-        }
 
         /* src/monmove.c:915 — distfleeck is RECALCULATED after the move, so
            every monster that takes a turn spends TWO rn2(5) draws, not one. */
@@ -1236,6 +1257,8 @@ export async function dochug(mtmp) {
             /* vault guard might have vanished */
             if (mtmp.isgd && (DEADMONSTER(mtmp) || mtmp.mx === 0))
                 return 1; /* behave as if it died */
+            if (Hallucination())
+                newsym(mtmp.mx, mtmp.my);
             break;
         case MMOVE_MOVED: /* monster moved */
             /* if confused grabber has wandered off, let go */
@@ -1418,6 +1441,11 @@ export async function m_move(mtmp, after) {
                                  (xm !== 1) ? MMOVE_NOTHING : MMOVE_MOVED);
         }
     }
+
+    /* src/monmove.c:1851. While engulfed, only the engulfing monster and
+       fleeing monsters continue through normal movement. */
+    if (game.u.uswallow && !mtmp.mflee && game.u.ustuck !== mtmp)
+        return MMOVE_MOVED;
 
     let ggx = mtmp.mux, ggy = mtmp.muy;
     const prange = { min: 0, max: 0 };
@@ -1611,6 +1639,7 @@ export async function m_move(mtmp, after) {
            square. */
         remove_monster(omx, omy);
         place_monster(mtmp, nix, niy);
+        maybe_unhide_at_mon(mtmp);
         /* the newsym for the vacated square is in postmov(), not here --
            src/monmove.c:1508 sits inside postmov so that EVERY path returning
            through it redraws, including dog_move's at :1773. */
@@ -1623,6 +1652,21 @@ export async function m_move(mtmp, after) {
     }
 
     return await postmov(mtmp, ptr, omx, omy, mmoved);
+}
+
+// src/mon.c:4698 maybe_unhide_at(), monster arm. A concealed monster which
+// leaves its covering object must be revealed before postmov() decides
+// whether to roll for hiding again at the destination.
+function maybe_unhide_at_mon(mtmp) {
+    if (!mtmp.mundetected)
+        return;
+    const ptr = game.mons[mtmp.mnum];
+    const obj = (game.level?.objects || []).find(
+        (o) => o.ox === mtmp.mx && o.oy === mtmp.my);
+    if ((hides_under(ptr)
+         && (!obj || mtmp.mtrapped || !can_hide_under_obj(obj)))
+        || (ptr.mlet === MONSYMS.S_EEL && !is_pool(mtmp.mx, mtmp.my)))
+        hideunder(mtmp);
 }
 
 // src/monmove.c:1108 m_digweapon_check() lets a tunneling monster ready the
@@ -1736,7 +1780,9 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
                                                      : 'oozes'} under the door.`);
             } else if ((here.doormask & D_LOCKED) !== 0 && can_unlock) {
                 if (btrapped) {
-                    note_unported('postmov:mb_trapped');
+                    await openit(D_NODOOR);
+                    if (await mb_trapped(mtmp, canseeit))
+                        return MMOVE_DIED;
                 } else {
                     await openit(D_ISOPEN);
                     if (game.flags?.verbose) {
@@ -1750,7 +1796,9 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
                 }
             } else if (here.doormask === D_CLOSED && can_open) {
                 if (btrapped) {
-                    note_unported('postmov:mb_trapped');
+                    await openit(D_NODOOR);
+                    if (await mb_trapped(mtmp, canseeit))
+                        return MMOVE_DIED;
                 } else {
                     await openit(D_ISOPEN);
                     if (game.flags?.verbose) {
@@ -1767,11 +1815,12 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
                 const mask = (btrapped
                               || ((here.doormask & D_LOCKED) !== 0
                                   && !rn2(2)))
-                             ? 1 /* D_NODOOR */ : 2 /* D_BROKEN */;
+                             ? D_NODOOR : D_BROKEN;
+                await openit(mask);
                 if (btrapped) {
-                    note_unported('postmov:mb_trapped');
+                    if (await mb_trapped(mtmp, canseeit))
+                        return MMOVE_DIED;
                 } else {
-                    await openit(mask);
                     if (game.flags?.verbose) {
                         if (canseeit && canspotmon(mtmp))
                             await pline(`${Monnam(mtmp)} smashes down a door.`);
@@ -1781,7 +1830,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
                             await You_hear('a door crash open.');
                     }
                     /* if it's a shop door, schedule repair */
-                    if (mask === 1)
+                    if (mask === D_NODOOR)
                         note_unported('postmov:doorbuster_shop_damage');
                 }
             }
@@ -1811,14 +1860,23 @@ async function postmov(mtmp, ptr, omx, omy, mmoved) {
             }
 
             /* Maybe a cube ate just about anything */
-            if (ptr.pmidx === PMNAMES.PM_GELATINOUS_CUBE)
-                note_unported('postmov:meatobj');
+            if (ptr.pmidx === PMNAMES.PM_GELATINOUS_CUBE) {
+                if (await meatobj(mtmp) === 2)
+                    return MMOVE_DIED;
+            }
 
             /* Maybe a purple worm ate a corpse */
             if (corpse_eater(ptr))
                 note_unported('postmov:meatcorpse');
 
-            await mpickstuff(mtmp);
+            if (await mpickstuff(mtmp))
+                mmoved = MMOVE_DONE;
+
+            if (mtmp.minvis) {
+                newsym(mtmp.mx, mtmp.my);
+                if (mtmp.wormno)
+                    note_unported('postmov:see_wsegs');
+            }
         }
 
         await maybe_spin_web(mtmp);

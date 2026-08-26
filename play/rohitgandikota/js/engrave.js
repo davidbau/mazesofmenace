@@ -14,12 +14,14 @@ import { DUST, ENGRAVE, BURN, MARK, HEADSTONE, ENGR_BLOOD, N_ENGRAVE, ECMD_OK, E
 import { getobj, GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, hands_obj } from './invent.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { is_pool, is_lava } from './mon.js';
-import { You } from './pline.js';
+import { You, pline_The } from './pline.js';
 import { pline, newsym } from './display.js';
 import { getlin } from './cmd.js';
 import { set_occupation } from './allmain.js';
 import { exercise } from './attrib.js';
 import { A_WIS } from './const.js';
+import { xname, doname } from './objnam.js';
+import { more_experienced } from './exper.js';
 
 // src/engrave.c:65 rubouts[] — how each character degrades. Order matters:
 // wipeout_text() scans linearly and the index it stops at decides whether the
@@ -363,12 +365,32 @@ export async function doengrave() {
     if (!otmp)
         return ECMD_CANCEL;
 
+    let type = DUST;
+    let stylus = null;
+    let post_engr_text = '';
     if (otmp !== hands_obj) {
-        /* weapon/wand/gem styli change type and can zap; absent */
-        note_unported_engrave('doengrave:stylus_item');
-        return ECMD_TIME;
+        if (otmp.otyp !== ONAMES.WAN_FIRE) {
+            note_unported_engrave('doengrave:stylus_item');
+            return ECMD_TIME;
+        }
+
+        const { zappable, learnwand } = await import('./zap.js');
+        if (!(await zappable(otmp))) {
+            await pline_The('wand is too worn out to engrave.');
+            return ECMD_TIME;
+        }
+        type = BURN;
+        stylus = otmp;
+        post_engr_text = game.u.ublind ? 'You feel the wand heat up.'
+                                       : 'Flames fly from the wand.';
+        if (!game.objects[otmp.otyp].oc_name_known) {
+            if (game.flags?.verbose !== false)
+                await pline(`This ${xname(otmp)} is a wand of fire!`);
+            learnwand(otmp);
+            if (game.objects[otmp.otyp].oc_name_known)
+                more_experienced(0, 10);
+        }
     }
-    const type = DUST;
 
     const oep = engr_at(game.u.ux, game.u.uy);
     if (oep) {
@@ -376,10 +398,14 @@ export async function doengrave() {
         return ECMD_TIME;
     }
 
-    /* "You write in the dust with your fingertip." */
-    await You('write in the dust with your fingertip.');
+    if (otmp === hands_obj)
+        await You('write in the dust with your fingertip.');
+    else
+        await You(`burn into the floor with ${doname(otmp)}.`);
 
-    const ebuf0 = await getlin('What do you want to write in the dust here?');
+    const ebuf0 = await getlin(type === BURN
+        ? 'What do you want to burn into the floor here?'
+        : 'What do you want to write in the dust here?');
     if (ebuf0 === null)
         { await pline('Never mind.'); return ECMD_OK; }
     /* mungspaces: tabs to spaces, consecutive spaces condensed */
@@ -413,12 +439,14 @@ export async function doengrave() {
     game.context.engraving = {
         text: mixed,
         nextc: 0,
-        stylus: null,                   /* bare finger */
+        stylus,
         type,
         pos: { x: game.u.ux, y: game.u.uy },
         actionct: 0,
     };
     set_occupation(engrave, 'engraving', 0);
+    if (post_engr_text)
+        await pline(post_engr_text);
 
     /* the setup itself takes no time; the occupation acts */
     return ECMD_OK;
@@ -472,4 +500,3 @@ export function engrave() {
     game.context.engraving = null;
     return 0;
 }
-

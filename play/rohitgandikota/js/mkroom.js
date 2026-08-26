@@ -211,7 +211,7 @@ function pick_room(strict) {
         } else if (has_upstairs(sroom) || has_dnstairs(sroom)) {
             continue;
         }
-        if (sroom.doorct === 1 || !rn2(5))
+        if (sroom.doorct === 1 || !rn2(5) || game.wizard)
             return sroom;
     }
     return null;

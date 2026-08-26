@@ -387,6 +387,16 @@ function note_unported_sounds(what) {
     (game.unported ||= new Set()).add(what);
 }
 
+// src/sounds.c h_sounds[]. Hallucinated pet noises use one gameplay RNG draw.
+const h_sounds = [
+    'beep', 'boing', 'sing', 'belche', 'creak', 'cough',
+    'rattle', 'ululate', 'pop', 'jingle', 'sniffle', 'tinkle',
+    'eep', 'clatter', 'hum', 'sizzle', 'twitter', 'wheeze',
+    'rustle', 'honk', 'lisp', 'yodel', 'coo', 'burp',
+    'moo', 'boom', 'murmur', 'oink', 'quack', 'rumble',
+    'twang', 'toot', 'gargle', 'hoot', 'warble',
+];
+
 // src/sounds.c growl() — the monster makes a noise.
 //
 // The early return is on helpless() OR msound == MS_SILENT, so a sleeping,
@@ -460,7 +470,7 @@ export async function growl(mtmp) {
 
     /* presumably nearness and soundok checks have already been made */
     if (Hallucination())
-        growl_verb = note_sounds_unported('growl:h_sounds');   /* ROLL_FROM */
+        growl_verb = h_sounds[rn2(h_sounds.length)];
     else
         growl_verb = growl_sound(mtmp);
     if (growl_verb) {
@@ -485,7 +495,7 @@ export async function yelp(mtmp) {
 
     /* presumably nearness and soundok checks have already been made */
     if (Hallucination())
-        yelp_verb = note_sounds_unported('yelp:h_sounds');     /* ROLL_FROM */
+        yelp_verb = h_sounds[rn2(h_sounds.length)];
     else
         switch (game.mons[mtmp.mnum].msound) {
         case MFLAGS.MS_MEW:

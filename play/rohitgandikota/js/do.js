@@ -19,7 +19,7 @@ import { place_object } from './mkobj.js';
 import { pline, newsym } from './display.js';
 import { You, You_cant, Your } from './pline.js';
 import { near_capacity } from './attrib.js';
-import { u_locomotion, losehp } from './hack.js';
+import { u_locomotion, losehp, check_special_room } from './hack.js';
 import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, VIBRATING_SQUARE, A_DEX, BOTH_SIDES, KILLED_BY, FACE } from './const.js';
 import { t_at, m_at, is_pool, is_lava } from './mon.js';
 import { is_pick } from './mon.js';
@@ -272,6 +272,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1607 - a destination belongs to the level being left. */
     game.iflags = game.iflags || {};
     game.iflags.travelcc = { x: 0, y: 0 };
+    await check_special_room(true);
     /* src/do.c:1623 — the tutorial transition sets iflags.nofollowers so
        the pet stays behind */
     if (!game.iflags?.nofollowers)
@@ -508,11 +509,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     /* src/do.c:1837 — reset the screen: vision blockages for the new
        map, then a full redraw with vision recalc */
-    const { vision_reset, vision_recalc } = await import('./vision.js');
+    const { vision_reset } = await import('./vision.js');
     const { docrt, flush_screen } = await import('./display.js');
     vision_reset();
     game.vision_full_recalc = 1;
-    vision_recalc(0);
     await docrt();
     await flush_screen(-1);
 
@@ -604,6 +604,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     /* src/do.c:1967 — reset u.uz0 */
     game.u.uz0 = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
+
+    /* src/do.c:1985: deliver one-time room and shop entry messages after
+       all level-specific arrival messages, before pickup feedback. */
+    await check_special_room(false);
 
     /* src/do.c:1996 — the arrival square gets its pickup pass, which is
        also what prints look_here/read_engr_at feedback on arrival */

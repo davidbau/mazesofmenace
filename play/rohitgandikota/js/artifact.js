@@ -1,10 +1,8 @@
 // artifact.js — artifact bookkeeping.
 // C ref: src/artifact.c
 //
-// Only the slice the wish flow (readobjnam/makewish/oname) needs so far:
-// name lookup, the artiexist tracking table, and the counters other code
-// keys draws off (mksobj's `rn2(20 + 10 * nartifact_exist())`). The combat
-// and intrinsic halves of artifact.c are not ported yet.
+// Covers artifact generation and the wish flow's name and existence tracking.
+// The intrinsic half of artifact.c is not ported yet.
 
 import { game } from './gstate.js';
 import { fuzzymatch } from './hacklib.js';
@@ -120,6 +118,46 @@ export function nartifact_exist() {
             ++a;
 
     return a;
+}
+
+// src/artifact.c mk_artifact(), existing-object arm. Random weapon and armor
+// generation passes A_NONE, so candidates are artifacts with the same base
+// object type which do not already exist and are not marked SPFX_NOGEN.
+export function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
+    const A_NONE = -128;
+    const SPFX_NOGEN = 0x00000001;
+
+    if (!otmp || alignment !== A_NONE)
+        return otmp;
+
+    const eligible = [];
+    const unique = !!game.objects[otmp.otyp]?.oc_unique;
+    for (let m = 1; m <= NROFARTIFACTS; ++m) {
+        const a = artifact_records[m];
+        if (artiexist()[m].exists || (a.spfx & SPFX_NOGEN) || unique)
+            continue;
+        if (a.gift_value > max_giftvalue)
+            continue;
+        if (arti_otyp[m] === otmp.otyp)
+            eligible.push(m);
+    }
+
+    if (!eligible.length)
+        return otmp;
+
+    const m = eligible[rn2(eligible.length)];
+    const a = artifact_records[m];
+    otmp.oeroded = otmp.oeroded2 = 0;
+    otmp.oname = artifact_names[m];
+    otmp.age = 0;
+    otmp.oartifact = m;
+    artifact_origin(otmp, ONAME_RANDOM);
+    if (adjust_spe) {
+        const new_spe = otmp.spe + a.gen_spe;
+        if (new_spe >= -10 && new_spe < 10)
+            otmp.spe = new_spe;
+    }
+    return otmp;
 }
 
 // src/artifact.c artifact_origin() — set artifact tracking flags;

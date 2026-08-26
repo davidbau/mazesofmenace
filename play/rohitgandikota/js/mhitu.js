@@ -8,42 +8,46 @@
 // exact C decision point, so game.unported names what a divergence wanted.
 
 import { game } from './gstate.js';
-import { thrwmu } from './mthrowu.js';
+import { thrwmu, spitmm } from './mthrowu.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_animal, perceives, dmgtype, gender, pronoun_gender,
          is_swimmer, thick_skinned, unsolid, hides_under, is_hider, is_demon,
-         nolimbs, is_undead, is_orc, is_whirly, digests } from './mondata.js';
+         nolimbs, is_undead, is_orc, is_whirly, digests, is_flyer,
+         defended, resists_cold, resists_elec, resists_fire } from './mondata.js';
 import { is_vampshifter, DEADMONSTER, MON_WEP } from './monst.js';
-import { poly_gender } from './polyself.js';
-import { Invis, See_invisible, Underwater, Deaf } from './youprop.js';
+import { poly_gender, body_part } from './polyself.js';
+import { Invis, See_invisible, Underwater, Deaf, Levitation, Flying,
+         Cold_resistance, Fire_resistance, Hallucination,
+         Reflecting, Shock_resistance, Unaware } from './youprop.js';
 import { ATTKS, MONSYMS, PMNAMES, MFLAGS } from './monst_data.js';
 import { W_ARMOR, W_AMUL, NON_PM, u_at, is_pit, Upolyd, PRONOUN_HALLU,
          M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
          M_ATTK_DEF_DIED,
          RLOC_MSG,
          TT_PIT, WATER, P_WHIP, P_POLEARMS, NEED_WEAPON,
-         NEED_HTH_WEAPON } from './const.js';
+         NEED_HTH_WEAPON, LEFT_SIDE, RIGHT_SIDE, LEG,
+         MON_EXPLODE } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { genders } from './role_data.js';
 import { pline, canspotmon, canseemon, mon_visible, sensemon, bot,
          map_invisible, newsym } from './display.js';
-import { cansee } from './vision.js';
-import { Monnam } from './do_name.js';
-import { You_hear } from './pline.js';
+import { cansee, couldsee } from './vision.js';
+import { Monnam, pmname, rndmonnam } from './do_name.js';
+import { You, You_hear } from './pline.js';
 import { attacktype_fordmg, dmgtype_fromattack } from './mondata.js';
 import { mon_nam } from './do_name.js';
 import { Inhell, remove_monster, place_monster } from './makemon.js';
 import { swallowed } from './display.js';
 import { vision_recalc } from './vision.js';
 import { ACURR, exercise } from './attrib.js';
-import { A_CON, A_STR } from './const.js';
+import { A_CON, A_STR, A_DEX } from './const.js';
 import { sobj_at } from './invent.js';
 import { s_suffix } from './hacklib.js';
 import { xname } from './objnam.js';
 import { nomul } from './hack.js';
 import { stop_occupation } from './allmain.js';
 import { hitval, mon_wield_item } from './weapon.js';
-import { mhitm_ad_phys, mhitm_ad_elec, mhitm_ad_drst,
+import { mhitm_ad_phys, mhitm_ad_cold, mhitm_ad_elec, mhitm_ad_drst,
          mhitm_knockback } from './uhitm.js';
 import { t_at } from './mon.js';
 import { touch_petrifies } from './dog.js';
@@ -264,11 +268,185 @@ async function wildmiss(mtmp, mattk) {
     }
 }
 
+// src/explode.c:26 explosionmask(), elemental subset used by an exploding
+// sphere. A resistant target still has vulnerable inventory destroyed, but
+// takes no direct blast damage and skips the later resist() draw.
+function elemental_explosion_resistance(mon, adtyp) {
+    if (mon === game.youmonst) {
+        if (adtyp === ATTKS.AD_FIRE)
+            return Fire_resistance();
+        if (adtyp === ATTKS.AD_COLD)
+            return Cold_resistance();
+        if (adtyp === ATTKS.AD_ELEC)
+            return Shock_resistance();
+        return false;
+    }
+    if (adtyp === ATTKS.AD_FIRE)
+        return resists_fire(mon);
+    if (adtyp === ATTKS.AD_COLD)
+        return resists_cold(mon);
+    if (adtyp === ATTKS.AD_ELEC)
+        return resists_elec(mon);
+    return false;
+}
+
+// src/explode.c:1018 mon_explodes() plus the elemental MON_EXPLODE slice of
+// explode(). Effects are applied in column-major map order, monsters first
+// and the hero last. That order controls both item-destruction and resistance
+// RNG, so it is part of the game state rather than presentation detail.
+async function mon_explodes_u(mtmp, mattk) {
+    const adtyp = mattk[1];
+    const dam = mattk[2] ? d(mattk[2], mattk[3])
+              : mattk[3] ? d(game.mons[mtmp.mnum].mlevel + 1, mattk[3])
+                : 0;
+    const mdat = game.mons[mtmp.mnum];
+    const blast = `${s_suffix(pmname(mdat, mtmp.female ? 1 : 0))} explosion`;
+    const x = mtmp.mx, y = mtmp.my;
+    const do_hallu = Hallucination();
+    const { destroy_items, resist } = await import('./zap.js');
+    const { m_at, mondead, monkilled, wake_nearto } = await import('./mon.js');
+
+    /* The exploder dies before targets are collected, so it cannot be caught
+       in its own blast. mondead() retains mx/my just as C does. */
+    await mondead(mtmp);
+    newsym(x, y);
+
+    let visible = false;
+    for (let xx = x - 1; xx <= x + 1; ++xx)
+        for (let yy = y - 1; yy <= y + 1; ++yy)
+            if (cansee(xx, yy))
+                visible = true;
+
+    if (visible) {
+        /* The temporary 3x3 explosion glyph is not yet shared with zap.js.
+           Restoring all cells gives the post-animation screen and preserves
+           the message boundary; record the missing transient frames. */
+        note_unported_mhitu('mon_explodes:visible_animation');
+        for (let xx = x - 1; xx <= x + 1; ++xx)
+            for (let yy = y - 1; yy <= y + 1; ++yy)
+                newsym(xx, yy);
+        await pline('Boom!');
+    } else {
+        await You_hear('a blast.');
+    }
+
+    if (dam) {
+        for (let xx = x - 1; xx <= x + 1; ++xx) {
+            for (let yy = y - 1; yy <= y + 1; ++yy) {
+                const target = m_at(xx, yy);
+                if (!target || DEADMONSTER(target))
+                    continue;
+
+                let target_blast = blast;
+                if (do_hallu) {
+                    let tryct = 0;
+                    do {
+                        target_blast = `${s_suffix(rndmonnam())} explosion`;
+                    } while (target_blast[0] !== target_blast[0].toLowerCase()
+                             && ++tryct < 20);
+                }
+                if (cansee(xx, yy))
+                    await pline(`${Monnam(target)} is caught in the ${target_blast}!`);
+
+                const itemdmg = await destroy_items(target, adtyp, dam);
+                if (elemental_explosion_resistance(target, adtyp)) {
+                    target.mhp -= itemdmg;
+                } else {
+                    let mdam = dam;
+                    if (resist(target, MON_EXPLODE, 0, false))
+                        mdam = Math.trunc((dam + 1) / 2);
+                    if (adtyp === ATTKS.AD_FIRE && resists_cold(target))
+                        mdam *= 2;
+                    else if (adtyp === ATTKS.AD_COLD && resists_fire(target))
+                        mdam *= 2;
+                    target.mhp -= mdam + itemdmg;
+                }
+                if (DEADMONSTER(target))
+                    await monkilled(target, '', adtyp);
+            }
+        }
+
+        if (Math.abs(game.u.ux - x) <= 1
+            && Math.abs(game.u.uy - y) <= 1) {
+            let hero_blast = blast;
+            if (do_hallu) {
+                do {
+                    hero_blast = `${s_suffix(rndmonnam())} explosion`;
+                } while (hero_blast[0] !== hero_blast[0].toLowerCase());
+            }
+            if (game.flags?.verbose)
+                await You(`are caught in the ${hero_blast}!`);
+            await destroy_items(game.youmonst, adtyp, dam);
+            if (!elemental_explosion_resistance(game.youmonst, adtyp)) {
+                game.u.uhp -= dam;
+                (game.disp ||= {}).botl = true;
+            }
+            exercise(A_STR, false);
+        }
+    }
+
+    wake_nearto(x, y, Math.max(dam * dam, 50));
+}
+
+// src/mhitu.c:1591 explmu() -- a contact explosion spends its own damage
+// roll before mon_explodes() rolls the actual area damage.
+async function explmu(mtmp, mattk, ufound, indx) {
+    if (mtmp.mcan)
+        return M_ATTK_MISS;
+
+    const tmp = d(mattk[2], mattk[3]);
+    const not_affected = defended(mtmp, mattk[1]);
+    if (!ufound) {
+        await pline(`${canseemon(mtmp) ? Monnam(mtmp) : 'It'} explodes at a spot in thin air!`);
+    } else {
+        await hitmsg(mtmp, mattk, indx);
+    }
+
+    if (mattk[1] === ATTKS.AD_COLD
+        || mattk[1] === ATTKS.AD_FIRE
+        || mattk[1] === ATTKS.AD_ELEC) {
+        await mon_explodes_u(mtmp, mattk);
+    } else {
+        note_unported_mhitu(`explmu:adtyp=${mattk[1]}`);
+    }
+
+    if (not_affected)
+        await You('seem unaffected by it.');
+    const { wake_nearto } = await import('./mon.js');
+    wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
+    return DEADMONSTER(mtmp) ? M_ATTK_AGR_DIED : M_ATTK_MISS;
+}
+
+// src/mhitu.c:1680 gazemu(), common visibility and hallucination gates.
+// Hallucination spends rn2(4) before the attack-specific switch even when
+// blindness makes every ordinary gaze ineffective. The individual gaze
+// effects remain recorded until their status and reflection paths land.
+async function gazemu(mtmp, mattk) {
+    const is_medusa = mtmp.mnum === PMNAMES.PM_MEDUSA;
+    const reflectable = Reflecting() && couldsee(mtmp.mx, mtmp.my)
+                        && is_medusa;
+    const mcanseeu = canseemon(mtmp) && couldsee(mtmp.mx, mtmp.my)
+                     && !!mtmp.mcansee;
+    let cancelled = !!mtmp.mcan;
+
+    if ((Hallucination() && rn2(4)) || (Unaware() && !reflectable))
+        cancelled = true;
+
+    /* A blind or otherwise unsensing hero cannot register these gazes. The
+       C still spent the hallucination draw above, which is the important
+       state transition for this path. */
+    if (!mcanseeu
+        && !(mattk[1] === ATTKS.AD_BLND && canseemon(mtmp)))
+        return M_ATTK_MISS;
+
+    note_unported_mhitu(`gazemu:adtyp=${mattk[1]} cancelled=${cancelled ? 1 : 0}`);
+    return M_ATTK_MISS;
+}
+
 // src/mhitu.c:310 getmattk() — the attack for this slot, with substitutions.
 //
-// Every substitution arm needs state no current fight reaches (succubi,
-// disease pairs, energy drain vs the hero, holder re-grab timing); each is
-// recorded if its condition ever fires so the plain row is visibly a slice.
+// The holder cooldown substitution is live because unstuck() sets mspec_used.
+// The remaining substitutions are recorded when their conditions fire.
 export function getmattk(magr, mdef, indx, prev_result) {
     const A = ATTKS;
     const mptr = game.mons[magr.mnum];
@@ -281,6 +459,31 @@ export function getmattk(magr, mdef, indx, prev_result) {
             || attk[1] === A.AD_FAMN)
         && attk[1] === mptr.mattk[indx - 1][1])
         note_unported_mhitu('getmattk:disease_pair');
+
+    /* src/mhitu.c:368, a holder or engulfer which just released its target
+       temporarily substitutes a weak touch or claw attack. */
+    if (magr.mspec_used && (attk[0] === A.AT_ENGL
+                            || attk[0] === A.AT_HUGS
+                            || attk[1] === A.AD_STCK
+                            || attk[1] === A.AD_POLY)) {
+        const alt = [...attk];
+        const wimpy = alt[3] === 0;
+
+        if (alt[1] === A.AD_ACID || alt[1] === A.AD_ELEC
+            || alt[1] === A.AD_COLD || alt[1] === A.AD_FIRE) {
+            alt[0] = A.AT_TUCH;
+        } else {
+            alt[0] = A.AT_CLAW;
+            alt[1] = A.AD_PHYS;
+        }
+        alt[2] = 1;
+        alt[3] = 6;
+        if (wimpy && alt[0] === A.AT_CLAW) {
+            alt[0] = A.AT_TUCH;
+            alt[2] = alt[3] = 0;
+        }
+        return alt;
+    }
     return attk;
 }
 
@@ -550,12 +753,12 @@ export async function mattacku(mtmp) {
 
         case A.AT_GAZE: /* can affect you either ranged or not */
             if (mdat !== game.mons[PMNAMES.PM_MEDUSA])
-                note_unported_mhitu('mattacku:gazemu');
+                sum[i] = await gazemu(mtmp, mattk);
             break;
 
         case A.AT_EXPL: /* automatic hit if next to, and aimed at you */
             if (!v.range2)
-                note_unported_mhitu('mattacku:explmu');
+                sum[i] = await explmu(mtmp, mattk, v.foundyou, i);
             break;
 
         case A.AT_ENGL:
@@ -587,7 +790,7 @@ export async function mattacku(mtmp) {
             break;
         case A.AT_SPIT:
             if (v.range2)
-                note_unported_mhitu('mattacku:spitmu');
+                sum[i] = await spitmm(mtmp, mattk, game.youmonst);
             break;
         case A.AT_WEAP:
             if (v.range2) {
@@ -753,12 +956,47 @@ async function hitmu(mtmp, mattk, indx) {
     /* mhitm_adtyping: dispatch on the damage type */
     if (mattk[1] === A.AD_PHYS) {
         await mhitm_ad_phys(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_COLD) {
+        await mhitm_ad_cold(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_ELEC) {
         mhm.indx = indx;
         await mhitm_ad_elec(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_DRST || mattk[1] === A.AD_DRDX
                || mattk[1] === A.AD_DRCO) {
         await mhitm_ad_drst(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_LEGS) {
+        const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
+        const sidestr = side === RIGHT_SIDE ? 'right' : 'left';
+        const leg = body_part(LEG);
+
+        if ((game.u.usteed || Levitation() || Flying()) && !is_flyer(mdat)) {
+            await pline(`${Monnam(mtmp)} tries to reach your ${sidestr} ${leg}!`);
+            mhm.damage = 0;
+        } else if (mtmp.mcan) {
+            await pline(`${Monnam(mtmp)} nuzzles against your ${sidestr} ${leg}!`);
+            mhm.damage = 0;
+        } else {
+            const boots = game.u.uarmf;
+            if (boots) {
+                if (rn2(2) && (boots.otyp === ONAMES.LOW_BOOTS
+                               || boots.otyp === ONAMES.IRON_SHOES)) {
+                    await pline(`${Monnam(mtmp)} pricks the exposed part of your ${sidestr} ${leg}!`);
+                } else if (!rn2(5)) {
+                    await pline(`${Monnam(mtmp)} pricks through your ${sidestr} boot!`);
+                } else {
+                    await pline(`${Monnam(mtmp)} scratches your ${sidestr} boot!`);
+                    mhm.damage = 0;
+                    return M_ATTK_HIT;
+                }
+            } else {
+                await pline(`${Monnam(mtmp)} pricks your ${sidestr} ${leg}!`);
+            }
+
+            const { set_wounded_legs } = await import('./do.js');
+            await set_wounded_legs(side, rnd(60 - ACURR(A_DEX)));
+            exercise(A_STR, false);
+            exercise(A_DEX, false);
+        }
     } else if (mattk[1] === A.AD_SITM || mattk[1] === A.AD_SEDU) {
         mhm.damage = 0;
         if (is_animal(mtmp.data)) {

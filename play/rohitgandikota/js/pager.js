@@ -24,7 +24,7 @@ import { pline, glyph_at, docrt, flush_screen,
 import { DEC_TO_UNICODE, NO_COLOR } from './terminal.js';
 import { m_at, t_at } from './mon.js';
 import { engr_at } from './engrave.js';
-import { x_monnam, upstart, pmname } from './do_name.js';
+import { x_monnam, upstart, pmname, hliquid } from './do_name.js';
 import { ARTICLE_NONE } from './const.js';
 import { an, the, makesingular, singular, xname, doname } from './objnam.js';
 import { pmatch, tabexpand, mungspaces, isok } from './hacklib.js';
@@ -182,12 +182,17 @@ export function waterbody_name(x, y) {
 }
 
 function waterbody_name_typ(ltyp, x, y) {
-    if (ltyp === LAVAPOOL) return 'molten lava';
-    if (ltyp === ICE) return 'ice';
-    if (ltyp === POOL) return 'pool of water';
-    if (ltyp === MOAT) return 'moat';
-    if (ltyp === WATER) return 'wall of water';
-    if (ltyp === LAVAWALL) return 'wall of lava';
+    const hallucinate = !!((game.u?.intrinsic?.HHallucination
+                            || game.u?.uprops?.HALLUC)
+                           && !game.program_state_gameover);
+    if (ltyp === LAVAPOOL) return `molten ${hliquid('lava')}`;
+    if (ltyp === ICE)
+        return hallucinate ? `frozen ${hliquid('water')}` : 'ice';
+    if (ltyp === POOL) return `pool of ${hliquid('water')}`;
+    if (ltyp === MOAT)
+        return hallucinate ? `deep ${hliquid('water')}` : 'moat';
+    if (ltyp === WATER) return `wall of ${hliquid('water')}`;
+    if (ltyp === LAVAWALL) return `wall of ${hliquid('lava')}`;
     return 'water';
 }
 
@@ -996,7 +1001,8 @@ async function display_inventory_pickone() {
             tty_add_menu(win, null, 0, 0, 0, e.attr, NO_COLOR, e.str,
                          MENU_ITEMFLAGS_NONE);
         else
-            tty_add_menu(win, null, e.invlet, e.invlet, 0, ATR_NONE, NO_COLOR,
+            tty_add_menu(win, e.glyphinfo, e.invlet, e.invlet, 0,
+                         ATR_NONE, NO_COLOR,
                          e.str, MENU_ITEMFLAGS_NONE);
     }
     tty_end_menu(win, null);

@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { isok } from './hacklib.js';
 import { newsym, cls, docrt, canspotmon, sensemon, map_invisible,
-         glyph_is_invisible_at, unmap_invisible } from './display.js';
+         glyph_is_invisible_at, unmap_invisible, feel_location } from './display.js';
 import { cmap_names, def_monsyms, defsyms } from './drawing_data.js';
 import { You, You_feel } from './pline.js';
 import { m_at, t_at, seemimic } from './mon.js';
@@ -253,6 +253,12 @@ export async function dosearch0(aflag) {
 
             const loc = game.level?.at(x, y);
             if (!loc) continue;
+
+            /* src/detect.c:2040: blind searching first refreshes each
+               adjacent square by touch. This clears stale invisible-monster
+               glyphs before mfind0 decides whether a monster is newly found. */
+            if (!aflag && game.u.ublind)
+                feel_location(x, y);
 
             if (loc.typ === SDOOR) {
                 if (rnl(7 - fund))

@@ -76,7 +76,7 @@ import { safe_teleds } from './teleport.js';
 import { reset_utrap, rescued_from_terrain, heal_legs } from './trap.js';
 import { welded } from './wield.js';
 import { which_armor } from './worn.js';
-import { rehumanize } from './polyself.js';
+import { rehumanize, body_part } from './polyself.js';
 import { make_blinded } from './do.js';
 import { buried_ball_to_freedom } from './dig.js';
 import { confers_luck } from './artifact.js';
@@ -290,13 +290,6 @@ function freehand() {
     if (!uwep || !welded(uwep)) return true;
     if (!bimanual(uwep) && (!u.uarms || !u.uarms.cursed)) return true;
     return false;
-}
-
-/** C: mondata.c body_part thin — poly table deferred. */
-function body_part(part) {
-    if ((part | 0) === EYE) return 'eye';
-    if ((part | 0) === STOMACH) return 'stomach';
-    return 'body';
 }
 
 /** C: mondata.c eyecount — poly forms deferred (humanoid 2). */

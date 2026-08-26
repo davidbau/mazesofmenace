@@ -54,7 +54,7 @@ import {
     IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     W_NONDIGGABLE, W_NONPASSWALL,
 
-    ROOMOFFSET, MAXNROFROOMS, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR,
+    ROOMOFFSET, MAXNROFROOMS, OROOM, MORGUE, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR,
     THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, D_ISOPEN, ACCESSIBLE, IS_SDOOR,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
     IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, WT_SQUEEZABLE_INV,
@@ -542,6 +542,45 @@ export function move_update(newlev) {
         .filter(ch => !u.ushops.includes(ch)).join('');
 }
 
+// src/hack.c:3626 check_special_room(): update room membership and deliver
+// one-time entry messages. Shops and morgues are the currently exercised
+// room types; the remaining special-room side effects stay explicit.
+export async function check_special_room(newlev) {
+    move_update(newlev);
+
+    if (newlev) {
+        if (game.u.ushops0)
+            note_unported_hack('check_special_room:u_left_shop');
+        return;
+    }
+    if (!game.u.uentered && !game.u.ushops_entered)
+        return;
+
+    if (game.u.ushops_entered)
+        await u_entered_shop(game.u.ushops_entered);
+
+    for (const ch of game.u.uentered) {
+        const roomno = ch.charCodeAt(0) - ROOMOFFSET;
+        const room = game.level?.rooms?.[roomno];
+        if (!room || room.rtype >= SHOPBASE)
+            continue;
+        if (room.rtype === MORGUE) {
+            const { midnight } = await import('./calendar.js');
+            if (midnight()) {
+                const run = u_locomotion('Run');
+                await pline(`${run} away!  ${run} away!`);
+            } else {
+                await You('have an uncanny feeling...');
+            }
+            room.rtype = OROOM;
+            if (!(game.level.rooms || []).some(r => r.rtype === MORGUE))
+                game.level.flags.has_morgue = false;
+        } else if (room.rtype !== OROOM) {
+            note_unported_hack('check_special_room:other');
+        }
+    }
+}
+
 /* js/monmove.js needs in_rooms() but cannot import this file without closing
    a cycle, and adding the import to the entry point perturbs module init order
    (see STATUS). Publishing on the shared game object avoids both. */
@@ -797,16 +836,7 @@ export async function spoteffects(pick) {
     if (await pooleffects(true))
         return;
 
-    move_update(false);
-
-    /* check_special_room(FALSE): shops are the live special-room arm. */
-    if (game.u.ushops_entered)
-        await u_entered_shop(game.u.ushops_entered);
-    const inspecial = (game.level?.rooms || []).some(r => r.rtype
-        && game.u.ux >= r.lx - 1 && game.u.ux <= r.hx + 1
-        && game.u.uy >= r.ly - 1 && game.u.uy <= r.hy + 1);
-    if (inspecial && !game.u.ushops_entered)
-        note_unported_hack('spoteffects:check_special_room');
+    await check_special_room(false);
 
     /* src/hack.c:3355 — "if dismounting, check again later": the whole
        pickup/trap block is skipped so that only float_down()'s pickup runs;

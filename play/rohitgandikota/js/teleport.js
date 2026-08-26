@@ -25,7 +25,8 @@ import { is_demon, is_lord, is_prince, is_covetous,
          passes_walls } from './mondata.js';
 import { You, You_feel, You_cant } from './pline.js';
 import { getlin } from './cmd.js';
-import { get_level, depth, print_dungeon, dunlevs_in_dungeon } from './dungeon.js';
+import { get_level, find_hell, depth, print_dungeon,
+         dunlevs_in_dungeon } from './dungeon.js';
 import { rnd } from './rng.js';
 import { Is_knox_level } from './const.js';
 import { schedule_goto, UTOTYPE_NONE } from './do.js';
@@ -311,14 +312,11 @@ export async function level_tele() {
 
     if (force_dest) {
         /* wizard mode menu; no further validation needed */
+    } else if (game.u.uz.dnum === game.medusa_level?.dnum
+               && newlev >= game.dungeons[game.u.uz.dnum].depth_start
+                            + dunlevs_in_dungeon(game.u.uz)) {
+        find_hell(newlevel);
     } else {
-        /* the medusa-overshoot find_hell() arm and the Gehennom depth
-           clamps only matter below Medusa; recorded there */
-        if (game.u.uz.dnum === game.medusa_level?.dnum
-            && newlev >= game.dungeons[game.u.uz.dnum].depth_start
-                         + game.dungeons[game.u.uz.dnum].num_dunlevs)
-            note_unported_tele('level_tele:find_hell');
-
         get_level(newlevel, newlev);
 
         if (newlevel.dnum === game.u.uz.dnum

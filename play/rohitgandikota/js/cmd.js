@@ -9,7 +9,7 @@ import { seemimic } from './mon.js';
 import { game } from './gstate.js';
 import { dodrop } from './do.js';
 import { any_obj_ok, doprwep, doprarm, doprring, dopramulet, doprtool,
-         doprinuse, doprgold } from './invent.js';
+         doprinuse, doprgold, obj_extract_self } from './invent.js';
 import { dodown, doup, do_wire_mklev, do_wire_dokick, stairway_at } from './do.js';
 import { dokick_wire, ship_object, dokick } from './dokick.js';
 import { mklev, mklev_wire_mon } from './mklev.js';
@@ -30,7 +30,7 @@ import { doloot } from './pickup.js';
 import { curr_mon_load } from './mon.js';
 import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, M_AP_TYPE, M_AP_FURNITURE,
          M_AP_OBJECT } from './const.js';
-import { ACURR, exercise } from './attrib.js';
+import { ACURR, exercise, near_capacity } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { cxname, simpleonames, the } from './objnam.js';
@@ -57,7 +57,7 @@ import { enlightenment } from './insight.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
          tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
-import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH } from './const.js';
+import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH, BC_BALL, BC_CHAIN, SLT_ENCUMBER, OBJ_FLOOR } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { doeat } from './eat.js';
@@ -86,6 +86,8 @@ import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
 import { dowieldquiver, dowield, dotwoweapon } from './wield.js';
 import { dozap } from './zap.js';
+import { dist2, distmin } from './hacklib.js';
+import { place_object } from './mkobj.js';
 
 // Direction deltas: y u k
 //                   h . l
@@ -257,7 +259,6 @@ async function help_dir(sym, msg) {
     while (tty_next_page(win))
         await xwaitforspace('\x1b ');
     tty_destroy_nhwindow(win);
-    await docrt();
     return true;
 }
 
@@ -862,6 +863,10 @@ export async function doextcmd() {
         return await wiz_wish();
     if (name === 'wizgenesis')
         return await wiz_genesis();
+    if (name === 'wizintrinsic') {
+        const { wiz_intrinsic } = await import('./wizcmds.js');
+        return await wiz_intrinsic();
+    }
 
     note_unported_cmd(`extcmd:${name}`);
     return ECMD_OK;
@@ -1265,6 +1270,21 @@ export async function rhack(key) {
         movemode = 3;
     }
 
+    /* src/cmd.c:3693-3723 -- g/G only modify movement commands.  C loops
+       for the second key inside one rhack() call; this port spans two calls,
+       so reject a nonmovement command before its normal dispatch.  Another
+       prefix is allowed through, matching PREFIXCMD. */
+    if ((game.domove_attempting & DOMOVE_RUSH) && !isMovementKey(ch)
+            && !'gGmF'.includes(ch)) {
+        const prefix = game.context.run === 3 ? 'G' : 'g';
+        const vertical = ch === '<' || ch === '>';
+        game.context.run = 0;
+        game.domove_attempting = 0;
+        game.context.move = 0;
+        await pline(`The '${prefix}' prefix should be followed by a movement command${vertical ? ' other than up or down' : ''}.`);
+        return;
+    }
+
     if (isMovementKey(ch)) {
         /* src/cmd.c:1386 set_move_cmd() — sets u.dx/u.dy and, when no g/G
            prefix is pending, context.run. Keeping the direction on `u` is
@@ -1389,18 +1409,17 @@ export async function rhack(key) {
         // src/cmd.c cmdlist — '\\' is dodiscovered, which returns ECMD_OK.
         game.context.move = 0;
         await show_discoveries();
-    } else if (ch === 'g') {
-        // src/cmd.c:1839 do_rush — a PREFIX that sets context.run = 2, making
-        // the direction that follows RUN until something interesting appears
-        // rather than take one step. It reads no extra key, so this does not
-        // misalign the keystream; it moves the hero a different DISTANCE, which
-        // is a larger positional divergence than the fight prefix causes.
+    } else if (ch === 'g' || ch === 'G') {
+        // src/cmd.c:1588 do_rush()/do_run(): PREFIX commands. Lowercase g
+        // sets context.run = 2 and uppercase G sets it to 3; the following
+        // direction then carries the hero until something interesting stops
+        // the run. Neither prefix consumes game time by itself.
         if (game.domove_attempting & DOMOVE_RUSH) {
-            /* "Double rush prefix, canceled." */
+            /* "Double rush/run prefix, canceled." */
             game.context.run = 0;
             game.domove_attempting = 0;
         } else {
-            game.context.run = 2;
+            game.context.run = (ch === 'g') ? 2 : 3;
             game.domove_attempting |= DOMOVE_RUSH;
             game._cmd_prefix_pending = true;
         }
@@ -1613,6 +1632,231 @@ async function maybe_smudge_engr(x1, y1, x2, y2) {
         wipe_engr_at(x2, y2, rnd(5), false);
 }
 
+const BCPOS_DIFFER = 0;
+const BCPOS_CHAIN = 1;
+const BCPOS_BALL = 2;
+
+// src/ball.c bc_order() and the sighted arm of move_bc(). The floor object
+// list is newest-first, so the first matching piece is the visible one.
+function punishmentOrder(ball, chain, ballOnFloor) {
+    if (!ballOnFloor || ball.ox !== chain.ox || ball.oy !== chain.oy
+        || game.u.uswallow)
+        return BCPOS_DIFFER;
+    for (const obj of game.level?.objects || []) {
+        if (obj.ox !== ball.ox || obj.oy !== ball.oy)
+            continue;
+        if (obj === chain)
+            return BCPOS_CHAIN;
+        if (obj === ball)
+            return BCPOS_BALL;
+    }
+    return BCPOS_DIFFER;
+}
+
+function chainRock(x, y) {
+    const loc = game.level?.at?.(x, y);
+    return !loc || IS_OBSTRUCTED(loc.typ) || closed_door(x, y);
+}
+
+function chainInMiddle(heroX, heroY, chainX, chainY, ballX, ballY) {
+    return distmin(heroX, heroY, chainX, chainY) <= 1
+           && distmin(chainX, chainY, ballX, ballY) <= 1;
+}
+
+/* src/ball.c drag_ball(). This prepares the new coordinates and removes the
+   pieces before the hero moves. finishPunishmentMove() puts them back after
+   vision has been recalculated, matching move_bc(1) and move_bc(0). */
+async function preparePunishmentMove(x, y) {
+    const u = game.u;
+    const ball = u.uball;
+    const chain = u.uchain;
+    const ballOnFloor = ball.where === OBJ_FLOOR;
+    const state = {
+        ball, chain, ballOnFloor,
+        ballx: ball.ox, bally: ball.oy,
+        chainx: chain.ox, chainy: chain.oy,
+        control: 0, causeDelay: false,
+        order: punishmentOrder(ball, chain, ballOnFloor),
+    };
+
+    if (dist2(x, y, chain.ox, chain.oy) > 2) {
+        let dragBoth = false;
+
+        if (!ballOnFloor || distmin(x, y, ball.ox, ball.oy) <= 2) {
+            const oldchainx = chain.ox, oldchainy = chain.oy;
+            state.control = BC_CHAIN;
+
+            if (!ballOnFloor) {
+                if (distmin(x, y, chain.ox, chain.oy) > 1) {
+                    state.chainx = u.ux;
+                    state.chainy = u.uy;
+                }
+            } else {
+                const alreadyInRock = chainRock(u.ux, u.uy)
+                                      || chainRock(chain.ox, chain.oy)
+                                      || chainRock(ball.ox, ball.oy);
+                const wouldForceDrag = (cx, cy) => chainRock(cx, cy)
+                                                     && !alreadyInRock;
+                const ballDistance = dist2(x, y, ball.ox, ball.oy);
+
+                switch (ballDistance) {
+                case 8:
+                    state.chainx = Math.trunc((ball.ox + x) / 2);
+                    state.chainy = Math.trunc((ball.oy + y) / 2);
+                    dragBoth = wouldForceDrag(state.chainx, state.chainy);
+                    break;
+                case 5: {
+                    let tempx, tempy, tempx2, tempy2;
+                    if (Math.abs(x - ball.ox) === 1) {
+                        tempx = x;
+                        tempx2 = ball.ox;
+                        tempy = tempy2 = Math.trunc((ball.oy + y) / 2);
+                    } else {
+                        tempx = tempx2 = Math.trunc((ball.ox + x) / 2);
+                        tempy = y;
+                        tempy2 = ball.oy;
+                    }
+                    const rock1 = chainRock(tempx, tempy);
+                    const rock2 = chainRock(tempx2, tempy2);
+                    if (rock1 && !rock2 && !alreadyInRock) {
+                        if ((dist2(u.ux, u.uy, ball.ox, ball.oy) === 5
+                             && dist2(x, y, tempx, tempy) === 1)
+                            || (dist2(u.ux, u.uy, ball.ox, ball.oy) === 4
+                                && dist2(x, y, tempx, tempy) === 2)) {
+                            dragBoth = true;
+                        } else {
+                            state.chainx = tempx2;
+                            state.chainy = tempy2;
+                        }
+                    } else if (!rock1 && rock2 && !alreadyInRock) {
+                        if ((dist2(u.ux, u.uy, ball.ox, ball.oy) === 5
+                             && dist2(x, y, tempx2, tempy2) === 1)
+                            || (dist2(u.ux, u.uy, ball.ox, ball.oy) === 4
+                                && dist2(x, y, tempx2, tempy2) === 2)) {
+                            dragBoth = true;
+                        } else {
+                            state.chainx = tempx;
+                            state.chainy = tempy;
+                        }
+                    } else if (rock1 && rock2 && !alreadyInRock) {
+                        dragBoth = true;
+                    } else {
+                        const d1 = dist2(tempx, tempy, chain.ox, chain.oy);
+                        const d2 = dist2(tempx2, tempy2, chain.ox, chain.oy);
+                        if (d1 < d2 || (d1 === d2 && rn2(2))) {
+                            state.chainx = tempx;
+                            state.chainy = tempy;
+                        } else {
+                            state.chainx = tempx2;
+                            state.chainy = tempy2;
+                        }
+                    }
+                    break;
+                }
+                case 4:
+                    if (!chainInMiddle(x, y, chain.ox, chain.oy,
+                                       ball.ox, ball.oy)) {
+                        state.chainx = Math.trunc((x + ball.ox) / 2);
+                        state.chainy = Math.trunc((y + ball.oy) / 2);
+                        dragBoth = wouldForceDrag(state.chainx, state.chainy);
+                    }
+                    break;
+                case 2:
+                    if (dist2(x, y, chain.ox, chain.oy) === 4) {
+                        if (chain.oy === y)
+                            state.chainx = ball.ox;
+                        else
+                            state.chainy = ball.oy;
+                        dragBoth = wouldForceDrag(state.chainx, state.chainy);
+                        break;
+                    }
+                    // Fall through to the adjacent-ball cases.
+                case 1:
+                case 0:
+                    if (!chainInMiddle(x, y, chain.ox, chain.oy,
+                                       ball.ox, ball.oy)) {
+                        if (chainInMiddle(x, y, u.ux, u.uy,
+                                          ball.ox, ball.oy)) {
+                            state.chainx = u.ux;
+                            state.chainy = u.uy;
+                        } else {
+                            state.chainx = x;
+                            state.chainy = y;
+                        }
+                    }
+                    break;
+                default:
+                    state.chainx = oldchainx;
+                    state.chainy = oldchainy;
+                    dragBoth = true;
+                    break;
+                }
+            }
+        } else {
+            dragBoth = true;
+        }
+
+        if (dragBoth) {
+            if (near_capacity() > SLT_ENCUMBER
+                && dist2(x, y, u.ux, u.uy) <= 2) {
+                await You(`cannot ${(game.invent || []).length
+                    ? 'carry all that and also ' : ''}drag the heavy iron ball.`);
+                nomul(0);
+                return null;
+            }
+
+            state.control = BC_BALL | BC_CHAIN;
+            if (dist2(x, y, u.ux, u.uy) > 2) {
+                state.ballx = state.chainx = x;
+                state.bally = state.chainy = y;
+            } else {
+                let newchainx = u.ux, newchainy = u.uy;
+                if (dist2(x, y, chain.ox, chain.oy) === 4
+                    && !chainRock(newchainx, newchainy)) {
+                    newchainx = Math.trunc((x + chain.ox) / 2);
+                    newchainy = Math.trunc((y + chain.oy) / 2);
+                    if (chainRock(newchainx, newchainy)) {
+                        newchainx = u.ux;
+                        newchainy = u.uy;
+                    }
+                }
+                state.ballx = chain.ox;
+                state.bally = chain.oy;
+                state.chainx = newchainx;
+                state.chainy = newchainy;
+            }
+            state.causeDelay = true;
+        }
+    }
+
+    obj_extract_self(chain);
+    newsym(chain.ox, chain.oy);
+    if (ballOnFloor) {
+        obj_extract_self(ball);
+        newsym(ball.ox, ball.oy);
+    }
+    return state;
+}
+
+function finishPunishmentMove(state) {
+    if (!state)
+        return;
+    const chainOnTop = (state.control & BC_CHAIN)
+                       || (!state.control && state.order === BCPOS_CHAIN);
+    if (chainOnTop) {
+        if (state.ballOnFloor)
+            place_object(state.ball, state.ballx, state.bally);
+        place_object(state.chain, state.chainx, state.chainy);
+    } else {
+        place_object(state.chain, state.chainx, state.chainy);
+        if (state.ballOnFloor)
+            place_object(state.ball, state.ballx, state.bally);
+    }
+    newsym(state.chainx, state.chainy);
+    if (state.ballOnFloor)
+        newsym(state.ballx, state.bally);
+}
+
 async function domove_core() {
     const u = game.u;
     /* C's domove() takes no arguments and reads u.dx/u.dy, which movecmd()
@@ -1628,6 +1872,22 @@ async function domove_core() {
         if (globalThis.__dog_trace)
             console.error(`TRAV at(${game.u.ux},${game.u.uy}) d(${game.u.dx},${game.u.dy}) t(${game.u.tx},${game.u.ty}) multi=${game.multi} run=${game.context.run}`);
         game.context.travel1 = 0;
+    }
+
+    /* src/hack.c:2733. A direction while swallowed attacks the engulfer
+       from the shared square instead of moving the hero. */
+    if (u.uswallow) {
+        u.dx = u.dy = 0;
+        const mtmp = u.ustuck;
+        if (!mtmp)
+            return;
+        u_on_newpos(mtmp.mx, mtmp.my);
+        u.ux0 = u.ux;
+        u.uy0 = u.uy;
+        nomul(0);
+        const displaceu = { value: false };
+        await domove_attackmon_at(mtmp, mtmp.mx, mtmp.my, displaceu);
+        return;
     }
 
     /* src/hack.c:2747 impaired_movement() — a stunned (always) or confused
@@ -1878,6 +2138,15 @@ async function domove_core() {
            vacated-square case just walks on */
     }
 
+    /* src/hack.c:2860. drag_ball() removes both floor pieces before the hero
+       moves and computes where each will be replaced afterward. */
+    let punishmentMove = null;
+    if (u.uball && u.uchain) {
+        punishmentMove = await preparePunishmentMove(newx, newy);
+        if (!punishmentMove)
+            return;
+    }
+
     // Move the hero
     const oldx = u.ux, oldy = u.uy;
     u.ux = newx;
@@ -1941,10 +2210,20 @@ async function domove_core() {
         game.u.umoved = true;
     }
 
+    /* src/hack.c:2977. The ball and chain return after vision recalculation
+       and before floor effects inspect the destination. */
+    finishPunishmentMove(punishmentMove);
+
     /* src/hack.c:2980 — "if (u.umoved) spoteffects(TRUE);". The move above
        either happened or returned early, so reaching here means umoved. */
     if (u.ux !== u.ux0 || u.uy !== u.uy0)
         await spoteffects(true);
+
+    if (punishmentMove?.causeDelay) {
+        nomul(-2);
+        game.multi_reason = 'dragging an iron ball';
+        game.nomovemsg = '';
+    }
 }
 
 // src/hack.c:2098 domove_swap_with_pet() — returns TRUE if places were
@@ -2059,7 +2338,6 @@ async function show_discoveries() {
     await nhgetch();
 
     tty_destroy_nhwindow(win);
-    await docrt();                  /* restore the map underneath */
 }
 
 
@@ -2081,11 +2359,10 @@ async function show_attributes() {
     /* dmore() blocks once per page and accepts ONLY the quitchars: any
        other key (a ^O pressed early) is swallowed while the window stays */
     await xwaitforspace(' \r\n\x1b');
-    while (tty_next_page(win))
+    while (game.morc !== '\x1b' && tty_next_page(win))
         await xwaitforspace(' \r\n\x1b');
 
     tty_destroy_nhwindow(win);
-    await docrt();
 }
 
 
@@ -2102,7 +2379,7 @@ async function show_inventory() {
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
     for (const it of items)
-        tty_add_menu(win, null,
+        tty_add_menu(win, it.glyphinfo ?? null,
                      it.heading ? 0 : it.invlet.charCodeAt(0),
                      it.invlet || 0, 0,
                      it.attr, NO_COLOR, it.str, MENU_ITEMFLAGS_NONE);

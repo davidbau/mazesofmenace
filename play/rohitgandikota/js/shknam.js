@@ -7,13 +7,13 @@
 // ITEM in it.
 
 import { rnd } from './rng.js';
-import { OCLASSES, ONAMES } from './objects_data.js';
+import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { isok, ROOMOFFSET, IS_ROOM, D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED,
-         SDOOR, DOOR, MM_ESHK, NO_MM_FLAGS } from './const.js';
+         SDOOR, DOOR, MM_ESHK, NO_MM_FLAGS, HEALTHY_TIN } from './const.js';
 import { makemon, mkclass, mkmonmoney, mongets, set_malign } from './makemon.js';
-import { mkobj_at, mksobj_at } from './mkobj.js';
+import { mkobj_at, mksobj_at, set_tin_variety } from './mkobj.js';
 import { m_at } from './mon.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { rnd as _rnd } from './rng.js';
@@ -205,6 +205,37 @@ export function get_shop_item(type) {
     return shp.iprobs[i][1];
 }
 
+// src/shknam.c:415 shkveg() -- pick a vegetarian FOOD_CLASS object using
+// the ordinary object probabilities. Corpses and tins use a lichen as their
+// type-only stand-in, so both are eligible here and are fixed after creation.
+export function shkveg() {
+    const ok = [];
+    let maxprob = 0;
+
+    for (let i = game.bases[OCLASSES.FOOD_CLASS];
+         i < game.bases[OCLASSES.FOOD_CLASS + 1]; ++i) {
+        const oc = game.objects[i];
+        if (oc.oc_material === MATERIALS.VEGGY || i === ONAMES.EGG
+            || i === ONAMES.TIN || i === ONAMES.CORPSE) {
+            ok.push(i);
+            maxprob += oc.oc_prob;
+        }
+    }
+
+    let prob = rnd(maxprob);
+    let i = ok[0];
+    for (let j = 0; (prob -= game.objects[i].oc_prob) > 0;)
+        i = ok[++j];
+    return i;
+}
+
+// src/shknam.c:443 mkveggy_at()
+function mkveggy_at(sx, sy) {
+    const obj = mksobj_at(shkveg(), sx, sy, true, true);
+    if (obj && obj.otyp === ONAMES.TIN)
+        set_tin_variety(obj, HEALTHY_TIN);
+}
+
 
 // src/shknam.c:628 shkinit() — create the shopkeeper. Returns the door index,
 // or -1, which makes stock_room give up and leave the shop empty.
@@ -299,7 +330,7 @@ function mkshobj_at(shp, sx, sy, mkspecl) {
     } else {
         const atype = get_shop_item(shtypes.indexOf(shp));
         if (atype === VEGETARIAN_CLASS)
-            (game.unported ||= new Set()).add('shknam:mkveggy_at');
+            mkveggy_at(sx, sy);
         else if (atype < 0)
             mksobj_at(-atype, sx, sy, true, true);
         else

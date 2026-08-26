@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { pline } from './display.js';
+import { more, pline } from './display.js';
 import { You, You_feel, You_hear, Your, pline_The } from './pline.js';
 import { newsym } from './display.js';
 import { IS_FOUNTAIN, ROOM, POOL, A_WIS, A_CON, IS_DOOR, SDOOR, isok,
@@ -16,7 +16,7 @@ import { IS_FOUNTAIN, ROOM, POOL, A_WIS, A_CON, IS_DOOR, SDOOR, isok,
 import { ONAMES } from './objects_data.js';
 import { OCLASSES } from './objects_data.js';
 import { deltrap, water_damage, water_damage_chain } from './trap.js';
-import { ACURR, exercise } from './attrib.js';
+import { ACURR, adjattrib, A_MAX, exercise } from './attrib.js';
 import { morehungry, vomit } from './eat.js';
 import { update_inventory, money_cnt } from './invent.js';
 import { curse, uncurse, mksobj_at, rnd_class } from './mkobj.js';
@@ -281,7 +281,28 @@ export async function drinkfountain() {
     }
 
     if (mgkftn && (u.uluck | 0) >= 0 && fate >= 10) {
-        note_unported_fountain('drinkfountain:magic_fountain');
+        const littleluck = (u.uluck | 0) < 4;
+
+        await pline('Wow!  This makes you feel great!');
+        for (let i = 0; i < A_MAX; ++i) {
+            if (u.acurr.a[i] < u.amax.a[i]) {
+                u.acurr.a[i] = u.amax.a[i];
+                (game.disp ||= {}).botl = true;
+            }
+        }
+
+        let i = rn2(A_MAX);
+        for (let ii = 0; ii < A_MAX; ++ii) {
+            if (await adjattrib(i, 1, littleluck ? -1 : 0) && littleluck)
+                break;
+            if (++i >= A_MAX)
+                i = 0;
+        }
+
+        await more();
+        await pline('A wisp of vapor escapes the fountain...');
+        exercise(A_WIS, true);
+        loc.blessedftn = 0;
         return;
     }
 
@@ -295,7 +316,40 @@ export async function drinkfountain() {
     } else {
         switch (fate) {
         case 19: /* Self-knowledge */
-            note_unported_fountain('drinkfountain:self_knowledge');
+            {
+                await You_feel('self-knowledgeable...');
+                await more();
+
+                const { enlightenment, MAGICENLIGHTENMENT,
+                        ENL_GAMEINPROGRESS } = await import('./insight.js');
+                const { tty_create_nhwindow, tty_destroy_nhwindow,
+                        tty_start_menu, tty_add_menu, tty_end_menu,
+                        tty_display_nhwindow, tty_next_page, NHW_MENU,
+                        ATR_NONE } = await import('./tty/wintty.js');
+                const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE } =
+                    await import('./const.js');
+                const { NO_COLOR } = await import('./terminal.js');
+                const { xwaitforspace } = await import('./tty/getline.js');
+                const { docrt } = await import('./display.js');
+
+                const win = tty_create_nhwindow(NHW_MENU);
+                tty_start_menu(win, MENU_BEHAVE_STANDARD);
+                for (const line of enlightenment(MAGICENLIGHTENMENT,
+                                                  ENL_GAMEINPROGRESS)) {
+                    tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR,
+                                 line, MENU_ITEMFLAGS_NONE);
+                }
+                tty_end_menu(win, null);
+                await tty_display_nhwindow(win);
+                await xwaitforspace(' \r\n\x1b');
+                while (tty_next_page(win))
+                    await xwaitforspace(' \r\n\x1b');
+                tty_destroy_nhwindow(win);
+                await docrt();
+
+                exercise(A_WIS, true);
+                await pline_The('feeling subsides.');
+            }
             break;
         case 20: /* Foul water */
             {
@@ -482,7 +536,11 @@ export async function dipfountain(obj) {
         await dowatersnakes();
         break;
     case 24: /* Find a gem */
-        note_unported_fountain('dipfountain:dofindgem');
+        if (!(game.level.at(game.u.ux, game.u.uy).looted & 1 /* F_LOOTED */)) {
+            await dofindgem();
+            break;
+        }
+        await dogushforth(false);
         break;
     case 25: /* Water gushes forth */
         await dogushforth(false);

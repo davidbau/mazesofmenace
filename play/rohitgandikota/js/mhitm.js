@@ -46,6 +46,7 @@ import { distmin, s_suffix } from './hacklib.js';
 import { mhitm_ad_phys, mhitm_knockback } from './uhitm.js';
 import { grow_up } from './makemon.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE } from './const.js';
+import { spitmm } from './mthrowu.js';
 
 // src/mhitm.c:27 noises() — the message when a fight happens out of sight.
 //
@@ -327,8 +328,24 @@ export async function mattackm(magr, mdef) {
                 res[i] = await hitmm(magr, mdef, mattk, null, 0);
             break;
 
+        case A.AT_SPIT:
+            if (!monnear(magr, mdef.mx, mdef.my)) {
+                const mmtmp = await spitmm(magr, mattk, mdef);
+                strike = (mmtmp === M_ATTK_MISS) ? 0 : 1;
+                if (strike)
+                    res[i] |= M_ATTK_HIT;
+                if (DEADMONSTER(mdef))
+                    res[i] = M_ATTK_DEF_DIED;
+                if (DEADMONSTER(magr))
+                    res[i] |= M_ATTK_AGR_DIED;
+            } else {
+                strike = 0;
+                attk = 0;
+            }
+            break;
+
         case A.AT_GAZE: case A.AT_EXPL: case A.AT_ENGL:
-        case A.AT_BREA: case A.AT_SPIT: case A.AT_MAGC:
+        case A.AT_BREA: case A.AT_MAGC:
             note_unported_mhitm(`mattackm:aatyp=${mattk[0]}`);
             strike = 0;
             attk = 0;

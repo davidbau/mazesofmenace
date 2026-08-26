@@ -30,7 +30,7 @@ import { depth, dunlev, endgamelevelname } from './dungeon.js';
 import { In_endgame, In_quest, Is_knox_level } from './const.js';
 import { aligns } from './role_data.js';
 import { A_MAX } from './attrib.js';
-import { rank_of } from './botl.js';
+import { hu_stat, rank_of } from './botl.js';
 import { money_cnt } from './invent.js';
 import { costly_spot } from './shk.js';
 import { newuexp } from './exper.js';
@@ -45,7 +45,7 @@ import { Fast, Very_fast, from_what as innate_source } from './attrib.js';
 import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Shock_resistance, Poison_resistance, Stealth, Searching,
          Warning, Teleport_control, See_invisible,
-         Infravision, Deaf } from './youprop.js';
+         Infravision, Deaf, Hallucination } from './youprop.js';
 
 const EXTRINSIC_KEYS = {
     HFire_resistance: 'FIRE_RES',
@@ -53,6 +53,7 @@ const EXTRINSIC_KEYS = {
     HSleep_resistance: 'SLEEP_RES',
     HShock_resistance: 'SHOCK_RES',
     HPoison_resistance: 'POISON_RES',
+    HAntimagic: 'ANTIMAGIC',
     HSee_invisible: 'SEE_INVIS',
     HWarning: 'WARNING',
     HSearching: 'SEARCHING',
@@ -363,10 +364,18 @@ function status_enlightenment() {
     if ((game.u.intrinsic?.HSleepy || game.u.uprops?.SLEEPY))
         enl_msg('You ', 'fall', 'fell', ' asleep uncontrollably', '');
 
-    /* hunger: hu_stat[] is empty for the normal state, and C substitutes
-       "not hungry", which the contraction turns into "aren't hungry";
-       wizard mode reveals u.uhunger (insight.c:1208) */
-    you_are('not hungry' + (game.wizard ? ` <${game.u.uhunger}>` : ''));
+    if (Hallucination())
+        you_are('hallucinating');
+
+    /* hunger: hu_stat[] is blank for the normal state. */
+    let hunger = (hu_stat[game.u.uhs] || '').trim().toLowerCase();
+    if (!hunger)
+        hunger = 'not hungry';
+    else if (hunger === 'weak')
+        hunger += ' from severe hunger';
+    else if (hunger.startsWith('faint'))
+        hunger += ' due to starvation';
+    you_are(hunger + (game.wizard ? ` <${game.u.uhunger}>` : ''));
 
     /* src/insight.c:1211 encumbrance. */
     const cap = near_capacity();
@@ -615,12 +624,10 @@ function attributes_enlightenment() {
         if (u.uprops[k] && (u.uprops[k].intrinsic || u.uprops[k].extrinsic))
             note_unported_insight(`attributes:prop:${k}`);
 
-    /* src/insight.c:1524 — Antimagic, with from_what() naming the source in
-       wizard mode; the one source a recorded hero has is the worn cloak */
-    if (game.u.uarmc?.otyp === ONAMES.CLOAK_OF_MAGIC_RESISTANCE)
-        you_are('magic-protected',
-                game.wizard ? ' because of your cloak of magic resistance'
-                            : '');
+    /* src/insight.c:1524. Antimagic includes dragon mail and cloaks, and
+       from_what() names the worn source in wizard mode. */
+    if (u.uprops?.ANTIMAGIC)
+        you_are('magic-protected', from_what('HAntimagic'));
 
     /* src/insight.c:1526-1541 — resistances to troubles, each with
        from_what() naming the source in wizard mode */
@@ -665,6 +672,8 @@ function attributes_enlightenment() {
     /* src/insight.c:1898 — Fast, between the mc line and Luck */
     if (Fast())
         you_are(Very_fast() ? 'very fast' : 'fast', from_what('HFast'));
+    if (u.uprops?.LIFESAVED)
+        enl_msg('Your life ', 'will be', 'would have been', ' saved', '');
 
     /* src/insight.c:1909 — Luck; the zero line is wizard-mode only */
     const luck = (game.u.uluck ?? 0) + (game.u.moreluck ?? 0);

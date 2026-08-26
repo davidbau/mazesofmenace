@@ -7,15 +7,16 @@
 import { game } from './gstate.js';
 import { getobj, GETOBJ_PROMPT, ECMD_TIME, ECMD_OK } from './invent.js';
 import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR,
-         A_STR, A_CON, W_BALL, W_ART, W_ARTI, TT_BURIEDBALL } from './const.js';
+         A_STR, A_CON, W_BALL, W_CHAIN, W_ART, W_ARTI, TT_BURIEDBALL,
+         BY_COOKIE } from './const.js';
 import { sgn, distu } from './hacklib.js';
 import { valid_cloud_pos } from './region.js';
 import { cansee } from './vision.js';
-import { bcsign, blessorcurse, uncurse } from './mkobj.js';
+import { bcsign, blessorcurse, mkobj, place_object, uncurse } from './mkobj.js';
 import { chwepon } from './wield.js';
 import { erosion_matters } from './mkobj.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
-import { pline } from './display.js';
+import { newsym, pline } from './display.js';
 import { rn2, rnd } from './rng.js';
 import { getlin } from './cmd.js';
 import { name_to_monplus } from './mondata.js';
@@ -28,10 +29,12 @@ import { do_mapping } from './detect.js';
 import { do_clear_area, vision_recalc } from './vision.js';
 import { makeknown } from './o_init.js';
 import { more_experienced } from './exper.js';
-import { You } from './pline.js';
+import { You, Your } from './pline.js';
 import { useup, identify_pack, update_inventory } from './invent.js';
 import { exercise } from './attrib.js';
 import { A_WIS } from './const.js';
+import { outrumor } from './rumors.js';
+import { setworn } from './worn.js';
 
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
@@ -48,9 +51,21 @@ export async function doread(read_ok) {
     const otyp = scroll.otyp;
     scroll.pickup_prev = 0;
 
-    /* fortune cookie / shirts / candy wrapper arms */
-    if (otyp === ONAMES.FORTUNE_COOKIE || otyp === ONAMES.T_SHIRT
-        || otyp === ONAMES.ALCHEMY_SMOCK || otyp === ONAMES.HAWAIIAN_SHIRT
+    if (otyp === ONAMES.FORTUNE_COOKIE) {
+        if (game.flags.verbose)
+            await You('break up the cookie and throw away the pieces.');
+        await outrumor(bcsign(scroll), BY_COOKIE);
+        if (!game.u.ublind) {
+            game.u.uconduct = game.u.uconduct || {};
+            game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+        }
+        useup(scroll);
+        return ECMD_TIME;
+    }
+
+    /* shirts / candy wrapper arms */
+    if (otyp === ONAMES.T_SHIRT || otyp === ONAMES.ALCHEMY_SMOCK
+        || otyp === ONAMES.HAWAIIAN_SHIRT
         || otyp === ONAMES.APRON || otyp === ONAMES.CANDY_BAR) {
         note_unported_read('doread:novelty_text');
         return ECMD_TIME;
@@ -61,13 +76,27 @@ export async function doread(read_ok) {
         return ECMD_OK;
     }
     if (game.u.ublind && otyp !== ONAMES.SPE_BOOK_OF_THE_DEAD) {
-        note_unported_read('doread:blind');
-        return ECMD_OK;
+        let what = null;
+        if (otyp === ONAMES.SPE_NOVEL)
+            what = 'words';
+        else if (scroll.oclass === OCLASSES.SPBOOK_CLASS)
+            what = 'mystic runes';
+        else if (!scroll.dknown)
+            what = 'formula on the scroll';
+        if (what) {
+            await pline(`Being blind, you cannot read the ${what}.`);
+            return ECMD_OK;
+        }
     }
 
-    /* literate conduct bump — no draw, no message */
-    game.u.uconduct = game.u.uconduct || {};
-    game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+    /* Blank paper and the two special books do not break illiterate conduct. */
+    if (otyp !== ONAMES.SCR_BLANK_PAPER
+        && otyp !== ONAMES.SPE_BLANK_PAPER
+        && otyp !== ONAMES.SPE_BOOK_OF_THE_DEAD
+        && otyp !== ONAMES.SPE_NOVEL) {
+        game.u.uconduct = game.u.uconduct || {};
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+    }
 
     if (scroll.oclass === OCLASSES.SPBOOK_CLASS)
         return (await study_book(scroll)) ? ECMD_TIME : ECMD_OK;
@@ -75,16 +104,18 @@ export async function doread(read_ok) {
     /* src/read.c:617 — the scroll path. Blind and confused readings need
        state no session reaches yet. */
     game.known = false;
-    const nodisappear = (otyp === ONAMES.SCR_FIRE
-                         || (otyp === ONAMES.SCR_REMOVE_CURSE
-                             && scroll.cursed));
-    await pline(nodisappear ? 'You read the scroll.'
-                            : 'As you read the scroll, it disappears.');
-    if (game.u.uprops?.CONFUSION || game.u.intrinsic?.HConfusion) {
-        if (game.u.uprops?.HALLUC && !game.u.uprops?.HALLUC_RES)
-            await pline('Being so trippy, you screw up...');
-        else
-            await pline('Being confused, you mispronounce the magic words...');
+    if (otyp !== ONAMES.SCR_BLANK_PAPER) {
+        const nodisappear = (otyp === ONAMES.SCR_FIRE
+                             || (otyp === ONAMES.SCR_REMOVE_CURSE
+                                 && scroll.cursed));
+        await pline(nodisappear ? 'You read the scroll.'
+                                : 'As you read the scroll, it disappears.');
+        if (game.u.uprops?.CONFUSION || game.u.intrinsic?.HConfusion) {
+            if (game.u.uprops?.HALLUC && !game.u.uprops?.HALLUC_RES)
+                await pline('Being so trippy, you screw up...');
+            else
+                await pline('Being confused, you mispronounce the magic words...');
+        }
     }
 
     if (!await seffects(scroll)) {
@@ -132,6 +163,13 @@ async function seffects(sobj) {
         break;
     case ONAMES.SCR_IDENTIFY:
         return await seffect_identify(sobj);
+    case ONAMES.SCR_BLANK_PAPER:
+        if (game.u.ublind)
+            await You("don't remember there being any magic words on this scroll.");
+        else
+            await pline('This scroll seems to be blank.');
+        game.known = true;
+        break;
     case ONAMES.SCR_ENCHANT_WEAPON:
         return await seffect_enchant_weapon(sobj);
     case ONAMES.SCR_LIGHT:
@@ -145,11 +183,45 @@ async function seffects(sobj) {
     case ONAMES.SCR_STINKING_CLOUD:
         await seffect_stinking_cloud(sobj);
         break;
+    case ONAMES.SCR_PUNISHMENT:
+        await seffect_punishment(sobj);
+        break;
     default:
         note_unported_read(`seffects:otyp=${otyp}`);
         break;
     }
     return false;
+}
+
+// src/read.c:1976 seffect_punishment() and :3019 punish().
+async function seffect_punishment(sobj) {
+    game.known = true;
+    const confused = !!(game.u.intrinsic?.HConfusion
+                         || game.u.uprops?.CONFUSION);
+    if (confused || sobj.blessed) {
+        await You('feel guilty.');
+        return;
+    }
+
+    await You('are being punished for your misbehavior!');
+    if (game.u.uball) {
+        await Your('iron ball gets heavier.');
+        game.u.uball.owt = (game.u.uball.owt || 0)
+            + 160 * (1 + (sobj.cursed ? 1 : 0));
+        return;
+    }
+
+    const chain = mkobj(OCLASSES.CHAIN_CLASS, true);
+    setworn(chain, W_CHAIN);
+    const ball = mkobj(OCLASSES.BALL_CLASS, true);
+    setworn(ball, W_BALL);
+
+    game.uchain = game.u.uchain;
+    game.uball = game.u.uball;
+    (game.u.uprops ||= {}).PUNISHED = true;
+    place_object(ball, game.u.ux, game.u.uy);
+    place_object(chain, game.u.ux, game.u.uy);
+    newsym(game.u.ux, game.u.uy);
 }
 
 // src/read.c:1490 seffect_remove_curse(). A cursed scroll only reports and

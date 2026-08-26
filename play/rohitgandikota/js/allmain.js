@@ -71,8 +71,11 @@ import { lookaround, end_running, unmul, nomul,
 import { deferred_goto } from './do.js';
 import { You } from './pline.js';
 import {
-    docrt, cls, bot, flush_screen, pline, TOPLINE_EMPTY,
+    docrt, cls, bot, flush_screen, pline, see_monsters, see_objects,
+    see_traps, swallowed,
+    TOPLINE_EMPTY,
 } from './display.js';
+import { Hallucination } from './youprop.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
@@ -201,6 +204,7 @@ export async function newgame() {
     }
 
     game.context.ident = 2;  /* id 1 is reserved for gy.youmonst */
+    game.context.warnlevel = 1;
     game.context.next_attrib_check = 600;
 
     /* src/allmain.c:776 — "turn on 3.6 tributes". stock_room's
@@ -853,6 +857,18 @@ export async function moveloop_core() {
     find_ac();
 
     // Vision + display
+    const Warning = !!(g.u.uprops?.WARNING || g.u.intrinsic?.HWarning);
+    if (!g.context.mv || g.u.ublind) {
+        if (Hallucination()) {
+            see_monsters();
+            see_objects();
+            see_traps();
+            if (g.u.uswallow)
+                await swallowed(0);
+        } else if (Warning) {
+            see_monsters();
+        }
+    }
     if (g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;

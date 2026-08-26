@@ -51,7 +51,7 @@ import { dosounds } from './sounds.js';
 import { invault } from './vault.js';
 import { u_wipe_engr } from './engrave.js';
 import { nh_timeout } from './timeout.js';
-import { run_regions } from './region.js';
+import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
 import { tele } from './teleport.js';
 import { polyself } from './polyself.js';
@@ -965,9 +965,9 @@ export async function moveloop_core() {
     find_ac();
     // C allmain.c:453–468 — if (!context.mv || Blind) {
     //   Hallucination → see_monsters/objects/traps + swallowed(0)
-    //   else Unblind_telepat || Warning || Warn_of_mon → see_monsters
+    //   else Unblind_telepat || Warning || Warn_of_mon
+    //        || any_visible_region() → see_monsters
     // }
-    // Named omission: any_visible_region().
     {
         const u = g.u || {};
         const Blind = !!(u.Blind || u.ublind
@@ -982,7 +982,8 @@ export async function moveloop_core() {
                 // C youprop.h Unblind_telepat ≡ ETelepat
                 const Unblind_telepat = !!(u.ETelepat | 0)
                     || !!(u.uprops?.[TELEPAT]?.extrinsic | 0);
-                if (Unblind_telepat || Warning(u) || Warn_of_mon()) {
+                if (Unblind_telepat || Warning(u) || Warn_of_mon()
+                    || any_visible_region()) {
                     see_monsters();
                 }
             }

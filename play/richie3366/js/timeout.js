@@ -40,7 +40,7 @@ import { little_to_big, big_to_little } from './mondata.js';
 import { dist2 } from './hacklib.js';
 import { zombie_form } from './mon.js';
 import { cry_sound } from './sounds.js';
-import { rehumanize } from './polyself.js';
+import { rehumanize, body_part } from './polyself.js';
 import { you_unwere } from './were.js';
 import { new_light_source, del_light_source } from './light.js';
 import { cansee } from './vision.js';
@@ -117,12 +117,6 @@ function wake_nearby(_petcall) {
 /** C ref: dbridge.c / rm.h is_ice — ICE terrain; drawbridge-under deferred. */
 function is_ice(x, y) {
     return game.level?.at?.(x, y)?.typ === ICE;
-}
-
-/** C ref: mondata.c body_part — FOOT; full poly deferred. */
-function body_part(part) {
-    if (part === FOOT) return 'foot';
-    return 'body';
 }
 
 /**

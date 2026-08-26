@@ -5,14 +5,14 @@ import { game } from './gstate.js';
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED, GETOBJ_NOFLAGS,
          nothing_happens, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
          M_AP_MONSTER, ARTICLE_A, SUPPRESS_IT,
-         SUPPRESS_INVISIBLE } from './const.js';
-import { getobj } from './invent.js';
+         SUPPRESS_INVISIBLE, nothing_seems_to_happen } from './const.js';
+import { getobj, update_inventory } from './invent.js';
 import { getdir, get_adjacent_loc, cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { pick_lock } from './lock.js';
 import { is_pick, is_axe, delobj, m_at, seemimic } from './mon.js';
 import { is_pole } from './u_init.js';
 import { ECMD_FAIL } from './const.js';
-import { Hallucination, Deaf } from './youprop.js';
+import { Hallucination, Deaf, Underwater } from './youprop.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE } from './invent.js';
 import { OCLASSES } from './objects_data.js';
 import { mstatusline, ustatusline } from './insight.js';
@@ -68,6 +68,56 @@ const MUSICAL_INSTRUMENTS = [
 const APPLIED_CONTAINERS = [ONAMES.LARGE_BOX, ONAMES.CHEST, ONAMES.ICE_BOX,
                             ONAMES.SACK, ONAMES.BAG_OF_HOLDING,
                             ONAMES.OILSKIN_SACK];
+
+// src/apply.c:1628 use_lamp(), including begin_burn/end_burn's permanent
+// magic-lamp path. Oil-lamp and lantern fuel timers are not represented yet,
+// but their on/off state and light source still match until fuel expires.
+async function use_lamp(obj) {
+    const lamp = obj.otyp === ONAMES.BRASS_LANTERN ? 'lantern' : 'lamp';
+    const { new_light_source, del_light_source, LS_OBJECT } =
+        await import('./light.js');
+
+    if (obj.lamplit) {
+        await pline(`Your ${lamp} is now off.`);
+        del_light_source(LS_OBJECT, obj.o_id);
+        obj.lamplit = 0;
+        game.vision_full_recalc = 1;
+        update_inventory();
+        return;
+    }
+    if (Underwater()) {
+        await pline('This is not a diving lamp.');
+        return;
+    }
+    if ((obj.otyp !== ONAMES.MAGIC_LAMP && !obj.age)
+        || (obj.otyp === ONAMES.MAGIC_LAMP && !obj.spe)) {
+        if (obj.otyp === ONAMES.BRASS_LANTERN)
+            await pline(game.u.ublind ? nothing_seems_to_happen
+                                      : 'Your lantern is out of power.');
+        else
+            await pline(`This ${lamp} has no oil.`);
+        return;
+    }
+    if (obj.cursed && !rn2(2)) {
+        if (obj.otyp !== ONAMES.BRASS_LANTERN && !rn2(3)) {
+            note_unported_apply('use_lamp:oil_spill');
+            await pline('The lamp spills and covers your fingers with oil.');
+        } else if (!game.u.ublind) {
+            await pline(`Your ${lamp} flickers for a moment, then dies.`);
+        } else {
+            await pline(nothing_seems_to_happen);
+        }
+        return;
+    }
+
+    await pline(`Your ${lamp} is now on.`);
+    obj.lamplit = 1;
+    if (obj.otyp !== ONAMES.MAGIC_LAMP)
+        note_unported_apply('use_lamp:fuel_timer');
+    new_light_source(game.u.ux, game.u.uy, 3, LS_OBJECT, obj.o_id);
+    game.vision_full_recalc = 1;
+    update_inventory();
+}
 
 // src/apply.c:4151 apply_ok() — the getobj filter for 'a'.
 //
@@ -349,8 +399,10 @@ export async function doapply() {
         return ECMD_TIME;
     }
 
-    if (LAMPS.includes(obj.otyp))
+    if (LAMPS.includes(obj.otyp)) {
+        await use_lamp(obj);
         return ECMD_TIME;
+    }
 
     if (MUSICAL_INSTRUMENTS.includes(obj.otyp)) {
         const { do_play_instrument } = await import('./music.js');

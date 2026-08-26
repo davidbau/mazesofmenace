@@ -14,8 +14,84 @@ import { save_track, rest_track } from './track.js';
 import { yn_function } from './getline.js';
 import { paint_gbuf_level_to_terminal } from './display.js';
 import { vision_off_newsym_gbuf } from './vision.js';
+import { fruit_from_indx } from './objnam.js';
+import { objectNames } from './generated/objects_data.js';
 
 const BONES_VFS_PREFIX = 'bones/';
+const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+
+/**
+ * C ref: bones.c goodfruit `:42–47` — look up fruit_from_indx(-id); if
+ * found, set fid = id (negative → positive). savebones first negates
+ * every fid so only types that still exist as SLIME_MOLD objects on
+ * the bones level are written (save.c savefruitchn fid>=0).
+ * @param {number} id  slime-mold spe (the fruit's original fid)
+ */
+export function goodfruit(id) {
+    const f = fruit_from_indx(-(id | 0));
+    if (f) f.fid = id | 0;
+}
+
+/**
+ * C ref: bones.c savebones `:450–453` — mark every named fruit
+ * nonexistent (fid = -fid) before drop_upon_death / resetobjs call
+ * goodfruit on SLIME_MOLD instances.
+ */
+export function savebones_negate_fruit_ids() {
+    for (let f = game.ffruit; f; f = f.nextf) {
+        f.fid = -(f.fid | 0);
+    }
+}
+
+/**
+ * C ref: bones.c resetobjs save path `:131–132` — SLIME_MOLD → goodfruit.
+ * Recurses cobj then walks nobj like C. Other resetobjs arms (known /
+ * dknown, name strip, unique corpse, invocation items) named.
+ * @param {object|null} ochain
+ */
+function resetobjs_mark_slime_molds(ochain) {
+    for (let otmp = ochain; otmp; otmp = otmp.nobj) {
+        if (otmp.cobj) resetobjs_mark_slime_molds(otmp.cobj);
+        if ((otmp.otyp | 0) === SLIME_MOLD) goodfruit(otmp.spe);
+    }
+}
+
+/**
+ * C ref: save.c savefruitchn `:951–971` — bones/whole-game fruit chain.
+ * Only fid>=0 (goodfruit restored those). Walk order; load prepends.
+ * FREEING dealloc named (JSON persist does not drop live ffruit).
+ * @returns {{ fname: string, fid: number }[]}
+ */
+export function savefruitchn() {
+    const out = [];
+    for (let f = game.ffruit; f; f = f.nextf) {
+        if ((f.fid | 0) >= 0) {
+            out.push({ fname: String(f.fname || ''), fid: f.fid | 0 });
+        }
+    }
+    return out;
+}
+
+/**
+ * C ref: restore.c loadfruitchn `:468–483` — read until fid==0; prepend
+ * so the last written fruit is head (reverses savefruitchn order).
+ * Bones getlev stores this on go.oldfruit; ghostfruit remap named.
+ * @param {{ fname?: string, fid?: number }[]|null|undefined} arr
+ * @returns {object|null}
+ */
+export function loadfruitchn(arr) {
+    let flist = null;
+    for (const raw of arr || []) {
+        const fid = raw?.fid | 0;
+        if (fid === 0) break;
+        flist = {
+            fname: String(raw?.fname || ''),
+            fid,
+            nextf: flist,
+        };
+    }
+    return flist;
+}
 
 /**
  * C ref: files.c set_bonesfile_name — "bon" + dungeon boneid + "0" + "." + dlevel.
@@ -122,6 +198,7 @@ function serMon(mtmp) {
 /**
  * C ref: bones.c savebones create_bonesfile + savelev subset.
  * Persists current level after ghost envelope for cross-segment getbones.
+ * Fruit chain is savefruitchn (fid>=0 after goodfruit).
  */
 export function write_bonesfile(lev) {
     const { filename, bonesid } = set_bonesfile_name(lev);
@@ -159,13 +236,24 @@ export function write_bonesfile(lev) {
             m.mtame = 0;
             m.mpeaceful = 0;
         }
+        // C resetobjs(minvent, FALSE) SLIME_MOLD arm — after drop_upon_death
+        resetobjs_mark_slime_molds(m.minvent);
         fmon.push(serMon(m));
+    }
+    // C resetobjs(fobj) / resetobjs(buriedobjlist) SLIME_MOLD arm
+    resetobjs_mark_slime_molds(game.fobj);
+    if (Array.isArray(lvl?.buriedobjlist)) {
+        for (const o of lvl.buriedobjlist) resetobjs_mark_slime_molds(o);
+    } else {
+        resetobjs_mark_slime_molds(lvl?.buriedobjlist);
     }
     // migrating_mons are off-level (mx==0); C savelev does not include them.
 
     const payload = {
         version: 1,
         bonesid,
+        // C savebones savefruitchn before savelev — fid>=0 only (D-1523)
+        fruitchn: savefruitchn(),
         dnum: lev?.dnum | 0,
         dlevel: lev?.dlevel | 0,
         locations,
@@ -377,6 +465,10 @@ export async function try_load_bones(lev) {
             }
         }
 
+        // C getlev ghostly: go.oldfruit = loadfruitchn before restobjchn
+        // so ghostfruit can remap SLIME_MOLD spe (ghostfruit named).
+        game.oldfruit = loadfruitchn(payload.fruitchn);
+
         const map = new GameMap();
     if (payload.locations) {
         for (let x = 0; x < payload.locations.length; x++) {
@@ -465,6 +557,9 @@ export async function try_load_bones(lev) {
     rebuildObjectsAt(fobj);
     // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
     rest_track(payload.track);
+    // C getlev ghostly: freefruitchn(oldfruit) after restobjchn.
+    // ghostfruit remap of SLIME_MOLD spe still named.
+    game.oldfruit = null;
 
     if (!game.u) game.u = {};
     if (!game.u.uroleplay) game.u.uroleplay = {};

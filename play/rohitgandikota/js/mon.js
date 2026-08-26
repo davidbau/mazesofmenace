@@ -68,9 +68,10 @@ import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohand
     is_clinger, is_flyer, is_floater, mindless, dmgtype, attacktype, mon_resistancebits, humanoid, is_undead, unsolid } from './mondata.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { distant_name, doname } from './objnam.js';
-import { You, You_feel } from './pline.js';
+import { You, You_feel, You_hear } from './pline.js';
+import { Hallucination } from './youprop.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
-import { touch_petrifies, acidic, mon_hates_silver, could_reach_item } from './dog.js';
+import { touch_petrifies, acidic, slimeproof, mon_hates_silver, could_reach_item } from './dog.js';
 import { is_rider, set_mimic_sym, hideunder, is_male, is_female } from './makemon.js';
 import { mpickobj } from './steal.js';
 import { nonliving, is_neuter, is_animal, is_mplayer, has_head } from './mondata.js';
@@ -776,13 +777,110 @@ export function meatmetal(mtmp) {
     return 0;
 }
 
+// src/mon.c:1531 meatobj() lets a gelatinous cube devour every organic
+// object in its square and carry the rest. The two obj_resists() calls on an
+// ordinary meal are both significant: one decides whether to engulf it, and
+// delobj() makes the second before destroying it.
+export async function meatobj(mtmp) {
+    if (mtmp.mtame)
+        return 0;
+
+    const original_mnum = mtmp.mnum;
+    let count = 0, ecount = 0, engulf_message = '';
+    const here = (game.level?.objects || [])
+        .filter(o => o.where === OBJ_FLOOR
+                     && o.ox === mtmp.mx && o.oy === mtmp.my);
+
+    for (const otmp of here) {
+        if (!(game.level?.objects || []).includes(otmp))
+            continue;
+        if (is_mines_prize(otmp) || is_soko_prize(otmp))
+            continue;
+
+        const corpsenm = otmp.corpsenm ?? NON_PM;
+        const corpsepm = ismnum(corpsenm) ? game.mons[corpsenm] : null;
+
+        if (otmp.otyp === ONAMES.CORPSE && corpsepm
+            && is_rider(corpsepm)) {
+            note_unported_mon('meatobj:revive_rider');
+            continue;
+        }
+
+        if ((otmp.otyp === ONAMES.CORPSE && corpsepm
+             && touch_petrifies(corpsepm) && !resists_ston(mtmp))
+            || otmp.oclass === OCLASSES.ROCK_CLASS
+            || otmp === game.u.uball || otmp === game.u.uchain
+            || otmp.otyp === ONAMES.SCR_SCARE_MONSTER)
+            continue;
+
+        const is_organic = game.objects[otmp.otyp].oc_material
+                           <= MATERIALS.WOOD;
+        const mstoning = otmp.oclass === OCLASSES.FOOD_CLASS && corpsepm
+                         && (touch_petrifies(corpsepm)
+                             || corpsepm.pmidx === PMNAMES.PM_MEDUSA);
+        let engulf = !is_organic;
+        if (!engulf && obj_resists(otmp, 5, 95))
+            engulf = true;
+        if (!engulf && !touch_artifact(otmp, mtmp))
+            engulf = true;
+        if (!engulf && (otmp.otyp === ONAMES.AMULET_OF_STRANGULATION
+                        || otmp.otyp === ONAMES.RIN_SLOW_DIGESTION))
+            engulf = true;
+        if (!engulf && otmp.opoisoned && !resists_poison(mtmp))
+            engulf = true;
+        if (!engulf && mstoning && !resists_ston(mtmp))
+            engulf = true;
+        if (!engulf && otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME
+            && !slimeproof(game.mons[mtmp.mnum]))
+            engulf = true;
+
+        if (engulf) {
+            ecount++;
+            const otmpname = distant_name(otmp, doname);
+            if (ecount === 1)
+                engulf_message = `${Monnam(mtmp)} engulfs ${otmpname}.`;
+            else if (ecount === 2)
+                engulf_message = `${Monnam(mtmp)} engulfs several objects.`;
+            obj_extract_self(otmp);
+            mpickobj(mtmp, otmp);
+        } else {
+            count++;
+            if (cansee(mtmp.mx, mtmp.my)) {
+                const otmpname = distant_name(otmp, doname);
+                if (game.flags?.verbose)
+                    await pline(`${Monnam(mtmp)} eats ${otmpname}!`);
+                if (otmp.oclass === OCLASSES.SCROLL_CLASS
+                    && game.obj_descr?.[game.objects[otmp.otyp].oc_descr_idx]
+                           ?.oc_descr === 'YUM YUM')
+                    await pline(otmp.blessed ? 'Yum!' : 'Yum.');
+            } else if (game.flags?.verbose) {
+                await You_hear('a slurping sound.');
+            }
+            m_consume_obj(mtmp, otmp);
+            if (mtmp.mnum !== original_mnum || DEADMONSTER(mtmp))
+                return DEADMONSTER(mtmp) ? 2 : 1;
+        }
+
+        if (mtmp.minvis)
+            newsym(mtmp.mx, mtmp.my);
+    }
+
+    if (ecount > 0 && game.flags?.verbose) {
+        if (cansee(mtmp.mx, mtmp.my) && engulf_message)
+            await pline(engulf_message);
+        else
+            await You_hear(ecount === 1 ? 'a slurping sound.'
+                                       : 'several slurping sounds.');
+    }
+    return (count > 0 || ecount > 0) ? 1 : 0;
+}
+
 // include/objclass.h:194,200 is_metallic() / is_rustprone()
 const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === MATERIALS.IRON;
 
 /* src/mondata.c resists_poison() needs the resistance tables. */
 function resists_poison(mon) {
-    note_unported_mon('resists_poison');
-    return false;
+    return !!((game.mons[mon.mnum]?.mresists ?? 0) & MFLAGS.MR_POISON);
 }
 
 /* src/artifact.c:907 touch_artifact() — the real check lives in
@@ -1525,7 +1623,9 @@ export async function xkilled(mtmp, xkill_flags) {
             adjalign(Math.trunc(alignlim / 4));
     } else if (mtmp.mtame) {
         adjalign(-15);
-        note_unported_mon('xkilled:tame_message');
+        await You_hear(Hallucination()
+            ? 'the studio audience applaud!'
+            : 'the rumble of distant thunder...');
     } else if (mtmp.mpeaceful) {
         adjalign(-5);
     }

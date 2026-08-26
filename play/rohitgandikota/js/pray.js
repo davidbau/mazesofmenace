@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, rnz, rnl } from './rng.js';
-import { pline } from './display.js';
+import { pline, more } from './display.js';
 import { You, You_feel, pline_The } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
 import { nomul, losehp } from './hack.js';
@@ -16,8 +16,17 @@ import { which_armor } from './worn.js';
 import { IS_ALTAR, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          ECMD_OK, ECMD_TIME, W_SADDLE, TT_LAVA, TT_BURIEDBALL, WEAK, HUNGRY,
          EXT_ENCUMBER, A_MAX, A_STR, A_WIS, AM_SHRINE, TIMEOUT,
-         Upolyd } from './const.js';
+         Upolyd, KILLED_BY, W_ARMS, W_ARMC, W_ARM, W_ARMU,
+         NH_BLACK } from './const.js';
 import { ONAMES } from './objects_data.js';
+import { An } from './objnam.js';
+import { hcolor } from './do_name.js';
+import { attrcurse, rndcurse } from './sit.js';
+import { Reflecting, Shock_resistance } from './youprop.js';
+import { obj_resists } from './zap.js';
+import { useup } from './invent.js';
+import { find_ac } from './do_wear.js';
+import { done, DIED } from './end.js';
 
 function note_unported_pray(what) {
     (game.unported ||= new Set()).add('pray:' + what);
@@ -274,15 +283,22 @@ async function angrygods(resp_god) {
         note_unported_pray('angrygods:punish');
         break;
     case 4:
-    case 5:
-        note_unported_pray('angrygods:rndcurse');
+    case 5: {
+        await gods_angry(resp_god);
+        const antimagic = !!(u.uprops?.ANTIMAGIC || u.uprops?.MAGIC_RES);
+        if (!u.ublind && !antimagic)
+            await pline(`${An(hcolor(NH_BLACK))} glow surrounds you.`);
+        if (rn2(2) || !(await attrcurse()))
+            await rndcurse();
         break;
+    }
     case 7:
     case 8:
         note_unported_pray('angrygods:summon_minion');
         break;
     default:
-        note_unported_pray('angrygods:god_zaps_you');
+        await gods_angry(resp_god);
+        await god_zaps_you(resp_god);
         break;
     }
     /* even though this might not be in response to prayer, set pray timer */
@@ -299,6 +315,86 @@ async function godvoice(g_align, words) {
     const quot = words ? '"' : '';
     words = words || '';
     await pline_The(`voice of ${align_gname(g_align)} ${godvoices[rn2(godvoices.length)]}: ${quot}${words}${quot}`);
+}
+
+async function gods_angry(g_align) {
+    await godvoice(g_align, 'Thou hast angered me.');
+}
+
+async function fry_by_god(resp_god, via_disintegration) {
+    await You(via_disintegration
+              ? 'disintegrate into a pile of dust!'
+              : 'fry to a crisp!');
+    game.killer = {
+        format: KILLED_BY,
+        name: `the wrath of ${align_gname(resp_god)}`,
+    };
+    await done(DIED);
+}
+
+async function disintegrate_divine_armor(obj, slot) {
+    if (!obj || obj_resists(obj, 0, 90))
+        return false;
+    const message = slot === 'shield'
+        ? 'Your shield crumbles away!'
+        : slot === 'cloak'
+          ? 'Your cloak crumbles and turns to dust!'
+          : slot === 'shirt'
+            ? 'Your shirt crumbles into tiny threads and falls apart!'
+            : 'Your armor turns to dust and falls to the floor!';
+    await pline(message);
+    await more();
+    useup(obj);
+    return true;
+}
+
+async function god_zaps_you(resp_god) {
+    const u = game.u;
+    if (u.uswallow) {
+        note_unported_pray('god_zaps_you:swallowed');
+        return;
+    }
+
+    await pline('Suddenly, a bolt of lightning strikes you!');
+    if (Reflecting()) {
+        await pline(u.ublind
+                    ? "For some reason you're unaffected."
+                    : 'It reflects from your armor!');
+    } else if (Shock_resistance()) {
+        await pline('It seems not to affect you.');
+    } else {
+        await fry_by_god(resp_god, false);
+    }
+
+    await pline(`${align_gname(resp_god)} is not deterred...`);
+    await pline('A wide-angle disintegration beam hits you!');
+
+    const reflecting = u.uprops?.REFLECTING || 0;
+    const disint = u.uprops?.DISINT_RES || 0;
+    let armorDestroyed = false;
+    if (u.uarms && !(reflecting & W_ARMS) && !(disint & W_ARMS))
+        armorDestroyed = await disintegrate_divine_armor(u.uarms, 'shield')
+                         || armorDestroyed;
+    if (u.uarmc && !(reflecting & W_ARMC) && !(disint & W_ARMC))
+        armorDestroyed = await disintegrate_divine_armor(u.uarmc, 'cloak')
+                         || armorDestroyed;
+    if (u.uarm && !(reflecting & W_ARM) && !(disint & W_ARM) && !u.uarmc)
+        armorDestroyed = await disintegrate_divine_armor(u.uarm, 'armor')
+                         || armorDestroyed;
+    if (u.uarmu && !u.uarm && !u.uarmc)
+        armorDestroyed = await disintegrate_divine_armor(u.uarmu, 'shirt')
+                         || armorDestroyed;
+
+    const disintResistant = !!(u.intrinsic?.HDisint_resistance
+                               || u.uprops?.DISINT_RES);
+    if (!disintResistant)
+        await fry_by_god(resp_god, true);
+    else {
+        await You(`bask in its ${NH_BLACK} glow for a minute...`);
+        await godvoice(resp_god, 'I believe it not!');
+    }
+    if (armorDestroyed)
+        find_ac();
 }
 
 // src/pray.c:1071 pleased(). The ordinary no-trouble successful-prayer path is

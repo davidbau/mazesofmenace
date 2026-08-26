@@ -637,6 +637,11 @@ export function uhim() {
     return genders[game.flags?.female ? 1 : 0]?.him || 'him';
 }
 
+/** C ref: you.h uhis() — genders[flags.female].his */
+export function uhis() {
+    return genders[game.flags?.female ? 1 : 0]?.his || 'his';
+}
+
 export function findRole(name) {
     if (!name) return null;
     const lc = name.toLowerCase();

@@ -319,9 +319,26 @@ export function set_sting_effects(fn) {
 }
 
 /**
+ * C ref: hack.h MATCH_WARN_OF_MON — Warn_of_mon and (warntype.obj|polyd)
+ * & mflags2, or warntype.species == mon->data.
+ * Producer of warntype.obj is artifact.c set_artifact_intrinsic SPFX_WARN
+ * (D-1514). polyd/species from polyself still named.
+ */
+export function MATCH_WARN_OF_MON(mon) {
+    if (!mon || !Warn_of_mon()) return false;
+    const wt = game.context?.warntype;
+    if (!wt) return false;
+    const m2 = mon.data?.mflags2 | 0;
+    if (((wt.obj | 0) & m2) !== 0) return true;
+    if (((wt.polyd | 0) & m2) !== 0) return true;
+    if (wt.species && wt.species === (mon.data || null)) return true;
+    return false;
+}
+
+/**
  * C ref: display.h _tp_sensemon — non-mindless + blind/intrinsic or
  * unblind extrinsic telepathy within unblind_telepat_range (squared).
- * Named omission: MATCH_WARN_OF_MON is a separate sensemon arm.
+ * MATCH_WARN_OF_MON is a separate sensemon arm (D-1514).
  */
 export function tp_sensemon(mon) {
     if (!mon?.mx) return false;
@@ -345,8 +362,8 @@ export function tp_sensemon(mon) {
 }
 
 /**
- * C ref: display.h _sensemon — Detect_monsters / telepathy / warn.
- * Named omissions: MATCH_WARN_OF_MON; Underwater pool adjacency gate.
+ * C ref: display.h _sensemon — Detect_monsters / telepathy / MATCH_WARN.
+ * Named omission: Underwater pool adjacency gate.
  */
 export function sensemon(mon) {
     if (!mon) return false;
@@ -356,12 +373,12 @@ export function sensemon(mon) {
         || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0)) {
         return true;
     }
-    return tp_sensemon(mon);
+    return tp_sensemon(mon) || MATCH_WARN_OF_MON(mon);
 }
 
 /**
  * C ref: display.h _mon_warning — Warning + hostile + near + m_lev gate.
- * Named omission: MATCH_WARN_OF_MON race-specific warn (separate path).
+ * MATCH_WARN_OF_MON is a separate path (D-1514).
  */
 export function mon_warning(mon) {
     if (!mon) return false;
@@ -385,19 +402,27 @@ export function warning_of(mon) {
 }
 
 /**
- * C ref: display.c display_warning — float warnsym above map (not memory).
- * Named omissions: MATCH_WARN_OF_MON mon_to_glyph arm; worm tails
- * (caller must not invoke).
+ * C ref: display.c display_warning — float warnsym, else MATCH_WARN
+ * mon_to_glyph. newsym callers still skip worm tails.
  */
 function display_warning(mon) {
     if (!mon) return;
-    // C: Hallucination ? rn2_on_display_rng(WARNCOUNT-1)+1 : warning_of(mon)
-    const wl = game.u?.Hallucination
-        ? rn2_on_display_rng(WARNCOUNT - 1) + 1
-        : warning_of(mon);
-    const sym = def_warnsyms[wl] || def_warnsyms[0];
-    if (!sym) return;
-    show_glyph_cell(mon.mx, mon.my, sym.ch, sym.color, false);
+    if (mon_warning(mon)) {
+        // C: Hallucination ? rn2_on_display_rng(WARNCOUNT-1)+1 : warning_of(mon)
+        const wl = game.u?.Hallucination
+            ? rn2_on_display_rng(WARNCOUNT - 1) + 1
+            : warning_of(mon);
+        const sym = def_warnsyms[wl] || def_warnsyms[0];
+        if (!sym) return;
+        show_glyph_cell(mon.mx, mon.my, sym.ch, sym.color, false);
+        return;
+    }
+    if (MATCH_WARN_OF_MON(mon)) {
+        const mg = mon_glyph(mon);
+        show_glyph_cell(mon.mx, mon.my, mg.ch, mg.color, false, mon_map_attr(mon));
+        return;
+    }
+    // C: impossible("display_warning did not match warning type?");
 }
 
 /** C ref: display.h canspotmon — canseemon || sensemon. */
@@ -2418,9 +2443,9 @@ export function suppress_map_output() {
  * C ref: display.c feel_location — Blind map update for hero cell or
  * adjacent (boulder-push). Reachable arm: engr_can_be_felt →
  * _map_location(show) → Punished bc_felt → ROOM/CORR dark adjust;
- * sensed mon overlay when !u_at.
+ * sensed mon overlay when !u_at (sensemon includes MATCH_WARN D-1514).
  * Named omissions: full levitate-arm boulder/do_room_glyph litcorr
- * polish; MATCH_WARN_OF_MON in sensemon overlay.
+ * polish.
  */
 export function feel_location(x, y) {
     if (!isok(x, y)) return;
@@ -2620,12 +2645,13 @@ export function newsym(x, y) {
         // C: erevealed = 1 even when covered by objects or a monster
         const epSee = engr_at(x, y);
         if (epSee) epSee.erevealed = 1;
-        if (mtmp && (mon_visible(mtmp) || tp_sensemon(mtmp))) {
+        if (mtmp && (mon_visible(mtmp) || tp_sensemon(mtmp)
+            || MATCH_WARN_OF_MON(mtmp))) {
             // C: _map_location(x, y, FALSE) then display_monster — memory
             // keeps object under the monster so leaving sight does not
             // replace ) with remembered corridor.
             // show_mon_or_warn clears invisible memory when showing mon
-            // Named omission: MATCH_WARN_OF_MON in see_it; Detect_monsters arm.
+            // Named omission: Detect_monsters cansee arm; worm_tail skip.
             if (glyph_is_invisible(loc)) {
                 loc.remembered_glyph = null;
                 map_location_memory(x, y);
@@ -2699,11 +2725,11 @@ export function newsym(x, y) {
         return;
     }
 
-    // C: !cansee — still show sensed monsters (infrared / telepathy / detect)
+    // C: !cansee — still show sensed monsters (infrared / telepathy / MATCH_WARN)
     // C order: see_it (tp_sensemon / MATCH_WARN / infrared+visible) then
     // Detect_monsters, then mon_warning, then invisible glyph, else memory.
-    // Named omission: MATCH_WARN_OF_MON; worm tails.
-    if (mtmp && (tp_sensemon(mtmp)
+    // Named omission: worm tails.
+    if (mtmp && (tp_sensemon(mtmp) || MATCH_WARN_OF_MON(mtmp)
         || (mon_visible(mtmp) && see_with_infrared(mtmp)))) {
         const mg = mon_glyph(mtmp);
         show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
@@ -2867,8 +2893,8 @@ export function swallowed(first = 0) {
  * Clears stale Warning float glyphs when mon_warning no longer applies
  * (e.g. after teleds moves the hero out of range).
  * Warn_of_mon counts warntype.obj & mflags2 then Sting_effects (D-1493).
- * Named omissions: worm see_wsegs; MON_STILL_ARRIVING skip;
- * MATCH_WARN_OF_MON overlay.
+ * MATCH_WARN overlay is newsym see_it (D-1514).
+ * Named omissions: worm see_wsegs; MON_STILL_ARRIVING skip.
  */
 export function see_monsters() {
     if (game.defer_see_monsters) return;

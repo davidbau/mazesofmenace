@@ -19,6 +19,12 @@
 //         peffect_hallucination (D-1439),
 //         mixtype / potion_dip potion-potion mix (D-1457),
 //         potion_dip unicorn/amethyst mixtype dip (D-1486),
+//         potion_dip poison-coat / healing unpoison (D-1497),
+//         potion_dip oil/lamp (D-1498),
+//         potion_dip poly_obj / obj_unpolyable (D-1499),
+//         dip_into #altdip reverse getobj (D-1500),
+//         H2Opotion_dip useeit ublindf && Blindfolded_only (D-1501),
+//         potion_dip lichen corpse / acid-erode (D-1509),
 //         potionhit remaining otyp switch + shop unpaid (D-1472),
 //         potionbreathe remaining otyps (D-1477),
 //         make_confused, dodip, speed_up, djinni_from_bottle (D-1144);
@@ -28,6 +34,9 @@
 // djinni_from_bottle chance remap + mongrantswish (D-1144).
 // throwit steed potionhit crash/saddle/H2Opotion_dip/POT_WATER (D-1297);
 // remaining potionhit otyp switch + shop unpaid (D-1472).
+// dip_into #altdip (D-1500; iactions IA_DIP_OBJ; not dodip).
+// H2Opotion_dip useeit ublindf && Blindfolded_only (D-1501);
+// unpaid POT_WATER alter_cost / costly_alteration; towel soak.
 // potionbreathe remaining otyps (D-1477; towel / restore-gain /
 // heal FALLTHROUGH / sickness / hallu / speed / poly / trycall).
 // SPE_HASTE_SELF / POT_SPEED peffect_speed + speed_up (D-1408).
@@ -84,15 +93,16 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, You_feel, verbalize, canspotmon,
     canseemon, see_monsters, unmap_object, glyph_is_invisible, newsym,
-    map_invisible,
+    map_invisible, impossible,
 } from './display.js';
 import {
-    POTION_CLASS, SPBOOK_CLASS, COIN_CLASS, ARMOR_CLASS, objectNames,
-    objectDescrs,
+    POTION_CLASS, SPBOOK_CLASS, COIN_CLASS, ARMOR_CLASS, WEAPON_CLASS,
+    TOOL_CLASS, GEM_CLASS, objectNames, objectNameStrs, objectDescrs,
 } from './objects.js';
 import {
     weight, obj_extract_self, bless, curse, unbless, uncurse,
     is_metallic, is_crackable, splitobj, mkobj, fixup_oil,
+    is_rustprone, is_corrodeable,
 } from './mkobj.js';
 import {
     A_WIS, A_INT, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise, acurr,
@@ -101,11 +111,12 @@ import {
 import {
     makeknown, compactify_invlets, enlightenment, observe_object,
     hold_another_object, update_inventory, near_capacity, freeinv_core,
+    prinv,
 } from './invent.js';
 import { yn_function } from './getline.js';
 import {
     doname, xname, short_oname, thesimpleoname, simpleonames, makeplural,
-    The, vtense, an, cxname, yname,
+    The, the, vtense, an, cxname, yname,
 } from './objnam.js';
 import {
     dipfountain, drinkfountain, drinksink, dipsink,
@@ -113,7 +124,8 @@ import {
 } from './fountain.js';
 import {
     IS_FOUNTAIN, IS_SINK, IS_AIR, IS_ROOM, IS_WALL, IS_DOOR, SDOOR,
-    ECMD_TIME, ECMD_CANCEL, ECMD_OK, HAND, BOLT_LIM, nothing_happens,
+    ECMD_TIME, ECMD_CANCEL, ECMD_OK, ECMD_FAIL, HAND, BOLT_LIM, nothing_happens,
+    nothing_seems_to_happen,
     OBJ_FREE,
     POTHIT_HERO_THROW, POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
     TIMEOUT, I_SPECIAL, HALLUC_RES, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
@@ -123,11 +135,17 @@ import {
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
+    ERODE_CORRODE, EF_GREASE,
     OBJ_INVENT, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, W_SADDLE,
     POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, UNCHANGING, ACID_RES,
     M_SEEN_SLEEP, FIXED_ABIL, ANTIMAGIC, SHOPBASE, STRAT_WAITFORU,
     M_AP_FURNITURE, M_AP_OBJECT, BURNING_OIL, LOST_EXPLODING, EXPL_FIERY,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, COST_NUTRLZ,
+    COST_UNCURS, COST_UNBLSS, PLNMSG_OBJ_GLOWS,
+    P_SHURIKEN, P_BOW, P_CROSSBOW, P_NONE, FINGER, LL_CONDUCT,
+    GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_INACCESS,
+    GETOBJ_EXCLUDE_NONINVENT,
+    HANDS_SYM,
 } from './const.js';
 import { hands_obj, P_SKILL } from './weapon.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
@@ -140,7 +158,7 @@ import {
     dmgtype, MR_POISON, MR_ACID, MR_SLEEP,
 } from './monsters.js';
 import { rider_cant_reach } from './steed.js';
-import { PM_HUMAN, PM_HEALER } from './generated/monsters_data.js';
+import { PM_HUMAN, PM_HEALER, PM_LICHEN } from './generated/monsters_data.js';
 import { makemon, set_malign } from './makemon.js';
 import { mongone, wakeup, healmon, wake_nearto, dist2, m_at, seemimic } from './mon.js';
 import { tamedog } from './dog.js';
@@ -161,8 +179,14 @@ import {
 import { you_were, you_unwere, set_ulycn, new_were } from './were.js';
 import { which_armor, mon_set_minvis } from './worn.js';
 import { polyself, body_part } from './polyself.js';
+import { is_art, ART_GRIMTOOTH } from './artifact.js';
+import { poly_obj, obj_unpolyable } from './zap.js';
+import { livelog_printf } from './pline.js';
+import { uhis } from './roles.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
+const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
+const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
 const POT_ACID = objectNames.indexOf('POT_ACID');
 const POT_SLEEPING = objectNames.indexOf('POT_SLEEPING');
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
@@ -200,6 +224,7 @@ const UNICORN_HORN = objectNames.indexOf('UNICORN_HORN');
 const AMETHYST = objectNames.indexOf('AMETHYST');
 const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
 const TOWEL = objectNames.indexOf('TOWEL');
+const CORPSE = objectNames.indexOf('CORPSE');
 const PM_DJINNI = monsterNames.indexOf('PM_DJINNI');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const PM_CYCLOPS = monsterNames.indexOf('PM_CYCLOPS');
@@ -216,6 +241,8 @@ const ZT_SPELL_O_FIRE = 11;
 const NH_AMBER = 'amber';
 const NH_LIGHT_BLUE = 'light blue';
 const NH_BLACK = 'black';
+const NH_RED = 'red';
+const NH_ORANGE = 'orange';
 
 /** C: gp.potion_nothing / gp.potion_unkn for dopotion trycall gate. */
 let potion_nothing = 0;
@@ -234,6 +261,16 @@ const HBOTTLENAMES = [
 ];
 
 /**
+ * C potion.c drink_ok `:505–521` — potions SUGGEST; null is
+ * EXCLUDE or EXCLUDE_NONINVENT when drink_ok_extra (empty "else").
+ */
+function drink_ok(obj) {
+    if (!obj) return drink_ok_extra ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+    if (obj.oclass === POTION_CLASS) return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
+/**
  * Invent letters of drinkable potions (C drink_ok → GETOBJ_SUGGEST).
  * Returns non-compacted string for `?` menus (C `lets[]`).
  * Prompt uses compactify when suggested > 5 (C `buf` / D-0455).
@@ -242,7 +279,7 @@ function drinkable_lets() {
     const inv = game.invent || [];
     const lets = [];
     for (const o of inv) {
-        if (o.oclass === POTION_CLASS && o.invlet) lets.push(o.invlet);
+        if (drink_ok(o) === GETOBJ_SUGGEST && o.invlet) lets.push(o.invlet);
     }
     // C getobj sortloot SORTLOOT_INVLET
     lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
@@ -1117,8 +1154,8 @@ async function peffect_extra_healing(otmp) {
  * You_feel completely healed; healup(400, 4+4*bcsign, !cursed, TRUE);
  * blessed + ulevel < ulevelmax → ulevelmax-- then pluslvl(FALSE);
  * clear hallu; exercise STR then CON; wounded legs: blessed always
- * (steed too), uncursed iff !usteed. potionhit / potionbreathe /
- * dip poison-coat still named.
+ * (steed too), uncursed iff !usteed. potionhit / potionbreathe named.
+ * Dip poison-coat / healing unpoison is D-1497.
  */
 async function peffect_full_healing(otmp) {
     await You_feel('completely healed.');
@@ -2047,6 +2084,22 @@ function Blind() {
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 
+/** C youprop.h Blindfolded ≡ EBlinded (worn cover; lenses do not set it). */
+function Blindfolded() {
+    return !!(game.u?.EBlinded);
+}
+
+/** C youprop.h Blinded ≡ HBlinded && !BBlinded (timeout/fromoutside, 0/1). */
+function Blinded_h2o() {
+    const u = game.u || {};
+    return !!((u.HBlinded | 0) && !(u.BBlinded | 0));
+}
+
+/** C youprop.h Blindfolded_only ≡ Blindfolded && !Blinded. */
+function Blindfolded_only() {
+    return Blindfolded() && !Blinded_h2o();
+}
+
 /**
  * C ref: potion.c djinni_from_bottle — makemon djinni, BUC chance remap,
  * then wish / tame / peaceful / vanish / hostile.
@@ -2244,13 +2297,53 @@ async function getobj_dip(at_here) {
 }
 
 /**
- * C ref: invent.c getobj("dip <obj> into", drink_ok, GETOBJ_NOFLAGS)
- * after dodip floor yn. Empty + !GETOBJ_PROMPT → no key (C suggested==0).
- * drink_ok_extra → "else " in the empty message (D-1457).
+ * C cmd.c cmdq_peek(CQ_CANNED) — top of the canned queue, no pop.
  */
-async function getobj_dip_into(dipname) {
+function cmdq_peek_canned() {
+    const q = game._cmdq_canned;
+    return q?.length ? q[0] : null;
+}
+
+/**
+ * C invent.c getobj: cmdq_pop CMDQ_KEY before the interactive prompt.
+ * HANDS_SYM / invent letter accepted when obj_ok is SUGGEST or DOWNPLAY.
+ */
+function cmdq_pop_getobj_key(obj_ok) {
+    const q = game._cmdq_canned;
+    if (!q?.length) return undefined;
+    const head = q[0];
+    if (!head || typeof head !== 'object' || head.typ !== 'key') return undefined;
+    q.shift();
+    const ch = typeof head.key === 'string'
+        ? head.key
+        : String.fromCharCode(head.key);
+    if (ch === HANDS_SYM) {
+        const v = obj_ok(null);
+        if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY) return hands_obj;
+        game._cmdq_canned = [];
+        return null;
+    }
+    for (const o of game.invent || []) {
+        if (o.invlet === ch) {
+            const v = obj_ok(o);
+            if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY) return o;
+        }
+    }
+    game._cmdq_canned = [];
+    return null;
+}
+
+/**
+ * C invent.c getobj(word, drink_ok, GETOBJ_NOFLAGS).
+ * CMDQ_KEY before prompt (itemed #altdip / leftover canned).
+ * Empty + !GETOBJ_PROMPT → no key (C suggested==0).
+ * drink_ok_extra / EXCLUDE_NONINVENT → "else " in the empty message.
+ */
+async function getobj_drink_ok(word) {
+    const canned = cmdq_pop_getobj_key(drink_ok);
+    if (canned !== undefined) return canned;
+
     const { display_pickinv_reply } = await import('./invent.js');
-    const word = `dip ${dipname} into`;
     if (!drinkable_lets()) {
         await pline(`You don't have anything ${
             drink_ok_extra ? 'else ' : ''}to ${word}.`);
@@ -2286,7 +2379,7 @@ async function getobj_dip_into(dipname) {
                 await pline("You don't have that object.");
                 continue;
             }
-            if (otmp.oclass !== POTION_CLASS) {
+            if (drink_ok(otmp) === GETOBJ_EXCLUDE) {
                 await pline(`That is a silly thing to ${word}.`);
                 return null;
             }
@@ -2299,13 +2392,22 @@ async function getobj_dip_into(dipname) {
             await pline("You don't have that object.");
             continue;
         }
-        if (otmp.oclass !== POTION_CLASS) {
+        if (drink_ok(otmp) === GETOBJ_EXCLUDE) {
             await pline(`That is a silly thing to ${word}.`);
             return null;
         }
         game._pending_message = '';
         return otmp;
     }
+}
+
+/**
+ * C ref: invent.c getobj("dip <obj> into", drink_ok, GETOBJ_NOFLAGS)
+ * after dodip floor yn. Empty + !GETOBJ_PROMPT → no key (C suggested==0).
+ * drink_ok_extra → "else " in the empty message (D-1457).
+ */
+async function getobj_dip_into(dipname) {
+    return getobj_drink_ok(`dip ${dipname} into`);
 }
 
 /**
@@ -2418,6 +2520,152 @@ export async function dodip() {
     const dipname = game.flags?.verbose !== false ? obuf : shortestname;
     const potion = await getobj_dip_into(dipname);
     if (!potion) return ECMD_CANCEL;
+    return potion_dip(obj, potion);
+}
+
+/**
+ * C obj.h is_plural — quan != 1. Named omit: Eyes of the Overworld
+ * artifact exception.
+ */
+function is_plural_dip(obj) {
+    return (obj?.quan | 0) !== 1;
+}
+
+/**
+ * C potion.c dip_ok `:2214–2227` — object to dip (not the potion).
+ * Null DOWNPLAY (hands in altlets, not the prompt); gold EXCLUDE;
+ * inaccessible EXCLUDE_INACCESS; else SUGGEST.
+ * `inacc` is do_wear.c inaccessible_equipment via apply.js (no clone).
+ */
+function dip_ok(obj, inacc) {
+    if (!obj) return GETOBJ_DOWNPLAY;
+    if (obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+    if (inacc && inacc(obj, false)) return GETOBJ_EXCLUDE_INACCESS;
+    return GETOBJ_SUGGEST;
+}
+
+/**
+ * C invent.c getobj(word, dip_ok, GETOBJ_PROMPT).
+ * GETOBJ_PROMPT always asks. Hands '-' is allownone (DOWNPLAY) but
+ * not listed in the prompt. Gold → cannot. EXCLUDE → silly_thing.
+ * Named omit: pickinv handsbuf; compactify '-' prefix.
+ */
+async function getobj_dip_ok(word, inacc) {
+    const obj_ok = (o) => dip_ok(o, inacc);
+    const canned = cmdq_pop_getobj_key(obj_ok);
+    if (canned !== undefined) return canned;
+
+    const { display_pickinv_reply } = await import('./invent.js');
+    const suggest_lets = () => {
+        const lets = [];
+        for (const o of game.invent || []) {
+            if (o?.invlet && obj_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
+        }
+        lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+        return lets.join('');
+    };
+
+    for (;;) {
+        await flush_topl_more();
+        const rawLets = suggest_lets();
+        const lets = drink_prompt_lets(rawLets);
+        const query = lets
+            ? `What do you want to ${word}? [${lets} or ?*]`
+            : `What do you want to ${word}? [*]`;
+        const prompt = `${query} `;
+        game._pending_message = prompt;
+        await flush_screen(1);
+        const disp = game.nhDisplay;
+        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+
+        const key = await nhgetch();
+        const ch = String.fromCharCode(key);
+        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+            if (game.flags?.verbose !== false) await pline('Never mind.');
+            return null;
+        }
+        if (ch === HANDS_SYM) return hands_obj;
+        if (ch === '?' || ch === '*') {
+            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return null;
+            }
+            if (!ilet) continue;
+            if (ilet === HANDS_SYM) return hands_obj;
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            if (picked.oclass === COIN_CLASS) {
+                await pline(`You cannot ${word} gold.`);
+                return null;
+            }
+            const rank = obj_ok(picked);
+            if (rank === GETOBJ_EXCLUDE) {
+                await pline(`That is a silly thing to ${word}.`);
+                return null;
+            }
+            game._pending_message = '';
+            return picked;
+        }
+        if (ch === '$') {
+            const gold = (game.invent || []).find((o) => o.oclass === COIN_CLASS);
+            if (gold && obj_ok(gold) === GETOBJ_EXCLUDE) {
+                await pline(`You cannot ${word} gold.`);
+                return null;
+            }
+            await pline("You don't have that object.");
+            continue;
+        }
+        const otmp = (game.invent || []).find((o) => o.invlet === ch);
+        if (!otmp) {
+            await pline("You don't have that object.");
+            continue;
+        }
+        if (otmp.oclass === COIN_CLASS) {
+            await pline(`You cannot ${word} gold.`);
+            return null;
+        }
+        const rank = obj_ok(otmp);
+        if (rank === GETOBJ_EXCLUDE) {
+            await pline(`That is a silly thing to ${word}.`);
+            return null;
+        }
+        game._pending_message = '';
+        return otmp;
+    }
+}
+
+/**
+ * C potion.c dip_into `:2374–2405` — #altdip. Reverse getobj order:
+ * potion first (already in CQ_CANNED), then the object to dip.
+ * Ignores floor water. Caller iactions.c IA_DIP_OBJ.
+ * Callee do_wear.c inaccessible_equipment via apply.js (dynamic;
+ * apply.js already imports potion.js). Named omit: INTERNALCMD
+ * extcmdlist "altdip" autocomplete; Eyes of Overworld is_plural;
+ * dodip inaccessible (still named).
+ * @returns {number} ECMD_*
+ */
+export async function dip_into() {
+    if (!cmdq_peek_canned()) {
+        await impossible('dip_into: where is potion?');
+        return ECMD_FAIL;
+    }
+    /* drink_ok() validates the potion; extra=0 because this path
+       never asked about a fountain/sink/pool */
+    drink_ok_extra = 0;
+    const potion = await getobj_drink_ok('dip');
+    if (!potion || potion.oclass !== POTION_CLASS) return ECMD_CANCEL;
+
+    const qbuf = `dip into ${is_plural_dip(potion) ? 'one of ' : ''}${
+        thesimpleoname(potion)}`;
+    const { equipment_is_inaccessible, inaccessible_equipment } =
+        await import('./apply.js');
+    const obj = await getobj_dip_ok(qbuf, equipment_is_inaccessible);
+    if (!obj) return ECMD_CANCEL;
+    if (await inaccessible_equipment(obj, 'dip', false)) return ECMD_OK;
     return potion_dip(obj, potion);
 }
 
@@ -2902,10 +3150,78 @@ async function hold_potion(potobj, drop_fmt, drop_arg, hold_msg) {
 }
 
 /**
+ * C artifact.c permapoisoned `:2837–2840` — currently only Grimtooth.
+ * Local clone: mhitm.js is a cycle with potionhit.
+ */
+function permapoisoned_dip(obj) {
+    return !!(obj && is_art(obj, ART_GRIMTOOTH));
+}
+
+/**
+ * C obj.h is_poisonable — WEAPON_CLASS missile skill window
+ * (`-P_SHURIKEN`..`-P_BOW`) or permapoisoned. Local: mkobj.js
+ * `is_poisonable` is the mkobj named-missile subset (RNG).
+ */
+function is_poisonable_dip(obj) {
+    const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
+    return ((obj.oclass | 0) === WEAPON_CLASS
+        && sk >= -P_SHURIKEN && sk <= -P_BOW)
+        || permapoisoned_dip(obj);
+}
+
+/** C obj.h is_weptool — TOOL_CLASS && oc_skill != P_NONE. */
+function is_weptool_dip(o) {
+    if (!o || (o.oclass | 0) !== TOOL_CLASS) return false;
+    const sk = game.objects?.[o.otyp]?.oc_skill;
+    return (sk ?? P_NONE) !== P_NONE;
+}
+
+/** C obj.h is_ammo — WEAPON/GEM skill `-P_CROSSBOW`..`-P_BOW`. */
+function is_ammo_dip(otmp) {
+    if (!otmp) return false;
+    if ((otmp.oclass | 0) !== WEAPON_CLASS && (otmp.oclass | 0) !== GEM_CLASS) {
+        return false;
+    }
+    const sk = game.objects?.[otmp.otyp]?.oc_skill ?? 0;
+    return sk >= -P_CROSSBOW && sk <= -P_BOW;
+}
+
+/**
+ * C objnam.c gloves_simple_name — "gauntlets" iff dknown and
+ * (oc_name_known ? OBJ_NAME : OBJ_DESCR) contains "gauntlets".
+ */
+function gloves_simple_name_dip(gloves) {
+    if (gloves && gloves.dknown) {
+        const otyp = gloves.otyp | 0;
+        const ocl = game.objects?.[otyp];
+        const actualn = objectNameStrs[otyp] || '';
+        const descrpn = objectDescrs[otyp] || '';
+        const s = ocl?.oc_name_known ? actualn : descrpn;
+        if (String(s).toLowerCase().includes('gauntlets')) return 'gauntlets';
+    }
+    return 'gloves';
+}
+
+/** C do_wear.c fingers_or_gloves — gloves vs makeplural(FINGER). */
+function fingers_or_gloves_dip(check_gloves) {
+    const u = game.u || {};
+    if (check_gloves && u.uarmg) return gloves_simple_name_dip(u.uarmg);
+    return makeplural(body_part(FINGER));
+}
+
+/** C objnam.c Yname2 — capitalized yname. */
+function Yname2_pot(obj) {
+    const s = yname(obj) || '';
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+/**
  * C potion.c potion_dip `:2441–2791` — after dodip/dip_into choose.
- * Envelope: Klein bottle, hands, H2Opotion_dip, poly gate, potion-potion
- * mixtype (D-1457), unicorn/amethyst mixtype dip (D-1486). Named:
- * poly_obj, lichen/acid, towel, poison-coat, oil/lamp, dip_into.
+ * Envelope: Klein bottle, hands, H2Opotion_dip useeit (D-1501),
+ * poly_obj/obj_unpolyable (D-1499), potion-potion mixtype (D-1457),
+ * poison-coat / healing unpoison (D-1497), oil/lamp (D-1498),
+ * unicorn/amethyst mixtype dip (D-1486), towel soak,
+ * lichen corpse / acid-erode (D-1509). dip_into is D-1500.
  */
 async function potion_dip(obj, potion) {
     if (potion === obj && (potion.quan | 0) === 1) {
@@ -2920,7 +3236,10 @@ async function potion_dip(obj, potion) {
     obj.pickup_prev = 0;
     potion.in_use = true;
     if ((potion.otyp | 0) === POT_WATER) {
-        const useeit = !Blind();
+        /* C potion.c `:2461` — see the glow even when Blind if the
+         * dipped object is the worn cover and Blindfolded_only. */
+        const useeit = !Blind()
+            || (obj === (game.u?.ublindf) && Blindfolded_only());
         const obj_glows = Yobjnam2_pot(obj, 'glow');
         if (await H2Opotion_dip(potion, obj, useeit, obj_glows)) {
             await poof(potion);
@@ -2928,9 +3247,35 @@ async function potion_dip(obj, potion) {
         }
     } else if ((obj.otyp | 0) === POT_POLYMORPH
         || (potion.otyp | 0) === POT_POLYMORPH) {
-        // obj_unpolyable / poly_obj named
-        await pline(nothing_happens);
-        potion.in_use = false;
+        /* C potion.c potion_dip `:2468–2502` — poly the dipped obj. */
+        if (obj_unpolyable((obj.otyp | 0) === POT_POLYMORPH ? potion : obj)) {
+            await pline(nothing_happens);
+        } else {
+            const save_otyp = obj.otyp | 0;
+            const u = game.u || (game.u = {});
+            if (!u.uconduct) u.uconduct = {};
+            if (!(u.uconduct.polypiles | 0)) {
+                u.uconduct.polypiles = 1;
+                livelog_printf(LL_CONDUCT, 'polymorphed %s first item', uhis());
+            } else {
+                u.uconduct.polypiles = (u.uconduct.polypiles | 0) + 1;
+            }
+            obj = await poly_obj(obj, STRANGE_OBJECT);
+            if (!obj) {
+                makeknown(POT_POLYMORPH);
+                return ECMD_TIME;
+            } else if ((obj.otyp | 0) !== save_otyp) {
+                makeknown(POT_POLYMORPH);
+                useup(potion);
+                await prinv(null, obj, 0);
+                return ECMD_TIME;
+            } else {
+                await pline(nothing_seems_to_happen);
+                await poof(potion);
+                return ECMD_TIME;
+            }
+        }
+        potion.in_use = false; /* didn't go poof */
         return ECMD_TIME;
     } else if (obj.oclass === POTION_CLASS && obj.otyp !== potion.otyp) {
         let amt = obj.quan | 0;
@@ -3001,7 +3346,142 @@ async function potion_dip(obj, potion) {
         return ECMD_TIME;
     }
 
-    // lichen/acid corpse, towel soak, poison-coat, acid-erode, oil/lamp named
+    /* C potion.c potion_dip `:2596–2606` — acid + lichen corpse
+     * wrinkle/color; potion does not poof. */
+    if ((potion.otyp | 0) === POT_ACID && (obj.otyp | 0) === CORPSE
+        && (obj.corpsenm | 0) === PM_LICHEN) {
+        const edge = Blind()
+            ? 'wrinkled'
+            : potion.odiluted
+                ? hcolor(NH_ORANGE)
+                : hcolor(NH_RED);
+        await pline(`${The(cxname(obj))} ${
+            otense_pot(obj, 'turn')} ${edge} around the edges.`);
+        potion.in_use = false; /* didn't go poof */
+        if (potion.dknown) await trycall(potion);
+        return ECMD_TIME;
+    }
+
+    /* C potion.c potion_dip `:2608–2613` — POT_WATER + TOWEL after
+     * H2Opotion_dip returned false (water_damage already wet it). */
+    if ((potion.otyp | 0) === POT_WATER && (obj.otyp | 0) === TOWEL) {
+        await pline('The towel soaks it up!');
+        await poof(potion);
+        return ECMD_TIME;
+    }
+
+    // C potion.c potion_dip `:2615–2636` — sickness coats is_poisonable;
+    // healing / extra / full healing strips !permapoisoned coating.
+    if (is_poisonable_dip(obj)) {
+        if ((potion.otyp | 0) === POT_SICKNESS && !obj.opoisoned) {
+            let buf;
+            if ((potion.quan | 0) > 1) {
+                buf = `One of ${the(xname(potion))}`;
+            } else {
+                buf = The(xname(potion));
+            }
+            await pline(`${buf} forms a coating on ${the(xname(obj))}.`);
+            obj.opoisoned = 1; /* C TRUE */
+            await poof(potion);
+            return ECMD_TIME;
+        } else if (obj.opoisoned && !permapoisoned_dip(obj)
+            && ((potion.otyp | 0) === POT_HEALING
+                || (potion.otyp | 0) === POT_EXTRA_HEALING
+                || (potion.otyp | 0) === POT_FULL_HEALING)) {
+            await pline(`A coating wears off ${the(xname(obj))}.`);
+            obj.opoisoned = 0;
+            await poof(potion);
+            return ECMD_TIME;
+        }
+    }
+
+    /* C potion.c potion_dip `:2638–2643` — POT_ACID erode_obj CORRODE
+     * EF_GREASE; poof unless ER_NOTHING. Callee trap.c erode_obj. */
+    if ((potion.otyp | 0) === POT_ACID) {
+        const { erode_obj } = await import('./trap.js');
+        if ((await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE))
+            !== ER_NOTHING) {
+            await poof(potion);
+            return ECMD_TIME;
+        }
+    }
+    // C potion.c potion_dip `:2645–2686` POT_OIL weapon/weptool; `:2687–2724`
+    // more_dips OIL_LAMP / MAGIC_LAMP fill (goto more_dips for non-weapons).
+    let oil_more_dips = false;
+    if ((potion.otyp | 0) === POT_OIL) {
+        let wisx = false;
+        if (potion.lamplit) { /* burning */
+            const u = game.u || {};
+            const { fire_damage } = await import('./do.js');
+            await fire_damage(obj, true, u.ux, u.uy);
+        } else if (potion.cursed) {
+            await pline(`The potion spills and covers your ${
+                fingers_or_gloves_dip(true)} with oil.`);
+            make_glib((Glib() & TIMEOUT) + d(2, 10));
+        } else if ((obj.oclass | 0) !== WEAPON_CLASS && !is_weptool_dip(obj)) {
+            oil_more_dips = true;
+        } else if ((!is_rustprone(obj) && !is_corrodeable(obj))
+            || is_ammo_dip(obj) || (!obj.oeroded && !obj.oeroded2)) {
+            if (!Blind()) {
+                await pline(`${Yname2_pot(obj)} ${
+                    otense_pot(obj, 'gleam')} with an oily sheen.`);
+            } else {
+                await pline(`${Yname2_pot(obj)} ${
+                    otense_pot(obj, 'feel')} oily.`);
+            }
+        } else {
+            const rustword = (obj.oeroded && obj.oeroded2)
+                ? 'corroded and rusty'
+                : obj.oeroded ? 'rusty' : 'corroded';
+            await pline(`${Yname2_pot(obj)} ${
+                otense_pot(obj, !Blind() ? 'are' : 'feel')} less ${rustword}.`);
+            if ((obj.oeroded | 0) > 0) obj.oeroded--;
+            if ((obj.oeroded2 | 0) > 0) obj.oeroded2--;
+            wisx = true;
+        }
+        if (!oil_more_dips) {
+            exercise(A_WIS, wisx);
+            if (potion.dknown) makeknown(potion.otyp);
+            useup(potion);
+            return ECMD_TIME;
+        }
+    }
+    // more_dips
+    if (((obj.otyp | 0) === OIL_LAMP || (obj.otyp | 0) === MAGIC_LAMP)
+        && (potion.otyp | 0) === POT_OIL) {
+        if (obj.lamplit || potion.lamplit) {
+            useup(potion);
+            const u = game.u || {};
+            const { explode } = await import('./explode.js');
+            await explode(u.ux, u.uy, ZT_SPELL_O_FIRE, d(6, 6), 0, EXPL_FIERY);
+            exercise(A_WIS, false);
+            return ECMD_TIME;
+        }
+        /* Adding oil to an empty magic lamp renders it into an oil lamp */
+        if ((obj.otyp | 0) === MAGIC_LAMP && (obj.spe | 0) === 0) {
+            obj.otyp = OIL_LAMP;
+            obj.age = 0;
+        }
+        if ((obj.age | 0) > 1000) {
+            await pline(`${Yname2_pot(obj)} ${otense_pot(obj, 'are')} full.`);
+            potion.in_use = false; /* didn't go poof */
+        } else {
+            await pline(`You fill ${yname(obj)} with oil.`);
+            const { check_unpaid } = await import('./shk.js');
+            await check_unpaid(potion); /* Yendorian Fuel Tax */
+            obj.age = (obj.age | 0)
+                + Math.trunc(((!potion.odiluted ? 4 : 3)
+                    * (potion.age | 0)) / 2);
+            if ((obj.age | 0) > 1500) obj.age = 1500;
+            useup(potion);
+            exercise(A_WIS, true);
+        }
+        if (potion.dknown) makeknown(POT_OIL);
+        obj.spe = 1;
+        update_inventory();
+        return ECMD_TIME;
+    }
+
     potion.in_use = false; /* didn't go poof */
     // C potion.c potion_dip `:2726–2787` — unicorn horn / amethyst mixtype
     if ((obj.otyp | 0) === UNICORN_HORN || (obj.otyp | 0) === AMETHYST) {
@@ -3070,15 +3550,21 @@ async function potion_dip(obj, potion) {
 }
 
 /**
- * C potion.c H2Opotion_dip — holy/unholy water BUC change on targobj
- * (steed saddle splash / #dip water). Unpaid POT_WATER alter_cost /
- * costly_alteration named; mentioned_water makeknown named.
+ * C potion.c H2Opotion_dip `:1497–1589` — holy/unholy water BUC change
+ * on targobj (steed saddle splash / #dip water). Caller potion_dip
+ * useeit is `!Blind || (obj==ublindf && Blindfolded_only)` (D-1501).
+ * Unpaid POT_WATER alter_cost / costly_alteration; mentioned_water
+ * makeknown from trap.c water_damage invent container plines.
  * @returns {Promise<boolean>}
  */
 async function H2Opotion_dip(potion, targobj, useeit, objphrase) {
     if (!potion || (potion.otyp | 0) !== POT_WATER) return false;
+    /* C potion.c `:1506–1508` local COST_alter / COST_none. */
+    const COST_alter = -2;
+    const COST_none = -1;
     let func = null;
     let glowcolor = null;
+    let costchange = COST_none;
     let altfmt = false;
     let res = false;
 
@@ -3086,23 +3572,30 @@ async function H2Opotion_dip(potion, targobj, useeit, objphrase) {
         if (targobj.cursed) {
             func = uncurse;
             glowcolor = NH_AMBER;
+            costchange = COST_UNCURS;
         } else if (!targobj.blessed) {
             func = bless;
             glowcolor = NH_LIGHT_BLUE;
+            costchange = COST_alter;
             altfmt = true;
         }
     } else if (potion.cursed) {
         if (targobj.blessed) {
             func = unbless;
             glowcolor = 'brown';
+            costchange = COST_UNBLSS;
         } else if (!targobj.cursed) {
             func = curse;
             glowcolor = NH_BLACK;
+            costchange = COST_alter;
             altfmt = true;
         }
     } else if (carried_pot(targobj)) {
-        // gm.mentioned_water / makeknown(POT_WATER) named
+        /* C: gm.mentioned_water; water_damage may set it. */
+        game.mentioned_water = false;
         if ((await water_damage(targobj, 0, true)) !== ER_NOTHING) res = true;
+        if (game.mentioned_water) makeknown(POT_WATER);
+        game.mentioned_water = false;
     }
     if (func) {
         if (useeit) {
@@ -3112,11 +3605,21 @@ async function H2Opotion_dip(potion, targobj, useeit, objphrase) {
             } else {
                 await pline(`${objphrase} ${glowcolor}.`);
             }
+            if (!game.iflags) game.iflags = {};
+            game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
             targobj.bknown = !Hallucination();
         } else if (!potion.bknown || !potion.dknown) {
             targobj.bknown = 0;
         }
-        // unpaid POT_WATER alter_cost / costly_alteration named
+        if (targobj.unpaid && (targobj.otyp | 0) === POT_WATER) {
+            if (costchange === COST_alter) {
+                const { alter_cost } = await import('./shk.js');
+                alter_cost(targobj, 0);
+            } else if (costchange !== COST_none) {
+                const { costly_alteration } = await import('./shk.js');
+                await costly_alteration(targobj, costchange);
+            }
+        }
         func(targobj);
         res = true;
     }

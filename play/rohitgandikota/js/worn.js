@@ -20,6 +20,8 @@ import { ARM_BONUS, PROP_KEYS, cancel_doff } from './do_wear.js';
 import { is_weptool } from './mkobj.js';
 import { set_twoweap } from './wield.js';
 import { update_inventory } from './invent.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { See_invisible } from './youprop.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
 import { INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT,
          STEALTH, TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED,
@@ -270,6 +272,14 @@ function m_dowear_type(mon, flag, creation, racialexception) {
 
     if (mon.mfrozen)
         return; /* probably putting previous item on */
+
+    /* C copies the monster's name before looking for a better item because
+       wearing one can change visibility. Keep that display-RNG side effect
+       even when this slot has no candidate. */
+    if (See_invisible())
+        Monnam(mon);
+    else
+        mon_nam(mon);
 
     old = which_armor(mon, flag);
     if (old && old.cursed)

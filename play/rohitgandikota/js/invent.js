@@ -34,11 +34,12 @@ import { is_missile, ammo_and_launcher, setuqwep } from './wield.js';
 import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { xwaitforspace } from './tty/getline.js';
-import { pline, docrt } from './display.js';
-import { observe_object } from './o_init.js';
+import { pline, docrt, temporary_object_glyph } from './display.js';
+import { makeknown, observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
 import { You } from './pline.js';
 import { recalc_block_point } from './vision.js';
+import { surface } from './dungeon.js';
 
 // include/hack.h — command result flags. ECMD_TIME means the command consumed
 // a move, which is what makes moveloop advance svm.moves.
@@ -94,22 +95,42 @@ export function assigninvlet(otmp) {
 // otherwise take the next inventory letter.
 export function addinv(obj) {
     game.invent ||= [];
+    if (obj.how_lost === LOST_EXPLODING)
+        return null;
+
+    /* src/invent.c:1069-1078. Floor-shop state and the reason an object left
+       inventory do not survive pickup. In particular, a returning missile
+       must lose LOST_THROWN before mergable() compares it with the quiver. */
+    obj.no_charge = 0;
+    obj.how_lost = LOST_NONE;
+
     /* src/invent.c addinv_core0 — merging goes through merged(), which
        recomputes the stack's owt. The old inline quan += left every
        merged stack carrying a single item's weight, which under-read
        inv_weight() and hid encumbrance transitions. */
-    for (const otmp of game.invent) {
+    const merge_into = (otmp) => {
         const r = merged({ o: otmp }, { o: obj });
-        if (r) {
-            /* src/invent.c:1142 marks the resulting stack, including a
-               merged stack, as the most recently picked-up object. */
-            otmp.pickup_prev = 1;
-            /* merged() hands back a promise when its discovery pline must
-               be awaited; addinv's async callers await the result either
-               way, and the sync init-time path never merges stacks whose
-               identification states differ */
-            return (r instanceof Promise) ? r.then(() => otmp) : otmp;
-        }
+        if (!r)
+            return null;
+        otmp.pickup_prev = 1;
+        return (r instanceof Promise) ? r.then(() => otmp) : otmp;
+    };
+
+    /* src/invent.c:1098. Prefer the readied stack even when another wielded
+       or loose stack could also accept the object. */
+    const quiver = game.u?.uquiver;
+    if (quiver) {
+        const result = merge_into(quiver);
+        if (result)
+            return result;
+    }
+
+    for (const otmp of game.invent) {
+        if (otmp === quiver)
+            continue;
+        const result = merge_into(otmp);
+        if (result)
+            return result;
     }
     return addinv_nomerge(obj);
 }
@@ -181,7 +202,7 @@ export async function look_here(obj_cnt, lhflags) {
     const Blind = !!game.u?.ublind;
     const verb = Blind ? 'feel' : 'see';
     const picked_some = (lhflags & LOOKHERE_PICKED_SOME) !== 0;
-    const skip_dfeature = (lhflags & LOOKHERE_SKIP_DFEATURE) !== 0;
+    let skip_dfeature = (lhflags & LOOKHERE_SKIP_DFEATURE) !== 0;
 
     /* default pile_limit is 5; a value of 0 means "never skip" */
     const pile_limit = game.flags?.pile_limit ?? 5;
@@ -193,17 +214,37 @@ export async function look_here(obj_cnt, lhflags) {
     }
 
     if (!skip_objects) {
-        /* visible_region_at — gas clouds are absent; a seen trap underfoot
-           would print "There is a(n) <trap> here." and trapname is not
-           ported, so record it rather than guess the text */
+        /* visible_region_at for gas clouds remains separate. */
         const trap = t_at(game.u.ux, game.u.uy);
-        if (trap && trap.tseen)
-            note_unported_invent('look_here:trap_here');
+        if (trap && trap.tseen) {
+            const { trapname } = await import('./trap.js');
+            await pline(`There is ${an(trapname(trap.ttyp, false))} here.`);
+        }
     }
 
     const dfeature = dfeature_at(game.u.ux, game.u.uy);
-    if (Blind && dfeature)
-        note_unported_invent('look_here:blind_feel');
+
+    /* src/invent.c:4185-4217: a blind hero describes reaching toward the
+       surface before inspecting the object pile.  A following menu flushes
+       this message through its own --More-- boundary. */
+    if (Blind) {
+        const loc = game.level?.at(game.u.ux, game.u.uy);
+        if (loc?.typ === ICE) {
+            await You('try to feel what is on it.');
+            skip_dfeature = true;
+        } else {
+            const can_reach = can_reach_floor(true);
+            const floor = surface(game.u.ux, game.u.uy);
+            await You(`try to feel what is ${can_reach
+                ? `lying here on the ${floor}` : 'lying beneath you'}.`);
+            if (dfeature === floor)
+                skip_dfeature = true;
+        }
+        if (!can_reach_floor(true)) {
+            await pline("But you can't reach it!");
+            return ECMD_OK;
+        }
+    }
 
     /* src/mkobj.c place_object() puts the newest object at the chain head,
        and the js place_object unshifts, so the filtered array is already in
@@ -318,10 +359,12 @@ export function let_to_name(oclass) {
 // selector and no identifier, an item carries its inventory letter. The "a - "
 // prefix is NOT built here; tty_add_menu() builds it, exactly as in C, which is
 // what makes the +2 in tty_end_menu()'s width the right rule for this window.
-export function display_inventory() {
+export function display_inventory(allowed_choices = null) {
     const out = [];
     for (const oclass of inv_order()) {
-        const items = (game.invent || []).filter(o => o.oclass === oclass);
+        const items = (game.invent || []).filter(
+            o => o.oclass === oclass
+                 && (!allowed_choices || allowed_choices.includes(o.invlet)));
         if (!items.length) continue;
         /* add_menu_heading(win, class_header) — iflags.menu_headings */
         out.push({ heading: true, str: let_to_name(oclass), attr: ATR_INVERSE });
@@ -329,8 +372,11 @@ export function display_inventory() {
             /* src/invent.c:1039 — displaying the item observes its type */
             if (!game.u?.ublind)
                 observe_object(o);
+            /* src/invent.c:3320. obj_to_glyph() precedes doname(), even when
+               the tty window never renders the supplied glyph. */
+            const glyphinfo = temporary_object_glyph(o);
             out.push({ heading: false, str: doname(o), attr: ATR_NONE,
-                       invlet: o.invlet });
+                       invlet: o.invlet, glyphinfo });
         }
     }
     return out;
@@ -388,7 +434,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
        headings up front instead listed every empty class: quaffing showed
        Coins/Weapons/Armor/... around a lone Potions section. */
     let pending_heading = null;
-    for (const e of display_inventory()) {
+    for (const e of display_inventory(allowed_choices)) {
         if (e.heading) {
             pending_heading = e;
             continue;
@@ -401,7 +447,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
                          pending_heading.str, MENU_ITEMFLAGS_NONE);
             pending_heading = null;
         }
-        tty_add_menu(win, null, e.invlet.charCodeAt(0), e.invlet, 0,
+        tty_add_menu(win, e.glyphinfo, e.invlet.charCodeAt(0), e.invlet, 0,
                      A_NONE, NO_COLOR, e.str, MENU_ITEMFLAGS_NONE);
     }
     /* src/invent.c:3378 — `end_menu(win, (query && *query) ? query : NULL)`.
@@ -1522,6 +1568,26 @@ export function count_unidentified(objchn) {
     return unid_cnt;
 }
 
+// src/invent.c:2673 fully_identify_obj() and :2687 identify().
+// identify() gives immediate feedback after updating every object-level flag.
+export function fully_identify_obj(otmp) {
+    makeknown(otmp.otyp);
+    if (otmp.oartifact)
+        note_unported_invent('fully_identify_obj:artifact');
+    observe_object(otmp);
+    otmp.known = otmp.bknown = otmp.rknown = 1;
+    if (Is_container(otmp) || otmp.otyp === ONAMES.STATUE)
+        otmp.cknown = otmp.lknown = 1;
+    if (otmp.otyp === ONAMES.EGG && (otmp.corpsenm ?? -1) >= 0)
+        note_unported_invent('fully_identify_obj:egg_type');
+}
+
+export async function identify(otmp) {
+    fully_identify_obj(otmp);
+    await prinv(null, otmp, 0);
+    return 1;
+}
+
 // src/invent.c:2711 identify_pack() — identify up to id_limit items.
 //
 // id_limit 0 means all. The "already identified" line is the one an
@@ -1534,10 +1600,18 @@ export async function identify_pack(id_limit, learning_id) {
         await You(`have already identified ${
             !learning_id ? 'all' : 'the rest'} of your possessions.`);
     } else if (!id_limit || id_limit >= unid_cnt) {
-        note_unported_invent('identify_pack:identify_everything');
+        let remaining = unid_cnt;
+        for (const obj of game.invent || []) {
+            if (not_fully_identified(obj)) {
+                await identify(obj);
+                if (--remaining < 1)
+                    break;
+            }
+        }
     } else {
         note_unported_invent('identify_pack:menu');
     }
+    update_inventory();
 }
 
 // src/invent.c:1664 splittable() — can this stack be split off from?

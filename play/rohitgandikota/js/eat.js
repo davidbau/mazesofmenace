@@ -630,10 +630,11 @@ export async function doeat() {
                   || otmp.otyp === ONAMES.CRAM_RATION)
                 && (game.moves - (otmp.age || 0)) > (otmp.blessed ? 50 : 30)
                 && (otmp.orotten || !rn2(7))))) {
-        /* rottenfood()'s messages and blindness/stun arms draw rn2(4); the
-           dont_start bracket depends on them. */
-        note_unported_eat('doeat:rottenfood');
-        otmp.orotten = true;
+        /* rottenfood()'s messages and status arms draw in source order. */
+        if (await rottenfood(otmp)) {
+            otmp.orotten = true;
+            dont_start = true;
+        }
         consume_oeaten(otmp, 1);        /* oeaten >>= 1 */
     } else if (!already_partly_eaten) {
         if (!(await fprefx(otmp))) {
@@ -656,7 +657,10 @@ export async function doeat() {
        moment the meal starts, not re-tested per bite. */
     v.canchoke = (game.u.uhs === SATIATED);
 
-    await start_eating(otmp, false);
+    if (!dont_start)
+        await start_eating(otmp, false);
+    else
+        otmp.owt = weight(otmp);
     return ECMD_TIME;
 }
 
@@ -1279,8 +1283,7 @@ export function adj_victual_nutrition() {
 // newuhs(FALSE) runs unconditionally at the end: the hunger STATE is
 // recomputed whether or not anything was said.
 //
-// reset_eat and paranoid_query are not ported and are recorded; the messages
-// need nomovemsg/multi plumbing and are recorded too.
+// The warning and its delayed completion message share gn.nomovemsg in C.
 export async function lesshungry(num) {
     /* see comments in newuhs() for discussion on force_save_hs */
     const iseating = (game.occupation === eatfood) || game.force_save_hs;
@@ -1301,14 +1304,22 @@ export async function lesshungry(num) {
         if (game.u.uhunger >= 1500 && !game.u.uprops?.HUNGER
             && (!game.context.victual?.eating
                 || !game.context.victual?.fullwarn)) {
-            note_unported_eat('lesshungry:hard_time_msg');
+            await pline("You're having a hard time getting all of it down.");
+            game.nomovemsg = "You're finally finished.";
             if (!game.context.victual?.eating) {
-                note_unported_eat('lesshungry:multi');
+                nomul(-2);
             } else {
+                game.context.victual.fullwarn = 1;
                 if (game.context.victual.canchoke
                     && (game.context.victual.reqtime
-                        - game.context.victual.usedtime) > 1)
-                    note_unported_eat('lesshungry:paranoid_query');
+                        - game.context.victual.usedtime) > 1) {
+                    const answer = await tty_yn_function(
+                        'Continue eating?', 'yn', 'n');
+                    if (answer !== 'y') {
+                        do_reset_eat();
+                        game.nomovemsg = null;
+                    }
+                }
             }
         }
     }

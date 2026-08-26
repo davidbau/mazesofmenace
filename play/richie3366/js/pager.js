@@ -6,19 +6,20 @@
 // symbol-or-name getlin / look_all|traps|engrs; `?` help menu + About
 // (OPTIONS_AT_RUNTIME → get_lua_version nhlib shuffle) + display_file
 // dat/* pages + dokeylist/domenucontrols/docontact; data.base lookups for
-// checkfile. Full glyph encyclopedia, whatdoes keyhelp body, and PORT_HELP
-// deferred.
+// checkfile. object_from_map + look_at_object (SLIME_MOLD spe =
+// current_fruit). Full glyph encyclopedia, whatdoes keyhelp body, and
+// PORT_HELP deferred.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, more,
-    mon_glyph, obj_glyph, look_shown_at, terrain_glyph,
+    mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
 } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import {
-    paint_corner_nhw_menu, dfeature_at, invent_lines,
+    paint_corner_nhw_menu, dfeature_at, invent_lines, observe_object,
 } from './invent.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
@@ -26,18 +27,26 @@ import {
     maybe_blocked_staircase_down,
 } from './getpos.js';
 import { mon_at } from './uhitm.js';
-import { objects_at } from './mkobj.js';
-import { doname, an, xname, singular, ansimpleoname } from './objnam.js';
+import { objects_at, mksobj, mkobj, obj_stop_timers } from './mkobj.js';
+import {
+    doname, an, xname, singular, ansimpleoname, distant_name,
+} from './objnam.js';
 import { distant_monnam_none, pmname, Ugender } from './do_name.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
 import { t_at, trapname } from './trap.js';
+import { costly_spot } from './shk.js';
+import {
+    objectNames, objectNameStrs, COIN_CLASS,
+} from './objects.js';
 import {
     BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE, SCORR, TREE,
     CLOUD,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
     STRAT_WAITMASK, IS_WALL, Upolyd, Is_airlevel,
+    OBJ_FREE, OBJ_FLOOR, M_AP_OBJECT, M_AP_TYPMASK, M_AP_F_DKNOWN,
+    MCORPSENM, NON_PM,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -46,6 +55,10 @@ const CHK_USR = 1;
 const CHK_DONT_ASK = 2;
 /** C ref: pager.c chkfilIaCheck — lookup only, no display (itemed `/`). */
 const CHK_IA_CHECK = 4;
+
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+const LEASH = objectNames.indexOf('LEASH');
 
 /**
  * Contest Rule #2: no runtime filesystem. Texts are embedded via
@@ -548,6 +561,138 @@ function is_stair_spot(x, y) {
     return !!(loc && loc.typ === STAIRS);
 }
 
+/** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded. */
+function Blind_look() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C you.h next2u — distu <= 2 (orthogonal or diagonal adjacent, or self). */
+function next2u_look(x, y) {
+    const u = game.u || {};
+    const dx = (x | 0) - (u.ux | 0);
+    const dy = (y | 0) - (u.uy | 0);
+    return dx * dx + dy * dy <= 2;
+}
+
+/** C mkobj.c sobj_at — first floor object of otyp at (x,y). */
+function sobj_at_look(otyp, x, y) {
+    for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
+        if ((otmp.otyp | 0) === (otyp | 0)) return otmp;
+    }
+    return null;
+}
+
+/** C monst.h is_obj_mappear — M_AP_TYPE (masked) == M_AP_OBJECT. */
+function is_obj_mappear_look(mon, otyp) {
+    return ((mon?.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_OBJECT
+        && (mon.mappearance | 0) === (otyp | 0);
+}
+
+/** C mextra.h has_mcorpsenm — mextra && MCORPSENM != NON_PM. */
+function has_mcorpsenm_look(mon) {
+    return !!(mon?.mextra && (MCORPSENM(mon) | 0) !== NON_PM);
+}
+
+/**
+ * C ref: pager.c object_from_map `:284–377`.
+ * JS has no integer glyph ids; callers pass glyphotyp (C glyph_to_obj).
+ * cmap trapped-chest CHEST|LARGE_BOX, glyph_is_body / glyph_is_statue
+ * corpsenm from glyph id named. Returns { fakeobj, otmp }.
+ */
+export function object_from_map(glyphotyp, x, y) {
+    const otyp = glyphotyp | 0;
+    let fakeobj = false;
+    let mimic_obj = false;
+    let otmp = sobj_at_look(otyp, x, y);
+    if (!otmp) {
+        for (let b = game.level?.buriedobjlist || null; b; b = b.nobj) {
+            if ((b.ox | 0) === (x | 0) && (b.oy | 0) === (y | 0)
+                && (b.otyp | 0) === otyp) {
+                otmp = b;
+                break;
+            }
+        }
+    }
+
+    let mtmp = mon_at(x, y);
+    if (mtmp && is_obj_mappear_look(mtmp, otyp)) {
+        otmp = null;
+        mimic_obj = true;
+    } else {
+        mtmp = null;
+    }
+
+    if (!otmp || (otmp.otyp | 0) !== otyp) {
+        // C OBJ_NAME(objects[glyphotyp]) — oc_name; JS objectNameStrs
+        // is null for shuffled-out extra types (SC01 / WAN1…).
+        if (objectNameStrs[otyp]) {
+            otmp = mksobj(otyp, false, false);
+        } else {
+            const oclass = game.objects?.[otyp]?.oc_class | 0;
+            otmp = mkobj(oclass, false);
+        }
+        if (otmp?.timed) obj_stop_timers(otmp);
+        fakeobj = true;
+        if ((otmp.oclass | 0) === COIN_CLASS) {
+            otmp.quan = 2;
+        } else if ((otmp.otyp | 0) === SLIME_MOLD) {
+            // C: give it a type — mksobj(init=FALSE) left spe 0
+            otmp.spe = game.context?.current_fruit | 0;
+        }
+        if (mtmp && has_mcorpsenm_look(mtmp)) {
+            if ((otmp.otyp | 0) === SLIME_MOLD) {
+                // C: override current_fruit so look stays stable if fruit
+                // option changes after the mimic appeared
+                otmp.spe = MCORPSENM(mtmp) | 0;
+            } else {
+                otmp.corpsenm = MCORPSENM(mtmp) | 0;
+            }
+        }
+        // glyph_is_body / glyph_is_statue corpsenm named (no integer glyphs)
+        if ((otmp.otyp | 0) === LEASH) {
+            otmp.leashmon = 0;
+        }
+        otmp.where = OBJ_FLOOR;
+        otmp.ox = x | 0;
+        otmp.oy = y | 0;
+        otmp.no_charge = ((otmp.otyp | 0) === STRANGE_OBJECT
+            && costly_spot(x, y)) ? 1 : 0;
+    }
+    if (otmp && next2u_look(x, y) && !Blind_look() && !Hallucination()
+        && (fakeobj || (otmp.where | 0) === OBJ_FLOOR)
+        && !(game.iflags?.terrainmode | 0)) {
+        observe_object(otmp);
+    }
+    if (fakeobj && mtmp && mimic_obj && otmp
+        && (otmp.dknown
+            || ((mtmp.m_ap_type | 0) & M_AP_F_DKNOWN))) {
+        mtmp.m_ap_type = (mtmp.m_ap_type | 0) | M_AP_F_DKNOWN;
+        observe_object(otmp);
+    }
+    return { fakeobj, otmp: otmp || null };
+}
+
+/**
+ * C ref: pager.c look_at_object `:380–399`.
+ * doname_with_price / doname_vague_quan named — doname stand-in.
+ */
+export function look_at_object(x, y, glyphotyp) {
+    const { fakeobj, otmp } = object_from_map(glyphotyp, x, y);
+    let buf = 'something';
+    if (otmp) {
+        buf = ((otmp.otyp | 0) !== STRANGE_OBJECT)
+            ? distant_name(otmp, doname)
+            : (objectNameStrs[STRANGE_OBJECT] || 'strange object');
+        if (fakeobj) {
+            // C: object_from_map set OBJ_FLOOR; never placed on fobj
+            otmp.where = OBJ_FREE;
+        }
+    }
+    return buf;
+}
+
 /**
  * C ref: getpos.c auto_describe — prints firstmatch after
  * do_screen_description(+lookat), not the full out_str / dfeature_at.
@@ -569,7 +714,7 @@ function brief_at(x, y) {
         return look_at_monster_buf(mtmp);
     }
     const top = objects_at(x, y);
-    if (top) return doname(top);
+    if (top) return look_at_object(x, y, top.otyp);
     // C lookat glyph_is_trap → trap_description (seen map_trap glyph)
     const trap = t_at(x, y);
     if (trap && trap.tseen) {
@@ -771,7 +916,9 @@ function describe_looked(x, y) {
 /**
  * C ref: pager.c look_all — NHW_TEXT list of monsters or objects.
  * Filters via newsym-equivalent "currently shown" (glyph_at), not raw
- * mon_at/objects_at. Invis/warning glyphs and object_from_map fakeobj deferred.
+ * mon_at/objects_at. Invis/warning glyphs deferred. Shown floor objects
+ * go through look_at_object / object_from_map (real pile → sobj_at).
+ * Remembered-gone object glyphs without stored otyp still named.
  */
 async function look_all(nearby, do_mons) {
     const { lo_x, lo_y, hi_x, hi_y } = look_region(nearby);
@@ -793,7 +940,7 @@ async function look_all(nearby, do_mons) {
                     glyphCh = mon_glyph(shown.mtmp).ch || '?';
                 }
             } else if (shown?.kind === 'obj') {
-                lookbuf = doname(shown.obj);
+                lookbuf = look_at_object(x, y, shown.obj.otyp);
                 glyphCh = obj_glyph(shown.obj).ch || '?';
             }
             if (lookbuf) {

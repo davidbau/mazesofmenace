@@ -568,6 +568,15 @@ export function find_hell(lev) {
     lev.dlevel = 1;
 }
 
+/** C dungeon.c dunlevs_in_dungeon / ledger_no. */
+export function dunlevs_in_dungeon(lev) {
+    return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 1;
+}
+export function ledger_no(lev) {
+    const dun = game.dungeons?.[lev?.dnum | 0];
+    return ((dun?.ledger_start | 0) + (lev?.dlevel | 0)) | 0;
+}
+
 export function find_level(name) {
     const want = name.toLowerCase();
     for (const curr of game.sp_levchn || []) {

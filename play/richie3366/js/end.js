@@ -33,7 +33,10 @@ import { oname, christen_monst } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon } from './makemon.js';
-import { write_bonesfile, bones_file_exists, delete_bonesfile } from './bones.js';
+import {
+    write_bonesfile, bones_file_exists, delete_bonesfile,
+    goodfruit, savebones_negate_fruit_ids,
+} from './bones.js';
 import { genders, aligns } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
@@ -54,6 +57,7 @@ import { setworn } from './do_wear.js';
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
 const TIN = objectNames.indexOf('TIN');
+const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
@@ -790,7 +794,7 @@ function mk_named_object(objtype, ptr, x, y, nm) {
 
 /**
  * C ref: bones.c drop_upon_death — curse invent; place (or nearby gate).
- * Named omissions: artifact_light/end_burn; slime mold goodfruit;
+ * Named omissions: artifact_light/end_burn;
  * add_to_minv / statue container; give_to_nearby_mon body (still places).
  */
 function drop_upon_death(mtmp, cont, x, y) {
@@ -802,6 +806,9 @@ function drop_upon_death(mtmp, cont, x, y) {
         otmp.owornmask = 0;
         otmp.where = OBJ_FREE;
         otmp.nobj = null;
+
+        // C `:287–288` after owornmask=0, before rn2(5) curse
+        if ((otmp.otyp | 0) === SLIME_MOLD) goodfruit(otmp.spe);
 
         if (rn2(5)) curse(otmp);
         if (mtmp || cont) {
@@ -823,8 +830,8 @@ function drop_upon_death(mtmp, cont, x, y) {
  * Branch: ordinary `ugrave_arise` NON_PM → drop_upon_death + PM_GHOST
  * MM_NONAME. Wizard Replace when bones file already exists (D-0581).
  * Named omissions: file compress; unleash_all/unpunish/dismount;
- * remove_mon_from_bones/dmonsfree/forget_engravings; fruit fid;
- * set_ghostly_objlist/resetobjs(FALSE); map memory clear;
+ * remove_mon_from_bones/dmonsfree/forget_engravings;
+ * set_ghostly_objlist / resetobjs known-strip; map memory clear;
  * arise/statue arms; ebones; m_dowear; obj_attach_mid; binary savelev;
  * formatkiller body / yyyymmddhhmmss polish (how/when stubs OK for
  * bones_include_name).
@@ -853,6 +860,9 @@ async function savebones(how, corpse) {
             return;
         }
     }
+
+    // C savebones `:450–453` — negate all fids before drop_upon_death
+    savebones_negate_fruit_ids();
 
     const arise = u.ugrave_arise;
     if (arise != null && arise !== NON_PM && arise >= 0) {

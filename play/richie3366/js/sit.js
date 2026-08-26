@@ -111,6 +111,7 @@ import { observe_object } from './invent.js';
 import { egg_type_from_parent } from './mon.js';
 import { objectNames, COIN_CLASS, SPBOOK_CLASS } from './objects.js';
 import { xname, the, The, vtense, makeplural } from './objnam.js';
+import { body_part } from './polyself.js';
 import {
     amorphous, mons, M1_SLITHY, is_prince, is_vampire, eggs_in_water,
     lays_eggs, humanoid, likes_lava, is_hider, monsterNames, is_neuter, G_UNIQ,
@@ -507,14 +508,6 @@ function Shock_resistance() {
 function BlindedTimeout() {
     const u = game.u || {};
     return (u.HBlinded | 0) & TIMEOUT;
-}
-
-/** C ref: mondata.c body_part — EYE/HEAD/FOOT; poly table deferred. */
-function body_part(part) {
-    if ((part | 0) === EYE) return 'eye';
-    if ((part | 0) === HEAD) return 'head';
-    if ((part | 0) === FOOT) return 'foot';
-    return 'body';
 }
 
 /** C youprop.h Flying — HFlying || EFlying || u.Flying. */

@@ -439,6 +439,15 @@ function tin_details(obj) {
 
 function pretty_base(obj) {
     const n = objectNames[obj.otyp];
+    // C ref: objnam.c xname_flags FOOD_CLASS SLIME_MOLD `:747–774` —
+    // fruit_from_indx(obj->spe); missing → "fruit" (impossible pline is
+    // named: xname/doname are sync). fname only; quan pluralize is in
+    // xname/doname (C sets pluralize FALSE after singular→plural ick).
+    if ((obj.otyp | 0) === SLIME_MOLD) {
+        const f = fruit_from_indx(obj.spe | 0);
+        if (!f) return 'fruit';
+        return String(f.fname || '');
+    }
     // C ref: objnam.c xname_flags FOOD_CLASS — Concat(actualn);
     // if (typ == TIN && known) tin_details(...). Unidentified → bare "tin".
     if (n === 'TIN') return obj.known ? tin_details(obj) : 'tin';
@@ -753,12 +762,23 @@ export function xname(obj) {
         base = `next ${base}`;
         obj.next_boulder = 0;
     }
-    if ((obj.quan || 1) !== 1) base = makeplural(base);
+    // C xname_flags FOOD SLIME_MOLD: if (pluralize) singular then plural
+    // then pluralize=FALSE (already-plural fname; D-1511).
+    if ((obj.otyp | 0) === SLIME_MOLD) {
+        if ((obj.quan || 1) !== 1) base = makeplural(makesingular(base));
+    } else if ((obj.quan || 1) !== 1) {
+        base = makeplural(base);
+    }
     // C xname_flags: has_oname && dknown → " named " ONAME
     const onameStr = obj.oextra?.oname;
     if (onameStr && obj.dknown) {
         base += ` named ${onameStr}`;
         // C: artifact "The …" → downcase leading T — deferred
+    }
+    // C xname_flags `:1011–1012` — doname_base artifact_name(bp) sees
+    // this stripped pointer (D-1521 fake_arti).
+    if (base.length >= 4 && base.slice(0, 4).toLowerCase() === 'the ') {
+        base = base.slice(4);
     }
     return base;
 }
@@ -1140,10 +1160,24 @@ export function CapitalMon(word) {
 }
 
 /**
+ * C ref: objnam.c fruit_from_indx `:431–439` — look up a named fruit by
+ * fid (1..127). First match; NULL if the chain has no such index.
+ * Bones goodfruit looks up -id (D-1523).
+ */
+export function fruit_from_indx(indx) {
+    const want = indx | 0;
+    let f;
+    for (f = game.ffruit; f; f = f.nextf) {
+        if ((f.fid | 0) === want) break;
+    }
+    return f || null;
+}
+
+/**
  * C ref: objnam.c fruit_from_name `:443–519` — look up a named fruit.
  * exact True: strcmp then makesingular; False also tries longest prefix
  * and prefix+singularize. Case-sensitive. highest_fid optional out
- * `{ fid }` (only meaningful when not found). fruit_from_indx named.
+ * `{ fid }` (only meaningful when not found).
  */
 export function fruit_from_name(fname, exact, highest_fid = null) {
     if (highest_fid) highest_fid.fid = 0;
@@ -1195,9 +1229,45 @@ export function fruit_from_name(fname, exact, highest_fid = null) {
 }
 
 /**
- * C ref: artifact.c artifact_name — strcmpi after stripping leading "the ".
- * Local copy so objnam does not import artifact.js (invent cycle); fuzzy
- * still lives in artifact.js.
+ * C ref: objnam.c reorder_fruit `:521–554` — rebuild gf.ffruit by fid.
+ * allfr[1+127]; k = SIZE = 128. Valid fid is 1..127. forward TRUE walks
+ * indices high→low so the rebuilt list is low→high (1,2,3…); FALSE is
+ * the reverse. Out-of-range or duplicate fid: C impossible() then return
+ * without sorting (impossible pline named: this helper is sync). Sole C
+ * caller is insight.c `#ifdef DEBUG` wizard explicitdebug("fruit") — not
+ * production ^X. fruitadd still prepends (order arbitrary until this
+ * sorts).
+ */
+export function reorder_fruit(forward) {
+    const k = 1 + 127; /* C SIZE(allfr) */
+    const allfr = new Array(k);
+    let i, j, f;
+
+    for (i = 0; i < k; ++i) allfr[i] = null;
+    for (f = game.ffruit; f; f = f.nextf) {
+        j = f.fid | 0;
+        if (j < 1 || j >= k) {
+            return;
+        } else if (allfr[j]) {
+            return;
+        }
+        allfr[j] = f;
+    }
+    game.ffruit = null;
+    for (i = 1; i < k; ++i) {
+        j = forward ? (k - i) : i;
+        if (allfr[j]) {
+            allfr[j].nextf = game.ffruit;
+            game.ffruit = allfr[j];
+        }
+    }
+}
+
+/**
+ * C ref: artifact.c artifact_name `:329–353` — strcmpi after stripping
+ * leading "the "; fuzzy=FALSE (doname_base / the()). Local copy so
+ * objnam does not import artifact.js (invent cycle); fuzzy still lives
+ * in artifact.js.
  */
 function artifact_name_objnam(name) {
     if (!name) return null;
@@ -1217,7 +1287,8 @@ function artifact_name_objnam(name) {
 
 /**
  * C ref: objnam.c the() — definite article for non-proper names.
- * fruit_from_name + artifact_name fruit carve (D-1487). fruit_from_indx named.
+ * fruit_from_name + artifact_name fruit carve (D-1487).
+ * slime-mold spe → fruit_from_indx is D-1511.
  */
 export function the(str) {
     if (!str) return 'the []';
@@ -1626,9 +1697,20 @@ export function set_body_part(fn) {
     _body_part = fn;
 }
 
+/**
+ * Seam for modules that cannot import polyself.js (wield: polyself→wield).
+ * Not the C-locus name — that is only `polyself.js` `body_part`.
+ * Unset → C mbodypart null-data humanoid "hand" / "body part".
+ */
+export function body_part_latebound(part) {
+    if (_body_part) return _body_part(part);
+    if ((part | 0) === HAND) return 'hand';
+    return 'body part';
+}
+
 /** C polyself.c body_part(HAND) via doname_base W_WEP / W_SWAPWEP / RING. */
 function doname_hand() {
-    return _body_part ? _body_part(HAND) : 'hand';
+    return body_part_latebound(HAND);
 }
 
 /** C youprop.h EWarn_of_mon ≡ u.uprops[WARN_OF_MON].extrinsic. */
@@ -1794,6 +1876,8 @@ export function yname(obj) {
  * C bareobj = zeroobj (owt 0) → BALL_CLASS never gets "very " via this path
  * (xname/doname of the live object still apply punish weight).
  * Named omissions: sack→bag family aliases; full bareobj field subset.
+ * C copies SLIME_MOLD spe onto zeroobj so fruit_from_indx still hits;
+ * JS pretty_base reads the live spe (quan stays 1 via no makeplural here).
  */
 export function simpleonames(obj) {
     if (!obj) return 'object';
@@ -1938,26 +2022,54 @@ export function doname(obj) {
     // C xname CORPSE is bare "corpse"; corpse_xname owns the monster type.
     if (oname === 'CORPSE') {
         base = (quan !== 1) ? makeplural('corpse') : 'corpse';
+    } else if ((obj.otyp | 0) === SLIME_MOLD) {
+        // C doname_base starts at xname: fruit ick already applied.
+        if (quan !== 1) base = makeplural(makesingular(base));
     } else if (quan !== 1) {
         base = makeplural(base);
     }
 
+    // C doname_base `:1275–1299` — fruits may be given artifact names
+    // (D-1521). bp is xname: fname (+ ick) + optional " named ONAME" then
+    // strip leading "the " (`:1011`). JS doname uses pretty_base so rebuild
+    // that lookup here; named suffix is still appended after prefix.
+    const onameStrForArti = (obj.dknown && obj.oextra?.oname)
+        ? String(obj.oextra.oname) : '';
+    let bpForArti = onameStrForArti
+        ? `${base} named ${onameStrForArti}` : base;
+    if (bpForArti.length >= 4
+        && bpForArti.slice(0, 4).toLowerCase() === 'the ') {
+        bpForArti = bpForArti.slice(4);
+    }
+    if ((obj.otyp | 0) === SLIME_MOLD && base.length >= 4
+        && base.slice(0, 4).toLowerCase() === 'the ') {
+        base = base.slice(4);
+    }
+    let aname = null;
+    const fake_arti = ((obj.otyp | 0) === SLIME_MOLD
+        && (aname = artifact_name_objnam(bpForArti)) != null);
+    const force_the = !!(fake_arti
+        && String(aname).length >= 4
+        && String(aname).slice(0, 4).toLowerCase() === 'the ');
+
     // C ref: objnam.c doname_base — COIN_CLASS uses the same quan/article
     // path as other objects ("a gold piece", "25 gold pieces"), not a bare
     // numeric string. xname for coins is just "gold piece".
-    // Article: quan / the_unique_obj|obj_is_pname → "the " / else "a "
-    // (then just_an redo). C skips article for CORPSE so corpse_xname
-    // can take the BUC/greased/oeaten prefix as its adjective
-    // (CXN_ARTICLE|CXN_NOCORPSE; D-1255). Slime-mold fake_arti deferred.
+    // Article: quan / force_the|obj_is_pname|the_unique_obj → "the " /
+    // else if !fake_arti "a " (then just_an redo). C skips article for
+    // CORPSE so corpse_xname can take the BUC/greased/oeaten prefix as
+    // its adjective (CXN_ARTICLE|CXN_NOCORPSE; D-1255).
     let prefix = '';
     if (quan !== 1) {
         prefix = `${quan} `;
     } else if (oname === 'CORPSE') {
         // skip article — corpse_xname owns it
-    } else if (obj_is_pname(obj) || the_unique_obj(obj)) {
-        if (/^the /i.test(base)) base = base.slice(4);
+    } else if (force_the || obj_is_pname(obj) || the_unique_obj(obj)) {
+        if (base.length >= 4 && base.slice(0, 4).toLowerCase() === 'the ') {
+            base = base.slice(4);
+        }
         prefix = 'the ';
-    } else {
+    } else if (!fake_arti) {
         prefix = 'a ';
     }
 

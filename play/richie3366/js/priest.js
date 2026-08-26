@@ -2,7 +2,7 @@
 // C ref: priest.c temple_occupied / findpriest / has_shrine / intemple /
 //   in_your_sanctuary.
 // Named omissions: mapseen_temple; SetVoice; forget_temple_entry callers;
-// priest_talk; inhistemple callers beyond findpriest; full poly body_part.
+// priest_talk; inhistemple callers beyond findpriest.
 
 import { game } from './gstate.js';
 import { rn2, d } from './rng.js';
@@ -15,6 +15,7 @@ import { makemon, set_malign } from './makemon.js';
 import { mons, is_rider } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { in_rooms, nomul } from './hack.js';
+import { body_part } from './polyself.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
@@ -33,12 +34,6 @@ function on_level(a, b) {
     return !!a && !!b
         && (a.dnum | 0) === (b.dnum | 0)
         && (a.dlevel | 0) === (b.dlevel | 0);
-}
-
-/** C ref: mondata.c body_part — SPINE only for intemple untended msg. */
-function body_part(part) {
-    if (part === SPINE) return 'spine';
-    return 'body';
 }
 
 /**

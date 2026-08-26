@@ -581,7 +581,8 @@ function cmap_defsym_explanation(x, y, loc) {
  * Named omissions: full do_screen_description symbol table, coord_desc,
  * underwater unreconnoitered, special cmap arms (altar; doors D-0815;
  * cloud typ D-0811). Object: shown floor via look_shown_at + distant_name
- * doname (D-0928 #1136); object_from_map fakeobj, doname_with_price /
+ * doname (D-0928 #1136); pager `object_from_map` live (D-1524) but getpos
+ * still look_shown_at (pager import cycle); doname_with_price /
  * doname_vague_quan, buried/embedded suffixes deferred. Trap: tseen
  * `trapname` only (trapped_chest/door / Hallucination deferred). Travel:
  * " (no travel path)" via is_valid_travelpt when getloc_travelmode

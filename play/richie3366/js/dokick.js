@@ -120,7 +120,7 @@ import { is_art } from './artifact.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
 import { hero_breaks, thitmonst, breaks, breaktest, hurtle } from './dothrow.js';
 import { finish_meating, obj_resists } from './dogmove.js';
-import { polymon } from './polyself.js';
+import { polymon, body_part } from './polyself.js';
 const BOULDER = objectNames.indexOf('BOULDER');
 const ROCK = objectNames.indexOf('ROCK');
 const CORPSE = objectNames.indexOf('CORPSE');
@@ -155,12 +155,6 @@ const kick_passes_thru = 'kick passes harmlessly through';
 const something = 'something';
 const Something = 'Something';
 
-/** C ref: mondata.c body_part — FOOT/LEG; full poly table deferred. */
-function body_part(part) {
-    if (part === FOOT) return 'foot';
-    if (part === LEG) return 'leg';
-    return 'body';
-}
 const TREEFRUITS = [
     objectNames.indexOf('APPLE'),
     objectNames.indexOf('ORANGE'),
@@ -2245,7 +2239,7 @@ function migr_species_of(otmp) {
  * (mtmp->data->mflags2 & DELIVER_PM). No dest-level filter (unlike
  * obj_delivery). Callers: makemon.c after allow_minvent (DF_NONE,
  * cnt=1). Producer: mkobj.c mksobj_migr_to_species / mkmaze stolen_booty
- * (D-1363). Named omit: dog.c mon_arrive leftovers DF_ALL. add_to_minv merge is D-1492.
+ * (D-1363). Caller: dog.c mon_arrive MIGR_LEFTOVERS DF_ALL (D-1505).
  */
 export function deliver_obj_to_mon(mtmp, cnt, deliverflags) {
     if (!mtmp) return;

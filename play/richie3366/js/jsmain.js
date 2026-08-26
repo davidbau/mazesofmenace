@@ -18,7 +18,7 @@ import { newgame, moveloop_core, welcome, moveloop_preamble } from './allmain.js
 import { try_restore_save } from './save.js';
 import { l_nhcore_init } from './mklev.js';
 import { vision_recalc, init_vision_globals } from './vision.js';
-import { parseNethackrc, set_playmode } from './options.js';
+import { parseNethackrc, set_playmode, init_fruit_chain } from './options.js';
 import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
@@ -186,6 +186,9 @@ export class NethackGame {
             uinvault: 0,
         };
         g.context = { move: 0 };
+        // C initoptions_finish fruitadd(pl_fruit) before newgame / mksobj
+        // so SLIME_MOLD spe hits fruit_from_indx (D-1511).
+        init_fruit_chain();
         g.program_state = {};
         // C: moves starts 0; u_init_role sets 1 after mklev (see u_init.c)
         g.moves = 0;

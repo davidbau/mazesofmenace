@@ -33,8 +33,12 @@ import {
     MENU_FIRST_PAGE,
     MENU_LAST_PAGE,
     WIZKIT_MAX,
+    ismnum,
 } from './const.js';
 import { game } from './gstate.js';
+import { rnd } from './rng.js';
+import { str_end_is } from './hacklib.js';
+import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt, clear_committed_status } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu } from './invent.js';
@@ -47,7 +51,7 @@ import {
 } from './objects.js';
 import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 import { getlin } from './getline.js';
-import { makesingular } from './objnam.js';
+import { makesingular, fruit_from_name } from './objnam.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
 const PL_FSIZ = 32;
@@ -695,32 +699,16 @@ function sanitize_name(namebuf) {
 }
 
 /**
- * C ref: options.c fruit_from_name — find by fname; optionally count chain.
- * @returns {{ fruit: object|null, count: number, highest: number }}
- */
-function fruit_from_name(fname, countOnly) {
-    let highest = 0;
-    let count = 0;
-    let found = null;
-    for (let f = game.ffruit; f; f = f.nextf) {
-        count++;
-        if (f.fid > highest) highest = f.fid;
-        if (!found && fname != null && f.fname === fname) found = f;
-    }
-    if (countOnly) return { fruit: found, count, highest };
-    return { fruit: found, count, highest };
-}
-
-/**
- * C ref: options.c fruitadd — user-specified pl_fruit path (doset getlin).
- * Named omissions: bones/orc non-user path; rnd(127) overflow fallback;
- * name_to_mon corpse/egg/tin-of arms (candied via food-name collision only).
- * @param {string} str  current pl_fruit value (C passes svp.pl_fruit pointer)
+ * C ref: options.c fruitadd `:8169–8287` — user-specified pl_fruit path
+ * (doset getlin / optfn_fruit). Callers pass game.pl_fruit so C
+ * `str == svp.pl_fruit` holds; JS strings cannot emulate that pointer
+ * test for a second buffer. Bones/restore ghostfruit else-path named;
+ * orc loot is fruitadd_orc in mklev.js (mklev↔options cycle) using the
+ * same objnam fruit_from_name walker (D-1520).
+ * @param {string} str  current pl_fruit (C passes svp.pl_fruit pointer)
  * @param {object|null} replaceFruit
  */
-function fruitadd(str, replaceFruit) {
-    // C user_specified path: str aliases pl_fruit after optfn_fruit nmcpy
-    let altname = '';
+export function fruitadd(str, replaceFruit) {
     let f;
 
     let nam = makesingular(String(str || ''));
@@ -749,18 +737,23 @@ function fruitadd(str, replaceFruit) {
         while (j < nam.length && nam[j] >= '0' && nam[j] <= '9') j++;
         if (j === nam.length || /\s/.test(nam[j] || '')) numeric = true;
     }
+    // C `:8228–8236` tin-of spinach/name_to_mon + corpse/egg suffix.
+    const tinRest = nam.startsWith('tin of ') ? nam.slice(7) : '';
     if (found || numeric
         || nam.startsWith('cursed ')
         || nam.startsWith('uncursed ')
         || nam.startsWith('blessed ')
         || nam.startsWith('partly eaten ')
+        || (nam.startsWith('tin of ')
+            && (tinRest === 'spinach' || ismnum(name_to_mon(tinRest))))
         || nam === 'empty tin'
         || nam === 'glob'
-        || (globpfx > 0 && nam.slice(globpfx) === 'glob')) {
+        || (globpfx > 0 && nam.slice(globpfx) === 'glob')
+        || ((str_end_is(nam, ' corpse') || str_end_is(nam, ' egg'))
+            && ismnum(name_to_mon(nam)))) {
         const buf = nam;
         game.pl_fruit = ('candied ' + buf).slice(0, PL_FSIZ - 1);
     }
-    altname = '';
     if (!game.flags) game.flags = {};
     game.flags.made_fruit = false;
     if (replaceFruit) {
@@ -771,26 +764,47 @@ function fruitadd(str, replaceFruit) {
         return f.fid;
     }
 
-    const look = altname || game.pl_fruit;
-    const { fruit: existing, highest } = fruit_from_name(look, false);
-    if (existing) {
+    // C: fruit_from_name(*altname ? altname : str, FALSE, &highest_fid).
+    // User path altname is empty; str aliases pl_fruit after candify.
+    const highest = { fid: 0 };
+    f = fruit_from_name(game.pl_fruit, false, highest);
+    if (f) {
         if (!game.context) game.context = {};
-        game.context.current_fruit = existing.fid;
-        return existing.fid;
+        game.context.current_fruit = f.fid;
+        return f.fid;
     }
-    if (highest >= 127) {
-        // C: return rnd(127) — deferred; keep current_fruit
-        return game.context?.current_fruit || 1;
-    }
+    if (highest.fid >= 127) return rnd(127);
     f = {
-        fname: String(look).slice(0, PL_FSIZ - 1),
-        fid: highest + 1,
+        fname: String(game.pl_fruit).slice(0, PL_FSIZ - 1),
+        fid: (highest.fid | 0) + 1,
         nextf: game.ffruit || null,
     };
     game.ffruit = f;
     if (!game.context) game.context = {};
     game.context.current_fruit = f.fid;
     return f.fid;
+}
+
+/**
+ * C ref: options.c initoptions_finish fruitadd(pl_fruit, NULL) `:7329`.
+ * Runs before objects[] food-class is live, so default "slime mold" is
+ * not candied. fid 1; current_fruit. OPTIONS=fruit: (opt_initial) only
+ * nmcpy's pl_fruit — this call installs the chain. Do not call fruitadd
+ * here after objects exist (that walker candifies SLIME_MOLD). Bones
+ * restore ghostfruit (fruitadd else) named.
+ */
+export function init_fruit_chain() {
+    if (game.ffruit) return;
+    let nam = makesingular(
+        String(game.pl_fruit || game.flags?.fruit || 'slime mold'),
+    );
+    nam = sanitize_name(nam);
+    if (!nam) nam = 'slime mold';
+    if (nam.length > PL_FSIZ - 1) nam = nam.slice(0, PL_FSIZ - 1);
+    game.pl_fruit = nam;
+    game.ffruit = { fname: nam, fid: 1, nextf: null };
+    if (!game.context) game.context = {};
+    game.context.current_fruit = 1;
 }
 
 /**
@@ -804,16 +818,17 @@ function optfn_fruit_set(op) {
     if (!s) s = 'slime mold';
     if (s.length > PL_FSIZ - 1) s = s.slice(0, PL_FSIZ - 1);
 
-    // C: fruit_from_name count gate when !made_fruit / fnum>=100
-    const { fruit: exists, count: fnum } = fruit_from_name(s, true);
+    // C: fruit_from_name(op, FALSE, &fnum) — fnum is max fid, not count
+    const fnum = { fid: 0 };
+    const exists = fruit_from_name(s, false, fnum);
     let forig = null;
     if (!exists) {
         if (!game.flags?.made_fruit) {
             forig = fruit_from_name(
-                game.pl_fruit || 'slime mold', false,
-            ).fruit;
+                game.pl_fruit || 'slime mold', false, null,
+            );
         }
-        if (!forig && fnum >= 100) {
+        if (!forig && fnum.fid >= 100) {
             // C: config_error_add fruitful — silent ok return
             return;
         }
@@ -1663,7 +1678,8 @@ export async function doset() {
 /**
  * C ref: options.c doset_simple — loop doset_simple_menu until no pick.
  * Named omissions: number_pad/autounlock/symset/status handlers;
- * help descr lines under simple_options_help; fruitadd bones path.
+ * help descr lines under simple_options_help; fruitadd bones/restore
+ * ghostfruit else-path.
  */
 export async function doset_simple() {
     if (!game.flags) game.flags = {};
