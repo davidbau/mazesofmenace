@@ -199,6 +199,7 @@ import {
     S_cloud,
     S_water,
     SYM_OFF_X,
+    defsym_to_trap,
     trap_to_defsym,
 } from './symbols.js';
 import { numeric_glyph_customization } from './glyphs.js';
@@ -1413,6 +1414,25 @@ export function glyph_to_cmap(glyph) {
     return (glyph - GLYPH_CMAP_C_OFF) + S_digbeam;
 }
 
+// C refs: display.h GLYPH_TRAP_OFF, glyph_is_trap(), and glyph_to_trap().
+// Trap glyphs occupy the MAXTCHARS entries beginning at S_arrow_trap in the
+// cmap-B range. glyph_to_trap() returns C's NO_GLYPH sentinel outside it.
+function trapGlyphOffset() {
+    return GLYPH_CMAP_B_OFF + (S_arrow_trap - S_grave);
+}
+
+export function glyph_is_trap(glyph) {
+    const offset = trapGlyphOffset();
+    return glyph >= offset && glyph < offset + MAXTCHARS;
+}
+
+export function glyph_to_trap(glyph) {
+    if (!glyph_is_trap(glyph)) return NO_GLYPH;
+    return defsym_to_trap(
+        (glyph - trapGlyphOffset()) + S_arrow_trap,
+    );
+}
+
 // ── display.h object glyph numbers ──
 //
 // C keeps one integer per map square in levl[x][y].glyph and resolves it into
@@ -1566,6 +1586,23 @@ function assertGlyphNumber(glyph, caller) {
                 ? JSON.stringify(glyph) : glyph}`,
         );
     }
+}
+
+// C refs: display.h glyph_is_normal_monster(), glyph_is_pet(),
+// glyph_is_detected_monster(), glyph_is_ridden_monster(), and their union
+// glyph_is_monster(). Each family has one male and one female NUMMONS range.
+export function glyph_is_monster(glyph) {
+    assertGlyphNumber(glyph, 'glyph_is_monster');
+    return [
+        GLYPH_MON_MALE_OFF,
+        GLYPH_MON_FEM_OFF,
+        GLYPH_PET_MALE_OFF,
+        GLYPH_PET_FEM_OFF,
+        GLYPH_DETECT_MALE_OFF,
+        GLYPH_DETECT_FEM_OFF,
+        GLYPH_RIDDEN_MALE_OFF,
+        GLYPH_RIDDEN_FEM_OFF,
+    ].some((offset) => glyph >= offset && glyph < offset + NUMMONS);
 }
 
 export function glyph_is_object(glyph) {
@@ -2660,6 +2697,49 @@ export function map_background(x, y, show, state = game) {
     const glyph = map_glyphinfo(back_to_glyph(x, y, state), state);
     if (state.level?.flags?.hero_memory) {
         location.remembered_glyph = remembered_glyph_from_presentation(glyph);
+    }
+    if (show) show_glyph_cell(x, y, glyph);
+}
+
+// C ref: display.c magic_map_background() (233-258). Magic mapping corrects
+// out-of-sight lit floor and corridor glyphs before storing terrain memory.
+export function magic_map_background(x, y, show, state = game) {
+    const location = state.level?.at(x, y);
+    if (!location) return;
+    let glyphNumber = back_to_glyph(x, y, state);
+    if (!cansee(x, y, state) && !location.waslit) {
+        if (location.typ === ROOM
+            && glyphNumber === cmap_to_glyph(S_room, state)) {
+            // The JS option owner stores C's effective iflags.use_color in
+            // wc_color; display.js uses the same field for every map glyph.
+            glyphNumber = state.flags?.dark_room && state.iflags?.wc_color
+                ? cmap_to_glyph(S_darkroom, state) : GLYPH_NOTHING_OFF;
+        } else if (location.typ === CORR
+                   && glyphNumber === cmap_to_glyph(S_litcorr, state)) {
+            glyphNumber = cmap_to_glyph(S_corr, state);
+        }
+    }
+    const oldNumber = location.remembered_glyph?.glyph;
+    const glyph = map_glyphinfo(glyphNumber, state);
+    if (state.level?.flags?.hero_memory
+        && (oldNumber === undefined || glyph_is_cmap(oldNumber))) {
+        location.remembered_glyph = remembered_glyph_from_presentation(glyph);
+    }
+    if (show) show_glyph_cell(x, y, glyph);
+    update_lastseentyp(x, y, state, {
+        canSeeMonster: (subject) => canSeeMonster(subject, state),
+    });
+}
+
+// C ref: display.c map_engraving() (318-325). Mapping reveals the engraving
+// glyph directly; it does not require the engraving to have been read first.
+export function map_engraving(engraving, show, state = game) {
+    const x = engraving.engr_x;
+    const y = engraving.engr_y;
+    const glyph = map_glyphinfo(engraving_to_glyph(engraving, state), state);
+    if (state.level?.flags?.hero_memory) {
+        state.level.at(x, y).remembered_glyph
+            = remembered_glyph_from_presentation(glyph);
     }
     if (show) show_glyph_cell(x, y, glyph);
 }
@@ -4795,7 +4875,12 @@ function _buildScreenOutput() {
                 const cell = skippedMessageCells[c];
                 display.setCell(c, 0, cell.ch, cell.color, cell.attr);
             } else {
-                display.setCell(c, 0, msg[c], NO_COLOR, 0);
+                display.setCell(
+                    c, 0,
+                    c === 0 && game._ttyMixedFirstCell
+                        ? game._ttyMixedFirstCell : msg[c],
+                    NO_COLOR, 0,
+                );
             }
         }
         // Map — write characters to grid (DEC → Unicode for browser display)

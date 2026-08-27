@@ -1,12 +1,23 @@
-// read.js -- the scroll-reading file's monster-creation helpers.
-// C refs: src/read.c cant_revive(), create_particular_parse(),
-// create_particular_creation() and create_particular(), so far the only four
-// rows of that file this port needs. Nothing of doread() or its scroll effects
-// is here; wizcmds.c wiz_genesis() is the one caller.
+// read.js -- reading scrolls and spellbooks, plus monster-creation helpers.
+// C refs: src/read.c read_ok(), doread(), cant_revive(),
+// create_particular_parse(), create_particular_creation() and
+// create_particular(). doread() completes a known ordinary magic-mapping
+// scroll; other selected readable objects stop before pickup_prev changes.
+// wizcmds.c wiz_genesis() calls the monster-creation helpers.
 
 import {
+    A_WIS,
+    BLINDED,
     COLNO,
+    CONFUSION,
+    ECMD_CANCEL,
+    ECMD_OK,
+    ECMD_TIME,
     FEMALE,
+    GETOBJ_DOWNPLAY,
+    GETOBJ_EXCLUDE,
+    GETOBJ_PROMPT,
+    GETOBJ_SUGGEST,
     MALE,
     MM_FEMALE,
     MM_MALE,
@@ -29,15 +40,121 @@ import {
 } from './monsters.js';
 import { digit, mungspaces, strstri } from './hacklib.js';
 import { game } from './gstate.js';
+import { check_capacity, notice_mon_off, notice_mon_on } from './hack.js';
+import { getobj, useup } from './invent.js';
 import { getlin } from './windows.js';
 import {
     is_female,
     is_male,
+    can_chant,
     name_to_monplus,
     unique_corpstat,
 } from './mondata.js';
 import { makemon_runtime } from './makemon_create.js';
 import { MAXMCLASSES } from './symbols.js';
+import { SCROLL_CLASS, SCR_MAGIC_MAPPING, SPBOOK_CLASS } from './objects.js';
+import { objectType } from './obj.js';
+import { exercise } from './attrib.js';
+import { do_mapping } from './detect.js';
+import { Is_special } from './dungeon.js';
+import { discover_object } from './o_init.js';
+import { rn2 } from './rng.js';
+import { ttyPline } from './tty_message.js';
+
+// A selected scroll or spellbook enters doread()'s effect arms. The known,
+// uncursed magic-mapping scroll is supported; raising before pickup_prev
+// changes keeps every other object and the turn retryable while preserving
+// the prompt screens already produced.
+export class UnsupportedReadError extends Error {
+    constructor(branch) {
+        super(`reading requires ${branch}`);
+        this.name = 'UnsupportedReadError';
+        this.branch = branch;
+    }
+}
+
+// C ref: read.c read_ok() (313-322). Scrolls and spellbooks appear as likely
+// choices. Other carried objects remain selectable but are omitted from the
+// suggested-letter set, and the hands/self sentinel is excluded.
+export function read_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_DOWNPLAY;
+}
+
+// C ref: read.c doread() (347-432), restricted after getobj() to the known,
+// uncursed magic-mapping scroll. Every other selected object stops before C's
+// scroll->pickup_prev write because its effects belong to later slices.
+export async function doread(state = game) {
+    state.gk ??= {};
+    state.gk.known = false;
+    if (await check_capacity(null, state)) return ECMD_OK;
+
+    const scroll = await getobj('read', read_ok, GETOBJ_PROMPT, state);
+    if (!scroll) return ECMD_CANCEL;
+    const active = (property) => {
+        const value = state.u?.uprops?.[property];
+        return Boolean(value?.intrinsic || value?.extrinsic) && !value?.blocked;
+    };
+    if (scroll.otyp !== SCR_MAGIC_MAPPING
+        || scroll.oclass !== SCROLL_CLASS
+        || scroll.blessed || scroll.cursed
+        || !scroll.dknown
+        || !objectType(scroll, state).oc_name_known
+        || active(BLINDED) || active(CONFUSION)
+        || !can_chant(state.youmonst, state)
+        || state.level?.flags?.nommap
+        || !state.level?.flags?.hero_memory
+        || Is_special(state.u?.uz, state)
+        || state.u?.uinwater || state.u?.uburied || state.u?.uswallow) {
+        throw new UnsupportedReadError('the selected readable object branch');
+    }
+
+    scroll.pickup_prev = false;
+    state.u.uconduct ??= {};
+    state.u.uconduct.literate
+        = Math.trunc(state.u.uconduct.literate ?? 0) + 1;
+    scroll.in_use = true;
+    await ttyPline('As you read the scroll, it disappears.', state);
+    await seffects(scroll, state);
+    if (state.gk.known && !objectType(scroll, state).oc_name_known) {
+        discover_object(scroll.otyp, true, true, true, state, {
+            random: { rn2 }, hooks: {},
+        });
+    }
+    scroll.in_use = false;
+    useup(scroll, { state, hooks: {} });
+    return ECMD_TIME;
+}
+
+// C ref: read.c seffect_magic_mapping() (2102-2153), restricted to an
+// ordinary uncursed scroll on a mappable level.
+export async function seffect_magic_mapping(scroll, state = game) {
+    if (scroll.otyp !== SCR_MAGIC_MAPPING || scroll.blessed || scroll.cursed
+        || state.level?.flags?.nommap) {
+        throw new UnsupportedReadError('the selected magic-mapping branch');
+    }
+    state.gk.known = true;
+    await ttyPline('A map coalesces in your mind!', state);
+    notice_mon_off(state);
+    try {
+        await do_mapping(state);
+    } finally {
+        notice_mon_on(state);
+    }
+}
+
+// C ref: read.c seffects() (2194-2290), restricted to SCR_MAGIC_MAPPING.
+export async function seffects(scroll, state = game) {
+    if (scroll.otyp !== SCR_MAGIC_MAPPING) {
+        throw new UnsupportedReadError('the selected scroll effect');
+    }
+    if (objectType(scroll, state).oc_magic)
+        await exercise(A_WIS, true, state, { rn2 });
+    await seffect_magic_mapping(scroll, state);
+    return 0;
+}
 
 // A request the player typed that read.c understands and this port does not.
 // Every raiser is a branch of one of the four functions below, named in the

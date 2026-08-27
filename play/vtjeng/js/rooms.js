@@ -29,6 +29,7 @@ import {
     ZOO,
 } from './const.js';
 import { wake_msg } from './mon.js';
+import { room_discovered } from './dungeon.js';
 import { rn2 } from './rng.js';
 import { u_entered_shop, u_left_shop } from './shk.js';
 import { ttyPline } from './tty_message.js';
@@ -247,8 +248,9 @@ export async function check_special_room(
                 `You enter an opulent${hasThrone ? ' throne' : ''} room!`,
                 state,
             );
-            // room_discovered() records mapseen data. This port has no mapseen
-            // chain; the room's one-time identity is the live state owner.
+            // room_discovered() records the room before its live one-time
+            // identity is cleared here.
+            room_discovered(roomIndex, state);
             room.rtype = OROOM;
             if (!state.level.rooms.some(
                 (candidate) => candidate?.rtype === COURT,

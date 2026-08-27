@@ -12,11 +12,13 @@ import {
     CMDQ_KEY,
     COLNO,
     CQ_CANNED,
+    CQ_REPEAT,
     DIR_ERR,
     ECMD_CANCEL,
     ECMD_FAIL,
     ECMD_OK,
     ECMD_TIME,
+    GETOBJ_PROMPT,
     MV_ANY,
     MV_RUN,
     MV_RUSH,
@@ -44,6 +46,7 @@ import { dosearch, UnsupportedSearchError } from './detect.js';
 import {
     bot,
     flush_screen,
+    newsym,
     UnsupportedMapMemoryError,
     UnsupportedTransientDisplayError,
 } from './display.js';
@@ -79,11 +82,20 @@ import {
     UnsupportedEatError,
     UnsupportedHungerTransitionError,
 } from './eat.js';
-import { can_reach_floor, read_engr_at } from './engrave.js';
+import {
+    can_reach_floor,
+    doengrave,
+    read_engr_at,
+    UnsupportedEngraveError,
+} from './engrave.js';
 import {
     CMD_M_PREFIX,
     CMD_gGF_PREFIX,
+    CMD_PARAM,
+    GENERALCMD,
     IFBURIED,
+    INTERNALCMD,
+    MOVEMENTCMD,
     PREFIXCMD,
     WIZMODECMD,
     extcmdlist,
@@ -95,20 +107,33 @@ import {
     tty_yn_function,
 } from './getline.js';
 import { game } from './gstate.js';
-import { visctrl } from './hacklib.js';
+import { mungspaces, visctrl } from './hacklib.js';
 import {
     ddoinv,
     dolook,
+    getobj,
+    hands_obj,
     UnsupportedFeatureDescriptionError,
     UnsupportedObjectPromptError,
 } from './invent.js';
 import { doattributes, UnsupportedEnlightenmentError } from './insight.js';
 import { dodiscovered, UnsupportedDiscoveryDisplayError } from './o_init.js';
 import { UnsupportedObjectNameError } from './objnam.js';
-import { doset_simple, dotogglepickup, UnsupportedOptionMenuError } from './options.js';
+import {
+    doset_simple,
+    dotogglepickup,
+    show_menu_controls,
+    UnsupportedOptionMenuError,
+} from './options.js';
 import { dopray, UnsupportedPrayerError } from './pray.js';
 import { UnsupportedHideError } from './mon.js';
 import { dosave } from './save.js';
+import {
+    dohelp,
+    dowhatis,
+    UnsupportedHelpError,
+    UnsupportedWhatisError,
+} from './pager.js';
 import { UnsupportedShopError } from './shk.js';
 import { dofire, dothrow, UnsupportedThrowError } from './dothrow.js';
 import { dosit, UnsupportedSitError } from './sit.js';
@@ -130,8 +155,9 @@ import {
 import {
     displayTtyTextWindow, menuTitleStyle,
 } from './tty_menu.js';
-import { select_menu } from './windows.js';
+import { getlin, select_menu } from './windows.js';
 import {
+    check_capacity,
     domove,
     dopickup,
     endRunning,
@@ -139,16 +165,20 @@ import {
     preflightDomoveDestination,
     u_maybe_impaired,
     NODIAG,
+    UnsupportedHitPointLossError,
     UnsupportedHeroMoveBoundaryError,
 } from './hack.js';
 import { nhgetch } from './input.js';
 import { doride, UnsupportedSteedError } from './steed.js';
-import { UnsupportedHitPointLossError } from './hack.js';
 import { UnsupportedEndOfGameError } from './end.js';
 import { UnsupportedItemIgnitionError } from './apply_catch_lit.js';
 import { UnsupportedAbilityChangeError } from './attrib.js';
 import { UnsupportedExperienceChangeError } from './exper.js';
-import { UnsupportedMonsterRequestError } from './read.js';
+import {
+    doread,
+    UnsupportedMonsterRequestError,
+    UnsupportedReadError,
+} from './read.js';
 import {
     wiz_genesis, wiz_level_change, wiz_level_tele, wiz_wish,
 } from './wizcmds.js';
@@ -165,7 +195,9 @@ import {
     dowield,
     UnsupportedTwoWeaponError,
     UnsupportedWieldError,
+    cantwield,
 } from './wield.js';
+import { rn2, rnd } from './rng.js';
 import { dotalk, UnsupportedChatError } from './sounds.js';
 import {
     clearTtyMessageWindow,
@@ -430,12 +462,14 @@ function yn_menuable_resp(resp, state) {
     return resp !== null && Boolean(state.iflags?.query_menu);
 }
 
-// C ref: cmd.c yn_function() (5471-5578). Both queue arms sit behind
-// `addcmdq`, which the refusal below still rejects, so neither the
-// cmdq_pop() at 5496 nor the cmdq_add_key(CQ_REPEAT) at 5543 can run.
-// getdir() is the port's other caller and passes addcmdq FALSE, exactly as C
-// does at 3989. iflags.debug_fuzzer is never set, leaving the window port's
-// tty_yn_function() as the only reader.
+// C ref: cmd.c yn_function() (5471-5578). The ordinary user-input arm reads
+// through tty_yn_function() and, when addcmdq is true, records the answer in
+// CQ_REPEAT. This slice admits that write for an unrestricted prompt. The
+// restricted-response and queued-answer arms remain outside the running-game
+// boundary: nothing ported can set gi.in_doagain, and the current whatdoes
+// caller starts with an empty canned queue. getdir() passes addcmdq FALSE,
+// exactly as C does at 3989. iflags.debug_fuzzer is never set, leaving the
+// window port's reader as the only live input source.
 //
 // The `resp && *resp && res && !strchr(resp, res)` repair at 5567 has no work
 // to do for either caller. A null `resp` fails its first test. For a restricted
@@ -461,11 +495,12 @@ export async function yn_function(query, resp, def, addcmdq, state = game) {
         throw new UnsupportedDirectionBoundaryError('yn_function_menu()');
     }
     const res = await tty_yn_function(query, resp, def, state);
-    if (addcmdq) {
+    if (addcmdq && resp !== null) {
         throw new UnsupportedDirectionBoundaryError(
-            'cmdq_add_key(CQ_REPEAT) has no CQ_REPEAT queue',
+            'cmdq_add_key(CQ_REPEAT) for a restricted response set',
         );
     }
+    if (addcmdq) cmdq_add_key(CQ_REPEAT, res, state);
     // "in case we're called via getdir() which sets input_state".
     state.program_state.input_state = 'other';
     return res;
@@ -592,6 +627,53 @@ export function movecmd(sym, mode, state = game) {
     return 0;
 }
 
+// C ref: cmd.c key2extcmddesc() (2561-2615). This keeps source evaluation
+// order: the three movecmd() probes precede the count, special-key, and
+// regular-command lookups. A failed probe clears u.dz, which is an observable
+// C side effect even for the ordinary inventory key used by dowhatdoes().
+export function key2extcmddesc(key, state = game) {
+    const byte = key & 0xFF;
+    const model = commandBindings(state);
+    let description = '';
+    if (movecmd(byte, MV_WALK, state)) description = 'move';
+    else if (movecmd(byte, MV_RUSH, state)) description = 'rush';
+    else if (movecmd(byte, MV_RUN, state)) description = 'run';
+    if (description) return description;
+
+    const unmeta = byte & 0x7F;
+    const isDigit = (value) => value >= 0x30 && value <= 0x39;
+    if (isDigit(byte) || (model.numPad && isDigit(unmeta))) {
+        if (!model.numPad) {
+            return 'start of, or continuation of, a count';
+        }
+        const metaFive = 0x35 | 0x80;
+        const metaZero = 0x30 | 0x80;
+        if (byte === 0x35 || byte === metaFive) {
+            const run = Boolean(model.pcHack) !== (byte === metaFive);
+            return `${run ? 'run' : 'rush'} prefix`;
+        }
+        if (byte === 0x30 || (model.pcHack && byte === metaZero))
+            return "synonym for 'i'";
+    }
+
+    if (byte === model.specialKeys.escape)
+        return 'cancel current prompt or pending prefix';
+    if (model.numPad && byte === model.specialKeys.count) {
+        return 'Prefix: for digits when preceding a command with a count';
+    }
+
+    const command = commandForKey(model, byte);
+    const entry = command === null ? null : EXTCMD_BY_NAME.get(command);
+    if (!entry?.ef_txt) return null;
+    let result = `${entry.ef_desc} (#${entry.ef_txt})`;
+    if (result.toLowerCase().startsWith('prefix:')
+        && entry.ef_txt.toLowerCase() === 'reqmenu') {
+        result = 'movement prefix: move without autopickup and without '
+            + 'attacking\nnon-movement prefix:' + result.slice(7);
+    }
+    return result.replace(' (##)', '');
+}
+
 // C ref: cmd.c xytodir() (3846-3856). Converts a unit offset into an index
 // into xdir[]/ydir[], or DIR_ERR when no compass direction matches.
 export function xytodir(x, y) {
@@ -664,6 +746,173 @@ function show_direction_keys(lines, centerchar, nodiag, state = game) {
         lines.push({ text:
             `          ${k('movesouthwest')}  ${k('movesouth')}  ${k('movesoutheast')}` });
     }
+}
+
+// C ref: cmd.c keylist_func_has_key() (2784-2797). The source compares the
+// extcmdlist row stored in each binding, so this port compares its unique
+// ef_txt rather than the handler name shared by aliases such as call/name.
+function keylist_func_has_key(entry, skipKeysUsed, model) {
+    for (let key = 0; key < 256; ++key) {
+        if (skipKeysUsed[key]) continue;
+        if (commandForKey(model, key) === entry.ef_txt) return true;
+    }
+    return false;
+}
+
+// C ref: cmd.c keylist_putcmds() (2799-2857). In count mode this returns the
+// number of rows without changing keysUsed; display mode appends the same rows
+// and reserves each keyed byte for the later command categories.
+function keylist_putcmds(lines, docount, inclFlags, exclFlags, keysUsed,
+    model) {
+    const keysAlreadyUsed = Uint8Array.from(keysUsed);
+    const rowsByName = new Map(extcmdlist.map((entry) => [entry.ef_txt, entry]));
+    let count = 0;
+
+    for (let key = 0; key < 256; ++key) {
+        if (keysUsed[key]) continue;
+        if (key === 0x20 && !model.restOnSpace) continue;
+        const command = commandForKey(model, key);
+        const entry = command === null ? null : rowsByName.get(command);
+        if (!entry) continue;
+        if ((inclFlags && !(entry.flags & inclFlags))
+            || (exclFlags && (entry.flags & exclFlags))) {
+            continue;
+        }
+        if (docount) {
+            ++count;
+            continue;
+        }
+        // No compiled-in binding carries CMD_PARAM. Its quoted parameter is
+        // stored on C's Cmd_bind node, which the bounded default model does
+        // not need; reject that excluded custom-binding variant explicitly.
+        if (entry.flags & CMD_PARAM) {
+            throw new UnsupportedHelpError(
+                'a parameterized custom binding in the key list',
+            );
+        }
+        lines.push({ text:
+            `${key2txt(key).padEnd(7)} ${entry.ef_txt.padEnd(13)} ${entry.ef_desc}` });
+        keysUsed[key] = 1;
+    }
+
+    for (const entry of extcmdlist) {
+        if ((inclFlags && !(entry.flags & inclFlags))
+            || (exclFlags && (entry.flags & exclFlags))) {
+            continue;
+        }
+        if (keylist_func_has_key(entry, keysAlreadyUsed, model)) continue;
+        if (docount) {
+            ++count;
+            continue;
+        }
+        lines.push({
+            text: `#${entry.ef_txt.padEnd(20)} ${entry.ef_desc}`,
+        });
+    }
+    return count;
+}
+
+// C ref: cmd.c dokeylist() (2859-3013). This slice admits the recorder's
+// default non-number-pad, no-rest-on-space, non-debug binding set. The data
+// flow remains source-shaped so the complete 256-byte traversal and category
+// ordering stay visible beside extcmdlist_data.js.
+export function keyBindingLines(state = game) {
+    const model = commandBindings(state);
+    const lines = [];
+    const keysUsed = new Uint8Array(256);
+    const pfxSeen = new Uint16Array(256);
+
+    // This build has signal handling, so Ctrl-C is reserved before movement
+    // and miscellaneous keys are classified.
+    keysUsed[0x03] = 1;
+    const movSeen = Uint8Array.from(keysUsed);
+
+    const miscKeys = [
+        { index: 0, name: 'escape', desc: 'cancel current prompt or pending prefix', numpad: false },
+        { index: 5, name: 'count', desc: 'Prefix: for digits when preceding a command with a count', numpad: true },
+    ];
+    let spkeyGap = false;
+    for (const item of miscKeys) {
+        if (item.numpad && !model.numPad) continue;
+        const key = model.specialKeys[item.name] & 0xFF;
+        if (key && !movSeen[key] && !pfxSeen[key]) {
+            keysUsed[key] = 1;
+            pfxSeen[key] = item.index;
+        } else {
+            spkeyGap = true;
+        }
+    }
+
+    lines.push({ text: '' });
+    lines.push({ text: '            Full Current Key Bindings List' });
+    if (extcmdlist.some((entry) => (
+        spkeyGap || !keylist_func_has_key(entry, keysUsed, model)
+    ))) {
+        lines.push({ text: '        (also commands with no key assignment)' });
+    }
+
+    lines.push({ text: '' });
+    lines.push({ text: 'Directional keys:' });
+    show_direction_keys(lines, '.', false, state);
+    lines.push({ text: '' });
+    lines.push({
+        text: 'Ctrl+<direction> will run in specified direction until something very',
+    });
+    lines.push({ text: '        interesting is seen.' });
+    lines.push({
+        text: 'Shift+<direction> will run in specified direction until you encounter',
+    });
+    lines.push({ text: '        an obstacle.' });
+
+    lines.push({ text: '' });
+    lines.push({ text: 'Miscellaneous keys:' });
+    for (const item of miscKeys) {
+        if (item.numpad && !model.numPad) continue;
+        const key = model.specialKeys[item.name] & 0xFF;
+        if (key && !movSeen[key] && pfxSeen[key] === item.index) {
+            lines.push({ text: `${key2txt(key).padEnd(7)} ${item.desc}` });
+        }
+    }
+    lines.push({
+        text: `${key2txt(0x03).padEnd(7)} interrupt: break out of NetHack (SIGINT)`,
+    });
+
+    lines.push({ text: '' });
+    show_menu_controls(lines, true, state);
+
+    const ignoreCommands = WIZMODECMD | INTERNALCMD | MOVEMENTCMD;
+    if (keylist_putcmds(
+        lines, true, GENERALCMD, ignoreCommands, keysUsed, model,
+    )) {
+        lines.push({ text: '' });
+        lines.push({ text: 'General commands:' });
+        keylist_putcmds(
+            lines, false, GENERALCMD, ignoreCommands, keysUsed, model,
+        );
+    }
+    if (keylist_putcmds(
+        lines, true, 0, GENERALCMD | ignoreCommands, keysUsed, model,
+    )) {
+        lines.push({ text: '' });
+        lines.push({ text: 'Game commands:' });
+        keylist_putcmds(
+            lines, false, 0, GENERALCMD | ignoreCommands, keysUsed, model,
+        );
+    }
+    if (state.wizard && keylist_putcmds(
+        lines, true, WIZMODECMD, INTERNALCMD, keysUsed, model,
+    )) {
+        lines.push({ text: '' });
+        lines.push({ text: 'Debug mode commands:' });
+        keylist_putcmds(
+            lines, false, WIZMODECMD, INTERNALCMD, keysUsed, model,
+        );
+    }
+    return lines;
+}
+
+export async function dokeylist(state = game) {
+    await displayTtyTextWindow(state, keyBindingLines(state));
 }
 
 // C ref: cmd.c help_dir() (4170-4296). Displays direction help when cmdassist
@@ -797,7 +1046,8 @@ export async function getdir(s, state = game) {
             "'^R' repaints the screen and reissues the direction prompt",
         );
     }
-    // cmdq_add_key(CQ_REPEAT, dirsym): no CQ_REPEAT queue is ported.
+    // cmdq_add_key(CQ_REPEAT, dirsym): getdir() repeat recording remains
+    // outside this caller's boundary; dowhatdoes() owns the admitted write.
 
     const spkeys = commandBindings(state).specialKeys;
     // cmd.c:4021-4090 tests NHKF_GETDIR_SELF first and evaluates movecmd()
@@ -1004,10 +1254,11 @@ export async function parseCommand(state = game) {
 // the typed names work.
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
-    'eat', 'apply', 'open', 'close', 'down', 'up', 'drop', 'pickup', 'takeoff', 'wear',
-    'puton', 'quaff', 'zap', 'cast', 'reqmenu', 'fight', 'options', 'autopickup',
+    'eat', 'engrave', 'apply', 'open', 'close', 'down', 'up', 'drop', 'pickup',
+    'takeoff', 'wear',
+    'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'options', 'autopickup',
     'wizwish', 'wizlevelport', 'wizgenesis', 'fire', 'throw', 'swap', 'kick',
-    'save', 'wield', '#',
+    'save', 'wield', 'quiver', 'help', 'whatis', '#',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
     + `${ADMITTED_COMMANDS.join(', ')}, a one-square walk, a shift-direction `
@@ -1098,13 +1349,11 @@ export function reset_occupations(state = game) {
 // return; rhack() then runs one node per call, ahead of reading any key, so
 // "time passes normally when doing queued actions" (hack.h:172-173).
 //
-// Only CQ_CANNED is represented. C's other queue, CQ_REPEAT, is a
-// write-only recording buffer during ordinary play: cmdq_pop() reads it only
-// while gi.in_doagain is set, and cmd.c do_repeat() (1636-1660) is the sole
-// writer of that flag. #repeat and its ^A binding are unported, so every
-// CQ_REPEAT write C makes -- rhack():3735, getdir():4018, yn_function():5543,
-// getobj():2052-2053 -- would go into a list nothing can ever read. Each of
-// those sites says so where it stands.
+// CQ_REPEAT is a write-only recording buffer during ordinary play:
+// cmdq_pop() reads it only while gi.in_doagain is set, and cmd.c do_repeat()
+// (1636-1660) is the sole writer of that flag. #repeat and its ^A binding are
+// unported. yn_function() now records the whatdoes answer there; the other
+// source write sites remain outside their current callers' boundaries.
 //
 // CMDQ_EXTCMD and CMDQ_KEY nodes are produced. cmdq_add_dir(),
 // cmdq_add_int() and cmdq_add_userinput() have no ported caller.
@@ -1175,7 +1424,7 @@ export function resetCommandVars(state = game, resetCmdq = true) {
     state.iflags.menu_requested = false;
     if (resetCmdq) {
         cmdq_clear(CQ_CANNED, state);
-        // cmdq_clear(CQ_REPEAT): no CQ_REPEAT queue is ported.
+        cmdq_clear(CQ_REPEAT, state);
     }
 }
 
@@ -1360,6 +1609,9 @@ export function failClosedCommandRefusals() {
         UnsupportedDirectionBoundaryError,
         UnsupportedEatError,
         UnsupportedApplyError,
+        UnsupportedEngraveError,
+        UnsupportedHelpError,
+        UnsupportedWhatisError,
         // lock.c pick_lock() stops inside doapply()'s lock-pick arm, one
         // frame below UnsupportedApplyError rather than beside it.
         UnsupportedLockError,
@@ -1388,6 +1640,10 @@ export function failClosedCommandRefusals() {
         // and done_eating() and lesshungry() call it from doeat().
         UnsupportedHungerTransitionError,
         UnsupportedObjectPromptError,
+        // read.c doread() raises this after getobj() returns an object and
+        // before pickup_prev or any reading effect changes state. Cancellation
+        // completes normally, so only selected objects reach this refusal.
+        UnsupportedReadError,
         UnsupportedSteedError,
         // wield.c can_twoweapon()'s artifact and slippery-or-cursed arms,
         // both of which stop before the command prints anything or draws its
@@ -1707,6 +1963,34 @@ async function runEatCommand(key, state) {
     }));
 }
 
+async function runEngraveCommand(key, state) {
+    return failClosedCommand(key, state, () => doengrave(state, {
+        cantWield: cantwield,
+        checkCapacity: check_capacity,
+        getObject: getobj,
+        handsObject: hands_obj,
+        GETOBJ_PROMPT,
+        getLine: getlin,
+        mungspaces,
+        message: ttyPline,
+        redraw: newsym,
+        setOccupation: set_occupation,
+        random: { rn2, rnd },
+        ECMD_CANCEL,
+        ECMD_OK,
+    }));
+}
+
+async function runWhatisCommand(key, state) {
+    return failClosedCommand(key, state, () => dowhatis(state));
+}
+
+// C ref: pager.c dohelp(). The handler returns ECMD_OK after either a menu
+// cancellation or a selected target completes, so it never spends a turn.
+async function runHelpCommand(key, state) {
+    return failClosedCommand(key, state, () => dohelp(state));
+}
+
 // C ref: apply.c doapply(). Like dosearch() and doeat() it returns its own
 // ECMD_* result: use_stethoscope()'s free first listen answers ECMD_OK where a
 // second listen in the same move answers ECMD_TIME, and a cancelled object or
@@ -1776,6 +2060,14 @@ async function runCastCommand(key, state) {
 // cancelled object prompt, and ECMD_TIME for the quaff that happens.
 async function runQuaffCommand(key, state) {
     return failClosedCommand(key, state, () => dodrink(state));
+}
+
+// C ref: read.c doread(). Like dodrink() it returns its own ECMD_* result:
+// ECMD_OK for the capacity refusal and ECMD_CANCEL for an escaped object
+// prompt. A known uncursed magic-mapping scroll completes; other selected
+// objects stop inside doread() until their effects are ported.
+async function runReadCommand(key, state) {
+    return failClosedCommand(key, state, () => doread(state));
 }
 
 // C ref: do.c dodown(). Like dosearch() and doeat() it returns its own ECMD_*
@@ -2131,6 +2423,18 @@ async function doextcmd(key, state) {
         return await runSearchCommand(key, state);
     case 'doeat':
         return await runEatCommand(key, state);
+    case 'doengrave':
+        return await runEngraveCommand(key, state);
+    case 'dohelp':
+        return await runHelpCommand(key, state);
+    case 'dowhatis':
+        return await runWhatisCommand(key, state);
+    case 'doread':
+        return await runReadCommand(key, state);
+    case 'dowieldquiver':
+        return await failClosedCommand(
+            key, state, () => dowieldquiver(state),
+        );
     case 'doapply':
         return await runApplyCommand(key, state);
     case 'dozap':
@@ -2466,6 +2770,24 @@ export async function rhack(key, state = game) {
             if (res & ECMD_TIME) commandTookTime(state);
             return;
         }
+        if (command === 'engrave') {
+            const res = await runEngraveCommand(key, state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        if (command === 'help') {
+            await runHelpCommand(key, state);
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'whatis') {
+            await runWhatisCommand(key, state);
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
         if (command === 'apply') {
             // C ref: rhack()'s result handling at cmd.c:3810-3818, the same
             // three tests the '#', `search` and `eat` arms apply. doapply()
@@ -2553,6 +2875,19 @@ export async function rhack(key, state = game) {
             // CMD_M_PREFIX, so an 'm' prefix sets iflags.menu_requested and
             // skips the fountain/sink/underwater prompts.
             const res = await runQuaffCommand(key, state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        if (command === 'read') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3818. The read
+            // row at cmd.c:1816 carries no flags, so prefix and movement arms
+            // cannot divert it. doread() answers ECMD_OK for an overloaded
+            // hero and ECMD_CANCEL when getobj() is escaped; a selected object
+            // remains fail-closed before it changes state.
+            const res = await runReadCommand(key, state);
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
                 resetCommandVars(state, state.multi < 0);
@@ -2955,10 +3290,10 @@ export async function rhack(key, state = game) {
         // C ref: cmd.c rhack()'s bad-command path. Its custompline() differs
         // from pline() only in SUPPRESS_HISTORY, which keeps the line out of
         // the message history that doprev_message() recalls; no message
-        // history is ported. Its cmdq_clear(CQ_REPEAT) has no ported queue to
-        // clear, and iflags.sanity_no_check suppresses only the debug sanity
-        // check.
+        // history is ported. iflags.sanity_no_check suppresses only the debug
+        // sanity check.
         cmdq_clear(CQ_CANNED, state);
+        cmdq_clear(CQ_REPEAT, state);
         await ttyPline(`Unknown command '${visibleCommandKey(key)}'.`, state);
         state.context.move = 0;
         state.multi = 0;
