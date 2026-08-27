@@ -27,7 +27,9 @@ import { mk_artifact, nartifact_exist } from './artifact.js';
 
 import { game } from './gstate.js';
 import { start_timer, TIMER_OBJECT,
-         ROT_CORPSE as TIMEOUT_ROT_CORPSE } from './timeout.js';
+         ROT_CORPSE as TIMEOUT_ROT_CORPSE,
+         REVIVE_MON as TIMEOUT_REVIVE_MON,
+         obj_stop_timers } from './timeout.js';
 import { attach_egg_hatch_timeout } from './timeout.js';
 import { Is_rogue_level, NODIR, OBJ_FLOOR, OBJ_INVENT, In_quest } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
@@ -1229,6 +1231,7 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
             && (special_corpse(old_corpsenm)
                 || special_corpse(otmp.corpsenm))) {
             /* obj_stop_timers + start_corpse_timeout */
+            obj_stop_timers(otmp);
             start_corpse_timeout(otmp);
         }
     }
@@ -1307,11 +1310,12 @@ export function start_corpse_timeout(body) {
     const rot_adjust = game.in_mklev ? 25 : 10;
     const age = Math.max(game.moves ?? 1, 1) - body.age;
     let when = (age > ROT_AGE) ? rot_adjust : (ROT_AGE - age);
+    let action = TIMEOUT_ROT_CORPSE;
     when += rnz(rot_adjust) - rot_adjust;
 
     if (is_rider(game.mons[body.corpsenm])) {
-        /* rider_revival_time() draws; no Rider is generatable here */
-        note_unported_obj('rider_revival_time');
+        action = TIMEOUT_REVIVE_MON;
+        when = rider_revival_time(body, false);
     } else if (game.mons[body.corpsenm].mlet === MONSYMS.S_TROLL) {
         for (let a = 2; a <= TAINT_AGE; a++)
             if (!rn2(TROLL_REVIVE_CHANCE)) {
@@ -1322,7 +1326,19 @@ export function start_corpse_timeout(body) {
     /* src/mkobj.c:1440 — start_timer(when, TIMER_OBJECT, ROT_CORPSE, body).
        Scheduling was missing: the rnz above drew but the corpse never
        actually rotted, so piles kept a '%' on top forever (seed0004). */
-    start_timer(when, TIMER_OBJECT, TIMEOUT_ROT_CORPSE, body);
+    start_timer(when, TIMER_OBJECT, action, body);
+}
+
+// src/mkobj.c:1371 rider_revival_time(). Riders get a one-in-three revival
+// chance each turn after their species-specific minimum, with a hard cap.
+export function rider_revival_time(body, retry) {
+    const minturn = retry ? 3
+        : body.corpsenm === PMNAMES.PM_DEATH ? 6 : 12;
+    let when;
+    for (when = minturn; when < 67; when++)
+        if (!rn2(3))
+            break;
+    return when;
 }
 
 // include/objclass.h OBJ_NAME() — obj_descr[].oc_name; a null name marks a

@@ -771,6 +771,23 @@ export async function use_misc(mtmp) {
     const obj = game.m?.misc || null;
 
     switch (game.m?.has_misc || 0) {
+    case MUSE_POT_GAIN_LEVEL: {
+        if (!obj)
+            return 0;
+        await mquaffmsg(mtmp, obj);
+        if (obj.cursed) {
+            (game.unported ||= new Set()).add('use_misc:cursed_gain_level');
+            m_useup_misc(mtmp, obj);
+            return 2;
+        }
+        const { canseemon, pline } = await import('./display.js');
+        const { Monnam } = await import('./do_name.js');
+        if (canseemon(mtmp))
+            await pline(`${Monnam(mtmp)} seems more experienced.`);
+        m_useup_misc(mtmp, obj);
+        const { grow_up } = await import('./makemon.js');
+        return grow_up(mtmp, null) ? 2 : 1;
+    }
     case MUSE_WAN_SPEED_MONSTER: {
         if (!obj || obj.spe < 1)
             return 0;

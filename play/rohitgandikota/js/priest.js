@@ -1,8 +1,8 @@
 // priest.js — temple priests.
 // C ref: src/priest.c
 //
-// Only priestini() is here: the shrine priest created at altar creation.
-// Priest movement, chat and donations are recorded when reached.
+// Temple creation, entry, movement, chat, donations, roaming minions, and
+// anger are implemented here.
 
 import { game } from './gstate.js';
 import { rn2, rn1, d } from './rng.js';
@@ -10,19 +10,26 @@ import { makemon, remove_monster, place_monster,
          set_malign, mongets } from './makemon.js';
 import { ONAMES } from './objects_data.js';
 import { mpickobj } from './steal.js';
-import { mkobj, curse, SPBOOK_no_NOVEL } from './mkobj.js';
+import { mkobj, curse, SPBOOK_no_NOVEL, splitobj } from './mkobj.js';
 import { pm_good_location } from './sp_lev.js';
 import { PMNAMES, MMFLAGS } from './monst_data.js';
 import { ROOMOFFSET, W_ARMC, IS_ROOM, NOTONL, ALLOW_M,
-         ALLOW_ROCK, SPINE, AM_SHRINE, IS_ALTAR, In_endgame } from './const.js';
-import { mfndpos, mon_allowflags, m_at } from './mon.js';
-import { monnear, m_canseeu, histemple_at, inhishop } from './monmove.js';
+         ALLOW_ROCK, SPINE, AM_MASK, AM_SHRINE, IS_ALTAR,
+         In_endgame, A_WIS, FROMOUTSIDE, INTRINSIC, OBJ_FREE,
+         PRONOUN_HALLU, TEMPLE, TIMEOUT } from './const.js';
+import { mfndpos, mon_allowflags, m_at, setmangry, wakeup } from './mon.js';
+import { monnear, m_canseeu, histemple_at, inhishop,
+         inhistemple } from './monmove.js';
 import { dist2, online2 } from './hacklib.js';
 import { newsym, canseemon, canspotmon, pline } from './display.js';
 import { Invis, Deaf, Hallucination } from './youprop.js';
 import { You, You_feel } from './pline.js';
-import { Monnam } from './do_name.js';
+import { Monnam, mon_nam } from './do_name.js';
 import { helpless } from './monst.js';
+import { adjalign, exercise } from './attrib.js';
+import { in_rooms } from './hack.js';
+import { pronoun_gender } from './mondata.js';
+import { genders } from './role_data.js';
 
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
@@ -111,6 +118,202 @@ function has_shrine(priest) {
     const lev = game.level.at(epri.shrpos.x, epri.shrpos.y);
     return !!lev && IS_ALTAR(lev.typ) && !!(lev.altarmask & AM_SHRINE)
            && epri.shralign === Amask2align(lev.altarmask & ~AM_SHRINE);
+}
+
+async function money2u(mon, amount) {
+    const { addinv } = await import('./invent.js');
+    const minvent = mon.minvent || [];
+    const gold = minvent.find(obj => obj.otyp === ONAMES.GOLD_PIECE);
+    if (!gold || amount <= 0 || gold.quan < amount)
+        return;
+
+    const paid = gold.quan > amount ? splitobj(gold, amount) : gold;
+    if (paid === gold)
+        minvent.splice(minvent.indexOf(gold), 1);
+    paid.where = OBJ_FREE;
+    paid.ocarry = null;
+    await addinv(paid);
+    (game.disp ||= {}).botl = true;
+}
+
+async function money2mon(mon, amount) {
+    const { freeinv } = await import('./invent.js');
+    const gold = (game.invent || [])
+        .find(obj => obj.otyp === ONAMES.GOLD_PIECE);
+    if (!gold || amount <= 0 || gold.quan < amount)
+        return 0;
+
+    const paid = gold.quan > amount ? splitobj(gold, amount) : gold;
+    freeinv(paid);
+    paid.where = OBJ_FREE;
+    paid.ocarry = null;
+    mpickobj(mon, paid);
+    (game.disp ||= {}).botl = true;
+    return amount;
+}
+
+async function bribe(mon, prompt) {
+    const [{ getlin }, { currency, money_cnt }]
+        = await Promise.all([import('./cmd.js'), import('./invent.js')]);
+    const umoney = money_cnt(game.invent || []);
+    let offer = Number.parseInt(await getlin(prompt), 10);
+    if (!Number.isFinite(offer))
+        offer = 0;
+
+    if (offer < 0) {
+        await You(`try to shortchange ${mon_nam(mon)}, but fumble.`);
+        return 0;
+    }
+    if (offer === 0) {
+        await You('refuse.');
+        return 0;
+    }
+    if (offer >= umoney) {
+        await You(`give ${mon_nam(mon)} all your gold.`);
+        offer = umoney;
+    } else {
+        await You(`give ${mon_nam(mon)} ${offer} ${currency(offer)}.`);
+    }
+    await money2mon(mon, offer);
+    (game.disp ||= {}).botl = true;
+    return offer;
+}
+
+function incr_intrinsic_timeout(name, increment) {
+    const intrinsic = (game.u.intrinsic ||= {});
+    const old = intrinsic[name] || 0;
+    const timeout = Math.min(TIMEOUT,
+                             (old & TIMEOUT) + Math.max(0, increment));
+    intrinsic[name] = (old & ~TIMEOUT) | timeout;
+}
+
+// src/priest.c:558 priest_talk(), including ordinary temple donations.
+export async function priest_talk(priest) {
+    const { currency, money_cnt } = await import('./invent.js');
+    const coaligned = p_coaligned(priest);
+    const strayed = game.u.ualign.record < 0;
+    const epri = priest.epri || null;
+
+    game.u.uconduct ||= {};
+    game.u.uconduct.gnostic = (game.u.uconduct.gnostic || 0) + 1;
+
+    if (priest.mflee || (!priest.ispriest && coaligned && strayed)) {
+        await pline(`${Monnam(priest)} doesn't want anything to do with you!`);
+        priest.mpeaceful = 0;
+        return;
+    }
+
+    if (!inhistemple(priest) || !priest.mpeaceful || helpless(priest)) {
+        const cranky = [
+            "Thou wouldst have words, eh?  I'll give thee a word or two!",
+            'Talk?  Here is what I have to say!',
+            'Pilgrim, I would speak no longer with thee.',
+        ];
+        if (helpless(priest)) {
+            const his = genders[pronoun_gender(priest, PRONOUN_HALLU)].his;
+            await pline(`${Monnam(priest)} breaks out of ${his} reverie!`);
+            priest.mfrozen = 0;
+            priest.msleeping = 0;
+            priest.mcanmove = 1;
+        }
+        priest.mpeaceful = 0;
+        await pline(`"${cranky[rn2(3)]}"`);
+        return;
+    }
+
+    if (priest.mpeaceful
+        && in_rooms(priest.mx, priest.my, TEMPLE)
+        && !has_shrine(priest)) {
+        await pline('"Begone!  Thou desecratest this holy place with thy presence."');
+        priest.mpeaceful = 0;
+        return;
+    }
+
+    if (!money_cnt(game.invent || [])) {
+        if (coaligned && !strayed) {
+            const pmoney = money_cnt(priest.minvent || []);
+            if (pmoney > 0) {
+                const bits = Hallucination() ? currency(pmoney)
+                           : pmoney === 1 ? 'bit' : 'bits';
+                await pline(`${Monnam(priest)} gives you ${
+                    pmoney === 1 ? 'one ' : 'two '}${bits} for an ale.`);
+                await money2u(priest, pmoney > 1 ? 2 : 1);
+            } else {
+                await pline(`${Monnam(priest)} preaches the virtues of poverty.`);
+            }
+            exercise(A_WIS, true);
+        } else {
+            await pline(`${Monnam(priest)} is not interested.`);
+        }
+        return;
+    }
+
+    const cheapskate = epri?.cheapskate_count || 0;
+    const suggested = (game.u.ulevelpeak || 1)
+        * rn1(101, 150 + cheapskate * 40);
+    const money = money_cnt(game.invent || []);
+    const quan = Math.max(1, Math.trunc(money / (suggested * 3)));
+    const prompt = `How much will you offer (suggested: ${
+        suggested * quan} or ${suggested * quan * 2})?`;
+
+    await pline(game.wizard
+        ? `${Monnam(priest)} asks you for a contribution for the temple (base ${suggested}).`
+        : `${Monnam(priest)} asks you for a contribution for the temple.`);
+    const offer = await bribe(priest, prompt);
+
+    if (offer === 0) {
+        await pline('"Thou shalt regret thine action!"');
+        if (coaligned)
+            adjalign(-1);
+        if (epri)
+            epri.cheapskate_count = cheapskate + 1;
+    } else if (offer < suggested * quan) {
+        if (money_cnt(game.invent || []) > offer * 2) {
+            await pline('"Cheapskate."');
+            if (epri)
+                epri.cheapskate_count = cheapskate + 1;
+        } else {
+            await pline('"I thank thee for thy contribution."');
+            exercise(A_WIS, true);
+        }
+    } else if (offer < suggested * quan * 2) {
+        await pline('"Thou art indeed a pious individual."');
+        if (money_cnt(game.invent || []) < offer * 2
+            && coaligned && game.u.ualign.record <= -4)
+            adjalign(1);
+        await pline('"I bestow upon thee a blessing."');
+        const base = Math.trunc(500 * offer / suggested);
+        incr_intrinsic_timeout('HClairvoyant', rn1(base, base));
+    } else if (offer < suggested * quan * 3) {
+        const intrinsic = (game.u.intrinsic ||= {});
+        let original = game.u.ublessed || 0;
+        if (!((intrinsic.HProtection || 0) & INTRINSIC)) {
+            intrinsic.HProtection = (intrinsic.HProtection || 0)
+                | FROMOUTSIDE;
+            original = -1;
+        }
+        for (let reward = offer; reward >= 2 * suggested;
+             reward -= 2 * suggested) {
+            if (!game.u.ublessed)
+                game.u.ublessed = rn1(3, 2);
+            else if (game.u.ublessed < 20
+                     && (game.u.ublessed < 9 || !rn2(game.u.ublessed)))
+                game.u.ublessed++;
+        }
+        await pline(game.u.ublessed > original
+            ? '"Thou hast been rewarded for thy devotion."'
+            : '"Thy selfless generosity is deeply appreciated."');
+    } else {
+        await pline('"Thy selfless generosity is deeply appreciated."');
+        if (money_cnt(game.invent || []) < offer * 2 && coaligned) {
+            if (strayed && (game.moves - (game.u.ucleansed || 0)) > 5000) {
+                game.u.ualign.record = 0;
+                game.u.ucleansed = game.moves;
+            } else {
+                adjalign(2);
+            }
+        }
+    }
 }
 
 // src/priest.c:414 intemple(), temple entry feedback.
@@ -409,4 +612,34 @@ export function reset_hostility(roamer) {
         set_malign(roamer);
     }
     newsym(roamer.mx, roamer.my);
+}
+
+// src/priest.c:877 angry_priest() -- anger the cleric for the temple the
+// hero currently occupies. A destroyed or converted shrine releases that
+// cleric as a roaming minion of the shrine's former alignment.
+export async function angry_priest() {
+    const occupied = new Set([...(game.u.urooms || ''),
+                              ...(game.u.urooms0 || '')]);
+    const priest = (game.level?.monsters || []).find((mon) =>
+        mon.mhp > 0 && mon.ispriest && mon.epri
+        && occupied.has(String.fromCharCode(mon.epri.shroom)));
+    if (!priest)
+        return;
+
+    await wakeup(priest, false);
+    await setmangry(priest, false);
+
+    const epri = priest.epri;
+    const shrine = game.level?.at(epri.shrpos.x, epri.shrpos.y);
+    if (!shrine || !IS_ALTAR(shrine.typ)
+        || Amask2align(shrine.altarmask & AM_MASK) !== epri.shralign) {
+        const emin = { min_align: epri.shralign, renegade: false };
+        priest.emin = emin;
+        priest.mextra ||= {};
+        priest.mextra.emin = emin;
+        delete priest.mextra.epri;
+        delete priest.epri;
+        priest.ispriest = 0;
+        priest.isminion = 1;
+    }
 }

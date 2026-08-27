@@ -13,6 +13,7 @@ import {
 import { selection_filter_percent, selection_getbounds } from '../selvar.js';
 import { rn2 } from '../rng.js';
 import { game } from '../gstate.js';
+import { Invocation_lev } from '../dungeon.js';
 import { hell_tweaks } from './nhlib.js';
 
 const mathrandom = (n) => 1 + rn2(n);
@@ -400,8 +401,7 @@ export async function hellfill_level() {
     init_hell_style(mathrandom(7));
 
     lspo_stair('up');
-    const inv = game.inv_pos;
-    if (inv && game.u.uz.dnum === inv.dnum && game.u.uz.dlevel === inv.dlevel)
+    if (Invocation_lev(game.u.uz))
         lspo_trap('vibrating square');
     else
         lspo_stair('down');

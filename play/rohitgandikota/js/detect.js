@@ -10,7 +10,7 @@ import { cmap_names, def_monsyms, defsyms } from './drawing_data.js';
 import { You, You_feel } from './pline.js';
 import { m_at, t_at, seemimic } from './mon.js';
 import { Is_rogue_level, WM_MASK, D_LOCKED, D_CLOSED, ROWNO, COLNO,
-         STONE, W_NONDIGGABLE, W_NONPASSWALL } from './const.js';
+         STONE, W_NONDIGGABLE, W_NONPASSWALL, D_TRAPPED } from './const.js';
 import { SDOOR, SCORR, DOOR, CORR, D_NODOOR, SVALL, IS_FURNITURE, A_WIS,
          STATUE_TRAP } from './const.js';
 import { rn2 } from './rng.js';
@@ -31,7 +31,7 @@ import { back_to_glyph, show_glyph_cell, flush_screen, trap_glyph,
 import { TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, IS_WALL,
          M_AP_FURNITURE } from './const.js';
 import { NO_COLOR, CLR_GREEN, CLR_WHITE } from './terminal.js';
-import { cansee } from './vision.js';
+import { cansee, couldsee } from './vision.js';
 import { getpos } from './getpos.js';
 const CM = cmap_names;
 
@@ -378,9 +378,19 @@ function findone(zx, zy, found) {
         newsym(zx, zy);
         found.num_traps++;
     }
-    /* trapped doors and trapped containers add dummy-trap reveals */
-    if (lev.typ === DOOR && (lev.doormask & 0x10 /* D_TRAPPED */))
-        note_unported_detect('findone:trapped_door');
+    /* Trapped doors and floor boxes are reported through dummy trap glyphs
+       in C. The flash has reverted before the command boundary, so retain
+       the knowledge and count while leaving the ordinary map glyph intact. */
+    if (lev.typ === DOOR && (lev.doormask & D_TRAPPED))
+        found.num_traps++;
+    for (const obj of game.level?.objects || []) {
+        if (obj.ox !== zx || obj.oy !== zy || !obj.otrapped)
+            continue;
+        if (obj.otyp !== ONAMES.LARGE_BOX && obj.otyp !== ONAMES.CHEST)
+            continue;
+        obj.tknown = 1;
+        found.num_traps++;
+    }
 
     if (mtmp && (mtmp.mundetected || M_AP_TYPE_D(mtmp))) {
         if (M_AP_TYPE_D(mtmp)) {
@@ -414,8 +424,10 @@ export async function findit() {
          y <= Math.min(ROWNO - 1, uy + range); y++) {
         const offset = circle_data_findit[limits + Math.abs(y - uy)];
         for (let x = Math.max(1, ux - offset);
-             x <= Math.min(COLNO - 1, ux + offset); x++)
-            findone(x, y, found);
+             x <= Math.min(COLNO - 1, ux + offset); x++) {
+            if (couldsee(x, y))
+                findone(x, y, found);
+        }
     }
 
     const k = (found.num_sdoors ? 1 : 0) + (found.num_scorrs ? 1 : 0)

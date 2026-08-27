@@ -8,7 +8,7 @@ import { ONAMES, OCLASSES } from './objects_data.js';
 import { update_topl, show_topl_nohistory } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
 import { term_start_color } from './tty/termcap.js';
-import { rank, bot_conditions } from './botl.js';
+import { rank, rank_of, bot_conditions } from './botl.js';
 import { Upolyd } from './const.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { Blind, Infravision, Hallucination, Invis, See_invisible,
@@ -1193,6 +1193,20 @@ export function newsym(x, y) {
                             && (mon.mx !== x || mon.my !== y));
         const spotMon = !!(mon && (mon_visible(mon)
                                    || (!wormTail && sensemon(mon))));
+        /* src/display.c:1029, a warning glyph takes precedence over a
+           remembered invisible-monster marker. */
+        if (!spotMon && mon && mon_warning(mon) && !wormTail) {
+            let wl = Hallucination()
+                ? rn2_on_display_rng(5) + 1
+                : ((mon.m_lev ?? 0) / 4) | 0;
+            if (wl > 5) wl = 5;
+            if (wl < 1) wl = 1;
+            const warncolor = [CLR_WHITE, 1, 1, 1, 5, 13];
+            clear_invisible_memory(x, y);
+            show_glyph_cell(x, y, String(wl), warncolor[wl], false, 0,
+                            { kind: 'warn', wl });
+            return;
+        }
         /* src/display.c:1031 — an 'I' stays mapped until some action proves
            that it is stale. Merely seeing the square again is not proof. */
         if (!spotMon && glyph_is_invisible_at(x, y)) {
@@ -1251,20 +1265,6 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
                             shown.mcolor ?? NO_COLOR, false, 0,
                             { kind: 'mon', mon });
-            return;
-        }
-
-        /* src/display.c:1029: warning still marks an unseen monster whose
-           square itself is visible, such as a submerged eel in clear water. */
-        if (mon && mon_warning(mon)) {
-            let wl = Hallucination()
-                ? rn2_on_display_rng(5) + 1
-                : ((mon.m_lev ?? 0) / 4) | 0;
-            if (wl > 5) wl = 5;
-            if (wl < 1) wl = 1;
-            const warncolor = [CLR_WHITE, 1, 1, 1, 5, 13];
-            show_glyph_cell(x, y, String(wl), warncolor[wl], false, 0,
-                            { kind: 'warn', wl });
             return;
         }
 
@@ -1622,9 +1622,12 @@ function _statusLine1() {
         ? (mons[u.umonnum].pmnames[game.flags.female ? 1 : 0]
            || mons[u.umonnum].pmnames[2] || mons[u.umonnum].pmnames[0])
         : '';
+    const shownLevel = game._deferred_status_level_until_more ?? u.ulevel;
     const role = Upolyd(u)
         ? polyname.replace(/\b\w/g, c => c.toUpperCase())
-        : rank();
+        : (shownLevel === u.ulevel
+           ? rank()
+           : rank_of(shownLevel, game.urole, !!game.flags.female));
     const title = `${name} the ${role}`;
     /* src/botl.c:87 — u.acurr.a[] is indexed by the include/attrib.h enum
        (A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA), which is NOT the order the
@@ -1692,11 +1695,12 @@ function _statusLine2() {
           /* src/botl.c:120 — hp = max(hp, 0): the dying frame shows 0 */
           + ` HP:${shownHp}(${maxHp || 0})`
           + ` Pw:${u.uen || 0}(${u.uenmax || 0})`
-          + ` AC:${u.uac ?? 0}`;
+          + ` AC:${game._deferred_status_ac_until_more ?? u.uac ?? 0}`;
     if (Upolyd(u))
         s += ` HD:${mons[u.umonnum].mlevel}`;
     else {
-        s += ` Xp:${u.ulevel || 1}`;
+        const shownLevel = game._deferred_status_level_until_more ?? u.ulevel;
+        s += ` Xp:${shownLevel || 1}`;
         if (f.showexp) s += `/${u.uexp || 0}`;
     }
     if (f.time) s += ` T:${game.moves || 1}`;
@@ -2095,6 +2099,12 @@ export async function more() {
     } else {
         delete game._deferred_status_hp_until_more;
         delete game._deferred_status_hp_more_count;
+    }
+    if ((game._deferred_status_ac_more_count | 0) > 1) {
+        game._deferred_status_ac_more_count--;
+    } else {
+        delete game._deferred_status_ac_until_more;
+        delete game._deferred_status_ac_more_count;
     }
 
     /* win/tty/topl.c more():234 — ESC sets WIN_STOP: the player has asked to
@@ -2505,7 +2515,7 @@ function mon_overrides_region(mon, mx, my) {
 
 // include/display.h:64 _mon_warning() — Warning, hostile, within 10 squares,
 // and at least the context warnlevel.
-function mon_warning(mon) {
+export function mon_warning(mon) {
     const u = game.u;
     const Warning = !!(u.uprops?.WARNING || u.intrinsic?.HWarning);
     if (!Warning || mon.mpeaceful)

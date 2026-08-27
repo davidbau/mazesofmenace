@@ -21,6 +21,8 @@ import { rank_of } from './botl.js';
 import { roles } from './role_data.js';
 import { m_dowear } from './worn.js';
 import { In_endgame, NO_MM_FLAGS, MM_NOMSG } from './const.js';
+import { is_art, mk_artifact } from './artifact.js';
+import { ART_MAGICBANE } from './artilist_data.js';
 
 function note_unported_mplayer(what) {
     (game.unported ||= new Set()).add('mplayer:' + what);
@@ -293,13 +295,15 @@ export function mk_mplayer(ptr, x, y, special) {
             else if (!rn2(2))
                 otmp.greased = 1;
             if (special && rn2(2))
-                note_unported_mplayer('mk_mplayer:mk_artifact');
+                otmp = mk_artifact(otmp, -128 /* A_NONE */, 99, false);
             /* usually increase stack size if stackable weapon */
             if (game.objects[otmp.otyp].oc_merge && !otmp.oartifact
                 && monmightthrowwep(otmp))
                 otmp.quan += rn2(is_spear(otmp) ? 4 : 8);
             otmp.owt = weight(otmp);
-            /* (Magicbane overenchantment guard is artifact-only) */
+            /* mplayers knew better than to overenchant Magicbane */
+            if (is_art(otmp, ART_MAGICBANE))
+                otmp.spe = rnd(4);
             mpickobj(mtmp, otmp);
         }
 

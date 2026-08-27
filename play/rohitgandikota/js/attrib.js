@@ -15,7 +15,7 @@ import { You, Your } from './pline.js';
 import { pline } from './display.js';
 import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE,
          FROMEXPER, FROMRACE, FROMOUTSIDE, Is_airlevel, TIMEOUT } from './const.js';
-import { strongmonst } from './mondata.js';
+import { strongmonst, throws_rocks } from './mondata.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
 import { rn2, rn1, rnd, d } from './rng.js';
@@ -90,7 +90,8 @@ export function inv_weight() {
     for (const otmp of game.invent || []) {
         if (otmp.oclass === OCLASSES.COIN_CLASS)
             wt += Math.trunc((otmp.quan + 50) / 100);
-        else if (otmp.otyp !== ONAMES.BOULDER)
+        else if (otmp.otyp !== ONAMES.BOULDER
+                 || !throws_rocks(game.youmonst.data))
             wt += otmp.owt;
     }
     game.wc = weight_cap();
@@ -111,6 +112,13 @@ export function calc_capacity(xtra_wt) {
 // src/hack.c:4385 near_capacity()
 export function near_capacity() {
     return calc_capacity(0);
+}
+
+// src/hack.c:4391 max_capacity() -- negative means that much weight can
+// still be added before the absolute carrying limit is reached.
+export function max_capacity() {
+    const wt = inv_weight();
+    return wt - (2 * game.wc);
 }
 
 // src/pickup.c:1978 encumber_msg() — announce a CHANGE in encumbrance.

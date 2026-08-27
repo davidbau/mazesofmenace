@@ -21,9 +21,10 @@ import { MM_NOCOUNTBIRTH, MM_NOMSG, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
          G_GONE, BR_NO_END1, BR_NO_END2, BR_PORTAL } from './const.js';
 import { do_mkroom, antholemon, mkroom_wire } from './mkroom.js';
 import { SPBOOK_no_NOVEL } from './mkobj.js';
-import { mongone } from './mon.js';
+import { mongone, m_at, is_pool, minliquid, seemimic } from './mon.js';
 import { sgn } from './hacklib.js';
-import { set_wall_state } from './display.js';
+import { set_wall_state, newsym, flush_screen,
+         display_nhwindow_message } from './display.js';
 import { obj_extract_self } from './invent.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { fill_special_room, sp_lev_wire_mklev, sp_lev_wire_walkfrom, sp_lev_wire_priest, sp_lev_wire_roamer, reset_xystart_size } from './sp_lev.js';
@@ -101,11 +102,13 @@ function mk_knox_portal(x, y) {
 }
 import { random_engraving, wipeout_text } from './engrave.js';
 import { merged, weight, sobj_at } from './invent.js';
-import { mkroll_launch } from './trap.js';
+import { mkroll_launch, mintrap, deltrap } from './trap.js';
 import { themeroom_fill_contents, post_level_generate } from './themerms.js';
 import { oinit } from './o_init.js';
 import { mkroom_table, create_des_coder, spo_push_room,
          spo_endroom } from './sp_lev.js';
+import { does_block, unblock_point, COULD_SEE, IN_SIGHT } from './vision.js';
+import { pline_The, You } from './pline.js';
 
 // include/permonst.h / include/hack.h:1189-1193, 1404
 const NON_PM = -1;
@@ -190,9 +193,9 @@ export function mklev_wire_mon(fns) { mklev_mon = fns; }
 import { depth as depth_of_level, Is_special, insert_branch } from './dungeon.js';
 import { Is_oracle_level, Is_rogue_level, In_mines } from './const.js';
 
-/* include/dungeon.h In_hell() — the Gehennom branch. js/trap.js has a private
-   copy of this; C has one, and they should be consolidated. */
-const In_hell = (lev) => (lev ?? game.u?.uz)?.dnum === game.hell_dnum;
+/* include/dungeon.h In_hell(): any dungeon flagged hellish. */
+const In_hell = (lev) =>
+    game.dungeons?.[(lev ?? game.u?.uz)?.dnum]?.flags?.hellish === true;
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -254,7 +257,7 @@ export function stairway_add(x, y, up, isladder, dest) {
 
 // ── Stairway lookup ──
 
-function stairway_find_dir(up) {
+export function stairway_find_dir(up) {
     for (let s = game.stairs; s; s = s.next)
         if (s.up === up) return s;
     return null;
@@ -2420,6 +2423,165 @@ function mkstairs(x, y, up, croom) {
     stairway_add(x, y, !!up, false, dest);
     if (up) g.level.upstair = { x, y };
     else g.level.dnstair = { x, y };
+}
+
+// src/mklev.c:2503 mkinvpos(). Change one square in the expanding invocation
+// area, applying the new terrain to any trap, boulder, or monster already
+// there before painting it.
+async function mkinvpos(x, y, dist) {
+    const xmax = game.x_maze_max ?? 78;
+    const ymax = game.y_maze_max ?? 20;
+    if (x < 2 || y < 2 || x > xmax || y > ymax)
+        return;
+
+    let trap = t_at(x, y);
+    if (trap)
+        deltrap(trap);
+
+    let makeRocks = dist !== 1 && dist !== 4 && dist !== 5;
+    let boulder;
+    while ((boulder = sobj_at(BOULDER, x, y))) {
+        if (makeRocks) {
+            boulder.otyp = ROCK;
+            boulder.oclass = GEM_CLASS;
+            boulder.quan = rn1(60, 7);
+            boulder.owt = weight(boulder);
+            boulder.dknown = boulder.bknown = boulder.rknown = 0;
+            boulder.known = game.objects[ROCK]?.oc_uses_known ? 0 : 1;
+            obj_extract_self(boulder);
+            place_object(boulder, x, y);
+            makeRocks = false;
+        } else {
+            obj_extract_self(boulder);
+        }
+    }
+
+    const loc = game.level.at(x, y);
+    loc.seenv = 0;
+    loc.doormask = 0;
+    if (dist < 6)
+        loc.lit = 1;
+    loc.waslit = 1;
+    loc.horizontal = 0;
+    if (game.viz_array?.[y])
+        game.viz_array[y][x] = dist < 6
+            ? IN_SIGHT | COULD_SEE : COULD_SEE;
+
+    switch (dist) {
+    case 1:
+        if (!is_pool(x, y)) {
+            loc.typ = ROOM;
+            trap = maketrap(x, y, FIRE_TRAP);
+            if (trap)
+                trap.tseen = 1;
+        }
+        break;
+    case 0:
+    case 2:
+    case 3:
+    case 6:
+        loc.typ = ROOM;
+        break;
+    case 4:
+    case 5:
+        loc.typ = MOAT;
+        break;
+    default:
+        return;
+    }
+
+    const mon = m_at(x, y);
+    if (mon) {
+        mon.data ||= game.mons?.[mon.mnum];
+        if (mon.m_ap_type)
+            seemimic(mon);
+        trap = t_at(x, y);
+        if (trap)
+            await mintrap(mon, 0);
+        else
+            await minliquid(mon);
+    }
+
+    if (!does_block(x, y, loc))
+        unblock_point(x, y);
+    newsym(x, y);
+}
+
+// src/mklev.c:2402 mkinvokearea(). The six flush/yield pairs are the actual
+// invocation animation, not a reconstruction from the final terrain.
+export async function mkinvokearea() {
+    const pos = game.invocation_pos || { x: game.u.ux, y: game.u.uy };
+    const isWall = (x, y) => {
+        if (!isok(x, y))
+            return false;
+        const typ = game.level.at(x, y)?.typ;
+        return IS_STWALL(typ) || typ === IRONBARS;
+    };
+
+    await pline_The('floor shakes violently under you!');
+
+    let xmin = pos.x, xmax = pos.x, ymin = pos.y, ymax = pos.y;
+    let wallct = isWall(xmin, ymin) ? 1 : 0;
+    for (let dist = 1; !wallct && dist < 7; ++dist) {
+        --xmin;
+        ++xmax;
+        if (dist !== 3) {
+            --ymin;
+            ++ymax;
+            for (let x = xmin + 1; x < xmax; ++x) {
+                if (isWall(x, ymin)) ++wallct;
+                if (isWall(x, ymax)) ++wallct;
+            }
+        }
+        if (!wallct) {
+            for (let y = ymin; y <= ymax; ++y) {
+                if (isWall(xmin, y)) ++wallct;
+                if (isWall(xmax, y)) ++wallct;
+            }
+        }
+    }
+    if (wallct)
+        await pline_The('walls around you begin to bend and crumble!');
+    /* ESC at the Book's pending --More-- leaves the invocation messages
+       cancelled. The tty call returns without repainting that buffered text;
+       preserving NEED_MORE lets the next ordinary command erase the last
+       line which was actually visible. */
+    if (!game._win_stop)
+        await display_nhwindow_message();
+
+    if (game.u.utrap) {
+        game.u.utrap = 0;
+        game.u.utraptype = 0;
+    }
+
+    xmin = xmax = pos.x;
+    ymin = ymax = pos.y;
+    await mkinvpos(xmin, ymin, 0);
+
+    for (let dist = 1; dist < 7; ++dist) {
+        --xmin;
+        ++xmax;
+        if (dist !== 3) {
+            --ymin;
+            ++ymax;
+            for (let x = xmin + 1; x < xmax; ++x) {
+                await mkinvpos(x, ymin, dist);
+                await mkinvpos(x, ymax, dist);
+            }
+        }
+        for (let y = ymin; y <= ymax; ++y) {
+            await mkinvpos(xmin, y, dist);
+            await mkinvpos(xmax, y, dist);
+        }
+        await flush_screen(1);
+        if (game.animationFrame)
+            await game.animationFrame();
+    }
+
+    await You('are standing at the top of a stairwell leading down!');
+    mkstairs(game.u.ux, game.u.uy, 0, null);
+    newsym(game.u.ux, game.u.uy);
+    game.vision_full_recalc = 1;
 }
 
 async function generate_stairs() {

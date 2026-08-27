@@ -16,7 +16,8 @@ import { closed_door } from './cmd.js';
 
 import { STONE, WATER, LAVAWALL, IRONBARS, IS_SINK, POOL, WEB,
          THROWN_WEAPON, KICKED_WEAPON, ZAPPED_WAND, M_AP_TYPE,
-         M_AP_OBJECT, ICE, Is_airlevel, Is_waterlevel, st_all, plur,
+         M_AP_NOTHING, M_AP_MONSTER, M_AP_OBJECT, ICE,
+         Is_airlevel, Is_waterlevel, st_all, plur,
          ONAME_WISH, ONAME_KNOW_ARTI, IS_ROOM, STRAT_WAITMASK,
          ZAP_POS, W_ARM, W_ARMS, W_WEP, W_AMUL, HI_ZAP,
          W_RING, W_ARMOR, W_ACCESSORY, W_ART, A_STR,
@@ -32,7 +33,8 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_destroy_nhwindow, NHW_TEXT } from './tty/wintty.js';
 import { OCLASSES } from './objects_data.js';
 import { DEADMONSTER } from './monst.js';
-import { killed, monkilled, shieldeff_mon, wakeup, wake_nearto } from './mon.js';
+import { killed, monkilled, seemimic, shieldeff_mon, wakeup,
+         wake_nearto } from './mon.js';
 import { ONAMES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_rider } from './makemon.js';
@@ -53,7 +55,7 @@ import { Norep, pline_The, You, You_feel, You_hear } from './pline.js';
 import { pline } from './display.js';
 import { The, vtense, xname, Yname2, yname, makeplural,
          Yobjnam2, otense } from './objnam.js';
-import { mon_nam } from './do_name.js';
+import { Monnam, mon_nam } from './do_name.js';
 import { canseemon, canspotmon } from './display.js';
 import { engulfing_u } from './const.js';
 import { nothing_happens, ECMD_OK, ECMD_TIME, ECMD_CANCEL, NODIR, IMMEDIATE,
@@ -65,9 +67,10 @@ import { obj_extract_self, useup, weight } from './invent.js';
 import { is_flammable, is_rottable, burnarmor } from './trap.js';
 import { is_metallic } from './obj.js';
 import { MATERIALS } from './objects_data.js';
-import { ATTKS, PMNAMES } from './monst_data.js';
+import { ATTKS, MONSYMS, PMNAMES } from './monst_data.js';
 import { breathless, defended, haseyes, resists_blnd, resists_cold,
-         resists_elec, resists_fire, resists_magm, nohands } from './mondata.js';
+         resists_elec, resists_fire, resists_magm, resists_sleep,
+         nohands } from './mondata.js';
 import { find_mac } from './worn.js';
 import { Reflecting, Sleep_resistance, Fire_resistance, Cold_resistance,
          Shock_resistance, Deaf, Unaware } from './youprop.js';
@@ -76,6 +79,7 @@ import { CLR_ORANGE, CLR_WHITE, CLR_BLACK, CLR_GREEN,
          CLR_YELLOW } from './terminal.js';
 import { create_gas_cloud } from './region.js';
 import { boolean_option } from './options.js';
+import { finish_meating } from './dogmove.js';
 
 /* include/objclass.h:200/:201/:204 — local copies of the material
    predicates trap.js also carries (they are header macros in C). */
@@ -915,11 +919,56 @@ export async function zapwrapup() {
     obj_zapped = false;
 }
 
-// src/zap.c:1170ish bhitm() — zap effect hits a monster. Nothing that a
-// polymorph-at-pile session reaches; every arm records until its subsystem
-// lands.
+// src/zap.c:158 bhitm(), immediate wand or spell effect on a monster.
 export async function bhitm(mtmp, otmp) {
-    note_unported_zap(`bhitm:otyp=${otmp.otyp}`);
+    let wake = true;
+    let reveal_invis = false;
+    let learn_it = false;
+    const role = game.urole?.mnum ?? game.urole?.malenum;
+    const double_damage = (role === 'PM_KNIGHT' || role === PMNAMES.PM_KNIGHT)
+                          && game.u.uhave?.questart;
+    const disguised_mimic = mtmp.data?.mlet === MONSYMS.S_MIMIC
+                             && M_AP_TYPE(mtmp) !== M_AP_NOTHING;
+
+    switch (otmp.otyp) {
+    case ONAMES.WAN_STRIKING: {
+        reveal_invis = true;
+        learn_it = cansee(game.bhitpos.x, game.bhitpos.y);
+        if (resists_magm(mtmp)) {
+            if (disguised_mimic && M_AP_TYPE(mtmp) !== M_AP_MONSTER)
+                seemimic(mtmp);
+            shieldeff_mon(mtmp);
+            await pline('Boing!');
+        } else if (game.u.uswallow || rnd(20) < 10 + find_mac(mtmp)) {
+            if (disguised_mimic)
+                seemimic(mtmp);
+            let dmg = d(2, 12);
+            if (double_damage)
+                dmg *= 2;
+            await hit('wand', mtmp, exclam(dmg));
+            const resisted = resist(mtmp, otmp.oclass, dmg, true);
+            if (resisted && cansee(mtmp.mx, mtmp.my))
+                await pline(`${Monnam(mtmp)} resists!`);
+        } else {
+            if (!disguised_mimic)
+                await miss('wand', mtmp);
+            learn_it = false;
+        }
+        break;
+    }
+    default:
+        note_unported_zap(`bhitm:otyp=${otmp.otyp}`);
+        wake = false;
+        break;
+    }
+
+    if (wake && !DEADMONSTER(mtmp))
+        await wakeup(mtmp, true);
+    if (reveal_invis && !DEADMONSTER(mtmp)
+        && cansee(game.bhitpos.x, game.bhitpos.y) && !canspotmon(mtmp))
+        map_invisible(game.bhitpos.x, game.bhitpos.y);
+    if (learn_it)
+        learnwand(otmp);
     return 0;
 }
 
@@ -1316,9 +1365,34 @@ export async function destroy_items(mon, osym, dmg_in) {
     return damage;
 }
 
-// src/zap.c:4238 zhitm(). The common missile and cold-ray damage paths are
-// complete. Other ray families stay marked until their item-destruction and
-// status effects are ported together.
+// src/zap.c:4238 zhitm(). The common missile, elemental, and sleep-ray paths
+// are complete. Other ray families stay marked until their item-destruction
+// and status effects are ported together.
+function sleep_monst(mon, amount, how) {
+    const ptr = game.mons[mon.mnum];
+    if (how >= 0 && !mon.msleeping && !mon.mfrozen
+        && ptr.mlet === MONSYMS.S_MIMIC
+        && (M_AP_TYPE(mon) === M_AP_FURNITURE
+            || M_AP_TYPE(mon) === M_AP_OBJECT))
+        seemimic(mon);
+
+    if (resists_sleep(mon) || defended(mon, ATTKS.AD_SLEE)
+        || (how >= 0 && resist(mon, how, 0, false))) {
+        shieldeff_mon(mon);
+    } else if (mon.mcanmove) {
+        finish_meating(mon);
+        amount += mon.mfrozen || 0;
+        if (amount > 0) {
+            mon.mcanmove = 0;
+            mon.mfrozen = Math.min(amount, 127);
+        } else {
+            mon.msleeping = 1;
+        }
+        return true;
+    }
+    return false;
+}
+
 async function zhitm(mon, type, nd) {
     const damgtype = zaptype(type) % 10;
     let damage = 0;
@@ -1359,6 +1433,10 @@ async function zhitm(mon, type, nd) {
             if (!rn2(3))
                 damage += await destroy_items(mon, ATTKS.AD_COLD, orig_damage);
         }
+        break;
+    case 3:
+        sleep_monst(mon, d(nd, 25),
+                    type === 3 ? OCLASSES.WAND_CLASS : 0);
         break;
     case 5: {
         damage = d(nd, 6);

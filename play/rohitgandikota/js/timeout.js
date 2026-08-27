@@ -14,9 +14,10 @@ import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
-import { TIMEOUT, FROMOUTSIDE, WT_NOISY_INV, FOOT, A_DEX,
+import { TIMEOUT, FROMOUTSIDE, WT_NOISY_INV, FOOT, A_DEX, A_CON,
          PLNMSG_ONE_ITEM_HERE } from './const.js';
 import { ONAMES } from './objects_data.js';
+import { pline } from './display.js';
 
 // include/timeout.h:11 enum timer_type
 export const TIMER_NONE = 0;
@@ -81,6 +82,20 @@ export function start_timer(when, kind, func_index, arg) {
     return true;
 }
 
+// src/timeout.c:2377 obj_stop_timers(). Remove every timer attached to an
+// object before changing the object type or corpse species.
+export function obj_stop_timers(obj) {
+    const base = (game.timer_base ||= []);
+    let removed = 0;
+    game.timer_base = base.filter((timer) => {
+        const match = timer.kind === TIMER_OBJECT && timer.arg === obj;
+        if (match)
+            removed++;
+        return !match;
+    });
+    obj.timed = Math.max(0, (obj.timed || 0) - removed);
+}
+
 // src/timeout.c:2222 run_timers() — fire every timer whose time has come.
 // The list is ordered; we are done when the first element is in the future.
 // Runs from nh_timeout()'s tail (timeout.c:947) and from goto_level.
@@ -99,6 +114,11 @@ export async function run_timers() {
         case ROT_ORGANIC: {
             const { rot_organic } = await import('./dig.js');
             rot_organic(curr.arg);
+            break;
+        }
+        case REVIVE_MON: {
+            const { revive_mon } = await import('./do.js');
+            await revive_mon(curr.arg);
             break;
         }
         default:
@@ -226,6 +246,23 @@ export async function nh_timeout() {
     if (game.u.uinvulnerable)
         return;
 
+    /* src/timeout.c:631 sickness_dialogue(), followed later in nh_timeout by
+       the property countdown. Fatal illness abuses constitution every turn,
+       even when its low-time warning text is not yet due. */
+    const sick = game.u.uprops?.SICK || 0;
+    if (sick) {
+        const half = Math.trunc(sick / 2);
+        if (half > 0 && half <= 3 && (sick % 2) !== 0) {
+            const messages = ["Your illness feels worse.",
+                              "Your illness is severe.",
+                              "You are at Death's door."];
+            await pline(messages[3 - half]);
+        }
+        const { exercise } = await import('./attrib.js');
+        exercise(A_CON, false);
+        game.u.uprops.SICK = sick - 1;
+    }
+
     const intr = (game.u.intrinsic ||= {});
 
     for (const key of Object.keys(intr)) {
@@ -258,6 +295,12 @@ export async function nh_timeout() {
             const { make_stunned } = await import('./potion.js');
             intr.HStun = 1; /* preserve the old timeout for the cure */
             await make_stunned(0, true);
+            break;
+        }
+        case 'HHallucination': {
+            const { make_hallucinated } = await import('./potion.js');
+            intr.HHallucination = 1;
+            await make_hallucinated(0, true, 0);
             break;
         }
         case 'HBlinded': {

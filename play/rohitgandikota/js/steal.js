@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import { doname } from './objnam.js';
-import { Monnam } from './do_name.js';
+import { Monnam, Some_Monnam } from './do_name.js';
 import { pline_xy } from './pline.js';
 import { newsym, pline } from './display.js';
 import { place_object, unknow_object } from './mkobj.js';
@@ -14,18 +14,19 @@ import { flooreffects } from './do.js';
    artifact. The port tracks lamplit; artifact light records elsewhere. */
 const obj_sheds_light = (o) => !!o.lamplit;
 import { attacktype, is_animal } from './mondata.js';
-import { ATTKS, MONSYMS } from './monst_data.js';
+import { ATTKS, MONSYMS, MFLAGS } from './monst_data.js';
 import { canseemon } from './display.js';
 import { merged } from './invent.js';
 import { LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN,
-         OBJ_MINVENT, W_ARMOR, W_ACCESSORY, W_WEAPONS } from './const.js';
+         OBJ_MINVENT, W_ARMOR, W_ACCESSORY, W_WEAPONS,
+         RLOC_MSG } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { droppables } from './dog.js';
 import { costly_spot } from './shk.js';
 import { obj_resists } from './zap.js';
-import { is_quest_artifact } from './questpgr.js';
+import { any_quest_artifact, is_quest_artifact } from './questpgr.js';
 import { W_SADDLE } from './const.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, rnd } from './rng.js';
 import { setnotworn } from './worn.js';
 import { stop_occupation } from './allmain.js';
 import { encumber_msg } from './attrib.js';
@@ -149,6 +150,67 @@ export async function steal(mtmp, objnambuf = null) {
     otmp.how_lost = LOST_STOLEN;
     mpickobj(mtmp, otmp);
     return 1;
+}
+
+// src/steal.c:689 stealamulet(), used by the Wizard and quest nemeses. Quest
+// artifacts take priority, followed by the Amulet and invocation tools.
+export async function stealamulet(mtmp) {
+    const inventory = game.invent || [];
+    let candidates = inventory.filter(any_quest_artifact);
+
+    if (!candidates.length) {
+        let real = 0, fake = 0;
+        if (game.u.uhave?.amulet) {
+            real = ONAMES.AMULET_OF_YENDOR;
+            fake = ONAMES.FAKE_AMULET_OF_YENDOR;
+        } else if (game.u.uhave?.bell) {
+            real = ONAMES.BELL_OF_OPENING;
+            fake = ONAMES.BELL;
+        } else if (game.u.uhave?.book) {
+            real = ONAMES.SPE_BOOK_OF_THE_DEAD;
+        } else if (game.u.uhave?.menorah) {
+            real = ONAMES.CANDELABRUM_OF_INVOCATION;
+        } else {
+            return;
+        }
+        candidates = inventory.filter(obj => obj.otyp === real
+            || (obj.otyp === fake && !mtmp.iswiz));
+    }
+
+    if (!candidates.length)
+        return;
+    const otmp = candidates.length > 1 ? candidates[rnd(candidates.length) - 1]
+                                        : candidates[candidates.length - 1];
+    const u = game.u;
+
+    if ((otmp === u.uarm || otmp === u.uarmu) && u.uarmc)
+        await worn_item_removal(mtmp, u.uarmc);
+    if (otmp === u.uarmu && u.uarm)
+        await worn_item_removal(mtmp, u.uarm);
+    if ((otmp === u.uarmg
+         || ((otmp === u.uright || otmp === u.uleft) && u.uarmg))
+        && u.uwep) {
+        if (u.twoweap && u.uswapwep)
+            await worn_item_removal(mtmp, u.uswapwep);
+        await worn_item_removal(mtmp, u.uwep);
+    }
+    if ((otmp === u.uright || otmp === u.uleft) && u.uarmg)
+        await worn_item_removal(mtmp, u.uarmg);
+    if (otmp.owornmask)
+        await worn_item_removal(mtmp, otmp);
+    if (otmp.unpaid)
+        note_unported_steal('stealamulet:subfrombill');
+
+    freeinv(otmp);
+    const stolenName = doname(otmp);
+    mpickobj(mtmp, otmp);
+    await pline(`${Some_Monnam(mtmp)} steals ${stolenName}!`);
+    if ((mtmp.data.mflags1 & MFLAGS.M1_TPORT) !== 0) {
+        const { tele_restrict, rloc } = await import('./teleport.js');
+        if (!await tele_restrict(mtmp))
+            await rloc(mtmp, RLOC_MSG);
+    }
+    await encumber_msg();
 }
 
 // src/steal.c:814 mdrop_obj() — monster puts one object on its own square.

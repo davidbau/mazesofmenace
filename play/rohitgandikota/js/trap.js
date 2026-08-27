@@ -15,7 +15,8 @@ import { UNENCUMBERED, SLT_ENCUMBER, KILLED_BY, DROWNING, BURNING,
 import { goodpos, makemon, remove_monster } from './makemon.js';
 import { waterbody_name } from './pager.js';
 import { hliquid } from './do_name.js';
-import { Teleport_control, Unaware, Sleep_resistance } from './youprop.js';
+import { Teleport_control, Unaware, Sleep_resistance, Fire_resistance,
+         Shock_resistance, Halluc_resistance } from './youprop.js';
 import { teleds, safe_teleds, TELEDS_ALLOW_DRAG,
          TELEDS_TELEPORT } from './teleport.js';
 import { done } from './end.js';
@@ -29,7 +30,7 @@ import { mksobj, place_object, splitobj } from './mkobj.js';
 import { weight } from './invent.js';
 import { dmgval } from './weapon.js';
 import { observe_object } from './o_init.js';
-import { canspotmon, display_object_at, newsym, pline,
+import { canspotmon, display_nhwindow_message, display_object_at, newsym, pline,
          temporary_object_glyph } from './display.js';
 import { You, You_hear, You_feel, You_see, Your, Norep } from './pline.js';
 import { an, the, doname, mshot_xname, xname, Yname2 } from './objnam.js';
@@ -40,10 +41,10 @@ import { find_mac, which_armor } from './worn.js';
 import { canseemon } from './display.js';
 import { cansee } from './vision.js';
 import { passes_walls, likes_lava, throws_rocks } from './mondata.js';
-import { has_ceiling, Can_fall_thru, depth } from './dungeon.js';
-import { Monnam } from './do_name.js';
+import { has_ceiling, Can_fall_thru, depth, level_difficulty } from './dungeon.js';
+import { Monnam, rndcolor } from './do_name.js';
 import { MATERIALS } from './objects_data.js';
-import { W_ARMF, A_DEX } from './const.js';
+import { W_ARMF, A_DEX, A_CON, NO_PART } from './const.js';
 import { d, rn1 } from './rng.js';
 import { exercise } from './attrib.js';
 import { ONAMES } from './objects_data.js';
@@ -92,7 +93,7 @@ import { In_quest, TOOKPLUNGE, VIASITTING, HURTLING,
          IS_WALL, IS_DOOR, SDOOR, MIGR_RANDOM, MIGR_PORTAL, MON_MIGRATING,
          NO_MM_FLAGS, TIMEOUT } from './const.js';
 import { just_an } from './objnam.js';
-import { Deaf, Levitation, Flying, Hallucination, Underwater,
+import { Deaf, Levitation, Flying, Hallucination, Underwater, Blind,
          See_invisible, Invis } from './youprop.js';
 import { mindless } from './mondata.js';
 import { couldsee } from './vision.js';
@@ -110,8 +111,188 @@ import { obj_extract_self, sobj_at } from './invent.js';
 import { metallivorous } from './mondata.js';
 import { amorphous, is_whirly, unsolid, is_clinger, is_floater, is_flyer,
          webmaker, nohands, defended, resists_fire, resists_sleep, breathless,
-         resists_magm, resists_blnd, flaming, acidic } from './mondata.js';
+         resists_magm, resists_blnd, flaming, acidic, stagger } from './mondata.js';
 import { ECMD_OK } from './const.js';
+
+// src/trap.c:6694 b_trapped(), shared by trapped doors and tins.
+export async function b_trapped(item, bodypart) {
+    const lvl = level_difficulty();
+    let dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
+    await pline(`KABOOM!!  The ${item} was booby-trapped!`);
+    wake_nearby(false);
+    if (game.u.uprops?.HALF_PHYS)
+        dmg = Math.trunc((dmg + 1) / 2);
+    await losehp(dmg, 'explosion', KILLED_BY_AN);
+    exercise(A_STR, false);
+    if (bodypart !== NO_PART)
+        exercise(A_CON, false);
+    const oldStun = game.u.intrinsic?.HStun | 0;
+    const { make_stunned } = await import('./potion.js');
+    await make_stunned(oldStun + dmg, true);
+}
+
+// src/trap.c:7161 ignite_items(), exposed inventory light sources only.
+async function ignite_items(items) {
+    const ignitable = new Set([
+        ONAMES.OIL_LAMP, ONAMES.MAGIC_LAMP, ONAMES.TALLOW_CANDLE,
+        ONAMES.WAX_CANDLE, ONAMES.CANDELABRUM_OF_INVOCATION,
+    ]);
+    for (const item of items || []) {
+        if (item.lamplit || item.in_use || !ignitable.has(item.otyp))
+            continue;
+        if (!item.age || ((item.otyp === ONAMES.MAGIC_LAMP
+                           || item.otyp === ONAMES.CANDELABRUM_OF_INVOCATION)
+                          && !item.spe))
+            continue;
+        await pline(`${Yname2(item)} catches light!`);
+        item.lamplit = 1;
+        const { new_light_source, LS_OBJECT } = await import('./light.js');
+        new_light_source(game.u.ux, game.u.uy, 3, LS_OBJECT, item.o_id);
+        game.vision_full_recalc = 1;
+        update_inventory();
+    }
+}
+
+// src/trap.c:4233 dofiretrap(), hero and chest form.
+async function dofiretrap(box) {
+    const origDmg = d(2, 4);
+    let num = origDmg;
+    const source = the(box ? xname(box) : 'floor');
+
+    await pline(`A tower of flame ${box ? 'bursts' : 'erupts'} from ${source}!`);
+    if (Fire_resistance()) {
+        num = rn2(2);
+    } else {
+        num = d(2, 4);
+        const minHp = Math.max(game.u.ulevel | 0, 1);
+        if (game.u.uhpmax > minHp) {
+            game.u.uhpmax -= rn2(Math.min(game.u.uhpmax, num + 1));
+            (game.disp ||= {}).botl = true;
+        }
+        if (game.u.uhpmax < minHp)
+            game.u.uhpmax = minHp;
+        if (game.u.uhp > game.u.uhpmax)
+            game.u.uhp = game.u.uhpmax;
+    }
+
+    if (!num)
+        await You('are uninjured.');
+    else
+        await losehp(num, 'tower of flame', KILLED_BY_AN);
+
+    if (await burnarmor(game.youmonst) || rn2(3)) {
+        await destroy_items(game.youmonst, ATTKS.AD_FIRE, origDmg);
+        await ignite_items(game.invent);
+    }
+}
+
+// src/trap.c:6294 chest_trap(), the full luck and effect outcome tables.
+export async function chest_trap(obj, bodypart, disarm) {
+    obj.tknown = 0;
+    obj.otrapped = 0;
+    await You(disarm ? 'set it off!' : 'trigger a trap!');
+    await display_nhwindow_message();
+
+    const luck = (game.u.uluck | 0) + (game.u.moreluck | 0);
+    if (luck > -13 && rn2(13 + luck) > 7) {
+        const outcome = rn2(13);
+        const msg = outcome >= 11 ? 'explosive charge is a dud'
+                    : outcome >= 9 ? 'electric charge is grounded'
+                      : outcome >= 7 ? 'flame fizzles out'
+                        : outcome >= 4 ? 'poisoned needle misses'
+                          : 'gas cloud blows away';
+        await pline(`But luckily the ${msg}!`);
+    } else {
+        const outcome = rn2(20)
+            ? (luck >= 13 ? 0 : rn2(13 - luck))
+            : rn2(26);
+        let destroyed = false;
+
+        if (outcome >= 21) {
+            const ox = obj.ox, oy = obj.oy;
+            await pline(`${upstart(the(xname(obj)))} explodes!`);
+            obj.cobj = [];
+            const { delobj } = await import('./mon.js');
+            for (const floorObj of [...(game.level?.objects || [])]) {
+                if (floorObj.ox === ox && floorObj.oy === oy) {
+                    if (floorObj === obj)
+                        destroyed = true;
+                    delobj(floorObj);
+                }
+            }
+            wake_nearby(false);
+            let damage = d(6, 6);
+            if (game.u.uprops?.HALF_PHYS)
+                damage = Math.trunc((damage + 1) / 2);
+            await losehp(damage, `exploding ${xname(obj)}`, KILLED_BY_AN);
+            exercise(A_STR, false);
+            newsym(ox, oy);
+        } else if (outcome >= 17) {
+            await pline(`A cloud of noxious gas billows from ${the(xname(obj))}.`);
+            if (rn2(3)) {
+                const { poisoned } = await import('./attrib.js');
+                await poisoned('gas cloud', A_STR, 'cloud of poison gas',
+                               15, false);
+            } else {
+                const { create_gas_cloud } = await import('./region.js');
+                create_gas_cloud(obj.ox, obj.oy, 1, 8);
+            }
+            exercise(A_CON, false);
+        } else if (outcome >= 13) {
+            await You_feel(`a needle prick your ${body_part(bodypart)}.`);
+            const { poisoned } = await import('./attrib.js');
+            await poisoned('needle', A_CON, 'poisoned needle', 10, false);
+            exercise(A_CON, false);
+        } else if (outcome >= 9) {
+            await dofiretrap(obj);
+        } else if (outcome >= 6) {
+            let damage = d(4, 4);
+            const origDmg = damage;
+            await You('are jolted by a surge of electricity!');
+            if (Shock_resistance()) {
+                await You("don't seem to be affected.");
+                damage = 0;
+            }
+            await destroy_items(game.youmonst, ATTKS.AD_ELEC, origDmg);
+            if (damage)
+                await losehp(damage, 'electric shock', KILLED_BY_AN);
+        } else if (outcome >= 3) {
+            if (!game.u.uprops?.FREE_ACTION) {
+                await pline('Suddenly you are frozen in place!');
+                nomul(-d(5, 6));
+                game.multi_reason = 'frozen by a trap';
+                game.nomovemsg = 'You can move again.';
+                exercise(A_DEX, false);
+            } else {
+                await You('momentarily stiffen.');
+            }
+        } else {
+            await pline(`A cloud of ${Blind() ? 'pungent' : rndcolor()
+                } gas billows from ${the(xname(obj))}.`);
+            const oldStun = (game.u.intrinsic?.HStun | 0) & TIMEOUT;
+            if (!oldStun) {
+                if (Hallucination())
+                    await pline('What a groovy feeling!');
+                else
+                    await You(`${stagger(game.youmonst.data, 'stagger')}${
+                        Halluc_resistance() ? ''
+                        : Blind() ? ' and get dizzy'
+                          : ' and your vision blurs'}...`);
+            }
+            const { make_stunned, make_hallucinated } =
+                await import('./potion.js');
+            await make_stunned(oldStun + rn1(7, 16), false);
+            const oldHallu = (game.u.intrinsic?.HHallucination | 0) & TIMEOUT;
+            await make_hallucinated(oldHallu + rn1(5, 16), false, 0);
+        }
+
+        (game.disp ||= {}).botl = true;
+        if (destroyed)
+            return true;
+    }
+    obj.tknown = 1;
+    return false;
+}
 
 // src/trap.c:5250 dountrap() and the preliminary could_untrap() checks.
 export async function dountrap() {
@@ -707,6 +888,11 @@ export async function dotrap(trap, trflags) {
         return await trapeffect_telep_trap(game.youmonst, trap, trflags);
     if (ttype === MAGIC_PORTAL)
         return await trapeffect_magic_portal(game.youmonst, trap, trflags);
+    if (ttype === VIBRATING_SQUARE) {
+        trap.tseen = 1;                 /* feeltrap() */
+        newsym(trap.tx, trap.ty);
+        return Trap_Effect_Finished;
+    }
 
     note_unported_trap(`dotrap:ttyp=${ttype}`);
     return Trap_Effect_Finished;

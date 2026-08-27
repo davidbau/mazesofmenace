@@ -10,11 +10,12 @@ import { game } from './gstate.js';
 import { makewish } from './zap.js';
 import { encumber_msg } from './attrib.js';
 import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY,
-         TIMEOUT }
+         TIMEOUT, ARTICLE_THE, XKILL_NOMSG }
     from './const.js';
 import { getlin } from './cmd.js';
-import { docrt, map_trap, pline, see_monsters, swallowed } from './display.js';
-import { pluslvl } from './exper.js';
+import { docrt, map_trap, pline, see_monsters, swallowed,
+         unmap_invisible } from './display.js';
+import { pluslvl, losexp } from './exper.js';
 import { level_tele } from './teleport.js';
 import { do_mapping } from './detect.js';
 import { NO_COLOR } from './terminal.js';
@@ -24,6 +25,10 @@ import {
     tty_select_menu, tty_start_menu,
 } from './tty/wintty.js';
 import { boolean_option } from './options.js';
+import { getpos } from './getpos.js';
+import { m_at, xkilled } from './mon.js';
+import { x_monnam } from './do_name.js';
+import { You } from './pline.js';
 
 function note_unported_wizcmds(what) {
     (game.unported ||= new Set()).add(what);
@@ -43,6 +48,44 @@ export async function wiz_wish() {
         await encumber_msg();
     } else {
         note_unported_wizcmds('wiz_wish:unavailcmd');
+    }
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:243 wiz_kill() targets and slays monsters without spending a
+// turn. The ordinary hero-credited path is the one exposed by #wizkill.
+export async function wiz_kill() {
+    if (!game.wizard) {
+        note_unported_wizcmds('wiz_kill:unavailcmd');
+        return ECMD_OK;
+    }
+
+    const cc = { x: game.u.ux, y: game.u.uy };
+    let prompt = 'Pick first monster to slay';
+    for (;;) {
+        await pline(`${prompt}:`);
+        prompt = 'Next monster';
+
+        const saveVerbose = game.flags.verbose;
+        const saveAutodescribe = game.iflags?.autodescribe;
+        game.flags.verbose = false;
+        (game.iflags ||= {}).autodescribe = true;
+        const ans = await getpos(cc, true, 'a monster');
+        game.flags.verbose = saveVerbose;
+        game.iflags.autodescribe = saveAutodescribe;
+        if (ans < 0 || cc.x < 1)
+            break;
+
+        const mtmp = m_at(cc.x, cc.y);
+        unmap_invisible(cc.x, cc.y);
+        if (!mtmp) {
+            await pline('There is no monster there.');
+            break;
+        }
+
+        const name = x_monnam(mtmp, ARTICLE_THE, null, 0, false);
+        await You(`kill ${name}!`);
+        await xkilled(mtmp, XKILL_NOMSG);
     }
     return ECMD_OK;
 }
@@ -115,14 +158,15 @@ export async function wiz_level_change() {
             await pline('You are already as inexperienced as you can get.');
             return ECMD_OK;
         }
-        /* losexp() needs the experience and hit-point code. */
-        note_unported_wizcmds('wiz_level_change:losexp');
-        return ECMD_OK;
+        newlevel = Math.max(newlevel, 1);
+        while (game.u.ulevel > newlevel)
+            await losexp('#levelchange');
     } else {
         if (game.u.ulevel >= MAXULEV) {
             await pline('You are already as experienced as you can get.');
             return ECMD_OK;
         }
+        newlevel = Math.min(newlevel, MAXULEV);
         while (game.u.ulevel < newlevel)
             await pluslvl(false);
     }

@@ -15,7 +15,8 @@ import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
          MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, ECMD_OK,
          TER_DETECT, TER_MAP, M_AP_TYPE, M_AP_FURNITURE,
-         M_AP_OBJECT } from './const.js';
+         M_AP_OBJECT, AM_MASK, AM_SANCTUM, Amask2align, Is_astralevel,
+         A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './const.js';
 import { defsyms, monexplain, oc_explain, def_monsyms, def_oc_syms,
          cmap_names } from './drawing_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -250,10 +251,21 @@ function lookat(x, y) {
     } else if (glyph.kind === 'cmap') {
         const symidx = glyph.cmap;
         switch (symidx) {
-        case CM.S_altar:
-            note_unported_pager('lookat:altar');
-            buf = defsyms[symidx].explain;
+        case CM.S_altar: {
+            const mask = loc?.altarmask || 0;
+            const alignment = Amask2align(mask & AM_MASK);
+            const alignName = alignment === A_LAWFUL ? 'lawful'
+                            : alignment === A_NEUTRAL ? 'neutral'
+                              : alignment === A_CHAOTIC ? 'chaotic'
+                                : 'unaligned';
+            const nextToHero = Math.abs(x - game.u.ux) <= 1
+                            && Math.abs(y - game.u.uy) <= 1;
+            const astralHighUnknown = Is_astralevel(game.u.uz)
+                                   && !nextToHero && (mask & AM_SANCTUM);
+            buf = `${astralHighUnknown ? 'aligned' : alignName} ${
+                mask & AM_SANCTUM ? 'high ' : ''}altar`;
             break;
+        }
         case CM.S_ndoor:
             /* is_drawbridge_wall() needs drawbridges; no level has one */
             if (loc && (loc.doormask & ~D_TRAPPED) === D_BROKEN)

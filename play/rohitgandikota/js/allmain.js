@@ -722,7 +722,7 @@ export async function moveloop_core() {
                 /* src/allmain.c:275 — nh_timeout() then the prayer
                    timeout, every turn. */
                 await nh_timeout();
-                run_regions();      /* src/allmain.c:274 */
+                await run_regions(); /* src/allmain.c:274 */
                 if (g.u.ublesscnt)
                     g.u.ublesscnt--;
 

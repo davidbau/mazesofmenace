@@ -8,18 +8,19 @@
 // changes the number of draws, not just their values.
 
 import { game } from './gstate.js';
+import { def_monsyms } from './drawing_data.js';
 import { new_light_source, LS_OBJECT, LS_MONSTER } from './light.js';
 import { ARM_BONUS } from './do_wear.js';
 import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire } from './worm.js';
 import { newcham, mon_wire_cham } from './mon.js';
 import { weight as weight_fn, sobj_at } from './invent.js';
 import { In_mines, Is_rogue_level, MIGR_TO_SPECIES, OBJ_FREE,
-         W_SADDLE, has_mgivenname } from './const.js';
+         W_SADDLE, has_mgivenname, A_LAWFUL, ONAME_RANDOM } from './const.js';
 import { Levitation, Flying } from './youprop.js';
 import { closed_door } from './cmd.js';
 import { may_passwall } from './hack.js';
 import { sengr_at } from './engrave.js';
-import { rndghostname, christen_monst, christen_orc,
+import { rndghostname, christen_monst, christen_orc, oname,
          y_monnam } from './do_name.js';
 import { m_dowear, which_armor } from './worn.js';
 import { can_saddle, put_saddle_on_mon } from './steed.js';
@@ -233,7 +234,7 @@ export function rndmonst_adj(minadj, maxadj) {
     zlevel = level_difficulty();
     minmlev = monmin_difficulty(zlevel) + minadj;
     maxmlev = monmax_difficulty(zlevel) + maxadj;
-    const upper = false;      /* Is_rogue_level */
+    const upper = Is_rogue_level(game.u.uz);
     /* src/makemon.c:1678 — on the elemental planes (astral excepted) only
        monsters at home on the element are generated */
     const elemlevel = In_endgame_uz(game.u.uz) && !Is_astralevel(game.u.uz);
@@ -246,7 +247,7 @@ export function rndmonst_adj(minadj, maxadj) {
 
         if (montooweak(mndx, minmlev) || montoostrong(mndx, maxmlev))
             continue;
-        if (upper)      /* !isupper(monsym(ptr)) */
+        if (upper && !/[A-Z]/.test(def_monsyms[ptr.mlet] || ''))
             continue;
         if (elemlevel && wrong_elem_type(ptr))
             continue;
@@ -1736,7 +1737,8 @@ function m_initweap(mtmp) {
                 break;
             }
             if (mm === P.PM_ELVEN_MONARCH) {
-                if (rn2(3)) mongets(mtmp, O.PICK_AXE);
+                if (rn2(3) || (game.in_mklev && Is_earthlevel(game.u.uz)))
+                    mongets(mtmp, O.PICK_AXE);
                 if (!rn2(50)) mongets(mtmp, O.CRYSTAL_BALL);
             }
         } else if (ptr.msound === MS_PRIEST
@@ -1797,8 +1799,13 @@ function m_initweap(mtmp) {
             const typ = rn2(3) ? O.LONG_SWORD : O.SILVER_MACE;
             otmp = mksobj(typ, false, false);
             if ((!rn2(20) || is_lord(ptr))
-                && sgn(ptr.maligntyp) === 1 /* A_LAWFUL */)
-                note_unported('oname (Sunsword/Demonbane)');
+                && sgn(mtmp.isminion
+                       ? (mtmp.emin?.min_align
+                          ?? mtmp.mextra?.emin?.min_align ?? A_NONE)
+                       : ptr.maligntyp) === A_LAWFUL)
+                otmp = oname(otmp,
+                             typ === O.LONG_SWORD ? 'Sunsword' : 'Demonbane',
+                             ONAME_RANDOM);
             otmp.blessed = 1; otmp.cursed = 0;
             otmp.oerodeproof = true;
             otmp.spe = rn2(4);

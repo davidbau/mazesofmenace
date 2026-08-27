@@ -8,7 +8,7 @@ import { game } from './gstate.js';
 import { getobj, GETOBJ_PROMPT, ECMD_TIME, ECMD_OK } from './invent.js';
 import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR,
          A_STR, A_CON, W_BALL, W_CHAIN, W_ART, W_ARTI, TT_BURIEDBALL,
-         BY_COOKIE } from './const.js';
+         BY_COOKIE, G_UNIQ } from './const.js';
 import { sgn, distu } from './hacklib.js';
 import { valid_cloud_pos } from './region.js';
 import { cansee } from './vision.js';
@@ -35,6 +35,7 @@ import { exercise } from './attrib.js';
 import { A_WIS } from './const.js';
 import { outrumor } from './rumors.js';
 import { setworn } from './worn.js';
+import { PMNAMES, mons_name } from './monst_data.js';
 
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
@@ -640,8 +641,37 @@ export async function create_particular() {
         const box = {};
         const mndx = name_to_monplus(bufp, box);
         if (mndx !== undefined && mndx !== null && mndx >= 0) {
+            const firstchoice = mndx;
+            let which = mndx;
+
+            /* src/read.c:3112 cant_revive(). These monsters need state that
+               ordinary creation cannot supply. Wizard mode offers to force
+               the requested form after selecting the safe replacement. */
+            if (which === PMNAMES.PM_GUARD
+                || which === PMNAMES.PM_SHOPKEEPER
+                || which === PMNAMES.PM_HIGH_CLERIC
+                || which === PMNAMES.PM_ALIGNED_CLERIC
+                || which === PMNAMES.PM_ANGEL) {
+                which = PMNAMES.PM_HUMAN_ZOMBIE;
+            } else if (which === PMNAMES.PM_LONG_WORM_TAIL) {
+                which = PMNAMES.PM_LONG_WORM;
+            } else if ((game.mons[which].geno & G_UNIQ) !== 0) {
+                which = PMNAMES.PM_DOPPELGANGER;
+            }
+
+            if (which !== firstchoice
+                && firstchoice !== PMNAMES.PM_LONG_WORM_TAIL) {
+                const { tty_yn_function } = await import('./tty/topl.js');
+                const answer = await tty_yn_function(
+                    `Creating ${mons_name(game.mons[which])} instead; force ${
+                        mons_name(game.mons[firstchoice])}?`,
+                    'yn', 'n');
+                if (answer === 'y')
+                    which = firstchoice;
+            }
+
             /* MM_NOEXCLAM: "<mon> appears." rather than "appears!" */
-            const mtmp = makemon(game.mons[mndx], game.u.ux, game.u.uy,
+            const mtmp = makemon(game.mons[which], game.u.ux, game.u.uy,
                                  MM_NOEXCLAM);
             /* src/makemon.c:1472 — C announces the arrival from inside
                makemon(), which cannot print here because our makemon is
@@ -652,6 +682,13 @@ export async function create_particular() {
                               && Math.abs(mtmp.my - game.u.uy) <= 1);
                 await pline(`${Amonnam(mtmp)} appears${
                     near ? ' next to you' : ''}.`);
+            }
+
+            /* A safe shapechanger replacement starts out looking like the
+               form requested by the wizard after its creation message. */
+            if (mtmp && mtmp.cham >= 0 && mtmp.cham !== firstchoice) {
+                const { newcham } = await import('./mon.js');
+                newcham(mtmp, game.mons[firstchoice], 0);
             }
             return true;
         }

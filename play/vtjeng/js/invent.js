@@ -8,8 +8,10 @@ import {
     ACH_SOKO_PRIZE,
     BLINDED,
     BUFSZ,
+    CMDQ_KEY,
     CONTAINED_SYM,
     CQ_CANNED,
+    ECMD_OK,
     FUMBLING,
     GOLD_SYM,
     HALLUC,
@@ -86,6 +88,7 @@ import { cmdq_clear, cmdq_pop, yn_function } from './cmd.js';
 import { food_disappears } from './eat.js';
 import { makeplural } from './fruit.js';
 import { digit } from './hacklib.js';
+import { PM_ARCHEOLOGIST, PM_CLERIC } from './monsters.js';
 import { observe_object } from './o_init.js';
 import { ttyPline } from './tty_message.js';
 import {
@@ -115,6 +118,7 @@ import { is_drawbridge_wall } from './startup_a11y.js';
 import { is_ice } from './terrain.js';
 import { is_lava, is_pool, t_at } from './trap.js';
 import { game } from './gstate.js';
+import { itemactions } from './iactions.js';
 import { surface } from './dungeon.js';
 import { can_reach_floor, engr_at } from './engrave.js';
 import { displayTtyMenuTextWindow } from './tty_menu.js';
@@ -139,7 +143,6 @@ import {
     LEASH,
     LOADSTONE,
     LUCKSTONE,
-    MINERAL,
     PIERCE,
     POT_OIL,
     ROCK,
@@ -181,6 +184,7 @@ import {
     donameFresh,
     doname_with_price,
     vtense,
+    xnameFresh,
 } from './objnam.js';
 import { ILLOBJ_CLASS, MAXOCLASSES } from './objects.js';
 import { is_quest_artifact } from './questpgr.js';
@@ -312,6 +316,12 @@ export class UnsupportedObjectPromptError extends Error {
         this.reason = reason;
     }
 }
+
+// C ref: invent.c hands_obj. getobj() returns this shared sentinel when the
+// player deliberately selects hands/self; null remains the cancellation and
+// invalid-answer result. Callers compare its identity and must not inspect it
+// as an ordinary object.
+export const hands_obj = Object.freeze({});
 
 // C ref: invent.c invletter_value() (390-399). Orders '$' first, then 'a'-'z',
 // then 'A'-'Z', then the '#' overflow letter. `invlet_basic` is INVLET_BASIC.
@@ -604,10 +614,7 @@ export function any_obj_ok(obj) {
 }
 
 // C ref: invent.c getobj() (1751-2088). Answers the object the player chose,
-// null where C returns 0, and never &hands_obj: the one arm that produces it
-// needs allownone, which only a GETOBJ_SUGGEST answer for the hands/self
-// choice sets, and no ported callback gives one -- any_obj_ok() above,
-// apply_ok(), eat_ok() and takeoff_ok() all answer an exclusion for null.
+// null where C returns 0, and hands_obj where C returns &hands_obj.
 //
 // Every `obj_ok` answer below is awaited. do_wear.c equip_ok() reaches
 // canwearobj(), whose refusals write messages, so equip_ok() is async and both
@@ -623,12 +630,10 @@ export function any_obj_ok(obj) {
 // arm. The '?' and '*' menu and the '-' hands answer stop too, each naming
 // what it would need.
 //
-// The fifth, C's cmdq_pop() at 1779, now has a queue to read. Nothing ported
-// pushes a node any caller of this function could meet -- dothrow.c dofire()
-// pushes two extended commands and rhack() runs both before either reaches
-// getobj() -- so a node found here is one this port cannot answer, and C's
-// own "didn't find what we were looking for" arm at 1817-1818, which discards
-// the rest of the canned sequence, is the shape of the refusal.
+// The fifth, C's cmdq_pop() at 1779, now has a queue to read. Itemactions
+// queues a command followed by the selected object's inventory letter, so
+// the CMDQ_KEY lookup arm is live. Count and user-input nodes still have no
+// ported producer; an unexpected node retains the fail-closed boundary.
 //
 // GETOBJ_PROMPT does not stop: its only effect is the `forceprompt` term that
 // steers the "You don't have anything to <foo>." return below. GETOBJ_ALLOWCNT
@@ -637,10 +642,33 @@ export function any_obj_ok(obj) {
 // selection's count -- and the first, third and fourth sit behind arms that
 // already stop, so the digit at :1940 is where this port's refusal sits.
 export async function getobj(word, obj_ok, ctrlflags, state = game) {
-    if (cmdq_pop(state)) {
+    const queued = cmdq_pop(state);
+    if (queued) {
+        if (queued.typ === CMDQ_KEY) {
+            if (queued.key === HANDS_SYM) {
+                const suitability = await obj_ok(null, state);
+                if (suitability === GETOBJ_SUGGEST
+                    || suitability === GETOBJ_DOWNPLAY) {
+                    return hands_obj;
+                }
+            } else {
+                for (let item = inventoryHead(state); item; item = item.nobj) {
+                    if (item.invlet !== queued.key) continue;
+                    const suitability = await obj_ok(item, state);
+                    if (suitability === GETOBJ_SUGGEST
+                        || suitability === GETOBJ_DOWNPLAY) {
+                        return item;
+                    }
+                }
+            }
+            // C invent.c getobj():1817-1818 discards the remaining canned
+            // sequence when its queued letter does not name a suitable item.
+            cmdq_clear(CQ_CANNED, state);
+            return null;
+        }
         cmdq_clear(CQ_CANNED, state);
         throw new UnsupportedObjectPromptError(
-            'the object prompt has a queued answer',
+            'the object prompt has an unsupported queued answer',
         );
     }
     let otmp = null;
@@ -937,16 +965,22 @@ export async function display_inventory(lets, want_reply, state, hooks) {
     );
 }
 
-// C ref: invent.c dispinv_with_action(). `i` supplies no letters, so menumode
-// is true; a selected letter would reach itemactions(), which stops.
+// C ref: invent.c dispinv_with_action() (2964-3002). `i` supplies no
+// letters and len is 0, so menumode is unconditionally true. When the
+// player selects a letter, the inventory is walked for the matching object
+// and itemactions() builds its action menu.
 export async function dispinv_with_action(lets, state = game, hooks = {}) {
     const menumode = true;
     // The menu owner answers null for Escape, which is C's '\033' reaching
     // dispinv_with_action() without matching any invlet.
     const chosen = await display_inventory(lets, menumode, state, hooks);
-    if (chosen != null)
-        throw new UnsupportedFeatureDescriptionError('itemactions()');
-    return false;
+    if (chosen != null) {
+        for (let otmp = inventoryHead(state); otmp; otmp = otmp.nobj) {
+            if (otmp.invlet === chosen)
+                return itemactions(otmp, state, hooks);
+        }
+    }
+    return ECMD_OK;
 }
 
 // C ref: invent.c ddoinv(). Returns whether the command consumed game time,
@@ -1330,6 +1364,42 @@ export function preflight_update_inventory(env = {}) {
     return normalized;
 }
 
+// C ref: invent.c learn_unseen_invent() (2750-2775). Called when the hero
+// regains sight (e.g. removing a blindfold). Iterates inventory and marks
+// items that were picked up while blind as seen, by calling xnameFresh()
+// (which sets dknown via observe_object()) and triggering any reactions
+// that seeing the object for the first time produces (addinv_core2).
+//
+// addinv_core2() handles two effects: set_moreluck() for luckstones and the
+// Archeologist scroll-deciphering message. Those reactions are not yet
+// ported here, so this function currently updates object knowledge without
+// reproducing either reaction.
+export function learn_unseen_invent(state = game) {
+    if (heroIsBlind(state))
+        return; /* sanity check */
+
+    let invupdated = false;
+    for (let otmp = inventoryHead(state); otmp; otmp = otmp.nobj) {
+        // C ref: invent.c:2759-2761. Skip items the hero has already seen.
+        // dknown is set by observe_object(); bknown matters only for clerics;
+        // scrolls matter only for Archeologists.
+        if (otmp.dknown
+            && (otmp.bknown || state.urole?.mnum !== PM_CLERIC)
+            && (otmp.oclass !== SCROLL_CLASS
+                || state.urole?.mnum !== PM_ARCHEOLOGIST))
+            continue; /* already seen */
+        invupdated = true;
+        // C ref: invent.c:2765. maybereleaseobuf(xname(otmp)) -- the call
+        // exists for its side effect: xname() calls observe_object() which
+        // sets dknown, and also sets bknown for clerics.
+        xnameFresh(otmp, state);
+        // C ref: invent.c:2766. addinv_core2(otmp) handles luckstones and
+        // Archeologist scroll deciphering; those reactions remain deferred.
+    }
+    if (invupdated)
+        update_inventory({ state });
+}
+
 // C ref: invent.c update_inventory(). Calls before the move loop and while
 // map output is suppressed are deliberately ignored. moveloop_preamble()
 // owns the first live startup refresh.
@@ -1378,6 +1448,27 @@ export function carrying(type, state = game) {
     for (let obj = inventoryHead(state); obj; obj = obj.nobj)
         if (obj.otyp === type) return obj;
     return null;
+}
+
+// C ref: invent.c check_invent_gold() (4889-4913). Returns true when the
+// inventory contains gold in an unexpected arrangement (multiple stacks or
+// a stack in a slot other than '$'), which means gold should be allowed as
+// a target for the #adjust command. In normal play this returns false.
+export function check_invent_gold(why, state = game) {
+    let goldstacks = 0;
+    let wrongslot = 0;
+    for (let otmp = inventoryHead(state); otmp; otmp = otmp.nobj) {
+        if (otmp.oclass === COIN_CLASS) {
+            goldstacks++;
+            if (otmp.invlet !== GOLD_SYM) wrongslot++;
+        }
+    }
+    if (goldstacks > 1 || wrongslot > 0) {
+        // C calls impossible() here. The condition indicates a bug
+        // elsewhere in inventory management, but the game continues.
+        return true;
+    }
+    return false;
 }
 
 export function initializeInventory(state = game) {

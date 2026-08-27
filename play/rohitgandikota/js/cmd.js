@@ -83,7 +83,7 @@ import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, docrt, map_object, paint_topline, tty_clear_nhwindow_message, TOPLINE_SPECIAL_PROMPT, TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './display.js';
 import { vision_recalc } from './vision.js';
 import { COLNO, ROWNO, STONE, DOOR, DBWALL, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FURNITURE } from './const.js';
-import { dosearch } from './detect.js';
+import { dosearch, findit } from './detect.js';
 import { doengrave, engr_at, wipe_engr_at } from './engrave.js';
 import { rnd, rn2 } from './rng.js';
 import { ACCESSIBLE } from './const.js';
@@ -759,19 +759,8 @@ export async function doextcmd() {
         return ECMD_OK;
     }
     if (name === 'offer') {
-        /* src/pray.c:1854 dosacrifice() — only the not-on-an-altar arm is
-           reachable without altars underfoot; the rite itself records */
-        const { ALTAR } = await import('./const.js');
-        const loc = game.level?.at(game.u.ux, game.u.uy);
-        if (!loc || loc.typ !== ALTAR || game.u.uswallow) {
-            const { You } = await import('./pline.js');
-            const airborne = game.u.uprops?.LEVITATION
-                             || game.u.uprops?.FLYING;
-            await You(`are not ${airborne ? 'over' : 'on'} an altar.`);
-            return ECMD_OK;
-        }
-        (game.unported ||= new Set()).add('cmd:doextcmd:offer_rite');
-        return ECMD_OK;
+        const { dosacrifice } = await import('./pray.js');
+        return await dosacrifice();
     }
     if (name === 'loot')
         return await doloot();
@@ -875,6 +864,10 @@ export async function doextcmd() {
         return await wiz_wish();
     if (name === 'wizgenesis')
         return await wiz_genesis();
+    if (name === 'wizkill') {
+        const { wiz_kill } = await import('./wizcmds.js');
+        return await wiz_kill();
+    }
     if (name === 'wizintrinsic') {
         const { wiz_intrinsic } = await import('./wizcmds.js');
         return await wiz_intrinsic();
@@ -1369,6 +1362,13 @@ export async function rhack(key) {
     } else if (ch === '\x17') {
         // src/cmd.c:2000 — C('w') is wizwish / wiz_wish.
         game.context.move = ((await wiz_wish()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x05') {
+        // src/cmd.c:1953, C('e') is wizdetect / wiz_detect.
+        if (game.wizard)
+            await findit();
+        else
+            await pline("Unavailable command 'wizdetect'.");
+        game.context.move = 0;
     } else if (ch === ',') {
         // src/cmd.c:1799 cmdlist — ',' is dopickup.
         game.context.move = (await dopickup() === ECMD_TIME ? 1 : 0);
@@ -2546,7 +2546,8 @@ async function domove_swap_with_pet(mtmp, x, y) {
 // include/monst.h:227 mundisplaceable()
 function mundisplaceable(mon) {
     return !!(mon.ispriest || mon.isshk || mon.isgd
-              || mon.mnum === PMNAMES.PM_ORACLE);
+              || mon.mnum === PMNAMES.PM_ORACLE
+              || mon.m_id === game.quest_status?.leader_m_id);
 }
 
 // include/mondata.h bigmonst()

@@ -15,21 +15,23 @@ import { welded } from './wield.js';
 import { ONAMES } from './objects_data.js';
 import { encumber_msg, exercise, weight_cap } from './attrib.js';
 import { freeinv, getobj, any_obj_ok, obj_extract_self } from './invent.js';
-import { place_object } from './mkobj.js';
+import { place_object, set_bknown } from './mkobj.js';
 import { cls, pline, newsym } from './display.js';
 import { pline_The, You, You_cant, You_hear, Your } from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp, check_special_room } from './hack.js';
-import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, VIBRATING_SQUARE, MAGIC_PORTAL, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE, BC_BALL, BC_CHAIN, MENU_FULL, ALL_TYPES_SELECTED, Is_rogue_level } from './const.js';
-import { t_at, m_at, is_pool, is_lava } from './mon.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, IS_SOFT, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, VIBRATING_SQUARE, MAGIC_PORTAL, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE, HAND, BC_BALL, BC_CHAIN, MENU_FULL, ALL_TYPES_SELECTED, Is_rogue_level, NH_AMBER, NH_BLACK, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOTAIL, MM_NOMSG } from './const.js';
+import { t_at, m_at, is_pool, is_lava, delobj_core } from './mon.js';
 import { is_pick } from './mon.js';
 import { cansee } from './vision.js';
-import { Blind, Levitation } from './youprop.js';
+import { Blind, Hallucination, Levitation } from './youprop.js';
 import { OCLASSES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
 import { can_reach_floor, add_valid_menu_class, allow_category,
          query_drop_categories, query_objlist } from './pickup.js';
 import { body_part } from './polyself.js';
+import { PMNAMES } from './monst_data.js';
+import { Monnam } from './do_name.js';
 
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
    A dynamic import() here hits the same partially-initialised module the
@@ -49,6 +51,58 @@ export function do_wire_dokick(fn) { ship_object_fn = fn; }
 
 function note_unported_do(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/do.c:2111 revive_corpse() and :2251 revive_mon(), with zap.c revive()
+// for an ordinary floor corpse. This is the timed Rider path: recreate the
+// monster without inventory, consume the corpse forcibly, and print the
+// species-specific rising effect.
+export async function revive_corpse(corpse) {
+    if (!corpse || corpse.otyp !== ONAMES.CORPSE
+        || corpse.where !== OBJ_FLOOR)
+        return false;
+
+    const x = corpse.ox, y = corpse.oy;
+    const ptr = game.mons[corpse.corpsenm];
+    const { makemon } = await import('./makemon.js');
+    const mmflags = NO_MINVENT | MM_NOWAIT | MM_NOCOUNTBIRTH
+                    | MM_NOTAIL | MM_NOMSG;
+    const mtmp = makemon(ptr, x, y, mmflags);
+    if (!mtmp)
+        return false;
+
+    /* makemon.c calls dochugw() even for MM_NOMSG arrivals. A visible,
+       nearby Rider interrupts a counted wait before revive_corpse prints
+       the rising message. */
+    if (game.occupation) {
+        const { dochugw } = await import('./monmove.js');
+        await dochugw(mtmp, false);
+    }
+
+    if (mtmp.m_lev < ptr.mlevel)
+        rnd(ptr.mlevel + 1); /* montraits' restoration-level roll */
+    mtmp.mrevived = 1;
+    mtmp.msleeping = 0;
+    mtmp.mcanmove = true;
+    mtmp.mcansee = true;
+
+    delobj_core(corpse, true);
+
+    let effect = '';
+    if (ptr.pmidx === PMNAMES.PM_DEATH)
+        effect = ' in a whirl of spectral skulls';
+    else if (ptr.pmidx === PMNAMES.PM_PESTILENCE)
+        effect = ' in a churning pillar of flies';
+    else if (ptr.pmidx === PMNAMES.PM_FAMINE)
+        effect = ' in a ring of withered crops';
+    if (cansee(x, y))
+        await pline(`${Monnam(mtmp)} rises from the dead${effect}!`);
+    return true;
+}
+
+export async function revive_mon(body) {
+    if (!await revive_corpse(body))
+        note_unported_do('revive_mon:retry');
 }
 
 // src/ball.c:147 unplacebc_core(): detach punishment pieces from this level.
@@ -269,10 +323,8 @@ function stairway_find_from(fromdlev, isladder) {
 // branch; the staircase path spends none.
 // src/do.c:1660 doup() — the '<' command.
 //
-// The pit climb, stuck-steed, held-by-monster and no-return confirmation arms
-// are recorded. prev_level() needs goto_level's reload path, which is not
-// ported, so climbing an actual staircase records; the common
-// "You can't go up here." is real.
+// The ordinary staircase and top-level no-return confirmation paths are
+// ported. Pit climbing, stuck steeds, and monster holds remain separate arms.
 export async function doup() {
     const stway = stairway_at(game.u.ux, game.u.uy);
 
@@ -285,6 +337,15 @@ export async function doup() {
     if (near_capacity() > SLT_ENCUMBER) {
         note_unported_do('doup:load_too_heavy');
         return ECMD_TIME;
+    }
+    if (!game.u.uz.dnum && game.u.uz.dlevel === 1) {
+        if (game.iflags?.debug_fuzzer)
+            return ECMD_OK;
+        const { tty_yn_function } = await import('./tty/topl.js');
+        if ((await tty_yn_function(
+            'Beware, there will be no return!  Still climb?', 'yn', 'n'))
+            !== 'y')
+            return ECMD_OK;
     }
     await prev_level(true);
     return ECMD_TIME;
@@ -382,21 +443,33 @@ export async function next_level(at_stairs) {
 //         new = TRUE;
 //     } else { ...reload the saved level from its file... }
 //
-// Three of goto_level's four draws are the Mysterious Force
-// (rn2(4 + mysteryforce), rn2(odds), rn2(diff + 2)), which fires only in the
-// Quest. The fourth is rnd(3) falling damage for an encumbered, punished, or
-// fumbling hero. A plain staircase descent spends no draw of its own.
+// The mysterious force can add three or four draws to an Amulet ascent from
+// Gehennom. A plain staircase descent spends no draw of its own.
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const dist = depth_do(newlevel) - depth_do(game.u.uz);
     let up = (depth_do(newlevel) < depth_do(game.u.uz));
     let do_fall_dmg = false;
+    const newdungeon = (game.u.uz.dnum !== newlevel.dnum);
+
+    /* src/do.c:1492: the mysterious force must keep a hero who starts
+       inside the Wizard's Tower inside it. The tower boundary is the
+       excluded rectangle shared by the up/down arrival regions. */
+    const onWTowerLevel = (lev) => ['wiz1_level', 'wiz2_level', 'wiz3_level']
+        .some(key => {
+            const sp = game.special_levels?.[key];
+            return sp && sp.dnum === lev.dnum && sp.dlevel === lev.dlevel;
+        });
+    const towerBoundary = game.dndest || {};
+    const wasInWTower = onWTowerLevel(game.u.uz)
+        && towerBoundary.nlx
+        && game.u.ux >= towerBoundary.nlx && game.u.ux <= towerBoundary.nhx
+        && game.u.uy >= towerBoundary.nly && game.u.uy <= towerBoundary.nhy;
 
     /* src/do.c:1502 — dungeon-change arms. In_tutorial(lev) is
        lev.dnum == tutorial_dnum; entering stashes the whole game state
        (inventory included) via nhcore's enter_tutorial, leaving restores
        it and re-enters level 1 as if starting a new game. */
     {
-        const newdungeon = (game.u.uz.dnum !== newlevel.dnum);
         if (newdungeon) {
             const { tutorial } = await import('./nhlua.js');
             if (newlevel.dnum === game.tutorial_dnum) {
@@ -407,6 +480,49 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             }
         }
     }
+
+    /* src/do.c:1541: while carrying the real Amulet, one quarter of early
+       Gehennom climbs initially trigger the mysterious force. It either
+       sends the hero down one or more levels or teleports them on the same
+       level. Repeated triggers become progressively less likely. */
+    const dgn = game.dungeons?.[game.u.uz.dnum];
+    if (dgn?.flags?.hellish && up && game.u.uhave?.amulet
+        && !newdungeon && !portal
+        && game.u.uz.dlevel < dgn.num_dunlevs - 3) {
+        const mysteryforce = game.context?.mysteryforce | 0;
+        if (!rn2(4 + mysteryforce)) {
+            const odds = 3 + (game.u.ualign?.type | 0);
+            let diff = odds <= 1 ? 0 : rn2(odds);
+
+            if (diff !== 0) {
+                newlevel.dnum = game.u.uz.dnum;
+                newlevel.dlevel = game.u.uz.dlevel + rnd(diff);
+                if (newlevel.dlevel > dgn.num_dunlevs)
+                    newlevel.dlevel = dgn.num_dunlevs;
+                diff = newlevel.dlevel - game.u.uz.dlevel;
+                if (wasInWTower && !onWTowerLevel(newlevel))
+                    diff = 0;
+            }
+            if (diff === 0) {
+                newlevel.dnum = game.u.uz.dnum;
+                newlevel.dlevel = game.u.uz.dlevel;
+            }
+
+            await pline('A mysterious force momentarily surrounds you...');
+            game.context ||= {};
+            game.context.mysteryforce = mysteryforce + rn2(diff + 2);
+
+            if (newlevel.dnum === game.u.uz.dnum
+                && newlevel.dlevel === game.u.uz.dlevel) {
+                const { safe_teleds, TELEDS_NO_FLAGS } =
+                    await import('./teleport.js');
+                await safe_teleds(TELEDS_NO_FLAGS);
+                return;
+            }
+            at_stairs = false;
+        }
+    }
+
     /* src/do.c:1577, the Quest start level blocks every descent within the
        same dungeon until the leader grants access. This also applies to a
        wizard-mode level teleport selected from the dungeon overview. */
@@ -414,7 +530,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const qstart = game.special_levels?.qstart_level;
         const atQstart = qstart && game.u.uz.dnum === qstart.dnum
                          && game.u.uz.dlevel === qstart.dlevel;
-        const newdungeon = game.u.uz.dnum !== newlevel.dnum;
         if (atQstart && !newdungeon) {
             const { ok_to_quest } = await import('./quest.js');
             if (!await ok_to_quest()) {
@@ -646,14 +761,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         } else if (up) {
             /* src/do.c — arriving from below lands on the DOWN staircase
                of the upper level (C u_on_dnstairs()) */
-            const dn = game.level?.dnstair;
-            if (dn) {
-                game.u.ux = dn.x;
-                game.u.uy = dn.y;
-            } else
-                note_unported_do('goto_level:up_arrival_no_dnstair');
+            await u_on_dnstairs();
         } else {
-            u_on_dnstairs();
+            await u_on_upstairs();
         }
 
         /* src/do.c:1774 — arrival message and stair-fall damage. `at_ladder`
@@ -813,10 +923,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const { In_endgame, Is_astralevel } = await import('./const.js');
         const newdungeon = (game.u.uz0.dnum !== game.u.uz.dnum);
         if (In_endgame(game.u.uz)) {
-            /* record_achievement(ACH_ENDG) — invisible */
+            const { ACH_ENDG, ACH_ASTR, record_achievement } =
+                await import('./insight.js');
+            record_achievement(ACH_ENDG);
             if (!familiar_level && Is_astralevel(game.u.uz)) {
                 await final_level(); /* guardian angel,&c */
-                /* record_achievement(ACH_ASTR) — invisible */
+                record_achievement(ACH_ASTR);
             } else if (newdungeon && game.u.uhave?.amulet) {
                 const { resurrect } = await import('./wizard.js');
                 await resurrect(); /* force confrontation with Wizard */
@@ -982,16 +1094,40 @@ async function final_level() {
     await gain_guardian_angel();
 }
 
-// src/do.c u_on_dnstairs() — put the hero on the down staircase of the new
-// level. C uses the UP staircase when arriving from above.
-function u_on_dnstairs() {
-    const up = game.level?.upstair;
-    if (up) {
-        game.u.ux = up.x;
-        game.u.uy = up.y;
-        return;
+// src/stairs.c u_on_sstairs(), u_on_upstairs(), u_on_dnstairs().
+async function u_on_sstairs(upflag) {
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        if (stway.tolev?.dnum !== game.u.uz.dnum
+            && !!stway.up !== !!upflag) {
+            game.u.ux = stway.sx;
+            game.u.uy = stway.sy;
+            return;
+        }
     }
-    note_unported_do('u_on_dnstairs:no_upstair');
+    const { u_on_rndspot } = await import('./dungeon.js');
+    await u_on_rndspot(upflag);
+}
+
+async function u_on_upstairs() {
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        if (stway.up) {
+            game.u.ux = stway.sx;
+            game.u.uy = stway.sy;
+            return;
+        }
+    }
+    await u_on_sstairs(0);
+}
+
+async function u_on_dnstairs() {
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        if (!stway.up) {
+            game.u.ux = stway.sx;
+            game.u.uy = stway.sy;
+            return;
+        }
+    }
+    await u_on_sstairs(1);
 }
 
 // include/you.h:354 enum utotypes
@@ -1096,6 +1232,57 @@ export async function dropy(obj) {
     await dropz(obj, false);
 }
 
+// src/do.c:363 doaltarobj() and src/dothrow.c:606 hitfloor().
+// An object that falls while the hero cannot reach the floor still announces
+// an altar landing, reveals its beatitude, and then enters the floor pile.
+export async function doaltarobj(obj) {
+    if (Blind())
+        return;
+
+    if (obj.oclass !== OCLASSES.COIN_CLASS) {
+        game.u.uconduct ||= {};
+        if (!game.context?.mon_moving)
+            game.u.uconduct.gnostic = (game.u.uconduct.gnostic || 0) + 1;
+    } else {
+        obj.blessed = obj.cursed = 0;
+    }
+
+    const [{ doname, otense, an }, { upstart, hcolor }]
+        = await Promise.all([import('./objnam.js'), import('./do_name.js')]);
+    if (obj.blessed || obj.cursed) {
+        const color = hcolor(obj.blessed ? NH_AMBER : NH_BLACK);
+        await pline(`There is ${an(color)} flash as ${doname(obj)} ${otense(obj, 'hit')} the altar.`);
+        if (!Hallucination())
+            obj.bknown = 1;
+    } else {
+        await pline(`${upstart(doname(obj))} ${otense(obj, 'land')} on the altar.`);
+        if (obj.oclass !== OCLASSES.COIN_CLASS)
+            obj.bknown = 1;
+    }
+}
+
+export async function hitfloor(obj, verbosely) {
+    const loc = game.level.at(game.u.ux, game.u.uy);
+    if (IS_SOFT(loc.typ) || game.u.uinwater || game.u.uswallow) {
+        await dropy(obj);
+        return;
+    }
+    if (IS_ALTAR(loc.typ)) {
+        await doaltarobj(obj);
+    } else if (verbosely) {
+        const [{ doname, otense }, { upstart }, { surface }]
+            = await Promise.all([
+                import('./objnam.js'), import('./do_name.js'),
+                import('./dungeon.js'),
+            ]);
+        await pline(`${upstart(doname(obj))} ${otense(obj, 'hit')} the ${surface(game.u.ux, game.u.uy)}.`);
+    }
+    if (ship_object_fn
+        && ship_object_fn(obj, game.u.ux, game.u.uy, false))
+        return;
+    await dropz(obj, true);
+}
+
 // src/do.c dropx() — take it out of inventory, then put it down.
 //
 // freeinv FIRST, then the placement. ship_object is the chute that swallows
@@ -1114,7 +1301,7 @@ export async function dropx(obj) {
         if (ship_object_fn && ship_object_fn(obj, game.u.ux, game.u.uy, false))
             return;
         if (IS_ALTAR(game.level.at(game.u.ux, game.u.uy)?.typ))
-            note_unported_do('dropx:doaltarobj');   /* sets bknown */
+            await doaltarobj(obj);
     }
     await dropy(obj);
 }
@@ -1139,8 +1326,13 @@ export async function dropx(obj) {
 export async function drop(obj) {
     if (!obj)
         return ECMD_FAIL;
-    if (!canletgo(obj, 'drop'))
+    if (!canletgo(obj, 'drop')) {
+        if (game._canletgo_message) {
+            await pline(game._canletgo_message);
+            delete game._canletgo_message;
+        }
         return ECMD_FAIL;
+    }
     if (obj.otyp === ONAMES.CORPSE
         && note_unported_do('drop:better_not_try_to_drop_that'))
         return ECMD_FAIL;
@@ -1281,7 +1473,8 @@ export async function doddrop() {
 // refusal itself is real.
 export function canletgo(obj, word) {
     if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
-        if (word) note_unported_do('canletgo:wearing_msg');
+        if (word)
+            game._canletgo_message = `You cannot ${word} something you are wearing.`;
         return false;
     }
     if (obj === game.u.uwep && welded(game.u.uwep)) {
@@ -1294,18 +1487,21 @@ export function canletgo(obj, word) {
             /* getobj ignores a count for throwing; replicate its kludge */
             if (word === 'throw' && obj.quan > 1)
                 obj.corpsenm = 1;
-            note_unported_do('canletgo:loadstone_msg');
+            game._canletgo_message = `For some reason, you cannot ${word}${
+                obj.corpsenm ? ' any of' : ''} the stone${obj.quan === 1 ? '' : 's'}!`;
         }
         obj.corpsenm = 0;               /* reset */
-        note_unported_do('canletgo:set_bknown');
+        set_bknown(obj, 1);
         return false;
     }
     if (obj.otyp === ONAMES.LEASH && obj.leashmon !== 0) {
-        if (word) note_unported_do('canletgo:leash_msg');
+        if (word)
+            game._canletgo_message = `The leash is tied around your ${body_part(HAND)}.`;
         return false;
     }
     if (obj.owornmask & W_SADDLE) {
-        if (word) note_unported_do('canletgo:saddle_msg');
+        if (word)
+            game._canletgo_message = `You cannot ${word} something you are sitting on.`;
         return false;
     }
     return true;

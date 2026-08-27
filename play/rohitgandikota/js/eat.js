@@ -37,14 +37,14 @@ import { losehp } from './hack.js';
 import { SICK_RES, SICK_VOMITABLE, KILLED_BY_AN } from './const.js';
 import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK, HUNGRY, FAINTING, FAINTED, A_LAWFUL, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, freeinv, update_inventory, reorder_invent, addinv_nomerge } from './invent.js';
+import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_DOWNPLAY, freeinv, update_inventory, reorder_invent, addinv_nomerge } from './invent.js';
 import { pline } from './display.js';
 /* include/obj.h:332 carried() is a WHERE test, not list membership. */
 import { carried } from './obj.js';
 import { splitobj, bcsign } from './mkobj.js';
 import { is_rottable } from './trap.js';
 import { body_part } from './polyself.js';
-import { LIGHT_HEADED, Is_airlevel, Is_waterlevel } from './const.js';
+import { LIGHT_HEADED, Is_airlevel, Is_astralevel, Is_waterlevel } from './const.js';
 import { surface } from './dungeon.js';
 
 // src/eat.c:3170 gethungry()
@@ -161,11 +161,12 @@ export function init_uhunger() {
 // getobj — and anything else is recorded.
 export async function floorfood(verb, corpsecheck) {
     const feeding = (verb === 'eat');           /* corpsecheck == 0 */
+    const offering = (verb === 'sacrifice');    /* corpsecheck == 1 */
 
     /* if we can't touch floor objects then use inventory food only */
     if (!can_reach_floor(true)
         || (is_pool_or_lava(game.u.ux, game.u.uy)))
-        return await getobj(verb, eat_ok, 0);   /* goto skipfloor */
+        return await getobj(verb, offering ? offer_ok : eat_ok, 0);
 
     /* src/eat.c — the metallivore arms (bear trap, iron bars, gold) come
        first and each spends a prompt; no ported hero is metallivorous. */
@@ -197,7 +198,7 @@ export async function floorfood(verb, corpsecheck) {
     }
 
  /* skipfloor: */
-    return await getobj(verb, eat_ok, 0);
+    return await getobj(verb, offering ? offer_ok : eat_ok, 0);
 }
 
 // src/eat.c doeat() — the 'e' command.
@@ -243,6 +244,24 @@ export function eat_ok(obj) {
         return GETOBJ_EXCLUDE;
 
     return GETOBJ_EXCLUDE_SELECTABLE;
+}
+
+// src/eat.c:3539 offer_ok(). Corpses and the two Amulet forms remain
+// selectable, with Amulets suggested only on the Astral Plane.
+function offer_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+    if (obj.oclass !== OCLASSES.FOOD_CLASS
+        && obj.oclass !== OCLASSES.AMULET_CLASS)
+        return GETOBJ_EXCLUDE;
+    if (obj.otyp !== ONAMES.CORPSE
+        && obj.otyp !== ONAMES.AMULET_OF_YENDOR
+        && obj.otyp !== ONAMES.FAKE_AMULET_OF_YENDOR)
+        return GETOBJ_EXCLUDE_SELECTABLE;
+    if (Is_astralevel(game.u.uz)
+        !== (obj.oclass === OCLASSES.AMULET_CLASS))
+        return GETOBJ_DOWNPLAY;
+    return GETOBJ_SUGGEST;
 }
 
 // src/eat.c:325 obj_nutrition()

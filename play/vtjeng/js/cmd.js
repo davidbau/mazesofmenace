@@ -55,11 +55,11 @@ import {
     UnsupportedLevelChangeError,
 } from './do.js';
 import {
-    doputon, dotakeoff, dowear, reset_remarm,
+    doputon, dotakeoff, dowear, remarm_swapwep, reset_remarm,
     UnsupportedAccessoryOnError, UnsupportedRingOnError,
     UnsupportedTakeOffError, UnsupportedWearError,
 } from './do_wear.js';
-import { doclose, reset_pick, UnsupportedLockError } from './lock.js';
+import { doclose, doopen, reset_pick, UnsupportedLockError } from './lock.js';
 import { UnsupportedMonsterCreationError } from './makemon_create.js';
 import { UnsupportedRegionPlacementError } from './mkmaze.js';
 import { docallcmd, UnsupportedObjectNamingError } from './do_name.js';
@@ -117,7 +117,12 @@ import {
     dokick,
     UnsupportedKickError,
 } from './dokick.js';
-import { dovspell, UnsupportedSpellDisplayError } from './spell.js';
+import {
+    docast,
+    dovspell,
+    UnsupportedSpellCastError,
+    UnsupportedSpellDisplayError,
+} from './spell.js';
 import {
     UnsupportedWeaponSkillError,
     enhance_weapon_skill,
@@ -129,6 +134,7 @@ import { select_menu } from './windows.js';
 import {
     domove,
     dopickup,
+    endRunning,
     monsterNearby,
     preflightDomoveDestination,
     u_maybe_impaired,
@@ -155,6 +161,7 @@ import {
 import {
     doswapweapon,
     dotwoweapon,
+    dowieldquiver,
     dowield,
     UnsupportedTwoWeaponError,
     UnsupportedWieldError,
@@ -997,10 +1004,10 @@ export async function parseCommand(state = game) {
 // the typed names work.
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
-    'eat', 'apply', 'close', 'down', 'up', 'drop', 'pickup', 'takeoff', 'wear',
-    'puton', 'quaff', 'zap', 'reqmenu', 'fight', 'options', 'autopickup', 'wizwish',
-    'wizlevelport', 'wizgenesis', 'fire', 'throw', 'swap', 'kick', 'save',
-    'wield', '#',
+    'eat', 'apply', 'open', 'close', 'down', 'up', 'drop', 'pickup', 'takeoff', 'wear',
+    'puton', 'quaff', 'zap', 'cast', 'reqmenu', 'fight', 'options', 'autopickup',
+    'wizwish', 'wizlevelport', 'wizgenesis', 'fire', 'throw', 'swap', 'kick',
+    'save', 'wield', '#',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
     + `${ADMITTED_COMMANDS.join(', ')}, a one-square walk, a shift-direction `
@@ -1099,14 +1106,13 @@ export function reset_occupations(state = game) {
 // getobj():2052-2053 -- would go into a list nothing can ever read. Each of
 // those sites says so where it stands.
 //
-// Only CMDQ_EXTCMD nodes are produced. cmdq_add_key(), cmdq_add_dir(),
-// cmdq_add_int() and cmdq_add_userinput() have no ported caller: of the four
-// call sites that reach a ported command, dothrow.c dofire()'s swap-and-retry
-// arm (568-570) pushes two extended commands and nothing else, and the three
-// arms that push keys or directions belong to click_to_cmd(), iactions.c and
-// dofire()'s own find_launcher() arm, all unported. rhack() below still
-// classifies a non-extcmd node the way C does, because the queue is state and
-// a future adder must not silently change what a stale node means.
+// CMDQ_EXTCMD and CMDQ_KEY nodes are produced. cmdq_add_dir(),
+// cmdq_add_int() and cmdq_add_userinput() have no ported caller.
+// cmdq_add_key() is called by itemactions_pushkeys() (iactions.c) to
+// queue the inventory letter for the command the player chose from the
+// item-actions menu. rhack() below classifies every node type the way C
+// does, because the queue is state and a future adder must not silently
+// change what a stale node means.
 function commandQueue(state) {
     state.command_queue ??= [[], []];
     return state.command_queue;
@@ -1119,6 +1125,13 @@ export function cmdq_add_ec(q, entry, state = game) {
         throw new TypeError('cmdq_add_ec() requires an extcmdlist row');
     }
     commandQueue(state)[q].push({ typ: CMDQ_EXTCMD, ec_entry: entry });
+}
+
+// C ref: cmd.c cmdq_add_key() (286-295). Pushes a single key onto the
+// command queue. itemactions_pushkeys() (iactions.c) uses this to queue
+// the inventory letter that identifies the object the player chose.
+export function cmdq_add_key(q, key, state = game) {
+    commandQueue(state)[q].push({ typ: CMDQ_KEY, key });
 }
 
 // C ref: cmd.c cmdq_pop(). It picks its own queue -- CQ_REPEAT while
@@ -1334,6 +1347,10 @@ export function failClosedCommandRefusals() {
         UnsupportedFeatureDescriptionError,
         UnsupportedObjectNameError,
         UnsupportedSpellDisplayError,
+        // spell.c spelleffects_check() and spelleffects() raise this from
+        // the forgotten-spell, amulet-drain, and non-healing spell paths
+        // that this port has not reached.
+        UnsupportedSpellCastError,
         UnsupportedDiscoveryDisplayError,
         UnsupportedEnlightenmentError,
         UnsupportedShopError,
@@ -1708,12 +1725,50 @@ async function runCloseCommand(key, state) {
     return failClosedCommand(key, state, () => doclose(state));
 }
 
+// C ref: lock.c doopen(). Like doclose() it returns its own ECMD_* result:
+// ECMD_OK for the nohands refusal, a cancelled direction prompt, and the pit
+// refusal, and ECMD_TIME for every path past the mimic/Confusion/Stunned
+// checks (including the drawbridge, container, no-door, doormask, verysmall
+// and open-attempt paths). The u_at delegation to doloot() answers doloot()'s
+// own result.
+async function runOpenCommand(key, state) {
+    return failClosedCommand(key, state, () => doopen(state));
+}
+
 // C ref: zap.c dozap(). Like dosearch() and doeat() it returns its own ECMD_*
 // result: ECMD_OK for the two guards above the object prompt, ECMD_CANCEL for
 // an escaped object prompt, and ECMD_TIME once a wand has been chosen, whether
 // or not it had a charge left to spend.
 async function runZapCommand(key, state) {
     return failClosedCommand(key, state, () => dozap(state));
+}
+
+// C ref: spell.c docast(). Like dozap() and dodrink() it returns its own ECMD_*
+// result: ECMD_FAIL when no spell is selected, ECMD_TIME when a spell is cast.
+async function runCastCommand(key, state) {
+    return failClosedCommand(key, state, () => docast(state, {
+        message: ttyPline,
+        // spell.c dospellmenu() for SPELLMENU_CAST: PICK_ONE menu with the
+        // column heading styled by iflags.menu_headings.
+        menu: (items, how, prompt) => select_menu(state, {
+            items: items.map((item) => (item.heading
+                ? {
+                    ...item,
+                    attr: menuTitleStyle(state).titleAttr,
+                    color: menuTitleStyle(state).titleColor,
+                }
+                : item)),
+            how,
+            title: prompt,
+            ...menuTitleStyle(state),
+            cancelValue: null,
+            overlay: state.iflags?.menu_overlay !== false,
+        }),
+        // morehungry() -> newuhs() requires these hooks for hunger
+        // status-change messages and status-line redraws.
+        statusRefresh: () => bot(),
+        endRunning: (s) => endRunning(s),
+    }));
 }
 
 // C ref: potion.c dodrink(). Like dosearch() and doeat() it returns its own
@@ -2080,6 +2135,8 @@ async function doextcmd(key, state) {
         return await runApplyCommand(key, state);
     case 'dozap':
         return await runZapCommand(key, state);
+    case 'docast':
+        return await runCastCommand(key, state);
     case 'dodown':
         return await runDownCommand(key, state);
     case 'doup':
@@ -2090,6 +2147,11 @@ async function doextcmd(key, state) {
         return await runPickupCommand(key, state);
     case 'doloot':
         return await runLootCommand(key, state);
+    case 'doopen':
+        return await runOpenCommand(key, state);
+    case 'dotogglepickup':
+        await dotogglepickup(state);
+        return ECMD_OK;
     case 'dotakeoff':
         return await runTakeOffCommand(key, state);
     case 'dowear':
@@ -2264,16 +2326,29 @@ export async function rhack(key, state = game) {
             // cleared, so `Fm` and `mF` both leave the CMD_M_PREFIX rule in
             // force for the command that follows.
             if (command === 'reqmenu') wasMPrefix = true;
-            key = await parseCommand(state);
-            if (firstTime) {
-                state.context.pendingCommand =
-                    captureParsedCommand(key, state);
+            const queuedAfterPrefix = cmdq_pop(state);
+            let commandAfterPrefix = null;
+            if (queuedAfterPrefix) {
+                if (queuedAfterPrefix.typ === CMDQ_EXTCMD
+                    && queuedAfterPrefix.ec_entry) {
+                    commandAfterPrefix = queuedAfterPrefix.ec_entry.ef_txt;
+                } else {
+                    key = queuedAfterPrefix.typ === CMDQ_KEY
+                        ? queuedAfterPrefix.key : 0;
+                }
+            } else {
+                key = await parseCommand(state);
+                if (firstTime) {
+                    state.context.pendingCommand =
+                        captureParsedCommand(key, state);
+                }
             }
-            if (!key || key === 0xFF || key === ESC) {
+            if (!commandAfterPrefix && (!key || key === 0xFF || key === ESC)) {
                 resetCommandVars(state);
                 return;
             }
-            command = commandForKey(commandBindings(state), key);
+            command = commandAfterPrefix
+                ?? commandForKey(commandBindings(state), key);
             // C loops back to do_cmdq_extcmd for the prefixed command, so the
             // next key gets its own can_do_extcmd() before anything else
             // looks at it.
@@ -2421,6 +2496,22 @@ export async function rhack(key, state = game) {
             if (res & ECMD_TIME) commandTookTime(state);
             return;
         }
+        if (command === 'open') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3818, the same
+            // three tests the '#', `search`, `eat`, `apply` and `close` arms
+            // apply. doopen() reaches ECMD_OK for the nohands refusal, a
+            // cancelled direction prompt, and the pit refusal, and ECMD_TIME
+            // for every path past the mimic/Confusion/Stunned checks. The
+            // u_at delegation to doloot() answers doloot()'s own result. The
+            // MOVEMENTCMD and domove_attempting tests at 3773-3800 cannot
+            // divert it, because cmd.c:1785's "open" row carries no flags.
+            const res = await runOpenCommand(key, state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
         if (command === 'zap') {
             // C ref: rhack()'s result handling at cmd.c:3810-3818, the same
             // three tests the '#', `search`, `eat` and `apply` arms apply.
@@ -2431,6 +2522,22 @@ export async function rhack(key, state = game) {
             // cmd.c:2004's "zap" row carries no flags at all -- which is also
             // why an 'm' or 'F' prefix is refused ahead of this arm.
             const res = await runZapCommand(key, state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        if (command === 'cast') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3818, the same
+            // three tests the '#', `search`, `eat` and `zap` arms apply.
+            // docast() reaches ECMD_FAIL whenever getspell() answers false:
+            // an empty spellbook, rejectcasting(), an invalid queued key, or
+            // a cancelled spell menu. A cast attempt answers ECMD_TIME.
+            // cmd.c:1689's
+            // "cast" row carries only IFBURIED -- no prefix flags at all --
+            // so an 'm' or 'F' prefix is refused ahead of this arm.
+            const res = await runCastCommand(key, state);
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
                 resetCommandVars(state, state.multi < 0);
@@ -2636,6 +2743,34 @@ export async function rhack(key, state = game) {
             if (res & ECMD_TIME) commandTookTime(state);
             return;
         }
+        if (command === 'quiver') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3825.
+            // doquiver_core() answers ECMD_CANCEL for a cancelled prompt and
+            // ECMD_OK when the queued '-' clears the quiver. Quiver changes
+            // consume no time unless a later ordinary-item branch unwields a
+            // weapon, so this slice reaches only the cost-free result.
+            const res = await failClosedCommand(
+                key, state, () => dowieldquiver(state),
+            );
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        if (command === 'altunwield') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3825. The
+            // internal row can arrive only from itemactions_pushkeys(), and
+            // remarm_swapwep() consumes the queued '-' itself. A valid
+            // alternate weapon always answers ECMD_TIME after removing it;
+            // a missing or malformed continuation answers ECMD_FAIL.
+            const res = await remarm_swapwep(state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
         if (command === 'swap') {
             // C ref: rhack()'s result handling, the same three tests. Both of
             // doswapweapon()'s guards answer ECMD_FAIL, and ready_weapon()
@@ -2745,12 +2880,11 @@ export async function rhack(key, state = game) {
             resetCommandVars(state, state.multi < 0);
             return;
         }
-        // These five wrappers answer a boolean rather than an ECMD code, so
-        // each folds C's two result arms into one unconditional reset. That
-        // predates the command queue and stays: every one of them is reachable
-        // only from a typed key, and rhack() has just drained the queue to
-        // read that key, so the clear the reset now performs has nothing to
-        // discard. The fold covers the reset argument alone; the ECMD_TIME
+        // These five wrappers answer a boolean rather than an ECMD code. The
+        // inventory wrapper's ECMD_OK-equivalent exit can leave a canned item
+        // action behind, so it preserves that queue. The other wrappers still
+        // fold C's two result arms into one unconditional reset. The fold
+        // covers the reset argument alone; the ECMD_TIME
         // tail at 3818-3825 is shared with every other arm through
         // commandTookTime(), so a wrapper that spends a turn forgets the
         // kicked square exactly as the ECMD arms do.
@@ -2762,12 +2896,15 @@ export async function rhack(key, state = game) {
         // that C leaves alone. Nothing reaches it today. dolook() is the only
         // one of the five whose own exits can answer ECMD_TIME (invent.c:4160,
         // :4248 and :4314, each for a blind hero), no ported code writes
-        // u.uprops[BLINDED], and ddoinv()'s other C exit, itemactions() at
-        // invent.c:2998, is refused in js/invent.js before it can answer.
+        // u.uprops[BLINDED].
         if (command === 'inventory') {
             const elapsed = await runInventoryCommand(key, state);
-            resetCommandVars(state);
-            if (elapsed) commandTookTime(state);
+            if (elapsed) {
+                resetCommandVars(state);
+                commandTookTime(state);
+            } else {
+                resetCommandVars(state, state.multi < 0);
+            }
             return;
         }
         if (command === 'showspells') {

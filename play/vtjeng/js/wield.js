@@ -40,6 +40,7 @@ import {
     addinv_nomerge,
     freeinv,
     getobj,
+    hands_obj,
     prinv,
     update_inventory,
 } from './invent.js';
@@ -78,6 +79,7 @@ import { ttyPline } from './tty_message.js';
 import {
     bimanual,
     set_twoweap,
+    setuqwep,
     setuswapwep,
     setuwep,
 } from './worn.js';
@@ -448,6 +450,18 @@ function cant_wield_corpse(obj, state) {
     throw new UnsupportedWieldError('instapetrify()');
 }
 
+// C ref: wield.c ready_ok() (291-327), through its null-object branch at
+// 293-294. Null represents the '-' choice: clearing an occupied quiver is
+// suggested, while redundantly clearing an empty one remains selectable but
+// is downplayed. Ordinary-item classification belongs to later quiver slices.
+function ready_ok(obj, state) {
+    if (!obj)
+        return state.uquiver ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
+    throw new UnsupportedWieldError(
+        'ready_ok() classification for an ordinary inventory item',
+    );
+}
+
 // C ref: wield.c wield_ok() (330-343), the getobj callback for #wield.
 // Coins are excluded, weapons and weapon-tools are suggested, and everything
 // else is downplayed (the hero can wield anything). Null (the "-" hands
@@ -478,14 +492,13 @@ function finish_splitting(obj, state) {
 // for an object, handles conflicts with worn/quivered/swapped slots, and
 // calls ready_weapon() to put it in the hand.
 //
-// Several branches stop. Choosing '-' (empty hands) needs the &hands_obj
-// sentinel, which getobj() never returns. Choosing the quivered weapon when
-// the quiver holds a stack invokes ynq() and setuqwep(), both of which reach
-// unported subsystems. Choosing a worn item refuses with "You cannot wield
-// that!" only when the item is armor, an accessory or a saddle, which is the
-// full list of wornmasks the C function tests at 443. The objsplit arms that
-// handle a counted selection (the hero typed a digit at the getobj prompt)
-// stop because getobj() itself stops at the count path.
+// Several branches stop. Choosing the quivered weapon when the quiver holds a
+// stack invokes ynq() and setuqwep(), both of which reach unported subsystems.
+// Choosing a worn item refuses with "You cannot wield that!" only when the
+// item is armor, an accessory or a saddle, which is the full list of
+// wornmasks the C function tests at 443. The objsplit arms that handle a
+// counted selection (the hero typed a digit at the getobj prompt) stop because
+// getobj() itself stops at the count path.
 export async function dowield(state = game) {
     /* May we attempt this? */
     state.multi = 0;
@@ -499,7 +512,7 @@ export async function dowield(state = game) {
 
     /* Prompt for a new weapon */
     clear_splitobjs(state);
-    const wep = await getobj(
+    let wep = await getobj(
         'wield', (o) => wield_ok(o, state),
         GETOBJ_PROMPT | GETOBJ_ALLOWCNT, state,
     );
@@ -531,18 +544,15 @@ export async function dowield(state = game) {
     }
 
     /* Handle no object, or object in other slot */
-    // wep === &hands_obj: getobj() never returns the hands sentinel in this
-    // port (it stops at mime_action()); the null path that getobj() returns
-    // instead was caught as ECMD_CANCEL above.
-    if (wep === state.uswapwep) {
+    if (wep === hands_obj) {
+        wep = null;
+    } else if (wep === state.uswapwep) {
         return doswapweapon(state);
-    }
-    if (wep === state.uquiver) {
+    } else if (wep === state.uquiver) {
         // The quiver path offers to split stacked quivered ammo through
         // ynq(), which is not ported in this form. Stop here.
         throw new UnsupportedWieldError('wielding the quivered weapon');
-    }
-    if (wep.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
+    } else if (wep.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
         await ttyPline('You cannot wield that!', state);
         return ECMD_FAIL;
     }
@@ -599,4 +609,42 @@ export async function doswapweapon(state = game) {
         await untwoweapon(state);
 
     return result;
+}
+
+// C ref: wield.c dowieldquiver() (503-506), the #quiver command.
+export async function dowieldquiver(state = game) {
+    return doquiver_core('ready', state);
+}
+
+// C ref: wield.c doquiver_core() (509-668), through the queued hands_obj arm
+// at 532-544. The ordinary-item branches remain fail-closed below: they split
+// stacks, negotiate weapon slots, or refill #fire and belong to later slices.
+export async function doquiver_core(verb, state = game) {
+    state.multi = 0;
+    if (!state.invent) {
+        await ttyPline('You have nothing to ready for firing.', state);
+        return ECMD_OK;
+    }
+
+    clear_splitobjs(state);
+    const newquiver = await getobj(
+        verb, (obj) => ready_ok(obj, state),
+        GETOBJ_PROMPT | GETOBJ_ALLOWCNT, state,
+    );
+
+    if (!newquiver)
+        return ECMD_CANCEL;
+    if (newquiver === hands_obj) {
+        if (state.uquiver) {
+            await ttyPline('You now have no ammunition readied.', state);
+            setuqwep(null, setwornEnv(state));
+        } else {
+            await ttyPline('You already have no ammunition readied!', state);
+        }
+        return ECMD_OK;
+    }
+
+    throw new UnsupportedWieldError(
+        'doquiver_core() with an ordinary inventory item',
+    );
 }

@@ -715,12 +715,11 @@ function Is_botlevel(lev) {
         && lev.dlevel === game.dungeons[lev.dnum].num_dunlevs;
 }
 
-// include/dungeon.h Invocation_lev(x) / Is_stronghold(x) — both name levels
-// that only exist deep in Gehennom, so neither is reachable at the depths any
-// public session gets to.
-function Invocation_lev(lev) {
-    return !!(game.inv_pos && lev && lev.dnum === game.inv_pos.dnum
-              && lev.dlevel === game.inv_pos.dlevel);
+// src/dungeon.c:2017 Invocation_lev(), the penultimate Gehennom floor.
+export function Invocation_lev(lev) {
+    const dgn = lev && game.dungeons?.[lev.dnum];
+    return !!(lev && dgn?.flags?.hellish
+              && lev.dlevel === dgn.num_dunlevs - 1);
 }
 function Is_stronghold(lev) {
     return !!(game.stronghold_level && lev

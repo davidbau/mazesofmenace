@@ -10,9 +10,10 @@
 import { game } from './gstate.js';
 import { pline, canspotmon, tty_clear_nhwindow_message } from './display.js';
 import { You, Your, You_feel, pline_The } from './pline.js';
-import { hidden_gold, money_cnt, useup } from './invent.js';
+import { carrying, hidden_gold, money_cnt, useup } from './invent.js';
 import { depth, dunlevs_in_dungeon } from './dungeon.js';
-import { G_GENOD, G_UNIQ, In_endgame, In_quest, KILLED_BY_AN, KILLED_BY,
+import { G_GENOD, G_UNIQ, In_endgame, In_quest, Is_astralevel,
+         KILLED_BY_AN, KILLED_BY, A_CURRENT, A_ORIGINAL,
          LOW_PM, M_AP_MONSTER, M_AP_TYPE, MGIVENNAME, NHW_TEXT, NHW_MENU,
          OBJ_FREE,
          NON_PM, A_CON, has_mgivenname } from './const.js';
@@ -368,7 +369,10 @@ async function really_done(how) {
         game.iflags.at_midnight = midnight();
     }
 
-    /* achievements, dumplog, signal handlers: none modelled */
+    if (how === ASCENDED) {
+        const { ACH_UWIN, record_achievement } = await import('./insight.js');
+        record_achievement(ACH_UWIN);
+    }
 
     const { can_make_bones, savebones, drop_upon_death } = await import('./bones.js');
     const bones_ok = (how < GENOCIDED) && can_make_bones();
@@ -485,8 +489,13 @@ async function really_done(how) {
             tmp += 1000 * ((deepest > 30) ? 10 : deepest - 20);
         u.urexp = (u.urexp || 0) + tmp;
 
-        if (how === ASCENDED)
-            note_unported_end('really_done:ascension bonus');
+        if (how === ASCENDED
+            && u.ualign.type === (u.ualignbase?.[A_ORIGINAL]
+                                  ?? u.ualign.type)) {
+            const sameBase = (u.ualignbase?.[A_CURRENT] ?? u.ualign.type)
+                          === (u.ualignbase?.[A_ORIGINAL] ?? u.ualign.type);
+            u.urexp += sameBase ? u.urexp : Math.trunc(u.urexp / 2);
+        }
     }
 
     if (u.ugrave_arise >= 0)
@@ -516,6 +525,12 @@ async function really_done(how) {
     if (!game.done_stopprint) {
         if (u.uhave?.amulet)
             game.killer.name += ' (with the Amulet)';
+        else if (how === ESCAPED) {
+            if (Is_astralevel(u.uz))
+                game.killer.name += ' (in celestial disgrace)';
+            else if (carrying(ONAMES.FAKE_AMULET_OF_YENDOR))
+                game.killer.name += ' (with a fake Amulet)';
+        }
 
         const female = !!game.flags?.female;
         const rolename = (female && game.urole?.name?.f)
@@ -526,7 +541,10 @@ async function really_done(how) {
         tty_putstr(endwin, 0, '');
 
         if (how === ESCAPED || how === ASCENDED) {
-            note_unported_end('really_done:escape/ascension summary');
+            tty_putstr(endwin, 0,
+                       `You ${how === ASCENDED ? 'went to your reward'
+                                              : 'escaped from the dungeon'} with ${
+                           u.urexp} point${u.urexp === 1 ? '' : 's'},`);
         } else {
             /* did not escape or ascend */
             let pbuf;
@@ -734,7 +752,10 @@ async function disclose(how, taken) {
 
     if (!game.done_stopprint) {
         const { ask, defquery } = should_query_disclose_option('c');
-        c = ask ? await tty_yn_function('Do you want to see your conduct?',
+        const achievementSuffix = (game.u.uachieved || []).length
+            ? ' and achievements' : '';
+        c = ask ? await tty_yn_function(
+                `Do you want to see your conduct${achievementSuffix}?`,
                                         'ynq', defquery) : defquery;
         if (c === 'y') {
             const { show_conduct, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD } =

@@ -24,8 +24,10 @@ import { OCLASSES, ONAMES } from './objects_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
          SUPPRESS_SADDLE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
-         SUPPRESS_HALLUCINATION, SUPPRESS_MAPPEARANCE, MD_PAD_BOGONS,
-         has_mgivenname, MGIVENNAME, W_SADDLE } from './const.js';
+         SUPPRESS_HALLUCINATION, SUPPRESS_MAPPEARANCE, AUGMENT_IT,
+         MD_PAD_BOGONS,
+         has_mgivenname, MGIVENNAME, W_SADDLE, A_NONE, A_LAWFUL,
+         A_NEUTRAL, A_CHAOTIC } from './const.js';
 import { humanoid, is_animal, mindless, pronoun_gender, type_is_pname } from './mondata.js';
 import { canspotmon } from './display.js';
 import { ONAME_SKIP_INVUPD } from './const.js';
@@ -141,6 +143,44 @@ export function pmname(ptr, gender) {
     return n[gender] || n[2] || n[0] || '';
 }
 
+function aligned_god_name(alignment) {
+    let name = alignment === A_NONE ? 'Moloch'
+             : alignment === A_LAWFUL ? game.urole?.lgod
+               : alignment === A_NEUTRAL ? game.urole?.ngod
+                 : alignment === A_CHAOTIC ? game.urole?.cgod : 'someone';
+    if (name?.startsWith('_'))
+        name = name.slice(1);
+    return name || 'someone';
+}
+
+function priest_name(mtmp, article) {
+    const alignedPriest = mtmp.mnum === PMNAMES.PM_ALIGNED_CLERIC;
+    const highPriest = mtmp.mnum === PMNAMES.PM_HIGH_CLERIC;
+    let what = (mtmp.ispriest || alignedPriest || highPriest)
+        ? (mtmp.female ? 'priestess' : 'priest')
+        : pmname(game.mons[mtmp.mnum], mtmp.female ? 1 : 0);
+    if (highPriest)
+        what = `high ${what}`;
+    if (mtmp.minvis)
+        what = `invisible ${what}`;
+    if (mtmp.isminion && mtmp.emin?.renegade)
+        what = `renegade ${what}`;
+
+    let prefix = '';
+    if (article === ARTICLE_THE || article === ARTICLE_YOUR
+        || (article === ARTICLE_A && highPriest))
+        prefix = 'the ';
+    else if (article === ARTICLE_A) {
+        const withArticle = just_an(what);
+        prefix = withArticle.slice(0, withArticle.length - what.length);
+    }
+
+    const alignment = mtmp.ispriest
+        ? mtmp.epri?.shralign
+        : mtmp.emin?.min_align;
+    return `${prefix}${what} of ${aligned_god_name(alignment)}`;
+}
+
 // src/do_name.c:827 x_monnam() — build a monster's name.
 //
 // 205 lines in C with 396 call sites; this is its COMMON PATH only. Ported:
@@ -174,6 +214,9 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
     const do_hallu = Hallucination()
         && !((suppress || 0) & SUPPRESS_HALLUCINATION);
 
+    if (!do_hallu && (mtmp.ispriest || mtmp.isminion))
+        return priest_name(mtmp, article);
+
     const mdat = game.mons[mtmp.mnum];
     /* src/do_name.c mon_pmname(), ordinary monster names use Mgender(),
        with pmname() falling back to the neutral slot when that sex has no
@@ -199,18 +242,17 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
     }
     if (mtmp.minvis)
         note_do_name_unported('x_monnam:invisible');
-    /* src/do_name.c:875 — unseen monsters read as "it". do_it is guarded on
-       ARTICLE_YOUR too, so a pet is still named even when unseen, and on
-       usteed and engulfer for the same reason. SUPPRESS_IT and AUGMENT_IT
-       are not modelled, so augment_it is false and the "someone"/"something"
-       arm cannot fire -- that arm's rn2(2) under Hallucination is therefore
-       not spent, which matches C only while Hallucination is unported. */
+    /* src/do_name.c:875, unseen monsters read as "it". AUGMENT_IT asks for
+       "someone" for a thinking humanoid and "something" otherwise; while
+       hallucinating, rn2(2) may invert that choice. */
     const do_it = !canspotmon(mtmp) && article !== ARTICLE_YOUR
                   && mtmp !== game.u.usteed && !is_engulfer
                   && !((suppress || 0) & SUPPRESS_IT);
     if (do_it) {
-        note_do_name_unported('x_monnam:augment_it');
-        return 'it';
+        if (!((suppress || 0) & AUGMENT_IT))
+            return 'it';
+        const someone = humanoid(mdat) && !is_animal(mdat) && !mindless(mdat);
+        return (!do_hallu ? someone : !rn2(2)) ? 'someone' : 'something';
     }
 
     /* Put the adjectives in the buffer; the invisible state is recorded
@@ -319,10 +361,18 @@ export const noit_mon_nam = (mtmp) =>
                                   : SUPPRESS_IT,
              false);
 
+// src/do_name.c:1065 some_mon_nam(). Like mon_nam(), except an unseen
+// monster is "someone" or "something" instead of "it".
+export const some_mon_nam = (mtmp) =>
+    x_monnam(mtmp, ARTICLE_THE, null,
+             (has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0) | AUGMENT_IT,
+             false);
+
 // src/do_name.c Monnam() / YMonnam() — the capitalised forms.
 export const Monnam  = (mtmp) => upstart(mon_nam(mtmp));
 export const YMonnam = (mtmp) => upstart(y_monnam(mtmp));
 export const noit_Monnam = (mtmp) => upstart(noit_mon_nam(mtmp));
+export const Some_Monnam = (mtmp) => upstart(some_mon_nam(mtmp));
 
 // src/do_name.c:1191 mon_nam_too() — name `mon`, except that when it IS
 // `other_mon` the reflexive pronoun is used instead.
@@ -640,6 +690,18 @@ export function hcolor(colorpref) {
     return (Hallucination || !colorpref)
         ? hcolors[rn2_on_display_rng(hcolors.length)]
         : colorpref;
+}
+
+// src/do_name.c:1470 rndcolor(), a random real color unless hallucinating.
+export function rndcolor() {
+    const colors = [
+        'black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray',
+        'transparent', 'orange', 'bright green', 'yellow', 'bright blue',
+        'bright magenta', 'bright cyan', 'white',
+    ];
+    const k = rn2(colors.length);
+    return Hallucination() ? hcolor(null)
+                           : k === NO_COLOR ? 'colorless' : colors[k];
 }
 
 /* src/do_name.c:1478 hliquids[] */

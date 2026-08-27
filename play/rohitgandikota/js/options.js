@@ -144,6 +144,15 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
     if (opt.type === 'BoolOpt') {
         result.opts[opt.name] = !negated;
         (result.optSetInConfig ||= {})[opt.name] = true;
+    } else if (opt.name === 'pickup_burden') {
+        const burden = ({
+            u: 0, b: 1, s: 2, n: 3, o: 4, t: 4, l: 5,
+        })[value?.charAt(0).toLowerCase()];
+        if (burden === undefined) {
+            config_error_add(result, `Unknown pickup_burden parameter '${value}'`);
+            return false;
+        }
+        result.opts[opt.name] = burden;
     } else {
         result.opts[opt.name] = negated ? null : value;
     }

@@ -153,7 +153,8 @@ const out = (buf) => lines.push(buf);
 export const ENL_GAMEINPROGRESS = 0, ENL_GAMEOVERALIVE = 1,
              ENL_GAMEOVERDEAD = 2;
 export const BASICENLIGHTENMENT = 1, MAGICENLIGHTENMENT = 2;
-export const ACH_HELL = 2, ACH_MINE = 15, ACH_TOWN = 16,
+export const ACH_HELL = 2, ACH_INVK = 5, ACH_ENDG = 7, ACH_ASTR = 8,
+             ACH_UWIN = 9, ACH_MINE = 15, ACH_TOWN = 16,
              ACH_SOKO = 21, ACH_RNK1 = 23;
 let en_final = 0;
 

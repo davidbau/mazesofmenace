@@ -10,7 +10,7 @@ import { isqrt } from './hacklib.js';
 import { is_metallic } from './obj.js';
 import { ONAMES, OCLASSES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
-import { rnd, rn2, rn1 } from './rng.js';
+import { rnd, rn2, rn1, d } from './rng.js';
 import { tty_yn_function } from './tty/topl.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow, ATR_NONE,
@@ -20,12 +20,12 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, PICK_NONE,
          MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './const.js';
 import { OBJ_NAME, OBJ_DESCR } from './objnam.js';
 import { ECMD_FAIL } from './const.js';
-import { You, Your, You_feel, pline_The } from './pline.js';
+import { You, Your, You_feel, You_hear, pline_The } from './pline.js';
 import { acurr, exercise } from './attrib.js';
 import { mksobj } from './mkobj.js';
 import { zapyourself } from './zap.js';
 import { fall_asleep } from './timeout.js';
-import { makeknown } from './o_init.js';
+import { makeknown, observe_object } from './o_init.js';
 import { getdir } from './cmd.js';
 import { update_inventory } from './invent.js';
 import { NODIR } from './const.js';
@@ -194,6 +194,95 @@ async function confused_book(spellbook) {
 // include/spell.h:12
 const MAX_SPELL_STUDY = 3;
 
+function on_stairs_at_u() {
+    for (let stway = game.stairs; stway; stway = stway.next)
+        if (stway.sx === game.u.ux && stway.sy === game.u.uy)
+            return true;
+    return false;
+}
+
+// src/spell.c:231 deadbook(). The successful invocation path is complete.
+// Raising or pacifying undead away from a prepared ritual remains recorded
+// until those monster effects are ported.
+async function deadbook(book) {
+    await You('turn the pages of the Book of the Dead...');
+    makeknown(ONAMES.SPE_BOOK_OF_THE_DEAD);
+    observe_object(book);
+    book.known = 1;
+
+    const { invocation_pos } = await import('./hack.js');
+    if (invocation_pos(game.u.ux, game.u.uy) && !on_stairs_at_u()) {
+        if (book.cursed) {
+            await pline_The(game.u.ublind
+                ? 'Book seems to be ignoring you!'
+                : "runes appear scrambled.  You can't read them!");
+            return;
+        }
+
+        if (!game.u.uhave?.bell || !game.u.uhave?.menorah) {
+            await pline('A chill runs down your spine.');
+            if (!game.u.uhave?.bell)
+                await You_hear('a faint chime...');
+            if (!game.u.uhave?.menorah)
+                await pline("Vlad's doppelganger is amused.");
+            return;
+        }
+
+        let candelabrumPrimed = false;
+        let bellPrimed = false;
+        let relicCursed = false;
+        for (const obj of game.invent || []) {
+            if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION
+                && obj.spe === 7 && obj.lamplit) {
+                if (obj.cursed) relicCursed = true;
+                else candelabrumPrimed = true;
+            }
+            if (obj.otyp === ONAMES.BELL_OF_OPENING
+                && game.moves - (obj.age || 0) < 5) {
+                if (obj.cursed) relicCursed = true;
+                else bellPrimed = true;
+            }
+        }
+
+        if (relicCursed) {
+            await pline_The('invocation fails!');
+            await pline('At least one of your relics is cursed...');
+        } else if (candelabrumPrimed && bellPrimed) {
+            const soon = d(2, 6);
+            const { mkinvokearea } = await import('./mklev.js');
+            await mkinvokearea();
+            (game.u.uevent ||= {}).invoked = 1;
+            game.u.uevent.udemigod = 1;
+            const { ACH_INVK, record_achievement } = await import('./insight.js');
+            record_achievement(ACH_INVK);
+            if (!game.u.udg_cnt || game.u.udg_cnt > soon)
+                game.u.udg_cnt = soon;
+        } else {
+            await You('have a feeling that something is amiss...');
+            note_unported_spell('deadbook:raise_dead');
+        }
+        return;
+    }
+
+    if (book.cursed) {
+        note_unported_spell('deadbook:raise_dead');
+    } else if (book.blessed) {
+        note_unported_spell('deadbook:pacify_undead');
+    } else {
+        switch (rn2(3)) {
+        case 0:
+            await Your('ancestors are annoyed with you!');
+            break;
+        case 1:
+            await pline_The('headstones in the cemetery begin to move!');
+            break;
+        default:
+            await pline('Oh my!  Your name appears in the book!');
+            break;
+        }
+    }
+}
+
 // src/spell.c:356 learn(), the per-turn spellbook study occupation.
 async function learn() {
     const spbook = (game.context.spbook ||= {});
@@ -222,9 +311,7 @@ async function learn() {
     exercise(A_WIS, true);
     let booktype = book.otyp;
     if (booktype === ONAMES.SPE_BOOK_OF_THE_DEAD) {
-        note_unported_spell('learn:book_of_the_dead');
-        spbook.book = null;
-        spbook.o_id = 0;
+        await deadbook(book);
         return 0;
     }
 
@@ -591,6 +678,45 @@ const quitchars = ' \r\n\x1b';
 // src/spell.c:17 KEEN, include/spell.h:36 SPELL_LEV_PW
 const KEEN = 20000;
 export const SPELL_LEV_PW = (lvl) => lvl * 5;
+
+export const spe_Forgotten = -1;
+export const spe_Unknown = 0;
+export const spe_Fresh = 1;
+export const spe_GoingStale = 2;
+
+// src/spell.c known_spell(). Classify retained knowledge for a book type.
+export function known_spell(otyp) {
+    for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
+        if (spellid(i) === otyp) {
+            const knowledge = spellknow(i);
+            return knowledge > KEEN / 10 ? spe_Fresh
+                 : knowledge > 0 ? spe_GoingStale : spe_Forgotten;
+        }
+    }
+    return spe_Unknown;
+}
+
+// src/spell.c force_learn_spell(). Add or refresh a spell and return its key.
+export function force_learn_spell(otyp) {
+    if (otyp === ONAMES.SPE_BLANK_PAPER
+        || otyp === ONAMES.SPE_BOOK_OF_THE_DEAD
+        || known_spell(otyp) === spe_Fresh)
+        return '';
+
+    let i;
+    for (i = 0; i < MAXSPELL; i++)
+        if (spellid(i) === NO_SPELL || spellid(i) === otyp)
+            break;
+    if (i === MAXSPELL)
+        return '';
+
+    (game.spl_book ||= [])[i] = {
+        sp_id: otyp,
+        sp_lev: game.objects[otyp].oc_level,
+        sp_know: KEEN,
+    };
+    return String.fromCharCode(i < 26 ? 97 + i : 65 + i - 26);
+}
 
 // include/spell.h:33 spellknow()
 function spellknow(spidx) {

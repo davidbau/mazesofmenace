@@ -127,7 +127,9 @@ export async function doopen_indir(x, y) {
     if (rnl(20) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
         await pline_xy(cc.x, cc.y, 'The door opens.');
         if (door.doormask & D_TRAPPED) {
-            note_unported_lock('doopen_indir:b_trapped');
+            const { b_trapped } = await import('./trap.js');
+            const { FINGER } = await import('./const.js');
+            await b_trapped('door', FINGER);
             door.doormask = D_NODOOR;
         } else {
             door.doormask = D_ISOPEN;
@@ -333,7 +335,9 @@ export async function picklock() {
     await You(`succeed in ${lock_action()}.`);
     if (xl.door) {
         if (xl.door.doormask & D_TRAPPED) {
-            note_unported_lock('picklock:door_b_trapped');
+            const { b_trapped } = await import('./trap.js');
+            const { FINGER } = await import('./const.js');
+            await b_trapped('door', FINGER);
             xl.door.doormask = D_NODOOR;
             unblock_point(u.ux + u.dx, u.uy + u.dy);
             newsym(u.ux + u.dx, u.uy + u.dy);
@@ -344,8 +348,11 @@ export async function picklock() {
     } else {
         xl.box.olocked = xl.box.olocked ? 0 : 1;
         xl.box.lknown = 1;
-        if (xl.box.otrapped)
-            note_unported_lock('picklock:chest_trap');
+        if (xl.box.otrapped) {
+            const { chest_trap } = await import('./trap.js');
+            const { FINGER } = await import('./const.js');
+            await chest_trap(xl.box, FINGER, false);
+        }
     }
     exercise(A_DEX, true);
     return (xl.usedtime = 0);

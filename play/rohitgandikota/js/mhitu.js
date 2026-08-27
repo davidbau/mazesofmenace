@@ -9,7 +9,7 @@
 
 import { game } from './gstate.js';
 import { breamm, thrwmu, spitmm } from './mthrowu.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rn1, rnd, d } from './rng.js';
 import { is_animal, perceives, dmgtype, gender, pronoun_gender,
          is_swimmer, thick_skinned, unsolid, hides_under, is_hider, is_demon,
          nolimbs, is_undead, is_orc, is_whirly, digests, is_flyer,
@@ -26,14 +26,14 @@ import { W_ARMOR, W_AMUL, NON_PM, u_at, is_pit, Upolyd, PRONOUN_HALLU,
          RLOC_MSG,
          TT_PIT, WATER, P_WHIP, P_POLEARMS, NEED_WEAPON,
          NEED_HTH_WEAPON, LEFT_SIDE, RIGHT_SIDE, LEG,
-         MON_EXPLODE, XKILL_NOMSG } from './const.js';
+         MON_EXPLODE, XKILL_NOMSG, SICK_NONVOMITABLE } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { genders } from './role_data.js';
 import { pline, canspotmon, canseemon, mon_visible, sensemon, bot,
          map_invisible, newsym } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { Amonnam, Monnam, pmname, rndmonnam } from './do_name.js';
-import { You, You_hear } from './pline.js';
+import { You, You_feel, You_hear } from './pline.js';
 import { attacktype_fordmg, dmgtype_fromattack } from './mondata.js';
 import { mon_nam } from './do_name.js';
 import { Inhell, remove_monster, place_monster } from './makemon.js';
@@ -49,7 +49,7 @@ import { stop_occupation } from './allmain.js';
 import { hitval, mon_wield_item } from './weapon.js';
 import { mhitm_ad_phys, mhitm_ad_cold, mhitm_ad_elec, mhitm_ad_drst,
          mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_drli,
-         mhitm_knockback } from './uhitm.js';
+         mhitm_ad_samu, mhitm_knockback } from './uhitm.js';
 import { is_pool, t_at } from './mon.js';
 import { touch_petrifies } from './dog.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -58,6 +58,61 @@ import { castmu } from './mcastu.js';
 
 function note_unported_mhitu(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/mhitu.c:1033 diseasemu(). Pestilence gives a fatal illness unless
+// sickness resistance blocks it.
+async function diseasemu(mdat) {
+    if (game.u.uprops?.SICK_RES
+        || game.u.intrinsic?.HSick_resistance) {
+        await You_feel('a slight illness.');
+        return false;
+    }
+    const { make_sick } = await import('./potion.js');
+    await make_sick(rn1(ACURR(A_CON), 20), pmname(mdat, 2), true,
+                    SICK_NONVOMITABLE);
+    return true;
+}
+
+// src/uhitm.c:3781 mhitm_ad_famn(), :3808 mhitm_ad_pest(), and :3841
+// mhitm_ad_deth(), specialized here for the live monster-versus-hero path.
+async function mhitm_ad_famn(magr, mhm) {
+    await pline(`${Monnam(magr)} reaches out, and your body shrivels.`);
+    exercise(A_CON, false);
+    const { is_fainted, morehungry } = await import('./eat.js');
+    if (!is_fainted())
+        await morehungry(rn1(40, 40));
+}
+
+async function mhitm_ad_pest(magr, mhm) {
+    await pline(`${Monnam(magr)} reaches out, and you feel fever and chills.`);
+    await diseasemu(magr.data);
+}
+
+async function mhitm_ad_deth(magr, mhm) {
+    await pline(`${Monnam(magr)} reaches out with its deadly touch.`);
+    if (is_undead(game.youmonst.data)) {
+        mhm.damage = Math.trunc((mhm.damage + 1) / 2);
+        await pline('Was that the touch of death?');
+        return;
+    }
+
+    const roll = rn2(20);
+    const antimagic = !!(game.u.uprops?.ANTIMAGIC
+                         || game.u.uprops?.MAGIC_RES
+                         || game.u.intrinsic?.HAntimagic);
+    if (roll >= 17 && !antimagic) {
+        note_unported_mhitu('mhitm_ad_deth:touch_of_death');
+        mhm.damage = 0;
+    } else if (roll >= 5) {
+        await You_feel('your life force draining away...');
+        mhm.permdmg = 1;
+    } else {
+        if (antimagic)
+            note_unported_mhitu('mhitm_ad_deth:shieldeff');
+        await pline("Lucky for you, it didn't work!");
+        mhm.damage = 0;
+    }
 }
 
 // include/you.h:324 mhis() — possessive pronoun for a monster.
@@ -480,8 +535,11 @@ export function getmattk(magr, mdef, indx, prev_result) {
     if (indx > 0 && prev_result[indx - 1] > M_ATTK_MISS
         && (attk[1] === A.AD_DISE || attk[1] === A.AD_PEST
             || attk[1] === A.AD_FAMN)
-        && attk[1] === mptr.mattk[indx - 1][1])
-        note_unported_mhitu('getmattk:disease_pair');
+        && attk[1] === mptr.mattk[indx - 1][1]) {
+        const alt = [...attk];
+        alt[1] = A.AD_STUN;
+        return alt;
+    }
 
     /* src/mhitu.c:368, a holder or engulfer which just released its target
        temporarily substitutes a weak touch or claw attack. */
@@ -1020,6 +1078,22 @@ async function hitmu(mtmp, mattk, indx) {
         await mhitm_ad_ston(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_DRLI) {
         await mhitm_ad_drli(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_SAMU) {
+        await mhitm_ad_samu(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_FAMN) {
+        await mhitm_ad_famn(mtmp, mhm);
+    } else if (mattk[1] === A.AD_PEST) {
+        await mhitm_ad_pest(mtmp, mhm);
+    } else if (mattk[1] === A.AD_DETH) {
+        await mhitm_ad_deth(mtmp, mhm);
+    } else if (mattk[1] === A.AD_STUN) {
+        await hitmsg(mtmp, mattk, indx);
+        if (!mtmp.mcan && !rn2(4)) {
+            const { make_stunned } = await import('./potion.js');
+            await make_stunned((game.u.intrinsic?.HStun || 0) + mhm.damage,
+                               true);
+            mhm.damage = Math.trunc(mhm.damage / 2);
+        }
     } else if (mattk[1] === A.AD_LEGS) {
         const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
         const sidestr = side === RIGHT_SIDE ? 'right' : 'left';
@@ -1116,7 +1190,24 @@ async function hitmu(mtmp, mattk, indx) {
             mhm.damage = ((mhm.damage + 1) / 2) | 0;
 
         if (mhm.permdmg) { /* Death's life force drain */
-            note_unported_mhitu('hitmu:permdmg');
+            mhm.permdmg = rn2(Math.trunc(mhm.damage / 2) + 1);
+            if (Upolyd(game.u) || game.u.uhpmax > 25 * game.u.ulevel) {
+                mhm.permdmg = mhm.damage;
+            } else if (game.u.uhpmax > 10 * game.u.ulevel) {
+                mhm.permdmg += Math.trunc(mhm.damage / 2);
+            } else if (game.u.uhpmax > 5 * game.u.ulevel) {
+                mhm.permdmg += Math.trunc(mhm.damage / 4);
+            }
+
+            const lowerlimit = Upolyd(game.u)
+                ? Math.min(game.youmonst.data.mlevel, game.u.ulevel)
+                : Math.max(game.u.ulevel, 1);
+            const hpmaxKey = Upolyd(game.u) ? 'mhmax' : 'uhpmax';
+            if (game.u[hpmaxKey] - mhm.permdmg > lowerlimit)
+                game.u[hpmaxKey] -= mhm.permdmg;
+            else if (game.u[hpmaxKey] > lowerlimit)
+                game.u[hpmaxKey] = lowerlimit;
+            (game.disp ||= {}).botl = true;
         }
 
         await mdamageu(mtmp, mhm.damage);

@@ -1158,6 +1158,21 @@ export async function use_skill(skill, degree) {
     }
 }
 
+// src/weapon.c add_weapon_skill(). Grant slots and announce newly available
+// skill advances.
+export async function add_weapon_skill(n) {
+    let before = 0, after = 0;
+    for (let i = 0; i < P_NUM_SKILLS; i++)
+        if (can_advance(i, false))
+            before++;
+    game.u.weapon_slots = (game.u.weapon_slots | 0) + n;
+    for (let i = 0; i < P_NUM_SKILLS; i++)
+        if (can_advance(i, false))
+            after++;
+    if (before < after)
+        await give_may_advance_msg(P_NONE);
+}
+
 export { uwep_skill_type };
 
 // src/weapon.c:1173 could_advance() — advanceable if more slots existed.

@@ -480,6 +480,62 @@ export async function resurrect() {
     }
 }
 
+const random_insult = [
+    'antic', 'blackguard', 'caitiff', 'chucklehead', 'coistrel', 'craven',
+    'cretin', 'cur', 'dastard', 'demon fodder', 'dimwit', 'dolt', 'fool',
+    'footpad', 'imbecile', 'knave', 'maledict', 'miscreant', 'niddering',
+    'poltroon', 'rattlepate', 'reprobate', 'scapegrace', 'varlet', 'villein',
+    'wittol', 'worm', 'wretch',
+];
+
+const random_malediction = [
+    'Hell shall soon claim thy remains,',
+    'I chortle at thee, thou pathetic',
+    'Prepare to die, thou',
+    'Resistance is useless,',
+    'Surrender or die, thou',
+    'There shall be no mercy, thou',
+    'Thou shalt repent of thy cunning,',
+    'Thou art as a flea to me,',
+    'Thou art doomed,',
+    'Thy fate is sealed,',
+    'Verily, thou shalt be one dead',
+];
+
+// src/wizard.c:846 cuss(), the Wizard's spoken post-attack taunt.
+export async function cuss(mtmp) {
+    const { Deaf } = await import('./youprop.js');
+    if (Deaf())
+        return;
+
+    if (!mtmp.iswiz) {
+        note_unported_wizard('cuss:non_wizard');
+        return;
+    }
+
+    const { pline } = await import('./display.js');
+    const { Monnam } = await import('./do_name.js');
+    const insult = () => random_insult[rn2(random_insult.length)];
+    if (!rn2(5)) {
+        await pline(`${Monnam(mtmp)} laughs fiendishly.`);
+    } else if (game.u.uhave?.amulet && !rn2(random_insult.length)) {
+        await pline(`"Relinquish the amulet, ${insult()}!"`);
+    } else if (game.u.uhp < 5 && !rn2(2)) {
+        const lifeEbbs = !!rn2(2);
+        const victim = insult();
+        await pline(lifeEbbs ? `"Even now thy life force ebbs, ${victim}!"`
+                             : `"Savor thy breath, ${victim}, it be thy last!"`);
+    } else if (mtmp.mhp < 5 && !rn2(2)) {
+        await pline(rn2(2) ? '"I shall return."' : '"I\'ll be back."');
+    } else {
+        const curse = random_malediction[rn2(random_malediction.length)];
+        await pline(`"${curse} ${insult()}!"`);
+    }
+
+    const { wake_nearto } = await import('./mon.js');
+    wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
+}
+
 function note_unported_wizard(what) {
     (game.unported ||= new Set()).add(what);
 }

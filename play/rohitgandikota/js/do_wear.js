@@ -14,7 +14,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          ECMD_TIME, TT_BEARTRAP, TT_INFLOOR, I_SPECIAL,
          WORN_ARMOR, WORN_CLOAK, WORN_SHIRT, WORN_HELMET, WORN_GLOVES,
          WORN_SHIELD, WORN_BOOTS, WORN_AMUL, WORN_BLINDF,
-         LEFT_RING, RIGHT_RING, TIMEOUT, A_DEX } from './const.js';
+         LEFT_RING, RIGHT_RING, TIMEOUT, A_DEX, INTRINSIC } from './const.js';
 import { setworn } from './worn.js';
 import { welded, is_sword } from './wield.js';
 import { bimanual, is_metallic } from './obj.js';
@@ -75,7 +75,8 @@ export function find_ac() {
     const amul = worn(W_AMUL);
     if (amul && amul.otyp === ONAMES.AMULET_OF_GUARDING) uac -= 2;
 
-    /* HProtection and u.uspellprot are both zero for a new hero */
+    if (((u.intrinsic?.HProtection || 0) & INTRINSIC) !== 0)
+        uac -= (u.ublessed || 0);
     uac -= (u.uspellprot || 0);
 
     if (Math.abs(uac) > AC_MAX) uac = sgn(uac) * AC_MAX;
@@ -489,7 +490,7 @@ export async function Amulet_on(amul) {
 }
 
 // src/do_wear.c:1030 Amulet_off() — does its own off_msg.
-async function Amulet_off() {
+export async function Amulet_off() {
     const uamul = worn(W_AMUL);
     if (!uamul) return;
     await off_msg(uamul);

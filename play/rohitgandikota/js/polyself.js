@@ -11,7 +11,7 @@ import { is_neuter, humanoid, slithy, attacktype, name_to_monplus,
 import { mons, PMNAMES, MONSYMS, ATTKS, MFLAGS } from './monst_data.js';
 import { NO_PART, ARM, FINGER, FINGERTIP, FOOT, HAND, HANDED,
          HEAD, LEG, TOE, HAIR, EYE, NOSE, A_STR, A_WIS, A_CON,
-         ECMD_OK, ECMD_TIME, KILLED_BY_AN, Upolyd } from './const.js';
+         ECMD_OK, ECMD_TIME, KILLED_BY_AN, Upolyd, FROMFORM } from './const.js';
 import { rn2, rn1, d, rnd } from './rng.js';
 import { OCLASSES } from './objects_data.js';
 
@@ -220,6 +220,15 @@ const polyok = (mdat) => !!mdat && !(mdat.mflags2 & MFLAGS.M2_NOPOLY);
 const your_race = (mdat) =>
     !!mdat && !!(mdat.mflags2 & (game.urace?.selfmask || 0));
 
+// src/polyself.c:35 set_uasmon(), the form-derived stunned property.
+// Bats and stalkers are intrinsically stunned while the form lasts.
+function set_form_stun(mdat, mntmp) {
+    const intr = (game.u.intrinsic ||= {});
+    intr.HStun = (intr.HStun || 0) & ~FROMFORM;
+    if (mntmp === PMNAMES.PM_STALKER || mdat?.mlet === MONSYMS.S_BAT)
+        intr.HStun |= FROMFORM;
+}
+
 // src/polyself.c:332 newman() and :200 polyman(), the controlled return to
 // the hero's race. This rebuilds level, attributes, HP and energy before
 // restoring the saved human state.
@@ -290,6 +299,7 @@ async function newman() {
     game.flags.female = !!u.mfemale;
     game.youmonst.data = game.mons?.[u.umonster] || mons[u.umonster];
     game.youmonst.mnum = u.umonster;
+    set_form_stun(game.youmonst.data, u.umonster);
     u.mh = u.mhmax = 0;
     u.mtimedone = 0;
     u.uundetected = 0;
@@ -332,6 +342,7 @@ export async function rehumanize() {
     game.flags.female = !!u.mfemale;
     game.youmonst.data = game.mons?.[u.umonster] || mons[u.umonster];
     game.youmonst.mnum = u.umonster;
+    set_form_stun(game.youmonst.data, u.umonster);
     u.mh = u.mhmax = 0;
     u.mtimedone = 0;
     u.uundetected = 0;
@@ -366,6 +377,9 @@ export async function polymon(mntmp) {
     const mdat = game.mons?.[mntmp] || mons[mntmp];
     if (!mdat)
         return 0;
+    const oldAc = u.uac;
+    let droppedCloak = false;
+    let droppedWeaponMessage = null;
 
     (u.uconduct ||= {}).polyselfs = (u.uconduct.polyselfs | 0) + 1;
 
@@ -408,6 +422,7 @@ export async function polymon(mntmp) {
     u.umonnum = mntmp;
     game.youmonst.data = mdat;
     game.youmonst.mnum = mntmp;
+    set_form_stun(mdat, mntmp);
 
     if (strongmonst(mdat)) {
         u.acurr.a[A_STR] = 118;
@@ -446,6 +461,7 @@ export async function polymon(mntmp) {
         setnotworn(cloak);
         const { dropx } = await import('./do.js');
         await dropx(cloak);
+        droppedCloak = true;
     }
 
     if ((nohands(mdat) || verysmall(mdat)) && u.uarmg) {
@@ -504,15 +520,24 @@ export async function polymon(mntmp) {
 
     if (nohands(mdat) && u.uwep) {
         const weapon = u.uwep;
-        const what = weapon.oclass === OCLASSES.WEAPON_CLASS
-            ? 'weapon' : 'tool';
-        await You(`find you must drop your ${what}!`);
+        const { weapon_descr } = await import('./weapon.js');
+        const which = weapon_descr(weapon);
+        const message = `find you must drop ${
+            which.startsWith('corpse') ? 'the' : 'your'} ${which}!`;
+        if (droppedCloak)
+            droppedWeaponMessage = message;
+        else
+            await You(message);
         const { uwepgone } = await import('./wield.js');
         uwepgone();
         const { dropx } = await import('./do.js');
         await dropx(weapon);
     }
 
+    if (droppedWeaponMessage) {
+        game._deferred_status_ac_until_more = oldAc;
+        game._deferred_status_ac_more_count = 2;
+    }
     const { find_ac } = await import('./do_wear.js');
     find_ac();
     const { newsym, see_monsters } = await import('./display.js');
@@ -521,6 +546,12 @@ export async function polymon(mntmp) {
     see_monsters();
     (game.disp ||= {}).botl = true;
     await encumber_msg();
+
+    if (droppedWeaponMessage) {
+        await You(droppedWeaponMessage);
+        delete game._deferred_status_ac_until_more;
+        delete game._deferred_status_ac_more_count;
+    }
 
     if (game.flags.verbose && attacktype(mdat, ATTKS.AT_BREA)) {
         const { pline } = await import('./display.js');

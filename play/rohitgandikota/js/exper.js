@@ -198,7 +198,13 @@ export async function losexp(drainer) {
 
     if (u.ulevel > 1) {
         u.ulevel -= 1;
+        /* adjabil() can print an intrinsic-loss message before losexp() has
+           dirtied the status fields for the new level. If that message
+           collides with a full topline, C's blocking frame still shows the
+           prior level and rank. */
+        game._deferred_status_level_until_more = u.ulevel + 1;
         await adjabil(u.ulevel + 1, u.ulevel);
+        delete game._deferred_status_level_until_more;
     } else {
         if (drainer) {
             game.killer = { format: 1 /* KILLED_BY */, name: drainer };

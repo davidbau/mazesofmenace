@@ -1,17 +1,17 @@
 // pickup.js — picking things up off the floor, and looking at what is there.
 // C ref: src/pickup.c
 //
-// Only the paths a session with autopickup OFF can reach are here so far:
-// stepping onto objects routes pickup(1) -> check_here() -> look_here().
-// The actual pick-up machinery (query_objlist, pickup_object, autopickup
-// exceptions) is absent and recorded, never faked.
+// Manual and automatic floor pickup share the same carry-limit machinery.
+// Rare artifact, fatal-corpse, scare-scroll, and remote-shop branches remain
+// explicit recorded gaps.
 
 import { def_oc_syms } from './drawing_data.js';
 import { game } from './gstate.js';
 import { addinv, prinv, obj_extract_self, inv_order, let_to_name,
-         freeinv, update_inventory, weight } from './invent.js';
+         freeinv, update_inventory, weight, mergable, money_cnt } from './invent.js';
 import { observe_object } from './o_init.js';
-import { doname, xname, cxname, the, yname, singular, an } from './objnam.js';
+import { doname, xname, cxname, the, yname, singular, an,
+         otense } from './objnam.js';
 import { Is_container, Has_contents, carried } from './obj.js';
 import { AUTOUNLOCK_UNTRAP, AUTOUNLOCK_APPLY_KEY,
          AUTOUNLOCK_FORCE } from './const.js';
@@ -22,28 +22,31 @@ import { upstart } from './do_name.js';
 /* src/hacklib.c The() — the() with the first letter capitalised. */
 const The = (s2) => upstart(the(s2));
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { newsym, pline, bot } from './display.js';
+import { newsym, pline, bot, tty_clear_nhwindow_message } from './display.js';
 import { UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER,
-         EXT_ENCUMBER, SHOPBASE } from './const.js';
+         EXT_ENCUMBER, SHOPBASE, invlet_basic, HAND } from './const.js';
 import { addtobill, costly_spot } from './shk.js';
-import { near_capacity } from './attrib.js';
+import { calc_capacity, max_capacity, near_capacity } from './attrib.js';
 import { In_sokoban } from './dungeon.js';
-import { Is_mbag } from './mkobj.js';
+import { Is_mbag, splitobj } from './mkobj.js';
 import { def_char_to_objclass } from './sp_lev.js';
 import { read_engr_at } from './engrave.js';
 import { rn2 } from './rng.js';
 import { OBJ_AT, LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME } from './const.js';
-import { You } from './pline.js';
+import { There, You, Your } from './pline.js';
 import { flush_screen } from './display.js';
 import { look_here } from './invent.js';
 import { nomul } from './hack.js';
 import { t_at, is_pool, is_lava, m_at } from './mon.js';
 import { unconscious } from './trap.js';
 import { is_pit } from './const.js';
-import { Levitation, Stone_resistance } from './youprop.js';
+import { Blind, Levitation, Stone_resistance } from './youprop.js';
 import { st_gloves, st_corpse, st_petrifies, st_resists, W_ARMG } from './const.js';
 import { worn } from './do_wear.js';
-import { nohands, notake, touch_petrifies } from './mondata.js';
+import { nohands, notake, throws_rocks, touch_petrifies } from './mondata.js';
+import { body_part } from './polyself.js';
+import { tty_yn_function } from './tty/topl.js';
+import { inv_cnt } from './hack.js';
 
 function note_unported_pickup(what) {
     (game.unported ||= new Set()).add(what);
@@ -329,30 +332,156 @@ export async function query_objlist(qstr, olist, use_invlet = false) {
     return ids.map(i => byid.get(i)).filter(Boolean);
 }
 
-// src/pickup.c:1803 pickup_object() — take one object off the floor.
-//
-// The Sokoban boulder, loadstone, artifact-touch, cockatrice and scroll of
-// scare monster arms are recorded; lift_object's encumbrance messages too.
+const gold_weight = (amount) => Math.trunc((amount + 50) / 100);
+
+// src/pickup.c:1580 carry_count(), for a floor object. It finds the largest
+// liftable prefix of a stack without changing the stack while it measures.
+async function carry_count_floor(obj, count) {
+    const savequan = obj.quan;
+    const saveowt = obj.owt;
+    const isGold = obj.oclass === OCLASSES.COIN_CLASS;
+    const umoney = money_cnt(game.invent);
+    let iw = max_capacity();
+    const oldWeight = iw;
+
+    if (count !== savequan) {
+        obj.quan = count;
+        obj.owt = weight(obj);
+    }
+    let wt = iw + obj.owt;
+    if (isGold) {
+        wt -= gold_weight(umoney) + gold_weight(count)
+              - gold_weight(umoney + count);
+    }
+    obj.quan = savequan;
+    obj.owt = saveowt;
+
+    if (wt < 0)
+        return { count, oldWeight, newWeight: wt };
+
+    let canLift = 0;
+    if (isGold) {
+        iw -= gold_weight(umoney);
+        canLift = (iw * -100) - (umoney + 50) - 1;
+        canLift = Math.max(0, Math.min(canLift, count));
+        wt = iw + gold_weight(umoney + canLift);
+    } else if (count > 1 || count < savequan) {
+        let q;
+        for (q = 1; q <= count; ++q) {
+            obj.quan = q;
+            obj.owt = weight(obj);
+            const candidate = iw + obj.owt;
+            if (candidate >= 0)
+                break;
+            wt = candidate;
+        }
+        canLift = q - 1;
+        obj.quan = savequan;
+        obj.owt = saveowt;
+    }
+
+    if (canLift < count) {
+        const objName = doname(obj);
+        if (canLift > 0) {
+            await You(`can only lift ${canLift === 1 ? 'one' : 'some'} of the ${
+                objName} lying here.`);
+        } else if ((game.invent || []).length || umoney) {
+            await There(`${otense(obj, 'are')} ${objName} here, but you cannot lift any more.`);
+        } else {
+            await There(`${otense(obj, 'are')} ${objName} here, but ${
+                obj.quan === 1 ? 'it ' : 'even one '}is too heavy for you to lift.`);
+        }
+    }
+    return { count: canLift, oldWeight, newWeight: wt };
+}
+
+// src/pickup.c:1705 lift_object(), floor-object slice. Loadstones bypass
+// weight, ordinary objects can ask before worsening the configured burden,
+// and objects beyond the absolute limit stay on the floor.
+async function lift_floor_object(obj, count, telekinesis) {
+    if (obj.otyp === ONAMES.BOULDER && In_sokoban(game.u.uz)) {
+        await You(`cannot get your ${body_part(HAND)} around this ${xname(obj)}.`);
+        return { result: -1, count };
+    }
+
+    if (obj.otyp === ONAMES.LOADSTONE
+        || (obj.otyp === ONAMES.BOULDER
+            && throws_rocks(game.youmonst.data))) {
+        const canMerge = (game.invent || []).some((carriedObj) =>
+            mergable(carriedObj, obj));
+        const alreadyCarrying = (game.invent || []).some((carriedObj) =>
+            carriedObj.otyp === obj.otyp);
+        if (inv_cnt(false) < invlet_basic || !alreadyCarrying || canMerge)
+            return { result: 1, count };
+        await You(`are carrying too much stuff to pick up ${
+            obj.quan === 1 ? 'another' : 'more'} ${xname(obj)}.`);
+        return { result: -1, count };
+    }
+
+    const carried = await carry_count_floor(obj, count);
+    count = carried.count;
+    if (count < 1)
+        return { result: -1, count };
+
+    const canMerge = (game.invent || []).some((carriedObj) =>
+        mergable(carriedObj, obj));
+    if (obj.oclass !== OCLASSES.COIN_CLASS
+        && inv_cnt(false) >= invlet_basic && !canMerge) {
+        await Your('knapsack cannot accommodate any more items.');
+        return { result: -1, count };
+    }
+
+    let result = 1;
+    const previous = Math.max(near_capacity(),
+                              game.flags?.pickup_burden ?? MOD_ENCUMBER);
+    const next = calc_capacity(carried.newWeight - carried.oldWeight);
+    if (next > previous) {
+        if (telekinesis) {
+            result = 0;
+        } else {
+            const prefix = next >= EXT_ENCUMBER ? 'You have extreme difficulty'
+                         : next >= HVY_ENCUMBER ? 'You have much trouble'
+                           : next >= MOD_ENCUMBER ? 'You have trouble'
+                             : 'You have a little trouble';
+            const savequan = obj.quan;
+            obj.quan = count;
+            const query = `${prefix} lifting ${doname(obj)}.  Continue?`;
+            obj.quan = savequan;
+            const answer = await tty_yn_function(query, 'ynq', 'q');
+            tty_clear_nhwindow_message(game._topl_cury || 0);
+            game._pending_message = '';
+            if (answer === 'q') result = -1;
+            else if (answer === 'n') result = 0;
+        }
+    }
+    return { result, count };
+}
+
+// src/pickup.c:1803 pickup_object() -- take one object off the floor.
+// Artifact touch, fatal corpses, and scrolls of scare monster remain recorded.
 export async function pickup_object(obj, count, telekinesis) {
     if (obj.quan < count)
         return 0;                       /* impossible() in C */
 
+    if (!Blind())
+        observe_object(obj);
+
     if (obj === game.uchain)
         return 0;                       /* do not pick up attached chain */
-    if (obj.oartifact || obj.otyp === ONAMES.SCR_SCARE_MONSTER
-        || obj.otyp === ONAMES.LOADSTONE
-        || (obj.otyp === ONAMES.BOULDER && In_sokoban(game.u.uz))) {
+    if (obj.oartifact || obj.otyp === ONAMES.SCR_SCARE_MONSTER) {
         note_unported_pickup('pickup_object:special_object');
         return 0;
     }
     if (obj.otyp === ONAMES.CORPSE)
         note_unported_pickup('pickup_object:corpse_checks');
 
-    /* lift_object(obj, NULL, &count, telekinesis) — its weight arms print
-       and can refuse; the plain case returns 1 */
-    if (near_capacity() > UNENCUMBERED)
-        note_unported_pickup('pickup_object:lift_object_encumbered');
+    const lifted = await lift_floor_object(obj, count, telekinesis);
+    if (lifted.result <= 0)
+        return lifted.result;
+    count = lifted.count;
 
+    if (obj.quan !== count && obj.otyp !== ONAMES.LOADSTONE)
+        obj = splitobj(obj, count);
     obj = await pick_obj(obj);
     await pickup_prinv(obj, count);
     return 1;
@@ -379,7 +508,7 @@ async function pick_obj(otmp) {
     }
 
     const oldcap = near_capacity();
-    const result = addinv(otmp);
+    const result = await addinv(otmp);
     if (near_capacity() !== oldcap)
         game._encumber_status_stale = true;
     if (robshop)
@@ -1042,8 +1171,16 @@ export async function use_container(obj, held, more_containers) {
             await You('must put it down to unlock.');
         return ECMD_OK;
     } else if (obj.otrapped) {
-        /* chest_trap() and the paralysis follow-up */
-        note_unported_pickup('use_container:chest_trap');
+        if (held)
+            await You(`open ${the(xname(obj))}...`);
+        const { chest_trap } = await import('./trap.js');
+        const { HAND } = await import('./const.js');
+        await chest_trap(obj, HAND, false);
+        if ((game.multi ?? 0) >= 0) {
+            nomul(-1);
+            game.multi_reason = 'opening a container';
+            game.nomovemsg = '';
+        }
         return ECMD_TIME;
     }
 

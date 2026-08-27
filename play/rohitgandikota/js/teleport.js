@@ -35,7 +35,7 @@ import { unconscious } from './trap.js';
 import { goodpos, remove_monster, place_monster } from './makemon.js';
 import { newsym } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
-import { spoteffects } from './hack.js';
+import { in_rooms, invocation_message, spoteffects } from './hack.js';
 import { morehungry } from './eat.js';
 import { getpos } from './getpos.js';
 import { Amonnam, Monnam, mon_nam } from './do_name.js';
@@ -655,6 +655,13 @@ export async function teleds(nux, nuy, teleds_flags) {
     const ball = game.u.uball;
     const ballActive = !!(ball && ball.where !== OBJ_FREE);
     let ballUnplaced = false;
+    let vaultFns = null, vaultGuard = null;
+
+    if (game.u.urooms) {
+        vaultFns = await import('./vault.js');
+        if (vaultFns.vault_occupied(game.u.urooms))
+            vaultGuard = vaultFns.findgd();
+    }
 
     if (game.u.uswallow || game.u.utrap)
         note_unported_teleport('teleds:ball_or_swallow');
@@ -687,7 +694,16 @@ export async function teleds(nux, nuy, teleds_flags) {
             (nux === ux0 && nuy === uy0) ? 'the same'
                                          : 'a different'} location!`);
 
+    if (vaultGuard) {
+        const savedRooms = game.u.urooms;
+        game.u.urooms = in_rooms(game.u.ux, game.u.uy, VAULT);
+        if (!vaultFns.vault_occupied(game.u.urooms))
+            await vaultFns.uleftvault(vaultGuard);
+        game.u.urooms = savedRooms;
+    }
+
     await spoteffects(true);
+    await invocation_message();
 }
 
 /* src/teleport.h TELEDS_* */
@@ -695,15 +711,19 @@ export const TELEDS_NO_FLAGS = 0, TELEDS_ALLOW_DRAG = 1, TELEDS_TELEPORT = 2;
 
 // src/teleport.c:850 scrolltele() — the controlled-teleport prompt.
 //
-// Only the controlled arm is ported: Teleport_control or wizard mode, hero
-// conscious. The Amulet/W-tower disorientation, the uncontrolled random
-// destination and the level-teleport arms are recorded.
+// The controlled arm is ported: Teleport_control or wizard mode, hero
+// conscious.  Amulet disorientation and wizard override are included; the
+// W-tower variant, uncontrolled random destination and level-teleport arms
+// are recorded.
 export async function scrolltele(scroll) {
     const cc = { x: 0, y: 0 };
 
     if ((game.u.uhave?.amulet) && !rn2(3)) {
-        note_unported_teleport('scrolltele:disoriented');
-        return;
+        await You_feel('disoriented for a moment.');
+        if (!game.wizard) return;
+        const { tty_yn_function } = await import('./tty/topl.js');
+        if ((await tty_yn_function('Override?', 'yn', 'n')) !== 'y')
+            return;
     }
     /* src/teleport.c:872 — Teleport_control (or a blessed scroll, or
        wizard mode) picks the spot via getpos; everyone else falls through

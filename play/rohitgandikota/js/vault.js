@@ -7,23 +7,31 @@ import {
     makemon, set_malign, place_monster, remove_monster, MM_EGD, MM_NOMSG,
 } from './makemon.js';
 import { PMNAMES } from './monst_data.js';
-import { money_cnt, hidden_gold, sobj_at } from './invent.js';
-import { canspotmon, newsym, pline, more, map_background } from './display.js';
+import { hidden_gold, money_cnt, obj_extract_self, sobj_at,
+         stackobj } from './invent.js';
+import { canspotmon, map_background, mon_visible, more, newsym,
+         pline } from './display.js';
 import { getlin } from './cmd.js';
 import { mungspaces } from './hacklib.js';
-import { pmname } from './do_name.js';
+import { Monnam, noit_Monnam, noit_mon_nam, pmname,
+         x_monnam } from './do_name.js';
 import { makeplural } from './objnam.js';
 import { adjalign } from './attrib.js';
-import { cansee, couldsee, recalc_block_point, unblock_point } from './vision.js';
-import { noit_mon_nam } from './do_name.js';
+import { block_point, cansee, couldsee, recalc_block_point,
+         unblock_point } from './vision.js';
 import { rn2 } from './rng.js';
 import { distmin, isok } from './hacklib.js';
 import { is_fainted } from './eat.js';
 import { ONAMES } from './objects_data.js';
+import { m_carrying, mnexto, mongone } from './mon.js';
+import { del_engr, engr_at } from './engrave.js';
+import { place_object } from './mkobj.js';
+import { You, You_hear, pline_The } from './pline.js';
 import {
     A_LAWFUL, COLNO, ROWNO, ROOMOFFSET, VAULT, VAULT_GUARD_TIME,
     ROOM, STONE, CORR, SCORR, HWALL, VWALL, DOOR, D_NODOOR, IS_WALL,
-    IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE,
+    IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE, ARTICLE_A, BLCORNER,
+    BRCORNER, RLOC_MSG, TLCORNER, TRCORNER,
 } from './const.js';
 
 export function vault_occupied(urooms) {
@@ -38,6 +46,26 @@ export function vault_occupied(urooms) {
 export function findgd() {
     return (game.level?.monsters || []).find(
         mon => mon.isgd && mon.mhp > 0) || null;
+}
+
+// src/vault.c uleftvault(). A gold-carrying hero who teleports away from an
+// active escort makes the guard hostile and gives it an immediate move.
+export async function uleftvault(guard) {
+    const u = game.u;
+    if (!guard?.isgd || (guard.mhp || 0) < 1)
+        return;
+
+    const hasGold = money_cnt(game.invent) > 0
+        || hidden_gold(game.invent, true) > 0;
+    if (hasGold && distmin(u.ux, u.uy, guard.mx, guard.my) > 1) {
+        if (guard.mpeaceful) {
+            if (canspotmon(guard))
+                await pline(`${Monnam(guard)} becomes irate.`);
+            guard.mpeaceful = 0;
+        }
+        if (!in_fcorridor(guard, u.ux, u.uy))
+            await gd_move(guard);
+    }
 }
 
 function in_fcorridor(guard, x, y) {
@@ -117,11 +145,115 @@ function parkguard(guard) {
     guard.mextra.egd.ogy = 0;
 }
 
+// src/vault.c move_gold(). Move boundary gold back onto one of the four
+// squares inside the vault.
+function move_gold(gold, vroom) {
+    const room = game.level.rooms[vroom];
+    const oldx = gold.ox, oldy = gold.oy;
+    obj_extract_self(gold);
+    newsym(oldx, oldy);
+    const nx = room.lx + rn2(2);
+    const ny = room.ly + rn2(2);
+    place_object(gold, nx, ny);
+    stackobj(gold);
+    newsym(nx, ny);
+}
+
+// src/vault.c wallify_vault(). Restore damaged boundary squares when a
+// hostile or departing guard closes the vault behind it.
+async function wallify_vault(guard) {
+    const egd = guard.mextra?.egd;
+    const room = game.level?.rooms?.[egd?.vroom];
+    if (!room)
+        return;
+
+    const lox = room.lx - 1, hix = room.hx + 1;
+    const loy = room.ly - 1, hiy = room.hy + 1;
+    let fixed = false, movedgold = false;
+
+    for (let x = lox; x <= hix; x++) {
+        for (let y = loy; y <= hiy; y++) {
+            if (x !== lox && x !== hix && y !== loy && y !== hiy)
+                continue;
+
+            const loc = game.level.at(x, y);
+            const gold = gold_at(x, y);
+            const rock = sobj_at(ONAMES.ROCK, x, y);
+            const boulder = sobj_at(ONAMES.BOULDER, x, y);
+            if ((IS_WALL(loc.typ) && !gold && !rock && !boulder)
+                || in_fcorridor(guard, x, y))
+                continue;
+
+            const occupant = game.level.monAt?.get(`${x},${y}`);
+            if (occupant && occupant !== guard) {
+                const { rloc } = await import('./teleport.js');
+                if (!await rloc(occupant, RLOC_MSG))
+                    (game.unported ||= new Set()).add('vault:wallify_limbo');
+            }
+            if (gold) {
+                move_gold(gold, egd.vroom);
+                movedgold = true;
+            }
+            let debris;
+            while ((debris = sobj_at(ONAMES.ROCK, x, y)))
+                obj_extract_self(debris);
+            while ((debris = sobj_at(ONAMES.BOULDER, x, y)))
+                obj_extract_self(debris);
+            game.level.traps = (game.level.traps || [])
+                .filter(t => t.tx !== x || t.ty !== y);
+
+            const typ = x === lox
+                ? (y === loy ? TLCORNER : y === hiy ? BLCORNER : VWALL)
+                : x === hix
+                  ? (y === loy ? TRCORNER : y === hiy ? BRCORNER : VWALL)
+                  : HWALL;
+            loc.typ = typ;
+            loc.flags = 0;
+            loc.doormask = 0;
+            loc.wall_info = 0;
+            const engraving = engr_at(x, y);
+            if (engraving)
+                del_engr(engraving);
+            map_background(x, y, true);
+            block_point(x, y);
+            fixed = true;
+        }
+    }
+
+    if (movedgold || fixed) {
+        if (in_fcorridor(guard, guard.mx, guard.my)
+            || cansee(guard.mx, guard.my))
+            await pline(`${noit_Monnam(guard)} whispers an incantation.`);
+        else
+            await You_hear('a distant chant.');
+        if (movedgold)
+            await pline('A mysterious force moves the gold into the vault.');
+        if (fixed)
+            await pline_The("damaged vault's walls are magically restored!");
+    }
+}
+
+// src/vault.c gd_letknow(). Announce the hostile guard after it relocates.
+async function gd_letknow(guard) {
+    if (!cansee(guard.mx, guard.my) || !mon_visible(guard)) {
+        await You_hear(`${m_carrying(guard, ONAMES.TIN_WHISTLE)
+            ? "the shrill sound of a guard's whistle"
+            : 'angry shouting'}.`);
+    } else {
+        const angryGuard = x_monnam(guard, ARTICLE_A, 'angry', 0, false);
+        if (distmin(game.u.ux, game.u.uy, guard.mx, guard.my) > 2)
+            await You(`see ${angryGuard} approaching.`);
+        else
+            await You(`are confronted by ${angryGuard}.`);
+    }
+}
+
 async function gd_move_cleanup(guard, semi_dead, disappear_msg_seen) {
     const x = guard.mx, y = guard.my;
     const see_guard = canspotmon(guard);
     const guard_name = noit_mon_nam(guard);
     parkguard(guard);
+    await wallify_vault(guard);
     await restfakecorr(guard);
     if (!semi_dead && (in_fcorridor(guard, game.u.ux, game.u.uy)
                        || cansee(x, y))) {
@@ -232,8 +364,24 @@ export async function gd_move(guard) {
 
     const u_in_vault = !!vault_occupied(u.urooms);
     const grd_in_vault = !!in_rooms(guard.mx, guard.my, VAULT);
-    if (!guard.mpeaceful)
+    if (!u_in_vault && !grd_in_vault)
+        await wallify_vault(guard);
+    if (!guard.mpeaceful) {
+        if (!u_in_vault
+            && (grd_in_vault
+                || (in_fcorridor(guard, guard.mx, guard.my)
+                    && !in_fcorridor(guard, u.ux, u.uy)))) {
+            const { rloc } = await import('./teleport.js');
+            await rloc(guard, RLOC_MSG);
+            await wallify_vault(guard);
+            if (!in_fcorridor(guard, guard.mx, guard.my))
+                await clear_fcorr(guard, true);
+            await gd_letknow(guard);
+        } else if (!in_fcorridor(guard, guard.mx, guard.my)) {
+            await clear_fcorr(guard, true);
+        }
         return -1;
+    }
     if (Math.abs(egd.ogx - guard.mx) > 1
         || Math.abs(egd.ogy - guard.my) > 1)
         return -1;
@@ -256,8 +404,19 @@ export async function gd_move(guard) {
                     egd.dropgoldcnt++;
             }
             if (egd.warncnt === 7) {
+                const x = guard.mx, y = guard.my;
                 await pline('"You\'ve been warned, knave!"');
                 guard.mpeaceful = 0;
+                mnexto(guard, 0);
+                const entry = game.level.at(x, y);
+                entry.typ = egd.fakecorr[0].ftyp;
+                entry.flags = egd.fakecorr[0].flags || 0;
+                entry.doormask = egd.fakecorr[0].doormask || 0;
+                recalc_block_point(x, y);
+                const engraving = engr_at(x, y);
+                if (engraving)
+                    del_engr(engraving);
+                newsym(x, y);
                 return -1;
             }
             if (!is_fainted() && (game.multi || 0) >= 0)
@@ -488,6 +647,19 @@ export async function invault() {
     if (u.ualign?.type === A_LAWFUL
         && !buf.toLowerCase().startsWith((game.plname || '').toLowerCase()))
         adjalign(-1);
+
+    const identity = buf.toLowerCase();
+    if (identity === 'croesus' || identity === 'kroisos'
+        || identity === 'creosote') {
+        if (!(game.mvitals?.[PMNAMES.PM_CROESUS]?.died || 0)) {
+            await pline('"Oh, yes, of course.  Sorry to have disturbed you."');
+            mongone(guard);
+        } else {
+            guard.mpeaceful = 0;
+            await pline('"Back from the dead, are you?  I\'ll remedy that!"');
+        }
+        return;
+    }
 
     await pline('"I don\'t know you."');
     const umoney = money_cnt(game.invent);

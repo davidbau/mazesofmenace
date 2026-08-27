@@ -6,7 +6,8 @@
 // awake monsters spends after the movement allotment.
 
 import { game } from './gstate.js';
-import { mpickstuff, mondied, wake_nearto, wake_msg } from './mon.js';
+import { mpickstuff, mondied, wake_nearto, wake_msg, wakeup,
+         monkilled } from './mon.js';
 import { sengr_at, wipe_engr_at } from './engrave.js';
 import { autoreturn_weapon } from './weapon.js';
 import { MON_WEP, mon_offmap } from './monst.js';
@@ -28,11 +29,11 @@ import { amorphous, passes_walls, is_floater, nonliving,
 import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_NODOOR,
          D_BROKEN, In_endgame, NOTONL } from './const.js';
 import { is_vampshifter } from './monst.js';
-import { newsym, canseemon, canspotmon, pline } from './display.js';
-import { You_see, You_hear } from './pline.js';
+import { newsym, canseemon, canspotmon, sensemon, pline } from './display.js';
+import { You, You_see, You_hear } from './pline.js';
 import { create_gas_cloud, visible_region_at } from './region.js';
-import { Monnam, y_monnam, upstart } from './do_name.js';
-import { Deaf } from './youprop.js';
+import { Monnam, mon_nam, y_monnam, upstart } from './do_name.js';
+import { Blind, Deaf } from './youprop.js';
 import { Is_rogue_level as IRL_const, D_TRAPPED } from './const.js';
 import { sobj_at, money_cnt } from './invent.js';
 import { is_pool, m_carrying, meatmetal, meatobj, resists_ston } from './mon.js';
@@ -43,7 +44,7 @@ import { Is_container, Is_candle, is_cloak, is_gloves,
 import { is_weptool } from './mkobj.js';
 import { metallivorous, corpse_eater, is_covetous,
          resist_conflict } from './mondata.js';
-import { may_dig, in_town } from './hack.js';
+import { may_dig, in_town, losehp } from './hack.js';
 import { place_monster, remove_monster, hideunder,
          hideunder_with_message } from './makemon.js';
 import { rn2, rnd, d } from './rng.js';
@@ -74,7 +75,7 @@ const haseyes = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
 import {
     ALLOW_U, COULD_SEE, A_LAWFUL, BOLT_LIM, IS_ALTAR, COLNO, ROWNO, A_STR,
     ALL_TRAPS, NO_TRAP,
-    G_GENOD, TRAPPED_DOOR,
+    G_GENOD, TRAPPED_DOOR, KILLED_BY_AN,
 } from './const.js';
 import { is_rider } from './makemon.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
@@ -1113,6 +1114,63 @@ export function distfleeck(mtmp) {
     return { inrange, nearby, scared, bravegremlin };
 }
 
+const telepathic = (ptr) => ptr.pmidx === PMNAMES.PM_FLOATING_EYE
+    || ptr.pmidx === PMNAMES.PM_MIND_FLAYER
+    || ptr.pmidx === PMNAMES.PM_MASTER_MIND_FLAYER;
+
+// src/monmove.c:583 mind_blast(). The target loops and their short-circuit
+// rolls are part of ordinary monster timing, even when no visible message is
+// produced.
+async function mind_blast(mtmp) {
+    if (canseemon(mtmp))
+        await pline(`${Monnam(mtmp)} concentrates.`);
+    if (mdistu(mtmp) > BOLT_LIM * BOLT_LIM) {
+        await You('sense a faint wave of psychic energy.');
+        return;
+    }
+
+    await pline('A wave of psychic energy pours over you!');
+    if (mtmp.mpeaceful && (!Conflict() || resist_conflict(mtmp))) {
+        await pline('It feels quite soothing.');
+    } else if (!game.u.uinvulnerable) {
+        const sensed = sensemon(mtmp);
+        const blindTelepat = Blind()
+            && !!(game.u.intrinsic?.HTelepat || game.u.uprops?.TELEPAT);
+        if (sensed || (blindTelepat && rn2(2)) || !rn2(10)) {
+            if (game.u.uundetected) {
+                game.u.uundetected = 0;
+                newsym(game.u.ux, game.u.uy);
+            } else if (M_AP_TYPE(game.youmonst) !== M_AP_NOTHING
+                       && M_AP_TYPE(game.youmonst) !== M_AP_MONSTER) {
+                game.youmonst.m_ap_type = M_AP_NOTHING;
+                game.youmonst.mappearance = 0;
+                newsym(game.u.ux, game.u.uy);
+            }
+            await pline(`It locks on to your ${sensed ? 'telepathy'
+                : blindTelepat ? 'latent telepathy' : 'mind'}!`);
+            let damage = rnd(15);
+            if (game.u.uprops?.HALF_SPDAM)
+                damage = Math.trunc((damage + 1) / 2);
+            await losehp(damage, 'psychic blast', KILLED_BY_AN);
+        }
+    }
+
+    for (const mon of [...(game.level?.monsters || [])]) {
+        if (DEADMONSTER(mon) || mon.mpeaceful === mtmp.mpeaceful
+            || mindless(game.mons[mon.mnum]) || mon === mtmp)
+            continue;
+        const ptr = game.mons[mon.mnum];
+        if ((telepathic(ptr) && (rn2(2) || mon.mblinded)) || !rn2(10)) {
+            await wakeup(mon, false);
+            if (cansee(mon.mx, mon.my))
+                await pline(`It locks on to ${mon_nam(mon)}.`);
+            mon.mhp -= rnd(15);
+            if (DEADMONSTER(mon))
+                await monkilled(mon, '', ATTKS.AD_DRIN);
+        }
+    }
+}
+
 // src/monmove.c:700 dochug() — one monster's turn.
 export async function dochug(mtmp) {
     /* src/monmove.c:711 — a waiting monster stops waiting once it can see
@@ -1207,8 +1265,15 @@ export async function dochug(mtmp) {
         return 0;
     }
 
-    if (is_watch(mdat))
+    if (is_watch(mdat)) {
         watch_on_duty(mtmp);
+    } else if ((mdat.pmidx === PMNAMES.PM_MIND_FLAYER
+                || mdat.pmidx === PMNAMES.PM_MASTER_MIND_FLAYER)
+               && !rn2(20)) {
+        await mind_blast(mtmp);
+        set_apparxy(mtmp);
+        ({ inrange, nearby, scared } = distfleeck(mtmp));
+    }
 
     /* src/monmove.c:840 — if monster is nearby you, and has to wield a
        weapon, do so. This costs the monster a move, of course. */
@@ -1340,12 +1405,16 @@ export async function dochug(mtmp) {
     if (!helpless(mtmp) && nearby
         && (mdat.msound === MSOUND.MS_LEADER
             || mdat.msound === MSOUND.MS_NEMESIS
-            || mdat.msound === MSOUND.MS_GUARDIAN))
-        note_unported_monmove('dochug:quest_talk');
+            || mdat.msound === MSOUND.MS_GUARDIAN)) {
+        const { quest_talk } = await import('./quest.js');
+        await quest_talk(mtmp);
+    }
     /* extra emotional attack for vile monsters */
     if (inrange && mdat.msound === MSOUND.MS_CUSS && !mtmp.mpeaceful
-        && couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis && !rn2(5))
-        note_unported_monmove('dochug:cuss');
+        && couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis && !rn2(5)) {
+        const { cuss } = await import('./wizard.js');
+        await cuss(mtmp);
+    }
 
     /* note: can't get here when monster is dead, so this always returns 0 */
     return (status === MMOVE_DIED) ? 1 : 0;
@@ -1838,7 +1907,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, can_tunnel) {
             && (here.doormask & (D_LOCKED | D_CLOSED)) !== 0
             && can_fog(mtmp)) {
             const { newcham } = await import('./mon.js');
-            if (newcham(mtmp, game.mons[PMNAMES.PM_FOG_CLOUD], NC_SHOW_MSG))
+            if (await newcham(mtmp, game.mons[PMNAMES.PM_FOG_CLOUD], NC_SHOW_MSG))
                 ptr = mtmp.data;
         }
     }

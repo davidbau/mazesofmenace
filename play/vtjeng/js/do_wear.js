@@ -15,16 +15,18 @@
 //        armoroff() (1919-2008), already_wearing() (2010-2014), canwearobj()
 //        (2029-2206), accessory_or_armor_on() (2208-2428), dowear()
 //        (2430-2450), stuck_ring() (2656-2683), unchanger() (2685-2692),
-//        select_off() (2694-2821), reset_remarm() (3012-3018),
+//        select_off() (2694-2821), do_takeoff() W_SWAPWEP arm (2823-2843),
+//        reset_remarm() (3012-3018), remarm_swapwep() (3059-3087),
 //        inaccessible_equipment() (3338-3400), equip_ok() (3402-3447),
 //        wear_ok() (3463-3468) and takeoff_ok() (3470-3475).
 //
 // do_wear.c find_ac() was ported earlier and lives in
 // js/u_init_inventory_attrs.js, beside the startup code that first calls it.
 //
-// The 'A' occupation spine -- do_takeoff(), take_off(), and
-// doddoremarm() -- is not ported. better_not_take_that_off() is ported for
-// select_off()'s glove checks. armoroff()'s
+// The 'A' occupation spine -- the other do_takeoff() arms, take_off(), and
+// doddoremarm() -- is not ported. The W_SWAPWEP arm is reached separately by
+// remarm_swapwep(). better_not_take_that_off() is ported for select_off()'s
+// glove checks. armoroff()'s
 // delayed branch at do_wear.c:1930-1972 is ported for a suit only, while
 // accessory_or_armor_on() fills all seven armor slots. Every refusal below
 // names the C function it stops in front of.
@@ -34,10 +36,13 @@ import {
     A_CON,
     A_STR,
     ACID_RES,
+    CMDQ_KEY,
     ECMD_CANCEL,
+    ECMD_FAIL,
     ECMD_OK,
     ECMD_TIME,
     FACE,
+    FAST,
     FINGER,
     FLYING,
     FOOT,
@@ -48,6 +53,7 @@ import {
     GETOBJ_SUGGEST,
     HAND,
     HEAD,
+    I_SPECIAL,
     LEFT_HANDED,
     LEFT_RING,
     LEG,
@@ -74,6 +80,7 @@ import {
     W_ARMS,
     W_ARMU,
     W_RING,
+    W_SWAPWEP,
     W_TOOL,
     W_WEAPONS,
     W_WEP,
@@ -91,7 +98,7 @@ import { obj_pmname } from './do_name.js';
 import { surface } from './dungeon.js';
 import { makeplural } from './fruit.js';
 import { effective_attribute } from './attrib.js';
-import { paranoid_query, yn_function } from './cmd.js';
+import { cmdq_pop, paranoid_query, yn_function } from './cmd.js';
 import { artifact_light, set_artifact_intrinsic } from './artifacts.js';
 import { game } from './gstate.js';
 import { nomul, unmul } from './hack.js';
@@ -119,6 +126,7 @@ import {
 } from './mondata.js';
 import { MZ_SMALL, PM_ARCHEOLOGIST, S_CENTAUR } from './monsters.js';
 import { change_luck } from './moveloop_preamble.js';
+import { gulp_blnd_check } from './mhitu.js';
 import {
     Is_dragon_armor,
     WrappingAllowed,
@@ -227,6 +235,7 @@ import {
     ROBE,
     SILVER_DRAGON_SCALES,
     SILVER_DRAGON_SCALE_MAIL,
+    SPEED_BOOTS,
     TOWEL,
     T_SHIRT,
     WHITE_DRAGON_SCALES,
@@ -255,7 +264,7 @@ import { heroIsBlind } from './startup_a11y.js';
 import { ttyPline } from './tty_message.js';
 import { find_ac } from './u_init_inventory_attrs.js';
 import { Glib, welded } from './wield.js';
-import { bimanual, setworn } from './worn.js';
+import { bimanual, setuswapwep, setworn } from './worn.js';
 
 // Raised where do_wear.c reaches a branch this port has not translated.
 // js/cmd.js failClosedCommandRefusals() lists it, so the segment keeps every
@@ -301,24 +310,69 @@ const c_axe = 'axe';
 const c_that_ = 'that';
 
 // C ref: context.h struct takeoff_info (51-57), reached through
-// svc.context.takeoff. Only `mask` is modelled: `what` and `delay` are written
-// by do_takeoff() and `disrobing` by take_off(), all in the unported 'A'
-// spine. `cancelled_don` is written by cancel_don(), which cancel_doff() below
+// svc.context.takeoff. `mask` is used by the ordinary remove-one path and
+// `what` by remarm_swapwep()'s W_SWAPWEP call to do_takeoff(). `delay` and
+// `disrobing` belong to the unported 'A' occupation spine. `cancelled_don` is
+// written by cancel_don(), which cancel_doff() below
 // cannot reach, and by Armor_off(), which leaves it out because
 // dragon_armor_handling()'s BLUE arm is its only reader and that arm is
 // refused. Nothing outside this file reads the field, and every path through
 // dotakeoff() leaves it at 0 again.
 function takeoffContext(state) {
     state.context ??= {};
-    state.context.takeoff ??= { mask: 0 };
+    state.context.takeoff ??= { mask: 0, what: 0 };
+    state.context.takeoff.what ??= 0;
     return state.context.takeoff;
 }
 
 // C ref: do_wear.c reset_remarm() (3012-3018). C clears takeoff.what and
-// takeoff.disrobing here as well; see takeoffContext() for why neither exists.
+// takeoff.disrobing here as well; see takeoffContext() for why the latter does
+// not exist.
 // Exported for cmd.c reset_occupations(), the first caller outside this file.
 export function reset_remarm(state = game) {
-    takeoffContext(state).mask = 0;
+    const takeoff = takeoffContext(state);
+    takeoff.what = 0;
+    takeoff.mask = 0;
+}
+
+// C ref: do_wear.c do_takeoff() (2823-2843), W_SWAPWEP arm only. The general
+// 'A' occupation reaches the other slot arms; remarm_swapwep() below fixes
+// `what` to W_SWAPWEP before this call, so no other arm is live here.
+async function do_takeoff(state) {
+    const wasTwoweap = Boolean(state.u.twoweap);
+    const takeoff = takeoffContext(state);
+
+    takeoff.mask |= I_SPECIAL;
+    if (takeoff.what !== W_SWAPWEP) {
+        throw new UnsupportedTakeOffError(
+            `do_takeoff() mask ${takeoff.what}`,
+        );
+    }
+    setuswapwep(null, setwornEnv(state));
+    await ttyPline(
+        wasTwoweap
+            ? 'You are no longer wielding two weapons at once.'
+            : 'You no longer have a second weapon readied.',
+        state,
+    );
+}
+
+// C ref: do_wear.c remarm_swapwep() (3059-3087). This internal command is
+// reachable only from itemactions_pushkeys(), which queues a CMDQ_KEY '-'
+// immediately after the command row. Unlike the ordinary take-off paths, C
+// deliberately removes a cursed alternate weapon without calling cursed().
+export async function remarm_swapwep(state = game) {
+    const queued = cmdq_pop(state);
+    if (queued?.typ !== CMDQ_KEY || queued.key !== '-' || !state.uswapwep)
+        return ECMD_FAIL;
+
+    const oldbknown = state.uswapwep.bknown;
+    reset_remarm(state);
+    const takeoff = takeoffContext(state);
+    takeoff.what = takeoff.mask = W_SWAPWEP;
+    await do_takeoff(state);
+    return !state.uswapwep || state.uswapwep.bknown !== oldbknown
+        ? ECMD_TIME : ECMD_OK;
 }
 
 // C ref: do_wear.c cancel_doff() (1642-1659), supplied to setworn() through
@@ -770,6 +824,71 @@ async function Blindf_on(obj, state = game) {
     }
 }
 
+// C ref: do_wear.c Blindf_off() (1495-1534). The take-off half of the
+// blindfold/lenses dispatch. armoroff_or_accessory_off() calls it when
+// obj == ublindf. Calls setworn() to clear the W_TOOL slot, off_msg(),
+// then detects whether blindness status changed and calls
+// toggle_blindness().
+//
+// Four branches on (Blind, was_blind):
+//   1. (!Blind &&  was_blind): hero regains sight. gulp_blnd_check() tests
+//      whether an engulfing monster re-blinds immediately; if not, prints
+//      "You can see again." and toggles. This is the common path for the
+//      seed5006 witness.
+//   2. ( Blind &&  was_blind): still blind after removal. Prints
+//      "still cannot see" for non-lenses items.
+//   3. ( Blind && !was_blind): lost sight on removal (Eyes of the Overworld).
+//      Prints "You can't see anything now!" and sets ball-and-chain if
+//      Punished. Not reachable in current port because artifacts are refused
+//      by accessory_or_armor_on().
+//   4. (!Blind && !was_blind): no change, no message.
+//
+// Fail-closed items:
+// - set_bc(0): fires only when Punished. No ported session is punished
+//   while removing a blindfold.
+// - The "losing sight" branch (Blind && !was_blind): applies only to the
+//   Eyes of the Overworld artifact; unreachable in the current port.
+async function Blindf_off(otmp, state = game) {
+    const was_blind = heroIsBlind(state);
+    let changed = false;
+    const nooffmsg = !otmp;
+
+    if (!otmp)
+        otmp = state.ublindf;
+    if (!otmp) {
+        throw new Error('Blindf_off without eyewear?');
+    }
+
+    takeoffContext(state).mask &= ~W_TOOL;
+    setworn(null, otmp.owornmask, setwornEnv(state));
+    if (!nooffmsg)
+        await off_msg(otmp, state);
+
+    if (heroIsBlind(state)) {
+        if (was_blind) {
+            /* "still cannot see" makes no sense when removing lenses
+               since they can't have been the cause of your blindness */
+            if (otmp.otyp !== LENSES)
+                await ttyPline('You still cannot see.', state);
+        } else {
+            // Lost sight on removal -- only Eyes of the Overworld does this.
+            // accessory_or_armor_on() refuses artifacts, so this branch is
+            // unreachable in the current port.
+            throw new UnsupportedTakeOffError(
+                'Blindf_off() lost sight (Eyes of the Overworld)',
+            );
+        }
+    } else if (was_blind) {
+        if (!gulp_blnd_check(state)) {
+            changed = true;
+            await ttyPline('You can see again.', state);
+        }
+    }
+    if (changed) {
+        toggle_blindness(state);
+    }
+}
+
 // C ref: do_wear.c already_wearing2() (2017-2020). Eyewear "already wearing"
 // message, used when one piece of eyewear blocks another specific piece.
 async function already_wearing2(cc1, cc2, state) {
@@ -958,29 +1077,37 @@ const PLAIN_BOOTS_ON = new Set([
 // on the turn the 'W' is typed: nomul(-2) spends two helpless turns first and
 // allmain.c moveloop_core() reaches the callback through unmul().
 //
-// The five types PLAIN_BOOTS_ON leaves out all reach outside do_wear.c.
-// WATER_WALKING_BOOTS calls spoteffects() and makeknown(); SPEED_BOOTS
-// makeknown() and You_feel(); ELVEN_BOOTS toggle_stealth(); FUMBLE_BOOTS
-// incr_itimeout(&HFumbling, rnd(20)), the one arm anywhere on this port's 'W'
-// spine that would draw a random number; and LEVITATION_BOOTS float_up(),
-// spoteffects() and float_vs_flight(). accessory_or_armor_on() hoists the
-// refusal above setworn() for the reason the cloak and helmet refusals give:
-// by the time this callback runs the boots are worn, AC has moved and the two
-// helpless turns are spent.
-//
-// C's `oldprop` at 189-190 is read only by those refused arms, so it is not
-// computed -- the reasoning Cloak_on() and Gloves_on() below already record
-// for their own copies.
+// The four types PLAIN_BOOTS_ON and SPEED_BOOTS leave out all reach outside
+// do_wear.c. WATER_WALKING_BOOTS calls spoteffects(); ELVEN_BOOTS calls
+// toggle_stealth(); FUMBLE_BOOTS calls incr_itimeout(&HFumbling, rnd(20)), the
+// one arm anywhere on this port's 'W' spine that would draw a random number;
+// and LEVITATION_BOOTS calls float_up(), spoteffects() and float_vs_flight().
+// accessory_or_armor_on() hoists their refusal above setworn() for the reason
+// the cloak and helmet refusals give: by the time this callback runs the boots
+// are worn, AC has moved and the two helpless turns are spent.
 //
 // C's `uarmf &&` at 254 is left out, as Helmet_on()'s equivalent guard is.
 // C's own comment at 253 says what it is for: float_up() inside the
 // LEVITATION_BOOTS arm can drop the boots down a sink. That arm is refused and
 // no arm here empties the slot, so port it and the guard comes back with it.
-function Boots_on(state) {
+async function Boots_on(state) {
     const otyp = state.uarmf.otyp;
 
-    if (!PLAIN_BOOTS_ON.has(otyp))
+    if (!PLAIN_BOOTS_ON.has(otyp) && otyp !== SPEED_BOOTS)
         throw new UnsupportedWearError(`Boots_on() for otyp ${otyp}`);
+    if (otyp === SPEED_BOOTS) {
+        const fast = state.u.uprops[FAST];
+        const oldprop = fast.extrinsic & ~W_ARMF;
+
+        if (!oldprop && !(fast.intrinsic & TIMEOUT)) {
+            discover_object(otyp, true, true, true, state);
+            await ttyPline(
+                `You feel yourself speed up${fast.intrinsic
+                    ? ' a bit more' : ''}.`,
+                state,
+            );
+        }
+    }
     if (!state.uarmf.known) {
         /* boots' +/- evident because of status line AC */
         state.uarmf.known = true;
@@ -2300,7 +2427,7 @@ async function accessory_or_armor_on(obj, state = game) {
             afternmv = Gloves_on;
             break;
         case W_ARMF:
-            if (!PLAIN_BOOTS_ON.has(obj.otyp))
+            if (!PLAIN_BOOTS_ON.has(obj.otyp) && obj.otyp !== SPEED_BOOTS)
                 throw new UnsupportedWearError(
                     `Boots_on() for otyp ${obj.otyp}`,
                 );
@@ -2442,12 +2569,14 @@ export async function armor_or_accessory_off(obj, state = game) {
 
     if (obj.owornmask & W_ARMOR) {
         await armoroff(obj, state);
+    } else if (obj === state.ublindf) {
+        // do_wear.c:1820-1821. Blindf_off does its own off_msg.
+        await Blindf_off(obj, state);
     } else {
-        // do_wear.c:1806-1826 dispatches Ring_off(), Amulet_off() and
-        // Blindf_off(); an amulet or a blindfold reaches here, a ring stops
-        // one frame earlier inside select_off().
+        // do_wear.c:1809-1819 dispatches Ring_off() and Amulet_off();
+        // a ring stops one frame earlier inside select_off().
         throw new UnsupportedTakeOffError(
-            'Ring_off()/Amulet_off()/Blindf_off()',
+            'Ring_off()/Amulet_off()',
         );
     }
     return ECMD_TIME;

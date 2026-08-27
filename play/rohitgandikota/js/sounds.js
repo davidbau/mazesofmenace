@@ -302,6 +302,11 @@ export async function domonnoise(mtmp) {
 
     const edog = mtmp.edog || {};
     switch (msound) {
+    case MSOUND.MS_PRIEST: {
+        const { priest_talk } = await import('./priest.js');
+        await priest_talk(mtmp);
+        break;
+    }
     case MSOUND.MS_BARK:
         if (game.flags?.moonphase === 4 /* FULL_MOON */ && night_snd()) {
             pline_msg = 'howls.';

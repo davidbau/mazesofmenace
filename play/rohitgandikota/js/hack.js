@@ -9,7 +9,7 @@ import { You_hear, There } from './pline.js';
 import { glyph_at, map_invisible, newsym, unmap_invisible } from './display.js';
 import { YMonnam, m_monnam, mon_nam } from './do_name.js';
 import { is_flimsy } from './obj.js';
-import { You, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
+import { You, You_feel, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { feel_location } from './display.js';
 import { can_ooze } from './monmove.js';
 import { worm_cross } from './worm.js';
@@ -74,6 +74,43 @@ import { tunnels, needspick, passes_walls, passes_bars, dmgtype,
          metallivorous, throws_rocks, verysmall, bigmonst, amorphous,
          is_whirly, noncorporeal, slithy } from './mondata.js';
 import { INTRINSIC } from './const.js';
+
+// src/hack.c:982 invocation_pos(), the ritual square on the penultimate
+// Gehennom level.
+export function invocation_pos(x, y) {
+    const uz = game.u?.uz;
+    const dgn = uz && game.dungeons?.[uz.dnum];
+    const pos = game.invocation_pos;
+    return !!(uz && dgn?.flags?.hellish
+              && uz.dlevel === dgn.num_dunlevs - 1 && pos
+              && x === pos.x && y === pos.y);
+}
+
+// src/hack.c:3064 invocation_message(), the clue emitted after arriving on
+// the ritual square. The mounted and polymorphed wording remains outside the
+// current fixture, but the terrain and prepared-Candelabrum behavior is live.
+export async function invocation_message() {
+    const u = game.u;
+    const onStairs = (() => {
+        for (let stway = game.stairs; stway; stway = stway.next)
+            if (stway.sx === u.ux && stway.sy === u.uy)
+                return true;
+        return false;
+    })();
+    if (!invocation_pos(u.ux, u.uy) || onStairs)
+        return;
+
+    nomul(0);
+    await You_feel(`a strange vibration ${
+        Levitation() || Flying() ? 'beneath you' : 'under your feet'}.`);
+    (u.uevent ||= {}).uvibrated = 1;
+
+    const candelabrum = carrying(ONAMES.CANDELABRUM_OF_INVOCATION);
+    if (candelabrum?.spe === 7 && candelabrum.lamplit) {
+        await pline(`${The(xname(candelabrum))} ${
+            u.ublind ? 'throbs palpably' : 'glows with a strange light'}!`);
+    }
+}
 
 // src/hack.c:922 may_dig() — intended to be called only on ROCKs or TREEs. A
 // non-diggable wall or tree cannot be tunnelled through, which is what stops
@@ -618,7 +655,9 @@ export async function check_special_room(newlev) {
 
     for (const ch of game.u.uentered) {
         const roomno = ch.charCodeAt(0) - ROOMOFFSET;
-        const room = game.level?.rooms?.[roomno];
+        const room = roomno <= MAXNROFROOMS
+            ? game.level?.rooms?.[roomno]
+            : game.level?.subrooms?.find(r => r.roomnoidx === roomno);
         if (!room || room.rtype >= SHOPBASE)
             continue;
         if (room.rtype === TEMPLE) {

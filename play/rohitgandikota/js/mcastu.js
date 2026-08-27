@@ -9,8 +9,9 @@ import { M_ATTK_MISS, M_ATTK_HIT, MFAST, MSLOW, STRAT_WAITFORU, HEAD,
          M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
          M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON,
          M_SEEN_ACID } from './const.js';
-import { canspotmon, canseemon, pline } from './display.js';
-import { couldsee } from './vision.js';
+import { canspotmon, canseemon, map_invisible, mon_warning, newsym,
+         pline } from './display.js';
+import { cansee, couldsee } from './vision.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { You, You_hear, Your } from './pline.js';
 import { Hallucination, See_invisible, Invis, Deaf } from './youprop.js';
@@ -262,10 +263,60 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         dmg = 0;
         break;
     }
+    case MCAST_DISAPPEAR:
+        if (!mtmp.minvis && !mtmp.invis_blkd) {
+            if (canseemon(mtmp)) {
+                await pline(`${Monnam(mtmp)} suddenly ${
+                    See_invisible() ? 'becomes transparent' : 'disappears'}!`);
+            }
+            mtmp.perminvis = 1;
+            mtmp.minvis = 1;
+            newsym(mtmp.mx, mtmp.my);
+            if (cansee(mtmp.mx, mtmp.my) && !canspotmon(mtmp)
+                && !mon_warning(mtmp)) {
+                map_invisible(mtmp.mx, mtmp.my);
+            }
+        }
+        dmg = 0;
+        break;
+    case MCAST_STUN_YOU: {
+        const { make_stunned } = await import('./potion.js');
+        const stunned = !!(game.u.intrinsic?.HStun
+                           || game.u.uprops?.STUNNED);
+        const freeAction = !!(game.u.uprops?.FREE_ACTION
+                              || game.u.intrinsic?.HFree_action);
+        if (antimagic() || freeAction) {
+            mtmp.seen_resistance = (mtmp.seen_resistance ?? 0)
+                                   | M_SEEN_MAGR;
+            if (!stunned)
+                await You('feel momentarily disoriented.');
+            await make_stunned(1, false);
+        } else {
+            await You(stunned ? 'struggle to keep your balance.' : 'reel...');
+            const { ACURR } = await import('./attrib.js');
+            const { A_DEX } = await import('./const.js');
+            let turns = d(ACURR(A_DEX) < 12 ? 6 : 4, 4);
+            if (half_spell_damage())
+                turns = Math.trunc((turns + 1) / 2);
+            await make_stunned((game.u.intrinsic?.HStun || 0) + turns,
+                               false);
+            mtmp.seen_resistance = (mtmp.seen_resistance ?? 0)
+                                   & ~M_SEEN_MAGR;
+        }
+        dmg = 0;
+        break;
+    }
     case MCAST_SUMMON_MONS:
         await mcast_summon_mons(mtmp);
         dmg = 0;
         break;
+    case MCAST_CURSE_ITEMS: {
+        await You('feel as if you need some help.');
+        const { rndcurse } = await import('./sit.js');
+        await rndcurse();
+        dmg = 0;
+        break;
+    }
     default:
         note_unported_mcastu(`mcast_spell:${spellnum}`);
         dmg = 0;

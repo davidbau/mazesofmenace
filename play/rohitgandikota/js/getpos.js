@@ -349,9 +349,42 @@ export async function getpos(ccp, force, goal) {
                     % doors.length;
             c.x = doors[gatherIndex[gloc]].x;
             c.y = doors[gatherIndex[gloc]].y;
-        } else if ('mMoOxXaAzZ'.includes(ch) || ch === '!' || ch === '"') {
-            /* gather_locs cycling, the menu, hilite and the view filter —
-               each consumes only its own key */
+        } else if ((ch === 'm' || ch === 'M')
+                   && !game.iflags?.getloc_usemenu) {
+            const gloc = 0;
+            if (!gathered[gloc]) {
+                const monsters = [{ x: game.u.ux, y: game.u.uy }];
+                for (let x = 1; x < COLNO; x++) {
+                    for (let y = 0; y < ROWNO; y++) {
+                        if (x === game.u.ux && y === game.u.uy)
+                            continue;
+                        if (glyph_at(x, y)?.kind === 'mon')
+                            monsters.push({ x, y });
+                    }
+                }
+                monsters.sort((a, b) => {
+                    const ad = Math.max(Math.abs(game.u.ux - a.x),
+                                        Math.abs(game.u.uy - a.y));
+                    const bd = Math.max(Math.abs(game.u.ux - b.x),
+                                        Math.abs(game.u.uy - b.y));
+                    return ad !== bd ? ad - bd
+                        : a.y !== b.y ? a.y - b.y : a.x - b.x;
+                });
+                gathered[gloc] = monsters;
+                gatherIndex[gloc] = 0;
+            }
+            const monsters = gathered[gloc];
+            if (ch === 'm')
+                gatherIndex[gloc] = (gatherIndex[gloc] + 1)
+                                    % monsters.length;
+            else
+                gatherIndex[gloc] = (gatherIndex[gloc] + monsters.length - 1)
+                                    % monsters.length;
+            c.x = monsters[gatherIndex[gloc]].x;
+            c.y = monsters[gatherIndex[gloc]].y;
+        } else if ('oOxXaAzZ'.includes(ch) || ch === '!' || ch === '"') {
+            /* remaining gather_locs cycling, the menu, hilite and the view
+               filter each consume only their own key */
             note_unported_getpos(`key:${ch}`);
         } else {
             if (!' \r\n\x1b'.includes(ch)) {

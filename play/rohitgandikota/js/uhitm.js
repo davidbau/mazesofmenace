@@ -1675,6 +1675,22 @@ export async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
     }
 }
 
+// src/uhitm.c:4565 mhitm_ad_samu(). A successful special hit always prints
+// its hit message, then has a one-in-twenty chance to take an invocation item.
+export async function mhitm_ad_samu(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk, mhm.indx);
+        if (!rn2(20)) {
+            const { stealamulet } = await import('./steal.js');
+            await stealamulet(magr);
+        }
+    } else {
+        mhm.damage = 0;
+    }
+}
+
 // src/uhitm.c:2626 mhitm_ad_cold(), a cold touch against the hero.
 export async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
     const orig_dmg = mhm.damage;

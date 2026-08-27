@@ -84,6 +84,13 @@ export function exist_artifact(otyp, name) {
     return false;
 }
 
+// src/artifact.c discover_artifact(). Remember artifacts in discovery order.
+export function discover_artifact(art) {
+    const discovered = (game.artidisco ||= []);
+    if (art > 0 && !discovered.includes(art))
+        discovered.push(art);
+}
+
 // src/artifact.c artifact_exists() — an artifact has just been created or is
 // being "un-created" for a chance to be created again later.
 export function artifact_exists(otmp, name, mod, flgs) {

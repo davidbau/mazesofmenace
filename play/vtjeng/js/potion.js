@@ -1,6 +1,7 @@
 // potion.js -- quaffing and vapor effects for potions.
 // C ref: src/potion.c dodrink() (526-615), drink_ok() (505-521),
 //        dopotion() (618-641), peffects() (1333-1425),
+//        make_confused() (89-104), peffect_confusion() (1014-1027),
 //        peffect_speed() (1052-1070), peffect_oil() (1259-1294),
 //        speed_up() (2918-2928),
 //        itimeout/itimeout_incr/set_itimeout/incr_itimeout (55-86),
@@ -10,8 +11,8 @@
 // fountain/sink, underwater, worn-potion, milky/smoky are fail-closed;
 // the common path calls getobj() -> dopotion() -> peffects().
 //
-// peffects() dispatches 23 potion types; POT_SPEED (with spell alias
-// SPE_HASTE_SELF) and POT_OIL are ported. The other 21 arms throw
+// peffects() dispatches 26 potion types; POT_CONFUSION, POT_SPEED (with spell
+// alias SPE_HASTE_SELF), and POT_OIL are ported. The other 23 arms throw
 // UnsupportedQuaffError.
 //
 // toggle_blindness() is called by Blindf_on() and Blindf_off() when blindness
@@ -20,11 +21,15 @@
 import {
     A_DEX,
     A_WIS,
+    BLINDED,
+    CONFUSION,
+    DEAF,
     ECMD_CANCEL,
     ECMD_OK,
     ECMD_TIME,
     FACE,
     FAST,
+    FAINTED,
     FROMOUTSIDE,
     HALLUC,
     GETOBJ_EXCLUDE,
@@ -42,6 +47,7 @@ import {
     STRANGLED,
     TELEPAT,
     TIMEOUT,
+    Upolyd,
     WARN_OF_MON,
     WOUNDED_LEGS,
     W_WEP,
@@ -53,13 +59,14 @@ import { more_experienced } from './exper.js';
 import { makeplural } from './fruit.js';
 import { game } from './gstate.js';
 import { losehp } from './hack.js';
-import { getobj, useup } from './invent.js';
+import { getobj, learn_unseen_invent, useup } from './invent.js';
 import { likes_fire } from './mondata.js';
 import { bcsign, objectType } from './obj.js';
 import { discover_object } from './o_init.js';
 import { body_part } from './polyself.js';
 import { d, rn1 } from './rng.js';
 import { burn_away_slime } from './timeout.js';
+import { unconscious } from './trap.js';
 import { vision_recalc } from './vision.js';
 import { Cold_resistance, Fire_resistance } from './zap.js';
 import {
@@ -112,8 +119,10 @@ export class UnsupportedPotionError extends Error {
 }
 
 // Thrown where dodrink/dopotion/peffects reaches a branch this port has not
-// ported: the 22 potion types besides POT_SPEED, and the strangled, fountain,
-// sink, underwater, worn-potion, milky and smoky branches of dodrink().
+// ported: the 23 potion types besides POT_CONFUSION, POT_SPEED, and POT_OIL,
+// and the
+// strangled, fountain, sink, underwater, worn-potion, milky and smoky
+// branches of dodrink().
 export class UnsupportedQuaffError extends Error {
     constructor(reason) {
         super(`quaffing requires ${reason}`);
@@ -151,6 +160,68 @@ export function set_itimeout(prop, val) {
 // C ref: potion.c incr_itimeout() (82-86). Increment the timeout field.
 export function incr_itimeout(prop, incr) {
     set_itimeout(prop, itimeout_incr(prop.intrinsic, incr));
+}
+
+// C ref: youprop.h:399 Unaware. trap.c unconscious() owns the pending-message
+// half; eat.c is_fainted() is the `u.uhs == FAINTED` half.
+function Unaware(state) {
+    return Math.trunc(state.multi ?? 0) < 0
+        && (unconscious(state) || state.u?.uhs === FAINTED);
+}
+
+// C ref: potion.c make_confused() (89-104). Replace HConfusion's timeout,
+// report a cleared condition when requested, and mark the status line only
+// when confusion starts or ends.
+export async function make_confused(xtime, talk, state = game) {
+    const prop = state.u.uprops[CONFUSION] ??= {
+        intrinsic: 0,
+        extrinsic: 0,
+    };
+    const old = prop.intrinsic;
+
+    if (Unaware(state)) talk = false;
+
+    if (!xtime && old && talk) {
+        await ttyPline(
+            `You feel less ${Hallucination(state) ? 'trippy' : 'confused'} now.`,
+            state,
+        );
+    }
+    if ((xtime && !old) || (!xtime && old))
+        state.disp.botl = true;
+
+    set_itimeout(prop, xtime);
+}
+
+// ---------------------------------------------------------------------------
+// peffect_confusion
+// C ref: potion.c peffect_confusion() (1014-1027).
+// ---------------------------------------------------------------------------
+
+async function peffect_confusion(otmp, state = game) {
+    const prop = state.u.uprops[CONFUSION] ??= {
+        intrinsic: 0,
+        extrinsic: 0,
+    };
+
+    if (!prop.intrinsic) {
+        if (Hallucination(state)) {
+            await ttyPline('What a trippy feeling!', state);
+            state.gp.potion_unkn++;
+        } else {
+            await ttyPline('Huh, What?  Where am I?', state);
+        }
+    } else {
+        state.gp.potion_nothing++;
+    }
+    await make_confused(
+        itimeout_incr(
+            prop.intrinsic,
+            rn1(7, 16 - 8 * bcsign(otmp)),
+        ),
+        false,
+        state,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +329,7 @@ async function peffect_oil(otmp, state = game) {
 // C ref: potion.c peffects() (1333-1425). Dispatch the effect of a quaffed
 // potion or spell. Returns >=0 if the effect short-circuits dopotion()'s tail
 // (0 = no time, 1 = time), -1 to continue to the tail.
-async function peffects(otmp, state = game) {
+export async function peffects(otmp, state = game) {
     switch (otmp.otyp) {
     case POT_RESTORE_ABILITY:
     case SPE_RESTORE_ABILITY:
@@ -290,7 +361,8 @@ async function peffects(otmp, state = game) {
     case POT_SICKNESS:
         throw new UnsupportedQuaffError('peffect_sickness()');
     case POT_CONFUSION:
-        throw new UnsupportedQuaffError('peffect_confusion()');
+        await peffect_confusion(otmp, state);
+        break;
     case POT_GAIN_ABILITY:
         throw new UnsupportedQuaffError('peffect_gain_ability()');
     case POT_SPEED:
@@ -453,10 +525,6 @@ export async function dodrink(state = game) {
 //   The Stinging local is checked for the see_monsters() gate (the condition
 //   is cheap and wrong to skip) but the Sting_effects() call itself is
 //   refused, since no ported session wields that artifact.
-// - learn_unseen_invent(): fires only when !Blind (hero just regained sight).
-//   The Blindf_on() caller that reaches here always leaves the hero blind, so
-//   the condition is false on the common path. A future Blindf_off() caller
-//   that restores sight will need this ported; until then, refused.
 export function toggle_blindness(state = game) {
     const hero = state.u;
 
@@ -491,7 +559,7 @@ export function toggle_blindness(state = game) {
     // C ref: potion.c:362-363. learn_unseen_invent() marks dknown on objects
     // the hero picked up while blind. Fires only when the hero regains sight.
     if (!heroIsBlind(state)) {
-        throw new UnsupportedPotionError('learn_unseen_invent()');
+        learn_unseen_invent(state);
     }
 }
 
@@ -642,4 +710,48 @@ export async function potionbreathe(obj, state = game, env = {}) {
         if (kn) discover_object(obj.otyp, true, true, true, state, env);
         else trycall(obj, state);
     }
+}
+
+// C ref: potion.c healup() (1428-1458). Heals the hero's hit points and
+// optionally cures sickness and blindness. nhp is the hit-point gain, nxtra
+// is an extra max-HP boost when the hero is already at full HP, curesick and
+// cureblind gate make_sick(0) and make_blinded(0) respectively.
+export function healup(nhp, nxtra, curesick, cureblind, state = game) {
+    const u = state.u;
+    if (nhp) {
+        if (Upolyd(u)) {
+            u.mh += nhp;
+            if (u.mh > u.mhmax)
+                u.mh = (u.mhmax += nxtra);
+        } else {
+            u.uhp += nhp;
+            if (u.uhp > u.uhpmax) {
+                u.uhp = (u.uhpmax += nxtra);
+                if (u.uhpmax > u.uhppeak)
+                    u.uhppeak = u.uhpmax;
+            }
+        }
+    }
+    if (cureblind) {
+        // C clears u.ucreamed, calls make_blinded(0L, TRUE) and
+        // make_deaf(0L, TRUE). Neither is ported. Refuse only mutable timed
+        // blindness, cream, or timed deafness; a worn blindfold is extrinsic
+        // and remains worn after C clears the intrinsic conditions.
+        const timedBlindness = (u.uprops?.[BLINDED]?.intrinsic ?? 0) & TIMEOUT;
+        const timedDeafness = (u.uprops?.[DEAF]?.intrinsic ?? 0) & TIMEOUT;
+        if (u.ucreamed || timedBlindness || timedDeafness)
+            throw new UnsupportedPotionError(
+                'healup() cureblind arm over make_blinded() / make_deaf()',
+            );
+        // No-op: there is no intrinsic condition for C to clear.
+    }
+    if (curesick) {
+        // C calls make_vomiting(0L, TRUE) and make_sick(0L, ...). Neither is
+        // ported.
+        throw new UnsupportedPotionError(
+            'healup() curesick arm over make_vomiting() / make_sick()',
+        );
+    }
+    state.disp = state.disp || {};
+    state.disp.botl = true;
 }

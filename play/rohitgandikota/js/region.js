@@ -34,7 +34,7 @@ export function visible_region_at(x, y) {
     return null;
 }
 
-import { rn1, rn2 } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { isok } from './hacklib.js';
 import { ACCESSIBLE } from './const.js';
 import { cmap_names } from './drawing_data.js';
@@ -63,6 +63,7 @@ function add_region(reg) {
                 if (isok(x, y) && inside_region(reg, x, y))
                     game._block_point_ref?.(x, y);
     }
+    reg.hero_inside = inside_region(reg, game.u.ux, game.u.uy);
 }
 
 // src/region.c:394 remove_region()
@@ -94,8 +95,8 @@ function make_gas_cloud(cloud, damage, inside_cloud) {
        : S_cloud); show_region() (js/display.js) paints it */
     cloud.glyph_cmap = damage ? cmap_names.S_poisoncloud : cmap_names.S_cloud;
     add_region(cloud);
-    /* the "You are enveloped" message needs hero-inside tracking; no
-       recorded session stands in a fresh cloud at creation */
+    /* add_region records whether the hero starts inside the cloud so the
+       per-turn callback can apply its effects. */
 }
 
 // src/region.c:1210 create_gas_cloud() — breadth-first cloud growth from
@@ -198,10 +199,49 @@ export function create_gas_cloud_selection(sel, damage) {
     return cloud;
 }
 
-// src/region.c:414 run_regions() — age regions each turn; expired ones
-// vanish. The inside-callbacks (poison damage) record until a session
-// stands in a damaging cloud.
-export function run_regions() {
+// src/region.c:1090 inside_gas_cloud(), the hero branch.
+async function inside_gas_cloud(reg) {
+    let damage = reg.arg | 0;
+    if (damage < 1)
+        return;
+
+    const { breathless } = await import('./mondata.js');
+    if (breathless(game.youmonst.data))
+        return;
+
+    const { Blind, Poison_resistance } = await import('./youprop.js');
+    const { You, Your } = await import('./pline.js');
+    const { pline } = await import('./display.js');
+    const { body_part } = await import('./polyself.js');
+    const { makeplural } = await import('./objnam.js');
+    const { EYE, LUNG, KILLED_BY_AN } = await import('./const.js');
+
+    if (!Blind()) {
+        await Your(`${makeplural(body_part(EYE))} sting.`);
+        const { make_blinded } = await import('./potion.js');
+        await make_blinded(1, false);
+    }
+    if (!Poison_resistance()) {
+        await pline(`Something is burning your ${makeplural(body_part(LUNG))}!`);
+        await You('cough and spit blood!');
+        const { wake_nearto } = await import('./mon.js');
+        wake_nearto(game.u.ux, game.u.uy, 2);
+        damage = rnd(damage) + 5;
+        if (game.u.uprops?.HALF_PHDAM)
+            damage = Math.trunc((damage + 1) / 2);
+        if (game.u.uprops?.HALF_GAS_DAMAGE)
+            damage = Math.trunc((damage + 1) / 2);
+        const { losehp } = await import('./hack.js');
+        await losehp(damage, 'gas cloud', KILLED_BY_AN);
+    } else {
+        await You('cough!');
+        const { wake_nearto } = await import('./mon.js');
+        wake_nearto(game.u.ux, game.u.uy, 2);
+    }
+}
+
+// src/region.c:414 run_regions(), age regions and apply inside callbacks.
+export async function run_regions() {
     const rs = game.regions || [];
     for (let i = rs.length - 1; i >= 0; i--) {
         if (rs[i].ttl === 0)
@@ -210,6 +250,8 @@ export function run_regions() {
     for (const reg of (game.regions || [])) {
         if (reg.ttl > 0)
             reg.ttl--;
+        if (reg.inside_f === 'INSIDE_GAS_CLOUD' && reg.hero_inside)
+            await inside_gas_cloud(reg);
         /* src/region.c:1091 inside_gas_cloud(). Fog clouds sustain any
            gas cloud around them, including harmless vapor trails. */
         if (reg.inside_f === 'INSIDE_GAS_CLOUD' && reg.ttl < 20) {

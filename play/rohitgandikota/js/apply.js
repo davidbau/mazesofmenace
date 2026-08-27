@@ -6,13 +6,13 @@ import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED, GETOBJ_NOFLAGS,
          nothing_happens, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
          M_AP_MONSTER, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_INVISIBLE, nothing_seems_to_happen } from './const.js';
-import { getobj, update_inventory } from './invent.js';
+import { carrying, getobj, update_inventory, useupall, weight } from './invent.js';
 import { getdir, get_adjacent_loc, cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { pick_lock } from './lock.js';
-import { is_pick, is_axe, delobj, m_at, seemimic } from './mon.js';
+import { is_pick, is_axe, delobj, m_at, seemimic, wake_nearby } from './mon.js';
 import { is_pole } from './u_init.js';
 import { ECMD_FAIL } from './const.js';
-import { Hallucination, Deaf, Underwater } from './youprop.js';
+import { Blind, Hallucination, Deaf, Underwater } from './youprop.js';
 import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE } from './invent.js';
 import { OCLASSES } from './objects_data.js';
 import { mstatusline, ustatusline } from './insight.js';
@@ -30,13 +30,16 @@ import { cansee } from './vision.js';
 import { wield_tool } from './wield.js';
 import { body_part } from './polyself.js';
 import { FACE } from './const.js';
-import { OBJ_NAME, xname, the, makeplural } from './objnam.js';
+import { OBJ_NAME, The, Tobjnam, xname, yname, the, makeplural,
+         vtense } from './objnam.js';
 import { pmname, x_monnam } from './do_name.js';
 import { defsyms } from './drawing_data.js';
 import { is_boots, is_gloves } from './obj.js';
 import { splitobj } from './mkobj.js';
 import { nohands } from './mondata.js';
-import { check_capacity } from './hack.js';
+import { check_capacity, invocation_pos } from './hack.js';
+import { tty_yn_function } from './tty/topl.js';
+import { makeknown } from './o_init.js';
 
 function note_unported_apply(what) {
     (game.unported ||= new Set()).add(what);
@@ -70,6 +73,13 @@ const MUSICAL_INSTRUMENTS = [
 const APPLIED_CONTAINERS = [ONAMES.LARGE_BOX, ONAMES.CHEST, ONAMES.ICE_BOX,
                             ONAMES.SACK, ONAMES.BAG_OF_HOLDING,
                             ONAMES.OILSKIN_SACK];
+
+function on_stairs_at_u() {
+    for (let stway = game.stairs; stway; stway = stway.next)
+        if (stway.sx === game.u.ux && stway.sy === game.u.uy)
+            return true;
+    return false;
+}
 
 // src/apply.c:1628 use_lamp(), including begin_burn/end_burn's permanent
 // magic-lamp path. Oil-lamp and lantern fuel timers are not represented yet,
@@ -118,6 +128,153 @@ async function use_lamp(obj) {
         note_unported_apply('use_lamp:fuel_timer');
     new_light_source(game.u.ux, game.u.uy, 3, LS_OBJECT, obj.o_id);
     game.vision_full_recalc = 1;
+    update_inventory();
+}
+
+// src/apply.c:1319 use_candelabrum(). Burn timers are not represented yet,
+// but the object's fuel checkpoint, light source, messages, and state are.
+async function use_candelabrum(obj) {
+    const s = obj.spe !== 1 ? 'candles' : 'candle';
+    const { new_light_source, del_light_source, LS_OBJECT } =
+        await import('./light.js');
+
+    if (obj.lamplit) {
+        await You(`snuff the ${s}.`);
+        del_light_source(LS_OBJECT, obj.o_id);
+        obj.lamplit = 0;
+        game.vision_full_recalc = 1;
+        update_inventory();
+        return;
+    }
+    if (obj.spe <= 0) {
+        await pline(`This ${xname(obj)} has no ${s}.`);
+        if ((game.invent || []).some((otmp) =>
+            otmp.otyp === ONAMES.WAX_CANDLE
+            || otmp.otyp === ONAMES.TALLOW_CANDLE)) {
+            await pline(`To attach candles, apply them instead of the ${xname(obj)}.`);
+        }
+        return;
+    }
+    if (Underwater()) {
+        await You('cannot make fire under water.');
+        return;
+    }
+    if (game.u.uswallow || obj.cursed) {
+        if (!Blind())
+            await pline(`The ${s} ${vtense(s, 'flicker')} for a moment, then ${vtense(s, 'die')}.`);
+        return;
+    }
+    if (obj.spe < 7) {
+        await There(`${vtense(s, 'are')} only ${obj.spe} ${s} in ${the(xname(obj))}.`);
+        if (!Blind()) {
+            await pline(`${obj.spe === 1 ? 'It is' : 'They are'} lit.  ${
+                obj.spe === 1 ? 'It shines' : 'They shine'} dimly.`);
+        }
+    } else {
+        await pline(`${The(xname(obj))}'s ${s} burn${Blind() ? '.' : ' brightly!'}`);
+    }
+
+    if (!invocation_pos(game.u.ux, game.u.uy) || on_stairs_at_u()) {
+        await pline(`The ${s} ${vtense(s, 'are')} being rapidly consumed!`);
+        obj.age = Math.max(1, Math.trunc(((obj.age || 0) + 1) / 2));
+    } else {
+        if (obj.spe === 7) {
+            await pline(`${The(xname(obj))} ${Blind()
+                ? 'radiates a strange warmth' : 'glows with a strange light'}!`);
+        }
+        obj.known = 1;
+    }
+
+    obj.lamplit = 1;
+    if ((obj.age || 0) > 75)
+        obj.age = 75;
+    const radius = obj.spe < 4 ? 2 : obj.spe < 7 ? 3 : 4;
+    new_light_source(game.u.ux, game.u.uy, radius, LS_OBJECT, obj.o_id);
+    game.vision_full_recalc = 1;
+    update_inventory();
+}
+
+// src/apply.c:1200 use_bell(). The charged invocation path is complete;
+// unrelated charged effects remain recorded until their object interactions
+// are ported.
+async function use_bell(obj) {
+    const ordinary = obj.otyp !== ONAMES.BELL_OF_OPENING || !obj.spe;
+    const invoking = obj.otyp === ONAMES.BELL_OF_OPENING
+        && invocation_pos(game.u.ux, game.u.uy) && !on_stairs_at_u();
+    let learn = false;
+    let wake = false;
+
+    await You(`ring ${the(xname(obj))}.`);
+
+    if (Underwater() || (game.u.uswallow && ordinary)) {
+        await pline('But the sound is muffled.');
+    } else if (invoking && ordinary) {
+        await pline('But it makes no sound.');
+        learn = true;
+    } else if (ordinary) {
+        if (obj.cursed && !rn2(4))
+            note_unported_apply('use_bell:cursed_summoning');
+        wake = true;
+    } else {
+        obj.spe--;
+        if (game.u.uswallow) {
+            note_unported_apply('use_bell:swallowed_opening');
+        } else if (obj.cursed) {
+            note_unported_apply('use_bell:summon_undead');
+            wake = true;
+        } else if (invoking) {
+            await pline(`${Tobjnam(obj, 'issue')} an unsettling shrill sound...`);
+            obj.age = game.moves;
+            learn = true;
+            wake = true;
+        } else {
+            note_unported_apply(obj.blessed ? 'use_bell:openit'
+                                            : 'use_bell:findit');
+        }
+    }
+
+    if (learn) {
+        makeknown(ONAMES.BELL_OF_OPENING);
+        obj.known = 1;
+    }
+    if (wake)
+        wake_nearby(true);
+    update_inventory();
+}
+
+// src/apply.c:1399 use_candle(), including attaching candles to the
+// Candelabrum of Invocation.
+async function use_candle(obj) {
+    if (game.u.uswallow) {
+        await You('have no elbow-room to maneuver.');
+        return;
+    }
+
+    const candelabrum = carrying(ONAMES.CANDELABRUM_OF_INVOCATION);
+    if (!candelabrum || candelabrum.spe === 7) {
+        note_unported_apply('use_candle:lamp_path');
+        return;
+    }
+
+    if ((await tty_yn_function(
+        `Attach ${yname(obj)} to ${yname(candelabrum)}?`, 'yn', 'n')) !== 'y') {
+        note_unported_apply('use_candle:declined_lamp_path');
+        return;
+    }
+
+    const room = 7 - candelabrum.spe;
+    if (obj.quan > room)
+        obj = splitobj(obj, room);
+
+    const count = obj.quan;
+    const s = count !== 1 ? 'candles' : 'candle';
+    await You(`attach ${count}${candelabrum.spe ? ' more' : ''} ${s} to ${
+        the(xname(candelabrum))}.`);
+    if (!candelabrum.spe || candelabrum.age > obj.age)
+        candelabrum.age = obj.age;
+    candelabrum.spe += count;
+    useupall(obj);
+    candelabrum.owt = weight(candelabrum);
     update_inventory();
 }
 
@@ -410,6 +567,21 @@ export async function doapply() {
 
     if (LAMPS.includes(obj.otyp)) {
         await use_lamp(obj);
+        return ECMD_TIME;
+    }
+
+    if (obj.otyp === ONAMES.BELL || obj.otyp === ONAMES.BELL_OF_OPENING) {
+        await use_bell(obj);
+        return ECMD_TIME;
+    }
+
+    if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+        await use_candelabrum(obj);
+        return ECMD_TIME;
+    }
+
+    if (obj.otyp === ONAMES.WAX_CANDLE || obj.otyp === ONAMES.TALLOW_CANDLE) {
+        await use_candle(obj);
         return ECMD_TIME;
     }
 

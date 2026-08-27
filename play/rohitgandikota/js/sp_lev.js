@@ -10,14 +10,15 @@
 
 import { game } from './gstate.js';
 import { mk_mplayer } from './mplayer.js';
-import { get_level_extends, fix_wall_spines, stairway_add } from './mklev.js';
+import { get_level_extends, fix_wall_spines, stairway_add,
+         stairway_find_dir, occupied } from './mklev.js';
 import { selection_iterate, selection_new, selection_clone,
          selection_getpoint, selection_setpoint, selection_getbounds,
          selection_floodfill, set_selection_floodfillchk,
          selection_do_randline, selection_clear,
          selection_not, selection_rndcoord } from './selvar.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { isok } from './hacklib.js';
+import { isok, distmin } from './hacklib.js';
 import { sobj_at, weight, obj_extract_self } from './invent.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { mkobj_at, mksobj_at, add_to_container, set_corpsenm } from './mkobj.js';
@@ -57,7 +58,7 @@ import { NO_TRAP, VIBRATING_SQUARE,
          SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP } from './const.js';
 import { litstate_rnd, flood_fill_rm, mkmap } from './mkmap.js';
-import { depth, induced_align, Can_fall_thru } from './dungeon.js';
+import { depth, induced_align, Can_fall_thru, Invocation_lev } from './dungeon.js';
 import { mkgold } from './mkobj.js';
 import { mkclass, makemon, is_male, is_female, mpickobj, rndmonnum,
          propagate } from './makemon.js';
@@ -768,7 +769,34 @@ export function create_trap(t, croom) {
     let pos;
 
     if (t.type === VIBRATING_SQUARE) {
-        note_unported('create_trap:vibrating square');
+        /* src/mkmaze.c:1046 pick_vibrasquare_location().  The ritual
+           reshapes a radius-six area, so the square needs wider margins
+           than an ordinary random trap and must stay away from the upstairs. */
+        const xMazeMin = 2, yMazeMin = 2;
+        const xMargin = 4, yMargin = 3, stairDistance = 11;
+        const xRange = (game.x_maze_max ?? 78) - xMazeMin
+                       - 2 * xMargin - 1;
+        const yRange = (game.y_maze_max ?? 20) - yMazeMin
+                       - 2 * yMargin - 1;
+        const stway = stairway_find_dir(true);
+        let trycnt = 0;
+        do {
+            pos = {
+                x: rn1(xRange, xMazeMin + xMargin + 1),
+                y: rn1(yRange, yMazeMin + yMargin + 1),
+            };
+            if (++trycnt > 1000)
+                break;
+        } while (stway
+                 && (pos.x === stway.sx || pos.y === stway.sy
+                     || Math.abs(pos.x - stway.sx)
+                        === Math.abs(pos.y - stway.sy)
+                     || distmin(pos.x, pos.y, stway.sx, stway.sy)
+                        <= stairDistance
+                     || !SPACE_POS(game.level.at(pos.x, pos.y).typ)
+                     || occupied(pos.x, pos.y)));
+        game.invocation_pos = { ...pos };
+        mklev_fns?.maketrap?.(pos.x, pos.y, VIBRATING_SQUARE);
         return;
     } else if (croom) {
         pos = get_free_room_loc(-1, -1, croom, t.coord);
@@ -3433,8 +3461,7 @@ function Can_dig_down_sp() {
     if (game.level.flags?.hardfloor) return false;
     const uz = game.u.uz, dgn = game.dungeons?.[uz.dnum];
     if (dgn && uz.dlevel === dgn.num_dunlevs) return false; /* Is_botlevel */
-    if (game.inv_pos && uz.dnum === game.inv_pos.dnum
-        && uz.dlevel === game.inv_pos.dlevel) return false;
+    if (Invocation_lev(uz)) return false;
     return true;
 }
 

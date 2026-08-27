@@ -8,7 +8,9 @@ import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { delobj, t_at, is_pool, is_lava } from './mon.js';
 import { costly_spot, doname_with_price } from './shk.js';
 import { u_at, CMDQ_KEY, CMDQ_INT, CQ_CANNED, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
-         ICE, DRAWBRIDGE_DOWN, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN } from './const.js';
+         ICE, DRAWBRIDGE_DOWN, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN,
+         AM_SANCTUM, AM_SHRINE, Amask2align, A_NONE, A_LAWFUL,
+         A_NEUTRAL, A_CHAOTIC } from './const.js';
 import { hides_under } from './mondata.js';
 import { worn } from './do_wear.js';
 import { empty_handed } from './wield.js';
@@ -91,17 +93,41 @@ export function assigninvlet(otmp) {
     game.lastinvnr = i;
 }
 
-// src/invent.c:960 addinv_core1(), artifact arm. Quest-artifact text is
-// asynchronous in the tty port, so addinv() waits for it before assigning an
-// inventory letter and printing the ordinary pickup message.
+// src/invent.c:960 addinv_core1(). Special invocation objects update u.uhave
+// before entering inventory. Quest-artifact text is asynchronous in the tty
+// port, so addinv() waits for it before assigning an inventory letter and
+// printing the ordinary pickup message.
 function addinv_core1(obj) {
+    if (obj.oclass === OCLASSES.COIN_CLASS) {
+        (game.disp ||= {}).botl = true;
+        return null;
+    }
+
+    const uhave = (game.u.uhave ||= {});
+    if (obj.otyp === ONAMES.AMULET_OF_YENDOR) {
+        uhave.amulet = 1;
+        return null;
+    }
+    if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+        uhave.menorah = 1;
+        return null;
+    }
+    if (obj.otyp === ONAMES.BELL_OF_OPENING) {
+        uhave.bell = 1;
+        return null;
+    }
+    if (obj.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD) {
+        uhave.book = 1;
+        return null;
+    }
+
     if (!obj.oartifact)
         return null;
 
     return (async () => {
         const { is_quest_artifact } = await import('./questpgr.js');
         if (is_quest_artifact(obj)) {
-            (game.u.uhave ||= {}).questart = 1;
+            uhave.questart = 1;
             const { artitouch } = await import('./quest.js');
             await artitouch(obj);
         }
@@ -137,8 +163,13 @@ function addinv_finish(obj) {
         const r = merged({ o: otmp }, { o: obj });
         if (!r)
             return null;
-        otmp.pickup_prev = 1;
-        return (r instanceof Promise) ? r.then(() => otmp) : otmp;
+        const finish = () => {
+            otmp.pickup_prev = 1;
+            if (confers_luck(otmp))
+                set_moreluck();
+            return otmp;
+        };
+        return (r instanceof Promise) ? r.then(finish) : finish();
     };
 
     /* src/invent.c:1098. Prefer the readied stack even when another wielded
@@ -171,6 +202,8 @@ export function addinv_nomerge(obj) {
     /* src/invent.c:1117 — flags.invlet_constant defaults On, so the chain
        is kept in inv_rank order (gold first). */
     reorder_invent();
+    if (confers_luck(obj))
+        set_moreluck();
     return obj;
 }
 
@@ -203,7 +236,17 @@ export function dfeature_at(x, y) {
     } else if (ltyp === SINK) {
         dfeature = 'sink';
     } else if (ltyp === ALTAR) {
-        note_unported_invent('look_here:altar_dfeature');
+        const alignment = Amask2align(loc0.altarmask & ~AM_SHRINE);
+        let god = alignment === A_NONE ? 'Moloch'
+                : alignment === A_LAWFUL ? game.urole?.lgod
+                  : alignment === A_NEUTRAL ? game.urole?.ngod
+                    : alignment === A_CHAOTIC ? game.urole?.cgod : 'someone';
+        if (god?.startsWith('_'))
+            god = god.slice(1);
+        const alignName = alignment === A_LAWFUL ? 'lawful'
+                        : alignment === A_NEUTRAL ? 'neutral'
+                          : alignment === A_CHAOTIC ? 'chaotic' : 'unaligned';
+        dfeature = `${loc0.altarmask & AM_SANCTUM ? 'high ' : ''}altar to ${god || 'someone'} (${alignName})`;
     } else if (stway) {
         dfeature = stairs_description(stway, true);
     } else if (ltyp === DRAWBRIDGE_DOWN) {
@@ -1245,6 +1288,28 @@ export function confers_luck(obj) {
     return false;
 }
 
+// src/attrib.c:423 stone_luck() and :441 set_moreluck().
+export function stone_luck(include_uncursed) {
+    let bonus = 0;
+    for (const obj of game.invent || []) {
+        if (!confers_luck(obj))
+            continue;
+        if (obj.cursed)
+            bonus -= obj.quan || 1;
+        else if (obj.blessed || include_uncursed)
+            bonus += obj.quan || 1;
+    }
+    return Math.sign(bonus);
+}
+
+export function set_moreluck() {
+    const bonus = stone_luck(true);
+    if (!bonus && !carrying(ONAMES.LUCKSTONE))
+        game.u.moreluck = 0;
+    else
+        game.u.moreluck = bonus >= 0 ? 3 : -3;
+}
+
 function freeinv_core(obj) {
     if (obj.oclass === OCLASSES.COIN_CLASS) {
         /* src/invent.c freeinv_core() — this arm is exactly two statements in
@@ -1263,17 +1328,16 @@ function freeinv_core(obj) {
     } else if (obj.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD) {
         (game.u.uhave ||= {}).book = 0;
     } else if (obj.oartifact) {
-        /* is_quest_artifact/u.uhave.questart and set_artifact_intrinsic
-           need the artifact tables; reached only for artifacts. */
-        note_unported_invent('freeinv_core:uhave_artifacts');
+        if (obj.oartifact === game.urole?.questarti)
+            (game.u.uhave ||= {}).questart = 0;
+        /* set_artifact_intrinsic needs the artifact tables. */
+        note_unported_invent('freeinv_core:set_artifact_intrinsic');
     }
 
     if (obj.otyp === ONAMES.LOADSTONE)
         curse(obj);
     else if (confers_luck(obj))
-        /* set_moreluck() needs stone_luck() and carrying(); reached only for a
-           luckstone or a luck-conferring artifact, so it records. */
-        note_unported_invent('freeinv_core:set_moreluck');
+        set_moreluck();
     else if (obj.otyp === ONAMES.FIGURINE && obj.timed)
         note_unported_invent('freeinv_core:stop_timer');
 
@@ -1390,8 +1454,8 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         await dropx(obj);
     } else {
         freeinv(obj);
-        /* hitfloor() (levitation/riding drop) is not ported */
-        note_unported_invent('hold_another_object:hitfloor');
+        const { hitfloor } = await import('./do.js');
+        await hitfloor(obj, false);
     }
     return null; /* might be gone */
 }
