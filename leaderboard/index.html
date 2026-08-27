@@ -79,6 +79,25 @@ h1 {
     margin: 0.4em 0 1.2em;
     font-style: italic;
 }
+/* Staleness tiers on the caption. The judge mirrors every ~6h, and GitHub
+ * sometimes drops a scheduled tick, so a single missed round is normal and
+ * must NOT warn. Thresholds sit above the worst skip on record (13.7h over
+ * the 25 days to 2026-08-27; median gap 5.8h, p95 7.5h), so the notice means
+ * "worse than any skip we have seen" rather than "cron ran late".
+ *
+ * This is the only stall signal the page can raise by itself. The per-fork
+ * scoring-error badge is a field inside data.json, so it can only appear via
+ * a SUCCESSFUL mirror; if the mirror step is what broke, no fresher data of
+ * any kind reaches the site and the aging timestamp is all there is to go on. */
+.table-caption.stale {
+    color: var(--color-partial);
+    font-style: normal;
+}
+.table-caption.stalled {
+    color: var(--color-fail);
+    font-weight: 600;
+    font-style: normal;
+}
 table {
     width: 100%;
     border-collapse: collapse;
@@ -475,6 +494,15 @@ const DATA_URL = 'data.json';
 const GRANDFATHERED_URL = 'grandfathered.json';
 const CATEGORY_ORDER = ['transpiled', 'agentic', 'other', 'none'];
 
+// Hours since the last successful mirror past which the caption warns.
+// See the .table-caption.stale CSS note for how these were chosen.
+const STALE_WARN_HOURS = 14;    // amber: more than one round missed
+const STALE_ALERT_HOURS = 24;   // red: ~4 rounds missed, not cron noise
+
+function hoursSince(ts) {
+    return (Date.now() - new Date(ts).getTime()) / 3600000;
+}
+
 function timeAgo(ts) {
     const diff = Date.now() - new Date(ts).getTime();
     const mins = Math.floor(diff / 60000);
@@ -579,8 +607,20 @@ async function loadLeaderboard() {
         document.getElementById('phase').textContent = data.contestPhase || 'open';
         document.getElementById('updated').textContent =
             'Last scored: ' + new Date(data.timestamp).toLocaleString();
-        document.getElementById('table-caption').textContent =
-            'Updated ' + timeAgo(data.timestamp);
+        // NaN (missing/malformed timestamp) fails both comparisons, so the
+        // caption degrades to its plain styling rather than false-alarming.
+        const capEl = document.getElementById('table-caption');
+        const staleHours = hoursSince(data.timestamp);
+        capEl.classList.remove('stale', 'stalled');
+        let staleNote = '';
+        if (staleHours >= STALE_ALERT_HOURS) {
+            capEl.classList.add('stalled');
+            staleNote = ' \u2014 scoring appears stalled';
+        } else if (staleHours >= STALE_WARN_HOURS) {
+            capEl.classList.add('stale');
+            staleNote = ' \u2014 scoring may be stalled';
+        }
+        capEl.textContent = 'Updated ' + timeAgo(data.timestamp) + staleNote;
 
         const tbody = document.getElementById('tbody');
         tbody.innerHTML = '';
