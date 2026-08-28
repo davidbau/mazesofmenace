@@ -266,6 +266,15 @@ const RWEP_NAMES = [
     'LUCKSTONE', 'DART', 'CREAM_PIE',
 ];
 
+/** C ref: weapon.c monmightthrowwep — otyp in rwep[]. */
+export function monmightthrowwep(obj) {
+    if (!obj) return false;
+    for (const name of RWEP_NAMES) {
+        if (obj.otyp === otyp(name)) return true;
+    }
+    return false;
+}
+
 /**
  * C ref: weapon.c select_rwep — throwable preference walk.
  * Polearms / throw-and-return / egg / Kop pie / boulder deferred.

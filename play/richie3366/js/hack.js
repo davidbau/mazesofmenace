@@ -50,6 +50,7 @@ import { xname, the, The, makeplural } from './objnam.js';
 import { oclass_to_sym } from './options.js';
 import { A_STR, A_CON, A_DEX, acurr, exercise } from './attrib.js';
 import { rn2, rnd, rn1 } from './rng.js';
+import { ing_suffix } from './hacklib.js';
 import { midnight } from './calendar.js';
 import {
     PM_GRID_BUG, PM_WIZARD, PM_ELF, PM_VALKYRIE, PM_SAMURAI,
@@ -1360,35 +1361,6 @@ export function waterbody_name(x, y) {
     }
     if (typ === LAVAWALL) return `wall of ${hliquid('lava')}`;
     return 'water';
-}
-
-/**
- * C ref: hacklib.c ing_suffix — gerund; on/off/with split + full vowel
- * doubling kept for "step"→"stepping".
- */
-function ing_suffix(s) {
-    let buf = String(s);
-    const vowel = 'aeiouwy';
-    let onoff = '';
-    if (/\s+on$/i.test(buf) || /\s+off$/i.test(buf) || /\s+with$/i.test(buf)) {
-        const sp = buf.lastIndexOf(' ');
-        onoff = buf.slice(sp);
-        buf = buf.slice(0, sp);
-    }
-    const n = buf.length;
-    if (n >= 2 && buf.slice(-2).toLowerCase() === 'er') {
-        // slither + ing
-    } else if (n >= 3
-        && !vowel.includes(buf[n - 1].toLowerCase())
-        && vowel.includes(buf[n - 2].toLowerCase())
-        && !vowel.includes(buf[n - 3].toLowerCase())) {
-        buf += buf[n - 1]; // tip → tipp
-    } else if (n >= 2 && buf.slice(-2).toLowerCase() === 'ie') {
-        buf = `${buf.slice(0, -2)}y`;
-    } else if (n >= 1 && buf[n - 1].toLowerCase() === 'e') {
-        buf = buf.slice(0, -1);
-    }
-    return `${buf}ing${onoff}`;
 }
 
 /**

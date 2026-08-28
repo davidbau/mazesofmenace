@@ -18,7 +18,7 @@ import {
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, MAXULEV,
 } from './const.js';
-import { compactify_invlets, makeknown, observe_object, hold_another_object } from './invent.js';
+import { compactify_invlets, makeknown, observe_object, hold_another_object, getobj_display_pickinv } from './invent.js';
 import { getlin } from './getline.js';
 import { rn2, rn1, rnl } from './rng.js';
 import { nohands } from './monsters.js';
@@ -197,14 +197,20 @@ async function getobj_write_on() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            const { display_pickinv_reply } = await import('./invent.js');
             // '?' uses SUGGEST lets; '*' shows full invent (altlets + rest)
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            const counted = { cnt: 0, cntgiven: false };
+            const ilet = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word: 'write on', allownone: false, promptHasHands: false },
+            );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
             }
-            if (!ilet) continue;
+            if (!ilet) {
+                if (game.iflags?.force_invmenu) return null;
+                continue;
+            }
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
             if (!picked) {
                 await pline("You don't have that object.");

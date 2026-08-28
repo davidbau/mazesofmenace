@@ -1,5 +1,6 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Partial: underwater, blindness pits deferred.
+// Partial: pit / underwater view_from named; nv_range circle live (D-1583).
+// mimic_light_blocking See_invisible block/unblock live (D-1587).
 // BOULDER + is_lightblocker_mappear (mimic boulder/door/wall) in does_block.
 
 import { game } from './gstate.js';
@@ -9,7 +10,7 @@ import {
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, IS_WATERWALL, IS_OBSTRUCTED, IS_DOOR,
     ROOMOFFSET, Is_rogue_level,
-    TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE,
+    TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, SEE_INVIS,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
 } from './const.js';
@@ -106,13 +107,24 @@ export function is_lightblocker_mappear(mon) {
 }
 
 /**
- * C ref: display.c mimic_light_blocking — See_invisible toggles light block
- * for invisible lightblocker mimics. JS rebuilds via recalc_block_point.
+ * C ref: display.c mimic_light_blocking — See_invisible toggles light
+ * block for invisible lightblocker mimics. Not does_block/recalc:
+ * when See_invisible, block_point; else unblock_point (C `:1531–1540`).
+ * C youprop.h See_invisible = H || E (uprops[SEE_INVIS]); JS also
+ * reads H/E/sticky flats. Do not add a 7th named See_invisible clone.
  */
 function mimic_light_blocking(mtmp) {
-    if (!mtmp || !mtmp.minvis) return;
-    if (!is_lightblocker_mappear(mtmp)) return;
-    recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
+    if (!mtmp) return;
+    if (mtmp.minvis && is_lightblocker_mappear(mtmp)) {
+        const u = game.u || {};
+        const p = u.uprops?.[SEE_INVIS];
+        if ((p?.intrinsic | 0) || (p?.extrinsic | 0)
+            || (u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+            || u.See_invisible)
+            block_point(mtmp.mx | 0, mtmp.my | 0);
+        else
+            unblock_point(mtmp.mx | 0, mtmp.my | 0);
+    }
 }
 
 /**
@@ -826,6 +838,41 @@ function apply_xray_in_sight(next, next_rmin, next_rmax, u) {
     }
 }
 
+/**
+ * C ref: vision.c vision_recalc :670–700 — OR IN_SIGHT in the night-vision
+ * circle when has_night_vision && xray_range < nv_range (Eyes already
+ * cover a larger-or-equal circle). Unlike xray, only cells that
+ * view_from already marked (next_row[col] != 0) get IN_SIGHT; seenv
+ * stays for the main update loop except range 0 (hero SVALL). No
+ * newsym here. u_init_misc sets nv_range = 1 (3×3 ≡ circle_ptr(1)).
+ */
+function apply_nv_range_in_sight(next, next_rmin, next_rmax, u, has_night_vision) {
+    if (!(has_night_vision && u.xray_range < u.nv_range)) return;
+    const level = game.level;
+    if (!u.nv_range) {
+        next[u.uy][u.ux] |= IN_SIGHT;
+        const loc = level?.at(u.ux, u.uy);
+        if (loc) loc.seenv = SVALL;
+        next_rmin[u.uy] = Math.min(u.ux, next_rmin[u.uy]);
+        next_rmax[u.uy] = Math.max(u.ux, next_rmax[u.uy]);
+    } else if (u.nv_range > 0) {
+        const ranges = circle_ptr(u.nv_range);
+        for (let row = u.uy - u.nv_range; row <= u.uy + u.nv_range; row++) {
+            if (row < 0) continue;
+            if (row >= ROWNO) break;
+            const dy = (u.uy - row) < 0 ? (row - u.uy) : (u.uy - row);
+            const next_row = next[row];
+            const start = Math.max(1, u.ux - ranges[dy]);
+            const stop = Math.min(COLNO - 1, u.ux + ranges[dy]);
+            for (let col = start; col <= stop; col++) {
+                if (next_row[col]) next_row[col] |= IN_SIGHT;
+            }
+            next_rmin[row] = Math.min(start, next_rmin[row]);
+            next_rmax[row] = Math.max(stop, next_rmax[row]);
+        }
+    }
+}
+
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;
@@ -884,12 +931,15 @@ export function vision_recalc(control = 0) {
         if (Is_rogue_level(u.uz)) {
             rogue_vision(next, next_rmin, next_rmax);
         } else {
+            // C: has_night_vision = 1; Underwater && !Is_waterlevel → 0
+            // and replaces view_from with pool 3×3 (named). Pit TT_PIT
+            // 3×3 IN_SIGHT|COULD_SEE named.
+            const has_night_vision = 1;
             view_from(u.uy, u.ux, next, next_rmin, next_rmax);
-            // C vision.c vision_recalc :631–668 — IN_SIGHT for xray
-            // after view_from, before do_light_sources. Not rogue.
-            // Night vision nv_range circle still the adjacent stand-in
-            // in the lighting loop (C :670–700 named).
+            // C vision.c vision_recalc :631–700 — IN_SIGHT for xray then
+            // nv_range circle after view_from, before do_light_sources.
             apply_xray_in_sight(next, next_rmin, next_rmax, u);
+            apply_nv_range_in_sight(next, next_rmin, next_rmax, u, has_night_vision);
         }
     }
 
@@ -908,13 +958,8 @@ export function vision_recalc(control = 0) {
             const loc = level?.at(col, row);
             if (!loc) continue;
 
-            // C nv_range circle named; 3×3 is nv_range===1 stand-in
-            if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
-                next[row][col] |= IN_SIGHT;
-                continue;
-            }
-
             // Lit cells (permanent or TEMP_LIT from light sources)
+            // NV/xray already ORed IN_SIGHT before lights (C :631–700).
             if (loc.lit || (next[row][col] & TEMP_LIT)) {
                 if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
                     && !viz_clear[row]?.[col]) {

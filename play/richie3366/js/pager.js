@@ -57,7 +57,7 @@ import {
     STRAT_WAITMASK, IS_WALL, Upolyd, Is_airlevel,
     OBJ_FREE, OBJ_FLOOR, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     M_AP_TYPMASK, M_AP_F_DKNOWN,
-    MCORPSENM, NON_PM, MALE, FEMALE,
+    MCORPSENM, has_mcorpsenm, MALE, FEMALE,
     MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
@@ -704,11 +704,6 @@ function is_obj_mappear_look(mon, otyp) {
         && (mon.mappearance | 0) === (otyp | 0);
 }
 
-/** C mextra.h has_mcorpsenm — mextra && MCORPSENM != NON_PM. */
-function has_mcorpsenm_look(mon) {
-    return !!(mon?.mextra && (MCORPSENM(mon) | 0) !== NON_PM);
-}
-
 /**
  * C ref: pager.c object_from_map `:284–377`.
  * JS has no integer glyph ids; callers pass glyphotyp (C glyph_to_obj).
@@ -755,7 +750,7 @@ export function object_from_map(glyphotyp, x, y) {
             // C: give it a type — mksobj(init=FALSE) left spe 0
             otmp.spe = game.context?.current_fruit | 0;
         }
-        if (mtmp && has_mcorpsenm_look(mtmp)) {
+        if (mtmp && has_mcorpsenm(mtmp)) {
             if ((otmp.otyp | 0) === SLIME_MOLD) {
                 // C: override current_fruit so look stays stable if fruit
                 // option changes after the mimic appeared

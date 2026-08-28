@@ -2,7 +2,11 @@
 // C ref: invent.c display_inventory / ddoinv / let_to_name / doorganize;
 //        consume_obj_charge unpaid check_unpaid (D-1047);
 //        update_inventory in_moveloop + suppress_map_output +
-//        suppress_price dance (D-1126; perm_invent On WIN_INVEN still named);
+//        suppress_price dance (D-1126); perm_invent InvInUse D-1600
+//        (prepare_perminvent invmode / display_pickinv WIN_INVEN filter;
+//        tty paint / sparse grid / #perminv scroll named);
+//        D-1603: beyond_savefile_load writers (allmain.c:71 /
+//        restore.c:942) so sync_perminvent :5653 can build;
 //        display_minventory MINV_ALL|PICK_NONE (D-1426; zap.c
 //        probe_monster); display_binventory buried/pool (D-1444;
 //        zap.c zap_updown WAN_PROBING); display_cinventory container
@@ -11,15 +15,26 @@
 //        o_init.c dodiscovered / discover_object;
 //        insight.c enlightenment (BASIC ^X + MAGIC-only in-progress D-1116).
 // D-0856: display_pickinv / invent_lines obj_to_glyph Hallu display RNG.
+// D-1578: force_invmenu Special `*`/`?` + getobj redo_menu / oneloop.
+// D-1579: getobj mime_action on typed '-' when !allownone.
+// D-1580: pickinv gacc collect + BALL `'0'` vs count; def_oc_syms.
+// D-1588: getobj force_invmenu putmsghistory(qbuf) + topl.c remember_topl.
+// D-1589: sortloot SORTLOOT_INUSE + display_pickinv inuse_only / doprinuse.
+// D-1590: display_pickinv wizid unid_cnt>0 PICK_ANY (`_`/^I identify_pack).
+// D-1591: invent.c display_used_invlets (#adjust ?/* used-letters PICK_ONE).
+// D-1599: sortloot SORTLOOT_PETRIFY filter override + will_feel_cockatrice.
+// D-1600: perm_invent InvInUse (prepare_perminvent invmode + WIN_INVEN filter).
+// D-1602: ggetobj takeoff/identify askchain (MENU_TRADITIONAL).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
     endgamelevelname, obj_glyph, suppress_map_output, clear_nhwindow_message,
+    putmsghistory,
 } from './display.js';
-import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, set_not_fully_identified, makeplural, body_part_latebound } from './objnam.js';
-import { yn_function } from './getline.js';
+import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, set_not_fully_identified, makeplural, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
+import { yn_function, getlin } from './getline.js';
 import { mergable, is_damageable, stop_timer, splitobj } from './mkobj.js';
 import { cansee } from './vision.js';
 import {
@@ -39,6 +54,10 @@ import {
     BALL_CLASS,
     CHAIN_CLASS,
     VENOM_CLASS,
+    ILLOBJ_CLASS,
+    MAXOCLASSES,
+    def_oc_syms,
+    def_char_to_objclass,
     objectNames,
     objectNameStrs,
     objectDescrs,
@@ -62,8 +81,16 @@ import {
     SORTLOOT_PACK,
     SORTLOOT_LOOT,
     SORTLOOT_INVLET,
+    SORTLOOT_INUSE,
+    SORTLOOT_PETRIFY,
+    CXN_PFX_THE,
+    CXN_ARTICLE,
     PICK_ONE,
     PICK_NONE,
+    PICK_ANY,
+    MENU_ITEMFLAGS_NONE,
+    MENU_ITEMFLAGS_SKIPINVERT,
+    CONTAINED_SYM,
     MINV_ALL,
     MINV_NOLET,
     engulfing_u,
@@ -74,6 +101,18 @@ import {
     thats_enough_tries,
     LARGEST_INT,
     HANDS_SYM,
+    InvInUse,
+    InvShowGold,
+    InvOptNone,
+    InvOptOn,
+    toggling_off,
+    toggling_not,
+    toggling_on,
+    fromcore_set_mode,
+    fromcore_request_settings,
+    TOCORE_TOO_SMALL,
+    TOCORE_PROHIBITED,
+    TOCORE_TOO_EARLY,
     HAND,
     FINGER,
     FINGERTIP,
@@ -90,13 +129,23 @@ import {
     CMDQ_USER_INPUT,
     CMDQ_INT,
     CQ_REPEAT,
+    ALL_FINISHED,
+    MENU_TRADITIONAL,
+    MENU_FULL,
+    BUC_BLESSED,
+    BUC_UNCURSED,
+    BUC_CURSED,
+    BUC_UNKNOWN,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
     acurr, acurrstr, get_strength_str, exercise, Fumbling,
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
-import { depth } from './hacklib.js';
+import { depth, ing_suffix } from './hacklib.js';
+import { visctrl } from './dokeylist.js';
+import { select_menu_pick_any } from './options.js';
+import { rn2 } from './rng.js';
 import { newuexp } from './exper.js';
 import {
     DOOR, STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, TREE, IRONBARS,
@@ -116,7 +165,10 @@ import {
     P_EXPERT, P_MASTER, P_GRAND_MASTER,
     W_ARMOR, W_AMUL, W_RING, W_TOOL, W_SADDLE,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
-    W_WEP, W_ART, W_ACCESSORY,
+    W_WEP, W_SWAPWEP, W_QUIVER, W_WEAPONS, W_ART, W_ACCESSORY,
+    WORN_SHIRT, WORN_BOOTS, WORN_GLOVES, WORN_HELMET, WORN_SHIELD,
+    WORN_CLOAK, WORN_ARMOR, WORN_BLINDF, WORN_AMUL,
+    LEFT_RING, RIGHT_RING, RIGHT_HANDED, LEFT_HANDED,
     NEW_MOON,
     FULL_MOON,
     Upolyd,
@@ -143,8 +195,12 @@ import {
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { PM_SAMURAI, PM_MONK } from './generated/monsters_data.js';
-import { humanoid, strongmonst } from './monsters.js';
+import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned } from './monsters.js';
 import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact } from './artifact.js';
+import {
+    askchain, add_valid_menu_class, collect_obj_classes,
+    count_buc, count_justpicked, allow_category,
+} from './pickup.js';
 
 // C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
 const MZ_HUMAN = 2;
@@ -154,6 +210,105 @@ function Blind() {
     const u = game.u || {};
     if (u.uroleplay?.blind) return true;
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+const OTYP_LEASH = objectNames.indexOf('LEASH');
+const OTYP_CORPSE = objectNames.indexOf('CORPSE');
+
+/**
+ * C invent.c inuse_headers — [4] "Accessories"; dispinv_with_action may
+ * swap that slot for "Amulet" / "Ring" / "Rings".
+ */
+const inuse_headers = [
+    '', 'Miscellaneous', 'Worn Armor', 'Wielded/Readied Weapons', 'Accessories',
+];
+
+/** C invent.c inuse_headers[4] save. */
+export function inuse_headers_accessories() {
+    return inuse_headers[4];
+}
+
+/** C invent.c inuse_headers[4] = alt_label (or restore "Accessories"). */
+export function inuse_headers_set_accessories(label) {
+    inuse_headers[4] = label || 'Accessories';
+}
+
+/* C invent.c static wri_info / perminv_flags / in_perm_invent_toggled.
+ * WIN_INVEN id stand-in for create_nhwindow(NHW_MENU) (not WIN_ERR). */
+const WIN_INVEN_ID = 20;
+let perminv_flags = InvOptNone;
+let in_perm_invent_toggled = false;
+let wri_info = {
+    fromcore: { invmode: InvOptNone, core_request: 0 },
+    tocore: { tocore_flags: 0, maxslot: 0 },
+};
+/** C invent.c sync_perminvent static win_request_info *wri. */
+let sync_wri = null;
+
+/**
+ * C wintty.c tty_ctrl_nhwindow set_mode / request_settings subset.
+ * maxslot is a stub (assesstty too_small/prohibited/too_early named).
+ * @param {number} _window
+ * @param {number} request
+ * @param {object|null} wri
+ */
+function ctrl_nhwindow_perm(_window, request, wri) {
+    if (!wri) return null;
+    if (request === fromcore_set_mode) return wri;
+    if (request === fromcore_request_settings) {
+        const invmode = wri.fromcore.invmode | 0;
+        const inuse_only = (invmode & InvInUse) !== 0;
+        wri.tocore = {
+            tocore_flags: 0,
+            maxslot: inuse_only ? 16 : 32,
+        };
+        return wri;
+    }
+    return wri;
+}
+
+/**
+ * C invent.c prepare_perminvent `:5548–5562`.
+ * Copy iflags.perminv_mode onto wri_info.fromcore.invmode when it changes.
+ * @param {number} window
+ */
+export function prepare_perminvent(window) {
+    const invmode = (game.iflags?.perminv_mode | 0);
+    if (perminv_flags !== invmode) {
+        wri_info = {
+            fromcore: { invmode, core_request: fromcore_set_mode },
+            tocore: { tocore_flags: 0, maxslot: 0 },
+        };
+        ctrl_nhwindow_perm(window, fromcore_set_mode, wri_info);
+        perminv_flags = invmode;
+    }
+}
+
+/**
+ * C invent.c perm_invent_toggled `:5660–5677`.
+ * @param {boolean} negated
+ */
+export function perm_invent_toggled(negated) {
+    in_perm_invent_toggled = true;
+    if (!game.gp) game.gp = {};
+    if (!game.gc) game.gc = {};
+    if (!game.gi) game.gi = {};
+    if (negated) {
+        game.gp.perm_invent_toggling_direction = toggling_off;
+        game.WIN_INVEN = WIN_ERR;
+        game.gc.core_invent_state = 0;
+        game.gi.perminvent_entries = [];
+        game.gi.perminvent_listed = [];
+    } else {
+        game.gp.perm_invent_toggling_direction = toggling_on;
+        const iflags = game.iflags || (game.iflags = {});
+        if ((iflags.perminv_mode | 0) === InvOptNone) {
+            iflags.perminv_mode = InvOptOn;
+        }
+        sync_perminvent();
+    }
+    game.gp.perm_invent_toggling_direction = toggling_not;
+    in_perm_invent_toggled = false;
 }
 
 // C ref: hack.c weight_cap() — STR+CON base; Upolyd msize/cwt scale;
@@ -286,23 +441,390 @@ function loot_xname(obj) {
 }
 
 /**
- * C ref: invent.c sortloot — build Loot[] sorted view; does not relink.
- * Branch envelope: SORTLOOT_PACK class order + SORTLOOT_LOOT name;
- * named omissions: subclass/disco/BUCX/erosion/INVLET/INUSE/filter/
- * SORTLOOT_PETRIFY; loot_classify armor/weapon/tool detail.
+ * C invent.c invletter_value `:390–399` — '$' first, then a-z, A-Z, '#'.
+ * invlet_basic is 52.
+ */
+function invletter_value(c) {
+    const ch = typeof c === 'string' && c.length ? c.charAt(0) : '';
+    if (!ch) return 1 + 52 + 1 + 1;
+    if (ch >= 'a' && ch <= 'z') return ch.charCodeAt(0) - 97 + 2;
+    if (ch >= 'A' && ch <= 'Z') return ch.charCodeAt(0) - 65 + 2 + 26;
+    if (ch === '$') return 1;
+    if (ch === '#') return 1 + 52 + 1;
+    return 1 + 52 + 1 + 1;
+}
+
+/**
+ * C invent.c is_worn `:2155–2161`.
+ * @param {object|null} otmp
+ * @returns {boolean}
+ */
+export function is_worn(otmp) {
+    return !!((otmp?.owornmask | 0)
+        & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS));
+}
+
+/** C invent.c taking_off `:1671–1675`. */
+export function taking_off(action) {
+    return action === 'take off' || action === 'remove';
+}
+
+/**
+ * C invent.c count_unpaid `:3525–3538`.
+ * Invent Array or nobj chain, including container contents.
+ */
+export function count_unpaid(list) {
+    let count = 0;
+    if (Array.isArray(list)) {
+        for (const otmp of list) {
+            if (!otmp) continue;
+            if (otmp.unpaid) count++;
+            if (Has_contents(otmp)) count += count_unpaid(otmp.cobj);
+        }
+        return count;
+    }
+    for (let otmp = list; otmp; otmp = otmp.nobj) {
+        if (otmp.unpaid) count++;
+        if (Has_contents(otmp)) count += count_unpaid(otmp.cobj);
+    }
+    return count;
+}
+
+/** C invent.c ckvalidcat `:2135–2140`. */
+function ckvalidcat(otmp) {
+    return allow_category(otmp) ? 1 : 0;
+}
+
+/** C invent.c ckunpaid `:2142–2146`. */
+function ckunpaid(otmp) {
+    return (otmp?.unpaid || (Has_contents(otmp) && count_unpaid(otmp.cobj)))
+        ? 1 : 0;
+}
+
+/** C invent.c removeables — armor/weapon/ring/amulet/tool. */
+const GGETOBJ_REMOVEABLES = [
+    ARMOR_CLASS, WEAPON_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
+];
+
+/**
+ * C invent.c ggetobj `:2199–2369`. Interactive Drop/Identify/Takeoff.
+ * Traditional getlin class prompt then askchain. combo ALL_FINISHED
+ * for Combination menu_remarm is implemented; that caller is named.
+ * display_inventory lets/`i` ESC abort live; cmdq pickinv named.
  *
- * @param {object|null} olist head of nobj (or nexthere) chain
+ * @param {string} word
+ * @param {function} fn
+ * @param {number} mx
+ * @param {boolean} combo
+ * @param {{ bits: number }|null} [resultflags]
+ * @returns {Promise<number>}
+ */
+export async function ggetobj(word, fn, mx, combo, resultflags) {
+    const invent = game.invent || [];
+    if (!invent.length) {
+        await pline(`You have nothing to ${word}.`);
+        if (resultflags) resultflags.bits = ALL_FINISHED;
+        return 0;
+    }
+    if (resultflags) resultflags.bits = 0;
+
+    let takeoff = false;
+    let ident = false;
+    let allflag = false;
+    let m_seen = false;
+    let ofilter = null;
+    add_valid_menu_class(0);
+    if (taking_off(word)) {
+        takeoff = true;
+        ofilter = is_worn;
+    } else if (word === 'identify') {
+        ident = true;
+        ofilter = not_fully_identified;
+    }
+
+    const itemcount = { n: 0 };
+    let ilets = collect_obj_classes(invent, false, ofilter, itemcount);
+    const unpaid = count_unpaid(invent);
+
+    if (ident && !ilets.length) {
+        return -1;
+    }
+    ilets += ' ';
+    if (unpaid) ilets += 'u';
+    if (count_buc(invent, BUC_BLESSED, ofilter)) ilets += 'B';
+    if (count_buc(invent, BUC_UNCURSED, ofilter)) ilets += 'U';
+    if (count_buc(invent, BUC_CURSED, ofilter)) ilets += 'C';
+    if (count_buc(invent, BUC_UNKNOWN, ofilter)) ilets += 'X';
+    if (count_justpicked(invent)) ilets += 'P';
+    ilets += 'a';
+    ilets += 'i';
+    if (!combo) ilets += 'm';
+
+    let buf = '';
+    for (;;) {
+        const qbuf = `What kinds of thing do you want to ${word}? [${ilets}]`;
+        buf = await getlin(qbuf);
+        if (buf === '\x1b') return 0;
+        if (buf.includes('i')) {
+            let ailets = '';
+            if (ofilter) {
+                for (const otmp of invent) {
+                    if (!otmp?.invlet) continue;
+                    if (ofilter(otmp) && !ailets.includes(otmp.invlet)) {
+                        ailets += otmp.invlet;
+                    }
+                }
+            }
+            const ch = await display_inventory(ailets, true);
+            if (ch === '\x1b') return 0;
+        } else {
+            break;
+        }
+    }
+
+    const extra_removeables = [];
+    if (takeoff) {
+        const u = game.u || {};
+        if (u.uwep) extra_removeables.push(u.uwep.oclass);
+        if (u.uswapwep) extra_removeables.push(u.uswapwep.oclass);
+        if (u.uquiver) extra_removeables.push(u.uquiver.oclass);
+    }
+
+    const olets = [];
+    let ckfn = null;
+    for (const sym of buf) {
+        if (sym === ' ') continue;
+        const oc_of_sym = def_char_to_objclass(sym);
+        if (takeoff && oc_of_sym !== MAXOCLASSES) {
+            if (extra_removeables.includes(oc_of_sym)) {
+                /* skip rest of takeoff checks */
+            } else if (!GGETOBJ_REMOVEABLES.includes(oc_of_sym)) {
+                await pline('Not applicable.');
+                return 0;
+            } else if (oc_of_sym === ARMOR_CLASS && !wearing_armor()) {
+                await noarmor(false);
+                return 0;
+            } else if (oc_of_sym === WEAPON_CLASS
+                && !game.u?.uwep && !game.u?.uswapwep && !game.u?.uquiver) {
+                await pline('You are not wielding anything.');
+                return 0;
+            } else if (oc_of_sym === RING_CLASS
+                && !game.u?.uright && !game.u?.uleft) {
+                await pline('You are not wearing rings.');
+                return 0;
+            } else if (oc_of_sym === AMULET_CLASS && !game.u?.uamul) {
+                await pline('You are not wearing an amulet.');
+                return 0;
+            } else if (oc_of_sym === TOOL_CLASS && !game.u?.ublindf) {
+                await pline('You are not wearing a blindfold.');
+                return 0;
+            }
+        }
+
+        if (sym === 'a') {
+            allflag = true;
+        } else if (sym === 'A') {
+            /* same as the default */
+        } else if (sym === 'u') {
+            add_valid_menu_class('u');
+            ckfn = ckunpaid;
+        } else if ('BUCXP'.includes(sym)) {
+            add_valid_menu_class(sym);
+            ckfn = ckvalidcat;
+        } else if (sym === 'm') {
+            m_seen = true;
+        } else if (oc_of_sym === MAXOCLASSES) {
+            await pline(`You don't have any ${sym}'s.`);
+        } else if (!olets.includes(oc_of_sym)) {
+            add_valid_menu_class(oc_of_sym);
+            olets.push(oc_of_sym);
+        }
+    }
+
+    if (m_seen) {
+        return (allflag
+            || (!olets.length && ckfn !== ckunpaid && ckfn !== ckvalidcat))
+            ? -2 : -3;
+    }
+    const style = game.flags?.menu_style ?? MENU_FULL;
+    if (style !== MENU_TRADITIONAL && combo && !allflag) {
+        return 0;
+    }
+    const cnt = await askchain(
+        () => game.invent || [],
+        true,
+        olets,
+        allflag,
+        fn,
+        ckfn,
+        mx,
+        word,
+    );
+    if (combo && allflag && resultflags) {
+        resultflags.bits |= ALL_FINISHED;
+    }
+    return cnt;
+}
+
+/**
+ * C invent.c tool_being_used `:4697–4711`.
+ * @param {object} obj
+ * @returns {boolean}
+ */
+function tool_being_used(obj) {
+    if (((obj.owornmask || 0) & (W_TOOL | W_SADDLE)) !== 0) return true;
+    if (obj.oclass !== TOOL_CLASS) return false;
+    return obj === game.u?.uwep || !!obj.lamplit
+        || ((obj.otyp | 0) === OTYP_LEASH && !!obj.leashmon);
+}
+
+/**
+ * C invent.c is_inuse `:2164–2170` — carried && (worn || tool in use).
+ * Not obj.in_use (finish-using-up). carried ≡ where==OBJ_INVENT.
+ * @param {object|null} obj
+ * @returns {boolean}
+ */
+export function is_inuse(obj) {
+    if (!obj || obj.where !== OBJ_INVENT) return false;
+    return is_worn(obj) || tool_being_used(obj);
+}
+
+/**
+ * C invent.c inuse_classify `:70–144`. USE_RATING least→most; bigger
+ * inuse comes first in sortloot_cmp. orderclass is the heading index.
+ * @param {{ inuse?: number, orderclass?: number, subclass?: number, disco?: number }} sort_item
+ * @param {object} obj
+ */
+function inuse_classify(sort_item, obj) {
+    const w_mask = (obj.owornmask | 0) & (W_ACCESSORY | W_WEAPONS | W_ARMOR);
+    let rating = 0;
+    let altclass = 0;
+    const ulefty = ((game.u?.uhandedness | 0) === LEFT_HANDED);
+
+    const useRating = (test) => {
+        rating++;
+        return !!test;
+    };
+
+    /* "Miscellaneous" */
+    altclass++; /* 1 */
+    if (useRating(!w_mask && (obj.otyp | 0) === OTYP_LEASH && obj.leashmon)) {
+        // assigned below
+    } else if (useRating(!w_mask && obj.oclass === TOOL_CLASS && obj.lamplit)) {
+        // assigned below
+    } else {
+        /* "Armor" */
+        altclass++; /* 2 */
+        if (useRating(w_mask & WORN_SHIRT)
+            || useRating(w_mask & WORN_BOOTS)
+            || useRating(w_mask & WORN_GLOVES)
+            || useRating(w_mask & WORN_HELMET)
+            || useRating(w_mask & WORN_SHIELD)
+            || useRating(w_mask & WORN_CLOAK)
+            || useRating(w_mask & WORN_ARMOR)) {
+            // assigned below
+        } else {
+            /* "Weapons" */
+            altclass++; /* 3 */
+            if (useRating(w_mask & W_QUIVER)
+                || useRating(w_mask & W_SWAPWEP)
+                || useRating(w_mask & W_WEP)) {
+                // assigned below
+            } else {
+                /* "Accessories" */
+                altclass++; /* 4 */
+                if (useRating(w_mask & WORN_BLINDF)
+                    || useRating(w_mask & (ulefty ? RIGHT_RING : LEFT_RING))
+                    || useRating(w_mask & (ulefty ? LEFT_RING : RIGHT_RING))
+                    || useRating(w_mask & WORN_AMUL)) {
+                    // assigned below
+                } else {
+                    rating = 0;
+                    altclass = -1;
+                }
+            }
+        }
+    }
+
+    sort_item.inuse = rating;
+    sort_item.orderclass = altclass;
+    sort_item.subclass = 0;
+    sort_item.disco = 0;
+}
+
+/**
+ * C invent.c will_feel_cockatrice `:4333–4340`.
+ * Blind (or force_touch) && !uarmg && !Stone_resistance && CORPSE
+ * that touch_petrifies. eat.c / doloot / pray force_touch named.
+ */
+export function will_feel_cockatrice(otmp, force_touch = false) {
+    const u = game.u || {};
+    const Stone_resistance = !!(u.Stone_resistance
+        || u.HStone_resistance || u.EStone_resistance);
+    if ((Blind() || force_touch) && !u.uarmg && !Stone_resistance
+        && (otmp?.otyp | 0) === OTYP_CORPSE
+        && touch_petrifies(mons(otmp.corpsenm))) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C invent.c feel_cockatrice `:4342–4361`.
+ * will_feel then corpse_xname CXN_PFX_THE + instapetrify killer_xname.
+ */
+export async function feel_cockatrice(otmp, force_touch = false) {
+    if (!will_feel_cockatrice(otmp, force_touch)) return;
+    const kbuf = corpse_xname(otmp, null, CXN_PFX_THE);
+    if (poly_when_stoned(game.youmonst?.data, game.mvitals)) {
+        await pline(
+            `You touched ${kbuf} with your bare ${makeplural(body_part_latebound(HAND))}.`,
+        );
+    } else {
+        await pline(`Touching ${kbuf} is a fatal mistake...`);
+    }
+    const { instapetrify } = await import('./trap.js');
+    await instapetrify(`touching ${killer_xname(otmp)} bare-handed`);
+}
+
+/**
+ * C ref: invent.c sortloot `:592–643` — Loot[] view; does not relink.
+ * Branch envelope: SORTLOOT_PACK class + SORTLOOT_INVLET + SORTLOOT_LOOT
+ * + SORTLOOT_INUSE (inuse_classify; bigger inuse first) + optional
+ * filterfunc (display_pickinv is_inuse) + SORTLOOT_PETRIFY (keep
+ * touch_petrifies CORPSE even when filterfunc rejects FOOD).
+ * Named: subclass/disco/BUCX/erosion; loot_classify armor/weapon/tool
+ * detail.
+ * @param {object|object[]|null} olist nobj/nexthere head or invent Array
  * @param {number} mode SORTLOOT_* flags
  * @param {boolean} [by_nexthere=false]
- * @returns {{obj: object, indx: number}[]}
+ * @param {((obj: object) => boolean)|null} [filterfunc]
  */
-export function sortloot(olist, mode, by_nexthere = false) {
+export function sortloot(olist, mode, by_nexthere = false, filterfunc = null) {
+    // C: keep-cockatrice flag is overloaded with sort mode; strip it
+    // before sortloot_cmp (PETRIFY is not a compare class).
+    const augment_filter = (mode & SORTLOOT_PETRIFY) !== 0;
+    mode &= ~SORTLOOT_PETRIFY;
     const items = [];
     let i = 0;
-    for (let o = olist; o; o = by_nexthere ? o.nexthere : o.nobj) {
+    const consider = (o) => {
+        if (!o) return;
+        if (filterfunc && !filterfunc(o)
+            && (!augment_filter || (o.otyp | 0) !== OTYP_CORPSE
+                || !touch_petrifies(mons(o.corpsenm)))) {
+            return;
+        }
         items.push({
-            obj: o, indx: i++, orderclass: 0, subclass: 0, disco: 0, str: null,
+            obj: o, indx: i++, orderclass: 0, subclass: 0, disco: 0,
+            inuse: 0, str: null,
         });
+    };
+    if (Array.isArray(olist)) {
+        for (const o of olist) consider(o);
+    } else {
+        for (let o = olist; o; o = by_nexthere ? o.nexthere : o.nobj) {
+            consider(o);
+        }
     }
     if (!mode || items.length <= 1) return items;
 
@@ -312,6 +834,15 @@ export function sortloot(olist, mode, by_nexthere = false) {
     items.sort((sli1, sli2) => {
         const obj1 = sli1.obj;
         const obj2 = sli2.obj;
+        // C sortloot_cmp: in-use takes precedence over all others
+        if ((mode & SORTLOOT_INUSE) !== 0) {
+            if (!sli1.orderclass) inuse_classify(sli1, obj1);
+            if (!sli2.orderclass) inuse_classify(sli2, obj2);
+            if (sli1.inuse !== sli2.inuse) {
+                return sli2.inuse - sli1.inuse;
+            }
+            return sli1.indx - sli2.indx;
+        }
         // C: order by class unless SORTLOOT_INVLET alone
         if ((mode & (SORTLOOT_PACK | SORTLOOT_INVLET)) !== SORTLOOT_INVLET) {
             if (!sli1.orderclass) {
@@ -326,6 +857,12 @@ export function sortloot(olist, mode, by_nexthere = false) {
                 return sli1.orderclass - sli2.orderclass;
             }
             // subclass / disco deferred (all ice-box corpses share FOOD/CORPSE)
+        }
+        // C: order by assigned inventory letter when SORTLOOT_INVLET
+        if (mode & SORTLOOT_INVLET) {
+            const v1 = invletter_value(obj1.invlet);
+            const v2 = invletter_value(obj2.invlet);
+            if (v1 !== v2) return v1 - v2;
         }
         if (mode & SORTLOOT_LOOT) {
             if (!sli1.str) sli1.str = loot_xname(obj1);
@@ -350,8 +887,9 @@ export const DEF_INV_ORDER = [
     TOOL_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
 ];
 
-// C ref: invent.c let_to_name names[]
+// C invent.c let_to_name names[] (`:4789–4793`) — index is oclass
 const CLASS_NAMES = {
+    [ILLOBJ_CLASS]: 'Illegal objects',
     [WEAPON_CLASS]: 'Weapons',
     [ARMOR_CLASS]: 'Armor',
     [RING_CLASS]: 'Rings',
@@ -370,17 +908,113 @@ const CLASS_NAMES = {
     [VENOM_CLASS]: 'Venoms',
 };
 
+/** C invent.c oth_symbols / oth_names (`:4794–4795`). */
+const OTH_NAMES = { [CONTAINED_SYM]: 'Bagged/Boxed items' };
+
 /**
- * C ref: invent.c let_to_name — class heading for INVORDER_SORT menus.
- * Named omissions: unpaid prefix; showsym "  ('%c')" padding; CONTAINED_SYM;
- * Illegal objects. Venoms via CLASS_NAMES[VENOM_CLASS] (D-0928 #1142).
+ * C invent.c let_to_name `:4799–4839`.
+ * `let` in 1..MAXOCLASSES-1 is an oclass (flags.inv_order bytes).
+ * showsym → pad to 8 then `"  ('%c')"` via def_oc_syms (BALL `'0'`).
+ * Named omit: unpaid shop prefix callers still rare; gi.invbuf realloc.
  */
-export function let_to_name(letch, unpaid = false, _showsym = false) {
-    const name = CLASS_NAMES[letch] || 'Items';
-    return unpaid ? `Unpaid ${name}` : name;
+export function let_to_name(letch, unpaid = false, showsym = false) {
+    const letv = typeof letch === 'string' ? letch.charCodeAt(0) : (letch | 0);
+    const oclass = (letv >= 1 && letv < MAXOCLASSES) ? letv : 0;
+    let class_name;
+    if (oclass) {
+        class_name = CLASS_NAMES[oclass] || CLASS_NAMES[ILLOBJ_CLASS];
+    } else {
+        const ch = typeof letch === 'string' ? letch : String.fromCharCode(letv);
+        class_name = OTH_NAMES[ch] || CLASS_NAMES[ILLOBJ_CLASS];
+    }
+    let invbuf = unpaid ? `Unpaid ${class_name}` : class_name;
+    if (oclass !== 0 && showsym) {
+        const invbuf_sympadding = 8;
+        let mlen = invbuf_sympadding - class_name.length;
+        let pad = '';
+        while (--mlen > 0) pad += ' ';
+        const ocsym = def_oc_syms[oclass]?.sym || '\0';
+        invbuf += `${pad}  ('${ocsym}')`;
+    }
+    return invbuf;
 }
 
 const GOLD_SYM = '$';
+
+/**
+ * C invent.c display_pickinv `:3323–3325` — add_menu group accelerator.
+ * Non-wizid want_reply (getobj) passes 0; wizid uses def_oc_syms[oclass].sym
+ * including BALL `'0'`.
+ * @param {object|null} otmp
+ * @param {boolean} wizid C `wizard && iflags.override_ID`
+ * @returns {string} one char, or '' for none
+ */
+export function pickinv_item_gacc(otmp, wizid) {
+    if (!wizid || !otmp) return '';
+    const oc = otmp.oclass | 0;
+    const sym = def_oc_syms[oc]?.sym;
+    return (sym && sym !== '\0') ? sym : '';
+}
+
+/**
+ * C wintty.c process_menu_window `:1352–1379` — collect gacc[].
+ * PICK_NONE → empty. PICK_ONE: only gselectors that match exactly one
+ * entry (gselector != selector). PICK_ANY: any distinct gselector.
+ * GOLD_SYM `'$'` may equal selector; included only when n>0.
+ * @param {{ selector: string, gselector: string }[]} items
+ * @param {number} how PICK_NONE / PICK_ONE / PICK_ANY
+ * @returns {string}
+ */
+export function collect_menu_gacc(items, how) {
+    if (how === PICK_NONE || !items?.length) return '';
+    const gcnt = new Array(128).fill(0);
+    let n = 0;
+    for (const it of items) {
+        const g = it.gselector;
+        if (g && g !== it.selector) {
+            n++;
+            gcnt[g.charCodeAt(0) & 127]++;
+        }
+    }
+    if (n === 0) return '';
+    const gold = def_oc_syms[COIN_CLASS]?.sym || GOLD_SYM;
+    let gacc = '';
+    for (const it of items) {
+        const g = it.gselector;
+        if (!g) continue;
+        if (g !== it.selector || g === gold) {
+            if (!gacc.includes(g)
+                && (how === PICK_ANY || gcnt[g.charCodeAt(0) & 127] === 1)) {
+                gacc += g;
+            }
+        }
+    }
+    return gacc;
+}
+
+/**
+ * C wintty.c process_menu_window `'0'..'9'`: `'0'` is also BALL_CLASS.
+ * Group accel wins only when !counting && strchr(gacc, morc).
+ * @param {boolean} counting
+ * @param {string} gacc
+ * @param {string} ch
+ */
+export function menu_digit_is_gacc(counting, gacc, ch) {
+    return !counting && !!(gacc && ch && gacc.includes(ch));
+}
+
+/**
+ * C process_menu_window group_accel — unique PICK_ONE item's selector.
+ * @param {{ selector: string, gselector: string }[]} items
+ * @param {string} gacc
+ * @param {string} ch
+ * @returns {string|null}
+ */
+export function menu_take_gacc(items, gacc, ch) {
+    if (!ch || !gacc?.includes(ch)) return null;
+    const hit = items.find((it) => it.gselector === ch);
+    return hit ? hit.selector : null;
+}
 
 /**
  * C ref: objclass.h OBJ_DESCR(objects[otyp]) —
@@ -830,8 +1464,8 @@ export function count_unidentified(objchn) {
 /**
  * C ref: invent.c menu_identify — query_objlist USE_INVLET PICK_ANY.
  * Envelope: invent-letter toggle menu of not_fully_identified items.
- * Named omissions: SIGNAL_NOMENU polish; wait_synch between loops;
- * traditional ggetobj path.
+ * Named omissions: SIGNAL_NOMENU polish; wait_synch between loops.
+ * Traditional ggetobj is D-1602 (identify_pack MENU_TRADITIONAL).
  */
 async function menu_identify(id_limit) {
     let first = true;
@@ -917,7 +1551,7 @@ async function menu_identify(id_limit) {
 /**
  * C ref: invent.c identify_pack(id_limit, learning_id).
  * id_limit 0 = identify all unidentified invent items.
- * Named omissions: update_inventory; MENU_TRADITIONAL ggetobj.
+ * MENU_TRADITIONAL ggetobj("identify") then askchain (D-1602).
  */
 export async function identify_pack(id_limit, learning_id) {
     let unid_cnt = count_unidentified(game.invent);
@@ -932,25 +1566,36 @@ export async function identify_pack(id_limit, learning_id) {
             if (--unid_cnt < 1) break;
         }
     } else {
-        // flags.menu_style == MENU_TRADITIONAL ggetobj deferred → menu
-        await menu_identify(id_limit);
+        let n = 0;
+        const style = game.flags?.menu_style ?? MENU_FULL;
+        if (style === MENU_TRADITIONAL) {
+            do {
+                n = await ggetobj('identify', identify, id_limit, false, null);
+                if (n < 0) break;
+            } while ((id_limit -= n) > 0);
+        }
+        if (n === 0 || n < -1) {
+            await menu_identify(id_limit);
+        }
     }
-    // update_inventory deferred
+    update_inventory();
 }
 
 // C: xname_flags observe + distant_name cansee (wired late to break cycles)
 set_xname_observe(observe_object);
 set_distant_cansee(cansee);
 
-export function invent_lines() {
+export function invent_lines(lets) {
     const inv = game.invent || [];
     const lines = [];
     // C ref: windows.c add_menu_heading — suppress highlight when gameover
     const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const filterLets = lets || '';
     for (const oclass of DEF_INV_ORDER) {
-        const items = inv.filter(o => o.oclass === oclass);
+        const items = inv.filter((o) => o.oclass === oclass
+            && (!filterLets || (o.invlet && filterLets.includes(o.invlet))));
         if (!items.length) continue;
-        lines.push({ text: CLASS_NAMES[oclass] || 'Items', attr: headingAttr });
+        lines.push({ text: let_to_name(oclass, false, false), attr: headingAttr });
         for (const otmp of items) {
             // C ref: invent.c sortloot_item — observe_object before naming
             // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1186).
@@ -979,6 +1624,170 @@ function append_long_digit(L, D) {
 }
 
 /**
+ * C invent.c getobj `:1923–1927` — force_invmenu first letter:
+ * '?' if any SUGGEST lets or altlets, else '*'. Null when the flag
+ * is off (caller uses yn_function). putmsghistory is D-1588.
+ * @param {string} [lets]
+ * @param {string} [altlets]
+ * @returns {string|null}
+ */
+export function getobj_force_invmenu_ch(lets = '', altlets = '') {
+    if (!game.iflags?.force_invmenu) return null;
+    return (lets || altlets) ? '?' : '*';
+}
+
+/**
+ * C invent.c display_pickinv `:3345–3366` — force_invmenu want_reply
+ * Special accelerator. `lets` empty/null/'*' is C NULL (full invent).
+ * inv length ≡ inv_cnt(TRUE). Null when the row is omitted.
+ * @param {string|null} lets
+ * @param {boolean} allowxtra C allowxtra (getobj allownone)
+ * @param {boolean} usextra C (xtra_choice && allowxtra)
+ * @returns {{ ch: string, text: string }|null}
+ */
+export function force_invmenu_special(lets, allowxtra, usextra) {
+    if (!game.iflags?.force_invmenu) return null;
+    const letsStr = (lets && lets !== '*') ? lets : '';
+    const invn = (game.invent || []).length;
+    if ((allowxtra && !usextra) || (letsStr && letsStr.length < invn)) {
+        return { ch: '*', text: '(list everything)' };
+    }
+    if (!letsStr) {
+        return { ch: '?', text: '(list likely candidates)' };
+    }
+    return null;
+}
+
+/**
+ * C invent.c display_pickinv inuse_only `:3186–3317`.
+ * sortloot(SORTLOOT_INUSE, is_inuse); fake '-' W_WEP when !uwep;
+ * doing_perm_invent → "In use" else "Inventory in use"; then
+ * inuse_headers[orderclass].
+ * @param {string|null} lets
+ * @param {boolean} wizid
+ * @param {{ doing_perm_invent?: boolean }} [opts]
+ */
+function pickinv_build_inuse(lets, wizid, opts = null) {
+    const doing_perm_invent = !!opts?.doing_perm_invent;
+    const allow = (!lets || lets === '*') ? null : new Set([...lets]);
+    const u = game.u || {};
+    const fake = !u.uwep ? {
+        _inuse_fake: true,
+        otyp: 0,
+        oclass: ILLOBJ_CLASS,
+        invlet: HANDS_SYM,
+        owornmask: W_WEP,
+        where: OBJ_INVENT,
+    } : null;
+    const inv = fake ? [fake, ...(game.invent || [])] : (game.invent || []);
+    let sorted = sortloot(inv, SORTLOOT_INUSE, false, is_inuse);
+    if (fake && sorted.length === 1 && sorted[0].obj === fake) {
+        sorted = [];
+    }
+    const entries = [];
+    const listed = [];
+    const byLet = new Map();
+    const pickItems = [];
+    let inusecount = 0;
+    let prevorderclass = 0;
+    for (const srt of sorted) {
+        const otmp = srt.obj;
+        if (!otmp) continue;
+        if (allow && !allow.has(otmp.invlet)) continue;
+        if (!inusecount++) {
+            // C `:3277–3280` doing_perm_invent ? "In use" : "Inventory in use"
+            entries.push({
+                text: doing_perm_invent ? 'In use' : 'Inventory in use',
+                attr: ATR_INVERSE,
+            });
+        }
+        if (srt.orderclass !== prevorderclass) {
+            const hdr = inuse_headers[srt.orderclass];
+            if (hdr) entries.push({ text: hdr, attr: ATR_INVERSE });
+            prevorderclass = srt.orderclass;
+        }
+        const letch = otmp.invlet || '?';
+        if (otmp._inuse_fake) {
+            const hands = makeplural(body_part_latebound(HAND));
+            const barehands = `${u.uarmg ? 'gloved' : 'bare'} ${hands} (no weapon)`;
+            byLet.set(letch, { _hands: true, _inuse_fake: true });
+            pickItems.push({ selector: letch, gselector: '' });
+            entries.push({
+                text: xprname(null, HANDS_SYM, false, 0, barehands),
+                attr: 0,
+            });
+            continue;
+        }
+        if (!Blind()) observe_object(otmp);
+        obj_glyph(otmp);
+        byLet.set(letch, otmp);
+        listed.push(otmp);
+        pickItems.push({
+            selector: letch,
+            gselector: pickinv_item_gacc(otmp, wizid),
+        });
+        entries.push({ text: xprname(otmp), attr: 0 });
+    }
+    if (doing_perm_invent && !inusecount) {
+        entries.push({ text: 'Not using any items', attr: 0 });
+    }
+    return { entries, byLet, pickItems, listed };
+}
+
+/**
+ * C invent.c display_pickinv WIN_INVEN branch `:3108–3113` +
+ * `:3186–3376` (PICK_NONE; tty select_menu PERMINV returns 0).
+ * inuse_only = invmode & InvInUse; show_gold = invmode & InvShowGold.
+ * Named: tty slot paint / InvSparse grid / #perminv scroll.
+ */
+function pickinv_build_perm() {
+    prepare_perminvent(game.WIN_INVEN ?? WIN_ERR);
+    const invmode = wri_info.fromcore.invmode | 0;
+    const show_gold = (invmode & InvShowGold) !== 0;
+    const inuse_only = (invmode & InvInUse) !== 0;
+    if (inuse_only) {
+        return pickinv_build_inuse(null, false, { doing_perm_invent: true });
+    }
+    const entries = [];
+    const listed = [];
+    let skipped_gold = false;
+    const inv = game.invent || [];
+    const sorted = sortloot(inv, SORTLOOT_INVLET, false, null);
+    for (const srt of sorted) {
+        const otmp = srt.obj;
+        if (!otmp) continue;
+        // C `:3281–3286` skip unquivered gold when !show_gold
+        if (!show_gold && otmp.invlet === GOLD_SYM && !(otmp.owornmask | 0)) {
+            skipped_gold = true;
+            continue;
+        }
+        if (!Blind()) observe_object(otmp);
+        obj_glyph(otmp);
+        listed.push(otmp);
+        entries.push({ text: xprname(otmp), attr: 0 });
+    }
+    if (!listed.length) {
+        entries.push({
+            text: (!show_gold && skipped_gold)
+                ? 'Only carrying gold'
+                : 'Not carrying anything',
+            attr: 0,
+        });
+    }
+    return { entries, listed, show_gold, skipped_gold };
+}
+
+/** Last WIN_INVEN menu objects (C WinDesc mlist stand-in). */
+export function perminvent_listed() {
+    return game.gi?.perminvent_listed || [];
+}
+
+/** Last WIN_INVEN menu rows including headers / empty placeholder. */
+export function perminvent_entries() {
+    return game.gi?.perminvent_entries || [];
+}
+
+/**
  * C ref: invent.c display_pickinv(lets, …, want_reply=TRUE, out_cnt) subset
  * for getobj `?`/`*`. Shows invent filtered to `lets` (or all when lets
  * null/'*'), PICK_ONE by invlet; ESC cancels; Space next page or null on
@@ -993,18 +1802,30 @@ function append_long_digit(L, D) {
  * PICK_ONE digits: wintty.c process_menu_window count then
  * selected[0].count (D-1559). `out_cnt` is C `long *` (`{ n }`); omitted
  * when getobj !ALLOWCNT.
- * Named omissions: sortloot inuse_only; wizid; force_invmenu /
- * menu_requested `*`/`?` redo; MENU_PREV/FIRST/LAST; group accelerators
- * (gacc / '0' ball class).
+ * force_invmenu want_reply: Special `*`/`?` (D-1578) + tty_end_menu
+ * query (blank + prompt) when opts.query is set. redo_menu lives in
+ * getobj_display_pickinv.
+ * Group accelerators (D-1580): collect_menu_gacc + `'0'` BALL_CLASS
+ * `menu_digit_is_gacc`. getobj want_reply is non-wizid so item gacc
+ * is 0 like C `:3323–3325`.
+ * SORTLOOT_INUSE when flags.sortloot=='i' (dispinv_with_action): is_inuse
+ * filter, inuse_headers, optional fake HANDS_SYM W_WEP (D-1589).
+ * perm_invent InvInUse is D-1600 (WIN_INVEN invmode bit, not this path).
+ * Named omissions: MENU_PREV/FIRST/LAST. wizid unid_cnt>0 is D-1590.
+ * putmsghistory is D-1588.
  * @param {string|null} lets
  * @param {{ n: number }|null} [out_cnt]
  * @param {{ choice: string, allow: boolean }|null} [xtra] C xtra_choice + allowxtra
+ * @param {{ query?: string|null, allowxtra?: boolean, want_reply?: boolean }|null} [opts]
  * @returns {string|null} selected invlet, or null if cancelled / no pick
  */
-export async function display_pickinv_reply(lets, out_cnt = null, xtra = null) {
+export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, opts = null) {
     const allowAll = !lets || lets === '*';
     const inv = game.invent || [];
     const usextra = !!(xtra?.choice && xtra?.allow);
+    const allowxtra = !!(opts?.allowxtra ?? xtra?.allow);
+    const want_reply = opts?.want_reply !== false;
+    const inuse_only = game.flags?.sortloot === 'i';
 
     // C: n = lets ? strlen(lets) : invent 0/1/2+; then
     // if (usextra || (n==1 && (!lets || wizid))) ++n — so bare invent
@@ -1045,10 +1866,10 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null) {
             await pline('Not carrying anything appropriate.');
             return null;
         }
-        // C: message_menu(otmp->invlet, PICK_ONE, xprname(..., lets[0], TRUE))
+        // C: message_menu(otmp->invlet, want_reply ? PICK_ONE : PICK_NONE, …)
         return await message_menu(
             otmp.invlet,
-            PICK_ONE,
+            want_reply ? PICK_ONE : PICK_NONE,
             xprname(otmp, want, true),
         );
     }
@@ -1056,39 +1877,80 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null) {
     const allow = allowAll ? null : new Set([...lets]);
     const entries = [];
     const byLet = new Map();
+    /** @type {{ selector: string, gselector: string }[]} */
+    const pickItems = [];
+    // C display_pickinv wizid = wizard && override_ID; getobj path is 0
+    const wizid = false;
+    const withsym = !!(game.iflags?.menu_head_objsym);
     if (usextra) {
         // C display_pickinv :3253–3260 — wizard ID and xtra_choice exclusive
         if (game.flags?.sortpack !== false) {
             entries.push({ text: 'Miscellaneous', attr: ATR_INVERSE });
         }
         byLet.set(HANDS_SYM, { _hands: true });
+        pickItems.push({ selector: HANDS_SYM, gselector: '' });
         entries.push({
             text: xprname(null, HANDS_SYM, false, 0, xtra.choice),
             attr: 0,
         });
     }
-    for (const oclass of DEF_INV_ORDER) {
-        const items = inv.filter((o) => {
-            if (o.oclass !== oclass) return false;
-            if (!allow) return true;
-            return allow.has(o.invlet);
-        });
-        if (!items.length) continue;
-        entries.push({ text: CLASS_NAMES[oclass] || 'Items', attr: ATR_INVERSE });
-        for (const otmp of items) {
-            // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1186).
-            if (!Blind()) observe_object(otmp);
-            // C: invent.c display_pickinv — obj_to_glyph(otmp, rn2_on_display_rng)
-            // then map_glyphinfo + add_menu (Hallu display-RNG burn).
-            obj_glyph(otmp);
-            const letch = otmp.invlet || '?';
-            byLet.set(letch, otmp);
-            entries.push({ text: xprname(otmp), attr: 0 });
+    if (inuse_only) {
+        const built = pickinv_build_inuse(lets, wizid);
+        entries.push(...built.entries);
+        for (const [k, v] of built.byLet) byLet.set(k, v);
+        pickItems.push(...built.pickItems);
+    } else {
+        for (const oclass of DEF_INV_ORDER) {
+            const items = inv.filter((o) => {
+                if (o.oclass !== oclass) return false;
+                if (!allow) return true;
+                return allow.has(o.invlet);
+            });
+            if (!items.length) continue;
+            entries.push({
+                text: let_to_name(oclass, false, withsym),
+                attr: ATR_INVERSE,
+            });
+            for (const otmp of items) {
+                // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1186).
+                if (!Blind()) observe_object(otmp);
+                // C: invent.c display_pickinv — obj_to_glyph(otmp, rn2_on_display_rng)
+                // then map_glyphinfo + add_menu (Hallu display-RNG burn).
+                obj_glyph(otmp);
+                const letch = otmp.invlet || '?';
+                byLet.set(letch, otmp);
+                pickItems.push({
+                    selector: letch,
+                    gselector: pickinv_item_gacc(otmp, wizid),
+                });
+                entries.push({ text: xprname(otmp), attr: 0 });
+            }
         }
+    }
+    // C display_pickinv `:3345–3366` — after class items, before end_menu
+    const special = force_invmenu_special(lets, allowxtra, usextra);
+    if (special) {
+        entries.push({ text: 'Special', attr: ATR_INVERSE });
+        byLet.set(special.ch, { _special: special.ch });
+        pickItems.push({ selector: special.ch, gselector: '' });
+        entries.push({
+            text: `${special.ch} - ${special.text}`,
+            attr: 0,
+        });
     }
     if (!byLet.size) {
         await pline('Not carrying anything appropriate.');
         return null;
+    }
+    const gacc = collect_menu_gacc(pickItems, PICK_ONE);
+
+    // C wintty.c tty_end_menu `:2680–2690` — reverse then prepend blank
+    // + prompt (non-selectable). Query is getobj menuquery when
+    // force_invmenu; display_inventory passes NULL.
+    const query = opts?.query;
+    if (query) {
+        entries.unshift({ text: query, attr: 0 });
+        entries.unshift({ text: '', attr: 0 });
     }
 
     // C ref: wintty.c tty_end_menu / process_menu_window PICK_ONE —
@@ -1135,8 +1997,17 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null) {
         await flush_screen(1);
         const key = await nhgetch();
 
-        // C process_menu_window '0'..'9': AppendLongDigit; leading 0 ignored
+        // C process_menu_window '0'..'9': ball class gacc before count
         if (key >= 48 && key <= 57) {
+            const dch = String.fromCharCode(key);
+            if (menu_digit_is_gacc(counting, gacc, dch)) {
+                const gsel = menu_take_gacc(pickItems, gacc, dch);
+                if (gsel) {
+                    if (out_cnt) out_cnt.n = -1;
+                    await dismiss_nhw_menu();
+                    return gsel;
+                }
+            }
             const dgt = key - 48;
             const next = append_long_digit(count, dgt);
             if (next < 0) continue; // overflow → reset_count stays True
@@ -1174,6 +2045,13 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null) {
                 out_cnt.n = (counting && count > 0) ? count : -1;
             }
         };
+        // C: gacc before page selectors (group_accel, not only current page)
+        const gsel = menu_take_gacc(pickItems, gacc, ch);
+        if (gsel) {
+            take();
+            await dismiss_nhw_menu();
+            return gsel;
+        }
         // C: only current-page selectors are in resp (PICK_ONE)
         if (npages > 1) {
             const onPage = page.some((e) => {
@@ -1195,35 +2073,122 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null) {
 }
 
 /**
- * C ref: invent.c display_pickinv wizid branch (wizard && override_ID).
- * Debug Identify title; unid_cnt==0 → "(all items are permanently identified
- * already)" then select_menu PICK_ANY (no selectors → dismiss).
- * Named omissions: unid_cnt>0 PICK_ANY ('_'/^I identify_pack, per-item
- * identify, sortpack class headers, def_oc_syms group accel,
- * MENU_ITEMFLAGS_SKIPINVERT); update_inventory nesting.
+ * C invent.c display_pickinv wizid_fakeobj — `'_'` / override_ID group
+ * accel selects identify_pack(0, FALSE).
  */
-async function display_pickinv_wizid() {
-    const unid_cnt = count_unidentified(game.invent);
+export const WIZID_FAKEOBJ = { _wizid_fake: true };
+
+/**
+ * C invent.c display_pickinv wizid `:3222–3325`.
+ * Title; unid_cnt==0 all-identified string; else `'_'` SKIPINVERT +
+ * visctrl(^I) when unid_cnt>1; skip fully identified; sortpack class
+ * headers (want_reply is FALSE so no showsym); item gacc def_oc_syms.
+ * Empty invent is not this menu (C n==0 pline).
+ * @returns {{ unid_cnt: number, items: object[] }}
+ */
+export function build_wizid_pickinv_items() {
+    const inv = game.invent || [];
+    const unid_cnt = count_unidentified(inv);
     let prompt = 'Debug Identify';
     if (unid_cnt) {
         prompt += ` -- unidentified or partially identified item${
             unid_cnt === 1 ? '' : 's'
         }`;
     }
-    const entries = [{ text: prompt, attr: 0 }];
+    const items = [{ text: prompt, attr: 0, selectable: false }];
     if (!unid_cnt) {
-        entries.push({
+        items.push({
             text: '(all items are permanently identified already)',
             attr: 0,
+            selectable: false,
         });
-        await paint_corner_nhw_menu(entries, '(end) ');
+        return { unid_cnt, items };
+    }
+    const override_ID = (game.iflags?.override_ID | 0) || 9;
+    let selprompt = `select ${
+        unid_cnt === 1 ? 'it' : 'any or all of them'
+    } to permanently identify`;
+    if (unid_cnt > 1) {
+        selprompt += ` (${visctrl(override_ID)} for all)`;
+    }
+    items.push({
+        text: selprompt,
+        attr: 0,
+        selectable: true,
+        selector: '_',
+        gselector: String.fromCharCode(override_ID & 255),
+        itemflags: MENU_ITEMFLAGS_SKIPINVERT,
+        obj: WIZID_FAKEOBJ,
+    });
+    const sortpack = game.flags?.sortpack !== false;
+    let sortflags = (game.flags?.sortloot === 'f') ? SORTLOOT_LOOT : SORTLOOT_INVLET;
+    if (sortpack) sortflags |= SORTLOOT_PACK;
+    const sorted = sortloot(inv, sortflags, false, null);
+    let prevclass = -1;
+    for (const srt of sorted) {
+        const otmp = srt.obj;
+        if (!otmp) continue;
+        if (!not_fully_identified(otmp)) continue;
+        if (sortpack && otmp.oclass !== prevclass) {
+            items.push({
+                text: let_to_name(otmp.oclass, false, false),
+                attr: ATR_INVERSE,
+                selectable: false,
+            });
+            prevclass = otmp.oclass;
+        }
+        if (!Blind()) observe_object(otmp);
+        obj_glyph(otmp);
+        const letch = otmp.invlet || '?';
+        items.push({
+            text: doname(otmp),
+            attr: 0,
+            selectable: true,
+            selector: letch,
+            gselector: pickinv_item_gacc(otmp, true),
+            itemflags: MENU_ITEMFLAGS_NONE,
+            obj: otmp,
+        });
+    }
+    return { unid_cnt, items };
+}
+
+/**
+ * C ref: invent.c display_pickinv wizid branch (wizard && override_ID).
+ * Empty invent → "Not carrying anything." unid_cnt==0 → all-identified
+ * strings then dismiss. unid_cnt>0 → PICK_ANY (`'_'`/^I identify_pack,
+ * per-item identify, sortpack headers, SKIPINVERT). override_ID=0 before
+ * identify so nested update_inventory is not wizid. Named omissions:
+ * MENU_PREV/FIRST/LAST; MENU_SEARCH; count-prefix digits.
+ */
+async function display_pickinv_wizid() {
+    const inv = game.invent || [];
+    if (!inv.length) {
+        await pline('Not carrying anything.');
+        return;
+    }
+    const { unid_cnt, items } = build_wizid_pickinv_items();
+    if (!unid_cnt) {
+        await paint_corner_nhw_menu(items, '(end) ');
         await flush_screen(1);
         await nhgetch();
         await dismiss_nhw_menu();
         return;
     }
-    // Deferred: C PICK_ANY item menu ('_'/^I / letters). Do not invent.
+    const selected = await select_menu_pick_any(items);
     if (game.iflags) game.iflags.override_ID = 0;
+    let all_id = false;
+    for (const it of selected) {
+        const otmp = it.obj;
+        if (otmp === WIZID_FAKEOBJ) {
+            await identify_pack(0, false);
+            all_id = true;
+            break;
+        } else if (otmp && not_fully_identified(otmp)) {
+            await identify(otmp);
+        }
+    }
+    if (!all_id) update_inventory();
 }
 
 /**
@@ -1232,16 +2197,19 @@ async function display_pickinv_wizid() {
  *        "(N of M)" paging (select_menu PICK_NONE). Single-page corner vs
  *        fullscreen still uses "(end) ".
  * Shows invent and waits for a dismiss key (Space advances pages).
- * When wizard && iflags.override_ID → wizid Debug Identify path.
+ * When wizard && iflags.override_ID → wizid Debug Identify path
+ * (unid_cnt>0 PICK_ANY is D-1590).
+ * Optional lets (invlets) + want_reply match C display_inventory
+ * (`:3428–3452`); ggetobj `'i'` uses want_reply ESC abort (D-1602).
  */
-export async function display_inventory() {
+export async function display_inventory(lets, want_reply) {
     const wizard = !!(game.flags?.debug || game.flags?.wizard);
     if (wizard && (game.iflags?.override_ID | 0)) {
         await display_pickinv_wizid();
-        return;
+        return 0;
     }
 
-    const lines = invent_lines(); // includes trailing "(end)"
+    const lines = invent_lines(lets); // includes trailing "(end)"
     const menuItems = lines.slice(0, -1);
     const rows = display()?.rows || 24;
     // C ref: wintty.c tty_end_menu lmax = min(52, rows-1)
@@ -1253,7 +2221,7 @@ export async function display_inventory() {
     // select_menu_pick_none already matches that path (D-0122).
     if (npages > 1) {
         await select_menu_pick_none(menuItems);
-        return;
+        return 0;
     }
 
     const morestr = '(end) ';
@@ -1280,10 +2248,15 @@ export async function display_inventory() {
         await paint_corner_nhw_menu(menuItems, morestr);
     }
     await flush_screen(1);
-    await nhgetch(); // dismiss (Esc / space)
+    const key = await nhgetch(); // dismiss (Esc / space)
     // Fullscreen invent sets no corner geom — dismiss → docrt (C).
     if (fullscreen) game._tty_menu_geom = { offx: 0, endRow: menuItems.length };
     await dismiss_nhw_menu();
+    if (want_reply) {
+        if (key === 27) return '\x1b';
+        return typeof key === 'number' ? String.fromCharCode(key) : key;
+    }
+    return 0;
 }
 
 /** C hacklib.c s_suffix — it→its, you→your, *s/*z/*x/*ch/*sh → *', else *'s. */
@@ -1581,26 +2554,74 @@ export function makeknown(otyp) {
 }
 
 /**
- * C ref: invent.c sync_perminvent.
- * Default perm_invent Off: WIN_INVEN is WIN_ERR, core_invent_state 0,
- * static wri null → return before display_inventory. TTY_PERM_INVENT On
- * (ctrl_nhwindow / WIN_INVEN display_inventory) still named.
+ * C invent.c sync_perminvent `:5564–5658`.
+ * Default Off: WIN_INVEN WIN_ERR, core_invent_state 0, static wri null
+ * → return before display. On: request_settings then
+ * display_inventory(NULL, FALSE) PICK_NONE (no nhgetch).
+ * Named: assesstty too_small/prohibited pline; tty WIN_INVEN paint.
  */
-function sync_perminvent() {
-    const iflags = game.iflags || {};
+export function sync_perminvent() {
+    const iflags = game.iflags || (game.iflags = {});
+    if (!game.gc) game.gc = {};
+    if (!game.gi) game.gi = {};
+    if (!game.gp) game.gp = {};
     const win_inven = game.WIN_INVEN ?? WIN_ERR;
-    const core_invent_state = game.gc?.core_invent_state | 0;
+    const prohibited = (wri_info.tocore.tocore_flags | 0) & TOCORE_PROHIBITED;
+    const togglingOn = in_perm_invent_toggled
+        && (game.gp.perm_invent_toggling_direction | 0) === toggling_on;
 
-    // C: if (WIN_INVEN == WIN_ERR && (core_invent_state || prohibited)
-    //    && !toggling_on) return; prohibited/toggling still named.
-    if (win_inven === WIN_ERR && core_invent_state) return;
-    // prepare_perminvent: InvOptNone no-op unless perminv_mode changed (named).
-    if (!iflags.perm_invent && core_invent_state) return;
-    if (iflags.perm_invent) {
-        // Named: request_settings / display_inventory(NULL, FALSE).
+    if (win_inven === WIN_ERR) {
+        if (((game.gc.core_invent_state | 0) || prohibited) && !togglingOn) {
+            return;
+        }
+    }
+    prepare_perminvent(game.WIN_INVEN ?? WIN_ERR);
+
+    if (!iflags.perm_invent && (game.gc.core_invent_state | 0)) {
+        perm_invent_toggled(true);
+        // C: docrt(); tty erase of WIN_INVEN named
         return;
     }
-    // C: if (!wri || wri->tocore.maxslot == 0) return;
+
+    if ((iflags.perm_invent && !(game.gc.core_invent_state | 0))
+        || (!iflags.perm_invent && togglingOn)) {
+        if ((iflags.perm_invent && !(game.gc.core_invent_state | 0))
+            || in_perm_invent_toggled) {
+            sync_wri = ctrl_nhwindow_perm(
+                game.WIN_INVEN ?? WIN_ERR,
+                fromcore_request_settings,
+                wri_info,
+            );
+            if (sync_wri) {
+                const tflags = sync_wri.tocore.tocore_flags | 0;
+                if (tflags & TOCORE_TOO_EARLY) {
+                    iflags.perm_invent_pending = true;
+                    return;
+                }
+                if (tflags & (TOCORE_TOO_SMALL | TOCORE_PROHIBITED)) {
+                    iflags.perm_invent = false;
+                    game.WIN_INVEN = WIN_ERR;
+                    return;
+                }
+            }
+            game.gc.core_invent_state = (game.gc.core_invent_state | 0) + 1;
+        }
+    }
+
+    if (!sync_wri || !(sync_wri.tocore.maxslot | 0)) return;
+
+    if (togglingOn) {
+        game.WIN_INVEN = WIN_INVEN_ID;
+    }
+
+    if ((game.WIN_INVEN ?? WIN_ERR) !== WIN_ERR
+        && (game.program_state?.beyond_savefile_load | 0)) {
+        game.gi.in_sync_perminvent = 1;
+        const built = pickinv_build_perm();
+        game.gi.perminvent_entries = built.entries;
+        game.gi.perminvent_listed = built.listed;
+        game.gi.in_sync_perminvent = 0;
+    }
 }
 
 /**
@@ -3200,8 +4221,7 @@ export async function prinv(prefix, obj, quan = 0) {
 
 /**
  * C ref: invent.c doprwep / #seeweapon / ')'.
- * Named omissions: menu_requested → dispinv_with_action(lets) for
- * uwep/uswapwep/uquiver (falls through to prinv until that lands).
+ * !menu_requested → prinv; m-prefix → dispinv_with_action inuse.
  */
 export async function doprwep() {
     const u = game.u || {};
@@ -3210,16 +4230,18 @@ export async function doprwep() {
         await pline(`You are ${empty_handed()}.`);
         return ECMD_OK;
     }
-    if (game.iflags?.menu_requested) {
-        // dispinv_with_action deferred — clear sticky m-prefix
-        game.iflags.menu_requested = false;
+    if (!game.iflags?.menu_requested) {
+        await prinv(null, u.uwep, 0);
+        if (u.twoweap) {
+            await prinv(null, u.uswapwep, 0);
+        }
+        return ECMD_OK;
     }
-    // C: prinv(NULL, uwep, 0L); if (twoweap) prinv(uswapwep)
-    await prinv(null, u.uwep, 0);
-    if (u.twoweap) {
-        await prinv(null, u.uswapwep, 0);
-    }
-    return ECMD_OK;
+    let lets = u.uwep.invlet || '';
+    if (u.uswapwep?.invlet) lets += u.uswapwep.invlet;
+    if (u.uquiver?.invlet) lets += u.uquiver.invlet;
+    const { dispinv_with_action } = await import('./iactions.js');
+    return await dispinv_with_action(lets, true, null);
 }
 
 /** C ref: invent.c wearing_armor */
@@ -3244,9 +4266,8 @@ async function noarmor(report_uskin) {
 
 /**
  * C ref: invent.c doprarm / #seearmor / '['.
- * Single worn piece → display_pickinv n==1 → tty_message_menu(PICK_NONE)
- * → pline(xprname(..., TRUE)). Multi-piece / menu_requested →
- * dispinv_with_action menu deferred (sequential prinv interim).
+ * Always dispinv_with_action(lets, TRUE): n==1 !menu → message_menu
+ * PICK_NONE; else inuse menu (D-1589).
  */
 export async function doprarm() {
     const u = game.u || {};
@@ -3255,30 +4276,21 @@ export async function doprarm() {
         return ECMD_OK;
     }
     // C SORTPACK_INUSE slot order for lets[]
-    const pieces = [];
-    if (u.uarm) pieces.push(u.uarm);
-    if (u.uarmc) pieces.push(u.uarmc);
-    if (u.uarms) pieces.push(u.uarms);
-    if (u.uarmh) pieces.push(u.uarmh);
-    if (u.uarmg) pieces.push(u.uarmg);
-    if (u.uarmf) pieces.push(u.uarmf);
-    if (u.uarmu) pieces.push(u.uarmu);
-
-    if (game.iflags?.menu_requested) {
-        // dispinv_with_action menu deferred — clear sticky m-prefix
-        game.iflags.menu_requested = false;
-    }
-    // len==1 && !menu → message_menu PICK_NONE; else menu (deferred)
-    for (const otmp of pieces) {
-        await pline(xprname(otmp, undefined, true));
-    }
-    return ECMD_OK;
+    let lets = '';
+    if (u.uarm?.invlet) lets += u.uarm.invlet;
+    if (u.uarmc?.invlet) lets += u.uarmc.invlet;
+    if (u.uarms?.invlet) lets += u.uarms.invlet;
+    if (u.uarmh?.invlet) lets += u.uarmh.invlet;
+    if (u.uarmg?.invlet) lets += u.uarmg.invlet;
+    if (u.uarmf?.invlet) lets += u.uarmf.invlet;
+    if (u.uarmu?.invlet) lets += u.uarmu.invlet;
+    const { dispinv_with_action } = await import('./iactions.js');
+    return await dispinv_with_action(lets, true, null);
 }
 
 /**
  * C ref: invent.c doprring / #seerings / '='.
- * Empty → "not wearing any rings."; worn → dispinv path (single-item
- * pline; multi/menu deferred). Meat-ring / Ring header label deferred.
+ * Meat-ring / two rings / menu_requested → inuse "Ring"/"Rings".
  */
 export async function doprring() {
     const u = game.u || {};
@@ -3286,22 +4298,29 @@ export async function doprring() {
         await pline('You are not wearing any rings.');
         return ECMD_OK;
     }
-    const pieces = [];
-    // C: uright then uleft for lets[]
-    if (u.uright) pieces.push(u.uright);
-    if (u.uleft) pieces.push(u.uleft);
-    if (game.iflags?.menu_requested) {
-        game.iflags.menu_requested = false;
+    let lets = '';
+    let use_inuse_mode = false;
+    let ct = 0;
+    if (u.uright) {
+        lets += u.uright.invlet || '';
+        ct++;
+        if (u.uright.oclass !== RING_CLASS) use_inuse_mode = true;
     }
-    for (const otmp of pieces) {
-        await pline(xprname(otmp, undefined, true));
+    if (u.uleft) {
+        lets += u.uleft.invlet || '';
+        ct++;
+        if (u.uleft.oclass !== RING_CLASS) use_inuse_mode = true;
     }
-    return ECMD_OK;
+    if (ct > 1 || game.iflags?.menu_requested) use_inuse_mode = true;
+    const { dispinv_with_action } = await import('./iactions.js');
+    return await dispinv_with_action(
+        lets, use_inuse_mode, ct === 1 ? 'Ring' : 'Rings',
+    );
 }
 
 /**
  * C ref: invent.c dopramulet / #seeamulet / '"'.
- * Named omit: menu_requested / Amulet header via dispinv_with_action.
+ * dispinv_with_action(lets, TRUE, "Amulet").
  */
 export async function dopramulet() {
     const u = game.u || {};
@@ -3309,42 +4328,49 @@ export async function dopramulet() {
         await pline('You are not wearing an amulet.');
         return ECMD_OK;
     }
-    if (game.iflags?.menu_requested) {
-        game.iflags.menu_requested = false;
-    }
-    await pline(xprname(u.uamul, undefined, true));
-    return ECMD_OK;
-}
-
-/** C ref: invent.c tool_being_used */
-function tool_being_used(obj) {
-    if (((obj.owornmask || 0) & (W_TOOL | W_SADDLE)) !== 0) return true;
-    if (obj.oclass !== TOOL_CLASS) return false;
-    const LEASH = objectNames.indexOf('LEASH');
-    return obj === game.u?.uwep || !!obj.lamplit
-        || (obj.otyp === LEASH && !!obj.leashmon);
+    const lets = u.uamul.invlet || '';
+    const { dispinv_with_action } = await import('./iactions.js');
+    return await dispinv_with_action(lets, true, 'Amulet');
 }
 
 /**
  * C ref: invent.c doprtool / #seetools / '('.
- * Named omit: multi-tool dispinv_with_action menu.
+ * tool_being_used letters → dispinv_with_action inuse.
  */
 export async function doprtool() {
-    const pieces = [];
+    const invlet_basic = 52;
+    let lets = '';
     for (const otmp of game.invent || []) {
-        if (tool_being_used(otmp)) pieces.push(otmp);
+        if (!tool_being_used(otmp)) continue;
+        if (lets.length >= invlet_basic) break;
+        if (otmp.invlet) lets += otmp.invlet;
     }
-    if (!pieces.length) {
+    if (!lets) {
         await pline('You are not using any tools.');
         return ECMD_OK;
     }
-    if (game.iflags?.menu_requested) {
-        game.iflags.menu_requested = false;
+    const { dispinv_with_action } = await import('./iactions.js');
+    return await dispinv_with_action(lets, true, null);
+}
+
+/**
+ * C ref: invent.c doprinuse / #seeall / '*'.
+ * Any is_inuse → dispinv_with_action(NULL, TRUE); else You() not wearing.
+ */
+export async function doprinuse() {
+    let ct = 0;
+    for (const otmp of game.invent || []) {
+        if (is_inuse(otmp)) {
+            ct++;
+            break;
+        }
     }
-    for (const otmp of pieces) {
-        await pline(xprname(otmp, undefined, true));
+    if (!ct) {
+        await pline('You are not wearing or wielding anything.');
+        return ECMD_OK;
     }
-    return ECMD_OK;
+    const { dispinv_with_action } = await import('./iactions.js');
+    return await dispinv_with_action(null, true, null);
 }
 
 /**
@@ -3404,10 +4430,11 @@ export function dfeature_at(x, y) {
  * dfeature pline; single `You see/feel here`; multi NHW_MENU
  * "Things that are/you feel here:" via display_nhwindow(WIN_MESSAGE)+putstr
  * (D-0220); **observe_object before doname** (D-0399; C xname_flags).
- * **doname_with_price** (D-0460). Named omissions: pile_limit skip_objects
- * full arm, altar/ice Blind variants beyond floor, trap+region,
- * cockatrice feel, engulfer stomach; blanket xname observe / distant_name.
- * Furniture with ct==0 uses pickup.describe_decor (D-0356), not this path.
+ * **doname_with_price** (D-0460). **feel_cockatrice** D-1599 (skip_objects
+ * / single / multi `doname...` then feel). Named omissions: altar/ice
+ * Blind variants beyond floor, trap+region, engulfer stomach minvent
+ * feel; blanket xname observe / distant_name. Furniture with ct==0 uses
+ * pickup.describe_decor (D-0356), not this path.
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     // Dynamic import avoids invent↔shk cycle (shk imports paint_corner).
@@ -3494,6 +4521,21 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
                 `There are ${how}${picked_some ? ' more' : ''} objects here.`,
             );
         }
+        // C invent.c `:4265–4276` — first will_feel CORPSE then feel.
+        for (let o = otmp; o; o = o.nexthere) {
+            if ((o.otyp | 0) === OTYP_CORPSE && will_feel_cockatrice(o, false)) {
+                const including = obj_cnt > 1 ? 'Including'
+                    : (o.quan || 1) > 1 ? "They're" : "It's";
+                const unfortunately = poly_when_stoned(
+                    game.youmonst?.data, game.mvitals,
+                ) ? '' : ', unfortunately';
+                await pline(
+                    `${including} ${corpse_xname(o, null, CXN_ARTICLE)}${unfortunately}.`,
+                );
+                await feel_cockatrice(o, false);
+                break;
+            }
+        }
         return;
     }
 
@@ -3511,6 +4553,7 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         if (!blind) observe_object(otmp);
         // C: You("%s here %s.", verb, doname_with_price(otmp))
         await pline(`You ${verb} here ${doname_with_price(otmp)}.`);
+        if ((otmp.otyp | 0) === OTYP_CORPSE) await feel_cockatrice(otmp, false);
         return;
     }
 
@@ -3529,13 +4572,22 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
             blind ? 'you feel' : 'are'
         } here:`,
     );
+    let felt_cockatrice = false;
+    let felt_obj = null;
     for (let o = otmp; o; o = o.nexthere) {
+        if ((o.otyp | 0) === OTYP_CORPSE && will_feel_cockatrice(o, false)) {
+            felt_cockatrice = true;
+            felt_obj = o;
+            lines.push(`${doname(o)}...`);
+            break;
+        }
         // C: doname_with_price → xname observe_object (dknown for gem color)
         if (!blind) observe_object(o);
         lines.push(doname_with_price(o));
     }
     const { show_nhw_menu_text } = await import('./pager.js');
     await show_nhw_menu_text(lines, { keep_message_leftover: true });
+    if (felt_cockatrice) await feel_cockatrice(felt_obj, false);
     {
         const { read_engr_at } = await import('./engrave.js');
         await read_engr_at(u?.ux, u?.uy);
@@ -4098,27 +5150,41 @@ export function getobj_pickinv_ctmp(allowcnt, ctmp, counted) {
 
 /**
  * C invent.c getobj redo_menu `?`/`*` `:1963–2001`.
- * display_pickinv(lets or NULL, handsbuf, …, allowcnt ? &ctmp : NULL)
- * then allowcnt && ctmp >= 0. force_invmenu `*`/`?` redo named.
+ * display_pickinv(lets or NULL, handsbuf, menuquery, allownone, TRUE,
+ * allowcnt ? &ctmp : NULL) then `*`/`?` → goto redo_menu (D-1578).
+ * Menu query is set only when force_invmenu. Handsbuf recomputed each
+ * redo from the current letter (`*` → NULL lets).
  * @param {string} ch '?' or '*'
  * @param {string} rawLets non-compacted SUGGEST letters
  * @param {boolean} allowcnt
  * @param {{ cnt: number, cntgiven: boolean }} counted
- * @param {{ word: string, allownone: boolean, promptHasHands: boolean }|null} [ctx]
+ * @param {{ word: string, allownone: boolean, promptHasHands: boolean, altLets?: string }|null} [ctx]
  * @returns {Promise<string|null>}
  */
 export async function getobj_display_pickinv(ch, rawLets, allowcnt, counted, ctx = null) {
-    const ctmp = { n: 0 };
-    const xtra = ctx ? getobj_pickinv_xtra(ch, rawLets, ctx) : null;
-    const ilet = await display_pickinv_reply(
-        ch === '*' ? '*' : (rawLets || '*'),
-        allowcnt ? ctmp : null,
-        xtra,
-    );
-    if (ilet && ilet !== '\x1b' && ilet !== '*' && ilet !== '?') {
-        getobj_pickinv_ctmp(allowcnt, ctmp, counted);
+    let ilet = ch;
+    const force = !!(game.iflags?.force_invmenu);
+    const query = (force && ctx?.word)
+        ? `What do you want to ${ctx.word}?`
+        : null;
+    for (;;) {
+        const ctmp = { n: 0 };
+        const xtra = ctx ? getobj_pickinv_xtra(ilet, rawLets, ctx) : null;
+        let allowed = rawLets || '';
+        if (ilet === '?' && !allowed && ctx?.altLets) allowed = ctx.altLets;
+        const pickLets = ilet === '*' ? '*' : (allowed || '*');
+        ilet = await display_pickinv_reply(
+            pickLets,
+            allowcnt ? ctmp : null,
+            xtra,
+            { query, allowxtra: !!(ctx?.allownone) },
+        );
+        if (ilet === '*' || ilet === '?') continue;
+        if (ilet && ilet !== '\x1b') {
+            getobj_pickinv_ctmp(allowcnt, ctmp, counted);
+        }
+        return ilet;
     }
-    return ilet;
 }
 
 /**
@@ -4187,18 +5253,65 @@ function getobj_find_ilet(ch) {
 }
 
 /**
+ * C invent.c mime_action `:1677–1706`. Typed '-' when !allownone.
+ * " on the " → sfx (bp+1); "rub the … on" / "dip … into" → pfx at
+ * buf[4] after buf[3]='\0'; " or " → rn2(2) left vs rest. You() via
+ * pline. Menu pickinv HANDS_SYM does not call this (C `:1988–1989`).
+ * @param {string} word
+ */
+export async function mime_action(word) {
+    let buf = String(word ?? '');
+    let pfx = null;
+    let sfx = null;
+    const onThe = buf.indexOf(' on the ');
+    if (onThe >= 0) {
+        sfx = buf.slice(onThe + 1);
+        buf = buf.slice(0, onThe);
+    }
+    if ((buf.startsWith('rub the ') && buf.slice(8).includes(' on'))
+        || (buf.startsWith('dip ') && buf.slice(4).includes(' into'))) {
+        pfx = buf.slice(4);
+        buf = buf.slice(0, 3);
+    }
+    let bp;
+    const orAt = buf.indexOf(' or ');
+    if (orAt >= 0) {
+        bp = rn2(2) ? buf.slice(0, orAt) : buf.slice(orAt + 4);
+    } else {
+        bp = buf;
+    }
+    await pline(
+        `You mime ${ing_suffix(bp)}${pfx ? ' ' : ''}${pfx || ''} something${sfx ? ' ' : ''}${sfx || ''}.`,
+    );
+}
+
+/**
+ * C invent.c getobj `:1946–1949` — typed '-' at yn (not pickinv).
+ * @param {string} word
+ * @param {boolean} allownone
+ * @param {object|null} [hands]
+ */
+async function getobj_typed_hands(word, allownone, hands) {
+    if (!allownone) await mime_action(word);
+    return allownone ? hands : null;
+}
+
+/**
  * C invent.c getobj `:1751–2089`.
  * Canned CMDQ_INT/KEY (D-1551) + CQ_REPEAT (D-1563). Digit prefix
  * ALLOWCNT (D-1530); !ALLOWCNT → "No count allowed" and retry.
  * `?`/`*` → display_pickinv `allowcnt ? &ctmp : NULL` (D-1559) +
  * xtra_choice/handsbuf when allownone (D-1569).
+ * force_invmenu: skip yn_function, auto `?`/`*`, oneloop empty
+ * cancel, display_pickinv Special + redo_menu (D-1578).
  * GETOBJ_NOFLAGS + no SUGGEST / hands / DOWNPLAY forceprompt →
  * "don't have anything [else] to WORD" (inaccess from
  * EXCLUDE_NONINVENT / EXCLUDE_INACCESS). GETOBJ_PROMPT still prompts
  * `[*]` when suggested==0.
- * Named omit: force_invmenu oneloop; in_doagain readchar (REPEAT
- * cmdq live); mime_action; sortloot body (invlet sort);
- * call-Amulet silly_thing.
+ * Named omit: in_doagain readchar (REPEAT cmdq live);
+ * sortloot body (invlet sort); call-Amulet silly_thing. mime_action
+ * is D-1579. gacc / `'0'` ball is D-1580 (non-wizid pickinv gacc 0).
+ * putmsghistory is D-1588.
  * @param {string} word
  * @param {(obj: object|null) => number} obj_ok
  * @param {number} ctrlflags
@@ -4263,11 +5376,27 @@ export async function getobj(word, obj_ok, ctrlflags) {
         ? (compactLets ? `- ${compactLets}` : '-')
         : compactLets;
 
+    let oneloop = false;
+    let msggiven = false;
+    let ch = '';
     for (;;) {
-        const query = promptLets
-            ? `What do you want to ${word}? [${promptLets} or ?*]`
-            : `What do you want to ${word}? [*]`;
-        let ch = await yn_function(query, null, '\0');
+        if (game.iflags?.force_invmenu) {
+            // C invent.c getobj `:1923–1931` — skip yn_function.
+            // putmsghistory(qbuf, FALSE) once (D-1588).
+            if (!oneloop) {
+                ch = getobj_force_invmenu_ch(rawLets, altLets) || '*';
+            }
+            if (!msggiven) {
+                putmsghistory(`What do you want to ${word}?`, false);
+            }
+            msggiven = true;
+            oneloop = true;
+        } else {
+            const query = promptLets
+                ? `What do you want to ${word}? [${promptLets} or ?*]`
+                : `What do you want to ${word}? [*]`;
+            ch = await yn_function(query, null, '\0');
+        }
         const counted = await getobj_take_count(ch, allowcnt);
         if (counted.retry) continue;
         ch = counted.ch;
@@ -4276,22 +5405,28 @@ export async function getobj(word, obj_ok, ctrlflags) {
             return null;
         }
         if (ch === HANDS_SYM) {
-            if (!allownone) return null; // mime_action named
-            return hands_obj;
+            return getobj_typed_hands(word, allownone, hands_obj);
         }
         if (ch === '?' || ch === '*') {
             let allowed = rawLets;
             if (ch === '?' && !allowed && altLets) allowed = altLets;
             const ilet = await getobj_display_pickinv(
                 ch, allowed, allowcnt, counted,
-                { word, allownone, promptHasHands: handsSuggest },
+                {
+                    word, allownone, promptHasHands: handsSuggest,
+                    altLets,
+                },
             );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline(Never_mind);
                 return null;
             }
-            if (!ilet) continue;
+            if (!ilet) {
+                if (oneloop) return null;
+                continue;
+            }
             if (ilet === HANDS_SYM) {
+                // C `:1988–1989` pickinv '-' → hands_obj, no mime_action
                 if (!allownone) return null;
                 return hands_obj;
             }
@@ -4299,7 +5434,10 @@ export async function getobj(word, obj_ok, ctrlflags) {
             const used = await getobj_finish_pick(
                 picked, word, obj_ok, counted, ilet,
             );
-            if (used && used.retry) continue;
+            if (used && used.retry) {
+                ch = ilet;
+                continue;
+            }
             return used;
         }
         const otmp = getobj_find_ilet(ch);
@@ -4365,45 +5503,70 @@ function adjust_suggest_lets() {
 /**
  * C ref: invent.c getobj("adjust", adjust_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
  * Count prefix + split_otmp live. Canned CMDQ_INT/KEY live.
- * `?`/`*` → display_pickinv `&ctmp` (D-1559). doorganize_core nobj-unsplit named.
+ * `?`/`*` → display_pickinv `&ctmp` (D-1559). force_invmenu auto
+ * `?`/`*` + redo_menu (D-1578). Typed '-' mime_action (D-1579).
+ * doorganize_core nobj-unsplit named.
  */
 async function getobj_adjust() {
     const cq = getobj_from_cmdq(adjust_ok, true);
     if (!cq.skip) return cq.otmp;
+    let oneloop = false;
+    let msggiven = false;
+    let ch = '';
     for (;;) {
-        await flush_topl_more();
-        const lets = adjust_suggest_lets();
-        const query = lets
-            ? `What do you want to adjust? [${lets} or ?*]`
-            : 'What do you want to adjust? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+        const rawLets = adjust_raw_lets();
+        if (game.iflags?.force_invmenu) {
+            if (!oneloop) {
+                ch = getobj_force_invmenu_ch(rawLets) || '*';
+            }
+            if (!msggiven) {
+                putmsghistory('What do you want to adjust?', false);
+            }
+            msggiven = true;
+            oneloop = true;
+        } else {
+            await flush_topl_more();
+            const lets = adjust_suggest_lets();
+            const query = lets
+                ? `What do you want to adjust? [${lets} or ?*]`
+                : 'What do you want to adjust? [*]';
+            const prompt = `${query} `;
+            game._pending_message = prompt;
+            await flush_screen(1);
+            const disp = game.nhDisplay;
+            if (disp?.setCursor) disp.setCursor(prompt.length, 0);
 
-        let key = await nhgetch();
-        let ch = String.fromCharCode(key);
+            const key = await nhgetch();
+            ch = String.fromCharCode(key);
+        }
         const counted = await getobj_take_count(ch, true);
         if (counted.retry) continue;
         ch = counted.ch;
-        key = ch.charCodeAt(0);
-        if (QUITCHARS.includes(ch) || key === 27) {
+        if (QUITCHARS.includes(ch) || ch === '\x1b') {
             if (game.flags?.verbose !== false) await pline(Never_mind);
             return null;
         }
+        if (ch === HANDS_SYM) {
+            // C getobj typed '-' ; adjust_ok(NULL) is EXCLUDE → !allownone
+            return getobj_typed_hands('adjust', false, null);
+        }
         if (ch === '?' || ch === '*') {
             const ilet = await getobj_display_pickinv(
-                ch, adjust_raw_lets(), true, counted,
+                ch, rawLets, true, counted,
+                { word: 'adjust', allownone: false, promptHasHands: false },
             );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline(Never_mind);
                 return null;
             }
-            if (!ilet) continue;
+            if (!ilet) {
+                if (oneloop) return null;
+                continue;
+            }
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
             if (!picked) {
                 await pline("You don't have that object.");
+                ch = ilet;
                 continue;
             }
             if (picked.oclass === COIN_CLASS) {
@@ -4411,10 +5574,13 @@ async function getobj_adjust() {
                 return null;
             }
             const got = await getobj_apply_count(
-                picked, 'adjust', counted.cntgiven, counted.cnt,
+                picked, 'adjust', counted.cntgiven, counted.cnt, ilet,
             );
             if (!got) return null;
-            if (got.retry) continue;
+            if (got.retry) {
+                ch = ilet;
+                continue;
+            }
             game._pending_message = '';
             return got;
         }
@@ -4429,7 +5595,7 @@ async function getobj_adjust() {
             return null;
         }
         const got = await getobj_apply_count(
-            otmp, 'adjust', counted.cntgiven, counted.cnt,
+            otmp, 'adjust', counted.cntgiven, counted.cnt, ch,
         );
         if (!got) return null;
         if (got.retry) continue;
@@ -4499,8 +5665,139 @@ function names_ok_for_adjust_merge(otmp, obj) {
 }
 
 /**
+ * C invent.c display_used_invlets `:3466–3519` menu body (before
+ * end_menu / select_menu). sortpack walks DEF_INV_ORDER (C
+ * flags.inv_order default) with let_to_name headings; else invent
+ * order and no headers. Skip avoidlet (doorganize_core split source).
+ * obj_to_glyph Hallu display RNG then doname; tty_add_menu `"%c - %s"`
+ * ≡ xprname. Named omit: custom packorder; VENOM if not in
+ * DEF_INV_ORDER; use_menu_glyphs dash-slot.
+ * @param {string|number} [avoidlet] C char; 0 / '' / '\0' = none
+ * @returns {{ entries: {text:string, attr:number}[], byLet: Map<string, object> }}
+ */
+export function build_used_invlets_items(avoidlet = 0) {
+    const inv = game.invent || [];
+    const entries = [];
+    const byLet = new Map();
+    const skip = (ilet) => !!(avoidlet && avoidlet !== '\0' && ilet === avoidlet);
+    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const pushItem = (otmp) => {
+        if (!otmp || skip(otmp.invlet)) return false;
+        // C: obj_to_glyph(otmp, rn2_on_display_rng) then doname
+        obj_glyph(otmp);
+        byLet.set(otmp.invlet, otmp);
+        entries.push({ text: xprname(otmp), attr: 0 });
+        return true;
+    };
+    if (game.flags?.sortpack === false) {
+        for (const otmp of inv) pushItem(otmp);
+    } else {
+        for (const oclass of DEF_INV_ORDER) {
+            let classcount = 0;
+            for (const otmp of inv) {
+                if (!otmp || skip(otmp.invlet) || otmp.oclass !== oclass) {
+                    continue;
+                }
+                if (!classcount) {
+                    entries.push({
+                        text: let_to_name(oclass, false, false),
+                        attr: headingAttr,
+                    });
+                    classcount++;
+                }
+                pushItem(otmp);
+            }
+        }
+    }
+    return { entries, byLet };
+}
+
+/**
+ * C invent.c display_used_invlets. Caller doorganize_core `:5146`
+ * `?`/`*`. Empty invent → 0. select_menu PICK_ONE: n>0 letter; n==0
+ * retry yn; n<0 ESC noadjust. tty_end_menu prepends blank +
+ * "Inventory letters used:".
+ * Named omit: MENU_SEARCH; count-prefix; MENU_PREV/FIRST/LAST.
+ * @param {string|number} [avoidlet]
+ * @returns {Promise<string>} letter, '' (n==0), or '\x1b'
+ */
+export async function display_used_invlets(avoidlet = 0) {
+    const inv = game.invent || [];
+    if (!inv.length) return '';
+
+    const { entries, byLet } = build_used_invlets_items(avoidlet);
+    // C wintty.c tty_end_menu `:2680–2690` — reverse then prepend
+    // blank + prompt (non-selectable).
+    entries.unshift({ text: 'Inventory letters used:', attr: 0 });
+    entries.unshift({ text: '', attr: 0 });
+
+    const rows = display()?.rows || 24;
+    const lmax = Math.min(52, rows - 1);
+    const npages = Math.max(1, Math.floor((entries.length + lmax - 1) / lmax));
+    let curr_page = 0;
+
+    for (;;) {
+        const start = curr_page * lmax;
+        const page = entries.slice(start, start + lmax);
+        const morestr = npages > 1
+            ? `(${curr_page + 1} of ${npages})`
+            : '(end) ';
+
+        if (npages > 1) {
+            const painted = page.map((e) => ({
+                text: ` ${typeof e === 'string' ? e : e.text}`,
+                attr: typeof e === 'string' ? 0 : (e.attr || 0),
+            }));
+            painted.push({ text: ` ${morestr}`, attr: 0 });
+            paint_overlay(painted, {
+                col: 0,
+                withStatus: false,
+                cursor: [morestr.length + 1, page.length],
+            });
+            game._tty_menu_geom = { offx: 0, endRow: page.length };
+        } else {
+            await paint_corner_nhw_menu(entries, morestr);
+        }
+        await flush_screen(1);
+        const key = await nhgetch();
+
+        if (key === 27) {
+            await dismiss_nhw_menu();
+            return '\x1b';
+        }
+        if (key === 32) {
+            if (curr_page < npages - 1) {
+                curr_page++;
+                continue;
+            }
+            await dismiss_nhw_menu();
+            return '';
+        }
+        if (key === 13 || key === 10) {
+            await dismiss_nhw_menu();
+            return '';
+        }
+        const ch = String.fromCharCode(key);
+        if (npages > 1) {
+            const onPage = page.some((e) => {
+                const t = typeof e === 'string' ? e : e.text;
+                return t.length >= 3 && t[1] === ' ' && t[0] === ch;
+            });
+            if (onPage && byLet.has(ch)) {
+                await dismiss_nhw_menu();
+                return ch;
+            }
+        } else if (byLet.has(ch)) {
+            await dismiss_nhw_menu();
+            return ch;
+        }
+        // invalid / other-page letter → re-prompt (C nhbell)
+    }
+}
+
+/**
  * C ref: invent.c doorganize_core — destination pick + move/collect/swap/merge.
- * Deferred: display_used_invlets, gold adjust, pack-full bump.
+ * Deferred: gold adjust, pack-full bump. display_used_invlets is D-1591.
  * getobj count-split is live; nobj splitting / unsplitobj on cancel named.
  */
 async function doorganize_core(obj) {
@@ -4534,9 +5831,13 @@ async function doorganize_core(obj) {
     for (let trycnt = 1; ; ++trycnt) {
         let_ = await yn_function(qbuf, null, '\0');
         if (let_ === '?' || let_ === '*') {
-            // display_used_invlets deferred
-            if (game.flags?.verbose !== false) await pline(Never_mind);
-            return ECMD_OK;
+            // C `:5144–5150` — splitting ? obj->invlet : 0 (nobj-split named)
+            let_ = await display_used_invlets(0);
+            if (!let_) continue;
+            if (let_ === '\x1b') {
+                if (!ever_mind) await pline(Never_mind);
+                return ECMD_OK;
+            }
         }
         if (QUITCHARS.includes(let_)) {
             if (!ever_mind) await pline(Never_mind);

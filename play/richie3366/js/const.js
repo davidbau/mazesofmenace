@@ -329,6 +329,25 @@ export const PICK_ONE = 1;
 export const PICK_ANY = 2;
 export const MENU_BEHAVE_STANDARD = 0;
 export const MENU_BEHAVE_PERMINV = 1;
+/* C wintype.h inv_mode_bits / inv_modes / perm_invent_toggles / from_core */
+export const InvNormal = 1;
+export const InvShowGold = 2;
+export const InvSparse = 4;
+export const InvInUse = 8;
+export const InvOptNone = 0;
+export const InvOptOn = InvNormal;
+export const InvOptFull = InvShowGold;
+export const InvOptOn_grid = (InvNormal | InvSparse);
+export const InvOptFull_grid = (InvShowGold | InvSparse);
+export const InvOptInUse = InvInUse;
+export const toggling_off = -1;
+export const toggling_not = 0;
+export const toggling_on = 1;
+export const fromcore_set_mode = 1;
+export const fromcore_request_settings = 2;
+export const TOCORE_TOO_SMALL = 0x002;
+export const TOCORE_PROHIBITED = 0x004;
+export const TOCORE_TOO_EARLY = 0x010;
 export const ATR_ULINE = 1;
 export const ATR_BLINK = 4;
 export const ATR_URGENT = 16;
@@ -1029,6 +1048,8 @@ export const CMD_NOT_AVAILABLE = 0x0010;
 export const NOFUZZERCMD = 0x0020;
 export const INTERNALCMD = 0x0040;
 export const CMD_M_PREFIX = 0x0080;
+export const CMD_gGF_PREFIX = 0x0100;
+export const CMD_MOVE_PREFIXES = 0x0180; /* CMD_M_PREFIX | CMD_gGF_PREFIX */
 export const PREFIXCMD = 0x0200;
 export const MOVEMENTCMD = 0x0400;
 export const MOUSECMD = 0x0800;
@@ -2940,6 +2961,10 @@ export function has_emin(mtmp) { return !!mtmp?.mextra?.emin; }
 export function has_egd(mtmp) { return !!mtmp?.mextra?.egd; }
 export function has_edog(mtmp) { return !!mtmp?.mextra?.edog; }
 export function has_ebones(mtmp) { return !!mtmp?.mextra?.ebones; }
+/** C mextra.h has_mcorpsenm — mextra && MCORPSENM(mon) != NON_PM. */
+export function has_mcorpsenm(mtmp) {
+    return !!(mtmp?.mextra && MCORPSENM(mtmp) !== NON_PM);
+}
 
 // Object extra accessors
 // C: ONAME(obj) → ((char *)(obj)->oextra->oname)

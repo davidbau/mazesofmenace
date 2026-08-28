@@ -11,7 +11,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, docrt, clear_committed_status } from './display.js';
-import { paint_corner_nhw_menu } from './invent.js';
+import { paint_corner_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories } from './invent.js';
 import { cxname, the, xname, makeplural, singular, is_plural, the_unique_obj } from './objnam.js';
 import { ia_checkfile } from './pager.js';
 import { call_ok } from './do_name.js';
@@ -572,20 +572,45 @@ export async function itemactions(otmp) {
 }
 
 /**
- * C ref: invent.c dispinv_with_action(NULL, FALSE, NULL) via ddoinv.
- * display_inventory(lets, menumode=TRUE) → itemactions on letter.
+ * C ref: invent.c dispinv_with_action.
+ * use_inuse_ordering → flags.sortloot='i' + optional Accessories alt_label;
+ * menumode = (len != 1 || menu_requested); force_invmenu FALSE during menu.
  */
 export async function dispinv_with_action(
     lets = null,
-    _use_inuse_ordering = false,
-    _alt_label = null,
+    use_inuse_ordering = false,
+    alt_label = null,
 ) {
-    const { display_pickinv_reply } = await import('./invent.js');
-    // C: menumode = (len != 1 || menu_requested) — ddoinv lets=NULL → TRUE
-    const c = await display_pickinv_reply(lets == null ? null : lets);
-    if (c && c !== '\x1b') {
-        const otmp = (game.invent || []).find((o) => o && o.invlet === c);
-        if (otmp) await itemactions(otmp);
+    const flags = game.flags || (game.flags = {});
+    const iflags = game.iflags || (game.iflags = {});
+    const save_sortloot = flags.sortloot;
+    const save_accessories = inuse_headers_accessories();
+    const save_force_invmenu = iflags.force_invmenu;
+    if (use_inuse_ordering) {
+        flags.sortloot = 'i';
+        if (alt_label) inuse_headers_set_accessories(alt_label);
+    }
+    iflags.force_invmenu = false;
+    const len = lets ? lets.length : 0;
+    const menumode = (len !== 1 || !!iflags.menu_requested);
+    try {
+        const { display_pickinv_reply } = await import('./invent.js');
+        const c = await display_pickinv_reply(
+            lets == null ? null : lets,
+            null,
+            null,
+            { want_reply: menumode },
+        );
+        if (c && c !== '\x1b') {
+            const otmp = (game.invent || []).find((o) => o && o.invlet === c);
+            if (otmp) await itemactions(otmp);
+        }
+    } finally {
+        if (use_inuse_ordering) {
+            flags.sortloot = save_sortloot;
+            inuse_headers_set_accessories(save_accessories);
+        }
+        iflags.force_invmenu = save_force_invmenu;
     }
     return ECMD_OK;
 }

@@ -90,4 +90,61 @@ export function str_end_is(str, chkstr) {
     return s.length >= c.length && s.slice(s.length - c.length) === c;
 }
 
+/** C hacklib.c highc — ASCII a-z → A-Z. */
+export function highc(c) {
+    if (c == null || c === '') return c;
+    const ch = typeof c === 'string' ? c.charAt(0) : String.fromCharCode(c);
+    const code = ch.charCodeAt(0);
+    if (code >= 97 && code <= 122) return String.fromCharCode(code & ~0x20);
+    return ch;
+}
+
+/**
+ * C ref: hacklib.c upstart `:113–119` — highc the first character.
+ * Callers that already have a local clone (do_name/apply/…) keep theirs;
+ * newcham uses this C-home export (do not add clone #9).
+ */
+export function upstart(s) {
+    if (s == null || s === '') return s;
+    const str = String(s);
+    return highc(str.charAt(0)) + str.slice(1);
+}
+
+/**
+ * C ref: hacklib.c ing_suffix `:362–396` — gerund. Split trailing
+ * " on"/" off"/" with" (strcmpi), then er / CVC doubling / ie→y /
+ * trailing e, then "ing" + saved tail. Case-insensitive suffix tests.
+ * @param {string} s
+ * @returns {string}
+ */
+export function ing_suffix(s) {
+    const vowel = 'aeiouwy';
+    let buf = String(s ?? '');
+    let onoff = '';
+    const n0 = buf.length;
+    const low = buf.toLowerCase();
+    if ((n0 >= 3 && low.slice(-3) === ' on')
+        || (n0 >= 4 && low.slice(-4) === ' off')
+        || (n0 >= 5 && low.slice(-5) === ' with')) {
+        const sp = buf.lastIndexOf(' ');
+        onoff = buf.slice(sp);
+        buf = buf.slice(0, sp);
+    }
+    const n = buf.length;
+    const lc = (i) => buf[i].toLowerCase();
+    if (n >= 2 && buf.slice(-2).toLowerCase() === 'er') {
+        // slither + ing
+    } else if (n >= 3
+        && !vowel.includes(lc(n - 1))
+        && vowel.includes(lc(n - 2))
+        && !vowel.includes(lc(n - 3))) {
+        buf += buf[n - 1];
+    } else if (n >= 2 && buf.slice(-2).toLowerCase() === 'ie') {
+        buf = `${buf.slice(0, -2)}y`;
+    } else if (n >= 1 && buf[n - 1].toLowerCase() === 'e') {
+        buf = buf.slice(0, -1);
+    }
+    return `${buf}ing${onoff}`;
+}
+
 // C ref: rn2(x) already in rng.js — re-export not needed

@@ -313,7 +313,7 @@ export async function animate_statue(statue, x, y, cause, fail_reason = null) {
     }
 
     if (use_saved_traits) {
-        mon = montraits(statue, { x, y }, cause === ANIMATE_SPELL);
+        mon = await montraits(statue, { x, y }, cause === ANIMATE_SPELL);
         if (mon && mon.mtame && !mon.isminion) {
             await wary_dog(mon, true);
         }

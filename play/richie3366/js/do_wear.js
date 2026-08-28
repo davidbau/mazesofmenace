@@ -6,10 +6,10 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, You_feel, mark_topline_prompt,
-    newsym, see_monsters, urgent_pline,
+    newsym, see_monsters, urgent_pline, impossible,
 } from './display.js';
 import { yn_function } from './getline.js';
-import { an, doname, the, xname, xprname, vtense, otyp_is_charged } from './objnam.js';
+import { an, doname, the, xname, xprname, vtense, otyp_is_charged, makeplural, body_part_latebound } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_CON, A_CHA, acurr, extremeattr, change_luck, Fast, Very_fast,
@@ -17,7 +17,8 @@ import {
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object, set_artifact_intrinsic } from './artifact.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
-import { makeknown, observe_object } from './invent.js';
+import { makeknown, observe_object, ggetobj } from './invent.js';
+import { add_valid_menu_class } from './pickup.js';
 import { obj_resists } from './dogmove.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
@@ -27,10 +28,13 @@ import {
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
     TIMEOUT, BLINDED, FAST, TELEPAT, STEALTH, WORN_BOOTS, WORN_CLOAK, WORN_GLOVES,
+    WORN_HELMET, WORN_SHIELD, WORN_SHIRT, WORN_ARMOR, WORN_BLINDF, WORN_AMUL,
     DISPLACED, INVIS, SEE_INVIS, LEVITATION, PROT_FROM_SHAPE_CHANGERS,
     DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
     BOLT_LIM, LEFT_HANDED, GLIB, FROMOUTSIDE,
     ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION,
+    MENU_TRADITIONAL, MENU_FULL,
+    HAND, FOOT, TT_BEARTRAP, TT_INFLOOR, P_SHORT_SWORD, P_SABER,
 } from './const.js';
 import { x_monnam } from './do_name.js';
 import {
@@ -56,6 +60,7 @@ const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
 const BLINDFOLD = objectNames.indexOf('BLINDFOLD');
 const TOWEL = objectNames.indexOf('TOWEL');
 const LENSES = objectNames.indexOf('LENSES');
+const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
 const AMULET_OF_ESP = objectNames.indexOf('AMULET_OF_ESP');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const AMULET_VERSUS_POISON = objectNames.indexOf('AMULET_VERSUS_POISON');
@@ -195,11 +200,12 @@ async function already_wearing(cc) {
 /**
  * C ref: do_wear.c cursed — message + bknown when stuck.
  * Plural when boots/gloves/lenses or quan>1 (not quan alone).
- * Named omit: welded(uwep) branch; Glib fingers_or_gloves retry pline.
+ * uwep uses welded(); Glib fingers_or_gloves retry pline named.
  */
 export function cursed_check(otmp) {
     if (!otmp) return false;
-    if (otmp.cursed) {
+    const stuck = (otmp === game.u?.uwep) ? welded(otmp) : !!otmp.cursed;
+    if (stuck) {
         const use_plural = is_boots(otmp) || is_gloves(otmp)
             || otmp.otyp === LENSES || (otmp.quan || 1) > 1;
         game._cursed_takeoff_msg = use_plural
@@ -1193,10 +1199,134 @@ function wearing_armor() {
 }
 
 /**
+ * C do_wear.c select_off `:2694–2821`. Sets takeoff.mask; does not
+ * remove the item (take_off occupation is named).
+ * Named omit: better_not_take_that_off stoning-corpse gloves yn;
+ * gloves_simple_name gauntlets; cloak_simple_name robe; surface()
+ * infloor noun (uses "floor").
+ * @param {object|null} otmp
+ * @returns {Promise<number>} always 0 like C
+ */
+async function select_off(otmp) {
+    if (!otmp) return 0;
+    const u = game.u || {};
+    if (!game.context) game.context = {};
+    if (!game.context.takeoff) game.context.takeoff = {};
+    const to = game.context.takeoff;
+
+    if (otmp === u.uright || otmp === u.uleft) {
+        if (nolimbs(game.youmonst?.data)) {
+            await pline('The ring is stuck.');
+            return 0;
+        }
+        const RING_ON_PRIMARY = ((u.uhandedness | 0) === LEFT_HANDED)
+            ? u.uleft : u.uright;
+        let why = null;
+        let buf = '';
+        if (u.uwep && welded(u.uwep)
+            && (otmp === RING_ON_PRIMARY || ring_bimanual(u.uwep))) {
+            buf = `free a weapon ${body_part_latebound(HAND)}`;
+            why = u.uwep;
+        } else if (u.uarmg && (u.uarmg.cursed || hero_glib())) {
+            const glib = hero_glib();
+            buf = `take off your ${glib ? 'slippery ' : ''}gloves`;
+            why = glib ? { bknown: 0 } : u.uarmg;
+        }
+        if (why) {
+            await pline(`You cannot ${buf} to remove the ring.`);
+            why.bknown = 1;
+            return 0;
+        }
+    }
+    if (otmp === u.uarmg) {
+        if (u.uwep && welded(u.uwep)) {
+            const sk = game.objects?.[u.uwep.otyp]?.oc_skill | 0;
+            const weap = (u.uwep.oclass === WEAPON_CLASS
+                && sk >= P_SHORT_SWORD && sk <= P_SABER)
+                ? 'sword' : 'weapon';
+            await pline(
+                `You are unable to take off your gloves while wielding that ${weap}.`,
+            );
+            u.uwep.bknown = 1;
+            return 0;
+        }
+        if (hero_glib()) {
+            const art = u.uarmg.unpaid ? 'The' : 'Your';
+            await pline(`${art} gloves are too slippery to take off.`);
+            return 0;
+        }
+        /* better_not_take_that_off named omit */
+    }
+    if (otmp === u.uarmf) {
+        if (u.utrap && (u.utraptype | 0) === TT_BEARTRAP) {
+            await pline(
+                `The bear trap prevents you from pulling your ${body_part_latebound(FOOT)} out.`,
+            );
+            return 0;
+        }
+        if (u.utrap && (u.utraptype | 0) === TT_INFLOOR) {
+            await pline(
+                `You are stuck in the floor, and cannot pull your ${makeplural(body_part_latebound(FOOT))} out.`,
+            );
+            return 0;
+        }
+    }
+    if (otmp === u.uarm || otmp === u.uarmu) {
+        let why = null;
+        let buf = '';
+        if (u.uarmc && u.uarmc.cursed) {
+            buf = 'remove your cloak';
+            why = u.uarmc;
+        } else if (otmp === u.uarmu && u.uarm && u.uarm.cursed) {
+            buf = 'remove your suit';
+            why = u.uarm;
+        } else if (u.uwep && welded(u.uwep) && ring_bimanual(u.uwep)) {
+            const sk = game.objects?.[u.uwep.otyp]?.oc_skill | 0;
+            const weap = ((u.uwep.otyp | 0) === BATTLE_AXE) ? 'axe'
+                : (u.uwep.oclass === WEAPON_CLASS
+                    && sk >= P_SHORT_SWORD && sk <= P_SABER)
+                    ? 'sword' : 'weapon';
+            buf = `release your ${weap}`;
+            why = u.uwep;
+        }
+        if (why) {
+            await pline(`You cannot ${buf} to take off ${the(xname(otmp))}.`);
+            why.bknown = 1;
+            return 0;
+        }
+    }
+    if (otmp === u.uquiver || (otmp === u.uswapwep && !u.twoweap)) {
+        /* removable even when cursed */
+    } else if (cursed_check(otmp)) {
+        await pline(game._cursed_takeoff_msg || "You can't.  It is cursed.");
+        return 0;
+    }
+
+    if (otmp === u.uarm) to.mask = (to.mask | 0) | WORN_ARMOR;
+    else if (otmp === u.uarmc) to.mask = (to.mask | 0) | WORN_CLOAK;
+    else if (otmp === u.uarmf) to.mask = (to.mask | 0) | WORN_BOOTS;
+    else if (otmp === u.uarmg) to.mask = (to.mask | 0) | WORN_GLOVES;
+    else if (otmp === u.uarmh) to.mask = (to.mask | 0) | WORN_HELMET;
+    else if (otmp === u.uarms) to.mask = (to.mask | 0) | WORN_SHIELD;
+    else if (otmp === u.uarmu) to.mask = (to.mask | 0) | WORN_SHIRT;
+    else if (otmp === u.uleft) to.mask = (to.mask | 0) | LEFT_RING;
+    else if (otmp === u.uright) to.mask = (to.mask | 0) | RIGHT_RING;
+    else if (otmp === u.uamul) to.mask = (to.mask | 0) | WORN_AMUL;
+    else if (otmp === u.ublindf) to.mask = (to.mask | 0) | WORN_BLINDF;
+    else if (otmp === u.uwep) to.mask = (to.mask | 0) | W_WEP;
+    else if (otmp === u.uswapwep) to.mask = (to.mask | 0) | W_SWAPWEP;
+    else if (otmp === u.uquiver) to.mask = (to.mask | 0) | W_QUIVER;
+    else await impossible(`select_off: ${doname(otmp)}???`);
+
+    return 0;
+}
+
+/**
  * C ref: do_wear.c doddoremarm — #takeoffall / 'A'.
  * Empty-worn: You("are not wearing anything.") ECMD_OK.
- * Named omit: in-progress take_off occupation; ggetobj / menu_remarm
- * when something is worn (select_off / take_off delay).
+ * MENU_TRADITIONAL ggetobj("take off", select_off) + askchain (D-1602).
+ * Named omit: menu_remarm when not traditional or `'m'`; take_off
+ * occupation delay after mask is set.
  */
 export async function doddoremarm() {
     const u = game.u || {};
@@ -1204,7 +1334,6 @@ export async function doddoremarm() {
     if (!game.context.takeoff) game.context.takeoff = {};
     const to = game.context.takeoff;
     if (to.what || to.mask) {
-        // C: You("continue %s.", takeoff.disrobing); set_occupation(take_off)
         const verb = to.disrobing || 'disrobing';
         await pline(`You continue ${verb}.`);
         // take_off occupation deferred
@@ -1215,7 +1344,18 @@ export async function doddoremarm() {
         await pline('You are not wearing anything.');
         return ECMD_OK;
     }
-    // ggetobj("take off", select_off) / menu_remarm / take_off deferred
+
+    add_valid_menu_class(0);
+    const style = game.flags?.menu_style ?? MENU_FULL;
+    if (style !== MENU_TRADITIONAL
+        || (await ggetobj('take off', select_off, 0, false, null)) < -1) {
+        /* menu_remarm named omit */
+    }
+    if (to.mask) {
+        to.disrobing = ((to.mask & ~W_WEAPONS) !== 0)
+            ? 'disrobing' : 'disarming';
+        /* take_off occupation named omit */
+    }
     return ECMD_OK;
 }
 
@@ -1830,7 +1970,7 @@ export async function Ring_on(obj) {
         u.udaminc = (u.udaminc | 0) + (obj.spe | 0);
         break;
     case RIN_PROTECTION_FROM_SHAPE_CHAN:
-        rescham();
+        await rescham();
         break;
     case RIN_PROTECTION: {
         const observable = (obj.spe | 0) !== 0;

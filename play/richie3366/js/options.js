@@ -32,6 +32,8 @@ import {
     MENU_PREVIOUS_PAGE,
     MENU_FIRST_PAGE,
     MENU_LAST_PAGE,
+    MENU_ITEMFLAGS_SKIPINVERT,
+    PICK_ANY,
     WIZKIT_MAX,
     ismnum,
 } from './const.js';
@@ -41,7 +43,7 @@ import { str_end_is } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt, clear_committed_status } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
@@ -461,7 +463,15 @@ export function parseNethackrc(rc) {
                 }
                 else if (key === 'symset') result.symset = val;
                 else if (key === 'suppress_alert') result.flags.suppress_alert = val;
-                else if (key === 'msg_window') result.iflags.prevmsg_window = val;
+                else if (key === 'msg_window') {
+                    // C optfn_msg_window: lowc(*op) → s/c/f/r; negated
+                    // with a value is bad_negation.
+                    if (negated) continue;
+                    const tmp = val.charAt(0).toLowerCase();
+                    if (tmp === 's' || tmp === 'c' || tmp === 'f' || tmp === 'r') {
+                        result.iflags.prevmsg_window = tmp;
+                    }
+                }
                 else if (key === 'disclose') {
                     result.flags.end_disclose = parseDiscloseOption(val, negated);
                 }
@@ -511,6 +521,10 @@ export function parseNethackrc(rc) {
                 else if (lname === 'verbose') result.flags.verbose = value;
                 // C: OPTIONS=DECgraphics loads Primary DEC showsyms (same as symset:)
                 else if (lname === 'decgraphics') result.flags.decgraphics = value;
+                else if (lname === 'msg_window') {
+                    // C optfn_msg_window empty_optstr: negated → 's', else 'f'
+                    result.iflags.prevmsg_window = negated ? 's' : 'f';
+                }
                 else if (lname === 'accessiblemsg') {
                     parse_a11y_accessiblemsg(result, value);
                 }
@@ -1158,10 +1172,43 @@ async function doset_simple_menu() {
 }
 
 /**
+ * C ref: windows.c menuitem_invert_test `:1561–1589`.
+ * mode 0 invert / 1 select / 2 deselect. menuinvertmode 0 treats
+ * SKIPINVERT as ordinary; 1 allows Off only; 2 never bulk-toggles.
+ * @param {number} mode
+ * @param {number} itemflags
+ * @param {boolean} is_selected
+ */
+export function menuitem_invert_test(mode, itemflags, is_selected) {
+    void mode;
+    const skipinvert = ((itemflags | 0) & MENU_ITEMFLAGS_SKIPINVERT) !== 0;
+    if (!skipinvert) return true;
+    const mim = game.iflags?.menuinvertmode | 0;
+    if (mim === 2) return false;
+    if (mim === 1) return is_selected ? true : false;
+    return true;
+}
+
+/** C wintty.c invert_all — acc 0 = bulk invert; else group gselector. */
+function invert_pick_any_matching(items, acc) {
+    for (const it of items) {
+        if (!it.selectable) continue;
+        if (acc) {
+            if (it.gselector !== acc) continue;
+        } else if (!menuitem_invert_test(0, it.itemflags | 0, !!it.selected)) {
+            continue;
+        }
+        it.selected = !it.selected;
+    }
+}
+
+/**
  * C ref: wintty.c process_menu_window PICK_ANY — letter toggles stay on
  * the menu; space → next page or finish on last; Enter/CR finish; ESC cancel;
- * MENU_SELECT_ALL/PAGE / UNSELECT_* / INVERT_* (D-0928). Named omissions:
- * count-prefix digits; MENU_SEARCH; menuitem_invert_test SKIPINVERT.
+ * MENU_SELECT_ALL/PAGE / UNSELECT_* / INVERT_* (D-0928). Group accelerators
+ * invert matching gselector (invent.c wizid `'_'`/`^I` / class sym).
+ * SKIPINVERT via menuitem_invert_test. Named omissions: count-prefix
+ * digits; MENU_SEARCH.
  * Returns selected selectable items (may be empty).
  */
 export async function select_menu_pick_any(rawItems) {
@@ -1178,6 +1225,13 @@ export async function select_menu_pick_any(rawItems) {
             else menuCh = String.fromCharCode(menuCh.charCodeAt(0) + 1);
         }
     }
+    const gacc = collect_menu_gacc(
+        items.filter((it) => it.selectable).map((it) => ({
+            selector: it.selector || '',
+            gselector: it.gselector || '',
+        })),
+        PICK_ANY,
+    );
     const npages = Math.max(1, Math.floor((items.length + lmax - 1) / lmax));
     let currPage = 0;
     const prevOverlay = game.flags?.menu_overlay;
@@ -1253,44 +1307,53 @@ export async function select_menu_pick_any(rawItems) {
             // C: MENU_SELECT_PAGE / UNSELECT_PAGE / INVERT_PAGE
             if (ch === MENU_SELECT_PAGE) {
                 for (const it of page) {
-                    if (it.selectable) it.selected = true;
+                    if (!it.selectable || it.selected) continue;
+                    if (!menuitem_invert_test(1, it.itemflags | 0, false)) continue;
+                    it.selected = true;
                 }
                 continue;
             }
             if (ch === MENU_UNSELECT_PAGE) {
                 for (const it of page) {
-                    if (it.selectable) it.selected = false;
+                    if (!it.selectable || !it.selected) continue;
+                    if (!menuitem_invert_test(2, it.itemflags | 0, true)) continue;
+                    it.selected = false;
                 }
                 continue;
             }
             if (ch === MENU_INVERT_PAGE) {
-                for (const it of page) {
-                    if (it.selectable) it.selected = !it.selected;
-                }
+                invert_pick_any_matching(page, 0);
                 continue;
             }
             // C: MENU_SELECT_ALL / UNSELECT_ALL / INVERT_ALL
             if (ch === MENU_SELECT_ALL) {
                 for (const it of items) {
-                    if (it.selectable) it.selected = true;
+                    if (!it.selectable || it.selected) continue;
+                    if (!menuitem_invert_test(1, it.itemflags | 0, false)) continue;
+                    it.selected = true;
                 }
                 continue;
             }
             if (ch === MENU_UNSELECT_ALL) {
                 for (const it of items) {
-                    if (it.selectable) it.selected = false;
+                    if (!it.selectable || !it.selected) continue;
+                    if (!menuitem_invert_test(2, it.itemflags | 0, true)) continue;
+                    it.selected = false;
                 }
                 continue;
             }
             if (ch === MENU_INVERT_ALL) {
-                for (const it of items) {
-                    if (it.selectable) it.selected = !it.selected;
-                }
+                invert_pick_any_matching(items, 0);
                 continue;
             }
+            // C: page selector (resp) before group_accel (gacc appended)
             const hit = page.find((it) => it.selectable && it.selector === ch);
             if (hit) {
                 hit.selected = !hit.selected;
+                continue;
+            }
+            if (gacc && gacc.includes(ch)) {
+                invert_pick_any_matching(items, ch);
                 continue;
             }
         }

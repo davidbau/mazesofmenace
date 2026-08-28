@@ -40,7 +40,7 @@ import { reset_justpicked } from './pickup.js';
 import { set_wear } from './do_wear.js';
 import { gethungry } from './eat.js';
 import { age_spells } from './spell.js';
-import { near_capacity, paint_corner_nhw_menu, encumber_msg } from './invent.js';
+import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory } from './invent.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
 import { Hello, align_str } from './roles.js';
@@ -153,6 +153,10 @@ export async function moveloop_preamble(resuming) {
     }
 
     if (!resuming) {
+        // C allmain.c:71 — for TTY_PERM_INVENT; gates invent.c
+        // sync_perminvent display_inventory (D-1603 / review 561).
+        if (!game.program_state) game.program_state = {};
+        game.program_state.beyond_savefile_load = 1;
         // C order: rndencode → set_wear → reset_justpicked → pickup(1) →
         // seer_turn → umovement → initrack (pickup deferred).
         game.context.rndencode = rnd(9000);
@@ -176,6 +180,9 @@ export async function moveloop_preamble(resuming) {
     // C: program_state.in_moveloop = 1 — gates adjattrib STR/CON encumber_msg
     if (!game.program_state) game.program_state = {};
     game.program_state.in_moveloop = 1;
+    // C allmain.c:107–110 — perm_invent preset after invent is populated
+    // and in_moveloop is set. Default Off is a no-op (D-1603).
+    if (game.iflags?.perm_invent) update_inventory();
 }
 
 // C ref: allmain.c u_calc_moveamt()

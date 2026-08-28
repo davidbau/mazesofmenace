@@ -97,6 +97,7 @@ import {
     makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, add_to_minv, newcham,
     mongets, set_malign, rndmonnum,
 } from './makemon.js';
+import { mk_mplayer } from './mplayer.js';
 import { m_at } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level } from './teleport.js';
 import { clear_wormdata } from './worm.js';
@@ -11199,13 +11200,17 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
     const ry = opts?.ry ?? -1;
     let pm = null;
     let female = 0;
+    let mid = NON_PM;
     const isClass = typeof id_or_class === 'string' && id_or_class.length === 1;
     // Named ids: find_montype gender RNG happens before create_monster in C Lua
     // binding; class letters leave id=NON_PM and resolve via mkclass after amask.
     if (!isClass && typeof id_or_class === 'string') {
         const r = find_montype_gender(id_or_class);
         female = r.female;
-        if (r.mndx !== NON_PM && r.mndx >= 0) pm = mons(r.mndx);
+        if (r.mndx !== NON_PM && r.mndx >= 0) {
+            mid = r.mndx;
+            pm = mons(r.mndx);
+        }
     }
     const amask = sp_amask_to_amask(sp_amask);
     if (isClass) {
@@ -11233,9 +11238,9 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
     if (sp_amask !== AM_SPLEV_RANDOM) {
         const peaceArg = (peaceful != null) ? peaceful : BOOL_RANDOM;
         mtmp = mk_roamer_splev(pm, Amask2align(amask), pos.x, pos.y, peaceArg);
+    } else if (PM_ARCHEOLOGIST <= mid && mid <= PM_WIZARD) {
+        mtmp = mk_mplayer(pm, pos.x, pos.y, false);
     } else {
-        // C: else if PM_ARCHEOLOGIST <= m->id && m->id <= PM_WIZARD → mk_mplayer
-        // Named omit: mk_mplayer not in JS. RANDOM role-id stays makemon.
         mtmp = makemon(pm, pos.x, pos.y, mm_flags);
     }
     // C: always mtmp->female = m->female after spawn (D-0873). Named id →

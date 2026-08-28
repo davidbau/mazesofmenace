@@ -2376,7 +2376,7 @@ async function eataccessory(otmp) {
             break;
         }
         case RIN_PROTECTION_FROM_SHAPE_CHAN:
-            rescham();
+            await rescham();
             break;
         case RIN_LEVITATION: {
             // undo the intrinsic |= FROMOUTSIDE done above

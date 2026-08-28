@@ -277,12 +277,13 @@ import {
 import { potionbreathe, make_stunned, speed_up } from './potion.js';
 import { useup, carried, fix_petrification } from './eat.js';
 import { burn_away_slime, get_obj_location } from './timeout.js';
+import { show_transient_light, transient_light_cleanup } from './light.js';
 import { create_gas_cloud } from './region.js';
 import { recalc_block_point } from './vision.js';
 import { picking_at, reset_pick, boxlock, boxlock_invent, doorlock } from './lock.js';
 import { monflee, sticks } from './monmove.js';
 import { digests, set_ustuck, unstuck, expels, ureflects, u_slow_down } from './mhitu.js';
-import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv, set_mimic_sym } from './makemon.js';
+import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv, set_mimic_sym, newmcorpsenm } from './makemon.js';
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
@@ -356,6 +357,7 @@ import {
     IS_FURNITURE, IS_GRAVE, SCORR, VAULT, TEMPLE, In_quest, Is_firelevel,
     VIBRATING_SQUARE, MAGIC_PORTAL, HEADSTONE, TRAP_EXPLODE, is_magical_trap,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
+    has_mcorpsenm,
 } from './const.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
@@ -644,8 +646,15 @@ export function Reflecting() {
     return (game.youmonst?.data?.mndx | 0) === PM_SILVER_DRAGON;
 }
 
+/**
+ * C youprop.h:103 Blind — (HBlinded || EBlinded) && !BBlinded.
+ * D-0716 uroleplay.blind (same as apply.js). Not sticky u.Blind||u.ublind
+ * (D-1604; review **558** zap bhit show_transient_light).
+ */
 function Blind() {
-    return !!(game.u?.Blind || game.u?.ublind);
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 
 /** C obj.h is_helmet — ARMOR + oc_armcat ARM_HELM (JS oc_skill stand-in). */
@@ -664,13 +673,11 @@ function hard_helmet(obj) {
 }
 
 /**
- * C youprop.h Blind for zapyourself WAN_MAKE_INVISIBLE msg —
- * (HBlinded || EBlinded) && !BBlinded. Sticky Blind() first.
+ * C youprop.h:103 Blind for zapyourself WAN_MAKE_INVISIBLE msg.
+ * Same helper as bhit show_transient_light (D-1604).
  */
 function Blinded_for_invis() {
-    const u = game.u || {};
-    if (Blind()) return true;
-    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+    return Blind();
 }
 
 /**
@@ -2683,9 +2690,9 @@ function SYSOPT_SEDUCE_zap() {
  * C ref: zap.c montraits — revive from corpse/statue omonst traits.
  * Used by revive() and animate_statue(). Named omit: full replshk bill_p;
  * worm light-source swap.
- * @returns {object|null}
+ * @returns {Promise<object|null>}
  */
-export function montraits(obj, cc, adjacentok) {
+export async function montraits(obj, cc, adjacentok) {
     let mtmp = null;
     const mtmp2 = has_omonst(obj) ? get_mtraits(obj, true) : null;
     if (!mtmp2) return null;
@@ -2766,7 +2773,7 @@ export function montraits(obj, cc, adjacentok) {
     }
     replmon(mtmp, mtmp2);
     newsym(mtmp2.mx | 0, mtmp2.my | 0);
-    restore_cham(mtmp2);
+    await restore_cham(mtmp2);
     return mtmp2;
 }
 
@@ -2993,7 +3000,7 @@ export async function revive(corpse, by_hero) {
     } else if (has_omonst(corpse)) {
         xy.x = x;
         xy.y = y;
-        mtmp = montraits(corpse, xy, false);
+        mtmp = await montraits(corpse, xy, false);
         if (mtmp && mtmp.mtame && !mtmp.isminion) {
             await wary_dog(mtmp, true);
         }
@@ -3382,7 +3389,7 @@ export async function cancel_monst(
         }
     } else {
         mdef.mcan = 1;
-        normal_shape(mdef);
+        await normal_shape(mdef);
         if (mdef.data === mons(PM_CLAY_GOLEM)
             || (mdef.data?.mndx | 0) === PM_CLAY_GOLEM) {
             if (canseemon(mdef)) {
@@ -3609,7 +3616,7 @@ async function mimic_hit_msg(mtmp, otyp) {
  * that_is_a_mimic(MIM_REVEAL|MIM_OMIT_WAIT); else wake FALSE),
  * SPE_HEALING/SPE_EXTRA_HEALING (D-1469; healmon + skilled/extra
  * mcureblindness; Pestilence resist TELL; wake FALSE).
- * Named omit: long-worm mcorpsenm polish; Knight questart double
+ * Named omit: Knight questart double
  * on striking; mhurtle petrify/steed; that_is_a_mimic MIM_REVEAL
  * pline (box_or_door+seemimic wired);
  * zap_steed WAN_MAKE_INVISIBLE is D-1473; zap_map engraving
@@ -3748,12 +3755,11 @@ export async function bhitm(mtmp, otmp) {
     case POT_POLYMORPH: {
         // C zap.c bhitm :263–334. SPE_POLYMORPH wand-duplicate
         // weffects is D-1459. zap_steed WAN/SPE_POLYMORPH
-        // routes here (D-1471). long-worm mcorpsenm skip named.
-        if (mtmp.data === mons(PM_LONG_WORM)
-            || (mtmp.data?.mndx | 0) === PM_LONG_WORM) {
-            // long-worm mcorpsenm skip deferred — still allow first hit
-        }
-        if (resists_magm(mtmp)) {
+        // routes here (D-1471). Long-worm has_mcorpsenm skip +
+        // post-poly PM_LONG_WORM flag (D-1598).
+        if ((mtmp.data?.mndx | 0) === PM_LONG_WORM && has_mcorpsenm(mtmp)) {
+            /* already flagged by this zap — skip further poly */
+        } else if (resists_magm(mtmp)) {
             // shieldeff deferred
         } else if (!(await resist(mtmp, otmp.oclass, 0, NOTELL))) {
             const polyspot = otyp !== POT_POLYMORPH;
@@ -3774,14 +3780,24 @@ export async function bhitm(mtmp, otmp) {
                 let ncflags = 0;
                 if (polyspot) ncflags |= NC_VIA_WAND_OR_SPELL;
                 if (give_msg) ncflags |= NC_SHOW_MSG;
-                if (newcham(mtmp, null, ncflags)
+                if (await newcham(mtmp, null, ncflags)
                     || (ismnum(mtmp.cham)
-                        && newcham(mtmp, mons(mtmp.cham), ncflags))) {
+                        && await newcham(mtmp, mons(mtmp.cham), ncflags))) {
                     if (give_msg && (canspotmon(mtmp)
                         || (game.u?.uswallow && game.u?.ustuck === mtmp))) {
                         learn_it = true;
                     }
                 }
+            }
+            // C: even if poly failed — further hits on a new tail
+            // must not transform again this zap.
+            if ((mtmp.mhp | 0) > 0
+                && (mtmp.data?.mndx | 0) === PM_LONG_WORM) {
+                if (!has_mcorpsenm(mtmp))
+                    newmcorpsenm(mtmp);
+                mtmp.mextra.mcorpsenm = PM_LONG_WORM;
+                if (!game.context) game.context = {};
+                game.context.bypasses = true;
             }
         }
         break;
@@ -5406,8 +5422,9 @@ function bhit_xyglyph_known_monster(loc) {
  * callee `zap_map` `:3685–3717` OPENING/LOCKING/STRIKING).
  * Named omit: THROWN_WEAPON fly callers (throwit still inlines those
  * and still skips WEB / shade / mimic-object); FLASHED_LIGHT DISP_BEAM /
- * INVIS_BEAM stop; show_transient_light; shkcatch pick;
- * map_invisible / unmap_object; skiprange rocks.
+ * INVIS_BEAM stop; shkcatch pick; map_invisible / unmap_object;
+ * skiprange rocks. show_transient_light is D-1597; bhit `!Blind`
+ * is youprop.h:103 (D-1604).
  * pobj is `{ obj }` — may set `.obj = null` when destroyed (kicked).
  */
 async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
@@ -5463,9 +5480,14 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
                 && (IS_WATERWALL(typ) || typ === LAVAWALL)) {
                 break;
             }
-            // C: iron bars hits_bars for thrown/kicked (D-0990)
+            // C zap.c bhit :3901–3917 — thrown/kicked lamplit +
+            // FLASHED_LIGHT show_transient_light before iron bars
+            // (D-1597). !Blind is youprop.h:103, not sticky
+            // u.Blind||u.ublind (D-1604).
             if (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON) {
-                // show_transient_light deferred
+                if (obj?.lamplit && !Blind()) {
+                    await show_transient_light(obj, x, y);
+                }
                 if (typ === IRONBARS) {
                     const { hits_bars } = await import('./mthrowu.js');
                     if (await hits_bars(
@@ -5478,6 +5500,8 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
                         break;
                     }
                 }
+            } else if (weapon === FLASHED_LIGHT) {
+                if (!Blind()) await show_transient_light(null, x, y);
             }
 
             if (weapon === ZAPPED_WAND) {
@@ -5618,6 +5642,11 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
     if (shopdoor) {
         const { pay_for_damage } = await import('./shk.js');
         await pay_for_damage('destroy', false);
+    }
+    /* C zap.c bhit :4132–4136 — FLASHED_LIGHT cleanup is the caller's;
+     * thrown/kicked always cleanup here (bhit_done). */
+    if (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON) {
+        await transient_light_cleanup();
     }
     return result;
 }

@@ -93,6 +93,7 @@ import {
 import { nhgetch } from './input.js';
 import {
     paint_corner_nhw_menu, count_contents, observe_object, makeknown,
+    count_unpaid,
 } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import { yn_function } from './getline.js';
@@ -586,18 +587,6 @@ function oid_price_adjustment(obj, oid) {
 /** C shk.c get_pricing_units — quan; globby weight deferred → quan. */
 function get_pricing_units(obj) {
     return (obj?.quan | 0) || 1;
-}
-
-/**
- * C ref: invent.c count_unpaid — unpaid items in list incl. contents.
- */
-function count_unpaid(list) {
-    let count = 0;
-    for (let otmp = list; otmp; otmp = otmp.nobj) {
-        if (otmp.unpaid) count++;
-        if (Has_contents(otmp)) count += count_unpaid(otmp.cobj);
-    }
-    return count;
 }
 
 /**

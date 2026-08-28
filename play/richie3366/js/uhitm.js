@@ -30,6 +30,7 @@ import {
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
+import { ing_suffix } from './hacklib.js';
 import { pline, pline_mon, newsym, canseemon, canspotmon, map_invisible, unmap_object, glyph_is_invisible, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph } from './display.js';
 import { cansee } from './vision.js';
 import {
@@ -2796,35 +2797,6 @@ function Role_if(pm) {
 function yname(obj) {
     const carried = (game.invent || []).includes(obj);
     return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
-}
-
-/**
- * C ref: hacklib.c ing_suffix — gerund for bash/strike (full vowel rules).
- * @param {string} s
- */
-function ing_suffix(s) {
-    let buf = String(s);
-    const vowel = 'aeiouwy';
-    let onoff = '';
-    if (/\s+on$/i.test(buf) || /\s+off$/i.test(buf) || /\s+with$/i.test(buf)) {
-        const sp = buf.lastIndexOf(' ');
-        onoff = buf.slice(sp);
-        buf = buf.slice(0, sp);
-    }
-    const n = buf.length;
-    if (n >= 2 && buf.slice(-2).toLowerCase() === 'er') {
-        // slither + ing
-    } else if (n >= 3
-        && !vowel.includes(buf[n - 1].toLowerCase())
-        && vowel.includes(buf[n - 2].toLowerCase())
-        && !vowel.includes(buf[n - 3].toLowerCase())) {
-        buf += buf[n - 1];
-    } else if (n >= 2 && buf.slice(-2).toLowerCase() === 'ie') {
-        buf = `${buf.slice(0, -2)}y`;
-    } else if (n >= 1 && buf[n - 1].toLowerCase() === 'e') {
-        buf = buf.slice(0, -1);
-    }
-    return `${buf}ing${onoff}`;
 }
 
 /**

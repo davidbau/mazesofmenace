@@ -3,16 +3,16 @@
 //   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h),
 //   worm_move / shrink_worm / worm_nomove (D-1491), see_wsegs (D-1529),
 //   detect_wsegs (D-1545), worm_known (D-1548), cutworm / place_wsegs
-//   (D-1570).
-// Named omissions: save/rest wsegs, redraw_worm; mondead/dog
-//   wormgone callers; replmon/restore place_wsegs callers;
-//   muse.c / mhitu.c worm_move callers.
+//   (D-1570), redraw_worm (D-1577).
+// Named omissions: save/rest wsegs; mondead/dog wormgone callers;
+//   replmon/restore place_wsegs callers; muse.c / mhitu.c worm_move
+//   callers; flip_worm_segs_vertical / flip_worm_segs_horizontal.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
 import {
     MAX_NUM_WORMS, N_DIRS, xdir, ydir, MHPMAX, MSLOW, MFAST, NORMAL_SPEED,
-    MON_OFFMAP,
+    MON_OFFMAP, has_mcorpsenm,
 } from './const.js';
 import { goodpos } from './teleport.js';
 import { newsym, show_wseg_detect_glyph, Hallucination, pline, canspotmon, impossible } from './display.js';
@@ -175,8 +175,7 @@ export function wormgone(worm) {
     wheads[wnum] = wtails[wnum] = null;
     wgrowtime[wnum] = 0;
     // C: has_mcorpsenm → MCORPSENM = NON_PM (no longer poly-proof)
-    if ((worm.data?.mndx | 0) === PM_LONG_WORM && worm.mextra
-        && (worm.mextra.mcorpsenm ?? NON_PM) !== NON_PM) {
+    if ((worm.data?.mndx | 0) === PM_LONG_WORM && has_mcorpsenm(worm)) {
         worm.mextra.mcorpsenm = NON_PM;
     }
 }
@@ -230,7 +229,7 @@ export function place_wsegs(worm, oldworm) {
  * New worm only when m_lev>=3 && !rn2(3) && get_wormno() && clone_mon.
  * clone_mon is async (tamedog); pline/You are async. Head hits and
  * !wormno return before rnd. Callers uhitm known_hitum / dothrow
- * thitmonst. redraw_worm / wormgone named.
+ * thitmonst. wormgone named. redraw_worm is D-1577.
  */
 export async function cutworm(worm, x, y, cuttier) {
     const wnum = worm?.wormno | 0;
@@ -426,6 +425,21 @@ export function see_wsegs(worm) {
     let curr = wtails[wnum];
     const head = wheads[wnum];
     while (curr && curr !== head) {
+        newsym(curr.wx, curr.wy);
+        curr = curr.nseg;
+    }
+}
+
+/**
+ * C ref: worm.c redraw_worm `:989–998` — newsym every segment including
+ * the dummy co-located with the head (unlike see_wsegs, which stops
+ * before wheads). Callers: dog.c tamedog `:1275–1276` after head
+ * newsym; abuse_dog `:1386–1390` when the pet goes wild. Caller checks
+ * wormno; C does not re-check inside the walker.
+ */
+export function redraw_worm(worm) {
+    let curr = wtails[worm.wormno | 0];
+    while (curr) {
         newsym(curr.wx, curr.wy);
         curr = curr.nseg;
     }

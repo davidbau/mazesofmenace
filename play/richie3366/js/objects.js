@@ -69,3 +69,42 @@ export function objects_globals_init() {
 export function objects() {
     return game.objects;
 }
+
+/**
+ * C drawing.c `def_oc_syms[MAXOCLASSES]` (`defsym.h` OBJCLASS_DRAWING).
+ * Index is `enum objclass_classes` (RANDOM=0 … VENOM=17).
+ * BALL_CLASS (15) `sym` is `'0'` — tty group accelerator vs count digit
+ * (`wintty.c` `process_menu_window` `!counting && strchr(gacc,'0')`).
+ */
+export const def_oc_syms = [
+    { sym: '\0', name: '', explain: '' },
+    { sym: ']', name: 'illegal objects', explain: 'strange object' },
+    { sym: ')', name: 'weapons', explain: 'weapon' },
+    { sym: '[', name: 'armor', explain: 'suit or piece of armor' },
+    { sym: '=', name: 'rings', explain: 'ring' },
+    { sym: '"', name: 'amulets', explain: 'amulet' },
+    { sym: '(', name: 'tools', explain: 'useful item (pick-axe, key, lamp...)' },
+    { sym: '%', name: 'food', explain: 'piece of food' },
+    { sym: '!', name: 'potions', explain: 'potion' },
+    { sym: '?', name: 'scrolls', explain: 'scroll' },
+    { sym: '+', name: 'spellbooks', explain: 'spellbook' },
+    { sym: '/', name: 'wands', explain: 'wand' },
+    { sym: '$', name: 'coins', explain: 'pile of coins' },
+    { sym: '*', name: 'rocks', explain: 'gem or rock' },
+    { sym: '`', name: 'large stones', explain: 'boulder or statue' },
+    { sym: '0', name: 'iron balls', explain: 'iron ball' },
+    { sym: '_', name: 'chains', explain: 'iron chain' },
+    { sym: '.', name: 'venoms', explain: 'splash of venom' },
+];
+
+/**
+ * C drawing.c def_char_to_objclass — first def_oc_syms[].sym; else MAXOCLASSES.
+ */
+export function def_char_to_objclass(ch) {
+    const c = typeof ch === 'string' ? ch.charAt(0) : String.fromCharCode(ch);
+    let i;
+    for (i = 1; i < MAXOCLASSES; i++) {
+        if (def_oc_syms[i].sym === c) break;
+    }
+    return i;
+}

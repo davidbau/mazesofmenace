@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { makemon, set_malign, rndmonst_adj } from './makemon.js';
+import { makemon, set_malign, rndmonst_adj, newedog } from './makemon.js';
 import { deliver_obj_to_mon } from './dokick.js';
 import {
     mons, NON_PM, is_human, is_covetous, is_demon,
@@ -17,6 +17,7 @@ import {
     MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS,
     MIGR_PORTAL, MIGR_WITH_HERO, MIGR_LEFTOVERS, MON_MIGRATING, MON_LIMBO,
     STRAT_ARRIVE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, isok, MTSZ, MANFOOD,
+    DOGFOOD, ACCFOOD, FULL_MOON, Upolyd, has_edog, EDOG,
     DF_ALL, COLNO, ROWNO, ROOMOFFSET, IS_WALL,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
@@ -34,10 +35,15 @@ import { christen_monst, Monnam } from './do_name.js';
 import { monnear, m_at, see_monster_closeup, minliquid, restore_cham, wake_nearto } from './mon.js';
 import { enexto, rloc_to, rloc, rloc_to_flag, goodpos } from './teleport.js';
 import { put_saddle_on_mon } from './steed.js';
-import { newsym, pline, pline_mon, canspotmon, Hallucination } from './display.js';
+import { newsym, pline, pline_mon, canspotmon, canseemon, Hallucination } from './display.js';
+import { redraw_worm } from './worm.js';
 import { hero_conflict } from './mondata.js';
 import { cansee } from './vision.js';
+import { night } from './calendar.js';
+import { Tobjnam, the, xname } from './objnam.js';
 import { objectNames } from './generated/objects_data.js';
+import { expels, unstuck } from './mhitu.js';
+import { sticks } from './engrave.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
@@ -46,6 +52,7 @@ const PM_NAZGUL = monsterNames.indexOf('PM_NAZGUL');
 const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const SPE_CREATE_FAMILIAR = objectNames.indexOf('SPE_CREATE_FAMILIAR');
+const CORPSE = objectNames.indexOf('CORPSE');
 const AT_WEAP = 254;
 
 function Role_if(pm) {
@@ -71,10 +78,9 @@ function pet_type() {
     return rn2(2) ? PM_KITTEN : PM_LITTLE_DOG;
 }
 
-// C ref: dog.c initedog()
+// C ref: dog.c initedog() — EDOG(mtmp) already allocated (newedog / MM_EDOG).
 export function initedog(mtmp, everything) {
-    if (!mtmp.edog) mtmp.edog = {};
-    const edogp = mtmp.edog;
+    const edogp = EDOG(mtmp);
     const minhungry = (game.moves ?? 1) + 1000;
     // C: is_domestic → minimumtame 10 else 5
     const minimumtame = is_domestic(mtmp.data) ? 10 : 5;
@@ -90,7 +96,7 @@ export function initedog(mtmp, everything) {
         // C: ACURR(A_CHA) at makedog — before init_attr, clamps to 3
         edogp.apport = acurr(A_CHA);
         edogp.whistletime = 0;
-        edogp.ogoal = { x: 0, y: 0 }; // C: ogoal.x==0 means unset
+        edogp.ogoal = { x: 0, y: 0 }; // C: ogoal.x==-1; JS dog_goal still 0 unset
         edogp.abuse = 0;
         edogp.revivals = 0;
         edogp.mhpmax_penalty = 0;
@@ -99,6 +105,8 @@ export function initedog(mtmp, everything) {
         edogp.apport = 1;
     }
     if ((edogp.hungrytime || 0) < minhungry) edogp.hungrytime = minhungry;
+    // dogmove/sounds still read mtmp.edog
+    mtmp.edog = edogp;
     // C: u.uconduct.pets++ (livelog only when !pets && in_moveloop — deferred)
     if (!game.u) game.u = {};
     if (!game.u.uconduct) game.u.uconduct = {};
@@ -167,8 +175,7 @@ async function pick_familiar_pm(otmp, quietly) {
  * (otmp null). makemon MM_EDOG|MM_IGNOREWATER|NO_MINVENT|MM_NOMSG + gender;
  * figurine shatter / angel free_emin; pool minliquid; rn2(10) then B/U/C
  * 80/10/10 tame·peace·hostile; named christen; initedog; AT_WEAP wield.
- * Spell dispatch is D-1389. Named omit: livelog first pet; makemon
- * MM_EDOG newedog alloc (initedog still creates edog).
+ * Spell dispatch is D-1389. Named omit: livelog first pet.
  */
 export async function make_familiar(otmp, x, y, quietly) {
     let mtmp = null;
@@ -346,9 +353,14 @@ export function keepdogs(pets_only = false) {
  * Peaceful + edog for ordinary monsters; shop/gd/priest/minion/human/
  * is_covetous / is_demon-vs-hero / quest leader rejected. D-1532.
  * isshk → make_happy_shk D-1540.
- * Named omissions: FULL_MOON night S_DOG;
- * ustuck expels/unstuck (mhitu→uhitm→dog cycle); redraw_worm;
- * Tobjnam stop / big_corpse catch; initedog has_edog vs !mtame.
+ * FULL_MOON night S_DOG rn2(6) D-1585 (C :1176–1178; generated mlet
+ * 'S_DOG' ≡ C enum S_DOG). Already-tame catch pline_mon / big_corpse /
+ * Tobjnam stop D-1585 (C :1199–1209).
+ * ustuck expels/unstuck D-1593 (C :1184–1190; live mhitu expels/unstuck;
+ * engrave sticks — not monmove AT_HUGS=6 clone).
+ * initedog has_edog vs !mtame D-1595 (C :1253–1259; live newedog +
+ * initedog(TRUE) when !has_edog, else initedog(FALSE) — not !mtame).
+ * redraw_worm is D-1577.
  */
 export async function tamedog(mtmp, obj, givemsg = true) {
     if (!mtmp) return false;
@@ -382,34 +394,49 @@ export async function tamedog(mtmp, obj, givemsg = true) {
     }
     mtmp.mpeaceful = 1;
     set_malign(mtmp);
-    // C :1176–1178 FULL_MOON && night() && rn2(6) && obj && S_DOG named
+    // C :1176–1178 — left-to-right: moonphase, night(), rn2(6), obj, S_DOG.
+    // Full-moon night always consumes rn2(6) even when obj is null / not a dog.
+    if (game.flags?.moonphase === FULL_MOON && night() && rn2(6) && obj
+        && mtmp.data?.mlet === 'S_DOG') {
+        return false;
+    }
 
     mtmp.mflee = 0;
     mtmp.mfleetim = 0;
-    // C :1185–1190 ustuck expels/unstuck named
+    // C :1184–1190 — grabber lets go now, whether it becomes tame or not
+    if (mtmp === game.u?.ustuck) {
+        if (game.u.uswallow) {
+            await expels(mtmp, mtmp.data, true);
+        } else if (!(Upolyd(game.u) && sticks(game.youmonst?.data))) {
+            await unstuck(mtmp);
+        }
+    }
 
     // C: feeding treats makes already-tame pets tamer (before mtame<10 bump)
     if (mtmp.mtame && obj) {
         const { dogfood, dog_eat } = await import('./dogmove.js');
-        const { DOGFOOD, ACCFOOD } = await import('./const.js');
         const { place_object } = await import('./mkobj.js');
-        const { canseemon } = await import('./display.js');
-        const { xname, the } = await import('./objnam.js');
-        const { cansee } = await import('./vision.js');
 
         const canmove = mtmp.mcanmove !== false && !(mtmp.mfrozen > 0);
         if (canmove && !mtmp.mconf && !mtmp.meating) {
             const tasty = dogfood(mtmp, obj);
             if (tasty === DOGFOOD
                 || (tasty <= ACCFOOD
-                    && (mtmp.edog?.hungrytime || 0) <= (game.moves || 1))) {
-                // C: canseemon → catches; else cansee → Tobjnam stop
+                    && (EDOG(mtmp)?.hungrytime || mtmp.edog?.hungrytime || 0)
+                        <= (game.moves || 1))) {
+                // C :1199–1209 — canseemon pline_mon + big_corpse; else Tobjnam
                 if (canseemon(mtmp)) {
-                    await pline(
-                        `${Monnam(mtmp)} catches ${the(xname(obj))}.`,
+                    const big_corpse =
+                        (obj.otyp | 0) === CORPSE && ismnum(obj.corpsenm)
+                        && (mons(obj.corpsenm)?.msize | 0)
+                            > (mtmp.data?.msize | 0);
+                    await pline_mon(
+                        mtmp,
+                        `${Monnam(mtmp)} catches ${the(xname(obj))}`
+                            + (big_corpse ? ', or vice versa!' : '.'),
                     );
                 } else if (cansee(mtmp.mx, mtmp.my)) {
-                    await pline(`${the(xname(obj))} stops.`);
+                    await pline(`${Tobjnam(obj, 'stop')}.`);
                 }
                 place_object(obj, mtmp.mx, mtmp.my);
                 await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, false);
@@ -454,8 +481,14 @@ export async function tamedog(mtmp, obj, givemsg = true) {
         return false;
     }
 
-    if (!mtmp.edog) mtmp.edog = {};
-    initedog(mtmp, !(mtmp.mtame));
+    // C :1253–1259 — add pet extension: !has_edog → newedog +
+    // initedog(TRUE); else initedog(FALSE) (feral former pet / mtame>=10).
+    if (!has_edog(mtmp)) {
+        newedog(mtmp);
+        initedog(mtmp, true);
+    } else {
+        initedog(mtmp, false);
+    }
 
     // C: thrown food for newly tamed — place_object + dog_eat(devour)
     if (obj) {
@@ -475,7 +508,8 @@ export async function tamedog(mtmp, obj, givemsg = true) {
         );
     }
     newsym(mtmp.mx, mtmp.my);
-    // C :1275–1276 redraw_worm named
+    // C :1275–1276 — redraw_worm after head newsym (D-1577)
+    if (mtmp.wormno) redraw_worm(mtmp);
     if (attacktype(mtmp.data, AT_WEAP)) {
         mtmp.weapon_check = NEED_HTH_WEAPON;
         await mon_wield_item(mtmp);
@@ -717,7 +751,7 @@ async function mon_arrive_after_you(mtmp) {
         dlevel: mtmp.mtrack?.[2]?.y | 0,
     };
     arrive_track_clear(mtmp);
-    restore_cham(mtmp);
+    await restore_cham(mtmp);
 
     if (mtmp === u.usteed) return;
 
@@ -978,7 +1012,7 @@ export async function wary_dog(mtmp, was_dead) {
 /**
  * C ref: dog.c abuse_dog — reduce tameness; yelp/growl when on-map.
  * Called from hmon_hitmon_pet (and kick/zap/trap/hack callers deferred).
- * Named omissions: worm redraw on untame; Aggravate/Conflict /=2 path unverified this peel.
+ * redraw_worm on untame is D-1577.
  */
 export async function abuse_dog(mtmp) {
     if (!mtmp?.mtame) return;
@@ -992,8 +1026,9 @@ export async function abuse_dog(mtmp) {
     }
 
     if (mtmp.mtame && !mtmp.isminion) {
-        if (!mtmp.edog) mtmp.edog = {};
-        mtmp.edog.abuse = (mtmp.edog.abuse | 0) + 1;
+        // C :1372–1373 — EDOG(mtmp)->abuse++; tame non-minion has edog
+        const edog = EDOG(mtmp) || mtmp.edog;
+        if (edog) edog.abuse = (edog.abuse | 0) + 1;
     }
 
     if (!mtmp.mtame && mtmp.mleashed) {
@@ -1012,7 +1047,7 @@ export async function abuse_dog(mtmp) {
         }
         if (!mtmp.mtame) {
             newsym(mtmp.mx, mtmp.my);
-            // worm redraw deferred
+            if (mtmp.wormno) redraw_worm(mtmp);
         }
     }
 }

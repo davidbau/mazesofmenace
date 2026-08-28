@@ -50,7 +50,7 @@ import {
     M1_SLITHY, MZ_SMALL, is_rider, is_displacer,
 } from './monsters.js';
 import { little_to_big, big_to_little } from './mondata.js';
-import { dist2 } from './hacklib.js';
+import { dist2, ing_suffix } from './hacklib.js';
 import { zombie_form } from './mon.js';
 import { cry_sound } from './sounds.js';
 import { rehumanize, body_part } from './polyself.js';
@@ -1045,32 +1045,6 @@ function locomotion_hatch(ptr, def) {
     return def;
 }
 
-/** C ref: hacklib.c ing_suffix — gerund; on/off/with split + vowel doubling. */
-function ing_suffix_hatch(s) {
-    let buf = String(s);
-    const vowel = 'aeiouwy';
-    let onoff = '';
-    if (/\s+on$/i.test(buf) || /\s+off$/i.test(buf) || /\s+with$/i.test(buf)) {
-        const sp = buf.lastIndexOf(' ');
-        onoff = buf.slice(sp);
-        buf = buf.slice(0, sp);
-    }
-    const n = buf.length;
-    if (n >= 2 && buf.slice(-2).toLowerCase() === 'er') {
-        // slither + ing
-    } else if (n >= 3
-        && !vowel.includes(buf[n - 1].toLowerCase())
-        && vowel.includes(buf[n - 2].toLowerCase())
-        && !vowel.includes(buf[n - 3].toLowerCase())) {
-        buf += buf[n - 1];
-    } else if (n >= 2 && buf.slice(-2).toLowerCase() === 'ie') {
-        buf = `${buf.slice(0, -2)}y`;
-    } else if (n >= 1 && buf[n - 1].toLowerCase() === 'e') {
-        buf = buf.slice(0, -1);
-    }
-    return `${buf}ing${onoff}`;
-}
-
 /** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
 function s_suffix_hatch(s) {
     const buf = String(s ?? '');
@@ -1211,7 +1185,7 @@ export async function hatch_egg(egg, timeout) {
             );
         }
         if (yours) {
-            const cry = ing_suffix_hatch(cry_sound(mon));
+            const cry = ing_suffix(cry_sound(mon));
             const seems = (is_silent_hatch(mon.data) || Deaf_hatch())
                 ? 'seems' : 'sounds';
             const parent = game.flags?.female ? 'mommy' : 'daddy';

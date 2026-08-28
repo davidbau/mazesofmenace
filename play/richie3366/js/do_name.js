@@ -13,6 +13,7 @@ import {
 } from './display.js';
 import {
     paint_corner_nhw_menu, discover_object, compactify_invlets,
+    getobj_display_pickinv,
 } from './invent.js';
 import {
     ONAME_VIA_NAMING, ONAME_KNOW_ARTI, MGIVENNAME, has_mgivenname,
@@ -144,15 +145,19 @@ async function getobj_name() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            const { display_pickinv_reply } = await import('./invent.js');
-            const ilet = await display_pickinv_reply(
-                ch === '*' ? '*' : rawLets,
+            const counted = { cnt: 0, cntgiven: false };
+            const ilet = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word: 'name', allownone: false, promptHasHands: false },
             );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
             }
-            if (!ilet) continue;
+            if (!ilet) {
+                if (game.iflags?.force_invmenu) return null;
+                continue;
+            }
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
             if (!picked) {
                 await pline("You don't have that object.");
@@ -611,6 +616,14 @@ export function x_monnam(mtmp, article, adjective, suppress = 0, called = false)
     default:
         return buf;
     }
+}
+
+/**
+ * C ref: do_name.c noname_monnam `:1101–1105` — x_monnam with SUPPRESS_NAME
+ * so a named monster still yields "a <type>" (newcham NC_SHOW_MSG).
+ */
+export function noname_monnam(mtmp, article) {
+    return x_monnam(mtmp, article, null, SUPPRESS_NAME, false);
 }
 
 /**

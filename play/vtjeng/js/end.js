@@ -8,14 +8,14 @@
 // the survive path (1113-1122) that calls savelife() and returns when the
 // player declines death. The life-saving amulet's earlier reprieve remains
 // refused. really_done() covers the mounted-slip prefix through cleanup, time
-// bookkeeping, the bones decision, inventory identification, and the first
-// disclosure prompt; later disclosure answers, tombstone, bones creation, and
-// the score file remain refused, in that source order.
+// bookkeeping, inventory identification, disclosure, grave creation, score
+// calculation, and the Save bones? prompt; savebones(), tombstone, and the
+// score file remain refused.
 //
 // savelife() (end.c:704-756) restores the hero to a viable state after the
-// death is declined in wizard or explore mode. Three of its branches remain
-// refused: endmultishot() (not ported), expels() (not ported), and
-// make_sick() (not ported).
+// death is declined in wizard or explore mode. Two of its branches remain
+// refused: expels() (not ported) and make_sick() (not ported).
+// endmultishot(FALSE) is now ported.
 //
 // done_in_by() (end.c:185-344) sets up the killer string from a monster
 // that dealt lethal damage and calls done(). losehp()'s death branch in
@@ -29,7 +29,8 @@
 // value initializer while the cycle remains.
 import { effective_attribute, minuhpmax, setuhpmax } from './attrib.js';
 import { getnow, midnight, night } from './calendar.js';
-import { can_make_bones } from './bones.js';
+import { can_make_bones, savebones } from './bones.js';
+import { yyyymmdd } from './calendar.js';
 import { paranoid_query, yn_function } from './cmd.js';
 import {
     A_CON,
@@ -45,6 +46,7 @@ import {
     DISCLOSE_YES_WITHOUT_PROMPT,
     G_GENOD,
     GENOCIDED,
+    IS_GRAVE,
     KILLED_BY,
     KILLED_BY_AN,
     LIFESAVED,
@@ -52,6 +54,7 @@ import {
     M_AP_TYPE,
     NO_KILLER_PREFIX,
     PANICKED,
+    PARANOID_BONES,
     PARANOID_DIE,
     PLNMSG_OK_DONT_DIE,
     QUIT,
@@ -71,12 +74,16 @@ import {
     MGIVENNAME,
     NON_PM,
 } from './const.js';
+import { mk_named_object } from './corpstat.js';
 import { bot } from './display.js';
 import { pmname } from './do_name.js';
+import { deepest_lev_reached } from './dungeon.js';
 import { game } from './gstate.js';
+import { make_grave } from './grave.js';
 import { curs_on_u } from './hack.js';
 import { zombie_maker } from './mon.js';
 import { gender, is_vampshifter, type_is_pname } from './mondata.js';
+import { G_NOCORPSE } from './monsters.js';
 import {
     G_UNIQ,
     PM_GHOST,
@@ -90,19 +97,26 @@ import {
     S_VAMPIRE,
     S_WRAITH,
 } from './monsters.js';
+import { endmultishot } from './dothrow.js';
 import { upstart } from './hacklib.js';
-import { sortloot, update_inventory } from './invent.js';
+import { money_cnt, sortloot, update_inventory } from './invent.js';
 import { isContainer } from './obj.js';
 import { discover_object } from './o_init.js';
-import { BAG_OF_TRICKS, LARGE_BOX, STATUE, TIN } from './objects.js';
+import { BAG_OF_TRICKS, CORPSE, LARGE_BOX, STATUE, TIN } from './objects.js';
 import {
     an, donameFresh, the, thesimpleoname, the_unique_pm, xnameFresh,
 } from './objnam.js';
-import { displayTtyMenuTextWindow } from './tty_menu.js';
+import { displayTtyMenuTextWindow, displayTtyTextWindow } from './tty_menu.js';
 import { canSpotMonster } from './startup_a11y.js';
+import { formatkiller } from './topten.js';
+import { In_endgame, In_quest, Is_astralevel, plur } from './const.js';
+import { depth, dunlev, single_level_branch } from './dungeon.js';
+import { Goodbye } from './role_init.js';
+import { tty_raw_print } from './tty_rawprint.js';
 import { reset_utrap } from './trap.js';
 import { ttyPline, ttyUrgentPline } from './tty_message.js';
 import { init_uhunger } from './u_init.js';
+import { hidden_gold } from './u_init_inventory_attrs.js';
 
 export class UnsupportedEndOfGameError extends Error {
     constructor(message) {
@@ -127,6 +141,25 @@ export const deaths = Object.freeze([
     'escaped', 'ascended',
 ]);
 
+// C ref: end.c ends[] (52-61), "when you %s". Separate from deaths[]: each
+// entry reads naturally after "You " or "when you ", e.g. "were poisoned"
+// instead of "poisoned". Indexed by game_end_types values.
+const ends = Object.freeze([
+    'died', 'choked', 'were poisoned', 'starved', 'drowned',
+    'burned', 'dissolved in the lava', 'were crushed',
+    'turned to stone', 'turned into slime', 'were genocided',
+    'panicked', 'were tricked', 'quit', 'escaped', 'ascended',
+]);
+
+// C ref: include/integer.h nowrap_add() macro.  Caps a + b at LONG_MAX to
+// prevent score wrapping.  On the 64-bit reference platform long is 64 bits,
+// but practical scores are far below Number.MAX_SAFE_INTEGER (2^53-1), so
+// plain addition always matches C.
+function nowrap_add(a, b) {
+    const sum = a + b;
+    return sum <= Number.MAX_SAFE_INTEGER ? sum : Number.MAX_SAFE_INTEGER;
+}
+
 // C ref: youprop.h:387 Lifesaved, the extrinsic alone. The amulet of life
 // saving is the only item that confers it. No ported command can put that
 // amulet on: it uses do_wear.c doputon(), and js/cmd.js dispatches no command
@@ -149,13 +182,11 @@ function ParanoidDie(state) {
 // after being killed, when wizard or explore mode lets the player decline
 // death (or when the amulet of life saving fires, which is not yet ported).
 //
-// Three branches remain refused because their targets are not ported:
-//   endmultishot(FALSE)  -- only when !context.mon_moving (hero turn)
+// Two branches remain refused because their targets are not ported:
 //   expels()             -- only when u.uswallow (hero is engulfed)
 //   make_sick(0L, ...)   -- only when (Sick & TIMEOUT) == 1L (one-turn sick)
-// seed5002's death occurs on a monster turn (context.mon_moving is true), the
-// hero is not polymorphed, not swallowed, not stuck, not in a lava trap, and
-// not sick, so all three branches are unreachable for that session.
+// endmultishot(FALSE) is now ported: it stops a multi-shot volley in progress
+// when the hero dies on their own turn (context.mon_moving is false).
 //
 // js/hack.js imports done() from this file; this file imports curs_on_u()
 // from js/hack.js. Both bindings are consumed only inside function bodies,
@@ -209,11 +240,9 @@ async function savelife(how, state = game) {
     await curs_on_u(state);
 
     if (!state.context.mon_moving) {
-        // endmultishot() stops a multi-shot action in progress. It is not
-        // ported; this path fires only on the hero's own turn.
-        throw new UnsupportedEndOfGameError(
-            'savelife() needs endmultishot() on the hero turn',
-        );
+        // endmultishot(FALSE) stops a multi-shot volley in progress. With
+        // verbose=false it suppresses the message and only clamps m_shot.n.
+        endmultishot(false, state);
     }
     if (u.uswallow) {
         // might drop hero onto a trap that kills her all over again
@@ -532,9 +561,13 @@ export async function done(how, state = game) {
     // prefix followed by x_monnam(), so the species and optional given name
     // are deliberately variable. This slice owns that death source, not one
     // recorded pony spelling.
+    //
+    // zapyourself() constructs the death-ray killer from uhim(), so the
+    // pronoun varies by gender but the surrounding text is fixed.
     if (how === DIED
         && killer.format === NO_KILLER_PREFIX
-        && killer.name.startsWith('slipped while mounting ')) {
+        && (killer.name.startsWith('slipped while mounting ')
+            || killer.name.endsWith('self with a death ray'))) {
         await really_done(how, state);
         return;
     }
@@ -545,11 +578,8 @@ export async function done(how, state = game) {
 }
 
 const DISCLOSURE_OPTIONS = 'iavgco';
-const DEFAULT_END_DISCLOSE = 'nnnnnn';
 
-// C ref: end.c should_query_disclose_option() (475-515). The ordinary death
-// slice reaches category 'i' with the startup default. Other configured
-// values remain refused because they can skip or alter the disclosure flow.
+// C ref: end.c should_query_disclose_option() (475-515).
 function should_query_disclose_option(category, state) {
     const index = DISCLOSURE_OPTIONS.indexOf(category);
     if (index < 0) {
@@ -558,53 +588,77 @@ function should_query_disclose_option(category, state) {
         );
     }
     const disclose = state.flags.end_disclose[index];
-    if (disclose !== DISCLOSE_PROMPT_DEFAULT_NO) {
-        const recognized = [
-            DISCLOSE_PROMPT_DEFAULT_YES,
-            DISCLOSE_PROMPT_DEFAULT_SPECIAL,
-            DISCLOSE_YES_WITHOUT_PROMPT,
-            DISCLOSE_SPECIAL_WITHOUT_PROMPT,
-            DISCLOSE_NO_WITHOUT_PROMPT,
-        ].includes(disclose);
+    switch (disclose) {
+    case DISCLOSE_NO_WITHOUT_PROMPT:
+        return { ask: false, defquery: 'n' };
+    case DISCLOSE_PROMPT_DEFAULT_NO:
+        return { ask: true, defquery: 'n' };
+    case DISCLOSE_YES_WITHOUT_PROMPT:
+    case DISCLOSE_SPECIAL_WITHOUT_PROMPT:
+    case DISCLOSE_PROMPT_DEFAULT_YES:
+    case DISCLOSE_PROMPT_DEFAULT_SPECIAL:
         throw new UnsupportedEndOfGameError(
-            recognized
-                ? 'nondefault disclosure options'
-                : `invalid disclosure option ${String(disclose)}`,
+            `disclosure option ${disclose} for category ${category}`,
+        );
+    default:
+        throw new UnsupportedEndOfGameError(
+            `invalid disclosure option ${String(disclose)}`,
         );
     }
-    return { ask: true, defquery: 'n' };
 }
 
-// C ref: end.c disclose() (619-699), through the first inventory question.
-// Every answer and every later category remain behind yn_function()'s
-// unsupported CQ_REPEAT write. A replay with no answer stops on the prompt.
+// C ref: end.c disclose() (619-699).  Walks each disclosure category.
+// When a category is configured as DISCLOSE_NO_WITHOUT_PROMPT ('-'), the
+// C code sets c = defquery = 'n' without asking, and the category is skipped.
+// When a category is DISCLOSE_PROMPT_DEFAULT_NO ('n'), the player is asked.
+// Other settings (yes-without-prompt, default-yes, special) are refused.
 async function disclose(how, taken, state) {
-    if (!state.invent || state.program_state.stopprint) {
-        throw new UnsupportedEndOfGameError(
-            'disclose() without the ordinary inventory question',
-        );
+    // Category 'i': inventory.
+    if (state.invent && !state.program_state.stopprint) {
+        if (taken) {
+            throw new UnsupportedEndOfGameError(
+                'disclose() after a shopkeeper takes the inventory',
+            );
+        }
+        const { ask, defquery } = should_query_disclose_option('i', state);
+        if (ask) {
+            const c = await yn_function(
+                'Do you want your possessions identified?',
+                'ynq',
+                defquery,
+                true,
+                state,
+            );
+            if (c === 'y') {
+                throw new UnsupportedEndOfGameError(
+                    'disclose() inventory display',
+                );
+            }
+            if (c === 'q') {
+                state.program_state.stopprint
+                    = (state.program_state.stopprint ?? 0) + 1;
+            }
+        }
+        // ask=false, defquery='n': skip inventory disclosure.
     }
-    if (taken) {
-        throw new UnsupportedEndOfGameError(
-            'disclose() after a shopkeeper takes the inventory',
-        );
+
+    // Categories 'a', 'v', 'g', 'c', 'o': when asked, their display handlers
+    // are not ported; when suppressed, they are skipped.
+    for (const cat of ['a', 'v', 'g', 'c', 'o']) {
+        if (state.program_state.stopprint) break;
+        const { ask, defquery } = should_query_disclose_option(cat, state);
+        if (ask) {
+            throw new UnsupportedEndOfGameError(
+                `disclose() prompted category '${cat}'`,
+            );
+        }
+        // ask=false with defquery='n' or 'a': check for auto-yes.
+        if (defquery === 'y' || defquery === 'a') {
+            throw new UnsupportedEndOfGameError(
+                `disclose() auto-yes category '${cat}'`,
+            );
+        }
     }
-    const { ask, defquery } = should_query_disclose_option('i', state);
-    if (!ask) {
-        throw new UnsupportedEndOfGameError(
-            'disclose() without the possessions prompt',
-        );
-    }
-    await yn_function(
-        'Do you want your possessions identified?',
-        'ynq',
-        defquery,
-        true,
-        state,
-    );
-    throw new UnsupportedEndOfGameError(
-        `disclose(${how}) after the possessions answer`,
-    );
 }
 
 function hasEndCleanupMonster(state) {
@@ -652,9 +706,9 @@ function identifyInventoryForDisclosure(state) {
     }
 }
 
-// C ref: end.c really_done() (1130-1280), through disclose()'s first prompt.
-// This is the ordinary mounted-slip arm only. Every branch named by a guard
-// below remains fail-closed at the point C would enter it.
+// C ref: end.c really_done() (1130-1369).  Covers the ordinary death path
+// through disclosure, grave creation, score calculation, and the Save bones?
+// prompt.  savebones() and the post-bones code remain refused.
 async function really_done(how, state) {
     const programState = state.program_state;
     programState.gameover = 1;
@@ -692,11 +746,6 @@ async function really_done(how, state) {
     }
 
     const bonesOk = can_make_bones(state);
-    if (bonesOk) {
-        throw new UnsupportedEndOfGameError(
-            'really_done() positive bones creation',
-        );
-    }
     if (how !== DIED || state.u.ugrave_arise !== NON_PM) {
         throw new UnsupportedEndOfGameError(
             'really_done() special death or grave-arise state',
@@ -716,10 +765,255 @@ async function really_done(how, state) {
     const taken = false;
 
     identifyInventoryForDisclosure(state);
-    if (state.flags.end_disclose.join('') !== DEFAULT_END_DISCLOSE) {
-        throw new UnsupportedEndOfGameError('nondefault disclosure options');
-    }
+    // C: if (strcmp(flags.end_disclose, "none")) disclose(how, taken);
+    // The "none" sentinel is a special all-suppress setting.  The option
+    // parser above never stores it; the test therefore always passes.
     await disclose(how, taken, state);
+
+    // C ref: end.c:1285-1290 livelog_printf + dump_everything.  Neither is
+    // ported; they produce no RNG draws or game-state mutations.
+
+    // C ref: end.c:1297-1298 keepdogs for ESCAPED/ASCENDED.
+    // Not applicable: how === DIED.
+
+    // C ref: end.c:1300-1302 finish_paybill() when bones_ok && taken.
+    // taken is false (no shopkeeper), so finish_paybill() does not run.
+
+    // -- Grave creation (C ref: end.c:1306-1319) --
+    let corpse = null;
+    if (bonesOk && state.u.ugrave_arise === NON_PM
+        && !((state.mvitals?.[state.u.umonnum]?.mvflags ?? 0) & G_NOCORPSE)) {
+        // Base corpse on race when not polymorphed, since the original
+        // umonnum is based on role and all role monsters are human.
+        const mnum = !Upolyd(state.u) ? state.urace.mnum : state.u.umonnum;
+        const wasAlreadyGrave = IS_GRAVE(
+            state.level.at(state.u.ux, state.u.uy)?.typ ?? 0,
+        );
+
+        corpse = mk_named_object(
+            CORPSE, mnum, state.u.ux, state.u.uy, state.plname,
+        );
+        const graveText = `${state.plname}, ${formatkiller(how, true, state)}`;
+        make_grave(state.u.ux, state.u.uy, graveText);
+        const loc = state.level.at(state.u.ux, state.u.uy);
+        if (loc && IS_GRAVE(loc.typ) && !wasAlreadyGrave) {
+            loc.flags = 1; // emptygrave: corpse is on the surface, not buried
+        }
+    }
+
+    // -- Score calculation (C ref: end.c:1322-1348) --
+    {
+        const deepest = deepest_lev_reached(state);
+        let umoney = money_cnt(state.invent);
+        let tmp = state.u.umoney0;
+        umoney += hidden_gold(true, state);
+        tmp = umoney - tmp; // net gain
+        if (tmp < 0) tmp = 0;
+        if (how < PANICKED) tmp -= Math.trunc(tmp / 10);
+        tmp += 50 * (deepest - 1);
+        if (deepest > 20)
+            tmp += 1000 * ((deepest > 30) ? 10 : deepest - 20);
+        state.u.urexp = nowrap_add(state.u.urexp, tmp);
+
+        // Ascension bonus (only when offering to original deity).
+        if (how === ASCENDED
+            && state.u.ualign?.type === state.u.ualignbase?.[0]) {
+            tmp = (state.u.ualignbase?.[1] === state.u.ualignbase?.[0])
+                ? state.u.urexp
+                : Math.trunc(state.u.urexp / 2);
+            state.u.urexp = nowrap_add(state.u.urexp, tmp);
+        }
+    }
+
+    // C ref: end.c:1351-1361 ugrave_arise message.
+    // ugrave_arise === NON_PM in the supported path, so ismnum() is false.
+
+    // -- Bones saving (C ref: end.c:1363-1369) --
+    if (bonesOk) {
+        if (!state.wizard
+            || await paranoid_query(
+                (state.flags.paranoia_bits & PARANOID_BONES) !== 0,
+                'Save bones?',
+                state,
+            )) {
+            savebones(how, endtime, corpse, state);
+        }
+        corpse = null;
+    }
+
+    // C ref: end.c:1372-1373 done_money for RIP output.
+    let umoney = money_cnt(state.invent) + hidden_gold(true, state);
+    state.gd ??= {};
+    state.gd.done_money = umoney;
+
+    // -- Window cleanup and tombstone (C ref: end.c:1376-1396) --
+    //
+    // C destroys the inventory, map, status, and message windows, then creates
+    // a NHW_TEXT window for the tombstone and farewell text. The port's text
+    // window is displayTtyTextWindow.
+
+    // C: display_nhwindow(WIN_MESSAGE, TRUE) -- show pending messages.
+    // The port clears the message window state; pending messages were already
+    // displayed during the bones prompt.
+
+    // C: if (how < GENOCIDED && flags.tombstone && endwin != WIN_ERR)
+    //        outrip(endwin, how, endtime);
+    const textLines = [];
+    const done_stopprint = 0;
+
+    if (how < GENOCIDED && state.flags.tombstone) {
+        genl_outrip(textLines, how, endtime, state);
+    }
+
+    // C ref: end.c:1418-1424. Farewell text.
+    const roleName = (how !== ASCENDED)
+        ? ((state.flags.female && state.urole?.name?.f)
+            ? state.urole.name.f : state.urole?.name?.m ?? 'Adventurer')
+        : (state.flags.female ? 'Demigoddess' : 'Demigod');
+    const goodbye = Goodbye(state.urole);
+    textLines.push({ text: `${goodbye} ${state.plname} the ${roleName}...` });
+    textLines.push({ text: '' });
+
+    // C ref: end.c:1521-1542. Death summary for non-escaped, non-ascended.
+    if (how !== 14 /* ESCAPED */ && how !== 15 /* ASCENDED */) {
+        const uz = state.u.uz;
+        let pbuf;
+        if (uz.dnum === 0 && uz.dlevel <= 0) {
+            pbuf = `You ${uz.dlevel < 0 ? 'passed away' : ends[how]}`
+                + ' beyond the confines of the dungeon';
+        } else {
+            let where = state.dungeons?.[uz.dnum]?.dname
+                ?? 'The Dungeons of Doom';
+            if (Is_astralevel(uz)) where = 'The Astral Plane';
+            pbuf = `You ${ends[how]} in ${where}`;
+            if (!In_endgame(uz) && !single_level_branch(uz, state)) {
+                const dlevel = In_quest(uz)
+                    ? dunlev(uz) : depth(uz, state);
+                pbuf += ` on dungeon level ${dlevel}`;
+            }
+        }
+        pbuf += ` with ${state.u.urexp} point${plur(state.u.urexp)},`;
+        textLines.push({ text: pbuf });
+    }
+
+    // C ref: end.c:1544-1551. Gold, moves, level, hit points.
+    textLines.push({
+        text: `and ${umoney} piece${plur(umoney)} of gold, `
+            + `after ${state.moves} move${plur(state.moves)}.`,
+    });
+    textLines.push({
+        text: `You were level ${state.u.ulevel} with a maximum of `
+            + `${state.u.uhpmax} hit point${plur(state.u.uhpmax)} `
+            + `when you ${ends[how]}.`,
+    });
+    textLines.push({ text: '' });
+
+    // C ref: end.c:1552-1555 display_nhwindow(endwin, TRUE).
+    await displayTtyTextWindow(state, textLines);
+
+    // C ref: end.c:1579-1583 exit_nhwindows + topten.
+    // exit_nhwindows clears the screen; topten prints to raw output.
+    // In wizard mode, topten just prints the wizard message.
+    if (state.wizard || state.discover) {
+        tty_raw_print(state, '');
+        const modeWord = state.wizard ? 'wizard' : 'discover';
+        tty_raw_print(
+            state,
+            `Since you were in ${modeWord} mode, `
+            + 'the score list will not be checked.',
+        );
+    }
+
+    // C ref: end.c:1589 nh_terminate(EXIT_SUCCESS).
+    // The JS port signals end of segment via gameover. The post-moveloop
+    // capture hook is gated on !in_really_done, so the final screen capture
+    // happens at the next _preNhgetchHook call (triggered by the moveloop
+    // break + the explicit hook call in jsmain.js for really_done).
+    state.program_state.gameover = true;
+    // Clear in_really_done so the post-loop capture hook runs.
+    state.program_state.in_really_done = false;
+}
+
+// C ref: rip.c genl_outrip() (86-163). Builds the tombstone as text lines
+// and pushes them into the lines array for the NHW_TEXT window. The
+// tombstone has a fixed ASCII-art frame with the hero's name, gold, death
+// description, and year centered on specific lines.
+const rip_txt = [
+    '                       ----------',
+    '                      /          \\',
+    '                     /    REST    \\',
+    '                    /      IN      \\',
+    '                   /     PEACE      \\',
+    '                  /                  \\',
+    '                  |                  |', // NAME_LINE  6
+    '                  |                  |', // GOLD_LINE  7
+    '                  |                  |', // DEATH_LINE 8
+    '                  |                  |', // 9
+    '                  |                  |', // 10
+    '                  |                  |', // 11
+    '                  |       1001       |', // YEAR_LINE 12
+    '                 *|     *  *  *      | *',
+    '        _________)/\\\\_//(\\/(/\\)/\\//\\/|_)_______',
+];
+const STONE_LINE_CENT = 28;
+const STONE_LINE_LEN = 16;
+const NAME_LINE = 6;
+const GOLD_LINE = 7;
+const DEATH_LINE = 8;
+const YEAR_LINE = 12;
+
+function center(lines, line, text) {
+    const row = [...lines[line]];
+    const start = STONE_LINE_CENT - ((text.length + 1) >> 1);
+    for (let i = 0; i < text.length; i++) {
+        row[start + i] = text[i];
+    }
+    lines[line] = row.join('');
+}
+
+function genl_outrip(textLines, how, when, state) {
+    const dp = rip_txt.map((line) => line);
+
+    // Put name on stone
+    const name = (state.plname ?? '').substring(0, STONE_LINE_LEN);
+    center(dp, NAME_LINE, name);
+
+    // Put gold on stone
+    let cash = Math.max(state.gd?.done_money ?? 0, 0);
+    if (cash > 999999999) cash = 999999999;
+    center(dp, GOLD_LINE, `${cash} Au`);
+
+    // Put death description on stone
+    const deathBuf = formatkiller(how, false, state);
+    let dpx = deathBuf;
+    for (let line = DEATH_LINE; line < YEAR_LINE; line++) {
+        let i0 = dpx.length;
+        if (i0 > STONE_LINE_LEN) {
+            for (let i = STONE_LINE_LEN; i > 0 && i0 > STONE_LINE_LEN; i--) {
+                if (dpx[i] === ' ') i0 = i;
+            }
+            if (i0 > STONE_LINE_LEN) i0 = STONE_LINE_LEN;
+        }
+        const chunk = dpx.substring(0, i0);
+        center(dp, line, chunk);
+        if (dpx[i0] !== ' ') {
+            dpx = dpx.substring(i0);
+        } else {
+            dpx = dpx.substring(i0 + 1);
+        }
+    }
+
+    // Put year on stone
+    const year = Math.trunc((yyyymmdd(state, when) / 10000) % 10000);
+    center(dp, YEAR_LINE, String(year).padStart(4, ' '));
+
+    // Add to output: blank line, tombstone lines, two trailing blanks.
+    textLines.push({ text: '' });
+    for (const line of dp) {
+        textLines.push({ text: line });
+    }
+    textLines.push({ text: '' });
+    textLines.push({ text: '' });
 }
 
 // C ref: end.c container_contents() (1594-1670). Creates a NHW_MENU text

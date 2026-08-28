@@ -1346,6 +1346,15 @@ export function The(str) {
 }
 
 /**
+ * C ref: objnam.c Tobjnam — The(xname) then optional " " + otense(verb).
+ */
+export function Tobjnam(otmp, verb) {
+    let bp = The(xname(otmp));
+    if (verb) bp += ` ${otense(otmp, verb)}`;
+    return bp;
+}
+
+/**
  * C ref: objnam.c singular — temporarily force quan=1 for naming.
  */
 export function singular(obj, func = xname) {

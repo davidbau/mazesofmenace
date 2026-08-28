@@ -31,7 +31,7 @@ import {
     KILLED_BY, NO_KILLER_PREFIX, W_WEP, STATUE_TRAP,
     EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, PARANOID_BREAKWAND,
     RLOC_NOMSG, RLOC_MSG, RLOC_NONE, XKILL_NOMSG, ARTICLE_NONE,
-    SUPPRESS_SADDLE, has_mgivenname,
+    SUPPRESS_SADDLE, has_mgivenname, has_mcorpsenm, MCORPSENM,
     PLNMSG_enum, NO_TRAP_FLAGS, Is_airlevel, Is_waterlevel,
     LANDMINE, BEAR_TRAP, FORCEBUNGLE, SHOPBASE, P_RIDING, NO_MM_FLAGS,
     MAX_SPELL_STUDY, HOMEMADE_TIN, G_GONE, NO_MINVENT, MM_NOMSG, TT_BURIEDBALL,
@@ -66,7 +66,7 @@ import {
     obj_extract_self, place_object, stackobj, weight, mksobj, stop_timer,
     start_timer, hornoplenty,
 } from './mkobj.js';
-import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, yname, shk_your } from './objnam.js';
+import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, yname, shk_your } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam } from './do_name.js';
@@ -106,6 +106,7 @@ import {
 } from './trap.js';
 import { begin_burn, end_burn, Is_candle, obj_merge_light_sources,
     get_obj_location } from './timeout.js';
+import { show_transient_light, transient_light_cleanup } from './light.js';
 import { set_occupation, u_wipe_engr } from './engrave.js';
 import { makemon, mkclass } from './makemon.js';
 import { make_familiar } from './dog.js';
@@ -185,6 +186,7 @@ const FIGURINE = objectNames.indexOf('FIGURINE');
 const UNICORN_HORN = objectNames.indexOf('UNICORN_HORN');
 const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
 const TIN = objectNames.indexOf('TIN');
+const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const CHEST = objectNames.indexOf('CHEST');
 const ICE_BOX = objectNames.indexOf('ICE_BOX');
@@ -402,14 +404,20 @@ async function getobj_apply() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            // C: display_pickinv uses non-compacted lets[]
-            const { display_pickinv_reply } = await import('./invent.js');
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            // C: display_pickinv uses non-compacted lets[]; redo_menu D-1578
+            const counted = { cnt: 0, cntgiven: false };
+            const ilet = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word: 'use or apply', allownone: false, promptHasHands: false },
+            );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
             }
-            if (!ilet) continue; // Space/Return → re-prompt getobj
+            if (!ilet) {
+                if (game.iflags?.force_invmenu) return null;
+                continue; // Space/Return → re-prompt getobj
+            }
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
             if (!picked) {
                 await pline("You don't have that object.");
@@ -498,7 +506,17 @@ async function use_stethoscope(_obj) {
             const ap = M_AP_TYPE(mtmp);
             if (ap === M_AP_OBJECT) {
                 const otyp = mtmp.mappearance | 0;
-                what = simple_typename_steth(otyp);
+                // C: SLIME_MOLD + has_mcorpsenm → dummy.spe = MCORPSENM
+                // then simpleonames (fruit name, not "slime mold").
+                if (otyp === SLIME_MOLD && has_mcorpsenm(mtmp)) {
+                    what = simpleonames({
+                        otyp,
+                        spe: MCORPSENM(mtmp),
+                        quan: 1,
+                    });
+                } else {
+                    what = simple_typename_steth(otyp);
+                }
                 const on = objectNames[otyp] || '';
                 use_plural = on.includes('BOOTS') || on.includes('GLOVES')
                     || otyp === LENSES;
@@ -825,8 +843,8 @@ async function use_mirror(obj) {
 /**
  * C zap.c bhit FLASHED_LIGHT — first non-minvis mon stops the beam;
  * minvis calls flash_hits_mon and continues (C zap.c bhit).
- * Named omissions: tmp_at flash glyph; transient_light; iron bars;
- * M_AP_OBJECT skip.
+ * show_transient_light per cell when !Blind (D-1597).
+ * Named omissions: tmp_at flash glyph; iron bars; M_AP_OBJECT skip.
  */
 async function bhit_flashed_light(ddx, ddy, range, obj) {
     const bhitpos = game.bhitpos || (game.bhitpos = { x: 0, y: 0 });
@@ -845,6 +863,8 @@ async function bhit_flashed_light(ddx, ddy, range, obj) {
             break;
         }
         const typ = game.level?.at(x, y)?.typ;
+        // C zap.c bhit :3914–3916 — FLASHED_LIGHT after waterwall
+        if (!Blind()) await show_transient_light(null, x, y);
         const mtmp = m_at(x, y);
         if (mtmp) {
             game.notonhead = (x !== (mtmp.mx | 0) || y !== (mtmp.my | 0));
@@ -884,7 +904,9 @@ export async function do_blinding_ray(obj) {
             await see_monster_closeup(mtmp, true);
         }
     }
-    // transient_light_cleanup deferred
+    /* C apply.c do_blinding_ray :73–75 — bhit skips cleanup for
+     * FLASHED_LIGHT so flash_hits_mon runs first (D-1597). */
+    await transient_light_cleanup();
 }
 
 /**
@@ -2269,7 +2291,10 @@ async function getobj_grease() {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
             }
-            if (!ilet) continue;
+            if (!ilet) {
+                if (game.iflags?.force_invmenu) return null;
+                continue;
+            }
             if (ilet === '-') return hands_obj;
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
             if (!picked) {
@@ -2915,13 +2940,19 @@ async function getobj_rub_on_stone(stonebuf, okfn) {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            const { display_pickinv_reply } = await import('./invent.js');
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            const counted = { cnt: 0, cntgiven: false };
+            const ilet = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word: stonebuf, allownone: false, promptHasHands: false },
+            );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
             }
-            if (!ilet) continue;
+            if (!ilet) {
+                if (game.iflags?.force_invmenu) return null;
+                continue;
+            }
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
             if (!picked) {
                 await pline("You don't have that object.");
@@ -3136,13 +3167,19 @@ async function getobj_jelly() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            const { display_pickinv_reply } = await import('./invent.js');
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            const counted = { cnt: 0, cntgiven: false };
+            const ilet = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word, allownone: false, promptHasHands: false },
+            );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
             }
-            if (!ilet) continue;
+            if (!ilet) {
+                if (game.iflags?.force_invmenu) return null;
+                continue;
+            }
             const picked = (game.invent || []).find((o) => o.invlet === ilet);
             if (!picked) {
                 await pline("You don't have that object.");

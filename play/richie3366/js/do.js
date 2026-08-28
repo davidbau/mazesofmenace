@@ -10,7 +10,7 @@
 //         corpse_xname adjective).
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import { depth } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
@@ -31,6 +31,7 @@ import {
     IS_WATERWALL, IS_ALTAR, is_pit, is_hole, u_at, Has_contents,
     Is_container, Is_waterlevel, Is_airlevel,
     In_quest, In_endgame, In_mines, In_sokoban, Is_rogue_level,
+    Is_astralevel,
     PRIMARYSET, ROGUESET,
     ERODE_BURN, EF_DESTROY,
     NHCORE_GETPOS_TIP, NHCORE_ENTER_TUTORIAL, NHCORE_LEAVE_TUTORIAL,
@@ -113,6 +114,7 @@ import {
 import { dismount_steed } from './steed.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
+import { create_mplayers } from './mplayer.js';
 import { bones_include_name } from './bones.js';
 import {
     olfaction, passes_walls, throws_rocks, is_flyer, is_floater,
@@ -1282,12 +1284,13 @@ function getlev_catchup_monsters(elapsed) {
  * Ported: quest-home gate — on qstart && !newdungeon && !ok_to_quest()
  * → "mysterious force prevents you from descending" (D-0798).
  * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
- * RMPORTAL, endgame astral `final_level` / migrating-Wizard resurrect arm,
+ * RMPORTAL, endgame `final_level` reset_hostility / gain_guardian_angel /
+ * ACH_ENDG/ASTR (create_mplayers live D-1596), migrating-Wizard resurrect arm,
  * Punished `ballfall` on trap-door falling, W-tower `u_on_rndspot` bit 2
  * (rndspot itself awaits switch_terrain D-1278; stairs u_on_sstairs
  * fallback is D-1287; cmd.c makemap_prepost amulet|wiztower is D-1288),
  * Lua NHCB_LVL_LEAVE, MICRO display_nhwindow after Valley odor;
- * ACH_ENDG/ASTR/BGRM; poly `locomotion()` climb verb / steed-flyer Flying;
+ * ACH_BGRM; poly `locomotion()` climb verb / steed-flyer Flying;
  * u_collide_m full limbo. Ported: Punished climb
  * `great_effort` + Flying ladder "along" (D-0928 #1159);
  * Punished `drag_down`/`ballrelease` on stair fall (D-0918);
@@ -1759,8 +1762,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     //     else if (Is_knox) … else if (In_mines) … else if (In_sokoban) …;
     //     else { rogue/bigroom ACH; quest_portal com_pager }
     if (In_endgame(u.uz)) {
-        // ACH_ENDG / astral final_level deferred
-        if (newdungeon && (u.uhave?.amulet || u.uhave_amulet)) {
+        // ACH_ENDG named omit
+        if (madeNew && Is_astralevel(u.uz)) {
+            // C do.c final_level: iter_mons(reset_hostility) named omit
+            create_mplayers(rn1(4, 3), true);
+            // C: gain_guardian_angel(); ACH_ASTR named omit
+        } else if (newdungeon && (u.uhave?.amulet || u.uhave_amulet)) {
             await resurrect();
         }
     } else if (In_quest(u.uz)) {

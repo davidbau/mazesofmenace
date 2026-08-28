@@ -431,6 +431,11 @@ export function try_restore_save() {
     game.lastseentyp = payload.lastseentyp || null;
     rebuildObjectsAt(fobj);
 
+    // C restore.c dorecover :942 — after restoring=0 / early_raw_messages,
+    // before docrt. Invent sync_perminvent WIN_INVEN gate (D-1603).
+    if (!game.program_state) game.program_state = {};
+    game.program_state.beyond_savefile_load = 1;
+
     // C: delete save after successful restore
     vfsDeleteFile(vfsPath(path));
     return true;

@@ -9,6 +9,7 @@ import { Monnam } from './do_name.js';
 import { an } from './objnam.js';
 import { makemon, mkclass, mkclass_aligned, newemin } from './makemon.js';
 import { is_lminion } from './teleport.js';
+import { show_transient_light, transient_light_cleanup } from './light.js';
 import {
     mons, is_demon, is_ndemon, is_dlord, is_dprince, is_lord, G_UNIQ,
 } from './monsters.js';
@@ -362,6 +363,7 @@ export async function msummon(mon) {
 
     const census = monster_census(false);
     const u = game.u || {};
+    let xlight = false;
 
     while (cnt > 0) {
         const mtmp = makemon(mons(dtype), u.ux, u.uy, MM_EMIN | MM_NOMSG);
@@ -375,7 +377,15 @@ export async function msummon(mon) {
                 mtmp.mextra.emin.renegade =
                     ((atyp !== (u.ualign?.type | 0)) ^ !(mtmp.mpeaceful | 0)) !== 0;
             }
-            // S_ANGEL show_transient_light / transient_light_cleanup named
+            // C minion.c msummon :162–169 — S_ANGEL camera flash when
+            // !Blind (youprop H||E && !B); not a named Blind() clone.
+            if (mtmp.data?.mlet === 'S_ANGEL'
+                && !(u.uroleplay?.blind
+                    || (((u.HBlinded | 0) || (u.EBlinded | 0))
+                        && !(u.BBlinded | 0)))) {
+                await show_transient_light(null, mtmp.mx, mtmp.my);
+                xlight = true;
+            }
             if (cnt === 1 && canseemon(mtmp)) {
                 const { cloud, what } = msummon_environ(mtmp.data);
                 await pline(`${Amonnam(mtmp)} appears in a ${cloud} of ${what}!`);
@@ -383,6 +393,8 @@ export async function msummon(mon) {
         }
         cnt--;
     }
+
+    if (xlight) await transient_light_cleanup();
 
     if (result) result = monster_census(false) - census;
     return result;

@@ -2229,9 +2229,9 @@ async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
  */
 async function mdamagem_digest_eat(magr, mdef, pa, pd) {
     if (ismnum(mdef.cham)) {
-        newcham(magr, null, NC_SHOW_MSG);
+        await newcham(magr, null, NC_SHOW_MSG);
     } else if ((pd?.mndx | 0) === PM_GREEN_SLIME && !slimeproof(pa)) {
-        newcham(magr, mons(PM_GREEN_SLIME), NC_SHOW_MSG);
+        await newcham(magr, mons(PM_GREEN_SLIME), NC_SHOW_MSG);
     } else if ((pd?.mndx | 0) === PM_WRAITH) {
         await grow_up(magr, null);
         return M_ATTK_DEF_DIED

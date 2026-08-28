@@ -158,7 +158,7 @@ export class NethackGame {
             }
         }
         // C optlist.h — autodescribe default On (opt_out); rc may negate.
-        g.iflags = { autodescribe: true, ...opts.iflags };
+        g.iflags = { autodescribe: true, prevmsg_window: 's', ...opts.iflags };
         // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics
         // (or boolean DECgraphics) loads H_DEC showsyms. Never assume DEC.
         const sym = String(opts.symset || '').toLowerCase();

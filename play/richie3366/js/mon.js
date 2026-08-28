@@ -20,7 +20,7 @@ import {
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, STONE_RES,
     u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_OFFMAP, MON_MIGRATING, MON_DETACH,
     MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
-    has_emin, has_epri, has_eshk,
+    has_emin, has_epri, has_eshk, has_mcorpsenm, MCORPSENM,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
     NO_MM_FLAGS, NATTK,
 } from './const.js';
@@ -65,7 +65,7 @@ import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
 import {
     set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd,
-    newemin, newepri, mpickobj, makemon, makemon_appear_msg,
+    newemin, newepri, newedog, freemcorpsenm, mpickobj, makemon, makemon_appear_msg,
 } from './makemon.js';
 import { in_your_sanctuary, p_coaligned } from './priest.js';
 import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation } from './hack.js';
@@ -711,8 +711,8 @@ function mon_regen(mon, digest_meal) {
 /**
  * C ref: mon.c decide_to_shapeshift — cham once-per-turn form change.
  * Regular + vampshifter (low-hp revert / fog pickvampshape / vamp shift).
- * Named omissions: mon_has_special Vlad stay in pickvampshape; NC_SHOW_MSG
- * display polish; canseemon uses worm_known when wormno (D-1548).
+ * Named omissions: mon_has_special Vlad stay in pickvampshape;
+ * canseemon uses worm_known when wormno (D-1548). NC_SHOW_MSG is D-1586.
  */
 async function decide_to_shapeshift(mon) {
     let ptr = null;
@@ -764,7 +764,7 @@ async function decide_to_shapeshift(mon) {
         }
     }
     if (dochng) {
-        if (newcham(mon, ptr, NC_SHOW_MSG)) {
+        if (await newcham(mon, ptr, NC_SHOW_MSG)) {
             if (is_vampshifter(mon)) {
                 ptr = mon.data;
                 if (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr)) {
@@ -871,12 +871,14 @@ export function m_avoid_soko_push_loc(mtmp, nx, ny) {
 /**
  * C ref: mon.c seemimic — clear disguise; capture is_lightblocker_mappear
  * before M_AP_NOTHING so a discovered wall/door/boulder mimic unblocks
- * unless terrain still does_block. has_mcorpsenm / freemcorpsenm named.
+ * unless terrain still does_block. has_mcorpsenm / freemcorpsenm
+ * before M_AP_NOTHING (D-1598).
  */
 export function seemimic(mtmp) {
     if (!mtmp) return;
     const is_blocker_appear = is_lightblocker_mappear(mtmp);
-    // has_mcorpsenm / freemcorpsenm deferred
+    if (has_mcorpsenm(mtmp))
+        freemcorpsenm(mtmp);
     mtmp.m_ap_type = M_AP_NOTHING;
     mtmp.mappearance = 0;
     /*
@@ -891,15 +893,17 @@ export function seemimic(mtmp) {
 }
 
 /**
- * C ref: mon.c normal_shape — cham revert / were / seemimic.
- * Thin: cham newcham + seemimic; were/meating deferred.
+ * C ref: mon.c normal_shape `:4430–4462` — cham revert / were / seemimic.
+ * Await `newcham(..., NC_SHOW_MSG)` so the shapeshift pline/More
+ * finish before `cham=NON_PM` / `mcan` restore / `newsym` (D-1594;
+ * C `:4438–4443`). Named: `is_were`/`new_were`; `finish_meating`.
  */
-export function normal_shape(mon) {
+export async function normal_shape(mon) {
     if (!mon) return;
     const mcham = mon.cham;
     if (ismnum(mcham)) {
         const mcan = mon.mcan;
-        newcham(mon, mons(mcham), NC_SHOW_MSG);
+        await newcham(mon, mons(mcham), NC_SHOW_MSG);
         mon.cham = NON_PM;
         if (mcan) mon.mcan = 1;
         newsym(mon.mx | 0, mon.my | 0);
@@ -915,12 +919,12 @@ export function normal_shape(mon) {
 }
 
 /**
- * C ref: mon.c rescham — force all mons to normal_shape (PfSC on).
+ * C ref: mon.c rescham — iter_mons(normal_shape) when PfSC turns on.
  */
-export function rescham() {
+export async function rescham() {
     for (const mon of game.fmon || []) {
         if (!mon || (mon.mhp | 0) <= 0) continue;
-        normal_shape(mon);
+        await normal_shape(mon);
     }
 }
 
@@ -2527,7 +2531,7 @@ export function copy_mextra(mtmp2, mtmp1) {
         Object.assign(mtmp2.mextra.emin, srcExtra.emin);
     }
     if (srcEdog) {
-        if (!mtmp2.mextra.edog) mtmp2.mextra.edog = {};
+        newedog(mtmp2);
         Object.assign(mtmp2.mextra.edog, srcEdog);
         if (srcEdog.ogoal) {
             mtmp2.mextra.edog.ogoal = {
@@ -2541,9 +2545,8 @@ export function copy_mextra(mtmp2, mtmp1) {
         if (!mtmp2.mextra.ebones) mtmp2.mextra.ebones = {};
         Object.assign(mtmp2.mextra.ebones, srcExtra.ebones);
     }
-    if (srcExtra && Object.prototype.hasOwnProperty.call(srcExtra, 'mcorpsenm')) {
-        mtmp2.mextra.mcorpsenm = srcExtra.mcorpsenm;
-    }
+    if (has_mcorpsenm(mtmp1))
+        mtmp2.mextra.mcorpsenm = MCORPSENM(mtmp1);
 }
 
 /**
@@ -2632,16 +2635,17 @@ export function replmon(mtmp, mtmp2) {
 }
 
 /**
- * C ref: mon.c restore_cham — shape-changer vs Protection_from_shape_changers.
+ * C ref: mon.c restore_cham `:4646–4658` — PfSC/`mcan` → normal_shape,
+ * else re-allow cham via pm_to_cham. Await the SHOW_MSG revert (D-1594).
  */
-export function restore_cham(mon) {
+export async function restore_cham(mon) {
     if (!mon) return;
     const u = game.u || {};
     const prot = !!(u.HProtection_from_shape_changers
         || u.EProtection_from_shape_changers
         || u.Protection_from_shape_changers);
     if (prot || mon.mcan) {
-        normal_shape(mon);
+        await normal_shape(mon);
     } else if ((mon.cham | 0) === NON_PM || mon.cham == null) {
         mon.cham = pm_to_cham(mon.data?.mndx ?? mon.mnum ?? NON_PM);
     }

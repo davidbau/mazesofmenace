@@ -111,7 +111,7 @@ import {
 import {
     makeknown, compactify_invlets, enlightenment, observe_object,
     hold_another_object, update_inventory, near_capacity, freeinv_core,
-    prinv,
+    prinv, getobj_display_pickinv,
 } from './invent.js';
 import { yn_function } from './getline.js';
 import {
@@ -340,7 +340,6 @@ function dippable_lets() {
  * Empty suggest + !GETOBJ_PROMPT → no key read (C invent.c suggested==0).
  */
 async function getobj_drink() {
-    const { display_pickinv_reply } = await import('./invent.js');
     // C: suggested == 0 && !forceprompt && !allownone → You don't have…
     // (drink_ok_extra / EXCLUDE_INACCESS "else " deferred)
     if (!drinkable_lets()) {
@@ -367,12 +366,19 @@ async function getobj_drink() {
         }
         if (ch === '?' || ch === '*') {
             // C: display_pickinv(lets, ...) uses non-compacted lets[]
-            const picked = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            const counted = { cnt: 0, cntgiven: false };
+            const picked = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word: 'drink', allownone: false, promptHasHands: false },
+            );
             if (picked === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
             }
-            if (!picked) continue;
+            if (!picked) {
+                if (game.iflags?.force_invmenu) return null;
+                continue;
+            }
             const otmp = (game.invent || []).find(o => o.invlet === picked);
             if (!otmp) {
                 await pline("You don't have that object.");
@@ -2343,7 +2349,6 @@ async function getobj_drink_ok(word) {
     const canned = cmdq_pop_getobj_key(drink_ok);
     if (canned !== undefined) return canned;
 
-    const { display_pickinv_reply } = await import('./invent.js');
     if (!drinkable_lets()) {
         await pline(`You don't have anything ${
             drink_ok_extra ? 'else ' : ''}to ${word}.`);
@@ -2368,12 +2373,19 @@ async function getobj_drink_ok(word) {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            const picked = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            const counted = { cnt: 0, cntgiven: false };
+            const picked = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word, allownone: false, promptHasHands: false },
+            );
             if (picked === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
             }
-            if (!picked) continue;
+            if (!picked) {
+                if (game.iflags?.force_invmenu) return null;
+                continue;
+            }
             const otmp = (game.invent || []).find((o) => o.invlet === picked);
             if (!otmp) {
                 await pline("You don't have that object.");

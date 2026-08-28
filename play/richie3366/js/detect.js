@@ -75,6 +75,7 @@ import {
     AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS,
     SPBOOK_CLASS, WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS,
     BALL_CLASS, CHAIN_CLASS, VENOM_CLASS, ILLOBJ_CLASS,
+    def_char_to_objclass,
 } from './objects.js';
 import { objects_at, weight } from './mkobj.js';
 import { makeknown, consume_obj_charge, observe_object } from './invent.js';
@@ -248,17 +249,6 @@ function resists_blnd(_mon) {
 function is_quest_artifact(obj) {
     const want = game.urole?.questarti | 0;
     return !!(obj && want && (obj.oartifact | 0) === want);
-}
-
-/**
- * C ref: drawing.c def_char_to_objclass — first matching def_oc_syms.
- * @returns {number} oclass or MAXOCLASSES
- */
-function def_char_to_objclass(ch) {
-    for (let i = 1; i < MAXOCLASSES; i++) {
-        if (DEF_OC_SYMS[i] === ch) return i;
-    }
-    return MAXOCLASSES;
 }
 
 /**
