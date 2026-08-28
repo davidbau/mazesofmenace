@@ -50,7 +50,7 @@ import {
     invocation_message, notice_mon_off, notice_mon_on, notice_all_mons,
     set_msg_xy,
 } from './hack.js';
-import { remove_worm, place_worm_tail_randomly } from './worm.js';
+import { remove_worm, place_worm_tail_randomly, level_mon_at } from './worm.js';
 import { makeknown, prinv, near_capacity, paint_corner_nhw_menu } from './invent.js';
 import { nhgetch } from './input.js';
 import { ATR_INVERSE } from './terminal.js';
@@ -105,14 +105,14 @@ function u_at(x, y) {
 }
 
 function m_at(x, y) {
-    // C: level.monsters[][] — worm segs via place_worm_seg; heads on fmon.
-    // Dead mons stay on fmon until dmonsfree but are off the map grid.
-    // gulpmm remove_monster leaves mx/my; JS MON_OFFMAP matches C's empty
-    // cell so goodpos occupancy after digest death is not the corpse
-    // (D-1243; D-1231 named this clone seeing dead fmon).
-    const seg = game._level_monsters?.get(`${x},${y}`);
-    if (seg && (seg.mhp | 0) > 0
-        && !((seg.mstate | 0) & MON_OFFMAP)) return seg;
+    // C: level.monsters[][] — worm segs via place_worm_seg; heads via
+    // place_monster (D-1565). Dead mons stay on fmon until dmonsfree
+    // but are off the map grid. gulpmm remove_monster leaves mx/my;
+    // JS MON_OFFMAP matches C's empty cell so goodpos occupancy after
+    // digest death is not the corpse (D-1243; D-1231). Stale grid
+    // heads are ignored by level_mon_at.
+    const seg = level_mon_at(x, y);
+    if (seg) return seg;
     const list = game.fmon || [];
     for (const m of list) {
         if ((m.mhp | 0) <= 0) continue; // DEADMONSTER — not on map
@@ -355,7 +355,7 @@ function mon_aligntyp(mon) {
 }
 
 /** C monst.h is_lminion — is_minion(data) && mon_aligntyp == A_LAWFUL. */
-function is_lminion(mon) {
+export function is_lminion(mon) {
     return is_minion(mon?.data) && mon_aligntyp(mon) === A_LAWFUL;
 }
 

@@ -505,7 +505,17 @@ const EXT_CMDS = [
             return dorub();
         },
     },
-
+    {
+        // C: cmd.c "repeat" IFBURIED|GENERALCMD (no AUTOCOMPLETE) → do_repeat.
+        // Typed #repeat exact-match; Ctrl-A is rhack key 1.
+        name: 'repeat',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { do_repeat } = await import('./cmd.js');
+            return do_repeat();
+        },
+    },
     {
         // C: cmd.c "jump" AUTOCOMPLETE → dojump (D-0899)
         name: 'jump',

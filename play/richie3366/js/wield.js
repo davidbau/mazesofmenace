@@ -5,15 +5,16 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname, xname, makeplural, vtense, an, doname, The, body_part_latebound } from './objnam.js';
+import { xprname, xname, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense } from './objnam.js';
 import { yn_function } from './getline.js';
-import { hands_obj } from './weapon.js';
+import { hands_obj, is_wet_towel } from './weapon.js';
 import { humanoid, mons } from './monsters.js';
 import { AT_WEAP } from './mhitm.js';
 import { acurr, A_DEX, exercise } from './attrib.js';
 import { rn2, rnd } from './rng.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, SCROLL_CLASS,
+    ARMOR_CLASS,
     objectNames,
 } from './objects.js';
 import {
@@ -23,9 +24,11 @@ import {
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
-import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq } from './invent.js';
-import { uncurse, weight } from './mkobj.js';
+import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv } from './invent.js';
+import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
 import { trycall } from './do_name.js';
+import { addinv_nomerge } from './u_init.js';
+import { inv_cnt } from './steal.js';
 
 /** C: are_no_longer_twoweap / can_no_longer_twoweap */
 const are_no_longer_twoweap = 'are no longer using two weapons at once';
@@ -47,6 +50,59 @@ export function empty_handed() {
 const GETOBJ_SUGGEST = 1;
 const GETOBJ_DOWNPLAY = 2;
 const GETOBJ_EXCLUDE = 3;
+/** C invent.c invlet_basic — a-zA-Z. */
+const invlet_basic = 52;
+/** C objclass.h ARM_GLOVES / ARM_BOOTS for pair_of. */
+const ARM_GLOVES = 3;
+const ARM_BOOTS = 4;
+
+/**
+ * C obj.h pair_of — LENSES / gloves / boots.
+ */
+function pair_of(o) {
+    if (!o) return false;
+    if (objectNames[o.otyp] === 'LENSES') return true;
+    if (o.oclass !== ARMOR_CLASS) return false;
+    const sk = game.objects?.[o.otyp]?.oc_skill ?? -1;
+    return sk === ARM_GLOVES || sk === ARM_BOOTS;
+}
+
+/** C wield.c: wep->o_id && wep->o_id == objsplit.child_oid (0 never matches). */
+function is_split_child(obj) {
+    if (!obj) return false;
+    const id = obj.o_id | 0;
+    const child = game.context?.objsplit?.child_oid | 0;
+    return id !== 0 && id === child;
+}
+
+function is_split_parent(obj) {
+    if (!obj) return false;
+    const id = obj.o_id | 0;
+    const parent = game.context?.objsplit?.parent_oid | 0;
+    return id !== 0 && id === parent;
+}
+
+/**
+ * C ref: wield.c finish_splitting — freeinv + addinv_nomerge so a getobj
+ * or ynq split-off stack gets its own invlet.
+ */
+async function finish_splitting(obj) {
+    if (!obj) return obj;
+    freeinv(obj);
+    return addinv_nomerge(obj);
+}
+
+/**
+ * C ref: wield.c already_wielded — pline + unweapon FALSE for weptool/towel.
+ */
+async function already_wielded_msg(wep) {
+    await pline('You are already wielding that!');
+    if (wep && (is_weptool(wep) || is_wet_towel(wep))) {
+        if (!game.gu) game.gu = {};
+        game.gu.unweapon = false;
+    }
+    return 0;
+}
 /** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
 export function is_weptool(obj) {
     if (!obj || obj.oclass !== TOOL_CLASS) return false;
@@ -114,6 +170,20 @@ export function welded(obj) {
         return true;
     }
     return false;
+}
+
+/**
+ * C ref: wield.c weldmsg — suppress doname "(weapon in hand)".
+ * Caller: pickup.c in_container welded uwep.
+ */
+export async function weldmsg(obj) {
+    if (!obj) return;
+    let hand = body_part_latebound(HAND);
+    if (bimanual(obj)) hand = makeplural(hand);
+    const savewornmask = obj.owornmask || 0;
+    obj.owornmask = 0; // C: suppress doname "(weapon in hand)"
+    await pline(`${Yobjnam2(obj, 'are')} welded to your ${hand}!`);
+    obj.owornmask = savewornmask;
 }
 
 /**
@@ -448,7 +518,8 @@ function wield_prompt_lets(raw) {
  * C ref: invent.c getobj("wield", wield_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
  * Hands GETOBJ_SUGGEST → buf prefix "- "; invent SUGGEST letters after;
  * compactify when suggested > 5. Count prefix + split_otmp live.
- * Canned CMDQ_INT/KEY live. finish_splitting / unsplitobj / ?/* named.
+ * Canned CMDQ_INT/KEY live. `?`/`*` → display_pickinv `&ctmp` (D-1559)
+ * + xtra_choice handsbuf (D-1569).
  */
 async function getobj_wield() {
     const cq = getobj_from_cmdq(wield_ok, true, hands_obj);
@@ -484,9 +555,37 @@ async function getobj_wield() {
             return null; // hands
         }
         if (ch === '?' || ch === '*') {
-            // C display_pickinv(lets/altlets) deferred
-            await pline('Never mind.');
-            return undefined;
+            const ilet = await getobj_display_pickinv(ch, rawLets, true, counted, {
+                word: 'wield',
+                allownone: true,
+                promptHasHands: true,
+            });
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return undefined;
+            }
+            if (!ilet) continue;
+            if (ilet === '-') {
+                game._pending_message = '';
+                return null;
+            }
+            const otmp = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!otmp) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            const ok = wield_ok(otmp);
+            if (ok === GETOBJ_EXCLUDE) {
+                await pline('You cannot wield that!');
+                return undefined;
+            }
+            const got = await getobj_apply_count(
+                otmp, 'wield', counted.cntgiven, counted.cnt,
+            );
+            if (!got) return undefined;
+            if (got.retry) continue;
+            game._pending_message = '';
+            return got;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
         if (!otmp) {
@@ -510,35 +609,68 @@ async function getobj_wield() {
 
 /**
  * C ref: wield.c dowield — #wield / 'w'.
+ * clear_splitobjs; getobj ALLOWCNT child → unsplitobj (welded / already
+ * parent) or finish_splitting; uquiver ynq split-one. Shk_Your decline
+ * remain prefix still named.
  * @returns {number} 0 = no turn / cancel / fail; 1 = took time
  */
 export async function dowield() {
     game.multi = 0;
     // cantwield(youmonst.data) deferred — humanoid always ok
+    clear_splitobjs();
 
-    const wep = await getobj_wield();
-    if (wep === undefined) return 0; // cancel
+    const picked = await getobj_wield();
+    if (picked === undefined) return 0; // cancel
+    let wep = picked;
 
     const u = game.u || {};
     if (wep && wep === u.uwep) {
-        await pline('You are already wielding that!');
-        return 0;
+        return already_wielded_msg(wep);
     }
     if (welded(u.uwep)) {
         await pline('Your weapon is welded to your hand!');
+        if (is_split_child(wep)) unsplitobj(wep);
         return 0;
     }
-
-    // uswapwep / uquiver confirm / worn-armor reject
-    if (wep && wep === u.uswapwep) {
+    if (is_split_child(wep)) {
+        if (is_split_parent(u.uwep)) {
+            unsplitobj(wep);
+            wep = u.uwep;
+            return already_wielded_msg(wep);
+        }
+        wep = await finish_splitting(wep);
+    } else if (wep && wep === u.uswapwep) {
         return await doswapweapon();
-    }
-    if (wep && (wep.owornmask || 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
-        await pline('You cannot wield that!');
-        return 0;
-    }
-    if (wep && wep === u.uquiver) {
-        // quiver ynq confirm deferred
+    } else if (wep && wep === u.uquiver) {
+        const qobj = u.uquiver;
+        const quan = qobj.quan || 1;
+        let confirmed = false;
+        if (quan > 1 && inv_cnt(false) < invlet_basic && splittable(qobj)) {
+            const qbuf = `You have ${quan} ${simpleonames(qobj)} readied.  Wield one?`;
+            const ans = await yn_function(qbuf, 'ynq', 'q');
+            if (ans === 'q') return 0;
+            if (ans === 'y') {
+                wep = splitobj(qobj, 1);
+                if (!wep) return 0;
+                wep = await finish_splitting(wep);
+                confirmed = true;
+            }
+        }
+        if (!confirmed) {
+            const use_plural = is_plural(qobj) || pair_of(qobj);
+            const qbuf = (quan > 1 && inv_cnt(false) < invlet_basic
+                && splittable(qobj))
+                ? 'Wield all of them instead?'
+                : `You have ${use_plural ? 'those' : 'that'} readied.  Wield ${use_plural ? 'them' : 'it'} instead?`;
+            if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
+                await pline(
+                    `Your ${simpleonames(qobj)} ${otense(qobj, 'remain')} readied.`,
+                );
+                return 0;
+            }
+            setuqwep(null);
+        }
+    } else if (wep && (wep.owornmask || 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
         await pline('You cannot wield that!');
         return 0;
     }
@@ -590,8 +722,8 @@ function ready_suggest_lets() {
 /**
  * C ref: invent.c getobj(verb, ready_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
  * Count prefix + split_otmp live; '-' → hands_obj; DOWNPLAY letters still
- * accepted. Canned CMDQ_INT/KEY live. finish_splitting / unsplitobj /
- * coin partial named.
+ * accepted. Canned CMDQ_INT/KEY live. `?`/`*` → display_pickinv `&ctmp`
+ * (D-1559) + xtra_choice handsbuf (D-1569). Coin partial ready is doquiver.
  */
 async function getobj_ready(verb) {
     const cq = getobj_from_cmdq(ready_ok, true, hands_obj);
@@ -631,8 +763,37 @@ async function getobj_ready(verb) {
             return hands_obj;
         }
         if (ch === '?' || ch === '*') {
-            await pline('Never mind.');
-            return undefined;
+            const ilet = await getobj_display_pickinv(ch, lets, true, counted, {
+                word: verb,
+                allownone: true,
+                promptHasHands: ready_ok(null) === GETOBJ_SUGGEST,
+            });
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return undefined;
+            }
+            if (!ilet) continue;
+            if (ilet === '-') {
+                game._pending_message = '';
+                return hands_obj;
+            }
+            const otmp = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!otmp) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            const rank = ready_ok(otmp);
+            if (rank === GETOBJ_EXCLUDE) {
+                await pline(`You cannot ${verb} that!`);
+                return undefined;
+            }
+            const got = await getobj_apply_count(
+                otmp, verb, counted.cntgiven, counted.cnt,
+            );
+            if (!got) return undefined;
+            if (got.retry) continue;
+            game._pending_message = '';
+            return got;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
         if (!otmp) {
@@ -656,10 +817,8 @@ async function getobj_ready(verb) {
 
 /**
  * C ref: wield.c doquiver_core — #quiver / Q and dofire refill.
- * Branch envelope: empty invent; '-' clear; already quivered; worn reject;
- * uwep/uswapwep ynq confirm (no quan-split); setuqwep + prinv.
- * Deferred: finish_splitting / unsplitobj / coin partial after getobj
- * split (C wield.c `:390–401`). Count prefix is invent getobj.
+ * clear_splitobjs; getobj child → unsplit (already parent / gold) or
+ * finish_splitting; uwep/uswapwep ynq split rest. Shk_Your decline named.
  * @returns {number} 0 = ECMD_OK / cancel; 1 = ECMD_TIME
  */
 export async function doquiver_core(verb) {
@@ -669,12 +828,14 @@ export async function doquiver_core(verb) {
         return 0;
     }
 
-    const newquiver = await getobj_ready(verb);
+    clear_splitobjs();
+    let newquiver = await getobj_ready(verb);
     if (newquiver === undefined) return 0; // cancel
 
     const u = game.u || (game.u = {});
     let was_uwep = false;
     const was_twoweap = !!u.twoweap;
+    let go_quivering = false;
 
     if (newquiver === hands_obj) {
         if (u.uquiver) {
@@ -686,40 +847,95 @@ export async function doquiver_core(verb) {
         return 0;
     }
 
-    if (newquiver === u.uquiver) {
+    if (is_split_child(newquiver)) {
+        if (is_split_parent(u.uquiver)) {
+            unsplitobj(newquiver);
+            await pline('That ammunition is already readied!');
+            return 0;
+        }
+        if (newquiver.oclass === COIN_CLASS) {
+            await pline("You can't ready only part of your gold.");
+            unsplitobj(newquiver);
+            return 0;
+        }
+        newquiver = await finish_splitting(newquiver);
+        go_quivering = true;
+    } else if (newquiver === u.uquiver) {
         await pline('That ammunition is already readied!');
         return 0;
-    }
-    if ((newquiver.owornmask || 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
+    } else if ((newquiver.owornmask || 0) & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
         await pline(`You cannot ${verb} that!`);
         return 0;
     }
 
-    if (newquiver === u.uwep) {
+    if (!go_quivering && newquiver === u.uwep) {
+        const weld_res = !u.uwep.bknown;
         if (welded(u.uwep)) {
             await pline('Your weapon is welded to your hand!');
-            return u.uwep.bknown ? 0 : 1;
+            return weld_res ? 1 : 0;
         }
-        // quan>1 split path deferred — always confirm ready-all
-        const use_plural = (newquiver.quan || 1) > 1;
-        const qbuf = `You are wielding ${use_plural ? 'those' : 'that'}.  Ready ${use_plural ? 'them' : 'it'} instead?`;
-        if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
-            await pline(`Your ${use_plural ? 'weapons remain' : 'weapon remains'} wielded.`);
-            return 0;
+        const uw = u.uwep;
+        const quan = uw.quan || 1;
+        let confirmed = false;
+        if (quan > 1 && inv_cnt(false) < invlet_basic && splittable(uw)) {
+            const qbuf = `You are wielding ${quan} ${simpleonames(uw)}.  Ready ${quan - 1} of them?`;
+            const ans = await yn_function(qbuf, 'ynq', 'q');
+            if (ans === 'q') return 0;
+            if (ans === 'y') {
+                newquiver = splitobj(uw, quan - 1);
+                if (!newquiver) return 0;
+                newquiver = await finish_splitting(newquiver);
+                confirmed = true;
+                go_quivering = true;
+            }
         }
-        setuwep(null);
-        u.twoweap = false;
-        was_uwep = true;
-    } else if (newquiver === u.uswapwep) {
-        // quan>1 split path deferred
-        const use_plural = (newquiver.quan || 1) > 1;
-        const qbuf = `${use_plural ? 'Those are' : 'That is'} your ${u.twoweap ? 'second' : 'alternate'} weapon.  Ready ${use_plural ? 'them' : 'it'} instead?`;
-        if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
-            await pline(`Your ${use_plural ? 'weapons remain' : 'weapon remains'} as secondary weapon.`);
-            return 0;
+        if (!confirmed && !go_quivering) {
+            const use_plural = is_plural(uw) || pair_of(uw);
+            const qbuf = (quan > 1 && inv_cnt(false) < invlet_basic
+                && splittable(uw))
+                ? 'Ready all of them instead?'
+                : `You are wielding ${use_plural ? 'those' : 'that'}.  Ready ${use_plural ? 'them' : 'it'} instead?`;
+            if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
+                await pline(
+                    `Your ${simpleonames(uw)} ${otense(uw, 'remain')} wielded.`,
+                );
+                return 0;
+            }
+            setuwep(null);
+            await untwoweapon();
+            was_uwep = true;
         }
-        setuswapwep(null);
-        u.twoweap = false;
+    } else if (!go_quivering && newquiver === u.uswapwep) {
+        const sw = u.uswapwep;
+        const quan = sw.quan || 1;
+        let confirmed = false;
+        if (quan > 1 && inv_cnt(false) < invlet_basic && splittable(sw)) {
+            const qbuf = `${u.twoweap ? 'You are dual wielding' : 'Your alternate weapon is'} ${quan} ${simpleonames(sw)}.  Ready ${quan - 1} of them?`;
+            const ans = await yn_function(qbuf, 'ynq', 'q');
+            if (ans === 'q') return 0;
+            if (ans === 'y') {
+                newquiver = splitobj(sw, quan - 1);
+                if (!newquiver) return 0;
+                newquiver = await finish_splitting(newquiver);
+                confirmed = true;
+                go_quivering = true;
+            }
+        }
+        if (!confirmed && !go_quivering) {
+            const use_plural = is_plural(sw) || pair_of(sw);
+            const qbuf = (quan > 1 && inv_cnt(false) < invlet_basic
+                && splittable(sw))
+                ? 'Ready all of them instead?'
+                : `${use_plural ? 'Those are' : 'That is'} your ${u.twoweap ? 'second' : 'alternate'} weapon.  Ready ${use_plural ? 'them' : 'it'} instead?`;
+            if ((await yn_function(qbuf, 'ynq', 'q')) !== 'y') {
+                await pline(
+                    `Your ${simpleonames(sw)} ${otense(sw, 'remain')} ${u.twoweap ? 'wielded' : 'as secondary weapon'}.`,
+                );
+                return 0;
+            }
+            setuswapwep(null);
+            await untwoweapon();
+        }
     }
 
     if (verb === 'ready') {
@@ -735,7 +951,7 @@ export async function doquiver_core(verb) {
         return 1;
     }
     if (was_twoweap && !u.twoweap) {
-        await pline('You are no longer fighting two-handed.');
+        await pline(`You ${are_no_longer_twoweap}.`);
         return 1;
     }
     return 0;
@@ -892,11 +1108,6 @@ function hcolor(colorword) {
 function Yobjnam2(obj, verb) {
     const nam = xname(obj);
     return `Your ${nam} ${vtense(nam, verb)}`;
-}
-
-/** C ref: objnam.c simpleonames — base type name without spe/BUC. */
-function simpleonames(obj) {
-    return xname(obj);
 }
 
 /**

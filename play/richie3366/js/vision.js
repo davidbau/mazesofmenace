@@ -10,8 +10,14 @@ import {
     IS_WALL, IS_WATERWALL, IS_OBSTRUCTED, IS_DOOR,
     ROOMOFFSET, Is_rogue_level,
     TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE,
+    MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
+    MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
 } from './const.js';
-import { newsym } from './display.js';
+import {
+    newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon,
+    MATCH_WARN_OF_MON,
+} from './display.js';
+import { worm_known } from './worm.js';
 import { objectNames } from './objects.js';
 import { do_light_sources } from './light.js';
 import { visible_region_at } from './region.js';
@@ -53,6 +59,11 @@ const circle_data = [
     /*136*/ 16,
 ];
 const circle_start = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120];
+
+/** C vision.h: circle_ptr(z) ≡ &circle_data[(int) circle_start[z]] */
+function circle_ptr(z) {
+    return circle_data.slice(circle_start[z] | 0);
+}
 
 // Vision state arrays
 const viz_clear = Array.from({ length: ROWNO }, () => new Int8Array(COLNO));
@@ -192,6 +203,94 @@ export function vision_reset() {
 }
 
 /**
+ * C ref: vision.c dig_point — incremental viz_clear / left_ptrs /
+ * right_ptrs when a cell becomes transparent. Inverse of fill_point.
+ * Caller is unblock_point(x,y) → dig_point(y,x). No leftover-`i`
+ * end-case writes (those are fill_point only).
+ */
+function dig_point(row, col) {
+    let i;
+
+    if (!viz_clear[row] || viz_clear[row][col])
+        return; /* already done */
+
+    viz_clear[row][col] = 1;
+
+    /*
+     * Boundary cases first.
+     */
+    if (col === 0) { /* left edge */
+        if (viz_clear[row][1]) {
+            right_ptrs[row][0] = right_ptrs[row][1];
+        } else {
+            right_ptrs[row][0] = 1;
+            for (i = 1; i <= right_ptrs[row][1]; i++)
+                left_ptrs[row][i] = 1;
+        }
+    } else if (col === COLNO - 1) { /* right edge */
+
+        if (viz_clear[row][COLNO - 2]) {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+        } else {
+            left_ptrs[row][COLNO - 1] = COLNO - 2;
+            for (i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++)
+                right_ptrs[row][i] = COLNO - 2;
+        }
+
+    /*
+     * At this point, we know we aren't on the boundaries.
+     */
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        /* Both sides clear */
+        for (i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+        }
+        for (i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+        }
+
+    } else if (viz_clear[row][col - 1]) {
+        /* Left side clear, right side blocked. */
+        for (i = col + 1; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col + 1;
+
+        for (i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            right_ptrs[row][i] = col + 1;
+        }
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+
+    } else if (viz_clear[row][col + 1]) {
+        /* Right side clear, left side blocked. */
+        for (i = left_ptrs[row][col - 1]; i < col; i++)
+            right_ptrs[row][i] = col - 1;
+
+        for (i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i])
+                continue; /* catch non-end case */
+            left_ptrs[row][i] = col - 1;
+        }
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+
+    } else {
+        /* Both sides blocked */
+        for (i = left_ptrs[row][col - 1]; i < col; i++)
+            right_ptrs[row][i] = col - 1;
+
+        for (i = col + 1; i <= right_ptrs[row][col + 1]; i++)
+            left_ptrs[row][i] = col + 1;
+
+        left_ptrs[row][col] = col - 1;
+        right_ptrs[row][col] = col + 1;
+    }
+}
+
+/**
  * C ref: vision.c fill_point — incremental viz_clear / left_ptrs /
  * right_ptrs when a cell becomes opaque. `i` is function-scoped like C
  * (post-loop leftover writes). Caller is block_point(x,y) → fill_point(y,x).
@@ -275,8 +374,7 @@ function fill_point(row, col) {
 
 /**
  * C ref: vision.c block_point — fill_point(y, x) then vision_full_recalc
- * if viz_array[y][x] (could-see). DEBUG seethru omitted. unblock_point /
- * dig_point still named (recalc_block_point keeps full vision_reset).
+ * if viz_array[y][x] (could-see). DEBUG seethru omitted.
  */
 export function block_point(x, y) {
     fill_point(y, x);
@@ -285,15 +383,25 @@ export function block_point(x, y) {
 }
 
 /**
- * C ref: vision.c recalc_block_point — after door open/break, refresh
- * viz_clear so LOS can pass (or block) at (x,y). Incremental dig_point
- * deferred; full vision_reset matches does_block semantics.
+ * C ref: vision.c unblock_point — dig_point(y, x) then vision_full_recalc
+ * if viz_array[y][x] (could-see). Light-source recalc still a C comment.
+ */
+export function unblock_point(x, y) {
+    dig_point(y, x);
+    if (game.viz_array?.[y]?.[x])
+        game.vision_full_recalc = 1;
+}
+
+/**
+ * C ref: vision.c recalc_block_point — does_block then block_point,
+ * else unblock_point. Not a full vision_reset (D-0113 stub retired).
  */
 export function recalc_block_point(x, y) {
-    void x;
-    void y;
-    vision_reset();
-    game.vision_full_recalc = 1;
+    const loc = game.level?.at?.(x, y);
+    if (does_block(x, y, loc))
+        block_point(x, y);
+    else
+        unblock_point(x, y);
 }
 
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
@@ -677,6 +785,47 @@ function rogue_vision(next, rmin, rmax) {
     }
 }
 
+/**
+ * C ref: vision.c vision_recalc :631–668 — OR IN_SIGHT in the xray
+ * circle (or the hero cell when range is 0). seenv = SVALL; newsym
+ * while viz_array is still the old buffer (C order, before lights).
+ * Caller is the non-rogue else after view_from. Range < 0 is a no-op
+ * (u_init_misc sets -1 until Eyes SPFX_XRAY).
+ */
+function apply_xray_in_sight(next, next_rmin, next_rmax, u) {
+    if (!(u.xray_range >= 0)) return;
+    const level = game.level;
+    if (u.xray_range) {
+        const ranges = circle_ptr(u.xray_range);
+        for (let row = u.uy - u.xray_range; row <= u.uy + u.xray_range; row++) {
+            if (row < 0) continue;
+            if (row >= ROWNO) break;
+            const dy = (u.uy - row) < 0 ? (row - u.uy) : (u.uy - row);
+            const next_row = next[row];
+            const start = Math.max(1, u.ux - ranges[dy]);
+            const stop = Math.min(COLNO - 1, u.ux + ranges[dy]);
+            for (let col = start; col <= stop; col++) {
+                const old_row_val = next_row[col];
+                next_row[col] |= IN_SIGHT;
+                const loc = level?.at(col, row);
+                const oldseenv = loc ? (loc.seenv | 0) : 0;
+                if (loc) loc.seenv = SVALL;
+                if (!(old_row_val & IN_SIGHT) || oldseenv !== SVALL) {
+                    newsym(col, row);
+                }
+            }
+            next_rmin[row] = Math.min(start, next_rmin[row]);
+            next_rmax[row] = Math.max(stop, next_rmax[row]);
+        }
+    } else {
+        next[u.uy][u.ux] |= IN_SIGHT;
+        const loc = level?.at(u.ux, u.uy);
+        if (loc) loc.seenv = SVALL;
+        next_rmin[u.uy] = Math.min(u.ux, next_rmin[u.uy]);
+        next_rmax[u.uy] = Math.max(u.ux, next_rmax[u.uy]);
+    }
+}
+
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;
@@ -736,6 +885,11 @@ export function vision_recalc(control = 0) {
             rogue_vision(next, next_rmin, next_rmax);
         } else {
             view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+            // C vision.c vision_recalc :631–668 — IN_SIGHT for xray
+            // after view_from, before do_light_sources. Not rogue.
+            // Night vision nv_range circle still the adjacent stand-in
+            // in the lighting loop (C :670–700 named).
+            apply_xray_in_sight(next, next_rmin, next_rmax, u);
         }
     }
 
@@ -754,7 +908,7 @@ export function vision_recalc(control = 0) {
             const loc = level?.at(col, row);
             if (!loc) continue;
 
-            // Night vision: adjacent cells always IN_SIGHT
+            // C nv_range circle named; 3×3 is nv_range===1 stand-in
             if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
                 next[row][col] |= IN_SIGHT;
                 continue;
@@ -866,6 +1020,48 @@ export function cansee(x, y) {
 export function couldsee(x, y) {
     if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
     return !!(game.viz_array?.[y]?.[x] & COULD_SEE);
+}
+
+/**
+ * C ref: vision.c howmonseen :2151–2186 — bitmask of ways the hero
+ * sees `mon`. Callers apply.c use_mirror (SEENMON vs INFRAVIS-only)
+ * and pager.c look_at_monster monbuf. NORMAL is cansee&&couldsee (or
+ * worm_known), not canseemon: astral IN_SIGHT without COULD_SEE is
+ * XRAYVIS. mdistu inlined (hack.h dist2; no mdistu clone).
+ */
+export function howmonseen(mon) {
+    if (!mon) return 0;
+    const u = game.u || {};
+    const useemon = canseemon(mon);
+    const xr = u.xray_range | 0;
+    const xraydist = xr < 0 ? -1 : xr * xr;
+    let how_seen = 0;
+    const mx = mon.mx | 0;
+    const my = mon.my | 0;
+    /* C: cansee is true for normal and astral; couldsee is not for astral */
+    if ((mon.wormno ? worm_known(mon) : (cansee(mx, my) && couldsee(mx, my)))
+        && mon_visible(mon) && !mon.minvis) {
+        how_seen |= MONSEEN_NORMAL;
+    }
+    if (useemon && mon.minvis) how_seen |= MONSEEN_SEEINVIS;
+    const See_invisible = !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+        || u.See_invisible);
+    if ((!mon.minvis || See_invisible) && see_with_infrared(mon)) {
+        how_seen |= MONSEEN_INFRAVIS;
+    }
+    if (tp_sensemon(mon)) how_seen |= MONSEEN_TELEPAT;
+    /* C hack.h mdistu(mon) ≡ dist2(mx, my, ux, uy) */
+    const dx = mx - (u.ux | 0);
+    const dy = my - (u.uy | 0);
+    if (useemon && xraydist > 0 && (dx * dx + dy * dy) <= xraydist) {
+        how_seen |= MONSEEN_XRAYVIS;
+    }
+    if ((u.HDetect_monsters | 0) || (u.EDetect_monsters | 0)
+        || u.Detect_monsters) {
+        how_seen |= MONSEEN_DETECT;
+    }
+    if (MATCH_WARN_OF_MON(mon)) how_seen |= MONSEEN_WARNMON;
+    return how_seen;
 }
 
 export function init_vision_globals() {

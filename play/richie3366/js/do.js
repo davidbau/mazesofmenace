@@ -92,6 +92,7 @@ import { revive } from './zap.js';
 import {
     compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
     freeinv_core, getobj_take_count, getobj_apply_count, getobj_from_cmdq,
+    getobj_display_pickinv,
 } from './invent.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
 import { pickup } from './pickup.js';
@@ -2137,14 +2138,18 @@ export async function drop(obj) {
  * C invent getobj any_obj_ok — every invent letter is SUGGEST;
  * suggested > 5 → compactify (invent.c).
  */
-function drop_suggest_lets() {
+function drop_raw_lets() {
     const lets = [];
     for (const o of game.invent || []) {
         if (o?.invlet) lets.push(o.invlet);
     }
     lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    let s = lets.join('');
-    if (lets.length > 5) s = compactify_invlets(s);
+    return lets.join('');
+}
+
+function drop_suggest_lets() {
+    const s = drop_raw_lets();
+    if (s.length > 5) return compactify_invlets(s);
     return s;
 }
 
@@ -2158,7 +2163,7 @@ function drop_obj_ok(obj) {
 /**
  * C ref: invent.c getobj("drop", any_obj_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
  * via yn_function(qbuf, NULL, '\0'). Count prefix + split_otmp live.
- * Canned CMDQ_INT/KEY live. ?/* pickinv still deferred.
+ * Canned CMDQ_INT/KEY live. `?`/`*` → display_pickinv `&ctmp` (D-1559).
  */
 async function getobj_drop() {
     const cq = getobj_from_cmdq(drop_obj_ok, true);
@@ -2179,9 +2184,26 @@ async function getobj_drop() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            // ?/* pickinv deferred — cancel like quitchars for now
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
+            const ilet = await getobj_display_pickinv(
+                ch, drop_raw_lets(), true, counted,
+            );
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline('Never mind.');
+                return null;
+            }
+            if (!ilet) continue;
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            const got = await getobj_apply_count(
+                picked, 'drop', counted.cntgiven, counted.cnt,
+            );
+            if (!got) return null;
+            if (got.retry) continue;
+            mark_topline_prompt(game._pending_message);
+            return got;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
         if (!otmp) {

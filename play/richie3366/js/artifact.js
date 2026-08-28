@@ -41,6 +41,8 @@ import {
     TELEPAT,
     STEALTH,
     TELEPORT_CONTROL,
+    SEARCHING,
+    REGENERATION,
     ENERGY_REGENERATION,
     HALF_SPDAM,
     HALF_PHDAM,
@@ -75,7 +77,7 @@ import {
     flush_screen, flush_topl_more, pline, You_feel, newsym, see_monsters,
     set_sting_effects,
 } from './display.js';
-import { compactify_invlets, display_pickinv_reply, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq } from './invent.js';
+import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv } from './invent.js';
 import { xname, the, vtense, cxname, otense, set_undiscovered_artifact } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
 
@@ -110,9 +112,11 @@ export const SPFX_RESTR = 0x00000002;
 export const SPFX_INTEL = 0x00000004;
 export const SPFX_WARN = 0x00000020;
 export const SPFX_ATTK = 0x00000040;
+export const SPFX_SEARCH = 0x00000200;
 export const SPFX_HALRES = 0x00000800;
 export const SPFX_ESP = 0x00001000;
 export const SPFX_STLTH = 0x00002000;
+export const SPFX_REGEN = 0x00004000;
 export const SPFX_EREGEN = 0x00008000;
 export const SPFX_HSPDAM = 0x00010000;
 export const SPFX_HPHDAM = 0x00020000;
@@ -124,6 +128,7 @@ export const SPFX_DFLAG1 = 0x00400000;
 export const SPFX_DFLAG2 = 0x00800000;
 export const SPFX_DALIGN = 0x01000000;
 export const SPFX_DBONUS = 0x01F00000;
+export const SPFX_XRAY = 0x02000000;
 export const SPFX_REFLECT = 0x04000000;
 const SILVER = 14; /* objclass.h */
 
@@ -595,8 +600,12 @@ function warntype_info() {
  * EHalluc_resistance |= mask when conferring (xtime==0).
  * SPFX_WARN `:824–839`: spec_m2 → EWarn_of_mon + warntype.obj + see_monsters;
  * else EWarning. MATCH_WARN overlay is display.c (D-1514).
- * Named omissions: defn/cary resist masks; SPFX_SEARCH/REGEN/XRAY/PROTECT;
- * inv_prop arti_invoke on W_ART drop; Sunsword EBlnd_resist; message paths.
+ * SPFX_SEARCH `:781–786` ESearching (Excalibur wield); SPFX_REGEN
+ * `:812–817` ERegeneration (Trollsbane / Staff of Aesculapius wield);
+ * SPFX_XRAY `:859–866` u.xray_range 3/-1 + vision_full_recalc (Eyes
+ * W_TOOL via setworn). vision_recalc IN_SIGHT xray circle named.
+ * Named omissions: defn/cary resist masks; SPFX_PROTECT; inv_prop
+ * arti_invoke on W_ART drop; Sunsword EBlnd_resist; message paths.
  * SPFX_REFLECT && W_WEP is D-1342 (not other wp_mask).
  * @param {object} otmp
  * @param {boolean} on
@@ -618,6 +627,10 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
             spfx &= ~(art.cspfx | 0);
         }
     }
+    // C artifact.c:781–786 — SPFX_SEARCH ESearching (Excalibur)
+    if (spfx & SPFX_SEARCH) {
+        set_spfx_extrinsic(SEARCHING, 'ESearching', wp_mask, on);
+    }
     if (spfx & SPFX_HALRES) {
         // C potion.c make_hallucinated mask arm: !xtime → |= ; xtime → &=~
         set_spfx_extrinsic(HALLUC_RES, 'EHalluc_resistance', wp_mask, on);
@@ -631,6 +644,10 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
     // C artifact.c:806–811 — SPFX_STLTH (Heart of Ahriman cspfx)
     if (spfx & SPFX_STLTH) {
         set_spfx_extrinsic(STEALTH, 'EStealth', wp_mask, on);
+    }
+    // C artifact.c:812–817 — SPFX_REGEN (Trollsbane / Staff of Aesculapius)
+    if (spfx & SPFX_REGEN) {
+        set_spfx_extrinsic(REGENERATION, 'ERegeneration', wp_mask, on);
     }
     // C artifact.c:818–823 — SPFX_TCTRL (MKoT cspfx)
     if (spfx & SPFX_TCTRL) {
@@ -660,6 +677,12 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
     // C artifact.c:853–858 — SPFX_HPHDAM (MKoT / Orb of Fate cspfx)
     if (spfx & SPFX_HPHDAM) {
         set_spfx_extrinsic(HALF_PHDAM, 'EHalf_physical_damage', wp_mask, on);
+    }
+    // C artifact.c:859–866 — Eyes; assumes no other xray_range user
+    if (spfx & SPFX_XRAY) {
+        const u = game.u || (game.u = {});
+        u.xray_range = on ? 3 : -1;
+        game.vision_full_recalc = 1;
     }
     // C artifact.c:867–872 — only the wielded-weapon slot sets EReflecting
     if ((spfx & SPFX_REFLECT) && (wp_mask & W_WEP)) {
@@ -930,7 +953,8 @@ async function getobj_invoke() {
 
 /** C invent.c getobj("charge", charge_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT).
  * SUGGEST in the prompt; DOWNPLAY/EXCLUDE_SELECTABLE selectable.
- * Count prefix + split_otmp live. Canned CMDQ_INT/KEY live. */
+ * Count prefix + split_otmp live. Canned CMDQ_INT/KEY live.
+ * `?`/`*` → display_pickinv `&ctmp` (D-1559). */
 async function getobj_charge() {
     const { charge_ok } = await import('./read.js');
     const cq = getobj_from_cmdq(charge_ok, true);
@@ -966,7 +990,9 @@ async function getobj_charge() {
         ch = counted.ch;
         if (ch.charCodeAt(0) === 27) return null;
         if (ch === '?' || ch === '*') {
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : (raw || '*'));
+            const ilet = await getobj_display_pickinv(
+                ch, raw || '*', true, counted,
+            );
             if (ilet === '\x1b') return null;
             if (!ilet) continue;
             const picked = (game.invent || []).find((o) => o.invlet === ilet);

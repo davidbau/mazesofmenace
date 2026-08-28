@@ -1,6 +1,6 @@
 // minion.js — Demon/angel summon helpers (partial).
-// C ref: minion.c msummon / ndemon / dlord / dprince / monster_census /
-//         lminion / summon_minion; mondata.c msummon_environ.
+// C ref: minion.c msummon / ndemon / dlord / dprince / llord /
+//         monster_census / lminion / summon_minion; mondata.c msummon_environ.
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
@@ -8,6 +8,7 @@ import { pline, canseemon, verbalize, You_feel } from './display.js';
 import { Monnam } from './do_name.js';
 import { an } from './objnam.js';
 import { makemon, mkclass, mkclass_aligned, newemin } from './makemon.js';
+import { is_lminion } from './teleport.js';
 import {
     mons, is_demon, is_ndemon, is_dlord, is_dprince, is_lord, G_UNIQ,
 } from './monsters.js';
@@ -27,6 +28,7 @@ const PM_DEMOGORGON = monsterNames.indexOf('PM_DEMOGORGON');
 const PM_JUIBLEX = monsterNames.indexOf('PM_JUIBLEX');
 const PM_YEENOGHU = monsterNames.indexOf('PM_YEENOGHU');
 const PM_ANGEL = monsterNames.indexOf('PM_ANGEL');
+const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_AIR_ELEMENTAL = monsterNames.indexOf('PM_AIR_ELEMENTAL');
 const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
@@ -242,6 +244,14 @@ export async function summon_minion(alignment, talk) {
     }
 }
 
+/** C ref: minion.c llord — Archon if not gone, else lminion. */
+export function llord() {
+    if (((game.mvitals?.[PM_ARCHON]?.mvflags ?? 0) & G_GONE) === 0) {
+        return PM_ARCHON;
+    }
+    return lminion();
+}
+
 /** C ref: minion.c dlord — rn1 among juiblex..yeenoghu, else ndemon. */
 export function dlord(atyp) {
     const tryctMax = !In_endgame(game.u?.uz) ? 20 : 0;
@@ -272,8 +282,8 @@ export function dprince(atyp) {
 
 /**
  * C ref: minion.c msummon — summon help for demon fight (or WoY-like).
- * Named omissions: is_lminion / PM_ANGEL arms; show_transient_light /
- * transient_light_cleanup for S_ANGEL; full EPRI/EMIN align when unset.
+ * Named omissions: show_transient_light / transient_light_cleanup for
+ * S_ANGEL; full EPRI/EMIN align when unset.
  */
 export async function msummon(mon) {
     let ptr;
@@ -317,8 +327,30 @@ export async function msummon(mon) {
     } else if (is_ndemon(ptr)) {
         dtype = (!rn2(20)) ? dlord(atyp) : (!rn2(6)) ? ndemon(atyp) : mndx;
         cnt = 1;
+    } else if (is_lminion(mon)) {
+        dtype = (is_lord(ptr) && !rn2(20))
+            ? llord()
+            : (is_lord(ptr) || !rn2(6)) ? lminion() : (ptr.mndx | 0);
+        cnt = ((dtype !== NON_PM) && !rn2(4) && !is_lord(mons(dtype))) ? 2 : 1;
+    } else if (mndx === PM_ANGEL) {
+        // C: non-lawful angels can also summon
+        if (!rn2(6)) {
+            switch (atyp | 0) {
+            case A_NEUTRAL:
+                dtype = ELEMENTALS[rn2(ELEMENTALS.length)];
+                break;
+            case A_CHAOTIC:
+            case A_NONE:
+                dtype = ndemon(atyp);
+                break;
+            default:
+                break;
+            }
+        } else {
+            dtype = PM_ANGEL;
+        }
+        cnt = ((dtype !== NON_PM) && !rn2(4) && !is_lord(mons(dtype))) ? 2 : 1;
     }
-    // is_lminion / PM_ANGEL deferred — dtype stays NON_PM
 
     if (dtype === NON_PM) return 0;
 
@@ -343,7 +375,7 @@ export async function msummon(mon) {
                 mtmp.mextra.emin.renegade =
                     ((atyp !== (u.ualign?.type | 0)) ^ !(mtmp.mpeaceful | 0)) !== 0;
             }
-            // S_ANGEL transient light deferred
+            // S_ANGEL show_transient_light / transient_light_cleanup named
             if (cnt === 1 && canseemon(mtmp)) {
                 const { cloud, what } = msummon_environ(mtmp.data);
                 await pline(`${Amonnam(mtmp)} appears in a ${cloud} of ${what}!`);

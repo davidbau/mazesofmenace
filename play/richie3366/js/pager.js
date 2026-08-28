@@ -8,8 +8,9 @@
 // dat/* pages + dokeylist/domenucontrols/docontact; data.base lookups for
 // checkfile. object_from_map + look_at_object (SLIME_MOLD spe =
 // current_fruit). getpos auto_describe / brief_at glyph_is_object
-// fakeobj (D-1547). mhidden_description (D-1554). Full glyph encyclopedia,
-// whatdoes keyhelp body, and PORT_HELP deferred.
+// fakeobj (D-1547). mhidden_description (D-1554). howmonseen look
+// monbuf (D-1562). Full glyph encyclopedia, whatdoes keyhelp body, and
+// PORT_HELP deferred.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -19,6 +20,7 @@ import {
     mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
     glyph_to_obj_at,
 } from './display.js';
+import { howmonseen } from './vision.js';
 import { getlin, yn_function } from './getline.js';
 import {
     paint_corner_nhw_menu, dfeature_at, invent_lines, observe_object,
@@ -32,9 +34,12 @@ import { mon_at, defsym_explanation } from './uhitm.js';
 import { objects_at, mksobj, mkobj, obj_stop_timers } from './mkobj.js';
 import {
     doname, an, xname, singular, ansimpleoname, distant_name, simpleonames,
+    makeplural,
 } from './objnam.js';
 import { distant_monnam_none, pmname, Ugender } from './do_name.js';
-import { hides_under, is_hider, is_clinger, is_flyer, mons } from './monsters.js';
+import { hides_under, is_hider, is_clinger, is_flyer, mons,
+    M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON,
+} from './monsters.js';
 import { is_pool } from './hack.js';
 import { visible_region_at } from './region.js';
 import { engr_at } from './engrave.js';
@@ -54,6 +59,8 @@ import {
     M_AP_TYPMASK, M_AP_F_DKNOWN,
     MCORPSENM, NON_PM, MALE, FEMALE,
     MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
+    MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
+    MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -290,7 +297,8 @@ function self_lookat() {
 /**
  * C ref: pager.c look_at_monster — distant_monnam ARTICLE_NONE + tame/peaceful
  * + mfrozen/msleeping/STRAT_WAITMASK + mhidden_description (D-1554).
- * Health / stuck / leashed / trapped / hallu / howmonseen deferred.
+ * howmonseen monbuf is D-1562 (describe_looked [seen:]; look_all NULL).
+ * Health / stuck / leashed / trapped / hallu deferred.
  */
 function look_at_monster_buf(mtmp) {
     if (!mtmp) return 'monster';
@@ -316,6 +324,60 @@ function look_at_monster_buf(mtmp) {
             MHID_PREFIX | MHID_ARTICLE | MHID_REGION);
     }
     return buf;
+}
+
+/**
+ * C ref: pager.c look_at_monster :485–554 monbuf — howmonseen bits as
+ * "normal vision, telepathy, …". Empty when 0 or NORMAL-only (D-1562).
+ * look_all passes NULL monbuf; describe_looked appends " [seen: %s]".
+ */
+function howmonseen_look_buf(mtmp) {
+    let how_seen = howmonseen(mtmp) | 0;
+    if (!how_seen || how_seen === MONSEEN_NORMAL) return '';
+    const parts = [];
+    if (how_seen & MONSEEN_NORMAL) {
+        parts.push('normal vision');
+        how_seen &= ~MONSEEN_NORMAL;
+    }
+    if (how_seen & MONSEEN_SEEINVIS) {
+        parts.push('see invisible');
+        how_seen &= ~MONSEEN_SEEINVIS;
+    }
+    if (how_seen & MONSEEN_INFRAVIS) {
+        parts.push('infravision');
+        how_seen &= ~MONSEEN_INFRAVIS;
+    }
+    if (how_seen & MONSEEN_TELEPAT) {
+        parts.push('telepathy');
+        how_seen &= ~MONSEEN_TELEPAT;
+    }
+    if (how_seen & MONSEEN_XRAYVIS) {
+        parts.push('astral vision');
+        how_seen &= ~MONSEEN_XRAYVIS;
+    }
+    if (how_seen & MONSEEN_DETECT) {
+        parts.push('monster detection');
+        how_seen &= ~MONSEEN_DETECT;
+    }
+    if (how_seen & MONSEEN_WARNMON) {
+        if (Hallucination()) {
+            parts.push('paranoid delusion');
+        } else {
+            const wt = game.context?.warntype || {};
+            const mW = (wt.obj | 0) | (wt.polyd | 0);
+            const m2 = mtmp.data?.mflags2 | 0;
+            const whom = ((mW & M2_HUMAN & m2) ? 'human'
+                : (mW & M2_ELF & m2) ? 'elf'
+                  : (mW & M2_ORC & m2) ? 'orc'
+                    : (mW & M2_DEMON & m2) ? 'demon'
+                      : pmname(mtmp.data, mtmp.female ? FEMALE : MALE));
+            parts.push(`warned of ${makeplural(whom)}`);
+        }
+        how_seen &= ~MONSEEN_WARNMON;
+    }
+    /* C impossible leftover bits */
+    if (how_seen) parts.push(`(${how_seen >>> 0})`);
+    return parts.join(', ');
 }
 
 /**
@@ -1022,7 +1084,10 @@ function describe_looked(x, y) {
     if (mtmp) {
         const nm = look_at_monster_buf(mtmp).replace(/^(tame|peaceful) /, '');
         const first = nm;
-        return { out: `${nm[0] || '?'}        ${an(nm)}`, first, found: 1 };
+        const seen = howmonseen_look_buf(mtmp);
+        let out = `${nm[0] || '?'}        ${an(nm)}`;
+        if (seen) out += ` [seen: ${seen}]`;
+        return { out, first, found: 1 };
     }
     const loc = game.level?.at?.(x, y);
     const pile = loc?.objects || [];

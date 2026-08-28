@@ -9,7 +9,7 @@ import {
     verbalize, mon_visible, tp_sensemon, see_with_infrared, tmp_at,
     set_msg_xy,
 } from './display.js';
-import { vision_recalc, cansee, couldsee } from './vision.js';
+import { vision_recalc, cansee, couldsee, howmonseen } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
     COIN_CLASS, GEM_CLASS, FOOD_CLASS, RING_CLASS, RANDOM_CLASS,
@@ -37,6 +37,7 @@ import {
     MAX_SPELL_STUDY, HOMEMADE_TIN, G_GONE, NO_MINVENT, MM_NOMSG, TT_BURIEDBALL,
     IS_TREE, W_NONPASSWALL, FIG_TRANSFORM, TIMER_OBJECT, OBJ_MINVENT,
     EXACT_NAME, DISP_BEAM, DISP_END, HI_ZAP,
+    MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS,
 } from './const.js';
 import { pick_lock, getdir } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
@@ -47,7 +48,7 @@ import {
 import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
     hold_another_object, consume_obj_charge, update_inventory,
-    getobj_from_cmdq,
+    getobj_from_cmdq, getobj_record_repeat, getobj_display_pickinv,
 } from './invent.js';
 import { rn2, rn1, rnd, d, rnl, shuffle_int_array } from './rng.js';
 import {
@@ -254,10 +255,7 @@ const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const MAXLEASHED = 2;
 /** C monflag.h MS_SILENT. */
 const MS_SILENT = 0;
-/** C mon.h howmonseen bits — NORMAL suffices for lit-room pets. */
-const MONSEEN_NORMAL = 0x01;
-const MONSEEN_SEEINVIS = 0x02;
-const MONSEEN_INFRAVIS = 0x04;
+/** C apply.c use_mirror SEENMON — NORMAL|SEEINVIS|INFRAVIS. */
 const SEENMON = MONSEEN_NORMAL | MONSEEN_SEEINVIS | MONSEEN_INFRAVIS;
 
 /** C invent getobj callback ranks (hack.h). */
@@ -423,6 +421,7 @@ async function getobj_apply() {
                 return null;
             }
             game._pending_message = '';
+            getobj_record_repeat(picked, ilet);
             return picked;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
@@ -439,6 +438,7 @@ async function getobj_apply() {
         // SUGGEST / DOWNPLAY / EXCLUDE_SELECTABLE → return; doapply default
         // prints "Sorry…" for EXCLUDE_SELECTABLE otyps.
         game._pending_message = '';
+        getobj_record_repeat(otmp, ch);
         return otmp;
     }
 }
@@ -632,9 +632,10 @@ function bhit_invis_beam(ddx, ddy, range) {
 
 /**
  * C apply.c use_mirror — getdir then reflect self / beam mon reactions.
- * Named omissions: Hallucination hcolor self; full howmonseen bits;
- * mon_reflects Medusa; nymph steal+rloc; monverbself polish; Underwater /
- * swallow / dz surface|ceiling wording; See_invisible / Invis edge cases.
+ * Named omissions: Hallucination hcolor self; mon_reflects Medusa;
+ * nymph steal+rloc; monverbself polish; Underwater / swallow / dz
+ * surface|ceiling wording; See_invisible / Invis edge cases.
+ * howmonseen is D-1562.
  * @returns {number} ECMD_*
  */
 async function use_mirror(obj) {
@@ -735,8 +736,8 @@ async function use_mirror(obj) {
     if (!mtmp || !haseyes(mtmp.data) || game.notonhead) return ECMD_TIME;
 
     const vis = canseemon(mtmp);
-    // howmonseen deferred — lit canseemon ≡ NORMAL (not INFRAVIS-only)
-    const how_seen = vis ? MONSEEN_NORMAL : 0;
+    // C apply.c:1108 — vis ? howmonseen(mtmp) : 0 (D-1562)
+    const how_seen = vis ? howmonseen(mtmp) : 0;
     const monable = !mtmp.mcan
         && (!mtmp.minvis || perceives(mtmp.data));
     const mlet = mtmp.data?.mlet;
@@ -2259,8 +2260,11 @@ async function getobj_grease() {
         }
         if (ch === '-') return hands_obj;
         if (ch === '?' || ch === '*') {
-            const { display_pickinv_reply } = await import('./invent.js');
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            const counted = { cnt: 0, cntgiven: false };
+            const ilet = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word, allownone: true, promptHasHands: true },
+            );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;
@@ -2282,6 +2286,7 @@ async function getobj_grease() {
                 return null;
             }
             game._pending_message = '';
+            getobj_record_repeat(picked, ilet);
             return picked;
         }
         if (ch === '$') {
@@ -2308,6 +2313,7 @@ async function getobj_grease() {
             return null;
         }
         game._pending_message = '';
+        getobj_record_repeat(otmp, ch);
         return otmp;
     }
 }
@@ -2868,6 +2874,9 @@ function any_obj_ok_stone(obj) {
  * for use_stone second-object pick. DOWNPLAY letters accepted; EXCLUDE not.
  */
 async function getobj_rub_on_stone(stonebuf, okfn) {
+    const cq = getobj_from_cmdq(okfn, false);
+    if (!cq.skip) return cq.otmp;
+
     const suggest_lets = () => {
         const lets = [];
         for (const o of game.invent || []) {
@@ -2924,6 +2933,7 @@ async function getobj_rub_on_stone(stonebuf, okfn) {
                 return null;
             }
             game._pending_message = '';
+            getobj_record_repeat(picked, ilet);
             return picked;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
@@ -2937,6 +2947,7 @@ async function getobj_rub_on_stone(stonebuf, okfn) {
             return null;
         }
         game._pending_message = '';
+        getobj_record_repeat(otmp, ch);
         return otmp;
     }
 }
@@ -3143,6 +3154,7 @@ async function getobj_jelly() {
                 return null;
             }
             game._pending_message = '';
+            getobj_record_repeat(picked, ilet);
             return picked;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
@@ -3156,6 +3168,7 @@ async function getobj_jelly() {
             return null;
         }
         game._pending_message = '';
+        getobj_record_repeat(otmp, ch);
         return otmp;
     }
 }
@@ -5412,7 +5425,10 @@ async function getobj_rub() {
             continue;
         }
         for (const o of game.invent || []) {
-            if (o.invlet === ch && rub_ok(o) === GETOBJ_SUGGEST) return o;
+            if (o.invlet === ch && rub_ok(o) === GETOBJ_SUGGEST) {
+                getobj_record_repeat(o, ch);
+                return o;
+            }
         }
         await pline(`You don't have that object.`);
     }

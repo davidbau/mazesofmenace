@@ -18,7 +18,7 @@ import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
     endgamelevelname, obj_glyph, suppress_map_output, clear_nhwindow_message,
 } from './display.js';
-import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, set_not_fully_identified } from './objnam.js';
+import { xprname, an, vtense, doname, disco_typename, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, set_not_fully_identified, makeplural, body_part_latebound } from './objnam.js';
 import { yn_function } from './getline.js';
 import { mergable, is_damageable, stop_timer, splitobj } from './mkobj.js';
 import { cansee } from './vision.js';
@@ -49,6 +49,7 @@ import {
     ECMD_OK,
     ECMD_CANCEL,
     WIN_ERR,
+    OBJ_FREE,
     OBJ_INVENT,
     OBJ_CONTAINED,
     OBJ_FLOOR,
@@ -73,9 +74,17 @@ import {
     thats_enough_tries,
     LARGEST_INT,
     HANDS_SYM,
+    HAND,
+    FINGER,
+    FINGERTIP,
     GETOBJ_EXCLUDE,
     GETOBJ_SUGGEST,
     GETOBJ_DOWNPLAY,
+    GETOBJ_EXCLUDE_INACCESS,
+    GETOBJ_EXCLUDE_SELECTABLE,
+    GETOBJ_EXCLUDE_NONINVENT,
+    GETOBJ_ALLOWCNT,
+    GETOBJ_PROMPT,
     CMDQ_KEY,
     CMDQ_EXTCMD,
     CMDQ_USER_INPUT,
@@ -957,31 +966,57 @@ export function invent_lines() {
 }
 
 /**
- * C ref: invent.c display_pickinv(lets, …, want_reply=TRUE) subset for getobj `?`/`*`.
- * Shows invent filtered to `lets` (or all when lets null/'*'), PICK_ONE by
- * invlet; ESC cancels; Space next page or null on last; Return → null.
+ * C integer.h AppendLongDigit — overflow → -1 (menu counts stay small).
+ * @param {number} L
+ * @param {number} D
+ */
+function append_long_digit(L, D) {
+    const LONG_MAX = Number.MAX_SAFE_INTEGER;
+    const q = Math.trunc(LONG_MAX / 10);
+    const r = LONG_MAX - q * 10;
+    if (L < q || (L === q && D <= r)) return L * 10 + D;
+    return -1;
+}
+
+/**
+ * C ref: invent.c display_pickinv(lets, …, want_reply=TRUE, out_cnt) subset
+ * for getobj `?`/`*`. Shows invent filtered to `lets` (or all when lets
+ * null/'*'), PICK_ONE by invlet; ESC cancels; Space next page or null on
+ * last; Return → null.
  * Multi-page (nitems>lmax): fullscreen "(N of M)" like tty process_menu_window;
  * only current-page selectors accepted (C resp).
  * C n==1 && !force_invmenu && !menu_requested && lets set →
- * tty_message_menu(PICK_ONE) topline xprname+--More-- (not corner menu).
- * Named omissions: hands/xtra_choice; count; sortloot inuse_only; wizid;
- * force_invmenu / menu_requested menu path polish; MENU_PREV/FIRST/LAST.
+ * tty_message_menu(PICK_ONE) topline xprname+--More-- (not corner menu);
+ * `*out_cnt = -1` (select all). usextra (xtra_choice && allowxtra) bumps
+ * n and, when n==1, message_menu(HANDS_SYM, xprname(NULL, txt, '-')).
+ * Full menu: sortpack "Miscellaneous" + extra '-' row (D-1569).
+ * PICK_ONE digits: wintty.c process_menu_window count then
+ * selected[0].count (D-1559). `out_cnt` is C `long *` (`{ n }`); omitted
+ * when getobj !ALLOWCNT.
+ * Named omissions: sortloot inuse_only; wizid; force_invmenu /
+ * menu_requested `*`/`?` redo; MENU_PREV/FIRST/LAST; group accelerators
+ * (gacc / '0' ball class).
+ * @param {string|null} lets
+ * @param {{ n: number }|null} [out_cnt]
+ * @param {{ choice: string, allow: boolean }|null} [xtra] C xtra_choice + allowxtra
  * @returns {string|null} selected invlet, or null if cancelled / no pick
  */
-export async function display_pickinv_reply(lets) {
+export async function display_pickinv_reply(lets, out_cnt = null, xtra = null) {
     const allowAll = !lets || lets === '*';
     const inv = game.invent || [];
+    const usextra = !!(xtra?.choice && xtra?.allow);
 
     // C: n = lets ? strlen(lets) : invent 0/1/2+; then
     // if (usextra || (n==1 && (!lets || wizid))) ++n — so bare invent
-    // with one item skips message_menu; getobj "?" with one letter does not.
+    // with one item skips message_menu; getobj "?" with one letter does
+    // not unless usextra (hands extra bumps past the one-item path).
     let n;
     if (!allowAll) {
         n = lets.length;
     } else {
         n = !inv.length ? 0 : inv.length === 1 ? 1 : 2;
-        if (n === 1) n++; // !lets → bump
     }
+    if (usextra || (n === 1 && allowAll)) n++;
 
     if (n === 0) {
         await pline('Not carrying anything appropriate.');
@@ -993,6 +1028,16 @@ export async function display_pickinv_reply(lets) {
         && !game.iflags?.force_invmenu
         && !game.iflags?.menu_requested
     ) {
+        // C: if (out_cnt) *out_cnt = -1L; /* select all */ after message_menu
+        if (out_cnt) out_cnt.n = -1;
+        if (usextra) {
+            // C: message_menu(HANDS_SYM, PICK_ONE, xprname(NULL, xtra_choice, '-', TRUE, 0, 0))
+            return await message_menu(
+                HANDS_SYM,
+                PICK_ONE,
+                xprname(null, HANDS_SYM, true, 0, xtra.choice),
+            );
+        }
         // C: first invent whose invlet == lets[0] (lets non-null here)
         const want = lets[0];
         const otmp = inv.find((o) => o && o.invlet === want);
@@ -1011,6 +1056,17 @@ export async function display_pickinv_reply(lets) {
     const allow = allowAll ? null : new Set([...lets]);
     const entries = [];
     const byLet = new Map();
+    if (usextra) {
+        // C display_pickinv :3253–3260 — wizard ID and xtra_choice exclusive
+        if (game.flags?.sortpack !== false) {
+            entries.push({ text: 'Miscellaneous', attr: ATR_INVERSE });
+        }
+        byLet.set(HANDS_SYM, { _hands: true });
+        entries.push({
+            text: xprname(null, HANDS_SYM, false, 0, xtra.choice),
+            attr: 0,
+        });
+    }
     for (const oclass of DEF_INV_ORDER) {
         const items = inv.filter((o) => {
             if (o.oclass !== oclass) return false;
@@ -1042,8 +1098,18 @@ export async function display_pickinv_reply(lets) {
     const lmax = Math.min(52, rows - 1);
     const npages = Math.max(1, Math.floor((entries.length + lmax - 1) / lmax));
     let curr_page = 0;
+    // C wintty.c process_menu_window: counting / count / reset_count
+    let counting = false;
+    let count = 0;
+    let reset_count = true;
 
     for (;;) {
+        if (reset_count) {
+            counting = false;
+            count = 0;
+        } else {
+            reset_count = true;
+        }
         const start = curr_page * lmax;
         const page = entries.slice(start, start + lmax);
         const morestr = npages > 1
@@ -1069,7 +1135,22 @@ export async function display_pickinv_reply(lets) {
         await flush_screen(1);
         const key = await nhgetch();
 
+        // C process_menu_window '0'..'9': AppendLongDigit; leading 0 ignored
+        if (key >= 48 && key <= 57) {
+            const dgt = key - 48;
+            const next = append_long_digit(count, dgt);
+            if (next < 0) continue; // overflow → reset_count stays True
+            count = next;
+            if (count !== 0) {
+                counting = true;
+                reset_count = false;
+            }
+            continue;
+        }
+
         if (key === 27) {
+            // C: counting → stop count only; else WIN_CANCELLED
+            if (counting) continue;
             await dismiss_nhw_menu();
             return '\x1b';
         }
@@ -1087,6 +1168,12 @@ export async function display_pickinv_reply(lets) {
             return null;
         }
         const ch = String.fromCharCode(key);
+        const take = () => {
+            // C tty_select_menu: mi->count = curr->count (-1 if !counting)
+            if (out_cnt) {
+                out_cnt.n = (counting && count > 0) ? count : -1;
+            }
+        };
         // C: only current-page selectors are in resp (PICK_ONE)
         if (npages > 1) {
             const onPage = page.some((e) => {
@@ -1094,10 +1181,12 @@ export async function display_pickinv_reply(lets) {
                 return t.length >= 3 && t[1] === ' ' && t[0] === ch;
             });
             if (onPage && byLet.has(ch)) {
+                take();
                 await dismiss_nhw_menu();
                 return ch;
             }
         } else if (byLet.has(ch)) {
+            take();
             await dismiss_nhw_menu();
             return ch;
         }
@@ -3606,6 +3695,28 @@ export function freeinv_core(obj) {
     }
 }
 
+/**
+ * C ref: invent.c freeinv — extract from invent, pickup_prev=0,
+ * freeinv_core, update_inventory. JS invent is an array; also unlink nobj
+ * (C extract_nobj(&gi.invent)).
+ */
+export function freeinv(obj) {
+    if (!obj) return;
+    const inv = game.invent;
+    if (Array.isArray(inv)) {
+        const idx = inv.indexOf(obj);
+        if (idx >= 0) inv.splice(idx, 1);
+        for (const o of inv) {
+            if (o.nobj === obj) o.nobj = obj.nobj || null;
+        }
+    }
+    obj.nobj = null;
+    obj.pickup_prev = 0;
+    obj.where = OBJ_FREE;
+    freeinv_core(obj);
+    update_inventory();
+}
+
 const GOLD_SYM_ADJ = '$';
 const NOINVSYM = '#';
 const INVLET_BASIC = 52;
@@ -3783,15 +3894,52 @@ export function getobj_split_otmp(otmp, cntgiven, cnt) {
 }
 
 /**
- * C cmd.c cmdq_add_int. CQ_REPEAT is `game._cmdq_repeat` (in_doagain
- * named). Interactive getobj REPEAT record named.
+ * C cmd.c command_queue[CQ_*] — JS arrays on game.
+ * @param {number} q
+ */
+function cmdq_qname(q) {
+    return (q | 0) === CQ_REPEAT ? '_cmdq_repeat' : '_cmdq_canned';
+}
+
+/**
+ * C cmd.c cmdq_add_int. Interactive getobj REPEAT record is
+ * getobj_record_repeat (D-1563).
  * @param {number} q CQ_CANNED or CQ_REPEAT
  * @param {number} val
  */
 export function cmdq_add_int(q, val) {
-    const name = (q | 0) === CQ_REPEAT ? '_cmdq_repeat' : '_cmdq_canned';
+    const name = cmdq_qname(q);
     if (!game[name]) game[name] = [];
     game[name].push({ typ: CMDQ_INT, intval: val | 0 });
+}
+
+/**
+ * C cmd.c cmdq_add_key. Apply/dig/iactions keep canned clones (do not
+ * write a fourth canned-only clone).
+ * @param {number} q CQ_CANNED or CQ_REPEAT
+ * @param {string|number} key invlet or char code
+ */
+export function cmdq_add_key(q, key) {
+    const name = cmdq_qname(q);
+    if (!game[name]) game[name] = [];
+    const k = typeof key === 'string' ? key : String.fromCharCode(key | 0);
+    game[name].push({ typ: CMDQ_KEY, key: k });
+}
+
+/**
+ * C invent.c getobj `:2049–2054`. Record count+letter on CQ_REPEAT when
+ * not in_doagain. Hands '-' returns before this in C.
+ * @param {object|null} otmp
+ * @param {string} [ilet]
+ * @param {boolean} [cntgiven=false]
+ * @param {number} [cnt=0]
+ */
+export function getobj_record_repeat(otmp, ilet, cntgiven = false, cnt = 0) {
+    if (!otmp || game.in_doagain) return;
+    const rec = ilet != null && ilet !== '' ? ilet : otmp.invlet;
+    if (rec == null || rec === '') return;
+    if (cntgiven && cnt > 0) cmdq_add_int(CQ_REPEAT, cnt);
+    cmdq_add_key(CQ_REPEAT, rec);
 }
 
 /** C cmd.c cmdq_pop — in_doagain uses CQ_REPEAT, else CQ_CANNED. */
@@ -3822,7 +3970,7 @@ function getobj_cmdq_rank_ok(v) {
  * C's `need_more_cq` boolean is never set TRUE, so INT without a
  * following KEY falls through to interactive. USER_INPUT is consumed
  * then interactive. JS function / CMDQ_EXTCMD heads are rhack's — do
- * not pop them here. in_doagain REPEAT record named.
+ * not pop them here. in_doagain pops CQ_REPEAT (D-1563).
  * @param {(obj: object|null) => number} obj_ok
  * @param {boolean} allowcnt
  * @param {object|null} [hands] C `&hands_obj` when '-' is acceptable
@@ -3888,12 +4036,104 @@ export function getobj_from_cmdq(obj_ok, allowcnt, hands) {
 }
 
 /**
+ * C invent.c getobj_hands_txt `:1718–1736`. Menu xtra_choice string
+ * (not the yn prompt). grease uses fingers_or_gloves(FALSE) =
+ * makeplural(body_part(FINGER)), not the gloves name.
+ * @param {string} action getobj word
+ * @returns {string}
+ */
+export function getobj_hands_txt(action) {
+    const u = game.u || {};
+    if (action === 'grease') {
+        return `your ${makeplural(body_part_latebound(FINGER))}`;
+    }
+    if (action === 'write with') {
+        return `your ${body_part_latebound(FINGERTIP)}`;
+    }
+    if (action === 'wield') {
+        const gloved = u.uarmg ? 'gloved' : 'bare';
+        const wielded = !u.uwep ? ' (wielded)' : '';
+        return `your ${gloved} ${makeplural(body_part_latebound(HAND))}${wielded}`;
+    }
+    if (action === 'ready') {
+        return `empty quiver${!u.uquiver ? ' (nothing readied)' : ''}`;
+    }
+    return `your ${makeplural(body_part_latebound(HAND))}`;
+}
+
+/**
+ * C invent.c getobj `:1976–1981` — set handsbuf when `*` (NULL lets),
+ * lets starts with HANDS_SYM (altlets), or buf starts with '-' (SUGGEST).
+ * usextra also needs allownone (allowxtra).
+ * @param {string} ch '?' or '*'
+ * @param {string} rawLets
+ * @param {{ word: string, allownone: boolean, promptHasHands: boolean }} ctx
+ * @returns {{ choice: string, allow: boolean }|null}
+ */
+export function getobj_pickinv_xtra(ch, rawLets, ctx) {
+    if (!ctx?.allownone || ctx.word == null) return null;
+    const isStar = ch === '*';
+    const allowed = isStar ? null : (rawLets || '');
+    if (isStar || allowed[0] === HANDS_SYM || ctx.promptHasHands) {
+        return { choice: getobj_hands_txt(ctx.word), allow: true };
+    }
+    return null;
+}
+
+/**
+ * C invent.c getobj `:1996–1999` after display_pickinv.
+ * Menu `*out_cnt` overrides prompt digits when allowcnt && ctmp >= 0
+ * (0 is a given count; -1 from n==1 / no menu digits means select-all).
+ * @param {boolean} allowcnt
+ * @param {{ n: number }|null} ctmp
+ * @param {{ cnt: number, cntgiven: boolean }} counted
+ */
+export function getobj_pickinv_ctmp(allowcnt, ctmp, counted) {
+    if (allowcnt && ctmp && ctmp.n >= 0) {
+        counted.cnt = ctmp.n;
+        counted.cntgiven = true;
+    }
+    return counted;
+}
+
+/**
+ * C invent.c getobj redo_menu `?`/`*` `:1963–2001`.
+ * display_pickinv(lets or NULL, handsbuf, …, allowcnt ? &ctmp : NULL)
+ * then allowcnt && ctmp >= 0. force_invmenu `*`/`?` redo named.
+ * @param {string} ch '?' or '*'
+ * @param {string} rawLets non-compacted SUGGEST letters
+ * @param {boolean} allowcnt
+ * @param {{ cnt: number, cntgiven: boolean }} counted
+ * @param {{ word: string, allownone: boolean, promptHasHands: boolean }|null} [ctx]
+ * @returns {Promise<string|null>}
+ */
+export async function getobj_display_pickinv(ch, rawLets, allowcnt, counted, ctx = null) {
+    const ctmp = { n: 0 };
+    const xtra = ctx ? getobj_pickinv_xtra(ch, rawLets, ctx) : null;
+    const ilet = await display_pickinv_reply(
+        ch === '*' ? '*' : (rawLets || '*'),
+        allowcnt ? ctmp : null,
+        xtra,
+    );
+    if (ilet && ilet !== '\x1b' && ilet !== '*' && ilet !== '?') {
+        getobj_pickinv_ctmp(allowcnt, ctmp, counted);
+    }
+    return ilet;
+}
+
+/**
  * C invent.c getobj after the letter `:2021–2088` — gold LRS, throw-one,
- * "don't have that many", then split_otmp. CMDQ_REPEAT record /
- * silly_thing / pickinv `&ctmp` named.
+ * botl, CQ_REPEAT record `:2049–2054`, "don't have that many", then
+ * split_otmp. silly_thing named. pickinv `&ctmp` is getobj_display_pickinv
+ * (D-1559).
+ * @param {object|null} otmp
+ * @param {string} word
+ * @param {boolean} cntgiven
+ * @param {number} cnt
+ * @param {string} [ilet] typed letter (C `ilet`; default `otmp.invlet`)
  * @returns {Promise<null | { retry: true } | object>}
  */
-export async function getobj_apply_count(otmp, word, cntgiven, cnt) {
+export async function getobj_apply_count(otmp, word, cntgiven, cnt, ilet) {
     const coins = !!(otmp && otmp.oclass === COIN_CLASS);
     if (coins && cntgiven && cnt <= 0) {
         if (cnt < 0) {
@@ -3919,13 +4159,182 @@ export async function getobj_apply_count(otmp, word, cntgiven, cnt) {
     }
     if (!game.flags) game.flags = {};
     game.flags.botl = true; // C disp.botl
-    if (!otmp) return { retry: true };
+    getobj_record_repeat(otmp, ilet, cntgiven, cnt);
+    if (!otmp) {
+        if (game.in_doagain) return null;
+        return { retry: true };
+    }
     const quan = otmp.quan || 1;
     if (cnt < 0 || quan < cnt) {
         await pline(`You don't have that many!  You have only ${quan}.`);
+        if (game.in_doagain) return null;
         return { retry: true };
     }
     return getobj_split_otmp(otmp, cntgiven, cnt);
+}
+
+function getobj_sort_invlets(lets) {
+    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
+    return lets.join('');
+}
+
+function getobj_find_ilet(ch) {
+    if (ch === GOLD_SYM) {
+        return (game.invent || []).find((o) => o && o.oclass === COIN_CLASS)
+            || null;
+    }
+    return (game.invent || []).find((o) => o && o.invlet === ch) || null;
+}
+
+/**
+ * C invent.c getobj `:1751–2089`.
+ * Canned CMDQ_INT/KEY (D-1551) + CQ_REPEAT (D-1563). Digit prefix
+ * ALLOWCNT (D-1530); !ALLOWCNT → "No count allowed" and retry.
+ * `?`/`*` → display_pickinv `allowcnt ? &ctmp : NULL` (D-1559) +
+ * xtra_choice/handsbuf when allownone (D-1569).
+ * GETOBJ_NOFLAGS + no SUGGEST / hands / DOWNPLAY forceprompt →
+ * "don't have anything [else] to WORD" (inaccess from
+ * EXCLUDE_NONINVENT / EXCLUDE_INACCESS). GETOBJ_PROMPT still prompts
+ * `[*]` when suggested==0.
+ * Named omit: force_invmenu oneloop; in_doagain readchar (REPEAT
+ * cmdq live); mime_action; sortloot body (invlet sort);
+ * call-Amulet silly_thing.
+ * @param {string} word
+ * @param {(obj: object|null) => number} obj_ok
+ * @param {number} ctrlflags
+ * @returns {Promise<object|null>}
+ */
+export async function getobj(word, obj_ok, ctrlflags) {
+    const allowcnt = !!(ctrlflags & GETOBJ_ALLOWCNT);
+    let forceprompt = !!(ctrlflags & GETOBJ_PROMPT);
+    let allownone = false;
+    let inaccess = 0;
+    let handsSuggest = false;
+
+    const { hands_obj } = await import('./weapon.js');
+    const cq = getobj_from_cmdq(obj_ok, allowcnt, hands_obj);
+    if (!cq.skip) return cq.otmp;
+
+    const none_rank = obj_ok(null);
+    if (none_rank === GETOBJ_SUGGEST) {
+        allownone = true;
+        handsSuggest = true;
+    } else if (
+        none_rank === GETOBJ_DOWNPLAY
+        || none_rank === GETOBJ_EXCLUDE_INACCESS
+        || none_rank === GETOBJ_EXCLUDE_SELECTABLE
+    ) {
+        allownone = true;
+    } else if (none_rank === GETOBJ_EXCLUDE_NONINVENT) {
+        forceprompt = false;
+        inaccess++;
+    }
+
+    const suggest = [];
+    const alt = [];
+    // C: DOWNPLAY/EXCLUDE_* hands go to altlets first (HANDS_SYM)
+    if (allownone && !handsSuggest) alt.push(HANDS_SYM);
+    for (const otmp of game.invent || []) {
+        if (!otmp?.invlet) continue;
+        const v = obj_ok(otmp);
+        if (v === GETOBJ_SUGGEST) {
+            suggest.push(otmp.invlet);
+        } else if (v === GETOBJ_DOWNPLAY) {
+            alt.push(otmp.invlet);
+            forceprompt = true;
+        } else if (v === GETOBJ_EXCLUDE_INACCESS) {
+            inaccess++;
+        }
+    }
+    const rawLets = getobj_sort_invlets(suggest);
+    const altLets = getobj_sort_invlets(alt);
+    const suggested = suggest.length;
+
+    if (suggested === 0 && !forceprompt && !allownone) {
+        const else_ = inaccess ? 'else ' : '';
+        await pline(`You don't have anything ${else_}to ${word}.`);
+        return null;
+    }
+
+    // C: buf is "- " + letters when SUGGEST hands; strip trailing space
+    // if no letters. compactify(bp) is letters-only (lets, not buf prefix).
+    const compactLets = suggested > 5 ? compactify_invlets(rawLets) : rawLets;
+    const promptLets = handsSuggest
+        ? (compactLets ? `- ${compactLets}` : '-')
+        : compactLets;
+
+    for (;;) {
+        const query = promptLets
+            ? `What do you want to ${word}? [${promptLets} or ?*]`
+            : `What do you want to ${word}? [*]`;
+        let ch = await yn_function(query, null, '\0');
+        const counted = await getobj_take_count(ch, allowcnt);
+        if (counted.retry) continue;
+        ch = counted.ch;
+        if (QUITCHARS.includes(ch) || ch === '\x1b') {
+            if (game.flags?.verbose !== false) await pline(Never_mind);
+            return null;
+        }
+        if (ch === HANDS_SYM) {
+            if (!allownone) return null; // mime_action named
+            return hands_obj;
+        }
+        if (ch === '?' || ch === '*') {
+            let allowed = rawLets;
+            if (ch === '?' && !allowed && altLets) allowed = altLets;
+            const ilet = await getobj_display_pickinv(
+                ch, allowed, allowcnt, counted,
+                { word, allownone, promptHasHands: handsSuggest },
+            );
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline(Never_mind);
+                return null;
+            }
+            if (!ilet) continue;
+            if (ilet === HANDS_SYM) {
+                if (!allownone) return null;
+                return hands_obj;
+            }
+            const picked = getobj_find_ilet(ilet);
+            const used = await getobj_finish_pick(
+                picked, word, obj_ok, counted, ilet,
+            );
+            if (used && used.retry) continue;
+            return used;
+        }
+        const otmp = getobj_find_ilet(ch);
+        const used = await getobj_finish_pick(
+            otmp, word, obj_ok, counted, ch,
+        );
+        if (used && used.retry) continue;
+        return used;
+    }
+}
+
+/**
+ * C invent.c getobj after the letter `:2003–2072` — gold "cannot WORD
+ * gold", silly_thing on EXCLUDE, then getobj_apply_count.
+ * @returns {Promise<null | { retry: true } | object>}
+ */
+async function getobj_finish_pick(otmp, word, obj_ok, counted, ilet) {
+    if (ilet === GOLD_SYM || (otmp && otmp.oclass === COIN_CLASS)) {
+        if (otmp && obj_ok(otmp) === GETOBJ_EXCLUDE) {
+            await pline(`You cannot ${word} gold.`);
+            return null;
+        }
+    }
+    if (otmp && obj_ok(otmp) === GETOBJ_EXCLUDE) {
+        await pline(`That is a silly thing to ${word}.`);
+        return null;
+    }
+    if (!otmp) {
+        await pline("You don't have that object.");
+        if (game.in_doagain) return null;
+        return { retry: true };
+    }
+    return getobj_apply_count(
+        otmp, word, counted.cntgiven, counted.cnt, ilet,
+    );
 }
 
 /** C invent.c adjust_ok `:4916–4923`. */
@@ -3934,8 +4343,8 @@ function adjust_ok(obj) {
     return GETOBJ_SUGGEST;
 }
 
-/** Suggest letters for #adjust getobj (excludes gold). */
-function adjust_suggest_lets() {
+/** Non-compacted SUGGEST letters for #adjust (excludes gold). */
+function adjust_raw_lets() {
     const lets = [];
     for (const o of game.invent || []) {
         if (!o || o.oclass === COIN_CLASS || !o.invlet) continue;
@@ -3943,15 +4352,20 @@ function adjust_suggest_lets() {
     }
     // C getobj sortloot SORTLOOT_INVLET
     lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    let s = lets.join('');
-    if (lets.length > 5) s = compactify_invlets(s);
+    return lets.join('');
+}
+
+/** Suggest letters for #adjust getobj prompt (compactify when >5). */
+function adjust_suggest_lets() {
+    const s = adjust_raw_lets();
+    if (s.length > 5) return compactify_invlets(s);
     return s;
 }
 
 /**
  * C ref: invent.c getobj("adjust", adjust_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
  * Count prefix + split_otmp live. Canned CMDQ_INT/KEY live.
- * ?/* invent menus still deferred. doorganize_core nobj-unsplit named.
+ * `?`/`*` → display_pickinv `&ctmp` (D-1559). doorganize_core nobj-unsplit named.
  */
 async function getobj_adjust() {
     const cq = getobj_from_cmdq(adjust_ok, true);
@@ -3979,9 +4393,30 @@ async function getobj_adjust() {
             return null;
         }
         if (ch === '?' || ch === '*') {
-            // display_pickinv deferred
-            if (game.flags?.verbose !== false) await pline(Never_mind);
-            return null;
+            const ilet = await getobj_display_pickinv(
+                ch, adjust_raw_lets(), true, counted,
+            );
+            if (ilet === '\x1b') {
+                if (game.flags?.verbose !== false) await pline(Never_mind);
+                return null;
+            }
+            if (!ilet) continue;
+            const picked = (game.invent || []).find((o) => o.invlet === ilet);
+            if (!picked) {
+                await pline("You don't have that object.");
+                continue;
+            }
+            if (picked.oclass === COIN_CLASS) {
+                await pline('You cannot adjust gold.');
+                return null;
+            }
+            const got = await getobj_apply_count(
+                picked, 'adjust', counted.cntgiven, counted.cnt,
+            );
+            if (!got) return null;
+            if (got.retry) continue;
+            game._pending_message = '';
+            return got;
         }
         const otmp = (game.invent || []).find((o) => o.invlet === ch);
         if (!otmp) {

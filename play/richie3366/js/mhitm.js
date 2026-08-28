@@ -18,6 +18,7 @@ import { arti_reflects, artifact_hit, is_art, ART_GRIMTOOTH } from './artifact.j
 import { find_mac, which_armor } from './worn.js';
 import { update_monster_region } from './region.js';
 import { remove_worm, place_worm_tail_randomly, worm_known } from './worm.js';
+import { place_monster, remove_monster } from './steed.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -36,8 +37,6 @@ import {
     NEED_WEAPON,
     NEED_HTH_WEAPON,
     MON_DETACH,
-    MON_FLOOR,
-    MON_OFFMAP,
     LOW_PM,
     NON_PM,
     NO_NC_FLAGS,
@@ -1206,7 +1205,8 @@ export async function mdisplacem(magr, mdef, quietly) {
         }
     }
 
-    // JS occupancy is mx/my (C remove_monster clears level.monsters[][]).
+    // JS occupancy is mx/my plus the 2D grid (C remove_monster clears
+    // level.monsters[][]).
     magr.mx = 0;
     magr.my = 0;
     if (mdef.wormno) {
@@ -2775,25 +2775,6 @@ function enfolds(ptr) {
         if ((a.aatyp | 0) === AT_ENGL && (a.adtyp | 0) === AD_WRAP) return true;
     }
     return false;
-}
-
-/**
- * C rm.h remove_monster — clear level.monsters[x][y]; mx/my unchanged.
- * JS occupancy is mx/my, so MON_OFFMAP makes m_at skip like C's empty
- * grid cell (D-1231). C does not set this bit at this locus.
- */
-function remove_monster(x, y) {
-    const m = m_at(x, y);
-    if (m) m.mstate = (m.mstate | 0) | MON_OFFMAP;
-}
-
-/**
- * C steed.c place_monster — mx/my, grid occupant, mstate = MON_FLOOR.
- */
-function place_monster(mon, x, y) {
-    mon.mx = x | 0;
-    mon.my = y | 0;
-    mon.mstate = MON_FLOOR;
 }
 
 /**

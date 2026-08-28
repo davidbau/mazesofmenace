@@ -12,6 +12,7 @@ import {
     STRAT_WAITFORU, AD_SPEL,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
+    P_DAGGER, P_AXE, P_SABER,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
     M_AP_TYPMASK, MHID_ALTMON,
@@ -82,6 +83,7 @@ import { ART_GIANTSLAYER, ART_STORMBRINGER } from './generated/artifacts_data.js
 import { paranoid_query } from './getline.js';
 import { which_armor } from './worn.js';
 import { u_wipe_engr } from './engrave.js';
+import { cutworm } from './worm.js';
 
 /** Live pager.c object_from_map / mhidden_description; bound on first use
  * (pager.js imports mon_at from this file — static import cycles). */
@@ -1269,9 +1271,18 @@ export async function damageum(mdef, mattk, specialdmg) {
 
 /**
  * C ref: uhitm.c known_hitum — missum or hmon; flee rn2(25) if survives low.
+ * cutworm when wormno && *mhit after Vorpal-converted-miss (oldhp).
+ * slice_or_chop is obj.h is_blade||is_axe remembered before hmon.
  */
 async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, dieroll) {
     let malive = true;
+    /* hmon() might destroy weapon; remember aspect for cutworm */
+    const sk = weapon ? (game.objects?.[weapon.otyp]?.oc_skill | 0) : 0;
+    const slice_or_chop = !!(weapon && (
+        (weapon.oclass === WEAPON_CLASS && sk >= P_DAGGER && sk <= P_SABER)
+        || ((weapon.oclass === WEAPON_CLASS || weapon.oclass === TOOL_CLASS)
+            && sk === P_AXE)
+    ));
     if (!mhit.v) {
         // missum — near-miss flavor when rollneeded+penalty > dieroll
         void (rollneeded + armorpenalty > dieroll);
@@ -1281,11 +1292,17 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
             await wakeup(mon, true);
         }
     } else {
+        const oldhp = mon.mhp | 0;
+        if (!game.u.uconduct) game.u.uconduct = {};
+        const oldweaphit = game.u.uconduct.weaphit | 0;
         if (weapon && (weapon.oclass === WEAPON_CLASS
             || game.objects?.[weapon.otyp]?.oc_skill != null)) {
-            if (!game.u.uconduct) game.u.uconduct = {};
-            game.u.uconduct.weaphit = (game.u.uconduct.weaphit | 0) + 1;
+            game.u.uconduct.weaphit = oldweaphit + 1;
         }
+        /* C: gn.notonhead = (mx,my) != gb.bhitpos before hmon */
+        const bp = game.bhitpos || {};
+        game.notonhead = ((mon.mx | 0) !== (bp.x | 0)
+            || (mon.my | 0) !== (bp.y | 0));
         malive = await hmon(mon, weapon, HMON_MELEE, dieroll);
         if (malive) {
             // C: !rn2(25) && mhp < mhpmax/2 && !engulfing_u — integer /
@@ -1295,6 +1312,14 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
                 // C: monflee(mon, !rn2(3) ? rnd(100) : 0, FALSE, TRUE)
                 await monflee(mon, !rn2(3) ? rnd(100) : 0, false, true);
                 // C: ustuck release when !uswallow && !sticks — deferred
+            }
+            /* Vorpal Blade hit converted to miss — could be headless or tail */
+            if ((mon.mhp | 0) === oldhp) {
+                mhit.v = 0;
+                game.u.uconduct.weaphit = oldweaphit;
+            }
+            if (mon.wormno && mhit.v) {
+                await cutworm(mon, bp.x | 0, bp.y | 0, slice_or_chop);
             }
         }
     }

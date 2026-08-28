@@ -5,7 +5,8 @@
 //        peffect_speed() (1052-1070), peffect_oil() (1259-1294),
 //        speed_up() (2918-2928),
 //        itimeout/itimeout_incr/set_itimeout/incr_itimeout (55-86),
-//        potionbreathe() (1931-2118), toggle_blindness() (336-364).
+//        potionbreathe() (1931-2118), make_blinded() (261-331),
+//        toggle_blindness() (336-364).
 //
 // dodrink() is the #quaff command entry point. Branches for strangled,
 // fountain/sink, underwater, worn-potion, milky/smoky are fail-closed;
@@ -24,6 +25,8 @@ import {
     BLINDED,
     CONFUSION,
     DEAF,
+    DISP_ALWAYS,
+    DISP_END,
     ECMD_CANCEL,
     ECMD_OK,
     ECMD_TIME,
@@ -43,6 +46,7 @@ import {
     IS_SINK,
     KILLED_BY,
     LEG,
+    MM_NOMSG,
     SEE_INVIS,
     STRANGLED,
     TELEPAT,
@@ -53,22 +57,28 @@ import {
     W_WEP,
 } from './const.js';
 import { exercise } from './attrib.js';
-import { see_monsters } from './display.js';
+import { see_monsters, tmp_at } from './display.js';
 import { heal_legs, trycall } from './do.js';
+import { Amonnam, capitalizedMonsterName } from './do_name.js';
+import { tamedog } from './dog.js';
 import { more_experienced } from './exper.js';
 import { makeplural } from './fruit.js';
 import { game } from './gstate.js';
 import { losehp } from './hack.js';
 import { getobj, learn_unseen_invent, useup } from './invent.js';
+import { set_malign } from './makemon.js';
+import { makemon_runtime, mongone } from './makemon_create.js';
 import { likes_fire } from './mondata.js';
+import { PM_DJINNI } from './monsters.js';
 import { bcsign, objectType } from './obj.js';
 import { discover_object } from './o_init.js';
 import { body_part } from './polyself.js';
-import { d, rn1 } from './rng.js';
+import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
+import { canSpotMonster } from './startup_a11y.js';
 import { burn_away_slime } from './timeout.js';
 import { unconscious } from './trap.js';
 import { vision_recalc } from './vision.js';
-import { Cold_resistance, Fire_resistance } from './zap.js';
+import { Cold_resistance, Fire_resistance, makewish } from './zap.js';
 import {
     OBJ_DESCR,
     POTION_CLASS,
@@ -131,6 +141,116 @@ export class UnsupportedQuaffError extends Error {
     }
 }
 
+function djinniRandom(env = {}) {
+    return env.random ?? { d, rn1, rn2, rnd, rne, rnz };
+}
+
+// C ref: potion.c mongrantswish() (2794-2812). Remove the djinni before the
+// wish can kill the hero, keep its old glyph visible while the prompt is up,
+// and erase that transient glyph after the wish returns.
+export async function mongrantswish(monster, state = game, env = {}) {
+    const x = monster.mx;
+    const y = monster.my;
+    // C caches glyph_at(), an integer. The JS display buffer retains that
+    // integer on its full presentation record, which tmp_at() needs in order
+    // to redraw the same monster glyph after mongone() replaces the square.
+    const glyph = state.level?.at(x, y)?.disp_glyph;
+    if (!glyph) throw new Error('mongrantswish requires a displayed djinni');
+    const removeMonster = env.removeMonster ?? mongone;
+    const transient = env.transient ?? tmp_at;
+    const grantWish = env.grantWish ?? makewish;
+
+    removeMonster(monster, { ...env, state, random: djinniRandom(env) });
+    await transient(DISP_ALWAYS, glyph, state);
+    await transient(x, y, state);
+    try {
+        await grantWish(state);
+    } finally {
+        await transient(DISP_END, 0, state);
+    }
+    return null;
+}
+
+// C ref: potion.c djinni_from_bottle() (2814-2868). This source-ordered
+// outcome family is shared by a rubbed magic lamp and a smoky potion. The
+// latter caller remains fail-closed in dodrink(); dorub() is the live owner.
+export async function djinni_from_bottle(obj, state = game, env = {}) {
+    const random = djinniRandom(env);
+    const message = env.message ?? ttyPline;
+    const makeMonster = env.makeMonster ?? makemon_runtime;
+    let monster = await makeMonster(
+        state.mons[PM_DJINNI],
+        state.u.ux,
+        state.u.uy,
+        MM_NOMSG,
+        { ...env, state, random },
+    );
+    if (!monster) {
+        await message('It turns out to be empty.', state);
+        return null;
+    }
+
+    if (!heroIsBlind(state)) {
+        const indefinite = Amonnam(monster, { state });
+        await message(
+            `In a cloud of smoke, ${indefinite.charAt(0).toLowerCase()}${
+                indefinite.slice(1)} emerges!`,
+            state,
+        );
+        await message(`${capitalizedMonsterName(monster, state)} speaks.`, state);
+    } else {
+        await message('You smell acrid fumes.', state);
+        await message('Something speaks.', state);
+    }
+
+    let chance = random.rn2(5);
+    if (obj.blessed)
+        chance = chance === 4 ? random.rnd(4) : 0;
+    else if (obj.cursed)
+        chance = chance === 0 ? random.rn2(4) : 4;
+
+    switch (chance) {
+    case 0:
+        await message('"I am in your debt.  I will grant one wish!"', state);
+        monster = await mongrantswish(monster, state, { ...env, random });
+        break;
+    case 1:
+        await message('"Thank you for freeing me!"', state);
+        await (env.tameMonster ?? tamedog)(
+            monster,
+            null,
+            false,
+            { ...env, state, random },
+        );
+        break;
+    case 2:
+        await message('"You freed me!"', state);
+        monster.mpeaceful = true;
+        set_malign(monster, state);
+        break;
+    case 3:
+        await message('"It is about time!"', state);
+        if (canSpotMonster(monster, state)) {
+            await message(
+                `${capitalizedMonsterName(monster, state)} vanishes.`,
+                state,
+            );
+        }
+        (env.removeMonster ?? mongone)(
+            monster,
+            { ...env, state, random },
+        );
+        monster = null;
+        break;
+    default:
+        await message('"You disturbed me, fool!"', state);
+        monster.mpeaceful = false;
+        set_malign(monster, state);
+        break;
+    }
+    return monster;
+}
+
 // ---------------------------------------------------------------------------
 // Timeout utilities
 // C ref: potion.c:55-86. Clamp and increment the timeout field of an
@@ -160,6 +280,66 @@ export function set_itimeout(prop, val) {
 // C ref: potion.c incr_itimeout() (82-86). Increment the timeout field.
 export function incr_itimeout(prop, incr) {
     set_itimeout(prop, itimeout_incr(prop.intrinsic, incr));
+}
+
+// C ref: potion.c make_blinded() (261-331), restricted to two ordinary cream
+// paths: use_cream_pie()'s silent sighted-to-blind transition and wipeoff()'s
+// one-turn timed-blindness probe back to sight. Other callers need the
+// already-blind, Eyes of the Overworld, Punished, and alternate message arms,
+// so they remain fail-closed here.
+export async function make_blinded(xtime, talk, state = game) {
+    const prop = state.u?.uprops?.[BLINDED];
+    if (!prop)
+        throw new Error('make_blinded requires initialized BLINDED state');
+    const old = prop.intrinsic & TIMEOUT;
+    const punished = Boolean(state.uball ?? state.go?.uball);
+    const stinging = Boolean(
+        state.uwep
+        && ((state.u.uprops?.[WARN_OF_MON]?.extrinsic ?? 0) & W_WEP),
+    );
+    const startsCreamBlindness = talk === false
+        && old === 0
+        && !heroIsBlind(state)
+        && !punished
+        && !prop.extrinsic
+        && !prop.blocked
+        && Number.isInteger(xtime)
+        && xtime >= 1
+        && xtime <= TIMEOUT;
+    const restoresWipedSight = talk === true
+        && xtime === 0
+        && old === 1
+        && prop.intrinsic === 1
+        && !prop.extrinsic
+        && !prop.blocked
+        && heroIsBlind(state)
+        && state.u.ucreamed === 0
+        && !punished
+        && !stinging
+        && !Unaware(state)
+        && !Upolyd(state.u)
+        && state.urace?.noun === 'human'
+        && !(state.u.uprops?.[HALLUC]?.intrinsic
+            || state.u.uprops?.[HALLUC]?.extrinsic);
+    if (!startsCreamBlindness && !restoresWipedSight) {
+        throw new UnsupportedPotionError(
+            'make_blinded() outside the ordinary cream-pie transitions',
+        );
+    }
+
+    // Probe the status with one timed turn, then restore the old timeout,
+    // exactly as C does in case blocked blindness overrides the property.
+    const uCouldSee = !heroIsBlind(state);
+    set_itimeout(prop, 1);
+    const canSeeNow = !heroIsBlind(state);
+    set_itimeout(prop, old);
+
+    if (restoresWipedSight)
+        await ttyPline('You can see again.', state);
+
+    set_itimeout(prop, xtime);
+    if (uCouldSee !== canSeeNow)
+        toggle_blindness(state);
 }
 
 // C ref: youprop.h:399 Unaware. trap.c unconscious() owns the pending-message

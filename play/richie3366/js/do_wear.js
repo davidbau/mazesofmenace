@@ -15,7 +15,7 @@ import {
     A_STR, A_CON, A_CHA, acurr, extremeattr, change_luck, Fast, Very_fast,
 } from './attrib.js';
 import { nomul, unmul, stop_occupation } from './hack.js';
-import { retouch_object } from './artifact.js';
+import { retouch_object, set_artifact_intrinsic } from './artifact.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { makeknown, observe_object } from './invent.js';
 import { obj_resists } from './dogmove.js';
@@ -255,9 +255,10 @@ function count_worn_stuff(accessorizing) {
 
 /**
  * C ref: worn.c setworn — confer/clear objects[].oc_oprop extrinsic bit.
- * Named omissions: w_blocks, artifact intrinsics, monstunseesu_prop,
- * SWAPWEP/QUIVER skip (not in this setworn path), skin/nudist/tux;
- * mirror of most E* flat fields (BLINDED→EBlinded only so far).
+ * Artifact spfx is `set_artifact_intrinsic` (D-1558), not this helper.
+ * Named omissions: w_blocks, monstunseesu_prop, SWAPWEP/QUIVER skip
+ * (not in this setworn path), skin/nudist/tux; mirror of most E*
+ * flat fields (BLINDED→EBlinded only so far).
  */
 export function confer_oc_oprop(obj, mask, on) {
     if (!obj) return;
@@ -403,7 +404,8 @@ async function dragon_armor_handling(otmp, puton, _on_purpose = true) {
 }
 
 /**
- * C ref: worn.c setworn — slot pointer + owornmask + oc_oprop extrinsic.
+ * C ref: worn.c setworn — slot pointer + owornmask + oc_oprop extrinsic
+ * + oartifact `set_artifact_intrinsic` (D-1558; Eyes XRAY W_TOOL).
  * Does **not** call find_ac (C worn.c); allmain once-per-input and a few
  * explicit callers (Ring_on protection, Amulet_on guarding) update uac.
  * opts.skip_find_ac retained as a no-op for D-0722 polyself callers.
@@ -418,6 +420,8 @@ export function setworn(obj, mask, opts = null) {
         const old = u[slot];
         if (old) {
             confer_oc_oprop(old, bit, false);
+            // C worn.c setworn `:106` — oartifact after oc_oprop
+            if (old.oartifact) set_artifact_intrinsic(old, false, bit);
             old.owornmask = (old.owornmask || 0) & ~bit;
         }
         u[slot] = null;
@@ -516,6 +520,8 @@ export function setworn(obj, mask, opts = null) {
         u.uchain = obj;
     }
     if (slotBit) confer_oc_oprop(obj, slotBit, true);
+    // C worn.c setworn `:130` — Eyes XRAY via W_TOOL; Mitre PROTECT named
+    if (slotBit && obj.oartifact) set_artifact_intrinsic(obj, true, slotBit);
     // C worn.c setworn — no find_ac (D-0810); delay-0 Cloak_on More
     // must paint stale u.uac until allmain find_ac.
     // C worn.c setworn — recalc_telepat_range after prop updates

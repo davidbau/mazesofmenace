@@ -48,7 +48,7 @@ import {
     MELT_ICE_AWAY, HATCH_EGG, FIG_TRANSFORM, BURN_OBJECT, SHRINK_GLOB,
     MAX_EGG_HATCH_TIME,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
-    OBJ_MIGRATING, MIGR_TO_SPECIES, W_WEP,
+    OBJ_MIGRATING, OBJ_ONBILL, MIGR_TO_SPECIES, W_WEP,
     G_GONE,
     LOST_NONE, LOST_EXPLODING,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
@@ -327,7 +327,7 @@ export function next_ident() {
  * C ref: mkobj.c splitobj — reduce obj->quan by num; return new stack of num.
  * nextoid shop-price search omitted: ordinary items take first oid then
  * next_ident() (one rnd(2)), matching non-shop dog_invent / throw paths.
- * Deferred: unpaid/splitbill, copy_oextra, timers, light sources, Lua where.
+ * Deferred: unpaid/splitbill, copy_oextra, light sources, Lua where.
  */
 export function splitobj(obj, num) {
     const quan = obj?.quan || 1;
@@ -350,8 +350,8 @@ export function splitobj(obj, num) {
 
     if (!game.context) game.context = {};
     game.context.objsplit = {
-        parent_oid: obj.o_id,
-        child_oid: otmp.o_id,
+        parent_oid: obj.o_id | 0,
+        child_oid: otmp.o_id | 0,
     };
 
     // Insert child just after parent on nobj (and nexthere when on floor).
@@ -367,7 +367,121 @@ export function splitobj(obj, num) {
         otmp.nexthere = obj.nexthere || null;
         obj.nexthere = otmp;
     }
+    // C: if (obj->timed) obj_split_timers(obj, otmp)
+    if (obj.timed) obj_split_timers(obj, otmp);
     return otmp;
+}
+
+function objsplit_ctx() {
+    if (!game.context) game.context = {};
+    if (!game.context.objsplit) {
+        game.context.objsplit = { parent_oid: 0, child_oid: 0 };
+    }
+    return game.context.objsplit;
+}
+
+/**
+ * C ref: mkobj.c clear_splitobjs — zero parent/child oids before getobj
+ * ALLOWCNT (wield.c dowield / doquiver_core).
+ */
+export function clear_splitobjs() {
+    const s = objsplit_ctx();
+    s.parent_oid = 0;
+    s.child_oid = 0;
+}
+
+function find_oid_on_nobj(head, oid) {
+    const want = oid | 0;
+    for (let o = head; o; o = o.nobj) {
+        if ((o.o_id | 0) === want) return o;
+    }
+    return null;
+}
+
+/** JS invent is an array; also walk nobj so a split child not yet spliced is found. */
+function find_oid_in_invent(oid) {
+    const want = oid | 0;
+    const seen = new Set();
+    for (const o of game.invent || []) {
+        for (let p = o; p && !seen.has(p); p = p.nobj) {
+            seen.add(p);
+            if ((p.o_id | 0) === want) return p;
+        }
+    }
+    return null;
+}
+
+/**
+ * C ref: mkobj.c unsplitobj — find the other half of context.objsplit
+ * and merged() them. Floor/free/bill/migrating/buried return null.
+ * JS mergable rejects owornmask (C does not); clear masks around merged
+ * so a split of uwep/uquiver can rejoin, then restore the parent's mask.
+ */
+export function unsplitobj(obj) {
+    if (!obj) return null;
+    const where = obj.where;
+    if (where === OBJ_FREE || where === OBJ_FLOOR || where === OBJ_ONBILL
+        || where === OBJ_MIGRATING || where === OBJ_BURIED
+        || (where !== OBJ_INVENT && where !== OBJ_MINVENT
+            && where !== OBJ_CONTAINED)) {
+        return null;
+    }
+
+    const split = objsplit_ctx();
+    const childOid = split.child_oid | 0;
+    const parentOid = split.parent_oid | 0;
+    const oid = obj.o_id | 0;
+    let oparent = null;
+    let ochild = null;
+    let targetOid = 0;
+
+    if (oid && oid === childOid) {
+        ochild = obj;
+        targetOid = parentOid;
+        if (obj.nobj && (obj.nobj.o_id | 0) === targetOid) oparent = obj.nobj;
+    } else if (oid && oid === parentOid) {
+        oparent = obj;
+        targetOid = childOid;
+        if (obj.nobj && (obj.nobj.o_id | 0) === targetOid) ochild = obj.nobj;
+    }
+
+    if (ochild && !oparent) {
+        if (where === OBJ_INVENT) oparent = find_oid_in_invent(targetOid);
+        else if (where === OBJ_MINVENT) {
+            oparent = find_oid_on_nobj(obj.ocarry?.minvent, targetOid);
+        } else {
+            oparent = find_oid_on_nobj(obj.ocontainer?.cobj, targetOid);
+        }
+    } else if (oparent && !ochild) {
+        if (where === OBJ_INVENT) ochild = find_oid_in_invent(targetOid);
+        else if (where === OBJ_MINVENT) {
+            ochild = find_oid_on_nobj(obj.ocarry?.minvent, targetOid);
+        } else {
+            ochild = find_oid_on_nobj(obj.ocontainer?.cobj, targetOid);
+        }
+    }
+
+    if (!oparent || !ochild) return null;
+
+    // C invent.c mergable does not reject worn; JS floor-stack subset does.
+    const pmask = oparent.owornmask | 0;
+    const cmask = ochild.owornmask | 0;
+    oparent.owornmask = 0;
+    ochild.owornmask = 0;
+    const childNext = ochild.nobj || null;
+    const parentHadChild = oparent.nobj === ochild;
+    const potmp = { obj: oparent };
+    const pobj = { obj: ochild };
+    const ok = merged(potmp, pobj);
+    const kept = potmp.obj;
+    if (ok && kept) {
+        kept.owornmask = pmask | cmask;
+        if (parentHadChild && kept === oparent) kept.nobj = childNext;
+        return kept;
+    }
+    oparent.owornmask = pmask;
+    ochild.owornmask = cmask;
+    return null;
 }
 
 export function curse(otmp) {
@@ -870,6 +984,27 @@ export function start_timer(when, kind, action, arg) {
     insert_timer(gnu);
     if (isObj) obj.timed = (obj.timed | 0) + 1;
     return when;
+}
+
+/**
+ * C ref: timeout.c obj_split_timers — duplicate every TIMER_OBJECT on
+ * src onto dest with the same remaining (timeout − moves). Caller
+ * splitobj zeros dest.timed first; start_timer bumps it. Save next
+ * because start_timer inserts into the ordered list.
+ */
+export function obj_split_timers(src, dest) {
+    if (!src || !dest) return;
+    const g = timer_base();
+    const moves = game.moves | 0;
+    let curr = g._timer_base;
+    while (curr) {
+        const next = curr.next;
+        if ((curr.kind | 0) === TIMER_OBJECT && curr.obj === src) {
+            start_timer((curr.timeout | 0) - moves, TIMER_OBJECT,
+                curr.action, dest);
+        }
+        curr = next;
+    }
 }
 
 /**

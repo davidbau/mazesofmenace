@@ -12,7 +12,7 @@ import {
     see_nearby_objects,
     clear_nhwindow_message,
     mon_visible, sensemon, glyph_is_invisible, unmap_object, map_object,
-    look_shown_at,
+    look_shown_at, Norep,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, SCORR, LAVAWALL,
@@ -21,7 +21,8 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL,
          ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
-         CMDQ_EXTCMD, IFBURIED, WIZMODECMD, NOFUZZERCMD,
+         CMDQ_EXTCMD, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
+         IFBURIED, WIZMODECMD, NOFUZZERCMD,
          xdir, ydir, xytodir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          GFILTER_VIEW, GLOC_INTERESTING,
@@ -87,16 +88,38 @@ import { drag_ball, move_bc } from './ball.js';
 import { in_out_region } from './region.js';
 import { m_postmove_effect } from './monmove.js';
 
-/** C ref: cmd.c cmdq_clear(CQ_CANNED) */
-function cmdq_clear() {
-    game._cmdq_canned = [];
+/** C cmd.c command_queue[CQ_*] — JS arrays on game. */
+function cmdq_qname(q) {
+    return (q | 0) === CQ_REPEAT ? '_cmdq_repeat' : '_cmdq_canned';
 }
 
-/** C ref: cmd.c cmdq_pop(CQ_CANNED) — next canned async command or null */
+/** C ref: cmd.c cmdq_clear(q). Callers without q still clear CQ_CANNED. */
+function cmdq_clear(q = CQ_CANNED) {
+    game[cmdq_qname(q)] = [];
+}
+
+/**
+ * C ref: cmd.c cmdq_pop — CQ_REPEAT when gi.in_doagain, else CQ_CANNED.
+ */
 function cmdq_pop() {
-    const q = game._cmdq_canned;
+    const q = game[game.in_doagain ? '_cmdq_repeat' : '_cmdq_canned'];
     if (!q || !q.length) return null;
     return q.shift();
+}
+
+/** C ref: cmd.c cmdq_peek. */
+function cmdq_peek(q) {
+    const qq = game[cmdq_qname(q)];
+    return (qq && qq.length) ? qq[0] : null;
+}
+
+/**
+ * C ref: cmd.c cmdq_copy — JS arrays preserve order (C prepends then
+ * cmdq_reverse). Shallow copy: nodes are not mutated, only shifted.
+ */
+function cmdq_copy(q) {
+    const qq = game[cmdq_qname(q)];
+    return qq && qq.length ? qq.slice() : [];
 }
 
 /** C ref: cmd.c cmdq_add_ec(CQ_CANNED, fn) — queue async command for next rhack(0). */
@@ -1481,28 +1504,131 @@ async function get_count() {
     }
 }
 
+/**
+ * C cmd.c rhack `:3732–3740`. Map the dispatch key to the function C
+ * would cmdq_add_ec(CQ_REPEAT, …). do_repeat and doextcmd are skipped
+ * at the call site. PREFIXCMD / movement / BIND overlays named.
+ * @param {string} ch
+ * @param {number} key
+ * @returns {((() => Promise<number>|number|boolean|void)|null)}
+ */
+function rhack_repeat_command(ch, key) {
+    if (key === 1) return do_repeat;
+    if (key === 4) return dokick;
+    if (key === 6) return wiz_map;
+    if (key === 7) return wiz_genesis;
+    if (key === 20) return dotelecmd;
+    if (key === 22) return wiz_level_tele;
+    if (key === 23) return wiz_wish;
+    if (key === 24) return doattributes;
+    switch (ch) {
+    case 'a': return doapply;
+    case 'A': return doddoremarm;
+    case 'c': return doclose;
+    case 'd': return dodrop;
+    case 'e': return doeat;
+    case 'E': return doengrave;
+    case 'f': return dofire;
+    case 'i': return ddoinv;
+    case 'o': return doopen;
+    case 'p': return dopay;
+    case 'P': return doputon;
+    case 'q': return dodrink;
+    case 'Q': return dowieldquiver;
+    case 'r': return doread;
+    case 's': return dosearch;
+    case 'S': return dosave;
+    case 't': return dothrow;
+    case 'T': return dotakeoff;
+    case 'w': return dowield;
+    case 'W': return dowear;
+    case 'x': return doswapweapon;
+    case 'z': return dozap;
+    case 'Z': return docast;
+    case ',': return dopickup;
+    case '.': return donull;
+    case '>': return dodown;
+    case '<': return doup;
+    case '_': return dotravel;
+    case ':': return dolook;
+    case '/': return dowhatis;
+    case ';': return doquickwhatis;
+    case '?': return dohelp;
+    case '+': return dovspell;
+    case '\\': return dodiscovered;
+    case '@': return dotogglepickup;
+    case 'O': return doset_simple;
+    case '$': return doprgold;
+    case ')': return doprwep;
+    case '[': return doprarm;
+    case '=': return doprring;
+    case '"': return dopramulet;
+    case '(': return doprtool;
+    case '\x7f': return doterrain;
+    case ' ': return game.flags?.rest_on_space ? donull : null;
+    default: return null;
+    }
+}
+
+/**
+ * C cmd.c do_repeat `:1637–1660`. Ctrl-A / #repeat. Copy CQ_REPEAT,
+ * in_doagain, rhack(0), restore the copy so a further repeat works.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function do_repeat() {
+    let res = ECMD_OK;
+    if (!game.in_doagain) {
+        if (!cmdq_peek(CQ_REPEAT)) {
+            await Norep('There is no command available to repeat.');
+            return ECMD_FAIL;
+        }
+        const repeat_copy = cmdq_copy(CQ_REPEAT);
+        game.in_doagain = true;
+        await rhack(0);
+        game.in_doagain = false;
+        cmdq_clear(CQ_REPEAT);
+        game._cmdq_repeat = repeat_copy;
+        if (game.iflags) game.iflags.menu_requested = false;
+        if (game.context?.move) res = ECMD_TIME;
+    }
+    return res;
+}
+
 // C ref: cmd.c rhack — main command dispatcher
 export async function rhack(key) {
     // C: cmdq_pop before parse — fireassist swap/retry lives here
-    const canned = (key === 0) ? cmdq_pop() : null;
-    if (canned) {
-        if (!game.context) game.context = {};
-        // C: CMDQ_EXTCMD uses ext_func_tab (altdip INTERNALCMD). Bare
-        // function clones stay for other canned arms (named).
-        const res = (typeof canned === 'object' && canned.typ === CMDQ_EXTCMD)
-            ? await run_cmdq_extcmd(canned)
-            : await canned();
-        // C rhack: (res & ECMD_TIME) → context.move; CANCEL|FAIL →
-        // reset_cmd_vars(TRUE) clears remaining CQ_CANNED. Boolean true
-        // from doapply is ECMD_TIME (true & 1); D-1018 canned re-apply.
-        if ((res & ECMD_TIME) !== 0) {
-            game.context.move = 1;
-            game.kickedloc = { x: 0, y: 0 };
-        } else {
-            if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) cmdq_clear();
-            game.context.move = 0;
+    if (key === 0) {
+        const canned = cmdq_pop();
+        if (canned) {
+            const isKey = typeof canned === 'object'
+                && canned.typ !== CMDQ_EXTCMD
+                && (canned.typ === CMDQ_KEY || canned.typ === 'key');
+            if (isKey) {
+                // C: KEY becomes the command keystroke (not a getobj letter).
+                key = typeof canned.key === 'string'
+                    ? canned.key.charCodeAt(0)
+                    : (canned.key | 0);
+            } else {
+                if (!game.context) game.context = {};
+                // C: CMDQ_EXTCMD uses ext_func_tab (altdip INTERNALCMD). Bare
+                // function clones stay for other canned arms (named).
+                const res = (typeof canned === 'object'
+                    && canned.typ === CMDQ_EXTCMD)
+                    ? await run_cmdq_extcmd(canned)
+                    : await canned();
+                // C rhack: (res & ECMD_TIME) → context.move; CANCEL|FAIL →
+                // reset_cmd_vars(TRUE) clears remaining CQ_CANNED. Boolean true
+                // from doapply is ECMD_TIME (true & 1); D-1018 canned re-apply.
+                if ((res & ECMD_TIME) !== 0) {
+                    game.context.move = 1;
+                    game.kickedloc = { x: 0, y: 0 };
+                } else {
+                    if ((res & (ECMD_CANCEL | ECMD_FAIL)) !== 0) cmdq_clear();
+                    game.context.move = 0;
+                }
+                return;
+            }
         }
-        return;
     }
 
     if (key === 0) {
@@ -1603,6 +1729,15 @@ export async function rhack(key) {
         game.iflags.menu_requested = false;
     }
 
+    // C rhack `:3732–3740`: !in_doagain && func != do_repeat && != doextcmd
+    // → cmdq_clear(CQ_REPEAT) then cmdq_add_ec(CQ_REPEAT, func). Ctrl-A
+    // keeps the prior queue. # / PREFIXCMD / movement REPEAT named
+    // (doextcmd cmdq_shift; do_move_*).
+    if (!game.in_doagain && key !== 1) {
+        const fn = rhack_repeat_command(ch, key);
+        game._cmdq_repeat = fn && fn !== do_repeat ? [fn] : [];
+    }
+
     if (isMovementKey(ch)) {
         // C ref: cmd.c set_move_cmd(dir, 0) — clear stale travel; DOMOVE_WALK
         // unless a g/G PREFIXCMD already set DOMOVE_RUSH (keeps context.run).
@@ -1698,6 +1833,11 @@ export async function rhack(key) {
             game.domove_attempting = (game.domove_attempting || 0) | DOMOVE_RUSH;
             game.context.move = 0;
         }
+    } else if (key === 1) {
+        // C cmd.c do_repeat — Ctrl-A "repeat" (IFBURIED|GENERALCMD)
+        const res = await do_repeat();
+        game.context.move = (res & ECMD_TIME) ? 1 : 0;
+        if (res & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch >= '0' && ch <= '9') {
         // Digits are consumed by get_count in parse (rhack(0)); reaching
         // here means rhack(key) with an explicit digit — treat as count

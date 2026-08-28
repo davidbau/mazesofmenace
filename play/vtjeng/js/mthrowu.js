@@ -1,19 +1,31 @@
 // mthrowu.js -- Monster ranged attacks and hero-is-hit-by-missile logic.
 //
 // C ref: mthrowu.c. This file holds thitu() (75-155, hero hit by non-monster
-// missile), the line-of-fire tests every ranged monster action asks before it
-// acts: blocking_terrain() (1281-1288), linedup() (1330-1372),
+// missile), thrwmu()'s ordinary single-shot path (1174-1263), monmulti()'s
+// quantity-one result (201-259), monshoot()'s visible announcement head
+// (262-300), m_throw()'s ordinary quantity-one hit and drop settlement
+// (572-844), and the
+// line-of-fire tests every ranged monster action asks before it acts:
+// blocking_terrain() (1281-1288), linedup() (1330-1372),
 // m_lined_up() (1375-1394) and lined_up() (1397-1401).
-// The functions that act on their answer -- thrwmu(), m_throw(), breamu() and
-// spitmu() -- are not ported, and js/unported_monster_actions.js stops the
-// monsters that would reach them.
+// Polearm and returning-weapon attacks, multishot, unseen feedback, alternate
+// m_throw() flight and hit outcomes, breamu(), and spitmu() remain behind
+// js/unported_monster_actions.js.
 
 import {
     A_CON,
+    A_DEX,
     A_STR,
     BLINDED,
     BOLT_LIM,
+    CONFUSION,
+    DISP_END,
+    DISP_FLASH,
+    FUMBLING,
+    HALF_PHDAM,
+    IRONBARS,
     IS_OBSTRUCTED,
+    IS_SINK,
     IS_WATERWALL,
     KILLED_BY,
     KILLED_BY_AN,
@@ -22,23 +34,58 @@ import {
     M_AP_NOTHING,
     M_AP_TYPE,
     Upolyd,
+    NEED_RANGED_WEAPON,
+    NEED_WEAPON,
+    P_BOW,
+    SLT_ENCUMBER,
+    STUNNED,
     isok,
     u_at,
 } from './const.js';
+import { effective_attribute } from './attrib.js';
+import { freehand } from './engrave.js';
 import { game } from './gstate.js';
+import { calc_capacity } from './hack.js';
 import { distmin, sgn, upstart } from './hacklib.js';
+import { hands_obj } from './invent.js';
 import { m_carrying } from './mon.js';
-import { throws_rocks } from './mondata.js';
+import { bigmonst, is_elf, nohands, throws_rocks } from './mondata.js';
+import { PM_MONK, PM_ROGUE } from './monsters.js';
 // closed_door() belongs to monmove.c, and js/monmove.js imports lined_up()
 // back for m_move()'s item search. Both sides of that cycle are hoisted
 // function declarations, which an ES module cycle initializes before either
 // module body runs; nothing here reads the import at module scope.
 import { closed_door } from './monmove.js';
-import { sobj_at } from './obj.js';
-import { ACID_VENOM, BOULDER, SILVER, WAN_STRIKING } from './objects.js';
-import { an, vtense } from './objnam.js';
+import { ammo_and_launcher, objectType, sobj_at } from './obj.js';
+import {
+    ACID_VENOM,
+    AKLYS,
+    BLINDING_VENOM,
+    BOULDER,
+    CREAM_PIE,
+    EGG,
+    GEM_CLASS,
+    POTION_CLASS,
+    SILVER,
+    STRANGE_OBJECT,
+    VENOM_CLASS,
+    WAN_STRIKING,
+    WEAPON_CLASS,
+} from './objects.js';
+import {
+    an,
+    killer_xname,
+    mshot_xname,
+    obj_is_pname,
+    singular,
+    the,
+    vtense,
+    xnameFresh,
+} from './objnam.js';
 import { rn2, rnd } from './rng.js';
 import { clear_path, couldsee } from './vision.js';
+import { mon_wield_item, select_rwep } from './weapon.js';
+import { is_pole } from './worn.js';
 import { exclam } from './zap.js';
 
 // C ref: mthrowu.c blocking_terrain() (1281-1288). "return TRUE if terrain at
@@ -153,6 +200,382 @@ function heroIsBlind(state) {
     );
 }
 
+function requireRangedOperation(env, name) {
+    const operation = env[name];
+    if (typeof operation !== 'function')
+        throw new TypeError(`monster ranged attack requires a ${name} operation`);
+    return operation;
+}
+
+function refuseRanged(env, reason) {
+    return requireRangedOperation(env, 'unsupported')(reason);
+}
+
+function propertyActive(state, property) {
+    const value = state.u?.uprops?.[property];
+    return Boolean(value?.intrinsic || value?.extrinsic);
+}
+
+function maybeHalfPhysical(damage, state) {
+    return propertyActive(state, HALF_PHDAM)
+        ? Math.trunc((damage + 1) / 2) : damage;
+}
+
+// C ref: mthrowu.c u_catch_thrown_obj() (531-549), through the failed-catch
+// result selected by an ordinary monster missile. A successful catch hands the
+// object to hold_another_object(), which remains a named boundary.
+function u_catch_thrown_obj(obj, env) {
+    const { state, random } = env;
+    const role = state.urole?.mnum;
+    const catchChance = 100 - effective_attribute(state, A_DEX)
+        - ((role === PM_MONK || role === PM_ROGUE) ? 20 : 0);
+    if (!heroIsBlind(state)
+        && !propertyActive(state, CONFUSION)
+        && !propertyActive(state, STUNNED)
+        && !propertyActive(state, FUMBLING)
+        && obj.oclass !== VENOM_CLASS
+        && !nohands(state.youmonst.data)
+        && freehand(state)
+        && calc_capacity(obj.owt, state) <= SLT_ENCUMBER
+        && random.rn2(catchChance) === 0) {
+        return refuseRanged(env, 'successful monster missile catch');
+    }
+    return false;
+}
+
+// C ref: mthrowu.c drop_throw() (162-196), ordinary surviving object arm.
+// Operations are resolved before the first floor write so an incomplete live
+// adapter cannot strand a free missile after the hit.
+export async function drop_throw(obj, ohit, x, y, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const env = { ...rawEnv, state };
+    const shouldMulch = requireRangedOperation(env, 'shouldMulch');
+    const shipsAway = requireRangedOperation(env, 'shipsAway');
+    const monsterAt = requireRangedOperation(env, 'monsterAt');
+    const floorEffects = requireRangedOperation(env, 'floorEffects');
+    const placeObject = requireRangedOperation(env, 'placeObject');
+    const passiveObject = requireRangedOperation(env, 'passiveObject');
+    const stackObject = requireRangedOperation(env, 'stackObject');
+
+    if (obj.otyp === CREAM_PIE || obj.oclass === VENOM_CLASS
+        || (ohit && obj.otyp === EGG)) {
+        return refuseRanged(env, 'destroyed special monster missile');
+    }
+    if (ohit && shouldMulch(obj, env))
+        return refuseRanged(env, 'destroyed monster missile');
+    if (shipsAway(x, y, state))
+        return refuseRanged(env, 'monster missile shipping through a down gate');
+
+    let monster = monsterAt(x, y, state);
+    if (floorEffects(obj, x, y, 'fall', env))
+        return refuseRanged(env, 'monster missile floor effect');
+    placeObject(obj, x, y, env);
+    if (!monster && u_at(x, y, state)) monster = state.youmonst;
+    if (monster && ohit) await passiveObject(monster, obj, null, env);
+    stackObject(obj, env);
+    state.gt ??= {};
+    state.gt.thrownobj = null;
+    return false;
+}
+
+// C ref: mthrowu.c monmulti() (201-259), quantity-one arm. The source skips
+// every skill, race, launcher and random adjustment when quan is one.
+export function monmulti(monster, missile, launcher, env = {}) {
+    if (Math.trunc(missile.quan ?? 1) !== 1)
+        return refuseRanged(env, 'monster multishot');
+    return 1;
+}
+
+// C ref: mthrowu.c m_throw() (572-844), quantity-one, ordinary untethered
+// weapon hit. Alternate flight, interception, catch, special-object, miss,
+// death, floor-effect, and return paths retain named refusals.
+export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? { rn2, rnd };
+    const env = { ...rawEnv, state, random };
+
+    // Resolve every injected owner before the source-ordered inventory
+    // extraction. The planning pass also executes the complete path on cloned
+    // state, but a missing live adapter must still fail before mutation.
+    const canSeeMonster = requireRangedOperation(env, 'canSeeMonster');
+    const canSeeSquare = requireRangedOperation(env, 'canSeeSquare');
+    const monsterAt = requireRangedOperation(env, 'monsterAt');
+    const objectToGlyph = requireRangedOperation(env, 'objectToGlyph');
+    const temporaryDisplay = requireRangedOperation(env, 'temporaryDisplay');
+    const delayOutput = requireRangedOperation(env, 'delayOutput');
+    const clearObjectKnowledge = requireRangedOperation(
+        env,
+        'clearObjectKnowledge',
+    );
+    const observeObject = requireRangedOperation(env, 'observeObject');
+    const extractObject = requireRangedOperation(env, 'extractObject');
+    const setMonsterNotWielded = requireRangedOperation(
+        env,
+        'setMonsterNotWielded',
+    );
+    const damageValue = requireRangedOperation(env, 'damageValue');
+    const hitHero = requireRangedOperation(env, 'hitHero');
+    const stopOccupation = requireRangedOperation(env, 'stopOccupation');
+    // drop_throw() resolves its remaining seven dependencies at entry.
+    requireRangedOperation(env, 'shouldMulch');
+    requireRangedOperation(env, 'shipsAway');
+    requireRangedOperation(env, 'floorEffects');
+    requireRangedOperation(env, 'placeObject');
+    requireRangedOperation(env, 'passiveObject');
+    requireRangedOperation(env, 'stackObject');
+
+    if (Math.trunc(obj.quan ?? 1) !== 1)
+        return refuseRanged(env, 'monster multishot');
+    if (obj.oclass !== WEAPON_CLASS)
+        return refuseRanged(env, 'monster special missile action');
+    if (obj.cursed || obj.greased)
+        return refuseRanged(env, 'cursed or greased monster missile flight');
+    if (obj.oartifact)
+        return refuseRanged(env, 'monster returning or artifact missile');
+    if (obj.opoisoned)
+        return refuseRanged(env, 'poisoned monster missile');
+
+    state.gb ??= {};
+    state.gb.bhitpos ??= {};
+    state.gb.bhitpos.x = x;
+    state.gb.bhitpos.y = y;
+    state.gn ??= {};
+    state.gn.notonhead = false;
+
+    if (monster.mw === obj)
+        await setMonsterNotWielded(monster, obj, env);
+    extractObject(obj, env);
+    const singleobj = obj;
+    state.gt ??= {};
+    state.gt.thrownobj = singleobj;
+    singleobj.owornmask = 0;
+    if (!canSeeMonster(monster, state)) clearObjectKnowledge(singleobj, state);
+
+    const nextX = state.gb.bhitpos.x + dx;
+    const nextY = state.gb.bhitpos.y + dy;
+    if (!isok(nextX, nextY))
+        return refuseRanged(env, 'blocked monster missile terrain');
+    const nextLocation = state.level.at(nextX, nextY);
+    if (IS_OBSTRUCTED(nextLocation.typ)
+        || closed_door(nextX, nextY, state)
+        || nextLocation.typ === IRONBARS) {
+        return refuseRanged(env, 'blocked monster missile terrain');
+    }
+    state.mesg_given = 0;
+    await temporaryDisplay(
+        DISP_FLASH,
+        objectToGlyph(singleobj, state),
+        state,
+    );
+
+    let hit = false;
+    while (range-- > 0) {
+        singleobj.ox = state.gb.bhitpos.x += dx;
+        singleobj.oy = state.gb.bhitpos.y += dy;
+        if (canSeeSquare(state.gb.bhitpos.x, state.gb.bhitpos.y, state))
+            observeObject(singleobj, state);
+
+        if (monsterAt(state.gb.bhitpos.x, state.gb.bhitpos.y, state))
+            return refuseRanged(env, 'monster missile flight');
+        if (u_at(state.gb.bhitpos.x, state.gb.bhitpos.y, state)) {
+            if (state.multi) requireRangedOperation(env, 'endMulti')(0, state);
+            if (singleobj.oclass === GEM_CLASS)
+                return refuseRanged(env, 'unicorn gem catch');
+            if (u_catch_thrown_obj(singleobj, env)) return 0;
+            if (singleobj.oclass === POTION_CLASS
+                || singleobj.otyp === EGG
+                || singleobj.otyp === CREAM_PIE
+                || singleobj.otyp === BLINDING_VENOM) {
+                return refuseRanged(env, 'special monster missile hit');
+            }
+
+            let damage = damageValue(singleobj, state.youmonst, env);
+            let hitv = 3 - distmin(
+                state.u.ux,
+                state.u.uy,
+                monster.mx,
+                monster.my,
+            );
+            if (hitv < -4) hitv = -4;
+            if (is_elf(monster.data)
+                && objectType(singleobj, state).oc_skill === -P_BOW) {
+                return refuseRanged(env, 'elven monster shooting bonus');
+            }
+            if (bigmonst(state.youmonst.data)) hitv++;
+            hitv += 8 + singleobj.spe;
+            if (damage < 1) damage = 1;
+            if (singleobj.otyp !== ACID_VENOM)
+                damage = maybeHalfPhysical(damage, state);
+            hit = Boolean(await hitHero(hitv, damage, singleobj, env));
+            await stopOccupation(state, env);
+            if (!hit)
+                return refuseRanged(env, 'monster missile miss');
+            await drop_throw(
+                singleobj,
+                true,
+                state.u.ux,
+                state.u.uy,
+                env,
+            );
+            break;
+        }
+
+        random.rn2(5); /* forcehit, consumed even without iron bars */
+        if (!range) return refuseRanged(env, 'monster missile range expiry');
+        const nextFlightX = state.gb.bhitpos.x + dx;
+        const nextFlightY = state.gb.bhitpos.y + dy;
+        if (!isok(nextFlightX, nextFlightY))
+            return refuseRanged(env, 'blocked monster missile terrain');
+        const location = state.level.at(nextFlightX, nextFlightY);
+        if (IS_OBSTRUCTED(location.typ)
+            || closed_door(
+                nextFlightX,
+                nextFlightY,
+                state,
+            )
+            || location.typ === IRONBARS
+            || IS_SINK(state.level.at(
+                state.gb.bhitpos.x,
+                state.gb.bhitpos.y,
+            ).typ)) {
+            return refuseRanged(env, 'blocked monster missile terrain');
+        }
+        await temporaryDisplay(
+            state.gb.bhitpos.x,
+            state.gb.bhitpos.y,
+            state,
+        );
+        await delayOutput(state);
+    }
+
+    if (!hit) return refuseRanged(env, 'monster missile without settlement');
+    await temporaryDisplay(state.gb.bhitpos.x, state.gb.bhitpos.y, state);
+    await delayOutput(state);
+    await temporaryDisplay(DISP_END, 0, state);
+    state.mesg_given = 0;
+    state.gt.thrownobj = null;
+    return 0;
+}
+
+// C ref: mthrowu.c monshoot() (262-300), visible quantity-one thrown-weapon
+// arm through m_throw() and the source-ordered m_shot reset.
+export async function monshoot(monster, missile, launcher, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const env = { ...rawEnv, state };
+    const target = env.monsterTarget ?? null;
+    if (target)
+        return refuseRanged(env, 'monster ranged attack on another monster');
+
+    const range = distmin(
+        monster.mx,
+        monster.my,
+        monster.mux,
+        monster.muy,
+    );
+    const multishot = monmulti(monster, missile, launcher, env);
+    const seesMonster = requireRangedOperation(env, 'canSeeMonster');
+    if (!seesMonster(monster, state))
+        return refuseRanged(env, 'unseen monster ranged feedback');
+
+    if (ammo_and_launcher(missile, launcher, state))
+        return refuseRanged(env, 'monster ranged launcher action');
+    if (obj_is_pname(missile, state))
+        return refuseRanged(env, 'named monster missile announcement');
+
+    const singleName = singular(missile, xnameFresh, state);
+    const objectName = an(singleName);
+    state.m_shot ??= {};
+    state.m_shot.s = false;
+    const monsterName = requireRangedOperation(env, 'monsterName');
+    const message = requireRangedOperation(env, 'message');
+    await message(
+        `${monsterName(monster, state)} throws ${objectName}!`,
+        state,
+    );
+    state.m_shot.o = missile.otyp;
+    state.m_shot.n = multishot;
+    state.m_shot.i = 1;
+
+    const throwMissile = requireRangedOperation(env, 'throwMissile');
+    await throwMissile(
+        monster,
+        monster.mx,
+        monster.my,
+        sgn(monster.mux - monster.mx),
+        sgn(monster.muy - monster.my),
+        range,
+        missile,
+        env,
+    );
+    state.m_shot.n = 0;
+    state.m_shot.i = 0;
+    state.m_shot.o = STRANGE_OBJECT;
+    state.m_shot.s = false;
+    return 0;
+}
+
+// C ref: mthrowu.c thrwmu() (1174-1263), through the source-ordered wield
+// turn, ordinary line and retreat checks, and monshoot()'s first m_throw().
+export async function thrwmu(monster, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? { rn2 };
+    const env = { ...rawEnv, state, random };
+
+    if (monster.weapon_check === NEED_WEAPON || !monster.mw) {
+        monster.weapon_check = NEED_RANGED_WEAPON;
+        const selectRangedWeapon = (subject, selectionEnv) => {
+            const propellorResult = {};
+            select_rwep(subject, {
+                ...selectionEnv,
+                propellorResult,
+            });
+            return propellorResult.value;
+        };
+        if (await mon_wield_item(monster, {
+            ...env,
+            handsObject: hands_obj,
+            selectRangedWeapon,
+        }) !== 0) {
+            return 1;
+        }
+    }
+
+    const selected = select_rwep(monster, env);
+    if (!selected) return 0;
+
+    if (is_pole(selected, state) || selected.otyp === AKLYS) {
+        return refuseRanged(
+            env,
+            'monster polearm or returning-weapon action',
+        );
+    }
+    if (!lined_up(monster, env)) return 0;
+
+    const currentDistance = distmin(
+        state.u.ux,
+        state.u.uy,
+        monster.mx,
+        monster.my,
+    );
+    const previousDistance = distmin(
+        state.u.ux0,
+        state.u.uy0,
+        monster.mx,
+        monster.my,
+    );
+    if (currentDistance > previousDistance
+        && env.random.rn2(BOLT_LIM - currentDistance)) {
+        return 0;
+    }
+    if (selected.oclass !== WEAPON_CLASS)
+        return refuseRanged(env, 'monster special missile action');
+
+    const endMulti = requireRangedOperation(env, 'endMulti');
+    await monshoot(monster, selected, monster.mw, env);
+    endMulti(0, state);
+    return 0;
+}
+
 // C ref: mthrowu.c thitu() (75-155). "hero is hit by something other than a
 // monster (though it could be a missile thrown or shot by a monster)".
 //
@@ -182,10 +605,10 @@ export async function thitu(tlev, dam, obj, name, state = game, env = {}) {
 
     if (!named) {
         if (!obj) throw new Error('thitu: name & obj both null?');
-        // C formats with doname() or mshot_xname(). For the dart trap caller,
-        // name is always "little dart", so this branch is unreachable there.
-        // Guard it for future callers.
-        throw new Error('thitu without a name is not yet ported');
+        name = obj.quan > 1 ? refuseRanged(env, 'plural monster missile name')
+            : mshot_xname(obj, state);
+        knm = killer_xname(obj, state);
+        kprefix = KILLED_BY;
     } else {
         knm = name;
         const lower = name.toLowerCase();
@@ -193,14 +616,17 @@ export async function thitu(tlev, dam, obj, name, state = game, env = {}) {
             || lower.startsWith('a '))
             kprefix = KILLED_BY;
     }
-    onm = an(name);
+    onm = obj && obj_is_pname(obj, state) ? the(name, state)
+        : obj && obj.quan > 1 ? name : an(name);
 
     const is_acid = obj && obj.otyp === ACID_VENOM;
 
     const dieroll = random.rnd(20);
     if (state.u.uac + tlev <= dieroll) {
-        // Miss. C increments gm.mesg_given, which only m_throw() reads; that
-        // function is not ported, so the counter has no consumer yet.
+        // Miss. C increments gm.mesg_given, which m_throw() reads when deciding
+        // whether a later multishot miss needs its own message.
+        state.mesg_given = (state.mesg_given ?? 0) + 1;
+        if (env.requireHit) return refuseRanged(env, 'monster missile miss');
         if (heroIsBlind(state) || !state.flags?.verbose) {
             await message('It misses.', state);
         } else if (state.u.uac + tlev <= dieroll - 2) {
@@ -252,6 +678,8 @@ export async function thitu(tlev, dam, obj, name, state = game, env = {}) {
         }
         // is_acid is false here for a dart; the burn + monstunseesu path does
         // not fire.
+        if (env.requireHit && dam >= state.u.uhp)
+            return refuseRanged(env, 'fatal monster missile hit');
         await losehp(dam, knm, kprefix, state);
         await exercise(A_STR, false, state);
     }

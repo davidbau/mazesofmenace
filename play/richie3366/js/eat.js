@@ -33,7 +33,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
-    flush_topl_more, pline, You_feel, newsym, see_monsters, more,
+    pline, You_feel, newsym, see_monsters, more,
     canspotmon, canseemon,
 } from './display.js';
 import { yn_function, paranoid_query } from './getline.js';
@@ -89,13 +89,15 @@ import {
     M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL,
     WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
     CHOKING, A_LAWFUL, STRANGLED, PARANOID_EATING,
+    GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
+    GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS,
 } from './const.js';
 import {
     adjattrib, gainstr, acurr, acurrstr, change_luck, exercise, adjalign,
     A_STR, A_DEX, A_CHA, A_WIS, A_INT, A_CON,
 } from './attrib.js';
 import { nomul, losehp, still_chewing, is_pool, is_lava, stop_occupation } from './hack.js';
-import { near_capacity, observe_object, makeknown, compactify_invlets,
+import { near_capacity, observe_object, makeknown, getobj,
     freeinv_core, encumber_msg, update_inventory } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
@@ -845,81 +847,22 @@ function is_edible(obj) {
     return obj.oclass === FOOD_CLASS;
 }
 
-/** Build getobj allow-string of edible inventory letters (e.g. "b-g"). */
-function edible_lets() {
-    const inv = game.invent || [];
-    const lets = [];
-    for (const o of inv) {
-        if (is_edible(o) && o.invlet) lets.push(o.invlet);
-    }
-    lets.sort();
-    if (!lets.length) return '';
-    // Compact consecutive runs: b,c,d,e,f,g → b-g
-    // C invent.c compactify uses dashes for runs of 3+; short runs stay literal.
-    // seed1800 C shows "bcdef" (no dash) — emit uncompacted for ≤5 letters.
-    if (lets.length <= 5) return lets.join('');
-    let out = lets[0];
-    let runStart = lets[0];
-    let prev = lets[0];
-    for (let i = 1; i < lets.length; i++) {
-        const ch = lets[i];
-        if (ch.charCodeAt(0) === prev.charCodeAt(0) + 1) {
-            prev = ch;
-            continue;
-        }
-        if (prev !== runStart) {
-            out += prev === String.fromCharCode(runStart.charCodeAt(0) + 1)
-                ? prev
-                : `-${prev}`;
-        }
-        out += ch;
-        runStart = prev = ch;
-    }
-    if (prev !== runStart) {
-        out += prev === String.fromCharCode(runStart.charCodeAt(0) + 1)
-            ? prev
-            : `-${prev}`;
-    }
-    return out;
-}
+/**
+ * C eat.c getobj_else — floorfood declined a floor candidate; eat_ok(null)
+ * then EXCLUDE_NONINVENT so empty invent says "anything else to eat".
+ */
+let getobj_else = 0;
 
 /**
- * C ref: invent.c getobj("eat", is_edible) — yn_function free-letter loop;
- * missing letter → You("don't have that object.") + continue (next
- * yn_function flushes NEED_MORE → --More--). Empty SUGGEST → early
- * "don't have anything to eat."
+ * C ref: eat.c eat_ok — getobj callback. Hands EXCLUDE or
+ * EXCLUDE_NONINVENT; edible SUGGEST; gold EXCLUDE; else
+ * EXCLUDE_SELECTABLE (doeat prints "cannot eat that").
  */
-async function getobj_eat() {
-    for (;;) {
-        await flush_topl_more();
-        const lets = edible_lets();
-        if (!lets) {
-            await pline("You don't have anything to eat.");
-            return null;
-        }
-        // C: yn_function(qbuf, NULL, '\0') — any char; leave prompt on line
-        const query = `What do you want to eat? [${lets} or ?*]`;
-        const ch = await yn_function(query, null, '\0');
-
-        // quitchars: space, Esc, etc.
-        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            // Menu path deferred
-            await pline('Never mind.');
-            return null;
-        }
-
-        const otmp = (game.invent || []).find(o => o.invlet === ch);
-        if (!otmp) {
-            // C: You("don't have that object."); continue;
-            await pline("You don't have that object.");
-            continue;
-        }
-        return otmp;
-    }
+function eat_ok(obj) {
+    if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+    if (is_edible(obj)) return GETOBJ_SUGGEST;
+    if (obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+    return GETOBJ_EXCLUDE_SELECTABLE;
 }
 
 /**
@@ -971,9 +914,9 @@ function Breathless() {
  * Branch envelope: can_reach_floor / !usteed / !menu_requested /
  * pool-lava+(Wwalking|clinger|(Flying&&!Breathless)) skip to invent;
  * metallivore beartrap + IRONBARS + floor gold ynq; edible floor
- * FOOD (non-coin) ynq; invent getobj_eat.
+ * FOOD (non-coin) ynq; invent getobj eat_ok GETOBJ_NOFLAGS.
  * Named omissions: will_feel_cockatrice;
- * safe_qbuf ansimpleoname fallback; getobj_else "else" wording;
+ * safe_qbuf ansimpleoname fallback;
  * sacrifice corpsecheck arm (tin: D-1027 floorfood("tin", 2)).
  */
 async function floorfood_eat() {
@@ -981,6 +924,7 @@ async function floorfood_eat() {
     const ux = u.ux | 0;
     const uy = u.uy | 0;
     const form = hero_form_data();
+    getobj_else = 0;
     // C: menu_requested || !can_reach_floor || usteed ||
     //    (pool/lava && (Wwalking || clinger || (Flying && !Breathless)))
     //    → skipfloor
@@ -1017,7 +961,7 @@ async function floorfood_eat() {
                     return beartrap;
                 }
                 if (c === 'q') return null;
-                // 'n' → getobj_else++; continue metallivore arms
+                getobj_else++;
             }
             const loc = game.level?.at(ux, uy);
             if (loc && loc.typ === IRONBARS) {
@@ -1046,6 +990,7 @@ async function floorfood_eat() {
                 }
                 if (c === 'y') return hands_obj;
                 if (c === 'q') return null;
+                getobj_else++;
             }
             if ((form?.mndx ?? -1) !== PM_RUST_MONSTER) {
                 const gold = g_at(ux, uy);
@@ -1057,6 +1002,7 @@ async function floorfood_eat() {
                     const c = await yn_function(qbuf, 'ynq', 'n');
                     if (c === 'y') return gold;
                     if (c === 'q') return null;
+                    getobj_else++;
                 }
             }
         }
@@ -1069,10 +1015,12 @@ async function floorfood_eat() {
             const c = await yn_function(qbuf, 'ynq', 'n');
             if (c === 'y') return otmp;
             if (c === 'q') return null;
-            // 'n' → try next floor edible / fall through to invent
+            getobj_else++;
         }
     }
-    return getobj_eat();
+    const otmp = await getobj('eat', eat_ok, GETOBJ_NOFLAGS);
+    getobj_else = 0;
+    return otmp;
 }
 
 /**
@@ -3311,19 +3259,6 @@ async function start_tin(otmp) {
     }
 }
 
-/** C invent getobj ranks (hack.h) — match apply.js / C. */
-const GETOBJ_EXCLUDE = -3;
-const GETOBJ_EXCLUDE_NONINVENT = -2;
-const GETOBJ_EXCLUDE_SELECTABLE = 0;
-const GETOBJ_DOWNPLAY = 1;
-const GETOBJ_SUGGEST = 2;
-
-/**
- * C eat.c getobj_else — floorfood declined a floor candidate; tin_ok(null)
- * then EXCLUDE_NONINVENT so empty invent says "anything else to tin".
- */
-let getobj_else = 0;
-
 /**
  * C ref: apply.c tinnable — !oeaten && mons[corpsenm].cnutrit.
  * In eat.js so tin_ok/floorfood stay acyclic (C exports from apply.c).
@@ -3346,78 +3281,6 @@ function tin_ok(obj) {
         return GETOBJ_EXCLUDE_SELECTABLE;
     }
     return GETOBJ_SUGGEST;
-}
-
-/**
- * C ref: invent.c getobj("tin", tin_ok, GETOBJ_NOFLAGS).
- * Named omit: ?/* pickinv menu; sortloot; compactify '-' hands (tin_ok
- * null is never SUGGEST).
- */
-async function getobj_tin() {
-    const word = 'tin';
-    const q = game._cmdq_canned;
-    if (q?.length) {
-        const head = q[0];
-        if (head && typeof head === 'object' && head.typ === 'key') {
-            q.shift();
-            const ch = typeof head.key === 'string'
-                ? head.key
-                : String.fromCharCode(head.key);
-            for (const o of game.invent || []) {
-                if (o.invlet === ch) {
-                    const v = tin_ok(o);
-                    if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY) return o;
-                }
-            }
-            game._cmdq_canned = [];
-            return null;
-        }
-    }
-
-    const suggest_lets = () => {
-        const lets = [];
-        for (const o of game.invent || []) {
-            if (o?.invlet && tin_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-        }
-        lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-        return lets.join('');
-    };
-
-    for (;;) {
-        await flush_topl_more();
-        const rawLets = suggest_lets();
-        if (!rawLets) {
-            const else_ = getobj_else ? 'else ' : '';
-            await pline(`You don't have anything ${else_}to ${word}.`);
-            return null;
-        }
-        const lets = rawLets.length > 5 ? compactify_invlets(rawLets) : rawLets;
-        const query = `What do you want to ${word}? [${lets} or ?*]`;
-        const ch = await yn_function(query, null, '\0');
-        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            await pline('Never mind.');
-            return null;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        const v = tin_ok(otmp);
-        if (otmp.oclass === COIN_CLASS && v <= GETOBJ_EXCLUDE) {
-            await pline(`You cannot ${word} gold.`);
-            return null;
-        }
-        if (v === GETOBJ_EXCLUDE) {
-            await pline(`That is a silly thing to ${word}.`);
-            return null;
-        }
-        return otmp;
-    }
 }
 
 /**
@@ -3447,7 +3310,7 @@ async function floorfood_tin() {
             getobj_else++;
         }
     }
-    let otmp = await getobj_tin();
+    let otmp = await getobj('tin', tin_ok, GETOBJ_NOFLAGS);
     if (otmp && ((otmp.otyp | 0) !== CORPSE || !tinnable(otmp))) {
         await pline("You can't tin that!");
         otmp = null;
@@ -3470,50 +3333,6 @@ export async function floorfood(verb, corpsecheck) {
 function tinopen_ok(obj) {
     if (obj && (obj.otyp | 0) === TIN) return GETOBJ_SUGGEST;
     return GETOBJ_EXCLUDE;
-}
-
-/** Invent letters with tin SUGGEST (C getobj "open"). */
-function tinopen_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (o?.invlet && tinopen_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-    }
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
-}
-
-/**
- * C ref: invent.c getobj("open", tinopen_ok, GETOBJ_NOFLAGS).
- */
-async function getobj_tinopen() {
-    for (;;) {
-        await flush_topl_more();
-        const lets = tinopen_lets();
-        if (!lets) {
-            await pline("You don't have anything to open.");
-            return null;
-        }
-        const query = `What do you want to open? [${lets} or ?*]`;
-        const ch = await yn_function(query, null, '\0');
-        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            await pline('Never mind.');
-            return null;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        if (tinopen_ok(otmp) === GETOBJ_EXCLUDE) {
-            await pline('You cannot open that!');
-            return null;
-        }
-        return otmp;
-    }
 }
 
 /** C invent.c carrying — first invent[] match by otyp. */
@@ -3543,7 +3362,7 @@ export async function use_tin_opener(obj) {
         if (!(await wield_tool(obj, 'use'))) return ECMD_OK;
         res = ECMD_TIME;
     }
-    const otmp = await getobj_tinopen();
+    const otmp = await getobj('open', tinopen_ok, GETOBJ_NOFLAGS);
     if (!otmp) return res | ECMD_CANCEL;
     await start_tin(otmp);
     return ECMD_TIME;

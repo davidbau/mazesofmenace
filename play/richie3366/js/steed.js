@@ -1,7 +1,8 @@
 // steed.js — Saddle / riding.
 // C ref: steed.c — rider_cant_reach, can_saddle, use_saddle,
 // put_saddle_on_mon, can_ride, doride, mount_steed, landing_spot,
-// dismount_steed (BYCHOICE subset), kick_steed (D-1362).
+// dismount_steed (BYCHOICE subset), kick_steed (D-1362),
+// place_monster (D-1565; rm.h grid).
 
 import { game } from './gstate.js';
 import { mksobj, objects_at } from './mkobj.js';
@@ -25,10 +26,11 @@ import {
     VIBRATING_SQUARE, DIED, Never_mind, FEMALE, MALE,
     P_RIDING, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
     A_DEX, A_CHA, A_WIS,
+    MON_FLOOR, MON_OFFMAP,
 } from './const.js';
 import { objectNames, objectDescrs } from './objects.js';
 import { rnd, rn2, rn1 } from './rng.js';
-import { pline, newsym, canspotmon } from './display.js';
+import { pline, newsym, canspotmon, describe_level, impossible } from './display.js';
 import { getdir } from './lock.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
@@ -42,6 +44,7 @@ import { which_armor } from './worn.js';
 import { acurr, exercise, Fumbling } from './attrib.js';
 import { P_SKILL } from './weapon.js';
 import { welded } from './wield.js';
+import { level_mon_at } from './worm.js';
 
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -823,4 +826,82 @@ export async function doride() {
         return (await mount_steed(mtmp, false)) ? ECMD_TIME : ECMD_OK;
     }
     return ECMD_CANCEL;
+}
+
+/** C do_name.c minimal_monnam — display name for place_monster diags. */
+function place_mon_nam(mon) {
+    return mon_plain(mon);
+}
+
+/**
+ * C ref: steed.c place_monster `:897–932` — occupy
+ * `svl.level.monsters[x][y]` (JS `game._level_monsters`), set mx/my,
+ * `mstate = MON_FLOOR`. clone_mon is the live caller this iter
+ * (makemon.c `:898`). gulpmm / mdamagem use the same export.
+ * Vault guard may sit at <0,0>; other !isok coords snap to 0,0.
+ * Steed (unless `in_steed_dismounting`) and DEADMONSTER (unless
+ * isgd at 0,0) return without placing. Live grid overlap still
+ * writes (C does too after impossible). Stale heads left by
+ * mx/my-only movement are not treated as occupants (JS mixed
+ * occupancy; C always remove+place).
+ * `impossible()` is fire-and-forget so this stays sync like C.
+ */
+export function place_monster(mon, x, y) {
+    x = x | 0;
+    y = y | 0;
+    let buf = '';
+    // C: isok is <1..COLNO-1, 0..ROWNO-1>; vault guards park at <0,0>
+    if (!isok(x, y) && (x !== 0 || y !== 0 || !mon.isgd)) {
+        buf = describe_level(0);
+        void impossible(
+            `trying to place ${place_mon_nam(mon)} at <${x},${y}> mstate:${(mon.mstate | 0).toString(16)} on ${buf}`,
+        );
+        x = 0;
+        y = 0;
+    }
+    if ((mon === game.u?.usteed && !game.in_steed_dismounting)
+        || (((mon.mhp | 0) < 1) && !(mon.isgd && x === 0 && y === 0))) {
+        buf = describe_level(0);
+        void impossible(
+            `placing ${mon === game.u?.usteed ? 'steed' : 'defunct monster'} onto map, mstate:${(mon.mstate | 0).toString(16)}, on ${buf}?`,
+        );
+        return;
+    }
+    const othermon = game._level_monsters?.get(`${x},${y}`);
+    // C checks the raw grid; JS ignores stale mx/my-only leftovers.
+    if (othermon && level_mon_at(x, y)) {
+        buf = describe_level(0);
+        const monnm = place_mon_nam(mon);
+        const othnm = (mon !== othermon) ? place_mon_nam(othermon) : 'itself';
+        void impossible(
+            `placing ${monnm} over ${othnm} at <${x},${y}>, mstates:${(othermon.mstate | 0).toString(16)} ${(mon.mstate | 0).toString(16)} on ${buf}?`,
+        );
+    }
+    mon.mx = x;
+    mon.my = y;
+    if (!game._level_monsters) game._level_monsters = new Map();
+    game._level_monsters.set(`${x},${y}`, mon);
+    mon.mstate = MON_FLOOR;
+}
+
+/**
+ * C ref: rm.h remove_monster — clear `level.monsters[x][y]`; mx/my
+ * unchanged. JS fmon occupancy still needs MON_OFFMAP so m_at skips
+ * the head like C's empty grid cell (D-1231 gulpmm). Worm tail cells
+ * keep `worm.js` `remove_monster_xy` (head mx/my is not the tail).
+ */
+export function remove_monster(x, y) {
+    x = x | 0;
+    y = y | 0;
+    game._level_monsters?.delete(`${x},${y}`);
+    const steed = game.u?.usteed;
+    for (const m of game.fmon || []) {
+        if (m === steed) continue;
+        if ((m.mhp | 0) <= 0) continue;
+        if ((m.mstate | 0) & MON_OFFMAP) continue;
+        if ((m.mx | 0) === x && (m.my | 0) === y) {
+            m.mstate = (m.mstate | 0) | MON_OFFMAP;
+            break;
+        }
+    }
 }

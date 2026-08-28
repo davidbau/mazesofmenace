@@ -40,8 +40,8 @@ import { run_timers, start_timer, stop_timer, weight,
 import { make_confused, make_slimed } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast } from './attrib.js';
-import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters } from './display.js';
-import { inv_weight } from './invent.js';
+import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible } from './display.js';
+import { inv_weight, update_inventory } from './invent.js';
 import { doname, makeplural, xname, an, The } from './objnam.js';
 import { rn2, rnd, d } from './rng.js';
 import { objectNames } from './objects.js';
@@ -1108,14 +1108,15 @@ function container_weight_hatch(obj) {
 }
 
 /**
- * C ref: timeout.c learn_egg_type — little_to_big then MV_KNOWS_EGG.
- * Named omit: update_inventory redraw after the flag.
+ * C ref: timeout.c learn_egg_type — little_to_big then MV_KNOWS_EGG
+ * then update_inventory.
  */
 export function learn_egg_type(mnum) {
     mnum = little_to_big(mnum | 0);
     if (!game.mvitals) game.mvitals = [];
     if (!game.mvitals[mnum]) game.mvitals[mnum] = { mvflags: 0 };
     game.mvitals[mnum].mvflags = (game.mvitals[mnum].mvflags | 0) | MV_KNOWS_EGG;
+    update_inventory();
 }
 
 /**
@@ -1124,8 +1125,9 @@ export function learn_egg_type(mnum) {
  * rn2(2)); silent timeout!=moves; get_obj_location(0); rnd(quan);
  * G_UNIQ/G_GENOD/G_EXTINCT skip spawn; enexto+makemon NO_MINVENT|MM_NOMSG;
  * tamedog yours||carried-dragon; leftover rnd(12) re-arm; invent useup /
- * floor extract+obfree+hideunder. Named omit: SetVoice before Gleep;
- * update_inventory; migrating #if 0; impossible() unknown where.
+ * floor extract+obfree+hideunder; learn_egg_type update_inventory;
+ * MINVENT is_pool(hatchling); impossible unknown where.
+ * Named omit: SetVoice before Gleep; migrating #if 0.
  */
 export async function hatch_egg(egg, timeout) {
     if (!egg) return;
@@ -1240,7 +1242,8 @@ export async function hatch_egg(egg, timeout) {
                     || cansee(carrier.mx | 0, carrier.my | 0))) {
                 carriedby = `${s_suffix_hatch(a_monnam_hatch(carrier))} pack`;
                 knows_egg = true;
-            } else if (carrier && is_pool(carrier.mx | 0, carrier.my | 0)) {
+            } else if (is_pool(mon.mx | 0, mon.my | 0)) {
+                // C: is_pool(mon->mx, mon->my) — hatchling, not carrier
                 carriedby = 'empty water';
             } else {
                 carriedby = 'thin air';
@@ -1252,7 +1255,7 @@ export async function hatch_egg(egg, timeout) {
         break;
 
     default:
-        // C impossible("egg hatched where?")
+        await impossible('egg hatched where? (%d)', egg.where | 0);
         break;
     }
 

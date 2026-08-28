@@ -6,7 +6,7 @@
 // read.c valid_cloud_pos.
 // Named omissions: numeric cmap glyph ints (JS tags
 // 'S_poisoncloud'/'S_cloud'); binary save_regions format; force
-// fields; incremental fill_point (JS uses vision_reset);
+// fields (#if 0 create_force_field); free_region teardown;
 // create_msg_region (#if 0; never sets enter/leave_msg in live C);
 // can_enter/leave/enter/leave table indices (gas NO_CALLBACK);
 // attach_2_m skip is m_in_out_region (D-1176; update_monster_region
@@ -26,7 +26,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { pline, You_feel, show_glyph_cell } from './display.js';
+import { pline, You_feel, show_glyph_cell, newsym } from './display.js';
 import { CLR_GRAY, CLR_BRIGHT_GREEN } from './terminal.js';
 import {
     isok, ACCESSIBLE, COLNO, ROWNO, u_at, TIMEOUT, REG_HERO_INSIDE,
@@ -34,11 +34,12 @@ import {
     PLNMSG_ENVELOPED_IN_GAS, KILLED_BY_AN, EYE, LUNG, POISON_RES,
     M_SEEN_POISON, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
     Is_waterlevel,
+    MON_OFFMAP,
 } from './const.js';
 import {
     is_pool, is_lava, losehp, maybe_half_phys, finish_maybe_wail,
 } from './hack.js';
-import { recalc_block_point, cansee } from './vision.js';
+import { block_point, unblock_point, does_block, cansee } from './vision.js';
 import {
     monsterNames, nonliving, breathless, haseyes, is_vampshifter,
     MR_POISON,
@@ -49,6 +50,7 @@ import { body_part } from './polyself.js';
 import { Monnam } from './do_name.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { dist2 } from './hacklib.js';
+import { level_mon_at } from './worm.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // JS inside_f tag (C callbacks[] uses 0)
@@ -303,12 +305,13 @@ function is_hero_inside_gas_cloud() {
 
 /** Local m_at — avoid mon.js cycle (mon.js imports region.js). */
 function m_at_xy(x, y) {
-    const seg = game._level_monsters?.get(`${x},${y}`);
-    if (seg && (seg.mhp | 0) > 0) return seg;
+    const seg = level_mon_at(x, y);
+    if (seg) return seg;
     const steed = game.u?.usteed;
     for (const m of game.fmon || []) {
         if (m === steed) continue;
         if ((m.mhp | 0) <= 0) continue;
+        if ((m.mstate | 0) & MON_OFFMAP) continue;
         if (m.mx === x && m.my === y) return m;
     }
     return null;
@@ -425,9 +428,39 @@ async function inside_gas_cloud(reg, mtmp) {
 }
 
 /**
- * C ref: region.c make_gas_cloud — register region then maybe envelop.
- * C add_region scans m_at into reg->monsters and block_point; JS rebuilds
- * vision via recalc_block_point (full vision_reset).
+ * C ref: region.c add_region — push, m_at scan, then if visible
+ * block_point every inside cell and cansee newsym on the bounding
+ * box (D-1576). Not one-corner recalc_block_point.
+ */
+function add_region(reg) {
+    if (!game.regions) game.regions = [];
+    game.regions.push(reg);
+    /* Check for monsters inside the region */
+    const box = region_bounding_box(reg);
+    for (let i = box.lx; i <= box.hx; i++) {
+        for (let j = box.ly; j <= box.hy; j++) {
+            let is_inside = false;
+            /* Some regions can cross the level boundaries */
+            if (!isok(i, j)) continue;
+            if (inside_region(reg, i, j)) {
+                is_inside = true;
+                const mtmp = m_at_xy(i, j);
+                if (mtmp) add_mon_to_reg(reg, mtmp);
+            }
+            if (reg.visible) {
+                if (is_inside) block_point(i, j);
+                if (cansee(i, j)) newsym(i, j);
+            }
+        }
+    }
+    /* Check for player now... */
+    const u = game.u || {};
+    if (inside_region(reg, u.ux | 0, u.uy | 0)) set_hero_inside(reg);
+    else clear_hero_inside(reg);
+}
+
+/**
+ * C ref: region.c make_gas_cloud — tags then add_region; maybe envelop.
  */
 async function make_gas_cloud(cloud, damage, inside_cloud) {
     // C: !gi.in_mklev && !svc.context.mon_moving → set_heros_fault
@@ -443,7 +476,7 @@ async function make_gas_cloud(cloud, damage, inside_cloud) {
     cloud.glyph = damage ? 'S_poisoncloud' : 'S_cloud';
     cloud.visible = true;
     if (!cloud.monsters) cloud.monsters = [];
-    /* C create_region defaults + add_region hero_inside. */
+    /* C create_region defaults; add_region does hero_inside. */
     if (cloud.can_enter_f == null) cloud.can_enter_f = NO_CALLBACK;
     if (cloud.can_leave_f == null) cloud.can_leave_f = NO_CALLBACK;
     if (cloud.enter_f == null) cloud.enter_f = NO_CALLBACK;
@@ -451,29 +484,7 @@ async function make_gas_cloud(cloud, damage, inside_cloud) {
     if (cloud.attach_2_m == null) cloud.attach_2_m = 0;
     cloud.attach_2_u = !!cloud.attach_2_u;
     cloud.player_flags = cloud.player_flags | 0;
-    {
-        const u = game.u || {};
-        if (inside_region(cloud, u.ux | 0, u.uy | 0)) set_hero_inside(cloud);
-        else clear_hero_inside(cloud);
-    }
-    if (!game.regions) game.regions = [];
-    game.regions.push(cloud);
-    // C add_region: m_at scan + if (reg->visible) block_point per cell
-    const rects = cloud.rects || [];
-    for (const r of rects) {
-        for (let x = r.lx | 0; x <= (r.hx | 0); x++) {
-            for (let y = r.ly | 0; y <= (r.hy | 0); y++) {
-                if (!isok(x, y) || !inside_region(cloud, x, y)) continue;
-                const mtmp = m_at_xy(x, y);
-                if (mtmp) add_mon_to_reg(cloud, mtmp);
-            }
-        }
-    }
-    if (rects.length) {
-        recalc_block_point(rects[0].lx | 0, rects[0].ly | 0);
-    } else {
-        game.vision_full_recalc = 1;
-    }
+    add_region(cloud);
     // C: !in_mklev && !inside_cloud && is_hero_inside_gas_cloud
     if (!game.in_mklev && !game.gi?.in_mklev
         && !inside_cloud && is_hero_inside_gas_cloud()) {
@@ -487,22 +498,44 @@ async function make_gas_cloud(cloud, damage, inside_cloud) {
 }
 
 /**
- * C ref: region.c remove_region — drop region; unblock vision for gas.
- * Named omissions: newsym pass, hero_inside clear, free_region details.
+ * C ref: region.c remove_region — drop then ttl=-2 so visible_region_at
+ * skips; two-pass unblock_point / newsym (D-1576). Pass 1 u.uinwater=0
+ * (does_block Underwater moat). Blind skips pass 2. free_region named.
  */
 function remove_region(reg) {
     const regs = game.regions || [];
     const i = regs.indexOf(reg);
     if (i < 0) return;
+
+    /* remove region before potential newsym() calls, but don't free it yet */
     regs.splice(i, 1);
-    // C expire_gas_cloud / remove_region → unblock_point; JS rebuilds
+
+    /* Update screen if necessary */
+    reg.ttl = -2; /* for visible_region_at */
     if (reg.visible) {
-        const rects = reg.rects || [];
-        if (rects.length) {
-            recalc_block_point(rects[0].lx | 0, rects[0].ly | 0);
-        } else {
-            game.vision_full_recalc = 1;
+        const tmp_uinwater = game.u?.uinwater;
+        const passes = Blind() ? 1 : 2;
+        const box = region_bounding_box(reg);
+
+        /* need to process the region's spots twice, first unblocking all
+           locations which no longer block line-of-sight, then redrawing
+           spots within revised line-of-sight; skip second pass if blind */
+        for (let pass = 1; pass <= passes; ++pass) {
+            if (game.u) game.u.uinwater = pass === 1 ? 0 : tmp_uinwater;
+            for (let x = box.lx; x <= box.hx; x++) {
+                for (let y = box.ly; y <= box.hy; y++) {
+                    if (isok(x, y) && inside_region(reg, x, y)) {
+                        if (pass === 1) {
+                            const loc = game.level?.at?.(x, y);
+                            if (!does_block(x, y, loc)) unblock_point(x, y);
+                        } else if (cansee(x, y)) {
+                            newsym(x, y);
+                        }
+                    }
+                }
+            }
         }
+        if (game.u) game.u.uinwater = tmp_uinwater;
     }
 }
 
@@ -695,11 +728,10 @@ function region_bounding_box(reg) {
 
 /**
  * C ref: region.c expire_gas_cloud — thick cloud halves arg and
- * resets ttl=2 (keep); thin cloud counts dissipation cells then
- * returns TRUE so run_regions remove_region. Pass 1 C unblock is a
- * no-op while the region is still visible (does_block sees it);
- * JS rebuilds in remove_region after ttl=-2. Pass 2 uses current
- * cansee (C viz_array; unblock only sets vision_full_recalc).
+ * resets ttl=2 (keep); thin cloud two-pass then TRUE so run_regions
+ * remove_region. Pass 1 !does_block → unblock_point while still in
+ * the list (gas visible → no-op; remove_region unblocks after
+ * ttl=-2). Pass 2 cansee counts dissipation (D-1576).
  */
 function expire_gas_cloud(reg) {
     let damage = reg.arg | 0;
@@ -715,14 +747,15 @@ function expire_gas_cloud(reg) {
     const gg = game.gg || (game.gg = {});
     const passes = Blind() ? 1 : 2;
     const box = region_bounding_box(reg);
+    /* The cloud no longer blocks vision.  cansee() checks shouldn't be made
+       until all blocked spots have been unblocked, so we need two passes */
     for (let pass = 1; pass <= passes; ++pass) {
         for (let x = box.lx; x <= box.hx; x++) {
             for (let y = box.ly; y <= box.hy; y++) {
                 if (!inside_region(reg, x, y)) continue;
                 if (pass === 1) {
-                    /* C: !does_block → unblock_point. Gas still
-                       visible so does_block stays true; remove_region
-                       unblocks after ttl=-2. */
+                    const loc = game.level?.at?.(x, y);
+                    if (!does_block(x, y, loc)) unblock_point(x, y);
                 } else if (!u.uswallow) {
                     if (u_at(x, y)) gg.gas_cloud_diss_within = true;
                     else if (cansee(x, y)) {

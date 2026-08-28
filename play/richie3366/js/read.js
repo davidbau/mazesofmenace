@@ -72,8 +72,7 @@
 // from angrygods.
 
 import { game } from './gstate.js';
-import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, urgent_pline, newsym, You_feel, verbalize, canspotmon } from './display.js';
+import { pline, urgent_pline, newsym, You_feel, verbalize, canspotmon } from './display.js';
 import { xname, makeplural, an, vtense, otyp_is_charged } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
@@ -83,7 +82,7 @@ import {
 import { weight, uncurse, curse, bless, blessorcurse, mkobj, delobj } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
-    makeknown, display_pickinv_reply, identify_pack, near_capacity,
+    makeknown, getobj, identify_pack, near_capacity,
 } from './invent.js';
 import { more_experienced } from './exper.js';
 import { do_mapping, cvt_sdoor_to_door } from './detect.js';
@@ -102,7 +101,8 @@ import {
     NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
     GENOCIDED, KILLED_BY, KILLED_BY_AN, NO_MINVENT, MM_NOMSG, Upolyd,
     nothing_happens, G_GENOD, G_EXTINCT, UNCHANGING,
-    GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
+    GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
+    GETOBJ_EXCLUDE_SELECTABLE,
     LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, NOTELL,
 } from './const.js';
 import { vision_recalc, do_clear_area } from './vision.js';
@@ -160,77 +160,23 @@ const NH_LIGHT_BLUE = 'light blue', NH_AMBER = 'amber';
 /** C gk.known — scroll effect observed this read */
 let known = false;
 
-/** Invent-order letters for scrolls + spellbooks (C read_ok SUGGEST). */
-function read_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (!o?.invlet) continue;
-        if (o.oclass === SCROLL_CLASS || o.oclass === SPBOOK_CLASS) {
-            lets.push(o.invlet);
-        }
+/**
+ * C ref: read.c read_ok — scrolls/books SUGGEST; other invent DOWNPLAY
+ * (shirts, coins, cookies); hands EXCLUDE.
+ */
+function read_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    if (obj.oclass === SCROLL_CLASS || obj.oclass === SPBOOK_CLASS) {
+        return GETOBJ_SUGGEST;
     }
-    return lets.join('');
+    return GETOBJ_DOWNPLAY;
 }
 
 /**
  * C ref: invent.c getobj("read", read_ok, GETOBJ_PROMPT)
- * Loop on missing letter; Esc/space/return → Never mind; ?/* → pickinv.
  */
 async function getobj_read() {
-    for (;;) {
-        await flush_topl_more();
-        const lets = read_lets();
-        const query = lets
-            ? `What do you want to read? [${lets} or ?*]`
-            : 'What do you want to read? [*]';
-        const prompt = `${query} `;
-
-        game._pending_message = prompt;
-        const disp = game.nhDisplay;
-        await flush_screen(1);
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            // C: display_pickinv(lets or all, want_reply) → selected invlet
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : lets);
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) continue; // Space/Return → re-prompt getobj
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            if (picked.oclass !== SCROLL_CLASS && picked.oclass !== SPBOOK_CLASS) {
-                await pline('That is a silly thing to read.');
-                return null;
-            }
-            game._pending_message = '';
-            return picked;
-        }
-
-        const otmp = (game.invent || []).find(o => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        // DOWNPLAY non-scroll/book → silly_thing; seed path is scroll/book
-        if (otmp.oclass !== SCROLL_CLASS && otmp.oclass !== SPBOOK_CLASS) {
-            await pline('That is a silly thing to read.');
-            return null;
-        }
-        game._pending_message = '';
-        return otmp;
-    }
+    return getobj('read', read_ok, GETOBJ_PROMPT);
 }
 
 /** C ref: invent.c useup() — consume one from a stack / remove if gone. */

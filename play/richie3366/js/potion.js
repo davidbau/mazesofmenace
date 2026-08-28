@@ -2548,14 +2548,15 @@ function dip_ok(obj, inacc) {
  * C invent.c getobj(word, dip_ok, GETOBJ_PROMPT).
  * GETOBJ_PROMPT always asks. Hands '-' is allownone (DOWNPLAY) but
  * not listed in the prompt. Gold → cannot. EXCLUDE → silly_thing.
- * Named omit: pickinv handsbuf; compactify '-' prefix.
+ * `?`/`*` → display_pickinv xtra_choice on `*` (D-1569); compactify
+ * '-' prefix N/A (DOWNPLAY).
  */
 async function getobj_dip_ok(word, inacc) {
     const obj_ok = (o) => dip_ok(o, inacc);
     const canned = cmdq_pop_getobj_key(obj_ok);
     if (canned !== undefined) return canned;
 
-    const { display_pickinv_reply } = await import('./invent.js');
+    const { getobj_display_pickinv } = await import('./invent.js');
     const suggest_lets = () => {
         const lets = [];
         for (const o of game.invent || []) {
@@ -2586,7 +2587,11 @@ async function getobj_dip_ok(word, inacc) {
         }
         if (ch === HANDS_SYM) return hands_obj;
         if (ch === '?' || ch === '*') {
-            const ilet = await display_pickinv_reply(ch === '*' ? '*' : rawLets);
+            const counted = { cnt: 0, cntgiven: false };
+            const ilet = await getobj_display_pickinv(
+                ch, rawLets, false, counted,
+                { word, allownone: true, promptHasHands: false },
+            );
             if (ilet === '\x1b') {
                 if (game.flags?.verbose !== false) await pline('Never mind.');
                 return null;

@@ -91,7 +91,7 @@ import { depth, dist2 } from './hacklib.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { observe_object, near_capacity } from './invent.js';
 import { visible_region_at, show_region } from './region.js';
-import { see_wsegs, worm_known } from './worm.js';
+import { see_wsegs, worm_known, level_mon_at } from './worm.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -243,11 +243,10 @@ const MLET_CH = {
 
 function mon_at_display(x, y) {
     const steed = game.u?.usteed;
-    // C m_at: level.monsters[][] includes worm segs (place_worm_seg).
-    const seg = game._level_monsters?.get(`${x},${y}`);
-    if (seg && seg !== steed && (seg.mhp == null || (seg.mhp | 0) > 0)) {
-        return seg;
-    }
+    // C m_at: level.monsters[][] includes worm segs (place_worm_seg)
+    // and heads from place_monster (D-1565). Stale heads ignored.
+    const seg = level_mon_at(x, y);
+    if (seg && seg !== steed) return seg;
     for (const m of game.fmon || []) {
         // C: remove_monster while mounted — steed not on the map grid
         if (steed && m === steed) continue;

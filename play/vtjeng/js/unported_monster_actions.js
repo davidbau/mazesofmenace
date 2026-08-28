@@ -10,6 +10,7 @@
 //
 // Delete this file once ported coverage makes the boundary unnecessary.
 
+import { artifact_light } from './artifacts.js';
 import {
     BEAR_TRAP,
     BURN,
@@ -29,12 +30,15 @@ import {
     ROOM,
     STRAT_CLOSE,
 } from './const.js';
+import { exercise } from './attrib.js';
 // js/allmain.js imports this file's action runners, so this edge closes an
 // import cycle. `stop_occupation` is a hoisted function declaration, which an
 // ES module cycle initializes before either module body runs; nothing here
 // reads it at module scope.
 import { stop_occupation } from './allmain.js';
-import { bot, map_invisible, newsym } from './display.js';
+import { bot, map_invisible, newsym, obj_to_glyph, tmp_at } from './display.js';
+import { flooreffects } from './do.js';
+import { should_mulch_missile, shipsAway } from './dothrow.js';
 import {
     best_target,
     dog_eat,
@@ -45,9 +49,13 @@ import {
 import { capitalizedMonsterName } from './do_name.js';
 import { engr_at } from './engrave.js';
 import { game } from './gstate.js';
+import { losehp, nh_delay_output, nomul } from './hack.js';
+import { hands_obj, obj_extract_self, stackobj } from './invent.js';
 import { any_light_source } from './light.js';
 import { m_dowear, set_mimic_sym } from './makemon_create.js';
 import { mattacku } from './mhitu.js';
+import { m_throw, thitu, thrwmu } from './mthrowu.js';
+import { AKLYS } from './objects.js';
 import {
     adaptMonsterActionToDochugwSignature,
     movemon_singlemon,
@@ -95,9 +103,17 @@ import {
     m_in_air,
     m_move,
 } from './monmove.js';
+import { m_at } from './monst.js';
 import { select_fresh_monster_item_action } from './muse.js';
-import { newObject } from './obj.js';
+import {
+    clear_dknown,
+    newObject,
+    place_object,
+    remove_object,
+} from './obj.js';
+import { observe_object } from './o_init.js';
 import { donameFresh } from './objnam.js';
+import { encumber_msg } from './pickup.js';
 import {
     create_gas_cloud,
     inside_region,
@@ -121,7 +137,8 @@ import {
 } from './startup_a11y.js';
 import { is_ice } from './terrain.js';
 import { is_lava, is_pool, t_at } from './trap.js';
-import { ttyPline } from './tty_message.js';
+import { ttyPline, ttyPlineWillWait } from './tty_message.js';
+import { passive_obj } from './uhitm.js';
 import {
     block_point,
     cansee,
@@ -132,11 +149,14 @@ import {
     vision_recalc,
 } from './vision.js';
 import {
+    dmgval,
     mon_wield_item,
     select_hwep,
     select_rwep,
+    setmnotwielded,
 } from './weapon.js';
 import { will_weld } from './wield.js';
+import { is_pole } from './worn.js';
 
 const STARTING_PETS = new Set([PM_LITTLE_DOG, PM_KITTEN, PM_PONY]);
 const SPECIAL_RESPONDERS = new Set([PM_SHRIEKER, PM_MEDUSA, PM_ERINYS]);
@@ -537,6 +557,9 @@ function planningState(state) {
         // extcmdlist entries and need no deepening.
         command_queue: state.command_queue?.map((queue) => [...queue]),
         gd: { ...(state.gd ?? {}) },
+        // mthrowu.c monshoot() fills this record before entering m_throw(). A
+        // rejected planned flight must not leave those values in live state.
+        m_shot: { ...(state.m_shot ?? {}) },
         // decl.h:457-458's hitmsg_mid and hitmsg_prev, which mhitu.c hitmsg()
         // writes and missmu() clears on every monster attack the scan replays.
         // The two answer whether a monster's next blow says "again", and the
@@ -934,14 +957,129 @@ async function moveSimplePet(monster, after, env) {
 // runSimpleMonsterAction() binds mon_wield_item()'s selectRangedWeapon
 // operation to a refusal and going through it would stop every monster C
 // leaves alone.
-function throwRangedWeapon(monster, env) {
-    const selected = select_rwep(monster, {
+async function throwRangedWeapon(monster, env) {
+    const selectionEnv = {
         ...env,
         touchArtifact: () => unsupported('monster artifact weapon selection'),
+    };
+    if (monster.weapon_check === NEED_WEAPON || !monster.mw) {
+        const propellorResult = {};
+        const selected = select_rwep(monster, {
+            ...selectionEnv,
+            propellorResult,
+        });
+        const propellor = propellorResult.value;
+        if (selected && (is_pole(selected, env.state)
+            || selected.otyp === AKLYS)) {
+            unsupported('monster polearm or returning-weapon action');
+        }
+        if (propellor && propellor !== hands_obj) {
+            if (monster.mw)
+                unsupported('monster ranged wield with a current weapon');
+            if (propellor.oartifact || artifact_light(propellor))
+                unsupported('monster ranged artifact wield');
+            if (will_weld(propellor, env.state))
+                unsupported('monster ranged wield with a welded weapon');
+        }
+    }
+    let plannedAnnouncementWaits = false;
+    return thrwmu(monster, {
+        ...selectionEnv,
+        canSeeMonster: (subject) => canSeeMonster(subject, env.state),
+        canSeeSquare: (x, y) => cansee(x, y, env.state),
+        clearObjectKnowledge: (obj) => clear_dknown(obj, env.state),
+        damageValue: (obj, target, actionEnv) => dmgval(
+            obj,
+            target,
+            actionEnv.state,
+            { random: actionEnv.random, unsupported },
+        ),
+        delayOutput: env.planning ? async () => {} : nh_delay_output,
+        endMulti: (value, state) => nomul(value, state),
+        extractObject: (obj, actionEnv) => obj_extract_self(obj, actionEnv),
+        floorEffects: (obj, x, y, verb, actionEnv) => flooreffects(
+            obj,
+            x,
+            y,
+            verb,
+            actionEnv,
+        ),
+        hitHero: (hitv, damage, obj, actionEnv) => {
+            if (actionEnv.planning && actionEnv.state.iflags?.showdamage)
+                unsupported('monster missile hit with showdamage');
+            return thitu(hitv, damage, obj, null, actionEnv.state, {
+                ...actionEnv,
+                exercise: (index, increase, state) => exercise(
+                    index,
+                    increase,
+                    state,
+                    actionEnv.random,
+                    {
+                        encumberMessage: actionEnv.planning
+                            ? async () => {} : encumber_msg,
+                    },
+                ),
+                losehp,
+                requireHit: true,
+            });
+        },
+        message: env.planning
+            ? async (text, state) => {
+                plannedAnnouncementWaits = ttyPlineWillWait(text, state);
+            }
+            : ttyPline,
+        monsterAt: (x, y, state) => m_at(x, y, state),
+        monsterName: (subject) => capitalizedMonsterName(subject, env.state),
+        objectToGlyph: (obj, state) => obj_to_glyph(obj, state),
+        observeObject: (obj, state) => observe_object(obj, state),
+        passiveObject: (target, obj, attack, actionEnv) => passive_obj(
+            target,
+            obj,
+            attack,
+            actionEnv.state,
+            actionEnv,
+        ),
+        placeObject: (obj, x, y, actionEnv) => place_object(
+            obj,
+            x,
+            y,
+            actionEnv,
+        ),
+        setMonsterNotWielded: (subject, obj, actionEnv) =>
+            setmnotwielded(subject, obj, actionEnv),
+        shipsAway: (x, y, state) => shipsAway(x, y, state),
+        shouldMulch: (obj, actionEnv) => should_mulch_missile(
+            obj,
+            actionEnv.state,
+            actionEnv,
+        ),
+        stackObject: (obj, actionEnv) => stackobj(obj, {
+            ...actionEnv,
+            hooks: {
+                ...(actionEnv.hooks ?? {}),
+                extractExternalObject: remove_object,
+            },
+        }),
+        stopOccupation: (state) => stop_occupation(state, {
+            message: env.planning ? async () => {} : ttyPline,
+            statusRefresh: env.planning ? () => {} : () => bot(),
+        }),
+        temporaryDisplay: env.planning ? async () => {} : tmp_at,
+        throwMissile: env.planning
+            ? (...args) => plannedAnnouncementWaits
+                ? undefined : m_throw(...args)
+            : m_throw,
+        unsupported,
+        wieldMessage: async (subject, obj, detail) => {
+            if (env.planning) return;
+            await ttyPline(
+                `${capitalizedMonsterName(subject, env.state)} wields `
+                + `${donameFresh(obj, env.state)}`
+                + `${detail.exclaim ? '!' : '.'}`,
+                env.state,
+            );
+        },
     });
-    if (selected) unsupported('monster ranged weapon action');
-    if (monster.weapon_check === NEED_WEAPON || !monster.mw)
-        monster.weapon_check = NEED_WEAPON;
 }
 
 // The dochug() operation that mhitu.c mattacku() sits behind. Everything it

@@ -46,7 +46,7 @@ import {
     CXN_NORMAL, CXN_SINGULAR, CXN_NO_PFX, CXN_PFX_THE, CXN_ARTICLE,
     CXN_NOCORPSE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
-    BURN_OBJECT, HAND, FOOT, RIGHT_HANDED,
+    BURN_OBJECT, HAND, FOOT, FINGER, FINGERTIP, RIGHT_HANDED,
 } from './const.js';
 
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
@@ -1731,13 +1731,15 @@ export function set_body_part(fn) {
 /**
  * Seam for modules that cannot import polyself.js (wield: polyself→wield).
  * Not the C-locus name — that is only `polyself.js` `body_part`.
- * Unset → C mbodypart null-data humanoid "hand" / "foot" / "body part".
+ * Unset → C mbodypart null-data humanoid (HUMANOID_PARTS).
  */
 export function body_part_latebound(part) {
     if (_body_part) return _body_part(part);
     const p = part | 0;
     if (p === HAND) return 'hand';
     if (p === FOOT) return 'foot';
+    if (p === FINGER) return 'finger';
+    if (p === FINGERTIP) return 'fingertip';
     return 'body part';
 }
 
@@ -2426,17 +2428,19 @@ export function paydoname(obj) {
  * Message/prinv paths pass dot=true (trailing period); invent menus omit it.
  * When quan is non-0, temporarily override obj.quan for doname (pickup
  * partial / merge total_of), then restore.
- * Named omissions: txt override; cost/Iu/Ix unpaid columns; HANDS/CONTAINED
- * let symbols.
+ * `txt` is C's second arg (hands/xtra_choice, contained, "Total:");
+ * when set, doname is skipped. Named omissions: cost/Iu/Ix unpaid
+ * columns; CONTAINED_SYM `>` column.
  */
-export function xprname(obj, let_, dot = false, quan = 0) {
+export function xprname(obj, let_, dot = false, quan = 0, txt = null) {
     let savequan = 0;
     if (quan && obj) {
         savequan = obj.quan || 0;
         obj.quan = quan;
     }
     const ilet = let_ ?? obj?.invlet ?? '?';
-    const result = `${ilet} - ${doname(obj)}${dot ? '.' : ''}`;
+    const name = txt != null ? txt : doname(obj);
+    const result = `${ilet} - ${name}${dot ? '.' : ''}`;
     if (savequan) obj.quan = savequan;
     return result;
 }

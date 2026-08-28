@@ -9,6 +9,8 @@
 import {
     BURN_OBJECT,
     BURIED_TOO,
+    BLINDED,
+    CONFUSION,
     CONTAINED_TOO,
     FIG_TRANSFORM,
     FULL_MOON,
@@ -44,7 +46,7 @@ import { stop_occupation } from './allmain.js';
 import { artifact_light } from './artifacts.js';
 import { stone_luck } from './attrib.js';
 import { rot_corpse, unportedRotCorpseReason } from './dig.js';
-import { heal_legs } from './do.js';
+import { heal_legs, wipeoff } from './do.js';
 import { carrying } from './invent.js';
 import { game } from './gstate.js';
 import { You_can_move_again, nomul } from './hack.js';
@@ -342,27 +344,36 @@ export function preflight_nh_timeout_elapsed_turn(state = game, env = {}) {
     // state is read on such a turn and none of it needs to be admitted.
     // nh_timeout_elapsed_turn() makes the same return, in C's position.
     if (u.uinvulnerable) return;
+    const wipeOccupation = state.go?.occupation === wipeoff;
+    const ordinaryWipe = u.ucreamed === 3
+        && u.uprops?.[BLINDED]?.intrinsic === 3
+        && !u.uprops[BLINDED].extrinsic
+        && !u.uprops[BLINDED].blocked
+        && wipeOccupation;
     for (const [name, value] of [
         ['mtimedone', u.mtimedone],
         ['ucreamed', u.ucreamed],
         ['usptime', u.usptime],
         ['ugallop', u.ugallop],
     ]) {
+        if (name === 'ucreamed' && ordinaryWipe) continue;
         if (Math.trunc(value ?? 0) !== 0) {
             throw new UnsupportedHeroTimeoutBoundaryError(
-                `zero ${name}`,
+                name === 'ucreamed' && wipeOccupation
+                    ? 'ordinary wipe occupation with matching three-turn blindness'
+                    : `zero ${name}`,
             );
         }
     }
     for (let index = 0; index < (u.uprops?.length ?? 0); ++index) {
         const timeout = Math.trunc(u.uprops[index]?.intrinsic ?? 0) & TIMEOUT;
         if (timeout === 0) continue;
-        // WOUNDED_LEGS is the only property this port gives a timeout:
-        // do.c set_wounded_legs() sets it, for trap.c's bear trap. Both its
-        // countdown at timeout.c:670-671 and the do.c heal_legs() its expiry
-        // reaches at timeout.c:774 are ported below, so any count is admitted.
-        // Every other index would reach an unported case of the same switch.
+        // WOUNDED_LEGS is fully ported, including expiry through heal_legs().
+        // CONFUSION is admitted only while this decrement remains nonzero;
+        // timeout 1 would reach make_confused(), which remains unported here.
         if (index === WOUNDED_LEGS) continue;
+        if (index === CONFUSION && timeout > 1) continue;
+        if (index === BLINDED && ordinaryWipe) continue;
         throw new UnsupportedHeroTimeoutBoundaryError(
             `no active property timeout at index ${index}`,
         );
@@ -421,8 +432,9 @@ export function adjust_timeout_luck(state = game) {
 // nonzero and runs the switch on each one that reaches zero. An invulnerable
 // hero never arrives, because the caller returns first exactly as
 // timeout.c:621 does; every other hero has been through the preflight, which
-// admits no property but WOUNDED_LEGS, so timeout.c:774 is the only case of
-// that switch this loop can enter.
+// admits WOUNDED_LEGS at any count and CONFUSION only while its decrement
+// remains nonzero. timeout.c:774 is therefore still the only switch case this
+// loop can enter.
 //
 // C reads find_delayed_killer() at 672 before switching, but only its STONED,
 // SLIMED and SICK cases use the result and none of the three is admitted here.
@@ -449,6 +461,7 @@ export async function nh_timeout_elapsed_turn(state = game, env = {}) {
     /* "things past this point could kill you" -- timeout.c:621-622, below the
        basal-luck block and above every branch nh_timeout() has left. */
     if (state.u?.uinvulnerable) return;
+    if (state.u.ucreamed) --state.u.ucreamed;
     await decrement_property_timeouts(state, env);
     /* timeout.c:947, nh_timeout()'s last statement. */
     run_timers(state, { ...env, site: "nh_timeout()'s run_timers()" });

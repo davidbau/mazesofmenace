@@ -350,7 +350,7 @@ export function hliquid(liquidpref) {
 }
 
 /** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
-function s_suffix(s) {
+export function s_suffix(s) {
     const buf = String(s ?? '');
     const low = buf.toLowerCase();
     if (low === 'it') return `${buf}s`;

@@ -40,7 +40,12 @@ import {
     ydir,
     zdir,
 } from './const.js';
-import { doapply, reset_trapset, UnsupportedApplyError } from './apply.js';
+import {
+    doapply,
+    dorub,
+    reset_trapset,
+    UnsupportedApplyError,
+} from './apply.js';
 import { UnsupportedArtifactDisplayError } from './artifacts.js';
 import { dosearch, UnsupportedSearchError } from './detect.js';
 import {
@@ -53,7 +58,9 @@ import {
 import {
     dodown,
     dodrop,
+    dowipe,
     doup,
+    UnsupportedWipeError,
     UnsupportedDropError,
     UnsupportedLevelChangeError,
 } from './do.js';
@@ -149,6 +156,7 @@ import {
     dovspell,
     UnsupportedSpellCastError,
     UnsupportedSpellDisplayError,
+    UnsupportedSpellStudyError,
 } from './spell.js';
 import {
     UnsupportedWeaponSkillError,
@@ -466,12 +474,11 @@ function yn_menuable_resp(resp, state) {
 
 // C ref: cmd.c yn_function() (5471-5578). The ordinary user-input arm reads
 // through tty_yn_function() and, when addcmdq is true, records the answer in
-// CQ_REPEAT. This slice admits that write for an unrestricted prompt. The
-// restricted-response and queued-answer arms remain outside the running-game
-// boundary: nothing ported can set gi.in_doagain, and the current whatdoes
-// caller starts with an empty canned queue. getdir() passes addcmdq FALSE,
-// exactly as C does at 3989. iflags.debug_fuzzer is never set, leaving the
-// window port's reader as the only live input source.
+// CQ_REPEAT. Both unrestricted whatdoes input and restricted y_n input reach
+// that write. The queued-answer arm remains outside the running-game boundary:
+// nothing ported can set gi.in_doagain. getdir() passes addcmdq FALSE, exactly
+// as C does at 3989. iflags.debug_fuzzer is never set, leaving the window
+// port's reader as the only live input source.
 //
 // The `resp && *resp && res && !strchr(resp, res)` repair at 5567 has no work
 // to do for either caller. A null `resp` fails its first test. For a restricted
@@ -497,20 +504,14 @@ export async function yn_function(query, resp, def, addcmdq, state = game) {
         throw new UnsupportedDirectionBoundaryError('yn_function_menu()');
     }
     const res = await tty_yn_function(query, resp, def, state);
-    if (addcmdq && resp !== null) {
-        throw new UnsupportedDirectionBoundaryError(
-            'cmdq_add_key(CQ_REPEAT) for a restricted response set',
-        );
-    }
     if (addcmdq) cmdq_add_key(CQ_REPEAT, res, state);
     // "in case we're called via getdir() which sets input_state".
     state.program_state.input_state = 'other';
     return res;
 }
 
-// C ref: hack.h:1329 y_n(), over decl.c ynchars[]. Its one ported caller,
-// steed.c doride()'s debug-mode question, still stops: y_n() passes
-// addcmdq TRUE and yn_function() refuses that above.
+// C ref: hack.h:1329 y_n(), over decl.c ynchars[]. The accepted byte is saved
+// in CQ_REPEAT so a future #repeat implementation can replay the same answer.
 const ynchars = 'yn';
 export async function y_n(query, state = game) {
     return yn_function(query, ynchars, 'n', true, state);
@@ -1137,7 +1138,8 @@ export async function getdir(s, state = game) {
         );
     }
     // cmdq_add_key(CQ_REPEAT, dirsym): getdir() repeat recording remains
-    // outside this caller's boundary; dowhatdoes() owns the admitted write.
+    // outside this caller's boundary. yn_function() owns the generic admitted
+    // write for dowhatdoes() and y_n() callers such as doride().
 
     const spkeys = commandBindings(state).specialKeys;
     // cmd.c:4021-4090 tests NHKF_GETDIR_SELF first and evaluates movecmd()
@@ -1344,7 +1346,7 @@ export async function parseCommand(state = game) {
 // the typed names work.
 export const ADMITTED_COMMANDS = Object.freeze([
     'wait', 'look', 'inventory', 'showspells', 'known', 'attributes', 'search',
-    'eat', 'engrave', 'apply', 'open', 'close', 'down', 'up', 'drop', 'pickup',
+    'eat', 'engrave', 'apply', 'rub', 'open', 'close', 'down', 'up', 'drop', 'pickup',
     'takeoff', 'wear',
     'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'options', 'autopickup',
     'wizwish', 'wizlevelport', 'wizgenesis', 'fire', 'throw', 'swap', 'kick',
@@ -1442,8 +1444,9 @@ export function reset_occupations(state = game) {
 // CQ_REPEAT is a write-only recording buffer during ordinary play:
 // cmdq_pop() reads it only while gi.in_doagain is set, and cmd.c do_repeat()
 // (1636-1660) is the sole writer of that flag. #repeat and its ^A binding are
-// unported. yn_function() now records the whatdoes answer there; the other
-// source write sites remain outside their current callers' boundaries.
+// unported. yn_function() records answers for dowhatdoes() and admitted y_n()
+// callers such as doride(); getdir()'s separate source write remains outside
+// its current boundary.
 //
 // CMDQ_EXTCMD and CMDQ_KEY nodes are produced. cmdq_add_dir(),
 // cmdq_add_int() and cmdq_add_userinput() have no ported caller.
@@ -1686,6 +1689,7 @@ export function failClosedCommandRefusals() {
         UnsupportedFeatureDescriptionError,
         UnsupportedObjectNameError,
         UnsupportedSpellDisplayError,
+        UnsupportedSpellStudyError,
         // spell.c spelleffects_check() and spelleffects() raise this from
         // the forgotten-spell, amulet-drain, and non-healing spell paths
         // that this port has not reached.
@@ -1866,6 +1870,11 @@ export function failClosedCommandRefusals() {
         // have stopped raising the class, because dropping it early costs the
         // turn-boundary conversion too.
         UnsupportedPrayerError,
+        // do.c dowipe() and wipeoff() raise this for every face or blindness
+        // state outside the selected ordinary three-turn cream occupation.
+        // wipeoff() runs at the turn boundary, so allmain.js consumes this
+        // same list when the installed callback refuses a changed state.
+        UnsupportedWipeError,
         // sit.c dosit() raises this from the eleven terrain and trap arms it
         // leaves unported, each at its own condition and so before that arm
         // has printed anything or changed the hero.
@@ -2087,6 +2096,13 @@ async function runHelpCommand(key, state) {
 // direction prompt answers ECMD_CANCEL.
 async function runApplyCommand(key, state) {
     return failClosedCommand(key, state, () => doapply(state));
+}
+
+// C ref: apply.c dorub(). Cancellation and the nohands refusal return the
+// function's own result; selecting an object reaches apply.js's explicit
+// boundary before the unported wielding and rubbing effects.
+async function runRubCommand(key, state) {
+    return failClosedCommand(key, state, () => dorub(state));
 }
 
 // C ref: lock.c doclose(). Like dosearch() and doeat() it returns its own
@@ -2527,6 +2543,8 @@ async function doextcmd(key, state) {
         );
     case 'doapply':
         return await runApplyCommand(key, state);
+    case 'dorub':
+        return await runRubCommand(key, state);
     case 'dozap':
         return await runZapCommand(key, state);
     case 'docast':
@@ -2561,6 +2579,8 @@ async function doextcmd(key, state) {
     case 'dosit':
         // C ref: sit.c dosit(), which returns its own ECMD_* result.
         return await dosit(state);
+    case 'dowipe':
+        return await failClosedCommand(key, state, () => dowipe(state));
     case 'dokick':
         return await runKickCommand(key, state);
     case 'dotwoweapon':
@@ -2886,6 +2906,18 @@ export async function rhack(key, state = game) {
             // and for the three use_stethoscope() guards, and ECMD_TIME for a
             // second listen in the same move.
             const res = await runApplyCommand(key, state);
+            if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (res & ECMD_TIME) commandTookTime(state);
+            return;
+        }
+        if (command === 'rub') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3818. The
+            // ordinary unwielded-lamp arm answers ECMD_TIME after queueing
+            // this same command and the lamp letter, so this direct handler
+            // must preserve CQ_CANNED while marking the elapsed turn.
+            const res = await runRubCommand(key, state);
             if (res & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
             else if ((res & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
                 resetCommandVars(state, state.multi < 0);
