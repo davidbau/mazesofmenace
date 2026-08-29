@@ -103,7 +103,7 @@
 // same wand-duplicate group; callee zap.c `:521–544`).
 // SPE_DRAIN_LIFE self-dir zapyourself !Drain_resistance + losexp
 // (D-1446; callee zap.c `:2817–2823` / exper.c losexp).
-// Named omissions: novel/tribute; dull sleep; confused_book body;
+// Named omissions: dull sleep; confused_book body;
 // learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
 // swap/sort; other spelleffects otyps (remaining peffects
 // mix/potionhit/potionbreathe);
@@ -122,7 +122,7 @@ import {
 import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
-import { weight, mksobj, delobj } from './mkobj.js';
+import { weight, mksobj, delobj, noveltitle } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
 import { SPBOOK_CLASS, NODIR } from './objects.js';
 import { rnd, rn2, rn1, rnl, rn2_on_display_rng } from './rng.js';
@@ -146,6 +146,9 @@ import { cansee } from './vision.js';
 import { m_at, wakeup } from './mon.js';
 import { walk_path } from './dothrow.js';
 import { distmin } from './hacklib.js';
+import { livelog_printf } from './pline.js';
+import { more_experienced, newexplevel } from './exper.js';
+import { record_achievement } from './insight.js';
 import {
     P_NONE,
     P_ATTACK_SPELL,
@@ -202,6 +205,8 @@ import {
     HI_ZAP,
     HEAD,
     CLAIRVOYANT,
+    ACH_NOVL,
+    LL_CONDUCT,
 } from './const.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
 import { PM_KNIGHT, PM_WIZARD, monsterNames } from './generated/monsters_data.js';
@@ -773,11 +778,12 @@ async function learn() {
 
 /**
  * C ref: spell.c study_book()
- * Branch envelope: blank paper; already-known refresh yn (KEEN/10);
+ * Branch envelope: blank paper; SPE_NOVEL read_tribute (D-1633);
+ * already-known refresh yn (KEEN/10);
  * delay by oc_level; uncursed rnd(20) fail gate; too_hard → cursed_book
  * + nomul + !rn2(3) crumble; begin-memorize + set_occupation(learn)
  * (D-0907); interrupted continue same-book skips fail gate.
- * Named omissions: dull-book sleep; novel/tribute; confused_book body.
+ * Named omissions: dull-book sleep; confused_book body.
  * @returns {Promise<number>} 1 = took time, 0 = cancel / no time
  */
 export async function study_book(spellbook) {
@@ -809,9 +815,32 @@ export async function study_book(spellbook) {
         return 1;
     }
     if (booktype === SPE_NOVEL) {
-        // read_tribute deferred
-        await pline('That novel is not implemented yet.');
-        return 0;
+        // C ref: spell.c study_book SPE_NOVEL — files.c read_tribute.
+        // Latebound files.js: files imports u_init, u_init imports spell
+        // (initialspell) — a static files import is a load-time TDZ cycle.
+        const tribtitle = noveltitle(spellbook);
+        const { read_tribute } = await import('./files.js');
+        if (await read_tribute('books', tribtitle, 0, null, 0,
+            (spellbook.o_id >>> 0))) {
+            if (!game.u) game.u = {};
+            if (!game.u.uconduct) game.u.uconduct = {};
+            if (!(game.u.uconduct.literate | 0)) {
+                livelog_printf(LL_CONDUCT,
+                    'became literate by reading %s', tribtitle);
+            }
+            game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+            const { check_unpaid } = await import('./shk.js');
+            await check_unpaid(spellbook);
+            makeknown(booktype);
+            if (!game.u.uevent) game.u.uevent = {};
+            if (!game.u.uevent.read_tribute) {
+                record_achievement(ACH_NOVL);
+                more_experienced(20, 0);
+                await newexplevel();
+                game.u.uevent.read_tribute = 1;
+            }
+        }
+        return 1;
     }
 
     const oc = game.objects?.[booktype];

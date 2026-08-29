@@ -147,4 +147,85 @@ export function ing_suffix(s) {
     return `${buf}ing${onoff}`;
 }
 
+/**
+ * C ref: hacklib.c fuzzymatch `:783–808` — skip ignore_chars independently
+ * in each string, then compare remaining chars; match only if both end.
+ * ASCII fold when caseblind (C `lowc`). C-home export; artifact/readobjnam
+ * keep their local subsets (do not add clone #3 in callers).
+ * @param {string} s1
+ * @param {string} s2
+ * @param {string} [ignore_chars=' -_']
+ * @param {boolean} [caseblind=true]
+ * @returns {boolean}
+ */
+export function fuzzymatch(s1, s2, ignore_chars = ' -_', caseblind = true) {
+    const a = String(s1 ?? '');
+    const b = String(s2 ?? '');
+    const ign = String(ignore_chars ?? '');
+    const lowc = (ch) => {
+        const code = ch.charCodeAt(0);
+        return (code >= 65 && code <= 90)
+            ? String.fromCharCode(code + 32)
+            : ch;
+    };
+    let i = 0;
+    let j = 0;
+    let c1 = '';
+    let c2 = '';
+    do {
+        c1 = '';
+        while (i < a.length) {
+            c1 = a.charAt(i++);
+            if (c1 === '' || !ign.includes(c1)) break;
+            c1 = '';
+        }
+        c2 = '';
+        while (j < b.length) {
+            c2 = b.charAt(j++);
+            if (c2 === '' || !ign.includes(c2)) break;
+            c2 = '';
+        }
+        if (!c1 || !c2) break;
+        if (caseblind) {
+            c1 = lowc(c1);
+            c2 = lowc(c2);
+        }
+    } while (c1 === c2);
+    return !c1 && !c2;
+}
+
+/**
+ * C ref: hacklib.c strstri `:739–779` — case-insensitive substring.
+ * Empty sub returns `str` (C `return (char *) str`). Else the first
+ * matching tail, or null. ASCII fold only (C `lowc`).
+ * @param {string | null | undefined} str
+ * @param {string | null | undefined} sub
+ * @returns {string | null}
+ */
+export function strstri(str, sub) {
+    if (sub == null || sub === '') return str == null ? '' : String(str);
+    if (str == null || str === '') return null;
+    const s = String(str);
+    const n = String(sub);
+    const i = s.toLowerCase().indexOf(n.toLowerCase());
+    return i >= 0 ? s.slice(i) : null;
+}
+
+/**
+ * C ref: hacklib.c strsubst `:534–551` — replace the first `strstr`
+ * (case-sensitive) occurrence of `orig` in `bp`.
+ * @param {string} bp
+ * @param {string} orig
+ * @param {string} replacement
+ * @returns {string}
+ */
+export function strsubst(bp, orig, replacement) {
+    const s = String(bp ?? '');
+    const o = String(orig ?? '');
+    if (!o) return s;
+    const i = s.indexOf(o);
+    if (i < 0) return s;
+    return s.slice(0, i) + String(replacement ?? '') + s.slice(i + o.length);
+}
+
 // C ref: rn2(x) already in rng.js — re-export not needed

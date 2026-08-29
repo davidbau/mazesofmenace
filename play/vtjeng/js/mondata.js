@@ -92,11 +92,15 @@ export function attacktype(species, attackType) {
     return hasAttackType(species, attackType);
 }
 
+// C ref: mondata.c attacktype_fordmg() (42-50). Returns the first matching
+// attack entry, or undefined when no match exists. C returns a struct pointer
+// (or NULL); callers that need only a boolean test work unchanged because the
+// returned object is truthy.
 export function attacktype_fordmg(species, attackType, damageType) {
-    return Boolean(species?.mattk?.some(
+    return species?.mattk?.find(
         (attack) => attack.aatyp === attackType
             && (damageType === M.AD_ANY || attack.adtyp === damageType),
-    ));
+    );
 }
 
 export function noattacks(species) {
@@ -107,6 +111,11 @@ export function noattacks(species) {
 
 export function dmgtype(species, damageType) {
     return hasDamageType(species, damageType);
+}
+
+// C ref: mondata.h:122 can_breathe(). Breath weapon via AT_BREA attack type.
+export function can_breathe(species) {
+    return attacktype(species, M.AT_BREA);
 }
 
 // C ref: mondata.h could_twoweap() (129-132). C adds three equality tests
@@ -989,7 +998,8 @@ export function is_rider(ptr) {
         || index === M.PM_PESTILENCE;
 }
 
-function isMindFlayer(species) {
+// C ref: mondata.h:210-211 is_mind_flayer(). Two species by identity.
+export function is_mind_flayer(species) {
     return species?.pmidx === M.PM_MIND_FLAYER
         || species?.pmidx === M.PM_MASTER_MIND_FLAYER;
 }
@@ -1023,7 +1033,7 @@ export function same_race(first, second) {
     if (is_orc(first)) return is_orc(second);
     if (is_giant(first)) return is_giant(second);
     if (is_golem(first)) return is_golem(second);
-    if (isMindFlayer(first)) return isMindFlayer(second);
+    if (is_mind_flayer(first)) return is_mind_flayer(second);
 
     const firstKobold = first.mlet === M.S_KOBOLD
         || first.pmidx === M.PM_KOBOLD_ZOMBIE

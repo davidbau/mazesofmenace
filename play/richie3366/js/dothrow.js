@@ -8,6 +8,7 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
+    tty_nhbell,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -21,6 +22,7 @@ import {
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
     POTION_CLASS, SCROLL_CLASS, RING_CLASS, objectNames, objectNameStrs,
+    is_sword,
 } from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
@@ -491,11 +493,6 @@ function is_blade(obj) {
     if (!obj || obj.oclass !== WEAPON_CLASS) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill | 0;
     return sk >= P_DAGGER && sk <= P_SABER;
-}
-function is_sword(obj) {
-    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
-    const sk = game.objects?.[obj.otyp]?.oc_skill | 0;
-    return sk >= P_SHORT_SWORD && sk <= P_SABER;
 }
 
 /** C ref: wield.c / hack.h uslinging. */
@@ -2481,7 +2478,7 @@ async function help_dir(msg) {
     for (;;) {
         const k = await nhgetch();
         if (k === 27 || k === 32 || k === 13 || k === 10) break;
-        // tty_nhbell — no-op in this port
+        tty_nhbell();
     }
     game._menu_overlay = false;
     await docrt();

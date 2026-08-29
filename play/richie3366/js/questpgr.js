@@ -1,16 +1,18 @@
 // questpgr.js — Quest / legacy pager text.
-// C ref: questpgr.c com_pager / deliver_by_window (NHW_MENU);
+// C ref: questpgr.c com_pager_core / com_pager / deliver_by_window (NHW_MENU);
 //        pray.c align_gname / align_gtitle; win/tty/wintty.c menu offx.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    docrt, flush_screen, flush_topl_more, pline, status_line_2,
+    docrt, flush_screen, flush_topl_more, pline, putmsghistory,
+    status_line_2,
 } from './display.js';
 import { NO_COLOR } from './terminal.js';
-import { align_gname, align_gtitle, rank_of } from './roles.js';
+import { align_gname, align_gtitle, rank_of, genders } from './roles.js';
+import { highc, strstri } from './hacklib.js';
 import {
-    A_NEUTRAL, A_LAWFUL, A_CHAOTIC, MIN_QUEST_LEVEL,
+    A_NEUTRAL, A_LAWFUL, A_CHAOTIC, MIN_QUEST_LEVEL, BUFSZ,
 } from './const.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
@@ -20,7 +22,7 @@ import { show_text_pages } from './pager.js';
 import { mons, M2_PNAME } from './monsters.js';
 import { NON_PM, pmnames } from './generated/monsters_data.js';
 import { artilistRaw } from './generated/artifacts_data.js';
-import { an, the, makeplural } from './objnam.js';
+import { an, An, the, makeplural, makesingular } from './objnam.js';
 
 /**
  * C ref: quest.lua common.legacy + convert_arg %d/%G/%r.
@@ -165,6 +167,9 @@ export async function com_pager_legacy(statusSnap = null) {
 
     game._menu_overlay = false;
     await docrt();
+    // C com_pager_core after deliver_by_window: convert_line(synopsis)
+    // then putmsghistory(FALSE) — recall only, no redotoplin.
+    putmsghistory(convert_line(QUEST_LEGACY_SYNOPSIS), false);
 }
 
 /**
@@ -336,6 +341,108 @@ const QUEST_GOAL_ALT = {
     Arc: `You have returned to %ns lair.`,
 };
 
+/** C ref: quest.lua msg_fallbacks — used when the role table has no msgid. */
+const QUEST_MSG_FALLBACKS = {
+    goal_alt: 'goal_next',
+};
+
+/**
+ * C ref: dat/quest.lua synopsis + output for live role/msgid bodies.
+ * Pronoun %Xh/%ni/%oh/%dI via convert_line + qtext_pronoun (D-1634).
+ */
+const QUEST_MSG_META = {
+    firsttime: {
+        Arc: {
+            output: 'text',
+            synopsis: '[You arrive at %H, but all is not well.]',
+        },
+        Bar: {
+            output: 'text',
+            synopsis: '[You reach the vicinity of %H, but sense evil magic nearby.]',
+        },
+        Pri: {
+            output: 'text',
+            synopsis: '[You are at %H; the doors are closed.  %lC needs your help!]',
+        },
+        Wiz: {
+            output: 'text',
+            synopsis: '[You have arrived at %ls tower but something is very wrong.]',
+        },
+    },
+    leader_first: {
+        Arc: {
+            output: 'text',
+            synopsis: '["You have returned, %p, to a difficult task."]',
+        },
+        Pri: {
+            output: 'text',
+            synopsis: '[You have returned and we need your help.  Are you ready?]',
+        },
+    },
+    assignquest: {
+        Pri: {
+            output: 'text',
+            synopsis: '[%nC invaded %H and captured %o.  Defeat %ni and retrieve %oh.]',
+        },
+    },
+    badalign: {
+        Arc: {
+            output: 'text',
+            synopsis: '["%pC, you have strayed from the %a path.  Purify yourself!"]',
+        },
+    },
+    locate_first: {
+        Arc: {
+            output: 'text',
+            synopsis: '[This foreboding edifice must hide the entrance to %i.]',
+        },
+        Bar: {
+            output: 'text',
+            synopsis: '[You have located %i.]',
+        },
+        Pri: {
+            output: 'text',
+            synopsis: '[You have found %i.  The trail to %n lies ahead.]',
+        },
+    },
+    goal_first: {
+        Arc: {
+            output: 'text',
+            synopsis: '[This strange feeling must be the presence of %o.]',
+        },
+        Bar: {
+            output: 'text',
+            synopsis: '[This is surely the lair of %n.]',
+        },
+        Pri: {
+            output: 'text',
+            synopsis: '[The stench of brimstone surrounds you, the shrieks and moans are endless.]',
+        },
+        Kni: {
+            output: 'text',
+            synopsis: '[You %x the entrance to a cavern inside a hill.]',
+        },
+    },
+};
+
+/** C ref: dat/quest.lua common.legacy synopsis (output=menu). */
+const QUEST_LEGACY_SYNOPSIS =
+    '[%dC has chosen you to recover the Amulet of Yendor for %dI.]';
+
+const QUEST_ROLE_TEXT = {
+    firsttime: QUEST_FIRSTTIME,
+    leader_first: QUEST_LEADER_FIRST,
+    assignquest: QUEST_ASSIGNQUEST,
+    badalign: QUEST_BADALIGN,
+    locate_first: QUEST_LOCATE_FIRST,
+    locate_next: QUEST_LOCATE_NEXT,
+    nexttime: QUEST_NEXTTIME,
+    othertime: QUEST_OTHERTIME,
+    goal_first: QUEST_GOAL_FIRST,
+    goal_next: QUEST_GOAL_NEXT,
+    goal_alt: QUEST_GOAL_ALT,
+};
+
 /** C ref: questpgr.c ldrname */
 function ldrname() {
     const i = game.urole?.ldrnum ?? NON_PM;
@@ -365,8 +472,8 @@ function s_suffix(s) {
 }
 
 /**
- * C ref: questpgr.c convert_arg — subset used by firsttime/goal/leader/assign.
- * Named omission: full convert_arg catalogue + %c pronoun arms.
+ * C ref: questpgr.c convert_arg — firsttime/goal/leader/assign + %Xh who.
+ * Named omission: %c/%G/%A/%D/%C/%N/%L/%Z catalogue.
  */
 function convert_arg(c) {
     const urole = game.urole || {};
@@ -438,48 +545,96 @@ function convert_arg(c) {
 }
 
 /**
- * C ref: questpgr.c convert_line — %X then optional modifier.
- * Covered: %Xa/%XA an/An; %XC capitalize; %Xp/%XP plural; %Xs/%XS possessive.
- * Pronoun %Xh/%Hi/… deferred.
+ * C ref: questpgr.c qtext_pronoun `:197–233`.
+ * who is the convert_arg code ('d'/'l'/'n'/'o'; '%O' is not 'o').
+ * which is h/H he, i/I him, j/J his. Overwrites convert_arg's name.
  */
-function convert_line(inLine) {
+function qtext_pronoun(who, which, cvt_buf) {
+    const lwhich = which === which.toLowerCase() ? which : which.toLowerCase();
+    let pnoun;
+    const buf = cvt_buf == null ? '' : String(cvt_buf);
+    // C: %o + "Eyes " or name ≠ makesingular → they/them/their
+    if (who === 'o'
+        && (strstri(buf, 'Eyes ')
+            || buf.toLowerCase() !== String(makesingular(buf)).toLowerCase())) {
+        pnoun = lwhich === 'h' ? 'they'
+            : lwhich === 'i' ? 'them'
+                : lwhich === 'j' ? 'their' : '?';
+    } else {
+        const qs = game.quest_status || {};
+        const gend = who === 'd' ? (qs.godgend | 0)
+            : who === 'l' ? (qs.ldrgend | 0)
+                : who === 'n' ? (qs.nemgend | 0)
+                    : 2;
+        const g = genders[gend] || genders[2];
+        pnoun = lwhich === 'h' ? g.he
+            : lwhich === 'i' ? g.him
+                : lwhich === 'j' ? g.his : '?';
+    }
+    if (lwhich !== which && pnoun) {
+        pnoun = highc(pnoun.charAt(0)) + pnoun.slice(1);
+    }
+    return pnoun;
+}
+
+/**
+ * C ref: questpgr.c convert_line `:327–420` — %X then optional modifier.
+ * Covered: %Xa/%XA an/An; %XC capitalize; %Xh/%XH/%Xi/%XI/%Xj/%XJ
+ * qtext_pronoun when X in dlno; %Xp/%XP plural; %Xs/%XS possessive;
+ * %Xt strip leading "the ".
+ */
+export function convert_line(inLine) {
     let out = '';
-    for (let i = 0; i < inLine.length; i++) {
-        if (inLine[i] === '%' && i + 1 < inLine.length) {
-            const code = inLine[++i];
+    const s = String(inLine ?? '');
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (ch === '\r' || ch === '\n') return out;
+        if (ch === '%' && i + 1 < s.length) {
+            const code = s[++i];
             let piece = convert_arg(code);
-            if (i + 1 < inLine.length) {
-                const mod = inLine[i + 1];
+            if (i + 1 < s.length) {
+                i++;
+                const mod = s[i];
+                if (mod === 'A') {
+                    out += An(piece);
+                    continue;
+                }
                 if (mod === 'a') {
-                    i++;
-                    piece = an(piece);
-                } else if (mod === 'A') {
-                    i++;
-                    const withArt = an(piece);
-                    piece = withArt
-                        ? withArt.charAt(0).toUpperCase() + withArt.slice(1)
-                        : withArt;
-                } else if (mod === 'C') {
-                    i++;
-                    if (piece)
-                        piece = piece.charAt(0).toUpperCase() + piece.slice(1);
+                    out += an(piece);
+                    continue;
+                }
+                if (mod === 'C') {
+                    if (piece) piece = highc(piece.charAt(0)) + piece.slice(1);
+                } else if (mod === 'h' || mod === 'H' || mod === 'i'
+                    || mod === 'I' || mod === 'j' || mod === 'J') {
+                    // C: strchr("dlno", lowc(*(c-1))); else --c
+                    if ('dlno'.includes(code.toLowerCase())) {
+                        piece = qtext_pronoun(code, mod, piece);
+                    } else {
+                        i--;
+                    }
                 } else if (mod === 'P' || mod === 'p') {
-                    // C: 'P' capitalizes then makeplural; 'p' just plural
-                    i++;
-                    if (mod === 'P' && piece)
-                        piece = piece.charAt(0).toUpperCase() + piece.slice(1);
+                    if (mod === 'P' && piece) {
+                        piece = highc(piece.charAt(0)) + piece.slice(1);
+                    }
                     piece = makeplural(piece);
                 } else if (mod === 'S' || mod === 's') {
-                    i++;
-                    if (mod === 'S' && piece)
-                        piece = piece.charAt(0).toUpperCase() + piece.slice(1);
+                    if (mod === 'S' && piece) {
+                        piece = highc(piece.charAt(0)) + piece.slice(1);
+                    }
                     piece = s_suffix(piece);
+                } else if (mod === 't') {
+                    if (/^the /i.test(piece)) {
+                        out += piece.slice(4);
+                        continue;
+                    }
+                } else {
+                    i--;
                 }
-                // %Xh/%Hi/… pronoun deferred
             }
             out += piece;
         } else {
-            out += inLine[i];
+            out += ch;
         }
     }
     return out;
@@ -498,7 +653,66 @@ essential in locating the Amulet of Yendor."`,
 };
 
 /**
- * C ref: questpgr.c deliver_by_pline — split on `\n`, convert_line each, pline.
+ * C ref: questpgr.c howtoput / howtoput2i — get_table_option default "default".
+ * pline=1, window=2, text=2, menu=3, default=0.
+ */
+const HOWTOPUT = ['pline', 'window', 'text', 'menu', 'default'];
+const HOWTOPUT2I = [1, 2, 2, 3, 0];
+
+function howtoput2i(outputName) {
+    const i = HOWTOPUT.indexOf(outputName || 'default');
+    return HOWTOPUT2I[i < 0 ? HOWTOPUT.indexOf('default') : i] | 0;
+}
+
+/**
+ * C ref: questpgr.c skip_pager — WIZKIT suppresses plot pager (arg unused).
+ */
+function skip_pager(_common) {
+    return !!(game.program_state?.wizkit_wishing);
+}
+
+/**
+ * C ref: questpgr.c com_pager_core lua lookup (embedded tables, not VM).
+ * msg_fallbacks.goal_alt → goal_next when the role has no alt table.
+ */
+function lookup_quest_entry(section, msgid, fallbackTried) {
+    if (section === 'common') {
+        const raw = QUEST_COMMON[msgid];
+        if (!raw) return null;
+        return {
+            text: raw,
+            synopsis: null,
+            output: msgid === 'quest_portal' ? 'pline' : 'default',
+        };
+    }
+    const table = QUEST_ROLE_TEXT[msgid];
+    const text = table?.[section];
+    if (!text) {
+        if (!fallbackTried) {
+            const fb = QUEST_MSG_FALLBACKS[msgid];
+            if (fb) return lookup_quest_entry(section, fb, true);
+        }
+        return null;
+    }
+    const meta = QUEST_MSG_META[msgid]?.[section] || {};
+    return {
+        text,
+        synopsis: meta.synopsis || null,
+        output: meta.output || 'default',
+    };
+}
+
+/**
+ * C ref: questpgr.c com_pager_core promote: Sprintf("[%.*s]", BUFSZ-1-2, text)
+ * then strNsubst newline → space (count 0 = all).
+ */
+function synthesize_window_synopsis(text) {
+    const inner = String(text).slice(0, BUFSZ - 1 - 2).split('\n').join(' ');
+    return `[${inner}]`;
+}
+
+/**
+ * C ref: questpgr.c deliver_by_pline — split on newline, convert_line each, pline.
  * Used when lua sets output="pline" (quest_portal), which must NOT promote
  * to NHW_TEXT despite embedded newlines.
  */
@@ -510,77 +724,87 @@ async function deliver_by_pline(raw) {
 }
 
 /**
- * C ref: questpgr.c deliver after convert_line — pline vs NHW_TEXT.
- * Default/output omitted: newline or len≥255 → by_window (C output==0 promote).
- * Explicit output="text" bodies use newlines so they take the window path.
+ * C ref: questpgr.c deliver_by_window — copynchars/convert_line per line,
+ * putstr + display. Live path is NHW_TEXT; NHW_MENU is com_pager_legacy.
  */
-async function deliver_quest_text(raw) {
+async function deliver_by_window(raw, _how) {
     if (!raw) return;
-    const converted = convert_line(raw);
-    // C: BUFSZ is 256; long/default+newline → by_window
-    const useWindow = converted.includes('\n') || converted.length >= 255;
-    if (useWindow) {
-        await flush_topl_more();
-        await show_text_pages(converted.split('\n'));
-    } else {
-        await pline(converted);
+    await flush_topl_more();
+    const lines = String(raw).split('\n').map((line) => convert_line(line));
+    await show_text_pages(lines);
+}
+
+/**
+ * C ref: questpgr.c com_pager_core `:467–621`.
+ * nhl_init shuffle, lookup text/synopsis/output, promote default+newline
+ * to window (synthesize synopsis when lua has none), deliver, then
+ * convert_line(synopsis) + putmsghistory(FALSE) for ^P recall.
+ *
+ * Named omissions: lua VM / msg_fallbacks beyond goal_alt; array rn2
+ * (angel_cuss/demon_cuss); explicit single-line output=text; NHW_MENU
+ * except legacy; common fallback from qt_pager (second nhl_init);
+ * other-role bodies; pauper_legacy; rawtext killed_nemesis
+ * (stinky_nemesis). convert_line pronoun %Xh is D-1634.
+ *
+ * @param {string} section role filecode or "common"
+ * @param {string} msgid
+ * @param {boolean} showerror C impossible() on miss — named omit
+ * @param {{ text?: string }|null} rawOut C char **rawtext; stinky_nemesis
+ */
+async function com_pager_core(section, msgid, showerror, rawOut) {
+    if (skip_pager(true)) return false;
+
+    // C: nhl_init → nhlib.lua shuffle(align) then load QTEXT_FILE
+    nhl_nhlib_align_shuffle();
+
+    const entry = lookup_quest_entry(section, msgid, false);
+    const text = entry?.text || null;
+    if (!text) {
+        // C: impossible() when showerror; other-role burn shuffle only
+        void showerror;
+        return false;
     }
+    if (rawOut) {
+        rawOut.text = text;
+        return true;
+    }
+
+    let synopsis = entry.synopsis || null;
+    let output = howtoput2i(entry.output);
+
+    if (output === 0 && (text.includes('\n') || text.length >= BUFSZ - 1)) {
+        output = 2;
+        if (!synopsis) synopsis = synthesize_window_synopsis(text);
+    }
+
+    if (output === 0 || output === 1) {
+        await deliver_by_pline(text);
+    } else {
+        // output==3 NHW_MENU named omit here (legacy uses com_pager_legacy)
+        await deliver_by_window(text, output);
+    }
+
+    if (synopsis) {
+        putmsghistory(convert_line(synopsis), false);
+    }
+    return true;
 }
 
 /**
  * C ref: questpgr.c com_pager(msgid) → com_pager_core("common", …).
- * nhl_init shuffle then common questtext (quest_portal*).
  * Named omissions: other common msgids (portal again/demand live;
  * quest_complete_no_bell D-1312); menu output; array rn2 picks.
  */
 export async function com_pager(msgid) {
-    nhl_nhlib_align_shuffle();
-    const raw = QUEST_COMMON[msgid] || null;
-    if (!raw) return;
-    // C: quest.lua common.quest_portal output="pline" → deliver_by_pline
-    // even with embedded newlines (must not become NHW_TEXT).
-    if (msgid === 'quest_portal') {
-        await deliver_by_pline(raw);
-        return;
-    }
-    await deliver_quest_text(raw);
+    await com_pager_core('common', msgid, true, null);
 }
 
 /**
- * C ref: questpgr.c qt_pager / com_pager_core.
- * nhl_init → nhlib.lua shuffle(align) then load quest text + deliver.
- *
- * Delivery matches C default `output` (howtoput "default" → 0):
- * deliver_by_pline unless text has `\n` or length >= BUFSZ-1, which
- * promotes to deliver_by_window(NHW_TEXT). Explicit lua `output="text"`
- * on multi-line bodies is covered by the newline rule. Arc nexttime is
- * single-line default → pline (D-0616); wrong NHW_TEXT stole rhack keys.
- *
- * Named omissions: common fallback; explicit single-line output=text;
- * menu output; array rn2 picks; convert_line pronoun/%cC arms;
- * synopsis putmsghistory; other-role goal/nexttime/locate (non-Arc/Bar/Pri/Wiz
- * firsttime+locate; non-Arc/Bar/Pri/Kni goal) bodies.
+ * C ref: questpgr.c qt_pager → com_pager_core(filecode) then common.
+ * Common fallback (second nhl_init) named omit — other-role firsttime
+ * still burns one shuffle only.
  */
 export async function qt_pager(msgid) {
-    // C: com_pager_core → nhl_init → nhlib.lua top-level shuffle(align)
-    nhl_nhlib_align_shuffle();
-
     const code = game.urole?.filecode || 'Tou';
-    let raw = null;
-    if (msgid === 'firsttime') raw = QUEST_FIRSTTIME[code] || null;
-    else if (msgid === 'leader_first') raw = QUEST_LEADER_FIRST[code] || null;
-    else if (msgid === 'assignquest') raw = QUEST_ASSIGNQUEST[code] || null;
-    else if (msgid === 'badalign') raw = QUEST_BADALIGN[code] || null;
-    else if (msgid === 'locate_first') raw = QUEST_LOCATE_FIRST[code] || null;
-    else if (msgid === 'locate_next') raw = QUEST_LOCATE_NEXT[code] || null;
-    else if (msgid === 'nexttime') raw = QUEST_NEXTTIME[code] || null;
-    else if (msgid === 'othertime') raw = QUEST_OTHERTIME[code] || null;
-    else if (msgid === 'goal_first') raw = QUEST_GOAL_FIRST[code] || null;
-    else if (msgid === 'goal_next') raw = QUEST_GOAL_NEXT[code] || null;
-    else if (msgid === 'goal_alt') {
-        // C: qt_pager reverts to QT_NEXTGOAL when role lacks QT_ALTGOAL
-        raw = QUEST_GOAL_ALT[code] || QUEST_GOAL_NEXT[code] || null;
-    }
-    // Other msgid bodies deferred (C-JS-MAP)
-    await deliver_quest_text(raw);
+    await com_pager_core(code, msgid, false, null);
 }

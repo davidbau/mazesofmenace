@@ -1,20 +1,25 @@
 // save.js — Game save / restore via frozen storage VFS (JSON subset).
-// C ref: save.c dosave / dosave0; restore.c dorecover; files.c SAVEF;
-//        unixmain attempt_restore; allmain welcome(FALSE).
+// C ref: save.c dosave / dosave0 / save_msghistory / save_gamelog /
+//        save_luadata; restore.c dorecover / restore_msghistory /
+//        restore_gamelog; nhlua.c restore_luadata / save_luadata;
+//        files.c SAVEF; unixmain attempt_restore; allmain welcome(FALSE).
 
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { yn_function } from './getline.js';
-import { pline, docrt } from './display.js';
+import { pline, docrt, getmsghistory, putmsghistory } from './display.js';
+import { gamelog_add } from './pline.js';
 import { change_luck } from './attrib.js';
 import {
     FULL_MOON, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED,
-    OBJ_BURIED, ECMD_OK,
+    OBJ_BURIED, ECMD_OK, BUFSZ,
 } from './const.js';
 import { GameMap } from './game.js';
 import { mons } from './monsters.js';
+import { restmon_edog, savemon_edog } from './makemon.js';
 import { objects_globals_init } from './objects.js';
 import { nh_terminate_capture } from './topten.js';
+import { l_nhcore_init } from './mklev.js';
 
 const SAVE_VFS_PREFIX = 'save/';
 
@@ -96,6 +101,8 @@ function serMon(mtmp) {
         out.mtrack.push({ x: c?.x | 0, y: c?.y | 0 });
     }
     out.minvent = serObjChain(mtmp.minvent);
+    // C save.c savemon `:860–869` — EDOG blob when present.
+    savemon_edog(mtmp, out);
     return out;
 }
 
@@ -284,9 +291,128 @@ export function dosave0() {
         datetime_saved: game.datetime || null,
         // level dnum/dlevel
         uz: u.uz ? { ...u.uz } : { dnum: 0, dlevel: 1 },
+        // C save.c save_msghistory `:1029–1056` after savenames;
+        // save_gamelog `:236–262` after save_msghistory;
+        // save_luadata nhlua.c `:1327–1341` after save_gamelog.
+        msghistory: save_msghistory(),
+        gamelog: save_gamelog(),
+        luadata: save_luadata(),
     };
 
     return vfsWriteFile(vfsPath(path), JSON.stringify(payload));
+}
+
+/**
+ * C ref: save.c save_msghistory `:1029–1056`. JSON analogue of
+ * Sfo_int length + Sfo_char then Sfo_int -1. Skip empty; truncate
+ * BUFSZ-1. getmsghistory snapshots with WIN_LOCKHISTORY then unlocks.
+ * update_file/FREEING / debugpline1 omitted (JSON VFS always writes).
+ * @returns {string[]}
+ */
+export function save_msghistory() {
+    const out = [];
+    let init = true;
+    let msg;
+    while ((msg = getmsghistory(init))) {
+        init = false;
+        let msglen = msg.length;
+        if (msglen < 1) continue;
+        if (msglen > BUFSZ - 1) msglen = BUFSZ - 1;
+        out.push(msg.slice(0, msglen));
+    }
+    return out;
+}
+
+/**
+ * C ref: save.c save_gamelog `:236–262`. JSON analogue of Sfo_int
+ * length + Sfo_char text + Sfo_gamelog_line (turn/flags) then Sfo_int
+ * -1. Walk gg.gamelog in list order; do not skip empty (unlike
+ * save_msghistory). FREEING / discard_gamelog omitted (JSON VFS
+ * always writes; in-memory list stays).
+ * @returns {{ text: string, turn: number, flags: number }[]}
+ */
+export function save_gamelog() {
+    const out = [];
+    for (const tmp of game.gamelog || []) {
+        out.push({
+            text: String(tmp.text ?? ''),
+            turn: tmp.turn | 0,
+            flags: tmp.flags | 0,
+        });
+    }
+    return out;
+}
+
+/**
+ * C ref: dat/nhlib.lua table_stringify. Persistable Lua table → source
+ * `{["k"]=v,}` for string/boolean/number/table/nil. pairs() order is
+ * JS insertion order. Functions skipped. No escape of `]]` in strings
+ * (C does not either).
+ * @param {object} tbl
+ * @returns {string}
+ */
+export function table_stringify(tbl) {
+    let str = '';
+    if (!tbl || typeof tbl !== 'object' || Array.isArray(tbl)) {
+        return '{}';
+    }
+    for (const key of Object.keys(tbl)) {
+        const value = tbl[key];
+        if (value !== null && typeof value === 'object') {
+            if (Array.isArray(value)) continue;
+            str += `["${key}"]=${table_stringify(value)}`;
+        } else if (typeof value === 'string') {
+            str += `["${key}"]=[[${value}]]`;
+        } else if (typeof value === 'boolean') {
+            str += `["${key}"]=${value}`;
+        } else if (typeof value === 'number' && Number.isFinite(value)) {
+            str += `["${key}"]=${value}`;
+        } else if (value == null) {
+            str += `["${key}"]=nil`;
+        } else {
+            continue;
+        }
+        str += ',';
+    }
+    return `{${str}}`;
+}
+
+/**
+ * C ref: dat/nhcore.lua get_variables_string.
+ * @returns {string}
+ */
+export function get_variables_string() {
+    return `nh_lua_variables=${table_stringify(game.nh_lua_variables || {})};`;
+}
+
+/**
+ * C ref: nhlua.c get_nh_lua_variables `:1296–1316`. Panic if !luacore.
+ * If get_variables_string pcall fails, C returns NULL; JSON analogue
+ * returns null so save_luadata can write emptystr.
+ * @returns {string|null}
+ */
+export function get_nh_lua_variables() {
+    if (!game.luacore) {
+        throw new Error('nh luacore not inited');
+    }
+    try {
+        return get_variables_string();
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * C ref: save.c save_luadata via nhlua.c `:1327–1341`. JSON analogue of
+ * Sfo_unsigned length + Sfo_char lua source (NUL-terminated in C).
+ * get_nh_lua_variables NULL → emptystr. FREEING omitted (JSON VFS
+ * always writes; in-memory table stays).
+ * @returns {string}
+ */
+export function save_luadata() {
+    let lua_data = get_nh_lua_variables();
+    if (!lua_data) lua_data = '';
+    return lua_data;
 }
 
 /** Plain-data hero fields; worn slots omitted (see serWorn). */
@@ -417,6 +543,8 @@ export function try_restore_save() {
             const c = rawM.mtrack?.[j];
             mtmp.mtrack.push({ x: c?.x | 0, y: c?.y | 0 });
         }
+        // C restore.c restmon `:349–361` — newedog + apport clamp.
+        restmon_edog(mtmp);
         fmon.push(mtmp);
     }
 
@@ -431,6 +559,12 @@ export function try_restore_save() {
     game.lastseentyp = payload.lastseentyp || null;
     rebuildObjectsAt(fobj);
 
+    // C restore.c restgamestate `:720–722` after restnames:
+    // restore_msghistory, restore_gamelog, restore_luadata.
+    restore_msghistory(payload);
+    restore_gamelog(payload);
+    restore_luadata(payload);
+
     // C restore.c dorecover :942 — after restoring=0 / early_raw_messages,
     // before docrt. Invent sync_perminvent WIN_INVEN gate (D-1603).
     if (!game.program_state) game.program_state = {};
@@ -439,6 +573,174 @@ export function try_restore_save() {
     // C: delete save after successful restore
     vfsDeleteFile(vfsPath(path));
     return true;
+}
+
+/**
+ * C ref: restore.c restore_msghistory `:1411–1441`. JSON analogue of
+ * Sfi_int length (break on -1) + Sfi_char. Each msg
+ * putmsghistory(msg, TRUE); if any, putmsghistory(NULL, TRUE).
+ * Missing/non-array field = old JSON save without this chunk (empty
+ * walk). Length > BUFSZ-1 is C panic; JSON analogue throws.
+ * SFCTOOL / debugpline1 omitted.
+ * @param {{ msghistory?: unknown }} payload
+ */
+export function restore_msghistory(payload) {
+    const msgs = payload?.msghistory;
+    if (!Array.isArray(msgs)) return;
+    let msgcount = 0;
+    for (const raw of msgs) {
+        const s = String(raw ?? '');
+        if (s.length > BUFSZ - 1) {
+            throw new Error(`restore_msghistory: msg too big (${s.length})`);
+        }
+        putmsghistory(s, true);
+        msgcount++;
+    }
+    if (msgcount) putmsghistory(null, true);
+}
+
+/**
+ * C ref: restore.c restore_gamelog `:1386–1409`. JSON analogue of
+ * Sfi_int length (break on -1) + Sfi_char + Sfi_gamelog_line then
+ * gamelog_add(flags, turn, msg). Missing/non-array field = old JSON
+ * save without this chunk (empty walk; gg.gamelog stays NULL).
+ * Length > BUFSZ*2-1 is C panic; JSON analogue throws. SFCTOOL
+ * omitted. C starts with gg.gamelog NULL; present chunk replaces.
+ * @param {{ gamelog?: unknown }} payload
+ */
+export function restore_gamelog(payload) {
+    const entries = payload?.gamelog;
+    if (!Array.isArray(entries)) return;
+    // C restgamestate starts with gg.gamelog == NULL; gamelog_add
+    // appends. A present JSON chunk is the whole list.
+    game.gamelog = [];
+    for (const raw of entries) {
+        const rec = raw && typeof raw === 'object' ? raw : {};
+        const msg = String(rec.text ?? '');
+        if (msg.length > BUFSZ * 2 - 1) {
+            throw new Error(`restore_gamelog: msg too big (${msg.length})`);
+        }
+        gamelog_add(rec.flags | 0, rec.turn | 0, msg);
+    }
+}
+
+/**
+ * Parse `dat/nhlib.lua` table_stringify output at pos.i. C luaL_loadstring
+ * panics via nhl_pcall_handle(NHLpa_panic) on bad source; JSON analogue
+ * throws.
+ * @param {string} src
+ * @param {{ i: number }} pos
+ * @returns {object}
+ */
+function parse_table_stringify(src, pos) {
+    if (src[pos.i] !== '{') {
+        throw new Error('restore_luadata: Lua error table_stringify');
+    }
+    pos.i++;
+    const out = {};
+    while (pos.i < src.length && src[pos.i] !== '}') {
+        if (src[pos.i] === ',') {
+            pos.i++;
+            continue;
+        }
+        if (src.slice(pos.i, pos.i + 2) !== '["') {
+            throw new Error('restore_luadata: Lua error table key');
+        }
+        pos.i += 2;
+        const kEnd = src.indexOf('"]=', pos.i);
+        if (kEnd < 0) {
+            throw new Error('restore_luadata: Lua error table key');
+        }
+        const key = src.slice(pos.i, kEnd);
+        pos.i = kEnd + 3;
+        out[key] = parse_lua_value(src, pos);
+    }
+    if (src[pos.i] !== '}') {
+        throw new Error('restore_luadata: Lua error table end');
+    }
+    pos.i++;
+    return out;
+}
+
+/**
+ * @param {string} src
+ * @param {{ i: number }} pos
+ * @returns {string|number|boolean|object|null}
+ */
+function parse_lua_value(src, pos) {
+    if (src[pos.i] === '{') return parse_table_stringify(src, pos);
+    if (src.slice(pos.i, pos.i + 2) === '[[') {
+        pos.i += 2;
+        const end = src.indexOf(']]', pos.i);
+        if (end < 0) {
+            throw new Error('restore_luadata: Lua error string');
+        }
+        const s = src.slice(pos.i, end);
+        pos.i = end + 2;
+        return s;
+    }
+    if (src.slice(pos.i, pos.i + 4) === 'true') {
+        pos.i += 4;
+        return true;
+    }
+    if (src.slice(pos.i, pos.i + 5) === 'false') {
+        pos.i += 5;
+        return false;
+    }
+    if (src.slice(pos.i, pos.i + 3) === 'nil') {
+        pos.i += 3;
+        return null;
+    }
+    const m = /^-?\d+(?:\.\d+)?/.exec(src.slice(pos.i));
+    if (m) {
+        pos.i += m[0].length;
+        return Number(m[0]);
+    }
+    throw new Error('restore_luadata: Lua error value');
+}
+
+/**
+ * C ref: nhlua.c restore_luadata `:1344–1363` luaL_loadstring +
+ * nhl_pcall_handle(0, 0, "restore_luadata", NHLpa_panic). JSON analogue
+ * of the get_variables_string assignment chunk. Empty / emptystr = empty
+ * Lua chunk (nh_lua_variables stays the nhcore.lua `{}`).
+ * @param {string} lua_data
+ */
+function nhl_loadstring_luadata(lua_data) {
+    let s = String(lua_data);
+    if (s.endsWith('\0')) s = s.slice(0, -1);
+    if (!s) return;
+    if (!s.startsWith('nh_lua_variables=')) {
+        throw new Error('restore_luadata: Lua error restore_luadata');
+    }
+    const rest = s.slice('nh_lua_variables='.length);
+    const pos = { i: 0 };
+    game.nh_lua_variables = parse_table_stringify(rest, pos);
+    if (rest[pos.i] === ';') pos.i++;
+    if (pos.i !== rest.length) {
+        throw new Error('restore_luadata: Lua error restore_luadata');
+    }
+}
+
+/**
+ * C ref: nhlua.c restore_luadata `:1344–1363`. JSON analogue of
+ * Sfi_unsigned length + Sfi_char then, if !gl.luacore, l_nhcore_init()
+ * and luaL_loadstring + nhl_pcall_handle NHLpa_panic. Missing field =
+ * old JSON save without this chunk (still init; leave nhcore `{}`).
+ * Present empty string = C emptystr. SFCTOOL omitted.
+ * @param {{ luadata?: unknown }} payload
+ */
+export function restore_luadata(payload) {
+    // C restgamestate always reads the chunk; unixmain does not init
+    // luacore before dorecover, so restore_luadata is the restore-path
+    // l_nhcore_init (nhlib shuffle).
+    if (!game.luacore) l_nhcore_init();
+    const lua_data = payload?.luadata;
+    if (lua_data == null) return;
+    if (typeof lua_data !== 'string') {
+        throw new Error('restore_luadata: Lua error restore_luadata');
+    }
+    nhl_loadstring_luadata(lua_data);
 }
 
 /**

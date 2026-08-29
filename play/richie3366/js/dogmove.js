@@ -24,6 +24,7 @@ import {
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, ALLOW_MDISP,
     MAGIC_PORTAL,
+    DISMOUNT_THROWN,
 } from './const.js';
 import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames } from './objects.js';
 import {
@@ -36,6 +37,9 @@ import { Monnam, noit_Monnam } from './do_name.js';
 import { gettrack } from './track.js';
 import { hero_conflict, resist_conflict } from './mondata.js';
 import { is_pool, is_lava } from './hack.js';
+import { m_unleash } from './apply.js';
+import { lose_guardian_angel } from './minion.js';
+import { dismount_steed } from './steed.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
@@ -528,6 +532,7 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
                 edog.ogoal.x = 0;
             }
         } else if (edog && edog.ogoal?.x
+            // C: edog->ogoal.x — 0 unset; initedog -1 is truthy sentinel
             && (edog.ogoal.x !== omx || edog.ogoal.y !== omy)) {
             gg.gx = edog.ogoal.x;
             gg.gy = edog.ogoal.y;
@@ -793,10 +798,10 @@ export async function dog_move(mtmp, after) {
 
     const omx = mtmp.mx, omy = mtmp.my;
     let udist = dist2(omx, omy, game.u.ux, game.u.uy);
-    // C: steed may throw rider under Conflict; dismount_steed body deferred
+    // C dogmove.c `:1015–1021`: steed may throw rider under Conflict.
     if (mtmp === game.u?.usteed) {
         if (hero_conflict() && !resist_conflict(mtmp)) {
-            // dismount_steed(DISMOUNT_THROWN) deferred — still consume rnd(20)
+            await dismount_steed(DISMOUNT_THROWN);
             return MMOVE_MOVED;
         }
         udist = 1;
@@ -823,11 +828,15 @@ export async function dog_move(mtmp, after) {
     const appr = dog_goal(mtmp, edog, after, udist, whappr);
     if (appr === -2) return MMOVE_NOTHING;
 
-    // C: Conflict && !resist_conflict — edog falls through; !edog lose_guardian
+    // C: Conflict && !resist_conflict — edog falls through; !edog
+    // lose_guardian_angel(mtmp) then MMOVE_DIED (D-1617; body D-1608).
     if (hero_conflict() && !resist_conflict(mtmp)) {
         if (!edog) {
-            // lose_guardian_angel deferred
-            return MMOVE_DIED;
+            /* Guardian angel refuses to be conflicted; rather,
+             * it disappears, angrily, and sends in some nasties
+             */
+            await lose_guardian_angel(mtmp);
+            return MMOVE_DIED; /* current monster is gone */
         }
     }
 
@@ -982,11 +991,12 @@ export async function dog_move(mtmp, after) {
         // the hero over stepping onto mux/muy (mattacku, then MMOVE_DONE).
         if (chi >= 0 && (mfp.info[chi] & ALLOW_U)) {
             if (mtmp.mleashed) {
-                // C: m_unleash(mtmp, FALSE) — full leash bookkeeping deferred
-                await pline(
+                // C dogmove.c `:1281–1284` pline_mon then m_unleash(FALSE)
+                await pline_mon(
+                    mtmp,
                     `${Monnam(mtmp)} breaks loose of ${mtmp.female ? 'her' : 'his'} leash!`,
                 );
-                mtmp.mleashed = 0;
+                await m_unleash(mtmp, false);
             }
             await mattacku(mtmp);
             return MMOVE_DONE;

@@ -1218,7 +1218,8 @@ async function getbones() {
 }
 
 // C ref: nhlua.c l_nhcore_init() — nhlib shuffle is the second load;
-// after nhl_loadlua("nhcore.lua") every nhcore_call_available[] is TRUE.
+// after nhl_loadlua("nhcore.lua") every nhcore_call_available[] is TRUE
+// and nh_lua_variables = {} (dat/nhcore.lua). gl.luacore is non-NULL.
 export function l_nhcore_init() {
     const align = [0, 0, 0]; // A_LAWFUL, A_NEUTRAL, A_CHAOTIC
     for (let i = align.length; i > 1; i--) {
@@ -1227,6 +1228,8 @@ export function l_nhcore_init() {
     }
     game.splev_align = align;
     game.nhcore_call_available = new Array(NUM_NHCORE_CALLS).fill(true);
+    game.luacore = {};
+    game.nh_lua_variables = {};
 }
 
 // C ref: mklev.c mklev()
@@ -11237,7 +11240,7 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
     let mtmp;
     if (sp_amask !== AM_SPLEV_RANDOM) {
         const peaceArg = (peaceful != null) ? peaceful : BOOL_RANDOM;
-        mtmp = mk_roamer_splev(pm, Amask2align(amask), pos.x, pos.y, peaceArg);
+        mtmp = mk_roamer(pm, Amask2align(amask), pos.x, pos.y, peaceArg);
     } else if (PM_ARCHEOLOGIST <= mid && mid <= PM_WIZARD) {
         mtmp = mk_mplayer(pm, pos.x, pos.y, false);
     } else {
@@ -14881,10 +14884,11 @@ function load_wizard3() {
 /**
  * C ref: priest.c mk_roamer — aligned cleric/angel with emin.
  * Callers: splev_create_monster when sp_amask != RANDOM (D-1553);
- * sanctum / Pri-loca lua align=noalign. Local to avoid mklev↔priest.
- * Named: reset_hostility deferred.
+ * minion.c lose/gain_guardian_angel (D-1608); dog_move Conflict
+ * !edog (D-1617). Lives here to avoid mklev↔priest. Occupied rloc
+ * is fire-and-forget (JS rloc async). reset_hostility is D-1616.
  */
-function mk_roamer_splev(ptr, alignment, x, y, peaceful) {
+export function mk_roamer(ptr, alignment, x, y, peaceful) {
     if (m_at(x, y)) rloc(m_at(x, y), RLOC_NOMSG);
     const roamer = makemon(ptr, x, y, MM_ADJACENTOK | MM_EMIN | MM_NOMSG);
     if (!roamer) return null;

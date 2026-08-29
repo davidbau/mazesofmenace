@@ -1779,8 +1779,10 @@ async function start_eating(otmp, already_partly_eaten) {
 /**
  * C ref: eat.c Hear_again — afternmv after fainting/rotten-food knock-out.
  * Chance of deafness clearing while out.
+ * Caller minion.c gain_guardian_angel (D-1608). Occupation afternmv
+ * wiring still named.
  */
-function Hear_again() {
+export function Hear_again() {
     // C: if (!rn2(2)) { make_deaf(0L, FALSE); disp.botl = TRUE; }
     if (!rn2(2)) {
         const u = game.u || (game.u = {});

@@ -110,6 +110,7 @@ import { newcham, pm_to_cham } from './makemon.js';
 import { polyself } from './polyself.js';
 import { you_were, you_unwere } from './were.js';
 import { rloc, tele_restrict, tele, goodpos } from './teleport.js';
+import { m_unleash } from './apply.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
@@ -1992,6 +1993,8 @@ export async function monstone(mdef) {
 export function mondead(mtmp) {
     mtmp.mhp = 0;
     const mx = mtmp.mx, my = mtmp.my;
+    // C m_detach `:2741–2742` — m_unleash(mtmp, FALSE); no slack pline
+    if (mtmp.mleashed) m_unleash(mtmp, false);
     // C: after cham/were restore — mvitals[monsndx].died++
     record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
     mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
@@ -3032,7 +3035,7 @@ export async function gazemm(magr, mdef, mattk) {
  * M_ATTK_MISS (not a strike; skips passivemm). FIRE/COLD/ELEC call
  * mon_explodes and set AGR_DIED unconditionally (lifesave named on
  * mondead). Else mdamagem then mondead. Tame melancholy even if seen.
- * Named omit: mondead→m_unleash object (slack printed here).
+ * mondead→m_detach→m_unleash(FALSE) clears the object; slack printed here.
  * FIRE/COLD/ELEC skip mdamagem (mon_explodes). mdamagem AD_STON
  * leftover is D-1352; AD_CONF leftover is D-1385; AD_STUN leftover
  * is D-1396; AD_FIRE leftover is D-1405.
@@ -3065,14 +3068,9 @@ export async function explmm(magr, mdef, mattk) {
         mondead(magr);
         if (!deadmonster(magr)) return result; /* life saved */
         result |= M_ATTK_AGR_DIED;
-        /* C: mondead→m_detach→m_unleash suppresses slack; print here. */
+        /* C: mondead→m_detach→m_unleash(FALSE) suppresses slack; print here. */
         if (was_leashed) {
             await pline('Your leash falls slack.');
-            magr.mleashed = 0;
-            const mid = magr.m_id | 0;
-            for (const otmp of game.invent || []) {
-                if ((otmp.leashmon | 0) === mid) otmp.leashmon = 0;
-            }
         }
     }
     if (magr.mtame) {

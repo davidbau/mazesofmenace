@@ -1,6 +1,6 @@
 // mplayer.js — Player-monster creation (partial).
 // C ref: mplayer.c mk_mplayer / get_mplname / mk_mplayer_armor / dev_name /
-// create_mplayers. mplayer_talk named omit.
+// create_mplayers / mplayer_talk.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -26,7 +26,7 @@ import { m_at } from './mon.js';
 import { christen_monst } from './do_name.js';
 import { rank_of } from './roles.js';
 import { monmightthrowwep } from './weapon.js';
-import { impossible } from './display.js';
+import { impossible, verbalize } from './display.js';
 import {
     In_endgame, MM_NOMSG, NO_MM_FLAGS, A_NONE, RLOC_ERR, RLOC_NOMSG,
     has_mgivenname, MGIVENNAME, P_SPEAR, COLNO, ROWNO,
@@ -328,8 +328,8 @@ export function mk_mplayer(ptr, x, y, special) {
  * goodpos cells. Caller do.c final_level (Astral, madeNew) passes
  * rn1(4, 3), TRUE. tryct>50 after the do-while aborts the rest of
  * the loop even if the last roll was goodpos (C `:346–348`).
- * Named omit: mplayer_talk; final_level reset_hostility /
- * gain_guardian_angel / ACH_ASTR.
+ * Named omit: ACH_ASTR. reset_hostility is D-1616.
+ * gain_guardian_angel is D-1608. mplayer_talk is D-1606.
  */
 export function create_mplayers(num, special) {
     const fakemon = { mx: 0, my: 0, wormno: 0, m_id: 0 };
@@ -354,4 +354,32 @@ export function create_mplayers(num, special) {
         mk_mplayer(mons(pm), x, y, special);
         num--;
     }
+}
+
+/**
+ * C ref: mplayer.c mplayer_talk — hostile player-monster speech.
+ * Caller sounds.c MS_HUMANOID: !mpeaceful && In_endgame && is_mplayer.
+ * SetVoice is a no-op without SND_LIB (sndprocs.h). Peaceful returns
+ * without speech (C comment: drop to humanoid talk at the caller;
+ * peaceful MS_HUMANOID is D-1618 in sounds.js).
+ * C `mtmp->data == &mons[gu.urole.mnum]` is mndx: JS `mons()` is a
+ * fresh object each call, so pointer equality would never match.
+ */
+export async function mplayer_talk(mtmp) {
+    const same_class_msg = [
+        "I can't win, and neither will you!",
+        "You don't deserve to win!",
+        'Mine should be the honor, not yours!',
+    ];
+    const other_class_msg = [
+        'The low-life wants to talk, eh?',
+        'Fight, scum!',
+        'Here is what I have to say!',
+    ];
+
+    if (mtmp.mpeaceful) return;
+
+    const same = (mtmp.data?.mndx | 0) === (game.urole?.mnum | 0);
+    const line = same ? same_class_msg[rn2(3)] : other_class_msg[rn2(3)];
+    await verbalize(`Talk? -- ${line}`);
 }

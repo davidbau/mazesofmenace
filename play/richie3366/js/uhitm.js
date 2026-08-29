@@ -85,6 +85,7 @@ import { paranoid_query } from './getline.js';
 import { which_armor } from './worn.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
+import { m_unleash } from './apply.js';
 
 /** Live pager.c object_from_map / mhidden_description; bound on first use
  * (pager.js imports mon_at from this file — static import cycles). */
@@ -485,6 +486,8 @@ async function corpse_chance(mon, magr = null, was_swallowed = false) {
 function mondead(mtmp) {
     mtmp.mhp = 0;
     const mx = mtmp.mx, my = mtmp.my;
+    // C m_detach `:2741–2742` — m_unleash(mtmp, FALSE)
+    if (mtmp.mleashed) m_unleash(mtmp, false);
     // C: after cham/were restore — mvitals[monsndx].died++
     record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
     mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;

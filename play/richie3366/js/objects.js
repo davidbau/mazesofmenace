@@ -4,10 +4,12 @@
 // Data is generated from upstream headers (js/generated/objects_data.js).
 
 import { game } from './gstate.js';
+import { P_SHORT_SWORD, P_SABER } from './const.js';
 import {
     createObjectsArray,
     NUM_OBJECTS,
     MAXOCLASSES,
+    WEAPON_CLASS,
 } from './generated/objects_data.js';
 
 export {
@@ -107,4 +109,14 @@ export function def_char_to_objclass(ch) {
         if (def_oc_syms[i].sym === c) break;
     }
     return i;
+}
+
+/**
+ * C ref: obj.h is_sword — WEAPON_CLASS && oc_skill in
+ * P_SHORT_SWORD..P_SABER (short / broad / long / two-handed / saber).
+ */
+export function is_sword(otmp) {
+    if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
+    const sk = game.objects?.[otmp.otyp]?.oc_skill | 0;
+    return sk >= P_SHORT_SWORD && sk <= P_SABER;
 }

@@ -682,3 +682,55 @@ export function maybe_m_dowear_special(mtmp) {
     }
     return false;
 }
+
+/**
+ * C worn.c bypass_objlist `:1126–1137`.
+ * JS invent is an Array; minvent stays nobj. `on` sets context.bypasses.
+ * @param {object[]|object|null} objchain
+ * @param {boolean} on
+ */
+export function bypass_objlist(objchain, on) {
+    if (on && (Array.isArray(objchain) ? objchain.length : objchain)) {
+        if (!game.context) game.context = {};
+        game.context.bypasses = true;
+    }
+    if (Array.isArray(objchain)) {
+        for (const o of objchain) {
+            if (o) o.bypass = on ? 1 : 0;
+        }
+        return;
+    }
+    let o = objchain;
+    while (o) {
+        o.bypass = on ? 1 : 0;
+        o = o.nobj;
+    }
+}
+
+/**
+ * C worn.c nxt_unbypassed_obj `:1140–1152`.
+ * Marks the first unmarked object (C bypass_obj) so successive calls
+ * walk the rest. Array invent or nobj chain.
+ * @param {object[]|object|null} objchain
+ * @returns {object|null}
+ */
+export function nxt_unbypassed_obj(objchain) {
+    const mark = (obj) => {
+        obj.bypass = 1;
+        if (!game.context) game.context = {};
+        game.context.bypasses = true;
+        return obj;
+    };
+    if (Array.isArray(objchain)) {
+        for (const o of objchain) {
+            if (o && !o.bypass) return mark(o);
+        }
+        return null;
+    }
+    let o = objchain;
+    while (o) {
+        if (!o.bypass) return mark(o);
+        o = o.nobj;
+    }
+    return null;
+}

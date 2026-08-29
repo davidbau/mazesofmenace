@@ -1,13 +1,29 @@
 // getline.js — Line input and extended-command entry.
-// C ref: win/tty/getline.c tty_getlin / tty_get_ext_cmd (partial).
+// C ref: win/tty/getline.c tty_getlin / hooked_tty_getlin / tty_get_ext_cmd
+// plus win/tty/topl.c tty_yn_function (yn ^P is D-1612; post-answer
+// prompt+key is D-1623; tty_nhbell / cw->cury / intr is D-1631).
+// EDIT_GETLIN is D-1624 (`config.h` commented out — live `#else`).
+// kill_char / empty-erase bell / invalid-key bell / getline `intr--`
+// are D-1632. ESC-nonempty fallthrough (else tty_nhbell / doprev) is
+// D-1639.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, mark_topline_prompt, clear_win_stop } from './display.js';
 import {
-    COLNO, QBUFSZ, PARANOID_CONFIRM,
+    flush_screen, flush_topl_more, pline, mark_topline_prompt, clear_win_stop,
+    clear_nhwindow_message, tty_doprev_message,
+    get_tty_inread, set_tty_inread, get_tty_intr, set_tty_intr,
+    prevmsg_reset_maxcol,
+    mark_topline_special_prompt, hooked_getlin_release_prompt,
+    hooked_getlin_epilogue, tty_yn_rewrite_toplines, tty_nhbell,
+    tty_yn_note_msg_cursor, tty_yn_clean_up_tty,
+} from './display.js';
+import { key2txt } from './dokeylist.js';
+import {
+    BUFSZ, COLNO, QBUFSZ, PARANOID_CONFIRM,
     ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD,
     INTERNALCMD, AUTOCOMPLETE, WIZMODECMD, CMD_NOT_AVAILABLE,
+    CMD_M_PREFIX,
 } from './const.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
 
@@ -43,52 +59,227 @@ function topl_wrap_echo(str, nChars) {
     return { text, col, row };
 }
 
+// C global.h C('p') — getline.c hooked_tty_getlin and topl.c tty_yn_function
+// do not honor #prevmsg rebind (cmd.c doprev_message is D-1601).
+const GETLIN_CTRL_P = 0x10;
+
 /**
- * C ref: windows.c getlin → tty_getlin — prompt + echo until Enter/ESC.
- * Returns the buffer string ("" on empty Enter, "\033" on ESC with empty buf).
+ * C getline.c hooked_tty_getlin C('p') `:105–141`. Zeros inread around
+ * tty_doprev_message so f/c/r arms run (D-1601 skips them when inread).
+ * `'s'` or (`'c'` && !doprev): two calls the first time, then one; continue.
+ * else: one call, restore prompt, fall through. After a single-mode walk,
+ * the next non-^P restores the prompt then processes that key.
+ * yn ^P (`topl.c` `:434–463`) is D-1612 — do not glue.
+ * @param {number} c
+ * @param {boolean} doprev
+ * @param {() => Promise<void>} restorePrompt
+ * @returns {Promise<{ skip: boolean, doprev: boolean }>}
  */
-export async function getlin(query) {
+async function hooked_getlin_ctrl_p(c, doprev, restorePrompt) {
+    if (c === GETLIN_CTRL_P) {
+        const sav = get_tty_inread();
+        set_tty_inread(0);
+        const pm = String(game.iflags?.prevmsg_window || 's').charAt(0).toLowerCase();
+        if (pm === 's' || (pm === 'c' && !doprev)) {
+            if (!doprev) await tty_doprev_message(); /* need two initially */
+            await tty_doprev_message();
+            set_tty_inread(sav);
+            return { skip: true, doprev: true };
+        }
+        await tty_doprev_message();
+        set_tty_inread(sav);
+        await restorePrompt();
+        return { skip: false, doprev: false };
+    }
+    if (doprev) {
+        await restorePrompt();
+        return { skip: false, doprev: false };
+    }
+    return { skip: false, doprev };
+}
+
+/**
+ * C getline.c hooked_tty_getlin `:128–133` / `:135–140`.
+ * tty_clear_nhwindow then maxcol=maxrow then addtopl(query+" "+buf).
+ * *bufp=0 is the existing NUL at the write pointer — buffer kept.
+ * @param {() => Promise<void>} paint
+ */
+async function hooked_getlin_restore_prompt(paint) {
+    clear_nhwindow_message();
+    prevmsg_reset_maxcol();
+    await paint();
+}
+
+/**
+ * C getline.c hooked_tty_getlin `:52–58` + `:175`: more if NEED_MORE,
+ * clear WIN_STOP, SPECIAL_PROMPT, inread++. Exit: inread--, drop SPECIAL.
+ */
+function hooked_getlin_begin() {
+    set_tty_inread(get_tty_inread() + 1);
+}
+
+function hooked_getlin_end() {
+    set_tty_inread(get_tty_inread() - 1);
+    hooked_getlin_release_prompt();
+}
+
+/**
+ * C sys/share/unixtty.c gettty `:218–219` copies termios VERASE/VKILL.
+ * JS has no tty (Rule #2); POSIX defaults are VERASE=DEL, VKILL=C('U').
+ * pctty.c uses `'\b'`+21; DEL erase keeps `c == erase_char || c == '\b'`
+ * covering both BS and DEL (typical Unix recorder). kill's `|| '\177'`
+ * is then unreachable for DEL because erase is tested first.
+ * getline.c `:26` extern.
+ */
+const erase_char = 0x7f;
+const kill_char = 0x15; /* C('U') */
+
+/**
+ * C getline.c hooked_tty_getlin `:102–105`.
+ * `if (ttyDisplay->intr) { ttyDisplay->intr--; *bufp = 0; }`
+ * Truncates at the write pointer (NEWAUTOCOMP suffix), does not
+ * rewind to obufp. Increment is wintty.c tty_wait_synch (named).
+ * @param {{ buf: string, cursor: number }} st
+ */
+function hooked_getlin_apply_intr(st) {
+    if (!get_tty_intr()) return;
+    set_tty_intr(get_tty_intr() - 1);
+    st.buf = st.buf.slice(0, st.cursor);
+}
+
+/**
+ * C getline.c hooked_tty_getlin `:85–91` then fall through `:102–211`.
+ * Nonempty ESC clears `obufp`, redraws the prompt, and does **not**
+ * `continue` — C then runs `intr`, `doprev` restore, and else
+ * `tty_nhbell()` because `'\033'` is not erase/enter/printable/kill.
+ * Empty ESC (`:92–99`) is cancel (`obufp[0]='\033'; break`).
+ * @param {number} c
+ * @param {{ buf: string, cursor: number }} st
+ * @param {() => Promise<void>} paint
+ * @returns {Promise<'cancel'|'fallthrough'>}
+ */
+async function hooked_getlin_handle_esc(c, st, paint) {
+    if (c !== 27) return 'fallthrough';
+    if (st.buf.length > 0) {
+        st.buf = '';
+        st.cursor = 0;
+        await paint();
+        return 'fallthrough';
+    }
+    return 'cancel';
+}
+
+/**
+ * C getline.c hooked_tty_getlin `:142–211` after ESC and C('p').
+ * NEWAUTOCOMP (`:11`) is on except MACOS9 — erase NULs at the new
+ * cursor (drops autocomplete suffix); kill spaces the suffix then
+ * `\b \b` back to obufp and NULs. Empty erase bells; empty kill does
+ * not. Printable that fails the length test falls through to kill,
+ * then else tty_nhbell. `@` as kill_char is last so it can still
+ * insert when the buffer accepts it. ESC after a nonempty clear
+ * lands here (not erase/enter/insert/kill) → else `tty_nhbell`.
+ * @param {number} c
+ * @param {{ buf: string, cursor: number }} st
+ * @returns {'enter'|'insert'|'loop'}
+ */
+function hooked_getlin_edit_key(c, st) {
+    if (c === erase_char || c === 0x08) {
+        if (st.cursor !== 0) {
+            st.cursor -= 1;
+            st.buf = st.buf.slice(0, st.cursor);
+        } else {
+            tty_nhbell();
+        }
+        return 'loop';
+    }
+    if (c === 0x0a || c === 0x0d) return 'enter';
+    const used = st.cursor;
+    const uc = c & 0xff;
+    /* C: ' ' <= (unsigned char)c && c != '\177' && used < BUFSZ-1 && used < COLNO */
+    if (uc >= 0x20 && c !== 0x7f && used < BUFSZ - 1 && used < COLNO) {
+        return 'insert';
+    }
+    if (c === kill_char || c === 0x7f) {
+        st.buf = '';
+        st.cursor = 0;
+        return 'loop';
+    }
+    tty_nhbell();
+    return 'loop';
+}
+
+/**
+ * C include/config.h:655 EDIT_GETLIN is commented out — contest C does
+ * not compile the preload arm. hooked_tty_getlin :70-78 live path is
+ * `*bufp = '\0'` (the #else). The #ifdef would addtopl(obufp) then
+ * bufp = eos(obufp) so a caller-supplied default is editable.
+ * do_name.c name_from_player and dungeon.c query_annotation have
+ * matching #ifdefs (D-1624).
+ */
+const EDIT_GETLIN = false;
+
+/**
+ * C ref: windows.c getlin → tty_getlin → hooked_tty_getlin.
+ * Prompt + echo until Enter/ESC. ^P walks tty_doprev_message (D-1611).
+ * kill_char / `\177` wipe the buffer (D-1632); empty erase and other
+ * rejected keys tty_nhbell. Nonempty ESC clears then falls through
+ * (D-1639) so else `tty_nhbell` / `doprev` still run. `bufp` is C's
+ * in/out buffer; ignored unless EDIT_GETLIN (off here).
+ * Returns the buffer string ("" on empty Enter, "\033" on ESC with empty buf).
+ * @param {string} query
+ * @param {string} [bufp]
+ */
+export async function getlin(query, bufp) {
     await flush_topl_more();
-    let buf = '';
+    clear_win_stop();
+    hooked_getlin_begin();
+    /* C hooked_tty_getlin `:70–78` — `#else *bufp='\0'` when
+     * EDIT_GETLIN is commented out (`config.h:655`). */
+    const preload = String(bufp ?? '');
+    const st = {
+        buf: EDIT_GETLIN ? preload : '',
+        cursor: EDIT_GETLIN ? preload.length : 0,
+    };
+    let doprev = false;
     const paint = async () => {
-        const raw = `${query} ${buf}`;
+        const raw = `${query} ${st.buf}`;
         const { text, col, row } = topl_wrap_echo(
             raw,
-            query.length + 1 + buf.length,
+            query.length + 1 + st.buf.length,
         );
+        mark_topline_special_prompt(raw);
         game._pending_message = text;
         await flush_screen(1);
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(col, row);
     };
-    await paint();
-    for (;;) {
-        const c = await nhgetch();
-        if (c === 27) { // ESC
-            if (buf.length > 0) {
-                buf = '';
-                await paint();
-                continue;
+    const restorePrompt = () => hooked_getlin_restore_prompt(paint);
+    try {
+        await paint();
+        for (;;) {
+            const c = await nhgetch();
+            /* C hooked_tty_getlin `:85–91` nonempty ESC: clear+redraw,
+             * then fall through (no continue). Empty ESC cancels. */
+            if (await hooked_getlin_handle_esc(c, st, paint) === 'cancel') {
+                return '\x1b';
             }
-            game._pending_message = '';
-            return '\x1b';
-        }
-        if (c === 13 || c === 10) { // Enter
-            game._pending_message = '';
-            return buf;
-        }
-        if (c === 8 || c === 127) { // backspace / delete
-            if (buf.length > 0) {
-                buf = buf.slice(0, -1);
-                await paint();
+            hooked_getlin_apply_intr(st);
+            const handled = await hooked_getlin_ctrl_p(c, doprev, restorePrompt);
+            doprev = handled.doprev;
+            if (handled.skip) continue;
+            const act = hooked_getlin_edit_key(c, st);
+            if (act === 'enter') return st.buf;
+            if (act === 'insert') {
+                st.buf = st.buf.slice(0, st.cursor) + String.fromCharCode(c);
+                st.cursor += 1;
             }
-            continue;
-        }
-        // C: bufp - obufp < BUFSZ-1 && bufp - obufp < COLNO
-        if (c >= 32 && c < 127 && buf.length < COLNO) {
-            buf += String.fromCharCode(c);
             await paint();
         }
+    } finally {
+        /* C tty_getlin: suppress_history = FALSE → dumplogmsg */
+        hooked_getlin_epilogue(false);
+        hooked_getlin_end();
+        game._pending_message = '';
     }
 }
 
@@ -159,6 +350,17 @@ const EXT_CMD_AC = [
  * Enter resolution uses this list; progressive paint uses EXT_CMD_AC.
  */
 const EXT_CMDS = [
+    {
+        // C: cmd.c "?" IFBURIED|AUTOCOMPLETE|GENERALCMD|CMD_M_PREFIX →
+        // doextlist. Key M('?'). Body D-1625; BIND= named.
+        name: '?',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { doextlist } = await import('./cmd.js');
+            return doextlist();
+        },
+    },
     {
         name: 'name',
         wiz: false,
@@ -262,6 +464,16 @@ const EXT_CMDS = [
         run: async () => {
             const { dip_into } = await import('./potion.js');
             return dip_into();
+        },
+    },
+    {
+        // C: cmd.c "droptype" → doddrop. Key 'D'. No AUTOCOMPLETE.
+        name: 'droptype',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doddrop } = await import('./do.js');
+            return doddrop();
         },
     },
     {
@@ -617,6 +829,67 @@ const EXT_CMDS = [
             return doherecmdmenu();
         },
     },
+    {
+        // C: cmd.c "seeall" IFBURIED|GENERALCMD|CMD_M_PREFIX (no AUTOCOMPLETE)
+        // → doprinuse. Key '*'. Body D-0340/D-1589; this is the typed # runner.
+        name: 'seeall',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doprinuse } = await import('./invent.js');
+            return doprinuse();
+        },
+    },
+    {
+        // C: cmd.c "seeweapon" same flags → doprwep. Key ')'.
+        name: 'seeweapon',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doprwep } = await import('./invent.js');
+            return doprwep();
+        },
+    },
+    {
+        // C: cmd.c "seearmor" same flags → doprarm. Key '['.
+        name: 'seearmor',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doprarm } = await import('./invent.js');
+            return doprarm();
+        },
+    },
+    {
+        // C: cmd.c "seerings" same flags → doprring. Key '='.
+        name: 'seerings',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doprring } = await import('./invent.js');
+            return doprring();
+        },
+    },
+    {
+        // C: cmd.c "seeamulet" same flags → dopramulet. Key '"'.
+        name: 'seeamulet',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { dopramulet } = await import('./invent.js');
+            return dopramulet();
+        },
+    },
+    {
+        // C: cmd.c "seetools" same flags → doprtool. Key '('.
+        name: 'seetools',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doprtool } = await import('./invent.js');
+            return doprtool();
+        },
+    },
 ];
 
 function wizardMode() {
@@ -659,15 +932,15 @@ export function extcmds_match(findstr, ecmflags) {
 }
 
 /**
- * C ref: cmd.c accept_menu_prefix — CMD_M_PREFIX on the resolved extcmd.
- * Names currently in EXT_CMDS that C marks CMD_M_PREFIX. Expand when a
- * new runner is added with that flag. cmd_from_func(do_reqmenu) named
- * (this port's m-prefix key is always 'm').
+ * C ref: cmd.c accept_menu_prefix `:3507–3512` — CMD_M_PREFIX on the
+ * resolved extcmdlist row (not a name set). cmd_from_func(do_reqmenu)
+ * visctrl named (this port's m-prefix key is always 'm').
+ * @param {{ flags?: number } | null | undefined} extcmd
+ * @returns {boolean}
  */
-const EXTCMD_M_PREFIX = new Set([
-    'annotate', 'dip', 'genocided', 'loot', 'offer', 'overview',
-    'pay', 'teleport', 'tip', 'travel', 'vanquished', 'wizwish',
-]);
+function accept_menu_prefix(extcmd) {
+    return !!(extcmd && ((extcmd.flags | 0) & CMD_M_PREFIX));
+}
 
 /** C ref: cmd.c extcmds_match(ECM_NOFLAGS) — AUTOCOMPLETE + !WIZ unless wizard */
 function availableAcNames() {
@@ -698,98 +971,106 @@ function extCmdAutocomplete(base) {
  */
 export async function get_ext_cmd() {
     await flush_topl_more();
-    let buf = '';
-    let cursor = 0; // index after last typed character
+    clear_win_stop();
+    hooked_getlin_begin();
+    const st = { buf: '', cursor: 0 };
+    let doprev = false;
     const paint = async () => {
         // C hooked_tty_getlin("#", …) shows "# " + buffer (expanded name);
         // empty prompt is still "# " (custompline "%s ") with cursor at col 2.
-        const raw = `# ${buf}`;
-        const { text, col, row } = topl_wrap_echo(raw, 2 + cursor);
+        const raw = `# ${st.buf}`;
+        const { text, col, row } = topl_wrap_echo(raw, 2 + st.cursor);
+        mark_topline_special_prompt(raw);
         game._pending_message = text;
         await flush_screen(1);
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(col, row);
     };
-    await paint();
-    for (;;) {
-        const c = await nhgetch();
-        if (c === 27) {
-            if (buf.length > 0) {
-                buf = '';
-                cursor = 0;
-                await paint();
-                continue;
+    const restorePrompt = () => hooked_getlin_restore_prompt(paint);
+    try {
+        await paint();
+        for (;;) {
+            const c = await nhgetch();
+            /* Same C hooked_tty_getlin as getlin — nonempty ESC falls
+             * through to intr / doprev / else tty_nhbell (D-1639). */
+            if (await hooked_getlin_handle_esc(c, st, paint) === 'cancel') {
+                return -1;
             }
-            game._pending_message = '';
-            return -1;
-        }
-        if (c === 13 || c === 10) break;
-        if (c === 8 || c === 127) {
-            if (cursor > 0) {
-                buf = buf.slice(0, cursor - 1);
-                cursor--;
-                await paint();
+            hooked_getlin_apply_intr(st);
+            const handled = await hooked_getlin_ctrl_p(c, doprev, restorePrompt);
+            doprev = handled.doprev;
+            if (handled.skip) continue;
+            const act = hooked_getlin_edit_key(c, st);
+            if (act === 'enter') break;
+            if (act === 'insert') {
+                /* C: *bufp = c; bufp[1] = 0; then hook may Strcpy full name */
+                st.buf = st.buf.slice(0, st.cursor) + String.fromCharCode(c);
+                st.cursor += 1;
+                const expanded = extCmdAutocomplete(st.buf.slice(0, st.cursor));
+                if (expanded) st.buf = expanded;
             }
-            continue;
-        }
-        // C: bufp - obufp < BUFSZ-1 && bufp - obufp < COLNO
-        if (c >= 32 && c < 127 && cursor < COLNO) {
-            // C: *bufp = c; bufp[1] = 0; then hook may Strcpy full name
-            buf = buf.slice(0, cursor) + String.fromCharCode(c);
-            cursor++;
-            const expanded = extCmdAutocomplete(buf.slice(0, cursor));
-            if (expanded) buf = expanded;
             await paint();
         }
+    } finally {
+        /* C tty_get_ext_cmd: suppress_history = TRUE → *gt.toplines = 0 */
+        hooked_getlin_epilogue(true);
+        hooked_getlin_end();
+        game._pending_message = '';
     }
-    game._pending_message = '';
-    const name = buf.trim().toLowerCase();
+    const name = st.buf.trim().toLowerCase();
     if (!name) return -1;
     /* C tty_get_ext_cmd: extcmds_match(buf, ECM_IGNOREAC|ECM_EXACTMATCH).
        INTERNALCMD (#altdip) is skipped — unknown even with a runner. */
     const matches = extcmds_match(name, ECM_IGNOREAC | ECM_EXACTMATCH);
     if (matches.length !== 1) {
-        await pline(`#${buf}: unknown extended command.`);
+        await pline(`#${st.buf}: unknown extended command.`);
         return -1;
     }
     const txt = EXTCMDLIST[matches[0]].txt.toLowerCase();
     const idx = availableExtCmds().findIndex((ec) => ec.name === txt);
     if (idx < 0) {
-        await pline(`#${buf}: unknown extended command.`);
+        await pline(`#${st.buf}: unknown extended command.`);
         return -1;
     }
     return idx;
 }
 
-/** C ref: cmd.c doextcmd — returns callee ECMD_* (pray → ECMD_TIME). */
+/**
+ * C ref: cmd.c doextcmd `:492–520` — keep repeating until the callee
+ * is not doextlist (`#?` help then another extended command).
+ * Returns callee ECMD_* (pray → ECMD_TIME).
+ */
 export async function doextcmd() {
-    game.ext_tlist = null;
-    const idx = await get_ext_cmd();
-    if (idx < 0) return 0; // ECMD_OK
-    const ec = availableExtCmds()[idx];
-    if (!ec) return 0;
-    if (ec.wiz && !wizardMode()) {
-        await pline(`That is a wizard-mode command.`);
-        return 0;
-    }
-    /* C cmd.c:507–511 — keep m only if the resolved command accepts it. */
-    if (game.iflags?.menu_requested && !EXTCMD_M_PREFIX.has(ec.name)) {
-        await pline(`'m' prefix has no effect for the ${ec.name} command.`);
-        game.iflags.menu_requested = false;
-    }
-    /* C cmd.c:513 — tell rhack() what command is actually executing */
-    const row = EXTCMDLIST.find((e) => e.txt.toLowerCase() === ec.name);
-    game.ext_tlist = {
-        txt: ec.name,
-        run: ec.run,
-        flags: row ? (row.flags | 0) : 0,
-    };
-    const res = await ec.run();
-    return res | 0;
+    let funcIsDoextlist = false;
+    let retval = 0;
+    do {
+        const idx = await get_ext_cmd();
+        if (idx < 0) return 0; // ECMD_OK
+        const ec = availableExtCmds()[idx];
+        if (!ec) return 0;
+        /* C cmd.c:505–515 — extcmdlist row, can_do_extcmd, then m-prefix. */
+        const row = EXTCMDLIST.find((e) => e.txt.toLowerCase() === ec.name);
+        const { can_do_extcmd } = await import('./cmd.js');
+        if (!(await can_do_extcmd(row))) return 0;
+        if (game.iflags?.menu_requested && !accept_menu_prefix(row)) {
+            await pline(`'m' prefix has no effect for the ${ec.name} command.`);
+            game.iflags.menu_requested = false;
+        }
+        /* C cmd.c:513 — tell rhack() what command is actually executing */
+        game.ext_tlist = {
+            txt: ec.name,
+            run: ec.run,
+            flags: row ? (row.flags | 0) : 0,
+        };
+        /* C: while (func == doextlist) — table txt "?" is doextlist. */
+        funcIsDoextlist = ec.name === '?';
+        retval = (await ec.run()) | 0;
+    } while (funcIsDoextlist);
+    return retval;
 }
 
 /** C ref: hacklib.c mungspaces — collapse runs of whitespace to one space. */
-function mungspaces(s) {
+export function mungspaces(s) {
     return String(s ?? '').replace(/\s+/g, ' ').trim();
 }
 
@@ -857,17 +1138,96 @@ export async function paranoid_query(be_paranoid, prompt) {
 }
 
 /**
+ * C topl.c tty_yn_function `:394–396` / `:544–545`: SPECIAL_PROMPT,
+ * inread++, then inread-- and NON_EMPTY. Getlin uses the same inread
+ * pair (D-1611) but a different ^P dispatcher. Post-answer gt.toplines
+ * rewrite is D-1623 (not this pair). tty_nhbell / cw->cury / intr is
+ * D-1631 (not post-answer toplines).
+ */
+function hooked_yn_begin() {
+    set_tty_inread(get_tty_inread() + 1);
+}
+
+function hooked_yn_end() {
+    set_tty_inread(get_tty_inread() - 1);
+    hooked_getlin_release_prompt();
+}
+
+/**
+ * C topl.c tty_yn_function C('p') `:434–463`. Not getline.c
+ * hooked_tty_getlin (`:105–141`, D-1611) and not command ^P (D-1601).
+ *
+ * non-'s' (full/combo/reversed): zero inread around one
+ * tty_doprev_message, then clear + maxcol=maxrow + addtopl(prompt).
+ * 's': do not zero inread; two calls the first time, then one; leave
+ * the walk on screen. The next non-^P restores the prompt and is
+ * discarded (C BUG comment — do not consume it as the yn answer).
+ *
+ * @param {number} c
+ * @param {boolean} doprev
+ * @param {() => Promise<void>} restorePrompt
+ * @returns {Promise<{ skip: boolean, doprev: boolean }>}
+ */
+async function tty_yn_ctrl_p(c, doprev, restorePrompt) {
+    if (c === GETLIN_CTRL_P) {
+        const pm = String(game.iflags?.prevmsg_window || 's').charAt(0).toLowerCase();
+        if (pm !== 's') {
+            const sav = get_tty_inread();
+            set_tty_inread(0);
+            await tty_doprev_message();
+            set_tty_inread(sav);
+            await restorePrompt();
+            return { skip: true, doprev: false };
+        }
+        if (!doprev) await tty_doprev_message(); /* need two initially */
+        await tty_doprev_message();
+        return { skip: true, doprev: true };
+    }
+    if (doprev) {
+        await restorePrompt();
+        return { skip: true, doprev: false };
+    }
+    return { skip: false, doprev };
+}
+
+/**
+ * C topl.c tty_yn_function clean_up `:532–542`.
+ * `if (yn_number) Sprintf(rtmp, "#%ld")` else `key2txt(q, rtmp)`;
+ * rewrite `gt.toplines` to prompt+rtmp (not `addtopl`). DUMPLOG_CORE
+ * `dumplogmsg` lives in `tty_yn_rewrite_toplines`. Leftover stays the
+ * painted prompt. `cw->cury` clear / `ttyDisplay->intr` is D-1631
+ * (`tty_yn_clean_up_tty`).
+ * @param {string} prompt
+ * @param {string} q
+ * @returns {string}
+ */
+function tty_yn_clean_up(prompt, q) {
+    let rtmp;
+    if (game.yn_number) {
+        rtmp = `#${game.yn_number}`;
+    } else {
+        const code = q == null || q === '' ? 0 : q.charCodeAt(0);
+        rtmp = key2txt(code);
+    }
+    tty_yn_rewrite_toplines(`${prompt}${rtmp}`);
+    tty_yn_clean_up_tty();
+    return q;
+}
+
+/**
  * C ref: win/tty/topl.c tty_yn_function — query + [resp] + (def) + space.
  * Esc → 'q' if in resp else 'n' if in resp else def.
  * Quitchars (space/return) → def. Invalid keys bell and retry.
+ * Ctrl-P walks tty_doprev_message (D-1612); do not glue onto getline ^P.
  *
  * Prompt paint uses show_topl/putsyms hard-wrap (SUPPRESS_HISTORY), not
  * update_topl word-wrap — see topl_wrap_echo.
  *
- * After a valid answer, leave the prompt on the message line
- * (C: TOPLINE_NON_EMPTY / gt.toplines). Silent follow-ups (e.g.
- * dipfountain case 16 curse with no pline) keep the yn text until
- * rhack clears after the next-command nhgetch capture.
+ * After a valid answer, C rewrites gt.toplines to prompt+key2txt (or
+ * #yn_number) without addtopl (D-1623). Unwrapped leftover stays
+ * painted (`cw->cury==0` skips clear). Wrapped prompts (`cury!=0`)
+ * run tty_clear_nhwindow and drop leftover (D-1631). Silent
+ * follow-ups keep the unwrapped leftover until rhack's parse clear.
  * When resp contains '#', digits collect C yn_number and return '#'.
  */
 export async function yn_function(query, resp = 'yn', def = 'n') {
@@ -888,44 +1248,90 @@ export async function yn_function(query, resp = 'yn', def = 'n') {
         prompt = `${query} `;
     }
     const allow_num = !!(resp && resp.includes('#'));
-    for (;;) {
+    const preserve = !!(resp && /[A-Z]/.test(resp));
+    let doprev = false;
+    const paint = async () => {
         // C: custompline(SUPPRESS_HISTORY) → tty_putstr → show_topl →
         // addtopl/putsyms — hard-wrap at CO-1 via topl_putsym (not
         // update_topl's word-wrap). An 80-char prompt ends with the
         // trailing space on row 1 and cursor at (1,1).
         const { text, col, row } = topl_wrap_echo(prompt, prompt.length);
-        mark_topline_prompt(text);
+        mark_topline_special_prompt(prompt);
+        game._pending_message = text;
         await flush_screen(1);
-        // Leftover gt.toplines after answer is the unwrapped prompt
-        // (tty_yn_function clean_up Sprintf); keep that for parse clear.
-        mark_topline_prompt(prompt);
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(col, row);
-        const c = await nhgetch();
-        let ch = String.fromCharCode(c);
-        // Do not clear _pending_message here — C leaves the yn prompt.
-        if (!resp) return ch;
-        const preserve = /[A-Z]/.test(resp);
-        if (!preserve) ch = ch.toLowerCase();
-        if (c === 27) {
-            if (resp.includes('q')) return 'q';
-            if (resp.includes('n')) return 'n';
-            // C: else q = def (may be '\0', e.g. rightleftchars)
-            return def;
+        tty_yn_note_msg_cursor(col, row);
+        // Capture leftover is the unwrapped prompt (D-0512); keep SPECIAL
+        // so redotoplin more() is skipped during ^P (C otoplin).
+        game._pending_message = prompt;
+    };
+    const restorePrompt = () => hooked_getlin_restore_prompt(paint);
+    hooked_yn_begin();
+    try {
+        await paint();
+        if (!resp) {
+            const c = await nhgetch();
+            return tty_yn_clean_up(prompt, String.fromCharCode(c));
         }
-        if (ch === ' ' || c === 13 || c === 10) return def;
-        const digit_ok = allow_num && ch >= '0' && ch <= '9';
-        if (!resp.includes(ch) && !digit_ok) continue;
-        if (ch === '#' || digit_ok) {
-            const num = await yn_collect_number(prompt, ch, preserve);
-            if (num == null) continue; // abort → retry
-            if (num === 0) return 'n';
-            game.yn_number = num;
-            return '#';
+        for (;;) {
+            const c = await nhgetch();
+            let ch = String.fromCharCode(c);
+            // Do not clear _pending_message here — C leaves the yn prompt.
+            if (!preserve) ch = ch.toLowerCase();
+            const handled = await tty_yn_ctrl_p(c, doprev, restorePrompt);
+            doprev = handled.doprev;
+            if (handled.skip) continue;
+            if (c === 27) {
+                if (resp.includes('q')) return tty_yn_clean_up(prompt, 'q');
+                if (resp.includes('n')) return tty_yn_clean_up(prompt, 'n');
+                // C: else q = def (may be '\0', e.g. rightleftchars)
+                return tty_yn_clean_up(prompt, def);
+            }
+            if (ch === ' ' || c === 13 || c === 10) {
+                return tty_yn_clean_up(prompt, def);
+            }
+            const digit_ok = allow_num && ch >= '0' && ch <= '9';
+            if (!resp.includes(ch) && !digit_ok) {
+                // C topl.c tty_yn_function `:475–478` tty_nhbell + q=0 retry
+                tty_nhbell();
+                continue;
+            }
+            if (ch === '#' || digit_ok) {
+                const num = await yn_collect_number(prompt, ch, preserve);
+                if (num == null) {
+                    await paint();
+                    continue;
+                }
+                if (num === 0) return tty_yn_clean_up(prompt, 'n');
+                game.yn_number = num;
+                return tty_yn_clean_up(prompt, '#');
+            }
+            if (resp.includes(ch)) {
+                return tty_yn_clean_up(prompt, ch);
+            }
+            tty_nhbell();
         }
-        if (resp.includes(ch)) return ch;
-        // invalid — C tty_nhbell + retry
+    } finally {
+        hooked_yn_end();
     }
+}
+
+/**
+ * C include/integer.h AppendLongDigit `:120–124`.
+ * Contest hosts are LP64; JS Number is exact through 2^53. yn_number
+ * gameplay stays below that; overflow still yields -1 and retries
+ * without a bell (C `value < 0` break).
+ * @param {number} L
+ * @param {number} D
+ * @returns {number}
+ */
+function AppendLongDigit(L, D) {
+    const longMax = Number.MAX_SAFE_INTEGER;
+    const q = Math.trunc(longMax / 10);
+    const r = longMax % 10;
+    if (L < q || (L === q && D <= r)) return L * 10 + D;
+    return -1;
 }
 
 /** C topl.c tty_yn_function '#' / digit arm — yn_number. */
@@ -943,6 +1349,7 @@ async function yn_collect_number(prompt, firstCh, preserve) {
         await flush_screen(1);
         const disp = game.nhDisplay;
         if (disp?.setCursor) disp.setCursor(col, row);
+        tty_yn_note_msg_cursor(col, row);
     };
     await paint();
     for (;;) {
@@ -950,8 +1357,8 @@ async function yn_collect_number(prompt, firstCh, preserve) {
         let z = String.fromCharCode(zc);
         if (!preserve) z = z.toLowerCase();
         if (z >= '0' && z <= '9') {
-            const next = value * 10 + (z.charCodeAt(0) - 48);
-            if (next < 0 || next > 0x7fffffff) return null;
+            const next = AppendLongDigit(value, z.charCodeAt(0) - 48);
+            if (next < 0) return null;
             value = next;
             echo += z;
             await paint();
@@ -968,6 +1375,8 @@ async function yn_collect_number(prompt, firstCh, preserve) {
             await paint();
             continue;
         }
+        // C `:515–518` abort + tty_nhbell then removetopl retry
+        tty_nhbell();
         return null;
     }
 }

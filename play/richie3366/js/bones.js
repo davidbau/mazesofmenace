@@ -9,7 +9,7 @@ import { next_ident } from './mkobj.js';
 import { mons } from './monsters.js';
 import { GameMap } from './game.js';
 import { OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED } from './const.js';
-import { peace_minded, set_malign } from './makemon.js';
+import { peace_minded, set_malign, restmon_edog, savemon_edog } from './makemon.js';
 import { save_track, rest_track } from './track.js';
 import { yn_function } from './getline.js';
 import { paint_gbuf_level_to_terminal } from './display.js';
@@ -196,6 +196,8 @@ function serMon(mtmp) {
         out.mtrack.push({ x: c?.x | 0, y: c?.y | 0 });
     }
     out.minvent = serObjChain(mtmp.minvent);
+    // C save.c savemon `:860–869` — EDOG blob when present.
+    savemon_edog(mtmp, out);
     return out;
 }
 
@@ -577,6 +579,8 @@ export async function try_load_bones(lev) {
             const c = rawM.mtrack?.[j];
             mtmp.mtrack.push({ x: c?.x | 0, y: c?.y | 0 });
         }
+        // C restore.c restmon `:349–361` — newedog + apport clamp.
+        restmon_edog(mtmp);
         fmon.push(mtmp);
     }
 

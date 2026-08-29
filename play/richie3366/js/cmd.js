@@ -12,7 +12,7 @@ import {
     see_nearby_objects,
     clear_nhwindow_message,
     mon_visible, sensemon, glyph_is_invisible, unmap_object, map_object,
-    look_shown_at, Norep, tty_doprev_message,
+    look_shown_at, Norep, tty_doprev_message, putmsghistory,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, SCORR, LAVAWALL,
@@ -23,11 +23,14 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
          CMDQ_EXTCMD, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
          IFBURIED, WIZMODECMD, NOFUZZERCMD, PREFIXCMD, MOVEMENTCMD,
+         AUTOCOMPLETE, CMD_NOT_AVAILABLE, INTERNALCMD, GENERALCMD,
+         CMD_M_PREFIX, QBUFSZ,
          xdir, ydir, zdir, xytodir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          GFILTER_VIEW, GLOC_INTERESTING,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
          PARANOID_TRAP,
+         LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
@@ -51,7 +54,7 @@ import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor, engr_at 
 import { dothrow, dofire } from './dothrow.js';
 import { doapply, check_leash } from './apply.js';
 import { dokick } from './dokick.js';
-import { donull, dodown, doup, dodrop } from './do.js';
+import { donull, dodown, doup, dodrop, doddrop } from './do.js';
 import { dosave } from './save.js';
 import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
 import {
@@ -59,14 +62,15 @@ import {
 } from './uhitm.js';
 import { rehumanize } from './polyself.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
-import { doextcmd } from './getline.js';
+import { doextcmd, getlin, mungspaces } from './getline.js';
+import { strstri, strsubst } from './hacklib.js';
 import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, doddoremarm, dowear, doputon } from './do_wear.js';
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp } from './pager.js';
-import { visctrl } from './dokeylist.js';
+import { visctrl, key2txt } from './dokeylist.js';
 import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
@@ -310,6 +314,250 @@ export async function can_do_extcmd(extcmd) {
         return false;
     }
     return true;
+}
+
+/**
+ * C strutil.c pmatch_internal `:103–141` — '*' / '?' (ci via lowc).
+ * doextlist search uses pmatchi (ci true, no skip-set).
+ * @param {string} patrn
+ * @param {string} strng
+ * @param {boolean} ci
+ * @returns {boolean}
+ */
+function pmatch_internal(patrn, strng, ci) {
+    const pstr = String(patrn ?? '');
+    const sstr = String(strng ?? '');
+    const fold = (ch) => {
+        if (!ci || !ch) return ch;
+        const c = ch.charCodeAt(0);
+        return (c >= 65 && c <= 90) ? String.fromCharCode(c + 32) : ch;
+    };
+    const rec = (pi, si) => {
+        for (;;) {
+            const s = si < sstr.length ? sstr[si] : '';
+            const p = pi < pstr.length ? pstr[pi] : '';
+            si++;
+            pi++;
+            if (!p) return s === '';
+            if (p === '*') {
+                if (!(pi < pstr.length ? pstr[pi] : '') || rec(pi, si - 1)) {
+                    return true;
+                }
+                return s ? rec(pi - 1, si) : false;
+            }
+            if ((ci ? fold(p) !== fold(s) : p !== s) && (p !== '?' || !s)) {
+                return false;
+            }
+        }
+    };
+    return rec(0, 0);
+}
+
+/** C strutil.c pmatchi `:151–155`. */
+function pmatchi(patrn, strng) {
+    return pmatch_internal(patrn, strng, true);
+}
+
+/**
+ * C ref: cmd.c accept_menu_prefix `:3507–3512` — CMD_M_PREFIX.
+ * @param {{ flags?: number } | null | undefined} efp
+ * @returns {boolean}
+ */
+function accept_menu_prefix_tab(efp) {
+    return !!(efp && ((efp.flags | 0) & CMD_M_PREFIX));
+}
+
+/**
+ * C ref: cmd.c doc_extcmd_flagstr `:523–557`.
+ * efp null → footnote strings; else "" / "[m]" / "[A]" / "[mA]".
+ * cmd_from_func(do_reqmenu) visctrl named (m-prefix key is 'm').
+ * @param {{ flags?: number } | null} efp
+ * @returns {{ footnote: string[] } | { flagstr: string }}
+ */
+function doc_extcmd_flagstr(efp) {
+    if (!efp) {
+        return {
+            footnote: [
+                '[A] Command autocompletes',
+                `[m] Command accepts '${visctrl('m')}' prefix`,
+            ],
+        };
+    }
+    const mprefix = accept_menu_prefix_tab(efp);
+    const autocomplete = ((efp.flags | 0) & AUTOCOMPLETE) !== 0;
+    let flagstr = '';
+    if (mprefix || autocomplete) {
+        flagstr = '[';
+        if (mprefix) flagstr += 'm';
+        if (autocomplete) flagstr += 'A';
+        flagstr += ']';
+    }
+    return { flagstr };
+}
+
+const DOEXTLIST_HEADINGS = [
+    'Extended Commands',
+    'Debugging Extended Commands',
+];
+
+/**
+ * C ref: cmd.c doextlist `:560–734` — NHW_MENU PICK_ONE of extcmdlist.
+ * Meta rows: 'a' menumode, ':'/'s' search, 'z' wizard onelist.
+ * Callers: doextcmd loop (`#?`) and pager.c hmenu_doextlist.
+ * BIND= / M('?') keystroke named.
+ * @returns {Promise<number>} ECMD_OK
+ */
+export async function doextlist() {
+    const wizard = !!(game.flags?.debug || game.flags?.wizard || game.wizard);
+    const discover = !!(game.flags?.explore || game.flags?.discover);
+    let menumode = 0;
+    let onelist = 0;
+    let redisplay = true;
+    let search = false;
+    let searchbuf = '';
+
+    while (redisplay) {
+        redisplay = false;
+        const raw = [];
+        raw.push({ text: 'Extended Commands List', attr: 0, selectable: false });
+        raw.push({ text: '', attr: 0, selectable: false });
+
+        raw.push({
+            text: `Switch to ${menumode ? 'including' : 'excluding'} commands that don't autocomplete`,
+            attr: 0,
+            selectable: true,
+            selector: 'a',
+            a_int: 1,
+        });
+        if (!searchbuf) {
+            raw.push({
+                text: 'Search extended commands',
+                attr: 0,
+                selectable: true,
+                selector: ':',
+                gselector: 's',
+                a_int: 2,
+            });
+        } else {
+            let back = 'Switch back from search';
+            if (back.length + searchbuf.length + ' ("")'.length < QBUFSZ) {
+                back += ` ("${searchbuf}")`;
+            }
+            raw.push({
+                text: back,
+                attr: 0,
+                selectable: true,
+                selector: 's',
+                gselector: ':',
+                a_int: 3,
+            });
+        }
+        if (wizard) {
+            raw.push({
+                text: onelist
+                    ? 'Switch to showing debugging commands in separate section'
+                    : 'Switch to showing all alphabetically, including debugging commands',
+                attr: 0,
+                selectable: true,
+                selector: 'z',
+                a_int: 4,
+            });
+        }
+        raw.push({ text: '', attr: 0, selectable: false });
+
+        const menushown = [0, 0];
+        let n = 0;
+        for (let pass = 0; pass <= 1; ++pass) {
+            if (pass === 1 && (onelist || !wizard)) break;
+            for (const efp of EXTCMDLIST) {
+                if (!efp?.txt) continue;
+                if (((efp.flags | 0) & (CMD_NOT_AVAILABLE | INTERNALCMD)) !== 0) {
+                    continue;
+                }
+                if (menumode === 1 && ((efp.flags | 0) & AUTOCOMPLETE) === 0) {
+                    continue;
+                }
+                const wizc = ((efp.flags | 0) & WIZMODECMD) !== 0 ? 1 : 0;
+                if (wizc && !wizard) continue;
+                if (!onelist && pass !== wizc) continue;
+                let cmd_desc = efp.desc || '';
+                if (!wizard && !discover
+                    && ((efp.flags | 0) & GENERALCMD) !== 0
+                    && strstri(cmd_desc, 'extinct')) {
+                    cmd_desc = strsubst(
+                        cmd_desc,
+                        ' been genocided or become extinct',
+                        ' been genocided',
+                    );
+                }
+                if (searchbuf
+                    && !strstri(efp.txt, searchbuf)
+                    && !strstri(cmd_desc, searchbuf)
+                    && !pmatchi(searchbuf, efp.txt)
+                    && !pmatchi(searchbuf, cmd_desc)) {
+                    continue;
+                }
+                if (!menushown[pass]) {
+                    raw.push({
+                        text: DOEXTLIST_HEADINGS[pass],
+                        attr: ATR_INVERSE,
+                        selectable: false,
+                    });
+                    menushown[pass] = 1;
+                }
+                const flagstr = doc_extcmd_flagstr(efp).flagstr || '';
+                const line = ` ${String(efp.txt).padEnd(14)} ${flagstr.padStart(4)} ${cmd_desc}`;
+                raw.push({ text: line, attr: 0, selectable: false });
+                ++n;
+            }
+            if (n) raw.push({ text: '', attr: 0, selectable: false });
+        }
+        if (searchbuf && !n) {
+            raw.push({ text: 'no matches', attr: 0, selectable: false });
+        } else {
+            for (const line of doc_extcmd_flagstr(null).footnote) {
+                raw.push({ text: line, attr: 0, selectable: false });
+            }
+        }
+
+        const picked = await select_menu_pick_one(raw);
+        if (picked.kind === 'pick' && (picked.item?.a_int | 0) > 0) {
+            switch (picked.item.a_int | 0) {
+            case 1:
+                menumode = 1 - menumode;
+                redisplay = true;
+                break;
+            case 2:
+                search = true;
+                break;
+            case 3:
+                search = false;
+                searchbuf = '';
+                redisplay = true;
+                break;
+            case 4:
+                search = false;
+                searchbuf = '';
+                onelist = 1 - onelist;
+                redisplay = true;
+                break;
+            }
+        } else {
+            search = false;
+            searchbuf = '';
+        }
+        if (search) {
+            let phrase = await getlin('Extended command list search phrase?');
+            if (phrase === '\x1b') phrase = '';
+            else phrase = mungspaces(phrase);
+            if (phrase) {
+                searchbuf = phrase;
+                redisplay = true;
+            }
+            search = false;
+        }
+    }
+    return ECMD_OK;
 }
 
 /**
@@ -1601,52 +1849,110 @@ export async function continue_search() {
 }
 
 /**
- * C ref: cmd.c get_count — accumulate digit prefix; return next non-digit.
- * Does not clear the message window between digits (parse clears once after).
- * Echo "Count: N" when cnt > 9 (second digit), matching C clear+custompline.
+ * C integer.h AppendLongDigit — L*10+D, or -1 on overflow.
+ * @param {number} L
+ * @param {number} D
+ * @returns {number}
  */
-async function get_count() {
-    if (!game.context) game.context = {};
+function append_long_digit(L, D) {
+    const LONG_MAX = Number.MAX_SAFE_INTEGER;
+    if (L < Math.trunc(LONG_MAX / 10)
+        || (L === Math.trunc(LONG_MAX / 10) && D <= (LONG_MAX % 10))) {
+        return L * 10 + D;
+    }
+    return -1;
+}
+
+/**
+ * C cmd.c get_count inkey: NUL / 0 means read the first key.
+ * @param {string|number|null|undefined} inkey
+ * @returns {number}
+ */
+function get_count_inkey_code(inkey) {
+    if (inkey == null || inkey === '' || inkey === '\0') return 0;
+    if (typeof inkey === 'string') return inkey.charCodeAt(0) & 0xff;
+    return inkey & 0xff;
+}
+
+/**
+ * C cmd.c get_count `:5009–5090`. Digits then a terminator; echo
+ * "Count: N" via _pending_message (custompline SUPPRESS_HISTORY named).
+ * GC_SAVEHIST / GC_CONDHIST put "Count: N "+key2txt in putmsghistory
+ * (D-1588). parse uses GC_NOFLAGS; getobj uses GC_SAVEHIST.
+ * altmeta input_state / num_pad NHKF_COUNT named.
+ * @param {string|null} [allowchars]
+ * @param {string|number} [inkey]
+ * @param {number} [maxcount]
+ * @param {{ n: number }} [countOut]
+ * @param {number} [gc_flags]
+ * @returns {Promise<number>} terminating key
+ */
+export async function get_count(
+    allowchars = null,
+    inkey = 0,
+    maxcount = LARGEST_INT,
+    countOut = null,
+    gc_flags = GC_NOFLAGS,
+) {
+    const box = countOut || { n: 0 };
+    box.n = 0;
     let cnt = 0;
-    let showzero = false;
+    let pending = get_count_inkey_code(inkey);
+    const first = pending ? (pending - 48) : 0;
+    const historicmsg = (gc_flags & GC_SAVEHIST) !== 0;
+    const conditionalmsg = (gc_flags & GC_CONDHIST) !== 0;
+    const echoalways = (gc_flags & GC_ECHOFIRST) !== 0;
     let backspaced = false;
+    let showzero = true;
+    let key = 0;
+
     for (;;) {
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (ch >= '0' && ch <= '9') {
-            cnt = cnt * 10 + (key - 48);
-            if (cnt > 500) cnt = 500;
-            showzero = (ch === '0');
-            backspaced = false;
+        if (pending) {
+            key = pending;
+            pending = 0;
+        } else {
+            key = await nhgetch();
+        }
+
+        if (key >= 48 && key <= 57) {
+            const dgt = key - 48;
+            cnt = append_long_digit(cnt, dgt);
+            if (cnt < 0) cnt = 0;
+            else if (maxcount > 0 && cnt > maxcount) cnt = maxcount;
+            showzero = (key === 48);
         } else if (key === 8 || key === 127) {
-            if (!cnt) {
-                game.context.command_count = 0;
-                return key;
-            }
+            if (!cnt && !echoalways) break;
             showzero = false;
             cnt = Math.trunc(cnt / 10);
             backspaced = true;
         } else if (key === 27) {
-            game.context.command_count = 0;
-            return key;
-        } else {
-            game.context.command_count = cnt;
-            return key;
+            break;
+        } else if (!allowchars
+                   || allowchars.includes(String.fromCharCode(key))) {
+            box.n = cnt;
+            break;
         }
 
-        // C: cnt > 9 || backspaced → clear + "Count: N"
-        if (cnt > 9 || backspaced) {
+        if (cnt > 9 || backspaced || echoalways) {
             clear_nhwindow_message();
-            const qbuf = (backspaced && !cnt && !showzero)
-                ? 'Count: '
-                : `Count: ${cnt}`;
+            let qbuf;
+            if (backspaced && !cnt && !showzero) {
+                qbuf = 'Count: ';
+            } else {
+                qbuf = `Count: ${cnt}`;
+                backspaced = false;
+            }
             game._pending_message = qbuf;
             await flush_screen(1);
-            const disp = game.nhDisplay;
-            if (disp?.setCursor) disp.setCursor(qbuf.length, 0);
-            backspaced = false;
+            game.nhDisplay?.setCursor?.(qbuf.length, 0);
         }
     }
+
+    if (historicmsg || (conditionalmsg && box.n !== first)) {
+        putmsghistory(`Count: ${box.n} ${key2txt(key)}`, false);
+    }
+
+    return key;
 }
 
 /**
@@ -1672,6 +1978,7 @@ function rhack_repeat_command(ch, key) {
     case 'A': return doddoremarm;
     case 'c': return doclose;
     case 'd': return dodrop;
+    case 'D': return doddrop;
     case 'e': return doeat;
     case 'E': return doengrave;
     case 'f': return dofire;
@@ -1747,7 +2054,8 @@ function rhack_repeat_txt(ch, key) {
     if (key === 23) return 'wizwish';
     if (key === 24) return 'attributes';
     const byCh = {
-        a: 'apply', A: 'takeoffall', c: 'close', d: 'drop', e: 'eat',
+        a: 'apply', A: 'takeoffall', c: 'close', d: 'drop', D: 'droptype',
+        e: 'eat',
         E: 'engrave', f: 'fire', i: 'inventory', o: 'open', p: 'pay',
         P: 'puton', q: 'quaff', Q: 'quiver', r: 'read', s: 'search',
         S: 'save', t: 'throw', T: 'takeoff', w: 'wield', W: 'wear',
@@ -1897,7 +2205,10 @@ export async function rhack(key) {
         await flush_screen(1);
         if (!game.context) game.context = {};
         game.context.command_count = 0;
-        key = await get_count();
+        // C parse: get_count(NULL, '\0', LARGEST_INT, &gc.command_count, GC_NOFLAGS)
+        const cntbox = { n: 0 };
+        key = await get_count(null, 0, LARGEST_INT, cntbox, GC_NOFLAGS);
+        game.context.command_count = cntbox.n;
         clear_nhwindow_message();
         if (key === 27) {
             // C: ESC → reset_cmd_vars(TRUE) (PREFIXCMD cancel via Esc)
@@ -1975,8 +2286,8 @@ export async function rhack(key) {
     // reads it to call doset; ^T→dotelecmd m-prefix menu D-1209; #→doextcmd
     // then the resolved extcmd's own flag, D-1230). Drop only when the next
     // command rejects 'm'.
-    // Named omission: full accept_menu_prefix table — O/,/e/q/a/s/p/>/< /^T /#
-    // + seeweapon/seearmor/seerings/seeamulet/seetools/seeall (D-1589).
+    // Named omission: full rhack-key accept_menu_prefix table.
+    // Typed # uses EXTCMDLIST CMD_M_PREFIX (D-1605 #seeall). Keys )[="(* D-1589.
     const accepts_m_prefix = ch === 'O' || ch === ',' || ch === 'e'
         || ch === 'q' || ch === 'a' || ch === 's' || ch === 'p'
         || ch === '>' || ch === '<'
@@ -2183,6 +2494,11 @@ export async function rhack(key) {
     } else if (ch === 'd') {
         // C ref: do.c dodrop — drop an item
         const dropRes = await dodrop();
+        game.context.move = (dropRes & ECMD_TIME) ? 1 : 0;
+        if (dropRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'D') {
+        // C ref: do.c doddrop / cmd.c 'D' droptype
+        const dropRes = await doddrop();
         game.context.move = (dropRes & ECMD_TIME) ? 1 : 0;
         if (dropRes & ECMD_TIME) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'T') {

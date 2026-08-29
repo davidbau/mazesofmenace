@@ -13,10 +13,14 @@ import {
     ARM,
     BLINDED,
     BLND_RES,
+    BZ_OFS_AD,
+    BZ_U_BREATH,
     COLD_RES,
     DISINT_RES,
     DRAIN_RES,
+    ECMD_CANCEL,
     ECMD_OK,
+    ECMD_TIME,
     EYE,
     FEMALE,
     FINGER,
@@ -34,6 +38,7 @@ import {
     HANDED,
     HEAD,
     I_SPECIAL,
+    In_endgame,
     INVIS,
     INFRAVISION,
     LEG,
@@ -72,8 +77,10 @@ import { game } from './gstate.js';
 import { mungspaces } from './hacklib.js';
 import {
     attacktype,
+    attacktype_fordmg,
     breakarm,
     can_be_strangled,
+    can_breathe,
     could_twoweap,
     dmgtype,
     dmgtype_fromattack,
@@ -118,18 +125,33 @@ import { useup } from './invent.js';
 import { getlin } from './windows.js';
 import { ttyPline } from './tty_message.js';
 import { set_utrap, reset_utrap } from './trap.js';
-import { make_blinded } from './potion.js';
+import { make_blinded, make_glib } from './potion.js';
 import { spoteffects } from './hack.js';
-import { cantwield, untwoweapon } from './wield.js';
+import { cantwield, untwoweapon, uwepgone, uswapwepgone } from './wield.js';
 import { _doWearInternals } from './do_wear.js';
-import { Is_dragon_armor, remove_object } from './obj.js';
+import { Is_dragon_armor, is_sword, remove_object } from './obj.js';
+import { makeplural } from './fruit.js';
+import { weapon_descr } from './weapon.js';
 import {
     AMULET_OF_STRANGULATION,
     CORPSE,
     MUMMY_WRAPPING,
 } from './objects.js';
 import * as M from './monsters.js';
-import { rn1, rn2, rnd, d } from './rng.js';
+import { rn1, rn2, rnd, rne, rnl, d } from './rng.js';
+import { getdir } from './cmd.js';
+import { ubuzz, ubreatheu } from './zap.js';
+
+// Boundary error for polyself branches that fall outside the current goal.
+// failClosedCommand() in cmd.js converts this to an
+// UnsupportedHeroCommandBranchBoundaryError, which the scorer keeps as a
+// graceful stop rather than a session crash.
+export class UnsupportedPolyselfError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'UnsupportedPolyselfError';
+    }
+}
 
 function uprop(state, index) {
     const property = state.u?.uprops?.[index];
@@ -353,7 +375,7 @@ function haseyes(mdat) {
 // reaches this because uskin is null. The full implementation belongs in a
 // later slice that ports dragon-armor merging.
 function armor_to_dragon(_otyp) {
-    throw new Error('armor_to_dragon is not ported');
+    throw new UnsupportedPolyselfError('armor_to_dragon is not ported');
 }
 
 // ---------- uasmon_maxStr ----------------------------------------------
@@ -440,13 +462,13 @@ async function break_armor(state) {
             // end_burn, Armor_gone, useup — the armor destruction path
             // is not exercised by the gnome case (gnome is sliparm, not
             // breakarm). Throw if reached.
-            throw new Error('break_armor: breakarm body armor path not ported');
+            throw new UnsupportedPolyselfError('break_armor: breakarm body armor path not ported');
         }
         if ((otmp = state.uarmc) != null) {
-            throw new Error('break_armor: breakarm cloak path not ported');
+            throw new UnsupportedPolyselfError('break_armor: breakarm cloak path not ported');
         }
         if (state.uarmu) {
-            throw new Error('break_armor: breakarm shirt path not ported');
+            throw new UnsupportedPolyselfError('break_armor: breakarm shirt path not ported');
         }
     } else if (sliparm(uptr)) {
         if ((otmp = state.uarm) != null) {
@@ -485,23 +507,23 @@ async function break_armor(state) {
     if (has_horns(uptr)) {
         if ((otmp = state.uarmh) != null) {
             // cancel_don, Helmet_off, dropp — not exercised for gnome
-            throw new Error('break_armor: horned helmet removal not ported');
+            throw new UnsupportedPolyselfError('break_armor: horned helmet removal not ported');
         }
     }
     // nohands or verysmall — gloves, shield, helmet
     if (nohands(uptr) || verysmall(uptr)) {
         if ((otmp = state.uarmg) != null) {
-            throw new Error(
+            throw new UnsupportedPolyselfError(
                 'break_armor: nohands/verysmall gloves removal not ported',
             );
         }
         if ((otmp = state.uarms) != null) {
-            throw new Error(
+            throw new UnsupportedPolyselfError(
                 'break_armor: nohands/verysmall shield removal not ported',
             );
         }
         if ((otmp = state.uarmh) != null) {
-            throw new Error(
+            throw new UnsupportedPolyselfError(
                 'break_armor: nohands/verysmall helmet removal not ported',
             );
         }
@@ -511,7 +533,7 @@ async function break_armor(state) {
         || slithy(uptr) || uptr.mlet === M.S_CENTAUR) {
         if ((otmp = state.uarmf) != null) {
             // cancel_don, Boots_off, dropp — not exercised for gnome
-            throw new Error('break_armor: boots removal not ported');
+            throw new UnsupportedPolyselfError('break_armor: boots removal not ported');
         }
     }
     // headless — eyewear
@@ -519,22 +541,78 @@ async function break_armor(state) {
     // skip for gnome; throw if hit
     const has_head = !((uptr?.mflags1 ?? 0) & M.M1_NOHEAD);
     if ((otmp = state.ublindf) != null && !has_head) {
-        throw new Error('break_armor: headless eyewear removal not ported');
+        throw new UnsupportedPolyselfError('break_armor: headless eyewear removal not ported');
     }
 }
 
 // ---------- drop_weapon ------------------------------------------------
 // C ref: polyself.c drop_weapon() (1304-1361). Force the hero to drop
-// weapons if the new form cannot wield them. For the gnome case with
-// alone=1, cantwield is false for a gnome (humanoid hands), so this is a
-// no-op except for the untwoweapon check.
+// weapons if the new form cannot wield them.  For the dragon case with
+// alone=1, cantwield(dragon) is true (nohands), so the hero drops the
+// wielded weapon.  For the gnome case, cantwield is false (humanoid
+// hands), so this falls through to the untwoweapon check.
 async function drop_weapon(alone, state) {
     if (state.uwep) {
+        // alone=0 when called from break_armor alongside glove removal;
+        // alone=1 when called directly from polymon.
         if (!alone || cantwield(state.youmonst.data)) {
-            // The "You find you must drop your weapon!" path.
-            // Gnome has humanoid hands; cantwield is false.
-            // This path needs uwepgone/uswapwepgone which are unported.
-            throw new Error('drop_weapon: forced weapon drop not ported');
+            const candropwep = await canletgo(state.uwep, '', state);
+            const candropswapwep = !state.u.twoweap
+                || await canletgo(state.uswapwep, '', state);
+            let updateinv = true;
+
+            if (alone) {
+                // Build the "You find you must drop your <weapon>!" message.
+                const what = (candropwep && candropswapwep) ? 'drop' : 'release';
+                let which = is_sword(state.uwep, state)
+                    ? 'sword' : weapon_descr(state.uwep, state);
+                if (state.u.twoweap) {
+                    const whichtoo = is_sword(state.uswapwep, state)
+                        ? 'sword' : weapon_descr(state.uswapwep, state);
+                    if (which !== whichtoo)
+                        which = 'weapon';
+                }
+                if (state.uwep.quan !== 1 || state.u.twoweap)
+                    which = makeplural(which);
+                // C: the_your[!!strncmp(which, "corpse", 6)] — "your" unless
+                // the descriptor starts with "corpse".
+                const theYour = which.startsWith('corpse') ? 'the' : 'your';
+                await ttyPline(
+                    `You find you must ${what} ${theYour} ${which}!`, state,
+                );
+            }
+            // Drop swap weapon first (if twoweap).
+            if (state.u.twoweap) {
+                const otmp = state.uswapwep;
+                uswapwepgone({ state });
+                if (otmp.in_use)
+                    updateinv = false;
+                else if (candropswapwep)
+                    await dropx(otmp, {
+                        state,
+                        hooks: {
+                            newsym,
+                            encumberMessage: encumber_msg,
+                            extractExternalObject: remove_object,
+                        },
+                    });
+            }
+            // Drop primary weapon.
+            const otmp = state.uwep;
+            uwepgone({ state });
+            if (otmp.in_use)
+                updateinv = false;
+            else if (candropwep)
+                await dropx(otmp, {
+                    state,
+                    hooks: {
+                        newsym,
+                        encumberMessage: encumber_msg,
+                        extractExternalObject: remove_object,
+                    },
+                });
+            if (updateinv)
+                update_inventory({ state });
         } else if (!could_twoweap(state.youmonst.data)) {
             await untwoweapon(state);
         }
@@ -663,23 +741,26 @@ export async function polymon(mntmp, state = game) {
 
     await check_strangling(false, state); // maybe stop strangling
 
-    if (nohands(state.youmonst.data)) {
-        // make_glib(0) — not exercised for gnome (gnome has hands)
-    }
+    if (nohands(state.youmonst.data))
+        make_glib(0, state);
 
-    // HP for new form
+    // HP for new form.  C ref: polyself.c:858-871.
+    // Dragon (adult, mntmp >= PM_GRAY_DRAGON): endgame 8*mlvl, else 4*mlvl+d(mlvl,4).
+    // Golem: golemhp(). Other: d(mlvl,8) or rnd(4) if mlvl==0, tripled
+    // for a home elemental.
     const mlvl = mdat.mlevel;
     if (mdat.mlet === M.S_DRAGON && mntmp >= M.PM_GRAY_DRAGON) {
-        // dragon HP formula — not exercised for gnome
-        throw new Error('polymon: dragon HP not ported');
+        u.mhmax = In_endgame(u.uz)
+            ? (8 * mlvl)
+            : (4 * mlvl + d(mlvl, 4));
     } else if (mdat.mlet === M.S_GOLEM) {
-        throw new Error('polymon: golem HP not ported');
+        throw new UnsupportedPolyselfError('polymon: golem HP not ported');
     } else {
         if (!mlvl)
             u.mhmax = rnd(4);
         else
             u.mhmax = d(mlvl, 8);
-        // is_home_elemental — not exercised for gnome
+        // is_home_elemental — not exercised for gnome or dragon
     }
     u.mh = u.mhmax;
 
@@ -725,12 +806,35 @@ export async function polymon(mntmp, state = game) {
     if (!state.uarmg)
         await selftouch('No longer petrify-resistant, you', state);
 
-    // verbose hints — which #monster commands to use
+    // verbose hints — which #monster commands to use.
+    // C ref: polyself.c:1031-1069.  Each hint is a separate pline(); the
+    // checks are independent (a form can match several).  The dragon case
+    // reaches only the can_breathe() hint.  Remaining checks (is_were,
+    // gremlin, unicorn, mind_flayer, shriek, vampire, eggs) are included
+    // only when the predicate is already imported; forms that satisfy an
+    // unported predicate simply skip that hint.
     if (state.flags.verbose) {
-        // Use the command #monster to ... — these hints tell the player
-        // what special actions the new form can do. For gnome, none of
-        // these apply (no breath, spit, nymph, gaze, hide, web, were,
-        // gremlin, unicorn, mind flayer, shriek, vampire, or egg).
+        // C uses static format: "Use the command #%s to %s."
+        const hint = (cmd, action) =>
+            `Use the command #${cmd} to ${action}.`;
+        const uptr = state.youmonst.data;
+
+        if (can_breathe(uptr))
+            await ttyPline(hint('monster', 'use your breath weapon'), state);
+        if (attacktype(uptr, M.AT_SPIT))
+            await ttyPline(hint('monster', 'spit venom'), state);
+        if (uptr.mlet === M.S_NYMPH)
+            await ttyPline(hint('monster', 'remove an iron ball'), state);
+        if (attacktype(uptr, M.AT_GAZE))
+            await ttyPline(hint('monster', 'gaze at monsters'), state);
+        // is_hider/hides_under + webmaker: not imported (gnome/dragon skip)
+        // is_were: not imported (gnome/dragon skip)
+        // PM_GREMLIN: no match for gnome or dragon
+        // is_unicorn: not imported (gnome/dragon skip)
+        // is_mind_flayer: not imported (gnome/dragon skip)
+        // MS_SHRIEK: not imported (gnome/dragon skip)
+        // is_vampire/is_vampshifter: dragon is neither
+        // lays_eggs: not imported for this path (gnome/dragon skip)
     }
 
     return 1;
@@ -797,7 +901,7 @@ export async function polyself(psflags, state = game) {
                 // name_to_mon, so this path is not taken.
                 monclass = 0; // placeholder
                 if (monclass && mntmp === NON_PM) {
-                    throw new Error(
+                    throw new UnsupportedPolyselfError(
                         'polyself: name_to_monclass/mkclass_poly not ported',
                     );
                 }
@@ -826,7 +930,7 @@ export async function polyself(psflags, state = game) {
                         "You can't polymorph into any of those.", state,
                     );
             } else if (iswere /* && were_beastie etc */) {
-                throw new Error('polyself: iswere path not ported');
+                throw new UnsupportedPolyselfError('polyself: iswere path not ported');
             } else if (!polyok(state.mons[mntmp])
                        && !(mntmp === M.PM_HUMAN
                             || (your_race(state.mons[mntmp], state)
@@ -847,12 +951,12 @@ export async function polyself(psflags, state = game) {
         // draconian merge — not exercised for gnome
         // isvamp do_vampyr — not exercised for gnome
     } else if (draconian || iswere || isvamp) {
-        throw new Error('polyself: draconian/iswere/isvamp path not ported');
+        throw new UnsupportedPolyselfError('polyself: draconian/iswere/isvamp path not ported');
     }
 
     if (mntmp < M.LOW_PM) {
         // random monster selection
-        throw new Error('polyself: random monster selection not ported');
+        throw new UnsupportedPolyselfError('polyself: random monster selection not ported');
     }
 
     // sex_change_ok++ / polyok / rn2(5) / your_race gate
@@ -861,7 +965,7 @@ export async function polyself(psflags, state = game) {
     if (!polyok(state.mons[mntmp]) || (!forcecontrol && !rn2(5))
         || your_race(state.mons[mntmp], state)) {
         // newman() — not ported
-        throw new Error('polyself: newman() not ported');
+        throw new UnsupportedPolyselfError('polyself: newman() not ported');
     } else {
         await polymon(mntmp, state);
     }
@@ -1059,4 +1163,42 @@ export function mbodypart(monster, part) {
     if (species.mlet === M.S_FUNGUS) return FUNGUS_PARTS[part];
     if (humanoid(species)) return HUMANOID_PARTS[part];
     return ANIMAL_PARTS[part];
+}
+
+// C ref: polyself.c dobreathe() (1420-1447). The poly'd hero's breath weapon,
+// reached from domonability() when can_breathe(youmonst.data) is true.
+// Checks Strangled and energy, spends 15 Pw, calls getdir(), then either
+// ubreatheu() (self-targeted) or ubuzz() (directional breath).
+export async function dobreathe(state = game) {
+    // polyself.c:1425-1428 Strangled guard
+    if (state.u.uprops[STRANGLED].intrinsic) {
+        await ttyPline("You can't breathe.  Sorry.", state);
+        return ECMD_OK;
+    }
+    // polyself.c:1429-1432 energy guard
+    if (state.u.uen < 15) {
+        await ttyPline("You don't have enough energy to breathe!", state);
+        return ECMD_OK;
+    }
+    state.u.uen -= 15;
+    state.disp.botl = true;
+
+    if (!await getdir(null, state))
+        return ECMD_CANCEL;
+
+    const mattk = attacktype_fordmg(
+        state.youmonst.data, M.AT_BREA, M.AD_ANY,
+    );
+    if (!mattk) {
+        // C: impossible("bad breath attack?");
+        throw new Error('impossible: bad breath attack?');
+    } else if (!state.u.dx && !state.u.dy && !state.u.dz) {
+        await ubreatheu(mattk, state, { d, rn1, rn2, rnd, rne, rnl });
+    } else {
+        await ubuzz(
+            BZ_U_BREATH(BZ_OFS_AD(mattk.adtyp)), mattk.damn,
+            state, { d, rn1, rn2, rnd, rne, rnl },
+        );
+    }
+    return ECMD_TIME;
 }

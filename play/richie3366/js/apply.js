@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, canseemon, canspotmon, newsym,
+    flush_screen, flush_topl_more, pline, pline_mon, canseemon, canspotmon, newsym,
     map_invisible, unmap_invisible, glyph_is_invisible, You_feel, sensemon,
     verbalize, mon_visible, tp_sensemon, see_with_infrared, tmp_at,
     set_msg_xy,
@@ -590,9 +590,10 @@ function poly_gender() {
 }
 
 /**
- * C apply.c beautiful — CHA adjective for mirror self-look.
+ * C apply.c beautiful — CHA adjective for mirror self-look
+ * and do_name.c do_mgivenname hero-cell refuse.
  */
-function beautiful() {
+export function beautiful() {
     const cha = acurr(A_CHA);
     if (cha >= 25) return 'sublime';
     if (cha >= 19) return 'splendorous';
@@ -1434,7 +1435,7 @@ export function get_mleash(mtmp) {
 
 /**
  * C ref: apply.c o_unleash — clear mleashed on mon matching leashmon.
- * Named omit: update_inventory redraw.
+ * Always update_inventory (C `:721`); perm_invent no-op when !in_moveloop.
  */
 export function o_unleash(otmp) {
     if (!otmp) return;
@@ -1448,17 +1449,22 @@ export function o_unleash(otmp) {
         }
     }
     otmp.leashmon = 0;
+    update_inventory();
 }
 
 /**
- * C ref: apply.c m_unleash — clear leashmon + mleashed; optional feedback.
- * Named omit: update_inventory redraw; pline_mon SetVoice.
+ * C ref: apply.c m_unleash `:725–742` — optional feedback, then
+ * get_mleash leashmon=0 + update_inventory, then mleashed=0.
+ * FALSE (m_detach / check_leash snap / dogmove ALLOW_U) has no pline so
+ * sync callers may invoke without await. SetVoice is a no-op without
+ * SND_LIB (pline_mon is set_msg_xy + pline).
  */
 export async function m_unleash(mtmp, feedback) {
     if (!mtmp) return;
     if (feedback) {
         if (canseemon(mtmp)) {
-            await pline(
+            await pline_mon(
+                mtmp,
                 `${Monnam(mtmp)} pulls free of ${mhis_leash(mtmp)} leash!`,
             );
         } else {
@@ -1466,7 +1472,10 @@ export async function m_unleash(mtmp, feedback) {
         }
     }
     const otmp = get_mleash(mtmp);
-    if (otmp) otmp.leashmon = 0;
+    if (otmp) {
+        otmp.leashmon = 0;
+        update_inventory();
+    }
     mtmp.mleashed = 0;
 }
 
@@ -1512,6 +1521,7 @@ async function mleashed_next2u(mtmp) {
         if (otmp.cursed) return true;
         mtmp.mleashed = 0;
         otmp.leashmon = 0;
+        update_inventory();
         await You_feel(
             `${number_leashed() > 1 ? 'a' : 'the'} leash go slack.`,
         );
@@ -1657,6 +1667,7 @@ async function use_leash_core(obj, mtmp, cc, spotmon) {
             mtmp.mleashed = 1;
             obj.leashmon = mtmp.m_id | 0;
             mtmp.msleeping = 0;
+            update_inventory();
         }
     } else if ((obj.leashmon | 0) !== (mtmp.m_id | 0)) {
         await pline('This leash is not attached to that creature.');
@@ -1666,6 +1677,7 @@ async function use_leash_core(obj, mtmp, cc, spotmon) {
     } else {
         mtmp.mleashed = 0;
         obj.leashmon = 0;
+        update_inventory();
         await pline(
             `You remove the leash from ${spotmon ? 'your ' : ''}${l_monnam(mtmp)}.`,
         );
@@ -2346,8 +2358,9 @@ async function getobj_grease() {
 /**
  * C ref: apply.c use_grease — Glib / cursed|Fumbling slip dropx; getobj
  * target; hands make_glib rn1(11,5); object greased + cursed && !nohands
- * glib rn1(6,10); empty known/seem. Named omit: update_inventory;
- * pickinv handsbuf.
+ * glib rn1(6,10); empty known/seem. consume_obj_charge known
+ * update_inventory is D-1615. Named omit: trailing update_inventory
+ * (`:2652`, empty-can path); pickinv handsbuf.
  * @returns {number} ECMD_*
  */
 export async function use_grease(obj) {

@@ -1,24 +1,32 @@
 // minion.js — Demon/angel summon helpers (partial).
 // C ref: minion.c msummon / ndemon / dlord / dprince / llord /
-//         monster_census / lminion / summon_minion; mondata.c msummon_environ.
+//         monster_census / lminion / summon_minion / lose_guardian_angel /
+//         gain_guardian_angel; mondata.c msummon_environ.
 
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
-import { pline, canseemon, verbalize, You_feel } from './display.js';
+import { rn2, rn1, rnd, d } from './rng.js';
+import { pline, canseemon, canspotmon, verbalize, You_feel, newsym, impossible } from './display.js';
 import { Monnam } from './do_name.js';
 import { an } from './objnam.js';
-import { makemon, mkclass, mkclass_aligned, newemin } from './makemon.js';
-import { is_lminion } from './teleport.js';
+import { makemon, mkclass, mkclass_aligned, newemin, mongets, mpickobj } from './makemon.js';
+import { is_lminion, enexto } from './teleport.js';
+import { mongone } from './mon.js';
+import { select_hwep } from './weapon.js';
+import { which_armor, m_dowear } from './worn.js';
+import { bless, mksobj } from './mkobj.js';
+import { Hear_again } from './eat.js';
+import { mk_roamer } from './mklev.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import {
     mons, is_demon, is_ndemon, is_dlord, is_dprince, is_lord, G_UNIQ,
 } from './monsters.js';
 import {
     NON_PM, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, G_GONE, MM_EMIN, MM_NOMSG,
-    GEHENNOM, In_endgame, STRAT_APPEARMSG,
+    GEHENNOM, In_endgame, STRAT_APPEARMSG, W_ARMS,
 } from './const.js';
 import { ART_DEMONBANE } from './generated/artifacts_data.js';
 import { monsterNames } from './generated/monsters_data.js';
+import { objectNames } from './generated/objects_data.js';
 import { align_gname } from './roles.js';
 
 const PM_WATER_DEMON = monsterNames.indexOf('PM_WATER_DEMON');
@@ -49,6 +57,9 @@ const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
 const PM_GUARD = monsterNames.indexOf('PM_GUARD');
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+const SILVER_SABER = objectNames.indexOf('SILVER_SABER');
+const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
+const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
 
 /** C: minion.c elementals[] — four basic elementals. */
 const ELEMENTALS = [
@@ -398,4 +409,124 @@ export async function msummon(mon) {
 
     if (result) result = monster_census(false) - census;
     return result;
+}
+
+/**
+ * C ref: minion.c lose_guardian_angel `:467–494`.
+ * If `mon` is live, rebuke (or Deaf vanish) then mongone. Then 2–4
+ * hostile `mk_roamer` angels (`rn1(3, 2)`). Callers:
+ * `gain_guardian_angel` Conflict passes null (D-1608);
+ * `dogmove.c` `dog_move` Conflict `!edog` (D-1617).
+ * @param {object|null} mon
+ */
+export async function lose_guardian_angel(mon) {
+    const u = game.u || {};
+    if (mon) {
+        if (canspotmon(mon)) {
+            // C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf
+            const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
+                || u.uroleplay?.deaf || u.Deaf);
+            if (!deaf) {
+                await pline(`${Monnam(mon)} rebukes you, saying:`);
+                // SetVoice no-op without SND_LIB (sndprocs.h)
+                await verbalize('Since you desire conflict, have some more!');
+            } else {
+                await pline(`${Monnam(mon)} vanishes!`);
+            }
+        }
+        await mongone(mon);
+    }
+    /* create 2 to 4 hostile angels to replace the lost guardian */
+    for (let i = rn1(3, 2); i > 0; --i) {
+        const mm = { x: u.ux | 0, y: u.uy | 0 };
+        if (enexto(mm, mm.x, mm.y, mons(PM_ANGEL))) {
+            mk_roamer(mons(PM_ANGEL), u.ualign?.type | 0, mm.x, mm.y, false);
+        }
+    }
+}
+
+/**
+ * C ref: minion.c gain_guardian_angel `:497–565`.
+ * Caller do.c final_level `:2052` after create_mplayers (Astral
+ * madeNew). Hear_again first; Conflict → hostiles; else fervent
+ * (ualign.record > 8) named angel. mtame=10 only if pets conduct
+ * already broken — C does not call tamedog (no edog).
+ * Named: SetVoice pitch; ACH_ASTR.
+ * dog_move Conflict caller is D-1617. reset_hostility is D-1616.
+ */
+export async function gain_guardian_angel() {
+    Hear_again(); /* attempt to cure any deafness now (divine
+                     message will be heard even if that fails) */
+    const u = game.u || {};
+    const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
+        || u.uroleplay?.deaf || u.Deaf);
+    if (u.HConflict || u.EConflict) {
+        if (!deaf) {
+            await pline('A voice booms:');
+        } else {
+            await You_feel('a booming voice:');
+        }
+        // SetVoice((struct monst *) 0, 0, 80, voice_deity) — no-op
+        await verbalize('Thy desire for conflict shall be fulfilled!');
+        /* send in some hostile angels instead */
+        await lose_guardian_angel(null);
+    } else if ((u.ualign?.record | 0) > 8) { /* fervent */
+        if (!deaf) {
+            await pline('A voice whispers:');
+        } else {
+            await You_feel('a soft voice:');
+        }
+        // SetVoice no-op without SND_LIB
+        await verbalize('Thou hast been worthy of me!');
+        const mm = { x: u.ux | 0, y: u.uy | 0 };
+        if (enexto(mm, mm.x, mm.y, mons(PM_ANGEL))) {
+            const mtmp = mk_roamer(
+                mons(PM_ANGEL), u.ualign?.type | 0, mm.x, mm.y, true,
+            );
+            if (mtmp) {
+                mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_APPEARMSG;
+                /* guardian angel — the one case mtame doesn't imply an
+                 * edog structure, so we don't want to call tamedog().
+                 * Too nasty to unexpectedly break petless conduct on the
+                 * final level. The angel will still appear, but won't
+                 * be tamed. */
+                if ((u.uconduct?.pets | 0) !== 0) {
+                    mtmp.mtame = 10;
+                    u.uconduct.pets = (u.uconduct.pets | 0) + 1;
+                }
+                /* for 'hilite_pet'; after making tame, before next message */
+                newsym(mtmp.mx, mtmp.my);
+                const blind = !!(u.uroleplay?.blind
+                    || (((u.HBlinded | 0) || (u.EBlinded | 0))
+                        && !(u.BBlinded | 0)));
+                if (!blind) {
+                    await pline('An angel appears near you.');
+                } else {
+                    await You_feel(
+                        'the presence of a friendly angel near you.',
+                    );
+                }
+                /* make him strong enough vs. endgame foes */
+                mtmp.m_lev = rn1(8, 15);
+                mtmp.mhp = mtmp.mhpmax =
+                    d(mtmp.m_lev | 0, 10) + 30 + rnd(30);
+                let otmp = select_hwep(mtmp);
+                if (!otmp) {
+                    otmp = mksobj(SILVER_SABER, false, false);
+                    if (mpickobj(mtmp, otmp)) {
+                        await impossible('merged weapon?');
+                    }
+                }
+                bless(otmp);
+                if ((otmp.spe | 0) < 4) {
+                    otmp.spe = (otmp.spe | 0) + rnd(4);
+                }
+                const arms = which_armor(mtmp, W_ARMS);
+                if (!arms || (arms.otyp | 0) !== SHIELD_OF_REFLECTION) {
+                    mongets(mtmp, AMULET_OF_REFLECTION);
+                    m_dowear(mtmp, true);
+                }
+            }
+        }
+    }
 }

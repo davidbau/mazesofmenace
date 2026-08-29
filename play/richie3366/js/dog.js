@@ -17,8 +17,9 @@ import {
     MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS,
     MIGR_PORTAL, MIGR_WITH_HERO, MIGR_LEFTOVERS, MON_MIGRATING, MON_LIMBO,
     STRAT_ARRIVE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, isok, MTSZ, MANFOOD,
-    DOGFOOD, ACCFOOD, FULL_MOON, Upolyd, has_edog, EDOG,
+    DOGFOOD, ACCFOOD, FULL_MOON, Upolyd, has_edog, EDOG, LL_CONDUCT,
     DF_ALL, COLNO, ROWNO, ROOMOFFSET, IS_WALL,
+    DISMOUNT_THROWN,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { is_pool, in_rooms } from './hack.js';
@@ -31,16 +32,18 @@ import {
     PM_RANGER,
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
-import { christen_monst, Monnam } from './do_name.js';
+import { christen_monst, Monnam, mon_pmname } from './do_name.js';
 import { monnear, m_at, see_monster_closeup, minliquid, restore_cham, wake_nearto } from './mon.js';
 import { enexto, rloc_to, rloc, rloc_to_flag, goodpos } from './teleport.js';
-import { put_saddle_on_mon } from './steed.js';
+import { put_saddle_on_mon, dismount_steed } from './steed.js';
 import { newsym, pline, pline_mon, canspotmon, canseemon, Hallucination } from './display.js';
 import { redraw_worm } from './worm.js';
 import { hero_conflict } from './mondata.js';
 import { cansee } from './vision.js';
 import { night } from './calendar.js';
-import { Tobjnam, the, xname } from './objnam.js';
+import { Tobjnam, the, xname, an } from './objnam.js';
+import { livelog_printf } from './pline.js';
+import { uhis } from './roles.js';
 import { objectNames } from './generated/objects_data.js';
 import { expels, unstuck } from './mhitu.js';
 import { sticks } from './engrave.js';
@@ -78,6 +81,22 @@ function pet_type() {
     return rn2(2) ? PM_KITTEN : PM_LITTLE_DOG;
 }
 
+/**
+ * C ref: dog.c free_edog `:34–42` — if mextra && EDOG, drop the edog
+ * pointer then mtame=0. C has no in-tree callers (extern.h + sfctool
+ * stub); dealloc_mextra frees edog inline without clearing mtame.
+ * JS also clears the top-level mtmp.edog mirror that dogmove/sounds
+ * still read. Restore newedog is restmon_edog (makemon.js).
+ */
+export function free_edog(mtmp) {
+    if (!mtmp) return;
+    if (mtmp.mextra && EDOG(mtmp)) {
+        mtmp.mextra.edog = null;
+    }
+    mtmp.edog = null;
+    mtmp.mtame = 0;
+}
+
 // C ref: dog.c initedog() — EDOG(mtmp) already allocated (newedog / MM_EDOG).
 export function initedog(mtmp, everything) {
     const edogp = EDOG(mtmp);
@@ -96,7 +115,8 @@ export function initedog(mtmp, everything) {
         // C: ACURR(A_CHA) at makedog — before init_attr, clamps to 3
         edogp.apport = acurr(A_CHA);
         edogp.whistletime = 0;
-        edogp.ogoal = { x: 0, y: 0 }; // C: ogoal.x==-1; JS dog_goal still 0 unset
+        // C: ogoal.x/y = -1 — force error if used before set
+        edogp.ogoal = { x: -1, y: -1 };
         edogp.abuse = 0;
         edogp.revivals = 0;
         edogp.mhpmax_penalty = 0;
@@ -107,9 +127,14 @@ export function initedog(mtmp, everything) {
     if ((edogp.hungrytime || 0) < minhungry) edogp.hungrytime = minhungry;
     // dogmove/sounds still read mtmp.edog
     mtmp.edog = edogp;
-    // C: u.uconduct.pets++ (livelog only when !pets && in_moveloop — deferred)
+    // C: livelog first pet only if !pets && in_moveloop (starting pet
+    // is initialized before in_moveloop); then always u.uconduct.pets++
     if (!game.u) game.u = {};
     if (!game.u.uconduct) game.u.uconduct = {};
+    if (!(game.u.uconduct.pets | 0) && (game.program_state?.in_moveloop | 0)) {
+        livelog_printf(LL_CONDUCT, 'obtained %s first pet (%s)',
+            uhis(), an(mon_pmname(mtmp)));
+    }
     game.u.uconduct.pets = (game.u.uconduct.pets | 0) + 1;
 }
 
@@ -175,7 +200,7 @@ async function pick_familiar_pm(otmp, quietly) {
  * (otmp null). makemon MM_EDOG|MM_IGNOREWATER|NO_MINVENT|MM_NOMSG + gender;
  * figurine shatter / angel free_emin; pool minliquid; rn2(10) then B/U/C
  * 80/10/10 tame·peace·hostile; named christen; initedog; AT_WEAP wield.
- * Spell dispatch is D-1389. Named omit: livelog first pet.
+ * Spell dispatch is D-1389. initedog livelog is D-1610.
  */
 export async function make_familiar(otmp, x, y, quietly) {
     let mtmp = null;
@@ -519,14 +544,17 @@ export async function tamedog(mtmp, obj, givemsg = true) {
 
 /**
  * C ref: dog.c mon_arrive(With_you) — place accompanying pet near hero.
- * C returns here before MIGR_LEFTOVERS (D-1505 After_you).
+ * C restore_cham `:464` before usteed return / With_you place (PfSC
+ * may differ from when the pet left). C returns here before
+ * MIGR_LEFTOVERS (D-1505 After_you).
  */
-function mon_arrive_with_you(mtmp) {
+async function mon_arrive_with_you(mtmp) {
     const u = game.u;
     if (!game.fmon) game.fmon = [];
     game.fmon.unshift(mtmp);
     mtmp.mux = u.ux;
     mtmp.muy = u.uy;
+    await restore_cham(mtmp);
     if (mtmp === u.usteed) return;
 
     const onSpot = m_at(u.ux, u.uy);
@@ -851,14 +879,15 @@ async function mon_arrive_after_you(mtmp) {
 
 /**
  * C ref: dog.c losedogs — mydogs With_you then migrating_mons After_you
- * (mux/muy match u.uz, xyloc != MIGR_EXACT_XY). Named omissions:
+ * (mux/muy match u.uz, xyloc != MIGR_EXACT_XY). Both arms await
+ * restore_cham (C mon_arrive `:464`). Named omissions:
  * kops dismiss; MIGR_EXACT_XY Before_you; failed_arrivals / m_into_limbo.
  */
 export async function losedogs() {
     const dogs = game.mydogs || [];
     game.mydogs = [];
     for (const mtmp of dogs) {
-        mon_arrive_with_you(mtmp);
+        await mon_arrive_with_you(mtmp);
     }
 
     const uz = game.u?.uz || {};
@@ -937,7 +966,7 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
 
 /**
  * C ref: dog.c wary_dog — pet revive / lifesave tameness gate.
- * Named omit: dismount_steed DISMOUNT_THROWN; pline_mon SetVoice.
+ * Named omit: pline_mon SetVoice.
  */
 export async function wary_dog(mtmp, was_dead) {
     if (!mtmp) return;
@@ -986,7 +1015,9 @@ export async function wary_dog(mtmp, was_dead) {
             const { m_unleash } = await import('./apply.js');
             await m_unleash(mtmp, true);
         }
-        if (game.u?.usteed === mtmp) game.u.usteed = null; // dismount deferred
+        if (game.u?.usteed === mtmp) {
+            await dismount_steed(DISMOUNT_THROWN);
+        }
     } else if (edog) {
         edog.revivals = (edog.revivals | 0) + 1;
         edog.killed_by_u = 0;

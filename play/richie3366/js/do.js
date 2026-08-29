@@ -1,7 +1,7 @@
 // do.js — miscellaneous hero actions from do.c.
 // C ref: do.c — donull, dodown, doup, goto_level (ordinary stairs subset;
 //         Punished unplacebc/placebc D-0915),
-//         cmd_safety_prevention, dodrop/drop/dropx/dropy/dropz,
+// //         cmd_safety_prevention, dodrop/doddrop/drop/dropx/dropy/dropz,
 //         canletgo; flooreffects / boulder_hits_pool (D-0987);
 //         doaltarobj / fire_damage / hot-ground potion (D-0992);
 //         revive_corpse (D-1081 invent/floor rider; D-1212 MINVENT/CONTAINED;
@@ -19,7 +19,7 @@ import {
     W_ACCESSORY, W_SADDLE, W_BALL, W_CHAIN, INVIS, CLAIRVOYANT, LOST_DROPPED,
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
-    VISITED, LFILE_EXISTS, RANGE_LEVEL,
+    VISITED, LFILE_EXISTS, RANGE_LEVEL, REST_LEVELS,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX,
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
     ACH_HELL, ACH_MINE, ACH_SOKO,
@@ -31,12 +31,17 @@ import {
     IS_WATERWALL, IS_ALTAR, is_pit, is_hole, u_at, Has_contents,
     Is_container, Is_waterlevel, Is_airlevel,
     In_quest, In_endgame, In_mines, In_sokoban, Is_rogue_level,
-    Is_astralevel,
+    Is_astralevel, MON_FLOOR,
     PRIMARYSET, ROGUESET,
     ERODE_BURN, EF_DESTROY,
     NHCORE_GETPOS_TIP, NHCORE_ENTER_TUTORIAL, NHCORE_LEAVE_TUTORIAL,
     NUM_NHCORE_CALLS,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST,
+    MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
+    ALL_FINISHED, ALL_TYPES, ALL_TYPES_SELECTED, CHOOSE_ALL,
+    UNPAID_TYPES, JUSTPICKED, INCLUDE_VENOM, PICK_ANY,
+    USE_INVLET, INVORDER_SORT, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
+    BUC_UNKNOWN, SELL_DELIBERATE, SELL_NORMAL,
 } from './const.js';
 import {
     seetrap, t_at, delfloortrap, reset_utrap, water_damage, erode_obj,
@@ -74,7 +79,7 @@ import { record_achievement } from './insight.js';
 import { com_pager } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
 import { save_track, rest_track } from './track.js';
-import { m_at, mnexto, hide_monst, wake_nearto, dist2, kill_genocided_monsters } from './mon.js';
+import { m_at, mnexto, hide_monst, restore_cham, wake_nearto, dist2, kill_genocided_monsters } from './mon.js';
 import { enexto } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
@@ -84,7 +89,7 @@ import {
 } from './hack.js';
 import { place_object, stackobj, weight, delobj, obj_extract_self,
     obj_nexto_xy, obj_meld, pudding_merge_message,
-    save_timers, restore_timers, run_timers,
+    save_timers, restore_timers, run_timers, splitobj,
 } from './mkobj.js';
 import { ship_object, obj_delivery, container_impact_dmg } from './dokick.js';
 import { doname, xname, the, The, vtense, an, yname, corpse_xname, is_plural, otense } from './objnam.js';
@@ -93,15 +98,22 @@ import { revive } from './zap.js';
 import {
     compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
     freeinv_core, getobj_take_count, getobj_apply_count, getobj_from_cmdq,
-    getobj_display_pickinv,
+    getobj_display_pickinv, ggetobj,
 } from './invent.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
-import { pickup } from './pickup.js';
+import {
+    pickup, query_category, query_objlist, add_valid_menu_class,
+    allow_category, allow_all, count_justpicked, find_justpicked,
+} from './pickup.js';
 import { Fumbling } from './attrib.js';
 import {
     welded, setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
-import { setworn, confer_oc_oprop, recalc_telepat_range } from './do_wear.js';
+import {
+    setworn, confer_oc_oprop, recalc_telepat_range, reset_remarm,
+} from './do_wear.js';
+import { bypass_objlist, nxt_unbypassed_obj } from './worn.js';
+import { reset_pick } from './lock.js';
 import { addinv_nomerge } from './u_init.js';
 import {
     is_art, set_artifact_intrinsic,
@@ -115,6 +127,8 @@ import { dismount_steed } from './steed.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
 import { create_mplayers } from './mplayer.js';
+import { gain_guardian_angel } from './minion.js';
+import { reset_hostility } from './priest.js';
 import { bones_include_name } from './bones.js';
 import {
     olfaction, passes_walls, throws_rocks, is_flyer, is_floater,
@@ -1253,18 +1267,22 @@ function rebuildObjectsAt(fobj) {
 }
 
 /**
- * C ref: restore.c getlev — non-bones monster catchup + hide_monst rnd(10).
- * In-memory stash path (no NHFILE). Named omissions: ghostly peace remap,
- * restore_cham, worm/timer/region restore, steed/ustuck mid remap.
+ * C ref: restore.c getlev `:1181–1220` — non-bones monster catchup then
+ * restore_cham then hide_monst rnd(10). In-memory stash path (no NHFILE).
+ * restore_cham is unconditional after the REST_LEVELS continue (C `:1217`).
+ * Named omissions: ghostly peace remap / set_malign; hideunder at
+ * place_monster; worm place_wsegs; steed/ustuck mid remap; JSON
+ * dorecover getlev restore_cham (try_restore_save).
  */
-function getlev_catchup_monsters(elapsed) {
+async function getlev_catchup_monsters(elapsed) {
     const u = game.u;
     const list = game.fmon || [];
+    const restoring = game.program_state?.restoring | 0;
     for (const mtmp of list) {
         // C: if (!u.uz.dlevel || restoring==REST_LEVELS) continue
-        if (!(u?.uz?.dlevel | 0)) continue;
+        if (!(u?.uz?.dlevel | 0) || restoring === REST_LEVELS) continue;
         if (elapsed > 0) mon_catchup_elapsed_time(mtmp, elapsed);
-        // restore_cham deferred
+        await restore_cham(mtmp);
         if (elapsed > 0 && elapsed > rnd(10)) hide_monst(mtmp);
     }
 }
@@ -1273,7 +1291,7 @@ function getlev_catchup_monsters(elapsed) {
  * C ref: do.c goto_level — ordinary stairs + in-memory savelev/getlev.
  *
  * Ported: keepdogs → stash (VISITED|LFILE_EXISTS + omoves + track) →
- * assign uz → mklev or restore stash + getlev catchup + rest_track →
+ * assign uz → mklev or restore stash + getlev catchup/restore_cham + rest_track →
  * stairway_find_from → climb/descend pline (Flying / encumber|Punished|
  * Fumbling fall `rnd(3)` losehp / ordinary) → losedogs →
  * kill_genocided_monsters (D-1190) → run_timers (D-1191) →
@@ -1284,8 +1302,9 @@ function getlev_catchup_monsters(elapsed) {
  * Ported: quest-home gate — on qstart && !newdungeon && !ok_to_quest()
  * → "mysterious force prevents you from descending" (D-0798).
  * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
- * RMPORTAL, endgame `final_level` reset_hostility / gain_guardian_angel /
- * ACH_ENDG/ASTR (create_mplayers live D-1596), migrating-Wizard resurrect arm,
+ * RMPORTAL, endgame ACH_ENDG/ASTR (`final_level` reset_hostility D-1616;
+ * create_mplayers live D-1596; gain_guardian_angel D-1608),
+ * migrating-Wizard resurrect arm,
  * Punished `ballfall` on trap-door falling, W-tower `u_on_rndspot` bit 2
  * (rndspot itself awaits switch_terrain D-1278; stairs u_on_sstairs
  * fallback is D-1287; cmd.c makemap_prepost amulet|wiztower is D-1288),
@@ -1311,6 +1330,25 @@ function getlev_catchup_monsters(elapsed) {
  * hellish_smoke smell/sense smoke + heat/smoke gone (D-0801);
  * temperature_change_msg hot/cold (D-0559).
  */
+
+/**
+ * C ref: do.c final_level `:2042–2053`.
+ * Caller goto_level when `new && on_level(&u.uz, &astral_level)`.
+ * `iter_mons(reset_hostility)` (DEADMONSTER / mon_offmap skip) then
+ * create_mplayers then gain_guardian_angel. Named: ACH_ASTR (C records
+ * it after this returns).
+ */
+async function final_level() {
+    const live = [...(game.fmon || [])];
+    for (const mtmp of live) {
+        if ((mtmp.mhp | 0) < 1) continue; /* DEADMONSTER */
+        if ((mtmp.mstate | 0) !== MON_FLOOR) continue; /* mon_offmap */
+        reset_hostility(mtmp);
+    }
+    create_mplayers(rn1(4, 3), true);
+    await gain_guardian_angel();
+}
+
 export async function goto_level(newlevel, at_stairs, falling, portal) {
     const u = game.u;
     if (!u?.uz) return;
@@ -1505,7 +1543,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // C: familiar = bones_include_name(plname) after first-time mklev
         familiar = bones_include_name(game.plname || '');
     } else {
-        // C: getlev — restore in-memory stash + catchup/hide_monst + rest_track
+        // C: getlev — restore in-memory stash + catchup/restore_cham/hide_monst + rest_track
         // C restore.c Sfi_dest_area updest/dndest after rest_stairs.
         game.level = info.level;
         game.fmon = info.fmon || [];
@@ -1534,7 +1572,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.Sokoban = !!(game.level?.flags?.sokoban_rules
             || game.level?.flags?.sokoban);
         const elapsed = (game.moves | 0) - (info.omoves | 0);
-        getlev_catchup_monsters(elapsed);
+        await getlev_catchup_monsters(elapsed);
     }
 
     await set_uinwater(0); /* C do.c:1716 — after getlev/mklev, before vision_reset */
@@ -1764,9 +1802,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (In_endgame(u.uz)) {
         // ACH_ENDG named omit
         if (madeNew && Is_astralevel(u.uz)) {
-            // C do.c final_level: iter_mons(reset_hostility) named omit
-            create_mplayers(rn1(4, 3), true);
-            // C: gain_guardian_angel(); ACH_ASTR named omit
+            await final_level();
+            // C: record_achievement(ACH_ASTR) named omit
         } else if (newdungeon && (u.uhave?.amulet || u.uhave_amulet)) {
             await resurrect();
         }
@@ -2230,11 +2267,11 @@ async function getobj_drop() {
 
 /**
  * C ref: do.c dodrop — getobj then drop; shop sellobj_state around drop.
- * reset_occupations deferred.
+ * #droptype is doddrop (D-1635). reset_occupations is that path.
  *
  * Branch envelope: ordinary floor drop of invent item including uwep;
- * cancel / missing letter / worn armor reject. Deferred: #droptype,
- * sinks, containers. Count prefix is getobj ALLOWCNT.
+ * cancel / missing letter / worn armor reject. Deferred: sinks,
+ * containers. Count prefix is getobj ALLOWCNT.
  */
 export async function dodrop() {
     const u = game.u || {};
@@ -2255,6 +2292,172 @@ export async function dodrop() {
     const obj = await getobj_drop();
     if (!obj) return ECMD_CANCEL;
     return drop(obj);
+}
+
+/**
+ * C cmd.c reset_occupations `:194–200`.
+ * Callees: do_wear.c reset_remarm, lock.c reset_pick, apply.c reset_trapset.
+ * reset_trapset is latebound: apply.js already imports do.js.
+ */
+async function reset_occupations() {
+    reset_remarm();
+    reset_pick();
+    const { reset_trapset } = await import('./apply.js');
+    reset_trapset();
+}
+
+/**
+ * C do.c menudrop_split `:963–977`.
+ * @param {object} otmp
+ * @param {number} cnt
+ * @returns {Promise<number>}
+ */
+async function menudrop_split(otmp, cnt) {
+    if (cnt && cnt < (otmp.quan || 1)) {
+        if (welded(otmp)) {
+            /* don't split */
+        } else if ((otmp.otyp | 0) === objectNames.indexOf('LOADSTONE')
+            && otmp.cursed) {
+            otmp.corpsenm = cnt | 0;
+        } else {
+            const split = splitobj(otmp, cnt);
+            if (split) otmp = split;
+        }
+    }
+    return drop(otmp);
+}
+
+/**
+ * C do.c menu_drop `:980–1107`.
+ * retry from TRADITIONAL ggetobj `'m'` (-2 all classes / -3 filtered).
+ * MENU_FULL: query_category then autopick / justpicked / query_objlist.
+ * MENU_COMBINATION: ggetobj combo; ALL_FINISHED skips the object list.
+ * Named: ParanoidAutoAll `'A'`+`'a'`; query_objlist INCLUDE_VENOM display;
+ * obj_to_glyph RNG; corpse better_not_try (drop named).
+ * @param {number} retry
+ * @returns {Promise<number>}
+ */
+async function menu_drop(retry) {
+    let nDropped = 0;
+    let allCategories = true;
+    let dropEverything = false;
+    let autopick = false;
+    let dropJustpicked = false;
+    let justpickedQuan = 0;
+
+    const style = game.flags?.menu_style ?? MENU_FULL;
+    if (retry) {
+        allCategories = (retry === -2);
+    } else if (style === MENU_FULL) {
+        allCategories = false;
+        const pickList = await query_category(
+            'Drop what type of items?',
+            game.invent,
+            UNPAID_TYPES | ALL_TYPES | CHOOSE_ALL
+                | BUC_BLESSED | BUC_CURSED | BUC_UNCURSED
+                | BUC_UNKNOWN | JUSTPICKED | INCLUDE_VENOM,
+            PICK_ANY,
+        );
+        if (!pickList.length) {
+            return nDropped ? ECMD_TIME : ECMD_OK;
+        }
+        for (const pick of pickList) {
+            if (pick.a_int === ALL_TYPES_SELECTED) {
+                allCategories = true;
+            } else if (pick.a_int === 'A') {
+                dropEverything = true;
+                autopick = true;
+            } else if (pick.a_int === 'P') {
+                justpickedQuan = Math.max(0, pick.count | 0);
+                dropJustpicked = true;
+                dropEverything = false;
+                add_valid_menu_class(pick.a_int);
+            } else {
+                add_valid_menu_class(pick.a_int);
+                dropEverything = false;
+            }
+        }
+    } else if (style === MENU_COMBINATION) {
+        const ggoresults = { bits: 0 };
+        allCategories = false;
+        const i = await ggetobj('drop', drop, 0, true, ggoresults);
+        if (i === -2) allCategories = true;
+        if ((ggoresults.bits & ALL_FINISHED) !== 0) {
+            nDropped = i;
+            return nDropped ? ECMD_TIME : ECMD_OK;
+        }
+    }
+
+    if (autopick) {
+        bypass_objlist(game.invent, false);
+        let otmp;
+        while ((otmp = nxt_unbypassed_obj(game.invent || []))) {
+            if (dropEverything || allCategories || allow_category(otmp)) {
+                const res = await drop(otmp);
+                nDropped += ((res & ECMD_TIME) !== 0) ? 1 : 0;
+            }
+        }
+        bypass_objlist(game.invent, false);
+    } else if (dropJustpicked && count_justpicked(game.invent) === 1) {
+        const otmp = find_justpicked(game.invent);
+        if (otmp) {
+            const res = await menudrop_split(otmp, justpickedQuan);
+            nDropped += ((res & ECMD_TIME) !== 0) ? 1 : 0;
+        }
+    } else {
+        const allow = allCategories ? allow_all : allow_category;
+        const { n, pick_list } = await query_objlist(
+            'What would you like to drop?',
+            game.invent,
+            USE_INVLET | INVORDER_SORT | INCLUDE_VENOM,
+            PICK_ANY,
+            allow,
+        );
+        if (n > 0) {
+            bypass_objlist(game.invent, true);
+            for (const pick of pick_list) {
+                const otmp = pick.obj;
+                const still = (game.invent || []).find((o) => o === otmp);
+                if (!still || !still.bypass) continue;
+                const res = await menudrop_split(otmp, pick.count);
+                nDropped += ((res & ECMD_TIME) !== 0) ? 1 : 0;
+            }
+            bypass_objlist(game.invent, false);
+        }
+    }
+    return nDropped ? ECMD_TIME : ECMD_OK;
+}
+
+/**
+ * C do.c doddrop `:922–944` — #droptype / 'D'.
+ * MENU_TRADITIONAL: ggetobj("drop", drop) then askchain; `'m'` → menu_drop.
+ * Else menu_drop (FULL query_category; COMBINATION ggetobj combo).
+ * @returns {Promise<number>}
+ */
+export async function doddrop() {
+    let result = ECMD_OK;
+    if (!(game.invent || []).length) {
+        await pline('You have nothing to drop.');
+        return ECMD_OK;
+    }
+    add_valid_menu_class(0);
+    const u = game.u || {};
+    const inshop = !!(u.ushops && u.ushops.length);
+    if (inshop) {
+        const { sellobj_state } = await import('./shk.js');
+        sellobj_state(SELL_DELIBERATE);
+    }
+    const style = game.flags?.menu_style ?? MENU_FULL;
+    if (style !== MENU_TRADITIONAL
+        || (result = await ggetobj('drop', drop, 0, false, null)) < -1) {
+        result = await menu_drop(result);
+    }
+    if (inshop) {
+        const { sellobj_state } = await import('./shk.js');
+        sellobj_state(SELL_NORMAL);
+    }
+    if (result) await reset_occupations();
+    return result;
 }
 
 /**

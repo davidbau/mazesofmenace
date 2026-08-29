@@ -1221,32 +1221,55 @@ export async function print_level_annotation() {
 }
 
 /**
- * C ref: dungeon.c query_annotation — getlin level name into mapseen.custom.
- * Branch envelope: current-level annotate (no prior custom / no EDIT_GETLIN).
- * Replace-annotation prompt and other-level describe_level deferred.
+ * C ref: dungeon.c query_annotation :2499-2567.
+ * config.h:655 EDIT_GETLIN is commented out — live #else:
+ * existing custom → Replace annotation "…" with? then getlin (empty
+ * buffer). No custom → What do you want to call %s? with
+ * this dungeon level or describe_level (other-level, dflgs 0 or 2).
+ * The #ifdef would strncpy custom into nbuf and skip the replace prompt.
+ * find_mapseen miss → return (not init_mapseen). PICK_ONE overview
+ * caller (show_overview why==-1) still named.
  */
 async function query_annotation(lev) {
     const { getlin } = await import('./getline.js');
-    const mptr = ensure_mapseen(lev);
+    const mptr = find_mapseen(lev);
+    if (!mptr) return;
+
     let nbuf;
     if (mptr.custom) {
-        // C non-EDIT_GETLIN replace prompt deferred → treat as fresh getlin
-        nbuf = await getlin(
-            `Replace annotation "${String(mptr.custom).slice(0, 30)}${String(mptr.custom).length > 30 ? '...' : ''}" with?`,
-        );
+        const custom = String(mptr.custom);
+        const shown = custom.length > 30 ? `${custom.slice(0, 30)}...` : custom;
+        nbuf = await getlin(`Replace annotation "${shown}" with?`);
     } else {
-        nbuf = await getlin('What do you want to call this dungeon level?');
+        let lbuf;
+        const uuz = game.u?.uz;
+        if (!lev || on_level(uuz, lev)) {
+            lbuf = 'this dungeon level';
+        } else {
+            const { describe_level } = await import('./display.js');
+            const dflgs = ((lev.dnum | 0) === (uuz?.dnum | 0)) ? 0 : 2;
+            const save = { dnum: uuz?.dnum | 0, dlevel: uuz?.dlevel | 0 };
+            if (uuz) {
+                uuz.dnum = lev.dnum | 0;
+                uuz.dlevel = lev.dlevel | 0;
+            }
+            lbuf = describe_level(dflgs);
+            if (uuz) {
+                uuz.dnum = save.dnum;
+                uuz.dlevel = save.dlevel;
+            }
+            lbuf = lbuf.replace('Dlvl:', 'level ').trim();
+        }
+        nbuf = await getlin(`What do you want to call ${lbuf}?`);
     }
     if (!nbuf || nbuf === '\x1b') return;
-    // C mungspaces — trim + compress consecutive spaces
     nbuf = nbuf.trim().replace(/\s+/g, ' ');
-    if (!nbuf || nbuf === ' ') {
-        mptr.custom = null;
-        mptr.custom_lth = 0;
-        return;
+    mptr.custom = null;
+    mptr.custom_lth = 0;
+    if (nbuf && nbuf !== ' ') {
+        mptr.custom = nbuf;
+        mptr.custom_lth = nbuf.length;
     }
-    mptr.custom = nbuf;
-    mptr.custom_lth = nbuf.length;
 }
 
 /**

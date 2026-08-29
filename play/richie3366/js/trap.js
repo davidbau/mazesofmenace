@@ -136,6 +136,7 @@ import { polymon, body_part, mbodypart } from './polyself.js';
 import { done } from './end.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear } from './worn.js';
+import { m_unleash } from './apply.js';
 
 const AD_ELEC = 6;
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
@@ -1082,6 +1083,8 @@ async function corpse_chance(mon) {
 function mondead(mtmp) {
     mtmp.mhp = 0;
     const mx = mtmp.mx, my = mtmp.my;
+    // C m_detach `:2741–2742` — m_unleash(mtmp, FALSE)
+    if (mtmp.mleashed) m_unleash(mtmp, false);
     const mndx = mtmp.mnum ?? mtmp.data?.mndx;
     if (mndx != null && mndx >= LOW_PM) {
         if (!game.mvitals) game.mvitals = [];

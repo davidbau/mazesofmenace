@@ -1730,7 +1730,10 @@ export async function dohelp() {
         { key: 'j', text: 'Full list of keyboard commands.', fn: async () => {
             await show_text_pages(dokeylist_lines());
         } },
-        { key: 'k', text: 'List of extended commands.', fn: () => display_file('cmdhelp', true) },
+        { key: 'k', text: 'List of extended commands.', fn: async () => {
+            const { doextlist } = await import('./cmd.js');
+            return doextlist();
+        } },
         // C ref: pager.c domenucontrols → options.c show_menu_controls
         { key: 'l', text: 'List menu control keys.', fn: async () => {
             await show_text_pages(domenucontrols_lines());

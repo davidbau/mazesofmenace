@@ -1,6 +1,7 @@
 // pickup.js — Floor look / autopickup / manual `,` pickup.
 // C ref: pickup.c — check_here(), pickup(), pickup_object(), pick_obj(),
-//        describe_decor(), observe_quantum_cat, use_container, tipcontainer;
+//        describe_decor(), observe_quantum_cat, use_container, tipcontainer,
+//        query_category, query_objlist, is_worn_by_type;
 //        hack.c — spoteffects(), dopickup(), pickup_checks().
 
 import { game } from './gstate.js';
@@ -16,12 +17,12 @@ import {
     max_capacity, compactify_invlets, getobj_take_count, getobj_apply_count,
     getobj_from_cmdq, getobj_display_pickinv, freeinv, display_inventory,
     splittable, will_feel_cockatrice, is_worn, not_fully_identified,
-    taking_off,
+    taking_off, count_unpaid,
 } from './invent.js';
 import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT, switch_terrain } from './hack.js';
 import {
     flush_screen, pline, newsym, docrt, bot, flush_topl_more, canseemon,
-    canspotmon, Hallucination, clear_nhwindow_message, Norep,
+    canspotmon, Hallucination, clear_nhwindow_message, Norep, impossible,
 } from './display.js';
 import { addinv } from './u_init.js';
 import {
@@ -39,10 +40,14 @@ import {
     Has_contents, Is_container, Is_box,
     Never_mind,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
-    W_ARMOR, W_ACCESSORY,
+    W_ARMOR, W_ACCESSORY, W_WEAPONS,
     SORTLOOT_PACK, SORTLOOT_LOOT, SORTLOOT_INVLET, SORTLOOT_PETRIFY,
     ALL_TYPES_SELECTED, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN,
+    UNPAID_TYPES, WORN_TYPES, ALL_TYPES, BILLED_TYPES, CHOOSE_ALL, JUSTPICKED,
+    BY_NEXTHERE, USE_INVLET, INVORDER_SORT, SIGNAL_NOMENU, SIGNAL_ESCAPE,
+    AUTOSELECT_SINGLE, FEEL_COCKATRICE, INCLUDE_VENOM,
     MENU_INVERT_ALL, MENU_SELECT_ALL, MENU_UNSELECT_ALL,
+    MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SKIPINVERT, PICK_NONE,
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
@@ -53,12 +58,14 @@ import {
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects, instapetrify } from './trap.js';
 import { nhgetch } from './input.js';
 import { m_at } from './mon.js';
-import { oclass_to_sym } from './options.js';
+import { oclass_to_sym, select_menu_pick_any } from './options.js';
 import {
-    objectNames, COIN_CLASS, def_oc_syms, def_char_to_objclass,
+    objectNames, COIN_CLASS, VENOM_CLASS, def_oc_syms, def_char_to_objclass,
 } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
-import { addtobill, costly_spot, check_unpaid_usage, is_unpaid } from './shk.js';
+import {
+    addtobill, costly_spot, check_unpaid_usage, is_unpaid, doname_with_price,
+} from './shk.js';
 import {
     nohands, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider, mons,
     monsterNames,
@@ -201,11 +208,17 @@ export function count_justpicked(olist) {
     });
     return cnt;
 }
-function find_justpicked(olist) {
-    for (const otmp of olist || []) {
-        if (otmp?.pickup_prev) return otmp;
-    }
-    return null;
+export function find_justpicked(olist) {
+    let found = null;
+    walk_obj_list(olist, false, (otmp) => {
+        if (!found && otmp?.pickup_prev) found = otmp;
+    });
+    return found;
+}
+
+/** C pickup.c allow_all `:516–520`. */
+export function allow_all(_obj) {
+    return true;
 }
 
 /**
@@ -314,6 +327,401 @@ export function allow_category(obj) {
     return true;
 }
 
+/**
+ * C pickup.c is_worn_by_type `:608–612`.
+ * Worn/wielded and matching the current valid_menu_classes filter.
+ */
+export function is_worn_by_type(otmp) {
+    return !!(is_worn(otmp) && allow_category(otmp));
+}
+
+/** C pickup.c flags.inv_order walk; JS invent is an Array of oclass ints. */
+function inv_order_pack(qflags = 0) {
+    const raw = game.flags?.inv_order;
+    const pack = (Array.isArray(raw) && raw.length) ? raw : DEF_INV_ORDER;
+    if ((qflags & INCLUDE_VENOM) && !pack.includes(VENOM_CLASS)) {
+        return [...pack, VENOM_CLASS];
+    }
+    return pack;
+}
+
+/** C pickup.c FOLLOW — BY_NEXTHERE uses nexthere, else nobj / invent Array. */
+function walk_query_list(olist, qflags, fn) {
+    walk_obj_list(olist, (qflags & BY_NEXTHERE) !== 0, fn);
+}
+
+/**
+ * C pickup.c count_categories `:1510–1536`.
+ * WORN_TYPES skips objects whose owornmask is not armor/accessory/weapon.
+ */
+function count_categories(olist, qflags) {
+    const do_worn = (qflags & WORN_TYPES) !== 0;
+    const wornmask = W_ARMOR | W_ACCESSORY | W_WEAPONS;
+    let ccount = 0;
+    for (const pack of inv_order_pack()) {
+        let counted = false;
+        walk_query_list(olist, qflags, (curr) => {
+            if (curr.oclass !== pack) return;
+            if (do_worn && !((curr.owornmask | 0) & wornmask)) return;
+            if (!counted) {
+                ccount++;
+                counted = true;
+            }
+        });
+    }
+    return ccount;
+}
+
+/**
+ * C pickup.c query_category `:1225–1508`.
+ * Branch envelope for menu_remarm: WORN_TYPES | ALL_TYPES | UNPAID_TYPES
+ * | BUCX_TYPES, PICK_ANY. Single-class skip via count_categories.
+ * CHOOSE_ALL rows when the flag is set; ParanoidAutoAll yn named omit
+ * (verify_All stays false). INCLUDE_VENOM / menu_head_objsym named.
+ *
+ * @returns {Promise<{ a_int: number|string }[]>} empty if cancelled
+ */
+export async function query_category(qstr, olist, qflags, how) {
+    if (!olist || (Array.isArray(olist) && !olist.length)) return [];
+
+    let ofilter = null;
+    let do_worn = false;
+    if ((qflags & WORN_TYPES) !== 0) {
+        do_worn = true;
+        ofilter = is_worn;
+    }
+    const do_unpaid = ((qflags & UNPAID_TYPES) !== 0 && count_unpaid(olist));
+    const do_usedup = (qflags & BILLED_TYPES) !== 0;
+    let do_blessed = false;
+    let do_cursed = false;
+    let do_uncursed = false;
+    let do_buc_unknown = false;
+    let num_buc_types = 0;
+    if ((qflags & BUC_BLESSED) !== 0 && count_buc(olist, BUC_BLESSED, ofilter)) {
+        do_blessed = true;
+        num_buc_types++;
+    }
+    if ((qflags & BUC_CURSED) !== 0 && count_buc(olist, BUC_CURSED, ofilter)) {
+        do_cursed = true;
+        num_buc_types++;
+    }
+    if ((qflags & BUC_UNCURSED) !== 0
+        && count_buc(olist, BUC_UNCURSED, ofilter)) {
+        do_uncursed = true;
+        num_buc_types++;
+    }
+    if ((qflags & BUC_UNKNOWN) !== 0
+        && count_buc(olist, BUC_UNKNOWN, ofilter)) {
+        do_buc_unknown = true;
+        num_buc_types++;
+    }
+    const num_justpicked = ((qflags & JUSTPICKED) !== 0)
+        ? count_justpicked(olist) : 0;
+
+    const packOrder = inv_order_pack(qflags);
+    const ccount = count_categories(olist, qflags);
+    if (ccount === 1 && !do_unpaid && !do_usedup && num_buc_types <= 1) {
+        let curr = null;
+        walk_query_list(olist, qflags, (otmp) => {
+            if (curr) return;
+            if (ofilter && !ofilter(otmp)) return;
+            curr = otmp;
+        });
+        if (curr) return [{ a_int: curr.oclass }];
+        return [];
+    }
+
+    const items = [];
+    const pack = packOrder;
+    const show_a = ((qflags & ALL_TYPES) !== 0 && ccount > 1);
+    const skip = MENU_ITEMFLAGS_SKIPINVERT;
+    const none = MENU_ITEMFLAGS_NONE;
+
+    if ((qflags & CHOOSE_ALL) !== 0) {
+        items.push({
+            selectable: true,
+            selector: 'A',
+            gselector: '',
+            a_int: 'A',
+            text: do_worn
+                ? 'Auto-select every item being worn or wielded'
+                : 'Auto-select every relevant item',
+            itemflags: skip,
+        });
+        if (game.iflags?.cmdassist !== false) {
+            items.push({
+                selectable: false,
+                text: '    (ignored unless some other choices are also picked)',
+            });
+        }
+        items.push({ selectable: false, text: '' });
+    }
+
+    let invlet = 'a'.charCodeAt(0);
+    if (show_a) {
+        items.push({
+            selectable: true,
+            selector: String.fromCharCode(invlet++),
+            gselector: '',
+            a_int: ALL_TYPES_SELECTED,
+            text: do_worn ? 'All worn and wielded types' : 'All types',
+            itemflags: skip,
+        });
+    }
+
+    for (const oc of pack) {
+        let collected = false;
+        walk_query_list(olist, qflags, (curr) => {
+            if (curr.oclass !== oc) return;
+            if (ofilter && !ofilter(curr)) return;
+            if (collected) return;
+            collected = true;
+            if (invlet >= 'u'.charCodeAt(0)) return;
+            const ocsym = def_oc_syms[oc]?.sym || '';
+            items.push({
+                selectable: true,
+                selector: String.fromCharCode(invlet++),
+                gselector: ocsym,
+                a_int: oc,
+                text: let_to_name(oc, false, how !== PICK_NONE
+                    && !!game.iflags?.menu_head_objsym),
+                itemflags: none,
+            });
+        });
+        if (invlet >= 'u'.charCodeAt(0)) {
+            await impossible('query_category: too many categories');
+            return [];
+        }
+    }
+
+    if (do_unpaid || do_usedup || do_blessed || do_cursed || do_uncursed
+        || do_buc_unknown || num_justpicked) {
+        items.push({ selectable: false, text: '' });
+    }
+    if (do_unpaid) {
+        items.push({
+            selectable: true, selector: 'u', gselector: '', a_int: 'u',
+            text: 'Unpaid items', itemflags: skip,
+        });
+    }
+    if (do_usedup) {
+        items.push({
+            selectable: true, selector: 'x', gselector: '', a_int: 'x',
+            text: 'Unpaid items already used up', itemflags: skip,
+        });
+    }
+    if (do_blessed) {
+        items.push({
+            selectable: true, selector: 'B', gselector: '', a_int: 'B',
+            text: 'Items known to be Blessed', itemflags: skip,
+        });
+    }
+    if (do_cursed) {
+        items.push({
+            selectable: true, selector: 'C', gselector: '', a_int: 'C',
+            text: 'Items known to be Cursed', itemflags: skip,
+        });
+    }
+    if (do_uncursed) {
+        items.push({
+            selectable: true, selector: 'U', gselector: '', a_int: 'U',
+            text: 'Items known to be Uncursed', itemflags: skip,
+        });
+    }
+    if (do_buc_unknown) {
+        items.push({
+            selectable: true, selector: 'X', gselector: '', a_int: 'X',
+            text: 'Items of unknown Bless/Curse status', itemflags: skip,
+        });
+    }
+    if (num_justpicked) {
+        let tmpbuf;
+        if (num_justpicked === 1) {
+            let jp = null;
+            walk_query_list(olist, qflags, (otmp) => {
+                if (!jp && otmp?.pickup_prev) jp = otmp;
+            });
+            tmpbuf = `Just picked up: ${doname(jp)}`;
+        } else {
+            tmpbuf = 'Items you just picked up';
+        }
+        items.push({
+            selectable: true, selector: 'P', gselector: '', a_int: 'P',
+            text: tmpbuf, itemflags: skip,
+        });
+    }
+
+    const raw = [
+        { selectable: false, text: qstr, attr: ATR_INVERSE },
+        { selectable: false, text: '' },
+        ...items,
+    ];
+    const picked = await select_menu_pick_any(raw);
+    if (!picked.length) return [];
+
+    /* C: 'A' by itself without ParanoidAutoAll is rejected. */
+    if (picked.length === 1 && picked[0].a_int === 'A') {
+        await pline('No relevant items selected.');
+        return [];
+    }
+    /* C menu_item.count: 0 when no digit prefix (select_menu count named). */
+    return picked.map((it) => ({ a_int: it.a_int, count: it.count ?? 0 }));
+}
+
+/**
+ * C pickup.c query_objlist `:1024–1216`.
+ * menu_remarm live flags: SIGNAL_NOMENU | USE_INVLET | INVORDER_SORT,
+ * PICK_ANY, allow is_worn / is_worn_by_type, invent Array.
+ * Named omit: INCLUDE_HERO fake-you; obj_to_glyph display RNG;
+ * INCLUDE_VENOM; count-prefix; this_title. Floor pickup keeps the
+ * existing query_objlist_pickup clone (D-0365/D-0405/D-1599).
+ *
+ * @returns {Promise<{ n: number, pick_list: { obj: object, count: number }[] }>}
+ */
+export async function query_objlist(qstr, olist, qflags, how, allow) {
+    if (!olist || (Array.isArray(olist) && !olist.length)) {
+        return { n: 0, pick_list: [] };
+    }
+
+    let n = 0;
+    let last = null;
+    walk_query_list(olist, qflags, (curr) => {
+        if (allow(curr)) {
+            last = curr;
+            n++;
+        }
+    });
+
+    if (n === 0) {
+        return {
+            n: (qflags & SIGNAL_NOMENU) ? -1 : 0,
+            pick_list: [],
+        };
+    }
+
+    if (n === 1 && (qflags & AUTOSELECT_SINGLE) && last) {
+        return { n: 1, pick_list: [{ obj: last, count: last.quan || 1 }] };
+    }
+
+    const flags = game.flags || {};
+    const sortlootOpt = flags.sortloot ?? 'l';
+    let sortflags = 0;
+    if (sortlootOpt === 'f'
+        || (sortlootOpt === 'l' && !(qflags & USE_INVLET))) {
+        sortflags |= SORTLOOT_LOOT;
+    } else if (qflags & USE_INVLET) {
+        sortflags |= SORTLOOT_INVLET;
+    }
+    if (flags.sortpack !== false) sortflags |= SORTLOOT_PACK;
+    if (qflags & FEEL_COCKATRICE) sortflags |= SORTLOOT_PETRIFY;
+
+    const byHere = (qflags & BY_NEXTHERE) !== 0;
+    const ranked = sortloot(olist, sortflags, byHere, allow);
+    const sorted = (qflags & INVORDER_SORT) !== 0;
+    const items = [];
+    let first = true;
+
+    if (sorted) {
+        for (const pack of inv_order_pack(qflags)) {
+            let printed = false;
+            for (const srt of ranked) {
+                const curr = srt.obj;
+                if (!curr || curr.oclass !== pack) continue;
+                if ((qflags & FEEL_COCKATRICE) && (curr.otyp | 0) === CORPSE
+                    && will_feel_cockatrice(curr, false)) {
+                    await look_here(0, LOOKHERE_NOFLAGS);
+                    return { n: 0, pick_list: [] };
+                }
+                if (!allow(curr)) continue;
+                if (!printed) {
+                    items.push({
+                        selectable: false,
+                        text: let_to_name(pack, false,
+                            how !== PICK_NONE
+                            && !!game.iflags?.menu_head_objsym),
+                        attr: ATR_INVERSE,
+                    });
+                    printed = true;
+                }
+                let selector = '';
+                if (qflags & USE_INVLET) {
+                    selector = (typeof curr.invlet === 'string')
+                        ? curr.invlet
+                        : (curr.invlet
+                            ? String.fromCharCode(curr.invlet) : '');
+                } else if (first && curr.oclass === COIN_CLASS) {
+                    selector = '$';
+                }
+                first = false;
+                const ocsym = def_oc_syms[curr.oclass | 0]?.sym || '';
+                items.push({
+                    selectable: true,
+                    selector,
+                    gselector: ocsym,
+                    obj: curr,
+                    text: doname_with_price(curr),
+                    itemflags: MENU_ITEMFLAGS_NONE,
+                });
+            }
+        }
+    } else {
+        for (const srt of ranked) {
+            const curr = srt.obj;
+            if (!curr) continue;
+            if ((qflags & FEEL_COCKATRICE) && (curr.otyp | 0) === CORPSE
+                && will_feel_cockatrice(curr, false)) {
+                await look_here(0, LOOKHERE_NOFLAGS);
+                return { n: 0, pick_list: [] };
+            }
+            if (!allow(curr)) continue;
+            let selector = '';
+            if (qflags & USE_INVLET) {
+                selector = (typeof curr.invlet === 'string')
+                    ? curr.invlet
+                    : (curr.invlet
+                        ? String.fromCharCode(curr.invlet) : '');
+            } else if (first && curr.oclass === COIN_CLASS) {
+                selector = '$';
+            }
+            first = false;
+            const ocsym = def_oc_syms[curr.oclass | 0]?.sym || '';
+            items.push({
+                selectable: true,
+                selector,
+                gselector: ocsym,
+                obj: curr,
+                text: doname_with_price(curr),
+                itemflags: MENU_ITEMFLAGS_NONE,
+            });
+        }
+    }
+
+    const raw = [
+        { selectable: false, text: qstr, attr: ATR_INVERSE },
+        { selectable: false, text: '' },
+        ...items,
+    ];
+    const picked = await select_menu_pick_any(raw);
+    if (!picked.length) {
+        /* C: ESC n<0 → SIGNAL_ESCAPE ? -2 : 0. Empty confirm is 0. */
+        return {
+            n: (qflags & SIGNAL_ESCAPE) ? -2 : 0,
+            pick_list: [],
+        };
+    }
+    const pick_list = [];
+    for (const it of picked) {
+        const curr = it.obj;
+        if (!curr) continue;
+        let count = it.count;
+        if (count == null || count === -1 || count > (curr.quan || 1)) {
+            count = curr.quan || 1;
+        }
+        pick_list.push({ obj: curr, count });
+    }
+    return { n: pick_list.length, pick_list };
+}
+
 function tally_BUCX_list(objs, here) {
     const t = { b: 0, u: 0, c: 0, x: 0, o: 0, j: 0 };
     walk_obj_list(objs, here, (list) => {
@@ -329,14 +737,6 @@ function tally_BUCX_list(objs, here) {
         else t.u++;
     });
     return t;
-}
-
-function unpaid_in_list(objs, here) {
-    let found = false;
-    walk_obj_list(objs, here, (o) => {
-        if (is_unpaid(o)) found = true;
-    });
-    return found;
 }
 
 /**
@@ -803,11 +1203,15 @@ export async function pickup_object(obj, count, telekinesis) {
  * Sort: sortloot(SORTLOOT_LOOT|PACK|PETRIFY) + nexthere (D-0405, D-1599).
  * FEEL_COCKATRICE: will_feel during walk → look_here(0) abort (no menu).
  * Named omissions: count-N; menu_head_objsym; INCLUDE_VENOM;
- * traditional query_classes; engulfer; loot_classify subclass/disco/BUCX;
- * SKIPINVERT; page invert/search; doloot Blind !uarmg feel before
- * containers.
+ * engulfer; loot_classify subclass/disco/BUCX; SKIPINVERT;
+ * page invert/search; doloot Blind !uarmg feel before containers.
+ * Floor TRADITIONAL query_classes is D-1620 (`pickup_traditional_floor`).
+ *
+ * @param {object[]} objList pile in nexthere order (head first)
+ * @param {((o: object) => boolean)|null} [extraAllow] C allow_category
+ *        for traditional 'm' via_menu==-3; omit/null is C allow_all
  */
-async function query_objlist_pickup(objList) {
+async function query_objlist_pickup(objList, extraAllow = null) {
     const flags = game.flags || {};
     const doSort = flags.sortpack !== false;
     // C: sortflags — sortloot 'l'/'f' + !USE_INVLET → SORTLOOT_LOOT;
@@ -819,7 +1223,7 @@ async function query_objlist_pickup(objList) {
     if (doSort) sortflags |= SORTLOOT_PACK;
 
     const allowSet = new Set(objList);
-    const allow = (o) => allowSet.has(o);
+    const allow = (o) => allowSet.has(o) && (!extraAllow || extraAllow(o));
     const head = objList[0] || null;
     const ranked = head ? sortloot(head, sortflags, true, allow) : [];
 
@@ -928,8 +1332,10 @@ function autopick_testobj(otmp) {
  * `flags.pickup` is off (D-0928 #1127); autopick filter (D-0368) then
  * **always** check_here(n_picked>0) (D-0387); manual `,`
  * AUTOSELECT_SINGLE / multi query_objlist PICK_ANY (D-0365).
- * Deferred: unconscious skip, traditional yn/query_classes, hideunder,
- * newsym_force, full is_pool.
+ * MENU_TRADITIONAL && !menu_requested && ct>=2: There + query_classes
+ * then yn/pickup_object (D-1620). 'm' → query_objlist_pickup.
+ * Deferred: unconscious skip, hideunder, newsym_force, full is_pool,
+ * engulfer minvent traditional, safe_qbuf truncation.
  */
 export async function pickup(what) {
     const autopickup = what > 0;
@@ -993,78 +1399,78 @@ export async function pickup(what) {
         nomul(0);
     }
 
-    const objList = [];
-    for (let obj = objects_at(u.ux, u.uy); obj; obj = obj.nexthere) {
-        objList.push(obj);
-    }
-    // C: autopick → filter by pickup_types before picking
-    const eligible = autopickup
-        ? objList.filter((o) => autopick_testobj(o))
-        : objList;
-    const ct = eligible.length;
-
-    if (autopickup) {
-        // C: autopick → menu_pickup loop → check_here(n_picked > 0)
-        // even when n==0 (ineligible / filtered objects still shown).
-        const nTried = eligible.length; // C: n_tried = n before loop
-        let nPicked = 0;
-        // C: if (n > 0) reset_justpicked(invent) before pickup_object loop
-        if (nTried > 0) reset_justpicked(game.invent);
-        for (const otmp of eligible) {
-            const res = await pickup_object(otmp, 0, false);
-            if (res < 0) break;
-            nPicked += res;
+    // C pickup.c:740 add_valid_menu_class(0) before menu vs traditional.
+    add_valid_menu_class(0);
+    try {
+        const objList = [];
+        for (let obj = objects_at(u.ux, u.uy); obj; obj = obj.nexthere) {
+            objList.push(obj);
         }
-        if (!u.uswallow) {
-            // hideunder / newsym_force deferred
-            await check_here(nPicked > 0);
+        // C: autopick → filter by pickup_types before picking
+        const eligible = autopickup
+            ? objList.filter((o) => autopick_testobj(o))
+            : objList;
+        const ct = eligible.length;
+
+        if (autopickup) {
+            // C: autopick → menu_pickup loop → check_here(n_picked > 0)
+            // even when n==0 (ineligible / filtered objects still shown).
+            const nTried = eligible.length; // C: n_tried = n before loop
+            let nPicked = 0;
+            // C: if (n > 0) reset_justpicked(invent) before pickup_object loop
+            if (nTried > 0) reset_justpicked(game.invent);
+            for (const otmp of eligible) {
+                const res = await pickup_object(otmp, 0, false);
+                if (res < 0) break;
+                nPicked += res;
+            }
+            if (!u.uswallow) {
+                // hideunder / newsym_force deferred
+                await check_here(nPicked > 0);
+            }
+            return nTried > 0 ? 1 : 0;
         }
-        // C: pickupdone — gp.pickup_encumbrance = 0
-        game.pickup_encumbrance = 0;
-        return nTried > 0 ? 1 : 0;
-    }
 
-    if (ct === 0) {
-        game.pickup_encumbrance = 0;
-        return 0;
-    }
+        if (ct === 0) return 0;
 
-    // C: menu_style != TRADITIONAL → query_objlist + AUTOSELECT_SINGLE
-    // One eligible object: auto-select without menu (no extra keys).
-    if (ct === 1) {
-        const first = eligible[0];
-        const lcount = count > 0
-            ? Math.min(first.quan || 1, count)
-            : 0;
-        // C: if (n > 0) reset_justpicked before pickup_object
+        // C: menu AUTOSELECT_SINGLE / traditional ct==1 && !count for-loop
+        // both pick the lone object without a prompt.
+        if (ct === 1) {
+            const first = eligible[0];
+            const lcount = count > 0
+                ? Math.min(first.quan || 1, count)
+                : 0;
+            reset_justpicked(game.invent);
+            const res = await pickup_object(first, lcount, false);
+            return res > 0 ? 1 : 0;
+        }
+
+        // C: flags.menu_style != MENU_TRADITIONAL || iflags.menu_requested
+        const style = game.flags?.menu_style ?? MENU_FULL;
+        if (style === MENU_TRADITIONAL && !game.iflags?.menu_requested) {
+            return await pickup_traditional_floor(objList[0] || null, count);
+        }
+
+        // C: query_objlist("Pick up what?", …, PICK_ANY) then pickup_object
+        const pickList = await query_objlist_pickup(eligible);
+        if (!pickList.length) return 0;
         reset_justpicked(game.invent);
-        const res = await pickup_object(first, lcount, false);
+        let nTried = 0;
+        for (const obj of pickList) {
+            if (!obj || obj.where !== OBJ_FLOOR) continue;
+            const lcount = count > 0
+                ? Math.min(obj.quan || 1, count)
+                : 0;
+            const res = await pickup_object(obj, lcount, false);
+            if (res < 0) break;
+            nTried += res;
+        }
+        return nTried > 0 ? 1 : 0;
+    } finally {
+        // C pickupdone: gp.pickup_encumbrance = 0; add_valid_menu_class(0)
         game.pickup_encumbrance = 0;
-        return res > 0 ? 1 : 0;
+        add_valid_menu_class(0);
     }
-
-    // C: query_objlist("Pick up what?", …, PICK_ANY) then pickup_object each
-    // Traditional query_classes path deferred (default menu ≠ TRADITIONAL).
-    const pickList = await query_objlist_pickup(eligible);
-    if (!pickList.length) {
-        game.pickup_encumbrance = 0;
-        return 0;
-    }
-    // C: if (n > 0) reset_justpicked(invent)
-    reset_justpicked(game.invent);
-    let nTried = 0;
-    for (const obj of pickList) {
-        // Object may already be gone if prior pick extracted a stack sibling
-        if (!obj || obj.where !== OBJ_FLOOR) continue;
-        const lcount = count > 0
-            ? Math.min(obj.quan || 1, count)
-            : 0;
-        const res = await pickup_object(obj, lcount, false);
-        if (res < 0) break;
-        nTried += res;
-    }
-    game.pickup_encumbrance = 0;
-    return nTried > 0 ? 1 : 0;
 }
 
 /**
@@ -2242,6 +2648,8 @@ async function simple_look(otmp, here) {
 
 /**
  * C pickup.c query_classes `:140–262` — Traditional class getlin.
+ * Callers: traditional_loot (D-1581); floor pickup (D-1620).
+ * C `count_unpaid` walks nobj (fobj remainder from a floor head).
  */
 async function query_classes(action, objs, here, menu_on_demand) {
     const itemcount = { n: 0 };
@@ -2251,6 +2659,7 @@ async function query_classes(action, objs, here, menu_on_demand) {
     let one_at_a_time = false;
     let everything = false;
     let m_seen = false;
+    if (menu_on_demand) menu_on_demand.n = 0;
     if (ilets.length === 1) {
         oclasses = [def_char_to_objclass(ilets.charAt(0))];
     } else {
@@ -2260,7 +2669,7 @@ async function query_classes(action, objs, here, menu_on_demand) {
         ilets += (objs === game.invent ? 'i' : ':');
     }
     if (itemcount.n && menu_on_demand) ilets += 'm';
-    if (unpaid_in_list(objs, here)) ilets += 'u';
+    if (count_unpaid(objs)) ilets += 'u';
     const buc = tally_BUCX_list(objs, here);
     if (buc.b) ilets += 'B';
     if (buc.u) ilets += 'U';
@@ -2341,6 +2750,107 @@ async function query_classes(action, objs, here, menu_on_demand) {
     return { ok: true, oclasses, one_at_a_time, everything };
 }
 
+/**
+ * C pickup.c pickup traditional `:793–891`.
+ * MENU_TRADITIONAL && !menu_requested && ct>=2: There + query_classes
+ * then live nexthere yn/pickup_object. ESC → pickupdone. 'm' →
+ * query_objlist_pickup (allow_all if via_menu==-2 else allow_category).
+ * ynaq/ynNaq default 'y'. Named: safe_qbuf (doname); via_menu
+ * FEEL_COCKATRICE from query_objlist_pickup; INVORDER_SORT uses
+ * existing sortpack.
+ */
+async function pickup_traditional_floor(head, count) {
+    let n_tried = 0;
+    let all_of_a_type = true;
+    let selective = false;
+    let oclasses = [];
+
+    let ct = 0;
+    for (let o = head; o; o = o.nexthere) ct++;
+
+    if (ct === 1 && count) {
+        const obj = head;
+        const lcount = Math.min(obj.quan || 1, count);
+        n_tried++;
+        reset_justpicked(game.invent);
+        await pickup_object(obj, lcount, false);
+        return n_tried > 0 ? 1 : 0;
+    }
+
+    if (ct >= 2) {
+        await pline(
+            `There are ${ct <= 10 ? 'several' : 'many'} objects here.`,
+        );
+        const via_menu = { n: 0 };
+        const q = await query_classes('pick up', head, true, via_menu);
+        if (!q.ok) {
+            if (!via_menu.n) return 0;
+            const pile = [];
+            for (let o = head; o; o = o.nexthere) pile.push(o);
+            const extraAllow = via_menu.n === -2 ? null : allow_category;
+            const pickList = await query_objlist_pickup(pile, extraAllow);
+            if (!pickList.length) return 0;
+            reset_justpicked(game.invent);
+            n_tried = pickList.length;
+            for (const obj of pickList) {
+                if (!obj || obj.where !== OBJ_FLOOR) continue;
+                const res = await pickup_object(obj, 0, false);
+                if (res < 0) break;
+            }
+            return n_tried > 0 ? 1 : 0;
+        }
+        oclasses = q.oclasses || [];
+        selective = q.one_at_a_time;
+        all_of_a_type = q.everything;
+    }
+
+    const bycat = menu_class_present('B') || menu_class_present('U')
+        || menu_class_present('C') || menu_class_present('X');
+
+    for (let obj = head; obj; ) {
+        const obj2 = obj.nexthere;
+        if (bycat ? !allow_category(obj)
+            : (!selective && oclasses.length
+                && !oclasses.includes(obj.oclass))) {
+            obj = obj2;
+            continue;
+        }
+        let lcount = -1;
+        if (!all_of_a_type) {
+            const qbuf = `Pick up ${doname(obj)}?`;
+            const resp = (obj.quan || 1) < 2 ? ynaqchars : ynNaqchars;
+            const sym = await yn_function(qbuf, resp, 'y');
+            if (sym === 'q') break;
+            if (sym === 'n') {
+                obj = obj2;
+                continue;
+            }
+            if (sym === 'a') {
+                all_of_a_type = true;
+                if (selective) {
+                    selective = false;
+                    oclasses = [obj.oclass];
+                }
+            } else if (sym === '#') {
+                const yn_number = game.yn_number | 0;
+                if (!yn_number) {
+                    obj = obj2;
+                    continue;
+                }
+                lcount = yn_number;
+                if (lcount > (obj.quan || 1)) lcount = obj.quan || 1;
+            }
+        }
+        if (lcount === -1) lcount = obj.quan || 1;
+        if (!n_tried) reset_justpicked(game.invent);
+        n_tried++;
+        const res = await pickup_object(obj, lcount, false);
+        if (res < 0) break;
+        obj = obj2;
+    }
+    return n_tried > 0 ? 1 : 0;
+}
+
 function obj_still_on_list(obj, listhead) {
     if (!obj || listhead == null) return false;
     if (Array.isArray(listhead)) return listhead.includes(obj);
@@ -2373,7 +2883,7 @@ function container_gone_ask(fn) {
 
 /**
  * C invent.c askchain `:2376–2541`. Live: put-in/take-out, take off,
- * identify (D-1602). Named: ggetobj drop; worn.c clear_bypasses.
+ * identify (D-1602), drop (D-1635). Named: worn.c clear_bypasses.
  */
 export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, word) {
     const take_out = word === 'take out';
@@ -2540,9 +3050,10 @@ async function traditional_loot(put_in) {
  * in; 'r' in then out (loot_in_first); 's' stash ALLOWCNT (D-1561);
  * 'q' abort_looting; 'n' next container (more_containers, D-1592);
  * MENU_TRADITIONAL traditional_loot + askchain (D-1581).
+ * Floor TRADITIONAL query_classes is D-1620.
  * ggetobj takeoff/identify askchain is D-1602.
- * Named omissions: chest trap; BoT; mbag explosion body;
- * ggetobj drop; floor query_classes.
+ * ggetobj drop / doddrop is D-1635.
+ * Named omissions: chest trap; BoT; mbag explosion body.
  *
  * @param {object} obj container
  * @param {boolean} [held=false] applied from invent

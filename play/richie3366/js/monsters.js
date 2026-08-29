@@ -82,6 +82,9 @@ export const G_FREQ = 0x0007;
 /* monflag.h — mkclass may ignore G_GENOD|G_EXTINCT via this non-geno bit */
 export const G_IGNORE = 0x8000;
 
+/* C ref: monflag.h enum ms_sounds — animal noises through MS_TRUMPET. */
+export const MS_ANIMAL = 17;
+
 /* C ref: monflag.h MR_* — permonst.mresists bits */
 export const MR_FIRE = 0x01;
 export const MR_COLD = 0x02;

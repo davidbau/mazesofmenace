@@ -22,7 +22,7 @@ import {
     MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
     has_emin, has_epri, has_eshk, has_mcorpsenm, MCORPSENM,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
-    NO_MM_FLAGS, NATTK,
+    NO_MM_FLAGS, NATTK, PROT_FROM_SHAPE_CHANGERS,
 } from './const.js';
 import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain } from './trap.js';
 import {
@@ -2636,14 +2636,21 @@ export function replmon(mtmp, mtmp2) {
 
 /**
  * C ref: mon.c restore_cham `:4646–4658` — PfSC/`mcan` → normal_shape,
- * else re-allow cham via pm_to_cham. Await the SHOW_MSG revert (D-1594).
+ * else re-allow cham via pm_to_cham(monsndx). Await SHOW_MSG revert
+ * (D-1594). youprop.h Protection_from_shape_changers is H||E ≡
+ * uprops[PROT_FROM_SHAPE_CHANGERS] (confer_oc_oprop writes that);
+ * eat/wiz also set H/E flats. Callers: getlev catchup (D-1637),
+ * dog.c mon_arrive With_you+After_you, zap.c montraits.
  */
 export async function restore_cham(mon) {
     if (!mon) return;
     const u = game.u || {};
+    const protU = u.uprops?.[PROT_FROM_SHAPE_CHANGERS];
     const prot = !!(u.HProtection_from_shape_changers
         || u.EProtection_from_shape_changers
-        || u.Protection_from_shape_changers);
+        || u.Protection_from_shape_changers
+        || (protU?.intrinsic | 0)
+        || (protU?.extrinsic | 0));
     if (prot || mon.mcan) {
         await normal_shape(mon);
     } else if ((mon.cham | 0) === NON_PM || mon.cham == null) {

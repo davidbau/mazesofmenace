@@ -1,9 +1,10 @@
 // sounds.js — Ambient sounds and #chat.
-// C ref: sounds.c — dosounds / dotalk / dochat / domonnoise (MS_BARK subset)
-//         + yelp / growl (pet abuse; D-0836).
+// C ref: sounds.c — dosounds / dotalk / dochat / domonnoise (MS_BARK
+//         subset + MS_HUMANOID D-1618 / mplayer_talk D-1606 /
+//         MS_BOAST D-1626) + yelp / growl (pet abuse; D-0836).
 
 import { game } from './gstate.js';
-import { pline, canseemon } from './display.js';
+import { pline, canseemon, verbalize, Hallucination } from './display.js';
 import { getdir } from './lock.js';
 import { mon_at } from './uhitm.js';
 import { Monnam } from './do_name.js';
@@ -16,18 +17,26 @@ import { vtense } from './objnam.js';
 import { nomul } from './hack.js';
 import {
     is_animal, is_flyer, is_lord, is_prince, is_mercenary, is_undead,
-    monsterNames, G_UNIQ,
+    is_mplayer, is_elf, is_dwarf, is_gnome, likes_magic, monsterNames,
+    mons, G_UNIQ,
 } from './monsters.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
     ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
-    ESHK, Is_astralevel, Is_oracle_level, STRAT_WAITMASK,
+    ESHK, Is_astralevel, Is_oracle_level, In_endgame, STRAT_WAITMASK,
 } from './const.js';
+import { mplayer_talk } from './mplayer.js';
 import { vault_occupied, findgd } from './vault.js';
+import { t_at } from './trap.js';
+import { same_race } from './mondata.js';
+import { mhis } from './fountain.js';
 
 const STATUE = objectNames.indexOf('STATUE');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
+const PM_HOBBIT = monsterNames.indexOf('PM_HOBBIT');
+const PM_ARCHEOLOGIST = monsterNames.indexOf('PM_ARCHEOLOGIST');
+const PM_TOURIST = monsterNames.indexOf('PM_TOURIST');
 
 /** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
 async function You_hear(line) {
@@ -367,8 +376,11 @@ const MS_MOO = 13;
 const MS_WAIL = 14;
 const MS_ANIMAL = 17;
 const MS_MUMBLE = 21;
+const MS_ORC = 24;
+const MS_HUMANOID = 25;
 const MS_SEDUCE = 31;
 const MS_LEADER = 36;
+const MS_BOAST = 43;
 const MS_GROAN = 44;
 
 /**
@@ -585,28 +597,37 @@ function poly_gender() {
 }
 
 /**
- * C ref: sounds.c domonnoise — MS_BARK + MS_SEDUCE + MS_LEADER.
- * Other MS_* named omitted in C-JS-MAP; unknown → ECMD_OK (silent).
- * FULL_MOON howl needs night() — deferred; falls through to bark.
- * MS_PRIEST priest_talk deferred (non-leader temple priests).
- * MS_SEDUCE doseduce (SYSOPT non-nymph) deferred.
+ * C ref: sounds.c domonnoise — MS_BARK + MS_SEDUCE + MS_LEADER +
+ * MS_HUMANOID (D-1618 peaceful + hostile "threatens you.";
+ * D-1606 endgame mplayer_talk) + MS_BOAST hostile giants
+ * (D-1626; peaceful FALLTHROUGH into MS_HUMANOID). Other MS_*
+ * named omitted in C-JS-MAP; unknown → ECMD_OK (silent).
+ * FULL_MOON howl needs night() — deferred; falls through to
+ * bark. MS_PRIEST priest_talk deferred (non-leader temple
+ * priests). MS_SEDUCE doseduce (SYSOPT non-nymph) deferred.
  */
 export async function domonnoise(mtmp) {
     if (!mtmp) return ECMD_OK;
     if (game.u?.Deaf) return ECMD_OK;
     let msound = mon_msound(mtmp);
+    const ptr = mtmp.data;
     // C: leader_m_id && msound > MS_ANIMAL → MS_LEADER (poly-safe).
     const qs = game.quest_status;
     if (qs?.leader_m_id
         && (mtmp.m_id | 0) === (qs.leader_m_id | 0)
         && msound > MS_ANIMAL) {
         msound = MS_LEADER;
+    } else if (msound === MS_ORC
+        && (same_race(ptr, game.youmonst?.data)
+            || same_race(ptr, mons(game.urace?.mnum))
+            || Hallucination())) {
+        // C :705–709: orc/gnome speech when same race or Hallu.
+        msound = MS_HUMANOID;
     }
     if (msound === 0 && !mtmp.isshk) return ECMD_OK;
 
     let pline_msg = null;
     let verbl_msg = null;
-    const ptr = mtmp.data;
     const moves = game.moves | 0;
     const hungrytime = mtmp.edog?.hungrytime | 0;
 
@@ -647,15 +668,108 @@ export async function domonnoise(mtmp) {
         if (swval === 2) verbl_msg = 'Hello, sailor.';
         else if (swval === 1) pline_msg = 'comes on to you.';
         else pline_msg = 'cajoles you.';
+    } else if (msound === MS_BOAST && !mtmp.mpeaceful) {
+        // C sounds.c MS_BOAST :1006–1023 (D-1626). Hostile giants
+        // rn2(4): 0 immediate pline gem+mhis (epilogue empty,
+        // still ECMD_TIME); 1 mutton; default Fee-Fie +
+        // wake_nearto(7*7). Peaceful FALLTHROUGH is HUMANOID.
+        switch (rn2(4)) {
+        case 0:
+            await pline(
+                `${Monnam(mtmp)} boasts about ${mhis(mtmp)} gem collection.`,
+            );
+            return ECMD_TIME;
+        case 1:
+            pline_msg = 'complains about a diet of mutton.';
+            break;
+        default:
+            pline_msg = 'shouts "Fee Fie Foe Foo!" and guffaws.';
+            await wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
+            break;
+        }
+    } else if (msound === MS_HUMANOID || msound === MS_BOAST) {
+        // C sounds.c MS_HUMANOID :1025–1104 (D-1618). Hostile
+        // endgame is_mplayer is D-1606; else "threatens you." then
+        // break so hostiles never fall into peaceful chatter.
+        // MS_BOAST peaceful FALLTHROUGH (D-1626).
+        if (!mtmp.mpeaceful) {
+            if (In_endgame(game.u?.uz) && is_mplayer(ptr)) {
+                await mplayer_talk(mtmp);
+                return ECMD_TIME;
+            }
+            pline_msg = 'threatens you.';
+        } else if (mtmp.mflee) {
+            pline_msg = 'wants nothing to do with you.';
+        } else if ((mtmp.mhp | 0) < ((mtmp.mhpmax | 0) / 4 | 0)) {
+            pline_msg = 'moans.';
+        } else if (mtmp.mconf || mtmp.mstun) {
+            // C: !rn2(3) ? Huh : rn2(2) ? What : Eh (clang L→R)
+            verbl_msg = !rn2(3) ? 'Huh?' : rn2(2) ? 'What?' : 'Eh?';
+        } else if (!mtmp.mcansee) {
+            verbl_msg = "I can't see!";
+        } else if (mtmp.mtrapped) {
+            const t = t_at(mtmp.mx, mtmp.my);
+            if (t) t.tseen = 1;
+            verbl_msg = "I'm trapped!";
+        } else if ((mtmp.mhp | 0) < ((mtmp.mhpmax | 0) / 2 | 0)) {
+            pline_msg = 'asks for a potion of healing.';
+        } else if (mtmp.mtame && !mtmp.isminion
+            && moves > (mtmp.edog?.hungrytime | 0)) {
+            verbl_msg = "I'm hungry.";
+        } else if (is_elf(ptr)) {
+            pline_msg = 'curses orcs.';
+        } else if (is_dwarf(ptr)) {
+            pline_msg = 'talks about mining.';
+        } else if (likes_magic(ptr)) {
+            pline_msg = 'talks about spellcraft.';
+        } else if (ptr?.mlet === 'S_CENTAUR') {
+            pline_msg = 'discusses hunting.';
+        } else if (is_gnome(ptr)) {
+            let gnomeplan = 0;
+            // C: Hallucination && (gnomeplan = rn2(4)) % 2 — skip
+            // rn2 when !Hallu; odd 1/3 verbalize, even 0/2 dungeon.
+            if (Hallucination() && ((gnomeplan = rn2(4)) % 2)) {
+                verbl_msg = (gnomeplan === 1)
+                    ? 'Phase one, collect underpants.'
+                    : 'Phase three, profit!';
+            } else {
+                verbl_msg = 'Many enter the dungeon,'
+                    + ' and few return to the sunlit lands.';
+            }
+        } else {
+            // C monsndx(ptr) ≡ pmidx; JS mons() uses mndx (D-1549).
+            const mndx = ptr?.mndx | 0;
+            switch (mndx) {
+            case PM_HOBBIT:
+                pline_msg = ((mtmp.mhp | 0) < (mtmp.mhpmax | 0)
+                    && ((mtmp.mhpmax | 0) <= 10
+                        || (mtmp.mhp | 0) <= (mtmp.mhpmax | 0) - 10))
+                    ? 'complains about unpleasant dungeon conditions.'
+                    : 'asks you about the One Ring.';
+                break;
+            case PM_ARCHEOLOGIST:
+                pline_msg =
+                    'describes a recent article in "Spelunker Today" magazine.';
+                break;
+            case PM_TOURIST:
+                verbl_msg = 'Aloha.';
+                break;
+            default:
+                pline_msg = 'discusses dungeon exploration.';
+                break;
+            }
+        }
     }
-    // Other msound cases deferred
+    // Other msound cases deferred (guardian/isshk/gecko remaps named)
 
-    if (verbl_msg) {
-        await pline(`${Monnam(mtmp)} says: "${verbl_msg}"`);
-        return ECMD_TIME;
-    }
+    // C :1222–1241 pline_msg then mcan verbl_msg_mcan then verbl_msg.
+    // verbl_msg_mcan / Death ucase named omitted.
     if (pline_msg) {
         await pline(`${Monnam(mtmp)} ${pline_msg}`);
+        return ECMD_TIME;
+    }
+    if (verbl_msg) {
+        await verbalize(verbl_msg);
         return ECMD_TIME;
     }
     return ECMD_OK;

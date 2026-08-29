@@ -1053,6 +1053,13 @@ export async function select_menu_pick_one(rawItems) {
             && ch !== '>' && ch !== '<' && ch !== '^' && ch !== '|')
             ? page.find((it) => it.selectable && it.selector === ch)
             : null;
+        /* C wintty.c process_menu_window group_accel — gch of add_menu
+         * (doextlist ':' / 's'). Whole menu, not the current page. */
+        const ghit = !hit && ch && ch !== '>' && ch !== '<'
+            && ch !== '^' && ch !== '|'
+            && key !== 27 && key !== 13 && key !== 10 && key !== 32
+            ? items.find((it) => it.selectable && it.gselector === ch)
+            : null;
         if (hit && wasFullscreen) {
             // C: fullscreen NHW_MENU clear leaves status blank across the
             // Options → choose_classes submenu; restore on final dismiss.
@@ -1088,6 +1095,10 @@ export async function select_menu_pick_one(rawItems) {
             continue;
         }
         if (hit) return { kind: 'pick', item: hit };
+        if (ghit) {
+            if (wasFullscreen) clear_committed_status();
+            return { kind: 'pick', item: ghit };
+        }
         // invalid → re-prompt same page (C nhbell)
     }
     } finally {

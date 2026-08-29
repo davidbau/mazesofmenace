@@ -625,11 +625,17 @@ export const aligns = [
 ];
 
 export const genders = [
-    // C role.c: adj / he / him / his / filecode / allow
+    // C role.c genders[] `:688–694`: adj / he / him / his / filecode / allow.
+    // ROLE_GENDERS is 2 (you.h); neuter+group are for qtext_pronoun /
+    // pronoun_gender, not chargen menus.
     { name: 'male', adj: 'male', he: 'he', him: 'him', his: 'his',
         filecode: 'Mal', allow: 0x1000, value: 0 },
     { name: 'female', adj: 'female', he: 'she', him: 'her', his: 'her',
         filecode: 'Fem', allow: 0x2000, value: 1 },
+    { name: 'neuter', adj: 'neuter', he: 'it', him: 'it', his: 'its',
+        filecode: 'Ntr', allow: 0x4000, value: 2 },
+    { name: 'group', adj: 'group', he: 'they', him: 'them', his: 'their',
+        filecode: 'Grp', allow: 0, value: 3 },
 ];
 
 /** C ref: you.h uhim() — genders[flags.female].him */

@@ -1,8 +1,8 @@
 // steed.js — Saddle / riding.
 // C ref: steed.c — rider_cant_reach, can_saddle, use_saddle,
 // put_saddle_on_mon, can_ride, doride, mount_steed, landing_spot,
-// dismount_steed (BYCHOICE subset), kick_steed (D-1362),
-// place_monster (D-1565; rm.h grid).
+// dismount_steed (BYCHOICE + DISMOUNT_THROWN/KNOCKED/FELL HP D-1627),
+// kick_steed (D-1362), place_monster (D-1565; rm.h grid).
 
 import { game } from './gstate.js';
 import { mksobj, objects_at } from './mkobj.js';
@@ -19,6 +19,7 @@ import {
     DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED,
     DISMOUNT_FELL, DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES,
     DISMOUNT_GENERIC,
+    BOTH_SIDES, KILLED_BY_AN, FLYING, LEVITATION,
     ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
     N_DIRS, xdir, ydir, FROMOUTSIDE,
     M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
@@ -35,7 +36,8 @@ import { getdir } from './lock.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
 import { Monnam, mon_nam, pmname, y_monnam, Hallucination, type_is_pname } from './do_name.js';
-import { losehp, maybe_half_phys } from './hack.js';
+import { losehp, maybe_half_phys, finish_maybe_wail } from './hack.js';
+import { set_wounded_legs, heal_legs } from './trap.js';
 import { finish_meating } from './dogmove.js';
 import { an } from './objnam.js';
 import { pmnames, PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
@@ -643,10 +645,35 @@ export async function mount_steed(mtmp, force) {
 }
 
 /**
- * C ref: steed.c dismount_steed — DISMOUNT_BYCHOICE envelope.
- * Thrown/fell damage, poly, engulfed, bones, water/lava steed death,
- * Punished/ustuck float_down arms, encumber_msg, polearm unweapon
- * deferred. float_down → pickup when !Air/Water (D-0220 / D-0966).
+ * C ref: youprop.h Flying / Levitation via flat + uprops[idx].
+ * confer_oc_oprop may write extrinsic only to uprops (D-1085).
+ * Call with usteed already cleared so a flying steed does not count.
+ */
+function dismount_hero_ufly_ulev() {
+    const u = game.u || {};
+    const propFly = u.uprops?.[FLYING];
+    const propLev = u.uprops?.[LEVITATION];
+    const ufly = !!(((u.HFlying | 0) || (u.EFlying | 0)
+        || (propFly?.intrinsic | 0) || (propFly?.extrinsic | 0))
+        && !((u.BFlying | 0) || (propFly?.blocked | 0)));
+    const ulev = !!(((u.HLevitation | 0) || (u.ELevitation | 0)
+        || (propLev?.intrinsic | 0) || (propLev?.extrinsic | 0))
+        && !((u.BLevitation | 0) || (propLev?.blocked | 0)));
+    return { ufly, ulev };
+}
+
+/**
+ * C ref: steed.c dismount_steed `:575–822`.
+ * DISMOUNT_THROWN FALLTHROUGH KNOCKED/FELL: u_locomotion verb, then
+ * You("%s off of %s!"), landing_spot retry, and if !Levitation &&
+ * !Flying (usteed cleared so a flyer steed does not count) losehp
+ * Maybe_Half_Phys(rn1(10,10)) + set_wounded_legs(BOTH_SIDES,
+ * HWounded_legs+rn1(5,5)) and skip heal_legs (D-1627).
+ * Named omit: poly/engulfed/bones polish, water/lava steed death,
+ * Punished/ustuck float_down arms, encumber_msg, polearm unweapon,
+ * landing_spot KNOCKED preferred-dir / enexto forceit,
+ * update_mon_extrinsics. float_down → pickup when !Air/Water
+ * (D-0220 / D-0966). BYCHOICE D-0213. Hallu rain-line named.
  */
 export async function dismount_steed(reason) {
     const u = game.u || (game.u = {});
@@ -655,14 +682,40 @@ export async function dismount_steed(reason) {
 
     const cc = { x: 0, y: 0 };
     let have_spot = landing_spot(cc, reason, 0);
+    // C Wounded_legs (H||E) — while mounted this is the steed's legs.
+    let repair_leg_damage = !!((u.HWounded_legs | 0)
+        || (u.EWounded_legs | 0)
+        || u.Wounded_legs);
     const otmp = which_armor_saddle(mtmp);
+
+    // C `:593–598`: usteed=0 then Flying/Levitation/u_locomotion("fall").
+    // Restore before the switch. Poly locomotion() deferred.
+    u.usteed = null;
+    const { ufly, ulev } = dismount_hero_ufly_ulev();
+    let verb = ulev ? 'float' : ufly ? 'fly' : 'fall';
+    u.usteed = mtmp;
 
     switch (reason) {
     case DISMOUNT_THROWN:
+        verb = 'are thrown';
+        // FALLTHROUGH — C DISMOUNT_KNOCKED / DISMOUNT_FELL
     case DISMOUNT_KNOCKED:
     case DISMOUNT_FELL:
-        await pline(`You fall off of ${mon_nam(mtmp)}!`);
+        await pline(`You ${verb} off of ${mon_nam(mtmp)}!`);
         if (!have_spot) have_spot = landing_spot(cc, reason, 1);
+        if (!ulev && !ufly) {
+            losehp(maybe_half_phys(rn1(10, 10)), 'riding accident',
+                KILLED_BY_AN);
+            await finish_maybe_wail();
+            if (game._losehp_needs_done) {
+                const { finish_losehp_done } = await import('./end.js');
+                await finish_losehp_done();
+                return;
+            }
+            await set_wounded_legs(BOTH_SIDES,
+                (u.HWounded_legs | 0) + rn1(5, 5));
+            repair_leg_damage = false;
+        }
         break;
     case DISMOUNT_POLY:
         await pline(`You can no longer ride ${mon_nam(mtmp)}.`);
@@ -695,7 +748,10 @@ export async function dismount_steed(reason) {
         break;
     }
 
-    // C: heal_legs(1) when Wounded_legs — dismount path deferred (how==1)
+    // C: heal_legs(1) while still mounted so the feel-better pline
+    // is suppressed (steed's legs, not the hero's).
+    if (repair_leg_damage) await heal_legs(1);
+
     u.usteed = null;
     u.ugallop = 0;
     steed_vs_stealth();

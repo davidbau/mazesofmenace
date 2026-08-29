@@ -29,7 +29,9 @@ import {
 import { init_attr, vary_init_attr, adjabil, A_STR, A_CON, newhp } from './attrib.js';
 import { newpw } from './exper.js';
 import { getnow } from './calendar.js';
-import { roles, races, aligns, findRole, findRace, findAlign } from './roles.js';
+import {
+    roles, races, aligns, findRole, findRace, findAlign, align_gtitle,
+} from './roles.js';
 import { discover_object } from './invent.js';
 import { setworn } from './do_wear.js';
 import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
@@ -821,7 +823,7 @@ function ini_inv_adjust_obj(trop, obj) {
 // C ref: invent.c assigninvlet() — keep existing a-z/A-Z letter when free
 // (e.g. steal → freeinv → later addinv of the same obj). Named omissions:
 // display_used_invlets; NOINVSYM edge polish when pack full.
-function assigninvlet(otmp) {
+export function assigninvlet(otmp) {
     if (otmp.oclass === COIN_CLASS) {
         otmp.invlet = GOLD_SYM;
         return;
@@ -1674,6 +1676,7 @@ export function setup_role_race_from_rc(opts = {}) {
     // setup_role_race_from_rc is newgame-only; pantheon always starts unset
     game.flags.pantheon = -1;
     role_init_pantheon();
+    role_init_godgend();
     role_init_cleric_spe_light();
     role_init_quest_pm_fixup();
     role_init_nemesis_gender();
@@ -1726,8 +1729,9 @@ const MS_NEMESIS = 37;
 /**
  * C ref: role.c role_init — Fix up quest leader / guardian / nemesis
  * permonst (role.c:2027–2061). Mutates live mons[] in C; JS overlay
- * via commit_pm_fixup (resetGame clears it). No extra RNG here —
- * ldrgend/nemgend stay in role_init_nemesis_gender.
+ * via commit_pm_fixup (resetGame clears it). ldrgend is set here
+ * (C leader block `:2036–2041`; may rn2(100) when the PM is not
+ * male/female/neuter). nemgend stays in role_init_nemesis_gender.
  */
 function role_init_quest_pm_fixup() {
     const alignmnt = (aligns[game.flags.initalign] || aligns[1])?.value ?? 0;
@@ -1741,6 +1745,12 @@ function role_init_quest_pm_fixup() {
             mflags3: pm.mflags3 | M3_CLOSE,
             maligntyp: alignmnt * 3,
         });
+        if (!game.quest_status) game.quest_status = {};
+        // C: is_neuter ? 2 : is_female ? 1 : is_male ? 0 : (rn2(100) < 50)
+        game.quest_status.ldrgend = is_neuter(pm) ? 2
+            : is_female(pm) ? 1
+                : is_male(pm) ? 0
+                    : (rn2(100) < 50 ? 1 : 0);
     }
     const guard = game.urole?.guardnum ?? NON_PM;
     if (guard !== NON_PM && guard != null) {
@@ -1759,6 +1769,15 @@ function role_init_quest_pm_fixup() {
             mflags3: (pm.mflags3 & ~M3_CLOSE) | M3_WANTSARTI | M3_WAITFORU,
         });
     }
+}
+
+// C ref: role.c role_init `:2084–2085` — after pantheon fills lgod.
+// 0 or 1; no gods are neuter, nor is gender randomized.
+function role_init_godgend() {
+    if (!game.quest_status) game.quest_status = {};
+    const alignmnt = (aligns[game.flags.initalign] || aligns[1])?.value ?? 0;
+    game.quest_status.godgend =
+        align_gtitle(game.urole, alignmnt) === 'goddess' ? 1 : 0;
 }
 
 // C ref: role.c role_init() nemesis gender pick (role.c:2050-2060)

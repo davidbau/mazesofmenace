@@ -1639,7 +1639,7 @@ const SIR_TERRY_NOVELS = [
 ];
 
 /** C ref: do_name.c noveltitle — pick/store Discworld novel title index. */
-function noveltitle(otmp) {
+export function noveltitle(otmp) {
     const k = SIR_TERRY_NOVELS.length;
     let j = rn2(k);
     if (otmp) {

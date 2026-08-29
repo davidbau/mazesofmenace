@@ -1,7 +1,8 @@
 // do_name.js — Object naming helpers (partial).
 // C ref: do_name.c oname / artifact naming / docallcmd / namefloorobj
 //        (D-1555); christen_orc / rndorcname / free_oname (D-1193);
-//        new_oname (D-1363).
+//        new_oname (D-1363); name_from_player (D-1624, EDIT_GETLIN off);
+//        do_mgivenname / alreadynamed (D-1638).
 
 import { artifact_exists, exist_artifact } from './artifact.js';
 import { game } from './gstate.js';
@@ -9,7 +10,8 @@ import { rn2, rn1, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, docrt, canspotmon, pline,
-    glyph_to_obj_at,
+    glyph_to_obj_at, glyph_is_swallow_at, see_with_infrared, sensemon,
+    verbalize,
 } from './display.js';
 import {
     paint_corner_nhw_menu, discover_object, compactify_invlets,
@@ -23,13 +25,14 @@ import {
     SUPPRESS_SADDLE, SUPPRESS_NAME,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
     has_oname, ONAME, CLR_MAX, BUFSZ, u_at, OBJ_FREE,
+    isok, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, has_ebones,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
     M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames, G_NOGEN, G_UNIQ, mons,
-    LOW_PM, SPECIAL_PM, hides_under,
+    LOW_PM, SPECIAL_PM, hides_under, is_rider, MS_ANIMAL,
 } from './monsters.js';
 import { getlin } from './getline.js';
 import { getpos } from './getpos.js';
@@ -44,11 +47,17 @@ import {
 } from './objects.js';
 import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
+import { m_at } from './mon.js';
+import { cansee } from './vision.js';
+import { fuzzymatch, strstri } from './hacklib.js';
+import { beautiful } from './apply.js';
+import { mhe, mhis } from './fountain.js';
 
 const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
+const PM_JUIBLEX = monsterNames.indexOf('PM_JUIBLEX');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
@@ -191,6 +200,25 @@ function Ysimple_name2(obj) {
 }
 
 /**
+ * C do_name.c name_from_player `:105–128`.
+ * `defres` is copied into the getlin buffer only when EDIT_GETLIN
+ * (`config.h:655` is commented out — C `nhUse(defres)`). Truncate
+ * at PL_PSIZ after mungspaces. ESC or empty getlin → null.
+ * @param {string} prompt
+ * @param {string|null|undefined} defres
+ * @returns {Promise<string|null>}
+ */
+async function name_from_player(prompt, defres) {
+    /* C #else nhUse(defres); EDIT_GETLIN would Strcpy(outbuf, defres). */
+    void defres;
+    const outbuf = await getlin(prompt);
+    if (!outbuf || outbuf === '\x1b') return null;
+    let s = outbuf.trim().replace(/\s+/g, ' ');
+    if (s.length >= PL_PSIZ) s = s.slice(0, PL_PSIZ - 1);
+    return s;
+}
+
+/**
  * C ref: do_name.c do_oname — getlin name then oname.
  * Artifact_name slip / wipeout_text / literate conduct deferred.
  */
@@ -203,14 +231,8 @@ async function do_oname(obj) {
     const which = (obj.quan || 1) !== 1 ? 'these' : 'this';
     // C: safe_qbuf(qbuf, qbuf, "?", obj, xname, simpleonames, "item")
     const qbuf = `What do you want to name ${which} ${xname(obj)}?`;
-    const buf = await getlin(qbuf);
-    if (!buf || buf === '\x1b') return;
-
-    const name = buf.trim().replace(/\s+/g, ' ');
-    if (!name) return;
-    const truncated = name.length >= PL_PSIZ
-        ? name.slice(0, PL_PSIZ - 1)
-        : name;
+    const buf = await name_from_player(qbuf, safe_oname(obj));
+    if (buf == null) return;
 
     if (obj.oartifact) {
         await pline(
@@ -220,7 +242,7 @@ async function do_oname(obj) {
     }
 
     // artifact_name / restrict_name / wipeout_text slip deferred
-    oname(obj, truncated, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
+    oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
 }
 
 /** C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance. */
@@ -389,6 +411,156 @@ export function christen_monst(mtmp, name) {
 }
 
 /**
+ * C ref: do_name.c alreadynamed `:155–195`. Empty usrbuf refuses erase;
+ * fuzzymatch vs monnambuf / "the " / "invisible " / " of "; Juiblex vs
+ * "Jubilex". Caller: do_mgivenname reject arms.
+ * @returns {Promise<boolean>}
+ */
+async function alreadynamed(mtmp, monnambuf, usrbuf) {
+    const name = String(usrbuf ?? '');
+    const shown = String(monnambuf ?? '');
+    const ptr = mtmp?.data || mons(mtmp?.mnum);
+    if (!name) {
+        const name_not_title = !!(has_mgivenname(mtmp)
+            || type_is_pname(ptr)
+            || mtmp?.isshk);
+        await pline(
+            `${upstart(shown)} would rather keep ${
+                is_rider(ptr) ? 'its' : mhis(mtmp)
+            } existing ${name_not_title ? 'name' : 'title'}.`,
+        );
+        return true;
+    }
+    const pInv = strstri(shown, 'invisible ');
+    const pOf = strstri(shown, ' of ');
+    const thePref = shown.length >= 4
+        && shown.slice(0, 4).toLowerCase() === 'the ';
+    if (fuzzymatch(name, shown, ' -_', true)
+        || (thePref && fuzzymatch(name, shown.slice(4), ' -_', true))
+        || (pInv && fuzzymatch(name, pInv.slice(10), ' -_', true))
+        || (pOf && fuzzymatch(name, pOf.slice(4), ' -_', true))) {
+        if (is_rider(ptr)) {
+            await pline(`${upstart(shown)} is already called that.`);
+        } else {
+            await pline(
+                `${upstart(mhe(mtmp))} is already called ${shown}.`,
+            );
+        }
+        return true;
+    }
+    const mndx = mtmp?.mnum ?? ptr?.mndx;
+    if ((mndx | 0) === PM_JUIBLEX
+        && strstri(shown, 'Juiblex')
+        && name.toLowerCase() === 'jubilex') {
+        await pline(
+            `${upstart(shown)} doesn't like being called ${name}.`,
+        );
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: do_name.c do_mgivenname `:198–282`. Caller: docallcmd `'m'`.
+ * Hallu refuse; getpos; self/steed; m_at; swallow glyph_at; visibility;
+ * name_from_player; G_UNIQ/shk/priest/ghost/ebones reject; else christen.
+ * Named: astral high-cleric distant_monnam; SetVoice SND_LIB (empty
+ * macro); christen leash update_inventory; cmdq_pop; lootabc letters.
+ */
+async function do_mgivenname() {
+    if (Hallucination()) {
+        await pline('You would never recognize it anyway.');
+        return;
+    }
+    const u = game.u || {};
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    if (await getpos(cc, false, 'the monster you want to name') < 0
+        || !isok(cc.x, cc.y)) {
+        return;
+    }
+    const cx = cc.x | 0;
+    const cy = cc.y | 0;
+    let mtmp = null;
+    let do_swallow = false;
+
+    if (u_at(cx, cy)) {
+        if (u.usteed && canspotmon(u.usteed)) {
+            mtmp = u.usteed;
+        } else {
+            await pline(
+                `This ${beautiful()} creature is called ${
+                    game.plname || 'Hero'
+                } and cannot be renamed.`,
+            );
+            return;
+        }
+    } else {
+        mtmp = m_at(cx, cy);
+    }
+
+    /* Allow you to name the monster that has swallowed you */
+    if (!mtmp && u.uswallow) {
+        if (glyph_is_swallow_at(cx, cy)) {
+            mtmp = u.ustuck;
+            do_swallow = true;
+        }
+    }
+
+    const See_invisible = !!((u.HSee_invisible | 0)
+        || (u.ESee_invisible | 0)
+        || u.See_invisible);
+    const ap = (mtmp?.m_ap_type | 0) & M_AP_TYPMASK;
+    if (!do_swallow && (!mtmp
+        || (!sensemon(mtmp)
+            && (!(cansee(cx, cy) || see_with_infrared(mtmp))
+                || mtmp.mundetected
+                || ap === M_AP_FURNITURE
+                || ap === M_AP_OBJECT
+                || (mtmp.minvis && !See_invisible))))) {
+        await pline('I see no monster there.');
+        return;
+    }
+
+    const monnambuf = distant_monnam(mtmp, ARTICLE_THE);
+    const qbuf = `What do you want to call ${monnambuf}?`;
+    const buf = await name_from_player(
+        qbuf,
+        has_mgivenname(mtmp) ? MGIVENNAME(mtmp) : null,
+    );
+    if (buf == null) return;
+
+    const ptr = mtmp.data || mons(mtmp.mnum);
+    const mndx = mtmp.mnum ?? ptr?.mndx;
+    const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
+        || u.uroleplay?.deaf || u.Deaf);
+    const helpless = !!(mtmp.msleeping || !mtmp.mcanmove);
+    const msound = ptr?.msound | 0;
+
+    if (((ptr?.geno | 0) & G_UNIQ) && !mtmp.ispriest) {
+        if (!await alreadynamed(mtmp, monnambuf, buf)) {
+            await pline(
+                `${upstart(monnambuf)} doesn't like being called names!`,
+            );
+        }
+    } else if (mtmp.isshk
+        && !(Deaf || helpless || msound <= MS_ANIMAL)) {
+        if (!await alreadynamed(mtmp, monnambuf, buf)) {
+            /* C SetVoice empty without SND_LIB */
+            await verbalize(`I'm ${shkname(mtmp)}, not ${buf}.`);
+        }
+    } else if (mtmp.ispriest || mtmp.isminion || mtmp.isshk
+        || (mndx | 0) === PM_GHOST || has_ebones(mtmp)) {
+        if (!await alreadynamed(mtmp, monnambuf, buf)) {
+            await pline(
+                `${upstart(monnambuf)} will not accept the name ${buf}.`,
+            );
+        }
+    } else {
+        christen_monst(mtmp, buf);
+    }
+}
+
+/**
  * C ref: do_name.c roguename — Rogue designer name for makerogueghost.
  * ROGUEOPTS env deferred (no Node env in scored js/).
  */
@@ -429,7 +601,7 @@ export function pmname(pm, mgender) {
  * C ref: do_name.c Mgender / mon_pmname — gender-aware pmnames[].
  * Preserves table casing (e.g. "Wizard of Yendor", not lowercased PM_).
  */
-function mon_pmname(mtmp) {
+export function mon_pmname(mtmp) {
     const mndx = mtmp?.mnum ?? mtmp?.data?.mndx;
     if (mndx != null && mndx >= 0 && pmnames[mndx]) {
         const g = mtmp?.female ? FEMALE : MALE;
@@ -501,6 +673,14 @@ export function distant_monnam_none(mtmp) {
     if (ghost) return ghost;
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
     return `${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
+}
+
+/**
+ * C ref: do_name.c distant_monnam `:1168–1186` — ARTICLE_THE/NONE via
+ * x_monnam(..., TRUE). Astral PM_HIGH_CLERIC conceal named omit.
+ */
+export function distant_monnam(mtmp, article = ARTICLE_THE) {
+    return x_monnam(mtmp, article, null, 0, true);
 }
 
 /**
@@ -833,7 +1013,8 @@ export function christen_orc(mtmp, gang, other) {
 
 /**
  * C ref: do_name.c docallcmd — "What do you want to name?" menu.
- * `i` → getobj("name")+do_oname; `f` → namefloorobj; other branches deferred.
+ * `m` → do_mgivenname; `i` → getobj("name")+do_oname; `f` → namefloorobj.
+ * `o`/`d` still deferred.
  */
 export async function docallcmd() {
     await flush_topl_more();
@@ -867,12 +1048,16 @@ export async function docallcmd() {
             if (obj) await do_oname(obj);
             return;
         }
+        if (ch === 'm' || ch === 'C') {
+            await do_mgivenname();
+            return;
+        }
         if (ch === 'a' || ch === 'l') {
             const { donamelevel } = await import('./dungeon.js');
             await donamelevel();
             return;
         }
-        if (ch === 'm' || ch === 'C' || ch === 'o' || ch === 'n'
+        if (ch === 'o' || ch === 'n'
             || ch === 'd' || ch === '\\') {
             return;
         }
@@ -988,20 +1173,19 @@ export async function docall(obj) {
     } else {
         qbuf = `Call ${docall_xname(obj)}:`;
     }
-    const buf = await getlin(qbuf);
-    if (!buf || buf === '\x1b') return;
-
     const ocl = game.objects?.[obj.otyp];
     if (!ocl) return;
+    const buf = await name_from_player(qbuf, ocl.oc_uname);
+    if (buf == null) return;
+
     const hadName = !!ocl.oc_uname;
     ocl.oc_uname = null;
 
-    const name = buf.trim().replace(/\s+/g, ' ');
-    if (!name) {
+    if (!buf) {
         // undiscover_object deferred when clearing a prior call name
         void hadName;
     } else {
-        ocl.oc_uname = name.length >= PL_PSIZ ? name.slice(0, PL_PSIZ - 1) : name;
+        ocl.oc_uname = buf;
         // C: discover_object(otyp, FALSE, TRUE, TRUE)
         discover_object(obj.otyp, false, true, true);
     }

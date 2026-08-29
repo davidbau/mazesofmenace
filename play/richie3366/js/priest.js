@@ -1,16 +1,16 @@
 // priest.js — Temple entry + priest location helpers (partial).
 // C ref: priest.c temple_occupied / findpriest / has_shrine / intemple /
-//   in_your_sanctuary.
+//   in_your_sanctuary / reset_hostility.
 // Named omissions: mapseen_temple; SetVoice; forget_temple_entry callers;
 // priest_talk; inhistemple callers beyond findpriest.
 
 import { game } from './gstate.js';
 import { rn2, d } from './rng.js';
 import {
-    EPRI, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE,
+    EPRI, EMIN, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE,
     Amask2align, ACH_TMPL, In_endgame,
 } from './const.js';
-import { pline, You_feel, canseemon, canspotmon, verbalize } from './display.js';
+import { pline, You_feel, canseemon, canspotmon, verbalize, newsym } from './display.js';
 import { makemon, set_malign } from './makemon.js';
 import { mons, is_rider } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
@@ -19,6 +19,8 @@ import { body_part } from './polyself.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
+const PM_ANGEL = monsterNames.indexOf('PM_ANGEL');
 
 /** Local to priest.c in C. */
 const ALGN_SINNED = -4;
@@ -73,6 +75,28 @@ export function has_shrine(pri) {
     if (!lev || !IS_ALTAR(lev.typ) || !(lev.altarmask & AM_SHRINE)) return false;
     return (epri.shralign | 0)
         === (Amask2align((lev.altarmask | 0) & ~AM_SHRINE) | 0);
+}
+
+/**
+ * C ref: priest.c reset_hostility `:754–768`.
+ * Caller do.c final_level via iter_mons. isminion aligned cleric/angel
+ * whose emin.min_align != u.ualign.type becomes hostile
+ * (`mpeaceful = mtame = 0`) then set_malign; newsym after those
+ * checks. JS `mons()` allocates a fresh permonst so mndx/mnum, not
+ * pointer equality (same as mplayer_talk).
+ */
+export function reset_hostility(roamer) {
+    if (!roamer.isminion) return;
+    const mndx = roamer.data?.mndx ?? (roamer.mnum | 0);
+    if (mndx !== PM_ALIGNED_CLERIC && mndx !== PM_ANGEL) return;
+
+    const emin = EMIN(roamer);
+    if (emin && (emin.min_align | 0) !== (game.u?.ualign?.type | 0)) {
+        roamer.mpeaceful = 0;
+        roamer.mtame = 0;
+        set_malign(roamer);
+    }
+    newsym(roamer.mx | 0, roamer.my | 0);
 }
 
 /** C ref: priest.c p_coaligned — shrine align matches hero. */

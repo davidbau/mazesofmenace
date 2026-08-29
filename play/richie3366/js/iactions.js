@@ -54,7 +54,7 @@ function cmdq_add_key(ch) {
 /**
  * C ref: iactions.c itemactions_pushkeys — queue CQ_CANNED ec + invlet.
  * Named omissions: most arms beyond throw/drop/apply/read/quaff/wield/
- * wear/takeoff/zap/quiver/fire/dip (offer/tip/invoke still named).
+ * wear/takeoff/zap/quiver/fire/dip/adjust-stack (offer/tip/invoke still named).
  */
 async function itemactions_pushkeys(act, otmp) {
     switch (act) {
@@ -129,6 +129,14 @@ async function itemactions_pushkeys(act, otmp) {
     case IA_FIRE_OBJ: {
         const { dofire } = await import('./dothrow.js');
         cmdq_add_ec(dofire);
+        break;
+    }
+    case IA_ADJUST_STACK: {
+        /* C iactions.c `:194–197` — cmdq_add_ec(adjust_split) looks up
+           INTERNALCMD "altadjust"; invlet answers getobj("split"). */
+        const { adjust_split } = await import('./invent.js');
+        cmdq_add_ec_entry('altadjust', adjust_split);
+        cmdq_add_key(otmp.invlet);
         break;
     }
     default:
